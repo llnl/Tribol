@@ -708,6 +708,20 @@ void ComputeSingleMortarJacobian( SurfaceContactElem & elem )
 
 }
 
+#ifdef TRIBOL_USE_ENZYME
+void ComputeMortarForceEnzyme( const RealT* elem1_coords, RealT* elem1_force, int size1,
+                               const RealT* elem2_coords, RealT* elem2_force, int size2 )
+{
+   // convention: elem1 = nonmortar element
+   //             elem2 = mortar element
+}
+
+void ComputeMortarJacobianEnzyme( SurfaceContactElem& elem )
+{
+
+}
+#endif
+
 //------------------------------------------------------------------------------
 template< >
 int GetMethodData< MORTAR_WEIGHTS >( CouplingScheme const * cs )

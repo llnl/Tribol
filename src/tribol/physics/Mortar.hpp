@@ -160,6 +160,11 @@ void ComputeConstraintJacobian< SINGLE_MORTAR, DUAL >( SurfaceContactElem & elem
  */
 void ComputeSingleMortarJacobian( SurfaceContactElem & elem );
 
+#ifdef TRIBOL_USE_ENZYME
+void ComputeForceEnzyme( SurfaceContactElem& elem );
+void ComputeSingleMortarJacobianEnzyme( SurfaceContactElem& elem );
+#endif
+
 /*!
  *
  * \brief method to compute mortar weights for MORTAR_WEIGHTS method
