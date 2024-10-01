@@ -57,6 +57,8 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
             description="Build with portable kernel execution support")
     variant("openmp",   default=False,
             description="Build with OpenMP support")
+    variant("enzyme",   default=False,
+            description="Build with Enzyme support")
 
     # -----------------------------------------------------------------------
     # Dependencies
@@ -146,6 +148,8 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
 
     conflicts("+cuda", when="+rocm")
     conflicts("+openmp", when="+rocm")
+
+    requires("%clang", when="+enzyme")
 
     def _get_sys_type(self, spec):
         sys_type = spec.architecture
@@ -349,6 +353,9 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
             entries.append(cmake_cache_option("BUILD_REDECOMP", True))
         else:
             entries.append(cmake_cache_option("BUILD_REDECOMP", False))
+
+        entries.append(cmake_cache_option("ENABLE_ENZYME",
+                                          spec.satisfies("+enzyme")))
 
         # TPL locations
         entries.append("#------------------{0}".format("-" * 60))
