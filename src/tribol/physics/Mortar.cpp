@@ -800,7 +800,7 @@ void Coords2DToPlane(const RealT* xp, const RealT* yp, const RealT* x0,
    }
 }
 
-void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, 
+void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1,
                                RealT* f1, RealT* g1, int size1,
                                const RealT* x2, 
                                RealT* f2, int size2 )
@@ -834,14 +834,22 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       }
    }
    // get vector n (normal of elem1)
-   RealT n[3] = {0.0, 0.0, 0.0};
-   for (int i{0}; i < size1; ++i)
-   {
-      for (int d{0}; d < 3; ++d)
-      {
-         n[d] += n1[i*3 + d];
-      }
-   }
+   // NOTE: this limits this routine to quads
+   RealT de1[3] = {
+      -0.25*x1[0] + 0.25*x1[3] + 0.25*x1[6] - 0.25*x1[9],
+      -0.25*x1[1] + 0.25*x1[4] + 0.25*x1[7] - 0.25*x1[10],
+      -0.25*x1[2] + 0.25*x1[5] + 0.25*x1[8] - 0.25*x1[11]
+   };
+   RealT de2[3] = {
+      -0.25*x1[0] - 0.25*x1[3] + 0.25*x1[6] + 0.25*x1[9],
+      -0.25*x1[1] - 0.25*x1[4] + 0.25*x1[7] + 0.25*x1[10],
+      -0.25*x1[2] - 0.25*x1[5] + 0.25*x1[8] + 0.25*x1[11]
+   };
+   RealT n[3] = {
+      de1[1]*de2[2] - de1[2]*de2[1],
+      de1[2]*de2[0] - de1[0]*de2[2],
+      de1[0]*de2[1] - de1[1]*de2[0]
+   };
    RealT n_mag = std::sqrt(n[0]*n[0] + n[1]*n[1] + n[2]*n[2]);
    for (int d{0}; d < 3; ++d)
    {
@@ -876,148 +884,6 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
          x2t[i*3 + d] = x2[i*3 + d] - n[d]*x2diff_mag;
       }
    }
-  //  // n2_in = inward normal unit vector for edges of elem2
-  //  axom::StackArray<axom::primal::Vector<RealT, 3>, 4> n2_in;
-  //  for (int i{0}; i < size2; ++i)
-  //  {
-  //     int vert1 = i;
-  //     int vert2 = (i+1) % size2;
-  //     // p = vector along edge
-  //     axom::primal::Vector<RealT, 3> p({
-  //        x2t[vert2*3 + 0] - x2t[vert1*3 + 0],
-  //        x2t[vert2*3 + 1] - x2t[vert1*3 + 1],
-  //        x2t[vert2*3 + 2] - x2t[vert1*3 + 2]
-  //     });
-  //     n2_in[i] = p.cross_product(p, n);
-  //     n2_in[i] = n2_in[i].unitVector();
-  //  }
-  //  // Line clipping algorithm (Cyrus-Beck-like)
-  //  constexpr int max_int_size = 8*3;
-  //  // xti = intersection polygon
-  //  RealT xti[max_int_size];
-  //  ClippingVertexType xti_type[8];
-  //  int xti_id[8];
-  //  int poly_vert_ct = 0;
-  //  ClippingState poly_status = ClippingState::Unknown;
-  //  // loop over vertices and edges of nonmortar element
-  //  for (int i{0}; i < size1; ++i)
-  //  {
-  //     // check if nonmortar vertex is inside/outside/on edge of mortar element
-  //     ClippingState vert_status = ClippingState::Inside;
-  //     for (int j{0}; j < size2; ++j)
-  //     {
-  //        // x1_to_edge = vector from edge vert1 to elem1 vertex
-  //        axom::primal::Vector<RealT, 3> x1_to_edge({
-  //           x1t[i*3 + 0] - x2t[j*3 + 0],
-  //           x1t[i*3 + 1] - x2t[j*3 + 1],
-  //           x1t[i*3 + 2] - x2t[j*3 + 2]
-  //        });
-  //        RealT x1_dot_n2 = x1_to_edge.dot(n2_in[j]);
-  //        if (x1_dot_n2 < -dist_tol) // TODO: investigate scaling dist_tol based on edge size/element size
-  //        {
-  //           vert_status = ClippingState::Outside;
-  //           break;
-  //        }
-  //        else if (std::abs(x1_dot_n2) < dist_tol)
-  //        {
-  //           vert_status = ClippingState::OnBoundary;
-  //        }
-  //     }
-  //     if (vert_status == ClippingState::Inside)
-  //     {
-  //       // if vertex is inside, add to list
-  //        SLIC_ERROR_IF(poly_status == ClippingState::Outside, "Potentially missed edge/edge intersection.");
-  //        poly_status = ClippingState::Inside;
-  //        CheckAndAddVertex(&x1t[i*3], xti, ClippingVertexType::Nonmortar, xti_type, i, xti_id, poly_vert_ct);
-  //     }
-  //     else if (vert_status == ClippingState::OnBoundary)
-  //     {
-  //        if (poly_status == ClippingState::Inside)
-  //        {
-  //           // vertex is inside if we are inside and on boundary; add to list
-  //           poly_status = ClippingState::OnBoundary;
-  //           CheckAndAddVertex(&x1t[i*3], xti, ClippingVertexType::Nonmortar, xti_type, i, xti_id, poly_vert_ct);
-  //        }
-  //        else if (poly_status == ClippingState::Unknown)
-  //        {
-  //           // unknown if we are inside or outside yet. add point for now, but don't change poly_status
-  //           CheckAndAddVertex(&x1t[i*3], xti, ClippingVertexType::Nonmortar, xti_type, i, xti_id, poly_vert_ct);
-  //        }
-  //     }
-  //     else // vertex is outside
-  //     {
-  //        SLIC_ERROR_IF(poly_status == ClippingState::Inside, "Potentially missed edge/edge intersection.");
-  //        if (poly_status == ClippingState::Unknown)
-  //        {
-  //           // we know we are outside now. reset poly_vert_ct so existing unknown points are removed.
-  //           poly_vert_ct = 0;
-  //        }
-  //        poly_status = ClippingState::Outside;
-  //     }
-  //     int vert1 = i;
-  //     int vert2 = (i+1) % size1;
-  //     // p = vector along edge
-  //     axom::primal::Vector<RealT, 3> p({
-  //        x1t[vert2*3 + 0] - x1t[vert1*3 + 0],
-  //        x1t[vert2*3 + 1] - x1t[vert1*3 + 1],
-  //        x1t[vert2*3 + 2] - x1t[vert1*3 + 2]
-  //     });
-  //     RealT pnorm_inv = 1.0 / p.norm();
-  //     // t_vals = parameter values of the intersection point (initialized to -1.0)
-  //     RealT t_vals[4] = {-1.0, -1.0, -1.0, -1.0};
-  //     int edge_ids[4] = {-1, -1, -1, -1};
-  //     int edge_ct = 0;
-  //     // get intersection points of nonmortar edge and mortar element
-  //     for (int j{0}; j < size2; ++j)
-  //     {
-  //        // denominator of intersection point calc
-  //        RealT den = p.dot(n2_in[j]);
-  //        // den_norm = normalized denominator
-  //        RealT den_norm = den * pnorm_inv;
-  //        if (std::abs(den_norm) > angle_tol)
-  //        {
-  //           // edges are not aligned, find intersection point
-  //           // x1_to_edge = vector from edge vert1 to elem1 vertex
-  //           axom::primal::Vector<RealT, 3> x1_to_edge({
-  //              x2t[j*3 + 0] - x1t[i*3 + 0],
-  //              x2t[j*3 + 1] - x1t[i*3 + 1],
-  //              x2t[j*3 + 2] - x1t[i*3 + 2]
-  //           });
-  //           RealT t_val = x1_to_edge.dot(n2_in[j]) / den;
-  //           if (t_val < (1.0 + dist_tol*pnorm_inv) && t_val > -dist_tol*pnorm_inv)
-  //           {
-  //              // check for duplicated t values
-  //              bool repeated_t_val = false;
-  //              for (int k{0}; k < edge_ct; ++k)
-  //              {
-  //                 if (abs(t_val - t_vals[k]) < dist_tol*pnorm_inv)
-  //                 {
-  //                    repeated_t_val = true;
-  //                    break;
-  //                 }
-  //              }
-  //              if (!repeated_t_val)
-  //              {
-  //                 SLIC_ERROR_IF(edge_ct == 2, "More than 2 edge intersections. Are the projected polygons convex?");
-  //                 // intersection is over line segment
-  //                 t_vals[edge_ct] = t_val;
-  //                 edge_ids[edge_ct] = j;
-  //                 ++edge_ct;
-  //              }
-  //           }
-  //        }
-  //     }
-  //     // sort the t_vals, smallest is closest to the vertex
-  //     // max number of unique intersections should be 2
-  //     if (edge_ct == 2 && t_vals[1] < t_vals[0])
-  //     {
-  //        t_vals[2] = t_vals[0]
-  //     }
-  //  }
-  //  // all elem1 coords are outside elem2 and there are no edge/edge
-  //  // intersections. is elem2 inside elem1?
-
-  //  // all elem1 coords are on the boundary of elem2
    // Tribol's clipping algorithm
    // create a local basis
    RealT e1[3] = {
