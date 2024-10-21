@@ -70,30 +70,42 @@ TEST(enzyme_smoke, basic_use)
 
   double df1dx1[12*12];
   double df1dx2[12*12];
-  double df1dp1[12*12];
+  double df1dn1[12*12];
   for (int i{0}; i < 12*12; ++i)
   {
     df1dx1[i] = 0.0;
     df1dx2[i] = 0.0;
+    df1dn1[i] = 0.0;
+  }
+  double df1dp1[12*4];
+  for (int i{0}; i < 12*4; ++i)
+  {
     df1dp1[i] = 0.0;
   }
   double dg1dx1[4*12];
   double dg1dx2[4*12];
+  double dg1dn1[4*12];
   for (int i{0}; i < 4*12; ++i)
   {
     dg1dx1[i] = 0.0;
     dg1dx2[i] = 0.0;
+    dg1dn1[i] = 0.0;
   }
   double df2dx1[12*12];
   double df2dx2[12*12];
-  double df2dp1[12*12];
+  double df2dn1[12*12];
   for (int i{0}; i < 12*12; ++i)
   {
     df2dx1[i] = 0.0;
     df2dx2[i] = 0.0;
+    df2dn1[i] = 0.0;
+  }
+  double df2dp1[12*4];
+  for (int i{0}; i < 12*4; ++i)
+  {
     df2dp1[i] = 0.0;
   }
-  tribol::ComputeMortarJacobianEnzyme(x1, n1, p1, f1, df1dx1, df1dx2, df1dp1, g1, dg1dx1, dg1dx2, 4, x2, f2, df2dx1, df2dx2, df2dp1, 4);
+  tribol::ComputeMortarJacobianEnzyme(x1, n1, p1, f1, df1dx1, df1dx2, df1dn1, df1dp1, g1, dg1dx1, dg1dx2, dg1dn1, 4, x2, f2, df2dx1, df2dx2, df2dn1, df2dp1, 4);
 
   double df1dx1_fd[12*12];
   //tribol::ComputeMortarForceEnzyme(x1, n1, p1, f1, g1, 4, x2, f2, 4);

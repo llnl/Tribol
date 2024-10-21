@@ -167,10 +167,10 @@ void LinearQuadBasisDeriv(const RealT* xi, RealT* phi, RealT* dphi_dxi, RealT* d
                                const RealT* x2, 
                                RealT* f2, int size2 );
 void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT* p1,
-                                  RealT* f1, RealT* df1dx1, RealT* df1dx2, RealT* df1dp1,
-                                  RealT* g1, RealT* dg1dx1, RealT* dg1dx2, int size1,
+                                  RealT* f1, RealT* df1dx1, RealT* df1dx2, RealT* df1dn1, RealT* df1dp1,
+                                  RealT* g1, RealT* dg1dx1, RealT* dg1dx2,  RealT* dg1dn1, int size1,
                                   const RealT* x2,
-                                  RealT* f2, RealT* df2dx1, RealT* df2dx2, RealT* df2dp1,
+                                  RealT* f2, RealT* df2dx1, RealT* df2dx2, RealT* df2dn1, RealT* df2dp1,
                                   int size2 );
 #endif
 

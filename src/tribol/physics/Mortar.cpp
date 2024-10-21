@@ -1116,24 +1116,76 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
 }
 
 void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT* p1,
-                                  RealT* f1, RealT* df1dx1, RealT* df1dx2, RealT* df1dp1,
-                                  RealT* g1, RealT* dg1dx1, RealT* dg1dx2, int size1,
+                                  RealT* f1, RealT* df1dx1, RealT* df1dx2, RealT* df1dn1, RealT* df1dp1,
+                                  RealT* g1, RealT* dg1dx1, RealT* dg1dx2,  RealT* dg1dn1, int size1,
                                   const RealT* x2,
-                                  RealT* f2, RealT* df2dx1, RealT* df2dx2, RealT* df2dp1,
+                                  RealT* f2, RealT* df2dx1, RealT* df2dx2, RealT* df2dn1, RealT* df2dp1,
                                   int size2 )
 {
-   RealT x1_dot[12] = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
-   __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
-      enzyme_dup, x1, x1_dot,
-      enzyme_const, n1,
-      enzyme_const, p1,
-      enzyme_dup, f1, df1dx1,
-      enzyme_dup, g1, dg1dx1,
-      enzyme_const, size1,
-      enzyme_const, x2,
-      enzyme_dup, f2, df2dx1,
-      enzyme_const, size2);
-   
+   RealT x1_dot[12] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   for (int i{0}; i < size1*3; ++i)
+   {
+      x1_dot[i] = 1.0;
+      __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
+         enzyme_dup, x1, x1_dot,
+         enzyme_const, n1,
+         enzyme_const, p1,
+         enzyme_dup, f1, &df1dx1[size1*3*i],
+         enzyme_dup, g1, &dg1dx1[3*i],
+         enzyme_const, size1,
+         enzyme_const, x2,
+         enzyme_dup, f2, &df2dx1[size1*3*i],
+         enzyme_const, size2);
+      x1_dot[i] = 0.0;
+   }
+   RealT n1_dot[12] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   for (int i{0}; i < size1*3; ++i)
+   {
+      n1_dot[i] = 1.0;
+      __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
+         enzyme_const, x1,
+         enzyme_dup, n1, n1_dot,
+         enzyme_const, p1,
+         enzyme_dup, f1, &df1dn1[size1*3*i],
+         enzyme_dup, g1, &dg1dn1[3*i],
+         enzyme_const, size1,
+         enzyme_const, x2,
+         enzyme_dup, f2, &df2dn1[size1*3*i],
+         enzyme_const, size2);
+      n1_dot[i] = 0.0;
+   }
+   RealT p1_dot[4] = {0.0, 0.0, 0.0, 0.0};
+   for (int i{0}; i < size1; ++i)
+   {
+      p1_dot[i] = 1.0;
+      __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
+         enzyme_const, x1,
+         enzyme_const, n1,
+         enzyme_dup, p1, p1_dot,
+         enzyme_dup, f1, &df1dp1[size1*3*i],
+         enzyme_const, g1,
+         enzyme_const, size1,
+         enzyme_const, x2,
+         enzyme_dup, f2, &df2dp1[size1*3*i],
+         enzyme_const, size2);
+      p1_dot[i] = 0.0;
+   }
+   RealT x2_dot[12] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   for (int i{0}; i < size2*3; ++i)
+   {
+      x2_dot[i] = 1.0;
+      __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
+         enzyme_const, x1,
+         enzyme_const, n1,
+         enzyme_const, p1,
+         enzyme_dup, f1, &df1dx2[size2*3*i],
+         enzyme_dup, g1, &dg1dx2[3*i],
+         enzyme_const, size1,
+         enzyme_dup, x2, x2_dot,
+         enzyme_dup, f2, &df2dx2[size2*3*i],
+         enzyme_const, size2);
+      x2_dot[i] = 0.0;
+   }
 }
 #endif
 
