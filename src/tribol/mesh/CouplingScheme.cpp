@@ -24,9 +24,6 @@
 #include "mfem.hpp"
 
 // C++ includes
-#include <RAJA/pattern/atomic.hpp>
-#include <RAJA/policy/atomic_auto.hpp>
-#include <axom/core/memory_management.hpp>
 #include <cmath>
 
 namespace tribol
@@ -1576,13 +1573,21 @@ void CouplingScheme::computeCommonPlaneTimeStep(RealT &dt)
         // update dt_temp1 only for positive dt1 and/or dt2
         if (dt1 > 0.)
         {
+#ifdef TRIBOL_USE_RAJA
           RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[0],
                                               axom::utilities::min(dt1, 1.e6) );
+#else
+          dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(dt1, 1.e6));
+#endif
         }
         if (dt2 > 0.)
         {
+#ifdef TRIBOL_USE_RAJA
           RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[0],
                                               axom::utilities::min(1.e6, dt2) );
+#else
+          dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(1.e6, dt2));
+#endif
         }
 
         if (dt1 < 0. || dt2 < 0.)
@@ -1666,13 +1671,21 @@ void CouplingScheme::computeCommonPlaneTimeStep(RealT &dt)
         // update dt_temp2 only for positive dt1 and/or dt2
         if (dt1 > 0.)
         {
+#ifdef TRIBOL_USE_RAJA
           RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[1],
                                               axom::utilities::min(dt1, 1.e6) );
+#else
+          dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(dt1, 1.e6));
+#endif
         }
         if (dt2 > 0.)
         {
+#ifdef TRIBOL_USE_RAJA
           RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[1],
                                               axom::utilities::min(1.e6, dt2) );
+#else
+          dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(1.e6, dt2));
+#endif
         }
         if (dt1 < 0. || dt2 < 0.)
         {

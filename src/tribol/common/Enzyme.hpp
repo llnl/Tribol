@@ -6,6 +6,8 @@
 #ifndef TRIBOL_COMMON_ENZYME_HPP_
 #define TRIBOL_COMMON_ENZYME_HPP_
 
+#include "tribol/config.hpp"
+
 #ifdef TRIBOL_USE_ENZYME
 /*
  * Variables prefixed with enzyme_* or function types prefixed with __enzyme_*,
@@ -24,8 +26,6 @@ return_type __enzyme_autodiff(Args...);
 
 template <typename return_type, typename... Args>
 return_type __enzyme_fwddiff(Args...);
-#else
-
 #endif
 
 #endif

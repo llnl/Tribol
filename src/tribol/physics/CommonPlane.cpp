@@ -423,6 +423,7 @@ int ApplyNormal< COMMON_PLANE, PENALTY >( CouplingScheme* cs )
           // }
 
           // accumulate contributions in host code's registered nodal force arrays
+#ifdef TRIBOL_USE_RAJA
           RAJA::atomicAdd<RAJA::auto_atomic>(&mesh1.getResponse()[0][node0], -nodal_force_x1);
           RAJA::atomicAdd<RAJA::auto_atomic>(&mesh2.getResponse()[0][node1],  nodal_force_x2);
 
@@ -435,6 +436,20 @@ int ApplyNormal< COMMON_PLANE, PENALTY >( CouplingScheme* cs )
             RAJA::atomicAdd<RAJA::auto_atomic>(&mesh1.getResponse()[2][node0], -nodal_force_z1);
             RAJA::atomicAdd<RAJA::auto_atomic>(&mesh2.getResponse()[2][node1],  nodal_force_z2);
           }
+#else
+          mesh1.getResponse()[0][node0] -= nodal_force_x1;
+          mesh2.getResponse()[0][node1] += nodal_force_x2;
+
+          mesh1.getResponse()[1][node0] -= nodal_force_y1;
+          mesh2.getResponse()[1][node1] += nodal_force_y2;
+
+          // there is no z component for 2D
+          if (dim == 3)
+          {
+            mesh1.getResponse()[2][node0] -= nodal_force_z1;
+            mesh2.getResponse()[2][node1] += nodal_force_z2;
+          }
+#endif
         } // end for loop over face nodes
 
         // comment out debug logs; too much output during tests. Keep for easy 

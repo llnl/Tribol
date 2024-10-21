@@ -19,8 +19,13 @@
 
 // Axom includes
 #include "axom/slic.hpp"
+#include "axom/primal.hpp"
 
 #include <iostream>
+
+#ifdef TRIBOL_USE_ENZYME
+#include "tribol/common/Enzyme.hpp"
+#endif
 
 namespace tribol
 {
@@ -709,16 +714,560 @@ void ComputeSingleMortarJacobian( SurfaceContactElem & elem )
 }
 
 #ifdef TRIBOL_USE_ENZYME
-void ComputeMortarForceEnzyme( const RealT* elem1_coords, RealT* elem1_force, int size1,
-                               const RealT* elem2_coords, RealT* elem2_force, int size2 )
+
+void LinearQuadBasis(const RealT* xi, RealT* phi)
+{
+  phi[0] = 0.25*(1 - xi[0])*(1 - xi[1]);
+  phi[1] = 0.25*(1 + xi[0])*(1 - xi[1]);
+  phi[2] = 0.25*(1 + xi[0])*(1 + xi[1]);
+  phi[3] = 0.25*(1 - xi[0])*(1 + xi[1]);
+}
+
+void LinearQuadBasisDeriv(const RealT* xi, RealT* phi, RealT* dphi_dxi, RealT* dphi_deta)
+{
+  double xi_dot[2] = {1.0, 0.0};
+  __enzyme_fwddiff<void>((void*)LinearQuadBasis,
+    xi, xi_dot,
+    phi, dphi_dxi);
+  xi_dot[0] = 0.0;
+  xi_dot[1] = 1.0;
+  __enzyme_fwddiff<void>((void*)LinearQuadBasis,
+    xi, xi_dot,
+    phi, dphi_deta);
+}
+
+// enum class ClippingState
+// {
+//    Unknown,
+//    Inside,
+//    Outside,
+//    OnBoundary
+// };
+
+// enum class ClippingVertexType
+// {
+//    Mortar,
+//    Nonmortar,
+//    EdgeEdge
+// };
+
+// void CheckAndAddVertex(const RealT* vert, RealT* coords, ClippingVertexType vert_type, ClippingVertexType* coords_type, int vert_id, int* coords_id, int& num_coords)
+// {
+//    constexpr RealT dist_tol = 1.0e-13;
+//    if (num_coords > 0 && (
+//       std::abs(coords[(num_coords-1)*3 + 0] - vert[0]) > dist_tol ||
+//       std::abs(coords[(num_coords-1)*3 + 1] - vert[1]) > dist_tol ||
+//       std::abs(coords[(num_coords-1)*3 + 2] - vert[2]) > dist_tol
+//    ))
+//    {
+//       for (int d{0}; d < 3; ++d)
+//       {
+//          coords[num_coords*3 + d] = vert[d];
+//       }
+//       coords_type[num_coords] = vert_type;
+//       coords_id[num_coords] = vert_id;
+//       ++num_coords;
+//    }
+// }
+
+void PlaneTo2DCoords(const RealT* x, const RealT* x0, const RealT* e1, const RealT* e2, 
+                     RealT* xp, RealT* yp, int num_coords)
+{
+   for (int i{0}; i < num_coords; ++i)
+   {
+      xp[i] = 0.0;
+      yp[i] = 0.0;
+
+      for (int d{0}; d < 3; ++d)
+      {
+         RealT v_d = x[3*i + d] - x0[d];
+         xp[i] += v_d*e1[d];
+         yp[i] += v_d*e2[d];
+      }
+   }
+}
+
+void Coords2DToPlane(const RealT* xp, const RealT* yp, const RealT* x0, 
+                     const RealT* e1, const RealT* e2, 
+                     RealT* x, int num_coords)
+{
+   for (int i{0}; i < num_coords; ++i)
+   {
+      for (int d{0}; d < 3; ++d)
+      {
+         x[i*3 + d] = x0[d] + xp[i]*e1[d] + yp[i]*e2[d];
+      }
+   }
+}
+
+void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, 
+                               RealT* f1, RealT* g1, int size1,
+                               const RealT* x2, 
+                               RealT* f2, int size2 )
 {
    // convention: elem1 = nonmortar element
    //             elem2 = mortar element
+  //  // TODO: set this based on double/float precision
+  //  constexpr RealT dist_tol = 1.0e-13;
+  //  // cos(pi/2 + angle_tol) = tolerance for aligned edges
+  //  constexpr RealT angle_tol = 1.0e-8;
+   constexpr int max_mortar_mat_size = 4 * 4;
+   RealT mortar_mat1[max_mortar_mat_size];
+   int mortar_mat1_size = size1 * size1;
+   for (int i{0}; i < mortar_mat1_size; ++i)
+   {
+      mortar_mat1[i] = 0.0;
+   }
+   RealT mortar_mat2[max_mortar_mat_size];
+   int mortar_mat2_size = size1 * size2;
+   for (int i{0}; i < mortar_mat2_size; ++i)
+   {
+      mortar_mat2[i] = 0.0;
+   }
+   // get point x0 (geometric center of elem1)
+   RealT x0[3] = {0.0, 0.0, 0.0};
+   for (int i{0}; i < size1; ++i)
+   {
+      for (int d{0}; d < 3; ++d)
+      {
+         x0[d] += x1[i*3 + d] / static_cast<RealT>(size1);
+      }
+   }
+   // get vector n (normal of elem1)
+   RealT n[3] = {0.0, 0.0, 0.0};
+   for (int i{0}; i < size1; ++i)
+   {
+      for (int d{0}; d < 3; ++d)
+      {
+         n[d] += n1[i*3 + d];
+      }
+   }
+   RealT n_mag = std::sqrt(n[0]*n[0] + n[1]*n[1] + n[2]*n[2]);
+   for (int d{0}; d < 3; ++d)
+   {
+      n[d] /= n_mag;
+   }
+   // x1t = x1 projected to plane p (def'd by x0 and n)
+   constexpr int max_coord_size = 4*3;
+   RealT x1t[max_coord_size];
+   for (int i{0}; i < size1; ++i)
+   {
+      RealT x1diff_mag = 0.0;
+      for (int d{0}; d < 3; ++d)
+      {
+         x1diff_mag += n[d] * (x1[i*3 + d] - x0[d]);
+      }
+      for (int d{0}; d < 3; ++d)
+      {
+         x1t[i*3 + d] = x1[i*3 + d] - n[d]*x1diff_mag;
+      }
+   }
+   // x2t = x2 projected to plane p
+   RealT x2t[max_coord_size];
+   for (int i{0}; i < size2; ++i)
+   {
+      RealT x2diff_mag = 0.0;
+      for (int d{0}; d < 3; ++d)
+      {
+         x2diff_mag += n[d] * (x2[i*3 + d] - x0[d]);
+      }
+      for (int d{0}; d < 3; ++d)
+      {
+         x2t[i*3 + d] = x2[i*3 + d] - n[d]*x2diff_mag;
+      }
+   }
+  //  // n2_in = inward normal unit vector for edges of elem2
+  //  axom::StackArray<axom::primal::Vector<RealT, 3>, 4> n2_in;
+  //  for (int i{0}; i < size2; ++i)
+  //  {
+  //     int vert1 = i;
+  //     int vert2 = (i+1) % size2;
+  //     // p = vector along edge
+  //     axom::primal::Vector<RealT, 3> p({
+  //        x2t[vert2*3 + 0] - x2t[vert1*3 + 0],
+  //        x2t[vert2*3 + 1] - x2t[vert1*3 + 1],
+  //        x2t[vert2*3 + 2] - x2t[vert1*3 + 2]
+  //     });
+  //     n2_in[i] = p.cross_product(p, n);
+  //     n2_in[i] = n2_in[i].unitVector();
+  //  }
+  //  // Line clipping algorithm (Cyrus-Beck-like)
+  //  constexpr int max_int_size = 8*3;
+  //  // xti = intersection polygon
+  //  RealT xti[max_int_size];
+  //  ClippingVertexType xti_type[8];
+  //  int xti_id[8];
+  //  int poly_vert_ct = 0;
+  //  ClippingState poly_status = ClippingState::Unknown;
+  //  // loop over vertices and edges of nonmortar element
+  //  for (int i{0}; i < size1; ++i)
+  //  {
+  //     // check if nonmortar vertex is inside/outside/on edge of mortar element
+  //     ClippingState vert_status = ClippingState::Inside;
+  //     for (int j{0}; j < size2; ++j)
+  //     {
+  //        // x1_to_edge = vector from edge vert1 to elem1 vertex
+  //        axom::primal::Vector<RealT, 3> x1_to_edge({
+  //           x1t[i*3 + 0] - x2t[j*3 + 0],
+  //           x1t[i*3 + 1] - x2t[j*3 + 1],
+  //           x1t[i*3 + 2] - x2t[j*3 + 2]
+  //        });
+  //        RealT x1_dot_n2 = x1_to_edge.dot(n2_in[j]);
+  //        if (x1_dot_n2 < -dist_tol) // TODO: investigate scaling dist_tol based on edge size/element size
+  //        {
+  //           vert_status = ClippingState::Outside;
+  //           break;
+  //        }
+  //        else if (std::abs(x1_dot_n2) < dist_tol)
+  //        {
+  //           vert_status = ClippingState::OnBoundary;
+  //        }
+  //     }
+  //     if (vert_status == ClippingState::Inside)
+  //     {
+  //       // if vertex is inside, add to list
+  //        SLIC_ERROR_IF(poly_status == ClippingState::Outside, "Potentially missed edge/edge intersection.");
+  //        poly_status = ClippingState::Inside;
+  //        CheckAndAddVertex(&x1t[i*3], xti, ClippingVertexType::Nonmortar, xti_type, i, xti_id, poly_vert_ct);
+  //     }
+  //     else if (vert_status == ClippingState::OnBoundary)
+  //     {
+  //        if (poly_status == ClippingState::Inside)
+  //        {
+  //           // vertex is inside if we are inside and on boundary; add to list
+  //           poly_status = ClippingState::OnBoundary;
+  //           CheckAndAddVertex(&x1t[i*3], xti, ClippingVertexType::Nonmortar, xti_type, i, xti_id, poly_vert_ct);
+  //        }
+  //        else if (poly_status == ClippingState::Unknown)
+  //        {
+  //           // unknown if we are inside or outside yet. add point for now, but don't change poly_status
+  //           CheckAndAddVertex(&x1t[i*3], xti, ClippingVertexType::Nonmortar, xti_type, i, xti_id, poly_vert_ct);
+  //        }
+  //     }
+  //     else // vertex is outside
+  //     {
+  //        SLIC_ERROR_IF(poly_status == ClippingState::Inside, "Potentially missed edge/edge intersection.");
+  //        if (poly_status == ClippingState::Unknown)
+  //        {
+  //           // we know we are outside now. reset poly_vert_ct so existing unknown points are removed.
+  //           poly_vert_ct = 0;
+  //        }
+  //        poly_status = ClippingState::Outside;
+  //     }
+  //     int vert1 = i;
+  //     int vert2 = (i+1) % size1;
+  //     // p = vector along edge
+  //     axom::primal::Vector<RealT, 3> p({
+  //        x1t[vert2*3 + 0] - x1t[vert1*3 + 0],
+  //        x1t[vert2*3 + 1] - x1t[vert1*3 + 1],
+  //        x1t[vert2*3 + 2] - x1t[vert1*3 + 2]
+  //     });
+  //     RealT pnorm_inv = 1.0 / p.norm();
+  //     // t_vals = parameter values of the intersection point (initialized to -1.0)
+  //     RealT t_vals[4] = {-1.0, -1.0, -1.0, -1.0};
+  //     int edge_ids[4] = {-1, -1, -1, -1};
+  //     int edge_ct = 0;
+  //     // get intersection points of nonmortar edge and mortar element
+  //     for (int j{0}; j < size2; ++j)
+  //     {
+  //        // denominator of intersection point calc
+  //        RealT den = p.dot(n2_in[j]);
+  //        // den_norm = normalized denominator
+  //        RealT den_norm = den * pnorm_inv;
+  //        if (std::abs(den_norm) > angle_tol)
+  //        {
+  //           // edges are not aligned, find intersection point
+  //           // x1_to_edge = vector from edge vert1 to elem1 vertex
+  //           axom::primal::Vector<RealT, 3> x1_to_edge({
+  //              x2t[j*3 + 0] - x1t[i*3 + 0],
+  //              x2t[j*3 + 1] - x1t[i*3 + 1],
+  //              x2t[j*3 + 2] - x1t[i*3 + 2]
+  //           });
+  //           RealT t_val = x1_to_edge.dot(n2_in[j]) / den;
+  //           if (t_val < (1.0 + dist_tol*pnorm_inv) && t_val > -dist_tol*pnorm_inv)
+  //           {
+  //              // check for duplicated t values
+  //              bool repeated_t_val = false;
+  //              for (int k{0}; k < edge_ct; ++k)
+  //              {
+  //                 if (abs(t_val - t_vals[k]) < dist_tol*pnorm_inv)
+  //                 {
+  //                    repeated_t_val = true;
+  //                    break;
+  //                 }
+  //              }
+  //              if (!repeated_t_val)
+  //              {
+  //                 SLIC_ERROR_IF(edge_ct == 2, "More than 2 edge intersections. Are the projected polygons convex?");
+  //                 // intersection is over line segment
+  //                 t_vals[edge_ct] = t_val;
+  //                 edge_ids[edge_ct] = j;
+  //                 ++edge_ct;
+  //              }
+  //           }
+  //        }
+  //     }
+  //     // sort the t_vals, smallest is closest to the vertex
+  //     // max number of unique intersections should be 2
+  //     if (edge_ct == 2 && t_vals[1] < t_vals[0])
+  //     {
+  //        t_vals[2] = t_vals[0]
+  //     }
+  //  }
+  //  // all elem1 coords are outside elem2 and there are no edge/edge
+  //  // intersections. is elem2 inside elem1?
+
+  //  // all elem1 coords are on the boundary of elem2
+   // Tribol's clipping algorithm
+   // create a local basis
+   RealT e1[3] = {
+      x1t[0] - x0[0],
+      x1t[1] - x0[1],
+      x1t[2] - x0[2]
+   };
+   RealT e1_mag = std::sqrt(e1[0]*e1[0] + e1[1]*e1[1] + e1[2]*e1[2]);
+   for (int d{0}; d < 3; ++d)
+   {
+      e1[d] /= e1_mag;
+   }
+   RealT e2[3] = {
+      n[1]*e1[2] - n[2]*e1[1],
+      n[2]*e1[0] - n[0]*e1[2],
+      n[0]*e1[1] - n[1]*e1[0]
+   };
+   RealT x1t_2d[4];
+   RealT y1t_2d[4];
+   PlaneTo2DCoords(x1t, x0, e1, e2, x1t_2d, y1t_2d, size1);
+   RealT x2t_2d[4];
+   RealT y2t_2d[4];
+   PlaneTo2DCoords(x2t, x0, e1, e2, x2t_2d, y2t_2d, size1);
+   PolyReverse(x2t_2d, y2t_2d, size2);
+   RealT xti_2d[8];
+   RealT yti_2d[8];
+   int overlap_poly_size = 0;
+   RealT overlap_poly_area = 0.0;
+   Intersection2DPolygon(x1t_2d, y1t_2d, size1, x2t_2d, y2t_2d, size2, 
+                         1.0e-8, 1.0e-8, xti_2d, yti_2d, overlap_poly_size, overlap_poly_area);
+   RealT xti[8*3];
+   Coords2DToPlane(xti_2d, yti_2d, x0, e1, e2, xti, overlap_poly_size);
+
+   std::cout << "Overlap coords:" << std::endl;
+   for (int i{0}; i < overlap_poly_size; ++i)
+   {
+      std::cout << xti[i*3+0] << ", " << xti[i*3+1] << ", " << xti[i*3+2] << std::endl;
+   }
+   
+   // some Tribol calls require x, y, z component vectors of projected coords
+   RealT x1t_comp[4];
+   RealT y1t_comp[4];
+   RealT z1t_comp[4];
+   for (int i{0}; i < size1; ++i)
+   {
+      x1t_comp[i] = x1t[i*3 + 0];
+      y1t_comp[i] = x1t[i*3 + 1];
+      z1t_comp[i] = x1t[i*3 + 2];
+   }
+   RealT x2t_comp[4];
+   RealT y2t_comp[4];
+   RealT z2t_comp[4];
+   for (int i{0}; i < size2; ++i)
+   {
+      x2t_comp[i] = x2t[i*3 + 0];
+      y2t_comp[i] = x2t[i*3 + 1];
+      z2t_comp[i] = x2t[i*3 + 2];
+   }
+
+   // Create integration rule over polygon
+   // 1. get base triangle integration rule
+   RealT base_rule_2d[12];
+   RealT base_weights[6];
+   {
+      RealT wt1 = 0.109951743655322;
+      RealT wt2 = 0.223381589678011;
+      base_weights[0] = wt1;
+      base_weights[1] = wt1;
+      base_weights[2] = wt1;
+      base_weights[3] = wt2;
+      base_weights[4] = wt2;
+      base_weights[5] = wt2;
+      RealT base_x1 = 0.091576213509771;
+      RealT base_x2 = 0.816847572980459;
+      RealT base_x3 = 0.108103018168070;
+      RealT base_x4 = 0.445948490915965;
+      base_rule_2d[0]  = base_x1;
+      base_rule_2d[1]  = base_x1;
+      base_rule_2d[2]  = base_x2;
+      base_rule_2d[3]  = base_x1;
+      base_rule_2d[4]  = base_x1;
+      base_rule_2d[5]  = base_x2;
+      base_rule_2d[6]  = base_x3;
+      base_rule_2d[7]  = base_x4;
+      base_rule_2d[8]  = base_x4;
+      base_rule_2d[9]  = base_x3;
+      base_rule_2d[10] = base_x4;
+      base_rule_2d[11] = base_x4;
+   }
+
+   // 2. find centroid of the polygon
+   RealT xci[3];
+   PolyAreaCentroid(xti, 3, overlap_poly_size, xci[0], xci[1], xci[2]);
+
+   // 3. build sub-triangles
+   for (int i{0}; i < overlap_poly_size; ++i)
+   {
+      int idx1 = i;
+      int idx2 = (i + 1) % overlap_poly_size;
+      RealT vert1[3] = {
+         xti[idx1*3 + 0], xti[idx1*3 + 1], xti[idx1*3 + 2]
+      };
+      RealT vert2[3] = {
+         xti[idx2*3 + 0], xti[idx2*3 + 1], xti[idx2*3 + 2]
+      };
+      RealT side1[3] = {
+        vert2[0] - vert1[0], vert2[1] - vert1[1], vert2[2] - vert1[2]
+      };
+      RealT side2[3] = {
+        xci[0] - vert1[0], xci[1] - vert1[1], xci[2] - vert1[2]
+      };
+      RealT area_vec[3] = {
+         side1[1]*side2[2] - side1[2]*side2[1],
+         side1[2]*side2[0] - side1[0]*side2[2],
+         side1[0]*side2[1] - side1[1]*side2[0]
+      };
+      RealT area = 0.5*std::sqrt(area_vec[0]*area_vec[0] + area_vec[1]*area_vec[1] + area_vec[2]*area_vec[2]);
+
+      // 4. map integration points and weights to sub-triangle
+      for (int j{0}; j < 6; ++j)
+      {
+         // obtain shape function evaluations at (xi,eta)
+         RealT xi[2] = { base_rule_2d[j*2 + 0], base_rule_2d[j*2 + 1] };
+         RealT phi[3] = { 0., 0., 0. };
+         LinIsoTriShapeFunc( xi[0], xi[1], 0, phi[0] );
+         LinIsoTriShapeFunc( xi[0], xi[1], 1, phi[1] );
+         LinIsoTriShapeFunc( xi[0], xi[1], 2, phi[2] );
+
+         RealT quad_pt[3];
+         for (int d{0}; d < 3; ++d)
+         {
+            quad_pt[d] = vert1[d] * phi[0] + vert2[d] * phi[1] + xci[d] * phi[2];
+         }
+         RealT quad_wt = base_weights[j] * area;
+
+         // 5. map sub-triangle point to nonmortar and mortar surfaces
+         RealT xi1[2];
+         InvIso(quad_pt, x1t_comp, y1t_comp, z1t_comp, size1, xi1);
+         RealT xi2[2];
+         InvIso(quad_pt, x2t_comp, y2t_comp, z2t_comp, size2, xi2);
+
+         // 6. Evaluate mortar matrix (nonmortar/nonmortar contribs)
+         for (int k{0}; k < size1; ++k)
+         {
+            RealT phiA;
+            // NOTE: this limits this routine to quads
+            LinIsoQuadShapeFunc(xi1[0], xi1[1], k, phiA);
+            for (int l{0}; l < size1; ++l)
+            {
+              RealT phiB;
+              // NOTE: this limits this routine to quads
+              LinIsoQuadShapeFunc(xi1[0], xi1[1], l, phiB);
+              mortar_mat1[k*size1 + l] += phiA * phiB * quad_wt;
+            }
+         }
+
+         // 7. Evaluate mortar matrix (nonmortar/mortar contribs)
+         for (int k{0}; k < size1; ++k)
+         {
+            RealT phiA;
+            // NOTE: this limits this routine to quads
+            LinIsoQuadShapeFunc(xi1[0], xi1[1], k, phiA);
+            for (int l{0}; l < size2; ++l)
+            {
+              RealT phiB;
+              // NOTE: this limits this routine to quads
+              LinIsoQuadShapeFunc(xi2[0], xi2[1], l, phiB);
+              mortar_mat2[k*size2 + l] += phiA * phiB * quad_wt;
+            }
+         }
+      }
+   }
+
+   // compute gaps
+   for (int i{0}; i < size1; ++i)
+   {
+      g1[i] = 0.0;
+      RealT gap_v[3] = {0.0, 0.0, 0.0};
+      for (int j{0}; j < size1; ++j)
+      {
+         for (int d{0}; d < 3; ++d)
+         {
+            gap_v[d] += mortar_mat1[i*size1 + j]*x1[j*3 + d];
+         }
+      }
+      for (int j{0}; j < size2; ++j)
+      {
+         for (int d{0}; d < 3; ++d)
+         {
+            gap_v[d] -= mortar_mat2[i*size2 + j]*x2[j*3 + d];
+         }
+      }
+      for (int d{0}; d < 3; ++d)
+      {
+         g1[i] += n1[i*size1 + d] * gap_v[d];
+      }
+   }
+
+   // compute nonmortar force contributions
+   for (int i{0}; i < size1; ++i)
+   {
+      for (int d{0}; d < 3; ++d)
+      {
+         f1[i*3 + d] = 0.0;
+      }
+      for (int j{0}; j < size1; ++j)
+      {
+         for (int d{0}; d < 3; ++d)
+         {
+            f1[i*3 + d] += p1[j] * n1[j*3 + d] * mortar_mat1[j*size1 + i];
+         }
+      }
+   }
+
+   // compute mortar force contributions
+   for (int i{0}; i < size2; ++i)
+   {
+      for (int d{0}; d < 3; ++d)
+      {
+         f2[i*3 + d] = 0.0;
+      }
+      for (int j{0}; j < size1; ++j)
+      {
+         for (int d{0}; d < 3; ++d)
+         {
+            f2[i*3 + d] -= p1[j] * n1[j*3 + d] * mortar_mat2[j*size2 + i];
+         }
+      }
+   }
 }
 
-void ComputeMortarJacobianEnzyme( SurfaceContactElem& elem )
+void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT* p1,
+                                  RealT* f1, RealT* df1dx1, RealT* df1dx2, RealT* df1dp1,
+                                  RealT* g1, RealT* dg1dx1, RealT* dg1dx2, int size1,
+                                  const RealT* x2,
+                                  RealT* f2, RealT* df2dx1, RealT* df2dx2, RealT* df2dp1,
+                                  int size2 )
 {
-
+   RealT x1_dot[12] = {1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+   __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
+      enzyme_dup, x1, x1_dot,
+      enzyme_const, n1,
+      enzyme_const, p1,
+      enzyme_dup, f1, df1dx1,
+      enzyme_dup, g1, dg1dx1,
+      enzyme_const, size1,
+      enzyme_const, x2,
+      enzyme_dup, f2, df2dx1,
+      enzyme_const, size2);
+   
 }
 #endif
 

@@ -179,3 +179,21 @@ if( MFEM_FOUND )
 
 endif()
 
+if( ENABLE_ENZYME )
+  set(enzyme_smoke_depends tribol gtest)
+  blt_add_executable(
+    NAME enzyme_smoke_test
+    SOURCES enzyme_smoke.cpp
+    OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+    DEPENDS_ON ${enzyme_smoke_depends} ${tribol_device_depends}
+    FOLDER tribol/tests )
+
+  blt_add_test( NAME enzyme_smoke_test
+                COMMAND enzyme_smoke_test )
+
+  if (ENABLE_CUDA)
+    set_target_properties(enzyme_smoke_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
+  endif()
+
+endif()
+

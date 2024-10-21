@@ -22,10 +22,6 @@
 #include "axom/primal.hpp"
 #include "axom/spin.hpp"
 
-#include "umpire/ResourceManager.hpp"
-#include "umpire/TypedAllocator.hpp"
-#include "umpire/strategy/DynamicPoolList.hpp"
-
 // Define some namespace aliases to help with axom usage
 namespace primal = axom::primal;
 namespace spin = axom::spin;
@@ -257,7 +253,11 @@ public:
           inContact[i] = geomFilter( fromIdx, toIdx, 
                                      mesh1, mesh2,
                                      cmode );
+#ifdef TRIBOL_USE_RAJA
           RAJA::atomicAdd<RAJA::auto_atomic>(pCount, static_cast<int>(inContact[i]));
+#else
+          if (inContact[i]) { ++(*pCount); }
+#endif
       });
     }  // End of profiling block
     catch(const std::exception& e)
@@ -298,7 +298,12 @@ public:
         }
 
         // get unique index for the array
+#ifdef TRIBOL_USE_RAJA
         auto idx = RAJA::atomicInc<RAJA::auto_atomic>(pCount);
+#else
+        auto idx = *pCount;
+        ++(*pCount);
+#endif
 
         pairs_view[idx] = InterfacePair(fromIdx, toIdx, true);
       }
@@ -629,7 +634,11 @@ public:
         auto mesh2_elem = candidates_view[i];
         if (geomFilter(mesh1_elem, mesh2_elem, mesh1, mesh2, cmode))
         {
+#ifdef TRIBOL_USE_RAJA
           RAJA::atomicInc<AtomicPolicy>(filtered_candidates.data());
+#else
+          ++filtered_candidates[0];
+#endif
         }
         else
         {
@@ -658,7 +667,12 @@ public:
         auto mesh2_elem = candidates_view[i];
 
         // get unique index for the array
+#ifdef TRIBOL_USE_RAJA
         auto idx = RAJA::atomicInc<AtomicPolicy>(filtered_candidates.data());
+#else
+        auto idx = filtered_candidates[0];
+        ++filtered_candidates[0];
+#endif
 
         pairs_view[idx] = InterfacePair(mesh1_elem, mesh2_elem, true);
       }

@@ -251,7 +251,9 @@ void InvIso( const RealT  x[3],
              RealT  xi[2] )
 {
 
+#if !defined(TRIBOL_USE_ENZYME)
    SLIC_ERROR_IF(numNodes!=4, "InvIso: routine only for 4 node quads.");
+#endif
 
    bool convrg = false;
    int kmax = 15;
@@ -374,15 +376,19 @@ void InvIso( const RealT  x[3],
            }
          }
 
+#if !defined(TRIBOL_USE_ENZYME)
          SLIC_ERROR_IF(!in_quad, "InvIso(): (xi,eta) coordinate does not lie " << 
                        "inside isoparametric quad.");
+#endif
 
          return; 
       }
 
    }
 
+#if !defined(TRIBOL_USE_ENZYME)
    SLIC_ERROR_IF(!convrg, "InvIso: Newtons method did not converge.");
+#endif
 
    return;
 }
@@ -456,7 +462,9 @@ void LinIsoTriShapeFunc( const RealT xi,
          phi = eta;
          break;
       default:
+#if !defined(TRIBOL_USE_ENZYME)
          SLIC_ERROR("LinIsoTriShapeFunc: node id is not between 0 and 2.");
+#endif
          break;
    }
 
@@ -489,13 +497,17 @@ void LinIsoQuadShapeFunc( const RealT xi,
          eta_node = -1.;
          break;
       default:
+#if !defined(TRIBOL_USE_ENZYME)
          SLIC_ERROR("LinIsoQuadShapeFunc: node id is not between 0 and 3.");
+#endif
          return;
    }
 
    phi = 0.25 * (1. + xi_node * xi) * ( 1. + eta_node * eta);
 
+#if !defined(TRIBOL_USE_ENZYME)
    SLIC_ERROR_IF(phi > 1.0 || phi < 0.0, "LinIsoQuadShapeFunc: phi is " << phi << " not between 0. and 1." );
+#endif
 
    return;
 }

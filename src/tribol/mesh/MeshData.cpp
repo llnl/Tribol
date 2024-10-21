@@ -540,7 +540,7 @@ bool MeshData::computeFaceData()
 
   ArrayT<IndexT, 1, MemorySpace::Host> face_data_ok_host(face_data_ok_data);
   SLIC_WARNING_IF(!face_data_ok_host[0], 
-      fmt::format("There are faces with a normal magnitude less than tolerance ({:e}).", nrml_mag_tol));
+      axom::fmt::format("There are faces with a normal magnitude less than tolerance ({:e}).", nrml_mag_tol));
 
   return face_data_ok_host[0];
 

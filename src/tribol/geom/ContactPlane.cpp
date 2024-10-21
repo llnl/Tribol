@@ -14,7 +14,6 @@
 #include "axom/core.hpp" 
 #include "axom/slic.hpp"
 
-#include <RAJA/policy/atomic_auto.hpp>
 #include <cmath>
 #include <iomanip>
 #include <sstream>
@@ -71,7 +70,12 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair( InterfacePair& pair,
         }
         else if (cpTemp.m_inContact)
         {
+#ifdef TRIBOL_USE_RAJA
           auto idx = RAJA::atomicInc<RAJA::auto_atomic>(plane_ct);
+#else
+          auto idx = *plane_ct;
+          ++(*plane_ct);
+#endif
           planes_3d[idx] = std::move(cpTemp);
           isInteracting = true;
         }
@@ -92,7 +96,12 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair( InterfacePair& pair,
         }
         else if (cpTemp.m_inContact)
         {
+#ifdef TRIBOL_USE_RAJA
           auto idx = RAJA::atomicInc<RAJA::auto_atomic>(plane_ct);
+#else
+          auto idx = *plane_ct;
+          ++(*plane_ct);
+#endif
           planes_2d[idx] = std::move(cpTemp);
           isInteracting = true;
         }
@@ -115,7 +124,12 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair( InterfacePair& pair,
 
         if (cpTemp.m_inContact)
         {
+#ifdef TRIBOL_USE_RAJA
           auto idx = RAJA::atomicInc<RAJA::auto_atomic>(plane_ct);
+#else
+          auto idx = (*plane_ct);
+          ++(*plane_ct);
+#endif
           planes_3d[idx] = std::move(cpTemp);
           isInteracting = true;
         }

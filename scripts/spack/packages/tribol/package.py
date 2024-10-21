@@ -76,6 +76,8 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
 
     depends_on("raja@2024.02.0:", when="+raja")
     depends_on("umpire@2024.02.0:", when="+umpire")
+
+    #depends_on("enzyme", when="+enzyme")
     
     depends_on("axom+raja", when="+raja")
     depends_on("axom~raja", when="~raja")
@@ -354,9 +356,6 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
         else:
             entries.append(cmake_cache_option("BUILD_REDECOMP", False))
 
-        entries.append(cmake_cache_option("ENABLE_ENZYME",
-                                          spec.satisfies("+enzyme")))
-
         # TPL locations
         entries.append("#------------------{0}".format("-" * 60))
         entries.append("# TPLs")
@@ -381,7 +380,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
                                             dep_dir))
 
         # optional tpls
-        for dep in ('raja', 'umpire'):
+        for dep in ('raja', 'umpire', 'enzyme'):
             if spec.satisfies('^{0}'.format(dep)):
                 dep_dir = get_spec_path(spec, dep, path_replacements)
                 entries.append(cmake_cache_path('%s_DIR' % dep.upper(),
