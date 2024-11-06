@@ -108,6 +108,7 @@ void SegmentBasis( const real* const RESTRICT x,
  * \param [in] zA pointer to array of stacked nodal z-coordinates
  * \param [in] numNodes number of nodes for a given finite element
  * \param [in,out] xi (xi,eta) coordinates in parent space 
+ * \return false if coord outside [-1, 1]^2 or newton didn't converge, true otherwise
  *
  * \pre xA, yA, and zA are pointer to arrays of length, numNodes
  *
@@ -115,7 +116,7 @@ void SegmentBasis( const real* const RESTRICT x,
  *       x[2] is equal to 0.
  *
  */
-void InvIso( const real  x[3], 
+bool InvIso( const real  x[3], 
              const real* xA,
              const real* yA,
              const real* zA,

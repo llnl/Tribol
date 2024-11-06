@@ -87,12 +87,21 @@ void ComputeMortarWeights( SurfaceContactElem & elem )
             real xp[3] = { integ.xy[elem.dim*ip], integ.xy[elem.dim*ip+1], integ.xy[elem.dim*ip+2] };
             real xi[2] = { 0., 0. };
 
-            InvIso( xp, x1, y1, z1, elem.numFaceVert, xi );
-            LinIsoQuadShapeFunc( xi[0], xi[1], a, phiMortarA );
+            auto coord_ok = InvIso( xp, x1, y1, z1, elem.numFaceVert, xi );
+            if (!coord_ok) {
+               phiMortarA = 0.0;
+            } else {
+               LinIsoQuadShapeFunc( xi[0], xi[1], a, phiMortarA );
+            }
 
-            InvIso( xp, x2, y2, z2, elem.numFaceVert, xi );
-            LinIsoQuadShapeFunc( xi[0], xi[1], a, phiNonmortarA );
-            LinIsoQuadShapeFunc( xi[0], xi[1], b, phiNonmortarB );
+            coord_ok = InvIso( xp, x2, y2, z2, elem.numFaceVert, xi );
+            if (!coord_ok) {
+               phiNonmortarA = 0.0;
+               phiNonmortarB = 0.0;
+            } else {
+               LinIsoQuadShapeFunc( xi[0], xi[1], a, phiNonmortarA );
+               LinIsoQuadShapeFunc( xi[0], xi[1], b, phiNonmortarB );
+            }
 
             SLIC_ERROR_IF(nonmortarNonmortarId > elem.numWts || mortarNonmortarId > elem.numWts,
                           "ComputeMortarWts: integer ids for weights exceed elem.numWts");

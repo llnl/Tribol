@@ -229,7 +229,7 @@ void WachspressBasis( const real* const RESTRICT x,
 }
 
 //------------------------------------------------------------------------------
-void InvIso( const real  x[3], 
+bool InvIso( const real  x[3], 
              const real* xA,
              const real* yA,
              const real* zA,
@@ -360,17 +360,23 @@ void InvIso( const real  x[3],
            }
          }
 
-         SLIC_ERROR_IF(!in_quad, "InvIso(): (xi,eta) coordinate does not lie " << 
+         SLIC_WARNING_IF(!in_quad, "InvIso(): (xi,eta) coordinate does not lie " << 
                        "inside isoparametric quad.");
+         if (!in_quad) {
+            return false;
+         }
 
-         return; 
+         return true; 
       }
 
    }
 
-   SLIC_ERROR_IF(!convrg, "InvIso: Newtons method did not converge.");
+   SLIC_WARNING_IF(!convrg, "InvIso: Newtons method did not converge.");
+   if (!convrg) {
+      return false;
+   }
 
-   return;
+   return true;
 }
 
 //------------------------------------------------------------------------------
