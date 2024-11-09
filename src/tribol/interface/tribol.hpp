@@ -212,6 +212,16 @@ void setLoggingLevel( IndexT cs_id, LoggingLevel log_level );
  */
 void enableTimestepVote( IndexT cs_id, const bool enable );
 
+#ifdef TRIBOL_USE_ENZYME
+/**
+ * @brief Enable Enzyme AD for Jacobian calculations
+ * 
+ * @param cs_id coupling scheme id
+ * @param use_enzyme Enzyme will be used if true
+ */
+void enableEnzyme( IndexT cs_id, bool use_enzyme );
+#endif
+
 /// @}
 
 /// \name Contact Surface Registration Methods

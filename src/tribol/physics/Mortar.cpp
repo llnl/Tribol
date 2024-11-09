@@ -322,6 +322,12 @@ void ComputeSingleMortarGaps( const CouplingScheme* cs )
 template< >
 int ApplyNormal< SINGLE_MORTAR, LAGRANGE_MULTIPLIER >( CouplingScheme* cs )
 {
+#ifdef TRIBOL_USE_ENZYME
+   if (cs->isEnzymeEnabled())
+   {
+      return ApplyNormalEnzyme( cs );
+   }
+#endif
    ///////////////////////////////////////////////////////
    //                                                   //
    //            compute single mortar gaps             //
@@ -715,61 +721,133 @@ void ComputeSingleMortarJacobian( SurfaceContactElem & elem )
 
 #ifdef TRIBOL_USE_ENZYME
 
-void LinearQuadBasis(const RealT* xi, RealT* phi)
+//------------------------------------------------------------------------------
+int ApplyNormalEnzyme( CouplingScheme* cs )
 {
-  phi[0] = 0.25*(1 - xi[0])*(1 - xi[1]);
-  phi[1] = 0.25*(1 + xi[0])*(1 - xi[1]);
-  phi[2] = 0.25*(1 + xi[0])*(1 + xi[1]);
-  phi[3] = 0.25*(1 - xi[0])*(1 + xi[1]);
+   // convention: 1 = nonmortar
+   //             2 = mortar
+   auto& mesh1 = cs->getMesh2();  // switched from tribol convention
+   auto& mesh2 = cs->getMesh1();  // switched from tribol convention
+   int size1 = mesh1.numberOfNodesPerElement();
+   int size2 = mesh2.numberOfNodesPerElement();
+   auto planes_view = cs->get3DContactPlanesView();
+   auto& lm_opts = cs->getEnforcementOptions().lm_implicit_options;
+   if (!cs->nullMeshes())
+   {
+      if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE )
+      {
+         static_cast<MortarData*>( cs->getMethodData() )->reserveBlockJ( 
+            {BlockSpace::MORTAR, BlockSpace::NONMORTAR, BlockSpace::LAGRANGE_MULTIPLIER},
+            planes_view.size()
+         );
+      }
+      else if ( lm_opts.sparse_mode == SparseMode::MFEM_INDEX_SET || 
+                lm_opts.sparse_mode == SparseMode::MFEM_LINKED_LIST )
+      {
+         static_cast<MortarData*>( cs->getMethodData() )->allocateMfemSparseMatrix( planes_view.size() );
+      }
+      else
+      {
+         SLIC_WARNING("Unsupported Jacobian storage method.");
+         return 1;
+      }
+   }
+   for (auto& plane : planes_view)
+   {
+      int elem1 = plane.getCpElementId2();  // switched from tribol convention
+      RealT x1[12];
+      RealT n1[12];
+      RealT f1[12];
+      RealT p1[4];
+      RealT g1[4];
+      for (int i{0}; i < size1; ++i)
+      {
+         int node_id = mesh1.getGlobalNodeId(elem1, i);
+         for (int d{0}; d < 3; ++d)
+         {
+            x1[i*3 + d] = mesh1.getPosition()[d][node_id];
+            n1[i*3 + d] = mesh1.getNodalNormals()(d, node_id);
+            f1[i*3 + d] = mesh1.getResponse()[d][node_id];
+         }
+         p1[i] = mesh1.getNodalFields().m_node_pressure[node_id];
+         g1[i] = mesh1.getNodalFields().m_node_gap[node_id];
+      }
+      int elem2 = plane.getCpElementId1();  // switched from tribol convention
+      RealT x2[12];
+      RealT f2[12];
+      for (int i{0}; i < size2; ++i)
+      {
+         int node_id = mesh2.getGlobalNodeId(elem2, i);
+         for (int d{0}; d < 3; ++d)
+         {
+            x2[i*3 + d] = mesh2.getPosition()[d][node_id];
+            f2[i*3 + d] = mesh2.getResponse()[d][node_id];
+         }
+      }
+      if (lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
+          lm_opts.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN)
+      {
+         double df1dx1[12*12];
+         double df1dx2[12*12];
+         double df1dn1[12*12];
+         for (int i{0}; i < 12*12; ++i)
+         {
+            df1dx1[i] = 0.0;
+            df1dx2[i] = 0.0;
+            df1dn1[i] = 0.0;
+         }
+         double df1dp1[12*4];
+         for (int i{0}; i < 12*4; ++i)
+         {
+            df1dp1[i] = 0.0;
+         }
+         double dg1dx1[4*12];
+         double dg1dx2[4*12];
+         double dg1dn1[4*12];
+         for (int i{0}; i < 4*12; ++i)
+         {
+            dg1dx1[i] = 0.0;
+            dg1dx2[i] = 0.0;
+            dg1dn1[i] = 0.0;
+         }
+         double df2dx1[12*12];
+         double df2dx2[12*12];
+         double df2dn1[12*12];
+         for (int i{0}; i < 12*12; ++i)
+         {
+            df2dx1[i] = 0.0;
+            df2dx2[i] = 0.0;
+            df2dn1[i] = 0.0;
+         }
+         double df2dp1[12*4];
+         for (int i{0}; i < 12*4; ++i)
+         {
+            df2dp1[i] = 0.0;
+         }
+         StackArray<DeviceArray2D<RealT>, 9> blockJ(3);
+         for (int i{}; i < 2; ++i)
+         {
+            for (int j{}; j < 2; ++j)
+            {
+               blockJ(i, j) = DeviceArray2D<RealT>(nPrimal, nPrimal);
+               blockJ(i, j).fill(0.0);
+            }
+         }
+         ComputeMortarJacobianEnzyme(x1, n1, p1, f1, df1dx1, df1dx2, df1dn1, df1dp1,
+            g1, dg1dx1, dg1dx2, dg1dn1, size1, 
+            x2, f2, df2dx1, df2dx2, df2dn1, df2dp1, size2);
+      }
+      else if (lm_opts.eval_mode == ImplicitEvalMode::MORTAR_GAP ||
+               lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL)
+      {
+         ComputeMortarForceEnzyme(x1, n1, p1, f1, g1, size1, x2, f2, size2);
+      }
+   }
+
+   return 0;
 }
 
-void LinearQuadBasisDeriv(const RealT* xi, RealT* phi, RealT* dphi_dxi, RealT* dphi_deta)
-{
-  double xi_dot[2] = {1.0, 0.0};
-  __enzyme_fwddiff<void>((void*)LinearQuadBasis,
-    xi, xi_dot,
-    phi, dphi_dxi);
-  xi_dot[0] = 0.0;
-  xi_dot[1] = 1.0;
-  __enzyme_fwddiff<void>((void*)LinearQuadBasis,
-    xi, xi_dot,
-    phi, dphi_deta);
-}
-
-// enum class ClippingState
-// {
-//    Unknown,
-//    Inside,
-//    Outside,
-//    OnBoundary
-// };
-
-// enum class ClippingVertexType
-// {
-//    Mortar,
-//    Nonmortar,
-//    EdgeEdge
-// };
-
-// void CheckAndAddVertex(const RealT* vert, RealT* coords, ClippingVertexType vert_type, ClippingVertexType* coords_type, int vert_id, int* coords_id, int& num_coords)
-// {
-//    constexpr RealT dist_tol = 1.0e-13;
-//    if (num_coords > 0 && (
-//       std::abs(coords[(num_coords-1)*3 + 0] - vert[0]) > dist_tol ||
-//       std::abs(coords[(num_coords-1)*3 + 1] - vert[1]) > dist_tol ||
-//       std::abs(coords[(num_coords-1)*3 + 2] - vert[2]) > dist_tol
-//    ))
-//    {
-//       for (int d{0}; d < 3; ++d)
-//       {
-//          coords[num_coords*3 + d] = vert[d];
-//       }
-//       coords_type[num_coords] = vert_type;
-//       coords_id[num_coords] = vert_id;
-//       ++num_coords;
-//    }
-// }
-
+//------------------------------------------------------------------------------
 void PlaneTo2DCoords(const RealT* x, const RealT* x0, const RealT* e1, const RealT* e2, 
                      RealT* xp, RealT* yp, int num_coords)
 {
@@ -787,6 +865,7 @@ void PlaneTo2DCoords(const RealT* x, const RealT* x0, const RealT* e1, const Rea
    }
 }
 
+//------------------------------------------------------------------------------
 void Coords2DToPlane(const RealT* xp, const RealT* yp, const RealT* x0, 
                      const RealT* e1, const RealT* e2, 
                      RealT* x, int num_coords)
@@ -800,6 +879,7 @@ void Coords2DToPlane(const RealT* xp, const RealT* yp, const RealT* x0,
    }
 }
 
+//------------------------------------------------------------------------------
 void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1,
                                RealT* f1, RealT* g1, int size1,
                                const RealT* x2, 
@@ -917,11 +997,11 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
    RealT xti[8*3];
    Coords2DToPlane(xti_2d, yti_2d, x0, e1, e2, xti, overlap_poly_size);
 
-   std::cout << "Overlap coords:" << std::endl;
-   for (int i{0}; i < overlap_poly_size; ++i)
-   {
-      std::cout << xti[i*3+0] << ", " << xti[i*3+1] << ", " << xti[i*3+2] << std::endl;
-   }
+  //  std::cout << "Overlap coords:" << std::endl;
+  //  for (int i{0}; i < overlap_poly_size; ++i)
+  //  {
+  //     std::cout << xti[i*3+0] << ", " << xti[i*3+1] << ", " << xti[i*3+2] << std::endl;
+  //  }
    
    // some Tribol calls require x, y, z component vectors of projected coords
    RealT x1t_comp[4];
@@ -1115,6 +1195,7 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
    }
 }
 
+//------------------------------------------------------------------------------
 void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT* p1,
                                   RealT* f1, RealT* df1dx1, RealT* df1dx2, RealT* df1dn1, RealT* df1dp1,
                                   RealT* g1, RealT* dg1dx1, RealT* dg1dx2,  RealT* dg1dn1, int size1,

@@ -496,6 +496,23 @@ public:
    */
   void printPairReportingData();
 
+#ifdef TRIBOL_USE_ENZYME
+  /**
+   * @brief Enables Enzyme AD for exact Jacobian calculations
+   * 
+   * @param useEnzyme Turns on Enzyme support if true
+   */
+  void enableEnzyme(bool useEnzyme) { m_useEnzyme = useEnzyme; }
+
+  /**
+   * @brief Is Enzyme AD enabled for exact Jacobian calculations?
+   * 
+   * @return true Yes
+   * @return false No
+   */
+  bool isEnzymeEnabled() const { return m_useEnzyme; }
+#endif
+
 #ifdef BUILD_REDECOMP
 
   /**
@@ -699,6 +716,10 @@ private:
   bool m_fixedBinning; ///< True if using fixed binning for all cycles
   bool m_isBinned; ///< True if binning has occured 
   bool m_isTied; ///< True if surfaces have been "tied" (Tied contact only)
+
+#ifdef TRIBOL_USE_ENZYME
+  bool m_useEnzyme; ///< Use Enzyme for Jacobian calculations
+#endif
 
   ArrayT<InterfacePair> m_interface_pairs; ///< List of interface pairs
 

@@ -161,8 +161,8 @@ void ComputeConstraintJacobian< SINGLE_MORTAR, DUAL >( SurfaceContactElem & elem
 void ComputeSingleMortarJacobian( SurfaceContactElem & elem );
 
 #ifdef TRIBOL_USE_ENZYME
-void LinearQuadBasis(const RealT* xi, RealT* phi);
-void LinearQuadBasisDeriv(const RealT* xi, RealT* phi, RealT* dphi_dxi, RealT* dphi_deta);void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, 
+int ApplyNormalEnzyme( CouplingScheme* cs );
+void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1,
                                RealT* f1, RealT* g1, int size1,
                                const RealT* x2, 
                                RealT* f2, int size2 );

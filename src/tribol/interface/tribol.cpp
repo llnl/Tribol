@@ -371,6 +371,20 @@ void enableTimestepVote( IndexT cs_id, const bool enable )
 } // end enableTimestepVote()
 
 //------------------------------------------------------------------------------
+void enableEnzyme( IndexT cs_id, bool use_enzyme )
+{
+   auto cs = CouplingSchemeManager::getInstance().findData(cs_id);
+  
+   // check to see if coupling scheme exists
+   SLIC_ERROR_ROOT_IF( !cs, 
+                       "tribol::enableEnzyme(): call tribol::registerCouplingScheme() " <<
+                       "prior to calling this routine." );
+
+   cs->enableEnzyme(use_enzyme);
+
+} // end enableEnzyme()
+
+//------------------------------------------------------------------------------
 void registerMesh( IndexT mesh_id,
                    IndexT num_cells,
                    IndexT num_nodes,

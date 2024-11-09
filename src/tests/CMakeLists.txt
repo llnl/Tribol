@@ -158,6 +158,51 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 endif()
 
 #------------------------------------------------------------------------------
+# Add tribol + enzyme tests
+#------------------------------------------------------------------------------
+
+if( TRIBOL_USE_ENZYME )
+
+  set( combined_tests
+      tribol_enzyme_jacobian.cpp
+      )
+
+  set(combined_test_depends tribol gtest)
+
+  foreach( test ${combined_tests} )
+
+    get_filename_component( test_name ${test} NAME_WE )
+
+    blt_add_executable(
+      NAME ${test_name}_test
+      SOURCES ${test}
+      OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+      DEPENDS_ON ${combined_test_depends} ${tribol_device_depends}
+      FOLDER tribol/tests )
+
+    blt_add_test( NAME ${test_name}
+                  COMMAND ${test_name}_test )
+
+    if (ENABLE_CUDA)
+      set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
+    endif()
+    
+    if (ENABLE_HIP)
+      target_compile_options(${test_name}_test PRIVATE -fgpu-rdc)
+      target_compile_options(${test_name}_test PRIVATE
+          $<$<CONFIG:Debug>:
+              -ggdb
+          >
+      )
+      target_link_options(${test_name}_test PRIVATE -fgpu-rdc)
+      target_link_options(${test_name}_test PRIVATE --hip-link)
+    endif()
+
+  endforeach()
+
+endif()
+
+#------------------------------------------------------------------------------
 # Add smoke tests
 #------------------------------------------------------------------------------
 
@@ -179,8 +224,8 @@ if( MFEM_FOUND )
 
 endif()
 
-if( ENABLE_ENZYME )
-  set(enzyme_smoke_depends tribol gtest)
+if( TRIBOL_USE_ENZYME )
+  set(enzyme_smoke_depends LLDEnzymeFlags gtest)
   blt_add_executable(
     NAME enzyme_smoke_test
     SOURCES enzyme_smoke.cpp

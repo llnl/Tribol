@@ -9,12 +9,31 @@
 //
 //-----------------------------------------------------------------------------
 
-#include <iostream>
-
-#include "tribol/config.hpp"
-#include "tribol/physics/Mortar.hpp"
-
 #include "gtest/gtest.h"
+
+template <typename return_type, typename... Args>
+return_type __enzyme_fwddiff(Args...);
+
+void LinearQuadBasis(const double* xi, double* phi)
+{
+  phi[0] = 0.25*(1 - xi[0])*(1 - xi[1]);
+  phi[1] = 0.25*(1 + xi[0])*(1 - xi[1]);
+  phi[2] = 0.25*(1 + xi[0])*(1 + xi[1]);
+  phi[3] = 0.25*(1 - xi[0])*(1 + xi[1]);
+}
+
+void LinearQuadBasisDeriv(const double* xi, double* phi, double* dphi_dxi, double* dphi_deta)
+{
+  double xi_dot[2] = {1.0, 0.0};
+  __enzyme_fwddiff<void>((void*)LinearQuadBasis,
+    xi, xi_dot,
+    phi, dphi_dxi);
+  xi_dot[0] = 0.0;
+  xi_dot[1] = 1.0;
+  __enzyme_fwddiff<void>((void*)LinearQuadBasis,
+    xi, xi_dot,
+    phi, dphi_deta);
+}
 
 TEST(enzyme_smoke, basic_use)
 {
@@ -23,106 +42,14 @@ TEST(enzyme_smoke, basic_use)
   double dphi_dxi[4] = {0.0, 0.0, 0.0, 0.0};
   double dphi_deta[4] = {0.0, 0.0, 0.0, 0.0};
   
-  tribol::LinearQuadBasisDeriv(xi, phi, dphi_dxi, dphi_deta);
+  LinearQuadBasisDeriv(xi, phi, dphi_dxi, dphi_deta);
 
-  std::cout << "xi: [" << xi[0] << ", " << xi[1] << "]" << std::endl;
-  std::cout << "phi: [" << phi[0] << ", " << phi[1] << ", " << phi[2] << ", " << phi[3] << "]" << std::endl;
-  std::cout << "dphi_dxi: [" << dphi_dxi[0] << ", " << dphi_dxi[1] << ", " << dphi_dxi[2] << ", " << dphi_dxi[3] << "]" << std::endl;
-  std::cout << "dphi_deta: [" << dphi_deta[0] << ", " << dphi_deta[1] << ", " << dphi_deta[2] << ", " << dphi_deta[3] << "]" << std::endl;
-
-  double delta = 1.0e-7;
-
-  // exact overlap
-  // double x1[12] = { 0.0, 0.0, 0.01,
-  //                   1.0, 0.0, 0.01,
-  //                   1.0, 1.0, 0.01,
-  //                   0.0, 1.0, 0.01 };
-  // outside to inside edge
-  // double x1[12] = { -0.5*delta, 0.0, 0.01,
-  //                   1.0, 0.0, 0.01,
-  //                   1.0, 1.0, 0.01,
-  //                   0.0, 1.0, 0.01 };
-  // always outside edge
-  // double x1[12] = { -10.0*delta, 0.0, 0.01,
-  //                   1.0, 0.0, 0.01,
-  //                   1.0, 1.0, 0.01,
-  //                   0.0, 1.0, 0.01 };
-  // always outside edge
-  double x1[12] = { -1.5*delta, -0.1, 0.01,
-                    1.0, -0.1, 0.01,
-                    1.0, 1.0, 0.01,
-                    0.0, 1.0, 0.01 };
-  double x2[12] = { 0.0, 0.0, -0.01,
-                    0.0, 1.0, -0.01,
-                    1.0, 1.0, -0.01,
-                    1.0, 0.0, -0.01 };
-  double n1[12] = { 0.0, 0.0, 1.0,
-                    0.0, 0.0, 1.0,
-                    0.0, 0.0, 1.0,
-                    0.0, 0.0, 1.0 };
-  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
-  double f1[12];
-  double f2[12];
-  double g1[4];
-
-  //tribol::ComputeMortarForceEnzyme(x1, n1, p1, f1, g1, 4, x2, f2, 4);
-
-
-  double df1dx1[12*12];
-  double df1dx2[12*12];
-  double df1dn1[12*12];
-  for (int i{0}; i < 12*12; ++i)
-  {
-    df1dx1[i] = 0.0;
-    df1dx2[i] = 0.0;
-    df1dn1[i] = 0.0;
-  }
-  double df1dp1[12*4];
-  for (int i{0}; i < 12*4; ++i)
-  {
-    df1dp1[i] = 0.0;
-  }
-  double dg1dx1[4*12];
-  double dg1dx2[4*12];
-  double dg1dn1[4*12];
-  for (int i{0}; i < 4*12; ++i)
-  {
-    dg1dx1[i] = 0.0;
-    dg1dx2[i] = 0.0;
-    dg1dn1[i] = 0.0;
-  }
-  double df2dx1[12*12];
-  double df2dx2[12*12];
-  double df2dn1[12*12];
-  for (int i{0}; i < 12*12; ++i)
-  {
-    df2dx1[i] = 0.0;
-    df2dx2[i] = 0.0;
-    df2dn1[i] = 0.0;
-  }
-  double df2dp1[12*4];
-  for (int i{0}; i < 12*4; ++i)
-  {
-    df2dp1[i] = 0.0;
-  }
-  tribol::ComputeMortarJacobianEnzyme(x1, n1, p1, f1, df1dx1, df1dx2, df1dn1, df1dp1, g1, dg1dx1, dg1dx2, dg1dn1, 4, x2, f2, df2dx1, df2dx2, df2dn1, df2dp1, 4);
-
-  double df1dx1_fd[12*12];
-  //tribol::ComputeMortarForceEnzyme(x1, n1, p1, f1, g1, 4, x2, f2, 4);
-  for (int i{0}; i < 12; ++i)
-  {
-    df1dx1_fd[i] = -f1[i];
-  }
-  x1[0] += delta;
-  tribol::ComputeMortarForceEnzyme(x1, n1, p1, f1, g1, 4, x2, f2, 4);
-  for (int i{0}; i < 12; ++i)
-  {
-    df1dx1_fd[i] += f1[i];
-    df1dx1_fd[i] /= delta;
-  }
-
-  for (int i{0}; i < 12; ++i)
-  {
-    std::cout << "[" << i << "] Enzyme: " << df1dx1[i] << "  FD: " << df1dx1_fd[i] << std::endl;
-  }
+  EXPECT_EQ(dphi_dxi[0], -0.25*(1.0 - xi[1]));
+  EXPECT_EQ(dphi_deta[0], -0.25*(1.0 - xi[0]));
+  EXPECT_EQ(dphi_dxi[1], 0.25*(1.0 - xi[1]));
+  EXPECT_EQ(dphi_deta[1], -0.25*(1.0 + xi[0]));
+  EXPECT_EQ(dphi_dxi[2], 0.25*(1.0 + xi[1]));
+  EXPECT_EQ(dphi_deta[2], 0.25*(1.0 + xi[0]));
+  EXPECT_EQ(dphi_dxi[3], -0.25*(1.0 + xi[1]));
+  EXPECT_EQ(dphi_deta[3], 0.25*(1.0 - xi[0]));
 }
