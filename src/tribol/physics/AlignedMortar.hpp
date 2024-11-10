@@ -23,7 +23,7 @@ struct SurfaceContactElem;
  *
  *
  */
-void ComputeAlignedMortarGaps( const CouplingScheme* cs );
+void ComputeAlignedMortarGaps( CouplingScheme* cs );
 
 /*!
  *

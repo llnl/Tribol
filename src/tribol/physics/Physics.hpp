@@ -65,7 +65,7 @@ int ApplyTangential( CouplingScheme* cs );
  *
  */
 template< ContactMethod M >
-int GetMethodData( CouplingScheme const * cs );
+int GetMethodData( CouplingScheme* cs );
 
 } // end namespace TRIBOL
 

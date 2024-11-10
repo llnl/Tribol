@@ -685,14 +685,14 @@ public:
   /**
    * @brief Get the integer identifier for the first Tribol registered mesh
    *
-   * @return int 
+   * @return IndexT
    */
   IndexT GetMesh1ID() const { return mesh_id_1_; }
 
   /**
    * @brief Get the integer identifier for the second Tribol registered mesh
    *
-   * @return int 
+   * @return IndexT
    */
   IndexT GetMesh2ID() const { return mesh_id_2_; }
 

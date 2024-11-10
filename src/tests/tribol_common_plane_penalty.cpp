@@ -40,6 +40,8 @@ void compareGaps( tribol::CouplingScheme const * cs,
                   const char *gapType )
 {
    tribol::IndexT const numPairs = cs->getNumActivePairs();
+   // TODO: get rid of the const cast if we can
+   const auto cs_view = const_cast<tribol::CouplingScheme*>(cs)->getView();
 
    for (tribol::IndexT cpID = 0; cpID < numPairs; ++cpID)
    {
@@ -56,7 +58,7 @@ void compareGaps( tribol::CouplingScheme const * cs,
          my_gap = plane.m_velGap;
       }
 
-      RealT gap_tol = cs->getGapTol( plane.getCpElementId1(), plane.getCpElementId2() );
+      RealT gap_tol = cs_view.getGapTol( plane.getCpElementId1(), plane.getCpElementId2() );
 
       // check gap sense
       if ( std::strcmp( gapType, "kinematic_penetration" ) == 0  ||
@@ -167,8 +169,9 @@ void checkPressures( tribol::CouplingScheme const * cs,
 // mesh configurations.
 void checkForceSense( tribol::CouplingScheme const * cs, bool isTied = false )
 {
-   auto& mesh1 = cs->getMesh1();
-   auto& mesh2 = cs->getMesh1();
+   // TODO: get rid of const cast (if we can)
+   const auto mesh1 = const_cast<tribol::CouplingScheme*>(cs)->getMesh1().getView();
+   const auto mesh2 = const_cast<tribol::CouplingScheme*>(cs)->getMesh2().getView();
 
    for (int i=0; i<2; ++i) // loop over meshes
    { 
@@ -181,11 +184,11 @@ void checkForceSense( tribol::CouplingScheme const * cs, bool isTied = false )
          {
             int node_id = mesh.getGlobalNodeId(kf, a);
             RealT force_mag = tribol::dotProd( mesh.getResponse()[0][ node_id ],
-                                              mesh.getResponse()[1][ node_id ], 
-                                              mesh.getResponse()[2][ node_id ],
-                                              mesh.getElementNormals()[0][ kf ],
-                                              mesh.getElementNormals()[1][ kf ],
-                                              mesh.getElementNormals()[2][ kf ] );
+                                               mesh.getResponse()[1][ node_id ], 
+                                               mesh.getResponse()[2][ node_id ],
+                                               mesh.getElementNormals()[0][ kf ],
+                                               mesh.getElementNormals()[1][ kf ],
+                                               mesh.getElementNormals()[2][ kf ] );
             if (!isTied) {
                // <= catches interpenetration AND separation
                EXPECT_LE( force_mag, 0. );

@@ -136,7 +136,7 @@ target_include_directories(tribol PUBLIC
 
 ## tribol install target
 tribol_install( SOURCE_HEADERS ${tribol_headers}
-                GENERATED_HEADERS ${PROJECT_BINARY_DIR}/include/tribol/types.hpp )
+                GENERATED_HEADERS ${PROJECT_BINARY_DIR}/include/tribol/config.hpp )
 
 if(ENABLE_FORTRAN AND ENABLE_MPI)
     install(FILES ${CMAKE_Fortran_MODULE_DIRECTORY}/tribol_simple.mod DESTINATION lib/fortran)

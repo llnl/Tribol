@@ -187,8 +187,8 @@ public:
 
       // diagnostics
       auto& cs = tribol::CouplingSchemeManager::getInstance().at(csIndex);
-      auto& mortarMesh = cs.getMesh1();
-      auto& nonmortarMesh = cs.getMesh2();
+      const auto mortarMesh = cs.getMesh1().getView();
+      const auto nonmortarMesh = cs.getMesh2().getView();
 
       // compute the sum of the nodal forces
       RealT fx1Sum = 0.;

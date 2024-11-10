@@ -228,30 +228,28 @@ void enableEnzyme( IndexT cs_id, bool use_enzyme );
 /// @{
 
 /*!
- * \brief Registers the mesh description for a contact surface.
+ * \brief Registers the mesh description for a contact surface
  *
- * \param [in] mesh_id the ID of the contact surface.
- * \param [in] num_cells the number of cells on the contact surface.
- * \param [in] num_nodes length of the data arrays being registered.
- * \param [in] connectivity mesh connectivity array for the contact surface.
- * \param [in] element_type the cell type of the contact surface elements.
+ * \param [in] mesh_id the ID of the contact surface
+ * \param [in] num_elements the number of elements on the contact surface
+ * \param [in] num_nodes length of the data arrays being registered
+ * \param [in] connectivity mesh connectivity array for the contact surface
+ * \param [in] element_type the cell type of the contact surface elements
  * \param [in] x array of x-components of the mesh coordinates
  * \param [in] y array of y-components of the mesh coordinates
  * \param [in] z array of z-components of the mesh coordinates (3D only)
  * \param [in] m_space Memory space of the connectivity and coordinate arrays
  *
- * \note numMeshNodes may be the number of nodes on the surface 
- *       (i.e. surface mesh only), or they may include nodes in the volume, 
- *       but the number is specific to the contact body to which the surface 
- *       defined by the surface element connectivity array belongs.
- *
  * \pre connectivity != nullptr
  * \pre x != nullptr
  * \pre y != nullptr
  * \pre z != nullptr (3D only)
+ *
+ * \note connectivity is a 2D array with num_elements rows and num_nodes columns
+ * with row-major ordering
  */
 void registerMesh( IndexT mesh_id,
-                   IndexT num_cells,
+                   IndexT num_elements,
                    IndexT num_nodes,
                    const IndexT* connectivity,
                    int element_type,
@@ -464,16 +462,16 @@ void registerIntElementField( IndexT mesh_id,
 /*!
  * \brief Registers a contact coupling scheme between two contact surfaces.
  *
- * \param [in] cs_id   coupling scheme id
- * \param [in] mesh_id1 Id of the first contact surface.
- * \param [in] mesh_id2 Id of the second contact surface.
- * \param [in] contact_mode
- * \param [in] contact_case
- * \param [in] contact_method
- * \param [in] contact_model
- * \param [in] enforcement_method
- * \param [in] binning_method
- * \param [in] given_exec_mode Preferred execution mode for RAJA kernels
+ * \param [in] cs_id coupling scheme id
+ * \param [in] mesh_id1 id of the first contact surface
+ * \param [in] mesh_id2 id of the second contact surface
+ * \param [in] contact_mode the type of contact, e.g. SURFACE_TO_SURFACE
+ * \param [in] contact_case the specific case of contact application, e.g. auto
+ * \param [in] contact_method the contact method, e.g. SINGLE_MORTAR
+ * \param [in] contact_model the contact model, e.g. COULOMB
+ * \param [in] enforcement_method the enforcement method, e.g. PENALTY
+ * \param [in] binning_method the binning method, e.g. BINNING_GRID
+ * \param [in] given_exec_mode preferred execution mode for RAJA kernels
  *
  * \note A mesh for the given contact surface must have already been registered
  *  prior to calling this method.

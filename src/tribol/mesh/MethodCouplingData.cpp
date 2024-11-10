@@ -54,23 +54,14 @@ void SurfaceContactElem::initializeMortarWts( )
 //------------------------------------------------------------------------------
 void SurfaceContactElem::allocateBlockJ( EnforcementMethod enf )
 {
-  //  if (enf == LAGRANGE_MULTIPLIER)
-  //  {
-  //     blockJ = DeviceArray2D<DeviceArray2D<RealT>>(3, 3);
-  //  }
-  //  else
-  //  {
-  //     blockJ = DeviceArray2D<DeviceArray2D<RealT>>(2, 2);
-  //  }
-
    // number of element displacement degrees of freedom
    int nPrimal = this->dim * this->numFaceVert;
    for (int i{}; i < 2; ++i)
    {
       for (int j{}; j < 2; ++j)
       {
-         blockJ(i, j) = DeviceArray2D<RealT>(nPrimal, nPrimal);
-         blockJ(i, j).fill(0.0);
+         this->blockJ(i, j) = DeviceArray2D<RealT>(nPrimal, nPrimal);
+         this->blockJ(i, j).fill(0.0);
       }
    }
 
@@ -80,14 +71,14 @@ void SurfaceContactElem::allocateBlockJ( EnforcementMethod enf )
       int nDual = this->numFaceVert;
       for (int i{}; i < 2; ++i)
       {
-         blockJ(i, 2) = DeviceArray2D<RealT>(nPrimal, nDual);
-         blockJ(i, 2).fill(0.0);
+         this->blockJ(i, 2) = DeviceArray2D<RealT>(nPrimal, nDual);
+         this->blockJ(i, 2).fill(0.0);
          // transpose
-         blockJ(2, i) = DeviceArray2D<RealT>(nDual, nPrimal);
-         blockJ(2, i).fill(0.0);
+         this->blockJ(2, i) = DeviceArray2D<RealT>(nDual, nPrimal);
+         this->blockJ(2, i).fill(0.0);
       }
-      blockJ(2, 2) = DeviceArray2D<RealT>(nDual, nDual);
-      blockJ(2, 2).fill(0.0);
+      this->blockJ(2, 2) = DeviceArray2D<RealT>(nDual, nDual);
+      this->blockJ(2, 2).fill(0.0);
    }
 }
 

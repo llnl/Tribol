@@ -14,6 +14,16 @@ namespace tribol
 namespace algorithm
 {
 
+/**
+ * @brief Implements a generic binary search algorithm
+ * 
+ * @tparam LCOMP Function taking an IndexT input argument
+ * @tparam HCOMP Function taking an IndexT input argument
+ * @param size Number of elements to search through
+ * @param lo_comparison Test if an element is too small
+ * @param hi_comparison Test if an element is too large
+ * @return Integer index of matching element
+ */
 template <typename LCOMP, typename HCOMP>
 TRIBOL_HOST_DEVICE IndexT binarySearch( IndexT size,
                                         LCOMP&& lo_comparison,
@@ -52,11 +62,21 @@ TRIBOL_HOST_DEVICE IndexT binarySearch( IndexT size,
   return -1;
 }
 
+/**
+ * @brief Binary search for value within ranges of values
+ * 
+ * @tparam T Data type to compare; must have operator+ and comparators
+ * @param array C-style array with each element giving the min of a range
+ * @param range C-style array with each element giving the size of each range
+ * @param size Number of elements in the array and range arrays
+ * @param value Value to search for
+ * @return Integer index of matching element range
+ */
 template <typename T>
 TRIBOL_HOST_DEVICE IndexT binarySearch( const T* array,
                                         const T* range,
                                         IndexT size,
-                                        IndexT value )
+                                        T value )
 {
   return binarySearch(
     size, 
@@ -65,14 +85,33 @@ TRIBOL_HOST_DEVICE IndexT binarySearch( const T* array,
   );
 }
 
-template <typename ARRAY>
+/**
+ * @brief Binary search for value within ranges of values
+ * 
+ * @tparam ARRAY Array type holding elements of type T; must have data() and
+ * size() implemented
+ * @tparam T Data type to compare
+ * @param array Array with each element giving the min of a range
+ * @param range Array wtih each element giving the size of each range
+ * @param value Value to search for
+ * @return Integer index of matching element range
+ */
+template <typename ARRAY, typename T>
 TRIBOL_HOST_DEVICE IndexT binarySearch( const ARRAY& array,
                                         const ARRAY& range,
-                                        IndexT value )
+                                        T value )
 {
   return binarySearch(array.data(), range.data(), array.size(), value);
 }
 
+/**
+ * @brief Given entries in the upper triangular portion of a symmetric matrix
+ * stored row-major, find the row given an entry id
+ * 
+ * @param value Entry in the 1D vector
+ * @param matrix_width Number of columns in the matrix
+ * @return Row of the given entry
+ */
 TRIBOL_HOST_DEVICE inline IndexT symmMatrixRow( IndexT value,
                                                 IndexT matrix_width )
 {
@@ -82,6 +121,14 @@ TRIBOL_HOST_DEVICE inline IndexT symmMatrixRow( IndexT value,
     [=] TRIBOL_HOST_DEVICE (IndexT i) { return i * (i + 1) / 2 > value; });
 }
 
+/**
+ * @brief Transposes a matrix stored as a 2D array
+ * 
+ * @tparam MSPACE Memory space of the array
+ * @tparam T Type of the array data
+ * @param in Matrix to transpose
+ * @param out Transposed matrix
+ */
 template <MemorySpace MSPACE, typename T>
 TRIBOL_HOST_DEVICE void transpose( const ArrayT<T, 2, MSPACE>& in, 
                                    ArrayT<T, 2, MSPACE>& out )

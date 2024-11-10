@@ -38,8 +38,8 @@ namespace
 //------------------------------------------------------------------------------
 inline bool validMeshID( IndexT mesh_id )
 {
-  MeshManager & meshManager = MeshManager::getInstance();
-  return (mesh_id==ANY_MESH) || meshManager.findData( mesh_id );
+   MeshManager & meshManager = MeshManager::getInstance();
+   return (mesh_id==ANY_MESH) || meshManager.findData( mesh_id );
 }
 
 } /* end anonymous namespace */
@@ -105,6 +105,11 @@ void CouplingSchemeErrors::printMethodErrors()
 {
    switch(this->cs_method_error)
    {
+      case INVALID_ELEMENT_TYPE:
+      {
+         SLIC_WARNING_ROOT("The specified element type is invalid.");
+         break;
+      }
       case INVALID_METHOD:
       {
          SLIC_WARNING_ROOT("The specified ContactMethod is invalid.");
@@ -249,6 +254,31 @@ void CouplingSchemeErrors::printEnforcementDataErrors()
 } // end CouplingSchemeErrors::printEnforcementDataErrors()
 
 //------------------------------------------------------------------------------
+void CouplingSchemeErrors::printExecutionModeErrors()
+{
+   switch(this->cs_execution_mode_error)
+   {
+      case ExecutionModeError::NON_MATCHING_MEMORY_SPACE:
+      {
+         SLIC_WARNING_ROOT("Memory spaces for meshes do not match; see warnings.");
+         break;
+      }
+      case ExecutionModeError::BAD_MODE_FOR_MEMORY_SPACE:
+      {
+         SLIC_WARNING_ROOT("Memory space is not compatible with execution mode; see warnings.");
+         break;
+      }
+      case ExecutionModeError::INCOMPATIBLE_METHOD:
+      {
+         SLIC_WARNING_ROOT("Contact method not compatible with execution mode; see warnings.");
+         break;
+      }
+      default:
+         break;
+   } // end switch over execution mode errors
+} // end CouplingSchemeErrors::printExecutionModeErrors()
+
+//------------------------------------------------------------------------------
 // Struct implementation for CouplingSchemeInfo
 //------------------------------------------------------------------------------
 void CouplingSchemeInfo::printCaseInfo()
@@ -278,6 +308,21 @@ void CouplingSchemeInfo::printCaseInfo()
          break;
    } // end switch over case info
 } // end CouplingSchemeInfo::printCaseInfo()
+
+//------------------------------------------------------------------------------
+void CouplingSchemeInfo::printExecutionModeInfo()
+{
+   switch(this->cs_execution_mode_info)
+   {
+      case ExecutionModeInfo::NONOPTIMAL_MODE_FOR_MEMORY_SPACE:
+      {
+         SLIC_WARNING_ROOT("Execution mode is not optimal for memory space; see warnings.");
+         break;
+      }
+      default:
+         break;
+   } // end switch over execution mode info
+} // end CouplingSchemeInfo::printExecutionModeInfo()
 
 //------------------------------------------------------------------------------
 void CouplingSchemeInfo::printEnforcementInfo()
@@ -360,20 +405,22 @@ CouplingScheme::CouplingScheme( IndexT cs_id,
 } // end CouplingScheme::CouplingScheme()
 
 //------------------------------------------------------------------------------
-void CouplingScheme::updateMeshViews()
+const ContactPlane& CouplingScheme::getContactPlane( IndexT id ) const
 {
-  auto mesh1 = MeshManager::getInstance().findData(m_mesh_id1);
-  auto mesh2 = MeshManager::getInstance().findData(m_mesh_id2);
-  SLIC_ERROR_ROOT_IF(mesh1 == nullptr || mesh2 == nullptr, 
-    "Register meshes before updating mesh views.");
-  m_mesh1 = mesh1->getView();
-  m_mesh2 = mesh2->getView();
+  if (spatialDimension() == 2)
+  {
+    return m_contact_plane2d[id];
+  }
+  else
+  {
+    return m_contact_plane3d[id];
+  }
 }
 
 //------------------------------------------------------------------------------
-bool CouplingScheme::isValidCouplingScheme()
+bool CouplingScheme::setMeshPointers()
 {
-   bool valid {true};
+   // verify meshes exist and set pointers to meshes
    MeshManager & meshManager = MeshManager::getInstance(); 
    if (!meshManager.findData(this->m_mesh_id1) || !meshManager.findData(this->m_mesh_id2))
    {
@@ -381,31 +428,36 @@ bool CouplingScheme::isValidCouplingScheme()
       return false;
    }
 
-   MeshData & mesh1 = meshManager.at( this->m_mesh_id1 );
-   MeshData & mesh2 = meshManager.at( this->m_mesh_id2 );
+   this->m_mesh1 = &MeshManager::getInstance().at( this->m_mesh_id1 );
+   this->m_mesh2 = &MeshManager::getInstance().at( this->m_mesh_id2 );
+
+   return true;
+}
+
+//------------------------------------------------------------------------------
+bool CouplingScheme::isValidCouplingScheme()
+{
+   bool valid {true};
+
+   if (!setMeshPointers())
+   {
+      return false;
+   }
 
    // set boolean for null meshes
-   this->m_nullMeshes = mesh1.numberOfElements() <= 0 || mesh2.numberOfElements() <= 0;
+   this->m_nullMeshes = this->m_mesh1->numberOfElements() <= 0 || this->m_mesh2->numberOfElements() <= 0;
 
    // check for invalid mesh topology matches in a coupling scheme
-   if (mesh1.getElementType() != mesh2.getElementType())
+   if (this->m_mesh1->getElementType() != this->m_mesh2->getElementType())
    {
       SLIC_WARNING_ROOT("Coupling scheme " << this->m_id << " does not support meshes with " << 
                         "different surface element types.");
-      mesh1.isMeshValid() = false;
-      mesh2.isMeshValid() = false;
-   }
-
-   if (mesh1.getMemorySpace() != mesh2.getMemorySpace())
-   {
-      SLIC_WARNING_ROOT("Coupling scheme " << this->m_id << ": Paired meshes reside in " << 
-                        "different memory spaces.");
-      mesh1.isMeshValid() = false;
-      mesh2.isMeshValid() = false;
+      this->m_mesh1->isMeshValid() = false;
+      this->m_mesh2->isMeshValid() = false;
    }
 
    // check for invalid meshes. A mesh could be deemed invalid when registered.
-   if (!mesh1.isMeshValid() || !mesh2.isMeshValid())
+   if (!this->m_mesh1->isMeshValid() || !this->m_mesh2->isMeshValid())
    {
       return false;
    }
@@ -452,6 +504,20 @@ bool CouplingScheme::isValidCouplingScheme()
    {
       this->m_couplingSchemeErrors.printEnforcementDataErrors();
       valid = false;
+   }
+
+   switch (this->checkExecutionModeData())
+   {
+      case 1:
+         this->m_couplingSchemeErrors.printExecutionModeErrors();
+         valid = false;
+         break;
+      case 2:
+         this->m_couplingSchemeInfo.printExecutionModeInfo();
+         break;
+      default:
+         // no info or error messages
+         break;
    }
 
    return valid;
@@ -526,16 +592,13 @@ bool CouplingScheme::isValidCase()
       {
          case AUTO:
          {
-            // specify auto-contact specific interpenetration check and verify 
-            // element thicknesses have been registered
-            this->m_parameters.auto_interpen_check = true;
+            // enable auto-contact specific checks through boolean, and check to 
+            // make sure element thicknesses have been registered for auto-contact 
+            // length scale calculations
+            this->m_parameters.auto_contact_check = true;
 
-            MeshManager & meshManager = MeshManager::getInstance(); 
-            MeshData & mesh1= meshManager.at( this->m_mesh_id1 );
-            MeshData & mesh2 = meshManager.at( this->m_mesh_id2 );
-
-            if (!mesh1.getElementData().m_is_element_thickness_set ||
-                !mesh2.getElementData().m_is_element_thickness_set)
+            if (!this->m_mesh1->getElementData().m_is_element_thickness_set ||
+                !this->m_mesh2->getElementData().m_is_element_thickness_set)
             {
                this->m_couplingSchemeErrors.cs_case_error = INVALID_CASE_DATA;
                isValid = false;
@@ -545,13 +608,13 @@ bool CouplingScheme::isValidCase()
          case TIED_FULL:
          {
             // uncomment when there is an implementation
-            //this->m_parameters.auto_interpen_check = false;
+            //this->m_parameters.auto_contact_check = false;
             this->m_couplingSchemeErrors.cs_case_error = NO_CASE_IMPLEMENTATION;
             isValid = false;
             break;
          }
          default:
-            this->m_parameters.auto_interpen_check = false;
+            this->m_parameters.auto_contact_check = false;
       } // end switch on case
    } // end if check on common-plane
 
@@ -575,19 +638,25 @@ bool CouplingScheme::isValidMethod()
       return false;
    }
 
-   MeshManager & meshManager = MeshManager::getInstance(); 
-   MeshData & mesh1 = meshManager.at( this->m_mesh_id1 );
-   MeshData & mesh2 = meshManager.at( this->m_mesh_id2 );
-   int dim = mesh1.spatialDimension();
+   int dim = this->spatialDimension();
 
    // check all methods for basic validity issues for non-null meshes
    if (!this->m_nullMeshes)
    {
+      if ((this->m_mesh1->getElementType() != LINEAR_EDGE && 
+           this->m_mesh1->getElementType() != LINEAR_QUAD) ||
+          (this->m_mesh2->getElementType() != LINEAR_EDGE && 
+           this->m_mesh2->getElementType() != LINEAR_QUAD))
+      {
+         this->m_couplingSchemeErrors.cs_method_error = INVALID_ELEMENT_TYPE;
+         return false;
+      }
+
       if ( this->m_contactMethod == ALIGNED_MORTAR ||
            this->m_contactMethod == MORTAR_WEIGHTS ||
            this->m_contactMethod == SINGLE_MORTAR )
       {
-         if (mesh1.numberOfNodesPerElement() != mesh2.numberOfNodesPerElement())
+         if (this->m_mesh1->numberOfNodesPerElement() != this->m_mesh2->numberOfNodesPerElement())
          {
             this->m_couplingSchemeErrors.cs_method_error = DIFFERENT_FACE_TYPES; 
             return false;
@@ -611,7 +680,7 @@ bool CouplingScheme::isValidMethod()
       else if ( this->m_contactMethod == COMMON_PLANE )
       {
          // check for different face types. This is not yet supported
-         if (mesh1.numberOfNodesPerElement() != mesh2.numberOfNodesPerElement())
+         if (this->m_mesh1->numberOfNodesPerElement() != this->m_mesh2->numberOfNodesPerElement())
          {
             this->m_couplingSchemeErrors.cs_method_error = DIFFERENT_FACE_TYPES; 
             return false;
@@ -629,13 +698,13 @@ bool CouplingScheme::isValidMethod()
            this->m_contactMethod == SINGLE_MORTAR  ||
            this->m_contactMethod == COMMON_PLANE )
       {
-         if ( mesh1.numberOfElements() > 0 && !mesh1.getNodalFields().m_is_nodal_response_set )
+         if ( this->m_mesh1->numberOfElements() > 0 && !this->m_mesh1->getNodalFields().m_is_nodal_response_set )
          {
             this->m_couplingSchemeErrors.cs_method_error = NULL_NODAL_RESPONSE;
             return false; 
          }
  
-         if ( mesh2.numberOfElements() > 0 && !mesh2.getNodalFields().m_is_nodal_response_set )
+         if ( this->m_mesh2->numberOfElements() > 0 && !this->m_mesh2->getNodalFields().m_is_nodal_response_set )
          {
             this->m_couplingSchemeErrors.cs_method_error = NULL_NODAL_RESPONSE;
             return false; 
@@ -830,10 +899,6 @@ bool CouplingScheme::isValidEnforcement()
 //------------------------------------------------------------------------------
 int CouplingScheme::checkEnforcementData()
 {
-   
-   MeshManager & meshManager = MeshManager::getInstance(); 
-   MeshData & mesh1 = meshManager.at( this->m_mesh_id1 );
-   MeshData & mesh2 = meshManager.at( this->m_mesh_id2 );
    this->m_couplingSchemeErrors.cs_enforcement_data_error 
       = NO_ENFORCEMENT_DATA_ERROR; 
 
@@ -852,7 +917,7 @@ int CouplingScheme::checkEnforcementData()
             case LAGRANGE_MULTIPLIER:
             {
                // check LM data. Note, this routine is guarded against null-meshes
-               if (mesh2.checkLagrangeMultiplierData() != 0) // nonmortar side only
+               if (this->m_mesh2->checkLagrangeMultiplierData() != 0) // nonmortar side only
                {
                   this->m_couplingSchemeErrors.cs_enforcement_data_error = ERROR_IN_REGISTERED_ENFORCEMENT_DATA;
                   err = 1;
@@ -873,8 +938,8 @@ int CouplingScheme::checkEnforcementData()
             {
                // check penalty data. Note, this routine is guarded against null-meshes
                PenaltyEnforcementOptions& pen_enfrc_options = this->m_enforcementOptions.penalty_options;
-               if (mesh1.checkPenaltyData( pen_enfrc_options ) != 0 ||
-                   mesh2.checkPenaltyData( pen_enfrc_options ) != 0)
+               if (this->m_mesh1->checkPenaltyData( pen_enfrc_options ) != 0 ||
+                   this->m_mesh2->checkPenaltyData( pen_enfrc_options ) != 0)
                {
                   this->m_couplingSchemeErrors.cs_enforcement_data_error 
                      = ERROR_IN_REGISTERED_ENFORCEMENT_DATA;
@@ -897,32 +962,213 @@ int CouplingScheme::checkEnforcementData()
 } // end CouplingScheme::checkEnforcementData()
 
 //------------------------------------------------------------------------------
+int CouplingScheme::checkExecutionModeData()
+{
+  int err = 0;
+  this->m_exec_mode = ExecutionMode::Sequential;
+  this->m_couplingSchemeErrors.cs_execution_mode_error = 
+    ExecutionModeError::NO_ERROR;
+  this->m_couplingSchemeInfo.cs_execution_mode_info = 
+    ExecutionModeInfo::NO_INFO;
+
+  if (this->m_mesh1->getMemorySpace() != this->m_mesh2->getMemorySpace())
+  {
+    SLIC_WARNING_ROOT("Coupling scheme " << this->m_id << ": Paired meshes reside in " << 
+                      "different memory spaces.");
+    this->m_mesh1->isMeshValid() = false;
+    this->m_mesh2->isMeshValid() = false;
+    this->m_couplingSchemeErrors.cs_execution_mode_error = 
+      ExecutionModeError::NON_MATCHING_MEMORY_SPACE;
+    err = 1;
+    return err;
+  }
+
+  switch (this->m_mesh1->getMemorySpace())
+  {
+    case MemorySpace::Dynamic:
+#ifdef TRIBOL_USE_UMPIRE
+      // trust the user here...
+      this->m_exec_mode = this->m_given_exec_mode;
+      if (this->m_exec_mode == ExecutionMode::Dynamic)
+      {
+        SLIC_WARNING_ROOT("Dynamic execution with dynamic memory space. "
+          "Unable to determine execution mode.");
+        this->m_couplingSchemeErrors.cs_execution_mode_error = 
+          ExecutionModeError::BAD_MODE_FOR_MEMORY_SPACE;
+        err = 1;
+      }
+#else
+      // if we have RAJA but no Umpire, execute serially on host
+      this->m_exec_mode = ExecutionMode::Sequential;
+#endif
+      break;
+#ifdef TRIBOL_USE_UMPIRE
+    case MemorySpace::Unified:
+      // this should be able to run anywhere. let the user decide.
+      this->m_exec_mode = this->m_given_exec_mode;
+      if (this->m_exec_mode == ExecutionMode::Dynamic)
+      {
+  #if defined(TRIBOL_USE_CUDA)
+        SLIC_INFO_ROOT("Dynamic execution with unified memory space. "
+          "Assuming CUDA parallel execution.");
+        this->m_exec_mode = ExecutionMode::Cuda;
+  #elif defined(TRIBOL_USE_HIP)
+        SLIC_INFO_ROOT("Dynamic execution with unified memory space. "
+          "Assuming HIP parallel execution.");
+        this->m_exec_mode = ExecutionMode::Hip;
+  #elif defined(TRIBOL_USE_OPENMP)
+        SLIC_INFO_ROOT("Dynamic execution with unified memory space. "
+          "Tribol not built with CUDA/HIP support. "
+          "Assuming OpenMP parallel execution.");
+        this->m_exec_mode = ExecutionMode::OpenMP;
+        this->m_couplingSchemeInfo.cs_execution_mode_info =
+          ExecutionModeInfo::NONOPTIMAL_MODE_FOR_MEMORY_SPACE;
+        err = 2;
+  #else
+        SLIC_INFO_ROOT("Dynamic execution with unified memory space. "
+          "Tribol not built with CUDA/HIP/OpenMP support. "
+          "Assuming sequential execution.");
+        this->m_exec_mode = ExecutionMode::Sequential;
+        this->m_couplingSchemeInfo.cs_execution_mode_info =
+          ExecutionModeInfo::NONOPTIMAL_MODE_FOR_MEMORY_SPACE;
+        err = 2;
+  #endif
+      }
+      break;
+#endif
+    case MemorySpace::Host:
+      switch (this->m_given_exec_mode)
+      {
+        case ExecutionMode::Sequential:
+#ifdef TRIBOL_USE_OPENMP
+        case ExecutionMode::OpenMP:
+#endif
+          this->m_exec_mode = this->m_given_exec_mode;
+          break;
+        case ExecutionMode::Dynamic:
+#ifdef TRIBOL_USE_OPENMP
+          SLIC_INFO_ROOT("Dynamic execution with a host memory space. "
+            "Assuming OpenMP parallel execution.");
+          this->m_exec_mode = ExecutionMode::OpenMP;
+#else
+          SLIC_INFO_ROOT("Dynamic execution with a host memory space. "
+            "Assuming sequential execution.");
+          this->m_exec_mode = ExecutionMode::Sequential;
+#endif
+          break;
+        default:
+          SLIC_WARNING_ROOT("Unsupported execution mode for host memory. "
+            "Unable to determine execution mode.");
+          this->m_couplingSchemeErrors.cs_execution_mode_error = 
+            ExecutionModeError::BAD_MODE_FOR_MEMORY_SPACE;
+          err = 1;
+          break;
+      }
+      break;
+#ifdef TRIBOL_USE_UMPIRE
+    case MemorySpace::Device:
+      switch (this->m_given_exec_mode)
+      {
+  #if defined(TRIBOL_USE_CUDA) || defined(TRIBOL_USE_HIP)
+    #ifdef TRIBOL_USE_CUDA
+        case ExecutionMode::Cuda:
+    #endif
+    #ifdef TRIBOL_USE_HIP
+        case ExecutionMode::Hip:
+    #endif
+          this->m_exec_mode = this->m_given_exec_mode;
+          break;
+  #endif
+        case ExecutionMode::Dynamic:
+  #if defined(TRIBOL_USE_CUDA)
+          this->m_exec_mode = ExecutionMode::Cuda;
+          break;
+  #elif defined(TRIBOL_USE_HIP)
+          this->m_exec_mode = ExecutionMode::Hip;
+          break;
+  #endif
+        default:
+          SLIC_ERROR_ROOT("Unknown execution mode for device memory. "
+            "Unable to determine execution mode.");
+          this->m_couplingSchemeErrors.cs_execution_mode_error = 
+            ExecutionModeError::BAD_MODE_FOR_MEMORY_SPACE;
+          err = 1;
+          break;
+      }
+#endif
+  }
+  
+  // Update memory spaces of mesh data which are originally set as dynamic
+  // (ensures data owned by MeshData is in the right memory space)
+  if (this->m_mesh1->getMemorySpace() == MemorySpace::Dynamic)
+  {
+    switch (this->m_exec_mode)
+    {
+      case ExecutionMode::Sequential:
+#ifdef TRIBOL_USE_OPENMP
+      case ExecutionMode::OpenMP:
+#endif
+        this->m_mesh1->updateAllocatorId(getResourceAllocatorID(MemorySpace::Host));
+        this->m_mesh2->updateAllocatorId(getResourceAllocatorID(MemorySpace::Host));
+        break;
+#ifdef TRIBOL_USE_CUDA
+      case ExecutionMode::Cuda:
+        this->m_mesh1->updateAllocatorId(getResourceAllocatorID(MemorySpace::Device));
+        this->m_mesh2->updateAllocatorId(getResourceAllocatorID(MemorySpace::Device));
+        break;
+#endif
+#ifdef TRIBOL_USE_HIP
+      case ExecutionMode::Hip:
+        this->m_mesh1->updateAllocatorId(getResourceAllocatorID(MemorySpace::Device));
+        this->m_mesh2->updateAllocatorId(getResourceAllocatorID(MemorySpace::Device));
+        break;
+#endif
+      default:
+        // no-op
+        break;
+    }
+  }
+  this->m_allocator_id = this->m_mesh1->getAllocatorId();
+
+  if (m_contactMethod != COMMON_PLANE)
+  {
+    if (m_exec_mode != ExecutionMode::Sequential)
+    {
+      SLIC_WARNING_ROOT("Only sequential execution on host supported for contact methods "
+        "other than COMMON_PLANE.");
+      this->m_couplingSchemeErrors.cs_execution_mode_error =
+        ExecutionModeError::INCOMPATIBLE_METHOD;
+      err = 1;
+    }
+  }
+
+  return err;
+}
+
+//------------------------------------------------------------------------------
 void CouplingScheme::performBinning()
 {
    // Find the interacting pairs for this coupling scheme. Will not use
    // binning if setInterfacePairs has been called.
-   if (!this->m_nullMeshes)
+   if( !this->hasFixedBinning() ) 
    {
-      if( !this->hasFixedBinning() ) 
+      // create interface pairs based on allocator id
+      m_interface_pairs = ArrayT<InterfacePair>(0, 0, m_allocator_id);
+
+      InterfacePairFinder finder(this);
+      finder.initialize();
+      finder.findInterfacePairs();
+
+      // For Cartesian binning, we only need to compute the binning once
+      if(this->getBinningMethod() == BINNING_CARTESIAN_PRODUCT)
       {
-         // create interface pairs based on allocator id
-         m_interface_pairs = ArrayT<InterfacePair>(0, 0, m_allocator_id);
-
-         InterfacePairFinder finder(this);
-         finder.initialize();
-         finder.findInterfacePairs();
-
-         // For Cartesian binning, we only need to compute the binning once
-         if(this->getBinningMethod() == BINNING_CARTESIAN_PRODUCT)
-         {
-            this->setFixedBinning(true);
-         }
-
-         // set fixed binning depending on contact case, 
-         // e.g. NO_SLIDING
-         this->setFixedBinningPerCase();
+         this->setFixedBinning(true);
       }
-   } // end if-non-null meshes
+
+      // set fixed binning depending on contact case, 
+      // e.g. NO_SLIDING
+      this->setFixedBinningPerCase();
+   }
    return;
 }
 
@@ -938,12 +1184,13 @@ int CouplingScheme::apply( int cycle, RealT t, RealT &dt )
 
   // loop over all pairs and perform geometry checks to see if they are
   // interacting
-  auto pairs = getInterfacePairsView();
+  auto pairs = getInterfacePairs().view();
   auto contact_method = m_contactMethod;
   auto contact_case = m_contactCase;
   ArrayT<int> pair_err_data(1, 1, getAllocatorId());
   auto pair_err = pair_err_data.view();
-  // clear contact planes to be populated/allocated anew for this cycle
+  // clear contact planes to be populated/allocated anew for this cycle.
+  // initially allocate array of numPairs size, then shrink to the actual number of pairs
   if (spatialDimension() == 2)
   {
     m_contact_plane2d = ArrayT<ContactPlane2D>(numPairs, numPairs, getAllocatorId());
@@ -956,8 +1203,9 @@ int CouplingScheme::apply( int cycle, RealT t, RealT &dt )
   }
   auto planes_2d = m_contact_plane2d.view();
   auto planes_3d = m_contact_plane3d.view();
-  auto& mesh1 = getMesh1();
-  auto& mesh2 = getMesh2();
+  auto mesh1 = getMesh1().getView();
+  auto mesh2 = getMesh2().getView();
+  // array of size one for counting number of planes on device
   ArrayT<IndexT> planes_ct_data(1, 1, getAllocatorId());
   auto planes_ct = planes_ct_data.view();
   forAllExec(getExecutionMode(), numPairs,
@@ -999,6 +1247,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT &dt )
   );
 
   ArrayT<int, 1, MemorySpace::Host> planes_ct_host(planes_ct_data);
+  // shrink array to actual number of contact planes
   if (spatialDimension() == 2)
   {
     m_contact_plane2d.resize(planes_ct_host[0]);
@@ -1064,82 +1313,21 @@ int CouplingScheme::apply( int cycle, RealT t, RealT &dt )
 bool CouplingScheme::init()
 {
    // check for valid coupling scheme only for non-null-meshes
-   bool valid = false;
-   valid = this->isValidCouplingScheme();
-   this->m_isValid = valid;
+   this->m_isValid = this->isValidCouplingScheme();
+
    if (this->m_isValid)
    {
-      auto& mesh_data1 = MeshManager::getInstance().at( this->m_mesh_id1 );
-      auto& mesh_data2 = MeshManager::getInstance().at( this->m_mesh_id2 );
-
       // set individual coupling scheme logging level
       this->setSlicLoggingLevel();
 
-      // determine execution mode for kernels (already verified the memory
-      // spaces of each mesh match in isValidCouplingScheme())
-      m_exec_mode = ::tribol::getExecutionMode(mesh_data1.getMemorySpace(), m_given_exec_mode);
-
-      // Update memory spaces of mesh data which are originally set as dynamic
-      // (ensures data owned by MeshData is in the right memory space)
-#ifdef TRIBOL_USE_UMPIRE
-      if (mesh_data1.getMemorySpace() == MemorySpace::Dynamic)
-      {
-        switch (m_exec_mode)
-        {
-          case ExecutionMode::Sequential:
-  #ifdef TRIBOL_USE_RAJA
-    #ifdef TRIBOL_USE_OPENMP
-          case ExecutionMode::OpenMP:
-    #endif
-  #endif
-            mesh_data1.updateAllocatorId(getResourceAllocatorID(MemorySpace::Host));
-            mesh_data2.updateAllocatorId(getResourceAllocatorID(MemorySpace::Host));
-            break;
-  #ifdef TRIBOL_USE_RAJA
-    #ifdef TRIBOL_USE_CUDA
-          case ExecutionMode::Cuda:
-            mesh_data1.updateAllocatorId(getResourceAllocatorID(MemorySpace::Device));
-            mesh_data2.updateAllocatorId(getResourceAllocatorID(MemorySpace::Device));
-            break;
-    #endif
-    #ifdef TRIBOL_USE_HIP
-          case ExecutionMode::Hip:
-            mesh_data1.updateAllocatorId(getResourceAllocatorID(MemorySpace::Device));
-            mesh_data2.updateAllocatorId(getResourceAllocatorID(MemorySpace::Device));
-            break;
-    #endif
-  #endif
-          default:
-            // no-op
-            break;
-        }
-      }
-#endif
-      m_allocator_id = mesh_data1.getAllocatorId();
-
-      if (m_contactMethod != COMMON_PLANE)
-      {
-        if (m_exec_mode != ExecutionMode::Sequential)
-        {
-          SLIC_ERROR_ROOT("Only sequential execution on host supported for contact methods "
-            "other than COMMON_PLANE.");
-          return false;
-        }
-      }
-
       // compute the face data
-      mesh_data1.computeFaceData();
+      this->m_mesh1->computeFaceData(this->m_exec_mode);
       if (this->m_mesh_id2 != this->m_mesh_id1)
       {
-         mesh_data2.computeFaceData();
+         this->m_mesh2->computeFaceData(this->m_exec_mode);
       }
       
       this->allocateMethodData();
-
-      // set mesh viewers (with computed face data) to send to device, if
-      // required
-      m_mesh1 = mesh_data1.getView();
-      m_mesh2 = mesh_data2.getView();
 
       return true;
    }
@@ -1219,56 +1407,6 @@ void CouplingScheme::allocateMethodData()
 
    } // end if on non-null-meshes
 } // end CouplingScheme::allocateMethodData()
-
-//------------------------------------------------------------------------------
-RealT CouplingScheme::getGapTol( int fid1, int fid2 ) const
-{
-   RealT gap_tol = 0.;
-
-   // add debug warning if this routine is called for interface methods 
-   // that do not require gap tolerances 
-   switch ( m_contactMethod ) {
-
-      case SINGLE_MORTAR :
-         SLIC_WARNING("CouplingScheme::getGapTol(): 'SINGLE_MORTAR' " << 
-                      "method does not require use of a gap tolerance." );
-         break;
-
-      case ALIGNED_MORTAR :
-         SLIC_WARNING("CouplingScheme::getGapTol(): 'ALIGNED_MORTAR' " << 
-                      "method does not require use of a gap tolerance." );
-         break;
-
-      case MORTAR_WEIGHTS :
-         SLIC_WARNING("CouplingScheme::getGapTol(): 'MORTAR_WEIGHTS' " << 
-                      "method does not require use of a gap tolerance." );
-         break;
-
-      case COMMON_PLANE :
-
-         switch ( m_contactCase ) {
-
-            case TIED_NORMAL :
-               gap_tol = m_parameters.gap_tied_tol *
-                         axom::utilities::max( m_mesh1->getFaceRadii()[fid1],
-                                               m_mesh2->getFaceRadii()[fid2] );
-               break;
-
-            default :  
-               gap_tol = -1. * m_parameters.gap_tol_ratio *  
-                         axom::utilities::max( m_mesh1->getFaceRadii()[fid1],
-                                               m_mesh2->getFaceRadii()[fid2] );
-               break;
-
-         } // end switch over m_contactModel
-         break;
-
-      default : 
-         break;
-   } // end switch over m_contactMethod
-  
-   return gap_tol;
-}
 
 //------------------------------------------------------------------------------
 void CouplingScheme::computeTimeStep(RealT &dt)
@@ -1352,9 +1490,12 @@ void CouplingScheme::computeCommonPlaneTimeStep(RealT &dt)
   //int num_sides = 2; // always 2 sides in a single coupling scheme
   int dim = spatialDimension();
 
-  // loop over each interface pair. Even if pair is not in contact, 
-  // we still do a velocity projection for that proximate face-pair 
-  // to see if interpenetration next cycle 'may' be too much
+  // Loop over each contact plane. Even if pair is not in contact, we still do a
+  // velocity projection for that proximate face-pair to see if interpenetration
+  // next cycle 'may' be too much. Note, if a contact plane exists, then it is a
+  // contact candidate. For this calculation, we want to compute a timestep for
+  // all candidates, not necessarily ones that are deemed to be in contact per
+  // the gap constraint.
   auto cs_view = getView();
   ArrayT<RealT> dt_temp_data({dt, dt}, getAllocatorId());
   ArrayViewT<RealT> dt_temp = dt_temp_data;
@@ -1366,8 +1507,8 @@ void CouplingScheme::computeCommonPlaneTimeStep(RealT &dt)
     {
       auto& plane = cs_view.getContactPlane(i);
 
-      auto& mesh1 = cs_view.getMesh1();
-      auto& mesh2 = cs_view.getMesh2();
+      auto& mesh1 = cs_view.getMesh1View();
+      auto& mesh2 = cs_view.getMesh2View();
 
       // get pair indices
       IndexT index1 = plane.getCpElementId1();
@@ -1562,8 +1703,8 @@ void CouplingScheme::computeCommonPlaneTimeStep(RealT &dt)
         // in excess of the max allowable gap without causing timestep crashes.
         //
         // v1_dot_n1 > 0 and v2_dot_n2 > 0 for further interpen
-        dt1 = (dt1_check1) ? -alpha * max_delta1 / v1_dot_n1 : dt1;
-        dt2 = (dt2_check1) ? -alpha * max_delta2 / v2_dot_n2 : dt2;
+        dt1 = (dt1_check1) ? alpha * max_delta1 / v1_dot_n1 : dt1;
+        dt2 = (dt2_check1) ? alpha * max_delta2 / v2_dot_n2 : dt2;
 
         // Keep debug print statements. This routine is still in the testing phase
         //std::cout << "dt1_check1, delta1 and v1_dot_n1: " << dt1_check1 << ", " << max_delta1 << ", " << v1_dot_n1 << std::endl;
@@ -1782,8 +1923,8 @@ void CouplingScheme::updatePairReportingData( const FaceGeomError face_error )
 //------------------------------------------------------------------------------
 void CouplingScheme::printPairReportingData()
 {
-   SLIC_DEBUG(this->getNumActivePairs()*100./getInterfacePairs().size() << "% of binned interface " <<
-              "pairs are active contact candidates.");
+   SLIC_DEBUG_IF(getInterfacePairs().size() > 0, this->getNumActivePairs()*100./getInterfacePairs().size() << 
+                 "% of binned interface pairs are active contact candidates.");
 
    SLIC_DEBUG_IF(this->m_pairReportingData.numBadOrientation>0,
                  "Number of bad orientations is " << this->m_pairReportingData.numBadOrientation <<
@@ -1802,20 +1943,19 @@ void CouplingScheme::printPairReportingData()
 }
 
 //------------------------------------------------------------------------------
-template <typename T, typename PARAM, typename MESH, typename CP, typename CP2D, typename CP3D>
-CouplingScheme::ViewerBase<T, PARAM, MESH, CP, CP2D, CP3D>::ViewerBase( T& cs )
+CouplingScheme::Viewer::Viewer( CouplingScheme& cs )
   : m_parameters( cs.m_parameters )
   , m_contact_case( cs.m_contactCase )
+  , m_contact_method( cs.m_contactMethod )
   , m_enforcement_options( cs.m_enforcementOptions )
-  , m_mesh1( cs.getMesh1() )
-  , m_mesh2( cs.getMesh2() )
+  , m_mesh1( cs.getMesh1().getView() )
+  , m_mesh2( cs.getMesh2().getView() )
   , m_contact_plane2d( cs.m_contact_plane2d )
   , m_contact_plane3d( cs.m_contact_plane3d )
 {}
 
 //------------------------------------------------------------------------------
-template <typename T, typename PARAM, typename MESH, typename CP, typename CP2D, typename CP3D>
-TRIBOL_HOST_DEVICE CP& CouplingScheme::ViewerBase<T, PARAM, MESH, CP, CP2D, CP3D>::getContactPlane( IndexT id ) const
+TRIBOL_HOST_DEVICE ContactPlane& CouplingScheme::Viewer::getContactPlane( IndexT id ) const
 {
   if (spatialDimension() == 2)
   {
@@ -1828,41 +1968,58 @@ TRIBOL_HOST_DEVICE CP& CouplingScheme::ViewerBase<T, PARAM, MESH, CP, CP2D, CP3D
 }
 
 //------------------------------------------------------------------------------
-template <typename T, typename PARAM, typename MESH, typename CP, typename CP2D, typename CP3D>
-TRIBOL_HOST_DEVICE RealT CouplingScheme::ViewerBase<T, PARAM, MESH, CP, CP2D, CP3D>::getCommonPlaneGapTol( int fid1, int fid2 ) const
+TRIBOL_HOST_DEVICE RealT CouplingScheme::Viewer::getGapTol( int fid1, int fid2 ) const
 {
-  RealT gap_tol = 0.;
-  switch ( m_contact_case ) {
+   RealT gap_tol = 0.;
+   // add debug warning if this routine is called for interface methods 
+   // that do not require gap tolerances 
+   switch ( m_contact_method ) {
 
-    case TIED_NORMAL :
-      gap_tol = m_parameters.gap_tied_tol *
-                axom::utilities::max( m_mesh1.getFaceRadii()[fid1],
-                                      m_mesh2.getFaceRadii()[fid2] );
-      break;
+      case SINGLE_MORTAR :
+#ifdef TRIBOL_USE_HOST
+         SLIC_WARNING("CouplingScheme::getGapTol(): 'SINGLE_MORTAR' " << 
+                        "method does not require use of a gap tolerance." );
+#endif
+         break;
 
-    default :  
-        gap_tol = -1. * m_parameters.gap_tol_ratio *  
-                  axom::utilities::max( m_mesh1.getFaceRadii()[fid1],
-                                        m_mesh2.getFaceRadii()[fid2] );
-        break;
+      case ALIGNED_MORTAR :
+#ifdef TRIBOL_USE_HOST
+         SLIC_WARNING("CouplingScheme::getGapTol(): 'ALIGNED_MORTAR' " << 
+                        "method does not require use of a gap tolerance." );
+#endif
+         break;
 
-  }
+      case MORTAR_WEIGHTS :
+#ifdef TRIBOL_USE_HOST
+         SLIC_WARNING("CouplingScheme::getGapTol(): 'MORTAR_WEIGHTS' " << 
+                        "method does not require use of a gap tolerance." );
+#endif
+         break;
+
+      case COMMON_PLANE :
+
+         switch ( m_contact_case ) {
+
+            case TIED_NORMAL :
+               gap_tol = m_parameters.gap_tied_tol *
+                          axom::utilities::max( m_mesh1.getFaceRadius()[fid1],
+                                                m_mesh2.getFaceRadius()[fid2] );
+               break;
+
+            default :  
+               gap_tol = -1. * m_parameters.gap_tol_ratio *  
+                           axom::utilities::max( m_mesh1.getFaceRadius()[fid1],
+                                                 m_mesh2.getFaceRadius()[fid2] );
+               break;
+
+         } // end switch over m_contactModel
+         break;
+
+      default : 
+         break;
+   } // end switch over m_contactMethod
   
    return gap_tol;
 }
-
-//------------------------------------------------------------------------------
-template class CouplingScheme::ViewerBase<CouplingScheme,
-                                          Parameters, 
-                                          MeshData::Viewer,
-                                          ContactPlane,
-                                          ContactPlane2D,
-                                          ContactPlane3D>;
-template class CouplingScheme::ViewerBase<const CouplingScheme, 
-                                          const Parameters, 
-                                          const MeshData::Viewer,
-                                          const ContactPlane,
-                                          const ContactPlane2D,
-                                          const ContactPlane3D>;
 
 } /* namespace tribol */

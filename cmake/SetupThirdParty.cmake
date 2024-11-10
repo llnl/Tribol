@@ -39,22 +39,6 @@ endif()
 
 
 #------------------------------------------------------------------------------
-# RAJA
-#------------------------------------------------------------------------------
-
-if (DEFINED RAJA_DIR)
-  message(STATUS "Setting up external RAJA TPL...")
-
-  include(${RAJA_DIR}/lib/cmake/raja/RAJATargets.cmake)
-
-  list(APPEND TPL_DEPS RAJA)
-  set(TRIBOL_USE_RAJA TRUE)
-else()
-  message(STATUS "RAJA support is OFF")
-endif()
-
-
-#------------------------------------------------------------------------------
 # Umpire
 #------------------------------------------------------------------------------
 
@@ -67,6 +51,21 @@ if (DEFINED UMPIRE_DIR)
   set(TRIBOL_USE_UMPIRE TRUE)
 else()
   message(STATUS "Umpire support is OFF")
+endif()
+
+
+#------------------------------------------------------------------------------
+# RAJA
+#------------------------------------------------------------------------------
+
+if (DEFINED RAJA_DIR)
+  message(STATUS "Setting up external RAJA TPL...")
+
+  find_dependency(raja REQUIRED PATHS "${RAJA_DIR}")
+
+  set(TRIBOL_USE_RAJA TRUE)
+else()
+  message(STATUS "RAJA support is OFF")
 endif()
 
 

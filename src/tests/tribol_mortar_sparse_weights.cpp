@@ -40,7 +40,7 @@
 
 using RealT = tribol::RealT;
 
-void computeGapsFromSparseWts( tribol::CouplingScheme const * cs, RealT * gaps )
+void computeGapsFromSparseWts( tribol::CouplingScheme* cs, RealT* gaps )
 {
    int const dim = cs->spatialDimension();
 
@@ -49,8 +49,8 @@ void computeGapsFromSparseWts( tribol::CouplingScheme const * cs, RealT * gaps )
    // Grab pointers to mesh data
    //
    ////////////////////////////////////////////////////////////////////////
-   auto& mortarMesh = cs->getMesh1();
-   auto& nonmortarMesh = cs->getMesh2();
+   auto mortarMesh = cs->getMesh1().getView();
+   auto nonmortarMesh = cs->getMesh2().getView();
 
    // get mortar weights in CSR format. Note this simple API function 
    // calls tribol::getCSRMatrix() so this API function in the Tribol 

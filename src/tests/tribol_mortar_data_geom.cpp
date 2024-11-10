@@ -420,8 +420,6 @@ TEST_F( MortarGeomTest, mortar_ironing )
   
    tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
 
-   //int nodeOffset = mortarMesh.m_sortedSurfaceNodeIds[ mortarMesh.m_numSurfaceNodes-1 ] + 1;
-
    int *I = nullptr;
    int *J = nullptr;
    RealT *wts = nullptr;

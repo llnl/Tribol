@@ -43,7 +43,7 @@ void ComputeMortarWeights( SurfaceContactElem & elem );
  * \param [in] cs pointer to coupling scheme
  *
  */
-void ComputeSingleMortarGaps( const CouplingScheme* cs );
+void ComputeSingleMortarGaps( CouplingScheme* cs );
 
 /*!
  *
@@ -184,7 +184,7 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
  *
  */
 template< >
-int GetMethodData< MORTAR_WEIGHTS >( CouplingScheme const * cs );
+int GetMethodData< MORTAR_WEIGHTS >( CouplingScheme* cs );
 
 }
 

@@ -310,6 +310,6 @@ spack:
     conduit:
       variants: ~shared~test~examples~utilities
     raja:
-      require: "@2024.02.0~shared~examples~exercises"
+      require: "@2024.07.0~shared~examples~exercises"
     umpire:
-      require: "@2024.02.0~shared~examples"
+      require: "@2024.07.0~shared~examples"

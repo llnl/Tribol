@@ -9,7 +9,7 @@
 # This is the shared configuration of jobs for ruby
 .on_ruby:
   variables:
-    ALLOC_OPTIONS: "--res=ci --exclusive=user --deadline=now+1hour --mpibind=off"
+    ALLOC_OPTIONS: "--res=ci --exclusive=user --deadline=now+1hour"
     ALLOC_COMMAND: "salloc ${ALLOC_OPTIONS} -N ${ALLOC_NODES} -t ${ALLOC_TIME}"
   tags:
     - shell

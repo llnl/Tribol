@@ -62,9 +62,6 @@ void TestMortarWeights( tribol::CouplingScheme const * cs, RealT exact_area, Rea
 
    SLIC_ERROR_IF(I==nullptr, "Mortar wts test, I is null.");
 
-   // get mortar node id offset to distinguish mortar from nonmortar column contributions
-   // int nodeOffset = mortarMesh.m_sortedSurfaceNodeIds[ mortarMesh.m_numSurfaceNodes-1 ] + 1;
-
    RealT area = 0.;
    int numTotalNodes = static_cast<tribol::MortarData*>( cs->getMethodData() )->m_numTotalNodes;
    for (int a=0; a<numTotalNodes; ++a)

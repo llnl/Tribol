@@ -1109,11 +1109,10 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian(
   block_J->owns_blocks = 1;
 
   // fill block operator
-  auto mpi_comm = parent_data_.GetParentCoords().ParFESpace()->GetComm();
   auto& submesh_fes = submesh_data_.GetSubmeshFESpace();
   auto& parent_trial_fes = *parent_data_.GetParentCoords().ParFESpace();
   auto J_full = std::make_unique<mfem::HypreParMatrix>(
-    mpi_comm, submesh_fes.GetVSize(), 
+    mpi.MPIComm(), submesh_fes.GetVSize(), 
     submesh_fes.GlobalVSize(), parent_trial_fes.GlobalVSize(),
     submesh_J.GetI(), submesh_J.GetJ(), submesh_J.GetData(),
     submesh_fes.GetDofOffsets(), parent_trial_fes.GetDofOffsets()

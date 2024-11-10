@@ -13,14 +13,14 @@ namespace tribol
 
 /// returns the magnitude of a 3-vector
 TRIBOL_HOST_DEVICE RealT magnitude( RealT const vx,  ///< [in] x-component of the input vector
-                 RealT const vy,  ///< [in] y-component of the input vector
-                 RealT const vz   ///< [in] z-component of the input vector
-               );
+                                    RealT const vy,  ///< [in] y-component of the input vector
+                                    RealT const vz   ///< [in] z-component of the input vector
+                                  );
 
 /// returns the magnitude of a 2-vector
 TRIBOL_HOST_DEVICE RealT magnitude( RealT const vx,  ///< [in] x-component of the input vector
-                 RealT const vy   ///< [in] y-component of the input vector
-               );
+                                    RealT const vy   ///< [in] y-component of the input vector
+                                  );
 
 /// returns the dot product of two vectors
 TRIBOL_HOST_DEVICE RealT dotProd( RealT const * const v,  ///< [in] first vector

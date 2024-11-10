@@ -43,8 +43,8 @@ struct SurfaceContactElem
                                           RealT * xOverlap,   ///< [in] Vertex coordinates of overlap
                                           int nFV,       ///< [in] Number of face vertices
                                           int nPV,       ///< [in] Number of overlap vertices
-                                          const MeshData::Viewer* mesh1,      ///< [in] Id for mesh 1
-                                          const MeshData::Viewer* mesh2,      ///< [in] Id for mesh 2
+                                          const MeshData::Viewer* mesh1,      ///< [in] View of mesh 1
+                                          const MeshData::Viewer* mesh2,      ///< [in] View of mesh 2
                                           int fId1,      ///< [in] Id for face 1
                                           int fId2       ///< [in] Id for face 2
                                         )
@@ -76,8 +76,8 @@ struct SurfaceContactElem
    }
 
    int dim;          ///< Problem dimension
-   const MeshData::Viewer* m_mesh1;      ///< Mesh Id for face 1 (mortar)
-   const MeshData::Viewer* m_mesh2;      ///< Mesh Id for face 2 (nonmortar)
+   const MeshData::Viewer* m_mesh1;      ///< Mesh view for face 1 (mortar)
+   const MeshData::Viewer* m_mesh2;      ///< Mesh view for face 2 (nonmortar)
    int faceId1;      ///< Face Id for face 1 (mortar)
    int faceId2;      ///< Face Id for face 2 (nonmortar)
    RealT * faceCoords1;   ///< Coordinates of face 1 in 3D
@@ -95,7 +95,7 @@ struct SurfaceContactElem
 
    int numActiveGaps;  ///< Number of local face-pair active gaps
 
-   StackArray<DeviceArray2D<RealT>, 9> blockJ;
+   StackArray<DeviceArray2D<RealT>, 9> blockJ; ///< Block element Jacobian contributions
 
    /// routine to allocate space to store mortar weights
    void allocateMortarWts();

@@ -834,7 +834,7 @@ void TestMesh::allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY,
    }
 
    SLIC_DEBUG_IF( deleteVels, "TestMesh::allocateAndSetVelocities(): " << 
-                       "a velocity array has been deleted and RealTlocated." );
+                       "a velocity array has been deleted and reallocated." );
 
 } // end TestMesh::allocateAndSetVelocities()
 
@@ -877,7 +877,7 @@ void TestMesh::allocateAndSetBulkModulus( IndexT mesh_id, RealT val )
    }
 
    SLIC_DEBUG_IF( deleteData, "TestMesh::allocateAndSetBulkModulus(): " << 
-                  "a bulk modulus array has been deleted and RealTlocated." );
+                  "a bulk modulus array has been deleted and reallocated." );
 
 } // end TestMesh::allocateAndSetBulkModulus()
 

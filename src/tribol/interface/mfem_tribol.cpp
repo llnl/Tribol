@@ -122,9 +122,8 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
 {
    auto coupling_scheme = CouplingSchemeManager::getInstance().findData(cs_id);
    SLIC_ERROR_ROOT_IF( !coupling_scheme, 
-                       "Coupling scheme with given cs_id does not exist. Call tribol::registerMfemCouplingScheme() " <<
-                       "to create a coupling scheme with this cs_id." );
-   SLIC_ERROR_ROOT_IF(coupling_scheme == nullptr, "No coupling scheme defined with given cs_id.");
+                       axom::fmt::format("Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                       "to create a coupling scheme with this cs_id.", cs_id) );
    SLIC_ERROR_ROOT_IF(
       !coupling_scheme->hasMfemData(),
       "Coupling scheme does not contain MFEM data. "
@@ -139,8 +138,8 @@ void setMfemKinematicConstantPenalty( IndexT cs_id,
 {
    auto coupling_scheme = CouplingSchemeManager::getInstance().findData(cs_id);
    SLIC_ERROR_ROOT_IF( !coupling_scheme, 
-                       "Coupling scheme with given cs_id does not exist. Call tribol::registerMfemCouplingScheme() " <<
-                       "to create a coupling scheme with this cs_id." );
+                       axom::fmt::format("Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                       "to create a coupling scheme with this cs_id.", cs_id) );
    SLIC_ERROR_ROOT_IF(
       !coupling_scheme->hasMfemData(),
       "Coupling scheme does not contain MFEM data. "
@@ -157,8 +156,8 @@ void setMfemKinematicElementPenalty( IndexT cs_id,
 {
    auto coupling_scheme = CouplingSchemeManager::getInstance().findData(cs_id);
    SLIC_ERROR_ROOT_IF( !coupling_scheme, 
-                       "Coupling scheme with given cs_id does not exist. Call tribol::registerMfemCouplingScheme() " <<
-                       "to create a coupling scheme with this cs_id." );
+                       axom::fmt::format("Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                       "to create a coupling scheme with this cs_id.", cs_id) );
    SLIC_ERROR_ROOT_IF(
       !coupling_scheme->hasMfemData(),
       "Coupling scheme does not contain MFEM data. "
@@ -176,8 +175,8 @@ void setMfemRateConstantPenalty( IndexT cs_id,
 {
    auto coupling_scheme = CouplingSchemeManager::getInstance().findData(cs_id);
    SLIC_ERROR_ROOT_IF( !coupling_scheme, 
-                       "Coupling scheme with given cs_id does not exist. Call tribol::registerMfemCouplingScheme() " <<
-                       "to create a coupling scheme with this cs_id." );
+                       axom::fmt::format("Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                       "to create a coupling scheme with this cs_id.", cs_id) );
    SLIC_ERROR_ROOT_IF(
       !coupling_scheme->hasMfemData(),
       "Coupling scheme does not contain MFEM data. "
@@ -202,8 +201,8 @@ void setMfemRatePercentPenalty( IndexT cs_id,
 {
    auto coupling_scheme = CouplingSchemeManager::getInstance().findData(cs_id);
    SLIC_ERROR_ROOT_IF( !coupling_scheme, 
-                       "Coupling scheme with given cs_id does not exist. Call tribol::registerMfemCouplingScheme() " <<
-                       "to create a coupling scheme with this cs_id." );
+                       axom::fmt::format("Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                       "to create a coupling scheme with this cs_id.", cs_id) );
    SLIC_ERROR_ROOT_IF(
       !coupling_scheme->hasMfemData(),
       "Coupling scheme does not contain MFEM data. "
@@ -226,8 +225,8 @@ void setMfemKinematicPenaltyScale( IndexT cs_id, RealT mesh1_scale, RealT mesh2_
 {
    auto coupling_scheme = CouplingSchemeManager::getInstance().findData(cs_id);
    SLIC_ERROR_ROOT_IF( !coupling_scheme, 
-                       "Coupling scheme with given cs_id does not exist. Call tribol::registerMfemCouplingScheme() " <<
-                       "to create a coupling scheme with this cs_id." );
+                       axom::fmt::format("Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                       "to create a coupling scheme with this cs_id.", cs_id) );
    SLIC_ERROR_ROOT_IF(
       !coupling_scheme->hasMfemData(),
       "Coupling scheme does not contain MFEM data. "
@@ -247,8 +246,8 @@ void updateMfemElemThickness( IndexT cs_id )
 {
    auto coupling_scheme = CouplingSchemeManager::getInstance().findData(cs_id);
    SLIC_ERROR_ROOT_IF( !coupling_scheme, 
-                       "Coupling scheme with given cs_id does not exist. Call tribol::registerMfemCouplingScheme() " <<
-                       "to create a coupling scheme with this cs_id." );
+                       axom::fmt::format("Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                       "to create a coupling scheme with this cs_id.", cs_id) );
    SLIC_ERROR_ROOT_IF(
       !coupling_scheme->hasMfemData(),
       "Coupling scheme does not contain MFEM data. "
@@ -266,8 +265,8 @@ void updateMfemMaterialModulus( IndexT cs_id, mfem::Coefficient& modulus_coeffic
 {
    auto coupling_scheme = CouplingSchemeManager::getInstance().findData(cs_id);
    SLIC_ERROR_ROOT_IF( !coupling_scheme, 
-                       "Coupling scheme with given cs_id does not exist. Call tribol::registerMfemCouplingScheme() " <<
-                       "to create a coupling scheme with this cs_id." );
+                       axom::fmt::format("Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                       "to create a coupling scheme with this cs_id.", cs_id) );
    SLIC_ERROR_ROOT_IF(
       !coupling_scheme->hasMfemData(),
       "Coupling scheme does not contain MFEM data. "
@@ -285,8 +284,8 @@ void registerMfemVelocity( IndexT cs_id, const mfem::ParGridFunction& v )
 {
    auto coupling_scheme = CouplingSchemeManager::getInstance().findData(cs_id);
    SLIC_ERROR_ROOT_IF( !coupling_scheme, 
-                       "Coupling scheme with given cs_id does not exist. Call tribol::registerMfemCouplingScheme() " <<
-                       "to create a coupling scheme with this cs_id." );
+                       axom::fmt::format("Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                       "to create a coupling scheme with this cs_id.", cs_id) );
    SLIC_ERROR_ROOT_IF(
       !coupling_scheme->hasMfemData(), 
       "Coupling scheme does not contain MFEM data. "
@@ -299,8 +298,8 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r )
 {
    auto coupling_scheme = CouplingSchemeManager::getInstance().findData(cs_id);
    SLIC_ERROR_ROOT_IF( !coupling_scheme, 
-                       "Coupling scheme with given cs_id does not exist. Call tribol::registerMfemCouplingScheme() " <<
-                       "to create a coupling scheme with this cs_id." );
+                       axom::fmt::format("Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                       "to create a coupling scheme with this cs_id.", cs_id) );
    SLIC_ERROR_ROOT_IF(
       !coupling_scheme->hasMfemData(), 
       "Coupling scheme does not contain MFEM data. "
@@ -313,8 +312,8 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
 {
    CouplingScheme* coupling_scheme = CouplingSchemeManager::getInstance().findData(cs_id);
    SLIC_ERROR_ROOT_IF( !coupling_scheme, 
-                       "Coupling scheme with given cs_id does not exist. Call tribol::registerMfemCouplingScheme() " <<
-                       "to create a coupling scheme with this cs_id." );
+                       axom::fmt::format("Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                       "to create a coupling scheme with this cs_id.", cs_id) );
    SparseMode sparse_mode = coupling_scheme
       ->getEnforcementOptions().lm_implicit_options.sparse_mode;
    if (sparse_mode != SparseMode::MFEM_ELEMENT_DENSE)
@@ -326,8 +325,8 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
    }
    SLIC_ERROR_ROOT_IF(
       !coupling_scheme->hasMfemData(), 
-      "Coupling scheme does not contain MFEM data."
-      "Create the coupling scheme using registerMfemCouplingScheme() to return a MFEM block Jacobian."
+      axom::fmt::format("Coupling scheme cs_id={0} does not contain MFEM data."
+      "Create the coupling scheme using registerMfemCouplingScheme() to return a MFEM block Jacobian.", cs_id)
    );
    // creates a block Jacobian on the parent mesh/parent-linked boundary submesh
    // based on the element Jacobians stored in the coupling scheme's method data
@@ -340,13 +339,13 @@ void getMfemGap( IndexT cs_id, mfem::Vector& g )
 {
    auto coupling_scheme = CouplingSchemeManager::getInstance().findData(cs_id);
    SLIC_ERROR_ROOT_IF( !coupling_scheme, 
-                       "Coupling scheme with given cs_id does not exist. Call tribol::registerMfemCouplingScheme() " <<
-                       "to create a coupling scheme with this cs_id." );
+                       axom::fmt::format("Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                       "to create a coupling scheme with this cs_id.", cs_id) );
    SLIC_ERROR_ROOT_IF(
       !coupling_scheme->hasMfemSubmeshData(), 
-      "Coupling scheme does not contain MFEM pressure field data. "
+      axom::fmt::format("Coupling scheme cs_id={0} does not contain MFEM pressure field data. "
       "Create the coupling scheme using registerMfemCouplingScheme() and set the "
-      "enforcement_method to LAGRANGE_MULTIPLIER to set the gap vector."
+      "enforcement_method to LAGRANGE_MULTIPLIER to set the gap vector.", cs_id)
    );
    coupling_scheme->getMfemSubmeshData()->GetSubmeshGap(g);
 }
@@ -355,13 +354,13 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id )
 {
    auto coupling_scheme = CouplingSchemeManager::getInstance().findData(cs_id);
    SLIC_ERROR_ROOT_IF( !coupling_scheme, 
-                       "Coupling scheme with given cs_id does not exist. Call tribol::registerMfemCouplingScheme() " <<
-                       "to create a coupling scheme with this cs_id." );
+                       axom::fmt::format("Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                       "to create a coupling scheme with this cs_id.", cs_id) );
    SLIC_ERROR_ROOT_IF(
       !coupling_scheme->hasMfemSubmeshData(), 
-      "Coupling scheme does not contain MFEM pressure field data. "
+      axom::fmt::format("Coupling scheme cs_id={0} does not contain MFEM pressure field data. "
       "Create the coupling scheme using registerMfemCouplingScheme() and set the "
-      "enforcement_method to LAGRANGE_MULTIPLIER to access the pressure field."
+      "enforcement_method to LAGRANGE_MULTIPLIER to access the pressure field.", cs_id)
    );
    return coupling_scheme->getMfemSubmeshData()->GetSubmeshPressure();
 }

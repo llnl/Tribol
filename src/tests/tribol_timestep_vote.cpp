@@ -81,7 +81,7 @@ TEST_F( CommonPlaneTest, zero_velocity_small_gap )
    int nElemsYS = nNonmortarElems;
    int nElemsZS = nNonmortarElems;
 
-   // mesh bounding box with 'small' (0.055) interpenetration gap
+   // mesh bounding box with 'small' (<30% element thickness) interpenetration gap
    RealT x_min1 = 0.;
    RealT y_min1 = 0.;
    RealT z_min1 = 0.; 
@@ -537,7 +537,7 @@ TEST_F( CommonPlaneTest, large_velocity_large_gap )
    int nElemsYS = nNonmortarElems;
    int nElemsZS = nNonmortarElems;
 
-   // mesh bounding box with 0.1 interpenetration gap
+   // mesh bounding box with >= 30% element thickness interpenetration gap
    RealT interpen_gap = 0.3 * 1.0 / nMortarElems;
    RealT x_min1 = 0.;
    RealT y_min1 = 0.;

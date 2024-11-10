@@ -25,8 +25,10 @@ TRIBOL_HOST_DEVICE int GetNumFaceNodes( int dim, FaceOrderType order_type )
       case LINEAR :
          numNodes = (dim == 3) ? 4 : 2; // segments and quads
          break;
-      default : 
-        //  SLIC_ERROR("GetNumFaceNodes(): order_type not supported.");
+      default :
+#ifdef TRIBOL_USE_HOST
+         SLIC_ERROR("GetNumFaceNodes(): order_type not supported.");
+#endif
          break;
    } 
    return numNodes;
@@ -38,7 +40,6 @@ TRIBOL_HOST_DEVICE void GalerkinEval( const RealT* const x,
                                       int dim, int galerkinDim, RealT* nodeVals, RealT* galerkinVal )
 {
 #ifdef TRIBOL_USE_HOST
-   // TODO: Refactor such that the checks aren't needed
    SLIC_ERROR_IF(x==nullptr, "GalerkinEval(): input pointer, x, is NULL.");
    SLIC_ERROR_IF(nodeVals==nullptr, "GalerkinEval(): input pointer, nodeVals, is NULL.");
    SLIC_ERROR_IF(galerkinVal==nullptr, "GalerkinEval(): input/output pointer, galerkinVal, is NULL.");
@@ -61,7 +62,6 @@ TRIBOL_HOST_DEVICE void GalerkinEval( const RealT* const x,
          break;
       default :
 #ifdef TRIBOL_USE_HOST
-         // TODO: Refactor such that the check isn't needed
          SLIC_ERROR( "GalerkinEval(): basis_type = PARENT not yet supported." );
 #endif
          break;
@@ -84,7 +84,6 @@ TRIBOL_HOST_DEVICE void EvalBasis( const RealT* const x,
    else
    {
 #ifdef TRIBOL_USE_HOST
-      // TODO: Refactor such that the check isn't needed
       SLIC_ERROR("EvalBasis: invalid numPoints argument.");
 #endif
    }
@@ -97,14 +96,14 @@ TRIBOL_HOST_DEVICE void SegmentBasis( const RealT* const x,
                                       const int numPoints, const int vertexId, 
                                       RealT& phi )
 {
-   // TODO: Refactor such that the check isn't needed
-   //  SLIC_ERROR_IF(numPoints != 2, "SegmentBasis: numPoints is " << numPoints <<
-   //                " but should be 2.");
+#ifdef TRIBOL_USE_HOST
+    SLIC_ERROR_IF(numPoints != 2, "SegmentBasis: numPoints is " << numPoints <<
+                  " but should be 2.");
 
-   // TODO: Refactor such that the check isn't needed
-   //  // note, vertexId is the index, 0 or 1.
-   //  SLIC_ERROR_IF(vertexId > numPoints-1, "SegmentBasis: vertexId is " << vertexId << 
-   //                " but should be 0 or 1.");
+    // note, vertexId is the index, 0 or 1.
+    SLIC_ERROR_IF(vertexId > numPoints-1, "SegmentBasis: vertexId is " << vertexId << 
+                  " but should be 0 or 1.");
+#endif
 
    // compute length of segment
    RealT vx = x[numPoints*1] - x[numPoints*0];
@@ -151,11 +150,13 @@ TRIBOL_HOST_DEVICE void WachspressBasis( const RealT* const x,
                                          const RealT pX, const RealT pY, const RealT pZ, 
                                          const int numPoints, const int vertexId, RealT& phi )
 {
-   // TODO: Refactor such that the check isn't needed
-   //  SLIC_ERROR_IF(numPoints<3, "WachspressBasis: numPoints < 3.");
+#ifdef TRIBOL_USE_HOST
+    SLIC_ERROR_IF(numPoints<3, "WachspressBasis: numPoints < 3.");
+#endif
 
    // first compute the areas of all the triangles formed by the i-1,i,i+1 vertices.
    // These consist of all the numerators in the Wachspress formulation
+   // NOTE: this limits the routine to 4 noded quadrilaterals
    constexpr int max_nodes_per_elem = 4;
    RealT triVertArea[ max_nodes_per_elem ];
    for (int i=0; i<numPoints; ++i)
@@ -234,10 +235,12 @@ TRIBOL_HOST_DEVICE void WachspressBasis( const RealT* const x,
 
    phi = myWeight / weightSum;
 
-  //  if (phi <= 0. || phi > 1.)
-  //  {
-  //     SLIC_ERROR("Wachspress Basis: phi is not between 0 and 1.");
-  //  }
+#ifdef TRIBOL_USE_HOST
+   if (phi <= 0. || phi > 1.)
+   {
+      SLIC_ERROR("Wachspress Basis: phi is not between 0 and 1.");
+   }
+#endif
 
    return;
 }

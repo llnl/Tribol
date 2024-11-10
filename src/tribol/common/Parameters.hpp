@@ -348,6 +348,7 @@ enum CaseError
  */
 enum MethodError
 {
+   INVALID_ELEMENT_TYPE,
    INVALID_METHOD,
    NO_METHOD_IMPLEMENTATION,
    DIFFERENT_FACE_TYPES,
@@ -480,8 +481,17 @@ public:
     VisType vis_type            = VIS_OVERLAPS; ///! Type of interface physics visualization output
     bool enable_timestep_vote   = false;   ///! True if host-code desires the timestep vote to be calculated and returned
 
-    RealT auto_contact_len_scale_factor;   ///! Scale factor applied to element thickness for auto contact length scale
     bool auto_interpen_check    = false;   ///! True if the auto-contact interpenetration check is used for full-overlap pairs
+
+    double auto_contact_len_scale_factor;  ///! Scale factor applied to element thickness for auto contact length scale
+    
+   // Interpenetration check for auto-contact. If true, this will check a full-overlap 
+   // face-pair configuration in the computational geoemtry routines to preclude 
+   // auto-contact of opposite sides of thin structures/plates. If the full-overlap 
+   // interpenetration kinematic gap is more than the smallest thickness of the 
+   // constituent face elements, then we don't consider the face-pair a contact candidate.
+   // Note, auto-contact will require registration of element thicknesses.
+    bool auto_contact_check     = false;   ///! True if auto-contact checks should be enabled
   };
 
 } // namespace tribol

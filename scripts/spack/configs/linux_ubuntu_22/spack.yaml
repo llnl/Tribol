@@ -167,12 +167,12 @@ spack:
 
     # Globally lock version of third party libraries that work on this platform
     axom:
-      require: "@0.9.0.1~shared~examples~fortran~lua~tools"
+      require: "@0.9.0.2~shared~examples~fortran~lua~tools"
     camp:
-      require: "@2024.02.0"
+      require: "@2024.07.0"
     conduit:
       variants: ~shared~test~examples~utilities
     raja:
-      require: "@2024.02.0~shared~examples~exercises"
+      require: "@2024.07.0~shared~examples~exercises"
     umpire:
-      require: "@2024.02.0~shared~examples"
+      require: "@2024.07.0~shared~examples"

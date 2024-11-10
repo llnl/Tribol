@@ -3,19 +3,16 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+#include "tribol/utils/ContactPlaneOutput.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/utils/ContactPlaneOutput.hpp"
 
 // AXOM includes
-#include "axom/config.hpp"
-#include "axom/slic.hpp"
-#include "axom/slam.hpp"
 #include "axom/fmt.hpp"
+#include "axom/slam.hpp"
+#include "axom/slic.hpp"
 
 // C++ includes
-#include <iomanip>
-#include <sstream>
 #include <fstream>
 
 namespace tribol
@@ -53,16 +50,15 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type,
                                  const int cycle, const RealT time )
 {
    CouplingScheme* couplingScheme  = CouplingSchemeManager::getInstance().findData(cs_id);
-   auto& mesh1 = couplingScheme->getMesh1();
-   auto& mesh2 = couplingScheme->getMesh2();
    SLIC_ERROR_ROOT_IF(!couplingScheme, "No coupling scheme registered with given cs_id.");
+   const auto mesh1 = couplingScheme->getMesh1().getView();
+   const auto mesh2 = couplingScheme->getMesh2().getView();
 
    int nranks = 1;
    int rank = -1;
    #ifdef TRIBOL_USE_MPI
-   // TODO: use parameters.problem_comm ?
-   MPI_Comm_rank(TRIBOL_COMM_WORLD, &rank);
-   MPI_Comm_size(TRIBOL_COMM_WORLD, &nranks);
+   MPI_Comm_rank(couplingScheme->getParameters().problem_comm, &rank);
+   MPI_Comm_size(couplingScheme->getParameters().problem_comm, &nranks);
    #endif
 
    /////////////////////////////////////////
@@ -210,7 +206,7 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type,
          }
          faces << std::endl;
 
-         // print cell types as VTK int IDs
+         // print cell types as VTK integer IDs
          {
             axom::fmt::print(faces, "CELL_TYPES {}\n", 2*cpSize);
             const int vtkid1 = dim==3? 7 : 3; // 7 is VTK_POLYGON; 3 is VTK_LINE
@@ -364,12 +360,16 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type,
          }
 
          // print the contact plane pressure scalar data
-        //  {
-        //     axom::fmt::print(overlap, "SCALARS {} {}\n", "overlap_pressure", "float");
-        //     axom::fmt::print(overlap, "LOOKUP_TABLE default\n");
-        //     axom::fmt::print(overlap, "{}", axom::fmt::join(cp.m_pressure.data(), cpMgr.m_pressure.data() + cpSize, " "));
-        //     overlap << std::endl;
-        //  }
+         {
+            axom::fmt::print(overlap, "SCALARS {} {}\n", "overlap_pressure", "float");
+            axom::fmt::print(overlap, "LOOKUP_TABLE default\n");
+            for (int i=0; i<cpSize; ++i)
+            {
+              auto& cp = couplingScheme->getContactPlane(i);
+               axom::fmt::print(overlap, "{} ", cp.m_pressure );
+            }
+            overlap << std::endl;
+         }
 
          // close file
          overlap.close();
@@ -428,8 +428,8 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type,
 
          // print mesh element connectivity
          int numTotalElements = mesh1.numberOfElements() + mesh2.numberOfElements();
-         int numSurfaceNodes = mesh1.numberOfNodes() * mesh1.numberOfNodesPerElement()
-                             + mesh2.numberOfNodes() * mesh2.numberOfNodesPerElement();
+         int numSurfaceNodes = mesh1.numberOfElements() * mesh1.numberOfNodesPerElement()
+                             + mesh2.numberOfElements() * mesh2.numberOfNodesPerElement();
 
          axom::fmt::print(mesh, "CELLS {} {}\n", numTotalElements, numTotalElements + numSurfaceNodes);
 

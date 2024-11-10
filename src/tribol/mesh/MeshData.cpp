@@ -360,7 +360,7 @@ Array1D<IndexT> MeshData::sortSurfaceNodeIds()
 } // end MeshData::sortSurfaceNodeIds()
 
 //------------------------------------------------------------------------------
-bool MeshData::computeFaceData()
+bool MeshData::computeFaceData(ExecutionMode exec_mode)
 {
   constexpr RealT nrml_mag_tol = 1.0e-15;
 
@@ -391,7 +391,7 @@ bool MeshData::computeFaceData()
   auto dim = m_dim;
   auto conn = m_connectivity;
   ArrayViewT<IndexT> face_data_ok = face_data_ok_data;
-  forAllExec(getExecutionMode(m_mem_space), numberOfElements(), 
+  forAllExec(exec_mode, numberOfElements(), 
     [c, x, n, area, radius, dim, conn, face_data_ok] TRIBOL_HOST_DEVICE (IndexT i) {
 
       // compute the vertex average centroid. This will lie in the 
@@ -458,7 +458,7 @@ bool MeshData::computeFaceData()
         if (mag >= nrml_mag_tol) {
           inv_mag = 1.0 / mag;
         } else {
-          face_data_ok[0] = false;
+          face_data_ok[0] = static_cast<IndexT>(false);
         }
         n[0][i] *= inv_mag;
         n[1][i] *= inv_mag;
@@ -600,26 +600,15 @@ void MeshData::computeNodalNormals( int const dim )
          // piece of memory and there may be a memory issue when numFaceNrmlsToNodes is deleted
          // at the end of this routine.
          int nodeId = getGlobalNodeId(i, j);
-         m_node_n(0, nodeId) += this->m_n[0][ i ]; // m_n[0][i] is the ith face normal x-component
-         m_node_n(1, nodeId) += this->m_n[1][ i ]; // see above...
+         for (int d=0; d<this->spatialDimension(); ++d)
+         {
+            m_node_n(d, nodeId) += this->m_n(d, i); // m_n(d, i) is the ith face normal d-component
+         }
 
          // increment face-normal-to-node contribution counter
          ++numFaceNrmlsToNodes[ nodeId ];
 
       } // end loop over element nodes
-
-      // populate z-component for 3D problems
-      if (dim == 3)
-      {
-
-         // repeat loop over element nodes for z-component
-         for (int k=0; k<this->numberOfNodesPerElement(); ++k)
-         {
-            int nodeId = getGlobalNodeId(i, k); 
-            m_node_n[2][ nodeId ] += this->m_n[2][ i ];
-         } // end loop over element nodes
-
-      } // end if (dim == 3)
 
    } // end loop over elements
 
@@ -767,16 +756,28 @@ void MeshData::print(std::ostream& os) const
    }
 
    // normals
-  //  if( !m_n.empty() )
-  //  {
-  //     os << axom::fmt::format("\n\tnx: {}", axom::fmt::join(m_n[0].data(), m_n[0].data()+num_elem, ", "));
-  //     os << axom::fmt::format("\n\tny: {}", axom::fmt::join(m_n[1].data(), m_n[1].data()+num_elem, ", "));
-  //     if(m_dim == 3)
-  //     {  
-  //        os << axom::fmt::format("\n\tnz: {}", axom::fmt::join(m_n[2].data(), m_n[2].data()+num_elem, ", "));
-  //     }
-  //  }
-  //  os << "\n  }";
+   if( !m_n.empty() )
+   {
+      os << "\n\tnx: " << m_n(0, 0);
+      for (int e{1}; e < num_elem; ++e)
+      {
+         os << ", " <<  m_n(e, 0);
+      }
+      os << "\n\tny: " << m_n(0, 1);
+      for (int e{1}; e < num_elem; ++e)
+      {
+         os << ", " <<  m_n(e, 1);
+      }
+      if(m_dim == 3)
+      {  
+         os << "\n\tnz: " << m_n(0, 2);
+         for (int e{1}; e < num_elem; ++e)
+         {
+            os << ", " <<  m_n(e, 2);
+         }
+      }
+   }
+   os << "\n  }";
 
    os << "\n}";
 }

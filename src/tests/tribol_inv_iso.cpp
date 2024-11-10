@@ -56,8 +56,8 @@ public:
 
       bool convrg = false;
       RealT res = tribol::magnitude((point[0] - map_point[0]), 
-                                  (point[1] - map_point[1]),
-                                  (point[2] - map_point[2]));
+                                    (point[1] - map_point[1]),
+                                    (point[2] - map_point[2]));
   
       if (res < tol)
       {

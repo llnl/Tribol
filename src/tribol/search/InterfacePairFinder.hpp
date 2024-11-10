@@ -1,11 +1,8 @@
-/*
- *******************************************************************************
- * Copyright (c) 2017-2020, Lawrence Livermore National Security, LLC.
- *
- * Produced at the Lawrence Livermore National Laboratory
- *
- *******************************************************************************
- */
+// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// other Tribol Project Developers. See the top-level LICENSE file for details.
+//
+// SPDX-License-Identifier: (MIT)
+
 #ifndef TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_
 #define TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_
 
@@ -17,7 +14,6 @@ namespace tribol
 
 // Forward Declarations
 class CouplingScheme;
-struct InterfacePair;
 class SearchBase;
 
 
@@ -26,19 +22,17 @@ class SearchBase;
 /*!
  * \brief Basic geometry/proximity checks for face pairs
  *
- * \param [in] pairIndex1 index of 1st element in pair
- * \param [in] pairIndex2 index of 2nd element in pair
- * \param [in] meshId1 mesh ID for 1st element in pair
- * \param [in] meshId2 mesh ID for 2nd element in pair
- * \param [in] pMesh1 pointer to data for mesh with ID meshId1
- * \param [in] pMesh2 pointer to data for mesh with ID meshId2
+ * \param [in] element_id1 id of 1st element in pair
+ * \param [in] element_id2 id of 2nd element in pair
+ * \param [in] mesh1 mesh view for 1st element in pair
+ * \param [in] mesh2 mesh view for 2nd element in pair
  * \param [in] mode ContactMode
+ * \param [in] auto_contact_check Is auto-contact assumed?
  *
  */
-//bool geomFilter( InterfacePair const & iPair, ContactMode const mode );
-TRIBOL_HOST_DEVICE bool geomFilter( const IndexT pairIndex1, const IndexT pairIndex2,
+TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2,
                                     const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                                    ContactMode const mode );
+                                    ContactMode mode, bool auto_contact_check );
 
 /*!
  * \class InterfacePairFinder

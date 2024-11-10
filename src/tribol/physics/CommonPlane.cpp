@@ -172,8 +172,8 @@ int ApplyNormal< COMMON_PLANE, PENALTY >( CouplingScheme* cs )
       {
          auto& plane = cs_view.getContactPlane(i);
 
-         auto& mesh1 = cs_view.getMesh1();
-         auto& mesh2 = cs_view.getMesh2();
+         auto& mesh1 = cs_view.getMesh1View();
+         auto& mesh2 = cs_view.getMesh2View();
 
          // get pair indices
          IndexT index1 = plane.getCpElementId1();
@@ -184,7 +184,7 @@ int ApplyNormal< COMMON_PLANE, PENALTY >( CouplingScheme* cs )
 
         //  don't proceed for gaps that don't violate the constraints. This check 
         //  allows for numerically zero interpenetration.
-         RealT gap_tol = cs_view.getCommonPlaneGapTol( index1, index2 );
+         RealT gap_tol = cs_view.getGapTol( index1, index2 );
 
         if ( gap > gap_tol )
         {
@@ -292,8 +292,10 @@ int ApplyNormal< COMMON_PLANE, PENALTY >( CouplingScheme* cs )
         int num_nodes_per_face = mesh1.numberOfNodesPerElement();
         initRealArray( xf1, dim * num_nodes_per_face, 0. );
         initRealArray( xf2, dim * num_nodes_per_face, 0. );
+        // initialize assuming 2d
         auto xVert_size = 4;
         auto numPolyVert = 2;
+        // update if we are in 3d
         if (dim == 3)
         {
           auto& cp3 = static_cast<ContactPlane3D&>(plane);

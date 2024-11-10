@@ -28,8 +28,14 @@ TRIBOL_HOST_DEVICE void EvalWeakFormIntegral< COMMON_PLANE, SINGLE_POINT >
    // compute the area centroid of the overlap polygon,
    // which serves as the single integration point
    RealT cx[3] = {0., 0., 0.};
-   PolyAreaCentroid( elem.overlapCoords, elem.dim, elem.numPolyVert,
-                     cx[0], cx[1], cx[2] );
+   if (elem.dim == 2)
+   {
+      VertexAvgCentroid( elem.overlapCoords, elem.dim, elem.numPolyVert,
+                         cx[0], cx[1], cx[2] );
+   } else {
+      PolyAreaCentroid( elem.overlapCoords, elem.dim, elem.numPolyVert,
+                        cx[0], cx[1], cx[2] );
+   }
 
    ///////////////////////////////////////////////
    //
