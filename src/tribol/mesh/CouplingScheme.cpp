@@ -1378,34 +1378,26 @@ void CouplingScheme::setSlicLoggingLevel()
 void CouplingScheme::allocateMethodData()
 {
    auto& mesh1 = MeshManager::getInstance().getData(m_mesh_id1);
-   auto& mesh2 = MeshManager::getInstance().getData(m_mesh_id2);
-   // check for valid coupling schemes for those with non-null meshes.
-   // Note: keep if-block for non-null meshes here. A valid coupling scheme 
-   // may have null meshes, but we don't want to allocate unnecessary memory here.
-   if (mesh1.numberOfElements() > 0 && mesh2.numberOfElements() > 0)
+   this->m_numTotalNodes = mesh1.numberOfNodes();
+
+   // dynamically allocate method data object for mortar method
+   switch (this->m_contactMethod)
    {
-      this->m_numTotalNodes = mesh1.numberOfNodes();
-
-      // dynamically allocate method data object for mortar method
-      switch (this->m_contactMethod)
+      case ALIGNED_MORTAR:
+      case MORTAR_WEIGHTS:
+      case SINGLE_MORTAR:
       {
-         case ALIGNED_MORTAR:
-         case MORTAR_WEIGHTS:
-         case SINGLE_MORTAR:
-         {
-            // dynamically allocate method data object
-            this->m_methodData = new MortarData;
-            static_cast<MortarData*>( m_methodData )->m_numTotalNodes = this->m_numTotalNodes;
-            break;
-         } // end case SINGLE_MORTAR
-         default:
-         {
-            this->m_methodData = nullptr;
-            break;
-         }
-      } // end if on non-null meshes
-
-   } // end if on non-null-meshes
+         // dynamically allocate method data object
+         this->m_methodData = new MortarData;
+         static_cast<MortarData*>( m_methodData )->m_numTotalNodes = this->m_numTotalNodes;
+         break;
+      } // end case SINGLE_MORTAR
+      default:
+      {
+         this->m_methodData = nullptr;
+         break;
+      }
+   } // end if on non-null meshes
 } // end CouplingScheme::allocateMethodData()
 
 //------------------------------------------------------------------------------

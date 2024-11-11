@@ -52,6 +52,17 @@ std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::TransferToParallel(
   return ConvertToHypreParMatrix(J_sparse, parallel_assemble);
 }
 
+std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::TransferToParallelAssembled(
+  const axom::Array<int>& test_elem_idx,
+  const axom::Array<int>& trial_elem_idx, 
+  const axom::Array<mfem::DenseMatrix>& src_elem_mat
+) const
+{
+  auto J_sparse = TransferToParallelSparse(test_elem_idx, trial_elem_idx, src_elem_mat);
+  J_sparse.Finalize();
+  return ConvertToHypreParMatrix(J_sparse, true);
+}
+
 mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse(
   const axom::Array<int>& test_elem_idx,
   const axom::Array<int>& trial_elem_idx, 
@@ -384,7 +395,6 @@ MPIArray<int> MatrixTransfer::buildRecvTrialElemDofs(
 {
   auto recv_trial_elem_dofs = MPIArray<int>(&getMPIUtility());
 
-  auto rank = getMPIUtility().MyRank();
   auto n_ranks = getMPIUtility().NRanks();
 
   // List of trial element offsets sorted by the parent test space rank and the
@@ -476,8 +486,7 @@ MPIArray<int> MatrixTransfer::buildRecvTrialElemDofs(
       }
     );
     // send parent trial vdofs back to test redecomp rank
-    auto dof_offsets = parent_trial_fes_.GetDofOffsets();
-    auto first_dof = HYPRE_AssumedPartitionCheck() ? dof_offsets[0] : dof_offsets[rank];
+    auto first_dof = parent_trial_fes_.GetMyDofOffset();
     auto trial_dofs_by_rank = MPIArray<int>(&getMPIUtility());
     trial_dofs_by_rank.SendRecvEach(
       [this, &trial_p2r_elems, &recv_trial_elem_offsets, first_dof](axom::IndexType src_trial_r)

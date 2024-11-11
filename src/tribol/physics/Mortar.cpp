@@ -737,19 +737,15 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
    int size2 = mesh2.numberOfNodesPerElement();
    auto planes_view = cs->get3DContactPlanes().view();
    auto& lm_opts = cs->getEnforcementOptions().lm_implicit_options;
-   if (!cs->nullMeshes())
+   if (lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
+       lm_opts.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN)
    {
       if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE )
       {
          static_cast<MortarData*>( cs->getMethodData() )->reserveBlockJ( 
-            {BlockSpace::MORTAR, BlockSpace::NONMORTAR, BlockSpace::LAGRANGE_MULTIPLIER},
+            {BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER},
             planes_view.size()
          );
-      }
-      else if ( lm_opts.sparse_mode == SparseMode::MFEM_INDEX_SET || 
-                lm_opts.sparse_mode == SparseMode::MFEM_LINKED_LIST )
-      {
-         static_cast<MortarData*>( cs->getMethodData() )->allocateMfemSparseMatrix( planes_view.size() );
       }
       else
       {
@@ -772,10 +768,10 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
          {
             x1[i*3 + d] = mesh1.getPosition()[d][node_id];
             n1[i*3 + d] = mesh1.getNodalNormals()(d, node_id);
-            f1[i*3 + d] = mesh1.getResponse()[d][node_id];
+            f1[i*3 + d] = 0.0;
          }
          p1[i] = mesh1.getNodalFields().m_node_pressure[node_id];
-         g1[i] = mesh1.getNodalFields().m_node_gap[node_id];
+         g1[i] = 0.0;
       }
       int elem2 = plane.getCpElementId1();  // switched from tribol convention
       RealT x2[12];
@@ -786,66 +782,88 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
          for (int d{0}; d < 3; ++d)
          {
             x2[i*3 + d] = mesh2.getPosition()[d][node_id];
-            f2[i*3 + d] = mesh2.getResponse()[d][node_id];
+            f2[i*3 + d] = 0.0;
          }
       }
       if (lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
           lm_opts.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN)
       {
-         double df1dx1[12*12];
-         double df1dx2[12*12];
          double df1dn1[12*12];
          for (int i{0}; i < 12*12; ++i)
          {
-            df1dx1[i] = 0.0;
-            df1dx2[i] = 0.0;
             df1dn1[i] = 0.0;
          }
-         double df1dp1[12*4];
-         for (int i{0}; i < 12*4; ++i)
-         {
-            df1dp1[i] = 0.0;
-         }
-         double dg1dx1[4*12];
-         double dg1dx2[4*12];
          double dg1dn1[4*12];
          for (int i{0}; i < 4*12; ++i)
          {
-            dg1dx1[i] = 0.0;
-            dg1dx2[i] = 0.0;
             dg1dn1[i] = 0.0;
          }
-         double df2dx1[12*12];
-         double df2dx2[12*12];
          double df2dn1[12*12];
          for (int i{0}; i < 12*12; ++i)
          {
-            df2dx1[i] = 0.0;
-            df2dx2[i] = 0.0;
             df2dn1[i] = 0.0;
          }
-         double df2dp1[12*4];
-         for (int i{0}; i < 12*4; ++i)
+         StackArray<DeviceArray2D<RealT>, 9> blockJ(3);
+         constexpr int n_disp = 12;
+         for (int i{}; i < 2; ++i)
          {
-            df2dp1[i] = 0.0;
+            for (int j{}; j < 2; ++j)
+            {
+               blockJ(i, j) = DeviceArray2D<RealT>(n_disp, n_disp);
+               blockJ(i, j).fill(0.0);
+            }
          }
-        //  StackArray<DeviceArray2D<RealT>, 9> blockJ(3);
-        //  for (int i{}; i < 2; ++i)
-        //  {
-        //     for (int j{}; j < 2; ++j)
-        //     {
-        //        blockJ(i, j) = DeviceArray2D<RealT>(nPrimal, nPrimal);
-        //        blockJ(i, j).fill(0.0);
-        //     }
-        //  }
-         ComputeMortarJacobianEnzyme(x1, n1, p1, f1, df1dx1, df1dx2, df1dn1, df1dp1,
-            g1, dg1dx1, dg1dx2, dg1dn1, size1, 
-            x2, f2, df2dx1, df2dx2, df2dn1, df2dp1, size2);
+         constexpr int n_multipliers = 4;
+         for (int i{}; i < 2; ++i)
+         {
+            blockJ(i, 2) = DeviceArray2D<RealT>(n_disp, n_multipliers);
+            blockJ(i, 2).fill(0.0);
+            // transpose
+            blockJ(2, i) = DeviceArray2D<RealT>(n_multipliers, n_disp);
+            blockJ(2, i).fill(0.0);
+         }
+         blockJ(2, 2) = DeviceArray2D<RealT>(n_multipliers, n_multipliers);
+         blockJ(2, 2).fill(0.0);
+
+         ComputeMortarJacobianEnzyme(x1, n1, p1, f1, 
+            blockJ(0, 0).data(), blockJ(0, 1).data(), df1dn1, blockJ(0, 2).data(),
+            g1, blockJ(2, 0).data(), blockJ(2, 1).data(), dg1dn1, size1, 
+            x2, f2, blockJ(1, 0).data(), blockJ(1, 1).data(), df2dn1, blockJ(1, 2).data(), size2);
+
+         if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE )
+         {
+            static_cast<MortarData*>( cs->getMethodData() )->storeElemBlockJ(
+               {elem1, elem2, elem1},
+               blockJ
+            );
+         }
+         else
+         {
+            SLIC_WARNING("Unsupported Jacobian storage method.");
+            return 1;
+         }
       }
       else if (lm_opts.eval_mode == ImplicitEvalMode::MORTAR_GAP ||
                lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL)
       {
          ComputeMortarForceEnzyme(x1, n1, p1, f1, g1, size1, x2, f2, size2);
+      }
+      for (int i{0}; i < size1; ++i)
+      {
+         int node_id = mesh1.getGlobalNodeId(elem1, i);
+         for (int d{0}; d < 3; ++d)
+         {
+            mesh1.getResponse()[d][node_id] = f1[i*3 + d];
+         }
+         mesh1.getNodalFields().m_node_gap[node_id] = g1[i];
+      }
+      for (int i{0}; i < size2; ++i)
+      {
+         int node_id = mesh2.getGlobalNodeId(elem2, i);
+         for (int d{0}; d < 3; ++d)
+         {
+            mesh2.getResponse()[d][node_id] = f2[i*3 + d];
+         }
       }
    }
 

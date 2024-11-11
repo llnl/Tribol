@@ -1696,6 +1696,17 @@ public:
     const MethodData* method_data
   ) const;
 
+  /**
+   * @brief Returns non-symmetric Enzyme-computed Jacobian contributions as an
+   * mfem::BlockOperator
+   * 
+   * @param method_data Method data holding element Jacobians
+   * @return std::unique_ptr<mfem::BlockOperator> 
+   */
+  std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobianEnzyme(
+    const MethodData& method_data
+  ) const;
+
 private:
   /**
    * @brief Creates and stores data that changes when the redecomp mesh is
@@ -1717,7 +1728,9 @@ private:
     /**
      * @brief Redecomp to parent-linked boundary submesh transfer operator
      */
-    std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_;
+    std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_00_;
+    std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_01_;
+    std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_10_;
   };
 
   /**
@@ -1754,6 +1767,8 @@ private:
    * @brief List giving global parent vdof given the submesh vdof
    */
   mfem::Array<int> submesh2parent_vdof_list_;
+
+  std::unique_ptr<mfem::HypreParMatrix> submesh_parent_vdof_xfer_;
 
   /**
    * @brief List of submesh true dofs that only exist on the mortar surface
