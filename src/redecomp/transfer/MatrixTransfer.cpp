@@ -52,17 +52,6 @@ std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::TransferToParallel(
   return ConvertToHypreParMatrix(J_sparse, parallel_assemble);
 }
 
-std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::TransferToParallelAssembled(
-  const axom::Array<int>& test_elem_idx,
-  const axom::Array<int>& trial_elem_idx, 
-  const axom::Array<mfem::DenseMatrix>& src_elem_mat
-) const
-{
-  auto J_sparse = TransferToParallelSparse(test_elem_idx, trial_elem_idx, src_elem_mat);
-  J_sparse.Finalize();
-  return ConvertToHypreParMatrix(J_sparse, true);
-}
-
 mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse(
   const axom::Array<int>& test_elem_idx,
   const axom::Array<int>& trial_elem_idx, 

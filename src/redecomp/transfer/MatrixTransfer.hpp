@@ -74,26 +74,6 @@ public:
 
   /**
    * @brief Transfers element RedecompMesh matrices to parent mfem::ParMesh
-   * t-dofs
-   *
-   * @param test_elem_idx List of element IDs on the redecomp test space
-   * @param trial_elem_idx List of element IDs on the redecomp trial space
-   * @param src List of element-level dense matrices from the redecomp mesh
-   * @return Owned pointer to mfem::HypreParMatrix on the parent mesh
-   *
-   * @note This method always returns a parallel assembled (i.e. on the t-dofs)
-   * matrix. The matrix is contructed directly on the t-dofs of the parent mesh
-   * eliminating the need to construct the matrix on all l-dofs and perform an
-   * mfem::RAP().
-   */
-  std::unique_ptr<mfem::HypreParMatrix> TransferToParallelAssembled(
-    const axom::Array<int>& test_elem_idx,
-    const axom::Array<int>& trial_elem_idx, 
-    const axom::Array<mfem::DenseMatrix>& src_elem_mat
-  ) const;
-
-  /**
-   * @brief Transfers element RedecompMesh matrices to parent mfem::ParMesh
    *
    * @param test_elem_idx List of element IDs on the redecomp test space
    * @param trial_elem_idx List of element IDs on the redecomp trial space
