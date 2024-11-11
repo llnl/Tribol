@@ -28,4 +28,4 @@ template <typename return_type, typename... Args>
 return_type __enzyme_fwddiff(Args...);
 #endif
 
-#endif
+#endif /* TRIBOL_COMMON_ENZYME_HPP_ */
