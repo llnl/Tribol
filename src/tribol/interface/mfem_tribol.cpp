@@ -330,16 +330,20 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
    );
    // creates a block Jacobian on the parent mesh/parent-linked boundary submesh
    // based on the element Jacobians stored in the coupling scheme's method data
+#ifdef TRIBOL_USE_ENZYME
    if (cs->isEnzymeEnabled())
    {
       return cs->getMfemJacobianData()->GetMfemBlockJacobianEnzyme(
          *cs->getMethodData()
       );
    } else {
+#endif
       return cs->getMfemJacobianData()->GetMfemBlockJacobian(
          cs->getMethodData()
       );
+#ifdef TRIBOL_USE_ENZYME
    }
+#endif
 }
 
 void getMfemGap( IndexT cs_id, mfem::Vector& g )

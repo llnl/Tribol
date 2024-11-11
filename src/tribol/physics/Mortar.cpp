@@ -19,7 +19,6 @@
 
 // Axom includes
 #include "axom/slic.hpp"
-#include "axom/primal.hpp"
 
 #include <iostream>
 

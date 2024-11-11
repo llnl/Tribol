@@ -8,10 +8,6 @@
 
 #include "tribol/common/Parameters.hpp"
 
-#ifdef TRIBOL_USE_ENZYME
-#include "tribol/common/Enzyme.hpp"
-#endif
-
 namespace tribol
 {
 
@@ -312,17 +308,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA,
                                                         RealT* polyY, 
                                                         int& numPolyVert, RealT& area,
                                                         bool orientCheck=true );
-
-// #ifdef TRIBOL_USE_ENZYME
-// TRIBOL_HOST_DEVICE FaceGeomError dIntersection2DPolygon(
-//   const RealT* xA, const RealT* dxA, const RealT* yA, const RealT* dyA, int numVertexA,
-//   const RealT* xB, const RealT* dxB, const RealT* yB, const RealT* dyB, int numVertexB,
-//   RealT posTol, RealT lenTol, 
-//   RealT* polyX, RealT* dpolyX, RealT* polyY, RealT* dpolyY, 
-//   int& numPolyVert, RealT& area, RealT& darea,
-//   bool orientCheck=true
-// );
-// #endif
                            
 /*!
  *

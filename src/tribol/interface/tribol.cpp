@@ -375,6 +375,7 @@ void enableTimestepVote( IndexT cs_id, const bool enable )
 
 } // end enableTimestepVote()
 
+#ifdef TRIBOL_USE_ENZYME
 //------------------------------------------------------------------------------
 void enableEnzyme( IndexT cs_id, bool use_enzyme )
 {
@@ -388,6 +389,7 @@ void enableEnzyme( IndexT cs_id, bool use_enzyme )
    cs->enableEnzyme(use_enzyme);
 
 } // end enableEnzyme()
+#endif
 
 //------------------------------------------------------------------------------
 void registerMesh( IndexT mesh_id,
