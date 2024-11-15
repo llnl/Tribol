@@ -730,6 +730,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
 {
    // convention: 1 = nonmortar
    //             2 = mortar
+   cs->getMesh2().computeNodalNormals(cs->spatialDimension());
    auto mesh1 = cs->getMesh2().getView();  // switched from tribol convention
    auto mesh2 = cs->getMesh1().getView();  // switched from tribol convention
    int size1 = mesh1.numberOfNodesPerElement();
@@ -752,6 +753,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
          return 1;
       }
    }
+   
    for (auto& plane : planes_view)
    {
       int elem1 = plane.getCpElementId2();  // switched from tribol convention
