@@ -755,6 +755,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
    for (auto& plane : planes_view)
    {
       int elem1 = plane.getCpElementId2();  // switched from tribol convention
+      // NOTE: mfem::DenseMatrix data is stored by nodes instead of by vdim
       RealT x1[12];
       RealT n1[12];
       RealT f1[12];
@@ -765,9 +766,9 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
          int node_id = mesh1.getGlobalNodeId(elem1, i);
          for (int d{0}; d < 3; ++d)
          {
-            x1[i*3 + d] = mesh1.getPosition()[d][node_id];
-            n1[i*3 + d] = mesh1.getNodalNormals()(d, node_id);
-            f1[i*3 + d] = 0.0;
+            x1[d*size1 + i] = mesh1.getPosition()[d][node_id];
+            n1[d*size1 + i] = mesh1.getNodalNormals()(d, node_id);
+            f1[d*size1 + i] = 0.0;
          }
          p1[i] = mesh1.getNodalFields().m_node_pressure[node_id];
          g1[i] = 0.0;
@@ -780,8 +781,8 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
          int node_id = mesh2.getGlobalNodeId(elem2, i);
          for (int d{0}; d < 3; ++d)
          {
-            x2[i*3 + d] = mesh2.getPosition()[d][node_id];
-            f2[i*3 + d] = 0.0;
+            x2[d*size2 + i] = mesh2.getPosition()[d][node_id];
+            f2[d*size2 + i] = 0.0;
          }
       }
       if (lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
@@ -852,16 +853,16 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
          int node_id = mesh1.getGlobalNodeId(elem1, i);
          for (int d{0}; d < 3; ++d)
          {
-            mesh1.getResponse()[d][node_id] = f1[i*3 + d];
+            mesh1.getResponse()[d][node_id] += f1[d*size1 + i];
          }
-         mesh1.getNodalFields().m_node_gap[node_id] = g1[i];
+         mesh1.getNodalFields().m_node_gap[node_id] += g1[i];
       }
       for (int i{0}; i < size2; ++i)
       {
          int node_id = mesh2.getGlobalNodeId(elem2, i);
          for (int d{0}; d < 3; ++d)
          {
-            mesh2.getResponse()[d][node_id] = f2[i*3 + d];
+            mesh2.getResponse()[d][node_id] += f2[d*size2 + i];
          }
       }
    }
@@ -932,20 +933,20 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
    {
       for (int d{0}; d < 3; ++d)
       {
-         x0[d] += x1[i*3 + d] / static_cast<RealT>(size1);
+         x0[d] += x1[d*size1 + i] / static_cast<RealT>(size1);
       }
    }
    // get vector n (normal of elem1)
    // NOTE: this limits this routine to quads
    RealT de1[3] = {
-      -0.25*x1[0] + 0.25*x1[3] + 0.25*x1[6] - 0.25*x1[9],
-      -0.25*x1[1] + 0.25*x1[4] + 0.25*x1[7] - 0.25*x1[10],
-      -0.25*x1[2] + 0.25*x1[5] + 0.25*x1[8] - 0.25*x1[11]
+      -0.25*x1[0] + 0.25*x1[1] + 0.25*x1[2] - 0.25*x1[3],
+      -0.25*x1[4] + 0.25*x1[5] + 0.25*x1[6] - 0.25*x1[7],
+      -0.25*x1[8] + 0.25*x1[9] + 0.25*x1[10] - 0.25*x1[11]
    };
    RealT de2[3] = {
-      -0.25*x1[0] - 0.25*x1[3] + 0.25*x1[6] + 0.25*x1[9],
-      -0.25*x1[1] - 0.25*x1[4] + 0.25*x1[7] + 0.25*x1[10],
-      -0.25*x1[2] - 0.25*x1[5] + 0.25*x1[8] + 0.25*x1[11]
+      -0.25*x1[0] - 0.25*x1[1] + 0.25*x1[2] + 0.25*x1[3],
+      -0.25*x1[4] - 0.25*x1[5] + 0.25*x1[6] + 0.25*x1[7],
+      -0.25*x1[8] - 0.25*x1[9] + 0.25*x1[10] + 0.25*x1[11]
    };
    RealT n[3] = {
       de1[1]*de2[2] - de1[2]*de2[1],
@@ -957,7 +958,8 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
    {
       n[d] /= n_mag;
    }
-   // x1t = x1 projected to plane p (def'd by x0 and n)
+   // x1t = x1 projected to plane p (def'd by x0 and n) (stored by vdim instead
+   // of nodes)
    constexpr int max_coord_size = 4*3;
    RealT x1t[max_coord_size];
    for (int i{0}; i < size1; ++i)
@@ -965,33 +967,33 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       RealT x1diff_mag = 0.0;
       for (int d{0}; d < 3; ++d)
       {
-         x1diff_mag += n[d] * (x1[i*3 + d] - x0[d]);
+         x1diff_mag += n[d] * (x1[size1*d + i] - x0[d]);
       }
       for (int d{0}; d < 3; ++d)
       {
-         x1t[i*3 + d] = x1[i*3 + d] - n[d]*x1diff_mag;
+         x1t[i*3 + d] = x1[size1*d + i] - n[d]*x1diff_mag;
       }
    }
-   // x2t = x2 projected to plane p
+   // x2t = x2 projected to plane p (stored by vdim instead of nodes)
    RealT x2t[max_coord_size];
    for (int i{0}; i < size2; ++i)
    {
       RealT x2diff_mag = 0.0;
       for (int d{0}; d < 3; ++d)
       {
-         x2diff_mag += n[d] * (x2[i*3 + d] - x0[d]);
+         x2diff_mag += n[d] * (x2[size2*d + i] - x0[d]);
       }
       for (int d{0}; d < 3; ++d)
       {
-         x2t[i*3 + d] = x2[i*3 + d] - n[d]*x2diff_mag;
+         x2t[i*3 + d] = x2[size2*d + i] - n[d]*x2diff_mag;
       }
    }
    // Tribol's clipping algorithm
    // create a local basis
    RealT e1[3] = {
-      x1t[0] - x0[0],
-      x1t[1] - x0[1],
-      x1t[2] - x0[2]
+      x1t[3] - x1t[0],
+      x1t[4] - x1t[1],
+      x1t[5] - x1t[2]
    };
    RealT e1_mag = std::sqrt(e1[0]*e1[0] + e1[1]*e1[1] + e1[2]*e1[2]);
    for (int d{0}; d < 3; ++d)
@@ -1168,19 +1170,19 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       {
          for (int d{0}; d < 3; ++d)
          {
-            gap_v[d] += mortar_mat1[i*size1 + j]*x1[j*3 + d];
+            gap_v[d] -= mortar_mat1[i*size1 + j]*x1[d*size1 + j];
          }
       }
       for (int j{0}; j < size2; ++j)
       {
          for (int d{0}; d < 3; ++d)
          {
-            gap_v[d] -= mortar_mat2[i*size2 + j]*x2[j*3 + d];
+            gap_v[d] += mortar_mat2[i*size2 + j]*x2[d*size2 + j];
          }
       }
       for (int d{0}; d < 3; ++d)
       {
-         g1[i] += n1[i*size1 + d] * gap_v[d];
+         g1[i] += n1[d*size1 + i] * gap_v[d];
       }
    }
 
@@ -1189,13 +1191,13 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
    {
       for (int d{0}; d < 3; ++d)
       {
-         f1[i*3 + d] = 0.0;
+         f1[d*size1 + i] = 0.0;
       }
       for (int j{0}; j < size1; ++j)
       {
          for (int d{0}; d < 3; ++d)
          {
-            f1[i*3 + d] += p1[j] * n1[j*3 + d] * mortar_mat1[j*size1 + i];
+            f1[d*size1 + i] -= p1[j] * n1[d*size1 + i] * mortar_mat1[j*size1 + i];
          }
       }
    }
@@ -1205,13 +1207,13 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
    {
       for (int d{0}; d < 3; ++d)
       {
-         f2[i*3 + d] = 0.0;
+         f2[d*size2 + i] = 0.0;
       }
       for (int j{0}; j < size1; ++j)
       {
          for (int d{0}; d < 3; ++d)
          {
-            f2[i*3 + d] -= p1[j] * n1[j*3 + d] * mortar_mat2[j*size2 + i];
+            f2[d*size2 + i] += p1[j] * n1[d*size1 + i] * mortar_mat2[j*size2 + i];
          }
       }
    }
@@ -1234,7 +1236,7 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
          enzyme_const, n1,
          enzyme_const, p1,
          enzyme_dup, f1, &df1dx1[size1*3*i],
-         enzyme_dup, g1, &dg1dx1[3*i],
+         enzyme_dup, g1, &dg1dx1[size1*i],
          enzyme_const, size1,
          enzyme_const, x2,
          enzyme_dup, f2, &df2dx1[size1*3*i],
@@ -1250,7 +1252,7 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
          enzyme_dup, n1, n1_dot,
          enzyme_const, p1,
          enzyme_dup, f1, &df1dn1[size1*3*i],
-         enzyme_dup, g1, &dg1dn1[3*i],
+         enzyme_dup, g1, &dg1dn1[size1*i],
          enzyme_const, size1,
          enzyme_const, x2,
          enzyme_dup, f2, &df2dn1[size1*3*i],
@@ -1282,7 +1284,7 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
          enzyme_const, n1,
          enzyme_const, p1,
          enzyme_dup, f1, &df1dx2[size2*3*i],
-         enzyme_dup, g1, &dg1dx2[3*i],
+         enzyme_dup, g1, &dg1dx2[size2*i],
          enzyme_const, size1,
          enzyme_dup, x2, x2_dot,
          enzyme_dup, f2, &df2dx2[size2*3*i],

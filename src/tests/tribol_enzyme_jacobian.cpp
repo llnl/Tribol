@@ -5,41 +5,322 @@
 
 //-----------------------------------------------------------------------------
 //
-// file: enzyme_smoke.cpp
+// file: tribol_enzyme_jacobian.cpp
 //
 //-----------------------------------------------------------------------------
 
 #include <iostream>
 
+#include "redecomp/common/TypeDefs.hpp"
+#include "tribol/common/Parameters.hpp"
 #include "tribol/config.hpp"
+#include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/physics/Mortar.hpp"
+#include "tribol/interface/tribol.hpp"
+#include "tribol/utils/Algorithm.hpp"
 
 #include "gtest/gtest.h"
 
-TEST(enzyme_smoke, basic_use)
-{
-  double delta = 1.0e-7;
+namespace tribol {
 
-  // exact overlap
-  // double x1[12] = { 0.0, 0.0, 0.01,
-  //                   1.0, 0.0, 0.01,
-  //                   1.0, 1.0, 0.01,
-  //                   0.0, 1.0, 0.01 };
-  // outside to inside edge
-  // double x1[12] = { -0.5*delta, 0.0, 0.01,
-  //                   1.0, 0.0, 0.01,
-  //                   1.0, 1.0, 0.01,
-  //                   0.0, 1.0, 0.01 };
-  // always outside edge
-  // double x1[12] = { -10.0*delta, 0.0, 0.01,
-  //                   1.0, 0.0, 0.01,
-  //                   1.0, 1.0, 0.01,
-  //                   0.0, 1.0, 0.01 };
-  // always outside edge
-  double x1[12] = { -1.5*delta, -0.1, 0.01,
-                    1.0, -0.1, 0.01,
-                    1.0, 1.0, 0.01,
-                    0.0, 1.0, 0.01 };
+void FDCheck(double* x1, double* x2, double* n1, double* p1);
+
+// NOTE: Make sure no vertices on either element pass through an edge. The
+// finite differencing will fail in this case.
+class EnzymeJacobianTest : public testing::Test {
+protected:
+  double delta_ {1.0e-7};
+  void SetUp() override
+  {
+
+  }
+
+  void FDCheck(double* x1, double* x2, double* n1, double* p1)
+  {
+    double f1[12];
+    double f2[12];
+    double g1[4];
+
+    double df1dx1[12*12];
+    double df1dx2[12*12];
+    double df1dn1[12*12];
+    for (int i{0}; i < 12*12; ++i)
+    {
+      df1dx1[i] = 0.0;
+      df1dx2[i] = 0.0;
+      df1dn1[i] = 0.0;
+    }
+    double df1dp1[12*4];
+    for (int i{0}; i < 12*4; ++i)
+    {
+      df1dp1[i] = 0.0;
+    }
+    double dg1dx1[4*12];
+    double dg1dx2[4*12];
+    double dg1dn1[4*12];
+    for (int i{0}; i < 4*12; ++i)
+    {
+      dg1dx1[i] = 0.0;
+      dg1dx2[i] = 0.0;
+      dg1dn1[i] = 0.0;
+    }
+    double df2dx1[12*12];
+    double df2dx2[12*12];
+    double df2dn1[12*12];
+    for (int i{0}; i < 12*12; ++i)
+    {
+      df2dx1[i] = 0.0;
+      df2dx2[i] = 0.0;
+      df2dn1[i] = 0.0;
+    }
+    double df2dp1[12*4];
+    for (int i{0}; i < 12*4; ++i)
+    {
+      df2dp1[i] = 0.0;
+    }
+
+    tribol::ComputeMortarJacobianEnzyme(x1, n1, p1, f1, df1dx1, df1dx2, df1dn1, df1dp1, g1, dg1dx1, dg1dx2, dg1dn1, 4, x2, f2, df2dx1, df2dx2, df2dn1, df2dp1, 4);
+
+    double df1dx1_fd[12*12];
+    double df2dx1_fd[12*12];
+    for (int i{0}; i < 12; ++i)
+    {
+      for (int j{0}; j < 12; ++j)
+      {
+        df1dx1_fd[i*12+j] = -f1[j];
+        df2dx1_fd[i*12+j] = -f2[j];
+      }
+    }
+    for (int j{0}; j < 12; ++j)
+    {
+      x1[j] += delta_;
+      tribol::ComputeMortarForceEnzyme(x1, n1, p1, f1, g1, 4, x2, f2, 4);
+      for (int i{0}; i < 12; ++i)
+      {
+        df1dx1_fd[j*12+i] += f1[i];
+        df1dx1_fd[j*12+i] /= delta_;
+        df2dx1_fd[j*12+i] += f2[i];
+        df2dx1_fd[j*12+i] /= delta_;
+      }
+      x1[j] -= delta_;
+    }
+
+    double max_diff {0.0};
+    for (int i{0}; i < 144; ++i)
+    {
+      max_diff = std::max(max_diff, std::abs(df1dx1[i] - df1dx1_fd[i]));
+      EXPECT_NEAR(df1dx1[i], df1dx1_fd[i], delta_);
+    }
+
+    for (int i{0}; i < 144; ++i)
+    {
+      max_diff = std::max(max_diff, std::abs(df2dx1[i] - df2dx1_fd[i]));
+      EXPECT_NEAR(df2dx1[i], df2dx1_fd[i], delta_);
+    }
+
+    std::cout << "max_diff for test: " << max_diff << std::endl;
+  }
+
+  void ApproxJacobianCheck(double* x1, double* x2, double* n1, double* p1)
+  {
+    double f1[12];
+    double f2[12];
+    double g1[4];
+
+    double df1dx1[12*12];
+    double df1dx2[12*12];
+    double df1dn1[12*12];
+    for (int i{0}; i < 12*12; ++i)
+    {
+      df1dx1[i] = 0.0;
+      df1dx2[i] = 0.0;
+      df1dn1[i] = 0.0;
+    }
+    double df1dp1[12*4];
+    for (int i{0}; i < 12*4; ++i)
+    {
+      df1dp1[i] = 0.0;
+    }
+    double dg1dx1[4*12];
+    double dg1dx2[4*12];
+    double dg1dn1[4*12];
+    for (int i{0}; i < 4*12; ++i)
+    {
+      dg1dx1[i] = 0.0;
+      dg1dx2[i] = 0.0;
+      dg1dn1[i] = 0.0;
+    }
+    double df2dx1[12*12];
+    double df2dx2[12*12];
+    double df2dn1[12*12];
+    for (int i{0}; i < 12*12; ++i)
+    {
+      df2dx1[i] = 0.0;
+      df2dx2[i] = 0.0;
+      df2dn1[i] = 0.0;
+    }
+    double df2dp1[12*4];
+    for (int i{0}; i < 12*4; ++i)
+    {
+      df2dp1[i] = 0.0;
+    }
+
+    ComputeMortarJacobianEnzyme(x1, n1, p1, f1, df1dx1, df1dx2, df1dn1, df1dp1, g1, dg1dx1, dg1dx2, dg1dn1, 4, x2, f2, df2dx1, df2dx2, df2dn1, df2dp1, 4);
+
+    int conn[4] = {0, 1, 2, 3};
+    constexpr int num_elems = 1;
+    constexpr int num_nodes = 4;
+
+    constexpr int mesh_id1 = 0;
+    registerMesh(mesh_id1, num_elems, num_nodes, conn,
+      InterfaceElementType::LINEAR_QUAD, x1, x1 + 4, x1 + 8);
+    constexpr int mesh_id2 = 1;
+    registerMesh(mesh_id2, num_elems, num_nodes, conn,
+      InterfaceElementType::LINEAR_QUAD, x2, x2 + 4, x2 + 8);
+    constexpr int cs_id = 0;
+    // mortar then nonmortar surfaces
+    registerCouplingScheme(cs_id, mesh_id2, mesh_id1,
+      ContactMode::SURFACE_TO_SURFACE,
+      ContactCase::NO_CASE,
+      ContactMethod::SINGLE_MORTAR,
+      ContactModel::FRICTIONLESS,
+      EnforcementMethod::LAGRANGE_MULTIPLIER,
+      BinningMethod::BINNING_GRID);
+    double f1t[12];
+    for (int i{0}; i < 12; ++i)
+    {
+      f1t[i] = 0.0;
+    }
+    registerNodalResponse(mesh_id1, f1t, f1t + 4, f1t + 8);
+    double f2t[12];
+    for (int i{0}; i < 12; ++i)
+    {
+      f2t[i] = 0.0;
+    }
+    registerNodalResponse(mesh_id2, f2t, f2t + 4, f2t + 8);
+    double g1t[4];
+    for (int i{0}; i < 4; ++i)
+    {
+      g1t[i] = 0.0;
+    }
+    registerMortarGaps(mesh_id1, g1t);
+    registerMortarPressures(mesh_id1, p1);
+    setLagrangeMultiplierOptions(cs_id, 
+      ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN, 
+      SparseMode::MFEM_ELEMENT_DENSE);
+    
+    int cycle = 1;
+    double t = 0.0;
+    double dt = 1.0;
+    update(cycle, t, dt);
+
+    const ArrayT<int>* row_elem_idx = nullptr;
+    const ArrayT<int>* col_elem_idx = nullptr;
+    const ArrayT<mfem::DenseMatrix>* jacobians = nullptr;
+    getElementBlockJacobians(cs_id, 
+      BlockSpace::NONMORTAR, BlockSpace::LAGRANGE_MULTIPLIER,
+      &row_elem_idx, &col_elem_idx, &jacobians);
+
+    std::cout << "df1/dp = " << std::endl;
+    for (int i{0}; i < 12; ++i)
+    {
+      for (int j{0}; j < 4; ++j)
+      {
+        int idx_e = 4*i + j;
+        std::cout << "[" << idx_e << "] Enzyme: " << df1dp1[idx_e] << "  Tribol: " << (*jacobians)[0].Data()[idx_e] << std::endl;
+      }
+    }
+    
+    getElementBlockJacobians(cs_id, 
+      BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER,
+      &row_elem_idx, &col_elem_idx, &jacobians);
+
+    std::cout << "df2/dp = " << std::endl;
+    for (int i{0}; i < 12; ++i)
+    {
+      for (int j{0}; j < 4; ++j)
+      {
+        int idx_e = 4*i + j;
+        std::cout << "[" << idx_e << "] Enzyme: " << df2dp1[idx_e] << "  Tribol: " << (*jacobians)[0].Data()[idx_e] << std::endl;
+      }
+    }
+    
+    getElementBlockJacobians(cs_id, 
+      BlockSpace::LAGRANGE_MULTIPLIER, BlockSpace::NONMORTAR, 
+      &row_elem_idx, &col_elem_idx, &jacobians);
+
+    std::cout << "dg/dx1 = " << std::endl;
+    for (int i{0}; i < 12; ++i)
+    {
+      for (int j{0}; j < 4; ++j)
+      {
+        int idx_e = 4*i + j;
+        std::cout << "[" << idx_e << "] Enzyme: " << dg1dx1[idx_e] << "  Tribol: " << (*jacobians)[0].Data()[idx_e] << std::endl;
+      }
+    }
+    
+    getElementBlockJacobians(cs_id, 
+      BlockSpace::LAGRANGE_MULTIPLIER, BlockSpace::MORTAR, 
+      &row_elem_idx, &col_elem_idx, &jacobians);
+
+    std::cout << "dg/dx2 = " << std::endl;
+    for (int i{0}; i < 12; ++i)
+    {
+      for (int j{0}; j < 4; ++j)
+      {
+        int idx_e = 4*i + j;
+        std::cout << "[" << idx_e << "] Enzyme: " << dg1dx2[idx_e] << "  Tribol: " << (*jacobians)[0].Data()[idx_e] << std::endl;
+      }
+    }
+
+    std::cout << "g = " << std::endl;
+    for (int i{0}; i < 4; ++i)
+    {
+      std::cout << "[" << i << "] Enzyme: " << g1[i] << "  Tribol: " << g1t[i] << std::endl;
+    }
+
+    std::cout << "f1 = " << std::endl;
+    for (int i{0}; i < 12; ++i)
+    {
+      std::cout << "[" << i << "] Enzyme: " << f1[i] << "  Tribol: " << f1t[i] << std::endl;
+    }
+
+    std::cout << "f2 = " << std::endl;
+    for (int i{0}; i < 12; ++i)
+    {
+      std::cout << "[" << i << "] Enzyme: " << f2[i] << "  Tribol: " << f2t[i] << std::endl;
+    }
+  }
+};
+
+TEST_F(EnzymeJacobianTest, smaller_fd)
+{
+  // slightly smaller
+  double dx = 4.0 * delta_;
+  double x1[12] = { 0.0+dx, 1.0-dx, 1.0-dx, 0.0+dx,
+                    0.0+dx, 0.0+dx, 1.0-dx, 1.0-dx,
+                    0.01,   0.01,   0.01,   0.01 };
+  double x2[12] = { 0.0,   0.0,   1.0,   1.0,
+                    0.0,   1.0,   1.0,   0.0,
+                    -0.01, -0.01, -0.01, -0.01 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+
+  FDCheck(x1, x2, n1, p1);
+  ApproxJacobianCheck(x1, x2, n1, p1);
+}
+
+TEST_F(EnzymeJacobianTest, offsetx_fd)
+{
+  // slightly smaller and offset
+  double offset = 0.3;
+  double dx = 4.0 * delta_;
+  double x1[12] = { 0.0+dx+offset, 0.0+dx, 0.01,
+                    1.0-dx+offset, 0.0+dx, 0.01,
+                    1.0-dx+offset, 1.0-dx, 0.01,
+                    0.0+dx+offset, 1.0-dx, 0.01 };
   double x2[12] = { 0.0, 0.0, -0.01,
                     0.0, 1.0, -0.01,
                     1.0, 1.0, -0.01,
@@ -49,68 +330,126 @@ TEST(enzyme_smoke, basic_use)
                     0.0, 0.0, 1.0,
                     0.0, 0.0, 1.0 };
   double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
-  double f1[12];
-  double f2[12];
-  double g1[4];
 
-  //tribol::ComputeMortarForceEnzyme(x1, n1, p1, f1, g1, 4, x2, f2, 4);
-
-
-  double df1dx1[12*12];
-  double df1dx2[12*12];
-  double df1dn1[12*12];
-  for (int i{0}; i < 12*12; ++i)
-  {
-    df1dx1[i] = 0.0;
-    df1dx2[i] = 0.0;
-    df1dn1[i] = 0.0;
-  }
-  double df1dp1[12*4];
-  for (int i{0}; i < 12*4; ++i)
-  {
-    df1dp1[i] = 0.0;
-  }
-  double dg1dx1[4*12];
-  double dg1dx2[4*12];
-  double dg1dn1[4*12];
-  for (int i{0}; i < 4*12; ++i)
-  {
-    dg1dx1[i] = 0.0;
-    dg1dx2[i] = 0.0;
-    dg1dn1[i] = 0.0;
-  }
-  double df2dx1[12*12];
-  double df2dx2[12*12];
-  double df2dn1[12*12];
-  for (int i{0}; i < 12*12; ++i)
-  {
-    df2dx1[i] = 0.0;
-    df2dx2[i] = 0.0;
-    df2dn1[i] = 0.0;
-  }
-  double df2dp1[12*4];
-  for (int i{0}; i < 12*4; ++i)
-  {
-    df2dp1[i] = 0.0;
-  }
-  tribol::ComputeMortarJacobianEnzyme(x1, n1, p1, f1, df1dx1, df1dx2, df1dn1, df1dp1, g1, dg1dx1, dg1dx2, dg1dn1, 4, x2, f2, df2dx1, df2dx2, df2dn1, df2dp1, 4);
-
-  double df1dx1_fd[12*12];
-  //tribol::ComputeMortarForceEnzyme(x1, n1, p1, f1, g1, 4, x2, f2, 4);
-  for (int i{0}; i < 12; ++i)
-  {
-    df1dx1_fd[i] = -f1[i];
-  }
-  x1[0] += delta;
-  tribol::ComputeMortarForceEnzyme(x1, n1, p1, f1, g1, 4, x2, f2, 4);
-  for (int i{0}; i < 12; ++i)
-  {
-    df1dx1_fd[i] += f1[i];
-    df1dx1_fd[i] /= delta;
-  }
-
-  for (int i{0}; i < 12; ++i)
-  {
-    std::cout << "[" << i << "] Enzyme: " << df1dx1[i] << "  FD: " << df1dx1_fd[i] << std::endl;
-  }
+  FDCheck(x1, x2, n1, p1);
 }
+
+TEST_F(EnzymeJacobianTest, offsetxy_fd)
+{
+  // slightly smaller and offset
+  double offset = 0.3;
+  double dx = 4.0 * delta_;
+  double x1[12] = { 0.0+dx+offset, 0.0+dx+offset, 0.01,
+                    1.0-dx+offset, 0.0+dx+offset, 0.01,
+                    1.0-dx+offset, 1.0-dx+offset, 0.01,
+                    0.0+dx+offset, 1.0-dx+offset, 0.01 };
+  double x2[12] = { 0.0, 0.0, -0.01,
+                    0.0, 1.0, -0.01,
+                    1.0, 1.0, -0.01,
+                    1.0, 0.0, -0.01 };
+  double n1[12] = { 0.0, 0.0, 1.0,
+                    0.0, 0.0, 1.0,
+                    0.0, 0.0, 1.0,
+                    0.0, 0.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+
+  FDCheck(x1, x2, n1, p1);
+}
+
+TEST_F(EnzymeJacobianTest, rotate30_fd)
+{
+  // rotate 30 degrees
+  double x1[12] = { 0.0, 0.0, 0.01,
+                    1.0, 0.0, 0.01,
+                    1.0, 1.0, 0.01,
+                    0.0, 1.0, 0.01 };
+  double cos30 = std::cos(redecomp::pi / 6.0);
+  double sin30 = std::sin(redecomp::pi / 6.0);
+  for (int i{0}; i < 4; ++i)
+  {
+    double x_new = x1[i*3]*cos30 - x1[i*3+1]*sin30;
+    double y_new = x1[i*3]*sin30 + x1[i*3+1]*cos30;
+    x1[i*3] = x_new;
+    x1[i*3+1] = y_new;
+  }
+  // shift to center the element at (0.5, 0.5)
+  double x_shift = 0.25;
+  double y_shift = -0.5 * (x1[7] - 1.0);
+  for (int i{0}; i < 4; ++i)
+  {
+    x1[i*3] += x_shift;
+    x1[i*3+1] += y_shift;
+  }
+  double x2[12] = { 0.0, 0.0, -0.01,
+                    0.0, 1.0, -0.01,
+                    1.0, 1.0, -0.01,
+                    1.0, 0.0, -0.01 };
+  double n1[12] = { 0.0, 0.0, 1.0,
+                    0.0, 0.0, 1.0,
+                    0.0, 0.0, 1.0,
+                    0.0, 0.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+
+  FDCheck(x1, x2, n1, p1);
+}
+
+TEST_F(EnzymeJacobianTest, rotate45_nonaffine_fd)
+{
+  // rotate 45 degrees
+  double x1[12] = { 0.0, 0.0, 0.01,
+                    1.1, 0.0, 0.01,
+                    1.0, 1.1, 0.01,
+                    0.0, 1.0, 0.01 };
+  double cos45 = std::cos(redecomp::pi / 4.0);
+  double sin45 = std::sin(redecomp::pi / 4.0);
+  for (int i{0}; i < 4; ++i)
+  {
+    double x_new = x1[i*3]*cos45 - x1[i*3+1]*sin45;
+    double y_new = x1[i*3]*sin45 + x1[i*3+1]*cos45;
+    x1[i*3] = x_new;
+    x1[i*3+1] = y_new;
+  }
+  // shift to center the element near (0.5, 0.5)
+  double x_shift = 0.5/std::sqrt(2.0) + 0.1;
+  double y_shift = -0.5/std::sqrt(2.0) + 0.1;
+  for (int i{0}; i < 4; ++i)
+  {
+    x1[i*3] += x_shift;
+    x1[i*3+1] += y_shift;
+  }
+  double x2[12] = { 0.0, 0.0, -0.01,
+                    0.0, 1.0, -0.01,
+                    1.0, 1.0, -0.01,
+                    1.0, 0.0, -0.01 };
+  double n1[12] = { 0.0, 0.0, 1.0,
+                    0.0, 0.0, 1.0,
+                    0.0, 0.0, 1.0,
+                    0.0, 0.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+
+  FDCheck(x1, x2, n1, p1);
+}
+
+}  // namespace tribol
+
+//------------------------------------------------------------------------------
+#include "axom/slic/core/SimpleLogger.hpp"
+
+int main(int argc, char* argv[])
+{
+  int result = 0;
+
+  MPI_Init(&argc, &argv);
+
+  ::testing::InitGoogleTest(&argc, argv);
+
+  axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
+                                    // exiting main scope
+
+  result = RUN_ALL_TESTS();
+
+  MPI_Finalize();
+
+  return result;
+}
+
