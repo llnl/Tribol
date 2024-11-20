@@ -291,12 +291,32 @@ void registerNodalDisplacements( IndexT mesh_id,
  * \pre vz != nullptr (3D only)
  *
  *  \note A mesh for the given contact surface must have already been registered
- *   prior to calling this method] via registerMesh()
+ *   prior to calling this method via registerMesh()
  */
 void registerNodalVelocities( IndexT mesh_id,
                               const RealT* vx,
                               const RealT* vy,
                               const RealT* vz=nullptr );
+
+/*!
+ * \brief Registers nodal reference coords on the contact surface.
+ *
+ * \param [in] mesh_id the ID of the contact surface.
+ * \param [in] xref array consisting of the reference coords x-components
+ * \param [in] yref array consisting of the reference coords y-components
+ * \param [in] zref array consisting of the reference coords z-components
+ *
+ * \pre xref != nullptr
+ * \pre yref != nullptr
+ * \pre zref != nullptr (3D only)
+ *
+ *  \note A mesh for the given contact surface must have already been registered
+ *   prior to calling this method via registerMesh()
+ */
+void registerNodalReferenceCoords( IndexT mesh_id,
+                                   const RealT* xref,
+                                   const RealT* yref,
+                                   const RealT* zref=nullptr );
 
 /*!
  * \brief Registers nodal response buffers.

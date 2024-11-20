@@ -294,6 +294,20 @@ void registerMfemVelocity( IndexT cs_id, const mfem::ParGridFunction& v )
    cs->getMfemMeshData()->SetParentVelocity(v);
 }
 
+void registerMfemReferenceCoords( IndexT cs_id, const mfem::ParGridFunction& reference_coords )
+{
+   auto cs = CouplingSchemeManager::getInstance().findData(cs_id);
+   SLIC_ERROR_ROOT_IF( !cs, 
+                       axom::fmt::format("Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                       "to create a coupling scheme with this cs_id.", cs_id) );
+   SLIC_ERROR_ROOT_IF(
+      !cs->hasMfemData(), 
+      "Coupling scheme does not contain MFEM data. "
+      "Create the coupling scheme using registerMfemCouplingScheme() to register a velocity."
+   );
+   cs->getMfemMeshData()->SetParentReferenceCoords(reference_coords);
+}
+
 void getMfemResponse( IndexT cs_id, mfem::Vector& r )
 {
    auto cs = CouplingSchemeManager::getInstance().findData(cs_id);
@@ -430,6 +444,14 @@ void updateMfemParallelDecomposition()
                mesh_ids[0], v_ptrs[0], v_ptrs[1], v_ptrs[2]);
             registerNodalVelocities(
                mesh_ids[1], v_ptrs[0], v_ptrs[1], v_ptrs[2]);
+         }
+         if (mfem_data->HasReferenceCoords())
+         {
+            auto xref_ptrs = mfem_data->GetRedecompReferenceCoordsPtrs();
+            registerNodalReferenceCoords(
+               mesh_ids[0], xref_ptrs[0], xref_ptrs[1], xref_ptrs[2]);
+            registerNodalReferenceCoords(
+               mesh_ids[1], xref_ptrs[0], xref_ptrs[1], xref_ptrs[2]);
          }
          if (cs.getEnforcementMethod() == LAGRANGE_MULTIPLIER)
          {

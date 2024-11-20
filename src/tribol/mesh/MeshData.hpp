@@ -204,6 +204,23 @@ public:
     }
     
     /**
+     * @brief Is the reference position vector populated?
+     * 
+     * @return true if non-empty; false otherwise
+     */
+    TRIBOL_HOST_DEVICE bool hasReferencePosition() const { return !m_ref_position.empty(); }
+
+    /**
+     * @brief Get the nodal reference position array views
+     * 
+     * @return array view of the nodal reference position arrays
+     */
+    TRIBOL_HOST_DEVICE const MultiViewArrayView<const RealT>& getReferencePosition() const
+    {
+      return m_ref_position;
+    }
+    
+    /**
      * @brief Is the displacement vector populated?
      * 
      * @return true if non-empty; false otherwise
@@ -397,6 +414,9 @@ public:
 
     /// Array of views of nodal position data
     const MultiViewArrayView<const RealT> m_position;
+
+    /// Array of views of nodal reference position data
+    const MultiViewArrayView<const RealT> m_ref_position;
     
     /// Array of views of nodal displacement data
     const MultiViewArrayView<const RealT> m_disp;
@@ -577,6 +597,25 @@ public:
                     const RealT* z );
 
   /**
+   * @brief Set the pointers to the nodal reference position data
+   * 
+   * @param xref array of x-components of the nodal reference position
+   * @param yref array of y-components of the nodal reference position
+   * @param zref array of z-components of the nodal reference position
+   */
+  void setReferencePosition( const RealT* xref,
+                             const RealT* yref,
+                             const RealT* zref );
+  
+  /**
+   * @brief Is the reference position vector populated?
+   * 
+   * @return true vector is non-empty
+   * @return false vector is empty
+   */
+  bool hasReferencePosition() const { return !m_ref_position.empty(); }
+
+  /**
    * @brief Set the pointers to the nodal displacement data
    * 
    * @param ux array of x-components of the nodal displacement
@@ -656,7 +695,7 @@ private:
    * @return Array view of element connectivity
    */
   Array2DView<const IndexT> createConnectivity( IndexT num_elements, 
-                                                  const IndexT* connectivity );
+                                                const IndexT* connectivity );
 
   IndexT m_mesh_id;                    ///< Mesh Id associated with this data
   InterfaceElementType m_element_type; ///< Type of interface element in mesh
@@ -673,6 +712,7 @@ private:
 
   // Nodal field data
   MultiArrayView<const RealT> m_position; ///< Coordinates of nodes in mesh
+  MultiArrayView<const RealT> m_ref_position; ///< Reference coordinates of nodes in mesh
   MultiArrayView<const RealT> m_disp;     ///< Nodal displacements
   MultiArrayView<const RealT> m_vel;      ///< Nodal velocity
   MultiArrayView<RealT> m_response;       ///< Nodal responses (forces)

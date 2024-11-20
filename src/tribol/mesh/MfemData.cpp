@@ -408,6 +408,18 @@ void MfemMeshData::SetParentCoords(const mfem::ParGridFunction& current_coords)
   coords_.SetParentGridFn(current_coords);
 }
 
+void MfemMeshData::SetParentReferenceCoords(const mfem::ParGridFunction& reference_coords)
+{
+  if (reference_coords_)
+  {
+    reference_coords_->SetParentGridFn(reference_coords);
+  }
+  else
+  {
+    reference_coords_ = std::make_unique<ParentField>(reference_coords);
+  }
+}
+
 void MfemMeshData::UpdateMfemMeshData()
 {
   // update coordinates of submesh and LOR mesh
@@ -432,6 +444,10 @@ void MfemMeshData::UpdateMfemMeshData()
   coords_.UpdateField(update_data_->vector_xfer_);
   redecomp_response_.SetSpace(coords_.GetRedecompGridFn().FESpace());
   redecomp_response_ = 0.0;
+  if (reference_coords_)
+  {
+    reference_coords_->UpdateField(update_data_->vector_xfer_);
+  }
   if (velocity_)
   {
     velocity_->UpdateField(update_data_->vector_xfer_);

@@ -468,6 +468,21 @@ void registerNodalVelocities( IndexT mesh_id,
 } // end registerNodalVelocities()
 
 //------------------------------------------------------------------------------
+void registerNodalReferenceCoords( IndexT mesh_id,
+                                   const RealT* xref,
+                                   const RealT* yref,
+                                   const RealT* zref )
+{
+   auto mesh = MeshManager::getInstance().findData(mesh_id);
+
+   SLIC_ERROR_ROOT_IF(!mesh, "tribol::registerNodalVelocities(): " << 
+                      "no mesh with id, " << mesh_id << "exists.");
+
+   mesh->setReferencePosition(xref, yref, zref);
+
+} // end registerNodalReferenceCoords()
+
+//------------------------------------------------------------------------------
 void registerNodalResponse( IndexT mesh_id,
                             RealT* rx,
                             RealT* ry,

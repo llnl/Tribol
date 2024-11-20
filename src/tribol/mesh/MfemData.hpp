@@ -674,6 +674,33 @@ public:
   void SetParentCoords(const mfem::ParGridFunction& current_coords);
 
   /**
+   * @brief Sets a new reference coordinate grid function on the parent mesh
+   * 
+   * @param reference_coords Reference coordinate grid function on the parent mesh
+   */
+  void SetParentReferenceCoords(const mfem::ParGridFunction& reference_coords);
+
+  /**
+   * @brief Determine if a reference coords grid function has been set
+   * 
+   * @return true: Reference coords grid function has been set
+   * @return false: Reference coords grid function has not been set
+   */
+  bool HasReferenceCoords() const { return reference_coords_ != nullptr; }
+
+  /**
+   * @brief Get pointers to component arrays of the reference coords on the RedecompMesh
+   * 
+   * @return std::vector<const RealT*> of length 3
+   *
+   * @note The third entry is nullptr in two dimensions
+   */
+  std::vector<const RealT*> GetRedecompReferenceCoordsPtrs() const
+  {
+    return reference_coords_->GetRedecompFieldPtrs();
+  }
+
+  /**
    * @brief Build a new redecomp mesh and update grid functions on the redecomp
    * mesh
    *
@@ -1304,6 +1331,12 @@ private:
    * @brief Coordinates grid function and transfer operators
    */
   ParentField coords_;
+
+  /**
+   * @brief Contains reference coords grid function and transfer operators if
+   * set; nullptr otherwise
+   */
+  std::unique_ptr<ParentField> reference_coords_;
 
   /**
    * @brief Submesh grid function to temporarily hold values being transferred

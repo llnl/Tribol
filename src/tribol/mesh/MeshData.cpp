@@ -253,6 +253,14 @@ void MeshData::setDisplacement( const RealT* ux,
 }
 
 //------------------------------------------------------------------------------
+void MeshData::setReferencePosition( const RealT* xref,
+                                     const RealT* yref,
+                                     const RealT* zref )
+{
+  m_ref_position = createNodalVector(xref, yref, zref);
+}
+
+//------------------------------------------------------------------------------
 void MeshData::setVelocity( const RealT* vx,
                             const RealT* vy,
                             const RealT* vz )
@@ -790,6 +798,7 @@ MeshData::Viewer::Viewer(MeshData& mesh)
 , m_mem_space( mesh.m_mem_space )
 , m_allocator_id( mesh.m_allocator_id )
 , m_position( mesh.m_position )
+, m_ref_position( mesh.m_ref_position )
 , m_disp( mesh.m_disp )
 , m_vel( mesh.m_vel )
 , m_response( mesh.m_response )
