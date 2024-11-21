@@ -23,6 +23,7 @@
 #include <iostream>
 
 #ifdef TRIBOL_USE_ENZYME
+#include "tribol/geom/Normal.hpp"
 #include "tribol/common/Enzyme.hpp"
 #endif
 
@@ -728,24 +729,19 @@ void ComputeSingleMortarJacobian( SurfaceContactElem & elem )
 //------------------------------------------------------------------------------
 int ApplyNormalEnzyme( CouplingScheme* cs )
 {
-   // convention: 1 = nonmortar
-   //             2 = mortar
-   cs->getMesh2().computeNodalNormals(cs->spatialDimension());
-   auto mesh1 = cs->getMesh2().getView();  // switched from tribol convention
-   auto mesh2 = cs->getMesh1().getView();  // switched from tribol convention
-   int size1 = mesh1.numberOfNodesPerElement();
-   int size2 = mesh2.numberOfNodesPerElement();
    auto planes_view = cs->get3DContactPlanes().view();
    auto& lm_opts = cs->getEnforcementOptions().lm_implicit_options;
+   bool compute_jacobian = false;
    if (lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
        lm_opts.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN)
    {
       if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE )
       {
-         static_cast<MortarData*>( cs->getMethodData() )->reserveBlockJ( 
+         cs->getMethodData()->reserveBlockJ( 
             {BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER},
             planes_view.size()
          );
+         compute_jacobian = true;
       }
       else
       {
@@ -753,6 +749,15 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
          return 1;
       }
    }
+   // convention: 1 = nonmortar
+   //             2 = mortar
+   cs->createNodalNormal(std::make_unique<VertexAvgNormal>(compute_jacobian));
+   cs->getNodalNormal()->Compute(cs->getMesh2());
+   cs->createNormalJacobian();
+   auto mesh1 = cs->getMesh2().getView();  // switched from tribol convention
+   auto mesh2 = cs->getMesh1().getView();  // switched from tribol convention
+   int size1 = mesh1.numberOfNodesPerElement();
+   int size2 = mesh2.numberOfNodesPerElement();
    
    for (auto& plane : planes_view)
    {
@@ -834,7 +839,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
 
          if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE )
          {
-            static_cast<MortarData*>( cs->getMethodData() )->storeElemBlockJ(
+            cs->getMethodData()->storeElemBlockJ(
                {elem1, elem2, elem1},
                blockJ
             );

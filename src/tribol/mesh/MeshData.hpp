@@ -288,6 +288,12 @@ public:
       return m_node_n;
     }
 
+    /// @overload
+    TRIBOL_HOST_DEVICE Array2DView<RealT>& getNodalNormals()
+    {
+      return m_node_n;
+    }
+
     /**
      * @brief Is the element centroids vector populated?
      * 
@@ -428,7 +434,7 @@ public:
     const MultiViewArrayView<RealT> m_response;
 
     /// Array view of 2D nodal normal data
-    const Array2DView<RealT> m_node_n;
+    Array2DView<RealT> m_node_n;
 
     /// Array view of 2D element connectivity data
     const Array2DView<const IndexT> m_connectivity;
@@ -751,6 +757,11 @@ public:
   * This routine accounts for warped faces by computing an average normal.
   */
   bool computeFaceData(ExecutionMode exec_mode);
+
+  /**
+   * @brief Allocates and initializes memory to hold nodal normals
+   */
+  void allocateNodalNormals();
   
   /*!
   * \brief Computes average nodal normals for use with mortar methods

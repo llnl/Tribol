@@ -271,6 +271,12 @@ public:
       return m_blockJ;
    }
 
+   /// @overload
+   ArrayT<ArrayT<mfem::DenseMatrix>, 2>& getBlockJ()
+   {
+      return m_blockJ;
+   }
+
 private:
 
    ArrayT<BlockSpace> m_blockJSpaces; ///< list of Jacobian blocks in use

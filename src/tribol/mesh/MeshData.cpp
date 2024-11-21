@@ -571,6 +571,13 @@ RealT MeshData::computeEdgeLength( int faceId )
 } // end MeshData::computeEdgeLength()
 
 //------------------------------------------------------------------------------
+void MeshData::allocateNodalNormals()
+{
+  m_node_n = Array2D<RealT>({m_dim, m_num_nodes}, m_allocator_id);
+  m_node_n.fill(0.0);
+} // end MeshData::allocateNodalNormals()
+
+//------------------------------------------------------------------------------
 void MeshData::computeNodalNormals( int const dim )
 {
    int * numFaceNrmlsToNodes;
@@ -583,8 +590,7 @@ void MeshData::computeNodalNormals( int const dim )
          SLIC_ERROR("MeshData::computeNodalNormals: required face normals not computed.");
       }
 
-      m_node_n = Array2D<RealT>({m_dim, m_num_nodes}, m_allocator_id);
-      m_node_n.fill(0.0);
+      allocateNodalNormals();
 
       // allocate space for nodal normal array
       int size = m_num_nodes; 

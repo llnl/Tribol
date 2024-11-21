@@ -15,6 +15,10 @@
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/geom/ContactPlane.hpp"
 
+#ifdef TRIBOL_USE_ENZYME
+#include "tribol/geom/Normal.hpp"
+#endif
+
 // Axom includes
 #include "axom/core.hpp"
 
@@ -670,6 +674,33 @@ public:
    * @return false No
    */
   bool isEnzymeEnabled() const { return m_useEnzyme; }
+
+  /**
+   * @brief Set nodal normal computation method
+   * 
+   * @param nodalNormal NodalNormal object
+   */
+  void createNodalNormal(std::unique_ptr<NodalNormal>&& nodalNormal)
+  {
+    m_nodalNormal = std::move(nodalNormal);
+  }
+
+  /**
+   * @brief Get pointer to the NodalNormal object
+   * 
+   * @return NodalNormal* 
+   */
+  NodalNormal* getNodalNormal() { return m_nodalNormal.get(); }
+
+  /**
+   * @brief Create MethodData to save Jacobian contributions related to a
+   * nodally defined normal
+   */
+  void createNormalJacobian()
+  {
+    m_dfdn = std::make_unique<MethodData>();
+    m_dgdn = std::make_unique<MethodData>();
+  }
 #endif
 
 #ifdef BUILD_REDECOMP
@@ -877,6 +908,9 @@ private:
 
 #ifdef TRIBOL_USE_ENZYME
   bool m_useEnzyme; ///< Use Enzyme for Jacobian calculations
+  std::unique_ptr<NodalNormal> m_nodalNormal; ///< Method for computing nodal normal (only for Enzyme)
+  std::unique_ptr<MethodData> m_dfdn; ///< Store dfdn Jacobian contributions
+  std::unique_ptr<MethodData> m_dgdn; ///< Store dgdn Jacobian contributions
 #endif
 
   ArrayT<InterfacePair> m_interface_pairs; ///< List of interface pairs
