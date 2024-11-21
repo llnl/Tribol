@@ -698,9 +698,16 @@ public:
    */
   void createNormalJacobian()
   {
-    m_dfdn = std::make_unique<MethodData>();
-    m_dgdn = std::make_unique<MethodData>();
+    m_dnJacobian = std::make_unique<MethodData>();
   }
+
+  /**
+   * @brief Get the method data for the normal Jacobian contribution
+   * 
+   * @return MethodData pointer
+   */
+  MethodData* getdnMethodData() const { return m_dnJacobian.get(); }
+
 #endif
 
 #ifdef BUILD_REDECOMP
@@ -909,8 +916,7 @@ private:
 #ifdef TRIBOL_USE_ENZYME
   bool m_useEnzyme; ///< Use Enzyme for Jacobian calculations
   std::unique_ptr<NodalNormal> m_nodalNormal; ///< Method for computing nodal normal (only for Enzyme)
-  std::unique_ptr<MethodData> m_dfdn; ///< Store dfdn Jacobian contributions
-  std::unique_ptr<MethodData> m_dgdn; ///< Store dgdn Jacobian contributions
+  std::unique_ptr<MethodData> m_dnJacobian; ///< Store normal Jacobian contributions
 #endif
 
   ArrayT<InterfacePair> m_interface_pairs; ///< List of interface pairs

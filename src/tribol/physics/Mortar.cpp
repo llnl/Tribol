@@ -741,6 +741,11 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
             {BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER},
             planes_view.size()
          );
+         cs->createNormalJacobian();
+         cs->getdnMethodData()->reserveBlockJ(
+            {BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER},
+            planes_view.size()
+         );
          compute_jacobian = true;
       }
       else
@@ -753,7 +758,6 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
    //             2 = mortar
    cs->createNodalNormal(std::make_unique<VertexAvgNormal>(compute_jacobian));
    cs->getNodalNormal()->Compute(cs->getMesh2());
-   cs->createNormalJacobian();
    auto mesh1 = cs->getMesh2().getView();  // switched from tribol convention
    auto mesh2 = cs->getMesh1().getView();  // switched from tribol convention
    int size1 = mesh1.numberOfNodesPerElement();
@@ -795,23 +799,18 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
       if (lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
           lm_opts.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN)
       {
-         double df1dn1[12*12];
-         for (int i{0}; i < 12*12; ++i)
-         {
-            df1dn1[i] = 0.0;
-         }
-         double dg1dn1[4*12];
-         for (int i{0}; i < 4*12; ++i)
-         {
-            dg1dn1[i] = 0.0;
-         }
-         double df2dn1[12*12];
-         for (int i{0}; i < 12*12; ++i)
-         {
-            df2dn1[i] = 0.0;
-         }
-         StackArray<DeviceArray2D<RealT>, 9> blockJ(3);
+         StackArray<DeviceArray2D<RealT>, 9> blockJ_n(3);
          constexpr int n_disp = 12;
+         for (int i{0}; i < 2; ++i)
+         {
+            blockJ_n(i, 0) = DeviceArray2D<RealT>(n_disp, n_disp);
+            blockJ_n(i, 0).fill(0.0);
+         }
+         constexpr int n_multipliers = 4;
+         blockJ_n(2, 0) = DeviceArray2D<RealT>(n_multipliers, n_disp);
+         blockJ_n(2, 0).fill(0.0);
+
+         StackArray<DeviceArray2D<RealT>, 9> blockJ(3);
          for (int i{}; i < 2; ++i)
          {
             for (int j{}; j < 2; ++j)
@@ -820,7 +819,6 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
                blockJ(i, j).fill(0.0);
             }
          }
-         constexpr int n_multipliers = 4;
          for (int i{}; i < 2; ++i)
          {
             blockJ(i, 2) = DeviceArray2D<RealT>(n_disp, n_multipliers);
@@ -833,15 +831,19 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
          blockJ(2, 2).fill(0.0);
 
          ComputeMortarJacobianEnzyme(x1, n1, p1, f1, 
-            blockJ(0, 0).data(), blockJ(0, 1).data(), df1dn1, blockJ(0, 2).data(),
-            g1, blockJ(2, 0).data(), blockJ(2, 1).data(), dg1dn1, size1, 
-            x2, f2, blockJ(1, 0).data(), blockJ(1, 1).data(), df2dn1, blockJ(1, 2).data(), size2);
+            blockJ(0, 0).data(), blockJ(0, 1).data(), blockJ_n(0, 0).data(), blockJ(0, 2).data(),
+            g1, blockJ(2, 0).data(), blockJ(2, 1).data(), blockJ_n(2, 0).data(), size1, 
+            x2, f2, blockJ(1, 0).data(), blockJ(1, 1).data(), blockJ_n(1, 0).data(), blockJ(1, 2).data(), size2);
 
          if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE )
          {
             cs->getMethodData()->storeElemBlockJ(
                {elem1, elem2, elem1},
                blockJ
+            );
+            cs->getdnMethodData()->storeElemBlockJ(
+               {elem1, elem2, elem1},
+               blockJ_n
             );
          }
          else
