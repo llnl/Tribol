@@ -151,9 +151,12 @@ void VertexAvgNormal::Compute(MeshData& mesh)
     // compute magnitude of reference normal (and store it in the first column)
     n0(0, i) = std::sqrt(n0(0, i)*n0(0, i) + n0(1, i)*n0(1, i) + n0(2, i)*n0(2, i));
     // scale normals by reference normal magnitude
-    for (int d{0}; d < 3; ++d)
+    if (n0(0, i) >= 1.0e-15)
     {
-      mesh_view.getNodalNormals()(d, i) /= n0(0, i);
+      for (int d{0}; d < 3; ++d)
+      {
+        mesh_view.getNodalNormals()(d, i) /= n0(0, i);
+      }
     }
   }
   // scale Jacobian contributions
@@ -180,7 +183,7 @@ void ElementVertexAvgNormal(const RealT* x, RealT* n, int num_nodes_per_elem)
 {
   for (int i{0}; i < num_nodes_per_elem; ++i)
   {
-    int node0 = (i - 1) % num_nodes_per_elem;
+    int node0 = (i - 1 + num_nodes_per_elem) % num_nodes_per_elem;
     int node1 = i;
     int node2 = (i + 1) % num_nodes_per_elem;
     RealT e1[3] = {
