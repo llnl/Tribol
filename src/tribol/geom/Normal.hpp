@@ -15,7 +15,13 @@ namespace tribol
 class NodalNormal
 {
 public:
+  virtual ~NodalNormal() {}
   virtual void Compute(MeshData& mesh) = 0;
+  const MethodData& getJacobianData() const { return elem_jacobians_; }
+protected:
+  MethodData& getJacobianData() { return elem_jacobians_; }
+private:
+  MethodData elem_jacobians_;
 };
 
 class ElementAvgNormal : public NodalNormal
@@ -30,10 +36,8 @@ class VertexAvgNormal : public NodalNormal
 public:
   VertexAvgNormal(bool compute_deriv = true) : compute_deriv_( compute_deriv ) {}
   void Compute(MeshData& mesh) override;
-  const MethodData& getJacobianData() const { return elem_jacobians_; }
 private:
   bool compute_deriv_;
-  MethodData elem_jacobians_;
 };
 
 // free functions for enzyme

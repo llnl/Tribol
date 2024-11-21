@@ -89,7 +89,7 @@ void VertexAvgNormal::Compute(MeshData& mesh)
 
   if (compute_deriv_)
   {
-    elem_jacobians_.reserveBlockJ({BlockSpace::NONMORTAR}, mesh.numberOfElements());
+    getJacobianData().reserveBlockJ({BlockSpace::NONMORTAR}, mesh.numberOfElements());
   }
 
   auto mesh_view = mesh.getView();
@@ -119,7 +119,7 @@ void VertexAvgNormal::Compute(MeshData& mesh)
       blockJ(0, 0) = DeviceArray2D<RealT>(12, 12);
       blockJ(0, 0).fill(0.0);
       ElementVertexAvgNormalJacobian(x, n, blockJ(0, 0).data(), num_nodes_per_elem);
-      elem_jacobians_.storeElemBlockJ({e}, blockJ);
+      getJacobianData().storeElemBlockJ({e}, blockJ);
     }
     else
     {
@@ -157,7 +157,7 @@ void VertexAvgNormal::Compute(MeshData& mesh)
     }
   }
   // scale Jacobian contributions
-  auto& blockJ_mats = elem_jacobians_.getBlockJ()(0, 0);
+  auto& blockJ_mats = getJacobianData().getBlockJ()(0, 0);
   int e_ct = 0;
   for (auto& blockJ_mat : blockJ_mats)
   {

@@ -32,6 +32,7 @@ set(tribol_headers
 
     geom/ContactPlane.hpp
     geom/GeomUtilities.hpp
+    geom/Normal.hpp
 
     utils/ContactPlaneOutput.hpp
     utils/DataManager.hpp
@@ -63,7 +64,8 @@ set(tribol_sources
     mesh/MfemData.cpp
      
     geom/ContactPlane.cpp
-    geom/GeomUtilities.cpp 
+    geom/GeomUtilities.cpp
+    geom/Normal.cpp
 
     utils/ContactPlaneOutput.cpp
     utils/Math.cpp
