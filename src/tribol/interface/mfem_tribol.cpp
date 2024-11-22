@@ -350,10 +350,10 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
       auto dfdx = cs->getMfemJacobianData()->GetMfemBlockJacobianEnzyme(
          *cs->getMethodData()
       );
-      auto dfdn = cs->getMfemJacobianData()->GetMfemBlockJacobianEnzyme(
+      auto dfdn = cs->getMfemJacobianData()->GetMfemdfdnJacobianEnzyme(
         *cs->getdnMethodData()
       );
-      auto dndx = cs->getMfemJacobianData()->GetMfemBlockJacobianEnzyme(
+      auto dndx = cs->getMfemJacobianData()->GetMfemdndxJacobianEnzyme(
         cs->getNodalNormal()->getJacobianData()
       );
    } else {

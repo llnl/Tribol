@@ -896,7 +896,8 @@ MfemJacobianData::MfemJacobianData(
 )
 : parent_data_ { parent_data },
   submesh_data_ { submesh_data },
-  block_offsets_ { 3 }
+  block_offsets_ { 3 },
+  disp_offsets_ { 2 }
 {
   SLIC_ERROR_ROOT_IF(
     parent_data.GetParentCoords().ParFESpace()->FEColl()->GetOrder() > 1,
@@ -942,6 +943,8 @@ MfemJacobianData::MfemJacobianData(
   block_offsets_[0] = 0;
   block_offsets_[1] = disp_size;
   block_offsets_[2] = disp_size + lm_size;
+  disp_offsets_[0] = 0;
+  disp_offsets_[1] = disp_size;
 
   // Rows/columns of pressure/gap DOFs only on the mortar surface need to be
   // eliminated from the Jacobian when using single mortar. The code in this
@@ -1361,6 +1364,121 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobianEnzym
   ones.GetMemory().SetHostPtrOwner(false);
   inactive_sm.SetDataOwner(false);
   inactive_hpm->SetOwnerFlags(3, 3, 1);
+
+  return block_J;
+}
+
+std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdfdnJacobianEnzyme(
+  const MethodData& method_data
+) const
+{
+  // create block operator
+  auto block_J = std::make_unique<mfem::BlockOperator>(block_offsets_, disp_offsets_);
+  block_J->owns_blocks = 1;
+
+  // these are Tribol element ids
+  auto mortar_elems = method_data.getBlockJElementIds()[static_cast<int>(BlockSpace::MORTAR)];
+  // convert them to redecomp element ids
+  const auto& elem_map_1 = parent_data_.GetElemMap1();
+  for (auto& mortar_elem : mortar_elems)
+  {
+    mortar_elem = elem_map_1[static_cast<size_t>(mortar_elem)];
+  }
+  
+  // these are Tribol element ids
+  auto nonmortar_elems = method_data.getBlockJElementIds()[static_cast<int>(BlockSpace::NONMORTAR)];
+  // convert them to redecomp element ids
+  const auto& elem_map_2 = parent_data_.GetElemMap2();
+  for (auto& nonmortar_elem : nonmortar_elems)
+  {
+    nonmortar_elem = elem_map_2[static_cast<size_t>(nonmortar_elem)];
+  }
+  
+  // these are Tribol element ids
+  auto lm_elems = method_data.getBlockJElementIds()[static_cast<int>(BlockSpace::LAGRANGE_MULTIPLIER)];
+  // convert them to redecomp element ids
+  for (auto& lm_elem : lm_elems)
+  {
+    lm_elem = elem_map_2[static_cast<size_t>(lm_elem)];
+  }
+
+  // transfer (0, 0) block (residual dof rows, displacement dof cols)
+  auto submesh_J = GetUpdateData().submesh_redecomp_xfer_00_->TransferToParallelSparse(
+    mortar_elems,
+    mortar_elems,
+    method_data.getBlockJ()(
+      static_cast<int>(BlockSpace::MORTAR),
+      static_cast<int>(BlockSpace::NONMORTAR)
+    )
+  );
+  submesh_J += GetUpdateData().submesh_redecomp_xfer_00_->TransferToParallelSparse(
+    nonmortar_elems,
+    mortar_elems,
+    method_data.getBlockJ()(
+      static_cast<int>(BlockSpace::NONMORTAR),
+      static_cast<int>(BlockSpace::NONMORTAR)
+    )
+  );
+  submesh_J.Finalize();
+  auto submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_00_->ConvertToHypreParMatrix(
+    submesh_J
+  );
+  // Matrix returned by mfem::RAP copies all existing data and owns its data
+  block_J->SetBlock(0, 0, mfem::RAP(submesh_J_hypre.get(), submesh_parent_vdof_xfer_.get()));
+
+  // transfer (1, 0) block (gap dof rows, displacement dof cols)
+  submesh_J = GetUpdateData().submesh_redecomp_xfer_10_->TransferToParallelSparse(
+    lm_elems,
+    nonmortar_elems,
+    method_data.getBlockJ()(
+      static_cast<int>(BlockSpace::LAGRANGE_MULTIPLIER),
+      static_cast<int>(BlockSpace::NONMORTAR)
+    )
+  );
+  submesh_J.Finalize();
+  submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_10_->ConvertToHypreParMatrix(
+    submesh_J
+  );
+  // Matrix returned by mfem::ParMult copies row and column starts since last
+  // arg is true. All other data is copied and owned by the new matrix.
+  block_J->SetBlock(1, 0, mfem::ParMult(
+    submesh_J_hypre.get(),
+    submesh_parent_vdof_xfer_.get(),
+    true
+  ));
+
+  return block_J;
+}
+
+std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdndxJacobianEnzyme(
+  const MethodData& method_data
+) const
+{
+  // create block operator
+  auto block_J = std::make_unique<mfem::BlockOperator>(disp_offsets_, disp_offsets_);
+  block_J->owns_blocks = 1;
+  
+  // these are Tribol element ids
+  auto nonmortar_elems = method_data.getBlockJElementIds()[0];
+  // convert them to redecomp element ids
+  const auto& elem_map_2 = parent_data_.GetElemMap2();
+  for (auto& nonmortar_elem : nonmortar_elems)
+  {
+    nonmortar_elem = elem_map_2[static_cast<size_t>(nonmortar_elem)];
+  }
+
+  // transfer (0, 0) block (residual dof rows, displacement dof cols)
+  auto submesh_J = GetUpdateData().submesh_redecomp_xfer_00_->TransferToParallelSparse(
+    nonmortar_elems,
+    nonmortar_elems,
+    method_data.getBlockJ()(0, 0)
+  );
+  submesh_J.Finalize();
+  auto submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_00_->ConvertToHypreParMatrix(
+    submesh_J
+  );
+  // Matrix returned by mfem::RAP copies all existing data and owns its data
+  block_J->SetBlock(0, 0, mfem::RAP(submesh_J_hypre.get(), submesh_parent_vdof_xfer_.get()));
 
   return block_J;
 }

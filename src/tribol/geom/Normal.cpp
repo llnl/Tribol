@@ -89,7 +89,7 @@ void VertexAvgNormal::Compute(MeshData& mesh)
 
   if (compute_deriv_)
   {
-    getJacobianData().reserveBlockJ({BlockSpace::NONMORTAR}, mesh.numberOfElements());
+    getJacobianData().reserveBlockJ({0}, mesh.numberOfElements());
   }
 
   auto mesh_view = mesh.getView();

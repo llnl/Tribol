@@ -1741,6 +1741,14 @@ public:
   std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobianEnzyme(
     const MethodData& method_data
   ) const;
+  
+  std::unique_ptr<mfem::BlockOperator> GetMfemdfdnJacobianEnzyme(
+    const MethodData& method_data
+  ) const;
+  
+  std::unique_ptr<mfem::BlockOperator> GetMfemdndxJacobianEnzyme(
+    const MethodData& method_data
+  ) const;
 
 #endif
 
@@ -1799,6 +1807,8 @@ private:
    * degrees of freedom
    */
   mfem::Array<int> block_offsets_;
+
+  mfem::Array<int> disp_offsets_;
 
   /**
    * @brief List giving global parent vdof given the submesh vdof
