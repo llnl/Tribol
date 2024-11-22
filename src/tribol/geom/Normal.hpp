@@ -17,9 +17,8 @@ class NodalNormal
 public:
   virtual ~NodalNormal() {}
   virtual void Compute(MeshData& mesh) = 0;
-  const MethodData& getJacobianData() const { return elem_jacobians_; }
-protected:
   MethodData& getJacobianData() { return elem_jacobians_; }
+  const MethodData& getJacobianData() const { return elem_jacobians_; }
 private:
   MethodData elem_jacobians_;
 };

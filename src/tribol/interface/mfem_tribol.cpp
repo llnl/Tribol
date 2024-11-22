@@ -347,8 +347,14 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
 #ifdef TRIBOL_USE_ENZYME
    if (cs->isEnzymeEnabled())
    {
-      return cs->getMfemJacobianData()->GetMfemBlockJacobianEnzyme(
+      auto dfdx = cs->getMfemJacobianData()->GetMfemBlockJacobianEnzyme(
          *cs->getMethodData()
+      );
+      auto dfdn = cs->getMfemJacobianData()->GetMfemBlockJacobianEnzyme(
+        *cs->getdnMethodData()
+      );
+      auto dndx = cs->getMfemJacobianData()->GetMfemBlockJacobianEnzyme(
+        cs->getNodalNormal()->getJacobianData()
       );
    } else {
 #endif

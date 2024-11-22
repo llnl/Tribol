@@ -1729,6 +1729,8 @@ public:
     const MethodData* method_data
   ) const;
 
+#ifdef TRIBOL_USE_ENZYME
+
   /**
    * @brief Returns non-symmetric Enzyme-computed Jacobian contributions as an
    * mfem::BlockOperator
@@ -1739,6 +1741,8 @@ public:
   std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobianEnzyme(
     const MethodData& method_data
   ) const;
+
+#endif
 
 private:
   /**
