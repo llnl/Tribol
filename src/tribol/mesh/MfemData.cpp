@@ -1199,6 +1199,8 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian(
   return block_J;
 }
 
+#ifdef TRIBOL_USE_ENZYME
+
 std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobianEnzyme(
   const MethodData& method_data
 ) const
@@ -1482,6 +1484,8 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdndxJacobianEnzyme
 
   return block_J;
 }
+
+#endif
 
 MfemJacobianData::UpdateData::UpdateData(
   const MfemMeshData& parent_data,
