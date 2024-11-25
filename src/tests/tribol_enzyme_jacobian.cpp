@@ -30,6 +30,8 @@ void FDCheck(double* x1, double* x2, double* n1, double* p1);
 class EnzymeJacobianTest : public testing::Test {
 protected:
   double delta_ {1.0e-7};
+  double approx_j_err_ {0.01};
+  double tribol_vs_enzyme_err_ {1.0e-13};
   void SetUp() override
   {
 
@@ -227,7 +229,13 @@ protected:
       for (int j{0}; j < 4; ++j)
       {
         int idx_e = 4*i + j;
-        std::cout << "[" << idx_e << "] Enzyme: " << df1dp1[idx_e] << "  Tribol: " << (*jacobians)[0].Data()[idx_e] << std::endl;
+        auto diff = std::abs(df1dp1[idx_e] - (*jacobians)[0].Data()[idx_e]);
+        if (diff > approx_j_err_)
+        {
+          std::cout << "[" << idx_e << "] Enzyme: " << df1dp1[idx_e] << 
+            "  Tribol: " << (*jacobians)[0].Data()[idx_e] << std::endl;
+        }
+        EXPECT_NEAR(df1dp1[idx_e], (*jacobians)[0].Data()[idx_e], approx_j_err_);
       }
     }
     
@@ -241,7 +249,13 @@ protected:
       for (int j{0}; j < 4; ++j)
       {
         int idx_e = 4*i + j;
-        std::cout << "[" << idx_e << "] Enzyme: " << df2dp1[idx_e] << "  Tribol: " << (*jacobians)[0].Data()[idx_e] << std::endl;
+        auto diff = std::abs(df2dp1[idx_e] - (*jacobians)[0].Data()[idx_e]);
+        if (diff > approx_j_err_)
+        {
+          std::cout << "[" << idx_e << "] Enzyme: " << df2dp1[idx_e] << 
+            "  Tribol: " << (*jacobians)[0].Data()[idx_e] << std::endl;
+        }
+        EXPECT_NEAR(df2dp1[idx_e], (*jacobians)[0].Data()[idx_e], approx_j_err_);
       }
     }
     
@@ -255,7 +269,13 @@ protected:
       for (int j{0}; j < 4; ++j)
       {
         int idx_e = 4*i + j;
-        std::cout << "[" << idx_e << "] Enzyme: " << dg1dx1[idx_e] << "  Tribol: " << (*jacobians)[0].Data()[idx_e] << std::endl;
+        auto diff = std::abs(dg1dx1[idx_e] - (*jacobians)[0].Data()[idx_e]);
+        if (diff > approx_j_err_)
+        {
+          std::cout << "[" << idx_e << "] Enzyme: " << dg1dx1[idx_e] << 
+            "  Tribol: " << (*jacobians)[0].Data()[idx_e] << std::endl;
+        }
+        EXPECT_NEAR(dg1dx1[idx_e], (*jacobians)[0].Data()[idx_e], approx_j_err_);
       }
     }
     
@@ -269,26 +289,47 @@ protected:
       for (int j{0}; j < 4; ++j)
       {
         int idx_e = 4*i + j;
-        std::cout << "[" << idx_e << "] Enzyme: " << dg1dx2[idx_e] << "  Tribol: " << (*jacobians)[0].Data()[idx_e] << std::endl;
+        auto diff = std::abs(dg1dx2[idx_e] - (*jacobians)[0].Data()[idx_e]);
+        if (diff > approx_j_err_)
+        {
+          std::cout << "[" << idx_e << "] Enzyme: " << dg1dx2[idx_e] <<
+            "  Tribol: " << (*jacobians)[0].Data()[idx_e] << std::endl;
+        }
+        EXPECT_NEAR(dg1dx2[idx_e], (*jacobians)[0].Data()[idx_e], approx_j_err_);
       }
     }
 
     std::cout << "g = " << std::endl;
     for (int i{0}; i < 4; ++i)
     {
-      std::cout << "[" << i << "] Enzyme: " << g1[i] << "  Tribol: " << g1t[i] << std::endl;
+      auto diff = std::abs(g1[i] - g1t[i]);
+      if (diff > tribol_vs_enzyme_err_)
+      {
+        std::cout << "[" << i << "] Enzyme: " << g1[i] << "  Tribol: " << g1t[i] << std::endl;
+      }
+      EXPECT_NEAR(g1[i], g1t[i], tribol_vs_enzyme_err_);
     }
 
     std::cout << "f1 = " << std::endl;
     for (int i{0}; i < 12; ++i)
     {
-      std::cout << "[" << i << "] Enzyme: " << f1[i] << "  Tribol: " << f1t[i] << std::endl;
+      auto diff = std::abs(f1[i] - f1t[i]);
+      if (diff > tribol_vs_enzyme_err_)
+      {
+        std::cout << "[" << i << "] Enzyme: " << f1[i] << "  Tribol: " << f1t[i] << std::endl;
+      }
+      EXPECT_NEAR(f1[i], f1t[i], tribol_vs_enzyme_err_);
     }
 
     std::cout << "f2 = " << std::endl;
     for (int i{0}; i < 12; ++i)
     {
-      std::cout << "[" << i << "] Enzyme: " << f2[i] << "  Tribol: " << f2t[i] << std::endl;
+      auto diff = std::abs(f2[i] - f2t[i]);
+      if (diff > tribol_vs_enzyme_err_)
+      {
+        std::cout << "[" << i << "] Enzyme: " << f2[i] << "  Tribol: " << f2t[i] << std::endl;
+      }
+      EXPECT_NEAR(f2[i], f2t[i], tribol_vs_enzyme_err_);
     }
   }
 };

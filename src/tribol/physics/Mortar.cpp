@@ -831,9 +831,9 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
          blockJ(2, 2).fill(0.0);
 
          ComputeMortarJacobianEnzyme(x1, n1, p1, f1, 
-            blockJ(1, 1).data(), blockJ(1, 0).data(), blockJ_n(1, 1).data(), blockJ(1, 2).data(),
-            g1, blockJ(2, 1).data(), blockJ(2, 0).data(), blockJ_n(2, 1).data(), size1, 
-            x2, f2, blockJ(0, 1).data(), blockJ(0, 0).data(), blockJ_n(0, 1).data(), blockJ(1, 2).data(), size2);
+            blockJ(0, 0).data(), blockJ(0, 1).data(), blockJ_n(0, 0).data(), blockJ(0, 2).data(),
+            g1, blockJ(2, 0).data(), blockJ(2, 1).data(), blockJ_n(2, 0).data(), size1, 
+            x2, f2, blockJ(1, 0).data(), blockJ(1, 1).data(), blockJ_n(1, 0).data(), blockJ(1, 2).data(), size2);
 
          if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE )
          {

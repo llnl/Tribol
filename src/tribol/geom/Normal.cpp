@@ -5,6 +5,7 @@
 
 #include "Normal.hpp"
 
+#include "tribol/common/Parameters.hpp"
 #include "tribol/utils/Math.hpp"
 
 #ifdef TRIBOL_USE_ENZYME
@@ -89,7 +90,9 @@ void VertexAvgNormal::Compute(MeshData& mesh)
 
   if (compute_deriv_)
   {
-    getJacobianData().reserveBlockJ({0}, mesh.numberOfElements());
+    ArrayT<BlockSpace> blocks(1, 1);
+    blocks[0] = BlockSpace::NONMORTAR; // this is actually non-mortar, but we want this to be 1x1
+    getJacobianData().reserveBlockJ(std::move(blocks), mesh.numberOfElements());
   }
 
   auto mesh_view = mesh.getView();
@@ -118,12 +121,12 @@ void VertexAvgNormal::Compute(MeshData& mesh)
       StackArray<DeviceArray2D<RealT>, 9> blockJ(3);
       blockJ(0, 0) = DeviceArray2D<RealT>(12, 12);
       blockJ(0, 0).fill(0.0);
-      ElementVertexAvgNormalJacobian(x, n, blockJ(0, 0).data(), num_nodes_per_elem);
+      ElementVertexAvgNormalJacobian(x, xref, n, blockJ(0, 0).data(), num_nodes_per_elem);
       getJacobianData().storeElemBlockJ({e}, blockJ);
     }
     else
     {
-      ElementVertexAvgNormal(x, n, num_nodes_per_elem);
+      ElementVertexAvgNormal(x, xref, n, num_nodes_per_elem);
     }
     // assemble normal contribution
     for (int i{0}; i < num_nodes_per_elem; ++i)
@@ -135,7 +138,7 @@ void VertexAvgNormal::Compute(MeshData& mesh)
       }
     }
     // compute reference normal
-    ElementVertexAvgNormal(xref, n, num_nodes_per_elem);
+    ElementVertexAvgNormal(xref, xref, n, num_nodes_per_elem);
     // assemble reference normal contribution
     for (int i{0}; i < num_nodes_per_elem; ++i)
     {
@@ -160,7 +163,10 @@ void VertexAvgNormal::Compute(MeshData& mesh)
     }
   }
   // scale Jacobian contributions
-  auto& blockJ_mats = getJacobianData().getBlockJ()(0, 0);
+  auto& blockJ_mats = getJacobianData().getBlockJ()(
+    static_cast<int>(BlockSpace::NONMORTAR),
+    static_cast<int>(BlockSpace::NONMORTAR)
+  );
   int e_ct = 0;
   for (auto& blockJ_mat : blockJ_mats)
   {
@@ -179,7 +185,7 @@ void VertexAvgNormal::Compute(MeshData& mesh)
   }
 }
 
-void ElementVertexAvgNormal(const RealT* x, RealT* n, int num_nodes_per_elem)
+void ElementVertexAvgNormal(const RealT* x, const RealT* xref, RealT* n, int num_nodes_per_elem)
 {
   for (int i{0}; i < num_nodes_per_elem; ++i)
   {
@@ -202,7 +208,19 @@ void ElementVertexAvgNormal(const RealT* x, RealT* n, int num_nodes_per_elem)
       e1[2]*e2[0] - e1[0]*e2[2],
       e1[0]*e2[1] - e1[1]*e2[0]
     };
-    RealT ni_mag = std::sqrt(ni[0]*ni[0] + ni[1]*ni[1] + ni[2]*ni[2]);
+    // get magnitude in reference config
+    e1[0] = xref[0*num_nodes_per_elem + node2] - xref[0*num_nodes_per_elem + node1];
+    e1[1] = xref[1*num_nodes_per_elem + node2] - xref[1*num_nodes_per_elem + node1];
+    e1[2] = xref[2*num_nodes_per_elem + node2] - xref[2*num_nodes_per_elem + node1];
+    e2[0] = xref[0*num_nodes_per_elem + node0] - xref[0*num_nodes_per_elem + node1];
+    e2[1] = xref[1*num_nodes_per_elem + node0] - xref[1*num_nodes_per_elem + node1];
+    e2[2] = xref[2*num_nodes_per_elem + node0] - xref[2*num_nodes_per_elem + node1];
+    RealT ni_ref[3] = {
+      e1[1]*e2[2] - e1[2]*e2[1],
+      e1[2]*e2[0] - e1[0]*e2[2],
+      e1[0]*e2[1] - e1[1]*e2[0]
+    };
+    RealT ni_mag = std::sqrt(ni_ref[0]*ni_ref[0] + ni_ref[1]*ni_ref[1] + ni_ref[2]*ni_ref[2]);
     for (int d{0}; d < 3; ++d)
     {
       n[d*num_nodes_per_elem + i] = ni[d] / ni_mag;
@@ -210,7 +228,8 @@ void ElementVertexAvgNormal(const RealT* x, RealT* n, int num_nodes_per_elem)
   }
 }
 
-void ElementVertexAvgNormalJacobian(const RealT* x, RealT* n, RealT* dndx, int num_nodes_per_elem)
+void ElementVertexAvgNormalJacobian(
+  const RealT* x, const RealT* xref, RealT* n, RealT* dndx, int num_nodes_per_elem)
 {
   RealT x_dot[12] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
   for (int i{0}; i < num_nodes_per_elem*3; ++i)
@@ -218,6 +237,7 @@ void ElementVertexAvgNormalJacobian(const RealT* x, RealT* n, RealT* dndx, int n
     x_dot[i] = 1.0;
     __enzyme_fwddiff<void>((void*)ElementVertexAvgNormal,
       enzyme_dup, x, x_dot,
+      enzyme_const, xref,
       enzyme_dup, n, &dndx[num_nodes_per_elem*3*i],
       enzyme_const, num_nodes_per_elem);
     x_dot[i] = 0.0;

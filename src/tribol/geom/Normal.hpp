@@ -40,8 +40,9 @@ private:
 };
 
 // free functions for enzyme
-void ElementVertexAvgNormal(const RealT* x, RealT* n, int num_nodes_per_elem);
-void ElementVertexAvgNormalJacobian(const RealT* x, RealT* n, RealT* dndx, int num_nodes_per_elem);
+void ElementVertexAvgNormal(const RealT* x, const RealT* xref, RealT* n, int num_nodes_per_elem);
+void ElementVertexAvgNormalJacobian(
+  const RealT* x, const RealT* xref, RealT* n, RealT* dndx, int num_nodes_per_elem);
 
 #endif
   
