@@ -356,6 +356,15 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
       auto dndx = cs->getMfemJacobianData()->GetMfemdndxJacobianEnzyme(
         cs->getNodalNormal()->getJacobianData()
       );
+      dfdx->SetBlock(0, 0, mfem::ParAdd(mfem::ParMult(
+        &static_cast<mfem::HypreParMatrix&>(dfdn->GetBlock(0, 0)),
+        &static_cast<mfem::HypreParMatrix&>(dndx->GetBlock(0, 0))
+      ), &static_cast<mfem::HypreParMatrix&>(dfdx->GetBlock(0, 0))));
+      dfdx->SetBlock(1, 0, mfem::ParAdd(mfem::ParMult(
+        &static_cast<mfem::HypreParMatrix&>(dfdn->GetBlock(1, 0)),
+        &static_cast<mfem::HypreParMatrix&>(dndx->GetBlock(0, 0))
+      ), &static_cast<mfem::HypreParMatrix&>(dfdx->GetBlock(1, 0))));
+      return dfdx;
    } else {
 #endif
       return cs->getMfemJacobianData()->GetMfemBlockJacobian(
