@@ -168,6 +168,7 @@ if( TRIBOL_USE_ENZYME )
       tribol_enzyme_jacobian.cpp
       tribol_enzyme_normal.cpp
       tribol_enzyme_patch.cpp
+      tribol_enzyme_poly_intersect.cpp
       )
 
   set(combined_test_depends tribol gtest)

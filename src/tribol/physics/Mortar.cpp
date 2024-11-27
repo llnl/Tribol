@@ -1014,19 +1014,19 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       n[2]*e1[0] - n[0]*e1[2],
       n[0]*e1[1] - n[1]*e1[0]
    };
-   RealT x1t_2d[4];
+   RealT x1t_2d[8];
    RealT y1t_2d[4];
    PlaneTo2DCoords(x1t, x0, e1, e2, x1t_2d, y1t_2d, size1);
    RealT x2t_2d[4];
    RealT y2t_2d[4];
-   PlaneTo2DCoords(x2t, x0, e1, e2, x2t_2d, y2t_2d, size1);
+   PlaneTo2DCoords(x2t, x0, e1, e2, x2t_2d, y2t_2d, size2);
    ElemReverse(x2t_2d, y2t_2d, size2);
    RealT xti_2d[8];
    RealT yti_2d[8];
    int overlap_poly_size = 0;
    RealT overlap_poly_area = 0.0;
    Intersection2DPolygon(x1t_2d, y1t_2d, size1, x2t_2d, y2t_2d, size2, 
-                         1.0e-8, 1.0e-8, xti_2d, yti_2d, overlap_poly_size, overlap_poly_area);
+                         1.0e-8, 1.0e-8, xti_2d, yti_2d, nullptr, overlap_poly_size, overlap_poly_area);
    RealT xti[8*3];
    Coords2DToPlane(xti_2d, yti_2d, x0, e1, e2, xti, overlap_poly_size);
 

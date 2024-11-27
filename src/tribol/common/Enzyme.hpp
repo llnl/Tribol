@@ -21,6 +21,8 @@ extern int enzyme_dupnoneed;
 extern int enzyme_out;
 extern int enzyme_const;
 
+extern int enzyme_runtime_activity;
+
 template <typename return_type, typename... Args>
 return_type __enzyme_autodiff(Args...);
 
