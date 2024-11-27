@@ -1082,10 +1082,10 @@ TRIBOL_HOST_DEVICE RealT Area3DTri( const RealT* const x,
 } // end Area3DTri()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE bool SegmentIntersection2D( const RealT xA1, const RealT yA1, const RealT xB1, const RealT yB1,
-                                               const RealT xA2, const RealT yA2, const RealT xB2, const RealT yB2,
-                                               const bool* const interior, RealT& x, RealT& y, 
-                                               bool& duplicate, const RealT tol )
+TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, RealT yB1,
+                                               RealT xA2, RealT yA2, RealT xB2, RealT yB2,
+                                               const bool* interior, RealT& x, RealT& y, 
+                                               bool& duplicate, RealT tol )
 {
    // note 1: this routine computes a unique segment-segment intersection, where two 
    // segments are assumed to intersect at a single point. A segment-segment overlap 
