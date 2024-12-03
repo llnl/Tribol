@@ -35,10 +35,28 @@ protected:
     OverlapVertexType type[8];
     IndexT edge1[8];
     IndexT edge2[8];
+    for (int i{0}; i < 8; ++i)
+    {
+      xi[i] = 0.0;
+      xi[i+8] = 0.0;
+      type[i] = OverlapVertexType::A;
+      edge1[i] = -1;
+      edge2[i] = -1;
+    }
     auto num_poly_verts = 0;
     RealT area = 0.0;
     Intersection2DPolygon(x1, x1 + 4, 4, x2, x2 + 4, 4, pos_tol, len_tol,
       xi, xi + 8, type, edge1, edge2, num_poly_verts, area, true);
+    std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
+    for (int i{0}; i < 4; ++i)
+    {
+      std::cout << "(" << x1[i] << ", " << x1[i+4] << ")\n";
+    }
+    std::cout << std::setprecision(15) << "Element 2 coords" << std::endl;
+    for (int i{0}; i < 4; ++i)
+    {
+      std::cout << "(" << x2[i] << ", " << x2[i+4] << ")\n";
+    }
     std::cout << std::setprecision(15) << "Number of vertices: " << num_poly_verts << "   Polygon area: "
       << area << std::endl;
 
@@ -69,6 +87,12 @@ protected:
       dxidx2[i] = 0.0;
     }
 
+    RealT xi_base[16];
+    for (int i{0}; i < 16; ++i)
+    {
+      xi_base[i] = xi[i];
+    }
+
     for (int i{0}; i < 4; ++i)
     {
       x_dot[i] = 1.0;
@@ -90,12 +114,42 @@ protected:
         enzyme_const, &area,
         enzyme_const, true
       );
+    
+      std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
+      for (int i{0}; i < 4; ++i)
+      {
+        std::cout << "(" << x1[i] << ", " << x1[i+4] << ")\n";
+      }
+      std::cout << std::setprecision(15) << "Element 2 coords" << std::endl;
+      for (int i{0}; i < 4; ++i)
+      {
+        std::cout << "(" << x2[i] << ", " << x2[i+4] << ")\n";
+      }
+      std::cout << std::setprecision(15) << "Number of vertices: " << num_poly_verts << "   Polygon area: "
+        << area << std::endl;
+      for (int i{0}; i < num_poly_verts; ++i)
+      {
+        std::cout << "  Coord: (" << xi[i] << ", " << xi[i+8] << ")   Type: ";
+        switch (type[i])
+        {
+          case OverlapVertexType::A:
+            std::cout << "Vertex A" << std::endl;
+            break;
+          case OverlapVertexType::B:
+            std::cout << "Vertex B" << std::endl;
+            break;
+          case OverlapVertexType::EdgeEdge:
+            std::cout << "Edge/Edge" << std::endl;
+            break;
+        }
+      }
+
       __enzyme_fwddiff<void>((void*)Intersection2DPolygon,
-        enzyme_const, x1,
+        enzyme_dup, x1, zeros,
         enzyme_dup, x1 + 4, x_dot,
         enzyme_const, 4,
-        enzyme_const, x2,
-        enzyme_const, x2 + 4,
+        enzyme_dup, x2, zeros,
+        enzyme_dup, x2 + 4, zeros,
         enzyme_const, 4,
         enzyme_const, pos_tol,
         enzyme_const, len_tol,
@@ -108,12 +162,42 @@ protected:
         enzyme_const, &area,
         enzyme_const, true
       );
+    
+      std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
+      for (int i{0}; i < 4; ++i)
+      {
+        std::cout << "(" << x1[i] << ", " << x1[i+4] << ")\n";
+      }
+      std::cout << std::setprecision(15) << "Element 2 coords" << std::endl;
+      for (int i{0}; i < 4; ++i)
+      {
+        std::cout << "(" << x2[i] << ", " << x2[i+4] << ")\n";
+      }
+      std::cout << std::setprecision(15) << "Number of vertices: " << num_poly_verts << "   Polygon area: "
+        << area << std::endl;
+      for (int i{0}; i < num_poly_verts; ++i)
+      {
+        std::cout << "  Coord: (" << xi[i] << ", " << xi[i+8] << ")   Type: ";
+        switch (type[i])
+        {
+          case OverlapVertexType::A:
+            std::cout << "Vertex A" << std::endl;
+            break;
+          case OverlapVertexType::B:
+            std::cout << "Vertex B" << std::endl;
+            break;
+          case OverlapVertexType::EdgeEdge:
+            std::cout << "Edge/Edge" << std::endl;
+            break;
+        }
+      }
+      
       __enzyme_fwddiff<void>((void*)Intersection2DPolygon,
-        enzyme_const, x1,
-        enzyme_const, x1 + 4,
+        enzyme_dup, x1, zeros,
+        enzyme_dup, x1 + 4, zeros,
         enzyme_const, 4,
         enzyme_dup, x2, x_dot,
-        enzyme_const, x2 + 4,
+        enzyme_dup, x2 + 4, zeros,
         enzyme_const, 4,
         enzyme_const, pos_tol,
         enzyme_const, len_tol,
@@ -126,11 +210,41 @@ protected:
         enzyme_const, &area,
         enzyme_const, true
       );
+    
+      std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
+      for (int i{0}; i < 4; ++i)
+      {
+        std::cout << "(" << x1[i] << ", " << x1[i+4] << ")\n";
+      }
+      std::cout << std::setprecision(15) << "Element 2 coords" << std::endl;
+      for (int i{0}; i < 4; ++i)
+      {
+        std::cout << "(" << x2[i] << ", " << x2[i+4] << ")\n";
+      }
+      std::cout << std::setprecision(15) << "Number of vertices: " << num_poly_verts << "   Polygon area: "
+        << area << std::endl;
+      for (int i{0}; i < num_poly_verts; ++i)
+      {
+        std::cout << "  Coord: (" << xi[i] << ", " << xi[i+8] << ")   Type: ";
+        switch (type[i])
+        {
+          case OverlapVertexType::A:
+            std::cout << "Vertex A" << std::endl;
+            break;
+          case OverlapVertexType::B:
+            std::cout << "Vertex B" << std::endl;
+            break;
+          case OverlapVertexType::EdgeEdge:
+            std::cout << "Edge/Edge" << std::endl;
+            break;
+        }
+      }
+      
       __enzyme_fwddiff<void>((void*)Intersection2DPolygon,
-        enzyme_const, x1,
-        enzyme_const, x1 + 4,
+        enzyme_dup, x1, zeros,
+        enzyme_dup, x1 + 4, zeros,
         enzyme_const, 4,
-        enzyme_const, x2,
+        enzyme_dup, x2, zeros,
         enzyme_dup, x2 + 4, x_dot,
         enzyme_const, 4,
         enzyme_const, pos_tol,
@@ -144,9 +258,38 @@ protected:
         enzyme_const, &area,
         enzyme_const, true
       );
+    
+      std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
+      for (int i{0}; i < 4; ++i)
+      {
+        std::cout << "(" << x1[i] << ", " << x1[i+4] << ")\n";
+      }
+      std::cout << std::setprecision(15) << "Element 2 coords" << std::endl;
+      for (int i{0}; i < 4; ++i)
+      {
+        std::cout << "(" << x2[i] << ", " << x2[i+4] << ")\n";
+      }
+      std::cout << std::setprecision(15) << "Number of vertices: " << num_poly_verts << "   Polygon area: "
+        << area << std::endl;
+      for (int i{0}; i < num_poly_verts; ++i)
+      {
+        std::cout << "  Coord: (" << xi[i] << ", " << xi[i+8] << ")   Type: ";
+        switch (type[i])
+        {
+          case OverlapVertexType::A:
+            std::cout << "Vertex A" << std::endl;
+            break;
+          case OverlapVertexType::B:
+            std::cout << "Vertex B" << std::endl;
+            break;
+          case OverlapVertexType::EdgeEdge:
+            std::cout << "Edge/Edge" << std::endl;
+            break;
+        }
+      }
+      
       x_dot[i] = 0.0;
     }
-    
 
     std::cout << "dxi/dx1 nonzero values:" << std::endl;
     for (int j{0}; j < 8; ++j)
@@ -183,12 +326,6 @@ protected:
     dxidx2_dense.PrintMatlab(dxidx2_file);
     dxidx2_file.close();
 
-    RealT xi_base[16];
-    for (int i{0}; i < 16; ++i)
-    {
-      xi_base[i] = xi[i];
-    }
-
     RealT dxidx1_fd[16*8];
     RealT dxidx2_fd[16*8];
     // row 1 assumes x2 is inside x1; row 2 assumes x1 is inside x2
@@ -211,6 +348,11 @@ protected:
         xi, xi + 8, type, edge1, edge2, num_poly_verts, area, true);
       for (int i{0}; i < 16; ++i)
       {
+        if (j == 0 && i == 13)
+        {
+          std::cout << "  Entry (13, 0): " << x_sgn1[4*stencil_dir[j] + j] << " "
+            << xi[i] << " " << xi_base[i] << std::endl;
+        }
         dxidx1_fd[16*j + i] = x_sgn1[4*stencil_dir[j] + j]*(xi[i] - xi_base[i])/delta_;
       }
       x1[j] -= x_sgn1[4*stencil_dir[j] + j]*delta_;

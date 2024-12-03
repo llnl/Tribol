@@ -1302,7 +1302,7 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
    }
 
    RealT distMin = (seg1Mag > seg2Mag) ? seg1Mag: seg2Mag;
-   int idMin;
+   int idMin = 0;
    RealT xMinVert;
    RealT yMinVert;
 
