@@ -474,6 +474,39 @@ bool MeshData::computeFaceData(ExecutionMode exec_mode)
       }
       else if (dim == 3) {
 
+#ifdef TRIBOL_USE_ENZYME
+        RealT x1[12];
+        for (int j=0; j<num_nodes_per_elem; ++j) {
+          auto node_id = conn(i, j);
+          for (IndexT d{0}; d < dim; ++d)
+          {
+            x1[d*num_nodes_per_elem + j] = x[d][ node_id ];
+          }
+        } // end loop over nodes
+        
+        // get vector n (normal of elem1)
+        // NOTE: this limits this routine to quads
+        RealT de1[3] = {
+          -0.25*x1[0] + 0.25*x1[1] + 0.25*x1[2] - 0.25*x1[3],
+          -0.25*x1[4] + 0.25*x1[5] + 0.25*x1[6] - 0.25*x1[7],
+          -0.25*x1[8] + 0.25*x1[9] + 0.25*x1[10] - 0.25*x1[11]
+        };
+        RealT de2[3] = {
+          -0.25*x1[0] - 0.25*x1[1] + 0.25*x1[2] + 0.25*x1[3],
+          -0.25*x1[4] - 0.25*x1[5] + 0.25*x1[6] + 0.25*x1[7],
+          -0.25*x1[8] - 0.25*x1[9] + 0.25*x1[10] + 0.25*x1[11]
+        };
+        RealT n[3] = {
+          de1[1]*de2[2] - de1[2]*de2[1],
+          de1[2]*de2[0] - de1[0]*de2[2],
+          de1[0]*de2[1] - de1[1]*de2[0]
+        };
+        RealT n_mag = std::sqrt(n[0]*n[0] + n[1]*n[1] + n[2]*n[2]);
+        for (int d{0}; d < 3; ++d)
+        {
+          n[d] /= n_mag;
+        }
+#else
         // this method of computing an outward unit normal breaks the 
         // face into triangular pallets by connecting two consecutive 
         // nodes with the approximate centroid.
@@ -541,6 +574,7 @@ bool MeshData::computeFaceData(ExecutionMode exec_mode)
         n[0][i] *= inv_mag;
         n[1][i] *= inv_mag;
         n[2][i] *= inv_mag;
+#endif
 
       } // end if (dim == 3)
 
