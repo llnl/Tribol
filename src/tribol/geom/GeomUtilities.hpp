@@ -304,18 +304,36 @@ enum class OverlapVertexType
  * of points for the intersection polygon
  *
  */
-TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA,
-                                                        const RealT* const yA,
-                                                        const int numVertexA,
-                                                        const RealT* const xB,
-                                                        const RealT* const yB,
-                                                        const int numVertexB,
+TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA,
+                                                        const RealT* yA,
+                                                        int numVertexA,
+                                                        const RealT* xB,
+                                                        const RealT* yB,
+                                                        int numVertexB,
                                                         RealT posTol, RealT lenTol,
                                                         RealT* polyX,
                                                         RealT* polyY,
                                                         OverlapVertexType* vertType,
+                                                        int* edgeA, int* edgeB,
                                                         int& numPolyVert, RealT& area,
                                                         bool orientCheck=true );
+
+#ifdef TRIBOL_USE_ENZYME
+
+FaceGeomError dIntersection2DPolygon( const RealT* xA, const RealT* xA_dot,
+                                      const RealT* yA, const RealT* yA_dot,
+                                      int numVertexA,
+                                      const RealT* xB, const RealT* xB_dot,
+                                      const RealT* yB, const RealT* yB_dot,
+                                      int numVertexB,
+                                      RealT posTol, RealT lenTol,
+                                      RealT* polyX, RealT* dpolyX,
+                                      RealT* polyY, RealT* dpolyY,
+                                      OverlapVertexType* vertType,
+                                      int* edgeA, int* edgeB,
+                                      int* numPolyVert, RealT* area, bool orientCheck );
+
+#endif
                            
 /*!
  *
@@ -479,9 +497,11 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
  */
 TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y,
                                                 const OverlapVertexType* vertType,
+                                                const int* edgeA, const int* edgeB,
                                                 int numPoints, RealT tol, 
                                                 RealT* xnew, RealT* ynew,
                                                 OverlapVertexType* vertTypeNew,
+                                                int* edgeANew, int* edgeBNew,
                                                 int& numNewPoints );
 
 /*!
@@ -500,7 +520,8 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y,
  * \note This routine takes the unordered set of vertex coordinates of a star convex 
  *  polygon and orders the vertices in counter-clockwise orientation.
  */
-TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, OverlapVertexType* vertType, int numPoints );
+TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, OverlapVertexType* vertType, 
+                                     int* edgeA, int* edgeB, int numPoints );
 
 /*!
  *
