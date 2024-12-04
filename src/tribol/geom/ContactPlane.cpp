@@ -567,8 +567,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckFacePair( ContactPlane3D& cp,
       FaceGeomError inter_err = Intersection2DPolygon( X1, Y1, mesh1.numberOfNodesPerElement(),
                                                        X2, Y2, mesh2.numberOfNodesPerElement(),
                                                        pos_tol, len_tol, cp.m_polyLocX, 
-                                                       cp.m_polyLocY, nullptr, nullptr,
-                                                       nullptr, cp.m_numPolyVert, 
+                                                       cp.m_polyLocY, cp.m_numPolyVert, 
                                                        cp.m_area, false ); 
 
       if (inter_err != NO_FACE_GEOM_ERROR)
@@ -1550,8 +1549,7 @@ TRIBOL_HOST_DEVICE FaceGeomError ContactPlane3D::computeLocalInterpenOverlap(
    FaceGeomError inter_err = Intersection2DPolygon( cfx1_loc, cfy1_loc, numV[0],
                                                     cfx2_loc, cfy2_loc, numV[1],
                                                     pos_tol, len_tol, m_polyLocX,
-                                                    m_polyLocY, nullptr, nullptr,
-                                                    nullptr, m_numPolyVert,
+                                                    m_polyLocY, m_numPolyVert,
                                                     m_interpenArea, true );
 
    if (inter_err != NO_FACE_GEOM_ERROR)

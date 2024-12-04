@@ -567,9 +567,9 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA,
                                                         RealT posTol, RealT lenTol, 
                                                         RealT* polyX, 
                                                         RealT* polyY,
+                                                        int& numPolyVert, RealT& area, bool orientCheck,
                                                         OverlapVertexType* vertType,
-                                                        int* edgeA, int* edgeB,
-                                                        int& numPolyVert, RealT& area, bool orientCheck )
+                                                        int* edgeA, int* edgeB )
 {
    // for tribol, if you have called this routine it is because a positive area of 
    // overlap between two polygons (faces) exists. This routine does not perform a 
@@ -962,7 +962,8 @@ FaceGeomError dIntersection2DPolygon( const RealT* xA, const RealT* xA_dot,
                                       int* numPolyVert, RealT* area, bool orientCheck )
 {
   auto err = Intersection2DPolygon(xA, yA, numVertexA, xB, yB, numVertexB,
-    posTol, lenTol, polyX, polyY, vertType, edgeA, edgeB, *numPolyVert, *area, orientCheck);
+    posTol, lenTol, polyX, polyY, *numPolyVert, *area, orientCheck, vertType,
+    edgeA, edgeB);
   std::cout << "Custom rule!" << std::endl;
   for (int i{0}; i < *numPolyVert; ++i)
   {

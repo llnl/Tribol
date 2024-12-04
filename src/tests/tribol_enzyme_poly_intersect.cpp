@@ -46,7 +46,7 @@ protected:
     auto num_poly_verts = 0;
     RealT area = 0.0;
     Intersection2DPolygon(x1, x1 + 4, 4, x2, x2 + 4, 4, pos_tol, len_tol,
-      xi, xi + 8, type, edge1, edge2, num_poly_verts, area, true);
+      xi, xi + 8, num_poly_verts, area, true, type, edge1, edge2);
     std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
     for (int i{0}; i < 4; ++i)
     {
@@ -345,7 +345,7 @@ protected:
         xi[i] = 0.0;
       }
       Intersection2DPolygon(x1, x1 + 4, 4, x2, x2 + 4, 4, pos_tol, len_tol,
-        xi, xi + 8, type, edge1, edge2, num_poly_verts, area, true);
+        xi, xi + 8, num_poly_verts, area, true, type, edge1, edge2);
       for (int i{0}; i < 16; ++i)
       {
         if (j == 0 && i == 13)
@@ -363,7 +363,7 @@ protected:
         xi[i] = 0.0;
       }
       Intersection2DPolygon(x1, x1 + 4, 4, x2, x2 + 4, 4, pos_tol, len_tol,
-        xi, xi + 8, type, edge1, edge2, num_poly_verts, area, true);
+        xi, xi + 8, num_poly_verts, area, true, type, edge1, edge2);
       for (int i{0}; i < 16; ++i)
       {
         dxidx1_fd[16*(4 + j) + i] = y_sgn1[4*stencil_dir[j] + j]*(xi[i] - xi_base[i])/delta_;
@@ -376,7 +376,7 @@ protected:
         xi[i] = 0.0;
       }
       Intersection2DPolygon(x1, x1 + 4, 4, x2, x2 + 4, 4, pos_tol, len_tol,
-        xi, xi + 8, type, edge1, edge2, num_poly_verts, area, true);
+        xi, xi + 8, num_poly_verts, area, true, type, edge1, edge2);
       for (int i{0}; i < 16; ++i)
       {
         dxidx2_fd[16*j + i] = x_sgn2[4*stencil_dir[j] + j]*(xi[i] - xi_base[i])/delta_;
@@ -389,7 +389,7 @@ protected:
         xi[i] = 0.0;
       }
       Intersection2DPolygon(x1, x1 + 4, 4, x2, x2 + 4, 4, pos_tol, len_tol,
-        xi, xi + 8, type, edge1, edge2, num_poly_verts, area, true);
+        xi, xi + 8, num_poly_verts, area, true, type, edge1, edge2);
       for (int i{0}; i < 16; ++i)
       {
         dxidx2_fd[16*(4 + j) + i] = y_sgn2[4*stencil_dir[j] + j]*(xi[i] - xi_base[i])/delta_;

@@ -294,6 +294,10 @@ enum class OverlapVertexType
  * \param [in,out] polyY array of y coordinates of intersection polygon
  * \param [in,out] numPolyVert number of vertices in intersection polygon
  * \param [in,out] area intersection polygon area
+ * \param [in] orientCheck checks if vertices of each polygon are oriented correctly
+ * \param [in,out] vertType classification of each vertex in the intersection polygon. optional. use nullptr if not needed.
+ * \param [in,out] edgeA associated vertex or edge on polygon A for each vertex in the intersection polygon. optional. use nullptr if not needed.
+ * \param [in,out] edgeB associated vertex or edge on polygon B for each vertex in the intersection polygon. optional. use nullptr if not needed.
  *
  * \return 0 if no error, >0 a face geom error
  *
@@ -313,10 +317,10 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA,
                                                         RealT posTol, RealT lenTol,
                                                         RealT* polyX,
                                                         RealT* polyY,
-                                                        OverlapVertexType* vertType,
-                                                        int* edgeA, int* edgeB,
                                                         int& numPolyVert, RealT& area,
-                                                        bool orientCheck=true );
+                                                        bool orientCheck=true,
+                                                        OverlapVertexType* vertType=nullptr,
+                                                        int* edgeA=nullptr, int* edgeB=nullptr );
 
 #ifdef TRIBOL_USE_ENZYME
 
