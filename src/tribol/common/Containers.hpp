@@ -45,11 +45,11 @@ protected:
     }
   }
   TRIBOL_HOST_DEVICE DeviceArrayData(DeviceArrayData&& other)
-  : size_ {other.size},
+  : size_ {other.size_},
     data_ {other.data_}
   {
     // reset other
-    other.size = 0;
+    other.size_ = 0;
     other.data_ = nullptr;
   }
 

@@ -79,7 +79,7 @@ TRIBOL_HOST_DEVICE void EvalBasis( const RealT* const x,
    }
    else if (numPoints == 2)
    {
-      SegmentBasis( x, pX, pY, numPoints, vertexId, phi );
+      SegmentBasis( x, pX, pY, vertexId, phi );
    }
    else
    {
@@ -93,54 +93,35 @@ TRIBOL_HOST_DEVICE void EvalBasis( const RealT* const x,
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void SegmentBasis( const RealT* const x, 
                                       const RealT pX, const RealT pY,
-                                      const int numPoints, const int vertexId, 
-                                      RealT& phi )
+                                      const int vertexId, RealT& phi )
 {
 #ifdef TRIBOL_USE_HOST
-    SLIC_ERROR_IF(numPoints != 2, "SegmentBasis: numPoints is " << numPoints <<
-                  " but should be 2.");
-
     // note, vertexId is the index, 0 or 1.
-    SLIC_ERROR_IF(vertexId > numPoints-1, "SegmentBasis: vertexId is " << vertexId << 
+    SLIC_ERROR_IF(vertexId != 0 && vertexId != 1, "SegmentBasis: vertexId is " << vertexId << 
                   " but should be 0 or 1.");
 #endif
 
+   const int dim=2;
+
    // compute length of segment
-   RealT vx = x[numPoints*1] - x[numPoints*0];
-   RealT vy = x[numPoints*1+1] - x[numPoints*0+1];
+   RealT vx = x[dim*1]   - x[dim*0];
+   RealT vy = x[dim*1+1] - x[dim*0+1];
    RealT lambda = magnitude( vx, vy );
 
    // compute the magnitude of the vector <pX,pY> - <x[vertexId],y[vertexId]>
-   RealT wx = pX - x[ numPoints*vertexId ];
-   RealT wy = pY - x[ numPoints*vertexId+1 ];
+   RealT wx = pX - x[ dim*vertexId ];
+   RealT wy = pY - x[ dim*vertexId+1 ];
 
    RealT magW = magnitude( wx, wy );
 
-   phi = 1.0 / lambda * (lambda - magW); // this calculation is inverted, (phi_a is actually phi_b and vice versa)
+   phi = 1.0 / lambda * (lambda - magW);
 
-   // TODO verify this code as a bugfix to fix flipping of nodes a and b
-   // when evaluating basis. Suppress error for now.
-   //if (std::abs(lambda-magW)/lambda < 1.E-2)
-   //{
-   //   phi=1.;
-   //}
-   //else if (magW<1.e-5)
-   //{
-   //   phi=0.;
-   //}
-   //else
-   //{
-   //   //phi = 1.0 / lambda * (lambda - magW); // this calculation is inverted, (phi_a is actually phi_b and vice versa)
-   //                                           // this will shift nodal contributions over one node
-   //   phi = 1.0 / lambda * magW;
-   //}
-
-   //if (phi > 1.0 || phi < 0.0)
-   //{
-   //   SLIC_INFO("(x0,y0) and (x1,y1): " << "(" << x[0] << ", " << x[1] << "), " << "(" << x[2] << ", " << x[3] << ").");
-   //   SLIC_INFO("(px,py): " << "(" << pX << ", " << pY << ")");
-   //}
-   //SLIC_ERROR_IF(phi > 1.0 || phi < 0.0, "SegmentBasis: phi is " << phi << " not between 0. and 1." );
+   if (phi > 1.0 || phi < 0.0)
+   {
+      SLIC_DEBUG("SegmentBasis: phi is " << phi << " not between 0. and 1 for vertex " << vertexId << "." );
+      SLIC_DEBUG("(x0,y0) and (x1,y1): " << "(" << x[0] << ", " << x[1] << "), " << "(" << x[2] << ", " << x[3] << ").");
+      SLIC_DEBUG("(px,py): " << "(" << pX << ", " << pY << ")");
+   }
 
    return;
 }

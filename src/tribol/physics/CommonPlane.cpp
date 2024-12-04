@@ -358,6 +358,7 @@ int ApplyNormal< COMMON_PLANE, PENALTY >( CouplingScheme* cs )
         cntctElem.faceNormal1 = faceNormal1;
         cntctElem.faceNormal2 = faceNormal2;
         cntctElem.overlapNormal = overlapNormal;
+        cntctElem.overlapArea   = plane.m_area;
 
         // create arrays to hold nodal residual weak form integral evaluations
         RealT phi1[max_nodes_per_face];

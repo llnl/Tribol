@@ -209,9 +209,9 @@ void setContactAreaFrac( IndexT cs_id, RealT frac )
                        "tribol::setContactAreaFrac(): call tribol::registerCouplingScheme() " <<
                        "prior to calling this routine." );
 
-   if (frac < 1.e-12)
+   if (frac <= 0.0)
    {
-      SLIC_DEBUG_ROOT("tribol::setContactAreaFrac(): area fraction too small or negative; " << 
+      SLIC_DEBUG_ROOT("tribol::setContactAreaFrac(): area fraction <= 0.0; " << 
                       "setting to default 1.e-8.");
       frac = 1.e-8;
    }

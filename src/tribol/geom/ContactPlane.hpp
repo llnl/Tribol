@@ -624,10 +624,7 @@ public:
     * \brief Check whether two segments have a positive length of overlap 
     *
     */
-   TRIBOL_HOST_DEVICE void checkSegOverlap( const MeshData::Viewer& m1,
-                                            const MeshData::Viewer& m2,
-                                            const Parameters& params,
-                                            const RealT* const pX1, const RealT* const pY1, 
+   TRIBOL_HOST_DEVICE void checkSegOverlap( const RealT* const pX1, const RealT* const pY1, 
                                             const RealT* const pX2, const RealT* const pY2, 
                                             const int nV1, const int nV2 );
 

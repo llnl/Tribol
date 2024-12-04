@@ -1,0 +1,59 @@
+spack:
+  # add package specs to the `specs` list
+  view: true
+  concretizer:
+    unify: true
+  packages:
+    all:
+      compiler: [clang, gcc]
+      providers:
+        blas: [netlib-lapack]
+        lapack: [netlib-lapack]
+        mpi: [openmpi]
+    mpi:
+      buildable: false
+    openmpi:
+      buildable: false
+      externals:
+      - spec: openmpi@5.0.6
+        prefix: /opt/homebrew
+    netlib-lapack:
+      buildable: false
+      externals:
+      - spec: netlib-lapack@3.12.0
+        prefix: /opt/homebrew/opt/lapack
+    cmake:
+      version: [3.31.1]
+      buildable: false
+      externals:
+      - spec: cmake@3.31.1
+        prefix: /opt/homebrew
+    hdf5:
+      version: [1.14.5]
+      buildable: false
+      externals:
+      - spec: hdf5@1.14.5
+        prefix: /opt/homebrew
+    lua:
+      version: [5.4.7]
+      buildable: false
+      externals:
+      - spec: lua@5.4.7
+        prefix: /opt/homebrew
+
+ # The "::" removes all found/known compilers from Spack except for these.
+  compilers::
+  - compiler:
+      spec: clang@=19.1.4
+      paths:
+        cc: /opt/homebrew/opt/llvm/bin/clang
+        cxx: /opt/homebrew/opt/llvm/bin/clang++
+        f77: /opt/homebrew/bin/gfortran-14
+        fc: /opt/homebrew/bin/gfortran-14
+      flags: {}
+      operating_system: sequoia
+      target: aarch64
+      modules: []
+      environment: {}
+      extra_rpaths:
+      - /opt/homebrew/lib/gcc/14

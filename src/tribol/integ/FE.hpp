@@ -84,7 +84,6 @@ TRIBOL_HOST_DEVICE void WachspressBasis( const RealT* const x,
  * \param [in] x pointer to array of stacked (xy) coordinates for 2D segment
  * \param [in] pX x-coordinate of point at which to evaluate shape function
  * \param [in] pX y-coordinate of point at which to evaluate shape function
- * \param [in] numPoints number of vertices in x,y arrays
  * \param [in] vertexId node id whose shape function is to be evaluated
  * \param [in,out] phi shape function evaluation
  *
@@ -93,8 +92,7 @@ TRIBOL_HOST_DEVICE void WachspressBasis( const RealT* const x,
  */
 TRIBOL_HOST_DEVICE void SegmentBasis( const RealT* const x, 
                                       const RealT pX, const RealT pY,
-                                      const int numPoints, const int vertexId, 
-                                      RealT& phi );
+                                      const int vertexId, RealT& phi );
 
 /*!
  *

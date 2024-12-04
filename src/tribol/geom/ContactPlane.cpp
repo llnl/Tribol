@@ -60,13 +60,12 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair( InterfacePair& pair,
         ContactPlane3D cpTemp( &pair, params.overlap_area_frac, interpenOverlap, intermediatePlane);
         FaceGeomError face_err = CheckFacePair( cpTemp, mesh1, mesh2, params, full );
 
-#ifdef TRIBOL_USE_HOST
-        //SLIC_DEBUG("face_err: " << face_err );
-#endif
-
         if (face_err != NO_FACE_GEOM_ERROR)
         {
-          isInteracting = false;
+           isInteracting = false;
+#ifdef TRIBOL_USE_HOST
+           SLIC_DEBUG("face_err: " << face_err );
+#endif
         }
         else if (cpTemp.m_inContact)
         {
@@ -1670,7 +1669,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckEdgePair( ContactPlane2D& cp,
    // compute the full overlap. Even if we are using the interpenetration 
    // overlap, we have to compute the full overlap in order to properly 
    // locate the contact plane (segment) for the interpenetration calculation
-   cp.checkSegOverlap( mesh1, mesh2, params, &projX1[0], &projY1[0], &projX2[0], &projY2[0], 
+   cp.checkSegOverlap( &projX1[0], &projY1[0], &projX2[0], &projY2[0], 
                        mesh1.numberOfNodesPerElement(), mesh2.numberOfNodesPerElement() );
 
    // compute the overlap length tolerance
@@ -1926,10 +1925,7 @@ void ContactPlane2D::centroidGap( const MeshData::Viewer& m1,
 } // end ContactPlane2D::centroidGap()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlane2D::checkSegOverlap( const MeshData::Viewer& m1,
-                                                         const MeshData::Viewer& m2,
-                                                         const Parameters& params,
-                                                         const RealT* const pX1, const RealT* const pY1, 
+TRIBOL_HOST_DEVICE void ContactPlane2D::checkSegOverlap( const RealT* const pX1, const RealT* const pY1, 
                                                          const RealT* const pX2, const RealT* const pY2, 
                                                          const int nV1, const int nV2 )
 {
@@ -1942,27 +1938,29 @@ TRIBOL_HOST_DEVICE void ContactPlane2D::checkSegOverlap( const MeshData::Viewer&
    SLIC_ASSERT( nV2 == 2 );
 #endif
 
-   // get edge ids
-   int e1Id = getCpElementId1();
-   int e2Id = getCpElementId2();
-
-   //
-   // perform the all-in-1 check
-   //
-
    // define the edge 1 non-unit directional vector between vertices 
    // 2 and 1
    RealT lvx1 = pX1[1] - pX1[0];
    RealT lvy1 = pY1[1] - pY1[0];
 
+   RealT e1_len = magnitude( lvx1, lvy1 );
+   
+   // define the edge 2 non-unit directional vector between vertices 
+   // 2 and 1
+   RealT lvx2 = pX2[1] - pX2[0];
+   RealT lvy2 = pY2[1] - pY2[0];
+
+   RealT e2_len = magnitude( lvx2, lvy2 );
+
+   //
+   // perform the all-in-1 check
+   //
+
    // compute vector between each edge 2 vertex and vertex 1 on edge 1.
    // Then dot that vector with the directional vector of edge 1 to see 
-   // if they are codirectional. If so, check, that this vector length is 
+   // if they are codirectional (projection > 0 indicating edge 2 vertex 
+   // lies within or beyond edge 1. If so, check, that this vector length is 
    // less than edge 1 length indicating that the vertex lies within edge 1
-   RealT projTol = params.projection_ratio * 
-                  axom::utilities::max( m1.getFaceRadius()[ e1Id ], 
-                                        m2.getFaceRadius()[ e2Id ] );
-   RealT vLenTol = projTol;
    int inter2 = 0;
    int twoInOneId = -1;
    for (int i=0; i<nV2; ++i)
@@ -1970,19 +1968,18 @@ TRIBOL_HOST_DEVICE void ContactPlane2D::checkSegOverlap( const MeshData::Viewer&
       RealT vx = pX2[i] - pX1[0];
       RealT vy = pY2[i] - pY1[0]; 
 
-      // compute projection onto edge 1 directional vector
+      // compute projection onto edge 1 directional vector. (Positive if codirectional,
+      // negative otherwise. Only positive projections will be potential overlap vertex candidates
       RealT proj = vx * lvx1 + vy * lvy1;
 
       // compute length of <vx,vy>; if vLen < some tolerance we have a 
       // coincident node
       RealT vLen = magnitude( vx, vy );
 
-      if (vLen < vLenTol) // coincident vertex
-      {
-         twoInOneId = i;
-         ++inter2;
-      }
-      else if (proj > projTol && vLen <= m1.getElementAreas()[e1Id]) // interior vertex
+      // check for >= 0 projections and vector lengths <= edge 1 length. This
+      // indicates an edge 2 vertex interior to edge 1, or coincident vertices in 
+      // the case of projection = 0 or vector length is equal to edge 1 length
+      if (proj >= 0 && vLen <= e1_len) // interior vertex
       {
          twoInOneId = i;
          ++inter2;
@@ -1993,7 +1990,7 @@ TRIBOL_HOST_DEVICE void ContactPlane2D::checkSegOverlap( const MeshData::Viewer&
    if (inter2 == 2) 
    {
       // set the contact plane (segment) length
-      m_area = m2.getElementAreas()[e2Id];
+      m_area = e2_len;
 
       // set the vertices of the overlap segment
       m_segX[0] = pX2[0];
@@ -2014,11 +2011,6 @@ TRIBOL_HOST_DEVICE void ContactPlane2D::checkSegOverlap( const MeshData::Viewer&
    // perform the all-in-2 check
    //
 
-   // define the edge 2 non-unit directional vector between vertices 
-   // 2 and 1
-   RealT lvx2 = pX2[1] - pX2[0];
-   RealT lvy2 = pY2[1] - pY2[0];
-
    // compute vector between each edge 1 vertex and vertex 1 on edge 2.
    // Then dot that vector with the directional vector of edge 2 to see 
    // if they are codirectional. If so, check, that this vector length is 
@@ -2036,12 +2028,10 @@ TRIBOL_HOST_DEVICE void ContactPlane2D::checkSegOverlap( const MeshData::Viewer&
       // compute length of <vx,vy>
       RealT vLen = magnitude( vx, vy );
 
-      if (vLen < vLenTol) // coincident vertex
-      {
-         oneInTwoId = i;
-         ++inter1;
-      }
-      else if (proj > projTol && vLen <= m2.getElementAreas()[e2Id]) // interior vertex
+      // check for >= 0 projections and vector lengths <= edge 2 length. This
+      // indicates an edge 1 vertex interior to edge 2 or is coincident if the 
+      // projection is zero or vector length is equal to edge 2 length
+      if (proj >= 0. && vLen <= e2_len) // interior vertex
       {
          oneInTwoId = i;
          ++inter1;
@@ -2052,7 +2042,7 @@ TRIBOL_HOST_DEVICE void ContactPlane2D::checkSegOverlap( const MeshData::Viewer&
    if (inter1 == 2)
    {
       // set the contact plane (segment) length
-      m_area = m1.getElementAreas()[e1Id];
+      m_area = e1_len;
 
       // set the overlap segment vertices on the contact plane object
       m_segX[0] = pX1[0];

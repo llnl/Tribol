@@ -26,7 +26,8 @@ TRIBOL_HOST_DEVICE void EvalWeakFormIntegral< COMMON_PLANE, SINGLE_POINT >
                            RealT * const integ2 )
 {
    // compute the area centroid of the overlap polygon,
-   // which serves as the single integration point
+   // or vertex avg. centroid of the overlap segment, which 
+   // serves as the single integration point
    RealT cx[3] = {0., 0., 0.};
    if (elem.dim == 2)
    {
@@ -37,55 +38,88 @@ TRIBOL_HOST_DEVICE void EvalWeakFormIntegral< COMMON_PLANE, SINGLE_POINT >
                         cx[0], cx[1], cx[2] );
    }
 
-   ///////////////////////////////////////////////
-   //
-   //project overlap polygon centroid to each face
-   //
-   ///////////////////////////////////////////////
-   RealT cxProj1[3]  = { 0., 0., 0. }; // overlap centroid projected to face 1
-   RealT cxProj2[3]  = { 0., 0., 0. }; // overlap centroid projected to face 2
-   RealT cxf1[3] = { 0., 0., 0. }; // vertex avg. centroid of face 1
-   RealT cxf2[3] = { 0., 0., 0. }; // vertex avg. centroid of face 2
+   // debug: leave commented out so we don't enter loop
+   {
+     //SLIC_DEBUG("Integration point: " << cx[0] << ", " << cx[1]);
 
-   // compute vertex averaged centroid of each face for the point-normal data
-   VertexAvgCentroid( elem.faceCoords1, elem.dim, elem.numFaceVert,
-                      cxf1[0], cxf1[1], cxf1[2] );
-   VertexAvgCentroid( elem.faceCoords2, elem.dim, elem.numFaceVert,
-                      cxf2[0], cxf2[1], cxf2[2] );
+     //SLIC_DEBUG("Overlap area: " << elem.overlapArea);
+     //SLIC_DEBUG("Overlap coords: ");
+     //for (int i=0; i<elem.numPolyVert; ++i)
+     //{
+     //   if (elem.dim==2)
+     //   {
+     //      SLIC_DEBUG(elem.overlapCoords[elem.dim*i] << ", " << elem.overlapCoords[elem.dim*i+1]);
+     //   }
+     //   else
+     //   {
+     //      SLIC_DEBUG(elem.overlapCoords[elem.dim*i] << ", " << elem.overlapCoords[elem.dim*i+1] << ", " elem.overlapCoords[elem.dim*i+2]);
+     //   }
+     //}
+   }
 
-   // project the overlap centroid to each face
+   /////////////////////////////////////////////////////////////////////////
+   //                                                                     //
+   // Project each face/edge to the common plane overlap                  //
+   //                                                                     //
+   //   Note: projecting integration point to current configuration faces //
+   //         will have same basis evaluation as projecting faces to      //
+   //         the common plane on which the integration point is          //
+   //         originally defined.                                         //
+   //                                                                     //
+   /////////////////////////////////////////////////////////////////////////
+
+   // allocate max stacked arrays of coordinates. The basis function evaluation
+   // later in this routine requires data in this format
+   constexpr int max_vertex_coords_per_elem = 3*4;
+   RealT projX1[ max_vertex_coords_per_elem ];
+   RealT projX2[ max_vertex_coords_per_elem ];
+    
    if (elem.dim == 3)
    {
-      // TODO we should probably project in the direction of the overlap normal
-      // As the faces become less coplanar we lose conservation of angular momentum
-      ProjectPointToPlane( cx[0], cx[1], cx[2],
-                           elem.faceNormal1[0],
-                           elem.faceNormal1[1],
-                           elem.faceNormal1[2],
-                           cxf1[0], cxf1[1], cxf1[2],
-                           cxProj1[0], cxProj1[1], cxProj1[2] ); 
+      // loop over number of nodes per face (same for each mesh) and project nodes to common plane.
+      // Can use the integration point as the point in the point-normal data.
+      for (int i=0; i<elem.m_mesh1->numberOfNodesPerElement(); ++i)
+      {
+         const int nodeId1 = elem.m_mesh1->getGlobalNodeId(elem.faceId1, i);
+         ProjectPointToPlane( elem.m_mesh1->getPosition()[0][nodeId1], elem.m_mesh1->getPosition()[1][nodeId1],
+                              elem.m_mesh1->getPosition()[2][nodeId1], elem.overlapNormal[0], elem.overlapNormal[1],
+                              elem.overlapNormal[2], cx[0], cx[1], cx[2], projX1[elem.dim*i], projX1[elem.dim*i+1], 
+                              projX1[elem.dim*i+2] );
 
-      ProjectPointToPlane( cx[0], cx[1], cx[2],
-                           elem.faceNormal2[0],
-                           elem.faceNormal2[1],
-                           elem.faceNormal2[2],
-                           cxf2[0], cxf2[1], cxf2[2],
-                           cxProj2[0], cxProj2[1], cxProj2[2] ); 
+         SLIC_DEBUG("face 1 projected vertex " << i << ": " << elem.m_mesh1->getPosition()[0][nodeId1] << ", " << elem.m_mesh1->getPosition()[1][nodeId1] <<
+                      elem.m_mesh1->getPosition()[2][nodeId1]);
+
+         const int nodeId2 = elem.m_mesh2->getGlobalNodeId(elem.faceId2, i);
+         ProjectPointToPlane( elem.m_mesh2->getPosition()[0][nodeId2], elem.m_mesh2->getPosition()[1][nodeId2],
+                              elem.m_mesh2->getPosition()[2][nodeId2], elem.overlapNormal[0], elem.overlapNormal[1],
+                              elem.overlapNormal[2], cx[0], cx[1], cx[2], projX2[elem.dim*i], projX2[elem.dim*i+1], 
+                              projX2[elem.dim*i+2] );
+
+         SLIC_DEBUG("face 2 projected vertex " << i << ": " << elem.m_mesh2->getPosition()[0][nodeId2] << ", " << elem.m_mesh2->getPosition()[1][nodeId2] <<
+                      elem.m_mesh2->getPosition()[2][nodeId2]);
+      }
    } 
    else
    {
-      // TODO we should probably project in the direction of the overlap normal
-      // As the faces become less coplanar we lose conservation of angular momentum
-      ProjectPointToSegment( cx[0], cx[1], 
-                             elem.faceNormal1[0],
-                             elem.faceNormal1[1],
-                             cxf1[0], cxf1[1],
-                             cxProj1[0], cxProj1[1] );
-      ProjectPointToSegment( cx[0], cx[1], 
-                             elem.faceNormal2[0],
-                             elem.faceNormal2[1],
-                             cxf2[0], cxf2[1],
-                             cxProj2[0], cxProj2[1] );
+      // loop over number of nodes per edge (same for each mesh) and project nodes to common plane.
+      // Can use the integration point as the point in the point-normal data.
+      for (int i=0; i<elem.m_mesh1->numberOfNodesPerElement(); ++i)
+      {
+         const int nodeId1 = elem.m_mesh1->getGlobalNodeId(elem.faceId1, i);
+
+         ProjectPointToSegment( elem.m_mesh1->getPosition()[0][nodeId1], elem.m_mesh1->getPosition()[1][nodeId1],
+                                elem.overlapNormal[0], elem.overlapNormal[1], cx[0], cx[1], 
+                                projX1[elem.dim*i], projX1[elem.dim*i+1] );
+
+         SLIC_DEBUG("edge 1 projected vertex " << i << ": " << elem.m_mesh1->getPosition()[0][nodeId1] << ", " << elem.m_mesh1->getPosition()[1][nodeId1] );
+
+         const int nodeId2 = elem.m_mesh2->getGlobalNodeId(elem.faceId2, i);
+         ProjectPointToSegment( elem.m_mesh2->getPosition()[0][nodeId2], elem.m_mesh2->getPosition()[1][nodeId2],
+                                elem.overlapNormal[0], elem.overlapNormal[1], cx[0], cx[1], 
+                                projX2[elem.dim*i], projX2[elem.dim*i+1] );
+
+         SLIC_DEBUG("edge 2 projected vertex " << i << ": " << elem.m_mesh2->getPosition()[0][nodeId2] << ", " << elem.m_mesh2->getPosition()[1][nodeId2] );
+      }
    }
 
    // loop over nodes and compute nodal force integral 
@@ -93,9 +127,9 @@ TRIBOL_HOST_DEVICE void EvalWeakFormIntegral< COMMON_PLANE, SINGLE_POINT >
    for (int a=0; a<elem.numFaceVert; ++a)
    {
 
-      EvalBasis( elem.faceCoords1, cxProj1[0], cxProj1[1], cxProj1[2],
+      EvalBasis( &projX1[0], cx[0], cx[1], cx[2],
                  elem.numFaceVert, a, integ1[a] );
-      EvalBasis( elem.faceCoords2, cxProj2[0], cxProj2[1], cxProj2[2],
+      EvalBasis( &projX2[0], cx[0], cx[1], cx[2],
                  elem.numFaceVert, a, integ2[a] );
    }
 
