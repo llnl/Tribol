@@ -107,12 +107,12 @@ protected:
         enzyme_const, len_tol,
         enzyme_dup, xi, dxidx1 + 16*i,
         enzyme_dup, xi + 8, dxidx1 + 16*i + 8,
-        enzyme_const, type,
-        enzyme_const, edge1,
-        enzyme_const, edge2,
         enzyme_const, &num_poly_verts,
         enzyme_const, &area,
-        enzyme_const, true
+        enzyme_const, true,
+        enzyme_const, type,
+        enzyme_const, edge1,
+        enzyme_const, edge2
       );
     
       // std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
@@ -155,12 +155,12 @@ protected:
         enzyme_const, len_tol,
         enzyme_dup, xi, dxidx1 + 16*(4 + i),
         enzyme_dup, xi + 8, dxidx1 + 16*(4 + i) + 8,
-        enzyme_const, type,
-        enzyme_const, edge1,
-        enzyme_const, edge2,
         enzyme_const, &num_poly_verts,
         enzyme_const, &area,
-        enzyme_const, true
+        enzyme_const, true,
+        enzyme_const, type,
+        enzyme_const, edge1,
+        enzyme_const, edge2
       );
     
       // std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
@@ -203,12 +203,12 @@ protected:
         enzyme_const, len_tol,
         enzyme_dup, xi, dxidx2 + 16*i,
         enzyme_dup, xi + 8, dxidx2 + 16*i + 8,
-        enzyme_const, type,
-        enzyme_const, edge1,
-        enzyme_const, edge2,
         enzyme_const, &num_poly_verts,
         enzyme_const, &area,
-        enzyme_const, true
+        enzyme_const, true,
+        enzyme_const, type,
+        enzyme_const, edge1,
+        enzyme_const, edge2
       );
     
       // std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
@@ -251,12 +251,12 @@ protected:
         enzyme_const, len_tol,
         enzyme_dup, xi, dxidx2 + 16*(4 + i),
         enzyme_dup, xi + 8, dxidx2 + 16*(4 + i) + 8,
-        enzyme_const, type,
-        enzyme_const, edge1,
-        enzyme_const, edge2,
         enzyme_const, &num_poly_verts,
         enzyme_const, &area,
-        enzyme_const, true
+        enzyme_const, true,
+        enzyme_const, type,
+        enzyme_const, edge1,
+        enzyme_const, edge2
       );
     
       // std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
