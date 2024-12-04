@@ -896,6 +896,8 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA,
                                             numPolyVert, lenTol, polyX, polyY, vertType, edgeA, edgeB,
                                             numFinalVert );
 
+      numPolyVert = numFinalVert;
+
       // check for an error in the segment check routine
       if (segErr != 0)
       {
@@ -908,8 +910,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA,
          area = 0.0;
          return NO_FACE_GEOM_ERROR; // punt on degenerated or collapsed overlaps
       }
-
-      numPolyVert = numFinalVert;
    }
    else
    {

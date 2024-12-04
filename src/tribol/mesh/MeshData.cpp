@@ -496,15 +496,13 @@ bool MeshData::computeFaceData(ExecutionMode exec_mode)
           -0.25*x1[4] - 0.25*x1[5] + 0.25*x1[6] + 0.25*x1[7],
           -0.25*x1[8] - 0.25*x1[9] + 0.25*x1[10] + 0.25*x1[11]
         };
-        RealT n[3] = {
-          de1[1]*de2[2] - de1[2]*de2[1],
-          de1[2]*de2[0] - de1[0]*de2[2],
-          de1[0]*de2[1] - de1[1]*de2[0]
-        };
-        RealT n_mag = std::sqrt(n[0]*n[0] + n[1]*n[1] + n[2]*n[2]);
+        n[0][i] = de1[1]*de2[2] - de1[2]*de2[1];
+        n[1][i] = de1[2]*de2[0] - de1[0]*de2[2];
+        n[2][i] = de1[0]*de2[1] - de1[1]*de2[0];
+        RealT n_mag = std::sqrt(n[0][i]*n[0][i] + n[1][i]*n[1][i] + n[2][i]*n[2][i]);
         for (int d{0}; d < 3; ++d)
         {
-          n[d] /= n_mag;
+          n[d][i] /= n_mag;
         }
 #else
         // this method of computing an outward unit normal breaks the 

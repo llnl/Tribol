@@ -41,7 +41,16 @@ protected:
   {
     double f1[12];
     double f2[12];
+    for (int i{0}; i < 12; ++i)
+    {
+      f1[i] = 0.0;
+      f2[i] = 0.0;
+    }
     double g1[4];
+    for (int i{0}; i < 4; ++i)
+    {
+      g1[i] = 0.0;
+    }
 
     double df1dx1[12*12];
     double df1dx2[12*12];
@@ -96,6 +105,16 @@ protected:
     for (int j{0}; j < 12; ++j)
     {
       x1[j] += delta_;
+      for (int i{0}; i < 12; ++i)
+      {
+        f1[i] = 0.0;
+        f2[i] = 0.0;
+      }
+      double g1[4];
+      for (int i{0}; i < 4; ++i)
+      {
+        g1[i] = 0.0;
+      }
       tribol::ComputeMortarForceEnzyme(x1, n1, p1, f1, g1, 4, x2, f2, 4);
       for (int i{0}; i < 12; ++i)
       {
@@ -334,10 +353,11 @@ protected:
   }
 };
 
-TEST_F(EnzymeJacobianTest, smaller_fd)
+TEST_F(EnzymeJacobianTest, SlightlySmallerNonmortarElement)
 {
   // slightly smaller
   double dx = 4.0 * delta_;
+  // {x0, x1, x2, x3, y0, y1, y2, y3, z0, z1, z2, z3}
   double x1[12] = { 0.0+dx, 1.0-dx, 1.0-dx, 0.0+dx,
                     0.0+dx, 0.0+dx, 1.0-dx, 1.0-dx,
                     0.01,   0.01,   0.01,   0.01 };
@@ -353,121 +373,125 @@ TEST_F(EnzymeJacobianTest, smaller_fd)
   ApproxJacobianCheck(x1, x2, n1, p1);
 }
 
-TEST_F(EnzymeJacobianTest, offsetx_fd)
+TEST_F(EnzymeJacobianTest, ShiftedXNonmortarElement)
 {
   // slightly smaller and offset
   double offset = 0.3;
   double dx = 4.0 * delta_;
-  double x1[12] = { 0.0+dx+offset, 0.0+dx, 0.01,
-                    1.0-dx+offset, 0.0+dx, 0.01,
-                    1.0-dx+offset, 1.0-dx, 0.01,
-                    0.0+dx+offset, 1.0-dx, 0.01 };
-  double x2[12] = { 0.0, 0.0, -0.01,
-                    0.0, 1.0, -0.01,
-                    1.0, 1.0, -0.01,
-                    1.0, 0.0, -0.01 };
-  double n1[12] = { 0.0, 0.0, 1.0,
-                    0.0, 0.0, 1.0,
-                    0.0, 0.0, 1.0,
-                    0.0, 0.0, 1.0 };
+  double x1[12] = { 0.0+dx+offset, 1.0-dx+offset, 1.0-dx+offset, 0.0+dx+offset,
+                    0.0+dx,        0.0+dx,        1.0-dx,        1.0-dx,
+                    0.01,          0.01,          0.01,          0.01 };
+  double x2[12] = { 0.0,   0.0,   1.0,   1.0,
+                    0.0,   1.0,   1.0,   0.0,
+                    -0.01, -0.01, -0.01, -0.01 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
   double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
 
   FDCheck(x1, x2, n1, p1);
 }
 
-TEST_F(EnzymeJacobianTest, offsetxy_fd)
+TEST_F(EnzymeJacobianTest, ShiftedXYNonmortarElement)
 {
   // slightly smaller and offset
   double offset = 0.3;
   double dx = 4.0 * delta_;
-  double x1[12] = { 0.0+dx+offset, 0.0+dx+offset, 0.01,
-                    1.0-dx+offset, 0.0+dx+offset, 0.01,
-                    1.0-dx+offset, 1.0-dx+offset, 0.01,
-                    0.0+dx+offset, 1.0-dx+offset, 0.01 };
-  double x2[12] = { 0.0, 0.0, -0.01,
-                    0.0, 1.0, -0.01,
-                    1.0, 1.0, -0.01,
-                    1.0, 0.0, -0.01 };
-  double n1[12] = { 0.0, 0.0, 1.0,
-                    0.0, 0.0, 1.0,
-                    0.0, 0.0, 1.0,
-                    0.0, 0.0, 1.0 };
+  double x1[12] = { 0.0+dx+offset, 1.0-dx+offset, 1.0-dx+offset, 0.0+dx+offset,
+                    0.0+dx+offset, 0.0+dx+offset, 1.0-dx+offset, 1.0-dx+offset,
+                    0.01,          0.01,          0.01,          0.01 };
+  double x2[12] = { 0.0,   0.0,   1.0,   1.0,
+                    0.0,   1.0,   1.0,   0.0,
+                    -0.01, -0.01, -0.01, -0.01 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
   double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
 
   FDCheck(x1, x2, n1, p1);
 }
 
-TEST_F(EnzymeJacobianTest, rotate30_fd)
+TEST_F(EnzymeJacobianTest, Rotated30DegNonmortarElement)
 {
   // rotate 30 degrees
-  double x1[12] = { 0.0, 0.0, 0.01,
-                    1.0, 0.0, 0.01,
-                    1.0, 1.0, 0.01,
-                    0.0, 1.0, 0.01 };
+  double x1[12] = { 0.0,  1.0,  1.0,  0.0,
+                    0.0,  0.0,  1.0,  1.0,
+                    0.01, 0.01, 0.01, 0.01 };
   double cos30 = std::cos(redecomp::pi / 6.0);
   double sin30 = std::sin(redecomp::pi / 6.0);
   for (int i{0}; i < 4; ++i)
   {
-    double x_new = x1[i*3]*cos30 - x1[i*3+1]*sin30;
-    double y_new = x1[i*3]*sin30 + x1[i*3+1]*cos30;
-    x1[i*3] = x_new;
-    x1[i*3+1] = y_new;
+    double x_new = x1[i]*cos30 - x1[i + 4]*sin30;
+    double y_new = x1[i]*sin30 + x1[i + 4]*cos30;
+    x1[i]     = x_new;
+    x1[i + 4] = y_new;
   }
   // shift to center the element at (0.5, 0.5)
   double x_shift = 0.25;
-  double y_shift = -0.5 * (x1[7] - 1.0);
+  double y_shift = -0.5 * (x1[6] - 1.0);
   for (int i{0}; i < 4; ++i)
   {
-    x1[i*3] += x_shift;
-    x1[i*3+1] += y_shift;
+    x1[i]     += x_shift;
+    x1[i + 4] += y_shift;
   }
-  double x2[12] = { 0.0, 0.0, -0.01,
-                    0.0, 1.0, -0.01,
-                    1.0, 1.0, -0.01,
-                    1.0, 0.0, -0.01 };
-  double n1[12] = { 0.0, 0.0, 1.0,
-                    0.0, 0.0, 1.0,
-                    0.0, 0.0, 1.0,
-                    0.0, 0.0, 1.0 };
+  double x2[12] = { 0.0,   0.0,   1.0,   1.0,
+                    0.0,   1.0,   1.0,   0.0,
+                    -0.01, -0.01, -0.01, -0.01 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
   double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
 
   FDCheck(x1, x2, n1, p1);
 }
 
-TEST_F(EnzymeJacobianTest, rotate45_nonaffine_fd)
+TEST_F(EnzymeJacobianTest, NonaffineRotated45DegMortarElement)
 {
   // rotate 45 degrees
-  double x1[12] = { 0.0, 0.0, 0.01,
-                    1.1, 0.0, 0.01,
-                    1.0, 1.1, 0.01,
-                    0.0, 1.0, 0.01 };
+  double x1[12] = { 0.0,  1.1,  1.0,  0.0,
+                    0.0,  0.0,  1.1,  1.0,
+                    0.01, 0.01, 0.01, 0.01 };
   double cos45 = std::cos(redecomp::pi / 4.0);
   double sin45 = std::sin(redecomp::pi / 4.0);
   for (int i{0}; i < 4; ++i)
   {
-    double x_new = x1[i*3]*cos45 - x1[i*3+1]*sin45;
-    double y_new = x1[i*3]*sin45 + x1[i*3+1]*cos45;
-    x1[i*3] = x_new;
-    x1[i*3+1] = y_new;
+    double x_new = x1[i]*cos45 - x1[i + 4]*sin45;
+    double y_new = x1[i]*sin45 + x1[i + 4]*cos45;
+    x1[i]     = x_new;
+    x1[i + 4] = y_new;
   }
   // shift to center the element near (0.5, 0.5)
   double x_shift = 0.5/std::sqrt(2.0) + 0.1;
   double y_shift = -0.5/std::sqrt(2.0) + 0.1;
   for (int i{0}; i < 4; ++i)
   {
-    x1[i*3] += x_shift;
-    x1[i*3+1] += y_shift;
+    x1[i]     += x_shift;
+    x1[i + 4] += y_shift;
   }
-  double x2[12] = { 0.0, 0.0, -0.01,
-                    0.0, 1.0, -0.01,
-                    1.0, 1.0, -0.01,
-                    1.0, 0.0, -0.01 };
-  double n1[12] = { 0.0, 0.0, 1.0,
-                    0.0, 0.0, 1.0,
-                    0.0, 0.0, 1.0,
-                    0.0, 0.0, 1.0 };
+  double x2[12] = { 0.0,   0.0,   1.0,   1.0,
+                    0.0,   1.0,   1.0,   0.0,
+                    -0.01, -0.01, -0.01, -0.01 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
   double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
 
+  FDCheck(x1, x2, n1, p1);
+}
+
+TEST_F(EnzymeJacobianTest, NoOverlap)
+{
+  double x1[12] = { 0,                  0.25061248332819264, 0.25061248347850068, 0, 
+                    1.0024499307581727, 1.0024499310658752,  0.75183744879681569, 0.75183744859830548, 
+                    0.9950243367728403, 0.99502433719083682, 0.99502433812781421, 0.99502433784796417 };
+  double x2[12] = { 0,                   0.2506124842888437,  0.25061248413259829, 0, 
+                    0.50122496909581893, 0.50122496895699598, 0.75183745346191466, 0.75183745367891308,
+                    0.99497565718874636, 0.99497565744420857, 0.99497565800865728, 0.99497565778429586 };
+  double n1[12] = { 1.6760823570596968E-9,  2.8328822061264079E-9,  1.7167363802005653E-9,  1.1221425796502179E-9, 
+                    -4.3110314424768161E-9, -3.7570916641889438E-9, 4.1753970779955578E-10, -2.8983706722398794E-11, 
+                    -1.0049058641140272,    -1.0049058643326783,    -1.0049058657698271,    -1.0049058656548657 };
+  double p1[4] = { -0.0039961035429747216, -0.0039669165550449692, -0.0035314820072299361, -0.0035524348165424662 };
+  
   FDCheck(x1, x2, n1, p1);
 }
 
