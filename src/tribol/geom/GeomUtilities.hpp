@@ -324,18 +324,57 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA,
 
 #ifdef TRIBOL_USE_ENZYME
 
-FaceGeomError dIntersection2DPolygon( const RealT* xA, const RealT* xA_dot,
-                                      const RealT* yA, const RealT* yA_dot,
-                                      int numVertexA,
-                                      const RealT* xB, const RealT* xB_dot,
-                                      const RealT* yB, const RealT* yB_dot,
-                                      int numVertexB,
-                                      RealT posTol, RealT lenTol,
-                                      RealT* polyX, RealT* dpolyX,
-                                      RealT* polyY, RealT* dpolyY,
-                                      OverlapVertexType* vertType,
-                                      int* edgeA, int* edgeB,
-                                      int* numPolyVert, RealT* area, bool orientCheck );
+/*!
+ *
+ * \brief Enzyme wrapper for Intersection2DPolygon
+ *
+ * \param [in] xA array of local x coordinates of polygon A
+ * \param [in] yA array of local y coordinates of polygon A
+ * \param [in] numVertexA number of vertices in polygon A
+ * \param [in] xB array of local x coordinates of polygon B
+ * \param [in] yB array of local y coordinates of polygon B
+ * \param [in] numVertexB number of vertices in polygon B
+ * \param [in] posTol position tolerance to collapse segment-segment intersection points 
+ * \param [in] lenTol length tolerance to collapse short intersection edges
+ * \param [in,out] polyX array of x coordinates of intersection polygon
+ * \param [in,out] polyY array of y coordinates of intersection polygon
+ * \param [in,out] numPolyVert number of vertices in intersection polygon
+ *
+ * \return 0 if no error, >0 a face geom error
+ *
+ * \pre length(xA), length(yA) >= numVertexA
+ * \pre length(xB), length(yB) >= numVertexB
+ *
+ * \note polyX and polyY must be pre-allocated and sized to the maximum number
+ * of points for the intersection polygon
+ *
+ */
+FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA,
+                                           const RealT* yA,
+                                           int numVertexA,
+                                           const RealT* xB,
+                                           const RealT* yB,
+                                           int numVertexB,
+                                           RealT posTol, RealT lenTol,
+                                           RealT* polyX,
+                                           RealT* polyY,
+                                           int* numPolyVert );
+
+#ifdef TRIBOL_USE_CUSTOM_GRADIENT
+
+FaceGeomError dIntersection2DPolygonEnzyme( const RealT* xA, const RealT* xA_dot,
+                                            const RealT* yA, const RealT* yA_dot,
+                                            int numVertexA, int,
+                                            const RealT* xB, const RealT* xB_dot,
+                                            const RealT* yB, const RealT* yB_dot,
+                                            int numVertexB, int,
+                                            RealT posTol, RealT,
+                                            RealT lenTol, RealT,
+                                            RealT* polyX, RealT* dpolyX,
+                                            RealT* polyY, RealT* dpolyY,
+                                            int* numPolyVert, int* dnumPolyVert );
+
+#endif
 
 #endif
                            

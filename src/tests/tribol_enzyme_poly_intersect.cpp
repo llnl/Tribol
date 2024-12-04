@@ -29,7 +29,7 @@ protected:
 
   }
 
-  void CheckIntersection(RealT* x1, RealT* x2, int* stencil_dir, RealT fd_tol = delta_, RealT pos_tol = 1.0e-8, RealT len_tol = 1.0e-8, std::string name = "")
+  void CheckIntersection(RealT* x1, RealT* x2, int* stencil_dir, RealT fd_tol = delta_, RealT pos_tol = 1.0e-8, RealT len_tol = 1.0e-8, [[maybe_unused]] std::string name = "")
   {
     RealT xi[16];
     OverlapVertexType type[8];
@@ -44,6 +44,9 @@ protected:
       edge2[i] = -1;
     }
     auto num_poly_verts = 0;
+    auto d_num_poly_verts = 0;
+    auto d_pos_tol = 0.0;
+    auto d_len_tol = 0.0;
     RealT area = 0.0;
     Intersection2DPolygon(x1, x1 + 4, 4, x2, x2 + 4, 4, pos_tol, len_tol,
       xi, xi + 8, num_poly_verts, area, true, type, edge1, edge2);
@@ -96,23 +99,18 @@ protected:
     for (int i{0}; i < 4; ++i)
     {
       x_dot[i] = 1.0;
-      __enzyme_fwddiff<void>((void*)Intersection2DPolygon,
-        enzyme_dup, x1, x_dot,
-        enzyme_dup, x1 + 4, zeros,
-        enzyme_const, 4,
-        enzyme_dup, x2, zeros,
-        enzyme_dup, x2 + 4, zeros,
-        enzyme_const, 4,
-        enzyme_const, pos_tol,
-        enzyme_const, len_tol,
-        enzyme_dup, xi, dxidx1 + 16*i,
-        enzyme_dup, xi + 8, dxidx1 + 16*i + 8,
-        enzyme_const, &num_poly_verts,
-        enzyme_const, &area,
-        enzyme_const, true,
-        enzyme_const, type,
-        enzyme_const, edge1,
-        enzyme_const, edge2
+      __enzyme_fwddiff<void>((void*)Intersection2DPolygonEnzyme,
+        x1, x_dot,
+        x1 + 4, zeros,
+        4,
+        x2, zeros,
+        x2 + 4, zeros,
+        4,
+        pos_tol, d_pos_tol,
+        len_tol, d_len_tol,
+        xi, dxidx1 + 16*i,
+        xi + 8, dxidx1 + 16*i + 8,
+        &num_poly_verts, &d_num_poly_verts
       );
     
       // std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
@@ -144,23 +142,18 @@ protected:
       //   }
       // }
 
-      __enzyme_fwddiff<void>((void*)Intersection2DPolygon,
-        enzyme_dup, x1, zeros,
-        enzyme_dup, x1 + 4, x_dot,
-        enzyme_const, 4,
-        enzyme_dup, x2, zeros,
-        enzyme_dup, x2 + 4, zeros,
-        enzyme_const, 4,
-        enzyme_const, pos_tol,
-        enzyme_const, len_tol,
-        enzyme_dup, xi, dxidx1 + 16*(4 + i),
-        enzyme_dup, xi + 8, dxidx1 + 16*(4 + i) + 8,
-        enzyme_const, &num_poly_verts,
-        enzyme_const, &area,
-        enzyme_const, true,
-        enzyme_const, type,
-        enzyme_const, edge1,
-        enzyme_const, edge2
+      __enzyme_fwddiff<void>((void*)Intersection2DPolygonEnzyme,
+        x1, zeros,
+        x1 + 4, x_dot,
+        4,
+        x2, zeros,
+        x2 + 4, zeros,
+        4,
+        pos_tol, d_pos_tol,
+        len_tol, d_len_tol,
+        xi, dxidx1 + 16*(4 + i),
+        xi + 8, dxidx1 + 16*(4 + i) + 8,
+        &num_poly_verts, &d_num_poly_verts
       );
     
       // std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
@@ -192,23 +185,18 @@ protected:
       //   }
       // }
       
-      __enzyme_fwddiff<void>((void*)Intersection2DPolygon,
-        enzyme_dup, x1, zeros,
-        enzyme_dup, x1 + 4, zeros,
-        enzyme_const, 4,
-        enzyme_dup, x2, x_dot,
-        enzyme_dup, x2 + 4, zeros,
-        enzyme_const, 4,
-        enzyme_const, pos_tol,
-        enzyme_const, len_tol,
-        enzyme_dup, xi, dxidx2 + 16*i,
-        enzyme_dup, xi + 8, dxidx2 + 16*i + 8,
-        enzyme_const, &num_poly_verts,
-        enzyme_const, &area,
-        enzyme_const, true,
-        enzyme_const, type,
-        enzyme_const, edge1,
-        enzyme_const, edge2
+      __enzyme_fwddiff<void>((void*)Intersection2DPolygonEnzyme,
+        x1, zeros,
+        x1 + 4, zeros,
+        4,
+        x2, x_dot,
+        x2 + 4, zeros,
+        4,
+        pos_tol, d_pos_tol,
+        len_tol, d_len_tol,
+        xi, dxidx2 + 16*i,
+        xi + 8, dxidx2 + 16*i + 8,
+        &num_poly_verts, &d_num_poly_verts
       );
     
       // std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
@@ -240,23 +228,18 @@ protected:
       //   }
       // }
       
-      __enzyme_fwddiff<void>((void*)Intersection2DPolygon,
-        enzyme_dup, x1, zeros,
-        enzyme_dup, x1 + 4, zeros,
-        enzyme_const, 4,
-        enzyme_dup, x2, zeros,
-        enzyme_dup, x2 + 4, x_dot,
-        enzyme_const, 4,
-        enzyme_const, pos_tol,
-        enzyme_const, len_tol,
-        enzyme_dup, xi, dxidx2 + 16*(4 + i),
-        enzyme_dup, xi + 8, dxidx2 + 16*(4 + i) + 8,
-        enzyme_const, &num_poly_verts,
-        enzyme_const, &area,
-        enzyme_const, true,
-        enzyme_const, type,
-        enzyme_const, edge1,
-        enzyme_const, edge2
+      __enzyme_fwddiff<void>((void*)Intersection2DPolygonEnzyme,
+        x1, zeros,
+        x1 + 4, zeros,
+        4,
+        x2, zeros,
+        x2 + 4, x_dot,
+        4,
+        pos_tol, d_pos_tol,
+        len_tol, d_len_tol,
+        xi, dxidx2 + 16*(4 + i),
+        xi + 8, dxidx2 + 16*(4 + i) + 8,
+        &num_poly_verts, &d_num_poly_verts
       );
     
       // std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
@@ -317,14 +300,14 @@ protected:
         }
     }
 
-    mfem::DenseMatrix dxidx1_dense(dxidx1, 16, 8);
-    std::ofstream dxidx1_file(name + "_dxidx1.mat");
-    dxidx1_dense.PrintMatlab(dxidx1_file);
-    dxidx1_file.close();
-    mfem::DenseMatrix dxidx2_dense(dxidx2, 16, 8);
-    std::ofstream dxidx2_file(name + "_dxidx2.mat");
-    dxidx2_dense.PrintMatlab(dxidx2_file);
-    dxidx2_file.close();
+    // mfem::DenseMatrix dxidx1_dense(dxidx1, 16, 8);
+    // std::ofstream dxidx1_file(name + "_dxidx1.mat");
+    // dxidx1_dense.PrintMatlab(dxidx1_file);
+    // dxidx1_file.close();
+    // mfem::DenseMatrix dxidx2_dense(dxidx2, 16, 8);
+    // std::ofstream dxidx2_file(name + "_dxidx2.mat");
+    // dxidx2_dense.PrintMatlab(dxidx2_file);
+    // dxidx2_file.close();
 
     RealT dxidx1_fd[16*8];
     RealT dxidx2_fd[16*8];
@@ -348,11 +331,6 @@ protected:
         xi, xi + 8, num_poly_verts, area, true, type, edge1, edge2);
       for (int i{0}; i < 16; ++i)
       {
-        if (j == 0 && i == 13)
-        {
-          std::cout << "  Entry (13, 0): " << x_sgn1[4*stencil_dir[j] + j] << " "
-            << xi[i] << " " << xi_base[i] << std::endl;
-        }
         dxidx1_fd[16*j + i] = x_sgn1[4*stencil_dir[j] + j]*(xi[i] - xi_base[i])/delta_;
       }
       x1[j] -= x_sgn1[4*stencil_dir[j] + j]*delta_;

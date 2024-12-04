@@ -655,6 +655,14 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA,
          {
             vertType[i] = OverlapVertexType::A;
          }
+         if (edgeA)
+         {
+            edgeA[i] = i;
+         }
+         if (edgeB)
+         {
+            edgeB[i] = -1;
+         }
       }
       area = Area2DPolygon( polyX, polyY, numVertexA );
       return NO_FACE_GEOM_ERROR;
@@ -682,6 +690,14 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA,
          if (vertType)
          {
             vertType[i] = OverlapVertexType::B;
+         }
+         if (edgeA)
+         {
+            edgeA[i] = -1;
+         }
+         if (edgeB)
+         {
+            edgeB[i] = i;
          }
       }
       area = Area2DPolygon( polyX, polyY, numVertexB );
@@ -926,6 +942,25 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA,
 
 #ifdef TRIBOL_USE_ENZYME
 
+FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA,
+                                           const RealT* yA,
+                                           int numVertexA,
+                                           const RealT* xB,
+                                           const RealT* yB,
+                                           int numVertexB,
+                                           RealT posTol, RealT lenTol,
+                                           RealT* polyX,
+                                           RealT* polyY,
+                                           int* numPolyVert )
+{
+  double area = 0.0;
+  constexpr bool orientCheck = true;
+  return Intersection2DPolygon(xA, yA, numVertexA, xB, yB, numVertexB, posTol,
+    lenTol, polyX, polyY, *numPolyVert, area, orientCheck);
+}
+
+#ifdef TRIBOL_USE_CUSTOM_GRADIENT
+
 void SegmentIntersection2DBasic(const RealT* xA1, const RealT* yA1, const RealT* xA2, const RealT* yA2,
                                 const RealT* xB1, const RealT* yB1, const RealT* xB2, const RealT* yB2,
                                 RealT* x, RealT* y)
@@ -948,34 +983,39 @@ void SegmentIntersection2DBasic(const RealT* xA1, const RealT* yA1, const RealT*
    *y = *yA1 + lambdaYA * tA;
 }
 
-FaceGeomError dIntersection2DPolygon( const RealT* xA, const RealT* xA_dot,
-                                      const RealT* yA, const RealT* yA_dot,
-                                      int numVertexA,
-                                      const RealT* xB, const RealT* xB_dot,
-                                      const RealT* yB, const RealT* yB_dot,
-                                      int numVertexB,
-                                      RealT posTol, RealT lenTol,
-                                      RealT* polyX, RealT* dpolyX,
-                                      RealT* polyY, RealT* dpolyY,
-                                      OverlapVertexType* vertType,
-                                      int* edgeA, int* edgeB,
-                                      int* numPolyVert, RealT* area, bool orientCheck )
+FaceGeomError dIntersection2DPolygonEnzyme( const RealT* xA, const RealT* xA_dot,
+                                            const RealT* yA, const RealT* yA_dot,
+                                            int numVertexA, int,
+                                            const RealT* xB, const RealT* xB_dot,
+                                            const RealT* yB, const RealT* yB_dot,
+                                            int numVertexB, int,
+                                            RealT posTol, RealT,
+                                            RealT lenTol, RealT,
+                                            RealT* polyX, RealT* dpolyX,
+                                            RealT* polyY, RealT* dpolyY,
+                                            int* numPolyVert, int* dnumPolyVert )
 {
+  OverlapVertexType vertType[8];
+  int edgeA[8];
+  int edgeB[8];
+  double area = 0.0;
+  constexpr bool orientCheck = true;
   auto err = Intersection2DPolygon(xA, yA, numVertexA, xB, yB, numVertexB,
-    posTol, lenTol, polyX, polyY, *numPolyVert, *area, orientCheck, vertType,
+    posTol, lenTol, polyX, polyY, *numPolyVert, area, orientCheck, vertType,
     edgeA, edgeB);
+  *dnumPolyVert = *numPolyVert;
   std::cout << "Custom rule!" << std::endl;
   for (int i{0}; i < *numPolyVert; ++i)
   {
     switch (vertType[i])
     {
       case OverlapVertexType::A:
-        dpolyX[i] = xA_dot[i];
-        dpolyY[i] = yA_dot[i];
+        dpolyX[i] = xA_dot[edgeA[i]];
+        dpolyY[i] = yA_dot[edgeA[i]];
         break;
       case OverlapVertexType::B:
-        dpolyX[i] = xB_dot[i];
-        dpolyY[i] = yB_dot[i];
+        dpolyX[i] = xB_dot[edgeB[i]];
+        dpolyY[i] = yB_dot[edgeB[i]];
         break;
       case OverlapVertexType::EdgeEdge:
         auto idx_a1 = edgeA[i];
@@ -1000,10 +1040,12 @@ FaceGeomError dIntersection2DPolygon( const RealT* xA, const RealT* xA_dot,
   return err;
 }
 
-void* __enzyme_register_derivative_Intersection2DPolygon[] = {
-  (void*)Intersection2DPolygon,
-  (void*)dIntersection2DPolygon
+void* __enzyme_register_derivative_Intersection2DPolygonEnzyme[] = {
+  (void*)Intersection2DPolygonEnzyme,
+  (void*)dIntersection2DPolygonEnzyme
 };
+
+#endif
 
 #endif
 
