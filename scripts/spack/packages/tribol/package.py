@@ -77,6 +77,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     depends_on("raja@2024.02.0:", when="+raja")
     depends_on("umpire@2024.02.0:", when="+umpire")
 
+    # TODO (EBC): Figure out what needs to be done to get this working
     #depends_on("enzyme", when="+enzyme")
     
     depends_on("axom+raja", when="+raja")

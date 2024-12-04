@@ -211,6 +211,7 @@ endif()
 #------------------------------------------------------------------------------
 
 if( MFEM_FOUND )
+
   set(mfem_smoke_depends mfem gtest)
   blt_add_executable(
     NAME mfem_smoke_test
@@ -229,6 +230,7 @@ if( MFEM_FOUND )
 endif()
 
 if( TRIBOL_USE_ENZYME )
+
   set(enzyme_smoke_depends LLDEnzymeFlags gtest)
   blt_add_executable(
     NAME enzyme_smoke_test
@@ -242,20 +244,6 @@ if( TRIBOL_USE_ENZYME )
 
   if (ENABLE_CUDA)
     set_target_properties(enzyme_smoke_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
-  endif()
-  
-  blt_add_executable(
-    NAME fake_test
-    SOURCES fake_test.cpp
-    OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
-    DEPENDS_ON ${enzyme_smoke_depends} ${tribol_device_depends}
-    FOLDER tribol/tests )
-
-  blt_add_test( NAME fake_test
-                COMMAND fake_test )
-
-  if (ENABLE_CUDA)
-    set_target_properties(fake_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
   endif()
 
 endif()
