@@ -504,6 +504,38 @@ bool MeshData::computeFaceData(ExecutionMode exec_mode)
         {
           n[d][i] /= n_mag;
         }
+        for (int j=0; j<num_nodes_per_elem; ++j) 
+        {
+          auto node_id = conn(i, j);
+          auto next_node_id = conn(i, 0);
+          if (j < num_nodes_per_elem - 1)
+          {
+            next_node_id = conn(i, j+1);
+          }
+          // first triangle edge vector between the face's two edge nodes
+          auto vX1 = x[0][ next_node_id ] - x[0][ node_id ];
+          auto vY1 = x[1][ next_node_id ] - x[1][ node_id ];
+          auto vZ1 = x[2][ next_node_id ] - x[2][ node_id ];
+          
+          // second triangle edge vector between the face centroid 
+          // and the face edge's first node
+          auto vX2 = c[0][i] - x[0][ node_id ];
+          auto vY2 = c[1][i] - x[1][ node_id ];
+          auto vZ2 = c[2][i] - x[2][ node_id ];
+
+          // compute the contribution to the pallet normal as v1 x v2. Sum these
+          // into the face normal component variables stored on the mesh data
+          // object
+          auto nX = (vY1 * vZ2) - (vZ1 * vY2);
+          auto nY = (vZ1 * vX2) - (vX1 * vZ2);
+          auto nZ = (vX1 * vY2) - (vY1 * vX2);
+
+          // half the magnitude of the computed normal is the pallet area. Note:
+          // this is exact for planar faces and approximate for warped faces.
+          // Face areas are used in a general sense to create a face-overlap
+          // tolerance
+          area[i] += 0.5 * magnitude( nX, nY, nZ );
+        }
 #else
         // this method of computing an outward unit normal breaks the 
         // face into triangular pallets by connecting two consecutive 
