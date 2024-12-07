@@ -30,7 +30,6 @@ spack:
         prefix: /opt/homebrew
     hdf5:
       version: [1.14.5]
-      buildable: false
       externals:
       - spec: hdf5@1.14.5
         prefix: /opt/homebrew
@@ -40,6 +39,11 @@ spack:
       externals:
       - spec: lua@5.4.7
         prefix: /opt/homebrew
+    netcdf-c:
+      version: [4.9.2]
+      externals:
+      - spec: netcdf-c@4.9.2
+        prefix: /opt/homebrew/Cellar/netcdf/4.9.2_2
 
  # The "::" removes all found/known compilers from Spack except for these.
   compilers::

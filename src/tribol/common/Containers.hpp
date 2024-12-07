@@ -6,6 +6,8 @@
 #ifndef TRIBOL_COMMON_CONTAINERS_HPP_
 #define TRIBOL_COMMON_CONTAINERS_HPP_
 
+#include <utility>
+
 // Tribol includes
 #include "tribol/common/BasicTypes.hpp"
 
