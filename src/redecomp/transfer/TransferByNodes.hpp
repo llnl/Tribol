@@ -11,8 +11,7 @@
 #include "redecomp/transfer/GridFnTransfer.hpp"
 #include "redecomp/common/TypeDefs.hpp"
 
-namespace redecomp
-{
+namespace redecomp {
 
 class RedecompMesh;
 
@@ -27,11 +26,10 @@ class MPIUtility;
  * This eliminates repeated transfer of nodes on inter-element boundaries, which
  * occur with the related TransferByElements class.  However, creating these
  * maps is a non-trivial operation, and therefore this class should only be used
- * if multiple transfers between parent and RedecompMesh are anticipated. 
+ * if multiple transfers between parent and RedecompMesh are anticipated.
  */
-class TransferByNodes : public GridFnTransfer
-{
-public:
+class TransferByNodes : public GridFnTransfer {
+ public:
   /**
    * @brief Construct a new TransferByNodes object
    *
@@ -39,10 +37,7 @@ public:
    * identified in redecomp_fes
    * @param redecomp_fes FiniteElementSpace constructed from RedecompMesh
    */
-  TransferByNodes(
-    const mfem::ParFiniteElementSpace& parent_fes,
-    const mfem::FiniteElementSpace& redecomp_fes
-  );
+  TransferByNodes(const mfem::ParFiniteElementSpace& parent_fes, const mfem::FiniteElementSpace& redecomp_fes);
   /**
    * @brief Construct a new TransferByNodes object (used by RedecompMesh)
    *
@@ -55,10 +50,7 @@ public:
    * identified in redecomp
    * @param redecomp RedecompMesh pointer
    */
-  TransferByNodes(
-    const mfem::ParFiniteElementSpace& parent_fes,
-    const RedecompMesh& redecomp
-  );
+  TransferByNodes(const mfem::ParFiniteElementSpace& parent_fes, const RedecompMesh& redecomp);
 
   /**
    * @brief Copies parent-based mfem::ParGridFunction values to a
@@ -69,10 +61,7 @@ public:
    * @param dst A redecomp GridFunction which receives values from a parent
    * ParGridFunction (src)
    */
-  void TransferToSerial(
-    const mfem::ParGridFunction& src,
-    mfem::GridFunction& dst
-  ) const override;
+  void TransferToSerial(const mfem::ParGridFunction& src, mfem::GridFunction& dst) const override;
 
   /**
    * @brief Copies RedecompMesh-based mfem::GridFunction values to a
@@ -83,10 +72,7 @@ public:
    * @param dst A parent ParGridFunction which receives values from a redecomp
    * GridFunction (src)
    */
-  void TransferToParallel(
-    const mfem::GridFunction& src, 
-    mfem::ParGridFunction& dst
-  ) const override;
+  void TransferToParallel(const mfem::GridFunction& src, mfem::ParGridFunction& dst) const override;
 
   /**
    * @brief Determine list of parent nodes to send to RedecompMesh
@@ -96,8 +82,8 @@ public:
    * which belong on each RedecompMesh rank
    */
   EntityIndexByRank P2RNodeList(bool use_global_ids);
-  
-private:
+
+ private:
   /**
    * @brief Determine list of RedecompMesh nodes to send to parent mesh
    *
@@ -107,17 +93,17 @@ private:
   EntityIndexByRank R2PNodeList();
 
   /**
-   * @brief ParFiniteElementSpace constructed from mesh identified as parent in redecomp_ 
+   * @brief ParFiniteElementSpace constructed from mesh identified as parent in redecomp_
    */
   const mfem::ParFiniteElementSpace* parent_fes_;
 
   /**
-   * @brief FiniteElementSpace constructed from redecomp_ 
+   * @brief FiniteElementSpace constructed from redecomp_
    */
   const mfem::FiniteElementSpace* redecomp_fes_;
 
   /**
-   * @brief Redecomp mesh 
+   * @brief Redecomp mesh
    */
   const RedecompMesh* redecomp_;
 
@@ -127,11 +113,11 @@ private:
   EntityIndexByRank p2r_nodes_;
 
   /**
-   * @brief List of Redecomp nodes (with ghost information) to send to parent mesh 
+   * @brief List of Redecomp nodes (with ghost information) to send to parent mesh
    */
   EntityIndexByRank r2p_nodes_;
 };
 
-} // end namespace redecomp
+}  // end namespace redecomp
 
 #endif /* SRC_REDECOMP_TRANSFERBYNODES_HPP_ */

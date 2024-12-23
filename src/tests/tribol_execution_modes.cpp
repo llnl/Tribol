@@ -15,7 +15,6 @@
 #include "umpire/ResourceManager.hpp"
 #endif
 
-
 namespace tribol {
 
 /**
@@ -23,17 +22,16 @@ namespace tribol {
  * tribol::MemorySpace and a suggested tribol::ExecutionMode in a coupling
  * scheme.
  */
-class ExecutionModeTest : public testing::TestWithParam<std::tuple<MemorySpace,    // given memory space
-                                                                   ExecutionMode,  // given execution mode
-                                                                   ExecutionMode>> // deduced execution mode
+class ExecutionModeTest : public testing::TestWithParam<std::tuple<MemorySpace,     // given memory space
+                                                                   ExecutionMode,   // given execution mode
+                                                                   ExecutionMode>>  // deduced execution mode
 {
-protected:
+ protected:
   ExecutionMode returned_mode_;
 
   void PrintMemorySpace(MemorySpace space) const
   {
-    switch (space)
-    {
+    switch (space) {
       case MemorySpace::Dynamic:
         std::cout << "Dynamic";
         break;
@@ -53,8 +51,7 @@ protected:
 
   void PrintExecutionMode(ExecutionMode mode) const
   {
-    switch (mode)
-    {
+    switch (mode) {
       case ExecutionMode::Sequential:
         std::cout << "Sequential";
         break;
@@ -89,18 +86,11 @@ protected:
     PrintExecutionMode(std::get<2>(GetParam()));
     constexpr IndexT cs_id = 0;
     constexpr IndexT mesh_id = 0;
-    registerMesh(mesh_id, 0, 0, nullptr, InterfaceElementType::LINEAR_QUAD,
-                 nullptr, nullptr, nullptr, std::get<0>(GetParam()));
-    CouplingScheme cs(
-      cs_id, mesh_id, mesh_id,
-      ContactMode::SURFACE_TO_SURFACE,
-      ContactCase::NO_CASE,
-      ContactMethod::COMMON_PLANE,
-      ContactModel::FRICTIONLESS,
-      EnforcementMethod::PENALTY,
-      BinningMethod::BINNING_BVH,
-      std::get<1>(GetParam())
-    );
+    registerMesh(mesh_id, 0, 0, nullptr, InterfaceElementType::LINEAR_QUAD, nullptr, nullptr, nullptr,
+                 std::get<0>(GetParam()));
+    CouplingScheme cs(cs_id, mesh_id, mesh_id, ContactMode::SURFACE_TO_SURFACE, ContactCase::NO_CASE,
+                      ContactMethod::COMMON_PLANE, ContactModel::FRICTIONLESS, EnforcementMethod::PENALTY,
+                      BinningMethod::BINNING_BVH, std::get<1>(GetParam()));
     cs.setMeshPointers();
     cs.checkExecutionModeData();
     returned_mode_ = cs.getExecutionMode();
@@ -117,76 +107,103 @@ TEST_P(ExecutionModeTest, test_mode)
   MPI_Barrier(MPI_COMM_WORLD);
 }
 
-INSTANTIATE_TEST_SUITE_P(tribol, ExecutionModeTest, testing::Values(
-  std::make_tuple(tribol::MemorySpace::Host, tribol::ExecutionMode::Sequential, tribol::ExecutionMode::Sequential)
+INSTANTIATE_TEST_SUITE_P(
+    tribol, ExecutionModeTest,
+    testing::Values(
+        std::make_tuple(tribol::MemorySpace::Host, tribol::ExecutionMode::Sequential, tribol::ExecutionMode::Sequential)
 #ifdef TRIBOL_USE_OPENMP
-  , std::make_tuple(tribol::MemorySpace::Host, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::OpenMP)
+            ,
+        std::make_tuple(tribol::MemorySpace::Host, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::OpenMP)
 #else
-  , std::make_tuple(tribol::MemorySpace::Host, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::Sequential)
+            ,
+        std::make_tuple(tribol::MemorySpace::Host, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::Sequential)
 #endif
 #ifdef TRIBOL_USE_CUDA
-  // error:, std::make_tuple(tribol::MemorySpace::Host, tribol::ExecutionMode::Cuda, tribol::ExecutionMode::Sequential)
+// error:, std::make_tuple(tribol::MemorySpace::Host, tribol::ExecutionMode::Cuda, tribol::ExecutionMode::Sequential)
 #endif
 #ifdef TRIBOL_USE_HIP
-  // error: , std::make_tuple(tribol::MemorySpace::Host, tribol::ExecutionMode::Hip, tribol::ExecutionMode::Sequential)
+// error: , std::make_tuple(tribol::MemorySpace::Host, tribol::ExecutionMode::Hip, tribol::ExecutionMode::Sequential)
 #endif
 #ifdef TRIBOL_USE_OPENMP
-  , std::make_tuple(tribol::MemorySpace::Host, tribol::ExecutionMode::OpenMP, tribol::ExecutionMode::OpenMP)
+            ,
+        std::make_tuple(tribol::MemorySpace::Host, tribol::ExecutionMode::OpenMP, tribol::ExecutionMode::OpenMP)
 #endif
-  , std::make_tuple(tribol::MemorySpace::Dynamic, tribol::ExecutionMode::Sequential, tribol::ExecutionMode::Sequential)
-  // error: , std::make_tuple(tribol::MemorySpace::Dynamic, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::Sequential)
+            ,
+        std::make_tuple(tribol::MemorySpace::Dynamic, tribol::ExecutionMode::Sequential,
+                        tribol::ExecutionMode::Sequential)
+// error: , std::make_tuple(tribol::MemorySpace::Dynamic, tribol::ExecutionMode::Dynamic,
+// tribol::ExecutionMode::Sequential)
 #ifdef TRIBOL_USE_CUDA
-  , std::make_tuple(tribol::MemorySpace::Dynamic, tribol::ExecutionMode::Cuda, tribol::ExecutionMode::Cuda)
+            ,
+        std::make_tuple(tribol::MemorySpace::Dynamic, tribol::ExecutionMode::Cuda, tribol::ExecutionMode::Cuda)
 #endif
 #ifdef TRIBOL_USE_HIP
-  , std::make_tuple(tribol::MemorySpace::Dynamic, tribol::ExecutionMode::Hip, tribol::ExecutionMode::Hip)
+            ,
+        std::make_tuple(tribol::MemorySpace::Dynamic, tribol::ExecutionMode::Hip, tribol::ExecutionMode::Hip)
 #endif
 #ifdef TRIBOL_USE_OPENMP
-  , std::make_tuple(tribol::MemorySpace::Dynamic, tribol::ExecutionMode::OpenMP, tribol::ExecutionMode::OpenMP)
+            ,
+        std::make_tuple(tribol::MemorySpace::Dynamic, tribol::ExecutionMode::OpenMP, tribol::ExecutionMode::OpenMP)
 #endif
 #ifdef TRIBOL_USE_UMPIRE
-  // error: , std::make_tuple(tribol::MemorySpace::Device, tribol::ExecutionMode::Sequential, tribol::ExecutionMode::Sequential)
+// error: , std::make_tuple(tribol::MemorySpace::Device, tribol::ExecutionMode::Sequential,
+// tribol::ExecutionMode::Sequential)
 #if defined(TRIBOL_USE_CUDA)
-  , std::make_tuple(tribol::MemorySpace::Device, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::Cuda)
+            ,
+        std::make_tuple(tribol::MemorySpace::Device, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::Cuda)
 #elif defined(TRIBOL_USE_HIP)
-  , std::make_tuple(tribol::MemorySpace::Device, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::Hip)
+            ,
+        std::make_tuple(tribol::MemorySpace::Device, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::Hip)
 #else
-  // error: , std::make_tuple(tribol::MemorySpace::Device, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::Sequential)
+// error: , std::make_tuple(tribol::MemorySpace::Device, tribol::ExecutionMode::Dynamic,
+// tribol::ExecutionMode::Sequential)
 #endif
 #ifdef TRIBOL_USE_CUDA
-  , std::make_tuple(tribol::MemorySpace::Device, tribol::ExecutionMode::Cuda, tribol::ExecutionMode::Cuda)
+            ,
+        std::make_tuple(tribol::MemorySpace::Device, tribol::ExecutionMode::Cuda, tribol::ExecutionMode::Cuda)
 #endif
 #ifdef TRIBOL_USE_HIP
-  , std::make_tuple(tribol::MemorySpace::Device, tribol::ExecutionMode::Hip, tribol::ExecutionMode::Hip)
+            ,
+        std::make_tuple(tribol::MemorySpace::Device, tribol::ExecutionMode::Hip, tribol::ExecutionMode::Hip)
 #endif
 #ifdef TRIBOL_USE_OPENMP
-  // error: , std::make_tuple(tribol::MemorySpace::Device, tribol::ExecutionMode::OpenMP, tribol::ExecutionMode::Sequential)
+// error: , std::make_tuple(tribol::MemorySpace::Device, tribol::ExecutionMode::OpenMP,
+// tribol::ExecutionMode::Sequential)
 #endif
 #if defined(TRIBOL_USE_HIP) || defined(TRIBOL_USE_CUDA)
-  , std::make_tuple(tribol::MemorySpace::Unified, tribol::ExecutionMode::Sequential, tribol::ExecutionMode::Sequential)
+            ,
+        std::make_tuple(tribol::MemorySpace::Unified, tribol::ExecutionMode::Sequential,
+                        tribol::ExecutionMode::Sequential)
 #if defined(TRIBOL_USE_CUDA)
-  , std::make_tuple(tribol::MemorySpace::Unified, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::Cuda)
+            ,
+        std::make_tuple(tribol::MemorySpace::Unified, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::Cuda)
 #elif defined(TRIBOL_USE_HIP)
-  , std::make_tuple(tribol::MemorySpace::Unified, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::Hip)
+            ,
+        std::make_tuple(tribol::MemorySpace::Unified, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::Hip)
 #elif defined(TRIBOL_USE_OPENMP)
-  , std::make_tuple(tribol::MemorySpace::Unified, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::OpenMP)
+            ,
+        std::make_tuple(tribol::MemorySpace::Unified, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::OpenMP)
 #else
-  , std::make_tuple(tribol::MemorySpace::Unified, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::Sequential)
+            ,
+        std::make_tuple(tribol::MemorySpace::Unified, tribol::ExecutionMode::Dynamic, tribol::ExecutionMode::Sequential)
 #endif
 #ifdef TRIBOL_USE_CUDA
-  , std::make_tuple(tribol::MemorySpace::Unified, tribol::ExecutionMode::Cuda, tribol::ExecutionMode::Cuda)
+            ,
+        std::make_tuple(tribol::MemorySpace::Unified, tribol::ExecutionMode::Cuda, tribol::ExecutionMode::Cuda)
 #endif
 #ifdef TRIBOL_USE_HIP
-  , std::make_tuple(tribol::MemorySpace::Unified, tribol::ExecutionMode::Hip, tribol::ExecutionMode::Hip)
+            ,
+        std::make_tuple(tribol::MemorySpace::Unified, tribol::ExecutionMode::Hip, tribol::ExecutionMode::Hip)
 #endif
 #ifdef TRIBOL_USE_OPENMP
-  , std::make_tuple(tribol::MemorySpace::Unified, tribol::ExecutionMode::OpenMP, tribol::ExecutionMode::OpenMP)
+            ,
+        std::make_tuple(tribol::MemorySpace::Unified, tribol::ExecutionMode::OpenMP, tribol::ExecutionMode::OpenMP)
 #endif
 #endif
 #endif
-));
+            ));
 
-} // namespace tribol
+}  // namespace tribol
 
 //------------------------------------------------------------------------------
 #include "axom/slic/core/SimpleLogger.hpp"

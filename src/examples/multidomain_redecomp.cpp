@@ -57,28 +57,18 @@
 #include "tribol/config.hpp"
 
 template <int NDIMS>
-void RedecompExample(
-  mfem::ParMesh& pmesh1,
-  mfem::ParMesh& pmesh2,
-  int order, 
-  double max_out_of_balance
-);
+void RedecompExample(mfem::ParMesh& pmesh1, mfem::ParMesh& pmesh2, int order, double max_out_of_balance);
 
-std::unique_ptr<mfem::ParMesh> MakePMesh(
-  MPI_Comm comm,
-  const std::string& mesh_file,
-  double theta,
-  int ref_levels
-);
+std::unique_ptr<mfem::ParMesh> MakePMesh(MPI_Comm comm, const std::string& mesh_file, double theta, int ref_levels);
 
-int main( int argc, char** argv )
+int main(int argc, char** argv)
 {
   /////////////////////////////////////////////////////////////////////////////
   // STEP 0: Problem setup
   /////////////////////////////////////////////////////////////////////////////
 
   // initialize MPI
-  MPI_Init( &argc, &argv );
+  MPI_Init(&argc, &argv);
   int np, rank;
   MPI_Comm_size(MPI_COMM_WORLD, &np);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -108,28 +98,20 @@ int main( int argc, char** argv )
   // checks implemented.
   double max_out_of_balance = 0.05;
 
-  axom::CLI::App app { "multidomain_redecomp" };
+  axom::CLI::App app{"multidomain_redecomp"};
   app.add_option("--m1,--mesh1", mesh_file1, "First mesh file to use.")
-    ->check(axom::CLI::ExistingFile)
-    ->capture_default_str();
+      ->check(axom::CLI::ExistingFile)
+      ->capture_default_str();
   app.add_option("--m2,--mesh2", mesh_file2, "Second mesh file to use.")
-    ->check(axom::CLI::ExistingFile)
-    ->capture_default_str();
-  app.add_option("--th1,--theta1", rot1,
-    "First mesh angle of rotation in x-y plane (degrees).")
-    ->capture_default_str();
-  app.add_option("--th2,--theta2", rot2,
-    "Second mesh angle of rotation in x-y plane (degrees).")
-    ->capture_default_str();
-  app.add_option("-r,--refine", ref_levels,
-    "Number of times to refine the mesh uniformly.")
-    ->capture_default_str();
-  app.add_option("-o,--order", order, 
-    "Finite element order (polynomial degree).")
-    ->capture_default_str();
-  app.add_option("-t,--tol", max_out_of_balance,
-    "Max proportion of out-of-balance elements in RCB decomposition.")
-    ->capture_default_str();
+      ->check(axom::CLI::ExistingFile)
+      ->capture_default_str();
+  app.add_option("--th1,--theta1", rot1, "First mesh angle of rotation in x-y plane (degrees).")->capture_default_str();
+  app.add_option("--th2,--theta2", rot2, "Second mesh angle of rotation in x-y plane (degrees).")
+      ->capture_default_str();
+  app.add_option("-r,--refine", ref_levels, "Number of times to refine the mesh uniformly.")->capture_default_str();
+  app.add_option("-o,--order", order, "Finite element order (polynomial degree).")->capture_default_str();
+  app.add_option("-t,--tol", max_out_of_balance, "Max proportion of out-of-balance elements in RCB decomposition.")
+      ->capture_default_str();
   CLI11_PARSE(app, argc, argv);
 
   SLIC_INFO_ROOT("Running multidomain_redecomp with the following options:");
@@ -146,10 +128,8 @@ int main( int argc, char** argv )
   auto pmesh2 = MakePMesh(MPI_COMM_WORLD, mesh_file2, rot2, ref_levels);
 
   // call dimension specific version of RedecompExample
-  SLIC_ERROR_ROOT_IF(pmesh1->Dimension() != pmesh2->Dimension(),
-    "Dimension of meshes must match.");
-  switch (pmesh1->Dimension())
-  {
+  SLIC_ERROR_ROOT_IF(pmesh1->Dimension() != pmesh2->Dimension(), "Dimension of meshes must match.");
+  switch (pmesh1->Dimension()) {
     case 2:
       RedecompExample<2>(*pmesh1, *pmesh2, order, max_out_of_balance);
       break;
@@ -167,12 +147,7 @@ int main( int argc, char** argv )
 }
 
 template <int NDIMS>
-void RedecompExample(
-  mfem::ParMesh& pmesh1,
-  mfem::ParMesh& pmesh2,
-  int order,
-  double max_out_of_balance
-)
+void RedecompExample(mfem::ParMesh& pmesh1, mfem::ParMesh& pmesh2, int order, double max_out_of_balance)
 {
   auto rank = pmesh1.GetMyRank();
   auto np = pmesh1.GetNRanks();
@@ -184,13 +159,10 @@ void RedecompExample(
   auto par_fe_space2 = mfem::ParFiniteElementSpace(&pmesh2, &fe_coll2, NDIMS);
   auto par_x_ref_elem1 = mfem::ParGridFunction(&par_fe_space1);
   auto par_x_ref_elem2 = mfem::ParGridFunction(&par_fe_space2);
-  if (order > 1)
-  {
+  if (order > 1) {
     pmesh1.SetNodalGridFunction(&par_x_ref_elem1, false);
     pmesh2.SetNodalGridFunction(&par_x_ref_elem2, false);
-  }
-  else
-  {
+  } else {
     pmesh1.GetNodes(par_x_ref_elem1);
     pmesh2.GetNodes(par_x_ref_elem2);
   }
@@ -206,35 +178,20 @@ void RedecompExample(
   /////////////////////////////////////////////////////////////////////////////
   // Note: see MultiRedecomp.hpp for a simpler constructor
 
-  axom::utilities::Timer timer { false };
+  axom::utilities::Timer timer{false};
   timer.start();
   auto multiredecomp = redecomp::MultiRedecomp(
-    // redecomp::Redecomp::RCB
-    std::make_unique<const redecomp::PartitionerByDim<NDIMS>>(
-      std::make_unique<const redecomp::PartitionElements<NDIMS>>(),
-      std::make_unique<const redecomp::RCB<NDIMS>>(
-        MPI_COMM_WORLD, 
-        max_out_of_balance
-      )
-    )
-  );
-  auto redecomp_meshes = multiredecomp.createRedecompMeshes(
-    {&pmesh1, &pmesh2}
-  );
+      // redecomp::Redecomp::RCB
+      std::make_unique<const redecomp::PartitionerByDim<NDIMS>>(
+          std::make_unique<const redecomp::PartitionElements<NDIMS>>(),
+          std::make_unique<const redecomp::RCB<NDIMS>>(MPI_COMM_WORLD, max_out_of_balance)));
+  auto redecomp_meshes = multiredecomp.createRedecompMeshes({&pmesh1, &pmesh2});
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to create Redecomp meshes: {0:f}ms", timer.elapsedTimeInMilliSec()
-  ));
+  SLIC_INFO_ROOT(axom::fmt::format("Time to create Redecomp meshes: {0:f}ms", timer.elapsedTimeInMilliSec()));
 
   // create visit output data collection for redecomp
-  auto redecomp_dc1 = mfem::VisItDataCollection(
-    "redecomp1_" + std::to_string(rank), 
-    redecomp_meshes[0].get()
-  );
-  auto redecomp_dc2 = mfem::VisItDataCollection(
-    "redecomp2_" + std::to_string(rank), 
-    redecomp_meshes[1].get()
-  );
+  auto redecomp_dc1 = mfem::VisItDataCollection("redecomp1_" + std::to_string(rank), redecomp_meshes[0].get());
+  auto redecomp_dc2 = mfem::VisItDataCollection("redecomp2_" + std::to_string(rank), redecomp_meshes[1].get());
 
   /////////////////////////////////////////////////////////////////////////////
   // GridFunction transfer
@@ -244,21 +201,13 @@ void RedecompExample(
   // STEP 2: Create GridFunctions on each RedecompMesh
   /////////////////////////////////////////////////////////////////////////////
 
-  auto redecomp_fe_space1 = mfem::FiniteElementSpace(
-    redecomp_meshes[0].get(), 
-    &fe_coll1, 
-    NDIMS
-  );
-  auto redecomp_fe_space2 = mfem::FiniteElementSpace(
-    redecomp_meshes[1].get(), 
-    &fe_coll2, 
-    NDIMS
-  );
+  auto redecomp_fe_space1 = mfem::FiniteElementSpace(redecomp_meshes[0].get(), &fe_coll1, NDIMS);
+  auto redecomp_fe_space2 = mfem::FiniteElementSpace(redecomp_meshes[1].get(), &fe_coll2, NDIMS);
   auto redecomp_x_ref_elem1 = mfem::GridFunction(&redecomp_fe_space1);
   auto redecomp_x_ref_elem2 = mfem::GridFunction(&redecomp_fe_space2);
   auto redecomp_x_ref_node1 = mfem::GridFunction(&redecomp_fe_space1);
   auto redecomp_x_ref_node2 = mfem::GridFunction(&redecomp_fe_space2);
-  
+
   /////////////////////////////////////////////////////////////////////////////
   // STEP 3A: Create transfer object (element-by-element)
   /////////////////////////////////////////////////////////////////////////////
@@ -276,9 +225,7 @@ void RedecompExample(
   timer.start();
   auto elem_transfer = redecomp::RedecompTransfer();
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to create element transfer object: {0:f}ms", timer.elapsedTimeInMilliSec()
-  ));
+  SLIC_INFO_ROOT(axom::fmt::format("Time to create element transfer object: {0:f}ms", timer.elapsedTimeInMilliSec()));
 
   /////////////////////////////////////////////////////////////////////////////
   // STEP 4A: Transfer to GridFunctions on RedecompMeshes (element-by-element)
@@ -288,12 +235,10 @@ void RedecompExample(
   elem_transfer.TransferToSerial(par_x_ref_elem1, redecomp_x_ref_elem1);
   elem_transfer.TransferToSerial(par_x_ref_elem2, redecomp_x_ref_elem2);
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to transfer vector field by element: {0:f}ms", timer.elapsedTimeInMilliSec()
-  ));
+  SLIC_INFO_ROOT(axom::fmt::format("Time to transfer vector field by element: {0:f}ms", timer.elapsedTimeInMilliSec()));
   redecomp_dc1.RegisterField("pos_elem", &redecomp_x_ref_elem1);
   redecomp_dc2.RegisterField("pos_elem", &redecomp_x_ref_elem2);
-  
+
   /////////////////////////////////////////////////////////////////////////////
   // STEP 3B: Create transfer objects (node-by-node)
   /////////////////////////////////////////////////////////////////////////////
@@ -302,10 +247,8 @@ void RedecompExample(
   auto node_transfer1 = redecomp::RedecompTransfer(par_fe_space1, redecomp_fe_space1);
   auto node_transfer2 = redecomp::RedecompTransfer(par_fe_space2, redecomp_fe_space2);
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to create nodal transfer object: {0:f}ms", timer.elapsedTimeInMilliSec()
-  ));
-  
+  SLIC_INFO_ROOT(axom::fmt::format("Time to create nodal transfer object: {0:f}ms", timer.elapsedTimeInMilliSec()));
+
   /////////////////////////////////////////////////////////////////////////////
   // STEP 4B: Transfer to GridFunctions on RedecompMeshes (node-by-node)
   /////////////////////////////////////////////////////////////////////////////
@@ -314,9 +257,7 @@ void RedecompExample(
   node_transfer1.TransferToSerial(par_x_ref_node1, redecomp_x_ref_node1);
   node_transfer2.TransferToSerial(par_x_ref_node2, redecomp_x_ref_node2);
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to transfer vector field by node: {0:f}ms", timer.elapsedTimeInMilliSec()
-  ));
+  SLIC_INFO_ROOT(axom::fmt::format("Time to transfer vector field by node: {0:f}ms", timer.elapsedTimeInMilliSec()));
   redecomp_dc1.RegisterField("pos_node", &redecomp_x_ref_node1);
   redecomp_dc2.RegisterField("pos_node", &redecomp_x_ref_node2);
 
@@ -332,10 +273,8 @@ void RedecompExample(
   elem_transfer.TransferToParallel(redecomp_x_ref_elem1, par_x_ref_elem1);
   elem_transfer.TransferToParallel(redecomp_x_ref_elem2, par_x_ref_elem2);
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to transfer back vector field by element: {0:f}ms",
-    timer.elapsedTimeInMilliSec()
-  ));
+  SLIC_INFO_ROOT(
+      axom::fmt::format("Time to transfer back vector field by element: {0:f}ms", timer.elapsedTimeInMilliSec()));
   pmesh_dc1.RegisterField("pos_elem", &par_x_ref_elem1);
   pmesh_dc2.RegisterField("pos_elem", &par_x_ref_elem2);
 
@@ -347,10 +286,8 @@ void RedecompExample(
   node_transfer1.TransferToParallel(redecomp_x_ref_node1, par_x_ref_node1);
   node_transfer2.TransferToParallel(redecomp_x_ref_node2, par_x_ref_node2);
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to transfer back vector field by node: {0:f}ms",
-    timer.elapsedTimeInMilliSec()
-  ));
+  SLIC_INFO_ROOT(
+      axom::fmt::format("Time to transfer back vector field by node: {0:f}ms", timer.elapsedTimeInMilliSec()));
   pmesh_dc1.RegisterField("pos_node", &par_x_ref_node1);
   pmesh_dc2.RegisterField("pos_node", &par_x_ref_node2);
 
@@ -363,21 +300,17 @@ void RedecompExample(
   auto quad_space2 = mfem::QuadratureSpace(&pmesh2, 0);
   auto quad_fn1 = mfem::QuadratureFunction(&quad_space1);
   auto quad_fn2 = mfem::QuadratureFunction(&quad_space2);
-  for (int e{0}; e < pmesh1.GetNE(); ++e)
-  {
+  for (int e{0}; e < pmesh1.GetNE(); ++e) {
     auto quad_val = mfem::Vector();
     quad_fn1.GetValues(e, quad_val);
-    for (int i{0}; i < quad_val.Size(); ++i)
-    {
+    for (int i{0}; i < quad_val.Size(); ++i) {
       quad_val[i] = static_cast<double>(pmesh1.GetGlobalElementNum(e));
     }
   }
-  for (int e{0}; e < pmesh2.GetNE(); ++e)
-  {
+  for (int e{0}; e < pmesh2.GetNE(); ++e) {
     auto quad_val = mfem::Vector();
     quad_fn2.GetValues(e, quad_val);
-    for (int i{0}; i < quad_val.Size(); ++i)
-    {
+    for (int i{0}; i < quad_val.Size(); ++i) {
       quad_val[i] = static_cast<double>(pmesh2.GetGlobalElementNum(e));
     }
   }
@@ -391,14 +324,8 @@ void RedecompExample(
   // STEP 2: Create QuadratureFunctions on RedecompMeshes
   /////////////////////////////////////////////////////////////////////////////
 
-  auto redecomp_quad_space1 = mfem::QuadratureSpace(
-    redecomp_meshes[0].get(), 
-    0
-  );
-  auto redecomp_quad_space2 = mfem::QuadratureSpace(
-    redecomp_meshes[1].get(), 
-    0
-  );
+  auto redecomp_quad_space1 = mfem::QuadratureSpace(redecomp_meshes[0].get(), 0);
+  auto redecomp_quad_space2 = mfem::QuadratureSpace(redecomp_meshes[1].get(), 0);
   auto redecomp_quad_fn1 = mfem::QuadratureFunction(&redecomp_quad_space1);
   auto redecomp_quad_fn2 = mfem::QuadratureFunction(&redecomp_quad_space2);
 
@@ -415,10 +342,7 @@ void RedecompExample(
   elem_transfer.TransferToSerial(quad_fn1, redecomp_quad_fn1);
   elem_transfer.TransferToSerial(quad_fn2, redecomp_quad_fn2);
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to transfer quadrature function: {0:f}ms",
-    timer.elapsedTimeInMilliSec()
-  ));
+  SLIC_INFO_ROOT(axom::fmt::format("Time to transfer quadrature function: {0:f}ms", timer.elapsedTimeInMilliSec()));
   redecomp_dc1.RegisterQField("elem_id", &redecomp_quad_fn1);
   redecomp_dc2.RegisterQField("elem_id", &redecomp_quad_fn2);
 
@@ -434,10 +358,8 @@ void RedecompExample(
   elem_transfer.TransferToParallel(redecomp_quad_fn1, quad_fn1);
   elem_transfer.TransferToParallel(redecomp_quad_fn2, quad_fn2);
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to transfer back quadrature function: {0:f}ms\n",
-    timer.elapsedTimeInMilliSec()
-  ));
+  SLIC_INFO_ROOT(
+      axom::fmt::format("Time to transfer back quadrature function: {0:f}ms\n", timer.elapsedTimeInMilliSec()));
   pmesh_dc1.RegisterQField("elem_id", &quad_fn1);
   pmesh_dc2.RegisterQField("elem_id", &quad_fn2);
 
@@ -447,72 +369,58 @@ void RedecompExample(
   redecomp_dc2.Save();
 
   // print mesh stats to screen
-  if (rank == 0)
-  {
+  if (rank == 0) {
     auto n_els = std::vector<int>(np);
     n_els[0] = pmesh1.GetNE();
-    for (int i{1}; i < np; ++i)
-    {
+    for (int i{1}; i < np; ++i) {
       MPI_Status status;
       MPI_Recv(&n_els[i], 1, MPI_INT, i, 0, MPI_COMM_WORLD, &status);
     }
     SLIC_INFO("First original ParMesh stats");
     SLIC_INFO("----------------------------");
-    for (int i{0}; i < np; ++i)
-    {
+    for (int i{0}; i < np; ++i) {
       SLIC_INFO(axom::fmt::format("Rank {0}: {1} elements", i, n_els[i]));
     }
     n_els[0] = redecomp_meshes[0]->GetNE();
-    for (int i{1}; i < np; ++i)
-    {
+    for (int i{1}; i < np; ++i) {
       MPI_Status status;
       MPI_Recv(&n_els[i], 1, MPI_INT, i, 0, MPI_COMM_WORLD, &status);
     }
     SLIC_INFO("First redecomposed Mesh stats");
     SLIC_INFO("-----------------------------");
-    for (int i{0}; i < np; ++i)
-    {
+    for (int i{0}; i < np; ++i) {
       SLIC_INFO(axom::fmt::format("Rank {0}: {1} elements", i, n_els[i]));
     }
-  }
-  else
-  {
+  } else {
     int n_els = pmesh1.GetNE();
     MPI_Send(&n_els, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
     n_els = redecomp_meshes[0]->GetNE();
     MPI_Send(&n_els, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
   }
 
-  if (rank == 0)
-  {
+  if (rank == 0) {
     auto n_els = std::vector<int>(np);
     n_els[0] = pmesh2.GetNE();
-    for (int i{1}; i < np; ++i)
-    {
+    for (int i{1}; i < np; ++i) {
       MPI_Status status;
       MPI_Recv(&n_els[i], 1, MPI_INT, i, 0, MPI_COMM_WORLD, &status);
     }
     SLIC_INFO("Second original ParMesh stats");
     SLIC_INFO("-----------------------------");
-    for (int i{0}; i < np; ++i)
-    {
+    for (int i{0}; i < np; ++i) {
       SLIC_INFO(axom::fmt::format("Rank {0}: {1} elements", i, n_els[i]));
     }
     n_els[0] = redecomp_meshes[1]->GetNE();
-    for (int i{1}; i < np; ++i)
-    {
+    for (int i{1}; i < np; ++i) {
       MPI_Status status;
       MPI_Recv(&n_els[i], 1, MPI_INT, i, 0, MPI_COMM_WORLD, &status);
     }
     SLIC_INFO("Second redecomposed Mesh stats");
     SLIC_INFO("------------------------------");
-    for (int i{0}; i < np; ++i)
-    {
+    for (int i{0}; i < np; ++i) {
       SLIC_INFO(axom::fmt::format("Rank {0}: {1} elements", i, n_els[i]));
     }
-  }
-  else
-  {
+  } else {
     int n_els = pmesh2.GetNE();
     MPI_Send(&n_els, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
     n_els = redecomp_meshes[1]->GetNE();
@@ -520,62 +428,53 @@ void RedecompExample(
   }
 }
 
-std::unique_ptr<mfem::ParMesh> MakePMesh(
-  MPI_Comm comm,
-  const std::string& mesh_file,
-  double theta,
-  int ref_levels
-)
+std::unique_ptr<mfem::ParMesh> MakePMesh(MPI_Comm comm, const std::string& mesh_file, double theta, int ref_levels)
 {
   auto mesh = std::make_unique<mfem::Mesh>(mesh_file.c_str(), 1, 1);
 
   // rotate unrefined serial mesh
-  if (theta != 0.0)
-  {
+  if (theta != 0.0) {
     theta = theta * redecomp::pi / 180.0;
     auto R = axom::numerics::Matrix<double>::zeros(3, 3);
-    R(0, 0) = cos(theta);  R(0, 1) = -sin(theta);  R(0, 2) = 0.0;
-    R(1, 0) = sin(theta);  R(1, 1) =  cos(theta);  R(1, 2) = 0.0;
-    R(2, 0) = 0.0;         R(2, 1) =  0.0;         R(2, 2) = 1.0;
+    R(0, 0) = cos(theta);
+    R(0, 1) = -sin(theta);
+    R(0, 2) = 0.0;
+    R(1, 0) = sin(theta);
+    R(1, 1) = cos(theta);
+    R(1, 2) = 0.0;
+    R(2, 0) = 0.0;
+    R(2, 1) = 0.0;
+    R(2, 2) = 1.0;
     auto dim = mesh->Dimension();
-    for (int v{0}; v < mesh->GetNV(); ++v)
-    {
+    for (int v{0}; v < mesh->GetNV(); ++v) {
       auto tmp_vert = axom::Array<double>(dim, dim);
       auto vert = mesh->GetVertex(v);
       axom::numerics::matrix_vector_multiply(R, vert, tmp_vert.data());
-      for (int i{0}; i < dim; ++i)
-      {
+      for (int i{0}; i < dim; ++i) {
         vert[i] = tmp_vert[i];
       }
     }
     auto node_gf = mesh->GetNodes();
-    if (node_gf)
-    {
+    if (node_gf) {
       auto node_fes = node_gf->FESpace();
       auto vdim = node_fes->GetVDim();
-      for (int n{0}; n < node_fes->GetNDofs(); ++n)
-      {
+      for (int n{0}; n < node_fes->GetNDofs(); ++n) {
         auto tmp_node = axom::Array<double>(vdim, vdim);
-        for (int i{0}; i < vdim; ++i)
-        {
-          for (int j{0}; j < vdim; ++j)
-          {
-            tmp_node[i] = tmp_node[i] + R(i, j)*(*node_gf)(node_fes->DofToVDof(n, j));
+        for (int i{0}; i < vdim; ++i) {
+          for (int j{0}; j < vdim; ++j) {
+            tmp_node[i] = tmp_node[i] + R(i, j) * (*node_gf)(node_fes->DofToVDof(n, j));
           }
         }
-        for (int i{0}; i < vdim; ++i)
-        {
+        for (int i{0}; i < vdim; ++i) {
           (*node_gf)(node_fes->DofToVDof(n, i)) = tmp_node[i];
         }
       }
     }
   }
-  
+
   // refine serial mesh
-  if (ref_levels > 0)
-  {
-    for (int i{0}; i < ref_levels; ++i)
-    {
+  if (ref_levels > 0) {
+    for (int i{0}; i < ref_levels; ++i) {
       mesh->UniformRefinement();
     }
   }
@@ -586,8 +485,7 @@ std::unique_ptr<mfem::ParMesh> MakePMesh(
   // further refinement of parallel mesh
   {
     int par_ref_levels = 2;
-    for (int i{0}; i < par_ref_levels; ++i)
-    {
+    for (int i{0}; i < par_ref_levels; ++i) {
       pmesh->UniformRefinement();
     }
   }

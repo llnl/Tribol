@@ -66,10 +66,10 @@
 #include "axom/CLI11.hpp"
 #include "axom/slic.hpp"
 
-int main( int argc, char** argv )
+int main(int argc, char** argv)
 {
   // initialize MPI
-  MPI_Init( &argc, &argv );
+  MPI_Init(&argc, &argv);
   int np, rank;
   MPI_Comm_size(MPI_COMM_WORLD, &np);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -94,20 +94,14 @@ int main( int argc, char** argv )
   double mu = 50.0;
 
   // parse command line options
-  axom::CLI::App app { "mfem_mortar_lm_patch" };
-  app.add_option("-r,--refine", ref_levels,
-    "Number of times to refine the mesh uniformly.")
-    ->capture_default_str();
+  axom::CLI::App app{"mfem_mortar_lm_patch"};
+  app.add_option("-r,--refine", ref_levels, "Number of times to refine the mesh uniformly.")->capture_default_str();
   // TODO: LOR support for implicit contact
-  // app.add_option("-o,--order", order, 
+  // app.add_option("-o,--order", order,
   //   "Finite element order (polynomial degree).")
   //   ->capture_default_str();
-  app.add_option("-l,--lambda", lambda, 
-    "Lame parameter lambda.")
-    ->capture_default_str();
-  app.add_option("-m,--mu", mu, 
-    "Lame parameter mu (shear modulus).")
-    ->capture_default_str();
+  app.add_option("-l,--lambda", lambda, "Lame parameter lambda.")->capture_default_str();
+  app.add_option("-m,--mu", mu, "Lame parameter mu (shear modulus).")->capture_default_str();
   CLI11_PARSE(app, argc, argv);
 
   SLIC_INFO_ROOT("Running mfem_mortar_lm_patch with the following options:");
@@ -131,29 +125,27 @@ int main( int argc, char** argv )
   // boundary element attributes of z-fixed surfaces (3: surface at z = 0, 6:
   // surface at z = 1.99)
   auto zfix_attribs = std::set<int>({3, 6});
-  
+
   // create an axom timer to give wall times for each step
-  axom::utilities::Timer timer { false };
+  axom::utilities::Timer timer{false};
 
   // This block of code will read the mesh data given in two_hex_overlap.mesh,
   // create an mfem::Mesh, refine the mesh, then create an mfem::ParMesh.
   // Optionally, the mfem::ParMesh can be refined further on each rank by
   // setting par_ref_levels >= 1, though this is disabled below.
   timer.start();
-  std::unique_ptr<mfem::ParMesh> pmesh { nullptr };
+  std::unique_ptr<mfem::ParMesh> pmesh{nullptr};
   {
     // read serial mesh
     auto mesh = std::make_unique<mfem::Mesh>(mesh_file.c_str(), 1, 1);
 
     // refine serial mesh
-    if (ref_levels > 0)
-    {
-      for (int i{0}; i < ref_levels; ++i)
-      {
+    if (ref_levels > 0) {
+      for (int i{0}; i < ref_levels; ++i) {
         mesh->UniformRefinement();
       }
     }
-    
+
     // create parallel mesh from serial
     pmesh = std::make_unique<mfem::ParMesh>(MPI_COMM_WORLD, *mesh);
     mesh.reset(nullptr);
@@ -162,17 +154,14 @@ int main( int argc, char** argv )
     {
       // set this to >= 1 to refine the mesh on each rank further
       int par_ref_levels = 0;
-      for (int i{0}; i < par_ref_levels; ++i)
-      {
+      for (int i{0}; i < par_ref_levels; ++i) {
         pmesh->UniformRefinement();
       }
     }
   }
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to create parallel mesh: {0:f}ms", timer.elapsedTimeInMilliSec()
-  ));
-  
+  SLIC_INFO_ROOT(axom::fmt::format("Time to create parallel mesh: {0:f}ms", timer.elapsedTimeInMilliSec()));
+
   // Set up an MFEM data collection for output. We output data in Paraview and
   // VisIt formats.
   auto paraview_datacoll = mfem::ParaViewDataCollection("mortar_patch_pv", pmesh.get());
@@ -187,8 +176,7 @@ int main( int argc, char** argv )
   // Finite element collection (shared between all grid functions).
   auto fe_coll = mfem::H1_FECollection(order, pmesh->SpaceDimension());
   // Finite element space (shared between all grid functions).
-  auto par_fe_space = mfem::ParFiniteElementSpace(
-    pmesh.get(), &fe_coll, pmesh->SpaceDimension());
+  auto par_fe_space = mfem::ParFiniteElementSpace(pmesh.get(), &fe_coll, pmesh->SpaceDimension());
   // Create coordinate grid function
   auto coords = mfem::ParGridFunction(&par_fe_space);
   // Set coordinate grid function based on nodal locations. In MFEM, nodal
@@ -201,14 +189,12 @@ int main( int argc, char** argv )
   visit_datacoll.RegisterField("pos", &coords);
 
   // Create a grid function for displacement
-  mfem::ParGridFunction displacement { &par_fe_space };
+  mfem::ParGridFunction displacement{&par_fe_space};
   paraview_datacoll.RegisterField("disp", &displacement);
   visit_datacoll.RegisterField("disp", &displacement);
   displacement = 0.0;
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to create grid functions: {0:f}ms", timer.elapsedTimeInMilliSec()
-  ));
+  SLIC_INFO_ROOT(axom::fmt::format("Time to create grid functions: {0:f}ms", timer.elapsedTimeInMilliSec()));
 
   // This block of code builds a list of degrees of freedom to which homogeneous
   // displacement boundary conditions will be applied. These boundary conditions
@@ -224,37 +210,32 @@ int main( int argc, char** argv )
     // Convert x-fixed boundary attributes into markers
     mfem::Array<int> ess_bdr(pmesh->bdr_attributes.Max());
     ess_bdr = 0;
-    for (auto xfixed_attr : xfixed_attrs)
-    {
-      ess_bdr[xfixed_attr-1] = 1;
+    for (auto xfixed_attr : xfixed_attrs) {
+      ess_bdr[xfixed_attr - 1] = 1;
     }
     // Find all x-direction vdofs with the given boundary marker
     par_fe_space.GetEssentialVDofs(ess_bdr, ess_vdof_marker, 0);
     // Convert y-fixed boundary attributes into markers
     mfem::Array<int> new_ess_vdof_marker;
     ess_bdr = 0;
-    for (auto yfixed_attr : yfixed_attrs)
-    {
-      ess_bdr[yfixed_attr-1] = 1;
+    for (auto yfixed_attr : yfixed_attrs) {
+      ess_bdr[yfixed_attr - 1] = 1;
     }
     // Find all y-direction vdofs with the given boundary marker
     par_fe_space.GetEssentialVDofs(ess_bdr, new_ess_vdof_marker, 1);
     // Compute union of x-direction and y-direction vdofs
-    for (int i{0}; i < ess_vdof_marker.Size(); ++i)
-    {
+    for (int i{0}; i < ess_vdof_marker.Size(); ++i) {
       ess_vdof_marker[i] = ess_vdof_marker[i] || new_ess_vdof_marker[i];
     }
     // Convert z-fixed boundary attributes into markers
     ess_bdr = 0;
-    for (auto zfix_attrib : zfix_attribs)
-    {
-      ess_bdr[zfix_attrib-1] = 1;
+    for (auto zfix_attrib : zfix_attribs) {
+      ess_bdr[zfix_attrib - 1] = 1;
     }
     // Find all z-direction vdofs with the given boundary marker
     par_fe_space.GetEssentialVDofs(ess_bdr, new_ess_vdof_marker, 2);
     // Compute union of x-direction, y-direction, and z-direction vdofs
-    for (int i{0}; i < ess_vdof_marker.Size(); ++i)
-    {
+    for (int i{0}; i < ess_vdof_marker.Size(); ++i) {
       ess_vdof_marker[i] = ess_vdof_marker[i] || new_ess_vdof_marker[i];
     }
     // Convert the vdofs to tdofs to remove duplicate values over ranks
@@ -264,9 +245,7 @@ int main( int argc, char** argv )
     mfem::FiniteElementSpace::MarkerToList(ess_tdof_marker, ess_tdof_list);
   }
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to set up boundary conditions: {0:f}ms", timer.elapsedTimeInMilliSec()
-  ));
+  SLIC_INFO_ROOT(axom::fmt::format("Time to set up boundary conditions: {0:f}ms", timer.elapsedTimeInMilliSec()));
 
   // This block of code constructs a small-deformation linear elastic bilinear
   // form.
@@ -283,9 +262,8 @@ int main( int argc, char** argv )
   auto A = std::make_unique<mfem::HypreParMatrix>();
   a.FormSystemMatrix(ess_tdof_list, *A);
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to create and assemble internal stiffness: {0:f}ms", timer.elapsedTimeInMilliSec()
-  ));
+  SLIC_INFO_ROOT(
+      axom::fmt::format("Time to create and assemble internal stiffness: {0:f}ms", timer.elapsedTimeInMilliSec()));
 
   // This block of code does initial setup of Tribol.
   timer.start();
@@ -303,28 +281,19 @@ int main( int argc, char** argv )
   int coupling_scheme_id = 0;
   int mesh1_id = 0;
   int mesh2_id = 1;
-  tribol::registerMfemCouplingScheme(
-    coupling_scheme_id, mesh1_id, mesh2_id,
-    *pmesh, coords, mortar_attrs, nonmortar_attrs,
-    tribol::SURFACE_TO_SURFACE, 
-    tribol::NO_SLIDING, 
-    tribol::SINGLE_MORTAR, 
-    tribol::FRICTIONLESS,
-    tribol::LAGRANGE_MULTIPLIER,
-    tribol::BINNING_GRID
-  );
+  tribol::registerMfemCouplingScheme(coupling_scheme_id, mesh1_id, mesh2_id, *pmesh, coords, mortar_attrs,
+                                     nonmortar_attrs, tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING,
+                                     tribol::SINGLE_MORTAR, tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER,
+                                     tribol::BINNING_GRID);
   // The basic Lagrange multiplier options are set here. For this problem, we
   // ask Tribol to compute a contact residual and a Jacobian (though we only use
   // the Jacobian).
-  tribol::setLagrangeMultiplierOptions(
-    coupling_scheme_id,
-    tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN
-  );
+  tribol::setLagrangeMultiplierOptions(coupling_scheme_id, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN);
 
   // save initial configuration
   paraview_datacoll.Save();
   visit_datacoll.Save();
-  
+
   // Update the cycle information for the data collections. Also update time
   // with a pseudotime for the solution.
   paraview_datacoll.SetCycle(1);
@@ -337,7 +306,7 @@ int main( int argc, char** argv )
   // This creates the parallel adjacency-based mesh redecomposition. It also
   // constructs new Tribol meshes as subsets of the redecomposed mesh.
   tribol::updateMfemParallelDecomposition();
-  double dt {1.0};  // time is arbitrary here (no timesteps)
+  double dt{1.0};  // time is arbitrary here (no timesteps)
   // This API call computes the contact response and Jacobian given the current
   // mesh configuration.
   tribol::update(1, 1.0, dt);
@@ -353,17 +322,16 @@ int main( int argc, char** argv )
   // Add the Jacobian from the elasticity bilinear form to the top left block
   A_blk->SetBlock(0, 0, A.release());
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to setup Tribol and compute Jacobian: {0:f}ms", timer.elapsedTimeInMilliSec()
-  ));
+  SLIC_INFO_ROOT(
+      axom::fmt::format("Time to setup Tribol and compute Jacobian: {0:f}ms", timer.elapsedTimeInMilliSec()));
 
   timer.start();
   // Create a block RHS vector storing forces and gaps. Note no external forces
   // are present in this problem.
-  mfem::BlockVector B_blk { A_blk->RowOffsets() };
+  mfem::BlockVector B_blk{A_blk->RowOffsets()};
   B_blk = 0.0;
   // Create a block solution vector storing displacement and pressures.
-  mfem::BlockVector X_blk { A_blk->ColOffsets() };
+  mfem::BlockVector X_blk{A_blk->ColOffsets()};
   X_blk = 0.0;
 
   // This API call returns the mortar nodal gap vector to an (uninitialized)
@@ -377,8 +345,7 @@ int main( int argc, char** argv )
   // NOTE: gap is a dual field so we apply the transpose prolongation operator
   {
     auto& G = B_blk.GetBlock(1);
-    auto& P_submesh = *tribol::getMfemPressure(coupling_scheme_id)
-      .ParFESpace()->GetProlongationMatrix();
+    auto& P_submesh = *tribol::getMfemPressure(coupling_scheme_id).ParFESpace()->GetProlongationMatrix();
     P_submesh.MultTranspose(g, G);
   }
 
@@ -387,24 +354,17 @@ int main( int argc, char** argv )
   // mfem::HypreParMatrixFromBlocks() to create the merged, single
   // HypreParMatrix (without blocks).
   mfem::Array2D<mfem::HypreParMatrix*> hypre_blocks(2, 2);
-  for (int i{0}; i < 2; ++i)
-  {
-    for (int j{0}; j < 2; ++j)
-    {
-      if (A_blk->GetBlock(i, j).Height() != 0 && A_blk->GetBlock(i, j).Width() != 0)
-      {
-        hypre_blocks(i, j) = const_cast<mfem::HypreParMatrix*>(
-          dynamic_cast<const mfem::HypreParMatrix*>(&A_blk->GetBlock(i, j)));
-      }
-      else
-      {
+  for (int i{0}; i < 2; ++i) {
+    for (int j{0}; j < 2; ++j) {
+      if (A_blk->GetBlock(i, j).Height() != 0 && A_blk->GetBlock(i, j).Width() != 0) {
+        hypre_blocks(i, j) =
+            const_cast<mfem::HypreParMatrix*>(dynamic_cast<const mfem::HypreParMatrix*>(&A_blk->GetBlock(i, j)));
+      } else {
         hypre_blocks(i, j) = nullptr;
       }
     }
   }
-  auto A_merged = std::unique_ptr<mfem::HypreParMatrix>(
-    mfem::HypreParMatrixFromBlocks(hypre_blocks)
-  );
+  auto A_merged = std::unique_ptr<mfem::HypreParMatrix>(mfem::HypreParMatrixFromBlocks(hypre_blocks));
   // Use a linear solver to find the block displacement/pressure vector.
   mfem::MINRESSolver solver(MPI_COMM_WORLD);
   solver.SetRelTol(1.0e-8);
@@ -431,9 +391,7 @@ int main( int argc, char** argv )
   // Update mesh coordinates given the displacement.
   coords += displacement;
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to solve for updated displacements: {0:f}ms", timer.elapsedTimeInMilliSec()
-  ));
+  SLIC_INFO_ROOT(axom::fmt::format("Time to solve for updated displacements: {0:f}ms", timer.elapsedTimeInMilliSec()));
 
   // Verify the forces are in equilibrium, i.e. f_int = A*u = f_contact = B^T*p.
   // This should be true if the solver converges.
@@ -445,20 +403,14 @@ int main( int argc, char** argv )
   A_blk->GetBlock(0, 1).Mult(pressure_true, contact_force_true);
   mfem::Vector force_resid_true(int_force_true);
   force_resid_true += contact_force_true;
-  for (int i{0}; i < ess_tdof_list.Size(); ++i)
-  {
+  for (int i{0}; i < ess_tdof_list.Size(); ++i) {
     force_resid_true[ess_tdof_list[i]] = 0.0;
   }
   auto force_resid_linf = force_resid_true.Normlinf();
-  if (rank == 0)
-  {
+  if (rank == 0) {
     MPI_Reduce(MPI_IN_PLACE, &force_resid_linf, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-    SLIC_INFO(axom::fmt::format(
-      "|| force residual ||_(infty) = {0:e}", force_resid_linf
-    ));
-  }
-  else
-  {
+    SLIC_INFO(axom::fmt::format("|| force residual ||_(infty) = {0:e}", force_resid_linf));
+  } else {
     MPI_Reduce(&force_resid_linf, &force_resid_linf, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
   }
 
@@ -466,18 +418,13 @@ int main( int argc, char** argv )
   // This should be true if the solver converges.
   auto& gap_resid_true = B_blk.GetBlock(1);
   mfem::Vector gap_from_disp_true(gap_resid_true.Size());
-  A_blk->GetBlock(1,0).Mult(displacement_true, gap_from_disp_true);
+  A_blk->GetBlock(1, 0).Mult(displacement_true, gap_from_disp_true);
   gap_resid_true -= gap_from_disp_true;
   auto gap_resid_linf = gap_resid_true.Normlinf();
-  if (rank == 0)
-  {
+  if (rank == 0) {
     MPI_Reduce(MPI_IN_PLACE, &gap_resid_linf, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
-    SLIC_INFO(axom::fmt::format(
-      "|| gap residual ||_(infty) = {0:e}", gap_resid_linf
-    ));
-  }
-  else
-  {
+    SLIC_INFO(axom::fmt::format("|| gap residual ||_(infty) = {0:e}", gap_resid_linf));
+  } else {
     MPI_Reduce(&gap_resid_linf, &gap_resid_linf, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
   }
 

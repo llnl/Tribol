@@ -10,18 +10,16 @@
 
 #include "axom/core.hpp"
 
-namespace redecomp
-{
+namespace redecomp {
 
 /**
  * @brief Convenience class for generating common axom::Arrays
  */
-class ArrayUtility
-{
-public:
+class ArrayUtility {
+ public:
   /**
    * @brief Create an index array at compile time
-   * 
+   *
    * @tparam T Array element type
    * @tparam N Size of array
    * @return axom::Array<T> holding index array [0, ..., N-1]
@@ -34,7 +32,7 @@ public:
 
   /**
    * @brief Create an index array at run time.
-   * 
+   *
    * @tparam T Array element type
    * @param n Size of array
    * @return axom::Array<T> holding index array [0, ..., n-1]
@@ -46,10 +44,11 @@ public:
     std::iota(index.begin(), index.end(), 0);
     return index;
   }
-private:
+
+ private:
   /**
    * @brief IndexArray implementation
-   * 
+   *
    * @tparam T Array element type
    * @tparam I Indices
    * @return axom::Array<T> holding the index array I
@@ -57,10 +56,10 @@ private:
   template <typename T, size_t... I>
   static constexpr axom::Array<T> IndexArrayImpl(std::index_sequence<I...>)
   {
-    return axom::Array<T>( {I...} );
+    return axom::Array<T>({I...});
   }
 };
 
-} // end namespace redecomp
+}  // end namespace redecomp
 
 #endif /* SRC_REDECOMP_UTILS_ARRAYUTILITY_HPP_ */

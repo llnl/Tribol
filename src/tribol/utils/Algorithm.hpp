@@ -8,15 +8,13 @@
 
 #include "tribol/common/ArrayTypes.hpp"
 
-namespace tribol
-{
+namespace tribol {
 
-namespace algorithm
-{
+namespace algorithm {
 
 /**
  * @brief Implements a generic binary search algorithm
- * 
+ *
  * @tparam LCOMP Function taking an IndexT input argument
  * @tparam HCOMP Function taking an IndexT input argument
  * @param size Number of elements to search through
@@ -25,12 +23,9 @@ namespace algorithm
  * @return Integer index of matching element
  */
 template <typename LCOMP, typename HCOMP>
-TRIBOL_HOST_DEVICE IndexT binarySearch( IndexT size,
-                                        LCOMP&& lo_comparison,
-                                        HCOMP&& hi_comparison )
+TRIBOL_HOST_DEVICE IndexT binarySearch(IndexT size, LCOMP&& lo_comparison, HCOMP&& hi_comparison)
 {
-  if (size == 0)
-  {
+  if (size == 0) {
 #ifdef TRIBOL_USE_HOST
     SLIC_DEBUG("binarySearch: empty array given");
 #endif
@@ -39,19 +34,13 @@ TRIBOL_HOST_DEVICE IndexT binarySearch( IndexT size,
 
   IndexT l = 0;
   IndexT r = size - 1;
-  while (l <= r)
-  {
+  while (l <= r) {
     IndexT m = (l + r) / 2;
-    if (lo_comparison(m))
-    {
+    if (lo_comparison(m)) {
       l = m + 1;
-    }
-    else if (hi_comparison(m))
-    {
+    } else if (hi_comparison(m)) {
       r = m - 1;
-    }
-    else
-    {
+    } else {
       return m;
     }
   }
@@ -64,7 +53,7 @@ TRIBOL_HOST_DEVICE IndexT binarySearch( IndexT size,
 
 /**
  * @brief Binary search for value within ranges of values
- * 
+ *
  * @tparam T Data type to compare; must have operator+ and comparators
  * @param array C-style array with each element giving the min of a range
  * @param range C-style array with each element giving the size of each range
@@ -73,21 +62,16 @@ TRIBOL_HOST_DEVICE IndexT binarySearch( IndexT size,
  * @return Integer index of matching element range
  */
 template <typename T>
-TRIBOL_HOST_DEVICE IndexT binarySearch( const T* array,
-                                        const T* range,
-                                        IndexT size,
-                                        T value )
+TRIBOL_HOST_DEVICE IndexT binarySearch(const T* array, const T* range, IndexT size, T value)
 {
   return binarySearch(
-    size, 
-    [=] TRIBOL_HOST_DEVICE (IndexT i) { return array[i] + range[i] <= value; },
-    [=] TRIBOL_HOST_DEVICE (IndexT i) { return array[i] > value; }
-  );
+      size, [=] TRIBOL_HOST_DEVICE(IndexT i) { return array[i] + range[i] <= value; },
+      [=] TRIBOL_HOST_DEVICE(IndexT i) { return array[i] > value; });
 }
 
 /**
  * @brief Binary search for value within ranges of values
- * 
+ *
  * @tparam ARRAY Array type holding elements of type T; must have data() and
  * size() implemented
  * @tparam T Data type to compare
@@ -97,9 +81,7 @@ TRIBOL_HOST_DEVICE IndexT binarySearch( const T* array,
  * @return Integer index of matching element range
  */
 template <typename ARRAY, typename T>
-TRIBOL_HOST_DEVICE IndexT binarySearch( const ARRAY& array,
-                                        const ARRAY& range,
-                                        T value )
+TRIBOL_HOST_DEVICE IndexT binarySearch(const ARRAY& array, const ARRAY& range, T value)
 {
   return binarySearch(array.data(), range.data(), array.size(), value);
 }
@@ -107,31 +89,28 @@ TRIBOL_HOST_DEVICE IndexT binarySearch( const ARRAY& array,
 /**
  * @brief Given entries in the upper triangular portion of a symmetric matrix
  * stored row-major, find the row given an entry id
- * 
+ *
  * @param value Entry in the 1D vector
  * @param matrix_width Number of columns in the matrix
  * @return Row of the given entry
  */
-TRIBOL_HOST_DEVICE inline IndexT symmMatrixRow( IndexT value,
-                                                IndexT matrix_width )
+TRIBOL_HOST_DEVICE inline IndexT symmMatrixRow(IndexT value, IndexT matrix_width)
 {
   return binarySearch(
-    matrix_width,
-    [=] TRIBOL_HOST_DEVICE (IndexT i) { return (i + 1) * (i + 2) / 2 <= value; },
-    [=] TRIBOL_HOST_DEVICE (IndexT i) { return i * (i + 1) / 2 > value; });
+      matrix_width, [=] TRIBOL_HOST_DEVICE(IndexT i) { return (i + 1) * (i + 2) / 2 <= value; },
+      [=] TRIBOL_HOST_DEVICE(IndexT i) { return i * (i + 1) / 2 > value; });
 }
 
 /**
  * @brief Transposes a matrix stored as a 2D array
- * 
+ *
  * @tparam MSPACE Memory space of the array
  * @tparam T Type of the array data
  * @param in Matrix to transpose
  * @param out Transposed matrix
  */
 template <MemorySpace MSPACE, typename T>
-TRIBOL_HOST_DEVICE void transpose( const ArrayT<T, 2, MSPACE>& in, 
-                                   ArrayT<T, 2, MSPACE>& out )
+TRIBOL_HOST_DEVICE void transpose(const ArrayT<T, 2, MSPACE>& in, ArrayT<T, 2, MSPACE>& out)
 {
   auto h_in = in.shape()[0];
   auto w_in = in.shape()[1];
@@ -141,18 +120,15 @@ TRIBOL_HOST_DEVICE void transpose( const ArrayT<T, 2, MSPACE>& in,
   SLIC_ERROR_IF(w_in != out.shape()[0], "Input number of columns does not equal output number of rows.");
 #endif
 
-  for (IndexT i{0}; i < h_in; ++i)
-  {
-    for (IndexT j{0}; j < w_in; ++j)
-    {
+  for (IndexT i{0}; i < h_in; ++i) {
+    for (IndexT j{0}; j < w_in; ++j) {
       out(j, i) = in(i, j);
     }
   }
 }
 
-} // namespace algorithm
+}  // namespace algorithm
 
-} // namespace tribol
-
+}  // namespace tribol
 
 #endif /* SRC_UTILS_ALGORITHM_HPP_ */

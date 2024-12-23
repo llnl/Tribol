@@ -8,8 +8,7 @@
 
 #include "redecomp/common/TypeDefs.hpp"
 
-namespace redecomp
-{
+namespace redecomp {
 
 /**
  * @brief PartitionMethod base class
@@ -23,9 +22,8 @@ namespace redecomp
  * @tparam NDIMS number of dimensions
  */
 template <int NDIMS>
-class PartitionMethod
-{
-public:
+class PartitionMethod {
+ public:
   /**
    * @brief Returns a list of entity ids on each rank/subdomain determined by
    * the partitioning method
@@ -39,14 +37,11 @@ public:
    * by mesh
    */
   virtual std::vector<EntityIndexByRank> generatePartitioning(
-    int n_parts,
-    const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh,
-    double ghost_size
-  ) const = 0;
-  
+      int n_parts, const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh, double ghost_size) const = 0;
+
   /**
    * @brief Returns the MPIUtility
-   * 
+   *
    * @return MPIUtility reference
    */
   const MPIUtility& getMPIUtility() const;
@@ -56,25 +51,24 @@ public:
    */
   virtual ~PartitionMethod() = default;
 
-protected:
+ protected:
   /**
    * @brief Construct a new PartitionMethod object
-   * 
+   *
    * @param comm MPI_Comm to used to build MPIUtility
    */
   PartitionMethod(const MPI_Comm& comm);
 
-private:
+ private:
   /**
    * @brief MPIUtility used to hold MPI communication patterns used in redecomp
    */
   const MPIUtility mpi_;
-  
 };
 
 using PartitionMethod2D = PartitionMethod<2>;
 using PartitionMethod3D = PartitionMethod<3>;
 
-} // end namespace redecomp
+}  // end namespace redecomp
 
 #endif /* SRC_REDECOMP_PARTITION_PARTITIONMETHOD_HPP_ */

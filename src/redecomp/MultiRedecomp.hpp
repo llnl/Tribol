@@ -12,16 +12,17 @@
 
 #include "redecomp/RedecompMesh.hpp"
 
-namespace redecomp
-{
+namespace redecomp {
 
-class MultiRedecomp
-{
-public:
+class MultiRedecomp {
+ public:
   /**
    * @brief List of partitioning methods verified to work with MultiRedecomp
    */
-  enum PartitionType { RCB };
+  enum PartitionType
+  {
+    RCB
+  };
 
   /**
    * @brief Construct a new MultiRedecomp object
@@ -33,12 +34,7 @@ public:
    * @param ghost_len_multiplier Multiplier for the ghost element layer (base
    * value set by the approximate largest element size)
    */
-  MultiRedecomp(
-    int dim,
-    MPI_Comm comm,
-    PartitionType method = RCB,
-    double ghost_len_multiplier = 1.25
-  );
+  MultiRedecomp(int dim, MPI_Comm comm, PartitionType method = RCB, double ghost_len_multiplier = 1.25);
 
   /**
    * @brief Construct a new MultiRedecomp object
@@ -46,15 +42,12 @@ public:
    * @note This constructor requires the Partitioner object passed directly to
    * it. This can be used to customize the Partitioner used (for example, with
    * non-default options with RCB or for a user-defined Partitioner).
-   * 
+   *
    * @param partitioner Partitioning object used to define redecomposition
    * @param ghost_len_multiplier Multiplier for the ghost element layer (base
    * value set by the approximate largest element size)
    */
-  MultiRedecomp(
-    std::unique_ptr<const Partitioner> partitioner,
-    double ghost_len_multiplier = 1.25
-  );
+  MultiRedecomp(std::unique_ptr<const Partitioner> partitioner, double ghost_len_multiplier = 1.25);
 
   /**
    * @brief Get a vector of Redecomp meshes associated with MultiRedecomp
@@ -67,12 +60,9 @@ public:
    *
    * @return Vector of Redecomp unique pointers
    */
-  std::vector<std::unique_ptr<RedecompMesh>> createRedecompMeshes(
-    const std::vector<const mfem::ParMesh*>& parents
-  );
+  std::vector<std::unique_ptr<RedecompMesh>> createRedecompMeshes(const std::vector<const mfem::ParMesh*>& parents);
 
-private:
-
+ private:
   /**
    * @brief Partitioning method
    */
@@ -85,6 +75,6 @@ private:
   double ghost_len_multiplier_;
 };
 
-}
+}  // namespace redecomp
 
 #endif /* SRC_REDECOMP_MULTIREDECOMP_HPP_ */

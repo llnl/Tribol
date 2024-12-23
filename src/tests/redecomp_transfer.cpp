@@ -13,7 +13,7 @@
 namespace redecomp {
 
 class TransferTest : public testing::TestWithParam<std::pair<std::string, int>> {
-protected:
+ protected:
   mfem::ParMesh par_mesh_;
   std::unique_ptr<mfem::H1_FECollection> h1_elems_;
   std::unique_ptr<mfem::ParFiniteElementSpace> par_vector_space_;
@@ -40,32 +40,25 @@ protected:
 
     // store nodal coordinate as a GridFunction
     h1_elems_ = std::make_unique<mfem::H1_FECollection>(fe_order, dim);
-    par_vector_space_ = 
-      std::make_unique<mfem::ParFiniteElementSpace>(&par_mesh_, h1_elems_.get(), dim);
+    par_vector_space_ = std::make_unique<mfem::ParFiniteElementSpace>(&par_mesh_, h1_elems_.get(), dim);
     orig_ = std::make_unique<mfem::ParGridFunction>(par_vector_space_.get());
     final_ = std::make_unique<mfem::ParGridFunction>(par_vector_space_.get());
-    if (fe_order > 1)
-    {
+    if (fe_order > 1) {
       par_mesh_.SetNodalGridFunction(orig_.get(), false);
-    }
-    else
-    {
+    } else {
       par_mesh_.GetNodes(*orig_);
     }
     redecomp_mesh_ = std::make_unique<RedecompMesh>(par_mesh_);
-    redecomp_vector_space_ =
-      std::make_unique<mfem::FiniteElementSpace>(redecomp_mesh_.get(), h1_elems_.get(), dim);
+    redecomp_vector_space_ = std::make_unique<mfem::FiniteElementSpace>(redecomp_mesh_.get(), h1_elems_.get(), dim);
     xfer_ = std::make_unique<mfem::GridFunction>(redecomp_vector_space_.get());
 
     // store global element number as a QuadratureFunction
     par_quad_space_ = std::make_unique<mfem::QuadratureSpace>(&par_mesh_, 0);
     orig_quad_fn_ = std::make_unique<mfem::QuadratureFunction>(par_quad_space_.get());
-    for (int e{0}; e < par_mesh_.GetNE(); ++e)
-    {
+    for (int e{0}; e < par_mesh_.GetNE(); ++e) {
       auto quad_val = mfem::Vector();
       orig_quad_fn_->GetValues(e, quad_val);
-      for (int i{0}; i < quad_val.Size(); ++i)
-      {
+      for (int i{0}; i < quad_val.Size(); ++i) {
         quad_val[i] = static_cast<double>(par_mesh_.GetGlobalElementNum(e));
       }
     }
@@ -113,12 +106,10 @@ TEST_P(TransferTest, node_gridfn_transfer)
   MPI_Barrier(MPI_COMM_WORLD);
 }
 
-INSTANTIATE_TEST_SUITE_P(redecomp, TransferTest, testing::Values(
-  std::make_pair("/data/star.mesh", 1),
-  std::make_pair("/data/star.mesh", 3),
-  std::make_pair("/data/two_hex.mesh", 1),
-  std::make_pair("/data/two_hex.mesh", 3)
-));
+INSTANTIATE_TEST_SUITE_P(redecomp, TransferTest,
+                         testing::Values(std::make_pair("/data/star.mesh", 1), std::make_pair("/data/star.mesh", 3),
+                                         std::make_pair("/data/two_hex.mesh", 1),
+                                         std::make_pair("/data/two_hex.mesh", 3)));
 
 }  // namespace redecomp
 

@@ -43,10 +43,10 @@
 #include "redecomp/utils/ArrayUtility.hpp"
 #include "tribol/config.hpp"
 
-int main( int argc, char** argv )
+int main(int argc, char** argv)
 {
   // initialize MPI
-  MPI_Init( &argc, &argv );
+  MPI_Init(&argc, &argv);
   int np, rank;
   MPI_Comm_size(MPI_COMM_WORLD, &np);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -64,16 +64,10 @@ int main( int argc, char** argv )
   // polynomial order of the finite element discretization
   int order = 1;
 
-  axom::CLI::App app { "element_matrix_redecomp" };
-  app.add_option("-m,--mesh", mesh_file, "Mesh file to use.")
-    ->check(axom::CLI::ExistingFile)
-    ->capture_default_str();
-  app.add_option("-r,--refine", ref_levels,
-    "Number of times to refine the mesh uniformly.")
-    ->capture_default_str();
-  app.add_option("-o,--order", order, 
-    "Finite element order (polynomial degree).")
-    ->capture_default_str();
+  axom::CLI::App app{"element_matrix_redecomp"};
+  app.add_option("-m,--mesh", mesh_file, "Mesh file to use.")->check(axom::CLI::ExistingFile)->capture_default_str();
+  app.add_option("-r,--refine", ref_levels, "Number of times to refine the mesh uniformly.")->capture_default_str();
+  app.add_option("-o,--order", order, "Finite element order (polynomial degree).")->capture_default_str();
   CLI11_PARSE(app, argc, argv);
 
   SLIC_INFO_ROOT("Running element_matrix_redecomp with the following options:");
@@ -86,11 +80,10 @@ int main( int argc, char** argv )
   auto mesh = std::make_unique<mfem::Mesh>(mesh_file.c_str(), 1, 1);
 
   // refine serial mesh
-  for (int i{0}; i < ref_levels; ++i)
-  {
+  for (int i{0}; i < ref_levels; ++i) {
     mesh->UniformRefinement();
   }
-  
+
   // create parallel mesh from serial
   auto pmesh = std::make_unique<mfem::ParMesh>(MPI_COMM_WORLD, *mesh);
   mesh.reset(nullptr);
@@ -98,8 +91,7 @@ int main( int argc, char** argv )
   // further refinement of parallel mesh
   {
     int par_ref_levels = 0;
-    for (int i{0}; i < par_ref_levels; ++i)
-    {
+    for (int i{0}; i < par_ref_levels; ++i) {
       pmesh->UniformRefinement();
     }
   }
@@ -108,14 +100,10 @@ int main( int argc, char** argv )
 
   SLIC_INFO_ROOT("Computing mass matrix on mfem::ParMesh...");
   // compute mass matrix on parallel mesh
-  mfem::H1_FECollection fe_coll { order, pmesh->SpaceDimension() };
-  mfem::ParFiniteElementSpace par_fe_space {
-    pmesh.get(),
-    &fe_coll, 
-    pmesh->SpaceDimension()
-  };
-  mfem::ParBilinearForm M_par { &par_fe_space };
-  mfem::ConstantCoefficient rho0 { 1.0 };
+  mfem::H1_FECollection fe_coll{order, pmesh->SpaceDimension()};
+  mfem::ParFiniteElementSpace par_fe_space{pmesh.get(), &fe_coll, pmesh->SpaceDimension()};
+  mfem::ParBilinearForm M_par{&par_fe_space};
+  mfem::ConstantCoefficient rho0{1.0};
   M_par.AddDomainIntegrator(new mfem::VectorMassIntegrator(rho0));
   M_par.Assemble();
   M_par.Finalize();
@@ -123,12 +111,9 @@ int main( int argc, char** argv )
 
   // grid function for higher-order nodes
   auto par_x_ref_elem = mfem::ParGridFunction(&par_fe_space);
-  if (order > 1)
-  {
+  if (order > 1) {
     pmesh->SetNodalGridFunction(&par_x_ref_elem, false);
-  }
-  else
-  {
+  } else {
     pmesh->GetNodes(par_x_ref_elem);
   }
   pmesh_dc.RegisterField("ref_coord", &par_x_ref_elem);
@@ -136,33 +121,23 @@ int main( int argc, char** argv )
 
   SLIC_INFO_ROOT("Creating redecomp::RedecompMesh...");
   // create redecomp mesh
-  redecomp::RedecompMesh redecomp_mesh { *pmesh };
+  redecomp::RedecompMesh redecomp_mesh{*pmesh};
 
   SLIC_INFO_ROOT("Computing mass matrix on redecomp::RedecompMesh...");
   // compute mass matrix on redecomp mesh
-  mfem::FiniteElementSpace redecomp_fe_space {
-    &redecomp_mesh,
-    &fe_coll,
-    redecomp_mesh.SpaceDimension()
-  };
-  mfem::BilinearForm M_redecomp { &redecomp_fe_space };
+  mfem::FiniteElementSpace redecomp_fe_space{&redecomp_mesh, &fe_coll, redecomp_mesh.SpaceDimension()};
+  mfem::BilinearForm M_redecomp{&redecomp_fe_space};
   M_redecomp.AddDomainIntegrator(new mfem::VectorMassIntegrator(rho0));
   int n_els = redecomp_fe_space.GetNE();
   auto elem_idx = redecomp::ArrayUtility::IndexArray<int>(n_els);
-  axom::Array<mfem::DenseMatrix> elem_mats { n_els, n_els };
-  for (int i{0}; i < n_els; ++i)
-  {
+  axom::Array<mfem::DenseMatrix> elem_mats{n_els, n_els};
+  for (int i{0}; i < n_els; ++i) {
     M_redecomp.ComputeElementMatrix(i, elem_mats[i]);
   }
 
   SLIC_INFO_ROOT("Transferring mass matrix from RedecompMesh to ParMesh...");
   // transfer redecomp mass matrix to parallel mesh
-  redecomp::MatrixTransfer matrix_xfer {
-    par_fe_space,
-    par_fe_space,
-    redecomp_fe_space, 
-    redecomp_fe_space
-  };
+  redecomp::MatrixTransfer matrix_xfer{par_fe_space, par_fe_space, redecomp_fe_space, redecomp_fe_space};
   auto Mmat_xfer = matrix_xfer.TransferToParallel(elem_idx, elem_idx, elem_mats);
 
   SLIC_INFO_ROOT("Computing max norm of difference...");

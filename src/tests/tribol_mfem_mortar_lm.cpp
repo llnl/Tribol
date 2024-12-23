@@ -33,7 +33,7 @@
  *
  */
 class MfemMortarTest : public testing::TestWithParam<int> {
-protected:
+ protected:
   tribol::RealT max_disp_;
   void SetUp() override
   {
@@ -48,7 +48,7 @@ protected:
     std::string mesh_file = TRIBOL_REPO_DIR "/data/two_hex_overlap.mesh";
     // boundary element attributes of mortar surface
     auto mortar_attrs = std::set<int>({4});
-    // boundary element attributes of nonmortar surface 
+    // boundary element attributes of nonmortar surface
     auto nonmortar_attrs = std::set<int>({5});
     // boundary element attributes of x-fixed surfaces (at x = 0)
     auto xfixed_attrs = std::set<int>({1});
@@ -58,20 +58,18 @@ protected:
     auto zfixed_attrs = std::set<int>({3, 6});
 
     // read mesh
-    std::unique_ptr<mfem::ParMesh> pmesh { nullptr };
+    std::unique_ptr<mfem::ParMesh> pmesh{nullptr};
     {
       // read serial mesh
       auto mesh = std::make_unique<mfem::Mesh>(mesh_file.c_str(), 1, 1);
 
       // refine serial mesh
-      if (ref_levels > 0)
-      {
-        for (int i{0}; i < ref_levels; ++i)
-        {
+      if (ref_levels > 0) {
+        for (int i{0}; i < ref_levels; ++i) {
           mesh->UniformRefinement();
         }
       }
-      
+
       // create parallel mesh from serial
       pmesh = std::make_unique<mfem::ParMesh>(MPI_COMM_WORLD, *mesh);
       mesh.reset(nullptr);
@@ -79,8 +77,7 @@ protected:
       // further refinement of parallel mesh
       {
         int par_ref_levels = 0;
-        for (int i{0}; i < par_ref_levels; ++i)
-        {
+        for (int i{0}; i < par_ref_levels; ++i) {
           pmesh->UniformRefinement();
         }
       }
@@ -88,20 +85,16 @@ protected:
 
     // grid function for higher-order nodes
     auto fe_coll = mfem::H1_FECollection(order, pmesh->SpaceDimension());
-    auto par_fe_space = mfem::ParFiniteElementSpace(
-      pmesh.get(), &fe_coll, pmesh->SpaceDimension());
+    auto par_fe_space = mfem::ParFiniteElementSpace(pmesh.get(), &fe_coll, pmesh->SpaceDimension());
     auto coords = mfem::ParGridFunction(&par_fe_space);
-    if (order > 1)
-    {
+    if (order > 1) {
       pmesh->SetNodalGridFunction(&coords, false);
-    }
-    else
-    {
+    } else {
       pmesh->GetNodes(coords);
     }
 
     // grid function for displacement
-    mfem::ParGridFunction displacement { &par_fe_space };
+    mfem::ParGridFunction displacement{&par_fe_space};
     displacement = 0.0;
 
     // recover dirichlet bc tdof list
@@ -110,30 +103,25 @@ protected:
       mfem::Array<int> ess_vdof_marker;
       mfem::Array<int> ess_bdr(pmesh->bdr_attributes.Max());
       ess_bdr = 0;
-      for (auto xfixed_attr : xfixed_attrs)
-      {
-        ess_bdr[xfixed_attr-1] = 1;
+      for (auto xfixed_attr : xfixed_attrs) {
+        ess_bdr[xfixed_attr - 1] = 1;
       }
       par_fe_space.GetEssentialVDofs(ess_bdr, ess_vdof_marker, 0);
       mfem::Array<int> new_ess_vdof_marker;
       ess_bdr = 0;
-      for (auto yfixed_attr : yfixed_attrs)
-      {
-        ess_bdr[yfixed_attr-1] = 1;
+      for (auto yfixed_attr : yfixed_attrs) {
+        ess_bdr[yfixed_attr - 1] = 1;
       }
       par_fe_space.GetEssentialVDofs(ess_bdr, new_ess_vdof_marker, 1);
-      for (int i{0}; i < ess_vdof_marker.Size(); ++i)
-      {
+      for (int i{0}; i < ess_vdof_marker.Size(); ++i) {
         ess_vdof_marker[i] = ess_vdof_marker[i] || new_ess_vdof_marker[i];
       }
       ess_bdr = 0;
-      for (auto zfixed_attr : zfixed_attrs)
-      {
-        ess_bdr[zfixed_attr-1] = 1;
+      for (auto zfixed_attr : zfixed_attrs) {
+        ess_bdr[zfixed_attr - 1] = 1;
       }
       par_fe_space.GetEssentialVDofs(ess_bdr, new_ess_vdof_marker, 2);
-      for (int i{0}; i < ess_vdof_marker.Size(); ++i)
-      {
+      for (int i{0}; i < ess_vdof_marker.Size(); ++i) {
         ess_vdof_marker[i] = ess_vdof_marker[i] || new_ess_vdof_marker[i];
       }
       mfem::Array<int> ess_tdof_marker;
@@ -156,24 +144,15 @@ protected:
     int coupling_scheme_id = 0;
     int mesh1_id = 0;
     int mesh2_id = 1;
-    tribol::registerMfemCouplingScheme(
-      coupling_scheme_id, mesh1_id, mesh2_id,
-      *pmesh, coords, mortar_attrs, nonmortar_attrs,
-      tribol::SURFACE_TO_SURFACE, 
-      tribol::NO_SLIDING, 
-      tribol::SINGLE_MORTAR, 
-      tribol::FRICTIONLESS,
-      tribol::LAGRANGE_MULTIPLIER,
-      tribol::BINNING_GRID
-    );
-    tribol::setLagrangeMultiplierOptions(
-      0,
-      tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN
-    );
+    tribol::registerMfemCouplingScheme(coupling_scheme_id, mesh1_id, mesh2_id, *pmesh, coords, mortar_attrs,
+                                       nonmortar_attrs, tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING,
+                                       tribol::SINGLE_MORTAR, tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER,
+                                       tribol::BINNING_GRID);
+    tribol::setLagrangeMultiplierOptions(0, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN);
 
     // update tribol (compute contact contribution to force and stiffness)
     tribol::updateMfemParallelDecomposition();
-    tribol::RealT dt {1.0};  // time is arbitrary here (no timesteps)
+    tribol::RealT dt{1.0};  // time is arbitrary here (no timesteps)
     tribol::update(1, 1.0, dt);
 
     // retrieve block stiffness matrix
@@ -181,16 +160,16 @@ protected:
     A_blk->SetBlock(0, 0, A.release());
 
     // create block solution and RHS vectors
-    mfem::BlockVector B_blk { A_blk->ColOffsets() };
+    mfem::BlockVector B_blk{A_blk->ColOffsets()};
     B_blk = 0.0;
-    mfem::BlockVector X_blk { A_blk->RowOffsets() };
+    mfem::BlockVector X_blk{A_blk->RowOffsets()};
     X_blk = 0.0;
 
     // retrieve gap vector (RHS) from contact
     mfem::ParGridFunction g;
     tribol::getMfemGap(0, g);
 
-  // prolongation transpose operator on submesh: maps dofs stored in g to tdofs stored in G
+    // prolongation transpose operator on submesh: maps dofs stored in g to tdofs stored in G
     {
       auto& G = B_blk.GetBlock(1);
       auto& P_submesh = *tribol::getMfemPressure(0).ParFESpace()->GetProlongationMatrix();

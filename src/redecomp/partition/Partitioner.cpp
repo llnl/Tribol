@@ -8,17 +8,14 @@
 #include "redecomp/partition/PartitionMethod.hpp"
 #include "redecomp/partition/PartitionEntity.hpp"
 
-namespace redecomp
-{
+namespace redecomp {
 
 template <int NDIMS>
-PartitionerByDim<NDIMS>::PartitionerByDim(
-  std::unique_ptr<const PartitionEntity<NDIMS>> partition_entity,
-  std::unique_ptr<const PartitionMethod<NDIMS>> partition_method
-)
-: partition_entity_ { std::move(partition_entity) },
-  partition_method_ { std::move(partition_method) }
-{}
+PartitionerByDim<NDIMS>::PartitionerByDim(std::unique_ptr<const PartitionEntity<NDIMS>> partition_entity,
+                                          std::unique_ptr<const PartitionMethod<NDIMS>> partition_method)
+    : partition_entity_{std::move(partition_entity)}, partition_method_{std::move(partition_method)}
+{
+}
 
 template <int NDIMS>
 const MPIUtility& PartitionerByDim<NDIMS>::getMPIUtility() const
@@ -28,16 +25,9 @@ const MPIUtility& PartitionerByDim<NDIMS>::getMPIUtility() const
 
 template <int NDIMS>
 std::vector<EntityIndexByRank> PartitionerByDim<NDIMS>::generatePartitioning(
-  int n_parts, 
-  const std::vector<const mfem::ParMesh*>& par_meshes,
-  double ghost_size
-) const
+    int n_parts, const std::vector<const mfem::ParMesh*>& par_meshes, double ghost_size) const
 {
-  return partition_method_->generatePartitioning(
-    n_parts,
-    partition_entity_->EntityCoordinates(par_meshes),
-    ghost_size
-  );
+  return partition_method_->generatePartitioning(n_parts, partition_entity_->EntityCoordinates(par_meshes), ghost_size);
 }
 
 template <int NDIMS>
@@ -55,4 +45,4 @@ const PartitionMethod<NDIMS>* PartitionerByDim<NDIMS>::getPartitionMethod() cons
 template class PartitionerByDim<2>;
 template class PartitionerByDim<3>;
 
-} // end namespace redecomp
+}  // end namespace redecomp

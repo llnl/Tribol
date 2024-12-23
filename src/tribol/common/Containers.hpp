@@ -9,44 +9,29 @@
 // Tribol includes
 #include "tribol/common/BasicTypes.hpp"
 
-namespace tribol
-{
+namespace tribol {
 
 /**
  * @brief Storage base class for device-compatible free store (heap) allocated
  * arrays
- * 
+ *
  * @tparam T Datatype stored in array
  */
 template <typename T>
-class DeviceArrayData
-{
-protected:
-  TRIBOL_HOST_DEVICE DeviceArrayData() 
-  : size_ {0},
-    data_ {nullptr} 
-  {}
-  TRIBOL_HOST_DEVICE DeviceArrayData(IndexT size)
-  : size_ {size},
-    data_ {new T[size]}
-  {}
-  TRIBOL_HOST_DEVICE virtual ~DeviceArrayData()
-  {
-    deleteData();
-  }
+class DeviceArrayData {
+ protected:
+  TRIBOL_HOST_DEVICE DeviceArrayData() : size_{0}, data_{nullptr} {}
+  TRIBOL_HOST_DEVICE DeviceArrayData(IndexT size) : size_{size}, data_{new T[size]} {}
+  TRIBOL_HOST_DEVICE virtual ~DeviceArrayData() { deleteData(); }
 
-  TRIBOL_HOST_DEVICE DeviceArrayData(const DeviceArrayData& other)
-  : DeviceArrayData(other.size_)
+  TRIBOL_HOST_DEVICE DeviceArrayData(const DeviceArrayData& other) : DeviceArrayData(other.size_)
   {
     // deep copy data
-    for (IndexT i{0}; i < size_; ++i)
-    {
+    for (IndexT i{0}; i < size_; ++i) {
       data_[i] = other.data_[i];
     }
   }
-  TRIBOL_HOST_DEVICE DeviceArrayData(DeviceArrayData&& other)
-  : size_ {other.size_},
-    data_ {other.data_}
+  TRIBOL_HOST_DEVICE DeviceArrayData(DeviceArrayData&& other) : size_{other.size_}, data_{other.data_}
   {
     // reset other
     other.size_ = 0;
@@ -59,8 +44,7 @@ protected:
     size_ = other.size_;
     data_ = new T[size_];
     // deep copy data
-    for (IndexT i{0}; i < size_; ++i)
-    {
+    for (IndexT i{0}; i < size_; ++i) {
       data_[i] = other.data_[i];
     }
     return *this;
@@ -79,11 +63,10 @@ protected:
   IndexT size_;
   T* data_;
 
-private:
+ private:
   TRIBOL_HOST_DEVICE void deleteData()
   {
-    if (data_ != nullptr)
-    {
+    if (data_ != nullptr) {
       delete[] data_;
       size_ = 0;
       data_ = nullptr;
@@ -93,27 +76,18 @@ private:
 
 /**
  * @brief Simple free store (heap) allocated array that can be created on device
- * 
+ *
  * @tparam T Datatype stored in array
  */
 template <typename T>
-class DeviceArray : public DeviceArrayData<T>
-{
-public:
-  TRIBOL_HOST_DEVICE DeviceArray()
-  : DeviceArrayData<T>()
-  {}
-  TRIBOL_HOST_DEVICE DeviceArray(IndexT size)
-  : DeviceArrayData<T>(size)
-  {}
+class DeviceArray : public DeviceArrayData<T> {
+ public:
+  TRIBOL_HOST_DEVICE DeviceArray() : DeviceArrayData<T>() {}
+  TRIBOL_HOST_DEVICE DeviceArray(IndexT size) : DeviceArrayData<T>(size) {}
   TRIBOL_HOST_DEVICE ~DeviceArray() = default;
 
-  TRIBOL_HOST_DEVICE DeviceArray(const DeviceArray& other)
-  : DeviceArrayData<T>(other)
-  {}
-  TRIBOL_HOST_DEVICE DeviceArray(DeviceArray&& other)
-  : DeviceArrayData<T>(std::move(other))
-  {}
+  TRIBOL_HOST_DEVICE DeviceArray(const DeviceArray& other) : DeviceArrayData<T>(other) {}
+  TRIBOL_HOST_DEVICE DeviceArray(DeviceArray&& other) : DeviceArrayData<T>(std::move(other)) {}
 
   TRIBOL_HOST_DEVICE DeviceArray& operator=(const DeviceArray& other)
   {
@@ -127,15 +101,9 @@ public:
     return *this;
   }
 
-  TRIBOL_HOST_DEVICE T& operator[](IndexT i)
-  {
-    return DeviceArrayData<T>::data_[i];
-  }
+  TRIBOL_HOST_DEVICE T& operator[](IndexT i) { return DeviceArrayData<T>::data_[i]; }
 
-  TRIBOL_HOST_DEVICE const T& operator[](IndexT i) const
-  {
-    return DeviceArrayData<T>::data_[i];
-  }
+  TRIBOL_HOST_DEVICE const T& operator[](IndexT i) const { return DeviceArrayData<T>::data_[i]; }
 
   TRIBOL_HOST_DEVICE IndexT size() const { return DeviceArrayData<T>::size_; }
 
@@ -145,35 +113,27 @@ public:
 /**
  * @brief Simple free store (heap) allocated two-dimensional array that can be
  * created on device
- * 
+ *
  * @tparam T Datatype stored in array
  */
 template <typename T>
-class DeviceArray2D : public DeviceArrayData<T>
-{
-public:
-  TRIBOL_HOST_DEVICE DeviceArray2D()
-  : DeviceArrayData<T>(),
-    height_ {0},
-    width_ {0}
-  {}
+class DeviceArray2D : public DeviceArrayData<T> {
+ public:
+  TRIBOL_HOST_DEVICE DeviceArray2D() : DeviceArrayData<T>(), height_{0}, width_{0} {}
   TRIBOL_HOST_DEVICE DeviceArray2D(IndexT height, IndexT width)
-  : DeviceArrayData<T>(width * height),
-    height_ {height},
-    width_ {width}
-  {}
+      : DeviceArrayData<T>(width * height), height_{height}, width_{width}
+  {
+  }
   TRIBOL_HOST_DEVICE ~DeviceArray2D() = default;
 
   TRIBOL_HOST_DEVICE DeviceArray2D(const DeviceArray2D& other)
-  : DeviceArrayData<T>(other),
-    height_ {other.height_},
-    width_ {other.width_}
-  {}
+      : DeviceArrayData<T>(other), height_{other.height_}, width_{other.width_}
+  {
+  }
   TRIBOL_HOST_DEVICE DeviceArray2D(DeviceArray2D&& other)
-  : DeviceArrayData<T>(std::move(other)),
-    height_ {other.height_},
-    width_ {other.width_}
-  {}
+      : DeviceArrayData<T>(std::move(other)), height_{other.height_}, width_{other.width_}
+  {
+  }
 
   TRIBOL_HOST_DEVICE DeviceArray2D& operator=(const DeviceArray2D& other)
   {
@@ -193,20 +153,11 @@ public:
     return *this;
   }
 
-  TRIBOL_HOST_DEVICE T& operator[](IndexT i)
-  {
-    return DeviceArrayData<T>::data_[i];
-  }
+  TRIBOL_HOST_DEVICE T& operator[](IndexT i) { return DeviceArrayData<T>::data_[i]; }
 
-  TRIBOL_HOST_DEVICE const T& operator[](IndexT i) const
-  {
-    return DeviceArrayData<T>::data_[i];
-  }
+  TRIBOL_HOST_DEVICE const T& operator[](IndexT i) const { return DeviceArrayData<T>::data_[i]; }
 
-  TRIBOL_HOST_DEVICE T& operator()(IndexT i, IndexT j)
-  {
-    return DeviceArrayData<T>::data_[i + j * height_];
-  }
+  TRIBOL_HOST_DEVICE T& operator()(IndexT i, IndexT j) { return DeviceArrayData<T>::data_[i + j * height_]; }
 
   TRIBOL_HOST_DEVICE const T& operator()(IndexT i, IndexT j) const
   {
@@ -216,20 +167,19 @@ public:
   TRIBOL_HOST_DEVICE IndexT size() const { return DeviceArrayData<T>::size_; }
 
   TRIBOL_HOST_DEVICE T* data() const { return DeviceArrayData<T>::data_; }
-  
+
   TRIBOL_HOST_DEVICE IndexT height() const { return height_; }
-  
+
   TRIBOL_HOST_DEVICE IndexT width() const { return width_; }
 
   TRIBOL_HOST_DEVICE void fill(T value)
   {
-    for (int i{0}; i < size(); ++i)
-    {
+    for (int i{0}; i < size(); ++i) {
       data()[i] = value;
     }
   }
 
-private:
+ private:
   IndexT height_;
   IndexT width_;
 };
@@ -239,13 +189,10 @@ private:
  * created on device
  */
 template <typename T, IndexT N>
-class StackArray
-{
-public:
+class StackArray {
+ public:
   TRIBOL_HOST_DEVICE StackArray() = default;
-  TRIBOL_HOST_DEVICE StackArray(IndexT width)
-  : width_ {width}
-  {}
+  TRIBOL_HOST_DEVICE StackArray(IndexT width) : width_{width} {}
   TRIBOL_HOST_DEVICE ~StackArray() = default;
 
   TRIBOL_HOST_DEVICE StackArray(const StackArray& other) = default;
@@ -257,29 +204,18 @@ public:
   TRIBOL_HOST_DEVICE operator T*() noexcept { return &data_[0]; }
   TRIBOL_HOST_DEVICE operator const T*() const noexcept { return &data_[0]; }
 
-  TRIBOL_HOST_DEVICE T& operator[](IndexT i)
-  {
-    return data_[i];
-  }
+  TRIBOL_HOST_DEVICE T& operator[](IndexT i) { return data_[i]; }
 
-  TRIBOL_HOST_DEVICE const T& operator[](IndexT i) const
-  {
-    return data_[i];
-  }
+  TRIBOL_HOST_DEVICE const T& operator[](IndexT i) const { return data_[i]; }
 
-  TRIBOL_HOST_DEVICE T& operator()(IndexT i, IndexT j)
-  {
-    return data_[i * width_ + j];
-  }
+  TRIBOL_HOST_DEVICE T& operator()(IndexT i, IndexT j) { return data_[i * width_ + j]; }
 
-  TRIBOL_HOST_DEVICE const T& operator()(IndexT i, IndexT j) const
-  {
-    return data_[i * width_ + j];
-  }
-private:
+  TRIBOL_HOST_DEVICE const T& operator()(IndexT i, IndexT j) const { return data_[i * width_ + j]; }
+
+ private:
   T data_[N];
   IndexT width_;
 };
 
-}
+}  // namespace tribol
 #endif /* TRIBOL_COMMON_CONTAINERS_HPP_ */

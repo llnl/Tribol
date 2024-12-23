@@ -8,23 +8,21 @@
 
 #include "Physics.hpp"
 
-namespace tribol
-{
+namespace tribol {
 /*!
  *
- * \brief computes penalty stiffness for Common Plane + Penalty 
+ * \brief computes penalty stiffness for Common Plane + Penalty
  *
  * \param [in] K1/t1 contact spring stiffness for face 1 (bulk_modulus/element_thickness for face 1)
  * \param [in] K2/t2 contact spring stiffness for face 2 (bulk_modulus/element_thickness for face 2)
  *
- * \return face-pair based, element-wise penalty stiffness per area 
- *         
+ * \return face-pair based, element-wise penalty stiffness per area
  *
- * \pre Bulk modulus and element thickness arrays are registered by host code 
+ *
+ * \pre Bulk modulus and element thickness arrays are registered by host code
  *
  */
-TRIBOL_HOST_DEVICE RealT ComputePenaltyStiffnessPerArea( const RealT K1_over_t1,
-                                                         const RealT K2_over_t2 );
+TRIBOL_HOST_DEVICE RealT ComputePenaltyStiffnessPerArea(const RealT K1_over_t1, const RealT K2_over_t2);
 
 /*!
  *
@@ -35,9 +33,9 @@ TRIBOL_HOST_DEVICE RealT ComputePenaltyStiffnessPerArea( const RealT K1_over_t1,
  * \return 0 if no error
  *
  */
-template< >
-int ApplyNormal< COMMON_PLANE, PENALTY >( CouplingScheme* cs );
+template <>
+int ApplyNormal<COMMON_PLANE, PENALTY>(CouplingScheme* cs);
 
-} // end namespace tribol
+}  // end namespace tribol
 
 #endif /* SRC_PHYSICS_COMMONPLANE_HPP_ */

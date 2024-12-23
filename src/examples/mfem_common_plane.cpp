@@ -50,10 +50,10 @@
 #include "axom/CLI11.hpp"
 #include "axom/slic.hpp"
 
-int main( int argc, char** argv )
+int main(int argc, char** argv)
 {
   // initialize MPI
-  MPI_Init( &argc, &argv );
+  MPI_Init(&argc, &argv);
   int np, rank;
   MPI_Comm_size(MPI_COMM_WORLD, &np);
   MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -93,40 +93,23 @@ int main( int argc, char** argv )
   double p_kine = (lambda + 2.0 / 3.0 * mu) / (1.0 / std::pow(2.0, ref_levels));
 
   // parse command line options
-  axom::CLI::App app { "mfem_common_plane" };
-  app.add_option("-r,--refine", ref_levels,
-    "Number of times to refine the mesh uniformly.")
-    ->capture_default_str();
-  app.add_option("-o,--order", order, 
-    "Finite element order (polynomial degree).")
-    ->capture_default_str();
-  app.add_option("-v,--initialv", init_velocity, 
-    "Initial velocity of the top block.")
-    ->capture_default_str();
-  app.add_option("-d,--dt", dt, 
-    "Timestep size (fixed).")
-    ->capture_default_str();
-  app.add_option("-e,--endtime", t_end, 
-    "End time of the simulation.")
-    ->capture_default_str();
-  app.add_flag("-C,--use-constant-penalty", use_const_penalty, 
-    "Use a constant penalty parameter (element thickness-based penalty otherwise)")
-    ->capture_default_str();
-  app.add_option("-p,--kinematicpenalty", p_kine, 
-    "Kinematic penalty parameter (if --use-element-penalty is false).")
-    ->capture_default_str()->needs("-C");
-  app.add_option("-c,--outputcycles", output_cycles, 
-    "Number of cycles to skip before next output.")
-    ->capture_default_str();
-  app.add_option("-R,--rho", rho, 
-    "Material density.")
-    ->capture_default_str();
-  app.add_option("-l,--lambda", lambda, 
-    "Lame parameter lambda.")
-    ->capture_default_str();
-  app.add_option("-m,--mu", mu, 
-    "Lame parameter mu (shear modulus).")
-    ->capture_default_str();
+  axom::CLI::App app{"mfem_common_plane"};
+  app.add_option("-r,--refine", ref_levels, "Number of times to refine the mesh uniformly.")->capture_default_str();
+  app.add_option("-o,--order", order, "Finite element order (polynomial degree).")->capture_default_str();
+  app.add_option("-v,--initialv", init_velocity, "Initial velocity of the top block.")->capture_default_str();
+  app.add_option("-d,--dt", dt, "Timestep size (fixed).")->capture_default_str();
+  app.add_option("-e,--endtime", t_end, "End time of the simulation.")->capture_default_str();
+  app.add_flag("-C,--use-constant-penalty", use_const_penalty,
+               "Use a constant penalty parameter (element thickness-based penalty otherwise)")
+      ->capture_default_str();
+  app.add_option("-p,--kinematicpenalty", p_kine, "Kinematic penalty parameter (if --use-element-penalty is false).")
+      ->capture_default_str()
+      ->needs("-C");
+  app.add_option("-c,--outputcycles", output_cycles, "Number of cycles to skip before next output.")
+      ->capture_default_str();
+  app.add_option("-R,--rho", rho, "Material density.")->capture_default_str();
+  app.add_option("-l,--lambda", lambda, "Lame parameter lambda.")->capture_default_str();
+  app.add_option("-m,--mu", mu, "Lame parameter mu (shear modulus).")->capture_default_str();
   CLI11_PARSE(app, argc, argv);
 
   SLIC_INFO_ROOT("Running mfem_common_plane with the following options:");
@@ -158,27 +141,25 @@ int main( int argc, char** argv )
   auto moving_attrs = std::set<int>({2});
 
   // create an axom timer to give wall times for each step
-  axom::utilities::Timer timer { false };
+  axom::utilities::Timer timer{false};
 
   // This block of code will read the mesh data given in two_hex_apart.mesh,
   // create an mfem::Mesh, refine the mesh, then create an mfem::ParMesh.
   // Optionally, the mfem::ParMesh can be refined further on each rank by
   // setting par_ref_levels >= 1, though this is disabled below.
   timer.start();
-  std::unique_ptr<mfem::ParMesh> pmesh { nullptr };
+  std::unique_ptr<mfem::ParMesh> pmesh{nullptr};
   {
     // read serial mesh
     auto mesh = std::make_unique<mfem::Mesh>(mesh_file.c_str(), 1, 1);
 
     // refine serial mesh
-    if (ref_levels > 0)
-    {
-      for (int i{0}; i < ref_levels; ++i)
-      {
+    if (ref_levels > 0) {
+      for (int i{0}; i < ref_levels; ++i) {
         mesh->UniformRefinement();
       }
     }
-    
+
     // create parallel mesh from serial
     pmesh = std::make_unique<mfem::ParMesh>(MPI_COMM_WORLD, *mesh);
     mesh.reset(nullptr);
@@ -187,17 +168,14 @@ int main( int argc, char** argv )
     {
       // set this to >= 1 to refine the mesh on each rank further
       int par_ref_levels = 0;
-      for (int i{0}; i < par_ref_levels; ++i)
-      {
+      for (int i{0}; i < par_ref_levels; ++i) {
         pmesh->UniformRefinement();
       }
     }
   }
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to create parallel mesh: {0:f}ms", timer.elapsedTimeInMilliSec()
-  ));
-  
+  SLIC_INFO_ROOT(axom::fmt::format("Time to create parallel mesh: {0:f}ms", timer.elapsedTimeInMilliSec()));
+
   // Set up an MFEM data collection for output. We output data in Paraview and
   // VisIt formats.
   auto paraview_datacoll = mfem::ParaViewDataCollection("common_plane_pv", pmesh.get());
@@ -211,12 +189,11 @@ int main( int argc, char** argv )
   // collections for output.
   timer.start();
   // Finite element collection (shared between all grid functions).
-  mfem::H1_FECollection fe_coll { order, pmesh->SpaceDimension() };
+  mfem::H1_FECollection fe_coll{order, pmesh->SpaceDimension()};
   // Finite element space (shared between all grid functions).
-  mfem::ParFiniteElementSpace par_fe_space {
-    pmesh.get(), &fe_coll, pmesh->SpaceDimension() };
+  mfem::ParFiniteElementSpace par_fe_space{pmesh.get(), &fe_coll, pmesh->SpaceDimension()};
   // Create coordinate grid function
-  mfem::ParGridFunction coords { &par_fe_space };
+  mfem::ParGridFunction coords{&par_fe_space};
   // Set coordinate grid function based on nodal locations. In MFEM, nodal
   // locations of higher order meshes are stored in a grid function. For linear
   // MFEM meshes, nodal locations can be stored in a grid function or through
@@ -228,23 +205,21 @@ int main( int argc, char** argv )
   visit_datacoll.RegisterField("pos", &coords);
 
   // Save reference coordinates
-  mfem::ParGridFunction ref_coords { coords };
+  mfem::ParGridFunction ref_coords{coords};
 
   // Create a grid function for displacement
-  mfem::ParGridFunction displacement { &par_fe_space };
+  mfem::ParGridFunction displacement{&par_fe_space};
   paraview_datacoll.RegisterField("disp", &displacement);
   visit_datacoll.RegisterField("disp", &displacement);
   displacement = 0.0;
 
   // Create a grid function for velocity
-  mfem::ParGridFunction velocity { &par_fe_space };
+  mfem::ParGridFunction velocity{&par_fe_space};
   paraview_datacoll.RegisterField("vel", &velocity);
   visit_datacoll.RegisterField("vel", &velocity);
   velocity = 0.0;
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to create grid functions: {0:f}ms", timer.elapsedTimeInMilliSec()
-  ));
+  SLIC_INFO_ROOT(axom::fmt::format("Time to create grid functions: {0:f}ms", timer.elapsedTimeInMilliSec()));
 
   timer.start();
   {
@@ -263,16 +238,11 @@ int main( int argc, char** argv )
     mfem::Array<mfem::VectorCoefficient*> init_velocity_coeff_array;
     moving_attrs_array.Reserve(moving_attrs.size());
     init_velocity_coeff_array.Reserve(moving_attrs.size());
-    for (auto moving_attr : moving_attrs)
-    {
+    for (auto moving_attr : moving_attrs) {
       moving_attrs_array.Append(moving_attr);
       init_velocity_coeff_array.Append(&init_velocity_coeff);
     }
-    mfem::PWVectorCoefficient initial_v_coeff(
-      pmesh->SpaceDimension(), 
-      moving_attrs_array,
-      init_velocity_coeff_array
-    );
+    mfem::PWVectorCoefficient initial_v_coeff(pmesh->SpaceDimension(), moving_attrs_array, init_velocity_coeff_array);
     velocity.ProjectCoefficient(initial_v_coeff);
   }
 
@@ -287,9 +257,8 @@ int main( int argc, char** argv )
     // Also, convert active boundary attributes into markers.
     mfem::Array<int> ess_bdr(pmesh->bdr_attributes.Max());
     ess_bdr = 0;
-    for (auto fixed_attr : fixed_attrs)
-    {
-      ess_bdr[fixed_attr-1] = 1;
+    for (auto fixed_attr : fixed_attrs) {
+      ess_bdr[fixed_attr - 1] = 1;
     }
     // Note no component is given as an argument here, so all components (x, y,
     // and z) are returned.
@@ -298,26 +267,22 @@ int main( int argc, char** argv )
     mfem::FiniteElementSpace::MarkerToList(ess_vdof_marker, ess_vdof_list);
   }
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to set up boundary conditions: {0:f}ms", timer.elapsedTimeInMilliSec()
-  ));
+  SLIC_INFO_ROOT(axom::fmt::format("Time to set up boundary conditions: {0:f}ms", timer.elapsedTimeInMilliSec()));
 
   // This block of code builds a small-deformation elasticity explicit, lumped
   // mass update operator. Lumping is performed using row summation.
   timer.start();
-  mfem::ConstantCoefficient rho_coeff {rho};
-  mfem::ConstantCoefficient lambda_coeff {lambda};
-  mfem::ConstantCoefficient mu_coeff {mu};
-  mfem_ext::ExplicitMechanics op {par_fe_space, rho_coeff, lambda_coeff, mu_coeff};
+  mfem::ConstantCoefficient rho_coeff{rho};
+  mfem::ConstantCoefficient lambda_coeff{lambda};
+  mfem::ConstantCoefficient mu_coeff{mu};
+  mfem_ext::ExplicitMechanics op{par_fe_space, rho_coeff, lambda_coeff, mu_coeff};
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to set up elasticity bilinear form: {0:f}ms", timer.elapsedTimeInMilliSec()
-  ));
+  SLIC_INFO_ROOT(axom::fmt::format("Time to set up elasticity bilinear form: {0:f}ms", timer.elapsedTimeInMilliSec()));
 
   // This block of code sets up a central difference time integration scheme.
   // The constructor takes a list of degrees of freedom in the velocity grid
   // function that will have homogeneous boundary conditions applied to them.
-  mfem_ext::CentralDiffSolver solver { ess_vdof_list };
+  mfem_ext::CentralDiffSolver solver{ess_vdof_list};
   solver.Init(op);
 
   // This block of code does initial setup of Tribol.
@@ -333,28 +298,18 @@ int main( int argc, char** argv )
   int coupling_scheme_id = 0;
   int mesh1_id = 0;
   int mesh2_id = 1;
-  tribol::registerMfemCouplingScheme(
-    coupling_scheme_id, mesh1_id, mesh2_id,
-    *pmesh, coords, contact_surf_1, contact_surf_2,
-    tribol::SURFACE_TO_SURFACE, 
-    tribol::NO_CASE, 
-    tribol::COMMON_PLANE, 
-    tribol::FRICTIONLESS,
-    tribol::PENALTY,
-    tribol::BINNING_GRID
-  );
+  tribol::registerMfemCouplingScheme(coupling_scheme_id, mesh1_id, mesh2_id, *pmesh, coords, contact_surf_1,
+                                     contact_surf_2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                     tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID);
   // This API call adds a velocity field to the coupling scheme. This is used
   // for computing the maximum common plane timestep and, if activated, gap rate
   // penalty.
   tribol::registerMfemVelocity(coupling_scheme_id, velocity);
   // The type of penalty enforcement and the penalty parameters are set here (i.e. rate vs. kinematic and the method of
   // setting the penalty value).
-  if (use_const_penalty)
-  {
+  if (use_const_penalty) {
     tribol::setMfemKinematicConstantPenalty(coupling_scheme_id, p_kine, p_kine);
-  }
-  else
-  {
+  } else {
     // Any MFEM scalar coefficient can be used to set material moduli, but this example uses a constant bulk modulus for
     // each boundary attribute of the volume mesh.
     mfem::Vector bulk_moduli_by_bdry_attrib(pmesh->bdr_attributes.Max());
@@ -363,14 +318,11 @@ int main( int argc, char** argv )
     tribol::setMfemKinematicElementPenalty(coupling_scheme_id, mat_coeff);
   }
   timer.stop();
-  SLIC_INFO_ROOT(axom::fmt::format(
-    "Time to set up Tribol: {0:f}ms", timer.elapsedTimeInMilliSec()
-  ));
+  SLIC_INFO_ROOT(axom::fmt::format("Time to set up Tribol: {0:f}ms", timer.elapsedTimeInMilliSec()));
 
   // This is the main timestepping loop.
-  int cycle {0};
-  for (double t {0.0}; t < t_end; t+=dt)
-  {
+  int cycle{0};
+  for (double t{0.0}; t < t_end; t += dt) {
     // Update the cycle information for the data collections.
     paraview_datacoll.SetCycle(cycle);
     paraview_datacoll.SetTime(t);
@@ -380,8 +332,7 @@ int main( int argc, char** argv )
     visit_datacoll.SetTimeStep(dt);
 
     // Write output if we are at the right cycle.
-    if (cycle % output_cycles == 0)
-    {
+    if (cycle % output_cycles == 0) {
       paraview_datacoll.Save();
       visit_datacoll.Save();
     }

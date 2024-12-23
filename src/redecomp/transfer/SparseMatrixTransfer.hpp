@@ -12,8 +12,7 @@
 
 #include "axom/core.hpp"
 
-namespace redecomp
-{
+namespace redecomp {
 
 class MPIUtility;
 class RedecompMesh;
@@ -28,23 +27,20 @@ class RedecompMesh;
  *
  * The class currently supports order 0 L2 fields (one value per element).
  */
-class SparseMatrixTransfer
-{
-public:
+class SparseMatrixTransfer {
+ public:
   /**
    * @brief Construct a new SparseMatrixTransfer object
-   * 
+   *
    * @param parent_test_space Test finite element space on parent mfem::ParMesh
    * @param parent_trial_space Trial finite element space on parent mfem::ParMesh
    * @param redecomp_test_space Test finite element space on RedecompMesh
    * @param redecomp_trial_space Trial finite element space on RedecompMesh
    */
-  SparseMatrixTransfer(
-    const mfem::ParFiniteElementSpace& parent_test_space,
-    const mfem::ParFiniteElementSpace& parent_trial_space,
-    const mfem::FiniteElementSpace& redecomp_test_space,
-    const mfem::FiniteElementSpace& redecomp_trial_space
-  );
+  SparseMatrixTransfer(const mfem::ParFiniteElementSpace& parent_test_space,
+                       const mfem::ParFiniteElementSpace& parent_trial_space,
+                       const mfem::FiniteElementSpace& redecomp_test_space,
+                       const mfem::FiniteElementSpace& redecomp_trial_space);
 
   /**
    * @brief Transfers RedecompMesh sparse matrix to parent mfem::ParMesh hypre par matrix
@@ -57,13 +53,13 @@ public:
    */
   std::unique_ptr<mfem::HypreParMatrix> TransferToParallel(const mfem::SparseMatrix& src) const;
 
-private:
+ private:
   /**
    * @brief Get the RedecompMesh from the finite element space
    *
    * This method verifies the finite element space does have a RedecompMesh before returning. Finite element spaces with
    * no RedecompMesh trigger a SLIC_ERROR macro.
-   * 
+   *
    * @param fe_space Finite element space linked to a RedecompMesh
    * @return const RedecompMesh& Redecomp mesh associated with finite element space
    */
@@ -71,7 +67,7 @@ private:
 
   /**
    * @brief Build vector of parent element offsets for each MPI rank
-   * 
+   *
    * @param redecomp_mesh Offset vector is computed on the parent-linked mesh of this mesh
    * @return Array of element offsets for each MPI rank
    */
@@ -79,8 +75,8 @@ private:
 
   /**
    * @brief Returns MPIUtility pointer for the MatrixTransfer object
-   * 
-   * @return const MPIUtility* 
+   *
+   * @return const MPIUtility*
    */
   const MPIUtility& getMPIUtility() const;
 
@@ -113,9 +109,8 @@ private:
    * @brief Trial RedecompMesh
    */
   const RedecompMesh& redecomp_trial_mesh_;
-
 };
 
-} // end namespace redecomp
+}  // end namespace redecomp
 
 #endif /* SRC_REDECOMP_SPARSEMATRIXTRANSFER_HPP_ */

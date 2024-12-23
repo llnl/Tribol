@@ -16,8 +16,7 @@
 
 #include "redecomp/utils/BisecTree.hpp"
 
-namespace redecomp
-{
+namespace redecomp {
 
 template <typename T>
 struct type {};
@@ -25,43 +24,41 @@ struct type {};
 /**
  * @brief Wrapper class for MPI functions and communication patterns used in redecomp.
  */
-class MPIUtility
-{
-public:
+class MPIUtility {
+ public:
   /**
    * @brief Construct a new MPIUtility object
-   * 
+   *
    * @param comm MPI_Comm associated with the MPIUtility
    */
   MPIUtility(const MPI_Comm& comm);
 
   /**
    * @brief Returns the MPI communicator
-   * 
+   *
    * @return MPI Communicator
    */
   const MPI_Comm& MPIComm() const { return comm_; }
 
   /**
    * @brief Returns the MPI rank of the process
-   * 
+   *
    * @return MPI rank
    */
   int MyRank() const { return my_rank_; }
 
   /**
    * @brief Returns the total number of MPI ranks
-   * 
+   *
    * @return Number of MPI ranks
    */
   int NRanks() const { return n_ranks_; }
 
   /**
-   * @brief Class to hold/query an MPI_Request 
+   * @brief Class to hold/query an MPI_Request
    */
-  class Request
-  {
-  public:
+  class Request {
+   public:
     /**
      * @brief Construct a new Request object
      *
@@ -74,21 +71,21 @@ public:
      */
     void Wait();
 
-  private:
+   private:
     /**
      * @brief MPI_Request object
      */
     std::unique_ptr<MPI_Request> request_;
 
     /**
-     * @brief MPI_Status object 
+     * @brief MPI_Status object
      */
     MPI_Status status_;
   };
 
   /**
    * @brief Calls MPI_Allreduce on a single value
-   * 
+   *
    * @tparam T Type of the local value: bool, double, int currently supported
    * @param local_value Value on rank
    * @param op MPI operation to perform while reducing
@@ -99,7 +96,7 @@ public:
 
   /**
    * @brief Calls MPI_Allreduce on an array stored in container
-   * 
+   *
    * @tparam T Data type of the data container
    * @param container Stores the data to reduce; must have T::data() and T::size() methods
    * @param op MPI operation to perform while reducing
@@ -109,7 +106,7 @@ public:
 
   /**
    * @brief Calls MPI_Allreduce on an array pointed to by data
-   * 
+   *
    * @tparam T Data type of an element in the array: bool, double, int currently supported
    * @param data Pointer to first element in the array
    * @param size Number of elements in the array
@@ -120,7 +117,7 @@ public:
 
   /**
    * @brief Calls MPI_Send on an array stored in container
-   * 
+   *
    * @tparam T Data type of the data container
    * @param container Stores the data to send; must have T::data() and T::size() methods
    * @param dest Rank to send the data in container to
@@ -131,7 +128,7 @@ public:
 
   /**
    * @brief Calls MPI_Send on an 2D array stored in an axom::Array
-   * 
+   *
    * @tparam T Data type of an element in the array: bool, double, int currently supported
    * @tparam Sp axom::MemorySpace of the axom::Array
    * @param container 2D axom::Array of data to send
@@ -143,7 +140,7 @@ public:
 
   /**
    * @brief Calls MPI_Isend (non-blocking send) on an array stored in container
-   * 
+   *
    * @tparam T Data type of the data container
    * @param container Stores the data to send; must have T::data() and T::size() methods
    * @param dest Rank to send the data in container to
@@ -155,7 +152,7 @@ public:
 
   /**
    * @brief Calls MPI_Isend (non-blocking send) on a 2D axom::Array
-   * 
+   *
    * @tparam T Data type of an element in the array: bool, double, int currently supported
    * @tparam Sp axom::MemorySpace of the axom::Array
    * @param container 2D axom::Array of data to send
@@ -168,7 +165,7 @@ public:
 
   /**
    * @brief Calls MPI_Recv on an array stored in container
-   * 
+   *
    * @tparam T Data type of the data container
    * @param source MPI rank data is coming from
    * @param tag MPI tag for identifying the data
@@ -179,7 +176,7 @@ public:
 
   /**
    * @brief Calls MPI_Recv on an 2D array stored in an axom::Array
-   * 
+   *
    * @tparam T Data type of an element in the array: bool, double, int currently supported
    * @tparam Sp axom::MemorySpace of the axom::Array
    * @param source MPI rank data is coming from
@@ -191,7 +188,7 @@ public:
 
   /**
    * @brief Sends the array stored in container to all other ranks
-   * 
+   *
    * @tparam T Data type of the data container
    * @param container Stores the data to send; must have T::data() and T::size() methods
    */
@@ -200,7 +197,7 @@ public:
 
   /**
    * @brief Receives the array sent by SendAll
-   * 
+   *
    * @tparam T Data type of the data container
    * @param rank Rank the data originated from
    * @return Container of type T holding data sent
@@ -210,7 +207,7 @@ public:
 
   /**
    * @brief Sends and receives a different array to each rank
-   * 
+   *
    * @tparam T Data type of the data container
    * @tparam F1 Lambda with destination rank as parameter returning container type T
    * @tparam F2 Lambda with container type T and source rank parameters
@@ -220,31 +217,30 @@ public:
   template <typename T, typename F1, typename F2>
   void SendRecvEach(type<T>, F1&& build_send, F2&& process_recv) const;
 
-private:
-
+ private:
   /**
-   * @brief MPI_Comm used to facilitate MPI communications 
+   * @brief MPI_Comm used to facilitate MPI communications
    */
   const MPI_Comm comm_;
 
   /**
-   * @brief MPI rank of this process 
+   * @brief MPI rank of this process
    */
   int my_rank_;
 
   /**
-   * @brief Total number of MPI ranks 
+   * @brief Total number of MPI ranks
    */
   int n_ranks_;
 
   /**
-   * @brief MPI_Status object 
+   * @brief MPI_Status object
    */
   mutable MPI_Status status_;
 
   /**
    * @brief Builds binary tree describing the sequence of MPI communication
-   * 
+   *
    * @param rank Rank data originates from
    * @return Tree used to describe where data is and needs to be sent in e.g. SendAll
    */
@@ -252,18 +248,19 @@ private:
 
   /**
    * @brief Get the MPI_Datatype from a type T
-   * 
+   *
    * @tparam T Datatype with a corresponding MPI_Datatype
    * @return MPI_Datatype corresponding to T
    */
   template <typename T>
-  MPI_Datatype GetMPIDatatype(T*) const { 
+  MPI_Datatype GetMPIDatatype(T*) const
+  {
     return GetMPIType<typename std::remove_cv<T>::type>();
   }
 
   /**
    * @brief Get the MPI_Datatype from a type T
-   * 
+   *
    * @tparam T Datatype with a corresponding MPI_Datatype
    * @return MPI_Datatype corresponding to T
    */
@@ -272,7 +269,7 @@ private:
 
   /**
    * @brief Sends data to other ranks once it has been received from SendAll
-   * 
+   *
    * @tparam T Data type of the data container
    * @param container Stores the data to send; must have T::data() and T::size() methods
    * @param send_tree Bisection tree describing where data must be sent
@@ -280,11 +277,8 @@ private:
    * @param node_it Current node on the send_tree
    */
   template <typename T>
-  void SendToRest(
-    const T& container,
-    const BisecTree<int>& send_tree,
-    BisecTree<int>::ConstBFSLevelIterator lvl_it,
-    BisecTree<int>::ConstBFSNodeIterator node_it) const;
+  void SendToRest(const T& container, const BisecTree<int>& send_tree, BisecTree<int>::ConstBFSLevelIterator lvl_it,
+                  BisecTree<int>::ConstBFSNodeIterator node_it) const;
 };
 
 template <typename T>
@@ -303,31 +297,27 @@ void MPIUtility::Allreduce(T* container, MPI_Op op) const
 template <typename T>
 void MPIUtility::Allreduce(T* data, int size, MPI_Op op) const
 {
-  MPI_Allreduce(MPI_IN_PLACE, data, size, GetMPIDatatype(data),
-    op, comm_);
+  MPI_Allreduce(MPI_IN_PLACE, data, size, GetMPIDatatype(data), op, comm_);
 }
 
 template <typename T>
 void MPIUtility::Send(const T& container, int dest, int tag) const
 {
-  MPI_Send(container.data(), container.size(), 
-    GetMPIDatatype(container.data()), dest, tag, comm_);
+  MPI_Send(container.data(), container.size(), GetMPIDatatype(container.data()), dest, tag, comm_);
 }
 
 template <typename T, axom::MemorySpace Sp>
 void MPIUtility::Send(const axom::Array<T, 2, Sp>& container, int dest, int tag) const
 {
   MPI_Send(container.shape().m_data, 2, GetMPIType<int>(), dest, tag, comm_);
-  MPI_Send(container.data(), container.size(), 
-    GetMPIDatatype(container.data()), dest, tag, comm_);
+  MPI_Send(container.data(), container.size(), GetMPIDatatype(container.data()), dest, tag, comm_);
 }
 
 template <typename T>
 std::unique_ptr<MPIUtility::Request> MPIUtility::Isend(const T& container, int dest, int tag) const
 {
   auto request = std::make_unique<MPI_Request>();
-  MPI_Isend(container.data(), container.size(), 
-    GetMPIDatatype(container.data()), dest, tag, comm_, request.get());
+  MPI_Isend(container.data(), container.size(), GetMPIDatatype(container.data()), dest, tag, comm_, request.get());
   return std::make_unique<Request>(std::move(request));
 }
 
@@ -336,8 +326,7 @@ std::unique_ptr<MPIUtility::Request> MPIUtility::Isend(const axom::Array<T, 2, S
 {
   MPI_Send(container.shape().m_data, 2, GetMPIType<int>(), dest, tag, comm_);
   auto request = std::make_unique<MPI_Request>();
-  MPI_Isend(container.data(), container.size(), 
-    GetMPIDatatype(container.data()), dest, tag, comm_, request.get());
+  MPI_Isend(container.data(), container.size(), GetMPIDatatype(container.data()), dest, tag, comm_, request.get());
   return std::make_unique<Request>(std::move(request));
 }
 
@@ -350,8 +339,7 @@ T MPIUtility::Recv(type<T>, int source, int tag) const
   MPI_Get_count(&status_, GetMPIDatatype(container.data()), &count);
   container.reserve(count);
   container.resize(count);
-  MPI_Recv(container.data(), count, GetMPIDatatype(container.data()), source, tag, 
-    comm_, &status_);
+  MPI_Recv(container.data(), count, GetMPIDatatype(container.data()), source, tag, comm_, &status_);
   return container;
 }
 
@@ -360,12 +348,10 @@ axom::Array<T, 2, Sp> MPIUtility::Recv(type<axom::Array<T, 2, Sp>>, int source, 
 {
   auto container = axom::Array<T, 2, Sp>();
   axom::StackArray<int, 2> dim_size;
-  MPI_Recv(dim_size.m_data, 2, GetMPIDatatype(container.data()), 
-    source, tag, comm_, &status_);
-  container.reserve(dim_size[0]*dim_size[1]);
+  MPI_Recv(dim_size.m_data, 2, GetMPIDatatype(container.data()), source, tag, comm_, &status_);
+  container.reserve(dim_size[0] * dim_size[1]);
   container.resize(dim_size[0], dim_size[1]);
-  MPI_Recv(container.data(), container.size(), 
-    GetMPIDatatype(container.data()), source, tag, comm_, &status_);
+  MPI_Recv(container.data(), container.size(), GetMPIDatatype(container.data()), source, tag, comm_, &status_);
   return container;
 }
 
@@ -385,8 +371,7 @@ T MPIUtility::RecvSendAll(type<T>, int rank) const
   auto lvl_it = --send_tree.end();
   auto node_it = send_tree.begin(lvl_it) + my_rank_;
   auto it = send_tree.root(lvl_it, node_it);
-  while (*it.second == my_rank_)
-  {
+  while (*it.second == my_rank_) {
     lvl_it = it.first;
     node_it = it.second;
     it = send_tree.root(lvl_it, node_it);
@@ -397,28 +382,20 @@ T MPIUtility::RecvSendAll(type<T>, int rank) const
 }
 
 template <typename T>
-void MPIUtility::SendToRest(
-  const T& container,
-  const BisecTree<int>& send_tree,
-  BisecTree<int>::ConstBFSLevelIterator lvl_it,
-  BisecTree<int>::ConstBFSNodeIterator node_it
-) const
+void MPIUtility::SendToRest(const T& container, const BisecTree<int>& send_tree,
+                            BisecTree<int>::ConstBFSLevelIterator lvl_it,
+                            BisecTree<int>::ConstBFSNodeIterator node_it) const
 {
   auto it = std::make_pair(lvl_it, node_it);
-  while (it.first != --send_tree.end())
-  {
+  while (it.first != --send_tree.end()) {
     auto left_it = send_tree.left(it);
     auto right_it = send_tree.right(it);
-    if (*left_it.second == *it.second)
-    {
+    if (*left_it.second == *it.second) {
       it = left_it;
-      if (right_it.second != send_tree.end(right_it.first))
-      {
+      if (right_it.second != send_tree.end(right_it.first)) {
         Send(container, *right_it.second);
       }
-    }
-    else
-    {
+    } else {
       it = right_it;
       Send(container, *left_it.second);
     }
@@ -428,8 +405,7 @@ void MPIUtility::SendToRest(
 template <typename T, typename F1, typename F2>
 void MPIUtility::SendRecvEach(type<T>, F1&& build_send, F2&& process_recv) const
 {
-  for (int i{1}; i < n_ranks_; ++i)
-  {
+  for (int i{1}; i < n_ranks_; ++i) {
     // compute which rank we are sending and receiving data to
     auto dest = (my_rank_ + i) % n_ranks_;
     auto source = (my_rank_ + n_ranks_ - i) % n_ranks_;
@@ -450,6 +426,6 @@ void MPIUtility::SendRecvEach(type<T>, F1&& build_send, F2&& process_recv) const
   process_recv(build_send(my_rank_), my_rank_);
 }
 
-} // end namespace redecomp
+}  // end namespace redecomp
 
 #endif /* SRC_REDECOMP_UTILS_MPIUTILITY_HPP_ */
