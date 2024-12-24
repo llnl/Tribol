@@ -17,7 +17,7 @@ function or_die () {
     fi
 }
 
-or_die cd tribol
+or_die cd serac
 git submodule init 
 git submodule update 
 
@@ -29,8 +29,8 @@ cmake_args="-DENABLE_CLANGTIDY=OFF -DTRIBOL_ENABLE_CODE_CHECKS=ON"
 
 if [[ "$DO_COVERAGE_CHECK" == "yes" ]] ; then
     # Alias llvm-cov to gcov so it acts like gcov
-    ln -s `which llvm-cov` /home/tribol/gcov
-    cmake_args="$cmake_args -DENABLE_COVERAGE=ON -DGCOV_EXECUTABLE=/home/tribol/gcov"
+    ln -s `which llvm-cov` /home/serac/gcov
+    cmake_args="$cmake_args -DENABLE_COVERAGE=ON -DGCOV_EXECUTABLE=/home/serac/gcov"
 fi
 
 if [[ "$DO_DOCS_CHECK" == "yes" ]] ; then
