@@ -68,14 +68,14 @@ jobs:
       failTaskOnFailedTests: true
 
 - job: Check_Code
- variables:
-   VM_ImageName: 'ubuntu-22.04'
-   Compiler_ImageName: $(Clang_14_ImageName)
-   TEST_TARGET: 'linux_clang14'
-   HOST_CONFIG: 'clang@14.0.0.cmake'
+  variables:
+    VM_ImageName: 'ubuntu-22.04'
+    Compiler_ImageName: $(Clang_14_ImageName)
+    TEST_TARGET: 'linux_clang14'
+    HOST_CONFIG: 'clang@14.0.0.cmake'
 
- strategy:
-   matrix:
+  strategy:
+    matrix:
       coverage:
         DO_COVERAGE_CHECK: 'yes'
         DO_DOCS_CHECK: 'no'
@@ -97,16 +97,16 @@ jobs:
         DO_STYLE_CHECK: 'no'
         DO_HEADER_CHECK: 'yes'
 
- pool:
-   vmImage: $(VM_ImageName)
+  pool:
+    vmImage: $(VM_ImageName)
 
- steps:
- - checkout: self
-   clean: true
-   submodules: recursive
- # https://docs.codecov.io/docs/testing-with-docker
- - script:  |
-     ci_env=`bash <(curl -s https://codecov.io/env)`
-     echo "  -e DO_COVERAGE_CHECK  -e DO_DOCS_CHECK -e DO_STYLE_CHECK -e HOST_CONFIG ./tribol/scripts/azure-pipelines/linux-check.sh"
-     docker run --rm -v `pwd`:$(HOME_DIR)/tribol $ci_env -e DO_COVERAGE_CHECK  -e DO_DOCS_CHECK -e DO_STYLE_CHECK -e HOST_CONFIG $(Compiler_ImageName) ./tribol/scripts/azure-pipelines/linux-check.sh
-   displayName: '$(TEST_TARGET) Check'
+  steps:
+  - checkout: self
+    clean: true
+    submodules: recursive
+  # https://docs.codecov.io/docs/testing-with-docker
+  - script:  |
+      ci_env=`bash <(curl -s https://codecov.io/env)`
+      echo "  -e DO_COVERAGE_CHECK  -e DO_DOCS_CHECK -e DO_STYLE_CHECK -e HOST_CONFIG ./tribol/scripts/azure-pipelines/linux-check.sh"
+      docker run --rm -v `pwd`:$(HOME_DIR)/tribol $ci_env -e DO_COVERAGE_CHECK  -e DO_DOCS_CHECK -e DO_STYLE_CHECK -e HOST_CONFIG $(Compiler_ImageName) ./tribol/scripts/azure-pipelines/linux-check.sh
+    displayName: '$(TEST_TARGET) Check'
