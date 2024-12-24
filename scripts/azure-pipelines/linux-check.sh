@@ -25,12 +25,12 @@ echo HOST_CONFIG
 echo $HOST_CONFIG
 
 echo "~~~~~~ RUNNING CMAKE ~~~~~~~~"
-cmake_args="-DENABLE_CLANGTIDY=OFF"
+cmake_args="-DENABLE_CLANGTIDY=OFF -DTRIBOL_ENABLE_CODE_CHECKS=ON"
 
 if [[ "$DO_COVERAGE_CHECK" == "yes" ]] ; then
     # Alias llvm-cov to gcov so it acts like gcov
-    ln -s `which llvm-cov` /home/serac/gcov
-    cmake_args="$cmake_args -DENABLE_COVERAGE=ON -DGCOV_EXECUTABLE=/home/serac/gcov"
+    ln -s `which llvm-cov` /home/tribol/gcov
+    cmake_args="$cmake_args -DENABLE_COVERAGE=ON -DGCOV_EXECUTABLE=/home/tribol/gcov"
 fi
 
 if [[ "$DO_DOCS_CHECK" == "yes" ]] ; then
@@ -39,7 +39,7 @@ if [[ "$DO_DOCS_CHECK" == "yes" ]] ; then
         echo "sphinx not found: $SPHINX_EXECUTABLE"
         exit 1
     fi    
-    DOXYGEN_EXECUTABLE=/usr/bin/doxygen
+    DOXYGEN_EXECUTABLE=/usr/local/bin/doxygen
     if [[ ! -f "$DOXYGEN_EXECUTABLE" ]]; then
         echo "doxygen not found: $DOXYGEN_EXECUTABLE"
         exit 1
@@ -61,9 +61,9 @@ or_die cd build-check-debug
 
 if [[ "$DO_COVERAGE_CHECK" == "yes" ]] ; then
     or_die make -j4
-    or_die make serac_coverage
+    or_die make tribol_coverage
     # Rename to file expected by codecov
-    cp serac_coverage.info.cleaned lcov.info
+    cp tribol_coverage.info.cleaned lcov.info
     or_die curl -s https://codecov.io/bash | bash /dev/stdin -X gcov
 fi
 
@@ -74,6 +74,12 @@ fi
 
 if [[ "$DO_STYLE_CHECK" == "yes" ]] ; then
     or_die make VERBOSE=1 check
+fi
+
+if [[ "$DO_HEADER_CHECK" == "yes" ]] ; then
+    or_die make -j4
+    or_die make install -j4
+    or_die ../scripts/check_for_missing_headers.py -i ../install-check-debug -s ../src
 fi
 
 exit 0
