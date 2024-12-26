@@ -41,19 +41,22 @@ bool MeshElemData::isValidKinematicPenalty(PenaltyEnforcementOptions& pen_option
   switch (kin_calc) {
     case KINEMATIC_CONSTANT: {
       if (!this->m_is_kinematic_constant_penalty_set) {
-        SLIC_WARNING("MeshElemData::isValidKinematicPenalty(): " << "single stiffness penalty not set.");
+        SLIC_WARNING("MeshElemData::isValidKinematicPenalty(): "
+                     << "single stiffness penalty not set.");
         return false;
       } else if (this->m_penalty_stiffness < pen_options.tiny_penalty) {
-        SLIC_WARNING("MeshElemData::isValidKinematicPenalty(): " << "single stiffness penalty less than threshold ("
-                                                                 << pen_options.tiny_penalty
-                                                                 << "). Consider increasing " << "for your problem.");
+        SLIC_WARNING("MeshElemData::isValidKinematicPenalty(): "
+                     << "single stiffness penalty less than threshold (" << pen_options.tiny_penalty
+                     << "). Consider increasing "
+                     << "for your problem.");
         return false;
       }
       break;
     }  // end case KINEMATIC_CONSTANT
     case KINEMATIC_ELEMENT: {
       if (!this->m_is_kinematic_element_penalty_set) {
-        SLIC_WARNING("MeshElemData::isValidKinematicPenalty(): " << "element-wise penalty data not set.");
+        SLIC_WARNING("MeshElemData::isValidKinematicPenalty(): "
+                     << "element-wise penalty data not set.");
         return false;
       }
 
@@ -121,23 +124,27 @@ bool MeshElemData::isValidRatePenalty(PenaltyEnforcementOptions& pen_options)
     }  // end case NONE
     case RATE_CONSTANT: {
       if (!this->m_is_rate_constant_penalty_set) {
-        SLIC_WARNING("MeshElemData::isValidRatePenalty(): " << "constant rate penalty data not set.");
+        SLIC_WARNING("MeshElemData::isValidRatePenalty(): "
+                     << "constant rate penalty data not set.");
         return false;
       } else if (this->m_rate_penalty_stiffness < pen_options.tiny_penalty) {
-        SLIC_WARNING("MeshElemData::isValidRatePenalty(): " << "constant rate penalty less than threshold ("
-                                                            << pen_options.tiny_penalty << "). Consider increasing "
-                                                            << "for your problem.");
+        SLIC_WARNING("MeshElemData::isValidRatePenalty(): "
+                     << "constant rate penalty less than threshold (" << pen_options.tiny_penalty
+                     << "). Consider increasing "
+                     << "for your problem.");
         return false;
       }
       break;
     }  // end case RATE_CONSTANT
     case RATE_PERCENT: {
       if (!this->m_is_rate_percent_penalty_set) {
-        SLIC_WARNING("MeshElemData::isValidRatePenalty(): " << "percent rate penalty data not set.");
+        SLIC_WARNING("MeshElemData::isValidRatePenalty(): "
+                     << "percent rate penalty data not set.");
         return false;
       } else if (this->m_rate_percent_stiffness < pen_options.tiny_penalty ||
                  this->m_rate_percent_stiffness > (1. - pen_options.tiny_penalty)) {
-        SLIC_WARNING("MeshElemData::isValidRatePenalty(): " << "rate percent penalty not in (0,1).");
+        SLIC_WARNING("MeshElemData::isValidRatePenalty(): "
+                     << "rate percent penalty not in (0,1).");
         return false;
       }
       break;
@@ -175,16 +182,18 @@ MeshData::MeshData(IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const 
   if (num_elements > 0) {
     if (m_dim == 2 && (x == nullptr || y == nullptr)) {
       SLIC_WARNING_ROOT("tribol::MeshData(): pointer to x and/or y-component "
-                        << "mesh coordinate array is a null pointer " << "for mesh id " << m_mesh_id << ".");
+                        << "mesh coordinate array is a null pointer "
+                        << "for mesh id " << m_mesh_id << ".");
       m_is_valid = false;
     } else if (m_dim == 3 && (x == nullptr || y == nullptr || z == nullptr)) {
       SLIC_WARNING_ROOT("tribol::MeshData(): pointer to x, y, and/or z-component "
-                        << "mesh coordinate array is a null pointer " << "for mesh id " << m_mesh_id << ".");
+                        << "mesh coordinate array is a null pointer "
+                        << "for mesh id " << m_mesh_id << ".");
       m_is_valid = false;
     }
     if (connectivity == nullptr) {
-      SLIC_WARNING_ROOT("tribol::MeshData(): pointer to mesh connectivity is " << "a null pointer for mesh id "
-                                                                               << m_mesh_id << ".");
+      SLIC_WARNING_ROOT("tribol::MeshData(): pointer to mesh connectivity is "
+                        << "a null pointer for mesh id " << m_mesh_id << ".");
     }
   }
 
@@ -266,8 +275,9 @@ Array1D<IndexT> MeshData::sortSurfaceNodeIds()
   // compute number of unique integer ids
   int unique_size = sorted_conn.size() - num_dup;
 
-  SLIC_ERROR_IF(unique_size <= 0, "MeshData::sortSurfaceNodeIds(): " << "invalid connectivity array; "
-                                                                     << "only single unique id in connectivity array.");
+  SLIC_ERROR_IF(unique_size <= 0, "MeshData::sortSurfaceNodeIds(): "
+                                      << "invalid connectivity array; "
+                                      << "only single unique id in connectivity array.");
 
   // allocate array to store unique, sorted node ids on mesh object
   auto sorted_surface_node_ids = ArrayT<IndexT>(0, unique_size);
@@ -599,7 +609,7 @@ int MeshData::checkPenaltyData(PenaltyEnforcementOptions& p_enfrc_options)
         // no-op, quiet compiler
         break;
     }  // end switch over constraint types
-  }  // end if-non-null mesh
+  }    // end if-non-null mesh
 
   return err;
 }  // end MeshData::checkPenaltyData()

@@ -109,8 +109,8 @@ class MortarWeightTest : public ::testing::Test {
             xyOverlap[this->dim * j + k] = zo[j];
             break;
         }  // end switch
-      }  // end loop over dimension
-    }  // end loop over nodes
+      }    // end loop over dimension
+    }      // end loop over nodes
 
     // instantiate SurfaceContactElem struct. Note, this object is instantiated
     // using face 1, face 2, and the set overlap polygon. Note, the mesh ids are set

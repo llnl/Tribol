@@ -52,7 +52,8 @@ namespace tribol {
 namespace detail {
 // SFINAE type for choosing correct RAJA::forall policy at compile time
 template <ExecutionMode T>
-struct forAllType {};
+struct forAllType {
+};
 
 template <ExecutionMode EXEC, typename BODY, bool ASYNC, int BLOCK_SIZE>
 void forAllImpl(forAllType<EXEC>, IndexT, BODY&&)

@@ -103,8 +103,11 @@ TRIBOL_HOST_DEVICE void SegmentBasis(const RealT* const x, const RealT pX, const
 
   if (phi > 1.0 || phi < 0.0) {
     SLIC_DEBUG("SegmentBasis: phi is " << phi << " not between 0. and 1 for vertex " << vertexId << ".");
-    SLIC_DEBUG("(x0,y0) and (x1,y1): " << "(" << x[0] << ", " << x[1] << "), " << "(" << x[2] << ", " << x[3] << ").");
-    SLIC_DEBUG("(px,py): " << "(" << pX << ", " << pY << ")");
+    SLIC_DEBUG("(x0,y0) and (x1,y1): "
+               << "(" << x[0] << ", " << x[1] << "), "
+               << "(" << x[2] << ", " << x[3] << ").");
+    SLIC_DEBUG("(px,py): "
+               << "(" << pX << ", " << pY << ")");
   }
 
   return;
@@ -312,7 +315,8 @@ void InvIso(const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA,
         }
       }
 
-      SLIC_ERROR_IF(!in_quad, "InvIso(): (xi,eta) coordinate does not lie " << "inside isoparametric quad.");
+      SLIC_ERROR_IF(!in_quad, "InvIso(): (xi,eta) coordinate does not lie "
+                                  << "inside isoparametric quad.");
 
       return;
     }

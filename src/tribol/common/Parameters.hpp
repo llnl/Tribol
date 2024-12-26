@@ -135,7 +135,7 @@ enum ContactModel
   FRICTIONLESS,                    ///! Frictionless, normal contact only
   COULOMB,                         ///! Coulomb friction model, not supported
   ADHESION_SEPARATION_SCALAR_LAW,  ///! Scalar pressure law for the separation of adhered surfaces (Used with tied
-                                   ///contact)
+                                   /// contact)
   NULL_MODEL,                      ///! Null model, for use with ContactMethod = MORTAR_WEIGHTS
   NUM_CONTACT_MODELS
 };
@@ -316,7 +316,7 @@ enum FaceGeomError
   INVALID_FACE_INPUT,                          ///! Invalid input
   DEGENERATE_OVERLAP,                          ///! Issues with overlap calculation resulting in degenerate overlap
   FACE_VERTEX_INDEX_EXCEEDS_OVERLAP_VERTICES,  ///! Very specific debug indexing error where face vertex count exceeds
-                                               ///overlap vertex count in cg routine
+                                               /// overlap vertex count in cg routine
   NUM_FACE_GEOM_ERRORS
 };
 

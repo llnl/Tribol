@@ -19,7 +19,8 @@
 namespace redecomp {
 
 template <typename T>
-struct type {};
+struct type {
+};
 
 /**
  * @brief Wrapper class for MPI functions and communication patterns used in redecomp.

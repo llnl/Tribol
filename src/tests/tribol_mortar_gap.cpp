@@ -126,8 +126,8 @@ class MortarGapTest : public ::testing::Test {
             xyOverlap[id] = zo[j];
             break;
         }  // end switch
-      }  // end loop over dimension
-    }  // end loop over nodes
+      }    // end loop over dimension
+    }      // end loop over nodes
 
     // register the mesh with tribol
     int cellType = static_cast<int>(tribol::UNDEFINED_ELEMENT);

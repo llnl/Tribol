@@ -265,7 +265,7 @@ void TWBPolyInt(SurfaceContactElem const& elem, IntegPts& integ, int k)
           bary[elem.dim * m] * elem.overlapCoords[elem.dim * k + 2] +
           bary[elem.dim * m + 1] * elem.overlapCoords[elem.dim * (k + 1) + 2] + bary[elem.dim * m + 2] * xc[2];
     }  // end loop over number of points per triangle
-  }  // end loop over (n-1) number of triangles
+  }    // end loop over (n-1) number of triangles
 
   // populate last triangle's integration point coordinates
   vx = elem.overlapCoords[elem.dim * (elem.numPolyVert - 1)] - elem.overlapCoords[0];
@@ -443,7 +443,7 @@ void GaussPolyIntTri(SurfaceContactElem const& elem, IntegPts& integ, int k)
       integ.xy[((integ.ipDim) * numTriPoints) * j + (integ.ipDim * k) + 1] = x[1];
       integ.xy[((integ.ipDim) * numTriPoints) * j + (integ.ipDim * k) + 2] = x[2];
     }  // end loop over number of ips per triangle
-  }  // end loop over triangles
+  }    // end loop over triangles
 
   delete[] coords;
 }

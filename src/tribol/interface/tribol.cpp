@@ -50,8 +50,8 @@ void setMPIComm(IndexT cs_id, CommT comm)
   auto cs = CouplingSchemeManager::getInstance().findData(cs_id);
 
   // check to see if coupling scheme exists
-  SLIC_ERROR_ROOT_IF(
-      !cs, "tribol::setMPIComm(): call tribol::registerCouplingScheme() " << "prior to calling this routine.");
+  SLIC_ERROR_ROOT_IF(!cs, "tribol::setMPIComm(): call tribol::registerCouplingScheme() "
+                              << "prior to calling this routine.");
 
   cs->setMPIComm(comm);
 }
@@ -63,8 +63,8 @@ void setPenaltyOptions(IndexT cs_id, PenaltyConstraintType pen_enfrc_option, Kin
   auto cs = CouplingSchemeManager::getInstance().findData(cs_id);
 
   // check to see if coupling scheme exists
-  SLIC_ERROR_ROOT_IF(
-      !cs, "tribol::setPenaltyOptions(): call tribol::registerCouplingScheme() " << "prior to calling this routine.");
+  SLIC_ERROR_ROOT_IF(!cs, "tribol::setPenaltyOptions(): call tribol::registerCouplingScheme() "
+                              << "prior to calling this routine.");
 
   // get access to struct on coupling scheme holding penalty options
   EnforcementOptions& enforcement_options = cs->getEnforcementOptions();
@@ -152,8 +152,8 @@ void setTimestepPenFrac(IndexT cs_id, RealT frac)
   auto cs = CouplingSchemeManager::getInstance().findData(cs_id);
 
   // check to see if coupling scheme exists
-  SLIC_ERROR_ROOT_IF(
-      !cs, "tribol::setTimestepPenFrac(): call tribol::registerCouplingScheme() " << "prior to calling this routine.");
+  SLIC_ERROR_ROOT_IF(!cs, "tribol::setTimestepPenFrac(): call tribol::registerCouplingScheme() "
+                              << "prior to calling this routine.");
 
   if (frac <= 0.) {
     // Don't set the timestep_pen_frac. This will use default
@@ -175,8 +175,8 @@ void setTimestepScale(IndexT cs_id, RealT scale)
   auto cs = CouplingSchemeManager::getInstance().findData(cs_id);
 
   // check to see if coupling scheme exists
-  SLIC_ERROR_ROOT_IF(
-      !cs, "tribol::setTimestepScale(): call tribol::registerCouplingScheme() " << "prior to calling this routine.");
+  SLIC_ERROR_ROOT_IF(!cs, "tribol::setTimestepScale(): call tribol::registerCouplingScheme() "
+                              << "prior to calling this routine.");
 
   cs->getParameters().timestep_scale = scale;
 }
@@ -186,11 +186,12 @@ void setContactAreaFrac(IndexT cs_id, RealT frac)
   auto cs = CouplingSchemeManager::getInstance().findData(cs_id);
 
   // check to see if coupling scheme exists
-  SLIC_ERROR_ROOT_IF(
-      !cs, "tribol::setContactAreaFrac(): call tribol::registerCouplingScheme() " << "prior to calling this routine.");
+  SLIC_ERROR_ROOT_IF(!cs, "tribol::setContactAreaFrac(): call tribol::registerCouplingScheme() "
+                              << "prior to calling this routine.");
 
   if (frac <= 0.0) {
-    SLIC_DEBUG_ROOT("tribol::setContactAreaFrac(): area fraction <= 0.0; " << "setting to default 1.e-8.");
+    SLIC_DEBUG_ROOT("tribol::setContactAreaFrac(): area fraction <= 0.0; "
+                    << "setting to default 1.e-8.");
     frac = 1.e-8;
   }
   cs->getParameters().overlap_area_frac = frac;
@@ -202,7 +203,8 @@ void setPenaltyScale(IndexT mesh_id, RealT scale)
 {
   auto mesh = MeshManager::getInstance().findData(mesh_id);
 
-  SLIC_ERROR_ROOT_IF(!mesh, "tribol::setPenaltyScale(): " << "no mesh with id, " << mesh_id << "exists.");
+  SLIC_ERROR_ROOT_IF(!mesh, "tribol::setPenaltyScale(): "
+                                << "no mesh with id, " << mesh_id << "exists.");
 
   if (scale > 1.e-6) {
     mesh->getElementData().m_penalty_scale = scale;
@@ -211,7 +213,8 @@ void setPenaltyScale(IndexT mesh_id, RealT scale)
     // enforcement allowing for rate only enforcement
     mesh->getElementData().m_penalty_scale = scale;
     SLIC_WARNING_ROOT("tribol::setPenaltyScale(): input scale factor is "
-                      << "close to zero or negative; kinematic contact may " << "not be properly enforced.");
+                      << "close to zero or negative; kinematic contact may "
+                      << "not be properly enforced.");
   }
 
 }  // end setPenaltyScale()
@@ -269,8 +272,8 @@ void setPlotOptions(IndexT cs_id, enum VisType v_type)
   auto cs = CouplingSchemeManager::getInstance().findData(cs_id);
 
   // check to see if coupling scheme exists
-  SLIC_ERROR_ROOT_IF(
-      !cs, "tribol::setPlotOptions(): call tribol::registerCouplingScheme() " << "prior to calling this routine.");
+  SLIC_ERROR_ROOT_IF(!cs, "tribol::setPlotOptions(): call tribol::registerCouplingScheme() "
+                              << "prior to calling this routine.");
 
   cs->getParameters().vis_type = v_type;
 
@@ -282,8 +285,8 @@ void setOutputDirectory(IndexT cs_id, const std::string& dir)
   auto cs = CouplingSchemeManager::getInstance().findData(cs_id);
 
   // check to see if coupling scheme exists
-  SLIC_ERROR_ROOT_IF(
-      !cs, "tribol::setOutputDirectory(): call tribol::registerCouplingScheme() " << "prior to calling this routine.");
+  SLIC_ERROR_ROOT_IF(!cs, "tribol::setOutputDirectory(): call tribol::registerCouplingScheme() "
+                              << "prior to calling this routine.");
 
   // Create path if it doesn't already exist
   if (!axom::utilities::filesystem::pathExists(dir)) {
@@ -301,10 +304,12 @@ void setLoggingLevel(IndexT cs_id, LoggingLevel log_level)
   // get access to coupling scheme
   auto cs = CouplingSchemeManager::getInstance().findData(cs_id);
 
-  SLIC_ERROR_IF(!cs, "tribol::setLoggingLevel(): " << "invalid CouplingScheme id.");
+  SLIC_ERROR_IF(!cs, "tribol::setLoggingLevel(): "
+                         << "invalid CouplingScheme id.");
 
   if (!in_range(static_cast<int>(log_level), static_cast<int>(tribol::NUM_LOGGING_LEVELS))) {
-    SLIC_INFO_ROOT("tribol::setLoggingLevel(): Logging level not an option; " << "using 'warning' level.");
+    SLIC_INFO_ROOT("tribol::setLoggingLevel(): Logging level not an option; "
+                   << "using 'warning' level.");
     cs->setLoggingLevel(tribol::TRIBOL_WARNING);
   } else {
     cs->setLoggingLevel(log_level);
@@ -318,8 +323,8 @@ void enableTimestepVote(IndexT cs_id, const bool enable)
   auto cs = CouplingSchemeManager::getInstance().findData(cs_id);
 
   // check to see if coupling scheme exists
-  SLIC_ERROR_ROOT_IF(
-      !cs, "tribol::enableTimestepVote(): call tribol::registerCouplingScheme() " << "prior to calling this routine.");
+  SLIC_ERROR_ROOT_IF(!cs, "tribol::enableTimestepVote(): call tribol::registerCouplingScheme() "
+                              << "prior to calling this routine.");
 
   cs->getParameters().enable_timestep_vote = enable;
 
@@ -339,7 +344,8 @@ void registerNodalDisplacements(IndexT mesh_id, const RealT* dx, const RealT* dy
 {
   auto mesh = MeshManager::getInstance().findData(mesh_id);
 
-  SLIC_ERROR_ROOT_IF(!mesh, "tribol::registerNodalDisplacements(): " << "no mesh with id, " << mesh_id << "exists.");
+  SLIC_ERROR_ROOT_IF(!mesh, "tribol::registerNodalDisplacements(): "
+                                << "no mesh with id, " << mesh_id << "exists.");
 
   mesh->getNodalFields().m_is_nodal_displacement_set = true;
 
@@ -362,7 +368,8 @@ void registerNodalVelocities(IndexT mesh_id, const RealT* vx, const RealT* vy, c
 {
   auto mesh = MeshManager::getInstance().findData(mesh_id);
 
-  SLIC_ERROR_ROOT_IF(!mesh, "tribol::registerNodalVelocities(): " << "no mesh with id, " << mesh_id << "exists.");
+  SLIC_ERROR_ROOT_IF(!mesh, "tribol::registerNodalVelocities(): "
+                                << "no mesh with id, " << mesh_id << "exists.");
 
   mesh->getNodalFields().m_is_velocity_set = true;
 
@@ -385,7 +392,8 @@ void registerNodalResponse(IndexT mesh_id, RealT* rx, RealT* ry, RealT* rz)
 {
   auto mesh = MeshManager::getInstance().findData(mesh_id);
 
-  SLIC_ERROR_ROOT_IF(!mesh, "tribol::registerNodalResponse(): " << "no mesh with id, " << mesh_id << "exists.");
+  SLIC_ERROR_ROOT_IF(!mesh, "tribol::registerNodalResponse(): "
+                                << "no mesh with id, " << mesh_id << "exists.");
 
   mesh->getNodalFields().m_is_nodal_response_set = true;
   if (rx == nullptr || ry == nullptr) {
@@ -407,12 +415,14 @@ int getJacobianSparseMatrix(mfem::SparseMatrix** sMat, IndexT cs_id)
 {
   // note, SLIC_ERROR_ROOT_IF is not used here because it's possible not all ranks
   // will have method (i.e. mortar) data.
-  SLIC_ERROR_IF(*sMat != nullptr, "tribol::getJacobianSparseMatrix(): " << "sparse matrix pointer not null.");
+  SLIC_ERROR_IF(*sMat != nullptr, "tribol::getJacobianSparseMatrix(): "
+                                      << "sparse matrix pointer not null.");
 
   // get access to coupling scheme
   auto cs = CouplingSchemeManager::getInstance().findData(cs_id);
 
-  SLIC_ERROR_IF(!cs, "tribol::getJacobianSparseMatrix(): " << "invalid CouplingScheme id.");
+  SLIC_ERROR_IF(!cs, "tribol::getJacobianSparseMatrix(): "
+                         << "invalid CouplingScheme id.");
 
   switch (cs->getContactMethod()) {
     case MORTAR_WEIGHTS:
@@ -443,7 +453,8 @@ int getJacobianCSRMatrix(int** I, int** J, RealT** vals, IndexT cs_id, int* n_of
 
   // Note, SLIC_<>_ROOT macros are not here because it's possible not all ranks will have
   // method data.
-  SLIC_ERROR_IF(!cs, "tribol::getJacobianCSRMatrix(): invalid " << "CouplingScheme id.");
+  SLIC_ERROR_IF(!cs, "tribol::getJacobianCSRMatrix(): invalid "
+                         << "CouplingScheme id.");
 
   switch (cs->getContactMethod()) {
     case ALIGNED_MORTAR: {
@@ -462,7 +473,8 @@ int getJacobianCSRMatrix(int** I, int** J, RealT** vals, IndexT cs_id, int* n_of
       return 1;
     }
     default: {
-      SLIC_WARNING("tribol::getJacobianCSRMatrix(): method does not return matrix data; " << "invalid call.");
+      SLIC_WARNING("tribol::getJacobianCSRMatrix(): method does not return matrix data; "
+                   << "invalid call.");
       return 1;
     }
   }
@@ -479,7 +491,8 @@ int getElementBlockJacobians(IndexT cs_id, BlockSpace row_block, BlockSpace col_
 
   // Note, SLIC_<>_ROOT macros are not here because it's possible not all ranks will have
   // method data.
-  SLIC_ERROR_IF(!cs, "tribol::getElementBlockJacobians(): invalid " << "CouplingScheme id.");
+  SLIC_ERROR_IF(!cs, "tribol::getElementBlockJacobians(): invalid "
+                         << "CouplingScheme id.");
 
   SparseMode sparse_mode = cs->getEnforcementOptions().lm_implicit_options.sparse_mode;
   if (sparse_mode != SparseMode::MFEM_ELEMENT_DENSE) {
@@ -503,10 +516,12 @@ void registerMortarGaps(IndexT mesh_id, RealT* gaps)
 {
   auto mesh = MeshManager::getInstance().findData(mesh_id);
 
-  SLIC_ERROR_ROOT_IF(!mesh, "tribol::registerMortarGaps(): " << "no mesh with id " << mesh_id << " exists.");
+  SLIC_ERROR_ROOT_IF(!mesh, "tribol::registerMortarGaps(): "
+                                << "no mesh with id " << mesh_id << " exists.");
 
   if (gaps == nullptr && mesh->numberOfElements() > 0) {
-    SLIC_WARNING("tribol::registerMortarGaps(): null pointer to gap data " << "on non-null mesh " << mesh_id << ".");
+    SLIC_WARNING("tribol::registerMortarGaps(): null pointer to gap data "
+                 << "on non-null mesh " << mesh_id << ".");
     mesh->isMeshValid() = false;
   } else {
     mesh->getNodalFields().m_node_gap = ArrayViewT<RealT>(gaps, mesh->numberOfNodes());
@@ -520,11 +535,12 @@ void registerMortarPressures(IndexT mesh_id, const RealT* pressures)
 {
   auto mesh = MeshManager::getInstance().findData(mesh_id);
 
-  SLIC_ERROR_ROOT_IF(!mesh, "tribol::registerMortarPressures(): " << "no mesh with id " << mesh_id << " exists.");
+  SLIC_ERROR_ROOT_IF(!mesh, "tribol::registerMortarPressures(): "
+                                << "no mesh with id " << mesh_id << " exists.");
 
   if (pressures == nullptr && mesh->numberOfElements() > 0) {
-    SLIC_WARNING("tribol::registerMortarPressures(): null pointer to pressure data " << "on non-null mesh " << mesh_id
-                                                                                     << ".");
+    SLIC_WARNING("tribol::registerMortarPressures(): null pointer to pressure data "
+                 << "on non-null mesh " << mesh_id << ".");
     mesh->isMeshValid() = false;
   } else {
     mesh->getNodalFields().m_node_pressure = ArrayViewT<const RealT>(pressures, mesh->numberOfNodes());
@@ -538,7 +554,8 @@ void registerIntNodalField(IndexT mesh_id, const IntNodalFields field, int* TRIB
 {
   auto mesh = MeshManager::getInstance().findData(mesh_id);
 
-  SLIC_ERROR_ROOT_IF(!mesh, "tribol::registerIntNodalField(): " << "no mesh with id " << mesh_id << " exists.");
+  SLIC_ERROR_ROOT_IF(!mesh, "tribol::registerIntNodalField(): "
+                                << "no mesh with id " << mesh_id << " exists.");
 
   switch (field) {
     case UNDEFINED_INT_NODAL_FIELD:
@@ -553,7 +570,8 @@ void registerRealElementField(IndexT mesh_id, const RealElementFields field, con
 {
   auto mesh = MeshManager::getInstance().findData(mesh_id);
 
-  SLIC_ERROR_IF(!mesh, "tribol::registerRealElementField(): " << "no mesh with id " << mesh_id << " exists.");
+  SLIC_ERROR_IF(!mesh, "tribol::registerRealElementField(): "
+                           << "no mesh with id " << mesh_id << " exists.");
 
   switch (field) {
     case KINEMATIC_CONSTANT_STIFFNESS: {
@@ -604,8 +622,8 @@ void registerRealElementField(IndexT mesh_id, const RealElementFields field, con
     case BULK_MODULUS: {
       if (fieldVariable == nullptr) {
         if (mesh->numberOfElements() > 0) {
-          SLIC_ERROR("tribol::registerRealElementField(): null pointer to data for " << "'BULK_MODULUS' on mesh "
-                                                                                     << mesh_id << ".");
+          SLIC_ERROR("tribol::registerRealElementField(): null pointer to data for "
+                     << "'BULK_MODULUS' on mesh " << mesh_id << ".");
           mesh->getElementData().m_is_kinematic_element_penalty_set = false;
         } else {
           // set boolean to true for zero element meshes (acceptable registration)
@@ -627,8 +645,8 @@ void registerRealElementField(IndexT mesh_id, const RealElementFields field, con
     case YOUNGS_MODULUS: {
       if (fieldVariable == nullptr) {
         if (mesh->numberOfElements() > 0) {
-          SLIC_ERROR("tribol::registerRealElementField(): null pointer to data for " << "'YOUNGS_MODULUS' on mesh "
-                                                                                     << mesh_id << ".");
+          SLIC_ERROR("tribol::registerRealElementField(): null pointer to data for "
+                     << "'YOUNGS_MODULUS' on mesh " << mesh_id << ".");
           mesh->getElementData().m_is_kinematic_element_penalty_set = false;
         } else {
           // set boolean to true for zero element meshes (acceptable registration)
@@ -650,8 +668,8 @@ void registerRealElementField(IndexT mesh_id, const RealElementFields field, con
     case ELEMENT_THICKNESS: {
       if (fieldVariable == nullptr) {
         if (mesh->numberOfElements() > 0) {
-          SLIC_ERROR("tribol::registerRealElementField(): null pointer to data for " << "'ELEMENT_THICKNESS' on mesh "
-                                                                                     << mesh_id << ".");
+          SLIC_ERROR("tribol::registerRealElementField(): null pointer to data for "
+                     << "'ELEMENT_THICKNESS' on mesh " << mesh_id << ".");
           mesh->getElementData().m_is_kinematic_element_penalty_set = false;
         } else {
           // set booleans to true for zero element meshes (acceptable registration)
@@ -685,7 +703,8 @@ void registerIntElementField(IndexT mesh_id, const IntElementFields field, int* 
 {
   auto mesh = MeshManager::getInstance().findData(mesh_id);
 
-  SLIC_ERROR_ROOT_IF(!mesh, "tribol::registerIntElementField(): " << "no mesh with id " << mesh_id << " exists.");
+  SLIC_ERROR_ROOT_IF(!mesh, "tribol::registerIntElementField(): "
+                                << "no mesh with id " << mesh_id << " exists.");
 
   switch (field) {
     case UNDEFINED_INT_ELEMENT_FIELD:

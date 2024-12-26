@@ -86,14 +86,15 @@ int main(int argc, char** argv)
       ->check(axom::CLI::PositiveNumber);
   app.add_option("-d,--device", device_str, "Target device where the code should be run.")
       ->capture_default_str()
-      ->check(axom::CLI::IsMember({"cpu"
+      ->check(axom::CLI::IsMember({
+        "cpu"
 #if defined(TRIBOL_USE_CUDA) || defined(TRIBOL_USE_HIP)
-                                   ,
-                                   "gpu"
+            ,
+            "gpu"
 #endif
 #ifdef TRIBOL_USE_OPENMP
-                                   ,
-                                   "omp"
+            ,
+            "omp"
 #endif
       }));
   CLI11_PARSE(app, argc, argv);

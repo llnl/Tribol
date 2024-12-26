@@ -91,7 +91,8 @@ void WriteContactPlaneMeshToVtk(const std::string& dir, const VisType v_type, co
       default:
         // Can this be output on root? SRW
         overlaps = true;  // set default for now; refactoring
-        SLIC_INFO("WriteInterfaceMeshToVtk: visualization type not supported." << " Printing overlaps only.");
+        SLIC_INFO("WriteInterfaceMeshToVtk: visualization type not supported."
+                  << " Printing overlaps only.");
         break;
     }  // end switch( v_type )
 
@@ -159,7 +160,7 @@ void WriteContactPlaneMeshToVtk(const std::string& dir, const VisType v_type, co
                              dim == 3 ? mesh2.getPosition()[2][nodeId] : 0.);
           }
         }  // end else
-      }  // end i-loop over contact planes outputting face coordinates
+      }    // end i-loop over contact planes outputting face coordinates
 
       // output polygon connectivity. Number of points is the number of polygon
       // vertices + the polygon vertices for each contact plane
@@ -396,7 +397,8 @@ void WriteContactPlaneMeshToVtk(const std::string& dir, const VisType v_type, co
       const int mesh2_element_id = GetVtkElementId(mesh2.getElementType());
 
       if (mesh1_element_id <= 0 || mesh2_element_id <= 0) {
-        SLIC_ERROR("WriteInterfaceMeshToVtk(): " << "element type not supported by vtk.");
+        SLIC_ERROR("WriteInterfaceMeshToVtk(): "
+                   << "element type not supported by vtk.");
       }
 
       mesh << "CELL_TYPES " << numTotalElements << std::endl;

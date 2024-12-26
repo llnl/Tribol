@@ -21,99 +21,109 @@ extern "C" {
 
 int TRIBOL_SIMPLE_initialize_0(const int dim)
 {
-    // splicer begin function.initialize_0
-    int SHC_rv = Initialize(dim);
-    return SHC_rv;
-    // splicer end function.initialize_0
+  // splicer begin function.initialize_0
+  int SHC_rv = Initialize(dim);
+  return SHC_rv;
+  // splicer end function.initialize_0
 }
 
 int TRIBOL_SIMPLE_initialize_1(const int dim, bool init_slic)
 {
-    // splicer begin function.initialize_1
-    int SHC_rv = Initialize(dim, init_slic);
-    return SHC_rv;
-    // splicer end function.initialize_1
+  // splicer begin function.initialize_1
+  int SHC_rv = Initialize(dim, init_slic);
+  return SHC_rv;
+  // splicer end function.initialize_1
 }
 
 int TRIBOL_SIMPLE_finalize_0(void)
 {
-    // splicer begin function.finalize_0
-    int SHC_rv = Finalize();
-    return SHC_rv;
-    // splicer end function.finalize_0
+  // splicer begin function.finalize_0
+  int SHC_rv = Finalize();
+  return SHC_rv;
+  // splicer end function.finalize_0
 }
 
 int TRIBOL_SIMPLE_finalize_1(bool finalize_slic)
 {
-    // splicer begin function.finalize_1
-    int SHC_rv = Finalize(finalize_slic);
-    return SHC_rv;
-    // splicer end function.finalize_1
+  // splicer begin function.finalize_1
+  int SHC_rv = Finalize(finalize_slic);
+  return SHC_rv;
+  // splicer end function.finalize_1
 }
 
-void TRIBOL_SIMPLE_simple_coupling_setup(const int dim, int cell_type, int contact_method, int mortar_numCells, int mortar_lengthNodalData, const int * mortar_connectivity, const double * mortar_x, const double * mortar_y, const double * mortar_z, int nonmortar_numCells, int nonmortar_lengthNodalData, const int * nonmortar_connectivity, const double * nonmortar_x, const double * nonmortar_y, const double * nonmortar_z, const double area_frac, double * mortar_gaps, double * mortar_pressures)
+void TRIBOL_SIMPLE_simple_coupling_setup(const int dim, int cell_type, int contact_method, int mortar_numCells,
+                                         int mortar_lengthNodalData, const int* mortar_connectivity,
+                                         const double* mortar_x, const double* mortar_y, const double* mortar_z,
+                                         int nonmortar_numCells, int nonmortar_lengthNodalData,
+                                         const int* nonmortar_connectivity, const double* nonmortar_x,
+                                         const double* nonmortar_y, const double* nonmortar_z, const double area_frac,
+                                         double* mortar_gaps, double* mortar_pressures)
 {
-    // splicer begin function.simple_coupling_setup
-    SimpleCouplingSetup(dim, cell_type, contact_method, mortar_numCells, mortar_lengthNodalData, mortar_connectivity, mortar_x, mortar_y, mortar_z, nonmortar_numCells, nonmortar_lengthNodalData, nonmortar_connectivity, nonmortar_x, nonmortar_y, nonmortar_z, area_frac, mortar_gaps, mortar_pressures);
-    // splicer end function.simple_coupling_setup
+  // splicer begin function.simple_coupling_setup
+  SimpleCouplingSetup(dim, cell_type, contact_method, mortar_numCells, mortar_lengthNodalData, mortar_connectivity,
+                      mortar_x, mortar_y, mortar_z, nonmortar_numCells, nonmortar_lengthNodalData,
+                      nonmortar_connectivity, nonmortar_x, nonmortar_y, nonmortar_z, area_frac, mortar_gaps,
+                      mortar_pressures);
+  // splicer end function.simple_coupling_setup
 }
 
 int TRIBOL_SIMPLE_update(double dt)
 {
-    // splicer begin function.update
-    int SHC_rv = Update(dt);
-    return SHC_rv;
-    // splicer end function.update
+  // splicer begin function.update
+  int SHC_rv = Update(dt);
+  return SHC_rv;
+  // splicer end function.update
 }
 
-int TRIBOL_SIMPLE_get_simple_coupling_csr(int * * I, int * * J, double * * vals, int * n_offsets, int * n_nonzeros)
+int TRIBOL_SIMPLE_get_simple_coupling_csr(int** I, int** J, double** vals, int* n_offsets, int* n_nonzeros)
 {
-    // splicer begin function.get_simple_coupling_csr
-    int SHC_rv = GetSimpleCouplingCSR(I, J, vals, n_offsets, n_nonzeros);
-    return SHC_rv;
-    // splicer end function.get_simple_coupling_csr
+  // splicer begin function.get_simple_coupling_csr
+  int SHC_rv = GetSimpleCouplingCSR(I, J, vals, n_offsets, n_nonzeros);
+  return SHC_rv;
+  // splicer end function.get_simple_coupling_csr
 }
 
-int TRIBOL_SIMPLE_get_simple_coupling_csr_bufferify(TRIBOL_SIMPLE_SHROUD_array *DI, TRIBOL_SIMPLE_SHROUD_array *DJ, TRIBOL_SIMPLE_SHROUD_array *Dvals, int * n_offsets, int * n_nonzeros)
+int TRIBOL_SIMPLE_get_simple_coupling_csr_bufferify(TRIBOL_SIMPLE_SHROUD_array* DI, TRIBOL_SIMPLE_SHROUD_array* DJ,
+                                                    TRIBOL_SIMPLE_SHROUD_array* Dvals, int* n_offsets, int* n_nonzeros)
 {
-    // splicer begin function.get_simple_coupling_csr_bufferify
-    int *I;
-    int *J;
-    double *vals;
-    int SHC_rv = GetSimpleCouplingCSR(&I, &J, &vals, n_offsets, n_nonzeros);
-    DI->cxx.addr  = I;
-    DI->cxx.idtor = 0;
-    DI->addr.base = I;
-    DI->type = SH_TYPE_INT;
-    DI->elem_len = sizeof(int);
-    DI->rank = 1;
-    DI->shape[0] = *n_offsets;
-    DI->size = DI->shape[0];
-    DJ->cxx.addr  = J;
-    DJ->cxx.idtor = 0;
-    DJ->addr.base = J;
-    DJ->type = SH_TYPE_INT;
-    DJ->elem_len = sizeof(int);
-    DJ->rank = 1;
-    DJ->shape[0] = *n_nonzeros;
-    DJ->size = DJ->shape[0];
-    Dvals->cxx.addr  = vals;
-    Dvals->cxx.idtor = 0;
-    Dvals->addr.base = vals;
-    Dvals->type = SH_TYPE_DOUBLE;
-    Dvals->elem_len = sizeof(double);
-    Dvals->rank = 1;
-    Dvals->shape[0] = *n_nonzeros;
-    Dvals->size = Dvals->shape[0];
-    return SHC_rv;
-    // splicer end function.get_simple_coupling_csr_bufferify
+  // splicer begin function.get_simple_coupling_csr_bufferify
+  int* I;
+  int* J;
+  double* vals;
+  int SHC_rv = GetSimpleCouplingCSR(&I, &J, &vals, n_offsets, n_nonzeros);
+  DI->cxx.addr = I;
+  DI->cxx.idtor = 0;
+  DI->addr.base = I;
+  DI->type = SH_TYPE_INT;
+  DI->elem_len = sizeof(int);
+  DI->rank = 1;
+  DI->shape[0] = *n_offsets;
+  DI->size = DI->shape[0];
+  DJ->cxx.addr = J;
+  DJ->cxx.idtor = 0;
+  DJ->addr.base = J;
+  DJ->type = SH_TYPE_INT;
+  DJ->elem_len = sizeof(int);
+  DJ->rank = 1;
+  DJ->shape[0] = *n_nonzeros;
+  DJ->size = DJ->shape[0];
+  Dvals->cxx.addr = vals;
+  Dvals->cxx.idtor = 0;
+  Dvals->addr.base = vals;
+  Dvals->type = SH_TYPE_DOUBLE;
+  Dvals->elem_len = sizeof(double);
+  Dvals->rank = 1;
+  Dvals->shape[0] = *n_nonzeros;
+  Dvals->size = Dvals->shape[0];
+  return SHC_rv;
+  // splicer end function.get_simple_coupling_csr_bufferify
 }
 
 // Release library allocated memory.
-void TRIBOL_SIMPLE_SHROUD_memory_destructor(TRIBOL_SIMPLE_SHROUD_capsule_data *cap)
+void TRIBOL_SIMPLE_SHROUD_memory_destructor(TRIBOL_SIMPLE_SHROUD_capsule_data* cap)
 {
-    cap->addr = nullptr;
-    cap->idtor = 0;  // avoid deleting again
+  cap->addr = nullptr;
+  cap->idtor = 0;  // avoid deleting again
 }
 
 }  // extern "C"

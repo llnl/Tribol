@@ -699,7 +699,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon(const RealT* const xA, co
         ++interId;
       }
     }  // end loop over A segments
-  }  // end loop over B segments
+  }    // end loop over B segments
 
   // count the number of segment-segment intersections
   int numSegInter = 0;

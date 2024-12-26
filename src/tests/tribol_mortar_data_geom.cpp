@@ -380,7 +380,7 @@ TEST_F(MortarGeomTest, mortar_ironing)
         ++num_total_active_nodes;
       }
     }  // end loop over nonzero columns, I[a]
-  }  // end loop over matrix rows
+  }    // end loop over matrix rows
 
   SLIC_INFO("Total number of ACTIVE nonmortar nodes: " << num_total_active_nodes);
 

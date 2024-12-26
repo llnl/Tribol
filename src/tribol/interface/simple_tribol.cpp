@@ -65,7 +65,8 @@ void SimpleCouplingSetup(const int dim, int cell_type, int contact_method, int m
   (void)dim;  // quiet compiler
 
   if (contact_method != tribol::MORTAR_WEIGHTS) {
-    SLIC_ERROR("SimpleCouplingSetup: simple API only works " << "for MORTAR_WEIGHTS method.");
+    SLIC_ERROR("SimpleCouplingSetup: simple API only works "
+               << "for MORTAR_WEIGHTS method.");
   }
 
   // register mortar mesh

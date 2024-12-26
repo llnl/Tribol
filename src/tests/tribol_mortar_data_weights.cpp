@@ -75,7 +75,7 @@ void TestMortarWeights(tribol::CouplingScheme const* cs, RealT exact_area, RealT
       // nonmortar node, " << a << " and mortar node, " << J[b] << ".");
 
     }  // end loop over nonzero columns, I[a]
-  }  // end loop over matrix rows
+  }    // end loop over matrix rows
 
   area /= 2.;
 

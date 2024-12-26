@@ -122,7 +122,8 @@ void bubble_sort(int* const array, const int n)
 //------------------------------------------------------------------------------
 void allocRealArray(RealT** arr, int length, RealT init_val)
 {
-  SLIC_ERROR_IF(length == 0, "allocRealArray: please specify nonzero length " << "for array allocation.");
+  SLIC_ERROR_IF(length == 0, "allocRealArray: please specify nonzero length "
+                                 << "for array allocation.");
 
   *arr = new RealT[length];
   initRealArray(*arr, length, init_val);
@@ -131,7 +132,8 @@ void allocRealArray(RealT** arr, int length, RealT init_val)
 //------------------------------------------------------------------------------
 void allocRealArray(RealT** arr, const int length, const RealT* const data)
 {
-  SLIC_ERROR_IF(length == 0, "allocRealArray: please specify nonzero length " << "for array allocation.");
+  SLIC_ERROR_IF(length == 0, "allocRealArray: please specify nonzero length "
+                                 << "for array allocation.");
 
   if (data == nullptr) {
     SLIC_ERROR("allocRealArray: input data pointer not set.");
@@ -149,7 +151,8 @@ void allocRealArray(RealT** arr, const int length, const RealT* const data)
 //------------------------------------------------------------------------------
 void allocIntArray(int** arr, int length, int init_val)
 {
-  SLIC_ERROR_IF(length == 0, "allocIntArray: please specify nonzero length " << "for array allocation.");
+  SLIC_ERROR_IF(length == 0, "allocIntArray: please specify nonzero length "
+                                 << "for array allocation.");
 
   *arr = new int[length];
   initIntArray(*arr, length, init_val);
@@ -158,7 +161,8 @@ void allocIntArray(int** arr, int length, int init_val)
 //------------------------------------------------------------------------------
 void allocIntArray(int** arr, const int length, const int* const data)
 {
-  SLIC_ERROR_IF(length == 0, "allocIntArray: please specify nonzero length " << "for array allocation.");
+  SLIC_ERROR_IF(length == 0, "allocIntArray: please specify nonzero length "
+                                 << "for array allocation.");
 
   if (data == nullptr) {
     SLIC_ERROR("allocIntArray: input data pointer not set.");
@@ -176,7 +180,8 @@ void allocIntArray(int** arr, const int length, const int* const data)
 //------------------------------------------------------------------------------
 void allocBoolArray(bool** arr, int length, bool init_val)
 {
-  SLIC_ERROR_IF(length == 0, "allocBoolArray: please specify nonzero length " << "for array allocation.");
+  SLIC_ERROR_IF(length == 0, "allocBoolArray: please specify nonzero length "
+                                 << "for array allocation.");
 
   *arr = new bool[length];
   initBoolArray(*arr, length, init_val);
@@ -186,7 +191,8 @@ void allocBoolArray(bool** arr, int length, bool init_val)
 TRIBOL_HOST_DEVICE void initRealArray(RealT* arr, int length, RealT init_val)
 {
 #ifdef TRIBOL_USE_HOST
-  SLIC_ERROR_IF(arr == nullptr, "initRealArray(): " << "input pointer to array is null.");
+  SLIC_ERROR_IF(arr == nullptr, "initRealArray(): "
+                                    << "input pointer to array is null.");
 #endif
 
   for (int i = 0; i < length; ++i) {
@@ -198,7 +204,8 @@ TRIBOL_HOST_DEVICE void initRealArray(RealT* arr, int length, RealT init_val)
 TRIBOL_HOST_DEVICE void initIntArray(int* arr, int length, int init_val)
 {
 #ifdef TRIBOL_USE_HOST
-  SLIC_ERROR_IF(arr == nullptr, "initIntArray(): " << "input pointer to array is null.");
+  SLIC_ERROR_IF(arr == nullptr, "initIntArray(): "
+                                    << "input pointer to array is null.");
 #endif
   for (int i = 0; i < length; ++i) {
     arr[i] = init_val;
@@ -209,7 +216,8 @@ TRIBOL_HOST_DEVICE void initIntArray(int* arr, int length, int init_val)
 TRIBOL_HOST_DEVICE void initBoolArray(bool* arr, int length, bool init_val)
 {
 #ifdef TRIBOL_USE_HOST
-  SLIC_ERROR_IF(arr == nullptr, "initBoolArray(): " << "input pointer to array is null.");
+  SLIC_ERROR_IF(arr == nullptr, "initBoolArray(): "
+                                    << "input pointer to array is null.");
 #endif
   for (int i = 0; i < length; ++i) {
     arr[i] = init_val;

@@ -350,7 +350,8 @@ TEST_F(MortarJacTest, update_jac_test)
   matrix.setf(std::ios::scientific);
   matrix.precision(2);
   std::ostringstream suffix_matrix;
-  suffix_matrix << "test2" << ".txt";
+  suffix_matrix << "test2"
+                << ".txt";
   matrix.open("matrix_" + suffix_matrix.str());
 
   for (int i = 0; i < numRows; ++i) {

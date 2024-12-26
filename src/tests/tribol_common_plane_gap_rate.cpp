@@ -122,7 +122,8 @@ void checkPressures(tribol::CouplingScheme const* cs, RealT pressure, const Real
     } else if (std::strcmp(pressureType, "kinematic") == 0) {
       my_pressure = plane.m_pressure;
     } else {
-      SLIC_ERROR("checkPressures(): invalid pressure type. Supported types are " << "'kinematic' or 'rate'.");
+      SLIC_ERROR("checkPressures(): invalid pressure type. Supported types are "
+                 << "'kinematic' or 'rate'.");
     }
 
     // check diffs
