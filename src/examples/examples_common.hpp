@@ -131,10 +131,12 @@ int parse_command_line_args(std::string ex_name, Arguments& args, int argc, char
   CLI11_PARSE(app, argc, argv);
 
   // print parsed args to screen
-  SLIC_INFO("Mesh 1" << "\n\t x,y,z discretization: " << getPoint(args.block1_res)
-                     << "\n\t Bounding box: " << getBoundingBox(args.block1_min, args.block1_max));
-  SLIC_INFO("Mesh 2" << "\n\t x,y,z discretization: " << getPoint(args.block2_res)
-                     << "\n\t Bounding box: " << getBoundingBox(args.block2_min, args.block2_max));
+  SLIC_INFO("Mesh 1"
+            << "\n\t x,y,z discretization: " << getPoint(args.block1_res)
+            << "\n\t Bounding box: " << getBoundingBox(args.block1_min, args.block1_max));
+  SLIC_INFO("Mesh 2"
+            << "\n\t x,y,z discretization: " << getPoint(args.block2_res)
+            << "\n\t Bounding box: " << getBoundingBox(args.block2_min, args.block2_max));
 
   return 0;
 }
@@ -277,8 +279,9 @@ int tribol_register_and_update(tribol::TestMesh& mesh, tribol::ContactMethod met
     ///////////////////////////////////////////////////////
     if (enforcement == tribol::PENALTY) {
       if (params == nullptr) {
-        SLIC_ERROR("tribol_register_and_update(): " << "tribol::TestControlParameters pointer is null. "
-                                                    << "Parameters are required for penalty enforcement.");
+        SLIC_ERROR("tribol_register_and_update(): "
+                   << "tribol::TestControlParameters pointer is null. "
+                   << "Parameters are required for penalty enforcement.");
       }
 
       if (!params->penalty_ratio) {
