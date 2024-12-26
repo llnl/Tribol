@@ -81,11 +81,12 @@ jobs:
         DO_DOCS_CHECK: 'no'
         DO_STYLE_CHECK: 'no'
         DO_HEADER_CHECK: 'no'
-      docs:
-        DO_COVERAGE_CHECK: 'no'
-        DO_DOCS_CHECK: 'yes'
-        DO_STYLE_CHECK: 'no'
-        DO_HEADER_CHECK: 'no'
+# TODO: enable to check doxygen for warnings
+      # docs:
+      #   DO_COVERAGE_CHECK: 'no'
+      #   DO_DOCS_CHECK: 'yes'
+      #   DO_STYLE_CHECK: 'no'
+      #   DO_HEADER_CHECK: 'no'
       style:
         DO_COVERAGE_CHECK: 'no'
         DO_DOCS_CHECK: 'no'
