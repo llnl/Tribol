@@ -26,4 +26,3 @@ jobs:
 
       - name: Apply style updates
         uses: ./.github/actions/apply-style
-        
