@@ -73,7 +73,7 @@ spack:
       buildable: false
       externals:
       - spec: llvm@14.0.6+clang
-        prefix: /opt/homebrew/opt/llvm@14/14.0.6
+        prefix: /opt/homebrew/opt/llvm@14
     python:
       version: [3.13.1]
       buildable: false

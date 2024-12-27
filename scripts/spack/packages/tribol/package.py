@@ -142,7 +142,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     depends_on("python", when="+devtools")
     depends_on("py-shroud", when="+devtools+fortran")
     depends_on("py-sphinx", when="+devtools")
-    depends_on("llvm+clang@14.0:", when="+devtools", type="build")
+    depends_on("llvm+clang@14", when="+devtools", type="build")
 
     conflicts("+cuda", when="+rocm")
     conflicts("+openmp", when="+rocm")
