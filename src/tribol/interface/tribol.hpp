@@ -15,9 +15,7 @@
 // MFEM includes
 #include "mfem.hpp"
 
-
-namespace tribol
-{
+namespace tribol {
 
 /// \name Contact Library Initialization methods
 /// @{
@@ -40,7 +38,7 @@ void initialize( int dimension, CommT comm );
 
 /**
  * @brief Sets the MPI communicator for a coupling scheme
- * 
+ *
  * @param cs_id coupling scheme id
  * @param comm MPI communicator
  * \pre MPI-enabled Tribol
@@ -59,41 +57,38 @@ void setMPIComm( IndexT cs_id, CommT comm );
  * \param [in] rate_calc rate penalty stiffness calculation option
  * \pre user must register coupling scheme prior to setting penalty enforcement options for that scheme
  */
-void setPenaltyOptions( IndexT cs_id, 
-                        PenaltyConstraintType pen_enfrc_option,
+void setPenaltyOptions( IndexT cs_id, PenaltyConstraintType pen_enfrc_option,
                         KinematicPenaltyCalculation kinematic_calc,
-                        RatePenaltyCalculation rate_calc=NO_RATE_PENALTY );
+                        RatePenaltyCalculation rate_calc = NO_RATE_PENALTY );
 
 /*!
  * \brief Sets the constant kinematic penalty stiffness
- * \param [in] mesh_id mesh id for penalty stiffness  
+ * \param [in] mesh_id mesh id for penalty stiffness
  * \param [in] k constant kinematic penalty stiffness
  */
 void setKinematicConstantPenalty( IndexT mesh_id, RealT k );
 
 /*!
  * \brief Sets the kinematic element penalty stiffness data
- * \param [in] mesh_id mesh id for penalty stiffness  
+ * \param [in] mesh_id mesh id for penalty stiffness
  * \param [in] material_modulus pointer to element array of bulk or Young's moduli
  * \param [in] element_thickness pointer to element array of through element thicknesses
  *
  * \note the length of the arrays that material_modulus and element_thickness point to
  *       is the number of contact faces registered for mesh with id, \p mesh_id.
  */
-void setKinematicElementPenalty( IndexT mesh_id, 
-                                 const RealT *material_modulus, 
-                                 const RealT *element_thickness );
+void setKinematicElementPenalty( IndexT mesh_id, const RealT* material_modulus, const RealT* element_thickness );
 
 /*!
  * \brief Sets the constant rate penalty stiffness
- * \param [in] mesh_id mesh id for penalty stiffness  
+ * \param [in] mesh_id mesh id for penalty stiffness
  * \param [in] r_k constant rate penalty stiffness
  */
 void setRateConstantPenalty( IndexT mesh_id, RealT r_k );
 
 /*!
  * \brief Sets the percent rate penalty stiffness
- * \param [in] mesh_id mesh id for penalty stiffness  
+ * \param [in] mesh_id mesh id for penalty stiffness
  * \param [in] r_p rate penalty as percent of kinematic penalty
  */
 void setRatePercentPenalty( IndexT mesh_id, RealT r_p );
@@ -103,11 +98,11 @@ void setRatePercentPenalty( IndexT mesh_id, RealT r_p );
  * \brief sets the auto-contact interpen fraction on the parameters struct
  *
  * \param [in] cs_id coupling scheme id
- * \param [in] scale the scale applied to the element thickness to determine the auto-contact length scale 
+ * \param [in] scale the scale applied to the element thickness to determine the auto-contact length scale
  *
- * \note this is only used for common-plane with penalty enforcement. A sacle < 1.0 may 
+ * \note this is only used for common-plane with penalty enforcement. A sacle < 1.0 may
  * result in missed contact face-pairs in softer contact responses
- *     
+ *
  *
  */
 void setAutoContactPenScale( IndexT cs_id, RealT scale );
@@ -119,7 +114,7 @@ void setAutoContactPenScale( IndexT cs_id, RealT scale );
  * \param [in] cs_id coupling scheme id
  * \param [in] frac the maximum allowable interpenetration factor triggering a timestep vote
  *
- * \note this is only used for common-plane with penalty enforcement. This is the 
+ * \note this is only used for common-plane with penalty enforcement. This is the
  * fraction of the element thickness that is allowed prior to triggering a timestep vote.
  *
  */
@@ -127,10 +122,10 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
 
 /*!
  *
- * \brief sets the timestep scale factor applied to the timestep vote 
+ * \brief sets the timestep scale factor applied to the timestep vote
  *
  * \param [in] cs_id coupling scheme id
- * \param [in] scale the scale factor applied to the timestep vote 
+ * \param [in] scale the scale factor applied to the timestep vote
  *
  * \pre scale > 0
  *
@@ -138,13 +133,13 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
 void setTimestepScale( IndexT cs_id, RealT scale );
 
 /*!
- * \brief Sets the area fraction for inclusion of a contact overlap 
+ * \brief Sets the area fraction for inclusion of a contact overlap
  *
  * \param [in] cs_id coupling scheme id
  * \param [in] frac area fraction tolerance
  *
- * \note the area fraction under consideration is the ratio of the 
- *       contact overlap with the largest of the two consituent 
+ * \note the area fraction under consideration is the ratio of the
+ *       contact overlap with the largest of the two consituent
  *       faces. A default ratio is provided by Tribol.
  */
 void setContactAreaFrac( IndexT cs_id, RealT frac );
@@ -166,7 +161,7 @@ void setPenaltyScale( IndexT mesh_id, RealT scale );
  *
  */
 void setLagrangeMultiplierOptions( IndexT cs_id, ImplicitEvalMode evalMode,
-                                   SparseMode sparseMode=SparseMode::MFEM_LINKED_LIST );
+                                   SparseMode sparseMode = SparseMode::MFEM_LINKED_LIST );
 
 /*!
  * \brief Sets the plot cycle increment for visualization
@@ -177,7 +172,7 @@ void setLagrangeMultiplierOptions( IndexT cs_id, ImplicitEvalMode evalMode,
 void setPlotCycleIncrement( IndexT cs_id, int incr );
 
 /*!
- * \brief Sets the plot options for interface visualization 
+ * \brief Sets the plot options for interface visualization
  *
  * \param [in] cs_id coupling scheme id
  * \param [in] v_type visualization option
@@ -195,14 +190,14 @@ void setOutputDirectory( IndexT cs_id, const std::string& dir );
 /*!
  * \brief Optionally sets the logging level per coupling scheme
  * \param [in] cs_id coupling scheme id
- * \param [in] log_level the desired logging level 
+ * \param [in] log_level the desired logging level
  *
  * \note this overrides the logging level set in initialize().
  */
 void setLoggingLevel( IndexT cs_id, LoggingLevel log_level );
 
 /*!
- * \brief Enable the contact timestep vote 
+ * \brief Enable the contact timestep vote
  *
  * \param [in] cs_id coupling scheme id
  * \param [in] enable the timestep vote will be calculated and returned if true
@@ -238,15 +233,8 @@ void enableTimestepVote( IndexT cs_id, const bool enable );
  * \note connectivity is a 2D array with num_elements rows and num_nodes columns
  * with row-major ordering
  */
-void registerMesh( IndexT mesh_id,
-                   IndexT num_elements,
-                   IndexT num_nodes,
-                   const IndexT* connectivity,
-                   int element_type,
-                   const RealT* x,
-                   const RealT* y,
-                   const RealT* z = nullptr,
-                   MemorySpace m_space = MemorySpace::Host );
+void registerMesh( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity, int element_type,
+                   const RealT* x, const RealT* y, const RealT* z = nullptr, MemorySpace m_space = MemorySpace::Host );
 
 /*!
  * \brief Registers nodal displacements on the contact surface.
@@ -263,10 +251,7 @@ void registerMesh( IndexT mesh_id,
  * \note A mesh for the given contact surface must have already been registered
  *  prior to calling this method via registerMesh()
  */
-void registerNodalDisplacements( IndexT mesh_id,
-                                 const RealT* dx,
-                                 const RealT* dy,
-                                 const RealT* dz=nullptr );
+void registerNodalDisplacements( IndexT mesh_id, const RealT* dx, const RealT* dy, const RealT* dz = nullptr );
 
 /*!
  * \brief Registers nodal velocities on the contact surface.
@@ -283,10 +268,7 @@ void registerNodalDisplacements( IndexT mesh_id,
  *  \note A mesh for the given contact surface must have already been registered
  *   prior to calling this method] via registerMesh()
  */
-void registerNodalVelocities( IndexT mesh_id,
-                              const RealT* vx,
-                              const RealT* vy,
-                              const RealT* vz=nullptr );
+void registerNodalVelocities( IndexT mesh_id, const RealT* vx, const RealT* vy, const RealT* vz = nullptr );
 
 /*!
  * \brief Registers nodal response buffers.
@@ -303,28 +285,25 @@ void registerNodalVelocities( IndexT mesh_id,
  * \note A mesh for the given contact surface must have already been registered
  *  prior to calling this method.
  */
-void registerNodalResponse( IndexT mesh_id,
-                            RealT* rx,
-                            RealT* ry,
-                            RealT* rz=nullptr );
+void registerNodalResponse( IndexT mesh_id, RealT* rx, RealT* ry, RealT* rz = nullptr );
 
 /*!
- * \brief Get mfem sparse matrix for method specific Jacobian matrix output 
+ * \brief Get mfem sparse matrix for method specific Jacobian matrix output
  *
  * \param [in,out] sMat double pointer to mfem sparse matrix object
  * \param [in] cs_id coupling scheme id
  *
- * \return 0 for success, nonzero for failure 
+ * \return 0 for success, nonzero for failure
  *
  * \pre *sMat = nullptr
  *
- * \note Mortar Method: The sizing of the sparse matrix assumes that all 
- *       nonmortar and mortar nodes may have a Lagrange multiplier associated 
- *       with them. This allows us to use the global connectivity array, 
- *       which assumes contiguous and unique node ids between mortar and 
+ * \note Mortar Method: The sizing of the sparse matrix assumes that all
+ *       nonmortar and mortar nodes may have a Lagrange multiplier associated
+ *       with them. This allows us to use the global connectivity array,
+ *       which assumes contiguous and unique node ids between mortar and
  *       nonmortar meshes registered in a given coupling scheme.
  */
-int getJacobianSparseMatrix( mfem::SparseMatrix ** sMat, IndexT cs_id );
+int getJacobianSparseMatrix( mfem::SparseMatrix** sMat, IndexT cs_id );
 
 /*!
  * \brief Gets CSR storage arrays for method specific Jacobian matrix output
@@ -334,7 +313,7 @@ int getJacobianSparseMatrix( mfem::SparseMatrix ** sMat, IndexT cs_id );
  * \param [out] vals pointer to nonzero value array
  * \param [in]  cs_id coupling scheme id
  * \param [out] n_offsets optional pointer to the number of offsets (size of I array)
- * \param [out] n_nonzero optional pointer to the number of non zeros 
+ * \param [out] n_nonzero optional pointer to the number of non zeros
  *                        (size of J and vals arrays)
  *
  * \pre I == nullptr
@@ -343,15 +322,11 @@ int getJacobianSparseMatrix( mfem::SparseMatrix ** sMat, IndexT cs_id );
  *
  * \post n_offsets will store the number of offsets, if a non-nullptr was passed in
  * \post n_nonzero will store the number of non-zeros, if a non-nullptr was passed in
- * 
+ *
  * \return 0 success (if CSR data exists and pointed to), nonzero for failure
  *
  */
-int getJacobianCSRMatrix( int** I, 
-                          int** J,
-                          RealT** vals,
-                          IndexT cs_id,
-                          int* n_offsets = nullptr,
+int getJacobianCSRMatrix( int** I, int** J, RealT** vals, IndexT cs_id, int* n_offsets = nullptr,
                           int* n_nonzero = nullptr );
 
 /*!
@@ -378,16 +353,16 @@ int getJacobianCSRMatrix( int** I,
  * For example, requesting row_block = BlockSpace::MORTAR and col_block =
  * BlockSpace::LAGRANGE_MULTIPLIER will return the block Jacobians in position
  * 02. row_elem_idx will be an array of mortar element indices and col_elem_idx
- * will be an array of Lagrange multiplier element indices. The length of 
+ * will be an array of Lagrange multiplier element indices. The length of
  * row_elem_idx, col_elem_idx, and jacobians will match.  Each entry in the
  * array corresponds to a single coupled element pair, so element indices will
  * not be unique, in general.  For instance, if a nonmortar face interacts with
  * multiple mortar faces and vice-versa.
  *
  * \param [in]  cs_id coupling scheme id
- * \param [in]  row_block Row Jacobian block (MORTAR, NONMORTAR, or 
+ * \param [in]  row_block Row Jacobian block (MORTAR, NONMORTAR, or
  * LAGRANGE_MULTIPLIER)
- * \param [in]  col_block Column Jacobian block (MORTAR, NONMORTAR, or 
+ * \param [in]  col_block Column Jacobian block (MORTAR, NONMORTAR, or
  * LAGRANGE_MULTIPLIER)
  * \param [out] row_elem_idx Pointer to pointer to array of element indices for
  * the row block
@@ -395,16 +370,13 @@ int getJacobianCSRMatrix( int** I,
  * the column block
  * \param [out] jacobians Pointer to pointer to array of Jacobian dense matrices
  *
- * @note The second pointer of the double pointer is updated by this function to 
+ * @note The second pointer of the double pointer is updated by this function to
  * point to internally stored arrays of indices and Jacobian values.
  *
  * \return 0 success (if Jacobians exist), nonzero for failure
  */
-int getElementBlockJacobians( IndexT cs_id, 
-                              BlockSpace row_block,
-                              BlockSpace col_block,
-                              const ArrayT<int>** row_elem_idx,
-                              const ArrayT<int>** col_elem_idx,
+int getElementBlockJacobians( IndexT cs_id, BlockSpace row_block, BlockSpace col_block,
+                              const ArrayT<int>** row_elem_idx, const ArrayT<int>** col_elem_idx,
                               const ArrayT<mfem::DenseMatrix>** jacobians );
 
 /*!
@@ -415,8 +387,7 @@ int getElementBlockJacobians( IndexT cs_id,
  * \param gaps Array of degree-of-freedom values on the nodes of the mesh
  * representing the scalar gap field
  */
-void registerMortarGaps( IndexT mesh_id,
-                         RealT * gaps );
+void registerMortarGaps( IndexT mesh_id, RealT* gaps );
 
 /*!
  * \brief Register pressure field on a nonmortar surface mesh associated with
@@ -426,23 +397,16 @@ void registerMortarGaps( IndexT mesh_id,
  * \param gaps Array of degree-of-freedom values on the nodes of the mesh
  * representing the scalar pressure field
  */
-void registerMortarPressures( IndexT mesh_id,
-                              const RealT * pressures );
+void registerMortarPressures( IndexT mesh_id, const RealT* pressures );
 
 /// register an integer nodal field
-void registerIntNodalField( IndexT mesh_id,
-                            const IntNodalFields field,
-                            int * fieldVariable );
+void registerIntNodalField( IndexT mesh_id, const IntNodalFields field, int* fieldVariable );
 
-/// register a real element field or parameter 
-void registerRealElementField( IndexT mesh_id,
-                               const RealElementFields field,
-                               const RealT * fieldVariable );
+/// register a real element field or parameter
+void registerRealElementField( IndexT mesh_id, const RealElementFields field, const RealT* fieldVariable );
 
 /// register an integer element field
-void registerIntElementField( IndexT mesh_id,
-                              const IntElementFields field,
-                              int * fieldVariable );
+void registerIntElementField( IndexT mesh_id, const IntElementFields field, int* fieldVariable );
 
 /// @}
 
@@ -466,24 +430,17 @@ void registerIntElementField( IndexT mesh_id,
  * \note A mesh for the given contact surface must have already been registered
  *  prior to calling this method.
  */
-void registerCouplingScheme( IndexT cs_id,
-                             IndexT mesh_id1,
-                             IndexT mesh_id2,
-                             int contact_mode,
-                             int contact_case,
-                             int contact_method,
-                             int contact_model,
-                             int enforcement_method,
+void registerCouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, int contact_mode, int contact_case,
+                             int contact_method, int contact_model, int enforcement_method,
                              int binning_method = DEFAULT_BINNING_METHOD,
-                             ExecutionMode exec_mode = ExecutionMode::Dynamic);
+                             ExecutionMode exec_mode = ExecutionMode::Dynamic );
 /// @}
-
 
 /*!
  * \brief Sets the interacting cell-pairs manually.
  *
  * \param [in] cs_id      coupling scheme id
- * \param [in] numPairs   number of cell-pairs to be registered 
+ * \param [in] numPairs   number of cell-pairs to be registered
  * \param [in] mesh_id1   mesh id of the first cell in the pair list
  * \param [in] pairType1  cell type of the first cell in the pair list
  * \param [in] pairIndex1 index of the first cell in the pair list
@@ -492,15 +449,9 @@ void registerCouplingScheme( IndexT cs_id,
  * \param [in] pairIndex2 index of the second cell in the pair list
  *
  */
-void setInterfacePairs( IndexT cs_id,
-                        IndexT numPairs,
-                        IndexT const * mesh_id1,
-                        IndexT const * pairType1,
-                        IndexT const * pairIndex1,
-                        IndexT const * mesh_id2,
-                        IndexT const * pairType2,
-                        IndexT const * pairIndex2 );
-
+void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* mesh_id1, IndexT const* pairType1,
+                        IndexT const* pairIndex1, IndexT const* mesh_id2, IndexT const* pairType2,
+                        IndexT const* pairIndex2 );
 
 /*!
  * \brief Computes the contact response at the given cycle.
@@ -511,7 +462,7 @@ void setInterfacePairs( IndexT cs_id,
  *
  * \return rc return code, a non-zero return code indicates an error.
  */
-int update( int cycle, RealT t, RealT &dt );
+int update( int cycle, RealT t, RealT& dt );
 
 /// \name Contact Library finalization methods
 /// @{
@@ -524,6 +475,5 @@ void finalize();
 /// @}
 
 } /* namespace tribol */
-
 
 #endif /* TRIBOL_HPP_ */

@@ -3,6 +3,84 @@
 #
 # SPDX-License-Identifier: (MIT)
 
+
+#------------------------------------------------------------------------------
+# tribol_add_code_checks( PREFIX [prefix] )
+#
+# Adds code checks for all cpp/hpp files recursively under the current directory
+# that regex match INCLUDES and excludes any files that regex match EXCLUDES
+# 
+# This creates the following parent build targets:
+#  check - Runs a non file changing style check and CppCheck
+#  style - In-place code formatting
+#
+# Creates various child build targets that follow this pattern:
+#  tribol_<check|style>
+#  tribol_<cppcheck|clangformat>_<check|style>
+#
+# This also creates targets for running clang-tidy on the src/ and test/
+# directories, with a more permissive set of checks for the tests,
+# called tribol_guidelines_check and tribol_guidelines_check_tests, respectively
+#------------------------------------------------------------------------------
+macro(tribol_add_code_checks)
+
+  set(options)
+  set(singleValueArgs PREFIX)
+  set(multiValueArgs)
+
+  # Parse the arguments to the macro
+  cmake_parse_arguments(arg
+       "${options}" "${singleValueArgs}" "${multiValueArgs}" ${ARGN})
+
+  # Create file globbing expressions that only include directories that contain source
+  set(_base_dirs "src")
+  # Note: any extensions added here should also be added to BLT's lists in CMakeLists.txt
+  set(_ext_expressions "*.cpp" "*.hpp" "*.inl" "*.cuh" "*.cu" "*.cpp.in" "*.hpp.in")
+
+  set(_glob_expressions)
+  foreach(_exp ${_ext_expressions})
+      foreach(_base_dir ${_base_dirs})
+          list(APPEND _glob_expressions "${PROJECT_SOURCE_DIR}/${_base_dir}/${_exp}")
+      endforeach()
+  endforeach()
+
+  # Glob for list of files to run code checks on
+  set(_sources)
+  file(GLOB_RECURSE _sources ${_glob_expressions})
+
+  blt_add_code_checks(PREFIX          ${arg_PREFIX}
+                      SOURCES         ${_sources}
+                      CLANGFORMAT_CFG_FILE ${PROJECT_SOURCE_DIR}/.clang-format
+                      CPPCHECK_FLAGS  --enable=all --inconclusive)
+
+
+  set(_src_sources)
+  file(GLOB_RECURSE _src_sources "src/*.cpp" "src/*.hpp" "src/*.inl")
+  list(FILTER _src_sources EXCLUDE REGEX ".*/tests/.*pp")
+
+  blt_add_clang_tidy_target(NAME              ${arg_PREFIX}_guidelines_check
+                            CHECKS            "clang-analyzer-*,clang-analyzer-cplusplus*,cppcoreguidelines-*"
+                            SRC_FILES         ${_src_sources})
+
+  # Create list of recursive test directory glob expressions
+  # NOTE: GLOB operator ** did not appear to be supported by cmake and did not recursively find test subdirectories
+  # NOTE: Do not include all directories at root (for example: blt)
+
+  file(GLOB_RECURSE _test_sources "${PROJECT_SOURCE_DIR}/src/*.cpp" "${PROJECT_SOURCE_DIR}/tests/*.cpp")
+  list(FILTER _test_sources INCLUDE REGEX ".*/tests/.*pp")
+
+  blt_add_clang_tidy_target(NAME              ${arg_PREFIX}_guidelines_check_tests
+                            CHECKS            "clang-analyzer-*,clang-analyzer-cplusplus*,cppcoreguidelines-*,-cppcoreguidelines-avoid-magic-numbers"
+                            SRC_FILES         ${_test_sources})
+                                
+  if (ENABLE_COVERAGE)
+      blt_add_code_coverage_target(NAME   ${arg_PREFIX}_coverage
+                                   RUNNER ${CMAKE_MAKE_PROGRAM} test
+                                   SOURCE_DIRECTORIES ${PROJECT_SOURCE_DIR}/src )
+  endif()
+
+endmacro(tribol_add_code_checks)
+
 ##------------------------------------------------------------------------------
 ## tribol_assert_path_exists( path )
 ##

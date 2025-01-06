@@ -18,90 +18,90 @@
 // MFEM includes
 #include "mfem.hpp"
 
-namespace tribol
-{
+namespace tribol {
 
 // Forward Declarations
 class InterfacePairs;
 
 //------------------------------------------------------------------------------
 /*!
- * \brief Struct to hold data associated with a surface 
+ * \brief Struct to hold data associated with a surface
  *        contact element
  */
-struct SurfaceContactElem
-{
-   enum JacBlock { JguBlock, JrpBlock };
-   
-   /// Default constructor
-   SurfaceContactElem( );
+struct SurfaceContactElem {
+  enum JacBlock
+  {
+    JguBlock,
+    JrpBlock
+  };
 
-   /// Overloaded Constructor
-   TRIBOL_HOST_DEVICE SurfaceContactElem( int dimension, ///< [in] Dimension of the problem
-                                          RealT * x1,         ///< [in] Vertex coordinates of first face
-                                          RealT * x2,         ///< [in] Vertex coordinates of second face
-                                          RealT * xOverlap,   ///< [in] Vertex coordinates of overlap
-                                          int nFV,       ///< [in] Number of face vertices
-                                          int nPV,       ///< [in] Number of overlap vertices
-                                          const MeshData::Viewer* mesh1,      ///< [in] View of mesh 1
-                                          const MeshData::Viewer* mesh2,      ///< [in] View of mesh 2
-                                          int fId1,      ///< [in] Id for face 1
-                                          int fId2       ///< [in] Id for face 2
-                                        )
-     : dim(dimension)
-     , m_mesh1(mesh1)
-     , m_mesh2(mesh2)
-     , faceId1(fId1)
-     , faceId2(fId2)
-     , faceCoords1(x1)
-     , faceCoords2(x2)
-     , faceNormal1(nullptr)
-     , faceNormal2(nullptr)
-     , overlapCoords(xOverlap)
-     , overlapNormal(nullptr)
-     , numFaceVert(nFV)
-     , numPolyVert(nPV)
-     , overlapArea(0.)
-     , mortarWts(nullptr)
-     , numWts(0)
-     , numActiveGaps(0)
-     , blockJ(3)
+  /// Default constructor
+  SurfaceContactElem();
 
-   { }
+  /// Overloaded Constructor
+  TRIBOL_HOST_DEVICE SurfaceContactElem( int dimension,                  ///< [in] Dimension of the problem
+                                         RealT* x1,                      ///< [in] Vertex coordinates of first face
+                                         RealT* x2,                      ///< [in] Vertex coordinates of second face
+                                         RealT* xOverlap,                ///< [in] Vertex coordinates of overlap
+                                         int nFV,                        ///< [in] Number of face vertices
+                                         int nPV,                        ///< [in] Number of overlap vertices
+                                         const MeshData::Viewer* mesh1,  ///< [in] View of mesh 1
+                                         const MeshData::Viewer* mesh2,  ///< [in] View of mesh 2
+                                         int fId1,                       ///< [in] Id for face 1
+                                         int fId2                        ///< [in] Id for face 2
+                                         )
+      : dim( dimension ),
+        m_mesh1( mesh1 ),
+        m_mesh2( mesh2 ),
+        faceId1( fId1 ),
+        faceId2( fId2 ),
+        faceCoords1( x1 ),
+        faceCoords2( x2 ),
+        faceNormal1( nullptr ),
+        faceNormal2( nullptr ),
+        overlapCoords( xOverlap ),
+        overlapNormal( nullptr ),
+        numFaceVert( nFV ),
+        numPolyVert( nPV ),
+        overlapArea( 0. ),
+        mortarWts( nullptr ),
+        numWts( 0 ),
+        numActiveGaps( 0 ),
+        blockJ( 3 )
 
-   /// Destructor
-   TRIBOL_HOST_DEVICE ~SurfaceContactElem()
-   {
-      this->deallocateElem();
-   }
+  {
+  }
 
-   int dim;          ///< Problem dimension
-   const MeshData::Viewer* m_mesh1;      ///< Mesh view for face 1 (mortar)
-   const MeshData::Viewer* m_mesh2;      ///< Mesh view for face 2 (nonmortar)
-   int faceId1;      ///< Face Id for face 1 (mortar)
-   int faceId2;      ///< Face Id for face 2 (nonmortar)
-   RealT * faceCoords1;   ///< Coordinates of face 1 in 3D
-   RealT * faceCoords2;   ///< Coordinates of face 2 in 3D
-   RealT * faceNormal1;   ///< Components of face 1 normal
-   RealT * faceNormal2;   ///< Components of face 2 normal
-   RealT * overlapCoords; ///< Coordinates of overlap vertices in 3D
-   RealT * overlapNormal; ///< Components of overlap normal
-   int numFaceVert;  ///< Number of face vertices/nodes
-   int numPolyVert;  ///< Number of overlap vertices
-   RealT overlapArea;     ///< Area of polygonal overlap
+  /// Destructor
+  TRIBOL_HOST_DEVICE ~SurfaceContactElem() { this->deallocateElem(); }
 
-   RealT * mortarWts;   ///< Stacked array of mortar wts for mortar methods
-   int numWts;         ///< Number of mortar weights
+  int dim;                          ///< Problem dimension
+  const MeshData::Viewer* m_mesh1;  ///< Mesh view for face 1 (mortar)
+  const MeshData::Viewer* m_mesh2;  ///< Mesh view for face 2 (nonmortar)
+  int faceId1;                      ///< Face Id for face 1 (mortar)
+  int faceId2;                      ///< Face Id for face 2 (nonmortar)
+  RealT* faceCoords1;               ///< Coordinates of face 1 in 3D
+  RealT* faceCoords2;               ///< Coordinates of face 2 in 3D
+  RealT* faceNormal1;               ///< Components of face 1 normal
+  RealT* faceNormal2;               ///< Components of face 2 normal
+  RealT* overlapCoords;             ///< Coordinates of overlap vertices in 3D
+  RealT* overlapNormal;             ///< Components of overlap normal
+  int numFaceVert;                  ///< Number of face vertices/nodes
+  int numPolyVert;                  ///< Number of overlap vertices
+  RealT overlapArea;                ///< Area of polygonal overlap
 
-   int numActiveGaps;  ///< Number of local face-pair active gaps
+  RealT* mortarWts;  ///< Stacked array of mortar wts for mortar methods
+  int numWts;        ///< Number of mortar weights
 
-   StackArray<DeviceArray2D<RealT>, 9> blockJ; ///< Block element Jacobian contributions
+  int numActiveGaps;  ///< Number of local face-pair active gaps
 
-   /// routine to allocate space to store mortar weights
-   void allocateMortarWts();
+  StackArray<DeviceArray2D<RealT>, 9> blockJ;  ///< Block element Jacobian contributions
 
-   /// routine to initialize mortar weights
-   void initializeMortarWts( );
+  /// routine to allocate space to store mortar weights
+  void allocateMortarWts();
+
+  /// routine to initialize mortar weights
+  void initializeMortarWts();
 
   /*!
    * \brief routine to return mortar-nonmortar mortar weight
@@ -110,7 +110,7 @@ struct SurfaceContactElem
    * \param [in] b NONMORTAR node id
    *
    */
-   RealT getMortarNonmortarWt( const int a, const int b );
+  RealT getMortarNonmortarWt( const int a, const int b );
 
   /*!
    * \brief routine to return nonmortar-mortar mortar weights
@@ -119,7 +119,7 @@ struct SurfaceContactElem
    * \param [in] b MORTAR node id
    *
    */
-   RealT getNonmortarMortarWt( const int a, const int b );
+  RealT getNonmortarMortarWt( const int a, const int b );
 
   /*!
    * \brief routine to return nonmortar-nonmortar mortar weight
@@ -128,7 +128,7 @@ struct SurfaceContactElem
    * \param [in] b NONMORTAR node id
    *
    */
-   RealT getNonmortarNonmortarWt( const int a, const int b );
+  RealT getNonmortarNonmortarWt( const int a, const int b );
 
   /*!
    * \brief get array index for x-dimension face-pair Jacobian contribution
@@ -156,9 +156,7 @@ struct SurfaceContactElem
    *       getJacobianDimOffset()
    *
    */
-   int getJacobianIndex( JacBlock block,
-                         const int a, 
-                         const int b ) const;
+  int getJacobianIndex( JacBlock block, const int a, const int b ) const;
 
   /*!
    * \brief get element-pair Jacobian array offset due to incrementing the
@@ -179,7 +177,7 @@ struct SurfaceContactElem
    * x-dimension given by getJacobianIndex()
    *
    */
-   int getJacobianDimOffset( JacBlock block ) const;
+  int getJacobianDimOffset( JacBlock block ) const;
 
   /*!
    * \brief routine to allocate space to store contact element Jacobians
@@ -187,57 +185,53 @@ struct SurfaceContactElem
    * \param [in] method contact method
    *
    */
-   void allocateBlockJ( EnforcementMethod enf );
+  void allocateBlockJ( EnforcementMethod enf );
 
-   /// delete routine
-   TRIBOL_HOST_DEVICE void deallocateElem( );
+  /// delete routine
+  TRIBOL_HOST_DEVICE void deallocateElem();
 
-} ; // end of SurfaceContactElem definition
+};  // end of SurfaceContactElem definition
 
 //------------------------------------------------------------------------------
-class MethodData
-{
-public:
-   /*!
-    * \brief Constructor
-    */
-    MethodData();
+class MethodData {
+ public:
+  /*!
+   * \brief Constructor
+   */
+  MethodData();
 
-   /*!
-    * \brief Destructor
-    */
-   ~MethodData() { };
+  /*!
+   * \brief Destructor
+   */
+  ~MethodData(){};
 
-   /*!
-    * \brief allocate element Jacobian matrix storage
-    *
-    * \param [in] blockJSpaces list of block spaces used in the Jacobian matrix
-    * \param [in] nPairs approximate number of contacting face-pairs (used to
-    * allocate memory in the ArrayT)
-    */
-   void reserveBlockJ( ArrayT<BlockSpace>&& blockJSpaces, int nPairs );
-   
-   /*!
-    * \brief store an element contribution to all blocks of the Jacobian matrix
-    *
-    * \param [in] blockJElemIds list of element ids on each block space 
-    ^
-    * \param [in] blockJ 2D array of element Jacobian contributions (each array
-    * entry corresponds to a block of the Jacobian matrix)
-    */
-   void storeElemBlockJ( 
-      ArrayT<int>&& blockJElemIds,
-      const StackArray<DeviceArray2D<RealT>, 9>& blockJ
-   );
+  /*!
+   * \brief allocate element Jacobian matrix storage
+   *
+   * \param [in] blockJSpaces list of block spaces used in the Jacobian matrix
+   * \param [in] nPairs approximate number of contacting face-pairs (used to
+   * allocate memory in the ArrayT)
+   */
+  void reserveBlockJ( ArrayT<BlockSpace>&& blockJSpaces, int nPairs );
 
-   /*!
-    * \brief Returns the number of blocks in the Jacobian matrix
-    *
-    * See @ref getElementBlockJacobians for a definition of the blocks.
-    */
-   int getNSpaces() const { return m_blockJSpaces.size(); }
+  /*!
+   * \brief store an element contribution to all blocks of the Jacobian matrix
+   *
+   * \param [in] blockJElemIds list of element ids on each block space
+   ^
+   * \param [in] blockJ 2D array of element Jacobian contributions (each array
+   * entry corresponds to a block of the Jacobian matrix)
+   */
+  void storeElemBlockJ( ArrayT<int>&& blockJElemIds, const StackArray<DeviceArray2D<RealT>, 9>& blockJ );
 
-   /*!
+  /*!
+   * \brief Returns the number of blocks in the Jacobian matrix
+   *
+   * See @ref getElementBlockJacobians for a definition of the blocks.
+   */
+  int getNSpaces() const { return m_blockJSpaces.size(); }
+
+  /*!
    * \brief Get the element ids for each entry of the getBlockJ 2D ArrayT
    * sorted by block space
    *
@@ -249,12 +243,9 @@ public:
    *
    * \return nested array identifying element ids for a given block space
    */
-   const ArrayT<ArrayT<int>>& getBlockJElementIds() const
-   { 
-      return m_blockJElemIds;
-   }
+  const ArrayT<ArrayT<int>>& getBlockJElementIds() const { return m_blockJElemIds; }
 
-   /*!
+  /*!
    * \brief Get element Jacobian contributions sorted by block space and element
    *
    * \note Method returns a nested array. With getBlockJ()(i,j)[k], the index i
@@ -266,106 +257,94 @@ public:
    * \return nested array identifying element Jacobian contributions for given
    * test and trial block spaces
    */
-   const ArrayT<ArrayT<mfem::DenseMatrix>, 2>& getBlockJ() const
-   {
-      return m_blockJ;
-   }
+  const ArrayT<ArrayT<mfem::DenseMatrix>, 2>& getBlockJ() const { return m_blockJ; }
 
-private:
-
-   ArrayT<BlockSpace> m_blockJSpaces; ///< list of Jacobian blocks in use
-   ArrayT<ArrayT<int>> m_blockJElemIds; ///< element ids for element Jacobian contributions
-   ArrayT<ArrayT<mfem::DenseMatrix>, 2> m_blockJ; ///< element Jacobian contributions by block
+ private:
+  ArrayT<BlockSpace> m_blockJSpaces;              ///< list of Jacobian blocks in use
+  ArrayT<ArrayT<int>> m_blockJElemIds;            ///< element ids for element Jacobian contributions
+  ArrayT<ArrayT<mfem::DenseMatrix>, 2> m_blockJ;  ///< element Jacobian contributions by block
 };
 
 //------------------------------------------------------------------------------
-class MortarData : public MethodData 
-{
-public:
-   /*!
-    * \brief Constructor
-    */
-    MortarData();
+class MortarData : public MethodData {
+ public:
+  /*!
+   * \brief Constructor
+   */
+  MortarData();
 
-   /*!
-    * \brief Destructor
-    */
-   ~MortarData();
+  /*!
+   * \brief Destructor
+   */
+  ~MortarData();
 
-   int m_numTotalNodes;
+  int m_numTotalNodes;
 
-   /*!
-    * \brief allocate object's mfem sparse matrix
-    * 
-    * \param [in] numRows number of rows in matrix
-    *
-    * \note number of columns is same as number of rows
-    * 
-    */
-   void allocateMfemSparseMatrix( const int numRows )
-   {
-      if (this->m_smat != nullptr)
-      {
-         delete this->m_smat;
-         this->m_smat = nullptr;
-         this->m_smat = new mfem::SparseMatrix( numRows, numRows );
-      }
-
+  /*!
+   * \brief allocate object's mfem sparse matrix
+   *
+   * \param [in] numRows number of rows in matrix
+   *
+   * \note number of columns is same as number of rows
+   *
+   */
+  void allocateMfemSparseMatrix( const int numRows )
+  {
+    if ( this->m_smat != nullptr ) {
+      delete this->m_smat;
+      this->m_smat = nullptr;
       this->m_smat = new mfem::SparseMatrix( numRows, numRows );
-   }
+    }
 
-   /// get mfem sparse matrix object
-   mfem::SparseMatrix * getMfemSparseMatrix() const { return m_smat; }
+    this->m_smat = new mfem::SparseMatrix( numRows, numRows );
+  }
 
-   /*!
-    * \brief get the underlying CSR arrays of mfem sparse matrix object
-    * 
-    * \param [out] I offsets array
-    * \param [out] J column index array for each nonzero value
-    * \param [out] vals nonzero values array
-    * \param [out] n_offsets pointer to the number of offsets (size of I array)
-    * \param [out] n_nonzero pointer to the number of non zeros 
-    *                        (size of J and vals arrays)
-    * 
-    * \post n_offsets will store the number of offsets, if a non-nullptr was passed in
-    * \post n_nonzero will store the number of non-zeros, if a non-nullptr was passed in
-    */
-   void getCSRArrays( int** I, 
-                      int** J, 
-                      RealT** vals,
-                      int* n_offsets = nullptr, 
-                      int* n_nonzero = nullptr );
+  /// get mfem sparse matrix object
+  mfem::SparseMatrix* getMfemSparseMatrix() const { return m_smat; }
 
-   /*!
-    * \brief Assembles local contact element Jacobian contributions into 
-    *        MFEM sparse matrix on the coupling scheme object
-    * 
-    * \param [in] elem surface contact element struct with Jacobian data
-    * \param [in] sparse mode for assembly
-    *
-    */
-   void assembleJacobian( SurfaceContactElem & elem,
-                          SparseMode s_mode ) const;
+  /*!
+   * \brief get the underlying CSR arrays of mfem sparse matrix object
+   *
+   * \param [out] I offsets array
+   * \param [out] J column index array for each nonzero value
+   * \param [out] vals nonzero values array
+   * \param [out] n_offsets pointer to the number of offsets (size of I array)
+   * \param [out] n_nonzero pointer to the number of non zeros
+   *                        (size of J and vals arrays)
+   *
+   * \post n_offsets will store the number of offsets, if a non-nullptr was passed in
+   * \post n_nonzero will store the number of non-zeros, if a non-nullptr was passed in
+   */
+  void getCSRArrays( int** I, int** J, RealT** vals, int* n_offsets = nullptr, int* n_nonzero = nullptr );
 
-   /*!
-    * \brief Assembles local contact element mortar weights into 
-    *        MFEM sparse matrix on the coupling scheme object
-    * 
-    * \param [in] elem surface contact element struct with Jacobian data
-    * \param [in] s_mode sparse mode option
-    *
-    */
-   void assembleMortarWts( SurfaceContactElem & elem, SparseMode s_mode ) const;
+  /*!
+   * \brief Assembles local contact element Jacobian contributions into
+   *        MFEM sparse matrix on the coupling scheme object
+   *
+   * \param [in] elem surface contact element struct with Jacobian data
+   * \param [in] sparse mode for assembly
+   *
+   */
+  void assembleJacobian( SurfaceContactElem& elem, SparseMode s_mode ) const;
 
-private:
-   // mfem sparse matrix for Jacobian contributions for both meshes 
-   // involved in a coupling scheme or for mortar weights
-   mutable mfem::SparseMatrix * m_smat; ///< mfem sparse matrix for Jacobian or weights storage
+  /*!
+   * \brief Assembles local contact element mortar weights into
+   *        MFEM sparse matrix on the coupling scheme object
+   *
+   * \param [in] elem surface contact element struct with Jacobian data
+   * \param [in] s_mode sparse mode option
+   *
+   */
+  void assembleMortarWts( SurfaceContactElem& elem, SparseMode s_mode ) const;
 
-   DISABLE_COPY_AND_ASSIGNMENT( MortarData );
-   DISABLE_MOVE_AND_ASSIGNMENT( MortarData );
+ private:
+  // mfem sparse matrix for Jacobian contributions for both meshes
+  // involved in a coupling scheme or for mortar weights
+  mutable mfem::SparseMatrix* m_smat;  ///< mfem sparse matrix for Jacobian or weights storage
 
+  DISABLE_COPY_AND_ASSIGNMENT( MortarData );
+  DISABLE_MOVE_AND_ASSIGNMENT( MortarData );
 };
 
-} // end namespace tribol
+}  // end namespace tribol
 #endif /* SRC_MESH_METHODCOUPLINGDATA_HPP_ */

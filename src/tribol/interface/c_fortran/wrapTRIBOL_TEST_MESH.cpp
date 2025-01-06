@@ -19,29 +19,28 @@ extern "C" {
 // splicer end C_definitions
 
 // Release library allocated memory.
-void TRIBOL_TEST_MESH_SHROUD_memory_destructor(TRIBOL_TEST_MESH_SHROUD_capsule_data *cap)
+void TRIBOL_TEST_MESH_SHROUD_memory_destructor( TRIBOL_TEST_MESH_SHROUD_capsule_data* cap )
 {
-    void *ptr = cap->addr;
-    switch (cap->idtor) {
-    case 0:   // --none--
+  void* ptr = cap->addr;
+  switch ( cap->idtor ) {
+    case 0:  // --none--
     {
-        // Nothing to delete
-        break;
+      // Nothing to delete
+      break;
     }
-    case 1:   // tribol::TestMesh
+    case 1:  // tribol::TestMesh
     {
-        tribol::TestMesh *cxx_ptr = reinterpret_cast<tribol::TestMesh *>(ptr);
-        delete cxx_ptr;
-        break;
+      tribol::TestMesh* cxx_ptr = reinterpret_cast<tribol::TestMesh*>( ptr );
+      delete cxx_ptr;
+      break;
     }
-    default:
-    {
-        // Unexpected case in destructor
-        break;
+    default: {
+      // Unexpected case in destructor
+      break;
     }
-    }
-    cap->addr = nullptr;
-    cap->idtor = 0;  // avoid deleting again
+  }
+  cap->addr = nullptr;
+  cap->idtor = 0;  // avoid deleting again
 }
 
 }  // extern "C"

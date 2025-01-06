@@ -48,9 +48,35 @@ if ("${PROJECT_SOURCE_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
         set(BLT_CXX_STD "c++14" CACHE STRING "")
     endif()
 
-    set(ENABLE_ASTYLE      OFF CACHE BOOL "")
-    set(ENABLE_CLANGFORMAT OFF CACHE BOOL "")
-    set(ENABLE_UNCRUSTIFY  OFF CACHE BOOL "")
+    # These BLT tools are not used in Tribol, turn them off
+    set(_unused_blt_tools
+        CLANGQUERY
+        VALGRIND
+        ASTYLE
+        CMAKEFORMAT
+        UNCRUSTIFY
+        YAPF)
+    foreach(_tool ${_unused_blt_tools})
+        set(ENABLE_${_tool} OFF CACHE BOOL "")
+    endforeach()
+
+    # These BLT tools are only used by Tribol developers, so turn them off
+    # unless an explicit executable path is given
+    set(_used_blt_tools
+        CLANGFORMAT
+        CLANGTIDY
+        CPPCHECK
+        DOXYGEN
+        SPHINX)
+    foreach(_tool ${_used_blt_tools})
+        if(NOT ${_tool}_EXECUTABLE)
+            set(ENABLE_${_tool} OFF CACHE BOOL "")
+        else()
+            set(ENABLE_${_tool} ON CACHE BOOL "")
+        endif()
+    endforeach()
+
+    set(BLT_REQUIRED_CLANGFORMAT_VERSION  "14" CACHE STRING "")
 endif()
 
 include(${BLT_SOURCE_DIR}/SetupBLT.cmake)
@@ -74,6 +100,32 @@ endif()
 include(cmake/TribolMacros.cmake)
 include(cmake/Options.cmake)
 include(cmake/TribolCompilerFlags.cmake)
+
+#------------------------------------------------------------------------------
+# Add Code Checks
+#------------------------------------------------------------------------------
+
+message(STATUS "Tribol Code Checks: ${TRIBOL_ENABLE_CODE_CHECKS}")
+
+# Add extra file extensions for code styling
+# Note: Add them also to tribol_add_code_checks in cmake/TribolMacros.cmake
+
+# CUDA
+list(APPEND BLT_C_FILE_EXTS ".cuh")
+# Configured C++ files
+list(APPEND BLT_C_FILE_EXTS ".cpp.in" ".hpp.in")
+
+if (TRIBOL_STYLE_CI_ONLY OR TRIBOL_ENABLE_CODE_CHECKS)
+    tribol_add_code_checks(PREFIX tribol)
+endif()
+
+if (TRIBOL_STYLE_CI_ONLY)
+    # Exit processing the rest of the build in style only build to avoid any possible
+    # CMake configuration issues outside of just enabling `make style`. This build,
+    # is not capable of building Tribol and should not be advertised. It is for CI 
+    # purposes only.
+    return()
+endif()
 
 #------------------------------------------------------------------------------
 # Add TPLs and source directories

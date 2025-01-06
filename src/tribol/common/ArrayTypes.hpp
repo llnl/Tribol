@@ -12,8 +12,7 @@
 #include "axom/core/Array.hpp"
 #include "axom/core/ArrayView.hpp"
 
-namespace tribol
-{
+namespace tribol {
 
 /**
  * @brief Array allocated on the free store, i.e. the heap
@@ -69,6 +68,6 @@ using MultiArrayView = ArrayT<ArrayViewT<T, 1, SPACE>, 1, SPACE>;
 template <typename T, MemorySpace SPACE = MemorySpace::Dynamic>
 using MultiViewArrayView = ArrayViewT<const ArrayViewT<T, 1, SPACE>, 1, SPACE>;
 
-} // namespace tribol
+}  // namespace tribol
 
 #endif /* TRIBOL_COMMON_ARRAYTYPES_HPP_ */

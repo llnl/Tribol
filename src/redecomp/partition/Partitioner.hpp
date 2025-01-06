@@ -12,32 +12,29 @@
 
 #include "redecomp/common/TypeDefs.hpp"
 
-namespace redecomp
-{
+namespace redecomp {
 
 /**
- * @brief Partitioner interface class 
+ * @brief Partitioner interface class
  */
-class Partitioner
-{
-public:
+class Partitioner {
+ public:
   /**
    * @brief Partitions entities in all par_meshes into n_parts pieces
-   * 
+   *
    * @param n_parts Number of subdomains to cut par_mesh entities into
    * @param par_meshes Original meshes
-   * @param ghost_size Entities within ghost_size distance from the edge of each subdomain are included in the subdomain as a ghost entity
+   * @param ghost_size Entities within ghost_size distance from the edge of each subdomain are included in the subdomain
+   * as a ghost entity
    * @return vector of EntityIndexByRank; lists of entities and ghost entities sorted by each subdomain
    */
-  virtual std::vector<EntityIndexByRank> generatePartitioning(
-    int n_parts,
-    const std::vector<const mfem::ParMesh*>& par_meshes,
-    double ghost_size
-  ) const = 0;
-  
+  virtual std::vector<EntityIndexByRank> generatePartitioning( int n_parts,
+                                                               const std::vector<const mfem::ParMesh*>& par_meshes,
+                                                               double ghost_size ) const = 0;
+
   /**
    * @brief Returns the MPIUtility associated with the Partitioner
-   * 
+   *
    * @return MPIUtility pointer
    */
   virtual const MPIUtility& getMPIUtility() const = 0;
@@ -46,7 +43,6 @@ public:
    * @brief Destroy the Partitioner object
    */
   virtual ~Partitioner() = default;
-
 };
 
 template <int NDIMS>
@@ -61,23 +57,20 @@ class PartitionMethod;
  * @tparam NDIMS number of dimensions
  */
 template <int NDIMS>
-class PartitionerByDim : public Partitioner
-{
-public:
+class PartitionerByDim : public Partitioner {
+ public:
   /**
    * @brief Construct a new PartitionerByDim object
-   * 
+   *
    * @param partition_entity Pointer to PartitionEntity member
    * @param partition_method Pointer to a PartitionMethod member
    */
-  PartitionerByDim(
-    std::unique_ptr<const PartitionEntity<NDIMS>> partition_entity,
-    std::unique_ptr<const PartitionMethod<NDIMS>> partition_method
-  );
+  PartitionerByDim( std::unique_ptr<const PartitionEntity<NDIMS>> partition_entity,
+                    std::unique_ptr<const PartitionMethod<NDIMS>> partition_method );
 
   /**
    * @brief Returns the MPIUtility associated with the Partitioner
-   * 
+   *
    * @return MPIUtility pointer
    */
   const MPIUtility& getMPIUtility() const override;
@@ -92,27 +85,24 @@ public:
    * @return vector of EntityIndexByRank; lists of entities and ghost entities
    * sorted by each subdomain
    */
-  std::vector<EntityIndexByRank> generatePartitioning(
-    int n_parts,
-    const std::vector<const mfem::ParMesh*>& par_meshes,
-    double ghost_size
-  ) const override;
+  std::vector<EntityIndexByRank> generatePartitioning( int n_parts, const std::vector<const mfem::ParMesh*>& par_meshes,
+                                                       double ghost_size ) const override;
 
   /**
    * @brief Get the PartitionEntity object
-   * 
+   *
    * @return PartitionEntity pointer
    */
   const PartitionEntity<NDIMS>* getPartitionEntity() const;
 
   /**
    * @brief Get the PartitionMethod object
-   * 
+   *
    * @return PartitionMethod pointer
    */
   const PartitionMethod<NDIMS>* getPartitionMethod() const;
 
-private:
+ private:
   /**
    * @brief Owned pointer to a PartitionEntity object
    *
@@ -123,7 +113,7 @@ private:
    *
    */
   const std::unique_ptr<const PartitionEntity<NDIMS>> partition_entity_;
-  
+
   /**
    * @brief Owned pointer to a PartitionMethod object
    *
@@ -134,12 +124,11 @@ private:
    *
    */
   const std::unique_ptr<const PartitionMethod<NDIMS>> partition_method_;
-
 };
 
 using Partitioner2D = PartitionerByDim<2>;
 using Partitioner3D = PartitionerByDim<3>;
 
-} // end namespace redecomp
+}  // end namespace redecomp
 
 #endif /* SRC_REDECOMP_PARTITION_PARTITIONER_HPP_ */

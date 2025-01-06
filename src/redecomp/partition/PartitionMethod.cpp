@@ -5,13 +5,12 @@
 
 #include "PartitionMethod.hpp"
 
-namespace redecomp
-{
+namespace redecomp {
 
 template <int NDIMS>
-PartitionMethod<NDIMS>::PartitionMethod(const MPI_Comm& comm)
-: mpi_ { comm }
-{}
+PartitionMethod<NDIMS>::PartitionMethod( const MPI_Comm& comm ) : mpi_{ comm }
+{
+}
 
 template <int NDIMS>
 const MPIUtility& PartitionMethod<NDIMS>::getMPIUtility() const
@@ -22,4 +21,4 @@ const MPIUtility& PartitionMethod<NDIMS>::getMPIUtility() const
 template class PartitionMethod<2>;
 template class PartitionMethod<3>;
 
-} // end namespace redecomp
+}  // end namespace redecomp

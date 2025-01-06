@@ -15,8 +15,7 @@
 // MFEM includes
 #include "mfem.hpp"
 
-namespace tribol
-{
+namespace tribol {
 
 /**
  * @brief Define and register a coupling scheme over an MFEM mesh
@@ -44,24 +43,17 @@ namespace tribol
  * @param [in] current_coords Coordinates associated with the MFEM volume mesh
  * @param [in] b_attributes_1 Boundary attributes defining the first mesh
  * @param [in] b_attributes_2 Boundary attributes defining the second mesh
- * @param [in] contact_mode 
- * @param [in] contact_case 
- * @param [in] contact_method 
- * @param [in] contact_model 
- * @param [in] enforcement_method 
- * @param [in] binning_method 
+ * @param [in] contact_mode
+ * @param [in] contact_case
+ * @param [in] contact_method
+ * @param [in] contact_model
+ * @param [in] enforcement_method
+ * @param [in] binning_method
  */
-void registerMfemCouplingScheme( IndexT cs_id,
-                                 int mesh_id_1,
-                                 int mesh_id_2,
-                                 const mfem::ParMesh& mesh,
-                                 const mfem::ParGridFunction& current_coords,
-                                 std::set<int> b_attributes_1,
-                                 std::set<int> b_attributes_2,
-                                 ContactMode contact_mode,
-                                 ContactCase contact_case,
-                                 ContactMethod contact_method,
-                                 ContactModel contact_model,
+void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, const mfem::ParMesh& mesh,
+                                 const mfem::ParGridFunction& current_coords, std::set<int> b_attributes_1,
+                                 std::set<int> b_attributes_2, ContactMode contact_mode, ContactCase contact_case,
+                                 ContactMethod contact_method, ContactModel contact_model,
                                  EnforcementMethod enforcement_method,
                                  BinningMethod binning_method = DEFAULT_BINNING_METHOD );
 
@@ -263,7 +255,7 @@ void getMfemGap( IndexT cs_id, mfem::Vector& g );
  * @pre Coupling scheme cs_id must be registered using
  * registerMfemCouplingScheme()
  *
- * @param cs_id Coupling scheme id with a registered MFEM mesh 
+ * @param cs_id Coupling scheme id with a registered MFEM mesh
  * @return mfem::ParGridFunction& Nodal pressure vector defined on the
  * parent-linked boundary submesh
  */
@@ -282,7 +274,7 @@ void updateMfemParallelDecomposition();
  *
  * @pre Coupling schemes must be registered using registerMfemCouplingScheme()
  * @pre Redecomp mesh must be created and up to date by calling updateMfemParallelDecomposition()
- * 
+ *
  * @param output_id Unique identifier in the saved file name (usually cycle number)
  */
 void saveRedecompMesh( int output_id );

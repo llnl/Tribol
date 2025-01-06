@@ -10,26 +10,22 @@
 
 #include "redecomp/transfer/GridFnTransfer.hpp"
 
-namespace redecomp
-{
+namespace redecomp {
 
 /**
  * @brief Transfer GridFunctions and QuadratureFunctions to/from Redecomp
- * 
+ *
  * Maps Redecomp-based mfem::GridFunctions and mfem::QuadratureFunctions to and
  * from a parent mfem::ParGridFunction.
  */
-class RedecompTransfer
-{
-public:
+class RedecompTransfer {
+ public:
   /**
    * @brief Construct a new RedecompTransfer object
-   * 
+   *
    * @param gf_transfer A pointer to a custom GridFnTransfer object
    */
-  RedecompTransfer(
-    std::unique_ptr<const GridFnTransfer> gf_transfer
-  );
+  RedecompTransfer( std::unique_ptr<const GridFnTransfer> gf_transfer );
 
   /**
    * @brief Construct a new RedecompTransfer object with nodal GridFunction
@@ -42,10 +38,7 @@ public:
    * @param parent_fes A ParFiniteElementSpace built on parent
    * @param redecomp_fes A FiniteElementSpace built on a RedecompMesh
    */
-  RedecompTransfer(
-    const mfem::ParFiniteElementSpace& parent_fes,
-    const mfem::FiniteElementSpace& redecomp_fes
-  );
+  RedecompTransfer( const mfem::ParFiniteElementSpace& parent_fes, const mfem::FiniteElementSpace& redecomp_fes );
 
   /**
    * @brief Construct a new RedecompTransfer object with element GridFunction transfer
@@ -61,10 +54,7 @@ public:
    * @param dst A redecomp GridFunction which receives values from a parent
    * ParGridFunction (src)
    */
-  void TransferToSerial(
-    const mfem::ParGridFunction& src,
-    mfem::GridFunction& dst
-  ) const;
+  void TransferToSerial( const mfem::ParGridFunction& src, mfem::GridFunction& dst ) const;
 
   /**
    * @brief Copies RedecompMesh-based mfem::GridFunction values to a
@@ -75,24 +65,18 @@ public:
    * @param dst A parent ParGridFunction which receives values from a redecomp
    * GridFunction (src)
    */
-  void TransferToParallel(
-    const mfem::GridFunction& src, 
-    mfem::ParGridFunction& dst
-  ) const;
+  void TransferToParallel( const mfem::GridFunction& src, mfem::ParGridFunction& dst ) const;
 
   /**
-  * @brief Copies parent-based mfem::QuadratureFunction values to a
-  * RedecompMesh-based mfem::QuadratureFunction
+   * @brief Copies parent-based mfem::QuadratureFunction values to a
+   * RedecompMesh-based mfem::QuadratureFunction
    *
    * @param src A parent QuadratureFunction to be copied to corresponding
-  *  redecomp QuadratureFunction (dst)
+   *  redecomp QuadratureFunction (dst)
    * @param dst A redecomp QuadratureFunction which receives values from a
-  *  parent QuadratureFunction (src)
+   *  parent QuadratureFunction (src)
    */
-  void TransferToSerial(
-    const mfem::QuadratureFunction& src, 
-    mfem::QuadratureFunction& dst
-  ) const;
+  void TransferToSerial( const mfem::QuadratureFunction& src, mfem::QuadratureFunction& dst ) const;
 
   /**
    * @brief Copies RedecompMesh-based mfem::QuadratureFunction values to a
@@ -103,18 +87,15 @@ public:
    * @param dst A parent QuadratureFunction which receives values from a
    * redecomp GridFunction (src)
    */
-  void TransferToParallel(
-    const mfem::QuadratureFunction& src, 
-    mfem::QuadratureFunction& dst
-  ) const;
+  void TransferToParallel( const mfem::QuadratureFunction& src, mfem::QuadratureFunction& dst ) const;
 
-private:
+ private:
   /**
    * @brief Grid function transfer object
    */
   std::unique_ptr<const GridFnTransfer> gf_transfer_;
 };
 
-} // end namespace redecomp
+}  // end namespace redecomp
 
 #endif /* SRC_REDECOMP_REDECOMPTRANSFER_HPP_ */

@@ -2,7 +2,7 @@
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
- 
+
 #ifndef SRC_COMMON_EXECMODEL_HPP_
 #define SRC_COMMON_EXECMODEL_HPP_
 
@@ -13,8 +13,7 @@
 #include "axom/core/memory_management.hpp"
 #include "axom/slic.hpp"
 
-namespace tribol
-{
+namespace tribol {
 
 /**
  * @brief A MemorySpace ties a resource to an associated pointer
@@ -54,32 +53,28 @@ enum class ExecutionMode
 /**
  * @brief SFINAE struct to deduce axom memory space from a Tribol memory space
  * at compile time
- * 
- * @tparam MSPACE 
+ *
+ * @tparam MSPACE
  */
 template <MemorySpace MSPACE>
-struct toAxomMemorySpace
-{
+struct toAxomMemorySpace {
   static constexpr axom::MemorySpace value = axom::MemorySpace::Dynamic;
 };
 
 #ifdef TRIBOL_USE_UMPIRE
 
 template <>
-struct toAxomMemorySpace<MemorySpace::Host>
-{
+struct toAxomMemorySpace<MemorySpace::Host> {
   static constexpr axom::MemorySpace value = axom::MemorySpace::Host;
 };
 
 template <>
-struct toAxomMemorySpace<MemorySpace::Device>
-{
+struct toAxomMemorySpace<MemorySpace::Device> {
   static constexpr axom::MemorySpace value = axom::MemorySpace::Device;
 };
 
 template <>
-struct toAxomMemorySpace<MemorySpace::Unified>
-{
+struct toAxomMemorySpace<MemorySpace::Unified> {
   static constexpr axom::MemorySpace value = axom::MemorySpace::Unified;
 };
 
@@ -91,10 +86,9 @@ struct toAxomMemorySpace<MemorySpace::Unified>
 
 #ifdef TRIBOL_USE_UMPIRE
 
-inline umpire::resource::MemoryResourceType toUmpireMemoryType(MemorySpace mem_space)
+inline umpire::resource::MemoryResourceType toUmpireMemoryType( MemorySpace mem_space )
 {
-  switch (mem_space)
-  {
+  switch ( mem_space ) {
     case MemorySpace::Host:
       return umpire::resource::MemoryResourceType::Host;
     case MemorySpace::Device:
@@ -108,28 +102,26 @@ inline umpire::resource::MemoryResourceType toUmpireMemoryType(MemorySpace mem_s
 
 #endif
 
-inline int getResourceAllocatorID(MemorySpace mem_space)
+inline int getResourceAllocatorID( MemorySpace mem_space )
 {
   int allocator_id = axom::getDefaultAllocatorID();
 #ifdef TRIBOL_USE_UMPIRE
-  if (mem_space != MemorySpace::Dynamic)
-  {
-    allocator_id = axom::getUmpireResourceAllocatorID(toUmpireMemoryType(mem_space));
+  if ( mem_space != MemorySpace::Dynamic ) {
+    allocator_id = axom::getUmpireResourceAllocatorID( toUmpireMemoryType( mem_space ) );
   }
 #else
-  TRIBOL_UNUSED_VAR(mem_space);
+  TRIBOL_UNUSED_VAR( mem_space );
 #endif
   return allocator_id;
 }
 
-inline bool isOnDevice(ExecutionMode exec)
+inline bool isOnDevice( ExecutionMode exec )
 {
-  switch (exec)
-  {
-#if defined(TRIBOL_USE_CUDA)
+  switch ( exec ) {
+#if defined( TRIBOL_USE_CUDA )
     case ExecutionMode::Cuda:
       return true;
-#elif defined(TRIBOL_USE_HIP)
+#elif defined( TRIBOL_USE_HIP )
     case ExecutionMode::Hip:
       return true;
 #endif
@@ -138,17 +130,16 @@ inline bool isOnDevice(ExecutionMode exec)
       return false;
 #endif
     case ExecutionMode::Dynamic:
-      SLIC_ERROR_ROOT("Dynamic execution mode does not define a memory space location.");
+      SLIC_ERROR_ROOT( "Dynamic execution mode does not define a memory space location." );
       return false;
     case ExecutionMode::Sequential:
       return false;
     default:
-      SLIC_ERROR_ROOT("Unknown execution mode.");
+      SLIC_ERROR_ROOT( "Unknown execution mode." );
       return false;
   }
 }
 
-} // namespace tribol
-
+}  // namespace tribol
 
 #endif /* SRC_COMMON_EXECMODEL_HPP_ */
