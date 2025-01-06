@@ -56,7 +56,7 @@ class CommonPlaneTest : public ::testing::Test {
  protected:
 };
 
-TEST_F(CommonPlaneTest, zero_velocity_small_gap)
+TEST_F( CommonPlaneTest, zero_velocity_small_gap )
 {
   // This test uses a small gap with zero velocity to test both the
   // timestep vote gap check and velocity check with no resulting
@@ -90,13 +90,13 @@ TEST_F(CommonPlaneTest, zero_velocity_small_gap)
   RealT z_max2 = 2.;
 
   // compute element thickness for each block
-  RealT element_thickness1 = (z_max1 - z_min1) / nElemsZM;
-  RealT element_thickness2 = (z_max2 - z_min2) / nElemsZS;
+  RealT element_thickness1 = ( z_max1 - z_min1 ) / nElemsZM;
+  RealT element_thickness2 = ( z_max2 - z_min2 ) / nElemsZS;
 
   // setup mesh
-  this->m_mesh.setupContactMeshHex(nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
-                                   nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
-                                   0.);
+  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+                                    0. );
 
   // specify dt and component velocities for each block.
   // Large velocity in the z-direction will incite a change in the
@@ -113,14 +113,14 @@ TEST_F(CommonPlaneTest, zero_velocity_small_gap)
   RealT velY2 = 0.;
   RealT velZ2 = 0.;
 
-  this->m_mesh.allocateAndSetVelocities(m_mesh.mortarMeshId, velX1, velY1, velZ1);
-  this->m_mesh.allocateAndSetVelocities(m_mesh.nonmortarMeshId, velX2, velY2, -velZ2);
+  this->m_mesh.allocateAndSetVelocities( m_mesh.mortarMeshId, velX1, velY1, velZ1 );
+  this->m_mesh.allocateAndSetVelocities( m_mesh.nonmortarMeshId, velX2, velY2, -velZ2 );
 
   // allocate and set element thickness and bulk modulus
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.mortarMeshId, element_thickness1);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.mortarMeshId, bulk_mod1);
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.nonmortarMeshId, element_thickness2);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.nonmortarMeshId, bulk_mod2);
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.mortarMeshId, element_thickness1 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.mortarMeshId, bulk_mod1 );
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.nonmortarMeshId, element_thickness2 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.nonmortarMeshId, bulk_mod2 );
 
   // call tribol setup and update
   tribol::TestControlParameters parameters;
@@ -131,15 +131,15 @@ TEST_F(CommonPlaneTest, zero_velocity_small_gap)
   parameters.timestep_pen_frac = 0.3;
 
   int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
-      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters);
+      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters );
 
-  EXPECT_EQ(test_mesh_update_err, 0);
-  EXPECT_EQ(parameters.dt, dt);
+  EXPECT_EQ( test_mesh_update_err, 0 );
+  EXPECT_EQ( parameters.dt, dt );
 
   tribol::finalize();
 }
 
-TEST_F(CommonPlaneTest, large_velocity_small_gap_dt_not_enabled)
+TEST_F( CommonPlaneTest, large_velocity_small_gap_dt_not_enabled )
 {
   // This test has a small gap and large interpen velocity, but does not
   // call the API function to return a timestep vote. As such, we expect
@@ -173,13 +173,13 @@ TEST_F(CommonPlaneTest, large_velocity_small_gap_dt_not_enabled)
   RealT z_max2 = 2.;
 
   // compute element thickness for each block
-  RealT element_thickness1 = (z_max1 - z_min1) / nElemsZM;
-  RealT element_thickness2 = (z_max2 - z_min2) / nElemsZS;
+  RealT element_thickness1 = ( z_max1 - z_min1 ) / nElemsZM;
+  RealT element_thickness2 = ( z_max2 - z_min2 ) / nElemsZS;
 
   // setup mesh
-  this->m_mesh.setupContactMeshHex(nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
-                                   nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
-                                   0.);
+  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+                                    0. );
 
   // specify dt and component velocities for each block.
   // Large velocity in the z-direction will incite a change in the
@@ -197,14 +197,14 @@ TEST_F(CommonPlaneTest, large_velocity_small_gap_dt_not_enabled)
   RealT velY2 = 0.;
   RealT velZ2 = vel_factor * 0.3 * element_thickness2 / dt;
 
-  this->m_mesh.allocateAndSetVelocities(m_mesh.mortarMeshId, velX1, velY1, velZ1);
-  this->m_mesh.allocateAndSetVelocities(m_mesh.nonmortarMeshId, velX2, velY2, -velZ2);
+  this->m_mesh.allocateAndSetVelocities( m_mesh.mortarMeshId, velX1, velY1, velZ1 );
+  this->m_mesh.allocateAndSetVelocities( m_mesh.nonmortarMeshId, velX2, velY2, -velZ2 );
 
   // allocate and set element thickness and bulk modulus
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.mortarMeshId, element_thickness1);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.mortarMeshId, bulk_mod1);
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.nonmortarMeshId, element_thickness2);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.nonmortarMeshId, bulk_mod2);
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.mortarMeshId, element_thickness1 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.mortarMeshId, bulk_mod1 );
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.nonmortarMeshId, element_thickness2 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.nonmortarMeshId, bulk_mod2 );
 
   // call tribol setup and update
   tribol::TestControlParameters parameters;
@@ -215,15 +215,15 @@ TEST_F(CommonPlaneTest, large_velocity_small_gap_dt_not_enabled)
   parameters.timestep_pen_frac = 0.3;
 
   int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
-      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters);
+      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters );
 
-  EXPECT_EQ(test_mesh_update_err, 0);
-  EXPECT_EQ(parameters.dt, dt);
+  EXPECT_EQ( test_mesh_update_err, 0 );
+  EXPECT_EQ( parameters.dt, dt );
 
   tribol::finalize();
 }
 
-TEST_F(CommonPlaneTest, numerically_zero_velocity_small_gap)
+TEST_F( CommonPlaneTest, numerically_zero_velocity_small_gap )
 {
   // this test is meant to test tolerancing in the timestep calculation
   // when numerically zero velocities are present. This test caught a
@@ -260,13 +260,13 @@ TEST_F(CommonPlaneTest, numerically_zero_velocity_small_gap)
   RealT z_max2 = 2.;
 
   // compute element thickness for each block
-  RealT element_thickness1 = (z_max1 - z_min1) / nElemsZM;
-  RealT element_thickness2 = (z_max2 - z_min2) / nElemsZS;
+  RealT element_thickness1 = ( z_max1 - z_min1 ) / nElemsZM;
+  RealT element_thickness2 = ( z_max2 - z_min2 ) / nElemsZS;
 
   // setup mesh
-  this->m_mesh.setupContactMeshHex(nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
-                                   nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
-                                   0.);
+  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+                                    0. );
 
   // specify dt and component velocities for each block.
   // Large velocity in the z-direction will incite a change in the
@@ -283,14 +283,14 @@ TEST_F(CommonPlaneTest, numerically_zero_velocity_small_gap)
   RealT velY2 = -1.e-12;
   RealT velZ2 = -1.e-12;
 
-  this->m_mesh.allocateAndSetVelocities(m_mesh.mortarMeshId, velX1, velY1, velZ1);
-  this->m_mesh.allocateAndSetVelocities(m_mesh.nonmortarMeshId, velX2, velY2, -velZ2);
+  this->m_mesh.allocateAndSetVelocities( m_mesh.mortarMeshId, velX1, velY1, velZ1 );
+  this->m_mesh.allocateAndSetVelocities( m_mesh.nonmortarMeshId, velX2, velY2, -velZ2 );
 
   // allocate and set element thickness and bulk modulus
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.mortarMeshId, element_thickness1);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.mortarMeshId, bulk_mod1);
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.nonmortarMeshId, element_thickness2);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.nonmortarMeshId, bulk_mod2);
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.mortarMeshId, element_thickness1 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.mortarMeshId, bulk_mod1 );
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.nonmortarMeshId, element_thickness2 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.nonmortarMeshId, bulk_mod2 );
 
   // call tribol setup and update
   tribol::TestControlParameters parameters;
@@ -301,17 +301,17 @@ TEST_F(CommonPlaneTest, numerically_zero_velocity_small_gap)
   parameters.timestep_pen_frac = 0.3;
 
   int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
-      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters);
+      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters );
 
-  EXPECT_EQ(test_mesh_update_err, 0);
+  EXPECT_EQ( test_mesh_update_err, 0 );
 
   // expect no change in dt
-  EXPECT_EQ(parameters.dt, dt);
+  EXPECT_EQ( parameters.dt, dt );
 
   tribol::finalize();
 }
 
-TEST_F(CommonPlaneTest, zero_velocity_large_gap)
+TEST_F( CommonPlaneTest, zero_velocity_large_gap )
 {
   // This is a tricky test where even in the presence of a large gap, there
   // is no change to the timestep because with zero velocity, no reduction in the
@@ -346,13 +346,13 @@ TEST_F(CommonPlaneTest, zero_velocity_large_gap)
   RealT z_max2 = 2.;
 
   // compute element thickness for each block
-  RealT element_thickness1 = (z_max1 - z_min1) / nElemsZM;
-  RealT element_thickness2 = (z_max2 - z_min2) / nElemsZS;
+  RealT element_thickness1 = ( z_max1 - z_min1 ) / nElemsZM;
+  RealT element_thickness2 = ( z_max2 - z_min2 ) / nElemsZS;
 
   // setup mesh
-  this->m_mesh.setupContactMeshHex(nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
-                                   nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
-                                   0.);
+  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+                                    0. );
 
   // specify dt and component velocities for each block.
   // Large velocity in the z-direction will incite a change in the
@@ -369,14 +369,14 @@ TEST_F(CommonPlaneTest, zero_velocity_large_gap)
   RealT velY2 = 0.;
   RealT velZ2 = 0.;
 
-  this->m_mesh.allocateAndSetVelocities(m_mesh.mortarMeshId, velX1, velY1, velZ1);
-  this->m_mesh.allocateAndSetVelocities(m_mesh.nonmortarMeshId, velX2, velY2, -velZ2);
+  this->m_mesh.allocateAndSetVelocities( m_mesh.mortarMeshId, velX1, velY1, velZ1 );
+  this->m_mesh.allocateAndSetVelocities( m_mesh.nonmortarMeshId, velX2, velY2, -velZ2 );
 
   // allocate and set element thickness and bulk modulus
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.mortarMeshId, element_thickness1);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.mortarMeshId, bulk_mod1);
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.nonmortarMeshId, element_thickness2);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.nonmortarMeshId, bulk_mod2);
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.mortarMeshId, element_thickness1 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.mortarMeshId, bulk_mod1 );
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.nonmortarMeshId, element_thickness2 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.nonmortarMeshId, bulk_mod2 );
 
   // call tribol setup and update
   tribol::TestControlParameters parameters;
@@ -387,19 +387,19 @@ TEST_F(CommonPlaneTest, zero_velocity_large_gap)
   parameters.timestep_pen_frac = 0.3;
 
   int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
-      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters);
+      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters );
 
-  EXPECT_EQ(test_mesh_update_err, 0);
+  EXPECT_EQ( test_mesh_update_err, 0 );
   // note that with very small velocity, the dt estimate will be
   // very large, and won't change the timestep, even if the gap is large. This
   // allows for a soft contact response in the presence of a small velocity that
   // won't actually correct too much interpen with a contact dt vote
-  EXPECT_EQ(parameters.dt, dt);
+  EXPECT_EQ( parameters.dt, dt );
 
   tribol::finalize();
 }
 
-TEST_F(CommonPlaneTest, large_velocity_small_gap)
+TEST_F( CommonPlaneTest, large_velocity_small_gap )
 {
   // This test does call the timestep enabling API function and uses a large velocity
   // and small gap to check that the timestep velocity check triggers a change in dt
@@ -432,13 +432,13 @@ TEST_F(CommonPlaneTest, large_velocity_small_gap)
   RealT z_max2 = 2.;
 
   // compute element thickness for each block
-  RealT element_thickness1 = (z_max1 - z_min1) / nElemsZM;
-  RealT element_thickness2 = (z_max2 - z_min2) / nElemsZS;
+  RealT element_thickness1 = ( z_max1 - z_min1 ) / nElemsZM;
+  RealT element_thickness2 = ( z_max2 - z_min2 ) / nElemsZS;
 
   // setup mesh
-  this->m_mesh.setupContactMeshHex(nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
-                                   nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
-                                   0.);
+  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+                                    0. );
 
   // specify dt and component velocities for each block.
   // Large velocity in the z-direction will incite a change in the
@@ -456,14 +456,14 @@ TEST_F(CommonPlaneTest, large_velocity_small_gap)
   RealT velY2 = 0.;
   RealT velZ2 = vel_factor * 0.3 * element_thickness2 / dt;
 
-  this->m_mesh.allocateAndSetVelocities(m_mesh.mortarMeshId, velX1, velY1, velZ1);
-  this->m_mesh.allocateAndSetVelocities(m_mesh.nonmortarMeshId, velX2, velY2, -velZ2);
+  this->m_mesh.allocateAndSetVelocities( m_mesh.mortarMeshId, velX1, velY1, velZ1 );
+  this->m_mesh.allocateAndSetVelocities( m_mesh.nonmortarMeshId, velX2, velY2, -velZ2 );
 
   // allocate and set element thickness and bulk modulus
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.mortarMeshId, element_thickness1);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.mortarMeshId, bulk_mod1);
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.nonmortarMeshId, element_thickness2);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.nonmortarMeshId, bulk_mod2);
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.mortarMeshId, element_thickness1 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.mortarMeshId, bulk_mod1 );
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.nonmortarMeshId, element_thickness2 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.nonmortarMeshId, bulk_mod2 );
 
   // call tribol setup and update
   tribol::TestControlParameters parameters;
@@ -474,19 +474,19 @@ TEST_F(CommonPlaneTest, large_velocity_small_gap)
   parameters.timestep_pen_frac = 0.3;
 
   int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
-      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters);
+      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters );
 
-  EXPECT_EQ(test_mesh_update_err, 0);
+  EXPECT_EQ( test_mesh_update_err, 0 );
 
   RealT dt_vote = parameters.timestep_pen_frac * element_thickness1 / velZ1;
-  RealT dt_diff = std::abs(parameters.dt - dt_vote);
+  RealT dt_diff = std::abs( parameters.dt - dt_vote );
   RealT dt_tol = 1.e-8;
-  EXPECT_LT(dt_diff, dt_tol);
+  EXPECT_LT( dt_diff, dt_tol );
 
   tribol::finalize();
 }
 
-TEST_F(CommonPlaneTest, large_velocity_large_gap)
+TEST_F( CommonPlaneTest, large_velocity_large_gap )
 {
   // This test uses a large velocity AND large gap to ensure that
   // the minimum of both timestep checks modify the dt. If the gap
@@ -521,13 +521,13 @@ TEST_F(CommonPlaneTest, large_velocity_large_gap)
   RealT z_max2 = 2.;
 
   // compute element thickness for each block
-  RealT element_thickness1 = (z_max1 - z_min1) / nElemsZM;
-  RealT element_thickness2 = (z_max2 - z_min2) / nElemsZS;
+  RealT element_thickness1 = ( z_max1 - z_min1 ) / nElemsZM;
+  RealT element_thickness2 = ( z_max2 - z_min2 ) / nElemsZS;
 
   // setup mesh
-  this->m_mesh.setupContactMeshHex(nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
-                                   nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
-                                   0.);
+  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+                                    0. );
 
   // specify dt and component velocities for each block.
   // Large velocity in the z-direction will incite a change in the
@@ -545,14 +545,14 @@ TEST_F(CommonPlaneTest, large_velocity_large_gap)
   RealT velY2 = 0.;
   RealT velZ2 = vel_factor * 0.3 * element_thickness2 / dt;
 
-  this->m_mesh.allocateAndSetVelocities(m_mesh.mortarMeshId, velX1, velY1, velZ1);
-  this->m_mesh.allocateAndSetVelocities(m_mesh.nonmortarMeshId, velX2, velY2, -velZ2);
+  this->m_mesh.allocateAndSetVelocities( m_mesh.mortarMeshId, velX1, velY1, velZ1 );
+  this->m_mesh.allocateAndSetVelocities( m_mesh.nonmortarMeshId, velX2, velY2, -velZ2 );
 
   // allocate and set element thickness and bulk modulus
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.mortarMeshId, element_thickness1);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.mortarMeshId, bulk_mod1);
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.nonmortarMeshId, element_thickness2);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.nonmortarMeshId, bulk_mod2);
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.mortarMeshId, element_thickness1 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.mortarMeshId, bulk_mod1 );
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.nonmortarMeshId, element_thickness2 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.nonmortarMeshId, bulk_mod2 );
 
   // call tribol setup and update
   tribol::TestControlParameters parameters;
@@ -563,19 +563,19 @@ TEST_F(CommonPlaneTest, large_velocity_large_gap)
   parameters.timestep_pen_frac = 0.3;
 
   int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
-      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters);
+      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters );
 
-  EXPECT_EQ(test_mesh_update_err, 0);
+  EXPECT_EQ( test_mesh_update_err, 0 );
 
   RealT dt_vote = parameters.timestep_pen_frac * element_thickness1 / velZ1;
-  RealT dt_diff = std::abs(parameters.dt - dt_vote);
+  RealT dt_diff = std::abs( parameters.dt - dt_vote );
   RealT dt_tol = 1.e-8;
-  EXPECT_LT(dt_diff, dt_tol);
+  EXPECT_LT( dt_diff, dt_tol );
 
   tribol::finalize();
 }
 
-TEST_F(CommonPlaneTest, separation_velocity_small_gap)
+TEST_F( CommonPlaneTest, separation_velocity_small_gap )
 {
   // This test makes sure that there is no change to dt in
   // the presence of a separation velocity with small gap
@@ -608,13 +608,13 @@ TEST_F(CommonPlaneTest, separation_velocity_small_gap)
   RealT z_max2 = 2.;
 
   // compute element thickness for each block
-  RealT element_thickness1 = (z_max1 - z_min1) / nElemsZM;
-  RealT element_thickness2 = (z_max2 - z_min2) / nElemsZS;
+  RealT element_thickness1 = ( z_max1 - z_min1 ) / nElemsZM;
+  RealT element_thickness2 = ( z_max2 - z_min2 ) / nElemsZS;
 
   // setup mesh
-  this->m_mesh.setupContactMeshHex(nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
-                                   nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
-                                   0.);
+  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+                                    0. );
 
   // specify dt and component velocities for each block.
   // Large velocity in the z-direction will incite a change in the
@@ -632,14 +632,14 @@ TEST_F(CommonPlaneTest, separation_velocity_small_gap)
   RealT velY2 = 0.;
   RealT velZ2 = vel_factor * 0.3 * element_thickness2 / dt;
 
-  this->m_mesh.allocateAndSetVelocities(m_mesh.mortarMeshId, velX1, velY1, -velZ1);
-  this->m_mesh.allocateAndSetVelocities(m_mesh.nonmortarMeshId, velX2, velY2, velZ2);
+  this->m_mesh.allocateAndSetVelocities( m_mesh.mortarMeshId, velX1, velY1, -velZ1 );
+  this->m_mesh.allocateAndSetVelocities( m_mesh.nonmortarMeshId, velX2, velY2, velZ2 );
 
   // allocate and set element thickness and bulk modulus
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.mortarMeshId, element_thickness1);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.mortarMeshId, bulk_mod1);
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.nonmortarMeshId, element_thickness2);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.nonmortarMeshId, bulk_mod2);
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.mortarMeshId, element_thickness1 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.mortarMeshId, bulk_mod1 );
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.nonmortarMeshId, element_thickness2 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.nonmortarMeshId, bulk_mod2 );
 
   // call tribol setup and update
   tribol::TestControlParameters parameters;
@@ -650,17 +650,17 @@ TEST_F(CommonPlaneTest, separation_velocity_small_gap)
   parameters.timestep_pen_frac = 0.3;
 
   int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
-      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters);
+      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters );
 
-  EXPECT_EQ(test_mesh_update_err, 0);
+  EXPECT_EQ( test_mesh_update_err, 0 );
 
   // no change in dt because of separation velocities
-  EXPECT_EQ(parameters.dt, dt);
+  EXPECT_EQ( parameters.dt, dt );
 
   tribol::finalize();
 }
 
-TEST_F(CommonPlaneTest, large_velocity_large_separation)
+TEST_F( CommonPlaneTest, large_velocity_large_separation )
 {
   // This test uses two blocks with a large initial separation, and an interpen
   // velocity small enough that it should not trigger a timestep vote from the
@@ -694,13 +694,13 @@ TEST_F(CommonPlaneTest, large_velocity_large_separation)
   RealT z_max2 = 3.1;
 
   // compute element thickness for each block
-  RealT element_thickness1 = (z_max1 - z_min1) / nElemsZM;
-  RealT element_thickness2 = (z_max2 - z_min2) / nElemsZS;
+  RealT element_thickness1 = ( z_max1 - z_min1 ) / nElemsZM;
+  RealT element_thickness2 = ( z_max2 - z_min2 ) / nElemsZS;
 
   // setup mesh
-  this->m_mesh.setupContactMeshHex(nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
-                                   nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
-                                   0.);
+  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+                                    0. );
 
   // specify dt and component velocities for each block.
   // Large velocity in the z-direction will incite a change in the
@@ -718,14 +718,14 @@ TEST_F(CommonPlaneTest, large_velocity_large_separation)
   RealT velY2 = 0.;
   RealT velZ2 = vel_factor * 0.3 * element_thickness2 / dt;
 
-  this->m_mesh.allocateAndSetVelocities(m_mesh.mortarMeshId, velX1, velY1, velZ1);
-  this->m_mesh.allocateAndSetVelocities(m_mesh.nonmortarMeshId, velX2, velY2, -velZ2);
+  this->m_mesh.allocateAndSetVelocities( m_mesh.mortarMeshId, velX1, velY1, velZ1 );
+  this->m_mesh.allocateAndSetVelocities( m_mesh.nonmortarMeshId, velX2, velY2, -velZ2 );
 
   // allocate and set element thickness and bulk modulus
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.mortarMeshId, element_thickness1);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.mortarMeshId, bulk_mod1);
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.nonmortarMeshId, element_thickness2);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.nonmortarMeshId, bulk_mod2);
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.mortarMeshId, element_thickness1 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.mortarMeshId, bulk_mod1 );
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.nonmortarMeshId, element_thickness2 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.nonmortarMeshId, bulk_mod2 );
 
   // call tribol setup and update
   tribol::TestControlParameters parameters;
@@ -736,17 +736,17 @@ TEST_F(CommonPlaneTest, large_velocity_large_separation)
   parameters.timestep_pen_frac = 0.3;
 
   int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
-      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters);
+      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters );
 
-  EXPECT_EQ(test_mesh_update_err, 0);
+  EXPECT_EQ( test_mesh_update_err, 0 );
 
   // no change in dt due to separation velocities
-  EXPECT_EQ(parameters.dt, dt);
+  EXPECT_EQ( parameters.dt, dt );
 
   tribol::finalize();
 }
 
-TEST_F(CommonPlaneTest, large_velocity_small_separation)
+TEST_F( CommonPlaneTest, large_velocity_small_separation )
 {
   // this test checks the two blocks with a small initial separation
   // and a large velocity. This should trigger a velocity projection
@@ -780,13 +780,13 @@ TEST_F(CommonPlaneTest, large_velocity_small_separation)
   RealT z_max2 = 2.0001;
 
   // compute element thickness for each block
-  RealT element_thickness1 = (z_max1 - z_min1) / nElemsZM;
-  RealT element_thickness2 = (z_max2 - z_min2) / nElemsZS;
+  RealT element_thickness1 = ( z_max1 - z_min1 ) / nElemsZM;
+  RealT element_thickness2 = ( z_max2 - z_min2 ) / nElemsZS;
 
   // setup mesh
-  this->m_mesh.setupContactMeshHex(nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
-                                   nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
-                                   0.);
+  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+                                    0. );
 
   // specify dt and component velocities for each block.
   // Large velocity in the z-direction will incite a change in the
@@ -804,14 +804,14 @@ TEST_F(CommonPlaneTest, large_velocity_small_separation)
   RealT velY2 = 0.;
   RealT velZ2 = vel_factor * 0.3 * element_thickness2 / dt;
 
-  this->m_mesh.allocateAndSetVelocities(m_mesh.mortarMeshId, velX1, velY1, velZ1);
-  this->m_mesh.allocateAndSetVelocities(m_mesh.nonmortarMeshId, velX2, velY2, -velZ2);
+  this->m_mesh.allocateAndSetVelocities( m_mesh.mortarMeshId, velX1, velY1, velZ1 );
+  this->m_mesh.allocateAndSetVelocities( m_mesh.nonmortarMeshId, velX2, velY2, -velZ2 );
 
   // allocate and set element thickness and bulk modulus
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.mortarMeshId, element_thickness1);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.mortarMeshId, bulk_mod1);
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.nonmortarMeshId, element_thickness2);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.nonmortarMeshId, bulk_mod2);
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.mortarMeshId, element_thickness1 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.mortarMeshId, bulk_mod1 );
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.nonmortarMeshId, element_thickness2 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.nonmortarMeshId, bulk_mod2 );
 
   // call tribol setup and update
   tribol::TestControlParameters parameters;
@@ -822,18 +822,18 @@ TEST_F(CommonPlaneTest, large_velocity_small_separation)
   parameters.timestep_pen_frac = 0.3;
 
   int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
-      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters);
+      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters );
 
-  EXPECT_EQ(test_mesh_update_err, 0);
+  EXPECT_EQ( test_mesh_update_err, 0 );
   RealT dt_vote = parameters.timestep_pen_frac * element_thickness1 / velZ1;
-  RealT dt_diff = std::abs(parameters.dt - dt_vote);
+  RealT dt_diff = std::abs( parameters.dt - dt_vote );
   RealT dt_tol = 1.e-8;
-  EXPECT_LT(dt_diff, dt_tol);
+  EXPECT_LT( dt_diff, dt_tol );
 
   tribol::finalize();
 }
 
-TEST_F(CommonPlaneTest, large_velocity_small_separation_set_alpha)
+TEST_F( CommonPlaneTest, large_velocity_small_separation_set_alpha )
 {
   // this test checks the two blocks with a small initial separation
   // and a large velocity. This should trigger a velocity projection
@@ -867,13 +867,13 @@ TEST_F(CommonPlaneTest, large_velocity_small_separation_set_alpha)
   RealT z_max2 = 2.0001;
 
   // compute element thickness for each block
-  RealT element_thickness1 = (z_max1 - z_min1) / nElemsZM;
-  RealT element_thickness2 = (z_max2 - z_min2) / nElemsZS;
+  RealT element_thickness1 = ( z_max1 - z_min1 ) / nElemsZM;
+  RealT element_thickness2 = ( z_max2 - z_min2 ) / nElemsZS;
 
   // setup mesh
-  this->m_mesh.setupContactMeshHex(nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
-                                   nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
-                                   0.);
+  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+                                    0. );
 
   // specify dt and component velocities for each block.
   // Large velocity in the z-direction will incite a change in the
@@ -891,14 +891,14 @@ TEST_F(CommonPlaneTest, large_velocity_small_separation_set_alpha)
   RealT velY2 = 0.;
   RealT velZ2 = vel_factor * 0.3 * element_thickness2 / dt;
 
-  this->m_mesh.allocateAndSetVelocities(m_mesh.mortarMeshId, velX1, velY1, velZ1);
-  this->m_mesh.allocateAndSetVelocities(m_mesh.nonmortarMeshId, velX2, velY2, -velZ2);
+  this->m_mesh.allocateAndSetVelocities( m_mesh.mortarMeshId, velX1, velY1, velZ1 );
+  this->m_mesh.allocateAndSetVelocities( m_mesh.nonmortarMeshId, velX2, velY2, -velZ2 );
 
   // allocate and set element thickness and bulk modulus
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.mortarMeshId, element_thickness1);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.mortarMeshId, bulk_mod1);
-  this->m_mesh.allocateAndSetElementThickness(m_mesh.nonmortarMeshId, element_thickness2);
-  this->m_mesh.allocateAndSetBulkModulus(m_mesh.nonmortarMeshId, bulk_mod2);
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.mortarMeshId, element_thickness1 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.mortarMeshId, bulk_mod1 );
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.nonmortarMeshId, element_thickness2 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.nonmortarMeshId, bulk_mod2 );
 
   // call tribol setup and update
   tribol::TestControlParameters parameters;
@@ -910,22 +910,22 @@ TEST_F(CommonPlaneTest, large_velocity_small_separation_set_alpha)
   parameters.timestep_scale = 0.5;
 
   int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
-      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters);
+      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters );
 
-  EXPECT_EQ(test_mesh_update_err, 0);
+  EXPECT_EQ( test_mesh_update_err, 0 );
   RealT dt_vote = parameters.timestep_scale * parameters.timestep_pen_frac * element_thickness1 / velZ1;
-  RealT dt_diff = std::abs(parameters.dt - dt_vote);
+  RealT dt_diff = std::abs( parameters.dt - dt_vote );
   RealT dt_tol = 1.e-8;
-  EXPECT_LT(dt_diff, dt_tol);
+  EXPECT_LT( dt_diff, dt_tol );
 
   tribol::finalize();
 }
 
-int main(int argc, char* argv[])
+int main( int argc, char* argv[] )
 {
   int result = 0;
 
-  ::testing::InitGoogleTest(&argc, argv);
+  ::testing::InitGoogleTest( &argc, argv );
 
 #ifdef TRIBOL_USE_UMPIRE
   umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager

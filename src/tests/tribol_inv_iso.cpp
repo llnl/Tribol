@@ -30,21 +30,22 @@ class InvIsoTest : public ::testing::Test {
 
   RealT* getZCoords() { return this->z; }
 
-  bool InvMap(RealT point[3], RealT const tol)
+  bool InvMap( RealT point[3], RealT const tol )
   {
     RealT x_sol[2];
-    tribol::InvIso(point, this->x, this->y, this->z, 4, x_sol);
+    tribol::InvIso( point, this->x, this->y, this->z, 4, x_sol );
 
     // test (xi,eta) obtained from inverse isoparametric
     // mapping by performing forward map of that point and
     // compare to original point.
-    RealT map_point[3] = {0., 0, 0};
-    tribol::FwdMapLinQuad(x_sol, this->x, this->y, this->z, map_point);
+    RealT map_point[3] = { 0., 0, 0 };
+    tribol::FwdMapLinQuad( x_sol, this->x, this->y, this->z, map_point );
 
     bool convrg = false;
-    RealT res = tribol::magnitude((point[0] - map_point[0]), (point[1] - map_point[1]), (point[2] - map_point[2]));
+    RealT res =
+        tribol::magnitude( ( point[0] - map_point[0] ), ( point[1] - map_point[1] ), ( point[2] - map_point[2] ) );
 
-    if (res < tol) {
+    if ( res < tol ) {
       convrg = true;
     }
 
@@ -55,21 +56,21 @@ class InvIsoTest : public ::testing::Test {
   void SetUp() override
   {
     this->numNodes = 4;
-    if (this->x == nullptr) {
+    if ( this->x == nullptr ) {
       this->x = new RealT[this->numNodes];
     } else {
       delete[] this->x;
       this->x = new RealT[this->numNodes];
     }
 
-    if (this->y == nullptr) {
+    if ( this->y == nullptr ) {
       this->y = new RealT[this->numNodes];
     } else {
       delete[] this->y;
       this->y = new RealT[this->numNodes];
     }
 
-    if (this->z == nullptr) {
+    if ( this->z == nullptr ) {
       this->z = new RealT[this->numNodes];
     } else {
       delete[] this->z;
@@ -79,27 +80,27 @@ class InvIsoTest : public ::testing::Test {
 
   void TearDown() override
   {
-    if (this->x != nullptr) {
+    if ( this->x != nullptr ) {
       delete[] this->x;
       this->x = nullptr;
     }
-    if (this->y != nullptr) {
+    if ( this->y != nullptr ) {
       delete[] this->y;
       this->y = nullptr;
     }
-    if (this->z != nullptr) {
+    if ( this->z != nullptr ) {
       delete[] this->z;
       this->z = nullptr;
     }
   }
 
  protected:
-  RealT* x{nullptr};
-  RealT* y{nullptr};
-  RealT* z{nullptr};
+  RealT* x{ nullptr };
+  RealT* y{ nullptr };
+  RealT* z{ nullptr };
 };
 
-TEST_F(InvIsoTest, nonaffine_centroid)
+TEST_F( InvIsoTest, nonaffine_centroid )
 {
   RealT* x = this->getXCoords();
   RealT* y = this->getYCoords();
@@ -123,13 +124,13 @@ TEST_F(InvIsoTest, nonaffine_centroid)
   RealT point[3];
 
   // initialize physical point array
-  for (int i = 0; i < 3; ++i) {
+  for ( int i = 0; i < 3; ++i ) {
     point[i] = 0.;
   }
 
   // generate physical space point to be mapped as
   // vertex averaged centroid of quad
-  for (int i = 0; i < 4; ++i) {
+  for ( int i = 0; i < 4; ++i ) {
     point[0] += x[i];
     point[1] += y[i];
     point[2] += z[i];
@@ -140,12 +141,12 @@ TEST_F(InvIsoTest, nonaffine_centroid)
   point[1] /= 4;
   point[2] /= 4;
 
-  bool convrg = this->InvMap(point, 1.e-6);
+  bool convrg = this->InvMap( point, 1.e-6 );
 
-  EXPECT_EQ(convrg, true);
+  EXPECT_EQ( convrg, true );
 }
 
-TEST_F(InvIsoTest, nonaffine_test_point)
+TEST_F( InvIsoTest, nonaffine_test_point )
 {
   RealT* x = this->getXCoords();
   RealT* y = this->getYCoords();
@@ -167,14 +168,14 @@ TEST_F(InvIsoTest, nonaffine_test_point)
   z[3] = 0.1;
 
   // hard code point
-  RealT point[3] = {0.215, 0.116, 0.1};
+  RealT point[3] = { 0.215, 0.116, 0.1 };
 
-  bool convrg = this->InvMap(point, 1.e-6);
+  bool convrg = this->InvMap( point, 1.e-6 );
 
-  EXPECT_EQ(convrg, true);
+  EXPECT_EQ( convrg, true );
 }
 
-TEST_F(InvIsoTest, affine_test_point)
+TEST_F( InvIsoTest, affine_test_point )
 {
   RealT* x = this->getXCoords();
   RealT* y = this->getYCoords();
@@ -202,16 +203,16 @@ TEST_F(InvIsoTest, affine_test_point)
   point[1] = 0.25;
   point[2] = 0.1;
 
-  bool convrg = this->InvMap(point, 1.e-6);
+  bool convrg = this->InvMap( point, 1.e-6 );
 
-  EXPECT_EQ(convrg, true);
+  EXPECT_EQ( convrg, true );
 }
 
-int main(int argc, char* argv[])
+int main( int argc, char* argv[] )
 {
   int result = 0;
 
-  ::testing::InitGoogleTest(&argc, argv);
+  ::testing::InitGoogleTest( &argc, argv );
 
   axom::slic::SimpleLogger logger;
 

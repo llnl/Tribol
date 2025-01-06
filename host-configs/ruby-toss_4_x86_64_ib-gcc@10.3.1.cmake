@@ -86,6 +86,10 @@ set(UMPIRE_DIR "${TPL_ROOT}/umpire-2024.02.0-fv6f2qx4x63mcrzdkpmw7ls4tlrckdyq" C
 
 set(DEVTOOLS_ROOT "/usr/WS2/smithdev/devtools/toss_4_x86_64_ib/2023_11_04_22_38_05/._view/i6qqmxmihtba7m3eojwix64slyuqqcsv" CACHE PATH "")
 
+set(TRIBOL_ENABLE_CODE_CHECKS ON CACHE BOOL "")
+
+set(ENABLE_CLANGFORMAT ON CACHE BOOL "")
+
 set(CLANGFORMAT_EXECUTABLE "/usr/tce/packages/clang/clang-14.0.6/bin/clang-format" CACHE PATH "")
 
 set(CLANGTIDY_EXECUTABLE "/usr/tce/packages/clang/clang-14.0.6/bin/clang-tidy" CACHE PATH "")

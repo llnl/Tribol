@@ -22,3 +22,5 @@ BraceWrapping:
 DerivePointerAlignment: false
 SortIncludes: false
 PointerAlignment: Left
+SpacesInParentheses: True
+SpaceInEmptyParentheses: False

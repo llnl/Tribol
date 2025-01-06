@@ -17,10 +17,10 @@ namespace tribol {
 namespace {
 
 //------------------------------------------------------------------------------
-inline bool in_range(int target, int N)
+inline bool in_range( int target, int N )
 {
   // NOTE: assumes indexing starts from 0
-  return ((target >= 0) && (target < N));
+  return ( ( target >= 0 ) && ( target < N ) );
 }
 
 }  // end anonymous namespace
@@ -425,7 +425,7 @@ enum EnforcementInfo
  */
 struct LagrangeMultiplierImplicitOptions {
  public:
-  bool enforcement_option_set{false};
+  bool enforcement_option_set{ false };
 
   ImplicitEvalMode eval_mode;  ///! Implicit evaluation mode for residual, jacobian and gaps
   SparseMode sparse_mode;      ///! Mode for assembling sparse matrix contributions
@@ -440,12 +440,12 @@ struct PenaltyEnforcementOptions {
   KinematicPenaltyCalculation kinematic_calculation;
   RatePenaltyCalculation rate_calculation;
 
-  bool constraint_type_set{false};
-  bool kinematic_calc_set{false};
-  bool rate_calc_set{false};
+  bool constraint_type_set{ false };
+  bool kinematic_calc_set{ false };
+  bool rate_calc_set{ false };
 
-  RealT tiny_length{1.e-12};   ///! Small length to avoid division by zero
-  RealT tiny_penalty{1.e-12};  ///! Small penalty to avoid division by zero
+  RealT tiny_length{ 1.e-12 };   ///! Small length to avoid division by zero
+  RealT tiny_penalty{ 1.e-12 };  ///! Small penalty to avoid division by zero
 };
 
 /*!

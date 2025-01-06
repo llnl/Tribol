@@ -29,9 +29,9 @@ namespace tribol {
  * \pre z is nullptr for 2D
  *
  */
-TRIBOL_HOST_DEVICE void GalerkinEval(const RealT* const x, const RealT pX, const RealT pY, const RealT pZ,
-                                     FaceOrderType order_type, BasisEvalType basis_type, int dim, int galerkinDim,
-                                     RealT* nodeVals, RealT* galerkinVal);
+TRIBOL_HOST_DEVICE void GalerkinEval( const RealT* const x, const RealT pX, const RealT pY, const RealT pZ,
+                                      FaceOrderType order_type, BasisEvalType basis_type, int dim, int galerkinDim,
+                                      RealT* nodeVals, RealT* galerkinVal );
 
 /*!
  *
@@ -49,8 +49,8 @@ TRIBOL_HOST_DEVICE void GalerkinEval(const RealT* const x, const RealT pX, const
  * \pre z is nullptr for 2D
  *
  */
-TRIBOL_HOST_DEVICE void EvalBasis(const RealT* const x, const RealT pX, const RealT pY, const RealT pZ,
-                                  const int numPoints, const int vertexId, RealT& phi);
+TRIBOL_HOST_DEVICE void EvalBasis( const RealT* const x, const RealT pX, const RealT pY, const RealT pZ,
+                                   const int numPoints, const int vertexId, RealT& phi );
 
 /*!
  *
@@ -69,8 +69,8 @@ TRIBOL_HOST_DEVICE void EvalBasis(const RealT* const x, const RealT pX, const Re
  * \note This is implicitly a 3D routine
  *
  */
-TRIBOL_HOST_DEVICE void WachspressBasis(const RealT* const x, const RealT pX, const RealT pY, const RealT pZ,
-                                        const int numPoints, const int vertexId, RealT& phi);
+TRIBOL_HOST_DEVICE void WachspressBasis( const RealT* const x, const RealT pX, const RealT pY, const RealT pZ,
+                                         const int numPoints, const int vertexId, RealT& phi );
 
 /*!
  *
@@ -85,8 +85,8 @@ TRIBOL_HOST_DEVICE void WachspressBasis(const RealT* const x, const RealT pX, co
  * \note This is implicitly a 2D routine
  *
  */
-TRIBOL_HOST_DEVICE void SegmentBasis(const RealT* const x, const RealT pX, const RealT pY, const int vertexId,
-                                     RealT& phi);
+TRIBOL_HOST_DEVICE void SegmentBasis( const RealT* const x, const RealT pX, const RealT pY, const int vertexId,
+                                      RealT& phi );
 
 /*!
  *
@@ -106,7 +106,7 @@ TRIBOL_HOST_DEVICE void SegmentBasis(const RealT* const x, const RealT pX, const
  *       x[2] is equal to 0.
  *
  */
-void InvIso(const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA, const int numNodes, RealT xi[2]);
+void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA, const int numNodes, RealT xi[2] );
 
 /*!
  *
@@ -120,7 +120,7 @@ void InvIso(const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA,
  *
  *
  */
-void FwdMapLinQuad(const RealT xi[2], RealT xa[4], RealT ya[4], RealT za[4], RealT x[3]);
+void FwdMapLinQuad( const RealT xi[2], RealT xa[4], RealT ya[4], RealT za[4], RealT x[3] );
 
 /*!
  *
@@ -134,7 +134,7 @@ void FwdMapLinQuad(const RealT xi[2], RealT xa[4], RealT ya[4], RealT za[4], Rea
  *
  *
  */
-void FwdMapLinTri(const RealT xi[2], RealT xa[3], RealT ya[3], RealT za[3], RealT x[3]);
+void FwdMapLinTri( const RealT xi[2], RealT xa[3], RealT ya[3], RealT za[3], RealT x[3] );
 
 /*!
  *
@@ -150,7 +150,7 @@ void FwdMapLinTri(const RealT xi[2], RealT xa[3], RealT ya[3], RealT za[3], Real
  *
  *
  */
-void LinIsoQuadShapeFunc(const RealT xi, const RealT eta, const int a, RealT& phi);
+void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi );
 
 /*!
  *
@@ -169,7 +169,7 @@ void LinIsoQuadShapeFunc(const RealT xi, const RealT eta, const int a, RealT& ph
  *       of each node are as follows (-1,-1), (1,-1), (0,1).
  *
  */
-void LinIsoTriShapeFunc(const RealT xi, const RealT eta, const int a, RealT& phi);
+void LinIsoTriShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi );
 
 /*!
  *
@@ -189,7 +189,7 @@ void LinIsoTriShapeFunc(const RealT xi, const RealT eta, const int a, RealT& phi
  *       integrals
  *
  */
-void DetJQuad(const RealT xi, const RealT eta, const RealT* x, const int dim, RealT& detJ);
+void DetJQuad( const RealT xi, const RealT eta, const RealT* x, const int dim, RealT& detJ );
 
 }  // namespace tribol
 

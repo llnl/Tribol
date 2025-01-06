@@ -33,7 +33,7 @@ enum VariableType
  *
  *
  */
-void ComputeMortarWeights(SurfaceContactElem& elem);
+void ComputeMortarWeights( SurfaceContactElem& elem );
 
 /*!
  *
@@ -42,7 +42,7 @@ void ComputeMortarWeights(SurfaceContactElem& elem);
  * \param [in] cs pointer to coupling scheme
  *
  */
-void ComputeSingleMortarGaps(CouplingScheme* cs);
+void ComputeSingleMortarGaps( CouplingScheme* cs );
 
 /*!
  *
@@ -52,7 +52,7 @@ void ComputeSingleMortarGaps(CouplingScheme* cs);
  *
  */
 template <ContactMethod M>
-void ComputeNodalGap(SurfaceContactElem& elem);
+void ComputeNodalGap( SurfaceContactElem& elem );
 
 /*!
  *
@@ -64,7 +64,7 @@ void ComputeNodalGap(SurfaceContactElem& elem);
  *
  */
 template <>
-void ComputeNodalGap<SINGLE_MORTAR>(SurfaceContactElem& elem);
+void ComputeNodalGap<SINGLE_MORTAR>( SurfaceContactElem& elem );
 
 /*!
  *
@@ -76,7 +76,7 @@ void ComputeNodalGap<SINGLE_MORTAR>(SurfaceContactElem& elem);
  *
  */
 template <ContactMethod M, VariableType V>
-void ComputeResidualJacobian(SurfaceContactElem& elem);
+void ComputeResidualJacobian( SurfaceContactElem& elem );
 
 /*!
  *
@@ -88,7 +88,7 @@ void ComputeResidualJacobian(SurfaceContactElem& elem);
  *
  */
 template <ContactMethod M, VariableType V>
-void ComputeConstraintJacobian(SurfaceContactElem& elem);
+void ComputeConstraintJacobian( SurfaceContactElem& elem );
 
 /*!
  *
@@ -100,7 +100,7 @@ void ComputeConstraintJacobian(SurfaceContactElem& elem);
  *
  */
 template <>
-int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>(CouplingScheme* cs);
+int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs );
 
 /*!
  *
@@ -112,7 +112,7 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>(CouplingScheme* cs);
  *
  */
 template <>
-void ComputeResidualJacobian<SINGLE_MORTAR, PRIMAL>(SurfaceContactElem& elem);
+void ComputeResidualJacobian<SINGLE_MORTAR, PRIMAL>( SurfaceContactElem& elem );
 
 /*!
  *
@@ -124,7 +124,7 @@ void ComputeResidualJacobian<SINGLE_MORTAR, PRIMAL>(SurfaceContactElem& elem);
  *
  */
 template <>
-void ComputeResidualJacobian<SINGLE_MORTAR, DUAL>(SurfaceContactElem& elem);
+void ComputeResidualJacobian<SINGLE_MORTAR, DUAL>( SurfaceContactElem& elem );
 
 /*!
  *
@@ -136,7 +136,7 @@ void ComputeResidualJacobian<SINGLE_MORTAR, DUAL>(SurfaceContactElem& elem);
  *
  */
 template <>
-void ComputeConstraintJacobian<SINGLE_MORTAR, PRIMAL>(SurfaceContactElem& elem);
+void ComputeConstraintJacobian<SINGLE_MORTAR, PRIMAL>( SurfaceContactElem& elem );
 
 /*!
  *
@@ -148,7 +148,7 @@ void ComputeConstraintJacobian<SINGLE_MORTAR, PRIMAL>(SurfaceContactElem& elem);
  *
  */
 template <>
-void ComputeConstraintJacobian<SINGLE_MORTAR, DUAL>(SurfaceContactElem& elem);
+void ComputeConstraintJacobian<SINGLE_MORTAR, DUAL>( SurfaceContactElem& elem );
 
 /*!
  *
@@ -157,7 +157,7 @@ void ComputeConstraintJacobian<SINGLE_MORTAR, DUAL>(SurfaceContactElem& elem);
  * \param [in] elem surface contact element struct
  *
  */
-void ComputeSingleMortarJacobian(SurfaceContactElem& elem);
+void ComputeSingleMortarJacobian( SurfaceContactElem& elem );
 
 /*!
  *
@@ -169,7 +169,7 @@ void ComputeSingleMortarJacobian(SurfaceContactElem& elem);
  *
  */
 template <>
-int GetMethodData<MORTAR_WEIGHTS>(CouplingScheme* cs);
+int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs );
 
 }  // namespace tribol
 

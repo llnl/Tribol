@@ -48,7 +48,7 @@ class RedecompMesh : public mfem::Mesh {
    * @param parent The mfem::ParMesh that will be redecomposed
    * @param method The method of redecomposition (optional)
    */
-  RedecompMesh(const mfem::ParMesh& parent, PartitionType method = RCB);
+  RedecompMesh( const mfem::ParMesh& parent, PartitionType method = RCB );
 
   /**
    * @brief Construct a new RedecompMesh object
@@ -60,7 +60,7 @@ class RedecompMesh : public mfem::Mesh {
    * @param ghost_length Size of layer of un-owned ghost elements to include around the edge of the on-rank domain
    * @param method The method of redecomposition (optional)
    */
-  RedecompMesh(const mfem::ParMesh& parent, double ghost_length, PartitionType method = RCB);
+  RedecompMesh( const mfem::ParMesh& parent, double ghost_length, PartitionType method = RCB );
 
   /**
    * @brief Construct a new RedecompMesh object
@@ -72,7 +72,7 @@ class RedecompMesh : public mfem::Mesh {
    * @param parent The mfem::ParMesh that will be redecomposed
    * @param partitioner Partitioning object used to define redecomposition
    */
-  RedecompMesh(const mfem::ParMesh& parent, std::unique_ptr<const Partitioner> partitioner);
+  RedecompMesh( const mfem::ParMesh& parent, std::unique_ptr<const Partitioner> partitioner );
 
   /**
    * @brief Construct a new RedecompMesh object
@@ -85,7 +85,7 @@ class RedecompMesh : public mfem::Mesh {
    * @param ghost_length Size of layer of un-owned ghost elements to include around the edge of the on-rank domain
    * @param partitioner Partitioning object used to define redecomposition
    */
-  RedecompMesh(const mfem::ParMesh& parent, double ghost_length, std::unique_ptr<const Partitioner> partitioner);
+  RedecompMesh( const mfem::ParMesh& parent, double ghost_length, std::unique_ptr<const Partitioner> partitioner );
 
   /**
    * @brief Construct a new RedecompMesh object
@@ -94,7 +94,7 @@ class RedecompMesh : public mfem::Mesh {
    * @param p2r_elems List of local parent element ids to put on each
    * RedecompMesh rank
    */
-  RedecompMesh(const mfem::ParMesh& parent, EntityIndexByRank&& p2r_elems);
+  RedecompMesh( const mfem::ParMesh& parent, EntityIndexByRank&& p2r_elems );
 
   /**
    * @brief Get the parent mfem::ParMesh
@@ -149,7 +149,7 @@ class RedecompMesh : public mfem::Mesh {
    *
    * @return Largest element length in terms of stretch component at element centroid
    */
-  static double MaxElementSize(const mfem::ParMesh& parent, const MPIUtility& mpi);
+  static double MaxElementSize( const mfem::ParMesh& parent, const MPIUtility& mpi );
 
  private:
   /**
@@ -159,7 +159,7 @@ class RedecompMesh : public mfem::Mesh {
    *
    * @return Default ghost element lemgth
    */
-  double DefaultGhostLength(const mfem::ParMesh& parent) const;
+  double DefaultGhostLength( const mfem::ParMesh& parent ) const;
 
   /**
    * @brief Builds list of parent elements to be transfered to Redecomp ranks
@@ -169,7 +169,7 @@ class RedecompMesh : public mfem::Mesh {
    * @param ghost_length Size of layer of un-owned ghost elements to include around the edge of the on-rank domain
    * @return List of parent element IDs and ghost elements sorted by Redecomp rank
    */
-  EntityIndexByRank BuildP2RElementList(const Partitioner& partitioner, int n_parts, double ghost_length) const;
+  EntityIndexByRank BuildP2RElementList( const Partitioner& partitioner, int n_parts, double ghost_length ) const;
 
   /**
    * @brief Builds the Redecomp mesh and inverse element transfer list

@@ -18,30 +18,30 @@
 //------------------------------------------------------------------------------
 // UNIT TESTS
 //------------------------------------------------------------------------------
-TEST(tribol_check_tpl, check_axom)
+TEST( tribol_check_tpl, check_axom )
 {
-  EXPECT_TRUE(AXOM_VERSION_MAJOR >= 0);
-  EXPECT_TRUE(AXOM_VERSION_MINOR >= 0);
-  EXPECT_TRUE(AXOM_VERSION_PATCH >= 0);
+  EXPECT_TRUE( AXOM_VERSION_MAJOR >= 0 );
+  EXPECT_TRUE( AXOM_VERSION_MINOR >= 0 );
+  EXPECT_TRUE( AXOM_VERSION_PATCH >= 0 );
 
   std::string axom_version = AXOM_VERSION_FULL;
-  EXPECT_TRUE(!axom_version.empty());
+  EXPECT_TRUE( !axom_version.empty() );
 
   std::ostringstream oss;
   oss << "v" << AXOM_VERSION_MAJOR << "." << AXOM_VERSION_MINOR << "." << AXOM_VERSION_PATCH;
 
-  EXPECT_EQ(axom_version, oss.str());
+  EXPECT_EQ( axom_version, oss.str() );
 }
 
-TEST(tribol_check_tpl, print_axom_about) { axom::about(); }
+TEST( tribol_check_tpl, print_axom_about ) { axom::about(); }
 
 //------------------------------------------------------------------------------
 
-int main(int argc, char* argv[])
+int main( int argc, char* argv[] )
 {
   int result = 0;
 
-  ::testing::InitGoogleTest(&argc, argv);
+  ::testing::InitGoogleTest( &argc, argv );
 
   axom::slic::SimpleLogger logger;
 

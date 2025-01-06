@@ -50,7 +50,7 @@
  *
  * \return rc return code, a non-zero return code indicates an error.
  */
-int main(int argc, char** argv)
+int main( int argc, char** argv )
 {
   ////////////////////////////////
   //                            //
@@ -60,10 +60,10 @@ int main(int argc, char** argv)
 
   // initialize
 #ifdef TRIBOL_USE_MPI
-  MPI_Init(&argc, &argv);
+  MPI_Init( &argc, &argv );
 #endif
   tribol::CommT problem_comm = TRIBOL_COMM_WORLD;
-  initialize_logger(problem_comm);
+  initialize_logger( problem_comm );
 
 #ifdef TRIBOL_USE_UMPIRE
   umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
@@ -78,14 +78,14 @@ int main(int argc, char** argv)
     args.dump_vis = true;
 
     // parse the command line arguments
-    parse_command_line_args("Common plane example", args, argc, argv);
+    parse_command_line_args( "Common plane example", args, argc, argv );
   }
 
   // instantiate test mesh object. Note, this mesh object is a Tribol
   // utility for testing. In general, a physics application will have
   // their own mesh data.
   tribol::TestMesh mesh;
-  build_mesh_3D(mesh, args, NO_BCS);
+  build_mesh_3D( mesh, args, NO_BCS );
 
   tribol::TestControlParameters parameters;
   parameters.penalty_ratio = false;
@@ -100,13 +100,13 @@ int main(int argc, char** argv)
   // API function calls                             //
   //                                                //
   ////////////////////////////////////////////////////
-  int err = tribol_register_and_update(mesh, tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, args.dump_vis,
-                                       &parameters);
+  int err = tribol_register_and_update( mesh, tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS,
+                                        args.dump_vis, &parameters );
 
-  if (err == 1) {
-    SLIC_WARNING("Returned from tribol_register_and_update with error.");
+  if ( err == 1 ) {
+    SLIC_WARNING( "Returned from tribol_register_and_update with error." );
   } else {
-    SLIC_INFO("Example ran successfully.");
+    SLIC_INFO( "Example ran successfully." );
   }
 
   axom::slic::flushStreams();

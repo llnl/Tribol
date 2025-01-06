@@ -28,8 +28,8 @@ class SearchBase;
  * \param [in] auto_contact_check Is auto-contact assumed?
  *
  */
-TRIBOL_HOST_DEVICE bool geomFilter(IndexT element_id1, IndexT element_id2, const MeshData::Viewer& mesh1,
-                                   const MeshData::Viewer& mesh2, ContactMode mode, bool auto_contact_check);
+TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, const MeshData::Viewer& mesh1,
+                                    const MeshData::Viewer& mesh2, ContactMode mode, bool auto_contact_check );
 
 /*!
  * \class InterfacePairFinder
@@ -39,7 +39,7 @@ TRIBOL_HOST_DEVICE bool geomFilter(IndexT element_id1, IndexT element_id2, const
  */
 class InterfacePairFinder {
  public:
-  InterfacePairFinder(CouplingScheme* cs);
+  InterfacePairFinder( CouplingScheme* cs );
 
   ~InterfacePairFinder();
 

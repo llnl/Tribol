@@ -8,7 +8,7 @@
 namespace redecomp {
 
 template <int NDIMS>
-PartitionMethod<NDIMS>::PartitionMethod(const MPI_Comm& comm) : mpi_{comm}
+PartitionMethod<NDIMS>::PartitionMethod( const MPI_Comm& comm ) : mpi_{ comm }
 {
 }
 

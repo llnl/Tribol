@@ -13,13 +13,13 @@
 #include "gtest/gtest.h"
 
 //-----------------------------------------------------------------------------
-TEST(mfem_smoke, basic_use)
+TEST( mfem_smoke, basic_use )
 {
   // Simple usage of a basic mfem type
-  mfem::Element* el = new mfem::Quadrilateral(0, 1, 2, 3);
+  mfem::Element* el = new mfem::Quadrilateral( 0, 1, 2, 3 );
 
-  EXPECT_EQ(mfem::Element::QUADRILATERAL, el->GetType());
-  EXPECT_EQ(4, el->GetNVertices());
+  EXPECT_EQ( mfem::Element::QUADRILATERAL, el->GetType() );
+  EXPECT_EQ( 4, el->GetNVertices() );
 
   delete el;
 }

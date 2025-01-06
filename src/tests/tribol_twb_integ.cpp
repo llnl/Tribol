@@ -38,7 +38,7 @@ class TWBIntegTest : public ::testing::Test {
 
   RealT* getZCoords() { return z; }
 
-  bool integrate(RealT const tol)
+  bool integrate( RealT const tol )
   {
     RealT xyz[this->dim * this->numNodes];
     RealT* xy = xyz;
@@ -48,9 +48,9 @@ class TWBIntegTest : public ::testing::Test {
     RealT* z = this->z;
 
     // generate stacked coordinate array
-    for (int j = 0; j < this->numNodes; ++j) {
-      for (int k = 0; k < this->dim; ++k) {
-        switch (k) {
+    for ( int j = 0; j < this->numNodes; ++j ) {
+      for ( int k = 0; k < this->dim; ++k ) {
+        switch ( k ) {
           case 0:
             xy[this->dim * j + k] = x[j];
             break;
@@ -67,31 +67,31 @@ class TWBIntegTest : public ::testing::Test {
     // instantiate SurfaceContactElem struct. Note, this object is instantiated
     // using face 1 as face 2, but these faces are not used in this test so this
     // is ok.
-    tribol::SurfaceContactElem elem(this->dim, xy, xy, xy, this->numNodes, this->numNodes, nullptr, nullptr, 0, 0);
+    tribol::SurfaceContactElem elem( this->dim, xy, xy, xy, this->numNodes, this->numNodes, nullptr, nullptr, 0, 0 );
 
     // instantiate integration object
     tribol::IntegPts integ;
 
     // generate all current configuration integration point coordinates and weights
-    tribol::TWBPolyInt(elem, integ, 2);
+    tribol::TWBPolyInt( elem, integ, 2 );
 
     // evaluate sum_a (integral_face (phi_a) da) with outer loop over nodes, a, and
     // inner loop over number of integration points
     RealT areaTest = 0.;
     RealT phi = 0.;
 
-    for (int a = 0; a < this->numNodes; ++a) {
-      for (int ip = 0; ip < integ.numIPs; ++ip) {
-        tribol::WachspressBasis(xy, integ.xy[dim * ip], integ.xy[dim * ip + 1], integ.xy[dim * ip + 2], this->numNodes,
-                                a, phi);
+    for ( int a = 0; a < this->numNodes; ++a ) {
+      for ( int ip = 0; ip < integ.numIPs; ++ip ) {
+        tribol::WachspressBasis( xy, integ.xy[dim * ip], integ.xy[dim * ip + 1], integ.xy[dim * ip + 2], this->numNodes,
+                                 a, phi );
 
         areaTest += integ.wts[ip] * phi;
       }
     }
 
-    RealT area = tribol::Area2DPolygon(x, y, this->numNodes);
+    RealT area = tribol::Area2DPolygon( x, y, this->numNodes );
 
-    bool convrg = (std::abs(areaTest - area) <= tol) ? true : false;
+    bool convrg = ( std::abs( areaTest - area ) <= tol ) ? true : false;
 
     return convrg;
   }
@@ -102,21 +102,21 @@ class TWBIntegTest : public ::testing::Test {
     this->numNodes = 4;
     this->dim = 3;
 
-    if (this->x == nullptr) {
+    if ( this->x == nullptr ) {
       this->x = new RealT[this->numNodes];
     } else {
       delete[] this->x;
       this->x = new RealT[this->numNodes];
     }
 
-    if (this->y == nullptr) {
+    if ( this->y == nullptr ) {
       this->y = new RealT[this->numNodes];
     } else {
       delete[] this->y;
       this->y = new RealT[this->numNodes];
     }
 
-    if (this->z == nullptr) {
+    if ( this->z == nullptr ) {
       this->z = new RealT[this->numNodes];
     } else {
       delete[] this->z;
@@ -126,27 +126,27 @@ class TWBIntegTest : public ::testing::Test {
 
   void TearDown() override
   {
-    if (this->x != nullptr) {
+    if ( this->x != nullptr ) {
       delete[] this->x;
       this->x = nullptr;
     }
-    if (this->y != nullptr) {
+    if ( this->y != nullptr ) {
       delete[] this->y;
       this->y = nullptr;
     }
-    if (this->z != nullptr) {
+    if ( this->z != nullptr ) {
       delete[] this->z;
       this->z = nullptr;
     }
   }
 
  protected:
-  RealT* x{nullptr};
-  RealT* y{nullptr};
-  RealT* z{nullptr};
+  RealT* x{ nullptr };
+  RealT* y{ nullptr };
+  RealT* z{ nullptr };
 };
 
-TEST_F(TWBIntegTest, square_wachspress_basis)
+TEST_F( TWBIntegTest, square_wachspress_basis )
 {
   RealT* x = this->getXCoords();
   RealT* y = this->getYCoords();
@@ -167,12 +167,12 @@ TEST_F(TWBIntegTest, square_wachspress_basis)
   z[2] = 0.1;
   z[3] = 0.1;
 
-  bool convrg = this->integrate(1.e-8);
+  bool convrg = this->integrate( 1.e-8 );
 
-  EXPECT_EQ(convrg, true);
+  EXPECT_EQ( convrg, true );
 }
 
-TEST_F(TWBIntegTest, rect_wachspress_basis)
+TEST_F( TWBIntegTest, rect_wachspress_basis )
 {
   RealT* x = this->getXCoords();
   RealT* y = this->getYCoords();
@@ -193,11 +193,11 @@ TEST_F(TWBIntegTest, rect_wachspress_basis)
   z[2] = 0.1;
   z[3] = 0.1;
 
-  bool convrg = this->integrate(1.e-8);
-  EXPECT_EQ(convrg, true);
+  bool convrg = this->integrate( 1.e-8 );
+  EXPECT_EQ( convrg, true );
 }
 
-TEST_F(TWBIntegTest, nonaffine_wachspress_basis)
+TEST_F( TWBIntegTest, nonaffine_wachspress_basis )
 {
   RealT* x = this->getXCoords();
   RealT* y = this->getYCoords();
@@ -218,16 +218,16 @@ TEST_F(TWBIntegTest, nonaffine_wachspress_basis)
   z[2] = 0.1;
   z[3] = 0.1;
 
-  bool convrg = this->integrate(1.e-8);
+  bool convrg = this->integrate( 1.e-8 );
 
-  EXPECT_EQ(convrg, true);
+  EXPECT_EQ( convrg, true );
 }
 
-int main(int argc, char* argv[])
+int main( int argc, char* argv[] )
 {
   int result = 0;
 
-  ::testing::InitGoogleTest(&argc, argv);
+  ::testing::InitGoogleTest( &argc, argv );
 
   axom::slic::SimpleLogger logger;
 

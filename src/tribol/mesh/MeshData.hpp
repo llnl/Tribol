@@ -27,13 +27,13 @@ struct MeshNodalData {
   ArrayViewT<RealT> m_node_gap;             ///< scalar nodal gap (used on nonmortar mesh)
   ArrayViewT<const RealT> m_node_pressure;  ///< scalar nodal pressure (used on nonmortar mesh)
 
-  bool m_is_node_gap_set{false};       ///< true if nodal gap field is set
-  bool m_is_node_pressure_set{false};  ///< true if nodal pressure field is set
+  bool m_is_node_gap_set{ false };       ///< true if nodal gap field is set
+  bool m_is_node_pressure_set{ false };  ///< true if nodal pressure field is set
   /////////////////////////
 
-  bool m_is_velocity_set{false};            ///< true if nodal velocities have been registered
-  bool m_is_nodal_displacement_set{false};  ///< true if nodal displacements have been registered
-  bool m_is_nodal_response_set{false};      ///< true if the nodal responses have been registered
+  bool m_is_velocity_set{ false };            ///< true if nodal velocities have been registered
+  bool m_is_nodal_displacement_set{ false };  ///< true if nodal displacements have been registered
+  bool m_is_nodal_response_set{ false };      ///< true if the nodal responses have been registered
 
 };  // end of struct MeshNodalData
 
@@ -49,17 +49,17 @@ struct MeshElemData {
   ArrayViewT<const RealT> m_mat_mod;    ///< Bulk/Young's modulus for contact faces
   ArrayViewT<const RealT> m_thickness;  ///< Volume element thickness associated with each contact face
 
-  RealT m_penalty_stiffness{0.};       ///< single scalar kinematic penalty stiffness for each mesh
-  RealT m_penalty_scale{1.};           ///< scale factor applied to kinematic penalty only
-  RealT m_rate_penalty_stiffness{0.};  ///< single scalar rate penalty stiffness for each mesh
-  RealT m_rate_percent_stiffness{0.};  ///< rate penalty is percentage of gap penalty
+  RealT m_penalty_stiffness{ 0. };       ///< single scalar kinematic penalty stiffness for each mesh
+  RealT m_penalty_scale{ 1. };           ///< scale factor applied to kinematic penalty only
+  RealT m_rate_penalty_stiffness{ 0. };  ///< single scalar rate penalty stiffness for each mesh
+  RealT m_rate_percent_stiffness{ 0. };  ///< rate penalty is percentage of gap penalty
 
-  bool m_is_kinematic_constant_penalty_set{false};  ///< True if single kinematic constant penalty is set
-  bool m_is_kinematic_element_penalty_set{false};   ///< True if the element-wise kinematic penalty is set
-  bool m_is_rate_constant_penalty_set{false};       ///< True if the constant rate penalty is set
-  bool m_is_rate_percent_penalty_set{false};        ///< True if the rate percent penalty is set
+  bool m_is_kinematic_constant_penalty_set{ false };  ///< True if single kinematic constant penalty is set
+  bool m_is_kinematic_element_penalty_set{ false };   ///< True if the element-wise kinematic penalty is set
+  bool m_is_rate_constant_penalty_set{ false };       ///< True if the constant rate penalty is set
+  bool m_is_rate_percent_penalty_set{ false };        ///< True if the rate percent penalty is set
 
-  bool m_is_element_thickness_set{false};  ///< True if element thickness is set
+  bool m_is_element_thickness_set{ false };  ///< True if element thickness is set
 
   /*!
    * \brief Checks if the kinematic penalty data is valid
@@ -68,7 +68,7 @@ struct MeshElemData {
    *
    * \return true if the kinematic penalty option has valid data
    */
-  bool isValidKinematicPenalty(PenaltyEnforcementOptions& pen_options);
+  bool isValidKinematicPenalty( PenaltyEnforcementOptions& pen_options );
 
   /*!
    * \brief Checks if the rate penalty data is valid
@@ -77,7 +77,7 @@ struct MeshElemData {
    *
    * \return true if the rate penalty option has valid data
    */
-  bool isValidRatePenalty(PenaltyEnforcementOptions& pen_options);  ///< True if rate penalty option is valid
+  bool isValidRatePenalty( PenaltyEnforcementOptions& pen_options );  ///< True if rate penalty option is valid
 };
 
 class MeshData {
@@ -92,7 +92,7 @@ class MeshData {
      *
      * @param mesh MeshData to create a view of
      */
-    Viewer(MeshData& mesh);
+    Viewer( MeshData& mesh );
 
     /**
      * @brief Obtain the mesh ID for the current mesh view
@@ -182,9 +182,9 @@ class MeshData {
      * @param local_node_id node ID for the local element
      * @return global node ID
      */
-    TRIBOL_HOST_DEVICE IndexT getGlobalNodeId(IndexT element_id, IndexT local_node_id) const
+    TRIBOL_HOST_DEVICE IndexT getGlobalNodeId( IndexT element_id, IndexT local_node_id ) const
     {
-      return m_connectivity(element_id, local_node_id);
+      return m_connectivity( element_id, local_node_id );
     }
 
     /**
@@ -321,7 +321,7 @@ class MeshData {
      * \param [in/out] coords pointer to an array of stacked (x,y,z) nodal coordinates
      *
      */
-    TRIBOL_HOST_DEVICE void getFaceCoords(IndexT face_id, RealT* coords) const;
+    TRIBOL_HOST_DEVICE void getFaceCoords( IndexT face_id, RealT* coords ) const;
 
     /*!
      *
@@ -331,7 +331,7 @@ class MeshData {
      * \param [in/out] nodalVel pointer to an array of stacked (x,y,z) nodal velocities
      *
      */
-    TRIBOL_HOST_DEVICE void getFaceVelocities(IndexT face_id, RealT* vels) const;
+    TRIBOL_HOST_DEVICE void getFaceVelocities( IndexT face_id, RealT* vels ) const;
 
     /*!
      *
@@ -341,7 +341,7 @@ class MeshData {
      * \param [in/out] nrml pointer to array of stacked components of the face normal vector
      *
      */
-    TRIBOL_HOST_DEVICE void getFaceNormal(IndexT face_id, RealT* nrml) const;
+    TRIBOL_HOST_DEVICE void getFaceNormal( IndexT face_id, RealT* nrml ) const;
 
    private:
     /// Unique mesh ID
@@ -415,8 +415,8 @@ class MeshData {
    * \note connectivity is a 2D array with num_elements rows and num_nodes
    * columns with row-major ordering
    */
-  MeshData(IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity,
-           InterfaceElementType element_type, const RealT* x, const RealT* y, const RealT* z, MemorySpace mem_space);
+  MeshData( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity,
+            InterfaceElementType element_type, const RealT* x, const RealT* y, const RealT* z, MemorySpace mem_space );
 
   /**
    * @brief Get the element type
@@ -456,7 +456,7 @@ class MeshData {
    *
    * @param allocator_id Umpire allocator ID (if built with Umpire; zero otherwise)
    */
-  void updateAllocatorId(int allocator_id) { m_allocator_id = allocator_id; }
+  void updateAllocatorId( int allocator_id ) { m_allocator_id = allocator_id; }
 
   /**
    * @brief Marker which can indicate mesh validity
@@ -517,9 +517,9 @@ class MeshData {
    * @param local_node_id node ID for the local element
    * @return global node ID
    */
-  IndexT getGlobalNodeId(IndexT element_id, IndexT local_node_id) const
+  IndexT getGlobalNodeId( IndexT element_id, IndexT local_node_id ) const
   {
-    return m_connectivity(element_id, local_node_id);
+    return m_connectivity( element_id, local_node_id );
   }
 
   /**
@@ -529,7 +529,7 @@ class MeshData {
    * @param y array of y-components of the nodal position
    * @param z array of z-components of the nodal position
    */
-  void setPosition(const RealT* x, const RealT* y, const RealT* z);
+  void setPosition( const RealT* x, const RealT* y, const RealT* z );
 
   /**
    * @brief Set the pointers to the nodal displacement data
@@ -538,7 +538,7 @@ class MeshData {
    * @param uy array of y-components of the nodal displacement
    * @param uz array of z-components of the nodal displacement
    */
-  void setDisplacement(const RealT* ux, const RealT* uy, const RealT* uz);
+  void setDisplacement( const RealT* ux, const RealT* uy, const RealT* uz );
 
   /**
    * @brief Set the pointers to the nodal velocity data
@@ -547,7 +547,7 @@ class MeshData {
    * @param vy array of y-components of the nodal velocity
    * @param vz array of z-components of the nodal velocity
    */
-  void setVelocity(const RealT* vx, const RealT* vy, const RealT* vz);
+  void setVelocity( const RealT* vx, const RealT* vy, const RealT* vz );
 
   /**
    * @brief Is the velocity vector populated?
@@ -564,7 +564,7 @@ class MeshData {
    * @param ry array of y-components of the nodal response
    * @param rz array of z-components of the nodal response
    */
-  void setResponse(RealT* rx, RealT* ry, RealT* rz);
+  void setResponse( RealT* rx, RealT* ry, RealT* rz );
 
   /**
    * @brief Construct a non-owned, shallow copy of the MeshData
@@ -595,7 +595,7 @@ class MeshData {
    * @return Array of array views of vector components
    */
   template <typename T>
-  MultiArrayView<T> createNodalVector(T* x, T* y, T* z) const;
+  MultiArrayView<T> createNodalVector( T* x, T* y, T* z ) const;
 
   /**
    * @brief Converts pointer to element connectivity to an array view
@@ -604,7 +604,7 @@ class MeshData {
    * @param connectivity pointer to array of connectivity data
    * @return Array view of element connectivity
    */
-  Array2DView<const IndexT> createConnectivity(IndexT num_elements, const IndexT* connectivity);
+  Array2DView<const IndexT> createConnectivity( IndexT num_elements, const IndexT* connectivity );
 
   IndexT m_mesh_id;                     ///< Mesh Id associated with this data
   InterfaceElementType m_element_type;  ///< Type of interface element in mesh
@@ -647,7 +647,7 @@ class MeshData {
    *
    * \param [in] p_enfrc_options penalty enforcement options guiding check
    */
-  int checkPenaltyData(PenaltyEnforcementOptions& p_enfrc_options);
+  int checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options );
 
   /*!
    * \brief Computes the face normals and centroids for all faces in the mesh
@@ -657,7 +657,7 @@ class MeshData {
    *
    * This routine accounts for warped faces by computing an average normal.
    */
-  bool computeFaceData(ExecutionMode exec_mode);
+  bool computeFaceData( ExecutionMode exec_mode );
 
   /*!
    * \brief Computes average nodal normals for use with mortar methods
@@ -666,7 +666,7 @@ class MeshData {
    *
    * \param [in] dim Dimension of the problem
    */
-  void computeNodalNormals(int const dim);
+  void computeNodalNormals( int const dim );
 
   /*!
    *
@@ -677,24 +677,24 @@ class MeshData {
    * \return edge length
    *
    */
-  RealT computeEdgeLength(int edgeId);
+  RealT computeEdgeLength( int edgeId );
 
   /// Prints information associated with this mesh to \a os
-  void print(std::ostream& os) const;
+  void print( std::ostream& os ) const;
 
 };  // end class MeshData
 
 //------------------------------------------------------------------------------
 template <typename T>
-MultiArrayView<T> MeshData::createNodalVector(T* x, T* y, T* z) const
+MultiArrayView<T> MeshData::createNodalVector( T* x, T* y, T* z ) const
 {
-  MultiArrayView<T> host_nodal_vector(m_dim, m_dim);
-  host_nodal_vector[0] = ArrayViewT<T>(x, m_num_nodes);
-  host_nodal_vector[1] = ArrayViewT<T>(y, m_num_nodes);
-  if (m_dim == 3) {
-    host_nodal_vector[2] = ArrayViewT<T>(z, m_num_nodes);
+  MultiArrayView<T> host_nodal_vector( m_dim, m_dim );
+  host_nodal_vector[0] = ArrayViewT<T>( x, m_num_nodes );
+  host_nodal_vector[1] = ArrayViewT<T>( y, m_num_nodes );
+  if ( m_dim == 3 ) {
+    host_nodal_vector[2] = ArrayViewT<T>( z, m_num_nodes );
   }
-  return MultiArrayView<T>(host_nodal_vector, m_allocator_id);
+  return MultiArrayView<T>( host_nodal_vector, m_allocator_id );
 }
 
 using MeshManager = DataManager<MeshData>;
@@ -702,6 +702,6 @@ using MeshManager = DataManager<MeshData>;
 }  // end namespace tribol
 
 /// \a ostream operator to print a \a MeshData instance to \a os
-std::ostream& operator<<(std::ostream& os, const tribol::MeshData& md);
+std::ostream& operator<<( std::ostream& os, const tribol::MeshData& md );
 
 #endif /* SRC_MESH_MESHDATA_HPP_ */

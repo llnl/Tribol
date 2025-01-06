@@ -32,9 +32,9 @@ namespace tribol {
  * \param [in,out] pz z coordinate of projected point
  *
  */
-TRIBOL_HOST_DEVICE void ProjectPointToPlane(const RealT x, const RealT y, const RealT z, const RealT nx, const RealT ny,
-                                            const RealT nz, const RealT ox, const RealT oy, const RealT oz, RealT& px,
-                                            RealT& py, RealT& pz);
+TRIBOL_HOST_DEVICE void ProjectPointToPlane( const RealT x, const RealT y, const RealT z, const RealT nx,
+                                             const RealT ny, const RealT nz, const RealT ox, const RealT oy,
+                                             const RealT oz, RealT& px, RealT& py, RealT& pz );
 
 /*!
  *
@@ -51,8 +51,8 @@ TRIBOL_HOST_DEVICE void ProjectPointToPlane(const RealT x, const RealT y, const 
  * \param [in,out] py y coordinate of projected point
  *
  */
-TRIBOL_HOST_DEVICE void ProjectPointToSegment(const RealT x, const RealT y, const RealT nx, const RealT ny,
-                                              const RealT ox, const RealT oy, RealT& px, RealT& py);
+TRIBOL_HOST_DEVICE void ProjectPointToSegment( const RealT x, const RealT y, const RealT nx, const RealT ny,
+                                               const RealT ox, const RealT oy, RealT& px, RealT& py );
 
 /*!
  *
@@ -75,9 +75,9 @@ TRIBOL_HOST_DEVICE void ProjectPointToSegment(const RealT x, const RealT y, cons
  *  centroid y-coordinate. Swap input (xa,ya)->(ya,xa) and (xb,yb)->(yb,xb)
  *  to get centroid x-coordinate.
  */
-TRIBOL_HOST_DEVICE void PolyInterYCentroid(const int namax, const RealT* const xa, const RealT* const ya,
-                                           const int nbmax, const RealT* const xb, const RealT* const yb,
-                                           const int isym, RealT& area, RealT& ycent);
+TRIBOL_HOST_DEVICE void PolyInterYCentroid( const int namax, const RealT* const xa, const RealT* const ya,
+                                            const int nbmax, const RealT* const xb, const RealT* const yb,
+                                            const int isym, RealT& area, RealT& ycent );
 
 /*!
  *
@@ -103,9 +103,9 @@ TRIBOL_HOST_DEVICE void PolyInterYCentroid(const int namax, const RealT* const x
  *  2D coordinate basis to a point in the 3D global coordinate system
  *
  */
-TRIBOL_HOST_DEVICE void Local2DToGlobalCoords(RealT xloc, RealT yloc, RealT e1X, RealT e1Y, RealT e1Z, RealT e2X,
-                                              RealT e2Y, RealT e2Z, RealT cX, RealT cY, RealT cZ, RealT& xg, RealT& yg,
-                                              RealT& zg);
+TRIBOL_HOST_DEVICE void Local2DToGlobalCoords( RealT xloc, RealT yloc, RealT e1X, RealT e1Y, RealT e1Z, RealT e2X,
+                                               RealT e2Y, RealT e2Z, RealT cX, RealT cY, RealT cZ, RealT& xg, RealT& yg,
+                                               RealT& zg );
 
 /*!
  *
@@ -136,10 +136,10 @@ TRIBOL_HOST_DEVICE void Local2DToGlobalCoords(RealT xloc, RealT yloc, RealT e1X,
  * \note this assumes that the point lies in the plane defined by the
  *  2D local basis vectors.
  */
-TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords(const RealT* const pX, const RealT* const pY, const RealT* const pZ,
-                                              RealT e1X, RealT e1Y, RealT e1Z, RealT e2X, RealT e2Y, RealT e2Z,
-                                              RealT cX, RealT cY, RealT cZ, RealT* const pLX, RealT* const pLY,
-                                              int size);
+TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( const RealT* const pX, const RealT* const pY, const RealT* const pZ,
+                                               RealT e1X, RealT e1Y, RealT e1Z, RealT e2X, RealT e2Y, RealT e2Z,
+                                               RealT cX, RealT cY, RealT cZ, RealT* const pLX, RealT* const pLY,
+                                               int size );
 
 /*!
  *
@@ -164,8 +164,8 @@ TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords(const RealT* const pX, const RealT
  * \note this assumes that the point lies in the plane defined by the
  *  2D local basis vectors.
  */
-void GlobalTo2DLocalCoords(RealT pX, RealT pY, RealT pZ, RealT e1X, RealT e1Y, RealT e1Z, RealT e2X, RealT e2Y,
-                           RealT e2Z, RealT cX, RealT cY, RealT cZ, RealT& pLX, RealT& pLY);
+void GlobalTo2DLocalCoords( RealT pX, RealT pY, RealT pZ, RealT e1X, RealT e1Y, RealT e1Z, RealT e2X, RealT e2Y,
+                            RealT e2Z, RealT cX, RealT cY, RealT cZ, RealT& pLX, RealT& pLY );
 /*!
  *
  * \brief computes the vertex averaged centroid of a point set
@@ -185,8 +185,8 @@ void GlobalTo2DLocalCoords(RealT pX, RealT pY, RealT pZ, RealT e1X, RealT e1Y, R
  * \pre length(z) >= numVert
  *
  */
-TRIBOL_HOST_DEVICE bool VertexAvgCentroid(const RealT* const x, const RealT* const y, const RealT* const z,
-                                          const int numVert, RealT& cX, RealT& cY, RealT& cZ);
+TRIBOL_HOST_DEVICE bool VertexAvgCentroid( const RealT* const x, const RealT* const y, const RealT* const z,
+                                           const int numVert, RealT& cX, RealT& cY, RealT& cZ );
 
 /*!
  *
@@ -204,8 +204,8 @@ TRIBOL_HOST_DEVICE bool VertexAvgCentroid(const RealT* const x, const RealT* con
  * \pre length(x) >= numVert
  *
  */
-TRIBOL_HOST_DEVICE bool VertexAvgCentroid(const RealT* const x, const int dim, const int numVert, RealT& cX, RealT& cY,
-                                          RealT& cZ);
+TRIBOL_HOST_DEVICE bool VertexAvgCentroid( const RealT* const x, const int dim, const int numVert, RealT& cX, RealT& cY,
+                                           RealT& cZ );
 
 /*!
  *
@@ -223,8 +223,8 @@ TRIBOL_HOST_DEVICE bool VertexAvgCentroid(const RealT* const x, const int dim, c
  * \pre length(x) >= numVert
  *
  */
-TRIBOL_HOST_DEVICE bool PolyAreaCentroid(const RealT* const x, const int dim, const int numVert, RealT& cX, RealT& cY,
-                                         RealT& cZ);
+TRIBOL_HOST_DEVICE bool PolyAreaCentroid( const RealT* const x, const int dim, const int numVert, RealT& cX, RealT& cY,
+                                          RealT& cZ );
 
 /*!
  *
@@ -239,7 +239,7 @@ TRIBOL_HOST_DEVICE bool PolyAreaCentroid(const RealT* const x, const int dim, co
  * \pre length(x) >= numVert
  *
  */
-void PolyCentroid(const RealT* const x, const RealT* const y, const int numVert, RealT& cX, RealT& cY);
+void PolyCentroid( const RealT* const x, const RealT* const y, const int numVert, RealT& cX, RealT& cY );
 
 /*!
  *
@@ -267,11 +267,11 @@ void PolyCentroid(const RealT* const x, const RealT* const y, const int numVert,
  * of points for the intersection polygon
  *
  */
-TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon(const RealT* const xA, const RealT* const yA,
-                                                       const int numVertexA, const RealT* const xB,
-                                                       const RealT* const yB, const int numVertexB, RealT posTol,
-                                                       RealT lenTol, RealT* polyX, RealT* polyY, int& numPolyVert,
-                                                       RealT& area, bool orientCheck = true);
+TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, const RealT* const yA,
+                                                        const int numVertexA, const RealT* const xB,
+                                                        const RealT* const yB, const int numVertexB, RealT posTol,
+                                                        RealT lenTol, RealT* polyX, RealT* polyY, int& numPolyVert,
+                                                        RealT& area, bool orientCheck = true );
 
 /*!
  *
@@ -284,7 +284,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon(const RealT* const xA, co
  * \return true if CCW orientation, false otherwise
  *
  */
-TRIBOL_HOST_DEVICE bool CheckPolyOrientation(const RealT* const x, const RealT* const y, const int numVertex);
+TRIBOL_HOST_DEVICE bool CheckPolyOrientation( const RealT* const x, const RealT* const y, const int numVertex );
 
 /*!
  *
@@ -310,8 +310,9 @@ TRIBOL_HOST_DEVICE bool CheckPolyOrientation(const RealT* const x, const RealT* 
  *  vertex averaged centroid. This routine then calls a routine to check if the
  *  point lies in either of those two triangles.
  */
-TRIBOL_HOST_DEVICE bool Point2DInFace(const RealT xPoint, const RealT yPoint, const RealT* const xPoly,
-                                      const RealT* const yPoly, const RealT xC, const RealT yC, const int numPolyVert);
+TRIBOL_HOST_DEVICE bool Point2DInFace( const RealT xPoint, const RealT yPoint, const RealT* const xPoly,
+                                       const RealT* const yPoly, const RealT xC, const RealT yC,
+                                       const int numPolyVert );
 
 /*!
  *
@@ -330,7 +331,8 @@ TRIBOL_HOST_DEVICE bool Point2DInFace(const RealT xPoint, const RealT yPoint, co
  *  determines if those coordinates are inside or out
  *  (http://blackpawn.com/texts/pointinpoly/default.html);
  */
-TRIBOL_HOST_DEVICE bool Point2DInTri(const RealT xp, const RealT yp, const RealT* const xTri, const RealT* const yTri);
+TRIBOL_HOST_DEVICE bool Point2DInTri( const RealT xp, const RealT yp, const RealT* const xTri,
+                                      const RealT* const yTri );
 
 /*!
  * \brief computes the area of a polygon
@@ -343,7 +345,7 @@ TRIBOL_HOST_DEVICE bool Point2DInTri(const RealT xp, const RealT yp, const RealT
  *
  * \note breaks the polygon into triangles and sums the areas of the triangles
  */
-TRIBOL_HOST_DEVICE RealT Area2DPolygon(const RealT* const x, const RealT* const y, const int numPolyVert);
+TRIBOL_HOST_DEVICE RealT Area2DPolygon( const RealT* const x, const RealT* const y, const int numPolyVert );
 
 /*!
  * \brief computes the area of a triangle given 3D vertex coordinates
@@ -355,7 +357,7 @@ TRIBOL_HOST_DEVICE RealT Area2DPolygon(const RealT* const x, const RealT* const 
  * \return area of triangle
  *
  */
-TRIBOL_HOST_DEVICE RealT Area3DTri(const RealT* const x, const RealT* const y, const RealT* const z);
+TRIBOL_HOST_DEVICE RealT Area3DTri( const RealT* const x, const RealT* const y, const RealT* const z );
 
 /*!
  *
@@ -393,10 +395,10 @@ TRIBOL_HOST_DEVICE RealT Area3DTri(const RealT* const x, const RealT* const y, c
  *  vertices tagged as interior to one of the polygons may render a degenerate overlap
  *  polygon and must be checked.
  */
-TRIBOL_HOST_DEVICE bool SegmentIntersection2D(const RealT xA1, const RealT yA1, const RealT xB1, const RealT yB1,
-                                              const RealT xA2, const RealT yA2, const RealT xB2, const RealT yB2,
-                                              const bool* const interior, RealT& x, RealT& y, bool& duplicate,
-                                              const RealT tol);
+TRIBOL_HOST_DEVICE bool SegmentIntersection2D( const RealT xA1, const RealT yA1, const RealT xB1, const RealT yB1,
+                                               const RealT xA2, const RealT yA2, const RealT xB2, const RealT yB2,
+                                               const bool* const interior, RealT& x, RealT& y, bool& duplicate,
+                                               const RealT tol );
 
 /*!
  *
@@ -422,8 +424,8 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D(const RealT xA1, const RealT yA1, 
  *  xnew and ynew values are set to x and y, respectively, and numNewPoints
  *  equals numPoints.
  */
-TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs(const RealT* const x, const RealT* const y, const int numPoints,
-                                               const RealT tol, RealT* xnew, RealT* ynew, int& numNewPoints);
+TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* const x, const RealT* const y, const int numPoints,
+                                                const RealT tol, RealT* xnew, RealT* ynew, int& numNewPoints );
 
 /*!
  *
@@ -441,7 +443,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs(const RealT* const x, const RealT
  * \note This routine takes the unordered set of vertex coordinates of a star convex
  *  polygon and orders the vertices in counter-clockwise orientation.
  */
-TRIBOL_HOST_DEVICE bool PolyReorder(RealT* const x, RealT* const y, const int numPoints);
+TRIBOL_HOST_DEVICE bool PolyReorder( RealT* const x, RealT* const y, const int numPoints );
 
 /*!
  *
@@ -454,7 +456,7 @@ TRIBOL_HOST_DEVICE bool PolyReorder(RealT* const x, RealT* const y, const int nu
  * \pre length(x), length(y) >= numPoints
  *
  */
-TRIBOL_HOST_DEVICE void ElemReverse(RealT* const x, RealT* const y, const int numPoints);
+TRIBOL_HOST_DEVICE void ElemReverse( RealT* const x, RealT* const y, const int numPoints );
 
 /*!
  *
@@ -472,8 +474,8 @@ TRIBOL_HOST_DEVICE void ElemReverse(RealT* const x, RealT* const y, const int nu
  * \pre length(x), length(y), length(z) >= numPoints
  *
  */
-TRIBOL_HOST_DEVICE void PolyReorderWithNormal(RealT* const x, RealT* const y, RealT* const z, const int numPoints,
-                                              const RealT nX, const RealT nY, const RealT nZ);
+TRIBOL_HOST_DEVICE void PolyReorderWithNormal( RealT* const x, RealT* const y, RealT* const z, const int numPoints,
+                                               const RealT nX, const RealT nY, const RealT nZ );
 
 /*!
  * \brief computes the intersection point between a line and plane
@@ -496,10 +498,10 @@ TRIBOL_HOST_DEVICE void PolyReorderWithNormal(RealT* const x, RealT* const y, Re
  * \param[in,out] inPlane true if segment lies in the plane
  *
  */
-TRIBOL_HOST_DEVICE bool LinePlaneIntersection(const RealT xA, const RealT yA, const RealT zA, const RealT xB,
-                                              const RealT yB, const RealT zB, const RealT xP, const RealT yP,
-                                              const RealT zP, const RealT nX, const RealT nY, const RealT nZ, RealT& x,
-                                              RealT& y, RealT& z, bool& inPlane);
+TRIBOL_HOST_DEVICE bool LinePlaneIntersection( const RealT xA, const RealT yA, const RealT zA, const RealT xB,
+                                               const RealT yB, const RealT zB, const RealT xP, const RealT yP,
+                                               const RealT zP, const RealT nX, const RealT nY, const RealT nZ, RealT& x,
+                                               RealT& y, RealT& z, bool& inPlane );
 
 /*!
  * \brief computes the line segment that is the intersection between two
@@ -535,9 +537,9 @@ TRIBOL_HOST_DEVICE bool LinePlaneIntersection(const RealT xA, const RealT yA, co
  * segment is controlled by each plane's input reference points.
  *
  */
-bool PlanePlaneIntersection(const RealT x1, const RealT y1, const RealT z1, const RealT x2, const RealT y2,
-                            const RealT z2, const RealT nX1, const RealT nY1, const RealT nZ1, const RealT nX2,
-                            const RealT nY2, const RealT nZ2, RealT& x, RealT& y, RealT& z);
+bool PlanePlaneIntersection( const RealT x1, const RealT y1, const RealT z1, const RealT x2, const RealT y2,
+                             const RealT z2, const RealT nX1, const RealT nY1, const RealT nZ1, const RealT nX2,
+                             const RealT nY2, const RealT nZ2, RealT& x, RealT& y, RealT& z );
 
 /*!
  *
@@ -552,7 +554,7 @@ bool PlanePlaneIntersection(const RealT x1, const RealT y1, const RealT z1, cons
  * \pre this routine assumes that the original coordinates are in clockwise ordering
  *
  */
-void Vertex2DOrderToCCW(const RealT* const x, const RealT* const y, RealT* xTemp, RealT* yTemp, const int numVert);
+void Vertex2DOrderToCCW( const RealT* const x, const RealT* const y, RealT* xTemp, RealT* yTemp, const int numVert );
 
 }  // namespace tribol
 

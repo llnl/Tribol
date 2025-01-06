@@ -37,7 +37,7 @@ class TransferByNodes : public GridFnTransfer {
    * identified in redecomp_fes
    * @param redecomp_fes FiniteElementSpace constructed from RedecompMesh
    */
-  TransferByNodes(const mfem::ParFiniteElementSpace& parent_fes, const mfem::FiniteElementSpace& redecomp_fes);
+  TransferByNodes( const mfem::ParFiniteElementSpace& parent_fes, const mfem::FiniteElementSpace& redecomp_fes );
   /**
    * @brief Construct a new TransferByNodes object (used by RedecompMesh)
    *
@@ -50,7 +50,7 @@ class TransferByNodes : public GridFnTransfer {
    * identified in redecomp
    * @param redecomp RedecompMesh pointer
    */
-  TransferByNodes(const mfem::ParFiniteElementSpace& parent_fes, const RedecompMesh& redecomp);
+  TransferByNodes( const mfem::ParFiniteElementSpace& parent_fes, const RedecompMesh& redecomp );
 
   /**
    * @brief Copies parent-based mfem::ParGridFunction values to a
@@ -61,7 +61,7 @@ class TransferByNodes : public GridFnTransfer {
    * @param dst A redecomp GridFunction which receives values from a parent
    * ParGridFunction (src)
    */
-  void TransferToSerial(const mfem::ParGridFunction& src, mfem::GridFunction& dst) const override;
+  void TransferToSerial( const mfem::ParGridFunction& src, mfem::GridFunction& dst ) const override;
 
   /**
    * @brief Copies RedecompMesh-based mfem::GridFunction values to a
@@ -72,7 +72,7 @@ class TransferByNodes : public GridFnTransfer {
    * @param dst A parent ParGridFunction which receives values from a redecomp
    * GridFunction (src)
    */
-  void TransferToParallel(const mfem::GridFunction& src, mfem::ParGridFunction& dst) const override;
+  void TransferToParallel( const mfem::GridFunction& src, mfem::ParGridFunction& dst ) const override;
 
   /**
    * @brief Determine list of parent nodes to send to RedecompMesh
@@ -81,7 +81,7 @@ class TransferByNodes : public GridFnTransfer {
    * @return EntityIndexByRank List of parent node ids (with ghost information)
    * which belong on each RedecompMesh rank
    */
-  EntityIndexByRank P2RNodeList(bool use_global_ids);
+  EntityIndexByRank P2RNodeList( bool use_global_ids );
 
  private:
   /**

@@ -34,9 +34,9 @@ namespace tribol {
  *
  * \pre length(pX), length(pY), length(pZ) >= number of nodes on face
  */
-TRIBOL_HOST_DEVICE void ProjectFaceNodesToPlane(const MeshData::Viewer& mesh, int faceId, RealT nrmlX, RealT nrmlY,
-                                                RealT nrmlZ, RealT cX, RealT cY, RealT cZ, RealT* pX, RealT* pY,
-                                                RealT* pZ);
+TRIBOL_HOST_DEVICE void ProjectFaceNodesToPlane( const MeshData::Viewer& mesh, int faceId, RealT nrmlX, RealT nrmlY,
+                                                 RealT nrmlZ, RealT cX, RealT cY, RealT cZ, RealT* pX, RealT* pY,
+                                                 RealT* pZ );
 
 /*!
  *
@@ -52,8 +52,8 @@ TRIBOL_HOST_DEVICE void ProjectFaceNodesToPlane(const MeshData::Viewer& mesh, in
  * \param [in,out] pY pointer to array of projected nodal y-coordinates
  *
  */
-TRIBOL_HOST_DEVICE void ProjectEdgeNodesToSegment(const MeshData::Viewer& mesh, int edgeId, RealT nrmlX, RealT nrmlY,
-                                                  RealT cX, RealT cY, RealT* pX, RealT* pY);
+TRIBOL_HOST_DEVICE void ProjectEdgeNodesToSegment( const MeshData::Viewer& mesh, int edgeId, RealT nrmlX, RealT nrmlY,
+                                                   RealT cX, RealT cY, RealT* pX, RealT* pY );
 
 /*!
  * \brief checks if the vertices on face2 have interpenetrated the level set
@@ -75,8 +75,8 @@ TRIBOL_HOST_DEVICE void ProjectEdgeNodesToSegment(const MeshData::Viewer& mesh, 
  * by face1 (i.e. the zero level set).
  *
  */
-TRIBOL_HOST_DEVICE bool FaceInterCheck(const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, int fId1, int fId2,
-                                       RealT tol, bool& allVerts);
+TRIBOL_HOST_DEVICE bool FaceInterCheck( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, int fId1,
+                                        int fId2, RealT tol, bool& allVerts );
 
 /*!
  *
@@ -93,8 +93,8 @@ TRIBOL_HOST_DEVICE bool FaceInterCheck(const MeshData::Viewer& mesh1, const Mesh
  * \return true if edge 2 interpenetrates the level set defined by edge 1
  *
  */
-TRIBOL_HOST_DEVICE bool EdgeInterCheck(const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, int eId1, int eId2,
-                                       RealT tol, bool& allVerts);
+TRIBOL_HOST_DEVICE bool EdgeInterCheck( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, int eId1,
+                                        int eId2, RealT tol, bool& allVerts );
 
 /*!
  *
@@ -113,9 +113,9 @@ TRIBOL_HOST_DEVICE bool EdgeInterCheck(const MeshData::Viewer& mesh1, const Mesh
  *      sides of thin structures/plates
  *
  */
-TRIBOL_HOST_DEVICE bool ExceedsMaxAutoInterpen(const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                                               const int faceId1, const int faceId2, RealT auto_contact_pen_frac,
-                                               const RealT gap);
+TRIBOL_HOST_DEVICE bool ExceedsMaxAutoInterpen( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+                                                const int faceId1, const int faceId2, RealT auto_contact_pen_frac,
+                                                const RealT gap );
 
 //-----------------------------------------------------------------------------
 // Contact Plane base class
@@ -134,13 +134,14 @@ class ContactPlane {
    * @param interPlane If true, a common plane is used; if false, a mortar plane is used
    * @param dim Plane dimension
    */
-  TRIBOL_HOST_DEVICE ContactPlane(InterfacePair* pair, RealT areaFrac, bool interpenOverlap, bool interPlane, int dim);
+  TRIBOL_HOST_DEVICE ContactPlane( InterfacePair* pair, RealT areaFrac, bool interpenOverlap, bool interPlane,
+                                   int dim );
 
   TRIBOL_HOST_DEVICE ContactPlane();
 
   virtual ~ContactPlane() = default;
 
-  static constexpr int max_nodes_per_overlap{8};
+  static constexpr int max_nodes_per_overlap{ 8 };
 
  public:
   int m_dim;       ///< Problem dimension
@@ -199,7 +200,7 @@ class ContactPlane {
    * \param [in] m1 mesh data viewer for mesh 1
    * \param [in] m2 mesh data viewer for mesh 2
    */
-  TRIBOL_HOST_DEVICE virtual void computeNormal(const MeshData::Viewer& m1, const MeshData::Viewer& m2) = 0;
+  TRIBOL_HOST_DEVICE virtual void computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) = 0;
 
   /*!
    * \brief Compute the contact plane point
@@ -207,7 +208,7 @@ class ContactPlane {
    * \param [in] m1 mesh data viewer for mesh 1
    * \param [in] m2 mesh data viewer for mesh 2
    */
-  TRIBOL_HOST_DEVICE virtual void computePlanePoint(const MeshData::Viewer& m1, const MeshData::Viewer& m2) = 0;
+  TRIBOL_HOST_DEVICE virtual void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) = 0;
 
   /*!
    * \brief Recomputes the reference point that locates the plane in 3-space
@@ -221,7 +222,8 @@ class ContactPlane {
    * \param [in] m2 mesh data viewer for mesh 2
    * \param [in] scale Scale to help find the centroid-to-face projections
    */
-  TRIBOL_HOST_DEVICE void planePointAndCentroidGap(const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT scale);
+  TRIBOL_HOST_DEVICE void planePointAndCentroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
+                                                    RealT scale );
 
   /*!
    * \brief Compute the contact plane integral gap expression
@@ -235,8 +237,8 @@ class ContactPlane {
    * \param [in] m2 mesh data viewer for mesh 2
    * \param [in] params Coupling scheme-dependent parameters
    */
-  TRIBOL_HOST_DEVICE virtual void computeAreaTol(const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                                 const Parameters& params) = 0;
+  TRIBOL_HOST_DEVICE virtual void computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
+                                                  const Parameters& params ) = 0;
 
   /*!
    * \brief Compute the contact plane centroid gap
@@ -245,7 +247,7 @@ class ContactPlane {
    * \param [in] m2 mesh data viewer for mesh 2
    * \param [in] scale Scale to help find centroid-to-face projections
    */
-  virtual void centroidGap(const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT scale) = 0;
+  virtual void centroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT scale ) = 0;
 
   /*!
    * \brief Compute the contact plane integral gap expression
@@ -257,9 +259,9 @@ class ContactPlane {
    *
    * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
    */
-  TRIBOL_HOST_DEVICE virtual FaceGeomError computeLocalInterpenOverlap(const MeshData::Viewer& m1,
-                                                                       const MeshData::Viewer& m2,
-                                                                       const Parameters& params, bool& interpen) = 0;
+  TRIBOL_HOST_DEVICE virtual FaceGeomError computeLocalInterpenOverlap( const MeshData::Viewer& m1,
+                                                                        const MeshData::Viewer& m2,
+                                                                        const Parameters& params, bool& interpen ) = 0;
 
   /// @}
 
@@ -295,21 +297,21 @@ class ContactPlane {
    *
    * \param [in] element_id element id
    */
-  void setCpElementId1(IndexT element_id) { m_pair->m_element_id1 = element_id; }
+  void setCpElementId1( IndexT element_id ) { m_pair->m_element_id1 = element_id; }
 
   /*!
    * \brief Set the second contact plane element id
    *
    * \param [in] element_id element id
    */
-  void setCpElementId2(IndexT element_id) { m_pair->m_element_id2 = element_id; }
+  void setCpElementId2( IndexT element_id ) { m_pair->m_element_id2 = element_id; }
 
   /*!
    * \brief Set the number of faces involved in forming the contact plane
    *
    * \param [in] num Number of faces
    */
-  void setCpNumFaces(int num) { m_numFaces = num; }
+  void setCpNumFaces( int num ) { m_numFaces = num; }
 
   /// @}
 };
@@ -328,7 +330,7 @@ class ContactPlane3D : public ContactPlane {
    * @param interpenOverlap If true, overlap includes only parts of face where constraint is violated
    * @param interPlane If true, a common plane is used; if false, a mortar plane is used
    */
-  TRIBOL_HOST_DEVICE ContactPlane3D(InterfacePair* pair, RealT areaFrac, bool interpenOverlap, bool interPlane);
+  TRIBOL_HOST_DEVICE ContactPlane3D( InterfacePair* pair, RealT areaFrac, bool interpenOverlap, bool interPlane );
 
   /*!
    * Overload constructor with no argument list
@@ -367,7 +369,7 @@ class ContactPlane3D : public ContactPlane {
    * \param [in] m1 mesh data viewer for mesh 1
    * \param [in] m2 mesh data viewer for mesh 2
    */
-  TRIBOL_HOST_DEVICE void computeNormal(const MeshData::Viewer& m1, const MeshData::Viewer& m2) override;
+  TRIBOL_HOST_DEVICE void computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
 
   /*!
    * \brief Computes a reference point on the plane locating it in 3-space
@@ -378,14 +380,14 @@ class ContactPlane3D : public ContactPlane {
    * \note This is taken as the average of the vertex averaged centroids of
    *  the two faces that are used to define a local contact plane
    */
-  TRIBOL_HOST_DEVICE void computePlanePoint(const MeshData::Viewer& m1, const MeshData::Viewer& m2) override;
+  TRIBOL_HOST_DEVICE void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
 
   /*!
    * \brief Compute a local basis on the contact plane
    *
    * \param [in] m1 mesh data viewer for mesh 1
    */
-  TRIBOL_HOST_DEVICE void computeLocalBasis(const MeshData::Viewer& m1);
+  TRIBOL_HOST_DEVICE void computeLocalBasis( const MeshData::Viewer& m1 );
 
   /*!
    * \brief Compute the weak (integral form) gap between the two faces.
@@ -406,7 +408,7 @@ class ContactPlane3D : public ContactPlane {
    * \pre length(pX), length(pY), length(pZ) >= size
    * \pre length(pLX), length(pLY) >= size
    */
-  TRIBOL_HOST_DEVICE void globalTo2DLocalCoords(RealT* pX, RealT* pY, RealT* pZ, RealT* pLX, RealT* pLY, int size);
+  TRIBOL_HOST_DEVICE void globalTo2DLocalCoords( RealT* pX, RealT* pY, RealT* pZ, RealT* pLX, RealT* pLY, int size );
 
   /*!
    * \brief Compute the local 2D coordinates of a point on the contact plane
@@ -420,7 +422,7 @@ class ContactPlane3D : public ContactPlane {
    * \note Overloaded member function to compute local coordinates of
    *  a single point on the contact plane
    */
-  void globalTo2DLocalCoords(RealT pX, RealT pY, RealT pZ, RealT& pLX, RealT& pLY, int size);
+  void globalTo2DLocalCoords( RealT pX, RealT pY, RealT pZ, RealT& pLX, RealT& pLY, int size );
 
   /*!
    * \brief Computes the area tolerance for accepting a face pair
@@ -429,8 +431,8 @@ class ContactPlane3D : public ContactPlane {
    * \param [in] m2 mesh data viewer for mesh 2
    * \param [in] params Coupling scheme-dependent parameters
    */
-  TRIBOL_HOST_DEVICE void computeAreaTol(const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                         const Parameters& params) override;
+  TRIBOL_HOST_DEVICE void computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
+                                          const Parameters& params ) override;
 
   /*!
    * \brief Check whether two polygons (faces) have a positive area of overlap
@@ -446,8 +448,8 @@ class ContactPlane3D : public ContactPlane {
    * \param [in] projLocY2 2D y-coordinates of projected element 2 vertices
    * \param [in] isym 0 for planar symmetry, 1 for axial symmetry
    */
-  TRIBOL_HOST_DEVICE void checkPolyOverlap(const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT* projLocX1,
-                                           RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, const int isym);
+  TRIBOL_HOST_DEVICE void checkPolyOverlap( const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT* projLocX1,
+                                            RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, const int isym );
 
   /*!
    * \brief Transform a local 2D point on the contact plane to global 3D
@@ -460,7 +462,7 @@ class ContactPlane3D : public ContactPlane {
    * \param [in,out] zg global z coordinate of point
    *
    */
-  TRIBOL_HOST_DEVICE void local2DToGlobalCoords(RealT xloc, RealT yloc, RealT& xg, RealT& yg, RealT& zg);
+  TRIBOL_HOST_DEVICE void local2DToGlobalCoords( RealT xloc, RealT yloc, RealT& xg, RealT& yg, RealT& zg );
 
   /*!
    * \brief Computes the gap between the two projections of the contact
@@ -470,7 +472,7 @@ class ContactPlane3D : public ContactPlane {
    * \param [in] m2 mesh data viewer for mesh 2
    * \param [in] scale Scale to help find centroid-to-face projections
    */
-  void centroidGap(const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT scale) override;
+  void centroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT scale ) override;
 
   /*!
    * \brief Compute the contact plane integral gap expression
@@ -482,8 +484,8 @@ class ContactPlane3D : public ContactPlane {
    *
    * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
    */
-  TRIBOL_HOST_DEVICE FaceGeomError computeLocalInterpenOverlap(const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                                               const Parameters& params, bool& interpen) override;
+  TRIBOL_HOST_DEVICE FaceGeomError computeLocalInterpenOverlap( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
+                                                                const Parameters& params, bool& interpen ) override;
 };
 
 //-----------------------------------------------------------------------------
@@ -505,7 +507,7 @@ class ContactPlane2D : public ContactPlane {
    * \param [in] interPlane True if intermediate (i.e. common) plane is used
    * \param [in] dimension Dimension of problem
    */
-  TRIBOL_HOST_DEVICE ContactPlane2D(InterfacePair* pair, RealT lenFrac, bool interpenOverlap, bool interPlane);
+  TRIBOL_HOST_DEVICE ContactPlane2D( InterfacePair* pair, RealT lenFrac, bool interpenOverlap, bool interPlane );
 
   /*!
    * \brief Overloaded constructor with no arguments
@@ -524,7 +526,7 @@ class ContactPlane2D : public ContactPlane {
    * \param [in] m1 mesh data viewer for mesh 1
    * \param [in] m2 mesh data viewer for mesh 2
    */
-  TRIBOL_HOST_DEVICE void computeNormal(const MeshData::Viewer& m1, const MeshData::Viewer& m2) override;
+  TRIBOL_HOST_DEVICE void computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
 
   /*!
    * \brief Computes a reference point on the plane locating it in 3-space
@@ -534,7 +536,7 @@ class ContactPlane2D : public ContactPlane {
    * \note This is taken as the average of the vertex averaged centroids of
    *  the two faces that are used to define a local contact plane
    */
-  TRIBOL_HOST_DEVICE void computePlanePoint(const MeshData::Viewer& m1, const MeshData::Viewer& m2) override;
+  TRIBOL_HOST_DEVICE void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
 
   /*!
    * \brief Compute the weak (integral form) gap between the two faces.
@@ -548,8 +550,8 @@ class ContactPlane2D : public ContactPlane {
    * \param [in] m2 mesh data viewer for mesh 2
    * \param [in] params Coupling scheme-dependent parameters
    */
-  TRIBOL_HOST_DEVICE void computeAreaTol(const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                         const Parameters& params) override;
+  TRIBOL_HOST_DEVICE void computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
+                                          const Parameters& params ) override;
 
   /*!
    * \brief Computes the gap between the two projections of the contact
@@ -559,14 +561,14 @@ class ContactPlane2D : public ContactPlane {
    * \param [in] m2 mesh data viewer for mesh 2
    * \param [in] scale Scale to help find centroid-to-face projections
    */
-  void centroidGap(const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT scale) override;
+  void centroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT scale ) override;
 
   /*!
    * \brief Check whether two segments have a positive length of overlap
    *
    */
-  TRIBOL_HOST_DEVICE void checkSegOverlap(const RealT* const pX1, const RealT* const pY1, const RealT* const pX2,
-                                          const RealT* const pY2, const int nV1, const int nV2);
+  TRIBOL_HOST_DEVICE void checkSegOverlap( const RealT* const pX1, const RealT* const pY1, const RealT* const pX2,
+                                           const RealT* const pY2, const int nV1, const int nV2 );
 
   /*!
    * \brief Compute the contact plane integral gap expression
@@ -578,8 +580,8 @@ class ContactPlane2D : public ContactPlane {
    *
    * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
    */
-  TRIBOL_HOST_DEVICE FaceGeomError computeLocalInterpenOverlap(const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                                               const Parameters& params, bool& interpen) override;
+  TRIBOL_HOST_DEVICE FaceGeomError computeLocalInterpenOverlap( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
+                                                                const Parameters& params, bool& interpen ) override;
 };
 
 //-----------------------------------------------------------------------------
@@ -607,11 +609,11 @@ class ContactPlane2D : public ContactPlane {
  * \note will need the contact case for specialized geometry checks
  *
  */
-TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair(InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                    const MeshData::Viewer& mesh2, const Parameters& params,
-                                                    ContactMethod const cMethod, ContactCase const cCase,
-                                                    bool& isInteracting, ArrayViewT<ContactPlane2D>& planes_2d,
-                                                    ArrayViewT<ContactPlane3D>& planes_3d, IndexT* plane_ct);
+TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair( InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                     const MeshData::Viewer& mesh2, const Parameters& params,
+                                                     ContactMethod const cMethod, ContactCase const cCase,
+                                                     bool& isInteracting, ArrayViewT<ContactPlane2D>& planes_2d,
+                                                     ArrayViewT<ContactPlane3D>& planes_3d, IndexT* plane_ct );
 
 //-----------------------------------------------------------------------------
 // Free functions returning Contact Plane objects
@@ -629,9 +631,9 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair(InterfacePair& pair, const M
  * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
  *
  */
-TRIBOL_HOST_DEVICE FaceGeomError CheckFacePair(ContactPlane3D& cp, const MeshData::Viewer& mesh1,
-                                               const MeshData::Viewer& mesh2, const Parameters& params,
-                                               bool fullOverlap);
+TRIBOL_HOST_DEVICE FaceGeomError CheckFacePair( ContactPlane3D& cp, const MeshData::Viewer& mesh1,
+                                                const MeshData::Viewer& mesh2, const Parameters& params,
+                                                bool fullOverlap );
 
 /*!
  * \brief Checks if face-pair (3D) candidate is aligned and actual local contact interaction.
@@ -644,8 +646,8 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckFacePair(ContactPlane3D& cp, const MeshDat
  * \return 3D contact plane object with boolean indicating if face-pair form a local contact interaction
  *
  */
-TRIBOL_HOST_DEVICE ContactPlane3D CheckAlignedFacePair(InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                       const MeshData::Viewer& mesh2, const Parameters& params);
+TRIBOL_HOST_DEVICE ContactPlane3D CheckAlignedFacePair( InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                        const MeshData::Viewer& mesh2, const Parameters& params );
 
 /*!
  * \brief Checks if 2D edge-pair candidate is actual local contact interaction.
@@ -659,9 +661,9 @@ TRIBOL_HOST_DEVICE ContactPlane3D CheckAlignedFacePair(InterfacePair& pair, cons
  * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
  *
  */
-TRIBOL_HOST_DEVICE FaceGeomError CheckEdgePair(ContactPlane2D& cp, const MeshData::Viewer& mesh1,
-                                               const MeshData::Viewer& mesh2, const Parameters& params,
-                                               bool fullOverlap);
+TRIBOL_HOST_DEVICE FaceGeomError CheckEdgePair( ContactPlane2D& cp, const MeshData::Viewer& mesh1,
+                                                const MeshData::Viewer& mesh2, const Parameters& params,
+                                                bool fullOverlap );
 }  // namespace tribol
 
 #endif /* SRC_GEOM_CONTACTPLANE_HPP_ */

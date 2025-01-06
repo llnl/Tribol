@@ -31,7 +31,7 @@ class TransferByElements : public GridFnTransfer {
    * @param dst A redecomp GridFunction which receives values from a parent
    * ParGridFunction (src)
    */
-  void TransferToSerial(const mfem::ParGridFunction& src, mfem::GridFunction& dst) const override;
+  void TransferToSerial( const mfem::ParGridFunction& src, mfem::GridFunction& dst ) const override;
 
   /**
    * @brief Copies RedecompMesh-based mfem::GridFunction values to a
@@ -42,7 +42,7 @@ class TransferByElements : public GridFnTransfer {
    * @param dst A parent ParGridFunction which receives values from a redecomp
    * GridFunction (src)
    */
-  void TransferToParallel(const mfem::GridFunction& src, mfem::ParGridFunction& dst) const override;
+  void TransferToParallel( const mfem::GridFunction& src, mfem::ParGridFunction& dst ) const override;
 };
 
 }  // end namespace redecomp

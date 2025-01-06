@@ -54,7 +54,7 @@ class MortarForceTest : public ::testing::Test {
 
   RealT* getZOverlapCoords() { return zOverlap; }
 
-  void checkMortarForces(int* conn1, int* conn2, tribol::ContactMethod method)
+  void checkMortarForces( int* conn1, int* conn2, tribol::ContactMethod method )
   {
     // grab coordinate data
     RealT* x = this->x;
@@ -62,14 +62,14 @@ class MortarForceTest : public ::testing::Test {
     RealT* z = this->z;
 
     // register the mesh with tribol
-    int cellType = static_cast<int>(tribol::UNDEFINED_ELEMENT);
-    switch (this->numNodesPerFace) {
+    int cellType = static_cast<int>( tribol::UNDEFINED_ELEMENT );
+    switch ( this->numNodesPerFace ) {
       case 4: {
-        cellType = (int)(tribol::LINEAR_QUAD);
+        cellType = (int)( tribol::LINEAR_QUAD );
         break;
       }
       default: {
-        SLIC_ERROR("checkMortarForces: number of nodes per face not equal to 4.");
+        SLIC_ERROR( "checkMortarForces: number of nodes per face not equal to 4." );
       }
     }
 
@@ -77,8 +77,8 @@ class MortarForceTest : public ::testing::Test {
     const int nonmortarMeshId = 1;
 
     // register mesh
-    tribol::registerMesh(mortarMeshId, 1, this->numNodes, conn1, cellType, x, y, z, tribol::MemorySpace::Host);
-    tribol::registerMesh(nonmortarMeshId, 1, this->numNodes, conn2, cellType, x, y, z, tribol::MemorySpace::Host);
+    tribol::registerMesh( mortarMeshId, 1, this->numNodes, conn1, cellType, x, y, z, tribol::MemorySpace::Host );
+    tribol::registerMesh( nonmortarMeshId, 1, this->numNodes, conn2, cellType, x, y, z, tribol::MemorySpace::Host );
 
     // register nodal forces
     RealT *fx1, *fy1, *fz1;
@@ -101,7 +101,7 @@ class MortarForceTest : public ::testing::Test {
     fz2 = forceZ2;
 
     // initialize force arrays
-    for (int i = 0; i < this->numNodes; ++i) {
+    for ( int i = 0; i < this->numNodes; ++i ) {
       fx1[i] = 0.;
       fy1[i] = 0.;
       fz1[i] = 0.;
@@ -110,8 +110,8 @@ class MortarForceTest : public ::testing::Test {
       fz2[i] = 0.;
     }
 
-    tribol::registerNodalResponse(mortarMeshId, fx1, fy1, fz1);
-    tribol::registerNodalResponse(nonmortarMeshId, fx2, fy2, fz2);
+    tribol::registerNodalResponse( mortarMeshId, fx1, fy1, fz1 );
+    tribol::registerNodalResponse( nonmortarMeshId, fx2, fy2, fz2 );
 
     // register nodal pressure and nodal gap array for the nonmortar mesh
     RealT *gaps, *pressures;
@@ -121,32 +121,32 @@ class MortarForceTest : public ::testing::Test {
 
     // initialize gaps and pressures. Initialize all
     // nonmortar pressures to 1.0
-    for (int i = 0; i < this->numNodes; ++i) {
+    for ( int i = 0; i < this->numNodes; ++i ) {
       gaps[i] = 0.;
       pressures[i] = 1.;
     }
 
     // register nodal gaps and pressure arrays
-    tribol::registerMortarGaps(nonmortarMeshId, gaps);
-    tribol::registerMortarPressures(nonmortarMeshId, pressures);
+    tribol::registerMortarGaps( nonmortarMeshId, gaps );
+    tribol::registerMortarPressures( nonmortarMeshId, pressures );
 
     // register coupling scheme
     const int csIndex = 0;
-    tribol::registerCouplingScheme(csIndex, mortarMeshId, nonmortarMeshId, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
-                                   method, tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER,
-                                   tribol::DEFAULT_BINNING_METHOD, tribol::ExecutionMode::Sequential);
+    tribol::registerCouplingScheme( csIndex, mortarMeshId, nonmortarMeshId, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                                    method, tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER,
+                                    tribol::DEFAULT_BINNING_METHOD, tribol::ExecutionMode::Sequential );
 
-    tribol::setLagrangeMultiplierOptions(csIndex, tribol::ImplicitEvalMode::MORTAR_RESIDUAL,
-                                         tribol::SparseMode::MFEM_LINKED_LIST);
+    tribol::setLagrangeMultiplierOptions( csIndex, tribol::ImplicitEvalMode::MORTAR_RESIDUAL,
+                                          tribol::SparseMode::MFEM_LINKED_LIST );
 
     // call tribol update
     RealT dt = 1.0;
-    int tribol_update_err = tribol::update(1, 1., dt);
+    int tribol_update_err = tribol::update( 1, 1., dt );
 
-    EXPECT_EQ(tribol_update_err, 0);
+    EXPECT_EQ( tribol_update_err, 0 );
 
     // diagnostics
-    auto& cs = tribol::CouplingSchemeManager::getInstance().at(csIndex);
+    auto& cs = tribol::CouplingSchemeManager::getInstance().at( csIndex );
     const auto mortarMesh = cs.getMesh1().getView();
     const auto nonmortarMesh = cs.getMesh2().getView();
 
@@ -158,9 +158,9 @@ class MortarForceTest : public ::testing::Test {
     RealT fx2Sum = 0.;
     RealT fy2Sum = 0.;
     RealT fz2Sum = 0.;
-    for (int i = 0; i < this->numNodesPerFace; ++i) {
-      int nonmortarNodeId = nonmortarMesh.getGlobalNodeId(0, i);
-      int mortarNodeId = mortarMesh.getGlobalNodeId(0, i);
+    for ( int i = 0; i < this->numNodesPerFace; ++i ) {
+      int nonmortarNodeId = nonmortarMesh.getGlobalNodeId( 0, i );
+      int mortarNodeId = mortarMesh.getGlobalNodeId( 0, i );
 
       fx2Sum += nonmortarMesh.getResponse()[0][nonmortarNodeId];
       fy2Sum += nonmortarMesh.getResponse()[1][nonmortarNodeId];
@@ -173,26 +173,26 @@ class MortarForceTest : public ::testing::Test {
 
     // sum nonmortar pressure
     RealT pSum = 0.;
-    for (int i = 0; i < this->numNodesPerFace; ++i) {
-      int nonmortarNodeId = nonmortarMesh.getGlobalNodeId(0, i);
+    for ( int i = 0; i < this->numNodesPerFace; ++i ) {
+      int nonmortarNodeId = nonmortarMesh.getGlobalNodeId( 0, i );
       pSum += nonmortarMesh.getNodalFields().m_node_pressure[nonmortarNodeId];
     }
 
-    RealT diffX1 = std::abs(fx1Sum) - std::abs(pSum);
-    RealT diffY1 = std::abs(fy1Sum) - std::abs(pSum);
-    RealT diffZ1 = std::abs(fz1Sum) - std::abs(pSum);
+    RealT diffX1 = std::abs( fx1Sum ) - std::abs( pSum );
+    RealT diffY1 = std::abs( fy1Sum ) - std::abs( pSum );
+    RealT diffZ1 = std::abs( fz1Sum ) - std::abs( pSum );
 
-    RealT diffX2 = std::abs(fx2Sum) - std::abs(pSum);
-    RealT diffY2 = std::abs(fy2Sum) - std::abs(pSum);
-    RealT diffZ2 = std::abs(fz2Sum) - std::abs(pSum);
+    RealT diffX2 = std::abs( fx2Sum ) - std::abs( pSum );
+    RealT diffY2 = std::abs( fy2Sum ) - std::abs( pSum );
+    RealT diffZ2 = std::abs( fz2Sum ) - std::abs( pSum );
 
     RealT tol = 1.e-8;
-    EXPECT_LE(diffX1, tol);
-    EXPECT_LE(diffY1, tol);
-    EXPECT_LE(diffZ1, tol);
-    EXPECT_LE(diffX2, tol);
-    EXPECT_LE(diffY2, tol);
-    EXPECT_LE(diffZ2, tol);
+    EXPECT_LE( diffX1, tol );
+    EXPECT_LE( diffY1, tol );
+    EXPECT_LE( diffZ1, tol );
+    EXPECT_LE( diffX2, tol );
+    EXPECT_LE( diffY2, tol );
+    EXPECT_LE( diffZ2, tol );
 
     // finalize
     tribol::finalize();
@@ -211,41 +211,41 @@ class MortarForceTest : public ::testing::Test {
     this->numOverlapNodes = 4;
     this->dim = 3;
 
-    if (this->x == nullptr) {
+    if ( this->x == nullptr ) {
       this->x = new RealT[this->numNodes];
     } else {
       delete[] this->x;
       this->x = new RealT[this->numNodes];
     }
 
-    if (this->y == nullptr) {
+    if ( this->y == nullptr ) {
       this->y = new RealT[this->numNodes];
     } else {
       delete[] this->y;
       this->y = new RealT[this->numNodes];
     }
 
-    if (this->z == nullptr) {
+    if ( this->z == nullptr ) {
       this->z = new RealT[this->numNodes];
     } else {
       delete[] this->z;
       this->z = new RealT[this->numNodes];
     }
 
-    if (this->xOverlap == nullptr) {
+    if ( this->xOverlap == nullptr ) {
       this->xOverlap = new RealT[this->numOverlapNodes];
     } else {
       delete[] this->xOverlap;
       this->xOverlap = new RealT[this->numOverlapNodes];
     }
 
-    if (this->yOverlap == nullptr) {
+    if ( this->yOverlap == nullptr ) {
       this->yOverlap = new RealT[this->numOverlapNodes];
     } else {
       delete[] this->yOverlap;
       this->yOverlap = new RealT[this->numOverlapNodes];
     }
-    if (this->zOverlap == nullptr) {
+    if ( this->zOverlap == nullptr ) {
       this->zOverlap = new RealT[this->numOverlapNodes];
     } else {
       delete[] this->zOverlap;
@@ -255,43 +255,43 @@ class MortarForceTest : public ::testing::Test {
 
   void TearDown() override
   {
-    if (this->x != nullptr) {
+    if ( this->x != nullptr ) {
       delete[] this->x;
       this->x = nullptr;
     }
-    if (this->y != nullptr) {
+    if ( this->y != nullptr ) {
       delete[] this->y;
       this->y = nullptr;
     }
-    if (this->z != nullptr) {
+    if ( this->z != nullptr ) {
       delete[] this->z;
       this->z = nullptr;
     }
-    if (this->xOverlap != nullptr) {
+    if ( this->xOverlap != nullptr ) {
       delete[] this->xOverlap;
       this->xOverlap = nullptr;
     }
-    if (this->yOverlap != nullptr) {
+    if ( this->yOverlap != nullptr ) {
       delete[] this->yOverlap;
       this->yOverlap = nullptr;
     }
-    if (this->zOverlap != nullptr) {
+    if ( this->zOverlap != nullptr ) {
       delete[] this->zOverlap;
       this->zOverlap = nullptr;
     }
   }
 
  protected:
-  RealT* x{nullptr};
-  RealT* y{nullptr};
-  RealT* z{nullptr};
+  RealT* x{ nullptr };
+  RealT* y{ nullptr };
+  RealT* z{ nullptr };
 
-  RealT* xOverlap{nullptr};
-  RealT* yOverlap{nullptr};
-  RealT* zOverlap{nullptr};
+  RealT* xOverlap{ nullptr };
+  RealT* yOverlap{ nullptr };
+  RealT* zOverlap{ nullptr };
 };
 
-TEST_F(MortarForceTest, parallel_misaligned)
+TEST_F( MortarForceTest, parallel_misaligned )
 {
   RealT* x = this->getXCoords();
   RealT* y = this->getYCoords();
@@ -351,15 +351,15 @@ TEST_F(MortarForceTest, parallel_misaligned)
   int conn1[numNodesPerFace];
   int conn2[numNodesPerFace];
 
-  for (int i = 0; i < numNodesPerFace; ++i) {
+  for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
     conn2[i] = numNodesPerFace + i;
   }
 
-  this->checkMortarForces(&conn1[0], &conn2[0], tribol::SINGLE_MORTAR);
+  this->checkMortarForces( &conn1[0], &conn2[0], tribol::SINGLE_MORTAR );
 }
 
-TEST_F(MortarForceTest, parallel_aligned)
+TEST_F( MortarForceTest, parallel_aligned )
 {
   RealT* x = this->getXCoords();
   RealT* y = this->getYCoords();
@@ -419,15 +419,15 @@ TEST_F(MortarForceTest, parallel_aligned)
   int conn1[numNodesPerFace];
   int conn2[numNodesPerFace];
 
-  for (int i = 0; i < numNodesPerFace; ++i) {
+  for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
     conn2[i] = numNodesPerFace + i;
   }
 
-  this->checkMortarForces(&conn1[0], &conn2[0], tribol::SINGLE_MORTAR);
+  this->checkMortarForces( &conn1[0], &conn2[0], tribol::SINGLE_MORTAR );
 }
 
-TEST_F(MortarForceTest, non_parallel_misaligned)
+TEST_F( MortarForceTest, non_parallel_misaligned )
 {
   RealT* x = this->getXCoords();
   RealT* y = this->getYCoords();
@@ -487,15 +487,15 @@ TEST_F(MortarForceTest, non_parallel_misaligned)
   int conn1[numNodesPerFace];
   int conn2[numNodesPerFace];
 
-  for (int i = 0; i < numNodesPerFace; ++i) {
+  for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
     conn2[i] = numNodesPerFace + i;
   }
 
-  this->checkMortarForces(&conn1[0], &conn2[0], tribol::SINGLE_MORTAR);
+  this->checkMortarForces( &conn1[0], &conn2[0], tribol::SINGLE_MORTAR );
 }
 
-TEST_F(MortarForceTest, non_parallel_aligned)
+TEST_F( MortarForceTest, non_parallel_aligned )
 {
   RealT* x = this->getXCoords();
   RealT* y = this->getYCoords();
@@ -555,15 +555,15 @@ TEST_F(MortarForceTest, non_parallel_aligned)
   int conn1[numNodesPerFace];
   int conn2[numNodesPerFace];
 
-  for (int i = 0; i < numNodesPerFace; ++i) {
+  for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
     conn2[i] = numNodesPerFace + i;
   }
 
-  this->checkMortarForces(&conn1[0], &conn2[0], tribol::SINGLE_MORTAR);
+  this->checkMortarForces( &conn1[0], &conn2[0], tribol::SINGLE_MORTAR );
 }
 
-TEST_F(MortarForceTest, parallel_simple_aligned)
+TEST_F( MortarForceTest, parallel_simple_aligned )
 {
   RealT* x = this->getXCoords();
   RealT* y = this->getYCoords();
@@ -623,19 +623,19 @@ TEST_F(MortarForceTest, parallel_simple_aligned)
   int conn1[numNodesPerFace];
   int conn2[numNodesPerFace];
 
-  for (int i = 0; i < numNodesPerFace; ++i) {
+  for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
     conn2[i] = numNodesPerFace + i;
   }
 
-  this->checkMortarForces(&conn1[0], &conn2[0], tribol::ALIGNED_MORTAR);
+  this->checkMortarForces( &conn1[0], &conn2[0], tribol::ALIGNED_MORTAR );
 }
 
-int main(int argc, char* argv[])
+int main( int argc, char* argv[] )
 {
   int result = 0;
 
-  ::testing::InitGoogleTest(&argc, argv);
+  ::testing::InitGoogleTest( &argc, argv );
 
 #ifdef TRIBOL_USE_UMPIRE
   umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager

@@ -33,27 +33,27 @@ class MortarWeightTest : public ::testing::Test {
   int numOverlapNodes;
   int dim;
 
-  RealT* getXCoords(int id)
+  RealT* getXCoords( int id )
   {
-    if (id == 0) {
+    if ( id == 0 ) {
       return x1;
     } else {
       return x2;
     }
   }
 
-  RealT* getYCoords(int id)
+  RealT* getYCoords( int id )
   {
-    if (id == 0) {
+    if ( id == 0 ) {
       return y1;
     } else {
       return y2;
     }
   }
 
-  RealT* getZCoords(int id)
+  RealT* getZCoords( int id )
   {
-    if (id == 0) {
+    if ( id == 0 ) {
       return z1;
     } else {
       return z2;
@@ -66,10 +66,10 @@ class MortarWeightTest : public ::testing::Test {
 
   RealT* getZOverlapCoords() { return zOverlap; }
 
-  void checkMortarWts(RealT pTestNonmortar[4], RealT pTestMortar[4])
+  void checkMortarWts( RealT pTestNonmortar[4], RealT pTestMortar[4] )
   {
-    if (this->numNodesPerFace != 4) {
-      SLIC_ERROR("checkMortarWts: number of nodes per face not equal to 4.");
+    if ( this->numNodesPerFace != 4 ) {
+      SLIC_ERROR( "checkMortarWts: number of nodes per face not equal to 4." );
     }
 
     RealT xyz1[this->dim * this->numNodesPerFace];
@@ -90,9 +90,9 @@ class MortarWeightTest : public ::testing::Test {
     RealT* zo = this->zOverlap;
 
     // generate stacked coordinate array
-    for (int j = 0; j < this->numNodesPerFace; ++j) {
-      for (int k = 0; k < this->dim; ++k) {
-        switch (k) {
+    for ( int j = 0; j < this->numNodesPerFace; ++j ) {
+      for ( int k = 0; k < this->dim; ++k ) {
+        switch ( k ) {
           case 0:
             xy1[this->dim * j + k] = x1[j];
             xy2[this->dim * j + k] = x2[j];
@@ -115,17 +115,17 @@ class MortarWeightTest : public ::testing::Test {
     // instantiate SurfaceContactElem struct. Note, this object is instantiated
     // using face 1, face 2, and the set overlap polygon. Note, the mesh ids are set
     // equal to 0, and the face ids are 0 and 1, respectively.
-    tribol::SurfaceContactElem elem(this->dim, xy1, xy2, xyOverlap, this->numNodesPerFace, this->numOverlapNodes, 0, 0,
-                                    0, 1);
+    tribol::SurfaceContactElem elem( this->dim, xy1, xy2, xyOverlap, this->numNodesPerFace, this->numOverlapNodes, 0, 0,
+                                     0, 1 );
 
     // compute the mortar weights to be stored on
     // the surface contact element struct.
-    tribol::ComputeMortarWeights(elem);
+    tribol::ComputeMortarWeights( elem );
 
     // test the projection on an arbitrary vector
-    RealT p[4] = {1., 1., 1., 1.};
-    for (int i = 0; i < this->numNodesPerFace; ++i) {
-      for (int j = 0; j < this->numNodesPerFace; ++j) {
+    RealT p[4] = { 1., 1., 1., 1. };
+    for ( int i = 0; i < this->numNodesPerFace; ++i ) {
+      for ( int j = 0; j < this->numNodesPerFace; ++j ) {
         int nonmortarId = this->numNodesPerFace * i + j;
         int mortarId = this->numNodesPerFace * this->numNodesPerFace + this->numNodesPerFace * i + j;
         pTestNonmortar[i] += elem.mortarWts[nonmortarId] * p[j];
@@ -142,62 +142,62 @@ class MortarWeightTest : public ::testing::Test {
     this->numOverlapNodes = 4;
     this->dim = 3;
 
-    if (this->x1 == nullptr) {
+    if ( this->x1 == nullptr ) {
       this->x1 = new RealT[this->numNodes];
     } else {
       delete[] this->x1;
       this->x1 = new RealT[this->numNodes];
     }
 
-    if (this->x2 == nullptr) {
+    if ( this->x2 == nullptr ) {
       this->x2 = new RealT[this->numNodes];
     } else {
       delete[] this->x2;
       this->x2 = new RealT[this->numNodes];
     }
 
-    if (this->y1 == nullptr) {
+    if ( this->y1 == nullptr ) {
       this->y1 = new RealT[this->numNodes];
     } else {
       delete[] this->y1;
       this->y1 = new RealT[this->numNodes];
     }
 
-    if (this->y2 == nullptr) {
+    if ( this->y2 == nullptr ) {
       this->y2 = new RealT[this->numNodes];
     } else {
       delete[] this->y2;
       this->y2 = new RealT[this->numNodes];
     }
 
-    if (this->z1 == nullptr) {
+    if ( this->z1 == nullptr ) {
       this->z1 = new RealT[this->numNodes];
     } else {
       delete[] this->z1;
       this->z1 = new RealT[this->numNodes];
     }
 
-    if (this->z2 == nullptr) {
+    if ( this->z2 == nullptr ) {
       this->z2 = new RealT[this->numNodes];
     } else {
       delete[] this->z2;
       this->z2 = new RealT[this->numNodes];
     }
 
-    if (this->xOverlap == nullptr) {
+    if ( this->xOverlap == nullptr ) {
       this->xOverlap = new RealT[this->numOverlapNodes];
     } else {
       delete[] this->xOverlap;
       this->xOverlap = new RealT[this->numOverlapNodes];
     }
 
-    if (this->yOverlap == nullptr) {
+    if ( this->yOverlap == nullptr ) {
       this->yOverlap = new RealT[this->numOverlapNodes];
     } else {
       delete[] this->yOverlap;
       this->yOverlap = new RealT[this->numOverlapNodes];
     }
-    if (this->zOverlap == nullptr) {
+    if ( this->zOverlap == nullptr ) {
       this->zOverlap = new RealT[this->numOverlapNodes];
     } else {
       delete[] this->zOverlap;
@@ -207,67 +207,67 @@ class MortarWeightTest : public ::testing::Test {
 
   void TearDown() override
   {
-    if (this->x1 != nullptr) {
+    if ( this->x1 != nullptr ) {
       delete[] this->x1;
       this->x1 = nullptr;
     }
-    if (this->x2 != nullptr) {
+    if ( this->x2 != nullptr ) {
       delete[] this->x2;
       this->x2 = nullptr;
     }
-    if (this->y1 != nullptr) {
+    if ( this->y1 != nullptr ) {
       delete[] this->y1;
       this->y1 = nullptr;
     }
-    if (this->y2 != nullptr) {
+    if ( this->y2 != nullptr ) {
       delete[] this->y2;
       this->y2 = nullptr;
     }
-    if (this->z1 != nullptr) {
+    if ( this->z1 != nullptr ) {
       delete[] this->z1;
       this->z1 = nullptr;
     }
-    if (this->z2 != nullptr) {
+    if ( this->z2 != nullptr ) {
       delete[] this->z2;
       this->z2 = nullptr;
     }
-    if (this->xOverlap != nullptr) {
+    if ( this->xOverlap != nullptr ) {
       delete[] this->xOverlap;
       this->xOverlap = nullptr;
     }
-    if (this->yOverlap != nullptr) {
+    if ( this->yOverlap != nullptr ) {
       delete[] this->yOverlap;
       this->yOverlap = nullptr;
     }
-    if (this->zOverlap != nullptr) {
+    if ( this->zOverlap != nullptr ) {
       delete[] this->zOverlap;
       this->zOverlap = nullptr;
     }
   }
 
  protected:
-  RealT* x1{nullptr};
-  RealT* y1{nullptr};
-  RealT* z1{nullptr};
+  RealT* x1{ nullptr };
+  RealT* y1{ nullptr };
+  RealT* z1{ nullptr };
 
-  RealT* x2{nullptr};
-  RealT* y2{nullptr};
-  RealT* z2{nullptr};
+  RealT* x2{ nullptr };
+  RealT* y2{ nullptr };
+  RealT* z2{ nullptr };
 
-  RealT* xOverlap{nullptr};
-  RealT* yOverlap{nullptr};
-  RealT* zOverlap{nullptr};
+  RealT* xOverlap{ nullptr };
+  RealT* yOverlap{ nullptr };
+  RealT* zOverlap{ nullptr };
 };
 
-TEST_F(MortarWeightTest, simple_projection)
+TEST_F( MortarWeightTest, simple_projection )
 {
-  RealT* x1 = this->getXCoords(0);
-  RealT* y1 = this->getYCoords(0);
-  RealT* z1 = this->getZCoords(0);
+  RealT* x1 = this->getXCoords( 0 );
+  RealT* y1 = this->getYCoords( 0 );
+  RealT* z1 = this->getZCoords( 0 );
 
-  RealT* x2 = this->getXCoords(1);
-  RealT* y2 = this->getYCoords(1);
-  RealT* z2 = this->getZCoords(1);
+  RealT* x2 = this->getXCoords( 1 );
+  RealT* y2 = this->getYCoords( 1 );
+  RealT* z2 = this->getZCoords( 1 );
 
   RealT* xOvrlp = this->getXOverlapCoords();
   RealT* yOvrlp = this->getYOverlapCoords();
@@ -318,40 +318,40 @@ TEST_F(MortarWeightTest, simple_projection)
   zOvrlp[2] = 0.1;
   zOvrlp[3] = 0.1;
 
-  RealT pNonmortar[4] = {0., 0., 0., 0.};
-  RealT pMortar[4] = {0., 0., 0., 0};
-  this->checkMortarWts(pNonmortar, pMortar);
+  RealT pNonmortar[4] = { 0., 0., 0., 0. };
+  RealT pMortar[4] = { 0., 0., 0., 0 };
+  this->checkMortarWts( pNonmortar, pMortar );
 
   // hard-code diffs for each element in pNonmortar and pMortar.
   // Note, these hard coded values DEPEND on the ordering of
   // the nodes in this function (above).
-  RealT diffNonmortar1 = std::abs(0.5625 - pNonmortar[0]);
-  RealT diffNonmortar2 = std::abs(0.1875 - pNonmortar[1]);
-  RealT diffNonmortar3 = std::abs(0.0625 - pNonmortar[2]);
-  RealT diffNonmortar4 = std::abs(0.1875 - pNonmortar[3]);
+  RealT diffNonmortar1 = std::abs( 0.5625 - pNonmortar[0] );
+  RealT diffNonmortar2 = std::abs( 0.1875 - pNonmortar[1] );
+  RealT diffNonmortar3 = std::abs( 0.0625 - pNonmortar[2] );
+  RealT diffNonmortar4 = std::abs( 0.1875 - pNonmortar[3] );
 
-  RealT diffMortar1 = std::abs(0.0625 - pMortar[0]);
-  RealT diffMortar2 = std::abs(0.1875 - pMortar[1]);
-  RealT diffMortar3 = std::abs(0.5625 - pMortar[2]);
-  RealT diffMortar4 = std::abs(0.1875 - pMortar[3]);
+  RealT diffMortar1 = std::abs( 0.0625 - pMortar[0] );
+  RealT diffMortar2 = std::abs( 0.1875 - pMortar[1] );
+  RealT diffMortar3 = std::abs( 0.5625 - pMortar[2] );
+  RealT diffMortar4 = std::abs( 0.1875 - pMortar[3] );
 
   RealT tol = 1.e-8;
-  EXPECT_LE(diffNonmortar1, tol);
-  EXPECT_LE(diffNonmortar2, tol);
-  EXPECT_LE(diffNonmortar3, tol);
-  EXPECT_LE(diffNonmortar4, tol);
+  EXPECT_LE( diffNonmortar1, tol );
+  EXPECT_LE( diffNonmortar2, tol );
+  EXPECT_LE( diffNonmortar3, tol );
+  EXPECT_LE( diffNonmortar4, tol );
 
-  EXPECT_LE(diffMortar1, tol);
-  EXPECT_LE(diffMortar2, tol);
-  EXPECT_LE(diffMortar3, tol);
-  EXPECT_LE(diffMortar4, tol);
+  EXPECT_LE( diffMortar1, tol );
+  EXPECT_LE( diffMortar2, tol );
+  EXPECT_LE( diffMortar3, tol );
+  EXPECT_LE( diffMortar4, tol );
 }
 
-int main(int argc, char* argv[])
+int main( int argc, char* argv[] )
 {
   int result = 0;
 
-  ::testing::InitGoogleTest(&argc, argv);
+  ::testing::InitGoogleTest( &argc, argv );
 
   axom::slic::SimpleLogger logger;
 

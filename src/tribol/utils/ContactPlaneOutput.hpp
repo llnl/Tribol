@@ -34,8 +34,9 @@ class ContactPlaneManager;
  * \param [in] t simulation time step
  *
  */
-void WriteContactPlaneMeshToVtk(const std::string& dir, const VisType v_type, const IndexT cs_id, const IndexT mesh_id1,
-                                const IndexT mesh_id2, const int dim, const int cycle, const RealT t);
+void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, const IndexT cs_id,
+                                 const IndexT mesh_id1, const IndexT mesh_id2, const int dim, const int cycle,
+                                 const RealT t );
 
 }  // namespace tribol
 

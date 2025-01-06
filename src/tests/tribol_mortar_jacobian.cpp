@@ -51,7 +51,7 @@ class MortarJacTest : public ::testing::Test {
 
   RealT* getZCoords() { return z; }
 
-  void setupTribol(int* conn1, int* conn2, tribol::ContactMethod method)
+  void setupTribol( int* conn1, int* conn2, tribol::ContactMethod method )
   {
     // Note, this assumes that numNodes is the total number of
     // nodes encompassing the two meshes that will be registered
@@ -64,14 +64,14 @@ class MortarJacTest : public ::testing::Test {
     RealT* z = this->z;
 
     // register the mesh with tribol
-    int cellType = static_cast<int>(tribol::UNDEFINED_ELEMENT);
-    switch (this->numNodesPerFace) {
+    int cellType = static_cast<int>( tribol::UNDEFINED_ELEMENT );
+    switch ( this->numNodesPerFace ) {
       case 4: {
-        cellType = (int)(tribol::LINEAR_QUAD);
+        cellType = (int)( tribol::LINEAR_QUAD );
         break;
       }
       default: {
-        SLIC_ERROR("setupTribol: number of nodes per face not equal to 4.");
+        SLIC_ERROR( "setupTribol: number of nodes per face not equal to 4." );
       }
     }
 
@@ -79,8 +79,8 @@ class MortarJacTest : public ::testing::Test {
     const int nonmortarMeshId = 1;
 
     // register mesh
-    tribol::registerMesh(mortarMeshId, 1, this->numNodes, conn1, cellType, x, y, z, tribol::MemorySpace::Host);
-    tribol::registerMesh(nonmortarMeshId, 1, this->numNodes, conn2, cellType, x, y, z, tribol::MemorySpace::Host);
+    tribol::registerMesh( mortarMeshId, 1, this->numNodes, conn1, cellType, x, y, z, tribol::MemorySpace::Host );
+    tribol::registerMesh( nonmortarMeshId, 1, this->numNodes, conn2, cellType, x, y, z, tribol::MemorySpace::Host );
 
     // register nodal forces. Note, I was getting a seg fault when
     // registering the same pointer to a single set of force arrays
@@ -108,7 +108,7 @@ class MortarJacTest : public ::testing::Test {
     fz2 = forceZ2;
 
     // initialize force arrays
-    for (int i = 0; i < this->numNodes; ++i) {
+    for ( int i = 0; i < this->numNodes; ++i ) {
       fx1[i] = 0.;
       fy1[i] = 0.;
       fz1[i] = 0.;
@@ -118,38 +118,38 @@ class MortarJacTest : public ::testing::Test {
       fz2[i] = 0.;
     }
 
-    tribol::registerNodalResponse(mortarMeshId, fx1, fy1, fz1);
-    tribol::registerNodalResponse(nonmortarMeshId, fx2, fy2, fz2);
+    tribol::registerNodalResponse( mortarMeshId, fx1, fy1, fz1 );
+    tribol::registerNodalResponse( nonmortarMeshId, fx2, fy2, fz2 );
 
-    gaps = tribol::ArrayT<RealT>(this->numNodes,
-                                 this->numNodes);  // length of total mesh to use global connectivity to index
-    pressures = tribol::ArrayT<RealT>(this->numNodes,
-                                      this->numNodes);  // length of total mesh to use global connectivity to index
+    gaps = tribol::ArrayT<RealT>( this->numNodes,
+                                  this->numNodes );  // length of total mesh to use global connectivity to index
+    pressures = tribol::ArrayT<RealT>( this->numNodes,
+                                       this->numNodes );  // length of total mesh to use global connectivity to index
 
     // initialize gaps and pressures. Initialize all
     // nonmortar pressures to 1.0
-    for (int i = 0; i < this->numNodes; ++i) {
+    for ( int i = 0; i < this->numNodes; ++i ) {
       gaps[i] = 0.;
       pressures[i] = 1.;
     }
 
     // register nodal gaps and pressures
-    tribol::registerMortarGaps(nonmortarMeshId, gaps.data());
-    tribol::registerMortarPressures(nonmortarMeshId, pressures.data());
+    tribol::registerMortarGaps( nonmortarMeshId, gaps.data() );
+    tribol::registerMortarPressures( nonmortarMeshId, pressures.data() );
 
     // register coupling scheme
     const int csIndex = 0;
-    tribol::registerCouplingScheme(csIndex, mortarMeshId, nonmortarMeshId, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
-                                   method, tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER,
-                                   tribol::DEFAULT_BINNING_METHOD, tribol::ExecutionMode::Sequential);
+    tribol::registerCouplingScheme( csIndex, mortarMeshId, nonmortarMeshId, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                                    method, tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER,
+                                    tribol::DEFAULT_BINNING_METHOD, tribol::ExecutionMode::Sequential );
 
-    tribol::setLagrangeMultiplierOptions(csIndex, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN,
-                                         tribol::SparseMode::MFEM_LINKED_LIST);
+    tribol::setLagrangeMultiplierOptions( csIndex, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN,
+                                          tribol::SparseMode::MFEM_LINKED_LIST );
 
     RealT dt = 1.0;
-    int tribol_update_err = tribol::update(1, 1., dt);
+    int tribol_update_err = tribol::update( 1, 1., dt );
 
-    EXPECT_EQ(tribol_update_err, 0);
+    EXPECT_EQ( tribol_update_err, 0 );
   }
 
  protected:
@@ -161,21 +161,21 @@ class MortarJacTest : public ::testing::Test {
     this->numOverlapNodes = 4;
     this->dim = 3;
 
-    if (this->x == nullptr) {
+    if ( this->x == nullptr ) {
       this->x = new RealT[this->numNodes];
     } else {
       delete[] this->x;
       this->x = new RealT[this->numNodes];
     }
 
-    if (this->y == nullptr) {
+    if ( this->y == nullptr ) {
       this->y = new RealT[this->numNodes];
     } else {
       delete[] this->y;
       this->y = new RealT[this->numNodes];
     }
 
-    if (this->z == nullptr) {
+    if ( this->z == nullptr ) {
       this->z = new RealT[this->numNodes];
     } else {
       delete[] this->z;
@@ -185,29 +185,29 @@ class MortarJacTest : public ::testing::Test {
 
   void TearDown() override
   {
-    if (this->x != nullptr) {
+    if ( this->x != nullptr ) {
       delete[] this->x;
       this->x = nullptr;
     }
-    if (this->y != nullptr) {
+    if ( this->y != nullptr ) {
       delete[] this->y;
       this->y = nullptr;
     }
-    if (this->z != nullptr) {
+    if ( this->z != nullptr ) {
       delete[] this->z;
       this->z = nullptr;
     }
   }
 
  protected:
-  RealT* x{nullptr};
-  RealT* y{nullptr};
-  RealT* z{nullptr};
+  RealT* x{ nullptr };
+  RealT* y{ nullptr };
+  RealT* z{ nullptr };
   tribol::ArrayT<RealT> gaps;
   tribol::ArrayT<RealT> pressures;
 };
 
-TEST_F(MortarJacTest, jac_input_test)
+TEST_F( MortarJacTest, jac_input_test )
 {
   RealT* x = this->getXCoords();
   RealT* y = this->getYCoords();
@@ -248,33 +248,33 @@ TEST_F(MortarJacTest, jac_input_test)
   int conn1[numNodesPerFace];
   int conn2[numNodesPerFace];
 
-  for (int i = 0; i < numNodesPerFace; ++i) {
+  for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
     conn2[i] = numNodesPerFace + i;
   }
 
-  this->setupTribol(&conn1[0], &conn2[0], tribol::ALIGNED_MORTAR);
+  this->setupTribol( &conn1[0], &conn2[0], tribol::ALIGNED_MORTAR );
 
   // check Jacobian sparse matrix
-  mfem::SparseMatrix* jac{nullptr};
-  int sparseMatErr = tribol::getJacobianSparseMatrix(&jac, 0);
+  mfem::SparseMatrix* jac{ nullptr };
+  int sparseMatErr = tribol::getJacobianSparseMatrix( &jac, 0 );
 
-  EXPECT_EQ(sparseMatErr, 0);
+  EXPECT_EQ( sparseMatErr, 0 );
 
   // add each diagonal entry to 1 (i.e. identity matrix) to test adding routine
-  for (int i = 0; i < 2 * numNodesPerFace; ++i) {
-    jac->Add(i, i, 1.);
+  for ( int i = 0; i < 2 * numNodesPerFace; ++i ) {
+    jac->Add( i, i, 1. );
   }
 
   // get the number of rows and compare to expected to make sure
   // sparse matrix initialization is correct
   int my_num_rows = 3 * 2 * numNodesPerFace + 2 * numNodesPerFace;
   int numRows = jac->NumRows();
-  EXPECT_EQ(numRows, my_num_rows);
+  EXPECT_EQ( numRows, my_num_rows );
 
   // get the number of columns and compare to expected
   int numCols = jac->NumCols();
-  EXPECT_EQ(numCols, my_num_rows);
+  EXPECT_EQ( numCols, my_num_rows );
 
   tribol::finalize();
 
@@ -282,7 +282,7 @@ TEST_F(MortarJacTest, jac_input_test)
   delete jac;
 }
 
-TEST_F(MortarJacTest, update_jac_test)
+TEST_F( MortarJacTest, update_jac_test )
 {
   RealT* x = this->getXCoords();
   RealT* y = this->getYCoords();
@@ -323,18 +323,18 @@ TEST_F(MortarJacTest, update_jac_test)
   int conn1[numNodesPerFace];
   int conn2[numNodesPerFace];
 
-  for (int i = 0; i < numNodesPerFace; ++i) {
+  for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
     conn2[i] = numNodesPerFace + i;
   }
 
-  this->setupTribol(&conn1[0], &conn2[0], tribol::ALIGNED_MORTAR);
+  this->setupTribol( &conn1[0], &conn2[0], tribol::ALIGNED_MORTAR );
 
   // check Jacobian sparse matrix
-  mfem::SparseMatrix* jac{nullptr};
-  int sparseMatErr = tribol::getJacobianSparseMatrix(&jac, 0);
+  mfem::SparseMatrix* jac{ nullptr };
+  int sparseMatErr = tribol::getJacobianSparseMatrix( &jac, 0 );
 
-  EXPECT_EQ(sparseMatErr, 0);
+  EXPECT_EQ( sparseMatErr, 0 );
 
   // make sure sparse matrix is finalized to convert to CSR format
   jac->Finalize();
@@ -344,19 +344,19 @@ TEST_F(MortarJacTest, update_jac_test)
 
   // convert sparse matrix to dense matrix for output
   mfem::DenseMatrix dJac;
-  jac->ToDenseMatrix(dJac);
+  jac->ToDenseMatrix( dJac );
 
   std::ofstream matrix;
-  matrix.setf(std::ios::scientific);
-  matrix.precision(2);
+  matrix.setf( std::ios::scientific );
+  matrix.precision( 2 );
   std::ostringstream suffix_matrix;
   suffix_matrix << "test2"
                 << ".txt";
-  matrix.open("matrix_" + suffix_matrix.str());
+  matrix.open( "matrix_" + suffix_matrix.str() );
 
-  for (int i = 0; i < numRows; ++i) {
-    for (int j = 0; j < numCols; ++j) {
-      RealT val = dJac(i, j);
+  for ( int i = 0; i < numRows; ++i ) {
+    for ( int j = 0; j < numCols; ++j ) {
+      RealT val = dJac( i, j );
       matrix << val << "  ";
     }
     matrix << "\n";
@@ -370,11 +370,11 @@ TEST_F(MortarJacTest, update_jac_test)
   delete jac;
 }
 
-int main(int argc, char* argv[])
+int main( int argc, char* argv[] )
 {
   int result = 0;
 
-  ::testing::InitGoogleTest(&argc, argv);
+  ::testing::InitGoogleTest( &argc, argv );
 
   axom::slic::SimpleLogger logger;  // create & initialize logger,
 

@@ -23,9 +23,9 @@ namespace tribol {
 // generated from computational geometry issues
 struct PairReportingData {
  public:
-  int numBadOrientation{0};
-  int numBadOverlaps{0};
-  int numBadFaceGeometry{0};
+  int numBadOrientation{ 0 };
+  int numBadOverlaps{ 0 };
+  int numBadFaceGeometry{ 0 };
 };
 
 /**
@@ -114,7 +114,7 @@ class CouplingScheme {
      *
      * @param cs CouplingScheme to create a view of
      */
-    Viewer(CouplingScheme& cs);
+    Viewer( CouplingScheme& cs );
 
     /**
      * @brief Spatial dimension of the meshes in the coupling scheme
@@ -150,7 +150,7 @@ class CouplingScheme {
      * @param id identifier for a contact plane
      * @return contact plane object
      */
-    TRIBOL_HOST_DEVICE ContactPlane& getContactPlane(IndexT id) const;
+    TRIBOL_HOST_DEVICE ContactPlane& getContactPlane( IndexT id ) const;
 
     /**
      * @brief Get the timestep scale
@@ -164,7 +164,7 @@ class CouplingScheme {
      *
      * @return the gap tolerance for the common plane method
      */
-    TRIBOL_HOST_DEVICE RealT getGapTol(int fid1, int fid2) const;
+    TRIBOL_HOST_DEVICE RealT getGapTol( int fid1, int fid2 ) const;
 
    private:
     /// Struct holding parameters for the coupling scheme
@@ -214,16 +214,16 @@ class CouplingScheme {
    *
    * Per-cycle rebinning is enabled by default.
    */
-  CouplingScheme(IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, int contact_mode, int contact_case, int contact_method,
-                 int contact_model, int enforcement_method, int binning_method,
-                 ExecutionMode given_exec_mode = ExecutionMode::Dynamic);
+  CouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, int contact_mode, int contact_case,
+                  int contact_method, int contact_model, int enforcement_method, int binning_method,
+                  ExecutionMode given_exec_mode = ExecutionMode::Dynamic );
 
   // Prevent copying
-  CouplingScheme(const CouplingScheme& other) = delete;
-  CouplingScheme& operator=(const CouplingScheme& other) = delete;
+  CouplingScheme( const CouplingScheme& other ) = delete;
+  CouplingScheme& operator=( const CouplingScheme& other ) = delete;
   // Enable moving
-  CouplingScheme(CouplingScheme&& other) = default;
-  CouplingScheme& operator=(CouplingScheme&& other) = default;
+  CouplingScheme( CouplingScheme&& other ) = default;
+  CouplingScheme& operator=( CouplingScheme&& other ) = default;
 
   /**
    * @brief Get the ID of the coupling scheme
@@ -336,7 +336,7 @@ class CouplingScheme {
    *
    * @param binningMethod new enum value
    */
-  void setBinningMethod(BinningMethod binningMethod) { m_binningMethod = binningMethod; }
+  void setBinningMethod( BinningMethod binningMethod ) { m_binningMethod = binningMethod; }
 
   /**
    * @brief Get the method data for the contact method
@@ -393,7 +393,7 @@ class CouplingScheme {
    *
    * @param [in] pred True to disable rebinning, false otherwise
    */
-  void setFixedBinning(bool pred) { m_fixedBinning = pred; }
+  void setFixedBinning( bool pred ) { m_fixedBinning = pred; }
 
   /**
    * @brief Disable/Enable per-cycle rebinning of interface pairs based on
@@ -401,7 +401,7 @@ class CouplingScheme {
    */
   void setFixedBinningPerCase()
   {
-    if (m_isBinned && m_contactCase == NO_SLIDING) {
+    if ( m_isBinned && m_contactCase == NO_SLIDING ) {
       m_fixedBinning = true;
     }
   }
@@ -411,7 +411,7 @@ class CouplingScheme {
    *
    * @param comm MPI communicator
    */
-  void setMPIComm(CommT comm) { m_parameters.problem_comm = comm; }
+  void setMPIComm( CommT comm ) { m_parameters.problem_comm = comm; }
 
   /**
    * @brief Check whether the coupling scheme has been binned
@@ -452,7 +452,7 @@ class CouplingScheme {
    *
    * @return number of active interface pairs
    */
-  int getNumActivePairs() const { return std::max(m_contact_plane2d.size(), m_contact_plane3d.size()); }
+  int getNumActivePairs() const { return std::max( m_contact_plane2d.size(), m_contact_plane3d.size() ); }
 
   /**
    * @brief Return the contact plane given by id
@@ -460,7 +460,7 @@ class CouplingScheme {
    * @param id identifier for a contact plane
    * @return contact plane object
    */
-  const ContactPlane& getContactPlane(IndexT id) const;
+  const ContactPlane& getContactPlane( IndexT id ) const;
 
   /**
    * @brief Returns a reference to the 3D contact planes
@@ -474,7 +474,7 @@ class CouplingScheme {
    *
    * @param [in] pred True to indicate binning has occurred
    */
-  void setBinned(bool pred) { m_isBinned = pred; }
+  void setBinned( bool pred ) { m_isBinned = pred; }
 
   /**
    * @brief Set the stored mesh pointers based on the two mesh IDs provided
@@ -573,21 +573,21 @@ class CouplingScheme {
    *
    * @return 0 if successful apply
    */
-  int apply(int cycle, RealT t, RealT& dt);
+  int apply( int cycle, RealT t, RealT& dt );
 
   /**
    * @brief Wrapper around method specific calculation of the Tribol timestep vote
    *
    * @param [in/out] dt simulation timestep at given cycle
    */
-  void computeTimeStep(RealT& dt);
+  void computeTimeStep( RealT& dt );
 
   /**
    * @brief Set the output directory for file output
    *
    * @param directory string giving a file system path
    */
-  void setOutputDirectory(const std::string& directory) { m_output_directory = directory; }
+  void setOutputDirectory( const std::string& directory ) { m_output_directory = directory; }
 
   /**
    * @brief Wrapper to call method specific visualization output routines
@@ -597,14 +597,14 @@ class CouplingScheme {
    * @param [in] cycle simulation cycle
    * @param [in] t simulation time at given cycle
    */
-  void writeInterfaceOutput(const std::string& dir, const VisType v_type, const int cycle, const RealT t);
+  void writeInterfaceOutput( const std::string& dir, const VisType v_type, const int cycle, const RealT t );
 
   /**
    * @brief Sets the coupling scheme logging level member variable
    *
    * @param [in] log_level the LoggingLevel enum value
    */
-  void setLoggingLevel(const LoggingLevel log_level) { m_loggingLevel = log_level; }
+  void setLoggingLevel( const LoggingLevel log_level ) { m_loggingLevel = log_level; }
 
   /**
    * @brief Sets the SLIC logging level per the coupling scheme logging level
@@ -625,7 +625,7 @@ class CouplingScheme {
    *
    * @pre The face_error is generated by calling CheckInterfacePair()
    */
-  void updatePairReportingData(const FaceGeomError face_error);
+  void updatePairReportingData( const FaceGeomError face_error );
 
   /**
    * @brief This debug prints the total number of types of face geometry errors
@@ -677,7 +677,7 @@ class CouplingScheme {
    *
    * @param mfemMeshData Unique pointer to MFEM mesh data
    */
-  void setMfemMeshData(std::unique_ptr<MfemMeshData> mfemMeshData) { m_mfemMeshData = std::move(mfemMeshData); }
+  void setMfemMeshData( std::unique_ptr<MfemMeshData> mfemMeshData ) { m_mfemMeshData = std::move( mfemMeshData ); }
 
   /**
    * @brief Check if coupling scheme has MFEM submesh field data
@@ -722,9 +722,9 @@ class CouplingScheme {
    *
    * @param MfemSubmeshData Unique pointer to MFEM submesh field data
    */
-  void setMfemSubmeshData(std::unique_ptr<MfemSubmeshData> mfemSubmeshData)
+  void setMfemSubmeshData( std::unique_ptr<MfemSubmeshData> mfemSubmeshData )
   {
-    m_mfemSubmeshData = std::move(mfemSubmeshData);
+    m_mfemSubmeshData = std::move( mfemSubmeshData );
   }
 
   /**
@@ -770,9 +770,9 @@ class CouplingScheme {
    *
    * @param mfemJacobianData Unique pointer to MFEM jacobian data
    */
-  void setMfemJacobianData(std::unique_ptr<MfemJacobianData> mfemJacobianData)
+  void setMfemJacobianData( std::unique_ptr<MfemJacobianData> mfemJacobianData )
   {
-    m_mfemJacobianData = std::move(mfemJacobianData);
+    m_mfemJacobianData = std::move( mfemJacobianData );
   }
 
 #endif /* BUILD_REDECOMP */
@@ -782,7 +782,7 @@ class CouplingScheme {
    *
    * @param [in/out] dt simulation timestep at given cycle
    */
-  void computeCommonPlaneTimeStep(RealT& dt);
+  void computeCommonPlaneTimeStep( RealT& dt );
 
  private:
   IndexT m_id;  ///< Coupling Scheme id
@@ -801,8 +801,8 @@ class CouplingScheme {
   Parameters m_parameters;              ///< Struct holding coupling scheme parameters
   std::string m_output_directory = "";  ///< Output directory for visualization dumps
 
-  bool m_nullMeshes{false};  ///< True if one or both meshes are zero-element (null) meshes
-  bool m_isValid{true};      ///< False if the coupling scheme is not valid per call to init()
+  bool m_nullMeshes{ false };  ///< True if one or both meshes are zero-element (null) meshes
+  bool m_isValid{ true };      ///< False if the coupling scheme is not valid per call to init()
 
   int m_numTotalNodes;  ///< Total number of nodes in the coupling scheme
 

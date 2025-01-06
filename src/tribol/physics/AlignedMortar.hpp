@@ -22,7 +22,7 @@ struct SurfaceContactElem;
  *
  *
  */
-void ComputeAlignedMortarGaps(CouplingScheme* cs);
+void ComputeAlignedMortarGaps( CouplingScheme* cs );
 
 /*!
  *
@@ -37,7 +37,7 @@ void ComputeAlignedMortarGaps(CouplingScheme* cs);
  *       quadrature on a four node quad.
  *
  */
-void ComputeAlignedMortarWeights(SurfaceContactElem& elem);
+void ComputeAlignedMortarWeights( SurfaceContactElem& elem );
 
 /*!
  *
@@ -47,7 +47,7 @@ void ComputeAlignedMortarWeights(SurfaceContactElem& elem);
  *
  */
 template <ContactMethod M>
-void ComputeNodalGap(SurfaceContactElem& elem);
+void ComputeNodalGap( SurfaceContactElem& elem );
 
 /*!
  *
@@ -59,7 +59,7 @@ void ComputeNodalGap(SurfaceContactElem& elem);
  *
  */
 template <>
-void ComputeNodalGap<ALIGNED_MORTAR>(SurfaceContactElem& elem);
+void ComputeNodalGap<ALIGNED_MORTAR>( SurfaceContactElem& elem );
 
 /*!
  *
@@ -71,7 +71,7 @@ void ComputeNodalGap<ALIGNED_MORTAR>(SurfaceContactElem& elem);
  *
  */
 template <>
-int ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>(CouplingScheme* cs);
+int ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs );
 
 /*!
  *
@@ -83,7 +83,7 @@ int ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>(CouplingScheme* cs);
  *
  */
 template <>
-void ComputeResidualJacobian<ALIGNED_MORTAR, PRIMAL>(SurfaceContactElem& elem);
+void ComputeResidualJacobian<ALIGNED_MORTAR, PRIMAL>( SurfaceContactElem& elem );
 
 /*!
  *
@@ -95,7 +95,7 @@ void ComputeResidualJacobian<ALIGNED_MORTAR, PRIMAL>(SurfaceContactElem& elem);
  *
  */
 template <>
-void ComputeResidualJacobian<ALIGNED_MORTAR, DUAL>(SurfaceContactElem& elem);
+void ComputeResidualJacobian<ALIGNED_MORTAR, DUAL>( SurfaceContactElem& elem );
 
 /*!
  *
@@ -107,7 +107,7 @@ void ComputeResidualJacobian<ALIGNED_MORTAR, DUAL>(SurfaceContactElem& elem);
  *
  */
 template <>
-void ComputeConstraintJacobian<ALIGNED_MORTAR, PRIMAL>(SurfaceContactElem& elem);
+void ComputeConstraintJacobian<ALIGNED_MORTAR, PRIMAL>( SurfaceContactElem& elem );
 
 /*!
  *
@@ -119,7 +119,7 @@ void ComputeConstraintJacobian<ALIGNED_MORTAR, PRIMAL>(SurfaceContactElem& elem)
  *
  */
 template <>
-void ComputeConstraintJacobian<ALIGNED_MORTAR, DUAL>(SurfaceContactElem& elem);
+void ComputeConstraintJacobian<ALIGNED_MORTAR, DUAL>( SurfaceContactElem& elem );
 
 /*!
  *
@@ -128,7 +128,7 @@ void ComputeConstraintJacobian<ALIGNED_MORTAR, DUAL>(SurfaceContactElem& elem);
  * \param [in] elem surface contact element struct
  *
  */
-void ComputeAlignedMortarJacobian(SurfaceContactElem& elem);
+void ComputeAlignedMortarJacobian( SurfaceContactElem& elem );
 
 }  // namespace tribol
 

@@ -15,7 +15,7 @@
 
 namespace tribol {
 
-int ApplyInterfacePhysics(CouplingScheme* cs, int TRIBOL_UNUSED_PARAM(cycle), RealT TRIBOL_UNUSED_PARAM(t))
+int ApplyInterfacePhysics( CouplingScheme* cs, int TRIBOL_UNUSED_PARAM( cycle ), RealT TRIBOL_UNUSED_PARAM( t ) )
 {
   // call the appropriate normal and tangential interface physics
   // routines based on method, enforcement strategy, and interface
@@ -29,20 +29,20 @@ int ApplyInterfacePhysics(CouplingScheme* cs, int TRIBOL_UNUSED_PARAM(cycle), Re
   int err_data = false;
 
   // switch over numerical method
-  switch (cs->getContactMethod()) {
+  switch ( cs->getContactMethod() ) {
     case COMMON_PLANE:
       // switch over enforcement method for normal (i.e. normal direction) enforcement
-      switch (cs->getEnforcementMethod()) {
+      switch ( cs->getEnforcementMethod() ) {
         case PENALTY:
-          switch (cs->getContactCase()) {
+          switch ( cs->getContactCase() ) {
             // apply normal physics for ALL cases
             default: {
-              err_nrml = ApplyNormal<COMMON_PLANE, PENALTY>(cs);
+              err_nrml = ApplyNormal<COMMON_PLANE, PENALTY>( cs );
               break;
             }
           }
           // query the model for application of tangential physics
-          switch (cs->getContactModel()) {
+          switch ( cs->getContactModel() ) {
             // no tangential physics implemented yet
             default: {
               break;
@@ -55,11 +55,11 @@ int ApplyInterfacePhysics(CouplingScheme* cs, int TRIBOL_UNUSED_PARAM(cycle), Re
       break;  // end case COMMON_PLANE
 
     case SINGLE_MORTAR:
-      switch (cs->getEnforcementMethod()) {
+      switch ( cs->getEnforcementMethod() ) {
         case LAGRANGE_MULTIPLIER:
-          switch (cs->getContactModel()) {
+          switch ( cs->getContactModel() ) {
             case FRICTIONLESS:
-              err_nrml = ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>(cs);
+              err_nrml = ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( cs );
               break;
             default:
               break;
@@ -71,11 +71,11 @@ int ApplyInterfacePhysics(CouplingScheme* cs, int TRIBOL_UNUSED_PARAM(cycle), Re
       break;  // end case SINGLE_MORTAR
 
     case ALIGNED_MORTAR:
-      switch (cs->getEnforcementMethod()) {
+      switch ( cs->getEnforcementMethod() ) {
         case LAGRANGE_MULTIPLIER:
-          switch (cs->getContactModel()) {
+          switch ( cs->getContactModel() ) {
             case FRICTIONLESS:
-              err_nrml = ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>(cs);
+              err_nrml = ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>( cs );
               break;
             default:
               break;
@@ -88,7 +88,7 @@ int ApplyInterfacePhysics(CouplingScheme* cs, int TRIBOL_UNUSED_PARAM(cycle), Re
 
     case MORTAR_WEIGHTS:
       // no enforcement for this method and no need to call visualization.
-      err_data = GetMethodData<MORTAR_WEIGHTS>(cs);
+      err_data = GetMethodData<MORTAR_WEIGHTS>( cs );
       break;
 
     default:
@@ -99,24 +99,24 @@ int ApplyInterfacePhysics(CouplingScheme* cs, int TRIBOL_UNUSED_PARAM(cycle), Re
   }  // end switch (method)
 
   // error checking
-  if (err_nrml != 0) {
+  if ( err_nrml != 0 ) {
     // note, not all ranks will get here if a rank has null-meshes
-    SLIC_WARNING("ApplyInterfacePhysics: error in application of "
-                 << "'normal' physics method for "
-                 << "coupling scheme, " << cs->getId() << ".");
+    SLIC_WARNING( "ApplyInterfacePhysics: error in application of "
+                  << "'normal' physics method for "
+                  << "coupling scheme, " << cs->getId() << "." );
 
     return err_nrml;
-  } else if (err_tang != 0) {
+  } else if ( err_tang != 0 ) {
     // note, not all ranks will get here if a rank has null-meshes
-    SLIC_WARNING("ApplyInterfacePhysics: error in application of "
-                 << "'tangential' physics method for "
-                 << "coupling scheme, " << cs->getId() << ".");
+    SLIC_WARNING( "ApplyInterfacePhysics: error in application of "
+                  << "'tangential' physics method for "
+                  << "coupling scheme, " << cs->getId() << "." );
 
     return err_tang;
-  } else if (err_data != 0) {
+  } else if ( err_data != 0 ) {
     // note, not all ranks will get here if a rank has null-meshes
-    SLIC_WARNING("ApplyInterfacePhysics: error in call to  "
-                 << "GetMethodData for coupling scheme, " << cs->getId() << ".");
+    SLIC_WARNING( "ApplyInterfacePhysics: error in call to  "
+                  << "GetMethodData for coupling scheme, " << cs->getId() << "." );
     return err_data;
   } else {
     // no error

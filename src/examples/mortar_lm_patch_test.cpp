@@ -70,7 +70,7 @@
  *
  * \return rc return code, a non-zero return code indicates an error.
  */
-int main(int argc, char** argv)
+int main( int argc, char** argv )
 {
   ////////////////////////////////
   //                            //
@@ -80,7 +80,7 @@ int main(int argc, char** argv)
 
   // initialize
 #ifdef TRIBOL_USE_MPI
-  MPI_Init(&argc, &argv);
+  MPI_Init( &argc, &argv );
 #endif
   tribol::CommT problem_comm = TRIBOL_COMM_WORLD;
 
@@ -88,7 +88,7 @@ int main(int argc, char** argv)
   umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
 #endif
 
-  initialize_logger(problem_comm);
+  initialize_logger( problem_comm );
 
   // parse command line arguments. This is
   Arguments args;
@@ -99,14 +99,14 @@ int main(int argc, char** argv)
     args.dump_vis = true;
 
     // parse the command line arguments
-    parse_command_line_args("Mortar Lm patch test example", args, argc, argv);
+    parse_command_line_args( "Mortar Lm patch test example", args, argc, argv );
   }
 
   // instantiate test mesh object. Note, this mesh object is a Tribol
   // utility for testing. In general, a physics application will have
   // their own mesh data.
   tribol::TestMesh mesh;
-  build_mesh_3D(mesh, args, PATCH_BCS);
+  build_mesh_3D( mesh, args, PATCH_BCS );
 
   ////////////////////////////////////////////////////
   //                                                //
@@ -117,15 +117,15 @@ int main(int argc, char** argv)
   // API function calls                             //
   //                                                //
   ////////////////////////////////////////////////////
-  int err = tribol_register_and_update(mesh, tribol::SINGLE_MORTAR, tribol::LAGRANGE_MULTIPLIER, tribol::FRICTIONLESS,
-                                       args.dump_vis, nullptr);
+  int err = tribol_register_and_update( mesh, tribol::SINGLE_MORTAR, tribol::LAGRANGE_MULTIPLIER, tribol::FRICTIONLESS,
+                                        args.dump_vis, nullptr );
 
-  if (err == 1) {
-    SLIC_WARNING("Returned from tribol_register_and_update with error.");
+  if ( err == 1 ) {
+    SLIC_WARNING( "Returned from tribol_register_and_update with error." );
   } else {
-    SLIC_INFO("Tribol update executed successfully. "
-              << "Preparing mfem mesh and linear algebra for "
-              << "computation of pressure Lagrange multipliers.");
+    SLIC_INFO( "Tribol update executed successfully. "
+               << "Preparing mfem mesh and linear algebra for "
+               << "computation of pressure Lagrange multipliers." );
   }
 
   //////////////////////////////////////////////////////////
@@ -157,13 +157,13 @@ int main(int argc, char** argv)
     // a row-wise linked list format. This will make it convenient (i.e. easy)
     // to sum in MFEM equilibrium contributions after which the matrix
     // will be finalized.
-    mfem::SparseMatrix* tribolJac{nullptr};
-    int sparseMatErr = tribol::getJacobianSparseMatrix(&tribolJac, 0);
+    mfem::SparseMatrix* tribolJac{ nullptr };
+    int sparseMatErr = tribol::getJacobianSparseMatrix( &tribolJac, 0 );
 
-    SLIC_ERROR_IF(sparseMatErr != 0, "mortar_lm_patch_test.cpp: error "
-                                         << "gettting Tribol mfem sparse matrix.");
+    SLIC_ERROR_IF( sparseMatErr != 0, "mortar_lm_patch_test.cpp: error "
+                                          << "gettting Tribol mfem sparse matrix." );
 
-    SLIC_INFO("Setup mfem mesh and grabbed Tribol sparse data.");
+    SLIC_INFO( "Setup mfem mesh and grabbed Tribol sparse data." );
 
     ////////////////////////////////////////////////////
     //                                                //
@@ -177,15 +177,15 @@ int main(int argc, char** argv)
     ////////////////////////////////////////////////////
 
     // setup material properties
-    RealT nu_val{0.33};      // Poisson's ratio
-    RealT youngs_val{3.E7};  // Young's modulus (approximate, mild steel (psi))
+    RealT nu_val{ 0.33 };      // Poisson's ratio
+    RealT youngs_val{ 3.E7 };  // Young's modulus (approximate, mild steel (psi))
 
     /////////////////////////////////////////////////////////////////////////
     // compute equilibrium contributions and sum into Tribol sparse matrix //
     /////////////////////////////////////////////////////////////////////////
-    mesh.computeEquilibriumJacobian(tribolJac, nu_val, youngs_val);
+    mesh.computeEquilibriumJacobian( tribolJac, nu_val, youngs_val );
 
-    SLIC_INFO("Assembled equilibrium contributions from mfem.");
+    SLIC_INFO( "Assembled equilibrium contributions from mfem." );
 
     // finalize the sparse matrix. This converts the row-wise linked list
     // format into CSR format. We could use CSR data directly, but for ease
@@ -193,17 +193,17 @@ int main(int argc, char** argv)
     // to ease clarity
     tribolJac->Finalize();
     mfem::DenseMatrix tribolA;  // full global system in dense matrix format
-    tribolJac->ToDenseMatrix(tribolA);
+    tribolJac->ToDenseMatrix( tribolA );
 
     // instantiate mfem vector for RHS contributions
     int rhs_size = mesh.dim * mesh.numTotalNodes +  // equilibrium equations
                    mesh.numNonmortarSurfaceNodes;   // gap equations
     RealT b[rhs_size];
-    tribol::initRealArray(&b[0], rhs_size, 0.);
-    mfem::Vector rhs(&b[0], rhs_size);
+    tribol::initRealArray( &b[0], rhs_size, 0. );
+    mfem::Vector rhs( &b[0], rhs_size );
     rhs = 0.;  // initialize
 
-    SLIC_INFO("Finalized initial oversized sparse matrix and created rhs vector.");
+    SLIC_INFO( "Finalized initial oversized sparse matrix and created rhs vector." );
 
     //////////////////////////////////////////////////////////
     //                                                      //
@@ -222,58 +222,58 @@ int main(int argc, char** argv)
     //                                                      //
     //////////////////////////////////////////////////////////
     int solveSize = rhs_size;
-    mfem::SparseMatrix A_s(solveSize);  // A_s for "s"parse matrix "A"
+    mfem::SparseMatrix A_s( solveSize );  // A_s for "s"parse matrix "A"
     // int numRows = A_s.NumRows();
 
-    mesh.tribolMatrixToSystemMatrix(&tribolA, &A_s);
+    mesh.tribolMatrixToSystemMatrix( &tribolA, &A_s );
 
-    SLIC_INFO("Condensed oversized matrix into properly sized matrix.");
+    SLIC_INFO( "Condensed oversized matrix into properly sized matrix." );
 
     /////////////////////////////////////////
     // populate RHS with gap contributions //
     /////////////////////////////////////////
-    mesh.getGapEvals(&b[0]);
+    mesh.getGapEvals( &b[0] );
 
-    SLIC_INFO("Populated RHS gap contributions.");
+    SLIC_INFO( "Populated RHS gap contributions." );
 
     //////////////////////////////////////////////////////////////////////////
     // zero out all homogeneous Dirichlet BC components for each mesh block //
     //////////////////////////////////////////////////////////////////////////
-    mesh.enforceDirichletBCs(&A_s, &rhs);
+    mesh.enforceDirichletBCs( &A_s, &rhs );
 
-    SLIC_INFO("Applied homogeneous Dirichlet BCs to global system.");
+    SLIC_INFO( "Applied homogeneous Dirichlet BCs to global system." );
 
     // Finalize A_s and convert to dense matrix to solve using
     // MFEM LU solver
     A_s.Finalize();
     mfem::DenseMatrix A;
-    A_s.ToDenseMatrix(A);
-    int rank = A.Rank(1.e-15);
-    SLIC_INFO("Matrix rank: " << rank);
+    A_s.ToDenseMatrix( A );
+    int rank = A.Rank( 1.e-15 );
+    SLIC_INFO( "Matrix rank: " << rank );
 
     // instantiate MFEM dense matrix inverse object
     // and solution vector
-    mfem::DenseMatrixInverse invA(A);
+    mfem::DenseMatrixInverse invA( A );
     mfem::Vector sol;
-    invA.Mult(rhs, sol);              // solve the system
+    invA.Mult( rhs, sol );            // solve the system
     RealT* sol_data = sol.GetData();  // get solution data
 
-    SLIC_INFO("Solved global system of equations.");
+    SLIC_INFO( "Solved global system of equations." );
 
     RealT pressureSum = 0.;
-    for (int i = 0; i < mesh.numNonmortarSurfaceNodes; ++i) {
+    for ( int i = 0; i < mesh.numNonmortarSurfaceNodes; ++i ) {
       int offset = mesh.dim * mesh.numTotalNodes;
       // exploit offset and contiguous node numbering in the indexing here.
       pressureSum += sol_data[offset + i];
     }
 
-    SLIC_INFO("Pressure Sum: " << pressureSum << ".");
+    SLIC_INFO( "Pressure Sum: " << pressureSum << "." );
 
   }  // end of post Tribol scope
 
   tribol::finalize();
 
-  SLIC_INFO("Example has run successfully.");
+  SLIC_INFO( "Example has run successfully." );
 
   axom::slic::flushStreams();
   finalize_logger();

@@ -73,7 +73,7 @@ class RCB : public PartitionMethod<NDIMS> {
    * @param max_out_of_balance Allowable deviation from desired fraction of entities on each partition
    * @param n_try_new_axis Number of attempted cuts with no change in entity counts before trying a new axis
    */
-  RCB(const MPI_Comm& comm, double max_out_of_balance = 0.1, int n_try_new_axis = 5);
+  RCB( const MPI_Comm& comm, double max_out_of_balance = 0.1, int n_try_new_axis = 5 );
 
   /**
    * @brief Build entity partitioning using recursive coordinate bisection
@@ -83,9 +83,9 @@ class RCB : public PartitionMethod<NDIMS> {
    * @param ghost_len Sets length to include entities as ghost on each subdomain
    * @return List of points and ghost entities on each subdomain sorted by mesh
    */
-  std::vector<EntityIndexByRank> generatePartitioning(int n_parts,
-                                                      const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh,
-                                                      double ghost_len) const override;
+  std::vector<EntityIndexByRank> generatePartitioning( int n_parts,
+                                                       const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh,
+                                                       double ghost_len ) const override;
 
  private:
   /**
@@ -96,8 +96,8 @@ class RCB : public PartitionMethod<NDIMS> {
    * @param ghost_len Sets length to include entities as ghost on each subdomain
    * @return BisecTree of bounding boxes defining subdomains and ghost subdomains
    */
-  BisecTree<RCBInfo<NDIMS>> BuildProblemTree(int n_parts, const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh,
-                                             double ghost_len) const;
+  BisecTree<RCBInfo<NDIMS>> BuildProblemTree( int n_parts, const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh,
+                                              double ghost_len ) const;
 
   /**
    * @brief Bounding box of coords on all ranks
@@ -105,7 +105,7 @@ class RCB : public PartitionMethod<NDIMS> {
    * @param coords_by_mesh On-rank coords sorted by mesh
    * @return BoundingBox<NDIMS> Bounding box of coords on all ranks
    */
-  BoundingBox<NDIMS> DomainBoundingBox(const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh) const;
+  BoundingBox<NDIMS> DomainBoundingBox( const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh ) const;
 
   /**
    * @brief Counts the entities across all ranks in the two given bounding boxes
@@ -115,8 +115,8 @@ class RCB : public PartitionMethod<NDIMS> {
    * @param coords_by_mesh On-rank entity coordinates sorted by mesh
    * @return std::pair<int, int> Entity counts in each bounding box
    */
-  std::pair<int, int> CountEntities(const BoundingBox<NDIMS>& left_bbox, const BoundingBox<NDIMS>& right_bbox,
-                                    const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh) const;
+  std::pair<int, int> CountEntities( const BoundingBox<NDIMS>& left_bbox, const BoundingBox<NDIMS>& right_bbox,
+                                     const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh ) const;
 
   /**
    * @brief Find the domain at the base of the BisecTree the coord belongs to
@@ -125,7 +125,7 @@ class RCB : public PartitionMethod<NDIMS> {
    * @param coord Entity coordinate to test
    * @return int Domain index
    */
-  int DetermineDomain(const BisecTree<RCBInfo<NDIMS>>& problem_tree, const Point<NDIMS>& coord) const;
+  int DetermineDomain( const BisecTree<RCBInfo<NDIMS>>& problem_tree, const Point<NDIMS>& coord ) const;
 
   /**
    * @brief Sums number of entities over all processors
@@ -133,7 +133,7 @@ class RCB : public PartitionMethod<NDIMS> {
    * @param n_local_ents Number of on-rank entities
    * @return int Total number of entities
    */
-  int TotalEntities(int n_local_ents) const;
+  int TotalEntities( int n_local_ents ) const;
 
   /**
    * @brief Tolerance for out-of-balance loading (default = 0.1, i.e. 10%)

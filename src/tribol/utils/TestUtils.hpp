@@ -17,13 +17,13 @@ namespace tribol {
 
 /// RAII struct to initialize and finalize MPI for tests and examples
 struct SimpleMPIWrapper {
-  SimpleMPIWrapper(int argc, char* argv[])
+  SimpleMPIWrapper( int argc, char* argv[] )
   {
 #ifdef TRIBOL_USE_MPI
-    MPI_Init(&argc, &argv);
+    MPI_Init( &argc, &argv );
 #else
-    static_cast<void>(argc);  // elide warning about unused vars
-    static_cast<void>(argv);
+    static_cast<void>( argc );  // elide warning about unused vars
+    static_cast<void>( argv );
 #endif
   }
 
@@ -41,15 +41,15 @@ struct SimpleMPIWrapper {
 struct TestControlParameters {
   /// Constructor
   TestControlParameters()
-      : penalty_ratio(false),
-        constant_rate_penalty(false),
-        percent_rate_penalty(false),
-        rate_penalty(1.0),
-        rate_penalty_ratio(0.0),
-        const_penalty(1.0),
-        enable_timestep_vote(false),
-        timestep_pen_frac(0.30),
-        timestep_scale(1.0)
+      : penalty_ratio( false ),
+        constant_rate_penalty( false ),
+        percent_rate_penalty( false ),
+        rate_penalty( 1.0 ),
+        rate_penalty_ratio( 0.0 ),
+        const_penalty( 1.0 ),
+        enable_timestep_vote( false ),
+        timestep_pen_frac( 0.30 ),
+        timestep_scale( 1.0 )
   {
   }
 
@@ -58,8 +58,8 @@ struct TestControlParameters {
     // no-op
   }
 
-  RealT dt{0.};
-  RealT auto_contact_pen_frac{0.95};
+  RealT dt{ 0. };
+  RealT auto_contact_pen_frac{ 0.95 };
 
   // penalty control parameters
   bool penalty_ratio;
@@ -85,25 +85,25 @@ class TestMesh {
   ~TestMesh();
 
   /// clear function
-  void clear(bool keepCoords = false  ///< option to keep nodal coordinate arrays for hex-to-tet mesh
+  void clear( bool keepCoords = false  ///< option to keep nodal coordinate arrays for hex-to-tet mesh
   );
 
   /// performs tribol registration calls and calls tribol::update()
-  int tribolSetupAndUpdate(ContactMethod method,           ///< contact method
-                           EnforcementMethod enforcement,  ///< constraint enforcement method
-                           ContactModel model,             ///< contact model
-                           ContactCase contact_case,       ///< contact case
-                           bool visualization,             ///< true if visualization
-                           TestControlParameters& params   ///< control parameters struct
+  int tribolSetupAndUpdate( ContactMethod method,           ///< contact method
+                            EnforcementMethod enforcement,  ///< constraint enforcement method
+                            ContactModel model,             ///< contact model
+                            ContactCase contact_case,       ///< contact case
+                            bool visualization,             ///< true if visualization
+                            TestControlParameters& params   ///< control parameters struct
   );
 
   /// performs tribol registration calls and calls tribol::update() using "simple" API
-  int simpleTribolSetupAndUpdate(ContactMethod method,           ///< contact method
-                                 EnforcementMethod enforcement,  ///< constraint enforcement method
-                                 ContactModel model,             ///< contact model
-                                 ContactCase contact_case,       ///< contact case
-                                 bool visualization,             ///< true if visualization
-                                 TestControlParameters& params   ///< control parameters struct
+  int simpleTribolSetupAndUpdate( ContactMethod method,           ///< contact method
+                                  EnforcementMethod enforcement,  ///< constraint enforcement method
+                                  ContactModel model,             ///< contact model
+                                  ContactCase contact_case,       ///< contact case
+                                  bool visualization,             ///< true if visualization
+                                  TestControlParameters& params   ///< control parameters struct
   );
 
   /*!
@@ -131,10 +131,10 @@ class TestMesh {
    * \param [in] thetaNonmortar angle of rotation of non-z-plane vertices about z-axis
    *
    */
-  void setupContactMeshHex(int numElemsX1, int numElemsY1, int numElemsZ1, RealT xMin1, RealT yMin1, RealT zMin1,
-                           RealT xMax1, RealT yMax1, RealT zMax1, int numElemsX2, int numElemsY2, int numElemsZ2,
-                           RealT xMin2, RealT yMin2, RealT zMin2, RealT xMax2, RealT yMax2, RealT zMax2,
-                           RealT thetaMortar, RealT thetaNonmortar);
+  void setupContactMeshHex( int numElemsX1, int numElemsY1, int numElemsZ1, RealT xMin1, RealT yMin1, RealT zMin1,
+                            RealT xMax1, RealT yMax1, RealT zMax1, int numElemsX2, int numElemsY2, int numElemsZ2,
+                            RealT xMin2, RealT yMin2, RealT zMin2, RealT xMax2, RealT yMax2, RealT zMax2,
+                            RealT thetaMortar, RealT thetaNonmortar );
 
   /*!
    * \brief setups of a 3D contact tet mesh consisting of two blocks
@@ -161,10 +161,10 @@ class TestMesh {
    * \param [in] thetaNonmortar angle of rotation of non-z-plane vertices about z-axis
    *
    */
-  void setupContactMeshTet(int numElemsX1, int numElemsY1, int numElemsZ1, RealT xMin1, RealT yMin1, RealT zMin1,
-                           RealT xMax1, RealT yMax1, RealT zMax1, int numElemsX2, int numElemsY2, int numElemsZ2,
-                           RealT xMin2, RealT yMin2, RealT zMin2, RealT xMax2, RealT yMax2, RealT zMax2,
-                           RealT thetaMortar, RealT thetaNonmortar);
+  void setupContactMeshTet( int numElemsX1, int numElemsY1, int numElemsZ1, RealT xMin1, RealT yMin1, RealT zMin1,
+                            RealT xMax1, RealT yMax1, RealT zMax1, int numElemsX2, int numElemsY2, int numElemsZ2,
+                            RealT xMin2, RealT yMin2, RealT zMin2, RealT xMax2, RealT yMax2, RealT zMax2,
+                            RealT thetaMortar, RealT thetaNonmortar );
 
   /*!
    * \brief sets up an mfem mesh object representation of the original hex or tet test mesh
@@ -176,7 +176,7 @@ class TestMesh {
    * prior to calling this routine
    *
    */
-  void setupMfemMesh(bool fix_orientation = true);
+  void setupMfemMesh( bool fix_orientation = true );
 
   /*!
    * \brief sets up the Dirichlet BC node ids and values for a single 3D mesh block
@@ -194,8 +194,8 @@ class TestMesh {
    *       contact enforcement. This is used in tribol/tests/tribol_mortar_pressure_sol.cpp
    *
    */
-  void setupPatchTestDirichletBCs(IndexT mesh_id, int numElemsX, int numElemsY, int numElemsZ, int nodeIdOffset,
-                                  bool inHomogeneousGap, RealT inHomogeneousZVal = 0.);
+  void setupPatchTestDirichletBCs( IndexT mesh_id, int numElemsX, int numElemsY, int numElemsZ, int nodeIdOffset,
+                                   bool inHomogeneousGap, RealT inHomogeneousZVal = 0. );
 
   /*!
    * \brief sets up pressure dof ids for a 3D nonmortar mesh block for PATCH TEST
@@ -208,8 +208,8 @@ class TestMesh {
    * \param [in] contact true if enforcing zero gap using contact enforcement
    *
    */
-  void setupPatchTestPressureDofs(IndexT mesh_id, int numElemsX, int numElemsY, int numElemsZ, int nodeIdOffset,
-                                  bool contact);
+  void setupPatchTestPressureDofs( IndexT mesh_id, int numElemsX, int numElemsY, int numElemsZ, int nodeIdOffset,
+                                   bool contact );
 
   /*!
    * \brief allocates and sets velocity arrays
@@ -221,7 +221,7 @@ class TestMesh {
    * \note in the future we should handle an array of velocity values
    *
    */
-  void allocateAndSetVelocities(IndexT mesh_id, RealT valX, RealT valY, RealT valZ = 0.);
+  void allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY, RealT valZ = 0. );
 
   /*!
    * \brief allocates and sets bulk modulus arrays on mesh
@@ -231,7 +231,7 @@ class TestMesh {
    * \note in the future we should handle an array of values
    *
    */
-  void allocateAndSetBulkModulus(IndexT mesh_id, RealT val);
+  void allocateAndSetBulkModulus( IndexT mesh_id, RealT val );
 
   /*!
    * \brief allocates and sets element thickness arrays on mesh
@@ -242,7 +242,7 @@ class TestMesh {
    *       should handle an array of values
    *
    */
-  void allocateAndSetElementThickness(IndexT mesh_id, RealT t);
+  void allocateAndSetElementThickness( IndexT mesh_id, RealT t );
 
   /*!
    * \brief wraps element Jacobian calculations for linear elasticity
@@ -255,7 +255,7 @@ class TestMesh {
    * \pre TestMesh::mfem_mesh != nullptr
    * \pre matrix A cannot have been finalized yet
    */
-  void computeEquilibriumJacobian(mfem::SparseMatrix* const A, RealT const nu, RealT const youngs);
+  void computeEquilibriumJacobian( mfem::SparseMatrix* const A, RealT const nu, RealT const youngs );
 
   /*!
    * \brief wraps element Jacobian calculations for linear elasticity
@@ -269,8 +269,8 @@ class TestMesh {
    * \pre TestMesh::mfem_mesh != nullptr
    * \pre matrix A cannot have been finalized yet
    */
-  void computeEquilibriumJacobian(mfem::SparseMatrix* const A, mfem::ElasticityIntegrator* eInteg,
-                                  mfem::FiniteElementSpace* fes);
+  void computeEquilibriumJacobian( mfem::SparseMatrix* const A, mfem::ElasticityIntegrator* eInteg,
+                                   mfem::FiniteElementSpace* fes );
 
   /*!
    * \brief computes all element Jacobian contributions for linear elasticity using MFEM
@@ -284,8 +284,8 @@ class TestMesh {
    * \pre TestMesh::mfem_mesh != nullptr
    * \pre matrix A cannot have been finalized yet
    */
-  void computeElementJacobianContributions(mfem::SparseMatrix* const A, mfem::ElasticityIntegrator* eInt,
-                                           mfem::FiniteElementSpace* fe_space, bool matrixDebug = false);
+  void computeElementJacobianContributions( mfem::SparseMatrix* const A, mfem::ElasticityIntegrator* eInt,
+                                            mfem::FiniteElementSpace* fe_space, bool matrixDebug = false );
 
   /*!
    * \brief takes an oversized tribol sparse matrix and condenses it to an appropriate
@@ -301,7 +301,7 @@ class TestMesh {
    *       matrix. This reflects the way the Lagrange multiplier patch test code
    *       was originally written and does not represent the optimal way of doing things
    */
-  void tribolMatrixToSystemMatrix(mfem::DenseMatrix* const ATribol, mfem::SparseMatrix* const ASystem);
+  void tribolMatrixToSystemMatrix( mfem::DenseMatrix* const ATribol, mfem::SparseMatrix* const ASystem );
 
   /*!
    * \brief populate a right hand side length vector with gap evaluations
@@ -311,7 +311,7 @@ class TestMesh {
    * \pre v of length, dim * numTotalNodes + numPressureDofs
    *
    */
-  void getGapEvals(RealT* const v);
+  void getGapEvals( RealT* const v );
 
   /*!
    * \brief Modifies matrix A and rhs vector b to enforce Dirichlet BCs
@@ -327,12 +327,12 @@ class TestMesh {
    * \pre A of dimensions (length b) x (length b)
    *
    */
-  void enforceDirichletBCs(mfem::SparseMatrix* const A, mfem::Vector* const b, bool contact = true);
+  void enforceDirichletBCs( mfem::SparseMatrix* const A, mfem::Vector* const b, bool contact = true );
 
   /// print mesh to vtk file
-  void testMeshToVtk(const std::string& dir,  ///< Name of the output directory
-                     int cycle,               ///< Cycle number
-                     RealT time               ///< Simulation time
+  void testMeshToVtk( const std::string& dir,  ///< Name of the output directory
+                      int cycle,               ///< Cycle number
+                      RealT time               ///< Simulation time
   );
 
  public:
@@ -408,9 +408,9 @@ class TestMesh {
   RealT* nonmortar_bulk_mod;
   RealT* nonmortar_element_thickness;
 
-  bool registered_velocities1{false};
-  bool registered_velocities2{false};
-  bool mesh_constructed{false};
+  bool registered_velocities1{ false };
+  bool registered_velocities2{ false };
+  bool mesh_constructed{ false };
 
  public:
   RealT* getX() const { return x; }
@@ -444,7 +444,7 @@ class CentralDiffSolver : public mfem::SecondOrderODESolver {
    *
    * @param bc_vdofs_ List of vdofs to set homogeneous velocity BCs
    */
-  CentralDiffSolver(const mfem::Array<int>& bc_vdofs_);
+  CentralDiffSolver( const mfem::Array<int>& bc_vdofs_ );
 
   /**
    * @brief Updates x and dxdt after taking a step of size dt
@@ -454,7 +454,7 @@ class CentralDiffSolver : public mfem::SecondOrderODESolver {
    * @param t Current time
    * @param dt Timestep size
    */
-  void Step(mfem::Vector& x, mfem::Vector& dxdt, double& t, double& dt) override;
+  void Step( mfem::Vector& x, mfem::Vector& dxdt, double& t, double& dt ) override;
 
  private:
   /**
@@ -477,7 +477,7 @@ class CentralDiffSolver : public mfem::SecondOrderODESolver {
    *
    * @param dxdt Velocity vector
    */
-  void SetHomogeneousBC(mfem::Vector& dxdt) const;
+  void SetHomogeneousBC( mfem::Vector& dxdt ) const;
 };
 
 #ifdef TRIBOL_USE_MPI
@@ -493,8 +493,8 @@ class ExplicitMechanics : public mfem::SecondOrderTimeDependentOperator {
    * @param lambda Lame constant
    * @param mu Lame constant
    */
-  ExplicitMechanics(mfem::ParFiniteElementSpace& fespace, mfem::Coefficient& rho, mfem::Coefficient& lambda,
-                    mfem::Coefficient& mu);
+  ExplicitMechanics( mfem::ParFiniteElementSpace& fespace, mfem::Coefficient& rho, mfem::Coefficient& lambda,
+                     mfem::Coefficient& mu );
 
   using mfem::SecondOrderTimeDependentOperator::Mult;
 
@@ -505,7 +505,7 @@ class ExplicitMechanics : public mfem::SecondOrderTimeDependentOperator {
    * @param dudt Velocity vector
    * @param a Acceleration vector
    */
-  void Mult(const mfem::Vector& u, const mfem::Vector& dudt, mfem::Vector& a) const override;
+  void Mult( const mfem::Vector& u, const mfem::Vector& dudt, mfem::Vector& a ) const override;
 
   /**
    * @brief External force contribution (must be manually updated)

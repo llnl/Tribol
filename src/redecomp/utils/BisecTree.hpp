@@ -38,17 +38,17 @@ class BisecTree {
    *
    * @param n_parts Number of entries at the lowest level of the tree
    */
-  BisecTree(size_t n_parts)
-      : n_parts_{n_parts},
-        n_levels_{static_cast<size_t>(ceil(log2(static_cast<double>(n_parts) - 0.25)) + 0.5) + 1},
-        all_nodes_(n_levels_, n_levels_)
+  BisecTree( size_t n_parts )
+      : n_parts_{ n_parts },
+        n_levels_{ static_cast<size_t>( ceil( log2( static_cast<double>( n_parts ) - 0.25 ) ) + 0.5 ) + 1 },
+        all_nodes_( n_levels_, n_levels_ )
   {
     // populate the bisection tree with empty nodes
     auto n_nodes = n_parts_;
-    for (auto it = all_nodes_.end(); it != all_nodes_.begin();) {
+    for ( auto it = all_nodes_.end(); it != all_nodes_.begin(); ) {
       --it;
-      *it = axom::Array<T>(n_nodes, n_nodes);
-      n_nodes = (n_nodes + 1) / 2;
+      *it = axom::Array<T>( n_nodes, n_nodes );
+      n_nodes = ( n_nodes + 1 ) / 2;
     }
   }
 
@@ -59,7 +59,7 @@ class BisecTree {
    * @param node Node index (0 = left-most node)
    * @return T& Value at given level and node
    */
-  T& operator()(size_t level, size_t node) { return all_nodes_[level][node]; }
+  T& operator()( size_t level, size_t node ) { return all_nodes_[level][node]; }
 
   /**
    * @brief Returns the value at the bottom level and given node
@@ -67,7 +67,7 @@ class BisecTree {
    * @param node Node index (0 = left-most node)
    * @return T& Value at given node
    */
-  T& operator()(size_t node) { return all_nodes_[n_levels_ - 1][node]; }
+  T& operator()( size_t node ) { return all_nodes_[n_levels_ - 1][node]; }
 
   /**
    * @brief Returns an iterator to the top level
@@ -103,7 +103,7 @@ class BisecTree {
    * @param lvl_it Iterator pointing to a level in the BisecTree
    * @return BFSNodeIterator pointing to the left-most node of the level in lvl_it
    */
-  BFSNodeIterator begin(BFSLevelIterator lvl_it) { return (*lvl_it).begin(); }
+  BFSNodeIterator begin( BFSLevelIterator lvl_it ) { return ( *lvl_it ).begin(); }
 
   /**
    * @brief Returns a const iterator to the left-most node of the given level
@@ -111,7 +111,7 @@ class BisecTree {
    * @param lvl_it Const iterator pointing to a level in the BisecTree
    * @return ConstBFSNodeIterator pointing to the left-most node of the level in lvl_it
    */
-  ConstBFSNodeIterator begin(ConstBFSLevelIterator lvl_it) const { return (*lvl_it).begin(); }
+  ConstBFSNodeIterator begin( ConstBFSLevelIterator lvl_it ) const { return ( *lvl_it ).begin(); }
 
   /**
    * @brief Returns a iterator to one after the right-most node of the given level
@@ -119,7 +119,7 @@ class BisecTree {
    * @param lvl_it Iterator pointing to a level in the BisecTree
    * @return BFSNodeIterator pointing to one after the right-most node of the level in lvl_it
    */
-  BFSNodeIterator end(BFSLevelIterator lvl_it) { return (*lvl_it).end(); }
+  BFSNodeIterator end( BFSLevelIterator lvl_it ) { return ( *lvl_it ).end(); }
 
   /**
    * @brief Returns a const iterator to one after the right-most node of the given level
@@ -127,7 +127,7 @@ class BisecTree {
    * @param lvl_it Const iterator pointing to a level in the BisecTree
    * @return ConstBFSNodeIterator pointing to one after the right-most node of the level in lvl_it
    */
-  ConstBFSNodeIterator end(ConstBFSLevelIterator lvl_it) const { return (*lvl_it).end(); }
+  ConstBFSNodeIterator end( ConstBFSLevelIterator lvl_it ) const { return ( *lvl_it ).end(); }
 
   /**
    * @brief Returns the offset of the given node_it to the beginning of the level
@@ -136,7 +136,7 @@ class BisecTree {
    * @param node_it Iterator pointing to a node in the level in lvl_it
    * @return Offset of node_it
    */
-  size_t position(BFSLevelIterator lvl_it, BFSNodeIterator node_it) { return node_it - (*lvl_it).begin(); }
+  size_t position( BFSLevelIterator lvl_it, BFSNodeIterator node_it ) { return node_it - ( *lvl_it ).begin(); }
 
   /**
    * @brief Returns the offset of the given node_it to the beginning of the level
@@ -145,9 +145,9 @@ class BisecTree {
    * @param node_it Iterator pointing to a node in the level in lvl_it
    * @return Offset of node_it
    */
-  size_t position(ConstBFSLevelIterator lvl_it, ConstBFSNodeIterator node_it) const
+  size_t position( ConstBFSLevelIterator lvl_it, ConstBFSNodeIterator node_it ) const
   {
-    return node_it - (*lvl_it).begin();
+    return node_it - ( *lvl_it ).begin();
   }
 
   /**
@@ -156,7 +156,7 @@ class BisecTree {
    * @param it BFSIterator pointing to a level and node in the BisecTree
    * @return Offset of node_it
    */
-  size_t position(const BFSIterator& it) { return position(it.first, it.second); }
+  size_t position( const BFSIterator& it ) { return position( it.first, it.second ); }
 
   /**
    * @brief Returns the offset of the given it to the beginning of the level
@@ -164,7 +164,7 @@ class BisecTree {
    * @param it ConstBFSIterator pointing to a level and node in the BisecTree
    * @return Offset of node_it
    */
-  size_t position(const ConstBFSIterator& it) const { return position(it.first, it.second); }
+  size_t position( const ConstBFSIterator& it ) const { return position( it.first, it.second ); }
 
   /**
    * @brief Returns iterator to the root node of the given level and node iterators
@@ -173,11 +173,11 @@ class BisecTree {
    * @param node_it Iterator pointing to a node in the level of lvl_it
    * @return BFSIterator pointing to the root node
    */
-  BFSIterator root(BFSLevelIterator lvl_it, BFSNodeIterator node_it)
+  BFSIterator root( BFSLevelIterator lvl_it, BFSNodeIterator node_it )
   {
-    auto node_idx = position(lvl_it, node_it);
+    auto node_idx = position( lvl_it, node_it );
     --lvl_it;
-    return std::make_pair(lvl_it, BFSNodeIterator(node_idx / 2, &(*lvl_it)));
+    return std::make_pair( lvl_it, BFSNodeIterator( node_idx / 2, &( *lvl_it ) ) );
   }
 
   /**
@@ -187,11 +187,11 @@ class BisecTree {
    * @param node_it Const iterator pointing to a node in the level of lvl_it
    * @return ConstBFSIterator pointing to the root node
    */
-  ConstBFSIterator root(ConstBFSLevelIterator lvl_it, ConstBFSNodeIterator node_it) const
+  ConstBFSIterator root( ConstBFSLevelIterator lvl_it, ConstBFSNodeIterator node_it ) const
   {
-    auto node_idx = position(lvl_it, node_it);
+    auto node_idx = position( lvl_it, node_it );
     --lvl_it;
-    return std::make_pair(lvl_it, ConstBFSNodeIterator(node_idx / 2, &(*lvl_it)));
+    return std::make_pair( lvl_it, ConstBFSNodeIterator( node_idx / 2, &( *lvl_it ) ) );
   }
 
   /**
@@ -200,7 +200,7 @@ class BisecTree {
    * @param it Iterator pointing to a level and node in the BisecTree
    * @return BFSIterator pointing to the root node
    */
-  BFSIterator root(const BFSIterator& it) { return root(it.first, it.second); }
+  BFSIterator root( const BFSIterator& it ) { return root( it.first, it.second ); }
 
   /**
    * @brief Returns const iterator to the root node of the given const iterator
@@ -208,7 +208,7 @@ class BisecTree {
    * @param it Const iterator pointing to a level and node in the BisecTree
    * @return ConstBFSIterator pointing to the root node
    */
-  ConstBFSIterator root(const ConstBFSIterator& it) const { return root(it.first, it.second); }
+  ConstBFSIterator root( const ConstBFSIterator& it ) const { return root( it.first, it.second ); }
 
   /**
    * @brief Returns iterator to the left node of the given level and node iterators
@@ -217,11 +217,11 @@ class BisecTree {
    * @param node_it Iterator pointing to a node in the level of lvl_it
    * @return BFSIterator pointing to the left node
    */
-  BFSIterator left(BFSLevelIterator lvl_it, BFSNodeIterator node_it)
+  BFSIterator left( BFSLevelIterator lvl_it, BFSNodeIterator node_it )
   {
-    auto node_idx = position(lvl_it, node_it);
+    auto node_idx = position( lvl_it, node_it );
     ++lvl_it;
-    return std::make_pair(lvl_it, BFSNodeIterator(node_idx * 2, &(*lvl_it)));
+    return std::make_pair( lvl_it, BFSNodeIterator( node_idx * 2, &( *lvl_it ) ) );
   }
 
   /**
@@ -231,11 +231,11 @@ class BisecTree {
    * @param node_it Const iterator pointing to a node in the level of lvl_it
    * @return ConstBFSIterator pointing to the left node
    */
-  ConstBFSIterator left(ConstBFSLevelIterator lvl_it, ConstBFSNodeIterator node_it) const
+  ConstBFSIterator left( ConstBFSLevelIterator lvl_it, ConstBFSNodeIterator node_it ) const
   {
-    auto node_idx = position(lvl_it, node_it);
+    auto node_idx = position( lvl_it, node_it );
     ++lvl_it;
-    return std::make_pair(lvl_it, ConstBFSNodeIterator(node_idx * 2, &(*lvl_it)));
+    return std::make_pair( lvl_it, ConstBFSNodeIterator( node_idx * 2, &( *lvl_it ) ) );
   }
 
   /**
@@ -244,7 +244,7 @@ class BisecTree {
    * @param it Iterator pointing to a level and node in the BisecTree
    * @return BFSIterator pointing to the left node
    */
-  BFSIterator left(const BFSIterator& it) { return left(it.first, it.second); }
+  BFSIterator left( const BFSIterator& it ) { return left( it.first, it.second ); }
 
   /**
    * @brief Returns const iterator to the left node of the given const iterator
@@ -252,7 +252,7 @@ class BisecTree {
    * @param it Const iterator pointing to a level and node in the BisecTree
    * @return ConstBFSIterator pointing to the left node
    */
-  ConstBFSIterator left(const ConstBFSIterator& it) const { return left(it.first, it.second); }
+  ConstBFSIterator left( const ConstBFSIterator& it ) const { return left( it.first, it.second ); }
 
   /**
    * @brief Returns iterator to the right node of the given level and node iterators
@@ -261,11 +261,11 @@ class BisecTree {
    * @param node_it Iterator pointing to a node in the level of lvl_it
    * @return BFSIterator pointing to the right node
    */
-  BFSIterator right(BFSLevelIterator lvl_it, BFSNodeIterator node_it)
+  BFSIterator right( BFSLevelIterator lvl_it, BFSNodeIterator node_it )
   {
-    auto node_idx = position(lvl_it, node_it);
+    auto node_idx = position( lvl_it, node_it );
     ++lvl_it;
-    return std::make_pair(lvl_it, BFSNodeIterator(node_idx * 2 + 1, &(*lvl_it)));
+    return std::make_pair( lvl_it, BFSNodeIterator( node_idx * 2 + 1, &( *lvl_it ) ) );
   }
 
   /**
@@ -275,11 +275,11 @@ class BisecTree {
    * @param node_it Const iterator pointing to a node in the level of lvl_it
    * @return ConstBFSIterator pointing to the right node
    */
-  ConstBFSIterator right(ConstBFSLevelIterator lvl_it, ConstBFSNodeIterator node_it) const
+  ConstBFSIterator right( ConstBFSLevelIterator lvl_it, ConstBFSNodeIterator node_it ) const
   {
-    auto node_idx = position(lvl_it, node_it);
+    auto node_idx = position( lvl_it, node_it );
     ++lvl_it;
-    return std::make_pair(lvl_it, ConstBFSNodeIterator(node_idx * 2 + 1, &(*lvl_it)));
+    return std::make_pair( lvl_it, ConstBFSNodeIterator( node_idx * 2 + 1, &( *lvl_it ) ) );
   }
 
   /**
@@ -288,7 +288,7 @@ class BisecTree {
    * @param it Iterator pointing to a level and node in the BisecTree
    * @return BFSIterator pointing to the right node
    */
-  BFSIterator right(const BFSIterator& it) { return right(it.first, it.second); }
+  BFSIterator right( const BFSIterator& it ) { return right( it.first, it.second ); }
 
   /**
    * @brief Returns const iterator to the right node of the given const iterator
@@ -296,7 +296,7 @@ class BisecTree {
    * @param it Const iterator pointing to a level and node in the BisecTree
    * @return ConstBFSIterator pointing to the right node
    */
-  ConstBFSIterator right(const ConstBFSIterator& it) const { return right(it.first, it.second); }
+  ConstBFSIterator right( const ConstBFSIterator& it ) const { return right( it.first, it.second ); }
 
   /**
    * @brief Returns number of nodes at the last level

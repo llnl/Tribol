@@ -37,10 +37,10 @@ class SparseMatrixTransfer {
    * @param redecomp_test_space Test finite element space on RedecompMesh
    * @param redecomp_trial_space Trial finite element space on RedecompMesh
    */
-  SparseMatrixTransfer(const mfem::ParFiniteElementSpace& parent_test_space,
-                       const mfem::ParFiniteElementSpace& parent_trial_space,
-                       const mfem::FiniteElementSpace& redecomp_test_space,
-                       const mfem::FiniteElementSpace& redecomp_trial_space);
+  SparseMatrixTransfer( const mfem::ParFiniteElementSpace& parent_test_space,
+                        const mfem::ParFiniteElementSpace& parent_trial_space,
+                        const mfem::FiniteElementSpace& redecomp_test_space,
+                        const mfem::FiniteElementSpace& redecomp_trial_space );
 
   /**
    * @brief Transfers RedecompMesh sparse matrix to parent mfem::ParMesh hypre par matrix
@@ -51,7 +51,7 @@ class SparseMatrixTransfer {
    *
    * @note The HypreParMatrix is on the global dofs.  Apply mfem::RAP to reduce to tdofs.
    */
-  std::unique_ptr<mfem::HypreParMatrix> TransferToParallel(const mfem::SparseMatrix& src) const;
+  std::unique_ptr<mfem::HypreParMatrix> TransferToParallel( const mfem::SparseMatrix& src ) const;
 
  private:
   /**
@@ -63,7 +63,7 @@ class SparseMatrixTransfer {
    * @param fe_space Finite element space linked to a RedecompMesh
    * @return const RedecompMesh& Redecomp mesh associated with finite element space
    */
-  static const RedecompMesh& getRedecompMesh(const mfem::FiniteElementSpace& fe_space);
+  static const RedecompMesh& getRedecompMesh( const mfem::FiniteElementSpace& fe_space );
 
   /**
    * @brief Build vector of parent element offsets for each MPI rank
@@ -71,7 +71,7 @@ class SparseMatrixTransfer {
    * @param redecomp_mesh Offset vector is computed on the parent-linked mesh of this mesh
    * @return Array of element offsets for each MPI rank
    */
-  static axom::Array<HYPRE_BigInt> BuildParentElementRankOffsets(const RedecompMesh& redecomp_mesh);
+  static axom::Array<HYPRE_BigInt> BuildParentElementRankOffsets( const RedecompMesh& redecomp_mesh );
 
   /**
    * @brief Returns MPIUtility pointer for the MatrixTransfer object

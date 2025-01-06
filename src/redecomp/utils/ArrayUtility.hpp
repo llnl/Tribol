@@ -27,7 +27,7 @@ class ArrayUtility {
   template <typename T, size_t N>
   static constexpr axom::Array<T> IndexArray()
   {
-    return IndexArrayImpl<T>(std::make_index_sequence<N>{});
+    return IndexArrayImpl<T>( std::make_index_sequence<N>{} );
   }
 
   /**
@@ -38,10 +38,10 @@ class ArrayUtility {
    * @return axom::Array<T> holding index array [0, ..., n-1]
    */
   template <typename T>
-  static axom::Array<T> IndexArray(size_t n)
+  static axom::Array<T> IndexArray( size_t n )
   {
-    auto index = axom::Array<T>(n, n);
-    std::iota(index.begin(), index.end(), 0);
+    auto index = axom::Array<T>( n, n );
+    std::iota( index.begin(), index.end(), 0 );
     return index;
   }
 
@@ -54,9 +54,9 @@ class ArrayUtility {
    * @return axom::Array<T> holding the index array I
    */
   template <typename T, size_t... I>
-  static constexpr axom::Array<T> IndexArrayImpl(std::index_sequence<I...>)
+  static constexpr axom::Array<T> IndexArrayImpl( std::index_sequence<I...> )
   {
-    return axom::Array<T>({I...});
+    return axom::Array<T>( { I... } );
   }
 };
 

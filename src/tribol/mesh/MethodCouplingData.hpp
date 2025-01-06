@@ -39,35 +39,35 @@ struct SurfaceContactElem {
   SurfaceContactElem();
 
   /// Overloaded Constructor
-  TRIBOL_HOST_DEVICE SurfaceContactElem(int dimension,                  ///< [in] Dimension of the problem
-                                        RealT* x1,                      ///< [in] Vertex coordinates of first face
-                                        RealT* x2,                      ///< [in] Vertex coordinates of second face
-                                        RealT* xOverlap,                ///< [in] Vertex coordinates of overlap
-                                        int nFV,                        ///< [in] Number of face vertices
-                                        int nPV,                        ///< [in] Number of overlap vertices
-                                        const MeshData::Viewer* mesh1,  ///< [in] View of mesh 1
-                                        const MeshData::Viewer* mesh2,  ///< [in] View of mesh 2
-                                        int fId1,                       ///< [in] Id for face 1
-                                        int fId2                        ///< [in] Id for face 2
-                                        )
-      : dim(dimension),
-        m_mesh1(mesh1),
-        m_mesh2(mesh2),
-        faceId1(fId1),
-        faceId2(fId2),
-        faceCoords1(x1),
-        faceCoords2(x2),
-        faceNormal1(nullptr),
-        faceNormal2(nullptr),
-        overlapCoords(xOverlap),
-        overlapNormal(nullptr),
-        numFaceVert(nFV),
-        numPolyVert(nPV),
-        overlapArea(0.),
-        mortarWts(nullptr),
-        numWts(0),
-        numActiveGaps(0),
-        blockJ(3)
+  TRIBOL_HOST_DEVICE SurfaceContactElem( int dimension,                  ///< [in] Dimension of the problem
+                                         RealT* x1,                      ///< [in] Vertex coordinates of first face
+                                         RealT* x2,                      ///< [in] Vertex coordinates of second face
+                                         RealT* xOverlap,                ///< [in] Vertex coordinates of overlap
+                                         int nFV,                        ///< [in] Number of face vertices
+                                         int nPV,                        ///< [in] Number of overlap vertices
+                                         const MeshData::Viewer* mesh1,  ///< [in] View of mesh 1
+                                         const MeshData::Viewer* mesh2,  ///< [in] View of mesh 2
+                                         int fId1,                       ///< [in] Id for face 1
+                                         int fId2                        ///< [in] Id for face 2
+                                         )
+      : dim( dimension ),
+        m_mesh1( mesh1 ),
+        m_mesh2( mesh2 ),
+        faceId1( fId1 ),
+        faceId2( fId2 ),
+        faceCoords1( x1 ),
+        faceCoords2( x2 ),
+        faceNormal1( nullptr ),
+        faceNormal2( nullptr ),
+        overlapCoords( xOverlap ),
+        overlapNormal( nullptr ),
+        numFaceVert( nFV ),
+        numPolyVert( nPV ),
+        overlapArea( 0. ),
+        mortarWts( nullptr ),
+        numWts( 0 ),
+        numActiveGaps( 0 ),
+        blockJ( 3 )
 
   {
   }
@@ -110,7 +110,7 @@ struct SurfaceContactElem {
    * \param [in] b NONMORTAR node id
    *
    */
-  RealT getMortarNonmortarWt(const int a, const int b);
+  RealT getMortarNonmortarWt( const int a, const int b );
 
   /*!
    * \brief routine to return nonmortar-mortar mortar weights
@@ -119,7 +119,7 @@ struct SurfaceContactElem {
    * \param [in] b MORTAR node id
    *
    */
-  RealT getNonmortarMortarWt(const int a, const int b);
+  RealT getNonmortarMortarWt( const int a, const int b );
 
   /*!
    * \brief routine to return nonmortar-nonmortar mortar weight
@@ -128,7 +128,7 @@ struct SurfaceContactElem {
    * \param [in] b NONMORTAR node id
    *
    */
-  RealT getNonmortarNonmortarWt(const int a, const int b);
+  RealT getNonmortarNonmortarWt( const int a, const int b );
 
   /*!
    * \brief get array index for x-dimension face-pair Jacobian contribution
@@ -156,7 +156,7 @@ struct SurfaceContactElem {
    *       getJacobianDimOffset()
    *
    */
-  int getJacobianIndex(JacBlock block, const int a, const int b) const;
+  int getJacobianIndex( JacBlock block, const int a, const int b ) const;
 
   /*!
    * \brief get element-pair Jacobian array offset due to incrementing the
@@ -177,7 +177,7 @@ struct SurfaceContactElem {
    * x-dimension given by getJacobianIndex()
    *
    */
-  int getJacobianDimOffset(JacBlock block) const;
+  int getJacobianDimOffset( JacBlock block ) const;
 
   /*!
    * \brief routine to allocate space to store contact element Jacobians
@@ -185,7 +185,7 @@ struct SurfaceContactElem {
    * \param [in] method contact method
    *
    */
-  void allocateBlockJ(EnforcementMethod enf);
+  void allocateBlockJ( EnforcementMethod enf );
 
   /// delete routine
   TRIBOL_HOST_DEVICE void deallocateElem();
@@ -212,7 +212,7 @@ class MethodData {
    * \param [in] nPairs approximate number of contacting face-pairs (used to
    * allocate memory in the ArrayT)
    */
-  void reserveBlockJ(ArrayT<BlockSpace>&& blockJSpaces, int nPairs);
+  void reserveBlockJ( ArrayT<BlockSpace>&& blockJSpaces, int nPairs );
 
   /*!
    * \brief store an element contribution to all blocks of the Jacobian matrix
@@ -222,7 +222,7 @@ class MethodData {
    * \param [in] blockJ 2D array of element Jacobian contributions (each array
    * entry corresponds to a block of the Jacobian matrix)
    */
-  void storeElemBlockJ(ArrayT<int>&& blockJElemIds, const StackArray<DeviceArray2D<RealT>, 9>& blockJ);
+  void storeElemBlockJ( ArrayT<int>&& blockJElemIds, const StackArray<DeviceArray2D<RealT>, 9>& blockJ );
 
   /*!
    * \brief Returns the number of blocks in the Jacobian matrix
@@ -288,15 +288,15 @@ class MortarData : public MethodData {
    * \note number of columns is same as number of rows
    *
    */
-  void allocateMfemSparseMatrix(const int numRows)
+  void allocateMfemSparseMatrix( const int numRows )
   {
-    if (this->m_smat != nullptr) {
+    if ( this->m_smat != nullptr ) {
       delete this->m_smat;
       this->m_smat = nullptr;
-      this->m_smat = new mfem::SparseMatrix(numRows, numRows);
+      this->m_smat = new mfem::SparseMatrix( numRows, numRows );
     }
 
-    this->m_smat = new mfem::SparseMatrix(numRows, numRows);
+    this->m_smat = new mfem::SparseMatrix( numRows, numRows );
   }
 
   /// get mfem sparse matrix object
@@ -315,7 +315,7 @@ class MortarData : public MethodData {
    * \post n_offsets will store the number of offsets, if a non-nullptr was passed in
    * \post n_nonzero will store the number of non-zeros, if a non-nullptr was passed in
    */
-  void getCSRArrays(int** I, int** J, RealT** vals, int* n_offsets = nullptr, int* n_nonzero = nullptr);
+  void getCSRArrays( int** I, int** J, RealT** vals, int* n_offsets = nullptr, int* n_nonzero = nullptr );
 
   /*!
    * \brief Assembles local contact element Jacobian contributions into
@@ -325,7 +325,7 @@ class MortarData : public MethodData {
    * \param [in] sparse mode for assembly
    *
    */
-  void assembleJacobian(SurfaceContactElem& elem, SparseMode s_mode) const;
+  void assembleJacobian( SurfaceContactElem& elem, SparseMode s_mode ) const;
 
   /*!
    * \brief Assembles local contact element mortar weights into
@@ -335,15 +335,15 @@ class MortarData : public MethodData {
    * \param [in] s_mode sparse mode option
    *
    */
-  void assembleMortarWts(SurfaceContactElem& elem, SparseMode s_mode) const;
+  void assembleMortarWts( SurfaceContactElem& elem, SparseMode s_mode ) const;
 
  private:
   // mfem sparse matrix for Jacobian contributions for both meshes
   // involved in a coupling scheme or for mortar weights
   mutable mfem::SparseMatrix* m_smat;  ///< mfem sparse matrix for Jacobian or weights storage
 
-  DISABLE_COPY_AND_ASSIGNMENT(MortarData);
-  DISABLE_MOVE_AND_ASSIGNMENT(MortarData);
+  DISABLE_COPY_AND_ASSIGNMENT( MortarData );
+  DISABLE_MOVE_AND_ASSIGNMENT( MortarData );
 };
 
 }  // end namespace tribol

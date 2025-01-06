@@ -11,7 +11,7 @@
 namespace tribol {
 
 struct InterfacePair {
-  TRIBOL_HOST_DEVICE InterfacePair(IndexT element_id1, IndexT element_id2, bool is_contact_candidate = true);
+  TRIBOL_HOST_DEVICE InterfacePair( IndexT element_id1, IndexT element_id2, bool is_contact_candidate = true );
 
   // overload constructor to handle zero input arguments
   TRIBOL_HOST_DEVICE InterfacePair();

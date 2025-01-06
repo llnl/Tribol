@@ -44,27 +44,27 @@ class MortarGapTest : public ::testing::Test {
 
   tribol::ArrayT<RealT> gaps;
 
-  RealT* getXCoords(int id)
+  RealT* getXCoords( int id )
   {
-    if (id == 0) {
+    if ( id == 0 ) {
       return x1;
     } else {
       return x2;
     }
   }
 
-  RealT* getYCoords(int id)
+  RealT* getYCoords( int id )
   {
-    if (id == 0) {
+    if ( id == 0 ) {
       return y1;
     } else {
       return y2;
     }
   }
 
-  RealT* getZCoords(int id)
+  RealT* getZCoords( int id )
   {
-    if (id == 0) {
+    if ( id == 0 ) {
       return z1;
     } else {
       return z2;
@@ -77,7 +77,7 @@ class MortarGapTest : public ::testing::Test {
 
   RealT* getZOverlapCoords() { return zOverlap; }
 
-  void checkMortarGaps(int* conn1, int* conn2, tribol::ContactMethod method)
+  void checkMortarGaps( int* conn1, int* conn2, tribol::ContactMethod method )
   {
     // declare arrays to hold stacked coordinates for each
     // face used in initializing a SurfaceContactElem struct
@@ -105,11 +105,11 @@ class MortarGapTest : public ::testing::Test {
     RealT* zo = this->zOverlap;
 
     // generate stacked coordinate array
-    for (int j = 0; j < this->numNodesPerFace; ++j) {
-      for (int k = 0; k < this->dim; ++k) {
+    for ( int j = 0; j < this->numNodesPerFace; ++j ) {
+      for ( int k = 0; k < this->dim; ++k ) {
         int id = this->dim * j + k;
         // int id2 = this->dim * this->numNodesPerFace + id;
-        switch (k) {
+        switch ( k ) {
           case 0:
             xy1[id] = x1[j];
             xy2[id] = x2[j];
@@ -130,44 +130,44 @@ class MortarGapTest : public ::testing::Test {
     }      // end loop over nodes
 
     // register the mesh with tribol
-    int cellType = static_cast<int>(tribol::UNDEFINED_ELEMENT);
-    switch (this->numNodesPerFace) {
+    int cellType = static_cast<int>( tribol::UNDEFINED_ELEMENT );
+    switch ( this->numNodesPerFace ) {
       case 4: {
-        cellType = (int)(tribol::LINEAR_QUAD);
+        cellType = (int)( tribol::LINEAR_QUAD );
         break;
       }
       default: {
-        SLIC_ERROR("checkMortarWts: number of nodes per face not equal to 4.");
+        SLIC_ERROR( "checkMortarWts: number of nodes per face not equal to 4." );
       }
     }
 
     const int mortarMeshId = 0;
     const int nonmortarMeshId = 1;
 
-    tribol::registerMesh(mortarMeshId, 1, this->numNodesPerFace, conn1, cellType, x1, y1, z1,
-                         tribol::MemorySpace::Host);
-    tribol::registerMesh(nonmortarMeshId, 1, this->numNodesPerFace, conn2, cellType, x2, y2, z2,
-                         tribol::MemorySpace::Host);
+    tribol::registerMesh( mortarMeshId, 1, this->numNodesPerFace, conn1, cellType, x1, y1, z1,
+                          tribol::MemorySpace::Host );
+    tribol::registerMesh( nonmortarMeshId, 1, this->numNodesPerFace, conn2, cellType, x2, y2, z2,
+                          tribol::MemorySpace::Host );
 
     // get instance of meshes to compute face data required for other calculations
     tribol::MeshManager& meshManager = tribol::MeshManager::getInstance();
-    tribol::MeshData& mortarMesh = meshManager.at(mortarMeshId);
-    tribol::MeshData& nonmortarMesh = meshManager.at(nonmortarMeshId);
+    tribol::MeshData& mortarMesh = meshManager.at( mortarMeshId );
+    tribol::MeshData& nonmortarMesh = meshManager.at( nonmortarMeshId );
 
-    mortarMesh.computeFaceData(tribol::ExecutionMode::Sequential);
-    nonmortarMesh.computeFaceData(tribol::ExecutionMode::Sequential);
+    mortarMesh.computeFaceData( tribol::ExecutionMode::Sequential );
+    nonmortarMesh.computeFaceData( tribol::ExecutionMode::Sequential );
 
     gaps.clear();
     int size = 2 * this->numNodesPerFace;
-    gaps.resize(size);
+    gaps.resize( size );
 
-    for (int i = 0; i < size; ++i) {
+    for ( int i = 0; i < size; ++i ) {
       gaps[i] = 0.;
     }
 
-    tribol::registerMortarGaps(nonmortarMeshId, gaps.data());
+    tribol::registerMortarGaps( nonmortarMeshId, gaps.data() );
 
-    nonmortarMesh.computeNodalNormals(this->dim);
+    nonmortarMesh.computeNodalNormals( this->dim );
 
     auto mortarView = mortarMesh.getView();
     auto nonmortarView = nonmortarMesh.getView();
@@ -175,32 +175,32 @@ class MortarGapTest : public ::testing::Test {
     // instantiate SurfaceContactElem struct. Note, this object is instantiated
     // using face 1, face 2, and the set overlap polygon. Note, the mesh ids are set
     // equal to 0, and the face ids are 0 and 1, respectively.
-    tribol::SurfaceContactElem elem(this->dim, xy1, xy2, xyOverlap, this->numNodesPerFace, this->numOverlapNodes,
-                                    &mortarView, &nonmortarView, 0, 0);
+    tribol::SurfaceContactElem elem( this->dim, xy1, xy2, xyOverlap, this->numNodesPerFace, this->numOverlapNodes,
+                                     &mortarView, &nonmortarView, 0, 0 );
 
     // compute the mortar weights to be stored on
     // the surface contact element struct.
-    switch (method) {
+    switch ( method ) {
       case tribol::SINGLE_MORTAR:
-        tribol::ComputeMortarWeights(elem);
+        tribol::ComputeMortarWeights( elem );
         break;
       case tribol::ALIGNED_MORTAR:
-        tribol::ComputeAlignedMortarWeights(elem);
+        tribol::ComputeAlignedMortarWeights( elem );
         break;
       default:
-        SLIC_ERROR("Unsupported contact method");
+        SLIC_ERROR( "Unsupported contact method" );
         break;
     }
 
-    switch (method) {
+    switch ( method ) {
       case tribol::SINGLE_MORTAR:
-        tribol::ComputeNodalGap<tribol::SINGLE_MORTAR>(elem);
+        tribol::ComputeNodalGap<tribol::SINGLE_MORTAR>( elem );
         break;
       case tribol::ALIGNED_MORTAR:
-        tribol::ComputeNodalGap<tribol::ALIGNED_MORTAR>(elem);
+        tribol::ComputeNodalGap<tribol::ALIGNED_MORTAR>( elem );
         break;
       default:
-        SLIC_ERROR("Unsupported contact method");
+        SLIC_ERROR( "Unsupported contact method" );
         break;
     }
 
@@ -216,62 +216,62 @@ class MortarGapTest : public ::testing::Test {
     this->numOverlapNodes = 4;
     this->dim = 3;
 
-    if (this->x1 == nullptr) {
+    if ( this->x1 == nullptr ) {
       this->x1 = new RealT[this->numNodes];
     } else {
       delete[] this->x1;
       this->x1 = new RealT[this->numNodes];
     }
 
-    if (this->x2 == nullptr) {
+    if ( this->x2 == nullptr ) {
       this->x2 = new RealT[this->numNodes];
     } else {
       delete[] this->x2;
       this->x2 = new RealT[this->numNodes];
     }
 
-    if (this->y1 == nullptr) {
+    if ( this->y1 == nullptr ) {
       this->y1 = new RealT[this->numNodes];
     } else {
       delete[] this->y1;
       this->y1 = new RealT[this->numNodes];
     }
 
-    if (this->y2 == nullptr) {
+    if ( this->y2 == nullptr ) {
       this->y2 = new RealT[this->numNodes];
     } else {
       delete[] this->y2;
       this->y2 = new RealT[this->numNodes];
     }
 
-    if (this->z1 == nullptr) {
+    if ( this->z1 == nullptr ) {
       this->z1 = new RealT[this->numNodes];
     } else {
       delete[] this->z1;
       this->z1 = new RealT[this->numNodes];
     }
 
-    if (this->z2 == nullptr) {
+    if ( this->z2 == nullptr ) {
       this->z2 = new RealT[this->numNodes];
     } else {
       delete[] this->z2;
       this->z2 = new RealT[this->numNodes];
     }
 
-    if (this->xOverlap == nullptr) {
+    if ( this->xOverlap == nullptr ) {
       this->xOverlap = new RealT[this->numOverlapNodes];
     } else {
       delete[] this->xOverlap;
       this->xOverlap = new RealT[this->numOverlapNodes];
     }
 
-    if (this->yOverlap == nullptr) {
+    if ( this->yOverlap == nullptr ) {
       this->yOverlap = new RealT[this->numOverlapNodes];
     } else {
       delete[] this->yOverlap;
       this->yOverlap = new RealT[this->numOverlapNodes];
     }
-    if (this->zOverlap == nullptr) {
+    if ( this->zOverlap == nullptr ) {
       this->zOverlap = new RealT[this->numOverlapNodes];
     } else {
       delete[] this->zOverlap;
@@ -281,67 +281,67 @@ class MortarGapTest : public ::testing::Test {
 
   void TearDown() override
   {
-    if (this->x1 != nullptr) {
+    if ( this->x1 != nullptr ) {
       delete[] this->x1;
       this->x1 = nullptr;
     }
-    if (this->x2 != nullptr) {
+    if ( this->x2 != nullptr ) {
       delete[] this->x2;
       this->x2 = nullptr;
     }
-    if (this->y1 != nullptr) {
+    if ( this->y1 != nullptr ) {
       delete[] this->y1;
       this->y1 = nullptr;
     }
-    if (this->y2 != nullptr) {
+    if ( this->y2 != nullptr ) {
       delete[] this->y2;
       this->y2 = nullptr;
     }
-    if (this->z1 != nullptr) {
+    if ( this->z1 != nullptr ) {
       delete[] this->z1;
       this->z1 = nullptr;
     }
-    if (this->z2 != nullptr) {
+    if ( this->z2 != nullptr ) {
       delete[] this->z2;
       this->z2 = nullptr;
     }
-    if (this->xOverlap != nullptr) {
+    if ( this->xOverlap != nullptr ) {
       delete[] this->xOverlap;
       this->xOverlap = nullptr;
     }
-    if (this->yOverlap != nullptr) {
+    if ( this->yOverlap != nullptr ) {
       delete[] this->yOverlap;
       this->yOverlap = nullptr;
     }
-    if (this->zOverlap != nullptr) {
+    if ( this->zOverlap != nullptr ) {
       delete[] this->zOverlap;
       this->zOverlap = nullptr;
     }
   }
 
  protected:
-  RealT* x1{nullptr};
-  RealT* y1{nullptr};
-  RealT* z1{nullptr};
+  RealT* x1{ nullptr };
+  RealT* y1{ nullptr };
+  RealT* z1{ nullptr };
 
-  RealT* x2{nullptr};
-  RealT* y2{nullptr};
-  RealT* z2{nullptr};
+  RealT* x2{ nullptr };
+  RealT* y2{ nullptr };
+  RealT* z2{ nullptr };
 
-  RealT* xOverlap{nullptr};
-  RealT* yOverlap{nullptr};
-  RealT* zOverlap{nullptr};
+  RealT* xOverlap{ nullptr };
+  RealT* yOverlap{ nullptr };
+  RealT* zOverlap{ nullptr };
 };
 
-TEST_F(MortarGapTest, parallel_misaligned)
+TEST_F( MortarGapTest, parallel_misaligned )
 {
-  RealT* x1 = this->getXCoords(0);
-  RealT* y1 = this->getYCoords(0);
-  RealT* z1 = this->getZCoords(0);
+  RealT* x1 = this->getXCoords( 0 );
+  RealT* y1 = this->getYCoords( 0 );
+  RealT* z1 = this->getZCoords( 0 );
 
-  RealT* x2 = this->getXCoords(1);
-  RealT* y2 = this->getYCoords(1);
-  RealT* z2 = this->getZCoords(1);
+  RealT* x2 = this->getXCoords( 1 );
+  RealT* y2 = this->getYCoords( 1 );
+  RealT* z2 = this->getZCoords( 1 );
 
   RealT* xOvrlp = this->getXOverlapCoords();
   RealT* yOvrlp = this->getYOverlapCoords();
@@ -397,39 +397,39 @@ TEST_F(MortarGapTest, parallel_misaligned)
   int conn1[numNodesPerFace];
   int conn2[numNodesPerFace];
 
-  for (int i = 0; i < numNodesPerFace; ++i) {
+  for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
     conn2[i] = i;
   }
 
-  this->checkMortarGaps(&conn1[0], &conn2[0], tribol::SINGLE_MORTAR);
+  this->checkMortarGaps( &conn1[0], &conn2[0], tribol::SINGLE_MORTAR );
 
   tribol::MeshManager& meshManager = tribol::MeshManager::getInstance();
-  tribol::MeshData& nonmortarMesh = meshManager.at(1);
+  tribol::MeshData& nonmortarMesh = meshManager.at( 1 );
 
   // compute the sum of the nodal gaps
   RealT gap = 0.;
-  for (int i = 0; i < numNodesPerFace; ++i) {
+  for ( int i = 0; i < numNodesPerFace; ++i ) {
     gap += nonmortarMesh.getNodalFields().m_node_gap[i];
   }
 
   // note the face-gap of 0.1 is hard coded based on the
   // hard-coded face coordinates in this test
-  RealT gapDiff = std::abs(0.1 + gap);
+  RealT gapDiff = std::abs( 0.1 + gap );
 
   RealT tol = 1.e-8;
-  EXPECT_LE(gapDiff, tol);
+  EXPECT_LE( gapDiff, tol );
 }
 
-TEST_F(MortarGapTest, parallel_aligned)
+TEST_F( MortarGapTest, parallel_aligned )
 {
-  RealT* x1 = this->getXCoords(0);
-  RealT* y1 = this->getYCoords(0);
-  RealT* z1 = this->getZCoords(0);
+  RealT* x1 = this->getXCoords( 0 );
+  RealT* y1 = this->getYCoords( 0 );
+  RealT* z1 = this->getZCoords( 0 );
 
-  RealT* x2 = this->getXCoords(1);
-  RealT* y2 = this->getYCoords(1);
-  RealT* z2 = this->getZCoords(1);
+  RealT* x2 = this->getXCoords( 1 );
+  RealT* y2 = this->getYCoords( 1 );
+  RealT* z2 = this->getZCoords( 1 );
 
   RealT* xOvrlp = this->getXOverlapCoords();
   RealT* yOvrlp = this->getYOverlapCoords();
@@ -485,39 +485,39 @@ TEST_F(MortarGapTest, parallel_aligned)
   int conn1[numNodesPerFace];
   int conn2[numNodesPerFace];
 
-  for (int i = 0; i < numNodesPerFace; ++i) {
+  for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
     conn2[i] = i;
   }
 
-  this->checkMortarGaps(&conn1[0], &conn2[0], tribol::SINGLE_MORTAR);
+  this->checkMortarGaps( &conn1[0], &conn2[0], tribol::SINGLE_MORTAR );
 
   tribol::MeshManager& meshManager = tribol::MeshManager::getInstance();
-  tribol::MeshData& nonmortarMesh = meshManager.at(1);
+  tribol::MeshData& nonmortarMesh = meshManager.at( 1 );
 
   // compute the sum of the nodal gaps
   RealT gap = 0.;
-  for (int i = 0; i < numNodesPerFace; ++i) {
+  for ( int i = 0; i < numNodesPerFace; ++i ) {
     gap += nonmortarMesh.getNodalFields().m_node_gap[i];
   }
 
   // note the face-gap of 0.1 is hard coded based on the
   // hard-coded face coordinates in this test
-  RealT gapDiff = std::abs(0.1 + gap);
+  RealT gapDiff = std::abs( 0.1 + gap );
 
   RealT tol = 1.e-8;
-  EXPECT_LE(gapDiff, tol);
+  EXPECT_LE( gapDiff, tol );
 }
 
-TEST_F(MortarGapTest, parallel_simple_aligned)
+TEST_F( MortarGapTest, parallel_simple_aligned )
 {
-  RealT* x1 = this->getXCoords(0);
-  RealT* y1 = this->getYCoords(0);
-  RealT* z1 = this->getZCoords(0);
+  RealT* x1 = this->getXCoords( 0 );
+  RealT* y1 = this->getYCoords( 0 );
+  RealT* z1 = this->getZCoords( 0 );
 
-  RealT* x2 = this->getXCoords(1);
-  RealT* y2 = this->getYCoords(1);
-  RealT* z2 = this->getZCoords(1);
+  RealT* x2 = this->getXCoords( 1 );
+  RealT* y2 = this->getYCoords( 1 );
+  RealT* z2 = this->getZCoords( 1 );
 
   RealT* xOvrlp = this->getXOverlapCoords();
   RealT* yOvrlp = this->getYOverlapCoords();
@@ -573,37 +573,37 @@ TEST_F(MortarGapTest, parallel_simple_aligned)
   int conn1[numNodesPerFace];
   int conn2[numNodesPerFace];
 
-  for (int i = 0; i < numNodesPerFace; ++i) {
+  for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
     conn2[i] = i;
   }
 
-  this->checkMortarGaps(&conn1[0], &conn2[0], tribol::ALIGNED_MORTAR);
+  this->checkMortarGaps( &conn1[0], &conn2[0], tribol::ALIGNED_MORTAR );
 
   tribol::MeshManager& meshManager = tribol::MeshManager::getInstance();
-  tribol::MeshData& nonmortarMesh = meshManager.at(1);
+  tribol::MeshData& nonmortarMesh = meshManager.at( 1 );
 
   // compute the sum of the nodal gaps
   RealT gap = 0.;
   RealT gapTest = 0;
-  for (int i = 0; i < numNodesPerFace; ++i) {
+  for ( int i = 0; i < numNodesPerFace; ++i ) {
     gap += nonmortarMesh.getNodalFields().m_node_gap[i];
     gapTest += z1[i] - z2[i];
   }
 
   // note the face-gap of 0.1 is hard coded based on the
   // hard-coded face coordinates in this test
-  RealT gapDiff = std::abs(gapTest + gap);
+  RealT gapDiff = std::abs( gapTest + gap );
 
   RealT tol = 1.e-8;
-  EXPECT_LE(gapDiff, tol);
+  EXPECT_LE( gapDiff, tol );
 }
 
-int main(int argc, char* argv[])
+int main( int argc, char* argv[] )
 {
   int result = 0;
 
-  ::testing::InitGoogleTest(&argc, argv);
+  ::testing::InitGoogleTest( &argc, argv );
 
 #ifdef TRIBOL_USE_UMPIRE
   umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager

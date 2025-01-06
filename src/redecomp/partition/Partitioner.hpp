@@ -28,9 +28,9 @@ class Partitioner {
    * as a ghost entity
    * @return vector of EntityIndexByRank; lists of entities and ghost entities sorted by each subdomain
    */
-  virtual std::vector<EntityIndexByRank> generatePartitioning(int n_parts,
-                                                              const std::vector<const mfem::ParMesh*>& par_meshes,
-                                                              double ghost_size) const = 0;
+  virtual std::vector<EntityIndexByRank> generatePartitioning( int n_parts,
+                                                               const std::vector<const mfem::ParMesh*>& par_meshes,
+                                                               double ghost_size ) const = 0;
 
   /**
    * @brief Returns the MPIUtility associated with the Partitioner
@@ -65,8 +65,8 @@ class PartitionerByDim : public Partitioner {
    * @param partition_entity Pointer to PartitionEntity member
    * @param partition_method Pointer to a PartitionMethod member
    */
-  PartitionerByDim(std::unique_ptr<const PartitionEntity<NDIMS>> partition_entity,
-                   std::unique_ptr<const PartitionMethod<NDIMS>> partition_method);
+  PartitionerByDim( std::unique_ptr<const PartitionEntity<NDIMS>> partition_entity,
+                    std::unique_ptr<const PartitionMethod<NDIMS>> partition_method );
 
   /**
    * @brief Returns the MPIUtility associated with the Partitioner
@@ -85,8 +85,8 @@ class PartitionerByDim : public Partitioner {
    * @return vector of EntityIndexByRank; lists of entities and ghost entities
    * sorted by each subdomain
    */
-  std::vector<EntityIndexByRank> generatePartitioning(int n_parts, const std::vector<const mfem::ParMesh*>& par_meshes,
-                                                      double ghost_size) const override;
+  std::vector<EntityIndexByRank> generatePartitioning( int n_parts, const std::vector<const mfem::ParMesh*>& par_meshes,
+                                                       double ghost_size ) const override;
 
   /**
    * @brief Get the PartitionEntity object

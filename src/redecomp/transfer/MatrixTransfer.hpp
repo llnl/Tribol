@@ -42,9 +42,10 @@ class MatrixTransfer {
    * @param redecomp_test_fes Test finite element space on RedecompMesh
    * @param redecomp_trial_fes Trial finite element space on RedecompMesh
    */
-  MatrixTransfer(const mfem::ParFiniteElementSpace& parent_test_fes,
-                 const mfem::ParFiniteElementSpace& parent_trial_fes, const mfem::FiniteElementSpace& redecomp_test_fes,
-                 const mfem::FiniteElementSpace& redecomp_trial_fes);
+  MatrixTransfer( const mfem::ParFiniteElementSpace& parent_test_fes,
+                  const mfem::ParFiniteElementSpace& parent_trial_fes,
+                  const mfem::FiniteElementSpace& redecomp_test_fes,
+                  const mfem::FiniteElementSpace& redecomp_trial_fes );
 
   /**
    * @brief Transfers element RedecompMesh matrices to parent mfem::ParMesh
@@ -60,10 +61,10 @@ class MatrixTransfer {
    * HypreParMatrix returned to transform it to the t-dofs if parallel_assemble
    * is false.
    */
-  std::unique_ptr<mfem::HypreParMatrix> TransferToParallel(const axom::Array<int>& test_elem_idx,
-                                                           const axom::Array<int>& trial_elem_idx,
-                                                           const axom::Array<mfem::DenseMatrix>& src_elem_mat,
-                                                           bool parallel_assemble = true) const;
+  std::unique_ptr<mfem::HypreParMatrix> TransferToParallel( const axom::Array<int>& test_elem_idx,
+                                                            const axom::Array<int>& trial_elem_idx,
+                                                            const axom::Array<mfem::DenseMatrix>& src_elem_mat,
+                                                            bool parallel_assemble = true ) const;
 
   /**
    * @brief Transfers element RedecompMesh matrices to parent mfem::ParMesh
@@ -77,9 +78,9 @@ class MatrixTransfer {
    * @note Linked-list format is returned here to enable additional matrix
    * contributions to be added before Finalize() is called on the SparseMatrix
    */
-  mfem::SparseMatrix TransferToParallelSparse(const axom::Array<int>& test_elem_idx,
-                                              const axom::Array<int>& trial_elem_idx,
-                                              const axom::Array<mfem::DenseMatrix>& src_elem_mat) const;
+  mfem::SparseMatrix TransferToParallelSparse( const axom::Array<int>& test_elem_idx,
+                                               const axom::Array<int>& trial_elem_idx,
+                                               const axom::Array<mfem::DenseMatrix>& src_elem_mat ) const;
 
   /**
    * @brief Converts SparseMatrix from TransferToParallel to HypreParMatrix
@@ -93,8 +94,8 @@ class MatrixTransfer {
    * HypreParMatrix returned to transform it to the t-dofs if parallel_assemble
    * is false.
    */
-  std::unique_ptr<mfem::HypreParMatrix> ConvertToHypreParMatrix(mfem::SparseMatrix& sparse,
-                                                                bool parallel_assemble = true) const;
+  std::unique_ptr<mfem::HypreParMatrix> ConvertToHypreParMatrix( mfem::SparseMatrix& sparse,
+                                                                 bool parallel_assemble = true ) const;
 
  private:
   /**
@@ -104,7 +105,7 @@ class MatrixTransfer {
    * @param mark_ghost If true, mark ghost element ranks as -1
    * @return axom::Array<int> Map indicating parent rank for given redecomp element id
    */
-  axom::Array<int> buildRedecomp2ParentElemRank(const RedecompMesh& redecomp, bool mark_ghost);
+  axom::Array<int> buildRedecomp2ParentElemRank( const RedecompMesh& redecomp, bool mark_ghost );
 
   /**
    * @brief List of entries in test_elem_idx that belong on each parent test space rank
@@ -112,7 +113,7 @@ class MatrixTransfer {
    * @param test_elem_idx List of element IDs on the redecomp test space
    * @return MPIArray<int>
    */
-  MPIArray<int> buildSendArrayIDs(const axom::Array<int>& test_elem_idx) const;
+  MPIArray<int> buildSendArrayIDs( const axom::Array<int>& test_elem_idx ) const;
 
   /**
    * @brief Number of matrix entries to be sent to each parent test space rank
@@ -121,8 +122,8 @@ class MatrixTransfer {
    * @param trial_elem_idx List of element IDs on the redecomp trial space
    * @return axom::Array<int>
    */
-  axom::Array<int> buildSendNumMatEntries(const axom::Array<int>& test_elem_idx,
-                                          const axom::Array<int>& trial_elem_idx) const;
+  axom::Array<int> buildSendNumMatEntries( const axom::Array<int>& test_elem_idx,
+                                           const axom::Array<int>& trial_elem_idx ) const;
 
   /**
    * @brief Number of test and trial vdofs received from test space redecomp ranks
@@ -131,8 +132,8 @@ class MatrixTransfer {
    * @param trial_elem_idx List of element IDs on the redecomp trial space
    * @return MPIArray<int, 2>
    */
-  MPIArray<int, 2> buildRecvMatSizes(const axom::Array<int>& test_elem_idx,
-                                     const axom::Array<int>& trial_elem_idx) const;
+  MPIArray<int, 2> buildRecvMatSizes( const axom::Array<int>& test_elem_idx,
+                                      const axom::Array<int>& trial_elem_idx ) const;
 
   /**
    * @brief List of test element offsets received from test space redecomp ranks
@@ -141,8 +142,8 @@ class MatrixTransfer {
    * @param test_elem_idx List of element IDs on the redecomp test space
    * @return MPIArray<int>
    */
-  MPIArray<int> buildRecvTestElemOffsets(const RedecompMesh& test_redecomp,
-                                         const axom::Array<int>& test_elem_idx) const;
+  MPIArray<int> buildRecvTestElemOffsets( const RedecompMesh& test_redecomp,
+                                          const axom::Array<int>& test_elem_idx ) const;
 
   /**
    * @brief List of trial element global vdofs corresponding to the element matrix
@@ -153,8 +154,8 @@ class MatrixTransfer {
    * @param trial_elem_idx List of element IDs on the redecomp trial space
    * @return MPIArray<int>
    */
-  MPIArray<int> buildRecvTrialElemDofs(const RedecompMesh& trial_redecomp, const axom::Array<int>& test_elem_idx,
-                                       const axom::Array<int>& trial_elem_idx) const;
+  MPIArray<int> buildRecvTrialElemDofs( const RedecompMesh& trial_redecomp, const axom::Array<int>& test_elem_idx,
+                                        const axom::Array<int>& trial_elem_idx ) const;
 
   /**
    * @brief Returns MPIUtility pointer for the MatrixTransfer object

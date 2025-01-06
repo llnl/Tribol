@@ -37,7 +37,7 @@ class PartitionMethod {
    * by mesh
    */
   virtual std::vector<EntityIndexByRank> generatePartitioning(
-      int n_parts, const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh, double ghost_size) const = 0;
+      int n_parts, const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh, double ghost_size ) const = 0;
 
   /**
    * @brief Returns the MPIUtility
@@ -57,7 +57,7 @@ class PartitionMethod {
    *
    * @param comm MPI_Comm to used to build MPIUtility
    */
-  PartitionMethod(const MPI_Comm& comm);
+  PartitionMethod( const MPI_Comm& comm );
 
  private:
   /**

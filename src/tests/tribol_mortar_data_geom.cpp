@@ -78,17 +78,17 @@ class MortarGeomTest : public ::testing::Test {
  protected:
 };
 
-TEST_F(MortarGeomTest, mortar_good_patch)
+TEST_F( MortarGeomTest, mortar_good_patch )
 {
   // read data sets for mesh
-  std::string ixm_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_good_patch/ixm.txt");
-  std::string ixs_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_good_patch/ixs.txt");
-  std::string xm_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_good_patch/xm.txt");
-  std::string ym_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_good_patch/ym.txt");
-  std::string zm_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_good_patch/zm.txt");
-  std::string xs_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_good_patch/xs.txt");
-  std::string ys_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_good_patch/ys.txt");
-  std::string zs_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_good_patch/zs.txt");
+  std::string ixm_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_good_patch/ixm.txt" );
+  std::string ixs_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_good_patch/ixs.txt" );
+  std::string xm_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_good_patch/xm.txt" );
+  std::string ym_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_good_patch/ym.txt" );
+  std::string zm_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_good_patch/zm.txt" );
+  std::string xs_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_good_patch/xs.txt" );
+  std::string ys_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_good_patch/ys.txt" );
+  std::string zs_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_good_patch/zs.txt" );
 
   this->lengthMortarConn = 64;
   this->lengthNonmortarConn = 36;
@@ -97,26 +97,26 @@ TEST_F(MortarGeomTest, mortar_good_patch)
   this->numMortarCells = 16;
   this->numNonmortarCells = 9;
 
-  std::ifstream i_ixm(ixm_file);
-  std::ifstream i_ixs(ixs_file);
-  std::ifstream i_xm(xm_file);
-  std::ifstream i_ym(ym_file);
-  std::ifstream i_zm(zm_file);
-  std::ifstream i_xs(xs_file);
-  std::ifstream i_ys(ys_file);
-  std::ifstream i_zs(zs_file);
+  std::ifstream i_ixm( ixm_file );
+  std::ifstream i_ixs( ixs_file );
+  std::ifstream i_xm( xm_file );
+  std::ifstream i_ym( ym_file );
+  std::ifstream i_zm( zm_file );
+  std::ifstream i_xs( xs_file );
+  std::ifstream i_ys( ys_file );
+  std::ifstream i_zs( zs_file );
 
-  this->v_ixm.SetSize(this->lengthMortarConn);
-  this->v_ixs.SetSize(this->lengthNonmortarConn);
+  this->v_ixm.SetSize( this->lengthMortarConn );
+  this->v_ixs.SetSize( this->lengthNonmortarConn );
 
-  this->v_ixm.Load(i_ixm, 1);
-  this->v_ixs.Load(i_ixs, 1);
-  this->v_xm.Load(i_xm, this->lengthMortarNodes);
-  this->v_ym.Load(i_ym, this->lengthMortarNodes);
-  this->v_zm.Load(i_zm, this->lengthMortarNodes);
-  this->v_xs.Load(i_xs, this->lengthNonmortarNodes);
-  this->v_ys.Load(i_ys, this->lengthNonmortarNodes);
-  this->v_zs.Load(i_zs, this->lengthNonmortarNodes);
+  this->v_ixm.Load( i_ixm, 1 );
+  this->v_ixs.Load( i_ixs, 1 );
+  this->v_xm.Load( i_xm, this->lengthMortarNodes );
+  this->v_ym.Load( i_ym, this->lengthMortarNodes );
+  this->v_zm.Load( i_zm, this->lengthMortarNodes );
+  this->v_xs.Load( i_xs, this->lengthNonmortarNodes );
+  this->v_ys.Load( i_ys, this->lengthNonmortarNodes );
+  this->v_zs.Load( i_zs, this->lengthNonmortarNodes );
 
   i_ixm.close();
   i_ixs.close();
@@ -127,7 +127,7 @@ TEST_F(MortarGeomTest, mortar_good_patch)
   i_ys.close();
   i_zs.close();
 
-  SLIC_INFO("After loading mesh data and constructing mfem vectors.");
+  SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
   int* ixm_data = this->v_ixm.GetData();
@@ -149,42 +149,42 @@ TEST_F(MortarGeomTest, mortar_good_patch)
   pressures = new RealT[numTotalNodes];
 
   // initialize arrays
-  for (int i = 0; i < numTotalNodes; ++i) {
+  for ( int i = 0; i < numTotalNodes; ++i ) {
     gaps[i] = 0.;
     pressures[i] = 1.;
   }
 
   // setup simple coupling
-  SimpleCouplingSetup(3, (int)(tribol::LINEAR_QUAD), tribol::MORTAR_WEIGHTS, this->numMortarCells,
-                      this->lengthMortarNodes, ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells,
-                      this->lengthNonmortarNodes, ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures);
+  SimpleCouplingSetup( 3, (int)( tribol::LINEAR_QUAD ), tribol::MORTAR_WEIGHTS, this->numMortarCells,
+                       this->lengthMortarNodes, ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells,
+                       this->lengthNonmortarNodes, ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures );
 
   RealT dt = 1.0;
-  int err = Update(dt);
+  int err = Update( dt );
 
-  EXPECT_EQ(err, 0);
+  EXPECT_EQ( err, 0 );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
 
-  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at(0);
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
 
-  EXPECT_EQ(couplingScheme->getNumActivePairs(), 36);
+  EXPECT_EQ( couplingScheme->getNumActivePairs(), 36 );
 
   delete[] gaps;
   delete[] pressures;
 }
 
-TEST_F(MortarGeomTest, mortar_bad_patch)
+TEST_F( MortarGeomTest, mortar_bad_patch )
 {
   // read data sets for mesh
-  std::string ixm_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_bad_patch/ixm.txt");
-  std::string ixs_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_bad_patch/ixs.txt");
-  std::string xm_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_bad_patch/xm.txt");
-  std::string ym_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_bad_patch/ym.txt");
-  std::string zm_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_bad_patch/zm.txt");
-  std::string xs_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_bad_patch/xs.txt");
-  std::string ys_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_bad_patch/ys.txt");
-  std::string zs_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_bad_patch/zs.txt");
+  std::string ixm_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_bad_patch/ixm.txt" );
+  std::string ixs_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_bad_patch/ixs.txt" );
+  std::string xm_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_bad_patch/xm.txt" );
+  std::string ym_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_bad_patch/ym.txt" );
+  std::string zm_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_bad_patch/zm.txt" );
+  std::string xs_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_bad_patch/xs.txt" );
+  std::string ys_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_bad_patch/ys.txt" );
+  std::string zs_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_bad_patch/zs.txt" );
 
   this->lengthMortarConn = 64;
   this->lengthNonmortarConn = 36;
@@ -193,26 +193,26 @@ TEST_F(MortarGeomTest, mortar_bad_patch)
   this->numMortarCells = 16;
   this->numNonmortarCells = 9;
 
-  std::ifstream i_ixm(ixm_file);
-  std::ifstream i_ixs(ixs_file);
-  std::ifstream i_xm(xm_file);
-  std::ifstream i_ym(ym_file);
-  std::ifstream i_zm(zm_file);
-  std::ifstream i_xs(xs_file);
-  std::ifstream i_ys(ys_file);
-  std::ifstream i_zs(zs_file);
+  std::ifstream i_ixm( ixm_file );
+  std::ifstream i_ixs( ixs_file );
+  std::ifstream i_xm( xm_file );
+  std::ifstream i_ym( ym_file );
+  std::ifstream i_zm( zm_file );
+  std::ifstream i_xs( xs_file );
+  std::ifstream i_ys( ys_file );
+  std::ifstream i_zs( zs_file );
 
-  this->v_ixm.SetSize(this->lengthMortarConn);
-  this->v_ixs.SetSize(this->lengthNonmortarConn);
+  this->v_ixm.SetSize( this->lengthMortarConn );
+  this->v_ixs.SetSize( this->lengthNonmortarConn );
 
-  this->v_ixm.Load(i_ixm, 1);
-  this->v_ixs.Load(i_ixs, 1);
-  this->v_xm.Load(i_xm, this->lengthMortarNodes);
-  this->v_ym.Load(i_ym, this->lengthMortarNodes);
-  this->v_zm.Load(i_zm, this->lengthMortarNodes);
-  this->v_xs.Load(i_xs, this->lengthNonmortarNodes);
-  this->v_ys.Load(i_ys, this->lengthNonmortarNodes);
-  this->v_zs.Load(i_zs, this->lengthNonmortarNodes);
+  this->v_ixm.Load( i_ixm, 1 );
+  this->v_ixs.Load( i_ixs, 1 );
+  this->v_xm.Load( i_xm, this->lengthMortarNodes );
+  this->v_ym.Load( i_ym, this->lengthMortarNodes );
+  this->v_zm.Load( i_zm, this->lengthMortarNodes );
+  this->v_xs.Load( i_xs, this->lengthNonmortarNodes );
+  this->v_ys.Load( i_ys, this->lengthNonmortarNodes );
+  this->v_zs.Load( i_zs, this->lengthNonmortarNodes );
 
   i_ixm.close();
   i_ixs.close();
@@ -223,7 +223,7 @@ TEST_F(MortarGeomTest, mortar_bad_patch)
   i_ys.close();
   i_zs.close();
 
-  SLIC_INFO("After loading mesh data and constructing mfem vectors.");
+  SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
   int* ixm_data = this->v_ixm.GetData();
@@ -245,42 +245,42 @@ TEST_F(MortarGeomTest, mortar_bad_patch)
   pressures = new RealT[numTotalNodes];
 
   // initialize arrays
-  for (int i = 0; i < numTotalNodes; ++i) {
+  for ( int i = 0; i < numTotalNodes; ++i ) {
     gaps[i] = 0.;
     pressures[i] = 1.;
   }
 
   // setup simple coupling
-  SimpleCouplingSetup(3, (int)(tribol::LINEAR_QUAD), tribol::MORTAR_WEIGHTS, this->numMortarCells,
-                      this->lengthMortarNodes, ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells,
-                      this->lengthNonmortarNodes, ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures);
+  SimpleCouplingSetup( 3, (int)( tribol::LINEAR_QUAD ), tribol::MORTAR_WEIGHTS, this->numMortarCells,
+                       this->lengthMortarNodes, ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells,
+                       this->lengthNonmortarNodes, ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures );
 
   RealT dt = 1.0;
-  int err = Update(dt);
+  int err = Update( dt );
 
-  EXPECT_EQ(err, 0);
+  EXPECT_EQ( err, 0 );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
 
-  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at(0);
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
 
-  EXPECT_EQ(couplingScheme->getNumActivePairs(), 36);
+  EXPECT_EQ( couplingScheme->getNumActivePairs(), 36 );
 
   delete[] gaps;
   delete[] pressures;
 }
 
-TEST_F(MortarGeomTest, mortar_ironing)
+TEST_F( MortarGeomTest, mortar_ironing )
 {
   // read data sets for mesh
-  std::string ixm_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_ironing_3/ixm.txt");
-  std::string ixs_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_ironing_3/ixs.txt");
-  std::string xm_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_ironing_3/xm.txt");
-  std::string ym_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_ironing_3/ym.txt");
-  std::string zm_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_ironing_3/zm.txt");
-  std::string xs_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_ironing_3/xs.txt");
-  std::string ys_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_ironing_3/ys.txt");
-  std::string zs_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_ironing_3/zs.txt");
+  std::string ixm_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_ironing_3/ixm.txt" );
+  std::string ixs_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_ironing_3/ixs.txt" );
+  std::string xm_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_ironing_3/xm.txt" );
+  std::string ym_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_ironing_3/ym.txt" );
+  std::string zm_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_ironing_3/zm.txt" );
+  std::string xs_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_ironing_3/xs.txt" );
+  std::string ys_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_ironing_3/ys.txt" );
+  std::string zs_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_ironing_3/zs.txt" );
 
   this->lengthMortarConn = 480;
   this->lengthNonmortarConn = 160;
@@ -289,26 +289,26 @@ TEST_F(MortarGeomTest, mortar_ironing)
   this->numMortarCells = 120;
   this->numNonmortarCells = 40;
 
-  std::ifstream i_ixm(ixm_file);
-  std::ifstream i_ixs(ixs_file);
-  std::ifstream i_xm(xm_file);
-  std::ifstream i_ym(ym_file);
-  std::ifstream i_zm(zm_file);
-  std::ifstream i_xs(xs_file);
-  std::ifstream i_ys(ys_file);
-  std::ifstream i_zs(zs_file);
+  std::ifstream i_ixm( ixm_file );
+  std::ifstream i_ixs( ixs_file );
+  std::ifstream i_xm( xm_file );
+  std::ifstream i_ym( ym_file );
+  std::ifstream i_zm( zm_file );
+  std::ifstream i_xs( xs_file );
+  std::ifstream i_ys( ys_file );
+  std::ifstream i_zs( zs_file );
 
-  this->v_ixm.SetSize(this->lengthMortarConn);
-  this->v_ixs.SetSize(this->lengthNonmortarConn);
+  this->v_ixm.SetSize( this->lengthMortarConn );
+  this->v_ixs.SetSize( this->lengthNonmortarConn );
 
-  this->v_ixm.Load(i_ixm, 1);
-  this->v_ixs.Load(i_ixs, 1);
-  this->v_xm.Load(i_xm, this->lengthMortarNodes);
-  this->v_ym.Load(i_ym, this->lengthMortarNodes);
-  this->v_zm.Load(i_zm, this->lengthMortarNodes);
-  this->v_xs.Load(i_xs, this->lengthNonmortarNodes);
-  this->v_ys.Load(i_ys, this->lengthNonmortarNodes);
-  this->v_zs.Load(i_zs, this->lengthNonmortarNodes);
+  this->v_ixm.Load( i_ixm, 1 );
+  this->v_ixs.Load( i_ixs, 1 );
+  this->v_xm.Load( i_xm, this->lengthMortarNodes );
+  this->v_ym.Load( i_ym, this->lengthMortarNodes );
+  this->v_zm.Load( i_zm, this->lengthMortarNodes );
+  this->v_xs.Load( i_xs, this->lengthNonmortarNodes );
+  this->v_ys.Load( i_ys, this->lengthNonmortarNodes );
+  this->v_zs.Load( i_zs, this->lengthNonmortarNodes );
 
   i_ixm.close();
   i_ixs.close();
@@ -319,7 +319,7 @@ TEST_F(MortarGeomTest, mortar_ironing)
   i_ys.close();
   i_zs.close();
 
-  SLIC_INFO("After loading mesh data and constructing mfem vectors.");
+  SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
   int* ixm_data = this->v_ixm.GetData();
@@ -341,56 +341,56 @@ TEST_F(MortarGeomTest, mortar_ironing)
   pressures = new RealT[numTotalNodes];
 
   // initialize arrays
-  for (int i = 0; i < numTotalNodes; ++i) {
+  for ( int i = 0; i < numTotalNodes; ++i ) {
     gaps[i] = 0.;
     pressures[i] = 1.;
   }
 
   // setup simple coupling
-  SimpleCouplingSetup(3, (int)(tribol::LINEAR_QUAD), tribol::MORTAR_WEIGHTS, this->numMortarCells,
-                      this->lengthMortarNodes, ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells,
-                      this->lengthNonmortarNodes, ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures);
+  SimpleCouplingSetup( 3, (int)( tribol::LINEAR_QUAD ), tribol::MORTAR_WEIGHTS, this->numMortarCells,
+                       this->lengthMortarNodes, ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells,
+                       this->lengthNonmortarNodes, ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures );
 
   RealT dt = 1.0;
-  int err = Update(dt);
+  int err = Update( dt );
 
-  EXPECT_EQ(err, 0);
+  EXPECT_EQ( err, 0 );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
 
-  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at(0);
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
 
   int* I = nullptr;
   int* J = nullptr;
   RealT* wts = nullptr;
   int nOffsets = 0;
   int nNonZeros = 0;
-  int csr_err = GetSimpleCouplingCSR(&I, &J, &wts, &nOffsets, &nNonZeros);
+  int csr_err = GetSimpleCouplingCSR( &I, &J, &wts, &nOffsets, &nNonZeros );
 
-  EXPECT_EQ(csr_err, 0);
+  EXPECT_EQ( csr_err, 0 );
 
-  numTotalNodes = static_cast<tribol::MortarData*>(couplingScheme->getMethodData())->m_numTotalNodes;
+  numTotalNodes = static_cast<tribol::MortarData*>( couplingScheme->getMethodData() )->m_numTotalNodes;
   int num_total_active_nodes = 0;
-  for (int a = 0; a < numTotalNodes; ++a) {
+  for ( int a = 0; a < numTotalNodes; ++a ) {
     // loop over range of nonzero column entries
     int num_active_cnt = 0;
-    for (int b = I[a]; b < I[a + 1]; ++b) {
-      if (num_active_cnt == 0) {
+    for ( int b = I[a]; b < I[a + 1]; ++b ) {
+      if ( num_active_cnt == 0 ) {
         ++num_active_cnt;
         ++num_total_active_nodes;
       }
     }  // end loop over nonzero columns, I[a]
   }    // end loop over matrix rows
 
-  SLIC_INFO("Total number of ACTIVE nonmortar nodes: " << num_total_active_nodes);
+  SLIC_INFO( "Total number of ACTIVE nonmortar nodes: " << num_total_active_nodes );
 
-  EXPECT_EQ(num_total_active_nodes, 54);
+  EXPECT_EQ( num_total_active_nodes, 54 );
 
   delete[] gaps;
   delete[] pressures;
 }
 
-TEST_F(MortarGeomTest, mortar_ironing_block_sub_mesh)
+TEST_F( MortarGeomTest, mortar_ironing_block_sub_mesh )
 {
   // this mesh tests if the update occurred without errors.
   // Specifically, the Tribol issue was that the inverse
@@ -399,14 +399,14 @@ TEST_F(MortarGeomTest, mortar_ironing_block_sub_mesh)
   // was added to the InvIso() routine to catch this and error out.
 
   // read data sets for mesh
-  std::string ixm_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_ironing_sub_mesh/ixm.txt");
-  std::string ixs_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_ironing_sub_mesh/ixs.txt");
-  std::string xm_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_ironing_sub_mesh/xm.txt");
-  std::string ym_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_ironing_sub_mesh/ym.txt");
-  std::string zm_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_ironing_sub_mesh/zm.txt");
-  std::string xs_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_ironing_sub_mesh/xs.txt");
-  std::string ys_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_ironing_sub_mesh/ys.txt");
-  std::string zs_file = axom_fs::joinPath(TRIBOL_DATA_DIR, "mortar_ironing_sub_mesh/zs.txt");
+  std::string ixm_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_ironing_sub_mesh/ixm.txt" );
+  std::string ixs_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_ironing_sub_mesh/ixs.txt" );
+  std::string xm_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_ironing_sub_mesh/xm.txt" );
+  std::string ym_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_ironing_sub_mesh/ym.txt" );
+  std::string zm_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_ironing_sub_mesh/zm.txt" );
+  std::string xs_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_ironing_sub_mesh/xs.txt" );
+  std::string ys_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_ironing_sub_mesh/ys.txt" );
+  std::string zs_file = axom_fs::joinPath( TRIBOL_DATA_DIR, "mortar_ironing_sub_mesh/zs.txt" );
 
   this->lengthMortarConn = 28;
   this->lengthNonmortarConn = 8;
@@ -415,26 +415,26 @@ TEST_F(MortarGeomTest, mortar_ironing_block_sub_mesh)
   this->numMortarCells = 7;
   this->numNonmortarCells = 2;
 
-  std::ifstream i_ixm(ixm_file);
-  std::ifstream i_ixs(ixs_file);
-  std::ifstream i_xm(xm_file);
-  std::ifstream i_ym(ym_file);
-  std::ifstream i_zm(zm_file);
-  std::ifstream i_xs(xs_file);
-  std::ifstream i_ys(ys_file);
-  std::ifstream i_zs(zs_file);
+  std::ifstream i_ixm( ixm_file );
+  std::ifstream i_ixs( ixs_file );
+  std::ifstream i_xm( xm_file );
+  std::ifstream i_ym( ym_file );
+  std::ifstream i_zm( zm_file );
+  std::ifstream i_xs( xs_file );
+  std::ifstream i_ys( ys_file );
+  std::ifstream i_zs( zs_file );
 
-  this->v_ixm.SetSize(this->lengthMortarConn);
-  this->v_ixs.SetSize(this->lengthNonmortarConn);
+  this->v_ixm.SetSize( this->lengthMortarConn );
+  this->v_ixs.SetSize( this->lengthNonmortarConn );
 
-  this->v_ixm.Load(i_ixm, 1);
-  this->v_ixs.Load(i_ixs, 1);
-  this->v_xm.Load(i_xm, this->lengthMortarNodes);
-  this->v_ym.Load(i_ym, this->lengthMortarNodes);
-  this->v_zm.Load(i_zm, this->lengthMortarNodes);
-  this->v_xs.Load(i_xs, this->lengthNonmortarNodes);
-  this->v_ys.Load(i_ys, this->lengthNonmortarNodes);
-  this->v_zs.Load(i_zs, this->lengthNonmortarNodes);
+  this->v_ixm.Load( i_ixm, 1 );
+  this->v_ixs.Load( i_ixs, 1 );
+  this->v_xm.Load( i_xm, this->lengthMortarNodes );
+  this->v_ym.Load( i_ym, this->lengthMortarNodes );
+  this->v_zm.Load( i_zm, this->lengthMortarNodes );
+  this->v_xs.Load( i_xs, this->lengthNonmortarNodes );
+  this->v_ys.Load( i_ys, this->lengthNonmortarNodes );
+  this->v_zs.Load( i_zs, this->lengthNonmortarNodes );
 
   i_ixm.close();
   i_ixs.close();
@@ -445,7 +445,7 @@ TEST_F(MortarGeomTest, mortar_ironing_block_sub_mesh)
   i_ys.close();
   i_zs.close();
 
-  SLIC_INFO("After loading mesh data and constructing mfem vectors.");
+  SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
   int* ixm_data = this->v_ixm.GetData();
@@ -467,30 +467,30 @@ TEST_F(MortarGeomTest, mortar_ironing_block_sub_mesh)
   pressures = new RealT[numTotalNodes];
 
   // initialize arrays
-  for (int i = 0; i < numTotalNodes; ++i) {
+  for ( int i = 0; i < numTotalNodes; ++i ) {
     gaps[i] = 0.;
     pressures[i] = 1.;
   }
 
   // setup simple coupling
-  SimpleCouplingSetup(3, (int)(tribol::LINEAR_QUAD), tribol::MORTAR_WEIGHTS, this->numMortarCells,
-                      this->lengthMortarNodes, ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells,
-                      this->lengthNonmortarNodes, ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures);
+  SimpleCouplingSetup( 3, (int)( tribol::LINEAR_QUAD ), tribol::MORTAR_WEIGHTS, this->numMortarCells,
+                       this->lengthMortarNodes, ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells,
+                       this->lengthNonmortarNodes, ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures );
 
   RealT dt = 1.0;
-  int err = Update(dt);
+  int err = Update( dt );
 
-  EXPECT_EQ(err, 0);
+  EXPECT_EQ( err, 0 );
 
   delete[] gaps;
   delete[] pressures;
 }
 
-int main(int argc, char* argv[])
+int main( int argc, char* argv[] )
 {
   int result = 0;
 
-  ::testing::InitGoogleTest(&argc, argv);
+  ::testing::InitGoogleTest( &argc, argv );
 
   // Initialize Tribol via simple Tribol interface
   Initialize();
@@ -499,7 +499,7 @@ int main(int argc, char* argv[])
   umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
 #endif
 
-  tribol::SimpleMPIWrapper wrapper(argc, argv);  // initialize and finalize MPI, when applicable
+  tribol::SimpleMPIWrapper wrapper( argc, argv );  // initialize and finalize MPI, when applicable
 
   result = RUN_ALL_TESTS();
 

@@ -18,43 +18,43 @@ struct SurfaceContactElem;
 //  convex polygon. This struct is quadrature rule agnostic.
 struct IntegPts {
   /// IntegPts constructor
-  IntegPts(int numPoints,  ///< [in] Number of integration points
-           int IPDim       ///< [in] dimension of integration point coordinates
-           )
-      : numIPs(numPoints), ipDim(IPDim)
+  IntegPts( int numPoints,  ///< [in] Number of integration points
+            int IPDim       ///< [in] dimension of integration point coordinates
+            )
+      : numIPs( numPoints ), ipDim( IPDim )
   {
     xy = new RealT[IPDim * numPoints];
     wts = new RealT[numPoints];
   }
 
   /// IntegPts overloaded constructor
-  IntegPts() : numIPs(0), xy(nullptr), wts(nullptr) {}
+  IntegPts() : numIPs( 0 ), xy( nullptr ), wts( nullptr ) {}
 
   /// Destructor
   ~IntegPts()
   {
-    if (xy != nullptr) {
+    if ( xy != nullptr ) {
       delete[] xy;
       xy = nullptr;
     }
-    if (wts != nullptr) {
+    if ( wts != nullptr ) {
       delete[] wts;
       wts = nullptr;
     }
   }
 
   /// Initialization function
-  void initialize(int const dim, int const numTotalIPs)
+  void initialize( int const dim, int const numTotalIPs )
   {
     this->ipDim = dim;
     this->numIPs = numTotalIPs;
-    if (this->xy == nullptr) {
+    if ( this->xy == nullptr ) {
       this->xy = new RealT[dim * numTotalIPs];
     } else {
       delete[] this->xy;
       this->xy = new RealT[dim * numTotalIPs];
     }
-    if (this->wts == nullptr) {
+    if ( this->wts == nullptr ) {
       this->wts = new RealT[numTotalIPs];
     } else {
       delete[] this->wts;
@@ -84,7 +84,8 @@ struct IntegPts {
  *
  */
 template <ContactMethod M, PolyInteg I>
-TRIBOL_HOST_DEVICE void EvalWeakFormIntegral(SurfaceContactElem const& elem, RealT* const integ1, RealT* const integ2);
+TRIBOL_HOST_DEVICE void EvalWeakFormIntegral( SurfaceContactElem const& elem, RealT* const integ1,
+                                              RealT* const integ2 );
 
 /*!
  *
@@ -105,7 +106,7 @@ TRIBOL_HOST_DEVICE void EvalWeakFormIntegral(SurfaceContactElem const& elem, Rea
  *            will allocate and populate necessary data.
  *
  */
-void TWBPolyInt(SurfaceContactElem const& elem, IntegPts& integ, int k);
+void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, int k );
 
 /*!
  *
@@ -122,7 +123,7 @@ void TWBPolyInt(SurfaceContactElem const& elem, IntegPts& integ, int k);
  *            will allocate and populate necessary data.
  *
  */
-void GaussPolyIntTri(SurfaceContactElem const& elem, IntegPts& integ, int k);
+void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, int k );
 
 /*!
  *
@@ -140,7 +141,7 @@ void GaussPolyIntTri(SurfaceContactElem const& elem, IntegPts& integ, int k);
  *
  */
 
-void GaussPolyIntQuad(SurfaceContactElem const& elem, IntegPts& integ, int k);
+void GaussPolyIntQuad( SurfaceContactElem const& elem, IntegPts& integ, int k );
 /*!
  *
  * \brief returns the number of TWB integration points for polygonal overlap
@@ -152,7 +153,7 @@ void GaussPolyIntQuad(SurfaceContactElem const& elem, IntegPts& integ, int k);
  * \pre order 2 <= k <= 3
  *
  */
-int NumTWBPointsPoly(SurfaceContactElem const& elem, int k);
+int NumTWBPointsPoly( SurfaceContactElem const& elem, int k );
 
 /*!
  *
@@ -164,7 +165,7 @@ int NumTWBPointsPoly(SurfaceContactElem const& elem, int k);
  * \pre order 2 <= k <= 3
  *
  */
-int NumTWBPointsPerTri(int order);
+int NumTWBPointsPerTri( int order );
 
 }  // end namespace tribol
 #endif /* SRC_INTEG_INTEGRATION_HPP_ */

@@ -34,7 +34,7 @@ class PartitionEntity {
    * @return Vector of array of points from each entity on each mesh
    */
   virtual std::vector<axom::Array<Point<NDIMS>>> EntityCoordinates(
-      const std::vector<const mfem::ParMesh*>& par_meshes) const = 0;
+      const std::vector<const mfem::ParMesh*>& par_meshes ) const = 0;
 
   /**
    * @brief Destroy the PartitionEntity object

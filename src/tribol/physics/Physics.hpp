@@ -26,7 +26,7 @@ class CouplingScheme;
  * \return 0 if no errors
  *
  */
-int ApplyInterfacePhysics(CouplingScheme* cs, int cycle, RealT t);
+int ApplyInterfacePhysics( CouplingScheme* cs, int cycle, RealT t );
 /*!
  *
  * \brief applies interface method in the normal direction
@@ -37,7 +37,7 @@ int ApplyInterfacePhysics(CouplingScheme* cs, int cycle, RealT t);
  *
  */
 template <ContactMethod M, EnforcementMethod E>
-int ApplyNormal(CouplingScheme* cs);
+int ApplyNormal( CouplingScheme* cs );
 
 /*!
  *
@@ -49,7 +49,7 @@ int ApplyNormal(CouplingScheme* cs);
  *
  */
 template <ContactMethod M, EnforcementMethod E, ContactModel Model>
-int ApplyTangential(CouplingScheme* cs);
+int ApplyTangential( CouplingScheme* cs );
 
 /*!
  *
@@ -61,7 +61,7 @@ int ApplyTangential(CouplingScheme* cs);
  *
  */
 template <ContactMethod M>
-int GetMethodData(CouplingScheme* cs);
+int GetMethodData( CouplingScheme* cs );
 
 }  // namespace tribol
 
