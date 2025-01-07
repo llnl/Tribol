@@ -99,7 +99,7 @@ endif()
 ## setup the dependency list for tribol
 set(tribol_depends axom::primal axom::slic mfem)
 blt_list_append(TO tribol_depends ELEMENTS blt::mpi IF TRIBOL_USE_MPI )
-blt_list_append(TO tribol_depends ELEMENTS blt::openmp IF TRIBOL_USE_OPENMP )
+blt_list_append(TO tribol_depends ELEMENTS blt::openmp IF TRIBOL_USE_OPENMP_TEMP )
 blt_list_append(TO tribol_depends ELEMENTS redecomp IF BUILD_REDECOMP )
 blt_list_append(TO tribol_depends ELEMENTS umpire IF TRIBOL_USE_UMPIRE )
 blt_list_append(TO tribol_depends ELEMENTS RAJA IF TRIBOL_USE_RAJA )
