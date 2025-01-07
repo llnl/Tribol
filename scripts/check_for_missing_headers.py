@@ -1,7 +1,7 @@
 #!/bin/sh
 "exec" "python3" "-u" "-B" "$0" "$@"
 
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC.
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC.
 
 """
  file: check_for_missing_headers.py

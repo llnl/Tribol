@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC.
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC.
 
 ##-----------------------------------------------------------------------------
 ## GLOBAL DEFINITIONS

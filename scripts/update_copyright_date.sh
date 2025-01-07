@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC.
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC.
 
 #=============================================================================
 # Attempt to update  the copyright date in all source-controlled files 
@@ -42,7 +42,7 @@ for i in `cat files2change`
 do
     echo $i
     cp $i $i.sed.bak
-    sed "s/Copyright (c) 2017-2022/Copyright (c) 2017-2023/" $i.sed.bak > $i
+    sed "s/Copyright (c) 2017-2024/Copyright (c) 2017-2025/" $i.sed.bak > $i
 done
 
 #=============================================================================
