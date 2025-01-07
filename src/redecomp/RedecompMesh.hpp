@@ -12,8 +12,7 @@
 
 #include "redecomp/common/TypeDefs.hpp"
 
-namespace redecomp
-{
+namespace redecomp {
 
 class Partitioner;
 
@@ -30,13 +29,15 @@ class Partitioner;
  * @note Though RedecompMesh is distributed across ranks, the RedecompMesh on
  * each rank is an independent, serial mesh that derives from mfem::Mesh.
  */
-class RedecompMesh : public mfem::Mesh
-{
-public:
+class RedecompMesh : public mfem::Mesh {
+ public:
   /**
    * @brief List of partitioning methods verified to work with RedecompMesh
    */
-  enum PartitionType { RCB };
+  enum PartitionType
+  {
+    RCB
+  };
 
   /**
    * @brief Construct a new RedecompMesh object
@@ -47,10 +48,7 @@ public:
    * @param parent The mfem::ParMesh that will be redecomposed
    * @param method The method of redecomposition (optional)
    */
-  RedecompMesh(
-    const mfem::ParMesh& parent,
-    PartitionType method = RCB
-  );
+  RedecompMesh( const mfem::ParMesh& parent, PartitionType method = RCB );
 
   /**
    * @brief Construct a new RedecompMesh object
@@ -62,11 +60,7 @@ public:
    * @param ghost_length Size of layer of un-owned ghost elements to include around the edge of the on-rank domain
    * @param method The method of redecomposition (optional)
    */
-  RedecompMesh(
-    const mfem::ParMesh& parent,
-    double ghost_length,
-    PartitionType method = RCB
-  );
+  RedecompMesh( const mfem::ParMesh& parent, double ghost_length, PartitionType method = RCB );
 
   /**
    * @brief Construct a new RedecompMesh object
@@ -78,10 +72,7 @@ public:
    * @param parent The mfem::ParMesh that will be redecomposed
    * @param partitioner Partitioning object used to define redecomposition
    */
-  RedecompMesh(
-    const mfem::ParMesh& parent,
-    std::unique_ptr<const Partitioner> partitioner
-  );
+  RedecompMesh( const mfem::ParMesh& parent, std::unique_ptr<const Partitioner> partitioner );
 
   /**
    * @brief Construct a new RedecompMesh object
@@ -94,11 +85,7 @@ public:
    * @param ghost_length Size of layer of un-owned ghost elements to include around the edge of the on-rank domain
    * @param partitioner Partitioning object used to define redecomposition
    */
-  RedecompMesh(
-    const mfem::ParMesh& parent,
-    double ghost_length,
-    std::unique_ptr<const Partitioner> partitioner
-  );
+  RedecompMesh( const mfem::ParMesh& parent, double ghost_length, std::unique_ptr<const Partitioner> partitioner );
 
   /**
    * @brief Construct a new RedecompMesh object
@@ -107,22 +94,19 @@ public:
    * @param p2r_elems List of local parent element ids to put on each
    * RedecompMesh rank
    */
-  RedecompMesh(
-    const mfem::ParMesh& parent,
-    EntityIndexByRank&& p2r_elems
-  );
+  RedecompMesh( const mfem::ParMesh& parent, EntityIndexByRank&& p2r_elems );
 
   /**
    * @brief Get the parent mfem::ParMesh
-   * 
-   * @return const mfem::ParMesh* 
+   *
+   * @return const mfem::ParMesh*
    */
   const mfem::ParMesh& getParent() const { return parent_; }
 
   /**
    * @brief Return the MPIUtility
-   * 
-   * @return const MPIUtility& 
+   *
+   * @return const MPIUtility&
    */
   const MPIUtility& getMPIUtility() const { return mpi_; }
 
@@ -130,12 +114,9 @@ public:
    * @brief Get the list of local parent elements that belong on each rank of
    * RedecompMesh
    *
-   * @return const EntityIndexByRank& 
+   * @return const EntityIndexByRank&
    */
-  const EntityIndexByRank& getParentToRedecompElems() const
-  {
-    return p2r_elems_;
-  }
+  const EntityIndexByRank& getParentToRedecompElems() const { return p2r_elems_; }
 
   /**
    * @brief Get Redecomp mesh element offsets denoting parent elements on each
@@ -146,22 +127,16 @@ public:
    * id.  The first redecomp element on parent rank m is given by entry m of the
    * array.
    *
-   * @return const axom::Array<int>& 
+   * @return const axom::Array<int>&
    */
-  const axom::Array<int>& getRedecompToParentElemOffsets() const
-  {
-    return r2p_elem_offsets_;
-  }
+  const axom::Array<int>& getRedecompToParentElemOffsets() const { return r2p_elem_offsets_; }
 
   /**
    * @brief Get a list of redecomp ghost elements on each parent rank
-   * 
-   * @return const MPIArray<int>& 
+   *
+   * @return const MPIArray<int>&
    */
-  const MPIArray<int>& getRedecompToParentGhostElems() const
-  {
-    return r2p_ghost_elems_;
-  }
+  const MPIArray<int>& getRedecompToParentGhostElems() const { return r2p_ghost_elems_; }
 
   /**
    * @brief Computes the largest element length in terms of stretch at the
@@ -174,9 +149,9 @@ public:
    *
    * @return Largest element length in terms of stretch component at element centroid
    */
-  static double MaxElementSize(const mfem::ParMesh& parent, const MPIUtility& mpi);
+  static double MaxElementSize( const mfem::ParMesh& parent, const MPIUtility& mpi );
 
-private:
+ private:
   /**
    * @brief Computes a default ghost element length: 1.25 * max element size
    *
@@ -184,21 +159,17 @@ private:
    *
    * @return Default ghost element lemgth
    */
-  double DefaultGhostLength(const mfem::ParMesh& parent) const;
+  double DefaultGhostLength( const mfem::ParMesh& parent ) const;
 
   /**
    * @brief Builds list of parent elements to be transfered to Redecomp ranks
-   * 
+   *
    * @param partitioner Method of partitioning the elements
    * @param n_parts Number of parts to partition the mesh into
    * @param ghost_length Size of layer of un-owned ghost elements to include around the edge of the on-rank domain
    * @return List of parent element IDs and ghost elements sorted by Redecomp rank
    */
-  EntityIndexByRank BuildP2RElementList(
-    const Partitioner& partitioner, 
-    int n_parts,
-    double ghost_length
-  ) const;
+  EntityIndexByRank BuildP2RElementList( const Partitioner& partitioner, int n_parts, double ghost_length ) const;
 
   /**
    * @brief Builds the Redecomp mesh and inverse element transfer list
@@ -206,12 +177,12 @@ private:
   void BuildRedecomp();
 
   /**
-   * @brief Linked parent mfem::ParMesh 
+   * @brief Linked parent mfem::ParMesh
    */
   const mfem::ParMesh& parent_;
 
   /**
-   * @brief MPI utility for the Redecomp MPI_Comm 
+   * @brief MPI utility for the Redecomp MPI_Comm
    */
   MPIUtility mpi_;
 
@@ -226,11 +197,11 @@ private:
   axom::Array<int> r2p_elem_offsets_;
 
   /**
-   * @brief Ghost redecomp elements sorted by parent rank 
+   * @brief Ghost redecomp elements sorted by parent rank
    */
   MPIArray<int> r2p_ghost_elems_;
 };
 
-}
+}  // namespace redecomp
 
 #endif /* SRC_REDECOMP_REDECOMPMESH_HPP_ */

@@ -8,8 +8,7 @@
 
 #include "redecomp/transfer/GridFnTransfer.hpp"
 
-namespace redecomp
-{
+namespace redecomp {
 
 /**
  * @brief GridFnTransfer method using elements
@@ -21,9 +20,8 @@ namespace redecomp
  * lists of degrees of freedom to transfer from parent to Redecomp and vice
  * versa and, therefore, may be faster for repeated transfers of H1 fields.
  */
-class TransferByElements : public GridFnTransfer
-{
-public:
+class TransferByElements : public GridFnTransfer {
+ public:
   /**
    * @brief Copies parent-based mfem::ParGridFunction values to a
    * RedecompMesh-based mfem::GridFunction
@@ -33,10 +31,7 @@ public:
    * @param dst A redecomp GridFunction which receives values from a parent
    * ParGridFunction (src)
    */
-  void TransferToSerial(
-    const mfem::ParGridFunction& src,
-    mfem::GridFunction& dst
-  ) const override;
+  void TransferToSerial( const mfem::ParGridFunction& src, mfem::GridFunction& dst ) const override;
 
   /**
    * @brief Copies RedecompMesh-based mfem::GridFunction values to a
@@ -47,13 +42,9 @@ public:
    * @param dst A parent ParGridFunction which receives values from a redecomp
    * GridFunction (src)
    */
-  void TransferToParallel(
-    const mfem::GridFunction& src, 
-    mfem::ParGridFunction& dst
-  ) const override;
-  
+  void TransferToParallel( const mfem::GridFunction& src, mfem::ParGridFunction& dst ) const override;
 };
 
-} // end namespace redecomp
+}  // end namespace redecomp
 
 #endif /* SRC_REDECOMP_TRANSFERBYELEMENTS_HPP_ */

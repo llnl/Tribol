@@ -8,12 +8,11 @@
 
 #include "tribol/common/Parameters.hpp"
 
-namespace tribol
-{
+namespace tribol {
 
 /*!
  *
- * \brief wrapper routine for evaluation of 2D or 3D shape functions on projected 
+ * \brief wrapper routine for evaluation of 2D or 3D shape functions on projected
  *        surface element topologies
  *
  * \param [in] x pointer to array of stacked (xyz) coordinates for 2D or 3D surface face/edge vertices
@@ -30,14 +29,13 @@ namespace tribol
  * \pre z is nullptr for 2D
  *
  */
-TRIBOL_HOST_DEVICE void GalerkinEval( const RealT* const x, 
-                                      const RealT pX, const RealT pY, const RealT pZ, 
-                                      FaceOrderType order_type, BasisEvalType basis_type, 
-                                      int dim, int galerkinDim, RealT* nodeVals, RealT* galerkinVal );
+TRIBOL_HOST_DEVICE void GalerkinEval( const RealT* const x, const RealT pX, const RealT pY, const RealT pZ,
+                                      FaceOrderType order_type, BasisEvalType basis_type, int dim, int galerkinDim,
+                                      RealT* nodeVals, RealT* galerkinVal );
 
 /*!
  *
- * \brief wrapper routine for evaluation of 2D or 3D shape functions on projected 
+ * \brief wrapper routine for evaluation of 2D or 3D shape functions on projected
  *        surface element topologies
  *
  * \param [in] x pointer to array of stacked (xyz) coordinates for 2D or 3D surface face/edge vertices
@@ -51,10 +49,8 @@ TRIBOL_HOST_DEVICE void GalerkinEval( const RealT* const x,
  * \pre z is nullptr for 2D
  *
  */
-TRIBOL_HOST_DEVICE void EvalBasis( const RealT* const x, 
-                                   const RealT pX, const RealT pY, const RealT pZ, 
-                                   const int numPoints, const int vertexId, 
-                                   RealT& phi );
+TRIBOL_HOST_DEVICE void EvalBasis( const RealT* const x, const RealT pX, const RealT pY, const RealT pZ,
+                                   const int numPoints, const int vertexId, RealT& phi );
 
 /*!
  *
@@ -73,8 +69,7 @@ TRIBOL_HOST_DEVICE void EvalBasis( const RealT* const x,
  * \note This is implicitly a 3D routine
  *
  */
-TRIBOL_HOST_DEVICE void WachspressBasis( const RealT* const x, 
-                                         const RealT pX, const RealT pY, const RealT pZ, 
+TRIBOL_HOST_DEVICE void WachspressBasis( const RealT* const x, const RealT pX, const RealT pY, const RealT pZ,
                                          const int numPoints, const int vertexId, RealT& phi );
 
 /*!
@@ -90,13 +85,12 @@ TRIBOL_HOST_DEVICE void WachspressBasis( const RealT* const x,
  * \note This is implicitly a 2D routine
  *
  */
-TRIBOL_HOST_DEVICE void SegmentBasis( const RealT* const x, 
-                                      const RealT pX, const RealT pY,
-                                      const int vertexId, RealT& phi );
+TRIBOL_HOST_DEVICE void SegmentBasis( const RealT* const x, const RealT pX, const RealT pY, const int vertexId,
+                                      RealT& phi );
 
 /*!
  *
- * \brief performs the inverse isoparametric mapping to obtain a (xi,eta) 
+ * \brief performs the inverse isoparametric mapping to obtain a (xi,eta)
  *        coordinate in parent space associated with a point in physical space
  *
  * \param [in] x array of (x,y,z) coordinates of a point in physical space
@@ -104,20 +98,15 @@ TRIBOL_HOST_DEVICE void SegmentBasis( const RealT* const x,
  * \param [in] yA pointer to array of stacked nodal y-coordinates
  * \param [in] zA pointer to array of stacked nodal z-coordinates
  * \param [in] numNodes number of nodes for a given finite element
- * \param [in,out] xi (xi,eta) coordinates in parent space 
+ * \param [in,out] xi (xi,eta) coordinates in parent space
  *
  * \pre xA, yA, and zA are pointer to arrays of length, numNodes
  *
- * \note This routine works in 2D or 3D. In 2D, zA is a nullptr and 
+ * \note This routine works in 2D or 3D. In 2D, zA is a nullptr and
  *       x[2] is equal to 0.
  *
  */
-void InvIso( const RealT  x[3], 
-             const RealT* xA,
-             const RealT* yA,
-             const RealT* zA,
-             const int numNodes,
-             RealT  xi[2] );
+void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA, const int numNodes, RealT xi[2] );
 
 /*!
  *
@@ -131,15 +120,11 @@ void InvIso( const RealT  x[3],
  *
  *
  */
-void FwdMapLinQuad( const RealT xi[2],
-                    RealT xa[4],
-                    RealT ya[4],
-                    RealT za[4],
-                    RealT x[3] );
+void FwdMapLinQuad( const RealT xi[2], RealT xa[4], RealT ya[4], RealT za[4], RealT x[3] );
 
 /*!
  *
- * \brief performs a foward linear map for a linear, three node triangle 
+ * \brief performs a foward linear map for a linear, three node triangle
  *
  * \param [in] xi (xi,eta) point in parent space
  * \param [in] xa nodal x-coordinates
@@ -149,11 +134,7 @@ void FwdMapLinQuad( const RealT xi[2],
  *
  *
  */
-void FwdMapLinTri( const RealT xi[2],
-                   RealT xa[3],
-                   RealT ya[3],
-                   RealT za[3],
-                   RealT x[3] );
+void FwdMapLinTri( const RealT xi[2], RealT xa[3], RealT ya[3], RealT za[3], RealT x[3] );
 
 /*!
  *
@@ -169,10 +150,7 @@ void FwdMapLinTri( const RealT xi[2],
  *
  *
  */
-void LinIsoQuadShapeFunc( const RealT xi, 
-                          const RealT eta,
-                          const int a,
-                          RealT& phi );
+void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi );
 
 /*!
  *
@@ -186,19 +164,16 @@ void LinIsoQuadShapeFunc( const RealT xi,
  *
  * \pre input argument, a, ranges from 0-2.
  *
- * \note this routine uses shape functions generated from 
- *       collapsing a four node quadrilateral. The parent coordinates 
+ * \note this routine uses shape functions generated from
+ *       collapsing a four node quadrilateral. The parent coordinates
  *       of each node are as follows (-1,-1), (1,-1), (0,1).
  *
  */
-void LinIsoTriShapeFunc( const RealT xi, 
-                         const RealT eta,
-                         const int a,
-                         RealT& phi );
+void LinIsoTriShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi );
 
 /*!
  *
- * \brief returns the determinant of the Jacobian for a four node 
+ * \brief returns the determinant of the Jacobian for a four node
  *        quadrilateral
  *
  * \param [in] xi first parent coordinate of evaluation point
@@ -207,19 +182,15 @@ void LinIsoTriShapeFunc( const RealT xi,
  * \param [in] dim dimension of the coordinate data
  * \param [in,out] detJ determinant of the Jacobian of transformation
  *
- * \note The input argument x may be stacked 2D or 3D coordinates, 
+ * \note The input argument x may be stacked 2D or 3D coordinates,
  *       indicated by dim, respectively.
- *       This routine ignores the z-dimension, assuming that the 
- *       four node quad is planar, which is the case for contact 
+ *       This routine ignores the z-dimension, assuming that the
+ *       four node quad is planar, which is the case for contact
  *       integrals
  *
  */
-void DetJQuad( const RealT xi,
-               const RealT eta,
-               const RealT* x,
-               const int dim,
-               RealT& detJ );
+void DetJQuad( const RealT xi, const RealT eta, const RealT* x, const int dim, RealT& detJ );
 
-} // end of namespace "tribol"
+}  // namespace tribol
 
 #endif /* SRC_INTEG_FE_HPP_ */

@@ -17,8 +17,7 @@
 #include <mpi.h>
 #endif
 
-namespace tribol
-{
+namespace tribol {
 
 #ifdef TRIBOL_USE_MPI
 
@@ -52,22 +51,22 @@ using RealT = double;
 #define TRIBOL_UNUSED_PARAM AXOM_UNUSED_PARAM
 
 // Execution space specifiers
-#if defined(TRIBOL_USE_CUDA) || defined(TRIBOL_USE_HIP)
-  #ifndef __device__
-    #error "TRIBOL_USE_CUDA or TRIBOL_USE_HIP but __device__ is undefined.  Check include files"
-  #endif
-  #define TRIBOL_DEVICE __device__
-  #define TRIBOL_HOST_DEVICE __host__ __device__
+#if defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP )
+#ifndef __device__
+#error "TRIBOL_USE_CUDA or TRIBOL_USE_HIP but __device__ is undefined.  Check include files"
+#endif
+#define TRIBOL_DEVICE __device__
+#define TRIBOL_HOST_DEVICE __host__ __device__
 #else
-  #define TRIBOL_DEVICE
-  #define TRIBOL_HOST_DEVICE
+#define TRIBOL_DEVICE
+#define TRIBOL_HOST_DEVICE
 #endif
 
 // Define variable when loops are computed on host
-#if !(defined(TRIBOL_USE_CUDA) || defined(TRIBOL_USE_HIP))
-  #define TRIBOL_USE_HOST
+#if !( defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP ) )
+#define TRIBOL_USE_HOST
 #endif
 
-} // namespace tribol
+}  // namespace tribol
 
 #endif /* TRIBOL_COMMON_BASICTYPES_HPP_ */
