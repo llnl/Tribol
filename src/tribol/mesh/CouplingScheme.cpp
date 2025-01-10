@@ -1514,16 +1514,22 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                 ////////////////////////////////////////////////////////////////////////
 
                 {
-                  // compute delta between velocity projection of face-projected
-                  // overlap centroid and the OTHER face's face-projected overlap
-                  // centroid
-                  RealT proj_delta_x1 = plane.m_cXf1 + dt * vel_f1[0] - plane.m_cXf2;
-                  RealT proj_delta_y1 = plane.m_cYf1 + dt * vel_f1[1] - plane.m_cYf2;
+                  // compute delta between the velocity projection of each face-projected
+                  // overlap centroid. First project each point.
+                  RealT proj_delta_x1 = plane.m_cXf1 + dt * vel_f1[0];
+                  RealT proj_delta_y1 = plane.m_cYf1 + dt * vel_f1[1];
                   RealT proj_delta_z1 = 0.;
 
-                  RealT proj_delta_x2 = plane.m_cXf2 + dt * vel_f2[0] - plane.m_cXf1;
-                  RealT proj_delta_y2 = plane.m_cYf2 + dt * vel_f2[1] - plane.m_cYf1;
+                  RealT proj_delta_x2 = plane.m_cXf2 + dt * vel_f2[0];
+                  RealT proj_delta_y2 = plane.m_cYf2 + dt * vel_f2[1];
                   RealT proj_delta_z2 = 0.;
+
+                  // subtract off the other face's velocity projected point
+                  proj_delta_x1 -= proj_delta_x2;
+                  proj_delta_y1 -= proj_delta_y2;
+
+                  proj_delta_x2 -= proj_delta_x1;
+                  proj_delta_y2 -= proj_delta_y1;
 
                   // compute the dot product between each face's delta and the OTHER
                   // face's outward unit normal. This is the magnitude of interpenetration
@@ -1534,8 +1540,11 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                   RealT proj_delta_n_2 = proj_delta_x2 * fn1[0] + proj_delta_y2 * fn1[1];
 
                   if ( dim == 3 ) {
-                    proj_delta_z1 = plane.m_cZf1 + dt * vel_f1[2] - plane.m_cZf2;
-                    proj_delta_z2 = plane.m_cZf2 + dt * vel_f2[2] - plane.m_cZf1;
+                    proj_delta_z1 = plane.m_cZf1 + dt * vel_f1[2];
+                    proj_delta_z2 = plane.m_cZf2 + dt * vel_f2[2];
+
+                    proj_delta_z1 -= proj_delta_z2;
+                    proj_delta_z2 -= proj_delta_z1;
 
                     proj_delta_n_1 += proj_delta_z1 * fn2[2];
                     proj_delta_n_2 += proj_delta_z2 * fn1[2];
