@@ -820,9 +820,9 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
     }
   }
 
-  // debug output
-  std::cout << " x0 (geomtric centroid) = ( " << std::setprecision( 18 ) << x0[0] << ", " << x0[1] << ", " << x0[2]
-            << " )" << std::endl;
+  // // debug output
+  // std::cout << " x0 (geomtric centroid) = ( " << std::setprecision( 18 ) << x0[0] << ", " << x0[1] << ", " << x0[2]
+  //           << " )" << std::endl;
 
   // get vector n (normal of elem1)
   // NOTE: this limits this routine to quads
@@ -848,13 +848,16 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
     n[d] /= n_mag;
   }
 
-  // debug output
-  std::cout << " de1 (geomtric centroid) = ( " << std::setprecision( 18 ) << de1[0] << ", " << de1[1] << ", " << de1[2]
-            << " )" << std::endl;
-  std::cout << " de2 (geomtric centroid) = ( " << std::setprecision( 18 ) << de2[0] << ", " << de2[1] << ", " << de2[2]
-            << " )" << std::endl;
-  std::cout << " n (geomtric centroid) = ( " << std::setprecision( 18 ) << n[0] << ", " << n[1] << ", " << n[2] << " )"
-            << std::endl;
+  // // debug output
+  // std::cout << " de1 (geomtric centroid) = ( " << std::setprecision( 18 ) << de1[0] << ", " << de1[1] << ", " <<
+  // de1[2]
+  //           << " )" << std::endl;
+  // std::cout << " de2 (geomtric centroid) = ( " << std::setprecision( 18 ) << de2[0] << ", " << de2[1] << ", " <<
+  // de2[2]
+  //           << " )" << std::endl;
+  // std::cout << " n (geomtric centroid) = ( " << std::setprecision( 18 ) << n[0] << ", " << n[1] << ", " << n[2] << "
+  // )"
+  //           << std::endl;
 
   // x1t = x1 projected to plane p (def'd by x0 and n) (stored by vdim instead
   // of nodes)
@@ -919,22 +922,22 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
   RealT xti[8 * 3];
   Coords2DToPlane( xti_2d, yti_2d, x0, e1, e2, xti, overlap_poly_size );
 
-  std::cout << std::setprecision( 15 ) << "Number of vertices: " << overlap_poly_size
-            << "   Polygon area: " << overlap_poly_area << std::endl;
-  for ( int i{ 0 }; i < overlap_poly_size; ++i ) {
-    std::cout << "  Coord: (" << xti_2d[i] << ", " << yti_2d[i] << ")" << std::endl;
-    // switch (vert_type[i]) {
-    //   case OverlapVertexType::A:
-    //     std::cout << "Vertex A" << std::endl;
-    //     break;
-    //   case OverlapVertexType::B:
-    //     std::cout << "Vertex B" << std::endl;
-    //     break;
-    //   case OverlapVertexType::EdgeEdge:
-    //     std::cout << "Edge/Edge" << std::endl;
-    //     break;
-    // }
-  }
+  // std::cout << std::setprecision( 15 ) << "Number of vertices: " << overlap_poly_size
+  //           << "   Polygon area: " << overlap_poly_area << std::endl;
+  // for ( int i{ 0 }; i < overlap_poly_size; ++i ) {
+  //   std::cout << "  Coord: (" << xti_2d[i] << ", " << yti_2d[i] << ")" << std::endl;
+  // switch (vert_type[i]) {
+  //   case OverlapVertexType::A:
+  //     std::cout << "Vertex A" << std::endl;
+  //     break;
+  //   case OverlapVertexType::B:
+  //     std::cout << "Vertex B" << std::endl;
+  //     break;
+  //   case OverlapVertexType::EdgeEdge:
+  //     std::cout << "Edge/Edge" << std::endl;
+  //     break;
+  // }
+  // }
 
   // some Tribol calls require x, y, z component vectors of projected coords
   RealT x1t_comp[4];
@@ -1074,14 +1077,14 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
     }
   }
 
-  std::cout << "mortar mat 11 = " << std::endl;
-  for ( int i{ 0 }; i < size1; ++i ) {
-    std::cout << "  ";
-    for ( int j{ 0 }; j < size1; ++j ) {
-      std::cout << std::setprecision( 18 ) << mortar_mat1[j * size1 + i] << "  ";
-    }
-    std::cout << std::endl;
-  }
+  // std::cout << "mortar mat 11 = " << std::endl;
+  // for ( int i{ 0 }; i < size1; ++i ) {
+  //   std::cout << "  ";
+  //   for ( int j{ 0 }; j < size1; ++j ) {
+  //     std::cout << std::setprecision( 18 ) << mortar_mat1[j * size1 + i] << "  ";
+  //   }
+  //   std::cout << std::endl;
+  // }
 
   // compute nonmortar force contributions
   for ( int i{ 0 }; i < size1; ++i ) {
