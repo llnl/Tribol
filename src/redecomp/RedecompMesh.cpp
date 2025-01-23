@@ -15,12 +15,12 @@
 
 namespace redecomp {
 
-RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, PartitionType method, int num_ranks )
-    : RedecompMesh( parent, DefaultGhostLength( parent ), method, num_ranks )
+RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, PartitionType method, int n_ranks )
+    : RedecompMesh( parent, DefaultGhostLength( parent ), method, n_ranks )
 {
 }
 
-RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length, PartitionType method, int num_ranks )
+RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length, PartitionType method, int n_ranks )
     : parent_{ parent }, mpi_{ parent.GetComm() }
 {
   // build partitioner
@@ -54,24 +54,24 @@ RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length, Pa
       SLIC_ERROR_ROOT( "Only 2D and 3D meshes are supported." );
   }
 
-  if ( num_ranks == 0 ) {
+  if ( n_ranks == 0 ) {
     // preclude degenerate case where num elements/2 < num ranks
     // factor of 2 on num elements are due to elements being paired for contact
     // additional factor of 10 targets about 10 pairs/rank
-    num_ranks = std::min( parent.GetNRanks(), ( static_cast<int>( parent.GetGlobalNE() ) + 1 ) / 2 / 10 );
+    n_ranks = std::min( parent.GetNRanks(), ( static_cast<int>( parent.GetGlobalNE() ) + 1 ) / 2 / 10 );
   }
   // p2r = parent to redecomp
-  auto p2r_elems_ = BuildP2RElementList( *partitioner, num_ranks, ghost_length );
+  p2r_elems_ = BuildP2RElementList( *partitioner, n_ranks, ghost_length );
   BuildRedecomp();
 }
 
-RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, std::unique_ptr<const Partitioner> partitioner, int num_ranks )
-    : RedecompMesh( parent, DefaultGhostLength( parent ), std::move( partitioner ), num_ranks )
+RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, std::unique_ptr<const Partitioner> partitioner, int n_ranks )
+    : RedecompMesh( parent, DefaultGhostLength( parent ), std::move( partitioner ), n_ranks )
 {
 }
 
 RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length,
-                            std::unique_ptr<const Partitioner> partitioner, int num_ranks )
+                            std::unique_ptr<const Partitioner> partitioner, int n_ranks )
     : parent_{ parent }, mpi_{ parent.GetComm() }
 {
   // check partitioner
@@ -81,8 +81,7 @@ RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length,
       SLIC_ERROR_ROOT_IF( partitioner2d == nullptr, "Partitioner must be Partitioner2D." );
       auto partition_elems2d = dynamic_cast<const PartitionElements2D*>( partitioner2d->getPartitionEntity() );
       SLIC_ERROR_ROOT_IF( partition_elems2d == nullptr,
-                          "Redecomp requires the PartitionEntity "
-                          "to be PartitionElements." );
+                          "Redecomp requires the PartitionEntity to be PartitionElements." );
       break;
     }
     case 3: {
@@ -90,22 +89,21 @@ RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length,
       SLIC_ERROR_ROOT_IF( partitioner3d == nullptr, "Partitioner must be Partitioner3D." );
       auto partition_elems3d = dynamic_cast<const PartitionElements3D*>( partitioner3d->getPartitionEntity() );
       SLIC_ERROR_ROOT_IF( partition_elems3d == nullptr,
-                          "Redecomp requires the PartitionEntity "
-                          "to be PartitionElements." );
+                          "Redecomp requires the PartitionEntity to be PartitionElements." );
       break;
     }
     default:
       SLIC_ERROR_ROOT( "Only 2D and 3D meshes are supported." );
   }
 
-  if ( num_ranks == 0 ) {
+  if ( n_ranks == 0 ) {
     // preclude degenerate case where num elements/2 < num ranks
     // factor of 2 on num elements are due to elements being paired for contact
     // additional factor of 10 targets about 10 pairs/rank
-    num_ranks = std::min( parent.GetNRanks(), ( static_cast<int>( parent.GetGlobalNE() ) + 1 ) / 2 / 10 );
+    n_ranks = std::min( parent.GetNRanks(), ( static_cast<int>( parent.GetGlobalNE() ) + 1 ) / 2 / 10 );
   }
   // p2r = parent to redecomp
-  p2r_elems_ = BuildP2RElementList( *partitioner, num_ranks, ghost_length );
+  p2r_elems_ = BuildP2RElementList( *partitioner, n_ranks, ghost_length );
   BuildRedecomp();
 }
 
