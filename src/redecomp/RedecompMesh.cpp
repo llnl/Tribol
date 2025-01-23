@@ -15,12 +15,12 @@
 
 namespace redecomp {
 
-RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, PartitionType method )
-    : RedecompMesh( parent, DefaultGhostLength( parent ), method )
+RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, PartitionType method, int num_ranks )
+    : RedecompMesh( parent, DefaultGhostLength( parent ), method, num_ranks )
 {
 }
 
-RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length, PartitionType method )
+RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length, PartitionType method, int num_ranks )
     : parent_{ parent }, mpi_{ parent.GetComm() }
 {
   // build partitioner
@@ -54,20 +54,24 @@ RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length, Pa
       SLIC_ERROR_ROOT( "Only 2D and 3D meshes are supported." );
   }
 
-  // preclude degenerate case where num elements/2 < num ranks
-  // factor of 2 on num elements are due to elements being paired for contact
-  auto n_parts = std::min( parent.GetNRanks(), ( static_cast<int>( parent.GetGlobalNE() ) + 1 ) / 2 );
-  p2r_elems_ = BuildP2RElementList( *partitioner, n_parts, ghost_length );
+  if ( num_ranks == 0 ) {
+    // preclude degenerate case where num elements/2 < num ranks
+    // factor of 2 on num elements are due to elements being paired for contact
+    // additional factor of 10 targets about 10 pairs/rank
+    num_ranks = std::min( parent.GetNRanks(), ( static_cast<int>( parent.GetGlobalNE() ) + 1 ) / 2 / 10 );
+  }
+  // p2r = parent to redecomp
+  auto p2r_elems_ = BuildP2RElementList( *partitioner, num_ranks, ghost_length );
   BuildRedecomp();
 }
 
-RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, std::unique_ptr<const Partitioner> partitioner )
-    : RedecompMesh( parent, DefaultGhostLength( parent ), std::move( partitioner ) )
+RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, std::unique_ptr<const Partitioner> partitioner, int num_ranks )
+    : RedecompMesh( parent, DefaultGhostLength( parent ), std::move( partitioner ), num_ranks )
 {
 }
 
 RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length,
-                            std::unique_ptr<const Partitioner> partitioner )
+                            std::unique_ptr<const Partitioner> partitioner, int num_ranks )
     : parent_{ parent }, mpi_{ parent.GetComm() }
 {
   // check partitioner
@@ -94,10 +98,14 @@ RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length,
       SLIC_ERROR_ROOT( "Only 2D and 3D meshes are supported." );
   }
 
-  // preclude degenerate case where num elements < num ranks
-  auto n_parts = std::min( parent.GetNRanks(), static_cast<int>( parent.GetGlobalNE() ) );
+  if ( num_ranks == 0 ) {
+    // preclude degenerate case where num elements/2 < num ranks
+    // factor of 2 on num elements are due to elements being paired for contact
+    // additional factor of 10 targets about 10 pairs/rank
+    num_ranks = std::min( parent.GetNRanks(), ( static_cast<int>( parent.GetGlobalNE() ) + 1 ) / 2 / 10 );
+  }
   // p2r = parent to redecomp
-  p2r_elems_ = BuildP2RElementList( *partitioner, n_parts, ghost_length );
+  p2r_elems_ = BuildP2RElementList( *partitioner, num_ranks, ghost_length );
   BuildRedecomp();
 }
 
