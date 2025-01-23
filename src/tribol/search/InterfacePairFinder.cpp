@@ -230,7 +230,7 @@ class CartesianProduct : public SearchBase {
 #ifdef TRIBOL_USE_RAJA
                   RAJA::atomicAdd<RAJA::auto_atomic>( pCount, static_cast<int>( isProximate[i] ) );
 #else
-        if (isProximate[i]) { ++(*pCount); }
+                  if (isProximate[i]) { ++(*pCount); }
 #endif
                 } );
 
