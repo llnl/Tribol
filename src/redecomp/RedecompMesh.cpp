@@ -54,11 +54,15 @@ RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length, Pa
       SLIC_ERROR_ROOT( "Only 2D and 3D meshes are supported." );
   }
 
+  SLIC_ERROR_ROOT_IF( n_ranks < 0, "Number of ranks must be non-negative." );
+  SLIC_ERROR_ROOT_IF( n_ranks > parent.GetNRanks(),
+                      "Number of ranks must be less than or equal to the number of MPI ranks." );
   auto parent_n_els = static_cast<int>( parent.GetGlobalNE() );
   if ( n_ranks == 0 ) {
     // preclude degenerate case where num elements/2 < num ranks
     // factor of 2 on num elements are due to elements being paired for contact
-    // additional factor of 10 targets about 10 pairs/rank
+    // additional factor of 10 targets about 10 pairs/rank on a conforming mesh (and more than 10 on a non-conforming
+    // mesh)
     n_ranks = std::max( std::min( parent.GetNRanks(), ( parent_n_els + 1 ) / 2 / 10 ), 1 );
   }
   SLIC_INFO_ROOT( axom::fmt::format( "Repartitioning {} elements onto {} ranks...", parent_n_els, n_ranks ) );
@@ -98,11 +102,15 @@ RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length,
       SLIC_ERROR_ROOT( "Only 2D and 3D meshes are supported." );
   }
 
+  SLIC_ERROR_ROOT_IF( n_ranks < 0, "Number of ranks must be non-negative." );
+  SLIC_ERROR_ROOT_IF( n_ranks > parent.GetNRanks(),
+                      "Number of ranks must be less than or equal to the number of MPI ranks." );
   auto parent_n_els = static_cast<int>( parent.GetGlobalNE() );
   if ( n_ranks == 0 ) {
     // preclude degenerate case where num elements/2 < num ranks
     // factor of 2 on num elements are due to elements being paired for contact
-    // additional factor of 10 targets about 10 pairs/rank
+    // additional factor of 10 targets about 10 pairs/rank on a conforming mesh (and more than 10 on a non-conforming
+    // mesh)
     n_ranks = std::max( std::min( parent.GetNRanks(), ( parent_n_els + 1 ) / 2 / 10 ), 1 );
   }
   SLIC_INFO_ROOT( axom::fmt::format( "Repartitioning {} elements onto {} ranks...", parent_n_els, n_ranks ) );
