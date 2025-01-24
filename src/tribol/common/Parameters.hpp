@@ -463,13 +463,14 @@ struct EnforcementOptions {
 struct Parameters {
   CommT problem_comm = TRIBOL_COMM_WORLD;  ///! MPI communicator for the problem
 
-  RealT binning_proximity_scale = 4.0;  ///! Approximate element length multiplier for including pairs in coarse binning
-  RealT overlap_area_frac = 1.0e-8;     ///! Ratio of overlap area to largest face area for contact inclusion
-  RealT gap_tol_ratio = 1.0e-12;        ///! Ratio for determining tolerance for active contact gaps
-  RealT gap_separation_ratio = 0.75;    ///! Ratio for determining allowable separation in geometric filtering
-  RealT gap_tied_tol = 0.1;             ///! Ratio for determining max separation tied contact can support
-  RealT len_collapse_ratio = 1.0e-8;    ///! Ratio of face length providing topology collapse length tolerance
-  RealT projection_ratio = 1.0e-10;     ///! Ratio for defining nonzero projections
+  RealT binning_proximity_scale =
+      4.0;                           ///! Element length multiplier for coarse binning and proximity detection inclusion
+  RealT overlap_area_frac = 1.0e-8;  ///! Ratio of overlap area to largest face area for contact inclusion
+  RealT gap_tol_ratio = 1.0e-12;     ///! Ratio for determining tolerance for active contact gaps
+  RealT gap_separation_ratio = 0.75;  ///! Ratio for determining allowable separation in geometric filtering
+  RealT gap_tied_tol = 0.1;           ///! Ratio for determining max separation tied contact can support
+  RealT len_collapse_ratio = 1.0e-8;  ///! Ratio of face length providing topology collapse length tolerance
+  RealT projection_ratio = 1.0e-10;   ///! Ratio for defining nonzero projections
   RealT auto_contact_pen_frac =
       0.95;  ///! Max allowable interpenetration as percent of element thickness for contact candidacy
   RealT timestep_pen_frac =
