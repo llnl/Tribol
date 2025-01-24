@@ -197,6 +197,14 @@ void setOutputDirectory( IndexT cs_id, const std::string& dir );
 void setLoggingLevel( IndexT cs_id, LoggingLevel log_level );
 
 /*!
+ * @brief Optionally set the binning proximity scale; an element length multiplier for including pairs in coarse binning
+ *
+ * @param cs_id coupling scheme id
+ * @param binning_proximity_scale proximity scale
+ */
+void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
+
+/*!
  * \brief Enable the contact timestep vote
  *
  * \param [in] cs_id coupling scheme id
