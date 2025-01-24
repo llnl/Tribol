@@ -100,9 +100,7 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     RealT distY = mesh2.getElementCentroids()[1][element_id2] - mesh1.getElementCentroids()[1][element_id1];
     RealT distZ = mesh2.getElementCentroids()[2][element_id2] - mesh1.getElementCentroids()[2][element_id1];
 
-    // scale the magnitude of the computed distance by 1% to include nearly coincident nodes/edges for 3D
-    // polygons that are nearly coplanar; otherwise, we may miss this configuration
-    RealT distMag = 1.01 * magnitude( distX, distY, distZ );
+    RealT distMag = magnitude( distX, distY, distZ );
 
     if ( distMag > ( distMax ) ) {
       return false;
@@ -113,9 +111,7 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     RealT e1 = 0.5 * mesh1.getElementAreas()[element_id1];
     RealT e2 = 0.5 * mesh2.getElementAreas()[element_id2];
 
-    // set maximum offset of edge centroids for inclusion. Scale by 1% to make
-    // sure we include nearly proximate faces for co-planar faces
-    RealT distMax = 1.01 * binning_proximity_scale * ( e1 + e2 );
+    RealT distMax = binning_proximity_scale * ( e1 + e2 );
 
     // check if the contact mode is conforming, in which case the
     // edges are supposed to be aligned

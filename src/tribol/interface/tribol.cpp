@@ -325,6 +325,11 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale )
 
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setBinningProximityScale(): call tribol::registerCouplingScheme() "
                                << "prior to calling this routine." );
+  if ( binning_proximity_scale < 2.0 ) {
+    binning_proximity_scale = 2.0;
+    SLIC_WARNING_ROOT(
+        "Setting binning proximity to less than 2.0 can lead to missed contact pairs.  Resetting to 2.0." );
+  }
 
   cs->getParameters().binning_proximity_scale = binning_proximity_scale;
 
