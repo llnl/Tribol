@@ -1514,8 +1514,11 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                 ////////////////////////////////////////////////////////////////////////
 
                 {
-                  // compute delta between the velocity projection of each face-projected
-                  // overlap centroid. First project each point.
+                  // compute the delta between the velocity projection of each face-projected
+                  // common plane centroid location
+                  //
+                  // First project each face-projected common plane centroid using linear velocity
+                  // projection as approximation of configuration next cycle
                   RealT proj_delta_x1 = plane.m_cXf1 + dt * vel_f1[0];
                   RealT proj_delta_y1 = plane.m_cYf1 + dt * vel_f1[1];
                   RealT proj_delta_z1 = 0.;
@@ -1524,12 +1527,16 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                   RealT proj_delta_y2 = plane.m_cYf2 + dt * vel_f2[1];
                   RealT proj_delta_z2 = 0.;
 
-                  // subtract off the other face's velocity projected point
+                  // Second compute the amount of interpenetration as the difference between the two
+                  // velocity projected points
+                  RealT proj_delta_x1_fixed = proj_delta_x1;
+                  RealT proj_delta_y1_fixed = proj_delta_y1;
+
                   proj_delta_x1 -= proj_delta_x2;
                   proj_delta_y1 -= proj_delta_y2;
 
-                  proj_delta_x2 -= proj_delta_x1;
-                  proj_delta_y2 -= proj_delta_y1;
+                  proj_delta_x2 -= proj_delta_x1_fixed;
+                  proj_delta_y2 -= proj_delta_y1_fixed;
 
                   // compute the dot product between each face's delta and the OTHER
                   // face's outward unit normal. This is the magnitude of interpenetration
@@ -1540,12 +1547,17 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                   RealT proj_delta_n_2 = proj_delta_x2 * fn1[0] + proj_delta_y2 * fn1[1];
 
                   if ( dim == 3 ) {
+                    // project the z-component
                     proj_delta_z1 = plane.m_cZf1 + dt * vel_f1[2];
                     proj_delta_z2 = plane.m_cZf2 + dt * vel_f2[2];
 
-                    proj_delta_z1 -= proj_delta_z2;
-                    proj_delta_z2 -= proj_delta_z1;
+                    RealT proj_delta_z1_fixed = proj_delta_z1;
 
+                    // compute difference
+                    proj_delta_z1 -= proj_delta_z2;
+                    proj_delta_z2 -= proj_delta_z1_fixed;
+
+                    // add the z-component of the projection onto the face normal
                     proj_delta_n_1 += proj_delta_z1 * fn2[2];
                     proj_delta_n_2 += proj_delta_z2 * fn1[2];
                   }
