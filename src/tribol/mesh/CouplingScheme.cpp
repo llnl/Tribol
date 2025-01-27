@@ -1553,7 +1553,7 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 
                     RealT proj_delta_z1_fixed = proj_delta_z1;
 
-                    // compute difference
+                    // compute difference between each projected point
                     proj_delta_z1 -= proj_delta_z2;
                     proj_delta_z2 -= proj_delta_z1_fixed;
 
