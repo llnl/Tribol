@@ -318,8 +318,8 @@ void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA
         }
       }
 
-      SLIC_ERROR_IF( !in_quad, "InvIso(): (xi,eta) coordinate does not lie "
-                                   << "inside isoparametric quad." );
+      SLIC_WARNING_IF( !in_quad, "InvIso(): (xi,eta) coordinate does not lie "
+                                     << "inside isoparametric quad." );
 
       return;
     }
