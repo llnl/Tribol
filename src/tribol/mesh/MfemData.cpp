@@ -680,14 +680,10 @@ MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemS
   SLIC_ERROR_ROOT_IF( parent_data.GetParentCoords().ParFESpace()->FEColl()->GetOrder() > 1,
                       "Higher order meshes not yet supported for Jacobian matrices." );
 
-  // NOTE: Looks like GetFrom() should be const in MFEM
-  mfem::SubMeshUtils::BuildVdofToVdofMap( parent_data_.GetSubmeshFESpace(), *parent_data_.GetParentCoords().FESpace(),
-                                          const_cast<mfem::ParSubMesh&>( parent_data_.GetSubmesh() ).GetFrom(),
-                                          parent_data_.GetSubmesh().GetParentElementIDMap(),
-                                          submesh2parent_vdof_list_ );
+  mfem::SubMeshUtils::BuildVdofToVdofMap(
+      parent_data_.GetSubmeshFESpace(), *parent_data_.GetParentCoords().FESpace(), parent_data_.GetSubmesh().GetFrom(),
+      parent_data_.GetSubmesh().GetParentElementIDMap(), submesh2parent_vdof_list_ );
 
-  int my_rank{ 0 };
-  MPI_Comm_rank( TRIBOL_COMM_WORLD, &my_rank );
   auto dof_offset = parent_data_.GetParentCoords().ParFESpace()->GetMyDofOffset();
   for ( auto& vdof : submesh2parent_vdof_list_ ) {
     vdof = vdof + dof_offset;
@@ -698,8 +694,7 @@ MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemS
   auto submesh_parent_I = redecomp::ArrayUtility::IndexArray<int>( submesh2parent_vdof_list_.Size() + 1 );
   mfem::Vector submesh_parent_data( submesh2parent_vdof_list_.Size() );
   submesh_parent_data = 1.0;
-  // This constructor copies all of the data, so don't worry about ownership of
-  // the CSR data
+  // This constructor copies all of the data, so don't worry about ownership of the CSR data
   submesh_parent_vdof_xfer_ = std::make_unique<mfem::HypreParMatrix>(
       TRIBOL_COMM_WORLD, submesh_fes.GetVSize(), submesh_fes.GlobalVSize(), parent_fes.GlobalVSize(),
       submesh_parent_I.data(), submesh2parent_vdof_list_.GetData(), submesh_parent_data.GetData(),
@@ -713,9 +708,8 @@ MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemS
   disp_offsets_[0] = 0;
   disp_offsets_[1] = disp_size;
 
-  // Rows/columns of pressure/gap DOFs only on the mortar surface need to be
-  // eliminated from the Jacobian when using single mortar. The code in this
-  // block creates a list of the true DOFs only on the mortar surface.
+  // Rows/columns of pressure/gap DOFs only on the mortar surface need to be eliminated from the Jacobian when using
+  // single mortar. The code in this block creates a list of the true DOFs only on the mortar surface.
   if ( contact_method == SINGLE_MORTAR ) {
     // Get submesh
     auto& submesh_fe_space = submesh_data_.GetSubmeshFESpace();
@@ -957,9 +951,12 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobianEnzym
       nonmortar_elems, nonmortar_elems,
       method_data.getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) ) );
   submesh_J.Finalize();
-  auto submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_00_->ConvertToHypreParMatrix( submesh_J );
+  auto submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_00_->ConvertToHypreParMatrix( submesh_J, false );
   // Matrix returned by mfem::RAP copies all existing data and owns its data
-  block_J->SetBlock( 0, 0, mfem::RAP( submesh_J_hypre.get(), submesh_parent_vdof_xfer_.get() ) );
+  auto parent_J_hypre =
+      std::unique_ptr<mfem::HypreParMatrix>( mfem::RAP( submesh_J_hypre.get(), submesh_parent_vdof_xfer_.get() ) );
+  block_J->SetBlock(
+      0, 0, mfem::RAP( parent_J_hypre.get(), parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() ) );
 
   // transfer (0, 1) block (residual dof rows, lagrange multiplier dof cols)
   submesh_J = GetUpdateData().submesh_redecomp_xfer_01_->TransferToParallelSparse(
@@ -971,13 +968,15 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobianEnzym
       method_data.getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ),
                                static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER ) ) );
   submesh_J.Finalize();
-  submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_01_->ConvertToHypreParMatrix( submesh_J );
-  // Matrix returned by mfem::ParMult copies row and column starts since last
-  // arg is true. All other data is copied and owned by the new matrix.
-  block_J->SetBlock(
-      0, 1,
+  submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_01_->ConvertToHypreParMatrix( submesh_J, false );
+  // Matrix returned by mfem::ParMult copies row and column starts since last arg is true. All other data is copied and
+  // owned by the new matrix.
+  parent_J_hypre = std::unique_ptr<mfem::HypreParMatrix>(
       mfem::ParMult( std::unique_ptr<mfem::HypreParMatrix>( submesh_parent_vdof_xfer_->Transpose() ).get(),
                      submesh_J_hypre.get(), true ) );
+  block_J->SetBlock( 0, 1,
+                     mfem::RAP( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix(), parent_J_hypre.get(),
+                                submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() ) );
 
   // transfer (1, 0) block (gap dof rows, displacement dof cols)
   submesh_J = GetUpdateData().submesh_redecomp_xfer_10_->TransferToParallelSparse(
@@ -989,13 +988,16 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobianEnzym
       method_data.getBlockJ()( static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER ),
                                static_cast<int>( BlockSpace::NONMORTAR ) ) );
   submesh_J.Finalize();
-  submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_10_->ConvertToHypreParMatrix( submesh_J );
-  // Matrix returned by mfem::ParMult copies row and column starts since last
-  // arg is true. All other data is copied and owned by the new matrix.
-  block_J->SetBlock( 1, 0, mfem::ParMult( submesh_J_hypre.get(), submesh_parent_vdof_xfer_.get(), true ) );
+  submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_10_->ConvertToHypreParMatrix( submesh_J, false );
+  // Matrix returned by mfem::ParMult copies row and column starts since last arg is true. All other data is copied and
+  // owned by the new matrix.
+  parent_J_hypre = std::unique_ptr<mfem::HypreParMatrix>( std::unique_ptr<mfem::HypreParMatrix>(
+      mfem::ParMult( submesh_J_hypre.get(), submesh_parent_vdof_xfer_.get(), true ) ) );
+  block_J->SetBlock( 1, 0,
+                     mfem::RAP( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix(), parent_J_hypre.get(),
+                                parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() ) );
 
-  // Create ones on diagonal of eliminated mortar tdofs (CSR sparse matrix -> HypreParMatrix)
-  // I vector
+  // Create ones on diagonal of eliminated mortar tdofs (CSR sparse matrix -> HypreParMatrix) I vector
   auto& submesh_fes = submesh_data_.GetSubmeshFESpace();
   mfem::Array<int> rows( submesh_fes.GetTrueVSize() + 1 );
   rows = 0;
@@ -1021,6 +1023,7 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobianEnzym
   ones.GetMemory().SetHostPtrOwner( false );
   inactive_sm.SetDataOwner( false );
   inactive_hpm->SetOwnerFlags( 3, 3, 1 );
+  block_J->SetBlock( 1, 1, inactive_hpm.release() );
 
   return block_J;
 }
@@ -1062,9 +1065,12 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdfdnJacobianEnzyme
       nonmortar_elems, mortar_elems,
       method_data.getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) ) );
   submesh_J.Finalize();
-  auto submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_00_->ConvertToHypreParMatrix( submesh_J );
+  auto submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_00_->ConvertToHypreParMatrix( submesh_J, false );
   // Matrix returned by mfem::RAP copies all existing data and owns its data
-  block_J->SetBlock( 0, 0, mfem::RAP( submesh_J_hypre.get(), submesh_parent_vdof_xfer_.get() ) );
+  auto parent_J_hypre =
+      std::unique_ptr<mfem::HypreParMatrix>( mfem::RAP( submesh_J_hypre.get(), submesh_parent_vdof_xfer_.get() ) );
+  block_J->SetBlock(
+      0, 0, mfem::RAP( parent_J_hypre.get(), parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() ) );
 
   // transfer (1, 0) block (gap dof rows, displacement dof cols)
   submesh_J = GetUpdateData().submesh_redecomp_xfer_10_->TransferToParallelSparse(
@@ -1072,10 +1078,14 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdfdnJacobianEnzyme
       method_data.getBlockJ()( static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER ),
                                static_cast<int>( BlockSpace::NONMORTAR ) ) );
   submesh_J.Finalize();
-  submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_10_->ConvertToHypreParMatrix( submesh_J );
-  // Matrix returned by mfem::ParMult copies row and column starts since last
-  // arg is true. All other data is copied and owned by the new matrix.
-  block_J->SetBlock( 1, 0, mfem::ParMult( submesh_J_hypre.get(), submesh_parent_vdof_xfer_.get(), true ) );
+  submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_10_->ConvertToHypreParMatrix( submesh_J, false );
+  // Matrix returned by mfem::ParMult copies row and column starts since last arg is true. All other data is copied and
+  // owned by the new matrix.
+  parent_J_hypre = std::unique_ptr<mfem::HypreParMatrix>(
+      mfem::ParMult( submesh_J_hypre.get(), submesh_parent_vdof_xfer_.get(), true ) );
+  block_J->SetBlock( 1, 0,
+                     mfem::RAP( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix(), parent_J_hypre.get(),
+                                parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() ) );
 
   return block_J;
 }
@@ -1098,9 +1108,12 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdndxJacobianEnzyme
   auto submesh_J = GetUpdateData().submesh_redecomp_xfer_00_->TransferToParallelSparse(
       nonmortar_elems, nonmortar_elems, method_data.getBlockJ()( 0, 0 ) );
   submesh_J.Finalize();
-  auto submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_00_->ConvertToHypreParMatrix( submesh_J );
+  auto submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_00_->ConvertToHypreParMatrix( submesh_J, false );
   // Matrix returned by mfem::RAP copies all existing data and owns its data
-  block_J->SetBlock( 0, 0, mfem::RAP( submesh_J_hypre.get(), submesh_parent_vdof_xfer_.get() ) );
+  auto parent_J_hypre =
+      std::unique_ptr<mfem::HypreParMatrix>( mfem::RAP( submesh_J_hypre.get(), submesh_parent_vdof_xfer_.get() ) );
+  block_J->SetBlock(
+      0, 0, mfem::RAP( parent_J_hypre.get(), parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() ) );
 
   return block_J;
 }

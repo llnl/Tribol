@@ -268,8 +268,8 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
           "Coupling scheme cs_id={0} does not contain MFEM data."
           "Create the coupling scheme using registerMfemCouplingScheme() to return a MFEM block Jacobian.",
           cs_id ) );
-  // creates a block Jacobian on the parent mesh/parent-linked boundary submesh
-  // based on the element Jacobians stored in the coupling scheme's method data
+  // creates a block Jacobian on the parent mesh/parent-linked boundary submesh based on the element Jacobians stored in
+  // the coupling scheme's method data
 #ifdef TRIBOL_USE_ENZYME
   if ( cs->isEnzymeEnabled() ) {
     auto dfdx = cs->getMfemJacobianData()->GetMfemBlockJacobianEnzyme( *cs->getMethodData() );
