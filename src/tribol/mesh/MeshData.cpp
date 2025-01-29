@@ -461,58 +461,71 @@ bool MeshData::computeFaceData( ExecutionMode exec_mode )
                     area[i] += 0.5 * magnitude( nX, nY, nZ );
                   }
 #else
-      // this method of computing an outward unit normal breaks the
-      // face into triangular pallets by connecting two consecutive
-      // nodes with the approximate centroid.
-      // The average outward unit normal for the face is the average of
-      // those of the pallets. This is exact for non-warped faces. To
-      // compute the pallet normal, you only need edge vectors for the
-      // pallet. These are constructed from the face centroid and the face
-      // edge's first node and the face edge's two nodes
+                  // this method of computing an outward unit normal breaks the
+                  // face into triangular pallets by connecting two consecutive
+                  // nodes with the approximate centroid.
+                  // The average outward unit normal for the face is the average of
+                  // those of the pallets. This is exact for non-warped faces. To
+                  // compute the pallet normal, you only need edge vectors for the
+                  // pallet. These are constructed from the face centroid and the face
+                  // edge's first node and the face edge's two nodes
 
-      // second triangle edge vector between the face centroid
-      // and the face edge's first node
-      auto vX2 = c[0][i] - x[0][node_id];
-      auto vY2 = c[1][i] - x[1][node_id];
-      auto vZ2 = c[2][i] - x[2][node_id];
+                  // loop over num_nodes_per_elem-1 element edges and compute pallet
+                  // normal
+                  for ( int j = 0; j < num_nodes_per_elem; ++j ) {
+                    auto node_id = conn( i, j );
+                    auto next_node_id = conn( i, 0 );
+                    if ( j < num_nodes_per_elem - 1 ) {
+                      next_node_id = conn( i, j + 1 );
+                    }
+                    // first triangle edge vector between the face's two edge nodes
+                    auto vX1 = x[0][next_node_id] - x[0][node_id];
+                    auto vY1 = x[1][next_node_id] - x[1][node_id];
+                    auto vZ1 = x[2][next_node_id] - x[2][node_id];
 
-      // compute the contribution to the pallet normal as v1 x v2. Sum these
-      // into the face normal component variables stored on the mesh data
-      // object
-      auto nX = ( vY1 * vZ2 ) - ( vZ1 * vY2 );
-      auto nY = ( vZ1 * vX2 ) - ( vX1 * vZ2 );
-      auto nZ = ( vX1 * vY2 ) - ( vY1 * vX2 );
+                    // second triangle edge vector between the face centroid
+                    // and the face edge's first node
+                    auto vX2 = c[0][i] - x[0][node_id];
+                    auto vY2 = c[1][i] - x[1][node_id];
+                    auto vZ2 = c[2][i] - x[2][node_id];
 
-      // sum the normal component contributions into the component variables
-      n[0][i] += nX;
-      n[1][i] += nY;
-      n[2][i] += nZ;
+                    // compute the contribution to the pallet normal as v1 x v2. Sum these
+                    // into the face normal component variables stored on the mesh data
+                    // object
+                    auto nX = ( vY1 * vZ2 ) - ( vZ1 * vY2 );
+                    auto nY = ( vZ1 * vX2 ) - ( vX1 * vZ2 );
+                    auto nZ = ( vX1 * vY2 ) - ( vY1 * vX2 );
 
-      // half the magnitude of the computed normal is the pallet area. Note:
-      // this is exact for planar faces and approximate for warped faces.
-      // Face areas are used in a general sense to create a face-overlap
-      // tolerance
-      area[i] += 0.5 * magnitude( nX, nY, nZ );
-    }
+                    // sum the normal component contributions into the component variables
+                    n[0][i] += nX;
+                    n[1][i] += nY;
+                    n[2][i] += nZ;
 
-    // multiply the pallet normal components by fac to obtain avg.
-    n[0][i] = fac * n[0][i];
-    n[1][i] = fac * n[1][i];
-    n[2][i] = fac * n[2][i];
+                    // half the magnitude of the computed normal is the pallet area. Note:
+                    // this is exact for planar faces and approximate for warped faces.
+                    // Face areas are used in a general sense to create a face-overlap
+                    // tolerance
+                    area[i] += 0.5 * magnitude( nX, nY, nZ );
+                  }
 
-    // compute the magnitude of the average pallet normal
-    auto mag = magnitude( n[0][i], n[1][i], n[2][i] );
-    auto inv_mag = nrml_mag_tol;
-    if ( mag >= nrml_mag_tol ) {
-      inv_mag = 1.0 / mag;
-    } else {
-      face_data_ok[0] = static_cast<IndexT>( false );
-    }
+                  // multiply the pallet normal components by fac to obtain avg.
+                  n[0][i] = fac * n[0][i];
+                  n[1][i] = fac * n[1][i];
+                  n[2][i] = fac * n[2][i];
 
-    // normalize the average normal
-    n[0][i] *= inv_mag;
-    n[1][i] *= inv_mag;
-    n[2][i] *= inv_mag;
+                  // compute the magnitude of the average pallet normal
+                  auto mag = magnitude( n[0][i], n[1][i], n[2][i] );
+                  auto inv_mag = nrml_mag_tol;
+                  if ( mag >= nrml_mag_tol ) {
+                    inv_mag = 1.0 / mag;
+                  } else {
+                    face_data_ok[0] = static_cast<IndexT>( false );
+                  }
+
+                  // normalize the average normal
+                  n[0][i] *= inv_mag;
+                  n[1][i] *= inv_mag;
+                  n[2][i] *= inv_mag;
 #endif
 
                 }   // end if (dim == 3)
