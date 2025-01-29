@@ -24,10 +24,10 @@ extern int enzyme_const;
 extern int enzyme_runtime_activity;
 
 template <typename return_type, typename... Args>
-return_type __enzyme_autodiff(Args...);
+return_type __enzyme_autodiff( Args... );
 
 template <typename return_type, typename... Args>
-return_type __enzyme_fwddiff(Args...);
+return_type __enzyme_fwddiff( Args... );
 #endif
 
 #endif /* TRIBOL_COMMON_ENZYME_HPP_ */

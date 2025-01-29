@@ -9,43 +9,40 @@
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 
-namespace tribol
-{
+namespace tribol {
 
-class NodalNormal
-{
-public:
+class NodalNormal {
+ public:
   virtual ~NodalNormal() {}
-  virtual void Compute(MeshData& mesh) = 0;
+  virtual void Compute( MeshData& mesh ) = 0;
   MethodData& getJacobianData() { return elem_jacobians_; }
   const MethodData& getJacobianData() const { return elem_jacobians_; }
-private:
+
+ private:
   MethodData elem_jacobians_;
 };
 
-class ElementAvgNormal : public NodalNormal
-{
-  void Compute(MeshData& mesh) override;
+class ElementAvgNormal : public NodalNormal {
+  void Compute( MeshData& mesh ) override;
 };
 
 #ifdef TRIBOL_USE_ENZYME
 
-class VertexAvgNormal : public NodalNormal
-{
-public:
-  VertexAvgNormal(bool compute_deriv = true) : compute_deriv_( compute_deriv ) {}
-  void Compute(MeshData& mesh) override;
-private:
+class VertexAvgNormal : public NodalNormal {
+ public:
+  VertexAvgNormal( bool compute_deriv = true ) : compute_deriv_( compute_deriv ) {}
+  void Compute( MeshData& mesh ) override;
+
+ private:
   bool compute_deriv_;
 };
 
 // free functions for enzyme
-void ElementVertexAvgNormal(const RealT* x, const RealT* xref, RealT* n, int num_nodes_per_elem);
-void ElementVertexAvgNormalJacobian(
-  const RealT* x, const RealT* xref, RealT* n, RealT* dndx, int num_nodes_per_elem);
+void ElementVertexAvgNormal( const RealT* x, const RealT* xref, RealT* n, int num_nodes_per_elem );
+void ElementVertexAvgNormalJacobian( const RealT* x, const RealT* xref, RealT* n, RealT* dndx, int num_nodes_per_elem );
 
 #endif
-  
-}
+
+}  // namespace tribol
 
 #endif /* SRC_GEOM_NORMAL_HPP_ */

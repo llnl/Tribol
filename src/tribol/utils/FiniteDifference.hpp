@@ -11,7 +11,8 @@ namespace tribol {
 namespace util {
 
 template <typename FN>
-void FiniteDiff(double* x, int x_size, int f_size, double* dx, FN&& f, double* x_dir = nullptr, double delta = 1.0e-7);
+void FiniteDiff( double* x, int x_size, int f_size, double* dx, FN&& f, double* x_dir = nullptr,
+                 double delta = 1.0e-7 );
 
 }  // namespace util
 
