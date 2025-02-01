@@ -605,10 +605,12 @@ class MfemMeshData {
    * @brief Build a new redecomp mesh and update grid functions on the redecomp
    * mesh
    *
+   * @param binning_proximity_scale Element length multiplier for coarse binning and proximity detection inclusion
+   *
    * @note This method should be called after the coordinate grid function is
    * updated.
    */
-  void UpdateMfemMeshData();
+  void UpdateMfemMeshData( RealT binning_proximity_scale );
 
   /**
    * @brief Get the integer identifier for the first Tribol registered mesh
@@ -1028,10 +1030,11 @@ class MfemMeshData {
      * the first Tribol registered mesh
      * @param attributes_2 Set of boundary attributes identifying elements in
      * the second Tribol registered mesh
+     * @param binning_proximity_scale Element length multiplier for coarse binning and proximity detection inclusion
      */
     UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh, const mfem::ParFiniteElementSpace& parent_fes,
                 mfem::ParGridFunction& submesh_gridfn, SubmeshLORTransfer* submesh_lor_xfer,
-                const std::set<int>& attributes_1, const std::set<int>& attributes_2 );
+                const std::set<int>& attributes_1, const std::set<int>& attributes_2, RealT binning_proximity_scale );
 
     /**
      * @brief Redecomposed boundary element mesh

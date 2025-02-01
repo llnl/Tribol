@@ -317,7 +317,7 @@ void updateMfemParallelDecomposition()
       // creates a new redecomp mesh based on updated coordinates and updates
       // transfer operators and displacement, velocity, and response grid
       // functions based on new redecomp mesh
-      mfem_data->UpdateMfemMeshData();
+      mfem_data->UpdateMfemMeshData( coupling_scheme.getParameters().binning_proximity_scale );
       auto coord_ptrs = mfem_data->GetRedecompCoordsPtrs();
 
       registerMesh( mesh_ids[0], mfem_data->GetMesh1NE(), mfem_data->GetNV(), mfem_data->GetMesh1Conn(),
