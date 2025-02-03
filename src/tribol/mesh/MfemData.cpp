@@ -609,7 +609,7 @@ void MfemMeshData::UpdateData::SetElementData()
     num_verts_per_elem_ = mfem::Geometry::NumVerts[element_type];
   } else {
     // just put something here so Tribol will not give a warning for zero element meshes
-    elem_type_ = LINEAR_EDGE;
+    elem_type_ = LINEAR_QUAD;
     num_verts_per_elem_ = 2;
   }
 }
