@@ -31,6 +31,7 @@ set( tribol_tests
      tribol_mortar_sparse_weights.cpp
      tribol_mortar_wts.cpp
      tribol_nodal_nrmls.cpp
+     tribol_proximity_check.cpp
      tribol_quad_integ.cpp
      tribol_tet_mesh.cpp
      tribol_timestep_vote.cpp
