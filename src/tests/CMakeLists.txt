@@ -99,7 +99,7 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
     foreach ( nranks RANGE 1 3 )
       blt_add_test( NAME ${test_name}_${nranks}rank
                     COMMAND ${test_name}_test
-                    NUM_MPI_RANKS ${nranks} )
+                    NUM_MPI_TASKS ${nranks} )
     endforeach()
 
     if (ENABLE_CUDA)
@@ -136,7 +136,7 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
     foreach ( nranks RANGE 1 3 )
       blt_add_test( NAME ${test_name}_${nranks}rank
                     COMMAND ${test_name}_test
-                    NUM_MPI_RANKS ${nranks} )
+                    NUM_MPI_TASKS ${nranks} )
     endforeach()
 
     if (ENABLE_CUDA)
