@@ -19,11 +19,15 @@ class MeshBuilder {
   }
   static MeshBuilder SquareMesh( int n_x_els, int n_y_els );
   static MeshBuilder CubeMesh( int n_x_els, int n_y_els, int n_z_els );
+  static MeshBuilder HypercubeMesh( int dim, int n_els );
 
   MeshBuilder( mfem::Mesh&& mesh );
 
   MeshBuilder&& translate( std::initializer_list<double> dx );
+
   MeshBuilder&& updateAttrib( int old_attrib, int new_attrib );
+
+  MeshBuilder&& bdrAttribInfo();
   MeshBuilder&& updateBdrAttrib( int old_attrib, int new_attrib );
 
   operator mfem::Mesh*();
@@ -46,7 +50,9 @@ class ParMeshBuilder {
 
   ParMeshBuilder&& setNodesFEColl( mfem::H1_FECollection fe_coll );
   mfem::ParGridFunction& getNodes();
+  const mfem::ParGridFunction& getNodes() const;
   mfem::ParFiniteElementSpace& getNodesFESpace();
+  const mfem::ParFiniteElementSpace& getNodesFESpace() const;
 
   operator const mfem::ParMesh&() const;
 

@@ -530,8 +530,10 @@ class BvhSearch : public SearchBase {
    */
   void initialize() override
   {
-    buildMeshBBoxes( m_boxes1, m_coupling_scheme->getMesh1().getView() );
-    buildMeshBBoxes( m_boxes2, m_coupling_scheme->getMesh2().getView() );
+    buildMeshBBoxes( m_boxes1, m_coupling_scheme->getMesh1().getView(),
+                     m_coupling_scheme->getParameters().binning_proximity_scale );
+    buildMeshBBoxes( m_boxes2, m_coupling_scheme->getMesh2().getView(),
+                     m_coupling_scheme->getParameters().binning_proximity_scale );
   }  // end initialize()
 
   /*!
@@ -574,7 +576,7 @@ class BvhSearch : public SearchBase {
 #ifdef TRIBOL_USE_RAJA
                     RAJA::atomicInc<AtomicPolicy>( filtered_candidates.data() );
 #else
-          ++filtered_candidates[0];
+                    ++filtered_candidates[0];
 #endif
                   } else {
                     candidates_view[i] = -1;
@@ -610,27 +612,27 @@ class BvhSearch : public SearchBase {
         } );
   }  // end findInterfacePairs()
 
-  void buildMeshBBoxes( ArrayT<BoxT>& boxes, const MeshData::Viewer& mesh )
+  void buildMeshBBoxes( ArrayT<BoxT>& boxes, const MeshData::Viewer& mesh, RealT binning_proximity )
   {
     auto boxes1_view = boxes.view();
     forAllExec( m_coupling_scheme->getExecutionMode(), mesh.numberOfElements(),
-                [this, mesh, boxes1_view] TRIBOL_HOST_DEVICE( IndexT i ) {
+                [this, mesh, boxes1_view, binning_proximity] TRIBOL_HOST_DEVICE( IndexT i ) {
                   BoxT box;
                   auto num_nodes_per_elem = mesh.numberOfNodesPerElement();
                   for ( IndexT j{ 0 }; j < num_nodes_per_elem; ++j ) {
                     IndexT node_id = mesh.getGlobalNodeId( i, j );
-                    RealT pos[3];
-                    pos[0] = mesh.getPosition()[0][node_id];
-                    pos[1] = mesh.getPosition()[1][node_id];
-                    pos[2] = mesh.getPosition()[2][node_id];  // unused if D==2
-                    box.addPoint( PointT( pos ) );
+                    PointT pos;
+                    for ( int d{ 0 }; d < D; ++d ) {
+                      pos[d] = mesh.getPosition()[d][node_id];
+                    }
+                    box.addPoint( pos );
                   }
                   // Expand the bounding box in the face normal direction
                   RealT vnorm[3];
                   mesh.getFaceNormal( i, vnorm );
                   VectorT faceNormal( vnorm );
                   RealT faceRadius = mesh.getFaceRadius()[i];
-                  expandBBoxNormal( box, faceNormal, faceRadius );
+                  expandBBoxNormal( box, faceNormal, binning_proximity * faceRadius );
                   boxes1_view[i] = std::move( box );
                 } );
   }
