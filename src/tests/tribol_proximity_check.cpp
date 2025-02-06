@@ -25,17 +25,19 @@
 #include "mfem.hpp"
 
 /**
- * @brief This tests the Tribol MFEM interface running a small common plane explicit contact example using a central
- * difference explicit time integration scheme.
- *
- * Both the element penalty and a constant penalty are tested, with the constant penalty tuned to match the element
- * penalty for this case.  As a result, the test comparisons are the same for both penalty types.
+ * @brief Tests the binning proximity scale parameter for various common Tribol contact setups.
  *
  */
 class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::RealT, tribol::RealT, bool>> {
  protected:
+  /**
+   * @brief Maximum force computed over the mesh.
+   */
   double max_force_;
 
+  /**
+   * @brief Binning methods to test for each contact problem.
+   */
   std::array<tribol::BinningMethod, 3> binning_methods_{ tribol::BINNING_CARTESIAN_PRODUCT, tribol::BINNING_GRID,
                                                          tribol::BINNING_BVH };
 
