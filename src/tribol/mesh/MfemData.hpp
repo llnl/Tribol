@@ -991,6 +991,13 @@ class MfemMeshData {
   }
 
   /**
+   * @brief Get the number of element subdivisions per dimension on the LOR mesh
+   *
+   * @return int
+   */
+  int GetLORFactor() const { return lor_factor_; }
+
+  /**
    * @brief Set the number of element subdivisions per dimension on the LOR mesh
    *
    * @param lor_factor Number of element subdivisions per dimension

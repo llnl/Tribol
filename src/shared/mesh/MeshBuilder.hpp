@@ -44,7 +44,7 @@ class ParMeshBuilder {
  public:
   ParMeshBuilder( MPI_Comm comm, MeshBuilder&& mesh );
 
-  void setNodesFEColl( mfem::H1_FECollection fe_coll );
+  ParMeshBuilder&& setNodesFEColl( mfem::H1_FECollection fe_coll );
   mfem::ParGridFunction& getNodes();
   mfem::ParFiniteElementSpace& getNodesFESpace();
 

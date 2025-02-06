@@ -331,6 +331,17 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale )
         "Setting binning proximity to less than 2.0 can lead to missed contact pairs.  Resetting to 2.0." );
   }
 
+#ifdef BUILD_REDECOMP
+
+  if ( cs->hasMfemData() ) {
+    auto lor_factor = cs->getMfemMeshData()->GetLORFactor();
+    if ( lor_factor > 0 ) {
+      binning_proximity_scale = binning_proximity_scale * static_cast<RealT>( lor_factor );
+    }
+  }
+
+#endif
+
   cs->getParameters().binning_proximity_scale = binning_proximity_scale;
 
 }  // end setBinningProximityScale()

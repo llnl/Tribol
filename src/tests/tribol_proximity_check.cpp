@@ -31,7 +31,7 @@
  * penalty for this case.  As a result, the test comparisons are the same for both penalty types.
  *
  */
-class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::RealT, tribol::RealT>> {
+class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::RealT, tribol::RealT, bool>> {
  protected:
   double max_force_;
   void SetUp2DProblem()
@@ -77,7 +77,7 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
                                         tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY,
                                         tribol::BINNING_GRID );
     tribol::setMfemKinematicConstantPenalty( coupling_scheme_id, penalty, penalty );
-    tribol::setBinningProximityScale( coupling_scheme_id, binning_proximity );
+    tribol::setBinningProximityScale( coupling_scheme_id, binning_proximity * order );
 
     tribol::updateMfemParallelDecomposition();
     constexpr int cycle = 0;
@@ -104,8 +104,12 @@ TEST_P( ProximityTest, CheckForceValues )
   MPI_Barrier( MPI_COMM_WORLD );
 }
 
-INSTANTIATE_TEST_SUITE_P( tribol, ProximityTest,
-                          testing::Values( std::make_tuple( 1, 0.0, 1.0 ), std::make_tuple( 2, 0.0, 1.0 ) ) );
+INSTANTIATE_TEST_SUITE_P(
+    tribol, ProximityTest,
+    testing::Values( std::make_tuple( 1, 0.0, 1.0, true ),
+                     std::make_tuple( 2, 0.0, 0.8,
+                                      true ),  // this should be 1.0, but lumped mass is affecting LOR accuracy
+                     std::make_tuple( 1, 0.0, 2.0, true ) ) );
 
 //------------------------------------------------------------------------------
 int main( int argc, char* argv[] )

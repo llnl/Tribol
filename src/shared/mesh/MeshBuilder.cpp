@@ -71,13 +71,14 @@ MeshBuilder::operator const mfem::Mesh&() const { return mesh_; }
 
 ParMeshBuilder::ParMeshBuilder( MPI_Comm comm, MeshBuilder&& mesh ) : pmesh_{ comm, mesh } {}
 
-void ParMeshBuilder::setNodesFEColl( mfem::H1_FECollection fe_coll )
+ParMeshBuilder&& ParMeshBuilder::setNodesFEColl( mfem::H1_FECollection fe_coll )
 {
   mfem::FiniteElementCollection* fe_coll_ptr = fe_coll.Clone( fe_coll.GetOrder() );
   mfem::ParFiniteElementSpace* fe_space =
       new mfem::ParFiniteElementSpace( &pmesh_, fe_coll_ptr, pmesh_.SpaceDimension() );
   pmesh_.SetNodalFESpace( fe_space );
   pmesh_.GetNodes()->MakeOwner( fe_coll_ptr );
+  return std::move( *this );
 }
 
 mfem::ParGridFunction& ParMeshBuilder::getNodes()
