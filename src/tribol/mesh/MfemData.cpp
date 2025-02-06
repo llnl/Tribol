@@ -616,8 +616,9 @@ void MfemMeshData::UpdateData::SetElementData()
 
     num_verts_per_elem_ = mfem::Geometry::NumVerts[element_type];
   } else {
-    // just put something here so Tribol will not give a warning for zero element meshes
-    elem_type_ = LINEAR_EDGE;
+    // just put something here so Tribol will not give a warning for zero element meshes.  use a 2d element so arrays
+    // are sized for 3d (max supported dimension) in case they are accessed later on.
+    elem_type_ = LINEAR_QUAD;
     num_verts_per_elem_ = 2;
   }
 }
@@ -669,7 +670,7 @@ const MfemSubmeshData::UpdateData& MfemSubmeshData::GetUpdateData() const
 
 MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data,
                                     ContactMethod contact_method )
-    : parent_data_{ parent_data }, submesh_data_{ submesh_data }, block_offsets_{ 3 }
+    : parent_data_{ parent_data }, submesh_data_{ submesh_data }, block_offsets_( 3 )
 {
   SLIC_ERROR_ROOT_IF( parent_data.GetParentCoords().ParFESpace()->FEColl()->GetOrder() > 1,
                       "Higher order meshes not yet supported for Jacobian matrices." );
