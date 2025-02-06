@@ -95,8 +95,10 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
       OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
       DEPENDS_ON ${redecomp_test_depends} ${tribol_device_depends}
       FOLDER redecomp/tests )
-
-    foreach ( nranks RANGE 1 3 )
+    
+    # NOTE: just do 2 ranks for now until we make the tests smaller
+    #foreach ( nranks RANGE 1 3 )
+    foreach ( nranks RANGE 2 2 )
       blt_add_test( NAME ${test_name}_${nranks}rank
                     COMMAND ${test_name}_test
                     NUM_MPI_TASKS ${nranks} )
@@ -133,7 +135,9 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
       DEPENDS_ON ${combined_test_depends} ${tribol_device_depends}
       FOLDER tribol/tests )
 
-    foreach ( nranks RANGE 1 3 )
+    # NOTE: just do 2 ranks for now until we make the tests smaller
+    #foreach ( nranks RANGE 1 3 )
+    foreach ( nranks RANGE 2 2 )
       blt_add_test( NAME ${test_name}_${nranks}rank
                     COMMAND ${test_name}_test
                     NUM_MPI_TASKS ${nranks} )
