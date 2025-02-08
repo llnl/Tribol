@@ -206,23 +206,17 @@ spack:
       - spec: cmake@3.23.1
         prefix: /usr/tce/packages/cmake/cmake-3.23.1
     doxygen:
-      version: [1.9.6]
-      buildable: false
+      version: [1.9.8]
       externals:
-      - spec: doxygen@1.9.6
-        prefix: /collab/usr/gapps/axom/devtools/blueos_3_ppc64le_ib_p9/latest/doxygen-1.9.6
+        - spec: doxygen@1.9.8
+          prefix: /usr/workspace/smithdev/devtools/blueos_3_ppc64le_ib_p9/latest/doxygen-1.9.8
+      buildable: false
     llvm:
-      version: [10.0.0]
+      version: [14.0.5]
       buildable: false
       externals:
-      - spec: llvm@10.0.0+clang
-        prefix: /usr/tce/packages/clang/clang-10.0.0
-    python:
-      version: [3.10.10]
-      buildable: false
-      externals:
-      - spec: python@3.10.10
-        prefix: /collab/usr/gapps/axom/devtools/blueos_3_ppc64le_ib_p9/latest/python-3.10.10
+      - spec: llvm@14.0.5+clang+python
+        prefix: /usr/tce/packages/clang/clang-14.0.5
     py-shroud:
       version: [0.12.2]
       buildable: false
@@ -230,11 +224,17 @@ spack:
       - spec: py-shroud@0.12.2
         prefix: /collab/usr/gapps/axom/devtools/blueos_3_ppc64le_ib_p9/latest/python-3.10.10
     py-sphinx:
-      version: [6.1.3]
-      buildable: false
+      version: [7.2.6]
       externals:
-      - spec: py-sphinx@6.1.3
-        prefix: /collab/usr/gapps/axom/devtools/blueos_3_ppc64le_ib_p9/latest/python-3.10.10
+        - spec: py-sphinx@7.2.6
+          prefix: /usr/workspace/smithdev/devtools/blueos_3_ppc64le_ib_p9/latest/python-3.11.7
+      buildable: false
+    python:
+      version: [3.8.2]
+      externals:
+        - spec: python@3.8.2~dbm
+          prefix: /usr/tce/packages/python/python-3.8.2/
+      buildable: false
 
     # Globally lock version of third party libraries that work on this platform
     axom:
