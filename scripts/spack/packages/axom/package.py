@@ -1,11 +1,12 @@
-# Copyright 2013-2023 Lawrence Livermore National Security, LLC and other
-# Spack Project Developers. See the top-level COPYRIGHT file for details.
+# Copyright (c) 2019-2025, Lawrence Livermore National Security, LLC and
+# other Tribol Project Developers. See the top-level COPYRIGHT file for details.
 #
-# SPDX-License-Identifier: (Apache-2.0 OR MIT)
+# SPDX-License-Identifier: (MIT)
 
 import os
 from os.path import join as pjoin
 
+from spack.package import *
 from spack.pkg.builtin.axom import Axom as BuiltinAxom
 from spack.util.executable import which_string
 
@@ -13,7 +14,7 @@ class Axom(BuiltinAxom):
 
     # Note: We add a number to the end of the real version number to indicate that we have
     #  moved forward past the release. Increment the last number when updating the commit sha.
-    version("0.9.0.2", commit="270953a4f67b5b4ec897f6d2bbf61024cfef70b9", submodules=False)
+    version("0.10.1.2", commit="21d9bc8a03431204ce6d2848c11fd96ef3fe7dd8", submodules=False)
 
     # bring over latest from axom recipe (delete when we update spack)
     def initconfig_hardware_entries(self):

@@ -1,9 +1,9 @@
-# Copyright 2013-2019 Lawrence Livermore National Security, LLC and other
-# Spack Project Developers. See the top-level COPYRIGHT file for details.
+# Copyright (c) 2019-2025, Lawrence Livermore National Security, LLC and
+# other Tribol Project Developers. See the top-level COPYRIGHT file for details.
 #
-# SPDX-License-Identifier: (Apache-2.0 OR MIT)
+# SPDX-License-Identifier: (MIT)
 
-from spack import *
+from spack.package import *
 
 class TribolDevtools(BundlePackage):
     """This is a set of tools necessary for the developers of Tribol"""
@@ -14,4 +14,4 @@ class TribolDevtools(BundlePackage):
     depends_on("python")
     depends_on("py-shroud")
     depends_on("py-sphinx")
-    depends_on("llvm+clang@10.0.0")
+    depends_on("llvm@14+clang+python")

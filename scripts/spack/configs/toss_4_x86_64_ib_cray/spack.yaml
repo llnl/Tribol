@@ -470,7 +470,7 @@ spack:
 
     # Globally lock version of third party libraries that work on this platform
     axom:
-      variants: ~shared~examples~fortran~lua~tools
+      variants: "@0.10.1.1~shared~examples~fortran~lua~tools"
     camp:
       require: "@2024.07.0"
     conduit:

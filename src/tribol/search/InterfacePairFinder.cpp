@@ -451,7 +451,7 @@ class GridSearch : public SearchBase {
     BBox box;
 
     for ( int i{ 0 }; i < mesh.numberOfNodesPerElement(); ++i ) {
-      axom::primal::NumericArray<RealT, D> vert_array;
+      axom::NumericArray<RealT, D> vert_array;
       auto vert_id = mesh.getGlobalNodeId( eId, i );
       for ( int d{ 0 }; d < D; ++d ) {
         vert_array[d] = mesh.getPosition()[d][vert_id];
