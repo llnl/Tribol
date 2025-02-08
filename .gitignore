@@ -4,6 +4,7 @@
 /*.cmake
 __pycache__/
 /.cache/
+/.vscode/
 /build-*-*-*-*
 /compile_commands.json
 .DS_Store
