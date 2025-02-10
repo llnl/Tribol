@@ -471,13 +471,6 @@ class CentralDiffSolver : public mfem::SecondOrderODESolver {
    * @brief Tracks whether a step has been taken yet
    */
   bool first_step;
-
-  /**
-   * @brief Applies homogeneous BCs to dxdt
-   *
-   * @param dxdt Velocity vector
-   */
-  void SetHomogeneousBC( mfem::Vector& dxdt ) const;
 };
 
 #ifdef TRIBOL_USE_MPI
@@ -506,6 +499,15 @@ class ExplicitMechanics : public mfem::SecondOrderTimeDependentOperator {
    * @param a Acceleration vector
    */
   void Mult( const mfem::Vector& u, const mfem::Vector& dudt, mfem::Vector& a ) const override;
+
+  /**
+   * @brief Computes inverse lumped mass matrix
+   *
+   * @param fespace FE space of displacement field
+   * @param rho Density coefficient
+   * @return mfem::Vector holding mass
+   */
+  static mfem::Vector ComputeInvMass( mfem::ParFiniteElementSpace& fespace, mfem::Coefficient& rho );
 
   /**
    * @brief External force contribution (must be manually updated)
