@@ -1,21 +1,21 @@
 ##############################################################################
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (MIT)
 ##############################################################################
 
 ####
-# This is the shared configuration of jobs for quartz
-.on_quartz:
+# This is the shared configuration of jobs for ruby
+.on_ruby:
   variables:
-    ALLOC_OPTIONS: "-p pdebug --exclusive --mpibind=off"
+    ALLOC_OPTIONS: "--reservation=ci --exclusive=user --deadline=now+1hour"
     ALLOC_COMMAND: "salloc ${ALLOC_OPTIONS} -N ${ALLOC_NODES} -t ${ALLOC_TIME}"
   tags:
     - shell
-    - quartz
+    - ruby
   rules:
-    - if: '$CI_COMMIT_BRANCH =~ /_qnone/ || $ON_QUARTZ == "OFF"' #run except if ...
+    - if: '$CI_COMMIT_BRANCH =~ /_qnone/ || $ON_RUBY == "OFF"' #run except if ...
       when: never
     - when: on_success
   before_script:
@@ -24,26 +24,26 @@
 
 ####
 # Templates
-.src_build_on_quartz:
-  extends: [.src_build_script, .on_quartz]
+.src_build_on_ruby:
+  extends: [.src_build_script, .on_ruby]
   needs: []
 
 
 ####
 # Build jobs
 
-quartz-clang_14_0_6-src:
+ruby-clang_14_0_6-src:
   variables:
     COMPILER: "clang@14.0.6"
-    HOST_CONFIG: "quartz-toss_4_x86_64_ib-${COMPILER}.cmake"
+    HOST_CONFIG: "ruby-toss_4_x86_64_ib-${COMPILER}.cmake"
     ALLOC_NODES: "1"
     ALLOC_TIME: "20"
-  extends: .src_build_on_quartz
+  extends: .src_build_on_ruby
 
-quartz-gcc_10_3_1-src:
+ruby-gcc_10_3_1-src:
   variables:
     COMPILER: "gcc@10.3.1"
-    HOST_CONFIG: "quartz-toss_4_x86_64_ib-${COMPILER}.cmake"
+    HOST_CONFIG: "ruby-toss_4_x86_64_ib-${COMPILER}.cmake"
     ALLOC_NODES: "1"
     ALLOC_TIME: "20"
-  extends: .src_build_on_quartz
+  extends: .src_build_on_ruby

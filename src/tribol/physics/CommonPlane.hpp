@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -6,7 +6,6 @@
 #ifndef SRC_PHYSICS_COMMONPLANE_HPP_
 #define SRC_PHYSICS_COMMONPLANE_HPP_
 
-#include "tribol/types.hpp"
 #include "Physics.hpp"
 
 namespace tribol {
@@ -23,7 +22,7 @@ namespace tribol {
  * \pre Bulk modulus and element thickness arrays are registered by host code
  *
  */
-real ComputePenaltyStiffnessPerArea( const real K1_over_t1, const real K2_over_t2 );
+TRIBOL_HOST_DEVICE RealT ComputePenaltyStiffnessPerArea( const RealT K1_over_t1, const RealT K2_over_t2 );
 
 /*!
  *
@@ -35,7 +34,7 @@ real ComputePenaltyStiffnessPerArea( const real K1_over_t1, const real K2_over_t
  *
  */
 template <>
-int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme const* cs );
+int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs );
 
 }  // end namespace tribol
 

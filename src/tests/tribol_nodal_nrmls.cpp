@@ -1,15 +1,18 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
 
 // Tribol includes
-#include "tribol/types.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/mesh/MeshManager.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/utils/Math.hpp"
+
+#ifdef TRIBOL_USE_UMPIRE
+// Umpire includes
+#include "umpire/ResourceManager.hpp"
+#endif
 
 // Axom includes
 #include "axom/slic.hpp"
@@ -20,7 +23,7 @@
 // c++ includes
 #include <cmath>  // std::abs
 
-using real = tribol::real;
+using RealT = tribol::RealT;
 
 /*!
  * Test fixture class with some setup for registering a mesh
@@ -31,19 +34,19 @@ class NodalNormalTest : public ::testing::Test {
   int numNodes;
   int dim;
 
-  void computeNodalNormals( int cell_type, real const* const x, real const* const y, real const* const z,
+  void computeNodalNormals( int cell_type, RealT const* const x, RealT const* const y, RealT const* const z,
                             int const* const conn, int const numCells, int const numNodes, int const dim )
   {
     // register the mesh with tribol
-    const int meshId = 0;
-    tribol::registerMesh( meshId, numCells, numNodes, conn, cell_type, x, y, z );
+    const tribol::IndexT mesh_id = 0;
+    tribol::registerMesh( mesh_id, numCells, numNodes, conn, cell_type, x, y, z, tribol::MemorySpace::Host );
 
     // get instance of mesh in order to compute nodally averaged normals
     tribol::MeshManager& meshManager = tribol::MeshManager::getInstance();
-    tribol::MeshData& mesh = meshManager.GetMeshInstance( meshId );
+    tribol::MeshData& mesh = meshManager.at( mesh_id );
 
     // compute the face data for this mesh
-    mesh.computeFaceData( dim );
+    mesh.computeFaceData( tribol::ExecutionMode::Sequential );
 
     mesh.computeNodalNormals( dim );
 
@@ -83,9 +86,9 @@ TEST_F( NodalNormalTest, two_quad_inverted_v )
   conn[7] = 1;
 
   // setup the nodal coordinates of the mesh
-  real x[numNodesPerFace + 2];
-  real y[numNodesPerFace + 2];
-  real z[numNodesPerFace + 2];
+  RealT x[numNodesPerFace + 2];
+  RealT y[numNodesPerFace + 2];
+  RealT z[numNodesPerFace + 2];
 
   x[0] = 0.;
   x[1] = 0.;
@@ -112,21 +115,27 @@ TEST_F( NodalNormalTest, two_quad_inverted_v )
   computeNodalNormals( cellType, &x[0], &y[0], &z[0], &conn[0], numFaces, 6, 3 );
 
   tribol::MeshManager& meshManager = tribol::MeshManager::getInstance();
-  tribol::MeshData& mesh = meshManager.GetMeshInstance( 0 );
+  auto mesh = meshManager.at( 0 ).getView();
 
   // check each normal...hard coded
-  real n1check = tribol::magnitude( mesh.m_node_nX[0] - 0., mesh.m_node_nY[0] - 0., mesh.m_node_nZ[0] - 1. );
-  real n2check = tribol::magnitude( mesh.m_node_nX[1] - 0., mesh.m_node_nY[1] - 0., mesh.m_node_nZ[1] - 1. );
-  real n3check = tribol::magnitude( mesh.m_node_nX[2] - ( -1. / std::sqrt( 2. ) ), mesh.m_node_nY[2] - 0.,
-                                    mesh.m_node_nZ[2] - ( 1. / std::sqrt( 2. ) ) );
-  real n4check = tribol::magnitude( mesh.m_node_nX[3] - ( -1. / std::sqrt( 2. ) ), mesh.m_node_nY[3] - 0.,
-                                    mesh.m_node_nZ[3] - ( 1. / std::sqrt( 2. ) ) );
-  real n5check = tribol::magnitude( mesh.m_node_nX[4] - ( 1. / std::sqrt( 2. ) ), mesh.m_node_nY[4] - 0.,
-                                    mesh.m_node_nZ[4] - ( 1. / std::sqrt( 2. ) ) );
-  real n6check = tribol::magnitude( mesh.m_node_nX[4] - ( 1. / std::sqrt( 2. ) ), mesh.m_node_nY[4] - 0.,
-                                    mesh.m_node_nZ[4] - ( 1. / std::sqrt( 2. ) ) );
+  RealT n1check = tribol::magnitude( mesh.getNodalNormals()[0][0] - 0., mesh.getNodalNormals()[1][0] - 0.,
+                                     mesh.getNodalNormals()[2][0] - 1. );
+  RealT n2check = tribol::magnitude( mesh.getNodalNormals()[0][1] - 0., mesh.getNodalNormals()[1][1] - 0.,
+                                     mesh.getNodalNormals()[2][1] - 1. );
+  RealT n3check =
+      tribol::magnitude( mesh.getNodalNormals()[0][2] - ( -1. / std::sqrt( 2. ) ), mesh.getNodalNormals()[1][2] - 0.,
+                         mesh.getNodalNormals()[2][2] - ( 1. / std::sqrt( 2. ) ) );
+  RealT n4check =
+      tribol::magnitude( mesh.getNodalNormals()[0][3] - ( -1. / std::sqrt( 2. ) ), mesh.getNodalNormals()[1][3] - 0.,
+                         mesh.getNodalNormals()[2][3] - ( 1. / std::sqrt( 2. ) ) );
+  RealT n5check =
+      tribol::magnitude( mesh.getNodalNormals()[0][4] - ( 1. / std::sqrt( 2. ) ), mesh.getNodalNormals()[1][4] - 0.,
+                         mesh.getNodalNormals()[2][4] - ( 1. / std::sqrt( 2. ) ) );
+  RealT n6check =
+      tribol::magnitude( mesh.getNodalNormals()[0][4] - ( 1. / std::sqrt( 2. ) ), mesh.getNodalNormals()[1][4] - 0.,
+                         mesh.getNodalNormals()[2][4] - ( 1. / std::sqrt( 2. ) ) );
 
-  real tol = 1.e-12;
+  RealT tol = 1.e-12;
 
   EXPECT_LE( n1check, tol );
   EXPECT_LE( n2check, tol );
@@ -141,6 +150,10 @@ int main( int argc, char* argv[] )
   int result = 0;
 
   ::testing::InitGoogleTest( &argc, argv );
+
+#ifdef TRIBOL_USE_UMPIRE
+  umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
+#endif
 
   axom::slic::SimpleLogger logger;
 

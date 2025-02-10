@@ -1,9 +1,8 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
 
-#include "tribol/types.hpp"
 #include "tribol/utils/TestUtils.hpp"
 #include "tribol/utils/Math.hpp"
 
@@ -14,6 +13,7 @@
 #include <cmath>  // std::abs, std::cos, std::sin
 
 // AXOM includes
+#include "axom/core.hpp"
 #include "axom/slic.hpp"
 
 #include "mfem/general/forall.hpp"
@@ -290,10 +290,10 @@ void TestMesh::clear( bool keepCoords )
 }  // end TestMesh::clear()
 
 //------------------------------------------------------------------------------
-void TestMesh::setupContactMeshHex( int numElemsX1, int numElemsY1, int numElemsZ1, real xMin1, real yMin1, real zMin1,
-                                    real xMax1, real yMax1, real zMax1, int numElemsX2, int numElemsY2, int numElemsZ2,
-                                    real xMin2, real yMin2, real zMin2, real xMax2, real yMax2, real zMax2,
-                                    real thetaMortar, real thetaNonmortar )
+void TestMesh::setupContactMeshHex( int numElemsX1, int numElemsY1, int numElemsZ1, RealT xMin1, RealT yMin1,
+                                    RealT zMin1, RealT xMax1, RealT yMax1, RealT zMax1, int numElemsX2, int numElemsY2,
+                                    int numElemsZ2, RealT xMin2, RealT yMin2, RealT zMin2, RealT xMax2, RealT yMax2,
+                                    RealT zMax2, RealT thetaMortar, RealT thetaNonmortar )
 {
   // NOTE: ONLY CONTACT INTERACTIONS IN THE Z-DIRECTION ARE SUPPORTED
   // AT THE MOMENT.
@@ -311,9 +311,9 @@ void TestMesh::setupContactMeshHex( int numElemsX1, int numElemsY1, int numElems
   // ASSUMING contact is in the Z-Direction, check to make sure that the
   // gap of interpenetration is not greater than either block's element
   // dimension
-  real h1 = ( zMax1 - zMin1 ) / numElemsZ1;
-  real h2 = ( zMax2 - zMin2 ) / numElemsZ2;
-  real mesh_gap = zMin2 - zMax1;
+  RealT h1 = ( zMax1 - zMin1 ) / numElemsZ1;
+  RealT h2 = ( zMax2 - zMin2 ) / numElemsZ2;
+  RealT mesh_gap = zMin2 - zMax1;
 
   SLIC_ERROR_IF( mesh_gap < -h1, "TestMesh::setupContactMeshHex(): "
                                      << "Initial mesh configuration has a gap greater than the "
@@ -343,15 +343,15 @@ void TestMesh::setupContactMeshHex( int numElemsX1, int numElemsY1, int numElems
   this->elConn2 = new int[this->numNodesPerElement * this->numNonmortarElements];
   this->faceConn1 = new int[this->numNodesPerFace * this->numMortarFaces];
   this->faceConn2 = new int[this->numNodesPerFace * this->numNonmortarFaces];
-  this->x = new double[this->numTotalNodes];
-  this->y = new double[this->numTotalNodes];
-  this->z = new double[this->numTotalNodes];
+  this->x = new RealT[this->numTotalNodes];
+  this->y = new RealT[this->numTotalNodes];
+  this->z = new RealT[this->numTotalNodes];
 
   // setup mesh nodal coordinate arrays
   int ndOffset;
   int numElemsX, numElemsY, numElemsZ;
-  real xMax, yMax, zMax, xMin, yMin, zMin;
-  real theta;
+  RealT xMax, yMax, zMax, xMin, yMin, zMin;
+  RealT theta;
   int *elConn, *faceConn;
   for ( int iblk = 0; iblk < 2; ++iblk ) {
     if ( iblk == 0 ) {
@@ -387,9 +387,9 @@ void TestMesh::setupContactMeshHex( int numElemsX1, int numElemsY1, int numElems
     int numNodesX = numElemsX + 1;
     int numNodesY = numElemsY + 1;
     int numNodesZ = numElemsZ + 1;
-    real hx = ( xMax - xMin ) / numElemsX;
-    real hy = ( yMax - yMin ) / numElemsY;
-    real hz = ( zMax - zMin ) / numElemsZ;
+    RealT hx = ( xMax - xMin ) / numElemsX;
+    RealT hy = ( yMax - yMin ) / numElemsY;
+    RealT hz = ( zMax - zMin ) / numElemsZ;
 
     // compute mesh coordinates
     int ctr = 0;
@@ -397,7 +397,7 @@ void TestMesh::setupContactMeshHex( int numElemsX1, int numElemsY1, int numElems
       for ( int j = 0; j < numNodesY; ++j ) {
         for ( int i = 0; i < numNodesX; ++i ) {
           int idx = ndOffset + ctr;
-          real xyz[3];
+          RealT xyz[3];
 
           // compute coordinates
           xyz[0] = xMin + i * hx;
@@ -410,14 +410,14 @@ void TestMesh::setupContactMeshHex( int numElemsX1, int numElemsY1, int numElems
           bool rotationX = ( i > 0 && i < ( numNodesX - 1 ) ) ? true : false;
 
           if ( rotationX && rotationY ) {
-            real rot0 = std::cos( theta * M_PI / 180 );
-            real rot1 = -std::sin( theta * M_PI / 180 );
-            real rot2 = -rot1;
-            real rot3 = rot0;
+            RealT rot0 = std::cos( theta * M_PI / 180 );
+            RealT rot1 = -std::sin( theta * M_PI / 180 );
+            RealT rot2 = -rot1;
+            RealT rot3 = rot0;
 
-            real x_temp = xyz[0] * rot0 + xyz[1] * rot1;
-            real y_temp = xyz[0] * rot2 + xyz[1] * rot3;
-            real z_temp = xyz[2];
+            RealT x_temp = xyz[0] * rot0 + xyz[1] * rot1;
+            RealT y_temp = xyz[0] * rot2 + xyz[1] * rot3;
+            RealT z_temp = xyz[2];
 
             xyz[0] = x_temp;
             xyz[1] = y_temp;
@@ -491,10 +491,10 @@ void TestMesh::setupContactMeshHex( int numElemsX1, int numElemsY1, int numElems
 }  // end setupContactMeshHex()
 
 //------------------------------------------------------------------------------
-void TestMesh::setupContactMeshTet( int numElemsX1, int numElemsY1, int numElemsZ1, real xMin1, real yMin1, real zMin1,
-                                    real xMax1, real yMax1, real zMax1, int numElemsX2, int numElemsY2, int numElemsZ2,
-                                    real xMin2, real yMin2, real zMin2, real xMax2, real yMax2, real zMax2,
-                                    real thetaMortar, real thetaNonmortar )
+void TestMesh::setupContactMeshTet( int numElemsX1, int numElemsY1, int numElemsZ1, RealT xMin1, RealT yMin1,
+                                    RealT zMin1, RealT xMax1, RealT yMax1, RealT zMax1, int numElemsX2, int numElemsY2,
+                                    int numElemsZ2, RealT xMin2, RealT yMin2, RealT zMin2, RealT xMax2, RealT yMax2,
+                                    RealT zMax2, RealT thetaMortar, RealT thetaNonmortar )
 {
   // NOTE: ONLY CONTACT INTERACTIONS IN THE Z-DIRECTION ARE SUPPORTED
   // AT THE MOMENT.
@@ -689,7 +689,7 @@ void TestMesh::setupContactMeshTet( int numElemsX1, int numElemsY1, int numElems
 
 }  // end setupContactMeshTet()
 //------------------------------------------------------------------------------
-void TestMesh::allocateAndSetVelocities( int meshId, real valX, real valY, real valZ )
+void TestMesh::allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY, RealT valZ )
 {
   // Check that mesh ids are not the same. The TestMesh class was built around
   // testing the mortar method with Lagrange multiplier enforcement, which does not
@@ -700,7 +700,7 @@ void TestMesh::allocateAndSetVelocities( int meshId, real valX, real valY, real 
 
   // check to see if pointers have been set
   bool deleteVels = false;
-  if ( meshId == this->mortarMeshId ) {
+  if ( mesh_id == this->mortarMeshId ) {
     if ( this->vx1 != nullptr ) {
       delete[] this->vx1;
       deleteVels = true;
@@ -719,7 +719,7 @@ void TestMesh::allocateAndSetVelocities( int meshId, real valX, real valY, real 
     allocRealArray( &this->vz1, this->numTotalNodes, valZ );
 
     registered_velocities1 = true;
-  } else if ( meshId == this->nonmortarMeshId ) {
+  } else if ( mesh_id == this->nonmortarMeshId ) {
     if ( this->vx2 != nullptr ) {
       delete[] this->vx2;
       deleteVels = true;
@@ -749,7 +749,7 @@ void TestMesh::allocateAndSetVelocities( int meshId, real valX, real valY, real 
 }  // end TestMesh::allocateAndSetVelocities()
 
 //------------------------------------------------------------------------------
-void TestMesh::allocateAndSetBulkModulus( int meshId, real val )
+void TestMesh::allocateAndSetBulkModulus( IndexT mesh_id, RealT val )
 {
   // Check that mesh ids are the same. The TestMesh class was built around
   // testing the mortar method with Lagrange multiplier enforcement, which does
@@ -760,14 +760,14 @@ void TestMesh::allocateAndSetBulkModulus( int meshId, real val )
 
   // check to see if pointers have been set
   bool deleteData = false;
-  if ( meshId == this->mortarMeshId ) {
+  if ( mesh_id == this->mortarMeshId ) {
     if ( this->mortar_bulk_mod != nullptr ) {
       delete[] this->mortar_bulk_mod;
       deleteData = true;
     }
 
     allocRealArray( &this->mortar_bulk_mod, this->numMortarFaces, val );
-  } else if ( meshId == this->nonmortarMeshId ) {
+  } else if ( mesh_id == this->nonmortarMeshId ) {
     if ( this->nonmortar_bulk_mod != nullptr ) {
       delete[] this->nonmortar_bulk_mod;
       deleteData = true;
@@ -785,18 +785,18 @@ void TestMesh::allocateAndSetBulkModulus( int meshId, real val )
 }  // end TestMesh::allocateAndSetBulkModulus()
 
 //------------------------------------------------------------------------------
-void TestMesh::allocateAndSetElementThickness( int meshId, real t )
+void TestMesh::allocateAndSetElementThickness( IndexT mesh_id, RealT t )
 {
   // check to see if pointers have been set
   bool deleteData = false;
-  if ( meshId == this->mortarMeshId ) {
+  if ( mesh_id == this->mortarMeshId ) {
     if ( this->mortar_element_thickness != nullptr ) {
       delete[] this->mortar_element_thickness;
       deleteData = true;
     }
 
     allocRealArray( &this->mortar_element_thickness, this->numMortarFaces, t );
-  } else if ( meshId == this->nonmortarMeshId ) {
+  } else if ( mesh_id == this->nonmortarMeshId ) {
     if ( this->nonmortar_element_thickness != nullptr ) {
       delete[] this->nonmortar_element_thickness;
       deleteData = true;
@@ -816,15 +816,16 @@ void TestMesh::allocateAndSetElementThickness( int meshId, real t )
 //------------------------------------------------------------------------------
 int TestMesh::simpleTribolSetupAndUpdate( ContactMethod method, EnforcementMethod TRIBOL_UNUSED_PARAM( enforcement ),
                                           ContactModel TRIBOL_UNUSED_PARAM( model ),
+                                          ContactCase TRIBOL_UNUSED_PARAM( contact_case ),
                                           bool TRIBOL_UNUSED_PARAM( visualization ), TestControlParameters& params )
 {
   SLIC_ERROR_IF( !this->mesh_constructed, "TestMesh::simpleTribolSetupAndUpdate(): "
                                               << "must construct hex or tet mesh prior to calling this routine." );
 
   // grab coordinate data
-  real* x = this->x;
-  real* y = this->y;
-  real* z = this->z;
+  RealT* x = this->x;
+  RealT* y = this->y;
+  RealT* z = this->z;
 
   switch ( method ) {
     case SINGLE_MORTAR:
@@ -846,7 +847,7 @@ int TestMesh::simpleTribolSetupAndUpdate( ContactMethod method, EnforcementMetho
     }
   }  // end switch on method
 
-  const double area_frac = 1.e-03;
+  const RealT area_frac = 1.e-03;
 
   SimpleCouplingSetup( this->dim, this->cellType, method, this->numMortarFaces, this->numTotalNodes, this->faceConn1, x,
                        y, z, this->numNonmortarFaces, this->numTotalNodes, this->faceConn2, x, y, z, area_frac,
@@ -860,23 +861,19 @@ int TestMesh::simpleTribolSetupAndUpdate( ContactMethod method, EnforcementMetho
 
 //------------------------------------------------------------------------------
 int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enforcement, ContactModel model,
-                                    bool visualization, TestControlParameters& params )
+                                    ContactCase contact_case, bool visualization, TestControlParameters& params )
 {
   // grab coordinate data
-  real* x = this->x;
-  real* y = this->y;
-  real* z = this->z;
-
-  // initialize tribol
-  CommType problem_comm = TRIBOL_COMM_WORLD;
-  initialize( this->dim, problem_comm );
+  RealT* x = this->x;
+  RealT* y = this->y;
+  RealT* z = this->z;
 
   // register mesh. Note: Tribol will still work with global integer
   // ids for the connectivity and array lengths of numTotalNodes.
-  registerMesh( this->mortarMeshId, this->numMortarFaces, this->numTotalNodes, this->faceConn1, this->cellType, x, y,
-                z );
+  registerMesh( this->mortarMeshId, this->numMortarFaces, this->numTotalNodes, this->faceConn1, this->cellType, x, y, z,
+                MemorySpace::Host );
   registerMesh( this->nonmortarMeshId, this->numNonmortarFaces, this->numTotalNodes, this->faceConn2, this->cellType, x,
-                y, z );
+                y, z, MemorySpace::Host );
 
   // register nodal forces. Note, I was getting a seg fault when
   // registering the same pointer to a single set of force arrays
@@ -938,7 +935,7 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
       if ( this->mortar_bulk_mod == nullptr ) {
         SLIC_DEBUG_ROOT( "TestMesh::tribolSetupAndUpdate(): "
                          << "mortar_bulk_mod not set; registering default value." );
-        this->mortar_bulk_mod = new real[this->numMortarFaces];
+        this->mortar_bulk_mod = new RealT[this->numMortarFaces];
         for ( int i = 0; i < this->numMortarFaces; ++i ) {
           this->mortar_bulk_mod[i] = params.const_penalty;  // non-physical for testing
         }
@@ -946,7 +943,7 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
       if ( this->mortar_element_thickness == nullptr ) {
         SLIC_DEBUG_ROOT( "TestMesh::tribolSetupAndUpdate(): "
                          << "mortar_element_thickness not set; registering default value." );
-        this->mortar_element_thickness = new real[this->numMortarFaces];
+        this->mortar_element_thickness = new RealT[this->numMortarFaces];
         for ( int i = 0; i < this->numMortarFaces; ++i ) {
           this->mortar_element_thickness[i] = 1.;  // non-physical for testing
         }
@@ -955,7 +952,7 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
       if ( this->nonmortar_bulk_mod == nullptr ) {
         SLIC_DEBUG_ROOT( "TestMesh::tribolSetupAndUpdate(): "
                          << "nonmortar_bulk_mod not set; registering default value." );
-        this->nonmortar_bulk_mod = new real[this->numNonmortarFaces];
+        this->nonmortar_bulk_mod = new RealT[this->numNonmortarFaces];
         for ( int i = 0; i < this->numNonmortarFaces; ++i ) {
           this->nonmortar_bulk_mod[i] = params.const_penalty;  // non-physical for testing
         }
@@ -963,7 +960,7 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
       if ( this->nonmortar_element_thickness == nullptr ) {
         SLIC_DEBUG_ROOT( "TestMesh::tribolSetupAndUpdate(): "
                          << "nonmortar_element_thickness not set; registering default value." );
-        this->nonmortar_element_thickness = new real[this->numNonmortarFaces];
+        this->nonmortar_element_thickness = new RealT[this->numNonmortarFaces];
         for ( int i = 0; i < this->numNonmortarFaces; ++i ) {
           this->nonmortar_element_thickness[i] = 1.;  // non-physical for testing
         }
@@ -987,21 +984,29 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
       setRatePercentPenalty( this->nonmortarMeshId, params.rate_penalty_ratio );
     }
 
-    // set the penetration fraction for timestep votes computed with penalty enforcements
-    setContactPenFrac( params.contact_pen_frac );
-
   }  // end if-penalty
-
-  setContactAreaFrac( 1.e-6 );
-
-  if ( visualization ) {
-    setPlotCycleIncrement( 1 );
-  }
 
   // register coupling scheme
   const int csIndex = 0;
-  registerCouplingScheme( csIndex, this->mortarMeshId, this->nonmortarMeshId, SURFACE_TO_SURFACE, AUTO, method, model,
-                          enforcement, BINNING_GRID );
+  registerCouplingScheme( csIndex, this->mortarMeshId, this->nonmortarMeshId, SURFACE_TO_SURFACE, contact_case, method,
+                          model, enforcement, BINNING_GRID, ExecutionMode::Sequential );
+
+  enableTimestepVote( csIndex, params.enable_timestep_vote );
+  setTimestepPenFrac( csIndex, params.timestep_pen_frac );
+  setTimestepScale( csIndex, params.timestep_scale );
+
+  // if enforcement is penalty, register penalty parameters
+  if ( enforcement == PENALTY ) {
+    // set the penetration fraction for timestep votes computed with penalty enforcements
+    setAutoContactPenScale( csIndex, params.auto_contact_pen_frac );
+
+  }  // end if-penalty
+
+  setContactAreaFrac( csIndex, 1.e-6 );
+
+  if ( visualization ) {
+    setPlotCycleIncrement( csIndex, 1 );
+  }
 
   setLoggingLevel( csIndex, TRIBOL_WARNING );
 
@@ -1042,14 +1047,14 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
 }  // end tribolSetupAndUpdate()
 
 //------------------------------------------------------------------------------
-void TestMesh::setupPatchTestDirichletBCs( int meshId, int numElemsX, int numElemsY, int numElemsZ, int nodeIdOffset,
-                                           bool inHomogeneousGap, real inHomogeneousZVal )
+void TestMesh::setupPatchTestDirichletBCs( IndexT mesh_id, int numElemsX, int numElemsY, int numElemsZ,
+                                           int nodeIdOffset, bool inHomogeneousGap, RealT inHomogeneousZVal )
 {
   SLIC_ERROR_IF( !this->mesh_constructed, "TestMesh::setupPatchTestDirichletBCs(): "
                                               << "mesh must be constructed prior to calling this routine." );
 
   bool mortar = false;
-  if ( meshId == this->mortarMeshId ) {
+  if ( mesh_id == this->mortarMeshId ) {
     mortar = true;
   }
 
@@ -1066,7 +1071,7 @@ void TestMesh::setupPatchTestDirichletBCs( int meshId, int numElemsX, int numEle
   int numNodes = numNodesX * numNodesY * numNodesZ;
 
   int *nodeIdsX, *nodeIdsY, *nodeIdsZ;
-  real *valX, *valY, *valZ;
+  RealT *valX, *valY, *valZ;
   if ( mortar )  // mortar BCs
   {
     this->dirNodesX1 = new int[numNodes];
@@ -1076,9 +1081,9 @@ void TestMesh::setupPatchTestDirichletBCs( int meshId, int numElemsX, int numEle
     nodeIdsY = this->dirNodesY1;
     nodeIdsZ = this->dirNodesZ1;
 
-    this->iDirValX1 = new real[numNodes];
-    this->iDirValY1 = new real[numNodes];
-    this->iDirValZ1 = new real[numNodes];
+    this->iDirValX1 = new RealT[numNodes];
+    this->iDirValY1 = new RealT[numNodes];
+    this->iDirValZ1 = new RealT[numNodes];
     valX = this->iDirValX1;
     valY = this->iDirValY1;
     valZ = this->iDirValZ1;
@@ -1091,9 +1096,9 @@ void TestMesh::setupPatchTestDirichletBCs( int meshId, int numElemsX, int numEle
     nodeIdsY = this->dirNodesY2;
     nodeIdsZ = this->dirNodesZ2;
 
-    this->iDirValX2 = new real[numNodes];
-    this->iDirValY2 = new real[numNodes];
-    this->iDirValZ2 = new real[numNodes];
+    this->iDirValX2 = new RealT[numNodes];
+    this->iDirValY2 = new RealT[numNodes];
+    this->iDirValZ2 = new RealT[numNodes];
     valX = this->iDirValX2;
     valY = this->iDirValY2;
     valZ = this->iDirValZ2;
@@ -1206,14 +1211,14 @@ void TestMesh::setupPatchTestDirichletBCs( int meshId, int numElemsX, int numEle
 }  // end setupPatchTestDirichletBCs()
 
 //------------------------------------------------------------------------------
-void TestMesh::setupPatchTestPressureDofs( int meshId, int numElemsX, int numElemsY, int numElemsZ, int nodeIdOffset,
-                                           bool contact )
+void TestMesh::setupPatchTestPressureDofs( IndexT mesh_id, int numElemsX, int numElemsY, int numElemsZ,
+                                           int nodeIdOffset, bool contact )
 {
   SLIC_ERROR_IF( !this->mesh_constructed, "TestMesh::setupPatchTestPressureDofs(): "
                                               << "mesh must be constructed prior to calling this routine." );
 
   bool mortar = false;
-  if ( meshId == this->mortarMeshId ) {
+  if ( mesh_id == this->mortarMeshId ) {
     mortar = true;
   }
 
@@ -1285,7 +1290,7 @@ void TestMesh::setupMfemMesh( bool fix_orientation )
   }    // end loop over mortar elements
 
   for ( int i = 0; i < this->numMortarNodes; ++i ) {
-    double vert[3] = { 0., 0., 0. };
+    RealT vert[3] = { 0., 0., 0. };
     vert[0] = this->x[i];
     vert[1] = this->y[i];
     vert[2] = this->z[i];
@@ -1318,7 +1323,7 @@ void TestMesh::setupMfemMesh( bool fix_orientation )
   }    // end loop over nonmortar elements
 
   for ( int i = 0; i < this->numNonmortarNodes; ++i ) {
-    double vert[3] = { 0., 0., 0. };
+    RealT vert[3] = { 0., 0., 0. };
     int offset = this->numMortarNodes;
     vert[0] = this->x[offset + i];
     vert[1] = this->y[offset + i];
@@ -1347,7 +1352,7 @@ void TestMesh::setupMfemMesh( bool fix_orientation )
 }  // end setupMfemMesh()
 
 //------------------------------------------------------------------------------
-void TestMesh::computeEquilibriumJacobian( mfem::SparseMatrix* A, real const nu, real const youngs )
+void TestMesh::computeEquilibriumJacobian( mfem::SparseMatrix* A, RealT const nu, RealT const youngs )
 {
   SLIC_ERROR_IF( this->mfem_mesh == nullptr, "TestMesh::computeEquilibriumJacobian(): must call setupMfemMesh() "
                                                  << "prior to calling this routine." );
@@ -1360,11 +1365,11 @@ void TestMesh::computeEquilibriumJacobian( mfem::SparseMatrix* A, real const nu,
 
   // compute 1st Lame parameter from Youngs modulus and Poisson's ratio
   // (required for MFEM integrator)
-  double lambda_val{ ( youngs * nu ) / ( ( 1. + nu ) * ( 1. - 2. * nu ) ) };
+  RealT lambda_val{ ( youngs * nu ) / ( ( 1. + nu ) * ( 1. - 2. * nu ) ) };
 
   // compute shear modulus from Young's Modulus and Poisson's ratio
   // (required for MFEM integrator)
-  double mu_val{ youngs / ( 2. * ( 1. + nu ) ) };
+  RealT mu_val{ youngs / ( 2. * ( 1. + nu ) ) };
   mfem::ConstantCoefficient lambda( lambda_val );
   mfem::ConstantCoefficient mu( mu_val );
 
@@ -1424,7 +1429,7 @@ void TestMesh::computeElementJacobianContributions( mfem::SparseMatrix* const A,
       int numCols = elmat.NumCols();
       for ( int i = 0; i < numRows; ++i ) {
         for ( int j = 0; j < numCols; ++j ) {
-          double val = elmat( i, j );
+          RealT val = elmat( i, j );
           matrix << val << "  ";
         }
         matrix << "\n";
@@ -1525,7 +1530,7 @@ void TestMesh::tribolMatrixToSystemMatrix( mfem::DenseMatrix* const ATribol, mfe
 }  // end TestMesh::tribolMatrixToSystemMatrix()
 
 //------------------------------------------------------------------------------
-void TestMesh::getGapEvals( real* const v )
+void TestMesh::getGapEvals( RealT* const v )
 {
   SLIC_ERROR_IF( v == nullptr, "TestMesh::getGapEvals(): input pointer is null." );
   int presDofCtr = 0;
@@ -1549,7 +1554,7 @@ void TestMesh::enforceDirichletBCs( mfem::SparseMatrix* const A, mfem::Vector* c
                                    << "input pointer to rhs vector, b, is null." );
 
   int *dirBCX, *dirBCY, *dirBCZ, *presDofs;
-  double *dirValX, *dirValY, *dirValZ;
+  RealT *dirValX, *dirValY, *dirValZ;
   int numBlkNodes;
 
   int presCtr = 0;
@@ -1584,19 +1589,19 @@ void TestMesh::enforceDirichletBCs( mfem::SparseMatrix* const A, mfem::Vector* c
       // row ids for homogeneous dirichlet BCs
       if ( dirBCX[m] >= 0 ) {
         int bcRowIdX = this->dim * dirBCX[m];
-        double dirBCValX = dirValX[m];
+        RealT dirBCValX = dirValX[m];
         A->EliminateRowCol( bcRowIdX, dirBCValX, *b );
       }
 
       if ( dirBCY[m] >= 0 ) {
         int bcRowIdY = this->dim * dirBCY[m] + 1;
-        double dirBCValY = dirValY[m];
+        RealT dirBCValY = dirValY[m];
         A->EliminateRowCol( bcRowIdY, dirBCValY, *b );
       }
 
       if ( dirBCZ[m] >= 0 ) {
         int bcRowIdZ = this->dim * dirBCZ[m] + 2;
-        double dirBCValZ = dirValZ[m];
+        RealT dirBCValZ = dirValZ[m];
         A->EliminateRowCol( bcRowIdZ, dirBCValZ, *b );
       }
 
@@ -1622,7 +1627,7 @@ void TestMesh::enforceDirichletBCs( mfem::SparseMatrix* const A, mfem::Vector* c
 }  // end TestMesh::enforceDirichletBCs()
 
 //------------------------------------------------------------------------------
-void TestMesh::testMeshToVtk( const std::string& dir, int cycle, double time )
+void TestMesh::testMeshToVtk( const std::string& dir, int cycle, RealT time )
 {
   std::ostringstream suffix_mesh;
   suffix_mesh << std::setfill( '0' ) << std::setw( 7 ) << cycle << ".vtk";
@@ -1639,7 +1644,7 @@ void TestMesh::testMeshToVtk( const std::string& dir, int cycle, double time )
 
   // Add the cycle and time to FieldData
   mesh << "FIELD FieldData 2\n";
-  mesh << "TIME 1 1 double\n";
+  mesh << "TIME 1 1 RealT\n";
   mesh << time << "\n";
   mesh << "CYCLE 1 1 int\n";
   mesh << cycle << "\n";
@@ -1700,7 +1705,7 @@ void TestMesh::testMeshToVtk( const std::string& dir, int cycle, double time )
 
 namespace mfem_ext {
 
-CentralDiffSolver::CentralDiffSolver( const mfem::Array<int>& bc_vdofs_ ) : bc_vdofs{ bc_vdofs_ }, first_step{ true } {}
+CentralDiffSolver::CentralDiffSolver( const mfem::Array<int>& bc_vdofs_ ) : bc_vdofs( bc_vdofs_ ), first_step{ true } {}
 
 void CentralDiffSolver::Step( mfem::Vector& x, mfem::Vector& dxdt, double& t, double& dt )
 {
@@ -1735,9 +1740,11 @@ void CentralDiffSolver::Step( mfem::Vector& x, mfem::Vector& dxdt, double& t, do
   dxdt.Add( 0.5 * dt, accel );
 }
 
+#ifdef TRIBOL_USE_MPI
+
 ExplicitMechanics::ExplicitMechanics( mfem::ParFiniteElementSpace& fespace, mfem::Coefficient& rho,
                                       mfem::Coefficient& lambda, mfem::Coefficient& mu )
-    : f_ext{ &fespace }, elasticity{ &fespace }, inv_lumped_mass{ ComputeInvMass( fespace, rho ) }
+    : f_ext{ &fespace }, elasticity{ &fespace }, inv_lumped_mass( ComputeInvMass( fespace, rho ) )
 {
   // create elasticity stiffness matrix
   // Note: not implemented for ElasticityIntegrator
@@ -1759,7 +1766,6 @@ void ExplicitMechanics::Mult( const mfem::Vector& u, const mfem::Vector& AXOM_UN
   f.Add( -1.0, f_int );
 
   f.Add( 1.0, f_ext );
-
   // sum forces over ranks
   auto& fespace = *elasticity.ParFESpace();
   const Operator& P = *fespace.GetProlongationMatrix();
@@ -1795,5 +1801,7 @@ mfem::Vector ExplicitMechanics::ComputeInvMass( mfem::ParFiniteElementSpace& fes
   P.Mult( mass_true, inv_lumped_mass );
   return inv_lumped_mass;
 }
+
+#endif
 
 }  // namespace mfem_ext

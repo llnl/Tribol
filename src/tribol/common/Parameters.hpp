@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -7,10 +7,9 @@
 #define TRIBOL_PARAMETERS_HPP_
 
 // Tribol includes
-#include "tribol/types.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 #include <string>
-#include <iostream>
 
 namespace tribol {
 
@@ -18,7 +17,7 @@ namespace tribol {
 namespace {
 
 //------------------------------------------------------------------------------
-inline bool in_range( integer target, integer N )
+inline bool in_range( int target, int N )
 {
   // NOTE: assumes indexing starts from 0
   return ( ( target >= 0 ) && ( target < N ) );
@@ -26,7 +25,7 @@ inline bool in_range( integer target, integer N )
 
 }  // end anonymous namespace
 
-constexpr integer ANY_MESH = -1;
+constexpr int ANY_MESH = -1;
 
 /*!
  * \brief Enumerates the logging level options
@@ -71,13 +70,12 @@ enum VisType
 };
 
 /*!
- * \brief Tribol supports the following different contact modes:
- *  <ul>
- *    <li> <b>SURFACE_TO_SURFACE</b>: surfaces coming to contact. </li>
- *    <li> <b>SURFACE_TO_VOLUME</b>: a surface coming into contact with a
- *          volumetric mesh description </li>
- *    <li> <b>VOLUME_TO_VOLUME</b>: two volumetric
- *  </ul>
+ * \brief Enumerates the contact modes that specify paired topologies in an interaction
+ *
+ *
+ * The contact mode enumerates the two-sided pairing of mesh entities
+ * (element topologies) in an interaction. These may be combinations
+ * of surface and volume interactions.
  */
 enum ContactMode
 {
@@ -90,17 +88,30 @@ enum ContactMode
 
 /*!
  * \brief Enumerates the available contact cases
+ *
+ * The contact case enumerates specializations, or Tribol use-cases that require
+ * special algorithmic considerations beyond standard Lagrangian contact. Note,
+ * the use of auto-contact cannot be used with the tied contact variants. This
+ * may be a limitation down the road, but for now, the very use case of TIED_*
+ * implies that a host-code knows what two surfaces are tied in a given interaction,
+ * and is able to explicitly specify these when registering the meshes, coupling schemes,
+ * and/or boundary attributes.
  */
 enum ContactCase
 {
-  NO_CASE,     ///! No case specified for chosen mode and/or method
-  AUTO,        ///! Auto contact
-  NO_SLIDING,  ///! User may specify no sliding, simplifying search update
+  NO_CASE,      ///! No case specified for chosen mode and/or method
+  AUTO,         ///! Auto contact
+  TIED_NORMAL,  ///! Tied in the surface normal direction
+  TIED_FULL,    ///! Tied in the surface normal and tangential directions
+  NO_SLIDING,   ///! User may specify no sliding, simplifying search update
   NUM_CONTACT_CASES
 };
 
 /*!
  * \brief Enumerates the available contact method options.
+ *
+ * The contact method is the numerical method used to discretize the
+ * contact surface in order to integrate the weak form contact integrals.
  */
 enum ContactMethod  // all mortar methods go first
 {
@@ -113,19 +124,27 @@ enum ContactMethod  // all mortar methods go first
 
 /*!
  * \brief Enumerates the available contact model options.
+ *
+ * The contact model enumerates interface constitutive modeling options.
+ * These may be paired exclusively with certain contact cases and methods
+ * depending on appropriate physics and/or available implementations.
  */
 enum ContactModel
 {
-  NO_CONTACT,    ///! No contact
-  FRICTIONLESS,  ///! Frictionless, normal contact only
-  TIED,          ///! Tied contact, not supported
-  COULOMB,       ///! Coulomb friction model, not supported
-  NULL_MODEL,    ///! Null model, for use with ContactMethod = MORTAR_WEIGHTS
+  NO_CONTACT,                      ///! No contact
+  FRICTIONLESS,                    ///! Frictionless, normal contact only
+  COULOMB,                         ///! Coulomb friction model, not supported
+  ADHESION_SEPARATION_SCALAR_LAW,  ///! Scalar pressure law for the separation of adhered surfaces (Used with tied
+                                   /// contact)
+  NULL_MODEL,                      ///! Null model, for use with ContactMethod = MORTAR_WEIGHTS
   NUM_CONTACT_MODELS
 };
 
 /*!
  * \brief Enumerates the available enforcement method options.
+ *
+ * The enforcement method is the method used to enforce the contact
+ * constraints paired with a given contact numerical method.
  */
 enum EnforcementMethod
 {
@@ -142,6 +161,7 @@ enum BinningMethod
 {
   BINNING_GRID,               ///! Uses a spatial index to compute the pairs
   BINNING_CARTESIAN_PRODUCT,  ///! Generates all element pairs between the meshes
+  BINNING_BVH,                ///! Uses a bounding volume hierarchy tree to compute the pairs
   NUM_BINNING_METHODS,
   DEFAULT_BINNING_METHOD = BINNING_GRID
 };
@@ -259,7 +279,7 @@ enum class SparseMode
 {
   MFEM_INDEX_SET,     ///! initialize mfem sparse matrix with I, J, and data
   MFEM_LINKED_LIST,   ///! initialize mfem sparse matrix with flexible, linked list option
-  MFEM_ELEMENT_DENSE  ///! Stores element Jacobian contributions in an axom::Array of mfem::DenseMatrixs
+  MFEM_ELEMENT_DENSE  ///! Stores element Jacobian contributions in an ArrayT of mfem::DenseMatrixs
 };
 
 /*!
@@ -291,11 +311,12 @@ enum BasisEvalType
  */
 enum FaceGeomError
 {
-  NO_FACE_GEOM_ERROR,
-  FACE_ORIENTATION,
-  INVALID_INPUT,
-  DEGENERATE_OVERLAP,
-  FACE_INDEX_EXCEEDS_OVERLAP_VERTICES,
+  NO_FACE_GEOM_ERROR,                          ///! No face geometry error
+  FACE_ORIENTATION,                            ///! Face vertices not ordered consistent with outward unit normal
+  INVALID_FACE_INPUT,                          ///! Invalid input
+  DEGENERATE_OVERLAP,                          ///! Issues with overlap calculation resulting in degenerate overlap
+  FACE_VERTEX_INDEX_EXCEEDS_OVERLAP_VERTICES,  ///! Very specific debug indexing error where face vertex count exceeds
+                                               /// overlap vertex count in cg routine
   NUM_FACE_GEOM_ERRORS
 };
 
@@ -317,6 +338,7 @@ enum CaseError
 {
   INVALID_CASE,
   NO_CASE_IMPLEMENTATION,
+  INVALID_CASE_DATA,
   NO_CASE_ERROR,
   NUM_CASE_ERRORS
 };
@@ -326,6 +348,7 @@ enum CaseError
  */
 enum MethodError
 {
+  INVALID_ELEMENT_TYPE,
   INVALID_METHOD,
   NO_METHOD_IMPLEMENTATION,
   DIFFERENT_FACE_TYPES,
@@ -383,7 +406,6 @@ enum CaseInfo
   SPECIFYING_NO_SLIDING_WITH_REGISTERED_MODE,
   SPECIFYING_NO_SLIDING_WITH_REGISTERED_METHOD,
   SPECIFYING_NONE_WITH_REGISTERED_METHOD,
-  SPECIFYING_NONE_WITH_TWO_REGISTERED_MESHES,
   NO_CASE_INFO,
   NUM_CASE_INFO
 };
@@ -403,13 +425,6 @@ enum EnforcementInfo
  */
 struct LagrangeMultiplierImplicitOptions {
  public:
-  // default constructor
-  LagrangeMultiplierImplicitOptions(){};
-
-  ~LagrangeMultiplierImplicitOptions(){};
-
-  bool is_enforcement_option_set() { return enforcement_option_set; }
-
   bool enforcement_option_set{ false };
 
   ImplicitEvalMode eval_mode;  ///! Implicit evaluation mode for residual, jacobian and gaps
@@ -421,25 +436,16 @@ struct LagrangeMultiplierImplicitOptions {
  */
 struct PenaltyEnforcementOptions {
  public:
-  // default constructor
-  PenaltyEnforcementOptions(){};
-
-  ~PenaltyEnforcementOptions(){};
-
   PenaltyConstraintType constraint_type;
   KinematicPenaltyCalculation kinematic_calculation;
   RatePenaltyCalculation rate_calculation;
-
-  bool is_constraint_type_set() { return constraint_type_set; }
-  bool is_kinematic_calculation_set() { return kinematic_calc_set; }
-  bool is_rate_calculation_set() { return rate_calc_set; }
 
   bool constraint_type_set{ false };
   bool kinematic_calc_set{ false };
   bool rate_calc_set{ false };
 
-  double tiny_length{ 1.e-12 };   ///! Small length to avoid division by zero
-  double tiny_penalty{ 1.e-12 };  ///! Small penalty to avoid division by zero
+  RealT tiny_length{ 1.e-12 };   ///! Small length to avoid division by zero
+  RealT tiny_penalty{ 1.e-12 };  ///! Small penalty to avoid division by zero
 };
 
 /*!
@@ -447,52 +453,48 @@ struct PenaltyEnforcementOptions {
  */
 struct EnforcementOptions {
  public:
-  // default constructor
-  EnforcementOptions(){};
-
-  ~EnforcementOptions(){};
-
   PenaltyEnforcementOptions penalty_options;
   LagrangeMultiplierImplicitOptions lm_implicit_options;
 };
 
 /*!
- * \brief Singleton Struct to hold parameters
+ * \brief Coupling scheme parameters struct
  */
-struct parameters_t {
-  // return an instance of this struct
-  static parameters_t& getInstance()
-  {
-    static parameters_t instance;
-    return instance;
-  }
+struct Parameters {
+  CommT problem_comm = TRIBOL_COMM_WORLD;  ///! MPI communicator for the problem
 
-  // disable copy constructor
-  parameters_t( parameters_t const& ) = delete;
+  RealT binning_proximity_scale =
+      4.0;                           ///! Element length multiplier for coarse binning and proximity detection inclusion
+  RealT overlap_area_frac = 1.0e-8;  ///! Ratio of overlap area to largest face area for contact inclusion
+  RealT gap_tol_ratio = 1.0e-12;     ///! Ratio for determining tolerance for active contact gaps
+  RealT gap_separation_ratio = 0.75;  ///! Ratio for determining allowable separation in geometric filtering
+  RealT gap_tied_tol = 0.1;           ///! Ratio for determining max separation tied contact can support
+  RealT len_collapse_ratio = 1.0e-8;  ///! Ratio of face length providing topology collapse length tolerance
+  RealT projection_ratio = 1.0e-10;   ///! Ratio for defining nonzero projections
+  RealT auto_contact_pen_frac =
+      0.95;  ///! Max allowable interpenetration as percent of element thickness for contact candidacy
+  RealT timestep_pen_frac =
+      3.0e-1;  ///! Max allowable interpenetration as percent of element thickness prior to triggering timestep vote
+  RealT timestep_scale =
+      1.0;  ///! Scale factor (>0) applied to the timestep vote giving users some control over the vote
 
-  // disable move
-  parameters_t( parameters_t&& ) = delete;
+  int vis_cycle_incr = 100;           ///! Frequency for visualizations dumps
+  VisType vis_type = VIS_OVERLAPS;    ///! Type of interface physics visualization output
+  bool enable_timestep_vote = false;  ///! True if host-code desires the timestep vote to be calculated and returned
 
-  integer dimension;      ///! Spatial dimension of the problem
-  CommType problem_comm;  ///! MPI communicator for the problem
+  bool auto_interpen_check = false;  ///! True if the auto-contact interpenetration check is used for full-overlap pairs
 
-  double overlap_area_frac;     ///! Ratio of overlap area to largest face area for contact inclusion
-  double gap_tol_ratio;         ///! Ratio for determining tolerance for active contact gaps
-  double gap_separation_ratio;  ///! Ratio for determining allowable separation in geometric filtering
-  double gap_tied_tol;          ///! Ratio for determining max separation tied contact can support
-  double len_collapse_ratio;    ///! Ratio of face length providing topology collapse length tolerance
-  double projection_ratio;      ///! Ratio for defining nonzero projections
-  double contact_pen_frac;      ///! Ratio for amount of allowable interpen in a cycle
+  double auto_contact_len_scale_factor;  ///! Scale factor applied to element thickness for auto contact length scale
 
-  int vis_cycle_incr;            ///! Frequency for visualizations dumps
-  VisType vis_type;              ///! Type of interface physics visualization output
-  std::string output_directory;  ///! Output directory for visualization dumps
-
- private:
-  // private constructor
-  parameters_t() {}
+  // Interpenetration check for auto-contact. If true, this will check a full-overlap
+  // face-pair configuration in the computational geoemtry routines to preclude
+  // auto-contact of opposite sides of thin structures/plates. If the full-overlap
+  // interpenetration kinematic gap is more than the smallest thickness of the
+  // constituent face elements, then we don't consider the face-pair a contact candidate.
+  // Note, auto-contact will require registration of element thicknesses.
+  bool auto_contact_check = false;  ///! True if auto-contact checks should be enabled
 };
 
-} /* end namespace tribol */
+}  // namespace tribol
 
 #endif /* TRIBOL_PARAMETERS_HPP_ */

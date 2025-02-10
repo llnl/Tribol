@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -6,7 +6,6 @@
 #ifndef SRC_PHYSICS_ALIGNEDMORTAR_HPP_
 #define SRC_PHYSICS_ALIGNEDMORTAR_HPP_
 
-#include "tribol/types.hpp"
 #include "Mortar.hpp"
 #include "Physics.hpp"
 
@@ -23,7 +22,7 @@ struct SurfaceContactElem;
  *
  *
  */
-void ComputeAlignedMortarGaps( CouplingScheme const* cs );
+void ComputeAlignedMortarGaps( CouplingScheme* cs );
 
 /*!
  *
@@ -72,7 +71,7 @@ void ComputeNodalGap<ALIGNED_MORTAR>( SurfaceContactElem& elem );
  *
  */
 template <>
-int ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme const* cs );
+int ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs );
 
 /*!
  *

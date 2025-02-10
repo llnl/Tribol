@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -6,10 +6,8 @@
 // tribol includes
 #include "Physics.hpp"
 
-#include "tribol/types.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/geom/ContactPlaneManager.hpp"
 #include "tribol/utils/ContactPlaneOutput.hpp"
 
 // Axom includes
@@ -17,8 +15,7 @@
 
 namespace tribol {
 
-int ApplyInterfacePhysics( CouplingScheme const* cs, integer TRIBOL_UNUSED_PARAM( cycle ),
-                           real TRIBOL_UNUSED_PARAM( t ) )
+int ApplyInterfacePhysics( CouplingScheme* cs, int TRIBOL_UNUSED_PARAM( cycle ), RealT TRIBOL_UNUSED_PARAM( t ) )
 {
   // call the appropriate normal and tangential interface physics
   // routines based on method, enforcement strategy, and interface
@@ -37,17 +34,19 @@ int ApplyInterfacePhysics( CouplingScheme const* cs, integer TRIBOL_UNUSED_PARAM
       // switch over enforcement method for normal (i.e. normal direction) enforcement
       switch ( cs->getEnforcementMethod() ) {
         case PENALTY:
+          switch ( cs->getContactCase() ) {
+            // apply normal physics for ALL cases
+            default: {
+              err_nrml = ApplyNormal<COMMON_PLANE, PENALTY>( cs );
+              break;
+            }
+          }
+          // query the model for application of tangential physics
           switch ( cs->getContactModel() ) {
-            case FRICTIONLESS:
-              // Note: gap rate pressure contributions checked in regular
-              // gap penalty enforcement routine
-              err_nrml = ApplyNormal<COMMON_PLANE, PENALTY>( cs );
+            // no tangential physics implemented yet
+            default: {
               break;
-            case TIED:
-              err_nrml = ApplyNormal<COMMON_PLANE, PENALTY>( cs );
-              break;
-            default:
-              break;
+            }
           }  // end switch on contact model
           break;
         default:

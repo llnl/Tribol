@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -42,25 +42,29 @@ class RedecompMesh : public mfem::Mesh {
   /**
    * @brief Construct a new RedecompMesh object
    *
-   * @note This constructor builds the Partitioner object based on the method
-   * passed. If no method is passed, a RCB Partitioner is constructed.
+   * @note This constructor builds the Partitioner object based on the method passed. If no method is passed, a RCB
+   * Partitioner is constructed.
    *
    * @param parent The mfem::ParMesh that will be redecomposed
    * @param method The method of redecomposition (optional)
+   * @param n_ranks Sets number of MPI ranks to build RedecompMesh on (default = 0). Set this to zero to have this
+   * automatically determined.
    */
-  RedecompMesh( const mfem::ParMesh& parent, PartitionType method = RCB );
+  RedecompMesh( const mfem::ParMesh& parent, PartitionType method = RCB, int n_ranks = 0 );
 
   /**
    * @brief Construct a new RedecompMesh object
    *
-   * @note This constructor builds the Partitioner object based on the method
-   * passed. If no method is passed, a RCB Partitioner is constructed.
+   * @note This constructor builds the Partitioner object based on the method passed. If no method is passed, a RCB
+   * Partitioner is constructed.
    *
    * @param parent The mfem::ParMesh that will be redecomposed
    * @param ghost_length Size of layer of un-owned ghost elements to include around the edge of the on-rank domain
    * @param method The method of redecomposition (optional)
+   * @param n_ranks Sets number of MPI ranks to build RedecompMesh on (default = 0). Set this to zero to have this
+   * automatically determined.
    */
-  RedecompMesh( const mfem::ParMesh& parent, double ghost_length, PartitionType method = RCB );
+  RedecompMesh( const mfem::ParMesh& parent, double ghost_length, PartitionType method = RCB, int n_ranks = 0 );
 
   /**
    * @brief Construct a new RedecompMesh object
@@ -71,8 +75,10 @@ class RedecompMesh : public mfem::Mesh {
    *
    * @param parent The mfem::ParMesh that will be redecomposed
    * @param partitioner Partitioning object used to define redecomposition
+   * @param n_ranks Sets number of MPI ranks to build RedecompMesh on (default = 0). Set this to zero to have this
+   * automatically determined.
    */
-  RedecompMesh( const mfem::ParMesh& parent, std::unique_ptr<const Partitioner> partitioner );
+  RedecompMesh( const mfem::ParMesh& parent, std::unique_ptr<const Partitioner> partitioner, int n_ranks = 0 );
 
   /**
    * @brief Construct a new RedecompMesh object
@@ -84,8 +90,11 @@ class RedecompMesh : public mfem::Mesh {
    * @param parent The mfem::ParMesh that will be redecomposed
    * @param ghost_length Size of layer of un-owned ghost elements to include around the edge of the on-rank domain
    * @param partitioner Partitioning object used to define redecomposition
+   * @param n_ranks Sets number of MPI ranks to build RedecompMesh on (default = 0). Set this to zero to have this
+   * automatically determined.
    */
-  RedecompMesh( const mfem::ParMesh& parent, double ghost_length, std::unique_ptr<const Partitioner> partitioner );
+  RedecompMesh( const mfem::ParMesh& parent, double ghost_length, std::unique_ptr<const Partitioner> partitioner,
+                int n_ranks = 0 );
 
   /**
    * @brief Construct a new RedecompMesh object

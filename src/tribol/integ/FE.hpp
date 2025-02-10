@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -6,7 +6,6 @@
 #ifndef SRC_INTEG_FE_HPP_
 #define SRC_INTEG_FE_HPP_
 
-#include "tribol/types.hpp"
 #include "tribol/common/Parameters.hpp"
 
 namespace tribol {
@@ -30,8 +29,9 @@ namespace tribol {
  * \pre z is nullptr for 2D
  *
  */
-void GalerkinEval( const real* const RESTRICT x, const real pX, const real pY, const real pZ, FaceOrderType order_type,
-                   BasisEvalType basis_type, int dim, int galerkinDim, real* nodeVals, real* galerkinVal );
+TRIBOL_HOST_DEVICE void GalerkinEval( const RealT* const x, const RealT pX, const RealT pY, const RealT pZ,
+                                      FaceOrderType order_type, BasisEvalType basis_type, int dim, int galerkinDim,
+                                      RealT* nodeVals, RealT* galerkinVal );
 
 /*!
  *
@@ -49,8 +49,8 @@ void GalerkinEval( const real* const RESTRICT x, const real pX, const real pY, c
  * \pre z is nullptr for 2D
  *
  */
-void EvalBasis( const real* const RESTRICT x, const real pX, const real pY, const real pZ, const int numPoints,
-                const int vertexId, real& phi );
+TRIBOL_HOST_DEVICE void EvalBasis( const RealT* const x, const RealT pX, const RealT pY, const RealT pZ,
+                                   const int numPoints, const int vertexId, RealT& phi );
 
 /*!
  *
@@ -69,8 +69,8 @@ void EvalBasis( const real* const RESTRICT x, const real pX, const real pY, cons
  * \note This is implicitly a 3D routine
  *
  */
-void WachspressBasis( const real* const RESTRICT x, const real pX, const real pY, const real pZ, const int numPoints,
-                      const int vertexId, real& phi );
+TRIBOL_HOST_DEVICE void WachspressBasis( const RealT* const x, const RealT pX, const RealT pY, const RealT pZ,
+                                         const int numPoints, const int vertexId, RealT& phi );
 
 /*!
  *
@@ -79,15 +79,14 @@ void WachspressBasis( const real* const RESTRICT x, const real pX, const real pY
  * \param [in] x pointer to array of stacked (xy) coordinates for 2D segment
  * \param [in] pX x-coordinate of point at which to evaluate shape function
  * \param [in] pX y-coordinate of point at which to evaluate shape function
- * \param [in] numPoints number of vertices in x,y arrays
  * \param [in] vertexId node id whose shape function is to be evaluated
  * \param [in,out] phi shape function evaluation
  *
  * \note This is implicitly a 2D routine
  *
  */
-void SegmentBasis( const real* const RESTRICT x, const real pX, const real pY, const int numPoints, const int vertexId,
-                   real& phi );
+TRIBOL_HOST_DEVICE void SegmentBasis( const RealT* const x, const RealT pX, const RealT pY, const int vertexId,
+                                      RealT& phi );
 
 /*!
  *
@@ -107,7 +106,7 @@ void SegmentBasis( const real* const RESTRICT x, const real pX, const real pY, c
  *       x[2] is equal to 0.
  *
  */
-void InvIso( const real x[3], const real* xA, const real* yA, const real* zA, const int numNodes, real xi[2] );
+void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA, const int numNodes, RealT xi[2] );
 
 /*!
  *
@@ -121,7 +120,7 @@ void InvIso( const real x[3], const real* xA, const real* yA, const real* zA, co
  *
  *
  */
-void FwdMapLinQuad( const real xi[2], real xa[4], real ya[4], real za[4], real x[3] );
+void FwdMapLinQuad( const RealT xi[2], RealT xa[4], RealT ya[4], RealT za[4], RealT x[3] );
 
 /*!
  *
@@ -135,7 +134,7 @@ void FwdMapLinQuad( const real xi[2], real xa[4], real ya[4], real za[4], real x
  *
  *
  */
-void FwdMapLinTri( const real xi[2], real xa[3], real ya[3], real za[3], real x[3] );
+void FwdMapLinTri( const RealT xi[2], RealT xa[3], RealT ya[3], RealT za[3], RealT x[3] );
 
 /*!
  *
@@ -151,7 +150,7 @@ void FwdMapLinTri( const real xi[2], real xa[3], real ya[3], real za[3], real x[
  *
  *
  */
-void LinIsoQuadShapeFunc( const real xi, const real eta, const int a, real& phi );
+void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi );
 
 /*!
  *
@@ -170,7 +169,7 @@ void LinIsoQuadShapeFunc( const real xi, const real eta, const int a, real& phi 
  *       of each node are as follows (-1,-1), (1,-1), (0,1).
  *
  */
-void LinIsoTriShapeFunc( const real xi, const real eta, const int a, real& phi );
+void LinIsoTriShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi );
 
 /*!
  *
@@ -190,7 +189,7 @@ void LinIsoTriShapeFunc( const real xi, const real eta, const int a, real& phi )
  *       integrals
  *
  */
-void DetJQuad( const real xi, const real eta, const real* x, const int dim, real& detJ );
+void DetJQuad( const RealT xi, const RealT eta, const RealT* x, const int dim, RealT& detJ );
 
 }  // namespace tribol
 

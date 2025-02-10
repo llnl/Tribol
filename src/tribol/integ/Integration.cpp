@@ -1,11 +1,10 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
 
 // tribol includes
 #include "Integration.hpp"
-#include "tribol/types.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/utils/Math.hpp"
 #include "tribol/integ/FE.hpp"
@@ -20,58 +19,115 @@
 namespace tribol {
 
 template <>
-void EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( SurfaceContactElem const& elem, real* const integ1,
-                                                       real* const integ2 )
+TRIBOL_HOST_DEVICE void EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( SurfaceContactElem const& elem,
+                                                                          RealT* const integ1, RealT* const integ2 )
 {
   // compute the area centroid of the overlap polygon,
-  // which serves as the single integration point
-  real cx[3] = { 0., 0., 0. };
-  PolyAreaCentroid( elem.overlapCoords, elem.dim, elem.numPolyVert, cx[0], cx[1], cx[2] );
-
-  ///////////////////////////////////////////////
-  //
-  // project overlap polygon centroid to each face
-  //
-  ///////////////////////////////////////////////
-  real cxProj1[3] = { 0., 0., 0. };  // overlap centroid projected to face 1
-  real cxProj2[3] = { 0., 0., 0. };  // overlap centroid projected to face 2
-  real cxf1[3] = { 0., 0., 0. };     // vertex avg. centroid of face 1
-  real cxf2[3] = { 0., 0., 0. };     // vertex avg. centroid of face 2
-
-  // compute vertex averaged centroid of each face for the point-normal data
-  VertexAvgCentroid( elem.faceCoords1, elem.dim, elem.numFaceVert, cxf1[0], cxf1[1], cxf1[2] );
-  VertexAvgCentroid( elem.faceCoords2, elem.dim, elem.numFaceVert, cxf2[0], cxf2[1], cxf2[2] );
-
-  // project the overlap centroid to each face
-  if ( elem.dim == 3 ) {
-    // TODO we should probably project in the direction of the overlap normal
-    // As the faces become less coplanar we lose conservation of angular momentum
-    ProjectPointToPlane( cx[0], cx[1], cx[2], elem.faceNormal1[0], elem.faceNormal1[1], elem.faceNormal1[2], cxf1[0],
-                         cxf1[1], cxf1[2], cxProj1[0], cxProj1[1], cxProj1[2] );
-
-    ProjectPointToPlane( cx[0], cx[1], cx[2], elem.faceNormal2[0], elem.faceNormal2[1], elem.faceNormal2[2], cxf2[0],
-                         cxf2[1], cxf2[2], cxProj2[0], cxProj2[1], cxProj2[2] );
+  // or vertex avg. centroid of the overlap segment, which
+  // serves as the single integration point
+  RealT cx[3] = { 0., 0., 0. };
+  if ( elem.dim == 2 ) {
+    VertexAvgCentroid( elem.overlapCoords, elem.dim, elem.numPolyVert, cx[0], cx[1], cx[2] );
   } else {
-    // TODO we should probably project in the direction of the overlap normal
-    // As the faces become less coplanar we lose conservation of angular momentum
-    ProjectPointToSegment( cx[0], cx[1], elem.faceNormal1[0], elem.faceNormal1[1], cxf1[0], cxf1[1], cxProj1[0],
-                           cxProj1[1] );
-    ProjectPointToSegment( cx[0], cx[1], elem.faceNormal2[0], elem.faceNormal2[1], cxf2[0], cxf2[1], cxProj2[0],
-                           cxProj2[1] );
+    PolyAreaCentroid( elem.overlapCoords, elem.dim, elem.numPolyVert, cx[0], cx[1], cx[2] );
+  }
+
+  // debug: leave commented out so we don't enter loop
+  {
+    // SLIC_DEBUG("Integration point: " << cx[0] << ", " << cx[1]);
+
+    // SLIC_DEBUG("Overlap area: " << elem.overlapArea);
+    // SLIC_DEBUG("Overlap coords: ");
+    // for (int i=0; i<elem.numPolyVert; ++i)
+    //{
+    //    if (elem.dim==2)
+    //    {
+    //       SLIC_DEBUG(elem.overlapCoords[elem.dim*i] << ", " << elem.overlapCoords[elem.dim*i+1]);
+    //    }
+    //    else
+    //    {
+    //       SLIC_DEBUG(elem.overlapCoords[elem.dim*i] << ", " << elem.overlapCoords[elem.dim*i+1] << ", "
+    //       elem.overlapCoords[elem.dim*i+2]);
+    //    }
+    // }
+  }
+
+  /////////////////////////////////////////////////////////////////////////
+  //                                                                     //
+  // Project each face/edge to the common plane overlap                  //
+  //                                                                     //
+  //   Note: projecting integration point to current configuration faces //
+  //         will have same basis evaluation as projecting faces to      //
+  //         the common plane on which the integration point is          //
+  //         originally defined.                                         //
+  //                                                                     //
+  /////////////////////////////////////////////////////////////////////////
+
+  // allocate max stacked arrays of coordinates. The basis function evaluation
+  // later in this routine requires data in this format
+  constexpr int max_vertex_coords_per_elem = 3 * 4;
+  RealT projX1[max_vertex_coords_per_elem];
+  RealT projX2[max_vertex_coords_per_elem];
+
+  if ( elem.dim == 3 ) {
+    // loop over number of nodes per face (same for each mesh) and project nodes to common plane.
+    // Can use the integration point as the point in the point-normal data.
+    for ( int i = 0; i < elem.m_mesh1->numberOfNodesPerElement(); ++i ) {
+      const int nodeId1 = elem.m_mesh1->getGlobalNodeId( elem.faceId1, i );
+      ProjectPointToPlane( elem.m_mesh1->getPosition()[0][nodeId1], elem.m_mesh1->getPosition()[1][nodeId1],
+                           elem.m_mesh1->getPosition()[2][nodeId1], elem.overlapNormal[0], elem.overlapNormal[1],
+                           elem.overlapNormal[2], cx[0], cx[1], cx[2], projX1[elem.dim * i], projX1[elem.dim * i + 1],
+                           projX1[elem.dim * i + 2] );
+
+      SLIC_DEBUG( "face 1 projected vertex " << i << ": " << elem.m_mesh1->getPosition()[0][nodeId1] << ", "
+                                             << elem.m_mesh1->getPosition()[1][nodeId1]
+                                             << elem.m_mesh1->getPosition()[2][nodeId1] );
+
+      const int nodeId2 = elem.m_mesh2->getGlobalNodeId( elem.faceId2, i );
+      ProjectPointToPlane( elem.m_mesh2->getPosition()[0][nodeId2], elem.m_mesh2->getPosition()[1][nodeId2],
+                           elem.m_mesh2->getPosition()[2][nodeId2], elem.overlapNormal[0], elem.overlapNormal[1],
+                           elem.overlapNormal[2], cx[0], cx[1], cx[2], projX2[elem.dim * i], projX2[elem.dim * i + 1],
+                           projX2[elem.dim * i + 2] );
+
+      SLIC_DEBUG( "face 2 projected vertex " << i << ": " << elem.m_mesh2->getPosition()[0][nodeId2] << ", "
+                                             << elem.m_mesh2->getPosition()[1][nodeId2]
+                                             << elem.m_mesh2->getPosition()[2][nodeId2] );
+    }
+  } else {
+    // loop over number of nodes per edge (same for each mesh) and project nodes to common plane.
+    // Can use the integration point as the point in the point-normal data.
+    for ( int i = 0; i < elem.m_mesh1->numberOfNodesPerElement(); ++i ) {
+      const int nodeId1 = elem.m_mesh1->getGlobalNodeId( elem.faceId1, i );
+
+      ProjectPointToSegment( elem.m_mesh1->getPosition()[0][nodeId1], elem.m_mesh1->getPosition()[1][nodeId1],
+                             elem.overlapNormal[0], elem.overlapNormal[1], cx[0], cx[1], projX1[elem.dim * i],
+                             projX1[elem.dim * i + 1] );
+
+      SLIC_DEBUG( "edge 1 projected vertex " << i << ": " << elem.m_mesh1->getPosition()[0][nodeId1] << ", "
+                                             << elem.m_mesh1->getPosition()[1][nodeId1] );
+
+      const int nodeId2 = elem.m_mesh2->getGlobalNodeId( elem.faceId2, i );
+      ProjectPointToSegment( elem.m_mesh2->getPosition()[0][nodeId2], elem.m_mesh2->getPosition()[1][nodeId2],
+                             elem.overlapNormal[0], elem.overlapNormal[1], cx[0], cx[1], projX2[elem.dim * i],
+                             projX2[elem.dim * i + 1] );
+
+      SLIC_DEBUG( "edge 2 projected vertex " << i << ": " << elem.m_mesh2->getPosition()[0][nodeId2] << ", "
+                                             << elem.m_mesh2->getPosition()[1][nodeId2] );
+    }
   }
 
   // loop over nodes and compute nodal force integral
   // contributions
   for ( int a = 0; a < elem.numFaceVert; ++a ) {
-    EvalBasis( elem.faceCoords1, cxProj1[0], cxProj1[1], cxProj1[2], elem.numFaceVert, a, integ1[a] );
-    EvalBasis( elem.faceCoords2, cxProj2[0], cxProj2[1], cxProj2[2], elem.numFaceVert, a, integ2[a] );
+    EvalBasis( &projX1[0], cx[0], cx[1], cx[2], elem.numFaceVert, a, integ1[a] );
+    EvalBasis( &projX2[0], cx[0], cx[1], cx[2], elem.numFaceVert, a, integ2[a] );
   }
 
   return;
 }
 
 //------------------------------------------------------------------------------
-void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, integer k )
+void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, int k )
 {
   // check that the order, k, is either 2 or 3
   if ( k != 2 && k != 3 ) {
@@ -88,7 +144,7 @@ void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, integer k )
 
   // declare local array to hold barycentric coordinates for each
   // triangle
-  real bary[elem.dim * numTriPoints];
+  RealT bary[elem.dim * numTriPoints];
 
   switch ( k ) {
     case 2:
@@ -160,7 +216,7 @@ void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, integer k )
   // compute the vertex averaged centroid of the overlap polygon. Note
   // that the coordinates of the overlap polygon are always assumed to be
   // 3D
-  real xc[elem.dim];
+  RealT xc[elem.dim];
   for ( int i = 0; i < elem.dim; ++i ) {
     xc[i] = 0.;
   }
@@ -179,7 +235,7 @@ void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, integer k )
   // integration points based on the TWB barycenter data for the
   // given integration order
 
-  real vx, vy, vz, a, b, c, p, area;
+  RealT vx, vy, vz, a, b, c, p, area;
   int kmax = elem.numPolyVert - 1;
   for ( int k = 0; k < kmax; ++k ) {
     vx = elem.overlapCoords[elem.dim * ( k + 1 )] - elem.overlapCoords[elem.dim * k];
@@ -195,7 +251,7 @@ void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, integer k )
     vz = xc[2] - elem.overlapCoords[elem.dim * ( k + 1 ) + 2];
     c = magnitude( vx, vy, vz );
     p = 0.5 * ( a + b + c );
-    real area = sqrt( p * ( p - a ) * ( p - b ) * ( p - c ) );
+    RealT area = sqrt( p * ( p - a ) * ( p - b ) * ( p - c ) );
 
     for ( int m = 0; m < numTriPoints; ++m ) {
       integ.wts[numTriPoints * k + m] *= 0.5 * area;
@@ -243,7 +299,7 @@ void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, integer k )
 }
 
 //------------------------------------------------------------------------------
-int NumTWBPointsPoly( SurfaceContactElem const& elem, integer k )
+int NumTWBPointsPoly( SurfaceContactElem const& elem, int k )
 {
   // get the number of integration points per triangle per integration rule
   // order k
@@ -255,7 +311,7 @@ int NumTWBPointsPoly( SurfaceContactElem const& elem, integer k )
 }
 
 //------------------------------------------------------------------------------
-int NumTWBPointsPerTri( integer order )
+int NumTWBPointsPerTri( int order )
 {
   switch ( order ) {
     case 2:
@@ -271,7 +327,7 @@ int NumTWBPointsPerTri( integer order )
 }
 
 //------------------------------------------------------------------------------
-void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, integer k )
+void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, int k )
 {
   // determine the number of integration points per triangle in the decomposed
   // polygon and the total number of integration points on the polygon
@@ -298,13 +354,13 @@ void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, integer k
 
   // populate wts array and set parent space coordinates of
   // integration points on triangle
-  real* coords;
+  RealT* coords;
   switch ( k ) {
     case 2:
       for ( int i = 0; i < numTotalPoints; ++i ) {
         integ.wts[i] = 0.3333333333;
       }
-      coords = new real[6];
+      coords = new RealT[6];
       coords[0] = 0.1666666667;
       coords[1] = 0.1666666667;
       coords[2] = 0.6666666667;
@@ -314,8 +370,8 @@ void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, integer k
       break;
     case 3:
     case 4:
-      real wt1 = 0.109951743655322;
-      real wt2 = 0.223381589678011;
+      RealT wt1 = 0.109951743655322;
+      RealT wt2 = 0.223381589678011;
       for ( int i = 0; i < elem.numPolyVert; ++i ) {
         integ.wts[numTriPoints * i] = wt1;
         integ.wts[numTriPoints * i + 1] = wt1;
@@ -324,11 +380,11 @@ void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, integer k
         integ.wts[numTriPoints * i + 4] = wt2;
         integ.wts[numTriPoints * i + 5] = wt2;
       }
-      real x1 = 0.091576213509771;
-      real x2 = 0.816847572980459;
-      real x3 = 0.108103018168070;
-      real x4 = 0.445948490915965;
-      coords = new real[12];
+      RealT x1 = 0.091576213509771;
+      RealT x2 = 0.816847572980459;
+      RealT x3 = 0.108103018168070;
+      RealT x4 = 0.445948490915965;
+      coords = new RealT[12];
       coords[0] = x1;
       coords[1] = x1;
       coords[2] = x2;
@@ -345,9 +401,9 @@ void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, integer k
   }
 
   // compute area centroid of polygon
-  real xTri[3] = { 0., 0., 0. };
-  real yTri[3] = { 0., 0., 0. };
-  real zTri[3] = { 0., 0., 0. };
+  RealT xTri[3] = { 0., 0., 0. };
+  RealT yTri[3] = { 0., 0., 0. };
+  RealT zTri[3] = { 0., 0., 0. };
   PolyAreaCentroid( elem.overlapCoords, elem.dim, elem.numPolyVert, xTri[2], yTri[2], zTri[2] );
 
   // populate xy array
@@ -363,7 +419,7 @@ void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, integer k
     zTri[1] = elem.overlapCoords[elem.dim * triIdPlusOne + 2];
 
     // compute area of triangle
-    real area = Area3DTri( xTri, yTri, zTri );
+    RealT area = Area3DTri( xTri, yTri, zTri );
 
     for ( int k = 0; k < numTriPoints; ++k ) {
       // NOTE: Per Puso 2004, the sum over integration point
@@ -375,12 +431,12 @@ void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, integer k
       integ.wts[numTriPoints * j + k] *= area;
 
       // group parent space ip coordinates
-      real xi[2];
+      RealT xi[2];
       xi[0] = coords[parentDim * k];
       xi[1] = coords[parentDim * k + 1];
 
       // forward map parent space ip coords to physical space
-      real x[3];
+      RealT x[3];
       FwdMapLinTri( xi, xTri, yTri, zTri, x );
 
       integ.xy[( ( integ.ipDim ) * numTriPoints ) * j + ( integ.ipDim * k )] = x[0];
@@ -393,7 +449,7 @@ void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, integer k
 }
 
 //------------------------------------------------------------------------------
-void GaussPolyIntQuad( SurfaceContactElem const& TRIBOL_UNUSED_PARAM( elem ), IntegPts& integ, integer k )
+void GaussPolyIntQuad( SurfaceContactElem const& TRIBOL_UNUSED_PARAM( elem ), IntegPts& integ, int k )
 {
   // determine the number of integration points per quad
   int numQuadPoints;
@@ -433,8 +489,8 @@ void GaussPolyIntQuad( SurfaceContactElem const& TRIBOL_UNUSED_PARAM( elem ), In
       for ( int i = 0; i < numQuadPoints; ++i ) {
         integ.wts[i] = 1.;
       }
-      //         real inv_root_3 = 1./std::sqrt(3.);
-      real inv_root_3 = 1. / std::sqrt( 3. );
+      //         RealT inv_root_3 = 1./std::sqrt(3.);
+      RealT inv_root_3 = 1. / std::sqrt( 3. );
 
       // integration points ordered counter-clockwise
       integ.xy[0] = -inv_root_3;
@@ -448,8 +504,8 @@ void GaussPolyIntQuad( SurfaceContactElem const& TRIBOL_UNUSED_PARAM( elem ), In
       break;
     }
     case 3: {
-      real five_nine = 5. / 9.;
-      real eight_nine = 8. / 9.;
+      RealT five_nine = 5. / 9.;
+      RealT eight_nine = 8. / 9.;
 
       // integration points ordered left to right, bottom to top
       integ.wts[0] = five_nine * five_nine;
@@ -462,8 +518,8 @@ void GaussPolyIntQuad( SurfaceContactElem const& TRIBOL_UNUSED_PARAM( elem ), In
       integ.wts[7] = five_nine * eight_nine;
       integ.wts[8] = five_nine * five_nine;
 
-      real x1 = std::sqrt( 3. / 5. );
-      real x2 = 0.;
+      RealT x1 = std::sqrt( 3. / 5. );
+      RealT x2 = 0.;
       integ.xy[0] = -x1;
       integ.xy[1] = -x1;
       integ.xy[2] = x2;
@@ -487,8 +543,8 @@ void GaussPolyIntQuad( SurfaceContactElem const& TRIBOL_UNUSED_PARAM( elem ), In
       break;
     }
     case 4: {
-      real wt1 = ( 18. - std::sqrt( 30. ) ) / 36.;
-      real wt2 = ( 18. + std::sqrt( 30. ) ) / 36.;
+      RealT wt1 = ( 18. - std::sqrt( 30. ) ) / 36.;
+      RealT wt2 = ( 18. + std::sqrt( 30. ) ) / 36.;
 
       // integration points ordered bottom to top, left to right.
       // Note, this is different that the third order rule
@@ -509,10 +565,10 @@ void GaussPolyIntQuad( SurfaceContactElem const& TRIBOL_UNUSED_PARAM( elem ), In
       integ.wts[14] = wt1 * wt2;
       integ.wts[15] = wt1 * wt1;
 
-      //         real x1 = std::sqrt((15. + 2. * std::sqrt(30.)) / 35.);
-      //         real x2 = std::sqrt((15. - 2. * std::sqrt(30.)) / 35.);
-      real x1 = std::sqrt( 3. / 7. + 2. / 7. * std::sqrt( 6. / 5. ) );
-      real x2 = std::sqrt( 3. / 7. - 2. / 7. * std::sqrt( 6. / 5. ) );
+      //         RealT x1 = std::sqrt((15. + 2. * std::sqrt(30.)) / 35.);
+      //         RealT x2 = std::sqrt((15. - 2. * std::sqrt(30.)) / 35.);
+      RealT x1 = std::sqrt( 3. / 7. + 2. / 7. * std::sqrt( 6. / 5. ) );
+      RealT x2 = std::sqrt( 3. / 7. - 2. / 7. * std::sqrt( 6. / 5. ) );
 
       integ.xy[0] = -x1;
       integ.xy[1] = -x1;
@@ -552,9 +608,9 @@ void GaussPolyIntQuad( SurfaceContactElem const& TRIBOL_UNUSED_PARAM( elem ), In
       break;
     }
     case 5: {
-      real wt1 = 1. / 900. * ( 322. - 13. * std::sqrt( 70. ) );
-      real wt2 = 1. / 900. * ( 322. + 13. * std::sqrt( 70. ) );
-      real wt3 = 128. / 225.;
+      RealT wt1 = 1. / 900. * ( 322. - 13. * std::sqrt( 70. ) );
+      RealT wt2 = 1. / 900. * ( 322. + 13. * std::sqrt( 70. ) );
+      RealT wt3 = 128. / 225.;
 
       // points are ordered bottom to top, left to right
       integ.wts[0] = wt1 * wt1;
@@ -583,9 +639,9 @@ void GaussPolyIntQuad( SurfaceContactElem const& TRIBOL_UNUSED_PARAM( elem ), In
       integ.wts[23] = wt1 * wt2;
       integ.wts[24] = wt1 * wt1;
 
-      real x1 = 1. / 3. * std::sqrt( 5. + 2. * std::sqrt( 10. / 7. ) );
-      real x2 = 1. / 3. * std::sqrt( 5. - 2. * std::sqrt( 10. / 7. ) );
-      real x3 = 0.;
+      RealT x1 = 1. / 3. * std::sqrt( 5. + 2. * std::sqrt( 10. / 7. ) );
+      RealT x2 = 1. / 3. * std::sqrt( 5. - 2. * std::sqrt( 10. / 7. ) );
+      RealT x3 = 0.;
 
       integ.xy[0] = -x1;
       integ.xy[1] = -x1;

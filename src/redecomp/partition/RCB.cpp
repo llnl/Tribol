@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -99,10 +99,6 @@ BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts,
     total_ents += coords.size();
   }
   total_ents = TotalEntities( total_ents );
-  // set max_out_of_balance based on number of elements in the mesh
-  auto mesh_max_out_of_balance =
-      std::max( std::pow( 2.0 / static_cast<double>( total_ents ), 1.0 / static_cast<double>( NDIMS - 1 ) ),
-                max_out_of_balance_ );
   // construct an AABB of the whole domain in the root node
   ( *problem_tree.begin() )[0].bbox_ = DomainBoundingBox( coords_by_mesh );
 
@@ -133,6 +129,9 @@ BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts,
                         [&bbox_range]( int i, int j ) { return bbox_range[i] > bbox_range[j]; } );
 
       auto axis_ok = false;
+      auto actual_left_prop = 0.0;
+      auto node_max_out_of_balance = 1.0;
+      auto total_node_ents = 0.0;
       for ( auto cut_ax : best_axes ) {
         auto bbox_min = ( *node_it ).bbox_.getMin();
         auto bbox_max = ( *node_it ).bbox_.getMax();
@@ -153,12 +152,16 @@ BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts,
           ( *right_it.second ).bbox_ = BoundingBox<NDIMS>( right_min, bbox_max );
 
           auto n_ents = CountEntities( ( *left_it.second ).bbox_, ( *right_it.second ).bbox_, coords_by_mesh );
-          auto actual_left_prop =
-              static_cast<double>( n_ents.first ) / static_cast<double>( n_ents.first + n_ents.second );
-          if ( actual_left_prop < left_prop - mesh_max_out_of_balance ) {
+          total_node_ents = static_cast<double>( n_ents.first + n_ents.second );
+          actual_left_prop = static_cast<double>( n_ents.first ) / total_node_ents;
+          node_max_out_of_balance = 1.0;
+          if ( total_node_ents > 0.0 ) {
+            node_max_out_of_balance = std::max( max_out_of_balance_, 2.0 / total_node_ents );
+          }
+          if ( actual_left_prop < left_prop - node_max_out_of_balance ) {
             // cut coordinate needs to be increased
             min_coord = cut_coord;
-          } else if ( actual_left_prop > left_prop + mesh_max_out_of_balance ) {
+          } else if ( actual_left_prop > left_prop + node_max_out_of_balance ) {
             // cut coordinate needs to be reduced
             max_coord = cut_coord;
           } else {
@@ -189,10 +192,14 @@ BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts,
 
         if ( axis_ok ) break;
       }
-      // none of the axes worked.  terminate the program
-      if ( !axis_ok ) {
-        SLIC_ERROR( "RCB domain decomposition unsuccessful." );
-      }
+      // none of the axes worked.  issue a warning but continue.
+      SLIC_WARNING_ROOT_IF(
+          !axis_ok, axom::fmt::format( "RCB domain decomposition unsuccessful.\n"
+                                       "  Max out of balance tolerance: {}\n"
+                                       "  Total entities to split: {}\n"
+                                       "  Proportion of entities on left of cut: {}\n"
+                                       "  Desired proportion of entites on left of cut: {}\n",
+                                       node_max_out_of_balance, total_node_ents, left_prop, actual_left_prop ) );
     }
   }
 

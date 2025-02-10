@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -13,7 +13,6 @@
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
 #include "tribol/utils/TestUtils.hpp"
-#include "tribol/types.hpp"
 
 // Redecomp includes
 #include "redecomp/redecomp.hpp"
@@ -40,7 +39,7 @@
  */
 class MfemCommonPlaneTest : public testing::TestWithParam<std::pair<int, tribol::KinematicPenaltyCalculation>> {
  protected:
-  double max_disp_;
+  tribol::RealT max_disp_;
   void SetUp() override
   {
     // number of times to uniformly refine the serial mesh before constructing the
@@ -49,20 +48,20 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::pair<int, tribol:
     // polynomial order of the finite element discretization
     int order = GetParam().first;
     // initial velocity
-    double initial_v = 0.02;
+    tribol::RealT initial_v = 0.02;
     // timestep size
-    double dt = 0.001;
+    tribol::RealT dt = 0.001;
     // end time
-    double t_end = 2.0;
+    tribol::RealT t_end = 2.0;
     // material density
-    double rho = 1000.0;
+    tribol::RealT rho = 1000.0;
     // lame parameter
-    double lambda = 100000.0;
+    tribol::RealT lambda = 100000.0;
     // lame parameter (shear modulus)
-    double mu = 100000.0;
+    tribol::RealT mu = 100000.0;
     // kinematic constant penalty stiffness equivalent to the element-wise calculation,
     // which is bulk-modulus over element thickness.
-    double p_kine = ( lambda + 2.0 / 3.0 * mu ) / ( 1.0 / std::pow( 2.0, ref_levels ) );
+    tribol::RealT p_kine = ( lambda + 2.0 / 3.0 * mu ) / ( 1.0 / std::pow( 2.0, ref_levels ) );
 
     // fixed options
     // location of mesh file. TRIBOL_REPO_DIR is defined in tribol/config.hpp
@@ -161,7 +160,6 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::pair<int, tribol:
     solver.Init( op );
 
     // set up tribol
-    tribol::initialize( pmesh->SpaceDimension(), MPI_COMM_WORLD );
     int coupling_scheme_id = 0;
     int mesh1_id = 0;
     int mesh2_id = 1;
@@ -180,7 +178,7 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::pair<int, tribol:
     }
 
     int cycle{ 0 };
-    for ( double t{ 0.0 }; t < t_end; t += dt ) {
+    for ( tribol::RealT t{ 0.0 }; t < t_end; t += dt ) {
       // build new parallel decomposed redecomp mesh and update grid functions
       // on each mesh
       tribol::updateMfemParallelDecomposition();

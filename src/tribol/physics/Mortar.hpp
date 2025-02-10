@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -6,7 +6,6 @@
 #ifndef SRC_PHYSICS_MORTAR_HPP_
 #define SRC_PHYSICS_MORTAR_HPP_
 
-#include "tribol/types.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "Physics.hpp"
 
@@ -43,7 +42,7 @@ void ComputeMortarWeights( SurfaceContactElem& elem );
  * \param [in] cs pointer to coupling scheme
  *
  */
-void ComputeSingleMortarGaps( CouplingScheme const* cs );
+void ComputeSingleMortarGaps( CouplingScheme* cs );
 
 /*!
  *
@@ -101,7 +100,7 @@ void ComputeConstraintJacobian( SurfaceContactElem& elem );
  *
  */
 template <>
-int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme const* cs );
+int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs );
 
 /*!
  *
@@ -170,7 +169,7 @@ void ComputeSingleMortarJacobian( SurfaceContactElem& elem );
  *
  */
 template <>
-int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme const* cs );
+int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs );
 
 }  // namespace tribol
 

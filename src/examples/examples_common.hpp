@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -14,7 +14,6 @@
 #include "axom/fmt.hpp"
 
 // tribol includes
-#include "tribol/types.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/utils/Math.hpp"
 #include "tribol/utils/TestUtils.hpp"
@@ -27,10 +26,9 @@
 namespace primal = axom::primal;
 namespace slic = axom::slic;
 namespace utilities = axom::utilities;
-namespace fmt = axom::fmt;
 namespace CLI = axom::CLI;
 
-using real = tribol::real;
+using RealT = tribol::RealT;
 
 //------------------------------------------------------------------------------
 // COMMON DATA STRUCTURE DEFINITIONS
@@ -52,7 +50,7 @@ enum BLOCK_EX_BCS
  */
 class NumberAtLeast : public CLI::Validator {
  public:
-  NumberAtLeast( int n ) : Validator( fmt::format( ">={} ", n ) )
+  NumberAtLeast( int n ) : Validator( axom::fmt::format( ">={} ", n ) )
   {
     func_ = [=]( std::string& number_str ) {
       int number;
@@ -60,7 +58,7 @@ class NumberAtLeast : public CLI::Validator {
         return "Failed parsing as a number " + number_str;
       }
       if ( number < n ) {
-        return fmt::format( "Number ({}) must be at least {} ", number, n );
+        return axom::fmt::format( "Number ({}) must be at least {} ", number, n );
       }
       return std::string();
     };
@@ -96,12 +94,12 @@ struct Arguments {
   bool dump_vis{ false };          // should the example dump visualization files?
 
   /// input arguments for examples that use the TestMesh class
-  std::vector<tribol::integer> block1_res{ 4, 4, 4 };    // block1 -- number of elements in each direction
-  std::vector<tribol::real> block1_min{ 0., 0., 0. };    // block1 -- bounding box min
-  std::vector<tribol::real> block1_max{ 1., 1., 1.05 };  // block1 -- bounding box max
-  std::vector<tribol::integer> block2_res{ 4, 4, 4 };    // block2 -- number of elements in each direction
-  std::vector<tribol::real> block2_min{ 0., 0., 0.95 };  // block2 -- bounding box min
-  std::vector<tribol::real> block2_max{ 1., 1., 2. };    // block2 -- bounding box max
+  std::vector<int> block1_res{ 4, 4, 4 };                 // block1 -- number of elements in each direction
+  std::vector<tribol::RealT> block1_min{ 0., 0., 0. };    // block1 -- bounding box min
+  std::vector<tribol::RealT> block1_max{ 1., 1., 1.05 };  // block1 -- bounding box max
+  std::vector<int> block2_res{ 4, 4, 4 };                 // block2 -- number of elements in each direction
+  std::vector<tribol::RealT> block2_min{ 0., 0., 0.95 };  // block2 -- bounding box min
+  std::vector<tribol::RealT> block2_max{ 1., 1., 2. };    // block2 -- bounding box max
 };
 
 //------------------------------------------------------------------------------
@@ -188,14 +186,6 @@ int tribol_register_and_update( tribol::TestMesh& mesh, tribol::ContactMethod me
                                 tribol::EnforcementMethod enforcement, tribol::ContactModel model, bool visualization,
                                 tribol::TestControlParameters* params )
 {
-  ///////////////////////////////
-  //                           //
-  // STEP 0: initialize tribol //
-  //                           //
-  ///////////////////////////////
-  tribol::CommType problem_comm = TRIBOL_COMM_WORLD;
-  tribol::initialize( mesh.dim, problem_comm );
-
   /////////////////////////////////////////////
   //                                         //
   // STEP 1: register the interacting meshes //
@@ -215,9 +205,9 @@ int tribol_register_and_update( tribol::TestMesh& mesh, tribol::ContactMethod me
 
   // register the two meshes with Tribol
   tribol::registerMesh( block1_id, mesh.numMortarFaces, mesh.numTotalNodes, mesh.faceConn1, cellType, mesh.x, mesh.y,
-                        mesh.z );
+                        mesh.z, tribol::MemorySpace::Host );
   tribol::registerMesh( block2_id, mesh.numNonmortarFaces, mesh.numTotalNodes, mesh.faceConn2, cellType, mesh.x, mesh.y,
-                        mesh.z );
+                        mesh.z, tribol::MemorySpace::Host );
   ///////////////////////////////////
   //                               //
   // STEP 2: register field arrays //
@@ -324,7 +314,7 @@ int tribol_register_and_update( tribol::TestMesh& mesh, tribol::ContactMethod me
   ///////////////////////////////////////////////
   const int csIndex = 0;
   registerCouplingScheme( csIndex, block1_id, block2_id, tribol::SURFACE_TO_SURFACE, tribol::AUTO, method, model,
-                          enforcement, tribol::BINNING_GRID );
+                          enforcement, tribol::BINNING_GRID, tribol::ExecutionMode::Sequential );
 
   //////////////////////////////////////////////////////////
   //                                                      //
@@ -375,8 +365,8 @@ int tribol_register_and_update( tribol::TestMesh& mesh, tribol::ContactMethod me
     //                                                                //
     ////////////////////////////////////////////////////////////////////
     if ( visualization ) {
-      tribol::setPlotCycleIncrement( 1 );
-      tribol::setPlotOptions( tribol::VIS_MESH_FACES_AND_OVERLAPS );
+      tribol::setPlotCycleIncrement( csIndex, 1 );
+      tribol::setPlotOptions( csIndex, tribol::VIS_MESH_FACES_AND_OVERLAPS );
     }
 
     //////////////////////////////////////////////////////////////
@@ -390,7 +380,7 @@ int tribol_register_and_update( tribol::TestMesh& mesh, tribol::ContactMethod me
     //  methods.                                                //
     //                                                          //
     //////////////////////////////////////////////////////////////
-    tribol::setContactAreaFrac( 1.e-6 );
+    tribol::setContactAreaFrac( csIndex, 1.e-6 );
 
   }  // end STEP 5 scope
 
@@ -419,7 +409,7 @@ int tribol_register_and_update( tribol::TestMesh& mesh, tribol::ContactMethod me
  * \brief Initialize logger
  * \param [in] problem_comm MPI communicator
  */
-void initialize_logger( tribol::CommType problem_comm )
+void initialize_logger( tribol::CommT problem_comm )
 {
   slic::initialize();
   slic::setLoggingMsgLevel( slic::message::Debug );

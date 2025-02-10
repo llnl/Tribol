@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -6,7 +6,7 @@
 #ifndef SRC_MESH_MFEMDATA_HPP_
 #define SRC_MESH_MFEMDATA_HPP_
 
-#include "tribol/types.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 #ifdef BUILD_REDECOMP
 
@@ -116,7 +116,7 @@ class SubmeshLORTransfer {
    * @return mfem::ParGridFunction on lor_mesh, with lor_fec and vdim specified
    */
   static std::unique_ptr<mfem::ParGridFunction> CreateLORGridFunction(
-      mfem::ParMesh& lor_mesh, std::unique_ptr<mfem::FiniteElementCollection> lor_fec, integer vdim );
+      mfem::ParMesh& lor_mesh, std::unique_ptr<mfem::FiniteElementCollection> lor_fec, int vdim );
 
   /**
    * @brief Local low-order grid function on the LOR mesh
@@ -372,21 +372,21 @@ class ParentField {
   /**
    * @brief Get pointers to component arrays of the redecomp mesh grid function
    *
-   * @return std::vector<const real*> of length 3
+   * @return std::vector<const RealT*> of length 3
    *
    * @note The third entry is nullptr in two dimensions
    */
-  std::vector<const real*> GetRedecompFieldPtrs() const;
+  std::vector<const RealT*> GetRedecompFieldPtrs() const;
 
   /**
    * @brief Get pointers to component arrays of the redecomp mesh grid function
    *
    * @param redecomp_gridfn Redecomp mesh grid function
-   * @return std::vector<real*> of length 3
+   * @return std::vector<RealT*> of length 3
    *
    * @note The third entry is nullptr in two dimensions
    */
-  static std::vector<real*> GetRedecompFieldPtrs( mfem::GridFunction& redecomp_gridfn );
+  static std::vector<RealT*> GetRedecompFieldPtrs( mfem::GridFunction& redecomp_gridfn );
 
  private:
   /**
@@ -494,23 +494,23 @@ class PressureField {
   /**
    * @brief Get pointers to component arrays of the redecomp mesh grid function
    *
-   * @return std::vector<const real*> of length 3
+   * @return std::vector<const RealT*> of length 3
    *
    * @note Unused entries are nullptr.  Only the first entry is used with
    * frictionless contact.
    */
-  std::vector<const real*> GetRedecompFieldPtrs() const;
+  std::vector<const RealT*> GetRedecompFieldPtrs() const;
 
   /**
    * @brief Get pointers to component arrays of a redecomp mesh grid function
    *
    * @param redecomp_gridfn Redecomp mesh grid function
-   * @return std::vector<real*> of length 3
+   * @return std::vector<RealT*> of length 3
    *
    * @note Unused entries are nullptr.  Only the first entry is used with
    * frictionless contact.
    */
-  static std::vector<real*> GetRedecompFieldPtrs( mfem::GridFunction& redecomp_gridfn );
+  static std::vector<RealT*> GetRedecompFieldPtrs( mfem::GridFunction& redecomp_gridfn );
 
  private:
   /**
@@ -583,9 +583,9 @@ class MfemMeshData {
    * @param attributes_2 Mesh boundary attributes identifying surface elements
    * in the second Tribol registered mesh
    */
-  MfemMeshData( integer mesh_id_1, integer mesh_id_2, const mfem::ParMesh& parent_mesh,
-                const mfem::ParGridFunction& current_coords, std::set<integer>&& attributes_1,
-                std::set<integer>&& attributes_2 );
+  MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParMesh& parent_mesh,
+                const mfem::ParGridFunction& current_coords, std::set<int>&& attributes_1,
+                std::set<int>&& attributes_2 );
 
   /**
    * @brief Get coordinate grid function on the parent mesh
@@ -613,56 +613,56 @@ class MfemMeshData {
   /**
    * @brief Get the integer identifier for the first Tribol registered mesh
    *
-   * @return integer
+   * @return IndexT
    */
-  integer GetMesh1ID() const { return mesh_id_1_; }
+  IndexT GetMesh1ID() const { return mesh_id_1_; }
 
   /**
    * @brief Get the integer identifier for the second Tribol registered mesh
    *
-   * @return integer
+   * @return IndexT
    */
-  integer GetMesh2ID() const { return mesh_id_2_; }
+  IndexT GetMesh2ID() const { return mesh_id_2_; }
 
   /**
    * @brief Get the number of elements in the first Tribol registered mesh
    *
-   * @return integer
+   * @return int
    */
-  integer GetMesh1NE() const { return GetUpdateData().conn_1_.size() / GetUpdateData().num_verts_per_elem_; }
+  int GetMesh1NE() const { return GetUpdateData().conn_1_.size() / GetUpdateData().num_verts_per_elem_; }
 
   /**
    * @brief Get the number of elements in the second Tribol registered mesh
    *
-   * @return integer
+   * @return int
    */
-  integer GetMesh2NE() const { return GetUpdateData().conn_2_.size() / GetUpdateData().num_verts_per_elem_; }
+  int GetMesh2NE() const { return GetUpdateData().conn_2_.size() / GetUpdateData().num_verts_per_elem_; }
 
   /**
    * @brief Get the total number of vertices in both Tribol registered meshes
    *
-   * @return integer
+   * @return int
    */
-  integer GetNV() const { return GetUpdateData().redecomp_mesh_.GetNV(); }
+  int GetNV() const { return GetUpdateData().redecomp_mesh_.GetNV(); }
 
   /**
    * @brief Get the connectivity for the first Tribol registered mesh
    *
    * @return const IndexType*
    */
-  const IndexType* GetMesh1Conn() const { return GetUpdateData().conn_1_.data(); }
+  const IndexT* GetMesh1Conn() const { return GetUpdateData().conn_1_.data(); }
 
   /**
    * @brief Get the connectivity for the second Tribol registered mesh
    *
    * @return const IndexType*
    */
-  const IndexType* GetMesh2Conn() const { return GetUpdateData().conn_2_.data(); }
+  const IndexT* GetMesh2Conn() const { return GetUpdateData().conn_2_.data(); }
 
   /**
    * @brief Get the element type for both Tribol registered meshes
    *
-   * @return integer
+   * @return InterfaceElementType
    */
   InterfaceElementType GetElemType() const { return GetUpdateData().elem_type_; }
 
@@ -670,21 +670,21 @@ class MfemMeshData {
    * @brief Get pointers to component arrays of the coordinates on the
    * redecomp mesh
    *
-   * @return std::vector<const real*> of length 3
+   * @return std::vector<const RealT*> of length 3
    *
    * @note The third entry is nullptr in two dimensions
    */
-  std::vector<const real*> GetRedecompCoordsPtrs() const { return coords_.GetRedecompFieldPtrs(); }
+  std::vector<const RealT*> GetRedecompCoordsPtrs() const { return coords_.GetRedecompFieldPtrs(); }
 
   /**
    * @brief Get pointers to component arrays of the nodal response on the
    * redecomp mesh
    *
-   * @return std::vector<real*> of length 3
+   * @return std::vector<RealT*> of length 3
    *
    * @note The third entry is nullptr in two dimensions
    */
-  std::vector<real*> GetRedecompResponsePtrs() { return ParentField::GetRedecompFieldPtrs( redecomp_response_ ); }
+  std::vector<RealT*> GetRedecompResponsePtrs() { return ParentField::GetRedecompFieldPtrs( redecomp_response_ ); }
 
   /**
    * @brief Get the nodal response grid function on the redecomp mesh
@@ -728,11 +728,11 @@ class MfemMeshData {
   /**
    * @brief Get pointers to component arrays of the velocity on the RedecompMesh
    *
-   * @return std::vector<const real*> of length 3
+   * @return std::vector<const RealT*> of length 3
    *
    * @note The third entry is nullptr in two dimensions
    */
-  std::vector<const real*> GetRedecompVelocityPtrs() const { return velocity_->GetRedecompFieldPtrs(); }
+  std::vector<const RealT*> GetRedecompVelocityPtrs() const { return velocity_->GetRedecompFieldPtrs(); }
 
   /**
    * @brief Clears all kinematic and rate penalty data
@@ -749,9 +749,9 @@ class MfemMeshData {
    *
    * @param penalty Penalty value for the first registered Tribol mesh
    */
-  void SetMesh1KinematicConstantPenalty( real penalty )
+  void SetMesh1KinematicConstantPenalty( RealT penalty )
   {
-    kinematic_constant_penalty_1_ = std::make_unique<double>( penalty );
+    kinematic_constant_penalty_1_ = std::make_unique<RealT>( penalty );
   }
 
   /**
@@ -759,80 +759,80 @@ class MfemMeshData {
    *
    * @param penalty Penalty value for the second registered Tribol mesh
    */
-  void SetMesh2KinematicConstantPenalty( real penalty )
+  void SetMesh2KinematicConstantPenalty( RealT penalty )
   {
-    kinematic_constant_penalty_2_ = std::make_unique<double>( penalty );
+    kinematic_constant_penalty_2_ = std::make_unique<RealT>( penalty );
   }
 
   /**
    * @brief Get the kinematic constant penalty parameter for the first registered Tribol mesh
    *
-   * @return const real*
+   * @return const RealT*
    */
-  const real* GetMesh1KinematicConstantPenalty() const { return kinematic_constant_penalty_1_.get(); }
+  const RealT* GetMesh1KinematicConstantPenalty() const { return kinematic_constant_penalty_1_.get(); }
 
   /**
    * @brief Get the kinematic constant penalty parameter for the second registered Tribol mesh
    *
-   * @return const real*
+   * @return const RealT*
    */
-  const real* GetMesh2KinematicConstantPenalty() const { return kinematic_constant_penalty_2_.get(); }
+  const RealT* GetMesh2KinematicConstantPenalty() const { return kinematic_constant_penalty_2_.get(); }
 
   /**
    * @brief Sets the kinematic penalty scale for the first registered Tribol mesh
    *
    * @param scale Penalty scale value for the first registered Tribol mesh
    */
-  void SetMesh1KinematicPenaltyScale( real scale ) { kinematic_penalty_scale_1_ = std::make_unique<double>( scale ); }
+  void SetMesh1KinematicPenaltyScale( RealT scale ) { kinematic_penalty_scale_1_ = std::make_unique<RealT>( scale ); }
 
   /**
    * @brief Sets the kinematic penalty scale for the second registered Tribol mesh
    *
    * @param scale Penalty scale value for the second registered Tribol mesh
    */
-  void SetMesh2KinematicPenaltyScale( real scale ) { kinematic_penalty_scale_2_ = std::make_unique<double>( scale ); }
+  void SetMesh2KinematicPenaltyScale( RealT scale ) { kinematic_penalty_scale_2_ = std::make_unique<RealT>( scale ); }
 
   /**
    * @brief Get the kinematic penalty scale for the first registered Tribol mesh
    *
-   * @return const real*
+   * @return const RealT*
    */
-  const real* GetMesh1KinematicPenaltyScale() const { return kinematic_penalty_scale_1_.get(); }
+  const RealT* GetMesh1KinematicPenaltyScale() const { return kinematic_penalty_scale_1_.get(); }
 
   /**
    * @brief Get the kinematic penalty scale for the second registered Tribol mesh
    *
-   * @return const real*
+   * @return const RealT*
    */
-  const real* GetMesh2KinematicPenaltyScale() const { return kinematic_penalty_scale_2_.get(); }
+  const RealT* GetMesh2KinematicPenaltyScale() const { return kinematic_penalty_scale_2_.get(); }
 
   /**
    * @brief Sets the rate constant penalty for the first registered Tribol mesh
    *
    * @param penalty Rate constant penalty value for the first registered Tribol mesh
    */
-  void SetMesh1RateConstantPenalty( real penalty ) { rate_constant_penalty_1_ = std::make_unique<double>( penalty ); }
+  void SetMesh1RateConstantPenalty( RealT penalty ) { rate_constant_penalty_1_ = std::make_unique<RealT>( penalty ); }
 
   /**
    * @brief Sets the rate constant penalty for the second registered Tribol mesh
    *
    * @param penalty Rate penalty value for the second registered Tribol mesh
    */
-  void SetMesh2RateConstantPenalty( real penalty ) { rate_constant_penalty_2_ = std::make_unique<double>( penalty ); }
+  void SetMesh2RateConstantPenalty( RealT penalty ) { rate_constant_penalty_2_ = std::make_unique<RealT>( penalty ); }
 
   /**
    * @brief Get the rate constant penalty for the first registered Tribol mesh
    *
-   * @return const real*
+   * @return const RealT*
    */
-  const real* GetMesh1RateConstantPenalty() const { return rate_constant_penalty_1_.get(); }
+  const RealT* GetMesh1RateConstantPenalty() const { return rate_constant_penalty_1_.get(); }
 
   /**
    * @brief Get the rate constant penalty for the second registered Tribol mesh
    *
-   * @return const real*
+   * @return const RealT*
    */
-  const real* GetMesh2RateConstantPenalty() const { return rate_constant_penalty_2_.get(); }
+  const RealT* GetMesh2RateConstantPenalty() const { return rate_constant_penalty_2_.get(); }
 
   /**
    * @brief Sets the rate penalty as a ratio of the kinematic penalty for the
@@ -840,7 +840,7 @@ class MfemMeshData {
    *
    * @param ratio Rate ratio for the first registered Tribol mesh
    */
-  void SetMesh1RatePercentPenalty( real ratio ) { rate_percent_ratio_1_ = std::make_unique<double>( ratio ); }
+  void SetMesh1RatePercentPenalty( RealT ratio ) { rate_percent_ratio_1_ = std::make_unique<RealT>( ratio ); }
 
   /**
    * @brief Sets the rate penalty as a ratio of the kinematic penalty for the
@@ -848,69 +848,69 @@ class MfemMeshData {
    *
    * @param ratio Rate ratio for the second registered Tribol mesh
    */
-  void SetMesh2RatePercentPenalty( real ratio ) { rate_percent_ratio_2_ = std::make_unique<double>( ratio ); }
+  void SetMesh2RatePercentPenalty( RealT ratio ) { rate_percent_ratio_2_ = std::make_unique<RealT>( ratio ); }
 
   /**
    * @brief Get the rate penalty ratio for the first registered Tribol mesh
    *
-   * @return const real*
+   * @return const RealT*
    */
-  const real* GetMesh1RatePercentPenalty() const { return rate_percent_ratio_1_.get(); }
+  const RealT* GetMesh1RatePercentPenalty() const { return rate_percent_ratio_1_.get(); }
 
   /**
    * @brief Get the rate penalty ratio for the second registered Tribol mesh
    *
-   * @return const real*
+   * @return const RealT*
    */
-  const real* GetMesh2RatePercentPenalty() const { return rate_percent_ratio_2_.get(); }
+  const RealT* GetMesh2RatePercentPenalty() const { return rate_percent_ratio_2_.get(); }
 
   /**
    * @brief Get a pointer to the element thickness array for the first Tribol
    * registered mesh
    *
-   * @return const real*
+   * @return const RealT*
    */
-  const real* GetRedecompElemThickness1() const { return tribol_elem_thickness_1_->data(); }
+  const RealT* GetRedecompElemThickness1() const { return tribol_elem_thickness_1_->data(); }
 
   /**
    * @brief Get a pointer to the element thickness array for the second Tribol
    * registered mesh
    *
-   * @return const real*
+   * @return const RealT*
    */
-  const real* GetRedecompElemThickness2() const { return tribol_elem_thickness_2_->data(); }
+  const RealT* GetRedecompElemThickness2() const { return tribol_elem_thickness_2_->data(); }
 
   /**
    * @brief Get a pointer to the material modulus array for the first Tribol
    * registered mesh
    *
-   * @return const real*
+   * @return const RealT*
    */
-  const real* GetRedecompMaterialModulus1() const { return tribol_material_modulus_1_->data(); }
+  const RealT* GetRedecompMaterialModulus1() const { return tribol_material_modulus_1_->data(); }
 
   /**
    * @brief Get a pointer to the material modulus array for the second Tribol
    * registered mesh
    *
-   * @return const real*
+   * @return const RealT*
    */
-  const real* GetRedecompMaterialModulus2() const { return tribol_material_modulus_2_->data(); }
+  const RealT* GetRedecompMaterialModulus2() const { return tribol_material_modulus_2_->data(); }
 
   /**
    * @brief Get the map from Tribol registered mesh 1 element indices to
    * redecomp mesh element indices
    *
-   * @return const std::vector<integer>&
+   * @return const std::vector<int>&
    */
-  const std::vector<integer>& GetElemMap1() const { return GetUpdateData().elem_map_1_; }
+  const std::vector<int>& GetElemMap1() const { return GetUpdateData().elem_map_1_; }
 
   /**
    * @brief Get the map from Tribol registered mesh 2 element indices to
    * redecomp mesh element indices
    *
-   * @return const std::vector<integer>&
+   * @return const std::vector<int>&
    */
-  const std::vector<integer>& GetElemMap2() const { return GetUpdateData().elem_map_2_; }
+  const std::vector<int>& GetElemMap2() const { return GetUpdateData().elem_map_2_; }
 
   /**
    * @brief Get the parent-linked boundary submesh containing both contact
@@ -993,7 +993,7 @@ class MfemMeshData {
    *
    * @param lor_factor Number of element subdivisions per dimension
    */
-  void SetLORFactor( integer lor_factor );
+  void SetLORFactor( int lor_factor );
 
   /**
    * @brief Computes element thicknesses for volume elements attached to the contact surface
@@ -1031,7 +1031,7 @@ class MfemMeshData {
      */
     UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh, const mfem::ParFiniteElementSpace& parent_fes,
                 mfem::ParGridFunction& submesh_gridfn, SubmeshLORTransfer* submesh_lor_xfer,
-                const std::set<integer>& attributes_1, const std::set<integer>& attributes_2 );
+                const std::set<int>& attributes_1, const std::set<int>& attributes_2 );
 
     /**
      * @brief Redecomposed boundary element mesh
@@ -1047,25 +1047,25 @@ class MfemMeshData {
      * @brief Redecomp mesh element connectivity for the first Tribol registered
      * mesh
      */
-    axom::Array<integer, 2> conn_1_;
+    ArrayT<int, 2> conn_1_;
 
     /**
      * @brief Redecomp mesh element connectivity for the second Tribol
      * registered mesh
      */
-    axom::Array<integer, 2> conn_2_;
+    ArrayT<int, 2> conn_2_;
 
     /**
      * @brief Map from first Tribol registered mesh element indices to redecomp
      * mesh element indices
      */
-    std::vector<integer> elem_map_1_;
+    std::vector<int> elem_map_1_;
 
     /**
      * @brief Map from second Tribol registered mesh element indices to redecomp
      * mesh element indices
      */
-    std::vector<integer> elem_map_2_;
+    std::vector<int> elem_map_2_;
 
     /**
      * @brief Type of elements on the contact meshes
@@ -1075,7 +1075,7 @@ class MfemMeshData {
     /**
      * @brief Number of vertices on each element in the contact meshes
      */
-    integer num_verts_per_elem_;
+    int num_verts_per_elem_;
 
    private:
     /**
@@ -1087,7 +1087,7 @@ class MfemMeshData {
      * @param attributes_2 Set of boundary attributes for the second Tribol
      * registered mesh
      */
-    void UpdateConnectivity( const std::set<integer>& attributes_1, const std::set<integer>& attributes_2 );
+    void UpdateConnectivity( const std::set<int>& attributes_1, const std::set<int>& attributes_2 );
 
     /**
      * @brief Sets the number of vertices per element and the element type for the redecomp mesh
@@ -1119,18 +1119,18 @@ class MfemMeshData {
    * in the second Tribol registered mesh
    * @return mfem::ParSubMesh
    */
-  static mfem::ParSubMesh CreateSubmesh( const mfem::ParMesh& parent_mesh, const std::set<integer>& attributes_1,
-                                         const std::set<integer>& attributes_2 );
+  static mfem::ParSubMesh CreateSubmesh( const mfem::ParMesh& parent_mesh, const std::set<int>& attributes_1,
+                                         const std::set<int>& attributes_2 );
 
   /**
    * @brief First mesh identifier
    */
-  integer mesh_id_1_;
+  IndexT mesh_id_1_;
 
   /**
    * @brief Second mesh identifier
    */
-  integer mesh_id_2_;
+  IndexT mesh_id_2_;
 
   /**
    * @brief Volume mesh of parent domain
@@ -1140,12 +1140,12 @@ class MfemMeshData {
   /**
    * @brief Mesh boundary attributes identifying first mesh
    */
-  const std::set<integer> attributes_1_;
+  const std::set<int> attributes_1_;
 
   /**
    * @brief Mesh boundary attributes identifying second mesh
    */
-  const std::set<integer> attributes_2_;
+  const std::set<int> attributes_2_;
 
   /**
    * @brief Submesh containing boundary elements of both contact surfaces
@@ -1165,7 +1165,7 @@ class MfemMeshData {
   /**
    * @brief Refinement factor for refined mesh
    */
-  integer lor_factor_;
+  int lor_factor_;
 
   /**
    * @brief Contains LOR mesh if low-order refinement is being used; nullptr
@@ -1188,44 +1188,44 @@ class MfemMeshData {
   /**
    * @brief Kinematic constant contact penalty for the first Tribol registered mesh
    */
-  std::unique_ptr<real> kinematic_constant_penalty_1_;
+  std::unique_ptr<RealT> kinematic_constant_penalty_1_;
 
   /**
    * @brief Kinematic constant contact penalty for the second Tribol registered mesh
    */
-  std::unique_ptr<real> kinematic_constant_penalty_2_;
+  std::unique_ptr<RealT> kinematic_constant_penalty_2_;
 
   /**
    * @brief Scaling of kinematic penalty for the first Tribol registered mesh
    */
-  std::unique_ptr<real> kinematic_penalty_scale_1_;
+  std::unique_ptr<RealT> kinematic_penalty_scale_1_;
 
   /**
    * @brief Scaling of kinematic penalty for the second Tribol registered mesh
    */
-  std::unique_ptr<real> kinematic_penalty_scale_2_;
+  std::unique_ptr<RealT> kinematic_penalty_scale_2_;
 
   /**
    * @brief Rate constant contact penalty for the first Tribol registered mesh
    */
-  std::unique_ptr<real> rate_constant_penalty_1_;
+  std::unique_ptr<RealT> rate_constant_penalty_1_;
 
   /**
    * @brief Rate constant contact penalty for the second Tribol registered mesh
    */
-  std::unique_ptr<real> rate_constant_penalty_2_;
+  std::unique_ptr<RealT> rate_constant_penalty_2_;
 
   /**
    * @brief Rate percent penalty as a ratio of kinematic penalty for the first
    * Tribol registered mesh
    */
-  std::unique_ptr<real> rate_percent_ratio_1_;
+  std::unique_ptr<RealT> rate_percent_ratio_1_;
 
   /**
    * @brief Rate percent penalty as a ratio of kinematic penalty for the second
    * Tribol registered mesh
    */
-  std::unique_ptr<real> rate_percent_ratio_2_;
+  std::unique_ptr<RealT> rate_percent_ratio_2_;
 
   /**
    * @brief Stores element thicknesses for element-based penalty calculations on
@@ -1241,12 +1241,12 @@ class MfemMeshData {
   /**
    * @brief Element thicknesses for the first Tribol registered mesh
    */
-  std::unique_ptr<axom::Array<real>> tribol_elem_thickness_1_;
+  std::unique_ptr<ArrayT<RealT>> tribol_elem_thickness_1_;
 
   /**
    * @brief Element thicknesses for the second Tribol registered mesh
    */
-  std::unique_ptr<axom::Array<real>> tribol_elem_thickness_2_;
+  std::unique_ptr<ArrayT<RealT>> tribol_elem_thickness_2_;
 
   /**
    * @brief Stores material moduli for element-based penalty calculations on
@@ -1262,12 +1262,12 @@ class MfemMeshData {
   /**
    * @brief Material moduli for the first Tribol registered mesh
    */
-  std::unique_ptr<axom::Array<real>> tribol_material_modulus_1_;
+  std::unique_ptr<ArrayT<RealT>> tribol_material_modulus_1_;
 
   /**
    * @brief Material moduli for the second Tribol registered mesh
    */
-  std::unique_ptr<axom::Array<real>> tribol_material_modulus_2_;
+  std::unique_ptr<ArrayT<RealT>> tribol_material_modulus_2_;
 
   /**
    * @brief UpdateData object created upon call to UpdateMeshData()
@@ -1330,7 +1330,7 @@ class MfemSubmeshData {
    * @param pressure_vdim Vector dimension of the pressure field
    */
   MfemSubmeshData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh,
-                   std::unique_ptr<mfem::FiniteElementCollection> pressure_fec, integer pressure_vdim );
+                   std::unique_ptr<mfem::FiniteElementCollection> pressure_fec, int pressure_vdim );
 
   /**
    * @brief Build a new transfer operator and update redecomp-level grid
@@ -1344,12 +1344,12 @@ class MfemSubmeshData {
    * @brief Get pointers to component arrays of the pressure on the redecomp
    * mesh
    *
-   * @return std::vector<const real*> of length 3
+   * @return std::vector<const RealT*> of length 3
    *
    * @note Unused entries are nullptr.  Only the first entry is used with
    * frictionless contact.
    */
-  std::vector<const real*> GetRedecompPressurePtrs() const { return pressure_.GetRedecompFieldPtrs(); }
+  std::vector<const RealT*> GetRedecompPressurePtrs() const { return pressure_.GetRedecompFieldPtrs(); }
 
   /**
    * @brief Get the parent-linked boundary submesh pressure grid function
@@ -1368,12 +1368,12 @@ class MfemSubmeshData {
   /**
    * @brief Get pointers to component arrays of the gap on the redecomp mesh
    *
-   * @return std::vector<real*> of length 3
+   * @return std::vector<RealT*> of length 3
    *
    * @note Unused entries are nullptr.  Only the first entry is used with
    * frictionless contact.
    */
-  std::vector<real*> GetRedecompGapPtrs() { return PressureField::GetRedecompFieldPtrs( redecomp_gap_ ); }
+  std::vector<RealT*> GetRedecompGapPtrs() { return PressureField::GetRedecompFieldPtrs( redecomp_gap_ ); }
 
   /**
    * @brief Get the gap grid function on the redecomp mesh

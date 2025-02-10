@@ -1,10 +1,9 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
 
 // Tribol includes
-#include "tribol/types.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/simple_tribol.hpp"
 
@@ -12,10 +11,8 @@
 #include "tribol/utils/Math.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
-#include "tribol/mesh/CouplingSchemeManager.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/mesh/MeshManager.hpp"
 #include "tribol/physics/Mortar.hpp"
 #include "tribol/physics/AlignedMortar.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
@@ -42,27 +39,21 @@
 #include <iomanip>
 #include <fstream>
 
-using real = tribol::real;
+using RealT = tribol::RealT;
 namespace axom_fs = axom::utilities::filesystem;
 
-void TestMortarWeights( tribol::CouplingScheme const* cs, double exact_area, double tol )
+void TestMortarWeights( tribol::CouplingScheme const* cs, RealT exact_area, RealT tol )
 {
   ////////////////////////////////////////////////////////////////////////
   //
   // Grab pointers to mesh data
   //
   ////////////////////////////////////////////////////////////////////////
-  tribol::MeshManager& meshManager = tribol::MeshManager::getInstance();
-  tribol::IndexType const mortarId = cs->getMeshId1();
-  // tribol::IndexType const nonmortarId = cs->getMeshId2();
-
-  tribol::MeshData& mortarMesh = meshManager.GetMeshInstance( mortarId );
-  // tribol::MeshData& nonmortarMesh = meshManager.GetMeshInstance( nonmortarId );
 
   // get CSR weights data
   int* I = nullptr;
   int* J = nullptr;
-  double* wts = nullptr;
+  RealT* wts = nullptr;
   int nOffsets = 0;
   int nNonZeros = 0;
   int csr_err = GetSimpleCouplingCSR( &I, &J, &wts, &nOffsets, &nNonZeros );
@@ -71,15 +62,7 @@ void TestMortarWeights( tribol::CouplingScheme const* cs, double exact_area, dou
 
   SLIC_ERROR_IF( I == nullptr, "Mortar wts test, I is null." );
 
-  // get mortar node id offset to distinguish mortar from nonmortar column contributions
-  if ( mortarMesh.m_sortedSurfaceNodeIds == nullptr ) {
-    SLIC_DEBUG( "computeGapsFromSparseWts(): sorting unique mortar surface node ids." );
-    mortarMesh.sortSurfaceNodeIds();
-  }
-
-  // int nodeOffset = mortarMesh.m_sortedSurfaceNodeIds[ mortarMesh.m_numSurfaceNodes-1 ] + 1;
-
-  double area = 0.;
+  RealT area = 0.;
   int numTotalNodes = static_cast<tribol::MortarData*>( cs->getMethodData() )->m_numTotalNodes;
   for ( int a = 0; a < numTotalNodes; ++a ) {
     // loop over range of nonzero column entries
@@ -98,7 +81,7 @@ void TestMortarWeights( tribol::CouplingScheme const* cs, double exact_area, dou
 
   SLIC_DEBUG( "area: " << area << "." );
 
-  double diff = std::abs( area - exact_area );
+  RealT diff = std::abs( area - exact_area );
   EXPECT_LE( diff, tol );
 
 }  // end TestMortarWeights()
@@ -193,21 +176,21 @@ TEST_F( MortarSparseWtsTest, mortar_sphere )
   // get pointers to mfem vector data
   int* ixm_data = this->v_ixm.GetData();
   int* ixs_data = this->v_ixs.GetData();
-  double* xm_data = this->v_xm.GetData();
-  double* ym_data = this->v_ym.GetData();
-  double* zm_data = this->v_zm.GetData();
-  double* xs_data = this->v_xs.GetData();
-  double* ys_data = this->v_ys.GetData();
-  double* zs_data = this->v_zs.GetData();
+  RealT* xm_data = this->v_xm.GetData();
+  RealT* ym_data = this->v_ym.GetData();
+  RealT* zm_data = this->v_zm.GetData();
+  RealT* xs_data = this->v_xs.GetData();
+  RealT* ys_data = this->v_ys.GetData();
+  RealT* zs_data = this->v_zs.GetData();
 
   // set gaps and pressure arrays. Note that for this test
   // the length of the nonmortar nodes array is the same as the mortar,
   // which means that it is the total number of nodes in the whole
   // mesh
-  double *gaps, *pressures;
+  RealT *gaps, *pressures;
   int numTotalNodes = this->lengthNonmortarNodes;
-  gaps = new double[numTotalNodes];
-  pressures = new double[numTotalNodes];
+  gaps = new RealT[numTotalNodes];
+  pressures = new RealT[numTotalNodes];
 
   // initialize arrays
   for ( int i = 0; i < numTotalNodes; ++i ) {
@@ -215,23 +198,23 @@ TEST_F( MortarSparseWtsTest, mortar_sphere )
     pressures[i] = 1.;
   }
 
-  // initialize
-  int err = Initialize( 3 );
-
   // setup simple coupling
   SimpleCouplingSetup( 3, (int)( tribol::LINEAR_QUAD ), tribol::MORTAR_WEIGHTS, this->numMortarCells,
                        this->lengthMortarNodes, ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells,
                        this->lengthNonmortarNodes, ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures );
 
-  double dt = 1.0;
-  err = Update( dt );
+  RealT dt = 1.0;
+  int err = Update( dt );
 
   EXPECT_EQ( err, 0 );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
 
-  tribol::CouplingScheme* couplingScheme = couplingSchemeManager.getCoupling( 0 );
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
   TestMortarWeights( couplingScheme, 2.256, 1.e-3 );
+
+  delete[] gaps;
+  delete[] pressures;
 }
 
 TEST_F( MortarSparseWtsTest, mortar_sphere_offset )
@@ -288,21 +271,21 @@ TEST_F( MortarSparseWtsTest, mortar_sphere_offset )
   // get pointers to mfem vector data
   int* ixm_data = this->v_ixm.GetData();
   int* ixs_data = this->v_ixs.GetData();
-  double* xm_data = this->v_xm.GetData();
-  double* ym_data = this->v_ym.GetData();
-  double* zm_data = this->v_zm.GetData();
-  double* xs_data = this->v_xs.GetData();
-  double* ys_data = this->v_ys.GetData();
-  double* zs_data = this->v_zs.GetData();
+  RealT* xm_data = this->v_xm.GetData();
+  RealT* ym_data = this->v_ym.GetData();
+  RealT* zm_data = this->v_zm.GetData();
+  RealT* xs_data = this->v_xs.GetData();
+  RealT* ys_data = this->v_ys.GetData();
+  RealT* zs_data = this->v_zs.GetData();
 
   // set gaps and pressure arrays. Note that for this test
   // the length of the nonmortar nodes array is the same as the mortar,
   // which means that it is the total number of nodes in the whole
   // mesh
-  double *gaps, *pressures;
+  RealT *gaps, *pressures;
   int numTotalNodes = this->lengthNonmortarNodes;
-  gaps = new double[numTotalNodes];
-  pressures = new double[numTotalNodes];
+  gaps = new RealT[numTotalNodes];
+  pressures = new RealT[numTotalNodes];
 
   // initialize arrays
   for ( int i = 0; i < numTotalNodes; ++i ) {
@@ -310,23 +293,23 @@ TEST_F( MortarSparseWtsTest, mortar_sphere_offset )
     pressures[i] = 1.;
   }
 
-  // initialize
-  int err = Initialize( 3 );
-
   // setup simple coupling
   SimpleCouplingSetup( 3, (int)( tribol::LINEAR_QUAD ), tribol::MORTAR_WEIGHTS, this->numMortarCells,
                        this->lengthMortarNodes, ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells,
                        this->lengthNonmortarNodes, ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures );
 
-  double dt = 1.0;
-  err = Update( dt );
+  RealT dt = 1.0;
+  int err = Update( dt );
 
   EXPECT_EQ( err, 0 );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
 
-  tribol::CouplingScheme* couplingScheme = couplingSchemeManager.getCoupling( 0 );
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
   TestMortarWeights( couplingScheme, 2.260, 1.e-1 );
+
+  delete[] gaps;
+  delete[] pressures;
 }
 
 TEST_F( MortarSparseWtsTest, mortar_one_seg_rotated )
@@ -383,21 +366,21 @@ TEST_F( MortarSparseWtsTest, mortar_one_seg_rotated )
   // get pointers to mfem vector data
   int* ixm_data = this->v_ixm.GetData();
   int* ixs_data = this->v_ixs.GetData();
-  double* xm_data = this->v_xm.GetData();
-  double* ym_data = this->v_ym.GetData();
-  double* zm_data = this->v_zm.GetData();
-  double* xs_data = this->v_xs.GetData();
-  double* ys_data = this->v_ys.GetData();
-  double* zs_data = this->v_zs.GetData();
+  RealT* xm_data = this->v_xm.GetData();
+  RealT* ym_data = this->v_ym.GetData();
+  RealT* zm_data = this->v_zm.GetData();
+  RealT* xs_data = this->v_xs.GetData();
+  RealT* ys_data = this->v_ys.GetData();
+  RealT* zs_data = this->v_zs.GetData();
 
   // set gaps and pressure arrays. Note that for this test
   // the length of the nonmortar nodes array is the same as the mortar,
   // which means that it is the total number of nodes in the whole
   // mesh
-  double *gaps, *pressures;
+  RealT *gaps, *pressures;
   int numTotalNodes = this->lengthNonmortarNodes;
-  gaps = new double[numTotalNodes];
-  pressures = new double[numTotalNodes];
+  gaps = new RealT[numTotalNodes];
+  pressures = new RealT[numTotalNodes];
 
   // initialize arrays
   for ( int i = 0; i < numTotalNodes; ++i ) {
@@ -405,23 +388,23 @@ TEST_F( MortarSparseWtsTest, mortar_one_seg_rotated )
     pressures[i] = 1.;
   }
 
-  // initialize
-  int err = Initialize( 3 );
-
   // setup simple coupling
   SimpleCouplingSetup( 3, (int)( tribol::LINEAR_QUAD ), tribol::MORTAR_WEIGHTS, this->numMortarCells,
                        this->lengthMortarNodes, ixm_data, xm_data, ym_data, zm_data, this->numNonmortarCells,
                        this->lengthNonmortarNodes, ixs_data, xs_data, ys_data, zs_data, 1.e-3, gaps, pressures );
 
-  double dt = 1.0;
-  err = Update( dt );
+  RealT dt = 1.0;
+  int err = Update( dt );
 
   EXPECT_EQ( err, 0 );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
 
-  tribol::CouplingScheme* couplingScheme = couplingSchemeManager.getCoupling( 0 );
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
   TestMortarWeights( couplingScheme, 20., 1.e-3 );
+
+  delete[] gaps;
+  delete[] pressures;
 }
 
 int main( int argc, char* argv[] )
@@ -429,6 +412,9 @@ int main( int argc, char* argv[] )
   int result = 0;
 
   ::testing::InitGoogleTest( &argc, argv );
+
+  // Initialize Tribol via simple Tribol interface
+  Initialize( 3 );
 
 #ifdef TRIBOL_USE_UMPIRE
   umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
@@ -438,6 +424,9 @@ int main( int argc, char* argv[] )
   tribol::SimpleMPIWrapper wrapper( argc, argv );  // initialize and finalize MPI, when applicable
 
   result = RUN_ALL_TESTS();
+
+  // Finalize Tribol via simple Tribol interface
+  Finalize();
 
   return result;
 }

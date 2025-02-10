@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level LICENSE file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -46,7 +46,7 @@ set( redecomp_sources
 
 ## setup the dependency list for redecomp
 set(redecomp_depends axom::primal mfem)
-blt_list_append(TO redecomp_depends ELEMENTS mpi IF TRIBOL_USE_MPI )
+blt_list_append(TO redecomp_depends ELEMENTS blt::mpi IF TRIBOL_USE_MPI )
 
 ## create the library
 blt_add_library(

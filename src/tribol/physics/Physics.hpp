@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -6,7 +6,6 @@
 #ifndef SRC_PHYSICS_PHYSICS_HPP_
 #define SRC_PHYSICS_PHYSICS_HPP_
 
-#include "tribol/types.hpp"
 #include "tribol/common/Parameters.hpp"
 
 namespace tribol {
@@ -27,7 +26,7 @@ class CouplingScheme;
  * \return 0 if no errors
  *
  */
-int ApplyInterfacePhysics( CouplingScheme const* cs, integer cycle, real t );
+int ApplyInterfacePhysics( CouplingScheme* cs, int cycle, RealT t );
 /*!
  *
  * \brief applies interface method in the normal direction
@@ -38,7 +37,7 @@ int ApplyInterfacePhysics( CouplingScheme const* cs, integer cycle, real t );
  *
  */
 template <ContactMethod M, EnforcementMethod E>
-int ApplyNormal( CouplingScheme const* cs );
+int ApplyNormal( CouplingScheme* cs );
 
 /*!
  *
@@ -50,7 +49,7 @@ int ApplyNormal( CouplingScheme const* cs );
  *
  */
 template <ContactMethod M, EnforcementMethod E, ContactModel Model>
-int ApplyTangential( CouplingScheme const* cs );
+int ApplyTangential( CouplingScheme* cs );
 
 /*!
  *
@@ -62,7 +61,7 @@ int ApplyTangential( CouplingScheme const* cs );
  *
  */
 template <ContactMethod M>
-int GetMethodData( CouplingScheme const* cs );
+int GetMethodData( CouplingScheme* cs );
 
 }  // namespace tribol
 

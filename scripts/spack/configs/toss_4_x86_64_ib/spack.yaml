@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level LICENSE file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -53,11 +53,11 @@ spack:
       modules: []
       operating_system: rhel8
       paths:
-        cc: /usr/tce/packages/intel/intel-2022.1.0/compiler/2022.1.0/linux/bin/icx
-        cxx: /usr/tce/packages/intel/intel-2022.1.0/compiler/2022.1.0/linux/bin/icpx
-        f77: /usr/tce/packages/intel/intel-2022.1.0/compiler/2022.1.0/linux/bin/ifx
-        fc: /usr/tce/packages/intel/intel-2022.1.0/compiler/2022.1.0/linux/bin/ifx
-      spec: intel@2022.1.0
+        cc: /usr/tce/packages/intel/intel-2023.2.1/compiler/2023.2.1/linux/bin/icx
+        cxx: /usr/tce/packages/intel/intel-2023.2.1/compiler/2023.2.1/linux/bin/icpx
+        f77: /usr/tce/packages/intel/intel-2023.2.1/compiler/2023.2.1/linux/bin/ifx
+        fc: /usr/tce/packages/intel/intel-2023.2.1/compiler/2023.2.1/linux/bin/ifx
+      spec: intel@2023.2.1
       target: x86_64
 
   packages:
@@ -95,12 +95,12 @@ spack:
     mvapich2:
       buildable: false
       externals:
-      - spec: mvapich2@2.3.6%clang@14.0.6 process_managers=slurm arch=linux-rhel8-ivybridge
+      - spec: mvapich2@2.3.6%clang@14.0.6~alloca~cuda~debug~hwloc_graphics~hwlocv2+regcache+wrapperrpath build_system=autotools ch3_rank_bits=32 fabrics=mrail file_systems=auto process_managers=slurm threads=multiple
         prefix: /usr/tce/packages/mvapich2/mvapich2-2.3.6-clang-14.0.6
-      - spec: mvapich2@2.3.6%gcc@10.3.1 process_managers=slurm arch=linux-rhel8-ivybridge
+      - spec: mvapich2@2.3.6%gcc@10.3.1~alloca~cuda~debug~hwloc_graphics~hwlocv2+regcache+wrapperrpath build_system=autotools ch3_rank_bits=32 fabrics=mrail file_systems=auto process_managers=slurm threads=multiple
         prefix: /usr/tce/packages/mvapich2/mvapich2-2.3.6-gcc-10.3.1
-      - spec: mvapich2@2.3.6%intel@2022.1.0 process_managers=slurm arch=linux-rhel8-ivybridge
-        prefix: /usr/tce/packages/mvapich2/mvapich2-2.3.6-intel-2022.1.0
+      - spec: mvapich2@2.3.6%intel@2023.2.1~alloca~cuda~debug~hwloc_graphics~hwlocv2+regcache+wrapperrpath build_system=autotools ch3_rank_bits=32 fabrics=mrail file_systems=auto process_managers=slurm threads=multiple
+        prefix: /usr/tce/packages/mvapich2/mvapich2-2.3.6-intel-2023.2.1
 
     netlib-lapack:
       buildable: false
@@ -304,10 +304,12 @@ spack:
       - spec: python@3.10.10
         prefix: /collab/usr/gapps/axom/devtools/toss_4_x86_64_ib/latest/python-3.10.10
 
-    # Globally lock version of third party libraries
+    # Globally lock version of third party libraries that work on this platform
+    axom:
+      variants: ~shared~examples~fortran~lua~tools
     conduit:
-      require: "@0.8.8~shared~test~examples~utilities"
+      variants: ~shared~test~examples~utilities
     raja:
-      require: "@2023.06.0~shared~examples~exercises~openmp"
+      require: "@2024.07.0~shared~examples~exercises"
     umpire:
-      require: "@2023.06.0~shared~examples~openmp"
+      require: "@2024.07.0~shared~examples"

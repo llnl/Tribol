@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -6,7 +6,6 @@
 #ifndef SRC_UTILS_TESTUTILS_HPP_
 #define SRC_UTILS_TESTUTILS_HPP_
 
-#include "tribol/types.hpp"
 #include "tribol/common/Parameters.hpp"
 
 // MFEM includes
@@ -47,7 +46,10 @@ struct TestControlParameters {
         percent_rate_penalty( false ),
         rate_penalty( 1.0 ),
         rate_penalty_ratio( 0.0 ),
-        const_penalty( 1.0 )
+        const_penalty( 1.0 ),
+        enable_timestep_vote( false ),
+        timestep_pen_frac( 0.30 ),
+        timestep_scale( 1.0 )
   {
   }
 
@@ -56,16 +58,19 @@ struct TestControlParameters {
     // no-op
   }
 
-  real dt{ 0. };
-  real contact_pen_frac{ 0.30 };
+  RealT dt{ 0. };
+  RealT auto_contact_pen_frac{ 0.95 };
 
   // penalty control parameters
   bool penalty_ratio;
   bool constant_rate_penalty;
   bool percent_rate_penalty;
-  real rate_penalty;
-  real rate_penalty_ratio;
-  real const_penalty;
+  RealT rate_penalty;
+  RealT rate_penalty_ratio;
+  RealT const_penalty;
+  bool enable_timestep_vote;
+  RealT timestep_pen_frac;
+  RealT timestep_scale;
 };
 
 /*!
@@ -87,6 +92,7 @@ class TestMesh {
   int tribolSetupAndUpdate( ContactMethod method,           ///< contact method
                             EnforcementMethod enforcement,  ///< constraint enforcement method
                             ContactModel model,             ///< contact model
+                            ContactCase contact_case,       ///< contact case
                             bool visualization,             ///< true if visualization
                             TestControlParameters& params   ///< control parameters struct
   );
@@ -95,6 +101,7 @@ class TestMesh {
   int simpleTribolSetupAndUpdate( ContactMethod method,           ///< contact method
                                   EnforcementMethod enforcement,  ///< constraint enforcement method
                                   ContactModel model,             ///< contact model
+                                  ContactCase contact_case,       ///< contact case
                                   bool visualization,             ///< true if visualization
                                   TestControlParameters& params   ///< control parameters struct
   );
@@ -124,10 +131,10 @@ class TestMesh {
    * \param [in] thetaNonmortar angle of rotation of non-z-plane vertices about z-axis
    *
    */
-  void setupContactMeshHex( int numElemsX1, int numElemsY1, int numElemsZ1, real xMin1, real yMin1, real zMin1,
-                            real xMax1, real yMax1, real zMax1, int numElemsX2, int numElemsY2, int numElemsZ2,
-                            real xMin2, real yMin2, real zMin2, real xMax2, real yMax2, real zMax2, real thetaMortar,
-                            real thetaNonmortar );
+  void setupContactMeshHex( int numElemsX1, int numElemsY1, int numElemsZ1, RealT xMin1, RealT yMin1, RealT zMin1,
+                            RealT xMax1, RealT yMax1, RealT zMax1, int numElemsX2, int numElemsY2, int numElemsZ2,
+                            RealT xMin2, RealT yMin2, RealT zMin2, RealT xMax2, RealT yMax2, RealT zMax2,
+                            RealT thetaMortar, RealT thetaNonmortar );
 
   /*!
    * \brief setups of a 3D contact tet mesh consisting of two blocks
@@ -154,10 +161,10 @@ class TestMesh {
    * \param [in] thetaNonmortar angle of rotation of non-z-plane vertices about z-axis
    *
    */
-  void setupContactMeshTet( int numElemsX1, int numElemsY1, int numElemsZ1, real xMin1, real yMin1, real zMin1,
-                            real xMax1, real yMax1, real zMax1, int numElemsX2, int numElemsY2, int numElemsZ2,
-                            real xMin2, real yMin2, real zMin2, real xMax2, real yMax2, real zMax2, real thetaMortar,
-                            real thetaNonmortar );
+  void setupContactMeshTet( int numElemsX1, int numElemsY1, int numElemsZ1, RealT xMin1, RealT yMin1, RealT zMin1,
+                            RealT xMax1, RealT yMax1, RealT zMax1, int numElemsX2, int numElemsY2, int numElemsZ2,
+                            RealT xMin2, RealT yMin2, RealT zMin2, RealT xMax2, RealT yMax2, RealT zMax2,
+                            RealT thetaMortar, RealT thetaNonmortar );
 
   /*!
    * \brief sets up an mfem mesh object representation of the original hex or tet test mesh
@@ -187,8 +194,8 @@ class TestMesh {
    *       contact enforcement. This is used in tribol/tests/tribol_mortar_pressure_sol.cpp
    *
    */
-  void setupPatchTestDirichletBCs( int meshId, int numElemsX, int numElemsY, int numElemsZ, int nodeIdOffset,
-                                   bool inHomogeneousGap, real inHomogeneousZVal = 0. );
+  void setupPatchTestDirichletBCs( IndexT mesh_id, int numElemsX, int numElemsY, int numElemsZ, int nodeIdOffset,
+                                   bool inHomogeneousGap, RealT inHomogeneousZVal = 0. );
 
   /*!
    * \brief sets up pressure dof ids for a 3D nonmortar mesh block for PATCH TEST
@@ -201,7 +208,7 @@ class TestMesh {
    * \param [in] contact true if enforcing zero gap using contact enforcement
    *
    */
-  void setupPatchTestPressureDofs( int meshId, int numElemsX, int numElemsY, int numElemsZ, int nodeIdOffset,
+  void setupPatchTestPressureDofs( IndexT mesh_id, int numElemsX, int numElemsY, int numElemsZ, int nodeIdOffset,
                                    bool contact );
 
   /*!
@@ -214,7 +221,7 @@ class TestMesh {
    * \note in the future we should handle an array of velocity values
    *
    */
-  void allocateAndSetVelocities( int meshId, real valX, real valY, real valZ = 0. );
+  void allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY, RealT valZ = 0. );
 
   /*!
    * \brief allocates and sets bulk modulus arrays on mesh
@@ -224,7 +231,7 @@ class TestMesh {
    * \note in the future we should handle an array of values
    *
    */
-  void allocateAndSetBulkModulus( int meshId, real val );
+  void allocateAndSetBulkModulus( IndexT mesh_id, RealT val );
 
   /*!
    * \brief allocates and sets element thickness arrays on mesh
@@ -235,7 +242,7 @@ class TestMesh {
    *       should handle an array of values
    *
    */
-  void allocateAndSetElementThickness( int meshId, real t );
+  void allocateAndSetElementThickness( IndexT mesh_id, RealT t );
 
   /*!
    * \brief wraps element Jacobian calculations for linear elasticity
@@ -248,7 +255,7 @@ class TestMesh {
    * \pre TestMesh::mfem_mesh != nullptr
    * \pre matrix A cannot have been finalized yet
    */
-  void computeEquilibriumJacobian( mfem::SparseMatrix* const A, real const nu, real const youngs );
+  void computeEquilibriumJacobian( mfem::SparseMatrix* const A, RealT const nu, RealT const youngs );
 
   /*!
    * \brief wraps element Jacobian calculations for linear elasticity
@@ -304,7 +311,7 @@ class TestMesh {
    * \pre v of length, dim * numTotalNodes + numPressureDofs
    *
    */
-  void getGapEvals( real* const v );
+  void getGapEvals( RealT* const v );
 
   /*!
    * \brief Modifies matrix A and rhs vector b to enforce Dirichlet BCs
@@ -325,15 +332,15 @@ class TestMesh {
   /// print mesh to vtk file
   void testMeshToVtk( const std::string& dir,  ///< Name of the output directory
                       int cycle,               ///< Cycle number
-                      double time              ///< Simulation time
+                      RealT time               ///< Simulation time
   );
 
  public:
   mfem::Mesh* mfem_mesh;
 
   // Basic info about the mesh
-  int mortarMeshId;              ///< Mesh id for mortar portion of mesh
-  int nonmortarMeshId;           ///< Mesh id for nonmortar portion of mesh
+  IndexT mortarMeshId;           ///< Mesh id for mortar portion of mesh
+  IndexT nonmortarMeshId;        ///< Mesh id for nonmortar portion of mesh
   int cellType;                  ///< Type of contact surface cell in mesh
   int numTotalNodes;             ///< Total number of nodes in the mesh
   int numMortarNodes;            ///< Number of mortar nodes (not just surface nodes)
@@ -350,20 +357,20 @@ class TestMesh {
   int dim;                       ///< Mesh dimension
 
   // Pointers to Boundary Condition Data
-  int* dirNodesX1;    ///< Pointer to list of mortar node ids with x-component Dirichlet BCs
-  int* dirNodesY1;    ///< Pointer to list of mortar node ids with y-component Dirichlet BCs
-  int* dirNodesZ1;    ///< Pointer to list of mortar node ids with z-component Dirichlet BCs
-  double* iDirValX1;  ///< Pointer to x-component Dirichlet BC values for specified mortar nodes
-  double* iDirValY1;  ///< Pointer to y-component Dirichlet BC values for specified mortar nodes
-  double* iDirValZ1;  ///< Pointer to z-component Dirichlet BC values for specified mortar nodes
-  int* dirNodesX2;    ///< Pointer to list of nonmortar node ids with x-component Dirichlet BCs
-  int* dirNodesY2;    ///< Pointer to list of nonmortar node ids with y-component Dirichlet BCs
-  int* dirNodesZ2;    ///< Pointer to list of nonmortar node ids with z-component Dirichlet BCs
-  double* iDirValX2;  ///< Pointer to x-component Dirichlet BC values for specified nonmortar nodes
-  double* iDirValY2;  ///< Pointer to y-component Dirichlet BC values for specified nonmortar nodes
-  double* iDirValZ2;  ///< Pointer to z-component Dirichlet BC values for specified nonmortar nodes
-  int* presDofs1;     ///< Pointer to mortar node ids with a pressure BC
-  int* presDofs2;     ///< Pointer to nonmortar node ids with a pressure BC
+  int* dirNodesX1;   ///< Pointer to list of mortar node ids with x-component Dirichlet BCs
+  int* dirNodesY1;   ///< Pointer to list of mortar node ids with y-component Dirichlet BCs
+  int* dirNodesZ1;   ///< Pointer to list of mortar node ids with z-component Dirichlet BCs
+  RealT* iDirValX1;  ///< Pointer to x-component Dirichlet BC values for specified mortar nodes
+  RealT* iDirValY1;  ///< Pointer to y-component Dirichlet BC values for specified mortar nodes
+  RealT* iDirValZ1;  ///< Pointer to z-component Dirichlet BC values for specified mortar nodes
+  int* dirNodesX2;   ///< Pointer to list of nonmortar node ids with x-component Dirichlet BCs
+  int* dirNodesY2;   ///< Pointer to list of nonmortar node ids with y-component Dirichlet BCs
+  int* dirNodesZ2;   ///< Pointer to list of nonmortar node ids with z-component Dirichlet BCs
+  RealT* iDirValX2;  ///< Pointer to x-component Dirichlet BC values for specified nonmortar nodes
+  RealT* iDirValY2;  ///< Pointer to y-component Dirichlet BC values for specified nonmortar nodes
+  RealT* iDirValZ2;  ///< Pointer to z-component Dirichlet BC values for specified nonmortar nodes
+  int* presDofs1;    ///< Pointer to mortar node ids with a pressure BC
+  int* presDofs2;    ///< Pointer to nonmortar node ids with a pressure BC
 
   // Pointers to connectivity data
   int* faceConn1;  ///< Pointer to mortar face connectivity
@@ -372,43 +379,43 @@ class TestMesh {
   int* elConn2;    ///< Pointer to nonmortar element connectivity
 
   // TODO can we make these mfem grid functions?
-  double* fx1;  ///< Mortar nodal forces, x-component
-  double* fy1;  ///< Mortar nodal forces, y-component
-  double* fz1;  ///< Mortar nodal forces, z-component
-  double* fx2;  ///< Nonmortar nodal forces, x-component
-  double* fy2;  ///< Nonmortar nodal forces, y-component
-  double* fz2;  ///< Nonmortar nodal forces, z-component
-  double* vx1;  ///< Mortar nodal velocities, x-component
-  double* vy1;  ///< Mortar nodal velocities, y-component
-  double* vz1;  ///< Mortar nodal velocities, z-component
-  double* vx2;  ///< Nonmortar nodal velocities, x-component
-  double* vy2;  ///< Nonmortar nodal velocities, y-component
-  double* vz2;  ///< Nonmortar nodal velocities, z-component
-  double* x;    ///< Nodal coordinates, x-component
-  double* y;    ///< Nodal coordinates, y-component
-  double* z;    ///< Nodal coordinates, z-component
+  RealT* fx1;  ///< Mortar nodal forces, x-component
+  RealT* fy1;  ///< Mortar nodal forces, y-component
+  RealT* fz1;  ///< Mortar nodal forces, z-component
+  RealT* fx2;  ///< Nonmortar nodal forces, x-component
+  RealT* fy2;  ///< Nonmortar nodal forces, y-component
+  RealT* fz2;  ///< Nonmortar nodal forces, z-component
+  RealT* vx1;  ///< Mortar nodal velocities, x-component
+  RealT* vy1;  ///< Mortar nodal velocities, y-component
+  RealT* vz1;  ///< Mortar nodal velocities, z-component
+  RealT* vx2;  ///< Nonmortar nodal velocities, x-component
+  RealT* vy2;  ///< Nonmortar nodal velocities, y-component
+  RealT* vz2;  ///< Nonmortar nodal velocities, z-component
+  RealT* x;    ///< Nodal coordinates, x-component
+  RealT* y;    ///< Nodal coordinates, y-component
+  RealT* z;    ///< Nodal coordinates, z-component
 
   // CSR storage
-  int* I;        ///< Offsets for CSR storage
-  int* J;        ///< Column indices for all nonzero entries in CSR storage
-  double* vals;  ///< Array of nonzero values
+  int* I;       ///< Offsets for CSR storage
+  int* J;       ///< Column indices for all nonzero entries in CSR storage
+  RealT* vals;  ///< Array of nonzero values
 
-  double* gaps;       ///< Array of nodal gaps
-  double* pressures;  ///< Array of nodal pressures
+  RealT* gaps;       ///< Array of nodal gaps
+  RealT* pressures;  ///< Array of nodal pressures
 
-  real* mortar_bulk_mod;
-  real* mortar_element_thickness;
-  real* nonmortar_bulk_mod;
-  real* nonmortar_element_thickness;
+  RealT* mortar_bulk_mod;
+  RealT* mortar_element_thickness;
+  RealT* nonmortar_bulk_mod;
+  RealT* nonmortar_element_thickness;
 
   bool registered_velocities1{ false };
   bool registered_velocities2{ false };
   bool mesh_constructed{ false };
 
  public:
-  double* getX() const { return x; }
-  double* getY() const { return y; }
-  double* getZ() const { return z; }
+  RealT* getX() const { return x; }
+  RealT* getY() const { return y; }
+  RealT* getZ() const { return z; }
   int* getMortarFaceConnectivity() const { return faceConn1; }
   int* getNonmortarFaceConnectivity() const { return faceConn2; }
 
@@ -464,8 +471,16 @@ class CentralDiffSolver : public mfem::SecondOrderODESolver {
    * @brief Tracks whether a step has been taken yet
    */
   bool first_step;
+
+  /**
+   * @brief Applies homogeneous BCs to dxdt
+   *
+   * @param dxdt Velocity vector
+   */
+  void SetHomogeneousBC( mfem::Vector& dxdt ) const;
 };
 
+#ifdef TRIBOL_USE_MPI
 /// Explicit solid mechanics update with lumped mass
 class ExplicitMechanics : public mfem::SecondOrderTimeDependentOperator {
  public:
@@ -493,15 +508,6 @@ class ExplicitMechanics : public mfem::SecondOrderTimeDependentOperator {
   void Mult( const mfem::Vector& u, const mfem::Vector& dudt, mfem::Vector& a ) const override;
 
   /**
-   * @brief Computes inverse lumped mass matrix
-   *
-   * @param fespace FE space of displacement field
-   * @param rho Density coefficient
-   * @return mfem::Vector holding mass
-   */
-  static mfem::Vector ComputeInvMass( mfem::ParFiniteElementSpace& fespace, mfem::Coefficient& rho );
-
-  /**
    * @brief External force contribution (must be manually updated)
    */
   mfem::ParGridFunction f_ext;
@@ -517,6 +523,7 @@ class ExplicitMechanics : public mfem::SecondOrderTimeDependentOperator {
    */
   mfem::Vector inv_lumped_mass;
 };
+#endif /* defined(TRIBOL_USE_MPI) */
 
 }  // namespace mfem_ext
 

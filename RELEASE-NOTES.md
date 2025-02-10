@@ -14,6 +14,21 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - New API calls for MFEM data structures (see `interface/mfem_tribol.hpp`).
 - Updated the penalty stiffness calculation using the `KINEMATIC_CONSTANT` option
   to follow the `springs-in-serial` stiffness model used for `KINEMATIC_ELEMENT`.
+- API function to support turning on or off the timestep calculation for 
+  the common plane method.
+- Added a `timestep_pen_frac` separate from the `contact_pen_frac` for the purposes 
+  of triggering a timestep vote calculation when the gap is beyond a fixed percentage of the element thickness
+- Added use of `contact_pen_frac` to determine maximum allowable interpen as a fraction
+  of element thickness when using auto contact.
+- Added coupling scheme tests testing auto contact
+- Added computational geometry tests testing the maximum allowable interpen when using auto contact.
+- API function to set the timestep interpenetration factor as percentage of element thickness used
+  to trigger a timestep vote.
+- Introduced concepts of MemorySpace and ExecutionMode to enable parallel loop execution on different
+  programming models. These concepts map to Tribol's integration with Umpire and RAJA, respectively.
+- Added support and testing for the common plane algorithm with CUDA, HIP, and OpenMP.
+- Added bounding volume hierarchy coarse binning algorithm with CUDA/HIP support.
+
 
 ### Changed
 - Return negative timestep vote for non-null meshes with null velocity pointers.
@@ -28,9 +43,32 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   with host codes.
 - Removed nullptr errors to allow more function call uniformity for ranks with null meshes. 
   Also removed any `continue` statements for null meshes.
+- Updated logging in timestep vote by removing logging macro calls inside the interface pairs 
+  loop; don't error out in the presence of a bad dt vote, but issue debug print.
+- Updated logging of face geometry issues to `SLIC_INFO()` and don't error out in presence of
+  geometry issue.
+- Changed `setContactPenFrac()` to `setAutoContactPenScale()`, which better describes when and
+  how this scale factor is used.
+- Deprecated `tribol::initialize()` in favor of setting dimension and MPI communicator on the
+  coupling scheme. New method `tribol::setMPIComm()` allows setting the communicator.
+- Moved parameters from a (global) singleton to a per-coupling scheme struct. As a result,
+  `tribol::setAutoContactPenScale()`, `tribol::setTimestepPenFrac()`, `tribol::setTimestepScale()`,
+  `tribol::setContactAreaFrac()`, `tribol::setPlotCycleIncrement()`, `tribol::setPlotOptions()`,
+  `tribol::setOutputDirectory()`, and `tribol::enableTimestepVote()` now require a coupling scheme
+  in the API function.
+- `tribol::registerMesh()` now contains an optional `tribol::MemorySpace` argument that describes
+  what device the mesh pointers reside on.
+- `tribol::registerCouplingScheme()` now contains an optional `tribol::ExecutionMode` argument
+  that provides a suggested programming model to execute parallel loops.
   
 ### Fixed
 - Allow null velocity and response pointers for various use cases
+- Tolerancing bug that produced negative timestep estimates in the presence of numerically
+  zero face velocities.
+- Fixed computational geometry bug in 2D/3D common plane that was using face normals in projections
+  instead of common plane normal.
+- Fixed bug in 2D segment-segment overlap calculation on common plane. The current configuration edge lengths
+  were being used instead of the projected edges leading to false positives.
 
 ## [Version 0.1.0] - Release date 2023-04-21
 

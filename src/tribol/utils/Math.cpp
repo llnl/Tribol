@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -13,12 +13,15 @@
 
 namespace tribol {
 
-real magnitude( real const vx, real const vy, real const vz ) { return sqrt( vx * vx + vy * vy + vz * vz ); }
+TRIBOL_HOST_DEVICE RealT magnitude( RealT const vx, RealT const vy, RealT const vz )
+{
+  return sqrt( vx * vx + vy * vy + vz * vz );
+}
 
 //------------------------------------------------------------------------------
-real magnitude( real const* const v, int const dim )
+RealT magnitude( RealT const* const v, int const dim )
 {
-  real mag = 0.;
+  RealT mag = 0.;
   for ( int i = 0; i < dim; ++i ) {
     mag += v[i] * v[i];
   }
@@ -26,12 +29,12 @@ real magnitude( real const* const v, int const dim )
 }
 
 //------------------------------------------------------------------------------
-real magnitude( real const vx, real const vy ) { return sqrt( vx * vx + vy * vy ); }
+TRIBOL_HOST_DEVICE RealT magnitude( RealT const vx, RealT const vy ) { return sqrt( vx * vx + vy * vy ); }
 
 //------------------------------------------------------------------------------
-real dotProd( real const* const v, real const* const w, int const dim )
+TRIBOL_HOST_DEVICE RealT dotProd( RealT const* const v, RealT const* const w, int const dim )
 {
-  real z = 0;
+  RealT z = 0;
   for ( int i = 0; i < dim; ++i ) {
     z += v[i] * w[i];
   }
@@ -40,24 +43,25 @@ real dotProd( real const* const v, real const* const w, int const dim )
 }
 
 //------------------------------------------------------------------------------
-real dotProd( real const aX, real const aY, real const aZ, real const bX, real const bY, real const bZ )
+TRIBOL_HOST_DEVICE RealT dotProd( RealT const aX, RealT const aY, RealT const aZ, RealT const bX, RealT const bY,
+                                  RealT const bZ )
 {
   return aX * bX + aY * bY + aZ * bZ;
 }
 
 //------------------------------------------------------------------------------
-real magCrossProd( real const a[3], real const b[3] )
+TRIBOL_HOST_DEVICE RealT magCrossProd( RealT const a[3], RealT const b[3] )
 {
-  real vi = a[1] * b[2] - a[2] * b[1];
-  real vj = a[2] * b[0] - a[0] * b[2];
-  real vk = a[0] * b[1] - a[1] * b[0];
+  RealT vi = a[1] * b[2] - a[2] * b[1];
+  RealT vj = a[2] * b[0] - a[0] * b[2];
+  RealT vk = a[0] * b[1] - a[1] * b[0];
 
   return magnitude( vi, vj, vk );
 }
 
 //------------------------------------------------------------------------------
-void crossProd( real const aX, real const aY, real const aZ, real const bX, real const bY, real const bZ, real& prodX,
-                real& prodY, real& prodZ )
+TRIBOL_HOST_DEVICE void crossProd( RealT const aX, RealT const aY, RealT const aZ, RealT const bX, RealT const bY,
+                                   RealT const bZ, RealT& prodX, RealT& prodY, RealT& prodZ )
 {
   prodX = aY * bZ - aZ * bY;
   prodY = aZ * bX - aX * bZ;
@@ -80,7 +84,7 @@ int binary_search( const int* const array, const int n, const int val )
   int L = 0;
   int R = n - 1;
   while ( L <= R ) {
-    int m = floor( ( L + R ) / 2 );
+    int m = ( L + R ) / 2;
     if ( array[m] < val ) {
       L = m + 1;
     } else if ( array[m] > val ) {
@@ -116,17 +120,17 @@ void bubble_sort( int* const array, const int n )
 }
 
 //------------------------------------------------------------------------------
-void allocRealArray( real** arr, int length, real init_val )
+void allocRealArray( RealT** arr, int length, RealT init_val )
 {
   SLIC_ERROR_IF( length == 0, "allocRealArray: please specify nonzero length "
                                   << "for array allocation." );
 
-  *arr = new real[length];
+  *arr = new RealT[length];
   initRealArray( *arr, length, init_val );
 }
 
 //------------------------------------------------------------------------------
-void allocRealArray( real** arr, const int length, const real* const data )
+void allocRealArray( RealT** arr, const int length, const RealT* const data )
 {
   SLIC_ERROR_IF( length == 0, "allocRealArray: please specify nonzero length "
                                   << "for array allocation." );
@@ -135,7 +139,7 @@ void allocRealArray( real** arr, const int length, const real* const data )
     SLIC_ERROR( "allocRealArray: input data pointer not set." );
   }
 
-  *arr = new real[length];
+  *arr = new RealT[length];
 
   for ( int i = 0; i < length; ++i ) {
     ( *arr )[i] = data[i];
@@ -184,10 +188,12 @@ void allocBoolArray( bool** arr, int length, bool init_val )
 }
 
 //------------------------------------------------------------------------------
-void initRealArray( real* arr, int length, real init_val )
+TRIBOL_HOST_DEVICE void initRealArray( RealT* arr, int length, RealT init_val )
 {
+#ifdef TRIBOL_USE_HOST
   SLIC_ERROR_IF( arr == nullptr, "initRealArray(): "
                                      << "input pointer to array is null." );
+#endif
 
   for ( int i = 0; i < length; ++i ) {
     arr[i] = init_val;
@@ -195,20 +201,24 @@ void initRealArray( real* arr, int length, real init_val )
 }
 
 //------------------------------------------------------------------------------
-void initIntArray( int* arr, int length, int init_val )
+TRIBOL_HOST_DEVICE void initIntArray( int* arr, int length, int init_val )
 {
+#ifdef TRIBOL_USE_HOST
   SLIC_ERROR_IF( arr == nullptr, "initIntArray(): "
                                      << "input pointer to array is null." );
+#endif
   for ( int i = 0; i < length; ++i ) {
     arr[i] = init_val;
   }
 }
 
 //------------------------------------------------------------------------------
-void initBoolArray( bool* arr, int length, bool init_val )
+TRIBOL_HOST_DEVICE void initBoolArray( bool* arr, int length, bool init_val )
 {
+#ifdef TRIBOL_USE_HOST
   SLIC_ERROR_IF( arr == nullptr, "initBoolArray(): "
                                      << "input pointer to array is null." );
+#endif
   for ( int i = 0; i < length; ++i ) {
     arr[i] = init_val;
   }

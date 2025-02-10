@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level LICENSE file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -96,6 +96,8 @@ else()
     endif()
     if(NOT mfem_tpl_lnk_flags EQUAL "")
         string(REGEX REPLACE  "MFEM_EXT_LIBS +=" "" mfem_tpl_lnk_flags "${mfem_tpl_lnk_flags}")
+        string(REPLACE "-ltribol " "" mfem_tpl_lnk_flags "${mfem_tpl_lnk_flags}")
+        string(REPLACE "-lredecomp " "" mfem_tpl_lnk_flags "${mfem_tpl_lnk_flags}")
         string(FIND  "${mfem_tpl_lnk_flags}" "\n" mfem_tpl_lnl_flags_end_pos )
         string(SUBSTRING "${mfem_tpl_lnk_flags}" 0 ${mfem_tpl_lnl_flags_end_pos} mfem_tpl_lnk_flags)
         string(STRIP "${mfem_tpl_lnk_flags}" mfem_tpl_lnk_flags)

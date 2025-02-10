@@ -1,6 +1,6 @@
 #!/bin/bash
 ##############################################################################
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -25,7 +25,7 @@ echo HOST_CONFIG
 echo $HOST_CONFIG
 
 echo "~~~~~~ RUNNING CMAKE ~~~~~~~~"
-cmake_args="-DENABLE_CLANGTIDY=OFF"
+cmake_args="-DENABLE_CLANGTIDY=OFF -DTRIBOL_ENABLE_CODE_CHECKS=ON"
 
 if [[ "$DO_COVERAGE_CHECK" == "yes" ]] ; then
     # Alias llvm-cov to gcov so it acts like gcov
@@ -61,9 +61,9 @@ or_die cd build-check-debug
 
 if [[ "$DO_COVERAGE_CHECK" == "yes" ]] ; then
     or_die make -j4
-    or_die make serac_coverage
+    or_die make tribol_coverage
     # Rename to file expected by codecov
-    cp serac_coverage.info.cleaned lcov.info
+    cp tribol_coverage.info.cleaned lcov.info
     or_die curl -s https://codecov.io/bash | bash /dev/stdin -X gcov
 fi
 
@@ -73,7 +73,13 @@ if [[ "$DO_DOCS_CHECK" == "yes" ]] ; then
 fi
 
 if [[ "$DO_STYLE_CHECK" == "yes" ]] ; then
-    or_die make VERBOSE=1 check
+    or_die make VERBOSE=1 clangformat_check
+fi
+
+if [[ "$DO_HEADER_CHECK" == "yes" ]] ; then
+    or_die make -j4
+    or_die make install -j4
+    or_die ../scripts/check_for_missing_headers.py -i ../install-check-debug -s ../src
 fi
 
 exit 0

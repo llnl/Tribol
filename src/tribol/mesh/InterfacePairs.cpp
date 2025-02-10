@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -7,48 +7,14 @@
 
 namespace tribol {
 
-void InterfacePairs::reserve( integer new_size )
+TRIBOL_HOST_DEVICE InterfacePair::InterfacePair( IndexT element_id1, IndexT element_id2, bool is_contact_candidate )
+    : m_element_id1( element_id1 ), m_element_id2( element_id2 ), m_is_contact_candidate( is_contact_candidate )
 {
-  m_pairIndex1.reserve( new_size );
-  m_pairIndex2.reserve( new_size );
-  m_isContactCandidate.reserve( new_size );
 }
 
-void InterfacePairs::clear()
+TRIBOL_HOST_DEVICE InterfacePair::InterfacePair()
+    : m_element_id1( -1 ), m_element_id2( -1 ), m_is_contact_candidate( true )
 {
-  m_pairIndex1.clear();
-  m_pairIndex2.clear();
-  m_isContactCandidate.clear();
-}
-
-void InterfacePairs::addInterfacePair( InterfacePair const& pair )
-{
-  // set mesh ids and pair types. This is redundant since these
-  // only need to be set once.
-  m_meshId1 = pair.meshId1;
-  m_meshId2 = pair.meshId2;
-  m_pairType1 = pair.pairType1;
-  m_pairType2 = pair.pairType2;
-
-  // add face ids to containers
-  m_pairIndex1.push_back( pair.pairIndex1 );
-  m_pairIndex2.push_back( pair.pairIndex2 );
-
-  // set contact candidate boolean container entry
-  m_isContactCandidate.push_back( pair.isContactCandidate );
-}
-
-void InterfacePairs::updateInterfacePair( InterfacePair const& pair, integer const idx )
-{
-  m_isContactCandidate[idx] = pair.isContactCandidate;
-}
-
-InterfacePair InterfacePairs::getInterfacePair( IndexType idx ) const
-{
-  SLIC_ERROR_IF( idx >= getNumPairs(), "Index out of range." );
-
-  return InterfacePair{ m_meshId1,   m_pairType1,       m_pairIndex1[idx],         m_meshId2,
-                        m_pairType2, m_pairIndex2[idx], m_isContactCandidate[idx], idx };
 }
 
 }  // namespace tribol

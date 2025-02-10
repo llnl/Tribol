@@ -1,23 +1,25 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
 
 #include "examples_common.hpp"  // for common functionality used in examples
 
-#include "tribol/types.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/utils/TestUtils.hpp"
 #include "tribol/utils/Math.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
-#include "tribol/mesh/CouplingSchemeManager.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/mesh/MeshManager.hpp"
 #include "tribol/physics/CommonPlane.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
+
+#ifdef TRIBOL_USE_UMPIRE
+// Umpire includes
+#include "umpire/ResourceManager.hpp"
+#endif
 
 #include "axom/slic.hpp"
 
@@ -60,8 +62,12 @@ int main( int argc, char** argv )
 #ifdef TRIBOL_USE_MPI
   MPI_Init( &argc, &argv );
 #endif
-  tribol::CommType problem_comm = TRIBOL_COMM_WORLD;
+  tribol::CommT problem_comm = TRIBOL_COMM_WORLD;
   initialize_logger( problem_comm );
+
+#ifdef TRIBOL_USE_UMPIRE
+  umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
+#endif
 
   // parse command line arguments
   Arguments args;

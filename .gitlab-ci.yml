@@ -1,5 +1,5 @@
 ##############################################################################
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -29,5 +29,8 @@ variables:
       - _tribol_build_and_test_*/build-*/junit.xml
 
 include:
-  - local: .gitlab/build_quartz.yml
+  - local: .gitlab/build_ruby.yml
   - local: .gitlab/build_lassen.yml
+  # ID token requirement for Gitlab 17.0+
+  - project: 'lc-templates/id_tokens'
+    file: 'id_tokens.yml'

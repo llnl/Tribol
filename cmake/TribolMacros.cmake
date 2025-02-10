@@ -1,7 +1,85 @@
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level LICENSE file for details.
 #
 # SPDX-License-Identifier: (MIT)
+
+
+#------------------------------------------------------------------------------
+# tribol_add_code_checks( PREFIX [prefix] )
+#
+# Adds code checks for all cpp/hpp files recursively under the current directory
+# that regex match INCLUDES and excludes any files that regex match EXCLUDES
+# 
+# This creates the following parent build targets:
+#  check - Runs a non file changing style check and CppCheck
+#  style - In-place code formatting
+#
+# Creates various child build targets that follow this pattern:
+#  tribol_<check|style>
+#  tribol_<cppcheck|clangformat>_<check|style>
+#
+# This also creates targets for running clang-tidy on the src/ and test/
+# directories, with a more permissive set of checks for the tests,
+# called tribol_guidelines_check and tribol_guidelines_check_tests, respectively
+#------------------------------------------------------------------------------
+macro(tribol_add_code_checks)
+
+  set(options)
+  set(singleValueArgs PREFIX)
+  set(multiValueArgs)
+
+  # Parse the arguments to the macro
+  cmake_parse_arguments(arg
+       "${options}" "${singleValueArgs}" "${multiValueArgs}" ${ARGN})
+
+  # Create file globbing expressions that only include directories that contain source
+  set(_base_dirs "src")
+  # Note: any extensions added here should also be added to BLT's lists in CMakeLists.txt
+  set(_ext_expressions "*.cpp" "*.hpp" "*.inl" "*.cuh" "*.cu" "*.cpp.in" "*.hpp.in")
+
+  set(_glob_expressions)
+  foreach(_exp ${_ext_expressions})
+      foreach(_base_dir ${_base_dirs})
+          list(APPEND _glob_expressions "${PROJECT_SOURCE_DIR}/${_base_dir}/${_exp}")
+      endforeach()
+  endforeach()
+
+  # Glob for list of files to run code checks on
+  set(_sources)
+  file(GLOB_RECURSE _sources ${_glob_expressions})
+
+  blt_add_code_checks(PREFIX          ${arg_PREFIX}
+                      SOURCES         ${_sources}
+                      CLANGFORMAT_CFG_FILE ${PROJECT_SOURCE_DIR}/.clang-format
+                      CPPCHECK_FLAGS  --enable=all --inconclusive)
+
+
+  set(_src_sources)
+  file(GLOB_RECURSE _src_sources "src/*.cpp" "src/*.hpp" "src/*.inl")
+  list(FILTER _src_sources EXCLUDE REGEX ".*/tests/.*pp")
+
+  blt_add_clang_tidy_target(NAME              ${arg_PREFIX}_guidelines_check
+                            CHECKS            "clang-analyzer-*,clang-analyzer-cplusplus*,cppcoreguidelines-*"
+                            SRC_FILES         ${_src_sources})
+
+  # Create list of recursive test directory glob expressions
+  # NOTE: GLOB operator ** did not appear to be supported by cmake and did not recursively find test subdirectories
+  # NOTE: Do not include all directories at root (for example: blt)
+
+  file(GLOB_RECURSE _test_sources "${PROJECT_SOURCE_DIR}/src/*.cpp" "${PROJECT_SOURCE_DIR}/tests/*.cpp")
+  list(FILTER _test_sources INCLUDE REGEX ".*/tests/.*pp")
+
+  blt_add_clang_tidy_target(NAME              ${arg_PREFIX}_guidelines_check_tests
+                            CHECKS            "clang-analyzer-*,clang-analyzer-cplusplus*,cppcoreguidelines-*,-cppcoreguidelines-avoid-magic-numbers"
+                            SRC_FILES         ${_test_sources})
+                                
+  if (ENABLE_COVERAGE)
+      blt_add_code_coverage_target(NAME   ${arg_PREFIX}_coverage
+                                   RUNNER ${CMAKE_MAKE_PROGRAM} test
+                                   SOURCE_DIRECTORIES ${PROJECT_SOURCE_DIR}/src )
+  endif()
+
+endmacro(tribol_add_code_checks)
 
 ##------------------------------------------------------------------------------
 ## tribol_assert_path_exists( path )
@@ -18,87 +96,6 @@ macro(tribol_assert_path_exists path )
   endif()
 
 endmacro(tribol_assert_path_exists)
-
-
-##------------------------------------------------------------------------------
-## tribol_register_simple_library(
-##    NAME     <name> 
-##    DIR      <dir>                -- required path to root
-##    LIBS     <list of libraries>  -- will use NAME if not specified
-##    INCLUDE  <include_path        -- required path to include directory
-##    DEPENDS_ON <deps...>          -- optional dependencies
-##
-## Sets up and registers a 'simple' library as a blt-registered target.
-##
-## A 'simple' library can be defined by specifying any of the following:
-##   - an INCLUDE path to compile against
-##   - a list of LIBS to link against (it is not an error if some are missing)
-##   - a list of dependency targets 
-##
-## After calling this macro, the following variables will be defined
-##   ${name}_FOUND        - Indicates whether the library was found
-##   ${name}_INCLUDE_DIRS - The library include directories, if applicable
-##   ${name}_LIBRARIES    - The paths to the link libraries, if applicable
-##
-## The macro also registers a blt-registered target named ${name}
-##------------------------------------------------------------------------------
-macro(tribol_register_simple_library)
-
-  set(options)
-  set(singleValueArgs NAME DIR INCLUDE )
-  set(multiValueArgs LIBS DEPS)
-
-  cmake_parse_arguments(arg
-    "${options}" "${singleValueArgs}" "${multiValueArgs}" ${ARGN})
-
-  if ( NOT DEFINED arg_NAME )
-    message( FATAL_ERROR "tribol_register_simple_library needs a NAME argument for the target!" )
-  endif()
-
-  if ( NOT DEFINED arg_DIR )
-    message( FATAL_ERROR "tribol_register_simple_library needs a DIR argument for the directory!" )
-  endif()
-  
-  if ( NOT EXISTS ${arg_DIR} )
-    message( FATAL_ERROR "invalid dir for tribol_register_simple_library -- ${arg_DIR}!" )
-  endif()
-
-  string(TOUPPER ${arg_NAME} _uppercase_name)
-
-  set(_req_vars)
-  
-  # setup the includes
-  if ( DEFINED arg_INCLUDE AND EXISTS ${arg_INCLUDE} )
-      set( ${_uppercase_name}_INCLUDE_DIRS ${arg_INCLUDE})
-      blt_list_append(TO _req_vars ELEMENTS ${_uppercase_name}_INCLUDE_DIRS)
-  endif()
-
-  # setup the libraries
-  if ( DEFINED arg_LIBS )
-    blt_find_libraries( FOUND_LIBS ${_uppercase_name}_LIBRARIES
-                        NAMES      ${arg_LIBS}
-                        REQUIRED   FALSE
-                        PATHS      ${arg_DIR}/lib)
-    blt_list_append(TO _req_vars ELEMENTS ${_uppercase_name}_LIBRARIES)
-  endif()                        
-
-  include(FindPackageHandleStandardArgs)
-  find_package_handle_standard_args(${_uppercase_name}  DEFAULT_MSG ${_req_vars})
-  
-  # mark library as found                                
-  set(${_uppercase_name}_FOUND ${${_uppercase_name}_FOUND} CACHE BOOL "" FORCE)                                  
-
-  mark_as_advanced( ${_uppercase_name}_FOUND
-                    ${_req_vars} )
-
-  blt_register_library(
-    NAME ${arg_NAME}
-    DEPENDS_ON ${arg_DEPS}
-    INCLUDES ${${_uppercase_name}_INCLUDE_DIRS}
-    LIBRARIES ${${_uppercase_name}_LIBRARIES}
-    TREAT_INCLUDES_AS_SYSTEM TRUE )
-
-endmacro(tribol_register_simple_library)
 
 
 ##------------------------------------------------------------------------------

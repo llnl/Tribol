@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level LICENSE file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -138,7 +138,7 @@ spack:
     cmake:
       buildable: false
       externals:
-      - spec: cmake@3.20.4
+      - spec: cmake@3.24.1
         prefix: /usr
     doxygen:
       version: [1.8.17]
@@ -165,16 +165,14 @@ spack:
       - spec: py-sphinx@3.2.1
         prefix: /usr
 
-    # Globally lock version of third party libraries
+    # Globally lock version of third party libraries that work on this platform
     axom:
-      variants: ~examples~fortran~lua~tools~openmp
+      require: "@0.9.0.2~shared~examples~fortran~lua~tools"
     camp:
-      require: "@2023.06.0"
+      require: "@2024.07.0"
     conduit:
-      require: "@0.8.8~shared~test~examples~utilities"
-    hypre:
-      version: [2.24.0]
+      variants: ~shared~test~examples~utilities
     raja:
-      require: "@2023.06.0~shared~examples~exercises~openmp"
+      require: "@2024.07.0~shared~examples~exercises"
     umpire:
-      require: "@2023.06.0~shared~examples~openmp"
+      require: "@2024.07.0~shared~examples"

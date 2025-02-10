@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level LICENSE file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -12,10 +12,12 @@ set( tribol_tests
      tribol_check_tpl.cpp
      tribol_common_plane_penalty.cpp
      tribol_common_plane_gap_rate.cpp
+     tribol_common_plane_gpu.cpp
      tribol_comp_geom.cpp
      tribol_coupling_scheme.cpp
      tribol_coupling_scheme_manager.cpp
      tribol_enforcement_options.cpp
+     tribol_execution_modes.cpp
      tribol_hex_mesh.cpp
      tribol_inv_iso.cpp
      tribol_iso_integ.cpp
@@ -55,6 +57,17 @@ foreach( test ${tribol_tests} )
     set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
   endif()
 
+  if (ENABLE_HIP)
+    target_compile_options(${test_name}_test PRIVATE -fgpu-rdc)
+    target_compile_options(${test_name}_test PRIVATE
+        $<$<CONFIG:Debug>:
+            -ggdb
+        >
+    )
+    target_link_options(${test_name}_test PRIVATE -fgpu-rdc)
+    target_link_options(${test_name}_test PRIVATE --hip-link)
+  endif()
+
 endforeach()
 
 #------------------------------------------------------------------------------
@@ -82,11 +95,13 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
       OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
       DEPENDS_ON ${redecomp_test_depends} ${tribol_device_depends}
       FOLDER redecomp/tests )
-
-    foreach ( nranks RANGE 1 3 )
+    
+    # NOTE: just do 2 ranks for now until we make the tests smaller
+    #foreach ( nranks RANGE 1 3 )
+    foreach ( nranks RANGE 2 2 )
       blt_add_test( NAME ${test_name}_${nranks}rank
                     COMMAND ${test_name}_test
-                    NUM_MPI_RANKS ${nranks} )
+                    NUM_MPI_TASKS ${nranks} )
     endforeach()
 
     if (ENABLE_CUDA)
@@ -120,14 +135,27 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
       DEPENDS_ON ${combined_test_depends} ${tribol_device_depends}
       FOLDER tribol/tests )
 
-    foreach ( nranks RANGE 1 3 )
+    # NOTE: just do 2 ranks for now until we make the tests smaller
+    #foreach ( nranks RANGE 1 3 )
+    foreach ( nranks RANGE 2 2 )
       blt_add_test( NAME ${test_name}_${nranks}rank
                     COMMAND ${test_name}_test
-                    NUM_MPI_RANKS ${nranks} )
+                    NUM_MPI_TASKS ${nranks} )
     endforeach()
 
     if (ENABLE_CUDA)
       set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
+    endif()
+    
+    if (ENABLE_HIP)
+      target_compile_options(${test_name}_test PRIVATE -fgpu-rdc)
+      target_compile_options(${test_name}_test PRIVATE
+          $<$<CONFIG:Debug>:
+              -ggdb
+          >
+      )
+      target_link_options(${test_name}_test PRIVATE -fgpu-rdc)
+      target_link_options(${test_name}_test PRIVATE --hip-link)
     endif()
 
   endforeach()

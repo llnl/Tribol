@@ -1,18 +1,22 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
 
 // Tribol includes
-#include "tribol/types.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/common/Parameters.hpp"
+#include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/mesh/MeshManager.hpp"
 #include "tribol/physics/Mortar.hpp"
 #include "tribol/physics/AlignedMortar.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/utils/TestUtils.hpp"
+
+#ifdef TRIBOL_USE_UMPIRE
+// Umpire includes
+#include "umpire/ResourceManager.hpp"
+#endif
 
 // Axom includes
 #include "axom/slic.hpp"
@@ -23,7 +27,7 @@
 // c++ includes
 #include <cmath>  // std::abs
 
-using real = tribol::real;
+using RealT = tribol::RealT;
 
 /*!
  * Test fixture class with some setup necessary to compute
@@ -38,24 +42,24 @@ class MortarForceTest : public ::testing::Test {
   int numOverlapNodes;
   int dim;
 
-  real* getXCoords() { return x; }
+  RealT* getXCoords() { return x; }
 
-  real* getYCoords() { return y; }
+  RealT* getYCoords() { return y; }
 
-  real* getZCoords() { return z; }
+  RealT* getZCoords() { return z; }
 
-  real* getXOverlapCoords() { return xOverlap; }
+  RealT* getXOverlapCoords() { return xOverlap; }
 
-  real* getYOverlapCoords() { return yOverlap; }
+  RealT* getYOverlapCoords() { return yOverlap; }
 
-  real* getZOverlapCoords() { return zOverlap; }
+  RealT* getZOverlapCoords() { return zOverlap; }
 
   void checkMortarForces( int* conn1, int* conn2, tribol::ContactMethod method )
   {
     // grab coordinate data
-    real* x = this->x;
-    real* y = this->y;
-    real* z = this->z;
+    RealT* x = this->x;
+    RealT* y = this->y;
+    RealT* z = this->z;
 
     // register the mesh with tribol
     int cellType = static_cast<int>( tribol::UNDEFINED_ELEMENT );
@@ -72,25 +76,21 @@ class MortarForceTest : public ::testing::Test {
     const int mortarMeshId = 0;
     const int nonmortarMeshId = 1;
 
-    // initialize tribol
-    tribol::CommType problem_comm = TRIBOL_COMM_WORLD;
-    tribol::initialize( dim, problem_comm );
-
     // register mesh
-    tribol::registerMesh( mortarMeshId, 1, this->numNodes, conn1, cellType, x, y, z );
-    tribol::registerMesh( nonmortarMeshId, 1, this->numNodes, conn2, cellType, x, y, z );
+    tribol::registerMesh( mortarMeshId, 1, this->numNodes, conn1, cellType, x, y, z, tribol::MemorySpace::Host );
+    tribol::registerMesh( nonmortarMeshId, 1, this->numNodes, conn2, cellType, x, y, z, tribol::MemorySpace::Host );
 
     // register nodal forces
-    real *fx1, *fy1, *fz1;
-    real *fx2, *fy2, *fz2;
+    RealT *fx1, *fy1, *fz1;
+    RealT *fx2, *fy2, *fz2;
 
-    real forceX1[this->numNodes];
-    real forceY1[this->numNodes];
-    real forceZ1[this->numNodes];
+    RealT forceX1[this->numNodes];
+    RealT forceY1[this->numNodes];
+    RealT forceZ1[this->numNodes];
 
-    real forceX2[this->numNodes];
-    real forceY2[this->numNodes];
-    real forceZ2[this->numNodes];
+    RealT forceX2[this->numNodes];
+    RealT forceY2[this->numNodes];
+    RealT forceZ2[this->numNodes];
 
     fx1 = forceX1;
     fy1 = forceY1;
@@ -114,10 +114,10 @@ class MortarForceTest : public ::testing::Test {
     tribol::registerNodalResponse( nonmortarMeshId, fx2, fy2, fz2 );
 
     // register nodal pressure and nodal gap array for the nonmortar mesh
-    real *gaps, *pressures;
+    RealT *gaps, *pressures;
 
-    gaps = new real[this->numNodes];
-    pressures = new real[this->numNodes];
+    gaps = new RealT[this->numNodes];
+    pressures = new RealT[this->numNodes];
 
     // initialize gaps and pressures. Initialize all
     // nonmortar pressures to 1.0
@@ -132,60 +132,61 @@ class MortarForceTest : public ::testing::Test {
 
     // register coupling scheme
     const int csIndex = 0;
-    tribol::registerCouplingScheme( csIndex, mortarMeshId, nonmortarMeshId, tribol::SURFACE_TO_SURFACE, tribol::AUTO,
-                                    method, tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER );
+    tribol::registerCouplingScheme( csIndex, mortarMeshId, nonmortarMeshId, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                                    method, tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER,
+                                    tribol::DEFAULT_BINNING_METHOD, tribol::ExecutionMode::Sequential );
 
     tribol::setLagrangeMultiplierOptions( csIndex, tribol::ImplicitEvalMode::MORTAR_RESIDUAL,
                                           tribol::SparseMode::MFEM_LINKED_LIST );
 
     // call tribol update
-    double dt = 1.0;
+    RealT dt = 1.0;
     int tribol_update_err = tribol::update( 1, 1., dt );
 
     EXPECT_EQ( tribol_update_err, 0 );
 
     // diagnostics
-    tribol::MeshManager& meshManager = tribol::MeshManager::getInstance();
-    tribol::MeshData& mortarMesh = meshManager.GetMeshInstance( mortarMeshId );
-    tribol::MeshData& nonmortarMesh = meshManager.GetMeshInstance( nonmortarMeshId );
+    auto& cs = tribol::CouplingSchemeManager::getInstance().at( csIndex );
+    const auto mortarMesh = cs.getMesh1().getView();
+    const auto nonmortarMesh = cs.getMesh2().getView();
 
     // compute the sum of the nodal forces
-    real fx1Sum = 0.;
-    real fy1Sum = 0.;
-    real fz1Sum = 0.;
+    RealT fx1Sum = 0.;
+    RealT fy1Sum = 0.;
+    RealT fz1Sum = 0.;
 
-    real fx2Sum = 0.;
-    real fy2Sum = 0.;
-    real fz2Sum = 0.;
+    RealT fx2Sum = 0.;
+    RealT fy2Sum = 0.;
+    RealT fz2Sum = 0.;
     for ( int i = 0; i < this->numNodesPerFace; ++i ) {
-      int nonmortarNodeId = nonmortarMesh.getFaceNodeId( 0, i );
-      int mortarNodeId = mortarMesh.getFaceNodeId( 0, i );
+      int nonmortarNodeId = nonmortarMesh.getGlobalNodeId( 0, i );
+      int mortarNodeId = mortarMesh.getGlobalNodeId( 0, i );
 
-      fx2Sum += nonmortarMesh.m_forceX[nonmortarNodeId];
-      fy2Sum += nonmortarMesh.m_forceY[nonmortarNodeId];
-      fz2Sum += nonmortarMesh.m_forceZ[nonmortarNodeId];
+      fx2Sum += nonmortarMesh.getResponse()[0][nonmortarNodeId];
+      fy2Sum += nonmortarMesh.getResponse()[1][nonmortarNodeId];
+      fz2Sum += nonmortarMesh.getResponse()[2][nonmortarNodeId];
 
-      fx1Sum += mortarMesh.m_forceX[mortarNodeId];
-      fy1Sum += mortarMesh.m_forceY[mortarNodeId];
-      fz1Sum += mortarMesh.m_forceZ[mortarNodeId];
+      fx1Sum += mortarMesh.getResponse()[0][mortarNodeId];
+      fy1Sum += mortarMesh.getResponse()[1][mortarNodeId];
+      fz1Sum += mortarMesh.getResponse()[2][mortarNodeId];
     }
 
     // sum nonmortar pressure
-    real pSum = 0.;
+    RealT pSum = 0.;
     for ( int i = 0; i < this->numNodesPerFace; ++i ) {
-      int nonmortarNodeId = nonmortarMesh.getFaceNodeId( 0, i );
-      pSum += nonmortarMesh.m_nodalFields.m_node_pressure[nonmortarNodeId];
+      int nonmortarNodeId = nonmortarMesh.getGlobalNodeId( 0, i );
+      pSum += nonmortarMesh.getNodalFields().m_node_pressure[nonmortarNodeId];
     }
 
-    real diffX1 = std::abs( fx1Sum ) - std::abs( pSum );
-    real diffY1 = std::abs( fy1Sum ) - std::abs( pSum );
-    real diffZ1 = std::abs( fz1Sum ) - std::abs( pSum );
+    RealT diffX1 = std::abs( fx1Sum ) - std::abs( pSum );
+    RealT diffY1 = std::abs( fy1Sum ) - std::abs( pSum );
+    RealT diffZ1 = std::abs( fz1Sum ) - std::abs( pSum );
 
-    real diffX2 = std::abs( fx2Sum ) - std::abs( pSum );
-    real diffY2 = std::abs( fy2Sum ) - std::abs( pSum );
-    real diffZ2 = std::abs( fz2Sum ) - std::abs( pSum );
+    RealT diffX2 = std::abs( fx2Sum ) - std::abs( pSum );
+    RealT diffY2 = std::abs( fy2Sum ) - std::abs( pSum );
+    RealT diffZ2 = std::abs( fz2Sum ) - std::abs( pSum );
 
-    real tol = 1.e-8;
+    RealT tol = 1.e-8;
     EXPECT_LE( diffX1, tol );
     EXPECT_LE( diffY1, tol );
     EXPECT_LE( diffZ1, tol );
@@ -211,44 +212,44 @@ class MortarForceTest : public ::testing::Test {
     this->dim = 3;
 
     if ( this->x == nullptr ) {
-      this->x = new real[this->numNodes];
+      this->x = new RealT[this->numNodes];
     } else {
       delete[] this->x;
-      this->x = new real[this->numNodes];
+      this->x = new RealT[this->numNodes];
     }
 
     if ( this->y == nullptr ) {
-      this->y = new real[this->numNodes];
+      this->y = new RealT[this->numNodes];
     } else {
       delete[] this->y;
-      this->y = new real[this->numNodes];
+      this->y = new RealT[this->numNodes];
     }
 
     if ( this->z == nullptr ) {
-      this->z = new real[this->numNodes];
+      this->z = new RealT[this->numNodes];
     } else {
       delete[] this->z;
-      this->z = new real[this->numNodes];
+      this->z = new RealT[this->numNodes];
     }
 
     if ( this->xOverlap == nullptr ) {
-      this->xOverlap = new real[this->numOverlapNodes];
+      this->xOverlap = new RealT[this->numOverlapNodes];
     } else {
       delete[] this->xOverlap;
-      this->xOverlap = new real[this->numOverlapNodes];
+      this->xOverlap = new RealT[this->numOverlapNodes];
     }
 
     if ( this->yOverlap == nullptr ) {
-      this->yOverlap = new real[this->numOverlapNodes];
+      this->yOverlap = new RealT[this->numOverlapNodes];
     } else {
       delete[] this->yOverlap;
-      this->yOverlap = new real[this->numOverlapNodes];
+      this->yOverlap = new RealT[this->numOverlapNodes];
     }
     if ( this->zOverlap == nullptr ) {
-      this->zOverlap = new real[this->numOverlapNodes];
+      this->zOverlap = new RealT[this->numOverlapNodes];
     } else {
       delete[] this->zOverlap;
-      this->zOverlap = new real[this->numOverlapNodes];
+      this->zOverlap = new RealT[this->numOverlapNodes];
     }
   }
 
@@ -281,24 +282,24 @@ class MortarForceTest : public ::testing::Test {
   }
 
  protected:
-  real* x{ nullptr };
-  real* y{ nullptr };
-  real* z{ nullptr };
+  RealT* x{ nullptr };
+  RealT* y{ nullptr };
+  RealT* z{ nullptr };
 
-  real* xOverlap{ nullptr };
-  real* yOverlap{ nullptr };
-  real* zOverlap{ nullptr };
+  RealT* xOverlap{ nullptr };
+  RealT* yOverlap{ nullptr };
+  RealT* zOverlap{ nullptr };
 };
 
 TEST_F( MortarForceTest, parallel_misaligned )
 {
-  real* x = this->getXCoords();
-  real* y = this->getYCoords();
-  real* z = this->getZCoords();
+  RealT* x = this->getXCoords();
+  RealT* y = this->getYCoords();
+  RealT* z = this->getZCoords();
 
-  real* xOvrlp = this->getXOverlapCoords();
-  real* yOvrlp = this->getYOverlapCoords();
-  real* zOvrlp = this->getZOverlapCoords();
+  RealT* xOvrlp = this->getXOverlapCoords();
+  RealT* yOvrlp = this->getYOverlapCoords();
+  RealT* zOvrlp = this->getZOverlapCoords();
 
   x[0] = -1.;
   x[1] = -1.;
@@ -360,13 +361,13 @@ TEST_F( MortarForceTest, parallel_misaligned )
 
 TEST_F( MortarForceTest, parallel_aligned )
 {
-  real* x = this->getXCoords();
-  real* y = this->getYCoords();
-  real* z = this->getZCoords();
+  RealT* x = this->getXCoords();
+  RealT* y = this->getYCoords();
+  RealT* z = this->getZCoords();
 
-  real* xOvrlp = this->getXOverlapCoords();
-  real* yOvrlp = this->getYOverlapCoords();
-  real* zOvrlp = this->getZOverlapCoords();
+  RealT* xOvrlp = this->getXOverlapCoords();
+  RealT* yOvrlp = this->getYOverlapCoords();
+  RealT* zOvrlp = this->getZOverlapCoords();
 
   x[0] = -1.;
   x[1] = -1.;
@@ -428,13 +429,13 @@ TEST_F( MortarForceTest, parallel_aligned )
 
 TEST_F( MortarForceTest, non_parallel_misaligned )
 {
-  real* x = this->getXCoords();
-  real* y = this->getYCoords();
-  real* z = this->getZCoords();
+  RealT* x = this->getXCoords();
+  RealT* y = this->getYCoords();
+  RealT* z = this->getZCoords();
 
-  real* xOvrlp = this->getXOverlapCoords();
-  real* yOvrlp = this->getYOverlapCoords();
-  real* zOvrlp = this->getZOverlapCoords();
+  RealT* xOvrlp = this->getXOverlapCoords();
+  RealT* yOvrlp = this->getYOverlapCoords();
+  RealT* zOvrlp = this->getZOverlapCoords();
 
   x[0] = -1.;
   x[1] = -1.;
@@ -496,13 +497,13 @@ TEST_F( MortarForceTest, non_parallel_misaligned )
 
 TEST_F( MortarForceTest, non_parallel_aligned )
 {
-  real* x = this->getXCoords();
-  real* y = this->getYCoords();
-  real* z = this->getZCoords();
+  RealT* x = this->getXCoords();
+  RealT* y = this->getYCoords();
+  RealT* z = this->getZCoords();
 
-  real* xOvrlp = this->getXOverlapCoords();
-  real* yOvrlp = this->getYOverlapCoords();
-  real* zOvrlp = this->getZOverlapCoords();
+  RealT* xOvrlp = this->getXOverlapCoords();
+  RealT* yOvrlp = this->getYOverlapCoords();
+  RealT* zOvrlp = this->getZOverlapCoords();
 
   x[0] = -1.;
   x[1] = -1.;
@@ -564,13 +565,13 @@ TEST_F( MortarForceTest, non_parallel_aligned )
 
 TEST_F( MortarForceTest, parallel_simple_aligned )
 {
-  real* x = this->getXCoords();
-  real* y = this->getYCoords();
-  real* z = this->getZCoords();
+  RealT* x = this->getXCoords();
+  RealT* y = this->getYCoords();
+  RealT* z = this->getZCoords();
 
-  real* xOvrlp = this->getXOverlapCoords();
-  real* yOvrlp = this->getYOverlapCoords();
-  real* zOvrlp = this->getZOverlapCoords();
+  RealT* xOvrlp = this->getXOverlapCoords();
+  RealT* yOvrlp = this->getYOverlapCoords();
+  RealT* zOvrlp = this->getZOverlapCoords();
 
   x[0] = -1.;
   x[1] = -1.;
@@ -635,6 +636,10 @@ int main( int argc, char* argv[] )
   int result = 0;
 
   ::testing::InitGoogleTest( &argc, argv );
+
+#ifdef TRIBOL_USE_UMPIRE
+  umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
+#endif
 
   axom::slic::SimpleLogger logger;  // create & initialize logger,
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -43,7 +43,6 @@
 #include "tribol/common/Parameters.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
-#include "tribol/types.hpp"
 
 // Redecomp includes
 #include "redecomp/redecomp.hpp"
@@ -336,7 +335,6 @@ int main( int argc, char** argv )
     }
   }
   auto A_merged = std::unique_ptr<mfem::HypreParMatrix>( mfem::HypreParMatrixFromBlocks( hypre_blocks ) );
-
   // Use a linear solver to find the block displacement/pressure vector.
   mfem::MINRESSolver solver( MPI_COMM_WORLD );
   solver.SetRelTol( 1.0e-8 );

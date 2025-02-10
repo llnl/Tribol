@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -6,9 +6,9 @@
 #include "tribol.hpp"
 
 // Tribol includes
-#include "tribol/interface/simple_tribol.hpp"
+#include "tribol/common/ExecModel.hpp"
 #include "tribol/common/Parameters.hpp"
-#include "tribol/types.hpp"
+#include "tribol/interface/simple_tribol.hpp"
 
 // Axom includes
 #include "axom/core.hpp"
@@ -19,9 +19,6 @@
 #include <unordered_map>
 #include <fstream>
 
-// Axom Aliases
-namespace numerics = axom::numerics;
-
 //------------------------------------------------------------------------------
 // Interface Implementation
 //------------------------------------------------------------------------------
@@ -30,7 +27,7 @@ namespace numerics = axom::numerics;
 // free functions for simple API usage
 //------------------------------------------------------------------------------
 
-int Initialize( const int dim, bool init_slic )
+int Initialize( bool init_slic )
 {
   // initialize slic
   if ( init_slic ) {
@@ -41,10 +38,6 @@ int Initialize( const int dim, bool init_slic )
 
     axom::slic::addStreamToAllMsgLevels( new axom::slic::GenericOutputStream( &std::cout, format ) );
   }
-
-  // Initialize tribol
-  tribol::CommType problem_comm = TRIBOL_COMM_WORLD;
-  tribol::initialize( dim, problem_comm );
 
   return 0;
 }
@@ -79,12 +72,12 @@ void SimpleCouplingSetup( const int dim, int cell_type, int contact_method, int 
   // register mortar mesh
   int mortarMeshId = 0;
   tribol::registerMesh( mortarMeshId, mortar_numCells, mortar_lengthNodalData, mortar_connectivity, cell_type, mortar_x,
-                        mortar_y, mortar_z );
+                        mortar_y, mortar_z, tribol::MemorySpace::Host );
 
   // register nonmortar mesh
   int nonmortarMeshId = 1;
   tribol::registerMesh( nonmortarMeshId, nonmortar_numCells, nonmortar_lengthNodalData, nonmortar_connectivity,
-                        cell_type, nonmortar_x, nonmortar_y, nonmortar_z );
+                        cell_type, nonmortar_x, nonmortar_y, nonmortar_z, tribol::MemorySpace::Host );
 
   // Register mortar gaps and pressures, if provided
   if ( mortar_gaps != nullptr ) {
@@ -94,14 +87,15 @@ void SimpleCouplingSetup( const int dim, int cell_type, int contact_method, int 
     tribol::registerMortarPressures( nonmortarMeshId, mortar_pressures );
   }
 
-  // set contact area fraction
-  tribol::setContactAreaFrac( area_frac );
-  tribol::setPlotCycleIncrement( 1 );
-
   // note the use of NULL_ENFORCEMENT reflects that this routine is used
   // to initially setup tests for MORTAR_WEIGHTS only!
   tribol::registerCouplingScheme( 0, mortarMeshId, nonmortarMeshId, tribol::SURFACE_TO_SURFACE, tribol::AUTO,
-                                  contact_method, tribol::NULL_MODEL, tribol::NULL_ENFORCEMENT );
+                                  contact_method, tribol::NULL_MODEL, tribol::NULL_ENFORCEMENT,
+                                  tribol::DEFAULT_BINNING_METHOD, tribol::ExecutionMode::Sequential );
+
+  // set contact area fraction
+  tribol::setContactAreaFrac( 0, area_frac );
+  tribol::setPlotCycleIncrement( 0, 1 );
 
   // set enforcement options for MORTAR_WEIGHTS
   tribol::setLagrangeMultiplierOptions( 0, tribol::ImplicitEvalMode::MORTAR_WEIGHTS_EVAL,

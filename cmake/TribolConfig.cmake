@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level LICENSE file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -17,6 +17,7 @@ convert_to_native_escaped_file_path(${PROJECT_SOURCE_DIR} TRIBOL_REPO_DIR)
 convert_to_native_escaped_file_path(${CMAKE_BINARY_DIR}   TRIBOL_BIN_DIR)
 
 # Generate and install config header
+set(TRIBOL_DATA_DIR ${PROJECT_SOURCE_DIR}/data)
 tribol_configure_file(${PROJECT_SOURCE_DIR}/src/tribol/config.hpp.in
                       ${PROJECT_BINARY_DIR}/include/tribol/config.hpp)
 
@@ -54,6 +55,9 @@ configure_package_config_file(
     TRIBOL_INSTALL_BIN_DIR
     TRIBOL_INSTALL_CMAKE_MODULE_DIR
   )
+
+# Install BLT files
+blt_install_tpl_setups(DESTINATION ${TRIBOL_INSTALL_CMAKE_MODULE_DIR})
 
 # Install config files
 install(
