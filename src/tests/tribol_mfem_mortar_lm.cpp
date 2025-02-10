@@ -3,6 +3,7 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+#include <mfem/linalg/hypre.hpp>
 #include <set>
 
 #include <gtest/gtest.h>
@@ -205,8 +206,8 @@ class MfemMortarTest : public testing::TestWithParam<int> {
     solver.SetMaxIter( 5000 );
     solver.SetPrintLevel( 3 );
     solver.SetOperator( *A_merged );
-    mfem::HypreDiagScale prec( *A_merged );
-    solver.SetPreconditioner( prec );
+    // TODO: find a working preconditioner
+    // solver.SetPreconditioner( prec );
     solver.Mult( B_blk, X_blk );
 
     // move block displacements to grid function

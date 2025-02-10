@@ -13,7 +13,6 @@
 #endif
 
 #include "tribol/config.hpp"
-#include "tribol/types.hpp"
 
 #include "redecomp/redecomp.hpp"
 
