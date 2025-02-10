@@ -9,8 +9,7 @@
 #include "tribol/types.hpp"
 #include "tribol/common/Parameters.hpp"
 
-namespace tribol
-{
+namespace tribol {
 
 // forward declarations
 struct InterfacePair;
@@ -28,8 +27,7 @@ class CouplingScheme;
  * \return 0 if no errors
  *
  */
-int ApplyInterfacePhysics( CouplingScheme const * cs,
-                           integer cycle, real t );
+int ApplyInterfacePhysics( CouplingScheme const* cs, integer cycle, real t );
 /*!
  *
  * \brief applies interface method in the normal direction
@@ -39,8 +37,8 @@ int ApplyInterfacePhysics( CouplingScheme const * cs,
  * \return 0 if no error
  *
  */
-template< ContactMethod M, EnforcementMethod E >
-int ApplyNormal( CouplingScheme const * cs );
+template <ContactMethod M, EnforcementMethod E>
+int ApplyNormal( CouplingScheme const* cs );
 
 /*!
  *
@@ -51,10 +49,8 @@ int ApplyNormal( CouplingScheme const * cs );
  * \return 0 if no error
  *
  */
-template< ContactMethod M, 
-          EnforcementMethod E,
-          ContactModel Model >
-int ApplyTangential( CouplingScheme const * cs );
+template <ContactMethod M, EnforcementMethod E, ContactModel Model>
+int ApplyTangential( CouplingScheme const* cs );
 
 /*!
  *
@@ -65,9 +61,9 @@ int ApplyTangential( CouplingScheme const * cs );
  * \return 0 if no error
  *
  */
-template< ContactMethod M >
-int GetMethodData( CouplingScheme const * cs );
+template <ContactMethod M>
+int GetMethodData( CouplingScheme const* cs );
 
-} // end namespace TRIBOL
+}  // namespace tribol
 
 #endif /* SRC_PHYSICS_PHYSICS_HPP_ */

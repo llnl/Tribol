@@ -13,45 +13,42 @@
 // Axom includes
 #include "axom/core.hpp"
 
-namespace tribol
-{
+namespace tribol {
 
 // Helper struct to handle coupling scheme errors
-struct CouplingSchemeErrors
-{
-public:
-   CouplingSchemeErrors() {};
+struct CouplingSchemeErrors {
+ public:
+  CouplingSchemeErrors(){};
 
-   ~CouplingSchemeErrors() {};
+  ~CouplingSchemeErrors(){};
 
-   ModeError             cs_mode_error;
-   CaseError             cs_case_error;
-   MethodError           cs_method_error;
-   ModelError            cs_model_error;
-   EnforcementError      cs_enforcement_error;
-   EnforcementDataErrors cs_enforcement_data_error;
+  ModeError cs_mode_error;
+  CaseError cs_case_error;
+  MethodError cs_method_error;
+  ModelError cs_model_error;
+  EnforcementError cs_enforcement_error;
+  EnforcementDataErrors cs_enforcement_data_error;
 
-   void printModeErrors();
-   void printCaseErrors();
-   void printMethodErrors();
-   void printModelErrors();
-   void printEnforcementErrors();
-   void printEnforcementDataErrors(); 
+  void printModeErrors();
+  void printCaseErrors();
+  void printMethodErrors();
+  void printModelErrors();
+  void printEnforcementErrors();
+  void printEnforcementDataErrors();
 };
 
-struct CouplingSchemeInfo
-{
-public:
-   CouplingSchemeInfo() {};
-  
-   ~CouplingSchemeInfo() {};
+struct CouplingSchemeInfo {
+ public:
+  CouplingSchemeInfo(){};
 
-   void printCaseInfo();
-   void printEnforcementInfo();
+  ~CouplingSchemeInfo(){};
 
-   // Add info enums as needed
-   CaseInfo cs_case_info;
-   EnforcementInfo cs_enforcement_info;
+  void printCaseInfo();
+  void printEnforcementInfo();
+
+  // Add info enums as needed
+  CaseInfo cs_case_info;
+  EnforcementInfo cs_enforcement_info;
 };
 
 // forward declaration
@@ -75,10 +72,8 @@ class InterfacePairs;
  *  \see BinningMethod
  *  \see CouplingSchemeManager
  */
-class CouplingScheme
-{
-public:
-
+class CouplingScheme {
+ public:
   /*!
    * \brief Default constructor. Disabled.
    */
@@ -99,15 +94,9 @@ public:
    *
    * Per-cycle rebinning is enabled by default.
    */
-  CouplingScheme( integer couplingSchemeId, 
-                  integer meshId1,
-                  integer meshId2,
-                  integer contact_mode,
-                  integer contact_case,
-                  integer contact_method,
-                  integer contact_model,
-                  integer enforcement_method,
-                  integer binning_method);
+  CouplingScheme( integer couplingSchemeId, integer meshId1, integer meshId2, integer contact_mode,
+                  integer contact_case, integer contact_method, integer contact_model, integer enforcement_method,
+                  integer binning_method );
 
   /*!
    * \brief Destructor.
@@ -124,9 +113,9 @@ public:
 
   integer getNumTotalNodes() const { return m_numTotalNodes; }
 
-  ContactMode getContactMode() const  { return m_contactMode; }
-  ContactCase getContactCase() const  { return m_contactCase; }
-  ContactMethod getContactMethod() const  { return m_contactMethod; }
+  ContactMode getContactMode() const { return m_contactMode; }
+  ContactCase getContactCase() const { return m_contactCase; }
+  ContactMethod getContactMethod() const { return m_contactMethod; }
   ContactModel getContactModel() const { return m_contactModel; }
   EnforcementMethod getEnforcementMethod() const { return m_enforcementMethod; }
   BinningMethod getBinningMethod() const { return m_binningMethod; }
@@ -138,12 +127,12 @@ public:
   const EnforcementOptions& getEnforcementOptions() const { return m_enforcementOptions; }
 
   CouplingSchemeErrors& getCouplingSchemeErrors() { return m_couplingSchemeErrors; }
-  CouplingSchemeInfo&   getCouplingSchemeInfo()   { return m_couplingSchemeInfo; }
+  CouplingSchemeInfo& getCouplingSchemeInfo() { return m_couplingSchemeInfo; }
 
-  integer spatialDimension() const 
-  { 
-     parameters_t & params = parameters_t::getInstance();
-     return params.dimension; 
+  integer spatialDimension() const
+  {
+    parameters_t& params = parameters_t::getInstance();
+    return params.dimension;
   }
 
   /*!
@@ -151,17 +140,18 @@ public:
    *
    * \param [in] pred True to disable rebinning, false otherwise
    */
-  void setFixedBinning(bool pred) { m_fixedBinning = pred; }
+  void setFixedBinning( bool pred ) { m_fixedBinning = pred; }
 
   /*!
-   * Disable/Enable per-cycle rebinning of interface pairs based 
+   * Disable/Enable per-cycle rebinning of interface pairs based
    * on contact mode
    *
    */
-  void setFixedBinningPerCase() { 
-     if (m_isBinned && m_contactCase == NO_SLIDING) {
-        m_fixedBinning = true; 
-     }
+  void setFixedBinningPerCase()
+  {
+    if ( m_isBinned && m_contactCase == NO_SLIDING ) {
+      m_fixedBinning = true;
+    }
   }
 
   /*!
@@ -190,14 +180,14 @@ public:
    *
    * \return ptr pointer to the InterfacePairs instance.
    */
-  InterfacePairs* getInterfacePairs( ) { return m_interfacePairs; }
+  InterfacePairs* getInterfacePairs() { return m_interfacePairs; }
 
   /*!
    * \brief Returns a pointer to the associated InterfacePairs
    *
    * \return ptr pointer to the InterfacePairs instance.
    */
-  InterfacePairs* getInterfacePairs( ) const { return m_interfacePairs; }
+  InterfacePairs* getInterfacePairs() const { return m_interfacePairs; }
 
   /// @}
 
@@ -206,10 +196,10 @@ public:
    *
    * \return number of active interface pairs
    */
-  integer getNumActivePairs( ) const { return m_numActivePairs; }
+  integer getNumActivePairs() const { return m_numActivePairs; }
 
   /*!
-   * Get the gap tolerance that determines in contact face-pairs 
+   * Get the gap tolerance that determines in contact face-pairs
    * for each supported interface method
    *
    * \return the gap tolerance based on the method
@@ -219,10 +209,10 @@ public:
   /*!
    * Set whether the coupling scheme has been binned
    *
-   * \param [in] pred True to indicate binning has occurred 
+   * \param [in] pred True to indicate binning has occurred
    *
    */
-  void setBinned(bool pred) { m_isBinned = pred; }
+  void setBinned( bool pred ) { m_isBinned = pred; }
 
   /*!
    * \brief Returns true if a valid coupling scheme, otherwise false
@@ -232,14 +222,14 @@ public:
   bool isValidCouplingScheme();
 
   /*!
-   * \brief Returns true if one or both meshes are zero-element, null meshes 
+   * \brief Returns true if one or both meshes are zero-element, null meshes
    *
    * \return true if one or both null meshes in coupling scheme
    */
   bool nullMeshes() { return m_nullMeshes; }
 
   /*!
-   * \brief Returns true if one or both meshes are zero-element, null meshes 
+   * \brief Returns true if one or both meshes are zero-element, null meshes
    *
    * \return true if one or both null meshes in coupling scheme
    */
@@ -301,7 +291,7 @@ public:
   void allocateMethodData();
 
   /*!
-   * \brief Performs the binning between mesh 1 and mesh 2 
+   * \brief Performs the binning between mesh 1 and mesh 2
    *
    */
   void performBinning();
@@ -316,15 +306,15 @@ public:
    * \return 0 if successful apply
    *
    */
-  int apply( integer cycle, real t, real &dt );
+  int apply( integer cycle, real t, real& dt );
 
   /*!
-   * \brief Wrapper around method specific calculation of the Tribol timestep vote 
+   * \brief Wrapper around method specific calculation of the Tribol timestep vote
    *
    * \param [in/out] dt simulation timestep at given cycle
    *
    */
-  void computeTimeStep( real &dt );
+  void computeTimeStep( real& dt );
 
   /*!
    * \brief Wrapper to call method specific visualization output routines
@@ -335,21 +325,18 @@ public:
    * \param [in] t simulation time at given cycle
    *
    */
-  void writeInterfaceOutput( const std::string& dir,
-                             const VisType v_type, 
-                             const integer cycle, 
-                             const real t );
+  void writeInterfaceOutput( const std::string& dir, const VisType v_type, const integer cycle, const real t );
 
   /*!
-   * \brief Sets the coupling scheme logging level member variable 
+   * \brief Sets the coupling scheme logging level member variable
    *
-   * \param [in] log_level the LoggingLevel enum value 
+   * \param [in] log_level the LoggingLevel enum value
    *
    */
   void setLoggingLevel( const LoggingLevel log_level ) { m_loggingLevel = log_level; }
 
   /*!
-   * \brief Sets the SLIC logging level per the coupling scheme logging level 
+   * \brief Sets the SLIC logging level per the coupling scheme logging level
    *
    * \pre must call setLoggingLevel() first
    *
@@ -379,23 +366,20 @@ public:
    * mesh data from the MFEM volume mesh to the Tribol surface mesh, and mesh
    * data such as displacement, velocity, and force (response).
    *
-   * @return MfemMeshData* 
+   * @return MfemMeshData*
    */
   MfemMeshData* getMfemMeshData() { return m_mfemMeshData.get(); }
-  
+
   /**
    * @brief Get the MFEM mesh data object (const overload)
    *
    * MFEM mesh data includes the MFEM volume mesh, transfer operators to move mesh data
    * from the MFEM volume mesh to the Tribol surface mesh, and mesh data such as
    * displacement, velocity, and force (response).
-   * 
-   * @return const MfemMeshData* 
+   *
+   * @return const MfemMeshData*
    */
-  const MfemMeshData* getMfemMeshData() const
-  {
-    return m_mfemMeshData.get();
-  }
+  const MfemMeshData* getMfemMeshData() const { return m_mfemMeshData.get(); }
 
   /**
    * @brief Sets the MFEM mesh data object
@@ -406,10 +390,7 @@ public:
    *
    * @param mfemMeshData Unique pointer to MFEM mesh data
    */
-  void setMfemMeshData(std::unique_ptr<MfemMeshData> mfemMeshData)
-  {
-    m_mfemMeshData = std::move(mfemMeshData);
-  }
+  void setMfemMeshData( std::unique_ptr<MfemMeshData> mfemMeshData ) { m_mfemMeshData = std::move( mfemMeshData ); }
 
   /**
    * @brief Check if coupling scheme has MFEM submesh field data
@@ -429,24 +410,21 @@ public:
    * MFEM submesh field data includes a parent-linked boundary mfem::ParSubMesh,
    * transfer operators to move mesh data from the boundary submesh to the
    * Tribol surface mesh, and submesh data such as gap and pressure.
-   * 
-   * @return MfemSubmeshData* 
+   *
+   * @return MfemSubmeshData*
    */
   MfemSubmeshData* getMfemSubmeshData() { return m_mfemSubmeshData.get(); }
-  
+
   /**
    * @brief Get the MFEM submesh field data object (const overload)
    *
    * MFEM submesh field data includes a parent-linked boundary mfem::ParSubMesh,
    * transfer operators to move mesh data from the boundary submesh to the
    * Tribol surface mesh, and submesh data such as gap and pressure.
-   * 
-   * @return const MfemSubmeshData* 
+   *
+   * @return const MfemSubmeshData*
    */
-  const MfemSubmeshData* getMfemSubmeshData() const 
-  {
-    return m_mfemSubmeshData.get();
-  }
+  const MfemSubmeshData* getMfemSubmeshData() const { return m_mfemSubmeshData.get(); }
 
   /**
    * @brief Sets the MFEM submesh field data object
@@ -454,12 +432,12 @@ public:
    * MFEM submesh field data includes a parent-linked boundary mfem::ParSubMesh,
    * transfer operators to move mesh data from the boundary submesh to the
    * Tribol surface mesh, and submesh data such as gap and pressure.
-   * 
+   *
    * @param MfemSubmeshData Unique pointer to MFEM submesh field data
    */
-  void setMfemSubmeshData(std::unique_ptr<MfemSubmeshData> mfemSubmeshData)
+  void setMfemSubmeshData( std::unique_ptr<MfemSubmeshData> mfemSubmeshData )
   {
-    m_mfemSubmeshData = std::move(mfemSubmeshData);
+    m_mfemSubmeshData = std::move( mfemSubmeshData );
   }
 
   /**
@@ -473,34 +451,28 @@ public:
    * @return false: MFEM Jacobian data does not exist
    */
   bool hasMfemJacobianData() const { return m_mfemJacobianData != nullptr; }
-  
+
   /**
    * @brief Get the MFEM Jacobian data object
    *
    * MFEM Jacobian data includes transfer operators to move Jacobian
    * contributions from the Tribol surface mesh to the MFEM parent mesh and
    * parent-linked boundary submesh.
-   * 
-   * @return MfemJacobianData* 
+   *
+   * @return MfemJacobianData*
    */
-  MfemJacobianData* getMfemJacobianData()
-  {
-    return m_mfemJacobianData.get();
-  }
-  
+  MfemJacobianData* getMfemJacobianData() { return m_mfemJacobianData.get(); }
+
   /**
    * @brief Get the MFEM jacobian data object (const overload)
    *
    * MFEM jacobian data includes transfer operators to move Jacobian
    * contributions from the Tribol surface mesh to the MFEM parent mesh and
    * parent-linked boundary submesh.
-   * 
-   * @return MfemJacobianData* 
+   *
+   * @return MfemJacobianData*
    */
-  const MfemJacobianData* getMfemJacobianData() const
-  {
-    return m_mfemJacobianData.get();
-  }
+  const MfemJacobianData* getMfemJacobianData() const { return m_mfemJacobianData.get(); }
 
   /**
    * @brief Sets the MFEM jacobian data object
@@ -508,60 +480,58 @@ public:
    * MFEM jacobian data includes transfer operators to move Jacobian
    * contributions from the Tribol surface mesh to the MFEM parent mesh and
    * parent-linked boundary submesh.
-   * 
+   *
    * @param mfemJacobianData Unique pointer to MFEM jacobian data
    */
-  void setMfemJacobianData(std::unique_ptr<MfemJacobianData> mfemJacobianData)
+  void setMfemJacobianData( std::unique_ptr<MfemJacobianData> mfemJacobianData )
   {
-    m_mfemJacobianData = std::move(mfemJacobianData);
+    m_mfemJacobianData = std::move( mfemJacobianData );
   }
 
 #endif /* BUILD_REDECOMP */
 
-private:
-
+ private:
   /*!
    * \brief Computes common-plane specific time step vote
    *
    * \param [in/out] dt simulation timestep at given cycle
    *
    */
-  void computeCommonPlaneTimeStep( real &dt );
+  void computeCommonPlaneTimeStep( real& dt );
 
-private:
+ private:
+  integer m_id;  ///< Coupling Scheme id
 
-  integer m_id; ///< Coupling Scheme id
+  integer m_meshId1;  ///< Integer id for mesh 1
+  integer m_meshId2;  ///< Integer id for mesh 2
 
-  integer m_meshId1; ///< Integer id for mesh 1
-  integer m_meshId2; ///< Integer id for mesh 2
+  bool m_nullMeshes{ false };  ///< True if one or both meshes are zero-element (null) meshes
+  bool m_isValid{ true };      ///< False if the coupling scheme is not valid per call to init()
 
-  bool m_nullMeshes {false}; ///< True if one or both meshes are zero-element (null) meshes
-  bool m_isValid {true}; ///< False if the coupling scheme is not valid per call to init()
+  integer m_numTotalNodes;  ///< Total number of nodes in the coupling scheme
 
-  integer m_numTotalNodes; ///< Total number of nodes in the coupling scheme
+  ContactMode m_contactMode;              ///< Contact mode
+  ContactCase m_contactCase;              ///< Contact case
+  ContactMethod m_contactMethod;          ///< Contact method
+  ContactModel m_contactModel;            ///< Contact model
+  EnforcementMethod m_enforcementMethod;  ///< Contact enforcement method
+  BinningMethod m_binningMethod;          ///< Contact binning method
 
-  ContactMode m_contactMode;             ///< Contact mode
-  ContactCase m_contactCase;             ///< Contact case
-  ContactMethod m_contactMethod;         ///< Contact method
-  ContactModel m_contactModel;           ///< Contact model
-  EnforcementMethod m_enforcementMethod; ///< Contact enforcement method
-  BinningMethod m_binningMethod;         ///< Contact binning method
+  LoggingLevel m_loggingLevel;  ///< logging level enum for coupling scheme
 
-  LoggingLevel m_loggingLevel; ///< logging level enum for coupling scheme
+  bool m_fixedBinning;  ///< True if using fixed binning for all cycles
+  bool m_isBinned;      ///< True if binning has occured
+  bool m_isTied;        ///< True if surfaces have been "tied" (Tied contact only)
 
-  bool m_fixedBinning; ///< True if using fixed binning for all cycles
-  bool m_isBinned; ///< True if binning has occured 
-  bool m_isTied; ///< True if surfaces have been "tied" (Tied contact only)
+  InterfacePairs* m_interfacePairs;  ///< List of interface pairs
 
-  InterfacePairs* m_interfacePairs; ///< List of interface pairs
+  integer m_numActivePairs;  ///< number of active interface pairs from InterfacePairs list
 
-  integer m_numActivePairs; ///< number of active interface pairs from InterfacePairs list
+  MethodData* m_methodData;  ///< method object holding required interface method data
 
-  MethodData* m_methodData; ///< method object holding required interface method data
-
-  EnforcementOptions   m_enforcementOptions;   ///< struct with options underneath chosen enforcement
-  CouplingSchemeErrors m_couplingSchemeErrors; ///< struct handling coupling scheme errors
-  CouplingSchemeInfo   m_couplingSchemeInfo;   ///< struct handling info to be printed
+  EnforcementOptions m_enforcementOptions;      ///< struct with options underneath chosen enforcement
+  CouplingSchemeErrors m_couplingSchemeErrors;  ///< struct handling coupling scheme errors
+  CouplingSchemeInfo m_couplingSchemeInfo;      ///< struct handling info to be printed
 
 #ifdef BUILD_REDECOMP
 
@@ -570,10 +540,9 @@ private:
   std::unique_ptr<MfemJacobianData> m_mfemJacobianData;  ///< MFEM jacobian data
 
 #endif /* BUILD_REDECOMP */
-  
+
   DISABLE_COPY_AND_ASSIGNMENT( CouplingScheme );
   DISABLE_MOVE_AND_ASSIGNMENT( CouplingScheme );
-
 };
 
 } /* namespace tribol */

@@ -5,25 +5,21 @@
 
 #include "PartitionElements.hpp"
 
-namespace redecomp
-{
+namespace redecomp {
 
 template <int NDIMS>
 std::vector<axom::Array<Point<NDIMS>>> PartitionElements<NDIMS>::EntityCoordinates(
-  const std::vector<const mfem::ParMesh*>& par_meshes
-) const
+    const std::vector<const mfem::ParMesh*>& par_meshes ) const
 {
   auto elem_centroids = std::vector<axom::Array<Point<NDIMS>>>();
-  elem_centroids.reserve(par_meshes.size());
-  for (auto par_mesh : par_meshes)
-  {
+  elem_centroids.reserve( par_meshes.size() );
+  for ( auto par_mesh : par_meshes ) {
     auto n_elems = par_mesh->GetNE();
-    elem_centroids.emplace_back(n_elems, n_elems);
-    for (int i{0}; i < n_elems; ++i)
-    {
-      auto vec_centroid = mfem::Vector(elem_centroids.back()[i].data(), NDIMS);
+    elem_centroids.emplace_back( n_elems, n_elems );
+    for ( int i{ 0 }; i < n_elems; ++i ) {
+      auto vec_centroid = mfem::Vector( elem_centroids.back()[i].data(), NDIMS );
       // TODO: const version of GetElementCenter()
-      const_cast<mfem::ParMesh*>(par_mesh)->GetElementCenter(i, vec_centroid);
+      const_cast<mfem::ParMesh*>( par_mesh )->GetElementCenter( i, vec_centroid );
     }
   }
   return elem_centroids;
@@ -32,4 +28,4 @@ std::vector<axom::Array<Point<NDIMS>>> PartitionElements<NDIMS>::EntityCoordinat
 template class PartitionElements<2>;
 template class PartitionElements<3>;
 
-} // end namespace redecomp
+}  // end namespace redecomp

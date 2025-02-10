@@ -9,13 +9,12 @@
 #include "tribol/types.hpp"
 
 // AXOM includes
-#include "axom/slic.hpp" 
+#include "axom/slic.hpp"
 
 // C++ includes
 #include <string>
 
-namespace tribol
-{
+namespace tribol {
 
 // forward declarations
 class ContactPlaneManager;
@@ -34,12 +33,10 @@ class ContactPlaneManager;
  * \param [in] t simulation time step
  *
  */
-void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, 
-                                 const integer csId, const integer meshId1, 
-                                 const integer meshId2, const integer dim,
-                                 const integer cycle, const real t );
+void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, const integer csId,
+                                 const integer meshId1, const integer meshId2, const integer dim, const integer cycle,
+                                 const real t );
 
-
-} // end of namespace "tribol"
+}  // namespace tribol
 
 #endif /* SRC_UTILS_CONTACTPLANEOUTPUT_HPP_ */

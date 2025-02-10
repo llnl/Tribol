@@ -25,8 +25,7 @@
 #include "mpi.h"
 #endif
 
-namespace tribol
-{
+namespace tribol {
 
 #ifdef TRIBOL_USE_MPI
 using CommType = MPI_Comm;
@@ -40,7 +39,7 @@ using CommType = int;
 
 using integer = int;
 
-template<typename T>
+template <typename T>
 using array = T*;
 
 #ifdef TRIBOL_USE_64BIT_INDEXTYPE
@@ -52,35 +51,35 @@ using IndexType = std::int32_t;
 #ifdef TRIBOL_USE_SINGLE_PRECISION
 using real = float;
 #else
-using real= double;
+using real = double;
 #endif
 
-template< typename T >
+template <typename T>
 using containerArray = std::vector<T>;
 
-#if defined(__clang__)  
-  #define RESTRICT __restrict__
-  #define RESTRICT_THIS
-  #define CONSTEXPRFUNC constexpr  
-#elif defined(__GNUC__)  
-  #if defined(__INTEL_COMPILER)
-    #define RESTRICT __restrict__
-    #define RESTRICT_THIS
-    #define CONSTEXPRFUNC
-  #else
-    #define RESTRICT __restrict__
-    #define RESTRICT_THIS
-    #define CONSTEXPRFUNC constexpr
-  #endif
-#elif defined(_WIN32)  
-  #define RESTRICT __restrict
-  #define RESTRICT_THIS
-  #define CONSTEXPRFUNC constexpr  
+#if defined( __clang__ )
+#define RESTRICT __restrict__
+#define RESTRICT_THIS
+#define CONSTEXPRFUNC constexpr
+#elif defined( __GNUC__ )
+#if defined( __INTEL_COMPILER )
+#define RESTRICT __restrict__
+#define RESTRICT_THIS
+#define CONSTEXPRFUNC
+#else
+#define RESTRICT __restrict__
+#define RESTRICT_THIS
+#define CONSTEXPRFUNC constexpr
+#endif
+#elif defined( _WIN32 )
+#define RESTRICT __restrict
+#define RESTRICT_THIS
+#define CONSTEXPRFUNC constexpr
 #endif
 
 #define TRIBOL_UNUSED_VAR AXOM_UNUSED_VAR
 #define TRIBOL_UNUSED_PARAM AXOM_UNUSED_PARAM
 
-} 
+}  // namespace tribol
 
-#endif // TRIBOL_TYPES_HPP_
+#endif  // TRIBOL_TYPES_HPP_

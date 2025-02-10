@@ -2,7 +2,7 @@
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
- 
+
 #ifndef TRIBOL_PARAMETERS_HPP_
 #define TRIBOL_PARAMETERS_HPP_
 
@@ -12,21 +12,19 @@
 #include <string>
 #include <iostream>
 
-namespace tribol
-{
+namespace tribol {
 
 // Internal Helper Method for Enums
-namespace
-{
+namespace {
 
 //------------------------------------------------------------------------------
 inline bool in_range( integer target, integer N )
 {
   // NOTE: assumes indexing starts from 0
-  return( (target >= 0) && ( target < N ) );
+  return ( ( target >= 0 ) && ( target < N ) );
 }
 
-} // end anonymous namespace
+}  // end anonymous namespace
 
 constexpr integer ANY_MESH = -1;
 
@@ -35,26 +33,26 @@ constexpr integer ANY_MESH = -1;
  */
 enum LoggingLevel
 {
-   TRIBOL_UNDEFINED, ///! Undefined 
-   TRIBOL_DEBUG,     ///! Debug and higher
-   TRIBOL_INFO,      ///! Info and higher
-   TRIBOL_WARNING,   ///! Warning and higher
-   TRIBOL_ERROR,     ///! Errors only
-   NUM_LOGGING_LEVELS = TRIBOL_ERROR
+  TRIBOL_UNDEFINED,  ///! Undefined
+  TRIBOL_DEBUG,      ///! Debug and higher
+  TRIBOL_INFO,       ///! Info and higher
+  TRIBOL_WARNING,    ///! Warning and higher
+  TRIBOL_ERROR,      ///! Errors only
+  NUM_LOGGING_LEVELS = TRIBOL_ERROR
 };
 
 /*!
- * \brief Enumerates the interface element types  
+ * \brief Enumerates the interface element types
  */
 enum InterfaceElementType
 {
-   UNDEFINED_ELEMENT, ///! Undefined
-   LINEAR_EDGE,       ///! 1D linear edge 
-   LINEAR_TRIANGLE,   ///! 2D linear triangle
-   LINEAR_QUAD,       ///! 2D linear quadrilateral
-   LINEAR_TET,        ///! 3D linear tetrahedron (volume methods and test mesh class)
-   LINEAR_HEX,        ///! 3D linear hexahedron (volume methods and test mesh class)
-   NUM_CONTACT_ELEMENTS = LINEAR_HEX
+  UNDEFINED_ELEMENT,  ///! Undefined
+  LINEAR_EDGE,        ///! 1D linear edge
+  LINEAR_TRIANGLE,    ///! 2D linear triangle
+  LINEAR_QUAD,        ///! 2D linear quadrilateral
+  LINEAR_TET,         ///! 3D linear tetrahedron (volume methods and test mesh class)
+  LINEAR_HEX,         ///! 3D linear hexahedron (volume methods and test mesh class)
+  NUM_CONTACT_ELEMENTS = LINEAR_HEX
 };
 
 /*!
@@ -62,14 +60,14 @@ enum InterfaceElementType
  */
 enum VisType
 {
-   UNDEFINED_VIS,               ///! Undefined
-   VIS_MESH,                    ///! Print registered mesh(es)
-   VIS_FACES,                   ///! Print active interface-faces (method specific)
-   VIS_OVERLAPS,                ///! Print interface face-face overlaps
-   VIS_MESH_AND_OVERLAPS,       ///! Print registered mesh(es) and interface overlaps
-   VIS_FACES_AND_OVERLAPS,      ///! Print active interface-faces and face-face overlaps
-   VIS_MESH_FACES_AND_OVERLAPS, ///! Print registered mesh(es), active faces, and overlaps
-   NUM_VIS_TYPES = VIS_MESH_FACES_AND_OVERLAPS
+  UNDEFINED_VIS,                ///! Undefined
+  VIS_MESH,                     ///! Print registered mesh(es)
+  VIS_FACES,                    ///! Print active interface-faces (method specific)
+  VIS_OVERLAPS,                 ///! Print interface face-face overlaps
+  VIS_MESH_AND_OVERLAPS,        ///! Print registered mesh(es) and interface overlaps
+  VIS_FACES_AND_OVERLAPS,       ///! Print active interface-faces and face-face overlaps
+  VIS_MESH_FACES_AND_OVERLAPS,  ///! Print registered mesh(es), active faces, and overlaps
+  NUM_VIS_TYPES = VIS_MESH_FACES_AND_OVERLAPS
 };
 
 /*!
@@ -83,33 +81,33 @@ enum VisType
  */
 enum ContactMode
 {
-  SURFACE_TO_SURFACE,            ///! surface-to-surface interaction
-  SURFACE_TO_SURFACE_CONFORMING, ///! conforming surface-to-surface interaction
-  SURFACE_TO_VOLUME,             ///! surface-to-volume interaction
-  VOLUME_TO_VOLUME,              ///! volume-to-volume interaction
+  SURFACE_TO_SURFACE,             ///! surface-to-surface interaction
+  SURFACE_TO_SURFACE_CONFORMING,  ///! conforming surface-to-surface interaction
+  SURFACE_TO_VOLUME,              ///! surface-to-volume interaction
+  VOLUME_TO_VOLUME,               ///! volume-to-volume interaction
   NUM_CONTACT_MODES
 };
 
 /*!
- * \brief Enumerates the available contact cases  
+ * \brief Enumerates the available contact cases
  */
 enum ContactCase
 {
-  NO_CASE,       ///! No case specified for chosen mode and/or method
-  AUTO,          ///! Auto contact
-  NO_SLIDING,    ///! User may specify no sliding, simplifying search update
+  NO_CASE,     ///! No case specified for chosen mode and/or method
+  AUTO,        ///! Auto contact
+  NO_SLIDING,  ///! User may specify no sliding, simplifying search update
   NUM_CONTACT_CASES
 };
 
 /*!
  * \brief Enumerates the available contact method options.
  */
-enum ContactMethod // all mortar methods go first
+enum ContactMethod  // all mortar methods go first
 {
-  SINGLE_MORTAR,      ///! Single mortar per Puso 2003
-  ALIGNED_MORTAR,     ///! Aligned mortar to be used with ContactCase = NO_SLIDING
-  MORTAR_WEIGHTS,     ///! Method that only returns mortar weights per single mortar method
-  COMMON_PLANE,       ///! Common plane method, currently with single integration point
+  SINGLE_MORTAR,   ///! Single mortar per Puso 2003
+  ALIGNED_MORTAR,  ///! Aligned mortar to be used with ContactCase = NO_SLIDING
+  MORTAR_WEIGHTS,  ///! Method that only returns mortar weights per single mortar method
+  COMMON_PLANE,    ///! Common plane method, currently with single integration point
   NUM_CONTACT_METHODS
 };
 
@@ -118,11 +116,11 @@ enum ContactMethod // all mortar methods go first
  */
 enum ContactModel
 {
-  NO_CONTACT,   ///! No contact
-  FRICTIONLESS, ///! Frictionless, normal contact only
-  TIED,         ///! Tied contact, not supported
-  COULOMB,      ///! Coulomb friction model, not supported
-  NULL_MODEL,   ///! Null model, for use with ContactMethod = MORTAR_WEIGHTS
+  NO_CONTACT,    ///! No contact
+  FRICTIONLESS,  ///! Frictionless, normal contact only
+  TIED,          ///! Tied contact, not supported
+  COULOMB,       ///! Coulomb friction model, not supported
+  NULL_MODEL,    ///! Null model, for use with ContactMethod = MORTAR_WEIGHTS
   NUM_CONTACT_MODELS
 };
 
@@ -131,9 +129,9 @@ enum ContactModel
  */
 enum EnforcementMethod
 {
-  PENALTY,               ///! Penalty enforcement method for gap only
-  LAGRANGE_MULTIPLIER,   ///! Lagrange multiplier with system output
-  NULL_ENFORCEMENT,      ///! Null enforcement, for use with ContactMethod = MORTAR_WEIGHTS
+  PENALTY,              ///! Penalty enforcement method for gap only
+  LAGRANGE_MULTIPLIER,  ///! Lagrange multiplier with system output
+  NULL_ENFORCEMENT,     ///! Null enforcement, for use with ContactMethod = MORTAR_WEIGHTS
   NUM_ENFORCEMENT_METHODS
 };
 
@@ -149,13 +147,13 @@ enum BinningMethod
 };
 
 /*!
- * \brief Enumerates the available penalty enforcement options 
+ * \brief Enumerates the available penalty enforcement options
  */
 enum PenaltyConstraintType
 {
-   KINEMATIC,
-   KINEMATIC_AND_RATE,
-   NUM_PENALTY_OPTIONS
+  KINEMATIC,
+  KINEMATIC_AND_RATE,
+  NUM_PENALTY_OPTIONS
 };
 
 /*!
@@ -163,9 +161,9 @@ enum PenaltyConstraintType
  */
 enum KinematicPenaltyCalculation
 {
-   KINEMATIC_CONSTANT, ///! Constant penalty stiffness applied to all contacting face-pairs
-   KINEMATIC_ELEMENT,  ///! Element-wise penalty stiffness calculation
-   NUM_KINEMATIC_PENALTY_CALCULATION
+  KINEMATIC_CONSTANT,  ///! Constant penalty stiffness applied to all contacting face-pairs
+  KINEMATIC_ELEMENT,   ///! Element-wise penalty stiffness calculation
+  NUM_KINEMATIC_PENALTY_CALCULATION
 };
 
 /*!
@@ -173,10 +171,10 @@ enum KinematicPenaltyCalculation
  */
 enum RatePenaltyCalculation
 {
-   NO_RATE_PENALTY,
-   RATE_CONSTANT,  ///! Constant rate penalty stiffness
-   RATE_PERCENT,   ///! Rate penalty stiffness as a percentage of the kinematic penalty stiffness
-   NUM_RATE_PENALTY_CALCULATION
+  NO_RATE_PENALTY,
+  RATE_CONSTANT,  ///! Constant rate penalty stiffness
+  RATE_PERCENT,   ///! Rate penalty stiffness as a percentage of the kinematic penalty stiffness
+  NUM_RATE_PENALTY_CALCULATION
 };
 
 /*!
@@ -184,14 +182,14 @@ enum RatePenaltyCalculation
  */
 enum RealElementFields
 {
-   UNDEFINED_REAL_ELEMENT_FIELD,
-   KINEMATIC_CONSTANT_STIFFNESS, ///! Constant kinematic penalty stiffness
-   RATE_CONSTANT_STIFFNESS,      ///! Constant rate penalty stiffness
-   RATE_PERCENT_STIFFNESS,       ///! Percent rate penalty stiffness
-   BULK_MODULUS,                 ///! Element bulk modulus
-   YOUNGS_MODULUS,               ///! Element Young's modulus
-   ELEMENT_THICKNESS,            ///! Element thickness in contact normal direction
-   NUM_REAL_ELEMENT_FIELDS = ELEMENT_THICKNESS 
+  UNDEFINED_REAL_ELEMENT_FIELD,
+  KINEMATIC_CONSTANT_STIFFNESS,  ///! Constant kinematic penalty stiffness
+  RATE_CONSTANT_STIFFNESS,       ///! Constant rate penalty stiffness
+  RATE_PERCENT_STIFFNESS,        ///! Percent rate penalty stiffness
+  BULK_MODULUS,                  ///! Element bulk modulus
+  YOUNGS_MODULUS,                ///! Element Young's modulus
+  ELEMENT_THICKNESS,             ///! Element thickness in contact normal direction
+  NUM_REAL_ELEMENT_FIELDS = ELEMENT_THICKNESS
 };
 
 /*!
@@ -199,7 +197,7 @@ enum RealElementFields
  */
 enum IntElementFields
 {
-   UNDEFINED_INT_ELEMENT_FIELD
+  UNDEFINED_INT_ELEMENT_FIELD
 };
 
 /*!
@@ -207,7 +205,7 @@ enum IntElementFields
  */
 enum IntNodalFields
 {
-   UNDEFINED_INT_NODAL_FIELD
+  UNDEFINED_INT_NODAL_FIELD
 };
 
 /*!
@@ -215,8 +213,8 @@ enum IntNodalFields
  */
 enum PolyInteg
 {
-  SINGLE_POINT,    ///! Single point integration at centroid of polygon
-  FULL_TRI_DECOMP, ///! Full integration using triangular decomposition
+  SINGLE_POINT,     ///! Single point integration at centroid of polygon
+  FULL_TRI_DECOMP,  ///! Full integration using triangular decomposition
   NUM_INTEG_RULES
 };
 
@@ -225,10 +223,10 @@ enum PolyInteg
  */
 enum IntegMethod
 {
-   TWB,            ///! Taylor-Wingate-Bos integration on low order triangles
-   TRIBOL_INV_ISO, ///! Inverse isoparametric mapping of integration points to parent space
-   MFEM,           ///! MFEM integration rule and integration methods
-   NUM_INTEG_METHODS
+  TWB,             ///! Taylor-Wingate-Bos integration on low order triangles
+  TRIBOL_INV_ISO,  ///! Inverse isoparametric mapping of integration points to parent space
+  MFEM,            ///! MFEM integration rule and integration methods
+  NUM_INTEG_METHODS
 };
 
 /*!
@@ -236,10 +234,10 @@ enum IntegMethod
  */
 enum class BlockSpace
 {
-   MORTAR,              ///! The coordinate space on the mortar contact surface
-   NONMORTAR,           ///! The coordinate space on the nonmortar contact surface
-   LAGRANGE_MULTIPLIER, ///! The Lagrange multiplier space
-   NUM_BLOCK_SPACES
+  MORTAR,               ///! The coordinate space on the mortar contact surface
+  NONMORTAR,            ///! The coordinate space on the nonmortar contact surface
+  LAGRANGE_MULTIPLIER,  ///! The Lagrange multiplier space
+  NUM_BLOCK_SPACES
 };
 
 /*!
@@ -247,11 +245,11 @@ enum class BlockSpace
  */
 enum class ImplicitEvalMode
 {
-   MORTAR_JACOBIAN,          ///! Contact Jacobian evaluation only
-   MORTAR_RESIDUAL,          ///! Contact residual evaluation only
-   MORTAR_RESIDUAL_JACOBIAN, ///! Contact residual AND Jacobian evaluation
-   MORTAR_GAP,               ///! Contact gap evaluation only
-   MORTAR_WEIGHTS_EVAL       ///! Mortar weight evaluation only
+  MORTAR_JACOBIAN,           ///! Contact Jacobian evaluation only
+  MORTAR_RESIDUAL,           ///! Contact residual evaluation only
+  MORTAR_RESIDUAL_JACOBIAN,  ///! Contact residual AND Jacobian evaluation
+  MORTAR_GAP,                ///! Contact gap evaluation only
+  MORTAR_WEIGHTS_EVAL        ///! Mortar weight evaluation only
 };
 
 /*!
@@ -259,9 +257,9 @@ enum class ImplicitEvalMode
  */
 enum class SparseMode
 {
-   MFEM_INDEX_SET,     ///! initialize mfem sparse matrix with I, J, and data
-   MFEM_LINKED_LIST,   ///! initialize mfem sparse matrix with flexible, linked list option
-   MFEM_ELEMENT_DENSE  ///! Stores element Jacobian contributions in an axom::Array of mfem::DenseMatrixs
+  MFEM_INDEX_SET,     ///! initialize mfem sparse matrix with I, J, and data
+  MFEM_LINKED_LIST,   ///! initialize mfem sparse matrix with flexible, linked list option
+  MFEM_ELEMENT_DENSE  ///! Stores element Jacobian contributions in an axom::Array of mfem::DenseMatrixs
 };
 
 /*!
@@ -269,12 +267,12 @@ enum class SparseMode
  */
 enum FaceOrderType
 {
-   LINEAR,                ///! Linear Lagrange (default)
-   QUADRATIC_LAGRANGE,    ///! Quadratic 9-node Lagrange face
-   QUADRATIC_SERENDIPITY, ///! Quadratic 8-node serendipity face
-   CUBIC_LAGRANGE,        ///! Cubic Lagrange face
-   NUM_ORDERS_TYPES,
-   UNDEFINED_ORDER_TYPE = NUM_ORDERS_TYPES
+  LINEAR,                 ///! Linear Lagrange (default)
+  QUADRATIC_LAGRANGE,     ///! Quadratic 9-node Lagrange face
+  QUADRATIC_SERENDIPITY,  ///! Quadratic 8-node serendipity face
+  CUBIC_LAGRANGE,         ///! Cubic Lagrange face
+  NUM_ORDERS_TYPES,
+  UNDEFINED_ORDER_TYPE = NUM_ORDERS_TYPES
 };
 
 /*!
@@ -282,10 +280,10 @@ enum FaceOrderType
  */
 enum BasisEvalType
 {
-   UNDEFINED_BASIS_EVAL_TYPE,
-   PARENT,   ///! Evaluate basis in parent space
-   PHYSICAL, ///! Evaluate basis in physical space
-   NUM_BASIS_EVAL_TYPES = PHYSICAL
+  UNDEFINED_BASIS_EVAL_TYPE,
+  PARENT,    ///! Evaluate basis in parent space
+  PHYSICAL,  ///! Evaluate basis in physical space
+  NUM_BASIS_EVAL_TYPES = PHYSICAL
 };
 
 /*!
@@ -293,12 +291,12 @@ enum BasisEvalType
  */
 enum FaceGeomError
 {
-   NO_FACE_GEOM_ERROR,
-   FACE_ORIENTATION,
-   INVALID_INPUT,
-   DEGENERATE_OVERLAP,
-   FACE_INDEX_EXCEEDS_OVERLAP_VERTICES, 
-   NUM_FACE_GEOM_ERRORS
+  NO_FACE_GEOM_ERROR,
+  FACE_ORIENTATION,
+  INVALID_INPUT,
+  DEGENERATE_OVERLAP,
+  FACE_INDEX_EXCEEDS_OVERLAP_VERTICES,
+  NUM_FACE_GEOM_ERRORS
 };
 
 /*!
@@ -306,10 +304,10 @@ enum FaceGeomError
  */
 enum ModeError
 {
-   INVALID_MODE,
-   NO_MODE_IMPLEMENTATION,
-   NO_MODE_ERROR,
-   NUM_MODE_ERRORS
+  INVALID_MODE,
+  NO_MODE_IMPLEMENTATION,
+  NO_MODE_ERROR,
+  NUM_MODE_ERRORS
 };
 
 /*!
@@ -317,10 +315,10 @@ enum ModeError
  */
 enum CaseError
 {
-   INVALID_CASE,
-   NO_CASE_IMPLEMENTATION,
-   NO_CASE_ERROR,
-   NUM_CASE_ERRORS
+  INVALID_CASE,
+  NO_CASE_IMPLEMENTATION,
+  NO_CASE_ERROR,
+  NUM_CASE_ERRORS
 };
 
 /*!
@@ -328,15 +326,15 @@ enum CaseError
  */
 enum MethodError
 {
-   INVALID_METHOD,
-   NO_METHOD_IMPLEMENTATION,
-   DIFFERENT_FACE_TYPES,
-   SAME_MESH_IDS,
-   SAME_MESH_IDS_INVALID_DIM,
-   INVALID_DIM,
-   NULL_NODAL_RESPONSE,
-   NO_METHOD_ERROR,
-   NUM_METHOD_ERRORS
+  INVALID_METHOD,
+  NO_METHOD_IMPLEMENTATION,
+  DIFFERENT_FACE_TYPES,
+  SAME_MESH_IDS,
+  SAME_MESH_IDS_INVALID_DIM,
+  INVALID_DIM,
+  NULL_NODAL_RESPONSE,
+  NO_METHOD_ERROR,
+  NUM_METHOD_ERRORS
 };
 
 /*!
@@ -344,11 +342,11 @@ enum MethodError
  */
 enum ModelError
 {
-   INVALID_MODEL,
-   NO_MODEL_IMPLEMENTATION,
-   NO_MODEL_IMPLEMENTATION_FOR_REGISTERED_METHOD,
-   NO_MODEL_ERROR,
-   NUM_MODEL_ERRORS
+  INVALID_MODEL,
+  NO_MODEL_IMPLEMENTATION,
+  NO_MODEL_IMPLEMENTATION_FOR_REGISTERED_METHOD,
+  NO_MODEL_ERROR,
+  NUM_MODEL_ERRORS
 };
 
 /*!
@@ -356,15 +354,15 @@ enum ModelError
  */
 enum EnforcementError
 {
-   INVALID_ENFORCEMENT,
-   INVALID_ENFORCEMENT_FOR_REGISTERED_METHOD,
-   INVALID_ENFORCEMENT_OPTION,
-   OPTIONS_NOT_SET,
-   NO_ENFORCEMENT_IMPLEMENTATION,
-   NO_ENFORCEMENT_IMPLEMENTATION_FOR_REGISTERED_METHOD,
-   NO_ENFORCEMENT_IMPLEMENTATION_FOR_REGISTERED_OPTION,
-   NO_ENFORCEMENT_ERROR,
-   NUM_ENFORCEMENT_ERRORS
+  INVALID_ENFORCEMENT,
+  INVALID_ENFORCEMENT_FOR_REGISTERED_METHOD,
+  INVALID_ENFORCEMENT_OPTION,
+  OPTIONS_NOT_SET,
+  NO_ENFORCEMENT_IMPLEMENTATION,
+  NO_ENFORCEMENT_IMPLEMENTATION_FOR_REGISTERED_METHOD,
+  NO_ENFORCEMENT_IMPLEMENTATION_FOR_REGISTERED_OPTION,
+  NO_ENFORCEMENT_ERROR,
+  NUM_ENFORCEMENT_ERRORS
 };
 
 /*!
@@ -372,9 +370,9 @@ enum EnforcementError
  */
 enum EnforcementDataErrors
 {
-   ERROR_IN_REGISTERED_ENFORCEMENT_DATA,
-   NO_ENFORCEMENT_DATA_ERROR,
-   NUM_ENFORCEMENT_DATA_ERRORS
+  ERROR_IN_REGISTERED_ENFORCEMENT_DATA,
+  NO_ENFORCEMENT_DATA_ERROR,
+  NUM_ENFORCEMENT_DATA_ERRORS
 };
 
 /*!
@@ -382,12 +380,12 @@ enum EnforcementDataErrors
  */
 enum CaseInfo
 {
-   SPECIFYING_NO_SLIDING_WITH_REGISTERED_MODE,
-   SPECIFYING_NO_SLIDING_WITH_REGISTERED_METHOD,
-   SPECIFYING_NONE_WITH_REGISTERED_METHOD,
-   SPECIFYING_NONE_WITH_TWO_REGISTERED_MESHES,
-   NO_CASE_INFO,
-   NUM_CASE_INFO
+  SPECIFYING_NO_SLIDING_WITH_REGISTERED_MODE,
+  SPECIFYING_NO_SLIDING_WITH_REGISTERED_METHOD,
+  SPECIFYING_NONE_WITH_REGISTERED_METHOD,
+  SPECIFYING_NONE_WITH_TWO_REGISTERED_MESHES,
+  NO_CASE_INFO,
+  NUM_CASE_INFO
 };
 
 /*!
@@ -395,82 +393,78 @@ enum CaseInfo
  */
 enum EnforcementInfo
 {
-   SPECIFYING_NULL_ENFORCEMENT_WITH_REGISTERED_METHOD,
-   NO_ENFORCEMENT_INFO,
-   NUM_ENFORCEMENT_INFO
+  SPECIFYING_NULL_ENFORCEMENT_WITH_REGISTERED_METHOD,
+  NO_ENFORCEMENT_INFO,
+  NUM_ENFORCEMENT_INFO
 };
 
 /*!
  * \brief Struct to hold Lagrange multiplier enforcement and implicit evaluation options
  */
-struct LagrangeMultiplierImplicitOptions
-{
-public:
-   // default constructor
-   LagrangeMultiplierImplicitOptions() {};
+struct LagrangeMultiplierImplicitOptions {
+ public:
+  // default constructor
+  LagrangeMultiplierImplicitOptions(){};
 
-   ~LagrangeMultiplierImplicitOptions() {};
+  ~LagrangeMultiplierImplicitOptions(){};
 
-   bool is_enforcement_option_set() { return enforcement_option_set; }
- 
-   bool enforcement_option_set {false};
+  bool is_enforcement_option_set() { return enforcement_option_set; }
 
-   ImplicitEvalMode eval_mode;    ///! Implicit evaluation mode for residual, jacobian and gaps
-   SparseMode sparse_mode;        ///! Mode for assembling sparse matrix contributions
+  bool enforcement_option_set{ false };
+
+  ImplicitEvalMode eval_mode;  ///! Implicit evaluation mode for residual, jacobian and gaps
+  SparseMode sparse_mode;      ///! Mode for assembling sparse matrix contributions
 };
 
 /*!
  * \brief Struct to hold penalty enforcement options
  */
-struct PenaltyEnforcementOptions
-{
-public:
-   // default constructor
-   PenaltyEnforcementOptions() {};
+struct PenaltyEnforcementOptions {
+ public:
+  // default constructor
+  PenaltyEnforcementOptions(){};
 
-   ~PenaltyEnforcementOptions() {};
+  ~PenaltyEnforcementOptions(){};
 
-   PenaltyConstraintType constraint_type;
-   KinematicPenaltyCalculation kinematic_calculation;
-   RatePenaltyCalculation rate_calculation;
+  PenaltyConstraintType constraint_type;
+  KinematicPenaltyCalculation kinematic_calculation;
+  RatePenaltyCalculation rate_calculation;
 
-   bool is_constraint_type_set()       { return constraint_type_set; }
-   bool is_kinematic_calculation_set() { return kinematic_calc_set; }
-   bool is_rate_calculation_set()      { return rate_calc_set; }
- 
-   bool constraint_type_set {false};
-   bool kinematic_calc_set  {false};
-   bool rate_calc_set       {false};
+  bool is_constraint_type_set() { return constraint_type_set; }
+  bool is_kinematic_calculation_set() { return kinematic_calc_set; }
+  bool is_rate_calculation_set() { return rate_calc_set; }
 
-   double tiny_length   {1.e-12}; ///! Small length to avoid division by zero
-   double tiny_penalty  {1.e-12}; ///! Small penalty to avoid division by zero
+  bool constraint_type_set{ false };
+  bool kinematic_calc_set{ false };
+  bool rate_calc_set{ false };
+
+  double tiny_length{ 1.e-12 };   ///! Small length to avoid division by zero
+  double tiny_penalty{ 1.e-12 };  ///! Small penalty to avoid division by zero
 };
 
 /*!
  * \brief Struct wrapping constraint enforcement options
  */
-struct EnforcementOptions
-{
-public:
-   // default constructor
-   EnforcementOptions() {};
+struct EnforcementOptions {
+ public:
+  // default constructor
+  EnforcementOptions(){};
 
-   ~EnforcementOptions() {}; 
+  ~EnforcementOptions(){};
 
-   PenaltyEnforcementOptions         penalty_options;
-   LagrangeMultiplierImplicitOptions lm_implicit_options;
+  PenaltyEnforcementOptions penalty_options;
+  LagrangeMultiplierImplicitOptions lm_implicit_options;
 };
 
 /*!
  * \brief Singleton Struct to hold parameters
  */
-struct parameters_t
-{
+struct parameters_t {
   // return an instance of this struct
   static parameters_t& getInstance()
   {
-     static parameters_t instance;
-     return instance;
+    static parameters_t instance;
+    return instance;
   }
 
   // disable copy constructor
@@ -479,31 +473,26 @@ struct parameters_t
   // disable move
   parameters_t( parameters_t&& ) = delete;
 
-  integer dimension;             ///! Spatial dimension of the problem
-  CommType problem_comm;         ///! MPI communicator for the problem
+  integer dimension;      ///! Spatial dimension of the problem
+  CommType problem_comm;  ///! MPI communicator for the problem
 
-  double overlap_area_frac;      ///! Ratio of overlap area to largest face area for contact inclusion
-  double gap_tol_ratio;          ///! Ratio for determining tolerance for active contact gaps 
-  double gap_separation_ratio;   ///! Ratio for determining allowable separation in geometric filtering
-  double gap_tied_tol;           ///! Ratio for determining max separation tied contact can support
-  double len_collapse_ratio;     ///! Ratio of face length providing topology collapse length tolerance
-  double projection_ratio;       ///! Ratio for defining nonzero projections
-  double contact_pen_frac;       ///! Ratio for amount of allowable interpen in a cycle
+  double overlap_area_frac;     ///! Ratio of overlap area to largest face area for contact inclusion
+  double gap_tol_ratio;         ///! Ratio for determining tolerance for active contact gaps
+  double gap_separation_ratio;  ///! Ratio for determining allowable separation in geometric filtering
+  double gap_tied_tol;          ///! Ratio for determining max separation tied contact can support
+  double len_collapse_ratio;    ///! Ratio of face length providing topology collapse length tolerance
+  double projection_ratio;      ///! Ratio for defining nonzero projections
+  double contact_pen_frac;      ///! Ratio for amount of allowable interpen in a cycle
 
   int vis_cycle_incr;            ///! Frequency for visualizations dumps
   VisType vis_type;              ///! Type of interface physics visualization output
   std::string output_directory;  ///! Output directory for visualization dumps
 
-private:
-
+ private:
   // private constructor
-  parameters_t () { } 
-
+  parameters_t() {}
 };
 
 } /* end namespace tribol */
 
-
 #endif /* TRIBOL_PARAMETERS_HPP_ */
-
-

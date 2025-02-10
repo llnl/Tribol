@@ -11,8 +11,6 @@
 
 #include <string>
 
-
-
 //------------------------------------------------------------------------------
 // free functions for simple API usage
 //------------------------------------------------------------------------------
@@ -24,20 +22,19 @@
  *
  * \param [in] dim dimension of problem
  * \param [in] init_slic indicates if we should initialize slic
- * \return 0 if no error has occurred 
+ * \return 0 if no error has occurred
  *
  */
-int Initialize(const int dim, bool init_slic = true);
+int Initialize( const int dim, bool init_slic = true );
 
 /*!
  * \brief Finalizes tribol and optionally finalizes slic (logging library)
  *
  * \param [in] finalize_slic indicates if we should finalize slic
- * \return 0 if no error has occurred 
+ * \return 0 if no error has occurred
  *
  */
-int Finalize(bool finalize_slic = true);
-
+int Finalize( bool finalize_slic = true );
 
 /*!
  * \brief Simple coupling setup
@@ -61,25 +58,12 @@ int Finalize(bool finalize_slic = true);
  * \param [in] mortar_gaps (optional) pointer to nodal mortar gap scalar field
  * \param [in] mortar_pressures (optional) pointer to nodal mortar pressures scalar field
  */
-void SimpleCouplingSetup( const int dim, 
-                          int cell_type,
-                          int contact_method,           
-                          int mortar_numCells,
-                          int mortar_lengthNodalData,
-                          const int* mortar_connectivity,
-                          const double* mortar_x,
-                          const double* mortar_y,
-                          const double* mortar_z,
-                          int nonmortar_numCells,
-                          int nonmortar_lengthNodalData,
-                          const int* nonmortar_connectivity,
-                          const double* nonmortar_x,
-                          const double* nonmortar_y,
-                          const double* nonmortar_z,
-                          const double area_frac = 1.e-3,
-                          double* mortar_gaps = nullptr,
-                          double* mortar_pressures = nullptr
-                        ); 
+void SimpleCouplingSetup( const int dim, int cell_type, int contact_method, int mortar_numCells,
+                          int mortar_lengthNodalData, const int* mortar_connectivity, const double* mortar_x,
+                          const double* mortar_y, const double* mortar_z, int nonmortar_numCells,
+                          int nonmortar_lengthNodalData, const int* nonmortar_connectivity, const double* nonmortar_x,
+                          const double* nonmortar_y, const double* nonmortar_z, const double area_frac = 1.e-3,
+                          double* mortar_gaps = nullptr, double* mortar_pressures = nullptr );
 
 /*!
  * \brief Update per registered contact method
@@ -89,7 +73,7 @@ void SimpleCouplingSetup( const int dim,
  * \return 0 if no error has occurred and any update to timestep
  *
  */
-int Update( double &dt);
+int Update( double& dt );
 
 /*!
  * \brief Gets the CSR data from the coupling scheme
@@ -103,8 +87,7 @@ int Update( double &dt);
  * \return 0 for success, 1 for failure
  *
  */
-int GetSimpleCouplingCSR( int** I, int** J, double** vals,
-                          int* n_offsets, int* n_nonzeros );
+int GetSimpleCouplingCSR( int** I, int** J, double** vals, int* n_offsets, int* n_nonzeros );
 
 /// @}
 

@@ -3,17 +3,14 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-
 #include "tribol/mesh/MeshManager.hpp"
 #include "tribol/mesh/MeshData.hpp"
 
-namespace tribol
-{
+namespace tribol {
 
 MeshManager::MeshManager()
 {
   // TODO Auto-generated constructor stub
-
 }
 
 MeshManager::~MeshManager()
@@ -21,10 +18,10 @@ MeshManager::~MeshManager()
   // TODO Auto-generated destructor stub
 }
 
-MeshManager & MeshManager::getInstance()
+MeshManager& MeshManager::getInstance()
 {
   static MeshManager meshManager;
   return meshManager;
 }
 
-}
+}  // namespace tribol

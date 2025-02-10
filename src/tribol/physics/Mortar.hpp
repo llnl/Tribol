@@ -10,24 +10,23 @@
 #include "tribol/common/Parameters.hpp"
 #include "Physics.hpp"
 
-namespace tribol
-{
+namespace tribol {
 
 // forward declarations
 struct SurfaceContactElem;
 
 enum VariableType
 {
-   PRIMAL,
-   DUAL,
-  
-   NUM_VARIABLES
+  PRIMAL,
+  DUAL,
+
+  NUM_VARIABLES
 };
 
 /*!
  *
- * \brief computes the integral of (phi_a * phi_b) over a contact 
- *        overlap for all (a,b) combinations. 
+ * \brief computes the integral of (phi_a * phi_b) over a contact
+ *        overlap for all (a,b) combinations.
  *
  * \note the mortar weights are stored on the SurfaceContactElem object
  *
@@ -35,7 +34,7 @@ enum VariableType
  *
  *
  */
-void ComputeMortarWeights( SurfaceContactElem & elem );
+void ComputeMortarWeights( SurfaceContactElem& elem );
 
 /*!
  *
@@ -44,7 +43,7 @@ void ComputeMortarWeights( SurfaceContactElem & elem );
  * \param [in] cs pointer to coupling scheme
  *
  */
-void ComputeSingleMortarGaps( CouplingScheme const * cs );
+void ComputeSingleMortarGaps( CouplingScheme const* cs );
 
 /*!
  *
@@ -53,8 +52,8 @@ void ComputeSingleMortarGaps( CouplingScheme const * cs );
  * \param [in] elem surface contact element object for contact face-pair
  *
  */
-template< ContactMethod M >
-void ComputeNodalGap( SurfaceContactElem & elem );
+template <ContactMethod M>
+void ComputeNodalGap( SurfaceContactElem& elem );
 
 /*!
  *
@@ -65,92 +64,92 @@ void ComputeNodalGap( SurfaceContactElem & elem );
  * \param [in] elem surface contact element object for contact face-pair
  *
  */
-template< >
-void ComputeNodalGap< SINGLE_MORTAR >( SurfaceContactElem & elem );
+template <>
+void ComputeNodalGap<SINGLE_MORTAR>( SurfaceContactElem& elem );
 
 /*!
  *
- * \brief method to compute the Jacobian contributions of the contact residual 
- *        term with respect to either the primal or dual variable for a single 
+ * \brief method to compute the Jacobian contributions of the contact residual
+ *        term with respect to either the primal or dual variable for a single
  *        contact face-pair.
  *
  * \param [in] elem surface contact element struct
  *
  */
-template< ContactMethod M, VariableType V >
-void ComputeResidualJacobian( SurfaceContactElem & elem );
+template <ContactMethod M, VariableType V>
+void ComputeResidualJacobian( SurfaceContactElem& elem );
 
 /*!
  *
- * \brief method to compute the Jacobian contributions of the contact gap  
- *        constraint with respect to either the primal or dual variable for a single 
+ * \brief method to compute the Jacobian contributions of the contact gap
+ *        constraint with respect to either the primal or dual variable for a single
  *        contact face-pair.
  *
  * \param [in] elem surface contact element struct
  *
  */
-template< ContactMethod M, VariableType V >
-void ComputeConstraintJacobian( SurfaceContactElem & elem );
+template <ContactMethod M, VariableType V>
+void ComputeConstraintJacobian( SurfaceContactElem& elem );
 
 /*!
  *
- * \brief routine to apply interface physics in the direction normal to the interface 
+ * \brief routine to apply interface physics in the direction normal to the interface
  *
  * \param [in] cs pointer to the coupling scheme
  *
  * \return 0 if no error
  *
  */
-template< >
-int ApplyNormal< SINGLE_MORTAR, LAGRANGE_MULTIPLIER >( CouplingScheme const * cs );
+template <>
+int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme const* cs );
 
 /*!
  *
- * \brief explicit specialization of method to compute the Jacobian contributions of 
- *        the contact residual term with respect to the primal variable for a single 
+ * \brief explicit specialization of method to compute the Jacobian contributions of
+ *        the contact residual term with respect to the primal variable for a single
  *        contact face-pair.
  *
  * \param [in] elem surface contact element struct
  *
  */
-template< >
-void ComputeResidualJacobian< SINGLE_MORTAR, PRIMAL >( SurfaceContactElem & elem );
+template <>
+void ComputeResidualJacobian<SINGLE_MORTAR, PRIMAL>( SurfaceContactElem& elem );
 
 /*!
  *
- * \brief explicit specialization of method to compute the Jacobian contributions of 
- *        the contact residual term with respect to the dual variable for a single 
+ * \brief explicit specialization of method to compute the Jacobian contributions of
+ *        the contact residual term with respect to the dual variable for a single
  *        contact face-pair.
  *
  * \param [in] elem surface contact element struct
  *
  */
-template< >
-void ComputeResidualJacobian< SINGLE_MORTAR, DUAL >( SurfaceContactElem & elem );
+template <>
+void ComputeResidualJacobian<SINGLE_MORTAR, DUAL>( SurfaceContactElem& elem );
 
 /*!
  *
- * \brief explicit specialization of method to compute the Jacobian contributions of 
- *        the contact gap  constraint with respect to the primal variable for a single 
+ * \brief explicit specialization of method to compute the Jacobian contributions of
+ *        the contact gap  constraint with respect to the primal variable for a single
  *        contact face-pair.
  *
  * \param [in] elem surface contact element struct
  *
  */
-template< >
-void ComputeConstraintJacobian< SINGLE_MORTAR, PRIMAL >( SurfaceContactElem & elem );
+template <>
+void ComputeConstraintJacobian<SINGLE_MORTAR, PRIMAL>( SurfaceContactElem& elem );
 
 /*!
  *
- * \brief explicit specialization of method to compute the Jacobian contributions of 
- *        the contact gap  constraint with respect to the dual variable for a single 
+ * \brief explicit specialization of method to compute the Jacobian contributions of
+ *        the contact gap  constraint with respect to the dual variable for a single
  *        contact face-pair.
  *
  * \param [in] elem surface contact element struct
  *
  */
-template< >
-void ComputeConstraintJacobian< SINGLE_MORTAR, DUAL >( SurfaceContactElem & elem );
+template <>
+void ComputeConstraintJacobian<SINGLE_MORTAR, DUAL>( SurfaceContactElem& elem );
 
 /*!
  *
@@ -159,7 +158,7 @@ void ComputeConstraintJacobian< SINGLE_MORTAR, DUAL >( SurfaceContactElem & elem
  * \param [in] elem surface contact element struct
  *
  */
-void ComputeSingleMortarJacobian( SurfaceContactElem & elem );
+void ComputeSingleMortarJacobian( SurfaceContactElem& elem );
 
 /*!
  *
@@ -170,9 +169,9 @@ void ComputeSingleMortarJacobian( SurfaceContactElem & elem );
  * \return 0 if no error
  *
  */
-template< >
-int GetMethodData< MORTAR_WEIGHTS >( CouplingScheme const * cs );
+template <>
+int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme const* cs );
 
-}
+}  // namespace tribol
 
 #endif /* SRC_PHYSICS_MORTAR_HPP_ */

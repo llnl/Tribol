@@ -30,129 +30,101 @@ namespace numerics = axom::numerics;
 // free functions for simple API usage
 //------------------------------------------------------------------------------
 
-int Initialize(const int dim, bool init_slic)
+int Initialize( const int dim, bool init_slic )
 {
-   // initialize slic
-   if (init_slic)
-   {
-      axom::slic::finalize();
-      axom::slic::initialize();
-      std::string format = "[<LEVEL>]: <MESSAGE> \n";
-      axom::slic::setLoggingMsgLevel( axom::slic::message::Info );
-     
-      axom::slic::addStreamToAllMsgLevels(
-         new axom::slic::GenericOutputStream( &std::cout,format ) );
-   }
+  // initialize slic
+  if ( init_slic ) {
+    axom::slic::finalize();
+    axom::slic::initialize();
+    std::string format = "[<LEVEL>]: <MESSAGE> \n";
+    axom::slic::setLoggingMsgLevel( axom::slic::message::Info );
 
-   // Initialize tribol
-   tribol::CommType problem_comm = TRIBOL_COMM_WORLD;
-   tribol::initialize( dim, problem_comm );
+    axom::slic::addStreamToAllMsgLevels( new axom::slic::GenericOutputStream( &std::cout, format ) );
+  }
 
-   return 0;
+  // Initialize tribol
+  tribol::CommType problem_comm = TRIBOL_COMM_WORLD;
+  tribol::initialize( dim, problem_comm );
+
+  return 0;
 }
 
-int Finalize(bool finalize_slic)
+int Finalize( bool finalize_slic )
 {
-   // finalize tribol
-   tribol::finalize();
+  // finalize tribol
+  tribol::finalize();
 
-   // finalize slic
-   if(finalize_slic)
-   {
-      axom::slic::finalize();
-   }
-   
-   return 0;
+  // finalize slic
+  if ( finalize_slic ) {
+    axom::slic::finalize();
+  }
+
+  return 0;
 }
 
-void SimpleCouplingSetup( const int dim, 
-                          int cell_type,
-                          int contact_method,           
-                          int mortar_numCells,
-                          int mortar_lengthNodalData,
-                          const int* mortar_connectivity,
-                          const double* mortar_x,
-                          const double* mortar_y,
-                          const double* mortar_z,
-                          int nonmortar_numCells,
-                          int nonmortar_lengthNodalData,
-                          const int* nonmortar_connectivity,
-                          const double* nonmortar_x,
-                          const double* nonmortar_y,
-                          const double* nonmortar_z,
-                          const double area_frac,
-                          double* mortar_gaps,
-                          double* mortar_pressures)
+void SimpleCouplingSetup( const int dim, int cell_type, int contact_method, int mortar_numCells,
+                          int mortar_lengthNodalData, const int* mortar_connectivity, const double* mortar_x,
+                          const double* mortar_y, const double* mortar_z, int nonmortar_numCells,
+                          int nonmortar_lengthNodalData, const int* nonmortar_connectivity, const double* nonmortar_x,
+                          const double* nonmortar_y, const double* nonmortar_z, const double area_frac,
+                          double* mortar_gaps, double* mortar_pressures )
 {
-   (void)dim; // quiet compiler
+  (void)dim;  // quiet compiler
 
-   if (contact_method != tribol::MORTAR_WEIGHTS)
-   {
-      SLIC_ERROR( "SimpleCouplingSetup: simple API only works " << 
-                  "for MORTAR_WEIGHTS method." );
-   }
+  if ( contact_method != tribol::MORTAR_WEIGHTS ) {
+    SLIC_ERROR( "SimpleCouplingSetup: simple API only works "
+                << "for MORTAR_WEIGHTS method." );
+  }
 
-   // register mortar mesh
-   int mortarMeshId = 0;
-   tribol::registerMesh( mortarMeshId, mortar_numCells, 
-                         mortar_lengthNodalData,
-                         mortar_connectivity, cell_type,
-                         mortar_x, mortar_y, mortar_z );
+  // register mortar mesh
+  int mortarMeshId = 0;
+  tribol::registerMesh( mortarMeshId, mortar_numCells, mortar_lengthNodalData, mortar_connectivity, cell_type, mortar_x,
+                        mortar_y, mortar_z );
 
-   // register nonmortar mesh
-   int nonmortarMeshId = 1;
-   tribol::registerMesh( nonmortarMeshId, nonmortar_numCells,
-                         nonmortar_lengthNodalData,
-                         nonmortar_connectivity, cell_type,
-                         nonmortar_x, nonmortar_y, nonmortar_z );
+  // register nonmortar mesh
+  int nonmortarMeshId = 1;
+  tribol::registerMesh( nonmortarMeshId, nonmortar_numCells, nonmortar_lengthNodalData, nonmortar_connectivity,
+                        cell_type, nonmortar_x, nonmortar_y, nonmortar_z );
 
-   // Register mortar gaps and pressures, if provided
-   if( mortar_gaps != nullptr)
-   {
-      tribol::registerMortarGaps( nonmortarMeshId, mortar_gaps);
-   }
-   if( mortar_pressures != nullptr)
-   {
-      tribol::registerMortarPressures( nonmortarMeshId, mortar_pressures);
-   }
+  // Register mortar gaps and pressures, if provided
+  if ( mortar_gaps != nullptr ) {
+    tribol::registerMortarGaps( nonmortarMeshId, mortar_gaps );
+  }
+  if ( mortar_pressures != nullptr ) {
+    tribol::registerMortarPressures( nonmortarMeshId, mortar_pressures );
+  }
 
-   // set contact area fraction 
-   tribol::setContactAreaFrac( area_frac );
-   tribol::setPlotCycleIncrement(1);
+  // set contact area fraction
+  tribol::setContactAreaFrac( area_frac );
+  tribol::setPlotCycleIncrement( 1 );
 
-   // note the use of NULL_ENFORCEMENT reflects that this routine is used 
-   // to initially setup tests for MORTAR_WEIGHTS only!
-   tribol::registerCouplingScheme( 0, mortarMeshId, nonmortarMeshId,
-                                   tribol::SURFACE_TO_SURFACE,
-                                   tribol::AUTO,
-                                   contact_method,
-                                   tribol::NULL_MODEL,
-                                   tribol::NULL_ENFORCEMENT );
+  // note the use of NULL_ENFORCEMENT reflects that this routine is used
+  // to initially setup tests for MORTAR_WEIGHTS only!
+  tribol::registerCouplingScheme( 0, mortarMeshId, nonmortarMeshId, tribol::SURFACE_TO_SURFACE, tribol::AUTO,
+                                  contact_method, tribol::NULL_MODEL, tribol::NULL_ENFORCEMENT );
 
-   // set enforcement options for MORTAR_WEIGHTS
-   tribol::setLagrangeMultiplierOptions( 0, tribol::ImplicitEvalMode::MORTAR_WEIGHTS_EVAL, 
-                                         tribol::SparseMode::MFEM_LINKED_LIST );
+  // set enforcement options for MORTAR_WEIGHTS
+  tribol::setLagrangeMultiplierOptions( 0, tribol::ImplicitEvalMode::MORTAR_WEIGHTS_EVAL,
+                                        tribol::SparseMode::MFEM_LINKED_LIST );
 
-   axom::slic::flushStreams();
+  axom::slic::flushStreams();
 
-   return;
+  return;
 }
 
 //------------------------------------------------------------------------------
-int Update( double &dt )
+int Update( double& dt )
 {
-   int err = tribol::update( 1, 1., dt );   
+  int err = tribol::update( 1, 1., dt );
 
-   axom::slic::flushStreams();
+  axom::slic::flushStreams();
 
-   return err;
+  return err;
 }
 
 //------------------------------------------------------------------------------
-int GetSimpleCouplingCSR( int** I, int** J, double** vals,
-                          int* n_offsets, int* n_nonzeros )
+int GetSimpleCouplingCSR( int** I, int** J, double** vals, int* n_offsets, int* n_nonzeros )
 {
-   int err = tribol::getJacobianCSRMatrix( I, J, vals, 0, n_offsets, n_nonzeros );
-   return err;
+  int err = tribol::getJacobianCSRMatrix( I, J, vals, 0, n_offsets, n_nonzeros );
+  return err;
 }
-

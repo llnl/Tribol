@@ -8,14 +8,13 @@
 
 #include "tribol/types.hpp"
 
-namespace tribol
-{
+namespace tribol {
 
 /*!
  *
- * \brief 
+ * \brief
  *
- * \param [in] 
+ * \param [in]
  *
  */
 }

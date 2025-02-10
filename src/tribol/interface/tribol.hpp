@@ -14,9 +14,7 @@
 // MFEM includes
 #include "mfem.hpp"
 
-
-namespace tribol
-{
+namespace tribol {
 
 /// \name Contact Library Initialization methods
 /// @{
@@ -46,41 +44,38 @@ void initialize( integer dimension, CommType comm );
  * \param [in] rate_calc rate penalty stiffness calculation option
  * \pre user must register coupling scheme prior to setting penalty enforcement options for that scheme
  */
-void setPenaltyOptions( int couplingSchemeIndex, 
-                        PenaltyConstraintType pen_enfrc_option,
+void setPenaltyOptions( int couplingSchemeIndex, PenaltyConstraintType pen_enfrc_option,
                         KinematicPenaltyCalculation kinematic_calc,
-                        RatePenaltyCalculation rate_calc=NO_RATE_PENALTY );
+                        RatePenaltyCalculation rate_calc = NO_RATE_PENALTY );
 
 /*!
  * \brief Sets the constant kinematic penalty stiffness
- * \param [in] meshId mesh id for penalty stiffness  
+ * \param [in] meshId mesh id for penalty stiffness
  * \param [in] k constant kinematic penalty stiffness
  */
 void setKinematicConstantPenalty( int meshId, double k );
 
 /*!
  * \brief Sets the kinematic element penalty stiffness data
- * \param [in] meshId mesh id for penalty stiffness  
+ * \param [in] meshId mesh id for penalty stiffness
  * \param [in] material_modulus pointer to element array of bulk or Young's moduli
  * \param [in] element_thickness pointer to element array of through element thicknesses
  *
  * \note the length of the arrays that material_modulus and element_thickness point to
  *       is the number of contact faces registered for mesh with id, \p meshId.
  */
-void setKinematicElementPenalty( int meshId, 
-                                 const double *material_modulus, 
-                                 const double *element_thickness );
+void setKinematicElementPenalty( int meshId, const double* material_modulus, const double* element_thickness );
 
 /*!
  * \brief Sets the constant rate penalty stiffness
- * \param [in] meshId mesh id for penalty stiffness  
+ * \param [in] meshId mesh id for penalty stiffness
  * \param [in] r_k constant rate penalty stiffness
  */
 void setRateConstantPenalty( int meshId, double r_k );
 
 /*!
  * \brief Sets the percent rate penalty stiffness
- * \param [in] meshId mesh id for penalty stiffness  
+ * \param [in] meshId mesh id for penalty stiffness
  * \param [in] r_p rate penalty as percent of kinematic penalty
  */
 void setRatePercentPenalty( int meshId, double r_p );
@@ -97,11 +92,11 @@ void setRatePercentPenalty( int meshId, double r_p );
 void setContactPenFrac( double frac );
 
 /*!
- * \brief Sets the area fraction for inclusion of a contact overlap 
+ * \brief Sets the area fraction for inclusion of a contact overlap
  * \param [in] frac area fraction tolerance
  *
- * \note the area fraction under consideration is the ratio of the 
- *       contact overlap with the largest of the two consituent 
+ * \note the area fraction under consideration is the ratio of the
+ *       contact overlap with the largest of the two consituent
  *       faces. A default ratio is provided by Tribol.
  */
 void setContactAreaFrac( double frac );
@@ -123,7 +118,7 @@ void setPenaltyScale( int meshId, double scale );
  *
  */
 void setLagrangeMultiplierOptions( int couplingSchemeIndex, ImplicitEvalMode evalMode,
-                                   SparseMode sparseMode=SparseMode::MFEM_LINKED_LIST );
+                                   SparseMode sparseMode = SparseMode::MFEM_LINKED_LIST );
 
 /*!
  * \brief Sets the plot cycle increment for visualization
@@ -132,7 +127,7 @@ void setLagrangeMultiplierOptions( int couplingSchemeIndex, ImplicitEvalMode eva
 void setPlotCycleIncrement( double incr );
 
 /*!
- * \brief Sets the plot options for interface visualization 
+ * \brief Sets the plot options for interface visualization
  *
  * \param [in] v_type visualization option
  */
@@ -147,7 +142,7 @@ void setOutputDirectory( const std::string& dir );
 /*!
  * \brief Optionally sets the logging level per coupling scheme
  * \param [in] csId coupling scheme id
- * \param [in] log_level the desired logging level 
+ * \param [in] log_level the desired logging level
  *
  * \note this overrides the logging level set in initialize().
  */
@@ -170,9 +165,9 @@ void setLoggingLevel( int csId, LoggingLevel log_level );
  * \param [in] y array of y-components of the mesh coordinates
  * \param [in] z array of z-components of the mesh coordinates (3D only)
  *
- * \note numMeshNodes may be the number of nodes on the surface 
- *       (i.e. surface mesh only), or they may include nodes in the volume, 
- *       but the number is specific to the contact body to which the surface 
+ * \note numMeshNodes may be the number of nodes on the surface
+ *       (i.e. surface mesh only), or they may include nodes in the volume,
+ *       but the number is specific to the contact body to which the surface
  *       defined by the surface element connectivity array belongs.
  *
  * \pre connectivity != nullptr
@@ -180,14 +175,8 @@ void setLoggingLevel( int csId, LoggingLevel log_level );
  * \pre y != nullptr
  * \pre z != nullptr (3D only)
  */
-void registerMesh( integer meshId,
-                   integer numCells,
-                   integer lengthNodalData,
-                   const IndexType* connectivity,
-                   integer cellType,
-                   const real* x,
-                   const real* y,
-                   const real* z=nullptr );
+void registerMesh( integer meshId, integer numCells, integer lengthNodalData, const IndexType* connectivity,
+                   integer cellType, const real* x, const real* y, const real* z = nullptr );
 
 /*!
  * \brief Registers nodal displacements on the contact surface.
@@ -204,10 +193,7 @@ void registerMesh( integer meshId,
  * \note A mesh for the given contact surface must have already been registered
  *  prior to calling this method via registerMesh()
  */
-void registerNodalDisplacements( integer meshId,
-                                 const real* dx,
-                                 const real* dy,
-                                 const real* dz=nullptr );
+void registerNodalDisplacements( integer meshId, const real* dx, const real* dy, const real* dz = nullptr );
 
 /*!
  * \brief Registers nodal velocities on the contact surface.
@@ -224,10 +210,7 @@ void registerNodalDisplacements( integer meshId,
  *  \note A mesh for the given contact surface must have already been registered
  *   prior to calling this method] via registerMesh()
  */
-void registerNodalVelocities( integer meshId,
-                              const real* vx,
-                              const real* vy,
-                              const real* vz=nullptr );
+void registerNodalVelocities( integer meshId, const real* vx, const real* vy, const real* vz = nullptr );
 
 /*!
  * \brief Registers nodal response buffers.
@@ -244,28 +227,25 @@ void registerNodalVelocities( integer meshId,
  * \note A mesh for the given contact surface must have already been registered
  *  prior to calling this method.
  */
-void registerNodalResponse( integer meshId,
-                            real* rx,
-                            real* ry,
-                            real* rz=nullptr );
+void registerNodalResponse( integer meshId, real* rx, real* ry, real* rz = nullptr );
 
 /*!
- * \brief Get mfem sparse matrix for method specific Jacobian matrix output 
+ * \brief Get mfem sparse matrix for method specific Jacobian matrix output
  *
  * \param [in,out] sMat double pointer to mfem sparse matrix object
  * \param [in] csId Coupling scheme id
  *
- * \return 0 for success, nonzero for failure 
+ * \return 0 for success, nonzero for failure
  *
  * \pre *sMat = nullptr
  *
- * \note Mortar Method: The sizing of the sparse matrix assumes that all 
- *       nonmortar and mortar nodes may have a Lagrange multiplier associated 
- *       with them. This allows us to use the global connectivity array, 
- *       which assumes contiguous and unique node ids between mortar and 
+ * \note Mortar Method: The sizing of the sparse matrix assumes that all
+ *       nonmortar and mortar nodes may have a Lagrange multiplier associated
+ *       with them. This allows us to use the global connectivity array,
+ *       which assumes contiguous and unique node ids between mortar and
  *       nonmortar meshes registered in a given coupling scheme.
  */
-int getJacobianSparseMatrix( mfem::SparseMatrix ** sMat, int csId );
+int getJacobianSparseMatrix( mfem::SparseMatrix** sMat, int csId );
 
 /*!
  * \brief Gets CSR storage arrays for method specific Jacobian matrix output
@@ -275,7 +255,7 @@ int getJacobianSparseMatrix( mfem::SparseMatrix ** sMat, int csId );
  * \param [out] vals pointer to nonzero value array
  * \param [in]  csId coupling scheme id
  * \param [out] n_offsets optional pointer to the number of offsets (size of I array)
- * \param [out] n_nonzero optional pointer to the number of non zeros 
+ * \param [out] n_nonzero optional pointer to the number of non zeros
  *                        (size of J and vals arrays)
  *
  * \pre I == nullptr
@@ -284,12 +264,11 @@ int getJacobianSparseMatrix( mfem::SparseMatrix ** sMat, int csId );
  *
  * \post n_offsets will store the number of offsets, if a non-nullptr was passed in
  * \post n_nonzero will store the number of non-zeros, if a non-nullptr was passed in
- * 
+ *
  * \return 0 success (if CSR data exists and pointed to), nonzero for failure
  *
  */
-int getJacobianCSRMatrix( int** I, int** J, real** vals, int csId,
-                  int* n_offsets = nullptr, int* n_nonzero = nullptr );
+int getJacobianCSRMatrix( int** I, int** J, real** vals, int csId, int* n_offsets = nullptr, int* n_nonzero = nullptr );
 
 /*!
  * \brief Get element Jacobian matrix contributions for a given block
@@ -315,16 +294,16 @@ int getJacobianCSRMatrix( int** I, int** J, real** vals, int csId,
  * For example, requesting row_block = BlockSpace::MORTAR and col_block =
  * BlockSpace::LAGRANGE_MULTIPLIER will return the block Jacobians in position
  * 02. row_elem_idx will be an array of mortar element indices and col_elem_idx
- * will be an array of Lagrange multiplier element indices. The length of 
+ * will be an array of Lagrange multiplier element indices. The length of
  * row_elem_idx, col_elem_idx, and jacobians will match.  Each entry in the
  * array corresponds to a single coupled element pair, so element indices will
  * not be unique, in general.  For instance, if a nonmortar face interacts with
  * multiple mortar faces and vice-versa.
  *
  * \param [in]  csId Coupling scheme id
- * \param [in]  row_block Row Jacobian block (MORTAR, NONMORTAR, or 
+ * \param [in]  row_block Row Jacobian block (MORTAR, NONMORTAR, or
  * LAGRANGE_MULTIPLIER)
- * \param [in]  col_block Column Jacobian block (MORTAR, NONMORTAR, or 
+ * \param [in]  col_block Column Jacobian block (MORTAR, NONMORTAR, or
  * LAGRANGE_MULTIPLIER)
  * \param [out] row_elem_idx Pointer to pointer to array of element indices for
  * the row block
@@ -332,16 +311,13 @@ int getJacobianCSRMatrix( int** I, int** J, real** vals, int csId,
  * the column block
  * \param [out] jacobians Pointer to pointer to array of Jacobian dense matrices
  *
- * @note The second pointer of the double pointer is updated by this function to 
+ * @note The second pointer of the double pointer is updated by this function to
  * point to internally stored arrays of indices and Jacobian values.
  *
  * \return 0 success (if Jacobians exist), nonzero for failure
  */
-int getElementBlockJacobians( integer csId, 
-                              BlockSpace row_block,
-                              BlockSpace col_block,
-                              const axom::Array<integer>** row_elem_idx,
-                              const axom::Array<integer>** col_elem_idx,
+int getElementBlockJacobians( integer csId, BlockSpace row_block, BlockSpace col_block,
+                              const axom::Array<integer>** row_elem_idx, const axom::Array<integer>** col_elem_idx,
                               const axom::Array<mfem::DenseMatrix>** jacobians );
 
 /*!
@@ -352,8 +328,7 @@ int getElementBlockJacobians( integer csId,
  * \param gaps Array of degree-of-freedom values on the nodes of the mesh
  * representing the scalar gap field
  */
-void registerMortarGaps( integer meshId,
-                         real * gaps );
+void registerMortarGaps( integer meshId, real* gaps );
 
 /*!
  * \brief Register pressure field on a nonmortar surface mesh associated with
@@ -363,23 +338,16 @@ void registerMortarGaps( integer meshId,
  * \param gaps Array of degree-of-freedom values on the nodes of the mesh
  * representing the scalar pressure field
  */
-void registerMortarPressures( integer meshId,
-                              const real * pressures );
+void registerMortarPressures( integer meshId, const real* pressures );
 
 /// register an integer nodal field
-void registerIntNodalField( integer meshId,
-                            const IntNodalFields field,
-                            integer * fieldVariable );
+void registerIntNodalField( integer meshId, const IntNodalFields field, integer* fieldVariable );
 
-/// register a real element field or parameter 
-void registerRealElementField( int meshId,
-                               const RealElementFields field,
-                               const double * fieldVariable );
+/// register a real element field or parameter
+void registerRealElementField( int meshId, const RealElementFields field, const double* fieldVariable );
 
 /// register an integer element field
-void registerIntElementField( int meshId,
-                              const IntElementFields field,
-                              integer * fieldVariable );
+void registerIntElementField( int meshId, const IntElementFields field, integer* fieldVariable );
 
 /// @}
 
@@ -402,24 +370,17 @@ void registerIntElementField( int meshId,
  * \note A mesh for the given contact surface must have already been registered
  *  prior to calling this method.
  */
-void registerCouplingScheme( integer couplingSchemeIndex,
-                             integer meshId1,
-                             integer meshId2,
-                             integer contact_mode,
-                             integer contact_case,
-                             integer contact_method,
-                             integer contact_model,
-                             integer enforcement_method,
-                             integer binning_method = DEFAULT_BINNING_METHOD);
+void registerCouplingScheme( integer couplingSchemeIndex, integer meshId1, integer meshId2, integer contact_mode,
+                             integer contact_case, integer contact_method, integer contact_model,
+                             integer enforcement_method, integer binning_method = DEFAULT_BINNING_METHOD );
 /// @}
-
 
 /*!
  * \brief Sets the interacting cell-pairs manually.
  *
  * \param [in] couplingSchemeIndex The index of the coupling scheme to which
  * we are associating these interface pairs
- * \param [in] numPairs   number of cell-pairs to be registered 
+ * \param [in] numPairs   number of cell-pairs to be registered
  * \param [in] meshId1    meshId of the first cell in the pair list
  * \param [in] pairType1  cell type of the first cell in the pair list
  * \param [in] pairIndex1 index of the first cell in the pair list
@@ -428,15 +389,9 @@ void registerCouplingScheme( integer couplingSchemeIndex,
  * \param [in] pairIndex2 index of the second cell in the pair list
  *
  */
-void setInterfacePairs( integer couplingSchemeIndex,
-                        IndexType numPairs,
-                        IndexType const * meshId1,
-                        IndexType const * pairType1,
-                        IndexType const * pairIndex1,
-                        IndexType const * meshId2,
-                        IndexType const * pairType2,
-                        IndexType const * pairIndex2 );
-
+void setInterfacePairs( integer couplingSchemeIndex, IndexType numPairs, IndexType const* meshId1,
+                        IndexType const* pairType1, IndexType const* pairIndex1, IndexType const* meshId2,
+                        IndexType const* pairType2, IndexType const* pairIndex2 );
 
 /*!
  * \brief Computes the contact response at the given cycle.
@@ -447,7 +402,7 @@ void setInterfacePairs( integer couplingSchemeIndex,
  *
  * \return rc return code, a non-zero return code indicates an error.
  */
-integer update( integer cycle, real t, real &dt );
+integer update( integer cycle, real t, real& dt );
 
 /// \name Contact Library finalization methods
 /// @{
@@ -455,11 +410,10 @@ integer update( integer cycle, real t, real &dt );
 /*!
  * \brief Finalizes
  */
-void finalize( );
+void finalize();
 
 /// @}
 
 } /* namespace tribol */
-
 
 #endif /* TRIBOL_HPP_ */

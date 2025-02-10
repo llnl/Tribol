@@ -7,14 +7,13 @@
 
 #include "tribol/common/Parameters.hpp"
 
-namespace tribol
-{
+namespace tribol {
 
 // Forward Declarations
 class CouplingScheme;
-template<int D> class GridSearch;
+template <int D>
+class GridSearch;
 struct InterfacePair;
-
 
 /// Free functions
 
@@ -25,7 +24,7 @@ struct InterfacePair;
  * \param [in] mode ContactMode
  *
  */
-bool geomFilter( InterfacePair & iPair, ContactMode const mode );
+bool geomFilter( InterfacePair& iPair, ContactMode const mode );
 
 /*!
  * \class InterfacePairFinder
@@ -33,34 +32,30 @@ bool geomFilter( InterfacePair & iPair, ContactMode const mode );
  * \brief This class finds pairs of interfering elements in the meshes
  * referred to by the CouplingScheme
  */
-class InterfacePairFinder
-{
-public:
-   InterfacePairFinder(CouplingScheme* cs);
+class InterfacePairFinder {
+ public:
+  InterfacePairFinder( CouplingScheme* cs );
 
-   ~InterfacePairFinder();
+  ~InterfacePairFinder();
 
-   /*!
-    * Initializes structures for the candidate search
-    */
-   void initialize();
+  /*!
+   * Initializes structures for the candidate search
+   */
+  void initialize();
 
-   /*!
-    * Computes the interacting interface pairs between the meshes
-    * specified in \a m_couplingScheme
-    */
-   void findInterfacePairs();
+  /*!
+   * Computes the interacting interface pairs between the meshes
+   * specified in \a m_couplingScheme
+   */
+  void findInterfacePairs();
 
-private:
+ private:
+  CouplingScheme* m_couplingScheme;
 
-   CouplingScheme* m_couplingScheme;
-
-   GridSearch<2>* m_gridSearch2D;
-   GridSearch<3>* m_gridSearch3D;
+  GridSearch<2>* m_gridSearch2D;
+  GridSearch<3>* m_gridSearch3D;
 };
 
-} // end namespace tribol
-
-
+}  // end namespace tribol
 
 #endif /* TRIBOL_INTERFACE_PAIR_FINDER_HPP_ */

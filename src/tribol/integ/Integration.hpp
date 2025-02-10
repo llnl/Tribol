@@ -9,104 +9,92 @@
 #include "tribol/types.hpp"
 #include "tribol/common/Parameters.hpp"
 
-namespace tribol
-{
+namespace tribol {
 
-// forward declaration 
+// forward declaration
 struct SurfaceContactElem;
 
-/// struct to hold 2D or 3D integration point coordinates and 
-//  weights for integration on a face-face overlapping 
+/// struct to hold 2D or 3D integration point coordinates and
+//  weights for integration on a face-face overlapping
 //  convex polygon. This struct is quadrature rule agnostic.
-struct IntegPts
-{
-   /// IntegPts constructor
-   IntegPts( integer numPoints, ///< [in] Number of integration points
-             integer IPDim      ///< [in] dimension of integration point coordinates
-           ) 
-      : numIPs( numPoints )
-      , ipDim(IPDim)
-   { 
-      xy =  new real[ IPDim * numPoints ];
-      wts = new real[ numPoints ]; 
-   }
+struct IntegPts {
+  /// IntegPts constructor
+  IntegPts( integer numPoints,  ///< [in] Number of integration points
+            integer IPDim       ///< [in] dimension of integration point coordinates
+            )
+      : numIPs( numPoints ), ipDim( IPDim )
+  {
+    xy = new real[IPDim * numPoints];
+    wts = new real[numPoints];
+  }
 
-   /// IntegPts overloaded constructor
-   IntegPts( ) : numIPs(0), xy(nullptr), wts(nullptr) { } 
+  /// IntegPts overloaded constructor
+  IntegPts() : numIPs( 0 ), xy( nullptr ), wts( nullptr ) {}
 
-   /// Destructor
-   ~IntegPts( ) {
-       if (xy != nullptr)
-       {
-          delete [] xy;
-          xy = nullptr;
-       }
-       if (wts != nullptr)
-       {
-          delete [] wts;
-          wts = nullptr;
-       }
+  /// Destructor
+  ~IntegPts()
+  {
+    if ( xy != nullptr ) {
+      delete[] xy;
+      xy = nullptr;
     }
+    if ( wts != nullptr ) {
+      delete[] wts;
+      wts = nullptr;
+    }
+  }
 
-   /// Initialization function
-   void initialize( int const dim, int const numTotalIPs )
-   {
-      this->ipDim = dim;
-      this->numIPs = numTotalIPs;
-      if (this->xy == nullptr)
-      {
-         this->xy = new real [dim * numTotalIPs];
-      }
-      else
-      {
-         delete [] this->xy;
-         this->xy = new real [dim * numTotalIPs];
-      }
-      if (this->wts == nullptr)
-      {
-         this->wts = new real [numTotalIPs];
-      }
-      else
-      {
-         delete [] this->wts;
-         this->wts = new real [numTotalIPs];
-      }
-   }
+  /// Initialization function
+  void initialize( int const dim, int const numTotalIPs )
+  {
+    this->ipDim = dim;
+    this->numIPs = numTotalIPs;
+    if ( this->xy == nullptr ) {
+      this->xy = new real[dim * numTotalIPs];
+    } else {
+      delete[] this->xy;
+      this->xy = new real[dim * numTotalIPs];
+    }
+    if ( this->wts == nullptr ) {
+      this->wts = new real[numTotalIPs];
+    } else {
+      delete[] this->wts;
+      this->wts = new real[numTotalIPs];
+    }
+  }
 
-   // member variables
-   integer numIPs; ///< number of integration points on entire overlap
-   integer ipDim;  ///< coordinate dimension of the integration points 
-   real* xy;       ///< coordinates of ALL integration points
-   real* wts;      ///< integration point weights
+  // member variables
+  integer numIPs;  ///< number of integration points on entire overlap
+  integer ipDim;   ///< coordinate dimension of the integration points
+  real* xy;        ///< coordinates of ALL integration points
+  real* wts;       ///< integration point weights
 };
 
 /*!
  *
- * \brief Templated function with explicit specialization evaluating the 
- *        weak form contact integral, typically involving the integration 
- *        of shape functions or product of shape functions over contact 
+ * \brief Templated function with explicit specialization evaluating the
+ *        weak form contact integral, typically involving the integration
+ *        of shape functions or product of shape functions over contact
  *        overlap patches for surface-to-surface contact methods.
  *
- * \param [in] elem surface contact element struct 
+ * \param [in] elem surface contact element struct
  * \param [out] integ1 scalar integral evaluation for face 1 at node nodeEvalId
  * \param [out] integ2 scalar integral evaluation for face 2 at node nodeEvalId
  *
  * \pre The local node id, nodeEvalId, ranges from 0-3 for a four node quad face.
  *
  */
-template< ContactMethod M, PolyInteg I > 
-void EvalWeakFormIntegral( SurfaceContactElem const & elem,
-                           real * const integ1,
-                           real * const integ2 );
-                        
+template <ContactMethod M, PolyInteg I>
+void EvalWeakFormIntegral( SurfaceContactElem const& elem, real* const integ1, real* const integ2 );
+
 /*!
  *
  * \brief Populates the integration points and weights on the IntegPts object
- *        for all integration points per Taylor-Wingate-Bos integration rule 
+ *        for all integration points per Taylor-Wingate-Bos integration rule
  *        of order k.
- * 
- * \note Integration per M. Taylor, B. Wingate, L. Bos. Several new quadrature 
- *       formulas for polynomial integration in the triangle.   
+ *
+ * \note Integration per M. Taylor, B. Wingate, L. Bos. Several new quadrature
+ *       formulas for polynomial integration in the triangle.
  *       arXiv:math/0501496, 2007.
  *
  * \param [in] elem SurfaceContactElem object containing dimension and overlap vertices
@@ -114,55 +102,49 @@ void EvalWeakFormIntegral( SurfaceContactElem const & elem,
  * \param [in] k order of TWB integration
  *
  * \pre order 2 <= k <= 3
- * \pre integ IntegPts object can be instantiated with no-op constructor. This routine 
+ * \pre integ IntegPts object can be instantiated with no-op constructor. This routine
  *            will allocate and populate necessary data.
  *
  */
-void TWBPolyInt( SurfaceContactElem const & elem,
-                 IntegPts & integ,
-                 integer k );
+void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, integer k );
 
 /*!
  *
  * \brief Populates the integration points and weights on the IntegPts object
- *        for all integration points per symmetric Gauss integration rule 
+ *        for all integration points per symmetric Gauss integration rule
  *        of order k on triangles
- * 
+ *
  * \param [in] elem SurfaceContactElem object containing dimension and overlap vertices
  * \param [in,out] integ IntegPts object holding integration points and weights
  * \param [in] k order of integration
  *
  * \pre order 2 <= k <= 3
- * \pre integ IntegPts object can be instantiated with no-op constructor. This routine 
+ * \pre integ IntegPts object can be instantiated with no-op constructor. This routine
  *            will allocate and populate necessary data.
  *
  */
-void GaussPolyIntTri( SurfaceContactElem const & elem,
-                      IntegPts & integ,
-                      integer k );
+void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, integer k );
 
 /*!
  *
  * \brief Populates the integration points and weights on the IntegPts object
- *        for all integration points per symmetric Gauss integration rule 
- *        of order k on quadrilaterals 
- * 
+ *        for all integration points per symmetric Gauss integration rule
+ *        of order k on quadrilaterals
+ *
  * \param [in] elem SurfaceContactElem object containing dimension and overlap vertices
  * \param [in,out] integ IntegPts object holding integration points and weights
  * \param [in] k order of integration
  *
  * \pre order 2 <= k <= 3
- * \pre integ IntegPts object can be instantiated with no-op constructor. This routine 
+ * \pre integ IntegPts object can be instantiated with no-op constructor. This routine
  *            will allocate and populate necessary data.
  *
  */
 
-void GaussPolyIntQuad( SurfaceContactElem const & elem,
-                       IntegPts & integ,
-                       integer k );
+void GaussPolyIntQuad( SurfaceContactElem const& elem, IntegPts& integ, integer k );
 /*!
  *
- * \brief returns the number of TWB integration points for polygonal overlap 
+ * \brief returns the number of TWB integration points for polygonal overlap
  *        for integration rule of order k
  *
  * \param [in] elem SurfaceContactElem object containing dimension and overlap vertices
@@ -171,12 +153,11 @@ void GaussPolyIntQuad( SurfaceContactElem const & elem,
  * \pre order 2 <= k <= 3
  *
  */
-int NumTWBPointsPoly( SurfaceContactElem const & elem,
-                      integer k );
+int NumTWBPointsPoly( SurfaceContactElem const& elem, integer k );
 
 /*!
  *
- * \brief returns the number of TWB integration points on a triangle per 
+ * \brief returns the number of TWB integration points on a triangle per
  *        the integration rule of order k
  *
  * \param [in] order order of polynomial that TWB integration rule will exactly integrate
@@ -186,5 +167,5 @@ int NumTWBPointsPoly( SurfaceContactElem const & elem,
  */
 int NumTWBPointsPerTri( integer order );
 
-} // end namespace tribol
+}  // end namespace tribol
 #endif /* SRC_INTEG_INTEGRATION_HPP_ */
