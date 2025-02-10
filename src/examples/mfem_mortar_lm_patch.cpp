@@ -342,8 +342,8 @@ int main( int argc, char** argv )
   solver.SetMaxIter( 5000 );
   solver.SetPrintLevel( 3 );
   solver.SetOperator( *A_merged );
-  mfem::HypreDiagScale prec( *A_merged );
-  solver.SetPreconditioner( prec );
+  // TODO: find a preconditioner
+  // solver.SetPreconditioner( prec );
   solver.Mult( B_blk, X_blk );
 
   // Move the block displacements to the displacement grid function.
