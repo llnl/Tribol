@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level LICENSE file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -6,6 +6,11 @@
 #------------------------------------------------------------------------------
 # Set up tribol target
 #------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+# add shared
+#------------------------------------------------------------------------------
+add_subdirectory(shared)
 
 #------------------------------------------------------------------------------
 # add redecomp

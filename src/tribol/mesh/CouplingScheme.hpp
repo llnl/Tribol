@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -636,6 +636,19 @@ class CouplingScheme {
    */
   void printPairReportingData();
 
+  /**
+   * @brief Get the effective binning proximity scale
+   *
+   * @note The effective binning proximity scale is the user supplied binning proximity scaled by the LOR factor. Thus,
+   * the effective binning proximity is independent of the low-order mesh when a higher-order mesh is used with the MFEM
+   * interface. This is generally the binning proximity that should be used in binning and geometric filtering.
+   *
+   * @pre CouplingScheme::init() must be called prior
+   *
+   * @return effective binning proximity scale
+   */
+  RealT getEffectiveBinningProximityScale() const { return m_effective_binning_proximity_scale; }
+
 #ifdef TRIBOL_USE_ENZYME
   /**
    * @brief Enables Enzyme AD for exact Jacobian calculations
@@ -886,6 +899,10 @@ class CouplingScheme {
   CouplingSchemeInfo m_couplingSchemeInfo;      ///< struct handling info to be printed
 
   PairReportingData m_pairReportingData;  ///< struct handling on-rank pair reporting data from computational geometry
+
+  RealT m_effective_binning_proximity_scale;  ///< Binning proximity scaled by the LOR factor. Scaling by the LOR factor
+                                              ///< makes proximity detection independent of the LOR factor and based on
+                                              ///< the HO mesh when using the MFEM interface.
 
 #ifdef BUILD_REDECOMP
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -195,6 +195,14 @@ void setOutputDirectory( IndexT cs_id, const std::string& dir );
  * \note this overrides the logging level set in initialize().
  */
 void setLoggingLevel( IndexT cs_id, LoggingLevel log_level );
+
+/*!
+ * @brief Optionally set the binning proximity scale; an element length multiplier for including pairs in coarse binning
+ *
+ * @param cs_id coupling scheme id
+ * @param binning_proximity_scale proximity scale
+ */
+void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
 
 /*!
  * \brief Enable the contact timestep vote

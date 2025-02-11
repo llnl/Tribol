@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -1122,6 +1122,14 @@ bool CouplingScheme::init()
     // set individual coupling scheme logging level
     this->setSlicLoggingLevel();
 
+    // set effective binning proximity, based on binning proximity scale and LOR factor
+    this->m_effective_binning_proximity_scale = this->getParameters().binning_proximity_scale;
+#ifdef BUILD_REDECOMP
+    if ( this->hasMfemData() && this->getMfemMeshData()->GetLORFactor() > 1 ) {
+      this->m_effective_binning_proximity_scale *= static_cast<RealT>( this->getMfemMeshData()->GetLORFactor() );
+    }
+#endif
+
     // compute the face data
     this->m_mesh1->computeFaceData( this->m_exec_mode );
     if ( this->m_mesh_id2 != this->m_mesh_id1 ) {
@@ -1506,16 +1514,29 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                 ////////////////////////////////////////////////////////////////////////
 
                 {
-                  // compute delta between velocity projection of face-projected
-                  // overlap centroid and the OTHER face's face-projected overlap
-                  // centroid
-                  RealT proj_delta_x1 = plane.m_cXf1 + dt * vel_f1[0] - plane.m_cXf2;
-                  RealT proj_delta_y1 = plane.m_cYf1 + dt * vel_f1[1] - plane.m_cYf2;
+                  // compute the delta between the velocity projection of each face-projected
+                  // common plane centroid location
+                  //
+                  // First project each face-projected common plane centroid using linear velocity
+                  // projection as approximation of configuration next cycle
+                  RealT proj_delta_x1 = plane.m_cXf1 + dt * vel_f1[0];
+                  RealT proj_delta_y1 = plane.m_cYf1 + dt * vel_f1[1];
                   RealT proj_delta_z1 = 0.;
 
-                  RealT proj_delta_x2 = plane.m_cXf2 + dt * vel_f2[0] - plane.m_cXf1;
-                  RealT proj_delta_y2 = plane.m_cYf2 + dt * vel_f2[1] - plane.m_cYf1;
+                  RealT proj_delta_x2 = plane.m_cXf2 + dt * vel_f2[0];
+                  RealT proj_delta_y2 = plane.m_cYf2 + dt * vel_f2[1];
                   RealT proj_delta_z2 = 0.;
+
+                  // Second compute the amount of interpenetration as the difference between the two
+                  // velocity projected points
+                  RealT proj_delta_x1_fixed = proj_delta_x1;
+                  RealT proj_delta_y1_fixed = proj_delta_y1;
+
+                  proj_delta_x1 -= proj_delta_x2;
+                  proj_delta_y1 -= proj_delta_y2;
+
+                  proj_delta_x2 -= proj_delta_x1_fixed;
+                  proj_delta_y2 -= proj_delta_y1_fixed;
 
                   // compute the dot product between each face's delta and the OTHER
                   // face's outward unit normal. This is the magnitude of interpenetration
@@ -1526,9 +1547,17 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                   RealT proj_delta_n_2 = proj_delta_x2 * fn1[0] + proj_delta_y2 * fn1[1];
 
                   if ( dim == 3 ) {
-                    proj_delta_z1 = plane.m_cZf1 + dt * vel_f1[2] - plane.m_cZf2;
-                    proj_delta_z2 = plane.m_cZf2 + dt * vel_f2[2] - plane.m_cZf1;
+                    // project the z-component
+                    proj_delta_z1 = plane.m_cZf1 + dt * vel_f1[2];
+                    proj_delta_z2 = plane.m_cZf2 + dt * vel_f2[2];
 
+                    RealT proj_delta_z1_fixed = proj_delta_z1;
+
+                    // compute difference between each projected point
+                    proj_delta_z1 -= proj_delta_z2;
+                    proj_delta_z2 -= proj_delta_z1_fixed;
+
+                    // add the z-component of the projection onto the face normal
                     proj_delta_n_1 += proj_delta_z1 * fn2[2];
                     proj_delta_n_2 += proj_delta_z2 * fn1[2];
                   }

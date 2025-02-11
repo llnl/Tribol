@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -321,8 +321,8 @@ void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA
       }
 
 #if !defined( TRIBOL_USE_ENZYME )
-      SLIC_ERROR_IF( !in_quad, "InvIso(): (xi,eta) coordinate does not lie "
-                                   << "inside isoparametric quad." );
+      SLIC_WARNING_IF( !in_quad, "InvIso(): (xi,eta) coordinate does not lie "
+                                     << "inside isoparametric quad." );
 #endif
 
       return;

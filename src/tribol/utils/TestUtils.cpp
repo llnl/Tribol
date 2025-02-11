@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -1703,7 +1703,7 @@ void TestMesh::testMeshToVtk( const std::string& dir, int cycle, RealT time )
 
 namespace mfem_ext {
 
-CentralDiffSolver::CentralDiffSolver( const mfem::Array<int>& bc_vdofs_ ) : bc_vdofs{ bc_vdofs_ }, first_step{ true } {}
+CentralDiffSolver::CentralDiffSolver( const mfem::Array<int>& bc_vdofs_ ) : bc_vdofs( bc_vdofs_ ), first_step{ true } {}
 
 void CentralDiffSolver::Step( mfem::Vector& x, mfem::Vector& dxdt, double& t, double& dt )
 {
@@ -1746,13 +1746,13 @@ void CentralDiffSolver::SetHomogeneousBC( mfem::Vector& dxdt ) const
 #ifdef TRIBOL_USE_MPI
 ExplicitMechanics::ExplicitMechanics( mfem::ParFiniteElementSpace& fespace, mfem::Coefficient& rho,
                                       mfem::Coefficient& lambda, mfem::Coefficient& mu )
-    : f_ext{ &fespace }, elasticity{ &fespace }, inv_lumped_mass{ fespace.GetVSize() }
+    : f_ext{ &fespace }, elasticity{ &fespace }, inv_lumped_mass( fespace.GetVSize() )
 {
   // create inverse lumped mass matrix; store as a vector
   mfem::ParBilinearForm mass{ &fespace };
   mass.AddDomainIntegrator( new mfem::VectorMassIntegrator( rho ) );
   mass.Assemble();
-  mfem::Vector ones{ fespace.GetVSize() };
+  mfem::Vector ones( fespace.GetVSize() );
   ones = 1.0;
   mass.SpMat().Mult( ones, inv_lumped_mass );
   mfem::Vector mass_true( fespace.GetTrueVSize() );
@@ -1771,10 +1771,10 @@ ExplicitMechanics::ExplicitMechanics( mfem::ParFiniteElementSpace& fespace, mfem
 void ExplicitMechanics::Mult( const mfem::Vector& u, const mfem::Vector& AXOM_UNUSED_PARAM( dudt ),
                               mfem::Vector& a ) const
 {
-  mfem::Vector f{ u.Size() };
+  mfem::Vector f( u.Size() );
   f = 0.0;
 
-  mfem::Vector f_int{ f.Size() };
+  mfem::Vector f_int( f.Size() );
   elasticity.Mult( u, f_int );
   f.Add( -1.0, f_int );
 
@@ -1783,7 +1783,7 @@ void ExplicitMechanics::Mult( const mfem::Vector& u, const mfem::Vector& AXOM_UN
   // sum forces over ranks
   auto& fespace = *elasticity.ParFESpace();
   const Operator& P = *fespace.GetProlongationMatrix();
-  mfem::Vector f_true{ fespace.GetTrueVSize() };
+  mfem::Vector f_true( fespace.GetTrueVSize() );
   P.MultTranspose( f, f_true );
   P.Mult( f_true, f );
 

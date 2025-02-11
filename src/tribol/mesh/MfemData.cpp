@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -306,7 +306,7 @@ void MfemMeshData::SetParentReferenceCoords( const mfem::ParGridFunction& refere
   }
 }
 
-void MfemMeshData::UpdateMfemMeshData()
+void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale )
 {
   // update coordinates of submesh and LOR mesh
   auto submesh_nodes = dynamic_cast<mfem::ParGridFunction*>( submesh_.GetNodes() );
@@ -317,9 +317,9 @@ void MfemMeshData::UpdateMfemMeshData()
     SLIC_ERROR_ROOT_IF( !lor_nodes, "lor_mesh_ Nodes is not a ParGridFunction." );
     submesh_lor_xfer_->SubmeshToLOR( *submesh_nodes, *lor_nodes );
   }
-  update_data_ =
-      std::make_unique<UpdateData>( submesh_, lor_mesh_.get(), *coords_.GetParentGridFn().ParFESpace(),
-                                    submesh_xfer_gridfn_, submesh_lor_xfer_.get(), attributes_1_, attributes_2_ );
+  update_data_ = std::make_unique<UpdateData>( submesh_, lor_mesh_.get(), *coords_.GetParentGridFn().ParFESpace(),
+                                               submesh_xfer_gridfn_, submesh_lor_xfer_.get(), attributes_1_,
+                                               attributes_2_, binning_proximity_scale );
   coords_.UpdateField( update_data_->vector_xfer_ );
   redecomp_response_.SetSpace( coords_.GetRedecompGridFn().FESpace() );
   redecomp_response_ = 0.0;
@@ -518,8 +518,16 @@ void MfemMeshData::SetMaterialModulus( mfem::Coefficient& modulus_field )
 MfemMeshData::UpdateData::UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh,
                                       const mfem::ParFiniteElementSpace& parent_fes,
                                       mfem::ParGridFunction& submesh_gridfn, SubmeshLORTransfer* submesh_lor_xfer,
-                                      const std::set<int>& attributes_1, const std::set<int>& attributes_2 )
-    : redecomp_mesh_{ lor_mesh ? redecomp::RedecompMesh( *lor_mesh ) : redecomp::RedecompMesh( submesh ) },
+                                      const std::set<int>& attributes_1, const std::set<int>& attributes_2,
+                                      RealT binning_proximity_scale )
+    : redecomp_mesh_{ lor_mesh ? redecomp::RedecompMesh(
+                                     *lor_mesh, binning_proximity_scale *
+                                                    redecomp::RedecompMesh::MaxElementSize(
+                                                        *lor_mesh, redecomp::MPIUtility( lor_mesh->GetComm() ) ) )
+                               : redecomp::RedecompMesh(
+                                     submesh, binning_proximity_scale *
+                                                  redecomp::RedecompMesh::MaxElementSize(
+                                                      submesh, redecomp::MPIUtility( submesh.GetComm() ) ) ) },
       vector_xfer_{ parent_fes, submesh_gridfn, submesh_lor_xfer, redecomp_mesh_ }
 {
   // set element type based on redecomp mesh
@@ -622,8 +630,9 @@ void MfemMeshData::UpdateData::SetElementData()
 
     num_verts_per_elem_ = mfem::Geometry::NumVerts[element_type];
   } else {
-    // just put something here so Tribol will not give a warning for zero element meshes
-    elem_type_ = LINEAR_EDGE;
+    // just put something here so Tribol will not give a warning for zero element meshes.  use a 2d element so arrays
+    // are sized for 3d (max supported dimension) in case they are accessed later on.
+    elem_type_ = LINEAR_QUAD;
     num_verts_per_elem_ = 2;
   }
 }
@@ -675,7 +684,7 @@ const MfemSubmeshData::UpdateData& MfemSubmeshData::GetUpdateData() const
 
 MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data,
                                     ContactMethod contact_method )
-    : parent_data_{ parent_data }, submesh_data_{ submesh_data }, block_offsets_{ 3 }, disp_offsets_{ 2 }
+    : parent_data_{ parent_data }, submesh_data_{ submesh_data }, block_offsets_( 3 ), disp_offsets_( 2 )
 {
   SLIC_ERROR_ROOT_IF( parent_data.GetParentCoords().ParFESpace()->FEColl()->GetOrder() > 1,
                       "Higher order meshes not yet supported for Jacobian matrices." );

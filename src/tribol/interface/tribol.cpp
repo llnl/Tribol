@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -316,6 +316,24 @@ void setLoggingLevel( IndexT cs_id, LoggingLevel log_level )
   }
 
 }  // end setLoggingLevel()
+
+//------------------------------------------------------------------------------
+void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale )
+{
+  // get access to coupling scheme
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setBinningProximityScale(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+  if ( binning_proximity_scale < 2.0 ) {
+    binning_proximity_scale = 2.0;
+    SLIC_WARNING_ROOT(
+        "Setting binning proximity to less than 2.0 can lead to missed contact pairs.  Resetting to 2.0." );
+  }
+
+  cs->getParameters().binning_proximity_scale = binning_proximity_scale;
+
+}  // end setBinningProximityScale()
 
 //------------------------------------------------------------------------------
 void enableTimestepVote( IndexT cs_id, const bool enable )
@@ -778,7 +796,8 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
     // to interface pair manager. Note, further computational geometry
     // filtering will be performed on each face-pair indendifying
     // contact candidates.
-    if ( geomFilter( pairIndex1[i], pairIndex2[i], mesh1, mesh2, mode, cs->getParameters().auto_contact_check ) ) {
+    if ( geomFilter( pairIndex1[i], pairIndex2[i], mesh1, mesh2, mode, cs->getParameters().auto_contact_check,
+                     cs->getParameters().binning_proximity_scale ) ) {
       pairs.emplace_back( pairIndex1[i], pairIndex2[i], true );
     }
   }

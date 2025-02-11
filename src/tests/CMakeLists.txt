@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level LICENSE file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -95,11 +95,13 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
       OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
       DEPENDS_ON ${redecomp_test_depends} ${tribol_device_depends}
       FOLDER redecomp/tests )
-
-    foreach ( nranks RANGE 1 3 )
+    
+    # NOTE: just do 2 ranks for now until we make the tests smaller
+    #foreach ( nranks RANGE 1 3 )
+    foreach ( nranks RANGE 2 2 )
       blt_add_test( NAME ${test_name}_${nranks}rank
                     COMMAND ${test_name}_test
-                    NUM_MPI_RANKS ${nranks} )
+                    NUM_MPI_TASKS ${nranks} )
     endforeach()
 
     if (ENABLE_CUDA)
@@ -118,6 +120,7 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
   set( combined_tests
       tribol_mfem_common_plane.cpp
       tribol_mfem_mortar_lm.cpp
+      tribol_proximity_check.cpp
       )
 
   set(combined_test_depends tribol gtest)
@@ -133,10 +136,12 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
       DEPENDS_ON ${combined_test_depends} ${tribol_device_depends}
       FOLDER tribol/tests )
 
-    foreach ( nranks RANGE 1 3 )
+    # NOTE: just do 2 ranks for now until we make the tests smaller
+    #foreach ( nranks RANGE 1 3 )
+    foreach ( nranks RANGE 2 2 )
       blt_add_test( NAME ${test_name}_${nranks}rank
                     COMMAND ${test_name}_test
-                    NUM_MPI_RANKS ${nranks} )
+                    NUM_MPI_TASKS ${nranks} )
     endforeach()
 
     if (ENABLE_CUDA)

@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -333,10 +333,15 @@ void updateMfemParallelDecomposition()
       ArrayT<int> mesh_ids{ 2, 2 };
       mesh_ids[0] = mfem_data->GetMesh1ID();
       mesh_ids[1] = mfem_data->GetMesh2ID();
-      // creates a new redecomp mesh based on updated coordinates and updates
-      // transfer operators and displacement, velocity, and response grid
-      // functions based on new redecomp mesh
-      mfem_data->UpdateMfemMeshData();
+      // NOTE: effective binning proximity must be computed independently here, since, in general,
+      // CouplingScheme::init() hasn't been called yet
+      auto effective_binning_proximity = coupling_scheme.getParameters().binning_proximity_scale;
+      if ( mfem_data->GetLORFactor() > 1 ) {
+        effective_binning_proximity *= static_cast<RealT>( mfem_data->GetLORFactor() );
+      }
+      // creates a new redecomp mesh based on updated coordinates and updates transfer operators and displacement,
+      // velocity, and response grid functions based on new redecomp mesh
+      mfem_data->UpdateMfemMeshData( effective_binning_proximity );
       auto coord_ptrs = mfem_data->GetRedecompCoordsPtrs();
 
       registerMesh( mesh_ids[0], mfem_data->GetMesh1NE(), mfem_data->GetNV(), mfem_data->GetMesh1Conn(),
