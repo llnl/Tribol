@@ -602,13 +602,12 @@ class MfemMeshData {
   void SetParentCoords( const mfem::ParGridFunction& current_coords );
 
   /**
-   * @brief Build a new redecomp mesh and update grid functions on the redecomp
-   * mesh
+   * @brief Build a new redecomp mesh and update grid functions on the redecomp mesh
    *
-   * @param binning_proximity_scale Element length multiplier for coarse binning and proximity detection inclusion
+   * @param binning_proximity_scale Element length multiplier for coarse binning and proximity detection inclusion. This
+   * is needed to size the ghost element layer in the redecomp mesh.
    *
-   * @note This method should be called after the coordinate grid function is
-   * updated.
+   * @note This method should be called after the coordinate grid function is updated.
    */
   void UpdateMfemMeshData( RealT binning_proximity_scale );
 
@@ -991,16 +990,22 @@ class MfemMeshData {
   }
 
   /**
-   * @brief Get the number of element subdivisions per dimension on the LOR mesh
+   * @brief Get the LOR factor
+   *
+   * @note The LOR factor corresponds to the number of LOR elements per HO element applied to each dimension on the LOR
+   * mesh.
    *
    * @return int
    */
   int GetLORFactor() const { return lor_factor_; }
 
   /**
-   * @brief Set the number of element subdivisions per dimension on the LOR mesh
+   * @brief Set the LOR factor
    *
-   * @param lor_factor Number of element subdivisions per dimension
+   * @note The LOR factor corresponds to the number of LOR elements per HO element applied to each dimension on the LOR
+   * mesh.
+   *
+   * @param lor_factor LOR factor
    */
   void SetLORFactor( int lor_factor );
 
@@ -1018,26 +1023,22 @@ class MfemMeshData {
 
  private:
   /**
-   * @brief Creates and stores data that changes when the RedecompMesh is
-   * updated
+   * @brief Creates and stores data that changes when the RedecompMesh is updated
    */
   struct UpdateData {
     /**
      * @brief Construct a new UpdateData object
      *
      * @param submesh Parent-linked boundary submesh of contact elements
-     * @param lor_mesh LOR mesh of contact elements (if using LOR; nullptr
-     * otherwise)
+     * @param lor_mesh LOR mesh of contact elements (if using LOR; nullptr otherwise)
      * @param parent_fes Vector finite element space on the original parent mesh
-     * @param submesh_gridfn Grid function on the parent-linked boundary submesh
-     * used to temporarily store variables being transferred
-     * @param submesh_lor_xfer Submesh to LOR grid function transfer object (if
-     * using LOR; nullptr otherwise)
-     * @param attributes_1 Set of boundary attributes identifying elements in
-     * the first Tribol registered mesh
-     * @param attributes_2 Set of boundary attributes identifying elements in
-     * the second Tribol registered mesh
-     * @param binning_proximity_scale Element length multiplier for coarse binning and proximity detection inclusion
+     * @param submesh_gridfn Grid function on the parent-linked boundary submesh used to temporarily store variables
+     * being transferred
+     * @param submesh_lor_xfer Submesh to LOR grid function transfer object (if using LOR; nullptr otherwise)
+     * @param attributes_1 Set of boundary attributes identifying elements in the first Tribol registered mesh
+     * @param attributes_2 Set of boundary attributes identifying elements in the second Tribol registered mesh
+     * @param binning_proximity_scale Element length multiplier for coarse binning and proximity detection inclusion.
+     * This is needed to size the ghost element layer in the redecomp mesh.
      */
     UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh, const mfem::ParFiniteElementSpace& parent_fes,
                 mfem::ParGridFunction& submesh_gridfn, SubmeshLORTransfer* submesh_lor_xfer,

@@ -5,7 +5,7 @@
 
 namespace shared {
 
-MeshBuilder MeshBuilder::Merged( std::initializer_list<MeshBuilder> meshes )
+MeshBuilder MeshBuilder::Unify( std::initializer_list<MeshBuilder> meshes )
 {
   std::vector<mfem::Mesh*> mesh_list;
   mesh_list.reserve( meshes.size() );

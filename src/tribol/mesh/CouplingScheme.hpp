@@ -632,6 +632,13 @@ class CouplingScheme {
    */
   void printPairReportingData();
 
+  /**
+   * @brief Get the effective binning proximity scale
+   *
+   * @return effective binning proximity scale
+   */
+  RealT getEffectiveBinningProximityScale() const { return m_effective_binning_proximity_scale; }
+
 #ifdef BUILD_REDECOMP
 
   /**
@@ -831,6 +838,8 @@ class CouplingScheme {
   CouplingSchemeInfo m_couplingSchemeInfo;      ///< struct handling info to be printed
 
   PairReportingData m_pairReportingData;  ///< struct handling on-rank pair reporting data from computational geometry
+
+  RealT m_effective_binning_proximity_scale;  ///< Binning proximity scaled by the LOR factor
 
 #ifdef BUILD_REDECOMP
 

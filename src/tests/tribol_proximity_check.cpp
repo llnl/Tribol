@@ -91,20 +91,24 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
 
     // kinematic constant penalty stiffness
     constexpr tribol::RealT penalty = 1.0;
-    // boundary element attributes of contact surface 1, the top surface of the bottom block
+    // boundary element attributes of contact surface 1, the top surface of the bottom block.
+    // shared::MeshBuilder::SquareMesh sets the top surface of the mesh as boundary attribute 3 by default.
     auto contact_surf_1 = std::set<int>( { 3 } );
-    // boundary element attributes of contact surface 2, the bottom surface of the top block
+    // boundary element attributes of contact surface 2, the bottom surface of the top block. this boundary attribute
+    // will be set when the mesh is created below.
     auto contact_surf_2 = std::set<int>( { 5 } );
 
     // create a mesh with two blocks
     // clang-format off
-    shared::ParMeshBuilder mesh( MPI_COMM_WORLD, shared::MeshBuilder::Merged( {
+    shared::ParMeshBuilder mesh( MPI_COMM_WORLD, shared::MeshBuilder::Unify( {
       shared::MeshBuilder::SquareMesh( 1, 1 ),
       shared::MeshBuilder::SquareMesh( 1, 1 )
         .translate( { 0.0, 1.0 - mesh_interpenetration } )
-        .updateAttrib( 1, 2 )
-        .updateBdrAttrib( 1, 5 )
-        .updateBdrAttrib( 3, 6 )
+        .updateAttrib( 1, 2 )    // change element attribute to 2 so the two blocks are different
+        .updateBdrAttrib( 1, 5 ) // boundary attribute 1 corresponds to bottom surface. change boundary attribute 1 to 5
+                                 // on this mesh.
+        .updateBdrAttrib( 3, 6 ) // boundary attribute 3 corresponds to top surface. change boundary attribute 3 to 6 so
+                                 // it doesn't clash with boundary attribute 3 on the other mesh.
       } ) );
     // clang-format on
 
@@ -124,20 +128,24 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
 
     // fixed options
 
-    // boundary element attributes of contact surface 1, the top surface of the bottom block
+    // boundary element attributes of contact surface 1, the top surface of the bottom block.
+    // shared::MeshBuilder::CubeMesh sets the top surface of the mesh as boundary attribute 6 by default.
     auto contact_surf_1 = std::set<int>( { 6 } );
-    // boundary element attributes of contact surface 2, the bottom surface of the top block
+    // boundary element attributes of contact surface 2, the bottom surface of the top block. this boundary attribute
+    // will be set when the mesh is created below.
     auto contact_surf_2 = std::set<int>( { 7 } );
 
     // create a mesh with two cubes
     // clang-format off
-    shared::ParMeshBuilder mesh( MPI_COMM_WORLD, shared::MeshBuilder::Merged( {
-      shared::MeshBuilder::HypercubeMesh( dim, 1 ),
-      shared::MeshBuilder::HypercubeMesh( dim, 1 )
+    shared::ParMeshBuilder mesh( MPI_COMM_WORLD, shared::MeshBuilder::Unify( {
+      shared::MeshBuilder::CubeMesh( 1, 1, 1 ),
+      shared::MeshBuilder::CubeMesh( 1, 1, 1 )
         .translate( { 0.0, 0.0, 1.0 - mesh_interpenetration } )
-        .updateAttrib( 1, 2 )
-        .updateBdrAttrib( 1, 7 )
-        .updateBdrAttrib( 6, 8 )
+        .updateAttrib( 1, 2 )    // change element attribute to 2 so the two blocks are different
+        .updateBdrAttrib( 1, 7 ) // boundary attribute 1 corresponds to bottom surface. change boundary attribute 1 to 7
+                                 // on this mesh.
+        .updateBdrAttrib( 6, 8 ) // boundary attribute 6 corresponds to top surface. change boundary attribute 6 to 8 so
+                                 // it doesn't clash with boundary attribute 6 on the other mesh.
       } ) );
     // clang-format on
 

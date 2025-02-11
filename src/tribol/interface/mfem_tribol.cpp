@@ -69,8 +69,6 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
     }
   }
   coupling_scheme.setMfemMeshData( std::move( mfem_data ) );
-  // scale binning proximity if a higher order mesh is used
-  setBinningProximityScale( cs_id, coupling_scheme.getParameters().binning_proximity_scale );
 }
 
 void setMfemLORFactor( IndexT cs_id, int lor_factor )
@@ -85,18 +83,7 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the LOR factor." );
 
-  // reset binning proximity based on original LOR factor
-  auto orig_binning_proximity_scale = coupling_scheme->getParameters().binning_proximity_scale;
-  auto orig_lor_factor = coupling_scheme->getMfemMeshData()->GetLORFactor();
-  if ( orig_lor_factor > 0 ) {
-    orig_binning_proximity_scale /= static_cast<double>( orig_lor_factor );
-    coupling_scheme->getParameters().binning_proximity_scale = orig_binning_proximity_scale;
-  }
-
   coupling_scheme->getMfemMeshData()->SetLORFactor( lor_factor );
-
-  // set binning proximity based on new LOR factor
-  setBinningProximityScale( cs_id, orig_binning_proximity_scale );
 }
 
 void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT mesh2_penalty )
@@ -331,7 +318,11 @@ void updateMfemParallelDecomposition()
       // creates a new redecomp mesh based on updated coordinates and updates
       // transfer operators and displacement, velocity, and response grid
       // functions based on new redecomp mesh
-      mfem_data->UpdateMfemMeshData( coupling_scheme.getParameters().binning_proximity_scale );
+      auto effective_binning_proximity = coupling_scheme.getParameters().binning_proximity_scale;
+      if ( mfem_data->GetLORFactor() > 1 ) {
+        effective_binning_proximity *= static_cast<RealT>( mfem_data->GetLORFactor() );
+      }
+      mfem_data->UpdateMfemMeshData( effective_binning_proximity );
       auto coord_ptrs = mfem_data->GetRedecompCoordsPtrs();
 
       registerMesh( mesh_ids[0], mfem_data->GetMesh1NE(), mfem_data->GetNV(), mfem_data->GetMesh1Conn(),

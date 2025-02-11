@@ -24,23 +24,23 @@ class MeshBuilder {
    * @brief Creates a single mesh from a list of MeshBuilder objects.
    * @note Each mesh is added sequentially to the new mesh, with node numbering of the next mesh following the last node
    * of the previous mesh. Element attributes and boundary element attributes are not changed. Nodes are not merged by
-   * this function. If two nodes have the same coordinates, they will remain separate entities in the merged mesh.
+   * this function. If two nodes have the same coordinates, they will remain separate entities in the unified mesh.
    * @param meshes A list of MeshBuilder objects from which the mesh will be created.
-   * @return A new MeshBuilder object representing the merged mesh.
+   * @return A new MeshBuilder object representing the unified mesh.
    */
-  static MeshBuilder Merged( std::initializer_list<MeshBuilder> meshes );
+  static MeshBuilder Unify( std::initializer_list<MeshBuilder> meshes );
 
   /**
    * @brief Creates a single mesh from multiple MeshBuilder objects.
    * @note Each mesh is added sequentially to the new mesh, with node numbering of the next mesh following the last node
    * of the previous mesh. Element attributes and boundary element attributes are not changed. Nodes are not merged by
-   * this function. If two nodes have the same coordinates, they will remain separate entities in the merged mesh.
+   * this function. If two nodes have the same coordinates, they will remain separate entities in the unified mesh.
    * @tparam Args Variadic template parameter for MeshBuilder objects.
    * @param meshes MeshBuilder objects from which the mesh will be created.
-   * @return A new MeshBuilder object representing the merged mesh.
+   * @return A new MeshBuilder object representing the unified mesh.
    */
   template <typename... Args>
-  static MeshBuilder Merged( Args&&... meshes );
+  static MeshBuilder Unify( Args&&... meshes );
 
   /**
    * @brief Creates a square mesh occupying the unit square, [0, 1]^2.

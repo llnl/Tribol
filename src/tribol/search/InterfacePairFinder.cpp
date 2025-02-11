@@ -210,7 +210,7 @@ class CartesianProduct : public SearchBase {
     ContactMode cmode = m_coupling_scheme->getContactMode();
 
     bool auto_contact_check = m_coupling_scheme->getParameters().auto_contact_check;
-    auto binning_proximity_scale = m_coupling_scheme->getParameters().binning_proximity_scale;
+    auto binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
 
     // count how many pairs are proximate
     forAllExec( m_coupling_scheme->getExecutionMode(), maxNumPairs,
@@ -325,7 +325,7 @@ class GridSearch : public SearchBase {
     const RealT bboxTolerance = 1e-6;
 
     m_coupling_scheme->getInterfacePairs().clear();
-    auto binning_proximity_scale = m_coupling_scheme->getParameters().binning_proximity_scale;
+    auto binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
 
     // if either mesh is empty, don't initialize because...
     // 1) there won't be any pairs
@@ -407,7 +407,7 @@ class GridSearch : public SearchBase {
     const auto mesh1 = m_coupling_scheme->getMesh1().getView();
     const auto mesh2 = m_coupling_scheme->getMesh2().getView();
     auto& contactPairs = m_coupling_scheme->getInterfacePairs();
-    auto binning_proximity_scale = m_coupling_scheme->getParameters().binning_proximity_scale;
+    auto binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
 
     // Find matches in first mesh (with index 'fromIdx')
     // with candidate elements in second mesh (with index 'toIdx')
@@ -432,8 +432,7 @@ class GridSearch : public SearchBase {
 
         // Preliminary geometry/proximity checks, SRW
         bool contact = geomFilter( fromIdx, toIdx, mesh1, mesh2, m_coupling_scheme->getContactMode(),
-                                   m_coupling_scheme->getParameters().auto_contact_check,
-                                   m_coupling_scheme->getParameters().binning_proximity_scale );
+                                   m_coupling_scheme->getParameters().auto_contact_check, binning_proximity_scale );
 
         if ( contact ) {
           contactPairs.emplace_back( fromIdx, toIdx, true );
@@ -531,9 +530,9 @@ class BvhSearch : public SearchBase {
   void initialize() override
   {
     buildMeshBBoxes( m_boxes1, m_coupling_scheme->getMesh1().getView(),
-                     m_coupling_scheme->getParameters().binning_proximity_scale );
+                     m_coupling_scheme->getEffectiveBinningProximityScale() );
     buildMeshBBoxes( m_boxes2, m_coupling_scheme->getMesh2().getView(),
-                     m_coupling_scheme->getParameters().binning_proximity_scale );
+                     m_coupling_scheme->getEffectiveBinningProximityScale() );
   }  // end initialize()
 
   /*!
@@ -564,7 +563,7 @@ class BvhSearch : public SearchBase {
     const auto mesh2 = m_coupling_scheme->getMesh2().getView();
     auto cmode = m_coupling_scheme->getContactMode();
     bool auto_contact_check = m_coupling_scheme->getParameters().auto_contact_check;
-    auto binning_proximity_scale = m_coupling_scheme->getParameters().binning_proximity_scale;
+    auto binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
     // count the number of filtered proximate pairs
     forAllExec( m_coupling_scheme->getExecutionMode(), m_candidates.size(),
                 [mesh1, mesh2, offsets_view, counts_view, candidates_view, filtered_candidates, cmode,
