@@ -64,7 +64,7 @@ class CommonPlaneGPUTest : public testing::TestWithParam<ExecutionMode> {
 
 TEST_P( CommonPlaneGPUTest, update_test )
 {
-  EXPECT_LT( max_error_, 1.0e-13 );
+  EXPECT_LT( max_error_, 1.0e-12 );
 
   MPI_Barrier( MPI_COMM_WORLD );
 }

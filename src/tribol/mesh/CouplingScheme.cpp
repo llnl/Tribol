@@ -1122,6 +1122,14 @@ bool CouplingScheme::init()
     // set individual coupling scheme logging level
     this->setSlicLoggingLevel();
 
+    // set effective binning proximity, based on binning proximity scale and LOR factor
+    this->m_effective_binning_proximity_scale = this->getParameters().binning_proximity_scale;
+#ifdef BUILD_REDECOMP
+    if ( this->hasMfemData() && this->getMfemMeshData()->GetLORFactor() > 1 ) {
+      this->m_effective_binning_proximity_scale *= static_cast<RealT>( this->getMfemMeshData()->GetLORFactor() );
+    }
+#endif
+
     // compute the face data
     this->m_mesh1->computeFaceData( this->m_exec_mode );
     if ( this->m_mesh_id2 != this->m_mesh_id1 ) {

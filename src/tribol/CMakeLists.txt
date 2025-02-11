@@ -95,7 +95,7 @@ if (ENABLE_FORTRAN)
 endif()
 
 ## setup the dependency list for tribol
-set(tribol_depends axom::primal axom::slic mfem)
+set(tribol_depends tribol_shared axom::primal axom::slic mfem)
 blt_list_append(TO tribol_depends ELEMENTS blt::mpi IF TRIBOL_USE_MPI )
 blt_list_append(TO tribol_depends ELEMENTS blt::openmp IF TRIBOL_USE_OPENMP )
 blt_list_append(TO tribol_depends ELEMENTS redecomp IF BUILD_REDECOMP )
@@ -134,8 +134,7 @@ target_include_directories(tribol PUBLIC
     )
 
 ## tribol install target
-tribol_install( SOURCE_HEADERS ${tribol_headers}
-                GENERATED_HEADERS ${PROJECT_BINARY_DIR}/include/tribol/config.hpp )
+tribol_install( SOURCE_HEADERS ${tribol_headers} )
 
 if(ENABLE_FORTRAN AND ENABLE_MPI)
     install(FILES ${CMAKE_Fortran_MODULE_DIRECTORY}/tribol_simple.mod DESTINATION lib/fortran)
