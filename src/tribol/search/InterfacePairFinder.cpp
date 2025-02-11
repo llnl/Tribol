@@ -28,7 +28,7 @@ namespace tribol {
  */
 TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, const MeshData::Viewer& mesh1,
                                     const MeshData::Viewer& mesh2, ContactMode mode, bool auto_contact_check,
-                                    RealT binning_proximity_scale )
+                                    RealT element_radius_multiplier )
 {
   /// CHECK #1: Check to make sure the two face ids are not the same
   ///           and the two mesh ids are not the same.
@@ -85,7 +85,7 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     RealT r2 = mesh2.getFaceRadius()[element_id2];
 
     // set maximum offset of face centroids for inclusion
-    RealT distMax = binning_proximity_scale * ( r1 + r2 );  // default is sum of face radii
+    RealT distMax = element_radius_multiplier * ( r1 + r2 );  // default is sum of face radii
 
     // check if the contact mode is conforming, in which case the
     // faces are supposed to be aligned
@@ -111,7 +111,7 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     RealT e1 = 0.5 * mesh1.getElementAreas()[element_id1];
     RealT e2 = 0.5 * mesh2.getElementAreas()[element_id2];
 
-    RealT distMax = binning_proximity_scale * ( e1 + e2 );
+    RealT distMax = element_radius_multiplier * ( e1 + e2 );
 
     // check if the contact mode is conforming, in which case the
     // edges are supposed to be aligned
@@ -210,12 +210,13 @@ class CartesianProduct : public SearchBase {
     ContactMode cmode = m_coupling_scheme->getContactMode();
 
     bool auto_contact_check = m_coupling_scheme->getParameters().auto_contact_check;
-    auto binning_proximity_scale = m_coupling_scheme->getParameters().binning_proximity_scale;
+    // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
+    auto e_binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
 
     // count how many pairs are proximate
     forAllExec( m_coupling_scheme->getExecutionMode(), maxNumPairs,
                 [mesh1NumElems, mesh2NumElems, is_symm, isProximate, mesh1, mesh2, cmode, pCount, auto_contact_check,
-                 binning_proximity_scale] TRIBOL_HOST_DEVICE( IndexT i ) {
+                 e_binning_proximity_scale] TRIBOL_HOST_DEVICE( IndexT i ) {
                   IndexT fromIdx = i / mesh2NumElems;
                   IndexT toIdx = i % mesh2NumElems;
                   if ( is_symm ) {
@@ -225,7 +226,7 @@ class CartesianProduct : public SearchBase {
                     toIdx = i - offset;
                   }
                   isProximate[i] =
-                      geomFilter( fromIdx, toIdx, mesh1, mesh2, cmode, auto_contact_check, binning_proximity_scale );
+                      geomFilter( fromIdx, toIdx, mesh1, mesh2, cmode, auto_contact_check, e_binning_proximity_scale );
 #ifdef TRIBOL_USE_RAJA
                   RAJA::atomicAdd<RAJA::auto_atomic>( pCount, static_cast<int>( isProximate[i] ) );
 #else
@@ -325,7 +326,8 @@ class GridSearch : public SearchBase {
     const RealT bboxTolerance = 1e-6;
 
     m_coupling_scheme->getInterfacePairs().clear();
-    auto binning_proximity_scale = m_coupling_scheme->getParameters().binning_proximity_scale;
+    // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
+    auto e_binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
 
     // if either mesh is empty, don't initialize because...
     // 1) there won't be any pairs
@@ -351,7 +353,7 @@ class GridSearch : public SearchBase {
     SpaceVec ranges;
     for ( int i = 0; i < m_mesh1.numberOfElements(); ++i ) {
       auto& bbox = m_meshBBoxes1[i];
-      inflateBBox( bbox, binning_proximity_scale );
+      inflateBBox( bbox, e_binning_proximity_scale );
 
       ranges += bbox.range();
 
@@ -407,14 +409,15 @@ class GridSearch : public SearchBase {
     const auto mesh1 = m_coupling_scheme->getMesh1().getView();
     const auto mesh2 = m_coupling_scheme->getMesh2().getView();
     auto& contactPairs = m_coupling_scheme->getInterfacePairs();
-    auto binning_proximity_scale = m_coupling_scheme->getParameters().binning_proximity_scale;
+    // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
+    auto e_binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
 
     // Find matches in first mesh (with index 'fromIdx')
     // with candidate elements in second mesh (with index 'toIdx')
     // int k = 0;  // Debug only
     for ( int toIdx = 0; toIdx < m_mesh2.numberOfElements(); ++toIdx ) {
       SpatialBoundingBox bbox = elementBoundingBox( m_mesh2, toIdx );
-      inflateBBox( bbox, binning_proximity_scale );
+      inflateBBox( bbox, e_binning_proximity_scale );
 
       // Query the mesh
       auto candidateBits = m_grid.getCandidates( bbox );
@@ -432,8 +435,7 @@ class GridSearch : public SearchBase {
 
         // Preliminary geometry/proximity checks, SRW
         bool contact = geomFilter( fromIdx, toIdx, mesh1, mesh2, m_coupling_scheme->getContactMode(),
-                                   m_coupling_scheme->getParameters().auto_contact_check,
-                                   m_coupling_scheme->getParameters().binning_proximity_scale );
+                                   m_coupling_scheme->getParameters().auto_contact_check, e_binning_proximity_scale );
 
         if ( contact ) {
           contactPairs.emplace_back( fromIdx, toIdx, true );
@@ -462,12 +464,12 @@ class GridSearch : public SearchBase {
     return box;
   }
   /*!
-   * Expands bounding box by 33% of longest dimension's range
+   * Expands bounding box by range_multiplier * the longest dimension's range
    */
-  void inflateBBox( SpatialBoundingBox& bbox, RealT binning_proximity_scale )
+  void inflateBBox( SpatialBoundingBox& bbox, RealT range_multiplier )
   {
     int d = bbox.getLongestDimension();
-    const RealT expansionFac = binning_proximity_scale * bbox.range()[d];
+    const RealT expansionFac = range_multiplier * bbox.range()[d];
     bbox.expand( expansionFac );
   }
 
@@ -530,8 +532,12 @@ class BvhSearch : public SearchBase {
    */
   void initialize() override
   {
-    buildMeshBBoxes( m_boxes1, m_coupling_scheme->getMesh1().getView() );
-    buildMeshBBoxes( m_boxes2, m_coupling_scheme->getMesh2().getView() );
+    // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
+    buildMeshBBoxes( m_boxes1, m_coupling_scheme->getMesh1().getView(),
+                     m_coupling_scheme->getEffectiveBinningProximityScale() );
+    // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
+    buildMeshBBoxes( m_boxes2, m_coupling_scheme->getMesh2().getView(),
+                     m_coupling_scheme->getEffectiveBinningProximityScale() );
   }  // end initialize()
 
   /*!
@@ -562,19 +568,20 @@ class BvhSearch : public SearchBase {
     const auto mesh2 = m_coupling_scheme->getMesh2().getView();
     auto cmode = m_coupling_scheme->getContactMode();
     bool auto_contact_check = m_coupling_scheme->getParameters().auto_contact_check;
-    auto binning_proximity_scale = m_coupling_scheme->getParameters().binning_proximity_scale;
+    // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
+    auto e_binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
     // count the number of filtered proximate pairs
     forAllExec( m_coupling_scheme->getExecutionMode(), m_candidates.size(),
                 [mesh1, mesh2, offsets_view, counts_view, candidates_view, filtered_candidates, cmode,
-                 auto_contact_check, binning_proximity_scale] TRIBOL_HOST_DEVICE( IndexT i ) {
+                 auto_contact_check, e_binning_proximity_scale] TRIBOL_HOST_DEVICE( IndexT i ) {
                   auto mesh1_elem = algorithm::binarySearch( offsets_view, counts_view, i );
                   auto mesh2_elem = candidates_view[i];
                   if ( geomFilter( mesh1_elem, mesh2_elem, mesh1, mesh2, cmode, auto_contact_check,
-                                   binning_proximity_scale ) ) {
+                                   e_binning_proximity_scale ) ) {
 #ifdef TRIBOL_USE_RAJA
                     RAJA::atomicInc<AtomicPolicy>( filtered_candidates.data() );
 #else
-          ++filtered_candidates[0];
+                    ++filtered_candidates[0];
 #endif
                   } else {
                     candidates_view[i] = -1;
@@ -610,27 +617,27 @@ class BvhSearch : public SearchBase {
         } );
   }  // end findInterfacePairs()
 
-  void buildMeshBBoxes( ArrayT<BoxT>& boxes, const MeshData::Viewer& mesh )
+  void buildMeshBBoxes( ArrayT<BoxT>& boxes, const MeshData::Viewer& mesh, RealT binning_proximity )
   {
     auto boxes1_view = boxes.view();
     forAllExec( m_coupling_scheme->getExecutionMode(), mesh.numberOfElements(),
-                [this, mesh, boxes1_view] TRIBOL_HOST_DEVICE( IndexT i ) {
+                [this, mesh, boxes1_view, binning_proximity] TRIBOL_HOST_DEVICE( IndexT i ) {
                   BoxT box;
                   auto num_nodes_per_elem = mesh.numberOfNodesPerElement();
                   for ( IndexT j{ 0 }; j < num_nodes_per_elem; ++j ) {
                     IndexT node_id = mesh.getGlobalNodeId( i, j );
-                    RealT pos[3];
-                    pos[0] = mesh.getPosition()[0][node_id];
-                    pos[1] = mesh.getPosition()[1][node_id];
-                    pos[2] = mesh.getPosition()[2][node_id];  // unused if D==2
-                    box.addPoint( PointT( pos ) );
+                    PointT pos;
+                    for ( int d{ 0 }; d < D; ++d ) {
+                      pos[d] = mesh.getPosition()[d][node_id];
+                    }
+                    box.addPoint( pos );
                   }
                   // Expand the bounding box in the face normal direction
                   RealT vnorm[3];
                   mesh.getFaceNormal( i, vnorm );
                   VectorT faceNormal( vnorm );
                   RealT faceRadius = mesh.getFaceRadius()[i];
-                  expandBBoxNormal( box, faceNormal, faceRadius );
+                  expandBBoxNormal( box, faceNormal, binning_proximity * faceRadius );
                   boxes1_view[i] = std::move( box );
                 } );
   }

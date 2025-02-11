@@ -517,9 +517,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckFacePair( ContactPlane3D& cp, const MeshDa
     // centroid using the centroid computed in the check #5 calculations. This
     // is not necessary for mortar formulations as the mortar plane is correctly
     // located.
-    cp.planePointAndCentroidGap(
-        mesh1, mesh2,
-        2. * axom::utilities::max( mesh1.getFaceRadius()[element_id1], mesh2.getFaceRadius()[element_id2] ) );
+    cp.planePointAndCentroidGap( mesh1, mesh2 );
 
     bool interpen = false;
     FaceGeomError interpen_err = cp.computeLocalInterpenOverlap( mesh1, mesh2, params, interpen );  // same for mortar
@@ -602,9 +600,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckFacePair( ContactPlane3D& cp, const MeshDa
   // occurred prior to this call. This does not need to be done
   // for mortar methods. We should just do a gap computation if
   // needed.
-  cp.planePointAndCentroidGap(
-      mesh1, mesh2,
-      2. * axom::utilities::max( mesh1.getFaceRadius()[element_id1], mesh2.getFaceRadius()[element_id2] ) );
+  cp.planePointAndCentroidGap( mesh1, mesh2 );
 
   // The gap tolerance allows separation up to the separation ratio of the
   // largest face-radius. This is conservative and allows for possible
@@ -645,8 +641,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckFacePair( ContactPlane3D& cp, const MeshDa
 }  // end CheckFacePair()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlane::planePointAndCentroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                                                RealT scale )
+TRIBOL_HOST_DEVICE void ContactPlane::planePointAndCentroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
 {
   // project the overlap centroid back to each face using a
   // line-plane intersection method
@@ -673,26 +668,6 @@ TRIBOL_HOST_DEVICE void ContactPlane::planePointAndCentroidGap( const MeshData::
   }
 
   // find where the overlap centroid (plane point) intersects each face
-
-  // set the line segment's first vertex at the contact plane centroid scaled
-  // in the direction opposite the contact plane normal
-
-  RealT xA = xcg + m_nX * scale;
-  RealT yA = ycg + m_nY * scale;
-  RealT zA = 0.0;
-  if ( m_dim == 3 ) {
-    zA = zcg + m_nZ * scale;
-  }
-
-  // use the contact plane normal as the segment directional vector scale in
-  // the direction of the contact plane
-  RealT xB = xcg - m_nX * scale;
-  RealT yB = ycg - m_nY * scale;
-  RealT zB = 0.0;
-  if ( m_dim == 3 ) {
-    zB = zcg - m_nZ * scale;
-  }
-
   auto fId1 = getCpElementId1();
   auto fId2 = getCpElementId2();
   RealT c1_z = 0.0;
@@ -705,14 +680,10 @@ TRIBOL_HOST_DEVICE void ContactPlane::planePointAndCentroidGap( const MeshData::
     c2_z = m2.getElementCentroids()[2][fId2];
     n2_z = m2.getElementNormals()[2][fId2];
   }
-  bool inPlane = false;
-  LinePlaneIntersection( xA, yA, zA, xB, yB, zB, m1.getElementCentroids()[0][fId1], m1.getElementCentroids()[1][fId1],
-                         c1_z, m1.getElementNormals()[0][fId1], m1.getElementNormals()[1][fId1], n1_z, xc1, yc1, zc1,
-                         inPlane );
-
-  LinePlaneIntersection( xA, yA, zA, xB, yB, zB, m2.getElementCentroids()[0][fId2], m2.getElementCentroids()[1][fId2],
-                         c2_z, m2.getElementNormals()[0][fId2], m2.getElementNormals()[1][fId2], n2_z, xc2, yc2, zc2,
-                         inPlane );
+  ProjectPointToPlane( xcg, ycg, zcg, m1.getElementNormals()[0][fId1], m1.getElementNormals()[1][fId1], n1_z,
+                       m1.getElementCentroids()[0][fId1], m1.getElementCentroids()[1][fId1], c1_z, xc1, yc1, zc1 );
+  ProjectPointToPlane( xcg, ycg, zcg, m2.getElementNormals()[0][fId2], m2.getElementNormals()[1][fId2], n2_z,
+                       m2.getElementCentroids()[0][fId2], m2.getElementCentroids()[1][fId2], c2_z, xc2, yc2, zc2 );
 
   // for intermediate, or common plane methods, average the two contact plane
   // centroid-to-plane intersections and use this as the new point data for the
@@ -1492,8 +1463,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckEdgePair( ContactPlane2D& cp, const MeshDa
 
   if ( interpenOverlap ) {
     // properly locate the contact plane (segment)
-    cp.planePointAndCentroidGap(
-        mesh1, mesh2, 2. * axom::utilities::max( mesh1.getFaceRadius()[edgeId1], mesh2.getFaceRadius()[edgeId2] ) );
+    cp.planePointAndCentroidGap( mesh1, mesh2 );
     bool interpen = false;
     FaceGeomError interpen_err = cp.computeLocalInterpenOverlap( mesh1, mesh2, params, interpen );
     if ( interpen_err != NO_FACE_GEOM_ERROR ) {
@@ -1513,8 +1483,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckEdgePair( ContactPlane2D& cp, const MeshDa
   // contact plane was properly located wrt the two edges, but the contact
   // plane point moved (in-contact segment) due to the interpen overlap
   // segment calc
-  cp.planePointAndCentroidGap(
-      mesh1, mesh2, 2. * axom::utilities::max( mesh1.getFaceRadius()[edgeId1], mesh2.getFaceRadius()[edgeId2] ) );
+  cp.planePointAndCentroidGap( mesh1, mesh2 );
 
   // Per 3D mortar testing, allow for separation up to the edge-radius
   cp.m_gapTol = params.gap_separation_ratio *
