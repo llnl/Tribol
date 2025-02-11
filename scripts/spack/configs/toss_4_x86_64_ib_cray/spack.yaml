@@ -230,6 +230,15 @@ spack:
       - spec: rocblas@6.2.1
         prefix: /opt/rocm-6.2.1
 
+    hipblas:
+      version: [6.1.2, 6.2.1]
+      buildable: false
+      externals:
+      - spec: hipblas@6.1.2%rocmcc@6.1.2
+        prefix: /opt/rocm-6.1.2
+      - spec: hipblas@6.2.1%rocmcc@6.2.1
+        prefix: /opt/rocm-6.2.1
+
     rocminfo:
       version: [5.2.3, 5.4.3, 5.6.0, 5.7.1, 6.1.2, 6.2.1]
       buildable: false
@@ -475,6 +484,8 @@ spack:
       require: "@2024.07.0"
     conduit:
       require: "@0.9.2~shared~test~examples~utilities"
+    mfem:
+      require: "@4.7.0.2"
     raja:
       require: "@2024.07.0~shared~examples~exercises"
     umpire:

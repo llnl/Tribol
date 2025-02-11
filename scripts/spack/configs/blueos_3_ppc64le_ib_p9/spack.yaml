@@ -243,6 +243,8 @@ spack:
       require: "@2024.07.0"
     conduit:
       require: "@0.9.2~shared~test~examples~utilities"
+    fmt:
+      require: "@9.1"
     hdf5:
       variants: ~shared~mpi
     raja:
