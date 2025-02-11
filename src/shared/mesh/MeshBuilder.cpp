@@ -64,11 +64,13 @@ MeshBuilder&& MeshBuilder::updateAttrib( int old_attrib, int new_attrib )
       mesh_.SetAttribute( i, new_attrib );
     }
   }
+  // add the new attribute to the mesh's list of attributes
   auto old_attrib_idx = mesh_.attributes.Find( old_attrib );
   if ( old_attrib_idx >= 0 ) {
     mesh_.attributes[old_attrib_idx] = new_attrib;
   }
   mesh_.attributes.Sort();
+  mesh_.attributes.Unique();
   return std::move( *this );
 }
 
@@ -111,11 +113,13 @@ MeshBuilder&& MeshBuilder::updateBdrAttrib( int old_attrib, int new_attrib )
       mesh_.SetBdrAttribute( i, new_attrib );
     }
   }
+  // add the new boundary attribute to the mesh's list of boundary attributes
   auto old_attrib_idx = mesh_.bdr_attributes.Find( old_attrib );
   if ( old_attrib_idx >= 0 ) {
     mesh_.bdr_attributes[old_attrib_idx] = new_attrib;
   }
   mesh_.bdr_attributes.Sort();
+  mesh_.bdr_attributes.Unique();
   return std::move( *this );
 }
 

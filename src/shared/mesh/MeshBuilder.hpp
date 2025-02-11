@@ -22,6 +22,9 @@ class MeshBuilder {
  public:
   /**
    * @brief Creates a single mesh from a list of MeshBuilder objects.
+   * @note Each mesh is added sequentially to the new mesh, with node numbering of the next mesh following the last node
+   * of the previous mesh. Element attributes and boundary element attributes are not changed. Nodes are not merged by
+   * this function. If two nodes have the same coordinates, they will remain separate entities in the merged mesh.
    * @param meshes A list of MeshBuilder objects from which the mesh will be created.
    * @return A new MeshBuilder object representing the merged mesh.
    */
@@ -29,6 +32,9 @@ class MeshBuilder {
 
   /**
    * @brief Creates a single mesh from multiple MeshBuilder objects.
+   * @note Each mesh is added sequentially to the new mesh, with node numbering of the next mesh following the last node
+   * of the previous mesh. Element attributes and boundary element attributes are not changed. Nodes are not merged by
+   * this function. If two nodes have the same coordinates, they will remain separate entities in the merged mesh.
    * @tparam Args Variadic template parameter for MeshBuilder objects.
    * @param meshes MeshBuilder objects from which the mesh will be created.
    * @return A new MeshBuilder object representing the merged mesh.

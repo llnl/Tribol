@@ -52,6 +52,7 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
     mfem::LinearForm r( &mesh.getNodesFESpace() );
     r = 0.0;
     tribol::getMfemResponse( coupling_scheme_id, r );
+    // A non-zero response indicates that interface pairs are considered actively in contact by Tribol
     max_force_ = r.Max();
 
     r.Print();
@@ -59,9 +60,9 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
     MPI_Allreduce( MPI_IN_PLACE, &max_force_, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD );
   }
 
-  void SetUpCommonPlaneProblem( shared::ParMeshBuilder& mesh, const std::set<int>& contact_surf_1,
-                                const std::set<int>& contact_surf_2, tribol::RealT penalty,
-                                tribol::RealT binning_proximity, tribol::BinningMethod binning_method )
+  void RegisterAndUpdateCommonPlane( shared::ParMeshBuilder& mesh, const std::set<int>& contact_surf_1,
+                                     const std::set<int>& contact_surf_2, tribol::RealT penalty,
+                                     tribol::RealT binning_proximity, tribol::BinningMethod binning_method )
   {
     // set up tribol
     constexpr int coupling_scheme_id = 0;
@@ -110,7 +111,7 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
     // grid function for higher-order nodes
     mesh.setNodesFEColl( mfem::H1_FECollection( order, dim ) );
 
-    SetUpCommonPlaneProblem( mesh, contact_surf_1, contact_surf_2, penalty, binning_proximity, binning_method );
+    RegisterAndUpdateCommonPlane( mesh, contact_surf_1, contact_surf_2, penalty, binning_proximity, binning_method );
   }
 
   std::tuple<shared::ParMeshBuilder, std::set<int>, std::set<int>> SetUp3DMesh()
@@ -155,8 +156,8 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
 
     auto mesh = SetUp3DMesh();
 
-    SetUpCommonPlaneProblem( std::get<0>( mesh ), std::get<1>( mesh ), std::get<2>( mesh ), penalty, binning_proximity,
-                             binning_method );
+    RegisterAndUpdateCommonPlane( std::get<0>( mesh ), std::get<1>( mesh ), std::get<2>( mesh ), penalty,
+                                  binning_proximity, binning_method );
   }
 
   void SetUpMortarProblem( tribol::BinningMethod binning_method )
@@ -189,6 +190,8 @@ TEST_P( ProximityTest, CheckForceValues2DCommonPlane )
   for ( auto binning_method : binning_methods_ ) {
     std::cout << "Binning method = " << binning_method << std::endl;
     SetUp2DCommonPlaneProblem( binning_method );
+    // A non-zero force indicates that interface pairs are considered actively in contact by Tribol. Use this to
+    // determine if the binning proximity parameter is acting as expected.
     std::cout << "  max_force_ = " << max_force_ << std::endl;
     if ( should_have_force ) {
       EXPECT_GT( max_force_, 1.0e-6 );
@@ -207,6 +210,8 @@ TEST_P( ProximityTest, CheckForceValues3DCommonPlane )
   for ( auto binning_method : binning_methods_ ) {
     std::cout << "Binning method = " << binning_method << std::endl;
     SetUp3DCommonPlaneProblem( binning_method );
+    // A non-zero force indicates that interface pairs are considered actively in contact by Tribol. Use this to
+    // determine if the binning proximity parameter is acting as expected.
     std::cout << "  max_force_ = " << max_force_ << std::endl;
     if ( should_have_force ) {
       EXPECT_GT( max_force_, 1.0e-6 );
@@ -225,6 +230,8 @@ TEST_P( ProximityTest, CheckForceValues3DMortar )
   for ( auto binning_method : binning_methods_ ) {
     std::cout << "Binning method = " << binning_method << std::endl;
     SetUpMortarProblem( binning_method );
+    // A non-zero force indicates that interface pairs are considered actively in contact by Tribol. Use this to
+    // determine if the binning proximity parameter is acting as expected.
     std::cout << "  max_force_ = " << max_force_ << std::endl;
     if ( should_have_force ) {
       EXPECT_GT( max_force_, 1.0e-6 );
@@ -236,9 +243,15 @@ TEST_P( ProximityTest, CheckForceValues3DMortar )
   MPI_Barrier( MPI_COMM_WORLD );
 }
 
+// The parameters for the tuple are: finite element order (int), binning proximity parameter (multiplier of element
+// length), amount of element interpenetration, and whether or not we expect Tribol to consider the interface pair in
+// contact
 INSTANTIATE_TEST_SUITE_P(
     tribol, ProximityTest,
-    testing::Values( std::make_tuple( 1, 0.0, 2.0, true ), std::make_tuple( 1, 0.0, 2.01, false ),
+    testing::Values( std::make_tuple( 1, 0.0, 2.0,
+                                      true ),  // the interface pair will be considered in contact since tribol should
+                                               // reset the binning proximity to the minimum (2.0)
+                     std::make_tuple( 1, 0.0, 2.01, false ),
                      std::make_tuple( 2, 0.0, 1.3333,
                                       true ),  // this should be 2.0, but lumped mass is affecting LOR accuracy
                      std::make_tuple( 2, 0.0, 1.3433,
