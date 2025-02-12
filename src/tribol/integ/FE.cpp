@@ -337,6 +337,26 @@ void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA
 }
 
 //------------------------------------------------------------------------------
+void FwdMapLinTri( const RealT xi[2], RealT xa[3], RealT ya[3], RealT za[3], RealT x[3] )
+{
+  // initialize output array
+  initRealArray( &x[0], 3, 0. );
+
+  // obtain shape function evaluations at (xi,eta)
+  RealT phi[3] = { 0., 0., 0. };
+  LinIsoTriShapeFunc( xi[0], xi[1], 0, phi[0] );
+  LinIsoTriShapeFunc( xi[0], xi[1], 1, phi[1] );
+  LinIsoTriShapeFunc( xi[0], xi[1], 2, phi[2] );
+
+  for ( int j = 0; j < 3; ++j ) {
+    x[0] += xa[j] * phi[j];
+    x[1] += ya[j] * phi[j];
+    x[2] += za[j] * phi[j];
+  }
+  return;
+}
+
+//------------------------------------------------------------------------------
 void FwdMapLinQuad( const RealT xi[2], RealT xa[4], RealT ya[4], RealT za[4], RealT x[3] )
 {
   // initialize output array
@@ -350,26 +370,6 @@ void FwdMapLinQuad( const RealT xi[2], RealT xa[4], RealT ya[4], RealT za[4], Re
   LinIsoQuadShapeFunc( xi[0], xi[1], 3, phi[3] );
 
   for ( int j = 0; j < 4; ++j ) {
-    x[0] += xa[j] * phi[j];
-    x[1] += ya[j] * phi[j];
-    x[2] += za[j] * phi[j];
-  }
-  return;
-}
-
-//------------------------------------------------------------------------------
-void FwdMapLinTri( const RealT xi[2], RealT xa[3], RealT ya[3], RealT za[3], RealT x[3] )
-{
-  // initialize output array
-  initRealArray( &x[0], 3, 0. );
-
-  // obtain shape function evaluations at (xi,eta)
-  RealT phi[3] = { 0., 0., 0. };
-  LinIsoTriShapeFunc( xi[0], xi[1], 0, phi[0] );
-  LinIsoTriShapeFunc( xi[0], xi[1], 1, phi[1] );
-  LinIsoTriShapeFunc( xi[0], xi[1], 2, phi[2] );
-
-  for ( int j = 0; j < 3; ++j ) {
     x[0] += xa[j] * phi[j];
     x[1] += ya[j] * phi[j];
     x[2] += za[j] * phi[j];
@@ -398,6 +398,14 @@ void LinIsoTriShapeFunc( const RealT xi, const RealT eta, const int a, RealT& ph
   }
 
   return;
+}
+
+//------------------------------------------------------------------------------
+void LinIsoTriShapeFunc( const RealT* xi, RealT* phi )
+{
+  phi[0] = 1.0 - xi[0] - xi[1];
+  phi[1] = xi[0];
+  phi[2] = xi[1];
 }
 
 //------------------------------------------------------------------------------
@@ -435,6 +443,28 @@ void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& p
 #endif
 
   return;
+}
+
+//------------------------------------------------------------------------------
+void LinIsoQuadShapeFunc( const RealT* xi, RealT* phi )
+{
+  phi[0] = 0.25 * ( 1.0 - xi[0] ) * ( 1.0 - xi[1] );
+  phi[1] = 0.25 * ( 1.0 + xi[0] ) * ( 1.0 - xi[1] );
+  phi[2] = 0.25 * ( 1.0 + xi[0] ) * ( 1.0 + xi[1] );
+  phi[3] = 0.25 * ( 1.0 - xi[0] ) * ( 1.0 + xi[1] );
+}
+
+//------------------------------------------------------------------------------
+void LinIsoQuadShapeFuncDeriv( const RealT* xi, RealT* dphi )
+{
+  dphi[0] = -0.25 * ( 1.0 - xi[1] );
+  dphi[1] = 0.25 * ( 1.0 - xi[1] );
+  dphi[2] = 0.25 * ( 1.0 + xi[1] );
+  dphi[3] = -0.25 * ( 1.0 + xi[1] );
+  dphi[4] = -0.25 * ( 1.0 - xi[0] );
+  dphi[5] = -0.25 * ( 1.0 + xi[0] );
+  dphi[6] = 0.25 * ( 1.0 + xi[0] );
+  dphi[7] = 0.25 * ( 1.0 - xi[0] );
 }
 
 //------------------------------------------------------------------------------

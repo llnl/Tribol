@@ -493,7 +493,9 @@ TRIBOL_HOST_DEVICE bool PolyAreaCentroid( const RealT* const x, const int dim, c
 //------------------------------------------------------------------------------
 void PolyCentroid( const RealT* const x, const RealT* const y, const int numVert, RealT& cX, RealT& cY )
 {
+#ifndef TRIBOL_USE_ENZYME
   SLIC_ERROR_IF( numVert == 0, "PolyAreaCentroid: numVert = 0." );
+#endif
 
   // (re)initialize the input/output centroid components
   cX = 0.0;
@@ -832,10 +834,12 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
 
     // check to see if the overlap was degenerated to have 2 or less vertices.
     if ( numFinalVert < 3 ) {
+      numPolyVert = 0;
       area = 0.0;
       return NO_FACE_GEOM_ERROR;  // punt on degenerated or collapsed overlaps
     }
   } else {
+    numPolyVert = 0;
     area = 0.0;
     return NO_FACE_GEOM_ERROR;  // don't return error here. We should tolerate 'collapsed' (zero area) overlaps
   }
@@ -1065,7 +1069,9 @@ TRIBOL_HOST_DEVICE RealT Area2DPolygon( const RealT* const x, const RealT* const
   // compute vertex-averaged centroid to construct a triangle between segment
   // vertices and centroid
   RealT* z = nullptr;
-  RealT xc, yc, zc;
+  RealT xc = 0.0;
+  RealT yc = 0.0;
+  RealT zc = 0.0;
   VertexAvgCentroid( x, y, z, numPolyVert, xc, yc, zc );
 
   for ( int i = 0; i < numPolyVert; ++i ) {

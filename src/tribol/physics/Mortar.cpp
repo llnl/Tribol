@@ -773,7 +773,7 @@ void PlaneTo2DCoords( const RealT* x, const RealT* x0, const RealT* e1, const Re
     yp[i] = 0.0;
 
     for ( int d{ 0 }; d < 3; ++d ) {
-      RealT v_d = x[3 * i + d] - x0[d];
+      RealT v_d = x[d * num_coords + i] - x0[d];
       xp[i] += v_d * e1[d];
       yp[i] += v_d * e2[d];
     }
@@ -781,13 +781,46 @@ void PlaneTo2DCoords( const RealT* x, const RealT* x0, const RealT* e1, const Re
 }
 
 //------------------------------------------------------------------------------
-void Coords2DToPlane( const RealT* xp, const RealT* yp, const RealT* x0, const RealT* e1, const RealT* e2, RealT* x,
-                      int num_coords )
+void TriToQuadIso( const RealT* xt, const RealT* xq, const RealT* yq, RealT* xiq )
 {
-  for ( int i{ 0 }; i < num_coords; ++i ) {
-    for ( int d{ 0 }; d < 3; ++d ) {
-      x[i * 3 + d] = x0[d] + xp[i] * e1[d] + yp[i] * e2[d];
+  constexpr int max_iter = 15;
+  // NOTE: this probably needs to be set based on precision and size of the elements
+  constexpr RealT conv = 1.0e-13;
+  int iter_ct = 0;
+  while ( true ) {
+    RealT phiq[4];
+    LinIsoQuadShapeFunc( xiq, phiq );
+    RealT xq_guess[2] = { 0.0, 0.0 };
+    for ( int i{ 0 }; i < 4; ++i ) {
+      xq_guess[0] += phiq[i] * xq[i];
+      xq_guess[1] += phiq[i] * yq[i];
     }
+    RealT resid[2];
+    resid[0] = xq_guess[0] - xt[0];
+    resid[1] = xq_guess[1] - xt[1];
+    RealT max_resid = std::max( std::abs( resid[0] ), std::abs( resid[1] ) );
+    if ( max_resid < conv ) {
+      break;
+    }
+    ++iter_ct;
+    if ( iter_ct > max_iter ) {
+      std::cout << "Max iteration count reached.  Max resid = " << max_resid << std::endl;
+      break;
+    }
+    // update xiq
+    RealT dphiq[8];
+    LinIsoQuadShapeFuncDeriv( xiq, dphiq );
+    RealT dresid_dxiq[4] = { 0.0, 0.0, 0.0, 0.0 };
+    for ( int i{ 0 }; i < 4; ++i ) {
+      dresid_dxiq[0] += dphiq[i] * xq[i];
+      dresid_dxiq[1] += dphiq[i] * yq[i];
+      dresid_dxiq[2] += dphiq[4 + i] * xq[i];
+      dresid_dxiq[3] += dphiq[4 + i] * yq[i];
+    }
+    // explicit inverse
+    RealT detJ = dresid_dxiq[0] * dresid_dxiq[3] - dresid_dxiq[2] * dresid_dxiq[1];
+    xiq[0] -= ( dresid_dxiq[3] * resid[0] - dresid_dxiq[2] * resid[1] ) / detJ;
+    xiq[1] -= ( -dresid_dxiq[1] * resid[0] + dresid_dxiq[0] * resid[1] ) / detJ;
   }
 }
 
@@ -797,10 +830,6 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
 {
   // convention: elem1 = nonmortar element
   //             elem2 = mortar element
-  //  // TODO: set this based on double/float precision
-  //  constexpr RealT dist_tol = 1.0e-13;
-  //  // cos(pi/2 + angle_tol) = tolerance for aligned edges
-  //  constexpr RealT angle_tol = 1.0e-8;
   constexpr int max_mortar_mat_size = 4 * 4;
   RealT mortar_mat1[max_mortar_mat_size];
   int mortar_mat1_size = size1 * size1;
@@ -819,10 +848,6 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       x0[d] += x1[d * size1 + i] / static_cast<RealT>( size1 );
     }
   }
-
-  // // debug output
-  // std::cout << " x0 (geomtric centroid) = ( " << std::setprecision( 18 ) << x0[0] << ", " << x0[1] << ", " << x0[2]
-  //           << " )" << std::endl;
 
   // get vector n (normal of elem1)
   // NOTE: this limits this routine to quads
@@ -848,19 +873,7 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
     n[d] /= n_mag;
   }
 
-  // // debug output
-  // std::cout << " de1 (geomtric centroid) = ( " << std::setprecision( 18 ) << de1[0] << ", " << de1[1] << ", " <<
-  // de1[2]
-  //           << " )" << std::endl;
-  // std::cout << " de2 (geomtric centroid) = ( " << std::setprecision( 18 ) << de2[0] << ", " << de2[1] << ", " <<
-  // de2[2]
-  //           << " )" << std::endl;
-  // std::cout << " n (geomtric centroid) = ( " << std::setprecision( 18 ) << n[0] << ", " << n[1] << ", " << n[2] << "
-  // )"
-  //           << std::endl;
-
-  // x1t = x1 projected to plane p (def'd by x0 and n) (stored by vdim instead
-  // of nodes)
+  // x1t = x1 projected to plane p (def'd by x0 and n)
   constexpr int max_coord_size = 4 * 3;
   RealT x1t[max_coord_size];
   for ( int i{ 0 }; i < size1; ++i ) {
@@ -869,10 +882,10 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       x1diff_mag += n[d] * ( x1[size1 * d + i] - x0[d] );
     }
     for ( int d{ 0 }; d < 3; ++d ) {
-      x1t[i * 3 + d] = x1[size1 * d + i] - n[d] * x1diff_mag;
+      x1t[size1 * d + i] = x1[size1 * d + i] - n[d] * x1diff_mag;
     }
   }
-  // x2t = x2 projected to plane p (stored by vdim instead of nodes)
+  // x2t = x2 projected to plane p
   RealT x2t[max_coord_size];
   for ( int i{ 0 }; i < size2; ++i ) {
     RealT x2diff_mag = 0.0;
@@ -880,16 +893,16 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       x2diff_mag += n[d] * ( x2[size2 * d + i] - x0[d] );
     }
     for ( int d{ 0 }; d < 3; ++d ) {
-      x2t[i * 3 + d] = x2[size2 * d + i] - n[d] * x2diff_mag;
+      x2t[size2 * d + i] = x2[size2 * d + i] - n[d] * x2diff_mag;
     }
   }
   // Tribol's clipping algorithm
   // create a local basis
   // clang-format off
    RealT e1[3] = {
-      x1t[3] - x1t[0],
-      x1t[4] - x1t[1],
-      x1t[5] - x1t[2]
+      x1t[1] - x1t[0],
+      x1t[5] - x1t[4],
+      x1t[9] - x1t[8]
    };
   // clang-format on
   RealT e1_mag = std::sqrt( e1[0] * e1[0] + e1[1] * e1[1] + e1[2] * e1[2] );
@@ -915,49 +928,14 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
   int overlap_poly_size = 0;
   Intersection2DPolygonEnzyme( x1t_2d, y1t_2d, size1, x2t_2d, y2t_2d, size2, 1.0e-8, 1.0e-8, xti_2d, yti_2d,
                                &overlap_poly_size );
+  // std::cout << "overlap_poly_size = " << overlap_poly_size << std::endl;
   RealT overlap_poly_area = Area2DPolygon( xti_2d, yti_2d, overlap_poly_size );
-  if ( overlap_poly_area == 0.0 ) {
+  // std::cout << "overlap_poly_area = " << overlap_poly_area << std::endl;
+  if ( overlap_poly_area <= 0.0 ) {
     return;
   }
-  RealT xti[8 * 3];
-  Coords2DToPlane( xti_2d, yti_2d, x0, e1, e2, xti, overlap_poly_size );
 
-  // std::cout << std::setprecision( 15 ) << "Number of vertices: " << overlap_poly_size
-  //           << "   Polygon area: " << overlap_poly_area << std::endl;
-  // for ( int i{ 0 }; i < overlap_poly_size; ++i ) {
-  //   std::cout << "  Coord: (" << xti_2d[i] << ", " << yti_2d[i] << ")" << std::endl;
-  // switch (vert_type[i]) {
-  //   case OverlapVertexType::A:
-  //     std::cout << "Vertex A" << std::endl;
-  //     break;
-  //   case OverlapVertexType::B:
-  //     std::cout << "Vertex B" << std::endl;
-  //     break;
-  //   case OverlapVertexType::EdgeEdge:
-  //     std::cout << "Edge/Edge" << std::endl;
-  //     break;
-  // }
-  // }
-
-  // some Tribol calls require x, y, z component vectors of projected coords
-  RealT x1t_comp[4];
-  RealT y1t_comp[4];
-  RealT z1t_comp[4];
-  for ( int i{ 0 }; i < size1; ++i ) {
-    x1t_comp[i] = x1t[i * 3 + 0];
-    y1t_comp[i] = x1t[i * 3 + 1];
-    z1t_comp[i] = x1t[i * 3 + 2];
-  }
-  RealT x2t_comp[4];
-  RealT y2t_comp[4];
-  RealT z2t_comp[4];
-  for ( int i{ 0 }; i < size2; ++i ) {
-    x2t_comp[i] = x2t[i * 3 + 0];
-    y2t_comp[i] = x2t[i * 3 + 1];
-    z2t_comp[i] = x2t[i * 3 + 2];
-  }
-
-  // Create integration rule over polygon
+  // Integrate mortar matrix over the polygon
   // 1. get base triangle integration rule
   RealT base_rule_2d[12];
   RealT base_weights[6];
@@ -988,75 +966,205 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
     base_rule_2d[11] = base_x4;
   }
 
-  // 2. find centroid of the polygon
-  RealT xci[3];
-  PolyAreaCentroid( xti, 3, overlap_poly_size, xci[0], xci[1], xci[2] );
-
-  // 3. build sub-triangles
+  // 2. build the sub-triangles
+  // vert0 = centroid of overlap polygon; this will be used as the first vertex of the sub-triangles
+  RealT tri_x[3];
+  RealT tri_y[3];
+  PolyCentroid( xti_2d, yti_2d, overlap_poly_size, tri_x[0], tri_y[0] );
   for ( int i{ 0 }; i < overlap_poly_size; ++i ) {
     int idx1 = i;
     int idx2 = ( i + 1 ) % overlap_poly_size;
-    RealT vert1[3] = { xti[idx1 * 3 + 0], xti[idx1 * 3 + 1], xti[idx1 * 3 + 2] };
-    RealT vert2[3] = { xti[idx2 * 3 + 0], xti[idx2 * 3 + 1], xti[idx2 * 3 + 2] };
-    RealT side1[3] = { vert2[0] - vert1[0], vert2[1] - vert1[1], vert2[2] - vert1[2] };
-    RealT side2[3] = { xci[0] - vert1[0], xci[1] - vert1[1], xci[2] - vert1[2] };
-    // clang-format off
-      RealT area_vec[3] = {
-         side1[1]*side2[2] - side1[2]*side2[1],
-         side1[2]*side2[0] - side1[0]*side2[2],
-         side1[0]*side2[1] - side1[1]*side2[0]
-      };
-    // clang-format on
-    RealT area = 0.5 * std::sqrt( area_vec[0] * area_vec[0] + area_vec[1] * area_vec[1] + area_vec[2] * area_vec[2] );
+    tri_x[1] = xti_2d[idx1];
+    tri_y[1] = yti_2d[idx1];
+    tri_x[2] = xti_2d[idx2];
+    tri_y[2] = yti_2d[idx2];
+    RealT side1[2] = { tri_x[2] - tri_x[1], tri_y[2] - tri_y[1] };
+    RealT side2[2] = { tri_x[0] - tri_x[1], tri_y[0] - tri_y[1] };
+    RealT area = 0.5 * ( side1[0] * side2[1] - side1[1] * side2[0] );
 
-    // 4. map integration points and weights to sub-triangle
+    // the sub-triangle is inverted.  likely something went wrong with CG.  don't try to integrate over it.
+    if ( area <= 0.0 ) {
+      continue;
+    }
+
     for ( int j{ 0 }; j < 6; ++j ) {
-      // obtain shape function evaluations at (xi,eta)
-      RealT xi[2] = { base_rule_2d[j * 2 + 0], base_rule_2d[j * 2 + 1] };
-      RealT phi[3] = { 0., 0., 0. };
-      LinIsoTriShapeFunc( xi[0], xi[1], 0, phi[0] );
-      LinIsoTriShapeFunc( xi[0], xi[1], 1, phi[1] );
-      LinIsoTriShapeFunc( xi[0], xi[1], 2, phi[2] );
-
-      RealT quad_pt[3];
-      for ( int d{ 0 }; d < 3; ++d ) {
-        quad_pt[d] = vert1[d] * phi[0] + vert2[d] * phi[1] + xci[d] * phi[2];
+      RealT tri_xi[2] = { base_rule_2d[j * 2 + 0], base_rule_2d[j * 2 + 1] };
+      RealT tri_phi[3];
+      LinIsoTriShapeFunc( tri_xi, tri_phi );
+      RealT tri_quad_pt[2] = { 0.0, 0.0 };
+      for ( int k{ 0 }; k < 3; ++k ) {
+        tri_quad_pt[0] += tri_phi[k] * tri_x[k];
+        tri_quad_pt[1] += tri_phi[k] * tri_y[k];
       }
+
+      // 3. map sub-triangle coordinate to nonmortar and mortar coordinates
+      RealT xi1[2] = { 0.0, 0.0 };
+      // NOTE: this limits routine to quads
+      TriToQuadIso( tri_quad_pt, x1t_2d, y1t_2d, xi1 );
+      RealT xi2[2] = { 0.0, 0.0 };
+      // NOTE: this limits routine to quads
+      TriToQuadIso( tri_quad_pt, x2t_2d, y2t_2d, xi2 );
+      // std::cout << "tri_xi = (" << tri_xi[0] << ", " << tri_xi[1] << ")" << std::endl;
+      // std::cout << "  xi1 = (" << xi1[0] << ", " << xi1[1] << ")" << std::endl;
+      // std::cout << "  xi2 = (" << xi2[0] << ", " << xi2[1] << ")" << std::endl;
+
       RealT quad_wt = base_weights[j] * area;
 
-      // 5. map sub-triangle point to nonmortar and mortar surfaces
-      RealT xi1[2];
-      InvIso( quad_pt, x1t_comp, y1t_comp, z1t_comp, size1, xi1 );
-      RealT xi2[2];
-      InvIso( quad_pt, x2t_comp, y2t_comp, z2t_comp, size2, xi2 );
-
-      // 6. Evaluate mortar matrix (nonmortar/nonmortar contribs)
+      // 4. Evaluate mortar matrix (nonmortar/nonmortar contribs)
+      RealT phi1[4];
+      // NOTE: this limits this routine to quads
+      LinIsoQuadShapeFunc( xi1, phi1 );
       for ( int k{ 0 }; k < size1; ++k ) {
-        RealT phiA;
-        // NOTE: this limits this routine to quads
-        LinIsoQuadShapeFunc( xi1[0], xi1[1], k, phiA );
         for ( int l{ 0 }; l < size1; ++l ) {
-          RealT phiB;
-          // NOTE: this limits this routine to quads
-          LinIsoQuadShapeFunc( xi1[0], xi1[1], l, phiB );
-          mortar_mat1[k * size1 + l] += phiA * phiB * quad_wt;
+          mortar_mat1[k * size1 + l] += phi1[k] * phi1[l] * quad_wt;
         }
       }
 
-      // 7. Evaluate mortar matrix (nonmortar/mortar contribs)
+      // 5. Evaluate mortar matrix (nonmortar/mortar contribs)
+      RealT phi2[4];
+      // NOTE: this limits this routine to quads
+      LinIsoQuadShapeFunc( xi2, phi2 );
       for ( int k{ 0 }; k < size1; ++k ) {
-        RealT phiA;
-        // NOTE: this limits this routine to quads
-        LinIsoQuadShapeFunc( xi1[0], xi1[1], k, phiA );
         for ( int l{ 0 }; l < size2; ++l ) {
-          RealT phiB;
-          // NOTE: this limits this routine to quads
-          LinIsoQuadShapeFunc( xi2[0], xi2[1], l, phiB );
-          mortar_mat2[k * size2 + l] += phiA * phiB * quad_wt;
+          mortar_mat2[k * size2 + l] += phi1[k] * phi2[l] * quad_wt;
         }
       }
     }
   }
+
+  // RealT xti[8 * 3];
+  // Coords2DToPlane( xti_2d, yti_2d, x0, e1, e2, xti, overlap_poly_size );
+
+  // // std::cout << std::setprecision( 15 ) << "Number of vertices: " << overlap_poly_size
+  // //           << "   Polygon area: " << overlap_poly_area << std::endl;
+  // // for ( int i{ 0 }; i < overlap_poly_size; ++i ) {
+  // //   std::cout << "  Coord: (" << xti_2d[i] << ", " << yti_2d[i] << ")" << std::endl;
+  // // switch (vert_type[i]) {
+  // //   case OverlapVertexType::A:
+  // //     std::cout << "Vertex A" << std::endl;
+  // //     break;
+  // //   case OverlapVertexType::B:
+  // //     std::cout << "Vertex B" << std::endl;
+  // //     break;
+  // //   case OverlapVertexType::EdgeEdge:
+  // //     std::cout << "Edge/Edge" << std::endl;
+  // //     break;
+  // // }
+  // // }
+
+  // // some Tribol calls require x, y, z component vectors of projected coords
+  // RealT x1t_comp[4];
+  // RealT y1t_comp[4];
+  // RealT z1t_comp[4];
+  // for ( int i{ 0 }; i < size1; ++i ) {
+  //   x1t_comp[i] = x1t[i * 3 + 0];
+  //   y1t_comp[i] = x1t[i * 3 + 1];
+  //   z1t_comp[i] = x1t[i * 3 + 2];
+  // }
+  // RealT x2t_comp[4];
+  // RealT y2t_comp[4];
+  // RealT z2t_comp[4];
+  // for ( int i{ 0 }; i < size2; ++i ) {
+  //   x2t_comp[i] = x2t[i * 3 + 0];
+  //   y2t_comp[i] = x2t[i * 3 + 1];
+  //   z2t_comp[i] = x2t[i * 3 + 2];
+  // }
+
+  // // Create integration rule over polygon
+  // // 1. get base triangle integration rule
+  // RealT base_rule_2d[12];
+  // RealT base_weights[6];
+  // {
+  //   RealT wt1 = 0.109951743655322;
+  //   RealT wt2 = 0.223381589678011;
+  //   base_weights[0] = wt1;
+  //   base_weights[1] = wt1;
+  //   base_weights[2] = wt1;
+  //   base_weights[3] = wt2;
+  //   base_weights[4] = wt2;
+  //   base_weights[5] = wt2;
+  //   RealT base_x1 = 0.091576213509771;
+  //   RealT base_x2 = 0.816847572980459;
+  //   RealT base_x3 = 0.108103018168070;
+  //   RealT base_x4 = 0.445948490915965;
+  //   base_rule_2d[0] = base_x1;
+  //   base_rule_2d[1] = base_x1;
+  //   base_rule_2d[2] = base_x2;
+  //   base_rule_2d[3] = base_x1;
+  //   base_rule_2d[4] = base_x1;
+  //   base_rule_2d[5] = base_x2;
+  //   base_rule_2d[6] = base_x3;
+  //   base_rule_2d[7] = base_x4;
+  //   base_rule_2d[8] = base_x4;
+  //   base_rule_2d[9] = base_x3;
+  //   base_rule_2d[10] = base_x4;
+  //   base_rule_2d[11] = base_x4;
+  // }
+
+  // // 2. find centroid of the polygon
+  // RealT xci[3];
+  // PolyAreaCentroid( xti, 3, overlap_poly_size, xci[0], xci[1], xci[2] );
+
+  // // 3. build sub-triangles
+  // for ( int i{ 0 }; i < overlap_poly_size; ++i ) {
+  //   int idx1 = i;
+  //   int idx2 = ( i + 1 ) % overlap_poly_size;
+  //   RealT vert1[3] = { xti[idx1 * 3 + 0], xti[idx1 * 3 + 1], xti[idx1 * 3 + 2] };
+  //   RealT vert2[3] = { xti[idx2 * 3 + 0], xti[idx2 * 3 + 1], xti[idx2 * 3 + 2] };
+  //   RealT side1[3] = { vert2[0] - vert1[0], vert2[1] - vert1[1], vert2[2] - vert1[2] };
+  //   RealT side2[3] = { xci[0] - vert1[0], xci[1] - vert1[1], xci[2] - vert1[2] };
+  //   // clang-format off
+  //     RealT area_vec[3] = {
+  //        side1[1]*side2[2] - side1[2]*side2[1],
+  //        side1[2]*side2[0] - side1[0]*side2[2],
+  //        side1[0]*side2[1] - side1[1]*side2[0]
+  //     };
+  //   // clang-format on
+  //   RealT area = 0.5 * std::sqrt( area_vec[0] * area_vec[0] + area_vec[1] * area_vec[1] + area_vec[2] * area_vec[2]
+  //   );
+
+  //   // 4. map integration points and weights to sub-triangle
+  //   for ( int j{ 0 }; j < 6; ++j ) {
+  //     // obtain shape function evaluations at (xi,eta)
+  //     RealT xi[2] = { base_rule_2d[j * 2 + 0], base_rule_2d[j * 2 + 1] };
+  //     RealT phi[3] = { 0., 0., 0. };
+  //     LinIsoTriShapeFunc( xi[0], xi[1], 0, phi[0] );
+  //     LinIsoTriShapeFunc( xi[0], xi[1], 1, phi[1] );
+  //     LinIsoTriShapeFunc( xi[0], xi[1], 2, phi[2] );
+
+  //     RealT quad_pt[3];
+  //     for ( int d{ 0 }; d < 3; ++d ) {
+  //       quad_pt[d] = vert1[d] * phi[0] + vert2[d] * phi[1] + xci[d] * phi[2];
+  //     }
+  //     RealT quad_wt = base_weights[j] * area;
+
+  //     // 5. map sub-triangle point to nonmortar and mortar surfaces
+  //     RealT xi1[2];
+  //     InvIso( quad_pt, x1t_comp, y1t_comp, z1t_comp, size1, xi1 );
+  //     RealT xi2[2];
+  //     InvIso( quad_pt, x2t_comp, y2t_comp, z2t_comp, size2, xi2 );
+
+  //     // 6. Evaluate mortar matrix (nonmortar/nonmortar contribs)
+  //     RealT phi1[4];
+  //     // NOTE: this limits this routine to quads
+  //     LinIsoQuadShapeFunc( xi1, phi1 );
+  //     for ( int k{ 0 }; k < size1; ++k ) {
+  //       for ( int l{ 0 }; l < size1; ++l ) {
+  //         mortar_mat1[k * size1 + l] += phi1[k] * phi1[l] * quad_wt;
+  //       }
+  //     }
+
+  //     // 7. Evaluate mortar matrix (nonmortar/mortar contribs)
+  //     RealT phi2[4];
+  //     // NOTE: this limits this routine to quads
+  //     LinIsoQuadShapeFunc( xi2, phi2 );
+  //     for ( int k{ 0 }; k < size1; ++k ) {
+  //       for ( int l{ 0 }; l < size2; ++l ) {
+  //         mortar_mat2[k * size2 + l] += phi1[k] * phi2[l] * quad_wt;
+  //       }
+  //     }
+  //   }
+  // }
 
   // compute gaps
   for ( int i{ 0 }; i < size1; ++i ) {
