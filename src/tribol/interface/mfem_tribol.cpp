@@ -335,7 +335,7 @@ void updateMfemParallelDecomposition()
       mesh_ids[1] = mfem_data->GetMesh2ID();
       // NOTE: effective binning proximity must be computed independently here, since, in general,
       // CouplingScheme::init() hasn't been called yet
-      auto effective_binning_proximity = coupling_scheme.getParameters().binning_proximity_scale;
+      auto effective_binning_proximity = cs.getParameters().binning_proximity_scale;
       if ( mfem_data->GetLORFactor() > 1 ) {
         effective_binning_proximity *= static_cast<RealT>( mfem_data->GetLORFactor() );
       }
