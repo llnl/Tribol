@@ -359,7 +359,7 @@ void updateMfemParallelDecomposition()
       }
       if ( cs.getEnforcementMethod() == LAGRANGE_MULTIPLIER ) {
         SLIC_ERROR_ROOT_IF( cs.getContactModel() != FRICTIONLESS, "Only frictionless contact is supported." );
-        SLIC_ERROR_ROOT_IF( cs.getContactMethod() != SINGLE_MORTAR, "Only single mortar contact is supported." );
+        SLIC_ERROR_ROOT_IF( cs.getContactMethod() != SINGLE_MORTAR && cs.getContactMethod() != SMOOTH_MORTAR, "Only single mortar contact is supported." );
         auto submesh_data = cs.getMfemSubmeshData();
         // updates submesh-native grid functions and transfer operators on
         // the new redecomp mesh

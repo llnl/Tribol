@@ -116,6 +116,7 @@ enum ContactCase
 enum ContactMethod  // all mortar methods go first
 {
   SINGLE_MORTAR,   ///! Single mortar per Puso 2003
+  SMOOTH_MORTAR,   ///! Single mortar per made up math
   ALIGNED_MORTAR,  ///! Aligned mortar to be used with ContactCase = NO_SLIDING
   MORTAR_WEIGHTS,  ///! Method that only returns mortar weights per single mortar method
   COMMON_PLANE,    ///! Common plane method, currently with single integration point

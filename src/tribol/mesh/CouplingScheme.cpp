@@ -551,7 +551,7 @@ bool CouplingScheme::isValidMethod()
     }
 
     if ( this->m_contactMethod == ALIGNED_MORTAR || this->m_contactMethod == MORTAR_WEIGHTS ||
-         this->m_contactMethod == SINGLE_MORTAR ) {
+         this->m_contactMethod == SINGLE_MORTAR || this->m_contactMethod == SMOOTH_MORTAR) {
       if ( this->m_mesh1->numberOfNodesPerElement() != this->m_mesh2->numberOfNodesPerElement() ) {
         this->m_couplingSchemeErrors.cs_method_error = DIFFERENT_FACE_TYPES;
         return false;
@@ -583,7 +583,7 @@ bool CouplingScheme::isValidMethod()
     }
 
     if ( this->m_contactMethod == ALIGNED_MORTAR || this->m_contactMethod == SINGLE_MORTAR ||
-         this->m_contactMethod == COMMON_PLANE ) {
+         this->m_contactMethod == COMMON_PLANE || this->m_contactMethod == SMOOTH_MORTAR) {
       if ( this->m_mesh1->numberOfElements() > 0 && !this->m_mesh1->getNodalFields().m_is_nodal_response_set ) {
         this->m_couplingSchemeErrors.cs_method_error = NULL_NODAL_RESPONSE;
         return false;
@@ -620,6 +620,7 @@ bool CouplingScheme::isValidModel()
   switch ( this->m_contactMethod ) {
     case SINGLE_MORTAR:
     case ALIGNED_MORTAR:
+    case SMOOTH_MORTAR:
     case MORTAR_WEIGHTS: {
       if ( this->m_contactModel != FRICTIONLESS && this->m_contactModel != NULL_MODEL ) {
         this->m_couplingSchemeErrors.cs_model_error = NO_MODEL_IMPLEMENTATION_FOR_REGISTERED_METHOD;
@@ -1117,6 +1118,10 @@ bool CouplingScheme::init()
 {
   // check for valid coupling scheme only for non-null-meshes
   this->m_isValid = this->isValidCouplingScheme();
+
+  if (this->m_contactMethod == SMOOTH_MORTAR) {
+    this->m_isValid = true;
+  }
 
   if ( this->m_isValid ) {
     // set individual coupling scheme logging level
