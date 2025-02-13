@@ -504,7 +504,7 @@ void PolyCentroid( const RealT* const x, const RealT* const y, const int numVert
   RealT area = 0.;
 
   for ( int i = 0; i < numVert; ++i ) {
-    int i_plus_one = ( i == ( numVert - 1 ) ) ? 0 : i + 1;
+    int i_plus_one = ( i + 1 ) % numVert;
     cX += ( x[i] + x[i_plus_one] ) * ( x[i] * y[i_plus_one] - x[i_plus_one] * y[i] );
     cY += ( y[i] + y[i_plus_one] ) * ( x[i] * y[i_plus_one] - x[i_plus_one] * y[i] );
     area += ( x[i] * y[i_plus_one] - x[i_plus_one] * y[i] );
@@ -862,77 +862,6 @@ FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int
   return Intersection2DPolygon( xA, yA, numVertexA, xB, yB, numVertexB, posTol, lenTol, polyX, polyY, *numPolyVert,
                                 area, orientCheck );
 }
-
-#ifdef TRIBOL_USE_CUSTOM_GRADIENT
-
-void SegmentIntersection2DBasic( const RealT* xA1, const RealT* yA1, const RealT* xA2, const RealT* yA2,
-                                 const RealT* xB1, const RealT* yB1, const RealT* xB2, const RealT* yB2, RealT* x,
-                                 RealT* y )
-{
-  // compute segment vectors
-  RealT lambdaXA = *xA2 - *xA1;
-  RealT lambdaYA = *yA2 - *yA1;
-
-  RealT lambdaXB = *xB2 - *xB1;
-  RealT lambdaYB = *yB2 - *yB1;
-
-  // compute determinant of the lambda matrix, [ -lx1 -ly1, lx2 ly2 ]
-  RealT det = -lambdaXA * lambdaYB + lambdaXB * lambdaYA;
-  // compute intersection
-  RealT invDet = 1.0 / det;
-  RealT rX = *xA1 - *xB1;
-  RealT rY = *yA1 - *yB1;
-  RealT tA = invDet * ( rX * lambdaYB - rY * lambdaXB );
-  *x = *xA1 + lambdaXA * tA;
-  *y = *yA1 + lambdaYA * tA;
-}
-
-FaceGeomError dIntersection2DPolygonEnzyme( const RealT* xA, const RealT* xA_dot, const RealT* yA, const RealT* yA_dot,
-                                            int numVertexA, int, const RealT* xB, const RealT* xB_dot, const RealT* yB,
-                                            const RealT* yB_dot, int numVertexB, int, RealT posTol, RealT, RealT lenTol,
-                                            RealT, RealT* polyX, RealT* dpolyX, RealT* polyY, RealT* dpolyY,
-                                            int* numPolyVert, int* dnumPolyVert )
-{
-  OverlapVertexType vertType[8];
-  int edgeA[8];
-  int edgeB[8];
-  double area = 0.0;
-  constexpr bool orientCheck = true;
-  auto err = Intersection2DPolygon( xA, yA, numVertexA, xB, yB, numVertexB, posTol, lenTol, polyX, polyY, *numPolyVert,
-                                    area, orientCheck, vertType, edgeA, edgeB );
-  *dnumPolyVert = *numPolyVert;
-  std::cout << "Custom rule!" << std::endl;
-  for ( int i{ 0 }; i < *numPolyVert; ++i ) {
-    switch ( vertType[i] ) {
-      case OverlapVertexType::A:
-        dpolyX[i] = xA_dot[edgeA[i]];
-        dpolyY[i] = yA_dot[edgeA[i]];
-        break;
-      case OverlapVertexType::B:
-        dpolyX[i] = xB_dot[edgeB[i]];
-        dpolyY[i] = yB_dot[edgeB[i]];
-        break;
-      case OverlapVertexType::EdgeEdge:
-        auto idx_a1 = edgeA[i];
-        auto idx_a2 = ( idx_a1 + 1 ) % numVertexA;
-        auto idx_b1 = edgeB[i];
-        auto idx_b2 = ( idx_b1 + 1 ) % numVertexB;
-        __enzyme_fwddiff<void>( (void*)SegmentIntersection2DBasic, enzyme_dup, &xA[idx_a1], &xA_dot[idx_a1], enzyme_dup,
-                                &yA[idx_a1], &yA_dot[idx_a1], enzyme_dup, &xA[idx_a2], &xA_dot[idx_a2], enzyme_dup,
-                                &yA[idx_a2], &yA_dot[idx_a2], enzyme_dup, &xB[idx_b1], &xB_dot[idx_b1], enzyme_dup,
-                                &yB[idx_b1], &yB_dot[idx_b1], enzyme_dup, &xB[idx_b2], &xB_dot[idx_b2], enzyme_dup,
-                                &yB[idx_b2], &yB_dot[idx_b2], enzyme_dupnoneed, &polyX[i], &dpolyX[i], enzyme_dupnoneed,
-                                &polyY[i], &dpolyY[i] );
-        break;
-    }
-  }
-  return err;
-}
-
-void* __enzyme_register_derivative_Intersection2DPolygonEnzyme[] = { (void*)Intersection2DPolygonEnzyme,
-                                                                     (void*)dIntersection2DPolygonEnzyme };
-
-#endif
 
 #endif
 

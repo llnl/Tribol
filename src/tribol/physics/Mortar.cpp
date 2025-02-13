@@ -781,6 +781,17 @@ void PlaneTo2DCoords( const RealT* x, const RealT* x0, const RealT* e1, const Re
 }
 
 //------------------------------------------------------------------------------
+void Coords2DToPlane( const RealT* xp, const RealT* yp, const RealT* x0, const RealT* e1, const RealT* e2, RealT* x,
+                      int num_coords )
+{
+  for ( int i{ 0 }; i < num_coords; ++i ) {
+    for ( int d{ 0 }; d < 3; ++d ) {
+      x[i * 3 + d] = x0[d] + xp[i] * e1[d] + yp[i] * e2[d];
+    }
+  }
+}
+
+//------------------------------------------------------------------------------
 void TriToQuadIso( const RealT* xt, const RealT* xq, const RealT* yq, RealT* xiq )
 {
   constexpr int max_iter = 15;
@@ -897,7 +908,7 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
     }
   }
   // Tribol's clipping algorithm
-  // create a local basis
+  // create a local basis; e1 is a unit vector aligned with the first edge in element 1
   // clang-format off
    RealT e1[3] = {
       x1t[1] - x1t[0],
@@ -909,6 +920,7 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
   for ( int d{ 0 }; d < 3; ++d ) {
     e1[d] /= e1_mag;
   }
+  // e2 is a unit vector = n x e1
   // clang-format off
    RealT e2[3] = {
       n[1]*e1[2] - n[2]*e1[1],
@@ -922,15 +934,20 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
   RealT x2t_2d[4];
   RealT y2t_2d[4];
   PlaneTo2DCoords( x2t, x0, e1, e2, x2t_2d, y2t_2d, size2 );
-  ElemReverse( x2t_2d, y2t_2d, size2 );
+  // coordinates need to be CCW for both faces
+  RealT x2t_2d_rev[4];
+  RealT y2t_2d_rev[4];
+  for ( int i{ 0 }; i < size2; ++i ) {
+    x2t_2d_rev[i] = x2t_2d[i];
+    y2t_2d_rev[i] = y2t_2d[i];
+  }
+  ElemReverse( x2t_2d_rev, y2t_2d_rev, size2 );
   RealT xti_2d[8];
   RealT yti_2d[8];
   int overlap_poly_size = 0;
-  Intersection2DPolygonEnzyme( x1t_2d, y1t_2d, size1, x2t_2d, y2t_2d, size2, 1.0e-8, 1.0e-8, xti_2d, yti_2d,
+  Intersection2DPolygonEnzyme( x1t_2d, y1t_2d, size1, x2t_2d_rev, y2t_2d_rev, size2, 1.0e-8, 1.0e-8, xti_2d, yti_2d,
                                &overlap_poly_size );
-  // std::cout << "overlap_poly_size = " << overlap_poly_size << std::endl;
   RealT overlap_poly_area = Area2DPolygon( xti_2d, yti_2d, overlap_poly_size );
-  // std::cout << "overlap_poly_area = " << overlap_poly_area << std::endl;
   if ( overlap_poly_area <= 0.0 ) {
     return;
   }
@@ -1004,9 +1021,11 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       RealT xi2[2] = { 0.0, 0.0 };
       // NOTE: this limits routine to quads
       TriToQuadIso( tri_quad_pt, x2t_2d, y2t_2d, xi2 );
-      // std::cout << "tri_xi = (" << tri_xi[0] << ", " << tri_xi[1] << ")" << std::endl;
-      // std::cout << "  xi1 = (" << xi1[0] << ", " << xi1[1] << ")" << std::endl;
-      // std::cout << "  xi2 = (" << xi2[0] << ", " << xi2[1] << ")" << std::endl;
+
+      // if ( i == 0 ) {
+      //   std::cout << "xi1_new = (" << xi1[0] << ", " << xi1[1] << ")" << std::endl;
+      //   std::cout << "xi2_new = (" << xi2[0] << ", " << xi2[1] << ")" << std::endl;
+      // }
 
       RealT quad_wt = base_weights[j] * area;
 
@@ -1032,6 +1051,32 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
     }
   }
 
+  // std::cout << "mortar mat 11 = " << std::endl;
+  // for ( int i{ 0 }; i < size1; ++i ) {
+  //   std::cout << "  ";
+  //   for ( int j{ 0 }; j < size1; ++j ) {
+  //     std::cout << std::setprecision( 18 ) << mortar_mat1[j * size1 + i] << "  ";
+  //   }
+  //   std::cout << std::endl;
+  // }
+
+  // std::cout << "mortar mat 12 = " << std::endl;
+  // for ( int i{ 0 }; i < size1; ++i ) {
+  //   std::cout << "  ";
+  //   for ( int j{ 0 }; j < size2; ++j ) {
+  //     std::cout << std::setprecision( 18 ) << mortar_mat2[j * size1 + i] << "  ";
+  //   }
+  //   std::cout << std::endl;
+  // }
+
+  // for ( int i{ 0 }; i < mortar_mat1_size; ++i ) {
+  //   mortar_mat1[i] = 0.0;
+  // }
+  // for ( int i{ 0 }; i < mortar_mat2_size; ++i ) {
+  //   mortar_mat2[i] = 0.0;
+  // }
+
+  // // old way
   // RealT xti[8 * 3];
   // Coords2DToPlane( xti_2d, yti_2d, x0, e1, e2, xti, overlap_poly_size );
 
@@ -1057,48 +1102,17 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
   // RealT y1t_comp[4];
   // RealT z1t_comp[4];
   // for ( int i{ 0 }; i < size1; ++i ) {
-  //   x1t_comp[i] = x1t[i * 3 + 0];
-  //   y1t_comp[i] = x1t[i * 3 + 1];
-  //   z1t_comp[i] = x1t[i * 3 + 2];
+  //   x1t_comp[i] = x1t[0 * size1 + i];
+  //   y1t_comp[i] = x1t[1 * size1 + i];
+  //   z1t_comp[i] = x1t[2 * size1 + i];
   // }
   // RealT x2t_comp[4];
   // RealT y2t_comp[4];
   // RealT z2t_comp[4];
   // for ( int i{ 0 }; i < size2; ++i ) {
-  //   x2t_comp[i] = x2t[i * 3 + 0];
-  //   y2t_comp[i] = x2t[i * 3 + 1];
-  //   z2t_comp[i] = x2t[i * 3 + 2];
-  // }
-
-  // // Create integration rule over polygon
-  // // 1. get base triangle integration rule
-  // RealT base_rule_2d[12];
-  // RealT base_weights[6];
-  // {
-  //   RealT wt1 = 0.109951743655322;
-  //   RealT wt2 = 0.223381589678011;
-  //   base_weights[0] = wt1;
-  //   base_weights[1] = wt1;
-  //   base_weights[2] = wt1;
-  //   base_weights[3] = wt2;
-  //   base_weights[4] = wt2;
-  //   base_weights[5] = wt2;
-  //   RealT base_x1 = 0.091576213509771;
-  //   RealT base_x2 = 0.816847572980459;
-  //   RealT base_x3 = 0.108103018168070;
-  //   RealT base_x4 = 0.445948490915965;
-  //   base_rule_2d[0] = base_x1;
-  //   base_rule_2d[1] = base_x1;
-  //   base_rule_2d[2] = base_x2;
-  //   base_rule_2d[3] = base_x1;
-  //   base_rule_2d[4] = base_x1;
-  //   base_rule_2d[5] = base_x2;
-  //   base_rule_2d[6] = base_x3;
-  //   base_rule_2d[7] = base_x4;
-  //   base_rule_2d[8] = base_x4;
-  //   base_rule_2d[9] = base_x3;
-  //   base_rule_2d[10] = base_x4;
-  //   base_rule_2d[11] = base_x4;
+  //   x2t_comp[i] = x2t[0 * size2 + i];
+  //   y2t_comp[i] = x2t[1 * size2 + i];
+  //   z2t_comp[i] = x2t[2 * size2 + i];
   // }
 
   // // 2. find centroid of the polygon
@@ -1144,26 +1158,55 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
   //     RealT xi2[2];
   //     InvIso( quad_pt, x2t_comp, y2t_comp, z2t_comp, size2, xi2 );
 
+  //     if ( i == 0 ) {
+  //       std::cout << "xi1_old = (" << xi1[0] << ", " << xi1[1] << ")" << std::endl;
+  //       std::cout << "xi2_old = (" << xi2[0] << ", " << xi2[1] << ")" << std::endl;
+  //     }
+
   //     // 6. Evaluate mortar matrix (nonmortar/nonmortar contribs)
-  //     RealT phi1[4];
-  //     // NOTE: this limits this routine to quads
-  //     LinIsoQuadShapeFunc( xi1, phi1 );
   //     for ( int k{ 0 }; k < size1; ++k ) {
+  //       RealT phiA;
+  //       // NOTE: this limits this routine to quads
+  //       LinIsoQuadShapeFunc( xi1[0], xi1[1], k, phiA );
   //       for ( int l{ 0 }; l < size1; ++l ) {
-  //         mortar_mat1[k * size1 + l] += phi1[k] * phi1[l] * quad_wt;
+  //         RealT phiB;
+  //         // NOTE: this limits this routine to quads
+  //         LinIsoQuadShapeFunc( xi1[0], xi1[1], l, phiB );
+  //         mortar_mat1[k * size1 + l] += phiA * phiB * quad_wt;
   //       }
   //     }
 
   //     // 7. Evaluate mortar matrix (nonmortar/mortar contribs)
-  //     RealT phi2[4];
-  //     // NOTE: this limits this routine to quads
-  //     LinIsoQuadShapeFunc( xi2, phi2 );
   //     for ( int k{ 0 }; k < size1; ++k ) {
+  //       RealT phiA;
+  //       // NOTE: this limits this routine to quads
+  //       LinIsoQuadShapeFunc( xi1[0], xi1[1], k, phiA );
   //       for ( int l{ 0 }; l < size2; ++l ) {
-  //         mortar_mat2[k * size2 + l] += phi1[k] * phi2[l] * quad_wt;
+  //         RealT phiB;
+  //         // NOTE: this limits this routine to quads
+  //         LinIsoQuadShapeFunc( xi2[0], xi2[1], l, phiB );
+  //         mortar_mat2[k * size2 + l] += phiA * phiB * quad_wt;
   //       }
   //     }
   //   }
+  // }
+
+  // std::cout << "mortar mat 11 = " << std::endl;
+  // for ( int i{ 0 }; i < size1; ++i ) {
+  //   std::cout << "  ";
+  //   for ( int j{ 0 }; j < size1; ++j ) {
+  //     std::cout << std::setprecision( 18 ) << mortar_mat1[j * size1 + i] << "  ";
+  //   }
+  //   std::cout << std::endl;
+  // }
+
+  // std::cout << "mortar mat 12 = " << std::endl;
+  // for ( int i{ 0 }; i < size1; ++i ) {
+  //   std::cout << "  ";
+  //   for ( int j{ 0 }; j < size2; ++j ) {
+  //     std::cout << std::setprecision( 18 ) << mortar_mat2[j * size1 + i] << "  ";
+  //   }
+  //   std::cout << std::endl;
   // }
 
   // compute gaps
@@ -1184,15 +1227,6 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       g1[i] += n1[d * size1 + i] * gap_v[d];
     }
   }
-
-  // std::cout << "mortar mat 11 = " << std::endl;
-  // for ( int i{ 0 }; i < size1; ++i ) {
-  //   std::cout << "  ";
-  //   for ( int j{ 0 }; j < size1; ++j ) {
-  //     std::cout << std::setprecision( 18 ) << mortar_mat1[j * size1 + i] << "  ";
-  //   }
-  //   std::cout << std::endl;
-  // }
 
   // compute nonmortar force contributions
   for ( int i{ 0 }; i < size1; ++i ) {

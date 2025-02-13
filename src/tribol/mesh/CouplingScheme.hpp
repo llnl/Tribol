@@ -882,7 +882,7 @@ class CouplingScheme {
   bool m_isTied;        ///< True if surfaces have been "tied" (Tied contact only)
 
 #ifdef TRIBOL_USE_ENZYME
-  bool m_useEnzyme;                            ///< Use Enzyme for Jacobian calculations
+  bool m_useEnzyme = false;                    ///< Use Enzyme for Jacobian calculations
   std::unique_ptr<NodalNormal> m_nodalNormal;  ///< Method for computing nodal normal (only for Enzyme)
   std::unique_ptr<MethodData> m_dnJacobian;    ///< Store normal Jacobian contributions
 #endif

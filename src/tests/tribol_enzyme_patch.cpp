@@ -401,7 +401,7 @@ class EnzymePatchTest : public testing::Test {
                     << "   Ratio: " << dfdx_enzyme( i, j ) / dfdx_fd( i, j ) << "   Enzyme: " << dfdx_enzyme( i, j )
                     << "   FD: " << dfdx_fd( i, j ) << std::endl;
         }
-        // EXPECT_NEAR(dfdx_enzyme(i, j), dfdx_fd(i, j), delta);
+        EXPECT_NEAR( dfdx_enzyme( i, j ), dfdx_fd( i, j ), delta );
       }
     }
     std::cout << "dg/dx ------------------------------" << std::endl;
@@ -412,7 +412,7 @@ class EnzymePatchTest : public testing::Test {
           std::cout << "  (" << i << ", " << j << ") : Diff: " << diff << "   Enzyme: " << dgdx_enzyme( i, j )
                     << "   FD: " << dgdx_fd( i, j ) << std::endl;
         }
-        // EXPECT_NEAR(dgdx_enzyme(i, j), dgdx_fd(i, j), delta);
+        EXPECT_NEAR( dgdx_enzyme( i, j ), dgdx_fd( i, j ), delta );
       }
     }
     std::cout << "df/dp ------------------------------" << std::endl;
@@ -423,7 +423,7 @@ class EnzymePatchTest : public testing::Test {
           std::cout << "  (" << i << ", " << j << ") : Diff: " << diff << "   Enzyme: " << dfdp_enzyme( i, j )
                     << "   FD: " << dfdp_fd( i, j ) << std::endl;
         }
-        // EXPECT_NEAR(dfdp_enzyme(i, j), dfdp_fd(i, j), delta);
+        EXPECT_NEAR( dfdp_enzyme( i, j ), dfdp_fd( i, j ), delta );
       }
     }
   }

@@ -317,16 +317,6 @@ FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int
                                            const RealT* yB, int numVertexB, RealT posTol, RealT lenTol, RealT* polyX,
                                            RealT* polyY, int* numPolyVert );
 
-#ifdef TRIBOL_USE_CUSTOM_GRADIENT
-
-FaceGeomError dIntersection2DPolygonEnzyme( const RealT* xA, const RealT* xA_dot, const RealT* yA, const RealT* yA_dot,
-                                            int numVertexA, int, const RealT* xB, const RealT* xB_dot, const RealT* yB,
-                                            const RealT* yB_dot, int numVertexB, int, RealT posTol, RealT, RealT lenTol,
-                                            RealT, RealT* polyX, RealT* dpolyX, RealT* polyY, RealT* dpolyY,
-                                            int* numPolyVert, int* dnumPolyVert );
-
-#endif
-
 #endif
 
 /*!
