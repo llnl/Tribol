@@ -22,18 +22,6 @@ enum VariableType
   NUM_VARIABLES
 };
 
-/*!
- *
- * \brief computes the integral of (phi_a * phi_b) over a contact
- *        overlap for all (a,b) combinations.
- *
- * \note the mortar weights are stored on the SurfaceContactElem object
- *
- * \param [in] elem surface contact element object for contact face-pair
- *
- *
- */
-void ComputeMortarWeights( SurfaceContactElem& elem );
 
 /*!
  *
@@ -42,7 +30,7 @@ void ComputeMortarWeights( SurfaceContactElem& elem );
  * \param [in] cs pointer to coupling scheme
  *
  */
-void ComputeSingleMortarGaps( CouplingScheme* cs );
+void ComputeSmoothMortarGaps( CouplingScheme* cs );
 
 /*!
  *
@@ -58,18 +46,18 @@ void ComputeNodalGap( SurfaceContactElem& elem );
  *
  * \brief compute a contact element's contribution to nodal gaps
  *
- * \note explicit specialization for single mortar method
+ * \note explicit specialization for Smooth mortar method
  *
  * \param [in] elem surface contact element object for contact face-pair
  *
  */
 template <>
-void ComputeNodalGap<SINGLE_MORTAR>( SurfaceContactElem& elem );
+void ComputeNodalGap<SMOOTH_MORTAR>( SurfaceContactElem& elem );
 
 /*!
  *
  * \brief method to compute the Jacobian contributions of the contact residual
- *        term with respect to either the primal or dual variable for a single
+ *        term with respect to either the primal or dual variable for a Smooth
  *        contact face-pair.
  *
  * \param [in] elem surface contact element struct
@@ -81,7 +69,7 @@ void ComputeResidualJacobian( SurfaceContactElem& elem );
 /*!
  *
  * \brief method to compute the Jacobian contributions of the contact gap
- *        constraint with respect to either the primal or dual variable for a single
+ *        constraint with respect to either the primal or dual variable for a Smooth
  *        contact face-pair.
  *
  * \param [in] elem surface contact element struct
@@ -100,55 +88,55 @@ void ComputeConstraintJacobian( SurfaceContactElem& elem );
  *
  */
 template <>
-int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs );
+int ApplyNormal<SMOOTH_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs );
 
 /*!
  *
  * \brief explicit specialization of method to compute the Jacobian contributions of
- *        the contact residual term with respect to the primal variable for a single
+ *        the contact residual term with respect to the primal variable for a Smooth
  *        contact face-pair.
  *
  * \param [in] elem surface contact element struct
  *
  */
 template <>
-void ComputeResidualJacobian<SINGLE_MORTAR, PRIMAL>( SurfaceContactElem& elem );
+void ComputeResidualJacobian<SMOOTH_MORTAR, PRIMAL>( SurfaceContactElem& elem );
 
 /*!
  *
  * \brief explicit specialization of method to compute the Jacobian contributions of
- *        the contact residual term with respect to the dual variable for a single
+ *        the contact residual term with respect to the dual variable for a Smooth
  *        contact face-pair.
  *
  * \param [in] elem surface contact element struct
  *
  */
 template <>
-void ComputeResidualJacobian<SINGLE_MORTAR, DUAL>( SurfaceContactElem& elem );
+void ComputeResidualJacobian<SMOOTH_MORTAR, DUAL>( SurfaceContactElem& elem );
 
 /*!
  *
  * \brief explicit specialization of method to compute the Jacobian contributions of
- *        the contact gap  constraint with respect to the primal variable for a single
+ *        the contact gap  constraint with respect to the primal variable for a Smooth
  *        contact face-pair.
  *
  * \param [in] elem surface contact element struct
  *
  */
 template <>
-void ComputeConstraintJacobian<SINGLE_MORTAR, PRIMAL>( SurfaceContactElem& elem );
+void ComputeConstraintJacobian<SMOOTH_MORTAR, PRIMAL>( SurfaceContactElem& elem );
 
 /*!
  *
  * \brief explicit specialization of method to compute the Jacobian contributions of
- *        the contact gap  constraint with respect to the dual variable for a single
+ *        the contact gap  constraint with respect to the dual variable for a Smooth
  *        contact face-pair.
  *
  * \param [in] elem surface contact element struct
  *
  */
 template <>
-void ComputeConstraintJacobian<SINGLE_MORTAR, DUAL>( SurfaceContactElem& elem );
+void ComputeConstraintJacobian<SMOOTH_MORTAR, DUAL>( SurfaceContactElem& elem );
 
 /*!
  *
@@ -157,31 +145,19 @@ void ComputeConstraintJacobian<SINGLE_MORTAR, DUAL>( SurfaceContactElem& elem );
  * \param [in] elem surface contact element struct
  *
  */
-void ComputeSingleMortarJacobian( SurfaceContactElem& elem );
+void ComputeSmoothMortarJacobian( SurfaceContactElem& elem );
 
 #ifdef TRIBOL_USE_ENZYME
-int ApplyNormalEnzyme( CouplingScheme* cs );
+int ApplySmoothNormalEnzyme( CouplingScheme* cs );
 
-void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* g1, int size1,
-                               const RealT* x2, RealT* f2, int size2 );
+void ComputeSmoothMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* g1, int size1,
+                                     const RealT* x2, RealT* f2, int size2 );
 
-void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* df1dx1,
-                                  RealT* df1dx2, RealT* df1dn1, RealT* df1dp1, RealT* g1, RealT* dg1dx1, RealT* dg1dx2,
-                                  RealT* dg1dn1, int size1, const RealT* x2, RealT* f2, RealT* df2dx1, RealT* df2dx2,
-                                  RealT* df2dn1, RealT* df2dp1, int size2 );
+void ComputeSmoothMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* df1dx1,
+                                        RealT* df1dx2, RealT* df1dn1, RealT* df1dp1, RealT* g1, RealT* dg1dx1, RealT* dg1dx2,
+                                        RealT* dg1dn1, int size1, const RealT* x2, RealT* f2, RealT* df2dx1, RealT* df2dx2,
+                                        RealT* df2dn1, RealT* df2dp1, int size2 );
 #endif
-
-/*!
- *
- * \brief method to compute mortar weights for MORTAR_WEIGHTS method
- *
- * \param [in] cs pointer to coupling scheme
- *
- * \return 0 if no error
- *
- */
-template <>
-int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs );
 
 }  // namespace tribol
 

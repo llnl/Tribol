@@ -45,6 +45,7 @@ set(tribol_headers
     physics/CommonPlane.hpp
     physics/AlignedMortar.hpp
     physics/Mortar.hpp
+    physics/MortarSmooth.hpp
     )
 
 ## list of sources
@@ -77,6 +78,7 @@ set(tribol_sources
     physics/CommonPlane.cpp
     physics/AlignedMortar.cpp
     physics/Mortar.cpp
+    physics/MortarSmooth.cpp
     )
 
 if (ENABLE_FORTRAN)

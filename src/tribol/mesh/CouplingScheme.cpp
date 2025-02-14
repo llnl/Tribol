@@ -1014,6 +1014,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // clear contact planes to be populated/allocated anew for this cycle.
   // initially allocate array of numPairs size, then shrink to the actual number of pairs
   if ( spatialDimension() == 2 ) {
+    printf("2d\n");
     m_contact_plane2d = ArrayT<ContactPlane2D>( numPairs, numPairs, getAllocatorId() );
     m_contact_plane3d = ArrayT<ContactPlane3D>( 0, 1, getAllocatorId() );
   } else {

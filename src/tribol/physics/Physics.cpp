@@ -70,6 +70,23 @@ int ApplyInterfacePhysics( CouplingScheme* cs, int TRIBOL_UNUSED_PARAM( cycle ),
       }       // end switch on enforcement method
       break;  // end case SINGLE_MORTAR
 
+    case SMOOTH_MORTAR:
+      switch ( cs->getEnforcementMethod() ) {
+        case LAGRANGE_MULTIPLIER:
+          switch ( cs->getContactModel() ) {
+            case FRICTIONLESS:
+              printf("next apply normal\n");
+              err_nrml = ApplyNormal<SMOOTH_MORTAR, LAGRANGE_MULTIPLIER>( cs );
+              break;
+            default:
+              break;
+          }  // end switch on contact model
+          break;
+        default:
+          break;
+      }       // end switch on enforcement method
+      break;  // end case SINGLE_MORTAR
+
     case ALIGNED_MORTAR:
       switch ( cs->getEnforcementMethod() ) {
         case LAGRANGE_MULTIPLIER:

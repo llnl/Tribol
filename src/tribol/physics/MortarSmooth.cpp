@@ -30,93 +30,14 @@
 
 namespace tribol {
 
-void ComputeMortarWeights( SurfaceContactElem& elem )
-{
-  // instantiate integration object
-  IntegPts integ;
-
-  // Debug: leave code in for now to call Gauss quadrature on triangle rule
-  GaussPolyIntTri( elem, integ, 3 );
-
-  // call Taylor-Wingate-Bos integation rule. NOTE: this is not
-  // working. The correct gaps are not being computed.
-  //   TWBPolyInt( elem, integ, 3 );
-
-  // get individual arrays of coordinates for each face
-  RealT x1[elem.numFaceVert];
-  RealT y1[elem.numFaceVert];
-  RealT z1[elem.numFaceVert];
-  RealT x2[elem.numFaceVert];
-  RealT y2[elem.numFaceVert];
-  RealT z2[elem.numFaceVert];
-
-  for ( int i = 0; i < elem.numFaceVert; ++i ) {
-    x1[i] = elem.faceCoords1[elem.dim * i];
-    y1[i] = elem.faceCoords1[elem.dim * i + 1];
-    z1[i] = elem.faceCoords1[elem.dim * i + 2];
-    x2[i] = elem.faceCoords2[elem.dim * i];
-    y2[i] = elem.faceCoords2[elem.dim * i + 1];
-    z2[i] = elem.faceCoords2[elem.dim * i + 2];
-  }
-
-  // allocate mortar weights array on SurfaceContactElem object. This routine
-  // also initializes the array
-  elem.allocateMortarWts();
-
-  RealT phiNonmortarA, phiNonmortarB, phiMortarA;
-
-  // loop over number of nodes on the nonmortar or mortar depending on whether forming
-  // nonmortar/nonmortar or mortar/nonmortar weights
-
-  for ( int a = 0; a < elem.numFaceVert; ++a ) {
-    // loop over number of nodes on nonmortar side
-    for ( int b = 0; b < elem.numFaceVert; ++b ) {
-      // set nonmortar/nonmortar and mortar/nonmortar ids...Don't change these ids
-      int nonmortarNonmortarId = elem.numFaceVert * a + b;
-      int mortarNonmortarId = elem.numFaceVert * elem.numFaceVert + elem.numFaceVert * a + b;
-
-      // loop over number of integration points
-      for ( int ip = 0; ip < integ.numIPs; ++ip ) {
-        // The integration method for computing weights uses
-        // the inverse isoparametric mapping of a current configuration
-        // integration point (as projected onto the current configuration
-        // face) to obtain a (xi,eta) coordinate pair in parent space
-        // for the evaluation of Lagrange shape functions
-        RealT xp[3] = { integ.xy[elem.dim * ip], integ.xy[elem.dim * ip + 1], integ.xy[elem.dim * ip + 2] };
-        RealT xi[2] = { 0., 0. };
-
-        InvIso( xp, x1, y1, z1, elem.numFaceVert, xi );
-        LinIsoQuadShapeFunc( xi[0], xi[1], a, phiMortarA );
-
-        InvIso( xp, x2, y2, z2, elem.numFaceVert, xi );
-        LinIsoQuadShapeFunc( xi[0], xi[1], a, phiNonmortarA );
-        LinIsoQuadShapeFunc( xi[0], xi[1], b, phiNonmortarB );
-
-        SLIC_ERROR_IF( nonmortarNonmortarId > elem.numWts || mortarNonmortarId > elem.numWts,
-                       "ComputeMortarWts: integer ids for weights exceed elem.numWts" );
-
-        // compute nonmortar/nonmortar mortar weight
-        elem.mortarWts[nonmortarNonmortarId] += integ.wts[ip] * phiNonmortarA * phiNonmortarB;
-
-        // compute mortar/nonmortar mortar weight
-        elem.mortarWts[mortarNonmortarId] += integ.wts[ip] * phiMortarA * phiNonmortarB;
-
-      }  // end loop over integration points
-
-    }  // end loop over nodes on side 2
-
-  }  // end loop over nodes on side 1
-
-}  // end ComputeMortarWeights()
-
 //------------------------------------------------------------------------------
 template <>
-void ComputeNodalGap<SINGLE_MORTAR>( SurfaceContactElem& elem )
+void ComputeNodalGap<SMOOTH_MORTAR>( SurfaceContactElem& elem )
 {
   // check to make sure mortar weights have been computed locally
   // for the SurfaceContactElem object
   SLIC_ERROR_IF( elem.mortarWts == nullptr,
-                 "ComputeNodalGap< SINGLE_MORTAR >: compute local weights on input struct first." );
+                 "ComputeNodalGap< SMOOTH_MORTAR >: compute local weights on input struct first." );
 
   // get mesh instance to store gaps on mesh data object
   auto& nonmortarMesh = *elem.m_mesh2;
@@ -124,10 +45,10 @@ void ComputeNodalGap<SINGLE_MORTAR>( SurfaceContactElem& elem )
 
   // will populate local gaps on nonmortar face on nonmortar mesh data object
   SLIC_ERROR_IF( nonmortarMesh.getNodalFields().m_node_gap.empty(),
-                 "ComputeNodalGap< SINGLE_MORTAR >: allocate gaps on mesh data object." );
+                 "ComputeNodalGap< SMOOTH_MORTAR >: allocate gaps on mesh data object." );
 
   SLIC_ERROR_IF( !nonmortarMesh.hasNodalNormals(),
-                 "ComputeNodalGap< SINGLE_MORTAR >: allocate and compute nodal normals on mesh data object." );
+                 "ComputeNodalGap< SMOOTH_MORTAR >: allocate and compute nodal normals on mesh data object." );
 
   // compute gap contributions associated with face 2 on the SurfaceContactElem
   // (i.e. nonmortar surface)
@@ -169,7 +90,7 @@ void ComputeNodalGap<SINGLE_MORTAR>( SurfaceContactElem& elem )
 }  // end ComputeNodalGap<>()
 
 //------------------------------------------------------------------------------
-void ComputeSingleMortarGaps( CouplingScheme* cs )
+void ComputeSmoothMortarGaps( CouplingScheme* cs )
 {
   MeshManager& meshManager = MeshManager::getInstance();
   MeshData& nonmortarMeshData = meshManager.at( cs->getMeshId2() );
@@ -272,14 +193,14 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
     // compute the mortar weights to be stored on the surface
     // contact element struct. This must be done prior to computing nodal gaps
     elem.overlapArea = plane.m_area;
-    ComputeMortarWeights( elem );
+    // ComputeMortarWeights( elem );
 
     // compute mortar gaps. Note, we have to now use current configuration
     // nodal coordinates on the contact element
     elem.faceCoords1 = &mortarX[0];
     elem.faceCoords2 = &nonmortarX[0];
 
-    ComputeNodalGap<SINGLE_MORTAR>( elem );
+    ComputeNodalGap<SMOOTH_MORTAR>( elem );
 
     // TODO: fix this to register the actual number of active nonmortar gaps.
     // This is not the appropriate data structure to put this information in
@@ -292,24 +213,25 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
 
   }  // end loop over pairs to compute nodal gaps
 
-}  // end ComputeSingleMortarGaps()
+}  // end ComputeSmoothMortarGaps()
 
 //------------------------------------------------------------------------------
 template <>
-int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
+int ApplyNormal<SMOOTH_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
 {
 #ifdef TRIBOL_USE_ENZYME
-  if ( cs->isEnzymeEnabled() ) {
-    return ApplyNormalEnzyme( cs );
-  }
+  printf("enzyme enabled\n");
+  //if ( cs->isEnzymeEnabled() ) {
+  return ApplySmoothNormalEnzyme( cs );
+  //}
 #endif
   ///////////////////////////////////////////////////////
   //                                                   //
-  //            compute single mortar gaps             //
+  //            compute smooth mortar gaps             //
   //                                                   //
   // Note, this routine is guarded against null meshes //
   ///////////////////////////////////////////////////////
-  ComputeSingleMortarGaps( cs );
+  ComputeSmoothMortarGaps( cs );
 
   auto pairs = cs->getInterfacePairs();
   const IndexT numPairs = pairs.size();
@@ -409,7 +331,6 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
 
     // compute mortar weight
     elem.overlapArea = plane.m_area;
-    ComputeMortarWeights( elem );
 
     // TODO fix this. This may not be required.
     // HAVE TO set the number of active constraints. For now set to
@@ -458,7 +379,7 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
     //////////////////////////////////////////////////////////
     if ( lm_options.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
          lm_options.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ) {
-      ComputeSingleMortarJacobian( elem );
+      ComputeSmoothMortarJacobian( elem );
       if ( lm_options.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE ) {
         static_cast<MortarData*>( cs->getMethodData() )
             ->storeElemBlockJ( { elem.faceId1, elem.faceId2, elem.faceId2 }, elem.blockJ );
@@ -481,7 +402,7 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
 
 //------------------------------------------------------------------------------
 template <>
-void ComputeResidualJacobian<SINGLE_MORTAR, PRIMAL>( SurfaceContactElem& TRIBOL_UNUSED_PARAM( elem ) )
+void ComputeResidualJacobian<SMOOTH_MORTAR, PRIMAL>( SurfaceContactElem& TRIBOL_UNUSED_PARAM( elem ) )
 {
   // There is no Jacobian contribution for this block. Be safe and zero out...
   return;
@@ -489,7 +410,7 @@ void ComputeResidualJacobian<SINGLE_MORTAR, PRIMAL>( SurfaceContactElem& TRIBOL_
 
 //------------------------------------------------------------------------------
 template <>
-void ComputeResidualJacobian<SINGLE_MORTAR, DUAL>( SurfaceContactElem& elem )
+void ComputeResidualJacobian<SMOOTH_MORTAR, DUAL>( SurfaceContactElem& elem )
 {
   auto& nonmortarMesh = *elem.m_mesh2;
   IndexT const* const nonmortarConn = nonmortarMesh.getConnectivity().data();
@@ -497,7 +418,7 @@ void ComputeResidualJacobian<SINGLE_MORTAR, DUAL>( SurfaceContactElem& elem )
   // loop over "a" nodes accumulating sums of mortar/nonmortar
   // and nonmortar/nonmortar weights
   for ( int a = 0; a < elem.numFaceVert; ++a ) {
-    // single loop over "b" nodes accumulating sums of
+    // smooth loop over "b" nodes accumulating sums of
     // mortar(a)/nonmortar(b) and nonmortar(a)/nonmortar(b) weights
     for ( int b = 0; b < elem.numFaceVert; ++b ) {
       // get global nonmortar node id to index into nodal normals on
@@ -554,7 +475,7 @@ void ComputeResidualJacobian<SINGLE_MORTAR, DUAL>( SurfaceContactElem& elem )
 
 //------------------------------------------------------------------------------
 template <>
-void ComputeConstraintJacobian<SINGLE_MORTAR, PRIMAL>( SurfaceContactElem& elem )
+void ComputeConstraintJacobian<SMOOTH_MORTAR, PRIMAL>( SurfaceContactElem& elem )
 {
   auto& nonmortarMesh = *elem.m_mesh2;
   IndexT const* const nonmortarConn = nonmortarMesh.getConnectivity().data();
@@ -579,7 +500,7 @@ void ComputeConstraintJacobian<SINGLE_MORTAR, PRIMAL>( SurfaceContactElem& elem 
       nrml_a[2] = nonmortarMesh.getNodalNormals()[2][glbId];
     }
 
-    // single loop over "b" nodes accumulating sums of
+    // smooth loop over "b" nodes accumulating sums of
     // nonmortar(a)/mortar(b) and nonmortar(a)/nonmortar(b) weights
     for ( int b = 0; b < elem.numFaceVert; ++b ) {
       // get nonmortar-mortar and nonmortar-nonmortar mortar weights
@@ -616,7 +537,7 @@ void ComputeConstraintJacobian<SINGLE_MORTAR, PRIMAL>( SurfaceContactElem& elem 
 
 //------------------------------------------------------------------------------
 template <>
-void ComputeConstraintJacobian<SINGLE_MORTAR, DUAL>( SurfaceContactElem& TRIBOL_UNUSED_PARAM( elem ) )
+void ComputeConstraintJacobian<SMOOTH_MORTAR, DUAL>( SurfaceContactElem& TRIBOL_UNUSED_PARAM( elem ) )
 {
   // unless we end up solving the complementarity equation, there is
   // no Jacobian contribtion for this block. Zero out to be safe...
@@ -624,17 +545,17 @@ void ComputeConstraintJacobian<SINGLE_MORTAR, DUAL>( SurfaceContactElem& TRIBOL_
 }
 
 //------------------------------------------------------------------------------
-void ComputeSingleMortarJacobian( SurfaceContactElem& elem )
+void ComputeSmoothMortarJacobian( SurfaceContactElem& elem )
 {
   elem.allocateBlockJ( LAGRANGE_MULTIPLIER );
 
-  ComputeResidualJacobian<SINGLE_MORTAR, PRIMAL>( elem );
+  ComputeResidualJacobian<SMOOTH_MORTAR, PRIMAL>( elem );
 
-  ComputeResidualJacobian<SINGLE_MORTAR, DUAL>( elem );
+  ComputeResidualJacobian<SMOOTH_MORTAR, DUAL>( elem );
 
-  ComputeConstraintJacobian<SINGLE_MORTAR, PRIMAL>( elem );
+  ComputeConstraintJacobian<SMOOTH_MORTAR, PRIMAL>( elem );
 
-  ComputeConstraintJacobian<SINGLE_MORTAR, DUAL>( elem );
+  ComputeConstraintJacobian<SMOOTH_MORTAR, DUAL>( elem );
 
   // Optionally print contact element matrix. Keep commented out here.
   // elem.printBlockJMatrix();
@@ -645,8 +566,9 @@ void ComputeSingleMortarJacobian( SurfaceContactElem& elem )
 #ifdef TRIBOL_USE_ENZYME
 
 //------------------------------------------------------------------------------
-int ApplyNormalEnzyme( CouplingScheme* cs )
+int ApplySmoothNormalEnzyme( CouplingScheme* cs )
 {
+  printf("smoothed enzyme\n");
   exit(1);
   auto planes_view = cs->get3DContactPlanes().view();
   auto& lm_opts = cs->getEnforcementOptions().lm_implicit_options;
@@ -731,7 +653,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
       blockJ( 2, 2 ) = DeviceArray2D<RealT>( n_multipliers, n_multipliers );
       blockJ( 2, 2 ).fill( 0.0 );
 
-      ComputeMortarJacobianEnzyme( x1, n1, p1, f1, blockJ( 0, 0 ).data(), blockJ( 0, 1 ).data(),
+      ComputeSmoothMortarJacobianEnzyme( x1, n1, p1, f1, blockJ( 0, 0 ).data(), blockJ( 0, 1 ).data(),
                                    blockJ_n( 0, 0 ).data(), blockJ( 0, 2 ).data(), g1, blockJ( 2, 0 ).data(),
                                    blockJ( 2, 1 ).data(), blockJ_n( 2, 0 ).data(), size1, x2, f2, blockJ( 1, 0 ).data(),
                                    blockJ( 1, 1 ).data(), blockJ_n( 1, 0 ).data(), blockJ( 1, 2 ).data(), size2 );
@@ -745,7 +667,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
       }
     } else if ( lm_opts.eval_mode == ImplicitEvalMode::MORTAR_GAP ||
                 lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL ) {
-      ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, size1, x2, f2, size2 );
+      ComputeSmoothMortarForceEnzyme( x1, n1, p1, f1, g1, size1, x2, f2, size2 );
     }
     for ( int i{ 0 }; i < size1; ++i ) {
       int node_id = mesh1.getGlobalNodeId( elem1, i );
@@ -766,35 +688,8 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
 }
 
 //------------------------------------------------------------------------------
-void PlaneTo2DCoords( const RealT* x, const RealT* x0, const RealT* e1, const RealT* e2, RealT* xp, RealT* yp,
-                      int num_coords )
-{
-  for ( int i{ 0 }; i < num_coords; ++i ) {
-    xp[i] = 0.0;
-    yp[i] = 0.0;
-
-    for ( int d{ 0 }; d < 3; ++d ) {
-      RealT v_d = x[3 * i + d] - x0[d];
-      xp[i] += v_d * e1[d];
-      yp[i] += v_d * e2[d];
-    }
-  }
-}
-
-//------------------------------------------------------------------------------
-void Coords2DToPlane( const RealT* xp, const RealT* yp, const RealT* x0, const RealT* e1, const RealT* e2, RealT* x,
-                      int num_coords )
-{
-  for ( int i{ 0 }; i < num_coords; ++i ) {
-    for ( int d{ 0 }; d < 3; ++d ) {
-      x[i * 3 + d] = x0[d] + xp[i] * e1[d] + yp[i] * e2[d];
-    }
-  }
-}
-
-//------------------------------------------------------------------------------
-void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* g1, int size1,
-                               const RealT* x2, RealT* f2, int size2 )
+void ComputeSmoothMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* g1, int size1,
+                                     const RealT* x2, RealT* f2, int size2 )
 {
   // convention: elem1 = nonmortar element
   //             elem2 = mortar element
@@ -906,10 +801,10 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
   // clang-format on
   RealT x1t_2d[4];
   RealT y1t_2d[4];
-  PlaneTo2DCoords( x1t, x0, e1, e2, x1t_2d, y1t_2d, size1 );
+  // PlaneTo2DCoords( x1t, x0, e1, e2, x1t_2d, y1t_2d, size1 );
   RealT x2t_2d[4];
   RealT y2t_2d[4];
-  PlaneTo2DCoords( x2t, x0, e1, e2, x2t_2d, y2t_2d, size2 );
+  // PlaneTo2DCoords( x2t, x0, e1, e2, x2t_2d, y2t_2d, size2 );
   ElemReverse( x2t_2d, y2t_2d, size2 );
   RealT xti_2d[8];
   RealT yti_2d[8];
@@ -921,7 +816,7 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
     return;
   }
   RealT xti[8 * 3];
-  Coords2DToPlane( xti_2d, yti_2d, x0, e1, e2, xti, overlap_poly_size );
+  // Coords2DToPlane( xti_2d, yti_2d, x0, e1, e2, xti, overlap_poly_size );
 
   // std::cout << std::setprecision( 15 ) << "Number of vertices: " << overlap_poly_size
   //           << "   Polygon area: " << overlap_poly_area << std::endl;
@@ -1113,16 +1008,16 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
 }
 
 //------------------------------------------------------------------------------
-void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* df1dx1,
-                                  RealT* df1dx2, RealT* df1dn1, RealT* df1dp1, RealT* g1, RealT* dg1dx1, RealT* dg1dx2,
-                                  RealT* dg1dn1, int size1, const RealT* x2, RealT* f2, RealT* df2dx1, RealT* df2dx2,
-                                  RealT* df2dn1, RealT* df2dp1, int size2 )
+void ComputeSmoothMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* df1dx1,
+                                        RealT* df1dx2, RealT* df1dn1, RealT* df1dp1, RealT* g1, RealT* dg1dx1, RealT* dg1dx2,
+                                        RealT* dg1dn1, int size1, const RealT* x2, RealT* f2, RealT* df2dx1, RealT* df2dx2,
+                                        RealT* df2dn1, RealT* df2dp1, int size2 )
 {
   RealT x1_dot[12] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
   for ( int i{ 0 }; i < size1 * 3; ++i ) {
     x1_dot[i] = 1.0;
     // clang-format off
-      __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
+      __enzyme_fwddiff<void>((void*)ComputeSmoothMortarForceEnzyme,
          enzyme_dup, x1, x1_dot,
          enzyme_const, n1,
          enzyme_const, p1,
@@ -1139,7 +1034,7 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
   for ( int i{ 0 }; i < size1 * 3; ++i ) {
     n1_dot[i] = 1.0;
     // clang-format off
-      __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
+      __enzyme_fwddiff<void>((void*)ComputeSmoothMortarForceEnzyme,
          enzyme_const, x1,
          enzyme_dup, n1, n1_dot,
          enzyme_const, p1,
@@ -1156,7 +1051,7 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
   for ( int i{ 0 }; i < size1; ++i ) {
     p1_dot[i] = 1.0;
     // clang-format off
-      __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
+      __enzyme_fwddiff<void>((void*)ComputeSmoothMortarForceEnzyme,
          enzyme_const, x1,
          enzyme_const, n1,
          enzyme_dup, p1, p1_dot,
@@ -1173,7 +1068,7 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
   for ( int i{ 0 }; i < size2 * 3; ++i ) {
     x2_dot[i] = 1.0;
     // clang-format off
-      __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
+      __enzyme_fwddiff<void>((void*)ComputeSmoothMortarForceEnzyme,
          enzyme_const, x1,
          enzyme_const, n1,
          enzyme_const, p1,
@@ -1188,106 +1083,6 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
   }
 }
 #endif
-
-//------------------------------------------------------------------------------
-template <>
-int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs )
-{
-  ////////////////////////////////
-  //                            //
-  // compute single mortar gaps //
-  //                            //
-  ////////////////////////////////
-  ComputeSingleMortarGaps( cs );
-
-  auto pairs = cs->getInterfacePairs();
-  IndexT const numPairs = pairs.size();
-  auto planes = cs->get3DContactPlanes();
-
-  const int dim = cs->spatialDimension();
-
-  auto mortarMesh = cs->getMesh1().getView();
-  auto nonmortarMesh = cs->getMesh2().getView();
-  IndexT const numNodesPerFace = mortarMesh.numberOfNodesPerElement();
-
-  int numRows = cs->getNumTotalNodes();
-  static_cast<MortarData*>( cs->getMethodData() )->allocateMfemSparseMatrix( numRows );
-
-  //////////////////////////////////////////////
-  //                                          //
-  // aggregate data to compute mortar weights //
-  //                                          //
-  //////////////////////////////////////////////
-
-  int cpID = 0;
-  for ( IndexT kp = 0; kp < numPairs; ++kp ) {
-    InterfacePair pair = pairs[kp];
-
-    if ( !pair.m_is_contact_candidate ) {
-      continue;
-    }
-
-    auto& plane = planes[cpID];
-
-    // get pair indices
-    IndexT index1 = pair.m_element_id1;
-    IndexT index2 = pair.m_element_id2;
-
-    // get projected face coordinates
-    // stores projected coordinates in row-major format
-    ArrayT<RealT, 2> mortarX_bar( numNodesPerFace, dim );
-    ArrayT<RealT, 2> nonmortarX_bar( numNodesPerFace, dim );
-    // stores projected coordinates in column-major format
-    ArrayT<RealT, 2> mortarX_barT( dim, numNodesPerFace );
-    ArrayT<RealT, 2> nonmortarX_barT( dim, numNodesPerFace );
-    ProjectFaceNodesToPlane( mortarMesh, index1, plane.m_nX, plane.m_nY, plane.m_nZ, plane.m_cX, plane.m_cY, plane.m_cZ,
-                             &mortarX_barT( 0, 0 ), &mortarX_barT( 1, 0 ), &mortarX_barT( 2, 0 ) );
-    ProjectFaceNodesToPlane( nonmortarMesh, index2, plane.m_nX, plane.m_nY, plane.m_nZ, plane.m_cX, plane.m_cY,
-                             plane.m_cZ, &nonmortarX_barT( 0, 0 ), &nonmortarX_barT( 1, 0 ), &nonmortarX_barT( 2, 0 ) );
-    // populate row-major projected coordinates for the purpose of sending to
-    // the SurfaceContactElem struct
-    algorithm::transpose<MemorySpace::Dynamic>( mortarX_barT, mortarX_bar );
-    algorithm::transpose<MemorySpace::Dynamic>( nonmortarX_barT, nonmortarX_bar );
-
-    // construct array of polygon overlap vertex coordinates
-    ArrayT<RealT, 2> overlapX( plane.m_numPolyVert, dim );
-    for ( IndexT i{ 0 }; i < plane.m_numPolyVert; ++i ) {
-      overlapX( i, 0 ) = plane.m_polyX[i];
-      overlapX( i, 1 ) = plane.m_polyY[i];
-      overlapX( i, 2 ) = plane.m_polyZ[i];
-    }
-
-    // instantiate contact surface element for purposes of computing
-    // mortar weights. Note, this uses projected face coords
-    SurfaceContactElem elem( dim, mortarX_bar.data(), nonmortarX_bar.data(), overlapX.data(), numNodesPerFace,
-                             plane.m_numPolyVert, &mortarMesh, &nonmortarMesh, index1, index2 );
-
-    // compute the mortar weights to be stored on the surface
-    // contact element struct. This must be done prior to computing nodal gaps
-    elem.overlapArea = plane.m_area;
-
-    ComputeMortarWeights( elem );
-
-    elem.numActiveGaps = numNodesPerFace;
-
-    // assemble mortar weight contributions sum_alpha int_alpha phi_a phi_b da.
-    // Note: active nonmortar nodes (i.e. active gaps) are checked in this routine.
-    const EnforcementOptions& enforcement_options = const_cast<EnforcementOptions&>( cs->getEnforcementOptions() );
-    const SparseMode sparse_mode = enforcement_options.lm_implicit_options.sparse_mode;
-    if ( sparse_mode == SparseMode::MFEM_ELEMENT_DENSE ) {
-      SLIC_WARNING( "GetMethodData<MORTAR_WEIGHTS>() MFEM_ELEMENT_DENSE "
-                    << "Unassembled element dense matrix output not implemented." );
-      return 1;
-    }
-    static_cast<MortarData*>( cs->getMethodData() )->assembleMortarWts( elem, sparse_mode );
-
-    ++cpID;
-
-  }  // end loop over pairs to assemble mortar weights
-
-  return 0;
-
-}  // end GetMethodData< MORTAR_WEIGHTS >()
 
 //------------------------------------------------------------------------------
 
