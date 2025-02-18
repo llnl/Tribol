@@ -786,13 +786,13 @@ void Coords2DToPlane( const RealT* xp, const RealT* yp, const RealT* x0, const R
 {
   for ( int i{ 0 }; i < num_coords; ++i ) {
     for ( int d{ 0 }; d < 3; ++d ) {
-      x[i * 3 + d] = x0[d] + xp[i] * e1[d] + yp[i] * e2[d];
+      x[d * num_coords + i] = x0[d] + xp[i] * e1[d] + yp[i] * e2[d];
     }
   }
 }
 
 //------------------------------------------------------------------------------
-void TriToQuadIso( const RealT* xt, const RealT* xq, const RealT* yq, RealT* xiq )
+void QuadInvIso( const RealT* xt, const RealT* xq, const RealT* yq, RealT* xiq )
 {
   constexpr int max_iter = 15;
   // NOTE: this probably needs to be set based on precision and size of the elements
@@ -951,6 +951,11 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
   if ( overlap_poly_area <= 0.0 ) {
     return;
   }
+  // std::cout << std::setprecision( 15 ) << "Number of vertices: " << overlap_poly_size
+  //           << "   Polygon area: " << overlap_poly_area << std::endl;
+  // for ( int i{ 0 }; i < overlap_poly_size; ++i ) {
+  //   std::cout << "  Coord: (" << xti_2d[i] << ", " << yti_2d[i] << ")" << std::endl;
+  // }
 
   // Integrate mortar matrix over the polygon
   // 1. get base triangle integration rule
@@ -985,19 +990,18 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
 
   // 2. build the sub-triangles
   // vert0 = centroid of overlap polygon; this will be used as the first vertex of the sub-triangles
-  RealT tri_x[3];
-  RealT tri_y[3];
-  PolyCentroid( xti_2d, yti_2d, overlap_poly_size, tri_x[0], tri_y[0] );
+  RealT tri_0[2];
+  PolyCentroid( xti_2d, yti_2d, overlap_poly_size, tri_0[0], tri_0[1] );
+  // std::cout << std::setprecision( 15 ) << "Poly centroid = (" << tri_0[0] << ", " << tri_0[1] << ")" << std::endl;
   for ( int i{ 0 }; i < overlap_poly_size; ++i ) {
     int idx1 = i;
     int idx2 = ( i + 1 ) % overlap_poly_size;
-    tri_x[1] = xti_2d[idx1];
-    tri_y[1] = yti_2d[idx1];
-    tri_x[2] = xti_2d[idx2];
-    tri_y[2] = yti_2d[idx2];
-    RealT side1[2] = { tri_x[2] - tri_x[1], tri_y[2] - tri_y[1] };
-    RealT side2[2] = { tri_x[0] - tri_x[1], tri_y[0] - tri_y[1] };
+    RealT tri_1[2] = { xti_2d[idx1], yti_2d[idx1] };
+    RealT tri_2[2] = { xti_2d[idx2], yti_2d[idx2] };
+    RealT side1[2] = { tri_2[0] - tri_1[0], tri_2[1] - tri_1[1] };
+    RealT side2[2] = { tri_0[0] - tri_1[0], tri_0[1] - tri_1[1] };
     RealT area = 0.5 * ( side1[0] * side2[1] - side1[1] * side2[0] );
+    // std::cout << "Triangle area = " << area << std::endl;
 
     // the sub-triangle is inverted.  likely something went wrong with CG.  don't try to integrate over it.
     if ( area <= 0.0 ) {
@@ -1006,21 +1010,28 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
 
     for ( int j{ 0 }; j < 6; ++j ) {
       RealT tri_xi[2] = { base_rule_2d[j * 2 + 0], base_rule_2d[j * 2 + 1] };
-      RealT tri_phi[3];
+      RealT tri_phi[3] = { 0.0, 0.0, 0.0 };
       LinIsoTriShapeFunc( tri_xi, tri_phi );
-      RealT tri_quad_pt[2] = { 0.0, 0.0 };
-      for ( int k{ 0 }; k < 3; ++k ) {
-        tri_quad_pt[0] += tri_phi[k] * tri_x[k];
-        tri_quad_pt[1] += tri_phi[k] * tri_y[k];
-      }
+      RealT tri_quad_pt[2] = { tri_phi[0] * tri_0[0] + tri_phi[1] * tri_1[0] + tri_phi[2] * tri_2[0],
+                               tri_phi[0] * tri_0[1] + tri_phi[1] * tri_1[1] + tri_phi[2] * tri_2[1] };
 
       // 3. map sub-triangle coordinate to nonmortar and mortar coordinates
+      // NOTE: we want to do this in 2d, but there are finite differencing errors when we do.  The commented out version
+      // below does it in 2d.
+      RealT tri_quad_pt_3d[3] = { 0.0, 0.0, 0.0 };
+      Coords2DToPlane( tri_quad_pt, tri_quad_pt + 1, x0, e1, e2, tri_quad_pt_3d, 1 );
       RealT xi1[2] = { 0.0, 0.0 };
-      // NOTE: this limits routine to quads
-      TriToQuadIso( tri_quad_pt, x1t_2d, y1t_2d, xi1 );
+      InvIso( tri_quad_pt_3d, x1t, x1t + size1, x1t + 2 * size1, size1, xi1 );
       RealT xi2[2] = { 0.0, 0.0 };
-      // NOTE: this limits routine to quads
-      TriToQuadIso( tri_quad_pt, x2t_2d, y2t_2d, xi2 );
+      InvIso( tri_quad_pt_3d, x2t, x2t + size2, x2t + 2 * size2, size2, xi2 );
+      // 2D version begin...
+      // RealT xi1[2] = { 0.0, 0.0 };
+      // // NOTE: this limits routine to quads
+      // QuadInvIso( tri_quad_pt, x1t_2d, y1t_2d, xi1 );
+      // RealT xi2[2] = { 0.0, 0.0 };
+      // // NOTE: this limits routine to quads
+      // QuadInvIso( tri_quad_pt, x2t_2d, y2t_2d, xi2 );
+      // 2D version end...
 
       // if ( i == 0 ) {
       //   std::cout << "xi1_new = (" << xi1[0] << ", " << xi1[1] << ")" << std::endl;

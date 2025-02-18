@@ -484,6 +484,150 @@ TEST_F( EnzymeJacobianTest, NonaffineRotated45DegMortarElement )
   FDCheck( x1, x2, n1, p1 );
 }
 
+TEST_F( EnzymeJacobianTest, NonaffineOutOfPlaneNonmortarElement )
+{
+  // clang-format off
+  // rotate 45 degrees
+  double x1[12] = { 0.0,  1.1,  1.0,  0.0,
+                    0.0,  0.0,  1.1,  1.0,
+                    0.0,  0.0,  0.01, 0.01 };
+  // clang-format on
+  double cos45 = std::cos( redecomp::pi / 4.0 );
+  double sin45 = std::sin( redecomp::pi / 4.0 );
+  for ( int i{ 0 }; i < 4; ++i ) {
+    double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
+    double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
+    x1[i] = x_new;
+    x1[i + 4] = y_new;
+  }
+  // shift to center the element near (0.5, 0.5)
+  double x_shift = 0.5 / std::sqrt( 2.0 ) + 0.1;
+  double y_shift = -0.5 / std::sqrt( 2.0 ) + 0.1;
+  for ( int i{ 0 }; i < 4; ++i ) {
+    x1[i] += x_shift;
+    x1[i + 4] += y_shift;
+  }
+  // clang-format off
+  double x2[12] = { 0.0,   0.0,   1.0,   1.0,
+                    0.0,   1.0,   1.0,   0.0,
+                    -0.01, -0.01, -0.01, -0.01 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+  // clang-format on
+
+  FDCheck( x1, x2, n1, p1 );
+}
+
+TEST_F( EnzymeJacobianTest, NonaffineWarpedNonmortarElement )
+{
+  // clang-format off
+  // rotate 45 degrees
+  double x1[12] = { 0.0,  1.1,   1.0,  0.0,
+                    0.0,  0.0,   1.1,  1.0,
+                    0.0,  -0.01, 0.01, 0.02 };
+  // clang-format on
+  double cos45 = std::cos( redecomp::pi / 4.0 );
+  double sin45 = std::sin( redecomp::pi / 4.0 );
+  for ( int i{ 0 }; i < 4; ++i ) {
+    double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
+    double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
+    x1[i] = x_new;
+    x1[i + 4] = y_new;
+  }
+  // shift to center the element near (0.5, 0.5)
+  double x_shift = 0.5 / std::sqrt( 2.0 ) + 0.1;
+  double y_shift = -0.5 / std::sqrt( 2.0 ) + 0.1;
+  for ( int i{ 0 }; i < 4; ++i ) {
+    x1[i] += x_shift;
+    x1[i + 4] += y_shift;
+  }
+  // clang-format off
+  double x2[12] = { 0.0,   0.0,   1.0,   1.0,
+                    0.0,   1.0,   1.0,   0.0,
+                    -0.01, -0.01, -0.01, -0.01 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+  // clang-format on
+
+  FDCheck( x1, x2, n1, p1 );
+}
+
+TEST_F( EnzymeJacobianTest, NonaffineOutOfPlaneMortarElement )
+{
+  // clang-format off
+  // rotate 45 degrees
+  double x1[12] = { 0.0,  1.1,  1.0,  0.0,
+                    0.0,  0.0,  1.1,  1.0,
+                    0.01, 0.01, 0.01, 0.01 };
+  // clang-format on
+  double cos45 = std::cos( redecomp::pi / 4.0 );
+  double sin45 = std::sin( redecomp::pi / 4.0 );
+  for ( int i{ 0 }; i < 4; ++i ) {
+    double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
+    double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
+    x1[i] = x_new;
+    x1[i + 4] = y_new;
+  }
+  // shift to center the element near (0.5, 0.5)
+  double x_shift = 0.5 / std::sqrt( 2.0 ) + 0.1;
+  double y_shift = -0.5 / std::sqrt( 2.0 ) + 0.1;
+  for ( int i{ 0 }; i < 4; ++i ) {
+    x1[i] += x_shift;
+    x1[i + 4] += y_shift;
+  }
+  // clang-format off
+  double x2[12] = { 0.0,   0.0,   1.0, 1.0,
+                    0.0,   1.0,   1.0, 0.0,
+                    -0.01, -0.01, 0.0, 0.0 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+  // clang-format on
+
+  FDCheck( x1, x2, n1, p1 );
+}
+
+TEST_F( EnzymeJacobianTest, NonaffineWarpedMortarElement )
+{
+  // clang-format off
+  // rotate 45 degrees
+  double x1[12] = { 0.0,  1.1,  1.0,  0.0,
+                    0.0,  0.0,  1.1,  1.0,
+                    0.01, 0.01, 0.01, 0.01 };
+  // clang-format on
+  double cos45 = std::cos( redecomp::pi / 4.0 );
+  double sin45 = std::sin( redecomp::pi / 4.0 );
+  for ( int i{ 0 }; i < 4; ++i ) {
+    double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
+    double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
+    x1[i] = x_new;
+    x1[i + 4] = y_new;
+  }
+  // shift to center the element near (0.5, 0.5)
+  double x_shift = 0.5 / std::sqrt( 2.0 ) + 0.1;
+  double y_shift = -0.5 / std::sqrt( 2.0 ) + 0.1;
+  for ( int i{ 0 }; i < 4; ++i ) {
+    x1[i] += x_shift;
+    x1[i + 4] += y_shift;
+  }
+  // clang-format off
+  double x2[12] = { 0.0,   0.0,   1.0, 1.0,
+                    0.0,   1.0,   1.0, 0.0,
+                    0.01,  -0.01, 0.0, -0.01 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+  // clang-format on
+
+  FDCheck( x1, x2, n1, p1 );
+}
+
 TEST_F( EnzymeJacobianTest, NoOverlap )
 {
   // clang-format off
