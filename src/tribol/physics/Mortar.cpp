@@ -951,11 +951,6 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
   if ( overlap_poly_area <= 0.0 ) {
     return;
   }
-  // std::cout << std::setprecision( 15 ) << "Number of vertices: " << overlap_poly_size
-  //           << "   Polygon area: " << overlap_poly_area << std::endl;
-  // for ( int i{ 0 }; i < overlap_poly_size; ++i ) {
-  //   std::cout << "  Coord: (" << xti_2d[i] << ", " << yti_2d[i] << ")" << std::endl;
-  // }
 
   // Integrate mortar matrix over the polygon
   // 1. get base triangle integration rule
@@ -992,7 +987,6 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
   // vert0 = centroid of overlap polygon; this will be used as the first vertex of the sub-triangles
   RealT tri_0[2];
   PolyCentroid( xti_2d, yti_2d, overlap_poly_size, tri_0[0], tri_0[1] );
-  // std::cout << std::setprecision( 15 ) << "Poly centroid = (" << tri_0[0] << ", " << tri_0[1] << ")" << std::endl;
   for ( int i{ 0 }; i < overlap_poly_size; ++i ) {
     int idx1 = i;
     int idx2 = ( i + 1 ) % overlap_poly_size;
@@ -1001,7 +995,6 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
     RealT side1[2] = { tri_2[0] - tri_1[0], tri_2[1] - tri_1[1] };
     RealT side2[2] = { tri_0[0] - tri_1[0], tri_0[1] - tri_1[1] };
     RealT area = 0.5 * ( side1[0] * side2[1] - side1[1] * side2[0] );
-    // std::cout << "Triangle area = " << area << std::endl;
 
     // the sub-triangle is inverted.  likely something went wrong with CG.  don't try to integrate over it.
     if ( area <= 0.0 ) {
@@ -1016,8 +1009,8 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
                                tri_phi[0] * tri_0[1] + tri_phi[1] * tri_1[1] + tri_phi[2] * tri_2[1] };
 
       // 3. map sub-triangle coordinate to nonmortar and mortar coordinates
-      // NOTE: we want to do this in 2d, but there are finite differencing errors when we do.  The commented out version
-      // below does it in 2d.
+      // NOTE: we ideally want to do this in 2d, but there are finite differencing errors when we do.  The commented out
+      // version below does it in 2d.
       RealT tri_quad_pt_3d[3] = { 0.0, 0.0, 0.0 };
       Coords2DToPlane( tri_quad_pt, tri_quad_pt + 1, x0, e1, e2, tri_quad_pt_3d, 1 );
       RealT xi1[2] = { 0.0, 0.0 };
@@ -1033,192 +1026,59 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       // QuadInvIso( tri_quad_pt, x2t_2d, y2t_2d, xi2 );
       // 2D version end...
 
-      // if ( i == 0 ) {
-      //   std::cout << "xi1_new = (" << xi1[0] << ", " << xi1[1] << ")" << std::endl;
-      //   std::cout << "xi2_new = (" << xi2[0] << ", " << xi2[1] << ")" << std::endl;
-      // }
-
       RealT quad_wt = base_weights[j] * area;
 
       // 4. Evaluate mortar matrix (nonmortar/nonmortar contribs)
-      RealT phi1[4];
-      // NOTE: this limits this routine to quads
-      LinIsoQuadShapeFunc( xi1, phi1 );
+      // NOTE: local node numbering appears to be different using InvIso vs. QuadInvIso.  Since we are using InvIso, use
+      // the node numbering that appears to be consistent with that routine.  Simplified version with consistent node
+      // numbering with QuadInvIso is commented out below.
       for ( int k{ 0 }; k < size1; ++k ) {
+        RealT phiA;
+        // NOTE: this limits this routine to quads
+        LinIsoQuadShapeFunc( xi1[0], xi1[1], k, phiA );
         for ( int l{ 0 }; l < size1; ++l ) {
-          mortar_mat1[k * size1 + l] += phi1[k] * phi1[l] * quad_wt;
+          RealT phiB;
+          // NOTE: this limits this routine to quads
+          LinIsoQuadShapeFunc( xi1[0], xi1[1], l, phiB );
+          mortar_mat1[k * size1 + l] += phiA * phiB * quad_wt;
         }
       }
 
       // 5. Evaluate mortar matrix (nonmortar/mortar contribs)
-      RealT phi2[4];
-      // NOTE: this limits this routine to quads
-      LinIsoQuadShapeFunc( xi2, phi2 );
       for ( int k{ 0 }; k < size1; ++k ) {
+        RealT phiA;
+        // NOTE: this limits this routine to quads
+        LinIsoQuadShapeFunc( xi1[0], xi1[1], k, phiA );
         for ( int l{ 0 }; l < size2; ++l ) {
-          mortar_mat2[k * size2 + l] += phi1[k] * phi2[l] * quad_wt;
+          RealT phiB;
+          // NOTE: this limits this routine to quads
+          LinIsoQuadShapeFunc( xi2[0], xi2[1], l, phiB );
+          mortar_mat2[k * size2 + l] += phiA * phiB * quad_wt;
         }
       }
+
+      // Updated numbering version begin...
+      // RealT phi1[4];
+      // // NOTE: this limits this routine to quads
+      // LinIsoQuadShapeFunc( xi1, phi1 );
+      // for ( int k{ 0 }; k < size1; ++k ) {
+      //   for ( int l{ 0 }; l < size1; ++l ) {
+      //     mortar_mat1[k * size1 + l] += phi1[k] * phi1[l] * quad_wt;
+      //   }
+      // }
+
+      // // 5. Evaluate mortar matrix (nonmortar/mortar contribs)
+      // RealT phi2[4];
+      // // NOTE: this limits this routine to quads
+      // LinIsoQuadShapeFunc( xi2, phi2 );
+      // for ( int k{ 0 }; k < size1; ++k ) {
+      //   for ( int l{ 0 }; l < size2; ++l ) {
+      //     mortar_mat2[k * size2 + l] += phi1[k] * phi2[l] * quad_wt;
+      //   }
+      // }
+      // Updated numbering version end...
     }
   }
-
-  // std::cout << "mortar mat 11 = " << std::endl;
-  // for ( int i{ 0 }; i < size1; ++i ) {
-  //   std::cout << "  ";
-  //   for ( int j{ 0 }; j < size1; ++j ) {
-  //     std::cout << std::setprecision( 18 ) << mortar_mat1[j * size1 + i] << "  ";
-  //   }
-  //   std::cout << std::endl;
-  // }
-
-  // std::cout << "mortar mat 12 = " << std::endl;
-  // for ( int i{ 0 }; i < size1; ++i ) {
-  //   std::cout << "  ";
-  //   for ( int j{ 0 }; j < size2; ++j ) {
-  //     std::cout << std::setprecision( 18 ) << mortar_mat2[j * size1 + i] << "  ";
-  //   }
-  //   std::cout << std::endl;
-  // }
-
-  // for ( int i{ 0 }; i < mortar_mat1_size; ++i ) {
-  //   mortar_mat1[i] = 0.0;
-  // }
-  // for ( int i{ 0 }; i < mortar_mat2_size; ++i ) {
-  //   mortar_mat2[i] = 0.0;
-  // }
-
-  // // old way
-  // RealT xti[8 * 3];
-  // Coords2DToPlane( xti_2d, yti_2d, x0, e1, e2, xti, overlap_poly_size );
-
-  // // std::cout << std::setprecision( 15 ) << "Number of vertices: " << overlap_poly_size
-  // //           << "   Polygon area: " << overlap_poly_area << std::endl;
-  // // for ( int i{ 0 }; i < overlap_poly_size; ++i ) {
-  // //   std::cout << "  Coord: (" << xti_2d[i] << ", " << yti_2d[i] << ")" << std::endl;
-  // // switch (vert_type[i]) {
-  // //   case OverlapVertexType::A:
-  // //     std::cout << "Vertex A" << std::endl;
-  // //     break;
-  // //   case OverlapVertexType::B:
-  // //     std::cout << "Vertex B" << std::endl;
-  // //     break;
-  // //   case OverlapVertexType::EdgeEdge:
-  // //     std::cout << "Edge/Edge" << std::endl;
-  // //     break;
-  // // }
-  // // }
-
-  // // some Tribol calls require x, y, z component vectors of projected coords
-  // RealT x1t_comp[4];
-  // RealT y1t_comp[4];
-  // RealT z1t_comp[4];
-  // for ( int i{ 0 }; i < size1; ++i ) {
-  //   x1t_comp[i] = x1t[0 * size1 + i];
-  //   y1t_comp[i] = x1t[1 * size1 + i];
-  //   z1t_comp[i] = x1t[2 * size1 + i];
-  // }
-  // RealT x2t_comp[4];
-  // RealT y2t_comp[4];
-  // RealT z2t_comp[4];
-  // for ( int i{ 0 }; i < size2; ++i ) {
-  //   x2t_comp[i] = x2t[0 * size2 + i];
-  //   y2t_comp[i] = x2t[1 * size2 + i];
-  //   z2t_comp[i] = x2t[2 * size2 + i];
-  // }
-
-  // // 2. find centroid of the polygon
-  // RealT xci[3];
-  // PolyAreaCentroid( xti, 3, overlap_poly_size, xci[0], xci[1], xci[2] );
-
-  // // 3. build sub-triangles
-  // for ( int i{ 0 }; i < overlap_poly_size; ++i ) {
-  //   int idx1 = i;
-  //   int idx2 = ( i + 1 ) % overlap_poly_size;
-  //   RealT vert1[3] = { xti[idx1 * 3 + 0], xti[idx1 * 3 + 1], xti[idx1 * 3 + 2] };
-  //   RealT vert2[3] = { xti[idx2 * 3 + 0], xti[idx2 * 3 + 1], xti[idx2 * 3 + 2] };
-  //   RealT side1[3] = { vert2[0] - vert1[0], vert2[1] - vert1[1], vert2[2] - vert1[2] };
-  //   RealT side2[3] = { xci[0] - vert1[0], xci[1] - vert1[1], xci[2] - vert1[2] };
-  //   // clang-format off
-  //     RealT area_vec[3] = {
-  //        side1[1]*side2[2] - side1[2]*side2[1],
-  //        side1[2]*side2[0] - side1[0]*side2[2],
-  //        side1[0]*side2[1] - side1[1]*side2[0]
-  //     };
-  //   // clang-format on
-  //   RealT area = 0.5 * std::sqrt( area_vec[0] * area_vec[0] + area_vec[1] * area_vec[1] + area_vec[2] * area_vec[2]
-  //   );
-
-  //   // 4. map integration points and weights to sub-triangle
-  //   for ( int j{ 0 }; j < 6; ++j ) {
-  //     // obtain shape function evaluations at (xi,eta)
-  //     RealT xi[2] = { base_rule_2d[j * 2 + 0], base_rule_2d[j * 2 + 1] };
-  //     RealT phi[3] = { 0., 0., 0. };
-  //     LinIsoTriShapeFunc( xi[0], xi[1], 0, phi[0] );
-  //     LinIsoTriShapeFunc( xi[0], xi[1], 1, phi[1] );
-  //     LinIsoTriShapeFunc( xi[0], xi[1], 2, phi[2] );
-
-  //     RealT quad_pt[3];
-  //     for ( int d{ 0 }; d < 3; ++d ) {
-  //       quad_pt[d] = vert1[d] * phi[0] + vert2[d] * phi[1] + xci[d] * phi[2];
-  //     }
-  //     RealT quad_wt = base_weights[j] * area;
-
-  //     // 5. map sub-triangle point to nonmortar and mortar surfaces
-  //     RealT xi1[2];
-  //     InvIso( quad_pt, x1t_comp, y1t_comp, z1t_comp, size1, xi1 );
-  //     RealT xi2[2];
-  //     InvIso( quad_pt, x2t_comp, y2t_comp, z2t_comp, size2, xi2 );
-
-  //     if ( i == 0 ) {
-  //       std::cout << "xi1_old = (" << xi1[0] << ", " << xi1[1] << ")" << std::endl;
-  //       std::cout << "xi2_old = (" << xi2[0] << ", " << xi2[1] << ")" << std::endl;
-  //     }
-
-  //     // 6. Evaluate mortar matrix (nonmortar/nonmortar contribs)
-  //     for ( int k{ 0 }; k < size1; ++k ) {
-  //       RealT phiA;
-  //       // NOTE: this limits this routine to quads
-  //       LinIsoQuadShapeFunc( xi1[0], xi1[1], k, phiA );
-  //       for ( int l{ 0 }; l < size1; ++l ) {
-  //         RealT phiB;
-  //         // NOTE: this limits this routine to quads
-  //         LinIsoQuadShapeFunc( xi1[0], xi1[1], l, phiB );
-  //         mortar_mat1[k * size1 + l] += phiA * phiB * quad_wt;
-  //       }
-  //     }
-
-  //     // 7. Evaluate mortar matrix (nonmortar/mortar contribs)
-  //     for ( int k{ 0 }; k < size1; ++k ) {
-  //       RealT phiA;
-  //       // NOTE: this limits this routine to quads
-  //       LinIsoQuadShapeFunc( xi1[0], xi1[1], k, phiA );
-  //       for ( int l{ 0 }; l < size2; ++l ) {
-  //         RealT phiB;
-  //         // NOTE: this limits this routine to quads
-  //         LinIsoQuadShapeFunc( xi2[0], xi2[1], l, phiB );
-  //         mortar_mat2[k * size2 + l] += phiA * phiB * quad_wt;
-  //       }
-  //     }
-  //   }
-  // }
-
-  // std::cout << "mortar mat 11 = " << std::endl;
-  // for ( int i{ 0 }; i < size1; ++i ) {
-  //   std::cout << "  ";
-  //   for ( int j{ 0 }; j < size1; ++j ) {
-  //     std::cout << std::setprecision( 18 ) << mortar_mat1[j * size1 + i] << "  ";
-  //   }
-  //   std::cout << std::endl;
-  // }
-
-  // std::cout << "mortar mat 12 = " << std::endl;
-  // for ( int i{ 0 }; i < size1; ++i ) {
-  //   std::cout << "  ";
-  //   for ( int j{ 0 }; j < size2; ++j ) {
-  //     std::cout << std::setprecision( 18 ) << mortar_mat2[j * size1 + i] << "  ";
-  //   }
-  //   std::cout << std::endl;
-  // }
 
   // compute gaps
   for ( int i{ 0 }; i < size1; ++i ) {
