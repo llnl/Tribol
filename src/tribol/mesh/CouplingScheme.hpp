@@ -671,7 +671,7 @@ class CouplingScheme {
    *
    * @param nodalNormal NodalNormal object
    */
-  void createNodalNormal( std::unique_ptr<NodalNormal>&& nodalNormal ) { m_nodalNormal = std::move( nodalNormal ); }
+  void initNodalNormal( std::unique_ptr<NodalNormal>&& nodalNormal ) { m_nodalNormal = std::move( nodalNormal ); }
 
   /**
    * @brief Get pointer to the NodalNormal object

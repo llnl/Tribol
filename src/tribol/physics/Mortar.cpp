@@ -665,7 +665,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
   }
   // convention: 1 = nonmortar
   //             2 = mortar
-  cs->createNodalNormal( std::make_unique<VertexAvgNormal>( compute_jacobian ) );
+  cs->initNodalNormal( std::make_unique<VertexAvgNormal>( compute_jacobian ) );
   cs->getNodalNormal()->Compute( cs->getMesh2() );
   auto mesh1 = cs->getMesh2().getView();  // switched from tribol convention
   auto mesh2 = cs->getMesh1().getView();  // switched from tribol convention
