@@ -239,7 +239,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
                 rocm_root = "{0}/..".format(rocm_root)
             entries.append(cmake_cache_path("ROCM_PATH", rocm_root))
 
-            hip_link_flags = ""
+            hip_link_flags = "-L{0}/lib -Wl,-rpath,{0}/lib ".format(rocm_root)
 
             # Recommended MPI flags
             hip_link_flags += "-lxpmem "
@@ -257,8 +257,6 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
             # These flags are already part of the wrapped compilers on TOSS4 systems
             if "+fortran" in spec and self.is_fortran_compiler("amdflang"):
                 hip_link_flags += "-Wl,--disable-new-dtags "
-
-                hip_link_flags += "-L{0}/lib -Wl,-rpath,{0}/lib ".format(rocm_root)
                 hip_link_flags += "-lflang -lflangrti -lompstub "
 
             # Remove extra link library for crayftn
@@ -386,7 +384,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
 
         # optional tpls
         for dep in ('raja', 'umpire'):
-            if spec.satisfies('^{0}'.format(dep)):
+            if spec.satisfies('+{0}'.format(dep)):
                 dep_dir = get_spec_path(spec, dep, path_replacements)
                 entries.append(cmake_cache_path('%s_DIR' % dep.upper(),
                                                 dep_dir))
