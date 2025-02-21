@@ -13,8 +13,7 @@ namespace tribol {
 
 std::function<bool( const RealT*, const RealT*, RealT*, int, RealT& )> PalletAvgNormal::NormalFunction()
 {
-  return TRIBOL_HOST_DEVICE[]( const RealT* x, const RealT* c, RealT* n, int num_nodes, RealT& area )->bool
-  {
+  return [] TRIBOL_HOST_DEVICE( const RealT* x, const RealT* c, RealT* n, int num_nodes, RealT& area ) -> bool {
     bool face_ok = true;
     area = 0.0;
     for ( int i{ 0 }; i < num_nodes; ++i ) {
@@ -66,8 +65,7 @@ std::function<bool( const RealT*, const RealT*, RealT*, int, RealT& )> PalletAvg
 
 std::function<bool( const RealT*, const RealT*, RealT*, int, RealT& )> QuadCentroidNormal::NormalFunction()
 {
-  return TRIBOL_HOST_DEVICE[]( const RealT* x, const RealT* c, RealT* n, int num_nodes, RealT& area )->bool
-  {
+  return [] TRIBOL_HOST_DEVICE( const RealT* x, const RealT* c, RealT* n, int num_nodes, RealT& area ) -> bool {
     area = 0.0;
     // get vector n (normal of elem1) = de1 x de2, where de1 and de2 are tangent vectors evaluated at the
     // element centroid
