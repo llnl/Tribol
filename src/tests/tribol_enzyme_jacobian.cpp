@@ -86,12 +86,37 @@ class EnzymeJacobianTest : public testing::Test {
 
     double df1dx1_fd[12 * 12];
     double df2dx1_fd[12 * 12];
+    double df1dx2_fd[12 * 12];
+    double df2dx2_fd[12 * 12];
+    double df1dn1_fd[12 * 12];
+    double df2dn1_fd[12 * 12];
+    double dg1dx1_fd[12 * 4];
+    double dg1dx2_fd[12 * 4];
+    double dg1dn1_fd[12 * 4];
     for ( int i{ 0 }; i < 12; ++i ) {
       for ( int j{ 0 }; j < 12; ++j ) {
         df1dx1_fd[i * 12 + j] = -f1[j];
         df2dx1_fd[i * 12 + j] = -f2[j];
+        df1dx2_fd[i * 12 + j] = -f1[j];
+        df2dx2_fd[i * 12 + j] = -f2[j];
+        df1dn1_fd[i * 12 + j] = -f1[j];
+        df2dn1_fd[i * 12 + j] = -f2[j];
+      }
+      for ( int j{ 0 }; j < 4; ++j ) {
+        dg1dx1_fd[i * 4 + j] = -g1[j];
+        dg1dx2_fd[i * 4 + j] = -g1[j];
+        dg1dn1_fd[i * 4 + j] = -g1[j];
       }
     }
+    double df1dp1_fd[4 * 12];
+    double df2dp1_fd[4 * 12];
+    for ( int i{ 0 }; i < 4; ++i ) {
+      for ( int j{ 0 }; j < 12; ++j ) {
+        df1dp1_fd[i * 12 + j] = -f1[j];
+        df2dp1_fd[i * 12 + j] = -f2[j];
+      }
+    }
+    // wiggle x1
     for ( int j{ 0 }; j < 12; ++j ) {
       auto shift1 = delta_;
       if ( x1_stencil ) {
@@ -102,7 +127,6 @@ class EnzymeJacobianTest : public testing::Test {
         f1[i] = 0.0;
         f2[i] = 0.0;
       }
-      double g1[4];
       for ( int i{ 0 }; i < 4; ++i ) {
         g1[i] = 0.0;
       }
@@ -113,16 +137,13 @@ class EnzymeJacobianTest : public testing::Test {
         df2dx1_fd[j * 12 + i] += f2[i];
         df2dx1_fd[j * 12 + i] /= shift1;
       }
+      for ( int i{ 0 }; i < 4; ++i ) {
+        dg1dx1_fd[j * 4 + i] += g1[i];
+        dg1dx1_fd[j * 4 + i] /= shift1;
+      }
       x1[j] -= shift1;
     }
-    double df1dx2_fd[12 * 12];
-    double df2dx2_fd[12 * 12];
-    for ( int i{ 0 }; i < 12; ++i ) {
-      for ( int j{ 0 }; j < 12; ++j ) {
-        df1dx2_fd[i * 12 + j] = -f1[j];
-        df2dx2_fd[i * 12 + j] = -f2[j];
-      }
-    }
+    // wiggle x2
     for ( int j{ 0 }; j < 12; ++j ) {
       auto shift2 = delta_;
       if ( x2_stencil ) {
@@ -133,7 +154,6 @@ class EnzymeJacobianTest : public testing::Test {
         f1[i] = 0.0;
         f2[i] = 0.0;
       }
-      double g1[4];
       for ( int i{ 0 }; i < 4; ++i ) {
         g1[i] = 0.0;
       }
@@ -144,7 +164,55 @@ class EnzymeJacobianTest : public testing::Test {
         df2dx2_fd[j * 12 + i] += f2[i];
         df2dx2_fd[j * 12 + i] /= shift2;
       }
+      for ( int i{ 0 }; i < 4; ++i ) {
+        dg1dx2_fd[j * 4 + i] += g1[i];
+        dg1dx2_fd[j * 4 + i] /= shift2;
+      }
       x2[j] -= shift2;
+    }
+    // wiggle n1
+    for ( int j{ 0 }; j < 12; ++j ) {
+      auto shift = delta_;
+      n1[j] += shift;
+      for ( int i{ 0 }; i < 12; ++i ) {
+        f1[i] = 0.0;
+        f2[i] = 0.0;
+      }
+      for ( int i{ 0 }; i < 4; ++i ) {
+        g1[i] = 0.0;
+      }
+      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, 4, x2, f2, 4 );
+      for ( int i{ 0 }; i < 12; ++i ) {
+        df1dn1_fd[j * 12 + i] += f1[i];
+        df1dn1_fd[j * 12 + i] /= shift;
+        df2dn1_fd[j * 12 + i] += f2[i];
+        df2dn1_fd[j * 12 + i] /= shift;
+      }
+      for ( int i{ 0 }; i < 4; ++i ) {
+        dg1dn1_fd[j * 4 + i] += g1[i];
+        dg1dn1_fd[j * 4 + i] /= shift;
+      }
+      n1[j] -= shift;
+    }
+    // wiggle p1
+    for ( int j{ 0 }; j < 4; ++j ) {
+      auto shift = delta_;
+      p1[j] += shift;
+      for ( int i{ 0 }; i < 12; ++i ) {
+        f1[i] = 0.0;
+        f2[i] = 0.0;
+      }
+      for ( int i{ 0 }; i < 4; ++i ) {
+        g1[i] = 0.0;
+      }
+      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, 4, x2, f2, 4 );
+      for ( int i{ 0 }; i < 12; ++i ) {
+        df1dp1_fd[j * 12 + i] += f1[i];
+        df1dp1_fd[j * 12 + i] /= shift;
+        df2dp1_fd[j * 12 + i] += f2[i];
+        df2dp1_fd[j * 12 + i] /= shift;
+      }
+      p1[j] -= shift;
     }
 
     double max_diff{ 0.0 };
@@ -175,6 +243,19 @@ class EnzymeJacobianTest : public testing::Test {
       EXPECT_NEAR( df2dx1[i], df2dx1_fd[i], delta_ );
     }
 
+    std::cout << " dg1/dx1 -------------------------------------- " << std::endl;
+    for ( int i{ 0 }; i < 48; ++i ) {
+      auto diff = std::abs( dg1dx1[i] - dg1dx1_fd[i] );
+      max_diff = std::max( max_diff, diff );
+      if ( diff > delta_ ) {
+        auto row = i % 4;
+        auto col = i / 4;
+        std::cout << "  (" << row << ", " << col << ") : Diff: " << diff << "   Enzyme: " << dg1dx1[i]
+                  << "   FD: " << dg1dx1_fd[i] << std::endl;
+      }
+      EXPECT_NEAR( dg1dx1[i], dg1dx1_fd[i], delta_ );
+    }
+
     std::cout << " df1/dx2 -------------------------------------- " << std::endl;
     for ( int i{ 0 }; i < 144; ++i ) {
       auto diff = std::abs( df1dx2[i] - df1dx2_fd[i] );
@@ -199,6 +280,84 @@ class EnzymeJacobianTest : public testing::Test {
                   << "   FD: " << df2dx2_fd[i] << std::endl;
       }
       EXPECT_NEAR( df2dx2[i], df2dx2_fd[i], delta_ );
+    }
+
+    std::cout << " dg1/dx2 -------------------------------------- " << std::endl;
+    for ( int i{ 0 }; i < 48; ++i ) {
+      auto diff = std::abs( dg1dx2[i] - dg1dx2_fd[i] );
+      max_diff = std::max( max_diff, diff );
+      if ( diff > delta_ ) {
+        auto row = i % 4;
+        auto col = i / 4;
+        std::cout << "  (" << row << ", " << col << ") : Diff: " << diff << "   Enzyme: " << dg1dx2[i]
+                  << "   FD: " << dg1dx2_fd[i] << std::endl;
+      }
+      EXPECT_NEAR( dg1dx2[i], dg1dx2_fd[i], delta_ );
+    }
+
+    std::cout << " df1/dn1 -------------------------------------- " << std::endl;
+    for ( int i{ 0 }; i < 144; ++i ) {
+      auto diff = std::abs( df1dn1[i] - df1dn1_fd[i] );
+      max_diff = std::max( max_diff, diff );
+      if ( diff > delta_ ) {
+        auto row = i % 12;
+        auto col = i / 12;
+        std::cout << "  (" << row << ", " << col << ") : Diff: " << diff << "   Enzyme: " << df1dn1[i]
+                  << "   FD: " << df1dn1_fd[i] << std::endl;
+      }
+      EXPECT_NEAR( df1dn1[i], df1dn1_fd[i], delta_ );
+    }
+
+    std::cout << " df2/dn1 -------------------------------------- " << std::endl;
+    for ( int i{ 0 }; i < 144; ++i ) {
+      auto diff = std::abs( df2dn1[i] - df2dn1_fd[i] );
+      max_diff = std::max( max_diff, diff );
+      if ( diff > delta_ ) {
+        auto row = i % 12;
+        auto col = i / 12;
+        std::cout << "  (" << row << ", " << col << ") : Diff: " << diff << "   Enzyme: " << df2dn1[i]
+                  << "   FD: " << df2dn1_fd[i] << std::endl;
+      }
+      EXPECT_NEAR( df2dn1[i], df2dn1_fd[i], delta_ );
+    }
+
+    std::cout << " dg1/dn1 -------------------------------------- " << std::endl;
+    for ( int i{ 0 }; i < 48; ++i ) {
+      auto diff = std::abs( dg1dn1[i] - dg1dn1_fd[i] );
+      max_diff = std::max( max_diff, diff );
+      if ( diff > delta_ ) {
+        auto row = i % 4;
+        auto col = i / 4;
+        std::cout << "  (" << row << ", " << col << ") : Diff: " << diff << "   Enzyme: " << dg1dn1[i]
+                  << "   FD: " << dg1dn1_fd[i] << std::endl;
+      }
+      EXPECT_NEAR( dg1dn1[i], dg1dn1_fd[i], delta_ );
+    }
+
+    std::cout << " df1/dp1 -------------------------------------- " << std::endl;
+    for ( int i{ 0 }; i < 48; ++i ) {
+      auto diff = std::abs( df1dp1[i] - df1dp1_fd[i] );
+      max_diff = std::max( max_diff, diff );
+      if ( diff > delta_ ) {
+        auto row = i % 12;
+        auto col = i / 12;
+        std::cout << "  (" << row << ", " << col << ") : Diff: " << diff << "   Enzyme: " << df1dp1[i]
+                  << "   FD: " << df1dp1_fd[i] << std::endl;
+      }
+      EXPECT_NEAR( df1dp1[i], df1dp1_fd[i], delta_ );
+    }
+
+    std::cout << " df2/dp1 -------------------------------------- " << std::endl;
+    for ( int i{ 0 }; i < 48; ++i ) {
+      auto diff = std::abs( df2dp1[i] - df2dp1_fd[i] );
+      max_diff = std::max( max_diff, diff );
+      if ( diff > delta_ ) {
+        auto row = i % 12;
+        auto col = i / 12;
+        std::cout << "  (" << row << ", " << col << ") : Diff: " << diff << "   Enzyme: " << df2dp1[i]
+                  << "   FD: " << df2dp1_fd[i] << std::endl;
+      }
+      EXPECT_NEAR( df2dp1[i], df2dp1_fd[i], delta_ );
     }
 
     std::cout << "max_diff for test: " << max_diff << std::endl;
@@ -378,31 +537,33 @@ class EnzymeJacobianTest : public testing::Test {
   }
 };
 
-// TEST_F( EnzymeJacobianTest, ExactOverlap )
-// {
-//   // clang-format off
-//   // {x0, x1, x2, x3, y0, y1, y2, y3, z0, z1, z2, z3}
-//   double x1[12] = { 0.0,   1.0,   1.0,   0.0,
-//                     0.0,   0.0,   1.0,   1.0,
-//                     0.0,   0.0,   0.0,   0.0 };
-//   double x2[12] = { 0.0,   0.0,   1.0,   1.0,
-//                     0.0,   1.0,   1.0,   0.0,
-//                     0.0,   0.0,   0.0,   0.0 };
-//   double n1[12] = { 0.0, 0.0, 0.0, 0.0,
-//                     0.0, 0.0, 0.0, 0.0,
-//                     1.0, 1.0, 1.0, 1.0 };
-//   double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
-//   double x1_stencil[12] = {  1.0, -1.0, -1.0,  1.0,
-//                              1.0,  1.0, -1.0, -1.0,
-//                              -1.0,  -1.0,  -1.0,  -1.0 };
-//   double x2_stencil[12] = {  1.0,  1.0, -1.0, -1.0,
-//                              1.0, -1.0, -1.0,  1.0,
-//                              1.0,  1.0,  1.0,  1.0 };
-//   // clang-format on
+TEST_F( EnzymeJacobianTest, ExactOverlap )
+{
+  // clang-format off
+  // {x0, x1, x2, x3, 
+  //  y0, y1, y2, y3,
+  //  z0, z1, z2, z3}
+  double x1[12] = { 0.0, 1.0, 1.0, 0.0,
+                    0.0, 0.0, 1.0, 1.0,
+                    0.0, 0.0, 0.0, 0.0 };
+  double x2[12] = { 0.0, 0.0, 1.0, 1.0,
+                    0.0, 1.0, 1.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+  double x1_stencil[12] = {  1.0, -1.0, -1.0,  1.0,
+                             1.0,  1.0, -1.0, -1.0,
+                            -1.0, -1.0, -1.0, -1.0 };
+  double x2_stencil[12] = { -1.0, -1.0,  1.0,  1.0,
+                            -1.0,  1.0,  1.0, -1.0,
+                            -1.0, -1.0, -1.0, -1.0 };
+  // clang-format on
 
-//   FDCheck( x1, x2, n1, p1, x1_stencil, x2_stencil );
-//   ApproxJacobianCheck( x1, x2, n1, p1 );
-// }
+  FDCheck( x1, x2, n1, p1, x1_stencil, x2_stencil );
+  ApproxJacobianCheck( x1, x2, n1, p1 );
+}
 
 TEST_F( EnzymeJacobianTest, SlightlySmallerNonmortarElement )
 {
@@ -426,281 +587,287 @@ TEST_F( EnzymeJacobianTest, SlightlySmallerNonmortarElement )
   ApproxJacobianCheck( x1, x2, n1, p1 );
 }
 
-// TEST_F( EnzymeJacobianTest, ShiftedXNonmortarElement )
-// {
-//   // slightly smaller and offset
-//   double offset = 0.3;
-//   double dx = 4.0 * delta_;
-//   // clang-format off
-//   double x1[12] = { 0.0+dx+offset, 1.0-dx+offset, 1.0-dx+offset, 0.0+dx+offset,
-//                     0.0+dx,        0.0+dx,        1.0-dx,        1.0-dx,
-//                     0.01,          0.01,          0.01,          0.01 };
-//   double x2[12] = { 0.0,   0.0,   1.0,   1.0,
-//                     0.0,   1.0,   1.0,   0.0,
-//                     -0.01, -0.01, -0.01, -0.01 };
-//   double n1[12] = { 0.0, 0.0, 0.0, 0.0,
-//                     0.0, 0.0, 0.0, 0.0,
-//                     1.0, 1.0, 1.0, 1.0 };
-//   double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
-//   // clang-format on
+TEST_F( EnzymeJacobianTest, ShiftedXNonmortarElement )
+{
+  // slightly smaller and offset
+  double offset = 0.3;
+  double dx = 4.0 * delta_;
+  // clang-format off
+  double x1[12] = { 0.0+dx+offset, 1.0-dx+offset, 1.0-dx+offset, 0.0+dx+offset,
+                    0.0+dx,        0.0+dx,        1.0-dx,        1.0-dx,
+                    0.01,          0.01,          0.01,          0.01 };
+  double x2[12] = { 0.0,   0.0,   1.0,   1.0,
+                    0.0,   1.0,   1.0,   0.0,
+                    -0.01, -0.01, -0.01, -0.01 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+  // clang-format on
 
-//   FDCheck( x1, x2, n1, p1 );
-// }
+  FDCheck( x1, x2, n1, p1 );
+}
 
-// TEST_F( EnzymeJacobianTest, ShiftedXYNonmortarElement )
-// {
-//   // slightly smaller and offset
-//   double offset = 0.3;
-//   double dx = 4.0 * delta_;
-//   // clang-format off
-//   double x1[12] = { 0.0+dx+offset, 1.0-dx+offset, 1.0-dx+offset, 0.0+dx+offset,
-//                     0.0+dx+offset, 0.0+dx+offset, 1.0-dx+offset, 1.0-dx+offset,
-//                     0.01,          0.01,          0.01,          0.01 };
-//   double x2[12] = { 0.0,   0.0,   1.0,   1.0,
-//                     0.0,   1.0,   1.0,   0.0,
-//                     -0.01, -0.01, -0.01, -0.01 };
-//   double n1[12] = { 0.0, 0.0, 0.0, 0.0,
-//                     0.0, 0.0, 0.0, 0.0,
-//                     1.0, 1.0, 1.0, 1.0 };
-//   double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
-//   // clang-format on
+TEST_F( EnzymeJacobianTest, ShiftedXYNonmortarElement )
+{
+  // slightly smaller and offset
+  double offset = 0.3;
+  double dx = 4.0 * delta_;
+  // clang-format off
+  double x1[12] = { 0.0+dx+offset, 1.0-dx+offset, 1.0-dx+offset, 0.0+dx+offset,
+                    0.0+dx+offset, 0.0+dx+offset, 1.0-dx+offset, 1.0-dx+offset,
+                    0.01,          0.01,          0.01,          0.01 };
+  double x2[12] = { 0.0,   0.0,   1.0,   1.0,
+                    0.0,   1.0,   1.0,   0.0,
+                    -0.01, -0.01, -0.01, -0.01 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+  // clang-format on
 
-//   FDCheck( x1, x2, n1, p1 );
-// }
+  FDCheck( x1, x2, n1, p1 );
+}
 
-// TEST_F( EnzymeJacobianTest, Rotated30DegNonmortarElement )
-// {
-//   // clang-format off
-//   // rotate 30 degrees
-//   double x1[12] = { 0.0,  1.0,  1.0,  0.0,
-//                     0.0,  0.0,  1.0,  1.0,
-//                     0.01, 0.01, 0.01, 0.01 };
-//   // clang-format on
-//   double cos30 = std::cos( redecomp::pi / 6.0 );
-//   double sin30 = std::sin( redecomp::pi / 6.0 );
-//   for ( int i{ 0 }; i < 4; ++i ) {
-//     double x_new = x1[i] * cos30 - x1[i + 4] * sin30;
-//     double y_new = x1[i] * sin30 + x1[i + 4] * cos30;
-//     x1[i] = x_new;
-//     x1[i + 4] = y_new;
-//   }
-//   // shift to center the element at (0.5, 0.5)
-//   double x_shift = 0.25;
-//   double y_shift = -0.5 * ( x1[6] - 1.0 );
-//   for ( int i{ 0 }; i < 4; ++i ) {
-//     x1[i] += x_shift;
-//     x1[i + 4] += y_shift;
-//   }
-//   // clang-format off
-//   double x2[12] = { 0.0,   0.0,   1.0,   1.0,
-//                     0.0,   1.0,   1.0,   0.0,
-//                     -0.01, -0.01, -0.01, -0.01 };
-//   double n1[12] = { 0.0, 0.0, 0.0, 0.0,
-//                     0.0, 0.0, 0.0, 0.0,
-//                     1.0, 1.0, 1.0, 1.0 };
-//   double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
-//   // clang-format on
+TEST_F( EnzymeJacobianTest, Rotated30DegNonmortarElement )
+{
+  // clang-format off
+  // rotate 30 degrees
+  double x1[12] = { 0.0,  1.0,  1.0,  0.0,
+                    0.0,  0.0,  1.0,  1.0,
+                    0.01, 0.01, 0.01, 0.01 };
+  // clang-format on
+  double cos30 = std::cos( redecomp::pi / 6.0 );
+  double sin30 = std::sin( redecomp::pi / 6.0 );
+  for ( int i{ 0 }; i < 4; ++i ) {
+    double x_new = x1[i] * cos30 - x1[i + 4] * sin30;
+    double y_new = x1[i] * sin30 + x1[i + 4] * cos30;
+    x1[i] = x_new;
+    x1[i + 4] = y_new;
+  }
+  // shift to center the element at (0.5, 0.5)
+  double x_shift = 0.25;
+  double y_shift = -0.5 * ( x1[6] - 1.0 );
+  for ( int i{ 0 }; i < 4; ++i ) {
+    x1[i] += x_shift;
+    x1[i + 4] += y_shift;
+  }
+  // clang-format off
+  double x2[12] = { 0.0,   0.0,   1.0,   1.0,
+                    0.0,   1.0,   1.0,   0.0,
+                    -0.01, -0.01, -0.01, -0.01 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+  // clang-format on
 
-//   FDCheck( x1, x2, n1, p1 );
-// }
+  FDCheck( x1, x2, n1, p1 );
+}
 
-// TEST_F( EnzymeJacobianTest, NonaffineRotated45DegMortarElement )
-// {
-//   // clang-format off
-//   // rotate 45 degrees
-//   double x1[12] = { 0.0,  1.1,  1.0,  0.0,
-//                     0.0,  0.0,  1.1,  1.0,
-//                     0.01, 0.01, 0.01, 0.01 };
-//   // clang-format on
-//   double cos45 = std::cos( redecomp::pi / 4.0 );
-//   double sin45 = std::sin( redecomp::pi / 4.0 );
-//   for ( int i{ 0 }; i < 4; ++i ) {
-//     double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
-//     double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
-//     x1[i] = x_new;
-//     x1[i + 4] = y_new;
-//   }
-//   // shift to center the element near (0.5, 0.5)
-//   double x_shift = 0.5 / std::sqrt( 2.0 ) + 0.1;
-//   double y_shift = -0.5 / std::sqrt( 2.0 ) + 0.1;
-//   for ( int i{ 0 }; i < 4; ++i ) {
-//     x1[i] += x_shift;
-//     x1[i + 4] += y_shift;
-//   }
-//   // clang-format off
-//   double x2[12] = { 0.0,   0.0,   1.0,   1.0,
-//                     0.0,   1.0,   1.0,   0.0,
-//                     -0.01, -0.01, -0.01, -0.01 };
-//   double n1[12] = { 0.0, 0.0, 0.0, 0.0,
-//                     0.0, 0.0, 0.0, 0.0,
-//                     1.0, 1.0, 1.0, 1.0 };
-//   double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
-//   // clang-format on
+TEST_F( EnzymeJacobianTest, NonaffineRotated45DegMortarElement )
+{
+  // clang-format off
+  // rotate 45 degrees
+  double x1[12] = { 0.0,  1.1,  1.0,  0.0,
+                    0.0,  0.0,  1.1,  1.0,
+                    0.01, 0.01, 0.01, 0.01 };
+  // clang-format on
+  double cos45 = std::cos( redecomp::pi / 4.0 );
+  double sin45 = std::sin( redecomp::pi / 4.0 );
+  for ( int i{ 0 }; i < 4; ++i ) {
+    double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
+    double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
+    x1[i] = x_new;
+    x1[i + 4] = y_new;
+  }
+  // shift to center the element near (0.5, 0.5)
+  double x_shift = 0.5 / std::sqrt( 2.0 ) + 0.1;
+  double y_shift = -0.5 / std::sqrt( 2.0 ) + 0.1;
+  for ( int i{ 0 }; i < 4; ++i ) {
+    x1[i] += x_shift;
+    x1[i + 4] += y_shift;
+  }
+  // clang-format off
+  double x2[12] = { 0.0,   0.0,   1.0,   1.0,
+                    0.0,   1.0,   1.0,   0.0,
+                    -0.01, -0.01, -0.01, -0.01 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+  // clang-format on
 
-//   FDCheck( x1, x2, n1, p1 );
-// }
+  FDCheck( x1, x2, n1, p1 );
+}
 
-// TEST_F( EnzymeJacobianTest, NonaffineOutOfPlaneNonmortarElement )
-// {
-//   // clang-format off
-//   // rotate 45 degrees
-//   double x1[12] = { 0.0,  1.1,  1.0,  0.0,
-//                     0.0,  0.0,  1.1,  1.0,
-//                     0.0,  0.0,  0.01, 0.01 };
-//   // clang-format on
-//   double cos45 = std::cos( redecomp::pi / 4.0 );
-//   double sin45 = std::sin( redecomp::pi / 4.0 );
-//   for ( int i{ 0 }; i < 4; ++i ) {
-//     double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
-//     double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
-//     x1[i] = x_new;
-//     x1[i + 4] = y_new;
-//   }
-//   // shift to center the element near (0.5, 0.5)
-//   double x_shift = 0.5 / std::sqrt( 2.0 ) + 0.1;
-//   double y_shift = -0.5 / std::sqrt( 2.0 ) + 0.1;
-//   for ( int i{ 0 }; i < 4; ++i ) {
-//     x1[i] += x_shift;
-//     x1[i + 4] += y_shift;
-//   }
-//   // clang-format off
-//   double x2[12] = { 0.0,   0.0,   1.0,   1.0,
-//                     0.0,   1.0,   1.0,   0.0,
-//                     -0.01, -0.01, -0.01, -0.01 };
-//   double n1[12] = { 0.0, 0.0, 0.0, 0.0,
-//                     0.0, 0.0, 0.0, 0.0,
-//                     1.0, 1.0, 1.0, 1.0 };
-//   double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
-//   // clang-format on
+TEST_F( EnzymeJacobianTest, NonaffineOutOfPlaneNonmortarElement )
+{
+  // clang-format off
+  // rotate 45 degrees
+  double x1[12] = { 0.0,  1.1,  1.0,  0.0,
+                    0.0,  0.0,  1.1,  1.0,
+                    0.0,  0.0,  0.01, 0.01 };
+  // clang-format on
+  double cos45 = std::cos( redecomp::pi / 4.0 );
+  double sin45 = std::sin( redecomp::pi / 4.0 );
+  for ( int i{ 0 }; i < 4; ++i ) {
+    double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
+    double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
+    x1[i] = x_new;
+    x1[i + 4] = y_new;
+  }
+  // shift to center the element near (0.5, 0.5)
+  double x_shift = 0.5 / std::sqrt( 2.0 ) + 0.1;
+  double y_shift = -0.5 / std::sqrt( 2.0 ) + 0.1;
+  for ( int i{ 0 }; i < 4; ++i ) {
+    x1[i] += x_shift;
+    x1[i + 4] += y_shift;
+  }
+  // clang-format off
+  double x2[12] = { 0.0,   0.0,   1.0,   1.0,
+                    0.0,   1.0,   1.0,   0.0,
+                    -0.01, -0.01, -0.01, -0.01 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+  // clang-format on
 
-//   FDCheck( x1, x2, n1, p1 );
-// }
+  FDCheck( x1, x2, n1, p1 );
+}
 
-// TEST_F( EnzymeJacobianTest, NonaffineWarpedNonmortarElement )
-// {
-//   // clang-format off
-//   // rotate 45 degrees
-//   double x1[12] = { 0.0,  1.1,   1.0,  0.0,
-//                     0.0,  0.0,   1.1,  1.0,
-//                     0.0,  -0.01, 0.01, 0.02 };
-//   // clang-format on
-//   double cos45 = std::cos( redecomp::pi / 4.0 );
-//   double sin45 = std::sin( redecomp::pi / 4.0 );
-//   for ( int i{ 0 }; i < 4; ++i ) {
-//     double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
-//     double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
-//     x1[i] = x_new;
-//     x1[i + 4] = y_new;
-//   }
-//   // shift to center the element near (0.5, 0.5)
-//   double x_shift = 0.5 / std::sqrt( 2.0 ) + 0.1;
-//   double y_shift = -0.5 / std::sqrt( 2.0 ) + 0.1;
-//   for ( int i{ 0 }; i < 4; ++i ) {
-//     x1[i] += x_shift;
-//     x1[i + 4] += y_shift;
-//   }
-//   // clang-format off
-//   double x2[12] = { 0.0,   0.0,   1.0,   1.0,
-//                     0.0,   1.0,   1.0,   0.0,
-//                     -0.01, -0.01, -0.01, -0.01 };
-//   double n1[12] = { 0.0, 0.0, 0.0, 0.0,
-//                     0.0, 0.0, 0.0, 0.0,
-//                     1.0, 1.0, 1.0, 1.0 };
-//   double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
-//   // clang-format on
+TEST_F( EnzymeJacobianTest, NonaffineWarpedNonmortarElement )
+{
+  // clang-format off
+  // rotate 45 degrees
+  double x1[12] = { 0.0,  1.1,   1.0,  0.0,
+                    0.0,  0.0,   1.1,  1.0,
+                    0.0,  -0.01, 0.01, 0.02 };
+  // clang-format on
+  double cos45 = std::cos( redecomp::pi / 4.0 );
+  double sin45 = std::sin( redecomp::pi / 4.0 );
+  for ( int i{ 0 }; i < 4; ++i ) {
+    double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
+    double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
+    x1[i] = x_new;
+    x1[i + 4] = y_new;
+  }
+  // shift to center the element near (0.5, 0.5)
+  double x_shift = 0.5 / std::sqrt( 2.0 ) + 0.1;
+  double y_shift = -0.5 / std::sqrt( 2.0 ) + 0.1;
+  for ( int i{ 0 }; i < 4; ++i ) {
+    x1[i] += x_shift;
+    x1[i + 4] += y_shift;
+  }
+  // clang-format off
+  double x2[12] = { 0.0,   0.0,   1.0,   1.0,
+                    0.0,   1.0,   1.0,   0.0,
+                    -0.01, -0.01, -0.01, -0.01 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+  // clang-format on
 
-//   FDCheck( x1, x2, n1, p1 );
-// }
+  FDCheck( x1, x2, n1, p1 );
+}
 
-// TEST_F( EnzymeJacobianTest, NonaffineOutOfPlaneMortarElement )
-// {
-//   // clang-format off
-//   // rotate 45 degrees
-//   double x1[12] = { 0.0,  1.1,  1.0,  0.0,
-//                     0.0,  0.0,  1.1,  1.0,
-//                     0.01, 0.01, 0.01, 0.01 };
-//   // clang-format on
-//   double cos45 = std::cos( redecomp::pi / 4.0 );
-//   double sin45 = std::sin( redecomp::pi / 4.0 );
-//   for ( int i{ 0 }; i < 4; ++i ) {
-//     double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
-//     double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
-//     x1[i] = x_new;
-//     x1[i + 4] = y_new;
-//   }
-//   // shift to center the element near (0.5, 0.5)
-//   double x_shift = 0.5 / std::sqrt( 2.0 ) + 0.1;
-//   double y_shift = -0.5 / std::sqrt( 2.0 ) + 0.1;
-//   for ( int i{ 0 }; i < 4; ++i ) {
-//     x1[i] += x_shift;
-//     x1[i + 4] += y_shift;
-//   }
-//   // clang-format off
-//   double x2[12] = { 0.0,   0.0,   1.0, 1.0,
-//                     0.0,   1.0,   1.0, 0.0,
-//                     -0.01, -0.01, 0.0, 0.0 };
-//   double n1[12] = { 0.0, 0.0, 0.0, 0.0,
-//                     0.0, 0.0, 0.0, 0.0,
-//                     1.0, 1.0, 1.0, 1.0 };
-//   double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
-//   // clang-format on
+TEST_F( EnzymeJacobianTest, NonaffineOutOfPlaneMortarElement )
+{
+  // clang-format off
+  // rotate 45 degrees
+  double x1[12] = { 0.0,  1.1,  1.0,  0.0,
+                    0.0,  0.0,  1.1,  1.0,
+                    0.01, 0.01, 0.01, 0.01 };
+  // clang-format on
+  double cos45 = std::cos( redecomp::pi / 4.0 );
+  double sin45 = std::sin( redecomp::pi / 4.0 );
+  for ( int i{ 0 }; i < 4; ++i ) {
+    double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
+    double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
+    x1[i] = x_new;
+    x1[i + 4] = y_new;
+  }
+  // shift to center the element near (0.5, 0.5)
+  double x_shift = 0.5 / std::sqrt( 2.0 ) + 0.1;
+  double y_shift = -0.5 / std::sqrt( 2.0 ) + 0.1;
+  for ( int i{ 0 }; i < 4; ++i ) {
+    x1[i] += x_shift;
+    x1[i + 4] += y_shift;
+  }
+  // clang-format off
+  double x2[12] = { 0.0,   0.0,   1.0, 1.0,
+                    0.0,   1.0,   1.0, 0.0,
+                    -0.01, -0.01, 0.0, 0.0 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+  // clang-format on
 
-//   FDCheck( x1, x2, n1, p1 );
-// }
+  FDCheck( x1, x2, n1, p1 );
+}
 
-// TEST_F( EnzymeJacobianTest, NonaffineWarpedMortarElement )
-// {
-//   // clang-format off
-//   // rotate 45 degrees
-//   double x1[12] = { 0.0,  1.1,  1.0,  0.0,
-//                     0.0,  0.0,  1.1,  1.0,
-//                     0.01, 0.01, 0.01, 0.01 };
-//   // clang-format on
-//   double cos45 = std::cos( redecomp::pi / 4.0 );
-//   double sin45 = std::sin( redecomp::pi / 4.0 );
-//   for ( int i{ 0 }; i < 4; ++i ) {
-//     double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
-//     double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
-//     x1[i] = x_new;
-//     x1[i + 4] = y_new;
-//   }
-//   // shift to center the element near (0.5, 0.5)
-//   double x_shift = 0.5 / std::sqrt( 2.0 ) + 0.1;
-//   double y_shift = -0.5 / std::sqrt( 2.0 ) + 0.1;
-//   for ( int i{ 0 }; i < 4; ++i ) {
-//     x1[i] += x_shift;
-//     x1[i + 4] += y_shift;
-//   }
-//   // clang-format off
-//   double x2[12] = { 0.0,   0.0,   1.0, 1.0,
-//                     0.0,   1.0,   1.0, 0.0,
-//                     0.01,  -0.01, 0.0, -0.01 };
-//   double n1[12] = { 0.0, 0.0, 0.0, 0.0,
-//                     0.0, 0.0, 0.0, 0.0,
-//                     1.0, 1.0, 1.0, 1.0 };
-//   double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
-//   // clang-format on
+TEST_F( EnzymeJacobianTest, NonaffineWarpedMortarElement )
+{
+  // clang-format off
+  // rotate 45 degrees
+  double x1[12] = { 0.0,  1.1,  1.0,  0.0,
+                    0.0,  0.0,  1.1,  1.0,
+                    0.01, 0.01, 0.01, 0.01 };
+  // clang-format on
+  double cos45 = std::cos( redecomp::pi / 4.0 );
+  double sin45 = std::sin( redecomp::pi / 4.0 );
+  for ( int i{ 0 }; i < 4; ++i ) {
+    double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
+    double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
+    x1[i] = x_new;
+    x1[i + 4] = y_new;
+  }
+  // shift to center the element near (0.5, 0.5)
+  double x_shift = 0.5 / std::sqrt( 2.0 ) + 0.1;
+  double y_shift = -0.5 / std::sqrt( 2.0 ) + 0.1;
+  for ( int i{ 0 }; i < 4; ++i ) {
+    x1[i] += x_shift;
+    x1[i + 4] += y_shift;
+  }
+  // clang-format off
+  double x2[12] = { 0.0,   0.0,   1.0, 1.0,
+                    0.0,   1.0,   1.0, 0.0,
+                    0.01,  -0.01, 0.0, -0.01 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+  // clang-format on
 
-//   FDCheck( x1, x2, n1, p1 );
-// }
+  FDCheck( x1, x2, n1, p1 );
+}
 
-// TEST_F( EnzymeJacobianTest, NoOverlap )
-// {
-//   // clang-format off
-//   double x1[12] = { 0,                  0.25061248332819264, 0.25061248347850068, 0,
-//                     1.0024499307581727, 1.0024499310658752,  0.75183744879681569, 0.75183744859830548,
-//                     0.9950243367728403, 0.99502433719083682, 0.99502433812781421, 0.99502433784796417 };
-//   double x2[12] = { 0,                   0.2506124842888437,  0.25061248413259829, 0,
-//                     0.50122496909581893, 0.50122496895699598, 0.75183745346191466, 0.75183745367891308,
-//                     0.99497565718874636, 0.99497565744420857, 0.99497565800865728, 0.99497565778429586 };
-//   double n1[12] = { 1.6760823570596968E-9,  2.8328822061264079E-9,  1.7167363802005653E-9,  1.1221425796502179E-9,
-//                     -4.3110314424768161E-9, -3.7570916641889438E-9, 4.1753970779955578E-10, -2.8983706722398794E-11,
-//                     -1.0049058641140272,    -1.0049058643326783,    -1.0049058657698271,    -1.0049058656548657 };
-//   double p1[4] = { -0.0039961035429747216, -0.0039669165550449692, -0.0035314820072299361, -0.0035524348165424662 };
-//   // clang-format on
+TEST_F( EnzymeJacobianTest, NoOverlap )
+{
+  // clang-format off
+  double x1[12] = { 0,                  0.25061248332819264, 0.25061248347850068, 0,
+                    1.0024499307581727, 1.0024499310658752,  0.75183744879681569, 0.75183744859830548,
+                    0.9950243367728403, 0.99502433719083682, 0.99502433812781421, 0.99502433784796417 };
+  double x2[12] = { 0,                   0.2506124842888437,  0.25061248413259829, 0,
+                    0.50122496909581893, 0.50122496895699598, 0.75183745346191466, 0.75183745367891308,
+                    0.99497565718874636, 0.99497565744420857, 0.99497565800865728, 0.99497565778429586 };
+  double n1[12] = { 1.6760823570596968E-9,  2.8328822061264079E-9,  1.7167363802005653E-9,  1.1221425796502179E-9,
+                    -4.3110314424768161E-9, -3.7570916641889438E-9, 4.1753970779955578E-10, -2.8983706722398794E-11,
+                    -1.0049058641140272,    -1.0049058643326783,    -1.0049058657698271,    -1.0049058656548657 };
+  double p1[4] = { -0.0039961035429747216, -0.0039669165550449692, -0.0035314820072299361, -0.0035524348165424662 };
+  double x1_stencil[12] = {  1.0,  1.0,  1.0,  1.0,
+                             1.0,  1.0,  1.0,  1.0,
+                             1.0,  1.0,  1.0,  1.0 };
+  double x2_stencil[12] = {  1.0,  1.0,  1.0,  1.0,
+                             1.0,  1.0, -1.0, -1.0,
+                             1.0,  1.0,  1.0,  1.0 };
+  // clang-format on
 
-//   FDCheck( x1, x2, n1, p1 );
-// }
+  FDCheck( x1, x2, n1, p1, x1_stencil, x2_stencil );
+}
 
 }  // namespace tribol
 
