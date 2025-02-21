@@ -14,9 +14,10 @@
 #include "tribol/utils/DataManager.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/geom/ContactPlane.hpp"
+#include "tribol/geom/ElementNormal.hpp"
 
 #ifdef TRIBOL_USE_ENZYME
-#include "tribol/geom/Normal.hpp"
+#include "tribol/geom/NodalNormal.hpp"
 #endif
 
 // Axom includes
@@ -880,6 +881,8 @@ class CouplingScheme {
   bool m_fixedBinning;  ///< True if using fixed binning for all cycles
   bool m_isBinned;      ///< True if binning has occured
   bool m_isTied;        ///< True if surfaces have been "tied" (Tied contact only)
+
+  std::unique_ptr<ElementNormal> m_elementNormal;  ///< Method for computing element normal
 
 #ifdef TRIBOL_USE_ENZYME
   bool m_useEnzyme = false;                    ///< Use Enzyme for Jacobian calculations

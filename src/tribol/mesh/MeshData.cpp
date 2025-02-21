@@ -306,7 +306,7 @@ Array1D<IndexT> MeshData::sortSurfaceNodeIds()
 }  // end MeshData::sortSurfaceNodeIds()
 
 //------------------------------------------------------------------------------
-bool MeshData::computeFaceData( ExecutionMode exec_mode )
+bool MeshData::computeFaceData( ExecutionMode exec_mode, ElementNormal& elem_normal )
 {
   constexpr RealT nrml_mag_tol = 1.0e-15;
 
@@ -337,8 +337,9 @@ bool MeshData::computeFaceData( ExecutionMode exec_mode )
   auto dim = m_dim;
   auto conn = m_connectivity;
   ArrayViewT<IndexT> face_data_ok = face_data_ok_data;
+  auto normal_function = elem_normal.NormalFunction();
   forAllExec( exec_mode, numberOfElements(),
-              [c, x, n, area, radius, dim, conn, face_data_ok] TRIBOL_HOST_DEVICE( IndexT i ) {
+              [c, x, n, area, radius, dim, conn, face_data_ok, normal_function] TRIBOL_HOST_DEVICE( IndexT i ) {
                 // compute the vertex average centroid. This will lie in the
                 // plane of the face for planar faces, and will be used as
                 // an approximate centroid for warped faces, both in 3D.
@@ -405,129 +406,30 @@ bool MeshData::computeFaceData( ExecutionMode exec_mode )
                   n[1][i] *= inv_mag;
 
                 } else if ( dim == 3 ) {
-
-#ifdef TRIBOL_USE_ENZYME
-                  RealT x1[12];
+                  // get element coordinates
+                  RealT x_elem[12];
                   for ( int j = 0; j < num_nodes_per_elem; ++j ) {
                     auto node_id = conn( i, j );
                     for ( IndexT d{ 0 }; d < dim; ++d ) {
-                      x1[d * num_nodes_per_elem + j] = x[d][node_id];
+                      x_elem[d * num_nodes_per_elem + j] = x[d][node_id];
                     }
-                  }  // end loop over nodes
-
-                  // get vector n (normal of elem1)
-                  // NOTE: this limits this routine to quads
-                  RealT de1[3] = { -0.25 * x1[0] + 0.25 * x1[1] + 0.25 * x1[2] - 0.25 * x1[3],
-                                   -0.25 * x1[4] + 0.25 * x1[5] + 0.25 * x1[6] - 0.25 * x1[7],
-                                   -0.25 * x1[8] + 0.25 * x1[9] + 0.25 * x1[10] - 0.25 * x1[11] };
-                  RealT de2[3] = { -0.25 * x1[0] - 0.25 * x1[1] + 0.25 * x1[2] + 0.25 * x1[3],
-                                   -0.25 * x1[4] - 0.25 * x1[5] + 0.25 * x1[6] + 0.25 * x1[7],
-                                   -0.25 * x1[8] - 0.25 * x1[9] + 0.25 * x1[10] + 0.25 * x1[11] };
-                  n[0][i] = de1[1] * de2[2] - de1[2] * de2[1];
-                  n[1][i] = de1[2] * de2[0] - de1[0] * de2[2];
-                  n[2][i] = de1[0] * de2[1] - de1[1] * de2[0];
-                  RealT n_mag = std::sqrt( n[0][i] * n[0][i] + n[1][i] * n[1][i] + n[2][i] * n[2][i] );
-                  for ( int d{ 0 }; d < 3; ++d ) {
-                    n[d][i] /= n_mag;
                   }
-                  for ( int j = 0; j < num_nodes_per_elem; ++j ) {
-                    auto node_id = conn( i, j );
-                    auto next_node_id = conn( i, 0 );
-                    if ( j < num_nodes_per_elem - 1 ) {
-                      next_node_id = conn( i, j + 1 );
-                    }
-                    // first triangle edge vector between the face's two edge nodes
-                    auto vX1 = x[0][next_node_id] - x[0][node_id];
-                    auto vY1 = x[1][next_node_id] - x[1][node_id];
-                    auto vZ1 = x[2][next_node_id] - x[2][node_id];
-
-                    // second triangle edge vector between the face centroid
-                    // and the face edge's first node
-                    auto vX2 = c[0][i] - x[0][node_id];
-                    auto vY2 = c[1][i] - x[1][node_id];
-                    auto vZ2 = c[2][i] - x[2][node_id];
-
-                    // compute the contribution to the pallet normal as v1 x v2. Sum these
-                    // into the face normal component variables stored on the mesh data
-                    // object
-                    auto nX = ( vY1 * vZ2 ) - ( vZ1 * vY2 );
-                    auto nY = ( vZ1 * vX2 ) - ( vX1 * vZ2 );
-                    auto nZ = ( vX1 * vY2 ) - ( vY1 * vX2 );
-
-                    // half the magnitude of the computed normal is the pallet area. Note:
-                    // this is exact for planar faces and approximate for warped faces.
-                    // Face areas are used in a general sense to create a face-overlap
-                    // tolerance
-                    area[i] += 0.5 * magnitude( nX, nY, nZ );
+                  // get vertex average element centroid
+                  RealT c_elem[3];
+                  for ( IndexT d{ 0 }; d < dim; ++d ) {
+                    c_elem[d] = c[d][i];
                   }
-#else
-                  // this method of computing an outward unit normal breaks the
-                  // face into triangular pallets by connecting two consecutive
-                  // nodes with the approximate centroid.
-                  // The average outward unit normal for the face is the average of
-                  // those of the pallets. This is exact for non-warped faces. To
-                  // compute the pallet normal, you only need edge vectors for the
-                  // pallet. These are constructed from the face centroid and the face
-                  // edge's first node and the face edge's two nodes
-
-                  // loop over num_nodes_per_elem-1 element edges and compute pallet
-                  // normal
-                  for ( int j = 0; j < num_nodes_per_elem; ++j ) {
-                    auto node_id = conn( i, j );
-                    auto next_node_id = conn( i, 0 );
-                    if ( j < num_nodes_per_elem - 1 ) {
-                      next_node_id = conn( i, j + 1 );
-                    }
-                    // first triangle edge vector between the face's two edge nodes
-                    auto vX1 = x[0][next_node_id] - x[0][node_id];
-                    auto vY1 = x[1][next_node_id] - x[1][node_id];
-                    auto vZ1 = x[2][next_node_id] - x[2][node_id];
-
-                    // second triangle edge vector between the face centroid
-                    // and the face edge's first node
-                    auto vX2 = c[0][i] - x[0][node_id];
-                    auto vY2 = c[1][i] - x[1][node_id];
-                    auto vZ2 = c[2][i] - x[2][node_id];
-
-                    // compute the contribution to the pallet normal as v1 x v2. Sum these
-                    // into the face normal component variables stored on the mesh data
-                    // object
-                    auto nX = ( vY1 * vZ2 ) - ( vZ1 * vY2 );
-                    auto nY = ( vZ1 * vX2 ) - ( vX1 * vZ2 );
-                    auto nZ = ( vX1 * vY2 ) - ( vY1 * vX2 );
-
-                    // sum the normal component contributions into the component variables
-                    n[0][i] += nX;
-                    n[1][i] += nY;
-                    n[2][i] += nZ;
-
-                    // half the magnitude of the computed normal is the pallet area. Note:
-                    // this is exact for planar faces and approximate for warped faces.
-                    // Face areas are used in a general sense to create a face-overlap
-                    // tolerance
-                    area[i] += 0.5 * magnitude( nX, nY, nZ );
-                  }
-
-                  // multiply the pallet normal components by fac to obtain avg.
-                  n[0][i] = fac * n[0][i];
-                  n[1][i] = fac * n[1][i];
-                  n[2][i] = fac * n[2][i];
-
-                  // compute the magnitude of the average pallet normal
-                  auto mag = magnitude( n[0][i], n[1][i], n[2][i] );
-                  auto inv_mag = nrml_mag_tol;
-                  if ( mag >= nrml_mag_tol ) {
-                    inv_mag = 1.0 / mag;
-                  } else {
+                  // initialize element normal
+                  RealT n_elem[3] = { 0.0, 0.0, 0.0 };
+                  // compute element normal and area
+                  auto face_ok = normal_function( x_elem, c_elem, n_elem, num_nodes_per_elem, area[i] );
+                  if ( !face_ok ) {
                     face_data_ok[0] = static_cast<IndexT>( false );
                   }
-
-                  // normalize the average normal
-                  n[0][i] *= inv_mag;
-                  n[1][i] *= inv_mag;
-                  n[2][i] *= inv_mag;
-#endif
-
+                  // set global element normal
+                  for ( IndexT d{ 0 }; d < dim; ++d ) {
+                    n[d][i] = n_elem[d];
+                  }
                 }   // end if (dim == 3)
               } );  // end element loop
 

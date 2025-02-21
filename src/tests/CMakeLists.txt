@@ -171,7 +171,7 @@ if( TRIBOL_USE_ENZYME )
 
   set( combined_tests
       tribol_enzyme_jacobian.cpp
-      tribol_enzyme_normal.cpp
+      tribol_enzyme_nodal_normal.cpp
       tribol_enzyme_merged_jacobian.cpp
       tribol_enzyme_poly_intersect.cpp
       )

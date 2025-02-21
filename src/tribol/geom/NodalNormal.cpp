@@ -3,9 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include "Normal.hpp"
+#include "NodalNormal.hpp"
 
-#include "tribol/common/Parameters.hpp"
 #include "tribol/utils/Math.hpp"
 
 #ifdef TRIBOL_USE_ENZYME
@@ -74,9 +73,7 @@ void VertexAvgNormal::Compute( MeshData& mesh )
   n0.fill( 0.0 );
 
   if ( compute_deriv_ ) {
-    ArrayT<BlockSpace> blocks( 1, 1 );
-    blocks[0] = BlockSpace::NONMORTAR;  // this is actually non-mortar, but we want this to be 1x1
-    getJacobianData().reserveBlockJ( std::move( blocks ), mesh.numberOfElements() );
+    getJacobianData().reserveBlockJ( { BlockSpace::NONMORTAR }, mesh.numberOfElements() );
   }
 
   auto mesh_view = mesh.getView();

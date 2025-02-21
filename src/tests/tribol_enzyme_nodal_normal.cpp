@@ -5,14 +5,14 @@
 
 //-----------------------------------------------------------------------------
 //
-// file: tribol_enzyme_normal.cpp
+// file: tribol_enzyme_nodal_normal.cpp
 //
 //-----------------------------------------------------------------------------
 
 #include <iostream>
 
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/geom/Normal.hpp"
+#include "tribol/geom/NodalNormal.hpp"
 #include "tribol/interface/tribol.hpp"
 
 #include "gtest/gtest.h"
@@ -20,9 +20,9 @@
 namespace tribol {
 
 /**
- * @brief Test fixture for the Enzyme-based derivatives of vertex normal calculations.
+ * @brief Test fixture for the Enzyme-based derivatives of nodal normal calculations.
  */
-class EnzymeNormalTest : public testing::Test {
+class EnzymeNodalNormalTest : public testing::Test {
  protected:
   double delta_{ 1.0e-7 };
   void SetUp() override {}
@@ -93,7 +93,7 @@ class EnzymeNormalTest : public testing::Test {
   }
 };
 
-TEST_F( EnzymeNormalTest, TwoElementsFlatNormalJacobian )
+TEST_F( EnzymeNodalNormalTest, TwoElementsFlatNormalJacobian )
 {
   // two elements flat
   double x[18] = { 0.0, 0.5, 1.0, 0.0, 0.5, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };

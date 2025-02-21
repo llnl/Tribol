@@ -3,9 +3,10 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_GEOM_NORMAL_HPP_
-#define SRC_GEOM_NORMAL_HPP_
+#ifndef SRC_GEOM_NODALNORMAL_HPP_
+#define SRC_GEOM_NODALNORMAL_HPP_
 
+#include "tribol/config.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 
@@ -45,4 +46,4 @@ void ElementVertexAvgNormalJacobian( const RealT* x, const RealT* xref, RealT* n
 
 }  // namespace tribol
 
-#endif /* SRC_GEOM_NORMAL_HPP_ */
+#endif /* SRC_GEOM_NODALNORMAL_HPP_ */

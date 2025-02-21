@@ -7,6 +7,7 @@
 
 // Tribol includes
 #include "tribol/common/ExecModel.hpp"
+#include "tribol/geom/ElementNormal.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/utils/ContactPlaneOutput.hpp"
@@ -308,6 +309,7 @@ CouplingScheme::CouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, 
       m_fixedBinning( false ),
       m_isBinned( false ),
       m_isTied( false ),
+      m_elementNormal( std::make_unique<PalletAvgNormal>() ),
       m_methodData( nullptr )
 {
   // error sanity checks
@@ -1130,10 +1132,17 @@ bool CouplingScheme::init()
     }
 #endif
 
+#ifdef TRIBOL_USE_ENZYME
+    // set the element normal calc if enzyme is enabled and we are using mortar
+    if ( this->isEnzymeEnabled() && this->m_contactMethod == SINGLE_MORTAR ) {
+      this->m_elementNormal = std::make_unique<QuadCentroidNormal>();
+    }
+#endif
+
     // compute the face data
-    this->m_mesh1->computeFaceData( this->m_exec_mode );
+    this->m_mesh1->computeFaceData( this->m_exec_mode, *this->m_elementNormal );
     if ( this->m_mesh_id2 != this->m_mesh_id1 ) {
-      this->m_mesh2->computeFaceData( this->m_exec_mode );
+      this->m_mesh2->computeFaceData( this->m_exec_mode, *this->m_elementNormal );
     }
 
     this->allocateMethodData();

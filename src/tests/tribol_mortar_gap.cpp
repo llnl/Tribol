@@ -11,6 +11,7 @@
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/physics/Mortar.hpp"
 #include "tribol/physics/AlignedMortar.hpp"
+#include "tribol/geom/ElementNormal.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/utils/TestUtils.hpp"
 
@@ -154,8 +155,10 @@ class MortarGapTest : public ::testing::Test {
     tribol::MeshData& mortarMesh = meshManager.at( mortarMeshId );
     tribol::MeshData& nonmortarMesh = meshManager.at( nonmortarMeshId );
 
-    mortarMesh.computeFaceData( tribol::ExecutionMode::Sequential );
-    nonmortarMesh.computeFaceData( tribol::ExecutionMode::Sequential );
+    tribol::PalletAvgNormal plane_normal;
+
+    mortarMesh.computeFaceData( tribol::ExecutionMode::Sequential, plane_normal );
+    nonmortarMesh.computeFaceData( tribol::ExecutionMode::Sequential, plane_normal );
 
     gaps.clear();
     int size = 2 * this->numNodesPerFace;

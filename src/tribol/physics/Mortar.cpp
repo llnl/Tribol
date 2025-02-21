@@ -24,7 +24,6 @@
 #include <iomanip>
 
 #ifdef TRIBOL_USE_ENZYME
-#include "tribol/geom/Normal.hpp"
 #include "tribol/common/Enzyme.hpp"
 #endif
 

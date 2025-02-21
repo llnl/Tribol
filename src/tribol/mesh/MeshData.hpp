@@ -11,6 +11,7 @@
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/Parameters.hpp"
+#include "tribol/geom/ElementNormal.hpp"
 #include "tribol/utils/DataManager.hpp"
 
 namespace tribol {
@@ -695,7 +696,7 @@ class MeshData {
    *
    * This routine accounts for warped faces by computing an average normal.
    */
-  bool computeFaceData( ExecutionMode exec_mode );
+  bool computeFaceData( ExecutionMode exec_mode, ElementNormal& elem_normal );
 
   /**
    * @brief Allocates and initializes memory to hold nodal normals

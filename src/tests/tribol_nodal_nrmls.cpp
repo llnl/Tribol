@@ -6,6 +6,7 @@
 // Tribol includes
 #include "tribol/interface/tribol.hpp"
 #include "tribol/mesh/MeshData.hpp"
+#include "tribol/geom/ElementNormal.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/utils/Math.hpp"
 
@@ -46,7 +47,8 @@ class NodalNormalTest : public ::testing::Test {
     tribol::MeshData& mesh = meshManager.at( mesh_id );
 
     // compute the face data for this mesh
-    mesh.computeFaceData( tribol::ExecutionMode::Sequential );
+    tribol::PalletAvgNormal plane_normal;
+    mesh.computeFaceData( tribol::ExecutionMode::Sequential, plane_normal );
 
     mesh.computeNodalNormals( dim );
 
