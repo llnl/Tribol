@@ -15,17 +15,17 @@ namespace tribol {
 class ElementNormal {
  public:
   virtual ~ElementNormal() {}
-  virtual std::function<bool( const RealT*, const RealT*, RealT*, int, RealT& )> NormalFunction() = 0;
+  virtual bool Compute( const RealT* x, const RealT* c, RealT* n, int num_nodes, RealT& area ) const = 0;
 };
 
 class PalletAvgNormal : public ElementNormal {
  public:
-  std::function<bool( const RealT*, const RealT*, RealT*, int, RealT& )> NormalFunction() override;
+  bool Compute( const RealT* x, const RealT* c, RealT* n, int num_nodes, RealT& area ) const override;
 };
 
 class QuadCentroidNormal : public ElementNormal {
  public:
-  std::function<bool( const RealT*, const RealT*, RealT*, int, RealT& )> NormalFunction() override;
+  bool Compute( const RealT* x, const RealT* c, RealT* n, int num_nodes, RealT& area ) const override;
 };
 
 }  // namespace tribol
