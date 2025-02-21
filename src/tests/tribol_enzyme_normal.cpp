@@ -11,18 +11,17 @@
 
 #include <iostream>
 
-#include "redecomp/common/TypeDefs.hpp"
-#include "tribol/common/Parameters.hpp"
-#include "tribol/config.hpp"
-#include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/physics/Mortar.hpp"
+#include "tribol/mesh/MeshData.hpp"
+#include "tribol/geom/Normal.hpp"
 #include "tribol/interface/tribol.hpp"
-#include "tribol/utils/Algorithm.hpp"
 
 #include "gtest/gtest.h"
 
 namespace tribol {
 
+/**
+ * @brief Test fixture for the Enzyme-based derivatives of vertex normal calculations.
+ */
 class EnzymeNormalTest : public testing::Test {
  protected:
   double delta_{ 1.0e-7 };

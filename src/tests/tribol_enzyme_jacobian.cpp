@@ -12,12 +12,8 @@
 #include <iostream>
 
 #include "redecomp/common/TypeDefs.hpp"
-#include "tribol/common/Parameters.hpp"
-#include "tribol/config.hpp"
-#include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/physics/Mortar.hpp"
 #include "tribol/interface/tribol.hpp"
-#include "tribol/utils/Algorithm.hpp"
 
 #include "gtest/gtest.h"
 
@@ -25,8 +21,10 @@ namespace tribol {
 
 void FDCheck( double* x1, double* x2, double* n1, double* p1 );
 
-// NOTE: Make sure no vertices on either element pass through an edge. The
-// finite differencing will fail in this case.
+/**
+ * @brief Test fixture for the Enzyme-computed Jacobian terms of the mortar method, not including the nodal normal
+ * contribution.
+ */
 class EnzymeJacobianTest : public testing::Test {
  protected:
   double delta_{ 1.0e-7 };

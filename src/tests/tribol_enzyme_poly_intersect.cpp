@@ -11,16 +11,18 @@
 
 #include <iostream>
 
-#include "tribol/config.hpp"
-#include "tribol/common/Enzyme.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
+#include "gtest/gtest.h"
 
 #include "mfem.hpp"
 
-#include "gtest/gtest.h"
+#include "tribol/common/Enzyme.hpp"
+#include "tribol/geom/GeomUtilities.hpp"
 
 namespace tribol {
 
+/**
+ * @brief Test fixture for the Enzyme-based derivatives of intersection polynomial calculations.
+ */
 class EnzymePolyIntersectTest : public testing::Test {
  protected:
   static constexpr double delta_{ 1.0e-8 };
@@ -92,135 +94,15 @@ class EnzymePolyIntersectTest : public testing::Test {
       __enzyme_fwddiff<void>( (void*)Intersection2DPolygonEnzyme, x1, x_dot, x1 + 4, zeros, 4, x2, zeros, x2 + 4, zeros,
                               4, pos_tol, d_pos_tol, len_tol, d_len_tol, xi, dxidx1 + 16 * i, xi + 8,
                               dxidx1 + 16 * i + 8, &num_poly_verts, &d_num_poly_verts );
-
-      // std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
-      // for (int i{0}; i < 4; ++i)
-      // {
-      //   std::cout << "(" << x1[i] << ", " << x1[i+4] << ")\n";
-      // }
-      // std::cout << std::setprecision(15) << "Element 2 coords" << std::endl;
-      // for (int i{0}; i < 4; ++i)
-      // {
-      //   std::cout << "(" << x2[i] << ", " << x2[i+4] << ")\n";
-      // }
-      // std::cout << std::setprecision(15) << "Number of vertices: " << num_poly_verts << "   Polygon area: "
-      //   << area << std::endl;
-      // for (int i{0}; i < num_poly_verts; ++i)
-      // {
-      //   std::cout << "  Coord: (" << xi[i] << ", " << xi[i+8] << ")   Type: ";
-      //   switch (type[i])
-      //   {
-      //     case OverlapVertexType::A:
-      //       std::cout << "Vertex A" << std::endl;
-      //       break;
-      //     case OverlapVertexType::B:
-      //       std::cout << "Vertex B" << std::endl;
-      //       break;
-      //     case OverlapVertexType::EdgeEdge:
-      //       std::cout << "Edge/Edge" << std::endl;
-      //       break;
-      //   }
-      // }
-
       __enzyme_fwddiff<void>( (void*)Intersection2DPolygonEnzyme, x1, zeros, x1 + 4, x_dot, 4, x2, zeros, x2 + 4, zeros,
                               4, pos_tol, d_pos_tol, len_tol, d_len_tol, xi, dxidx1 + 16 * ( 4 + i ), xi + 8,
                               dxidx1 + 16 * ( 4 + i ) + 8, &num_poly_verts, &d_num_poly_verts );
-
-      // std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
-      // for (int i{0}; i < 4; ++i)
-      // {
-      //   std::cout << "(" << x1[i] << ", " << x1[i+4] << ")\n";
-      // }
-      // std::cout << std::setprecision(15) << "Element 2 coords" << std::endl;
-      // for (int i{0}; i < 4; ++i)
-      // {
-      //   std::cout << "(" << x2[i] << ", " << x2[i+4] << ")\n";
-      // }
-      // std::cout << std::setprecision(15) << "Number of vertices: " << num_poly_verts << "   Polygon area: "
-      //   << area << std::endl;
-      // for (int i{0}; i < num_poly_verts; ++i)
-      // {
-      //   std::cout << "  Coord: (" << xi[i] << ", " << xi[i+8] << ")   Type: ";
-      //   switch (type[i])
-      //   {
-      //     case OverlapVertexType::A:
-      //       std::cout << "Vertex A" << std::endl;
-      //       break;
-      //     case OverlapVertexType::B:
-      //       std::cout << "Vertex B" << std::endl;
-      //       break;
-      //     case OverlapVertexType::EdgeEdge:
-      //       std::cout << "Edge/Edge" << std::endl;
-      //       break;
-      //   }
-      // }
-
       __enzyme_fwddiff<void>( (void*)Intersection2DPolygonEnzyme, x1, zeros, x1 + 4, zeros, 4, x2, x_dot, x2 + 4, zeros,
                               4, pos_tol, d_pos_tol, len_tol, d_len_tol, xi, dxidx2 + 16 * i, xi + 8,
                               dxidx2 + 16 * i + 8, &num_poly_verts, &d_num_poly_verts );
-
-      // std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
-      // for (int i{0}; i < 4; ++i)
-      // {
-      //   std::cout << "(" << x1[i] << ", " << x1[i+4] << ")\n";
-      // }
-      // std::cout << std::setprecision(15) << "Element 2 coords" << std::endl;
-      // for (int i{0}; i < 4; ++i)
-      // {
-      //   std::cout << "(" << x2[i] << ", " << x2[i+4] << ")\n";
-      // }
-      // std::cout << std::setprecision(15) << "Number of vertices: " << num_poly_verts << "   Polygon area: "
-      //   << area << std::endl;
-      // for (int i{0}; i < num_poly_verts; ++i)
-      // {
-      //   std::cout << "  Coord: (" << xi[i] << ", " << xi[i+8] << ")   Type: ";
-      //   switch (type[i])
-      //   {
-      //     case OverlapVertexType::A:
-      //       std::cout << "Vertex A" << std::endl;
-      //       break;
-      //     case OverlapVertexType::B:
-      //       std::cout << "Vertex B" << std::endl;
-      //       break;
-      //     case OverlapVertexType::EdgeEdge:
-      //       std::cout << "Edge/Edge" << std::endl;
-      //       break;
-      //   }
-      // }
-
       __enzyme_fwddiff<void>( (void*)Intersection2DPolygonEnzyme, x1, zeros, x1 + 4, zeros, 4, x2, zeros, x2 + 4, x_dot,
                               4, pos_tol, d_pos_tol, len_tol, d_len_tol, xi, dxidx2 + 16 * ( 4 + i ), xi + 8,
                               dxidx2 + 16 * ( 4 + i ) + 8, &num_poly_verts, &d_num_poly_verts );
-
-      // std::cout << std::setprecision(15) << "Element 1 coords" << std::endl;
-      // for (int i{0}; i < 4; ++i)
-      // {
-      //   std::cout << "(" << x1[i] << ", " << x1[i+4] << ")\n";
-      // }
-      // std::cout << std::setprecision(15) << "Element 2 coords" << std::endl;
-      // for (int i{0}; i < 4; ++i)
-      // {
-      //   std::cout << "(" << x2[i] << ", " << x2[i+4] << ")\n";
-      // }
-      // std::cout << std::setprecision(15) << "Number of vertices: " << num_poly_verts << "   Polygon area: "
-      //   << area << std::endl;
-      // for (int i{0}; i < num_poly_verts; ++i)
-      // {
-      //   std::cout << "  Coord: (" << xi[i] << ", " << xi[i+8] << ")   Type: ";
-      //   switch (type[i])
-      //   {
-      //     case OverlapVertexType::A:
-      //       std::cout << "Vertex A" << std::endl;
-      //       break;
-      //     case OverlapVertexType::B:
-      //       std::cout << "Vertex B" << std::endl;
-      //       break;
-      //     case OverlapVertexType::EdgeEdge:
-      //       std::cout << "Edge/Edge" << std::endl;
-      //       break;
-      //   }
-      // }
-
       x_dot[i] = 0.0;
     }
 
@@ -243,15 +125,6 @@ class EnzymePolyIntersectTest : public testing::Test {
         }
       }
     }
-
-    // mfem::DenseMatrix dxidx1_dense(dxidx1, 16, 8);
-    // std::ofstream dxidx1_file(name + "_dxidx1.mat");
-    // dxidx1_dense.PrintMatlab(dxidx1_file);
-    // dxidx1_file.close();
-    // mfem::DenseMatrix dxidx2_dense(dxidx2, 16, 8);
-    // std::ofstream dxidx2_file(name + "_dxidx2.mat");
-    // dxidx2_dense.PrintMatlab(dxidx2_file);
-    // dxidx2_file.close();
 
     RealT dxidx1_fd[16 * 8];
     RealT dxidx2_fd[16 * 8];
