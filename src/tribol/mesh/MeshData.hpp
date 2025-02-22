@@ -696,7 +696,8 @@ class MeshData {
    *
    * This routine accounts for warped faces by computing an average normal.
    */
-  bool computeFaceData( ExecutionMode exec_mode, ElementNormal& elem_normal );
+  template <typename ElemNormalMethod>
+  bool computeFaceData( ExecutionMode exec_mode, ElemNormalMethod elem_normal );
 
   /**
    * @brief Allocates and initializes memory to hold nodal normals

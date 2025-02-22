@@ -3,15 +3,16 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include "tribol/mesh/MeshData.hpp"
-#include "tribol/common/ExecModel.hpp"
-#include "tribol/utils/Math.hpp"
-
 #include <cmath>
 #include <iostream>
 #include <sstream>
 #include <iomanip>
 #include <fstream>
+
+#include "tribol/mesh/MeshData.hpp"
+#include "tribol/common/ExecModel.hpp"
+#include "tribol/geom/ElementNormal.hpp"
+#include "tribol/utils/Math.hpp"
 
 #include "axom/slic.hpp"
 #include "axom/fmt.hpp"
@@ -306,7 +307,8 @@ Array1D<IndexT> MeshData::sortSurfaceNodeIds()
 }  // end MeshData::sortSurfaceNodeIds()
 
 //------------------------------------------------------------------------------
-bool MeshData::computeFaceData( ExecutionMode exec_mode, ElementNormal& elem_normal )
+template <typename ElemNormalMethod>
+bool MeshData::computeFaceData( ExecutionMode exec_mode, ElemNormalMethod elem_normal )
 {
   constexpr RealT nrml_mag_tol = 1.0e-15;
 
@@ -328,8 +330,6 @@ bool MeshData::computeFaceData( ExecutionMode exec_mode, ElementNormal& elem_nor
 
   ArrayT<IndexT> face_data_ok_data( { static_cast<IndexT>( true ) }, m_allocator_id );
 
-  ArrayT<ElementNormal*> elem_normal_data( { &elem_normal }, m_allocator_id );
-
   // loop over all elements in the mesh
   Array2DView<RealT> c = m_c;
   MultiViewArrayView<const RealT> x = m_position;
@@ -339,9 +339,8 @@ bool MeshData::computeFaceData( ExecutionMode exec_mode, ElementNormal& elem_nor
   auto dim = m_dim;
   auto conn = m_connectivity;
   ArrayViewT<IndexT> face_data_ok = face_data_ok_data;
-  ArrayViewT<ElementNormal*> elem_normal_view = elem_normal_data;
   forAllExec( exec_mode, numberOfElements(),
-              [c, x, n, area, radius, dim, conn, face_data_ok, elem_normal_view] TRIBOL_HOST_DEVICE( IndexT i ) {
+              [c, x, n, area, radius, dim, conn, face_data_ok, elem_normal] TRIBOL_HOST_DEVICE( IndexT i ) {
                 // compute the vertex average centroid. This will lie in the
                 // plane of the face for planar faces, and will be used as
                 // an approximate centroid for warped faces, both in 3D.
@@ -424,7 +423,7 @@ bool MeshData::computeFaceData( ExecutionMode exec_mode, ElementNormal& elem_nor
                   // initialize element normal
                   RealT n_elem[3] = { 0.0, 0.0, 0.0 };
                   // compute element normal and area
-                  auto face_ok = elem_normal_view[0]->Compute( x_elem, c_elem, n_elem, num_nodes_per_elem, area[i] );
+                  auto face_ok = elem_normal.Compute( x_elem, c_elem, n_elem, num_nodes_per_elem, area[i] );
                   if ( !face_ok ) {
                     face_data_ok[0] = static_cast<IndexT>( false );
                   }
@@ -443,6 +442,9 @@ bool MeshData::computeFaceData( ExecutionMode exec_mode, ElementNormal& elem_nor
   return face_data_ok_host[0];
 
 }  // end MeshData::computeFaceData()
+
+template bool MeshData::computeFaceData<PalletAvgNormal>( ExecutionMode, PalletAvgNormal );
+template bool MeshData::computeFaceData<QuadCentroidNormal>( ExecutionMode, QuadCentroidNormal );
 
 //------------------------------------------------------------------------------
 RealT MeshData::computeEdgeLength( int faceId )

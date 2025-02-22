@@ -1132,18 +1132,23 @@ bool CouplingScheme::init()
     }
 #endif
 
+    // compute the face data
 #ifdef TRIBOL_USE_ENZYME
-    // set the element normal calc if enzyme is enabled and we are using mortar
+    // different element normals for enzyme + mortar (matching Puso and Laursen)
     if ( this->isEnzymeEnabled() && this->m_contactMethod == SINGLE_MORTAR ) {
-      this->m_elementNormal = std::make_unique<QuadCentroidNormal>();
+      this->m_mesh1->computeFaceData( this->m_exec_mode, QuadCentroidNormal() );
+      if ( this->m_mesh_id2 != this->m_mesh_id1 ) {
+        this->m_mesh2->computeFaceData( this->m_exec_mode, QuadCentroidNormal() );
+      }
+    } else {
+#endif
+      this->m_mesh1->computeFaceData( this->m_exec_mode, PalletAvgNormal() );
+      if ( this->m_mesh_id2 != this->m_mesh_id1 ) {
+        this->m_mesh2->computeFaceData( this->m_exec_mode, PalletAvgNormal() );
+      }
+#ifdef TRIBOL_USE_ENZYME
     }
 #endif
-
-    // compute the face data
-    this->m_mesh1->computeFaceData( this->m_exec_mode, *this->m_elementNormal );
-    if ( this->m_mesh_id2 != this->m_mesh_id1 ) {
-      this->m_mesh2->computeFaceData( this->m_exec_mode, *this->m_elementNormal );
-    }
 
     this->allocateMethodData();
 
