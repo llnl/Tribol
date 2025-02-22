@@ -11,7 +11,7 @@
 
 namespace tribol {
 
-bool PalletAvgNormal::Compute( const RealT* x, const RealT* c, RealT* n, int num_nodes, RealT& area ) const
+TRIBOL_HOST_DEVICE bool PalletAvgNormal::Compute( const RealT* x, const RealT* c, RealT* n, int num_nodes, RealT& area ) const
 {
   bool face_ok = true;
   area = 0.0;
@@ -61,7 +61,7 @@ bool PalletAvgNormal::Compute( const RealT* x, const RealT* c, RealT* n, int num
   return face_ok;
 }
 
-bool QuadCentroidNormal::Compute( const RealT* x, const RealT* c, RealT* n, int num_nodes, RealT& area ) const
+TRIBOL_HOST_DEVICE bool QuadCentroidNormal::Compute( const RealT* x, const RealT* c, RealT* n, int num_nodes, RealT& area ) const
 {
   area = 0.0;
   // get vector n (normal of elem1) = de1 x de2, where de1 and de2 are tangent vectors evaluated at the
