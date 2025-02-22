@@ -15,17 +15,20 @@ namespace tribol {
 class ElementNormal {
  public:
   TRIBOL_HOST_DEVICE virtual ~ElementNormal() {}
-  TRIBOL_HOST_DEVICE virtual bool Compute( const RealT* x, const RealT* c, RealT* n, int num_nodes, RealT& area ) const = 0;
+  TRIBOL_HOST_DEVICE virtual bool Compute( const RealT* x, const RealT* c, RealT* n, int num_nodes,
+                                           RealT& area ) const = 0;
 };
 
 class PalletAvgNormal : public ElementNormal {
  public:
-  TRIBOL_HOST_DEVICE bool Compute( const RealT* x, const RealT* c, RealT* n, int num_nodes, RealT& area ) const override;
+  TRIBOL_HOST_DEVICE bool Compute( const RealT* x, const RealT* c, RealT* n, int num_nodes,
+                                   RealT& area ) const override;
 };
 
 class QuadCentroidNormal : public ElementNormal {
  public:
-  TRIBOL_HOST_DEVICE bool Compute( const RealT* x, const RealT* c, RealT* n, int num_nodes, RealT& area ) const override;
+  TRIBOL_HOST_DEVICE bool Compute( const RealT* x, const RealT* c, RealT* n, int num_nodes,
+                                   RealT& area ) const override;
 };
 
 }  // namespace tribol
