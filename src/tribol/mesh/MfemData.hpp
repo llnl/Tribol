@@ -1621,6 +1621,9 @@ class MfemJacobianData {
    */
   mfem::Array<int> block_offsets_;
 
+  /**
+   * @brief Array of offsets equal to number of displacement degrees of freedom
+   */
   mfem::Array<int> disp_offsets_;
 
   /**
@@ -1628,6 +1631,9 @@ class MfemJacobianData {
    */
   mfem::Array<int> submesh2parent_vdof_list_;
 
+  /**
+   * @brief Submesh to parent transfer operator
+   */
   std::unique_ptr<mfem::HypreParMatrix> submesh_parent_vdof_xfer_;
 
   /**
