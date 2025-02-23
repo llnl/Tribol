@@ -545,7 +545,7 @@ class EnzymeJacobianTest : public testing::Test {
   }
 };
 
-TEST_F( EnzymeJacobianTest, ExactOverlap )
+TEST_F( EnzymeJacobianTest, ExactOverlapZeroGap )
 {
   // clang-format off
   // {x0, x1, x2, x3, 
@@ -573,7 +573,7 @@ TEST_F( EnzymeJacobianTest, ExactOverlap )
   ApproxJacobianCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeJacobianTest, SlightlySmallerNonmortarElement )
+TEST_F( EnzymeJacobianTest, SlightlySmallerNonmortarElementMinorInterpenetration )
 {
   // slightly smaller
   double dx = 4.0 * delta_;
@@ -595,7 +595,7 @@ TEST_F( EnzymeJacobianTest, SlightlySmallerNonmortarElement )
   ApproxJacobianCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeJacobianTest, ShiftedXNonmortarElement )
+TEST_F( EnzymeJacobianTest, ShiftedXNonmortarElementMinorInterpenetration )
 {
   // slightly smaller and offset
   double offset = 0.3;
@@ -616,7 +616,7 @@ TEST_F( EnzymeJacobianTest, ShiftedXNonmortarElement )
   FDCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeJacobianTest, ShiftedXYNonmortarElement )
+TEST_F( EnzymeJacobianTest, ShiftedXYNonmortarElementMinorInterpenetration )
 {
   // slightly smaller and offset
   double offset = 0.3;
@@ -637,7 +637,7 @@ TEST_F( EnzymeJacobianTest, ShiftedXYNonmortarElement )
   FDCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeJacobianTest, Rotated30DegNonmortarElement )
+TEST_F( EnzymeJacobianTest, Rotated30DegNonmortarElementMinorInterpenetration )
 {
   // clang-format off
   // rotate 30 degrees
@@ -673,7 +673,7 @@ TEST_F( EnzymeJacobianTest, Rotated30DegNonmortarElement )
   FDCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeJacobianTest, NonaffineRotated45DegMortarElement )
+TEST_F( EnzymeJacobianTest, NonaffineRotated45DegMortarElementMinorInterpenetration )
 {
   // clang-format off
   // rotate 45 degrees
@@ -709,7 +709,7 @@ TEST_F( EnzymeJacobianTest, NonaffineRotated45DegMortarElement )
   FDCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeJacobianTest, NonaffineOutOfPlaneNonmortarElement )
+TEST_F( EnzymeJacobianTest, NonaffineOutOfPlaneNonmortarElementMinorInterpenetration )
 {
   // clang-format off
   // rotate 45 degrees
@@ -745,7 +745,7 @@ TEST_F( EnzymeJacobianTest, NonaffineOutOfPlaneNonmortarElement )
   FDCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeJacobianTest, NonaffineWarpedNonmortarElement )
+TEST_F( EnzymeJacobianTest, NonaffineWarpedNonmortarElementMinorInterpenetration )
 {
   // clang-format off
   // rotate 45 degrees
@@ -781,7 +781,7 @@ TEST_F( EnzymeJacobianTest, NonaffineWarpedNonmortarElement )
   FDCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeJacobianTest, NonaffineOutOfPlaneMortarElement )
+TEST_F( EnzymeJacobianTest, NonaffineOutOfPlaneMortarElementMinorInterpenetration )
 {
   // clang-format off
   // rotate 45 degrees
@@ -817,7 +817,7 @@ TEST_F( EnzymeJacobianTest, NonaffineOutOfPlaneMortarElement )
   FDCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeJacobianTest, NonaffineWarpedMortarElement )
+TEST_F( EnzymeJacobianTest, NonaffineWarpedMortarElementMinorInterpenetration )
 {
   // clang-format off
   // rotate 45 degrees

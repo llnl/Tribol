@@ -43,6 +43,7 @@ class EnzymeNodalNormalTest : public testing::Test {
     // get nonmortar/nonmortar contributions
     auto& elem_Js =
         dndx_data.getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) );
+    // assemble element contributions to a global sparse matrix
     auto num_nodes_per_el = mesh.numberOfNodesPerElement();
     for ( int i{ 0 }; i < mesh.numberOfElements(); ++i ) {
       for ( int d1{ 0 }; d1 < mesh.spatialDimension(); ++d1 ) {
