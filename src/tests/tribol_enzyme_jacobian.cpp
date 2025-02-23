@@ -11,11 +11,18 @@
 
 #include <iostream>
 
-#include "redecomp/common/TypeDefs.hpp"
-#include "tribol/physics/Mortar.hpp"
-#include "tribol/interface/tribol.hpp"
+#include "tribol/config.hpp"
 
 #include "gtest/gtest.h"
+
+#ifdef TRIBOL_USE_UMPIRE
+#include "umpire/ResourceManager.hpp"
+#endif
+
+#include "redecomp/common/TypeDefs.hpp"
+
+#include "tribol/physics/Mortar.hpp"
+#include "tribol/interface/tribol.hpp"
 
 namespace tribol {
 
@@ -408,14 +415,17 @@ class EnzymeJacobianTest : public testing::Test {
     constexpr int num_nodes = 4;
 
     constexpr int mesh_id1 = 0;
-    registerMesh( mesh_id1, num_elems, num_nodes, conn, InterfaceElementType::LINEAR_QUAD, x1, x1 + 4, x1 + 8 );
+    registerMesh( mesh_id1, num_elems, num_nodes, conn, InterfaceElementType::LINEAR_QUAD, x1, x1 + 4, x1 + 8,
+                  MemorySpace::Host );
     constexpr int mesh_id2 = 1;
-    registerMesh( mesh_id2, num_elems, num_nodes, conn, InterfaceElementType::LINEAR_QUAD, x2, x2 + 4, x2 + 8 );
+    registerMesh( mesh_id2, num_elems, num_nodes, conn, InterfaceElementType::LINEAR_QUAD, x2, x2 + 4, x2 + 8,
+                  MemorySpace::Host );
     constexpr int cs_id = 0;
     // mortar then nonmortar surfaces
     registerCouplingScheme( cs_id, mesh_id2, mesh_id1, ContactMode::SURFACE_TO_SURFACE, ContactCase::NO_CASE,
                             ContactMethod::SINGLE_MORTAR, ContactModel::FRICTIONLESS,
-                            EnforcementMethod::LAGRANGE_MULTIPLIER, BinningMethod::BINNING_GRID );
+                            EnforcementMethod::LAGRANGE_MULTIPLIER, BinningMethod::BINNING_GRID,
+                            ExecutionMode::Sequential );
     double f1t[12];
     for ( int i{ 0 }; i < 12; ++i ) {
       f1t[i] = 0.0;
@@ -879,6 +889,10 @@ int main( int argc, char* argv[] )
   MPI_Init( &argc, &argv );
 
   ::testing::InitGoogleTest( &argc, argv );
+
+#ifdef TRIBOL_USE_UMPIRE
+  umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
+#endif
 
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
                                     // exiting main scope

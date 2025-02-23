@@ -528,8 +528,8 @@ int getJacobianCSRMatrix( int** I, int** J, RealT** vals, IndexT cs_id, int* n_o
 
 //------------------------------------------------------------------------------
 int getElementBlockJacobians( IndexT cs_id, BlockSpace row_block, BlockSpace col_block,
-                              const axom::Array<int>** row_elem_idx, const axom::Array<int>** col_elem_idx,
-                              const axom::Array<mfem::DenseMatrix>** jacobians )
+                              const ArrayT<int>** row_elem_idx, const ArrayT<int>** col_elem_idx,
+                              const ArrayT<mfem::DenseMatrix>** jacobians )
 {
   // get access to coupling scheme
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -549,9 +549,11 @@ int getElementBlockJacobians( IndexT cs_id, BlockSpace row_block, BlockSpace col
     return 1;
   }
   MethodData* method_data = cs->getMethodData();
-  *row_elem_idx = &method_data->getBlockJElementIds()[static_cast<int>( row_block )];
-  *col_elem_idx = &method_data->getBlockJElementIds()[static_cast<int>( col_block )];
-  *jacobians = &method_data->getBlockJ()( static_cast<int>( row_block ), static_cast<int>( col_block ) );
+  if ( method_data != nullptr ) {
+    *row_elem_idx = &method_data->getBlockJElementIds()[static_cast<int>( row_block )];
+    *col_elem_idx = &method_data->getBlockJElementIds()[static_cast<int>( col_block )];
+    *jacobians = &method_data->getBlockJ()( static_cast<int>( row_block ), static_cast<int>( col_block ) );
+  }
   return 0;
 
 }  // end getElementBlockJacobians()
