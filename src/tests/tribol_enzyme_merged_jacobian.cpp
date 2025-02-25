@@ -204,11 +204,11 @@ class EnzymeMergedJacobianTest : public testing::Test {
       }
     }
     dfdx_nc.Finalize();
-    mfem::DenseMatrix dfdx_nc_sparse;
-    dfdx_nc.ToDenseMatrix( dfdx_nc_sparse );
-    std::ofstream dfdx_nc_file( "dfdx_nc.mat" );
-    dfdx_nc_sparse.PrintMatlab( dfdx_nc_file );
-    dfdx_nc_file.close();
+    // mfem::DenseMatrix dfdx_nc_sparse;
+    // dfdx_nc.ToDenseMatrix( dfdx_nc_sparse );
+    // std::ofstream dfdx_nc_file( "dfdx_nc.mat" );
+    // dfdx_nc_sparse.PrintMatlab( dfdx_nc_file );
+    // dfdx_nc_file.close();
     mfem::SparseMatrix dfdn( fe_space.GetVSize() );
     auto& dfdn_data = *cs.getdnMethodData();
     // get mortar/nonmortar contributions
@@ -238,11 +238,11 @@ class EnzymeMergedJacobianTest : public testing::Test {
       }
     }
     dfdn.Finalize();
-    mfem::DenseMatrix dfdn_sparse;
-    dfdn.ToDenseMatrix( dfdn_sparse );
-    std::ofstream dfdn_file( "dfdn.mat" );
-    dfdn_sparse.PrintMatlab( dfdn_file );
-    dfdn_file.close();
+    // mfem::DenseMatrix dfdn_sparse;
+    // dfdn.ToDenseMatrix( dfdn_sparse );
+    // std::ofstream dfdn_file( "dfdn.mat" );
+    // dfdn_sparse.PrintMatlab( dfdn_file );
+    // dfdn_file.close();
     mfem::SparseMatrix dndx( fe_space.GetVSize() );
     auto& dndx_data = cs.getNodalNormal()->getJacobianData();
     // get nonmortar/nonmortar contributions
@@ -258,11 +258,11 @@ class EnzymeMergedJacobianTest : public testing::Test {
       }
     }
     dndx.Finalize();
-    mfem::DenseMatrix dndx_sparse;
-    dndx.ToDenseMatrix( dndx_sparse );
-    std::ofstream dndx_file( "dndx.mat" );
-    dndx_sparse.PrintMatlab( dndx_file );
-    dndx_file.close();
+    // mfem::DenseMatrix dndx_sparse;
+    // dndx.ToDenseMatrix( dndx_sparse );
+    // std::ofstream dndx_file( "dndx.mat" );
+    // dndx_sparse.PrintMatlab( dndx_file );
+    // dndx_file.close();
     auto dfdn_dndx = std::unique_ptr<mfem::SparseMatrix>( mfem::Mult( dfdn, dndx ) );
     auto dfdx = std::unique_ptr<mfem::SparseMatrix>( mfem::Add( dfdx_nc, *dfdn_dndx ) );
     mfem::DenseMatrix dfdx_enzyme;
@@ -300,6 +300,11 @@ class EnzymeMergedJacobianTest : public testing::Test {
       }
     }
     dgdx_nc.Finalize();
+    // mfem::DenseMatrix dgdx_nc_sparse;
+    // dgdx_nc.ToDenseMatrix( dgdx_nc_sparse );
+    // std::ofstream dgdx_nc_file( "dgdx_nc.mat" );
+    // dgdx_nc_sparse.PrintMatlab( dgdx_nc_file );
+    // dgdx_nc_file.close();
     mfem::SparseMatrix dgdn( fe_space_scalar.GetVSize(), fe_space.GetVSize() );
     // get lagrange/nonmortar contributions
     elem_Js = &dfdn_data.getBlockJ()( static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER ),
@@ -316,6 +321,11 @@ class EnzymeMergedJacobianTest : public testing::Test {
       }
     }
     dgdn.Finalize();
+    // mfem::DenseMatrix dgdn_sparse;
+    // dgdn.ToDenseMatrix( dgdn_sparse );
+    // std::ofstream dgdn_file( "dgdn.mat" );
+    // dgdn_sparse.PrintMatlab( dgdn_file );
+    // dgdn_file.close();
     auto dgdn_dndx = std::unique_ptr<mfem::SparseMatrix>( mfem::Mult( dgdn, dndx ) );
     auto dgdx = std::unique_ptr<mfem::SparseMatrix>( mfem::Add( dgdx_nc, *dgdn_dndx ) );
     mfem::DenseMatrix dgdx_enzyme;
@@ -464,6 +474,37 @@ TEST_F( EnzymeMergedJacobianTest, FiniteDiffCheckShifted2x2Meshes )
       .translate({xy_shift, xy_shift, 0.0})
       // change the mesh1 boundary attribute from 6 to 8
       .updateBdrAttrib(6, mesh1_bdry_attrib)
+  });
+  // clang-format on
+
+  RunJacobianTest( mesh, mesh0_bdry_attrib, num_xel_mesh0, num_yel_mesh0, mesh1_bdry_attrib, num_xel_mesh1,
+                   num_yel_mesh1 );
+}
+
+TEST_F( EnzymeMergedJacobianTest, FiniteDiffCheckShifted1x1Meshes )
+{
+  constexpr auto num_xel_mesh0 = 1;
+  constexpr auto num_yel_mesh0 = 1;
+  constexpr auto num_xel_mesh1 = 1;
+  constexpr auto num_yel_mesh1 = 1;
+
+  constexpr auto mesh0_bdry_attrib = 6;
+  constexpr auto mesh1_bdry_attrib = 7;
+
+  constexpr double eps = 1.0e-7;
+  constexpr double xy_shift = eps * 10.0;
+  // clang-format off
+  auto mesh = shared::MeshBuilder::Unify({
+    shared::MeshBuilder::CubeMesh(1, 1, 1),
+    shared::MeshBuilder::CubeMesh(1, 1, 1)
+      // shift up 99.9% height of element
+      .translate({0.0, 0.0, 0.999})
+      // shift x and y so the element edges are not overlapping
+      .translate({xy_shift, xy_shift, 0.0})
+      // change the mesh1 boundary attribute from 1 to 7
+      .updateBdrAttrib(1, 7)
+      // change the mesh1 boundary attribute from 6 to 8
+      .updateBdrAttrib(6, 8)
   });
   // clang-format on
 

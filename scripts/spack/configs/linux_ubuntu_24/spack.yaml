@@ -31,8 +31,6 @@ spack:
       providers:
         blas: [openblas]
         lapack: [openblas]
-        gl: [opengl]
-        glu: [openglu]
 
     # Lock down versions of packages we depend on
     autoconf:

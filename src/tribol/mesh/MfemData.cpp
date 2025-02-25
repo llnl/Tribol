@@ -1106,7 +1106,7 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdndxJacobianEnzyme
   block_J->owns_blocks = 1;
 
   // these are Tribol element ids
-  auto nonmortar_elems = method_data.getBlockJElementIds()[0];
+  auto nonmortar_elems = method_data.getBlockJElementIds()[static_cast<int>( BlockSpace::NONMORTAR )];
   // convert them to redecomp element ids
   const auto& elem_map_2 = parent_data_.GetElemMap2();
   for ( auto& nonmortar_elem : nonmortar_elems ) {
@@ -1115,7 +1115,8 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdndxJacobianEnzyme
 
   // transfer (0, 0) block (residual dof rows, displacement dof cols)
   auto submesh_J = GetUpdateData().submesh_redecomp_xfer_00_->TransferToParallelSparse(
-      nonmortar_elems, nonmortar_elems, method_data.getBlockJ()( 0, 0 ) );
+      nonmortar_elems, nonmortar_elems,
+      method_data.getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) ) );
   submesh_J.Finalize();
   auto submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_00_->ConvertToHypreParMatrix( submesh_J, false );
   // Matrix returned by mfem::RAP copies all existing data and owns its data

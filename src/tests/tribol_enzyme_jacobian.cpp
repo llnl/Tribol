@@ -548,7 +548,7 @@ class EnzymeJacobianTest : public testing::Test {
 TEST_F( EnzymeJacobianTest, ExactOverlapZeroGap )
 {
   // clang-format off
-  // {x0, x1, x2, x3, 
+  // {x0, x1, x2, x3,
   //  y0, y1, y2, y3,
   //  z0, z1, z2, z3}
   double x1[12] = { 0.0, 1.0, 1.0, 0.0,
@@ -631,6 +631,27 @@ TEST_F( EnzymeJacobianTest, ShiftedXYNonmortarElementMinorInterpenetration )
   double n1[12] = { 0.0, 0.0, 0.0, 0.0,
                     0.0, 0.0, 0.0, 0.0,
                     1.0, 1.0, 1.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+  // clang-format on
+
+  FDCheck( x1, x2, n1, p1 );
+}
+
+// NOTE: this configuration is designed to match a test in Serac
+TEST_F( EnzymeJacobianTest, ShiftedXYNonmortarElementMinorInterpenetrationV2 )
+{
+  // slightly offset
+  double dx = 10.0 * delta_;
+  // clang-format off
+  double x1[12] = { 0.0+dx, 0.0+dx, 1.0+dx, 1.0+dx,
+                    0.0+dx, 1.0+dx, 1.0+dx, 0.0+dx,
+                    0.999,  0.999,  0.999,  0.999 };
+  double x2[12] = { 0.0, 1.0, 1.0, 0.0,
+                    0.0, 0.0, 1.0, 1.0,
+                    1.0, 1.0, 1.0, 1.0 };
+  double n1[12] = { 0.0,  0.0,  0.0,  0.0,
+                    0.0,  0.0,  0.0,  0.0,
+                    -1.0, -1.0, -1.0, -1.0 };
   double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
   // clang-format on
 
