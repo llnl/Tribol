@@ -19,7 +19,7 @@
 namespace tribol {
 
 //------------------------------------------------------------------------------
-bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_options )
+bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_options, ExecutionMode exec_mode , int alloc_id )
 {
   // Note, this routine is, and should be called only for non-null meshes
   KinematicPenaltyCalculation kin_calc = pen_options.kinematic_calculation;
@@ -61,7 +61,7 @@ bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_optio
       }
 
       // check for positive material modulus and thickness values
-      bool isValidMatMod = true;
+      /* bool isValidMatMod = true;
       bool isValidElemThickness = true;
       for ( int i = 0; i < this->m_num_cells; ++i ) {
         if ( this->m_mat_mod[i] <= 0. ) {
@@ -80,6 +80,37 @@ bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_optio
         if ( !isValidMatMod || !isValidElemThickness ) {
           return false;
         }
+      */
+
+      ArrayT<IndexT> mod_ok_data( { static_cast<IndexT>( true ) }, alloc_id );
+      ArrayViewT<IndexT> mod_ok = mod_ok_data;
+      ArrayT<IndexT> thickness_ok_data( { static_cast<IndexT>( true ) }, alloc_id );
+      ArrayViewT<IndexT> thickness_ok = thickness_ok_data;
+      Array1DView<const RealT> mod = this->m_mat_mod ;
+      Array1DView<const RealT> thickness = this->m_thickness ;
+      //ArrayViewT<const RealT> mod = this->m_mat_mod ;
+      //ArrayViewT<const RealT> thickness = this->m_thickness ;
+    
+      forAllExec( exec_mode, numberOfElements(),
+              [mod, thickness, mod_ok,  thickness_ok] TRIBOL_HOST_DEVICE( IndexT i ) {
+                if  (mod[i] <= 0. ) {
+                  mod_ok[0] = static_cast<IndexT>( false );
+                }
+                if (thickness[i] <= 0. ) {
+                  thickness_ok[0] =  static_cast<IndexT>( false );
+                }
+                
+              } );  // end element loop 
+
+      ArrayT<IndexT, 1, MemorySpace::Host> mod_ok_data_host( mod_ok_data );
+      SLIC_WARNING_IF( !mod_ok_data_host[0],
+          axom::fmt::format("MeshElemData::isValidKinematicPenalty(): invalid nonpositive element material modulus encountered.") );
+      ArrayT<IndexT, 1, MemorySpace::Host> thickness_ok_data_host( thickness_ok_data );
+      SLIC_WARNING_IF( !thickness_ok_data_host[0],
+          axom::fmt::format("MeshElemData::isValidKinematicPenalty(): invalid nonpositive element thickness encountered.") );
+      
+      if ( !mod_ok_data_host[0] || !thickness_ok_data_host[0] ) {
+        return false;
       }  // end for loop over elements
       break;
     }  // end case KINEMATIC_ELEMENT
@@ -583,7 +614,7 @@ int MeshData::checkLagrangeMultiplierData()
   return err;
 }
 //------------------------------------------------------------------------------
-int MeshData::checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options )
+int MeshData::checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options,  ExecutionMode exec_mode )
 {
   int err = 0;
   if ( this->numberOfElements() > 0 ) {
@@ -591,14 +622,14 @@ int MeshData::checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options )
     // switch over penalty enforcement options and check for required data
     switch ( constraint_type ) {
       case KINEMATIC: {
-        if ( !m_element_data.isValidKinematicPenalty( p_enfrc_options ) ) {
+        if ( !m_element_data.isValidKinematicPenalty( p_enfrc_options, exec_mode, this->m_allocator_id ) {
           err = 1;
         }
         break;
       }  // end KINEMATIC case
 
       case KINEMATIC_AND_RATE: {
-        if ( !m_element_data.isValidKinematicPenalty( p_enfrc_options ) ) {
+        if ( !m_element_data.isValidKinematicPenalty( p_enfrc_options, exec_mode, this->m_allocator_id ) ) {
           err = 1;
         }
         if ( !m_element_data.isValidRatePenalty( p_enfrc_options ) ) {

@@ -772,8 +772,8 @@ int CouplingScheme::checkEnforcementData()
         case PENALTY: {
           // check penalty data. Note, this routine is guarded against null-meshes
           PenaltyEnforcementOptions& pen_enfrc_options = this->m_enforcementOptions.penalty_options;
-          if ( this->m_mesh1->checkPenaltyData( pen_enfrc_options ) != 0 ||
-               this->m_mesh2->checkPenaltyData( pen_enfrc_options ) != 0 ) {
+          if ( this->m_mesh1->checkPenaltyData( pen_enfrc_options, this->m_exec_mode  ) != 0 ||
+               this->m_mesh2->checkPenaltyData( pen_enfrc_options, this->m_exec_mode  ) != 0 ) {
             this->m_couplingSchemeErrors.cs_enforcement_data_error = ERROR_IN_REGISTERED_ENFORCEMENT_DATA;
             err = 1;
           }
