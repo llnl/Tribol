@@ -957,9 +957,7 @@ int CouplingScheme::checkExecutionModeData()
 
   if ( m_contactMethod != COMMON_PLANE ) {
     if ( m_exec_mode != ExecutionMode::Sequential ) {
-      SLIC_WARNING_ROOT(
-          "Only sequential execution on host supported for contact methods "
-          "other than COMMON_PLANE." );
+      SLIC_WARNING_ROOT( "Only sequential execution on host supported for contact methods other than COMMON_PLANE." );
       this->m_couplingSchemeErrors.cs_execution_mode_error = ExecutionModeError::INCOMPATIBLE_METHOD;
       err = 1;
     }

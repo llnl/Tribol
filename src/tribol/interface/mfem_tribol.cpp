@@ -4,12 +4,9 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "mfem_tribol.hpp"
-#include "tribol/common/ExecModel.hpp"
-#include "tribol/common/Parameters.hpp"
 
 #ifdef BUILD_REDECOMP
 
-// Tribol includes
 #include "tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 

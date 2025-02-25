@@ -606,7 +606,7 @@ mfem::ParSubMesh MfemMeshData::CreateSubmesh( const mfem::ParMesh& parent_mesh, 
   // reference to attributes. Then we can construct submesh_ in the initializer
   // list without this function (because CreateFromBoundary will be willing to
   // take an rvalue for attributes)
-  // NOTE: this has been done in MFEM.  This method can be removed when MFEM is updated.
+  // NOTE (EBC): This has been updated in the latest MFEM. Make the change when MFEM is updated.
   auto attributes_array = arrayFromSet( mergeContainers( attributes_1, attributes_2 ) );
   return mfem::ParSubMesh::CreateFromBoundary( parent_mesh, attributes_array );
 }
