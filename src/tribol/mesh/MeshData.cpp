@@ -60,28 +60,6 @@ bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_optio
         return false;
       }
 
-      // check for positive material modulus and thickness values
-      /* bool isValidMatMod = true;
-      bool isValidElemThickness = true;
-      for ( int i = 0; i < this->m_num_cells; ++i ) {
-        if ( this->m_mat_mod[i] <= 0. ) {
-          isValidMatMod = false;
-        }
-        if ( this->m_thickness[i] <= 0. ) {
-          isValidElemThickness = false;
-        }
-
-        SLIC_WARNING_IF( !isValidMatMod, "MeshElemData::isValidKinematicPenalty(): "
-                                             << "invalid nonpositive element material modulus encountered." );
-
-        SLIC_WARNING_IF( !isValidElemThickness, "MeshElemData::isValidKinematicPenalty(): "
-                                                    << "invalid nonpositive element thickness encountered." );
-
-        if ( !isValidMatMod || !isValidElemThickness ) {
-          return false;
-        }
-      */
-
       ArrayT<IndexT> mod_ok_data( { static_cast<IndexT>( true ) }, alloc_id );
       ArrayViewT<IndexT> mod_ok = mod_ok_data;
       ArrayT<IndexT> thickness_ok_data( { static_cast<IndexT>( true ) }, alloc_id );
@@ -91,14 +69,14 @@ bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_optio
       //ArrayViewT<const RealT> mod = this->m_mat_mod ;
       //ArrayViewT<const RealT> thickness = this->m_thickness ;
     
-      forAllExec( exec_mode, numberOfElements(),
-              [mod, thickness, mod_ok,  thickness_ok] TRIBOL_HOST_DEVICE( IndexT i ) {
-                if  (mod[i] <= 0. ) {
-                  mod_ok[0] = static_cast<IndexT>( false );
-                }
-                if (thickness[i] <= 0. ) {
-                  thickness_ok[0] =  static_cast<IndexT>( false );
-                }
+      forAllExec( exec_mode, this->m_num_cells, 
+        [mod, thickness, mod_ok,  thickness_ok] TRIBOL_HOST_DEVICE( IndexT i ) { 
+          if  (mod[i] <= 0. ) {
+            RAJA::atomicMin<RAJA::auto_atomic> (mod_ok.data(), static_cast<IndexT>( false )) ;
+          }
+          if (thickness[i] <= 0. ) {
+            RAJA::atomicMin<RAJA::auto_atomic> (thickness_ok.data(), static_cast<IndexT>( false )) ;
+          }
                 
               } );  // end element loop 
 
@@ -629,7 +607,7 @@ int MeshData::checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options,  Exe
       }  // end KINEMATIC case
 
       case KINEMATIC_AND_RATE: {
-        if ( !m_element_data.isValidKinematicPenalty( p_enfrc_options, exec_mode, this->m_allocator_id ) ) {
+        if ( !m_element_data.isValidKinematicPenalty( p_enfrc_options ) ) {
           err = 1;
         }
         if ( !m_element_data.isValidRatePenalty( p_enfrc_options ) ) {

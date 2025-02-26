@@ -420,14 +420,6 @@ bool CouplingScheme::isValidCouplingScheme()
     valid = false;
   }
 
-  if ( !this->isValidEnforcement() ) {
-    this->m_couplingSchemeErrors.printEnforcementErrors();
-    valid = false;
-  } else if ( this->checkEnforcementData() != 0 ) {
-    this->m_couplingSchemeErrors.printEnforcementDataErrors();
-    valid = false;
-  }
-
   switch ( this->checkExecutionModeData() ) {
     case 1:
       this->m_couplingSchemeErrors.printExecutionModeErrors();
@@ -439,6 +431,14 @@ bool CouplingScheme::isValidCouplingScheme()
     default:
       // no info or error messages
       break;
+  }
+
+  if ( !this->isValidEnforcement() ) {
+    this->m_couplingSchemeErrors.printEnforcementErrors();
+    valid = false;
+  } else if ( this->checkEnforcementData() != 0 ) {
+    this->m_couplingSchemeErrors.printEnforcementDataErrors();
+    valid = false;
   }
 
   return valid;
