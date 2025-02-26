@@ -145,6 +145,8 @@ MeshBuilder::operator mfem::Mesh&() { return mesh_; }
 
 MeshBuilder::operator const mfem::Mesh&() const { return mesh_; }
 
+MeshBuilder::operator mfem::Mesh&&() { return std::move( mesh_ ); }
+
 ParMeshBuilder::ParMeshBuilder( MPI_Comm comm, MeshBuilder&& mesh ) : pmesh_{ comm, mesh } {}
 
 ParMeshBuilder&& ParMeshBuilder::setNodesFEColl( mfem::H1_FECollection fe_coll )

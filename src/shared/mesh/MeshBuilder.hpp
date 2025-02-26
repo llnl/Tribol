@@ -5,7 +5,7 @@
 
 #include "mfem.hpp"
 
-#include "tribol/config.hpp"
+#include "shared/config.hpp"
 
 /**
  * @file MeshBuilder.hpp
@@ -132,6 +132,12 @@ class MeshBuilder {
    * @return A const reference to the underlying mfem::Mesh object.
    */
   operator const mfem::Mesh&() const;
+
+  /**
+   * @brief Implicit conversion to a rvalue reference to mfem::Mesh.
+   * @return An rvalue reference to the underlying mfem::Mesh object
+   */
+  operator mfem::Mesh&&();
 
  private:
   mfem::Mesh mesh_;  ///< The underlying mesh object.
