@@ -384,16 +384,16 @@ class GridSearch : public SearchBase {
 
     // Output some info for debugging
     if ( true ) {
-      SLIC_INFO( "Implicit Grid info: "
-                 << "\n Mesh 1 bounding box (inflated): " << m_gridBBox << "\n Avg range: " << ranges
-                 << "\n Computed resolution: " << resolution );
+      SLIC_DEBUG( "Implicit Grid info: "
+                  << "\n Mesh 1 bounding box (inflated): " << m_gridBBox << "\n Avg range: " << ranges
+                  << "\n Computed resolution: " << resolution );
 
       SpatialBoundingBox bbox2;
       for ( int i = 0; i < m_mesh2.numberOfElements(); ++i ) {
         bbox2.addBox( elementBoundingBox( m_mesh2, i ) );
       }
 
-      SLIC_INFO( "Mesh 2 bounding box is: " << bbox2 );
+      SLIC_DEBUG( "Mesh 2 bounding box is: " << bbox2 );
     }
   };  // end initialize()
 
@@ -795,7 +795,7 @@ void InterfacePairFinder::initialize()
 
 void InterfacePairFinder::findInterfacePairs()
 {
-  SLIC_INFO( "Searching for interface pairs" );
+  SLIC_DEBUG( "Searching for interface pairs" );
   m_search->findInterfacePairs();
   // set boolean on coupling scheme object indicating
   // that binning has occurred
