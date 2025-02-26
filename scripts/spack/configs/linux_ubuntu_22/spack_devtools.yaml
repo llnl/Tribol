@@ -6,7 +6,7 @@
 spack:
   compilers::
   - compiler:
-      spec: gcc@11.4.0
+      spec: gcc@14.2.1
       paths:
         cc: /usr/bin/gcc
         cxx: /usr/bin/g++
@@ -15,13 +15,13 @@ spack:
       flags: 
         cflags: -pthread
         cxxflags: -pthread
-      operating_system: ubuntu22.04
+      operating_system: archlinux
       target: x86_64
       modules: []
       environment: {}
       extra_rpaths: []
   - compiler:
-      spec: clang@14.0.0
+      spec: clang@19.1.7
       paths:
         cc: /usr/bin/clang
         cxx: /usr/bin/clang++
@@ -30,7 +30,7 @@ spack:
       flags: 
         cflags: -pthread
         cxxflags: -pthread
-      operating_system: ubuntu22.04
+      operating_system: archlinux
       target: x86_64
       modules: []
       environment: {}
