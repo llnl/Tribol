@@ -19,7 +19,8 @@
 namespace tribol {
 
 //------------------------------------------------------------------------------
-bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_options, ExecutionMode exec_mode , int alloc_id )
+bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_options, ExecutionMode exec_mode, 
+                                            int alloc_id )
 {
   // Note, this routine is, and should be called only for non-null meshes
   KinematicPenaltyCalculation kin_calc = pen_options.kinematic_calculation;
@@ -64,28 +65,29 @@ bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_optio
       ArrayViewT<IndexT> mod_ok = mod_ok_data;
       ArrayT<IndexT> thickness_ok_data( { static_cast<IndexT>( true ) }, alloc_id );
       ArrayViewT<IndexT> thickness_ok = thickness_ok_data;
-      Array1DView<const RealT> mod = this->m_mat_mod ;
-      Array1DView<const RealT> thickness = this->m_thickness ;
-      //ArrayViewT<const RealT> mod = this->m_mat_mod ;
-      //ArrayViewT<const RealT> thickness = this->m_thickness ;
+      Array1DView<const RealT> mod = this->m_mat_mod;
+      Array1DView<const RealT> thickness = this->m_thickness;
     
-      forAllExec( exec_mode, this->m_num_cells, 
-        [mod, thickness, mod_ok,  thickness_ok] TRIBOL_HOST_DEVICE( IndexT i ) { 
-          if  (mod[i] <= 0. ) {
-            RAJA::atomicMin<RAJA::auto_atomic> (mod_ok.data(), static_cast<IndexT>( false )) ;
+      forAllExec( exec_mode, this->m_num_cells, [mod, thickness, mod_ok,  thickness_ok] TRIBOL_HOST_DEVICE( IndexT i ) { 
+          if ( mod[i] <= 0. ) {
+            RAJA::atomicMin<RAJA::auto_atomic> (mod_ok.data(), static_cast<IndexT>( false ) ) ;
           }
-          if (thickness[i] <= 0. ) {
-            RAJA::atomicMin<RAJA::auto_atomic> (thickness_ok.data(), static_cast<IndexT>( false )) ;
+          if ( thickness[i] <= 0. ) {
+            RAJA::atomicMin<RAJA::auto_atomic> (thickness_ok.data(), static_cast<IndexT>( false ) ) ;
           }
                 
-              } );  // end element loop 
+        } );  // end element loop 
 
       ArrayT<IndexT, 1, MemorySpace::Host> mod_ok_data_host( mod_ok_data );
-      SLIC_WARNING_IF( !mod_ok_data_host[0],
-          axom::fmt::format("MeshElemData::isValidKinematicPenalty(): invalid nonpositive element material modulus encountered.") );
+      SLIC_WARNING_IF( 
+          !mod_ok_data_host[0],
+          axom::fmt::format(
+              "MeshElemData::isValidKinematicPenalty(): invalid nonpositive element material modulus encountered." ) );
       ArrayT<IndexT, 1, MemorySpace::Host> thickness_ok_data_host( thickness_ok_data );
-      SLIC_WARNING_IF( !thickness_ok_data_host[0],
-          axom::fmt::format("MeshElemData::isValidKinematicPenalty(): invalid nonpositive element thickness encountered.") );
+      SLIC_WARNING_IF(
+          !thickness_ok_data_host[0],
+          axom::fmt::format(
+              "MeshElemData::isValidKinematicPenalty(): invalid nonpositive element thickness encountered." ) );
       
       if ( !mod_ok_data_host[0] || !thickness_ok_data_host[0] ) {
         return false;
@@ -592,7 +594,7 @@ int MeshData::checkLagrangeMultiplierData()
   return err;
 }
 //------------------------------------------------------------------------------
-int MeshData::checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options,  ExecutionMode exec_mode )
+int MeshData::checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options, ExecutionMode exec_mode )
 {
   int err = 0;
   if ( this->numberOfElements() > 0 ) {

@@ -68,7 +68,7 @@ struct MeshElemData {
    *
    * \return true if the kinematic penalty option has valid data
    */
-  bool isValidKinematicPenalty( PenaltyEnforcementOptions& pen_options, ExecutionMode exec_mode, int alloc_id) );
+  bool isValidKinematicPenalty( PenaltyEnforcementOptions& pen_options, ExecutionMode exec_mode, int alloc_id) ;
 
   /*!
    * \brief Checks if the rate penalty data is valid
