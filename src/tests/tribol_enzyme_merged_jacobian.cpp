@@ -34,8 +34,9 @@ class EnzymeMergedJacobianTest : public testing::Test {
  protected:
   void SetUp() override {}
 
-  void RunJacobianTest( mfem::Mesh& mesh, int bdry_attrib1, int x_el1, int y_el1, int bdry_attrib2, int x_el2,
-                        int y_el2, const double* stencil_dir = nullptr )
+  void RunJacobianTest( mfem::Mesh& mesh, mfem::Vector* pressure, mfem::GridFunction* parent_coords, int bdry_attrib1,
+                        int x_el1, int y_el1, int bdry_attrib2, int x_el2, int y_el2,
+                        const double* stencil_dir = nullptr )
   {
     // create MFEM submesh
     mfem::Array<int> submesh_bdry_attribs( { bdry_attrib1, bdry_attrib2 } );
@@ -44,8 +45,8 @@ class EnzymeMergedJacobianTest : public testing::Test {
     // create MFEM coordinates grid function
     mfem::H1_FECollection fe_coll( 1, submesh.SpaceDimension() );
     mfem::FiniteElementSpace fe_space( &submesh, &fe_coll, submesh.SpaceDimension() );
-    mfem::GridFunction coords( &fe_space );
-    submesh.SetNodalGridFunction( &coords, false );
+    mfem::GridFunction ref_coords( &fe_space );
+    submesh.SetNodalGridFunction( &ref_coords, false );
 
     // create Tribol connectivity
     auto num_contact_els_mesh0 = x_el1 * y_el1;
@@ -76,6 +77,12 @@ class EnzymeMergedJacobianTest : public testing::Test {
     }
 
     // register Tribol mesh data
+    mfem::GridFunction coords( &fe_space );
+    if ( parent_coords == nullptr ) {
+      coords = ref_coords;
+    } else {
+      submesh.Transfer( *parent_coords, coords );
+    }
     auto coords_ptr = coords.Read();
     constexpr auto mesh0_id = 0;
     registerMesh( mesh0_id, num_contact_els_mesh0, fe_space.GetNDofs(), mesh0_conn.data(), LINEAR_QUAD, coords_ptr,
@@ -84,8 +91,6 @@ class EnzymeMergedJacobianTest : public testing::Test {
     registerMesh( mesh1_id, num_contact_els_mesh1, fe_space.GetNDofs(), mesh1_conn.data(), LINEAR_QUAD, coords_ptr,
                   coords_ptr + fe_space.GetNDofs(), coords_ptr + 2 * fe_space.GetNDofs() );
     // mesh will move when we do finite differencing
-    mfem::GridFunction ref_coords( &fe_space );
-    ref_coords = coords;
     auto ref_coords_ptr = ref_coords.Read();
     registerNodalReferenceCoords( mesh0_id, ref_coords_ptr, ref_coords_ptr + fe_space.GetNDofs(),
                                   ref_coords_ptr + 2 * fe_space.GetNDofs() );
@@ -101,9 +106,12 @@ class EnzymeMergedJacobianTest : public testing::Test {
 
     // create MFEM pressure grid function
     mfem::FiniteElementSpace fe_space_scalar( &submesh, &fe_coll, 1 );
-    mfem::GridFunction pressure( &fe_space_scalar );
-    pressure = 1.0;
-    auto pressure_ptr = pressure.Read();
+    mfem::GridFunction fake_pressure( &fe_space_scalar );
+    fake_pressure = 1.0;
+    if ( pressure == nullptr ) {
+      pressure = &fake_pressure;
+    }
+    auto pressure_ptr = pressure->Read();
     registerMortarPressures( mesh1_id, pressure_ptr );
 
     // create MFEM gap linear form
@@ -397,14 +405,14 @@ class EnzymeMergedJacobianTest : public testing::Test {
     }
     mfem::DenseMatrix dfdp_fd( fe_space.GetVSize(), fe_space_scalar.GetVSize() );
     for ( int i{ 0 }; i < fe_space_scalar.GetVSize(); ++i ) {
-      pressure[i] += delta;
+      ( *pressure )[i] += delta;
       force = 0.0;
       gap = 0.0;
       tribol::update( cycle, t, dt );
       for ( int j{ 0 }; j < fe_space.GetVSize(); ++j ) {
         dfdp_fd( j, i ) = ( force[j] - force_base[j] ) / delta;
       }
-      pressure[i] -= delta;
+      ( *pressure )[i] -= delta;
     }
 
     // write deltas to screen
@@ -413,6 +421,7 @@ class EnzymeMergedJacobianTest : public testing::Test {
       for ( int j{ 0 }; j < fe_space.GetVSize(); ++j ) {
         auto diff = std::abs( dfdx_enzyme( i, j ) - dfdx_fd( i, j ) );
         if ( diff > delta ) {
+          // if ( std::abs( dfdx_enzyme( i, j ) ) > 1.0e-15 || std::abs( dfdx_fd( i, j ) ) > 1.0e-15 ) {
           std::cout << "  (" << i << ", " << j << ") : Diff: " << diff
                     << "   Ratio: " << dfdx_enzyme( i, j ) / dfdx_fd( i, j ) << "   Enzyme: " << dfdx_enzyme( i, j )
                     << "   FD: " << dfdx_fd( i, j ) << std::endl;
@@ -477,8 +486,8 @@ TEST_F( EnzymeMergedJacobianTest, FiniteDiffCheckShifted2x2Meshes )
   });
   // clang-format on
 
-  RunJacobianTest( mesh, mesh0_bdry_attrib, num_xel_mesh0, num_yel_mesh0, mesh1_bdry_attrib, num_xel_mesh1,
-                   num_yel_mesh1 );
+  RunJacobianTest( mesh, nullptr, nullptr, mesh0_bdry_attrib, num_xel_mesh0, num_yel_mesh0, mesh1_bdry_attrib,
+                   num_xel_mesh1, num_yel_mesh1 );
 }
 
 TEST_F( EnzymeMergedJacobianTest, FiniteDiffCheckShifted1x1Meshes )
@@ -508,8 +517,76 @@ TEST_F( EnzymeMergedJacobianTest, FiniteDiffCheckShifted1x1Meshes )
   });
   // clang-format on
 
-  RunJacobianTest( mesh, mesh0_bdry_attrib, num_xel_mesh0, num_yel_mesh0, mesh1_bdry_attrib, num_xel_mesh1,
-                   num_yel_mesh1 );
+  RunJacobianTest( mesh, nullptr, nullptr, mesh0_bdry_attrib, num_xel_mesh0, num_yel_mesh0, mesh1_bdry_attrib,
+                   num_xel_mesh1, num_yel_mesh1 );
+}
+
+TEST_F( EnzymeMergedJacobianTest, FiniteDiffCheckShifted1x1MeshesV2 )
+{
+  constexpr auto num_xel_mesh0 = 1;
+  constexpr auto num_yel_mesh0 = 1;
+  constexpr auto num_xel_mesh1 = 1;
+  constexpr auto num_yel_mesh1 = 1;
+
+  constexpr auto mesh0_bdry_attrib = 6;
+  constexpr auto mesh1_bdry_attrib = 7;
+
+  constexpr double eps = 1.0e-7;
+  constexpr double xy_shift = eps * 10.0;
+  // clang-format off
+  auto mesh = shared::MeshBuilder::Unify({
+    shared::MeshBuilder::CubeMesh(1, 1, 1),
+    shared::MeshBuilder::CubeMesh(1, 1, 1)
+      // shift up 99.9% height of element
+      .translate({0.0, 0.0, 0.999})
+      // shift x and y so the element edges are not overlapping
+      .translate({xy_shift, xy_shift, 0.0})
+      // change the mesh1 boundary attribute from 1 to 7
+      .updateBdrAttrib(1, 7)
+      // change the mesh1 boundary attribute from 6 to 8
+      .updateBdrAttrib(6, 8)
+  });
+  // clang-format on
+
+  mfem::Mesh& mfem_mesh = mesh;
+  auto* ref_coords = mfem_mesh.GetNodes();
+  mfem::GridFunction u( ref_coords->FESpace() );
+  u = 0.0;
+  u[3] = 0.00024404;
+  u[7] = 0.00024404;
+  u[9] = 0.00024404;
+  u[10] = 0.00024404;
+  u[14] = -0.000500488;
+  u[15] = 0.00024404;
+  u[17] = -0.000500488;
+  u[19] = 0.00024404;
+  u[20] = -0.000500488;
+  u[21] = 0.00024404;
+  u[22] = 0.00024404;
+  u[23] = -0.000500488;
+  u[26] = 0.000500488;
+  u[27] = 0.00024404;
+  u[29] = 0.000500488;
+  u[31] = 0.00024404;
+  u[32] = 0.000500488;
+  u[33] = 0.00024404;
+  u[34] = 0.00024404;
+  u[35] = 0.000500488;
+  u[39] = 0.00024404;
+  u[43] = 0.00024404;
+  u[45] = 0.00024404;
+  u[46] = 0.00024404;
+  u += *ref_coords;
+
+  mfem::Vector pressure( 8 );
+  pressure = 0.0;
+  pressure[4] = -0.000372264;
+  pressure[5] = -0.000372264;
+  pressure[6] = -0.000372264;
+  pressure[7] = -0.000372264;
+
+  RunJacobianTest( mesh, &pressure, &u, mesh0_bdry_attrib, num_xel_mesh0, num_yel_mesh0, mesh1_bdry_attrib,
+                   num_xel_mesh1, num_yel_mesh1 );
 }
 
 TEST_F( EnzymeMergedJacobianTest, FiniteDiffCheckAligned1x1Mesh )
@@ -547,8 +624,8 @@ TEST_F( EnzymeMergedJacobianTest, FiniteDiffCheckAligned1x1Mesh )
                              -1.0, -1.0, 1.0, 1.0, 1.0, 1.0,  1.0,  1.0, 1.0,  1.0, 1.0, 1.0,  -1.0, -1.0, 1.0,  1.0,
                              1.0,  1.0,  1.0, 1.0, 1.0, 1.0,  1.0,  1.0, 1.0,  1.0, 1.0, 1.0,  -1.0, -1.0, -1.0, -1.0 };
 
-  RunJacobianTest( mesh, mesh0_bdry_attrib, num_xel_mesh0, num_yel_mesh0, mesh1_bdry_attrib, num_xel_mesh1,
-                   num_yel_mesh1, stencil_dir );
+  RunJacobianTest( mesh, nullptr, nullptr, mesh0_bdry_attrib, num_xel_mesh0, num_yel_mesh0, mesh1_bdry_attrib,
+                   num_xel_mesh1, num_yel_mesh1, stencil_dir );
 }
 
 }  // namespace tribol

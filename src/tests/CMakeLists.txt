@@ -218,7 +218,6 @@ endif()
 if( MFEM_FOUND )
 
   set(mfem_smoke_depends mfem gtest)
-  blt_list_append(TO mfem_smoke_depends ELEMENTS blt::openmp IF TRIBOL_USE_OPENMP_TEMP )
   blt_add_executable(
     NAME mfem_smoke_test
     SOURCES mfem_smoke.cpp
