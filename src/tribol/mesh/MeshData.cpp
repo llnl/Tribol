@@ -67,15 +67,15 @@ bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_optio
       ArrayViewT<IndexT> thickness_ok = thickness_ok_data;
       Array1DView<const RealT> mod = this->m_mat_mod;
       Array1DView<const RealT> thickness = this->m_thickness;
-    
-      forAllExec( exec_mode, this->m_num_cells, [mod, thickness, mod_ok,  thickness_ok] TRIBOL_HOST_DEVICE( IndexT i ) { 
+
+      forAllExec( exec_mode, this->m_num_cells, [mod, thickness, mod_ok, thickness_ok] TRIBOL_HOST_DEVICE( IndexT i ) {
         if ( mod[i] <= 0. ) {
-          RAJA::atomicMin<RAJA::auto_atomic> (mod_ok.data(), static_cast<IndexT>( false ) ) ;
+          RAJA::atomicMin<RAJA::auto_atomic> (mod_ok.data(), static_cast<IndexT>( false ) );
         }
         if ( thickness[i] <= 0. ) {
-          RAJA::atomicMin<RAJA::auto_atomic> (thickness_ok.data(), static_cast<IndexT>( false ) ) ;
+          RAJA::atomicMin<RAJA::auto_atomic> (thickness_ok.data(), static_cast<IndexT>( false ) );
         }
-              
+
       } );  // end element loop 
 
       ArrayT<IndexT, 1, MemorySpace::Host> mod_ok_data_host( mod_ok_data );
