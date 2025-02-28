@@ -69,17 +69,17 @@ bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_optio
       Array1DView<const RealT> thickness = this->m_thickness;
     
       forAllExec( exec_mode, this->m_num_cells, [mod, thickness, mod_ok,  thickness_ok] TRIBOL_HOST_DEVICE( IndexT i ) { 
-          if ( mod[i] <= 0. ) {
-            RAJA::atomicMin<RAJA::auto_atomic> (mod_ok.data(), static_cast<IndexT>( false ) ) ;
-          }
-          if ( thickness[i] <= 0. ) {
-            RAJA::atomicMin<RAJA::auto_atomic> (thickness_ok.data(), static_cast<IndexT>( false ) ) ;
-          }
-                
-        } );  // end element loop 
+        if ( mod[i] <= 0. ) {
+          RAJA::atomicMin<RAJA::auto_atomic> (mod_ok.data(), static_cast<IndexT>( false ) ) ;
+        }
+        if ( thickness[i] <= 0. ) {
+          RAJA::atomicMin<RAJA::auto_atomic> (thickness_ok.data(), static_cast<IndexT>( false ) ) ;
+        }
+              
+      } );  // end element loop 
 
       ArrayT<IndexT, 1, MemorySpace::Host> mod_ok_data_host( mod_ok_data );
-      SLIC_WARNING_IF( 
+      SLIC_WARNING_IF(
           !mod_ok_data_host[0],
           axom::fmt::format(
               "MeshElemData::isValidKinematicPenalty(): invalid nonpositive element material modulus encountered." ) );
@@ -88,7 +88,7 @@ bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_optio
           !thickness_ok_data_host[0],
           axom::fmt::format(
               "MeshElemData::isValidKinematicPenalty(): invalid nonpositive element thickness encountered." ) );
-      
+
       if ( !mod_ok_data_host[0] || !thickness_ok_data_host[0] ) {
         return false;
       }  // end for loop over elements
@@ -602,14 +602,14 @@ int MeshData::checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options, Exec
     // switch over penalty enforcement options and check for required data
     switch ( constraint_type ) {
       case KINEMATIC: {
-        if ( !m_element_data.isValidKinematicPenalty( p_enfrc_options, exec_mode, this->m_allocator_id ) {
+        if ( !m_element_data.isValidKinematicPenalty( p_enfrc_options, exec_mode, this->m_allocator_id ) ) {
           err = 1;
         }
         break;
       }  // end KINEMATIC case
 
       case KINEMATIC_AND_RATE: {
-        if ( !m_element_data.isValidKinematicPenalty( p_enfrc_options ) ) {
+        if ( !m_element_data.isValidKinematicPenalty( p_enfrc_options, exec_mode, this->m_allocator_id ) ) {
           err = 1;
         }
         if ( !m_element_data.isValidRatePenalty( p_enfrc_options ) ) {
