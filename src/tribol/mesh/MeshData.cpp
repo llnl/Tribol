@@ -19,7 +19,7 @@
 namespace tribol {
 
 //------------------------------------------------------------------------------
-bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_options, ExecutionMode exec_mode, 
+bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_options, ExecutionMode exec_mode,
                                             int alloc_id )
 {
   // Note, this routine is, and should be called only for non-null meshes
@@ -70,13 +70,12 @@ bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_optio
 
       forAllExec( exec_mode, this->m_num_cells, [mod, thickness, mod_ok, thickness_ok] TRIBOL_HOST_DEVICE( IndexT i ) {
         if ( mod[i] <= 0. ) {
-          RAJA::atomicMin<RAJA::auto_atomic> (mod_ok.data(), static_cast<IndexT>( false ) );
+          RAJA::atomicMin<RAJA::auto_atomic>( mod_ok.data(), static_cast<IndexT>( false ) );
         }
         if ( thickness[i] <= 0. ) {
-          RAJA::atomicMin<RAJA::auto_atomic> (thickness_ok.data(), static_cast<IndexT>( false ) );
+          RAJA::atomicMin<RAJA::auto_atomic>( thickness_ok.data(), static_cast<IndexT>( false ) );
         }
-
-      } );  // end element loop 
+      } );  // end element loop
 
       ArrayT<IndexT, 1, MemorySpace::Host> mod_ok_data_host( mod_ok_data );
       SLIC_WARNING_IF(
