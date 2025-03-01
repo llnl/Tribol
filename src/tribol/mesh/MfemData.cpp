@@ -1068,10 +1068,10 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdfdnJacobianEnzyme
 
   // transfer (0, 0) block (residual dof rows, displacement dof cols)
   auto submesh_J = GetUpdateData().submesh_redecomp_xfer_00_->TransferToParallelSparse(
-      mortar_elems, mortar_elems,
+      mortar_elems, nonmortar_elems,
       method_data.getBlockJ()( static_cast<int>( BlockSpace::MORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) ) );
   submesh_J += GetUpdateData().submesh_redecomp_xfer_00_->TransferToParallelSparse(
-      nonmortar_elems, mortar_elems,
+      nonmortar_elems, nonmortar_elems,
       method_data.getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) ) );
   submesh_J.Finalize();
   auto submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_00_->ConvertToHypreParMatrix( submesh_J, false );
