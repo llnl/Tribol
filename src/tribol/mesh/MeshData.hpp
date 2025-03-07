@@ -68,7 +68,7 @@ struct MeshElemData {
    *
    * \return true if the kinematic penalty option has valid data
    */
-  bool isValidKinematicPenalty( PenaltyEnforcementOptions& pen_options );
+  bool isValidKinematicPenalty( PenaltyEnforcementOptions& pen_options, ExecutionMode exec_mode, int alloc_id );
 
   /*!
    * \brief Checks if the rate penalty data is valid
@@ -647,7 +647,7 @@ class MeshData {
    *
    * \param [in] p_enfrc_options penalty enforcement options guiding check
    */
-  int checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options );
+  int checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options, ExecutionMode exec_mode );
 
   /*!
    * \brief Computes the face normals and centroids for all faces in the mesh
