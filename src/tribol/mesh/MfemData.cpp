@@ -300,6 +300,7 @@ MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParM
   submesh_xfer_gridfn_.SetSpace( new mfem::ParFiniteElementSpace(
       &submesh_, submesh_fec.get(), current_coords.ParFESpace()->GetVDim(), mfem::Ordering::byNODES ) );
   submesh_xfer_gridfn_.MakeOwner( submesh_fec.release() );
+  submesh_xfer_gridfn_.UseDevice( current_coords.UseDevice() );
 
   // build LOR submesh
   if ( current_coords.FESpace()->FEColl()->GetOrder() > 1 ) {
@@ -307,7 +308,7 @@ MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParM
   }
 
   // keep response grid function on host since tribol does computations there
-  redecomp_response_.UseDevice( false );
+  redecomp_response_.UseDevice( current_coords.UseDevice() );
 }
 
 void MfemMeshData::SetParentCoords( const mfem::ParGridFunction& current_coords )
@@ -605,6 +606,7 @@ mfem::ParSubMesh MfemMeshData::CreateSubmesh( const mfem::ParMesh& parent_mesh, 
   // reference to attributes. Then we can construct submesh_ in the initializer
   // list without this function (because CreateFromBoundary will be willing to
   // take an rvalue for attributes)
+  // NOTE: this has been done in MFEM.  This method can be removed when MFEM is updated.
   auto attributes_array = arrayFromSet( mergeContainers( attributes_1, attributes_2 ) );
   return mfem::ParSubMesh::CreateFromBoundary( parent_mesh, attributes_array );
 }

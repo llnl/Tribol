@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "mfem_tribol.hpp"
+#include "tribol/common/ExecModel.hpp"
 #include "tribol/common/Parameters.hpp"
 
 #ifdef BUILD_REDECOMP
@@ -18,16 +19,52 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
                                  const mfem::ParGridFunction& current_coords, std::set<int> b_attributes_1,
                                  std::set<int> b_attributes_2, ContactMode contact_mode, ContactCase contact_case,
                                  ContactMethod contact_method, ContactModel contact_model,
-                                 EnforcementMethod enforcement_method, BinningMethod binning_method )
+                                 EnforcementMethod enforcement_method, BinningMethod binning_method,
+                                 ExecutionMode exec_mode )
 {
+  // verify valid execution mode and set memory space
+  MemorySpace mem_space = MemorySpace::Host;
+#ifdef TRIBOL_USE_CUDA
+  if ( exec_mode == ExecutionMode::Cuda ) {
+    mem_space = MemorySpace::Device;
+    SLIC_ERROR_ROOT_IF( !mfem::Device::Allows( mfem::Backend::CUDA ), "CUDA execution is not enabled in MFEM." );
+  }
+#endif
+#ifdef TRIBOL_USE_HIP
+  if ( exec_mode == ExecutionMode::Hip ) {
+    mem_space = MemorySpace::Device;
+    SLIC_ERROR_ROOT_IF( !mfem::Device::Allows( mfem::Backend::HIP ), "HIP execution is not enabled in MFEM." );
+  }
+#endif
+  if ( exec_mode == ExecutionMode::Dynamic ) {
+    // start with trying to use openmp...
+#ifdef TRIBOL_USE_OPENMP
+    exec_mode = ExecutionMode::OpenMP;
+#else
+    // ...but default with sequential
+    exec_mode = ExecutionMode::Sequential;
+#endif
+    // try to use device, if built and if mfem is using it
+#if defined( TRIBOL_USE_CUDA )
+    if ( mfem::Device::Allows( mfem::Backend::CUDA ) ) {
+      exec_mode = ExecutionMode::Cuda;
+      mem_space = MemorySpace::Device;
+    }
+#elif defined( TRIBOL_USE_HIP )
+    if ( mfem::Device::Allows( mfem::Backend::HIP ) ) {
+      exec_mode = ExecutionMode::Hip;
+      mem_space = MemorySpace::Device;
+    }
+#endif
+  }
   // create transfer operators from parent mesh to redecomp mesh
   auto mfem_data = std::make_unique<MfemMeshData>( mesh_id_1, mesh_id_2, mesh, current_coords,
                                                    std::move( b_attributes_1 ), std::move( b_attributes_2 ) );
   // register empty meshes so the coupling scheme is valid
-  registerMesh( mesh_id_1, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, MemorySpace::Host );
-  registerMesh( mesh_id_2, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, MemorySpace::Host );
+  registerMesh( mesh_id_1, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, mem_space );
+  registerMesh( mesh_id_2, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, mem_space );
   registerCouplingScheme( cs_id, mesh_id_1, mesh_id_2, contact_mode, contact_case, contact_method, contact_model,
-                          enforcement_method, binning_method, ExecutionMode::Sequential );
+                          enforcement_method, binning_method, exec_mode );
   auto& coupling_scheme = CouplingSchemeManager::getInstance().at( cs_id );
   coupling_scheme.setMPIComm( mesh.GetComm() );
 

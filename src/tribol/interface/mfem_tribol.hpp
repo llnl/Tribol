@@ -10,6 +10,7 @@
 
 #ifdef BUILD_REDECOMP
 
+#include "tribol/common/ExecModel.hpp"
 #include "tribol/common/Parameters.hpp"
 
 // MFEM includes
@@ -49,13 +50,15 @@ namespace tribol {
  * @param [in] contact_model
  * @param [in] enforcement_method
  * @param [in] binning_method
+ * @param [in] exec_mode Execution mode for the coupling scheme
  */
 void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, const mfem::ParMesh& mesh,
                                  const mfem::ParGridFunction& current_coords, std::set<int> b_attributes_1,
                                  std::set<int> b_attributes_2, ContactMode contact_mode, ContactCase contact_case,
                                  ContactMethod contact_method, ContactModel contact_model,
                                  EnforcementMethod enforcement_method,
-                                 BinningMethod binning_method = DEFAULT_BINNING_METHOD );
+                                 BinningMethod binning_method = DEFAULT_BINNING_METHOD,
+                                 ExecutionMode exec_mode = ExecutionMode::Dynamic );
 
 /**
  * @brief Sets factor of refinement in low-order refined (LOR) representation of
