@@ -70,10 +70,18 @@ bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_optio
 
       forAllExec( exec_mode, this->m_num_cells, [mod, thickness, mod_ok, thickness_ok] TRIBOL_HOST_DEVICE( IndexT i ) {
         if ( mod[i] <= 0. ) {
+#ifdef TRIBOL_USE_RAJA
           RAJA::atomicMin<RAJA::auto_atomic>( mod_ok.data(), static_cast<IndexT>( false ) );
+#else
+          mod_ok[0] = false;
+#endif
         }
         if ( thickness[i] <= 0. ) {
+#ifdef TRIBOL_USE_RAJA
           RAJA::atomicMin<RAJA::auto_atomic>( thickness_ok.data(), static_cast<IndexT>( false ) );
+#else
+          thickness_ok[0] = false;
+#endif
         }
       } );  // end element loop
 
