@@ -129,7 +129,7 @@ target_link_libraries(tribol PRIVATE axom::quest)
 
 target_include_directories(tribol PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>
-    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>
+    $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
     $<INSTALL_INTERFACE:include>
     )
 
