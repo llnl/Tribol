@@ -1646,7 +1646,7 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 
   // print general messages once
   // Can we output this message on root? SRW
-  ArrayT<bool, 1, MemorySpace::Host> msg_host( msg_data );
+  ArrayT<IndexT, 1, MemorySpace::Host> msg_host( msg_data );
   SLIC_DEBUG_IF( msg_host[0] || msg_host[1], "tribol::computeCommonPlaneTimeStep(): "
                                                  << "there are locations where mesh overlap may be too large. "
                                                  << "Cannot provide timestep vote. Reduce timestep and/or increase "
