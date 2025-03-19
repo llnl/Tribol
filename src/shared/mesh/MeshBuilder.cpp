@@ -131,6 +131,8 @@ MeshBuilder::operator mfem::Mesh&() { return mesh_; }
 
 MeshBuilder::operator const mfem::Mesh&() const { return mesh_; }
 
+#ifdef TRIBOL_USE_MPI
+
 ParMeshBuilder::ParMeshBuilder( MPI_Comm comm, MeshBuilder&& mesh ) : pmesh_{ comm, mesh } {}
 
 ParMeshBuilder&& ParMeshBuilder::setNodesFEColl( mfem::H1_FECollection fe_coll )
@@ -162,5 +164,7 @@ mfem::ParFiniteElementSpace& ParMeshBuilder::getNodesFESpace() { return *getNode
 const mfem::ParFiniteElementSpace& ParMeshBuilder::getNodesFESpace() const { return *getNodes().ParFESpace(); }
 
 ParMeshBuilder::operator const mfem::ParMesh&() const { return pmesh_; }
+
+#endif
 
 }  // namespace shared

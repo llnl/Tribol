@@ -1287,8 +1287,10 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
   ArrayT<RealT> dt_temp_data( { dt, dt }, getAllocatorId() );
   ArrayViewT<RealT> dt_temp = dt_temp_data;
   // [0]: exceed_max_gap1, [1]: exceed_max_gap2, [2]: neg_dt_gap_msg, [3]: neg_dt_vel_proj_msg
-  ArrayT<bool> msg_data( { false, false, false, false }, getAllocatorId() );
-  ArrayViewT<bool> msg = msg_data;
+  ArrayT<IndexT> msg_data( { static_cast<IndexT>( false ), static_cast<IndexT>( false ), static_cast<IndexT>( false ),
+                             static_cast<IndexT>( false ) },
+                           getAllocatorId() );
+  ArrayViewT<IndexT> msg = msg_data;
   forAllExec( getExecutionMode(), getNumActivePairs(),
               [cs_view, dim, proj_ratio, msg, dt_temp, dt] TRIBOL_HOST_DEVICE( IndexT i ) {
                 auto& plane = cs_view.getContactPlane( i );
@@ -1464,8 +1466,13 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                   dt1_check1 = ( dt1_vel_check ) ? exceed_max_gap1 : false;
                   dt2_check1 = ( dt2_vel_check ) ? exceed_max_gap2 : false;
 
+#ifdef TRIBOL_USE_RAJA
+                  RAJA::atomicMax<RAJA::auto_atomic>( &msg[0], static_cast<IndexT>( exceed_max_gap1 ) );
+                  RAJA::atomicMax<RAJA::auto_atomic>( &msg[1], static_cast<IndexT>( exceed_max_gap2 ) );
+#else
                   msg[0] = exceed_max_gap1;
                   msg[1] = exceed_max_gap2;
+#endif
 
                   // compute dt for face 1 and 2 based on the velocity and gap projections onto
                   // the face-normals for faces where currect gap exceeds max allowable gap.
@@ -1496,21 +1503,24 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 #ifdef TRIBOL_USE_RAJA
                     RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[0], axom::utilities::min( dt1, 1.e6 ) );
 #else
-            dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(dt1, 1.e6));
+                    dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(dt1, 1.e6));
 #endif
                   }
                   if ( dt2 > 0. ) {
 #ifdef TRIBOL_USE_RAJA
                     RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[0], axom::utilities::min( 1.e6, dt2 ) );
 #else
-            dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(1.e6, dt2));
+                    dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(1.e6, dt2));
 #endif
                   }
 
                   if ( dt1 < 0. || dt2 < 0. ) {
+#ifdef TRIBOL_USE_RAJA
+                    RAJA::atomicMax<RAJA::auto_atomic>( &msg[2], static_cast<IndexT>( true ) );
+#else
                     msg[2] = true;
+#endif
                   }
-
                 }  // end case 1
 
                 ////////////////////////////////////////////////////////////////////////
@@ -1613,18 +1623,22 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 #ifdef TRIBOL_USE_RAJA
                     RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[1], axom::utilities::min( dt1, 1.e6 ) );
 #else
-            dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(dt1, 1.e6));
+                    dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(dt1, 1.e6));
 #endif
                   }
                   if ( dt2 > 0. ) {
 #ifdef TRIBOL_USE_RAJA
                     RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[1], axom::utilities::min( 1.e6, dt2 ) );
 #else
-            dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(1.e6, dt2));
+                    dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(1.e6, dt2));
 #endif
                   }
                   if ( dt1 < 0. || dt2 < 0. ) {
+#ifdef TRIBOL_USE_RAJA
+                    RAJA::atomicMax<RAJA::auto_atomic>( &msg[3], static_cast<IndexT>( true ) );
+#else
                     msg[3] = true;
+#endif
                   }
 
                 }  // end check 2
@@ -1632,7 +1646,7 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 
   // print general messages once
   // Can we output this message on root? SRW
-  ArrayT<bool, 1, MemorySpace::Host> msg_host( msg_data );
+  ArrayT<IndexT, 1, MemorySpace::Host> msg_host( msg_data );
   SLIC_DEBUG_IF( msg_host[0] || msg_host[1], "tribol::computeCommonPlaneTimeStep(): "
                                                  << "there are locations where mesh overlap may be too large. "
                                                  << "Cannot provide timestep vote. Reduce timestep and/or increase "
