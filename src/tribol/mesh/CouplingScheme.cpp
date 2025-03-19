@@ -1287,7 +1287,9 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
   ArrayT<RealT> dt_temp_data( { dt, dt }, getAllocatorId() );
   ArrayViewT<RealT> dt_temp = dt_temp_data;
   // [0]: exceed_max_gap1, [1]: exceed_max_gap2, [2]: neg_dt_gap_msg, [3]: neg_dt_vel_proj_msg
-  ArrayT<IndexT> msg_data( { static_cast<IndexT>( false ), static_cast<IndexT>( false ), static_cast<IndexT>( false ), static_cast<IndexT>( false ) }, getAllocatorId() );
+  ArrayT<IndexT> msg_data( { static_cast<IndexT>( false ), static_cast<IndexT>( false ), static_cast<IndexT>( false ),
+                             static_cast<IndexT>( false ) },
+                           getAllocatorId() );
   ArrayViewT<IndexT> msg = msg_data;
   forAllExec( getExecutionMode(), getNumActivePairs(),
               [cs_view, dim, proj_ratio, msg, dt_temp, dt] TRIBOL_HOST_DEVICE( IndexT i ) {
@@ -1465,8 +1467,8 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                   dt2_check1 = ( dt2_vel_check ) ? exceed_max_gap2 : false;
 
 #ifdef TRIBOL_USE_RAJA
-                  RAJA::atomicMax<RAJA::auto_atomic>( &msg[0],  static_cast<IndexT>( exceed_max_gap1 ) );
-                  RAJA::atomicMax<RAJA::auto_atomic>( &msg[1],  static_cast<IndexT>( exceed_max_gap2 ) );
+                  RAJA::atomicMax<RAJA::auto_atomic>( &msg[0], static_cast<IndexT>( exceed_max_gap1 ) );
+                  RAJA::atomicMax<RAJA::auto_atomic>( &msg[1], static_cast<IndexT>( exceed_max_gap2 ) );
 #else
                   msg[0] = exceed_max_gap1;
                   msg[1] = exceed_max_gap2;
