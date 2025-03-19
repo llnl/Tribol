@@ -1463,8 +1463,8 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                   dt2_check1 = ( dt2_vel_check ) ? exceed_max_gap2 : false;
 
 #ifdef TRIBOL_USE_RAJA
-                  RAJA::atomicExchange<RAJA::auto_atomic>( &msg[0], exceed_max_gap1);
-                  RAJA::atomicExchange<RAJA::auto_atomic>( &msg[1], exceed_max_gap2);
+                  RAJA::atomicExchange<RAJA::auto_atomic>( &msg[0], exceed_max_gap1 );
+                  RAJA::atomicExchange<RAJA::auto_atomic>( &msg[1], exceed_max_gap2 );
 #else
                   msg[0] = exceed_max_gap1;
                   msg[1] = exceed_max_gap2;
