@@ -192,7 +192,7 @@ class CartesianProduct : public SearchBase {
     IndexT mesh2NumElems = mesh2.numberOfElements();
 
     // Reserve memory for boolean array indicating which pairs are proximate
-    int maxNumPairs = mesh1NumElems * mesh2NumElems;
+    IndexT maxNumPairs = mesh1NumElems * mesh2NumElems;
     bool is_symm = m_coupling_scheme->getMeshId1() == m_coupling_scheme->getMeshId2();
     if ( is_symm ) {
       // account for symmetry: the max number of pairs when the meshes are the

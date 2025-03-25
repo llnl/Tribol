@@ -34,7 +34,7 @@ spack:
     openmpi:
       buildable: false
       externals:
-      - spec: openmpi@5.0.6
+      - spec: openmpi@5.0.7
         prefix: /opt/homebrew
         
     hdf5:

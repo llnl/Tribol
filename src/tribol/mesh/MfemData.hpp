@@ -1058,13 +1058,13 @@ class MfemMeshData {
      * @brief Redecomp mesh element connectivity for the first Tribol registered
      * mesh
      */
-    ArrayT<int, 2> conn_1_;
+    ArrayT<IndexT, 2> conn_1_;
 
     /**
      * @brief Redecomp mesh element connectivity for the second Tribol
      * registered mesh
      */
-    ArrayT<int, 2> conn_2_;
+    ArrayT<IndexT, 2> conn_2_;
 
     /**
      * @brief Map from first Tribol registered mesh element indices to redecomp

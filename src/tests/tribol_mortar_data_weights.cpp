@@ -98,8 +98,8 @@ class MortarSparseWtsTest : public ::testing::Test {
   mfem::Vector v_xs;
   mfem::Vector v_ys;
   mfem::Vector v_zs;
-  mfem::Array<int> v_ixm;
-  mfem::Array<int> v_ixs;
+  mfem::Array<tribol::IndexT> v_ixm;
+  mfem::Array<tribol::IndexT> v_ixs;
 
   int lengthMortarConn;
   int lengthNonmortarConn;
@@ -174,8 +174,8 @@ TEST_F( MortarSparseWtsTest, mortar_sphere )
   SLIC_DEBUG( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
-  int* ixm_data = this->v_ixm.GetData();
-  int* ixs_data = this->v_ixs.GetData();
+  tribol::IndexT* ixm_data = this->v_ixm.GetData();
+  tribol::IndexT* ixs_data = this->v_ixs.GetData();
   RealT* xm_data = this->v_xm.GetData();
   RealT* ym_data = this->v_ym.GetData();
   RealT* zm_data = this->v_zm.GetData();
@@ -269,8 +269,8 @@ TEST_F( MortarSparseWtsTest, mortar_sphere_offset )
   SLIC_DEBUG( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
-  int* ixm_data = this->v_ixm.GetData();
-  int* ixs_data = this->v_ixs.GetData();
+  tribol::IndexT* ixm_data = this->v_ixm.GetData();
+  tribol::IndexT* ixs_data = this->v_ixs.GetData();
   RealT* xm_data = this->v_xm.GetData();
   RealT* ym_data = this->v_ym.GetData();
   RealT* zm_data = this->v_zm.GetData();
@@ -364,8 +364,8 @@ TEST_F( MortarSparseWtsTest, mortar_one_seg_rotated )
   SLIC_DEBUG( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
-  int* ixm_data = this->v_ixm.GetData();
-  int* ixs_data = this->v_ixs.GetData();
+  tribol::IndexT* ixm_data = this->v_ixm.GetData();
+  tribol::IndexT* ixs_data = this->v_ixs.GetData();
   RealT* xm_data = this->v_xm.GetData();
   RealT* ym_data = this->v_ym.GetData();
   RealT* zm_data = this->v_zm.GetData();

@@ -15,6 +15,8 @@ class Axom(BuiltinAxom):
     #  moved forward past the release. Increment the last number when updating the commit sha.
     version("0.9.0.2", commit="270953a4f67b5b4ec897f6d2bbf61024cfef70b9", submodules=False)
 
+    variant("int64", default=False, description="Use 64bit integers for index type")
+
     # bring over latest from axom recipe (delete when we update spack)
     def initconfig_hardware_entries(self):
         spec = self.spec
@@ -185,3 +187,23 @@ class Axom(BuiltinAxom):
             entries.append(cmake_cache_option("ENABLE_MPI", False))
 
         return entries
+    
+    def cmake_args(self):
+        options = []
+
+        options.append("-DBLT_SOURCE_DIR:PATH={0}".format(self.spec["blt"].prefix))
+
+        if self.run_tests is False:
+            options.append("-DENABLE_TESTS=OFF")
+        else:
+            options.append("-DENABLE_TESTS=ON")
+
+        options.append(self.define_from_variant("BUILD_SHARED_LIBS", "shared"))
+        options.append(self.define_from_variant("AXOM_ENABLE_EXAMPLES", "examples"))
+        options.append(self.define_from_variant("AXOM_ENABLE_TOOLS", "tools"))
+        if self.spec.satisfies("~raja") or self.spec.satisfies("+umpire"):
+            options.append("-DAXOM_ENABLE_MIR:BOOL=OFF")
+
+        options.append(self.define_from_variant("AXOM_USE_64BIT_INDEXTYPE", "int64"))
+
+        return options
