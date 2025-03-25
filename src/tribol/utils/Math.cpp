@@ -122,6 +122,7 @@ void bubble_sort( T* array, int n )
 }
 
 template void bubble_sort( int* array, int n );
+template void bubble_sort( long* array, int n );
 template void bubble_sort( long long* array, int n );
 
 //------------------------------------------------------------------------------
