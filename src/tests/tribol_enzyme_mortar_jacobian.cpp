@@ -376,7 +376,7 @@ class EnzymeJacobianTest : public testing::Test {
       EXPECT_NEAR( df2dp1[i], df2dp1_fd[i], delta_ );
     }
 
-    std::cout << "max_diff for test: " << max_diff << std::endl;
+    std::cout << "max_diff for finite difference test: " << max_diff << std::endl;
   }
 
   /**
@@ -476,11 +476,14 @@ class EnzymeJacobianTest : public testing::Test {
     getElementBlockJacobians( cs_id, BlockSpace::NONMORTAR, BlockSpace::LAGRANGE_MULTIPLIER, &row_elem_idx,
                               &col_elem_idx, &jacobians );
 
-    std::cout << "df1/dp = " << std::endl;
+    double max_diff{ 0.0 };
+
+    std::cout << "df1/dp -------------------------------------- " << std::endl;
     for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
       for ( int j{ 0 }; j < num_pres_dofs; ++j ) {
         int idx_e = num_pres_dofs * i + j;
         auto diff = std::abs( df1dp1[idx_e] - ( *jacobians )[0].Data()[idx_e] );
+        max_diff = std::max( max_diff, diff );
         if ( diff > approx_j_err_ ) {
           std::cout << "[" << idx_e << "] Enzyme: " << df1dp1[idx_e] << "  Tribol: " << ( *jacobians )[0].Data()[idx_e]
                     << std::endl;
@@ -492,11 +495,12 @@ class EnzymeJacobianTest : public testing::Test {
     getElementBlockJacobians( cs_id, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER, &row_elem_idx, &col_elem_idx,
                               &jacobians );
 
-    std::cout << "df2/dp = " << std::endl;
+    std::cout << "df2/dp -------------------------------------- " << std::endl;
     for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
       for ( int j{ 0 }; j < num_pres_dofs; ++j ) {
         int idx_e = num_pres_dofs * i + j;
         auto diff = std::abs( df2dp1[idx_e] - ( *jacobians )[0].Data()[idx_e] );
+        max_diff = std::max( max_diff, diff );
         if ( diff > approx_j_err_ ) {
           std::cout << "[" << idx_e << "] Enzyme: " << df2dp1[idx_e] << "  Tribol: " << ( *jacobians )[0].Data()[idx_e]
                     << std::endl;
@@ -508,11 +512,12 @@ class EnzymeJacobianTest : public testing::Test {
     getElementBlockJacobians( cs_id, BlockSpace::LAGRANGE_MULTIPLIER, BlockSpace::NONMORTAR, &row_elem_idx,
                               &col_elem_idx, &jacobians );
 
-    std::cout << "dg/dx1 = " << std::endl;
+    std::cout << "dg/dx1 -------------------------------------- " << std::endl;
     for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
       for ( int j{ 0 }; j < num_pres_dofs; ++j ) {
         int idx_e = num_pres_dofs * i + j;
         auto diff = std::abs( dg1dx1[idx_e] - ( *jacobians )[0].Data()[idx_e] );
+        max_diff = std::max( max_diff, diff );
         if ( diff > approx_j_err_ ) {
           std::cout << "[" << idx_e << "] Enzyme: " << dg1dx1[idx_e] << "  Tribol: " << ( *jacobians )[0].Data()[idx_e]
                     << std::endl;
@@ -524,11 +529,12 @@ class EnzymeJacobianTest : public testing::Test {
     getElementBlockJacobians( cs_id, BlockSpace::LAGRANGE_MULTIPLIER, BlockSpace::MORTAR, &row_elem_idx, &col_elem_idx,
                               &jacobians );
 
-    std::cout << "dg/dx2 = " << std::endl;
+    std::cout << "dg/dx2 -------------------------------------- " << std::endl;
     for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
       for ( int j{ 0 }; j < num_pres_dofs; ++j ) {
         int idx_e = num_pres_dofs * i + j;
         auto diff = std::abs( dg1dx2[idx_e] - ( *jacobians )[0].Data()[idx_e] );
+        max_diff = std::max( max_diff, diff );
         if ( diff > approx_j_err_ ) {
           std::cout << "[" << idx_e << "] Enzyme: " << dg1dx2[idx_e] << "  Tribol: " << ( *jacobians )[0].Data()[idx_e]
                     << std::endl;
@@ -537,7 +543,9 @@ class EnzymeJacobianTest : public testing::Test {
       }
     }
 
-    std::cout << "g = " << std::endl;
+    std::cout << "max_diff for approximate Jacobian comparison test: " << max_diff << std::endl;
+
+    std::cout << "g -------------------------------------- " << std::endl;
     for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
       auto diff = std::abs( g1[i] - g1t[i] );
       if ( diff > tribol_vs_enzyme_err_ ) {
@@ -546,7 +554,7 @@ class EnzymeJacobianTest : public testing::Test {
       EXPECT_NEAR( g1[i], g1t[i], tribol_vs_enzyme_err_ );
     }
 
-    std::cout << "f1 = " << std::endl;
+    std::cout << "f1 -------------------------------------- " << std::endl;
     for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
       auto diff = std::abs( f1[i] - f1t[i] );
       if ( diff > tribol_vs_enzyme_err_ ) {
@@ -555,7 +563,7 @@ class EnzymeJacobianTest : public testing::Test {
       EXPECT_NEAR( f1[i], f1t[i], tribol_vs_enzyme_err_ );
     }
 
-    std::cout << "f2 = " << std::endl;
+    std::cout << "f2 -------------------------------------- " << std::endl;
     for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
       auto diff = std::abs( f2[i] - f2t[i] );
       if ( diff > tribol_vs_enzyme_err_ ) {
