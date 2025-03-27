@@ -47,7 +47,7 @@ MeshBuilder::MeshBuilder( mfem::Mesh&& mesh ) : mesh_{ std::move( mesh ) } { mes
 MeshBuilder&& MeshBuilder::scale( std::initializer_list<double> scale_factors )
 {
   SLIC_ERROR_ROOT_IF( static_cast<int>( scale_factors.size() ) != mesh_.SpaceDimension(),
-                      "Invalid size for scale_factors" );
+                      "scale_factors size does not match mesh dimension." );
   auto& coords = *mesh_.GetNodes();
   for ( int d = 0; d < mesh_.SpaceDimension(); ++d ) {
     for ( int i = 0; i < mesh_.GetNV(); ++i ) {
