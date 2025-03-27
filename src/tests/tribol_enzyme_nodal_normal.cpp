@@ -66,6 +66,7 @@ class EnzymeNodalNormalTest : public testing::Test {
 
     mfem::DenseMatrix dndx_fd( num_dofs );
     auto mesh_view = mesh.getView();
+    // turn off Jacobian calculations for finite differencing
     norm = VertexAvgNormal( false );
     Array2D<RealT> n_base = mesh_view.getNodalNormals();
     for ( int dx{ 0 }; dx < mesh.spatialDimension(); ++dx ) {

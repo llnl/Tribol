@@ -5,7 +5,7 @@
 
 //-----------------------------------------------------------------------------
 //
-// file: tribol_enzyme_merged_jacobian.cpp
+// file: tribol_enzyme_assembled_jacobian.cpp
 //
 //-----------------------------------------------------------------------------
 
@@ -30,7 +30,7 @@ namespace tribol {
 /**
  * @brief Test fixture for the Enzyme-computed Jacobian terms including nodal normal contribution.
  */
-class EnzymeMergedJacobianTest : public testing::Test {
+class EnzymeAssembledJacobianTest : public testing::Test {
  protected:
   void SetUp() override {}
 
@@ -212,11 +212,6 @@ class EnzymeMergedJacobianTest : public testing::Test {
       }
     }
     dfdx_nc.Finalize();
-    // mfem::DenseMatrix dfdx_nc_sparse;
-    // dfdx_nc.ToDenseMatrix( dfdx_nc_sparse );
-    // std::ofstream dfdx_nc_file( "dfdx_nc.mat" );
-    // dfdx_nc_sparse.PrintMatlab( dfdx_nc_file );
-    // dfdx_nc_file.close();
     mfem::SparseMatrix dfdn( fe_space.GetVSize() );
     auto& dfdn_data = *cs.getdnMethodData();
     // get mortar/nonmortar contributions
@@ -246,11 +241,6 @@ class EnzymeMergedJacobianTest : public testing::Test {
       }
     }
     dfdn.Finalize();
-    // mfem::DenseMatrix dfdn_sparse;
-    // dfdn.ToDenseMatrix( dfdn_sparse );
-    // std::ofstream dfdn_file( "dfdn.mat" );
-    // dfdn_sparse.PrintMatlab( dfdn_file );
-    // dfdn_file.close();
     mfem::SparseMatrix dndx( fe_space.GetVSize() );
     auto& dndx_data = cs.getNodalNormal()->getJacobianData();
     // get nonmortar/nonmortar contributions
@@ -266,11 +256,6 @@ class EnzymeMergedJacobianTest : public testing::Test {
       }
     }
     dndx.Finalize();
-    // mfem::DenseMatrix dndx_sparse;
-    // dndx.ToDenseMatrix( dndx_sparse );
-    // std::ofstream dndx_file( "dndx.mat" );
-    // dndx_sparse.PrintMatlab( dndx_file );
-    // dndx_file.close();
     auto dfdn_dndx = std::unique_ptr<mfem::SparseMatrix>( mfem::Mult( dfdn, dndx ) );
     auto dfdx = std::unique_ptr<mfem::SparseMatrix>( mfem::Add( dfdx_nc, *dfdn_dndx ) );
     mfem::DenseMatrix dfdx_enzyme;
@@ -308,11 +293,6 @@ class EnzymeMergedJacobianTest : public testing::Test {
       }
     }
     dgdx_nc.Finalize();
-    // mfem::DenseMatrix dgdx_nc_sparse;
-    // dgdx_nc.ToDenseMatrix( dgdx_nc_sparse );
-    // std::ofstream dgdx_nc_file( "dgdx_nc.mat" );
-    // dgdx_nc_sparse.PrintMatlab( dgdx_nc_file );
-    // dgdx_nc_file.close();
     mfem::SparseMatrix dgdn( fe_space_scalar.GetVSize(), fe_space.GetVSize() );
     // get lagrange/nonmortar contributions
     elem_Js = &dfdn_data.getBlockJ()( static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER ),
@@ -329,11 +309,6 @@ class EnzymeMergedJacobianTest : public testing::Test {
       }
     }
     dgdn.Finalize();
-    // mfem::DenseMatrix dgdn_sparse;
-    // dgdn.ToDenseMatrix( dgdn_sparse );
-    // std::ofstream dgdn_file( "dgdn.mat" );
-    // dgdn_sparse.PrintMatlab( dgdn_file );
-    // dgdn_file.close();
     auto dgdn_dndx = std::unique_ptr<mfem::SparseMatrix>( mfem::Mult( dgdn, dndx ) );
     auto dgdx = std::unique_ptr<mfem::SparseMatrix>( mfem::Add( dgdx_nc, *dgdn_dndx ) );
     mfem::DenseMatrix dgdx_enzyme;
@@ -454,7 +429,7 @@ class EnzymeMergedJacobianTest : public testing::Test {
   }
 };
 
-TEST_F( EnzymeMergedJacobianTest, FiniteDiffCheckShifted2x2Meshes )
+TEST_F( EnzymeAssembledJacobianTest, FiniteDiffCheckShifted2x2Meshes )
 {
   constexpr auto num_xel_mesh0 = 2;
   constexpr auto num_yel_mesh0 = 2;
@@ -490,7 +465,7 @@ TEST_F( EnzymeMergedJacobianTest, FiniteDiffCheckShifted2x2Meshes )
                    num_xel_mesh1, num_yel_mesh1 );
 }
 
-TEST_F( EnzymeMergedJacobianTest, FiniteDiffCheckShifted1x1Meshes )
+TEST_F( EnzymeAssembledJacobianTest, FiniteDiffCheckShifted1x1Meshes )
 {
   constexpr auto num_xel_mesh0 = 1;
   constexpr auto num_yel_mesh0 = 1;
@@ -521,7 +496,7 @@ TEST_F( EnzymeMergedJacobianTest, FiniteDiffCheckShifted1x1Meshes )
                    num_xel_mesh1, num_yel_mesh1 );
 }
 
-TEST_F( EnzymeMergedJacobianTest, FiniteDiffCheckShifted1x1MeshesV2 )
+TEST_F( EnzymeAssembledJacobianTest, FiniteDiffCheckShifted1x1MeshesV2 )
 {
   constexpr auto num_xel_mesh0 = 1;
   constexpr auto num_yel_mesh0 = 1;
@@ -589,7 +564,7 @@ TEST_F( EnzymeMergedJacobianTest, FiniteDiffCheckShifted1x1MeshesV2 )
                    num_xel_mesh1, num_yel_mesh1 );
 }
 
-TEST_F( EnzymeMergedJacobianTest, FiniteDiffCheckAligned1x1Mesh )
+TEST_F( EnzymeAssembledJacobianTest, FiniteDiffCheckAligned1x1Mesh )
 {
   constexpr auto num_xel_mesh0 = 1;
   constexpr auto num_yel_mesh0 = 1;
