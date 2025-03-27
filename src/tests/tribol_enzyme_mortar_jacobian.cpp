@@ -51,47 +51,59 @@ class EnzymeJacobianTest : public testing::Test {
                 const double* x2_stencil = nullptr )
   {
     constexpr int num_disp_dofs = 12;
-    double f1[num_disp_dofs];
-    double f2[num_disp_dofs];
+
+    double f1[num_disp_dofs];  // Array to store forces for the first face
+    double f2[num_disp_dofs];  // Array to store forces for the second face
     for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
       f1[i] = 0.0;
       f2[i] = 0.0;
     }
     constexpr int num_pres_dofs = 4;
-    double g1[num_pres_dofs];
+    double g1[num_pres_dofs];  // Array to store gap for the first face
     for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
       g1[i] = 0.0;
     }
 
-    double df1dx1[num_disp_dofs * num_disp_dofs];
-    double df1dx2[num_disp_dofs * num_disp_dofs];
-    double df1dn1[num_disp_dofs * num_disp_dofs];
+    double df1dx1[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the first face w.r.t. the coordinates
+                                                   // of the first face
+    double df1dx2[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the first face w.r.t. the coordinates
+                                                   // of the second face
+    double df1dn1[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the first face w.r.t. the normal of the
+                                                   // first face
     for ( int i{ 0 }; i < num_disp_dofs * num_disp_dofs; ++i ) {
       df1dx1[i] = 0.0;
       df1dx2[i] = 0.0;
       df1dn1[i] = 0.0;
     }
-    double df1dp1[num_disp_dofs * num_pres_dofs];
+    double df1dp1[num_disp_dofs * num_pres_dofs];  // Derivative of the force on the first face w.r.t. the pressure of
+                                                   // the first face
     for ( int i{ 0 }; i < num_disp_dofs * num_pres_dofs; ++i ) {
       df1dp1[i] = 0.0;
     }
-    double dg1dx1[num_pres_dofs * num_disp_dofs];
-    double dg1dx2[num_pres_dofs * num_disp_dofs];
-    double dg1dn1[num_pres_dofs * num_disp_dofs];
+    double dg1dx1[num_pres_dofs * num_disp_dofs];  // Derivative of the gap on the first face w.r.t. the coordinates of
+                                                   // the first face
+    double dg1dx2[num_pres_dofs * num_disp_dofs];  // Derivative of the gap on the first face w.r.t. the coordinates of
+                                                   // the second face
+    double dg1dn1[num_pres_dofs * num_disp_dofs];  // Derivative of the gap on the first face w.r.t. the normal of the
+                                                   // first face
     for ( int i{ 0 }; i < num_pres_dofs * num_disp_dofs; ++i ) {
       dg1dx1[i] = 0.0;
       dg1dx2[i] = 0.0;
       dg1dn1[i] = 0.0;
     }
-    double df2dx1[num_disp_dofs * num_disp_dofs];
-    double df2dx2[num_disp_dofs * num_disp_dofs];
-    double df2dn1[num_disp_dofs * num_disp_dofs];
+    double df2dx1[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the second face w.r.t. the coordinates
+                                                   // of the first face
+    double df2dx2[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the second face w.r.t. the coordinates
+                                                   // of the second face
+    double df2dn1[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the second face w.r.t. the normal of
+                                                   // the first face
     for ( int i{ 0 }; i < num_disp_dofs * num_disp_dofs; ++i ) {
       df2dx1[i] = 0.0;
       df2dx2[i] = 0.0;
       df2dn1[i] = 0.0;
     }
-    double df2dp1[num_disp_dofs * num_pres_dofs];
+    double df2dp1[num_disp_dofs * num_pres_dofs];  // Derivative of the force on the second face w.r.t. the pressure of
+                                                   // the first face
     for ( int i{ 0 }; i < num_disp_dofs * num_pres_dofs; ++i ) {
       df2dp1[i] = 0.0;
     }
@@ -100,15 +112,24 @@ class EnzymeJacobianTest : public testing::Test {
     tribol::ComputeMortarJacobianEnzyme( x1, n1, p1, f1, df1dx1, df1dx2, df1dn1, df1dp1, g1, dg1dx1, dg1dx2, dg1dn1,
                                          num_nodes, x2, f2, df2dx1, df2dx2, df2dn1, df2dp1, num_nodes );
 
-    double df1dx1_fd[num_disp_dofs * num_disp_dofs];
-    double df2dx1_fd[num_disp_dofs * num_disp_dofs];
-    double df1dx2_fd[num_disp_dofs * num_disp_dofs];
-    double df2dx2_fd[num_disp_dofs * num_disp_dofs];
-    double df1dn1_fd[num_disp_dofs * num_disp_dofs];
-    double df2dn1_fd[num_disp_dofs * num_disp_dofs];
-    double dg1dx1_fd[num_disp_dofs * num_pres_dofs];
-    double dg1dx2_fd[num_disp_dofs * num_pres_dofs];
-    double dg1dn1_fd[num_disp_dofs * num_pres_dofs];
+    double df1dx1_fd[num_disp_dofs * num_disp_dofs];  // Finite difference derivative of the force on the first face
+                                                      // w.r.t. the coordinates of the first face
+    double df2dx1_fd[num_disp_dofs * num_disp_dofs];  // Finite difference derivative of the force on the second face
+                                                      // w.r.t. the coordinates of the first face
+    double df1dx2_fd[num_disp_dofs * num_disp_dofs];  // Finite difference derivative of the force on the first face
+                                                      // w.r.t. the coordinates of the second face
+    double df2dx2_fd[num_disp_dofs * num_disp_dofs];  // Finite difference derivative of the force on the second face
+                                                      // w.r.t. the coordinates of the second face
+    double df1dn1_fd[num_disp_dofs * num_disp_dofs];  // Finite difference derivative of the force on the first face
+                                                      // w.r.t. the normal of the first face
+    double df2dn1_fd[num_disp_dofs * num_disp_dofs];  // Finite difference derivative of the force on the second face
+                                                      // w.r.t. the normal of the first face
+    double dg1dx1_fd[num_disp_dofs * num_pres_dofs];  // Finite difference derivative of the gap on the first face
+                                                      // w.r.t. the coordinates of the first face
+    double dg1dx2_fd[num_disp_dofs * num_pres_dofs];  // Finite difference derivative of the gap on the first face
+                                                      // w.r.t. the coordinates of the second face
+    double dg1dn1_fd[num_disp_dofs * num_pres_dofs];  // Finite difference derivative of the gap on the first face
+                                                      // w.r.t. the normal of the first face
     for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
       for ( int j{ 0 }; j < num_disp_dofs; ++j ) {
         df1dx1_fd[i * num_disp_dofs + j] = -f1[j];
@@ -124,8 +145,10 @@ class EnzymeJacobianTest : public testing::Test {
         dg1dn1_fd[i * num_pres_dofs + j] = -g1[j];
       }
     }
-    double df1dp1_fd[num_pres_dofs * num_disp_dofs];
-    double df2dp1_fd[num_pres_dofs * num_disp_dofs];
+    double df1dp1_fd[num_pres_dofs * num_disp_dofs];  // Finite difference derivative of the force on the first face
+                                                      // w.r.t. the pressure of the first face
+    double df2dp1_fd[num_pres_dofs * num_disp_dofs];  // Finite difference derivative of the force on the second face
+                                                      // w.r.t. the pressure of the first face
     for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
       for ( int j{ 0 }; j < num_disp_dofs; ++j ) {
         df1dp1_fd[i * num_disp_dofs + j] = -f1[j];
@@ -390,40 +413,51 @@ class EnzymeJacobianTest : public testing::Test {
   void SimplifiedJacobianCheck( double* x1, double* x2, double* n1, double* p1 )
   {
     constexpr int num_disp_dofs = 12;
-    double f1[num_disp_dofs];
-    double f2[num_disp_dofs];
+    double f1[num_disp_dofs];  // Array to store forces for the first face
+    double f2[num_disp_dofs];  // Array to store forces for the second face
     constexpr int num_pres_dofs = 4;
-    double g1[num_pres_dofs];
+    double g1[num_pres_dofs];  // Array to store gap for the first face
 
-    double df1dx1[num_disp_dofs * num_disp_dofs];
-    double df1dx2[num_disp_dofs * num_disp_dofs];
-    double df1dn1[num_disp_dofs * num_disp_dofs];
+    double df1dx1[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the first face w.r.t. the coordinates
+                                                   // of the first face
+    double df1dx2[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the first face w.r.t. the coordinates
+                                                   // of the second face
+    double df1dn1[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the first face w.r.t. the normal of the
+                                                   // first face
     for ( int i{ 0 }; i < num_disp_dofs * num_disp_dofs; ++i ) {
       df1dx1[i] = 0.0;
       df1dx2[i] = 0.0;
       df1dn1[i] = 0.0;
     }
-    double df1dp1[num_disp_dofs * num_pres_dofs];
+    double df1dp1[num_disp_dofs * num_pres_dofs];  // Derivative of the force on the first face w.r.t. the pressure of
+                                                   // the first face
     for ( int i{ 0 }; i < num_disp_dofs * num_pres_dofs; ++i ) {
       df1dp1[i] = 0.0;
     }
-    double dg1dx1[num_pres_dofs * num_disp_dofs];
-    double dg1dx2[num_pres_dofs * num_disp_dofs];
-    double dg1dn1[num_pres_dofs * num_disp_dofs];
+    double dg1dx1[num_pres_dofs * num_disp_dofs];  // Derivative of the gap on the first face w.r.t. the coordinates of
+                                                   // the first face
+    double dg1dx2[num_pres_dofs * num_disp_dofs];  // Derivative of the gap on the first face w.r.t. the coordinates of
+                                                   // the second face
+    double dg1dn1[num_pres_dofs * num_disp_dofs];  // Derivative of the gap on the first face w.r.t. the normal of the
+                                                   // first face
     for ( int i{ 0 }; i < num_pres_dofs * num_disp_dofs; ++i ) {
       dg1dx1[i] = 0.0;
       dg1dx2[i] = 0.0;
       dg1dn1[i] = 0.0;
     }
-    double df2dx1[num_disp_dofs * num_disp_dofs];
-    double df2dx2[num_disp_dofs * num_disp_dofs];
-    double df2dn1[num_disp_dofs * num_disp_dofs];
+    double df2dx1[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the second face w.r.t. the coordinates
+                                                   // of the first face
+    double df2dx2[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the second face w.r.t. the coordinates
+                                                   // of the second face
+    double df2dn1[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the second face w.r.t. the normal of
+                                                   // the first face
     for ( int i{ 0 }; i < num_disp_dofs * num_disp_dofs; ++i ) {
       df2dx1[i] = 0.0;
       df2dx2[i] = 0.0;
       df2dn1[i] = 0.0;
     }
-    double df2dp1[num_disp_dofs * num_pres_dofs];
+    double df2dp1[num_disp_dofs * num_pres_dofs];  // Derivative of the force on the second face w.r.t. the pressure of
+                                                   // the first face
     for ( int i{ 0 }; i < num_disp_dofs * num_pres_dofs; ++i ) {
       df2dp1[i] = 0.0;
     }
@@ -447,17 +481,17 @@ class EnzymeJacobianTest : public testing::Test {
                             ContactMethod::SINGLE_MORTAR, ContactModel::FRICTIONLESS,
                             EnforcementMethod::LAGRANGE_MULTIPLIER, BinningMethod::BINNING_GRID,
                             ExecutionMode::Sequential );
-    double f1t[num_disp_dofs];
+    double f1t[num_disp_dofs];  // Array to store non-Enzyme forces for the first face
     for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
       f1t[i] = 0.0;
     }
     registerNodalResponse( mesh_id1, f1t, f1t + num_nodes, f1t + 2 * num_nodes );
-    double f2t[num_disp_dofs];
+    double f2t[num_disp_dofs];  // Array to store non-Enzyme forces for the second face
     for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
       f2t[i] = 0.0;
     }
     registerNodalResponse( mesh_id2, f2t, f2t + num_nodes, f2t + 2 * num_nodes );
-    double g1t[num_pres_dofs];
+    double g1t[num_pres_dofs];  // Array to store non-Enzyme gap for the first face
     for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
       g1t[i] = 0.0;
     }
