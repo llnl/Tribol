@@ -26,8 +26,6 @@
 
 namespace tribol {
 
-void FDCheck( double* x1, double* x2, double* n1, double* p1 );
-
 /**
  * @brief Test fixture for the Enzyme-computed Jacobian terms of the mortar method, not including the nodal normal
  * contribution.
@@ -39,6 +37,16 @@ class EnzymeJacobianTest : public testing::Test {
   double tribol_vs_enzyme_err_{ 1.0e-13 };
   void SetUp() override {}
 
+  /**
+   * @brief Check the Jacobian terms computed by Enzyme against finite differences.
+   *
+   * @param x1 Coordinates of the first face
+   * @param x2 Coordinates of the second face
+   * @param n1 Normal of the first face
+   * @param p1 Pressure of the first face
+   * @param x1_stencil Stencil coordinate directions of the first face
+   * @param x2_stencil Stencil coordinate directions of the second face
+   */
   void FDCheck( double* x1, double* x2, double* n1, double* p1, const double* x1_stencil = nullptr,
                 const double* x2_stencil = nullptr )
   {
@@ -371,7 +379,15 @@ class EnzymeJacobianTest : public testing::Test {
     std::cout << "max_diff for test: " << max_diff << std::endl;
   }
 
-  void ApproxJacobianCheck( double* x1, double* x2, double* n1, double* p1 )
+  /**
+   * @brief Check the Jacobian terms computed by Enzyme against the non-Enzyme Tribol simplified Jacobian.
+   *
+   * @param x1 Coordinates of the first face
+   * @param x2 Coordinates of the second face
+   * @param n1 Normal of the first face
+   * @param p1 Pressure of the first face
+   */
+  void SimplifiedJacobianCheck( double* x1, double* x2, double* n1, double* p1 )
   {
     constexpr int num_disp_dofs = 12;
     double f1[num_disp_dofs];
@@ -575,8 +591,8 @@ TEST_F( EnzymeJacobianTest, ExactOverlapZeroGap )
   // clang-format on
 
   FDCheck( x1, x2, n1, p1, x1_stencil, x2_stencil );
-  // the approximate Tribol jacobian should match here.  verify that it does
-  ApproxJacobianCheck( x1, x2, n1, p1 );
+  // the simplified Tribol jacobian should match here.  verify that it does
+  SimplifiedJacobianCheck( x1, x2, n1, p1 );
 }
 
 TEST_F( EnzymeJacobianTest, SlightlySmallerNonmortarElementMinorInterpenetration )
@@ -600,8 +616,8 @@ TEST_F( EnzymeJacobianTest, SlightlySmallerNonmortarElementMinorInterpenetration
   // clang-format on
 
   FDCheck( x1, x2, n1, p1 );
-  // the approximate Tribol jacobian should be close here.  verify that it is
-  ApproxJacobianCheck( x1, x2, n1, p1 );
+  // the simplified Tribol jacobian should be close here.  verify that it is
+  SimplifiedJacobianCheck( x1, x2, n1, p1 );
 }
 
 TEST_F( EnzymeJacobianTest, ShiftedXNonmortarElementMinorInterpenetration )
