@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -42,180 +42,183 @@ class EnzymeJacobianTest : public testing::Test {
   void FDCheck( double* x1, double* x2, double* n1, double* p1, const double* x1_stencil = nullptr,
                 const double* x2_stencil = nullptr )
   {
-    double f1[12];
-    double f2[12];
-    for ( int i{ 0 }; i < 12; ++i ) {
+    constexpr int num_disp_dofs = 12;
+    double f1[num_disp_dofs];
+    double f2[num_disp_dofs];
+    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
       f1[i] = 0.0;
       f2[i] = 0.0;
     }
-    double g1[4];
-    for ( int i{ 0 }; i < 4; ++i ) {
+    constexpr int num_pres_dofs = 4;
+    double g1[num_pres_dofs];
+    for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
       g1[i] = 0.0;
     }
 
-    double df1dx1[12 * 12];
-    double df1dx2[12 * 12];
-    double df1dn1[12 * 12];
-    for ( int i{ 0 }; i < 12 * 12; ++i ) {
+    double df1dx1[num_disp_dofs * num_disp_dofs];
+    double df1dx2[num_disp_dofs * num_disp_dofs];
+    double df1dn1[num_disp_dofs * num_disp_dofs];
+    for ( int i{ 0 }; i < num_disp_dofs * num_disp_dofs; ++i ) {
       df1dx1[i] = 0.0;
       df1dx2[i] = 0.0;
       df1dn1[i] = 0.0;
     }
-    double df1dp1[12 * 4];
-    for ( int i{ 0 }; i < 12 * 4; ++i ) {
+    double df1dp1[num_disp_dofs * num_pres_dofs];
+    for ( int i{ 0 }; i < num_disp_dofs * num_pres_dofs; ++i ) {
       df1dp1[i] = 0.0;
     }
-    double dg1dx1[4 * 12];
-    double dg1dx2[4 * 12];
-    double dg1dn1[4 * 12];
-    for ( int i{ 0 }; i < 4 * 12; ++i ) {
+    double dg1dx1[num_pres_dofs * num_disp_dofs];
+    double dg1dx2[num_pres_dofs * num_disp_dofs];
+    double dg1dn1[num_pres_dofs * num_disp_dofs];
+    for ( int i{ 0 }; i < num_pres_dofs * num_disp_dofs; ++i ) {
       dg1dx1[i] = 0.0;
       dg1dx2[i] = 0.0;
       dg1dn1[i] = 0.0;
     }
-    double df2dx1[12 * 12];
-    double df2dx2[12 * 12];
-    double df2dn1[12 * 12];
-    for ( int i{ 0 }; i < 12 * 12; ++i ) {
+    double df2dx1[num_disp_dofs * num_disp_dofs];
+    double df2dx2[num_disp_dofs * num_disp_dofs];
+    double df2dn1[num_disp_dofs * num_disp_dofs];
+    for ( int i{ 0 }; i < num_disp_dofs * num_disp_dofs; ++i ) {
       df2dx1[i] = 0.0;
       df2dx2[i] = 0.0;
       df2dn1[i] = 0.0;
     }
-    double df2dp1[12 * 4];
-    for ( int i{ 0 }; i < 12 * 4; ++i ) {
+    double df2dp1[num_disp_dofs * num_pres_dofs];
+    for ( int i{ 0 }; i < num_disp_dofs * num_pres_dofs; ++i ) {
       df2dp1[i] = 0.0;
     }
 
-    tribol::ComputeMortarJacobianEnzyme( x1, n1, p1, f1, df1dx1, df1dx2, df1dn1, df1dp1, g1, dg1dx1, dg1dx2, dg1dn1, 4,
-                                         x2, f2, df2dx1, df2dx2, df2dn1, df2dp1, 4 );
+    constexpr int num_nodes = 4;
+    tribol::ComputeMortarJacobianEnzyme( x1, n1, p1, f1, df1dx1, df1dx2, df1dn1, df1dp1, g1, dg1dx1, dg1dx2, dg1dn1,
+                                         num_nodes, x2, f2, df2dx1, df2dx2, df2dn1, df2dp1, num_nodes );
 
-    double df1dx1_fd[12 * 12];
-    double df2dx1_fd[12 * 12];
-    double df1dx2_fd[12 * 12];
-    double df2dx2_fd[12 * 12];
-    double df1dn1_fd[12 * 12];
-    double df2dn1_fd[12 * 12];
-    double dg1dx1_fd[12 * 4];
-    double dg1dx2_fd[12 * 4];
-    double dg1dn1_fd[12 * 4];
-    for ( int i{ 0 }; i < 12; ++i ) {
-      for ( int j{ 0 }; j < 12; ++j ) {
-        df1dx1_fd[i * 12 + j] = -f1[j];
-        df2dx1_fd[i * 12 + j] = -f2[j];
-        df1dx2_fd[i * 12 + j] = -f1[j];
-        df2dx2_fd[i * 12 + j] = -f2[j];
-        df1dn1_fd[i * 12 + j] = -f1[j];
-        df2dn1_fd[i * 12 + j] = -f2[j];
+    double df1dx1_fd[num_disp_dofs * num_disp_dofs];
+    double df2dx1_fd[num_disp_dofs * num_disp_dofs];
+    double df1dx2_fd[num_disp_dofs * num_disp_dofs];
+    double df2dx2_fd[num_disp_dofs * num_disp_dofs];
+    double df1dn1_fd[num_disp_dofs * num_disp_dofs];
+    double df2dn1_fd[num_disp_dofs * num_disp_dofs];
+    double dg1dx1_fd[num_disp_dofs * num_pres_dofs];
+    double dg1dx2_fd[num_disp_dofs * num_pres_dofs];
+    double dg1dn1_fd[num_disp_dofs * num_pres_dofs];
+    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
+      for ( int j{ 0 }; j < num_disp_dofs; ++j ) {
+        df1dx1_fd[i * num_disp_dofs + j] = -f1[j];
+        df2dx1_fd[i * num_disp_dofs + j] = -f2[j];
+        df1dx2_fd[i * num_disp_dofs + j] = -f1[j];
+        df2dx2_fd[i * num_disp_dofs + j] = -f2[j];
+        df1dn1_fd[i * num_disp_dofs + j] = -f1[j];
+        df2dn1_fd[i * num_disp_dofs + j] = -f2[j];
       }
-      for ( int j{ 0 }; j < 4; ++j ) {
-        dg1dx1_fd[i * 4 + j] = -g1[j];
-        dg1dx2_fd[i * 4 + j] = -g1[j];
-        dg1dn1_fd[i * 4 + j] = -g1[j];
+      for ( int j{ 0 }; j < num_pres_dofs; ++j ) {
+        dg1dx1_fd[i * num_pres_dofs + j] = -g1[j];
+        dg1dx2_fd[i * num_pres_dofs + j] = -g1[j];
+        dg1dn1_fd[i * num_pres_dofs + j] = -g1[j];
       }
     }
-    double df1dp1_fd[4 * 12];
-    double df2dp1_fd[4 * 12];
-    for ( int i{ 0 }; i < 4; ++i ) {
-      for ( int j{ 0 }; j < 12; ++j ) {
-        df1dp1_fd[i * 12 + j] = -f1[j];
-        df2dp1_fd[i * 12 + j] = -f2[j];
+    double df1dp1_fd[num_pres_dofs * num_disp_dofs];
+    double df2dp1_fd[num_pres_dofs * num_disp_dofs];
+    for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
+      for ( int j{ 0 }; j < num_disp_dofs; ++j ) {
+        df1dp1_fd[i * num_disp_dofs + j] = -f1[j];
+        df2dp1_fd[i * num_disp_dofs + j] = -f2[j];
       }
     }
     // wiggle x1
-    for ( int j{ 0 }; j < 12; ++j ) {
+    for ( int j{ 0 }; j < num_disp_dofs; ++j ) {
       auto shift1 = delta_;
       if ( x1_stencil ) {
         shift1 *= x1_stencil[j];
       }
       x1[j] += shift1;
-      for ( int i{ 0 }; i < 12; ++i ) {
+      for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
         f1[i] = 0.0;
         f2[i] = 0.0;
       }
-      for ( int i{ 0 }; i < 4; ++i ) {
+      for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
         g1[i] = 0.0;
       }
-      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, 4, x2, f2, 4 );
-      for ( int i{ 0 }; i < 12; ++i ) {
-        df1dx1_fd[j * 12 + i] += f1[i];
-        df1dx1_fd[j * 12 + i] /= shift1;
-        df2dx1_fd[j * 12 + i] += f2[i];
-        df2dx1_fd[j * 12 + i] /= shift1;
+      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, num_nodes, x2, f2, num_nodes );
+      for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
+        df1dx1_fd[j * num_disp_dofs + i] += f1[i];
+        df1dx1_fd[j * num_disp_dofs + i] /= shift1;
+        df2dx1_fd[j * num_disp_dofs + i] += f2[i];
+        df2dx1_fd[j * num_disp_dofs + i] /= shift1;
       }
-      for ( int i{ 0 }; i < 4; ++i ) {
-        dg1dx1_fd[j * 4 + i] += g1[i];
-        dg1dx1_fd[j * 4 + i] /= shift1;
+      for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
+        dg1dx1_fd[j * num_pres_dofs + i] += g1[i];
+        dg1dx1_fd[j * num_pres_dofs + i] /= shift1;
       }
       x1[j] -= shift1;
     }
     // wiggle x2
-    for ( int j{ 0 }; j < 12; ++j ) {
+    for ( int j{ 0 }; j < num_disp_dofs; ++j ) {
       auto shift2 = delta_;
       if ( x2_stencil ) {
         shift2 *= x2_stencil[j];
       }
       x2[j] += shift2;
-      for ( int i{ 0 }; i < 12; ++i ) {
+      for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
         f1[i] = 0.0;
         f2[i] = 0.0;
       }
-      for ( int i{ 0 }; i < 4; ++i ) {
+      for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
         g1[i] = 0.0;
       }
-      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, 4, x2, f2, 4 );
-      for ( int i{ 0 }; i < 12; ++i ) {
-        df1dx2_fd[j * 12 + i] += f1[i];
-        df1dx2_fd[j * 12 + i] /= shift2;
-        df2dx2_fd[j * 12 + i] += f2[i];
-        df2dx2_fd[j * 12 + i] /= shift2;
+      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, num_nodes, x2, f2, num_nodes );
+      for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
+        df1dx2_fd[j * num_disp_dofs + i] += f1[i];
+        df1dx2_fd[j * num_disp_dofs + i] /= shift2;
+        df2dx2_fd[j * num_disp_dofs + i] += f2[i];
+        df2dx2_fd[j * num_disp_dofs + i] /= shift2;
       }
-      for ( int i{ 0 }; i < 4; ++i ) {
-        dg1dx2_fd[j * 4 + i] += g1[i];
-        dg1dx2_fd[j * 4 + i] /= shift2;
+      for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
+        dg1dx2_fd[j * num_pres_dofs + i] += g1[i];
+        dg1dx2_fd[j * num_pres_dofs + i] /= shift2;
       }
       x2[j] -= shift2;
     }
     // wiggle n1
-    for ( int j{ 0 }; j < 12; ++j ) {
+    for ( int j{ 0 }; j < num_disp_dofs; ++j ) {
       auto shift = delta_;
       n1[j] += shift;
-      for ( int i{ 0 }; i < 12; ++i ) {
+      for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
         f1[i] = 0.0;
         f2[i] = 0.0;
       }
-      for ( int i{ 0 }; i < 4; ++i ) {
+      for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
         g1[i] = 0.0;
       }
-      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, 4, x2, f2, 4 );
-      for ( int i{ 0 }; i < 12; ++i ) {
-        df1dn1_fd[j * 12 + i] += f1[i];
-        df1dn1_fd[j * 12 + i] /= shift;
-        df2dn1_fd[j * 12 + i] += f2[i];
-        df2dn1_fd[j * 12 + i] /= shift;
+      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, num_nodes, x2, f2, num_nodes );
+      for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
+        df1dn1_fd[j * num_disp_dofs + i] += f1[i];
+        df1dn1_fd[j * num_disp_dofs + i] /= shift;
+        df2dn1_fd[j * num_disp_dofs + i] += f2[i];
+        df2dn1_fd[j * num_disp_dofs + i] /= shift;
       }
-      for ( int i{ 0 }; i < 4; ++i ) {
-        dg1dn1_fd[j * 4 + i] += g1[i];
-        dg1dn1_fd[j * 4 + i] /= shift;
+      for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
+        dg1dn1_fd[j * num_pres_dofs + i] += g1[i];
+        dg1dn1_fd[j * num_pres_dofs + i] /= shift;
       }
       n1[j] -= shift;
     }
     // wiggle p1
-    for ( int j{ 0 }; j < 4; ++j ) {
+    for ( int j{ 0 }; j < num_pres_dofs; ++j ) {
       auto shift = delta_;
       p1[j] += shift;
-      for ( int i{ 0 }; i < 12; ++i ) {
+      for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
         f1[i] = 0.0;
         f2[i] = 0.0;
       }
-      for ( int i{ 0 }; i < 4; ++i ) {
+      for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
         g1[i] = 0.0;
       }
-      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, 4, x2, f2, 4 );
-      for ( int i{ 0 }; i < 12; ++i ) {
-        df1dp1_fd[j * 12 + i] += f1[i];
-        df1dp1_fd[j * 12 + i] /= shift;
-        df2dp1_fd[j * 12 + i] += f2[i];
-        df2dp1_fd[j * 12 + i] /= shift;
+      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, num_nodes, x2, f2, num_nodes );
+      for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
+        df1dp1_fd[j * num_disp_dofs + i] += f1[i];
+        df1dp1_fd[j * num_disp_dofs + i] /= shift;
+        df2dp1_fd[j * num_disp_dofs + i] += f2[i];
+        df2dp1_fd[j * num_disp_dofs + i] /= shift;
       }
       p1[j] -= shift;
     }
@@ -223,12 +226,12 @@ class EnzymeJacobianTest : public testing::Test {
     double max_diff{ 0.0 };
 
     std::cout << " df1/dx1 -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < 144; ++i ) {
+    for ( int i{ 0 }; i < num_disp_dofs * num_disp_dofs; ++i ) {
       auto diff = std::abs( df1dx1[i] - df1dx1_fd[i] );
       max_diff = std::max( max_diff, diff );
       if ( diff > delta_ ) {
-        auto row = i % 12;
-        auto col = i / 12;
+        auto row = i % num_disp_dofs;
+        auto col = i / num_disp_dofs;
         std::cout << "  (" << row << ", " << col << ") : Diff: " << diff << "   Enzyme: " << df1dx1[i]
                   << "   FD: " << df1dx1_fd[i] << std::endl;
       }
@@ -236,12 +239,12 @@ class EnzymeJacobianTest : public testing::Test {
     }
 
     std::cout << " df2/dx1 -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < 144; ++i ) {
+    for ( int i{ 0 }; i < num_disp_dofs * num_disp_dofs; ++i ) {
       auto diff = std::abs( df2dx1[i] - df2dx1_fd[i] );
       max_diff = std::max( max_diff, diff );
       if ( diff > delta_ ) {
-        auto row = i % 12;
-        auto col = i / 12;
+        auto row = i % num_disp_dofs;
+        auto col = i / num_disp_dofs;
         std::cout << "  (" << row << ", " << col << ") : Diff: " << diff << "   Enzyme: " << df2dx1[i]
                   << "   FD: " << df2dx1_fd[i] << std::endl;
       }
@@ -249,12 +252,12 @@ class EnzymeJacobianTest : public testing::Test {
     }
 
     std::cout << " dg1/dx1 -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < 48; ++i ) {
+    for ( int i{ 0 }; i < num_pres_dofs * num_disp_dofs; ++i ) {
       auto diff = std::abs( dg1dx1[i] - dg1dx1_fd[i] );
       max_diff = std::max( max_diff, diff );
       if ( diff > delta_ ) {
-        auto row = i % 4;
-        auto col = i / 4;
+        auto row = i % num_pres_dofs;
+        auto col = i / num_pres_dofs;
         std::cout << "  (" << row << ", " << col << ") : Diff: " << diff << "   Enzyme: " << dg1dx1[i]
                   << "   FD: " << dg1dx1_fd[i] << std::endl;
       }
@@ -262,12 +265,12 @@ class EnzymeJacobianTest : public testing::Test {
     }
 
     std::cout << " df1/dx2 -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < 144; ++i ) {
+    for ( int i{ 0 }; i < num_disp_dofs * num_disp_dofs; ++i ) {
       auto diff = std::abs( df1dx2[i] - df1dx2_fd[i] );
       max_diff = std::max( max_diff, diff );
       if ( diff > delta_ ) {
-        auto row = i % 12;
-        auto col = i / 12;
+        auto row = i % num_disp_dofs;
+        auto col = i / num_disp_dofs;
         std::cout << "  (" << row << ", " << col << ") : Diff: " << diff << "   Enzyme: " << df1dx2[i]
                   << "   FD: " << df1dx2_fd[i] << std::endl;
       }
@@ -275,12 +278,12 @@ class EnzymeJacobianTest : public testing::Test {
     }
 
     std::cout << " df2/dx2 -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < 144; ++i ) {
+    for ( int i{ 0 }; i < num_disp_dofs * num_disp_dofs; ++i ) {
       auto diff = std::abs( df2dx2[i] - df2dx2_fd[i] );
       max_diff = std::max( max_diff, diff );
       if ( diff > delta_ ) {
-        auto row = i % 12;
-        auto col = i / 12;
+        auto row = i % num_disp_dofs;
+        auto col = i / num_disp_dofs;
         std::cout << "  (" << row << ", " << col << ") : Diff: " << diff << "   Enzyme: " << df2dx2[i]
                   << "   FD: " << df2dx2_fd[i] << std::endl;
       }
@@ -288,12 +291,12 @@ class EnzymeJacobianTest : public testing::Test {
     }
 
     std::cout << " dg1/dx2 -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < 48; ++i ) {
+    for ( int i{ 0 }; i < num_pres_dofs * num_disp_dofs; ++i ) {
       auto diff = std::abs( dg1dx2[i] - dg1dx2_fd[i] );
       max_diff = std::max( max_diff, diff );
       if ( diff > delta_ ) {
-        auto row = i % 4;
-        auto col = i / 4;
+        auto row = i % num_pres_dofs;
+        auto col = i / num_pres_dofs;
         std::cout << "  (" << row << ", " << col << ") : Diff: " << diff << "   Enzyme: " << dg1dx2[i]
                   << "   FD: " << dg1dx2_fd[i] << std::endl;
       }
@@ -301,12 +304,12 @@ class EnzymeJacobianTest : public testing::Test {
     }
 
     std::cout << " df1/dn1 -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < 144; ++i ) {
+    for ( int i{ 0 }; i < num_disp_dofs * num_disp_dofs; ++i ) {
       auto diff = std::abs( df1dn1[i] - df1dn1_fd[i] );
       max_diff = std::max( max_diff, diff );
       if ( diff > delta_ ) {
-        auto row = i % 12;
-        auto col = i / 12;
+        auto row = i % num_disp_dofs;
+        auto col = i / num_disp_dofs;
         std::cout << "  (" << row << ", " << col << ") : Diff: " << diff << "   Enzyme: " << df1dn1[i]
                   << "   FD: " << df1dn1_fd[i] << std::endl;
       }
@@ -314,12 +317,12 @@ class EnzymeJacobianTest : public testing::Test {
     }
 
     std::cout << " df2/dn1 -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < 144; ++i ) {
+    for ( int i{ 0 }; i < num_disp_dofs * num_disp_dofs; ++i ) {
       auto diff = std::abs( df2dn1[i] - df2dn1_fd[i] );
       max_diff = std::max( max_diff, diff );
       if ( diff > delta_ ) {
-        auto row = i % 12;
-        auto col = i / 12;
+        auto row = i % num_disp_dofs;
+        auto col = i / num_disp_dofs;
         std::cout << "  (" << row << ", " << col << ") : Diff: " << diff << "   Enzyme: " << df2dn1[i]
                   << "   FD: " << df2dn1_fd[i] << std::endl;
       }
@@ -327,7 +330,7 @@ class EnzymeJacobianTest : public testing::Test {
     }
 
     std::cout << " dg1/dn1 -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < 48; ++i ) {
+    for ( int i{ 0 }; i < num_pres_dofs * num_disp_dofs; ++i ) {
       auto diff = std::abs( dg1dn1[i] - dg1dn1_fd[i] );
       max_diff = std::max( max_diff, diff );
       if ( diff > delta_ ) {
@@ -340,12 +343,12 @@ class EnzymeJacobianTest : public testing::Test {
     }
 
     std::cout << " df1/dp1 -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < 48; ++i ) {
+    for ( int i{ 0 }; i < num_pres_dofs * num_disp_dofs; ++i ) {
       auto diff = std::abs( df1dp1[i] - df1dp1_fd[i] );
       max_diff = std::max( max_diff, diff );
       if ( diff > delta_ ) {
-        auto row = i % 12;
-        auto col = i / 12;
+        auto row = i % num_disp_dofs;
+        auto col = i / num_disp_dofs;
         std::cout << "  (" << row << ", " << col << ") : Diff: " << diff << "   Enzyme: " << df1dp1[i]
                   << "   FD: " << df1dp1_fd[i] << std::endl;
       }
@@ -353,12 +356,12 @@ class EnzymeJacobianTest : public testing::Test {
     }
 
     std::cout << " df2/dp1 -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < 48; ++i ) {
+    for ( int i{ 0 }; i < num_pres_dofs * num_disp_dofs; ++i ) {
       auto diff = std::abs( df2dp1[i] - df2dp1_fd[i] );
       max_diff = std::max( max_diff, diff );
       if ( diff > delta_ ) {
-        auto row = i % 12;
-        auto col = i / 12;
+        auto row = i % num_disp_dofs;
+        auto col = i / num_disp_dofs;
         std::cout << "  (" << row << ", " << col << ") : Diff: " << diff << "   Enzyme: " << df2dp1[i]
                   << "   FD: " << df2dp1_fd[i] << std::endl;
       }
@@ -370,74 +373,76 @@ class EnzymeJacobianTest : public testing::Test {
 
   void ApproxJacobianCheck( double* x1, double* x2, double* n1, double* p1 )
   {
-    double f1[12];
-    double f2[12];
-    double g1[4];
+    constexpr int num_disp_dofs = 12;
+    double f1[num_disp_dofs];
+    double f2[num_disp_dofs];
+    constexpr int num_pres_dofs = 4;
+    double g1[num_pres_dofs];
 
-    double df1dx1[12 * 12];
-    double df1dx2[12 * 12];
-    double df1dn1[12 * 12];
-    for ( int i{ 0 }; i < 12 * 12; ++i ) {
+    double df1dx1[num_disp_dofs * num_disp_dofs];
+    double df1dx2[num_disp_dofs * num_disp_dofs];
+    double df1dn1[num_disp_dofs * num_disp_dofs];
+    for ( int i{ 0 }; i < num_disp_dofs * num_disp_dofs; ++i ) {
       df1dx1[i] = 0.0;
       df1dx2[i] = 0.0;
       df1dn1[i] = 0.0;
     }
-    double df1dp1[12 * 4];
-    for ( int i{ 0 }; i < 12 * 4; ++i ) {
+    double df1dp1[num_disp_dofs * num_pres_dofs];
+    for ( int i{ 0 }; i < num_disp_dofs * num_pres_dofs; ++i ) {
       df1dp1[i] = 0.0;
     }
-    double dg1dx1[4 * 12];
-    double dg1dx2[4 * 12];
-    double dg1dn1[4 * 12];
-    for ( int i{ 0 }; i < 4 * 12; ++i ) {
+    double dg1dx1[num_pres_dofs * num_disp_dofs];
+    double dg1dx2[num_pres_dofs * num_disp_dofs];
+    double dg1dn1[num_pres_dofs * num_disp_dofs];
+    for ( int i{ 0 }; i < num_pres_dofs * num_disp_dofs; ++i ) {
       dg1dx1[i] = 0.0;
       dg1dx2[i] = 0.0;
       dg1dn1[i] = 0.0;
     }
-    double df2dx1[12 * 12];
-    double df2dx2[12 * 12];
-    double df2dn1[12 * 12];
-    for ( int i{ 0 }; i < 12 * 12; ++i ) {
+    double df2dx1[num_disp_dofs * num_disp_dofs];
+    double df2dx2[num_disp_dofs * num_disp_dofs];
+    double df2dn1[num_disp_dofs * num_disp_dofs];
+    for ( int i{ 0 }; i < num_disp_dofs * num_disp_dofs; ++i ) {
       df2dx1[i] = 0.0;
       df2dx2[i] = 0.0;
       df2dn1[i] = 0.0;
     }
-    double df2dp1[12 * 4];
-    for ( int i{ 0 }; i < 12 * 4; ++i ) {
+    double df2dp1[num_disp_dofs * num_pres_dofs];
+    for ( int i{ 0 }; i < num_disp_dofs * num_pres_dofs; ++i ) {
       df2dp1[i] = 0.0;
     }
 
-    ComputeMortarJacobianEnzyme( x1, n1, p1, f1, df1dx1, df1dx2, df1dn1, df1dp1, g1, dg1dx1, dg1dx2, dg1dn1, 4, x2, f2,
-                                 df2dx1, df2dx2, df2dn1, df2dp1, 4 );
+    constexpr int num_nodes = 4;
+    ComputeMortarJacobianEnzyme( x1, n1, p1, f1, df1dx1, df1dx2, df1dn1, df1dp1, g1, dg1dx1, dg1dx2, dg1dn1, num_nodes,
+                                 x2, f2, df2dx1, df2dx2, df2dn1, df2dp1, num_nodes );
 
     int conn[4] = { 0, 1, 2, 3 };
     constexpr int num_elems = 1;
-    constexpr int num_nodes = 4;
 
     constexpr int mesh_id1 = 0;
-    registerMesh( mesh_id1, num_elems, num_nodes, conn, InterfaceElementType::LINEAR_QUAD, x1, x1 + 4, x1 + 8,
-                  MemorySpace::Host );
+    registerMesh( mesh_id1, num_elems, num_nodes, conn, InterfaceElementType::LINEAR_QUAD, x1, x1 + num_nodes,
+                  x1 + 2 * num_nodes, MemorySpace::Host );
     constexpr int mesh_id2 = 1;
-    registerMesh( mesh_id2, num_elems, num_nodes, conn, InterfaceElementType::LINEAR_QUAD, x2, x2 + 4, x2 + 8,
-                  MemorySpace::Host );
+    registerMesh( mesh_id2, num_elems, num_nodes, conn, InterfaceElementType::LINEAR_QUAD, x2, x2 + num_nodes,
+                  x2 + 2 * num_nodes, MemorySpace::Host );
     constexpr int cs_id = 0;
     // mortar then nonmortar surfaces
     registerCouplingScheme( cs_id, mesh_id2, mesh_id1, ContactMode::SURFACE_TO_SURFACE, ContactCase::NO_CASE,
                             ContactMethod::SINGLE_MORTAR, ContactModel::FRICTIONLESS,
                             EnforcementMethod::LAGRANGE_MULTIPLIER, BinningMethod::BINNING_GRID,
                             ExecutionMode::Sequential );
-    double f1t[12];
-    for ( int i{ 0 }; i < 12; ++i ) {
+    double f1t[num_disp_dofs];
+    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
       f1t[i] = 0.0;
     }
-    registerNodalResponse( mesh_id1, f1t, f1t + 4, f1t + 8 );
-    double f2t[12];
-    for ( int i{ 0 }; i < 12; ++i ) {
+    registerNodalResponse( mesh_id1, f1t, f1t + num_nodes, f1t + 2 * num_nodes );
+    double f2t[num_disp_dofs];
+    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
       f2t[i] = 0.0;
     }
-    registerNodalResponse( mesh_id2, f2t, f2t + 4, f2t + 8 );
-    double g1t[4];
-    for ( int i{ 0 }; i < 4; ++i ) {
+    registerNodalResponse( mesh_id2, f2t, f2t + num_nodes, f2t + 2 * num_nodes );
+    double g1t[num_pres_dofs];
+    for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
       g1t[i] = 0.0;
     }
     registerMortarGaps( mesh_id1, g1t );
@@ -456,9 +461,9 @@ class EnzymeJacobianTest : public testing::Test {
                               &col_elem_idx, &jacobians );
 
     std::cout << "df1/dp = " << std::endl;
-    for ( int i{ 0 }; i < 12; ++i ) {
-      for ( int j{ 0 }; j < 4; ++j ) {
-        int idx_e = 4 * i + j;
+    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
+      for ( int j{ 0 }; j < num_pres_dofs; ++j ) {
+        int idx_e = num_pres_dofs * i + j;
         auto diff = std::abs( df1dp1[idx_e] - ( *jacobians )[0].Data()[idx_e] );
         if ( diff > approx_j_err_ ) {
           std::cout << "[" << idx_e << "] Enzyme: " << df1dp1[idx_e] << "  Tribol: " << ( *jacobians )[0].Data()[idx_e]
@@ -472,9 +477,9 @@ class EnzymeJacobianTest : public testing::Test {
                               &jacobians );
 
     std::cout << "df2/dp = " << std::endl;
-    for ( int i{ 0 }; i < 12; ++i ) {
-      for ( int j{ 0 }; j < 4; ++j ) {
-        int idx_e = 4 * i + j;
+    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
+      for ( int j{ 0 }; j < num_pres_dofs; ++j ) {
+        int idx_e = num_pres_dofs * i + j;
         auto diff = std::abs( df2dp1[idx_e] - ( *jacobians )[0].Data()[idx_e] );
         if ( diff > approx_j_err_ ) {
           std::cout << "[" << idx_e << "] Enzyme: " << df2dp1[idx_e] << "  Tribol: " << ( *jacobians )[0].Data()[idx_e]
@@ -488,9 +493,9 @@ class EnzymeJacobianTest : public testing::Test {
                               &col_elem_idx, &jacobians );
 
     std::cout << "dg/dx1 = " << std::endl;
-    for ( int i{ 0 }; i < 12; ++i ) {
-      for ( int j{ 0 }; j < 4; ++j ) {
-        int idx_e = 4 * i + j;
+    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
+      for ( int j{ 0 }; j < num_pres_dofs; ++j ) {
+        int idx_e = num_pres_dofs * i + j;
         auto diff = std::abs( dg1dx1[idx_e] - ( *jacobians )[0].Data()[idx_e] );
         if ( diff > approx_j_err_ ) {
           std::cout << "[" << idx_e << "] Enzyme: " << dg1dx1[idx_e] << "  Tribol: " << ( *jacobians )[0].Data()[idx_e]
@@ -504,9 +509,9 @@ class EnzymeJacobianTest : public testing::Test {
                               &jacobians );
 
     std::cout << "dg/dx2 = " << std::endl;
-    for ( int i{ 0 }; i < 12; ++i ) {
-      for ( int j{ 0 }; j < 4; ++j ) {
-        int idx_e = 4 * i + j;
+    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
+      for ( int j{ 0 }; j < num_pres_dofs; ++j ) {
+        int idx_e = num_pres_dofs * i + j;
         auto diff = std::abs( dg1dx2[idx_e] - ( *jacobians )[0].Data()[idx_e] );
         if ( diff > approx_j_err_ ) {
           std::cout << "[" << idx_e << "] Enzyme: " << dg1dx2[idx_e] << "  Tribol: " << ( *jacobians )[0].Data()[idx_e]
@@ -517,7 +522,7 @@ class EnzymeJacobianTest : public testing::Test {
     }
 
     std::cout << "g = " << std::endl;
-    for ( int i{ 0 }; i < 4; ++i ) {
+    for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
       auto diff = std::abs( g1[i] - g1t[i] );
       if ( diff > tribol_vs_enzyme_err_ ) {
         std::cout << "[" << i << "] Enzyme: " << g1[i] << "  Tribol: " << g1t[i] << std::endl;
@@ -526,7 +531,7 @@ class EnzymeJacobianTest : public testing::Test {
     }
 
     std::cout << "f1 = " << std::endl;
-    for ( int i{ 0 }; i < 12; ++i ) {
+    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
       auto diff = std::abs( f1[i] - f1t[i] );
       if ( diff > tribol_vs_enzyme_err_ ) {
         std::cout << "[" << i << "] Enzyme: " << f1[i] << "  Tribol: " << f1t[i] << std::endl;
@@ -535,7 +540,7 @@ class EnzymeJacobianTest : public testing::Test {
     }
 
     std::cout << "f2 = " << std::endl;
-    for ( int i{ 0 }; i < 12; ++i ) {
+    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
       auto diff = std::abs( f2[i] - f2t[i] );
       if ( diff > tribol_vs_enzyme_err_ ) {
         std::cout << "[" << i << "] Enzyme: " << f2[i] << "  Tribol: " << f2t[i] << std::endl;
@@ -570,6 +575,7 @@ TEST_F( EnzymeJacobianTest, ExactOverlapZeroGap )
   // clang-format on
 
   FDCheck( x1, x2, n1, p1, x1_stencil, x2_stencil );
+  // the approximate Tribol jacobian should match here.  verify that it does
   ApproxJacobianCheck( x1, x2, n1, p1 );
 }
 
@@ -578,7 +584,9 @@ TEST_F( EnzymeJacobianTest, SlightlySmallerNonmortarElementMinorInterpenetration
   // slightly smaller
   double dx = 4.0 * delta_;
   // clang-format off
-  // {x0, x1, x2, x3, y0, y1, y2, y3, z0, z1, z2, z3}
+  // {x0, x1, x2, x3, 
+  //  y0, y1, y2, y3, 
+  //  z0, z1, z2, z3}
   double x1[12] = { 0.0+dx, 1.0-dx, 1.0-dx, 0.0+dx,
                     0.0+dx, 0.0+dx, 1.0-dx, 1.0-dx,
                     0.01,   0.01,   0.01,   0.01 };
@@ -592,6 +600,7 @@ TEST_F( EnzymeJacobianTest, SlightlySmallerNonmortarElementMinorInterpenetration
   // clang-format on
 
   FDCheck( x1, x2, n1, p1 );
+  // the approximate Tribol jacobian should be close here.  verify that it is
   ApproxJacobianCheck( x1, x2, n1, p1 );
 }
 
@@ -601,6 +610,9 @@ TEST_F( EnzymeJacobianTest, ShiftedXNonmortarElementMinorInterpenetration )
   double offset = 0.3;
   double dx = 4.0 * delta_;
   // clang-format off
+  // {x0, x1, x2, x3, 
+  //  y0, y1, y2, y3, 
+  //  z0, z1, z2, z3}
   double x1[12] = { 0.0+dx+offset, 1.0-dx+offset, 1.0-dx+offset, 0.0+dx+offset,
                     0.0+dx,        0.0+dx,        1.0-dx,        1.0-dx,
                     0.01,          0.01,          0.01,          0.01 };
@@ -622,6 +634,9 @@ TEST_F( EnzymeJacobianTest, ShiftedXYNonmortarElementMinorInterpenetration )
   double offset = 0.3;
   double dx = 4.0 * delta_;
   // clang-format off
+  // {x0, x1, x2, x3, 
+  //  y0, y1, y2, y3, 
+  //  z0, z1, z2, z3}
   double x1[12] = { 0.0+dx+offset, 1.0-dx+offset, 1.0-dx+offset, 0.0+dx+offset,
                     0.0+dx+offset, 0.0+dx+offset, 1.0-dx+offset, 1.0-dx+offset,
                     0.01,          0.01,          0.01,          0.01 };
@@ -643,6 +658,9 @@ TEST_F( EnzymeJacobianTest, ShiftedXYNonmortarElementMinorInterpenetrationV2 )
   // slightly offset
   double dx = 10.0 * delta_;
   // clang-format off
+  // {x0, x1, x2, x3, 
+  //  y0, y1, y2, y3, 
+  //  z0, z1, z2, z3}
   double x1[12] = { 0.0+dx, 0.0+dx, 1.0+dx, 1.0+dx,
                     0.0+dx, 1.0+dx, 1.0+dx, 0.0+dx,
                     0.999,  0.999,  0.999,  0.999 };
