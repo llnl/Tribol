@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -10,10 +10,14 @@
 
 #ifdef TRIBOL_USE_ENZYME
 /*
+ * Enzyme is an LLVM-based automatic differentiation (AD) tool that enables
+ * efficient computation of derivatives directly from code at compile time.
+ * 
  * Variables prefixed with enzyme_* or function types prefixed with __enzyme_*,
  * are variables which will get preprocessed in the LLVM intermediate
- * representation when the Enzyme LLVM plugin is loaded. See the Enzyme
- * documentation (https://enzyme.mit.edu) for more information.
+ * representation when the Enzyme LLVM plugin is loaded.
+ *
+ * For more details, see the Enzyme documentation: https://enzyme.mit.edu
  */
 
 extern int enzyme_dup;

@@ -348,9 +348,8 @@ void enableTimestepVote( IndexT cs_id, const bool enable )
 
 }  // end enableTimestepVote()
 
-#ifdef TRIBOL_USE_ENZYME
 //------------------------------------------------------------------------------
-void enableEnzyme( IndexT cs_id, bool use_enzyme )
+void enableEnzyme( IndexT cs_id, [[maybe_unused]] bool use_enzyme )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
 
@@ -358,10 +357,13 @@ void enableEnzyme( IndexT cs_id, bool use_enzyme )
   SLIC_ERROR_ROOT_IF( !cs, "tribol::enableEnzyme(): call tribol::registerCouplingScheme() "
                                << "prior to calling this routine." );
 
+#ifdef TRIBOL_USE_ENZYME
   cs->enableEnzyme( use_enzyme );
+#else
+  SLIC_WARNING_ROOT( "tribol::enableEnzyme(): Tribol not built with Enzyme support." );
+#endif
 
 }  // end enableEnzyme()
-#endif
 
 //------------------------------------------------------------------------------
 void registerMesh( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity, int element_type,
