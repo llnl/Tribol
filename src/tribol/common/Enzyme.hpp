@@ -28,9 +28,11 @@ extern int enzyme_const;
 
 extern int enzyme_runtime_activity;
 
+// Reverse mode autodiff
 template <typename return_type, typename... Args>
 return_type __enzyme_autodiff( Args... );
 
+// Forward mode autodiff
 template <typename return_type, typename... Args>
 return_type __enzyme_fwddiff( Args... );
 #endif

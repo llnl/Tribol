@@ -241,11 +241,14 @@ TRIBOL_HOST_DEVICE bool PolyAreaCentroid( const RealT* const x, const int dim, c
  */
 void PolyCentroid( const RealT* const x, const RealT* const y, const int numVert, RealT& cX, RealT& cY );
 
+/*!
+ * \brief Defines the vertex type in an intersection polygon
+ */
 enum class OverlapVertexType
 {
-  A,
-  B,
-  EdgeEdge
+  A,        ///! vertex in polygon A
+  B,        ///! vertex in polygon B
+  EdgeEdge  ///! vertex at intersection of edges of polygons A and B
 };
 
 /*!
