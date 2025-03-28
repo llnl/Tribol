@@ -705,15 +705,6 @@ class MeshData {
   void allocateNodalNormals();
 
   /*!
-   * \brief Computes average nodal normals for use with mortar methods
-   *
-   * \note this routine computes average nodal normals for all nodes in the mesh.
-   *
-   * \param [in] dim Dimension of the problem
-   */
-  void computeNodalNormals( int const dim );
-
-  /*!
    *
    * \brief compute the surface edge/segment length
    *

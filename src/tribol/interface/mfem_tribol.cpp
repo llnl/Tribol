@@ -270,11 +270,10 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
           cs_id ) );
   // creates a block Jacobian on the parent mesh/parent-linked boundary submesh based on the element Jacobians stored in
   // the coupling scheme's method data
-#ifdef TRIBOL_USE_ENZYME
   if ( cs->isEnzymeEnabled() ) {
-    auto dfdx = cs->getMfemJacobianData()->GetMfemBlockJacobianEnzyme( *cs->getMethodData() );
-    auto dfdn = cs->getMfemJacobianData()->GetMfemdfdnJacobianEnzyme( *cs->getdnMethodData() );
-    auto dndx = cs->getMfemJacobianData()->GetMfemdndxJacobianEnzyme( cs->getNodalNormal()->getJacobianData() );
+    auto dfdx = cs->getMfemJacobianData()->GetMfemDfDxFullJacobian( *cs->getMethodData() );
+    auto dfdn = cs->getMfemJacobianData()->GetMfemDfDnJacobian( *cs->getDfDnMethodData() );
+    auto dndx = cs->getMfemJacobianData()->GetMfemDnDxJacobian( *cs->getDnDxMethodData() );
     dfdx->SetBlock( 0, 0,
                     mfem::ParAdd( mfem::ParMult( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 0, 0 ) ),
                                                  &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ),
@@ -285,11 +284,8 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
                                   &static_cast<mfem::HypreParMatrix&>( dfdx->GetBlock( 1, 0 ) ) ) );
     return dfdx;
   } else {
-#endif
     return cs->getMfemJacobianData()->GetMfemBlockJacobian( cs->getMethodData() );
-#ifdef TRIBOL_USE_ENZYME
   }
-#endif
 }
 
 void getMfemGap( IndexT cs_id, mfem::Vector& g )

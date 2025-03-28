@@ -8,6 +8,7 @@
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/geom/ElementNormal.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
+#include "tribol/geom/NodalNormal.hpp"
 #include "tribol/utils/Math.hpp"
 
 #ifdef TRIBOL_USE_UMPIRE
@@ -50,7 +51,8 @@ class NodalNormalTest : public ::testing::Test {
     tribol::PalletAvgNormal plane_normal;
     mesh.computeFaceData( tribol::ExecutionMode::Sequential, plane_normal );
 
-    mesh.computeNodalNormals( dim );
+    tribol::ElementAvgNormal normal_method;
+    normal_method.Compute( mesh );
 
     return;
   }

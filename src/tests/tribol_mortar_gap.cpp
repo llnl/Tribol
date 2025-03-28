@@ -11,6 +11,7 @@
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/physics/Mortar.hpp"
 #include "tribol/physics/AlignedMortar.hpp"
+#include "tribol/geom/NodalNormal.hpp"
 #include "tribol/geom/ElementNormal.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/utils/TestUtils.hpp"
@@ -170,7 +171,8 @@ class MortarGapTest : public ::testing::Test {
 
     tribol::registerMortarGaps( nonmortarMeshId, gaps.data() );
 
-    nonmortarMesh.computeNodalNormals( this->dim );
+    tribol::ElementAvgNormal normal_method;
+    normal_method.Compute( nonmortarMesh );
 
     auto mortarView = mortarMesh.getView();
     auto nonmortarView = nonmortarMesh.getView();

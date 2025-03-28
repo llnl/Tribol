@@ -1735,6 +1735,16 @@ void CouplingScheme::printPairReportingData()
 }
 
 //------------------------------------------------------------------------------
+void CouplingScheme::enableEnzyme( const bool useEnzyme )
+{
+#ifdef TRIBOL_USE_ENZYME
+  this->m_useEnzyme = useEnzyme;
+#else
+  SLIC_WARNING( "CouplingScheme::enableEnzyme(): Tribol is not built with Enzyme. Continuing without Enzyme support." );
+#endif
+}
+
+//------------------------------------------------------------------------------
 CouplingScheme::Viewer::Viewer( CouplingScheme& cs )
     : m_parameters( cs.m_parameters ),
       m_contact_case( cs.m_contactCase ),

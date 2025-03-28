@@ -35,11 +35,11 @@ class EnzymeNodalNormalTest : public testing::Test {
 
   void FDCheck( RealT* x, MeshData& mesh )
   {
-    VertexAvgNormal norm( true );
-    norm.Compute( mesh );
+    VertexAvgNormal normal_method;
+    MethodData dndx_data;
+    normal_method.Compute( mesh, &dndx_data );
     auto num_dofs = mesh.numberOfNodes() * mesh.spatialDimension();
     mfem::SparseMatrix dndx( num_dofs );
-    auto& dndx_data = norm.getJacobianData();
     // get nonmortar/nonmortar contributions
     auto& elem_Js =
         dndx_data.getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) );
@@ -66,14 +66,13 @@ class EnzymeNodalNormalTest : public testing::Test {
 
     mfem::DenseMatrix dndx_fd( num_dofs );
     auto mesh_view = mesh.getView();
-    // turn off Jacobian calculations for finite differencing
-    norm = VertexAvgNormal( false );
     Array2D<RealT> n_base = mesh_view.getNodalNormals();
     for ( int dx{ 0 }; dx < mesh.spatialDimension(); ++dx ) {
       for ( int nx{ 0 }; nx < mesh.numberOfNodes(); ++nx ) {
         auto x_idx = dx * mesh.numberOfNodes() + nx;
         x[dx * mesh.numberOfNodes() + nx] += delta_;
-        norm.Compute( mesh );
+        // Compute without Jacobian contributions
+        normal_method.Compute( mesh );
         auto local_mesh_view = mesh.getView();
         for ( int dn{ 0 }; dn < mesh.spatialDimension(); ++dn ) {
           for ( int nn{ 0 }; nn < mesh.numberOfNodes(); ++nn ) {

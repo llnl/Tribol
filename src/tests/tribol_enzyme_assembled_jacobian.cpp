@@ -213,7 +213,7 @@ class EnzymeAssembledJacobianTest : public testing::Test {
     }
     dfdx_nc.Finalize();
     mfem::SparseMatrix dfdn( fe_space.GetVSize() );
-    auto& dfdn_data = *cs.getdnMethodData();
+    auto& dfdn_data = *cs.getDfDnMethodData();
     // get mortar/nonmortar contributions
     elem_Js =
         &dfdn_data.getBlockJ()( static_cast<int>( BlockSpace::MORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) );
@@ -242,7 +242,7 @@ class EnzymeAssembledJacobianTest : public testing::Test {
     }
     dfdn.Finalize();
     mfem::SparseMatrix dndx( fe_space.GetVSize() );
-    auto& dndx_data = cs.getNodalNormal()->getJacobianData();
+    auto& dndx_data = *cs.getDnDxMethodData();
     // get nonmortar/nonmortar contributions
     elem_Js =
         &dndx_data.getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) );

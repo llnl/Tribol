@@ -650,13 +650,12 @@ class CouplingScheme {
    */
   RealT getEffectiveBinningProximityScale() const { return m_effective_binning_proximity_scale; }
 
-#ifdef TRIBOL_USE_ENZYME
   /**
    * @brief Enables Enzyme AD for exact Jacobian calculations
    *
    * @param useEnzyme Turns on Enzyme support if true
    */
-  void enableEnzyme( bool useEnzyme ) { m_useEnzyme = useEnzyme; }
+  void enableEnzyme( bool useEnzyme );
 
   /**
    * @brief Is Enzyme AD enabled for exact Jacobian calculations?
@@ -667,33 +666,27 @@ class CouplingScheme {
   bool isEnzymeEnabled() const { return m_useEnzyme; }
 
   /**
-   * @brief Set nodal normal computation method
-   *
-   * @param nodalNormal NodalNormal object
+   * @brief Create MethodData to save Jacobian contributions related to a nodally defined normal
    */
-  void initNodalNormal( std::unique_ptr<NodalNormal>&& nodalNormal ) { m_nodalNormal = std::move( nodalNormal ); }
+  void createNodalNormalJacobianData()
+  {
+    m_dfdnJacobian = std::make_unique<MethodData>();
+    m_dndxJacobian = std::make_unique<MethodData>();
+  }
 
   /**
-   * @brief Get pointer to the NodalNormal object
-   *
-   * @return NodalNormal*
-   */
-  NodalNormal* getNodalNormal() { return m_nodalNormal.get(); }
-
-  /**
-   * @brief Create MethodData to save Jacobian contributions related to a
-   * nodally defined normal
-   */
-  void createNormalJacobian() { m_dnJacobian = std::make_unique<MethodData>(); }
-
-  /**
-   * @brief Get the method data for the normal Jacobian contribution
+   * @brief Get the method data for the derivative of the force w.r.t. the normal
    *
    * @return MethodData pointer
    */
-  MethodData* getdnMethodData() const { return m_dnJacobian.get(); }
+  MethodData* getDfDnMethodData() const { return m_dfdnJacobian.get(); }
 
-#endif
+  /**
+   * @brief Get the method data for the derivative of the normal w.r.t. the nodal coordinates
+   *
+   * @return MethodData pointer
+   */
+  MethodData* getDnDxMethodData() const { return m_dndxJacobian.get(); }
 
 #ifdef BUILD_REDECOMP
 
@@ -884,11 +877,9 @@ class CouplingScheme {
 
   std::unique_ptr<ElementNormal> m_elementNormal;  ///< Method for computing element normal
 
-#ifdef TRIBOL_USE_ENZYME
   bool m_useEnzyme = false;                    ///< Use Enzyme for Jacobian calculations
-  std::unique_ptr<NodalNormal> m_nodalNormal;  ///< Method for computing nodal normal (only for Enzyme)
-  std::unique_ptr<MethodData> m_dnJacobian;    ///< Store normal Jacobian contributions
-#endif
+  std::unique_ptr<MethodData> m_dfdnJacobian;  ///< Store derivative of force w.r.t. normal on element pairs
+  std::unique_ptr<MethodData> m_dndxJacobian;  ///< Store derivative of normal w.r.t. nodal coordinates on element pairs
 
   ArrayT<InterfacePair> m_interface_pairs;  ///< List of interface pairs
 

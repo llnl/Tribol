@@ -1545,29 +1545,37 @@ class MfemJacobianData {
   void UpdateJacobianXfer();
 
   /**
-   * @brief Returns Jacobian contributions as an mfem::BlockOperator
+   * @brief Returns symmetric, off-diagonal Jacobian contributions as an mfem::BlockOperator
    *
    * @param method_data Method data holding element Jacobians
    * @return std::unique_ptr<mfem::BlockOperator>
    */
   std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobian( const MethodData* method_data ) const;
 
-#ifdef TRIBOL_USE_ENZYME
-
   /**
-   * @brief Returns non-symmetric Enzyme-computed Jacobian contributions as an
+   * @brief Returns full, potentially non-symmetric derivative of the force w.r.t. nodal coordinates as an
    * mfem::BlockOperator
    *
    * @param method_data Method data holding element Jacobians
    * @return std::unique_ptr<mfem::BlockOperator>
    */
-  std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobianEnzyme( const MethodData& method_data ) const;
+  std::unique_ptr<mfem::BlockOperator> GetMfemDfDxFullJacobian( const MethodData& method_data ) const;
 
-  std::unique_ptr<mfem::BlockOperator> GetMfemdfdnJacobianEnzyme( const MethodData& method_data ) const;
+  /**
+   * @brief Returns the derivative of the force w.r.t. the normal direction as an mfem::BlockOperator
+   *
+   * @param method_data Method data holding element Jacobians
+   * @return std::unique_ptr<mfem::BlockOperator>
+   */
+  std::unique_ptr<mfem::BlockOperator> GetMfemDfDnJacobian( const MethodData& method_data ) const;
 
-  std::unique_ptr<mfem::BlockOperator> GetMfemdndxJacobianEnzyme( const MethodData& method_data ) const;
-
-#endif
+  /**
+   * @brief Returns the derivative of the normal direction w.r.t. the nodal coordinates as an mfem::BlockOperator
+   *
+   * @param method_data Method data holding element Jacobians
+   * @return std::unique_ptr<mfem::BlockOperator>
+   */
+  std::unique_ptr<mfem::BlockOperator> GetMfemDnDxJacobian( const MethodData& method_data ) const;
 
  private:
   /**

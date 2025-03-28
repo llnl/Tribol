@@ -174,8 +174,8 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
   MeshData& nonmortarMeshData = meshManager.at( cs->getMeshId2() );
   // compute nodal normals (do this outside the element loop)
   // Note, this is guarded against zero element meshes
-  int const dim = cs->spatialDimension();
-  nonmortarMeshData.computeNodalNormals( dim );
+  ElementAvgNormal normal_method;
+  normal_method.Compute( nonmortarMeshData );
 
   auto pairs = cs->getInterfacePairs();
   const IndexT numPairs = pairs.size();
@@ -203,6 +203,7 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
 
   // declare local variables to hold face nodal coordinates
   // and overlap vertex coordinates
+  int const dim = cs->spatialDimension();
   IndexT size = dim * numNodesPerFace;
   RealT mortarX[size];
   RealT nonmortarX[size];
@@ -648,16 +649,15 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
 {
   auto planes_view = cs->get3DContactPlanes().view();
   auto& lm_opts = cs->getEnforcementOptions().lm_implicit_options;
-  bool compute_jacobian = false;
   if ( lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
        lm_opts.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ) {
     if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE ) {
       cs->getMethodData()->reserveBlockJ(
           { BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER }, planes_view.size() );
-      cs->createNormalJacobian();
-      cs->getdnMethodData()->reserveBlockJ(
+      cs->createNodalNormalJacobianData();
+      cs->getDfDnMethodData()->reserveBlockJ(
           { BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER }, planes_view.size() );
-      compute_jacobian = true;
+      cs->getDnDxMethodData()->reserveBlockJ( { BlockSpace::NONMORTAR }, cs->getMesh2().numberOfElements() );
     } else {
       SLIC_WARNING( "Unsupported Jacobian storage method." );
       return 1;
@@ -665,8 +665,8 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
   }
   // convention: 1 = nonmortar
   //             2 = mortar
-  cs->initNodalNormal( std::make_unique<VertexAvgNormal>( compute_jacobian ) );
-  cs->getNodalNormal()->Compute( cs->getMesh2() );
+  VertexAvgNormal normal_method;
+  normal_method.Compute( cs->getMesh2(), cs->getDnDxMethodData() );
   auto mesh1 = cs->getMesh2().getView();  // switched from tribol convention
   auto mesh2 = cs->getMesh1().getView();  // switched from tribol convention
   int size1 = mesh1.numberOfNodesPerElement();
@@ -736,7 +736,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
 
       if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE ) {
         cs->getMethodData()->storeElemBlockJ( { elem1, elem2, elem1 }, blockJ );
-        cs->getdnMethodData()->storeElemBlockJ( { elem1, elem2, elem1 }, blockJ_n );
+        cs->getDfDnMethodData()->storeElemBlockJ( { elem1, elem2, elem1 }, blockJ_n );
       } else {
         SLIC_WARNING( "Unsupported Jacobian storage method." );
         return 1;

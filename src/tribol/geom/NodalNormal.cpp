@@ -13,11 +13,18 @@
 
 namespace tribol {
 
-void ElementAvgNormal::Compute( MeshData& mesh )
+// forward declare free functions for enzyme.  these shouldn't be used outside the class, so no need to put them in the
+// header.
+void ElementVertexAvgNormal( const RealT* x, const RealT* xref, RealT* n, int num_nodes_per_elem );
+void ElementVertexAvgNormalJacobian( const RealT* x, const RealT* xref, RealT* n, RealT* dndx, int num_nodes_per_elem );
+
+void ElementAvgNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
 {
   if ( mesh.numberOfElements() == 0 ) {
     return;
   }
+
+  SLIC_ERROR_IF( jacobian_data != nullptr, "ElementAvgNormal does not support computing Jacobian data." );
 
   mesh.allocateNodalNormals();
 
@@ -48,22 +55,24 @@ void ElementAvgNormal::Compute( MeshData& mesh )
     for ( int i = 0; i < mesh_view.numberOfNodes(); ++i ) {
       RealT mag = magnitude( mesh_view.getNodalNormals()( 0, i ), mesh_view.getNodalNormals()( 1, i ),
                              mesh_view.getNodalNormals()( 2, i ) );
-      mesh_view.getNodalNormals()( 0, i ) /= mag;
-      mesh_view.getNodalNormals()( 1, i ) /= mag;
-      mesh_view.getNodalNormals()( 2, i ) /= mag;
+      if ( mag >= 1.0e-15 ) {
+        mesh_view.getNodalNormals()( 0, i ) /= mag;
+        mesh_view.getNodalNormals()( 1, i ) /= mag;
+        mesh_view.getNodalNormals()( 2, i ) /= mag;
+      }
     }
   } else {
     for ( int i = 0; i < mesh_view.numberOfNodes(); ++i ) {
       RealT mag = magnitude( mesh_view.getNodalNormals()( 0, i ), mesh_view.getNodalNormals()( 1, i ) );
-      mesh_view.getNodalNormals()( 0, i ) /= mag;
-      mesh_view.getNodalNormals()( 1, i ) /= mag;
+      if ( mag >= 1.0e-15 ) {
+        mesh_view.getNodalNormals()( 0, i ) /= mag;
+        mesh_view.getNodalNormals()( 1, i ) /= mag;
+      }
     }
   }
 }
 
-#ifdef TRIBOL_USE_ENZYME
-
-void VertexAvgNormal::Compute( MeshData& mesh )
+void VertexAvgNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
 {
   SLIC_ERROR_ROOT_IF( mesh.spatialDimension() != 3, "3D mesh required for vertex averaged normal." );
 
@@ -72,8 +81,8 @@ void VertexAvgNormal::Compute( MeshData& mesh )
   auto n0 = Array2D<RealT>( { 3, mesh.numberOfNodes() }, mesh.getAllocatorId() );
   n0.fill( 0.0 );
 
-  if ( compute_deriv_ ) {
-    getJacobianData().reserveBlockJ( { BlockSpace::NONMORTAR }, mesh.numberOfElements() );
+  if ( jacobian_data != nullptr ) {
+    jacobian_data->reserveBlockJ( { BlockSpace::NONMORTAR }, mesh.numberOfElements() );
   }
 
   auto mesh_view = mesh.getView();
@@ -94,12 +103,12 @@ void VertexAvgNormal::Compute( MeshData& mesh )
         n[d * num_nodes_per_elem + i] = 0.0;
       }
     }
-    if ( compute_deriv_ ) {
+    if ( jacobian_data != nullptr ) {
       StackArray<DeviceArray2D<RealT>, 9> blockJ( 3 );
       blockJ( 0, 0 ) = DeviceArray2D<RealT>( 12, 12 );
       blockJ( 0, 0 ).fill( 0.0 );
       ElementVertexAvgNormalJacobian( x, xref, n, blockJ( 0, 0 ).data(), num_nodes_per_elem );
-      getJacobianData().storeElemBlockJ( { e }, blockJ );
+      jacobian_data->storeElemBlockJ( { e }, blockJ );
     } else {
       ElementVertexAvgNormal( x, xref, n, num_nodes_per_elem );
     }
@@ -131,22 +140,36 @@ void VertexAvgNormal::Compute( MeshData& mesh )
     }
   }
   // scale Jacobian contributions
-  auto& blockJ_mats = getJacobianData().getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ),
-                                                     static_cast<int>( BlockSpace::NONMORTAR ) );
-  int e_ct = 0;
-  for ( auto& blockJ_mat : blockJ_mats ) {
-    for ( int i{ 0 }; i < num_nodes_per_elem; ++i ) {
-      int node_id = mesh_view.getGlobalNodeId( e_ct, i );
-      for ( int d{ 0 }; d < 3; ++d ) {
-        for ( int j{ 0 }; j < 3 * num_nodes_per_elem; ++j ) {
-          blockJ_mat( d * num_nodes_per_elem + i, j ) /= n0( 0, node_id );
+  if ( jacobian_data != nullptr ) {
+    auto& blockJ_mats = jacobian_data->getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ),
+                                                    static_cast<int>( BlockSpace::NONMORTAR ) );
+    int e_ct = 0;
+    for ( auto& blockJ_mat : blockJ_mats ) {
+      for ( int i{ 0 }; i < num_nodes_per_elem; ++i ) {
+        int node_id = mesh_view.getGlobalNodeId( e_ct, i );
+        if ( n0( 0, node_id ) >= 1.0e-15 ) {
+          for ( int d{ 0 }; d < 3; ++d ) {
+            for ( int j{ 0 }; j < 3 * num_nodes_per_elem; ++j ) {
+              blockJ_mat( d * num_nodes_per_elem + i, j ) /= n0( 0, node_id );
+            }
+          }
         }
       }
+      ++e_ct;
     }
-    ++e_ct;
   }
 }
 
+/**
+ * @brief Computes the normal direction at all nodes of the element
+ *
+ * @note This is a free function to allow for Enzyme support
+ *
+ * @param [in] x Nodal coordinates for the element (stored by nodes, i.e. [x0, x1, x2, y0, y1, y2, z0, z1, z2])
+ * @param [in] xref Reference nodal coordinates for the element (i.e. at t = 0) (stored by nodes)
+ * @param [out] n Unit vectors giving the normal direction for each node (stored by nodes)
+ * @param [in] num_nodes_per_elem Number of nodes in the element
+ */
 void ElementVertexAvgNormal( const RealT* x, const RealT* xref, RealT* n, int num_nodes_per_elem )
 {
   for ( int i{ 0 }; i < num_nodes_per_elem; ++i ) {
@@ -176,8 +199,22 @@ void ElementVertexAvgNormal( const RealT* x, const RealT* xref, RealT* n, int nu
   }
 }
 
-void ElementVertexAvgNormalJacobian( const RealT* x, const RealT* xref, RealT* n, RealT* dndx, int num_nodes_per_elem )
+/**
+ * @brief Computes the normal direction and Jacobian at all nodes of the element
+ *
+ * @note Requires Tribol built with Enzyme support
+ *
+ * @param [in] x Nodal coordinates for the element (stored by nodes, i.e. [x0, x1, x2, y0, y1, y2, z0, z1, z2])
+ * @param [in] xref Reference nodal coordinates for the element (i.e. at t = 0) (stored by nodes)
+ * @param [out] n Unit vectors giving the normal direction for each node (stored by nodes)
+ * @param [out] dndx Derivative of the unit normal vectors for each node (size = num_nodes_per_elem^2 x spatial dim^2)
+ * @param [in] num_nodes_per_elem Number of nodes in the element
+ */
+void ElementVertexAvgNormalJacobian( [[maybe_unused]] const RealT* x, [[maybe_unused]] const RealT* xref,
+                                     [[maybe_unused]] RealT* n, [[maybe_unused]] RealT* dndx,
+                                     [[maybe_unused]] int num_nodes_per_elem )
 {
+#ifdef TRIBOL_USE_ENZYME
   RealT x_dot[12] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
   for ( int i{ 0 }; i < num_nodes_per_elem * 3; ++i ) {
     x_dot[i] = 1.0;
@@ -185,8 +222,9 @@ void ElementVertexAvgNormalJacobian( const RealT* x, const RealT* xref, RealT* n
                             &dndx[num_nodes_per_elem * 3 * i], enzyme_const, num_nodes_per_elem );
     x_dot[i] = 0.0;
   }
-}
-
+#else
+  SLIC_ERROR( "ElementVertexAvgNormalJacobian requires Tribol built with Enzyme support." );
 #endif
+}
 
 }  // namespace tribol

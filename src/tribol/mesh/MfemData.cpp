@@ -915,9 +915,8 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian( con
   return block_J;
 }
 
-#ifdef TRIBOL_USE_ENZYME
-
-std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobianEnzyme( const MethodData& method_data ) const
+// TODO: Merge with GetMfemBlockJacobian() to avoid code duplication
+std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemDfDxFullJacobian( const MethodData& method_data ) const
 {
   // create block operator
   auto block_J = std::make_unique<mfem::BlockOperator>( block_offsets_ );
@@ -1037,7 +1036,8 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobianEnzym
   return block_J;
 }
 
-std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdfdnJacobianEnzyme( const MethodData& method_data ) const
+// TODO: Merge with GetMfemBlockJacobian() to avoid code duplication
+std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemDfDnJacobian( const MethodData& method_data ) const
 {
   // create block operator
   auto block_J = std::make_unique<mfem::BlockOperator>( block_offsets_, disp_offsets_ );
@@ -1099,7 +1099,8 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdfdnJacobianEnzyme
   return block_J;
 }
 
-std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdndxJacobianEnzyme( const MethodData& method_data ) const
+// TODO: Merge with GetMfemBlockJacobian() to avoid code duplication
+std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemDnDxJacobian( const MethodData& method_data ) const
 {
   // create block operator
   auto block_J = std::make_unique<mfem::BlockOperator>( disp_offsets_, disp_offsets_ );
@@ -1127,8 +1128,6 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdndxJacobianEnzyme
 
   return block_J;
 }
-
-#endif
 
 MfemJacobianData::UpdateData::UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data )
 {
