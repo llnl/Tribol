@@ -668,11 +668,7 @@ class CouplingScheme {
   /**
    * @brief Create MethodData to save Jacobian contributions related to a nodally defined normal
    */
-  void createNodalNormalJacobianData()
-  {
-    m_dfdnJacobian = std::make_unique<MethodData>();
-    m_dndxJacobian = std::make_unique<MethodData>();
-  }
+  void createNodalNormalJacobianData();
 
   /**
    * @brief Get the method data for the derivative of the force w.r.t. the normal

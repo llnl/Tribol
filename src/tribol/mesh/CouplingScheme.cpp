@@ -1735,13 +1735,20 @@ void CouplingScheme::printPairReportingData()
 }
 
 //------------------------------------------------------------------------------
-void CouplingScheme::enableEnzyme( const bool useEnzyme )
+void CouplingScheme::enableEnzyme( [[maybe_unused]] bool useEnzyme )
 {
 #ifdef TRIBOL_USE_ENZYME
   this->m_useEnzyme = useEnzyme;
 #else
   SLIC_WARNING( "CouplingScheme::enableEnzyme(): Tribol is not built with Enzyme. Continuing without Enzyme support." );
 #endif
+}
+
+//------------------------------------------------------------------------------
+void CouplingScheme::createNodalNormalJacobianData()
+{
+  m_dfdnJacobian = std::make_unique<MethodData>();
+  m_dndxJacobian = std::make_unique<MethodData>();
 }
 
 //------------------------------------------------------------------------------
