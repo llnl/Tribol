@@ -10,6 +10,7 @@
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
+#include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/utils/DataManager.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
@@ -86,9 +87,6 @@ struct CouplingSchemeInfo {
   void printEnforcementInfo();
   void printExecutionModeInfo();
 };
-
-// forward declaration
-class MethodData;
 
 /*!
  * \brief The CouplingScheme class defines the coupling between two meshes
