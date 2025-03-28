@@ -88,6 +88,14 @@ class MeshBuilder {
   MeshBuilder&& translate( std::initializer_list<double> dx );
 
   /**
+   * @brief Translates a specific node in the mesh by a given vector.
+   * @param node_id The ID of the node to be translated.
+   * @param dx A list of translation distances for each dimension.
+   * @return An rvalue reference to the updated MeshBuilder object.
+   */
+  MeshBuilder&& translateNode( int node_id, std::initializer_list<double> dx );
+
+  /**
    * @brief Updates an attribute in the mesh.
    * @param old_attrib The old attribute value.
    * @param new_attrib The new attribute value.

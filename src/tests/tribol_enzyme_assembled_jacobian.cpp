@@ -496,6 +496,38 @@ TEST_F( EnzymeAssembledJacobianTest, FiniteDiffCheckShifted1x1Meshes )
                    num_xel_mesh1, num_yel_mesh1 );
 }
 
+TEST_F( EnzymeAssembledJacobianTest, FiniteDiffCheckWarped1x1Meshes )
+{
+  constexpr auto num_xel_mesh0 = 1;
+  constexpr auto num_yel_mesh0 = 1;
+  constexpr auto num_xel_mesh1 = 1;
+  constexpr auto num_yel_mesh1 = 1;
+
+  constexpr auto mesh0_bdry_attrib = 6;
+  constexpr auto mesh1_bdry_attrib = 7;
+
+  constexpr double xy_shift = 0.2;
+  // clang-format off
+  auto mesh = shared::MeshBuilder::Unify({
+    shared::MeshBuilder::CubeMesh(1, 1, 1),
+    shared::MeshBuilder::CubeMesh(1, 1, 1)
+      // shift up 99.9% height of element
+      .translate({0.0, 0.0, 0.999})
+      // shift x and y so the element edges are not overlapping
+      .translate({xy_shift, xy_shift, 0.0})
+      // move a node to warp the contact face
+      .translateNode(1, {0.05, -0.1, 0.005})
+      // change the mesh1 boundary attribute from 1 to 7
+      .updateBdrAttrib(1, 7)
+      // change the mesh1 boundary attribute from 6 to 8
+      .updateBdrAttrib(6, 8)
+  });
+  // clang-format on
+
+  RunJacobianTest( mesh, nullptr, nullptr, mesh0_bdry_attrib, num_xel_mesh0, num_yel_mesh0, mesh1_bdry_attrib,
+                   num_xel_mesh1, num_yel_mesh1 );
+}
+
 TEST_F( EnzymeAssembledJacobianTest, FiniteDiffCheckShifted1x1MeshesV2 )
 {
   constexpr auto num_xel_mesh0 = 1;
