@@ -460,6 +460,7 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
  * \param [in] tol edge segment tolerance
  * \param [in,out] xnew array of new x coordinates
  * \param [in,out] ynew array of new y coordinates
+ * \param [in,out] newIDs array of vertex IDs in new polygon that correspond to input vertices
  * \param [in,out] numNewPoints number of new points
  *
  * \return 0 if no error, >0 a face geom error
@@ -474,10 +475,8 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
  *  xnew and ynew values are set to x and y, respectively, and numNewPoints
  *  equals numPoints.
  */
-TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, const OverlapVertexType* vertType,
-                                                const int* edgeA, const int* edgeB, int numPoints, RealT tol,
-                                                RealT* xnew, RealT* ynew, OverlapVertexType* vertTypeNew, int* edgeANew,
-                                                int* edgeBNew, int& numNewPoints );
+TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, int numPoints, RealT tol, RealT* xnew,
+                                                RealT* ynew, int* newIDs, int& numNewPoints );
 
 /*!
  *
@@ -486,6 +485,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, 
  *
  * \param [in,out] x array of local x vertex coordinates
  * \param [in,out] y array of local y vertex coordinates
+ * \param [in,out] newIDs array of vertex IDs in output polygon that correspond to input polygon vertices
  * \param [in] numPoints number of vertices
  *
  * \return true if calculation successful, false if an error occurred
@@ -495,8 +495,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, 
  * \note This routine takes the unordered set of vertex coordinates of a star convex
  *  polygon and orders the vertices in counter-clockwise orientation.
  */
-TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, OverlapVertexType* vertType, int* edgeA, int* edgeB,
-                                     int numPoints );
+TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoints );
 
 /*!
  *

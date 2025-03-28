@@ -601,9 +601,11 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       if ( vertType ) {
         vertType[i] = OverlapVertexType::A;
       }
+      // set all edgeA to polygon A vertex IDs
       if ( edgeA ) {
         edgeA[i] = i;
       }
+      // set all edgeB to -1 since all vertices are on polygon A
       if ( edgeB ) {
         edgeB[i] = -1;
       }
@@ -630,9 +632,11 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       if ( vertType ) {
         vertType[i] = OverlapVertexType::B;
       }
+      // set all edgeA to -1 since all vertices are on polygon B
       if ( edgeA ) {
         edgeA[i] = -1;
       }
+      // set all edgeB to polygon B vertex IDs
       if ( edgeB ) {
         edgeB[i] = i;
       }
@@ -815,15 +819,42 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   // Only do this for overlaps with 3 or more vertices. We skip any overlap that degenerates to <3 vertices
   if ( numPolyVert > 2 ) {
     // order the unordered vertices (in counter clockwise fashion)
-    PolyReorder( polyXTemp, polyYTemp, vertTypeTemp, edgeATemp, edgeBTemp, numPolyVert );
+    int vertIdx[max_intersections];
+    initIntArray( vertIdx, max_intersections, 0 );
+    PolyReorder( polyXTemp, polyYTemp, vertIdx, numPolyVert );
+
+    OverlapVertexType vertTypeTemp2[max_identified_points];
+    int edgeATemp2[max_intersections];
+    int edgeBTemp2[max_intersections];
+    for ( int i = 0; i < numPolyVert; ++i ) {
+      vertTypeTemp2[i] = vertTypeTemp[vertIdx[i]];
+      edgeATemp2[i] = edgeATemp[vertIdx[i]];
+      edgeBTemp2[i] = edgeBTemp[vertIdx[i]];
+    }
+    for ( int i = 0; i < numPolyVert; ++i ) {
+      vertTypeTemp[i] = vertTypeTemp2[i];
+      edgeATemp[i] = edgeATemp2[i];
+      edgeBTemp[i] = edgeBTemp2[i];
+    }
 
     // check length of segs against tolerance and collapse short segments if necessary
     // This is where polyX and polyY get allocated for any overlap that remains with
     // > 3 vertices
     int numFinalVert = 0;
 
-    FaceGeomError segErr = CheckPolySegs( polyXTemp, polyYTemp, vertTypeTemp, edgeATemp, edgeBTemp, numPolyVert, lenTol,
-                                          polyX, polyY, vertType, edgeA, edgeB, numFinalVert );
+    FaceGeomError segErr =
+        CheckPolySegs( polyXTemp, polyYTemp, numPolyVert, lenTol, polyX, polyY, vertIdx, numFinalVert );
+    for ( int i = 0; i < numFinalVert; ++i ) {
+      if ( vertType ) {
+        vertType[i] = vertTypeTemp[vertIdx[i]];
+      }
+      if ( edgeA ) {
+        edgeA[i] = edgeATemp[vertIdx[i]];
+      }
+      if ( edgeB ) {
+        edgeB[i] = edgeBTemp[vertIdx[i]];
+      }
+    }
 
     numPolyVert = numFinalVert;
 
@@ -1176,13 +1207,14 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
 }  // end SegmentIntersection2D()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, const OverlapVertexType* vertType,
-                                                const int* edgeA, const int* edgeB, int numPoints, RealT tol,
-                                                RealT* xnew, RealT* ynew, OverlapVertexType* vertTypeNew, int* edgeANew,
-                                                int* edgeBNew, int& numNewPoints )
+TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, int numPoints, RealT tol, RealT* xnew,
+                                                RealT* ynew, int* newIDs, int& numNewPoints )
 {
   constexpr int max_nodes_per_overlap = 8;
-  RealT newIDs[max_nodes_per_overlap];
+  int local_newIDs[max_nodes_per_overlap];
+  if ( !newIDs ) {
+    newIDs = local_newIDs;
+  }
 
   // set newIDs[i] to original local ordering
   for ( int i = 0; i < numPoints; ++i ) {
@@ -1234,15 +1266,6 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, 
 
       xnew[k] = x[i];
       ynew[k] = y[i];
-      if ( vertTypeNew ) {
-        vertTypeNew[k] = vertType[i];
-      }
-      if ( edgeANew ) {
-        edgeANew[k] = edgeA[i];
-      }
-      if ( edgeBNew ) {
-        edgeBNew[k] = edgeB[i];
-      }
       ++k;
     }
   }
@@ -1252,8 +1275,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, 
 }  // end CheckPolySegs()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, OverlapVertexType* vertType, int* edgeA, int* edgeB,
-                                     int numPoints )
+TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoints )
 {
   if ( numPoints < 3 ) {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
@@ -1267,7 +1289,10 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, OverlapVertexType* vert
   constexpr int max_nodes_per_overlap = 8 + 2 * 4;
   RealT proj[max_nodes_per_overlap - 2];
 
-  int newIDs[max_nodes_per_overlap];
+  int local_newIDs[max_nodes_per_overlap];
+  if ( !newIDs ) {
+    newIDs = local_newIDs;
+  }
 
   // initialize newIDs array to local ordering, 0,1,2,...,numPoints-1
   for ( int i = 0; i < numPoints; ++i ) {
@@ -1402,35 +1427,14 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, OverlapVertexType* vert
   // reorder x and y coordinate arrays based on newIDs id-array
   RealT xtemp[max_nodes_per_overlap];
   RealT ytemp[max_nodes_per_overlap];
-  OverlapVertexType vertTypeTemp[max_nodes_per_overlap];
-  int edgeATemp[max_nodes_per_overlap];
-  int edgeBTemp[max_nodes_per_overlap];
   for ( int i = 0; i < numPoints; ++i ) {
     xtemp[i] = x[i];
     ytemp[i] = y[i];
-    if ( vertType ) {
-      vertTypeTemp[i] = vertType[i];
-    }
-    if ( edgeA ) {
-      edgeATemp[i] = edgeA[i];
-    }
-    if ( edgeB ) {
-      edgeBTemp[i] = edgeB[i];
-    }
   }
 
   for ( int i = 0; i < numPoints; ++i ) {
     x[i] = xtemp[newIDs[i]];
     y[i] = ytemp[newIDs[i]];
-    if ( vertType ) {
-      vertType[i] = vertTypeTemp[newIDs[i]];
-    }
-    if ( edgeA ) {
-      edgeA[i] = edgeATemp[newIDs[i]];
-    }
-    if ( edgeB ) {
-      edgeB[i] = edgeBTemp[newIDs[i]];
-    }
   }
 
   return true;

@@ -36,7 +36,7 @@ class ElementNormal {
 
 /**
  * @brief Computes element normal as the average of normal directions of triangular pallets fanned from the element
- * centroid
+ * centroid. This approach applies to arbitrary polygonal elements.
  */
 class PalletAvgNormal : public ElementNormal {
  public:
