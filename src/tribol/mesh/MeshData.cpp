@@ -479,7 +479,8 @@ int MeshData::checkLagrangeMultiplierData()
     }
   }  // end if-non-null mesh
   return err;
-}
+}  // end MeshData::checkLagrangeMultiplierData()
+
 //------------------------------------------------------------------------------
 int MeshData::checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options )
 {

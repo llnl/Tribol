@@ -666,6 +666,8 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
   }
   // convention: 1 = nonmortar
   //             2 = mortar
+  // This follows the defs used in Puso and Laursen (2004), but is switched from the rest of Tribol. Sticking to the
+  // Puso and Laursen notation here so it's easier to track.
   EdgeAvgNodalNormal normal_method;
   normal_method.Compute( cs->getMesh2(), cs->getDnDxMethodData() );
   auto mesh1 = cs->getMesh2().getView();  // switched from tribol convention
@@ -765,33 +767,6 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
 }
 
 //------------------------------------------------------------------------------
-void PlaneTo2DCoords( const RealT* x, const RealT* x0, const RealT* e1, const RealT* e2, RealT* xp, RealT* yp,
-                      int num_coords )
-{
-  for ( int i{ 0 }; i < num_coords; ++i ) {
-    xp[i] = 0.0;
-    yp[i] = 0.0;
-
-    for ( int d{ 0 }; d < 3; ++d ) {
-      RealT v_d = x[d * num_coords + i] - x0[d];
-      xp[i] += v_d * e1[d];
-      yp[i] += v_d * e2[d];
-    }
-  }
-}
-
-//------------------------------------------------------------------------------
-void Coords2DToPlane( const RealT* xp, const RealT* yp, const RealT* x0, const RealT* e1, const RealT* e2, RealT* x,
-                      int num_coords )
-{
-  for ( int i{ 0 }; i < num_coords; ++i ) {
-    for ( int d{ 0 }; d < 3; ++d ) {
-      x[d * num_coords + i] = x0[d] + xp[i] * e1[d] + yp[i] * e2[d];
-    }
-  }
-}
-
-//------------------------------------------------------------------------------
 void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* g1, int size1,
                                const RealT* x2, RealT* f2, int size2 )
 {
@@ -816,7 +791,7 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
     }
   }
 
-  // get vector n (normal of elem1)
+  // get vector n (normal of elem1) = de1 x de2
   // NOTE: this limits this routine to quads
   // clang-format off
    RealT de1[3] = {
@@ -840,7 +815,7 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
     n[d] /= n_mag;
   }
 
-  // x1t = x1 projected to plane p (def'd by x0 and n)
+  // x1t = x1 coordinates projected to plane p (def'd by x0 and n) but in 3d
   constexpr int max_coord_size = 4 * 3;
   RealT x1t[max_coord_size];
   for ( int i{ 0 }; i < size1; ++i ) {
@@ -852,7 +827,7 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       x1t[size1 * d + i] = x1[size1 * d + i] - n[d] * x1diff_mag;
     }
   }
-  // x2t = x2 projected to plane p
+  // x2t = x2 coordinates projected to plane p but in 3d
   RealT x2t[max_coord_size];
   for ( int i{ 0 }; i < size2; ++i ) {
     RealT x2diff_mag = 0.0;
@@ -890,7 +865,8 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
   RealT x2t_2d[4];
   RealT y2t_2d[4];
   PlaneTo2DCoords( x2t, x0, e1, e2, x2t_2d, y2t_2d, size2 );
-  // coordinates need to be CCW for both faces
+  // coordinates need to be CCW for both faces. the call to ElemReverse() will reverse the projected 2d coordinates of
+  // element 2, which are in clockwise direction
   RealT x2t_2d_rev[4];
   RealT y2t_2d_rev[4];
   for ( int i{ 0 }; i < size2; ++i ) {

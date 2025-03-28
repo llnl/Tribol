@@ -38,6 +38,43 @@ TRIBOL_HOST_DEVICE void ProjectPointToPlane( const RealT x, const RealT y, const
 
 /*!
  *
+ * \brief Projects an array of points in 3-space to a plane.
+ *
+ * General method to project a point to a plane based on an origin point and basis vectors for that plane and the array
+ * of 3D input points
+ *
+ * \param [in] x array of x coordinates of points to be projected, length = 3*num_coords,
+ *               [x0, ..., xn, y0, ..., yn, z0, ..., zn]
+ * \param [in] x0 Origin point on plane, length = 3, [x0, y0, z0]
+ * \param [in] e1 First basis vector of the plane, length = 3, [e1x, e1y, e1z]
+ * \param [in] e2 Second basis vector of the plane, length = 3, [e2x, e2y, e2z]
+ * \param [in,out] xp array of x coordinates of projected points, length = num_coords, [xp0, ..., xpn]
+ * \param [in,out] yp array of y coordinates of projected points, length = num_coords, [yp0, ..., ypn]
+ * \param [in] num_coords number of coordinates to be projected
+ *
+ */
+void PlaneTo2DCoords( const RealT* x, const RealT* x0, const RealT* e1, const RealT* e2, RealT* xp, RealT* yp,
+                      int num_coords );
+
+/*!
+ *
+ * \brief Converts an array of points in a local 2D coordinate system to a point in the global 3D coordinate system
+ *
+ * \param [in] xp array of x coordinates of points in local coordinate system, length = num_coords, [xp0, ..., xpn]
+ * \param [in] yp array of y coordinates of points in local coordinate system, length = num_coords, [yp0, ..., ypn]
+ * \param [in] x0 Origin point on plane, length = 3, [x0, y0, z0]
+ * \param [in] e1 First basis vector of the plane, length = 3, [e1x, e1y, e1z]
+ * \param [in] e2 Second basis vector of the plane, length = 3, [e2x, e2y, e2z]
+ * \param [in,out] x array of x coordinates of projected points, length = 3*num_coords,
+ *                   [x0, ..., xn, y0, ..., yn, z0, ..., zn]
+ * \param [in] num_coords number of coordinates to be projected
+ *
+ */
+void Coords2DToPlane( const RealT* xp, const RealT* yp, const RealT* x0, const RealT* e1, const RealT* e2, RealT* x,
+                      int num_coords );
+
+/*!
+ *
  * \brief Projects a point in 2D space to a segment
  *
  * \param [in] x coordinate of point to be projected

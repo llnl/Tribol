@@ -1193,8 +1193,7 @@ class MfemMeshData {
   ParentField coords_;
 
   /**
-   * @brief Contains reference coords grid function and transfer operators if
-   * set; nullptr otherwise
+   * @brief Contains reference coords grid function and transfer operators if set; nullptr otherwise
    */
   std::unique_ptr<ParentField> reference_coords_;
 
@@ -1592,10 +1591,18 @@ class MfemJacobianData {
     UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data );
 
     /**
-     * @brief Redecomp to parent-linked boundary submesh transfer operator
+     * @brief Redecomp to parent-linked boundary submesh transfer operator, (displacement, displacement) block
      */
     std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_00_;
+
+    /**
+     * @brief Redecomp to parent-linked boundary submesh transfer operator, (displacement, pressure) block
+     */
     std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_01_;
+
+    /**
+     * @brief Redecomp to parent-linked boundary submesh transfer operator, (pressure, displacement) block
+     */
     std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_10_;
   };
 
@@ -1624,13 +1631,14 @@ class MfemJacobianData {
   const MfemSubmeshData& submesh_data_;
 
   /**
-   * @brief Array of offsets equal to number of displacement and pressure
-   * degrees of freedom
+   * @brief Array of offsets equal to number of displacement and pressure degrees of freedom.  Used in HypreParMatrixes
+   * in this class.
    */
   mfem::Array<int> block_offsets_;
 
   /**
-   * @brief Array of offsets equal to number of displacement degrees of freedom
+   * @brief Array of offsets equal to number of displacement degrees of freedom on the parent mesh. Used in
+   * HypreParMatrixes in this class.
    */
   mfem::Array<int> disp_offsets_;
 

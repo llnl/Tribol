@@ -43,6 +43,33 @@ TRIBOL_HOST_DEVICE void ProjectPointToPlane( const RealT x, const RealT y, const
 }  // end ProjectPointToPlane()
 
 //------------------------------------------------------------------------------
+void PlaneTo2DCoords( const RealT* x, const RealT* x0, const RealT* e1, const RealT* e2, RealT* xp, RealT* yp,
+                      int num_coords )
+{
+  for ( int i{ 0 }; i < num_coords; ++i ) {
+    xp[i] = 0.0;
+    yp[i] = 0.0;
+
+    for ( int d{ 0 }; d < 3; ++d ) {
+      RealT v_d = x[d * num_coords + i] - x0[d];
+      xp[i] += v_d * e1[d];
+      yp[i] += v_d * e2[d];
+    }
+  }
+}
+
+//------------------------------------------------------------------------------
+void Coords2DToPlane( const RealT* xp, const RealT* yp, const RealT* x0, const RealT* e1, const RealT* e2, RealT* x,
+                      int num_coords )
+{
+  for ( int i{ 0 }; i < num_coords; ++i ) {
+    for ( int d{ 0 }; d < 3; ++d ) {
+      x[d * num_coords + i] = x0[d] + xp[i] * e1[d] + yp[i] * e2[d];
+    }
+  }
+}
+
+//------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ProjectPointToSegment( const RealT x, const RealT y, const RealT nx, const RealT ny,
                                                const RealT ox, const RealT oy, RealT& px, RealT& py )
 {

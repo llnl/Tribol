@@ -711,9 +711,11 @@ MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemS
 
   auto disp_size = parent_data_.GetParentCoords().ParFESpace()->GetTrueVSize();
   auto lm_size = submesh_data_.GetSubmeshPressure().ParFESpace()->GetTrueVSize();
+  // this is used to size Jacobian contributions that are dependent on the pressure
   block_offsets_[0] = 0;
   block_offsets_[1] = disp_size;
   block_offsets_[2] = disp_size + lm_size;
+  // this is used to size Jacobian contributions that are not dependent on the pressure (e.g. normal)
   disp_offsets_[0] = 0;
   disp_offsets_[1] = disp_size;
 
@@ -881,7 +883,7 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian( con
   auto J_true = std::unique_ptr<mfem::HypreParMatrix>(
       mfem::RAP( submesh_fes.Dof_TrueDof_Matrix(), J_full.get(), parent_trial_fes.Dof_TrueDof_Matrix() ) );
 
-  // Create ones on diagonal of eliminated mortar tdofs (CSR sparse matrix -> HypreParMatrix)
+  // Create ones on diagonal of eliminated mortar tdofs, i.e. inactive dofs (CSR sparse matrix -> HypreParMatrix)
   // I vector
   mfem::Array<int> rows( submesh_fes.GetTrueVSize() + 1 );
   rows = 0;
@@ -1005,7 +1007,8 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemDfDxFullJacobian( 
                      mfem::RAP( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix(), parent_J_hypre.get(),
                                 parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() ) );
 
-  // Create ones on diagonal of eliminated mortar tdofs (CSR sparse matrix -> HypreParMatrix) I vector
+  // Create ones on diagonal of eliminated mortar tdofs, i.e. inactive dofs (CSR sparse matrix -> HypreParMatrix)
+  // I vector
   auto& submesh_fes = submesh_data_.GetSubmeshFESpace();
   mfem::Array<int> rows( submesh_fes.GetTrueVSize() + 1 );
   rows = 0;
@@ -1137,8 +1140,7 @@ MfemJacobianData::UpdateData::UpdateData( const MfemMeshData& parent_data, const
     dual_submesh_fes = submesh_data.GetLORMeshFESpace();
     primal_submesh_fes = parent_data.GetLORMeshFESpace();
   }
-  // create a matrix transfer operator for moving data from redecomp to the
-  // submesh
+  // create a matrix transfer operator for moving data from redecomp to the submesh
   submesh_redecomp_xfer_00_ = std::make_unique<redecomp::MatrixTransfer>(
       *primal_submesh_fes, *primal_submesh_fes, *parent_data.GetRedecompResponse().FESpace(),
       *parent_data.GetRedecompResponse().FESpace() );

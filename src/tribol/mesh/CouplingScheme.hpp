@@ -871,8 +871,6 @@ class CouplingScheme {
   bool m_isBinned;      ///< True if binning has occured
   bool m_isTied;        ///< True if surfaces have been "tied" (Tied contact only)
 
-  std::unique_ptr<ElementNormal> m_elementNormal;  ///< Method for computing element normal
-
   bool m_useEnzyme = false;                    ///< Use Enzyme for Jacobian calculations
   std::unique_ptr<MethodData> m_dfdnJacobian;  ///< Store derivative of force w.r.t. normal on element pairs
   std::unique_ptr<MethodData> m_dndxJacobian;  ///< Store derivative of normal w.r.t. nodal coordinates on element pairs
