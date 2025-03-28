@@ -9,9 +9,10 @@
 #include "tribol/config.hpp"
 
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/mesh/MethodCouplingData.hpp"
 
 namespace tribol {
+
+class MethodData;
 
 /**
  * @brief Virtual base class to define the interface for nodal normal calculations
@@ -35,7 +36,7 @@ class NodalNormal {
 /**
  * @brief Computes nodal normals as the average of connected element normals
  */
-class ElementAvgNormal : public NodalNormal {
+class ElementAvgNodalNormal : public NodalNormal {
  public:
   /**
    * @brief Computes nodal normals as the average of connected element normals
@@ -47,12 +48,14 @@ class ElementAvgNormal : public NodalNormal {
 };
 
 /**
- * @brief Computes nodal normals by averaging normal evaluated at the node of all connected elements
+ * @brief Computes nodal normals by computing the normal on all connected elements at the nodal location and averaging
+ *        the normals
  */
-class VertexAvgNormal : public NodalNormal {
+class EdgeAvgNodalNormal : public NodalNormal {
  public:
   /**
-   * @brief Computes nodal normals by averaging normal evaluated at the node of all connected elements
+   * @brief Computes nodal normals by computing the normal on all connected elements at the nodal location and averaging
+   *        the normals
    *
    * @param mesh Mesh data
    * @param jacobian_data Method data for storing Jacobian contributions (optional)

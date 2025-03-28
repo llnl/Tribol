@@ -20,6 +20,7 @@
 #endif
 
 #include "tribol/mesh/MeshData.hpp"
+#include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/geom/NodalNormal.hpp"
 #include "tribol/interface/tribol.hpp"
 
@@ -35,7 +36,7 @@ class EnzymeNodalNormalTest : public testing::Test {
 
   void FDCheck( RealT* x, MeshData& mesh )
   {
-    VertexAvgNormal normal_method;
+    EdgeAvgNodalNormal normal_method;
     MethodData dndx_data;
     normal_method.Compute( mesh, &dndx_data );
     auto num_dofs = mesh.numberOfNodes() * mesh.spatialDimension();

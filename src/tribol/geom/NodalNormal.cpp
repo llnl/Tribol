@@ -5,6 +5,7 @@
 
 #include "NodalNormal.hpp"
 
+#include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/utils/Math.hpp"
 
 #ifdef TRIBOL_USE_ENZYME
@@ -15,16 +16,40 @@ namespace tribol {
 
 // forward declare free functions for enzyme.  these shouldn't be used outside the class, so no need to put them in the
 // header.
-void ElementVertexAvgNormal( const RealT* x, const RealT* xref, RealT* n, int num_nodes_per_elem );
-void ElementVertexAvgNormalJacobian( const RealT* x, const RealT* xref, RealT* n, RealT* dndx, int num_nodes_per_elem );
 
-void ElementAvgNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
+/**
+ * @brief Computes the normal direction at all the nodal coordinates of the element.
+ *
+ * @note This is a free function to allow for Enzyme support
+ *
+ * @param [in] x Nodal coordinates for the element (stored by nodes, i.e. [x0, x1, x2, y0, y1, y2, z0, z1, z2])
+ * @param [in] xref Reference nodal coordinates for the element (i.e. at t = 0) (stored by nodes)
+ * @param [out] n Unit vectors giving the normal direction for each node (stored by nodes)
+ * @param [in] num_nodes_per_elem Number of nodes in the element
+ */
+void ElementEdgeAvgNodalNormal( const RealT* x, const RealT* xref, RealT* n, int num_nodes_per_elem );
+
+/**
+ * @brief Computes the normal direction and Jacobian at all the nodal coordinates of the element.
+ *
+ * @note Requires Tribol built with Enzyme support
+ *
+ * @param [in] x Nodal coordinates for the element (stored by nodes, i.e. [x0, x1, x2, y0, y1, y2, z0, z1, z2])
+ * @param [in] xref Reference nodal coordinates for the element (i.e. at t = 0) (stored by nodes)
+ * @param [out] n Unit vectors giving the normal direction for each node (stored by nodes)
+ * @param [out] dndx Derivative of the unit normal vectors for each node (size = num_nodes_per_elem^2 x spatial dim^2)
+ * @param [in] num_nodes_per_elem Number of nodes in the element
+ */
+void ElementEdgeAvgNodalNormalJacobian( const RealT* x, const RealT* xref, RealT* n, RealT* dndx,
+                                        int num_nodes_per_elem );
+
+void ElementAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
 {
   if ( mesh.numberOfElements() == 0 ) {
     return;
   }
 
-  SLIC_ERROR_IF( jacobian_data != nullptr, "ElementAvgNormal does not support computing Jacobian data." );
+  SLIC_ERROR_IF( jacobian_data != nullptr, "ElementAvgNodalNormal does not support computing Jacobian data." );
 
   mesh.allocateNodalNormals();
 
@@ -72,7 +97,7 @@ void ElementAvgNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
   }
 }
 
-void VertexAvgNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
+void EdgeAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
 {
   SLIC_ERROR_ROOT_IF( mesh.spatialDimension() != 3, "3D mesh required for vertex averaged normal." );
 
@@ -107,10 +132,10 @@ void VertexAvgNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
       StackArray<DeviceArray2D<RealT>, 9> blockJ( 3 );
       blockJ( 0, 0 ) = DeviceArray2D<RealT>( 12, 12 );
       blockJ( 0, 0 ).fill( 0.0 );
-      ElementVertexAvgNormalJacobian( x, xref, n, blockJ( 0, 0 ).data(), num_nodes_per_elem );
+      ElementEdgeAvgNodalNormalJacobian( x, xref, n, blockJ( 0, 0 ).data(), num_nodes_per_elem );
       jacobian_data->storeElemBlockJ( { e }, blockJ );
     } else {
-      ElementVertexAvgNormal( x, xref, n, num_nodes_per_elem );
+      ElementEdgeAvgNodalNormal( x, xref, n, num_nodes_per_elem );
     }
     // assemble normal contribution
     for ( int i{ 0 }; i < num_nodes_per_elem; ++i ) {
@@ -120,7 +145,7 @@ void VertexAvgNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
       }
     }
     // compute reference normal
-    ElementVertexAvgNormal( xref, xref, n, num_nodes_per_elem );
+    ElementEdgeAvgNodalNormal( xref, xref, n, num_nodes_per_elem );
     // assemble reference normal contribution
     for ( int i{ 0 }; i < num_nodes_per_elem; ++i ) {
       int node_id = mesh_view.getGlobalNodeId( e, i );
@@ -160,17 +185,7 @@ void VertexAvgNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
   }
 }
 
-/**
- * @brief Computes the normal direction at all nodes of the element
- *
- * @note This is a free function to allow for Enzyme support
- *
- * @param [in] x Nodal coordinates for the element (stored by nodes, i.e. [x0, x1, x2, y0, y1, y2, z0, z1, z2])
- * @param [in] xref Reference nodal coordinates for the element (i.e. at t = 0) (stored by nodes)
- * @param [out] n Unit vectors giving the normal direction for each node (stored by nodes)
- * @param [in] num_nodes_per_elem Number of nodes in the element
- */
-void ElementVertexAvgNormal( const RealT* x, const RealT* xref, RealT* n, int num_nodes_per_elem )
+void ElementEdgeAvgNodalNormal( const RealT* x, const RealT* xref, RealT* n, int num_nodes_per_elem )
 {
   for ( int i{ 0 }; i < num_nodes_per_elem; ++i ) {
     int node0 = ( i - 1 + num_nodes_per_elem ) % num_nodes_per_elem;
@@ -199,31 +214,20 @@ void ElementVertexAvgNormal( const RealT* x, const RealT* xref, RealT* n, int nu
   }
 }
 
-/**
- * @brief Computes the normal direction and Jacobian at all nodes of the element
- *
- * @note Requires Tribol built with Enzyme support
- *
- * @param [in] x Nodal coordinates for the element (stored by nodes, i.e. [x0, x1, x2, y0, y1, y2, z0, z1, z2])
- * @param [in] xref Reference nodal coordinates for the element (i.e. at t = 0) (stored by nodes)
- * @param [out] n Unit vectors giving the normal direction for each node (stored by nodes)
- * @param [out] dndx Derivative of the unit normal vectors for each node (size = num_nodes_per_elem^2 x spatial dim^2)
- * @param [in] num_nodes_per_elem Number of nodes in the element
- */
-void ElementVertexAvgNormalJacobian( [[maybe_unused]] const RealT* x, [[maybe_unused]] const RealT* xref,
-                                     [[maybe_unused]] RealT* n, [[maybe_unused]] RealT* dndx,
-                                     [[maybe_unused]] int num_nodes_per_elem )
+void ElementEdgeAvgNodalNormalJacobian( [[maybe_unused]] const RealT* x, [[maybe_unused]] const RealT* xref,
+                                        [[maybe_unused]] RealT* n, [[maybe_unused]] RealT* dndx,
+                                        [[maybe_unused]] int num_nodes_per_elem )
 {
 #ifdef TRIBOL_USE_ENZYME
   RealT x_dot[12] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
   for ( int i{ 0 }; i < num_nodes_per_elem * 3; ++i ) {
     x_dot[i] = 1.0;
-    __enzyme_fwddiff<void>( (void*)ElementVertexAvgNormal, enzyme_dup, x, x_dot, enzyme_const, xref, enzyme_dup, n,
+    __enzyme_fwddiff<void>( (void*)ElementEdgeAvgNodalNormal, enzyme_dup, x, x_dot, enzyme_const, xref, enzyme_dup, n,
                             &dndx[num_nodes_per_elem * 3 * i], enzyme_const, num_nodes_per_elem );
     x_dot[i] = 0.0;
   }
 #else
-  SLIC_ERROR( "ElementVertexAvgNormalJacobian requires Tribol built with Enzyme support." );
+  SLIC_ERROR( "ElementEdgeAvgNodalNormalJacobian requires Tribol built with Enzyme support." );
 #endif
 }
 

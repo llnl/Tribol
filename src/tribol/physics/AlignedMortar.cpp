@@ -153,7 +153,7 @@ void ComputeAlignedMortarGaps( CouplingScheme* cs )
   int const dim = cs->spatialDimension();
   // compute nodal normals (do this outside the element loop)
   // This routine is guarded against a null mesh
-  ElementAvgNormal normal_method;
+  ElementAvgNodalNormal normal_method;
   normal_method.Compute( nonmortarMeshData );
 
   auto pairs = cs->getInterfacePairs();

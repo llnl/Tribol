@@ -171,7 +171,7 @@ class MortarGapTest : public ::testing::Test {
 
     tribol::registerMortarGaps( nonmortarMeshId, gaps.data() );
 
-    tribol::ElementAvgNormal normal_method;
+    tribol::ElementAvgNodalNormal normal_method;
     normal_method.Compute( nonmortarMesh );
 
     auto mortarView = mortarMesh.getView();

@@ -51,7 +51,7 @@ class NodalNormalTest : public ::testing::Test {
     tribol::PalletAvgNormal plane_normal;
     mesh.computeFaceData( tribol::ExecutionMode::Sequential, plane_normal );
 
-    tribol::ElementAvgNormal normal_method;
+    tribol::ElementAvgNodalNormal normal_method;
     normal_method.Compute( mesh );
 
     return;

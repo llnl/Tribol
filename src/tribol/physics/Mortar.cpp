@@ -175,7 +175,7 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
   MeshData& nonmortarMeshData = meshManager.at( cs->getMeshId2() );
   // compute nodal normals (do this outside the element loop)
   // Note, this is guarded against zero element meshes
-  ElementAvgNormal normal_method;
+  ElementAvgNodalNormal normal_method;
   normal_method.Compute( nonmortarMeshData );
 
   auto pairs = cs->getInterfacePairs();
@@ -666,7 +666,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
   }
   // convention: 1 = nonmortar
   //             2 = mortar
-  VertexAvgNormal normal_method;
+  EdgeAvgNodalNormal normal_method;
   normal_method.Compute( cs->getMesh2(), cs->getDnDxMethodData() );
   auto mesh1 = cs->getMesh2().getView();  // switched from tribol convention
   auto mesh2 = cs->getMesh1().getView();  // switched from tribol convention
