@@ -522,8 +522,7 @@ void PolyCentroid( const RealT* const x, const RealT* const y, const int numVert
 TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const RealT* yA, int numVertexA,
                                                         const RealT* xB, const RealT* yB, int numVertexB, RealT posTol,
                                                         RealT lenTol, RealT* polyX, RealT* polyY, int& numPolyVert,
-                                                        RealT& area, bool orientCheck, OverlapVertexType* vertType,
-                                                        int* edgeA, int* edgeB )
+                                                        RealT& area, bool orientCheck )
 {
   // for tribol, if you have called this routine it is because a positive area of
   // overlap between two polygons (faces) exists. This routine does not perform a
@@ -598,15 +597,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     for ( int i = 0; i < numVertexA; ++i ) {
       polyX[i] = xA[i];
       polyY[i] = yA[i];
-      if ( vertType ) {
-        vertType[i] = OverlapVertexType::A;
-      }
-      if ( edgeA ) {
-        edgeA[i] = i;
-      }
-      if ( edgeB ) {
-        edgeB[i] = -1;
-      }
     }
     area = Area2DPolygon( polyX, polyY, numVertexA );
     return NO_FACE_GEOM_ERROR;
@@ -627,15 +617,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     for ( int i = 0; i < numVertexB; ++i ) {
       polyX[i] = xB[i];
       polyY[i] = yB[i];
-      if ( vertType ) {
-        vertType[i] = OverlapVertexType::B;
-      }
-      if ( edgeA ) {
-        edgeA[i] = -1;
-      }
-      if ( edgeB ) {
-        edgeB[i] = i;
-      }
     }
     area = Area2DPolygon( polyX, polyY, numVertexB );
     return NO_FACE_GEOM_ERROR;
@@ -672,8 +653,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   RealT interX[max_intersections];
   RealT interY[max_intersections];
   bool intersect[max_intersections];
-  int edgeATemp[max_intersections];
-  int edgeBTemp[max_intersections];
   bool dupl;  // boolean to indicate a segment-segment intersection that
               // duplicates an existing interior vertex.
   bool interior[4];
@@ -682,8 +661,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   initRealArray( interX, max_intersections, 0. );
   initRealArray( interY, max_intersections, 0. );
   initBoolArray( intersect, max_intersections, false );
-  initIntArray( edgeATemp, max_intersections, 0 );
-  initIntArray( edgeBTemp, max_intersections, 0 );
   dupl = false;
 
   // loop over segment-segment intersections to find the rest of the
@@ -725,10 +702,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
         intersect[interId] =
             SegmentIntersection2D( xA[vAID1], yA[vAID1], xA[vAID2], yA[vAID2], xB[vBID1], yB[vBID1], xB[vBID2],
                                    yB[vBID2], interior, interX[interId], interY[interId], dupl, posTol );
-        if ( intersect[interId] ) {
-          edgeATemp[interId] = ia;
-          edgeBTemp[interId] = jb;
-        }
         ++interId;
       }
     }  // end loop over A segments
@@ -755,7 +728,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   constexpr int max_identified_points = max_nodes_per_overlap + 2 * max_nodes_per_element;
   RealT polyXTemp[max_identified_points];
   RealT polyYTemp[max_identified_points];
-  OverlapVertexType vertTypeTemp[max_identified_points];
 
   // fill polyXTemp and polyYTemp with the intersection points
   int k = 0;
@@ -763,9 +735,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     if ( intersect[i] ) {
       polyXTemp[k] = interX[i];
       polyYTemp[k] = interY[i];
-      vertTypeTemp[k] = OverlapVertexType::EdgeEdge;
-      edgeATemp[k] = edgeATemp[i];
-      edgeBTemp[k] = edgeBTemp[i];
       ++k;
     }
   }
@@ -784,9 +753,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
 
       polyXTemp[k] = xA[i];
       polyYTemp[k] = yA[i];
-      vertTypeTemp[k] = OverlapVertexType::A;
-      edgeATemp[k] = i;
-      edgeBTemp[k] = -1;
       ++k;
     }
   }
@@ -804,9 +770,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
 
       polyXTemp[k] = xB[i];
       polyYTemp[k] = yB[i];
-      vertTypeTemp[k] = OverlapVertexType::B;
-      edgeATemp[k] = -1;
-      edgeBTemp[k] = i;
       ++k;
     }
   }
@@ -815,15 +778,14 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   // Only do this for overlaps with 3 or more vertices. We skip any overlap that degenerates to <3 vertices
   if ( numPolyVert > 2 ) {
     // order the unordered vertices (in counter clockwise fashion)
-    PolyReorder( polyXTemp, polyYTemp, vertTypeTemp, edgeATemp, edgeBTemp, numPolyVert );
+    PolyReorder( polyXTemp, polyYTemp, numPolyVert );
 
     // check length of segs against tolerance and collapse short segments if necessary
     // This is where polyX and polyY get allocated for any overlap that remains with
     // > 3 vertices
     int numFinalVert = 0;
 
-    FaceGeomError segErr = CheckPolySegs( polyXTemp, polyYTemp, vertTypeTemp, edgeATemp, edgeBTemp, numPolyVert, lenTol,
-                                          polyX, polyY, vertType, edgeA, edgeB, numFinalVert );
+    FaceGeomError segErr = CheckPolySegs( polyXTemp, polyYTemp, numPolyVert, lenTol, polyX, polyY, numFinalVert );
 
     numPolyVert = numFinalVert;
 
@@ -850,20 +812,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   return NO_FACE_GEOM_ERROR;
 
 }  // end Intersection2DPolygon()
-
-#ifdef TRIBOL_USE_ENZYME
-
-FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB,
-                                           const RealT* yB, int numVertexB, RealT posTol, RealT lenTol, RealT* polyX,
-                                           RealT* polyY, int* numPolyVert )
-{
-  double area = 0.0;
-  constexpr bool orientCheck = true;
-  return Intersection2DPolygon( xA, yA, numVertexA, xB, yB, numVertexB, posTol, lenTol, polyX, polyY, *numPolyVert,
-                                area, orientCheck );
-}
-
-#endif
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE bool CheckPolyOrientation( const RealT* const x, const RealT* const y, const int numVertex )
@@ -1099,8 +1047,8 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
     xDiff = ( xDiff < 0. ) ? -1.0 * xDiff : xDiff;
     yDiff = ( yDiff < 0. ) ? -1.0 * yDiff : yDiff;
 
-    RealT diffTol = 1.0E-3;
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
+    RealT diffTol = 1.0E-3;
     SLIC_DEBUG_IF( xDiff > diffTol || yDiff > diffTol,
                    "SegmentIntersection2D(): Intersection coordinates are not equally derived." );
 #endif
@@ -1176,10 +1124,8 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
 }  // end SegmentIntersection2D()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, const OverlapVertexType* vertType,
-                                                const int* edgeA, const int* edgeB, int numPoints, RealT tol,
-                                                RealT* xnew, RealT* ynew, OverlapVertexType* vertTypeNew, int* edgeANew,
-                                                int* edgeBNew, int& numNewPoints )
+TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, int numPoints, RealT tol, RealT* xnew,
+                                                RealT* ynew, int& numNewPoints )
 {
   constexpr int max_nodes_per_overlap = 8;
   RealT newIDs[max_nodes_per_overlap];
@@ -1234,15 +1180,6 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, 
 
       xnew[k] = x[i];
       ynew[k] = y[i];
-      if ( vertTypeNew ) {
-        vertTypeNew[k] = vertType[i];
-      }
-      if ( edgeANew ) {
-        edgeANew[k] = edgeA[i];
-      }
-      if ( edgeBNew ) {
-        edgeBNew[k] = edgeB[i];
-      }
       ++k;
     }
   }
@@ -1252,8 +1189,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, 
 }  // end CheckPolySegs()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, OverlapVertexType* vertType, int* edgeA, int* edgeB,
-                                     int numPoints )
+TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int numPoints )
 {
   if ( numPoints < 3 ) {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
@@ -1402,35 +1338,14 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, OverlapVertexType* vert
   // reorder x and y coordinate arrays based on newIDs id-array
   RealT xtemp[max_nodes_per_overlap];
   RealT ytemp[max_nodes_per_overlap];
-  OverlapVertexType vertTypeTemp[max_nodes_per_overlap];
-  int edgeATemp[max_nodes_per_overlap];
-  int edgeBTemp[max_nodes_per_overlap];
   for ( int i = 0; i < numPoints; ++i ) {
     xtemp[i] = x[i];
     ytemp[i] = y[i];
-    if ( vertType ) {
-      vertTypeTemp[i] = vertType[i];
-    }
-    if ( edgeA ) {
-      edgeATemp[i] = edgeA[i];
-    }
-    if ( edgeB ) {
-      edgeBTemp[i] = edgeB[i];
-    }
   }
 
   for ( int i = 0; i < numPoints; ++i ) {
     x[i] = xtemp[newIDs[i]];
     y[i] = ytemp[newIDs[i]];
-    if ( vertType ) {
-      vertType[i] = vertTypeTemp[newIDs[i]];
-    }
-    if ( edgeA ) {
-      edgeA[i] = edgeATemp[newIDs[i]];
-    }
-    if ( edgeB ) {
-      edgeB[i] = edgeBTemp[newIDs[i]];
-    }
   }
 
   return true;

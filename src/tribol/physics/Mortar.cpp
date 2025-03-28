@@ -945,9 +945,9 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
   RealT xti_2d[8];
   RealT yti_2d[8];
   int overlap_poly_size = 0;
-  Intersection2DPolygonEnzyme( x1t_2d, y1t_2d, size1, x2t_2d_rev, y2t_2d_rev, size2, 1.0e-8, 1.0e-8, xti_2d, yti_2d,
-                               &overlap_poly_size );
-  RealT overlap_poly_area = Area2DPolygon( xti_2d, yti_2d, overlap_poly_size );
+  RealT overlap_poly_area = 0.0;
+  Intersection2DPolygon( x1t_2d, y1t_2d, size1, x2t_2d_rev, y2t_2d_rev, size2, 1.0e-8, 1.0e-8, xti_2d, yti_2d,
+                         overlap_poly_size, overlap_poly_area );
   if ( overlap_poly_area <= 0.0 ) {
     return;
   }
@@ -1134,16 +1134,16 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
   for ( int i{ 0 }; i < size1 * 3; ++i ) {
     x1_dot[i] = 1.0;
     // clang-format off
-      __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
-         enzyme_dup, x1, x1_dot,
-         enzyme_const, n1,
-         enzyme_const, p1,
-         enzyme_dup, f1, &df1dx1[size1*3*i],
-         enzyme_dup, g1, &dg1dx1[size1*i],
-         enzyme_const, size1,
-         enzyme_const, x2,
-         enzyme_dup, f2, &df2dx1[size1*3*i],
-         enzyme_const, size2);
+    __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
+      enzyme_dup, x1, x1_dot,
+      enzyme_const, n1,
+      enzyme_const, p1,
+      enzyme_dup, f1, &df1dx1[size1*3*i],
+      enzyme_dup, g1, &dg1dx1[size1*i],
+      enzyme_const, size1,
+      enzyme_const, x2,
+      enzyme_dup, f2, &df2dx1[size1*3*i],
+      enzyme_const, size2);
     // clang-format on
     x1_dot[i] = 0.0;
   }
@@ -1151,16 +1151,16 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
   for ( int i{ 0 }; i < size1 * 3; ++i ) {
     n1_dot[i] = 1.0;
     // clang-format off
-      __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
-         enzyme_const, x1,
-         enzyme_dup, n1, n1_dot,
-         enzyme_const, p1,
-         enzyme_dup, f1, &df1dn1[size1*3*i],
-         enzyme_dup, g1, &dg1dn1[size1*i],
-         enzyme_const, size1,
-         enzyme_const, x2,
-         enzyme_dup, f2, &df2dn1[size1*3*i],
-         enzyme_const, size2);
+    __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
+      enzyme_const, x1,
+      enzyme_dup, n1, n1_dot,
+      enzyme_const, p1,
+      enzyme_dup, f1, &df1dn1[size1*3*i],
+      enzyme_dup, g1, &dg1dn1[size1*i],
+      enzyme_const, size1,
+      enzyme_const, x2,
+      enzyme_dup, f2, &df2dn1[size1*3*i],
+      enzyme_const, size2);
     // clang-format on
     n1_dot[i] = 0.0;
   }
@@ -1168,16 +1168,16 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
   for ( int i{ 0 }; i < size1; ++i ) {
     p1_dot[i] = 1.0;
     // clang-format off
-      __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
-         enzyme_const, x1,
-         enzyme_const, n1,
-         enzyme_dup, p1, p1_dot,
-         enzyme_dup, f1, &df1dp1[size1*3*i],
-         enzyme_const, g1,
-         enzyme_const, size1,
-         enzyme_const, x2,
-         enzyme_dup, f2, &df2dp1[size1*3*i],
-         enzyme_const, size2);
+    __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
+      enzyme_const, x1,
+      enzyme_const, n1,
+      enzyme_dup, p1, p1_dot,
+      enzyme_dup, f1, &df1dp1[size1*3*i],
+      enzyme_const, g1,
+      enzyme_const, size1,
+      enzyme_const, x2,
+      enzyme_dup, f2, &df2dp1[size1*3*i],
+      enzyme_const, size2);
     // clang-format on
     p1_dot[i] = 0.0;
   }
@@ -1185,16 +1185,16 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
   for ( int i{ 0 }; i < size2 * 3; ++i ) {
     x2_dot[i] = 1.0;
     // clang-format off
-      __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
-         enzyme_const, x1,
-         enzyme_const, n1,
-         enzyme_const, p1,
-         enzyme_dup, f1, &df1dx2[size2*3*i],
-         enzyme_dup, g1, &dg1dx2[size2*i],
-         enzyme_const, size1,
-         enzyme_dup, x2, x2_dot,
-         enzyme_dup, f2, &df2dx2[size2*3*i],
-         enzyme_const, size2);
+    __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
+      enzyme_const, x1,
+      enzyme_const, n1,
+      enzyme_const, p1,
+      enzyme_dup, f1, &df1dx2[size2*3*i],
+      enzyme_dup, g1, &dg1dx2[size2*i],
+      enzyme_const, size1,
+      enzyme_dup, x2, x2_dot,
+      enzyme_dup, f2, &df2dx2[size2*3*i],
+      enzyme_const, size2);
     // clang-format on
     x2_dot[i] = 0.0;
   }

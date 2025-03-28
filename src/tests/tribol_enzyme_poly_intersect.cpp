@@ -37,78 +37,106 @@ class EnzymePolyIntersectTest : public testing::Test {
   void CheckIntersection( RealT* x1, RealT* x2, int* stencil_dir, RealT fd_tol = delta_, RealT pos_tol = 1.0e-8,
                           RealT len_tol = 1.0e-8, [[maybe_unused]] std::string name = "" )
   {
-    RealT xi[16];
-    OverlapVertexType type[8];
-    IndexT edge1[8];
-    IndexT edge2[8];
-    for ( int i{ 0 }; i < 8; ++i ) {
+    constexpr int max_overlap_vert = 8;
+    constexpr int dim = 2;
+    RealT xi[max_overlap_vert * dim];
+    for ( int i{ 0 }; i < max_overlap_vert; ++i ) {
       xi[i] = 0.0;
-      xi[i + 8] = 0.0;
-      type[i] = OverlapVertexType::A;
-      edge1[i] = -1;
-      edge2[i] = -1;
+      xi[i + max_overlap_vert] = 0.0;
     }
     auto num_poly_verts = 0;
-    auto d_num_poly_verts = 0;
-    auto d_pos_tol = 0.0;
-    auto d_len_tol = 0.0;
     RealT area = 0.0;
-    Intersection2DPolygon( x1, x1 + 4, 4, x2, x2 + 4, 4, pos_tol, len_tol, xi, xi + 8, num_poly_verts, area, true, type,
-                           edge1, edge2 );
+    constexpr int num_elem_coords = 4;
+    Intersection2DPolygon( x1, x1 + num_elem_coords, num_elem_coords, x2, x2 + num_elem_coords, num_elem_coords,
+                           pos_tol, len_tol, xi, xi + max_overlap_vert, num_poly_verts, area, true );
     std::cout << std::setprecision( 15 ) << "Element 1 coords" << std::endl;
-    for ( int i{ 0 }; i < 4; ++i ) {
+    for ( int i{ 0 }; i < num_elem_coords; ++i ) {
       std::cout << "(" << x1[i] << ", " << x1[i + 4] << ")\n";
     }
     std::cout << std::setprecision( 15 ) << "Element 2 coords" << std::endl;
-    for ( int i{ 0 }; i < 4; ++i ) {
+    for ( int i{ 0 }; i < num_elem_coords; ++i ) {
       std::cout << "(" << x2[i] << ", " << x2[i + 4] << ")\n";
     }
     std::cout << std::setprecision( 15 ) << "Number of vertices: " << num_poly_verts << "   Polygon area: " << area
               << std::endl;
 
-    for ( int i{ 0 }; i < num_poly_verts; ++i ) {
-      std::cout << "  Coord: (" << xi[i] << ", " << xi[i + 8] << ")   Type: ";
-      switch ( type[i] ) {
-        case OverlapVertexType::A:
-          std::cout << "Vertex A" << std::endl;
-          break;
-        case OverlapVertexType::B:
-          std::cout << "Vertex B" << std::endl;
-          break;
-        case OverlapVertexType::EdgeEdge:
-          std::cout << "Edge/Edge" << std::endl;
-          break;
-      }
-    }
-
     RealT x_dot[4] = { 0.0, 0.0, 0.0, 0.0 };
-    RealT zeros[4] = { 0.0, 0.0, 0.0, 0.0 };
-    RealT dxidx1[16 * 8];
-    RealT dxidx2[16 * 8];
-    for ( int i{ 0 }; i < 16 * 8; ++i ) {
+    RealT dxidx1[( max_overlap_vert * num_elem_coords ) * dim];
+    RealT dxidx2[( max_overlap_vert * num_elem_coords ) * dim];
+    for ( int i{ 0 }; i < ( max_overlap_vert * num_elem_coords ) * dim; ++i ) {
       dxidx1[i] = 0.0;
       dxidx2[i] = 0.0;
     }
 
-    RealT xi_base[16];
-    for ( int i{ 0 }; i < 16; ++i ) {
+    RealT xi_base[max_overlap_vert * dim];
+    for ( int i{ 0 }; i < max_overlap_vert * dim; ++i ) {
       xi_base[i] = xi[i];
     }
 
-    for ( int i{ 0 }; i < 4; ++i ) {
+    for ( int i{ 0 }; i < num_elem_coords; ++i ) {
       x_dot[i] = 1.0;
-      __enzyme_fwddiff<void>( (void*)Intersection2DPolygonEnzyme, x1, x_dot, x1 + 4, zeros, 4, x2, zeros, x2 + 4, zeros,
-                              4, pos_tol, d_pos_tol, len_tol, d_len_tol, xi, dxidx1 + 16 * i, xi + 8,
-                              dxidx1 + 16 * i + 8, &num_poly_verts, &d_num_poly_verts );
-      __enzyme_fwddiff<void>( (void*)Intersection2DPolygonEnzyme, x1, zeros, x1 + 4, x_dot, 4, x2, zeros, x2 + 4, zeros,
-                              4, pos_tol, d_pos_tol, len_tol, d_len_tol, xi, dxidx1 + 16 * ( 4 + i ), xi + 8,
-                              dxidx1 + 16 * ( 4 + i ) + 8, &num_poly_verts, &d_num_poly_verts );
-      __enzyme_fwddiff<void>( (void*)Intersection2DPolygonEnzyme, x1, zeros, x1 + 4, zeros, 4, x2, x_dot, x2 + 4, zeros,
-                              4, pos_tol, d_pos_tol, len_tol, d_len_tol, xi, dxidx2 + 16 * i, xi + 8,
-                              dxidx2 + 16 * i + 8, &num_poly_verts, &d_num_poly_verts );
-      __enzyme_fwddiff<void>( (void*)Intersection2DPolygonEnzyme, x1, zeros, x1 + 4, zeros, 4, x2, zeros, x2 + 4, x_dot,
-                              4, pos_tol, d_pos_tol, len_tol, d_len_tol, xi, dxidx2 + 16 * ( 4 + i ), xi + 8,
-                              dxidx2 + 16 * ( 4 + i ) + 8, &num_poly_verts, &d_num_poly_verts );
+      // clang-format off
+      // wiggle the xi coordinate of node i in element 1
+      __enzyme_fwddiff<void>( (void*)Intersection2DPolygon,
+        enzyme_dup, x1, x_dot, 
+        enzyme_const, x1 + num_elem_coords, 
+        enzyme_const, num_elem_coords,
+        enzyme_const, x2,
+        enzyme_const, x2 + num_elem_coords,
+        enzyme_const, num_elem_coords,
+        enzyme_const, pos_tol,
+        enzyme_const, len_tol,
+        enzyme_dup, xi, dxidx1 + (max_overlap_vert * dim) * i,
+        enzyme_dup, xi + max_overlap_vert, dxidx1 + (max_overlap_vert * dim) * i + max_overlap_vert,
+        enzyme_const, &num_poly_verts,
+        enzyme_const, &area,
+        enzyme_const, true );
+      // wiggle the eta coordinate of node i in element 1
+      __enzyme_fwddiff<void>( (void*)Intersection2DPolygon,
+        enzyme_const, x1, 
+        enzyme_dup, x1 + num_elem_coords, x_dot,
+        enzyme_const, num_elem_coords,
+        enzyme_const, x2,
+        enzyme_const, x2 + num_elem_coords,
+        enzyme_const, num_elem_coords,
+        enzyme_const, pos_tol,
+        enzyme_const, len_tol,
+        enzyme_dup, xi, dxidx1 + (max_overlap_vert * dim) * (num_elem_coords + i),
+        enzyme_dup, xi + max_overlap_vert, dxidx1 + (max_overlap_vert * dim) * (num_elem_coords + i) + max_overlap_vert,
+        enzyme_const, &num_poly_verts,
+        enzyme_const, &area,
+        enzyme_const, true );
+      // wiggle the xi coordinate of node i in element 2
+      __enzyme_fwddiff<void>( (void*)Intersection2DPolygon,
+        enzyme_const, x1,
+        enzyme_const, x1 + num_elem_coords,
+        enzyme_const, num_elem_coords,
+        enzyme_dup, x2, x_dot, 
+        enzyme_const, x2 + num_elem_coords, 
+        enzyme_const, num_elem_coords,
+        enzyme_const, pos_tol,
+        enzyme_const, len_tol,
+        enzyme_dup, xi, dxidx2 + (max_overlap_vert * dim) * i,
+        enzyme_dup, xi + max_overlap_vert, dxidx2 + (max_overlap_vert * dim) * i + max_overlap_vert,
+        enzyme_const, &num_poly_verts,
+        enzyme_const, &area,
+        enzyme_const, true );
+      // wiggle the eta coordinate of node i in element 2
+      __enzyme_fwddiff<void>( (void*)Intersection2DPolygon,
+        enzyme_const, x1,
+        enzyme_const, x1 + num_elem_coords,
+        enzyme_const, num_elem_coords,
+        enzyme_const, x2, 
+        enzyme_dup, x2 + num_elem_coords, x_dot,
+        enzyme_const, num_elem_coords,
+        enzyme_const, pos_tol,
+        enzyme_const, len_tol,
+        enzyme_dup, xi, dxidx2 + (max_overlap_vert * dim) * (num_elem_coords + i),
+        enzyme_dup, xi + max_overlap_vert, dxidx2 + (max_overlap_vert * dim) * (num_elem_coords + i) + max_overlap_vert,
+        enzyme_const, &num_poly_verts,
+        enzyme_const, &area,
+        enzyme_const, true );
+      // clang-format on
       x_dot[i] = 0.0;
     }
 
@@ -144,8 +172,7 @@ class EnzymePolyIntersectTest : public testing::Test {
       for ( int i{ 0 }; i < 16; ++i ) {
         xi[i] = 0.0;
       }
-      Intersection2DPolygon( x1, x1 + 4, 4, x2, x2 + 4, 4, pos_tol, len_tol, xi, xi + 8, num_poly_verts, area, true,
-                             type, edge1, edge2 );
+      Intersection2DPolygon( x1, x1 + 4, 4, x2, x2 + 4, 4, pos_tol, len_tol, xi, xi + 8, num_poly_verts, area, true );
       for ( int i{ 0 }; i < 16; ++i ) {
         dxidx1_fd[16 * j + i] = x_sgn1[4 * stencil_dir[j] + j] * ( xi[i] - xi_base[i] ) / delta_;
       }
@@ -155,8 +182,7 @@ class EnzymePolyIntersectTest : public testing::Test {
       for ( int i{ 0 }; i < 16; ++i ) {
         xi[i] = 0.0;
       }
-      Intersection2DPolygon( x1, x1 + 4, 4, x2, x2 + 4, 4, pos_tol, len_tol, xi, xi + 8, num_poly_verts, area, true,
-                             type, edge1, edge2 );
+      Intersection2DPolygon( x1, x1 + 4, 4, x2, x2 + 4, 4, pos_tol, len_tol, xi, xi + 8, num_poly_verts, area, true );
       for ( int i{ 0 }; i < 16; ++i ) {
         dxidx1_fd[16 * ( 4 + j ) + i] = y_sgn1[4 * stencil_dir[j] + j] * ( xi[i] - xi_base[i] ) / delta_;
       }
@@ -166,8 +192,7 @@ class EnzymePolyIntersectTest : public testing::Test {
       for ( int i{ 0 }; i < 16; ++i ) {
         xi[i] = 0.0;
       }
-      Intersection2DPolygon( x1, x1 + 4, 4, x2, x2 + 4, 4, pos_tol, len_tol, xi, xi + 8, num_poly_verts, area, true,
-                             type, edge1, edge2 );
+      Intersection2DPolygon( x1, x1 + 4, 4, x2, x2 + 4, 4, pos_tol, len_tol, xi, xi + 8, num_poly_verts, area, true );
       for ( int i{ 0 }; i < 16; ++i ) {
         dxidx2_fd[16 * j + i] = x_sgn2[4 * stencil_dir[j] + j] * ( xi[i] - xi_base[i] ) / delta_;
       }
@@ -177,8 +202,7 @@ class EnzymePolyIntersectTest : public testing::Test {
       for ( int i{ 0 }; i < 16; ++i ) {
         xi[i] = 0.0;
       }
-      Intersection2DPolygon( x1, x1 + 4, 4, x2, x2 + 4, 4, pos_tol, len_tol, xi, xi + 8, num_poly_verts, area, true,
-                             type, edge1, edge2 );
+      Intersection2DPolygon( x1, x1 + 4, 4, x2, x2 + 4, 4, pos_tol, len_tol, xi, xi + 8, num_poly_verts, area, true );
       for ( int i{ 0 }; i < 16; ++i ) {
         dxidx2_fd[16 * ( 4 + j ) + i] = y_sgn2[4 * stencil_dir[j] + j] * ( xi[i] - xi_base[i] ) / delta_;
       }
