@@ -446,28 +446,6 @@ void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& p
 }
 
 //------------------------------------------------------------------------------
-void LinIsoQuadShapeFunc( const RealT* xi, RealT* phi )
-{
-  phi[0] = 0.25 * ( 1.0 - xi[0] ) * ( 1.0 - xi[1] );
-  phi[1] = 0.25 * ( 1.0 + xi[0] ) * ( 1.0 - xi[1] );
-  phi[2] = 0.25 * ( 1.0 + xi[0] ) * ( 1.0 + xi[1] );
-  phi[3] = 0.25 * ( 1.0 - xi[0] ) * ( 1.0 + xi[1] );
-}
-
-//------------------------------------------------------------------------------
-void LinIsoQuadShapeFuncDeriv( const RealT* xi, RealT* dphi )
-{
-  dphi[0] = -0.25 * ( 1.0 - xi[1] );
-  dphi[1] = 0.25 * ( 1.0 - xi[1] );
-  dphi[2] = 0.25 * ( 1.0 + xi[1] );
-  dphi[3] = -0.25 * ( 1.0 + xi[1] );
-  dphi[4] = -0.25 * ( 1.0 - xi[0] );
-  dphi[5] = -0.25 * ( 1.0 + xi[0] );
-  dphi[6] = 0.25 * ( 1.0 + xi[0] );
-  dphi[7] = 0.25 * ( 1.0 - xi[0] );
-}
-
-//------------------------------------------------------------------------------
 void DetJQuad( const RealT xi, const RealT eta, const RealT* x, const int dim, RealT& detJ )
 {
   RealT J[4] = { 0., 0., 0., 0. };  // column major ordering

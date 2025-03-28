@@ -182,25 +182,6 @@ void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& p
 
 /*!
  *
- * \brief returns the shape functions for a four node isoparametric quadrilateral evaluated at (xi[0], xi[1])
- *
- * \param [in] xi array of length 2 holding parent coordinates
- * \param [in,out] phi shape function evaluation (array of length 4)
- */
-void LinIsoQuadShapeFunc( const RealT* xi, RealT* phi );
-
-/*!
- *
- * \brief returns the derivative of shape functions for a four node isoparametric quadrilateral evaluated at (xi[0],
- * xi[1])
- *
- * \param [in] xi array of length 2 holding parent coordinates
- * \param [in,out] dphi shape function derivative evaluation (array of length 8; [0-3] = xi, [4-7] = eta)
- */
-void LinIsoQuadShapeFuncDeriv( const RealT* xi, RealT* dphi );
-
-/*!
- *
  * \brief returns the determinant of the Jacobian for a four node
  *        quadrilateral
  *

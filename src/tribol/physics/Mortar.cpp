@@ -792,50 +792,6 @@ void Coords2DToPlane( const RealT* xp, const RealT* yp, const RealT* x0, const R
 }
 
 //------------------------------------------------------------------------------
-void QuadInvIso( const RealT* xt, const RealT* xq, const RealT* yq, RealT* xiq )
-{
-  constexpr int max_iter = 15;
-  // NOTE: this probably needs to be set based on precision and size of the elements
-  constexpr RealT conv = 1.0e-13;
-  int iter_ct = 0;
-  while ( true ) {
-    RealT phiq[4];
-    LinIsoQuadShapeFunc( xiq, phiq );
-    RealT xq_guess[2] = { 0.0, 0.0 };
-    for ( int i{ 0 }; i < 4; ++i ) {
-      xq_guess[0] += phiq[i] * xq[i];
-      xq_guess[1] += phiq[i] * yq[i];
-    }
-    RealT resid[2];
-    resid[0] = xq_guess[0] - xt[0];
-    resid[1] = xq_guess[1] - xt[1];
-    RealT max_resid = std::max( std::abs( resid[0] ), std::abs( resid[1] ) );
-    if ( max_resid < conv ) {
-      break;
-    }
-    ++iter_ct;
-    if ( iter_ct > max_iter ) {
-      std::cout << "Max iteration count reached.  Max resid = " << max_resid << std::endl;
-      break;
-    }
-    // update xiq
-    RealT dphiq[8];
-    LinIsoQuadShapeFuncDeriv( xiq, dphiq );
-    RealT dresid_dxiq[4] = { 0.0, 0.0, 0.0, 0.0 };
-    for ( int i{ 0 }; i < 4; ++i ) {
-      dresid_dxiq[0] += dphiq[i] * xq[i];
-      dresid_dxiq[1] += dphiq[i] * yq[i];
-      dresid_dxiq[2] += dphiq[4 + i] * xq[i];
-      dresid_dxiq[3] += dphiq[4 + i] * yq[i];
-    }
-    // explicit inverse
-    RealT detJ = dresid_dxiq[0] * dresid_dxiq[3] - dresid_dxiq[2] * dresid_dxiq[1];
-    xiq[0] -= ( dresid_dxiq[3] * resid[0] - dresid_dxiq[2] * resid[1] ) / detJ;
-    xiq[1] -= ( -dresid_dxiq[1] * resid[0] + dresid_dxiq[0] * resid[1] ) / detJ;
-  }
-}
-
-//------------------------------------------------------------------------------
 void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* g1, int size1,
                                const RealT* x2, RealT* f2, int size2 )
 {
@@ -1009,29 +965,18 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
                                tri_phi[0] * tri_0[1] + tri_phi[1] * tri_1[1] + tri_phi[2] * tri_2[1] };
 
       // 3. map sub-triangle coordinate to nonmortar and mortar coordinates
-      // NOTE: we ideally want to do this in 2d, but there are finite differencing errors when we do.  The commented out
-      // version below does it in 2d.
+      // NOTE: we ideally want to do this in 2d, but there are finite differencing errors when we do
       RealT tri_quad_pt_3d[3] = { 0.0, 0.0, 0.0 };
       Coords2DToPlane( tri_quad_pt, tri_quad_pt + 1, x0, e1, e2, tri_quad_pt_3d, 1 );
       RealT xi1[2] = { 0.0, 0.0 };
       InvIso( tri_quad_pt_3d, x1t, x1t + size1, x1t + 2 * size1, size1, xi1 );
       RealT xi2[2] = { 0.0, 0.0 };
       InvIso( tri_quad_pt_3d, x2t, x2t + size2, x2t + 2 * size2, size2, xi2 );
-      // 2D version begin...
-      // RealT xi1[2] = { 0.0, 0.0 };
-      // // NOTE: this limits routine to quads
-      // QuadInvIso( tri_quad_pt, x1t_2d, y1t_2d, xi1 );
-      // RealT xi2[2] = { 0.0, 0.0 };
-      // // NOTE: this limits routine to quads
-      // QuadInvIso( tri_quad_pt, x2t_2d, y2t_2d, xi2 );
-      // 2D version end...
 
       RealT quad_wt = base_weights[j] * area;
 
       // 4. Evaluate mortar matrix (nonmortar/nonmortar contribs)
-      // NOTE: local node numbering appears to be different using InvIso vs. QuadInvIso.  Since we are using InvIso, use
-      // the node numbering that appears to be consistent with that routine.  Simplified version with consistent node
-      // numbering with QuadInvIso is commented out below.
+      // NOTE: Nonstandard node numbering with InvIso and LinIsoQuadShapeFunc
       for ( int k{ 0 }; k < size1; ++k ) {
         RealT phiA;
         // NOTE: this limits this routine to quads
@@ -1056,27 +1001,6 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
           mortar_mat2[k * size2 + l] += phiA * phiB * quad_wt;
         }
       }
-
-      // Updated numbering version begin...
-      // RealT phi1[4];
-      // // NOTE: this limits this routine to quads
-      // LinIsoQuadShapeFunc( xi1, phi1 );
-      // for ( int k{ 0 }; k < size1; ++k ) {
-      //   for ( int l{ 0 }; l < size1; ++l ) {
-      //     mortar_mat1[k * size1 + l] += phi1[k] * phi1[l] * quad_wt;
-      //   }
-      // }
-
-      // // 5. Evaluate mortar matrix (nonmortar/mortar contribs)
-      // RealT phi2[4];
-      // // NOTE: this limits this routine to quads
-      // LinIsoQuadShapeFunc( xi2, phi2 );
-      // for ( int k{ 0 }; k < size1; ++k ) {
-      //   for ( int l{ 0 }; l < size2; ++l ) {
-      //     mortar_mat2[k * size2 + l] += phi1[k] * phi2[l] * quad_wt;
-      //   }
-      // }
-      // Updated numbering version end...
     }
   }
 
