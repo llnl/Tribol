@@ -10,6 +10,7 @@
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/geom/ContactPlane.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
+#include "tribol/geom/NodalNormal.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/integ/Integration.hpp"
 #include "tribol/integ/FE.hpp"
