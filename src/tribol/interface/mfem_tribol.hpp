@@ -262,12 +262,13 @@ void getMfemGap( IndexT cs_id, mfem::Vector& g );
 mfem::ParGridFunction& getMfemPressure( IndexT cs_id );
 
 /**
- * @brief Updates mesh parallel decomposition and related grid
- * functions/Jacobian when coordinates are updated
+ * @brief Updates mesh parallel decomposition and related grid functions/Jacobian when coordinates are updated
+ *
+ * @param n_ranks Number of ranks in the parallel decomposition; automatically determine when set to 0 (default)
  *
  * @pre Coupling schemes must be registered using registerMfemCouplingScheme()
  */
-void updateMfemParallelDecomposition();
+void updateMfemParallelDecomposition( int n_ranks = 0 );
 
 /**
  * @brief Create VisIt output of the parallel repartitioned RedecompMesh
