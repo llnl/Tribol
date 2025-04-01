@@ -23,7 +23,7 @@ namespace tribol {
  * @note This is a free function to allow for Enzyme support
  *
  * @param [in] x Nodal coordinates for the element (stored by nodes, i.e. [x0, x1, x2, y0, y1, y2, z0, z1, z2])
- * @param [in] xref Reference nodal coordinates for the element (i.e. at t = 0) (stored by nodes)
+ * @param [in] xref Reference nodal coordinates for the element (at t = 0) (stored by nodes)
  * @param [out] n Unit vectors giving the normal direction for each node (stored by nodes)
  * @param [in] num_nodes_per_elem Number of nodes in the element
  */
@@ -35,7 +35,7 @@ void ElementEdgeAvgNodalNormal( const RealT* x, const RealT* xref, RealT* n, int
  * @note Requires Tribol built with Enzyme support
  *
  * @param [in] x Nodal coordinates for the element (stored by nodes, i.e. [x0, x1, x2, y0, y1, y2, z0, z1, z2])
- * @param [in] xref Reference nodal coordinates for the element (i.e. at t = 0) (stored by nodes)
+ * @param [in] xref Reference nodal coordinates for the element (at t = 0) (stored by nodes)
  * @param [out] n Unit vectors giving the normal direction for each node (stored by nodes)
  * @param [out] dndx Derivative of the unit normal vectors for each node (size = num_nodes_per_elem^2 x spatial dim^2)
  * @param [in] num_nodes_per_elem Number of nodes in the element

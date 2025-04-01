@@ -5,7 +5,7 @@
 
 //-----------------------------------------------------------------------------
 //
-// file: tribol_enzyme_mortar_jacobian.cpp
+// file: tribol_enzyme_element_mortar.cpp
 //
 //-----------------------------------------------------------------------------
 
@@ -30,7 +30,7 @@ namespace tribol {
  * @brief Test fixture for the Enzyme-computed Jacobian terms of the mortar method, not including the nodal normal
  * contribution.
  */
-class EnzymeMortarJacobianTest : public testing::Test {
+class EnzymeElementMortarTest : public testing::Test {
  protected:
   double delta_{ 1.0e-7 };
   double approx_j_err_{ 0.01 };
@@ -608,7 +608,7 @@ class EnzymeMortarJacobianTest : public testing::Test {
   }
 };
 
-TEST_F( EnzymeMortarJacobianTest, ExactOverlapZeroGap )
+TEST_F( EnzymeElementMortarTest, ExactOverlapZeroGap )
 {
   // clang-format off
   // {x0, x1, x2, x3,
@@ -637,7 +637,7 @@ TEST_F( EnzymeMortarJacobianTest, ExactOverlapZeroGap )
   SimplifiedJacobianCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeMortarJacobianTest, SlightlySmallerNonmortarElementMinorInterpenetration )
+TEST_F( EnzymeElementMortarTest, SlightlySmallerNonmortarElementMinorInterpenetration )
 {
   // slightly smaller
   double dx = 4.0 * delta_;
@@ -662,7 +662,7 @@ TEST_F( EnzymeMortarJacobianTest, SlightlySmallerNonmortarElementMinorInterpenet
   SimplifiedJacobianCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeMortarJacobianTest, ShiftedXNonmortarElementMinorInterpenetration )
+TEST_F( EnzymeElementMortarTest, ShiftedXNonmortarElementMinorInterpenetration )
 {
   // slightly smaller and offset
   double offset = 0.3;
@@ -686,7 +686,7 @@ TEST_F( EnzymeMortarJacobianTest, ShiftedXNonmortarElementMinorInterpenetration 
   FDCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeMortarJacobianTest, ShiftedXYNonmortarElementMinorInterpenetration )
+TEST_F( EnzymeElementMortarTest, ShiftedXYNonmortarElementMinorInterpenetration )
 {
   // slightly smaller and offset
   double offset = 0.3;
@@ -711,7 +711,7 @@ TEST_F( EnzymeMortarJacobianTest, ShiftedXYNonmortarElementMinorInterpenetration
 }
 
 // NOTE: this configuration is designed to match a test in Serac
-TEST_F( EnzymeMortarJacobianTest, ShiftedXYNonmortarElementMinorInterpenetrationV2 )
+TEST_F( EnzymeElementMortarTest, ShiftedXYNonmortarElementMinorInterpenetrationV2 )
 {
   // slightly offset
   double dx = 10.0 * delta_;
@@ -734,7 +734,7 @@ TEST_F( EnzymeMortarJacobianTest, ShiftedXYNonmortarElementMinorInterpenetration
   FDCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeMortarJacobianTest, Rotated30DegNonmortarElementMinorInterpenetration )
+TEST_F( EnzymeElementMortarTest, Rotated30DegNonmortarElementMinorInterpenetration )
 {
   // clang-format off
   // rotate 30 degrees
@@ -770,7 +770,7 @@ TEST_F( EnzymeMortarJacobianTest, Rotated30DegNonmortarElementMinorInterpenetrat
   FDCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeMortarJacobianTest, NonaffineRotated45DegMortarElementMinorInterpenetration )
+TEST_F( EnzymeElementMortarTest, NonaffineRotated45DegMortarElementMinorInterpenetration )
 {
   // clang-format off
   // rotate 45 degrees
@@ -806,7 +806,7 @@ TEST_F( EnzymeMortarJacobianTest, NonaffineRotated45DegMortarElementMinorInterpe
   FDCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeMortarJacobianTest, NonaffineOutOfPlaneNonmortarElementMinorInterpenetration )
+TEST_F( EnzymeElementMortarTest, NonaffineOutOfPlaneNonmortarElementMinorInterpenetration )
 {
   // clang-format off
   // rotate 45 degrees
@@ -842,7 +842,7 @@ TEST_F( EnzymeMortarJacobianTest, NonaffineOutOfPlaneNonmortarElementMinorInterp
   FDCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeMortarJacobianTest, NonaffineWarpedNonmortarElementMinorInterpenetration )
+TEST_F( EnzymeElementMortarTest, NonaffineWarpedNonmortarElementMinorInterpenetration )
 {
   // clang-format off
   // rotate 45 degrees
@@ -878,7 +878,7 @@ TEST_F( EnzymeMortarJacobianTest, NonaffineWarpedNonmortarElementMinorInterpenet
   FDCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeMortarJacobianTest, NonaffineOutOfPlaneMortarElementMinorInterpenetration )
+TEST_F( EnzymeElementMortarTest, NonaffineOutOfPlaneMortarElementMinorInterpenetration )
 {
   // clang-format off
   // rotate 45 degrees
@@ -914,7 +914,7 @@ TEST_F( EnzymeMortarJacobianTest, NonaffineOutOfPlaneMortarElementMinorInterpene
   FDCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeMortarJacobianTest, NonaffineWarpedMortarElementMinorInterpenetration )
+TEST_F( EnzymeElementMortarTest, NonaffineWarpedMortarElementMinorInterpenetration )
 {
   // clang-format off
   // rotate 45 degrees
@@ -950,7 +950,7 @@ TEST_F( EnzymeMortarJacobianTest, NonaffineWarpedMortarElementMinorInterpenetrat
   FDCheck( x1, x2, n1, p1 );
 }
 
-TEST_F( EnzymeMortarJacobianTest, NoOverlap )
+TEST_F( EnzymeElementMortarTest, NoOverlap )
 {
   // clang-format off
   double x1[12] = { 0,                  0.25061248332819264, 0.25061248347850068, 0,

@@ -170,9 +170,9 @@ endif()
 if( TRIBOL_USE_ENZYME )
 
   set( combined_tests
-      tribol_enzyme_mortar_jacobian.cpp
+      tribol_enzyme_element_mortar.cpp
       tribol_enzyme_nodal_normal.cpp
-      tribol_enzyme_assembled_jacobian.cpp
+      tribol_enzyme_mortar_assembled.cpp
       tribol_enzyme_poly_intersect.cpp
       )
 

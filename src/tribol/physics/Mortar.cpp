@@ -732,6 +732,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
       blockJ( 2, 2 ) = DeviceArray2D<RealT>( n_multipliers, n_multipliers );
       blockJ( 2, 2 ).fill( 0.0 );
 
+      // This function also computes the residual contributions
       ComputeMortarJacobianEnzyme( x1, n1, p1, f1, blockJ( 0, 0 ).data(), blockJ( 0, 1 ).data(),
                                    blockJ_n( 0, 0 ).data(), blockJ( 0, 2 ).data(), g1, blockJ( 2, 0 ).data(),
                                    blockJ( 2, 1 ).data(), blockJ_n( 2, 0 ).data(), size1, x2, f2, blockJ( 1, 0 ).data(),
@@ -764,6 +765,39 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
   }
 
   return 0;
+}
+
+//------------------------------------------------------------------------------
+// NOTE: This version is here because calling PlaneTo2DCoords() in GeomUtilities.hpp doesn't compile with LLDEnzyme on
+// Release with clang 16.0.6.
+// TODO: Fix the issue with Enzyme and call the version in GeomUtilities.hpp
+void PlaneTo2DCoordsEnzyme( const RealT* x, const RealT* x0, const RealT* e1, const RealT* e2, RealT* xp, RealT* yp,
+                            int num_coords )
+{
+  for ( int i{ 0 }; i < num_coords; ++i ) {
+    xp[i] = 0.0;
+    yp[i] = 0.0;
+
+    for ( int d{ 0 }; d < 3; ++d ) {
+      RealT v_d = x[d * num_coords + i] - x0[d];
+      xp[i] += v_d * e1[d];
+      yp[i] += v_d * e2[d];
+    }
+  }
+}
+
+//------------------------------------------------------------------------------
+// NOTE: This version is here because calling Coords2DToPlane() in GeomUtilities.hpp doesn't compile with LLDEnzyme on
+// Release with clang 16.0.6.
+// TODO: Fix the issue with Enzyme and call the version in GeomUtilities.hpp
+void Coords2DToPlaneEnzyme( const RealT* xp, const RealT* yp, const RealT* x0, const RealT* e1, const RealT* e2,
+                            RealT* x, int num_coords )
+{
+  for ( int i{ 0 }; i < num_coords; ++i ) {
+    for ( int d{ 0 }; d < 3; ++d ) {
+      x[d * num_coords + i] = x0[d] + xp[i] * e1[d] + yp[i] * e2[d];
+    }
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -861,10 +895,10 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
   // clang-format on
   RealT x1t_2d[4];
   RealT y1t_2d[4];
-  PlaneTo2DCoords( x1t, x0, e1, e2, x1t_2d, y1t_2d, size1 );
+  PlaneTo2DCoordsEnzyme( x1t, x0, e1, e2, x1t_2d, y1t_2d, size1 );
   RealT x2t_2d[4];
   RealT y2t_2d[4];
-  PlaneTo2DCoords( x2t, x0, e1, e2, x2t_2d, y2t_2d, size2 );
+  PlaneTo2DCoordsEnzyme( x2t, x0, e1, e2, x2t_2d, y2t_2d, size2 );
   // coordinates need to be CCW for both faces. the call to ElemReverse() will reverse the projected 2d coordinates of
   // element 2, which are in clockwise direction
   RealT x2t_2d_rev[4];
@@ -943,7 +977,7 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       // 3. map sub-triangle coordinate to nonmortar and mortar coordinates
       // NOTE: we ideally want to do this in 2d, but there are finite differencing errors when we do
       RealT tri_quad_pt_3d[3] = { 0.0, 0.0, 0.0 };
-      Coords2DToPlane( tri_quad_pt, tri_quad_pt + 1, x0, e1, e2, tri_quad_pt_3d, 1 );
+      Coords2DToPlaneEnzyme( tri_quad_pt, tri_quad_pt + 1, x0, e1, e2, tri_quad_pt_3d, 1 );
       RealT xi1[2] = { 0.0, 0.0 };
       InvIso( tri_quad_pt_3d, x1t, x1t + size1, x1t + 2 * size1, size1, xi1 );
       RealT xi2[2] = { 0.0, 0.0 };

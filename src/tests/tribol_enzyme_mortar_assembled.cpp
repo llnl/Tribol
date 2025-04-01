@@ -5,7 +5,7 @@
 
 //-----------------------------------------------------------------------------
 //
-// file: tribol_enzyme_assembled_jacobian.cpp
+// file: tribol_enzyme_mortar_assembled.cpp
 //
 //-----------------------------------------------------------------------------
 
@@ -30,7 +30,7 @@ namespace tribol {
 /**
  * @brief Test fixture for the Enzyme-computed Jacobian terms including nodal normal contribution.
  */
-class EnzymeAssembledJacobianTest : public testing::Test {
+class EnzymeMortarAssembledTest : public testing::Test {
  protected:
   void SetUp() override {}
 
@@ -429,7 +429,7 @@ class EnzymeAssembledJacobianTest : public testing::Test {
   }
 };
 
-TEST_F( EnzymeAssembledJacobianTest, FiniteDiffCheckShifted2x2Meshes )
+TEST_F( EnzymeMortarAssembledTest, FiniteDiffCheckShifted2x2Meshes )
 {
   constexpr auto num_xel_mesh0 = 2;
   constexpr auto num_yel_mesh0 = 2;
@@ -465,7 +465,7 @@ TEST_F( EnzymeAssembledJacobianTest, FiniteDiffCheckShifted2x2Meshes )
                    num_xel_mesh1, num_yel_mesh1 );
 }
 
-TEST_F( EnzymeAssembledJacobianTest, FiniteDiffCheckShifted1x1Meshes )
+TEST_F( EnzymeMortarAssembledTest, FiniteDiffCheckShifted1x1Meshes )
 {
   constexpr auto num_xel_mesh0 = 1;
   constexpr auto num_yel_mesh0 = 1;
@@ -496,7 +496,7 @@ TEST_F( EnzymeAssembledJacobianTest, FiniteDiffCheckShifted1x1Meshes )
                    num_xel_mesh1, num_yel_mesh1 );
 }
 
-TEST_F( EnzymeAssembledJacobianTest, FiniteDiffCheckWarped1x1Meshes )
+TEST_F( EnzymeMortarAssembledTest, FiniteDiffCheckWarped1x1Meshes )
 {
   constexpr auto num_xel_mesh0 = 1;
   constexpr auto num_yel_mesh0 = 1;
@@ -528,7 +528,7 @@ TEST_F( EnzymeAssembledJacobianTest, FiniteDiffCheckWarped1x1Meshes )
                    num_xel_mesh1, num_yel_mesh1 );
 }
 
-TEST_F( EnzymeAssembledJacobianTest, FiniteDiffCheckShifted1x1MeshesV2 )
+TEST_F( EnzymeMortarAssembledTest, FiniteDiffCheckShifted1x1MeshesV2 )
 {
   constexpr auto num_xel_mesh0 = 1;
   constexpr auto num_yel_mesh0 = 1;
@@ -596,7 +596,7 @@ TEST_F( EnzymeAssembledJacobianTest, FiniteDiffCheckShifted1x1MeshesV2 )
                    num_xel_mesh1, num_yel_mesh1 );
 }
 
-TEST_F( EnzymeAssembledJacobianTest, FiniteDiffCheckAligned1x1Mesh )
+TEST_F( EnzymeMortarAssembledTest, FiniteDiffCheckAligned1x1Mesh )
 {
   constexpr auto num_xel_mesh0 = 1;
   constexpr auto num_yel_mesh0 = 1;

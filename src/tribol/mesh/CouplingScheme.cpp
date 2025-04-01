@@ -127,6 +127,11 @@ void CouplingSchemeErrors::printMethodErrors()
       SLIC_WARNING_ROOT( "User must call tribol::registerNodalResponse() for each mesh to use this ContactMethod." );
       break;
     }
+    case NULL_REFERENCE_COORDS: {
+      SLIC_WARNING_ROOT(
+          "User must call tribol::registerNodalReferenceCoords() for mesh 2 to use this ContactMethod." );
+      break;
+    }
     case NO_METHOD_ERROR: {
       break;
     }
@@ -593,6 +598,13 @@ bool CouplingScheme::isValidMethod()
       if ( this->m_mesh2->numberOfElements() > 0 && !this->m_mesh2->getNodalFields().m_is_nodal_response_set ) {
         this->m_couplingSchemeErrors.cs_method_error = NULL_NODAL_RESPONSE;
         return false;
+      }
+    }
+
+    if ( this->m_contactMethod == SINGLE_MORTAR && this->m_useEnzyme ) {
+      // this is only needed on the nonmortar mesh (def'd as mesh2 for Enzyme mortar method)
+      if ( this->m_mesh2->numberOfElements() > 0 && !this->m_mesh2->hasReferencePosition() ) {
+        this->m_couplingSchemeErrors.cs_method_error = NULL_REFERENCE_COORDS;
       }
     }
   }  // end if-check on non-null meshes
