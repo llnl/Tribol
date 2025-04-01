@@ -132,6 +132,18 @@ int main( int argc, char** argv )
     device.Print();
   }
 
+  tribol::ExecutionMode exec_mode = tribol::ExecutionMode::Sequential;
+#ifdef TRIBOL_USE_CUDA
+  if ( device.Allows( mfem::Backend::CUDA_MASK ) ) {
+    exec_mode = tribol::ExecutionMode::Cuda;
+  }
+#endif
+#ifdef TRIBOL_USE_HIP
+  if ( device.Allows( mfem::Backend::HIP_MASK ) ) {
+    exec_mode = tribol::ExecutionMode::Hip;
+  }
+#endif
+
   // fixed options
   // location of mesh file. TRIBOL_REPO_DIR is defined in tribol/config.hpp
   std::string mesh_file = TRIBOL_REPO_DIR "/data/two_hex_apart.mesh";
@@ -282,7 +294,7 @@ int main( int argc, char** argv )
   int mesh2_id = 1;
   tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, mesh, coords, contact_surf_1,
                                       contact_surf_2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                                      tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID );
+                                      tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID, exec_mode );
   // This API call adds a velocity field to the coupling scheme. This is used for computing the maximum common plane
   // timestep and, if activated, gap rate penalty.
   tribol::registerMfemVelocity( coupling_scheme_id, velocity );

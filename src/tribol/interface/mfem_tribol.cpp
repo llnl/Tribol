@@ -55,8 +55,9 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
 #endif
   }
   // create transfer operators from parent mesh to redecomp mesh
-  auto mfem_data = std::make_unique<MfemMeshData>( mesh_id_1, mesh_id_2, mesh, current_coords,
-                                                   std::move( b_attributes_1 ), std::move( b_attributes_2 ) );
+  auto mfem_data =
+      std::make_unique<MfemMeshData>( mesh_id_1, mesh_id_2, mesh, current_coords, std::move( b_attributes_1 ),
+                                      std::move( b_attributes_2 ), exec_mode, mem_space );
   // register empty meshes so the coupling scheme is valid
   registerMesh( mesh_id_1, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, mem_space );
   registerMesh( mesh_id_2, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, mem_space );
@@ -361,9 +362,11 @@ void updateMfemParallelDecomposition()
       auto coord_ptrs = mfem_data->GetRedecompCoordsPtrs();
 
       registerMesh( mesh_ids[0], mfem_data->GetMesh1NE(), mfem_data->GetNV(), mfem_data->GetMesh1Conn(),
-                    mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2], MemorySpace::Host );
+                    mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2],
+                    mfem_data->GetMemorySpace() );
       registerMesh( mesh_ids[1], mfem_data->GetMesh2NE(), mfem_data->GetNV(), mfem_data->GetMesh2Conn(),
-                    mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2], MemorySpace::Host );
+                    mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2],
+                    mfem_data->GetMemorySpace() );
 
       auto f_ptrs = mfem_data->GetRedecompResponsePtrs();
       registerNodalResponse( mesh_ids[0], f_ptrs[0], f_ptrs[1], f_ptrs[2] );
