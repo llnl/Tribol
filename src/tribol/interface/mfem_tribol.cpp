@@ -228,9 +228,10 @@ void registerMfemReferenceCoords( IndexT cs_id, const mfem::ParGridFunction& ref
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
-  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
-                      "Coupling scheme does not contain MFEM data. "
-                      "Create the coupling scheme using registerMfemCouplingScheme() to register a velocity." );
+  SLIC_ERROR_ROOT_IF(
+      !cs->hasMfemData(),
+      "Coupling scheme does not contain MFEM data. "
+      "Create the coupling scheme using registerMfemCouplingScheme() to register reference coordinates." );
   cs->getMfemMeshData()->SetParentReferenceCoords( reference_coords );
 }
 
