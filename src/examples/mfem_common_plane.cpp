@@ -282,9 +282,7 @@ int main( int argc, char** argv )
 
   // This block of code does initial setup of Tribol.
   timer.start();
-  // First, Tribol is initialized with the dimension of the space and the MPI communicator. These are stored globally.
-  tribol::initialize( mesh.SpaceDimension(), MPI_COMM_WORLD );
-  // Next, we create a Tribol coupling scheme between the contact surfaces on the MFEM mesh. To create the coupling
+  // First, we create a Tribol coupling scheme between the contact surfaces on the MFEM mesh. To create the coupling
   // scheme requires several steps: 1) building a boundary submesh, 2) building a LOR mesh (if required), 3)
   // re-decomposing the domain to move spatially close surface element pairs on to the same rank, and 4) creating a
   // Tribol mesh. Steps 1 and 2 are performed when this method is called. Steps 3 and 4 are accomplished via a call to
@@ -295,6 +293,7 @@ int main( int argc, char** argv )
   tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, mesh, coords, contact_surf_1,
                                       contact_surf_2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
                                       tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID, exec_mode );
+  tribol::setMPIComm( coupling_scheme_id, MPI_COMM_WORLD );
   // This API call adds a velocity field to the coupling scheme. This is used for computing the maximum common plane
   // timestep and, if activated, gap rate penalty.
   tribol::registerMfemVelocity( coupling_scheme_id, velocity );
