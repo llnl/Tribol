@@ -68,8 +68,6 @@ class MfemCommonPlaneTest
     tribol::RealT p_kine = ( lambda + 2.0 / 3.0 * mu ) / ( 1.0 / std::pow( 2.0, ref_levels ) );
 
     // fixed options
-    // location of mesh file. TRIBOL_REPO_DIR is defined in tribol/config.hpp
-    std::string mesh_file = TRIBOL_REPO_DIR "/data/two_hex_apart.mesh";
     // boundary element attributes of contact surface 1
     auto contact_surf_1 = std::set<int>( { 6 } );
     // boundary element attributes of contact surface 2
