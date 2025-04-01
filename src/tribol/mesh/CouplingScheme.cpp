@@ -129,7 +129,8 @@ void CouplingSchemeErrors::printMethodErrors()
     }
     case NULL_REFERENCE_COORDS: {
       SLIC_WARNING_ROOT(
-          "User must call tribol::registerNodalReferenceCoords() for mesh 2 to use this ContactMethod." );
+          "User must call tribol::registerNodalReferenceCoords() for one or both meshes per registered "
+          "ContactMethod." );
       break;
     }
     case NO_METHOD_ERROR: {
