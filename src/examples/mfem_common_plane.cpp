@@ -292,7 +292,7 @@ int main( int argc, char** argv )
   int mesh2_id = 1;
   tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, mesh, coords, contact_surf_1,
                                       contact_surf_2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                                      tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID, exec_mode );
+                                      tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_BVH, exec_mode );
   tribol::setMPIComm( coupling_scheme_id, MPI_COMM_WORLD );
   // This API call adds a velocity field to the coupling scheme. This is used for computing the maximum common plane
   // timestep and, if activated, gap rate penalty.

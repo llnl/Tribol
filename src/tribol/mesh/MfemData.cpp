@@ -373,7 +373,7 @@ void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale )
     // NOTE: this assumes 1 thickness value per element. This is NOT true, in general, for mfem::QuadratureFunction.
     forAllExec( exec_mode_, GetElemMap1().size(),
                 [tribol_t1_view, redecomp_t_view, elem_map1_view] TRIBOL_HOST_DEVICE( int i ) {
-                  tribol_t1_view[elem_map1_view[i]] = redecomp_t_view[i];
+                  tribol_t1_view[i] = redecomp_t_view[elem_map1_view[i]];
                 } );
     tribol_elem_thickness_2_ = std::make_unique<ArrayT<RealT>>(
         GetElemMap2().size(), GetElemMap2().empty() ? 1 : GetElemMap2().size(), allocator_id_ );
@@ -382,7 +382,7 @@ void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale )
     // NOTE: this assumes 1 thickness value per element. This is NOT true, in general, for mfem::QuadratureFunction.
     forAllExec( exec_mode_, GetElemMap2().size(),
                 [tribol_t2_view, redecomp_t_view, elem_map2_view] TRIBOL_HOST_DEVICE( int i ) {
-                  tribol_t2_view[elem_map2_view[i]] = redecomp_t_view[i];
+                  tribol_t2_view[i] = redecomp_t_view[elem_map2_view[i]];
                 } );
     // set material modulus on redecomp mesh
     redecomp_material_modulus_ =
@@ -399,7 +399,7 @@ void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale )
     // NOTE: this assumes 1 thickness value per element. This is NOT true, in general, for mfem::QuadratureFunction.
     forAllExec( exec_mode_, GetElemMap1().size(),
                 [tribol_m1_view, redecomp_m_view, elem_map1_view] TRIBOL_HOST_DEVICE( int i ) {
-                  tribol_m1_view[elem_map1_view[i]] = redecomp_m_view[i];
+                  tribol_m1_view[i] = redecomp_m_view[elem_map1_view[i]];
                 } );
     tribol_material_modulus_2_ = std::make_unique<ArrayT<RealT>>(
         GetElemMap2().size(), GetElemMap2().empty() ? 1 : GetElemMap2().size(), allocator_id_ );
@@ -407,7 +407,7 @@ void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale )
     // NOTE: this assumes 1 thickness value per element. This is NOT true, in general, for mfem::QuadratureFunction.
     forAllExec( exec_mode_, GetElemMap2().size(),
                 [tribol_m2_view, redecomp_m_view, elem_map2_view] TRIBOL_HOST_DEVICE( int i ) {
-                  tribol_m2_view[elem_map2_view[i]] = redecomp_m_view[i];
+                  tribol_m2_view[i] = redecomp_m_view[elem_map2_view[i]];
                 } );
   }
 }
