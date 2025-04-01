@@ -71,11 +71,11 @@ class MfemCommonPlaneTest
     // location of mesh file. TRIBOL_REPO_DIR is defined in tribol/config.hpp
     std::string mesh_file = TRIBOL_REPO_DIR "/data/two_hex_apart.mesh";
     // boundary element attributes of contact surface 1
-    auto contact_surf_1 = std::set<int>( { 4 } );
+    auto contact_surf_1 = std::set<int>( { 6 } );
     // boundary element attributes of contact surface 2
-    auto contact_surf_2 = std::set<int>( { 5 } );
+    auto contact_surf_2 = std::set<int>( { 7 } );
     // boundary element attributes of fixed surface (points on z = 0, all t)
-    auto fixed_attrs = std::set<int>( { 3 } );
+    auto fixed_attrs = std::set<int>( { 1 } );
     // element attribute corresponding to volume elements where an initial
     // velocity will be applied
     auto moving_attrs = std::set<int>( { 2 } );
@@ -98,43 +98,22 @@ class MfemCommonPlaneTest
     // read mesh
     // clang-format off
     mfem::ParMesh mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::Unify( {
+      shared::MeshBuilder::CubeMesh( 1, 1, 1 ),
       shared::MeshBuilder::CubeMesh( 1, 1, 1 )
-        .
-    } ) );
+        .translate( { 0.0, 0.0, 1.01 } )
+        .updateAttrib( 1, 2 )
+        .updateBdrAttrib( 1, 7 )
+    } ).refine( ref_levels ) );
     // clang-format on
-    std::unique_ptr<mfem::ParMesh> pmesh{ nullptr };
-    {
-      // read serial mesh
-      auto mesh = std::make_unique<mfem::Mesh>( mesh_file.c_str(), 1, 1 );
-
-      // refine serial mesh
-      if ( ref_levels > 0 ) {
-        for ( int i{ 0 }; i < ref_levels; ++i ) {
-          mesh->UniformRefinement();
-        }
-      }
-
-      // create parallel mesh from serial
-      pmesh = std::make_unique<mfem::ParMesh>( MPI_COMM_WORLD, *mesh );
-      mesh.reset( nullptr );
-
-      // further refinement of parallel mesh
-      {
-        int par_ref_levels = 0;
-        for ( int i{ 0 }; i < par_ref_levels; ++i ) {
-          pmesh->UniformRefinement();
-        }
-      }
-    }
 
     // grid function for higher-order nodes
-    auto fe_coll = mfem::H1_FECollection( order, pmesh->SpaceDimension() );
-    auto par_fe_space = mfem::ParFiniteElementSpace( pmesh.get(), &fe_coll, pmesh->SpaceDimension() );
+    auto fe_coll = mfem::H1_FECollection( order, mesh.SpaceDimension() );
+    auto par_fe_space = mfem::ParFiniteElementSpace( &mesh, &fe_coll, mesh.SpaceDimension() );
     auto coords = mfem::ParGridFunction( &par_fe_space );
     if ( order > 1 ) {
-      pmesh->SetNodalGridFunction( &coords, false );
+      mesh.SetNodalGridFunction( &coords, false );
     } else {
-      pmesh->GetNodes( coords );
+      mesh.GetNodes( coords );
     }
 
     mfem::ParGridFunction ref_coords{ coords };
@@ -158,14 +137,14 @@ class MfemCommonPlaneTest
       moving_attrs_array.Append( moving_attr );
       init_velocity_coeff_array.Append( &init_velocity_coeff );
     }
-    mfem::PWVectorCoefficient initial_v_coeff( pmesh->SpaceDimension(), moving_attrs_array, init_velocity_coeff_array );
+    mfem::PWVectorCoefficient initial_v_coeff( mesh.SpaceDimension(), moving_attrs_array, init_velocity_coeff_array );
     v.ProjectCoefficient( initial_v_coeff );
 
     // recover dirichlet bc tdof list
     mfem::Array<int> ess_vdof_list;
     {
       mfem::Array<int> ess_vdof_marker;
-      mfem::Array<int> ess_bdr( pmesh->bdr_attributes.Max() );
+      mfem::Array<int> ess_bdr( mesh.bdr_attributes.Max() );
       ess_bdr = 0;
       for ( auto fixed_attr : fixed_attrs ) {
         ess_bdr[fixed_attr - 1] = 1;
@@ -188,7 +167,7 @@ class MfemCommonPlaneTest
     int coupling_scheme_id = 0;
     int mesh1_id = 0;
     int mesh2_id = 1;
-    tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, *pmesh, coords, contact_surf_1,
+    tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, mesh, coords, contact_surf_1,
                                         contact_surf_2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
                                         tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY,
                                         tribol::BINNING_BVH, exec_mode );
@@ -196,7 +175,7 @@ class MfemCommonPlaneTest
     if ( std::get<1>( GetParam() ) == tribol::KINEMATIC_CONSTANT ) {
       tribol::setMfemKinematicConstantPenalty( coupling_scheme_id, p_kine, p_kine );
     } else {
-      mfem::Vector bulk_moduli_by_bdry_attrib( pmesh->bdr_attributes.Max() );
+      mfem::Vector bulk_moduli_by_bdry_attrib( mesh.bdr_attributes.Max() );
       bulk_moduli_by_bdry_attrib = lambda + 2.0 / 3.0 * mu;
       mfem::PWConstCoefficient mat_coeff( bulk_moduli_by_bdry_attrib );
       tribol::setMfemKinematicElementPenalty( coupling_scheme_id, mat_coeff );
@@ -218,7 +197,7 @@ class MfemCommonPlaneTest
       coords += displacement;
       if ( order == 1 ) {
         coords.HostRead();
-        pmesh->SetVertices( coords );
+        mesh.SetVertices( coords );
       }
 
       ++cycle;
