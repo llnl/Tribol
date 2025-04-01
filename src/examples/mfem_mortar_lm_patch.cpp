@@ -239,22 +239,22 @@ int main( int argc, char** argv )
 
   // This block of code does initial setup of Tribol.
   timer.start();
-  // First, Tribol is initialized with the spatial dimension and the MPI communicator. These are stored globally.
-  tribol::initialize( mesh.SpaceDimension(), MPI_COMM_WORLD );
   // Next, we create a Tribol coupling scheme between the contact surfaces on the MFEM mesh. To create the coupling
   // scheme requires several steps: 1) building a boundary submesh, 2) building a LOR mesh (if required), 3)
   // re-decomposing the domain to move spatially close surface element pairs on to the same rank, 4) creating Tribol
   // meshes of each surface, and 5) registering the meshes and coupling scheme with Tribol. These 5 steps are performed
   // by calling two methods: 1) registerMfemCouplingScheme() (steps 1 and 2) and 2) updateMfemParallelDecomposition()
   // (steps 3, 4, and 5). registerMfemCouplingScheme() is called here and updateMfemParallelDecomposition() is typically
-  // called before calling update().
+  // called before calling update(). Note, the mortar method only supports computation on host, so the ExecutionMode is
+  // set to Sequential.
   int coupling_scheme_id = 0;
   int mesh1_id = 0;
   int mesh2_id = 1;
   tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs,
                                       nonmortar_attrs, tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING,
                                       tribol::SINGLE_MORTAR, tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER,
-                                      tribol::BINNING_GRID );
+                                      tribol::BINNING_GRID, tribol::ExecutionMode::Sequential );
+  tribol::setMPIComm( coupling_scheme_id, MPI_COMM_WORLD );
   // The basic Lagrange multiplier options are set here. For this problem, we ask Tribol to compute a contact residual
   // and a Jacobian (though we only use the Jacobian).
   tribol::setLagrangeMultiplierOptions( coupling_scheme_id, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN );

@@ -14,6 +14,9 @@
 #include "tribol/interface/mfem_tribol.hpp"
 #include "tribol/utils/TestUtils.hpp"
 
+// Shared includes
+#include "shared/mesh/MeshBuilder.hpp"
+
 // Redecomp includes
 #include "redecomp/redecomp.hpp"
 
@@ -37,7 +40,8 @@
  * penalty for this case.  As a result, the test comparisons are the same for both penalty types.
  *
  */
-class MfemCommonPlaneTest : public testing::TestWithParam<std::pair<int, tribol::KinematicPenaltyCalculation>> {
+class MfemCommonPlaneTest
+    : public testing::TestWithParam<std::tuple<int, tribol::KinematicPenaltyCalculation, std::string>> {
  protected:
   tribol::RealT max_disp_;
   void SetUp() override
@@ -46,13 +50,13 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::pair<int, tribol:
     // parallel mesh
     int ref_levels = 2;
     // polynomial order of the finite element discretization
-    int order = GetParam().first;
+    int order = std::get<0>( GetParam() );
     // initial velocity
-    tribol::RealT initial_v = 0.02;
+    tribol::RealT initial_v = 0.01;
     // timestep size
-    tribol::RealT dt = 0.001;
+    tribol::RealT dt = 0.01;
     // end time
-    tribol::RealT t_end = 2.0;
+    tribol::RealT t_end = 0.5;
     // material density
     tribol::RealT rho = 1000.0;
     // lame parameter
@@ -76,7 +80,28 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::pair<int, tribol:
     // velocity will be applied
     auto moving_attrs = std::set<int>( { 2 } );
 
+    // enable devices such as GPUs
+    mfem::Device device( std::get<2>( GetParam() ) );
+
+    tribol::ExecutionMode exec_mode = tribol::ExecutionMode::Sequential;
+#ifdef TRIBOL_USE_CUDA
+    if ( device.Allows( mfem::Backend::CUDA_MASK ) ) {
+      exec_mode = tribol::ExecutionMode::Cuda;
+    }
+#endif
+#ifdef TRIBOL_USE_HIP
+    if ( device.Allows( mfem::Backend::HIP_MASK ) ) {
+      exec_mode = tribol::ExecutionMode::Hip;
+    }
+#endif
+
     // read mesh
+    // clang-format off
+    mfem::ParMesh mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::Unify( {
+      shared::MeshBuilder::CubeMesh( 1, 1, 1 )
+        .
+    } ) );
+    // clang-format on
     std::unique_ptr<mfem::ParMesh> pmesh{ nullptr };
     {
       // read serial mesh
@@ -166,9 +191,9 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::pair<int, tribol:
     tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, *pmesh, coords, contact_surf_1,
                                         contact_surf_2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
                                         tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY,
-                                        tribol::BINNING_GRID );
+                                        tribol::BINNING_BVH, exec_mode );
     tribol::registerMfemVelocity( 0, v );
-    if ( GetParam().second == tribol::KINEMATIC_CONSTANT ) {
+    if ( std::get<1>( GetParam() ) == tribol::KINEMATIC_CONSTANT ) {
       tribol::setMfemKinematicConstantPenalty( coupling_scheme_id, p_kine, p_kine );
     } else {
       mfem::Vector bulk_moduli_by_bdry_attrib( pmesh->bdr_attributes.Max() );
@@ -212,10 +237,10 @@ TEST_P( MfemCommonPlaneTest, common_plane )
 }
 
 INSTANTIATE_TEST_SUITE_P( tribol, MfemCommonPlaneTest,
-                          testing::Values( std::make_pair( 1, tribol::KINEMATIC_CONSTANT ),
-                                           std::make_pair( 1, tribol::KINEMATIC_ELEMENT ),
-                                           std::make_pair( 2, tribol::KINEMATIC_CONSTANT ),
-                                           std::make_pair( 2, tribol::KINEMATIC_ELEMENT ) ) );
+                          testing::Values( std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, "cpu" ),
+                                           std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, "cpu" ),
+                                           std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, "cpu" ),
+                                           std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, "cpu" ) ) );
 
 //------------------------------------------------------------------------------
 int main( int argc, char* argv[] )

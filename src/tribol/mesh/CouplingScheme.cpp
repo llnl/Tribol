@@ -1096,8 +1096,10 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
     computeTimeStep( dt );
   }
 
-  // write output
-  writeInterfaceOutput( m_output_directory, params.vis_type, cycle, t );
+  // write contact plane output if it is on host
+  if ( !axom::isDeviceAllocator( this->getAllocatorId() ) ) {
+    writeInterfaceOutput( m_output_directory, params.vis_type, cycle, t );
+  }
 
   if ( err != 0 ) {
     return 1;
