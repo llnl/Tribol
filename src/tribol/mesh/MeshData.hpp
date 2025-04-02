@@ -8,6 +8,7 @@
 
 #include <ostream>
 
+#include "tribol/common/Parameters.hpp"
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/Parameters.hpp"
@@ -189,12 +190,19 @@ class MeshData {
     }
 
     /**
-     * @brief Get the nodal position array views
+     * @brief Get the nodal position array views (used in calculations)
      *
      * @return array view of the nodal position arrays
      */
     TRIBOL_HOST_DEVICE const MultiViewArrayView<const RealT>& getPosition() const { return m_position; }
 
+    /**
+     * @brief Get the nodal current position array views
+     *
+     * @return array view of the nodal current position arrays
+     */
+
+    TRIBOL_HOST_DEVICE const MultiViewArrayView<const RealT>& getCurrentPosition() const { return m_cur_position; }
     /**
      * @brief Is the reference position vector populated?
      *
@@ -377,8 +385,11 @@ class MeshData {
     /// Umpire allocator ID of the memory space (0 if no Umpire)
     const int m_allocator_id;
 
-    /// Array of views of nodal position data
+    /// Array of views of nodal position data used in calculations
     const MultiViewArrayView<const RealT> m_position;
+
+    /// Array of views of nodal current position data
+    const MultiViewArrayView<const RealT> m_cur_position;
 
     /// Array of views of nodal reference position data
     const MultiViewArrayView<const RealT> m_ref_position;
@@ -658,10 +669,14 @@ class MeshData {
   MeshElemData m_element_data;   ///< method/enforcement specific element data
 
   // Nodal field data
-  MultiArrayView<const RealT> m_position;      ///< Coordinates of nodes in mesh
+
+  MeshConfigurationType m_mesh_config;   
+
+  MultiArrayView<const RealT> m_position;      ///< Specified mesh coordinates used for mesh calculations
+  MultiArrayView<const RealT> m_cur_position;  ///< Current configuration coordinates of nodes in mesh
   MultiArrayView<const RealT> m_ref_position;  ///< Reference coordinates of nodes in mesh
-  MultiArrayView<const RealT> m_disp;          ///< Nodal displacements
-  MultiArrayView<const RealT> m_vel;           ///< Nodal velocity
+  MultiArrayView<const RealT> m_disp;          ///< Curent nodal displacements
+  MultiArrayView<const RealT> m_vel;           ///< Current nodal velocity
   MultiArrayView<RealT> m_response;            ///< Nodal responses (forces)
 
   Array2D<RealT> m_node_n;  ///< Outward unit node normals

@@ -369,6 +369,8 @@ void enableEnzyme( IndexT cs_id, [[maybe_unused]] bool use_enzyme )
 void registerMesh( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity, int element_type,
                    const RealT* x, const RealT* y, const RealT* z, MemorySpace mem_space )
 {
+  // this routine should be called with current configuration coordinates
+  m_mesh_config = MeshConfigurationType::DEFAULT; // default computation using current config
   MeshManager::getInstance().addData(
       mesh_id, MeshData( mesh_id, num_elements, num_nodes, connectivity,
                          static_cast<InterfaceElementType>( element_type ), x, y, z, mem_space ) );

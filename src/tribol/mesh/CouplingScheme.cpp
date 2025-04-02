@@ -1144,6 +1144,9 @@ bool CouplingScheme::init()
     }
 #endif
 
+    // set the mesh configuration type used in all mesh based calculations
+    this->setMeshConfigurationType(); // TODO SRW implement
+
     // compute the face data
     // different element normals for enzyme + mortar (matching Puso and Laursen)
     if ( this->isEnzymeEnabled() && this->m_contactMethod == SINGLE_MORTAR ) {
@@ -1163,6 +1166,22 @@ bool CouplingScheme::init()
     return true;
   } else {
     return false;
+  }
+}
+
+//------------------------------------------------------------------------------
+void CouplingScheme::setMeshConfigurationType()
+{
+  switch ( this->m_contactCase ) {
+    case TIED_FULL: { // TODO does TIED_NORMAL also need reference config?
+      this->m_mesh1->mesh_config = MeshConfigurationType::REFERENCE;
+      this->m_mesh2->mesh_config = MeshConfigurationType::REFERNECE;
+      break;
+    }
+    case DEFAULT: {
+      this->m_mesh1->mesh_config = MeshConfigurationType::CURRENT;
+      this->m_mesh2->mesh_config = MeshConfigurationType::CURRENT;
+    }
   }
 }
 

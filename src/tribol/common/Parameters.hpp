@@ -41,6 +41,17 @@ enum LoggingLevel
 };
 
 /*!
+ * \brief Enumerates the mesh configuration used for mesh calculations 
+ */
+enum class MeshConfigurationType
+{
+   REFERENCE, ///! Use reference configuration coordinates for mesh calculations
+   CURRENT,   ///! Use current configuration coordinates for mesh calculations
+   DEFAULT = CURRENT,
+   NUM_MESH_CONFIGURATIONS = CURRENT
+}
+
+/*!
  * \brief Enumerates the interface element types
  */
 enum InterfaceElementType

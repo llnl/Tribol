@@ -194,7 +194,8 @@ MeshData::MeshData( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const
       m_mem_space( mem_space ),
       m_allocator_id( getResourceAllocatorID( mem_space ) ),
       m_is_valid( true ),
-      m_position( createNodalVector( x, y, z ) ),
+      m_cur_position( createNodalVector( x, y, z ) ),
+      m_position( createNodalVector( x, y, z ) ), // default set positions used for calculations to current coordinates
       m_connectivity( createConnectivity( num_elements, connectivity ) )
 {
   // mesh verification
@@ -223,6 +224,10 @@ MeshData::MeshData( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const
 //------------------------------------------------------------------------------
 void MeshData::setPosition( const RealT* x, const RealT* y, const RealT* z )
 {
+  // set current configuration coordinates
+  m_cur_position = createNodalVector( x, y, z );
+
+  // default set coordinates used for mesh calculations
   m_position = createNodalVector( x, y, z );
 }
 
@@ -610,7 +615,8 @@ MeshData::Viewer::Viewer( MeshData& mesh )
       m_num_nodes( mesh.m_num_nodes ),
       m_mem_space( mesh.m_mem_space ),
       m_allocator_id( mesh.m_allocator_id ),
-      m_position( mesh.m_position ),
+      //m_position( mesh.m_position ), // TODO SRW remove this?
+      m_cur_position( mesh.m_cur_position ),
       m_ref_position( mesh.m_ref_position ),
       m_disp( mesh.m_disp ),
       m_vel( mesh.m_vel ),
@@ -624,6 +630,15 @@ MeshData::Viewer::Viewer( MeshData& mesh )
       m_nodal_fields( mesh.m_nodal_fields ),
       m_element_data( mesh.m_element_data )
 {
+   // TODO SRW is this where we want to do this?
+
+   // set the position coordinates used for calculations.
+   // Note: the default is to set to current configuration coordinates
+   // so only check for reference configuration
+   if (mesh.m_mesh_config == MeshConfigurationType::REFERENCE)
+   {
+     m_position = mesh.m_ref_position;
+   }
 }
 
 //------------------------------------------------------------------------------

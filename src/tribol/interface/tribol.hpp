@@ -238,9 +238,9 @@ void enableEnzyme( IndexT cs_id, bool use_enzyme );
  * \param [in] num_nodes length of the data arrays being registered
  * \param [in] connectivity mesh connectivity array for the contact surface
  * \param [in] element_type the cell type of the contact surface elements
- * \param [in] x array of x-components of the mesh coordinates
- * \param [in] y array of y-components of the mesh coordinates
- * \param [in] z array of z-components of the mesh coordinates (3D only)
+ * \param [in] x array of x-components of the current configuration mesh coordinates
+ * \param [in] y array of y-components of the current configuration mesh coordinates
+ * \param [in] z array of z-components of the current configuration mesh coordinates (3D only)
  * \param [in] m_space Memory space of the connectivity and coordinate arrays
  *
  * \pre connectivity != nullptr
