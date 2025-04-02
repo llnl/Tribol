@@ -32,6 +32,9 @@
 #include "tribol/interface/mfem_tribol.hpp"
 #include "tribol/utils/TestUtils.hpp"
 
+// Shared includes
+#include "shared/mesh/MeshBuilder.hpp"
+
 // Redecomp includes
 #include "redecomp/redecomp.hpp"
 
@@ -67,6 +70,8 @@ int main( int argc, char** argv )
   int ref_levels = 2;
   // polynomial order of the finite element discretization
   int order = 1;
+  // initial separation between the two blocks
+  double initial_sep = 0.01;
   // initial velocity to apply in the negative z-direction to the top block
   double init_velocity = 0.02;
   // timestep size (fixed)
@@ -94,6 +99,7 @@ int main( int argc, char** argv )
   axom::CLI::App app{ "mfem_common_plane" };
   app.add_option( "-r,--refine", ref_levels, "Number of times to refine the mesh uniformly." )->capture_default_str();
   app.add_option( "-o,--order", order, "Finite element order (polynomial degree)." )->capture_default_str();
+  app.add_option( "-s,--initials", initial_sep, "Initial separation between the two blocks." )->capture_default_str();
   app.add_option( "-v,--initialv", init_velocity, "Initial velocity of the top block." )->capture_default_str();
   app.add_option( "-D,--dt", dt, "Timestep size (fixed)." )->capture_default_str();
   app.add_option( "-e,--endtime", t_end, "End time of the simulation." )->capture_default_str();
@@ -145,40 +151,30 @@ int main( int argc, char** argv )
 #endif
 
   // fixed options
-  // location of mesh file. TRIBOL_REPO_DIR is defined in tribol/config.hpp
-  std::string mesh_file = TRIBOL_REPO_DIR "/data/two_hex_apart.mesh";
   // boundary element attributes of contact surface 1, the z = 1 plane of the first block
-  auto contact_surf_1 = std::set<int>( { 4 } );
+  auto contact_surf_1 = std::set<int>( { 6 } );
   // boundary element attributes of contact surface 2, the z = 1.01 plane of the second block
-  auto contact_surf_2 = std::set<int>( { 5 } );
+  auto contact_surf_2 = std::set<int>( { 7 } );
   // boundary element attributes of fixed surface (z = 0 plane of the first block, all t)
-  auto fixed_attrs = std::set<int>( { 3 } );
+  auto fixed_attrs = std::set<int>( { 1 } );
   // element attribute corresponding to volume elements where an initial velocity will be applied in the z-direction
   auto moving_attrs = std::set<int>( { 2 } );
 
   // create an axom timer to give wall times for each step
   axom::utilities::Timer timer{ false };
 
-  // This block of code will read the mesh data given in two_hex_apart.mesh, create an mfem::Mesh, refine the mesh, then
-  // create an mfem::ParMesh. Optionally, the mfem::ParMesh can be refined further on each rank by setting
-  // par_ref_levels >= 1, though this is disabled below.
+  // This block of code will create two mfem::Meshes of cubes, unify them into one mfem::Mesh, refine the mesh, then
+  // create an mfem::ParMesh.
   timer.start();
-  // read serial mesh
-  mfem::Mesh serial_mesh( mesh_file );
-  // refine serial mesh
-  for ( int i{ 0 }; i < ref_levels; ++i ) {
-    serial_mesh.UniformRefinement();
-  }
-  mfem::ParMesh mesh( MPI_COMM_WORLD, serial_mesh );
-  serial_mesh.Clear();
-  // further refinement of parallel mesh
-  {
-    // set this to >= 1 to refine the mesh on each rank further
-    int par_ref_levels = 0;
-    for ( int i{ 0 }; i < par_ref_levels; ++i ) {
-      mesh.UniformRefinement();
-    }
-  }
+  // clang-format off
+  mfem::ParMesh mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::Unify( {
+    shared::MeshBuilder::CubeMesh( 1, 1, 1 ),
+    shared::MeshBuilder::CubeMesh( 1, 1, 1 )
+      .translate( { 0.0, 0.0, 1.0 + initial_sep } )
+      .updateAttrib( 1, 2 )
+      .updateBdrAttrib( 1, 7 )
+  } ).refine( ref_levels ) );
+  // clang-format on
   timer.stop();
   SLIC_INFO_ROOT( axom::fmt::format( "Time to create parallel mesh: {0:f}ms", timer.elapsedTimeInMilliSec() ) );
 
