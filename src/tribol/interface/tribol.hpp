@@ -205,6 +205,14 @@ void setLoggingLevel( IndexT cs_id, LoggingLevel log_level );
 void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
 
 /*!
+ * @brief Optionally set the gap separation ratio; a ratio for determining allowable separation in geometric filtering
+ *
+ * @param cs_id coupling scheme id
+ * @param gap_separation_ratio gap separation ratio
+ */
+void setGapSeparationRatio( IndexT cs_id, RealT gap_separation_ratio );
+
+/*!
  * \brief Enable the contact timestep vote
  *
  * \param [in] cs_id coupling scheme id

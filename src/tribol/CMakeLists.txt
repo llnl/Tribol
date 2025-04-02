@@ -16,6 +16,8 @@ set(tribol_headers
     common/ExecModel.hpp
     common/LoopExec.hpp
     common/Parameters.hpp
+    common/Containers.hpp
+    common/Enzyme.hpp
 
     interface/mfem_tribol.hpp
     interface/simple_tribol.hpp

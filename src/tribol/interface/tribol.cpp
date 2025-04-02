@@ -336,6 +336,19 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale )
 }  // end setBinningProximityScale()
 
 //------------------------------------------------------------------------------
+void setGapSeparationRatio( IndexT cs_id, RealT gap_separation_ratio )
+{
+  // get access to coupling scheme
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setGapSeparationRatio(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  cs->getParameters().gap_separation_ratio = gap_separation_ratio;
+
+}  // end setGapSeparationRatio()
+
+//------------------------------------------------------------------------------
 void enableTimestepVote( IndexT cs_id, const bool enable )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
