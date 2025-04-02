@@ -18,7 +18,7 @@ git clone --recursive git@github.com:LLNL/Tribol.git
 Development tools can optionally be installed through the Spack package manager. Development tools are typically not
 needed when using Tribol. The command to install development tools is
 ```
-python3 scripts/uberenv/uberenv.py --project-json=scripts/spack/devtools.json --spack-env-file=scripts/spack/configs/<platform>/spack.yaml --prefix=../tribol_devtools
+python3 scripts/uberenv/uberenv.py --project-json=scripts/spack/devtools.json --spack-env-file=scripts/spack/configs/<platform>/spack_devtools.yaml --prefix=../tribol_devtools
 ```
 where `<platform>` is one of `blueos_3_ppc64le_ib_p9`, `linux_ubuntu_24`, `toss_4_x86_64_ib`, or
 `toss_4_x86_64_ib_cray`. Please verify `scripts/spack/configs/<platform>/spack.yaml` matches your system configuration.

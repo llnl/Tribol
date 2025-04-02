@@ -1,0 +1,178 @@
+# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# other Tribol Project Developers. See the top-level LICENSE file for details.
+#
+# SPDX-License-Identifier: (MIT)
+
+spack:
+  compilers::
+  - compiler:
+      spec: gcc@14.2.1
+      paths:
+        cc: /usr/bin/gcc
+        cxx: /usr/bin/g++
+        f77: /usr/bin/gfortran
+        fc: /usr/bin/gfortran
+      flags: 
+        cflags: -pthread
+        cxxflags: -pthread
+      operating_system: archlinux
+      target: x86_64
+      modules: []
+      environment: {}
+      extra_rpaths: []
+  - compiler:
+      spec: clang@19.1.7
+      paths:
+        cc: /usr/bin/clang
+        cxx: /usr/bin/clang++
+        f77: /usr/bin/gfortran
+        fc: /usr/bin/gfortran
+      flags: 
+        cflags: -pthread
+        cxxflags: -pthread
+      operating_system: archlinux
+      target: x86_64
+      modules: []
+      environment: {}
+      extra_rpaths: []
+
+  # Regular TPLs do not need views
+  view: false
+
+  packages:
+    all:
+      target: [ivybridge]
+      compiler: [gcc]
+      providers:
+        mpi: [mpich]
+        blas: [openblas]
+        lapack: [openblas]
+        gl: [opengl]
+        glu: [openglu]
+
+    # Lock down which MPI we are using
+    mpi:
+      buildable: false
+    mpich:
+      externals:
+      - spec: mpich@4.0%gcc
+        prefix: /usr
+
+    # Lock down versions of packages we depend on
+    cuda:
+      buildable: false
+      externals:
+      - spec: cuda@12.2.91
+        prefix: /usr/local/cuda
+    opengl:
+      buildable: false
+      externals:
+      - spec: opengl@1.7.0
+        prefix: /usr
+    openglu:
+      buildable: false
+      externals:
+      - spec: openglu@1.3.1
+        prefix: /usr
+    bzip2:
+      buildable: false
+      externals:
+      - spec: bzip2@1.0.8
+        prefix: /
+    gettext:
+      buildable: false
+      externals:
+      - spec: gettext@0.19.8.1
+        prefix: /usr
+    perl:
+      buildable: false
+      externals:
+      - spec: perl@5.30.0
+        prefix: /usr
+    tar:
+      buildable: false
+      externals:
+      - spec: tar@1.30
+        prefix: /
+    libx11:
+      buildable: false
+      externals:
+      - spec: libx11@6.3.0
+        prefix: /usr
+    autoconf:
+      buildable: false
+      externals:
+      - spec: autoconf@2.69
+        prefix: /usr
+    openssl:
+      externals:
+      - spec: openssl@1.1.1
+        prefix: /usr/lib/x86_64-linux-gnu/
+    openblas:
+      buildable: false
+      externals:
+      - spec: openblas@0.3.8
+        prefix: /usr/lib/x86_64-linux-gnu/
+    pkg-config:
+      buildable: false
+      externals:
+      - spec: pkg-config@0.29.2
+        prefix: /usr
+    unzip:
+      buildable: false
+      externals:
+      - spec: unzip@6.0
+        prefix: /usr
+    zlib:
+      buildable: false
+      externals:
+      - spec: zlib@1.2.11
+        prefix: /usr
+    m4:
+      buildable: false
+      externals:
+      - spec: m4@1.4.16
+        prefix: /usr
+
+    # Lock in versions of Devtools
+    cmake:
+      buildable: false
+      externals:
+      - spec: cmake@3.24.1
+        prefix: /usr
+    doxygen:
+      version: [1.8.17]
+      buildable: false
+      externals:
+      - spec: doxygen@1.8.17
+        prefix: /usr
+    llvm:
+      version: [10.0.0]
+      buildable: false
+      externals:
+      - spec: llvm@10.0.0+clang
+        prefix: /usr
+    python:
+      version: [3.8.5]
+      buildable: false
+      externals:
+      - spec: python@3.8.5
+        prefix: /usr
+    py-sphinx:
+      version: [3.2.1]
+      buildable: false
+      externals:
+      - spec: py-sphinx@3.2.1
+        prefix: /usr
+
+    # Globally lock version of third party libraries that work on this platform
+    axom:
+      version: ["@0.9.0.2~shared~examples~fortran~lua~tools"]
+    camp:
+      version: ["@2024.07.0"]
+    conduit:
+      variants: ~shared~test~examples~utilities
+    raja:
+      version: ["@2024.07.0~shared~examples~exercises"]
+    umpire:
+      version: ["@2024.07.0~shared~examples"]

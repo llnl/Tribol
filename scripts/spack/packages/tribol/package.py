@@ -71,7 +71,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     depends_on("mpi")
 
     # Other libraries
-    depends_on("mfem@4.6:+lapack")
+    depends_on("mfem@4.6:+debug+lapack")
     depends_on("axom@0.9:")
 
     depends_on("raja@2024.02.0:", when="+raja")
