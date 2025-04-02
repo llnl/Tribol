@@ -82,6 +82,11 @@ void CouplingSchemeErrors::printCaseErrors()
                          << "AUTO contact requires element thickness registration." );
       break;
     }
+    case INVALID_MESH_CONFIGURATION: {
+      SLIC_WARNING_ROOT( "The specified ContactCase requires registering nodal "
+                         << "reference positions and/or the mesh configurations have "
+                         << "been improperly set." );
+    }
     case NO_CASE_ERROR: {
       break;
     }
@@ -517,10 +522,14 @@ bool CouplingScheme::isValidCase()
         break;
       }
       case TIED_FULL: {
-        // uncomment when there is an implementation
-        // this->m_parameters.auto_contact_check = false;
-        this->m_couplingSchemeErrors.cs_case_error = NO_CASE_IMPLEMENTATION;
-        isValid = false;
+        this->m_parameters.auto_contact_check = false;
+        if ( !this->m_mesh1->hasReferencePosition() ||
+             !this->m_mesh2->hasReferencePosition() ||
+             this->m_mesh1->getMeshConfigurationType() != this->m_mesh_config ||
+             this->m_mesh2->getMeshConfigurationType() != this->m_mesh_config) {
+          this->m_couplingSchemeErrors.cs_case_error = INVALID_MESH_CONFIGURATION;
+          isValid = false;
+        }
         break;
       }
       default:
@@ -1129,6 +1138,10 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 //------------------------------------------------------------------------------
 bool CouplingScheme::init()
 {
+
+  // set the mesh configuration type used in all mesh based calculations
+  this->setMeshConfigurationType();
+
   // check for valid coupling scheme only for non-null-meshes
   this->m_isValid = this->isValidCouplingScheme();
 
@@ -1144,10 +1157,7 @@ bool CouplingScheme::init()
     }
 #endif
 
-    // set the mesh configuration type used in all mesh based calculations
-    this->setMeshConfigurationType(); // TODO SRW implement
-
-    // compute the face data
+    // compute the face data using the set mesh configuration
     // different element normals for enzyme + mortar (matching Puso and Laursen)
     if ( this->isEnzymeEnabled() && this->m_contactMethod == SINGLE_MORTAR ) {
       this->m_mesh1->computeFaceData( this->m_exec_mode, QuadCentroidNormal() );
@@ -1174,15 +1184,19 @@ void CouplingScheme::setMeshConfigurationType()
 {
   switch ( this->m_contactCase ) {
     case TIED_FULL: { // TODO does TIED_NORMAL also need reference config?
-      this->m_mesh1->mesh_config = MeshConfigurationType::REFERENCE;
-      this->m_mesh2->mesh_config = MeshConfigurationType::REFERNECE;
+      this->m_mesh_config = MeshConfigurationType::REFERENCE;
       break;
     }
     case DEFAULT: {
-      this->m_mesh1->mesh_config = MeshConfigurationType::CURRENT;
-      this->m_mesh2->mesh_config = MeshConfigurationType::CURRENT;
+      this->m_mesh_config = MeshConfigurationType::CURRENT;
+      break;
     }
   }
+
+  // set the coordinate configuration type on the mesh, which also sets
+  // the position array accordingly
+  this->m_mesh1->setMeshConfiguration( this->m_mesh_config );
+  this->m_mesh2->setMeshConfiguration( this->m_mesh_config );
 }
 
 //------------------------------------------------------------------------------

@@ -195,7 +195,6 @@ MeshData::MeshData( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const
       m_allocator_id( getResourceAllocatorID( mem_space ) ),
       m_is_valid( true ),
       m_cur_position( createNodalVector( x, y, z ) ),
-      m_position( createNodalVector( x, y, z ) ), // default set positions used for calculations to current coordinates
       m_connectivity( createConnectivity( num_elements, connectivity ) )
 {
   // mesh verification
@@ -226,9 +225,6 @@ void MeshData::setPosition( const RealT* x, const RealT* y, const RealT* z )
 {
   // set current configuration coordinates
   m_cur_position = createNodalVector( x, y, z );
-
-  // default set coordinates used for mesh calculations
-  m_position = createNodalVector( x, y, z );
 }
 
 //------------------------------------------------------------------------------
@@ -251,6 +247,28 @@ void MeshData::setVelocity( const RealT* vx, const RealT* vy, const RealT* vz )
 
 //------------------------------------------------------------------------------
 void MeshData::setResponse( RealT* rx, RealT* ry, RealT* rz ) { m_response = createNodalVector( rx, ry, rz ); }
+
+//------------------------------------------------------------------------------
+void MeshData::setMeshConfiguration( MeshConfigurationType mesh_type )
+{
+   m_mesh_config = mesh_type;
+   switch( m_mesh_config ) {
+     case REFERENCE: {
+       if ( hasReferencePosition() ) {
+         // TODO SRW verify that we can set these MultiArrayViews using
+         // an already existing MultiArrayView. This appears to be done 
+         // in createNodalVector()
+         m_position = MultiArrayView<T>( m_ref_position, m_allocator_id );
+       }
+       break;
+     }
+     case CURRENT: {
+       m_position = MultiArrayView<T>( m_cur_position, m_allocator_id );
+       break;
+     }
+     default: break;
+   }
+}
 
 //------------------------------------------------------------------------------
 int MeshData::getDimFromElementType() const
@@ -615,7 +633,7 @@ MeshData::Viewer::Viewer( MeshData& mesh )
       m_num_nodes( mesh.m_num_nodes ),
       m_mem_space( mesh.m_mem_space ),
       m_allocator_id( mesh.m_allocator_id ),
-      //m_position( mesh.m_position ), // TODO SRW remove this?
+      m_position( mesh.m_position ),
       m_cur_position( mesh.m_cur_position ),
       m_ref_position( mesh.m_ref_position ),
       m_disp( mesh.m_disp ),
@@ -630,15 +648,6 @@ MeshData::Viewer::Viewer( MeshData& mesh )
       m_nodal_fields( mesh.m_nodal_fields ),
       m_element_data( mesh.m_element_data )
 {
-   // TODO SRW is this where we want to do this?
-
-   // set the position coordinates used for calculations.
-   // Note: the default is to set to current configuration coordinates
-   // so only check for reference configuration
-   if (mesh.m_mesh_config == MeshConfigurationType::REFERENCE)
-   {
-     m_position = mesh.m_ref_position;
-   }
 }
 
 //------------------------------------------------------------------------------

@@ -616,6 +616,18 @@ class MeshData {
   void setResponse( RealT* rx, RealT* ry, RealT* rz );
 
   /**
+   * @brief Set the mesh configuration type and pointers used in mesh calculations
+   *
+   */
+  void setMeshConfiguration( MeshConfigurationType mesh_type );
+
+  /**
+   * @brief Get the mesh configuration type
+   *
+   */
+   MeshConfigurationType getMeshConfigurationType() { return m_mesh_config; }
+
+  /**
    * @brief Construct a non-owned, shallow copy of the MeshData
    *
    * @return MeshData::Viewer type
@@ -669,7 +681,6 @@ class MeshData {
   MeshElemData m_element_data;   ///< method/enforcement specific element data
 
   // Nodal field data
-
   MeshConfigurationType m_mesh_config;   
 
   MultiArrayView<const RealT> m_position;      ///< Specified mesh coordinates used for mesh calculations

@@ -487,6 +487,18 @@ class CouplingScheme {
   bool setMeshPointers();
 
   /**
+   * @brief Sets the mesh configuration type to be used in the calculations based on the contact case
+   *
+   */
+   void setMeshConfigurationType();
+
+  /**
+   * @brief Gets the mesh configuration type to be used in the calculations based on the contact case
+   *
+   */
+   MeshConfigurationType getMeshConfigurationType() { return m_mesh_config; }
+
+  /**
    * @brief Returns true if a valid coupling scheme, otherwise false
    *
    * @return bool indicating if coupling scheme is valid
@@ -868,6 +880,8 @@ class CouplingScheme {
   bool m_fixedBinning;  ///< True if using fixed binning for all cycles
   bool m_isBinned;      ///< True if binning has occured
   bool m_isTied;        ///< True if surfaces have been "tied" (Tied contact only)
+
+  MeshConfigurationType m_mesh_config ///< Reference of current configuration coords (default current)
 
   bool m_useEnzyme = false;                    ///< Use Enzyme for Jacobian calculations
   std::unique_ptr<MethodData> m_dfdnJacobian;  ///< Store derivative of force w.r.t. normal on element pairs
