@@ -7,6 +7,7 @@
 
 // Tribol includes
 #include "tribol/common/ExecModel.hpp"
+#include "tribol/geom/ElementNormal.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/utils/ContactPlaneOutput.hpp"
@@ -124,6 +125,12 @@ void CouplingSchemeErrors::printMethodErrors()
     }
     case NULL_NODAL_RESPONSE: {
       SLIC_WARNING_ROOT( "User must call tribol::registerNodalResponse() for each mesh to use this ContactMethod." );
+      break;
+    }
+    case NULL_REFERENCE_COORDS: {
+      SLIC_WARNING_ROOT(
+          "User must call tribol::registerNodalReferenceCoords() for one or both meshes per registered "
+          "ContactMethod." );
       break;
     }
     case NO_METHOD_ERROR: {
@@ -592,6 +599,13 @@ bool CouplingScheme::isValidMethod()
       if ( this->m_mesh2->numberOfElements() > 0 && !this->m_mesh2->getNodalFields().m_is_nodal_response_set ) {
         this->m_couplingSchemeErrors.cs_method_error = NULL_NODAL_RESPONSE;
         return false;
+      }
+    }
+
+    if ( this->m_contactMethod == SINGLE_MORTAR && this->m_useEnzyme ) {
+      // this is only needed on the nonmortar mesh (def'd as mesh2 for Enzyme mortar method)
+      if ( this->m_mesh2->numberOfElements() > 0 && !this->m_mesh2->hasReferencePosition() ) {
+        this->m_couplingSchemeErrors.cs_method_error = NULL_REFERENCE_COORDS;
       }
     }
   }  // end if-check on non-null meshes
@@ -1131,9 +1145,17 @@ bool CouplingScheme::init()
 #endif
 
     // compute the face data
-    this->m_mesh1->computeFaceData( this->m_exec_mode );
-    if ( this->m_mesh_id2 != this->m_mesh_id1 ) {
-      this->m_mesh2->computeFaceData( this->m_exec_mode );
+    // different element normals for enzyme + mortar (matching Puso and Laursen)
+    if ( this->isEnzymeEnabled() && this->m_contactMethod == SINGLE_MORTAR ) {
+      this->m_mesh1->computeFaceData( this->m_exec_mode, QuadCentroidNormal() );
+      if ( this->m_mesh_id2 != this->m_mesh_id1 ) {
+        this->m_mesh2->computeFaceData( this->m_exec_mode, QuadCentroidNormal() );
+      }
+    } else {
+      this->m_mesh1->computeFaceData( this->m_exec_mode, PalletAvgNormal() );
+      if ( this->m_mesh_id2 != this->m_mesh_id1 ) {
+        this->m_mesh2->computeFaceData( this->m_exec_mode, PalletAvgNormal() );
+      }
     }
 
     this->allocateMethodData();
@@ -1178,30 +1200,23 @@ void CouplingScheme::setSlicLoggingLevel()
 void CouplingScheme::allocateMethodData()
 {
   auto& mesh1 = MeshManager::getInstance().getData( m_mesh_id1 );
-  auto& mesh2 = MeshManager::getInstance().getData( m_mesh_id2 );
-  // check for valid coupling schemes for those with non-null meshes.
-  // Note: keep if-block for non-null meshes here. A valid coupling scheme
-  // may have null meshes, but we don't want to allocate unnecessary memory here.
-  if ( mesh1.numberOfElements() > 0 && mesh2.numberOfElements() > 0 ) {
-    this->m_numTotalNodes = mesh1.numberOfNodes();
+  this->m_numTotalNodes = mesh1.numberOfNodes();
 
-    // dynamically allocate method data object for mortar method
-    switch ( this->m_contactMethod ) {
-      case ALIGNED_MORTAR:
-      case MORTAR_WEIGHTS:
-      case SINGLE_MORTAR: {
-        // dynamically allocate method data object
-        this->m_methodData = new MortarData;
-        static_cast<MortarData*>( m_methodData )->m_numTotalNodes = this->m_numTotalNodes;
-        break;
-      }  // end case SINGLE_MORTAR
-      default: {
-        this->m_methodData = nullptr;
-        break;
-      }
-    }  // end if on non-null meshes
-
-  }  // end if on non-null-meshes
+  // dynamically allocate method data object for mortar method
+  switch ( this->m_contactMethod ) {
+    case ALIGNED_MORTAR:
+    case MORTAR_WEIGHTS:
+    case SINGLE_MORTAR: {
+      // dynamically allocate method data object
+      this->m_methodData = new MortarData;
+      static_cast<MortarData*>( m_methodData )->m_numTotalNodes = this->m_numTotalNodes;
+      break;
+    }  // end case SINGLE_MORTAR
+    default: {
+      this->m_methodData = nullptr;
+      break;
+    }
+  }  // end if on non-null meshes
 }  // end CouplingScheme::allocateMethodData()
 
 //------------------------------------------------------------------------------
@@ -1493,10 +1508,9 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 
                   // Keep debug print statements. This routine is still in the testing phase
                   // std::cout << "dt1_check1, delta1 and v1_dot_n1: " << dt1_check1 << ", " << max_delta1 << ", " <<
-                  // v1_dot_n1
-                  // << std::endl; std::cout << "dt2_check1, delta2 and v2_dot_n2: " << dt2_check1 << ", " << max_delta2
-                  // << ", "
-                  // << v2_dot_n2 << std::endl; std::cout << "dt1 and dt2: " << dt1 << ", " << dt2 << std::endl;
+                  // v1_dot_n1 << std::endl; std::cout << "dt2_check1, delta2 and v2_dot_n2: " << dt2_check1 << ", " <<
+                  // max_delta2 << ", " << v2_dot_n2 << std::endl; std::cout << "dt1 and dt2: " << dt1 << ", " << dt2 <<
+                  // std::endl;
 
                   // update dt_temp1 only for positive dt1 and/or dt2
                   if ( dt1 > 0. ) {
@@ -1740,6 +1754,23 @@ void CouplingScheme::printPairReportingData()
                      << this->m_pairReportingData.numBadOverlaps << " equaling "
                      << this->m_pairReportingData.numBadOverlaps * 100. / getInterfacePairs().size()
                      << "% of total number of binned interface pairs." );
+}
+
+//------------------------------------------------------------------------------
+void CouplingScheme::enableEnzyme( [[maybe_unused]] bool useEnzyme )
+{
+#ifdef TRIBOL_USE_ENZYME
+  this->m_useEnzyme = useEnzyme;
+#else
+  SLIC_WARNING( "CouplingScheme::enableEnzyme(): Tribol is not built with Enzyme. Continuing without Enzyme support." );
+#endif
+}
+
+//------------------------------------------------------------------------------
+void CouplingScheme::createNodalNormalJacobianData()
+{
+  m_dfdnJacobian = std::make_unique<MethodData>();
+  m_dndxJacobian = std::make_unique<MethodData>();
 }
 
 //------------------------------------------------------------------------------

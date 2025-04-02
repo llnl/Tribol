@@ -215,6 +215,16 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
  */
 void enableTimestepVote( IndexT cs_id, const bool enable );
 
+/**
+ * @brief Enable Enzyme AD for Jacobian calculations
+ *
+ * @note Requires Tribol built with Enzyme support
+ *
+ * @param cs_id coupling scheme id
+ * @param use_enzyme Enzyme will be used if true
+ */
+void enableEnzyme( IndexT cs_id, bool use_enzyme );
+
 /// @}
 
 /// \name Contact Surface Registration Methods
@@ -223,7 +233,7 @@ void enableTimestepVote( IndexT cs_id, const bool enable );
 /*!
  * \brief Registers the mesh description for a contact surface
  *
- * \param [in] mesh_id the ID of the contact surface
+ * \param [in] mesh_id the ID of the contact mesh
  * \param [in] num_elements the number of elements on the contact surface
  * \param [in] num_nodes length of the data arrays being registered
  * \param [in] connectivity mesh connectivity array for the contact surface
@@ -247,7 +257,7 @@ void registerMesh( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const 
 /*!
  * \brief Registers nodal displacements on the contact surface.
  *
- * \param [in] mesh_id the ID of the contact surface.
+ * \param [in] mesh_id the ID of the contact mesh
  * \param [in] dx array consisting of the x-component displacements
  * \param [in] dy array consisting of the y-component displacements
  * \param [in] dz array consisting of the z-component displacements
@@ -264,7 +274,7 @@ void registerNodalDisplacements( IndexT mesh_id, const RealT* dx, const RealT* d
 /*!
  * \brief Registers nodal velocities on the contact surface.
  *
- * \param [in] mesh_id the ID of the contact surface.
+ * \param [in] mesh_id the ID of the contact mesh
  * \param [in] vx array consisting of the velocity x-components
  * \param [in] vy array consisting of the velocity y-components
  * \param [in] vz array consisting of the velocity z-components
@@ -273,15 +283,33 @@ void registerNodalDisplacements( IndexT mesh_id, const RealT* dx, const RealT* d
  * \pre vy != nullptr
  * \pre vz != nullptr (3D only)
  *
- *  \note A mesh for the given contact surface must have already been registered
- *   prior to calling this method] via registerMesh()
+ *  \note A mesh for the given contact surface must have already been registered prior to calling this method via
+ * registerMesh()
  */
 void registerNodalVelocities( IndexT mesh_id, const RealT* vx, const RealT* vy, const RealT* vz = nullptr );
 
 /*!
+ * \brief Registers nodal reference coords on the contact surface. Reference coordinates refer to the original mesh
+ * coordinates, i.e. at time = 0.
+ *
+ * \param [in] mesh_id the ID of the contact mesh
+ * \param [in] xref array consisting of the reference coords x-components
+ * \param [in] yref array consisting of the reference coords y-components
+ * \param [in] zref array consisting of the reference coords z-components
+ *
+ * \pre xref != nullptr
+ * \pre yref != nullptr
+ * \pre zref != nullptr (3D only)
+ *
+ *  \note A mesh for the given contact surface must have already been registered prior to calling this method via
+ * registerMesh()
+ */
+void registerNodalReferenceCoords( IndexT mesh_id, const RealT* xref, const RealT* yref, const RealT* zref = nullptr );
+
+/*!
  * \brief Registers nodal response buffers.
  *
- * \param [in] mesh_id the ID of the contact surface.
+ * \param [in] mesh_id the ID of the contact mesh
  * \param [in,out] rx buffer of the x-component of the contact response
  * \param [in,out] ry buffer of the y-component of the contact response
  * \param [in,out] rz buffer of the z-component of the contact response
@@ -290,8 +318,7 @@ void registerNodalVelocities( IndexT mesh_id, const RealT* vx, const RealT* vy, 
  * \pre ry != nullptr
  * \pre rz != nullptr (3D only)
  *
- * \note A mesh for the given contact surface must have already been registered
- *  prior to calling this method.
+ * \note A mesh for the given contact surface must have already been registered prior to calling this method.
  */
 void registerNodalResponse( IndexT mesh_id, RealT* rx, RealT* ry, RealT* rz = nullptr );
 
@@ -305,11 +332,9 @@ void registerNodalResponse( IndexT mesh_id, RealT* rx, RealT* ry, RealT* rz = nu
  *
  * \pre *sMat = nullptr
  *
- * \note Mortar Method: The sizing of the sparse matrix assumes that all
- *       nonmortar and mortar nodes may have a Lagrange multiplier associated
- *       with them. This allows us to use the global connectivity array,
- *       which assumes contiguous and unique node ids between mortar and
- *       nonmortar meshes registered in a given coupling scheme.
+ * \note Mortar Method: The sizing of the sparse matrix assumes that all nonmortar and mortar nodes may have a Lagrange
+ *       multiplier associated with them. This allows us to use the global connectivity array, which assumes contiguous
+ *       and unique node ids between mortar and nonmortar meshes registered in a given coupling scheme.
  */
 int getJacobianSparseMatrix( mfem::SparseMatrix** sMat, IndexT cs_id );
 

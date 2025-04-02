@@ -5,7 +5,7 @@
 
 #include "mfem.hpp"
 
-#include "tribol/config.hpp"
+#include "shared/config.hpp"
 
 /**
  * @file MeshBuilder.hpp
@@ -74,11 +74,26 @@ class MeshBuilder {
   MeshBuilder( mfem::Mesh&& mesh );
 
   /**
+   * @brief Grows or shrinks the mesh relative to the origin by the scale factors in the given vector.
+   * @param scale_factors A list of scale factors to apply to each dimension.
+   * @return An rvalue reference to the updated MeshBuilder object.
+   */
+  MeshBuilder&& scale( std::initializer_list<double> scale_factors );
+
+  /**
    * @brief Translates the mesh by a given vector.
    * @param dx A list of translation distances for each dimension.
    * @return An rvalue reference to the updated MeshBuilder object.
    */
   MeshBuilder&& translate( std::initializer_list<double> dx );
+
+  /**
+   * @brief Translates a specific node in the mesh by a given vector.
+   * @param node_id The ID of the node to be translated.
+   * @param dx A list of translation distances for each dimension.
+   * @return An rvalue reference to the updated MeshBuilder object.
+   */
+  MeshBuilder&& translateNode( int node_id, std::initializer_list<double> dx );
 
   /**
    * @brief Updates an attribute in the mesh.
@@ -125,6 +140,12 @@ class MeshBuilder {
    * @return A const reference to the underlying mfem::Mesh object.
    */
   operator const mfem::Mesh&() const;
+
+  /**
+   * @brief Implicit conversion to a rvalue reference to mfem::Mesh.
+   * @return An rvalue reference to the underlying mfem::Mesh object
+   */
+  operator mfem::Mesh&&();
 
  private:
   mfem::Mesh mesh_;  ///< The underlying mesh object.

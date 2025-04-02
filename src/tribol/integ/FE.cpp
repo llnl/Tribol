@@ -207,7 +207,9 @@ TRIBOL_HOST_DEVICE void WachspressBasis( const RealT* const x, const RealT pX, c
 //------------------------------------------------------------------------------
 void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA, const int numNodes, RealT xi[2] )
 {
+#if !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( numNodes != 4, "InvIso: routine only for 4 node quads." );
+#endif
 
   bool convrg = false;
   int kmax = 15;
@@ -318,15 +320,39 @@ void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA
         }
       }
 
+#if !defined( TRIBOL_USE_ENZYME )
       SLIC_WARNING_IF( !in_quad, "InvIso(): (xi,eta) coordinate does not lie "
                                      << "inside isoparametric quad." );
+#endif
 
       return;
     }
   }
 
+#if !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( !convrg, "InvIso: Newtons method did not converge." );
+#endif
 
+  return;
+}
+
+//------------------------------------------------------------------------------
+void FwdMapLinTri( const RealT xi[2], RealT xa[3], RealT ya[3], RealT za[3], RealT x[3] )
+{
+  // initialize output array
+  initRealArray( &x[0], 3, 0. );
+
+  // obtain shape function evaluations at (xi,eta)
+  RealT phi[3] = { 0., 0., 0. };
+  LinIsoTriShapeFunc( xi[0], xi[1], 0, phi[0] );
+  LinIsoTriShapeFunc( xi[0], xi[1], 1, phi[1] );
+  LinIsoTriShapeFunc( xi[0], xi[1], 2, phi[2] );
+
+  for ( int j = 0; j < 3; ++j ) {
+    x[0] += xa[j] * phi[j];
+    x[1] += ya[j] * phi[j];
+    x[2] += za[j] * phi[j];
+  }
   return;
 }
 
@@ -352,26 +378,6 @@ void FwdMapLinQuad( const RealT xi[2], RealT xa[4], RealT ya[4], RealT za[4], Re
 }
 
 //------------------------------------------------------------------------------
-void FwdMapLinTri( const RealT xi[2], RealT xa[3], RealT ya[3], RealT za[3], RealT x[3] )
-{
-  // initialize output array
-  initRealArray( &x[0], 3, 0. );
-
-  // obtain shape function evaluations at (xi,eta)
-  RealT phi[3] = { 0., 0., 0. };
-  LinIsoTriShapeFunc( xi[0], xi[1], 0, phi[0] );
-  LinIsoTriShapeFunc( xi[0], xi[1], 1, phi[1] );
-  LinIsoTriShapeFunc( xi[0], xi[1], 2, phi[2] );
-
-  for ( int j = 0; j < 3; ++j ) {
-    x[0] += xa[j] * phi[j];
-    x[1] += ya[j] * phi[j];
-    x[2] += za[j] * phi[j];
-  }
-  return;
-}
-
-//------------------------------------------------------------------------------
 void LinIsoTriShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi )
 {
   switch ( a ) {
@@ -385,11 +391,21 @@ void LinIsoTriShapeFunc( const RealT xi, const RealT eta, const int a, RealT& ph
       phi = eta;
       break;
     default:
+#if !defined( TRIBOL_USE_ENZYME )
       SLIC_ERROR( "LinIsoTriShapeFunc: node id is not between 0 and 2." );
+#endif
       break;
   }
 
   return;
+}
+
+//------------------------------------------------------------------------------
+void LinIsoTriShapeFunc( const RealT* xi, RealT* phi )
+{
+  phi[0] = 1.0 - xi[0] - xi[1];
+  phi[1] = xi[0];
+  phi[2] = xi[1];
 }
 
 //------------------------------------------------------------------------------
@@ -414,13 +430,17 @@ void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& p
       eta_node = -1.;
       break;
     default:
+#if !defined( TRIBOL_USE_ENZYME )
       SLIC_ERROR( "LinIsoQuadShapeFunc: node id is not between 0 and 3." );
+#endif
       return;
   }
 
   phi = 0.25 * ( 1. + xi_node * xi ) * ( 1. + eta_node * eta );
 
+#if !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( phi > 1.0 || phi < 0.0, "LinIsoQuadShapeFunc: phi is " << phi << " not between 0. and 1." );
+#endif
 
   return;
 }

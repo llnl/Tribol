@@ -28,6 +28,11 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   programming models. These concepts map to Tribol's integration with Umpire and RAJA, respectively.
 - Added support and testing for the common plane algorithm with CUDA, HIP, and OpenMP.
 - Added bounding volume hierarchy coarse binning algorithm with CUDA/HIP support.
+- Added implementation of Puso and Laursen (2004) (https://doi.org/10.1016/j.cma.2003.10.010) with exact (nonsymmetric)
+  Jacobian contributions computed through Enzyme AD (https://enzyme.mit.edu/).
+- Added support for the Enzyme AD library in the Tribol build system.
+- Created interfaces for nodal normal and element normal calculations, to simplify addition of new normal computation
+  techniques.
 
 
 ### Changed
