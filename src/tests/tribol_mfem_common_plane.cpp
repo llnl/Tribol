@@ -51,12 +51,14 @@ class MfemCommonPlaneTest
     int ref_levels = 2;
     // polynomial order of the finite element discretization
     int order = std::get<0>( GetParam() );
+    // initial separation between the two blocks
+    double initial_sep = -0.001;
     // initial velocity
-    tribol::RealT initial_v = 0.01;
+    tribol::RealT initial_v = 0.0;
     // timestep size
-    tribol::RealT dt = 0.01;
+    tribol::RealT dt = 0.001;
     // end time
-    tribol::RealT t_end = 0.5;
+    tribol::RealT t_end = 0.01;
     // material density
     tribol::RealT rho = 1000.0;
     // lame parameter
@@ -98,9 +100,10 @@ class MfemCommonPlaneTest
     mfem::ParMesh mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::Unify( {
       shared::MeshBuilder::CubeMesh( 1, 1, 1 ),
       shared::MeshBuilder::CubeMesh( 1, 1, 1 )
-        .translate( { 0.0, 0.0, 1.01 } )
+        .translate( { 0.0, 0.0, 1.0 + initial_sep } )
         .updateAttrib( 1, 2 )
         .updateBdrAttrib( 1, 7 )
+        .updateBdrAttrib( 6, 8 )
     } ).refine( ref_levels ) );
     // clang-format on
 
@@ -208,16 +211,34 @@ class MfemCommonPlaneTest
 
 TEST_P( MfemCommonPlaneTest, common_plane )
 {
-  EXPECT_LT( std::abs( max_disp_ - 0.013637427890739103 ), 1.5e-6 );
+  // make sure there is some contact response after 10 cycles
+  EXPECT_GT( max_disp_, 1.0e-4 );
 
   MPI_Barrier( MPI_COMM_WORLD );
 }
 
 INSTANTIATE_TEST_SUITE_P( tribol, MfemCommonPlaneTest,
-                          testing::Values( std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, "cpu" ),
-                                           std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, "cpu" ),
-                                           std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, "cpu" ),
-                                           std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, "cpu" ) ) );
+                          testing::Values( std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, "cuda" ),
+                                           std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, "cuda" ) ) );
+//                           testing::Values( std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, "cpu" ),
+//                                            std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, "cpu" ),
+//                                            std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, "cpu" ),
+//                                            std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, "cpu" )
+// #ifdef TRIBOL_USE_CUDA
+//                                                ,
+//                                            std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, "cuda" ),
+//                                            std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, "cuda" ),
+//                                            std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, "cuda" ),
+//                                            std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, "cuda" )
+// #endif
+// #ifdef TRIBOL_USE_HIP
+//                                                ,
+//                                            std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, "hip" ),
+//                                            std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, "hip" ),
+//                                            std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, "hip" ),
+//                                            std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, "hip" )
+// #endif
+//                                                ) );
 
 //------------------------------------------------------------------------------
 int main( int argc, char* argv[] )

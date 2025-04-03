@@ -1191,8 +1191,8 @@ void CouplingScheme::allocateMethodData()
       case MORTAR_WEIGHTS:
       case SINGLE_MORTAR: {
         // dynamically allocate method data object
-        this->m_methodData = new MortarData;
-        static_cast<MortarData*>( m_methodData )->m_numTotalNodes = this->m_numTotalNodes;
+        this->m_methodData = std::make_unique<MortarData>();
+        static_cast<MortarData*>( m_methodData.get() )->m_numTotalNodes = this->m_numTotalNodes;
         break;
       }  // end case SINGLE_MORTAR
       default: {

@@ -79,9 +79,11 @@ TRIBOL_HOST_DEVICE void EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( Surfac
                            elem.overlapNormal[2], cx[0], cx[1], cx[2], projX1[elem.dim * i], projX1[elem.dim * i + 1],
                            projX1[elem.dim * i + 2] );
 
+#ifdef TRIBOL_USE_HOST
       SLIC_DEBUG( "face 1 projected vertex " << i << ": " << elem.m_mesh1->getPosition()[0][nodeId1] << ", "
                                              << elem.m_mesh1->getPosition()[1][nodeId1]
                                              << elem.m_mesh1->getPosition()[2][nodeId1] );
+#endif
 
       const int nodeId2 = elem.m_mesh2->getGlobalNodeId( elem.faceId2, i );
       ProjectPointToPlane( elem.m_mesh2->getPosition()[0][nodeId2], elem.m_mesh2->getPosition()[1][nodeId2],
@@ -89,9 +91,11 @@ TRIBOL_HOST_DEVICE void EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( Surfac
                            elem.overlapNormal[2], cx[0], cx[1], cx[2], projX2[elem.dim * i], projX2[elem.dim * i + 1],
                            projX2[elem.dim * i + 2] );
 
+#ifdef TRIBOL_USE_HOST
       SLIC_DEBUG( "face 2 projected vertex " << i << ": " << elem.m_mesh2->getPosition()[0][nodeId2] << ", "
                                              << elem.m_mesh2->getPosition()[1][nodeId2]
                                              << elem.m_mesh2->getPosition()[2][nodeId2] );
+#endif
     }
   } else {
     // loop over number of nodes per edge (same for each mesh) and project nodes to common plane.
@@ -103,16 +107,20 @@ TRIBOL_HOST_DEVICE void EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( Surfac
                              elem.overlapNormal[0], elem.overlapNormal[1], cx[0], cx[1], projX1[elem.dim * i],
                              projX1[elem.dim * i + 1] );
 
+#ifdef TRIBOL_USE_HOST
       SLIC_DEBUG( "edge 1 projected vertex " << i << ": " << elem.m_mesh1->getPosition()[0][nodeId1] << ", "
                                              << elem.m_mesh1->getPosition()[1][nodeId1] );
+#endif
 
       const int nodeId2 = elem.m_mesh2->getGlobalNodeId( elem.faceId2, i );
       ProjectPointToSegment( elem.m_mesh2->getPosition()[0][nodeId2], elem.m_mesh2->getPosition()[1][nodeId2],
                              elem.overlapNormal[0], elem.overlapNormal[1], cx[0], cx[1], projX2[elem.dim * i],
                              projX2[elem.dim * i + 1] );
 
+#ifdef TRIBOL_USE_HOST
       SLIC_DEBUG( "edge 2 projected vertex " << i << ": " << elem.m_mesh2->getPosition()[0][nodeId2] << ", "
                                              << elem.m_mesh2->getPosition()[1][nodeId2] );
+#endif
     }
   }
 

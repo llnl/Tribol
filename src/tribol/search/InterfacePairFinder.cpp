@@ -552,13 +552,12 @@ class BvhSearch : public SearchBase {
     bvh.initialize( m_boxes1.view(), m_boxes1.size() );
 
     // Search for intersecting bounding boxes
-    bvh.findBoundingBoxes( m_offsets.view(), m_counts.view(), m_candidates, m_mesh2.numberOfElements(),
-                           m_boxes2.view() );
+    auto counts_view = m_counts.view();
+    auto offsets_view = m_offsets.view();
+    bvh.findBoundingBoxes( offsets_view, counts_view, m_candidates, m_mesh2.numberOfElements(), m_boxes2.view() );
 
     // Apply geom filter to check if intersecting bounding boxes are proximate
     // Change candidate value to -1 if geom filter checks are failed
-    auto counts_view = m_counts.view();
-    auto offsets_view = m_offsets.view();
     auto candidates_view = m_candidates.view();
     // array of size 1 to track the number of candidates in a way compatible
     // with device kernels
@@ -574,8 +573,8 @@ class BvhSearch : public SearchBase {
     forAllExec( m_coupling_scheme->getExecutionMode(), m_candidates.size(),
                 [mesh1, mesh2, offsets_view, counts_view, candidates_view, filtered_candidates, cmode,
                  auto_contact_check, e_binning_proximity_scale] TRIBOL_HOST_DEVICE( IndexT i ) {
-                  auto mesh1_elem = algorithm::binarySearch( offsets_view, counts_view, i );
-                  auto mesh2_elem = candidates_view[i];
+                  auto mesh1_elem = candidates_view[i];
+                  auto mesh2_elem = algorithm::binarySearch( offsets_view, counts_view, i );
                   if ( geomFilter( mesh1_elem, mesh2_elem, mesh1, mesh2, cmode, auto_contact_check,
                                    e_binning_proximity_scale ) ) {
 #ifdef TRIBOL_USE_RAJA
@@ -602,8 +601,8 @@ class BvhSearch : public SearchBase {
             return;
           }
 
-          auto mesh1_elem = algorithm::binarySearch( offsets_view, counts_view, i );
-          auto mesh2_elem = candidates_view[i];
+          auto mesh1_elem = candidates_view[i];
+          auto mesh2_elem = algorithm::binarySearch( offsets_view, counts_view, i );
 
       // get unique index for the array
 #ifdef TRIBOL_USE_RAJA
@@ -619,9 +618,9 @@ class BvhSearch : public SearchBase {
 
   void buildMeshBBoxes( ArrayT<BoxT>& boxes, const MeshData::Viewer& mesh, RealT binning_proximity )
   {
-    auto boxes1_view = boxes.view();
+    auto boxes_view = boxes.view();
     forAllExec( m_coupling_scheme->getExecutionMode(), mesh.numberOfElements(),
-                [this, mesh, boxes1_view, binning_proximity] TRIBOL_HOST_DEVICE( IndexT i ) {
+                [this, mesh, boxes_view, binning_proximity] TRIBOL_HOST_DEVICE( IndexT i ) {
                   BoxT box;
                   auto num_nodes_per_elem = mesh.numberOfNodesPerElement();
                   for ( IndexT j{ 0 }; j < num_nodes_per_elem; ++j ) {
@@ -638,7 +637,7 @@ class BvhSearch : public SearchBase {
                   VectorT faceNormal( vnorm );
                   RealT faceRadius = mesh.getFaceRadius()[i];
                   expandBBoxNormal( box, faceNormal, binning_proximity * faceRadius );
-                  boxes1_view[i] = std::move( box );
+                  boxes_view[i] = std::move( box );
                 } );
   }
 

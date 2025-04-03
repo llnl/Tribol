@@ -688,14 +688,14 @@ class MfemMeshData {
    *
    * @note The third entry is nullptr in two dimensions
    */
-  std::vector<RealT*> GetRedecompResponsePtrs() { return ParentField::GetRedecompFieldPtrs( redecomp_response_ ); }
+  std::vector<RealT*> GetRedecompResponsePtrs() { return ParentField::GetRedecompFieldPtrs( *redecomp_response_ ); }
 
   /**
    * @brief Get the nodal response grid function on the redecomp mesh
    *
    * @return const mfem::GridFunction&
    */
-  const mfem::GridFunction& GetRedecompResponse() const { return redecomp_response_; }
+  const mfem::GridFunction& GetRedecompResponse() const { return *redecomp_response_; }
 
   /**
    * @brief Get the nodal response vector on the parent mesh
@@ -1305,7 +1305,9 @@ class MfemMeshData {
   /**
    * @brief Nodal response grid function on the redecomp mesh
    */
-  mfem::GridFunction redecomp_response_;
+  std::unique_ptr<mfem::GridFunction> redecomp_response_;
+  // NOTE: redecomp_response_ doesn't need to be a pointer, but SetSpace() doesn't seem to register memory correctly
+  // when on device. TODO: Debug this and remove the pointer.
 
   /**
    * @brief Execution mode for Tribol

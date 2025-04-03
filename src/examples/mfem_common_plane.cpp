@@ -110,7 +110,8 @@ int main( int argc, char** argv )
       ->capture_default_str()
       ->needs( "-C" );
   app.add_option( "-c,--outputcycles", output_cycles, "Number of cycles to skip before next output." )
-      ->capture_default_str();
+      ->capture_default_str()
+      ->check( axom::CLI::PositiveNumber );
   app.add_option( "-R,--rho", rho, "Material density." )->capture_default_str();
   app.add_option( "-l,--lambda", lambda, "Lame parameter lambda." )->capture_default_str();
   app.add_option( "-m,--mu", mu, "Lame parameter mu (shear modulus)." )->capture_default_str();
@@ -122,6 +123,7 @@ int main( int argc, char** argv )
   SLIC_INFO_ROOT( "Running mfem_common_plane with the following options:" );
   SLIC_INFO_ROOT( axom::fmt::format( "refinement levels: {0}", ref_levels ) );
   SLIC_INFO_ROOT( axom::fmt::format( "polynomial order:  {0}", order ) );
+  SLIC_INFO_ROOT( axom::fmt::format( "initial sep:       {0}", initial_sep ) );
   SLIC_INFO_ROOT( axom::fmt::format( "initial velocity:  {0}", init_velocity ) );
   SLIC_INFO_ROOT( axom::fmt::format( "timestep size:     {0}", dt ) );
   SLIC_INFO_ROOT( axom::fmt::format( "end time:          {0}", t_end ) );
@@ -173,6 +175,7 @@ int main( int argc, char** argv )
       .translate( { 0.0, 0.0, 1.0 + initial_sep } )
       .updateAttrib( 1, 2 )
       .updateBdrAttrib( 1, 7 )
+      .updateBdrAttrib( 6, 8 )
   } ).refine( ref_levels ) );
   // clang-format on
   timer.stop();

@@ -321,8 +321,6 @@ MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParM
   if ( current_coords.FESpace()->FEColl()->GetOrder() > 1 ) {
     SetLORFactor( current_coords.FESpace()->FEColl()->GetOrder() );
   }
-
-  redecomp_response_.UseDevice( use_device_ );
 }
 
 void MfemMeshData::SetParentCoords( const mfem::ParGridFunction& current_coords )
@@ -345,8 +343,11 @@ void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale )
                                                submesh_xfer_gridfn_, submesh_lor_xfer_.get(), attributes_1_,
                                                attributes_2_, binning_proximity_scale, allocator_id_ );
   coords_.UpdateField( update_data_->vector_xfer_, use_device_ );
-  redecomp_response_.SetSpace( coords_.GetRedecompGridFn().FESpace() );
-  redecomp_response_ = 0.0;
+  // NOTE: SetSpace() would be preferrable to call here, but it looks like all memory isn't mapped to
+  // mfem::MemoryManager when this is used. TODO: Debug this and switch to SetSpace()
+  redecomp_response_ = std::make_unique<mfem::GridFunction>( coords_.GetRedecompGridFn().FESpace() );
+  redecomp_response_->UseDevice( use_device_ );
+  ( *redecomp_response_ ) = 0.0;
   if ( velocity_ ) {
     velocity_->UpdateField( update_data_->vector_xfer_, use_device_ );
   }
@@ -414,7 +415,7 @@ void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale )
 
 void MfemMeshData::GetParentResponse( mfem::Vector& r ) const
 {
-  GetParentRedecompTransfer().RedecompToParent( redecomp_response_, r );
+  GetParentRedecompTransfer().RedecompToParent( *redecomp_response_, r );
 }
 
 void MfemMeshData::SetParentVelocity( const mfem::ParGridFunction& velocity )
