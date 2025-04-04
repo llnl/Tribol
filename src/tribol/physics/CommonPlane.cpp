@@ -434,4 +434,11 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
 
 }  // end ApplyNormal<COMMON_PLANE, PENALTY>()
 
+//------------------------------------------------------------------------------
+template <>
+int ApplyTangential<COMMON_PLANE, PENALTY, TIED_FULL, FRICTIONLESS>( CouplingScheme* cs )
+{
+  // TODO SRW implement this routine
+}
+
 }  // namespace tribol
