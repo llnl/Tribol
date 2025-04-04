@@ -48,7 +48,7 @@ int ApplyNormal( CouplingScheme* cs );
  * \return 0 if no error
  *
  */
-template <ContactMethod M, EnforcementMethod E, ContactModel Model>
+template <ContactMethod M, EnforcementMethod E, ContactCase Case, ContactModel Model>
 int ApplyTangential( CouplingScheme* cs );
 
 /*!

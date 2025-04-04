@@ -40,14 +40,14 @@ int ApplyInterfacePhysics( CouplingScheme* cs, int TRIBOL_UNUSED_PARAM( cycle ),
               err_nrml = ApplyNormal<COMMON_PLANE, PENALTY>( cs );
               break;
             }
-          }
+          } // end switch over contactCase
           // query the model for application of tangential physics
           switch ( cs->getContactModel() ) {
-            // no tangential physics implemented yet
+            // no tangential physics with constitutive type model implemented yet
             default: {
               break;
             }
-          }  // end switch on contact model
+          }  // end switch on contactModel
           break;
         default:
           break;
