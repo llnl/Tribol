@@ -153,10 +153,6 @@ void CouplingSchemeErrors::printModelErrors()
       SLIC_WARNING_ROOT( "The specified ContactModel is invalid." );
       break;
     }
-    case NO_MODEL_IMPLEMENTATION: {
-      SLIC_WARNING_ROOT( "The specified ContactModel has no implementation." );
-      break;
-    }
     case NO_MODEL_IMPLEMENTATION_FOR_REGISTERED_METHOD: {
       SLIC_WARNING_ROOT( "The specified ContactModel has no implementation for the registered ContactMethod." );
       break;
@@ -639,9 +635,15 @@ bool CouplingScheme::isValidModel()
   // check for model and method compatibility issues
   switch ( this->m_contactMethod ) {
     case SINGLE_MORTAR:
-    case ALIGNED_MORTAR:
+    case ALIGNED_MORTAR: {
+      if ( this->m_contactModel != FRICTIONLESS ) {
+        this->m_couplingSchemeErrors.cs_model_error = NO_MODEL_IMPLEMENTATION_FOR_REGISTERED_METHOD;
+        return false;
+      }
+      break;
+    }
     case MORTAR_WEIGHTS: {
-      if ( this->m_contactModel != FRICTIONLESS && this->m_contactModel != NULL_MODEL ) {
+      if ( this->m_contactModel != NULL_MODEL ) {
         this->m_couplingSchemeErrors.cs_model_error = NO_MODEL_IMPLEMENTATION_FOR_REGISTERED_METHOD;
         return false;
       }
@@ -649,12 +651,8 @@ bool CouplingScheme::isValidModel()
     }
 
     case COMMON_PLANE: {
-      if ( this->m_contactModel != FRICTIONLESS && this->m_contactModel != NULL_MODEL ) {
+      if ( this->m_contactModel != FRICTIONLESS ) {
         this->m_couplingSchemeErrors.cs_model_error = NO_MODEL_IMPLEMENTATION_FOR_REGISTERED_METHOD;
-        return false;
-      }
-      if ( this->m_contactCase == TIED_NORMAL && this->m_contactModel == ADHESION_SEPARATION_SCALAR_LAW ) {
-        this->m_couplingSchemeErrors.cs_model_error = NO_MODEL_IMPLEMENTATION;
         return false;
       }
       break;

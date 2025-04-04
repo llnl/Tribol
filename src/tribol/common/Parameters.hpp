@@ -136,7 +136,7 @@ enum ContactModel
   COULOMB,                         ///! Coulomb friction model, not supported
   ADHESION_SEPARATION_SCALAR_LAW,  ///! Scalar pressure law for the separation of adhered surfaces (Used with tied
                                    /// contact)
-  NULL_MODEL,                      ///! Null model, for use with ContactMethod = MORTAR_WEIGHTS
+  NULL_MODEL,                      ///! Null model
   NUM_CONTACT_MODELS
 };
 
@@ -368,7 +368,6 @@ enum MethodError
 enum ModelError
 {
   INVALID_MODEL,
-  NO_MODEL_IMPLEMENTATION,
   NO_MODEL_IMPLEMENTATION_FOR_REGISTERED_METHOD,
   NO_MODEL_ERROR,
   NUM_MODEL_ERRORS
