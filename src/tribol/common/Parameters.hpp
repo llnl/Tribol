@@ -41,17 +41,6 @@ enum LoggingLevel
 };
 
 /*!
- * \brief Enumerates the mesh configuration used for mesh calculations 
- */
-enum class MeshConfigurationType
-{
-   REFERENCE, ///! Use reference configuration coordinates for mesh calculations
-   CURRENT,   ///! Use current configuration coordinates for mesh calculations
-   DEFAULT = CURRENT,
-   NUM_MESH_CONFIGURATIONS = CURRENT
-}
-
-/*!
  * \brief Enumerates the interface element types
  */
 enum InterfaceElementType
@@ -350,7 +339,7 @@ enum CaseError
   INVALID_CASE,
   NO_CASE_IMPLEMENTATION,
   INVALID_CASE_DATA,
-  INVALID_MESH_CONFIGURATION,
+  NULL_REFERENCE_COORDS,
   NO_CASE_ERROR,
   NUM_CASE_ERRORS
 };

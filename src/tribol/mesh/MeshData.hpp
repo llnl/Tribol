@@ -197,13 +197,6 @@ class MeshData {
     TRIBOL_HOST_DEVICE const MultiViewArrayView<const RealT>& getPosition() const { return m_position; }
 
     /**
-     * @brief Get the nodal current position array views
-     *
-     * @return array view of the nodal current position arrays
-     */
-
-    TRIBOL_HOST_DEVICE const MultiViewArrayView<const RealT>& getCurrentPosition() const { return m_cur_position; }
-    /**
      * @brief Is the reference position vector populated?
      *
      * @return true if non-empty; false otherwise
@@ -388,9 +381,6 @@ class MeshData {
     /// Array of views of nodal position data used in calculations
     const MultiViewArrayView<const RealT> m_position;
 
-    /// Array of views of nodal current position data
-    const MultiViewArrayView<const RealT> m_cur_position;
-
     /// Array of views of nodal reference position data
     const MultiViewArrayView<const RealT> m_ref_position;
 
@@ -555,15 +545,6 @@ class MeshData {
   }
 
   /**
-   * @brief Set the pointers to the nodal position data
-   *
-   * @param x array of x-components of the nodal position
-   * @param y array of y-components of the nodal position
-   * @param z array of z-components of the nodal position
-   */
-  void setPosition( const RealT* x, const RealT* y, const RealT* z );
-
-  /**
    * @brief Set the pointers to the nodal reference position data
    *
    * @param xref array of x-components of the nodal reference position
@@ -614,18 +595,6 @@ class MeshData {
    * @param rz array of z-components of the nodal response
    */
   void setResponse( RealT* rx, RealT* ry, RealT* rz );
-
-  /**
-   * @brief Set the mesh configuration type and pointers used in mesh calculations
-   *
-   */
-  void setMeshConfiguration( MeshConfigurationType mesh_type );
-
-  /**
-   * @brief Get the mesh configuration type
-   *
-   */
-   MeshConfigurationType getMeshConfigurationType() { return m_mesh_config; }
 
   /**
    * @brief Construct a non-owned, shallow copy of the MeshData
@@ -681,10 +650,7 @@ class MeshData {
   MeshElemData m_element_data;   ///< method/enforcement specific element data
 
   // Nodal field data
-  MeshConfigurationType m_mesh_config;   
-
   MultiArrayView<const RealT> m_position;      ///< Specified mesh coordinates used for mesh calculations
-  MultiArrayView<const RealT> m_cur_position;  ///< Current configuration coordinates of nodes in mesh
   MultiArrayView<const RealT> m_ref_position;  ///< Reference coordinates of nodes in mesh
   MultiArrayView<const RealT> m_disp;          ///< Curent nodal displacements
   MultiArrayView<const RealT> m_vel;           ///< Current nodal velocity

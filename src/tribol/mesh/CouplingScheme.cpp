@@ -82,10 +82,9 @@ void CouplingSchemeErrors::printCaseErrors()
                          << "AUTO contact requires element thickness registration." );
       break;
     }
-    case INVALID_MESH_CONFIGURATION: {
+    case NULL_REFERENCE_COORDS: {
       SLIC_WARNING_ROOT( "The specified ContactCase requires registering nodal "
-                         << "reference positions and/or the mesh configurations have "
-                         << "been improperly set." );
+                         << "reference positions." );
     }
     case NO_CASE_ERROR: {
       break;
@@ -524,10 +523,8 @@ bool CouplingScheme::isValidCase()
       case TIED_FULL: {
         this->m_parameters.auto_contact_check = false;
         if ( !this->m_mesh1->hasReferencePosition() ||
-             !this->m_mesh2->hasReferencePosition() ||
-             this->m_mesh1->getMeshConfigurationType() != this->m_mesh_config ||
-             this->m_mesh2->getMeshConfigurationType() != this->m_mesh_config) {
-          this->m_couplingSchemeErrors.cs_case_error = INVALID_MESH_CONFIGURATION;
+             !this->m_mesh2->hasReferencePosition() || ) {
+          this->m_couplingSchemeErrors.cs_case_error = NULL_REFERENCE_COORDS;
           isValid = false;
         }
         break;
@@ -992,26 +989,6 @@ int CouplingScheme::checkExecutionModeData()
 }
 
 //------------------------------------------------------------------------------
-void CouplingScheme::setMeshConfigurationType()
-{
-  switch ( this->m_contactCase ) {
-    case TIED_FULL: { // TODO does TIED_NORMAL also need reference config?
-      this->m_mesh_config = MeshConfigurationType::REFERENCE;
-      break;
-    }
-    case DEFAULT: {
-      this->m_mesh_config = MeshConfigurationType::CURRENT;
-      break;
-    }
-  }
-
-  // set the coordinate configuration type on the mesh, which also sets
-  // the position array accordingly
-  this->m_mesh1->setMeshConfiguration( this->m_mesh_config );
-  this->m_mesh2->setMeshConfiguration( this->m_mesh_config );
-}
-
-//------------------------------------------------------------------------------
 void CouplingScheme::performBinning()
 {
   // Find the interacting pairs for this coupling scheme. Will not use
@@ -1158,10 +1135,6 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 //------------------------------------------------------------------------------
 bool CouplingScheme::init()
 {
-
-  // set the mesh configuration type used in all mesh based calculations
-  this->setMeshConfigurationType();
-
   // check for valid coupling scheme only for non-null-meshes
   this->m_isValid = this->isValidCouplingScheme();
 
@@ -1177,7 +1150,7 @@ bool CouplingScheme::init()
     }
 #endif
 
-    // compute the face data using the set mesh configuration
+    // compute the face data
     // different element normals for enzyme + mortar (matching Puso and Laursen)
     if ( this->isEnzymeEnabled() && this->m_contactMethod == SINGLE_MORTAR ) {
       this->m_mesh1->computeFaceData( this->m_exec_mode, QuadCentroidNormal() );

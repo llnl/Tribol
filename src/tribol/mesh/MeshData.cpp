@@ -194,7 +194,7 @@ MeshData::MeshData( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const
       m_mem_space( mem_space ),
       m_allocator_id( getResourceAllocatorID( mem_space ) ),
       m_is_valid( true ),
-      m_cur_position( createNodalVector( x, y, z ) ),
+      m_position( createNodalVector( x, y, z ) ),
       m_connectivity( createConnectivity( num_elements, connectivity ) )
 {
   // mesh verification
@@ -221,13 +221,6 @@ MeshData::MeshData( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const
 }
 
 //------------------------------------------------------------------------------
-void MeshData::setPosition( const RealT* x, const RealT* y, const RealT* z )
-{
-  // set current configuration coordinates
-  m_cur_position = createNodalVector( x, y, z );
-}
-
-//------------------------------------------------------------------------------
 void MeshData::setDisplacement( const RealT* ux, const RealT* uy, const RealT* uz )
 {
   m_disp = createNodalVector( ux, uy, uz );
@@ -247,32 +240,6 @@ void MeshData::setVelocity( const RealT* vx, const RealT* vy, const RealT* vz )
 
 //------------------------------------------------------------------------------
 void MeshData::setResponse( RealT* rx, RealT* ry, RealT* rz ) { m_response = createNodalVector( rx, ry, rz ); }
-
-//------------------------------------------------------------------------------
-void MeshData::setMeshConfiguration( MeshConfigurationType mesh_type )
-{
-   m_mesh_config = mesh_type;
-   switch( m_mesh_config ) {
-     case REFERENCE: {
-       if ( hasReferencePosition() ) {
-         // TODO SRW verify that we can set these MultiArrayViews using
-         // an already existing MultiArrayView. This appears to be done 
-         // in createNodalVector()
-         m_position = MultiArrayView<T>( m_ref_position, m_allocator_id );
-       }
-       break;
-     }
-     case CURRENT: {
-       m_position = MultiArrayView<T>( m_cur_position, m_allocator_id );
-       break;
-     }
-     default: {
-       SLIC_WARNING_ROOT("Invalid mesh configuration specified for mesh, " << m_mesh_id << ".");
-       this->m_is_valid = false;
-       break;
-     }
-   }
-}
 
 //------------------------------------------------------------------------------
 int MeshData::getDimFromElementType() const
@@ -638,7 +605,6 @@ MeshData::Viewer::Viewer( MeshData& mesh )
       m_mem_space( mesh.m_mem_space ),
       m_allocator_id( mesh.m_allocator_id ),
       m_position( mesh.m_position ),
-      m_cur_position( mesh.m_cur_position ),
       m_ref_position( mesh.m_ref_position ),
       m_disp( mesh.m_disp ),
       m_vel( mesh.m_vel ),
