@@ -266,7 +266,11 @@ void MeshData::setMeshConfiguration( MeshConfigurationType mesh_type )
        m_position = MultiArrayView<T>( m_cur_position, m_allocator_id );
        break;
      }
-     default: break;
+     default: {
+       SLIC_WARNING_ROOT("Invalid mesh configuration specified for mesh, " << m_mesh_id << ".");
+       this->m_is_valid = false;
+       break;
+     }
    }
 }
 

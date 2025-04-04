@@ -992,6 +992,26 @@ int CouplingScheme::checkExecutionModeData()
 }
 
 //------------------------------------------------------------------------------
+void CouplingScheme::setMeshConfigurationType()
+{
+  switch ( this->m_contactCase ) {
+    case TIED_FULL: { // TODO does TIED_NORMAL also need reference config?
+      this->m_mesh_config = MeshConfigurationType::REFERENCE;
+      break;
+    }
+    case DEFAULT: {
+      this->m_mesh_config = MeshConfigurationType::CURRENT;
+      break;
+    }
+  }
+
+  // set the coordinate configuration type on the mesh, which also sets
+  // the position array accordingly
+  this->m_mesh1->setMeshConfiguration( this->m_mesh_config );
+  this->m_mesh2->setMeshConfiguration( this->m_mesh_config );
+}
+
+//------------------------------------------------------------------------------
 void CouplingScheme::performBinning()
 {
   // Find the interacting pairs for this coupling scheme. Will not use
@@ -1177,26 +1197,6 @@ bool CouplingScheme::init()
   } else {
     return false;
   }
-}
-
-//------------------------------------------------------------------------------
-void CouplingScheme::setMeshConfigurationType()
-{
-  switch ( this->m_contactCase ) {
-    case TIED_FULL: { // TODO does TIED_NORMAL also need reference config?
-      this->m_mesh_config = MeshConfigurationType::REFERENCE;
-      break;
-    }
-    case DEFAULT: {
-      this->m_mesh_config = MeshConfigurationType::CURRENT;
-      break;
-    }
-  }
-
-  // set the coordinate configuration type on the mesh, which also sets
-  // the position array accordingly
-  this->m_mesh1->setMeshConfiguration( this->m_mesh_config );
-  this->m_mesh2->setMeshConfiguration( this->m_mesh_config );
 }
 
 //------------------------------------------------------------------------------
