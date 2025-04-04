@@ -30,63 +30,114 @@ int ApplyInterfacePhysics( CouplingScheme* cs, int TRIBOL_UNUSED_PARAM( cycle ),
 
   // switch over numerical method
   switch ( cs->getContactMethod() ) {
-    case COMMON_PLANE:
+    case COMMON_PLANE: {
+
       // switch over enforcement method for normal (i.e. normal direction) enforcement
       switch ( cs->getEnforcementMethod() ) {
-        case PENALTY:
+        case PENALTY: {
+
           switch ( cs->getContactCase() ) {
-            // apply normal physics for ALL cases
-            default: {
+            case TIED_FULL: {
+
+              err_nrml = ApplyNormal<COMMON_PLANE, PENALTY>( cs );
+
+              switch ( cs->getContactModel() ) {
+                case FRICTIONLESS: {
+                  err_tang = ApplyTangential<COMMON_PLANE, PENALTY, TIED_FULL, FRICTIONLESS>( cs );
+                  break;
+                }
+
+                case ADHESION_SEPARATION_SCALAR_LAW: {
+                  // no-op
+                  // TODO implement this
+                  break;
+                }
+
+                default: {
+                  // no-op; no other tangential components
+                }
+
+              }  // end switch on contact model
+              break;
+            } // end case tied full
+
+            default: { // apply normal for all other contact cases
               err_nrml = ApplyNormal<COMMON_PLANE, PENALTY>( cs );
               break;
             }
-          } // end switch over contactCase
-          // query the model for application of tangential physics
+
+          } // end switch on contactCase
+          break;
+
+        } // end case penalty
+
+        default: {
+          // no-op; no other enforcement methods for common plane
+          break;
+        }
+
+      } // end switch over enforcement method
+
+      break;
+    } // end case COMMON_PLANE
+
+    case SINGLE_MORTAR: {
+
+      switch ( cs->getEnforcementMethod() ) {
+        case LAGRANGE_MULTIPLIER: {
+
           switch ( cs->getContactModel() ) {
-            // no tangential physics with constitutive type model implemented yet
+            case FRICTIONLESS: {
+
+              err_nrml = ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( cs );
+              break;
+            }
+ 
             default: {
               break;
             }
-          }  // end switch on contactModel
-          break;
-        default:
-          break;
-      }       // end switch over enforcement method
-      break;  // end case COMMON_PLANE
 
-    case SINGLE_MORTAR:
-      switch ( cs->getEnforcementMethod() ) {
-        case LAGRANGE_MULTIPLIER:
-          switch ( cs->getContactModel() ) {
-            case FRICTIONLESS:
-              err_nrml = ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( cs );
-              break;
-            default:
-              break;
           }  // end switch on contact model
           break;
-        default:
-          break;
-      }       // end switch on enforcement method
-      break;  // end case SINGLE_MORTAR
+        } // end case Lagrange multiplier
 
-    case ALIGNED_MORTAR:
+        default: {
+          // no-op for all other enforcement methods
+          break;
+        }
+      } // end switch on enforcement method
+    }// end case SINGLE_MORTAR
+
+    case ALIGNED_MORTAR: {
+
       switch ( cs->getEnforcementMethod() ) {
-        case LAGRANGE_MULTIPLIER:
+        case LAGRANGE_MULTIPLIER: {
+
           switch ( cs->getContactModel() ) {
-            case FRICTIONLESS:
+            case FRICTIONLESS: {
+
               err_nrml = ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>( cs );
               break;
-            default:
+            }
+
+            default: {
+              // no-op; no other models for aligned mortar
               break;
+            }
           }  // end switch on contact model
           break;
-        default:
-          break;
-      }       // end switch on enforcement method
-      break;  // end case ALIGNED_MORTAR
+        } // end case Lagrange multiplier
 
-    case MORTAR_WEIGHTS:
+        default: {
+          // no-op; no other enforcement methods
+          break;
+        }
+
+      } // end switch on enforcement method
+      break;
+    } // end case ALIGNED_MORTAR
+
+    case MORTAR_WEIGHTS: {
       // no enforcement for this method and no need to call visualization.
       err_data = GetMethodData<MORTAR_WEIGHTS>( cs );
       break;
@@ -96,6 +147,7 @@ int ApplyInterfacePhysics( CouplingScheme* cs, int TRIBOL_UNUSED_PARAM( cycle ),
       // interface methods will already have been caught
       break;
 
+    } // end case mortar weights
   }  // end switch (method)
 
   // error checking
