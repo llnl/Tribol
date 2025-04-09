@@ -450,10 +450,15 @@ class GridSearch : public SearchBase {
  private:
   BBox elementBoundingBox( const MeshData::Viewer& mesh, IndexT eId )
   {
+    // NOTE: namespace for NumericArray changed in axom 0.10.0. The using directives below allow Tribol to work with
+    // older and newer versions of axom.
+    using namespace axom;
+    using namespace axom::primal;
+
     BBox box;
 
     for ( int i{ 0 }; i < mesh.numberOfNodesPerElement(); ++i ) {
-      axom::NumericArray<RealT, D> vert_array;
+      NumericArray<RealT, D> vert_array;
       auto vert_id = mesh.getGlobalNodeId( eId, i );
       for ( int d{ 0 }; d < D; ++d ) {
         vert_array[d] = mesh.getPosition()[d][vert_id];
