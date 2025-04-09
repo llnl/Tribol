@@ -23,12 +23,26 @@ if(TRIBOL_USE_HIP)
   set(tribol_device_depends blt::hip CACHE STRING "" FORCE)
 endif()
 
+#------------------------------------------------------------------------------
+# Enzyme
+#------------------------------------------------------------------------------
+if (ENZYME_DIR)
+  message(STATUS "Setting up external Enzyme TPL...")
+
+  set(Enzyme_DIR ${ENZYME_DIR})
+  find_dependency(Enzyme REQUIRED PATHS "${ENZYME_DIR}")
+
+  set(TRIBOL_USE_ENZYME TRUE)
+else()
+  message(STATUS "Enzyme support is OFF")
+endif()
+
 
 #------------------------------------------------------------------------------
 # Umpire
 #------------------------------------------------------------------------------
 
-if (DEFINED UMPIRE_DIR)
+if (UMPIRE_DIR)
   message(STATUS "Setting up external Umpire TPL...")
 
   set(umpire_DIR ${UMPIRE_DIR})
@@ -44,7 +58,7 @@ endif()
 # RAJA
 #------------------------------------------------------------------------------
 
-if (DEFINED RAJA_DIR)
+if (RAJA_DIR)
   message(STATUS "Setting up external RAJA TPL...")
 
   find_dependency(raja REQUIRED PATHS "${RAJA_DIR}")
@@ -73,7 +87,7 @@ if (TARGET axom)
 
     set(AXOM_FOUND TRUE CACHE BOOL "" FORCE)
 
-elseif (DEFINED AXOM_DIR)
+elseif (AXOM_DIR)
   message(STATUS "Setting up external Axom TPL...")
   tribol_assert_path_exists( ${AXOM_DIR} )
   find_dependency(axom REQUIRED PATHS "${AXOM_DIR}/lib/cmake")
@@ -104,7 +118,7 @@ if (TARGET mfem)
     endif()
 
     set(MFEM_FOUND TRUE CACHE BOOL "" FORCE)
-elseif (DEFINED MFEM_DIR)
+elseif (MFEM_DIR)
   message(STATUS "Setting up external MFEM TPL...")
 
   include(${PROJECT_SOURCE_DIR}/cmake/thirdparty/SetupMFEM.cmake)

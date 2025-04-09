@@ -7,6 +7,10 @@
 #include "ContactPlane.hpp"
 #include "tribol/utils/Math.hpp"
 
+#ifdef TRIBOL_USE_ENZYME
+#include "tribol/common/Enzyme.hpp"
+#endif
+
 #include "axom/core.hpp"
 #include "axom/slic.hpp"
 
@@ -37,6 +41,33 @@ TRIBOL_HOST_DEVICE void ProjectPointToPlane( const RealT x, const RealT y, const
   return;
 
 }  // end ProjectPointToPlane()
+
+//------------------------------------------------------------------------------
+void PlaneTo2DCoords( const RealT* x, const RealT* x0, const RealT* e1, const RealT* e2, RealT* xp, RealT* yp,
+                      int num_coords )
+{
+  for ( int i{ 0 }; i < num_coords; ++i ) {
+    xp[i] = 0.0;
+    yp[i] = 0.0;
+
+    for ( int d{ 0 }; d < 3; ++d ) {
+      RealT v_d = x[d * num_coords + i] - x0[d];
+      xp[i] += v_d * e1[d];
+      yp[i] += v_d * e2[d];
+    }
+  }
+}
+
+//------------------------------------------------------------------------------
+void Coords2DToPlane( const RealT* xp, const RealT* yp, const RealT* x0, const RealT* e1, const RealT* e2, RealT* x,
+                      int num_coords )
+{
+  for ( int i{ 0 }; i < num_coords; ++i ) {
+    for ( int d{ 0 }; d < 3; ++d ) {
+      x[d * num_coords + i] = x0[d] + xp[i] * e1[d] + yp[i] * e2[d];
+    }
+  }
+}
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ProjectPointToSegment( const RealT x, const RealT y, const RealT nx, const RealT ny,
@@ -353,7 +384,7 @@ void GlobalTo2DLocalCoords( RealT pX, RealT pY, RealT pZ, RealT e1X, RealT e1Y, 
 TRIBOL_HOST_DEVICE bool VertexAvgCentroid( const RealT* const x, const RealT* const y, const RealT* const z,
                                            const int numVert, RealT& cX, RealT& cY, RealT& cZ )
 {
-#ifdef TRIBOL_USE_HOST
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( numVert == 0, "VertexAvgCentroid: numVert = 0." );
 #endif
   if ( numVert == 0 ) {
@@ -388,7 +419,7 @@ TRIBOL_HOST_DEVICE bool VertexAvgCentroid( const RealT* const x, const RealT* co
 TRIBOL_HOST_DEVICE bool VertexAvgCentroid( const RealT* const x, const int dim, const int numVert, RealT& cX, RealT& cY,
                                            RealT& cZ )
 {
-#ifdef TRIBOL_USE_HOST
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( numVert == 0, "VertexAvgCentroid: numVert = 0." );
 #endif
   if ( numVert == 0 ) {
@@ -423,7 +454,7 @@ TRIBOL_HOST_DEVICE bool VertexAvgCentroid( const RealT* const x, const int dim, 
 TRIBOL_HOST_DEVICE bool PolyAreaCentroid( const RealT* const x, const int dim, const int numVert, RealT& cX, RealT& cY,
                                           RealT& cZ )
 {
-#ifdef TRIBOL_USE_HOST
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( dim != 3, "PolyAreaCentroid: Only compatible with dim = 3." );
   SLIC_ERROR_IF( numVert == 0, "PolyAreaCentroid: numVert = 0." );
 #endif
@@ -489,7 +520,9 @@ TRIBOL_HOST_DEVICE bool PolyAreaCentroid( const RealT* const x, const int dim, c
 //------------------------------------------------------------------------------
 void PolyCentroid( const RealT* const x, const RealT* const y, const int numVert, RealT& cX, RealT& cY )
 {
+#ifndef TRIBOL_USE_ENZYME
   SLIC_ERROR_IF( numVert == 0, "PolyAreaCentroid: numVert = 0." );
+#endif
 
   // (re)initialize the input/output centroid components
   cX = 0.0;
@@ -498,7 +531,7 @@ void PolyCentroid( const RealT* const x, const RealT* const y, const int numVert
   RealT area = 0.;
 
   for ( int i = 0; i < numVert; ++i ) {
-    int i_plus_one = ( i == ( numVert - 1 ) ) ? 0 : i + 1;
+    int i_plus_one = ( i + 1 ) % numVert;
     cX += ( x[i] + x[i_plus_one] ) * ( x[i] * y[i_plus_one] - x[i_plus_one] * y[i] );
     cY += ( y[i] + y[i_plus_one] ) * ( x[i] * y[i_plus_one] - x[i_plus_one] * y[i] );
     area += ( x[i] * y[i_plus_one] - x[i_plus_one] * y[i] );
@@ -513,11 +546,11 @@ void PolyCentroid( const RealT* const x, const RealT* const y, const int numVert
 }  // end PolyCentroid()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, const RealT* const yA,
-                                                        const int numVertexA, const RealT* const xB,
-                                                        const RealT* const yB, const int numVertexB, RealT posTol,
+TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const RealT* yA, int numVertexA,
+                                                        const RealT* xB, const RealT* yB, int numVertexB, RealT posTol,
                                                         RealT lenTol, RealT* polyX, RealT* polyY, int& numPolyVert,
-                                                        RealT& area, bool orientCheck )
+                                                        RealT& area, bool orientCheck, OverlapVertexType* vertType,
+                                                        int* edgeA, int* edgeB )
 {
   // for tribol, if you have called this routine it is because a positive area of
   // overlap between two polygons (faces) exists. This routine does not perform a
@@ -526,7 +559,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, c
 
   // check numVertexA and numVertexB to make sure they are 3 (triangle) or more
   if ( numVertexA < 3 || numVertexB < 3 ) {
-#ifdef TRIBOL_USE_HOST
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
     SLIC_DEBUG( "Intersection2DPolygon(): one or more degenerate faces with < 3 vertices." );
 #endif
     area = 0.0;
@@ -543,7 +576,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, c
     bool orientB = CheckPolyOrientation( xB, yB, numVertexB );
 
     if ( !orientA || !orientB ) {
-#ifdef TRIBOL_USE_HOST
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
       SLIC_DEBUG( "Intersection2DPolygon(): check face orientations for face A." );
 #endif
       return FACE_ORIENTATION;
@@ -592,6 +625,17 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, c
     for ( int i = 0; i < numVertexA; ++i ) {
       polyX[i] = xA[i];
       polyY[i] = yA[i];
+      if ( vertType ) {
+        vertType[i] = OverlapVertexType::A;
+      }
+      // set all edgeA to polygon A vertex IDs
+      if ( edgeA ) {
+        edgeA[i] = i;
+      }
+      // set all edgeB to -1 since all vertices are on polygon A
+      if ( edgeB ) {
+        edgeB[i] = -1;
+      }
     }
     area = Area2DPolygon( polyX, polyY, numVertexA );
     return NO_FACE_GEOM_ERROR;
@@ -612,6 +656,17 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, c
     for ( int i = 0; i < numVertexB; ++i ) {
       polyX[i] = xB[i];
       polyY[i] = yB[i];
+      if ( vertType ) {
+        vertType[i] = OverlapVertexType::B;
+      }
+      // set all edgeA to -1 since all vertices are on polygon B
+      if ( edgeA ) {
+        edgeA[i] = -1;
+      }
+      // set all edgeB to polygon B vertex IDs
+      if ( edgeB ) {
+        edgeB[i] = i;
+      }
     }
     area = Area2DPolygon( polyX, polyY, numVertexB );
     return NO_FACE_GEOM_ERROR;
@@ -648,6 +703,8 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, c
   RealT interX[max_intersections];
   RealT interY[max_intersections];
   bool intersect[max_intersections];
+  int edgeATemp[max_intersections];
+  int edgeBTemp[max_intersections];
   bool dupl;  // boolean to indicate a segment-segment intersection that
               // duplicates an existing interior vertex.
   bool interior[4];
@@ -656,6 +713,8 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, c
   initRealArray( interX, max_intersections, 0. );
   initRealArray( interY, max_intersections, 0. );
   initBoolArray( intersect, max_intersections, false );
+  initIntArray( edgeATemp, max_intersections, 0 );
+  initIntArray( edgeBTemp, max_intersections, 0 );
   dupl = false;
 
   // loop over segment-segment intersections to find the rest of the
@@ -687,7 +746,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, c
       // if both segments are not defined by nodes interior to the other polygon
       if ( checkA && checkB ) {
         if ( interId >= max_intersections ) {
-#ifdef TRIBOL_USE_HOST
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
           SLIC_DEBUG( "Intersection2DPolygon: number of segment/segment intersections exceeds precomputed maximum; "
                       << "check for degenerate overlap." );
 #endif
@@ -697,6 +756,10 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, c
         intersect[interId] =
             SegmentIntersection2D( xA[vAID1], yA[vAID1], xA[vAID2], yA[vAID2], xB[vBID1], yB[vBID1], xB[vBID2],
                                    yB[vBID2], interior, interX[interId], interY[interId], dupl, posTol );
+        if ( intersect[interId] ) {
+          edgeATemp[interId] = ia;
+          edgeBTemp[interId] = jb;
+        }
         ++interId;
       }
     }  // end loop over A segments
@@ -723,6 +786,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, c
   constexpr int max_identified_points = max_nodes_per_overlap + 2 * max_nodes_per_element;
   RealT polyXTemp[max_identified_points];
   RealT polyYTemp[max_identified_points];
+  OverlapVertexType vertTypeTemp[max_identified_points];
 
   // fill polyXTemp and polyYTemp with the intersection points
   int k = 0;
@@ -730,6 +794,9 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, c
     if ( intersect[i] ) {
       polyXTemp[k] = interX[i];
       polyYTemp[k] = interY[i];
+      vertTypeTemp[k] = OverlapVertexType::EdgeEdge;
+      edgeATemp[k] = edgeATemp[i];
+      edgeBTemp[k] = edgeBTemp[i];
       ++k;
     }
   }
@@ -739,7 +806,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, c
     if ( interiorVAId[i] != -1 ) {
       // debug
       if ( k > max_identified_points ) {
-#ifdef TRIBOL_USE_HOST
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
         SLIC_DEBUG( "Intersection2DPolygon(): number of A vertices interior to B "
                     << "polygon exceeds total number of overlap vertices. Check interior vertex id values." );
 #endif
@@ -748,6 +815,9 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, c
 
       polyXTemp[k] = xA[i];
       polyYTemp[k] = yA[i];
+      vertTypeTemp[k] = OverlapVertexType::A;
+      edgeATemp[k] = i;
+      edgeBTemp[k] = -1;
       ++k;
     }
   }
@@ -756,7 +826,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, c
     if ( interiorVBId[i] != -1 ) {
       // debug
       if ( k > max_identified_points ) {
-#ifdef TRIBOL_USE_HOST
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
         SLIC_DEBUG( "Intersection2DPolygon(): number of B vertices interior to A "
                     << "polygon exceeds total number of overlap vertices. Check interior vertex id values." );
 #endif
@@ -765,6 +835,9 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, c
 
       polyXTemp[k] = xB[i];
       polyYTemp[k] = yB[i];
+      vertTypeTemp[k] = OverlapVertexType::B;
+      edgeATemp[k] = -1;
+      edgeBTemp[k] = i;
       ++k;
     }
   }
@@ -773,14 +846,44 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, c
   // Only do this for overlaps with 3 or more vertices. We skip any overlap that degenerates to <3 vertices
   if ( numPolyVert > 2 ) {
     // order the unordered vertices (in counter clockwise fashion)
-    PolyReorder( polyXTemp, polyYTemp, numPolyVert );
+    int vertIdx[max_intersections];
+    initIntArray( vertIdx, max_intersections, 0 );
+    PolyReorder( polyXTemp, polyYTemp, vertIdx, numPolyVert );
+
+    OverlapVertexType vertTypeTemp2[max_identified_points];
+    int edgeATemp2[max_intersections];
+    int edgeBTemp2[max_intersections];
+    for ( int i = 0; i < numPolyVert; ++i ) {
+      vertTypeTemp2[i] = vertTypeTemp[vertIdx[i]];
+      edgeATemp2[i] = edgeATemp[vertIdx[i]];
+      edgeBTemp2[i] = edgeBTemp[vertIdx[i]];
+    }
+    for ( int i = 0; i < numPolyVert; ++i ) {
+      vertTypeTemp[i] = vertTypeTemp2[i];
+      edgeATemp[i] = edgeATemp2[i];
+      edgeBTemp[i] = edgeBTemp2[i];
+    }
 
     // check length of segs against tolerance and collapse short segments if necessary
     // This is where polyX and polyY get allocated for any overlap that remains with
     // > 3 vertices
     int numFinalVert = 0;
 
-    FaceGeomError segErr = CheckPolySegs( polyXTemp, polyYTemp, numPolyVert, lenTol, polyX, polyY, numFinalVert );
+    FaceGeomError segErr =
+        CheckPolySegs( polyXTemp, polyYTemp, numPolyVert, lenTol, polyX, polyY, vertIdx, numFinalVert );
+    for ( int i = 0; i < numFinalVert; ++i ) {
+      if ( vertType ) {
+        vertType[i] = vertTypeTemp[vertIdx[i]];
+      }
+      if ( edgeA ) {
+        edgeA[i] = edgeATemp[vertIdx[i]];
+      }
+      if ( edgeB ) {
+        edgeB[i] = edgeBTemp[vertIdx[i]];
+      }
+    }
+
+    numPolyVert = numFinalVert;
 
     // check for an error in the segment check routine
     if ( segErr != 0 ) {
@@ -789,12 +892,12 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, c
 
     // check to see if the overlap was degenerated to have 2 or less vertices.
     if ( numFinalVert < 3 ) {
+      numPolyVert = 0;
       area = 0.0;
       return NO_FACE_GEOM_ERROR;  // punt on degenerated or collapsed overlaps
     }
-
-    numPolyVert = numFinalVert;
   } else {
+    numPolyVert = 0;
     area = 0.0;
     return NO_FACE_GEOM_ERROR;  // don't return error here. We should tolerate 'collapsed' (zero area) overlaps
   }
@@ -805,6 +908,20 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* const xA, c
   return NO_FACE_GEOM_ERROR;
 
 }  // end Intersection2DPolygon()
+
+#ifdef TRIBOL_USE_ENZYME
+
+FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB,
+                                           const RealT* yB, int numVertexB, RealT posTol, RealT lenTol, RealT* polyX,
+                                           RealT* polyY, int* numPolyVert )
+{
+  double area = 0.0;
+  constexpr bool orientCheck = true;
+  return Intersection2DPolygon( xA, yA, numVertexA, xB, yB, numVertexB, posTol, lenTol, polyX, polyY, *numPolyVert,
+                                area, orientCheck );
+}
+
+#endif
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE bool CheckPolyOrientation( const RealT* const x, const RealT* const y, const int numVertex )
@@ -850,7 +967,7 @@ TRIBOL_HOST_DEVICE bool CheckPolyOrientation( const RealT* const x, const RealT*
 TRIBOL_HOST_DEVICE bool Point2DInFace( const RealT xPoint, const RealT yPoint, const RealT* const xPoly,
                                        const RealT* const yPoly, const RealT xC, const RealT yC, const int numPolyVert )
 {
-#ifdef TRIBOL_USE_HOST
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( numPolyVert < 3, "Point2DInFace: number of face vertices is less than 3" );
 
   SLIC_ERROR_IF( xPoly == nullptr || yPoly == nullptr, "Point2DInFace: input pointer not set" );
@@ -939,7 +1056,9 @@ TRIBOL_HOST_DEVICE RealT Area2DPolygon( const RealT* const x, const RealT* const
   // compute vertex-averaged centroid to construct a triangle between segment
   // vertices and centroid
   RealT* z = nullptr;
-  RealT xc, yc, zc;
+  RealT xc = 0.0;
+  RealT yc = 0.0;
+  RealT zc = 0.0;
   VertexAvgCentroid( x, y, z, numPolyVert, xc, yc, zc );
 
   for ( int i = 0; i < numPolyVert; ++i ) {
@@ -964,10 +1083,9 @@ TRIBOL_HOST_DEVICE RealT Area3DTri( const RealT* const x, const RealT* const y, 
 }  // end Area3DTri()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE bool SegmentIntersection2D( const RealT xA1, const RealT yA1, const RealT xB1, const RealT yB1,
-                                               const RealT xA2, const RealT yA2, const RealT xB2, const RealT yB2,
-                                               const bool* const interior, RealT& x, RealT& y, bool& duplicate,
-                                               const RealT tol )
+TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, RealT yB1, RealT xA2, RealT yA2,
+                                               RealT xB2, RealT yB2, const bool* interior, RealT& x, RealT& y,
+                                               bool& duplicate, RealT tol )
 {
   // note 1: this routine computes a unique segment-segment intersection, where two
   // segments are assumed to intersect at a single point. A segment-segment overlap
@@ -1040,7 +1158,7 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( const RealT xA1, const RealT yA1,
     yDiff = ( yDiff < 0. ) ? -1.0 * yDiff : yDiff;
 
     RealT diffTol = 1.0E-3;
-#ifdef TRIBOL_USE_HOST
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
     SLIC_DEBUG_IF( xDiff > diffTol || yDiff > diffTol,
                    "SegmentIntersection2D(): Intersection coordinates are not equally derived." );
 #endif
@@ -1077,12 +1195,12 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( const RealT xA1, const RealT yA1,
     distMag[i] = magnitude( distX[i], distY[i] );
   }
 
-  RealT distMin = ( seg1Mag > seg2Mag ) ? seg1Mag : seg2Mag;
-  int idMin;
-  RealT xMinVert;
-  RealT yMinVert;
+  RealT distMin = distMag[0];
+  int idMin = 0;
+  RealT xMinVert = xVert[0];
+  RealT yMinVert = yVert[0];
 
-  for ( int i = 0; i < 4; ++i ) {
+  for ( int i = 1; i < 4; ++i ) {
     if ( distMag[i] < distMin ) {
       distMin = distMag[i];
       idMin = i;
@@ -1116,11 +1234,14 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( const RealT xA1, const RealT yA1,
 }  // end SegmentIntersection2D()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* const x, const RealT* const y, const int numPoints,
-                                                const RealT tol, RealT* xnew, RealT* ynew, int& numNewPoints )
+TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, int numPoints, RealT tol, RealT* xnew,
+                                                RealT* ynew, int* newIDs, int& numNewPoints )
 {
   constexpr int max_nodes_per_overlap = 8;
-  RealT newIDs[max_nodes_per_overlap];
+  int local_newIDs[max_nodes_per_overlap];
+  if ( !newIDs ) {
+    newIDs = local_newIDs;
+  }
 
   // set newIDs[i] to original local ordering
   for ( int i = 0; i < numPoints; ++i ) {
@@ -1164,7 +1285,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* const x, const Real
   for ( int i = 0; i < numPoints; ++i ) {
     if ( newIDs[i] == i ) {
       if ( k > numNewPoints ) {
-#ifdef TRIBOL_USE_HOST
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
         SLIC_DEBUG( "checkPolySegs(): index into polyX/polyY exceeds allocated space" );
 #endif
         return FACE_VERTEX_INDEX_EXCEEDS_OVERLAP_VERTICES;
@@ -1181,10 +1302,10 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* const x, const Real
 }  // end CheckPolySegs()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE bool PolyReorder( RealT* const x, RealT* const y, const int numPoints )
+TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoints )
 {
   if ( numPoints < 3 ) {
-#ifdef TRIBOL_USE_HOST
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
     SLIC_DEBUG( "PolyReorder: numPoints (" << numPoints << ") < 3." );
 #endif
     return false;
@@ -1195,7 +1316,10 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* const x, RealT* const y, const int n
   constexpr int max_nodes_per_overlap = 8 + 2 * 4;
   RealT proj[max_nodes_per_overlap - 2];
 
-  int newIDs[max_nodes_per_overlap];
+  int local_newIDs[max_nodes_per_overlap];
+  if ( !newIDs ) {
+    newIDs = local_newIDs;
+  }
 
   // initialize newIDs array to local ordering, 0,1,2,...,numPoints-1
   for ( int i = 0; i < numPoints; ++i ) {

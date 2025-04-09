@@ -44,6 +44,20 @@ MeshBuilder MeshBuilder::HypercubeMesh( int dim, int n_els )
 
 MeshBuilder::MeshBuilder( mfem::Mesh&& mesh ) : mesh_{ std::move( mesh ) } { mesh_.EnsureNodes(); }
 
+MeshBuilder&& MeshBuilder::scale( std::initializer_list<double> scale_factors )
+{
+  SLIC_ERROR_ROOT_IF( static_cast<int>( scale_factors.size() ) != mesh_.SpaceDimension(),
+                      "scale_factors size does not match mesh dimension." );
+  auto& coords = *mesh_.GetNodes();
+  for ( int d = 0; d < mesh_.SpaceDimension(); ++d ) {
+    for ( int i = 0; i < mesh_.GetNV(); ++i ) {
+      auto vdof = coords.FESpace()->DofToVDof( i, d );
+      coords[vdof] *= *( scale_factors.begin() + d );
+    }
+  }
+  return std::move( *this );
+}
+
 MeshBuilder&& MeshBuilder::translate( std::initializer_list<double> dx )
 {
   SLIC_ERROR_ROOT_IF( static_cast<int>( dx.size() ) != mesh_.SpaceDimension(), "Invalid size for dx" );
@@ -53,6 +67,17 @@ MeshBuilder&& MeshBuilder::translate( std::initializer_list<double> dx )
       auto vdof = coords.FESpace()->DofToVDof( i, d );
       coords[vdof] += *( dx.begin() + d );
     }
+  }
+  return std::move( *this );
+}
+
+MeshBuilder&& MeshBuilder::translateNode( int node_id, std::initializer_list<double> dx )
+{
+  SLIC_ERROR_ROOT_IF( static_cast<int>( dx.size() ) != mesh_.SpaceDimension(), "Invalid size for dx" );
+  auto& coords = *mesh_.GetNodes();
+  for ( int d = 0; d < mesh_.SpaceDimension(); ++d ) {
+    auto vdof = coords.FESpace()->DofToVDof( node_id, d );
+    coords[vdof] += *( dx.begin() + d );
   }
   return std::move( *this );
 }
@@ -131,6 +156,10 @@ MeshBuilder::operator mfem::Mesh&() { return mesh_; }
 
 MeshBuilder::operator const mfem::Mesh&() const { return mesh_; }
 
+MeshBuilder::operator mfem::Mesh&&() { return std::move( mesh_ ); }
+
+#ifdef TRIBOL_USE_MPI
+
 ParMeshBuilder::ParMeshBuilder( MPI_Comm comm, MeshBuilder&& mesh ) : pmesh_{ comm, mesh } {}
 
 ParMeshBuilder&& ParMeshBuilder::setNodesFEColl( mfem::H1_FECollection fe_coll )
@@ -162,5 +191,7 @@ mfem::ParFiniteElementSpace& ParMeshBuilder::getNodesFESpace() { return *getNode
 const mfem::ParFiniteElementSpace& ParMeshBuilder::getNodesFESpace() const { return *getNodes().ParFESpace(); }
 
 ParMeshBuilder::operator const mfem::ParMesh&() const { return pmesh_; }
+
+#endif
 
 }  // namespace shared

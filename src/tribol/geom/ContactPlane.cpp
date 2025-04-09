@@ -1335,8 +1335,8 @@ TRIBOL_HOST_DEVICE FaceGeomError ContactPlane3D::computeLocalInterpenOverlap( co
                          cfx2_loc, cfy2_loc, numV[1] );
 
   // reorder potentially unordered set of vertices
-  PolyReorder( cfx1_loc, cfy1_loc, numV[0] );
-  PolyReorder( cfx2_loc, cfy2_loc, numV[1] );
+  PolyReorder( cfx1_loc, cfy1_loc, nullptr, numV[0] );
+  PolyReorder( cfx2_loc, cfy2_loc, nullptr, numV[1] );
 
   // call intersection routine to get intersecting polygon
   RealT pos_tol = params.len_collapse_ratio * axom::utilities::max( mesh[0]->getFaceRadius()[getCpElementId1()],
