@@ -21,33 +21,20 @@ spack:
   - compiler:
       environment: {}
       extra_rpaths: []
-      flags: 
-        # Fix for "undefined reference to `_gfortran_transfer_integer_write'"
-        ldlibs: -lgfortran
-      modules: []
-      operating_system: rhel7
-      paths:
-        cc:  /usr/tce/packages/gcc/gcc-8.3.1/bin/gcc
-        cxx: /usr/tce/packages/gcc/gcc-8.3.1/bin/g++
-        f77: /usr/tce/packages/gcc/gcc-8.3.1/bin/gfortran
-        fc:  /usr/tce/packages/gcc/gcc-8.3.1/bin/gfortran
-      spec: gcc@8.3.1
-      target: ppc64le
-  - compiler:
-      environment: {}
-      extra_rpaths: []
       flags:
-        # Fix for "undefined reference to `_gfortran_transfer_integer_write'"
+        # Required as spack cannot recognize compiler-specific linker
+        # flags in mixed toolchains
         ldlibs: -lgfortran
       modules: []
       operating_system: rhel7
       paths:
-        cc:  /usr/tce/packages/clang/clang-ibm-10.0.1-gcc-8.3.1/bin/clang
-        cxx: /usr/tce/packages/clang/clang-ibm-10.0.1-gcc-8.3.1/bin/clang++
+        cc:  /usr/tce/packages/clang/clang-ibm-14.0.5-gcc-8.3.1/bin/clang
+        cxx: /usr/tce/packages/clang/clang-ibm-14.0.5-gcc-8.3.1/bin/clang++
         f77: /usr/tce/packages/gcc/gcc-8.3.1/bin/gfortran
         fc:  /usr/tce/packages/gcc/gcc-8.3.1/bin/gfortran
-      spec: clang@10.0.1
+      spec: clang@14.0.5
       target: ppc64le
+  
   packages:
     all:
       compiler: [gcc, intel, pgi, clang, xl, nag]
@@ -59,32 +46,27 @@ spack:
 
     # LLNL blueos CUDA
     cuda:
-      buildable: false
       externals:
-      - spec: cuda@11.2.0
-        prefix: /usr/tce/packages/cuda/cuda-11.2.0
+        - spec: cuda@11.8.0
+          prefix: /usr/tce/packages/cuda/cuda-11.8.0
+      buildable: false
 
     # LLNL blueos mpi
     mpi:
       buildable: false
     spectrum-mpi:
-      buildable: false
       externals:
-      - spec: spectrum-mpi@release%gcc@8.3.1
-        prefix: /usr/tce/packages/spectrum-mpi/spectrum-mpi-rolling-release-gcc-8.3.1/
-      - spec: spectrum-mpi@release%clang@10.0.1
-        prefix: /usr/tce/packages/spectrum-mpi/spectrum-mpi-rolling-release-clang-10.0.1-gcc-8.3.1/
+        - spec: spectrum-mpi@release%clang@14.0.5
+          prefix: /usr/tce/packages/spectrum-mpi/spectrum-mpi-rolling-release-clang-14.0.5-gcc-8.3.1
 
     # blas is a bit more complicated because its a virtual package so fake it with
     # the following per spack docs
     netlib-lapack:
-      buildable: false
       externals:
-      # These have trailing underscores in their symbols
-      - spec: netlib-lapack@3.9.0%gcc@8.3.1
-        prefix: /usr/tcetmp/packages/lapack/lapack-3.9.0-P9-gcc-7.3.1/
-      - spec: netlib-lapack@3.9.0%clang@10.0.1
-        prefix: /usr/tcetmp/packages/lapack/lapack-3.9.0-P9-gcc-7.3.1/
+        # This is the one that has the trailing underscores in name mangling, needed for MFEM compat
+        - spec: netlib-lapack@3.9.0
+          prefix: /usr/tcetmp/packages/lapack/lapack-3.9.0-gcc-7.3.1/lib/
+      buildable: false
 
     # System level packages to not build
     autoconf:
@@ -122,11 +104,6 @@ spack:
       externals:
       - spec: elfutils@0.176
         prefix: /usr
-    epoxy:
-      buildable: false
-      externals:
-      - spec: epoxy@0.0.0
-        prefix: /usr
     findutils:
       buildable: false
       externals:
@@ -142,15 +119,15 @@ spack:
       externals:
       - spec: ghostscript@9.25
         prefix: /usr
-    gmake:
-      buildable: false
-      externals:
-      - spec: gmake@4.2.1
-        prefix: /usr/tcetmp
     groff:
       buildable: false
       externals:
       - spec: groff@1.22.2
+        prefix: /usr
+    libepoxy:
+      buildable: false
+      externals:
+      - spec: libepoxy@1.5.2
         prefix: /usr
     libtool:
       buildable: false
@@ -162,15 +139,15 @@ spack:
       externals:
       - spec: libunwind@8.0.1
         prefix: /usr
-    ncurses:
-      buildable: false
-      externals:
-      - spec: ncurses@5.9
-        prefix: /usr
     m4:
       buildable: false
       externals:
       - spec: m4@1.4.16
+        prefix: /usr
+    ncurses:
+      buildable: false
+      externals:
+      - spec: ncurses@5.9
         prefix: /usr
     perl:
       buildable: false
@@ -192,6 +169,11 @@ spack:
       - spec: tar@1.26
         prefix: /usr
       buildable: false
+    unzip:
+      buildable: false
+      externals:
+      - spec: unzip@6.0
+        prefix: /usr
     zlib:
       buildable: false
       externals:
@@ -238,13 +220,11 @@ spack:
 
     # Globally lock version of third party libraries that work on this platform
     axom:
-      require: "@0.10.1.2~shared~examples~fortran~lua~tools"
+      require: "@0.10.1.1~shared~examples~fortran~lua~tools"
     camp:
       require: "@2024.07.0"
     conduit:
       require: "@0.9.2~shared~test~examples~utilities"
-    fmt:
-      require: "@9.1"
     hdf5:
       variants: ~shared~mpi
     raja:

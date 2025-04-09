@@ -29,5 +29,9 @@
       "gcc@8.3.1+devtools+cuda+raja+umpire cuda_arch=70" ],
 
     "linux_ubuntu_24":
-    [ "clang@16.0.6+devtools+cuda+openmp+raja+umpire cuda_arch=80" ]
+    [ "clang@16.0.6+devtools+cuda+openmp+raja+umpire cuda_arch=80" ],
+
+    "__comment__":"# +enzyme is not working -- debug builds are not compiling and CLI11 breaks on release builds.",
+    "macos_sequoia_aarch64":
+    [ "clang@20.1.2+openmp+raja+umpire" ]
 }
