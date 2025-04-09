@@ -206,6 +206,12 @@ class MfemCommonPlaneTest
 
     max_disp_ = displacement.Max();
     MPI_Allreduce( MPI_IN_PLACE, &max_disp_, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD );
+
+    // Delete coupling schemes and meshes before mfem::Device goes out of scope, since that will delete the memory
+    // manager and all managed memory. Without this, when new coupling schemes are registered over the old ones, the
+    // memory of the old coupling scheme will try to be deleted but it will not exist since it was already deleted when
+    // mfem::Device went out of scope.
+    tribol::finalize();
   }
 };
 
@@ -218,27 +224,25 @@ TEST_P( MfemCommonPlaneTest, common_plane )
 }
 
 INSTANTIATE_TEST_SUITE_P( tribol, MfemCommonPlaneTest,
-                          testing::Values( std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, "cuda" ),
-                                           std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, "cuda" ) ) );
-//                           testing::Values( std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, "cpu" ),
-//                                            std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, "cpu" ),
-//                                            std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, "cpu" ),
-//                                            std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, "cpu" )
-// #ifdef TRIBOL_USE_CUDA
-//                                                ,
-//                                            std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, "cuda" ),
-//                                            std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, "cuda" ),
-//                                            std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, "cuda" ),
-//                                            std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, "cuda" )
-// #endif
-// #ifdef TRIBOL_USE_HIP
-//                                                ,
-//                                            std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, "hip" ),
-//                                            std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, "hip" ),
-//                                            std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, "hip" ),
-//                                            std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, "hip" )
-// #endif
-//                                                ) );
+                          testing::Values( std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, "cpu" ),
+                                           std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, "cpu" ),
+                                           std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, "cpu" ),
+                                           std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, "cpu" )
+#ifdef TRIBOL_USE_CUDA
+                                               ,
+                                           std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, "cuda" ),
+                                           std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, "cuda" ),
+                                           std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, "cuda" ),
+                                           std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, "cuda" )
+#endif
+#ifdef TRIBOL_USE_HIP
+                                               ,
+                                           std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, "hip" ),
+                                           std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, "hip" ),
+                                           std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, "hip" ),
+                                           std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, "hip" )
+#endif
+                                               ) );
 
 //------------------------------------------------------------------------------
 int main( int argc, char* argv[] )
@@ -256,13 +260,8 @@ int main( int argc, char* argv[] )
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
                                     // exiting main scope
 
-#ifdef TRIBOL_ENABLE_CUDA
-  mfem::Device device( "cuda" );
-#endif
-
   result = RUN_ALL_TESTS();
 
-  tribol::finalize();
   MPI_Finalize();
 
   return result;
