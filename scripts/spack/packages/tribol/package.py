@@ -85,6 +85,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     depends_on("axom~umpire", when="~umpire")
 
     depends_on("mfem+metis+mpi", when="+redecomp")
+    depends_on("mfem+asan", when="+asan")
     
     with when("+openmp"):
         depends_on("axom+openmp")
