@@ -832,7 +832,7 @@ int update( int cycle, RealT t, RealT& dt )
     // scheme will not be valid across all ranks and we will skip this coupling scheme
     if ( !cs.init() ) {
       SLIC_WARNING_ROOT( "tribol::update(): skipping invalid CouplingScheme " << cs_pair.first
-                                                                              << "Please see warnings." );
+                                                                              << ". Please see warnings." );
       continue;
     }
 
