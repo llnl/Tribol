@@ -35,3 +35,4 @@ toss4_cray-rocmcc_6_2_1-src:
    ALLOC_NODES: "1"
    ALLOC_TIME: "30"
  extends: .src_build_on_toss4_cray
+ 
