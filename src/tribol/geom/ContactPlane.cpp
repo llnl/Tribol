@@ -396,12 +396,16 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckFacePair( ContactPlane3D& cp, const MeshDa
   // plane defined by face1 AND vice-versa. For proximate faces
   // that pass check #3 this check may easily indicate that the faces
   // do in fact intersect.
-  RealT separationTol = params.gap_separation_ratio *
-                        axom::utilities::max( mesh1.getFaceRadius()[element_id1], mesh2.getFaceRadius()[element_id2] );
+  //RealT separationTol = params.gap_separation_ratio * // TODO SRW confirm removing this separation tolerance check
+  //                      axom::utilities::max( mesh1.getFaceRadius()[element_id1], mesh2.getFaceRadius()[element_id2] );
+  RealT vertSeparationTol = 1.e-8;
   bool all = false;
-  bool ls = FaceInterCheck( mesh1, mesh2, element_id1, element_id2, separationTol, all );
+
+  // TODO SRW rework the logic here. We want to include contact planes with faces in separation up to whatever
+  // the binning proximity was
+  bool ls = FaceInterCheck( mesh1, mesh2, element_id1, element_id2, vertSeparationTol, all );
   if ( !ls ) {
-    cp.m_inContact = false;
+    cp.m_inContact = false; // TODO remove this check
     return NO_FACE_GEOM_ERROR;
   }
 
@@ -602,16 +606,17 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckFacePair( ContactPlane3D& cp, const MeshDa
   // needed.
   cp.planePointAndCentroidGap( mesh1, mesh2 );
 
+  // TODO SRW confirm removing this check
   // The gap tolerance allows separation up to the separation ratio of the
   // largest face-radius. This is conservative and allows for possible
   // over-inclusion. This is done for the mortar method per testing.
-  cp.m_gapTol = params.gap_separation_ratio *
-                axom::utilities::max( mesh1.getFaceRadius()[element_id1], mesh2.getFaceRadius()[element_id2] );
+  //cp.m_gapTol = params.gap_separation_ratio *
+  //              axom::utilities::max( mesh1.getFaceRadius()[element_id1], mesh2.getFaceRadius()[element_id2] );
 
-  if ( cp.m_gap > cp.m_gapTol ) {
-    cp.m_inContact = false;
-    return NO_FACE_GEOM_ERROR;
-  }
+  //if ( cp.m_gap > cp.m_gapTol ) {
+  //  cp.m_inContact = false;
+  //  return NO_FACE_GEOM_ERROR;
+  //}
 
   // for auto-contact, remove contact candidacy for full-overlap
   // face-pairs with interpenetration exceeding contact penetration fraction.
@@ -744,9 +749,10 @@ TRIBOL_HOST_DEVICE ContactPlane3D CheckAlignedFacePair( InterfacePair& pair, con
   cp.m_nY = mesh1.getElementNormals()[1][element_id1];
   cp.m_nZ = mesh1.getElementNormals()[2][element_id1];
 
+  // TODO SRW confirm removing this tolerance
   // set the gap tolerance inclusive for separation up to m_gapTol
-  cp.m_gapTol = params.gap_separation_ratio *
-                axom::utilities::max( mesh1.getFaceRadius()[element_id1], mesh2.getFaceRadius()[element_id2] );
+  //cp.m_gapTol = params.gap_separation_ratio *
+  //              axom::utilities::max( mesh1.getFaceRadius()[element_id1], mesh2.getFaceRadius()[element_id2] );
 
   // set the area fraction
   cp.m_areaFrac = params.overlap_area_frac;
@@ -773,11 +779,12 @@ TRIBOL_HOST_DEVICE ContactPlane3D CheckAlignedFacePair( InterfacePair& pair, con
     return cp;
   }
 
+  // TODO SRW confirm removing this separation check
   // perform gap check
-  if ( scalarGap > cp.m_gapTol ) {
-    cp.m_inContact = false;
-    return cp;
-  }
+  //if ( scalarGap > cp.m_gapTol ) {
+  //  cp.m_inContact = false;
+  //  return cp;
+  //}
 
   // for auto-contact, remove contact candidacy for face-pairs with
   // interpenetration exceeding contact penetration fraction.
@@ -1409,12 +1416,14 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckEdgePair( ContactPlane2D& cp, const MeshDa
   // (contact segment) and perform this check. Note, this tolerance is
   // inclusive up to a separation of a fraction of the edge-radius.
   // This is done for the mortar method per 3D testing.
-  RealT separationTol = params.gap_separation_ratio *
-                        axom::utilities::max( mesh1.getFaceRadius()[edgeId1], mesh2.getFaceRadius()[edgeId2] );
+  //RealT separationTol = params.gap_separation_ratio * // TODO SRW confirm removing this separationTol check
+  //                      axom::utilities::max( mesh1.getFaceRadius()[edgeId1], mesh2.getFaceRadius()[edgeId2] );
+  RealT vertSeparationTol = 1.e-8;
   bool all = false;
-  bool ls = EdgeInterCheck( mesh1, mesh2, edgeId1, edgeId2, separationTol, all );
+  // TODO SRW rework this logic. we want to include edges with separation up to whatever the binning allowed
+  bool ls = EdgeInterCheck( mesh1, mesh2, edgeId1, edgeId2, vertSeparationTol, all );
   if ( !ls ) {
-    cp.m_inContact = false;
+    cp.m_inContact = false; // TODO remove this check
     return NO_FACE_GEOM_ERROR;
   }
 
@@ -1486,12 +1495,13 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckEdgePair( ContactPlane2D& cp, const MeshDa
   cp.planePointAndCentroidGap( mesh1, mesh2 );
 
   // Per 3D mortar testing, allow for separation up to the edge-radius
-  cp.m_gapTol = params.gap_separation_ratio *
-                axom::utilities::max( mesh1.getFaceRadius()[edgeId1], mesh2.getFaceRadius()[edgeId2] );
-  if ( cp.m_gap > cp.m_gapTol ) {
-    cp.m_inContact = false;
-    return NO_FACE_GEOM_ERROR;
-  }
+  // TODO SRW confirm removing this check
+  //cp.m_gapTol = params.gap_separation_ratio *
+  //              axom::utilities::max( mesh1.getFaceRadius()[edgeId1], mesh2.getFaceRadius()[edgeId2] );
+  //if ( cp.m_gap > cp.m_gapTol ) {
+  //  cp.m_inContact = false;
+  //  return NO_FACE_GEOM_ERROR;
+  //}
 
   // for auto-contact, remove contact candidacy for full-overlap
   // face-pairs with interpenetration exceeding contact penetration fraction.
