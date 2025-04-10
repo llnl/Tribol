@@ -11,6 +11,7 @@
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/Parameters.hpp"
+#include "tribol/geom/ElementNormal.hpp"
 #include "tribol/utils/DataManager.hpp"
 
 namespace tribol {
@@ -195,6 +196,20 @@ class MeshData {
     TRIBOL_HOST_DEVICE const MultiViewArrayView<const RealT>& getPosition() const { return m_position; }
 
     /**
+     * @brief Is the reference position vector populated?
+     *
+     * @return true if non-empty; false otherwise
+     */
+    TRIBOL_HOST_DEVICE bool hasReferencePosition() const { return !m_ref_position.empty(); }
+
+    /**
+     * @brief Get the nodal reference position array views
+     *
+     * @return array view of the nodal reference position arrays
+     */
+    TRIBOL_HOST_DEVICE const MultiViewArrayView<const RealT>& getReferencePosition() const { return m_ref_position; }
+
+    /**
      * @brief Is the displacement vector populated?
      *
      * @return true if non-empty; false otherwise
@@ -249,6 +264,9 @@ class MeshData {
      * @return array view of the nodal normals
      */
     TRIBOL_HOST_DEVICE const Array2DView<RealT>& getNodalNormals() const { return m_node_n; }
+
+    /// @overload
+    TRIBOL_HOST_DEVICE Array2DView<RealT>& getNodalNormals() { return m_node_n; }
 
     /**
      * @brief Is the element centroids vector populated?
@@ -362,6 +380,9 @@ class MeshData {
     /// Array of views of nodal position data
     const MultiViewArrayView<const RealT> m_position;
 
+    /// Array of views of nodal reference position data
+    const MultiViewArrayView<const RealT> m_ref_position;
+
     /// Array of views of nodal displacement data
     const MultiViewArrayView<const RealT> m_disp;
 
@@ -372,7 +393,7 @@ class MeshData {
     const MultiViewArrayView<RealT> m_response;
 
     /// Array view of 2D nodal normal data
-    const Array2DView<RealT> m_node_n;
+    Array2DView<RealT> m_node_n;
 
     /// Array view of 2D element connectivity data
     const Array2DView<const IndexT> m_connectivity;
@@ -532,6 +553,23 @@ class MeshData {
   void setPosition( const RealT* x, const RealT* y, const RealT* z );
 
   /**
+   * @brief Set the pointers to the nodal reference position data
+   *
+   * @param xref array of x-components of the nodal reference position
+   * @param yref array of y-components of the nodal reference position
+   * @param zref array of z-components of the nodal reference position
+   */
+  void setReferencePosition( const RealT* xref, const RealT* yref, const RealT* zref );
+
+  /**
+   * @brief Is the reference position vector populated?
+   *
+   * @return true vector is non-empty
+   * @return false vector is empty
+   */
+  bool hasReferencePosition() const { return !m_ref_position.empty(); }
+
+  /**
    * @brief Set the pointers to the nodal displacement data
    *
    * @param ux array of x-components of the nodal displacement
@@ -620,10 +658,11 @@ class MeshData {
   MeshElemData m_element_data;   ///< method/enforcement specific element data
 
   // Nodal field data
-  MultiArrayView<const RealT> m_position;  ///< Coordinates of nodes in mesh
-  MultiArrayView<const RealT> m_disp;      ///< Nodal displacements
-  MultiArrayView<const RealT> m_vel;       ///< Nodal velocity
-  MultiArrayView<RealT> m_response;        ///< Nodal responses (forces)
+  MultiArrayView<const RealT> m_position;      ///< Coordinates of nodes in mesh
+  MultiArrayView<const RealT> m_ref_position;  ///< Reference coordinates of nodes in mesh
+  MultiArrayView<const RealT> m_disp;          ///< Nodal displacements
+  MultiArrayView<const RealT> m_vel;           ///< Nodal velocity
+  MultiArrayView<RealT> m_response;            ///< Nodal responses (forces)
 
   Array2D<RealT> m_node_n;  ///< Outward unit node normals
 
@@ -657,16 +696,13 @@ class MeshData {
    *
    * This routine accounts for warped faces by computing an average normal.
    */
-  bool computeFaceData( ExecutionMode exec_mode );
+  template <typename ElemNormalMethod>
+  bool computeFaceData( ExecutionMode exec_mode, ElemNormalMethod elem_normal );
 
-  /*!
-   * \brief Computes average nodal normals for use with mortar methods
-   *
-   * \note this routine computes average nodal normals for all nodes in the mesh.
-   *
-   * \param [in] dim Dimension of the problem
+  /**
+   * @brief Allocates and initializes memory to hold nodal normals
    */
-  void computeNodalNormals( int const dim );
+  void allocateNodalNormals();
 
   /*!
    *

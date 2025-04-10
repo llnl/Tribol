@@ -193,6 +193,17 @@ void updateMfemMaterialModulus( IndexT cs_id, mfem::Coefficient& modulus_coeffic
 void registerMfemVelocity( IndexT cs_id, const mfem::ParGridFunction& v );
 
 /**
+ * @brief Registers a reference coord field on a MFEM mesh-defined coupling scheme
+ *
+ * @pre Coupling scheme cs_id must be registered using
+ * registerMfemCouplingScheme()
+ *
+ * @param [in] cs_id The ID of the coupling scheme with the MFEM mesh
+ * @param [in] reference_coords MFEM reference coord ParGridFunction defined over the parent mesh
+ */
+void registerMfemReferenceCoords( IndexT cs_id, const mfem::ParGridFunction& reference_coords );
+
+/**
  * @brief Returns the response (RHS) vector to a given mfem::Vector
  *
  * @note This is stored as a dual vector, meaning the shared DOFs must be summed over all ranks to obtain their value.

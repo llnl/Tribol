@@ -28,8 +28,8 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
   registerMesh( mesh_id_2, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, MemorySpace::Host );
   registerCouplingScheme( cs_id, mesh_id_1, mesh_id_2, contact_mode, contact_case, contact_method, contact_model,
                           enforcement_method, binning_method, ExecutionMode::Sequential );
-  auto& coupling_scheme = CouplingSchemeManager::getInstance().at( cs_id );
-  coupling_scheme.setMPIComm( mesh.GetComm() );
+  auto& cs = CouplingSchemeManager::getInstance().at( cs_id );
+  cs.setMPIComm( mesh.GetComm() );
 
   // Set data required for use with Lagrange multiplier enforcement option.
   // Coupling scheme validity will be checked later, but here some initial
@@ -56,204 +56,206 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
     }
     // create pressure field on the parent-linked boundary submesh and
     // transfer operators to the redecomp level
-    coupling_scheme.setMfemSubmeshData( std::make_unique<MfemSubmeshData>(
-        mfem_data->GetSubmesh(), mfem_data->GetLORMesh(), std::move( pressure_fec ), pressure_vdim ) );
+    cs.setMfemSubmeshData( std::make_unique<MfemSubmeshData>( mfem_data->GetSubmesh(), mfem_data->GetLORMesh(),
+                                                              std::move( pressure_fec ), pressure_vdim ) );
     // set up Jacobian transfer if the coupling scheme requires it
-    auto lm_options = coupling_scheme.getEnforcementOptions().lm_implicit_options;
+    auto lm_options = cs.getEnforcementOptions().lm_implicit_options;
     if ( lm_options.enforcement_option_set && ( lm_options.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ||
                                                 lm_options.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ) ) {
       // create matrix transfer operator between redecomp and
       // parent/parent-linked boundary submesh
-      coupling_scheme.setMfemJacobianData(
-          std::make_unique<MfemJacobianData>( *mfem_data, *coupling_scheme.getMfemSubmeshData(), contact_method ) );
+      cs.setMfemJacobianData(
+          std::make_unique<MfemJacobianData>( *mfem_data, *cs.getMfemSubmeshData(), contact_method ) );
     }
   }
-  coupling_scheme.setMfemMeshData( std::move( mfem_data ) );
+  cs.setMfemMeshData( std::move( mfem_data ) );
 }
 
 void setMfemLORFactor( IndexT cs_id, int lor_factor )
 {
-  auto coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(
-      !coupling_scheme,
-      axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                         "to create a coupling scheme with this cs_id.",
-                         cs_id ) );
-  SLIC_ERROR_ROOT_IF( !coupling_scheme->hasMfemData(),
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the LOR factor." );
-
-  coupling_scheme->getMfemMeshData()->SetLORFactor( lor_factor );
+  cs->getMfemMeshData()->SetLORFactor( lor_factor );
 }
 
 void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT mesh2_penalty )
 {
-  auto coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(
-      !coupling_scheme,
-      axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                         "to create a coupling scheme with this cs_id.",
-                         cs_id ) );
-  SLIC_ERROR_ROOT_IF( !coupling_scheme->hasMfemData(),
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the penalty." );
   setPenaltyOptions( cs_id, KINEMATIC, KINEMATIC_CONSTANT );
-  coupling_scheme->getMfemMeshData()->ClearAllPenaltyData();
-  coupling_scheme->getMfemMeshData()->SetMesh1KinematicConstantPenalty( mesh1_penalty );
-  coupling_scheme->getMfemMeshData()->SetMesh2KinematicConstantPenalty( mesh2_penalty );
+  cs->getMfemMeshData()->ClearAllPenaltyData();
+  cs->getMfemMeshData()->SetMesh1KinematicConstantPenalty( mesh1_penalty );
+  cs->getMfemMeshData()->SetMesh2KinematicConstantPenalty( mesh2_penalty );
 }
 
 void setMfemKinematicElementPenalty( IndexT cs_id, mfem::Coefficient& modulus_coefficient )
 {
-  auto coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(
-      !coupling_scheme,
-      axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                         "to create a coupling scheme with this cs_id.",
-                         cs_id ) );
-  SLIC_ERROR_ROOT_IF( !coupling_scheme->hasMfemData(),
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the penalty." );
   setPenaltyOptions( cs_id, KINEMATIC, KINEMATIC_ELEMENT );
-  coupling_scheme->getMfemMeshData()->ClearAllPenaltyData();
-  coupling_scheme->getMfemMeshData()->ComputeElementThicknesses();
-  coupling_scheme->getMfemMeshData()->SetMaterialModulus( modulus_coefficient );
+  cs->getMfemMeshData()->ClearAllPenaltyData();
+  cs->getMfemMeshData()->ComputeElementThicknesses();
+  cs->getMfemMeshData()->SetMaterialModulus( modulus_coefficient );
 }
 
 void setMfemRateConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT mesh2_penalty )
 {
-  auto coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(
-      !coupling_scheme,
-      axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                         "to create a coupling scheme with this cs_id.",
-                         cs_id ) );
-  SLIC_ERROR_ROOT_IF( !coupling_scheme->hasMfemData(),
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the penalty." );
-  auto penalty_opts = coupling_scheme->getEnforcementOptions().penalty_options;
+  auto penalty_opts = cs->getEnforcementOptions().penalty_options;
   SLIC_ERROR_ROOT_IF( !penalty_opts.kinematic_calc_set,
                       "No kinematic enforcement method set. Call setMfemKinematicConstantPenalty() or "
                       "setMfemKinematicElementPenalty() first." );
   setPenaltyOptions( cs_id, KINEMATIC_AND_RATE, penalty_opts.kinematic_calculation, RATE_CONSTANT );
-  coupling_scheme->getMfemMeshData()->ClearRatePenaltyData();
-  coupling_scheme->getMfemMeshData()->SetMesh1RateConstantPenalty( mesh1_penalty );
-  coupling_scheme->getMfemMeshData()->SetMesh2RateConstantPenalty( mesh2_penalty );
+  cs->getMfemMeshData()->ClearRatePenaltyData();
+  cs->getMfemMeshData()->SetMesh1RateConstantPenalty( mesh1_penalty );
+  cs->getMfemMeshData()->SetMesh2RateConstantPenalty( mesh2_penalty );
 }
 
 void setMfemRatePercentPenalty( IndexT cs_id, RealT mesh1_ratio, RealT mesh2_ratio )
 {
-  auto coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(
-      !coupling_scheme,
-      axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                         "to create a coupling scheme with this cs_id.",
-                         cs_id ) );
-  SLIC_ERROR_ROOT_IF( !coupling_scheme->hasMfemData(),
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the penalty." );
-  auto penalty_opts = coupling_scheme->getEnforcementOptions().penalty_options;
+  auto penalty_opts = cs->getEnforcementOptions().penalty_options;
   SLIC_ERROR_ROOT_IF( !penalty_opts.kinematic_calc_set,
                       "No kinematic enforcement method set. Call setMfemKinematicConstantPenalty() or "
                       "setMfemKinematicElementPenalty() first." );
   setPenaltyOptions( cs_id, KINEMATIC_AND_RATE, penalty_opts.kinematic_calculation, RATE_PERCENT );
-  coupling_scheme->getMfemMeshData()->ClearRatePenaltyData();
-  coupling_scheme->getMfemMeshData()->SetMesh1RatePercentPenalty( mesh1_ratio );
-  coupling_scheme->getMfemMeshData()->SetMesh2RatePercentPenalty( mesh2_ratio );
+  cs->getMfemMeshData()->ClearRatePenaltyData();
+  cs->getMfemMeshData()->SetMesh1RatePercentPenalty( mesh1_ratio );
+  cs->getMfemMeshData()->SetMesh2RatePercentPenalty( mesh2_ratio );
 }
 
 void setMfemKinematicPenaltyScale( IndexT cs_id, RealT mesh1_scale, RealT mesh2_scale )
 {
-  auto coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(
-      !coupling_scheme,
-      axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                         "to create a coupling scheme with this cs_id.",
-                         cs_id ) );
-  SLIC_ERROR_ROOT_IF( !coupling_scheme->hasMfemData(),
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the penalty." );
-  auto penalty_opts = coupling_scheme->getEnforcementOptions().penalty_options;
+  auto penalty_opts = cs->getEnforcementOptions().penalty_options;
   SLIC_ERROR_ROOT_IF( !penalty_opts.kinematic_calc_set,
                       "No kinematic enforcement method set. Call setMfemKinematicConstantPenalty() or "
                       "setMfemKinematicElementPenalty() first." );
-  coupling_scheme->getMfemMeshData()->SetMesh1KinematicPenaltyScale( mesh1_scale );
-  coupling_scheme->getMfemMeshData()->SetMesh2KinematicPenaltyScale( mesh2_scale );
+  cs->getMfemMeshData()->SetMesh1KinematicPenaltyScale( mesh1_scale );
+  cs->getMfemMeshData()->SetMesh2KinematicPenaltyScale( mesh2_scale );
 }
 
 void updateMfemElemThickness( IndexT cs_id )
 {
-  auto coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(
-      !coupling_scheme,
-      axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                         "to create a coupling scheme with this cs_id.",
-                         cs_id ) );
-  SLIC_ERROR_ROOT_IF( !coupling_scheme->hasMfemData(),
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the penalty." );
-  auto penalty_opts = coupling_scheme->getEnforcementOptions().penalty_options;
+  auto penalty_opts = cs->getEnforcementOptions().penalty_options;
   SLIC_ERROR_ROOT_IF(
       !penalty_opts.kinematic_calc_set && penalty_opts.kinematic_calculation != KINEMATIC_ELEMENT,
       "Thickness can only be updated when kinematic penalty has been set using setMfemKinematicElementPenalty()." );
-  coupling_scheme->getMfemMeshData()->ComputeElementThicknesses();
+  cs->getMfemMeshData()->ComputeElementThicknesses();
 }
 
 void updateMfemMaterialModulus( IndexT cs_id, mfem::Coefficient& modulus_coefficient )
 {
-  auto coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(
-      !coupling_scheme,
-      axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                         "to create a coupling scheme with this cs_id.",
-                         cs_id ) );
-  SLIC_ERROR_ROOT_IF( !coupling_scheme->hasMfemData(),
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the penalty." );
-  auto penalty_opts = coupling_scheme->getEnforcementOptions().penalty_options;
+  auto penalty_opts = cs->getEnforcementOptions().penalty_options;
   SLIC_ERROR_ROOT_IF( !penalty_opts.kinematic_calc_set && penalty_opts.kinematic_calculation != KINEMATIC_ELEMENT,
                       "Material modulus can only be updated when kinematic penalty has been set using "
                       "setMfemKinematicElementPenalty()." );
-  coupling_scheme->getMfemMeshData()->SetMaterialModulus( modulus_coefficient );
+  cs->getMfemMeshData()->SetMaterialModulus( modulus_coefficient );
 }
 
 void registerMfemVelocity( IndexT cs_id, const mfem::ParGridFunction& v )
 {
-  auto coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(
-      !coupling_scheme,
-      axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                         "to create a coupling scheme with this cs_id.",
-                         cs_id ) );
-  SLIC_ERROR_ROOT_IF( !coupling_scheme->hasMfemData(),
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to register a velocity." );
-  coupling_scheme->getMfemMeshData()->SetParentVelocity( v );
+  cs->getMfemMeshData()->SetParentVelocity( v );
+}
+
+void registerMfemReferenceCoords( IndexT cs_id, const mfem::ParGridFunction& reference_coords )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF(
+      !cs->hasMfemData(),
+      "Coupling scheme does not contain MFEM data. "
+      "Create the coupling scheme using registerMfemCouplingScheme() to register reference coordinates." );
+  cs->getMfemMeshData()->SetParentReferenceCoords( reference_coords );
 }
 
 void getMfemResponse( IndexT cs_id, mfem::Vector& r )
 {
-  auto coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(
-      !coupling_scheme,
-      axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                         "to create a coupling scheme with this cs_id.",
-                         cs_id ) );
-  SLIC_ERROR_ROOT_IF( !coupling_scheme->hasMfemData(),
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to return a response vector." );
-  coupling_scheme->getMfemMeshData()->GetParentResponse( r );
+  cs->getMfemMeshData()->GetParentResponse( r );
 }
 
 std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
 {
-  CouplingScheme* coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  CouplingScheme* cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(
-      !coupling_scheme,
-      axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                         "to create a coupling scheme with this cs_id.",
-                         cs_id ) );
-  SparseMode sparse_mode = coupling_scheme->getEnforcementOptions().lm_implicit_options.sparse_mode;
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SparseMode sparse_mode = cs->getEnforcementOptions().lm_implicit_options.sparse_mode;
   if ( sparse_mode != SparseMode::MFEM_ELEMENT_DENSE ) {
     SLIC_ERROR_ROOT(
         "Jacobian is assembled and can be accessed by "
@@ -262,62 +264,75 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
         "SparseMode::MFEM_ELEMENT_DENSE before calling update()." );
   }
   SLIC_ERROR_ROOT_IF(
-      !coupling_scheme->hasMfemData(),
+      !cs->hasMfemData(),
       axom::fmt::format(
           "Coupling scheme cs_id={0} does not contain MFEM data."
           "Create the coupling scheme using registerMfemCouplingScheme() to return a MFEM block Jacobian.",
           cs_id ) );
-  // creates a block Jacobian on the parent mesh/parent-linked boundary submesh
-  // based on the element Jacobians stored in the coupling scheme's method data
-  return coupling_scheme->getMfemJacobianData()->GetMfemBlockJacobian( coupling_scheme->getMethodData() );
+  // creates a block Jacobian on the parent mesh/parent-linked boundary submesh based on the element Jacobians stored in
+  // the coupling scheme's method data
+  if ( cs->isEnzymeEnabled() ) {
+    auto dfdx = cs->getMfemJacobianData()->GetMfemDfDxFullJacobian( *cs->getMethodData() );
+    auto dfdn = cs->getMfemJacobianData()->GetMfemDfDnJacobian( *cs->getDfDnMethodData() );
+    auto dndx = cs->getMfemJacobianData()->GetMfemDnDxJacobian( *cs->getDnDxMethodData() );
+    dfdx->SetBlock( 0, 0,
+                    mfem::ParAdd( mfem::ParMult( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 0, 0 ) ),
+                                                 &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ),
+                                  &static_cast<mfem::HypreParMatrix&>( dfdx->GetBlock( 0, 0 ) ) ) );
+    dfdx->SetBlock( 1, 0,
+                    mfem::ParAdd( mfem::ParMult( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 1, 0 ) ),
+                                                 &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ),
+                                  &static_cast<mfem::HypreParMatrix&>( dfdx->GetBlock( 1, 0 ) ) ) );
+    return dfdx;
+  } else {
+    return cs->getMfemJacobianData()->GetMfemBlockJacobian( cs->getMethodData() );
+  }
 }
 
 void getMfemGap( IndexT cs_id, mfem::Vector& g )
 {
-  auto coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(
-      !coupling_scheme,
-      axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                         "to create a coupling scheme with this cs_id.",
-                         cs_id ) );
-  SLIC_ERROR_ROOT_IF( !coupling_scheme->hasMfemSubmeshData(),
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(),
                       axom::fmt::format( "Coupling scheme cs_id={0} does not contain MFEM pressure field data. "
                                          "Create the coupling scheme using registerMfemCouplingScheme() and set the "
                                          "enforcement_method to LAGRANGE_MULTIPLIER to set the gap vector.",
                                          cs_id ) );
-  coupling_scheme->getMfemSubmeshData()->GetSubmeshGap( g );
+  cs->getMfemSubmeshData()->GetSubmeshGap( g );
 }
 
 mfem::ParGridFunction& getMfemPressure( IndexT cs_id )
 {
-  auto coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(
-      !coupling_scheme,
-      axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                         "to create a coupling scheme with this cs_id.",
-                         cs_id ) );
-  SLIC_ERROR_ROOT_IF( !coupling_scheme->hasMfemSubmeshData(),
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(),
                       axom::fmt::format( "Coupling scheme cs_id={0} does not contain MFEM pressure field data. "
                                          "Create the coupling scheme using registerMfemCouplingScheme() and set the "
                                          "enforcement_method to LAGRANGE_MULTIPLIER to access the pressure field.",
                                          cs_id ) );
-  return coupling_scheme->getMfemSubmeshData()->GetSubmeshPressure();
+  return cs->getMfemSubmeshData()->GetSubmeshPressure();
 }
 
 void updateMfemParallelDecomposition( int n_ranks )
 {
   for ( auto& cs_pair : CouplingSchemeManager::getInstance() ) {
-    auto& coupling_scheme = cs_pair.second;
+    auto& cs = cs_pair.second;
 
     // update redecomp meshes if supplied mfem data
-    if ( coupling_scheme.hasMfemData() ) {
-      auto mfem_data = coupling_scheme.getMfemMeshData();
+    if ( cs.hasMfemData() ) {
+      auto mfem_data = cs.getMfemMeshData();
       ArrayT<int> mesh_ids{ 2, 2 };
       mesh_ids[0] = mfem_data->GetMesh1ID();
       mesh_ids[1] = mfem_data->GetMesh2ID();
       // NOTE: effective binning proximity must be computed independently here, since, in general,
       // CouplingScheme::init() hasn't been called yet
-      auto effective_binning_proximity = coupling_scheme.getParameters().binning_proximity_scale;
+      auto effective_binning_proximity = cs.getParameters().binning_proximity_scale;
       if ( mfem_data->GetLORFactor() > 1 ) {
         effective_binning_proximity *= static_cast<RealT>( mfem_data->GetLORFactor() );
       }
@@ -339,12 +354,15 @@ void updateMfemParallelDecomposition( int n_ranks )
         registerNodalVelocities( mesh_ids[0], v_ptrs[0], v_ptrs[1], v_ptrs[2] );
         registerNodalVelocities( mesh_ids[1], v_ptrs[0], v_ptrs[1], v_ptrs[2] );
       }
-      if ( coupling_scheme.getEnforcementMethod() == LAGRANGE_MULTIPLIER ) {
-        SLIC_ERROR_ROOT_IF( coupling_scheme.getContactModel() != FRICTIONLESS,
-                            "Only frictionless contact is supported." );
-        SLIC_ERROR_ROOT_IF( coupling_scheme.getContactMethod() != SINGLE_MORTAR,
-                            "Only single mortar contact is supported." );
-        auto submesh_data = coupling_scheme.getMfemSubmeshData();
+      if ( mfem_data->HasReferenceCoords() ) {
+        auto xref_ptrs = mfem_data->GetRedecompReferenceCoordsPtrs();
+        registerNodalReferenceCoords( mesh_ids[0], xref_ptrs[0], xref_ptrs[1], xref_ptrs[2] );
+        registerNodalReferenceCoords( mesh_ids[1], xref_ptrs[0], xref_ptrs[1], xref_ptrs[2] );
+      }
+      if ( cs.getEnforcementMethod() == LAGRANGE_MULTIPLIER ) {
+        SLIC_ERROR_ROOT_IF( cs.getContactModel() != FRICTIONLESS, "Only frictionless contact is supported." );
+        SLIC_ERROR_ROOT_IF( cs.getContactMethod() != SINGLE_MORTAR, "Only single mortar contact is supported." );
+        auto submesh_data = cs.getMfemSubmeshData();
         // updates submesh-native grid functions and transfer operators on
         // the new redecomp mesh
         submesh_data->UpdateMfemSubmeshData( mfem_data->GetRedecompMesh() );
@@ -352,12 +370,12 @@ void updateMfemParallelDecomposition( int n_ranks )
         registerMortarGaps( mesh_ids[1], g_ptrs[0] );
         auto p_ptrs = submesh_data->GetRedecompPressurePtrs();
         registerMortarPressures( mesh_ids[1], p_ptrs[0] );
-        if ( coupling_scheme.hasMfemJacobianData() ) {
+        if ( cs.hasMfemJacobianData() ) {
           // updates Jacobian transfer operator for new redecomp mesh
-          coupling_scheme.getMfemJacobianData()->UpdateJacobianXfer();
+          cs.getMfemJacobianData()->UpdateJacobianXfer();
         }
       }
-      auto& penalty_opts = coupling_scheme.getEnforcementOptions().penalty_options;
+      auto& penalty_opts = cs.getEnforcementOptions().penalty_options;
       if ( penalty_opts.kinematic_calc_set ) {
         if ( penalty_opts.kinematic_calculation == KINEMATIC_ELEMENT ) {
           SLIC_ERROR_ROOT_IF( !mfem_data->GetRedecompElemThickness1() || !mfem_data->GetRedecompElemThickness2(),
@@ -403,10 +421,10 @@ void updateMfemParallelDecomposition( int n_ranks )
 void saveRedecompMesh( int output_id )
 {
   for ( auto& cs_pair : CouplingSchemeManager::getInstance() ) {
-    auto& coupling_scheme = cs_pair.second;
+    auto& cs = cs_pair.second;
 
-    if ( coupling_scheme.hasMfemData() ) {
-      auto mfem_data = coupling_scheme.getMfemMeshData();
+    if ( cs.hasMfemData() ) {
+      auto mfem_data = cs.getMfemMeshData();
       auto& redecomp_mesh = mfem_data->GetRedecompMesh();
       std::string dc_name( "redecomp_cs" + std::to_string( cs_pair.first ) + "_id" + std::to_string( output_id ) +
                            "_rank" + std::to_string( redecomp_mesh.getMPIUtility().MyRank() ) );

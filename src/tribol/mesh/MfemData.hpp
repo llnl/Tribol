@@ -602,6 +602,30 @@ class MfemMeshData {
   void SetParentCoords( const mfem::ParGridFunction& current_coords );
 
   /**
+   * @brief Sets a new reference coordinate grid function on the parent mesh
+   *
+   * @param reference_coords Reference coordinate grid function on the parent mesh
+   */
+  void SetParentReferenceCoords( const mfem::ParGridFunction& reference_coords );
+
+  /**
+   * @brief Determine if a reference coords grid function has been set
+   *
+   * @return true: Reference coords grid function has been set
+   * @return false: Reference coords grid function has not been set
+   */
+  bool HasReferenceCoords() const { return reference_coords_ != nullptr; }
+
+  /**
+   * @brief Get pointers to component arrays of the reference coords on the RedecompMesh
+   *
+   * @return std::vector<const RealT*> of length 3
+   *
+   * @note The third entry is nullptr in two dimensions
+   */
+  std::vector<const RealT*> GetRedecompReferenceCoordsPtrs() const { return reference_coords_->GetRedecompFieldPtrs(); }
+
+  /**
    * @brief Build a new redecomp mesh and update grid functions on the redecomp mesh
    *
    * @param binning_proximity_scale Element length multiplier for coarse binning and proximity detection inclusion. This
@@ -1172,6 +1196,11 @@ class MfemMeshData {
   ParentField coords_;
 
   /**
+   * @brief Contains reference coords grid function and transfer operators if set; nullptr otherwise
+   */
+  std::unique_ptr<ParentField> reference_coords_;
+
+  /**
    * @brief Submesh grid function to temporarily hold values being transferred
    */
   mfem::ParGridFunction submesh_xfer_gridfn_;
@@ -1518,12 +1547,37 @@ class MfemJacobianData {
   void UpdateJacobianXfer();
 
   /**
-   * @brief Returns Jacobian contributions as an mfem::BlockOperator
+   * @brief Returns symmetric, off-diagonal Jacobian contributions as an mfem::BlockOperator
    *
    * @param method_data Method data holding element Jacobians
    * @return std::unique_ptr<mfem::BlockOperator>
    */
   std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobian( const MethodData* method_data ) const;
+
+  /**
+   * @brief Returns full, potentially non-symmetric derivative of the force w.r.t. nodal coordinates as an
+   * mfem::BlockOperator
+   *
+   * @param method_data Method data holding element Jacobians
+   * @return std::unique_ptr<mfem::BlockOperator>
+   */
+  std::unique_ptr<mfem::BlockOperator> GetMfemDfDxFullJacobian( const MethodData& method_data ) const;
+
+  /**
+   * @brief Returns the derivative of the force w.r.t. the normal direction as an mfem::BlockOperator
+   *
+   * @param method_data Method data holding element Jacobians
+   * @return std::unique_ptr<mfem::BlockOperator>
+   */
+  std::unique_ptr<mfem::BlockOperator> GetMfemDfDnJacobian( const MethodData& method_data ) const;
+
+  /**
+   * @brief Returns the derivative of the normal direction w.r.t. the nodal coordinates as an mfem::BlockOperator
+   *
+   * @param method_data Method data holding element Jacobians
+   * @return std::unique_ptr<mfem::BlockOperator>
+   */
+  std::unique_ptr<mfem::BlockOperator> GetMfemDnDxJacobian( const MethodData& method_data ) const;
 
  private:
   /**
@@ -1540,9 +1594,19 @@ class MfemJacobianData {
     UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data );
 
     /**
-     * @brief Redecomp to parent-linked boundary submesh transfer operator
+     * @brief Redecomp to parent-linked boundary submesh transfer operator, (displacement, displacement) block
      */
-    std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_;
+    std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_00_;
+
+    /**
+     * @brief Redecomp to parent-linked boundary submesh transfer operator, (displacement, pressure) block
+     */
+    std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_01_;
+
+    /**
+     * @brief Redecomp to parent-linked boundary submesh transfer operator, (pressure, displacement) block
+     */
+    std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_10_;
   };
 
   /**
@@ -1570,15 +1634,26 @@ class MfemJacobianData {
   const MfemSubmeshData& submesh_data_;
 
   /**
-   * @brief Array of offsets equal to number of displacement and pressure
-   * degrees of freedom
+   * @brief Array of offsets equal to number of displacement and pressure degrees of freedom.  Used in HypreParMatrixes
+   * in this class.
    */
   mfem::Array<int> block_offsets_;
+
+  /**
+   * @brief Array of offsets equal to number of displacement degrees of freedom on the parent mesh. Used in
+   * HypreParMatrixes in this class.
+   */
+  mfem::Array<int> disp_offsets_;
 
   /**
    * @brief List giving global parent vdof given the submesh vdof
    */
   mfem::Array<int> submesh2parent_vdof_list_;
+
+  /**
+   * @brief Submesh to parent transfer operator
+   */
+  std::unique_ptr<mfem::HypreParMatrix> submesh_parent_vdof_xfer_;
 
   /**
    * @brief List of submesh true dofs that only exist on the mortar surface

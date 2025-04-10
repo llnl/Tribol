@@ -110,20 +110,6 @@ void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA
 
 /*!
  *
- * \brief performs a foward linear map for a linear, four node quadrilateral
- *
- * \param [in] xi (xi,eta) point in parent space
- * \param [in] xa nodal x-coordinates
- * \param [in] ya nodal y-coordinates
- * \param [in] za nodal z-coordinates
- * \param [in,out] x corresponding point in physical space
- *
- *
- */
-void FwdMapLinQuad( const RealT xi[2], RealT xa[4], RealT ya[4], RealT za[4], RealT x[3] );
-
-/*!
- *
  * \brief performs a foward linear map for a linear, three node triangle
  *
  * \param [in] xi (xi,eta) point in parent space
@@ -138,19 +124,17 @@ void FwdMapLinTri( const RealT xi[2], RealT xa[3], RealT ya[3], RealT za[3], Rea
 
 /*!
  *
- * \brief returns the shape function at node a for a linear,
- *        four node isoparametric quadrilateral evaluated at (xi,eta)
+ * \brief performs a foward linear map for a linear, four node quadrilateral
  *
- * \param [in] xi first parent coordinate of evaluation point
- * \param [in] eta second parent coordinate of evaluation point
- * \param [in] a node id of shape function
- * \param [in,out] phi shape function evaluation
- *
- * \pre input argument, a, ranges from 0-3.
+ * \param [in] xi (xi,eta) point in parent space
+ * \param [in] xa nodal x-coordinates
+ * \param [in] ya nodal y-coordinates
+ * \param [in] za nodal z-coordinates
+ * \param [in,out] x corresponding point in physical space
  *
  *
  */
-void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi );
+void FwdMapLinQuad( const RealT xi[2], RealT xa[4], RealT ya[4], RealT za[4], RealT x[3] );
 
 /*!
  *
@@ -170,6 +154,31 @@ void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& p
  *
  */
 void LinIsoTriShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi );
+
+/*!
+ *
+ * \brief returns the shape functions for a three node isoparametric triangle evaluated at (xi[0], xi[1])
+ *
+ * \param [in] xi array of length 2 holding parent coordinates
+ * \param [in,out] phi shape function evaluation (array of length 3)
+ */
+void LinIsoTriShapeFunc( const RealT* xi, RealT* phi );
+
+/*!
+ *
+ * \brief returns the shape function at node a for a linear,
+ *        four node isoparametric quadrilateral evaluated at (xi,eta)
+ *
+ * \param [in] xi first parent coordinate of evaluation point
+ * \param [in] eta second parent coordinate of evaluation point
+ * \param [in] a node id of shape function
+ * \param [in,out] phi shape function evaluation
+ *
+ * \pre input argument, a, ranges from 0-3.
+ *
+ *
+ */
+void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi );
 
 /*!
  *

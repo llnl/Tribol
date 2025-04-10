@@ -83,7 +83,7 @@ class MatrixTransfer {
                                                const axom::Array<mfem::DenseMatrix>& src_elem_mat ) const;
 
   /**
-   * @brief Converts SparseMatrix from TransferToParallel to HypreParMatrix
+   * @brief Converts SparseMatrix from TransferToParallelSparse to HypreParMatrix
    *
    * @param sparse Finalized mfem::SparseMatrix returned from TransferToParallel
    * @param parallel_assemble Performs parallel assembly (transforms to tdofs)

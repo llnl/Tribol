@@ -209,7 +209,7 @@ void allocBoolArray( bool** arr, int length, bool init_val )
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void initRealArray( RealT* arr, int length, RealT init_val )
 {
-#ifdef TRIBOL_USE_HOST
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( arr == nullptr, "initRealArray(): "
                                      << "input pointer to array is null." );
 #endif
@@ -222,7 +222,7 @@ TRIBOL_HOST_DEVICE void initRealArray( RealT* arr, int length, RealT init_val )
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void initIntArray( int* arr, int length, int init_val )
 {
-#ifdef TRIBOL_USE_HOST
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( arr == nullptr, "initIntArray(): "
                                      << "input pointer to array is null." );
 #endif
@@ -247,7 +247,7 @@ TRIBOL_HOST_DEVICE void initArray( T* arr, int length, T init_val )
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void initBoolArray( bool* arr, int length, bool init_val )
 {
-#ifdef TRIBOL_USE_HOST
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( arr == nullptr, "initBoolArray(): "
                                      << "input pointer to array is null." );
 #endif
