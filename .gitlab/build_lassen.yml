@@ -42,10 +42,10 @@
 
 ####
 # Build jobs
-lassen-clang_10_0_1-src:
+lassen-clang_14_0_5-src:
   variables:
     COMPILER: "clang@14.0.5"
-    HOST_CONFIG: "lassen-blueos_3_ppc64le_ib_p9-${COMPILER}.cmake"
+    HOST_CONFIG: "lassen-blueos_3_ppc64le_ib_p9-${COMPILER}_cuda.cmake"
     ALLOC_NODES: "1"
     ALLOC_TIME: "20"
   extends: [.src_build_on_lassen, .with_cuda]
