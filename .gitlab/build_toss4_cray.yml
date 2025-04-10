@@ -28,9 +28,9 @@
 # Build jobs
 
 # Only run integration tests on one spec
-toss4_cray-clang_17_0_0-src:
+toss4_cray-rocmcc_6_2_1-src:
  variables:
-   COMPILER: "clang@17.0.0"
+   COMPILER: "rocmcc@6.2.1"
    HOST_CONFIG: "tioga-toss_4_x86_64_ib_cray-${COMPILER}_hip.cmake"
    ALLOC_NODES: "1"
    ALLOC_TIME: "30"
