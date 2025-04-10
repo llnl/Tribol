@@ -1,8 +1,10 @@
 
-/build*/
-/install*/
-/uberenv_libs*
-/spack*
+/build-*/
+/install-*/
 /*.cmake
-.vscode/
 __pycache__/
+/.cache/
+/.vscode/
+/build-*-*-*-*
+/compile_commands.json
+.DS_Store

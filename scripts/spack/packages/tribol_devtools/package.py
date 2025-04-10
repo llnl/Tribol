@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: (MIT)
 
-from spack import *
+from spack.package import *
 
 class TribolDevtools(BundlePackage):
     """This is a set of tools necessary for the developers of Tribol"""
@@ -14,4 +14,4 @@ class TribolDevtools(BundlePackage):
     depends_on("python")
     depends_on("py-shroud")
     depends_on("py-sphinx")
-    depends_on("llvm+clang@10.0.0")
+    depends_on("llvm@14+clang+python")

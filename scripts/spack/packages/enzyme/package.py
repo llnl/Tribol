@@ -15,7 +15,7 @@ class Enzyme(CMakePackage):
     """
 
     homepage = "https://enzyme.mit.edu"
-    url = "https://github.com/wsmoses/Enzyme/archive/v0.0.172.tar.gz"
+    url = "https://github.com/wsmoses/Enzyme/archive/v0.0.173.tar.gz"
     list_url = "https://github.com/wsmoses/Enzyme/releases"
     git = "https://github.com/wsmoses/Enzyme"
 
@@ -24,6 +24,7 @@ class Enzyme(CMakePackage):
     root_cmakelists_dir = "enzyme"
 
     version("main", branch="main")
+    version("0.0.173", sha256="b8477fb5bead9e9ece76d450ebd0afee99914235c6e1a6ef8c05bf288e3c0478")
     version("0.0.172", sha256="688200164787d543641cb446cff20f6a8e8b5c92bb7032ebe7f867efa67ceafb")
     version("0.0.135", sha256="49c798534faec7ba524a3ed053dd4352d690a44d3cad5a14915c9398dc9b175b")
     version("0.0.100", sha256="fbc53ec02adc0303ff200d7699afface2d9fbc7350664e6c6d4c527ef11c2e82")
@@ -45,7 +46,8 @@ class Enzyme(CMakePackage):
     depends_on("llvm@9:16", when="@0.0.69:0.0.79")
     depends_on("llvm@11:16", when="@0.0.80:0.0.99")
     depends_on("llvm@11:19", when="@0.0.100:0.0.148")
-    depends_on("llvm@15:19", when="@0.0.149:")
+    depends_on("llvm@15:19", when="@0.0.149:0.0.172")
+    depends_on("llvm@15:20", when="@0.0.173:")
     depends_on("cmake@3.13:", type="build")
 
     def cmake_args(self):
