@@ -17,7 +17,7 @@ variables:
     # Build source and run unit tests.
     - echo -e "section_start:$(date +%s):src_build_and_unit_test\r\e[0K
       Source Build and Unit Tests ${CI_PROJECT_NAME}"
-    - ${ALLOC_COMMAND} python3 scripts/llnl/build_src.py -v --host-config ${HOST_CONFIG} ${EXTRA_BUILD_OPTIONS}
+    - ${ALLOC_COMMAND} python3 scripts/llnl/build_src.py -v --host-config=${HOST_CONFIG} --extra-cmake-options=${EXTRA_CMAKE_OPTIONS} ${EXTRA_BUILD_OPTIONS}
     - echo -e "section_end:$(date +%s):src_build_and_unit_test\r\e[0K"
   artifacts:
     when: always

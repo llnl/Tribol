@@ -47,3 +47,20 @@ toss4-gcc_10_3_1-src:
     ALLOC_NODES: "1"
     ALLOC_TIME: "20"
   extends: .src_build_on_toss4
+
+ruby-clang_16_0_6-src:
+  variables:
+    COMPILER: "clang@16.0.6"
+    HOST_CONFIG: "ruby-toss_4_x86_64_ib-${COMPILER}.cmake"
+    ALLOC_NODES: "1"
+    ALLOC_TIME: "20"
+  extends: .src_build_on_toss4
+
+ruby-clang_16_0_6-src-release:
+  variables:
+    COMPILER: "clang@16.0.6"
+    HOST_CONFIG: "ruby-toss_4_x86_64_ib-${COMPILER}.cmake"
+    EXTRA_CMAKE_OPTIONS: "-DCMAKE_BUILD_TYPE=Release"
+    ALLOC_NODES: "1"
+    ALLOC_TIME: "20"
+  extends: .src_build_on_toss4

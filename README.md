@@ -20,7 +20,7 @@ needed when using Tribol. The command to install development tools is
 ```
 python3 scripts/uberenv/uberenv.py --project-json=scripts/spack/devtools.json --spack-env-file=scripts/spack/configs/<platform>/spack.yaml --prefix=../tribol_devtools
 ```
-where `<platform>` is one of `blueos_3_ppc64le_ib_p9`, `linux_ubuntu_20`, `linux_ubuntu_22`, `toss_4_x86_64_ib`, or
+where `<platform>` is one of `blueos_3_ppc64le_ib_p9`, `linux_ubuntu_24`, `toss_4_x86_64_ib`, or
 `toss_4_x86_64_ib_cray`. Please verify `scripts/spack/configs/<platform>/spack.yaml` matches your system configuration.
 
 ### Installing dependencies
@@ -39,7 +39,7 @@ python3 scripts/uberenv/uberenv.py --help
 ```
 
 Tribol is tested on three platforms: 
-- Ubuntu 22.04 LTS (via Windows WSL 2)
+- Ubuntu 24.04 LTS (via Windows WSL 2)
 - TOSS 4
 - BlueOS
 
@@ -79,6 +79,7 @@ Tribol has optional dependencies on:
 - HIP
 - RAJA
 - Umpire
+- Enzyme AD
 
 ## License
 

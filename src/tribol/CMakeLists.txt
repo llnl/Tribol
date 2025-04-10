@@ -31,7 +31,9 @@ set(tribol_headers
     mesh/MfemData.hpp
 
     geom/ContactPlane.hpp
+    geom/ElementNormal.hpp
     geom/GeomUtilities.hpp
+    geom/NodalNormal.hpp
 
     utils/ContactPlaneOutput.hpp
     utils/DataManager.hpp
@@ -63,7 +65,9 @@ set(tribol_sources
     mesh/MfemData.cpp
      
     geom/ContactPlane.cpp
-    geom/GeomUtilities.cpp 
+    geom/ElementNormal.cpp
+    geom/GeomUtilities.cpp
+    geom/NodalNormal.cpp
 
     utils/ContactPlaneOutput.cpp
     utils/Math.cpp
@@ -94,13 +98,17 @@ if (ENABLE_FORTRAN)
     list(APPEND tribol_sources interface/c_fortran/wrapftribol_test_mesh.F)
 endif()
 
+if (TRIBOL_USE_ENZYME)
+    list(APPEND tribol_headers common/Enzyme.hpp)
+endif()
+
 ## setup the dependency list for tribol
 set(tribol_depends tribol_shared axom::primal axom::slic mfem)
 blt_list_append(TO tribol_depends ELEMENTS blt::mpi IF TRIBOL_USE_MPI )
-blt_list_append(TO tribol_depends ELEMENTS blt::openmp IF TRIBOL_USE_OPENMP )
 blt_list_append(TO tribol_depends ELEMENTS redecomp IF BUILD_REDECOMP )
 blt_list_append(TO tribol_depends ELEMENTS umpire IF TRIBOL_USE_UMPIRE )
 blt_list_append(TO tribol_depends ELEMENTS RAJA IF TRIBOL_USE_RAJA )
+blt_list_append(TO tribol_depends ELEMENTS LLDEnzymeFlags IF TRIBOL_USE_ENZYME)
 message(STATUS "Tribol library dependencies: ${tribol_depends}")
 
 ## create the library
@@ -129,7 +137,7 @@ target_link_libraries(tribol PRIVATE axom::quest)
 
 target_include_directories(tribol PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>
-    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>
+    $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
     $<INSTALL_INTERFACE:include>
     )
 

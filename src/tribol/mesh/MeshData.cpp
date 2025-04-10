@@ -3,15 +3,16 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include "tribol/mesh/MeshData.hpp"
-#include "tribol/common/ExecModel.hpp"
-#include "tribol/utils/Math.hpp"
-
 #include <cmath>
 #include <iostream>
 #include <sstream>
 #include <iomanip>
 #include <fstream>
+
+#include "tribol/mesh/MeshData.hpp"
+#include "tribol/common/ExecModel.hpp"
+#include "tribol/geom/ElementNormal.hpp"
+#include "tribol/utils/Math.hpp"
 
 #include "axom/slic.hpp"
 #include "axom/fmt.hpp"
@@ -19,7 +20,8 @@
 namespace tribol {
 
 //------------------------------------------------------------------------------
-bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_options )
+bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_options, ExecutionMode exec_mode,
+                                            int alloc_id )
 {
   // Note, this routine is, and should be called only for non-null meshes
   KinematicPenaltyCalculation kin_calc = pen_options.kinematic_calculation;
@@ -60,26 +62,43 @@ bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_optio
         return false;
       }
 
-      // check for positive material modulus and thickness values
-      bool isValidMatMod = true;
-      bool isValidElemThickness = true;
-      for ( int i = 0; i < this->m_num_cells; ++i ) {
-        if ( this->m_mat_mod[i] <= 0. ) {
-          isValidMatMod = false;
-        }
-        if ( this->m_thickness[i] <= 0. ) {
-          isValidElemThickness = false;
-        }
+      ArrayT<IndexT> mod_ok_data( { static_cast<IndexT>( true ) }, alloc_id );
+      ArrayViewT<IndexT> mod_ok = mod_ok_data;
+      ArrayT<IndexT> thickness_ok_data( { static_cast<IndexT>( true ) }, alloc_id );
+      ArrayViewT<IndexT> thickness_ok = thickness_ok_data;
+      Array1DView<const RealT> mod = this->m_mat_mod;
+      Array1DView<const RealT> thickness = this->m_thickness;
 
-        SLIC_WARNING_IF( !isValidMatMod, "MeshElemData::isValidKinematicPenalty(): "
-                                             << "invalid nonpositive element material modulus encountered." );
-
-        SLIC_WARNING_IF( !isValidElemThickness, "MeshElemData::isValidKinematicPenalty(): "
-                                                    << "invalid nonpositive element thickness encountered." );
-
-        if ( !isValidMatMod || !isValidElemThickness ) {
-          return false;
+      forAllExec( exec_mode, this->m_num_cells, [mod, thickness, mod_ok, thickness_ok] TRIBOL_HOST_DEVICE( IndexT i ) {
+        if ( mod[i] <= 0. ) {
+#ifdef TRIBOL_USE_RAJA
+          RAJA::atomicMin<RAJA::auto_atomic>( mod_ok.data(), static_cast<IndexT>( false ) );
+#else
+          mod_ok[0] = false;
+#endif
         }
+        if ( thickness[i] <= 0. ) {
+#ifdef TRIBOL_USE_RAJA
+          RAJA::atomicMin<RAJA::auto_atomic>( thickness_ok.data(), static_cast<IndexT>( false ) );
+#else
+          thickness_ok[0] = false;
+#endif
+        }
+      } );  // end element loop
+
+      ArrayT<IndexT, 1, MemorySpace::Host> mod_ok_data_host( mod_ok_data );
+      SLIC_WARNING_IF(
+          !mod_ok_data_host[0],
+          axom::fmt::format(
+              "MeshElemData::isValidKinematicPenalty(): invalid nonpositive element material modulus encountered." ) );
+      ArrayT<IndexT, 1, MemorySpace::Host> thickness_ok_data_host( thickness_ok_data );
+      SLIC_WARNING_IF(
+          !thickness_ok_data_host[0],
+          axom::fmt::format(
+              "MeshElemData::isValidKinematicPenalty(): invalid nonpositive element thickness encountered." ) );
+
+      if ( !mod_ok_data_host[0] || !thickness_ok_data_host[0] ) {
+        return false;
       }  // end for loop over elements
       break;
     }  // end case KINEMATIC_ELEMENT
@@ -214,6 +233,12 @@ void MeshData::setDisplacement( const RealT* ux, const RealT* uy, const RealT* u
 }
 
 //------------------------------------------------------------------------------
+void MeshData::setReferencePosition( const RealT* xref, const RealT* yref, const RealT* zref )
+{
+  m_ref_position = createNodalVector( xref, yref, zref );
+}
+
+//------------------------------------------------------------------------------
 void MeshData::setVelocity( const RealT* vx, const RealT* vy, const RealT* vz )
 {
   m_vel = createNodalVector( vx, vy, vz );
@@ -300,7 +325,8 @@ Array1D<IndexT> MeshData::sortSurfaceNodeIds()
 }  // end MeshData::sortSurfaceNodeIds()
 
 //------------------------------------------------------------------------------
-bool MeshData::computeFaceData( ExecutionMode exec_mode )
+template <typename ElemNormalMethod>
+bool MeshData::computeFaceData( ExecutionMode exec_mode, ElemNormalMethod elem_normal )
 {
   constexpr RealT nrml_mag_tol = 1.0e-15;
 
@@ -332,7 +358,7 @@ bool MeshData::computeFaceData( ExecutionMode exec_mode )
   auto conn = m_connectivity;
   ArrayViewT<IndexT> face_data_ok = face_data_ok_data;
   forAllExec( exec_mode, numberOfElements(),
-              [c, x, n, area, radius, dim, conn, face_data_ok] TRIBOL_HOST_DEVICE( IndexT i ) {
+              [c, x, n, area, radius, dim, conn, face_data_ok, elem_normal] TRIBOL_HOST_DEVICE( IndexT i ) {
                 // compute the vertex average centroid. This will lie in the
                 // plane of the face for planar faces, and will be used as
                 // an approximate centroid for warped faces, both in 3D.
@@ -399,72 +425,30 @@ bool MeshData::computeFaceData( ExecutionMode exec_mode )
                   n[1][i] *= inv_mag;
 
                 } else if ( dim == 3 ) {
-                  // this method of computing an outward unit normal breaks the
-                  // face into triangular pallets by connecting two consecutive
-                  // nodes with the approximate centroid.
-                  // The average outward unit normal for the face is the average of
-                  // those of the pallets. This is exact for non-warped faces. To
-                  // compute the pallet normal, you only need edge vectors for the
-                  // pallet. These are constructed from the face centroid and the face
-                  // edge's first node and the face edge's two nodes
-
-                  // loop over num_nodes_per_elem-1 element edges and compute pallet
-                  // normal
+                  // get element coordinates
+                  RealT x_elem[12];
                   for ( int j = 0; j < num_nodes_per_elem; ++j ) {
                     auto node_id = conn( i, j );
-                    auto next_node_id = conn( i, 0 );
-                    if ( j < num_nodes_per_elem - 1 ) {
-                      next_node_id = conn( i, j + 1 );
+                    for ( IndexT d{ 0 }; d < dim; ++d ) {
+                      x_elem[d * num_nodes_per_elem + j] = x[d][node_id];
                     }
-                    // first triangle edge vector between the face's two edge nodes
-                    auto vX1 = x[0][next_node_id] - x[0][node_id];
-                    auto vY1 = x[1][next_node_id] - x[1][node_id];
-                    auto vZ1 = x[2][next_node_id] - x[2][node_id];
-
-                    // second triangle edge vector between the face centroid
-                    // and the face edge's first node
-                    auto vX2 = c[0][i] - x[0][node_id];
-                    auto vY2 = c[1][i] - x[1][node_id];
-                    auto vZ2 = c[2][i] - x[2][node_id];
-
-                    // compute the contribution to the pallet normal as v1 x v2. Sum these
-                    // into the face normal component variables stored on the mesh data
-                    // object
-                    auto nX = ( vY1 * vZ2 ) - ( vZ1 * vY2 );
-                    auto nY = ( vZ1 * vX2 ) - ( vX1 * vZ2 );
-                    auto nZ = ( vX1 * vY2 ) - ( vY1 * vX2 );
-
-                    // sum the normal component contributions into the component variables
-                    n[0][i] += nX;
-                    n[1][i] += nY;
-                    n[2][i] += nZ;
-
-                    // half the magnitude of the computed normal is the pallet area. Note:
-                    // this is exact for planar faces and approximate for warped faces.
-                    // Face areas are used in a general sense to create a face-overlap
-                    // tolerance
-                    area[i] += 0.5 * magnitude( nX, nY, nZ );
                   }
-
-                  // multiply the pallet normal components by fac to obtain avg.
-                  n[0][i] = fac * n[0][i];
-                  n[1][i] = fac * n[1][i];
-                  n[2][i] = fac * n[2][i];
-
-                  // compute the magnitude of the average pallet normal
-                  auto mag = magnitude( n[0][i], n[1][i], n[2][i] );
-                  auto inv_mag = nrml_mag_tol;
-                  if ( mag >= nrml_mag_tol ) {
-                    inv_mag = 1.0 / mag;
-                  } else {
+                  // get vertex average element centroid
+                  RealT c_elem[3];
+                  for ( IndexT d{ 0 }; d < dim; ++d ) {
+                    c_elem[d] = c[d][i];
+                  }
+                  // initialize element normal
+                  RealT n_elem[3] = { 0.0, 0.0, 0.0 };
+                  // compute element normal and area
+                  auto face_ok = elem_normal.Compute( x_elem, c_elem, n_elem, num_nodes_per_elem, area[i] );
+                  if ( !face_ok ) {
                     face_data_ok[0] = static_cast<IndexT>( false );
                   }
-
-                  // normalize the average normal
-                  n[0][i] *= inv_mag;
-                  n[1][i] *= inv_mag;
-                  n[2][i] *= inv_mag;
-
+                  // set global element normal
+                  for ( IndexT d{ 0 }; d < dim; ++d ) {
+                    n[d][i] = n_elem[d];
+                  }
                 }   // end if (dim == 3)
               } );  // end element loop
 
@@ -476,6 +460,9 @@ bool MeshData::computeFaceData( ExecutionMode exec_mode )
   return face_data_ok_host[0];
 
 }  // end MeshData::computeFaceData()
+
+template bool MeshData::computeFaceData<PalletAvgNormal>( ExecutionMode, PalletAvgNormal );
+template bool MeshData::computeFaceData<QuadCentroidNormal>( ExecutionMode, QuadCentroidNormal );
 
 //------------------------------------------------------------------------------
 RealT MeshData::computeEdgeLength( int faceId )
@@ -494,82 +481,11 @@ RealT MeshData::computeEdgeLength( int faceId )
 }  // end MeshData::computeEdgeLength()
 
 //------------------------------------------------------------------------------
-void MeshData::computeNodalNormals( int const dim )
+void MeshData::allocateNodalNormals()
 {
-  int* numFaceNrmlsToNodes;
-  if ( this->numberOfElements() > 0 ) {
-    // check to make sure face normals have been computed with
-    // a call to computeFaceData
-    if ( m_n.empty() ) {
-      SLIC_ERROR( "MeshData::computeNodalNormals: required face normals not computed." );
-    }
-
-    m_node_n = Array2D<RealT>( { m_dim, m_num_nodes }, m_allocator_id );
-    m_node_n.fill( 0.0 );
-
-    // allocate space for nodal normal array
-    int size = m_num_nodes;
-    // allocate scratch array to hold number of faces whose
-    // normals contribute to a given node. Most of the time
-    // this will be four face normals contributing to an
-    // averaged nodal normal for linear quad elements, but
-    // we want to handle arbitrary meshes and edge cases
-    allocIntArray( &numFaceNrmlsToNodes, size, 0 );
-  }  // end if-check on null mesh
-
-  // loop over elements
-  for ( int i = 0; i < this->numberOfElements(); ++i ) {
-    // loop over element nodes
-    for ( int j = 0; j < this->numberOfNodesPerElement(); ++j ) {
-      // SRW: note the connectivity array must be local to the mesh for indexing into
-      // the mesh nodal normal array. If it is not, then nodeId will access some other
-      // piece of memory and there may be a memory issue when numFaceNrmlsToNodes is deleted
-      // at the end of this routine.
-      int nodeId = getGlobalNodeId( i, j );
-      for ( int d = 0; d < this->spatialDimension(); ++d ) {
-        m_node_n( d, nodeId ) += this->m_n( d, i );  // m_n(d, i) is the ith face normal d-component
-      }
-
-      // increment face-normal-to-node contribution counter
-      ++numFaceNrmlsToNodes[nodeId];
-
-    }  // end loop over element nodes
-
-  }  // end loop over elements
-
-  // average the nodal normals
-  if ( this->numberOfElements() > 0 ) {
-    for ( int i = 0; i < m_num_nodes; ++i ) {
-      m_node_n[0][i] /= numFaceNrmlsToNodes[i];
-      m_node_n[1][i] /= numFaceNrmlsToNodes[i];
-      if ( dim == 3 ) {
-        m_node_n[2][i] /= numFaceNrmlsToNodes[i];
-      }
-    }  // end loop over nodes
-  }
-
-  // normalize the nodal normals
-  if ( this->numberOfElements() > 0 ) {
-    if ( dim == 3 ) {
-      for ( int i = 0; i < m_num_nodes; ++i ) {
-        RealT mag = magnitude( m_node_n[0][i], m_node_n[1][i], m_node_n[2][i] );
-        m_node_n[0][i] /= mag;
-        m_node_n[1][i] /= mag;
-        m_node_n[2][i] /= mag;
-      }
-    } else {
-      for ( int i = 0; i < m_num_nodes; ++i ) {
-        RealT mag = magnitude( m_node_n[0][i], m_node_n[1][i] );
-        m_node_n[0][i] /= mag;
-        m_node_n[1][i] /= mag;
-      }
-    }
-
-    delete[] numFaceNrmlsToNodes;
-  }  // end if-check on null mesh
-
-  return;
-}  // end MeshData::computeNodalNormals()
+  m_node_n = Array2D<RealT>( { m_dim, m_num_nodes }, m_allocator_id );
+  m_node_n.fill( 0.0 );
+}  // end MeshData::allocateNodalNormals()
 
 //------------------------------------------------------------------------------
 int MeshData::checkLagrangeMultiplierData()
@@ -581,9 +497,10 @@ int MeshData::checkLagrangeMultiplierData()
     }
   }  // end if-non-null mesh
   return err;
-}
+}  // end MeshData::checkLagrangeMultiplierData()
+
 //------------------------------------------------------------------------------
-int MeshData::checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options )
+int MeshData::checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options, ExecutionMode exec_mode )
 {
   int err = 0;
   if ( this->numberOfElements() > 0 ) {
@@ -591,14 +508,14 @@ int MeshData::checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options )
     // switch over penalty enforcement options and check for required data
     switch ( constraint_type ) {
       case KINEMATIC: {
-        if ( !m_element_data.isValidKinematicPenalty( p_enfrc_options ) ) {
+        if ( !m_element_data.isValidKinematicPenalty( p_enfrc_options, exec_mode, this->m_allocator_id ) ) {
           err = 1;
         }
         break;
       }  // end KINEMATIC case
 
       case KINEMATIC_AND_RATE: {
-        if ( !m_element_data.isValidKinematicPenalty( p_enfrc_options ) ) {
+        if ( !m_element_data.isValidKinematicPenalty( p_enfrc_options, exec_mode, this->m_allocator_id ) ) {
           err = 1;
         }
         if ( !m_element_data.isValidRatePenalty( p_enfrc_options ) ) {
@@ -694,6 +611,7 @@ MeshData::Viewer::Viewer( MeshData& mesh )
       m_mem_space( mesh.m_mem_space ),
       m_allocator_id( mesh.m_allocator_id ),
       m_position( mesh.m_position ),
+      m_ref_position( mesh.m_ref_position ),
       m_disp( mesh.m_disp ),
       m_vel( mesh.m_vel ),
       m_response( mesh.m_response ),
