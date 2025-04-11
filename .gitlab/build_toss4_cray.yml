@@ -9,7 +9,7 @@
 # This is the shared configuration of jobs for toss4_cray
 .on_toss4_cray:
   variables:
-    ALLOC_OPTIONS: "--queue pci --exclusive"
+    ALLOC_OPTIONS: "--exclusive"
     ALLOC_COMMAND: "salloc ${ALLOC_OPTIONS} -N ${ALLOC_NODES} -t ${ALLOC_TIME}"
   tags:
     - shell
