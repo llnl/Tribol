@@ -9,9 +9,10 @@
 # This is the shared configuration of jobs for toss4_cray
 .on_toss4_cray:
   variables:
-    SCHEDULER_PARAMETERS: "--queue pci --exclusive --time-limit=${ALLOC_TIME}m --nodes=${ALLOC_NODES}"
+    ALLOC_OPTIONS: "--queue pci --exclusive"
+    ALLOC_COMMAND: "salloc ${ALLOC_OPTIONS} -N ${ALLOC_NODES} -t ${ALLOC_TIME}"
   tags:
-    - batch
+    - shell
     - tioga
   rules:
     - if: '$CI_COMMIT_BRANCH =~ /_qnone/ || $ON_TOSS4_CRAY == "OFF"' #run except if ...
