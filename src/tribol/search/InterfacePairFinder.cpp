@@ -28,7 +28,7 @@ namespace tribol {
  */
 TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, const MeshData::Viewer& mesh1,
                                     const MeshData::Viewer& mesh2, ContactMode mode, bool auto_contact_check,
-                                    RealT element_radius_multiplier )
+                                    RealT element_radius_multiplier, bool intermediatePlane, Parameters params )
 {
   /// CHECK #1: Check to make sure the two face ids are not the same
   ///           and the two mesh ids are not the same.
@@ -133,6 +133,69 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     }
   }  // end of dim == 2
 
+  // temporarily move checks through 6 to here to pare down the number of ContactPlane3D objects we initially need
+  if ( dim == 3 ) {
+    // SKIP CHECK 5
+
+    // CHECK #6: check if the two faces overlap in a projected sense.
+    // To do this check we need to use the contact plane object, which will
+    // have its own local basis that needs to be defined
+    InterfacePair pair( element_id1, element_id2 );
+    ContactPlane3D cp( &pair, params.overlap_area_frac, false, intermediatePlane );
+
+    // compute cp normal
+    cp.computeNormal( mesh1, mesh2 );
+
+    // compute cp centroid
+    cp.computePlanePoint( mesh1, mesh2 );
+
+    // project face nodes onto contact plane. Still do this for mortar.
+    // The mortar face may not be exactly planar so we still need to project
+    // the nodes onto the contact plane, which is defined by average normal of the
+    // nonmortar face.
+    constexpr int max_nodes_per_elem = 4;
+    RealT projX1[max_nodes_per_elem];
+    RealT projY1[max_nodes_per_elem];
+    RealT projZ1[max_nodes_per_elem];
+    RealT projX2[max_nodes_per_elem];
+    RealT projY2[max_nodes_per_elem];
+    RealT projZ2[max_nodes_per_elem];
+
+    ProjectFaceNodesToPlane( mesh1, element_id1, cp.m_nX, cp.m_nY, cp.m_nZ, cp.m_cX, cp.m_cY, cp.m_cZ, &projX1[0],
+                             &projY1[0], &projZ1[0] );
+    ProjectFaceNodesToPlane( mesh2, element_id2, cp.m_nX, cp.m_nY, cp.m_nZ, cp.m_cX, cp.m_cY, cp.m_cZ, &projX2[0],
+                             &projY2[0], &projZ2[0] );
+
+    // compute cp local coordinate basis
+    cp.computeLocalBasis( mesh1 );
+
+    // project the projected global nodal coordinates onto local
+    // contact plane 2D coordinate system.
+    RealT projeX1[max_nodes_per_elem];
+    RealT projeY1[max_nodes_per_elem];
+    RealT projeX2[max_nodes_per_elem];
+    RealT projeY2[max_nodes_per_elem];
+
+    cp.globalTo2DLocalCoords( &projX1[0], &projY1[0], &projZ1[0], &projeX1[0], &projeY1[0],
+                              mesh1.numberOfNodesPerElement() );
+    cp.globalTo2DLocalCoords( &projX2[0], &projY2[0], &projZ2[0], &projeX2[0], &projeY2[0],
+                              mesh2.numberOfNodesPerElement() );
+
+    // compute the overlap area of the two faces. Note, this is the full,
+    // but cheaper, overlap computation. This is suitable enough to
+    // compare to a minimum area tolerance, and in general the full
+    // overlap area will be bigger than the interpenetration overlap
+    // area case
+    cp.checkPolyOverlap( mesh1, mesh2, &projeX1[0], &projeY1[0], &projeX2[0], &projeY2[0], 0 );
+
+    // compute the overlap area tolerance
+    cp.computeAreaTol( mesh1, mesh2, params );
+
+    if ( cp.m_area == 0. || cp.m_area < cp.m_areaMin ) {
+      return false;
+    }
+  }
+
   // if we made it here we passed all checks
   return true;
 
@@ -213,10 +276,13 @@ class CartesianProduct : public SearchBase {
     // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
     auto e_binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
 
+    auto& params = m_coupling_scheme->getParameters();
+    bool intermediatePlane = m_coupling_scheme->getContactMethod() == COMMON_PLANE ? true : false;
+
     // count how many pairs are proximate
     forAllExec( m_coupling_scheme->getExecutionMode(), maxNumPairs,
                 [mesh1NumElems, mesh2NumElems, is_symm, isProximate, mesh1, mesh2, cmode, pCount, auto_contact_check,
-                 e_binning_proximity_scale] TRIBOL_HOST_DEVICE( IndexT i ) {
+                 e_binning_proximity_scale, params, intermediatePlane] TRIBOL_HOST_DEVICE( IndexT i ) {
                   IndexT fromIdx = i / mesh2NumElems;
                   IndexT toIdx = i % mesh2NumElems;
                   if ( is_symm ) {
@@ -225,8 +291,8 @@ class CartesianProduct : public SearchBase {
                     fromIdx = row;
                     toIdx = i - offset;
                   }
-                  isProximate[i] =
-                      geomFilter( fromIdx, toIdx, mesh1, mesh2, cmode, auto_contact_check, e_binning_proximity_scale );
+                  isProximate[i] = geomFilter( fromIdx, toIdx, mesh1, mesh2, cmode, auto_contact_check,
+                                               e_binning_proximity_scale, intermediatePlane, params );
 #ifdef TRIBOL_USE_RAJA
                   RAJA::atomicAdd<RAJA::auto_atomic>( pCount, static_cast<int>( isProximate[i] ) );
 #else
@@ -412,6 +478,9 @@ class GridSearch : public SearchBase {
     // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
     auto e_binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
 
+    auto& params = m_coupling_scheme->getParameters();
+    bool intermediatePlane = m_coupling_scheme->getContactMethod() == COMMON_PLANE ? true : false;
+
     // Find matches in first mesh (with index 'fromIdx')
     // with candidate elements in second mesh (with index 'toIdx')
     // int k = 0;  // Debug only
@@ -435,7 +504,8 @@ class GridSearch : public SearchBase {
 
         // Preliminary geometry/proximity checks, SRW
         bool contact = geomFilter( fromIdx, toIdx, mesh1, mesh2, m_coupling_scheme->getContactMode(),
-                                   m_coupling_scheme->getParameters().auto_contact_check, e_binning_proximity_scale );
+                                   m_coupling_scheme->getParameters().auto_contact_check, e_binning_proximity_scale,
+                                   intermediatePlane, params );
 
         if ( contact ) {
           contactPairs.emplace_back( fromIdx, toIdx, true );
@@ -453,7 +523,7 @@ class GridSearch : public SearchBase {
     BBox box;
 
     for ( int i{ 0 }; i < mesh.numberOfNodesPerElement(); ++i ) {
-      axom::primal::NumericArray<RealT, D> vert_array;
+      axom::NumericArray<RealT, D> vert_array;
       auto vert_id = mesh.getGlobalNodeId( eId, i );
       for ( int d{ 0 }; d < D; ++d ) {
         vert_array[d] = mesh.getPosition()[d][vert_id];
@@ -570,23 +640,28 @@ class BvhSearch : public SearchBase {
     bool auto_contact_check = m_coupling_scheme->getParameters().auto_contact_check;
     // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
     auto e_binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
+
+    auto& params = m_coupling_scheme->getParameters();
+    bool intermediatePlane = m_coupling_scheme->getContactMethod() == COMMON_PLANE ? true : false;
+
     // count the number of filtered proximate pairs
-    forAllExec( m_coupling_scheme->getExecutionMode(), m_candidates.size(),
-                [mesh1, mesh2, offsets_view, counts_view, candidates_view, filtered_candidates, cmode,
-                 auto_contact_check, e_binning_proximity_scale] TRIBOL_HOST_DEVICE( IndexT i ) {
-                  auto mesh1_elem = algorithm::binarySearch( offsets_view, counts_view, i );
-                  auto mesh2_elem = candidates_view[i];
-                  if ( geomFilter( mesh1_elem, mesh2_elem, mesh1, mesh2, cmode, auto_contact_check,
-                                   e_binning_proximity_scale ) ) {
+    forAllExec(
+        m_coupling_scheme->getExecutionMode(), m_candidates.size(),
+        [mesh1, mesh2, offsets_view, counts_view, candidates_view, filtered_candidates, cmode, auto_contact_check,
+         e_binning_proximity_scale, params, intermediatePlane] TRIBOL_HOST_DEVICE( IndexT i ) {
+          auto mesh1_elem = algorithm::binarySearch( offsets_view, counts_view, i );
+          auto mesh2_elem = candidates_view[i];
+          if ( geomFilter( mesh1_elem, mesh2_elem, mesh1, mesh2, cmode, auto_contact_check, e_binning_proximity_scale,
+                           intermediatePlane, params ) ) {
 #ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicInc<AtomicPolicy>( filtered_candidates.data() );
+            RAJA::atomicInc<AtomicPolicy>( filtered_candidates.data() );
 #else
-                    ++filtered_candidates[0];
+            ++filtered_candidates[0];
 #endif
-                  } else {
-                    candidates_view[i] = -1;
-                  }
-                } );
+          } else {
+            candidates_view[i] = -1;
+          }
+        } );
 
     ArrayT<IndexT, 1, MemorySpace::Host> filtered_candidates_host( filtered_candidates_data );
     m_coupling_scheme->getInterfacePairs().resize( filtered_candidates_host[0] );

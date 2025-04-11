@@ -1015,7 +1015,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // loop over number of interface pairs
   IndexT numPairs = m_interface_pairs.size();
 
-  SLIC_DEBUG( "Coupling scheme " << m_id << " has " << numPairs << " pairs." );
+  SLIC_INFO( "Coupling scheme " << m_id << " has " << numPairs << " pairs." );
 
   // loop over all pairs and perform geometry checks to see if they are
   // interacting
