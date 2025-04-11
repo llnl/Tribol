@@ -2,7 +2,7 @@ spack:
  # The "::" removes all found/known compilers from Spack except for these.
   compilers::
   - compiler:
-      spec: clang@=19.1.7
+      spec: clang@=20.1.2
       paths:
         cc: /opt/homebrew/opt/llvm/bin/clang
         cxx: /opt/homebrew/opt/llvm/bin/clang++
@@ -50,7 +50,13 @@ spack:
       externals:
       - spec: openmpi@5.0.7
         prefix: /opt/homebrew
-        
+    
+    # enzyme:
+    #   version: [0.0.173]
+    #   buildable: false
+    #   externals:
+    #   - spec: enzyme@0.0.173
+    #     prefix: /opt/homebrew
     hdf5:
       version: [1.14.6]
       buildable: false
@@ -70,6 +76,7 @@ spack:
         prefix: /opt/homebrew/opt/lapack
 
     # Devtools
+    # NOTE: cmake 4.0.0 is not compatible with metis and parmetis, stick with 3.31.6 for now
     cmake:
       version: [3.31.6]
       buildable: false
@@ -83,11 +90,13 @@ spack:
       - spec: doxygen@1.13.2
         prefix: /opt/homebrew
     llvm:
-      version: [14.0.6]
+      version: [14.0.6, 20.1.2]
       buildable: false
       externals:
       - spec: llvm@14.0.6+clang
         prefix: /opt/homebrew/opt/llvm@14
+      - spec: llvm@20.1.2+clang
+        prefix: /opt/homebrew/opt/llvm
     python:
       version: [3.13.2]
       buildable: false

@@ -349,6 +349,23 @@ void enableTimestepVote( IndexT cs_id, const bool enable )
 }  // end enableTimestepVote()
 
 //------------------------------------------------------------------------------
+void enableEnzyme( IndexT cs_id, [[maybe_unused]] bool use_enzyme )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  // check to see if coupling scheme exists
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::enableEnzyme(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+#ifdef TRIBOL_USE_ENZYME
+  cs->enableEnzyme( use_enzyme );
+#else
+  SLIC_WARNING_ROOT( "tribol::enableEnzyme(): Tribol not built with Enzyme support." );
+#endif
+
+}  // end enableEnzyme()
+
+//------------------------------------------------------------------------------
 void registerMesh( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity, int element_type,
                    const RealT* x, const RealT* y, const RealT* z, MemorySpace mem_space )
 {
@@ -404,6 +421,18 @@ void registerNodalVelocities( IndexT mesh_id, const RealT* vx, const RealT* vy, 
   mesh->setVelocity( vx, vy, vz );
 
 }  // end registerNodalVelocities()
+
+//------------------------------------------------------------------------------
+void registerNodalReferenceCoords( IndexT mesh_id, const RealT* xref, const RealT* yref, const RealT* zref )
+{
+  auto mesh = MeshManager::getInstance().findData( mesh_id );
+
+  SLIC_ERROR_ROOT_IF( !mesh, "tribol::registerNodalVelocities(): "
+                                 << "no mesh with id, " << mesh_id << "exists." );
+
+  mesh->setReferencePosition( xref, yref, zref );
+
+}  // end registerNodalReferenceCoords()
 
 //------------------------------------------------------------------------------
 void registerNodalResponse( IndexT mesh_id, RealT* rx, RealT* ry, RealT* rz )
@@ -501,8 +530,8 @@ int getJacobianCSRMatrix( int** I, int** J, RealT** vals, IndexT cs_id, int* n_o
 
 //------------------------------------------------------------------------------
 int getElementBlockJacobians( IndexT cs_id, BlockSpace row_block, BlockSpace col_block,
-                              const axom::Array<int>** row_elem_idx, const axom::Array<int>** col_elem_idx,
-                              const axom::Array<mfem::DenseMatrix>** jacobians )
+                              const ArrayT<int>** row_elem_idx, const ArrayT<int>** col_elem_idx,
+                              const ArrayT<mfem::DenseMatrix>** jacobians )
 {
   // get access to coupling scheme
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -522,9 +551,11 @@ int getElementBlockJacobians( IndexT cs_id, BlockSpace row_block, BlockSpace col
     return 1;
   }
   MethodData* method_data = cs->getMethodData();
-  *row_elem_idx = &method_data->getBlockJElementIds()[static_cast<int>( row_block )];
-  *col_elem_idx = &method_data->getBlockJElementIds()[static_cast<int>( col_block )];
-  *jacobians = &method_data->getBlockJ()( static_cast<int>( row_block ), static_cast<int>( col_block ) );
+  if ( method_data != nullptr ) {
+    *row_elem_idx = &method_data->getBlockJElementIds()[static_cast<int>( row_block )];
+    *col_elem_idx = &method_data->getBlockJElementIds()[static_cast<int>( col_block )];
+    *jacobians = &method_data->getBlockJ()( static_cast<int>( row_block ), static_cast<int>( col_block ) );
+  }
   return 0;
 
 }  // end getElementBlockJacobians()
@@ -801,7 +832,7 @@ int update( int cycle, RealT t, RealT& dt )
     // scheme will not be valid across all ranks and we will skip this coupling scheme
     if ( !cs.init() ) {
       SLIC_WARNING_ROOT( "tribol::update(): skipping invalid CouplingScheme " << cs_pair.first
-                                                                              << "Please see warnings." );
+                                                                              << ". Please see warnings." );
       continue;
     }
 

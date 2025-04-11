@@ -39,9 +39,10 @@ if(NOT TRIBOL_FOUND)
   # TPLs
   set(TRIBOL_USE_UMPIRE "@TRIBOL_USE_UMPIRE@")
   set(TRIBOL_USE_RAJA   "@TRIBOL_USE_RAJA@")
+  set(TRIBOL_USE_ENZYME "@TRIBOL_USE_ENZYME@")
   
   #----------------------------------------------------------------------------
-  # Bring in required dependencies for this axom configuration
+  # Bring in required dependencies for this Tribol configuration
   #----------------------------------------------------------------------------
   include(CMakeFindDependencyMacro)
 
@@ -49,6 +50,15 @@ if(NOT TRIBOL_FOUND)
   set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB32_PATHS TRUE)
   set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS TRUE)
   set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIBX32_PATHS TRUE)
+
+  # Enzyme is optional
+  if(TRIBOL_USE_ENZYME)
+    set(TRIBOL_ENZYME_DIR  "@ENZYME_DIR@")
+    if(NOT ENZYME_DIR) 
+      set(ENZYME_DIR "${TRIBOL_ENZYME_DIR}")
+    endif()
+    find_dependency(Enzyme REQUIRED PATHS "${ENZYME_DIR}")
+  endif()
 
   # Umpire is optional
   if(TRIBOL_USE_UMPIRE)

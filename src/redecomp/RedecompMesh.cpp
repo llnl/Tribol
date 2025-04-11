@@ -65,7 +65,7 @@ RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length, Pa
     // mesh)
     n_ranks = std::max( std::min( parent.GetNRanks(), ( parent_n_els + 1 ) / 2 / 10 ), 1 );
   }
-  SLIC_INFO_ROOT( axom::fmt::format( "Repartitioning {} elements onto {} ranks...", parent_n_els, n_ranks ) );
+  SLIC_DEBUG_ROOT( axom::fmt::format( "Repartitioning {} elements onto {} ranks...", parent_n_els, n_ranks ) );
   // p2r = parent to redecomp
   p2r_elems_ = BuildP2RElementList( *partitioner, n_ranks, ghost_length );
   BuildRedecomp();
@@ -113,7 +113,7 @@ RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length,
     // mesh)
     n_ranks = std::max( std::min( parent.GetNRanks(), ( parent_n_els + 1 ) / 2 / 10 ), 1 );
   }
-  SLIC_INFO_ROOT( axom::fmt::format( "Repartitioning {} elements onto {} ranks...", parent_n_els, n_ranks ) );
+  SLIC_DEBUG_ROOT( axom::fmt::format( "Repartitioning {} elements onto {} ranks...", parent_n_els, n_ranks ) );
   // p2r = parent to redecomp
   p2r_elems_ = BuildP2RElementList( *partitioner, n_ranks, ghost_length );
   BuildRedecomp();

@@ -364,7 +364,7 @@ class GridSearch : public SearchBase {
     // inflate grid box slightly so elem bounding boxes are not on grid bdry
     m_gridBBox.scale( 1 + bboxTolerance );
 
-    ranges /= m_mesh1.numberOfElements();
+    ranges /= static_cast<double>( m_mesh1.numberOfElements() );
 
     // Compute grid resolution from average bbox size
     typename ImplicitGridType::GridCell resolution;
@@ -384,16 +384,16 @@ class GridSearch : public SearchBase {
 
     // Output some info for debugging
     if ( true ) {
-      SLIC_INFO( "Implicit Grid info: "
-                 << "\n Mesh 1 bounding box (inflated): " << m_gridBBox << "\n Avg range: " << ranges
-                 << "\n Computed resolution: " << resolution );
+      SLIC_DEBUG( "Implicit Grid info: "
+                  << "\n Mesh 1 bounding box (inflated): " << m_gridBBox << "\n Avg range: " << ranges
+                  << "\n Computed resolution: " << resolution );
 
       SpatialBoundingBox bbox2;
       for ( int i = 0; i < m_mesh2.numberOfElements(); ++i ) {
         bbox2.addBox( elementBoundingBox( m_mesh2, i ) );
       }
 
-      SLIC_INFO( "Mesh 2 bounding box is: " << bbox2 );
+      SLIC_DEBUG( "Mesh 2 bounding box is: " << bbox2 );
     }
   };  // end initialize()
 
@@ -450,10 +450,15 @@ class GridSearch : public SearchBase {
  private:
   BBox elementBoundingBox( const MeshData::Viewer& mesh, IndexT eId )
   {
+    // NOTE: namespace for NumericArray changed in axom 0.10.0. The using directives below allow Tribol to work with
+    // older and newer versions of axom.
+    using namespace axom;
+    using namespace axom::primal;
+
     BBox box;
 
     for ( int i{ 0 }; i < mesh.numberOfNodesPerElement(); ++i ) {
-      axom::primal::NumericArray<RealT, D> vert_array;
+      NumericArray<RealT, D> vert_array;
       auto vert_id = mesh.getGlobalNodeId( eId, i );
       for ( int d{ 0 }; d < D; ++d ) {
         vert_array[d] = mesh.getPosition()[d][vert_id];
@@ -794,7 +799,7 @@ void InterfacePairFinder::initialize()
 
 void InterfacePairFinder::findInterfacePairs()
 {
-  SLIC_INFO( "Searching for interface pairs" );
+  SLIC_DEBUG( "Searching for interface pairs" );
   m_search->findInterfacePairs();
   // set boolean on coupling scheme object indicating
   // that binning has occurred

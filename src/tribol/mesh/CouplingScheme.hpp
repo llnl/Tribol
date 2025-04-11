@@ -10,10 +10,16 @@
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
+#include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/utils/DataManager.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/geom/ContactPlane.hpp"
+#include "tribol/geom/ElementNormal.hpp"
+
+#ifdef TRIBOL_USE_ENZYME
+#include "tribol/geom/NodalNormal.hpp"
+#endif
 
 // Axom includes
 #include "axom/core.hpp"
@@ -81,9 +87,6 @@ struct CouplingSchemeInfo {
   void printEnforcementInfo();
   void printExecutionModeInfo();
 };
-
-// forward declaration
-class MethodData;
 
 /*!
  * \brief The CouplingScheme class defines the coupling between two meshes
@@ -645,6 +648,40 @@ class CouplingScheme {
    */
   RealT getEffectiveBinningProximityScale() const { return m_effective_binning_proximity_scale; }
 
+  /**
+   * @brief Enables Enzyme AD for exact Jacobian calculations
+   *
+   * @param useEnzyme Turns on Enzyme support if true
+   */
+  void enableEnzyme( bool useEnzyme );
+
+  /**
+   * @brief Is Enzyme AD enabled for exact Jacobian calculations?
+   *
+   * @return true Yes
+   * @return false No
+   */
+  bool isEnzymeEnabled() const { return m_useEnzyme; }
+
+  /**
+   * @brief Create MethodData to save Jacobian contributions related to a nodally defined normal
+   */
+  void createNodalNormalJacobianData();
+
+  /**
+   * @brief Get the method data for the derivative of the force w.r.t. the normal
+   *
+   * @return MethodData pointer
+   */
+  MethodData* getDfDnMethodData() const { return m_dfdnJacobian.get(); }
+
+  /**
+   * @brief Get the method data for the derivative of the normal w.r.t. the nodal coordinates
+   *
+   * @return MethodData pointer
+   */
+  MethodData* getDnDxMethodData() const { return m_dndxJacobian.get(); }
+
 #ifdef BUILD_REDECOMP
 
   /**
@@ -831,6 +868,10 @@ class CouplingScheme {
   bool m_fixedBinning;  ///< True if using fixed binning for all cycles
   bool m_isBinned;      ///< True if binning has occured
   bool m_isTied;        ///< True if surfaces have been "tied" (Tied contact only)
+
+  bool m_useEnzyme = false;                    ///< Use Enzyme for Jacobian calculations
+  std::unique_ptr<MethodData> m_dfdnJacobian;  ///< Store derivative of force w.r.t. normal on element pairs
+  std::unique_ptr<MethodData> m_dndxJacobian;  ///< Store derivative of normal w.r.t. nodal coordinates on element pairs
 
   ArrayT<InterfacePair> m_interface_pairs;  ///< List of interface pairs
 

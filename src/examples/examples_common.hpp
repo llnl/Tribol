@@ -313,7 +313,7 @@ int tribol_register_and_update( tribol::TestMesh& mesh, tribol::ContactMethod me
   //                                           //
   ///////////////////////////////////////////////
   const int csIndex = 0;
-  registerCouplingScheme( csIndex, block1_id, block2_id, tribol::SURFACE_TO_SURFACE, tribol::AUTO, method, model,
+  registerCouplingScheme( csIndex, block1_id, block2_id, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, method, model,
                           enforcement, tribol::BINNING_GRID, tribol::ExecutionMode::Sequential );
 
   //////////////////////////////////////////////////////////

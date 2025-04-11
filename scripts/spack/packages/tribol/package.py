@@ -1,7 +1,7 @@
-# Copyright 2013-2023 Lawrence Livermore National Security, LLC and other
-# Spack Project Developers. See the top-level LICENSE file for details.
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
+# other Tribol Project Developers. See the top-level COPYRIGHT file for details.
 #
-# SPDX-License-Identifier: (Apache-2.0 OR MIT)
+# SPDX-License-Identifier: (MIT)
 
 import os
 import socket
@@ -57,6 +57,8 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
             description="Build with portable kernel execution support")
     variant("openmp",   default=False,
             description="Build with OpenMP support")
+    variant("enzyme",   default=False,
+            description="Build with Enzyme support")
 
     # -----------------------------------------------------------------------
     # Dependencies
@@ -69,11 +71,13 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     depends_on("mpi")
 
     # Other libraries
-    depends_on("mfem@4.6:+lapack")
+    depends_on("mfem@4.7.0.2:+lapack")
     depends_on("axom@0.9:")
 
     depends_on("raja@2024.02.0:", when="+raja")
     depends_on("umpire@2024.02.0:", when="+umpire")
+
+    depends_on("enzyme", when="+enzyme")
     
     depends_on("axom+raja", when="+raja")
     depends_on("axom~raja", when="~raja")
@@ -81,6 +85,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     depends_on("axom~umpire", when="~umpire")
 
     depends_on("mfem+metis+mpi", when="+redecomp")
+    depends_on("mfem+asan", when="+asan")
     
     with when("+openmp"):
         depends_on("axom+openmp")
@@ -142,10 +147,12 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     depends_on("python", when="+devtools")
     depends_on("py-shroud", when="+devtools+fortran")
     depends_on("py-sphinx", when="+devtools")
-    depends_on("llvm+clang@14", when="+devtools", type="build")
+    depends_on("llvm@14+clang+python", when="+devtools")
 
     conflicts("+cuda", when="+rocm")
     conflicts("+openmp", when="+rocm")
+
+    requires("%clang", when="+enzyme")
 
     def _get_sys_type(self, spec):
         sys_type = spec.architecture
@@ -239,7 +246,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
                 rocm_root = "{0}/..".format(rocm_root)
             entries.append(cmake_cache_path("ROCM_PATH", rocm_root))
 
-            hip_link_flags = ""
+            hip_link_flags = "-L{0}/lib -Wl,-rpath,{0}/lib ".format(rocm_root)
 
             # Recommended MPI flags
             hip_link_flags += "-lxpmem "
@@ -257,8 +264,6 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
             # These flags are already part of the wrapped compilers on TOSS4 systems
             if "+fortran" in spec and self.is_fortran_compiler("amdflang"):
                 hip_link_flags += "-Wl,--disable-new-dtags "
-
-                hip_link_flags += "-L{0}/lib -Wl,-rpath,{0}/lib ".format(rocm_root)
                 hip_link_flags += "-lflang -lflangrti -lompstub "
 
             # Remove extra link library for crayftn
@@ -385,7 +390,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
                                             dep_dir))
 
         # optional tpls
-        for dep in ('raja', 'umpire'):
+        for dep in ('raja', 'umpire', 'enzyme'):
             if spec.satisfies('^{0}'.format(dep)):
                 dep_dir = get_spec_path(spec, dep, path_replacements)
                 entries.append(cmake_cache_path('%s_DIR' % dep.upper(),
