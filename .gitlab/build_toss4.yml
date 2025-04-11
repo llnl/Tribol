@@ -31,7 +31,6 @@
 
 ####
 # Build jobs
-
 toss4-clang_14_0_6-src:
   variables:
     COMPILER: "clang@14.0.6"
