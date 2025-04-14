@@ -1013,7 +1013,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // loop over number of interface pairs
   IndexT numPairs = m_interface_pairs.size();
 
-  SLIC_DEBUG( "Coupling scheme " << m_id << " has " << numPairs << " pairs." );
+  SLIC_INFO( "Coupling scheme " << m_id << " has " << numPairs << " pairs." );
 
   // loop over all pairs and perform geometry checks to see if they are
   // interacting
@@ -1070,7 +1070,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                 }
               } );
 
-  ArrayT<int, 1, MemorySpace::Host> planes_ct_host( planes_ct_data );
+  ArrayT<IndexT, 1, MemorySpace::Host> planes_ct_host( planes_ct_data );
   // shrink array to actual number of contact planes
   if ( spatialDimension() == 2 ) {
     m_contact_plane2d.resize( planes_ct_host[0] );

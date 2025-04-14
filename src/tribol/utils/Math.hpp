@@ -60,13 +60,15 @@ int binary_search( const int* const array,  ///< [in] pointer to array of intege
 );
 
 /// routine to swap values between two arrays
-void swap_val( int* xp,  ///< [in] Pointer to value to be swapped
-               int* yp   ///< [out] Pointer to new value
+template <typename T>
+void swap_val( T* xp,  ///< [in] Pointer to value to be swapped
+               T* yp   ///< [out] Pointer to new value
 );
 
 /// bubble sort elements of one array in increasing order
-void bubble_sort( int* const array,  ///< [in] Input array of integers
-                  const int n        ///< [in] Size of array
+template <typename T>
+void bubble_sort( T* array,  ///< [in] Input array to be sorted
+                  int n      ///< [in] Size of array
 );
 
 /// allocate and initialize an array of reals
@@ -81,6 +83,10 @@ void allocIntArray( int** arr, int length, int init_val );
 /// allocate an array of integers and initialize with a pointer to data
 void allocIntArray( int** arr, const int length, const int* const data );
 
+/// allocate and initialize an array of type T
+template <typename T>
+void allocArray( T** arr, int length, T init_val );
+
 /// allocate and initialize an array of booleans
 void allocBoolArray( bool** arr, int length, bool init_val );
 
@@ -89,6 +95,10 @@ TRIBOL_HOST_DEVICE void initRealArray( RealT* arr, int length, RealT init_val );
 
 /// initialize a array of integers
 TRIBOL_HOST_DEVICE void initIntArray( int* arr, int length, int init_val );
+
+/// initialize a array of type T
+template <typename T>
+TRIBOL_HOST_DEVICE void initArray( T* arr, int length, T init_val );
 
 /// initialize a array of booleans
 TRIBOL_HOST_DEVICE void initBoolArray( bool* arr, int length, bool init_val );

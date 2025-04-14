@@ -339,7 +339,7 @@ void MfemMeshData::SetParentReferenceCoords( const mfem::ParGridFunction& refere
   }
 }
 
-void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale )
+void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks )
 {
   // update coordinates of submesh and LOR mesh
   auto submesh_nodes = dynamic_cast<mfem::ParGridFunction*>( submesh_.GetNodes() );
@@ -352,7 +352,7 @@ void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale )
   }
   update_data_ = std::make_unique<UpdateData>( submesh_, lor_mesh_.get(), *coords_.GetParentGridFn().ParFESpace(),
                                                submesh_xfer_gridfn_, submesh_lor_xfer_.get(), attributes_1_,
-                                               attributes_2_, binning_proximity_scale, allocator_id_ );
+                                               attributes_2_, binning_proximity_scale, allocator_id_, n_ranks );
   coords_.UpdateField( update_data_->vector_xfer_, use_device_ );
   // NOTE: SetSpace() would be preferrable to call here, but it looks like all memory isn't mapped to
   // mfem::MemoryManager when this is used. TODO: Debug this and switch to SetSpace()
@@ -569,15 +569,18 @@ MfemMeshData::UpdateData::UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* 
                                       const mfem::ParFiniteElementSpace& parent_fes,
                                       mfem::ParGridFunction& submesh_gridfn, SubmeshLORTransfer* submesh_lor_xfer,
                                       const std::set<int>& attributes_1, const std::set<int>& attributes_2,
-                                      RealT binning_proximity_scale, int allocator_id )
-    : redecomp_mesh_{ lor_mesh ? redecomp::RedecompMesh(
-                                     *lor_mesh, binning_proximity_scale *
-                                                    redecomp::RedecompMesh::MaxElementSize(
-                                                        *lor_mesh, redecomp::MPIUtility( lor_mesh->GetComm() ) ) )
-                               : redecomp::RedecompMesh(
-                                     submesh, binning_proximity_scale *
-                                                  redecomp::RedecompMesh::MaxElementSize(
-                                                      submesh, redecomp::MPIUtility( submesh.GetComm() ) ) ) },
+                                      RealT binning_proximity_scale, int allocator_id, int n_ranks )
+    : redecomp_mesh_{ lor_mesh
+                          ? redecomp::RedecompMesh(
+                                *lor_mesh,
+                                binning_proximity_scale * redecomp::RedecompMesh::MaxElementSize(
+                                                              *lor_mesh, redecomp::MPIUtility( lor_mesh->GetComm() ) ),
+                                redecomp::RedecompMesh::RCB, n_ranks )
+                          : redecomp::RedecompMesh(
+                                submesh,
+                                binning_proximity_scale * redecomp::RedecompMesh::MaxElementSize(
+                                                              submesh, redecomp::MPIUtility( submesh.GetComm() ) ),
+                                redecomp::RedecompMesh::RCB, n_ranks ) },
       vector_xfer_{ parent_fes, submesh_gridfn, submesh_lor_xfer, redecomp_mesh_ },
       allocator_id_{ allocator_id }
 {

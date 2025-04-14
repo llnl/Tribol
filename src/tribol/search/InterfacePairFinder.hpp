@@ -31,7 +31,7 @@ class SearchBase;
  */
 TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, const MeshData::Viewer& mesh1,
                                     const MeshData::Viewer& mesh2, ContactMode mode, bool auto_contact_check,
-                                    RealT element_radius_multiplier );
+                                    RealT element_radius_multiplier, bool intermediatePlane, Parameters params );
 
 /*!
  * \class InterfacePairFinder

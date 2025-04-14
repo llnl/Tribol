@@ -54,7 +54,7 @@ class MortarForceTest : public ::testing::Test {
 
   RealT* getZOverlapCoords() { return zOverlap; }
 
-  void checkMortarForces( int* conn1, int* conn2, tribol::ContactMethod method )
+  void checkMortarForces( tribol::IndexT* conn1, tribol::IndexT* conn2, tribol::ContactMethod method )
   {
     // grab coordinate data
     RealT* x = this->x;
@@ -348,8 +348,8 @@ TEST_F( MortarForceTest, parallel_misaligned )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  int conn1[numNodesPerFace];
-  int conn2[numNodesPerFace];
+  tribol::IndexT conn1[numNodesPerFace];
+  tribol::IndexT conn2[numNodesPerFace];
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
@@ -416,8 +416,8 @@ TEST_F( MortarForceTest, parallel_aligned )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  int conn1[numNodesPerFace];
-  int conn2[numNodesPerFace];
+  tribol::IndexT conn1[numNodesPerFace];
+  tribol::IndexT conn2[numNodesPerFace];
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
@@ -484,8 +484,8 @@ TEST_F( MortarForceTest, non_parallel_misaligned )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  int conn1[numNodesPerFace];
-  int conn2[numNodesPerFace];
+  tribol::IndexT conn1[numNodesPerFace];
+  tribol::IndexT conn2[numNodesPerFace];
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
@@ -552,8 +552,8 @@ TEST_F( MortarForceTest, non_parallel_aligned )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  int conn1[numNodesPerFace];
-  int conn2[numNodesPerFace];
+  tribol::IndexT conn1[numNodesPerFace];
+  tribol::IndexT conn2[numNodesPerFace];
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
@@ -620,8 +620,8 @@ TEST_F( MortarForceTest, parallel_simple_aligned )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  int conn1[numNodesPerFace];
-  int conn2[numNodesPerFace];
+  tribol::IndexT conn1[numNodesPerFace];
+  tribol::IndexT conn2[numNodesPerFace];
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;

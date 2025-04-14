@@ -633,10 +633,11 @@ class MfemMeshData {
    *
    * @param binning_proximity_scale Element length multiplier for coarse binning and proximity detection inclusion. This
    * is needed to size the ghost element layer in the redecomp mesh.
+   * @param n_ranks Number of ranks in the parallel decomposition
    *
    * @note This method should be called after the coordinate grid function is updated.
    */
-  void UpdateMfemMeshData( RealT binning_proximity_scale );
+  void UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks );
 
   /**
    * @brief Get the integer identifier for the first Tribol registered mesh
@@ -1067,18 +1068,19 @@ class MfemMeshData {
      * @param lor_mesh LOR mesh of contact elements (if using LOR; nullptr otherwise)
      * @param parent_fes Vector finite element space on the original parent mesh
      * @param submesh_gridfn Grid function on the parent-linked boundary submesh used to temporarily store variables
-     * being transferred
+     *        being transferred
      * @param submesh_lor_xfer Submesh to LOR grid function transfer object (if using LOR; nullptr otherwise)
      * @param attributes_1 Set of boundary attributes identifying elements in the first Tribol registered mesh
      * @param attributes_2 Set of boundary attributes identifying elements in the second Tribol registered mesh
      * @param binning_proximity_scale Element length multiplier for coarse binning and proximity detection inclusion.
-     * This is needed to size the ghost element layer in the redecomp mesh.
+     *        This is needed to size the ghost element layer in the redecomp mesh.
      * @param allocator_id Allocation space ID for Tribol memory
+     * @param n_ranks Number of ranks in the parallel decomposition
      */
     UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh, const mfem::ParFiniteElementSpace& parent_fes,
                 mfem::ParGridFunction& submesh_gridfn, SubmeshLORTransfer* submesh_lor_xfer,
                 const std::set<int>& attributes_1, const std::set<int>& attributes_2, RealT binning_proximity_scale,
-                int allocator_id );
+                int allocator_id, int n_ranks );
 
     /**
      * @brief Redecomposed boundary element mesh
@@ -1094,13 +1096,13 @@ class MfemMeshData {
      * @brief Redecomp mesh element connectivity for the first Tribol registered
      * mesh
      */
-    Array2D<int> conn_1_;
+    Array2D<IndexT> conn_1_;
 
     /**
      * @brief Redecomp mesh element connectivity for the second Tribol
      * registered mesh
      */
-    Array2D<int> conn_2_;
+    Array2D<IndexT> conn_2_;
 
     /**
      * @brief Map from first Tribol registered mesh element indices to redecomp

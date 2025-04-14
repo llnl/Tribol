@@ -54,8 +54,8 @@ class MortarGeomTest : public ::testing::Test {
   mfem::Vector v_xs;
   mfem::Vector v_ys;
   mfem::Vector v_zs;
-  mfem::Array<int> v_ixm;
-  mfem::Array<int> v_ixs;
+  mfem::Array<tribol::IndexT> v_ixm;
+  mfem::Array<tribol::IndexT> v_ixs;
 
   int lengthMortarConn;
   int lengthNonmortarConn;
@@ -130,8 +130,8 @@ TEST_F( MortarGeomTest, mortar_good_patch )
   SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
-  int* ixm_data = this->v_ixm.GetData();
-  int* ixs_data = this->v_ixs.GetData();
+  tribol::IndexT* ixm_data = this->v_ixm.GetData();
+  tribol::IndexT* ixs_data = this->v_ixs.GetData();
   RealT* xm_data = this->v_xm.GetData();
   RealT* ym_data = this->v_ym.GetData();
   RealT* zm_data = this->v_zm.GetData();
@@ -226,8 +226,8 @@ TEST_F( MortarGeomTest, mortar_bad_patch )
   SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
-  int* ixm_data = this->v_ixm.GetData();
-  int* ixs_data = this->v_ixs.GetData();
+  tribol::IndexT* ixm_data = this->v_ixm.GetData();
+  tribol::IndexT* ixs_data = this->v_ixs.GetData();
   RealT* xm_data = this->v_xm.GetData();
   RealT* ym_data = this->v_ym.GetData();
   RealT* zm_data = this->v_zm.GetData();
@@ -322,8 +322,8 @@ TEST_F( MortarGeomTest, mortar_ironing )
   SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
-  int* ixm_data = this->v_ixm.GetData();
-  int* ixs_data = this->v_ixs.GetData();
+  tribol::IndexT* ixm_data = this->v_ixm.GetData();
+  tribol::IndexT* ixs_data = this->v_ixs.GetData();
   RealT* xm_data = this->v_xm.GetData();
   RealT* ym_data = this->v_ym.GetData();
   RealT* zm_data = this->v_zm.GetData();
@@ -448,8 +448,8 @@ TEST_F( MortarGeomTest, mortar_ironing_block_sub_mesh )
   SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
-  int* ixm_data = this->v_ixm.GetData();
-  int* ixs_data = this->v_ixs.GetData();
+  tribol::IndexT* ixm_data = this->v_ixm.GetData();
+  tribol::IndexT* ixs_data = this->v_ixs.GetData();
   RealT* xm_data = this->v_xm.GetData();
   RealT* ym_data = this->v_ym.GetData();
   RealT* zm_data = this->v_zm.GetData();

@@ -792,16 +792,19 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
   pairs.clear();
   pairs.reserve( numPairs );
 
+  ContactMode mode = cs->getContactMode();
+
+  auto& params = cs->getParameters();
+  bool intermediatePlane = cs->getContactMethod() == COMMON_PLANE ? true : false;
+
   // copy the interaction pairs
   for ( int i = 0; i < numPairs; ++i ) {
-    ContactMode mode = cs->getContactMode();
-
     // perform initial face-pair validity checks to add valid face-pairs
     // to interface pair manager. Note, further computational geometry
     // filtering will be performed on each face-pair indendifying
     // contact candidates.
     if ( geomFilter( pairIndex1[i], pairIndex2[i], mesh1, mesh2, mode, cs->getParameters().auto_contact_check,
-                     cs->getParameters().binning_proximity_scale ) ) {
+                     cs->getParameters().binning_proximity_scale, intermediatePlane, params ) ) {
       pairs.emplace_back( pairIndex1[i], pairIndex2[i], true );
     }
   }
