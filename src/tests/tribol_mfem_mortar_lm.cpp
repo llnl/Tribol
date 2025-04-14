@@ -162,10 +162,10 @@ class MfemMortarTest : public testing::TestWithParam<int> {
     A_blk->SetBlock( 0, 0, A.release() );
 
     // create block solution and RHS vectors
-    mfem::Vector B_blk{ A_blk->Height() };
+    mfem::Vector B_blk( A_blk->Height() );
     B_blk.UseDevice( true );
     B_blk = 0.0;
-    mfem::Vector X_blk{ A_blk->Width() };
+    mfem::Vector X_blk( A_blk->Width() );
     X_blk.UseDevice( true );
     X_blk = 0.0;
 
