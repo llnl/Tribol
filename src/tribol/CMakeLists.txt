@@ -148,3 +148,10 @@ if(ENABLE_FORTRAN AND ENABLE_MPI)
     install(FILES ${CMAKE_Fortran_MODULE_DIRECTORY}/tribol_simple.mod DESTINATION lib/fortran)
     install(FILES ${CMAKE_Fortran_MODULE_DIRECTORY}/tribol_test_mesh.mod DESTINATION lib/fortran)
 endif()
+
+# Add the TRIBOL_DEBUG compile definition, if non-empty
+if(TRIBOL_DEBUG_DEFINE_STRING)
+  blt_add_target_definitions(TO tribol SCOPE PUBLIC TARGET_DEFINITIONS "${TRIBOL_DEBUG_DEFINE_STRING}")
+  # Define AXOM_DEBUG for SLIC macros
+  blt_add_target_definitions(TO tribol SCOPE PUBLIC TARGET_DEFINITIONS "${AXOM_DEBUG_DEFINE_STRING}")
+endif()

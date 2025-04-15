@@ -310,7 +310,7 @@ void setLoggingLevel( IndexT cs_id, LoggingLevel log_level )
   if ( !in_range( static_cast<int>( log_level ), static_cast<int>( tribol::NUM_LOGGING_LEVELS ) ) ) {
     SLIC_INFO_ROOT( "tribol::setLoggingLevel(): Logging level not an option; "
                     << "using 'warning' level." );
-    cs->setLoggingLevel( tribol::TRIBOL_WARNING );
+    cs->setLoggingLevel( LoggingLevel::WARNING );
   } else {
     cs->setLoggingLevel( log_level );
   }

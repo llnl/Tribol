@@ -32,12 +32,12 @@ constexpr int ANY_MESH = -1;
  */
 enum LoggingLevel
 {
-  TRIBOL_UNDEFINED,  ///! Undefined
-  TRIBOL_DEBUG,      ///! Debug and higher
-  TRIBOL_INFO,       ///! Info and higher
-  TRIBOL_WARNING,    ///! Warning and higher
-  TRIBOL_ERROR,      ///! Errors only
-  NUM_LOGGING_LEVELS = TRIBOL_ERROR
+  UNDEFINED,  ///! Undefined
+  DEBUG,      ///! Debug and higher
+  INFO,       ///! Info and higher
+  WARNING,    ///! Warning and higher
+  ERROR,      ///! Errors only
+  NUM_LOGGING_LEVELS = ERROR
 };
 
 /*!
