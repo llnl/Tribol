@@ -168,7 +168,7 @@ TRIBOL_HOST_DEVICE bool FullFaceCheck( const MeshData::Viewer& mesh1, const Mesh
   // 2) zero nodes are on the other side, triggering a full overlap for a separation configuration
   //    in which case the gap constraint check in the physics will ensure no force contribution
   if ( k == mesh2.numberOfNodesPerElement() || k==0 ) {
-    return = true;
+    return true;
   }
 
   // Added 10/19/18 by SRW - If we are here then:
