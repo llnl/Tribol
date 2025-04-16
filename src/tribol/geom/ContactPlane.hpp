@@ -79,21 +79,18 @@ TRIBOL_HOST_DEVICE bool FullFaceCheck( const MeshData::Viewer& mesh1, const Mesh
 
 /*!
  *
- * \brief checks if edge 2 interpenetrates the level set defined by edge 1
+ * \brief checks if edge 2 interpenetrates the level set defined by edge 1 and vice-versa
  *
  * \param [in] mesh1 mesh data viewer for mesh 1
  * \param [in] mesh2 mesh data viewer for mesh 2
  * \param [in] eId1 edge id for edge belonging to mesh 1
  * \param [in] eId2 edge id for edge belonging to mesh 2
- * \param [in] tol interpenetration tolerance
- * \param [in,out] allVerts true if all of edge2 has interpenetrated
- *                 edge 1
  *
- * \return true if edge 2 interpenetrates the level set defined by edge 1
+ * \return true if edge 2 interpenetrates the level set defined by edge 1 and vice-versa
  *
  */
-TRIBOL_HOST_DEVICE bool EdgeInterCheck( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, int eId1,
-                                        int eId2, RealT tol, bool& allVerts );
+TRIBOL_HOST_DEVICE bool FullEdgeCheck( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, int eId1,
+                                       int eId2 );
 
 /*!
  *

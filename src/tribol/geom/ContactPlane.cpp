@@ -131,7 +131,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair( InterfacePair& pair, const 
 TRIBOL_HOST_DEVICE bool FullFaceCheck( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, int fId1,
                                        int fId2 )
 {
-  tol = 1.e-8;
+  RealT tol = 1.e-8;
 
   // loop over vertices on face 2
   int k = 0;
@@ -213,14 +213,15 @@ TRIBOL_HOST_DEVICE bool FullFaceCheck( const MeshData::Viewer& mesh1, const Mesh
     return true;
   }
 
+  return false;
+
 }  // end FullFaceCheck()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE bool EdgeInterCheck( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, int eId1,
-                                        int eId2, RealT tol, bool& allVerts )
+TRIBOL_HOST_DEVICE bool FullEdgeCheck( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, int eId1,
+                                       int eId2 )
 {
-  bool check = false;
-  allVerts = false;
+  RealT tol = 1.e-8;
 
   // loop over vertices on edge 2
   int k = 0;
@@ -237,15 +238,15 @@ TRIBOL_HOST_DEVICE bool EdgeInterCheck( const MeshData::Viewer& mesh1, const Mes
 
     // check projection against tolerance
     if ( proj > -tol ) {
-      check = true;
       ++k;
     }
   }  // end loop over edge2 vertices
 
-  // check to see if all vertices are on the other side
-  if ( k == mesh2.numberOfNodesPerElement() ) allVerts = true;
-
-  if ( check == false ) return check;
+  // check to see if all vertices are on the other side of this edge in either
+  // an interpen sense w.r.t. the plane defined by the other edge or a separation sense
+  if ( k == mesh2.numberOfNodesPerElement() || k==0 ) {
+     return true;
+  }
 
   // loop over vertices on edge 1 to catch the case where edge 1 lies
   // entirely on the other side of edge 2 triggering a full overlap
@@ -264,17 +265,19 @@ TRIBOL_HOST_DEVICE bool EdgeInterCheck( const MeshData::Viewer& mesh1, const Mes
 
     // check projection against tolerance
     if ( proj > -tol ) {
-      check = true;  // check will be true from the first loop
       ++k;
     }
   }  // end loop over edge1 vertices
 
-  // check to see if all vertices are on the other side
-  if ( k == mesh1.numberOfNodesPerElement() ) allVerts = true;
+  // check to see if all vertices are on the other side of this edge in either
+  // an interpen sense w.r.t. the plane defined by the other edge or a separation sense
+  if ( k == mesh1.numberOfNodesPerElement() || k==0 ) {
+     return true;
+  }
 
-  return check;
+  return false;
 
-}  // end EdgeInterCheck()
+}  // end FullEdgeCheck()
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE bool ExceedsMaxAutoInterpen( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
@@ -307,7 +310,7 @@ TRIBOL_HOST_DEVICE void ProjectFaceNodesToPlane( const MeshData::Viewer& mesh, i
 
   return;
 
-}  // end EdgeInterCheck()
+}  // end ProjectFaceNodesToPlane()
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ProjectEdgeNodesToSegment( const MeshData::Viewer& mesh, int edgeId, RealT nrmlX, RealT nrmlY,
@@ -1397,27 +1400,13 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckEdgePair( ContactPlane2D& cp, const MeshDa
   // instantiate temporary contact plane to be returned by this routine
   bool interpenOverlap = ( !fullOverlap ) ? true : false;
 
-  // CHECK #5: check if edge2 vertices have passed through edge1, and
-  // vice-versa. If both vertices have done so for either edge, we trigger
-  // a fullOverlap computation, but we don't know if there is a positive
-  // length of overlap and will have to construct the contact plane
-  // (contact segment) and perform this check. Note, this tolerance is
-  // inclusive up to a separation of a fraction of the edge-radius.
-  // This is done for the mortar method per 3D testing.
-  //RealT separationTol = params.gap_separation_ratio * // TODO SRW confirm removing this separationTol check
-  //                      axom::utilities::max( mesh1.getFaceRadius()[edgeId1], mesh2.getFaceRadius()[edgeId2] );
-  RealT vertSeparationTol = 1.e-8;
-  bool all = false;
-  // TODO SRW rework this logic. we want to include edges with separation up to whatever the binning allowed
-  bool ls = EdgeInterCheck( mesh1, mesh2, edgeId1, edgeId2, vertSeparationTol, all );
-  if ( !ls ) {
-    cp.m_inContact = false; // TODO remove this check
-    return NO_FACE_GEOM_ERROR;
-  }
-
-  // if all the vertices lie on the other side of edge1, then use full
-  // projection
-  if ( all ) {
+  // CHECK #5: if fullOverlap input arg is false, then check to see
+  // if all the nodes of one edge are on the other side of a plane
+  // defined by the other edge and/or vice versa, or if all the nodes
+  // on one edge are in separation w.r.t. the other edge. Both will
+  // convert an interpen overlap calc method to a full overlap calc
+  // for a given edge-pair
+  if ( FullEdgeCheck( mesh1, mesh2, edgeId1, edgeId2 ) ) {
     fullOverlap = true;
     interpenOverlap = false;
     cp.m_interpenOverlap = interpenOverlap;
