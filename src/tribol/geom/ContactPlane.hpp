@@ -57,16 +57,15 @@ TRIBOL_HOST_DEVICE void ProjectEdgeNodesToSegment( const MeshData::Viewer& mesh,
 
 /*!
  * \brief checks if the vertices on face2 have interpenetrated the level set
- *        defined by face 1
+ *        defined by face 1 and vice-versa, or if the faces are entirely in separation
  *
  * \param [in] mesh1 mesh data viewer for mesh 1 to which face 1 belongs
  * \param [in] mesh2 mesh data viewer for mesh 2 to which face 2 belongs
  * \param [in] fId1 id for face 1
  * \param [in] fId2 id for face 2
- * \param [in] tol tolerance for including vertices "close" to face1 plane
- * \param [in,out] allVerts indicates if all vertices interpenetrate face1
  *
- * \return true if face 2 intersects the level set of face 1, otherwise false
+ * \return true if all nodes on one face are on the other side of the plane defined
+ *         by the other face 
  *
  * This uses face1 as a level set and checks the projection
  * of the vector defined by differencing the face1 center and a face2
@@ -75,8 +74,8 @@ TRIBOL_HOST_DEVICE void ProjectEdgeNodesToSegment( const MeshData::Viewer& mesh,
  * by face1 (i.e. the zero level set).
  *
  */
-TRIBOL_HOST_DEVICE bool FaceInterCheck( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, int fId1,
-                                        int fId2, RealT tol, bool& allVerts );
+TRIBOL_HOST_DEVICE bool FullFaceCheck( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, int fId1,
+                                       int fId2 );
 
 /*!
  *

@@ -128,11 +128,10 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair( InterfacePair& pair, const 
 }  // end CheckInterfacePair()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE bool FaceInterCheck( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, int fId1,
-                                        int fId2, RealT tol, bool& allVerts )
+TRIBOL_HOST_DEVICE bool FullFaceCheck( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, int fId1,
+                                       int fId2 )
 {
-  bool check = false;
-  allVerts = false;
+  tol = 1.e-8;
 
   // loop over vertices on face 2
   int k = 0;
@@ -152,32 +151,33 @@ TRIBOL_HOST_DEVICE bool FaceInterCheck( const MeshData::Viewer& mesh1, const Mes
     // if a node of face 2 is on the other side of the plane defined by face 1 the
     // projection will be positive. If a node on face 2 lies on face 1 the projection
     // will be zero. If a node lies just outside of face 1 then the projection will
-    // be a small negative number.
+    // be a small negative number. Note: using a small negative number will result in
+    // nodes with a very small amount of separation contributing to the node count,
+    // which may result in a full overlap calculation. This should have a negligible
+    // effect on the resulting overlap area and no negative affect on the contact
+    // behavior.
     if ( proj > -tol ) {
-      check = true;
       ++k;
     }
 
   }  // end loop over nodes
 
-  // check to see if all nodes are on the other side
-  if ( k == mesh2.numberOfNodesPerElement() ) {
-    allVerts = true;
+  // check to see:
+  // 1) all nodes are on the other side triggering a full overlap calc with gap contraint violation
+  //    provided there is a positive area of overlap (checked elsewhere)
+  // 2) zero nodes are on the other side, triggering a full overlap for a separation configuration
+  //    in which case the gap constraint check in the physics will ensure no force contribution
+  if ( k == mesh2.numberOfNodesPerElement() || k==0 ) {
+    return = true;
   }
 
-  // at this point, if the check is false then there is deemed no interaction. The
-  // faces are on the non-contacting sides of one another. Return.
-  if ( check == false ) {
-    return check;
-  }
-
-  // Added 10/19/18 by SRW to catch the case where one face is entirely on the other
-  // side of the other (for which ordering of face 1 vs. 2 in this routine matters)
-  // and may not cross the contact plane (adjusted later outside of this routine).
-  // For the cases where check == true, we know that some of the vertices of face
-  // 1 pass through the plane defined by face 2. We want to know if they all do and
-  // trigger the allVerts boolean, which will later trigger the correct full
-  // overlap computation
+  // Added 10/19/18 by SRW - If we are here then:
+  // 1) if some of face 2 nodes lie on the other side of the PLANE defined by face 1,
+  //    then it is possible that all of the nodes on face 1 lie on the other side of the plane
+  //    defined by face 2 (see check below).
+  // 2) we still have to perform the check below to know if not all nodes on face 1 pass
+  //    through the plane defined by face 2. This would indicate a face-intersection and an
+  //    interpen overlap calculation is used, not a full overlap calculation
 
   // loop over vertices on face 1
   k = 0;
@@ -199,20 +199,21 @@ TRIBOL_HOST_DEVICE bool FaceInterCheck( const MeshData::Viewer& mesh1, const Mes
     // will be zero. If a node lies just outside of face 2 then the projection will
     // be a small negative number.
     if ( proj > -tol ) {
-      check = true;  // check will be true from the first loop
       ++k;
     }
 
   }  // end loop over nodes
 
-  // check to see if all nodes are on the other side
-  if ( k == mesh1.numberOfNodesPerElement() ) {
-    allVerts = true;
+  // check to see:
+  // 1) all nodes are on the other side triggering a full overlap calc with gap contraint violation
+  //    provided there is a positive area of overlap (checked elsewhere)
+  // 2) zero nodes are on the other side, triggering a full overlap for a separation configuration
+  //    in which case the gap constraint check in the physics will ensure no force contribution
+  if ( k == mesh1.numberOfNodesPerElement() || k==0 ) {
+    return true;
   }
 
-  return check;
-
-}  // end FaceInterCheck()
+}  // end FullFaceCheck()
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE bool EdgeInterCheck( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, int eId1,
@@ -392,26 +393,13 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckFacePair( ContactPlane3D& cp, const MeshDa
   // set overlap booleans based on input arguments and contact method
   bool interpenOverlap = ( !fullOverlap ) ? true : false;
 
-  // CHECK #5: check if the nodes of face2 interpenetrate the
-  // plane defined by face1 AND vice-versa. For proximate faces
-  // that pass check #3 this check may easily indicate that the faces
-  // do in fact intersect.
-  //RealT separationTol = params.gap_separation_ratio * // TODO SRW confirm removing this separation tolerance check
-  //                      axom::utilities::max( mesh1.getFaceRadius()[element_id1], mesh2.getFaceRadius()[element_id2] );
-  RealT vertSeparationTol = 1.e-8;
-  bool all = false;
-
-  // TODO SRW rework the logic here. We want to include contact planes with faces in separation up to whatever
-  // the binning proximity was
-  bool ls = FaceInterCheck( mesh1, mesh2, element_id1, element_id2, vertSeparationTol, all );
-  if ( !ls ) {
-    cp.m_inContact = false; // TODO remove this check
-    return NO_FACE_GEOM_ERROR;
-  }
-
-  // if all vertices of one face lie on the other side of the other face, per
-  // FaceInterCheck computation, then use the full projection.
-  if ( all ) {
+  // CHECK #5: if fullOverlap input arg is false, then check to see
+  // if all the nodes of one face are on the other side of a plane
+  // defined by the other face and/or vice versa, or if all the nodes
+  // on one face are in separation w.r.t. the other face. Both will
+  // convert an interpen overlap calc method to a full overlap calc
+  // for a given face-pair
+  if ( FullFaceCheck( mesh1, mesh2, element_id1, element_id2 ) ) {
     fullOverlap = true;
     interpenOverlap = false;
     cp.m_interpenOverlap = interpenOverlap;
