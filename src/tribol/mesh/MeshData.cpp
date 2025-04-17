@@ -160,10 +160,9 @@ bool MeshElemData::isValidRatePenalty( PenaltyEnforcementOptions& pen_options )
         SLIC_WARNING( "MeshElemData::isValidRatePenalty(): "
                       << "percent rate penalty data not set." );
         return false;
-      } else if ( this->m_rate_percent_stiffness < pen_options.tiny_penalty ||
-                  this->m_rate_percent_stiffness > ( 1. - pen_options.tiny_penalty ) ) {
+      } else if ( this->m_rate_percent_stiffness < 0.0 ) {
         SLIC_WARNING( "MeshElemData::isValidRatePenalty(): "
-                      << "rate percent penalty not in (0,1)." );
+                      << "rate percent penalty less than 0." );
         return false;
       }
       break;
