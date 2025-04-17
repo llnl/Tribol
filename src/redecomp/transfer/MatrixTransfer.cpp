@@ -7,6 +7,8 @@
 
 #include "axom/slic.hpp"
 
+#include "mfem/general/forall.hpp"
+
 #include "redecomp/RedecompMesh.hpp"
 
 namespace redecomp {
@@ -48,6 +50,7 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
                                                              const axom::Array<int>& trial_elem_idx,
                                                              const axom::Array<mfem::DenseMatrix>& src_elem_mat ) const
 {
+  // TODO: we need a SparseMatrix-like data structure that allows HYPRE_BigInt on the columns
   auto parentJ = mfem::SparseMatrix( parent_test_fes_.GetVSize(), parent_trial_fes_.GlobalVSize() );
 
   // verify inputs
@@ -121,7 +124,7 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
           auto test_elem_dofs = mfem::Array<int>();
           parent_test_fes_.GetElementVDofs( test_elem_id, test_elem_dofs );
           auto trial_elem_dofs =
-              mfem::Array<int>( &recv_trial_elem_dofs[src][trial_dof_ct], recv_mat_sizes[src]( e, 1 ) );
+              mfem::Array<HYPRE_BigInt>( &recv_trial_elem_dofs[src][trial_dof_ct], recv_mat_sizes[src]( e, 1 ) );
           // trial loop
           for ( int j{ 0 }; j < trial_elem_dofs.Size(); ++j ) {
             // test loop
@@ -147,10 +150,21 @@ std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::ConvertToHypreParMatrix( m
   SLIC_ERROR_IF( sparse.Width() != parent_trial_fes_.GlobalVSize(),
                  "Width of sparse must match number of trial ParFiniteElementSpace global dofs." );
 
+  // TODO: mfem::SparseMatrix uses int for global column values; this needs to be HYPRE_BigInt to be compatible with
+  // mfem::HypreParMatrix. The following copy is a hack to get this working for now, but true support for HYPRE_BigInt
+  // needs a data structure for sparse that allows HYPRE_BigInt on the columns (J)
+  auto* J_int = sparse.GetJ();
+  auto num_J_vals = sparse.NumNonZeroElems();
+  mfem::Array<HYPRE_BigInt> J_bigint( num_J_vals );
+  auto* J_bigint_write = J_bigint.HostWrite();
+  mfem::forall_switch( false, num_J_vals, [=] MFEM_HOST_DEVICE( int i ) { J_bigint_write[i] = J_int[i]; } );
+  // update the host pointer
+  J_bigint.HostRead();
+
   auto J_full = std::make_unique<mfem::HypreParMatrix>(
       getMPIUtility().MPIComm(), parent_test_fes_.GetVSize(), parent_test_fes_.GlobalVSize(),
-      parent_trial_fes_.GlobalVSize(), sparse.GetI(), sparse.GetJ(), sparse.GetData(), parent_test_fes_.GetDofOffsets(),
-      parent_trial_fes_.GetDofOffsets() );
+      parent_trial_fes_.GlobalVSize(), sparse.GetI(), J_bigint.GetData(), sparse.GetData(),
+      parent_test_fes_.GetDofOffsets(), parent_trial_fes_.GetDofOffsets() );
   if ( !parallel_assemble ) {
     return J_full;
   } else {
@@ -298,11 +312,11 @@ MPIArray<int> MatrixTransfer::buildRecvTestElemOffsets( const RedecompMesh& test
   return recv_test_elem_offsets;
 }
 
-MPIArray<int> MatrixTransfer::buildRecvTrialElemDofs( const RedecompMesh& trial_redecomp,
-                                                      const axom::Array<int>& test_elem_idx,
-                                                      const axom::Array<int>& trial_elem_idx ) const
+MPIArray<HYPRE_BigInt> MatrixTransfer::buildRecvTrialElemDofs( const RedecompMesh& trial_redecomp,
+                                                               const axom::Array<int>& test_elem_idx,
+                                                               const axom::Array<int>& trial_elem_idx ) const
 {
-  auto recv_trial_elem_dofs = MPIArray<int>( &getMPIUtility() );
+  auto recv_trial_elem_dofs = MPIArray<HYPRE_BigInt>( &getMPIUtility() );
 
   auto n_ranks = getMPIUtility().NRanks();
 
@@ -325,7 +339,7 @@ MPIArray<int> MatrixTransfer::buildRecvTrialElemDofs( const RedecompMesh& trial_
   // entries to send to parent ranks.  The second column of send_mat_sizes
   // determines the offset for each trial element.  MPI communication is used
   // to turn this array into recv_trial_elem_dofs.
-  auto send_trial_elem_dofs = MPIArray<int>( &getMPIUtility() );
+  auto send_trial_elem_dofs = MPIArray<HYPRE_BigInt>( &getMPIUtility() );
 
   // allocate space for the above arrays
   auto est_max_elems = 2 * test_elem_idx.size() / n_ranks;
@@ -367,9 +381,9 @@ MPIArray<int> MatrixTransfer::buildRecvTrialElemDofs( const RedecompMesh& trial_
   }
 
   // grab test DOFs from the parent rank and return them to the redecomp rank
-  auto unsorted_trial_dofs = axom::Array<axom::Array<axom::Array<int>>>( n_ranks, n_ranks );
+  auto unsorted_trial_dofs = axom::Array<axom::Array<axom::Array<HYPRE_BigInt>>>( n_ranks, n_ranks );
   for ( auto& test_dof_rank : unsorted_trial_dofs ) {
-    test_dof_rank = axom::Array<axom::Array<int>>( n_ranks, n_ranks );
+    test_dof_rank = axom::Array<axom::Array<HYPRE_BigInt>>( n_ranks, n_ranks );
   }
   const auto& trial_p2r_elems = trial_redecomp.getParentToRedecompElems();
   for ( int dst_test_r{ 0 }; dst_test_r < n_ranks; ++dst_test_r ) {
@@ -385,10 +399,10 @@ MPIArray<int> MatrixTransfer::buildRecvTrialElemDofs( const RedecompMesh& trial_
         } );
     // send parent trial vdofs back to test redecomp rank
     auto first_dof = parent_trial_fes_.GetMyDofOffset();
-    auto trial_dofs_by_rank = MPIArray<int>( &getMPIUtility() );
+    auto trial_dofs_by_rank = MPIArray<HYPRE_BigInt>( &getMPIUtility() );
     trial_dofs_by_rank.SendRecvEach(
         [this, &trial_p2r_elems, &recv_trial_elem_offsets, first_dof]( axom::IndexType src_trial_r ) {
-          auto trial_dofs = axom::Array<int>();
+          auto trial_dofs = axom::Array<HYPRE_BigInt>();
 
           const auto& rank_elem_offsets = recv_trial_elem_offsets[src_trial_r];
           auto n_elems = rank_elem_offsets.size();
@@ -400,11 +414,17 @@ MPIArray<int> MatrixTransfer::buildRecvTrialElemDofs( const RedecompMesh& trial_
               elem_id = trial_p2r_elems.first[src_trial_r][elem_offset];
               auto n_elem_dofs = parent_trial_fes_.GetFE( elem_id )->GetDof() * parent_trial_fes_.GetVDim();
               trial_dofs.resize( trial_dofs.size() + n_elem_dofs );
-              auto dof_array = mfem::Array<int>( &trial_dofs[trial_dofs.size() - n_elem_dofs], n_elem_dofs );
-              parent_trial_fes_.GetElementVDofs( elem_id, dof_array );
-              for ( auto& dof : dof_array ) {
-                dof += first_dof;
+              auto dof_array = mfem::Array<HYPRE_BigInt>( &trial_dofs[trial_dofs.size() - n_elem_dofs], n_elem_dofs );
+              auto int_dof_array = mfem::Array<int>( n_elem_dofs );
+              parent_trial_fes_.GetElementVDofs( elem_id, int_dof_array );
+              for ( int i{ 0 }; i < n_elem_dofs; ++i ) {
+                dof_array[i] = first_dof + static_cast<HYPRE_BigInt>( int_dof_array[i] );
               }
+              // auto dof_array_write = dof_array.HostWrite();
+              // auto int_dof_array_read = int_dof_array.HostRead();
+              // mfem::forall_switch( false, n_elem_dofs,
+              //                      [=] MFEM_HOST_DEVICE ( int i ) { dof_array_write[i] = first_dof +
+              //                      int_dof_array_read[i]; } );
             }
           }
 
@@ -419,7 +439,7 @@ MPIArray<int> MatrixTransfer::buildRecvTrialElemDofs( const RedecompMesh& trial_
     send_trial_elem_dofs[test_r].reserve( send_trial_dof_sizes[test_r] );
     auto n_trial_elems = send_trial_elem_rank[test_r].size();
     for ( int e{ 0 }; e < n_trial_elems; ++e ) {
-      auto trial_elem_dofs = axom::ArrayView<int>(
+      auto trial_elem_dofs = axom::ArrayView<HYPRE_BigInt>(
           &unsorted_trial_dofs[test_r][send_trial_elem_rank[test_r][e]][send_trial_dof_extents[test_r]( e, 0 )],
           { send_trial_dof_extents[test_r]( e, 1 ) } );
       send_trial_elem_dofs[test_r].append( trial_elem_dofs );

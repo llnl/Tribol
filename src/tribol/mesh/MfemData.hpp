@@ -1648,7 +1648,7 @@ class MfemJacobianData {
   /**
    * @brief List giving global parent vdof given the submesh vdof
    */
-  mfem::Array<int> submesh2parent_vdof_list_;
+  mfem::Array<HYPRE_BigInt> submesh2parent_vdof_list_;
 
   /**
    * @brief Submesh to parent transfer operator
