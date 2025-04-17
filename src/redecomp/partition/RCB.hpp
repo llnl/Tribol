@@ -73,7 +73,7 @@ class RCB : public PartitionMethod<NDIMS> {
    * @param max_out_of_balance Allowable deviation from desired fraction of entities on each partition
    * @param n_try_new_axis Number of attempted cuts with no change in entity counts before trying a new axis
    */
-  RCB( const MPI_Comm& comm, double max_out_of_balance = 0.1, int n_try_new_axis = 5 );
+  RCB( const MPI_Comm& comm, double max_out_of_balance = 0.1, int n_try_new_axis = 10 );
 
   /**
    * @brief Build entity partitioning using recursive coordinate bisection
