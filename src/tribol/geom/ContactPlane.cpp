@@ -131,7 +131,8 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair( InterfacePair& pair, const 
 TRIBOL_HOST_DEVICE bool FullFaceCheck( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, int fId1,
                                        int fId2 )
 {
-  RealT tol = 1.e-8;
+  RealT tol = 0.25;
+  // RealT tol = 1.e-8;
 
   // loop over vertices on face 2
   int k = 0;
@@ -156,7 +157,7 @@ TRIBOL_HOST_DEVICE bool FullFaceCheck( const MeshData::Viewer& mesh1, const Mesh
     // which may result in a full overlap calculation. This should have a negligible
     // effect on the resulting overlap area and no negative affect on the contact
     // behavior.
-    if ( proj > -tol ) {
+    if ( proj >= 0. ) {
       ++k;
     }
 
@@ -167,7 +168,7 @@ TRIBOL_HOST_DEVICE bool FullFaceCheck( const MeshData::Viewer& mesh1, const Mesh
   //    provided there is a positive area of overlap (checked elsewhere)
   // 2) zero nodes are on the other side, triggering a full overlap for a separation configuration
   //    in which case the gap constraint check in the physics will ensure no force contribution
-  if ( k == mesh2.numberOfNodesPerElement() || k==0 ) {
+  if ( k == mesh2.numberOfNodesPerElement() || k == 0 ) {
     return true;
   }
 
@@ -198,7 +199,7 @@ TRIBOL_HOST_DEVICE bool FullFaceCheck( const MeshData::Viewer& mesh1, const Mesh
     // projection will be positive. If a node on face 1 lies on face 2 the projection
     // will be zero. If a node lies just outside of face 2 then the projection will
     // be a small negative number.
-    if ( proj > -tol ) {
+    if ( proj >= 0. ) {
       ++k;
     }
 
@@ -209,7 +210,7 @@ TRIBOL_HOST_DEVICE bool FullFaceCheck( const MeshData::Viewer& mesh1, const Mesh
   //    provided there is a positive area of overlap (checked elsewhere)
   // 2) zero nodes are on the other side, triggering a full overlap for a separation configuration
   //    in which case the gap constraint check in the physics will ensure no force contribution
-  if ( k == mesh1.numberOfNodesPerElement() || k==0 ) {
+  if ( k == mesh1.numberOfNodesPerElement() || k == 0 ) {
     return true;
   }
 
@@ -221,7 +222,8 @@ TRIBOL_HOST_DEVICE bool FullFaceCheck( const MeshData::Viewer& mesh1, const Mesh
 TRIBOL_HOST_DEVICE bool FullEdgeCheck( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, int eId1,
                                        int eId2 )
 {
-  RealT tol = 1.e-8;
+  RealT tol = 0.25;
+  // RealT tol = 1.e-8;
 
   // loop over vertices on edge 2
   int k = 0;
@@ -237,15 +239,15 @@ TRIBOL_HOST_DEVICE bool FullEdgeCheck( const MeshData::Viewer& mesh1, const Mesh
     RealT proj = vX * mesh1.getElementNormals()[0][eId1] + vY * mesh1.getElementNormals()[1][eId1];
 
     // check projection against tolerance
-    if ( proj > -tol ) {
+    if ( proj >= 0. ) {
       ++k;
     }
   }  // end loop over edge2 vertices
 
   // check to see if all vertices are on the other side of this edge in either
   // an interpen sense w.r.t. the plane defined by the other edge or a separation sense
-  if ( k == mesh2.numberOfNodesPerElement() || k==0 ) {
-     return true;
+  if ( k == mesh2.numberOfNodesPerElement() || k == 0 ) {
+    return true;
   }
 
   // loop over vertices on edge 1 to catch the case where edge 1 lies
@@ -264,15 +266,15 @@ TRIBOL_HOST_DEVICE bool FullEdgeCheck( const MeshData::Viewer& mesh1, const Mesh
     RealT proj = vX * mesh2.getElementNormals()[0][eId2] + vY * mesh2.getElementNormals()[1][eId2];
 
     // check projection against tolerance
-    if ( proj > -tol ) {
+    if ( proj >= 0. ) {
       ++k;
     }
   }  // end loop over edge1 vertices
 
   // check to see if all vertices are on the other side of this edge in either
   // an interpen sense w.r.t. the plane defined by the other edge or a separation sense
-  if ( k == mesh1.numberOfNodesPerElement() || k==0 ) {
-     return true;
+  if ( k == mesh1.numberOfNodesPerElement() || k == 0 ) {
+    return true;
   }
 
   return false;
@@ -601,13 +603,13 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckFacePair( ContactPlane3D& cp, const MeshDa
   // The gap tolerance allows separation up to the separation ratio of the
   // largest face-radius. This is conservative and allows for possible
   // over-inclusion. This is done for the mortar method per testing.
-  //cp.m_gapTol = params.gap_separation_ratio *
+  // cp.m_gapTol = params.gap_separation_ratio *
   //              axom::utilities::max( mesh1.getFaceRadius()[element_id1], mesh2.getFaceRadius()[element_id2] );
 
-  //if ( cp.m_gap > cp.m_gapTol ) {
-  //  cp.m_inContact = false;
-  //  return NO_FACE_GEOM_ERROR;
-  //}
+  // if ( cp.m_gap > cp.m_gapTol ) {
+  //   cp.m_inContact = false;
+  //   return NO_FACE_GEOM_ERROR;
+  // }
 
   // for auto-contact, remove contact candidacy for full-overlap
   // face-pairs with interpenetration exceeding contact penetration fraction.
@@ -742,7 +744,7 @@ TRIBOL_HOST_DEVICE ContactPlane3D CheckAlignedFacePair( InterfacePair& pair, con
 
   // TODO SRW confirm removing this tolerance
   // set the gap tolerance inclusive for separation up to m_gapTol
-  //cp.m_gapTol = params.gap_separation_ratio *
+  // cp.m_gapTol = params.gap_separation_ratio *
   //              axom::utilities::max( mesh1.getFaceRadius()[element_id1], mesh2.getFaceRadius()[element_id2] );
 
   // set the area fraction
@@ -772,7 +774,7 @@ TRIBOL_HOST_DEVICE ContactPlane3D CheckAlignedFacePair( InterfacePair& pair, con
 
   // TODO SRW confirm removing this separation check
   // perform gap check
-  //if ( scalarGap > cp.m_gapTol ) {
+  // if ( scalarGap > cp.m_gapTol ) {
   //  cp.m_inContact = false;
   //  return cp;
   //}
@@ -1473,9 +1475,9 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckEdgePair( ContactPlane2D& cp, const MeshDa
 
   // Per 3D mortar testing, allow for separation up to the edge-radius
   // TODO SRW confirm removing this check
-  //cp.m_gapTol = params.gap_separation_ratio *
+  // cp.m_gapTol = params.gap_separation_ratio *
   //              axom::utilities::max( mesh1.getFaceRadius()[edgeId1], mesh2.getFaceRadius()[edgeId2] );
-  //if ( cp.m_gap > cp.m_gapTol ) {
+  // if ( cp.m_gap > cp.m_gapTol ) {
   //  cp.m_inContact = false;
   //  return NO_FACE_GEOM_ERROR;
   //}

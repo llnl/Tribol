@@ -65,7 +65,7 @@ TRIBOL_HOST_DEVICE void ProjectEdgeNodesToSegment( const MeshData::Viewer& mesh,
  * \param [in] fId2 id for face 2
  *
  * \return true if all nodes on one face are on the other side of the plane defined
- *         by the other face 
+ *         by the other face
  *
  * This uses face1 as a level set and checks the projection
  * of the vector defined by differencing the face1 center and a face2
