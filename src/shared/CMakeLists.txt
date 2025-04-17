@@ -46,7 +46,7 @@ target_link_libraries(tribol_shared PRIVATE axom::slic)
 
 target_include_directories(tribol_shared PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>
-    $<BUILD_INTERFACE:${CMAKE_BINARY_DIR}/include>
+    $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
     $<INSTALL_INTERFACE:include>
     )
 
@@ -61,4 +61,11 @@ install(TARGETS     tribol_shared
         EXPORT      tribol-targets
         DESTINATION lib
         )
+
+# Add the TRIBOL_DEBUG compile definition, if non-empty
+if(TRIBOL_DEBUG_DEFINE_STRING)
+  blt_add_target_definitions(TO tribol_shared SCOPE PUBLIC TARGET_DEFINITIONS "${TRIBOL_DEBUG_DEFINE_STRING}")
+  # Define AXOM_DEBUG for SLIC macros
+  blt_add_target_definitions(TO tribol_shared SCOPE PUBLIC TARGET_DEFINITIONS "${AXOM_DEBUG_DEFINE_STRING}")
+endif()
 

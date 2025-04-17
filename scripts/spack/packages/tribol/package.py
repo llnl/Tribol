@@ -71,7 +71,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     depends_on("mpi")
 
     # Other libraries
-    depends_on("mfem@4.6:+lapack")
+    depends_on("mfem@4.7.0.2:+lapack")
     depends_on("axom@0.9:")
 
     depends_on("raja@2024.02.0:", when="+raja")
@@ -85,6 +85,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     depends_on("axom~umpire", when="~umpire")
 
     depends_on("mfem+metis+mpi", when="+redecomp")
+    depends_on("mfem+asan", when="+asan")
     
     with when("+openmp"):
         depends_on("axom+openmp")
@@ -146,7 +147,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     depends_on("python", when="+devtools")
     depends_on("py-shroud", when="+devtools+fortran")
     depends_on("py-sphinx", when="+devtools")
-    depends_on("llvm+clang@14", when="+devtools", type="build")
+    depends_on("llvm@14+clang+python", when="+devtools")
 
     conflicts("+cuda", when="+rocm")
     conflicts("+openmp", when="+rocm")
@@ -245,7 +246,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
                 rocm_root = "{0}/..".format(rocm_root)
             entries.append(cmake_cache_path("ROCM_PATH", rocm_root))
 
-            hip_link_flags = ""
+            hip_link_flags = "-L{0}/lib -Wl,-rpath,{0}/lib ".format(rocm_root)
 
             # Recommended MPI flags
             hip_link_flags += "-lxpmem "
@@ -263,8 +264,6 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
             # These flags are already part of the wrapped compilers on TOSS4 systems
             if "+fortran" in spec and self.is_fortran_compiler("amdflang"):
                 hip_link_flags += "-Wl,--disable-new-dtags "
-
-                hip_link_flags += "-L{0}/lib -Wl,-rpath,{0}/lib ".format(rocm_root)
                 hip_link_flags += "-lflang -lflangrti -lompstub "
 
             # Remove extra link library for crayftn

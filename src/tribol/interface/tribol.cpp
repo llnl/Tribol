@@ -307,10 +307,10 @@ void setLoggingLevel( IndexT cs_id, LoggingLevel log_level )
   SLIC_ERROR_IF( !cs, "tribol::setLoggingLevel(): "
                           << "invalid CouplingScheme id." );
 
-  if ( !in_range( static_cast<int>( log_level ), static_cast<int>( tribol::NUM_LOGGING_LEVELS ) ) ) {
+  if ( !in_range( static_cast<int>( log_level ), static_cast<int>( LoggingLevel::NUM_LOGGING_LEVELS ) ) ) {
     SLIC_INFO_ROOT( "tribol::setLoggingLevel(): Logging level not an option; "
                     << "using 'warning' level." );
-    cs->setLoggingLevel( tribol::TRIBOL_WARNING );
+    cs->setLoggingLevel( LoggingLevel::WARNING );
   } else {
     cs->setLoggingLevel( log_level );
   }
@@ -835,7 +835,7 @@ int update( int cycle, RealT t, RealT& dt )
     // scheme will not be valid across all ranks and we will skip this coupling scheme
     if ( !cs.init() ) {
       SLIC_WARNING_ROOT( "tribol::update(): skipping invalid CouplingScheme " << cs_pair.first
-                                                                              << "Please see warnings." );
+                                                                              << ". Please see warnings." );
       continue;
     }
 
