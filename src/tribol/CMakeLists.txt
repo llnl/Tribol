@@ -101,10 +101,6 @@ if (ENABLE_FORTRAN)
     list(APPEND tribol_sources interface/c_fortran/wrapftribol_test_mesh.F)
 endif()
 
-if (TRIBOL_USE_ENZYME)
-    list(APPEND tribol_headers common/Enzyme.hpp)
-endif()
-
 ## setup the dependency list for tribol
 set(tribol_depends tribol_shared axom::primal axom::slic mfem)
 blt_list_append(TO tribol_depends ELEMENTS blt::mpi IF TRIBOL_USE_MPI )
