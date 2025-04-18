@@ -699,6 +699,7 @@ MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemS
                                           parent_data_.GetSubmesh().GetParentElementIDMap(), vdof_list_int );
 
   auto dof_offset = parent_data_.GetParentCoords().ParFESpace()->GetMyDofOffset();
+  submesh2parent_vdof_list_.SetSize( vdof_list_int.Size() );
   for ( int i{ 0 }; i < vdof_list_int.Size(); ++i ) {
     submesh2parent_vdof_list_[i] = dof_offset + static_cast<HYPRE_BigInt>( vdof_list_int[i] );
   }
