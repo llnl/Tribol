@@ -33,6 +33,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Added support for the Enzyme AD library in the Tribol build system.
 - Created interfaces for nodal normal and element normal calculations, to simplify addition of new normal computation
   techniques.
+- Introduced `TRIBOL_DEBUG` compiler definition for guarding code that should only be compiled in debug builds
 
 
 ### Changed
@@ -65,6 +66,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   what device the mesh pointers reside on.
 - `tribol::registerCouplingScheme()` now contains an optional `tribol::ExecutionMode` argument
   that provides a suggested programming model to execute parallel loops.
+- `tribol::LoggingLevel`s renamed from `TRIBOL_<NAME>` to `<NAME>`
   
 ### Fixed
 - Allow null velocity and response pointers for various use cases

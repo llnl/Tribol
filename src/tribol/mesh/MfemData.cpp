@@ -759,13 +759,16 @@ MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemS
   SLIC_ERROR_ROOT_IF( parent_data.GetParentCoords().ParFESpace()->FEColl()->GetOrder() > 1,
                       "Higher order meshes not yet supported for Jacobian matrices." );
 
-  mfem::SubMeshUtils::BuildVdofToVdofMap(
-      parent_data_.GetSubmeshFESpace(), *parent_data_.GetParentCoords().FESpace(), parent_data_.GetSubmesh().GetFrom(),
-      parent_data_.GetSubmesh().GetParentElementIDMap(), submesh2parent_vdof_list_ );
+  mfem::Array<int> vdof_list_int;
+
+  mfem::SubMeshUtils::BuildVdofToVdofMap( parent_data_.GetSubmeshFESpace(), *parent_data_.GetParentCoords().FESpace(),
+                                          parent_data_.GetSubmesh().GetFrom(),
+                                          parent_data_.GetSubmesh().GetParentElementIDMap(), vdof_list_int );
 
   auto dof_offset = parent_data_.GetParentCoords().ParFESpace()->GetMyDofOffset();
-  for ( auto& vdof : submesh2parent_vdof_list_ ) {
-    vdof = vdof + dof_offset;
+  submesh2parent_vdof_list_.SetSize( vdof_list_int.Size() );
+  for ( int i{ 0 }; i < vdof_list_int.Size(); ++i ) {
+    submesh2parent_vdof_list_[i] = dof_offset + static_cast<HYPRE_BigInt>( vdof_list_int[i] );
   }
 
   auto& parent_fes = *parent_data_.GetParentCoords().ParFESpace();
@@ -874,8 +877,12 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian( con
       GetUpdateData().submesh_redecomp_xfer_10_->TransferToParallelSparse( lm_elems, nonmortar_elems, *elem_J_2 );
   submesh_J.Finalize();
 
-  // transform J values from submesh to parent mesh
-  auto J = submesh_J.GetJ();
+  // transform J values from submesh to (global) parent mesh
+  mfem::Array<HYPRE_BigInt> J( submesh_J.NumNonZeroElems() );
+  auto* J_int = submesh_J.GetJ();
+  for ( int i{ 0 }; i < J.Size(); ++i ) {
+    J[i] = J_int[i];
+  }
   auto submesh_vector_fes = parent_data_.GetSubmeshFESpace();
   auto mpi = redecomp::MPIUtility( submesh_vector_fes.GetComm() );
   auto submesh_dof_offsets = ArrayT<int>( mpi.NRanks() + 1, mpi.NRanks() + 1 );
@@ -948,7 +955,7 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian( con
   // trial space is on the parent mesh, not the submesh
   auto J_full = std::make_unique<mfem::HypreParMatrix>( mpi.MPIComm(), submesh_fes.GetVSize(),
                                                         submesh_fes.GlobalVSize(), parent_trial_fes.GlobalVSize(),
-                                                        submesh_J.GetI(), submesh_J.GetJ(), submesh_J.GetData(),
+                                                        submesh_J.GetI(), J.GetData(), submesh_J.GetData(),
                                                         submesh_fes.GetDofOffsets(), parent_trial_fes.GetDofOffsets() );
   auto J_true = std::unique_ptr<mfem::HypreParMatrix>(
       mfem::RAP( submesh_fes.Dof_TrueDof_Matrix(), J_full.get(), parent_trial_fes.Dof_TrueDof_Matrix() ) );

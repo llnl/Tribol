@@ -1008,7 +1008,7 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
     setPlotCycleIncrement( csIndex, 1 );
   }
 
-  setLoggingLevel( csIndex, TRIBOL_WARNING );
+  setLoggingLevel( csIndex, LoggingLevel::WARNING );
 
   if ( method == COMMON_PLANE && enforcement == PENALTY ) {
     PenaltyConstraintType constraint_type =

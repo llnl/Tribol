@@ -823,7 +823,7 @@ TEST_F( CompGeomTest, codirectional_normals_3d )
 
   tribol::enableTimestepVote( csIndex, true );
 
-  tribol::setLoggingLevel( csIndex, tribol::TRIBOL_DEBUG );
+  tribol::setLoggingLevel( csIndex, tribol::LoggingLevel::DEBUG );
 
   tribol::setPenaltyOptions( csIndex, tribol::KINEMATIC, tribol::KINEMATIC_ELEMENT, tribol::NO_RATE_PENALTY );
 

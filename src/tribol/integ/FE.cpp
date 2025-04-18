@@ -323,8 +323,7 @@ void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA
       }
 
 #if !defined( TRIBOL_USE_ENZYME )
-      SLIC_WARNING_IF( !in_quad, "InvIso(): (xi,eta) coordinate does not lie "
-                                     << "inside isoparametric quad." );
+      SLIC_WARNING_IF( !in_quad, "InvIso(): (xi,eta) coordinate does not lie inside isoparametric quad." );
 #endif
 
       return;
