@@ -217,7 +217,7 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::pair<int, tribol:
 
 TEST_P( MfemCommonPlaneTest, common_plane )
 {
-  EXPECT_LT( std::abs( max_disp_ - 0.013637427890739103 ), 1.5e-6 );
+  EXPECT_LT( std::abs( max_disp_ - 0.013637427890739103 ), 2.0e-6 );
 
   MPI_Barrier( MPI_COMM_WORLD );
 }

@@ -249,13 +249,12 @@ class ContactPlane {
    * \param [in] m1 mesh data viewer for mesh 1
    * \param [in] m2 mesh data viewer for mesh 2
    * \param [in] params Coupling scheme-dependent parameters
-   * \param [in,out] interpen true if the two faces interpenetrate
    *
    * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
    */
   TRIBOL_HOST_DEVICE virtual FaceGeomError computeLocalInterpenOverlap( const MeshData::Viewer& m1,
                                                                         const MeshData::Viewer& m2,
-                                                                        const Parameters& params, bool& interpen ) = 0;
+                                                                        const Parameters& params ) = 0;
 
   /// @}
 
@@ -474,12 +473,11 @@ class ContactPlane3D : public ContactPlane {
    * \param [in] m1 mesh data viewer for mesh 1
    * \param [in] m2 mesh data viewer for mesh 2
    * \param [in] params Coupling scheme-dependent parameters
-   * \param [in,out] interpen true if the two faces interpenetrate
    *
    * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
    */
   TRIBOL_HOST_DEVICE FaceGeomError computeLocalInterpenOverlap( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                                                const Parameters& params, bool& interpen ) override;
+                                                                const Parameters& params ) override;
 };
 
 //-----------------------------------------------------------------------------
@@ -570,12 +568,11 @@ class ContactPlane2D : public ContactPlane {
    * \param [in] m1 mesh data viewer for mesh 1
    * \param [in] m2 mesh data viewer for mesh 2
    * \param [in] params Coupling scheme-dependent parameters
-   * \param [in,out] interpen true if the two faces interpenetrate
    *
    * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
    */
   TRIBOL_HOST_DEVICE FaceGeomError computeLocalInterpenOverlap( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                                                const Parameters& params, bool& interpen ) override;
+                                                                const Parameters& params ) override;
 };
 
 //-----------------------------------------------------------------------------

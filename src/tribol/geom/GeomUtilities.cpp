@@ -775,7 +775,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   // intersection vertices
   if ( numSegInter == 0 && numVBI == 0 && numVAI == 0 ) {
     area = 0.0;
-    return NO_FACE_GEOM_ERROR;
+    return NO_OVERLAP;
   }
 
   // allocate temp intersection polygon vertex coordinate arrays to consist
@@ -894,12 +894,12 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     if ( numFinalVert < 3 ) {
       numPolyVert = 0;
       area = 0.0;
-      return NO_FACE_GEOM_ERROR;  // punt on degenerated or collapsed overlaps
+      return NO_OVERLAP;  // punt on degenerated or collapsed overlaps
     }
   } else {
     numPolyVert = 0;
     area = 0.0;
-    return NO_FACE_GEOM_ERROR;  // don't return error here. We should tolerate 'collapsed' (zero area) overlaps
+    return NO_OVERLAP;  // don't return error here. We should tolerate 'collapsed' (zero area) overlaps
   }
 
   // compute the area of the polygon
