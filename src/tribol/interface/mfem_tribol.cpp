@@ -24,13 +24,13 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
 #ifdef TRIBOL_USE_CUDA
   if ( exec_mode == ExecutionMode::Cuda ) {
     mem_space = MemorySpace::Device;
-    SLIC_ERROR_ROOT_IF( !mfem::Device::Allows( mfem::Backend::CUDA ), "CUDA execution is not enabled in MFEM." );
+    SLIC_ERROR_ROOT_IF( !mfem::Device::Allows( mfem::Backend::CUDA_MASK ), "CUDA execution is not enabled in MFEM." );
   }
 #endif
 #ifdef TRIBOL_USE_HIP
   if ( exec_mode == ExecutionMode::Hip ) {
     mem_space = MemorySpace::Device;
-    SLIC_ERROR_ROOT_IF( !mfem::Device::Allows( mfem::Backend::HIP ), "HIP execution is not enabled in MFEM." );
+    SLIC_ERROR_ROOT_IF( !mfem::Device::Allows( mfem::Backend::HIP_MASK ), "HIP execution is not enabled in MFEM." );
   }
 #endif
   if ( exec_mode == ExecutionMode::Dynamic ) {
