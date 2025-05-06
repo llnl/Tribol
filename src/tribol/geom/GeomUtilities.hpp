@@ -108,9 +108,9 @@ TRIBOL_HOST_DEVICE void ProjectPointToSegment( const RealT x, const RealT y, con
  * \pre length(xa), length(ya) >= namax
  * \pre length(xb), length(yb) >= nbmax
  *
- * \note method to determine area of overlap of two polygons and local
- *  centroid y-coordinate. Swap input (xa,ya)->(ya,xa) and (xb,yb)->(yb,xb)
- *  to get centroid x-coordinate.
+ * \note method to determine area of overlap of two polygons that lie on the same plane
+ *  and local centroid y-coordinate. Swap input (xa,ya)->(ya,xa) and (xb,yb)->(yb,xb)
+ *  to get centroid x-coordinate. This is the FULL overlap calculation.
  */
 TRIBOL_HOST_DEVICE void PolyInterYCentroid( const int namax, const RealT* const xa, const RealT* const ya,
                                             const int nbmax, const RealT* const xb, const RealT* const yb,

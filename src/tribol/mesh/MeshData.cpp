@@ -668,6 +668,18 @@ TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceNormal( int const face_id, Real
 
 }  // end MeshData::getFaceNormal()
 
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceCentroid( int const face_id, RealT* cx ) const
+{
+  for ( int d{ 0 }; d < spatialDimension(); ++d ) {
+    cx[d] = m_c[d][face_id];
+  }
+  return;
+
+}  // end MeshData::getFaceNormal()
+
+//------------------------------------------------------------------------------
+
 }  // namespace tribol
 
 std::ostream& operator<<( std::ostream& os, const tribol::MeshData& md )

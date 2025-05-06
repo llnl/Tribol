@@ -361,6 +361,16 @@ class MeshData {
      */
     TRIBOL_HOST_DEVICE void getFaceNormal( IndexT face_id, RealT* nrml ) const;
 
+    /*!
+     *
+     * \brief returns pointer to array of stacked face centroid components
+     *
+     * \param [in] face_id integer id of face
+     * \param [in/out] cx pointer to array of stacked components of the face centroid components
+     *
+     */
+    TRIBOL_HOST_DEVICE void getFaceCentroid( IndexT face_id, RealT* cx ) const;
+
    private:
     /// Unique mesh ID
     const IndexT m_mesh_id;

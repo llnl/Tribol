@@ -563,6 +563,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     SLIC_DEBUG( "Intersection2DPolygon(): one or more degenerate faces with < 3 vertices." );
 #endif
     area = 0.0;
+    SLIC_INFO("Intersection2DPolygon(): with numVertexA<3 or numVertexB<3: " << numVertexA << ", " << numVertexB << "." );
     return INVALID_FACE_INPUT;
   }
 
@@ -743,6 +744,8 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       //         bool checkB = (interior[2] == -1 && interior[3] == -1) ? true : false;
       bool checkB = true;
 
+      // TODO SRW look into this. computeLocalInterpenOverlap() does not check if intersection points
+      // at the overlap actually lie within either of the faces.
       // if both segments are not defined by nodes interior to the other polygon
       if ( checkA && checkB ) {
         if ( interId >= max_intersections ) {
