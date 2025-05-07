@@ -14,7 +14,7 @@
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/utils/DataManager.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
-#include "tribol/geom/ContactPlane.hpp"
+#include "tribol/geom/CompGeom.hpp"
 #include "tribol/geom/ElementNormal.hpp"
 
 #ifdef TRIBOL_USE_ENZYME

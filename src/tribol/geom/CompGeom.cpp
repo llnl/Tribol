@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include "ContactPlane.hpp"
+#include "CompGeom.hpp"
 #include "GeomUtilities.hpp"
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/Parameters.hpp"
@@ -1007,17 +1007,6 @@ TRIBOL_HOST_DEVICE void ContactPlane3D::checkPolyOverlap( const MeshData::Viewer
 }  // end ContactPlane3D::checkPolyOverlap()
 
 //------------------------------------------------------------------------------
-void ContactPlane3D::computeIntegralGap()
-{
-  // TODO implement this routine
-
-  // this may be contact method specific
-
-  return;
-
-}  // end ContactPlane3D::computeIntegralGap()
-
-//------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ContactPlane3D::local2DToGlobalCoords( RealT xloc, RealT yloc, RealT& xg, RealT& yg, RealT& zg )
 {
   // This projection takes the two input local vector components and uses
@@ -1565,15 +1554,6 @@ TRIBOL_HOST_DEVICE void ContactPlane2D::computePlanePoint( const MeshData::Viewe
   return;
 
 }  // end ContactPlane2D::computePlanePoint()
-
-//------------------------------------------------------------------------------
-void ContactPlane2D::computeIntegralGap()
-{
-  // TODO implement this routine
-  // This will be contact method dependent
-  return;
-
-}  // end ContactPlane2D::computeIntegralGap()
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ContactPlane2D::computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,

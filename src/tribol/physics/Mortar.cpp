@@ -8,7 +8,7 @@
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/geom/ContactPlane.hpp"
+#include "tribol/geom/CompGeom.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/geom/NodalNormal.hpp"
 #include "tribol/common/Parameters.hpp"

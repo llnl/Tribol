@@ -114,42 +114,56 @@ TRIBOL_HOST_DEVICE bool ExceedsMaxAutoInterpen( const MeshData::Viewer& mesh1, c
                                                 const RealT gap );
 
 //-----------------------------------------------------------------------------
-// Contact Plane base class
+// Computational Geometry base classes
 //-----------------------------------------------------------------------------
+class CompGeom {
 
-class ContactPlane {
+ protected:
+  TRIBOL_HOST_DEVICE CompGeom() {};
+
+ public:
+  Parameters& params;
+  virtual void checkInteraction() const = 0;
+  virtual ~CompGeom() = default;
+};
+
+// ContactPlane base class
+class ContactPlane : public CompGeom {
  protected:
   InterfacePair* m_pair;  ///< Face-pair struct for two constituent faces
 
   /**
-   * @brief Constructs a contact plane
+   * @brief Constructs a computational geometry base class 
    *
    * @param pair Proximate candidate interface pair
-   * @param areaFrac Sets the minimum allowable area for an overlap
-   * @param interpenOverlap If true, overlap includes only parts of face where constraint is violated
-   * @param interPlane If true, a common plane is used; if false, a mortar plane is used
-   * @param dim Plane dimension
+   * @param params Parameters struct
    */
-  TRIBOL_HOST_DEVICE ContactPlane( InterfacePair* pair, RealT areaFrac, bool interpenOverlap, bool interPlane,
-                                   int dim );
-
-  TRIBOL_HOST_DEVICE ContactPlane();
+  TRIBOL_HOST_DEVICE ContactPlane( InterfacePair* pair, const Parameters& params );
 
   virtual ~ContactPlane() = default;
 
   static constexpr int max_nodes_per_overlap{ 8 };
 
  public:
-  int m_dim;       ///< Problem dimension
-  int m_numFaces;  ///< Number of constituent faces
+  RealT m_dim;      ///< Problem/plane dimension
+  bool m_inContact; ///< True if face-pair is in contact
+  RealT m_gap;      ///< Face-pair gap
+  RealT m_gapTol;   ///< Face-pair gap tolerance
 
-  bool m_intermediatePlane;  ///< True if intermediate plane is used
-  bool m_inContact;          ///< True if face-pair is in contact
-  bool m_interpenOverlap;    ///< True if using interpenetration overlap algorithm
+  RealT m_e1X;  ///< Global x-component of first in-plane basis vector
+  RealT m_e1Y;  ///< Global y-component of first in-plane basis vector
+  RealT m_e1Z;  ///< Global z-component of first in-plane basis vector
 
-  RealT m_cX;  ///< Contact plane point global x-coordinate
-  RealT m_cY;  ///< Contact plane point global y-coordinate
-  RealT m_cZ;  ///< Contact plane point global z-coordinate (zero out for 2D)
+  RealT m_e2X;  ///< Global x-component of second in-plane basis vector
+  RealT m_e2Y;  ///< Global y-component of second in-plane basis vector
+  RealT m_e2Z;  ///< Global z-component of second in-plane basis vector
+
+  RealT m_cX;  ///< Contact plane overlap centroid global x-coordinate
+  RealT m_cY;  ///< Contact plane overlap centroid global y-coordinate
+  RealT m_cZ;  ///< Contact plane overlap centroid global z-coordinate (zero out for 2D)
+
+  RealT m_overlapCX;  ///< Local x-coordinate of overlap centroid
+  RealT m_overlapCY;  ///< Local y-coordinate of overlap centroid
 
   RealT m_cXf1;  ///< Global x-coordinate of contact plane centroid projected to face 1
   RealT m_cYf1;  ///< Global y-coordinate of contact plane centroid projected to face 1
@@ -159,36 +173,32 @@ class ContactPlane {
   RealT m_cYf2;  ///< global y-coordinate of contact plane centroid projected to face 2
   RealT m_cZf2;  ///< global z-coordinate of contact plane centroid projected to face 2
 
-  int m_numInterpenPoly1Vert;                  ///< Number of vertices on face 1 interpenetrating polygon
-  RealT m_interpenG1X[max_nodes_per_overlap];  ///< Global x-coordinate of face 1 interpenetrating polygon
-  RealT m_interpenG1Y[max_nodes_per_overlap];  ///< Global y-coordinate of face 1 interpenetrating polygon
-  RealT m_interpenG1Z[max_nodes_per_overlap];  ///< Global z-coordinate of face 1 interpenetrating polygon
-
-  int m_numInterpenPoly2Vert;                  ///< Number of vertices on face 2 interpenetrating polygon
-  RealT m_interpenG2X[max_nodes_per_overlap];  ///< Global x-coordinate of face 2 interpenetrating polygon
-  RealT m_interpenG2Y[max_nodes_per_overlap];  ///< Global y-coordinate of face 2 interpenetrating polygon
-  RealT m_interpenG2Z[max_nodes_per_overlap];  ///< Global z-coordinate of face 2 interpenetrating polygon
-
   RealT m_nX;  ///< Global x-component of contact plane unit normal
   RealT m_nY;  ///< Global y-component of contact plane unit normal
   RealT m_nZ;  ///< Global z-component of contact plane unit normal (zero out for 2D)
 
-  RealT m_gap;     ///< Face-pair gap
-  RealT m_gapTol;  ///< Face-pair gap tolerance
+  RealT m_polyLocX[max_nodes_per_overlap];  ///< Pointer to local x-components of overlap polygon's vertices
+  RealT m_polyLocY[max_nodes_per_overlap];  ///< Pointer to local y-components of overlap polygon's vertices
 
+  int m_numPolyVert;  ///< Number of vertices in overlapping polygon
+  RealT m_polyX[max_nodes_per_overlap];  ///< Global x-components of overlap polygon's vertices
+  RealT m_polyY[max_nodes_per_overlap];  ///< Global y-components of overlap polygon's vertices
+  RealT m_polyZ[max_nodes_per_overlap];  ///< Global z-components of overlap polygon's vertices
+  
   // cp area
   RealT m_areaFrac;      ///< Face area fraction used to determine overlap area cutoff
   RealT m_areaMin;       ///< Minimum overlap area for inclusion into the active set
   RealT m_area;          ///< Overlap area
-  RealT m_interpenArea;  ///< Interpenetrating overlap area
-
-  RealT m_velGap;
-  RealT m_ratePressure;
-
-  RealT m_pressure;
 
   /// \name Contact plane routines
   /// @{
+
+  /*!
+   * \brief Compute a local basis on the contact plane
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   */
+  TRIBOL_HOST_DEVICE void computeLocalBasis( const MeshData::Viewer& m1 ) = 0;
 
   /*!
    * \brief Compute the contact plane normal
@@ -207,24 +217,6 @@ class ContactPlane {
   TRIBOL_HOST_DEVICE virtual void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) = 0;
 
   /*!
-   * \brief Recomputes the reference point that locates the plane in 3-space
-   *        and the gap between the projected intersection poly centroids
-   *
-   * \note This projects the projected area of overlap's centroid (from the
-   *  polygon intersection routine) back to each face that are used to form
-   *  the contact plane and then averages these projected points.
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   */
-  TRIBOL_HOST_DEVICE void planePointAndCentroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2 );
-
-  /*!
-   * \brief Compute the contact plane integral gap expression
-   */
-  virtual void computeIntegralGap() = 0;
-
-  /*!
    * \brief Compute the contact plane area tolerance
    *
    * \param [in] m1 mesh data viewer for mesh 1
@@ -234,158 +226,10 @@ class ContactPlane {
   TRIBOL_HOST_DEVICE virtual void computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
                                                   const Parameters& params ) = 0;
 
-  /*!
-   * \brief Compute the contact plane centroid gap
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   * \param [in] scale Scale to help find centroid-to-face projections
-   */
-  virtual void centroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT scale ) = 0;
-
-  /*!
-   * \brief Compute the contact plane integral gap expression
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   * \param [in] params Coupling scheme-dependent parameters
-   *
-   * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
-   */
-  TRIBOL_HOST_DEVICE virtual FaceGeomError computeLocalInterpenOverlap( const MeshData::Viewer& m1,
-                                                                        const MeshData::Viewer& m2,
-                                                                        const Parameters& params ) = 0;
-
   /// @}
 
-  /// \name Getters and setters
+  /// \name Coordinate projection helper routines
   /// @{
-
-  /*!
-   * \brief Get the id of the first element that forms the contact plane
-   *
-   * \return Face id
-   */
-  TRIBOL_HOST_DEVICE int getCpElementId1() const { return m_pair->m_element_id1; }
-
-  /*!
-   * \brief Get the id of the second element that forms the contact plane
-   *
-   * \return Face id
-   */
-  TRIBOL_HOST_DEVICE int getCpElementId2() const { return m_pair->m_element_id2; }
-
-  /*!
-   * \brief Get the number of faces used to form the contact plane
-   *
-   * \return Number of faces
-   *
-   * \note Number of faces should typically be 2
-   *
-   */
-  int getCpNumFaces() const { return m_numFaces; }
-
-  /*!
-   * \brief Set the first contact plane element id
-   *
-   * \param [in] element_id element id
-   */
-  void setCpElementId1( IndexT element_id ) { m_pair->m_element_id1 = element_id; }
-
-  /*!
-   * \brief Set the second contact plane element id
-   *
-   * \param [in] element_id element id
-   */
-  void setCpElementId2( IndexT element_id ) { m_pair->m_element_id2 = element_id; }
-
-  /*!
-   * \brief Set the number of faces involved in forming the contact plane
-   *
-   * \param [in] num Number of faces
-   */
-  void setCpNumFaces( int num ) { m_numFaces = num; }
-
-  /// @}
-};
-
-//-----------------------------------------------------------------------------
-// Contact Plane 3D class
-//-----------------------------------------------------------------------------
-
-class ContactPlane3D : public ContactPlane {
- public:
-  /*!
-   * @brief Constructs a 3D contact plane
-   *
-   * @param pair Proximate candidate interface pair
-   * @param areaFrac Sets the minimum allowable area for an overlap
-   * @param interpenOverlap If true, overlap includes only parts of face where constraint is violated
-   * @param interPlane If true, a common plane is used; if false, a mortar plane is used
-   */
-  TRIBOL_HOST_DEVICE ContactPlane3D( InterfacePair* pair, RealT areaFrac, bool interpenOverlap, bool interPlane );
-
-  /*!
-   * Overload constructor with no argument list
-   *
-   */
-  TRIBOL_HOST_DEVICE ContactPlane3D();
-
-  RealT m_e1X;  ///< Global x-component of first in-plane basis vector
-  RealT m_e1Y;  ///< Global y-component of first in-plane basis vector
-  RealT m_e1Z;  ///< Global z-component of first in-plane basis vector
-
-  RealT m_e2X;  ///< Global x-component of second in-plane basis vector
-  RealT m_e2Y;  ///< Global y-component of second in-plane basis vector
-  RealT m_e2Z;  ///< Global z-component of second in-plane basis vector
-
-  RealT m_polyLocX[max_nodes_per_overlap];  ///< Pointer to local x-components of overlap polygon's vertices
-  RealT m_polyLocY[max_nodes_per_overlap];  ///< Pointer to local y-components of overlap polygon's vertices
-
-  RealT m_polyX[max_nodes_per_overlap];  ///< Global x-components of overlap polygon's vertices
-  RealT m_polyY[max_nodes_per_overlap];  ///< Global y-components of overlap polygon's vertices
-  RealT m_polyZ[max_nodes_per_overlap];  ///< Global z-components of overlap polygon's vertices
-
-  int m_numPolyVert;  ///< Number of vertices in overlapping polygon
-
-  RealT m_overlapCX;  ///< Local x-coordinate of overlap centroid
-  RealT m_overlapCY;  ///< Local y-coordinate of overlap centroid
-
-  RealT m_interpenPoly1X[max_nodes_per_overlap];  ///< Local x-coordinates of face 1 interpenetrating overlap
-  RealT m_interpenPoly1Y[max_nodes_per_overlap];  ///< Local y-coordinates of face 1 interpenetrating overlap
-
-  RealT m_interpenPoly2X[max_nodes_per_overlap];  ///< Local x-coordinates of face 2 interpenetrating overlap
-  RealT m_interpenPoly2Y[max_nodes_per_overlap];  ///< Local y-coordinates of face 2 interpenetrating overlap
-
-  /*!
-   * \brief Compute the unit normal that defines the contact plane
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   */
-  TRIBOL_HOST_DEVICE void computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
-
-  /*!
-   * \brief Computes a reference point on the plane locating it in 3-space
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   *
-   * \note This is taken as the average of the vertex averaged centroids of
-   *  the two faces that are used to define a local contact plane
-   */
-  TRIBOL_HOST_DEVICE void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
-
-  /*!
-   * \brief Compute a local basis on the contact plane
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   */
-  TRIBOL_HOST_DEVICE void computeLocalBasis( const MeshData::Viewer& m1 );
-
-  /*!
-   * \brief Compute the weak (integral form) gap between the two faces.
-   */
-  void computeIntegralGap() override;
 
   /*!
    * \brief Compute the local 2D coordinates of an array of points on the
@@ -418,33 +262,6 @@ class ContactPlane3D : public ContactPlane {
   void globalTo2DLocalCoords( RealT pX, RealT pY, RealT pZ, RealT& pLX, RealT& pLY, int size );
 
   /*!
-   * \brief Computes the area tolerance for accepting a face pair
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   * \param [in] params Coupling scheme-dependent parameters
-   */
-  TRIBOL_HOST_DEVICE void computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                          const Parameters& params ) override;
-
-  /*!
-   * \brief Check whether two polygons (faces) have a positive area of overlap
-   *
-   * \note Wrapper routine that calls the polygon intersection routine. That routine
-   *  does not return vertices, just overlap area.
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   * \param [in] projLocX1 2D x-coordinates of projected element 1 vertices
-   * \param [in] projLocY1 2D y-coordinates of projected element 1 vertices
-   * \param [in] projLocX2 2D x-coordinates of projected element 2 vertices
-   * \param [in] projLocY2 2D y-coordinates of projected element 2 vertices
-   * \param [in] isym 0 for planar symmetry, 1 for axial symmetry
-   */
-  TRIBOL_HOST_DEVICE void checkPolyOverlap( const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT* projLocX1,
-                                            RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, const int isym );
-
-  /*!
    * \brief Transform a local 2D point on the contact plane to global 3D
    *  coordinates
    *
@@ -457,61 +274,86 @@ class ContactPlane3D : public ContactPlane {
    */
   TRIBOL_HOST_DEVICE void local2DToGlobalCoords( RealT xloc, RealT yloc, RealT& xg, RealT& yg, RealT& zg );
 
-  /*!
-   * \brief Computes the gap between the two projections of the contact
-   *        plane centroid onto each constituent face.
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   * \param [in] scale Scale to help find centroid-to-face projections
-   */
-  void centroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT scale ) override;
+  /// @}
+
+  /// \name Getters and setters
+  /// @{
 
   /*!
-   * \brief Compute the contact plane integral gap expression
+   * \brief Get the id of the first element that forms the contact plane
    *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   * \param [in] params Coupling scheme-dependent parameters
-   *
-   * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
+   * \return Face id
    */
-  TRIBOL_HOST_DEVICE FaceGeomError computeLocalInterpenOverlap( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                                                const Parameters& params ) override;
+  TRIBOL_HOST_DEVICE int getCpElementId1() const { return m_pair->m_element_id1; }
+
+  /*!
+   * \brief Get the id of the second element that forms the contact plane
+   *
+   * \return Face id
+   */
+  TRIBOL_HOST_DEVICE int getCpElementId2() const { return m_pair->m_element_id2; }
+
+  /*!
+   * \brief Set the first contact plane element id
+   *
+   * \param [in] element_id element id
+   */
+  void setCpElementId1( IndexT element_id ) { m_pair->m_element_id1 = element_id; }
+
+  /*!
+   * \brief Set the second contact plane element id
+   *
+   * \param [in] element_id element id
+   */
+  void setCpElementId2( IndexT element_id ) { m_pair->m_element_id2 = element_id; }
+
+  /// @}
 };
 
 //-----------------------------------------------------------------------------
-// Contact Plane 2D class
+// Common Plane Computational Geometry Class
 //-----------------------------------------------------------------------------
+class CommonPlane : public ContactPlane {
 
-class ContactPlane2D : public ContactPlane {
- public:
-  RealT m_segX[2];  ///< Global x-components of overlap segment vertices
-  RealT m_segY[2];  ///< Global y-components of overlap segment vertices
+ private:
+  static constexpr int max_nodes_per_overlap{ 8 };
 
  public:
   /*!
-   * \brief Constructor
+   * @brief Constructs a common plane contact plane
    *
-   * \param [in] pair InterfacePair struct
-   * \param [in] lenFrac Length fraction used for overlap segment cutoff
-   * \param [in] interpenOverlap True if using interpenetration overlap algorithm
-   * \param [in] interPlane True if intermediate (i.e. common) plane is used
-   * \param [in] dimension Dimension of problem
+   * @param pair Proximate candidate interface pair
+   * @param params Parameters struct
    */
-  TRIBOL_HOST_DEVICE ContactPlane2D( InterfacePair* pair, RealT lenFrac, bool interpenOverlap, bool interPlane );
-
-  /*!
-   * \brief Overloaded constructor with no arguments
-   *
-   */
-  TRIBOL_HOST_DEVICE ContactPlane2D();
+  TRIBOL_HOST_DEVICE CommonPlane( InterfacePair* pair, const Parameters& params );
 
   /*!
    * \brief Destructor
    *
    */
-  ~ContactPlane2D() = default;
+  ~CommonPlane() = default;
+
+  RealT m_interpenPoly1X[max_nodes_per_overlap];  ///< Local x-coords of face 1 interpenetrating polygon projected onto common plane
+  RealT m_interpenPoly1Y[max_nodes_per_overlap];  ///< Local y-coords of face 1 interpenetrating polygon projected onto common plane
+
+  RealT m_interpenPoly2X[max_nodes_per_overlap];  ///< Local x-coords of face 2 interpenetrating polygon projected onto common plane
+  RealT m_interpenPoly2Y[max_nodes_per_overlap];  ///< Local y-coords of face 2 interpenetrating polygon projected onto common plane
+
+  int m_numInterpenPoly1Vert;                  ///< Number of vertices on face 1 interpenetrating polygon
+  RealT m_interpenG1X[max_nodes_per_overlap];  ///< Global x-coordinate of face 1 interpenetrating polygon
+  RealT m_interpenG1Y[max_nodes_per_overlap];  ///< Global y-coordinate of face 1 interpenetrating polygon
+  RealT m_interpenG1Z[max_nodes_per_overlap];  ///< Global z-coordinate of face 1 interpenetrating polygon
+
+  int m_numInterpenPoly2Vert;                  ///< Number of vertices on face 2 interpenetrating polygon
+  RealT m_interpenG2X[max_nodes_per_overlap];  ///< Global x-coordinate of face 2 interpenetrating polygon
+  RealT m_interpenG2Y[max_nodes_per_overlap];  ///< Global y-coordinate of face 2 interpenetrating polygon
+  RealT m_interpenG2Z[max_nodes_per_overlap];  ///< Global z-coordinate of face 2 interpenetrating polygon
+
+  RealT m_interpenArea; ///< Interpenetrating overlap area
+
+  RealT m_velGap;
+  RealT m_ratePressure;
+  RealT m_pressure;
 
   /*!
    * \brief Compute the unit normal that defines the contact plane
@@ -522,6 +364,7 @@ class ContactPlane2D : public ContactPlane {
 
   /*!
    * \brief Computes a reference point on the plane locating it in 3-space
+   *
    * \param [in] m1 mesh data viewer for mesh 1
    * \param [in] m2 mesh data viewer for mesh 2
    *
@@ -531,9 +374,11 @@ class ContactPlane2D : public ContactPlane {
   TRIBOL_HOST_DEVICE void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
 
   /*!
-   * \brief Compute the weak (integral form) gap between the two faces.
+   * \brief Compute a local basis on the contact plane
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
    */
-  void computeIntegralGap() override;
+  TRIBOL_HOST_DEVICE void computeLocalBasis( const MeshData::Viewer& m1 ) override;
 
   /*!
    * \brief Computes the area tolerance for accepting a face pair
@@ -545,25 +390,12 @@ class ContactPlane2D : public ContactPlane {
   TRIBOL_HOST_DEVICE void computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
                                           const Parameters& params ) override;
 
-  /*!
-   * \brief Computes the gap between the two projections of the contact
-   *        plane centroid onto each constituent face.
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   * \param [in] scale Scale to help find centroid-to-face projections
-   */
-  void centroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT scale ) override;
+  //
+  // Common plane specific routines
+  //
 
   /*!
-   * \brief Check whether two segments have a positive length of overlap
-   *
-   */
-  TRIBOL_HOST_DEVICE void checkSegOverlap( const RealT* const pX1, const RealT* const pY1, const RealT* const pX2,
-                                           const RealT* const pY2, const int nV1, const int nV2 );
-
-  /*!
-   * \brief Compute the contact plane integral gap expression
+   * \brief Compute the projected overlap of the interpenetrating portions of each face in 2D
    *
    * \param [in] m1 mesh data viewer for mesh 1
    * \param [in] m2 mesh data viewer for mesh 2
@@ -571,9 +403,123 @@ class ContactPlane2D : public ContactPlane {
    *
    * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
    */
-  TRIBOL_HOST_DEVICE FaceGeomError computeLocalInterpenOverlap( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                                                const Parameters& params ) override;
+  TRIBOL_HOST_DEVICE FaceGeomError computeLocalInterpenOverlap2D( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
+                                                                  const Parameters& params );
+  /*!
+   * \brief Compute the overlap of the interpenetrating portions of each face in 3D
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   * \param [in] params Coupling scheme-dependent parameters
+   *
+   * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
+   */
+  TRIBOL_HOST_DEVICE FaceGeomError computeLocalInterpenOverlap3D( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
+
+  /*!
+   * \brief Recomputes the reference point that locates the plane in 3-space
+   *        and the gap between the projected `intersection` poly centroids
+   *
+   * \note This projects the projected area of overlap's centroid (from the
+   *  polygon intersection routine) back to each face that are used to form
+   *  the contact plane and then averages these projected points.
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   */
+  TRIBOL_HOST_DEVICE void planePointAndCentroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2 );
+
+  /*!
+   * \brief Check whether two polygons (faces) have a positive area of overlap
+   *
+   * \note Wrapper routine that calls the polygon intersection routine. That routine
+   *  does not return vertices, just overlap area. This is the FULL overlap calculation.
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   * \param [in] projLocX1 2D x-coordinates of projected element 1 vertices
+   * \param [in] projLocY1 2D y-coordinates of projected element 1 vertices
+   * \param [in] projLocX2 2D x-coordinates of projected element 2 vertices
+   * \param [in] projLocY2 2D y-coordinates of projected element 2 vertices
+   * \param [in] isym 0 for planar symmetry, 1 for axial symmetry
+   */
+  TRIBOL_HOST_DEVICE void checkPolyOverlap( const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT* projLocX1,
+                                            RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, const int isym );
+
+
+  /*!
+   * \brief Computes the discrete scalar gap between the two projections of the contact
+   *        plane centroid onto each constituent face.
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   * \param [in] scale Scale to help find centroid-to-face projections
+   * 
+   * \note this routine computes and stores the gap on the CommonPlane object
+   */
+  void centroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT scale );
+
 };
+
+//-----------------------------------------------------------------------------
+// Mortar-Based Computational Geometry Class
+//-----------------------------------------------------------------------------
+class MortarPlane : public ContactPlane {
+
+ private:
+  static constexpr int max_nodes_per_overlap{ 8 };
+
+ public:
+  /*!
+   * @brief Constructs a Mortar contact plane
+   *
+   * @param pair Proximate candidate interface pair
+   * @param params Parameters struct
+   */
+  TRIBOL_HOST_DEVICE MortarPlane( InterfacePair* pair, const Parameters& params );
+
+  /*!
+   * \brief Destructor
+   *
+   */
+  ~MortarPlane() = default;
+
+  /*!
+   * \brief Compute the unit normal that defines the contact plane
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   */
+  TRIBOL_HOST_DEVICE void computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
+
+  /*!
+   * \brief Computes a reference point on the plane locating it in 3-space
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   *
+   * \note This is taken as the average of the vertex averaged centroids of
+   *  the two faces that are used to define a local contact plane
+   */
+  TRIBOL_HOST_DEVICE void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
+
+  /*!
+   * \brief Compute a local basis on the contact plane
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   */
+  TRIBOL_HOST_DEVICE void computeLocalBasis( const MeshData::Viewer& m1 ) override;
+
+  /*!
+   * \brief Computes the area tolerance for accepting a face pair
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   * \param [in] params Coupling scheme-dependent parameters
+   */
+  TRIBOL_HOST_DEVICE void computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
+                                          const Parameters& params ) override;
+};
+
 
 //-----------------------------------------------------------------------------
 // Free functions
@@ -655,6 +601,17 @@ TRIBOL_HOST_DEVICE ContactPlane3D CheckAlignedFacePair( InterfacePair& pair, con
 TRIBOL_HOST_DEVICE FaceGeomError CheckEdgePair( ContactPlane2D& cp, const MeshData::Viewer& mesh1,
                                                 const MeshData::Viewer& mesh2, const Parameters& params,
                                                 bool fullOverlap );
+
+// TODO make this a free function that also returns overlap centroid and area
+/*!
+ * \brief Check whether two segments have a positive length of overlap
+ *
+ * \note this is the 2D full overlap variant
+ *
+ */
+TRIBOL_HOST_DEVICE void checkSegOverlap( const RealT* const pX1, const RealT* const pY1, const RealT* const pX2,
+                                       const RealT* const pY2, const int nV1, const int nV2 );
+
 }  // namespace tribol
 
 #endif /* SRC_GEOM_CONTACTPLANE_HPP_ */
