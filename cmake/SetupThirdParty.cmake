@@ -79,7 +79,6 @@ if (TARGET axom)
     # Add components and dependencies of axom to this export set but don't prefix it with tribol::
     # NOTE(chapman39@llnl.gov): Cannot simply install axom, since it is an imported library
     set(_axom_exported_targets ${axom_exported_targets})
-    list(REMOVE_ITEM _axom_exported_targets openmp)
     install(TARGETS              ${_axom_exported_targets}
             EXPORT               tribol-targets
             DESTINATION          lib)
