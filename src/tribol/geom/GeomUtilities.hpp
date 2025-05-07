@@ -12,6 +12,46 @@ namespace tribol {
 
 /*!
  *
+ * \brief projects all the nodes (vertices) of a given FE face to a
+ *  specified plane
+ *
+ * \param [in] mesh mesh data viewer
+ * \param [in] faceId id for given face
+ * \param [in] nrmlX x component of plane's unit normal
+ * \param [in] nrmlY y component of plane's unit normal
+ * \param [in] nrmlZ z component of plane's unit normal
+ * \param [in] cX x coordinate of reference point on the plane
+ * \param [in] cY y coordinate of reference point on the plane
+ * \param [in] cZ z coordinate of reference point on the plane
+ * \param [in,out] pX array of x coordinates of projected nodes
+ * \param [in,out] pY array of y coordinates of projected nodes
+ * \param [in,out] pZ array of z coordinates of projected nodes
+ *
+ * \pre length(pX), length(pY), length(pZ) >= number of nodes on face
+ */
+TRIBOL_HOST_DEVICE void ProjectFaceNodesToPlane( const MeshData::Viewer& mesh, int faceId, RealT nrmlX, RealT nrmlY,
+                                                 RealT nrmlZ, RealT cX, RealT cY, RealT cZ, RealT* pX, RealT* pY,
+                                                 RealT* pZ );
+
+/*!
+ *
+ * \brief projects nodes belonging to a surface edge to a contact segment
+ *
+ * \param [in] mesh mesh data viewer
+ * \param [in] edgeId edge id
+ * \param [in] nrmlX x-component of the contact segment normal
+ * \param [in] nrmlY y-component of the contact segment normal
+ * \param [in] cX x-coordinate of a point on the contact segment
+ * \param [in] cY y-coordinate of a point on the contact segment
+ * \param [in,out] pX pointer to array of projected nodal x-coordinates
+ * \param [in,out] pY pointer to array of projected nodal y-coordinates
+ *
+ */
+TRIBOL_HOST_DEVICE void ProjectEdgeNodesToSegment( const MeshData::Viewer& mesh, int edgeId, RealT nrmlX, RealT nrmlY,
+                                                   RealT cX, RealT cY, RealT* pX, RealT* pY );
+
+/*!
+ *
  * \brief Projects a point in 3-space to a plane.
  *
  * General method to project a point to a plane based on point normal data for that

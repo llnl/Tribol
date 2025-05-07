@@ -292,36 +292,6 @@ TRIBOL_HOST_DEVICE bool ExceedsMaxAutoInterpen( const MeshData::Viewer& mesh1, c
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ProjectFaceNodesToPlane( const MeshData::Viewer& mesh, int faceId, RealT nrmlX, RealT nrmlY,
-                                                 RealT nrmlZ, RealT cX, RealT cY, RealT cZ, RealT* pX, RealT* pY,
-                                                 RealT* pZ )
-{
-  // loop over nodes and project onto the plane defined by the point-normal
-  // input arguments
-  for ( int i = 0; i < mesh.numberOfNodesPerElement(); ++i ) {
-    const int nodeId = mesh.getGlobalNodeId( faceId, i );
-    ProjectPointToPlane( mesh.getPosition()[0][nodeId], mesh.getPosition()[1][nodeId], mesh.getPosition()[2][nodeId],
-                         nrmlX, nrmlY, nrmlZ, cX, cY, cZ, pX[i], pY[i], pZ[i] );
-  }
-
-  return;
-
-}  // end ProjectFaceNodesToPlane()
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ProjectEdgeNodesToSegment( const MeshData::Viewer& mesh, int edgeId, RealT nrmlX, RealT nrmlY,
-                                                   RealT cX, RealT cY, RealT* pX, RealT* pY )
-{
-  for ( int i = 0; i < mesh.numberOfNodesPerElement(); ++i ) {
-    const int nodeId = mesh.getGlobalNodeId( edgeId, i );
-    ProjectPointToSegment( mesh.getPosition()[0][nodeId], mesh.getPosition()[1][nodeId], nrmlX, nrmlY, cX, cY, pX[i],
-                           pY[i] );
-  }
-
-  return;
-}
-
-//------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE ContactPlane::ContactPlane( InterfacePair* pair, RealT areaFrac, bool interpenOverlap,
                                                bool interPlane, int dim )
     : m_pair( pair ),

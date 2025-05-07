@@ -189,10 +189,10 @@ class CouplingScheme {
     MeshData::Viewer m_mesh2;
 
     /// Array view of 2D contact planes
-    ArrayViewT<ContactPlane2D> m_contact_plane2d;
+    //ArrayViewT<ContactPlane2D> m_contact_plane2d;
 
     /// Array view of 3D contact planes
-    ArrayViewT<ContactPlane3D> m_contact_plane3d;
+    //ArrayViewT<ContactPlane3D> m_contact_plane3d;
 
   };  // end class CouplingScheme::Viewer
 
@@ -875,8 +875,9 @@ class CouplingScheme {
 
   ArrayT<InterfacePair> m_interface_pairs;  ///< List of interface pairs
 
-  ArrayT<ContactPlane2D> m_contact_plane2d;  ///< List of 2D contact planes
-  ArrayT<ContactPlane3D> m_contact_plane3d;  ///< List of 3D contact planes
+  std::unique_prt<CompGeom>  m_cg_pairs; ///< List of computational geometry pairs
+  //ArrayT<ContactPlane2D> m_contact_plane2d;  ///< List of 2D contact planes
+  //ArrayT<ContactPlane3D> m_contact_plane3d;  ///< List of 3D contact planes
 
   MethodData* m_methodData;  ///< method object holding required interface method data
 

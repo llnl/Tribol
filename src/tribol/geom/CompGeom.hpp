@@ -15,45 +15,6 @@
 
 namespace tribol {
 
-/*!
- *
- * \brief projects all the nodes (vertices) of a given FE face to a
- *  specified plane
- *
- * \param [in] mesh mesh data viewer
- * \param [in] faceId id for given face
- * \param [in] nrmlX x component of plane's unit normal
- * \param [in] nrmlY y component of plane's unit normal
- * \param [in] nrmlZ z component of plane's unit normal
- * \param [in] cX x coordinate of reference point on the plane
- * \param [in] cY y coordinate of reference point on the plane
- * \param [in] cZ z coordinate of reference point on the plane
- * \param [in,out] pX array of x coordinates of projected nodes
- * \param [in,out] pY array of y coordinates of projected nodes
- * \param [in,out] pZ array of z coordinates of projected nodes
- *
- * \pre length(pX), length(pY), length(pZ) >= number of nodes on face
- */
-TRIBOL_HOST_DEVICE void ProjectFaceNodesToPlane( const MeshData::Viewer& mesh, int faceId, RealT nrmlX, RealT nrmlY,
-                                                 RealT nrmlZ, RealT cX, RealT cY, RealT cZ, RealT* pX, RealT* pY,
-                                                 RealT* pZ );
-
-/*!
- *
- * \brief projects nodes belonging to a surface edge to a contact segment
- *
- * \param [in] mesh mesh data viewer
- * \param [in] edgeId edge id
- * \param [in] nrmlX x-component of the contact segment normal
- * \param [in] nrmlY y-component of the contact segment normal
- * \param [in] cX x-coordinate of a point on the contact segment
- * \param [in] cY y-coordinate of a point on the contact segment
- * \param [in,out] pX pointer to array of projected nodal x-coordinates
- * \param [in,out] pY pointer to array of projected nodal y-coordinates
- *
- */
-TRIBOL_HOST_DEVICE void ProjectEdgeNodesToSegment( const MeshData::Viewer& mesh, int edgeId, RealT nrmlX, RealT nrmlY,
-                                                   RealT cX, RealT cY, RealT* pX, RealT* pY );
 
 /*!
  * \brief checks if the vertices on face2 have interpenetrated the level set
@@ -92,26 +53,6 @@ TRIBOL_HOST_DEVICE bool FullFaceCheck( const MeshData::Viewer& mesh1, const Mesh
 TRIBOL_HOST_DEVICE bool FullEdgeCheck( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, int eId1,
                                        int eId2 );
 
-/*!
- *
- * \brief checks the contact plane gap against the maximum allowable interpenetration
- *
- * \param [in] mesh1 mesh data viewer for mesh 1
- * \param [in] mesh2 mesh data viewer for mesh 2
- * \param [in] faceId1 face id for face belonging to mesh 1
- * \param [in] faceId2 face id for face belonging to mesh 2
- * \param [in] auto_contact_pen_frac Allowable interpenetration as a fraction of element thickness for auto-contact
- * \param [in] gap the contact plane gap
- *
- * \return true if the gap exceeds the max allowable interpenetration
- *
- * \pre this function is for use with ContactCase = AUTO to preclude face-pairs on opposite
- *      sides of thin structures/plates
- *
- */
-TRIBOL_HOST_DEVICE bool ExceedsMaxAutoInterpen( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                                                const int faceId1, const int faceId2, RealT auto_contact_pen_frac,
-                                                const RealT gap );
 
 //-----------------------------------------------------------------------------
 // Computational Geometry base classes
@@ -446,7 +387,6 @@ class CommonPlane : public ContactPlane {
   TRIBOL_HOST_DEVICE void checkPolyOverlap( const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT* projLocX1,
                                             RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, const int isym );
 
-
   /*!
    * \brief Computes the discrete scalar gap between the two projections of the contact
    *        plane centroid onto each constituent face.
@@ -458,6 +398,27 @@ class CommonPlane : public ContactPlane {
    * \note this routine computes and stores the gap on the CommonPlane object
    */
   void centroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT scale );
+
+  /*!
+   *
+   * \brief checks the contact plane gap against the maximum allowable interpenetration
+   *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
+   * \param [in] faceId1 face id for face belonging to mesh 1
+   * \param [in] faceId2 face id for face belonging to mesh 2
+   * \param [in] auto_contact_pen_frac Allowable interpenetration as a fraction of element thickness for auto-contact
+   * \param [in] gap the contact plane gap
+   *
+   * \return true if the gap exceeds the max allowable interpenetration
+   *
+   * \pre this function is for use with ContactCase = AUTO to preclude face-pairs on opposite
+   *      sides of thin structures/plates
+   *
+   */
+  TRIBOL_HOST_DEVICE bool ExceedsMaxAutoInterpen( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+                                                  const int faceId1, const int faceId2, RealT auto_contact_pen_frac,
+                                                  const RealT gap );
 
 };
 
