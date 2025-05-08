@@ -4,7 +4,6 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "gtest/gtest.h"
-#include <gtest/gtest.h>
 
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/interface/tribol.hpp"

@@ -17,6 +17,7 @@ set(tribol_headers
     common/Enzyme.hpp
     common/ExecModel.hpp
     common/LoopExec.hpp
+    common/Memory.hpp
     common/Parameters.hpp
 
     geom/ContactPlane.hpp

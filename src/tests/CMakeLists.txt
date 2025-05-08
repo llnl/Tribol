@@ -22,6 +22,7 @@ set( tribol_tests
      tribol_inv_iso.cpp
      tribol_iso_integ.cpp
      tribol_math.cpp
+     tribol_memory.cpp
      tribol_mortar_data_geom.cpp
      tribol_mortar_data_weights.cpp
      tribol_mortar_force.cpp
