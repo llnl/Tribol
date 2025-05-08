@@ -20,7 +20,7 @@ class MemoryTest : public ::testing::Test {
 
 TEST_F( MemoryTest, sort_and_search )
 {
-  auto ten_ints = tribol::AllocatedMemory<int, tribol::MemorySpace::Host>( 10 );
+  auto ten_ints = tribol::AllocatedMemory<int, tribol::MemorySpace::Dynamic>( 10 );
   tribol::Memory<int> ten_ints_mem( ten_ints );
   tribol::forAllExec<tribol::ExecutionMode::Sequential>( ten_ints.size(), [=]( int i ) {
     auto int_array =

@@ -34,12 +34,13 @@ class Memory {
 template <typename T, MemorySpace MSPACE>
 class AllocatedMemory : public Memory<T> {
  public:
-  AllocatedMemory( IndexT size ) : Memory<T>( makePool( size ), size )
-  {
+  AllocatedMemory( IndexT size )
+      : Memory<T>( makePool( size ), size )
 #ifdef TRIBOL_USE_UMPIRE
-    auto& rm = umpire::ResourceManager::getInstance();
-    allocator_ = rm.getAllocator( getResourceAllocatorID( MSPACE ) );
+        ,
+        allocator_( umpire::ResourceManager::getInstance().getAllocator( getResourceAllocatorID( MSPACE ) ) )
 #endif
+  {
   }
 
   ~AllocatedMemory()
@@ -63,7 +64,7 @@ class AllocatedMemory : public Memory<T> {
 #endif
   {
     other.size_ = 0;
-    other.pool_ = nullptr;
+    other.data_ = nullptr;
   }
 
   // Copy assignment operator
@@ -90,14 +91,14 @@ class AllocatedMemory : public Memory<T> {
   {
 #ifdef TRIBOL_USE_UMPIRE
     auto& rm = umpire::ResourceManager::getInstance();
-    return rm.getAllocator( getResourceAllocatorID( MSPACE ) ).allocate( size * sizeof( T ) );
+    return static_cast<T*>( rm.getAllocator( getResourceAllocatorID( MSPACE ) ).allocate( size * sizeof( T ) ) );
 #else
     return malloc( size_ * sizeof( T ) );
 #endif
   }
 
 #ifdef TRIBOL_USE_UMPIRE
-  umpire::Allocator& allocator_;
+  umpire::Allocator allocator_;
 #endif
 };
 
