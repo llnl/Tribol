@@ -67,6 +67,10 @@ using RealT = double;
 #define TRIBOL_USE_HOST
 #endif
 
+#if defined( __CUDA_ARCH__ ) || defined( __HIP_DEVICE_COMPILE__ )
+#define TRIBOL_DEVICE_CODE
+#endif
+
 }  // namespace tribol
 
 #endif /* TRIBOL_COMMON_BASICTYPES_HPP_ */

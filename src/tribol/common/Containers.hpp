@@ -6,253 +6,485 @@
 #ifndef TRIBOL_COMMON_CONTAINERS_HPP_
 #define TRIBOL_COMMON_CONTAINERS_HPP_
 
-#include <utility>
+#include <cassert>
 
 // Tribol includes
-#include "tribol/config.hpp"
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Memory.hpp"
 
 namespace tribol {
 
-template <typename T, IndexT N>
-class StackAllocation {
+template <IndexT N>
+class FixedSizer {
+ public:
+  TRIBOL_HOST_DEVICE FixedSizer( [[maybe_unused]] IndexT size ) { assert( size == N ); }
+  TRIBOL_HOST_DEVICE constexpr IndexT size() const { return N; }
+
+  using size_type = IndexT;
+  TRIBOL_HOST_DEVICE constexpr operator IndexT() const { return size(); }
+};
+
+class DynamicSizer {
+ public:
+  TRIBOL_HOST_DEVICE DynamicSizer( IndexT size ) : size_( size ) {}
+  TRIBOL_HOST_DEVICE IndexT size() const { return size_; }
+
+  using size_type = IndexT;
+  TRIBOL_HOST_DEVICE operator IndexT() const { return size(); }
+
+ private:
+  IndexT size_;
+};
+
+template <typename T, class Sizer = DynamicSizer>
+class Memory {
  public:
   using value_type = T;
   using pointer = T*;
   using const_pointer = const T*;
-  using size_type = IndexT;
+  using size_type = typename Sizer::size_type;
 
-  TRIBOL_HOST_DEVICE pointer data() { return data_; }
-  TRIBOL_HOST_DEVICE const_pointer data() const { return data_; }
-  TRIBOL_HOST_DEVICE size_type size() const { return N; }
+  TRIBOL_HOST_DEVICE Memory( pointer data, size_type size, size_type stride = 1 )
+      : data_( data ), size_( size ), stride_( stride )
+  {
+  }
+  TRIBOL_HOST_DEVICE Memory( const Memory& other )
+      : data_( other.data_ ), size_( other.size_ ), stride_( other.stride_ )
+  {
+  }
 
- private:
-  T data_[N];
+  TRIBOL_HOST_DEVICE pointer data() const { return data_; }
+  TRIBOL_HOST_DEVICE size_type size() const { return size_; }
+  TRIBOL_HOST_DEVICE size_type stride() const { return stride_; }
+
+  TRIBOL_HOST_DEVICE Memory<T, Sizer> view() const { return Memory<T, Sizer>( data_, size_, stride_ ); }
+
+  operator pointer() const { return data_; }
+
+ protected:
+  pointer data_;
+  Sizer size_;
+  size_type stride_;
 };
 
 template <typename T, IndexT N>
-class HeapAllocation {
+class StackMemory : public Memory<T, FixedSizer<N>> {
  public:
-  using value_type = T;
-  using pointer = T*;
-  using const_pointer = const T*;
-  using size_type = IndexT;
+  using value_type = typename Memory<T, FixedSizer<N>>::value_type;
+  using pointer = typename Memory<T, FixedSizer<N>>::pointer;
+  using const_pointer = typename Memory<T, FixedSizer<N>>::const_pointer;
+  using size_type = typename Memory<T, FixedSizer<N>>::size_type;
 
-  TRIBOL_HOST_DEVICE HeapAllocation() : data_( new T[N] ) {}
-  TRIBOL_HOST_DEVICE ~HeapAllocation() { delete[] data_; }
+  TRIBOL_HOST_DEVICE StackMemory() : Memory<T, FixedSizer<N>>( nullptr, N ) { data_ = stack_data_; }
+  TRIBOL_HOST_DEVICE StackMemory( [[maybe_unused]] size_type size ) : StackMemory() { assert( size == N ); }
 
-  TRIBOL_HOST_DEVICE HeapAllocation( const HeapAllocation& other ) : data_( new T[N] )
+  using Memory<T, FixedSizer<N>>::data;
+  using Memory<T, FixedSizer<N>>::size;
+  using Memory<T, FixedSizer<N>>::stride;
+
+  using Memory<T, FixedSizer<N>>::view;
+
+ private:
+  using Memory<T, FixedSizer<N>>::data_;
+  T stack_data_[N];
+};
+
+template <typename T, class Allocator = HeapAllocator<T>, class Sizer = DynamicSizer>
+class AllocatedMemory : public Memory<T, Sizer> {
+ public:
+  using value_type = typename Memory<T, Sizer>::value_type;
+  using pointer = typename Memory<T, Sizer>::pointer;
+  using const_pointer = typename Memory<T, Sizer>::const_pointer;
+  using size_type = typename Memory<T, Sizer>::size_type;
+
+  TRIBOL_HOST_DEVICE AllocatedMemory( size_type size, Allocator allocator = Allocator() )
+      : Memory<T, Sizer>( allocator.allocate( size ), size ), allocator_( std::move( allocator ) )
   {
-    // deep copy data
-    for ( size_type i{ 0 }; i < N; ++i ) {
-      data_[i] = other.data_[i];
-    }
   }
-  TRIBOL_HOST_DEVICE HeapAllocation( HeapAllocation&& other ) : data_( other.data_ )
+
+  // // Constructor from another memory space
+  // template <MemorySpace MSPACE2>
+  // AllocatedMemory( const AllocatedMemory<T, Allocator>& other ) : AllocatedMemory( other.size() )
+  // {
+  //   allocator_.copy( data_, other.data(), other.size() );
+  // }
+
+  ~AllocatedMemory() { allocator_.deallocate( data_, size_ ); }
+
+  // Copy constructor
+  AllocatedMemory( const AllocatedMemory& other ) : AllocatedMemory( other.size_ )
   {
-    // reset other
+    allocator_.copy( data_, other.data_, other.size_ );
+  }
+
+  // Move constructor
+  AllocatedMemory( AllocatedMemory&& other )
+      : Memory<T, Sizer>( other.data_, other.size_ ), allocator_{ other.allocator_ }
+  {
     other.data_ = nullptr;
+    other.size_ = 0;
   }
-  TRIBOL_HOST_DEVICE HeapAllocation& operator=( const HeapAllocation& other )
+
+  // Copy assignment operator
+  AllocatedMemory& operator=( const AllocatedMemory& other )
   {
     if ( this != &other ) {
-      delete[] data_;
-      data_ = new T[N];
-      // deep copy data
-      for ( size_type i{ 0 }; i < N; ++i ) {
-        data_[i] = other.data_[i];
+      if ( data_ != nullptr ) {
+        allocator_.deallocate( data_, size_ );
       }
+      data_ = allocator_.allocate( other.size() );
+      size_ = other.size();
+      allocator_ = other.allocator();
     }
+    allocator_.copy( data_, other.data(), other.size() );
     return *this;
   }
-  TRIBOL_HOST_DEVICE HeapAllocation& operator=( HeapAllocation&& other )
+
+  // template <MemorySpace MSPACE2>
+  // AllocatedMemory& operator=( const AllocatedMemory<T, MSPACE2, Allocator>& other )
+  // {
+  //   if ( this != &other ) {
+  //     if ( data_ != nullptr ) {
+  //       allocator_.deallocate( data_, size_ );
+  //     }
+  //     data_ = allocator_.allocate( other.size() );
+  //     size_ = other.size();
+  //     allocator_ = other.allocator();
+  //   }
+  //   allocator_.copy( data_, other.data(), other.size() );
+  //   return *this;
+  // }
+
+  // Move assignment operator
+  AllocatedMemory& operator=( AllocatedMemory&& other )
   {
     if ( this != &other ) {
-      delete[] data_;
+      if ( data_ != nullptr ) {
+        allocator_.deallocate( data_, size_ );
+      }
       data_ = other.data_;
-      // reset other
+      size_ = other.size_;
+      allocator_ = other.allocator_;
+
       other.data_ = nullptr;
+      other.size_ = 0;
     }
     return *this;
   }
 
-  TRIBOL_HOST_DEVICE pointer data() { return data_; }
-  TRIBOL_HOST_DEVICE const_pointer data() const { return data_; }
-  TRIBOL_HOST_DEVICE size_type size() const { return N; }
+  using Memory<T, Sizer>::data;
+  using Memory<T, Sizer>::size;
+  using Memory<T, Sizer>::stride;
+  const Allocator& allocator() const { return allocator_; }
+
+  using Memory<T, Sizer>::view;
 
  private:
-  T* data_;
+  using Memory<T, Sizer>::data_;
+  using Memory<T, Sizer>::size_;
+  using Memory<T, Sizer>::stride_;
+  Allocator allocator_;
 };
 
-template <typename T, IndexT N>
-class PoolAllocation {
- public:
-  using value_type = T;
-  using pointer = T*;
-  using const_pointer = const T*;
-  using size_type = IndexT;
+// template <typename T>
+// class HeapAllocation {
+//  public:
+//   using value_type = T;
+//   using pointer = T*;
+//   using const_pointer = const T*;
+//   using size_type = IndexT;
 
-  TRIBOL_HOST_DEVICE PoolAllocation( const Memory<T>& pool, size_type offset ) : pool_( pool.data() ), offset_( offset )
-  {
-    // TODO: check if offset + N < pool.size()
-    // all memory in an allocation should be initialized to the default value
-    for ( size_type i{ 0 }; i < N; ++i ) {
-      pool_[offset_ + i] = T{};
-    }
-  }
-  TRIBOL_HOST_DEVICE ~PoolAllocation()
-  {
-    // everything in the pool should be destroyed when the pool is destroyed
-    for ( size_type i{ 0 }; i < N; ++i ) {
-      pool_[offset_ + i].~T();
-    }
-  }
-  // Copying not allowed with pool allocation
-  TRIBOL_HOST_DEVICE PoolAllocation( const PoolAllocation& other ) = delete;
-  TRIBOL_HOST_DEVICE PoolAllocation( PoolAllocation&& other ) : pool_( other.pool_ ), offset_( other.offset_ )
-  {
-    // reset other
-    other.pool_ = nullptr;
-    other.offset_ = 0;
-  }
-  // Copy assignment not allowed with pool allocation
-  TRIBOL_HOST_DEVICE PoolAllocation& operator=( const PoolAllocation& other ) = delete;
-  TRIBOL_HOST_DEVICE PoolAllocation& operator=( PoolAllocation&& other )
-  {
-    pool_ = other.pool_;
-    offset_ = other.offset_;
-    // reset other
-    other.pool_ = nullptr;
-    other.offset_ = 0;
-    return *this;
-  }
+//   TRIBOL_HOST_DEVICE HeapAllocation( size_type size ) : data_( new T[size] ), size_( size ) {}
+//   TRIBOL_HOST_DEVICE ~HeapAllocation() { delete[] data_; }
 
-  TRIBOL_HOST_DEVICE pointer data() { return pool_ + offset_; }
-  TRIBOL_HOST_DEVICE const_pointer data() const { return pool_ + offset_; }
-  TRIBOL_HOST_DEVICE size_type size() const { return N; }
+//   TRIBOL_HOST_DEVICE HeapAllocation( const HeapAllocation& other ) : data_( new T[other.size()] ), size_( other.size
+//   )
+//   {
+//     // deep copy data
+//     for ( size_type i{ 0 }; i < size_; ++i ) {
+//       data_[i] = other.data_[i];
+//     }
+//   }
+//   TRIBOL_HOST_DEVICE HeapAllocation( HeapAllocation&& other ) : data_( other.data_ )
+//   {
+//     // reset other
+//     other.data_ = nullptr;
+//   }
+//   TRIBOL_HOST_DEVICE HeapAllocation& operator=( const HeapAllocation& other )
+//   {
+//     if ( this != &other ) {
+//       delete[] data_;
+//       data_ = new T[other.size()];
+//       size_ = other.size();
+//       // deep copy data
+//       for ( size_type i{ 0 }; i < size_; ++i ) {
+//         data_[i] = other.data_[i];
+//       }
+//     }
+//     return *this;
+//   }
+//   TRIBOL_HOST_DEVICE HeapAllocation& operator=( HeapAllocation&& other )
+//   {
+//     if ( this != &other ) {
+//       delete[] data_;
+//       data_ = other.data_;
+//       // reset other
+//       other.data_ = nullptr;
+//     }
+//     return *this;
+//   }
 
- private:
-  T* pool_;
-  size_type offset_;
-};
+//   TRIBOL_HOST_DEVICE pointer data() { return data_; }
+//   TRIBOL_HOST_DEVICE const_pointer data() const { return data_; }
+//   TRIBOL_HOST_DEVICE size_type size() const { return N; }
+//   TRIBOL_HOST_DEVICE size_type stride() const { return 1; }
 
-template <typename T, IndexT N, typename Allocation>
+//  private:
+//   T* data_;
+//   size_type size_;
+// };
+
+// template <typename T, IndexT N>
+// class FixedHeapAllocation : public HeapAllocation<T> {
+//  public:
+//   using value_type = T;
+//   using pointer = T*;
+//   using const_pointer = const T*;
+//   using size_type = IndexT;
+
+//   TRIBOL_HOST_DEVICE HeapAllocation() : data_( new T[N] ) {}
+//   TRIBOL_HOST_DEVICE ~HeapAllocation() { delete[] data_; }
+
+//   TRIBOL_HOST_DEVICE HeapAllocation( const HeapAllocation& other ) : data_( new T[N] )
+//   {
+//     // deep copy data
+//     for ( size_type i{ 0 }; i < N; ++i ) {
+//       data_[i] = other.data_[i];
+//     }
+//   }
+//   TRIBOL_HOST_DEVICE HeapAllocation( HeapAllocation&& other ) : data_( other.data_ )
+//   {
+//     // reset other
+//     other.data_ = nullptr;
+//   }
+//   TRIBOL_HOST_DEVICE HeapAllocation& operator=( const HeapAllocation& other )
+//   {
+//     if ( this != &other ) {
+//       delete[] data_;
+//       data_ = new T[N];
+//       // deep copy data
+//       for ( size_type i{ 0 }; i < N; ++i ) {
+//         data_[i] = other.data_[i];
+//       }
+//     }
+//     return *this;
+//   }
+//   TRIBOL_HOST_DEVICE HeapAllocation& operator=( HeapAllocation&& other )
+//   {
+//     if ( this != &other ) {
+//       delete[] data_;
+//       data_ = other.data_;
+//       // reset other
+//       other.data_ = nullptr;
+//     }
+//     return *this;
+//   }
+
+//   TRIBOL_HOST_DEVICE pointer data() { return data_; }
+//   TRIBOL_HOST_DEVICE const_pointer data() const { return data_; }
+//   TRIBOL_HOST_DEVICE size_type size() const { return N; }
+//   TRIBOL_HOST_DEVICE size_type stride() const { return 1; }
+
+//  private:
+//   T* data_;
+// };
+
+// template <typename T, IndexT N>
+// class SubAllocation {
+//  public:
+//   using value_type = T;
+//   using pointer = T*;
+//   using const_pointer = const T*;
+//   using size_type = IndexT;
+
+//   TRIBOL_HOST_DEVICE SubAllocation( const Memory<T>& parent, size_type offset, size_type stride = 1 )
+//       : parent_( parent.data() ), offset_( offset ), stride_( stride )
+//   {
+//     // TODO: check if offset + N * stride < parent.size()
+//     // all memory in an allocation should be initialized to the default value
+//     for ( size_type i{ 0 }; i < N; ++i ) {
+//       parent_[offset_ + i * stride_] = T{};
+//     }
+//   }
+//   TRIBOL_HOST_DEVICE ~SubAllocation()
+//   {
+//     // everything in the parent should be destroyed when the parent is destroyed
+//     for ( size_type i{ 0 }; i < N; ++i ) {
+//       parent_[offset_ + i * stride_].~T();
+//     }
+//   }
+//   // Copying not allowed with sub-allocation
+//   TRIBOL_HOST_DEVICE SubAllocation( const SubAllocation& other ) = delete;
+//   TRIBOL_HOST_DEVICE SubAllocation( SubAllocation&& other ) : parent_( other.parent_ ), offset_( other.offset_ )
+//   {
+//     // reset other
+//     other.parent_ = nullptr;
+//     other.offset_ = 0;
+//   }
+//   // Copy assignment not allowed with sub-allocation
+//   TRIBOL_HOST_DEVICE SubAllocation& operator=( const SubAllocation& other ) = delete;
+//   TRIBOL_HOST_DEVICE SubAllocation& operator=( SubAllocation&& other )
+//   {
+//     parent_ = other.parent_;
+//     offset_ = other.offset_;
+//     // reset other
+//     other.parent_ = nullptr;
+//     other.offset_ = 0;
+//     return *this;
+//   }
+
+//   TRIBOL_HOST_DEVICE pointer data() { return parent_ + offset_; }
+//   TRIBOL_HOST_DEVICE const_pointer data() const { return parent_ + offset_; }
+//   TRIBOL_HOST_DEVICE size_type size() const { return N; }
+//   TRIBOL_HOST_DEVICE size_type stride() const { return stride_; }
+
+//  private:
+//   T* parent_;
+//   size_type offset_;
+//   size_type stride_;
+// };
+
+template <typename T, typename Memory>
 class ArrayBase {
  public:
   using value_type = T;
-  using allocation_type = Allocation;
-  using pointer = typename Allocation::pointer;
-  using const_pointer = typename Allocation::const_pointer;
-  using size_type = typename Allocation::size_type;
+  using memory_type = Memory;
+  using pointer = typename Memory::pointer;
+  using const_pointer = typename Memory::const_pointer;
+  using size_type = typename Memory::size_type;
 
-  TRIBOL_HOST_DEVICE ArrayBase() = default;
-  TRIBOL_HOST_DEVICE ArrayBase( Allocation&& allocation ) : allocation_( std::move( allocation ) ) {}
+  TRIBOL_HOST_DEVICE ArrayBase( Memory&& memory ) : memory_( std::move( memory ) )
+  {
+    // initialize memory
+    for ( size_type i{ 0 }; i < memory_.size(); ++i ) {
+      memory_.data()[i] = T{};
+    }
+  }
+  TRIBOL_HOST_DEVICE ~ArrayBase()
+  {
+    // call destructor on all elements
+    for ( size_type i{ 0 }; i < memory_.size(); ++i ) {
+      memory_.data()[i].~T();
+    }
+  }
+  TRIBOL_HOST_DEVICE ArrayBase( const ArrayBase& other ) : memory_( other.memory_ ) {}
+  TRIBOL_HOST_DEVICE ArrayBase( ArrayBase&& other ) : memory_( std::move( other.memory_ ) ) {}
+  TRIBOL_HOST_DEVICE ArrayBase& operator=( const ArrayBase& other )
+  {
+    if ( this != &other ) {
+      memory_ = other.memory_;
+    }
+    return *this;
+  }
+  TRIBOL_HOST_DEVICE ArrayBase& operator=( ArrayBase&& other )
+  {
+    if ( this != &other ) {
+      memory_ = std::move( other.memory_ );
+    }
+    return *this;
+  }
 
-  TRIBOL_HOST_DEVICE pointer data() { return allocation_.data(); }
-  TRIBOL_HOST_DEVICE const_pointer data() const { return allocation_.data(); }
+  TRIBOL_HOST_DEVICE pointer data() { return memory_.data(); }
+  TRIBOL_HOST_DEVICE const_pointer data() const { return memory_.data(); }
 
  protected:
-  Allocation allocation_;
+  Memory memory_;
 };
 
-template <typename T, IndexT N, typename Allocation = StackAllocation<T, N>>
-class FixedArray : public ArrayBase<T, N, Allocation> {
+template <typename T, IndexT N, class Memory = StackMemory<T, N>>
+class FixedArray : public ArrayBase<T, Memory> {
  public:
   using value_type = T;
-  using Base = ArrayBase<T, N, Allocation>;
-  using allocation_type = typename Base::allocation_type;
-  using pointer = typename Base::pointer;
-  using const_pointer = typename Base::const_pointer;
-  using size_type = typename Base::size_type;
-  using Base::allocation_;
+  using BaseClass = ArrayBase<T, Memory>;
+  using memory_type = typename BaseClass::memory_type;
+  using pointer = typename BaseClass::pointer;
+  using const_pointer = typename BaseClass::const_pointer;
+  using size_type = typename BaseClass::size_type;
 
-  TRIBOL_HOST_DEVICE FixedArray() = default;
-  TRIBOL_HOST_DEVICE FixedArray( Allocation&& allocation ) : Base( std::move( allocation ) ) {}
+  TRIBOL_HOST_DEVICE FixedArray( Memory&& memory = Memory( N ) ) : BaseClass( std::move( memory ) ) {}
 
-  TRIBOL_HOST_DEVICE size_type size() const { return allocation_.size(); }
+  TRIBOL_HOST_DEVICE size_type size() const { return memory_.size(); }
 
-  TRIBOL_HOST_DEVICE pointer operator[]( size_type i ) { return allocation_.data() + i; }
-  TRIBOL_HOST_DEVICE const_pointer operator[]( size_type i ) const { return allocation_.data() + i; }
+  TRIBOL_HOST_DEVICE T& operator[]( size_type i ) { return *( memory_.data() + i * memory_.stride() ); }
+  TRIBOL_HOST_DEVICE const T& operator[]( size_type i ) const { return *( memory_.data() + i * memory_.stride() ); }
 
-  TRIBOL_HOST_DEVICE pointer begin() { return allocation_.data(); }
-  TRIBOL_HOST_DEVICE const_pointer begin() const { return allocation_.data(); }
+  TRIBOL_HOST_DEVICE pointer begin() { return memory_.data(); }
+  TRIBOL_HOST_DEVICE const_pointer begin() const { return memory_.data(); }
 
-  TRIBOL_HOST_DEVICE pointer end() { return allocation_.data() + allocation_.size(); }
-  TRIBOL_HOST_DEVICE const_pointer end() const { return allocation_.data() + allocation_.size(); }
+  TRIBOL_HOST_DEVICE pointer end() { return memory_.data() + memory_.size(); }
+  TRIBOL_HOST_DEVICE const_pointer end() const { return memory_.data() + memory_.size(); }
+
+ private:
+  using BaseClass::memory_;
 };
 
-template <typename T, IndexT N, template <typename, IndexT> class Allocation = StackAllocation>
-class BoundedArray : public ArrayBase<T, N, Allocation<T, N>> {
+template <typename T, class Memory = AllocatedMemory<T, HeapAllocator<T>, DynamicSizer>>
+class BoundedArray : public ArrayBase<T, Memory> {
  public:
   using value_type = T;
-  using Base = ArrayBase<T, N, Allocation<T, N>>;
-  using allocation_type = typename Base::allocation_type;
-  using pointer = typename Base::pointer;
-  using const_pointer = typename Base::const_pointer;
-  using size_type = typename Base::size_type;
-  using Base::allocation_;
+  using BaseClass = ArrayBase<T, Memory>;
+  using memory_type = typename BaseClass::memory_type;
+  using pointer = typename BaseClass::pointer;
+  using const_pointer = typename BaseClass::const_pointer;
+  using size_type = typename BaseClass::size_type;
 
-  TRIBOL_HOST_DEVICE BoundedArray() = default;
-  TRIBOL_HOST_DEVICE BoundedArray( size_type size ) : size_( size )
+  TRIBOL_HOST_DEVICE BoundedArray( size_type size, size_type capacity ) : BaseClass( Memory( capacity ) ), size_( size )
   {
-    // TODO: check if size <= N
+    assert( capacity >= size );
   }
-  TRIBOL_HOST_DEVICE BoundedArray( Allocation<T, N>&& allocation ) : Base( std::move( allocation ) ) {}
-  TRIBOL_HOST_DEVICE BoundedArray( size_type size, Allocation<T, N>&& allocation )
-      : BoundedArray( std::move( allocation ) ), size_( size )
+  TRIBOL_HOST_DEVICE BoundedArray( size_type size, Memory&& memory ) : BaseClass( std::move( memory ) ), size_( size )
   {
+    assert( memory_.size() >= size );
   }
 
   TRIBOL_HOST_DEVICE size_type size() const { return size_; }
-  TRIBOL_HOST_DEVICE size_type capacity() const { return allocation_.size(); }
+  TRIBOL_HOST_DEVICE size_type capacity() const { return memory_.size(); }
 
   TRIBOL_HOST_DEVICE void push_back( T value )
   {
-    // TODO: check if size_ < N
-    allocation_.data()[size_] = value;
+    assert( size_ < memory_.size() );
+    memory_.data()[size_] = value;
     ++size_;
   }
   template <typename... Args>
   TRIBOL_HOST_DEVICE void emplace_back( Args&&... args )
   {
-    // TODO: check if size_ < N
-    allocation_.data()[size_] = T( std::forward<Args>( args )... );
+    assert( size_ < memory_.size() );
+    memory_.data()[size_] = T( std::forward<Args>( args )... );
     ++size_;
   }
   TRIBOL_HOST_DEVICE void pop_back() { --size_; }
   TRIBOL_HOST_DEVICE void resize( size_type size )
   {
-    // TODO: check if size <= N
+    assert( size <= memory_.size() );
     for ( size_type i{ size_ }; i < size; ++i ) {
-      allocation_.data()[i] = T{};
+      memory_.data()[i] = T{};
     }
     size_ = size;
   }
 
-  TRIBOL_HOST_DEVICE pointer operator[]( size_type i ) { return allocation_.data() + i; }
-  TRIBOL_HOST_DEVICE const_pointer operator[]( size_type i ) const { return allocation_.data() + i; }
+  TRIBOL_HOST_DEVICE T& operator[]( size_type i ) { return *( memory_.data() + i ); }
+  TRIBOL_HOST_DEVICE const T& operator[]( size_type i ) const { return *( memory_.data() + i ); }
 
-  TRIBOL_HOST_DEVICE pointer begin() { return allocation_.data(); }
-  TRIBOL_HOST_DEVICE const_pointer begin() const { return allocation_.data(); }
+  TRIBOL_HOST_DEVICE pointer begin() { return memory_.data(); }
+  TRIBOL_HOST_DEVICE const_pointer begin() const { return memory_.data(); }
 
-  TRIBOL_HOST_DEVICE pointer end() { return allocation_.data() + size_; }
-  TRIBOL_HOST_DEVICE const_pointer end() const { return allocation_.data() + size_; }
+  TRIBOL_HOST_DEVICE pointer end() { return memory_.data() + size_; }
+  TRIBOL_HOST_DEVICE const_pointer end() const { return memory_.data() + size_; }
 
  private:
+  using BaseClass::memory_;
   size_type size_;
-};
-
-template <typename T>
-class HeapAllocator {
- public:
-  using value_type = T;
-  using pointer = T*;
-  using const_pointer = const T*;
-  using size_type = IndexT;
-
-  TRIBOL_HOST_DEVICE pointer allocate( size_type n ) { return new T[n]; }
-  TRIBOL_HOST_DEVICE void deallocate( pointer p ) { delete[] p; }
 };
 
 // template <typename T>
