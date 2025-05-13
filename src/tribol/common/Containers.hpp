@@ -14,351 +14,10 @@
 
 namespace tribol {
 
-template <IndexT N>
-class FixedSizer {
- public:
-  TRIBOL_HOST_DEVICE FixedSizer( [[maybe_unused]] IndexT size ) { assert( size == N ); }
-  TRIBOL_HOST_DEVICE constexpr IndexT size() const { return N; }
-
-  using size_type = IndexT;
-  TRIBOL_HOST_DEVICE constexpr operator IndexT() const { return size(); }
-};
-
-class DynamicSizer {
- public:
-  TRIBOL_HOST_DEVICE DynamicSizer( IndexT size ) : size_( size ) {}
-  TRIBOL_HOST_DEVICE IndexT size() const { return size_; }
-
-  using size_type = IndexT;
-  TRIBOL_HOST_DEVICE operator IndexT() const { return size(); }
-
- private:
-  IndexT size_;
-};
-
-template <typename T, class Sizer = DynamicSizer>
-class Memory {
- public:
-  using value_type = T;
-  using pointer = T*;
-  using const_pointer = const T*;
-  using size_type = typename Sizer::size_type;
-
-  TRIBOL_HOST_DEVICE Memory( pointer data, size_type size, size_type stride = 1 )
-      : data_( data ), size_( size ), stride_( stride )
-  {
-  }
-  TRIBOL_HOST_DEVICE Memory( const Memory& other )
-      : data_( other.data_ ), size_( other.size_ ), stride_( other.stride_ )
-  {
-  }
-
-  TRIBOL_HOST_DEVICE pointer data() const { return data_; }
-  TRIBOL_HOST_DEVICE size_type size() const { return size_; }
-  TRIBOL_HOST_DEVICE size_type stride() const { return stride_; }
-
-  TRIBOL_HOST_DEVICE Memory<T, Sizer> view() const { return Memory<T, Sizer>( data_, size_, stride_ ); }
-
-  operator pointer() const { return data_; }
-
- protected:
-  pointer data_;
-  Sizer size_;
-  size_type stride_;
-};
-
-template <typename T, IndexT N>
-class StackMemory : public Memory<T, FixedSizer<N>> {
- public:
-  using value_type = typename Memory<T, FixedSizer<N>>::value_type;
-  using pointer = typename Memory<T, FixedSizer<N>>::pointer;
-  using const_pointer = typename Memory<T, FixedSizer<N>>::const_pointer;
-  using size_type = typename Memory<T, FixedSizer<N>>::size_type;
-
-  TRIBOL_HOST_DEVICE StackMemory() : Memory<T, FixedSizer<N>>( nullptr, N ) { data_ = stack_data_; }
-  TRIBOL_HOST_DEVICE StackMemory( [[maybe_unused]] size_type size ) : StackMemory() { assert( size == N ); }
-
-  using Memory<T, FixedSizer<N>>::data;
-  using Memory<T, FixedSizer<N>>::size;
-  using Memory<T, FixedSizer<N>>::stride;
-
-  using Memory<T, FixedSizer<N>>::view;
-
- private:
-  using Memory<T, FixedSizer<N>>::data_;
-  T stack_data_[N];
-};
-
-template <typename T, class Allocator = HeapAllocator<T>, class Sizer = DynamicSizer>
-class AllocatedMemory : public Memory<T, Sizer> {
- public:
-  using value_type = typename Memory<T, Sizer>::value_type;
-  using pointer = typename Memory<T, Sizer>::pointer;
-  using const_pointer = typename Memory<T, Sizer>::const_pointer;
-  using size_type = typename Memory<T, Sizer>::size_type;
-
-  TRIBOL_HOST_DEVICE AllocatedMemory( size_type size, Allocator allocator = Allocator() )
-      : Memory<T, Sizer>( allocator.allocate( size ), size ), allocator_( std::move( allocator ) )
-  {
-  }
-
-  // // Constructor from another memory space
-  // template <MemorySpace MSPACE2>
-  // AllocatedMemory( const AllocatedMemory<T, Allocator>& other ) : AllocatedMemory( other.size() )
-  // {
-  //   allocator_.copy( data_, other.data(), other.size() );
-  // }
-
-  ~AllocatedMemory() { allocator_.deallocate( data_, size_ ); }
-
-  // Copy constructor
-  AllocatedMemory( const AllocatedMemory& other ) : AllocatedMemory( other.size_ )
-  {
-    allocator_.copy( data_, other.data_, other.size_ );
-  }
-
-  // Move constructor
-  AllocatedMemory( AllocatedMemory&& other )
-      : Memory<T, Sizer>( other.data_, other.size_ ), allocator_{ other.allocator_ }
-  {
-    other.data_ = nullptr;
-    other.size_ = 0;
-  }
-
-  // Copy assignment operator
-  AllocatedMemory& operator=( const AllocatedMemory& other )
-  {
-    if ( this != &other ) {
-      if ( data_ != nullptr ) {
-        allocator_.deallocate( data_, size_ );
-      }
-      data_ = allocator_.allocate( other.size() );
-      size_ = other.size();
-      allocator_ = other.allocator();
-    }
-    allocator_.copy( data_, other.data(), other.size() );
-    return *this;
-  }
-
-  // template <MemorySpace MSPACE2>
-  // AllocatedMemory& operator=( const AllocatedMemory<T, MSPACE2, Allocator>& other )
-  // {
-  //   if ( this != &other ) {
-  //     if ( data_ != nullptr ) {
-  //       allocator_.deallocate( data_, size_ );
-  //     }
-  //     data_ = allocator_.allocate( other.size() );
-  //     size_ = other.size();
-  //     allocator_ = other.allocator();
-  //   }
-  //   allocator_.copy( data_, other.data(), other.size() );
-  //   return *this;
-  // }
-
-  // Move assignment operator
-  AllocatedMemory& operator=( AllocatedMemory&& other )
-  {
-    if ( this != &other ) {
-      if ( data_ != nullptr ) {
-        allocator_.deallocate( data_, size_ );
-      }
-      data_ = other.data_;
-      size_ = other.size_;
-      allocator_ = other.allocator_;
-
-      other.data_ = nullptr;
-      other.size_ = 0;
-    }
-    return *this;
-  }
-
-  using Memory<T, Sizer>::data;
-  using Memory<T, Sizer>::size;
-  using Memory<T, Sizer>::stride;
-  const Allocator& allocator() const { return allocator_; }
-
-  using Memory<T, Sizer>::view;
-
- private:
-  using Memory<T, Sizer>::data_;
-  using Memory<T, Sizer>::size_;
-  using Memory<T, Sizer>::stride_;
-  Allocator allocator_;
-};
-
-// template <typename T>
-// class HeapAllocation {
-//  public:
-//   using value_type = T;
-//   using pointer = T*;
-//   using const_pointer = const T*;
-//   using size_type = IndexT;
-
-//   TRIBOL_HOST_DEVICE HeapAllocation( size_type size ) : data_( new T[size] ), size_( size ) {}
-//   TRIBOL_HOST_DEVICE ~HeapAllocation() { delete[] data_; }
-
-//   TRIBOL_HOST_DEVICE HeapAllocation( const HeapAllocation& other ) : data_( new T[other.size()] ), size_( other.size
-//   )
-//   {
-//     // deep copy data
-//     for ( size_type i{ 0 }; i < size_; ++i ) {
-//       data_[i] = other.data_[i];
-//     }
-//   }
-//   TRIBOL_HOST_DEVICE HeapAllocation( HeapAllocation&& other ) : data_( other.data_ )
-//   {
-//     // reset other
-//     other.data_ = nullptr;
-//   }
-//   TRIBOL_HOST_DEVICE HeapAllocation& operator=( const HeapAllocation& other )
-//   {
-//     if ( this != &other ) {
-//       delete[] data_;
-//       data_ = new T[other.size()];
-//       size_ = other.size();
-//       // deep copy data
-//       for ( size_type i{ 0 }; i < size_; ++i ) {
-//         data_[i] = other.data_[i];
-//       }
-//     }
-//     return *this;
-//   }
-//   TRIBOL_HOST_DEVICE HeapAllocation& operator=( HeapAllocation&& other )
-//   {
-//     if ( this != &other ) {
-//       delete[] data_;
-//       data_ = other.data_;
-//       // reset other
-//       other.data_ = nullptr;
-//     }
-//     return *this;
-//   }
-
-//   TRIBOL_HOST_DEVICE pointer data() { return data_; }
-//   TRIBOL_HOST_DEVICE const_pointer data() const { return data_; }
-//   TRIBOL_HOST_DEVICE size_type size() const { return N; }
-//   TRIBOL_HOST_DEVICE size_type stride() const { return 1; }
-
-//  private:
-//   T* data_;
-//   size_type size_;
-// };
-
-// template <typename T, IndexT N>
-// class FixedHeapAllocation : public HeapAllocation<T> {
-//  public:
-//   using value_type = T;
-//   using pointer = T*;
-//   using const_pointer = const T*;
-//   using size_type = IndexT;
-
-//   TRIBOL_HOST_DEVICE HeapAllocation() : data_( new T[N] ) {}
-//   TRIBOL_HOST_DEVICE ~HeapAllocation() { delete[] data_; }
-
-//   TRIBOL_HOST_DEVICE HeapAllocation( const HeapAllocation& other ) : data_( new T[N] )
-//   {
-//     // deep copy data
-//     for ( size_type i{ 0 }; i < N; ++i ) {
-//       data_[i] = other.data_[i];
-//     }
-//   }
-//   TRIBOL_HOST_DEVICE HeapAllocation( HeapAllocation&& other ) : data_( other.data_ )
-//   {
-//     // reset other
-//     other.data_ = nullptr;
-//   }
-//   TRIBOL_HOST_DEVICE HeapAllocation& operator=( const HeapAllocation& other )
-//   {
-//     if ( this != &other ) {
-//       delete[] data_;
-//       data_ = new T[N];
-//       // deep copy data
-//       for ( size_type i{ 0 }; i < N; ++i ) {
-//         data_[i] = other.data_[i];
-//       }
-//     }
-//     return *this;
-//   }
-//   TRIBOL_HOST_DEVICE HeapAllocation& operator=( HeapAllocation&& other )
-//   {
-//     if ( this != &other ) {
-//       delete[] data_;
-//       data_ = other.data_;
-//       // reset other
-//       other.data_ = nullptr;
-//     }
-//     return *this;
-//   }
-
-//   TRIBOL_HOST_DEVICE pointer data() { return data_; }
-//   TRIBOL_HOST_DEVICE const_pointer data() const { return data_; }
-//   TRIBOL_HOST_DEVICE size_type size() const { return N; }
-//   TRIBOL_HOST_DEVICE size_type stride() const { return 1; }
-
-//  private:
-//   T* data_;
-// };
-
-// template <typename T, IndexT N>
-// class SubAllocation {
-//  public:
-//   using value_type = T;
-//   using pointer = T*;
-//   using const_pointer = const T*;
-//   using size_type = IndexT;
-
-//   TRIBOL_HOST_DEVICE SubAllocation( const Memory<T>& parent, size_type offset, size_type stride = 1 )
-//       : parent_( parent.data() ), offset_( offset ), stride_( stride )
-//   {
-//     // TODO: check if offset + N * stride < parent.size()
-//     // all memory in an allocation should be initialized to the default value
-//     for ( size_type i{ 0 }; i < N; ++i ) {
-//       parent_[offset_ + i * stride_] = T{};
-//     }
-//   }
-//   TRIBOL_HOST_DEVICE ~SubAllocation()
-//   {
-//     // everything in the parent should be destroyed when the parent is destroyed
-//     for ( size_type i{ 0 }; i < N; ++i ) {
-//       parent_[offset_ + i * stride_].~T();
-//     }
-//   }
-//   // Copying not allowed with sub-allocation
-//   TRIBOL_HOST_DEVICE SubAllocation( const SubAllocation& other ) = delete;
-//   TRIBOL_HOST_DEVICE SubAllocation( SubAllocation&& other ) : parent_( other.parent_ ), offset_( other.offset_ )
-//   {
-//     // reset other
-//     other.parent_ = nullptr;
-//     other.offset_ = 0;
-//   }
-//   // Copy assignment not allowed with sub-allocation
-//   TRIBOL_HOST_DEVICE SubAllocation& operator=( const SubAllocation& other ) = delete;
-//   TRIBOL_HOST_DEVICE SubAllocation& operator=( SubAllocation&& other )
-//   {
-//     parent_ = other.parent_;
-//     offset_ = other.offset_;
-//     // reset other
-//     other.parent_ = nullptr;
-//     other.offset_ = 0;
-//     return *this;
-//   }
-
-//   TRIBOL_HOST_DEVICE pointer data() { return parent_ + offset_; }
-//   TRIBOL_HOST_DEVICE const_pointer data() const { return parent_ + offset_; }
-//   TRIBOL_HOST_DEVICE size_type size() const { return N; }
-//   TRIBOL_HOST_DEVICE size_type stride() const { return stride_; }
-
-//  private:
-//   T* parent_;
-//   size_type offset_;
-//   size_type stride_;
-// };
-
-template <typename T, typename Memory>
+template <typename Memory>
 class ArrayBase {
  public:
-  using value_type = T;
-  using memory_type = Memory;
+  using value_type = typename Memory::value_type;
   using pointer = typename Memory::pointer;
   using const_pointer = typename Memory::const_pointer;
   using size_type = typename Memory::size_type;
@@ -366,125 +25,192 @@ class ArrayBase {
   TRIBOL_HOST_DEVICE ArrayBase( Memory&& memory ) : memory_( std::move( memory ) )
   {
     // initialize memory
-    for ( size_type i{ 0 }; i < memory_.size(); ++i ) {
-      memory_.data()[i] = T{};
+    for ( auto& value : memory_ ) {
+      value = value_type{};
     }
   }
   TRIBOL_HOST_DEVICE ~ArrayBase()
   {
     // call destructor on all elements
-    for ( size_type i{ 0 }; i < memory_.size(); ++i ) {
-      memory_.data()[i].~T();
+    for ( auto& value : memory_ ) {
+      value.~value_type();
     }
   }
-  TRIBOL_HOST_DEVICE ArrayBase( const ArrayBase& other ) : memory_( other.memory_ ) {}
-  TRIBOL_HOST_DEVICE ArrayBase( ArrayBase&& other ) : memory_( std::move( other.memory_ ) ) {}
-  TRIBOL_HOST_DEVICE ArrayBase& operator=( const ArrayBase& other )
-  {
-    if ( this != &other ) {
-      memory_ = other.memory_;
-    }
-    return *this;
-  }
-  TRIBOL_HOST_DEVICE ArrayBase& operator=( ArrayBase&& other )
-  {
-    if ( this != &other ) {
-      memory_ = std::move( other.memory_ );
-    }
-    return *this;
-  }
+  TRIBOL_DEFAULT_HOST_DEVICE ArrayBase( const ArrayBase& other ) = default;
+  TRIBOL_DEFAULT_HOST_DEVICE ArrayBase( ArrayBase&& other ) = default;
+  TRIBOL_DEFAULT_HOST_DEVICE ArrayBase& operator=( const ArrayBase& other ) = default;
+  TRIBOL_DEFAULT_HOST_DEVICE ArrayBase& operator=( ArrayBase&& other ) = default;
 
-  TRIBOL_HOST_DEVICE pointer data() { return memory_.data(); }
-  TRIBOL_HOST_DEVICE const_pointer data() const { return memory_.data(); }
+  TRIBOL_HOST_DEVICE value_type& at( size_type i ) { return memory_.at( i ); }
+  TRIBOL_HOST_DEVICE const value_type& at( size_type i ) const { return memory_.at( i ); }
+
+  TRIBOL_HOST_DEVICE value_type& operator[]( size_type i ) { return memory_.at( i ); }
+  TRIBOL_HOST_DEVICE const value_type& operator[]( size_type i ) const { return memory_.at( i ); }
+
+  using iterator_type = typename Memory::iterator_type;
+  using const_iterator_type = typename Memory::const_iterator_type;
+
+  TRIBOL_HOST_DEVICE iterator_type begin() { return memory_.begin(); }
+  TRIBOL_HOST_DEVICE iterator_type end() { return memory_.end(); }
+
+  TRIBOL_HOST_DEVICE const_iterator_type begin() const { return memory_.begin(); }
+  TRIBOL_HOST_DEVICE const_iterator_type end() const { return memory_.end(); }
+
+  TRIBOL_HOST_DEVICE Memory& memory() { return memory_; }
+  TRIBOL_HOST_DEVICE const Memory& memory() const { return memory_; }
 
  protected:
   Memory memory_;
 };
 
 template <typename T, IndexT N, class Memory = StackMemory<T, N>>
-class FixedArray : public ArrayBase<T, Memory> {
+class FixedArray : public ArrayBase<Memory> {
  public:
   using value_type = T;
-  using BaseClass = ArrayBase<T, Memory>;
-  using memory_type = typename BaseClass::memory_type;
-  using pointer = typename BaseClass::pointer;
-  using const_pointer = typename BaseClass::const_pointer;
-  using size_type = typename BaseClass::size_type;
+  using BaseClass = ArrayBase<Memory>;
+  using typename BaseClass::const_pointer;
+  using typename BaseClass::pointer;
+  using typename BaseClass::size_type;
+
+  static_assert( std::is_same<typename Memory::value_type, value_type>::value,
+                 "BoundedArray must be used with same type as memory" );
 
   TRIBOL_HOST_DEVICE FixedArray( Memory&& memory = Memory( N ) ) : BaseClass( std::move( memory ) ) {}
 
-  TRIBOL_HOST_DEVICE size_type size() const { return memory_.size(); }
+  using BaseClass::at;
+  using BaseClass::operator[];
 
-  TRIBOL_HOST_DEVICE T& operator[]( size_type i ) { return *( memory_.data() + i * memory_.stride() ); }
-  TRIBOL_HOST_DEVICE const T& operator[]( size_type i ) const { return *( memory_.data() + i * memory_.stride() ); }
+  using typename BaseClass::const_iterator_type;
+  using typename BaseClass::iterator_type;
 
-  TRIBOL_HOST_DEVICE pointer begin() { return memory_.data(); }
-  TRIBOL_HOST_DEVICE const_pointer begin() const { return memory_.data(); }
+  using BaseClass::begin;
+  using BaseClass::end;
 
-  TRIBOL_HOST_DEVICE pointer end() { return memory_.data() + memory_.size(); }
-  TRIBOL_HOST_DEVICE const_pointer end() const { return memory_.data() + memory_.size(); }
+  TRIBOL_HOST_DEVICE constexpr size_type size() const { return N; }
 
  private:
   using BaseClass::memory_;
 };
 
-template <typename T, class Memory = AllocatedMemory<T, HeapAllocator<T>, DynamicSizer>>
-class BoundedArray : public ArrayBase<T, Memory> {
+template <typename T, class Memory = AllocatedMemory<T>>
+class BoundedArray : public ArrayBase<Memory> {
  public:
   using value_type = T;
-  using BaseClass = ArrayBase<T, Memory>;
+  using BaseClass = ArrayBase<Memory>;
+  using typename BaseClass::const_pointer;
+  using typename BaseClass::pointer;
+  using typename BaseClass::size_type;
+
+  static_assert( Memory::fixed_size_ == false, "BoundedArray must be used with non-fixed size memory" );
+  static_assert( std::is_same<typename Memory::value_type, value_type>::value,
+                 "BoundedArray must be used with same type as memory" );
+
+  TRIBOL_HOST_DEVICE BoundedArray( size_type size, size_type capacity ) : BaseClass( Memory( size, capacity ) ) {}
+  TRIBOL_HOST_DEVICE BoundedArray( Memory&& memory ) : BaseClass( std::move( memory ) ) {}
+
+  using BaseClass::at;
+  using BaseClass::operator[];
+
+  using typename BaseClass::const_iterator_type;
+  using typename BaseClass::iterator_type;
+
+  using BaseClass::begin;
+  using BaseClass::end;
+
+  TRIBOL_HOST_DEVICE constexpr size_type size() const { return memory_.size(); }
+  TRIBOL_HOST_DEVICE constexpr size_type capacity() const { return memory_.capacity(); }
+
+  TRIBOL_HOST_DEVICE void push_back( T value ) { operator[]( memory_.setSize( size() + 1 ) - 1 ) = value; }
+  template <typename... Args>
+  TRIBOL_HOST_DEVICE void emplace_back( Args&&... args )
+  {
+    operator[]( memory_.setSize( size() + 1 ) - 1 ) = T( std::forward<Args>( args )... );
+  }
+  TRIBOL_HOST_DEVICE void pop_back() { memory_.setSize( size() - 1 ); }
+  TRIBOL_HOST_DEVICE void resize( size_type new_size )
+  {
+    assert( new_size <= capacity() );
+    // destruct elements no longer in range
+    for ( size_type i{ new_size }; i < size(); ++i ) {
+      operator[]( i ).~T();
+    }
+    // create empty new elements
+    for ( size_type i{ size() }; i < new_size; ++i ) {
+      operator[]( i ) = T{};
+    }
+    memory_.setSize( new_size );
+  }
+
+ private:
+  using BaseClass::memory_;
+};
+
+template <typename T, class Allocator = HeapAllocator<T>>
+class Array : public BoundedArray<AllocatedMemory<T, Allocator>> {
+ public:
+  using value_type = T;
+  using BaseClass = BoundedArray<AllocatedMemory<T, Allocator>>;
   using memory_type = typename BaseClass::memory_type;
   using pointer = typename BaseClass::pointer;
   using const_pointer = typename BaseClass::const_pointer;
   using size_type = typename BaseClass::size_type;
 
-  TRIBOL_HOST_DEVICE BoundedArray( size_type size, size_type capacity ) : BaseClass( Memory( capacity ) ), size_( size )
+  constexpr static size_type default_capacity_ = 32;
+  constexpr static RealT default_resize_ratio_ = 2.0;
+
+#pragma nv_exec_check_disable
+  TRIBOL_HOST_DEVICE Array( size_type size = 0, size_type capacity = default_capacity_ )
+      : BaseClass( AllocatedMemory<T, Allocator>( size, capacity >= size ? capacity : size ) )
   {
-    assert( capacity >= size );
-  }
-  TRIBOL_HOST_DEVICE BoundedArray( size_type size, Memory&& memory ) : BaseClass( std::move( memory ) ), size_( size )
-  {
-    assert( memory_.size() >= size );
   }
 
-  TRIBOL_HOST_DEVICE size_type size() const { return size_; }
-  TRIBOL_HOST_DEVICE size_type capacity() const { return memory_.size(); }
+  using BaseClass::at;
+  using BaseClass::operator[];
+
+  using typename BaseClass::const_iterator_type;
+  using typename BaseClass::iterator_type;
+
+  using BaseClass::begin;
+  using BaseClass::end;
+
+  using BaseClass::capacity;
+  using BaseClass::size;
 
   TRIBOL_HOST_DEVICE void push_back( T value )
   {
-    assert( size_ < memory_.size() );
-    memory_.data()[size_] = value;
-    ++size_;
+    if ( size() >= capacity() ) {
+      setCapacity( static_cast<size_type>( capacity() * resize_ratio_ ) );
+    }
+    BaseClass::push_back( value );
   }
   template <typename... Args>
   TRIBOL_HOST_DEVICE void emplace_back( Args&&... args )
   {
-    assert( size_ < memory_.size() );
-    memory_.data()[size_] = T( std::forward<Args>( args )... );
-    ++size_;
-  }
-  TRIBOL_HOST_DEVICE void pop_back() { --size_; }
-  TRIBOL_HOST_DEVICE void resize( size_type size )
-  {
-    assert( size <= memory_.size() );
-    for ( size_type i{ size_ }; i < size; ++i ) {
-      memory_.data()[i] = T{};
+    if ( size() >= capacity() ) {
+      setCapacity( static_cast<size_type>( capacity() * resize_ratio_ ) );
     }
-    size_ = size;
+    BaseClass::emplace_back( std::forward<Args>( args )... );
   }
-
-  TRIBOL_HOST_DEVICE T& operator[]( size_type i ) { return *( memory_.data() + i ); }
-  TRIBOL_HOST_DEVICE const T& operator[]( size_type i ) const { return *( memory_.data() + i ); }
-
-  TRIBOL_HOST_DEVICE pointer begin() { return memory_.data(); }
-  TRIBOL_HOST_DEVICE const_pointer begin() const { return memory_.data(); }
-
-  TRIBOL_HOST_DEVICE pointer end() { return memory_.data() + size_; }
-  TRIBOL_HOST_DEVICE const_pointer end() const { return memory_.data() + size_; }
+  using BaseClass::pop_back;
+  TRIBOL_HOST_DEVICE void resize( size_type new_size )
+  {
+    if ( new_size > capacity() ) {
+      setCapacity( static_cast<size_type>( new_size ) );
+    }
+    BaseClass::resize( new_size );
+  }
 
  private:
+  TRIBOL_HOST_DEVICE void setCapacity( size_type new_capacity )
+  {
+    assert( new_capacity > size() );
+    AllocatedMemory<T, Allocator> new_memory( size(), new_capacity );
+    memory_.allocator().copy( new_memory.data(), memory_.data(), size() );
+    memory_ = std::move( new_memory );
+  }
+
   using BaseClass::memory_;
-  size_type size_;
+  RealT resize_ratio_ = default_resize_ratio_;
 };
 
 // template <typename T>
@@ -562,7 +288,7 @@ class DeviceArray : public DeviceArrayData<T> {
  public:
   TRIBOL_HOST_DEVICE DeviceArray() : DeviceArrayData<T>() {}
   TRIBOL_HOST_DEVICE DeviceArray( IndexT size ) : DeviceArrayData<T>( size ) {}
-  TRIBOL_HOST_DEVICE ~DeviceArray() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE ~DeviceArray() = default;
 
   TRIBOL_HOST_DEVICE DeviceArray( const DeviceArray& other ) : DeviceArrayData<T>( other ) {}
   TRIBOL_HOST_DEVICE DeviceArray( DeviceArray&& other ) : DeviceArrayData<T>( std::move( other ) ) {}
@@ -602,7 +328,7 @@ class DeviceArray2D : public DeviceArrayData<T> {
       : DeviceArrayData<T>( width * height ), height_{ height }, width_{ width }
   {
   }
-  TRIBOL_HOST_DEVICE ~DeviceArray2D() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE ~DeviceArray2D() = default;
 
   TRIBOL_HOST_DEVICE DeviceArray2D( const DeviceArray2D& other )
       : DeviceArrayData<T>( other ), height_{ other.height_ }, width_{ other.width_ }
@@ -669,15 +395,15 @@ class DeviceArray2D : public DeviceArrayData<T> {
 template <typename T, IndexT N>
 class StackArray {
  public:
-  TRIBOL_HOST_DEVICE StackArray() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE StackArray() = default;
   TRIBOL_HOST_DEVICE StackArray( IndexT width ) : width_{ width } {}
-  TRIBOL_HOST_DEVICE ~StackArray() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE ~StackArray() = default;
 
-  TRIBOL_HOST_DEVICE StackArray( const StackArray& other ) = default;
-  TRIBOL_HOST_DEVICE StackArray( StackArray&& other ) = default;
+  TRIBOL_DEFAULT_HOST_DEVICE StackArray( const StackArray& other ) = default;
+  TRIBOL_DEFAULT_HOST_DEVICE StackArray( StackArray&& other ) = default;
 
-  TRIBOL_HOST_DEVICE StackArray& operator=( const StackArray& other ) = default;
-  TRIBOL_HOST_DEVICE StackArray& operator=( StackArray&& other ) = default;
+  TRIBOL_DEFAULT_HOST_DEVICE StackArray& operator=( const StackArray& other ) = default;
+  TRIBOL_DEFAULT_HOST_DEVICE StackArray& operator=( StackArray&& other ) = default;
 
   TRIBOL_HOST_DEVICE operator T*() noexcept { return &data_[0]; }
   TRIBOL_HOST_DEVICE operator const T*() const noexcept { return &data_[0]; }

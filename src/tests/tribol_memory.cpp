@@ -3,14 +3,16 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-// gtest includes
 #include <iostream>
+
+// gtest includes
 #include "gtest/gtest.h"
 
 // Tribol includes
-#include "tribol/common/Containers.hpp"
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/common/LoopExec.hpp"
+#include "tribol/common/Memory.hpp"
+#include "tribol/common/Containers.hpp"
 
 /*!
  *  Test fixture class to test memory functions
@@ -19,11 +21,13 @@ class MemoryTest : public ::testing::Test {
  public:
   constexpr static int N = 100000;
 
+  using SizeVsCapacityT = tribol::SizeLECapacity<tribol::RuntimeCapacity<tribol::IndexT>>;
+
   template <tribol::MemorySpace MSPACE, tribol::ExecutionMode EXMODE>
   void RunFakeInitTest()
   {
     tribol::forAllExec<EXMODE>( 1, [=] TRIBOL_HOST_DEVICE( int i ) {
-      auto int_array = tribol::BoundedArray<int, tribol::StackMemory<int, 1>>( 0, 1 );
+      auto int_array = tribol::BoundedArray<int, tribol::StackMemory<int, 1, tribol::SizeLECapacity>>( 0, 1 );
       int_array.push_back( i );
       tribol::FixedArray<int, 1, tribol::StackMemory<int, 1>> fixed_int_array;
       fixed_int_array[0] = 1;
@@ -34,7 +38,7 @@ class MemoryTest : public ::testing::Test {
   void RunStackTest()
   {
     tribol::forAllExec<EXMODE>( N, [=] TRIBOL_HOST_DEVICE( int i ) {
-      auto int_array = tribol::BoundedArray<int, tribol::StackMemory<int, 1>>( 0, 1 );
+      auto int_array = tribol::BoundedArray<int, tribol::StackMemory<int, 1, tribol::SizeLECapacity>>( 0, 1 );
       int_array.push_back( i );
       tribol::FixedArray<int, 1, tribol::StackMemory<int, 1>> fixed_int_array;
       fixed_int_array[0] = 1;
@@ -45,11 +49,11 @@ class MemoryTest : public ::testing::Test {
   void RunHeapTest()
   {
     tribol::forAllExec<EXMODE>( N, [=] TRIBOL_HOST_DEVICE( int i ) {
-      auto int_array =
-          tribol::BoundedArray<int, tribol::AllocatedMemory<int, tribol::HeapAllocator<int>, tribol::DynamicSizer>>(
-              0, 1 );
+      auto int_array = tribol::BoundedArray<
+          int, tribol::AllocatedMemory<int, tribol::HeapAllocator<int>, tribol::IndexT, SizeVsCapacityT>>( 0, 1 );
       int_array.push_back( i );
-      tribol::FixedArray<int, 1, tribol::AllocatedMemory<int, tribol::HeapAllocator<int>, tribol::DynamicSizer>>
+      tribol::FixedArray<int, 1,
+                         tribol::AllocatedMemory<int, tribol::HeapAllocator<int>, tribol::IndexT, SizeVsCapacityT>>
           fixed_int_array;
       fixed_int_array[0] = 1;
     } );
@@ -58,14 +62,15 @@ class MemoryTest : public ::testing::Test {
   template <tribol::MemorySpace MSPACE, tribol::ExecutionMode EXMODE>
   void RunPoolTest()
   {
-    auto int_pool = tribol::AllocatedMemory<int, tribol::UmpireAllocator<int, MSPACE>, tribol::DynamicSizer>( 2 * N );
-    tribol::Memory<int, tribol::DynamicSizer> int_pool_view = int_pool.view();
+    using MemT = typename tribol::AllocatedMemory<int, tribol::UmpireAllocator<int, MSPACE>>::view_type;
+
+    // typical memory allocated for an array
+    auto int_pool = tribol::AllocatedMemory<int, tribol::UmpireAllocator<int, MSPACE>>( 2 * N );
+    MemT int_pool_view = int_pool.view();
     tribol::forAllExec<EXMODE>( N, [=] TRIBOL_HOST_DEVICE( int i ) {
-      auto int_array = tribol::BoundedArray<int, tribol::Memory<int, tribol::FixedSizer<1>>>(
-          0, tribol::Memory<int, tribol::FixedSizer<1>>( int_pool_view + i, 1 ) );
+      auto int_array = tribol::BoundedArray<int, MemT>( MemT( int_pool_view + i, 0, 1, 1 ) );
       int_array.push_back( i );
-      tribol::FixedArray<int, 1, tribol::Memory<int, tribol::FixedSizer<1>>> fixed_int_array(
-          tribol::Memory<int, tribol::FixedSizer<1>>( int_pool_view + i, 1 ) );
+      tribol::FixedArray<int, 1, MemT> fixed_int_array( MemT( int_pool_view + i, 1 ) );
       fixed_int_array[0] = 1;
     } );
   }
