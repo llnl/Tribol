@@ -203,7 +203,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
         else:
             entries.append(cmake_cache_option("ENABLE_FORTRAN", False))
 
-        entries.append(cmake_cache_string("BLT_CXX_STD", "c++14", ""))
+        entries.append(cmake_cache_string("BLT_CXX_STD", "c++17", ""))
 
         # Add optimization flag workaround for Debug builds with
         # cray compiler or newer HIP
