@@ -12,7 +12,7 @@
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/Memory.hpp"
-#include "tribol/common/Containers.hpp"
+#include "tribol/common/Arrays.hpp"
 
 /*!
  *  Test fixture class to test memory functions

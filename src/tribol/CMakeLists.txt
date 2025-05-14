@@ -11,6 +11,7 @@ endif()
 ## list of headers
 set(tribol_headers
 
+    common/Arrays.hpp
     common/ArrayTypes.hpp
     common/BasicTypes.hpp
     common/Containers.hpp

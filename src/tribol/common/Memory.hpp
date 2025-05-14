@@ -61,6 +61,8 @@ class SizeEqCapacity : public Capacity {
  public:
   using typename Capacity::size_type;
 
+  using capacity_type = Capacity;
+
   TRIBOL_HOST_DEVICE SizeEqCapacity( size_type size, [[maybe_unused]] size_type capacity ) : Capacity( size )
   {
     assert( size == capacity );
@@ -71,13 +73,11 @@ class SizeEqCapacity : public Capacity {
 
   using Capacity::capacity;
 
-  TRIBOL_HOST_DEVICE size_type setSize( size_type size ) { return Capacity::setCapacity( size ); }
+  TRIBOL_HOST_DEVICE size_type setSize( size_type size ) { return setCapacity( size ); }
 
   using Capacity::setCapacity;
 
   TRIBOL_HOST_DEVICE constexpr bool sizeAtCapacity() const { return true; }
-
-  using Capacity::capacity_at_runtime_;
 
   constexpr static bool fixed_size_ = true;
 };
@@ -86,6 +86,8 @@ template <typename Capacity>
 class SizeLECapacity : public Capacity {
  public:
   using typename Capacity::size_type;
+
+  using capacity_type = Capacity;
 
   TRIBOL_HOST_DEVICE SizeLECapacity( size_type size, size_type capacity )
       : Capacity( capacity >= size ? capacity : size ), size_( size >= 0 ? size : 0 )
@@ -109,11 +111,7 @@ class SizeLECapacity : public Capacity {
     return size_;
   }
 
-  using Capacity::setCapacity;
-
   TRIBOL_HOST_DEVICE bool sizeAtCapacity() const { return size() >= capacity(); }
-
-  using Capacity::capacity_at_runtime_;
 
   constexpr static bool fixed_size_ = false;
 
@@ -124,10 +122,13 @@ class SizeLECapacity : public Capacity {
 template <typename T, class SizeAndCapacity>
 class ContiguousMemory : public SizeAndCapacity {
  public:
+  using typename SizeAndCapacity::size_type;
+
+  using size_and_capacity_type = SizeAndCapacity;
+
   using value_type = T;
   using pointer = T*;
   using const_pointer = const T*;
-  using typename SizeAndCapacity::size_type;
 
   TRIBOL_HOST_DEVICE ContiguousMemory( pointer data, size_type size, size_type capacity )
       : SizeAndCapacity( size, capacity ), data_( data )
@@ -154,19 +155,12 @@ class ContiguousMemory : public SizeAndCapacity {
   TRIBOL_HOST_DEVICE const_pointer begin() const { return data_; }
   TRIBOL_HOST_DEVICE const_pointer end() const { return data_ + size(); }
 
-  using SizeAndCapacity::capacity;
   using SizeAndCapacity::size;
-
-  using SizeAndCapacity::setCapacity;
-  using SizeAndCapacity::setSize;
 
   TRIBOL_HOST_DEVICE constexpr size_type stride() const { return 1; }
 
   TRIBOL_HOST_DEVICE pointer data() const { return data_; }
   TRIBOL_HOST_DEVICE operator pointer() const { return data_; }
-
-  using SizeAndCapacity::capacity_at_runtime_;
-  using SizeAndCapacity::fixed_size_;
 
  protected:
   pointer data_;
@@ -175,10 +169,15 @@ class ContiguousMemory : public SizeAndCapacity {
 template <typename T, class SizeAndCapacity>
 class FixedStride : public SizeAndCapacity {
  public:
+  using typename SizeAndCapacity::size_type;
+
+  using typename SizeAndCapacity::capacity_type;
+
+  using size_and_capacity_type = SizeAndCapacity;
+
   using value_type = T;
   using pointer = T*;
   using const_pointer = const T*;
-  using typename SizeAndCapacity::size_type;
 
   TRIBOL_HOST_DEVICE FixedStride( pointer data, size_type size, size_type capacity, size_type stride )
       : SizeAndCapacity( size, capacity ), data_( data ), stride_( stride )
@@ -188,44 +187,44 @@ class FixedStride : public SizeAndCapacity {
 
   template <typename Ptr>
   struct IteratorBase {
-    IteratorBase( Ptr ptr, size_type stride ) : ptr_( ptr ), stride_( stride ) {}
-    IteratorBase& operator++()
+    TRIBOL_HOST_DEVICE IteratorBase( Ptr ptr, size_type stride ) : ptr_( ptr ), stride_( stride ) {}
+    TRIBOL_HOST_DEVICE IteratorBase& operator++()
     {
       ptr_ += stride_;
       return *this;
     }
-    IteratorBase& operator--()
+    TRIBOL_HOST_DEVICE IteratorBase& operator--()
     {
       ptr_ -= stride_;
       return *this;
     }
-    IteratorBase operator++( int )
+    TRIBOL_HOST_DEVICE IteratorBase operator++( int )
     {
       IteratorBase tmp = *this;
       ++( *this );
       return tmp;
     }
-    IteratorBase operator--( int )
+    TRIBOL_HOST_DEVICE IteratorBase operator--( int )
     {
       IteratorBase tmp = *this;
       --( *this );
       return tmp;
     }
-    IteratorBase operator+( size_type n ) const
+    TRIBOL_HOST_DEVICE IteratorBase operator+( size_type n ) const
     {
       IteratorBase tmp = *this;
       tmp.ptr_ += n * stride_;
       return tmp;
     }
-    IteratorBase operator-( size_type n ) const
+    TRIBOL_HOST_DEVICE IteratorBase operator-( size_type n ) const
     {
       IteratorBase tmp = *this;
       tmp.ptr_ -= n * stride_;
       return tmp;
     }
-    bool operator==( const IteratorBase& other ) const { return ptr_ == other.ptr_; }
-    bool operator!=( const IteratorBase& other ) const { return !( *this == other ); }
-    value_type& operator*() { return *ptr_; }
+    TRIBOL_HOST_DEVICE bool operator==( const IteratorBase& other ) const { return ptr_ == other.ptr_; }
+    TRIBOL_HOST_DEVICE bool operator!=( const IteratorBase& other ) const { return !( *this == other ); }
+    TRIBOL_HOST_DEVICE value_type& operator*() { return *ptr_; }
 
    private:
     Ptr ptr_;
@@ -248,19 +247,12 @@ class FixedStride : public SizeAndCapacity {
   TRIBOL_HOST_DEVICE ConstIterator begin() const { return ConstIterator( data_, stride_ ); }
   TRIBOL_HOST_DEVICE ConstIterator end() const { return ConstIterator( data_ + size() * stride_, stride_ ); }
 
-  using SizeAndCapacity::capacity;
   using SizeAndCapacity::size;
-
-  using SizeAndCapacity::setCapacity;
-  using SizeAndCapacity::setSize;
 
   TRIBOL_HOST_DEVICE size_type stride() const { return stride_; }
 
   TRIBOL_HOST_DEVICE pointer data() const { return data_; }
   TRIBOL_HOST_DEVICE operator pointer() const { return data_; }
-
-  using SizeAndCapacity::capacity_at_runtime_;
-  using SizeAndCapacity::fixed_size_;
 
  protected:
   pointer data_;
@@ -270,10 +262,12 @@ class FixedStride : public SizeAndCapacity {
 template <class Accessor>
 class Memory : public Accessor {
  public:
-  using typename Accessor::const_pointer;
-  using typename Accessor::pointer;
   using typename Accessor::size_type;
+
+  using typename Accessor::pointer;
   using typename Accessor::value_type;
+
+  using accessor_type = Accessor;
   using view_type = Memory<Accessor>;
 
   TRIBOL_HOST_DEVICE Memory( pointer data, size_type size, size_type capacity, size_type stride )
@@ -314,12 +308,6 @@ class Memory : public Accessor {
     return Accessor::operator[]( i );
   }
 
-  using typename Accessor::const_iterator_type;
-  using typename Accessor::iterator_type;
-
-  using Accessor::begin;
-  using Accessor::end;
-
   template <typename NewAccessor>
   TRIBOL_HOST_DEVICE Memory<NewAccessor> view( size_type offset, size_type size, size_type capacity,
                                                size_type stride = 1 ) const
@@ -330,34 +318,19 @@ class Memory : public Accessor {
 
   TRIBOL_HOST_DEVICE Memory<Accessor> view() const { return Memory<Accessor>( *this ); }
 
-  using Accessor::capacity;
   using Accessor::size;
 
-  using Accessor::setCapacity;
-  using Accessor::setSize;
-
-  using Accessor::stride;
-
   using Accessor::data;
-  // not working with clang 16
-  // using Accessor::operator pointer;
-  TRIBOL_HOST_DEVICE operator pointer() const { return Accessor::operator pointer(); }
 
-  using Accessor::capacity_at_runtime_;
-  using Accessor::fixed_size_;
-
- protected:
-  using Accessor::data_;
+  // assume this is a view of memory and already initialized
+  constexpr static bool initialized_ = true;
 };
 
 template <typename T, IndexT N, template <typename> class SizeVsCapacity = SizeEqCapacity>
 class StackMemory : public Memory<ContiguousMemory<T, SizeVsCapacity<FixedCapacity<IndexT, N>>>> {
  public:
   using BaseClass = Memory<ContiguousMemory<T, SizeVsCapacity<FixedCapacity<IndexT, N>>>>;
-  using typename BaseClass::const_pointer;
-  using typename BaseClass::pointer;
-  using typename BaseClass::value_type;
-  using typename BaseClass::view_type;
+
   using size_type = IndexT;
 
   TRIBOL_HOST_DEVICE StackMemory( size_type size = N ) : BaseClass( nullptr, size, N, 1 ) { data_ = stack_data_; }
@@ -392,32 +365,7 @@ class StackMemory : public Memory<ContiguousMemory<T, SizeVsCapacity<FixedCapaci
   // destructor
   TRIBOL_DEFAULT_HOST_DEVICE ~StackMemory() = default;
 
-  using BaseClass::at;
-  using BaseClass::operator[];
-
-  using typename BaseClass::const_iterator_type;
-  using typename BaseClass::iterator_type;
-
-  using BaseClass::begin;
-  using BaseClass::end;
-
-  using BaseClass::view;
-
-  using BaseClass::capacity;
-  using BaseClass::size;
-
-  using BaseClass::setCapacity;
-  using BaseClass::setSize;
-
-  using BaseClass::stride;
-
-  using BaseClass::data;
-  // not working with clang 16
-  // using BaseClass::operator pointer;
-  TRIBOL_HOST_DEVICE operator pointer() const { return BaseClass::operator pointer(); }
-
-  using BaseClass::capacity_at_runtime_;
-  using BaseClass::fixed_size_;
+  constexpr static bool initialized_ = false;
 
  private:
   using BaseClass::data_;
@@ -430,11 +378,17 @@ class HeapAllocator {
   using value_type = T;
   using pointer = T*;
 
-  TRIBOL_HOST_DEVICE pointer allocate( size_t n ) { return static_cast<pointer>( malloc( n * sizeof( value_type ) ) ); }
+  TRIBOL_HOST_DEVICE pointer allocate( size_t n ) const
+  {
+    return static_cast<pointer>( malloc( n * sizeof( value_type ) ) );
+  }
 
-  TRIBOL_HOST_DEVICE void deallocate( pointer p, size_t ) { free( static_cast<void*>( p ) ); }
+  TRIBOL_HOST_DEVICE void deallocate( pointer p, size_t ) const { free( static_cast<void*>( p ) ); }
 
-  TRIBOL_HOST_DEVICE void copy( pointer dst, pointer src, size_t n ) { memcpy( dst, src, n * sizeof( value_type ) ); }
+  TRIBOL_HOST_DEVICE void copy( pointer dst, pointer src, size_t n ) const
+  {
+    memcpy( dst, src, n * sizeof( value_type ) );
+  }
 };
 
 #ifdef TRIBOL_USE_UMPIRE
@@ -450,18 +404,19 @@ class UmpireAllocator {
   {
   }
 
-  pointer allocate( size_t n ) { return static_cast<T*>( allocator_.allocate( n ) ); }
+  pointer allocate( size_t n ) const { return static_cast<T*>( allocator_.allocate( n ) ); }
 
-  void deallocate( pointer p, size_t n ) { allocator_.deallocate( p, n ); }
+  void deallocate( pointer p, size_t n ) const { allocator_.deallocate( p, n ); }
 
-  void copy( pointer dst, pointer src, size_t n )
+  void copy( pointer dst, pointer src, size_t n ) const
   {
     auto& rm = umpire::ResourceManager::getInstance();
     rm.copy( dst, src, n * sizeof( value_type ) );
   }
 
  private:
-  umpire::TypedAllocator<value_type> allocator_;
+  // NOTE: TypedAllocator has non-const member functions, so make this mutable
+  mutable umpire::TypedAllocator<value_type> allocator_;
 };
 #endif
 
@@ -470,11 +425,11 @@ template <typename T, class Allocator = HeapAllocator<T>, typename SizeT = Index
 class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
  public:
   using BaseClass = Memory<ContiguousMemory<T, SizeVsCapacity>>;
-  using typename BaseClass::const_pointer;
-  using typename BaseClass::pointer;
+
   using typename BaseClass::size_type;
+
+  using typename BaseClass::pointer;
   using typename BaseClass::value_type;
-  using typename BaseClass::view_type;
 
   static_assert( std::is_same<typename Allocator::value_type, value_type>::value,
                  "AllocatedMemory must be used with same type as allocator" );
@@ -539,46 +494,28 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
     if ( this != &other ) {
       BaseClass::operator=( std::move( other ) );
       allocator_ = other.allocator_;
+      if constexpr ( !fixed_size_ ) {
+        other.setSize( 0 );
+      }
       if ( capacity_at_runtime_ ) {
         other.data_ = nullptr;
-        other.sizer.setSize( 0 );
+        other.setCapacity( 0 );
       } else {
         // allocate new memory for the moved object so the size is the same
-        other.data_ = allocator_.allocate( other.size_ );
+        other.data_ = allocator_.allocate( other.size() );
       }
-      other.stride_ = 1;
     }
     return *this;
   }
 
-  using BaseClass::at;
-  using BaseClass::operator[];
-
-  using typename BaseClass::const_iterator_type;
-  using typename BaseClass::iterator_type;
-
-  using BaseClass::begin;
-  using BaseClass::end;
-
   TRIBOL_HOST_DEVICE const Allocator& allocator() const { return allocator_; }
 
-  using BaseClass::view;
-
-  using BaseClass::capacity;
   using BaseClass::size;
-
-  using BaseClass::setCapacity;
-  using BaseClass::setSize;
-
-  using BaseClass::stride;
-
-  using BaseClass::data;
-  // not working with clang 16
-  // using BaseClass::operator pointer;
-  TRIBOL_HOST_DEVICE operator pointer() const { return BaseClass::operator pointer(); }
 
   using BaseClass::capacity_at_runtime_;
   using BaseClass::fixed_size_;
+
+  constexpr static bool initialized_ = false;
 
  private:
   using BaseClass::data_;

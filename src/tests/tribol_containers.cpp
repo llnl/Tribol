@@ -10,7 +10,7 @@
 
 // Tribol includes
 #include "tribol/common/Memory.hpp"
-#include "tribol/common/Containers.hpp"
+#include "tribol/common/Arrays.hpp"
 
 /*!
  *  Test fixture class to test container classes
@@ -529,6 +529,88 @@ TEST_F( ContainerTest, boundedarray )
     EXPECT_EQ( bounded_array2[i], 0 );
   }
 }
+
+// strided bounded array on host test
+TEST_F( ContainerTest, strided_boundedarray )
+{
+  std::cout << "Running strided BoundedArray test with default memory (heap AllocatedMemory)..." << std::endl;
+
+  auto bounded_array_2d = tribol::BoundedArray2D<int>( 10, 3 );
+
+  int count = 0;
+  for ( int i{ 0 }; i < 10; ++i ) {
+    for ( int j{ 0 }; j < 3; ++j ) {
+      bounded_array_2d( i, j ) = count++;
+    }
+  }
+
+  // test base class accessor
+  count = 0;
+  for ( auto& array_val : bounded_array_2d ) {
+    EXPECT_EQ( array_val, count++ );
+  }
+
+  // verify row view values
+  for ( int i{ 0 }; i < 10; ++i ) {
+    auto row_view = bounded_array_2d.rowView( i );
+    for ( int j{ 0 }; j < 3; ++j ) {
+      EXPECT_EQ( row_view[j], i * 3 + j );
+    }
+  }
+
+  // verify column view values
+  for ( int j{ 0 }; j < 3; ++j ) {
+    auto col_view = bounded_array_2d.colView( j );
+    for ( int i{ 0 }; i < 10; ++i ) {
+      EXPECT_EQ( col_view[i], i * 3 + j );
+    }
+  }
+
+  // use row views to set all values to 10
+  for ( int i{ 0 }; i < 10; ++i ) {
+    auto row_view = bounded_array_2d.rowView( i );
+    for ( auto& row_view_val : row_view ) {
+      row_view_val = 10;
+    }
+  }
+
+  // use column views to verify all values are set to 10
+  for ( int j{ 0 }; j < 3; ++j ) {
+    auto col_view = bounded_array_2d.colView( j );
+    for ( auto col_view_val : col_view ) {
+      EXPECT_EQ( col_view_val, 10 );
+    }
+  }
+}
+
+// tribol array test
+TEST_F( ContainerTest, array )
+{
+  std::cout << "Running Array test with default memory (heap AllocatedMemory)..." << std::endl;
+
+  // create Array object with default memory (heap AllocatedMemory)
+  // AllocatedMemory with a HeapAllocator is a runtime sized array on the heap
+  auto tribol_array = tribol::Array<int>( 0, 10 );
+  auto orig_capacity = tribol_array.capacity();
+  auto orig_address = tribol_array.memory().data();
+  // for loop exceeds capacity so test memory reallocation
+  for ( int i = 0; i < 20; ++i ) {
+    EXPECT_EQ( tribol_array.size(), i );
+    tribol_array.push_back( i );
+  }
+  // verify the values are correct
+  for ( int i = 0; i < 20; ++i ) {
+    EXPECT_EQ( tribol_array[i], i );
+  }
+  // make sure the capacity is larger than the original
+  EXPECT_GT( tribol_array.capacity(), orig_capacity );
+  // make sure the address is different
+  EXPECT_NE( tribol_array.memory().data(), orig_address );
+}
+
+// bounded array 2d test
+
+// tribol array 2d test
 
 int main( int argc, char* argv[] )
 {
