@@ -151,3 +151,25 @@ if ( BUILD_REDECOMP )
   endforeach()
   
 endif()
+
+blt_add_executable(
+    NAME       array_benchmarks_ex
+    SOURCES    array_benchmarks.cpp
+    OUTPUT_DIR ${EXAMPLE_OUTPUT_DIRECTORY}
+    DEPENDS_ON tribol gbenchmark ${tribol_device_depends} 
+    )
+    
+if (ENABLE_CUDA)
+  set_target_properties(array_benchmarks_ex PROPERTIES CUDA_SEPARABLE_COMPILATION On)
+endif()
+
+if (ENABLE_HIP)
+  target_compile_options(array_benchmarks_ex PRIVATE -fgpu-rdc)
+  target_compile_options(array_benchmarks_ex PRIVATE
+      $<$<CONFIG:Debug>:
+          -ggdb
+      >
+  )
+  target_link_options(array_benchmarks_ex PRIVATE -fgpu-rdc)
+  target_link_options(array_benchmarks_ex PRIVATE --hip-link)
+endif()

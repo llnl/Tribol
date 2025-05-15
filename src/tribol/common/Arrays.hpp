@@ -23,6 +23,7 @@ class ArrayBase {
   using size_type = typename MemoryT::size_type;
   using memory_type = MemoryT;
 
+#pragma nv_exec_check_disable
   TRIBOL_HOST_DEVICE ArrayBase( MemoryT&& memory ) : memory_( std::move( memory ) )
   {
     // initialize memory if needed
@@ -37,6 +38,7 @@ class ArrayBase {
       : memory_( other.memory(), std::move( memory ) )
   {
   }
+#pragma nv_exec_check_disable
   TRIBOL_HOST_DEVICE ~ArrayBase()
   {
     // call destructor on all elements if needed
@@ -112,7 +114,9 @@ class BoundedArray : public ArrayBase<MemoryT> {
   TRIBOL_HOST_DEVICE constexpr size_type size() const { return memory_.size(); }
   TRIBOL_HOST_DEVICE constexpr size_type capacity() const { return memory_.capacity(); }
 
+#pragma nv_exec_check_disable
   TRIBOL_HOST_DEVICE void push_back( T value ) { at( memory_.setSize( size() + 1 ) - 1 ) = value; }
+#pragma nv_exec_check_disable
   template <typename... Args>
   TRIBOL_HOST_DEVICE void emplace_back( Args&&... args )
   {
@@ -253,6 +257,14 @@ class ArrayResizer {
     new_capacity = new_capacity > ( old_memory.capacity() + min_delta_capacity_ )
                        ? new_capacity
                        : ( old_memory.capacity() + min_delta_capacity_ );
+    return resize( old_memory, new_capacity );
+  }
+
+#pragma nv_exec_check_disable
+  TRIBOL_HOST_DEVICE AllocatedMemory<T, Allocator, SizeT> resize(
+      const AllocatedMemory<T, Allocator, SizeT>& old_memory, SizeT new_capacity )
+  {
+    assert( new_capacity > old_memory.capacity() );
     AllocatedMemory<T, Allocator, SizeT> new_memory( old_memory.size(), new_capacity );
     old_memory.allocator().copy( new_memory.data(), old_memory.data(), old_memory.size() );
     return std::move( new_memory );
@@ -270,7 +282,7 @@ class Array : public BoundedArray<T, AllocatedMemory<T, Allocator, SizeT>> {
   using typename BaseClass::memory_type;
   using typename BaseClass::size_type;
 
-  constexpr static size_type default_capacity_ = 32;
+  constexpr static size_type default_capacity_ = 0;
 
 #pragma nv_exec_check_disable
   TRIBOL_HOST_DEVICE Array( size_type size = 0, size_type capacity = default_capacity_ )
@@ -288,6 +300,7 @@ class Array : public BoundedArray<T, AllocatedMemory<T, Allocator, SizeT>> {
 
   using BaseClass::size;
 
+#pragma nv_exec_check_disable
   TRIBOL_HOST_DEVICE void push_back( T value )
   {
     if ( resizer_.resizeNeeded( size() + 1, memory_ ) ) {
@@ -295,6 +308,7 @@ class Array : public BoundedArray<T, AllocatedMemory<T, Allocator, SizeT>> {
     }
     BaseClass::push_back( value );
   }
+#pragma nv_exec_check_disable
   template <typename... Args>
   TRIBOL_HOST_DEVICE void emplace_back( Args&&... args )
   {
@@ -312,6 +326,13 @@ class Array : public BoundedArray<T, AllocatedMemory<T, Allocator, SizeT>> {
     BaseClass::resize( new_size );
   }
 
+  TRIBOL_HOST_DEVICE void reserve( size_type new_capacity )
+  {
+    if ( new_capacity > memory_.capacity() ) {
+      memory_ = resizer_.resize( memory_, new_capacity );
+    }
+  }
+
  private:
   using BaseClass::memory_;
   ArrayResizer<T, Allocator> resizer_;
@@ -327,10 +348,10 @@ class Array2D : public BoundedArray2D<T, AllocatedMemory<T, Allocator, SizeT>> {
   static_assert( std::is_same<typename Allocator::value_type, value_type>::value,
                  "Allocator must be used with same type as Array" );
 
-  constexpr static size_type default_height_capacity_ = 32;
+  constexpr static size_type default_height_capacity_ = 0;
 
   TRIBOL_HOST_DEVICE Array2D( size_type height, size_type width, size_type height_capacity = default_height_capacity_ )
-      : BaseClass( height, width, height_capacity ), resizer_( width )
+      : BaseClass( height, width, height_capacity > height ? height_capacity : height ), resizer_( width )
   {
   }
   TRIBOL_HOST_DEVICE Array2D() : Array2D( 0, 1, 0 ) {}
