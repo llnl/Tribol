@@ -102,6 +102,8 @@ inline umpire::resource::MemoryResourceType toUmpireMemoryType( MemorySpace mem_
 
 #endif
 
+inline int getDefaultAllocatorID() { return axom::getDefaultAllocatorID(); }
+
 inline int getResourceAllocatorID( MemorySpace mem_space )
 {
   int allocator_id = axom::getDefaultAllocatorID();

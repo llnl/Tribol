@@ -21,6 +21,7 @@ class ArrayBase {
   using pointer = typename MemoryT::pointer;
   using const_pointer = typename MemoryT::const_pointer;
   using size_type = typename MemoryT::size_type;
+  using memory_type = MemoryT;
 
   TRIBOL_HOST_DEVICE ArrayBase( MemoryT&& memory ) : memory_( std::move( memory ) )
   {
@@ -30,6 +31,11 @@ class ArrayBase {
         value = value_type{};
       }
     }
+  }
+  template <typename MemoryT2>
+  TRIBOL_HOST_DEVICE ArrayBase( const ArrayBase<MemoryT2>& other, MemoryT&& memory )
+      : memory_( other.memory(), std::move( memory ) )
+  {
   }
   TRIBOL_HOST_DEVICE ~ArrayBase()
   {
@@ -128,6 +134,12 @@ class BoundedArray : public ArrayBase<MemoryT> {
   }
 
  protected:
+  template <typename MemoryT2>
+  TRIBOL_HOST_DEVICE BoundedArray( const BoundedArray<T, MemoryT2>& other, MemoryT&& memory )
+      : BaseClass( other, std::move( memory ) )
+  {
+  }
+
   using BaseClass::memory_;
 };
 
@@ -167,6 +179,7 @@ class BoundedArray2D : public BoundedArray<T, MemoryT> {
 
   TRIBOL_HOST_DEVICE size_type height() const { return height_; }
   TRIBOL_HOST_DEVICE size_type width() const { return width_; }
+  TRIBOL_HOST_DEVICE size_type max_height() const { return max_height_; }
 
   TRIBOL_HOST_DEVICE void push_back( std::initializer_list<T> values )
   {
@@ -174,8 +187,9 @@ class BoundedArray2D : public BoundedArray<T, MemoryT> {
     assert( height() < max_height_ );
     ++height_;
     memory_.setSize( height() * width() );
-    for ( size_type j( 0 ); j < width(); ++j ) {
-      at( height() - 1, j ) = values[j];
+    size_type j = 0;
+    for ( auto& value : values ) {
+      at( height() - 1, j++ ) = value;
     }
   }
 
@@ -195,7 +209,19 @@ class BoundedArray2D : public BoundedArray<T, MemoryT> {
                                                                           memory_.stride() * width_ ) );
   }
 
- private:
+ protected:
+  template <typename MemoryT2>
+  TRIBOL_HOST_DEVICE BoundedArray2D( const BoundedArray2D<T, MemoryT2>& other, MemoryT&& memory )
+      : BaseClass( other, std::move( memory ) ),
+        height_( other.height() ),
+        width_( other.width() ),
+        max_height_( other.max_height() )
+  {
+    assert( height_ >= 0 && width_ >= 0 );
+    assert( size() == height_ * width_ );
+    assert( capacity() == max_height_ * width_ );
+  }
+
   using BaseClass::emplace_back;
   using BaseClass::pop_back;
   using BaseClass::push_back;
@@ -212,37 +238,51 @@ class ArrayResizer {
  public:
   constexpr static RealT default_resize_ratio_ = 2.0;
 
+  TRIBOL_HOST_DEVICE ArrayResizer( SizeT min_delta_capacity = 1 ) : min_delta_capacity_( min_delta_capacity ) {}
+
   TRIBOL_HOST_DEVICE bool resizeNeeded( SizeT new_size, const AllocatedMemory<T, Allocator, SizeT>& memory )
   {
     return new_size > memory.capacity();
   }
 
+#pragma nv_exec_check_disable
   TRIBOL_HOST_DEVICE AllocatedMemory<T, Allocator, SizeT> resize(
       const AllocatedMemory<T, Allocator, SizeT>& old_memory )
   {
     SizeT new_capacity = static_cast<SizeT>( old_memory.capacity() * default_resize_ratio_ );
-    new_capacity = new_capacity > 0 ? new_capacity : 1;
+    new_capacity = new_capacity > ( old_memory.capacity() + min_delta_capacity_ )
+                       ? new_capacity
+                       : ( old_memory.capacity() + min_delta_capacity_ );
     AllocatedMemory<T, Allocator, SizeT> new_memory( old_memory.size(), new_capacity );
     old_memory.allocator().copy( new_memory.data(), old_memory.data(), old_memory.size() );
     return std::move( new_memory );
   }
+
+ private:
+  SizeT min_delta_capacity_;
 };
 
-template <typename T, class Allocator = HeapAllocator<T>, typename SizeT = IndexT>
+template <typename T, class Allocator = DynamicAllocator<T>, typename SizeT = IndexT>
 class Array : public BoundedArray<T, AllocatedMemory<T, Allocator, SizeT>> {
  public:
   using value_type = T;
-  using BaseClass = BoundedArray<T, AllocatedMemory<T, Allocator>>;
+  using BaseClass = BoundedArray<T, AllocatedMemory<T, Allocator, SizeT>>;
+  using typename BaseClass::memory_type;
   using typename BaseClass::size_type;
-
-  static_assert( std::is_same<typename Allocator::value_type, value_type>::value,
-                 "Allocator must be used with same type as Array" );
 
   constexpr static size_type default_capacity_ = 32;
 
 #pragma nv_exec_check_disable
   TRIBOL_HOST_DEVICE Array( size_type size = 0, size_type capacity = default_capacity_ )
-      : BaseClass( AllocatedMemory<T, Allocator>( size, capacity >= size ? capacity : size ) )
+      : BaseClass( memory_type( size, capacity >= size ? capacity : size ) ), resizer_( 1 )
+  {
+  }
+
+  // copy constructor with a custom allocator
+  template <typename Allocator2>
+  TRIBOL_HOST_DEVICE Array( const Array<T, Allocator2, SizeT>& other, Allocator&& allocator )
+      : BaseClass( other,
+                   AllocatedMemory<T, Allocator, SizeT>( other.size(), other.capacity(), std::move( allocator ) ) )
   {
   }
 
@@ -275,6 +315,165 @@ class Array : public BoundedArray<T, AllocatedMemory<T, Allocator, SizeT>> {
  private:
   using BaseClass::memory_;
   ArrayResizer<T, Allocator> resizer_;
+};
+
+template <typename T, class Allocator = DynamicAllocator<T>, typename SizeT = IndexT>
+class Array2D : public BoundedArray2D<T, AllocatedMemory<T, Allocator, SizeT>> {
+ public:
+  using value_type = T;
+  using BaseClass = BoundedArray2D<T, AllocatedMemory<T, Allocator>>;
+  using typename BaseClass::size_type;
+
+  static_assert( std::is_same<typename Allocator::value_type, value_type>::value,
+                 "Allocator must be used with same type as Array" );
+
+  constexpr static size_type default_height_capacity_ = 32;
+
+  TRIBOL_HOST_DEVICE Array2D( size_type height, size_type width, size_type height_capacity = default_height_capacity_ )
+      : BaseClass( height, width, height_capacity ), resizer_( width )
+  {
+  }
+  TRIBOL_HOST_DEVICE Array2D() : Array2D( 0, 1, 0 ) {}
+
+  // copy constructor with a custom allocator
+  template <typename Allocator2>
+  TRIBOL_HOST_DEVICE Array2D( const Array2D<T, Allocator2, SizeT>& other, Allocator&& allocator )
+      : BaseClass( other,
+                   AllocatedMemory<T, Allocator, SizeT>( other.size(), other.capacity(), std::move( allocator ) ) )
+  {
+  }
+
+  using BaseClass::capacity;
+  using BaseClass::size;
+
+  using BaseClass::width;
+
+  TRIBOL_HOST_DEVICE void push_back( std::initializer_list<T> values )
+  {
+    if ( resizer_.resizeNeeded( size() + width(), memory_ ) ) {
+      memory_ = resizer_.resize( memory_ );
+      max_height_ = capacity() / width();
+    }
+    BaseClass::push_back( values );
+  }
+
+ private:
+  using BaseClass::max_height_;
+  using BaseClass::memory_;
+  ArrayResizer<T, Allocator> resizer_;
+};
+
+template <typename T, MemorySpace MSPACE, typename SizeT = IndexT>
+using HostArray = Array<T,
+#ifdef TRIBOL_USE_UMPIRE
+                        UmpireAllocator<T, MSPACE>
+#else
+                        HeapAllocator<T>
+#endif
+                        ,
+                        SizeT>;
+
+template <typename T, template <typename, typename, typename> class ArrayT = Array, typename SizeT = IndexT>
+class ManagedArray {
+ public:
+  using array_type = ArrayT<T, DynamicAllocator<T>, SizeT>;
+  using memory_view_type = Memory<typename array_type::memory_type::accessor_type>;
+  using view_type = ArrayBase<memory_view_type>;
+
+  ManagedArray( array_type&& host_array, int managed_allocator_id )
+      : host_array_( std::move( host_array ) ),
+        same_array_( host_array_.memory().allocator().id() == managed_allocator_id ),
+        local_managed_array_( same_array_ ? array_type()
+                                          : array_type( host_array_, DynamicAllocator<T>( managed_allocator_id ) ) ),
+        managed_array_( same_array_ ? host_array_ : local_managed_array_ ),
+        host_array_synced_( true ),
+        managed_array_synced_( true )
+  {
+  }
+
+  const array_type& hostRead() const
+  {
+    if ( !same_array_ && !host_array_synced_ ) {
+      host_array_ = array_type( local_managed_array_, DynamicAllocator<T>( host_array_.memory().allocator().id() ) );
+      host_array_synced_ = true;
+      managed_array_synced_ = true;
+    }
+    return host_array_;
+  }
+
+  array_type& hostWrite( bool skip_sync = false )
+  {
+    if ( !same_array_ ) {
+      // even if we're just writing, this should be synced in case we don't write to all elements
+      if ( !skip_sync && !host_array_synced_ ) {
+        host_array_ = array_type( local_managed_array_, DynamicAllocator<T>( host_array_.memory().allocator().id() ) );
+      }
+      host_array_synced_ = true;
+      managed_array_synced_ = false;
+    }
+    return host_array_;
+  }
+
+  array_type& hostReadWrite()
+  {
+    if ( !same_array_ ) {
+      if ( !host_array_synced_ ) {
+        host_array_ = array_type( local_managed_array_, DynamicAllocator<T>( host_array_.memory().allocator().id() ) );
+      }
+      host_array_synced_ = true;
+      managed_array_synced_ = false;
+    }
+    return host_array_;
+  }
+
+  const view_type managedRead() const
+  {
+    if ( !same_array_ && !managed_array_synced_ ) {
+      local_managed_array_ =
+          array_type( host_array_, DynamicAllocator<T>( local_managed_array_.memory().allocator().id() ) );
+      managed_array_synced_ = true;
+      host_array_synced_ = true;
+    }
+    return view_type( managed_array_.memory().view() );
+  }
+
+  view_type managedWrite( bool skip_sync = false )
+  {
+    if ( !same_array_ ) {
+      // even if we're just writing, this should be synced in case we don't write to all elements
+      if ( !skip_sync && !managed_array_synced_ ) {
+        local_managed_array_ =
+            array_type( host_array_, DynamicAllocator<T>( local_managed_array_.memory().allocator().id() ) );
+      }
+      managed_array_synced_ = true;
+      host_array_synced_ = false;
+    }
+    return view_type( managed_array_.memory().view() );
+  }
+
+  view_type managedReadWrite()
+  {
+    if ( !same_array_ ) {
+      if ( !managed_array_synced_ ) {
+        local_managed_array_ =
+            array_type( host_array_, DynamicAllocator<T>( local_managed_array_.memory().allocator().id() ) );
+        ;
+      }
+      managed_array_synced_ = true;
+      host_array_synced_ = false;
+    }
+    return view_type( managed_array_.memory().view() );
+  }
+
+  bool sameArray() const { return same_array_; }
+
+ private:
+  mutable array_type host_array_;
+  bool same_array_;
+  mutable array_type local_managed_array_;
+  array_type& managed_array_;
+  mutable bool host_array_synced_;
+  mutable bool managed_array_synced_;
 };
 
 }  // namespace tribol

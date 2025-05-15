@@ -316,6 +316,7 @@ class Memory : public Accessor {
     return Memory<NewAccessor>( data() + offset, size, capacity, stride );
   }
 
+  TRIBOL_HOST_DEVICE Memory<Accessor> view() { return Memory<Accessor>( *this ); }
   TRIBOL_HOST_DEVICE Memory<Accessor> view() const { return Memory<Accessor>( *this ); }
 
   using Accessor::size;
@@ -404,7 +405,7 @@ class UmpireAllocator {
   {
   }
 
-  pointer allocate( size_t n ) const { return static_cast<T*>( allocator_.allocate( n ) ); }
+  pointer allocate( size_t n ) const { return static_cast<pointer>( allocator_.allocate( n ) ); }
 
   void deallocate( pointer p, size_t n ) const { allocator_.deallocate( p, n ); }
 
@@ -419,6 +420,55 @@ class UmpireAllocator {
   mutable umpire::TypedAllocator<value_type> allocator_;
 };
 #endif
+
+template <typename T>
+class DynamicAllocator {
+ public:
+  using value_type = T;
+  using pointer = T*;
+
+#pragma nv_exec_check_disable
+  TRIBOL_HOST_DEVICE DynamicAllocator() : allocator_id_( getDefaultAllocatorID() ) {}
+  TRIBOL_HOST_DEVICE DynamicAllocator( int allocator_id ) : allocator_id_( allocator_id ) {}
+
+#pragma nv_exec_check_disable
+  TRIBOL_HOST_DEVICE pointer allocate( size_t n ) const
+  {
+    return static_cast<pointer>(
+#ifdef TRIBOL_USE_UMPIRE
+        umpire::ResourceManager::getInstance().getAllocator( allocator_id_ ).allocate( n * sizeof( value_type ) )
+#else
+        HeapAllocator<T>().allocate( n )
+#endif
+    );
+  }
+
+#pragma nv_exec_check_disable
+  TRIBOL_HOST_DEVICE void deallocate( pointer p, [[maybe_unused]] size_t n ) const
+  {
+#ifdef TRIBOL_USE_UMPIRE
+    umpire::ResourceManager::getInstance().getAllocator( allocator_id_ ).deallocate( p );
+#else
+    HeapAllocator<T>().deallocate( p, n );
+#endif
+  }
+
+#pragma nv_exec_check_disable
+  TRIBOL_HOST_DEVICE void copy( pointer dst, pointer src, size_t n ) const
+  {
+#ifdef TRIBOL_USE_UMPIRE
+    auto& rm = umpire::ResourceManager::getInstance();
+    rm.copy( dst, src, n * sizeof( value_type ) );
+#else
+    HeapAllocator<T>().copy( dst, src, n );
+#endif
+  }
+
+  TRIBOL_HOST_DEVICE int id() const { return allocator_id_; }
+
+ private:
+  int allocator_id_;
+};
 
 template <typename T, class Allocator = HeapAllocator<T>, typename SizeT = IndexT,
           class SizeVsCapacity = SizeLECapacity<RuntimeCapacity<SizeT>>>
@@ -439,13 +489,24 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
       : BaseClass( allocator.allocate( capacity ), size, capacity, 1 ), allocator_( std::move( allocator ) )
   {
   }
+
+#pragma nv_exec_check_disable
   TRIBOL_HOST_DEVICE AllocatedMemory( size_type size, Allocator allocator = Allocator() )
       : AllocatedMemory( size, size, std::move( allocator ) )
   {
   }
 
 #pragma nv_exec_check_disable
-  TRIBOL_HOST_DEVICE ~AllocatedMemory() { allocator_.deallocate( data_, size() ); }
+  TRIBOL_HOST_DEVICE AllocatedMemory( const AllocatedMemory& src, AllocatedMemory&& dst )
+      : BaseClass( dst.allocator_.allocate( 0 ), 0, 0, 1 )
+  {
+    assert( src.size() == dst.size() );
+    ( *this ) = std::move( dst );
+    allocator_.copy( data_, src.data_, src.size() );
+  }
+
+#pragma nv_exec_check_disable
+  TRIBOL_HOST_DEVICE ~AllocatedMemory() { allocator_.deallocate( data_, capacity() ); }
 
   // Copy constructor
 #pragma nv_exec_check_disable
@@ -510,6 +571,7 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
 
   TRIBOL_HOST_DEVICE const Allocator& allocator() const { return allocator_; }
 
+  using BaseClass::capacity;
   using BaseClass::size;
 
   using BaseClass::capacity_at_runtime_;
