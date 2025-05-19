@@ -350,35 +350,36 @@ class Array : public BoundedArray<T, AllocatedMemory<T, Allocator>> {
     //   memory_.setSize( size() + 1 );
     // }
     // MOVE THINGS OUT
-    // if ( size() >= capacity() ) {
-    //   memory_ = resizer_.resize( memory_ );
-    //   addOneToEnd( std::forward<Args>( args )... );
-    // } else {
-    //   addOneToEnd( std::forward<Args>( args )... );
-    // }
-    // COPY VECTOR
-    pointer end = this->memory_.data() + size();
-    pointer cap = this->memory_.data() + capacity();
-    if ( end < cap ) {
-      ::new ( end ) T( std::forward<Args>( args )... );
-      this->memory_.setSize( size() + 1 );
+    if ( size() >= capacity() ) {
+      memory_ = resizer_.resize( memory_ );
+      addOneToEnd( std::forward<Args>( args )... );
     } else {
-      pointer v_first;
-      pointer v_cap;
-      {
-        size_type new_cap = std::max( size() * 2, static_cast<size_t>( 1 ) );
-        auto alloc = static_cast<T*>( ::operator new( new_cap * sizeof( T ) ) );
-        v_first = alloc;
-        v_cap = v_first + new_cap;
-      }
-      pointer v_end = v_first + size();
-      pointer v_begin = v_end;
-      ::new ( v_end ) T( std::forward<Args>( args )... );
-      v_end++;
-      // auto new_begin = v_begin - (memory_.end() - memory_.begin());
-      std::uninitialized_copy( memory_.data(), end, v_first );
-      memory_ = memory_type( typename memory_type::BaseClass( v_first, size() + 1, v_cap - v_first ), Allocator() );
+      addOneToEnd( std::forward<Args>( args )... );
     }
+    // COPY VECTOR
+    // pointer end = this->memory_.data() + size();
+    // pointer cap = this->memory_.data() + capacity();
+    // if ( end < cap ) {
+    //   ::new ( end ) T( std::forward<Args>( args )... );
+    //   this->memory_.setSize( size() + 1 );
+    // } else {
+    //   pointer v_first;
+    //   pointer v_cap;
+    //   {
+    //     size_type new_cap = std::max( size() * 2, static_cast<size_t>( 1 ) );
+    //     auto alloc = static_cast<T*>( ::operator new( new_cap * sizeof( T ) ) );
+    //     v_first = alloc;
+    //     v_cap = v_first + new_cap;
+    //   }
+    //   pointer v_end = v_first + size();
+    //   pointer v_begin = v_end;
+    //   ::new ( v_end ) T( std::forward<Args>( args )... );
+    //   v_end++;
+    //   // auto new_begin = v_begin - (memory_.end() - memory_.begin());
+    //   std::uninitialized_copy( memory_.data(), end, v_first );
+    //   memory_ = memory_type( typename memory_type::BaseClass( v_first, size() + 1, v_cap - v_first, 1 ), Allocator()
+    //   );
+    // }
   }
   using BaseClass::pop_back;
   TRIBOL_HOST_DEVICE void resize( size_type new_size )
