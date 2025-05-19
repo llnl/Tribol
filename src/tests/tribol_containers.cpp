@@ -91,7 +91,7 @@ class ContainerTest : public ::testing::Test {
     auto managed_array = tribol::ManagedArray<int>( std::move( base_array ), allocator_id );
 
     auto& host_read = managed_array.hostRead();
-    for ( tribol::IndexT i = 0; i < host_read.size(); ++i ) {
+    for ( size_t i = 0; i < host_read.size(); ++i ) {
       EXPECT_EQ( host_read[i], i );
     }
 
@@ -104,7 +104,7 @@ class ContainerTest : public ::testing::Test {
     tribol::forAllExec<EXMODE>( 10, [=] TRIBOL_HOST_DEVICE( int i ) mutable { managed_write[i] = 2 * i; } );
 
     // changes haven't been synced back if the arrays are different
-    for ( tribol::IndexT i = 0; i < host_read.size(); ++i ) {
+    for ( size_t i = 0; i < host_read.size(); ++i ) {
       if ( managed_array.sameArray() ) {
         EXPECT_EQ( host_read[i], 2 * i );
       } else {
@@ -114,13 +114,13 @@ class ContainerTest : public ::testing::Test {
 
     // call hostRead() again to synchronize changes to host_read
     managed_array.hostRead();
-    for ( tribol::IndexT i = 0; i < host_read.size(); ++i ) {
+    for ( size_t i = 0; i < host_read.size(); ++i ) {
       EXPECT_EQ( host_read[i], 2 * i );
     }
 
     auto& host_write = managed_array.hostWrite( true );
     host_write.resize( 0 );
-    for ( tribol::IndexT i = 0; i < 20; ++i ) {
+    for ( size_t i = 0; i < 20; ++i ) {
       host_write.push_back( 3 * i );
     }
 
@@ -150,8 +150,8 @@ class ContainerTest : public ::testing::Test {
     auto managed_array_2d = tribol::ManagedArray<int, tribol::Array2D>( std::move( base_array_2d ), allocator_id );
 
     auto& host_read_2d = managed_array_2d.hostRead();
-    for ( tribol::IndexT i = 0; i < host_read_2d.height(); ++i ) {
-      for ( tribol::IndexT j = 0; j < host_read_2d.width(); ++j ) {
+    for ( size_t i = 0; i < host_read_2d.height(); ++i ) {
+      for ( size_t j = 0; j < host_read_2d.width(); ++j ) {
         EXPECT_EQ( host_read_2d( i, j ), i * host_read_2d.width() + j );
       }
     }
@@ -165,7 +165,7 @@ class ContainerTest : public ::testing::Test {
     tribol::forAllExec<EXMODE>( 30, [=] TRIBOL_HOST_DEVICE( int i ) mutable { managed_write_2d[i] = 2 * i; } );
 
     // changes haven't been synced back if the arrays are different
-    for ( tribol::IndexT i = 0; i < host_read_2d.size(); ++i ) {
+    for ( size_t i = 0; i < host_read_2d.size(); ++i ) {
       if ( managed_array_2d.sameArray() ) {
         EXPECT_EQ( host_read_2d[i], 2 * i );
       } else {
@@ -175,7 +175,7 @@ class ContainerTest : public ::testing::Test {
 
     // call hostRead() again to synchronize changes to host_read
     managed_array_2d.hostRead();
-    for ( tribol::IndexT i = 0; i < host_read_2d.size(); ++i ) {
+    for ( size_t i = 0; i < host_read_2d.size(); ++i ) {
       EXPECT_EQ( host_read_2d[i], 2 * i );
     }
 
@@ -264,8 +264,8 @@ TEST_F( ContainerTest, array_base_allocatedmemory_heapallocator_fixedsize )
 {
   std::cout << "Running ArrayBase test with AllocatedMemory and a HeapAllocator of fixed size..." << std::endl;
 
-  using MemT = tribol::AllocatedMemory<int, tribol::HeapAllocator<int>, tribol::IndexT,
-                                       tribol::SizeEqCapacity<tribol::FixedCapacity<tribol::IndexT, 10>>>;
+  using MemT =
+      tribol::AllocatedMemory<int, tribol::HeapAllocator<int>, tribol::SizeEqCapacity<tribol::FixedCapacity<10>>>;
 
   // create ArrayBase object with AllocatedMemory and a HeapAllocator of fixed size
   // AllocatedMemory with a HeapAllocator is a fixed size array on the heap
@@ -322,8 +322,8 @@ TEST_F( ContainerTest, array_base_allocatedmemory_heapallocator_dynamicsize )
 {
   std::cout << "Running ArrayBase test with AllocatedMemory and a HeapAllocator sized at runtime..." << std::endl;
 
-  using MemT = tribol::AllocatedMemory<int, tribol::HeapAllocator<int>, tribol::IndexT,
-                                       tribol::SizeEqCapacity<tribol::RuntimeCapacity<tribol::IndexT>>>;
+  using MemT =
+      tribol::AllocatedMemory<int, tribol::HeapAllocator<int>, tribol::SizeEqCapacity<tribol::RuntimeCapacity>>;
 
   // create ArrayBase object with AllocatedMemory and a HeapAllocator of dynamic size
   // AllocatedMemory with a HeapAllocator is a dynamic size array on the heap
@@ -382,8 +382,8 @@ TEST_F( ContainerTest, array_base_allocatedmemory_umpireallocator_fixedsize )
 {
   std::cout << "Running ArrayBase test with AllocatedMemory and a UmpireAllocator of fixed size..." << std::endl;
 
-  using MemT = tribol::AllocatedMemory<int, tribol::UmpireAllocator<int, tribol::MemorySpace::Host>, tribol::IndexT,
-                                       tribol::SizeEqCapacity<tribol::FixedCapacity<tribol::IndexT, 10>>>;
+  using MemT = tribol::AllocatedMemory<int, tribol::UmpireAllocator<int, tribol::MemorySpace::Host>,
+                                       tribol::SizeEqCapacity<tribol::FixedCapacity<10>>>;
 
   // create ArrayBase object with AllocatedMemory and a UmpireAllocator of fixed size
   // AllocatedMemory with a UmpireAllocator is a fixed size array
@@ -440,8 +440,8 @@ TEST_F( ContainerTest, array_base_allocatedmemory_umpireallocator_dynamicsize )
 {
   std::cout << "Running ArrayBase test with AllocatedMemory and a UmpireAllocator sized at runtime..." << std::endl;
 
-  using MemT = tribol::AllocatedMemory<int, tribol::UmpireAllocator<int, tribol::MemorySpace::Host>, tribol::IndexT,
-                                       tribol::SizeEqCapacity<tribol::RuntimeCapacity<tribol::IndexT>>>;
+  using MemT = tribol::AllocatedMemory<int, tribol::UmpireAllocator<int, tribol::MemorySpace::Host>,
+                                       tribol::SizeEqCapacity<tribol::RuntimeCapacity>>;
 
   // create ArrayBase object with AllocatedMemory and a UmpireAllocator of dynamic size
   // AllocatedMemory with a UmpireAllocator is a dynamic size array

@@ -7,8 +7,8 @@
 #define TRIBOL_COMMON_MEMORY_HPP_
 
 #include <cassert>
+#include <cstddef>
 
-#include "tribol/config.hpp"
 #include "tribol/common/ExecModel.hpp"
 
 #ifdef TRIBOL_USE_UMPIRE
@@ -19,10 +19,10 @@
 
 namespace tribol {
 
-template <typename SizeT, SizeT N>
+template <size_t N>
 class FixedCapacity {
  public:
-  using size_type = SizeT;
+  using size_type = size_t;
 
   TRIBOL_HOST_DEVICE FixedCapacity( [[maybe_unused]] size_type capacity ) { assert( capacity == N ); }
   TRIBOL_HOST_DEVICE constexpr size_type capacity() const { return N; }
@@ -32,10 +32,9 @@ class FixedCapacity {
   constexpr static bool capacity_at_runtime_ = false;
 };
 
-template <typename SizeT>
 class RuntimeCapacity {
  public:
-  using size_type = SizeT;
+  using size_type = size_t;
 
   TRIBOL_HOST_DEVICE RuntimeCapacity( size_type capacity ) : capacity_( capacity >= 0 ? capacity : 0 )
   {
@@ -327,12 +326,11 @@ class Memory : public Accessor {
   constexpr static bool initialized_ = true;
 };
 
-template <typename T, IndexT N, template <typename> class SizeVsCapacity = SizeEqCapacity>
-class StackMemory : public Memory<ContiguousMemory<T, SizeVsCapacity<FixedCapacity<IndexT, N>>>> {
+template <typename T, size_t N, template <typename> class SizeVsCapacity = SizeEqCapacity>
+class StackMemory : public Memory<ContiguousMemory<T, SizeVsCapacity<FixedCapacity<N>>>> {
  public:
-  using BaseClass = Memory<ContiguousMemory<T, SizeVsCapacity<FixedCapacity<IndexT, N>>>>;
-
-  using size_type = IndexT;
+  using BaseClass = Memory<ContiguousMemory<T, SizeVsCapacity<FixedCapacity<N>>>>;
+  using typename BaseClass::size_type;
 
   TRIBOL_HOST_DEVICE StackMemory( size_type size = N ) : BaseClass( nullptr, size, N, 1 ) { data_ = stack_data_; }
   TRIBOL_HOST_DEVICE StackMemory( size_type size, [[maybe_unused]] size_type capacity ) : StackMemory( size )
@@ -374,30 +372,41 @@ class StackMemory : public Memory<ContiguousMemory<T, SizeVsCapacity<FixedCapaci
 };
 
 template <typename T>
-class HeapAllocator {
+class Allocator {
+  static_assert( !std::is_const<T>::value, "Allocator does not support const types" );
+  static_assert( !std::is_volatile<T>::value, "Allocator does not support volatile types" );
+
  public:
   using value_type = T;
-  using pointer = T*;
+  using size_type = size_t;
+  using difference_type = ptrdiff_t;
 
-  TRIBOL_HOST_DEVICE pointer allocate( size_t n ) const
+  TRIBOL_HOST_DEVICE T* allocate( size_type n ) const
   {
-    return static_cast<pointer>( malloc( n * sizeof( value_type ) ) );
+    return static_cast<T*>( ::operator new( n * sizeof( value_type ) ) );
   }
 
-  TRIBOL_HOST_DEVICE void deallocate( pointer p, size_t ) const { free( static_cast<void*>( p ) ); }
+  TRIBOL_HOST_DEVICE void deallocate( T* p, size_type ) const { ::operator delete( p ); }
 
-  TRIBOL_HOST_DEVICE void copy( pointer dst, pointer src, size_t n ) const
+  TRIBOL_HOST_DEVICE void uninitialized_copy( T* first, T* last, T* d_first ) const
   {
-    memcpy( dst, src, n * sizeof( value_type ) );
+    std::uninitialized_copy( first, last, d_first );
   }
 };
+
+template <typename T, typename U>
+TRIBOL_HOST_DEVICE inline constexpr bool operator==( const Allocator<T>&, const Allocator<U>& )
+{
+  return true;
+}
 
 #ifdef TRIBOL_USE_UMPIRE
 template <typename T, MemorySpace MSPACE>
 class UmpireAllocator {
  public:
   using value_type = T;
-  using pointer = T*;
+  using size_type = size_t;
+  using difference_type = ptrdiff_t;
 
   UmpireAllocator( umpire::Allocator allocator ) : allocator_{ std::move( allocator ) } {}
   UmpireAllocator()
@@ -405,14 +414,14 @@ class UmpireAllocator {
   {
   }
 
-  pointer allocate( size_t n ) const { return static_cast<pointer>( allocator_.allocate( n ) ); }
+  T* allocate( size_type n ) const { return static_cast<T*>( allocator_.allocate( n ) ); }
 
-  void deallocate( pointer p, size_t n ) const { allocator_.deallocate( p, n ); }
+  void deallocate( T* p, size_type n ) const { allocator_.deallocate( p, n ); }
 
-  void copy( pointer dst, pointer src, size_t n ) const
+  void uninitialized_copy( T* first, T* last, T* d_first ) const
   {
     auto& rm = umpire::ResourceManager::getInstance();
-    rm.copy( dst, src, n * sizeof( value_type ) );
+    rm.copy( d_first, first, ( last - first ) );
   }
 
  private:
@@ -425,42 +434,43 @@ template <typename T>
 class DynamicAllocator {
  public:
   using value_type = T;
+  using size_type = size_t;
   using pointer = T*;
 
-#pragma nv_exec_check_disable
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
   TRIBOL_HOST_DEVICE DynamicAllocator() : allocator_id_( getDefaultAllocatorID() ) {}
   TRIBOL_HOST_DEVICE DynamicAllocator( int allocator_id ) : allocator_id_( allocator_id ) {}
 
-#pragma nv_exec_check_disable
-  TRIBOL_HOST_DEVICE pointer allocate( size_t n ) const
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
+  TRIBOL_HOST_DEVICE pointer allocate( size_type n ) const
   {
     return static_cast<pointer>(
 #ifdef TRIBOL_USE_UMPIRE
         umpire::ResourceManager::getInstance().getAllocator( allocator_id_ ).allocate( n * sizeof( value_type ) )
 #else
-        HeapAllocator<T>().allocate( n )
+        Allocator<T>().allocate( n )
 #endif
     );
   }
 
-#pragma nv_exec_check_disable
-  TRIBOL_HOST_DEVICE void deallocate( pointer p, [[maybe_unused]] size_t n ) const
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
+  TRIBOL_HOST_DEVICE void deallocate( pointer p, [[maybe_unused]] size_type n ) const
   {
 #ifdef TRIBOL_USE_UMPIRE
     umpire::ResourceManager::getInstance().getAllocator( allocator_id_ ).deallocate( p );
 #else
-    HeapAllocator<T>().deallocate( p, n );
+    Allocator<T>().deallocate( p, n );
 #endif
   }
 
-#pragma nv_exec_check_disable
-  TRIBOL_HOST_DEVICE void copy( pointer dst, pointer src, size_t n ) const
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
+  TRIBOL_HOST_DEVICE void copy( pointer dst, pointer src, size_type n ) const
   {
 #ifdef TRIBOL_USE_UMPIRE
     auto& rm = umpire::ResourceManager::getInstance();
     rm.copy( dst, src, n * sizeof( value_type ) );
 #else
-    HeapAllocator<T>().copy( dst, src, n );
+    Allocator<T>().copy( dst, src, n );
 #endif
   }
 
@@ -470,8 +480,7 @@ class DynamicAllocator {
   int allocator_id_;
 };
 
-template <typename T, class Allocator = HeapAllocator<T>, typename SizeT = IndexT,
-          class SizeVsCapacity = SizeLECapacity<RuntimeCapacity<SizeT>>>
+template <typename T, class Allocator = Allocator<T>, class SizeVsCapacity = SizeLECapacity<RuntimeCapacity>>
 class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
  public:
   using BaseClass = Memory<ContiguousMemory<T, SizeVsCapacity>>;
@@ -484,19 +493,25 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
   static_assert( std::is_same<typename Allocator::value_type, value_type>::value,
                  "AllocatedMemory must be used with same type as allocator" );
 
-#pragma nv_exec_check_disable
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
   TRIBOL_HOST_DEVICE AllocatedMemory( size_type size, size_type capacity, Allocator allocator = Allocator() )
       : BaseClass( allocator.allocate( capacity ), size, capacity, 1 ), allocator_( std::move( allocator ) )
   {
   }
 
-#pragma nv_exec_check_disable
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
   TRIBOL_HOST_DEVICE AllocatedMemory( size_type size, Allocator allocator = Allocator() )
       : AllocatedMemory( size, size, std::move( allocator ) )
   {
   }
 
-#pragma nv_exec_check_disable
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
+  TRIBOL_HOST_DEVICE AllocatedMemory( BaseClass&& memory, Allocator&& allocator = Allocator() )
+      : BaseClass( std::move( memory ) ), allocator_( std::move( allocator ) )
+  {
+  }
+
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
   TRIBOL_HOST_DEVICE AllocatedMemory( const AllocatedMemory& src, AllocatedMemory&& dst )
       : BaseClass( dst.allocator_.allocate( 0 ), 0, 0, 1 )
   {
@@ -505,11 +520,11 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
     allocator_.copy( data_, src.data_, src.size() );
   }
 
-#pragma nv_exec_check_disable
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
   TRIBOL_HOST_DEVICE ~AllocatedMemory() { allocator_.deallocate( data_, capacity() ); }
 
   // Copy constructor
-#pragma nv_exec_check_disable
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
   TRIBOL_HOST_DEVICE AllocatedMemory( const AllocatedMemory& other )
       : AllocatedMemory( other.size(), Allocator( other.allocator_ ) )
   {
@@ -518,7 +533,7 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
   }
 
   // Move constructor
-#pragma nv_exec_check_disable
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
   TRIBOL_HOST_DEVICE AllocatedMemory( AllocatedMemory&& other )
       : BaseClass( other.data_, other.size(), other.capacity(), other.stride() ), allocator_{ other.allocator_ }
   {
@@ -535,7 +550,7 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
   }
 
   // Copy assignment operator
-#pragma nv_exec_check_disable
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
   TRIBOL_HOST_DEVICE AllocatedMemory& operator=( const AllocatedMemory& other )
   {
     if ( this != &other ) {
@@ -549,7 +564,7 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
   }
 
   // Move assignment operator
-#pragma nv_exec_check_disable
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
   TRIBOL_HOST_DEVICE AllocatedMemory& operator=( AllocatedMemory&& other )
   {
     if ( this != &other ) {

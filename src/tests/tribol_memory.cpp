@@ -21,7 +21,7 @@ class MemoryTest : public ::testing::Test {
  public:
   constexpr static int N = 100000;
 
-  using SizeVsCapacityT = tribol::SizeLECapacity<tribol::RuntimeCapacity<tribol::IndexT>>;
+  using SizeVsCapacityT = tribol::SizeLECapacity<tribol::RuntimeCapacity>;
 
   template <tribol::MemorySpace MSPACE, tribol::ExecutionMode EXMODE>
   void RunFakeInitTest()
@@ -49,12 +49,10 @@ class MemoryTest : public ::testing::Test {
   void RunHeapTest()
   {
     tribol::forAllExec<EXMODE>( N, [=] TRIBOL_HOST_DEVICE( int i ) {
-      auto int_array = tribol::BoundedArray<
-          int, tribol::AllocatedMemory<int, tribol::HeapAllocator<int>, tribol::IndexT, SizeVsCapacityT>>( 0, 1 );
+      auto int_array =
+          tribol::BoundedArray<int, tribol::AllocatedMemory<int, tribol::Allocator<int>, SizeVsCapacityT>>( 0, 1 );
       int_array.push_back( i );
-      tribol::FixedArray<int, 1,
-                         tribol::AllocatedMemory<int, tribol::HeapAllocator<int>, tribol::IndexT, SizeVsCapacityT>>
-          fixed_int_array;
+      tribol::FixedArray<int, 1, tribol::AllocatedMemory<int, tribol::Allocator<int>, SizeVsCapacityT>> fixed_int_array;
       fixed_int_array[0] = 1;
     } );
   }
@@ -62,10 +60,22 @@ class MemoryTest : public ::testing::Test {
   template <tribol::MemorySpace MSPACE, tribol::ExecutionMode EXMODE>
   void RunPoolTest()
   {
-    using MemT = typename tribol::AllocatedMemory<int, tribol::UmpireAllocator<int, MSPACE>>::view_type;
+    using MemT = typename tribol::AllocatedMemory<int,
+#ifdef TRIBOL_USE_UMPIRE
+                                                  tribol::UmpireAllocator<int, MSPACE>>
+#else
+                                                  tribol::Allocator<int>>
+#endif
+        ::view_type;
 
     // typical memory allocated for an array
-    auto int_pool = tribol::AllocatedMemory<int, tribol::UmpireAllocator<int, MSPACE>>( 2 * N );
+    auto int_pool = tribol::AllocatedMemory<int,
+#ifdef TRIBOL_USE_UMPIRE
+                                            tribol::UmpireAllocator<int, MSPACE>>
+#else
+                                            tribol::Allocator<int>>
+#endif
+        ( 2 * N );
     MemT int_pool_view = int_pool.view();
     tribol::forAllExec<EXMODE>( N, [=] TRIBOL_HOST_DEVICE( int i ) {
       auto int_array = tribol::BoundedArray<int, MemT>( MemT( int_pool_view + i, 0, 1, 1 ) );

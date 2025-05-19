@@ -20,6 +20,7 @@ set(tribol_headers
     common/LoopExec.hpp
     common/Memory.hpp
     common/Parameters.hpp
+    common/Vector.hpp
 
     geom/ContactPlane.hpp
     geom/ElementNormal.hpp

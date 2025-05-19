@@ -23,7 +23,7 @@ class ArrayBase {
   using size_type = typename MemoryT::size_type;
   using memory_type = MemoryT;
 
-#pragma nv_exec_check_disable
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
   TRIBOL_HOST_DEVICE ArrayBase( MemoryT&& memory ) : memory_( std::move( memory ) )
   {
     // initialize memory if needed
@@ -38,7 +38,7 @@ class ArrayBase {
       : memory_( other.memory(), std::move( memory ) )
   {
   }
-#pragma nv_exec_check_disable
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
   TRIBOL_HOST_DEVICE ~ArrayBase()
   {
     // call destructor on all elements if needed
@@ -77,7 +77,7 @@ class ArrayBase {
   MemoryT memory_;
 };
 
-template <typename T, IndexT N, class MemoryT = StackMemory<T, N>>
+template <typename T, size_t N, class MemoryT = StackMemory<T, N>>
 class FixedArray : public ArrayBase<MemoryT> {
  public:
   using value_type = T;
@@ -114,13 +114,21 @@ class BoundedArray : public ArrayBase<MemoryT> {
   TRIBOL_HOST_DEVICE constexpr size_type size() const { return memory_.size(); }
   TRIBOL_HOST_DEVICE constexpr size_type capacity() const { return memory_.capacity(); }
 
-#pragma nv_exec_check_disable
-  TRIBOL_HOST_DEVICE void push_back( T value ) { at( memory_.setSize( size() + 1 ) - 1 ) = value; }
-#pragma nv_exec_check_disable
+  template <typename... Args>
+  TRIBOL_HOST_DEVICE inline void emplace( size_type i, Args&&... args )
+  {
+    if ( i >= size() ) {
+      i = memory_.setSize( i + 1 ) - 1;
+    }
+    ::new ( static_cast<void*>( memory_.data() + i ) ) T( std::forward<Args>( args )... );
+  };
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
+  TRIBOL_HOST_DEVICE void push_back( T value ) { emplace_back( std::move( value ) ); }
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
   template <typename... Args>
   TRIBOL_HOST_DEVICE void emplace_back( Args&&... args )
   {
-    at( memory_.setSize( size() + 1 ) - 1 ) = T( std::forward<Args>( args )... );
+    emplace( size(), std::forward<Args>( args )... );
   }
   TRIBOL_HOST_DEVICE void pop_back() { memory_.setSize( size() - 1 ); }
   TRIBOL_HOST_DEVICE void resize( size_type new_size )
@@ -237,54 +245,57 @@ class BoundedArray2D : public BoundedArray<T, MemoryT> {
   size_type max_height_;
 };
 
-template <typename T, class Allocator = HeapAllocator<T>, typename SizeT = IndexT>
+template <typename T, class Allocator = Allocator<T>>
 class ArrayResizer {
  public:
+  using size_type = size_t;
+
   constexpr static RealT default_resize_ratio_ = 2.0;
 
-  TRIBOL_HOST_DEVICE ArrayResizer( SizeT min_delta_capacity = 1 ) : min_delta_capacity_( min_delta_capacity ) {}
+  TRIBOL_HOST_DEVICE ArrayResizer( size_type min_delta_capacity = 1 ) : min_delta_capacity_( min_delta_capacity ) {}
 
-  TRIBOL_HOST_DEVICE bool resizeNeeded( SizeT new_size, const AllocatedMemory<T, Allocator, SizeT>& memory )
+  TRIBOL_HOST_DEVICE bool resizeNeeded( size_type new_size, const AllocatedMemory<T, Allocator>& memory )
   {
     return new_size > memory.capacity();
   }
 
-#pragma nv_exec_check_disable
-  TRIBOL_HOST_DEVICE AllocatedMemory<T, Allocator, SizeT> resize(
-      const AllocatedMemory<T, Allocator, SizeT>& old_memory )
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
+  TRIBOL_HOST_DEVICE AllocatedMemory<T, Allocator> resize( const AllocatedMemory<T, Allocator>& old_memory )
   {
-    SizeT new_capacity = static_cast<SizeT>( old_memory.capacity() * default_resize_ratio_ );
+    size_type new_capacity = static_cast<size_type>( old_memory.capacity() * default_resize_ratio_ );
     new_capacity = new_capacity > ( old_memory.capacity() + min_delta_capacity_ )
                        ? new_capacity
                        : ( old_memory.capacity() + min_delta_capacity_ );
     return resize( old_memory, new_capacity );
   }
 
-#pragma nv_exec_check_disable
-  TRIBOL_HOST_DEVICE AllocatedMemory<T, Allocator, SizeT> resize(
-      const AllocatedMemory<T, Allocator, SizeT>& old_memory, SizeT new_capacity )
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
+  TRIBOL_HOST_DEVICE AllocatedMemory<T, Allocator> resize( const AllocatedMemory<T, Allocator>& old_memory,
+                                                           size_type new_capacity )
   {
     assert( new_capacity > old_memory.capacity() );
-    AllocatedMemory<T, Allocator, SizeT> new_memory( old_memory.size(), new_capacity );
-    old_memory.allocator().copy( new_memory.data(), old_memory.data(), old_memory.size() );
+    AllocatedMemory<T, Allocator> new_memory( old_memory.size(), new_capacity );
+    old_memory.allocator().uninitialized_copy( old_memory.data(), old_memory.data() + old_memory.size(),
+                                               new_memory.data() );
     return std::move( new_memory );
   }
 
  private:
-  SizeT min_delta_capacity_;
+  size_type min_delta_capacity_;
 };
 
-template <typename T, class Allocator = DynamicAllocator<T>, typename SizeT = IndexT>
-class Array : public BoundedArray<T, AllocatedMemory<T, Allocator, SizeT>> {
+template <typename T, class Allocator = DynamicAllocator<T>>
+class Array : public BoundedArray<T, AllocatedMemory<T, Allocator>> {
  public:
   using value_type = T;
-  using BaseClass = BoundedArray<T, AllocatedMemory<T, Allocator, SizeT>>;
+  using BaseClass = BoundedArray<T, AllocatedMemory<T, Allocator>>;
   using typename BaseClass::memory_type;
+  using typename BaseClass::pointer;
   using typename BaseClass::size_type;
 
   constexpr static size_type default_capacity_ = 0;
 
-#pragma nv_exec_check_disable
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
   TRIBOL_HOST_DEVICE Array( size_type size = 0, size_type capacity = default_capacity_ )
       : BaseClass( memory_type( size, capacity >= size ? capacity : size ) ), resizer_( 1 )
   {
@@ -292,30 +303,82 @@ class Array : public BoundedArray<T, AllocatedMemory<T, Allocator, SizeT>> {
 
   // copy constructor with a custom allocator
   template <typename Allocator2>
-  TRIBOL_HOST_DEVICE Array( const Array<T, Allocator2, SizeT>& other, Allocator&& allocator )
-      : BaseClass( other,
-                   AllocatedMemory<T, Allocator, SizeT>( other.size(), other.capacity(), std::move( allocator ) ) )
+  TRIBOL_HOST_DEVICE Array( const Array<T, Allocator2>& other, Allocator&& allocator )
+      : BaseClass( other, AllocatedMemory<T, Allocator>( other.size(), other.capacity(), std::move( allocator ) ) )
   {
   }
 
+  using BaseClass::capacity;
   using BaseClass::size;
 
-#pragma nv_exec_check_disable
-  TRIBOL_HOST_DEVICE void push_back( T value )
-  {
-    if ( resizer_.resizeNeeded( size() + 1, memory_ ) ) {
-      memory_ = resizer_.resize( memory_ );
-    }
-    BaseClass::push_back( value );
-  }
-#pragma nv_exec_check_disable
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
+  TRIBOL_HOST_DEVICE void push_back( T value ) { emplace_back( std::move( value ) ); }
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
   template <typename... Args>
   TRIBOL_HOST_DEVICE void emplace_back( Args&&... args )
   {
-    if ( resizer_.resizeNeeded( size() + 1, memory_ ) ) {
-      memory_ = resizer_.resize( memory_ );
+    // ORIGINAL
+    // if ( resizer_.resizeNeeded( size() + 1, memory_ ) ) {
+    //   memory_ = resizer_.resize( memory_ );
+    // }
+    // BaseClass::emplace_back( std::forward<Args>( args )... );
+    // FASTEST SO FAR
+    // pointer end = memory_.data() + size();
+    // pointer cap = memory_.data() + capacity();
+    // if ( end < cap ) {
+    //   ::new ( end ) T( std::forward<Args>( args )... );
+    //   memory_.setSize( size() + 1 );
+    // } else {
+    //   memory_ = resizer_.resize( memory_ );
+    //   BaseClass::emplace_back( std::forward<Args>( args )... );
+    // }
+    // VERY SLOW
+    // pointer end = memory_.data() + size();
+    // pointer cap = memory_.data() + capacity();
+    // if ( end < cap ) {
+    //   ::new ( end ) T( std::forward<Args>( args )... );
+    //   memory_.setSize( size() + 1 );
+    // } else {
+    //   // memory_ = resizer_.resize( memory_ );
+    //   size_type new_capacity = std::max( static_cast<size_type>( 2 ) * size(), static_cast<size_type>( 1 ) );
+    //   auto new_memory = memory_type(
+    //       typename memory_type::BaseClass( memory_.allocator().allocate( new_capacity ), size(), new_capacity ),
+    //       Allocator() );
+    //   ::new ( new_memory.data() + size() ) T( std::forward<Args>( args )... );
+    //   memory_.allocator().uninitialized_copy( new_memory.data(), memory_.data(), size() );
+    //   memory_ = new_memory;
+    //   memory_.setSize( size() + 1 );
+    // }
+    // MOVE THINGS OUT
+    // if ( size() >= capacity() ) {
+    //   memory_ = resizer_.resize( memory_ );
+    //   addOneToEnd( std::forward<Args>( args )... );
+    // } else {
+    //   addOneToEnd( std::forward<Args>( args )... );
+    // }
+    // COPY VECTOR
+    pointer end = this->memory_.data() + size();
+    pointer cap = this->memory_.data() + capacity();
+    if ( end < cap ) {
+      ::new ( end ) T( std::forward<Args>( args )... );
+      this->memory_.setSize( size() + 1 );
+    } else {
+      pointer v_first;
+      pointer v_cap;
+      {
+        size_type new_cap = std::max( size() * 2, static_cast<size_t>( 1 ) );
+        auto alloc = static_cast<T*>( ::operator new( new_cap * sizeof( T ) ) );
+        v_first = alloc;
+        v_cap = v_first + new_cap;
+      }
+      pointer v_end = v_first + size();
+      pointer v_begin = v_end;
+      ::new ( v_end ) T( std::forward<Args>( args )... );
+      v_end++;
+      // auto new_begin = v_begin - (memory_.end() - memory_.begin());
+      std::uninitialized_copy( memory_.data(), end, v_first );
+      memory_ = memory_type( typename memory_type::BaseClass( v_first, size() + 1, v_cap - v_first ), Allocator() );
     }
-    BaseClass::emplace_back( std::forward<Args>( args )... );
   }
   using BaseClass::pop_back;
   TRIBOL_HOST_DEVICE void resize( size_type new_size )
@@ -334,12 +397,19 @@ class Array : public BoundedArray<T, AllocatedMemory<T, Allocator, SizeT>> {
   }
 
  private:
+  template <typename... Args>
+  TRIBOL_HOST_DEVICE void addOneToEnd( Args&&... args )
+  {
+    ::new ( memory_.data() + size() ) T( std::forward<Args>( args )... );
+    memory_.setSize( size() + 1 );
+  }
+
   using BaseClass::memory_;
   ArrayResizer<T, Allocator> resizer_;
 };
 
-template <typename T, class Allocator = DynamicAllocator<T>, typename SizeT = IndexT>
-class Array2D : public BoundedArray2D<T, AllocatedMemory<T, Allocator, SizeT>> {
+template <typename T, class Allocator = DynamicAllocator<T>>
+class Array2D : public BoundedArray2D<T, AllocatedMemory<T, Allocator>> {
  public:
   using value_type = T;
   using BaseClass = BoundedArray2D<T, AllocatedMemory<T, Allocator>>;
@@ -358,9 +428,8 @@ class Array2D : public BoundedArray2D<T, AllocatedMemory<T, Allocator, SizeT>> {
 
   // copy constructor with a custom allocator
   template <typename Allocator2>
-  TRIBOL_HOST_DEVICE Array2D( const Array2D<T, Allocator2, SizeT>& other, Allocator&& allocator )
-      : BaseClass( other,
-                   AllocatedMemory<T, Allocator, SizeT>( other.size(), other.capacity(), std::move( allocator ) ) )
+  TRIBOL_HOST_DEVICE Array2D( const Array2D<T, Allocator2>& other, Allocator&& allocator )
+      : BaseClass( other, AllocatedMemory<T, Allocator>( other.size(), other.capacity(), std::move( allocator ) ) )
   {
   }
 
@@ -389,15 +458,14 @@ using HostArray = Array<T,
 #ifdef TRIBOL_USE_UMPIRE
                         UmpireAllocator<T, MSPACE>
 #else
-                        HeapAllocator<T>
+                        Allocator<T>
 #endif
-                        ,
-                        SizeT>;
+                        >;
 
-template <typename T, template <typename, typename, typename> class ArrayT = Array, typename SizeT = IndexT>
+template <typename T, template <typename, typename> class ArrayT = Array>
 class ManagedArray {
  public:
-  using array_type = ArrayT<T, DynamicAllocator<T>, SizeT>;
+  using array_type = ArrayT<T, DynamicAllocator<T>>;
   using memory_view_type = Memory<typename array_type::memory_type::accessor_type>;
   using view_type = ArrayBase<memory_view_type>;
 
