@@ -283,10 +283,10 @@ class CompGeomPair {
 
   TRIBOL_HOST_DEVICE CompGeomPair() {};
 
-  TRIBOL_HOST_DEVICE CompGeomPair( InterfacePair* pair, Parameters& params, int dim )
-      : m_dim( dim ),
-        m_pair( pair ),
-        m_params( params ) 
+  TRIBOL_HOST_DEVICE CompGeomPair( InterfacePair* pair, Parameters& params, const int dim )
+      : m_pair( pair ),
+        m_params( params ),
+        m_dim( dim ) 
   {
   }
 
@@ -314,10 +314,7 @@ class ContactPlanePair : public CompGeomPair {
    * @brief Overloaded constructor
    *
    */
-  TRIBOL_HOST_DEVICE ContactPlanePair( InterfacePair* pair, Parameters& params, int dim )
-    : CompGeomPair( pair, params, dim )
-  {
-  }
+  TRIBOL_HOST_DEVICE ContactPlanePair( InterfacePair* pair, Parameters& params, const int dim );
 
   virtual ~ContactPlanePair() = default;
 
@@ -511,10 +508,7 @@ class CommonPlanePair : public ContactPlanePair {
    * @brief Overloaded constructor
    *
    */
-  TRIBOL_HOST_DEVICE CommonPlanePair( InterfacePair* pair, Parameters& params, int dim )
-    : ContactPlanePair( pair, params, dim )
-  {
-  }
+  TRIBOL_HOST_DEVICE CommonPlanePair( InterfacePair* pair, Parameters& params, const int dim );
 
   /*!
    * \brief Destructor
@@ -704,10 +698,7 @@ class MortarPlanePair : public ContactPlanePair {
    * @brief Overloaded constructor
    *
    */
-  TRIBOL_HOST_DEVICE MortarPlanePair( InterfacePair* pair, Parameters& params, int dim )
-    : ContactPlanePair( pair, params, dim )
-  {
-  }
+  TRIBOL_HOST_DEVICE MortarPlanePair( InterfacePair* pair, Parameters& params, const int dim );
 
   /*!
    * \brief Destructor
@@ -773,10 +764,7 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    * @brief Overloaded constructor
    *
    */
-  TRIBOL_HOST_DEVICE AlignedMortarPlanePair( InterfacePair* pair, Parameters& params, int dim )
-    : ContactPlanePair( pair, params, dim )
-  {
-  }
+  TRIBOL_HOST_DEVICE AlignedMortarPlanePair( InterfacePair* pair, Parameters& params, const int dim );
 
   /*!
    * \brief Destructor

@@ -254,78 +254,83 @@ TRIBOL_HOST_DEVICE bool ExceedsMaxAutoInterpen( const MeshData::Viewer& mesh1, c
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE CompGeomPair::CompGeomPair( InterfacePair* pair, Parameters& params )
-    : m_pair( pair ),
-      m_params( params )
-{
-}
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE ContactPlanePair::ContactPlanePair( InterfacePair* pair, Parameters& params, RealT areaFrac, int dim )
-    : CompGeomPair( pair, params ),
-      m_dim( dim ),
-      m_cX( 0.0 ),
-      m_cY( 0.0 ),
-      m_cZ( 0.0 ),
-      m_cXf1( 0.0 ),
-      m_cYf1( 0.0 ),
-      m_cZf1( 0.0 ),
-      m_cXf2( 0.0 ),
-      m_cYf2( 0.0 ),
-      m_cZf2( 0.0 ),
-      m_numInterpenPoly1Vert( 0 ),
-      m_numInterpenPoly2Vert( 0 ),
-      m_nX( 0.0 ),
-      m_nY( 0.0 ),
-      m_nZ( 0.0 ),
+TRIBOL_HOST_DEVICE ContactPlanePair::ContactPlanePair( InterfacePair* pair, Parameters& params, const int dim )
+    : CompGeomPair( pair, params, dim ),
+      m_inContact( false ),
       m_gap( 0.0 ),
       m_gapTol( 0.0 ),
-      m_areaFrac( areaFrac ),
-      m_areaMin( 0.0 ),
-      m_area( 0.0 )
-      //m_interpenArea( 0.0 ),
-{
-}
-
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE CommonPlanePair::CommonPlanePair( InterfacePair* pair, Parameters& params, RealT areaFrac, int dim )
-    : ContactPlanePair( pair, params, areaFrac, dim ),
-      m_velGap( 0.0 ),
-      m_ratePressure ( 0.0 ),
-      m_pressure( 0.0 )
-{
-}
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE MortarPlanePair::MortarPlanePair( InterfacePair* pair, Parameters& params, RealT areaFrac, int dim )
-    : ContactPlanePair( pair, params, areaFrac, dim )
-{
-}
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE ContactPlane::ContactPlane() : ContactPlane( nullptr, 0.0, true, false, 0 ) {}
-
-//-----------------------------------------------------------------------------
-// 3D contact plane member functions
-//-----------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE ContactPlane3D::ContactPlane3D( InterfacePair* pair, RealT areaFrac, bool interpenOverlap,
-                                                   bool interPlane )
-    : ContactPlane( pair, areaFrac, interpenOverlap, interPlane, 3 ),
       m_e1X( 0.0 ),
       m_e1Y( 0.0 ),
       m_e1Z( 0.0 ),
       m_e2X( 0.0 ),
       m_e2Y( 0.0 ),
       m_e2Z( 0.0 ),
-      m_numPolyVert( 0 ),
+      m_cX( 0.0 ),
+      m_cY( 0.0 ),
+      m_cZ( 0.0 ),
       m_overlapCX( 0.0 ),
-      m_overlapCY( 0.0 )
+      m_overlapCY( 0.0 ),
+      m_cXf1( 0.0 ),
+      m_cYf1( 0.0 ),
+      m_cZf1( 0.0 ),
+      m_cXf2( 0.0 ),
+      m_cYf2( 0.0 ),
+      m_cZf2( 0.0 ),
+      m_nX( 0.0 ),
+      m_nY( 0.0 ),
+      m_nZ( 0.0 ),
+      m_numPolyVert( 0 ),
+      m_areaFrac( params.overlap_area_frac ),
+      m_areaMin( 0.0 ),
+      m_area( 0.0 )
+{
+   for (int i=0; i<max_nodes_per_overlap; ++i) {
+     m_polyX[i] = 0.;
+     m_polyY[i] = 0.;
+     m_polyZ[i] = 0.;
+     m_polyLocX[i] = 0.;
+     m_polyLocY[i] = 0.;
+   }
+}
+
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE CommonPlanePair::CommonPlanePair( InterfacePair* pair, Parameters& params, const int dim )
+    : ContactPlanePair( pair, params, dim ),
+      m_numInterpenPoly1Vert( 0 ),
+      m_numInterpenPoly2Vert( 0 ),
+      m_velGap( 0.0 ),
+      m_ratePressure ( 0.0 ),
+      m_pressure( 0.0 )
+{
+  for (int i=0; i<max_nodes_per_intersection; ++i) {
+    m_interpenPoly1X[i] = 0.;
+    m_interpenPoly1Y[i] = 0.;
+
+    m_interpenPoly2X[i] = 0.;
+    m_interpenPoly2Y[i] = 0.;
+
+    m_interpenG1X[i] = 0.;
+    m_interpenG1Y[i] = 0.;
+    m_interpenG1Z[i] = 0.;
+
+    m_interpenG2X[i] = 0.;
+    m_interpenG2Y[i] = 0.;
+    m_interpenG2Z[i] = 0.;
+  }
+}
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE MortarPlanePair::MortarPlanePair( InterfacePair* pair, Parameters& params, const int dim )
+    : ContactPlanePair( pair, params, dim )
 {
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE ContactPlane3D::ContactPlane3D() : ContactPlane3D( nullptr, 0.0, true, false ) {}
+TRIBOL_HOST_DEVICE AlignedMortarPlanePair::AlignedMortarPlanePair( InterfacePair* pair, Parameters& params, const int dim )
+    : ContactPlanePair( pair, params, dim )
+{
+}
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE FaceGeomError CheckFacePair( ContactPlane3D& cp, const MeshData::Viewer& mesh1,
@@ -1289,22 +1294,6 @@ TRIBOL_HOST_DEVICE FaceGeomError ContactPlane3D::computeLocalInterpenOverlap( co
   return NO_FACE_GEOM_ERROR;
 
 }  // end ContactPlane3D::computeLocalInterpenOverlap()
-
-//-----------------------------------------------------------------------------
-// Contact Plane 2D routines
-//-----------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE ContactPlane2D::ContactPlane2D( InterfacePair* pair, RealT lenFrac, bool interpenOverlap,
-                                                   bool interPlane )
-    : ContactPlane( pair, lenFrac, interpenOverlap, interPlane, 2 )
-{
-  for ( int i = 0; i < 2; ++i ) {
-    m_segX[i] = 0.0;
-    m_segY[i] = 0.0;
-  }
-}  // end ContactPlane2D::ContactPlane2D()
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE ContactPlane2D::ContactPlane2D() : ContactPlane2D( nullptr, 0.0, true, false ) {}
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE FaceGeomError CheckEdgePair( ContactPlane2D& cp, const MeshData::Viewer& mesh1,
