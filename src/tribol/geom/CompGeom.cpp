@@ -293,7 +293,8 @@ TRIBOL_HOST_DEVICE ContactPlanePair::ContactPlanePair( InterfacePair* pair, Para
    }
 }
 
-
+//------------------------------------------------------------------------------
+// Common Plane Routines
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE CommonPlanePair::CommonPlanePair( InterfacePair* pair, Parameters& params, const int dim )
     : ContactPlanePair( pair, params, dim ),
@@ -321,21 +322,17 @@ TRIBOL_HOST_DEVICE CommonPlanePair::CommonPlanePair( InterfacePair* pair, Parame
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE MortarPlanePair::MortarPlanePair( InterfacePair* pair, Parameters& params, const int dim )
-    : ContactPlanePair( pair, params, dim )
+TRIBOL_HOST_DEVICE CommonPlanePair::checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
 {
+   if (m_dim == 2) {
+     this->checkCommonPlaneEdgePair( mesh1, mesh2 );
+   } else {
+     this->checkCommonPlaneFacePair( mesh1, mesh2 );
+   }
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE AlignedMortarPlanePair::AlignedMortarPlanePair( InterfacePair* pair, Parameters& params, const int dim )
-    : ContactPlanePair( pair, params, dim )
-{
-}
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomError CheckFacePair( ContactPlane3D& cp, const MeshData::Viewer& mesh1,
-                                                const MeshData::Viewer& mesh2, const Parameters& params,
-                                                bool fullOverlap )
+TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::checkCommonPlaneFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
 {
   // Note: Checks #1-#4 are done in the binning
 
@@ -566,7 +563,561 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckFacePair( ContactPlane3D& cp, const MeshDa
   cp.m_inContact = true;
   return NO_FACE_GEOM_ERROR;
 
-}  // end CheckFacePair()
+} // end CommonPlanePair::checkCommonPlaneFacePair()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE FaceGeomError checkCommonPlaneEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
+{
+  // Note: Checks #1-#4 are done in the binning
+
+  // alias variables off the InterfacePair
+  IndexT edgeId1 = cp.getCpElementId1();
+  IndexT edgeId2 = cp.getCpElementId2();
+
+  // instantiate temporary contact plane to be returned by this routine
+  bool interpenOverlap = ( !fullOverlap ) ? true : false;
+
+  // TODO SRW remove this check in lieu of computing the actual overlap
+  // CHECK #5: if fullOverlap input arg is false, then check to see
+  // if all the nodes of one edge are on the other side of a plane
+  // defined by the other edge and/or vice versa, or if all the nodes
+  // on one edge are in separation w.r.t. the other edge. Both will
+  // convert an interpen overlap calc method to a full overlap calc
+  // for a given edge-pair
+  // if ( interpenOverlap && FullEdgeCheck( mesh1, mesh2, edgeId1, edgeId2 ) ) {
+  //  fullOverlap = true;
+  //  interpenOverlap = false;
+  //  cp.m_interpenOverlap = interpenOverlap;
+  //}
+
+  // CHECK #6: compute the projected length of overlap on the contact plane.
+  // At this point the edges are proximate and likely have a positive
+  // projected length of overlap.
+
+  // compute common-plane point-normal data. At this point we don't know where to properly
+  // locate the common plane centroid so we just take the average of the two face centroids
+  cp.computeNormal( mesh1, mesh2 );
+  cp.computePlanePoint( mesh1, mesh2 );
+
+  // project each edge's nodes onto the contact segment.
+  constexpr int max_nodes_per_elem = 2;
+  RealT projX1[max_nodes_per_elem];
+  RealT projY1[max_nodes_per_elem];
+  RealT projX2[max_nodes_per_elem];
+  RealT projY2[max_nodes_per_elem];
+
+  ProjectEdgeNodesToSegment( mesh1, edgeId1, cp.m_nX, cp.m_nY, cp.m_cX, cp.m_cY, &projX1[0], &projY1[0] );
+  ProjectEdgeNodesToSegment( mesh2, edgeId2, cp.m_nX, cp.m_nY, cp.m_cX, cp.m_cY, &projX2[0], &projY2[0] );
+
+  // Use the full overlap calculation to check for positive area of overlap
+  // and if so, compute the centroid of the overlap. This is used later
+  // to properly locate the common plane in order to find the face-face
+  // intersection point on the plane in the interpenOverlap calc
+  cp.CheckSegOverlap( &projX1[0], &projY1[0], &projX2[0], &projY2[0], mesh1.numberOfNodesPerElement(),
+                      mesh2.numberOfNodesPerElement() );
+
+  // check the contact plane length against the minimum length.
+  // In general the interpen length is going to be less than
+  // the full overlap length so we can do this check prior to
+  // any interpenetration overlap calculation
+  cp.computeAreaTol( mesh1, mesh2, params );
+  if ( cp.m_area < cp.m_areaMin ) {
+    cp.m_inContact = false;
+    return NO_OVERLAP;
+  }
+
+  // if interpenOverlap then recompute the actual interpenetrating overlap
+  if ( interpenOverlap ) {
+    FaceGeomError interpen_err = cp.computeLocalInterpenOverlap( mesh1, mesh2, params );
+
+    if ( interpen_err == SWITCH_TO_FULL_OVERLAP ) {
+      interpenOverlap = false;
+      fullOverlap = true;
+      // recompute the overlap using the full overlap routine
+      // TODO SRW see if this is needed since we computed this above...is that data still around?
+      cp.CheckSegOverlap( &projX1[0], &projY1[0], &projX2[0], &projY2[0], mesh1.numberOfNodesPerElement(),
+                          mesh2.numberOfNodesPerElement() );
+    } else if ( interpen_err != NO_FACE_GEOM_ERROR ) {
+      cp.m_inContact = false;
+      return interpen_err;
+    } else if ( interpen_err == NO_FACE_GEOM_ERROR ) {
+      // check new area to area tol
+      if ( cp.m_interpenArea < cp.m_areaMin ) {
+        cp.m_inContact = false;
+        return NO_OVERLAP;
+      }
+    }
+  }  // end if-interpenOverlap
+
+  // Note, no need to compute full overlap here like what is done in 3D. The overlap
+  // calc already has computed vertices.
+
+  // recompute the plane point and centroid gap. For the full overlap
+  // the centroid (i.e. plane point) of the contact plane has been modified
+  // based on the computed segment overlap. This routine will relocate the
+  // contact plane and compute the centroid gap. For the interpenetration
+  // overlap, this ought to only amount to a centroid gap calculation as the
+  // contact plane was properly located wrt the two edges, but the contact
+  // plane point moved (in-contact segment) due to the interpen overlap
+  // segment calc
+  cp.planePointAndCentroidGap( mesh1, mesh2 );
+
+  // Per 3D mortar testing, allow for separation up to the edge-radius
+  // TODO SRW confirm removing this check
+  // cp.m_gapTol = params.gap_separation_ratio *
+  //              axom::utilities::max( mesh1.getFaceRadius()[edgeId1], mesh2.getFaceRadius()[edgeId2] );
+  // if ( cp.m_gap > cp.m_gapTol ) {
+  //  cp.m_inContact = false;
+  //  return NO_FACE_GEOM_ERROR;
+  //}
+
+  // for auto-contact, remove contact candidacy for full-overlap
+  // face-pairs with interpenetration exceeding contact penetration fraction.
+  // Note, this check is solely meant to exclude face-pairs composed of faces
+  // on opposite sides of thin structures/plates
+  //
+  // Recall that interpen gaps are negative
+  if ( fullOverlap ) {
+    if ( ExceedsMaxAutoInterpen( mesh1, mesh2, edgeId1, edgeId2, params, cp.m_gap ) ) {
+      cp.m_inContact = false;
+      return NO_FACE_GEOM_ERROR;
+    }
+  }
+
+  // for the full overlap case we need to project the overlap segment
+  // onto the updated contact plane
+  if ( fullOverlap ) {
+    // allocate dummy space for the interpen topology so adding the
+    // contact plane to the contact plane manager doesn't seg fault.
+    // Fix this later...
+    cp.m_numInterpenPoly1Vert = 2;
+    cp.m_numInterpenPoly2Vert = 2;
+
+    for ( int i = 0; i < 2; ++i ) {
+      RealT xproj, yproj;
+      ProjectPointToSegment( cp.m_segX[i], cp.m_segY[i], cp.m_nX, cp.m_nY, cp.m_cX, cp.m_cY, xproj, yproj );
+      cp.m_segX[i] = xproj;
+      cp.m_segY[i] = yproj;
+
+      // set the interpen vertices to the full overlap vertices
+      cp.m_interpenG1X[i] = 0.0;
+      cp.m_interpenG1Y[i] = 0.0;
+      cp.m_interpenG2X[i] = 0.0;
+      cp.m_interpenG2Y[i] = 0.0;
+    }
+  }
+
+  cp.m_inContact = true;
+  return NO_FACE_GEOM_ERROR;
+
+}  // end CommonPlanePair::checkCommonPlaneEdgePair()
+
+//------------------------------------------------------------------------------
+// Mortar Plane Routines
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE MortarPlanePair::MortarPlanePair( InterfacePair* pair, Parameters& params, const int dim )
+    : ContactPlanePair( pair, params, dim )
+{
+}
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE MortarPlanePair::checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
+{
+}
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::checkMortarPlaneFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
+{
+  // Note: Checks #1-#4 are done in the binning
+
+  // alias variables off the InterfacePair
+  IndexT element_id1 = cp.getCpElementId1();
+  IndexT element_id2 = cp.getCpElementId2();
+
+  // set overlap booleans based on input arguments and contact method
+  bool interpenOverlap = ( !fullOverlap ) ? true : false;
+
+  // CHECK #6: check if the two faces overlap in a projected sense.
+  // To do this check we need to use the contact plane object, which will
+  // have its own local basis that needs to be defined
+
+  // compute cp normal
+  cp.computeNormal( mesh1, mesh2 );
+
+  // compute cp centroid
+  cp.computePlanePoint( mesh1, mesh2 );
+
+  // project face nodes onto contact plane. Still do this for mortar.
+  // The mortar face may not be exactly planar so we still need to project
+  // the nodes onto the contact plane, which is defined by average normal of the
+  // nonmortar face.
+  constexpr int max_nodes_per_elem = 4;
+  RealT projX1[max_nodes_per_elem];
+  RealT projY1[max_nodes_per_elem];
+  RealT projZ1[max_nodes_per_elem];
+  RealT projX2[max_nodes_per_elem];
+  RealT projY2[max_nodes_per_elem];
+  RealT projZ2[max_nodes_per_elem];
+
+  ProjectFaceNodesToPlane( mesh1, element_id1, cp.m_nX, cp.m_nY, cp.m_nZ, cp.m_cX, cp.m_cY, cp.m_cZ, &projX1[0],
+                           &projY1[0], &projZ1[0] );
+  ProjectFaceNodesToPlane( mesh2, element_id2, cp.m_nX, cp.m_nY, cp.m_nZ, cp.m_cX, cp.m_cY, cp.m_cZ, &projX2[0],
+                           &projY2[0], &projZ2[0] );
+
+  // compute cp local coordinate basis
+  cp.computeLocalBasis( mesh1 );
+
+  // project the projected global nodal coordinates onto local
+  // contact plane 2D coordinate system.
+  RealT projeX1[max_nodes_per_elem];
+  RealT projeY1[max_nodes_per_elem];
+  RealT projeX2[max_nodes_per_elem];
+  RealT projeY2[max_nodes_per_elem];
+
+  cp.globalTo2DLocalCoords( &projX1[0], &projY1[0], &projZ1[0], &projeX1[0], &projeY1[0],
+                            mesh1.numberOfNodesPerElement() );
+  cp.globalTo2DLocalCoords( &projX2[0], &projY2[0], &projZ2[0], &projeX2[0], &projeY2[0],
+                            mesh2.numberOfNodesPerElement() );
+
+  // compute the overlap area of the two faces and locate the overlap centroid.
+  // Note, this is the full, but cheaper, overlap computation. We have to locate the overlap
+  // centroid inorder to later properly locate the common plane for the interpenOverlap calculation
+  cp.checkPolyOverlap( mesh1, mesh2, &projeX1[0], &projeY1[0], &projeX2[0], &projeY2[0], 0 );
+
+  // compute the overlap area tolerance
+  cp.computeAreaTol( mesh1, mesh2, params );
+  if ( cp.m_area == 0. || cp.m_area < cp.m_areaMin ) {
+    cp.m_inContact = false;
+    return NO_OVERLAP;
+  }
+
+  // TODO SRW remove check #5 - At this point if we have a positive
+  // area of overlap, let's compute the required intersection starting
+  // with interpenOverlaps first, which then may switch to fullOverlap
+  // CHECK #5: if fullOverlap input arg is false, then check to see
+  // if all the nodes of one face are on the other side of a plane
+  // defined by the other face and/or vice versa, or if all the nodes
+  // on one face are in separation w.r.t. the other face. Both will
+  // convert an interpen overlap calc method to a full overlap calc
+  // for a given face-pair
+  // if ( interpenOverlap && FullFaceCheck( mesh1, mesh2, element_id1, element_id2 ) ) {
+  //  fullOverlap = true;
+  //  interpenOverlap = false;
+  //  cp.m_interpenOverlap = interpenOverlap;
+  //}
+
+  // CHECK #7: compute the required intersection with overlap polygon vertices
+  // and compute the actual mean average gap between the two faces
+  // This can either be a fully integrated gap computation or a single
+  // integration point computation.
+
+  // compute projected overlap of interpenetrating portion of faces. This
+  // is used for common-plane only. The calculation may be switched from
+  // the default interpenOverlap to fullOverlap within this block
+  if ( interpenOverlap ) {
+    // computing the interpenetration area of overlap requires relocating the
+    // centroid using the centroid computed in the check #6 calculations. This is done
+    // inside this routine
+    FaceGeomError interpen_err = cp.computeLocalInterpenOverlap( mesh1, mesh2, params );
+
+    if ( interpen_err == SWITCH_TO_FULL_OVERLAP ) {
+      interpenOverlap = false;
+      fullOverlap = true;
+    } else if ( interpen_err != NO_FACE_GEOM_ERROR ) {
+      cp.m_inContact = false;
+      return interpen_err;
+    } else if ( interpen_err == NO_FACE_GEOM_ERROR ) {
+      // check new area to area tol
+      if ( cp.m_interpenArea < cp.m_areaMin ) {
+        cp.m_inContact = false;
+        return NO_OVERLAP;
+      }
+
+      // reassign area based on possible modification to the actual
+      // intersection polygon.
+      cp.m_area = cp.m_interpenArea;
+
+      // compute the local vertex averaged centroid of overlapping polygon
+      RealT cZ;  // dummy z component for call to routine
+      VertexAvgCentroid( cp.m_polyLocX, cp.m_polyLocY, nullptr, cp.m_numPolyVert, cp.m_overlapCX, cp.m_overlapCY, cZ );
+    }
+
+  }  // end if (interpenOverlap)
+
+  // compute full projected overlap. This uses the full routine that actually computes
+  // the overlap vertices as well
+  if ( fullOverlap ) {
+    // compute the full intersection polygon vertex coordinates
+    RealT* X1 = &projeX1[0];
+    RealT* Y1 = &projeY1[0];
+    RealT* X2 = &projeX2[0];
+    RealT* Y2 = &projeY2[0];
+
+    // assuming each face's vertices are ordered WRT that face's outward unit normal,
+    // reorder face 2 vertices to be consistent with face 1. DO NOT CALL POLYREORDER()
+    // to do this. // TODO debug this; this may affect calculations later on. We may
+    // have to unreverse the ordering.
+    ElemReverse( X2, Y2, mesh2.numberOfNodesPerElement() );
+
+    // compute intersection polygon and area. Note, the polygon centroid
+    // is stored from the previous intersection calc that just computes
+    // area and local centroid
+    RealT pos_tol = params.len_collapse_ratio *
+                    axom::utilities::max( mesh1.getFaceRadius()[element_id1], mesh2.getFaceRadius()[element_id2] );
+    RealT len_tol = pos_tol;
+    FaceGeomError inter_err =
+        Intersection2DPolygon( X1, Y1, mesh1.numberOfNodesPerElement(), X2, Y2, mesh2.numberOfNodesPerElement(),
+                               pos_tol, len_tol, cp.m_polyLocX, cp.m_polyLocY, cp.m_numPolyVert, cp.m_area, false );
+
+    if ( inter_err != NO_FACE_GEOM_ERROR ) {
+      cp.m_inContact = false;
+      return inter_err;
+    }
+  }  // end if (fullOverlap)
+
+  // handle the case where the actual polygon with connectivity
+  // and computed vertex coordinates becomes degenerate due to
+  // either position tolerances (segment-segment intersections)
+  // or length tolerances (intersecting polygon segment lengths)
+  if ( cp.m_numPolyVert < 3 ) {
+#ifdef TRIBOL_USE_HOST
+    SLIC_DEBUG( "degenerate polygon intersection detected.\n" );
+#endif
+    cp.m_inContact = false;
+    return DEGENERATE_OVERLAP;
+  }
+
+  // Transform local vertex coordinates to global coordinates for the
+  // current projection of the polygonal overlap
+  for ( int i = 0; i < cp.m_numPolyVert; ++i ) {
+    cp.m_polyX[i] = 0.0;
+    cp.m_polyY[i] = 0.0;
+    cp.m_polyZ[i] = 0.0;
+
+    cp.local2DToGlobalCoords( cp.m_polyLocX[i], cp.m_polyLocY[i], cp.m_polyX[i], cp.m_polyY[i], cp.m_polyZ[i] );
+  }
+
+  // check polygonal vertex ordering with common plane normal
+  PolyReorderWithNormal( cp.m_polyX, cp.m_polyY, cp.m_polyZ, cp.m_numPolyVert, cp.m_nX, cp.m_nY, cp.m_nZ );
+
+  // transform local interpenetration overlaps to global coords for the
+  // current polygonal overlap
+  if ( interpenOverlap ) {
+    for ( int i = 0; i < cp.m_numInterpenPoly1Vert; ++i ) {
+      Local2DToGlobalCoords( cp.m_interpenPoly1X[i], cp.m_interpenPoly1Y[i], cp.m_e1X, cp.m_e1Y, cp.m_e1Z, cp.m_e2X,
+                             cp.m_e2Y, cp.m_e2Z, cp.m_cX, cp.m_cY, cp.m_cZ, cp.m_interpenG1X[i], cp.m_interpenG1Y[i],
+                             cp.m_interpenG1Z[i] );
+    }
+
+    for ( int i = 0; i < cp.m_numInterpenPoly2Vert; ++i ) {
+      Local2DToGlobalCoords( cp.m_interpenPoly2X[i], cp.m_interpenPoly2Y[i], cp.m_e1X, cp.m_e1Y, cp.m_e1Z, cp.m_e2X,
+                             cp.m_e2Y, cp.m_e2Z, cp.m_cX, cp.m_cY, cp.m_cZ, cp.m_interpenG2X[i], cp.m_interpenG2Y[i],
+                             cp.m_interpenG2Z[i] );
+    }
+  }
+
+  // Now that all local-to-global projections have occurred,
+  // relocate the contact plane based on the most up-to-date
+  // contact plane centroid and recompute the gap. For interpenOverlap,
+  // the contact plane is updated and this just amounts to a gap
+  // computation. For the fullOverlap case, this may relocate
+  // the contact plane in space. For Mortar methods this routine
+  // only computes the gap based on the current plane point and
+  // normal.
+  //
+  // Warning:
+  // Make sure that any local to global transformations have
+  // occurred prior to this call. This does not need to be done
+  // for mortar methods. We should just do a gap computation if
+  // needed.
+  cp.planePointAndCentroidGap( mesh1, mesh2 );
+
+  // for auto-contact, remove contact candidacy for full-overlap
+  // face-pairs with interpenetration exceeding contact penetration fraction.
+  // Note, this check is solely meant to exclude face-pairs composed of faces
+  // on opposite sides of thin structures/plates
+  //
+  // Recall that interpen gaps are negative
+  if ( fullOverlap ) {
+    if ( ExceedsMaxAutoInterpen( mesh1, mesh2, element_id1, element_id2, params, cp.m_gap ) ) {
+      cp.m_inContact = false;
+      return NO_FACE_GEOM_ERROR;
+    }
+  }
+
+  // if fullOverlap is used, REPROJECT the overlapping polygon
+  // onto the new contact plane
+  if ( fullOverlap ) {
+    for ( int i = 0; i < cp.m_numPolyVert; ++i ) {
+      ProjectPointToPlane( cp.m_polyX[i], cp.m_polyY[i], cp.m_polyZ[i], cp.m_nX, cp.m_nY, cp.m_nZ, cp.m_cX, cp.m_cY,
+                           cp.m_cZ, cp.m_polyX[i], cp.m_polyY[i], cp.m_polyZ[i] );
+    }
+  }
+
+  cp.m_inContact = true;
+  return NO_FACE_GEOM_ERROR;
+
+} // end CommonPlanePair::checkCommonPlaneFacePair()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE FaceGeomError checkMortarPlaneEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
+{
+  // Note: Checks #1-#4 are done in the binning
+
+  // alias variables off the InterfacePair
+  IndexT edgeId1 = cp.getCpElementId1();
+  IndexT edgeId2 = cp.getCpElementId2();
+
+  // instantiate temporary contact plane to be returned by this routine
+  bool interpenOverlap = ( !fullOverlap ) ? true : false;
+
+  // TODO SRW remove this check in lieu of computing the actual overlap
+  // CHECK #5: if fullOverlap input arg is false, then check to see
+  // if all the nodes of one edge are on the other side of a plane
+  // defined by the other edge and/or vice versa, or if all the nodes
+  // on one edge are in separation w.r.t. the other edge. Both will
+  // convert an interpen overlap calc method to a full overlap calc
+  // for a given edge-pair
+  // if ( interpenOverlap && FullEdgeCheck( mesh1, mesh2, edgeId1, edgeId2 ) ) {
+  //  fullOverlap = true;
+  //  interpenOverlap = false;
+  //  cp.m_interpenOverlap = interpenOverlap;
+  //}
+
+  // CHECK #6: compute the projected length of overlap on the contact plane.
+  // At this point the edges are proximate and likely have a positive
+  // projected length of overlap.
+
+  // compute common-plane point-normal data. At this point we don't know where to properly
+  // locate the common plane centroid so we just take the average of the two face centroids
+  cp.computeNormal( mesh1, mesh2 );
+  cp.computePlanePoint( mesh1, mesh2 );
+
+  // project each edge's nodes onto the contact segment.
+  constexpr int max_nodes_per_elem = 2;
+  RealT projX1[max_nodes_per_elem];
+  RealT projY1[max_nodes_per_elem];
+  RealT projX2[max_nodes_per_elem];
+  RealT projY2[max_nodes_per_elem];
+
+  ProjectEdgeNodesToSegment( mesh1, edgeId1, cp.m_nX, cp.m_nY, cp.m_cX, cp.m_cY, &projX1[0], &projY1[0] );
+  ProjectEdgeNodesToSegment( mesh2, edgeId2, cp.m_nX, cp.m_nY, cp.m_cX, cp.m_cY, &projX2[0], &projY2[0] );
+
+  // Use the full overlap calculation to check for positive area of overlap
+  // and if so, compute the centroid of the overlap. This is used later
+  // to properly locate the common plane in order to find the face-face
+  // intersection point on the plane in the interpenOverlap calc
+  cp.CheckSegOverlap( &projX1[0], &projY1[0], &projX2[0], &projY2[0], mesh1.numberOfNodesPerElement(),
+                      mesh2.numberOfNodesPerElement() );
+
+  // check the contact plane length against the minimum length.
+  // In general the interpen length is going to be less than
+  // the full overlap length so we can do this check prior to
+  // any interpenetration overlap calculation
+  cp.computeAreaTol( mesh1, mesh2, params );
+  if ( cp.m_area < cp.m_areaMin ) {
+    cp.m_inContact = false;
+    return NO_OVERLAP;
+  }
+
+  // if interpenOverlap then recompute the actual interpenetrating overlap
+  if ( interpenOverlap ) {
+    FaceGeomError interpen_err = cp.computeLocalInterpenOverlap( mesh1, mesh2, params );
+
+    if ( interpen_err == SWITCH_TO_FULL_OVERLAP ) {
+      interpenOverlap = false;
+      fullOverlap = true;
+      // recompute the overlap using the full overlap routine
+      // TODO SRW see if this is needed since we computed this above...is that data still around?
+      cp.CheckSegOverlap( &projX1[0], &projY1[0], &projX2[0], &projY2[0], mesh1.numberOfNodesPerElement(),
+                          mesh2.numberOfNodesPerElement() );
+    } else if ( interpen_err != NO_FACE_GEOM_ERROR ) {
+      cp.m_inContact = false;
+      return interpen_err;
+    } else if ( interpen_err == NO_FACE_GEOM_ERROR ) {
+      // check new area to area tol
+      if ( cp.m_interpenArea < cp.m_areaMin ) {
+        cp.m_inContact = false;
+        return NO_OVERLAP;
+      }
+    }
+  }  // end if-interpenOverlap
+
+  // Note, no need to compute full overlap here like what is done in 3D. The overlap
+  // calc already has computed vertices.
+
+  // recompute the plane point and centroid gap. For the full overlap
+  // the centroid (i.e. plane point) of the contact plane has been modified
+  // based on the computed segment overlap. This routine will relocate the
+  // contact plane and compute the centroid gap. For the interpenetration
+  // overlap, this ought to only amount to a centroid gap calculation as the
+  // contact plane was properly located wrt the two edges, but the contact
+  // plane point moved (in-contact segment) due to the interpen overlap
+  // segment calc
+  cp.planePointAndCentroidGap( mesh1, mesh2 );
+
+  // Per 3D mortar testing, allow for separation up to the edge-radius
+  // TODO SRW confirm removing this check
+  // cp.m_gapTol = params.gap_separation_ratio *
+  //              axom::utilities::max( mesh1.getFaceRadius()[edgeId1], mesh2.getFaceRadius()[edgeId2] );
+  // if ( cp.m_gap > cp.m_gapTol ) {
+  //  cp.m_inContact = false;
+  //  return NO_FACE_GEOM_ERROR;
+  //}
+
+  // for auto-contact, remove contact candidacy for full-overlap
+  // face-pairs with interpenetration exceeding contact penetration fraction.
+  // Note, this check is solely meant to exclude face-pairs composed of faces
+  // on opposite sides of thin structures/plates
+  //
+  // Recall that interpen gaps are negative
+  if ( fullOverlap ) {
+    if ( ExceedsMaxAutoInterpen( mesh1, mesh2, edgeId1, edgeId2, params, cp.m_gap ) ) {
+      cp.m_inContact = false;
+      return NO_FACE_GEOM_ERROR;
+    }
+  }
+
+  // for the full overlap case we need to project the overlap segment
+  // onto the updated contact plane
+  if ( fullOverlap ) {
+    // allocate dummy space for the interpen topology so adding the
+    // contact plane to the contact plane manager doesn't seg fault.
+    // Fix this later...
+    cp.m_numInterpenPoly1Vert = 2;
+    cp.m_numInterpenPoly2Vert = 2;
+
+    for ( int i = 0; i < 2; ++i ) {
+      RealT xproj, yproj;
+      ProjectPointToSegment( cp.m_segX[i], cp.m_segY[i], cp.m_nX, cp.m_nY, cp.m_cX, cp.m_cY, xproj, yproj );
+      cp.m_segX[i] = xproj;
+      cp.m_segY[i] = yproj;
+
+      // set the interpen vertices to the full overlap vertices
+      cp.m_interpenG1X[i] = 0.0;
+      cp.m_interpenG1Y[i] = 0.0;
+      cp.m_interpenG2X[i] = 0.0;
+      cp.m_interpenG2Y[i] = 0.0;
+    }
+  }
+
+  cp.m_inContact = true;
+  return NO_FACE_GEOM_ERROR;
+
+}  // end CommonPlanePair::checkCommonPlaneEdgePair()
+
+//------------------------------------------------------------------------------
+// Aligned Mortar Plane Routines
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE AlignedMortarPlanePair::AlignedMortarPlanePair( InterfacePair* pair, Parameters& params, const int dim )
+    : ContactPlanePair( pair, params, dim )
+{
+}
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE AlignedMortarPlanePair::checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
+{
+}
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ContactPlane::planePointAndCentroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
@@ -1296,154 +1847,6 @@ TRIBOL_HOST_DEVICE FaceGeomError ContactPlane3D::computeLocalInterpenOverlap( co
 }  // end ContactPlane3D::computeLocalInterpenOverlap()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomError CheckEdgePair( ContactPlane2D& cp, const MeshData::Viewer& mesh1,
-                                                const MeshData::Viewer& mesh2, const Parameters& params,
-                                                bool fullOverlap )
-{
-  // Note: Checks #1-#4 are done in the binning
-
-  // alias variables off the InterfacePair
-  IndexT edgeId1 = cp.getCpElementId1();
-  IndexT edgeId2 = cp.getCpElementId2();
-
-  // instantiate temporary contact plane to be returned by this routine
-  bool interpenOverlap = ( !fullOverlap ) ? true : false;
-
-  // TODO SRW remove this check in lieu of computing the actual overlap
-  // CHECK #5: if fullOverlap input arg is false, then check to see
-  // if all the nodes of one edge are on the other side of a plane
-  // defined by the other edge and/or vice versa, or if all the nodes
-  // on one edge are in separation w.r.t. the other edge. Both will
-  // convert an interpen overlap calc method to a full overlap calc
-  // for a given edge-pair
-  // if ( interpenOverlap && FullEdgeCheck( mesh1, mesh2, edgeId1, edgeId2 ) ) {
-  //  fullOverlap = true;
-  //  interpenOverlap = false;
-  //  cp.m_interpenOverlap = interpenOverlap;
-  //}
-
-  // CHECK #6: compute the projected length of overlap on the contact plane.
-  // At this point the edges are proximate and likely have a positive
-  // projected length of overlap.
-
-  // compute common-plane point-normal data. At this point we don't know where to properly
-  // locate the common plane centroid so we just take the average of the two face centroids
-  cp.computeNormal( mesh1, mesh2 );
-  cp.computePlanePoint( mesh1, mesh2 );
-
-  // project each edge's nodes onto the contact segment.
-  constexpr int max_nodes_per_elem = 2;
-  RealT projX1[max_nodes_per_elem];
-  RealT projY1[max_nodes_per_elem];
-  RealT projX2[max_nodes_per_elem];
-  RealT projY2[max_nodes_per_elem];
-
-  ProjectEdgeNodesToSegment( mesh1, edgeId1, cp.m_nX, cp.m_nY, cp.m_cX, cp.m_cY, &projX1[0], &projY1[0] );
-  ProjectEdgeNodesToSegment( mesh2, edgeId2, cp.m_nX, cp.m_nY, cp.m_cX, cp.m_cY, &projX2[0], &projY2[0] );
-
-  // Use the full overlap calculation to check for positive area of overlap
-  // and if so, compute the centroid of the overlap. This is used later
-  // to properly locate the common plane in order to find the face-face
-  // intersection point on the plane in the interpenOverlap calc
-  cp.CheckSegOverlap( &projX1[0], &projY1[0], &projX2[0], &projY2[0], mesh1.numberOfNodesPerElement(),
-                      mesh2.numberOfNodesPerElement() );
-
-  // check the contact plane length against the minimum length.
-  // In general the interpen length is going to be less than
-  // the full overlap length so we can do this check prior to
-  // any interpenetration overlap calculation
-  cp.computeAreaTol( mesh1, mesh2, params );
-  if ( cp.m_area < cp.m_areaMin ) {
-    cp.m_inContact = false;
-    return NO_OVERLAP;
-  }
-
-  // if interpenOverlap then recompute the actual interpenetrating overlap
-  if ( interpenOverlap ) {
-    FaceGeomError interpen_err = cp.computeLocalInterpenOverlap( mesh1, mesh2, params );
-
-    if ( interpen_err == SWITCH_TO_FULL_OVERLAP ) {
-      interpenOverlap = false;
-      fullOverlap = true;
-      // recompute the overlap using the full overlap routine
-      // TODO SRW see if this is needed since we computed this above...is that data still around?
-      cp.CheckSegOverlap( &projX1[0], &projY1[0], &projX2[0], &projY2[0], mesh1.numberOfNodesPerElement(),
-                          mesh2.numberOfNodesPerElement() );
-    } else if ( interpen_err != NO_FACE_GEOM_ERROR ) {
-      cp.m_inContact = false;
-      return interpen_err;
-    } else if ( interpen_err == NO_FACE_GEOM_ERROR ) {
-      // check new area to area tol
-      if ( cp.m_interpenArea < cp.m_areaMin ) {
-        cp.m_inContact = false;
-        return NO_OVERLAP;
-      }
-    }
-  }  // end if-interpenOverlap
-
-  // Note, no need to compute full overlap here like what is done in 3D. The overlap
-  // calc already has computed vertices.
-
-  // recompute the plane point and centroid gap. For the full overlap
-  // the centroid (i.e. plane point) of the contact plane has been modified
-  // based on the computed segment overlap. This routine will relocate the
-  // contact plane and compute the centroid gap. For the interpenetration
-  // overlap, this ought to only amount to a centroid gap calculation as the
-  // contact plane was properly located wrt the two edges, but the contact
-  // plane point moved (in-contact segment) due to the interpen overlap
-  // segment calc
-  cp.planePointAndCentroidGap( mesh1, mesh2 );
-
-  // Per 3D mortar testing, allow for separation up to the edge-radius
-  // TODO SRW confirm removing this check
-  // cp.m_gapTol = params.gap_separation_ratio *
-  //              axom::utilities::max( mesh1.getFaceRadius()[edgeId1], mesh2.getFaceRadius()[edgeId2] );
-  // if ( cp.m_gap > cp.m_gapTol ) {
-  //  cp.m_inContact = false;
-  //  return NO_FACE_GEOM_ERROR;
-  //}
-
-  // for auto-contact, remove contact candidacy for full-overlap
-  // face-pairs with interpenetration exceeding contact penetration fraction.
-  // Note, this check is solely meant to exclude face-pairs composed of faces
-  // on opposite sides of thin structures/plates
-  //
-  // Recall that interpen gaps are negative
-  if ( fullOverlap ) {
-    if ( ExceedsMaxAutoInterpen( mesh1, mesh2, edgeId1, edgeId2, params, cp.m_gap ) ) {
-      cp.m_inContact = false;
-      return NO_FACE_GEOM_ERROR;
-    }
-  }
-
-  // for the full overlap case we need to project the overlap segment
-  // onto the updated contact plane
-  if ( fullOverlap ) {
-    // allocate dummy space for the interpen topology so adding the
-    // contact plane to the contact plane manager doesn't seg fault.
-    // Fix this later...
-    cp.m_numInterpenPoly1Vert = 2;
-    cp.m_numInterpenPoly2Vert = 2;
-
-    for ( int i = 0; i < 2; ++i ) {
-      RealT xproj, yproj;
-      ProjectPointToSegment( cp.m_segX[i], cp.m_segY[i], cp.m_nX, cp.m_nY, cp.m_cX, cp.m_cY, xproj, yproj );
-      cp.m_segX[i] = xproj;
-      cp.m_segY[i] = yproj;
-
-      // set the interpen vertices to the full overlap vertices
-      cp.m_interpenG1X[i] = 0.0;
-      cp.m_interpenG1Y[i] = 0.0;
-      cp.m_interpenG2X[i] = 0.0;
-      cp.m_interpenG2Y[i] = 0.0;
-    }
-  }
-
-  cp.m_inContact = true;
-  return NO_FACE_GEOM_ERROR;
-
-}  // end CheckEdgePair()
-
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ContactPlane2D::computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
 {

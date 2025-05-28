@@ -371,6 +371,8 @@ class ContactPlanePair : public CompGeomPair {
   /*!
    * \brief check to see if face-pairs are interacting
    *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
    */
   TRIBOL_HOST_DEVICE virtual void checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) = 0;
 
@@ -552,8 +554,26 @@ class CommonPlanePair : public ContactPlanePair {
   /*!
    * \brief check to see if face-pairs are interacting
    *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
    */
   TRIBOL_HOST_DEVICE void checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+
+  /*!
+   * \brief check to see if common plane face-pairs are interacting
+   *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
+   */
+   TRIBOL_HOST_DEVICE FaceGeomError checkCommonPlaneFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 );
+
+  /*!
+   * \brief check to see if common plane edge-pairs are interacting
+   *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
+   */
+   TRIBOL_HOST_DEVICE FaceGeomError checkCommonPlaneEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 );
 
   /*!
    * \brief Compute the unit normal that defines the contact plane
@@ -709,8 +729,26 @@ class MortarPlanePair : public ContactPlanePair {
   /*!
    * \brief check to see if face-pairs are interacting
    *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
    */
   TRIBOL_HOST_DEVICE void checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+
+  /*!
+   * \brief check to see if mortar plane face-pairs are interacting
+   *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
+   */
+   TRIBOL_HOST_DEVICE FaceGeomError checkMortarPlaneFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 );
+
+  /*!
+   * \brief check to see if mortar plane edge-pairs are interacting
+   *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
+   */
+   TRIBOL_HOST_DEVICE FaceGeomError checkMortarPlaneEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 );
 
   /*!
    * \brief Compute the unit normal that defines the contact plane
@@ -775,8 +813,26 @@ class AlignedMortarPlanePair : public ContactPlanePair {
   /*!
    * \brief check to see if face-pairs are interacting
    *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
    */
   TRIBOL_HOST_DEVICE void checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+
+  /*!
+   * \brief check to see if aligned mortar plane face-pairs are interacting
+   *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
+   */
+   TRIBOL_HOST_DEVICE FaceGeomError checkAlignedMortarPlaneFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 );
+
+  /*!
+   * \brief check to see if aligned mortar plane edge-pairs are interacting
+   *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
+   */
+   TRIBOL_HOST_DEVICE FaceGeomError checkAlignedMortarPlaneEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 );
 
   /*!
    * \brief Compute the unit normal that defines the contact plane
