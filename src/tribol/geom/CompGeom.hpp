@@ -295,7 +295,7 @@ class CompGeomPair {
  public:
   int m_dim;
   Parameters& m_params;
-  TRIBOL_HOST_DEVICE virtual void checkInterfacePair() = 0;
+  TRIBOL_HOST_DEVICE virtual void checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) = 0;
 };
 
 //-----------------------------------------------------------------------------
@@ -375,7 +375,7 @@ class ContactPlanePair : public CompGeomPair {
    * \brief check to see if face-pairs are interacting
    *
    */
-  TRIBOL_HOST_DEVICE virtual void checkInterfacePair() = 0;
+  TRIBOL_HOST_DEVICE virtual void checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) = 0;
 
   /*!
    * \brief Compute a local basis on the contact plane
@@ -559,7 +559,7 @@ class CommonPlanePair : public ContactPlanePair {
    * \brief check to see if face-pairs are interacting
    *
    */
-  TRIBOL_HOST_DEVICE void checkInterfacePair() override;
+  TRIBOL_HOST_DEVICE void checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
 
   /*!
    * \brief Compute the unit normal that defines the contact plane
@@ -719,7 +719,7 @@ class MortarPlanePair : public ContactPlanePair {
    * \brief check to see if face-pairs are interacting
    *
    */
-  TRIBOL_HOST_DEVICE void checkInterfacePair() override;
+  TRIBOL_HOST_DEVICE void checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
 
   /*!
    * \brief Compute the unit normal that defines the contact plane
@@ -788,7 +788,7 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    * \brief check to see if face-pairs are interacting
    *
    */
-  TRIBOL_HOST_DEVICE void checkInterfacePair() override;
+  TRIBOL_HOST_DEVICE void checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
 
   /*!
    * \brief Compute the unit normal that defines the contact plane
