@@ -90,6 +90,13 @@ class CompGeom {
      TRIBOL_HOST_DEVICE const ArrayViewT<const CommonPlanePair>& getCommonPlanePairs() const { return m_common_plane_pairs; }
 
      /**
+      * @brief Get a single common plane from the array view
+      *
+      * @return common plane object
+      */
+     TRIBOL_HOST_DEVICE CommonPlanePair& getCommonPlane( int id ) const { return m_common_plane_pairs[id]; }
+
+     /**
       * @brief Get the array view of mortar plane pairs
       *
       * @return ArrayViewT of mortar plane pairs
@@ -97,11 +104,25 @@ class CompGeom {
      TRIBOL_HOST_DEVICE const ArrayViewT<const MortarPlanePair>& getMortarPlanePairs() const { return m_mortar_plane_pairs; }
 
      /**
+      * @brief Get a single mortar plane from the array view
+      *
+      * @return mortar plane object
+      */
+     TRIBOL_HOST_DEVICE MortarPlanePair& getMortarPlane( int id ) const { return m_mortar_plane_pairs[id]; }
+
+     /**
       * @brief Get the array view of aligned mortar plane pairs
       *
       * @return ArrayViewT of aligned mortar plane pairs
       */
      TRIBOL_HOST_DEVICE const ArrayViewT<const AlignedMortarPlanePair>& getAlignedMortarPlanePairs() const { return m_aligned_mortar_plane_pairs; }
+
+     /**
+      * @brief Get a single aligned mortar plane from the array view
+      *
+      * @return algined mortar plane object
+      */
+     TRIBOL_HOST_DEVICE AlignedMortarPlanePair& getAlignedMortarPlane( int id ) const { return m_aligned_mortar_plane_pairs[id]; }
 
      private:
 
@@ -138,6 +159,13 @@ class CompGeom {
    ArrayT<CommonPlanePair>& getCommonPlanePairs() { return m_common_plane_pairs; }
 
    /**
+    * @brief Get a single common plane
+    *
+    * @return common plane object
+    */
+   CommonPlanePair& getCommonPlane( int id ) const { return m_common_plane_pairs[id]; }
+
+   /**
     * @brief Get the list of mortar plane pairs
     *
     * @return ArrayT of mortar plane pairs
@@ -145,11 +173,25 @@ class CompGeom {
    ArrayT<MortarPlanePair>& getMortarPlanePairs() { return m_mortar_plane_pairs; }
 
    /**
+    * @brief Get a single mortar plane
+    *
+    * @return mortar plane object
+    */
+   MortarPlanePair& getMortarPlane( int id ) const { return m_mortar_plane_pairs[id]; }
+
+   /**
     * @brief Get the list of aligned mortar plane pairs
     *
     * @return ArrayT of aligned mortar plane pairs
     */
    ArrayT<AlignedMortarPlanePair>& getAlignedMortarPlanePairs() { return m_aligned_mortar_plane_pairs; }
+
+   /**
+    * @brief Get a single aligned mortar plane
+    *
+    * @return aligned mortar plane object
+    */
+   AlignedMortarPlanePair& getAlignedMortarPlane( int id ) const { return m_aligned_mortar_plane_pairs[id]; }
 
    int getNumActivePairs( ContactMethod method )
    {

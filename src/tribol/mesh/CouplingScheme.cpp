@@ -350,13 +350,25 @@ CouplingScheme::CouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, 
 }  // end CouplingScheme::CouplingScheme()
 
 //------------------------------------------------------------------------------
-const ContactPlane& CouplingScheme::getContactPlane( IndexT id ) const
+const ContactPlanePair& CouplingScheme::getContactPlane( IndexT id ) const
 {
-  if ( spatialDimension() == 2 ) {
-    return m_contact_plane2d[id];
-  } else {
-    return m_contact_plane3d[id];
-  }
+  switch (m_contact_method)
+     case COMMON_PLANE: {
+       return m_cg_pairs.getCommonPlane(id);
+       break;
+     }
+     case SINGLE_MORTAR: {
+       return m_cg_pairs.getMortarPlane(id);
+       break;
+     }
+     case ALIGNED_MORTAR: {
+       return m_cg_pairs.getAlignedMortarPlane(id);
+       break;
+     }
+     default: {
+       // no-op
+     }
+  } // end switch
 }
 
 //------------------------------------------------------------------------------
@@ -1800,13 +1812,25 @@ CouplingScheme::Viewer::Viewer( CouplingScheme& cs )
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE ContactPlane& CouplingScheme::Viewer::getContactPlane( IndexT id ) const
+TRIBOL_HOST_DEVICE ContactPlanePair& CouplingScheme::Viewer::getContactPlane( IndexT id ) const
 {
-  if ( spatialDimension() == 2 ) {
-    return m_contact_plane2d[id];
-  } else {
-    return m_contact_plane3d[id];
-  }
+  switch (m_contact_method)
+     case COMMON_PLANE: {
+       return m_cg_pairs.getCommonPlane(id);
+       break;
+     }
+     case SINGLE_MORTAR: {
+       return m_cg_pairs.getMortarPlane(id);
+       break;
+     }
+     case ALIGNED_MORTAR: {
+       return m_cg_pairs.getAlignedMortarPlane(id);
+       break;
+     }
+     default: {
+       // no-op
+     }
+  } // end switch
 }
 
 //------------------------------------------------------------------------------
