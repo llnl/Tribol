@@ -27,103 +27,65 @@ namespace tribol {
 TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair( InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                      const MeshData::Viewer& mesh2, const Parameters& params,
                                                      ContactMethod cMethod, ContactCase TRIBOL_UNUSED_PARAM( cCase ),
-                                                     bool& isInteracting, ArrayViewT<ContactPlane2D>& planes_2d,
-                                                     ArrayViewT<ContactPlane3D>& planes_3d, IndexT* plane_ct )
+                                                     bool& isInteracting, CompGeom::Viewer& cg, IndexT* plane_ct )
 {
   isInteracting = false;
+  inContact = false;
+  FaceGeomError face_err;
+  ContactPlane* my_plane;
 
   // note: will likely need the ContactCase for specialized
   // geometry check(s)/routine(s)
 
   switch ( cMethod ) {
-    case SINGLE_MORTAR:
     case MORTAR_WEIGHTS:
+    case SINGLE_MORTAR: {
+      MortarPlanePair mortar_plane( &pair, params, mesh1.spatialDimension() );
+      face_err = mortar_plane.checkInterfacePair( mesh1, mesh2 ); // TODO SRW fix/write this routine
+      inContact = mortar_plane.m_inContact;
+      my_plane = &mortar_plane;
+      break;
+    }
     case COMMON_PLANE: {
-      // set whether full overlap is to be used or not. Note: SINGLE_MORTAR and
-      // MORTAR_WEIGHTS drop into this 'case', so the method still needs to be checked
-      const bool full = ( cMethod == COMMON_PLANE ) ? false : true;
-      const bool interpenOverlap = ( full ) ? false : true;
-      const bool intermediatePlane = ( cMethod == COMMON_PLANE ) ? true : false;
-
-      // Perform contact plane specific computations (2D and 3D)
-      if ( mesh1.spatialDimension() == 3 ) {
-        ContactPlane3D cpTemp( &pair, params.overlap_area_frac, interpenOverlap, intermediatePlane );
-        FaceGeomError face_err = CheckFacePair( cpTemp, mesh1, mesh2, params, full );
-
-        if ( face_err != NO_FACE_GEOM_ERROR ) {
-          isInteracting = false;
-#ifdef TRIBOL_USE_HOST
-          SLIC_DEBUG( "face_err: " << face_err );
-#endif
-        } else if ( cpTemp.m_inContact ) {
-#ifdef TRIBOL_USE_RAJA
-          auto idx = RAJA::atomicInc<RAJA::auto_atomic>( plane_ct );
-#else
-          auto idx = *plane_ct;
-          ++( *plane_ct );
-#endif
-          planes_3d[idx] = std::move( cpTemp );
-          isInteracting = true;
-        } else {
-          isInteracting = false;
-        }
-        return face_err;
-      } else {
-        ContactPlane2D cpTemp( &pair, params.overlap_area_frac, interpenOverlap, intermediatePlane );
-        FaceGeomError edge_err = CheckEdgePair( cpTemp, mesh1, mesh2, params, full );
-
-        if ( edge_err != NO_FACE_GEOM_ERROR ) {
-          isInteracting = false;
-        } else if ( cpTemp.m_inContact ) {
-#ifdef TRIBOL_USE_RAJA
-          auto idx = RAJA::atomicInc<RAJA::auto_atomic>( plane_ct );
-#else
-          auto idx = *plane_ct;
-          ++( *plane_ct );
-#endif
-          planes_2d[idx] = std::move( cpTemp );
-          isInteracting = true;
-        } else {
-          isInteracting = false;
-        }
-        return edge_err;
-      }
+      CommonPlanePair common_plane( &pair, params, mesh1.spatialDimension() );
+      face_err = common_plane.checkInterfacePair( mesh1, mesh2 );
+      inContact = common_plane.m_inContact;
+      my_plane = &common_plane;
       break;
     }
-
     case ALIGNED_MORTAR: {
-      // Note: this is checked by CouplingScheme::isValidMethod()
-      if ( mesh1.spatialDimension() == 3 ) {
-        // TODO refactor to make consistent with CheckFacePair, SRW
-        ContactPlane3D cpTemp = CheckAlignedFacePair( pair, mesh1, mesh2, params );
-
-        if ( cpTemp.m_inContact ) {
-#ifdef TRIBOL_USE_RAJA
-          auto idx = RAJA::atomicInc<RAJA::auto_atomic>( plane_ct );
-#else
-          auto idx = ( *plane_ct );
-          ++( *plane_ct );
-#endif
-          planes_3d[idx] = std::move( cpTemp );
-          isInteracting = true;
-        } else {
-          isInteracting = false;
-        }
-        return NO_FACE_GEOM_ERROR;
-      } else {
-        // Note: this is checked by CouplingScheme::isValidMethod()
-        // SLIC_ERROR_IF(true, "2D ALIGNED_MORTAR not yet implemented.");
-      }
+      AlignedMortarPlanePair aligned_mortar_plane(&pair, params, mesh1.spatialDimension() );
+      face_err = aligned_mortar_plane.checkInterfacePair( mesh1, mesh2 );
+      inContact = aligned_mortar_plane.m_inContact;
+      my_plane = &aligned_mortar_plane;
       break;
     }
-
     default: {
       // don't do anything
       break;
     }
+  } // end switch
+
+  // check errors and contact status and add ContactPlanePair accordingly
+  if ( face_err != NO_FACE_GEOM_ERROR ) {
+    isInteracting = false;
+#ifdef TRIBOL_USE_HOST
+    SLIC_DEBUG( "face_err: " << face_err );
+#endif
+  } else if ( inContact ) {
+#ifdef TRIBOL_USE_RAJA
+    auto idx = RAJA::atomicInc<RAJA::auto_atomic>( plane_ct );
+#else
+    auto idx = *plane_ct;
+    ++( *plane_ct );
+#endif
+    cg.addContactPlane( *my_plane, idx, cMethod );
+    isInteracting = true;
+  } else {
+    isInteracting = false;
   }
 
-  return NO_FACE_GEOM_ERROR;  // quiet compiler
+  return face_err;
 
 }  // end CheckInterfacePair()
 

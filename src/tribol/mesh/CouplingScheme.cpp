@@ -357,6 +357,7 @@ const ContactPlanePair& CouplingScheme::getContactPlane( IndexT id ) const
        return m_cg_pairs.getCommonPlane(id);
        break;
      }
+     case MORTAR_WEIGHTS:
      case SINGLE_MORTAR: {
        return m_cg_pairs.getMortarPlane(id);
        break;
@@ -1806,8 +1807,7 @@ CouplingScheme::Viewer::Viewer( CouplingScheme& cs )
       m_enforcement_options( cs.m_enforcementOptions ),
       m_mesh1( cs.getMesh1().getView() ),
       m_mesh2( cs.getMesh2().getView() ),
-      m_contact_plane2d( cs.m_contact_plane2d ),
-      m_contact_plane3d( cs.m_contact_plane3d )
+      m_cg_pairs( cs.m_cg_pairs )
 {
 }
 
@@ -1819,6 +1819,7 @@ TRIBOL_HOST_DEVICE ContactPlanePair& CouplingScheme::Viewer::getContactPlane( In
        return m_cg_pairs.getCommonPlane(id);
        break;
      }
+     case MORTAR_WEIGHTS:
      case SINGLE_MORTAR: {
        return m_cg_pairs.getMortarPlane(id);
        break;

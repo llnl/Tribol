@@ -124,6 +124,32 @@ class CompGeom {
       */
      TRIBOL_HOST_DEVICE AlignedMortarPlanePair& getAlignedMortarPlane( int id ) const { return m_aligned_mortar_plane_pairs[id]; }
 
+     /**
+      * @brief Add a contact plane to the appropriate array view
+      *
+      */
+      TRIBOL_HOST_DEVICE addContactPlane( ContactPlanePair& contact_plane, const int id, const ContactMethod method ) {
+        switch (method) {
+          case COMMON_PLANE: {
+            m_common_plane_pairs[id] = std::move( static_cast<CommonPlanePair&>(contact_plane) );
+            break;
+          }
+          case SINGLE_MORTAR:
+          case MORTAR_WEIGHTS: {
+            m_mortar_plane_pairs[id] = std::move( static_cast<MortarPlanePair&>(contact_plane) );
+            break;
+          }
+          case ALIGNED_MORTAR: {
+            m_aligned_mortar_plane_pairs[id] = std::move( static_cast<AlignedMortarPlanePair&>(contact_plane) );
+            break;
+          }
+          default: {
+            // no-op
+            break;
+          }
+        } // end switch
+      }
+
      private:
 
       ArrayViewT<CommonPlanePair> m_common_plane_pairs;
@@ -193,7 +219,7 @@ class CompGeom {
     */
    AlignedMortarPlanePair& getAlignedMortarPlane( int id ) const { return m_aligned_mortar_plane_pairs[id]; }
 
-   int getNumActivePairs( ContactMethod method )
+   int getNumActivePairs( const ContactMethod method )
    {
     switch (method) {
       case COMMON_PLANE: {
@@ -812,8 +838,7 @@ class AlignedMortarPlanePair : public ContactPlanePair {
  * \param [in] cMethod the Tribol contact method
  * \param [in] cCase the Tribol contact Case
  * \param [in,out] isInteracting true if pair passes all computational geometry filters
- * \param [in,out] planes_2d array view of 2D contact planes
- * \param [in,out] planes_3d array view of 3D contact planes
+ * \param [in,out] cg viewer of the computational geometry container
  * \param [in,out] plane_ct number of contact planes in the array views
  *
  * \note isInteracting is true indicating a contact candidate for intersecting or
@@ -827,8 +852,7 @@ class AlignedMortarPlanePair : public ContactPlanePair {
 TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair( InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                      const MeshData::Viewer& mesh2, const Parameters& params,
                                                      ContactMethod const cMethod, ContactCase const cCase,
-                                                     bool& isInteracting, ArrayViewT<ContactPlane2D>& planes_2d,
-                                                     ArrayViewT<ContactPlane3D>& planes_3d, IndexT* plane_ct );
+                                                     bool& isInteracting, CompGeom::Viewer& cg, IndexT* plane_ct );
 
 //-----------------------------------------------------------------------------
 // Free functions returning Contact Plane objects
