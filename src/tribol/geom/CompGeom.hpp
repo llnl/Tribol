@@ -823,16 +823,10 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    *
    * \param [in] mesh1 mesh data viewer for mesh 1
    * \param [in] mesh2 mesh data viewer for mesh 2
+   *
+   * \note Aligned mortar only works in 3D (e.g. face-pairs)
    */
    TRIBOL_HOST_DEVICE FaceGeomError checkAlignedMortarPlaneFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 );
-
-  /*!
-   * \brief check to see if aligned mortar plane edge-pairs are interacting
-   *
-   * \param [in] mesh1 mesh data viewer for mesh 1
-   * \param [in] mesh2 mesh data viewer for mesh 2
-   */
-   TRIBOL_HOST_DEVICE FaceGeomError checkAlignedMortarPlaneEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 );
 
   /*!
    * \brief Compute the unit normal that defines the contact plane

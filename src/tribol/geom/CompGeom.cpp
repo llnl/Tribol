@@ -718,11 +718,17 @@ TRIBOL_HOST_DEVICE FaceGeomError checkCommonPlaneEdgePair( const MeshData::Viewe
 TRIBOL_HOST_DEVICE MortarPlanePair::MortarPlanePair( InterfacePair* pair, Parameters& params, const int dim )
     : ContactPlanePair( pair, params, dim )
 {
+  // no-op
 }
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE MortarPlanePair::checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
 {
+  if (m_dim == 2) {
+    this->checkMortarPlaneEdgePair( mesh1, mesh2 );
+  } else {
+    this->checkMortarPlaneFacePair( mesh1, mesh2 );
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -1112,85 +1118,22 @@ TRIBOL_HOST_DEVICE FaceGeomError checkMortarPlaneEdgePair( const MeshData::Viewe
 TRIBOL_HOST_DEVICE AlignedMortarPlanePair::AlignedMortarPlanePair( InterfacePair* pair, Parameters& params, const int dim )
     : ContactPlanePair( pair, params, dim )
 {
+  // no-op
 }
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE AlignedMortarPlanePair::checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
 {
+  if (m_dim == 3) {
+     this->checkAlignedMortarPlaneFacePair( mesh1, mesh2 );
+  }
+
+  // NOTE the coupling scheme initialization will error out on host if aligned mortar
+  // is trying to be used with dim = 2.
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlane::planePointAndCentroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
-{
-  // project the overlap centroid back to each face using a
-  // line-plane intersection method
-  RealT xc1 = 0.;
-  RealT yc1 = 0.;
-  RealT zc1 = 0.;
-  RealT xc2 = 0.;
-  RealT yc2 = 0.;
-  RealT zc2 = 0.;
-
-  RealT xcg = m_cX;
-  RealT ycg = m_cY;
-  RealT zcg = 0.0;
-
-  // first project the projected area of overlap's centroid in local
-  // coordinates to global coordinates
-  if ( m_dim == 3 ) {
-    auto& cp3 = static_cast<ContactPlane3D&>( *this );
-    auto xloc = cp3.m_overlapCX;
-    auto yloc = cp3.m_overlapCY;
-    xcg = xloc * cp3.m_e1X + yloc * cp3.m_e2X + cp3.m_cX;
-    ycg = xloc * cp3.m_e1Y + yloc * cp3.m_e2Y + cp3.m_cY;
-    zcg = xloc * cp3.m_e1Z + yloc * cp3.m_e2Z + cp3.m_cZ;
-  }
-
-  // find where the overlap centroid (plane point) intersects each face
-  auto fId1 = getCpElementId1();
-  auto fId2 = getCpElementId2();
-  RealT c1_z = 0.0;
-  RealT n1_z = 0.0;
-  RealT c2_z = 0.0;
-  RealT n2_z = 0.0;
-  if ( m_dim == 3 ) {
-    c1_z = m1.getElementCentroids()[2][fId1];
-    n1_z = m1.getElementNormals()[2][fId1];
-    c2_z = m2.getElementCentroids()[2][fId2];
-    n2_z = m2.getElementNormals()[2][fId2];
-  }
-  ProjectPointToPlane( xcg, ycg, zcg, m1.getElementNormals()[0][fId1], m1.getElementNormals()[1][fId1], n1_z,
-                       m1.getElementCentroids()[0][fId1], m1.getElementCentroids()[1][fId1], c1_z, xc1, yc1, zc1 );
-  ProjectPointToPlane( xcg, ycg, zcg, m2.getElementNormals()[0][fId2], m2.getElementNormals()[1][fId2], n2_z,
-                       m2.getElementCentroids()[0][fId2], m2.getElementCentroids()[1][fId2], c2_z, xc2, yc2, zc2 );
-
-  // for intermediate, or common plane methods, average the two contact plane
-  // centroid-to-plane intersections and use this as the new point data for the
-  // contact plane (do not do for mortar methods, or is redundant).
-  if ( m_dim == 2 || m_intermediatePlane ) {
-    m_cX = 0.5 * ( xc1 + xc2 );
-    m_cY = 0.5 * ( yc1 + yc2 );
-    m_cZ = 0.5 * ( zc1 + zc2 );
-  }
-
-  // compute normal gap magnitude (x1 - x2 for positive gap in separation
-  // and negative gap in penetration)
-  m_gap = ( xc1 - xc2 ) * m_nX + ( yc1 - yc2 ) * m_nY + ( zc1 - zc2 ) * m_nZ;
-
-  // store the two face points corresponding to the contact plane centroid projection/intersection
-
-  m_cXf1 = xc1;
-  m_cYf1 = yc1;
-  m_cZf1 = zc1;
-
-  m_cXf2 = xc2;
-  m_cYf2 = yc2;
-  m_cZf2 = zc2;
-}
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE ContactPlane3D CheckAlignedFacePair( InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                        const MeshData::Viewer& mesh2, const Parameters& params )
+TRIBOL_HOST_DEVICE ContactPlane3D checkAlignedMortarPlaneFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
 {
   // Note: Checks #1-#4 are done in the binning
 
@@ -1291,6 +1234,76 @@ TRIBOL_HOST_DEVICE ContactPlane3D CheckAlignedFacePair( InterfacePair& pair, con
   return cp;
 
 }  // end CheckAlignedFacePair()
+
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void ContactPlane::planePointAndCentroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
+{
+  // project the overlap centroid back to each face using a
+  // line-plane intersection method
+  RealT xc1 = 0.;
+  RealT yc1 = 0.;
+  RealT zc1 = 0.;
+  RealT xc2 = 0.;
+  RealT yc2 = 0.;
+  RealT zc2 = 0.;
+
+  RealT xcg = m_cX;
+  RealT ycg = m_cY;
+  RealT zcg = 0.0;
+
+  // first project the projected area of overlap's centroid in local
+  // coordinates to global coordinates
+  if ( m_dim == 3 ) {
+    auto& cp3 = static_cast<ContactPlane3D&>( *this );
+    auto xloc = cp3.m_overlapCX;
+    auto yloc = cp3.m_overlapCY;
+    xcg = xloc * cp3.m_e1X + yloc * cp3.m_e2X + cp3.m_cX;
+    ycg = xloc * cp3.m_e1Y + yloc * cp3.m_e2Y + cp3.m_cY;
+    zcg = xloc * cp3.m_e1Z + yloc * cp3.m_e2Z + cp3.m_cZ;
+  }
+
+  // find where the overlap centroid (plane point) intersects each face
+  auto fId1 = getCpElementId1();
+  auto fId2 = getCpElementId2();
+  RealT c1_z = 0.0;
+  RealT n1_z = 0.0;
+  RealT c2_z = 0.0;
+  RealT n2_z = 0.0;
+  if ( m_dim == 3 ) {
+    c1_z = m1.getElementCentroids()[2][fId1];
+    n1_z = m1.getElementNormals()[2][fId1];
+    c2_z = m2.getElementCentroids()[2][fId2];
+    n2_z = m2.getElementNormals()[2][fId2];
+  }
+  ProjectPointToPlane( xcg, ycg, zcg, m1.getElementNormals()[0][fId1], m1.getElementNormals()[1][fId1], n1_z,
+                       m1.getElementCentroids()[0][fId1], m1.getElementCentroids()[1][fId1], c1_z, xc1, yc1, zc1 );
+  ProjectPointToPlane( xcg, ycg, zcg, m2.getElementNormals()[0][fId2], m2.getElementNormals()[1][fId2], n2_z,
+                       m2.getElementCentroids()[0][fId2], m2.getElementCentroids()[1][fId2], c2_z, xc2, yc2, zc2 );
+
+  // for intermediate, or common plane methods, average the two contact plane
+  // centroid-to-plane intersections and use this as the new point data for the
+  // contact plane (do not do for mortar methods, or is redundant).
+  if ( m_dim == 2 || m_intermediatePlane ) {
+    m_cX = 0.5 * ( xc1 + xc2 );
+    m_cY = 0.5 * ( yc1 + yc2 );
+    m_cZ = 0.5 * ( zc1 + zc2 );
+  }
+
+  // compute normal gap magnitude (x1 - x2 for positive gap in separation
+  // and negative gap in penetration)
+  m_gap = ( xc1 - xc2 ) * m_nX + ( yc1 - yc2 ) * m_nY + ( zc1 - zc2 ) * m_nZ;
+
+  // store the two face points corresponding to the contact plane centroid projection/intersection
+
+  m_cXf1 = xc1;
+  m_cYf1 = yc1;
+  m_cZf1 = zc1;
+
+  m_cXf2 = xc2;
+  m_cYf2 = yc2;
+  m_cZf2 = zc2;
+}
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ContactPlane3D::computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
