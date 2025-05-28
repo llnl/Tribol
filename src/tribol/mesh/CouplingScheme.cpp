@@ -1024,24 +1024,39 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   auto contact_case = m_contactCase;
   ArrayT<int> pair_err_data( 1, 1, getAllocatorId() );
   auto pair_err = pair_err_data.view();
-  // clear contact planes to be populated/allocated anew for this cycle.
-  // initially allocate array of numPairs size, then shrink to the actual number of pairs
-  if ( spatialDimension() == 2 ) {
-    m_contact_plane2d = ArrayT<ContactPlane2D>( numPairs, numPairs, getAllocatorId() );
-    m_contact_plane3d = ArrayT<ContactPlane3D>( 0, 1, getAllocatorId() );
-  } else {
-    m_contact_plane2d = ArrayT<ContactPlane2D>( 0, 1, getAllocatorId() );
-    m_contact_plane3d = ArrayT<ContactPlane3D>( numPairs, numPairs, getAllocatorId() );
-  }
-  auto planes_2d = m_contact_plane2d.view();
-  auto planes_3d = m_contact_plane3d.view();
+
+  // clear and allocate the appropriate computational geometry pairs
+  switch (method) {
+    case COMMON_PLANE: {
+      auto common_planes = m_cg_pairs.getCommonPlanePairs();
+      common_planes = ArrayT<CommonPlanePair>( numPairs, numPairs, getAllocatorId() );
+      break;
+    }
+    case SINGLE_MORTAR:
+    case MORTAR_WEIGHTS: {
+      auto mortar_planes = m_cg_pairs.getMortarPlanePairs();
+      mortar_planes = ArrayT<MortarPlanePair>( numPairs, numPairs, getAllocatorId() );
+      break;
+    }
+    case ALIGNED_MORTAR: {
+      auto aligned_mortar_planes = m_cg_pairs.getAlignedMortarPlanePairs();
+      aligned_mortar_planes = ArrayT<AlignedMortarPlanePair>( numPairs, numPairs, getAllocatorId() );
+      break;
+    }
+    default: {
+      // no-op
+      break;
+    }
+  } // end switch
+
+  auto cg_pairs = m_cg_pairs.getView();
   auto mesh1 = getMesh1().getView();
   auto mesh2 = getMesh2().getView();
   // array of size one for counting number of planes on device
   ArrayT<IndexT> planes_ct_data( 1, 1, getAllocatorId() );
   auto planes_ct = planes_ct_data.view();
   forAllExec( getExecutionMode(), numPairs,
-              [pairs, mesh1, mesh2, params, contact_method, contact_case, planes_2d, planes_3d, planes_ct,
+              [pairs, mesh1, mesh2, params, contact_method, contact_case, cg_pairs, planes_ct,
                pair_err] TRIBOL_HOST_DEVICE( IndexT i ) mutable {
                 auto& pair = pairs[i];
 
@@ -1049,9 +1064,11 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                 // geometry checks to determine whether to include a pair
                 // in the active set
                 bool interact = false;
+    
+                // TODO SRW modify function signature
                 FaceGeomError interact_err =
-                    CheckInterfacePair( pair, mesh1, mesh2, params, contact_method, contact_case, interact, planes_2d,
-                                        planes_3d, planes_ct.data() );
+                    CheckInterfacePair( pair, mesh1, mesh2, params, contact_method, contact_case, interact,
+                                        cg_pairs, planes_ct.data() );
 
                 // // Update pair reporting data for this coupling scheme
                 // this->updatePairReportingData( interact_err );
@@ -1074,11 +1091,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 
   ArrayT<int, 1, MemorySpace::Host> planes_ct_host( planes_ct_data );
   // shrink array to actual number of contact planes
-  if ( spatialDimension() == 2 ) {
-    m_contact_plane2d.resize( planes_ct_host[0] );
-  } else {
-    m_contact_plane3d.resize( planes_ct_host[0] );
-  }
+  cg_pairs.resizeActivePairs( contact_method, planes_ct_host[0] );
 
   // Here, the pair_err is checked, which detects an issue with a face-pair geometry
   // (which has been skipped over for contact eligibility) and reports this warning.

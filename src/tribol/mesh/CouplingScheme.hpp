@@ -188,11 +188,8 @@ class CouplingScheme {
     /// View of the second mesh
     MeshData::Viewer m_mesh2;
 
-    /// Array view of 2D contact planes
-    //ArrayViewT<ContactPlane2D> m_contact_plane2d;
-
-    /// Array view of 3D contact planes
-    //ArrayViewT<ContactPlane3D> m_contact_plane3d;
+    /// View of computational geometry container
+    CompGeom::Viewer m_cg_pairs;
 
   };  // end class CouplingScheme::Viewer
 
@@ -455,7 +452,7 @@ class CouplingScheme {
    *
    * @return number of active interface pairs
    */
-  int getNumActivePairs() const { return std::max( m_contact_plane2d.size(), m_contact_plane3d.size() ); }
+  int getNumActivePairs() const { return m_cg_pairs.getNumActivePairs( m_contact_method ); }
 
   /**
    * @brief Return the contact plane given by id
@@ -464,13 +461,6 @@ class CouplingScheme {
    * @return contact plane object
    */
   const ContactPlane& getContactPlane( IndexT id ) const;
-
-  /**
-   * @brief Returns a reference to the 3D contact planes
-   *
-   * @return reference to the ContactPlane3D array
-   */
-  const ArrayT<ContactPlane3D>& get3DContactPlanes() const { return m_contact_plane3d; }
 
   /**
    * @brief Set whether the coupling scheme has been binned
@@ -875,9 +865,7 @@ class CouplingScheme {
 
   ArrayT<InterfacePair> m_interface_pairs;  ///< List of interface pairs
 
-  std::unique_prt<CompGeom>  m_cg_pairs; ///< List of computational geometry pairs
-  //ArrayT<ContactPlane2D> m_contact_plane2d;  ///< List of 2D contact planes
-  //ArrayT<ContactPlane3D> m_contact_plane3d;  ///< List of 3D contact planes
+  CompGeom m_cg_pairs; ///< Computational geometry container object
 
   MethodData* m_methodData;  ///< method object holding required interface method data
 

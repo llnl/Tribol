@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_GEOM_CONTACTPLANE_HPP_
-#define SRC_GEOM_CONTACTPLANE_HPP_
+#ifndef SRC_GEOM_COMPGEOM_HPP_
+#define SRC_GEOM_COMPGEOM_HPP_
 
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
@@ -14,7 +14,6 @@
 #include <string>
 
 namespace tribol {
-
 
 /*!
  * \brief checks if the vertices on face2 have interpenetrated the level set
@@ -57,36 +56,206 @@ TRIBOL_HOST_DEVICE bool FullEdgeCheck( const MeshData::Viewer& mesh1, const Mesh
 //-----------------------------------------------------------------------------
 // Computational Geometry base classes
 //-----------------------------------------------------------------------------
+
+//-----------------------------------------------------------------------------
+// Comp geom container class
+//-----------------------------------------------------------------------------
 class CompGeom {
 
- protected:
-  TRIBOL_HOST_DEVICE CompGeom() {};
+  public:
 
- public:
-  Parameters& params;
-  virtual void checkInteraction() const = 0;
-  virtual ~CompGeom() = default;
+   /**
+    * @brief Nested class for holding views (non-owned, shallow copies) of the CompGeom data
+    */
+   class Viewer {
+    public:
+
+     /**
+      * @brief Construct a new CompGeom::Viewer object
+      *
+      * @param cg CompGeom object to create a view of
+      */
+     Viewer ( CompGeom& cg )
+       : m_common_plane_pairs( cg.m_common_plane_pairs ),
+         m_mortar_plane_pairs( cg.m_mortar_plane_pairs ),
+         m_aligned_mortar_plane_pairs( cg.m_aligned_mortar_plane_pairs )
+     {
+     }
+
+     /**
+      * @brief Get the array view of common plane pairs
+      *
+      * @return ArrayViewT of common plane pairs
+      */
+     TRIBOL_HOST_DEVICE const ArrayViewT<const CommonPlanePair>& getCommonPlanePairs() const { return m_common_plane_pairs; }
+
+     /**
+      * @brief Get the array view of mortar plane pairs
+      *
+      * @return ArrayViewT of mortar plane pairs
+      */
+     TRIBOL_HOST_DEVICE const ArrayViewT<const MortarPlanePair>& getMortarPlanePairs() const { return m_mortar_plane_pairs; }
+
+     /**
+      * @brief Get the array view of aligned mortar plane pairs
+      *
+      * @return ArrayViewT of aligned mortar plane pairs
+      */
+     TRIBOL_HOST_DEVICE const ArrayViewT<const AlignedMortarPlanePair>& getAlignedMortarPlanePairs() const { return m_aligned_mortar_plane_pairs; }
+
+     private:
+
+      ArrayViewT<CommonPlanePair> m_common_plane_pairs;
+      ArrayViewT<MortarPlanePair> m_mortar_plane_pairs;
+      ArrayViewT<AlignedMortarPlanePair> m_aligned_mortar_plane_pairs;
+
+   }; // end CompGeom::Viewer
+  
+   /*!
+    * @brief Constructs a comp geom object
+    *
+    */
+   TRIBOL_HOST_DEVICE CompGeom() {};
+
+   /*!
+    * @brief Destructor
+    *
+    */
+   virtual ~CompGeom() = default; 
+
+   /**
+    * @brief Construct a non-owned, shallow copy of the CompGeom data
+    *
+    * @return CompGeom::Viewer type
+    */
+   CompGeom::Viewer getView() { return *this; }
+
+   /**
+    * @brief Get the list of common plane pairs
+    *
+    * @return ArrayT of common plane pairs
+    */
+   ArrayT<CommonPlanePair>& getCommonPlanePairs() { return m_common_plane_pairs; }
+
+   /**
+    * @brief Get the list of mortar plane pairs
+    *
+    * @return ArrayT of mortar plane pairs
+    */
+   ArrayT<MortarPlanePair>& getMortarPlanePairs() { return m_mortar_plane_pairs; }
+
+   /**
+    * @brief Get the list of aligned mortar plane pairs
+    *
+    * @return ArrayT of aligned mortar plane pairs
+    */
+   ArrayT<AlignedMortarPlanePair>& getAlignedMortarPlanePairs() { return m_aligned_mortar_plane_pairs; }
+
+   int getNumActivePairs( ContactMethod method )
+   {
+    switch (method) {
+      case COMMON_PLANE: {
+        return m_common_plane_pairs.size();
+        break;
+      }
+      case SINGLE_MORTAR:
+      case MORTAR_WEIGHTS: {
+        return m_mortar_plane_pairs.size();
+        break;
+      }
+      case ALIGNED_MORTAR: {
+        return m_aligned_mortar_plane_pairs.size();
+        break;
+      }
+      default: {
+        // no-op
+        break;
+      }
+    } // end switch
+    return 0;
+   } // end getNumActivePairs()
+
+   TRIBOL_HOST_DEVICE resizeActivePairs( ContactMethod method, int size ) {
+    switch (method) {
+      case COMMON_PLANE: {
+        m_common_plane_pairs.resize( size );
+        break;
+      }
+      case SINGLE_MORTAR:
+      case MORTAR_WEIGHTS: {
+        m_mortar_plane_pairs.resize( size );
+        break;
+      }
+      case ALIGNED_MORTAR: {
+        m_aligned_mortar_plane_pairs.resize( size );
+        break;
+      }
+      default: {
+        // no-op
+        break;
+      }
+    } // end switch
+   } // end resizeActivePairs()
+
+  private:
+
+   ArrayT<CommonPlanePair> m_common_plane_pairs;
+   ArrayT<MortarPlanePair> m_mortar_plane_pairs;
+   ArrayT<AlignedMortarPlanePair> m_aligned_mortar_plane_pairs;
 };
 
-// ContactPlane base class
-class ContactPlane : public CompGeom {
+//-----------------------------------------------------------------------------
+// Computational geometry base class 
+// (can be used to extend non-contact-plane classes)
+//-----------------------------------------------------------------------------
+class CompGeomPair {
+
  protected:
-  InterfacePair* m_pair;  ///< Face-pair struct for two constituent faces
+  InterfacePair* m_pair; ///< Face-pair struct for two constituent faces
 
-  /**
-   * @brief Constructs a computational geometry base class 
-   *
-   * @param pair Proximate candidate interface pair
-   * @param params Parameters struct
-   */
-  TRIBOL_HOST_DEVICE ContactPlane( InterfacePair* pair, const Parameters& params );
+  TRIBOL_HOST_DEVICE CompGeomPair() {};
 
-  virtual ~ContactPlane() = default;
+  TRIBOL_HOST_DEVICE CompGeomPair( InterfacePair* pair, Parameters& params, int dim )
+      : m_dim( dim ),
+        m_pair( pair ),
+        m_params( params ) 
+  {
+  }
 
-  static constexpr int max_nodes_per_overlap{ 8 };
+  virtual ~CompGeomPair() = default; 
 
  public:
-  RealT m_dim;      ///< Problem/plane dimension
+  int m_dim;
+  Parameters& m_params;
+  TRIBOL_HOST_DEVICE virtual void checkInterfacePair() = 0;
+};
+
+//-----------------------------------------------------------------------------
+// ContactPlane abstract base class
+//-----------------------------------------------------------------------------
+class ContactPlanePair : public CompGeomPair {
+ protected:
+
+  /**
+   * @brief Constructs a ContactPlane object
+   *
+   */
+  TRIBOL_HOST_DEVICE ContactPlanePair() {};
+
+  /**
+   * @brief Overloaded constructor
+   *
+   */
+  TRIBOL_HOST_DEVICE ContactPlanePair( InterfacePair* pair, Parameters& params, int dim )
+    : CompGeomPair( pair, params, dim )
+  {
+  }
+
+  virtual ~ContactPlanePair() = default;
+
+  static constexpr int max_nodes_per_overlap{8};
+
+ public:
   bool m_inContact; ///< True if face-pair is in contact
   RealT m_gap;      ///< Face-pair gap
   RealT m_gapTol;   ///< Face-pair gap tolerance
@@ -118,28 +287,34 @@ class ContactPlane : public CompGeom {
   RealT m_nY;  ///< Global y-component of contact plane unit normal
   RealT m_nZ;  ///< Global z-component of contact plane unit normal (zero out for 2D)
 
-  RealT m_polyLocX[max_nodes_per_overlap];  ///< Pointer to local x-components of overlap polygon's vertices
-  RealT m_polyLocY[max_nodes_per_overlap];  ///< Pointer to local y-components of overlap polygon's vertices
-
   int m_numPolyVert;  ///< Number of vertices in overlapping polygon
-  RealT m_polyX[max_nodes_per_overlap];  ///< Global x-components of overlap polygon's vertices
-  RealT m_polyY[max_nodes_per_overlap];  ///< Global y-components of overlap polygon's vertices
-  RealT m_polyZ[max_nodes_per_overlap];  ///< Global z-components of overlap polygon's vertices
+  RealT m_polyX[ max_nodes_per_overlap ]; ///< Global x-components of overlap polygon's vertices
+  RealT m_polyY[ max_nodes_per_overlap ]; ///< Global y-components of overlap polygon's vertices
+  RealT m_polyZ[ max_nodes_per_overlap ]; ///< Global z-components of overlap polygon's vertices
+
+  RealT m_polyLocX[ max_nodes_per_overlap ];  ///< Pointer to local x-components of overlap polygon's vertices
+  RealT m_polyLocY[ max_nodes_per_overlap ];  ///< Pointer to local y-components of overlap polygon's vertices
   
   // cp area
-  RealT m_areaFrac;      ///< Face area fraction used to determine overlap area cutoff
-  RealT m_areaMin;       ///< Minimum overlap area for inclusion into the active set
-  RealT m_area;          ///< Overlap area
+  RealT m_areaFrac; ///< Face area fraction used to determine overlap area cutoff
+  RealT m_areaMin;  ///< Minimum overlap area for inclusion into the active set
+  RealT m_area;     ///< Overlap area
 
   /// \name Contact plane routines
   /// @{
+
+  /*!
+   * \brief check to see if face-pairs are interacting
+   *
+   */
+  TRIBOL_HOST_DEVICE virtual void checkInterfacePair() = 0;
 
   /*!
    * \brief Compute a local basis on the contact plane
    *
    * \param [in] m1 mesh data viewer for mesh 1
    */
-  TRIBOL_HOST_DEVICE void computeLocalBasis( const MeshData::Viewer& m1 ) = 0;
+  TRIBOL_HOST_DEVICE void computeLocalBasis( const MeshData::Viewer& m1 );
 
   /*!
    * \brief Compute the contact plane normal
@@ -254,47 +429,69 @@ class ContactPlane : public CompGeom {
 //-----------------------------------------------------------------------------
 // Common Plane Computational Geometry Class
 //-----------------------------------------------------------------------------
-class CommonPlane : public ContactPlane {
-
- private:
-  static constexpr int max_nodes_per_overlap{ 8 };
+class CommonPlanePair : public ContactPlanePair {
 
  public:
+
   /*!
    * @brief Constructs a common plane contact plane
    *
-   * @param pair Proximate candidate interface pair
-   * @param params Parameters struct
    */
-  TRIBOL_HOST_DEVICE CommonPlane( InterfacePair* pair, const Parameters& params );
+  TRIBOL_HOST_DEVICE CommonPlanePair() {};
+
+  /*!
+   * @brief Overloaded constructor
+   *
+   */
+  TRIBOL_HOST_DEVICE CommonPlanePair( InterfacePair* pair, Parameters& params, int dim )
+    : ContactPlanePair( pair, params, dim )
+  {
+  }
 
   /*!
    * \brief Destructor
    *
    */
-  ~CommonPlane() = default;
+  ~CommonPlanePair() = default;
 
-  RealT m_interpenPoly1X[max_nodes_per_overlap];  ///< Local x-coords of face 1 interpenetrating polygon projected onto common plane
-  RealT m_interpenPoly1Y[max_nodes_per_overlap];  ///< Local y-coords of face 1 interpenetrating polygon projected onto common plane
+ protected:
 
-  RealT m_interpenPoly2X[max_nodes_per_overlap];  ///< Local x-coords of face 2 interpenetrating polygon projected onto common plane
-  RealT m_interpenPoly2Y[max_nodes_per_overlap];  ///< Local y-coords of face 2 interpenetrating polygon projected onto common plane
+  // Assuming a convex quadrilateral in 3D with only TWO line/edge plane intersections,
+  // you can have a max of 5 vertices associated with the interpenetrating portion of the
+  // four node quadrilateral face. This configuration is a 1-3 configuration with 3 nodes
+  // interpenetrating and one node not.
+  static constexpr max_nodes_per_intersection{ 5 };
 
-  int m_numInterpenPoly1Vert;                  ///< Number of vertices on face 1 interpenetrating polygon
-  RealT m_interpenG1X[max_nodes_per_overlap];  ///< Global x-coordinate of face 1 interpenetrating polygon
-  RealT m_interpenG1Y[max_nodes_per_overlap];  ///< Global y-coordinate of face 1 interpenetrating polygon
-  RealT m_interpenG1Z[max_nodes_per_overlap];  ///< Global z-coordinate of face 1 interpenetrating polygon
+ public:
 
-  int m_numInterpenPoly2Vert;                  ///< Number of vertices on face 2 interpenetrating polygon
-  RealT m_interpenG2X[max_nodes_per_overlap];  ///< Global x-coordinate of face 2 interpenetrating polygon
-  RealT m_interpenG2Y[max_nodes_per_overlap];  ///< Global y-coordinate of face 2 interpenetrating polygon
-  RealT m_interpenG2Z[max_nodes_per_overlap];  ///< Global z-coordinate of face 2 interpenetrating polygon
+  RealT m_interpenPoly1X[ max_nodes_per_intersection ];  ///< Local x-coords of face 1 interpenetrating polygon projected onto common plane
+  RealT m_interpenPoly1Y[ max_nodes_per_intersection ];  ///< Local y-coords of face 1 interpenetrating polygon projected onto common plane
 
-  RealT m_interpenArea; ///< Interpenetrating overlap area
+  RealT m_interpenPoly2X[ max_nodes_per_intersection ];  ///< Local x-coords of face 2 interpenetrating polygon projected onto common plane
+  RealT m_interpenPoly2Y[ max_nodes_per_intersection ];  ///< Local y-coords of face 2 interpenetrating polygon projected onto common plane
 
-  RealT m_velGap;
-  RealT m_ratePressure;
-  RealT m_pressure;
+  int m_numInterpenPoly1Vert; ///< Number of vertices on face 1 interpenetrating polygon
+  RealT m_interpenG1X[ max_nodes_per_intersection ];  ///< Global x-coordinate of face 1 interpenetrating polygon
+  RealT m_interpenG1Y[ max_nodes_per_intersection ];  ///< Global y-coordinate of face 1 interpenetrating polygon
+  RealT m_interpenG1Z[ max_nodes_per_intersection ];  ///< Global z-coordinate of face 1 interpenetrating polygon
+
+  int m_numInterpenPoly2Vert; ///< Number of vertices on face 2 interpenetrating polygon
+  RealT m_interpenG2X[ max_nodes_per_intersection ];  ///< Global x-coordinate of face 2 interpenetrating polygon
+  RealT m_interpenG2Y[ max_nodes_per_intersection ];  ///< Global y-coordinate of face 2 interpenetrating polygon
+  RealT m_interpenG2Z[ max_nodes_per_intersection ];  ///< Global z-coordinate of face 2 interpenetrating polygon
+
+  // TODO just use the overlap area on the contact plane class
+  //RealT m_interpenArea; ///< Interpenetrating overlap area
+
+  RealT m_velGap; ///< Velocity gap
+  RealT m_ratePressure; ///< gap-rate pressure
+  RealT m_pressure; ///< kinematic contact pressure
+
+  /*!
+   * \brief check to see if face-pairs are interacting
+   *
+   */
+  TRIBOL_HOST_DEVICE void checkInterfacePair() override;
 
   /*!
    * \brief Compute the unit normal that defines the contact plane
@@ -423,27 +620,38 @@ class CommonPlane : public ContactPlane {
 };
 
 //-----------------------------------------------------------------------------
-// Mortar-Based Computational Geometry Class
+// Single Mortar Computational Geometry Class
 //-----------------------------------------------------------------------------
-class MortarPlane : public ContactPlane {
-
- private:
-  static constexpr int max_nodes_per_overlap{ 8 };
+class MortarPlanePair : public ContactPlanePair {
 
  public:
+
   /*!
    * @brief Constructs a Mortar contact plane
    *
-   * @param pair Proximate candidate interface pair
-   * @param params Parameters struct
    */
-  TRIBOL_HOST_DEVICE MortarPlane( InterfacePair* pair, const Parameters& params );
+  TRIBOL_HOST_DEVICE MortarPlanePair() {};
+
+  /*!
+   * @brief Overloaded constructor
+   *
+   */
+  TRIBOL_HOST_DEVICE MortarPlanePair( InterfacePair* pair, Parameters& params, int dim )
+    : ContactPlanePair( pair, params, dim )
+  {
+  }
 
   /*!
    * \brief Destructor
    *
    */
-  ~MortarPlane() = default;
+  ~MortarPlanePair() = default;
+
+  /*!
+   * \brief check to see if face-pairs are interacting
+   *
+   */
+  TRIBOL_HOST_DEVICE void checkInterfacePair() override;
 
   /*!
    * \brief Compute the unit normal that defines the contact plane
@@ -458,8 +666,7 @@ class MortarPlane : public ContactPlane {
    * \param [in] m1 mesh data viewer for mesh 1
    * \param [in] m2 mesh data viewer for mesh 2
    *
-   * \note This is taken as the average of the vertex averaged centroids of
-   *  the two faces that are used to define a local contact plane
+   * \note this is taken as the vertex average centroid of the nonmortar face
    */
   TRIBOL_HOST_DEVICE void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
 
@@ -481,6 +688,74 @@ class MortarPlane : public ContactPlane {
                                           const Parameters& params ) override;
 };
 
+//-----------------------------------------------------------------------------
+// Aligned Mortar Computational Geometry Class
+//-----------------------------------------------------------------------------
+class AlignedMortarPlanePair : public ContactPlanePair {
+
+ public:
+
+  /*!
+   * @brief Constructs a Mortar-based contact plane
+   *
+   */
+  TRIBOL_HOST_DEVICE AlignedMortarPlanePair() {};
+
+  /*!
+   * @brief Overloaded constructor
+   *
+   */
+  TRIBOL_HOST_DEVICE AlignedMortarPlanePair( InterfacePair* pair, Parameters& params, int dim )
+    : ContactPlanePair( pair, params, dim )
+  {
+  }
+
+  /*!
+   * \brief Destructor
+   *
+   */
+  ~AlignedMortarPlanePair() = default;
+
+  /*!
+   * \brief check to see if face-pairs are interacting
+   *
+   */
+  TRIBOL_HOST_DEVICE void checkInterfacePair() override;
+
+  /*!
+   * \brief Compute the unit normal that defines the contact plane
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   */
+  TRIBOL_HOST_DEVICE void computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
+
+  /*!
+   * \brief Computes a reference point on the plane locating it in 3-space
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   *
+   * \note this is taken as the vertex average centroid of the nonmortar face
+   */
+  TRIBOL_HOST_DEVICE void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
+
+  /*!
+   * \brief Compute a local basis on the contact plane
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   */
+  TRIBOL_HOST_DEVICE void computeLocalBasis( const MeshData::Viewer& m1 ) override;
+
+  /*!
+   * \brief Computes the area tolerance for accepting a face pair
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   * \param [in] params Coupling scheme-dependent parameters
+   */
+  TRIBOL_HOST_DEVICE void computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
+                                          const Parameters& params ) override;
+};
 
 //-----------------------------------------------------------------------------
 // Free functions
@@ -563,16 +838,17 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckEdgePair( ContactPlane2D& cp, const MeshDa
                                                 const MeshData::Viewer& mesh2, const Parameters& params,
                                                 bool fullOverlap );
 
-// TODO make this a free function that also returns overlap centroid and area
+// TODO make this a free function just like the 3D full overlap calculation Intersection2DPolygon. This 
+// also returns overlap centroid and area
 /*!
  * \brief Check whether two segments have a positive length of overlap
  *
  * \note this is the 2D full overlap variant
  *
  */
-TRIBOL_HOST_DEVICE void checkSegOverlap( const RealT* const pX1, const RealT* const pY1, const RealT* const pX2,
-                                       const RealT* const pY2, const int nV1, const int nV2 );
+TRIBOL_HOST_DEVICE void CheckSegOverlap( const RealT* const pX1, const RealT* const pY1, const RealT* const pX2,
+                                         const RealT* const pY2, const int nV1, const int nV2 );
 
 }  // namespace tribol
 
-#endif /* SRC_GEOM_CONTACTPLANE_HPP_ */
+#endif /* SRC_GEOM_COMPGEOM_HPP_ */

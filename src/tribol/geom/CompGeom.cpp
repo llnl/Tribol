@@ -292,12 +292,16 @@ TRIBOL_HOST_DEVICE bool ExceedsMaxAutoInterpen( const MeshData::Viewer& mesh1, c
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE ContactPlane::ContactPlane( InterfacePair* pair, RealT areaFrac, bool interpenOverlap,
-                                               bool interPlane, int dim )
+TRIBOL_HOST_DEVICE CompGeomPair::CompGeomPair( InterfacePair* pair, Parameters& params )
     : m_pair( pair ),
+      m_params( params )
+{
+}
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE ContactPlanePair::ContactPlanePair( InterfacePair* pair, Parameters& params, RealT areaFrac, int dim )
+    : CompGeomPair( pair, params ),
       m_dim( dim ),
-      m_intermediatePlane( interPlane ),
-      m_interpenOverlap( interpenOverlap ),
       m_cX( 0.0 ),
       m_cY( 0.0 ),
       m_cZ( 0.0 ),
@@ -316,11 +320,24 @@ TRIBOL_HOST_DEVICE ContactPlane::ContactPlane( InterfacePair* pair, RealT areaFr
       m_gapTol( 0.0 ),
       m_areaFrac( areaFrac ),
       m_areaMin( 0.0 ),
-      m_area( 0.0 ),
-      m_interpenArea( 0.0 ),
+      m_area( 0.0 )
+      //m_interpenArea( 0.0 ),
+{
+}
+
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE CommonPlanePair::CommonPlanePair( InterfacePair* pair, Parameters& params, RealT areaFrac, int dim )
+    : ContactPlanePair( pair, params, areaFrac, dim ),
       m_velGap( 0.0 ),
-      m_ratePressure( 0.0 ),
+      m_ratePressure ( 0.0 ),
       m_pressure( 0.0 )
+{
+}
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE MortarPlanePair::MortarPlanePair( InterfacePair* pair, Parameters& params, RealT areaFrac, int dim )
+    : ContactPlanePair( pair, params, areaFrac, dim )
 {
 }
 
@@ -1377,7 +1394,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckEdgePair( ContactPlane2D& cp, const MeshDa
   // and if so, compute the centroid of the overlap. This is used later
   // to properly locate the common plane in order to find the face-face
   // intersection point on the plane in the interpenOverlap calc
-  cp.checkSegOverlap( &projX1[0], &projY1[0], &projX2[0], &projY2[0], mesh1.numberOfNodesPerElement(),
+  cp.CheckSegOverlap( &projX1[0], &projY1[0], &projX2[0], &projY2[0], mesh1.numberOfNodesPerElement(),
                       mesh2.numberOfNodesPerElement() );
 
   // check the contact plane length against the minimum length.
@@ -1399,7 +1416,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckEdgePair( ContactPlane2D& cp, const MeshDa
       fullOverlap = true;
       // recompute the overlap using the full overlap routine
       // TODO SRW see if this is needed since we computed this above...is that data still around?
-      cp.checkSegOverlap( &projX1[0], &projY1[0], &projX2[0], &projY2[0], mesh1.numberOfNodesPerElement(),
+      cp.CheckSegOverlap( &projX1[0], &projY1[0], &projX2[0], &projY2[0], mesh1.numberOfNodesPerElement(),
                           mesh2.numberOfNodesPerElement() );
     } else if ( interpen_err != NO_FACE_GEOM_ERROR ) {
       cp.m_inContact = false;
@@ -1607,7 +1624,7 @@ void ContactPlane2D::centroidGap( const MeshData::Viewer& m1, const MeshData::Vi
 }  // end ContactPlane2D::centroidGap()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlane2D::checkSegOverlap( const RealT* const pX1, const RealT* const pY1,
+TRIBOL_HOST_DEVICE void ContactPlane2D::CheckSegOverlap( const RealT* const pX1, const RealT* const pY1,
                                                          const RealT* const pX2, const RealT* const pY2, const int nV1,
                                                          const int nV2 )
 {
@@ -1778,7 +1795,7 @@ TRIBOL_HOST_DEVICE void ContactPlane2D::checkSegOverlap( const RealT* const pX1,
 
   return;
 
-}  // end ContactPlane2D::checkSegOverlap()
+}  // end ContactPlane2D::CheckSegOverlap()
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE FaceGeomError ContactPlane2D::computeLocalInterpenOverlap( const MeshData::Viewer& m1,
