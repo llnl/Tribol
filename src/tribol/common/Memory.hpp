@@ -29,7 +29,7 @@ class FixedCapacity {
 
   TRIBOL_HOST_DEVICE constexpr size_type setCapacity( size_type ) const { return N; }
 
-  constexpr static bool capacity_at_runtime_ = false;
+  using capacity_at_runtime_ = std::false_type;
 };
 
 class RuntimeCapacity {
@@ -49,7 +49,7 @@ class RuntimeCapacity {
     return capacity;
   }
 
-  constexpr static bool capacity_at_runtime_ = true;
+  using capacity_at_runtime_ = std::true_type;
 
  private:
   size_type capacity_;
@@ -68,7 +68,7 @@ class SizeEqCapacity : public Capacity {
   }
   TRIBOL_HOST_DEVICE SizeEqCapacity( size_type size ) : Capacity( size ) {}
 
-  TRIBOL_HOST_DEVICE size_type size() const { return capacity(); }
+  TRIBOL_HOST_DEVICE constexpr size_type size() const { return capacity(); }
 
   using Capacity::capacity;
 
@@ -464,13 +464,13 @@ class DynamicAllocator {
   }
 
   TRIBOL_NVCC_EXEC_CHECK_DISABLE
-  TRIBOL_HOST_DEVICE void copy( pointer dst, pointer src, size_type n ) const
+  TRIBOL_HOST_DEVICE void uninitialized_copy( T* first, T* last, T* d_first ) const
   {
 #ifdef TRIBOL_USE_UMPIRE
     auto& rm = umpire::ResourceManager::getInstance();
-    rm.copy( dst, src, n * sizeof( value_type ) );
+    rm.copy( d_first, first );
 #else
-    Allocator<T>().copy( dst, src, n );
+    Allocator<T>().uninitialized_copy( first, last, d_first );
 #endif
   }
 
@@ -529,7 +529,7 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
       : AllocatedMemory( other.size(), Allocator( other.allocator_ ) )
   {
     // deep copy the data
-    allocator_.copy( data_, other.data_, other.size() );
+    allocator_.uninitialized_copy( other.data_, other.data_ + other.size(), data_ );
   }
 
   // Move constructor
@@ -540,7 +540,7 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
     if constexpr ( !fixed_size_ ) {
       other.setSize( 0 );
     }
-    if constexpr ( capacity_at_runtime_ ) {
+    if constexpr ( capacity_at_runtime_::value ) {
       other.data_ = nullptr;
       other.setCapacity( 0 );
     } else {
@@ -573,7 +573,7 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
       if constexpr ( !fixed_size_ ) {
         other.setSize( 0 );
       }
-      if ( capacity_at_runtime_ ) {
+      if constexpr ( capacity_at_runtime_::value ) {
         other.data_ = nullptr;
         other.setCapacity( 0 );
       } else {
@@ -589,8 +589,8 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
   using BaseClass::capacity;
   using BaseClass::size;
 
-  using BaseClass::capacity_at_runtime_;
   using BaseClass::fixed_size_;
+  using typename BaseClass::capacity_at_runtime_;
 
   constexpr static bool initialized_ = false;
 

@@ -171,6 +171,19 @@ class BoundedArray2D : public BoundedArray<T, MemoryT> {
   }
   TRIBOL_HOST_DEVICE BoundedArray2D( size_type height, size_type width ) : BoundedArray2D( height, width, height ) {}
 
+  // constructor with forwarded arguments for memory
+  template <typename... Args>
+  TRIBOL_HOST_DEVICE BoundedArray2D( size_type height, size_type width, size_type max_height, Args&&... args )
+      : BaseClass( MemoryT( height * width, max_height * width, std::forward<Args>( args )... ) ),
+        height_( height ),
+        width_( width ),
+        max_height_( height )
+  {
+    assert( height >= 0 && width >= 0 );
+    assert( size() == height * width );
+    assert( capacity() == max_height_ * width );
+  }
+
   using BaseClass::at;
 
   TRIBOL_HOST_DEVICE value_type& at( size_type i, size_type j )
@@ -426,6 +439,14 @@ class Array2D : public BoundedArray2D<T, AllocatedMemory<T, Allocator>> {
   {
   }
   TRIBOL_HOST_DEVICE Array2D() : Array2D( 0, 1, 0 ) {}
+
+  // constructor with argument forwarding for memory
+  template <typename... Args>
+  TRIBOL_HOST_DEVICE Array2D( size_type height, size_type width, size_type height_capacity, Args&&... args )
+      : BaseClass( height, width, height_capacity > height ? height_capacity : height, std::forward<Args>( args )... ),
+        resizer_( width )
+  {
+  }
 
   // copy constructor with a custom allocator
   template <typename Allocator2>
