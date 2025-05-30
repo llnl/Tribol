@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_UTILS_DATAMANAGER_HPP_
-#define SRC_UTILS_DATAMANAGER_HPP_
+#ifndef SRC_TRIBOL_UTILS_DATAMANAGER_HPP_
+#define SRC_TRIBOL_UTILS_DATAMANAGER_HPP_
 
 // C/C++ includes
 #include <unordered_map>
@@ -138,4 +138,4 @@ class DataManager {
 
 }  // end namespace tribol
 
-#endif /* SRC_UTILS_DATAMANAGER_HPP_ */
+#endif /* SRC_TRIBOL_UTILS_DATAMANAGER_HPP_ */

@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_UTILS_TESTUTILS_HPP_
-#define SRC_UTILS_TESTUTILS_HPP_
+#ifndef SRC_TRIBOL_UTILS_TESTUTILS_HPP_
+#define SRC_TRIBOL_UTILS_TESTUTILS_HPP_
 
 #include "tribol/common/Parameters.hpp"
 
@@ -527,4 +527,4 @@ class ExplicitMechanics : public mfem::SecondOrderTimeDependentOperator {
 
 }  // namespace mfem_ext
 
-#endif /* SRC_UTILS_TESTUTILS_HPP_ */
+#endif /* SRC_TRIBOL_UTILS_TESTUTILS_HPP_ */

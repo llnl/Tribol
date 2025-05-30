@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef TRIBOL_GEOM_VECTOR_HPP_
-#define TRIBOL_GEOM_VECTOR_HPP_
+#ifndef SRC_TRIBOL_GEOM_VECTOR_HPP_
+#define SRC_TRIBOL_GEOM_VECTOR_HPP_
 
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/common/Arrays.hpp"
@@ -203,4 +203,4 @@ class VectorArray : public BoundedArray2D<T, MemoryT> {
 
 }  // namespace tribol
 
-#endif /* TRIBOL_GEOM_VECTOR_HPP_ */
+#endif /* SRC_TRIBOL_GEOM_VECTOR_HPP_ */

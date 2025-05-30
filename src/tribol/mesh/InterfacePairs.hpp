@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_MESH_INTERFACE_PAIRS_HPP_
-#define SRC_MESH_INTERFACE_PAIRS_HPP_
+#ifndef SRC_TRIBOL_MESH_INTERFACE_PAIRS_HPP_
+#define SRC_TRIBOL_MESH_INTERFACE_PAIRS_HPP_
 
 #include "tribol/common/BasicTypes.hpp"
 
@@ -35,4 +35,4 @@ struct InterfacePair {
 
 } /* namespace tribol */
 
-#endif /* SRC_MESH_INTERFACE_PAIRS_HPP_ */
+#endif /* SRC_TRIBOL_MESH_INTERFACE_PAIRS_HPP_ */

@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_GEOM_ELEMENTNORMAL_HPP_
-#define SRC_GEOM_ELEMENTNORMAL_HPP_
+#ifndef SRC_TRIBOL_GEOM_ELEMENTNORMAL_HPP_
+#define SRC_TRIBOL_GEOM_ELEMENTNORMAL_HPP_
 
 #include "tribol/common/BasicTypes.hpp"
 
@@ -76,4 +76,4 @@ class QuadCentroidNormal : public ElementNormal {
 
 }  // namespace tribol
 
-#endif /* SRC_GEOM_ELEMENTNORMAL_HPP_ */
+#endif /* SRC_TRIBOL_GEOM_ELEMENTNORMAL_HPP_ */

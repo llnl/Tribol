@@ -3,11 +3,12 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef TRIBOL_COMMON_ENZYME_HPP_
-#define TRIBOL_COMMON_ENZYME_HPP_
+#ifndef SRC_TRIBOL_COMMON_ENZYME_HPP_
+#define SRC_TRIBOL_COMMON_ENZYME_HPP_
 
 // Tribol includes
 #include "tribol/config.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 #ifdef TRIBOL_USE_ENZYME
 /*
@@ -30,11 +31,11 @@ extern int enzyme_runtime_activity;
 
 // Reverse mode autodiff
 template <typename return_type, typename... Args>
-return_type __enzyme_autodiff( Args... );
+TRIBOL_HOST_DEVICE return_type __enzyme_autodiff( Args... );
 
 // Forward mode autodiff
 template <typename return_type, typename... Args>
-return_type __enzyme_fwddiff( Args... );
+TRIBOL_HOST_DEVICE return_type __enzyme_fwddiff( Args... );
 #endif
 
-#endif /* TRIBOL_COMMON_ENZYME_HPP_ */
+#endif /* SRC_TRIBOL_COMMON_ENZYME_HPP_ */

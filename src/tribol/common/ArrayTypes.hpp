@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef TRIBOL_COMMON_ARRAYTYPES_HPP_
-#define TRIBOL_COMMON_ARRAYTYPES_HPP_
+#ifndef SRC_TRIBOL_COMMON_ARRAYTYPES_HPP_
+#define SRC_TRIBOL_COMMON_ARRAYTYPES_HPP_
 
 // Tribol includes
 #include "tribol/common/ExecModel.hpp"
@@ -70,4 +70,4 @@ using MultiViewArrayView = ArrayViewT<const ArrayViewT<T, 1, SPACE>, 1, SPACE>;
 
 }  // namespace tribol
 
-#endif /* TRIBOL_COMMON_ARRAYTYPES_HPP_ */
+#endif /* SRC_TRIBOL_COMMON_ARRAYTYPES_HPP_ */

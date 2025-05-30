@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_MESH_METHODCOUPLINGDATA_HPP_
-#define SRC_MESH_METHODCOUPLINGDATA_HPP_
+#ifndef SRC_TRIBOL_MESH_METHODCOUPLINGDATA_HPP_
+#define SRC_TRIBOL_MESH_METHODCOUPLINGDATA_HPP_
 
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/Parameters.hpp"
@@ -350,4 +350,4 @@ class MortarData : public MethodData {
 };
 
 }  // end namespace tribol
-#endif /* SRC_MESH_METHODCOUPLINGDATA_HPP_ */
+#endif /* SRC_TRIBOL_MESH_METHODCOUPLINGDATA_HPP_ */

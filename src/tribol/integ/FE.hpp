@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_INTEG_FE_HPP_
-#define SRC_INTEG_FE_HPP_
+#ifndef SRC_TRIBOL_INTEG_FE_HPP_
+#define SRC_TRIBOL_INTEG_FE_HPP_
 
 #include "tribol/common/Parameters.hpp"
 
@@ -202,4 +202,4 @@ void DetJQuad( const RealT xi, const RealT eta, const RealT* x, const int dim, R
 
 }  // namespace tribol
 
-#endif /* SRC_INTEG_FE_HPP_ */
+#endif /* SRC_TRIBOL_INTEG_FE_HPP_ */

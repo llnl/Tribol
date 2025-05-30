@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef TRIBOL_PARAMETERS_HPP_
-#define TRIBOL_PARAMETERS_HPP_
+#ifndef SRC_TRIBOL_COMMON_PARAMETERS_HPP_
+#define SRC_TRIBOL_COMMON_PARAMETERS_HPP_
 
 // Tribol includes
 #include "tribol/common/BasicTypes.hpp"
@@ -498,4 +498,4 @@ struct Parameters {
 
 }  // namespace tribol
 
-#endif /* TRIBOL_PARAMETERS_HPP_ */
+#endif /* SRC_TRIBOL_COMMON_PARAMETERS_HPP_ */

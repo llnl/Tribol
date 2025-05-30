@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef TRIBOL_GEOM_HYPERPLANE_HPP_
-#define TRIBOL_GEOM_HYPERPLANE_HPP_
+#ifndef SRC_TRIBOL_GEOM_HYPERPLANE_HPP_
+#define SRC_TRIBOL_GEOM_HYPERPLANE_HPP_
 
 #include "tribol/geom/Vector.hpp"
 
@@ -48,4 +48,4 @@ class Hyperplane {
 
 }  // namespace tribol
 
-#endif /* TRIBOL_GEOM_VECTOR_HPP_ */
+#endif /* SRC_TRIBOL_GEOM_HYPERPLANE_HPP_ */

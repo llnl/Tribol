@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_GEOM_GEOMUTILITIES_HPP_
-#define SRC_GEOM_GEOMUTILITIES_HPP_
+#ifndef SRC_TRIBOL_GEOM_GEOMUTILITIES_HPP_
+#define SRC_TRIBOL_GEOM_GEOMUTILITIES_HPP_
 
 #include "tribol/common/Parameters.hpp"
 
@@ -647,4 +647,4 @@ void Vertex2DOrderToCCW( const RealT* const x, const RealT* const y, RealT* xTem
 
 }  // namespace tribol
 
-#endif /* SRC_GEOM_GEOMUTILITIES_HPP_ */
+#endif /* SRC_TRIBOL_GEOM_GEOMUTILITIES_HPP_ */

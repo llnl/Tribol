@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_PHYSICS_PHYSICS_HPP_
-#define SRC_PHYSICS_PHYSICS_HPP_
+#ifndef SRC_TRIBOL_PHYSICS_PHYSICS_HPP_
+#define SRC_TRIBOL_PHYSICS_PHYSICS_HPP_
 
 #include "tribol/common/Parameters.hpp"
 
@@ -65,4 +65,4 @@ int GetMethodData( CouplingScheme* cs );
 
 }  // namespace tribol
 
-#endif /* SRC_PHYSICS_PHYSICS_HPP_ */
+#endif /* SRC_TRIBOL_PHYSICS_PHYSICS_HPP_ */

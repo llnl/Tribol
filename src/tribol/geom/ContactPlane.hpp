@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_GEOM_CONTACTPLANE_HPP_
-#define SRC_GEOM_CONTACTPLANE_HPP_
+#ifndef SRC_TRIBOL_GEOM_CONTACTPLANE_HPP_
+#define SRC_TRIBOL_GEOM_CONTACTPLANE_HPP_
 
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
@@ -664,4 +664,4 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckEdgePair( ContactPlane2D& cp, const MeshDa
                                                 bool fullOverlap );
 }  // namespace tribol
 
-#endif /* SRC_GEOM_CONTACTPLANE_HPP_ */
+#endif /* SRC_TRIBOL_GEOM_CONTACTPLANE_HPP_ */

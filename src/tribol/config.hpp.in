@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef TRIBOL_CONFIG_HPP_
-#define TRIBOL_CONFIG_HPP_
+#ifndef SRC_TRIBOL_CONFIG_HPP_
+#define SRC_TRIBOL_CONFIG_HPP_
 
 /*
  * Note: Use only C-style comments in this file
@@ -39,4 +39,4 @@
 #cmakedefine TRIBOL_USE_OPENMP
 #cmakedefine BUILD_REDECOMP
 
-#endif /* TRIBOL_CONFIG_HPP_ */
+#endif /* SRC_TRIBOL_CONFIG_HPP_ */

@@ -3,9 +3,10 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef TRIBOL_COMMON_CONTAINERS_HPP_
-#define TRIBOL_COMMON_CONTAINERS_HPP_
+#ifndef SRC_TRIBOL_COMMON_CONTAINERS_HPP_
+#define SRC_TRIBOL_COMMON_CONTAINERS_HPP_
 
+#include <utility>
 #include <cassert>
 
 // Tribol includes
@@ -220,4 +221,4 @@ class StackArray {
 };
 
 }  // namespace tribol
-#endif /* TRIBOL_COMMON_CONTAINERS_HPP_ */
+#endif /* SRC_TRIBOL_COMMON_CONTAINERS_HPP_ */

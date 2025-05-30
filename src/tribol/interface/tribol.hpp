@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef TRIBOL_HPP_
-#define TRIBOL_HPP_
+#ifndef SRC_TRIBOL_INTERFACE_TRIBOL_HPP_
+#define SRC_TRIBOL_INTERFACE_TRIBOL_HPP_
 
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/common/ArrayTypes.hpp"
@@ -509,4 +509,4 @@ void finalize();
 
 } /* namespace tribol */
 
-#endif /* TRIBOL_HPP_ */
+#endif /* SRC_TRIBOL_INTERFACE_TRIBOL_HPP_ */

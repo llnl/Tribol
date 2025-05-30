@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_UTILS_MATH_HPP_
-#define SRC_UTILS_MATH_HPP_
+#ifndef SRC_TRIBOL_UTILS_MATH_HPP_
+#define SRC_TRIBOL_UTILS_MATH_HPP_
 
 #include "tribol/common/BasicTypes.hpp"
 
@@ -95,4 +95,4 @@ TRIBOL_HOST_DEVICE void initBoolArray( bool* arr, int length, bool init_val );
 
 }  // namespace tribol
 
-#endif /* SRC_UTILS_MATH_HPP_ */
+#endif /* SRC_TRIBOL_UTILS_MATH_HPP_ */

@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_UTILS_ALGORITHM_HPP_
-#define SRC_UTILS_ALGORITHM_HPP_
+#ifndef SRC_TRIBOL_UTILS_ALGORITHM_HPP_
+#define SRC_TRIBOL_UTILS_ALGORITHM_HPP_
 
 #include "tribol/common/ArrayTypes.hpp"
 
@@ -131,4 +131,4 @@ TRIBOL_HOST_DEVICE void transpose( const ArrayT<T, 2, MSPACE>& in, ArrayT<T, 2, 
 
 }  // namespace tribol
 
-#endif /* SRC_UTILS_ALGORITHM_HPP_ */
+#endif /* SRC_TRIBOL_UTILS_ALGORITHM_HPP_ */

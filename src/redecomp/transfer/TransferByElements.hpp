@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_REDECOMP_TRANSFERBYELEMENTS_HPP_
-#define SRC_REDECOMP_TRANSFERBYELEMENTS_HPP_
+#ifndef SRC_REDECOMP_TRANSFER_TRANSFERBYELEMENTS_HPP_
+#define SRC_REDECOMP_TRANSFER_TRANSFERBYELEMENTS_HPP_
 
 #include "redecomp/transfer/GridFnTransfer.hpp"
 
@@ -47,4 +47,4 @@ class TransferByElements : public GridFnTransfer {
 
 }  // end namespace redecomp
 
-#endif /* SRC_REDECOMP_TRANSFERBYELEMENTS_HPP_ */
+#endif /* SRC_REDECOMP_TRANSFER_TRANSFERBYELEMENTS_HPP_ */

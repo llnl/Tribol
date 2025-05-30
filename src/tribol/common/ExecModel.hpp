@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_COMMON_EXECMODEL_HPP_
-#define SRC_COMMON_EXECMODEL_HPP_
+#ifndef SRC_TRIBOL_COMMON_EXECMODEL_HPP_
+#define SRC_TRIBOL_COMMON_EXECMODEL_HPP_
 
 // Tribol includes
 #include "tribol/common/BasicTypes.hpp"
@@ -144,4 +144,4 @@ inline bool isOnDevice( ExecutionMode exec )
 
 }  // namespace tribol
 
-#endif /* SRC_COMMON_EXECMODEL_HPP_ */
+#endif /* SRC_TRIBOL_COMMON_EXECMODEL_HPP_ */

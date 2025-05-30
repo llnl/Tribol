@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef TRIBOL_COMMON_MEMORY_HPP_
-#define TRIBOL_COMMON_MEMORY_HPP_
+#ifndef SRC_TRIBOL_COMMON_MEMORY_HPP_
+#define SRC_TRIBOL_COMMON_MEMORY_HPP_
 
 #include <cassert>
 #include <cstddef>
@@ -601,4 +601,4 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
 
 }  // namespace tribol
 
-#endif /* TRIBOL_COMMON_MEMORY_HPP_ */
+#endif /* SRC_TRIBOL_COMMON_MEMORY_HPP_ */

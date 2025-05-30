@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef MFEM_TRIBOL_HPP_
-#define MFEM_TRIBOL_HPP_
+#ifndef SRC_TRIBOL_INTERFACE_MFEM_TRIBOL_HPP_
+#define SRC_TRIBOL_INTERFACE_MFEM_TRIBOL_HPP_
 
 #include "tribol/config.hpp"
 
@@ -294,4 +294,4 @@ void saveRedecompMesh( int output_id );
 
 #endif /* BUILD_REDECOMP */
 
-#endif /* MFEM_TRIBOL_HPP_ */
+#endif /* SRC_TRIBOL_INTERFACE_MFEM_TRIBOL_HPP_ */

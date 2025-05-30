@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef TRIBOL_COMMON_BASICTYPES_HPP_
-#define TRIBOL_COMMON_BASICTYPES_HPP_
+#ifndef SRC_TRIBOL_COMMON_BASICTYPES_HPP_
+#define SRC_TRIBOL_COMMON_BASICTYPES_HPP_
 
 // Tribol includes
 #include "tribol/config.hpp"
@@ -90,4 +90,4 @@ using RealT = double;
 
 }  // namespace tribol
 
-#endif /* TRIBOL_COMMON_BASICTYPES_HPP_ */
+#endif /* SRC_TRIBOL_COMMON_BASICTYPES_HPP_ */

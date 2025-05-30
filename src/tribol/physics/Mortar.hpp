@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_PHYSICS_MORTAR_HPP_
-#define SRC_PHYSICS_MORTAR_HPP_
+#ifndef SRC_TRIBOL_PHYSICS_MORTAR_HPP_
+#define SRC_TRIBOL_PHYSICS_MORTAR_HPP_
 
 #include "tribol/common/Parameters.hpp"
 #include "Physics.hpp"
@@ -247,4 +247,4 @@ int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs );
 
 }  // namespace tribol
 
-#endif /* SRC_PHYSICS_MORTAR_HPP_ */
+#endif /* SRC_TRIBOL_PHYSICS_MORTAR_HPP_ */

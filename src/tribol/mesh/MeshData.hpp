@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_MESH_MESHDATA_HPP_
-#define SRC_MESH_MESHDATA_HPP_
+#ifndef SRC_TRIBOL_MESH_MESHDATA_HPP_
+#define SRC_TRIBOL_MESH_MESHDATA_HPP_
 
 #include <ostream>
 
@@ -740,4 +740,4 @@ using MeshManager = DataManager<MeshData>;
 /// \a ostream operator to print a \a MeshData instance to \a os
 std::ostream& operator<<( std::ostream& os, const tribol::MeshData& md );
 
-#endif /* SRC_MESH_MESHDATA_HPP_ */
+#endif /* SRC_TRIBOL_MESH_MESHDATA_HPP_ */
