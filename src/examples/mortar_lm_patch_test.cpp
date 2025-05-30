@@ -191,7 +191,7 @@ int main( int argc, char** argv )
     int rhs_size = mesh.dim * mesh.numTotalNodes +  // equilibrium equations
                    mesh.numNonmortarSurfaceNodes;   // gap equations
     mfem::Vector rhs( rhs_size );
-    rhs = 0.;  // initialize
+    rhs = 0.0;  // initialize
 
     SLIC_INFO( "Finalized initial oversized sparse matrix and created rhs vector." );
 

@@ -174,6 +174,7 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
   int rhs_size = this->m_mesh.dim * this->m_mesh.numTotalNodes + this->m_mesh.numNonmortarSurfaceNodes;
   // instantiate mfem vector for right hand side
   mfem::Vector rhs( rhs_size );
+  rhs = 0.0;
 
   ////////////////////////////////////////////////////
   //                                                //
