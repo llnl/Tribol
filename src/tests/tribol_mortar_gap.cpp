@@ -6,6 +6,7 @@
 // Tribol includes
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/interface/tribol.hpp"
+#include "tribol/geom/Vector.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
@@ -13,8 +14,6 @@
 #include "tribol/physics/AlignedMortar.hpp"
 #include "tribol/geom/NodalNormal.hpp"
 #include "tribol/geom/ElementNormal.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
-#include "tribol/utils/TestUtils.hpp"
 
 #ifdef TRIBOL_USE_UMPIRE
 // Umpire includes
@@ -83,53 +82,19 @@ class MortarGapTest : public ::testing::Test {
   {
     // declare arrays to hold stacked coordinates for each
     // face used in initializing a SurfaceContactElem struct
-    RealT xyz1[this->dim * this->numNodesPerFace];
-    RealT xyz2[this->dim * this->numNodesPerFace];
+    tribol::VectorArray<RealT> xyz1( this->dim, 0, this->numNodesPerFace );
+    tribol::VectorArray<RealT> xyz2( this->dim, 0, this->numNodesPerFace );
 
     // declare array to hold overlap vertices used for
     // initializing a SurfaceContactElem struct
-    RealT xyzOverlap[this->dim * this->numOverlapNodes];
-
-    // assign pointers to arrays
-    RealT* xy1 = xyz1;
-    RealT* xy2 = xyz2;
-    RealT* xyOverlap = xyzOverlap;
-
-    // grab coordinate data
-    RealT* x1 = this->x1;
-    RealT* y1 = this->y1;
-    RealT* z1 = this->z1;
-    RealT* x2 = this->x2;
-    RealT* y2 = this->y2;
-    RealT* z2 = this->z2;
-    RealT* xo = this->xOverlap;
-    RealT* yo = this->yOverlap;
-    RealT* zo = this->zOverlap;
+    tribol::VectorArray<RealT> xyzOverlap( this->dim, 0, this->numOverlapNodes );
 
     // generate stacked coordinate array
     for ( int j = 0; j < this->numNodesPerFace; ++j ) {
-      for ( int k = 0; k < this->dim; ++k ) {
-        int id = this->dim * j + k;
-        // int id2 = this->dim * this->numNodesPerFace + id;
-        switch ( k ) {
-          case 0:
-            xy1[id] = x1[j];
-            xy2[id] = x2[j];
-            xyOverlap[id] = xo[j];
-            break;
-          case 1:
-            xy1[id] = y1[j];
-            xy2[id] = y2[j];
-            xyOverlap[id] = yo[j];
-            break;
-          case 2:
-            xy1[id] = z1[j];
-            xy2[id] = z2[j];
-            xyOverlap[id] = zo[j];
-            break;
-        }  // end switch
-      }    // end loop over dimension
-    }      // end loop over nodes
+      xyz1.push_back( { x1[j], y1[j], z1[j] } );
+      xyz2.push_back( { x2[j], y2[j], z2[j] } );
+      xyzOverlap.push_back( { xOverlap[j], yOverlap[j], zOverlap[j] } );
+    }  // end loop over nodes
 
     // register the mesh with tribol
     int cellType = static_cast<int>( tribol::UNDEFINED_ELEMENT );
@@ -180,8 +145,8 @@ class MortarGapTest : public ::testing::Test {
     // instantiate SurfaceContactElem struct. Note, this object is instantiated
     // using face 1, face 2, and the set overlap polygon. Note, the mesh ids are set
     // equal to 0, and the face ids are 0 and 1, respectively.
-    tribol::SurfaceContactElem elem( this->dim, xy1, xy2, xyOverlap, this->numNodesPerFace, this->numOverlapNodes,
-                                     &mortarView, &nonmortarView, 0, 0 );
+    tribol::SurfaceContactElem elem( this->dim, xyz1.memory(), xyz2.memory(), xyzOverlap.memory(),
+                                     this->numNodesPerFace, this->numOverlapNodes, &mortarView, &nonmortarView, 0, 0 );
 
     // compute the mortar weights to be stored on
     // the surface contact element struct.
@@ -399,8 +364,8 @@ TEST_F( MortarGapTest, parallel_misaligned )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  int conn1[numNodesPerFace];
-  int conn2[numNodesPerFace];
+  tribol::BoundedArray<int> conn1( numNodesPerFace );
+  tribol::BoundedArray<int> conn2( numNodesPerFace );
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
@@ -487,8 +452,8 @@ TEST_F( MortarGapTest, parallel_aligned )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  int conn1[numNodesPerFace];
-  int conn2[numNodesPerFace];
+  tribol::BoundedArray<int> conn1( numNodesPerFace );
+  tribol::BoundedArray<int> conn2( numNodesPerFace );
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
@@ -575,8 +540,8 @@ TEST_F( MortarGapTest, parallel_simple_aligned )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  int conn1[numNodesPerFace];
-  int conn2[numNodesPerFace];
+  tribol::BoundedArray<int> conn1( numNodesPerFace );
+  tribol::BoundedArray<int> conn2( numNodesPerFace );
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;

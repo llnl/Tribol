@@ -41,8 +41,8 @@ using Array1D = ArrayT<T, 1, SPACE>;
 /**
  * @brief Convenience definition for a two-dimensional array
  */
-template <typename T, MemorySpace SPACE = MemorySpace::Dynamic>
-using Array2D = ArrayT<T, 2, SPACE>;
+// template <typename T, MemorySpace SPACE = MemorySpace::Dynamic>
+// using Array2D = ArrayT<T, 2, SPACE>;
 
 /**
  * @brief Convenience definition for a one-dimensional array view

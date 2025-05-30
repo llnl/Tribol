@@ -103,7 +103,7 @@ void EdgeAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
 
   mesh.allocateNodalNormals();
 
-  auto n0 = Array2D<RealT>( { 3, mesh.numberOfNodes() }, mesh.getAllocatorId() );
+  auto n0 = ArrayT<RealT, 2>( { 3, mesh.numberOfNodes() }, mesh.getAllocatorId() );
   n0.fill( 0.0 );
 
   if ( jacobian_data != nullptr ) {

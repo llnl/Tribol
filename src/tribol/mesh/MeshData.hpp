@@ -664,13 +664,13 @@ class MeshData {
   MultiArrayView<const RealT> m_vel;           ///< Nodal velocity
   MultiArrayView<RealT> m_response;            ///< Nodal responses (forces)
 
-  Array2D<RealT> m_node_n;  ///< Outward unit node normals
+  ArrayT<RealT, 2> m_node_n;  ///< Outward unit node normals
 
   // Element field data
   Array2DView<const IndexT> m_connectivity;  ///< Element connectivity arrays
 
-  Array2D<RealT> m_c;            ///< Vertex averaged element centroids
-  Array2D<RealT> m_n;            ///< Outward unit element normals
+  ArrayT<RealT, 2> m_c;          ///< Vertex averaged element centroids
+  ArrayT<RealT, 2> m_n;          ///< Outward unit element normals
   Array1D<RealT> m_face_radius;  ///< Face radius used in low level proximity check
   Array1D<RealT> m_area;         ///< Element areas
 

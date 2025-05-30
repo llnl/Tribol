@@ -6,13 +6,7 @@
 // Tribol includes
 #include "tribol/interface/tribol.hpp"
 #include "tribol/common/Parameters.hpp"
-#include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/mesh/MethodCouplingData.hpp"
-#include "tribol/mesh/MeshData.hpp"
-#include "tribol/physics/Mortar.hpp"
-#include "tribol/physics/AlignedMortar.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
-#include "tribol/utils/TestUtils.hpp"
+#include "tribol/common/Arrays.hpp"
 
 // Axom includes
 #include "axom/slic.hpp"
@@ -24,10 +18,8 @@
 #include "gtest/gtest.h"
 
 // c++ includes
-#include <cmath>  // std::abs
 #include <iostream>
 #include <sstream>
-#include <iomanip>
 #include <fstream>
 
 using RealT = tribol::RealT;
@@ -82,30 +74,13 @@ class MortarJacTest : public ::testing::Test {
     tribol::registerMesh( mortarMeshId, 1, this->numNodes, conn1, cellType, x, y, z, tribol::MemorySpace::Host );
     tribol::registerMesh( nonmortarMeshId, 1, this->numNodes, conn2, cellType, x, y, z, tribol::MemorySpace::Host );
 
-    // register nodal forces. Note, I was getting a seg fault when
-    // registering the same pointer to a single set of force arrays
-    // for both calls to tribol::registerNodalResponse(). As a result,
-    // I created two sets of nodal force arrays with their own pointers
-    // to the data that are registered with tribol and there is no longer
-    // a seg fault.
-    RealT *fx1, *fy1, *fz1;
-    RealT *fx2, *fy2, *fz2;
+    tribol::BoundedArray<RealT> fx1( this->numNodes );
+    tribol::BoundedArray<RealT> fy1( this->numNodes );
+    tribol::BoundedArray<RealT> fz1( this->numNodes );
 
-    RealT forceX1[this->numNodes];
-    RealT forceY1[this->numNodes];
-    RealT forceZ1[this->numNodes];
-
-    RealT forceX2[this->numNodes];
-    RealT forceY2[this->numNodes];
-    RealT forceZ2[this->numNodes];
-
-    fx1 = forceX1;
-    fy1 = forceY1;
-    fz1 = forceZ1;
-
-    fx2 = forceX2;
-    fy2 = forceY2;
-    fz2 = forceZ2;
+    tribol::BoundedArray<RealT> fx2( this->numNodes );
+    tribol::BoundedArray<RealT> fy2( this->numNodes );
+    tribol::BoundedArray<RealT> fz2( this->numNodes );
 
     // initialize force arrays
     for ( int i = 0; i < this->numNodes; ++i ) {
@@ -118,8 +93,8 @@ class MortarJacTest : public ::testing::Test {
       fz2[i] = 0.;
     }
 
-    tribol::registerNodalResponse( mortarMeshId, fx1, fy1, fz1 );
-    tribol::registerNodalResponse( nonmortarMeshId, fx2, fy2, fz2 );
+    tribol::registerNodalResponse( mortarMeshId, fx1.memory(), fy1.memory(), fz1.memory() );
+    tribol::registerNodalResponse( nonmortarMeshId, fx2.memory(), fy2.memory(), fz2.memory() );
 
     gaps = tribol::ArrayT<RealT>( this->numNodes,
                                   this->numNodes );  // length of total mesh to use global connectivity to index
@@ -245,15 +220,15 @@ TEST_F( MortarJacTest, jac_input_test )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  int conn1[numNodesPerFace];
-  int conn2[numNodesPerFace];
+  tribol::BoundedArray<int> conn1( numNodesPerFace );
+  tribol::BoundedArray<int> conn2( numNodesPerFace );
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
     conn2[i] = numNodesPerFace + i;
   }
 
-  this->setupTribol( &conn1[0], &conn2[0], tribol::ALIGNED_MORTAR );
+  this->setupTribol( conn1.memory(), conn2.memory(), tribol::ALIGNED_MORTAR );
 
   // check Jacobian sparse matrix
   mfem::SparseMatrix* jac{ nullptr };
@@ -320,15 +295,15 @@ TEST_F( MortarJacTest, update_jac_test )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  int conn1[numNodesPerFace];
-  int conn2[numNodesPerFace];
+  tribol::BoundedArray<int> conn1( numNodesPerFace );
+  tribol::BoundedArray<int> conn2( numNodesPerFace );
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
     conn2[i] = numNodesPerFace + i;
   }
 
-  this->setupTribol( &conn1[0], &conn2[0], tribol::ALIGNED_MORTAR );
+  this->setupTribol( conn1.memory(), conn2.memory(), tribol::ALIGNED_MORTAR );
 
   // check Jacobian sparse matrix
   mfem::SparseMatrix* jac{ nullptr };

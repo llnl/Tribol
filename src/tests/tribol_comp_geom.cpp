@@ -8,14 +8,8 @@
 #include "tribol/utils/TestUtils.hpp"
 #include "tribol/utils/Math.hpp"
 #include "tribol/common/Parameters.hpp"
-#include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/mesh/InterfacePairs.hpp"
-#include "tribol/mesh/MeshData.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
-
-// Axom includes
-#include "axom/slic.hpp"
 
 #ifdef TRIBOL_USE_UMPIRE
 // Umpire includes
@@ -27,10 +21,6 @@
 
 // c++ includes
 #include <cmath>  // std::abs, std::cos, std::sin
-#include <iostream>
-#include <sstream>
-#include <iomanip>
-#include <fstream>
 
 using RealT = tribol::RealT;
 
@@ -612,10 +602,10 @@ TEST_F( CompGeomTest, 2d_projections_1 )
   tribol::ProjectPointToSegment( cx[0], cx[1], faceNormal2[0], faceNormal2[1], cxf2[0], cxf2[1], cxProj2[0],
                                  cxProj2[1] );
 
-  RealT diffx1 = std::abs( cxProj1[0] - 0.738595 );
-  RealT diffy1 = std::abs( cxProj1[1] - 0.0915028 );
-  RealT diffx2 = std::abs( cxProj2[0] - 0.738591 );
-  RealT diffy2 = std::abs( cxProj2[1] - 0.0915022 );
+  // RealT diffx1 = std::abs( cxProj1[0] - 0.738595 );
+  // RealT diffy1 = std::abs( cxProj1[1] - 0.0915028 );
+  // RealT diffx2 = std::abs( cxProj2[0] - 0.738591 );
+  // RealT diffy2 = std::abs( cxProj2[1] - 0.0915022 );
   // EXPECT_LE(diffx1, 1.e-6);
   // EXPECT_LE(diffy1, 1.e-6);
   // EXPECT_LE(diffx2, 1.e-6);

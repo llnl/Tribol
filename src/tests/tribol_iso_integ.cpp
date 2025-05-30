@@ -4,14 +4,11 @@
 // SPDX-License-Identifier: (MIT)
 
 // Tribol includes
-#include "tribol/mesh/MeshData.hpp"
+#include "tribol/geom/Vector.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/integ/Integration.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/integ/FE.hpp"
-
-// Axom includes
-#include "axom/slic.hpp"
 
 // gtest includes
 #include "gtest/gtest.h"
@@ -44,8 +41,7 @@ class IsoIntegTest : public ::testing::Test {
 
   bool integrate( RealT const tol )
   {
-    RealT xyz[this->dim * this->numNodes];
-    RealT* xy = xyz;
+    tribol::VectorArray<RealT> xyz( this->dim, 0, this->numNodes );
 
     RealT* x = this->x;
     RealT* y = this->y;
@@ -53,25 +49,14 @@ class IsoIntegTest : public ::testing::Test {
 
     // generate stacked coordinate array
     for ( int j = 0; j < this->numNodes; ++j ) {
-      for ( int k = 0; k < this->dim; ++k ) {
-        switch ( k ) {
-          case 0:
-            xy[this->dim * j + k] = x[j];
-            break;
-          case 1:
-            xy[this->dim * j + k] = y[j];
-            break;
-          case 2:
-            xy[this->dim * j + k] = z[j];
-            break;
-        }  // end switch
-      }    // end loop over dimension
-    }      // end loop over nodes
+      xyz.push_back( { x[j], y[j], z[j] } );
+    }  // end loop over nodes
 
     // instantiate SurfaceContactElem struct. Note, this object is instantiated
     // using face 1 as face 2, but these faces are not used in this test so this
     // is ok.
-    tribol::SurfaceContactElem elem( this->dim, xy, xy, xy, this->numNodes, this->numNodes, nullptr, nullptr, 0, 0 );
+    tribol::SurfaceContactElem elem( this->dim, xyz.memory(), xyz.memory(), xyz.memory(), this->numNodes,
+                                     this->numNodes, nullptr, nullptr, 0, 0 );
 
     // instantiate integration object
     tribol::IntegPts integ;

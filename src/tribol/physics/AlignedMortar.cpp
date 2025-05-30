@@ -9,18 +9,13 @@
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/geom/ContactPlane.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/geom/NodalNormal.hpp"
+#include "tribol/geom/Vector.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/integ/Integration.hpp"
 #include "tribol/integ/FE.hpp"
-#include "tribol/utils/ContactPlaneOutput.hpp"
 #include "tribol/utils/Algorithm.hpp"
 #include "tribol/utils/Math.hpp"
-
-#include <fstream>
-#include <iostream>
-#include <iomanip>
 
 namespace tribol {
 
@@ -106,7 +101,7 @@ void ComputeNodalGap<ALIGNED_MORTAR>( SurfaceContactElem& elem )
   // loop over nodes on nonmortar side
   for ( int a = 0; a < elem.numFaceVert; ++a ) {
     // get global nonmortar node number from connectivity
-    RealT nrml_a[elem.dim];
+    Vector<RealT> nrml_a( elem.dim );
     int glbId = nonmortarConn[elem.numFaceVert * elem.faceId2 + a];
     nrml_a[0] = nonmortarMesh.getNodalNormals()[0][glbId];
     nrml_a[1] = nonmortarMesh.getNodalNormals()[1][glbId];
@@ -182,8 +177,8 @@ void ComputeAlignedMortarGaps( CouplingScheme* cs )
 
   // declare local variables to hold face nodal coordinates
   // and overlap vertex coordinates
-  RealT mortarX[dim * numNodesPerFace];
-  RealT nonmortarX[dim * numNodesPerFace];
+  VectorArray<RealT> mortarX( dim, numNodesPerFace );
+  VectorArray<RealT> nonmortarX( dim, numNodesPerFace );
 
   ////////////////////////////
   // compute nonmortar gaps //
@@ -230,8 +225,8 @@ void ComputeAlignedMortarGaps( CouplingScheme* cs )
     // configuration face coordinates. We need the current
     // configuration face coordinates here in order to correctly
     // compute the mortar gaps.
-    SurfaceContactElem elem_for_gap( dim, mortarX, nonmortarX, overlapX.data(), numNodesPerFace, plane.m_numPolyVert,
-                                     &mortarMesh, &nonmortarMesh, index1, index2 );
+    SurfaceContactElem elem_for_gap( dim, mortarX.memory(), nonmortarX.memory(), overlapX.data(), numNodesPerFace,
+                                     plane.m_numPolyVert, &mortarMesh, &nonmortarMesh, index1, index2 );
 
     /////////////////////////
     // compute mortar gaps //

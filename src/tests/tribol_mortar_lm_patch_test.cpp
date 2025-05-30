@@ -4,15 +4,10 @@
 // SPDX-License-Identifier: (MIT)
 
 // Tribol includes
+#include "tribol/geom/Vector.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/utils/TestUtils.hpp"
 #include "tribol/common/Parameters.hpp"
-#include "tribol/mesh/MethodCouplingData.hpp"
-#include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/mesh/MeshData.hpp"
-#include "tribol/physics/Mortar.hpp"
-#include "tribol/physics/AlignedMortar.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
 
 #ifdef TRIBOL_USE_UMPIRE
 // Umpire includes
@@ -126,8 +121,8 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
   // setup a temporary stacked array of nodal coordinates for use in the instantiation
   // of a reference configuration grid function. The nodal coordinates are stacked x, then
   // y, then z. Also setup a local interleaved array of incremental nodal displacements.
-  RealT xyz[this->m_mesh.dim * this->m_mesh.numTotalNodes];
-  RealT xyz_inc[this->m_mesh.dim * this->m_mesh.numTotalNodes];
+  tribol::VectorArray<RealT> xyz( m_mesh.dim, m_mesh.numTotalNodes );
+  tribol::VectorArray<RealT> xyz_inc( m_mesh.dim, m_mesh.numTotalNodes );
   for ( int i = 0; i < this->m_mesh.numTotalNodes; ++i ) {
     xyz[i] = this->m_mesh.x[i];
     xyz[this->m_mesh.numTotalNodes + i] = this->m_mesh.y[i];
@@ -177,15 +172,8 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
   // (space dimension) x (total number of mesh nodes) + (number of nonmortar nodes in contact),
   // where the last addition is for the pressure lagrange multiplier field
   int rhs_size = this->m_mesh.dim * this->m_mesh.numTotalNodes + this->m_mesh.numNonmortarSurfaceNodes;
-  RealT b[rhs_size];
-
-  // initialize b vector
-  for ( int i = 0; i < rhs_size; ++i ) {
-    b[i] = 0.;
-  }
-
   // instantiate mfem vector for right hand side
-  mfem::Vector rhs( &b[0], rhs_size );
+  mfem::Vector rhs( rhs_size );
 
   ////////////////////////////////////////////////////
   //                                                //
@@ -210,7 +198,7 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
   // called again with the updated contact solution, so doing so would actually
   // mess with the RHS in a negative way
   if ( contact ) {
-    this->m_mesh.getGapEvals( &b[0] );
+    this->m_mesh.getGapEvals( rhs.GetData() );
   }
 
   // zero out all Dirichlet BC components for each block
@@ -381,7 +369,7 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
     rhs_vec.open( "rhs_" + suffix_rhs.str() );
 
     for ( int i = 0; i < jac.NumRows(); ++i ) {
-      rhs_vec << b[i] << "\n";
+      rhs_vec << rhs[i] << "\n";
       sol_vec << sol_data[i] << "\n";
       for ( int j = 0; j < jac.NumCols(); ++j ) {
         RealT val = dJac( i, j );

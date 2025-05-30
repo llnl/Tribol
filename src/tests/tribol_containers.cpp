@@ -262,13 +262,12 @@ TEST_F( ContainerTest, array_base_stackmemory )
 
 TEST_F( ContainerTest, array_base_allocatedmemory_heapallocator_fixedsize )
 {
-  std::cout << "Running ArrayBase test with AllocatedMemory and a HeapAllocator of fixed size..." << std::endl;
+  std::cout << "Running ArrayBase test with AllocatedMemory and an Allocator of fixed size..." << std::endl;
 
-  using MemT =
-      tribol::AllocatedMemory<int, tribol::HeapAllocator<int>, tribol::SizeEqCapacity<tribol::FixedCapacity<10>>>;
+  using MemT = tribol::AllocatedMemory<int, tribol::Allocator<int>, tribol::SizeEqCapacity<tribol::FixedCapacity<10>>>;
 
-  // create ArrayBase object with AllocatedMemory and a HeapAllocator of fixed size
-  // AllocatedMemory with a HeapAllocator is a fixed size array on the heap
+  // create ArrayBase object with AllocatedMemory and an Allocator of fixed size
+  // AllocatedMemory with an Allocator is a fixed size array on the heap
   auto array_base = tribol::ArrayBase<MemT>( MemT( 10 ) );
   for ( int i = 0; i < 10; ++i ) {
     array_base[i] = i;
@@ -278,7 +277,7 @@ TEST_F( ContainerTest, array_base_allocatedmemory_heapallocator_fixedsize )
   }
 
   // copy ArrayBase object
-  // this will create a new HeapAllocator object and copy the data
+  // this will create a new Allocator object and copy the data
   auto array_base_copy = tribol::ArrayBase<MemT>( array_base );
   for ( int i = 0; i < 10; ++i ) {
     EXPECT_EQ( array_base_copy[i], i );
@@ -320,13 +319,12 @@ TEST_F( ContainerTest, array_base_allocatedmemory_heapallocator_fixedsize )
 
 TEST_F( ContainerTest, array_base_allocatedmemory_heapallocator_dynamicsize )
 {
-  std::cout << "Running ArrayBase test with AllocatedMemory and a HeapAllocator sized at runtime..." << std::endl;
+  std::cout << "Running ArrayBase test with AllocatedMemory and an Allocator sized at runtime..." << std::endl;
 
-  using MemT =
-      tribol::AllocatedMemory<int, tribol::HeapAllocator<int>, tribol::SizeEqCapacity<tribol::RuntimeCapacity>>;
+  using MemT = tribol::AllocatedMemory<int, tribol::Allocator<int>, tribol::SizeEqCapacity<tribol::RuntimeCapacity>>;
 
-  // create ArrayBase object with AllocatedMemory and a HeapAllocator of dynamic size
-  // AllocatedMemory with a HeapAllocator is a dynamic size array on the heap
+  // create ArrayBase object with AllocatedMemory and an Allocator of dynamic size
+  // AllocatedMemory with an Allocator is a dynamic size array on the heap
   auto array_base = tribol::ArrayBase<MemT>( MemT( 10 ) );
   for ( int i = 0; i < 10; ++i ) {
     array_base[i] = i;
@@ -336,7 +334,7 @@ TEST_F( ContainerTest, array_base_allocatedmemory_heapallocator_dynamicsize )
   }
 
   // copy ArrayBase object
-  // this will create a new HeapAllocator object and copy the data
+  // this will create a new Allocator object and copy the data
   auto array_base_copy = tribol::ArrayBase<MemT>( array_base );
   for ( int i = 0; i < 10; ++i ) {
     EXPECT_EQ( array_base_copy[i], i );
@@ -636,7 +634,7 @@ TEST_F( ContainerTest, boundedarray )
   std::cout << "Running BoundedArray test with default memory (heap AllocatedMemory)..." << std::endl;
 
   // create BoundedArray object with default memory (heap AllocatedMemory)
-  // AllocatedMemory with a HeapAllocator is a runtime sized array on the heap
+  // AllocatedMemory with an Allocator is a runtime sized array on the heap
   auto bounded_array = tribol::BoundedArray<int>( 0, 10 );
   for ( int i = 0; i < 10; ++i ) {
     EXPECT_EQ( bounded_array.size(), i );
@@ -774,7 +772,7 @@ TEST_F( ContainerTest, array )
   std::cout << "Running Array test with default memory (heap AllocatedMemory)..." << std::endl;
 
   // create Array object with default memory (heap AllocatedMemory)
-  // AllocatedMemory with a HeapAllocator is a runtime sized array on the heap
+  // AllocatedMemory with an Allocator is a runtime sized array on the heap
   auto tribol_array = tribol::Array<int>( 0, 10 );
   auto orig_capacity = tribol_array.capacity();
   auto orig_address = tribol_array.memory().data();

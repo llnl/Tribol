@@ -9,20 +9,17 @@
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/geom/ContactPlane.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/geom/NodalNormal.hpp"
+#include "tribol/geom/Vector.hpp"
+#include "tribol/common/Arrays.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/integ/Integration.hpp"
 #include "tribol/integ/FE.hpp"
-#include "tribol/utils/ContactPlaneOutput.hpp"
 #include "tribol/utils/Math.hpp"
 #include "tribol/utils/Algorithm.hpp"
 
 // Axom includes
 #include "axom/slic.hpp"
-
-#include <iostream>
-#include <iomanip>
 
 #ifdef TRIBOL_USE_ENZYME
 #include "tribol/common/Enzyme.hpp"
@@ -43,12 +40,12 @@ void ComputeMortarWeights( SurfaceContactElem& elem )
   //   TWBPolyInt( elem, integ, 3 );
 
   // get individual arrays of coordinates for each face
-  RealT x1[elem.numFaceVert];
-  RealT y1[elem.numFaceVert];
-  RealT z1[elem.numFaceVert];
-  RealT x2[elem.numFaceVert];
-  RealT y2[elem.numFaceVert];
-  RealT z2[elem.numFaceVert];
+  BoundedArray<RealT> x1( elem.numFaceVert );
+  BoundedArray<RealT> y1( elem.numFaceVert );
+  BoundedArray<RealT> z1( elem.numFaceVert );
+  BoundedArray<RealT> x2( elem.numFaceVert );
+  BoundedArray<RealT> y2( elem.numFaceVert );
+  BoundedArray<RealT> z2( elem.numFaceVert );
 
   for ( int i = 0; i < elem.numFaceVert; ++i ) {
     x1[i] = elem.faceCoords1[elem.dim * i];
@@ -85,10 +82,10 @@ void ComputeMortarWeights( SurfaceContactElem& elem )
         RealT xp[3] = { integ.xy[elem.dim * ip], integ.xy[elem.dim * ip + 1], integ.xy[elem.dim * ip + 2] };
         RealT xi[2] = { 0., 0. };
 
-        InvIso( xp, x1, y1, z1, elem.numFaceVert, xi );
+        InvIso( xp, x1.memory(), y1.memory(), z1.memory(), elem.numFaceVert, xi );
         LinIsoQuadShapeFunc( xi[0], xi[1], a, phiMortarA );
 
-        InvIso( xp, x2, y2, z2, elem.numFaceVert, xi );
+        InvIso( xp, x2.memory(), y2.memory(), z2.memory(), elem.numFaceVert, xi );
         LinIsoQuadShapeFunc( xi[0], xi[1], a, phiNonmortarA );
         LinIsoQuadShapeFunc( xi[0], xi[1], b, phiNonmortarB );
 
@@ -139,7 +136,7 @@ void ComputeNodalGap<SINGLE_MORTAR>( SurfaceContactElem& elem )
     RealT g2 = 0.;
 
     // get global nonmortar node number from connectivity
-    RealT nrml_a[elem.dim];
+    Vector<RealT> nrml_a( elem.dim );
     int glbId = nonmortarConn[elem.numFaceVert * elem.faceId2 + a];
     nrml_a[0] = nonmortarMesh.getNodalNormals()[0][glbId];
     nrml_a[1] = nonmortarMesh.getNodalNormals()[1][glbId];
@@ -205,9 +202,8 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
   // declare local variables to hold face nodal coordinates
   // and overlap vertex coordinates
   int const dim = cs->spatialDimension();
-  IndexT size = dim * numNodesPerFace;
-  RealT mortarX[size];
-  RealT nonmortarX[size];
+  VectorArray<RealT> mortarX( dim, numNodesPerFace );
+  VectorArray<RealT> nonmortarX( dim, numNodesPerFace );
 
   ////////////////////////////////////////////////////////////////////
   // compute nonmortar gaps to determine active set of contact dofs //
@@ -503,7 +499,7 @@ void ComputeResidualJacobian<SINGLE_MORTAR, DUAL>( SurfaceContactElem& elem )
     for ( int b = 0; b < elem.numFaceVert; ++b ) {
       // get global nonmortar node id to index into nodal normals on
       // nonmortar mesh
-      RealT nrml_b[elem.dim];
+      Vector<RealT> nrml_b( elem.dim );
       int glbId = nonmortarConn[elem.numFaceVert * elem.faceId2 + b];
 
       // We assemble ALL nonmortar node contributions, even if gap is in separation.
@@ -565,7 +561,7 @@ void ComputeConstraintJacobian<SINGLE_MORTAR, PRIMAL>( SurfaceContactElem& elem 
   for ( int a = 0; a < elem.numFaceVert; ++a ) {
     // get global nonmortar node id to index into nodal normals on
     // nonmortar mesh
-    RealT nrml_a[elem.dim];
+    Vector<RealT> nrml_a( elem.dim );
     int glbId = nonmortarConn[elem.numFaceVert * elem.faceId2 + a];
 
     // We assemble ALL nonmortar node contributions even if gap is in separation.
