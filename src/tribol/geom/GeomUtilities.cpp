@@ -4,7 +4,6 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "GeomUtilities.hpp"
-#include "ContactPlane.hpp"
 #include "tribol/utils/Math.hpp"
 
 #ifdef TRIBOL_USE_ENZYME
@@ -16,7 +15,6 @@
 
 #include <float.h>
 #include <cmath>
-#include <iostream>
 
 namespace tribol {
 
@@ -1140,29 +1138,26 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
     return false;
   }
 
-  // TODO refine how these debug calculations are guarded
-  {
-    // debug check to make sure the intersection coordinates derived from
-    // each segment equation (scaled with tA and tB) are the same to some
-    // tolerance
-    RealT xTest1 = xA1 + lambdaX1 * tA;
-    RealT yTest1 = yA1 + lambdaY1 * tA;
-    RealT xTest2 = xA2 + lambdaX2 * tB;
-    RealT yTest2 = yA2 + lambdaY2 * tB;
+#if defined( TRIBOL_DEBUG ) && !defined( TRIBOL_DEVICE_CODE ) && !defined( TRIBOL_USE_ENZYME )
+  // debug check to make sure the intersection coordinates derived from
+  // each segment equation (scaled with tA and tB) are the same to some
+  // tolerance
+  RealT xTest1 = xA1 + lambdaX1 * tA;
+  RealT yTest1 = yA1 + lambdaY1 * tA;
+  RealT xTest2 = xA2 + lambdaX2 * tB;
+  RealT yTest2 = yA2 + lambdaY2 * tB;
 
-    RealT xDiff = xTest1 - xTest2;
-    RealT yDiff = yTest1 - yTest2;
+  RealT xDiff = xTest1 - xTest2;
+  RealT yDiff = yTest1 - yTest2;
 
-    // make sure the differences are positive
-    xDiff = ( xDiff < 0. ) ? -1.0 * xDiff : xDiff;
-    yDiff = ( yDiff < 0. ) ? -1.0 * yDiff : yDiff;
+  // make sure the differences are positive
+  xDiff = ( xDiff < 0. ) ? -1.0 * xDiff : xDiff;
+  yDiff = ( yDiff < 0. ) ? -1.0 * yDiff : yDiff;
 
-#if defined( TRIBOL_DEBUG ) && defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-    RealT diffTol = 1.0E-3;
-    SLIC_DEBUG_IF( xDiff > diffTol || yDiff > diffTol,
-                   "SegmentIntersection2D(): Intersection coordinates are not equally derived." );
+  RealT diffTol = 1.0E-3;
+  SLIC_DEBUG_IF( xDiff > diffTol || yDiff > diffTol,
+                 "SegmentIntersection2D(): Intersection coordinates are not equally derived." );
 #endif
-  }
 
   // if we get here then it means we have an intersection point.
   // Find the minimum distance of the intersection point to any of the segment
