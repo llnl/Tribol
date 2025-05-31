@@ -36,16 +36,12 @@ class RuntimeCapacity {
  public:
   using size_type = size_t;
 
-  TRIBOL_HOST_DEVICE RuntimeCapacity( size_type capacity ) : capacity_( capacity >= 0 ? capacity : 0 )
-  {
-    assert( capacity >= 0 );
-  }
+  TRIBOL_HOST_DEVICE RuntimeCapacity( size_type capacity ) : capacity_( capacity ) {}
   TRIBOL_HOST_DEVICE size_type capacity() const { return capacity_; }
 
   TRIBOL_HOST_DEVICE size_type setCapacity( size_type capacity )
   {
-    assert( capacity >= 0 );
-    capacity_ = capacity >= 0 ? capacity : 0;
+    capacity_ = capacity;
     return capacity;
   }
 
@@ -89,10 +85,9 @@ class SizeLECapacity : public Capacity {
   using capacity_type = Capacity;
 
   TRIBOL_HOST_DEVICE SizeLECapacity( size_type size, size_type capacity )
-      : Capacity( capacity >= size ? capacity : size ), size_( size >= 0 ? size : 0 )
+      : Capacity( capacity >= size ? capacity : size ), size_( size )
   {
     assert( size <= capacity );
-    assert( size >= 0 );
   }
 
   TRIBOL_HOST_DEVICE size_type size() const { return size_; }
@@ -464,7 +459,7 @@ class DynamicAllocator {
   }
 
   TRIBOL_NVCC_EXEC_CHECK_DISABLE
-  TRIBOL_HOST_DEVICE void uninitialized_copy( T* first, T* last, T* d_first ) const
+  TRIBOL_HOST_DEVICE void uninitialized_copy( T* first, [[maybe_unused]] T* last, T* d_first ) const
   {
 #ifdef TRIBOL_USE_UMPIRE
     auto& rm = umpire::ResourceManager::getInstance();
@@ -517,7 +512,7 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
   {
     assert( src.size() == dst.size() );
     ( *this ) = std::move( dst );
-    allocator_.copy( data_, src.data_, src.size() );
+    allocator_.uninitialized_copy( src.data_, src.data_ + src.size(), data_ );
   }
 
   TRIBOL_NVCC_EXEC_CHECK_DISABLE
