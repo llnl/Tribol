@@ -14,7 +14,6 @@ set(tribol_headers
     common/Arrays.hpp
     common/ArrayTypes.hpp
     common/BasicTypes.hpp
-    common/Containers.hpp
     common/Enzyme.hpp
     common/ExecModel.hpp
     common/LoopExec.hpp

@@ -29,7 +29,7 @@ class ArrayBase {
     // initialize memory if needed
     if constexpr ( MemoryT::initialized_ == false ) {
       for ( auto& value : memory_ ) {
-        value = value_type{};
+        value = value_type();
       }
     }
   }
@@ -170,6 +170,9 @@ class BoundedArray2D : public BoundedArray<T, MemoryT> {
     assert( capacity() == max_height * width );
   }
   TRIBOL_HOST_DEVICE BoundedArray2D( size_type height, size_type width ) : BoundedArray2D( height, width, height ) {}
+  TRIBOL_HOST_DEVICE BoundedArray2D() : BoundedArray2D( 0, 0, 0 )  // default constructor initializes to empty array
+  {
+  }
 
   // constructor with forwarded arguments for memory
   template <typename... Args>

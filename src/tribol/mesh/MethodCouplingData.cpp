@@ -53,8 +53,7 @@ void SurfaceContactElem::allocateBlockJ( EnforcementMethod enf )
   int nPrimal = this->dim * this->numFaceVert;
   for ( int i{}; i < 2; ++i ) {
     for ( int j{}; j < 2; ++j ) {
-      this->blockJ( i, j ) = DeviceArray2D<RealT>( nPrimal, nPrimal );
-      this->blockJ( i, j ).fill( 0.0 );
+      this->blockJ( i, j ) = BoundedArray2D<RealT>( nPrimal, nPrimal );
     }
   }
 
@@ -62,14 +61,11 @@ void SurfaceContactElem::allocateBlockJ( EnforcementMethod enf )
     // number of element Lagrange multiplier degrees of freedom
     int nDual = this->numFaceVert;
     for ( int i{}; i < 2; ++i ) {
-      this->blockJ( i, 2 ) = DeviceArray2D<RealT>( nPrimal, nDual );
-      this->blockJ( i, 2 ).fill( 0.0 );
+      this->blockJ( i, 2 ) = BoundedArray2D<RealT>( nPrimal, nDual );
       // transpose
-      this->blockJ( 2, i ) = DeviceArray2D<RealT>( nDual, nPrimal );
-      this->blockJ( 2, i ).fill( 0.0 );
+      this->blockJ( 2, i ) = BoundedArray2D<RealT>( nDual, nPrimal );
     }
-    this->blockJ( 2, 2 ) = DeviceArray2D<RealT>( nDual, nDual );
-    this->blockJ( 2, 2 ).fill( 0.0 );
+    this->blockJ( 2, 2 ) = BoundedArray2D<RealT>( nDual, nDual );
   }
 }
 
@@ -177,7 +173,7 @@ void MethodData::reserveBlockJ( ArrayT<BlockSpace>&& blockJSpaces, int nPairs )
 }
 
 //------------------------------------------------------------------------------
-void MethodData::storeElemBlockJ( ArrayT<int>&& blockJElemIds, const StackArray<DeviceArray2D<RealT>, 9>& blockJ )
+void MethodData::storeElemBlockJ( ArrayT<int>&& blockJElemIds, const BoundedArray2D<BoundedArray2D<RealT>>& blockJ )
 {
   SLIC_ASSERT_MSG( blockJElemIds.size() == getNSpaces(),
                    "Number of element ID vectors does not match the number of Jacobian spaces." );
@@ -189,7 +185,7 @@ void MethodData::storeElemBlockJ( ArrayT<int>&& blockJElemIds, const StackArray<
       // convert to mfem::DenseMatrix
       auto& block = blockJ( i, j );
       // this DenseMatrix is a "view" of block
-      mfem::DenseMatrix block_densemat( block.data(), block.height(), block.width() );
+      mfem::DenseMatrix block_densemat( block.memory(), block.height(), block.width() );
       // deep copy should happen here
       m_blockJ( blockIdxI, blockIdxJ ).push_back( block_densemat );
     }
