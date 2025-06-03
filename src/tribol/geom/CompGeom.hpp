@@ -295,7 +295,7 @@ class CompGeomPair {
  public:
   int m_dim;
   Parameters& m_params;
-  TRIBOL_HOST_DEVICE virtual void checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) = 0;
+  TRIBOL_HOST_DEVICE virtual FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) = 0;
 };
 
 //-----------------------------------------------------------------------------
@@ -369,13 +369,66 @@ class ContactPlanePair : public CompGeomPair {
   /// @{
 
   /*!
+   * \brief check to see if interface pairs are interacting
+   *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
+   *
+   * \return face geometry error
+   */
+  TRIBOL_HOST_DEVICE virtual FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) = 0;
+
+  /*!
    * \brief check to see if face-pairs are interacting
    *
    * \param [in] mesh1 mesh data viewer for mesh 1
    * \param [in] mesh2 mesh data viewer for mesh 2
+   *
+   * \return face geometry error
    */
-  TRIBOL_HOST_DEVICE virtual void checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) = 0;
+  TRIBOL_HOST_DEVICE virtual FaceGeomError checkFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) = 0;
 
+  /*!
+   * \brief check to see if edge-pairs are interacting
+   *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
+   *
+   * \return face geometry error
+   */
+  TRIBOL_HOST_DEVICE virtual FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) = 0;
+
+  /*!
+   * \brief Compute the projected overlap in 2D 
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   * \param [in] params Coupling scheme-dependent parameters
+   *
+   * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
+   */
+  TRIBOL_HOST_DEVICE FaceGeomError computeOverlap2D( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
+                                                     const Parameters& params ) = 0;
+  /*!
+   * \brief Compute the projected overlap in 3D
+   *
+   * \param [in] x1 x-coordinates of the first planar quadrilateral
+   * \param [in] y1 y-coordinates of the first planar quadrilateral
+   * \param [in] z1 z-coordinates of the first planar quadrilateral
+   * \param [in] x2 x-coordinates of the second planar quadrilateral
+   * \param [in] y2 y-coordinates of the second planar quadrilateral
+   * \param [in] z2 z-coordinates of the second planar quadrilateral
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   * \param [in] params Coupling scheme-dependent parameters
+   *
+   * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
+   *
+   * \pre this routine assumes that the two four node quadrilaterals are planar
+   */
+  TRIBOL_HOST_DEVICE FaceGeomError computeOverlap3D( const RealT* x1, const RealT* y1, const RealT* z1,
+                                                     const RealT* x2, const RealT* y2, const RealT* z2,
+                                                     const MeshData::Viewer& m1, const MeshData::Viewer& m2,const Parameters& params ) = 0;
   /*!
    * \brief Compute a local basis on the contact plane
    *
@@ -535,18 +588,16 @@ class CommonPlanePair : public ContactPlanePair {
   RealT m_interpenPoly2Y[ max_nodes_per_intersection ];  ///< Local y-coords of face 2 interpenetrating polygon projected onto common plane
 
   int m_numInterpenPoly1Vert; ///< Number of vertices on face 1 interpenetrating polygon
-  RealT m_interpenG1X[ max_nodes_per_intersection ];  ///< Global x-coordinate of face 1 interpenetrating polygon
-  RealT m_interpenG1Y[ max_nodes_per_intersection ];  ///< Global y-coordinate of face 1 interpenetrating polygon
-  RealT m_interpenG1Z[ max_nodes_per_intersection ];  ///< Global z-coordinate of face 1 interpenetrating polygon
+  RealT m_interpenG1X[ max_nodes_per_intersection ];  ///< Global x-coordinate of face 1 interpenetrating polygon as projected onto the common plane 
+  RealT m_interpenG1Y[ max_nodes_per_intersection ];  ///< Global y-coordinate of face 1 interpenetrating polygon as projected onto the common plane
+  RealT m_interpenG1Z[ max_nodes_per_intersection ];  ///< Global z-coordinate of face 1 interpenetrating polygon as projected onto the common plane
 
   int m_numInterpenPoly2Vert; ///< Number of vertices on face 2 interpenetrating polygon
-  RealT m_interpenG2X[ max_nodes_per_intersection ];  ///< Global x-coordinate of face 2 interpenetrating polygon
-  RealT m_interpenG2Y[ max_nodes_per_intersection ];  ///< Global y-coordinate of face 2 interpenetrating polygon
-  RealT m_interpenG2Z[ max_nodes_per_intersection ];  ///< Global z-coordinate of face 2 interpenetrating polygon
+  RealT m_interpenG2X[ max_nodes_per_intersection ];  ///< Global x-coordinate of face 2 interpenetrating polygon as projected onto the common plane
+  RealT m_interpenG2Y[ max_nodes_per_intersection ];  ///< Global y-coordinate of face 2 interpenetrating polygon as projected onto the common plane 
+  RealT m_interpenG2Z[ max_nodes_per_intersection ];  ///< Global z-coordinate of face 2 interpenetrating polygon as projected onto the common plane
 
-  // TODO just use the overlap area on the contact plane class
-  //RealT m_interpenArea; ///< Interpenetrating overlap area
-
+  bool  m_fullOverlap {false;} ///< Indicates if a full overlap (true) or interpen overlap (false) is used
   RealT m_velGap; ///< Velocity gap
   RealT m_ratePressure; ///< gap-rate pressure
   RealT m_pressure; ///< kinematic contact pressure
@@ -556,8 +607,10 @@ class CommonPlanePair : public ContactPlanePair {
    *
    * \param [in] mesh1 mesh data viewer for mesh 1
    * \param [in] mesh2 mesh data viewer for mesh 2
+   * 
+   * \return face geometry error
    */
-  TRIBOL_HOST_DEVICE void checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+  TRIBOL_HOST_DEVICE FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
 
   /*!
    * \brief check to see if common plane face-pairs are interacting
@@ -565,7 +618,7 @@ class CommonPlanePair : public ContactPlanePair {
    * \param [in] mesh1 mesh data viewer for mesh 1
    * \param [in] mesh2 mesh data viewer for mesh 2
    */
-   TRIBOL_HOST_DEVICE FaceGeomError checkCommonPlaneFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 );
+   TRIBOL_HOST_DEVICE FaceGeomError checkFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
 
   /*!
    * \brief check to see if common plane edge-pairs are interacting
@@ -573,7 +626,39 @@ class CommonPlanePair : public ContactPlanePair {
    * \param [in] mesh1 mesh data viewer for mesh 1
    * \param [in] mesh2 mesh data viewer for mesh 2
    */
-   TRIBOL_HOST_DEVICE FaceGeomError checkCommonPlaneEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 );
+   TRIBOL_HOST_DEVICE FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+
+  /*!
+   * \brief Compute the projected overlap of the interpenetrating portions of each face in 2D
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   * \param [in] params Coupling scheme-dependent parameters
+   *
+   * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
+   */
+  TRIBOL_HOST_DEVICE FaceGeomError computeOverlap2D( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
+                                                     const Parameters& params ) override;
+  /*!
+   * \brief Compute the overlap of the interpenetrating portions of each face in 3D
+   *
+   * \param [in] x1 x-coordinates of the first planar quadrilateral
+   * \param [in] y1 y-coordinates of the first planar quadrilateral
+   * \param [in] z1 z-coordinates of the first planar quadrilateral
+   * \param [in] x2 x-coordinates of the second planar quadrilateral
+   * \param [in] y2 y-coordinates of the second planar quadrilateral
+   * \param [in] z2 z-coordinates of the second planar quadrilateral
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   * \param [in] params Coupling scheme-dependent parameters
+   *
+   * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
+   *
+   * \pre this routine assumes that the two four node quadrilaterals are planar
+   */
+  TRIBOL_HOST_DEVICE FaceGeomError computeOverlap3D( const RealT* x1, const RealT* y1, const RealT* z1,
+                                                     const RealT* x2, const RealT* y2, const RealT* z2,
+                                                     const MeshData::Viewer& m1, const MeshData::Viewer& m2,const Parameters& params ) override;
 
   /*!
    * \brief Compute the unit normal that defines the contact plane
@@ -609,32 +694,6 @@ class CommonPlanePair : public ContactPlanePair {
    */
   TRIBOL_HOST_DEVICE void computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
                                           const Parameters& params ) override;
-
-  //
-  // Common plane specific routines
-  //
-
-  /*!
-   * \brief Compute the projected overlap of the interpenetrating portions of each face in 2D
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   * \param [in] params Coupling scheme-dependent parameters
-   *
-   * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
-   */
-  TRIBOL_HOST_DEVICE FaceGeomError computeLocalInterpenOverlap2D( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                                                  const Parameters& params );
-  /*!
-   * \brief Compute the overlap of the interpenetrating portions of each face in 3D
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   * \param [in] params Coupling scheme-dependent parameters
-   *
-   * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
-   */
-  TRIBOL_HOST_DEVICE FaceGeomError computeLocalInterpenOverlap3D( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
 
   /*!
    * \brief Recomputes the reference point that locates the plane in 3-space
@@ -731,8 +790,10 @@ class MortarPlanePair : public ContactPlanePair {
    *
    * \param [in] mesh1 mesh data viewer for mesh 1
    * \param [in] mesh2 mesh data viewer for mesh 2
+   *
+   * \return face geometry error
    */
-  TRIBOL_HOST_DEVICE void checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+  TRIBOL_HOST_DEVICE FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
 
   /*!
    * \brief check to see if mortar plane face-pairs are interacting
@@ -740,7 +801,7 @@ class MortarPlanePair : public ContactPlanePair {
    * \param [in] mesh1 mesh data viewer for mesh 1
    * \param [in] mesh2 mesh data viewer for mesh 2
    */
-   TRIBOL_HOST_DEVICE FaceGeomError checkMortarPlaneFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 );
+   TRIBOL_HOST_DEVICE FaceGeomError checkFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 );
 
   /*!
    * \brief check to see if mortar plane edge-pairs are interacting
@@ -748,7 +809,40 @@ class MortarPlanePair : public ContactPlanePair {
    * \param [in] mesh1 mesh data viewer for mesh 1
    * \param [in] mesh2 mesh data viewer for mesh 2
    */
-   TRIBOL_HOST_DEVICE FaceGeomError checkMortarPlaneEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 );
+   TRIBOL_HOST_DEVICE FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+
+  /*!
+   * \brief Compute the projected overlap in 2D
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   * \param [in] params Coupling scheme-dependent parameters
+   *
+   * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
+   */
+  TRIBOL_HOST_DEVICE FaceGeomError computeOverlap2D( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
+                                                     const Parameters& params ) override;
+
+  /*!
+   * \brief Compute the projected overlap in 3D 
+   *
+   * \param [in] x1 x-coordinates of the first planar quadrilateral
+   * \param [in] y1 y-coordinates of the first planar quadrilateral
+   * \param [in] z1 z-coordinates of the first planar quadrilateral
+   * \param [in] x2 x-coordinates of the second planar quadrilateral
+   * \param [in] y2 y-coordinates of the second planar quadrilateral
+   * \param [in] z2 z-coordinates of the second planar quadrilateral
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   * \param [in] params Coupling scheme-dependent parameters
+   *
+   * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
+   *
+   * \pre this routine assumes that the two four node quadrilaterals are planar
+   */
+  TRIBOL_HOST_DEVICE FaceGeomError computeOverlap3D( const RealT* x1, const RealT* y1, const RealT* z1,
+                                                     const RealT* x2, const RealT* y2, const RealT* z2,
+                                                     const MeshData::Viewer& m1, const MeshData::Viewer& m2,const Parameters& params ) override;
 
   /*!
    * \brief Compute the unit normal that defines the contact plane
@@ -815,8 +909,10 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    *
    * \param [in] mesh1 mesh data viewer for mesh 1
    * \param [in] mesh2 mesh data viewer for mesh 2
+   *
+   * \return face geometry error
    */
-  TRIBOL_HOST_DEVICE void checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+  TRIBOL_HOST_DEVICE FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
 
   /*!
    * \brief check to see if aligned mortar plane face-pairs are interacting
@@ -826,7 +922,47 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    *
    * \note Aligned mortar only works in 3D (e.g. face-pairs)
    */
-   TRIBOL_HOST_DEVICE FaceGeomError checkAlignedMortarPlaneFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 );
+   TRIBOL_HOST_DEVICE FaceGeomError checkFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+
+  /*!
+   * \brief check to see if aligned mortar plane edge-pairs are interacting
+   *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
+   */
+   TRIBOL_HOST_DEVICE FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+
+  /*!
+   * \brief Compute the projected overlap in 2D
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   * \param [in] params Coupling scheme-dependent parameters
+   *
+   * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
+   */
+  TRIBOL_HOST_DEVICE FaceGeomError computeOverlap2D( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
+                                                     const Parameters& params ) override;
+  /*!
+   * \brief Compute the projected overlap in 3D 
+   *
+   * \param [in] x1 x-coordinates of the first planar quadrilateral
+   * \param [in] y1 y-coordinates of the first planar quadrilateral
+   * \param [in] z1 z-coordinates of the first planar quadrilateral
+   * \param [in] x2 x-coordinates of the second planar quadrilateral
+   * \param [in] y2 y-coordinates of the second planar quadrilateral
+   * \param [in] z2 z-coordinates of the second planar quadrilateral
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   * \param [in] params Coupling scheme-dependent parameters
+   *
+   * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
+   *
+   * \pre this routine assumes that the two four node quadrilaterals are planar
+   */
+  TRIBOL_HOST_DEVICE FaceGeomError computeOverlap3D( const RealT* x1, const RealT* y1, const RealT* z1,
+                                                     const RealT* x2, const RealT* y2, const RealT* z2,
+                                                     const MeshData::Viewer& m1, const MeshData::Viewer& m2,const Parameters& params ) override;
 
   /*!
    * \brief Compute the unit normal that defines the contact plane

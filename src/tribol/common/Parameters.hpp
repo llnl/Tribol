@@ -313,12 +313,12 @@ enum FaceGeomError
 {
   NO_FACE_GEOM_ERROR,               ///! No face geometry error indicating an overlap intersection
   NO_OVERLAP = NO_FACE_GEOM_ERROR,  ///! Indicates that no actual overlap exists, but does not indicate an error
-  SWITCH_TO_FULL_OVERLAP = NO_FACE_GEOM_ERROR,  ///! Used to switch an interpen overlap calc to a full overlap calc
   FACE_ORIENTATION,                             ///! Face vertices not ordered consistent with outward unit normal
   INVALID_FACE_INPUT,                           ///! Invalid input
   DEGENERATE_OVERLAP,                           ///! Issues with overlap calculation resulting in degenerate overlap
+  EXCEEDS_AUTO_CONTACT_LENGTH_SCALE,            ///! Gap exceeds auto contact length scale
   FACE_VERTEX_INDEX_EXCEEDS_OVERLAP_VERTICES,   ///! Very specific debug indexing error where face vertex count exceeds
-                                                /// overlap vertex count in cg routine
+                                                ///  overlap vertex count in cg routine
   NUM_FACE_GEOM_ERRORS
 };
 

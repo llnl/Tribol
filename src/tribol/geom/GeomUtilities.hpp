@@ -80,6 +80,34 @@ TRIBOL_HOST_DEVICE void ProjectPointToPlane( const RealT x, const RealT y, const
  *
  * \brief Projects an array of points in 3-space to a plane.
  *
+ * General method to project a collection of points to a plane based on point normal data for that
+ * plane and the input points in three dimensions.
+ *
+ * \param [in] x coordinates of points to be projected
+ * \param [in] y coordinates of points to be projected
+ * \param [in] z coordinates of points to be projected
+ * \param [in] nx x component of unit normal defining plane
+ * \param [in] ny y component of unit normal defining plane
+ * \param [in] nz z component of unit normal defining plane
+ * \param [in] ox x coordinate of reference point on plane
+ * \param [in] oy y coordinate of reference point on plane
+ * \param [in] oz z coordinate of reference point on plane
+ *
+ * \param [in,out] px x coordinates of projected point
+ * \param [in,out] py y coordinates of projected point
+ * \param [in,out] pz z coordinates of projected point
+ *
+ * \param [in] num_points number of points to be projected
+ *
+ */
+TRIBOL_HOST_DEVICE void ProjectPointsToPlane( const RealT* x, const RealT* y, const RealT* z, const RealT nx,
+                                              const RealT ny, const RealT nz, const RealT ox, const RealT oy,
+                                              const RealT oz, RealT* px, RealT* py, RealT* pz, const int num_points );
+
+/*!
+ *
+ * \brief Projects an array of points in 3-space to a plane.
+ *
  * General method to project a point to a plane based on an origin point and basis vectors for that plane and the array
  * of 3D input points
  *

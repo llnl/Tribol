@@ -21,6 +21,56 @@
 
 namespace tribol {
 
+TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT x, RealT y, RealT z,
+                                           RealT nx, RealT ny, RealT nz,
+                                           RealT cx, RealT cy, RealT cz,
+                                           RealT e1x, RealT e1y, RealT e1z,
+                                           RealT e2x, RealT e2y, RealT e2z )
+{
+  e1x = x - cx;
+  e1y = y - cy;
+  e1z = z - cz;
+
+  // check the square of the magnitude of the first basis vector to catch
+  // if the point (x,y,z) is really close to the centroid
+  RealT sqrMag = e1x * e1x + e1y * e1y + e1z * e1z;
+  if ( sqrMag < 1.E-12 )
+  {
+    RealT scale = 10.; // just scale it 10x the original distance
+    RealT x_new = x + scale;
+    RealT y_new = y + scale;
+    RealT z_new = z + scale;
+
+    e1x = x_new - cx;
+    e1y = y_new - cy;
+    e1z = z_new - cz;
+  }
+
+  // normalize the first basis vector
+  RealT mag = magnitude( e1x, e1y, e1z );
+  RealT inv_mag = 1.0 / mag;
+
+  e1x *= inv_mag;
+  e1y *= inv_mag;
+  e1z *= inv_mag;
+
+  // compute the second, and orthogonal, in-plane basis vector as the
+  // cross product between the face normal and e1. This will be unit because
+  // the normal and e1 are unit.
+  
+  e2x = (ny * e1z) - (nz * e1y);
+  e2y = (nz * e1x) - (nx * e1z);
+  e2z = (nx * e1y) - (ny * e1x);
+ 
+  mag = magnitude( e2x, e2y, e2z ); 
+  inv_mag = 1.0 / mag;
+
+  e2x *= inv_mag;
+  e2y *= inv_mag;
+  e2z *= inv_mag;
+  
+} // end ComputeLocalBasis()
+//------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ProjectFaceNodesToPlane( const MeshData::Viewer& mesh, int faceId, RealT nrmlX, RealT nrmlY,
                                                  RealT nrmlZ, RealT cX, RealT cY, RealT cZ, RealT* pX, RealT* pY,
                                                  RealT* pZ )
@@ -72,6 +122,17 @@ TRIBOL_HOST_DEVICE void ProjectPointToPlane( const RealT x, const RealT y, const
   return;
 
 }  // end ProjectPointToPlane()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void ProjectPointsToPlane( const RealT* x, const RealT* y, const RealT* z, const RealT nx,
+                                              const RealT ny, const RealT nz, const RealT ox, const RealT oy,
+                                              const RealT oz, RealT* px, RealT* py, RealT* pz, const int num_points )
+{
+  for (int i=0; i<num_points; ++i)
+  {
+    ProjectPointToPlane( x[i], y[i], z[i], nx, ny, nz, ox, oy, oz, px[i], py[i], pz[i] );
+  }
+} // end ProjectPointsToPlane()
 
 //------------------------------------------------------------------------------
 void PlaneTo2DCoords( const RealT* x, const RealT* x0, const RealT* e1, const RealT* e2, RealT* xp, RealT* yp,

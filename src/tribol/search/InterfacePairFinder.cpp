@@ -40,13 +40,13 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
 
   /// CHECK #2: Auto-contact precludes faces that share a common
   ///           node(s). We want to preclude two adjacent faces from interacting
-  //            due to problematic configurations, such as corners where the
-  //            configuration and opposing normals appear to be in contact, but
-  //            are not.
-  //
-  //            Note: non-auto-contact coupling schemes should typically be amongst
-  //                  topologically disconnected surfaces unless it is known apriori that
-  //                  face-pairs with shared nodes can in fact contact.
+  ///           due to problematic configurations, such as corners where the
+  ///           configuration and opposing normals appear to be in contact, but
+  ///           are not.
+  ///
+  ///           Note: non-auto-contact coupling schemes should typically be amongst
+  ///                 topologically disconnected surfaces unless it is known apriori that
+  ///                 face-pairs with shared nodes can in fact contact.
   if ( auto_contact_check ) {
     for ( IndexT i{ 0 }; i < mesh1.numberOfNodesPerElement(); ++i ) {
       int node1 = mesh1.getGlobalNodeId( element_id1, i );
@@ -75,7 +75,8 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
 
   /// CHECK #4 (3D): Perform radius check, which involves seeing if
   ///                the distance between the two face vertex averaged
-  ///                centroid is less than the sum of the two face radii.
+  ///                centroid is less than the sum of the two face radii
+  ///                premultiplied by a binning scale factor.
   ///                The face radii are taken to be the magnitude of the
   ///                longest vector from that face's vertex averaged
   ///                centroid to one its nodes.
@@ -132,6 +133,135 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
       return false;
     }
   }  // end of dim == 2
+
+  /// Check #5: check to see if at least one vertex from one face lies inside the other face
+  ///           when projected to that other face's face-plane. This check is a proxy for 
+  ///           determining if there is a positive area of overlap
+  if (dim == 3)
+  {
+    // get each face's nodal coordinates
+    constexpr int max_nodes_per_face = 4; 
+    constexpr int max_dim = 3;
+    RealT x1[ max_nodes_per_face ];
+    RealT y1[ max_nodes_per_face ];
+    RealT z1[ max_nodes_per_face ];
+
+    RealT x2[ max_nodes_per_face ];
+    RealT y2[ max_nodes_per_face ];
+    RealT z2[ max_nodes_per_face ];
+    for ( int i = 0; i < mesh1.numberOfNodesPerElement(); ++i ) {
+      const int nodeId_1 = mesh1.getGlobalNodeId( element_id1, i );
+      x1[i] = mesh1.getPosition()[0][nodeId_1];
+      y1[i] = mesh1.getPosition()[1][nodeId_1];
+      z1[i] = mesh1.getPosition()[2][nodeId_1];
+
+    }
+
+    for ( int i = 0; i < mesh2.numberOfNodesPerElement(); ++i) {
+      const int nodeId_2 = mesh2.getGlobalNodeId( element_id2, i );
+      x2[i] = mesh2.getPosition()[0][nodeId_2];
+      y2[i] = mesh2.getPosition()[1][nodeId_2];
+      z2[i] = mesh2.getPosition()[2][nodeId_2];
+    }
+
+    // get face normals
+    RealT fn1[max_dim], fn2[max_dim];
+    mesh1.getFaceNormal( element_id1, fn1 );
+    mesh2.getFaceNormal( element_id2, fn2 );
+
+    // get face centroids
+    RealT cx1[max_dim], cx2[max_dim];
+    mesh1.getFaceCentroid( element_id1, cx1 );
+    mesh2.getFaceCentroid( element_id2, cx2 );
+
+    // project each face's nodes to its average face plane to ensure
+    // planar faces
+    RealT x1_prime[max_nodes_per_face];
+    RealT y1_prime[max_nodes_per_face];
+    RealT z1_prime[max_nodes_per_face];
+    RealT x2_prime[max_nodes_per_face];
+    RealT y2_prime[max_nodes_per_face];
+    RealT z2_prime[max_nodes_per_face];
+
+    ProjectFaceNodesToPlane( mesh1, element_id1, fn1[0], fn1[1], fn1[2], cx1[0], cx1[1], cx1[2], &x1_prime[0],
+                             &y1_prime[0], &z1_prime[0] );
+    ProjectFaceNodesToPlane( mesh2, element_id2, fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2], &x2_prime[0],
+                             &y2_prime[0], &z2_prime[0] );
+
+    // now project the planar face vertices onto the other face's plane
+    RealT x1_bar[max_nodes_per_face];
+    RealT y1_bar[max_nodes_per_face];
+    RealT z1_bar[max_nodes_per_face];
+    RealT x2_bar[max_nodes_per_face];
+    RealT y2_bar[max_nodes_per_face];
+    RealT z2_bar[max_nodes_per_face];
+
+    // project 'prime' face nodal coordinates onto the plane ('bar' coords) defined by the OTHER face
+    ProjectPointsToPlane( &x1_prime[0], &y1_prime[0], &z1_prime[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
+                          &x1_bar[0], &y1_bar[0], &z1_bar[0] ); // project face 1 to 2
+    ProjectPointsToPlane( &x2_prime[0], &y2_prime[0], &z2_prime[0], fn1[0], fn1[1], fn1[2], cx1[0], cx1[1], cx1[2],
+                          &x2_bar[0], &y2_bar[0], &z2_bar[0] ); // project face 1 to 2
+
+    // compute local basis and transform x_bar coordinates to local 2D basis
+    RealT e1_x_f1, e1_y_f1, e1_z_f1; // components of the first basis vector on the first face
+    RealT e2_x_f1, e2_y_f1, e2_z_f1; // components of the second basis vector on the first face
+    RealT e1_x_f2, e1_y_f2, e1_z_f2; // components of the first basis vector on the second face
+    RealT e2_x_f2, e2_y_f2, e2_z_f2; // components of the second basis vector on the second face
+
+    // use a 'bar' point on the second face as projected onto the first face to compute the local
+    // basis on the first face's plane and vice-versa
+    ComputeLocalBasis( x2_bar[0], y2_bar[0], z2_bar[0], fn1[0], fn1[1], fn1[2], cx1[0], cx1[1], cx1[2],
+                       e1_x_f1, e1_y_f1, e1_z_f1, e2_x_f1, e2_y_f1, e2_z_f1 );
+     
+    ComputeLocalBasis( x1_bar[0], y1_bar[0], z1_bar[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
+                       e1_x_f2, e1_y_f2, e1_z_f2, e2_x_f2, e2_y_f2, e2_z_f2 );
+
+    RealT x1_bar_local[ max_nodes_per_face ];
+    RealT y1_bar_local[ max_nodes_per_face ];
+    RealT x2_bar_local[ max_nodes_per_face ];
+    RealT y2_bar_local[ max_nodes_per_face ];
+
+    GlobalTo2DLocalCoords( &x1_bar[0], &y1_bar[0], &z1_bar[0], e1_x_f2, e1_y_f2, e1_z_f2,
+                           e2_x_f2, e2_y_f2, e2_z_f2, cx2[0], cx2[1], cx2[2], &x1_bar_local[0], &y1_bar_local[0],
+                           mesh1.numberOfNodesPerElement() ); 
+
+    GlobalTo2DLocalCoords( &x2_bar[0], &y2_bar[0], &z2_bar[0], e1_x_f1, e1_y_f1, e1_z_f1,
+                           e2_x_f1, e2_y_f1, e2_z_f1, cx1[0], cx1[1], cx1[2], &x2_bar_local[0], &y2_bar_local[0],
+                           mesh2.numberOfNodesPerElement() ); 
+
+    RealT cx1_local, cy1_local;
+    RealT cx2_local, cy2_local;
+    RealT cz = 0.; // not required, dummy argument
+    VertexAvgCentroid( &x1_bar_local[0], &y1_bar_local[0], nullptr, mesh1.numberOfNodesPerElement(), cx1_local, cy1_local, z );
+    VertexAvgCentroid( &x2_bar_local[0], &y2_bar_local[0], nullptr, mesh2.numberOfNodesPerElement(), cx2_local, cy2_local, z );
+
+    bool 1_in_2 = false;
+    for ( int i=0; i<mesh1.numberOfNodesPerElement(); ++i ) {
+      bool check = Point2DInFace( x1_bar_local[i], y1_bar_local[i], &x2_bar_local[0], &y2_bar_local[0], cx2_local, cy2_local, mesh2.numberOfNodesPerElement() );
+      if (check) {
+        1_in_2 = true;
+      }
+    }
+
+    bool 2_in_1 = false;
+    for ( int i=0; i<mesh2.numberOfNodesPerElement(); ++i ) {
+      bool check = Point2DInFace( x2_bar_local[i], y2_bar_local[i], &x1_bar_local[0], &y1_bar_local[0], cx1_local, cy1_local, mesh1.numberOfNodesPerElement() );
+      if (check) {
+        2_in_1 = true;
+      }
+    }
+
+    // as a proxy for a positive area of overlap, either one vertex from each face must lie in the other,
+    // or multiple vertices from one face can lie in the other, while no vertices from the other lie in the first.
+    // Condition for failure is if no vertices on either face lie inside the other
+    if (!1_in_2 && !2_in_1) {
+      return false;
+    }
+
+  // end dim == 3
+  } else {
+    // TODO SRW implement 2D check
+  } // end dim == 2
 
   // if we made it here we passed all checks
   return true;

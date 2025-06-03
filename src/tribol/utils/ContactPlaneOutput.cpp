@@ -306,7 +306,7 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
         axom::fmt::print( overlap, "LOOKUP_TABLE default\n" );
         for ( int i = 0; i < cpSize; ++i ) {
           auto& cp = couplingScheme->getContactPlane( i );
-          axom::fmt::print( overlap, "{} ", cp.m_interpenOverlap ? cp.m_interpenArea : cp.m_area );
+          axom::fmt::print( overlap, "{} ", cp.m_area );
         }
         overlap << std::endl;
       }
