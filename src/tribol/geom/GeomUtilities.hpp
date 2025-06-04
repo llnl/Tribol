@@ -757,8 +757,6 @@ TRIBOL_HOST_DEVICE void Plane3DTo2D( const RealT* const x, const RealT* const y,
  * \param [in,out] x_loc pointer to local x-coordinates
  * \param [in,out] y_loc pointer to local y-coordinates
  *
- * \pre x_loc and y_loc point to pre-allocated memory of length num_verts
- *
  * \note the local basis used in this routine is from ComputeLocalBasis() using the same point-normal data
  *       passed to this routine
  *
