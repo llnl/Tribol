@@ -745,17 +745,19 @@ TRIBOL_HOST_DEVICE void Plane3DTo2D( const RealT* const x, const RealT* const y,
  *
  * \brief Converts a planar polygon's 3D vertex coordinates to 2D 
  *
- * \param [in] x pointer to x-component coordinates
- * \param [in] y pointer to y-component coordinates
- * \param [in] z pointer to z-component coordinates
+ * \param [in] x to x-component coordinates
+ * \param [in] y to y-component coordinates
+ * \param [in] z to z-component coordinates
  * \param [in] nx x-component of plane normal
  * \param [in] ny y-component of plane normal
  * \param [in] nz z-component of plane normal
  * \param [in] cx x-component of plane centroid
  * \param [in] cy y-component of plane centroid
  * \param [in] cz z-component of plane centroid
- * \param [in,out] x_loc pointer to local x-coordinates
- * \param [in,out] y_loc pointer to local y-coordinates
+ * \param [in,out] x_loc x-coordinates
+ * \param [in,out] y_loc y-coordinates
+ *
+ * \pre the input point must lie on the plane defined by the point-normal data
  *
  * \note the local basis used in this routine is from ComputeLocalBasis() using the same point-normal data
  *       passed to this routine
