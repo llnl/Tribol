@@ -1758,5 +1758,28 @@ void Vertex2DOrderToCCW( const RealT* const x, const RealT* const y, RealT* xTem
 }  // end Vertex2DOrderToCCW()
 
 //------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void Plane3DTo2D( const RealT* const x, const RealT* const y, const RealT* const z,
+                                     const RealT nx, const RealT ny, const RealT nz,
+                                     const RealT cx, const RealT cy, const RealT cz, const int num_verts,
+                                     RealT* x_loc, RealT* y_loc )
+{
+  RealT e1x, e1y, e1z;
+  RealT e2x, e2y, e2z;
+  ComputeLocalBasis( x, y, z, nx, ny, nz, cx, cy, cz, e1x, e1y, e1z, e2x, e2y, e2z );
+  GlobalTo2DLocalCoords( x, y, z, e1x, e1y, e1z, e2x, e2y, e2z, cx, cy, cz, x_loc, y_loc, num_verts );
+}
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void Point3DTo2D( const RealT x, const RealT y, const RealT z,
+                                     const RealT nx, const RealT ny, const RealT nz,
+                                     const RealT cx, const RealT cy, const RealT cz,
+                                     RealT& x_loc, RealT& y_loc )
+{
+  RealT e1x, e1y, e1z;
+  RealT e2x, e2y, e2z;
+  ComputeLocalBasis( x, y, z, nx, ny, nz, cx, cy, cz, e1x, e1y, e1z, e2x, e2y, e2z );
+  GlobalTo2DLocalCoords( &x, &y, &z, e1x, e1y, e1z, e2x, e2y, e2z, cx, cy, cz, &x_loc, &y_loc, 1 );
+}
+//------------------------------------------------------------------------------
 
 }  // end namespace tribol

@@ -202,38 +202,22 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     ProjectPointsToPlane( &x2_prime[0], &y2_prime[0], &z2_prime[0], fn1[0], fn1[1], fn1[2], cx1[0], cx1[1], cx1[2],
                           &x2_bar[0], &y2_bar[0], &z2_bar[0] ); // project face 1 to 2
 
-    // compute local basis and transform x_bar coordinates to local 2D basis
-    RealT e1_x_f1, e1_y_f1, e1_z_f1; // components of the first basis vector on the first face
-    RealT e2_x_f1, e2_y_f1, e2_z_f1; // components of the second basis vector on the first face
-    RealT e1_x_f2, e1_y_f2, e1_z_f2; // components of the first basis vector on the second face
-    RealT e2_x_f2, e2_y_f2, e2_z_f2; // components of the second basis vector on the second face
-
-    // use a 'bar' point on the second face as projected onto the first face to compute the local
-    // basis on the first face's plane and vice-versa
-    ComputeLocalBasis( x2_bar[0], y2_bar[0], z2_bar[0], fn1[0], fn1[1], fn1[2], cx1[0], cx1[1], cx1[2],
-                       e1_x_f1, e1_y_f1, e1_z_f1, e2_x_f1, e2_y_f1, e2_z_f1 );
-     
-    ComputeLocalBasis( x1_bar[0], y1_bar[0], z1_bar[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
-                       e1_x_f2, e1_y_f2, e1_z_f2, e2_x_f2, e2_y_f2, e2_z_f2 );
-
     RealT x1_bar_local[ max_nodes_per_face ];
     RealT y1_bar_local[ max_nodes_per_face ];
     RealT x2_bar_local[ max_nodes_per_face ];
     RealT y2_bar_local[ max_nodes_per_face ];
 
-    GlobalTo2DLocalCoords( &x1_bar[0], &y1_bar[0], &z1_bar[0], e1_x_f2, e1_y_f2, e1_z_f2,
-                           e2_x_f2, e2_y_f2, e2_z_f2, cx2[0], cx2[1], cx2[2], &x1_bar_local[0], &y1_bar_local[0],
-                           mesh1.numberOfNodesPerElement() ); 
+    Plane3DTo2D( &x1_bar[0], &y1_bar[0], &z1_bar[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
+                 mesh1.numberOfNodesPerElement(), &x1_bar_local[0], &y1_bar_local[1] );
 
-    GlobalTo2DLocalCoords( &x2_bar[0], &y2_bar[0], &z2_bar[0], e1_x_f1, e1_y_f1, e1_z_f1,
-                           e2_x_f1, e2_y_f1, e2_z_f1, cx1[0], cx1[1], cx1[2], &x2_bar_local[0], &y2_bar_local[0],
-                           mesh2.numberOfNodesPerElement() ); 
+    Plane3DTo2D( &x2_bar[0], &y2_bar[0], &z2_bar[0], fn1[0], fn1[1], fn1[2], cx1[0], cx1[1], cx1[2],
+                 mesh2.numberOfNodesPerElement(), &x2_bar_local[0], &y2_bar_local[1] );
 
     RealT cx1_local, cy1_local;
     RealT cx2_local, cy2_local;
     RealT cz = 0.; // not required, dummy argument
-    VertexAvgCentroid( &x1_bar_local[0], &y1_bar_local[0], nullptr, mesh1.numberOfNodesPerElement(), cx1_local, cy1_local, z );
-    VertexAvgCentroid( &x2_bar_local[0], &y2_bar_local[0], nullptr, mesh2.numberOfNodesPerElement(), cx2_local, cy2_local, z );
+    VertexAvgCentroid( &x1_bar_local[0], &y1_bar_local[0], nullptr, mesh1.numberOfNodesPerElement(), cx1_local, cy1_local, cz );
+    VertexAvgCentroid( &x2_bar_local[0], &y2_bar_local[0], nullptr, mesh2.numberOfNodesPerElement(), cx2_local, cy2_local, cz );
 
     bool 1_in_2 = false;
     for ( int i=0; i<mesh1.numberOfNodesPerElement(); ++i ) {

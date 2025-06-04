@@ -1273,7 +1273,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
   }
 
   bool inPlane = false;
-  int numV[2];
+  int numV[2] = {0, 0};
 
   // set up vertex id arrays to indicate which face vertices pass through
   // contact plane (i.e. lie on the other side)
@@ -1281,10 +1281,16 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
   int interpenVertex1[max_nodes_per_elem];
   int interpenVertex2[max_nodes_per_elem];
 
-  StackArrayT<IndexT, 2> element_id( { getCpElementId1(), getCpElementId2() } );
+  for (int i=0; i<max_nodes_per_elem; ++i) {
+    interpenVertex1[i] = -1;
+    interpenVertex2[i] = -1;
+  }
 
-  int num_intersections_1 = 0;
-  int num_intersections_2 = 0;
+  StackArrayT<IndexT, 2> element_id( { getCpElementId1(), getCpElementId2() } );
+  StackArrayT<IndexT, 2> num_intersections( {0, 0} );
+  StackArrayT<IndexT, 2> num_intersections_inside( {0, 0} );
+  StackArrayT<IndexT, 2> num_nodes_otherside( {0, 0} );
+
   for ( int i = 0; i < 2; ++i )  // loop over two constituent faces
   {
     // declare array to hold vertex id for all vertices that interpenetrate
@@ -1294,35 +1300,47 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
 
     // point to the correct current face coordinates
     const RealT* x, y, z;
+    const RealT* x_other, y_other, z_other;
     if (i==0) {
        x = x1;
        y = y1;
        z = z1;
+       x_other = x2;
+       y_other = y2;
+       z_other = z2;
     } else {
        x = x2;
        y = y2;
        z = z2;
+       x_other = x1;
+       y_other = y1;
+       z_other = z1;
     }
 
     // get the other face normal and centroid for line-face-plane intersections
     RealT fn[max_dim], cx[max_dim];
+    RealT num_nodes_other;
     if (i==0) {
       mesh[1].getFaceNormal( element_id[1], fn );
       mesh[1].getFaceCentroid( element_id[1], cx );
+      num_nodes_other = mesh[1].numberOfNodesPerElement();
     } else {
       mesh[0].getFaceNormal( element_id[0], fn );
       mesh[0].getFaceCentroid( element_id[0], cx );
+      num_nodes_other = mesh[0].numberOfNodesPerElement();
     }
 
     int k = 0;
+    int k_inside = 0;
+    int k_otherside = 0;
     for ( int j = 0; j < mesh[i]->numberOfNodesPerElement(); ++j )  // loop over face segments
     {
-      // initialize current entry in the vertex id list
-      interpenVertex[j] = -1;
-
       // determine local segment vertex ids
       int ja = j;
       int jb = ( j == ( mesh[i]->numberOfNodesPerElement() - 1 ) ) ? 0 : ( j + 1 );
+
+      // initialize current entry in the vertex id list
+      interpenVertex[ja] = -1;
 
       // first and second nodes of the current segment
       const RealT xa = x[ja]; 
@@ -1351,39 +1369,64 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
                                             xInter[2 * i + k], yInter[2 * i + k], zInter[2 * i + k], inPlane );
 
         if ( inter ) {
-          ++k;
-        }
-      }
+          // check to see if the line-plane intersection point lies inside the other planar face
 
-      // Secondly: check the current face's current node to see if it lies on the other side of the other face
+          RealT x_other_local[ max_nodes_per_elem ];
+          RealT y_other_local[ max_nodes_per_elem ];
+          Plane3DTo2D( &x_other[0], &y_other[0], &z_other[0], fn[0], fn[1], fn[2], cx[0], cx[1], cx[2],
+                       num_nodes_other, &x1_other_local[0], &y1_other_local[1] );
+          
+          // get the local coordinates of the current intersection point
+          RealT xInter_local, yInter_local;
+          Point3DTo2D( xInter[2*i+k], yInter[2*i+k], zInter[2*i+k], fn[0], fn[1], fn[2], cx[0], cx[1], cx[2], xInter_local, yInter_local );
+
+          // get the local coordinates of the other face's centroid
+          RealT cx_other_local, cy_other_local;
+          RealT cz = 0.; // dummy arg.
+          //Point3DTo2D( cx[0], cx[1], cx[2], fn[0], fn[1], fn[2], cx[0], cx[1], cx[2], cx_other_local, cy_other_local );
+          VertexAvgCentroid( &x_other_local[0], &y_other_local[0], nullptr, num_nodes_other, cx_other_local, cy_other_local, cz );
+
+          // check if local intersection point lies inside other face
+          bool check = Point2DInFace( xInter_local, yInter_local, &x_other_local[0], &y_other_local[0], cx_other_local, cy_other_local, num_nodes_other );
+          // if intersection point lies in other face then increment intersection counter
+          if (check) {
+            ++k_inside;
+          }
+   
+          // we still want to increment the intersection counter expecting up to 2 line-plane intersections
+          // even if the point is not inside
+          ++k;
+                                 
+        } // end if (inter)
+      } // end if (k<2)
+
+      // Secondly: check the current face's current node to see if it lies on the other side of the other face.
+      // do this even if we don't ultimately have an interpen overlap calc.
       RealT vX = xa - cx[0];
       RealT vY = ya - cx[1];
       RealT vZ = za - cx[2];
 
-      // project the vector onto the contact plane normal
+      // project the vector onto the opposing face's normal
       RealT proj = vX * fn[0] + vY * fn[1] + vZ * fn[2];
 
       // if the projection for face 1 vertices is positive then that vertex crosses
-      // (i.e. interpenetrates) the contact plane. if the projection for face 2 vertices
-      // is negative then that vertex crosses the contact plane
+      // (i.e. interpenetrates) the other face's plane. if the projection for face 2 vertices
+      // is negative then that vertex crosses the other face's plane 
       interpenVertex[ja] = ( i == 0 && proj > 0 ) ? ja : -1;
       interpenVertex[ja] = ( i == 1 && proj < 0 ) ? ja : interpenVertex[ja];
 
+      if (interpenVertex[ja] != -1) {
+        ++k_otherside;
+      }
+
     }  // end loop over nodes
 
-
-    // NOTE: k < 2 can occur when one face is entirely on the other side of the other face
-    //       We don't have check 5 anymore to flip from interpen to full, and here we aren't
-    //       making assumptions about face degeneracy
-    //if ( k < 2 ) {
-    //  return NO_OVERLAP;
-    //  // return NO_FACE_GEOM_ERROR;
-    //}
-
     // count the number of vertices (intersection points and interpen points) for the clipped
-    // portion of the i^th face that interpenetrates the contact plane.
-    numV[i] = k; // might be zero intersection points
+    // portion of the i^th face that interpenetrates the opposing face.
+    numV[i] = k; // could be zero intersection points
     for ( int vid = 0; vid < mesh[i]->numberOfNodesPerElement(); ++vid ) {
+
+      // increment total vertex counter if ids match
       if ( interpenVertex[vid] == vid ) ++numV[i];
 
       // populate the face specific id array
@@ -1394,20 +1437,37 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
       }
     }
 
-    if (i==0) {
-      num_intersections_1 = k;
-    } else {
-      num_intersections_2 = k;
-    }
+    // set face specific intersection point count
+    num_intersections[i] = k;
+    num_intersections_inside[i] = k_inside;
+    num_nodes_otherside[i] = k_otherside;
 
   }  // end loop over faces
 
-  // set full overlap boolean just to indicate which calculation/configuration is triggered
-  if (num_intersections_1 == 0 && num_intersections_2 == 0) {
+  // switch to full overlap calculation based on the following criterion
+  // 1) no intersection points from either face indicate full interpenetration or full separation
+  // 2) neither of the faces have intersection points _inside_ the other.
+  //    Note: need at least one intersection point to lie inside _each_ face for interpen calc.
+  // 3) catch any edge cases where _either_ clipped face is not topologically admissable
+  //    (i.e. not at least a triangle) and then use the more robust full overlap calc.
+  //    Note: faces in full separation will be caught both by checks (1) and (3)
+
+  if (num_intersections[0] == 0 && num_intersections[1] == 0) { // 1
+    m_fullOverlap = true;
+  } else if (num_intersections_inside[0] == 0 && num_intersections_inside[1] == 0) { // 2
+    m_fullOverlap = true;
+  } else if (numV[0] < 3 || numV[1] < 3) { // 3
     m_fullOverlap = true;
   }
 
-  // allocate arrays to store new clipped vertices for the current face
+  // if full overlap then reset overlap-face vertex count
+  if (m_fullOverlap) {
+    numV[0] = mesh[0]->numberOfNodesPerElement();
+    numV[1] = mesh[1]->numberOfNodesPerElement();
+  }
+
+  // allocate arrays to store the vertices for clipped or or full face used either
+  // in the interpen or full overlap calc
   constexpr int max_nodes_per_overlap = 8; // TODO confirm that this number may be 5
   RealT cfx1[max_nodes_per_overlap];  // cfx = clipped face x-coordinate
   RealT cfy1[max_nodes_per_overlap];
@@ -1417,43 +1477,63 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
   RealT cfy2[max_nodes_per_overlap];
   RealT cfz2[max_nodes_per_overlap];
 
-  // populate segment-contact-plane intersection vertices
-  for ( int m = 0; m < num_intersections_1; ++m )
-  {
-    cfx1[m] = xInter[m];
-    cfy1[m] = yInter[m];
-    cfz1[m] = zInter[m];
-  }
-  for ( int n = 0; n < num_intersections_2; ++n )
-  {
-    cfx2[n] = xInter[num_intersections_1 + n];
-    cfy2[n] = yInter[num_intersections_1 + n];
-    cfz2[n] = zInter[num_intersections_1 + n];
-  }
-
-  // populate the face 1 vertices that cross the contact plane
-  int k = num_intersections_1;
-  for ( int m = 0; m < mesh[0]->numberOfNodesPerElement(); ++m ) {
-    if ( interpenVertex1[m] != -1 ) {
-      int fNodeId = mesh[0]->getGlobalNodeId( getCpElementId1(), interpenVertex1[m] );
-      cfx1[k] = mesh[0]->getPosition()[0][fNodeId];
-      cfy1[k] = mesh[0]->getPosition()[1][fNodeId];
-      cfz1[k] = mesh[0]->getPosition()[2][fNodeId];
-      ++k;
+  if (!m_fullOverlap) {
+    // populate segment-contact-plane intersection vertices
+    for ( int m = 0; m < num_intersections[0]; ++m )
+    {
+      cfx1[m] = xInter[m];
+      cfy1[m] = yInter[m];
+      cfz1[m] = zInter[m];
     }
-  }
-
-  // populate the face 2 vertices that cross the contact plane
-  k = num_intersections_2;
-  for ( int m = 0; m < mesh[1]->numberOfNodesPerElement(); ++m ) {
-    if ( interpenVertex2[m] != -1 ) {
-      int fNodeId = mesh[1]->getGlobalNodeId( getCpElementId2(), interpenVertex2[m] );
-      cfx2[k] = mesh[1]->getPosition()[0][fNodeId];
-      cfy2[k] = mesh[1]->getPosition()[1][fNodeId];
-      cfz2[k] = mesh[1]->getPosition()[2][fNodeId];
-      ++k;
+    for ( int n = 0; n < num_intersections[1]; ++n )
+    {
+      cfx2[n] = xInter[num_intersections[0] + n];
+      cfy2[n] = yInter[num_intersections[0] + n];
+      cfz2[n] = zInter[num_intersections[0] + n];
     }
-  }
+
+    // populate the face 1 vertices that cross the contact plane
+    int k = num_intersections[0];
+    for ( int m = 0; m < mesh[0]->numberOfNodesPerElement(); ++m ) {
+      if ( interpenVertex1[m] != -1 ) {
+        int fNodeId = mesh[0]->getGlobalNodeId( element_id[0], interpenVertex1[m] );
+        cfx1[k] = mesh[0]->getPosition()[0][fNodeId];
+        cfy1[k] = mesh[0]->getPosition()[1][fNodeId];
+        cfz1[k] = mesh[0]->getPosition()[2][fNodeId];
+        ++k;
+      }
+    }
+
+    // populate the face 2 vertices that cross the contact plane
+    k = num_intersections[1];
+    for ( int n = 0; n < mesh[1]->numberOfNodesPerElement(); ++n ) {
+      if ( interpenVertex2[n] != -1 ) {
+        int fNodeId = mesh[1]->getGlobalNodeId( element_id[1], interpenVertex2[n] );
+        cfx2[k] = mesh[1]->getPosition()[0][fNodeId];
+        cfy2[k] = mesh[1]->getPosition()[1][fNodeId];
+        cfz2[k] = mesh[1]->getPosition()[2][fNodeId];
+        ++k;
+      }
+    }
+
+  } // end if (m_fullOverlap)
+  else { // populate the face vertex array with the face coordinates themselves
+    // face 1
+    for ( int m = 0; m < mesh[0]->numberOfNodesPerElement(); ++m ) {
+        int fNodeId = mesh[0]->getGlobalNodeId( element_id[0], m );
+        cfx1[m] = mesh[0]->getPosition()[0][fNodeId];
+        cfy1[m] = mesh[0]->getPosition()[1][fNodeId];
+        cfz1[m] = mesh[0]->getPosition()[2][fNodeId];
+    }
+   
+    // face 2
+    for ( int n = 0; n < mesh[1]->numberOfNodesPerElement(); ++n ) {
+        int fNodeId = mesh[1]->getGlobalNodeId( element_id[1], n );
+        cfx1[n] = mesh[1]->getPosition()[0][fNodeId];
+        cfy1[n] = mesh[1]->getPosition()[1][fNodeId];
+        cfz1[n] = mesh[1]->getPosition()[2][fNodeId];
+    }
+  } // end else (m_fullOverlap)
 
   // declare projected coordinate arrays
   RealT cfx1_proj[max_nodes_per_overlap];
@@ -1464,7 +1544,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
   RealT cfy2_proj[max_nodes_per_overlap];
   RealT cfz2_proj[max_nodes_per_overlap];
 
-  // project clipped face coordinates to contact plane
+  // project overlap-calc face coordinates to contact plane
   for ( int i = 0; i < numV[0]; ++i ) {
     ProjectPointToPlane( cfx1[i], cfy1[i], cfz1[i], m_nX, m_nY, m_nZ, m_cX, m_cY, m_cZ, cfx1_proj[i], cfy1_proj[i],
                          cfz1_proj[i] );
@@ -1489,15 +1569,19 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
   GlobalTo2DLocalCoords( cfx2_proj, cfy2_proj, cfz2_proj, m_e1X, m_e1Y, m_e1Z, m_e2X, m_e2Y, m_e2Z, m_cX, m_cY, m_cZ,
                          cfx2_loc, cfy2_loc, numV[1] );
 
-  // reorder potentially unordered set of vertices.
+  // reorder potentially unordered set of vertices for interpen calcs
   // Note: this routine will order both sets of vertices in counter clockwise orientation.
   //       Intersection2DPolygon() assumes consistent ordering between faces
-  PolyReorder( cfx1_loc, cfy1_loc, nullptr, numV[0] );
-  PolyReorder( cfx2_loc, cfy2_loc, nullptr, numV[1] );
+  if (!m_fullOverlap) {
+    PolyReorder( cfx1_loc, cfy1_loc, nullptr, numV[0] );
+    PolyReorder( cfx2_loc, cfy2_loc, nullptr, numV[1] );
+  } else { // use ElemReverse() per original implementation for full overlaps
+    ElemReverse( cfx2_loc, cfy1_loc, numV[1] );
+  }
 
   // call intersection routine to get intersecting polygon
-  RealT pos_tol = params.len_collapse_ratio * axom::utilities::max( mesh[0]->getFaceRadius()[getCpElementId1()],
-                                                                    mesh[1]->getFaceRadius()[getCpElementId2()] );
+  RealT pos_tol = params.len_collapse_ratio * axom::utilities::max( mesh[0]->getFaceRadius()[ element_id[0] ],
+                                                                    mesh[1]->getFaceRadius()[ element_id[1] ] );
   RealT len_tol = pos_tol;
   FaceGeomError inter_err =
       Intersection2DPolygon( cfx1_loc, cfy1_loc, numV[0], cfx2_loc, cfy2_loc, numV[1], pos_tol, len_tol, m_polyLocX,

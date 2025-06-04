@@ -713,6 +713,61 @@ bool PlanePlaneIntersection( const RealT x1, const RealT y1, const RealT z1, con
  */
 void Vertex2DOrderToCCW( const RealT* const x, const RealT* const y, RealT* xTemp, RealT* yTemp, const int numVert );
 
+/*!
+ *
+ * \brief Converts a planar polygon's 3D vertex coordinates to 2D 
+ *
+ * \param [in] x pointer to x-component coordinates
+ * \param [in] y pointer to y-component coordinates
+ * \param [in] z pointer to z-component coordinates
+ * \param [in] nx x-component of plane normal
+ * \param [in] ny y-component of plane normal
+ * \param [in] nz z-component of plane normal
+ * \param [in] cx x-component of plane centroid
+ * \param [in] cy y-component of plane centroid
+ * \param [in] cz z-component of plane centroid
+ * \param [in] num_verts number of vertices in polygon
+ * \param [in,out] x_loc pointer to local x-coordinates
+ * \param [in,out] y_loc pointer to local y-coordinates
+ *
+ * \pre x_loc and y_loc point to pre-allocated memory of length num_verts
+ *
+ * \note the local basis used in this routine is from ComputeLocalBasis() using the same point-normal data
+ *       passed to this routine
+ *
+ */
+TRIBOL_HOST_DEVICE void Plane3DTo2D( const RealT* const x, const RealT* const y, const RealT* const z,
+                                     const RealT nx, const RealT ny, const RealT nz,
+                                     const RealT cx, const RealT cy, const RealT cz, const int num_verts,
+                                     RealT* x_loc, RealT* y_loc );
+
+/*!
+ *
+ * \brief Converts a planar polygon's 3D vertex coordinates to 2D 
+ *
+ * \param [in] x pointer to x-component coordinates
+ * \param [in] y pointer to y-component coordinates
+ * \param [in] z pointer to z-component coordinates
+ * \param [in] nx x-component of plane normal
+ * \param [in] ny y-component of plane normal
+ * \param [in] nz z-component of plane normal
+ * \param [in] cx x-component of plane centroid
+ * \param [in] cy y-component of plane centroid
+ * \param [in] cz z-component of plane centroid
+ * \param [in,out] x_loc pointer to local x-coordinates
+ * \param [in,out] y_loc pointer to local y-coordinates
+ *
+ * \pre x_loc and y_loc point to pre-allocated memory of length num_verts
+ *
+ * \note the local basis used in this routine is from ComputeLocalBasis() using the same point-normal data
+ *       passed to this routine
+ *
+ */
+TRIBOL_HOST_DEVICE void Point3DTo2D( const RealT x, const RealT y, const RealT z,
+                                     const RealT nx, const RealT ny, const RealT nz,
+                                     const RealT cx, const RealT cy, const RealT cz,
+                                     RealT& x_loc, RealT& y_loc );
+
 }  // namespace tribol
 
 #endif /* SRC_GEOM_GEOMUTILITIES_HPP_ */
