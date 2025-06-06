@@ -361,6 +361,7 @@ class ContactPlanePair : public CompGeomPair {
   RealT m_polyLocY[ max_nodes_per_overlap ];  ///< Pointer to local y-components of overlap polygon's vertices
   
   // cp area
+  bool  m_fullOverlap {true}; ///< Indicates if a full overlap (true) or interpen overlap (false) is used
   RealT m_areaFrac; ///< Face area fraction used to determine overlap area cutoff
   RealT m_areaMin;  ///< Minimum overlap area for inclusion into the active set
   RealT m_area;     ///< Overlap area
@@ -597,7 +598,6 @@ class CommonPlanePair : public ContactPlanePair {
   RealT m_interpenG2Y[ max_nodes_per_intersection ];  ///< Global y-coordinate of face 2 interpenetrating polygon as projected onto the common plane 
   RealT m_interpenG2Z[ max_nodes_per_intersection ];  ///< Global z-coordinate of face 2 interpenetrating polygon as projected onto the common plane
 
-  bool  m_fullOverlap {true;} ///< Indicates if a full overlap (true) or interpen overlap (false) is used
   RealT m_velGap; ///< Velocity gap
   RealT m_ratePressure; ///< gap-rate pressure
   RealT m_pressure; ///< kinematic contact pressure
