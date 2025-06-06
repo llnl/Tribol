@@ -619,7 +619,7 @@ TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::checkFacePair( const MeshData:
   this->computeAreaTol( mesh1, mesh2, params );
 
   // the contact plane has to be properly located prior to computing the interpen overlap
-  this->planePointAndCentroidGap( mesh1, mesh2 );
+  this->planePointAndCentroidGap( mesh1, mesh2 ); // TODO SRW we may not need to call this for mortar
   FaceGeomError interpen_err = this->computeOverlap3D( &x1_prime[0], &y1_prime[0], &z1_prime[0],
                                                        &x2_prime[0], &y2_prime[0], &z2_prime[0],
                                                        mesh1, mesh2, params );
@@ -692,7 +692,6 @@ TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::computeOverlap3D( const RealT*
                              pos_tol, len_tol, this->m_polyLocX, this->m_polyLocY, this->m_numPolyVert, this->m_area, false );
 
   if ( inter_err != NO_FACE_GEOM_ERROR ) {
-    this->m_inContact = false;
     return inter_err;
   }
 
@@ -708,7 +707,6 @@ TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::computeOverlap3D( const RealT*
 #ifdef TRIBOL_USE_HOST
     SLIC_DEBUG( "degenerate polygon intersection detected.\n" );
 #endif
-    this->m_inContact = false;
     return DEGENERATE_OVERLAP;
   }
 
@@ -737,7 +735,6 @@ TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::computeOverlap3D( const RealT*
   //                       this->m_polyX[i], this->m_polyY[i], this->m_polyZ[i] );
   //}
 
-  this->m_inContact = true;
   return NO_FACE_GEOM_ERROR;
 }
 
@@ -1644,7 +1641,6 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
 #ifdef TRIBOL_USE_HOST
     SLIC_DEBUG( "degenerate polygon intersection detected.\n" );
 #endif
-    m_inContact = false;
     return DEGENERATE_OVERLAP;
   }
 
