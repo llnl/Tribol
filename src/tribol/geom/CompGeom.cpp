@@ -573,14 +573,8 @@ TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::checkFacePair( const MeshData:
   // Note: Checks #1-#5 are done in the binning
 
   // alias variables off the InterfacePair
-  IndexT element_id1 = cp.getCpElementId1();
-  IndexT element_id2 = cp.getCpElementId2();
-
-  // compute contact plane local normal, centroid, local basis and area tolerance
-  this->computeLocalBasis( mesh1 );
-  this->computeNormal( mesh1, mesh2 ); // TODO SRW make sure this is the correct mortar calc
-  this->computePlanePoint( mesh1, mesh2 ); // TODO SRW make sure this is the correct mortar calc
-  this->computeAreaTol( mesh1, mesh2, params );
+  IndexT element_id1 = this->getCpElementId1();
+  IndexT element_id2 = this->getCpElementId2();
 
   ////////////////////////////
   // Planar Face Projection //
@@ -613,6 +607,43 @@ TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::checkFacePair( const MeshData:
                            &y1_prime[0], &z1_prime[0] );
   ProjectFaceNodesToPlane( mesh2, element_id2, fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2], &x2_prime[0],
                            &y2_prime[0], &z2_prime[0] );
+  
+  ////////////////////////////////////////////////
+  // Compute Mortar Plane Overlap with Vertices //
+  ////////////////////////////////////////////////
+
+  // compute common plane normal, centroid, local basis and area tolerance
+  this->computeNormal( mesh1, mesh2 );
+  this->computePlanePoint( mesh1, mesh2 );
+  this->computeLocalBasis( mesh1 );
+  this->computeAreaTol( mesh1, mesh2, params );
+
+  // the contact plane has to be properly located prior to computing the interpen overlap
+  this->planePointAndCentroidGap( mesh1, mesh2 );
+  FaceGeomError interpen_err = this->computeOverlap3D( &x1_prime[0], &y1_prime[0], &z1_prime[0],
+                                                       &x2_prime[0], &y2_prime[0], &z2_prime[0],
+                                                       mesh1, mesh2, params );
+
+  if ( interpen_err != NO_FACE_GEOM_ERROR ) {
+    this->m_inContact = false;
+    return interpen_err;
+  }
+
+  this->m_inContact = true;
+  return NO_FACE_GEOM_ERROR;
+
+} // end MortarPlanePair::checkFacePair()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::computeOverlap3D( const RealT* x1, const RealT* y1, const RealT* z1,
+                                                                    const RealT* x2, const RealT* y2, const RealT* z2,
+                                                                    const MeshData::Viewer& m1,
+                                                                    const MeshData::Viewer& m2,
+                                                                    const Parameters& params )
+{
+  
+  IndexT element_id1 = this->getCpElementId1();
+  IndexT element_id2 = this->getCpElementId2();
 
   // project face nodes onto contact plane.
   constexpr int max_nodes_per_elem = 4;
@@ -623,9 +654,9 @@ TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::checkFacePair( const MeshData:
   RealT y2_bar[max_nodes_per_elem];
   RealT z2_bar[max_nodes_per_elem];
 
-  ProjectFaceNodesToPlane( mesh1, element_id1, this->m_nX, this->m_nY, this->m_nZ, this->m_cX, this->m_cY, this->m_cZ,
+  ProjectFaceNodesToPlane( m1, element_id1, this->m_nX, this->m_nY, this->m_nZ, this->m_cX, this->m_cY, this->m_cZ,
                            &x1_bar[0], &y1_bar[0], &z1_bar[0] );
-  ProjectFaceNodesToPlane( mesh2, element_id2, this->m_nX, this->m_nY, this->m_nZ, this->m_cX, this->m_cY, this->m_cZ,
+  ProjectFaceNodesToPlane( m2, element_id2, this->m_nX, this->m_nY, this->m_nZ, this->m_cX, this->m_cY, this->m_cZ,
                            &x2_bar[0], &y2_bar[0], &z2_bar[0] );
 
   // project the projected global nodal coordinates onto local
@@ -691,38 +722,24 @@ TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::checkFacePair( const MeshData:
     this->local2DToGlobalCoords( this->m_polyLocX[i], this->m_polyLocY[i], this->m_polyX[i], this->m_polyY[i], this->m_polyZ[i] );
   }
 
-  // check polygonal vertex ordering with common plane normal
+  // check polygonal vertex ordering with mortar plane normal
   PolyReorderWithNormal( this->m_polyX, this->m_polyY, this->m_polyZ, this->m_numPolyVert, this->m_nX, this->m_nY, this->m_nZ );
 
-  // Now that all local-to-global projections have occurred,
-  // relocate the contact plane based on the most up-to-date
-  // contact plane centroid and recompute the gap. For interpenOverlap,
-  // the contact plane is updated and this just amounts to a gap
-  // computation. For the fullOverlap case, this may relocate
-  // the contact plane in space. For Mortar methods this routine
-  // only computes the gap based on the current plane point and
-  // normal.
-  //
-  // Warning:
-  // Make sure that any local to global transformations have
-  // occurred prior to this call. This does not need to be done
-  // for mortar methods. We should just do a gap computation if
-  // needed.
-  this->planePointAndCentroidGap( mesh1, mesh2 );
+  // SRW we don't need to relocate anything. The mortar plane is the planar non-mortar face and that won't change
+  //this->planePointAndCentroidGap( mesh1, mesh2 );
 
   // if fullOverlap is used, REPROJECT the overlapping polygon
   // onto the new contact plane
-  for ( int i = 0; i < this->m_numPolyVert; ++i ) {
-    ProjectPointToPlane( this->m_polyX[i], this->m_polyY[i], this->m_polyZ[i], 
-                         this->m_nX, this->m_nY, this->m_nZ,
-                         this->m_cX, this->m_cY, this->m_cZ,
-                         this->m_polyX[i], this->m_polyY[i], this->m_polyZ[i] );
-  }
+  //for ( int i = 0; i < this->m_numPolyVert; ++i ) {
+  //  ProjectPointToPlane( this->m_polyX[i], this->m_polyY[i], this->m_polyZ[i], 
+  //                       this->m_nX, this->m_nY, this->m_nZ,
+  //                       this->m_cX, this->m_cY, this->m_cZ,
+  //                       this->m_polyX[i], this->m_polyY[i], this->m_polyZ[i] );
+  //}
 
   this->m_inContact = true;
   return NO_FACE_GEOM_ERROR;
-
-} // end MortarPlanePair::checkFacePair()
+}
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::checkEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
