@@ -1249,14 +1249,12 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
 {
   // TODO SRW determine if we can pass pointers to a device callable function
 
-  // for each face, loop over current configuration segments and
-  // determine the two (there should be at most two, or in the odd
-  // case zero if one plane lies completely on one side of the
-  // contact plane) that intersect the contact plane. These two new
-  // vertices in addition to the face vertices that "penetrate" the
-  // contact plane define the two new polygons whose intersection we
-  // seek.
-
+  // outer loop over faces, inner loop over nodes/segments and determine
+  // how many 1) line-plane intersections there are (there should at most be
+  // two for interesection polygons or zero for fully separated or fully 
+  // interpenetrated faces) and then 2) number of nodes one the current face
+  // that cross the plane defined by the other face.
+  
   // arrays to hold the maximum line-plane intersections for both faces.
   // Note, convex planar quadrilaterals can only intesect the common
   // plane at most in two places for each face.
@@ -1451,12 +1449,37 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
   // 3) catch any edge cases where _either_ clipped face is not topologically admissable
   //    (i.e. not at least a triangle) and then use the more robust full overlap calc.
   //    Note: faces in full separation will be caught both by checks (1) and (3)
+  //if (num_intersections[0] == 0 && num_intersections[1] == 0) { // 1
+  //  m_fullOverlap = true;
+  //} else if (num_intersections_inside[0] == 0 && num_intersections_inside[1] == 0) { // 2
+  //  m_fullOverlap = true;
+  //} else if (numV[0] < 3 || numV[1] < 3) { // 3
+  //  m_fullOverlap = true;
+  //}
 
-  if (num_intersections[0] == 0 && num_intersections[1] == 0) { // 1
-    m_fullOverlap = true;
-  } else if (num_intersections_inside[0] == 0 && num_intersections_inside[1] == 0) { // 2
-    m_fullOverlap = true;
-  } else if (numV[0] < 3 || numV[1] < 3) { // 3
+  // we come into this routine with full overlap calculation set to true. Here, we need
+  // to determine if we need to switch to interpen overlap calc. This is cleaner logic
+  // than assuming interpen and switching to full because it only checks interior intersection
+  // points. The criterion for intersection and thus the interpen overlap calc for two
+  // planar quadrilaterals is:
+  //
+  // 1) each face has one intersection point that lies INSIDE the other face, OR
+  // 2) one face has two intersection points that lie INSIDE the other face and the
+  //    other face has zero intersection points that lie INSIDE its opposing face
+  //
+  // Note: still double check degenerate face-interaction vertex counts and in the case
+  //       that one of the criterion above switched to the interpen overlap calc, return
+  //       the calc to full overlap for robustness
+  if (num_intersections_inside[0] == 1 && num_intersections_inside[1] == 1) {
+    m_fullOverlap = false;
+  } else if (num_intersections_inside[0] == 2 && num_intersections_inside[1] == 0) {
+    m_fullOverlap = false;
+  } else if (num_intersections_inside[0] == 0 && num_intersections_inside[1] == 2) {
+    m_fullOverlap = false;
+  }
+
+  // reset degenerate intersections back to full overlap
+  if (numV[0] < 3 || numV[1] < 3) {
     m_fullOverlap = true;
   }
 

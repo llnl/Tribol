@@ -597,7 +597,7 @@ class CommonPlanePair : public ContactPlanePair {
   RealT m_interpenG2Y[ max_nodes_per_intersection ];  ///< Global y-coordinate of face 2 interpenetrating polygon as projected onto the common plane 
   RealT m_interpenG2Z[ max_nodes_per_intersection ];  ///< Global z-coordinate of face 2 interpenetrating polygon as projected onto the common plane
 
-  bool  m_fullOverlap {false;} ///< Indicates if a full overlap (true) or interpen overlap (false) is used
+  bool  m_fullOverlap {true;} ///< Indicates if a full overlap (true) or interpen overlap (false) is used
   RealT m_velGap; ///< Velocity gap
   RealT m_ratePressure; ///< gap-rate pressure
   RealT m_pressure; ///< kinematic contact pressure
