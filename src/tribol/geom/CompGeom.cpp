@@ -770,105 +770,59 @@ TRIBOL_HOST_DEVICE FaceGeomError AlignedMortarPlanePair::checkInterfacePair( con
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE ContactPlane3D AlignedMortarPlanePair::checkFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
+TRIBOL_HOST_DEVICE FaceGeomError AlignedMortarPlanePair::checkFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
 {
   // Note: Checks #1-#5 are done in the binning
-
-  // get fraction of largest face we keep for overlap area
-  RealT areaFrac = params.overlap_area_frac;
 
   // alias variables off the InterfacePair
   IndexT element_id1 = this->getCpElementId1();
   IndexT element_id2 = this->getCpElementId2();
 
-  // instantiate temporary contact plane to be returned by this routine
-  bool interpenOverlap = false;
-  bool intermediatePlane = false;
-  ContactPlane3D cp( &pair, areaFrac, interpenOverlap, intermediatePlane );
+  // Project faces (potentially warped) onto their 'average' face-planes.
+  // These are the 'prime' coordinates and ensure that our cg is working on
+  // truly planar 4 node quadrilaterals
+  constexpr int max_dim = 3;
+  constexpr int max_nodes_per_elem = 4;
+  RealT x1_prime[max_nodes_per_elem];
+  RealT y1_prime[max_nodes_per_elem];
+  RealT z1_prime[max_nodes_per_elem];
+  RealT x2_prime[max_nodes_per_elem];
+  RealT y2_prime[max_nodes_per_elem];
+  RealT z2_prime[max_nodes_per_elem];
 
-  // TODO should probably stay consistent with the mortar convention and change
-  // the plane point and normal to the nonmortar surface. These calculations are only
-  // geometry calculations intended to determine if the face-pair should be included
-  // so there isn't much consequence to choosing until we talk about integration.
-  // If the mortar data is switched to nonmortar data, the calculations must be chased
-  // through to make sure contacting face pairs are included.
+  // get face normmals
+  RealT fn1[max_dim], fn2[max_dim];
+  mesh1.getFaceNormal( element_id1, fn1 );
+  mesh2.getFaceNormal( element_id2, fn2 );
 
-  // set the common plane "point" to the mortar face vertex averaged centroid
-  cp.m_cX = mesh1.getElementCentroids()[0][element_id1];
-  cp.m_cY = mesh1.getElementCentroids()[1][element_id1];
-  cp.m_cZ = mesh1.getElementCentroids()[2][element_id1];
+  // get face centroids
+  RealT cx1[max_dim], cx2[max_dim];
+  mesh1.getFaceCentroid( element_id1, cx1 );
+  mesh2.getFaceCentroid( element_id2, cx2 );
 
-  // set the common plane "normal" to the mortar outward unit normal
-  cp.m_nX = mesh1.getElementNormals()[0][element_id1];
-  cp.m_nY = mesh1.getElementNormals()[1][element_id1];
-  cp.m_nZ = mesh1.getElementNormals()[2][element_id1];
+  // project face vertices onto FACE-PLANE defined by face centroid-normal
+  ProjectFaceNodesToPlane( mesh1, element_id1, fn1[0], fn1[1], fn1[2], cx1[0], cx1[1], cx1[2], &x1_prime[0],
+                           &y1_prime[0], &z1_prime[0] );
+  ProjectFaceNodesToPlane( mesh2, element_id2, fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2], &x2_prime[0],
+                           &y2_prime[0], &z2_prime[0] );
 
-  // TODO SRW confirm removing this tolerance
-  // set the gap tolerance inclusive for separation up to m_gapTol
-  // cp.m_gapTol = params.gap_separation_ratio *
-  //              axom::utilities::max( mesh1.getFaceRadius()[element_id1], mesh2.getFaceRadius()[element_id2] );
+  // Check #6 see if the two faces are aligned; hence, overlap area being face area
 
-  // set the area fraction
-  cp.m_areaFrac = params.overlap_area_frac;
+  // compute common plane normal, centroid, local basis and area tolerance
+  this->computeNormal( mesh1, mesh2 );
+  this->computePlanePoint( mesh1, mesh2 );
+  this->computeAreaTol( mesh1, mesh2, params );
+  FaceGeomError interpen_err = this->computeOverlap3D( &x1_prime[0], &y1_prime[0], &z1_prime[0],
+                                                       &x2_prime[0], &y2_prime[0], &z2_prime[0],
+                                                       mesh1, mesh2, params );
 
-  // set the minimum area
-  cp.m_areaMin = cp.m_areaFrac *
-                 axom::utilities::min( mesh1.getElementAreas()[element_id1], mesh2.getElementAreas()[element_id2] );
-
-  // compute the vector centroid gap and scalar centroid gap to
-  // check the alignment criterion AND gap
-  RealT gapVecX = mesh2.getElementCentroids()[0][element_id2] - mesh1.getElementCentroids()[0][element_id1];
-  RealT gapVecY = mesh2.getElementCentroids()[1][element_id2] - mesh1.getElementCentroids()[1][element_id1];
-  RealT gapVecZ = mesh2.getElementCentroids()[2][element_id2] - mesh1.getElementCentroids()[2][element_id1];
-
-  RealT scalarGap =
-      ( mesh2.getElementCentroids()[0][element_id2] - mesh1.getElementCentroids()[0][element_id1] ) * cp.m_nX +
-      ( mesh2.getElementCentroids()[1][element_id2] - mesh1.getElementCentroids()[1][element_id1] ) * cp.m_nY +
-      ( mesh2.getElementCentroids()[2][element_id2] - mesh1.getElementCentroids()[2][element_id1] ) * cp.m_nZ;
-
-  RealT gapVecMag = magnitude( gapVecX, gapVecY, gapVecZ );
-
-  if ( gapVecMag > 1.1 * std::abs( scalarGap ) ) {
-    cp.m_inContact = false;
-    return cp;
+  if ( interpen_err != NO_FACE_GEOM_ERROR ) {
+    this->m_inContact = false;
+    return interpen_err;
   }
 
-  // TODO SRW confirm removing this separation check
-  // perform gap check
-  // if ( scalarGap > cp.m_gapTol ) {
-  //  cp.m_inContact = false;
-  //  return cp;
-  //}
-
-  // for auto-contact, remove contact candidacy for face-pairs with
-  // interpenetration exceeding contact penetration fraction.
-  // Note, this check is solely meant to exclude face-pairs composed of faces
-  // on opposite sides of thin structures/plates
-  //
-  // Recall that interpen gaps are negative
-  if ( ExceedsMaxAutoInterpen( mesh1, mesh2, element_id1, element_id2, params, scalarGap ) ) {
-    cp.m_inContact = false;
-    return cp;
-  }
-
-  // if we are here we have contact between two aligned faces
-  cp.m_numPolyVert = mesh1.numberOfNodesPerElement();
-
-  for ( int a = 0; a < cp.m_numPolyVert; ++a ) {
-    int id = mesh1.getGlobalNodeId( element_id1, a );
-    cp.m_polyX[a] = mesh1.getPosition()[0][id];
-    cp.m_polyY[a] = mesh1.getPosition()[1][id];
-    cp.m_polyZ[a] = mesh1.getPosition()[2][id];
-  }
-
-  // compute vertex averaged centroid
-  VertexAvgCentroid( &cp.m_polyX[0], &cp.m_polyY[0], &cp.m_polyZ[0], cp.m_numPolyVert, cp.m_cX, cp.m_cY, cp.m_cZ );
-
-  cp.m_gap = scalarGap;
-  cp.m_area = mesh1.getElementAreas()[element_id1];
-
-  cp.m_inContact = true;
-  return cp;
+  this->m_inContact = true;
+  return NO_FACE_GEOM_ERROR;
 
 }  // end AlignedMortarPlanePair::checkFacePair()
 
@@ -876,6 +830,58 @@ TRIBOL_HOST_DEVICE ContactPlane3D AlignedMortarPlanePair::checkFacePair( const M
 TRIBOL_HOST_DEVICE FaceGeomError AlignedMortarPlanePair::checkEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
 {
   // no-op; implement when 2D aligned mortar is implemented
+}
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE FaceGeomError AlignedMortarPlanePair::computeOverlap3D( const RealT* x1, const RealT* y1, const RealT* z1,
+                                                                           const RealT* x2, const RealT* y2, const RealT* z2,
+                                                                           const MeshData::Viewer& m1,
+                                                                           const MeshData::Viewer& m2,
+                                                                           const Parameters& params )
+{
+  IndexT element_id1 = this->getCpElementId1();
+  IndexT element_id2 = this->getCpElementId2();
+
+  // Compute face centroids using projected coordinates passed in
+  RealT cx1, cy1, cz1;
+  RealT cx2, cy2, cz2;
+  VertexAvgCentroid( x1, y1, z1, m1.numberOfNodesPerElement(), cx1, cy1, cz1 );
+  VertexAvgCentroid( x2, y2, z2, m2.numberOfNodesPerElement(), cx2, cy2, cz2 );
+
+  // compute the gap vector between face centroids. Then, project the gap vector
+  // on the contact plane unit normal. The magnitude of the gap vector should be very
+  // close to the projected gap vector for aligned faces
+  RealT gapVecX = cx2 - cx1;
+  RealT gapVecY = cy2 - cy1;
+  RealT gapVecZ = cz2 - cz1;
+
+  RealT scalarGap = gapVecX * this->m_nX + gapVecY * this->m_nY + gapVecZ * this->m_nZ;
+
+  RealT gapVecMag = magnitude( gapVecX, gapVecY, gapVecZ );
+
+  if ( gapVecMag > 1.1 * std::abs( scalarGap ) ) {
+    return NO_OVERLAP;
+  }
+
+  // if we are here we have contact between two aligned faces; per mortar method take
+  // the non-mortar (mesh2) face as the contact plane. For Aligned mortar we can use
+  // face 2 as the overlap plane and overlap
+  this->m_numPolyVert = m2.numberOfNodesPerElement();
+  for ( int a = 0; a < m2.numberOfNodesPerElement(); ++a ) {
+    this->m_polyX[a] = x2[a];
+    this->m_polyY[a] = y2[a];
+    this->m_polyZ[a] = z2[a];
+  }
+
+  // set vertex averaged centroid of overlap
+  m_cX = cx2;
+  m_cY = cy2;
+  m_cZ = cz2;
+
+  m_gap = scalarGap;
+  m_area = mesh2.getElementAreas()[element_id2];
+
+  return NO_FACE_GEOM_ERROR;
 }
 
 //------------------------------------------------------------------------------
@@ -948,26 +954,49 @@ TRIBOL_HOST_DEVICE void ContactPlane::planePointAndCentroidGap( const MeshData::
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlane3D::computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
+TRIBOL_HOST_DEVICE void CommonPlanePair::computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
 {
   IndexT fId1 = m_pair->m_element_id1;
   IndexT fId2 = m_pair->m_element_id2;
+  m_nZ = 0.0;
 
-  if ( m_intermediatePlane ) {
-    // INTERMEDIATE (I.E. COMMON) PLANE normal calculation:
-    // compute the cp normal as the average of the two face normals, and in
-    // the direction such that the dot product between the cp normal and
-    // the normal of face 2 is positive. This is the default method of
-    // computing the cp normal
-    m_nX = 0.5 * ( m2.getElementNormals()[0][fId2] - m1.getElementNormals()[0][fId1] );
-    m_nY = 0.5 * ( m2.getElementNormals()[1][fId2] - m1.getElementNormals()[1][fId1] );
+  // INTERMEDIATE (I.E. COMMON) PLANE normal calculation:
+  // compute the cp normal as the average of the two face normals, and in
+  // the direction such that the dot product between the cp normal and
+  // the normal of face 2 is positive. This is the default method of
+  // computing the cp normal
+  m_nX = 0.5 * ( m2.getElementNormals()[0][fId2] - m1.getElementNormals()[0][fId1] );
+  m_nY = 0.5 * ( m2.getElementNormals()[1][fId2] - m1.getElementNormals()[1][fId1] );
+
+  if (m_dim == 3) {
     m_nZ = 0.5 * ( m2.getElementNormals()[2][fId2] - m1.getElementNormals()[2][fId1] );
-  } else  // for mortar
-  {
-    // the projection plane is the nonmortar (i.e. mesh id 2) surface so
-    // we use the outward normal for face 2 on mesh 2
-    m_nX = m2.getElementNormals()[0][fId2];
-    m_nY = m2.getElementNormals()[1][fId2];
+  }
+
+  // normalize the cp normal
+  RealT mag = magnitude( m_nX, m_nY, m_nZ );
+  RealT invMag = 1.0 / mag;
+
+  m_nX *= invMag;
+  m_nY *= invMag;
+  m_nZ *= invMag;
+
+  return;
+
+}  // end CommonPlanePair::computeNormal()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void MortarPlanePair::computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
+{
+  IndexT fId1 = m_pair->m_element_id1;
+  IndexT fId2 = m_pair->m_element_id2;
+  m_nZ = 0.0;
+
+  // the projection plane is the nonmortar (i.e. mesh id 2) surface so
+  // we use the outward normal for face 2 on mesh 2
+  m_nX = m2.getElementNormals()[0][fId2];
+  m_nY = m2.getElementNormals()[1][fId2];
+
+  if (m_dim == 3) {
     m_nZ = m2.getElementNormals()[2][fId2];
   }
 
@@ -981,10 +1010,38 @@ TRIBOL_HOST_DEVICE void ContactPlane3D::computeNormal( const MeshData::Viewer& m
 
   return;
 
-}  // end ContactPlane3D::computeNormal()
+}  // end MortarPlanePair::computeNormal()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlane3D::computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
+TRIBOL_HOST_DEVICE void AlignedMortarPlanePair::computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
+{
+  IndexT fId1 = m_pair->m_element_id1;
+  IndexT fId2 = m_pair->m_element_id2;
+  m_nZ = 0.0;
+
+  // the projection plane is the nonmortar (i.e. mesh id 2) surface so
+  // we use the outward normal for face 2 on mesh 2
+  m_nX = m2.getElementNormals()[0][fId2];
+  m_nY = m2.getElementNormals()[1][fId2];
+
+  if (m_dim == 3) {
+    m_nZ = m2.getElementNormals()[2][fId2];
+  }
+
+  // normalize the cp normal
+  RealT mag = magnitude( m_nX, m_nY, m_nZ );
+  RealT invMag = 1.0 / mag;
+
+  m_nX *= invMag;
+  m_nY *= invMag;
+  m_nZ *= invMag;
+
+  return;
+
+}  // end AlignedMortarPlanePair::computeNormal()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void CommonPlanePair::computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
 {
   // compute the cp centroid as the average of the two face's centers.
   // This is the default method of computing the cp centroid
@@ -993,25 +1050,60 @@ TRIBOL_HOST_DEVICE void ContactPlane3D::computePlanePoint( const MeshData::Viewe
 
   // INTERMEDIATE (I.E. COMMON) PLANE point calculation:
   // average two face vertex averaged centroids
-  if ( m_intermediatePlane ) {
-    m_cX = 0.5 * ( m1.getElementCentroids()[0][fId1] + m2.getElementCentroids()[0][fId2] );
-    m_cY = 0.5 * ( m1.getElementCentroids()[1][fId1] + m2.getElementCentroids()[1][fId2] );
+  m_cX = 0.5 * ( m1.getElementCentroids()[0][fId1] + m2.getElementCentroids()[0][fId2] );
+  m_cY = 0.5 * ( m1.getElementCentroids()[1][fId1] + m2.getElementCentroids()[1][fId2] );
+
+  if (m_dim == 3) {
     m_cZ = 0.5 * ( m1.getElementCentroids()[2][fId1] + m2.getElementCentroids()[2][fId2] );
   }
-  // ELSE: MORTAR calculation using the vertex averaged
+
+  return;
+
+}  // end CommonPlanePair::computePlanePoint()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void MortarPlanePair::computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
+{
+  // compute the cp centroid as the average of the two face's centers.
+  // This is the default method of computing the cp centroid
+  IndexT fId1 = m_pair->m_element_id1;
+  IndexT fId2 = m_pair->m_element_id2;
+
+  // MORTAR calculation using the vertex averaged
   // centroid of the nonmortar face
-  else {
-    m_cX = m2.getElementCentroids()[0][fId2];
-    m_cY = m2.getElementCentroids()[1][fId2];
+  m_cX = m2.getElementCentroids()[0][fId2];
+  m_cY = m2.getElementCentroids()[1][fId2];
+
+  if (m_dim == 3) {
     m_cZ = m2.getElementCentroids()[2][fId2];
   }
 
   return;
 
-}  // end ContactPlane3D::computePlanePoint()
+}  // end MortarPlanePair::computePlanePoint()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlane3D::computeLocalBasis( const MeshData::Viewer& m1 )
+TRIBOL_HOST_DEVICE void AlignedMortarPlanePair::computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
+{
+  // compute the cp centroid as the average of the two face's centers.
+  // This is the default method of computing the cp centroid
+  IndexT fId1 = m_pair->m_element_id1;
+  IndexT fId2 = m_pair->m_element_id2;
+
+  // set plane centroid to mesh 2 face centroid (i.e. non-mortar)
+  m_cX = m2.getElementCentroids()[0][fId2];
+  m_cY = m2.getElementCentroids()[1][fId2];
+
+  if (m_dim == 3) {
+    m_cZ = m2.getElementCentroids()[2][fId2];
+  }
+
+  return;
+
+}  // end AlignedMortarPlanePair::computePlanePoint()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void ContactPlanePair::computeLocalBasis( const MeshData::Viewer& m1 )
 {
   // somewhat arbitrarily set the first local basis vector to be
   // between contact plane centroid and first node on first face as
@@ -1080,7 +1172,7 @@ TRIBOL_HOST_DEVICE void ContactPlane3D::computeLocalBasis( const MeshData::Viewe
 
   return;
 
-}  // end ContactPlane3D::computeLocalBasis()
+}  // end CommonPlanePair::computeLocalBasis()
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ContactPlane3D::globalTo2DLocalCoords( RealT* pX, RealT* pY, RealT* pZ, RealT* pLX, RealT* pLY,
@@ -1746,32 +1838,6 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ContactPlane2D::computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
 {
-  if ( m_intermediatePlane ) {
-    // COMMON_PLANE normal calculation:
-    // compute the cp normal as the average of the two face normals, and in
-    // the direction such that the dot product between the cp normal and
-    // the normal of face 2 is positive.
-    m_nX =
-        0.5 * ( m2.getElementNormals()[0][m_pair->m_element_id2] - m1.getElementNormals()[0][m_pair->m_element_id1] );
-    m_nY =
-        0.5 * ( m2.getElementNormals()[1][m_pair->m_element_id2] - m1.getElementNormals()[1][m_pair->m_element_id1] );
-    m_nZ = 0.0;  // zero out the third component of the normal
-  } else {
-    // MORTAR normal calculation. This is the normal of the nonmortar surface
-    m_nX = m2.getElementNormals()[0][m_pair->m_element_id2];
-    m_nY = m2.getElementNormals()[1][m_pair->m_element_id2];
-    m_nZ = 0.;
-  }
-
-  // normalize the cp normal
-  RealT mag;
-  RealT invMag;
-
-  mag = magnitude( m_nX, m_nY );
-  invMag = 1.0 / mag;
-
-  m_nX *= invMag;
-  m_nY *= invMag;
 
   return;
 
@@ -1791,25 +1857,6 @@ TRIBOL_HOST_DEVICE void ContactPlane2D::computePlanePoint( const MeshData::Viewe
   return;
 
 }  // end ContactPlane2D::computePlanePoint()
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlane2D::computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                                        const Parameters& params )
-
-{
-  if ( m_areaFrac < params.overlap_area_frac ) {
-#ifdef TRIBOL_USE_HOST
-    SLIC_DEBUG( "ContactPlane2D::computeAreaTol() the overlap area fraction too small or negative; "
-                << "setting to overlap_area_frac parameter." );
-#endif
-    m_areaFrac = params.overlap_area_frac;
-  }
-
-  m_areaMin = m_areaFrac * axom::utilities::min( m1.getElementAreas()[m_pair->m_element_id1],
-                                                 m2.getElementAreas()[m_pair->m_element_id2] );
-  return;
-
-}  // ContactPlane2D::computeAreaTol()
 
 //------------------------------------------------------------------------------
 void ContactPlane2D::centroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT scale )
