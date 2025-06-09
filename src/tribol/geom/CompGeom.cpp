@@ -666,10 +666,10 @@ TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::computeOverlap3D( const RealT*
   RealT x2_bar_local[max_nodes_per_elem];
   RealT y2_bar_local[max_nodes_per_elem];
 
-  cp.globalTo2DLocalCoords( &x1_bar[0], &y1_bar[0], &z1_bar[0], &x1_bar_local[0], &y1_bar_local[0],
-                            mesh1.numberOfNodesPerElement() );
-  cp.globalTo2DLocalCoords( &x2_bar[0], &y2_bar[0], &z2_bar[0], &x2_bar_local[0], &y2_bar_local[0],
-                            mesh2.numberOfNodesPerElement() );
+  this->globalTo2DLocalCoords( &x1_bar[0], &y1_bar[0], &z1_bar[0], &x1_bar_local[0], &y1_bar_local[0],
+                               mesh1.numberOfNodesPerElement() );
+  this->globalTo2DLocalCoords( &x2_bar[0], &y2_bar[0], &z2_bar[0], &x2_bar_local[0], &y2_bar_local[0],
+                               mesh2.numberOfNodesPerElement() );
 
   // compute the full intersection polygon vertex coordinates
   RealT* X1 = &x1_bar_local[0];
@@ -693,6 +693,11 @@ TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::computeOverlap3D( const RealT*
 
   if ( inter_err != NO_FACE_GEOM_ERROR ) {
     return inter_err;
+  }
+
+  // check overlap area to area tol
+  if ( m_area < m_areaMin ) {
+    return NO_OVERLAP;
   }
 
   // compute the local vertex averaged centroid of overlapping polygon
@@ -767,14 +772,14 @@ TRIBOL_HOST_DEVICE FaceGeomError AlignedMortarPlanePair::checkInterfacePair( con
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE ContactPlane3D AlignedMortarPlanePair::checkFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
 {
-  // Note: Checks #1-#4 are done in the binning
+  // Note: Checks #1-#5 are done in the binning
 
   // get fraction of largest face we keep for overlap area
   RealT areaFrac = params.overlap_area_frac;
 
   // alias variables off the InterfacePair
-  IndexT element_id1 = pair.m_element_id1;
-  IndexT element_id2 = pair.m_element_id2;
+  IndexT element_id1 = this->getCpElementId1();
+  IndexT element_id2 = this->getCpElementId2();
 
   // instantiate temporary contact plane to be returned by this routine
   bool interpenOverlap = false;
@@ -1117,8 +1122,8 @@ void ContactPlane3D::globalTo2DLocalCoords( RealT pX, RealT pY, RealT pZ, RealT&
 }  // end ContactPlane3D::globalTo2DLocalCoords()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlane3D::computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                                        const Parameters& params )
+TRIBOL_HOST_DEVICE void ContactPlanePair::computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
+                                                          const Parameters& params )
 {
   if ( m_areaFrac < params.overlap_area_frac ) {
 #ifdef TRIBOL_USE_HOST
@@ -1128,12 +1133,12 @@ TRIBOL_HOST_DEVICE void ContactPlane3D::computeAreaTol( const MeshData::Viewer& 
     m_areaFrac = params.overlap_area_frac;
   }
 
-  m_areaMin = m_areaFrac * axom::utilities::min( m1.getElementAreas()[m_pair->m_element_id1],
-                                                 m2.getElementAreas()[m_pair->m_element_id2] );
+  m_areaMin = m_areaFrac * axom::utilities::min( m1.getElementAreas()[ this->getCpElementId1() ],
+                                                 m2.getElementAreas()[ this->getCpElementId2() ] );
 
   return;
 
-}  // end ContactPlane3D::computeAreaTol()
+}  // end ContactPlanePair::computeAreaTol()
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ContactPlane3D::checkPolyOverlap( const MeshData::Viewer& m1, const MeshData::Viewer& m2,

@@ -460,8 +460,8 @@ class ContactPlanePair : public CompGeomPair {
    * \param [in] m2 mesh data viewer for mesh 2
    * \param [in] params Coupling scheme-dependent parameters
    */
-  TRIBOL_HOST_DEVICE virtual void computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                                  const Parameters& params ) = 0;
+  TRIBOL_HOST_DEVICE void computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
+                                          const Parameters& params );
 
   /// @}
 
@@ -686,16 +686,6 @@ class CommonPlanePair : public ContactPlanePair {
   TRIBOL_HOST_DEVICE void computeLocalBasis( const MeshData::Viewer& m1 ) override;
 
   /*!
-   * \brief Computes the area tolerance for accepting a face pair
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   * \param [in] params Coupling scheme-dependent parameters
-   */
-  TRIBOL_HOST_DEVICE void computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                          const Parameters& params ) override;
-
-  /*!
    * \brief Recomputes the reference point that locates the plane in 3-space
    *        and the gap between the projected `intersection` poly centroids
    *
@@ -868,15 +858,6 @@ class MortarPlanePair : public ContactPlanePair {
    */
   TRIBOL_HOST_DEVICE void computeLocalBasis( const MeshData::Viewer& m1 ) override;
 
-  /*!
-   * \brief Computes the area tolerance for accepting a face pair
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   * \param [in] params Coupling scheme-dependent parameters
-   */
-  TRIBOL_HOST_DEVICE void computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                          const Parameters& params ) override;
 };
 
 //-----------------------------------------------------------------------------
@@ -988,15 +969,6 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    */
   TRIBOL_HOST_DEVICE void computeLocalBasis( const MeshData::Viewer& m1 ) override;
 
-  /*!
-   * \brief Computes the area tolerance for accepting a face pair
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   * \param [in] params Coupling scheme-dependent parameters
-   */
-  TRIBOL_HOST_DEVICE void computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                          const Parameters& params ) override;
 };
 
 //-----------------------------------------------------------------------------
