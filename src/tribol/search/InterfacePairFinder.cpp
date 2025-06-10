@@ -200,7 +200,7 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     ProjectPointsToPlane( &x1_prime[0], &y1_prime[0], &z1_prime[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
                           &x1_bar[0], &y1_bar[0], &z1_bar[0] ); // project face 1 to 2
     ProjectPointsToPlane( &x2_prime[0], &y2_prime[0], &z2_prime[0], fn1[0], fn1[1], fn1[2], cx1[0], cx1[1], cx1[2],
-                          &x2_bar[0], &y2_bar[0], &z2_bar[0] ); // project face 1 to 2
+                          &x2_bar[0], &y2_bar[0], &z2_bar[0] ); // project face 2 to 1 
 
     RealT x1_bar_local[ max_nodes_per_face ];
     RealT y1_bar_local[ max_nodes_per_face ];
@@ -244,21 +244,14 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
 
   // end dim == 3
   } else {
+
+    // project edge 1 onto edge 2 and check to see if edge 1 vertices lie inside edge 2
+    //
     // get each face's nodal coordinates
     constexpr int max_nodes_per_face = 2;
     constexpr int max_dim = 2;
-    RealT x1[ max_nodes_per_face ];
-    RealT y1[ max_nodes_per_face ];
-
     RealT x2[ max_nodes_per_face ];
     RealT y2[ max_nodes_per_face ];
-    for ( int i = 0; i < mesh1.numberOfNodesPerElement(); ++i ) {
-      const int nodeId_1 = mesh1.getGlobalNodeId( element_id1, i );
-      x1[i] = mesh1.getPosition()[0][nodeId_1];
-      y1[i] = mesh1.getPosition()[1][nodeId_1];
-
-    }
-
     for ( int i = 0; i < mesh2.numberOfNodesPerElement(); ++i) {
       const int nodeId_2 = mesh2.getGlobalNodeId( element_id2, i );
       x2[i] = mesh2.getPosition()[0][nodeId_2];
@@ -266,7 +259,7 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     }
 
     // project edge 1 onto edge 2 and check for positive area of overlap
-    // get face 2normals
+    // get face 2 normals
     RealT fn2[max_dim];
     mesh2.getFaceNormal( element_id2, fn2 );
 
@@ -279,8 +272,12 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
 
     ProjectEdgeNodesToSegment( mesh1, element_id1, fn2[0], fn2[1], cx2[0], cx2[1], &projX1[0], &projY1[0] );
 
-    // TODO SRW write a routine to check if a node on one edge lies inside the other. Don't
-    // need to do vice-versa for 2D edges
+    bool inside1 = IsPointInEdge( &x2[0], &y2[0], projX1[0], projY1[0] );
+    bool inside2 = IsPointInEdge( &x2[0], &y2[0], projX1[1], projY1[1] );
+
+    if (!inside1 && !inside2) {
+      return false;
+    }
 
   } // end dim == 2
 
