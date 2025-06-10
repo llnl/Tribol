@@ -431,6 +431,27 @@ FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int
 
 /*!
  *
+ * \brief computes the segment overlap between two linear edges projected onto the same 2D plane 
+ *
+ * \param [in] pX1 x-coordinates of edge 1 as projected onto a common plane
+ * \param [in] pY1 y-coordinates of edge 1 as projected onto a common plane
+ * \param [in] pX2 x-coordinates of edge 2 as projected onto a common plane
+ * \param [in] pY2 y-coordinates of edge 2 as projected onto a common plane
+ * \param [in] nV1 number of vertices on edge 1
+ * \param [in] nV2 number of vertices on edge 2
+ * \param [in,out] overlapX pointer to x coordinates of overlapping segment
+ * \param [in,out] overlapY pointer to y coordinates of overlapping segment
+ * \param [in,out] area overlap area/length
+ *
+ * \pre project each edge to a common 2D plane
+ */
+TRIBOL_HOST_DEVICE FaceGeomError CheckSegOverlap( const RealT* const pX1, const RealT* const pY1,
+                                                  const RealT* const pX2, const RealT* const pY2,
+                                                  const int nV1, const int nV2, RealT* overlapX, RealT* overlapY,
+                                                  RealT& area );
+
+/*!
+ *
  * \brief check to confirm orientation of polygon vertices are counter clockwise (CCW)
  *
  * \param [in] x array of local x coordinates

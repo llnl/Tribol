@@ -582,12 +582,6 @@ class CommonPlanePair : public ContactPlanePair {
 
  public:
 
-  RealT m_interpenPoly1X[ max_nodes_per_intersection ];  ///< Local x-coords of face 1 interpenetrating polygon projected onto common plane
-  RealT m_interpenPoly1Y[ max_nodes_per_intersection ];  ///< Local y-coords of face 1 interpenetrating polygon projected onto common plane
-
-  RealT m_interpenPoly2X[ max_nodes_per_intersection ];  ///< Local x-coords of face 2 interpenetrating polygon projected onto common plane
-  RealT m_interpenPoly2Y[ max_nodes_per_intersection ];  ///< Local y-coords of face 2 interpenetrating polygon projected onto common plane
-
   int m_numInterpenPoly1Vert; ///< Number of vertices on face 1 interpenetrating polygon
   RealT m_interpenG1X[ max_nodes_per_intersection ];  ///< Global x-coordinate of face 1 interpenetrating polygon as projected onto the common plane 
   RealT m_interpenG1Y[ max_nodes_per_intersection ];  ///< Global y-coordinate of face 1 interpenetrating polygon as projected onto the common plane
@@ -696,7 +690,7 @@ class CommonPlanePair : public ContactPlanePair {
    * \param [in] m1 mesh data viewer for mesh 1
    * \param [in] m2 mesh data viewer for mesh 2
    */
-  TRIBOL_HOST_DEVICE void planePointAndCentroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2 );
+  TRIBOL_HOST_DEVICE void resetPlanePointAndCentroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2 );
 
   /*!
    * \brief Check whether two polygons (faces) have a positive area of overlap
@@ -999,67 +993,6 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair( InterfacePair& pair, const 
                                                      const MeshData::Viewer& mesh2, const Parameters& params,
                                                      ContactMethod const cMethod, ContactCase const cCase,
                                                      bool& isInteracting, CompGeom::Viewer& cg, IndexT* plane_ct );
-
-//-----------------------------------------------------------------------------
-// Free functions returning Contact Plane objects
-//-----------------------------------------------------------------------------
-
-/*!
- * \brief Checks if face-pair (3D) candidate is actual local contact interaction.
- *
- * \param [in,out] cp contact plane object to be populated
- * \param [in] mesh1 mesh data viewer for mesh 1
- * \param [in] mesh2 mesh data viewer for mesh 2
- * \param [in] params coupling-scheme specific parameters
- * \param [in] fullOverlap True if full overlap calculation is used, false if interpenetration calculation is used
- *
- * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
- *
- */
-TRIBOL_HOST_DEVICE FaceGeomError CheckFacePair( ContactPlane3D& cp, const MeshData::Viewer& mesh1,
-                                                const MeshData::Viewer& mesh2, const Parameters& params,
-                                                bool fullOverlap );
-
-/*!
- * \brief Checks if face-pair (3D) candidate is aligned and actual local contact interaction.
- *
- * \param [in] pair interface pair containing pair related indices
- * \param [in] mesh1 mesh data viewer for mesh 1
- * \param [in] mesh2 mesh data viewer for mesh 2
- * \param [in] params coupling-scheme specific parameters
- *
- * \return 3D contact plane object with boolean indicating if face-pair form a local contact interaction
- *
- */
-TRIBOL_HOST_DEVICE ContactPlane3D CheckAlignedFacePair( InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                        const MeshData::Viewer& mesh2, const Parameters& params );
-
-/*!
- * \brief Checks if 2D edge-pair candidate is actual local contact interaction.
- *
- * \param [in,out] cp contact plane object to be populated
- * \param [in] mesh1 mesh data viewer for mesh 1
- * \param [in] mesh2 mesh data viewer for mesh 2
- * \param [in] params coupling-scheme specific parameters
- * \param [in] fullOverlap True if full overlap calculation is used, false if interpenetration calculation is used
- *
- * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
- *
- */
-TRIBOL_HOST_DEVICE FaceGeomError CheckEdgePair( ContactPlane2D& cp, const MeshData::Viewer& mesh1,
-                                                const MeshData::Viewer& mesh2, const Parameters& params,
-                                                bool fullOverlap );
-
-// TODO make this a free function just like the 3D full overlap calculation Intersection2DPolygon. This 
-// also returns overlap centroid and area
-/*!
- * \brief Check whether two segments have a positive length of overlap
- *
- * \note this is the 2D full overlap variant
- *
- */
-TRIBOL_HOST_DEVICE void CheckSegOverlap( const RealT* const pX1, const RealT* const pY1, const RealT* const pX2,
-                                         const RealT* const pY2, const int nV1, const int nV2 );
 
 }  // namespace tribol
 

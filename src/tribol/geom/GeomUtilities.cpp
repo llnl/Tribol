@@ -1004,6 +1004,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
 
 }  // end Intersection2DPolygon()
 
+//------------------------------------------------------------------------------
 #ifdef TRIBOL_USE_ENZYME
 
 FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB,
@@ -1017,6 +1018,164 @@ FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int
 }
 
 #endif
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE FaceGeomError CheckSegOverlap( const RealT* const pX1, const RealT* const pY1,
+                                                  const RealT* const pX2, const RealT* const pY2,
+                                                  const int nV1, const int nV2, RealT* overlapX, RealT* overlapY,
+                                                  RealT& area )
+{
+  // TODO: Re-write in a way where the assert isn't needed
+#ifdef TRIBOL_USE_CUDA
+  assert( nV1 == 2 );
+  assert( nV2 == 2 );
+#else
+  SLIC_ASSERT( nV1 == 2 );
+  SLIC_ASSERT( nV2 == 2 );
+#endif
+
+  // define the edge 1 non-unit directional vector between vertices
+  // 2 and 1
+  RealT lvx1 = pX1[1] - pX1[0];
+  RealT lvy1 = pY1[1] - pY1[0];
+
+  RealT e1_len = magnitude( lvx1, lvy1 );
+
+  // define the edge 2 non-unit directional vector between vertices
+  // 2 and 1
+  RealT lvx2 = pX2[1] - pX2[0];
+  RealT lvy2 = pY2[1] - pY2[0];
+
+  RealT e2_len = magnitude( lvx2, lvy2 );
+
+  //
+  // perform the all-in-1 check
+  //
+
+  // compute vector between each edge 2 vertex and vertex 1 on edge 1.
+  // Then dot that vector with the directional vector of edge 1 to see
+  // if they are codirectional (projection > 0 indicating edge 2 vertex
+  // lies within or beyond edge 1. If so, check, that this vector length is
+  // less than edge 1 length indicating that the vertex lies within edge 1
+  int inter2 = 0;
+  int twoInOneId = -1;
+  for ( int i = 0; i < nV2; ++i ) {
+    RealT vx = pX2[i] - pX1[0];
+    RealT vy = pY2[i] - pY1[0];
+
+    // compute projection onto edge 1 directional vector. (Positive if codirectional,
+    // negative otherwise. Only positive projections will be potential overlap vertex candidates
+    RealT proj = vx * lvx1 + vy * lvy1;
+
+    // compute length of <vx,vy>; if vLen < some tolerance we have a
+    // coincident node
+    RealT vLen = magnitude( vx, vy );
+
+    // check for >= 0 projections and vector lengths <= edge 1 length. This
+    // indicates an edge 2 vertex interior to edge 1, or coincident vertices in
+    // the case of projection = 0 or vector length is equal to edge 1 length
+    if ( proj >= 0 && vLen <= e1_len )  // interior vertex
+    {
+      twoInOneId = i;
+      ++inter2;
+    }
+  }
+
+  // if both vertices pass the above criteria than 2 is in 1
+  if ( inter2 == 2 ) {
+    // set the contact plane (segment) length
+    area = e2_len;
+
+    // set the vertices of the overlap segment
+    overlapX[0] = pX2[0];
+    overlapY[0] = pY2[0];
+
+    overlapX[1] = pX2[1];
+    overlapY[1] = pY2[1];
+
+    return;
+  }
+
+  //
+  // perform the all-in-2 check
+  //
+
+  // compute vector between each edge 1 vertex and vertex 1 on edge 2.
+  // Then dot that vector with the directional vector of edge 2 to see
+  // if they are codirectional. If so, check, that this vector length is
+  // less than edge 2 length indicating that the vertex is within edge 2
+  int inter1 = 0;
+  int oneInTwoId = -1;
+  for ( int i = 0; i < nV1; ++i ) {
+    RealT vx = pX1[i] - pX2[0];
+    RealT vy = pY1[i] - pY2[0];
+
+    // compute projection onto edge 2 directional vector
+    RealT proj = vx * lvx2 + vy * lvy2;
+
+    // compute length of <vx,vy>
+    RealT vLen = magnitude( vx, vy );
+
+    // check for >= 0 projections and vector lengths <= edge 2 length. This
+    // indicates an edge 1 vertex interior to edge 2 or is coincident if the
+    // projection is zero or vector length is equal to edge 2 length
+    if ( proj >= 0. && vLen <= e2_len )  // interior vertex
+    {
+      oneInTwoId = i;
+      ++inter1;
+    }
+  }
+
+  // if both vertices pass the above criteria then 1 is in 2.
+  if ( inter1 == 2 ) {
+    // set the contact plane (segment) length
+    area = e1_len;
+
+    // set the overlap segment vertices on the contact plane object
+    overlapX[0] = pX1[0];
+    overlapY[0] = pY1[0];
+
+    overlapX[1] = pX1[1];
+    overlapY[1] = pY1[1];
+
+    return;
+  }
+
+  // if inter1 == 0 and inter2 == 0 then there is no overlap
+  if ( inter1 == 0 && inter2 == 0 ) {
+    area = 0.0;
+    return;
+  }
+
+  // there is a chance that oneInTowId or twoInOneId is not actually set,
+  // in which case we don't have an overlap.
+  if ( oneInTwoId == -1 || twoInOneId == -1 ) {
+    area = 0.0;
+    return;
+  }
+
+  // if we are here, we have ruled out all-in-1 and all-in-2 overlaps,
+  // and non-overlapping edges, but have the case where edge 1 and
+  // edge 2 overlap some finite distance that is less than either of their
+  // lengths. We have vertex information from the all-in-one checks
+  // indicating which vertices on one edge are within the other edge
+
+  // set the segment vertices
+  overlapX[0] = pX1[oneInTwoId];
+  overlapY[0] = pY1[oneInTwoId];
+  overlapX[1] = pX2[twoInOneId];
+  overlapY[1] = pY2[twoInOneId];
+
+  // compute vector between "inter"-vertices
+  RealT vecX = overlapX[1] - overlapX[0];
+  RealT vecY = overlapY[1] - overlapY[0];
+
+  // compute the length of the overlapping segment
+  area = magnitude( vecX, vecY );
+
+  return;
+
+}  // end CommonPlanePair::checkSegOverlap()
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE bool CheckPolyOrientation( const RealT* const x, const RealT* const y, const int numVertex )
@@ -1211,6 +1370,7 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
   RealT det = -lambdaX1 * lambdaY2 + lambdaX2 * lambdaY1;
 
   // return false if det = 0. Check for numerically zero determinant
+  // nearly colinear edges will have det ~= 0.
   RealT detTol = 1.E-12;
   if ( det > -detTol && det < detTol ) {
     x = 0.;
@@ -1314,7 +1474,12 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
   // the computed intersection point to the interior point and mark the duplicate boolean.
   // Also do this for the argument, interior, set to nullptr
   if ( distRatio < tol ) {
-    if ( interior == nullptr || interior[idMin] ) {
+    if ( interior == nullptr ) {
+      x = xMinVert;
+      y = yMinVert;
+      duplicate = true;
+      return false;
+    } else if (interior[idMin]) {
       x = xMinVert;
       y = yMinVert;
       duplicate = true;
