@@ -655,6 +655,29 @@ class CommonPlanePair : public ContactPlanePair {
                                                      const MeshData::Viewer& m1, const MeshData::Viewer& m2,const Parameters& params ) override;
 
   /*!
+   * \brief Project face or interpen vertices onto common plane and compute overlap
+   *
+   * \param [in] fx1 x-coordinates of the first planar whole or partial face 
+   * \param [in] fy1 y-coordinates of the first planar whole or partial face 
+   * \param [in] fz1 z-coordinates of the first planar whole or partial face 
+   * \param [in] fx2 x-coordinates of the second planar whole or partial face 
+   * \param [in] fy2 y-coordinates of the second planar whole or partial face 
+   * \param [in] fz2 z-coordinates of the second planar whole or partial face 
+   * \param [in] num_vert_1 number of vertices in first whole or partial face
+   * \param [in] num_vert_2 number of vertices in second whole or partial face
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   * \param [in] params Coupling scheme-dependent parameters
+   *
+   * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
+   *
+   * \pre this routine assumes each whole or partial face is planar
+   */
+  TRIBOL_HOST_DEVICE FaceGeomError projectPointsAndComputeOverlap( RealT const* const fx1, RealT const* const fy1, RealT const* const fz1,
+                                                                   RealT const* const fx2, RealT const* const fy2, RealT const* const fz2,
+                                                                   const int num_vert_1, const int num_vert_2, MeshData::Viewer& m1, MeshData::Viewer& m2,
+                                                                   Parameters& params );
+  /*!
    * \brief Compute the unit normal that defines the contact plane
    * \param [in] m1 mesh data viewer for mesh 1
    * \param [in] m2 mesh data viewer for mesh 2
