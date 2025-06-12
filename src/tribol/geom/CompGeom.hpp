@@ -874,6 +874,10 @@ class CompGeom {
     */
    const AlignedMortarPlanePair& getAlignedMortarPlane( int id ) const { return m_aligned_mortar_plane_pairs[id]; }
 
+   /**
+    * @brief Allocate contact plane pairs arrays based on contact method
+    *
+    */
    void allocatePlanePairs( const ContactMethod method, const int num_pairs, const int allocator_id )
    {
        // clear and allocate the appropriate computational geometry pairs
