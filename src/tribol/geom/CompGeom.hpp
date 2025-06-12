@@ -716,10 +716,13 @@ class CompGeom {
       * @param cg CompGeom object to create a view of
       */
      Viewer ( CompGeom& cg )
-       : m_common_plane_pairs( cg.m_common_plane_pairs ),
-         m_mortar_plane_pairs( cg.m_mortar_plane_pairs ),
-         m_aligned_mortar_plane_pairs( cg.m_aligned_mortar_plane_pairs )
+       : m_common_plane_pairs( cg.m_common_plane_pairs.view() ),
+         m_mortar_plane_pairs( cg.m_mortar_plane_pairs.view() ),
+         m_aligned_mortar_plane_pairs( cg.m_aligned_mortar_plane_pairs.view() )
      {
+        std::cout << "Inside cg viewer constructor" << std::endl;
+        std::cout << "common plane size: " << cg.m_common_plane_pairs.size() << std::endl;
+        std::cout << "common plane view size: " << m_common_plane_pairs.size() << std::endl;
      }
 
      /**
@@ -774,6 +777,8 @@ class CompGeom {
             //if (auto* plane = dynamic_cast<CommonPlanePair*>(&contact_plane)) {
             //  m_common_plane_pairs[id] = std::move( *plane );
             //}
+            std::cout << "Before adding common plane in addContactPlane()" << std::endl;
+            std::cout << "Size of m_common_plane_pairs: " << m_common_plane_pairs.size() << std::endl;
             m_common_plane_pairs[id] = std::move( static_cast<CommonPlanePair&>(contact_plane) );
             break;
           }
@@ -812,6 +817,13 @@ class CompGeom {
     *
     */
    virtual ~CompGeom() = default; 
+
+   // Prevent copying
+   CompGeom( const CompGeom& other ) = delete;
+   CompGeom& operator=( const CompGeom& other ) = delete;
+   // Enable moving
+   CompGeom( CompGeom&& other ) = default;
+   CompGeom& operator=( CompGeom&& other ) = default;
 
    /**
     * @brief Construct a non-owned, shallow copy of the CompGeom data
@@ -861,6 +873,31 @@ class CompGeom {
     * @return aligned mortar plane object
     */
    const AlignedMortarPlanePair& getAlignedMortarPlane( int id ) const { return m_aligned_mortar_plane_pairs[id]; }
+
+   void allocatePlanePairs( const ContactMethod method, const int num_pairs, const int allocator_id )
+   {
+       // clear and allocate the appropriate computational geometry pairs
+       switch (method) {
+         case COMMON_PLANE: {
+           m_common_plane_pairs = ArrayT<CommonPlanePair>( num_pairs, num_pairs, allocator_id );
+           std::cout << "After allocating common planes of size " << m_common_plane_pairs.size() << std::endl;
+           break;
+         }
+         case SINGLE_MORTAR:
+         case MORTAR_WEIGHTS: {
+           m_mortar_plane_pairs = ArrayT<MortarPlanePair>( num_pairs, num_pairs, allocator_id );
+           break;
+         }
+         case ALIGNED_MORTAR: {
+           m_aligned_mortar_plane_pairs = ArrayT<AlignedMortarPlanePair>( num_pairs, num_pairs, allocator_id );
+           break;
+         }
+         default: {
+           // no-op
+           break;
+         }
+       } // end switch
+   }
 
    int getNumActivePairs( const ContactMethod method ) const
    {

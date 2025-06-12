@@ -79,7 +79,9 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair( InterfacePair& pair, const 
     auto idx = *plane_ct;
     ++( *plane_ct );
 #endif
+    std::cout << "Before addContactPlane with count idx: " << idx << std::endl;
     cg.addContactPlane( *my_plane, idx, cMethod );
+    std::cout << "After addContactPlane" << std::endl;
     isInteracting = true;
   } else {
     isInteracting = false;

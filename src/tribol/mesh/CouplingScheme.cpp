@@ -1028,6 +1028,8 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // loop over number of interface pairs
   IndexT numPairs = m_interface_pairs.size();
 
+  std::cout << "CouplingScheme::apply() numPairs: " << numPairs << std::endl;
+
   SLIC_DEBUG( "Coupling scheme " << m_id << " has " << numPairs << " pairs." );
 
   // loop over all pairs and perform geometry checks to see if they are
@@ -1038,31 +1040,13 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   ArrayT<int> pair_err_data( 1, 1, getAllocatorId() );
   auto pair_err = pair_err_data.view();
 
-  // clear and allocate the appropriate computational geometry pairs
-  switch (contact_method) {
-    case COMMON_PLANE: {
-      auto common_planes = m_cg_pairs.getCommonPlanePairs();
-      common_planes = ArrayT<CommonPlanePair>( numPairs, numPairs, getAllocatorId() );
-      break;
-    }
-    case SINGLE_MORTAR:
-    case MORTAR_WEIGHTS: {
-      auto mortar_planes = m_cg_pairs.getMortarPlanePairs();
-      mortar_planes = ArrayT<MortarPlanePair>( numPairs, numPairs, getAllocatorId() );
-      break;
-    }
-    case ALIGNED_MORTAR: {
-      auto aligned_mortar_planes = m_cg_pairs.getAlignedMortarPlanePairs();
-      aligned_mortar_planes = ArrayT<AlignedMortarPlanePair>( numPairs, numPairs, getAllocatorId() );
-      break;
-    }
-    default: {
-      // no-op
-      break;
-    }
-  } // end switch
+  // allocate planes based on contact method
+  m_cg_pairs.allocatePlanePairs( contact_method, numPairs, getAllocatorId() );
 
+  // get comp geom container view after allocating pair arrays
   auto cg_view = m_cg_pairs.getView();
+
+  // get mesh views
   auto mesh1 = getMesh1().getView();
   auto mesh2 = getMesh2().getView();
   // array of size one for counting number of planes on device
@@ -1078,9 +1062,11 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                 // in the active set
                 bool interact = false;
     
+                std::cout << "Before CheckInterfacePair()" << std::endl;
                 FaceGeomError interact_err =
                     CheckInterfacePair( pair, mesh1, mesh2, params, contact_method, contact_case, interact,
                                         cg_view, planes_ct.data() );
+                std::cout << "After CheckInterfacePair()" << std::endl;
 
                 // // Update pair reporting data for this coupling scheme
                 // this->updatePairReportingData( interact_err );
@@ -1103,7 +1089,9 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 
   ArrayT<int, 1, MemorySpace::Host> planes_ct_host( planes_ct_data );
   // shrink array to actual number of contact planes
+  std::cout << "Before resizeActivePairs() with count: " << planes_ct_host[0] << std::endl;
   m_cg_pairs.resizeActivePairs( contact_method, planes_ct_host[0] );
+  std::cout << "After resizeActivePairs()" << std::endl;
 
   // Here, the pair_err is checked, which detects an issue with a face-pair geometry
   // (which has been skipped over for contact eligibility) and reports this warning.
@@ -1127,18 +1115,24 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // normal and tangential directions. This function loops
   // over the pairs on the coupling scheme and applies the
   // appropriate physics in the normal and tangential directions.
+  std::cout << "Before ApplyInterfacePhysics()" << std::endl;
   int err = ApplyInterfacePhysics( this, cycle, t );
+  std::cout << "After ApplyInterfacePhysics()" << std::endl;
 
   SLIC_WARNING_IF( err != 0, "CouplingScheme::apply(): error in ApplyInterfacePhysics for "
                                  << "coupling scheme, " << this->m_id << "." );
 
   // compute Tribol timestep vote on the coupling scheme
   if ( err == 0 && getNumActivePairs() > 0 ) {
+    std::cout << "Before computeTimeStep()" << std::endl;
     computeTimeStep( dt );
+    std::cout << "After computeTimeStep()" << std::endl;
   }
 
   // write output
+  std::cout << "Before writeInterfaceOutput()" << std::endl;
   writeInterfaceOutput( m_output_directory, params.vis_type, cycle, t );
+  std::cout << "After writeInterfaceOutput()" << std::endl;
 
   if ( err != 0 ) {
     return 1;
