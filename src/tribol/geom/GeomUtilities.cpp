@@ -4,7 +4,7 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "GeomUtilities.hpp"
-#include "ContactPlane.hpp"
+#include "CompGeom.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/utils/Math.hpp"
 
@@ -24,8 +24,8 @@ namespace tribol {
 TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT x, RealT y, RealT z,
                                            RealT nx, RealT ny, RealT nz,
                                            RealT cx, RealT cy, RealT cz,
-                                           RealT e1x, RealT e1y, RealT e1z,
-                                           RealT e2x, RealT e2y, RealT e2z )
+                                           RealT& e1x, RealT& e1y, RealT& e1z,
+                                           RealT& e2x, RealT& e2y, RealT& e2z )
 {
   e1x = x - cx;
   e1y = y - cy;
@@ -1093,7 +1093,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckSegOverlap( const RealT* const pX1, const 
     overlapX[1] = pX2[1];
     overlapY[1] = pY2[1];
 
-    return;
+    return NO_FACE_GEOM_ERROR;
   }
 
   //
@@ -1138,20 +1138,20 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckSegOverlap( const RealT* const pX1, const 
     overlapX[1] = pX1[1];
     overlapY[1] = pY1[1];
 
-    return;
+    return NO_FACE_GEOM_ERROR;
   }
 
   // if inter1 == 0 and inter2 == 0 then there is no overlap
   if ( inter1 == 0 && inter2 == 0 ) {
     area = 0.0;
-    return;
+    return NO_OVERLAP;
   }
 
   // there is a chance that oneInTowId or twoInOneId is not actually set,
   // in which case we don't have an overlap.
   if ( oneInTwoId == -1 || twoInOneId == -1 ) {
     area = 0.0;
-    return;
+    return NO_OVERLAP;
   }
 
   // if we are here, we have ruled out all-in-1 and all-in-2 overlaps,
@@ -1173,7 +1173,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckSegOverlap( const RealT* const pX1, const 
   // compute the length of the overlapping segment
   area = magnitude( vecX, vecY );
 
-  return;
+  return NO_FACE_GEOM_ERROR;
 
 }  // end CommonPlanePair::checkSegOverlap()
 
@@ -1930,7 +1930,7 @@ TRIBOL_HOST_DEVICE void Plane3DTo2D( const RealT* const x, const RealT* const y,
 {
   RealT e1x, e1y, e1z;
   RealT e2x, e2y, e2z;
-  ComputeLocalBasis( x, y, z, nx, ny, nz, cx, cy, cz, e1x, e1y, e1z, e2x, e2y, e2z );
+  ComputeLocalBasis( x[0], y[0], z[0], nx, ny, nz, cx, cy, cz, e1x, e1y, e1z, e2x, e2y, e2z );
   GlobalTo2DLocalCoords( x, y, z, e1x, e1y, e1z, e2x, e2y, e2z, cx, cy, cz, x_loc, y_loc, num_verts );
 }
 
@@ -1943,7 +1943,7 @@ TRIBOL_HOST_DEVICE void Point3DTo2D( const RealT x, const RealT y, const RealT z
   RealT e1x, e1y, e1z;
   RealT e2x, e2y, e2z;
   ComputeLocalBasis( x, y, z, nx, ny, nz, cx, cy, cz, e1x, e1y, e1z, e2x, e2y, e2z );
-  GlobalTo2DLocalCoords( &x, &y, &z, e1x, e1y, e1z, e2x, e2y, e2z, cx, cy, cz, &x_loc, &y_loc, 1 );
+  GlobalTo2DLocalCoords( x, y, z, e1x, e1y, e1z, e2x, e2y, e2z, cx, cy, cz, x_loc, y_loc );
 }
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE int IsPointOrientedInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp )
@@ -1968,7 +1968,7 @@ TRIBOL_HOST_DEVICE bool OnEdge( const RealT* const x, const RealT* const y, Real
   if (y[0] > y[1]) {
     ymax = y[0];
     ymin = y[1];
-  { else {
+  } else {
     ymax = y[1];
     ymin = y[0];
   }

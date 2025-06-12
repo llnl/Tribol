@@ -13,6 +13,7 @@
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
+#include "tribol/geom/CompGeom.hpp"
 
 // Axom includes
 #include "axom/slic.hpp"
@@ -408,7 +409,7 @@ TEST_F( CompGeomTest, coincident_vertices_full_overlap )
 
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
-  auto& plane = couplingScheme->getContactPlane( 0 );
+  auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
   RealT diff = ( xy2[2] - xy2[0] ) - plane.m_area;
   EXPECT_LT( diff, 1.e-10 );
 }
@@ -553,7 +554,7 @@ TEST_F( CompGeomTest, nearly_coincident_vertex_pos_overlap )
 
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
-  auto& plane = couplingScheme->getContactPlane( 0 );
+  auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
   RealT diff = ( xy2[2] - xy1[2] ) - plane.m_area;
   EXPECT_LT( diff, 1.e-10 );
 }

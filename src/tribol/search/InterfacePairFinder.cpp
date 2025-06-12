@@ -7,6 +7,7 @@
 
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/common/Parameters.hpp"
+#include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
@@ -198,9 +199,9 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
 
     // project 'prime' face nodal coordinates onto the plane ('bar' coords) defined by the OTHER face
     ProjectPointsToPlane( &x1_prime[0], &y1_prime[0], &z1_prime[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
-                          &x1_bar[0], &y1_bar[0], &z1_bar[0] ); // project face 1 to 2
+                          &x1_bar[0], &y1_bar[0], &z1_bar[0], mesh1.numberOfNodesPerElement() ); // project face 1 to 2
     ProjectPointsToPlane( &x2_prime[0], &y2_prime[0], &z2_prime[0], fn1[0], fn1[1], fn1[2], cx1[0], cx1[1], cx1[2],
-                          &x2_bar[0], &y2_bar[0], &z2_bar[0] ); // project face 2 to 1 
+                          &x2_bar[0], &y2_bar[0], &z2_bar[0], mesh2.numberOfNodesPerElement() ); // project face 2 to 1 
 
     RealT x1_bar_local[ max_nodes_per_face ];
     RealT y1_bar_local[ max_nodes_per_face ];
@@ -219,26 +220,26 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     VertexAvgCentroid( &x1_bar_local[0], &y1_bar_local[0], nullptr, mesh1.numberOfNodesPerElement(), cx1_local, cy1_local, cz );
     VertexAvgCentroid( &x2_bar_local[0], &y2_bar_local[0], nullptr, mesh2.numberOfNodesPerElement(), cx2_local, cy2_local, cz );
 
-    bool 1_in_2 = false;
+    bool one_in_two = false;
     for ( int i=0; i<mesh1.numberOfNodesPerElement(); ++i ) {
       bool check = Point2DInFace( x1_bar_local[i], y1_bar_local[i], &x2_bar_local[0], &y2_bar_local[0], cx2_local, cy2_local, mesh2.numberOfNodesPerElement() );
       if (check) {
-        1_in_2 = true;
+        one_in_two = true;
       }
     }
 
-    bool 2_in_1 = false;
+    bool two_in_one = false;
     for ( int i=0; i<mesh2.numberOfNodesPerElement(); ++i ) {
       bool check = Point2DInFace( x2_bar_local[i], y2_bar_local[i], &x1_bar_local[0], &y1_bar_local[0], cx1_local, cy1_local, mesh1.numberOfNodesPerElement() );
       if (check) {
-        2_in_1 = true;
+        two_in_one = true;
       }
     }
 
     // as a proxy for a positive area of overlap, either one vertex from each face must lie in the other,
     // or multiple vertices from one face can lie in the other, while no vertices from the other lie in the first.
     // Condition for failure is if no vertices on either face lie inside the other
-    if (!1_in_2 && !2_in_1) {
+    if (!one_in_two && !two_in_one) {
       return false;
     }
 

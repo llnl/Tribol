@@ -153,7 +153,7 @@ class CouplingScheme {
      * @param id identifier for a contact plane
      * @return contact plane object
      */
-    TRIBOL_HOST_DEVICE ContactPlane& getContactPlane( IndexT id ) const;
+    TRIBOL_HOST_DEVICE ContactPlanePair& getContactPlanePair( IndexT id ) const;
 
     /**
      * @brief Get the timestep scale
@@ -168,6 +168,13 @@ class CouplingScheme {
      * @return the gap tolerance for the common plane method
      */
     TRIBOL_HOST_DEVICE RealT getGapTol( int fid1, int fid2 ) const;
+
+    /**
+     * @brief Get a view of the computational geometry container 
+     *
+     * @return a comp geom view
+     */
+    TRIBOL_HOST_DEVICE const CompGeom::Viewer& getCompGeomView() const { return m_cg_pairs; }
 
    private:
     /// Struct holding parameters for the coupling scheme
@@ -272,6 +279,13 @@ class CouplingScheme {
 
   /// @overload
   const MeshData& getMesh2() const { return *m_mesh2; }
+
+  /**
+   * @brief Get a reference to the computational geometry container
+   *
+   * @return CompGeom reference
+   */
+  const CompGeom& getCompGeom() const { return m_cg_pairs; }
 
   /**
    * @brief Get the execution mode for the coupling scheme
@@ -452,7 +466,7 @@ class CouplingScheme {
    *
    * @return number of active interface pairs
    */
-  int getNumActivePairs() const { return m_cg_pairs.getNumActivePairs( m_contact_method ); }
+  int getNumActivePairs() const { return m_cg_pairs.getNumActivePairs( getContactMethod() ); }
 
   /**
    * @brief Return the contact plane given by id
@@ -460,7 +474,7 @@ class CouplingScheme {
    * @param id identifier for a contact plane
    * @return contact plane object
    */
-  const ContactPlane& getContactPlane( IndexT id ) const;
+  const ContactPlanePair& getContactPlanePair( IndexT id ) const;
 
   /**
    * @brief Set whether the coupling scheme has been binned

@@ -180,7 +180,6 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
 
   auto pairs = cs->getInterfacePairs();
   const IndexT numPairs = pairs.size();
-  auto planes = cs->get3DContactPlanes();
 
   ////////////////////////////////////////////////////////////////////////
   //
@@ -220,7 +219,8 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
       continue;
     }
 
-    auto& plane = planes[cpID];
+    auto& cg_pairs = cs->getCompGeom();
+    auto& plane = cg_pairs.getMortarPlane(cpID);
 
     // get pair indices
     IndexT index1 = pair.m_element_id1;
@@ -314,7 +314,6 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
 
   auto pairs = cs->getInterfacePairs();
   const IndexT numPairs = pairs.size();
-  auto planes = cs->get3DContactPlanes();
 
   int const dim = cs->spatialDimension();
 
@@ -368,7 +367,8 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
       continue;
     }
 
-    auto& plane = planes[cpID];
+    auto& cg_pairs = cs->getCompGeom();
+    auto& plane = cg_pairs.getMortarPlane(cpID);
 
     // get pair indices
     IndexT index1 = pair.m_element_id1;
@@ -648,7 +648,8 @@ void ComputeSingleMortarJacobian( SurfaceContactElem& elem )
 //------------------------------------------------------------------------------
 int ApplyNormalEnzyme( CouplingScheme* cs )
 {
-  auto planes_view = cs->get3DContactPlanes().view();
+  auto& cg_view = cs->getCompGeomView();
+  auto planes_view = cg_view.getMortarPlanePairs();
   auto& lm_opts = cs->getEnforcementOptions().lm_implicit_options;
   if ( lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
        lm_opts.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ) {
@@ -1148,7 +1149,6 @@ int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs )
 
   auto pairs = cs->getInterfacePairs();
   IndexT const numPairs = pairs.size();
-  auto planes = cs->get3DContactPlanes();
 
   const int dim = cs->spatialDimension();
 
@@ -1173,7 +1173,8 @@ int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs )
       continue;
     }
 
-    auto& plane = planes[cpID];
+    auto& cg_pairs = cs->getCompGeom();
+    auto& plane = cg_pairs.getMortarPlane(cpID);
 
     // get pair indices
     IndexT index1 = pair.m_element_id1;

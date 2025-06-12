@@ -7,8 +7,37 @@
 #define SRC_GEOM_GEOMUTILITIES_HPP_
 
 #include "tribol/common/Parameters.hpp"
+#include "tribol/mesh/MeshData.hpp"
 
 namespace tribol {
+
+/*!
+ *
+ * \brief computes a local basis on the plane defined by the given point-normal data 
+ *
+ * \param [in] x x-component of reference point on the plane used to compute the first basis vector
+ * \param [in] y y-component of reference point on the plane used to compute the first basis vector
+ * \param [in] z z-component of reference point on the plane used to compute the first basis vector
+ * \param [in] nx x-component of plane normal
+ * \param [in] ny y-component of plane normal
+ * \param [in] nz z-component of plane normal
+ * \param [in] cx x-component of plane point/centroid
+ * \param [in] cy y-component of plane point/centroid
+ * \param [in] cz z-component of plane point/centroid
+ * \param [in,out] e1x x-component of first basis vector
+ * \param [in,out] e1y y-component of first basis vector
+ * \param [in,out] e1z z-component of first basis vector
+ * \param [in,out] e2x x-component of second basis vector
+ * \param [in,out] e2y y-component of second basis vector
+ * \param [in,out] e2z z-component of second basis vector
+ *
+ * \pre the coordinates x,y,z lie on the plane defined by <nx,ny,nz> and <cx,cy,cz> 
+ */
+TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT x, RealT y, RealT z,
+                                           RealT nx, RealT ny, RealT nz,
+                                           RealT cx, RealT cy, RealT cz,
+                                           RealT& e1x, RealT& e1y, RealT& e1z,
+                                           RealT& e2x, RealT& e2y, RealT& e2z );
 
 /*!
  *

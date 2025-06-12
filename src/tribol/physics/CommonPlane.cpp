@@ -40,7 +40,7 @@ TRIBOL_HOST_DEVICE RealT ComputePenaltyStiffnessPerArea( const RealT K1_over_t1,
 }  // end ComputePenaltyStiffnessPerArea
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE RealT ComputeGapRatePressure( ContactPlane& plane, const MeshData::Viewer& m1,
+TRIBOL_HOST_DEVICE RealT ComputeGapRatePressure( CommonPlanePair& plane, const MeshData::Viewer& m1,
                                                  const MeshData::Viewer& m2, RealT element_penalty,
                                                  RatePenaltyCalculation rate_calc )
 {
@@ -153,7 +153,8 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
   auto cs_view = cs->getView();
   const auto num_pairs = cs->getNumActivePairs();
   forAllExec( cs->getExecutionMode(), num_pairs, [cs_view, err, neg_thickness] TRIBOL_HOST_DEVICE( IndexT i ) {
-    auto& plane = cs_view.getContactPlane( i );
+    auto& cg_view = cs_view.getCompGeomView();
+    auto& plane = cg_view.getCommonPlane( i );
 
     auto& mesh1 = cs_view.getMesh1View();
     auto& mesh2 = cs_view.getMesh2View();
@@ -272,8 +273,7 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     auto numPolyVert = 2;
     // update if we are in 3d
     if ( dim == 3 ) {
-      auto& cp3 = static_cast<ContactPlane3D&>( plane );
-      numPolyVert = cp3.m_numPolyVert;
+      numPolyVert = plane.m_numPolyVert;
       xVert_size = 3 * numPolyVert;
     }
     initRealArray( xVert, xVert_size, 0. );
@@ -288,17 +288,15 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
 
     // construct array of polygon overlap vertex coordinates
     if ( dim == 2 ) {
-      auto& cp2 = static_cast<ContactPlane2D&>( plane );
       for ( IndexT j{ 0 }; j < numPolyVert; ++j ) {
-        xVert[dim * j] = cp2.m_segX[j];
-        xVert[dim * j + 1] = cp2.m_segY[j];
+        xVert[dim * j] = plane.m_polyX[j];
+        xVert[dim * j + 1] = plane.m_polyY[j];
       }
     } else {
-      auto& cp3 = static_cast<ContactPlane3D&>( plane );
       for ( IndexT j{ 0 }; j < numPolyVert; ++j ) {
-        xVert[dim * j] = cp3.m_polyX[j];
-        xVert[dim * j + 1] = cp3.m_polyY[j];
-        xVert[dim * j + 2] = cp3.m_polyZ[j];
+        xVert[dim * j] = plane.m_polyX[j];
+        xVert[dim * j + 1] = plane.m_polyY[j];
+        xVert[dim * j + 2] = plane.m_polyZ[j];
       }
     }
 
