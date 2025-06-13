@@ -263,10 +263,10 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     //  return false;
     //}
 
-    //RealT cx1_local, cy1_local;
+    RealT cx1_local, cy1_local;
     RealT cx2_local, cy2_local;
     RealT cz = 0.; // not required, dummy argument
-    //VertexAvgCentroid( &x1_bar_local[0], &y1_bar_local[0], nullptr, mesh1.numberOfNodesPerElement(), cx1_local, cy1_local, cz );
+    VertexAvgCentroid( &x1_bar_local[0], &y1_bar_local[0], nullptr, mesh1.numberOfNodesPerElement(), cx1_local, cy1_local, cz );
     VertexAvgCentroid( &x2_bar_local[0], &y2_bar_local[0], nullptr, mesh2.numberOfNodesPerElement(), cx2_local, cy2_local, cz );
 
     bool one_in_two = false;
@@ -279,8 +279,7 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
 
     bool two_in_one = false;
     for ( int i=0; i<mesh2.numberOfNodesPerElement(); ++i ) {
-      //bool check = Point2DInFace( x2_bar_local[i], y2_bar_local[i], &x1_bar_local[0], &y1_bar_local[0], cx1_local, cy1_local, mesh1.numberOfNodesPerElement() );
-      bool check = Point2DInFace( x2_bar_local[i], y2_bar_local[i], &x1_bar_local[0], &y1_bar_local[0], cx2_local, cy2_local, mesh1.numberOfNodesPerElement() );
+      bool check = Point2DInFace( x2_bar_local[i], y2_bar_local[i], &x1_bar_local[0], &y1_bar_local[0], cx1_local, cy1_local, mesh1.numberOfNodesPerElement() );
       if (check) {
         two_in_one = true;
       }
