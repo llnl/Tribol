@@ -856,6 +856,27 @@ TRIBOL_HOST_DEVICE bool OnEdge( const RealT* const x, const RealT* const y, Real
  */
 TRIBOL_HOST_DEVICE int IsPointOrientedInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp );
 
+/*!
+ * \brief Check whether two polygons (faces) have a positive area of overlap
+ *
+ * \note Wrapper routine that calls the polygon intersection routine. That routine
+ *  does not return vertices, just overlap area. This is the FULL overlap calculation.
+ *
+ * \param [in] num_nodes_1 number of nodes on first polygon
+ * \param [in] num_nodes_2 number of nodes on second polygon
+ * \param [in] projLocX1 2D x-coordinates of projected element 1 vertices
+ * \param [in] projLocY1 2D y-coordinates of projected element 1 vertices
+ * \param [in] projLocX2 2D x-coordinates of projected element 2 vertices
+ * \param [in] projLocY2 2D y-coordinates of projected element 2 vertices
+ * \param [in,out] cx local x-coordinate of overlap centroid
+ * \param [in,out] cy local y-coordinate of overlap centroid
+ * \param [in,out] area area of overlap
+ * \param [in] isym 0 for planar symmetry, 1 for axial symmetry
+ */
+TRIBOL_HOST_DEVICE void checkPolyOverlap( const int num_nodes_1, const int num_nodes_2, RealT* projLocX1,
+                                          RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, 
+                                          RealT& cx, RealT& cy, RealT& area, const int isym );
+
 }  // namespace tribol
 
 #endif /* SRC_GEOM_GEOMUTILITIES_HPP_ */

@@ -65,6 +65,7 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
   /////////////////////////////////////////
   if ( !couplingScheme->nullMeshes() ) {
     int cpSize = couplingScheme->getNumActivePairs();
+    std::cout << "VTK cpSize: " << cpSize << std::endl;
     bool overlaps{ false };
     bool faces{ false };
     bool meshes{ false };
@@ -98,6 +99,7 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
     }  // end switch( v_type )
 
     if ( faces && cpSize > 0 ) {
+      std::cout << "inside VTK faces" << std::endl;
       // Compose file name and open file
       std::string name = ( nranks > 1 ) ? axom::fmt::format( "y_cntct_faces_r{:04}_{:07}.vtk", rank, cycle )
                                         : axom::fmt::format( "y_cntct_faces_{:07}.vtk", cycle );
@@ -136,6 +138,8 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
 
       // output the number of points
       faces << "POINTS " << numPoints << " float\n";
+
+      std::cout << "POINTS: " << numPoints << std::endl;
 
       // loop over all contact planes and output the face coordinates
       for ( int i = 0; i < cpSize; ++i ) {
@@ -217,6 +221,7 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
 
     // open contact plane output file. For now we just output the overlaps
     if ( overlaps && cpSize > 0 ) {
+      std::cout << "Inside vtk overlaps" << std::endl;
       // Compose file name and open file
       std::string name = ( nranks > 1 ) ? axom::fmt::format( "z_cntct_overlap_r{:04}_{:07}.vtk", rank, cycle )
                                         : axom::fmt::format( "z_cntct_overlap_{:07}.vtk", cycle );
@@ -254,6 +259,8 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
 
       axom::fmt::print( overlap, "POINTS {} float\n", numPoints );
 
+      std::cout << "overlap POINTS: " << numPoints << std::endl;
+
       // loop over contact plane instances and output polygon vertices
       for ( int k = 0; k < cpSize; ++k ) {
         auto& cp = couplingScheme->getContactPlanePair( k );
@@ -270,6 +277,8 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
         }
       }  // end i-loop over contact planes for overlap output
 
+      std::cout << "After vtk overlap polygon prints" << std::endl;
+
       // define the polygons
       int numPolygons = cpSize;  // one overlap per contact plane object
 
@@ -281,12 +290,14 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
       for ( int i = 0; i < cpSize; ++i ) {
         int nVerts = 2;
         if ( dim == 3 ) {
-          auto& cp = couplingScheme->getContactPlanePair( k );
+          auto& cp = couplingScheme->getContactPlanePair( i );
           nVerts = cp.m_numPolyVert;
         }
         axom::fmt::print( overlap, "{} {}\n", nVerts, axom::fmt::join( RSet( k, k + nVerts ), " " ) );
         k += nVerts;
       }
+
+      std::cout << "after connectivity" << std::endl;
 
       // print cell types as VTK int IDs
       {
@@ -315,6 +326,7 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
       // print the contact plane pressure scalar data for common plane overlaps
       {
         if (couplingScheme->getContactMethod() == COMMON_PLANE) {
+          std::cout << "printing pressures" << std::endl;
           axom::fmt::print( overlap, "SCALARS {} {}\n", "overlap_pressure", "float" );
           axom::fmt::print( overlap, "LOOKUP_TABLE default\n" );
           for ( int i = 0; i < cpSize; ++i ) {

@@ -1028,7 +1028,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // loop over number of interface pairs
   IndexT numPairs = m_interface_pairs.size();
 
-  std::cout << "CouplingScheme::apply() numPairs: " << numPairs << std::endl;
+  std::cout << "CouplingScheme::apply() num Interface Pairs: " << numPairs << std::endl;
 
   SLIC_DEBUG( "Coupling scheme " << m_id << " has " << numPairs << " pairs." );
 
@@ -1062,11 +1062,11 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                 // in the active set
                 bool interact = false;
     
-                std::cout << "Before CheckInterfacePair()" << std::endl;
+                //std::cout << "Before CheckInterfacePair()" << std::endl;
                 FaceGeomError interact_err =
                     CheckInterfacePair( pair, mesh1, mesh2, params, contact_method, contact_case, interact,
                                         cg_view, planes_ct.data() );
-                std::cout << "After CheckInterfacePair()" << std::endl;
+                //std::cout << "After CheckInterfacePair()" << std::endl;
 
                 // // Update pair reporting data for this coupling scheme
                 // this->updatePairReportingData( interact_err );

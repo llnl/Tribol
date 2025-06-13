@@ -66,6 +66,8 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair( InterfacePair& pair, const 
     }
   } // end switch
 
+  std::cout << "Face Error after checkInterfacePair(): " << face_err << std::endl;
+
   // check errors and contact status and add ContactPlanePair accordingly
   if ( face_err != NO_FACE_GEOM_ERROR ) {
     isInteracting = false;
@@ -954,37 +956,6 @@ TRIBOL_HOST_DEVICE void ContactPlanePair::computeAreaTol( const MeshData::Viewer
 }  // end ContactPlanePair::computeAreaTol()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlanePair::checkPolyOverlap( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                                            RealT* projLocX1, RealT* projLocY1, RealT* projLocX2,
-                                                            RealT* projLocY2, const int isym )
-{
-  // change the vertex ordering of one of the faces so that the two match
-  constexpr int max_nodes_per_elem = 4;
-  RealT x2Temp[max_nodes_per_elem];
-  RealT y2Temp[max_nodes_per_elem];
-
-  // set first vertex coordinates the same
-  x2Temp[0] = projLocX2[0];
-  y2Temp[0] = projLocY2[0];
-
-  // reorder
-  int k = 1;
-  for ( int i = ( m2.numberOfNodesPerElement() - 1 ); i > 0; --i ) {
-    x2Temp[k] = projLocX2[i];
-    y2Temp[k] = projLocY2[i];
-    ++k;
-  }
-
-  PolyInterYCentroid( m1.numberOfNodesPerElement(), projLocX1, projLocY1, m2.numberOfNodesPerElement(), x2Temp, y2Temp,
-                      isym, m_area, m_overlapCY );
-  PolyInterYCentroid( m1.numberOfNodesPerElement(), projLocY1, projLocX1, m2.numberOfNodesPerElement(), y2Temp, x2Temp,
-                      isym, m_area, m_overlapCX );
-
-  return;
-
-}  // end ContactPlanePair::checkPolyOverlap()
-
-//------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ContactPlanePair::local2DToGlobalCoords( RealT xloc, RealT yloc, RealT& xg, RealT& yg, RealT& zg )
 {
   // This projection takes the two input local vector components and uses
@@ -1239,7 +1210,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
           RealT x_other_local[ max_nodes_per_elem ];
           RealT y_other_local[ max_nodes_per_elem ];
           Plane3DTo2D( &x_other[0], &y_other[0], &z_other[0], fn[0], fn[1], fn[2], cx[0], cx[1], cx[2],
-                       num_nodes_other, &x_other_local[0], &y_other_local[1] );
+                       num_nodes_other, &x_other_local[0], &y_other_local[0] );
           
           // get the local coordinates of the current intersection point
           RealT xInter_local, yInter_local;
@@ -1274,10 +1245,9 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
       // project the vector onto the opposing face's normal
       RealT proj = vX * fn[0] + vY * fn[1] + vZ * fn[2];
 
-      // if the projection for face 1 vertices is positive then that vertex crosses
-      // (i.e. interpenetrates) the other face's plane. if the projection for face 2 vertices
-      // is negative then that vertex crosses the other face's plane 
-      interpenVertex[ja] = ( i == 0 && proj > 0 ) ? ja : -1;
+      // check for negative projections meaning a node on one face crosses
+      // the plane defined by the other face
+      interpenVertex[ja] = ( i == 0 && proj < 0 ) ? ja : -1;
       interpenVertex[ja] = ( i == 1 && proj < 0 ) ? ja : interpenVertex[ja];
 
       if (interpenVertex[ja] != -1) {
@@ -1307,6 +1277,10 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
     num_intersections_inside[i] = k_inside;
     num_nodes_otherside[i] = k_otherside;
 
+    std::cout << "num plane intersections: " << k << std::endl;
+    std::cout << "num plane intersections inside: " << k_inside << std::endl;
+    std::cout << "num nodes other side of plane: " << k_otherside << std::endl;
+
   }  // end loop over faces
 
   // we come into this routine with full overlap calculation set to true. Here, we need
@@ -1323,15 +1297,19 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
   //       that one of the criterion above switched to the interpen overlap calc, return
   //       the calc to full overlap for robustness
   if (num_intersections_inside[0] == 1 && num_intersections_inside[1] == 1) {
+    std::cout << "switching to interpen overlap no intersection points inside" << std::endl;
     m_fullOverlap = false;
   } else if (num_intersections_inside[0] == 2 && num_intersections_inside[1] == 0) {
+    std::cout << "switching to interpen overlap two intersection points inside for face 1 in 2" << std::endl;
     m_fullOverlap = false;
   } else if (num_intersections_inside[0] == 0 && num_intersections_inside[1] == 2) {
+    std::cout << "switching to interpen overlap two intersection points inside for face 2 in 1" << std::endl;
     m_fullOverlap = false;
   }
 
   // reset degenerate intersections back to full overlap
   if (numV[0] < 3 || numV[1] < 3) {
+    std::cout << "degenerate interpen overlap switching to full" << std::endl;
     m_fullOverlap = true;
   }
 
@@ -1434,6 +1412,8 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
     FaceGeomError full_error = this->projectPointsAndComputeOverlap( &cfx1[0], &cfy1[0], &cfz1[0],
                                                                      &cfx2[0], &cfy2[0], &cfz2[0],
                                                                      numV[0], numV[1], m1, m2 );
+
+    std::cout << "overlap error from full overlap calc after projectPointsAndComputeOverlap: " << full_error << std::endl;
 
     overlap_error = full_error;
 
@@ -1568,11 +1548,11 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::projectPointsAndComputeOverlap
   RealT cfy2_loc[max_nodes_per_overlap];
 
   // convert global coords to local contact plane coordinates
-  GlobalTo2DLocalCoords( cfx1_proj, cfy1_proj, cfz1_proj, m_e1X, m_e1Y, m_e1Z, m_e2X, m_e2Y, m_e2Z, m_cX, m_cY, m_cZ,
-                         cfx1_loc, cfy1_loc, num_vert_1 );
+  GlobalTo2DLocalCoords( &cfx1_proj[0], &cfy1_proj[0], &cfz1_proj[0], m_e1X, m_e1Y, m_e1Z, m_e2X, m_e2Y, m_e2Z, m_cX, m_cY, m_cZ,
+                         &cfx1_loc[0], &cfy1_loc[0], num_vert_1 );
 
-  GlobalTo2DLocalCoords( cfx2_proj, cfy2_proj, cfz2_proj, m_e1X, m_e1Y, m_e1Z, m_e2X, m_e2Y, m_e2Z, m_cX, m_cY, m_cZ,
-                         cfx2_loc, cfy2_loc, num_vert_2 );
+  GlobalTo2DLocalCoords( &cfx2_proj[0], &cfy2_proj[0], &cfz2_proj[0], m_e1X, m_e1Y, m_e1Z, m_e2X, m_e2Y, m_e2Z, m_cX, m_cY, m_cZ,
+                         &cfx2_loc[0], &cfy2_loc[0], num_vert_2 );
 
   // reorder potentially unordered set of vertices for interpen calcs
   // Note: this routine will order both sets of vertices in counter clockwise orientation.
@@ -1581,8 +1561,25 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::projectPointsAndComputeOverlap
     PolyReorder( cfx1_loc, cfy1_loc, nullptr, num_vert_1 );
     PolyReorder( cfx2_loc, cfy2_loc, nullptr, num_vert_2 );
   } else { // use ElemReverse() per original implementation for full overlaps
-    ElemReverse( cfx2_loc, cfy1_loc, num_vert_2 );
+    ElemReverse( cfx2_loc, cfy2_loc, num_vert_2 );
   }
+
+  // DEBUG TODO SRW remove after testing
+  for (int i=0; i<m1.numberOfNodesPerElement(); ++i) {
+    std::cout << "face 1 coords on contact plane: " << cfx1_proj[i] << ", " << cfy1_proj[i] << ", " << cfz1_proj[i] << std::endl;
+  }
+  for (int i=0; i<m2.numberOfNodesPerElement(); ++i) {
+    std::cout << "face 2 coords on contact plane: " << cfx2_proj[i] << ", " << cfy2_proj[i] << ", " << cfz2_proj[i] << std::endl;
+  }
+  std::cout << "" << std::endl;
+
+  for (int i=0; i<m1.numberOfNodesPerElement(); ++i) {
+    std::cout << "face 1 LOCAL coords on contact plane: " << cfx1_loc[i] << ", " << cfy1_loc[i] << std::endl; 
+  }
+  for (int i=0; i<m2.numberOfNodesPerElement(); ++i) {
+    std::cout << "face 2 LOCAL coords on contact plane: " << cfx2_loc[i] << ", " << cfy2_loc[i] << std::endl; 
+  }
+  std::cout << "" << std::endl;
 
   // call intersection routine to get intersecting polygon
   RealT pos_tol = this->m_params.len_collapse_ratio * axom::utilities::max( m1.getFaceRadius()[ element_id1 ],
@@ -1590,7 +1587,9 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::projectPointsAndComputeOverlap
   RealT len_tol = pos_tol;
   FaceGeomError inter_err =
       Intersection2DPolygon( cfx1_loc, cfy1_loc, num_vert_1, cfx2_loc, cfy2_loc, num_vert_2, pos_tol, len_tol, m_polyLocX,
-                             m_polyLocY, m_numPolyVert, m_area, true );
+                             m_polyLocY, m_numPolyVert, m_area, false );
+
+  std::cout << "Overlap area after Intersection2DPolygon(): " << m_area << std::endl;
 
   if ( inter_err != NO_FACE_GEOM_ERROR ) {
     return inter_err;

@@ -41,9 +41,13 @@ TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT x, RealT y, RealT z,
     RealT y_new = y + scale;
     RealT z_new = z + scale;
 
-    e1x = x_new - cx;
-    e1y = y_new - cy;
-    e1z = z_new - cz;
+    // project point onto contact plane
+    RealT px, py, pz;
+    ProjectPointToPlane( x_new, y_new, z_new, nx, ny, nz, cx, cy, cz, px, py, pz );
+
+    e1x = px - cx;
+    e1y = py - cy;
+    e1z = pz - cz;
   }
 
   // normalize the first basis vector
@@ -437,6 +441,8 @@ TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( const RealT* const pX, const Real
                  "GlobalTo2DLocalCoords: local coordinate pointers are null" );
 #endif
 
+  // TODO SRW restore the scaling of the input points. This is fine as long as it is consistent
+
   // loop over projected nodes
   for ( int i = 0; i < size; ++i ) {
     // compute the vector between the point on the plane and the input plane point
@@ -448,6 +454,8 @@ TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( const RealT* const pX, const Real
     // in the plane so the out-of-plane component should be zero.
     pLX[i] = vX * e1X + vY * e1Y + vZ * e1Z;  // projection onto e1
     pLY[i] = vX * e2X + vY * e2Y + vZ * e2Z;  // projection onto e2
+    //pLX[i] = pX[i] * e1X + pY[i] * e1Y + pZ[i] * e1Z;  // projection onto e1
+    //pLY[i] = pX[i] * e2X + pY[i] * e2Y + pZ[i] * e2Z;  // projection onto e2
   }
 
   return;
@@ -644,6 +652,14 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
                                                         RealT& area, bool orientCheck, OverlapVertexType* vertType,
                                                         int* edgeA, int* edgeB )
 {
+  // Debug for input vertices of planar 2D polygon coords
+  for (int i=0; i<numVertexA; ++i) {
+     std::cout << "Intersection2DPolygon() (xA,yA): " << xA[i] << ", " << yA[i] << std::endl;
+  }
+  for (int i=0; i<numVertexB; ++i) {
+     std::cout << "Intersection2DPolygon() (xB,yB): " << xB[i] << ", " << yB[i] << std::endl;
+  }
+
   // for tribol, if you have called this routine it is because a positive area of
   // overlap between two polygons (faces) exists. This routine does not perform a
   // "proximity" check to determine if the faces are "close enough" to proceed with
@@ -712,6 +728,8 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     }
   }
 
+  std::cout << "Intersection2DPolygon() numVAI: " << numVAI << std::endl;
+
   // check to see if ALL of A is in B; then A is the overlapping polygon.
   if ( numVAI == numVertexA ) {
     numPolyVert = numVertexA;
@@ -742,6 +760,8 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       ++numVBI;
     }
   }
+
+  std::cout << "Intersection2DPolygon() numVBI: " << numVBI << std::endl;
 
   // check to see if ALL of B is in A; then B is the overlapping polygon.
   if ( numVBI == numVertexB ) {
@@ -778,6 +798,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
           RealT distY = yA[i] - yB[j];
           RealT distMag = magnitude( distX, distY );
           if ( distMag < 1.E-15 ) {
+            std::cout << "Intersection2DPolygon() removing coincident interior vertex" << std::endl;
             // remove the interior designation for the vertex in polygon B
             //                 SLIC_DEBUG( "Removing duplicate interior vertex id: " << j << ".\n" );
             interiorVBId[j] = -1;
@@ -836,8 +857,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       //         bool checkB = (interior[2] == -1 && interior[3] == -1) ? true : false;
       bool checkB = true;
 
-      // TODO SRW look into this. computeLocalInterpenOverlap() does not check if intersection points
-      // at the overlap actually lie within either of the faces.
       // if both segments are not defined by nodes interior to the other polygon
       if ( checkA && checkB ) {
         if ( interId >= max_intersections ) {
@@ -869,6 +888,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   // add check for case where there are no interior vertices or
   // intersection vertices
   if ( numSegInter == 0 && numVBI == 0 && numVAI == 0 ) {
+    std::cout << "Intersection2DPolygon() no interior vertices or no intersection vertices" << std::endl;
     area = 0.0;
     return NO_OVERLAP;
   }
@@ -987,11 +1007,13 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
 
     // check to see if the overlap was degenerated to have 2 or less vertices.
     if ( numFinalVert < 3 ) {
+      std::cout << "Intersection2DPolygon() overlap was degenerated to have 2 or less vertices" << std::endl;
       numPolyVert = 0;
       area = 0.0;
       return NO_OVERLAP;  // punt on degenerated or collapsed overlaps
     }
   } else {
+    std::cout << "Intersection2DPolygon() no overlap due to numPolyVert<=2" << std::endl;
     numPolyVert = 0;
     area = 0.0;
     return NO_OVERLAP;  // don't return error here. We should tolerate 'collapsed' (zero area) overlaps
@@ -1930,7 +1952,22 @@ TRIBOL_HOST_DEVICE void Plane3DTo2D( const RealT* const x, const RealT* const y,
 {
   RealT e1x, e1y, e1z;
   RealT e2x, e2y, e2z;
-  ComputeLocalBasis( x[0], y[0], z[0], nx, ny, nz, cx, cy, cz, e1x, e1y, e1z, e2x, e2y, e2z );
+
+  // determine a consistent reference point on the plane used to compute first basis vector
+  RealT px, py, pz;
+  RealT scale = 10;
+  px = cx + scale;
+  py = cy + scale;
+  pz = cz + scale;
+
+  // project that point back onto the plane
+  RealT px_bar, py_bar, pz_bar;
+  ProjectPointToPlane( px, py, pz, nx, ny, nz, cx, cy, cz, px_bar, py_bar, pz_bar );
+
+  std::cout << "Plane3DTo2D ref point and projected ref point: " << px << ", " << py << ", " << pz << "; " << px_bar << ", " << py_bar << ", " << pz_bar << std::endl;  
+
+  ComputeLocalBasis( px_bar, py_bar, pz_bar, nx, ny, nz, cx, cy, cz, e1x, e1y, e1z, e2x, e2y, e2z );
+  std::cout << "Plane3DTo2D first and second basis vector: " << e1x << ", " << e1y << ", " << e1z << "; " << e2x << ", " << e2y << ", " << e2z << std::endl;  
   GlobalTo2DLocalCoords( x, y, z, e1x, e1y, e1z, e2x, e2y, e2z, cx, cy, cz, x_loc, y_loc, num_verts );
 }
 
@@ -1942,7 +1979,18 @@ TRIBOL_HOST_DEVICE void Point3DTo2D( const RealT x, const RealT y, const RealT z
 {
   RealT e1x, e1y, e1z;
   RealT e2x, e2y, e2z;
-  ComputeLocalBasis( x, y, z, nx, ny, nz, cx, cy, cz, e1x, e1y, e1z, e2x, e2y, e2z );
+  // determine a consistent reference point on the plane used to compute first basis vector
+  RealT px, py, pz;
+  RealT scale = 10;
+  px = cx + scale;
+  py = cy + scale;
+  pz = cz + scale;
+
+  // project that point back onto the plane
+  RealT px_bar, py_bar, pz_bar;
+  ProjectPointToPlane( px, py, pz, nx, ny, nz, cx, cy, cz, px_bar, py_bar, pz_bar );
+
+  ComputeLocalBasis( px_bar, py_bar, pz_bar, nx, ny, nz, cx, cy, cz, e1x, e1y, e1z, e2x, e2y, e2z );
   GlobalTo2DLocalCoords( x, y, z, e1x, e1y, e1z, e2x, e2y, e2z, cx, cy, cz, x_loc, y_loc );
 }
 //------------------------------------------------------------------------------
@@ -1991,6 +2039,37 @@ TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const 
   return false;
 
 }
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void checkPolyOverlap( const int num_nodes_1, const int num_nodes_2,
+                                          RealT* projLocX1, RealT* projLocY1, RealT* projLocX2,
+                                          RealT* projLocY2, RealT& cx, RealT& cy, RealT& area, const int isym )
+{
+  // change the vertex ordering of one of the faces so that the two match
+  constexpr int max_nodes_per_elem = 4;
+  RealT x2Temp[max_nodes_per_elem];
+  RealT y2Temp[max_nodes_per_elem];
+
+  // set first vertex coordinates the same
+  x2Temp[0] = projLocX2[0];
+  y2Temp[0] = projLocY2[0];
+
+  // reorder
+  int k = 1;
+  for ( int i = ( num_nodes_2 - 1 ); i > 0; --i ) {
+    x2Temp[k] = projLocX2[i];
+    y2Temp[k] = projLocY2[i];
+    ++k;
+  }
+
+  PolyInterYCentroid( num_nodes_1, projLocX1, projLocY1, num_nodes_2, x2Temp, y2Temp,
+                      isym, area, cy );
+  //PolyInterYCentroid( num_nodes_1, projLocY1, projLocX1, num_nodes_2, y2Temp, x2Temp,
+  //                    isym, area, cx );
+
+  return;
+
+}  // end ContactPlanePair::checkPolyOverlap()
 
 //------------------------------------------------------------------------------
 

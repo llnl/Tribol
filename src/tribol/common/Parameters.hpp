@@ -312,7 +312,7 @@ enum BasisEvalType
 enum FaceGeomError
 {
   NO_FACE_GEOM_ERROR,               ///! No face geometry error indicating an overlap intersection
-  NO_OVERLAP = NO_FACE_GEOM_ERROR,  ///! Indicates that no actual overlap exists, but does not indicate an error
+  NO_OVERLAP,                       ///! Indicates that no actual overlap exists, but does not indicate an error
   FACE_ORIENTATION,                             ///! Face vertices not ordered consistent with outward unit normal
   INVALID_FACE_INPUT,                           ///! Invalid input
   DEGENERATE_OVERLAP,                           ///! Issues with overlap calculation resulting in degenerate overlap

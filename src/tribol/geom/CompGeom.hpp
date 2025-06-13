@@ -144,23 +144,6 @@ class ContactPlanePair : public CompGeomPair {
   TRIBOL_HOST_DEVICE virtual FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) = 0;
 
   /*!
-   * \brief Check whether two polygons (faces) have a positive area of overlap
-   *
-   * \note Wrapper routine that calls the polygon intersection routine. That routine
-   *  does not return vertices, just overlap area. This is the FULL overlap calculation.
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   * \param [in] projLocX1 2D x-coordinates of projected element 1 vertices
-   * \param [in] projLocY1 2D y-coordinates of projected element 1 vertices
-   * \param [in] projLocX2 2D x-coordinates of projected element 2 vertices
-   * \param [in] projLocY2 2D y-coordinates of projected element 2 vertices
-   * \param [in] isym 0 for planar symmetry, 1 for axial symmetry
-   */
-  TRIBOL_HOST_DEVICE void checkPolyOverlap( const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT* projLocX1,
-                                            RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, const int isym );
-
-  /*!
    * \brief Compute the projected overlap in 2D 
    *
    * \param [in] m1 mesh data viewer for mesh 1
