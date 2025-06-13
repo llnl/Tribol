@@ -242,55 +242,51 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     }
     std::cout << "" << std::endl;
 
-    //Plane3DTo2D( &x2_bar[0], &y2_bar[0], &z2_bar[0], fn1[0], fn1[1], fn1[2], cx1[0], cx1[1], cx1[2],
-    //             mesh2.numberOfNodesPerElement(), &x2_bar_local[0], &y2_bar_local[0] );
+    Plane3DTo2D( &x1_bar[0], &y1_bar[0], &z1_bar[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
+                 mesh1.numberOfNodesPerElement(), &x1_bar_local[0], &y1_bar_local[0] );
+    Plane3DTo2D( &x2_prime[0], &y2_prime[0], &z2_prime[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
+                 mesh2.numberOfNodesPerElement(), &x2_bar_local[0], &y2_bar_local[0] );
 
-    // TODO verify this routine
-    //Plane3DTo2D( &x1_bar[0], &y1_bar[0], &z1_bar[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
-    //             mesh1.numberOfNodesPerElement(), &x1_bar_local[0], &y1_bar_local[0] );
-    //Plane3DTo2D( &x2_prime[0], &y2_prime[0], &z2_prime[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
-    //             mesh2.numberOfNodesPerElement(), &x2_bar_local[0], &y2_bar_local[0] );
+    RealT cx, cy, area;
+    CheckPolyOverlap( mesh1.numberOfNodesPerElement(), mesh2.numberOfNodesPerElement(),
+                      &x1_bar_local[0], &y1_bar_local[0], &x2_bar_local[0], &y2_bar_local[0],
+                      cx, cy, area, 0 );
 
-    //RealT cx, cy, area;
-    //checkPolyOverlap( mesh1.numberOfNodesPerElement(), mesh2.numberOfNodesPerElement(),
-    //                  &x1_bar_local[0], &y1_bar_local[0], &x2_bar_local[0], &y2_bar_local[0],
-    //                  cx, cy, area, 0 );
+    std::cout << "geomfilter() area: " << area << std::endl;
 
-    //std::cout << "geomfilter() area: " << area << std::endl;
+    if (area < 1.e-15)
+    {
+      return false;
+    }
 
-    //if (area < 1.e-15)
-    //{
-    //  return false;
+    //RealT cx1_local, cy1_local;
+    //RealT cx2_local, cy2_local;
+    //RealT cz = 0.; // not required, dummy argument
+    //VertexAvgCentroid( &x1_bar_local[0], &y1_bar_local[0], nullptr, mesh1.numberOfNodesPerElement(), cx1_local, cy1_local, cz );
+    //VertexAvgCentroid( &x2_bar_local[0], &y2_bar_local[0], nullptr, mesh2.numberOfNodesPerElement(), cx2_local, cy2_local, cz );
+
+    //bool one_in_two = false;
+    //for ( int i=0; i<mesh1.numberOfNodesPerElement(); ++i ) {
+    //  bool check = Point2DInFace( x1_bar_local[i], y1_bar_local[i], &x2_bar_local[0], &y2_bar_local[0], cx2_local, cy2_local, mesh2.numberOfNodesPerElement() );
+    //  if (check) {
+    //    one_in_two = true;
+    //  }
     //}
 
-    RealT cx1_local, cy1_local;
-    RealT cx2_local, cy2_local;
-    RealT cz = 0.; // not required, dummy argument
-    VertexAvgCentroid( &x1_bar_local[0], &y1_bar_local[0], nullptr, mesh1.numberOfNodesPerElement(), cx1_local, cy1_local, cz );
-    VertexAvgCentroid( &x2_bar_local[0], &y2_bar_local[0], nullptr, mesh2.numberOfNodesPerElement(), cx2_local, cy2_local, cz );
-
-    bool one_in_two = false;
-    for ( int i=0; i<mesh1.numberOfNodesPerElement(); ++i ) {
-      bool check = Point2DInFace( x1_bar_local[i], y1_bar_local[i], &x2_bar_local[0], &y2_bar_local[0], cx2_local, cy2_local, mesh2.numberOfNodesPerElement() );
-      if (check) {
-        one_in_two = true;
-      }
-    }
-
-    bool two_in_one = false;
-    for ( int i=0; i<mesh2.numberOfNodesPerElement(); ++i ) {
-      bool check = Point2DInFace( x2_bar_local[i], y2_bar_local[i], &x1_bar_local[0], &y1_bar_local[0], cx1_local, cy1_local, mesh1.numberOfNodesPerElement() );
-      if (check) {
-        two_in_one = true;
-      }
-    }
+    //bool two_in_one = false;
+    //for ( int i=0; i<mesh2.numberOfNodesPerElement(); ++i ) {
+    //  bool check = Point2DInFace( x2_bar_local[i], y2_bar_local[i], &x1_bar_local[0], &y1_bar_local[0], cx1_local, cy1_local, mesh1.numberOfNodesPerElement() );
+    //  if (check) {
+    //    two_in_one = true;
+    //  }
+    //}
 
     // as a proxy for a positive area of overlap, either one vertex from each face must lie in the other,
     // or multiple vertices from one face can lie in the other, while no vertices from the other lie in the first.
     // Condition for failure is if no vertices on either face lie inside the other
-    if (!one_in_two && !two_in_one) {
-      return false;
-    }
+    //if (!one_in_two && !two_in_one) {
+    //  return false;
+    //}
 
   // end dim == 3
   } else {

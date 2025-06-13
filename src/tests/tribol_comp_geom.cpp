@@ -85,11 +85,11 @@ TEST_F( CompGeomTest, common_plane_check )
   RealT y_max1 = 1.;
   RealT z_max1 = 1.05;
 
-  RealT x_min2 = -0.1;
-  RealT y_min2 = 0.1; //0.0001;
+  RealT x_min2 = 0.; //-0.1;
+  RealT y_min2 = 0.; //0.1; //0.0001;
   RealT z_min2 = 0.95;
-  RealT x_max2 = 0.9; //1.1;
-  RealT y_max2 = 1.1;
+  RealT x_max2 = 1.0; //0.9; //1.1;
+  RealT y_max2 = 1.0;//1.1;
   RealT z_max2 = 2.;
 
   this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,

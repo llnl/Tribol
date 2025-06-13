@@ -2041,7 +2041,7 @@ TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const 
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void checkPolyOverlap( const int num_nodes_1, const int num_nodes_2,
+TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_nodes_2,
                                           RealT* projLocX1, RealT* projLocY1, RealT* projLocX2,
                                           RealT* projLocY2, RealT& cx, RealT& cy, RealT& area, const int isym )
 {
