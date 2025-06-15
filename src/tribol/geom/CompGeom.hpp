@@ -15,7 +15,6 @@
 
 namespace tribol {
 
-
 //-----------------------------------------------------------------------------
 // Computational geometry base class 
 // (can be used to extend non-contact-plane classes)
