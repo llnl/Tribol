@@ -1247,8 +1247,8 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
 
       // check for negative projections meaning a node on one face crosses
       // the plane defined by the other face
-      interpenVertex[ja] = ( i == 0 && proj < 0 ) ? ja : -1;
-      interpenVertex[ja] = ( i == 1 && proj < 0 ) ? ja : interpenVertex[ja];
+      interpenVertex[ja] = ( i == 0 && proj < 0. ) ? ja : -1;
+      interpenVertex[ja] = ( i == 1 && proj < 0. ) ? ja : interpenVertex[ja];
 
       if (interpenVertex[ja] != -1) {
         ++k_otherside;
@@ -1701,7 +1701,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap2D( const MeshDa
 
       // check the projection to detect interpenetration and
       // mark the node id if true
-      if ( proj1 > 0.0 ) {
+      if ( proj1 < 0.0 ) {
         interId1 = i;
         ++k1;
       }
@@ -1745,10 +1745,6 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap2D( const MeshDa
     // determine magnitude of each vector
     RealT mag1 = magnitude( vix1, viy1 );
     RealT mag2 = magnitude( vix2, viy2 );
-
-    // the interpenetration overlap length is the minimum of the above
-    // vectors
-    m_area = ( mag1 <= mag2 ) ? mag1 : mag2;
 
     // determine the edge vertex that forms the overlap segment along
     // with the intersection point previously computed
@@ -1798,7 +1794,9 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap2D( const MeshDa
 
     // reproject the global intepen face vertices onto the new contact plane 
     ProjectPointToSegment( m_interpenG1X[0], m_interpenG1Y[0], m_nX, m_nY, m_cX, m_cY, m_interpenG1X[0], m_interpenG1Y[0] );
+    ProjectPointToSegment( m_interpenG1X[1], m_interpenG1Y[1], m_nX, m_nY, m_cX, m_cY, m_interpenG1X[1], m_interpenG1Y[1] );
     ProjectPointToSegment( m_interpenG2X[0], m_interpenG2Y[0], m_nX, m_nY, m_cX, m_cY, m_interpenG2X[0], m_interpenG2Y[0] );
+    ProjectPointToSegment( m_interpenG2X[1], m_interpenG2Y[1], m_nX, m_nY, m_cX, m_cY, m_interpenG2X[1], m_interpenG2Y[1] );
 
   } else if (m_fullOverlap) { // end if (!m_fullOverlap)
     
