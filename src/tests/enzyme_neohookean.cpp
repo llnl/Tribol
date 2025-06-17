@@ -8,7 +8,6 @@
 #include <limits>
 #include "tribol/common/Enzyme.hpp"
 
-
 class EnzymeNeohookeanTest : public testing::Test {
  protected:
   double F_all[27] = { 1.0, 0.5,  0.0,  0.0,  1.2,  0.1, 0.0,  0.0, 1.0, 1.1,  0.7,  0.1, 0.2, 1.4,
@@ -127,9 +126,8 @@ TEST_F( EnzymeNeohookeanTest, 2nd_deriv_finite_difference_vs_hand_fwd )
     double dW2_hand_fwd[81] = { 0.0 };
     second_deriv_fwd_FD( E_all + i * 9, mu, lambda, dW2_FD );
     second_deriv_hand_fwd( E_all + i * 9, mu, lambda, dW2_hand_fwd );
-    for(int j = 0; j < 9; ++j) {
-    EXPECT_NEAR( dW2_FD[j], dW2_hand_fwd[j], tol );
-  } 
+    for ( int j = 0; j < 9; ++j ) {
+      EXPECT_NEAR( dW2_FD[j], dW2_hand_fwd[j], tol );
+    }
   }
 }
-
