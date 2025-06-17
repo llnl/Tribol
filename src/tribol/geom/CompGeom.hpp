@@ -80,9 +80,6 @@ class ContactPlanePair : public CompGeomPair {
   RealT m_cY;  ///< Contact plane overlap centroid global y-coordinate
   RealT m_cZ;  ///< Contact plane overlap centroid global z-coordinate (zero out for 2D)
 
-  RealT m_overlapCX;  ///< Local x-coordinate of overlap centroid
-  RealT m_overlapCY;  ///< Local y-coordinate of overlap centroid
-
   RealT m_cXf1;  ///< Global x-coordinate of contact plane centroid projected to face 1
   RealT m_cYf1;  ///< Global y-coordinate of contact plane centroid projected to face 1
   RealT m_cZf1;  ///< Global z-coordinate of contact plane centroid projected to face 1

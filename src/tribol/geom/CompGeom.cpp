@@ -122,8 +122,6 @@ TRIBOL_HOST_DEVICE ContactPlanePair::ContactPlanePair( InterfacePair* pair, cons
       m_cX( 0.0 ),
       m_cY( 0.0 ),
       m_cZ( 0.0 ),
-      m_overlapCX( 0.0 ),
-      m_overlapCY( 0.0 ),
       m_cXf1( 0.0 ),
       m_cYf1( 0.0 ),
       m_cZf1( 0.0 ),
@@ -423,10 +421,6 @@ TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::computeOverlap3D( const RealT*
     return NO_OVERLAP;
   }
 
-  // compute the local vertex averaged centroid of overlapping polygon
-  RealT cZ;  // dummy z component for call to routine
-  VertexAvgCentroid( this->m_polyLocX, this->m_polyLocY, nullptr, this->m_numPolyVert, this->m_overlapCX, this->m_overlapCY, cZ );
-
   // handle the case where the actual polygon with connectivity
   // and computed vertex coordinates becomes degenerate due to
   // either position tolerances (segment-segment intersections)
@@ -447,6 +441,9 @@ TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::computeOverlap3D( const RealT*
 
     this->local2DToGlobalCoords( this->m_polyLocX[i], this->m_polyLocY[i], this->m_polyX[i], this->m_polyY[i], this->m_polyZ[i] );
   }
+
+  // compute the vertex averaged centroid of overlapping polygon
+  VertexAvgCentroid( this->m_polyX, this->m_polyY, this->m_polyZ, this->m_numPolyVert, this->m_cX, this->m_cY, this->m_cZ );
 
   // check polygonal vertex ordering with mortar plane normal
   PolyReorderWithNormal( this->m_polyX, this->m_polyY, this->m_polyZ, this->m_numPolyVert, this->m_nX, this->m_nY, this->m_nZ );
@@ -595,14 +592,13 @@ TRIBOL_HOST_DEVICE FaceGeomError AlignedMortarPlanePair::computeOverlap3D( const
   }
 
   // compute the local vertex averaged centroid of overlapping polygon
-  RealT cZ;  // dummy z component for call to routine
-  VertexAvgCentroid( this->m_polyLocX, this->m_polyLocY, nullptr, this->m_numPolyVert, this->m_overlapCX, this->m_overlapCY, cZ );
+  VertexAvgCentroid( this->m_polyX, this->m_polyY, this->m_polyZ, this->m_numPolyVert, this->m_cX, this->m_cY, this->m_cZ );
 
   m_gap = scalarGap;
   m_area = m2.getElementAreas()[element_id2];
 
   return NO_FACE_GEOM_ERROR;
-}
+} // end AlignedMortarPlanePair::computeOverlap3D()
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE FaceGeomError AlignedMortarPlanePair::computeOverlap2D( const MeshData::Viewer& TRIBOL_UNUSED_PARAM(m1),
@@ -614,6 +610,32 @@ TRIBOL_HOST_DEVICE FaceGeomError AlignedMortarPlanePair::computeOverlap2D( const
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void CommonPlanePair::resetPlanePointAndCentroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
 {
+  // we now have the current overlap; 
+  // For 3D only, recompute overlap centroid using area centroid calculation
+  // to be consistent with single integration point. This will serve as the
+  // point to project back to the faces to relocate the common plane
+  
+  if ( m_dim == 3 ) {
+    // construct array of polygon overlap vertex coordinates
+    constexpr int max_dim = 3;
+    constexpr int max_nodes_per_overlap = 8;
+    RealT xVert[ max_dim * max_nodes_per_overlap ];
+
+    for ( IndexT j{ 0 }; j < this->m_numPolyVert; ++j ) {
+      xVert[m_dim * j] = this->m_polyX[j];
+      xVert[m_dim * j + 1] = this->m_polyY[j];
+      xVert[m_dim * j + 2] = this->m_polyZ[j];
+    }
+   
+    PolyAreaCentroid( &xVert[0], this->m_dim, this->m_numPolyVert, this->m_cX, this->m_cY, this->m_cZ );
+
+  } else {
+    // compute the new contact plane overlap centroid (segment point)
+    this->m_cX = 0.5 * ( this->m_polyX[0] + this->m_polyX[1] );
+    this->m_cY = 0.5 * ( this->m_polyY[0] + this->m_polyY[1] );
+    this->m_cZ = 0.;
+  }
+
   RealT radius1 = m1.getFaceRadius()[this->getCpElementId1()];
   RealT radius2 = m2.getFaceRadius()[this->getCpElementId2()];
   RealT radius = (radius1 > radius2) ? radius1 : radius2;
@@ -942,19 +964,11 @@ TRIBOL_HOST_DEVICE void CommonPlanePair::centroidGap( const MeshData::Viewer& m1
   RealT yc2 = 0.;
   RealT zc2 = 0.;
 
-  RealT xcg = 0.;
-  RealT ycg = 0.;
+  RealT xcg = m_cX;
+  RealT ycg = m_cY;
   RealT zcg = 0.;
-
-  // in 3D, first project the projected area of overlap's centroid in local
-  // coordinates to global coordinates
   if (m_dim == 3) {
-    local2DToGlobalCoords( m_overlapCX, m_overlapCY, xcg, ycg, zcg );
-  }
-  else {
-    xcg = m_cX;
-    ycg = m_cY;
-    zcg = 0.;
+    zcg = m_cZ;
   }
 
   // find where the overlap centroid (plane point) intersects each face
@@ -1404,10 +1418,6 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
     return DEGENERATE_OVERLAP;
   }
 
-  // compute the local vertex averaged centroid of overlapping polygon
-  RealT cZ;  // dummy z component for call to routine
-  VertexAvgCentroid( m_polyLocX, m_polyLocY, nullptr, m_numPolyVert, m_overlapCX, m_overlapCY, cZ );
-
   // Transform local vertex coordinates to global coordinates for the
   // current projection of the polygonal overlap
   for ( int i = 0; i < m_numPolyVert; ++i ) {
@@ -1430,11 +1440,9 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
   m_numInterpenPoly2Vert = numV[1];
 
   // Now that all local-to-global projections have occurred,
-  // relocate the contact plane based on the most up-to-date
-  // contact plane centroid and recompute the gap. For interpenOverlap,
-  // the contact plane is updated and this just amounts to a gap
-  // computation. For the fullOverlap case, this may relocate
-  // the contact plane in space.
+  // relocate the contact plane using the area centroid calculation,
+  // then compute the gap, and then locate the area centroid equidistant
+  // between each face. 
   //
   // Warning:
   // Make sure that any local to global transformations have
@@ -1499,7 +1507,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::projectPointsAndComputeOverlap
   RealT cfy2_proj[max_nodes_per_overlap];
   RealT cfz2_proj[max_nodes_per_overlap];
 
-  // project overlap-calc face coordinates to contact plane
+  // project overlap-calc face coordinates to contact plane as currently located
   for ( int i = 0; i < num_vert_1; ++i ) {
     ProjectPointToPlane( fx1[i], fy1[i], fz1[i], m_nX, m_nY, m_nZ, m_cX, m_cY, m_cZ, cfx1_proj[i], cfy1_proj[i],
                          cfz1_proj[i] );
@@ -1751,11 +1759,6 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap2D( const MeshDa
       return NO_OVERLAP;
     }
 
-    // compute the new contact plane overlap centroid (segment point)
-    m_cX = 0.5 * ( m_polyX[0] + m_polyX[1] );
-    m_cY = 0.5 * ( m_polyY[0] + m_polyY[1] );
-    m_cZ = 0.;
-
     this->resetPlanePointAndCentroidGap( m1, m2 );
 
     // reproject the overlap points to the new common plane
@@ -1785,11 +1788,6 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap2D( const MeshDa
     if (m_area < m_areaMin) {
       return NO_OVERLAP;
     }
-
-    // compute the new contact plane overlap centroid (segment point)
-    m_cX = 0.5 * ( m_polyX[0] + m_polyX[1] );
-    m_cY = 0.5 * ( m_polyY[0] + m_polyY[1] );
-    m_cZ = 0.;
 
     this->resetPlanePointAndCentroidGap( m1, m2 );
 
