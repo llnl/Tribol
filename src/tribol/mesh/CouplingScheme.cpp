@@ -1089,9 +1089,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 
   ArrayT<int, 1, MemorySpace::Host> planes_ct_host( planes_ct_data );
   // shrink array to actual number of contact planes
-  std::cout << "Before resizeActivePairs() with count: " << planes_ct_host[0] << std::endl;
   m_cg_pairs.resizeActivePairs( contact_method, planes_ct_host[0] );
-  std::cout << "After resizeActivePairs()" << std::endl;
 
   // Here, the pair_err is checked, which detects an issue with a face-pair geometry
   // (which has been skipped over for contact eligibility) and reports this warning.
@@ -1115,24 +1113,18 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // normal and tangential directions. This function loops
   // over the pairs on the coupling scheme and applies the
   // appropriate physics in the normal and tangential directions.
-  std::cout << "Before ApplyInterfacePhysics()" << std::endl;
   int err = ApplyInterfacePhysics( this, cycle, t );
-  std::cout << "After ApplyInterfacePhysics()" << std::endl;
 
   SLIC_WARNING_IF( err != 0, "CouplingScheme::apply(): error in ApplyInterfacePhysics for "
                                  << "coupling scheme, " << this->m_id << "." );
 
   // compute Tribol timestep vote on the coupling scheme
   if ( err == 0 && getNumActivePairs() > 0 ) {
-    std::cout << "Before computeTimeStep()" << std::endl;
     computeTimeStep( dt );
-    std::cout << "After computeTimeStep()" << std::endl;
   }
 
   // write output
-  std::cout << "Before writeInterfaceOutput()" << std::endl;
   writeInterfaceOutput( m_output_directory, params.vis_type, cycle, t );
-  std::cout << "After writeInterfaceOutput()" << std::endl;
 
   if ( err != 0 ) {
     return 1;
@@ -1160,6 +1152,9 @@ bool CouplingScheme::init()
 #ifdef BUILD_REDECOMP
     if ( this->hasMfemData() && this->getMfemMeshData()->GetLORFactor() > 1 ) {
       this->m_effective_binning_proximity_scale *= static_cast<RealT>( this->getMfemMeshData()->GetLORFactor() );
+      // set the parameters binning proximity scale to be consistent with the effective. 
+      // TODO consolidate use later
+      this->getParameters().binning_proximity_scale *= static_cast<RealT>( this->getMfemMeshData()->GetLORFactor() );
     }
 #endif
 

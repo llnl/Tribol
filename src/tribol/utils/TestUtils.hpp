@@ -167,6 +167,34 @@ class TestMesh {
                             RealT thetaMortar, RealT thetaNonmortar );
 
   /*!
+   * \brief rotates the coordinates of one of the mesh blocks
+   *
+   * \param [in] mesh_id the id of the block to be rotated
+   * \param [in] theta_x rotation in degrees about the x-axis
+   * \param [in] theta_y rotation in degrees about the y-axis
+   * \param [in] theta_z rotation in degrees about the z-axis
+   *
+   * \pre the contact mesh must be setup prior to this call
+   *
+   * \note mortar is mesh id 0, and nonmortar is mesh id 1
+   */
+  void rotateContactMesh( const int mesh_id, RealT theta_x = 0., RealT theta_y = 0., RealT theta_z = 0. );
+
+  /*!
+   * \brief translates the coordinates of one of the mesh blocks
+   *
+   * \param [in] mesh_id the id of the block to be rotated
+   * \param [in] shift_x rotation in degrees about the x-axis
+   * \param [in] shift_y rotation in degrees about the y-axis
+   * \param [in] shift_z rotation in degrees about the z-axis
+   *
+   * \pre the contact mesh must be setup prior to this call
+   *
+   * \note mortar is mesh id 0, and nonmortar is mesh id 1
+   */
+  void translateContactMesh( const int mesh_id, RealT shift_x = 0., RealT shift_y = 0., RealT shift_z = 0. );
+
+  /*!
    * \brief sets up an mfem mesh object representation of the original hex or tet test mesh
    *
    *

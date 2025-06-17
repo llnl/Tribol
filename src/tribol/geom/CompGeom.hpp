@@ -453,7 +453,7 @@ class CommonPlanePair : public ContactPlanePair {
    * 
    * \note this routine computes and stores the gap on the CommonPlane object
    */
-  void centroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT scale );
+  TRIBOL_HOST_DEVICE void centroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT scale );
 
   /*!
    *

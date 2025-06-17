@@ -15,6 +15,9 @@
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/geom/CompGeom.hpp"
 
+#define _USE_MATH_DEFINES
+#include <cmath>  // std::abs, std::cos, std::sin
+
 // Axom includes
 #include "axom/slic.hpp"
 
@@ -58,38 +61,288 @@ class CompGeomTest : public ::testing::Test {
  protected:
 };
 
-TEST_F( CompGeomTest, common_plane_perfect_conforming_full_overlap )
+//TEST_F( CompGeomTest, common_plane_single_element_full_overlap_check_1 )
+//{
+//  // mesh bounding box with 0.1 interpenetration gap. The contact faces
+//  // just have a y-shift and overlap will have nodes that lie on edge 
+//  // segments of the opposing face
+//  int nMortarElems = 1;
+//  int nElemsXM = nMortarElems;
+//  int nElemsYM = 1;
+//  int nElemsZM = nMortarElems;
+//
+//  int nNonmortarElems = 1;
+//  int nElemsXS = nNonmortarElems;
+//  int nElemsYS = 1;
+//  int nElemsZS = nNonmortarElems;
+//
+//  int userSpecifiedNumOverlaps = 1;
+//
+//  RealT x_min1 = 0.;
+//  RealT y_min1 = 0.;
+//  RealT z_min1 = 0.;
+//  RealT x_max1 = 1.;
+//  RealT y_max1 = 1.;
+//  RealT z_max1 = 1.05;
+//
+//  RealT x_min2 = 0.;
+//  RealT y_min2 = 0.5; // perform 0.5 shift in y direction
+//  RealT z_min2 = 0.95;
+//  RealT x_max2 = 1.0;
+//  RealT y_max2 = y_min2 + 1.0;
+//  RealT z_max2 = 2.;
+//
+//  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+//                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+//                                    0. );
+//
+//  // call tribol setup and update
+//  tribol::TestControlParameters parameters;  // struct does not hold info right now
+//  parameters.penalty_ratio = false;
+//  parameters.const_penalty = 1.0;
+//
+//  int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
+//      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, true, parameters );
+//
+//  EXPECT_EQ( test_mesh_update_err, 0 );
+//
+//  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+//
+//  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+//
+//  EXPECT_EQ( userSpecifiedNumOverlaps, couplingScheme->getNumActivePairs() );
+//
+//  auto& comp_geom= couplingScheme->getCompGeom();
+//  auto& plane = comp_geom.getCommonPlane( 0 );
+//  
+//  EXPECT_EQ( plane.m_gap, -(z_max1 - z_min2) );
+//  
+//  RealT area_diff = std::abs(plane.m_area - 0.5);
+//  EXPECT_LE( area_diff, 1.e-10 );
+//
+//  tribol::finalize();
+//}
+//
+//TEST_F( CompGeomTest, common_plane_single_element_full_overlap_check_2 )
+//{
+//  // mesh bounding box with 0.1 interpenetration gap. The faces will
+//  // have an x and y shift
+//  int nMortarElems = 1;
+//  int nElemsXM = nMortarElems;
+//  int nElemsYM = 1;
+//  int nElemsZM = nMortarElems;
+//
+//  int nNonmortarElems = 1;
+//  int nElemsXS = nNonmortarElems;
+//  int nElemsYS = 1;
+//  int nElemsZS = nNonmortarElems;
+//
+//  int userSpecifiedNumOverlaps = 1;
+//
+//  RealT x_min1 = 0.;
+//  RealT y_min1 = 0.;
+//  RealT z_min1 = 0.;
+//  RealT x_max1 = 1.;
+//  RealT y_max1 = 1.;
+//  RealT z_max1 = 1.05;
+//
+//  RealT x_min2 = -0.9; // x-shift
+//  RealT y_min2 = -0.9; // y-shift 
+//  RealT z_min2 = 0.95;
+//  RealT x_max2 = 1.0 + x_min2;
+//  RealT y_max2 = y_min2 + 1.0;
+//  RealT z_max2 = 2.;
+//
+//  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+//                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+//                                    0. );
+//
+//  // call tribol setup and update
+//  tribol::TestControlParameters parameters;  // struct does not hold info right now
+//  parameters.penalty_ratio = false;
+//  parameters.const_penalty = 1.0;
+//
+//  int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
+//      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, true, parameters );
+//
+//  EXPECT_EQ( test_mesh_update_err, 0 );
+//
+//  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+//
+//  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+//
+//  EXPECT_EQ( userSpecifiedNumOverlaps, couplingScheme->getNumActivePairs() );
+//
+//  auto& comp_geom= couplingScheme->getCompGeom();
+//  auto& plane = comp_geom.getCommonPlane( 0 );
+//  
+//  EXPECT_EQ( plane.m_gap, -(z_max1 - z_min2) );
+//
+//  RealT area_diff = std::abs( plane.m_area - (x_max2 - x_min1) * (y_max2 - y_min1) );
+//  EXPECT_LE( area_diff, 1.e-10 );
+//
+//  tribol::finalize();
+//}
+//
+//TEST_F( CompGeomTest, common_plane_single_element_full_separation_check_1 )
+//{
+//  // mesh bounding box with 0.1 separation gap.
+//  int nMortarElems = 1;
+//  int nElemsXM = nMortarElems;
+//  int nElemsYM = 1;
+//  int nElemsZM = nMortarElems;
+//
+//  int nNonmortarElems = 1;
+//  int nElemsXS = nNonmortarElems;
+//  int nElemsYS = 1;
+//  int nElemsZS = nNonmortarElems;
+//
+//  int userSpecifiedNumOverlaps = 1;
+//
+//  RealT x_min1 = 0.;
+//  RealT y_min1 = 0.;
+//  RealT z_min1 = 0.;
+//  RealT x_max1 = 1.;
+//  RealT y_max1 = 1.;
+//  RealT z_max1 = 1.0;
+//
+//  RealT x_min2 = 0.;
+//  RealT y_min2 = 0.; 
+//  RealT z_min2 = 1.1;
+//  RealT x_max2 = 1.0;
+//  RealT y_max2 = 1.0;
+//  RealT z_max2 = 2.1;
+//
+//  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+//                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+//                                    0. );
+//
+//  // call tribol setup and update
+//  tribol::TestControlParameters parameters;  // struct does not hold info right now
+//  parameters.penalty_ratio = false;
+//  parameters.const_penalty = 1.0;
+//
+//  int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
+//      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, true, parameters );
+//
+//  EXPECT_EQ( test_mesh_update_err, 0 );
+//
+//  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+//
+//  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+//
+//  EXPECT_EQ( userSpecifiedNumOverlaps, couplingScheme->getNumActivePairs() );
+//
+//  auto& comp_geom= couplingScheme->getCompGeom();
+//  auto& plane = comp_geom.getCommonPlane( 0 );
+//  
+//  EXPECT_EQ( plane.m_gap, -(z_max1 - z_min2) );
+//
+//  RealT area_diff = std::abs( plane.m_area - (x_max2 - x_min1) * (y_max2 - y_min1) );
+//  EXPECT_LE( area_diff, 1.e-10 );
+//
+//  tribol::finalize();
+//}
+//
+//TEST_F( CompGeomTest, common_plane_single_element_full_separation_check_2 )
+//{
+//  // mesh bounding box with 0.1 separation gap. The faces will
+//  // have an x and y shift
+//  int nMortarElems = 1;
+//  int nElemsXM = nMortarElems;
+//  int nElemsYM = 1;
+//  int nElemsZM = nMortarElems;
+//
+//  int nNonmortarElems = 1;
+//  int nElemsXS = nNonmortarElems;
+//  int nElemsYS = 1;
+//  int nElemsZS = nNonmortarElems;
+//
+//  int userSpecifiedNumOverlaps = 1;
+//
+//  RealT x_min1 = 0.;
+//  RealT y_min1 = 0.;
+//  RealT z_min1 = 0.;
+//  RealT x_max1 = 1.;
+//  RealT y_max1 = 1.;
+//  RealT z_max1 = 1.0;
+//
+//  RealT x_min2 = -0.9; // x-shift
+//  RealT y_min2 = -0.9; // y-shift 
+//  RealT z_min2 = 1.1;
+//  RealT x_max2 = 1.0 + x_min2;
+//  RealT y_max2 = y_min2 + 1.0;
+//  RealT z_max2 = 2.1;
+//
+//  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+//                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+//                                    0. );
+//
+//  // call tribol setup and update
+//  tribol::TestControlParameters parameters;  // struct does not hold info right now
+//  parameters.penalty_ratio = false;
+//  parameters.const_penalty = 1.0;
+//
+//  int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
+//      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, true, parameters );
+//
+//  EXPECT_EQ( test_mesh_update_err, 0 );
+//
+//  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+//
+//  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+//
+//  EXPECT_EQ( userSpecifiedNumOverlaps, couplingScheme->getNumActivePairs() );
+//
+//  auto& comp_geom= couplingScheme->getCompGeom();
+//  auto& plane = comp_geom.getCommonPlane( 0 );
+//  
+//  EXPECT_EQ( plane.m_gap, -(z_max1 - z_min2) );
+//
+//  RealT area_diff = std::abs( plane.m_area - (x_max2 - x_min1) * (y_max2 - y_min1) );
+//  EXPECT_LE( area_diff, 1.e-10 );
+//
+//  tribol::finalize();
+//}
+
+TEST_F( CompGeomTest, common_plane_single_element_interpen_check_1 )
 {
-  int nMortarElems = 3;
+  int nMortarElems = 1;
   int nElemsXM = nMortarElems;
-  int nElemsYM = 3;
+  int nElemsYM = 1;
   int nElemsZM = nMortarElems;
 
-  int nNonmortarElems = 3;
+  int nNonmortarElems = 1;
   int nElemsXS = nNonmortarElems;
-  int nElemsYS = 3;
+  int nElemsYS = 1;
   int nElemsZS = nNonmortarElems;
 
-  int userSpecifiedNumOverlaps = 9;
+  int userSpecifiedNumOverlaps = 1;
 
-  // mesh bounding box with 0.1 interpenetration gap
   RealT x_min1 = 0.;
   RealT y_min1 = 0.;
   RealT z_min1 = 0.;
   RealT x_max1 = 1.;
   RealT y_max1 = 1.;
-  RealT z_max1 = 1.05;
+  RealT z_max1 = 1.0;
 
-  RealT x_min2 = 0.; //-0.1;
-  RealT y_min2 = 0.; //0.1; //0.0001;
-  RealT z_min2 = 0.95;
-  RealT x_max2 = 1.0; //0.9; //1.1;
-  RealT y_max2 = 1.0;//1.1;
-  RealT z_max2 = 2.;
+  RealT x_min2 = 0.;
+  RealT y_min2 = 0.; 
+  RealT z_min2 = 1.0;
+  RealT x_max2 = 1.0;
+  RealT y_max2 = 1.0;
+  RealT z_max2 = 2.1;
 
   this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
                                     nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
                                     0. );
+  
+  RealT theta_y = 45.;
+  m_mesh.rotateContactMesh( 0, 0., theta_y, 0. );
+
+  RealT shiftx = ( 0.7071 - 0.5 ) + 0.5 / 1.41421356;
+  RealT shiftz = ( 1.0 - 0.7071 ) + 0.5 / 1.41421356;
+  m_mesh.translateContactMesh( 1, shiftx, 0, -shiftz );
 
   // call tribol setup and update
   tribol::TestControlParameters parameters;  // struct does not hold info right now
@@ -107,60 +360,131 @@ TEST_F( CompGeomTest, common_plane_perfect_conforming_full_overlap )
 
   EXPECT_EQ( userSpecifiedNumOverlaps, couplingScheme->getNumActivePairs() );
 
-  tribol::finalize();
-}
+  auto& comp_geom= couplingScheme->getCompGeom();
+  auto& plane = comp_geom.getCommonPlane( 0 );
 
-TEST_F( CompGeomTest, common_plane_xy_shift_full_overlap )
-{
-  int nMortarElems = 3;
-  int nElemsXM = nMortarElems;
-  int nElemsYM = 3;
-  int nElemsZM = nMortarElems;
+  std::cout << "overlap area: " << plane.m_area << std::endl;;
 
-  int nNonmortarElems = 3;
-  int nElemsXS = nNonmortarElems;
-  int nElemsYS = 3;
-  int nElemsZS = nNonmortarElems;
+  RealT hypotenuse = 0.5;
+  RealT overlap_gap_point = 0.5 * hypotenuse * std::cos(0.5*theta_y * M_PI / 180);
 
-  int userSpecifiedNumOverlaps = 25;
+  std::cout << "overlap_gap_point: " << overlap_gap_point << std::endl;
+  std::cout << "2x overlap_gap_point: " << 2*overlap_gap_point << std::endl;
+  RealT gap_computed = -2. * overlap_gap_point * std::tan(0.5*theta_y * M_PI / 180);
+  std::cout << "gap_computed: " << gap_computed << std::endl;
+  std::cout << "plane.m_gap: " << plane.m_gap << std::endl;
+  RealT gap_diff = std::abs(plane.m_gap - gap_computed);
+  EXPECT_LE( gap_diff, 1.e-5 );
 
-  // mesh bounding box with 0.1 interpenetration gap
-  RealT x_min1 = 0.;
-  RealT y_min1 = 0.;
-  RealT z_min1 = 0.;
-  RealT x_max1 = 1.;
-  RealT y_max1 = 1.;
-  RealT z_max1 = 1.05;
-
-  RealT x_min2 = -0.1;
-  RealT y_min2 = 0.0001;
-  RealT z_min2 = 0.95;
-  RealT x_max2 = 0.9;
-  RealT y_max2 = 1.0001;
-  RealT z_max2 = 2.;
-
-  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
-                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
-                                    0. );
-
-  // call tribol setup and update
-  tribol::TestControlParameters parameters;  // struct does not hold info right now
-  parameters.penalty_ratio = false;
-  parameters.const_penalty = 1.0;
-
-  int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
-      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, true, parameters );
-
-  EXPECT_EQ( test_mesh_update_err, 0 );
-
-  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
-
-  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
-
-  EXPECT_EQ( userSpecifiedNumOverlaps, couplingScheme->getNumActivePairs() );
+  RealT area_diff = std::abs( plane.m_area - 2.*overlap_gap_point );
+  EXPECT_LE( area_diff, 1.e-5 );
 
   tribol::finalize();
 }
+
+//TEST_F( CompGeomTest, common_plane_perfect_conforming_full_overlap )
+//{
+//  int nMortarElems = 3;
+//  int nElemsXM = nMortarElems;
+//  int nElemsYM = 3;
+//  int nElemsZM = nMortarElems;
+//
+//  int nNonmortarElems = 3;
+//  int nElemsXS = nNonmortarElems;
+//  int nElemsYS = 3;
+//  int nElemsZS = nNonmortarElems;
+//
+//  int userSpecifiedNumOverlaps = 9;
+//
+//  // mesh bounding box with 0.1 interpenetration gap
+//  RealT x_min1 = 0.;
+//  RealT y_min1 = 0.;
+//  RealT z_min1 = 0.;
+//  RealT x_max1 = 1.;
+//  RealT y_max1 = 1.;
+//  RealT z_max1 = 1.05;
+//
+//  RealT x_min2 = 0.;
+//  RealT y_min2 = 0.;
+//  RealT z_min2 = 0.95;
+//  RealT x_max2 = 1.0;
+//  RealT y_max2 = 1.0;
+//  RealT z_max2 = 2.;
+//
+//  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+//                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+//                                    0. );
+//
+//  // call tribol setup and update
+//  tribol::TestControlParameters parameters;  // struct does not hold info right now
+//  parameters.penalty_ratio = false;
+//  parameters.const_penalty = 1.0;
+//
+//  int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
+//      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, true, parameters );
+//
+//  EXPECT_EQ( test_mesh_update_err, 0 );
+//
+//  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+//
+//  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+//
+//  EXPECT_EQ( userSpecifiedNumOverlaps, couplingScheme->getNumActivePairs() );
+//
+//  tribol::finalize();
+//}
+//
+//TEST_F( CompGeomTest, common_plane_xy_shift_full_overlap )
+//{
+//  int nMortarElems = 3;
+//  int nElemsXM = nMortarElems;
+//  int nElemsYM = 3;
+//  int nElemsZM = nMortarElems;
+//
+//  int nNonmortarElems = 3;
+//  int nElemsXS = nNonmortarElems;
+//  int nElemsYS = 3;
+//  int nElemsZS = nNonmortarElems;
+//
+//  int userSpecifiedNumOverlaps = 25;
+//
+//  // mesh bounding box with 0.1 interpenetration gap
+//  RealT x_min1 = 0.;
+//  RealT y_min1 = 0.;
+//  RealT z_min1 = 0.;
+//  RealT x_max1 = 1.;
+//  RealT y_max1 = 1.;
+//  RealT z_max1 = 1.05;
+//
+//  RealT x_min2 = -0.1;
+//  RealT y_min2 = 0.0001;
+//  RealT z_min2 = 0.95;
+//  RealT x_max2 = 0.9;
+//  RealT y_max2 = 1.0001;
+//  RealT z_max2 = 2.;
+//
+//  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+//                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+//                                    0. );
+//
+//  // call tribol setup and update
+//  tribol::TestControlParameters parameters;  // struct does not hold info right now
+//  parameters.penalty_ratio = false;
+//  parameters.const_penalty = 1.0;
+//
+//  int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
+//      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, true, parameters );
+//
+//  EXPECT_EQ( test_mesh_update_err, 0 );
+//
+//  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+//
+//  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+//
+//  EXPECT_EQ( userSpecifiedNumOverlaps, couplingScheme->getNumActivePairs() );
+//
+//  tribol::finalize();
+//}
 
 //TEST_F( CompGeomTest, single_mortar_check )
 //{
