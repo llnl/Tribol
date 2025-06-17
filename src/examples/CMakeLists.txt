@@ -8,6 +8,7 @@ set( contact_examples
      common_plane_gpu.cpp
      common_plane.cpp
      mortar_lm_patch_test.cpp
+     neohookean_timing.cpp
      )
 
 
