@@ -699,9 +699,9 @@ TRIBOL_HOST_DEVICE void PolyReorderWithNormal( RealT* const x, RealT* const y, R
  * \param[in] nX x-component of plane's unit normal
  * \param[in] nY y-component of plane's unit normal
  * \param[in] nZ z-component of plane's unit normal
- * \param[in,out] x x-coordainte of intersection point
+ * \param[in,out] x x-coordinate of intersection point
  * \param[in,out] y y-coordinate of intersection point
- * \param[in,out] z z-coordainte of intersection point
+ * \param[in,out] z z-coordinate of intersection point
  * \param[in,out] inPlane true if segment lies in the plane
  *
  */

@@ -610,11 +610,9 @@ TRIBOL_HOST_DEVICE FaceGeomError AlignedMortarPlanePair::computeOverlap2D( const
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void CommonPlanePair::resetPlanePointAndCentroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
 {
-  // we now have the current overlap; 
-  // For 3D only, recompute overlap centroid using area centroid calculation
-  // to be consistent with single integration point. This will serve as the
-  // point to project back to the faces to relocate the common plane
   
+  // reset the common plane centroid based on the overlapping polygon vertices.
+  // In 3D use the area centroid, in 2D use the vertex avg. centroid
   if ( m_dim == 3 ) {
     // construct array of polygon overlap vertex coordinates
     constexpr int max_dim = 3;
@@ -643,12 +641,15 @@ TRIBOL_HOST_DEVICE void CommonPlanePair::resetPlanePointAndCentroidGap( const Me
   // scale the centroidGap projections using the updated effective binning scale
   // times the max face radius premultiplied by a safety factor to ensure
   // we find the overlap-centroid-to-face intersection
-  RealT fs = 10.;
+  RealT fs = 1.;
   RealT scale = fs * this->m_params.binning_proximity_scale * radius;
 
+  // compute the gap at the overlap centroid as projected onto each face
+  // in the direction of the common plane normal
   this->centroidGap( m1, m2, scale);
 
-  // reset point-location of common plane as average of overlap centroid projected to each face
+  // reset point-location of common plane along the direction of the common plane normal
+  // as average of overlap centroid projected to each face
   m_cX = 0.5 * ( m_cXf1 + m_cXf2 );
   m_cY = 0.5 * ( m_cYf1 + m_cYf2 );
   m_cZ = 0.5 * ( m_cZf1 + m_cZf2 );
@@ -975,7 +976,7 @@ TRIBOL_HOST_DEVICE void CommonPlanePair::centroidGap( const MeshData::Viewer& m1
 
   // set the line segment's first vertex at the contact plane centroid scaled
   // in the direction opposite the contact plane normal
-  RealT xA = xcg + m_nX * scale;
+  RealT xA = xcg + m_nX * scale; // flipped the sign
   RealT yA = ycg + m_nY * scale;
   RealT zA = 0.;
 
@@ -1020,15 +1021,20 @@ TRIBOL_HOST_DEVICE void CommonPlanePair::centroidGap( const MeshData::Viewer& m1
     cx2z = cx2[2];
   }
 
+  std::cout << "BEFORE LINEPLANEINTERSECTION call 1 in centroidGap" << std::endl;
   bool intersect1 = LinePlaneIntersection( xA, yA, zA, xB, yB, zB,
                                            cx1[0], cx1[1], cx1z,
                                            fn1[0], fn1[1], fn1z,
                                            xc1, yc1, zc1, inPlane );
 
+  std::cout << "BEFORE LINEPLANEINTERSECTION call 2 in centroidGap" << std::endl;
   bool intersect2 = LinePlaneIntersection( xA, yA, zA, xB, yB, zB,
                                            cx2[0], cx2[1], cx2z,
                                            fn2[0], fn2[1], fn2z,
                                            xc2, yc2, zc2, inPlane );
+
+  std::cout << "face 1 centroid in gap calc: " << cx1[0] << ", " << cx1[1] << ", " << cx1[2] << std::endl;
+  std::cout << "face 2 centroid in gap calc: " << cx2[0] << ", " << cx2[1] << ", " << cx2[2] << std::endl;
 
   TRIBOL_UNUSED_VAR( intersect1 );  // We don't currently use these bool variabeles
   TRIBOL_UNUSED_VAR( intersect2 );  // but the above function calls modify some parameters
@@ -1449,12 +1455,16 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
   // occurred prior to this call.
   this->resetPlanePointAndCentroidGap( m1, m2 );
     
+  for (int i=0; i<m_numPolyVert; ++i) {
+    std::cout << "overlap vertices: " << m_polyX[i] << ", " << m_polyY[i] << ", " << m_polyZ[i] << std::endl;
+  }
+  
   // REPROJECT the overlapping polygon onto the new contact plane
   for ( int i = 0; i < m_numPolyVert; ++i ) {
     ProjectPointToPlane( m_polyX[i], m_polyY[i], m_polyZ[i], m_nX, m_nY, m_nZ, m_cX, m_cY,
                          m_cZ, m_polyX[i], m_polyY[i], m_polyZ[i] );
   }
-  
+
   // REPROJECT the global coordinates of the interpenetrating polygon as projection onto the common plane
   for ( int i = 0; i < m_numInterpenPoly1Vert; ++i ) {
     ProjectPointToPlane( m_interpenG1X[i], m_interpenG1Y[i], m_interpenG1Z[i], m_nX, m_nY, m_nZ, m_cX, m_cY,
