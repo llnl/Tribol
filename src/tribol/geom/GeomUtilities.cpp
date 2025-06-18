@@ -1855,17 +1855,11 @@ TRIBOL_HOST_DEVICE bool LinePlaneIntersection( const RealT xA, const RealT yA, c
   // between 0 and 1, inclusive
   RealT t = prodV / prod;
 
-  std::cout << "prodV, prod, t: " << prodV << ", " << prod << ", " << t << std::endl;
-
   if ( t >= 0 && t <= 1 ) {
     x = xA + lambdaX * t;
     y = yA + lambdaY * t;
     z = zA + lambdaZ * t;
     inPlane = false;
-    std::cout << "xA, yA, zA: " << xA << ", " << yA << ", " << zA << std::endl;
-    std::cout << "lambda: " << lambdaX << ", " << lambdaY << ", " << lambdaZ << std::endl;
-    std::cout << "x,y,z: " << x << ", " << y << ", " << z << std::endl;
-
     return true;
   } else {
     x = 0.;

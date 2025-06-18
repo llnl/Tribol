@@ -1021,20 +1021,15 @@ TRIBOL_HOST_DEVICE void CommonPlanePair::centroidGap( const MeshData::Viewer& m1
     cx2z = cx2[2];
   }
 
-  std::cout << "BEFORE LINEPLANEINTERSECTION call 1 in centroidGap" << std::endl;
   bool intersect1 = LinePlaneIntersection( xA, yA, zA, xB, yB, zB,
                                            cx1[0], cx1[1], cx1z,
                                            fn1[0], fn1[1], fn1z,
                                            xc1, yc1, zc1, inPlane );
 
-  std::cout << "BEFORE LINEPLANEINTERSECTION call 2 in centroidGap" << std::endl;
   bool intersect2 = LinePlaneIntersection( xA, yA, zA, xB, yB, zB,
                                            cx2[0], cx2[1], cx2z,
                                            fn2[0], fn2[1], fn2z,
                                            xc2, yc2, zc2, inPlane );
-
-  std::cout << "face 1 centroid in gap calc: " << cx1[0] << ", " << cx1[1] << ", " << cx1[2] << std::endl;
-  std::cout << "face 2 centroid in gap calc: " << cx2[0] << ", " << cx2[1] << ", " << cx2[2] << std::endl;
 
   TRIBOL_UNUSED_VAR( intersect1 );  // We don't currently use these bool variabeles
   TRIBOL_UNUSED_VAR( intersect2 );  // but the above function calls modify some parameters
