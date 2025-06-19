@@ -228,36 +228,6 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     {
       return false;
     }
-
-    //RealT cx1_local, cy1_local;
-    //RealT cx2_local, cy2_local;
-    //RealT cz = 0.; // not required, dummy argument
-    //VertexAvgCentroid( &x1_bar_local[0], &y1_bar_local[0], nullptr, mesh1.numberOfNodesPerElement(), cx1_local, cy1_local, cz );
-    //VertexAvgCentroid( &x2_bar_local[0], &y2_bar_local[0], nullptr, mesh2.numberOfNodesPerElement(), cx2_local, cy2_local, cz );
-
-    //bool one_in_two = false;
-    //for ( int i=0; i<mesh1.numberOfNodesPerElement(); ++i ) {
-    //  bool check = Point2DInFace( x1_bar_local[i], y1_bar_local[i], &x2_bar_local[0], &y2_bar_local[0], cx2_local, cy2_local, mesh2.numberOfNodesPerElement() );
-    //  if (check) {
-    //    one_in_two = true;
-    //  }
-    //}
-
-    //bool two_in_one = false;
-    //for ( int i=0; i<mesh2.numberOfNodesPerElement(); ++i ) {
-    //  bool check = Point2DInFace( x2_bar_local[i], y2_bar_local[i], &x1_bar_local[0], &y1_bar_local[0], cx1_local, cy1_local, mesh1.numberOfNodesPerElement() );
-    //  if (check) {
-    //    two_in_one = true;
-    //  }
-    //}
-
-    // as a proxy for a positive area of overlap, either one vertex from each face must lie in the other,
-    // or multiple vertices from one face can lie in the other, while no vertices from the other lie in the first.
-    // Condition for failure is if no vertices on either face lie inside the other
-    //if (!one_in_two && !two_in_one) {
-    //  return false;
-    //}
-
   // end dim == 3
   } else {
 
