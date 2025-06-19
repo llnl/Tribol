@@ -687,7 +687,8 @@ void TestMesh::setupContactMeshTet( int numElemsX1, int numElemsY1, int numElems
 
 }  // end setupContactMeshTet()
 //------------------------------------------------------------------------------
-void TestMesh::rotateContactMesh( const int mesh_id, RealT theta_x, RealT theta_y, RealT theta_z )
+void TestMesh::rotateContactMesh( const int mesh_id, RealT theta_x, RealT theta_y, RealT theta_z,
+                                  RealT shift_x, RealT shift_y, RealT shift_z )
 {
   // mortar is block 1, mesh_id 0
   // nonmortar is block 2, mesh_id 1
@@ -730,9 +731,20 @@ void TestMesh::rotateContactMesh( const int mesh_id, RealT theta_x, RealT theta_
   for (int i=0; i<num_nodes; ++i) {
     int idx = offset + i;
 
-    RealT x_temp = this->x[idx] * rot00 + this->y[idx] * rot01 + this->z[idx] * rot02;
-    RealT y_temp = this->x[idx] * rot10 + this->y[idx] * rot11 + this->z[idx] * rot12;
-    RealT z_temp = this->x[idx] * rot20 + this->y[idx] * rot21 + this->z[idx] * rot22;
+    // perform shift
+    RealT x_shifted = this->x[idx] - shift_x;
+    RealT y_shifted = this->y[idx] - shift_y;
+    RealT z_shifted = this->z[idx] - shift_z;
+
+    // perform rotation
+    RealT x_temp = x_shifted * rot00 + y_shifted * rot01 + z_shifted * rot02;
+    RealT y_temp = x_shifted * rot10 + y_shifted * rot11 + z_shifted * rot12;
+    RealT z_temp = x_shifted * rot20 + y_shifted * rot21 + z_shifted * rot22;
+
+    // shift back
+    x_temp += shift_x;
+    y_temp += shift_y;
+    z_temp += shift_z;
 
     this->x[idx] = x_temp;
     this->y[idx] = y_temp;

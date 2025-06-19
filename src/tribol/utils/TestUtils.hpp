@@ -173,12 +173,17 @@ class TestMesh {
    * \param [in] theta_x rotation in degrees about the x-axis
    * \param [in] theta_y rotation in degrees about the y-axis
    * \param [in] theta_z rotation in degrees about the z-axis
+   * \param [in] shift_x x-direction shift for point of rotation
+   * \param [in] shift_y y-direction shift for point of rotation
+   * \param [in] shift_z z-direction shift for point of rotation
    *
    * \pre the contact mesh must be setup prior to this call
    *
-   * \note mortar is mesh id 0, and nonmortar is mesh id 1
+   * \note mortar is mesh id 0, and nonmortar is mesh id 1. Default rotation is
+   *       about (0,0,0)
    */
-  void rotateContactMesh( const int mesh_id, RealT theta_x = 0., RealT theta_y = 0., RealT theta_z = 0. );
+  void rotateContactMesh( const int mesh_id, RealT theta_x = 0., RealT theta_y = 0., RealT theta_z = 0.,
+                          RealT shift_x = 0., RealT shift_y = 0., RealT shift_z = 0. );
 
   /*!
    * \brief translates the coordinates of one of the mesh blocks
