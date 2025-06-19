@@ -652,14 +652,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
                                                         RealT& area, bool orientCheck, OverlapVertexType* vertType,
                                                         int* edgeA, int* edgeB )
 {
-  // Debug for input vertices of planar 2D polygon coords
-  for (int i=0; i<numVertexA; ++i) {
-     std::cout << "Intersection2DPolygon() (xA,yA): " << xA[i] << ", " << yA[i] << std::endl;
-  }
-  for (int i=0; i<numVertexB; ++i) {
-     std::cout << "Intersection2DPolygon() (xB,yB): " << xB[i] << ", " << yB[i] << std::endl;
-  }
-
   // for tribol, if you have called this routine it is because a positive area of
   // overlap between two polygons (faces) exists. This routine does not perform a
   // "proximity" check to determine if the faces are "close enough" to proceed with
@@ -798,7 +790,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
           RealT distY = yA[i] - yB[j];
           RealT distMag = magnitude( distX, distY );
           if ( distMag < 1.E-15 ) {
-            std::cout << "Intersection2DPolygon() removing coincident interior vertex" << std::endl;
             // remove the interior designation for the vertex in polygon B
             //                 SLIC_DEBUG( "Removing duplicate interior vertex id: " << j << ".\n" );
             interiorVBId[j] = -1;
@@ -861,7 +852,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       // UPDATE: just check all segment-segment intersections for robustness
       if ( checkA && checkB ) {
         if ( interId >= max_intersections ) {
-          std::cout << "DEGENERATE_OVERLAP: number of segment/segment intersections exceeds precomputed max." << std::endl;
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
           SLIC_DEBUG( "Intersection2DPolygon: number of segment/segment intersections exceeds precomputed maximum; "
                       << "check for degenerate overlap." );
@@ -890,7 +880,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   // add check for case where there are no interior vertices or
   // intersection vertices
   if ( numSegInter == 0 && numVBI == 0 && numVAI == 0 ) {
-    std::cout << "Intersection2DPolygon() no interior vertices or no intersection vertices" << std::endl;
     area = 0.0;
     return NO_OVERLAP;
   }
@@ -1009,13 +998,11 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
 
     // check to see if the overlap was degenerated to have 2 or less vertices.
     if ( numFinalVert < 3 ) {
-      std::cout << "Intersection2DPolygon() overlap was degenerated to have 2 or less vertices" << std::endl;
       numPolyVert = 0;
       area = 0.0;
       return NO_OVERLAP;  // punt on degenerated or collapsed overlaps
     }
   } else {
-    std::cout << "Intersection2DPolygon() no overlap due to numPolyVert<=2" << std::endl;
     numPolyVert = 0;
     area = 0.0;
     return NO_OVERLAP;  // don't return error here. We should tolerate 'collapsed' (zero area) overlaps
@@ -1966,10 +1953,7 @@ TRIBOL_HOST_DEVICE void Plane3DTo2D( const RealT* const x, const RealT* const y,
   RealT px_bar, py_bar, pz_bar;
   ProjectPointToPlane( px, py, pz, nx, ny, nz, cx, cy, cz, px_bar, py_bar, pz_bar );
 
-  std::cout << "Plane3DTo2D ref point and projected ref point: " << px << ", " << py << ", " << pz << "; " << px_bar << ", " << py_bar << ", " << pz_bar << std::endl;  
-
   ComputeLocalBasis( px_bar, py_bar, pz_bar, nx, ny, nz, cx, cy, cz, e1x, e1y, e1z, e2x, e2y, e2z );
-  std::cout << "Plane3DTo2D first and second basis vector: " << e1x << ", " << e1y << ", " << e1z << "; " << e2x << ", " << e2y << ", " << e2z << std::endl;  
   GlobalTo2DLocalCoords( x, y, z, e1x, e1y, e1z, e2x, e2y, e2z, cx, cy, cz, x_loc, y_loc, num_verts );
 }
 

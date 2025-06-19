@@ -1034,12 +1034,6 @@ TRIBOL_HOST_DEVICE void CommonPlanePair::centroidGap( const MeshData::Viewer& m1
   TRIBOL_UNUSED_VAR( intersect1 );  // We don't currently use these bool variabeles
   TRIBOL_UNUSED_VAR( intersect2 );  // but the above function calls modify some parameters
 
-  RealT mag_face_1 = magnitude(xc1-m_cX, yc1-m_cY, zc1-m_cZ);
-  RealT mag_face_2 = magnitude(xc2-m_cX, yc2-m_cY, zc2-m_cZ);
-
-  std::cout << "centroidGap mag_face_1: " << mag_face_1 << std::endl;
-  std::cout << "centroidGap mag_face_2: " << mag_face_2 << std::endl;
-
   // compute normal gap magnitude (x1 - x2 for positive gap in separation
   // and negative gap in penetration)
   m_gap = ( xc1 - xc2 ) * m_nX + ( yc1 - yc2 ) * m_nY;

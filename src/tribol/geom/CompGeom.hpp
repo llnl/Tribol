@@ -699,9 +699,6 @@ class CompGeom {
          m_mortar_plane_pairs( cg.m_mortar_plane_pairs.view() ),
          m_aligned_mortar_plane_pairs( cg.m_aligned_mortar_plane_pairs.view() )
      {
-        std::cout << "Inside cg viewer constructor" << std::endl;
-        std::cout << "common plane size: " << cg.m_common_plane_pairs.size() << std::endl;
-        std::cout << "common plane view size: " << m_common_plane_pairs.size() << std::endl;
      }
 
      /**
@@ -756,8 +753,6 @@ class CompGeom {
             //if (auto* plane = dynamic_cast<CommonPlanePair*>(&contact_plane)) {
             //  m_common_plane_pairs[id] = std::move( *plane );
             //}
-            std::cout << "Before adding common plane in addContactPlane()" << std::endl;
-            std::cout << "Size of m_common_plane_pairs: " << m_common_plane_pairs.size() << std::endl;
             m_common_plane_pairs[id] = std::move( static_cast<CommonPlanePair&>(contact_plane) );
             break;
           }
@@ -863,7 +858,6 @@ class CompGeom {
        switch (method) {
          case COMMON_PLANE: {
            m_common_plane_pairs = ArrayT<CommonPlanePair>( num_pairs, num_pairs, allocator_id );
-           std::cout << "After allocating common planes of size " << m_common_plane_pairs.size() << std::endl;
            break;
          }
          case SINGLE_MORTAR:

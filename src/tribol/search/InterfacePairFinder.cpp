@@ -189,15 +189,6 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     ProjectFaceNodesToPlane( mesh2, element_id2, fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2], &x2_prime[0],
                              &y2_prime[0], &z2_prime[0] );
 
-    // DEBUG
-    for (int i=0; i<mesh1.numberOfNodesPerElement(); ++i) {
-      std::cout << "InterfacePairFinder mesh 1 prime coords: " << x1_prime[i] << ", " << y1_prime[i] << ", " << z1_prime[i] << std::endl;
-    }
-    for (int i=0; i<mesh2.numberOfNodesPerElement(); ++i) {
-      std::cout << "InterfacePairFinder mesh 2 prime coords: " << x2_prime[i] << ", " << y2_prime[i] << ", " << z2_prime[i] << std::endl;
-    }
-    std::cout << "" << std::endl;
-
     // now project the planar face vertices onto the other face's plane
     RealT x1_bar[max_nodes_per_face];
     RealT y1_bar[max_nodes_per_face];
@@ -212,35 +203,16 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     ProjectPointsToPlane( &x2_prime[0], &y2_prime[0], &z2_prime[0], fn1[0], fn1[1], fn1[2], cx1[0], cx1[1], cx1[2],
                           &x2_bar[0], &y2_bar[0], &z2_bar[0], mesh2.numberOfNodesPerElement() ); // project face 2 to 1 
 
-    // DEBUG
-    for (int i=0; i<mesh1.numberOfNodesPerElement(); ++i) {
-      std::cout << "InterfacePairFinder mesh 1 bar coords on face 2: " << x1_bar[i] << ", " << y1_bar[i] << ", " << z1_bar[i] << std::endl;
-    }
-    for (int i=0; i<mesh2.numberOfNodesPerElement(); ++i) {
-      std::cout << "InterfacePairFinder mesh 2 bar coords on face 1: " << x2_bar[i] << ", " << y2_bar[i] << ", " << z2_bar[i] << std::endl;
-    }
-    std::cout << "" << std::endl;
-
     RealT x1_bar_local[ max_nodes_per_face ];
     RealT y1_bar_local[ max_nodes_per_face ];
     RealT x2_bar_local[ max_nodes_per_face ];
     RealT y2_bar_local[ max_nodes_per_face ];
 
     // 3D coordinates to local 2D coordinates
-    // TODO SRW DEBUG THIS; THE TRANSFORM IS NOT WORKING
     Plane3DTo2D( &x1_bar[0], &y1_bar[0], &z1_bar[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
                  mesh1.numberOfNodesPerElement(), &x1_bar_local[0], &y1_bar_local[0] );
     Plane3DTo2D( &x2_prime[0], &y2_prime[0], &z2_prime[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
                  mesh2.numberOfNodesPerElement(), &x2_bar_local[0], &y2_bar_local[0] );
-
-    // DEBUG
-    for (int i=0; i<mesh1.numberOfNodesPerElement(); ++i) {
-      std::cout << "InterfacePairFinder mesh 1 bar_local coords: " << x1_bar_local[i] << ", " << y1_bar_local[i] << std::endl;
-    }
-    for (int i=0; i<mesh2.numberOfNodesPerElement(); ++i) {
-      std::cout << "InterfacePairFinder mesh 2 bar_local coords: " << x2_bar_local[i] << ", " << y2_bar_local[i] << std::endl;
-    }
-    std::cout << "" << std::endl;
 
     Plane3DTo2D( &x1_bar[0], &y1_bar[0], &z1_bar[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
                  mesh1.numberOfNodesPerElement(), &x1_bar_local[0], &y1_bar_local[0] );
@@ -251,8 +223,6 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     CheckPolyOverlap( mesh1.numberOfNodesPerElement(), mesh2.numberOfNodesPerElement(),
                       &x1_bar_local[0], &y1_bar_local[0], &x2_bar_local[0], &y2_bar_local[0],
                       cx, cy, area, 0 );
-
-    std::cout << "geomfilter() area: " << area << std::endl;
 
     if (area < 1.e-15)
     {

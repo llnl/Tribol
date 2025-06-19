@@ -1062,11 +1062,9 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                 // in the active set
                 bool interact = false;
     
-                //std::cout << "Before CheckInterfacePair()" << std::endl;
                 FaceGeomError interact_err =
                     CheckInterfacePair( pair, mesh1, mesh2, params, contact_method, contact_case, interact,
                                         cg_view, planes_ct.data() );
-                //std::cout << "After CheckInterfacePair()" << std::endl;
 
                 // // Update pair reporting data for this coupling scheme
                 // this->updatePairReportingData( interact_err );
