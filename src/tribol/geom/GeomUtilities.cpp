@@ -692,8 +692,8 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     }
   }
 
-  // maximum number of vertices (for use later)
-  constexpr int max_nodes_per_element = 4;
+  // maximum number of vertices for potentially clipped four node quads (for use later)
+  constexpr int max_nodes_per_element = 5; // TODO SRW switched to 5 as max interpen clipped polygon can have 5
 
   // allocate an array to hold ids of interior vertices
   int interiorVAId[max_nodes_per_element];
@@ -858,8 +858,10 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       bool checkB = true;
 
       // if both segments are not defined by nodes interior to the other polygon
+      // UPDATE: just check all segment-segment intersections for robustness
       if ( checkA && checkB ) {
         if ( interId >= max_intersections ) {
+          std::cout << "DEGENERATE_OVERLAP: number of segment/segment intersections exceeds precomputed max." << std::endl;
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
           SLIC_DEBUG( "Intersection2DPolygon: number of segment/segment intersections exceeds precomputed maximum; "
                       << "check for degenerate overlap." );
@@ -873,8 +875,8 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
         if ( intersect[interId] ) {
           edgeATemp[interId] = ia;
           edgeBTemp[interId] = jb;
+          ++interId; // increment intersection counter for segments that intersect
         }
-        ++interId;
       }
     }  // end loop over A segments
   }    // end loop over B segments

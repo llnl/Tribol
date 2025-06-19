@@ -1549,14 +1549,6 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::projectPointsAndComputeOverlap
 
   // DEBUG TODO SRW remove after testing
   for (int i=0; i<num_vert_1; ++i) {
-    std::cout << "face 1 coords on contact plane: " << cfx1_proj[i] << ", " << cfy1_proj[i] << ", " << cfz1_proj[i] << std::endl;
-  }
-  for (int i=0; i<num_vert_2; ++i) {
-    std::cout << "face 2 coords on contact plane: " << cfx2_proj[i] << ", " << cfy2_proj[i] << ", " << cfz2_proj[i] << std::endl;
-  }
-  std::cout << "" << std::endl;
-
-  for (int i=0; i<num_vert_1; ++i) {
     std::cout << "face 1 LOCAL coords on contact plane: " << cfx1_loc[i] << ", " << cfy1_loc[i] << std::endl; 
   }
   for (int i=0; i<num_vert_2; ++i) {
