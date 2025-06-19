@@ -1797,7 +1797,6 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap2D( const MeshDa
     }
 
     // initialize un-used interpen coordinates to work with visualization
-    // TODO SRW confirm if this is needed
     this->m_numInterpenPoly1Vert = 2;
     this->m_numInterpenPoly2Vert = 2;
 

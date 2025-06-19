@@ -1158,7 +1158,79 @@ TEST_F( CompGeomTest, common_plane_rotated_face_full_overlap )
 
 }
 
-TEST_F( CompGeomTest, single_mortar_check )
+TEST_F( CompGeomTest, common_plane_host_code_test )
+{
+  // This test uses face coordinates from host-code testing that at one point
+  // returned an inverted overlapping polygon. This bug has since been fixed
+  // and this configuration will test a once problematic interface pair.
+  constexpr int numVerts = 4;
+  constexpr int numCells = 2;
+  constexpr int lengthNodalData = numCells * numVerts;
+  RealT x[lengthNodalData];
+  RealT y[lengthNodalData];
+  RealT z[lengthNodalData];
+
+  // coordinates for face 1
+  x[0] = 9.39102308674e-05;
+  x[1] = 9.574507947643143e-05;
+  x[2] = 0.00010052443467949201;
+  x[3] = 9.719026465741154e-05;
+
+  y[0] = 0.4166824769718296;
+  y[1] = 0.4722432987882217;
+  y[2] = 0.47223943800552937;
+  y[3] = 0.4166796856918463;
+
+  z[0] = 0.33334123166705104;
+  z[1] = 0.33334216189246335;
+  z[2] = 0.41667946161766184;
+  z[3] = 0.4166796814171943;
+
+  // coordinates for face 2
+  x[4] = -9.39102308408737e-05;
+  x[5] = -9.71902646081789e-05;
+  x[6] = -0.00010052443461445242;
+  x[7] = -9.574507943875333e-05;
+
+  y[4] = 0.4166824769718633;
+  y[5] = 0.4166796856918866;
+  y[6] = 0.4722394380055709;
+  y[7] = 0.4722432987882541;
+
+  z[4] = 0.3333412316670809;
+  z[5] = 0.4166796814172351;
+  z[6] = 0.41667946161770675;
+  z[7] = 0.3333421618924954;
+
+  // register contact mesh
+  tribol::IndexT mesh_id = 0;
+  tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
+                        tribol::MemorySpace::Host );
+
+  RealT dt = 1.0;
+  int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
+
+  EXPECT_EQ( err, 0 );
+  EXPECT_EQ( dt, 1.0 );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( couplingScheme->getNumActivePairs(), 1 );
+
+  auto& comp_geom= couplingScheme->getCompGeom();
+  auto& plane = comp_geom.getCommonPlane( 0 );
+
+  RealT area_diff = plane.m_area - 0.00463028;
+  RealT gap_diff = std::abs( plane.m_gap - -0.000193685 );
+  EXPECT_LE( area_diff, 1.e-10 );
+  EXPECT_LE( gap_diff, 1.e-10 );
+
+}
+
+TEST_F( CompGeomTest, single_mortar_check_1 )
 {
   int nMortarElems = 4;
   int nElemsXM = nMortarElems;
@@ -1204,6 +1276,68 @@ TEST_F( CompGeomTest, single_mortar_check )
   tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
 
   EXPECT_EQ( userSpecifiedNumOverlaps, couplingScheme->getNumActivePairs() );
+
+  tribol::finalize();
+}
+
+TEST_F( CompGeomTest, single_mortar_check_2 )
+{
+  int nMortarElems = 1;
+  int nElemsXM = nMortarElems;
+  int nElemsYM = 1;
+  int nElemsZM = nMortarElems;
+
+  int nNonmortarElems = 1;
+  int nElemsXS = nNonmortarElems;
+  int nElemsYS = 1;
+  int nElemsZS = nNonmortarElems;
+
+  int userSpecifiedNumOverlaps = 1;
+
+  RealT x_min1 = 0.;
+  RealT y_min1 = 0.;
+  RealT z_min1 = 0.;
+  RealT x_max1 = 1.;
+  RealT y_max1 = 1.;
+  RealT z_max1 = 1.0;
+
+  RealT x_min2 = 0.;
+  RealT y_min2 = 0.; 
+  RealT z_min2 = 1.0;
+  RealT x_max2 = 1.0;
+  RealT y_max2 = 1.0;
+  RealT z_max2 = 2.1;
+
+  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+                                    0. );
+  
+  RealT theta_y = 45.;
+  m_mesh.rotateContactMesh( 0, 0., theta_y, 0. );
+
+  RealT shiftx = ( 0.7071 - 0.5 ) + 0.5 / 1.41421356;
+  RealT shiftz = ( 1.0 - 0.7071 ) + 0.5 / 1.41421356;
+  m_mesh.translateContactMesh( 1, shiftx, 0, -shiftz );
+
+  // call tribol setup and update
+  tribol::TestControlParameters parameters;  // struct does not hold info right now
+
+  int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
+      tribol::SINGLE_MORTAR, tribol::LAGRANGE_MULTIPLIER, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters );
+
+  EXPECT_EQ( test_mesh_update_err, 0 );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( userSpecifiedNumOverlaps, couplingScheme->getNumActivePairs() );
+
+  auto& comp_geom= couplingScheme->getCompGeom();
+  auto& plane = comp_geom.getMortarPlane( 0 );
+ 
+  RealT area_diff = plane.m_area - 1./std::cos(45.*M_PI/180.);
+  EXPECT_LE( area_diff, 1.e-8 );
 
   tribol::finalize();
 }
