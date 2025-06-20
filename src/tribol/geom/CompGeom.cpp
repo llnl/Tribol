@@ -1634,6 +1634,9 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap2D( const MeshDa
   if (!edgeIntersect || duplicatePoint) {
     m_fullOverlap = true;
   }
+  else {
+    m_fullOverlap = false;
+  }
 
   RealT x1_to_project[ max_dim ], y1_to_project[ max_dim ];
   RealT x2_to_project[ max_dim ], y2_to_project[ max_dim ];

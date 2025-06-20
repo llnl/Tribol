@@ -2007,7 +2007,11 @@ TRIBOL_HOST_DEVICE bool OnEdge( const RealT* const x, const RealT* const y, Real
     ymin = y[0];
   }
 
-  if (xp <= xmax && xp >= xmin && yp <= ymax && yp >= ymin) {
+  // add fuzz to catch nearly coincident vertices
+  RealT l = magnitude( x[1] - x[0], y[1] - y[0] ); // edge length
+  RealT fuzz = 0.01 * l; // add 1% fuzz
+
+  if ( xp <= (xmax+fuzz) && xp >= (xmin-fuzz) && yp <= (ymax+fuzz) && yp >= (ymin-fuzz) ) {
     return true;
   }
   return false;

@@ -59,7 +59,7 @@ class CompGeomTest : public ::testing::Test {
 };
 
 // TESTS
-TEST_F( CompGeomTest, should_produce_no_overlap )
+TEST_F( CompGeomTest, common_plane_full_interpen_no_overlap )
 {
   // this is a configuration from testing that is/was producing an overlap for
   // non-overlapping edges, which in turn produced negative basis function
@@ -131,7 +131,7 @@ TEST_F( CompGeomTest, should_produce_no_overlap )
   EXPECT_EQ( 0, couplingScheme->getNumActivePairs() );
 }
 
-TEST_F( CompGeomTest, coincident_vertices_full_overlap )
+TEST_F( CompGeomTest, common_plane_coincident_vertices_full_overlap )
 {
   constexpr int dim = 2;
   constexpr int numVerts = 2;
@@ -200,11 +200,84 @@ TEST_F( CompGeomTest, coincident_vertices_full_overlap )
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
   auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
-  RealT diff = ( xy2[2] - xy2[0] ) - plane.m_area;
+  RealT diff = std::abs(( xy2[2] - xy2[0] ) - plane.m_area);
   EXPECT_LT( diff, 1.e-10 );
 }
 
-TEST_F( CompGeomTest, coincident_vertex_no_overlap )
+TEST_F( CompGeomTest, common_plane_conforming_separation )
+{
+  constexpr int dim = 2;
+  constexpr int numVerts = 2;
+  RealT xy1[dim * numVerts];
+  RealT xy2[dim * numVerts];
+
+  // this geometry is in contact with coincident vertices when
+  // projected onto the common plane.
+  xy1[0] = 1.0;
+  xy1[1] = 0.0;
+  xy1[2] = 0.0;
+  xy1[3] = 0.0;
+
+  xy2[0] = 0.;
+  xy2[1] = 0.1;
+  xy2[2] = 1.;
+  xy2[3] = 0.1;
+
+  RealT x1[numVerts];
+  RealT y1[numVerts];
+  RealT x2[numVerts];
+  RealT y2[numVerts];
+
+  for ( int i = 0; i < numVerts; ++i ) {
+    x1[i] = xy1[i * dim];
+    y1[i] = xy1[i * dim + 1];
+    x2[i] = xy2[i * dim];
+    y2[i] = xy2[i * dim + 1];
+  }
+
+  tribol::IndexT conn1[2] = { 0, 1 };
+  tribol::IndexT conn2[2] = { 0, 1 };
+
+  tribol::registerMesh( 0, 1, 2, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
+                        tribol::MemorySpace::Host );
+  tribol::registerMesh( 1, 1, 2, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
+                        tribol::MemorySpace::Host );
+
+  RealT fx1[2] = { 0., 0. };
+  RealT fy1[2] = { 0., 0. };
+  RealT fx2[2] = { 0., 0. };
+  RealT fy2[2] = { 0., 0. };
+
+  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], nullptr );
+  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], nullptr );
+
+  tribol::setKinematicConstantPenalty( 0, 1. );
+  tribol::setKinematicConstantPenalty( 1, 1. );
+
+  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                                  tribol::ExecutionMode::Sequential );
+
+  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
+  tribol::setContactAreaFrac( 0, 1.e-4 );
+
+  RealT dt = 1.;
+  int update_err = tribol::update( 1, 1., dt );
+
+  EXPECT_EQ( update_err, 0 );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
+
+  auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
+  RealT gap_diff = std::abs( 0.1 - plane.m_gap );
+  EXPECT_LT( gap_diff, 1.e-10 );
+}
+
+TEST_F( CompGeomTest, common_plane_coincident_vertex_no_overlap )
 {
   constexpr int dim = 2;
   constexpr int numVerts = 2;
@@ -274,7 +347,7 @@ TEST_F( CompGeomTest, coincident_vertex_no_overlap )
   EXPECT_EQ( 0, couplingScheme->getNumActivePairs() );
 }
 
-TEST_F( CompGeomTest, nearly_coincident_vertex_pos_overlap )
+TEST_F( CompGeomTest, common_plane_nearly_coincident_vertex_positive_overlap )
 {
   constexpr int dim = 2;
   constexpr int numVerts = 2;
@@ -345,9 +418,183 @@ TEST_F( CompGeomTest, nearly_coincident_vertex_pos_overlap )
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
   auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
-  RealT diff = ( xy2[2] - xy1[2] ) - plane.m_area;
+  RealT diff = std::abs(( xy2[2] - xy1[2] ) - plane.m_area);
   EXPECT_LT( diff, 1.e-10 );
 }
+
+TEST_F( CompGeomTest, common_plane_interpen_check_1 )
+{
+  // This tests checks the interpen overlap code path for an X-like interface pair
+  // configuration
+  //
+  //                *
+  //             *
+  //    ------o------
+  //       *
+  //    *
+  //
+  constexpr int dim = 2;
+  constexpr int numVerts = 2;
+  RealT xy1[dim * numVerts];
+  RealT xy2[dim * numVerts];
+
+  xy1[0] = 1.0;
+  xy1[1] = 0.0;
+  xy1[2] = 0.0;
+  xy1[3] = 0.0;
+
+  xy2[0] = 0.;
+  xy2[1] = -0.1;
+  xy2[2] = 1.;
+  xy2[3] = 0.1;
+
+  RealT x1[numVerts];
+  RealT y1[numVerts];
+  RealT x2[numVerts];
+  RealT y2[numVerts];
+
+  for ( int i = 0; i < numVerts; ++i ) {
+    x1[i] = xy1[i * dim];
+    y1[i] = xy1[i * dim + 1];
+    x2[i] = xy2[i * dim];
+    y2[i] = xy2[i * dim + 1];
+  }
+
+  tribol::IndexT conn1[2] = { 0, 1 };
+  tribol::IndexT conn2[2] = { 0, 1 };
+
+  tribol::registerMesh( 0, 1, 2, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
+                        tribol::MemorySpace::Host );
+  tribol::registerMesh( 1, 1, 2, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
+                        tribol::MemorySpace::Host );
+
+  RealT fx1[2] = { 0., 0. };
+  RealT fy1[2] = { 0., 0. };
+  RealT fx2[2] = { 0., 0. };
+  RealT fy2[2] = { 0., 0. };
+
+  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], nullptr );
+  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], nullptr );
+
+  tribol::setKinematicConstantPenalty( 0, 1. );
+  tribol::setKinematicConstantPenalty( 1, 1. );
+
+  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                                  tribol::ExecutionMode::Sequential );
+
+  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
+  tribol::setContactAreaFrac( 0, 1.e-12 );
+
+  RealT dt = 1.;
+  int update_err = tribol::update( 1, 1., dt );
+
+  EXPECT_EQ( update_err, 0 );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
+
+  auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
+
+  EXPECT_EQ( plane.m_fullOverlap, false );
+  RealT length = xy1[0] - xy1[2];
+  RealT height = xy2[3] - xy2[1];
+  RealT theta = std::atan(height/length);
+  RealT half_theta = 0.5 * theta;
+  RealT computed_area = 0.5*length*std::cos(half_theta);
+  RealT diff = std::abs(computed_area - plane.m_area);
+  EXPECT_LT( diff, 1.e-10 );
+}
+
+TEST_F( CompGeomTest, common_plane_interpen_check_2 )
+{
+  // This tests checks the interpen overlap code path for an X-like interface pair
+  // configuration where there IS interpenetration, but one edge intersects
+  // at the vertex of the other edge, which should trigger a full overlap calculation
+  //
+  //                     *
+  //                  *
+  //    ------------o
+  //             *
+  //          *
+  //
+  constexpr int dim = 2;
+  constexpr int numVerts = 2;
+  RealT xy1[dim * numVerts];
+  RealT xy2[dim * numVerts];
+
+  xy1[0] = 1.0;
+  xy1[1] = 0.0;
+  xy1[2] = 0.0;
+  xy1[3] = 0.0;
+
+  xy2[0] = 0.5;
+  xy2[1] = -0.5;
+  xy2[2] = 1.5;
+  xy2[3] = 0.5;
+
+  RealT x1[numVerts];
+  RealT y1[numVerts];
+  RealT x2[numVerts];
+  RealT y2[numVerts];
+
+  for ( int i = 0; i < numVerts; ++i ) {
+    x1[i] = xy1[i * dim];
+    y1[i] = xy1[i * dim + 1];
+    x2[i] = xy2[i * dim];
+    y2[i] = xy2[i * dim + 1];
+  }
+
+  tribol::IndexT conn1[2] = { 0, 1 };
+  tribol::IndexT conn2[2] = { 0, 1 };
+
+  tribol::registerMesh( 0, 1, 2, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
+                        tribol::MemorySpace::Host );
+  tribol::registerMesh( 1, 1, 2, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
+                        tribol::MemorySpace::Host );
+
+  RealT fx1[2] = { 0., 0. };
+  RealT fy1[2] = { 0., 0. };
+  RealT fx2[2] = { 0., 0. };
+  RealT fy2[2] = { 0., 0. };
+
+  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], nullptr );
+  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], nullptr );
+
+  tribol::setKinematicConstantPenalty( 0, 1. );
+  tribol::setKinematicConstantPenalty( 1, 1. );
+
+  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                                  tribol::ExecutionMode::Sequential );
+
+  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
+  tribol::setContactAreaFrac( 0, 1.e-12 );
+
+  RealT dt = 1.;
+  int update_err = tribol::update( 1, 1., dt );
+
+  EXPECT_EQ( update_err, 0 );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
+
+  auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
+
+  EXPECT_EQ( plane.m_fullOverlap, true );
+  RealT h = 0.5 / std::cos(45 * M_PI/180);
+  RealT h_bar =  h * std::cos(45 * M_PI/180 / 2);
+  RealT computed_area = h_bar;
+  RealT diff = std::abs(computed_area - plane.m_area);
+  EXPECT_LT( diff, 1.e-10 );
+}
+
 
 TEST_F( CompGeomTest, 2d_projections_1 )
 {
@@ -407,10 +654,10 @@ TEST_F( CompGeomTest, 2d_projections_1 )
   RealT diffy1 = std::abs( cxProj1[1] - 0.0915028 );
   RealT diffx2 = std::abs( cxProj2[0] - 0.738591 );
   RealT diffy2 = std::abs( cxProj2[1] - 0.0915022 );
-  // EXPECT_LE(diffx1, 1.e-6);
-  // EXPECT_LE(diffy1, 1.e-6);
-  // EXPECT_LE(diffx2, 1.e-6);
-  // EXPECT_LE(diffy2, 1.e-6);
+  EXPECT_LE(diffx1, 1.e-6);
+  EXPECT_LE(diffy1, 1.e-6);
+  EXPECT_LE(diffx2, 1.e-6);
+  EXPECT_LE(diffy2, 1.e-6);
 
   RealT x1[numVerts];
   RealT y1[numVerts];
@@ -450,12 +697,16 @@ TEST_F( CompGeomTest, 2d_projections_1 )
   tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
   tribol::setContactAreaFrac( 0, 1.e-4 );
 
-  // TODO check penetration and overlap tolerance with what is being used in host-code
-
   RealT dt = 1.;
   int update_err = tribol::update( 1, 1., dt );
 
   EXPECT_EQ( update_err, 0 );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 }
 
 TEST_F( CompGeomTest, 2d_projections_2 )

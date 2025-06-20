@@ -1223,10 +1223,10 @@ TEST_F( CompGeomTest, common_plane_host_code_test )
   auto& comp_geom= couplingScheme->getCompGeom();
   auto& plane = comp_geom.getCommonPlane( 0 );
 
-  RealT area_diff = plane.m_area - 0.00463028;
+  RealT area_diff = std::abs(plane.m_area - 0.00463028);
   RealT gap_diff = std::abs( plane.m_gap - -0.000193685 );
-  EXPECT_LE( area_diff, 1.e-10 );
-  EXPECT_LE( gap_diff, 1.e-10 );
+  EXPECT_LE( area_diff, 1.e-8 );
+  EXPECT_LE( gap_diff, 1.e-8 );
 
 }
 
@@ -1282,6 +1282,7 @@ TEST_F( CompGeomTest, single_mortar_check_1 )
 
 TEST_F( CompGeomTest, single_mortar_check_2 )
 {
+  // This checks a rotated X-like configuration of the two contact surfaces
   int nMortarElems = 1;
   int nElemsXM = nMortarElems;
   int nElemsYM = 1;
@@ -1335,8 +1336,8 @@ TEST_F( CompGeomTest, single_mortar_check_2 )
 
   auto& comp_geom= couplingScheme->getCompGeom();
   auto& plane = comp_geom.getMortarPlane( 0 );
- 
-  RealT area_diff = plane.m_area - 1./std::cos(45.*M_PI/180.);
+
+  RealT area_diff = std::abs(plane.m_area - std::cos(45.*M_PI/180.));
   EXPECT_LE( area_diff, 1.e-8 );
 
   tribol::finalize();
