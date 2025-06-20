@@ -1,0 +1,38 @@
+##############################################################################
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
+# other Tribol Project Developers. See the top-level COPYRIGHT file for details.
+#
+# SPDX-License-Identifier: (MIT)
+##############################################################################
+
+####
+# This is the shared configuration of jobs for toss4_cray
+.on_toss4_cray:
+  variables:
+    ALLOC_OPTIONS: "--exclusive"
+    ALLOC_COMMAND: "salloc ${ALLOC_OPTIONS} -N ${ALLOC_NODES} -t ${ALLOC_TIME}"
+  tags:
+    - shell
+    - tioga
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /_qnone/ || $ON_TOSS4_CRAY == "OFF"' #run except if ...
+      when: never
+    - when: on_success
+  before_script:
+    - module load cmake/3.23.1
+
+####
+# Templates
+.src_build_on_toss4_cray:
+  extends: [.src_build_script, .on_toss4_cray]
+
+####
+# Build jobs
+toss4_cray-rocmcc_6_2_1-src:
+  variables:
+    COMPILER: "rocmcc@6.2.1"
+    HOST_CONFIG: "tioga-toss_4_x86_64_ib_cray-${COMPILER}_hip.cmake"
+    ALLOC_NODES: "1"
+    ALLOC_TIME: "30"
+  extends: .src_build_on_toss4_cray
+ 

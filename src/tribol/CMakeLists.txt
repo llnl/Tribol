@@ -13,74 +13,77 @@ set(tribol_headers
 
     common/ArrayTypes.hpp
     common/BasicTypes.hpp
+    common/Containers.hpp
+    common/Enzyme.hpp
     common/ExecModel.hpp
     common/LoopExec.hpp
     common/Parameters.hpp
     common/Containers.hpp
     common/Enzyme.hpp
 
-    interface/mfem_tribol.hpp
-    interface/simple_tribol.hpp
-    interface/tribol.hpp
-
-    integ/Integration.hpp
-    integ/FE.hpp
-
-    mesh/InterfacePairs.hpp
-    mesh/MethodCouplingData.hpp 
-    mesh/CouplingScheme.hpp
-    mesh/MeshData.hpp
-    mesh/MfemData.hpp
-
     geom/CompGeom.hpp
     geom/ElementNormal.hpp
     geom/GeomUtilities.hpp
     geom/NodalNormal.hpp
 
+    integ/FE.hpp
+    integ/Integration.hpp
+
+    interface/mfem_tribol.hpp
+    interface/simple_tribol.hpp
+    interface/tribol.hpp
+
+    mesh/CouplingScheme.hpp
+    mesh/InterfacePairs.hpp
+    mesh/MeshData.hpp
+    mesh/MethodCouplingData.hpp
+    mesh/MfemData.hpp
+
+    physics/AlignedMortar.hpp
+    physics/CommonPlane.hpp
+    physics/Mortar.hpp
+    physics/Physics.hpp
+
+    search/InterfacePairFinder.hpp
+
+    utils/Algorithm.hpp
     utils/ContactPlaneOutput.hpp
     utils/DataManager.hpp
     utils/Math.hpp
     utils/TestUtils.hpp
-
-    search/InterfacePairFinder.hpp
-
-    physics/Physics.hpp
-    physics/CommonPlane.hpp
-    physics/AlignedMortar.hpp
-    physics/Mortar.hpp
     )
 
 ## list of sources
 set(tribol_sources
-
-    interface/mfem_tribol.cpp
-    interface/simple_tribol.cpp
-    interface/tribol.cpp
-
-    integ/Integration.cpp
-    integ/FE.cpp
-
-    mesh/InterfacePairs.cpp
-    mesh/MethodCouplingData.cpp
-    mesh/CouplingScheme.cpp
-    mesh/MeshData.cpp
-    mesh/MfemData.cpp
      
     geom/CompGeom.cpp
     geom/ElementNormal.cpp
     geom/GeomUtilities.cpp
     geom/NodalNormal.cpp
 
-    utils/ContactPlaneOutput.cpp
-    utils/Math.cpp
-    utils/TestUtils.cpp
+    integ/FE.cpp
+    integ/Integration.cpp
+
+    interface/mfem_tribol.cpp
+    interface/simple_tribol.cpp
+    interface/tribol.cpp
+
+    mesh/CouplingScheme.cpp
+    mesh/InterfacePairs.cpp
+    mesh/MeshData.cpp
+    mesh/MethodCouplingData.cpp
+    mesh/MfemData.cpp
+
+    physics/AlignedMortar.cpp
+    physics/CommonPlane.cpp
+    physics/Mortar.cpp
+    physics/Physics.cpp
      
     search/InterfacePairFinder.cpp
 
-    physics/Physics.cpp
-    physics/CommonPlane.cpp
-    physics/AlignedMortar.cpp
-    physics/Mortar.cpp
+    utils/ContactPlaneOutput.cpp
+    utils/Math.cpp
+    utils/TestUtils.cpp
     )
 
 if (ENABLE_FORTRAN)
@@ -98,10 +101,6 @@ if (ENABLE_FORTRAN)
     list(APPEND tribol_sources interface/c_fortran/wrapTestMesh.cpp)
     list(APPEND tribol_sources interface/c_fortran/wrapTRIBOL_TEST_MESH.cpp)
     list(APPEND tribol_sources interface/c_fortran/wrapftribol_test_mesh.F)
-endif()
-
-if (TRIBOL_USE_ENZYME)
-    list(APPEND tribol_headers common/Enzyme.hpp)
 endif()
 
 ## setup the dependency list for tribol
@@ -149,4 +148,11 @@ tribol_install( SOURCE_HEADERS ${tribol_headers} )
 if(ENABLE_FORTRAN AND ENABLE_MPI)
     install(FILES ${CMAKE_Fortran_MODULE_DIRECTORY}/tribol_simple.mod DESTINATION lib/fortran)
     install(FILES ${CMAKE_Fortran_MODULE_DIRECTORY}/tribol_test_mesh.mod DESTINATION lib/fortran)
+endif()
+
+# Add the TRIBOL_DEBUG compile definition, if non-empty
+if(TRIBOL_DEBUG_DEFINE_STRING)
+  blt_add_target_definitions(TO tribol SCOPE PUBLIC TARGET_DEFINITIONS "${TRIBOL_DEBUG_DEFINE_STRING}")
+  # Define AXOM_DEBUG for SLIC macros
+  blt_add_target_definitions(TO tribol SCOPE PUBLIC TARGET_DEFINITIONS "${AXOM_DEBUG_DEFINE_STRING}")
 endif()
