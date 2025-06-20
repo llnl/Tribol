@@ -352,24 +352,24 @@ CouplingScheme::CouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, 
 //------------------------------------------------------------------------------
 const ContactPlanePair& CouplingScheme::getContactPlanePair( IndexT id ) const
 {
-  switch (this->m_contactMethod) {
-     case COMMON_PLANE: {
-       return m_cg_pairs.getCommonPlane(id);
-       break;
-     }
-     case MORTAR_WEIGHTS:
-     case SINGLE_MORTAR: {
-       return m_cg_pairs.getMortarPlane(id);
-       break;
-     }
-     case ALIGNED_MORTAR: {
-       return m_cg_pairs.getAlignedMortarPlane(id);
-       break;
-     }
-     default: {
-       // no-op
-     }
-  } // end switch
+  switch ( this->m_contactMethod ) {
+    case COMMON_PLANE: {
+      return m_cg_pairs.getCommonPlane( id );
+      break;
+    }
+    case MORTAR_WEIGHTS:
+    case SINGLE_MORTAR: {
+      return m_cg_pairs.getMortarPlane( id );
+      break;
+    }
+    case ALIGNED_MORTAR: {
+      return m_cg_pairs.getAlignedMortarPlane( id );
+      break;
+    }
+    default: {
+      // no-op
+    }
+  }  // end switch
 }
 
 //------------------------------------------------------------------------------
@@ -1061,10 +1061,9 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                 // geometry checks to determine whether to include a pair
                 // in the active set
                 bool interact = false;
-    
-                FaceGeomError interact_err =
-                    CheckInterfacePair( pair, mesh1, mesh2, params, contact_method, contact_case, interact,
-                                        cg_view, planes_ct.data() );
+
+                FaceGeomError interact_err = CheckInterfacePair( pair, mesh1, mesh2, params, contact_method,
+                                                                 contact_case, interact, cg_view, planes_ct.data() );
 
                 // // Update pair reporting data for this coupling scheme
                 // this->updatePairReportingData( interact_err );
@@ -1150,7 +1149,7 @@ bool CouplingScheme::init()
 #ifdef BUILD_REDECOMP
     if ( this->hasMfemData() && this->getMfemMeshData()->GetLORFactor() > 1 ) {
       this->m_effective_binning_proximity_scale *= static_cast<RealT>( this->getMfemMeshData()->GetLORFactor() );
-      // set the parameters binning proximity scale to be consistent with the effective. 
+      // set the parameters binning proximity scale to be consistent with the effective.
       // TODO consolidate use later
       this->getParameters().binning_proximity_scale *= static_cast<RealT>( this->getMfemMeshData()->GetLORFactor() );
     }
@@ -1803,24 +1802,24 @@ TRIBOL_HOST_DEVICE ContactPlanePair& CouplingScheme::Viewer::getContactPlanePair
 {
   // TODO SRW static_cast here or at the time this function is called, because you know what
   // type of plane pair it should be
-  switch (m_contact_method) {
-     case COMMON_PLANE: {
-       return m_cg_pairs.getCommonPlane(id);
-       break;
-     }
-     case MORTAR_WEIGHTS:
-     case SINGLE_MORTAR: {
-       return m_cg_pairs.getMortarPlane(id);
-       break;
-     }
-     case ALIGNED_MORTAR: {
-       return m_cg_pairs.getAlignedMortarPlane(id);
-       break;
-     }
-     default: {
-       // no-op
-     }
-  } // end switch
+  switch ( m_contact_method ) {
+    case COMMON_PLANE: {
+      return m_cg_pairs.getCommonPlane( id );
+      break;
+    }
+    case MORTAR_WEIGHTS:
+    case SINGLE_MORTAR: {
+      return m_cg_pairs.getMortarPlane( id );
+      break;
+    }
+    case ALIGNED_MORTAR: {
+      return m_cg_pairs.getAlignedMortarPlane( id );
+      break;
+    }
+    default: {
+      // no-op
+    }
+  }  // end switch
 }
 
 //------------------------------------------------------------------------------

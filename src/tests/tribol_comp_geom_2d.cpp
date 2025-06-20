@@ -200,7 +200,7 @@ TEST_F( CompGeomTest, common_plane_coincident_vertices_full_overlap )
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
   auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
-  RealT diff = std::abs(( xy2[2] - xy2[0] ) - plane.m_area);
+  RealT diff = std::abs( ( xy2[2] - xy2[0] ) - plane.m_area );
   EXPECT_LT( diff, 1.e-10 );
 }
 
@@ -418,7 +418,7 @@ TEST_F( CompGeomTest, common_plane_nearly_coincident_vertex_positive_overlap )
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
   auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
-  RealT diff = std::abs(( xy2[2] - xy1[2] ) - plane.m_area);
+  RealT diff = std::abs( ( xy2[2] - xy1[2] ) - plane.m_area );
   EXPECT_LT( diff, 1.e-10 );
 }
 
@@ -502,10 +502,10 @@ TEST_F( CompGeomTest, common_plane_interpen_check_1 )
   EXPECT_EQ( plane.m_fullOverlap, false );
   RealT length = xy1[0] - xy1[2];
   RealT height = xy2[3] - xy2[1];
-  RealT theta = std::atan(height/length);
+  RealT theta = std::atan( height / length );
   RealT half_theta = 0.5 * theta;
-  RealT computed_area = 0.5*length*std::cos(half_theta);
-  RealT diff = std::abs(computed_area - plane.m_area);
+  RealT computed_area = 0.5 * length * std::cos( half_theta );
+  RealT diff = std::abs( computed_area - plane.m_area );
   EXPECT_LT( diff, 1.e-10 );
 }
 
@@ -588,13 +588,12 @@ TEST_F( CompGeomTest, common_plane_interpen_check_2 )
   auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
 
   EXPECT_EQ( plane.m_fullOverlap, true );
-  RealT h = 0.5 / std::cos(45 * M_PI/180);
-  RealT h_bar =  h * std::cos(45 * M_PI/180 / 2);
+  RealT h = 0.5 / std::cos( 45 * M_PI / 180 );
+  RealT h_bar = h * std::cos( 45 * M_PI / 180 / 2 );
   RealT computed_area = h_bar;
-  RealT diff = std::abs(computed_area - plane.m_area);
+  RealT diff = std::abs( computed_area - plane.m_area );
   EXPECT_LT( diff, 1.e-10 );
 }
-
 
 TEST_F( CompGeomTest, 2d_projections_1 )
 {
@@ -654,10 +653,10 @@ TEST_F( CompGeomTest, 2d_projections_1 )
   RealT diffy1 = std::abs( cxProj1[1] - 0.0915028 );
   RealT diffx2 = std::abs( cxProj2[0] - 0.738591 );
   RealT diffy2 = std::abs( cxProj2[1] - 0.0915022 );
-  EXPECT_LE(diffx1, 1.e-6);
-  EXPECT_LE(diffy1, 1.e-6);
-  EXPECT_LE(diffx2, 1.e-6);
-  EXPECT_LE(diffy2, 1.e-6);
+  EXPECT_LE( diffx1, 1.e-6 );
+  EXPECT_LE( diffy1, 1.e-6 );
+  EXPECT_LE( diffx2, 1.e-6 );
+  EXPECT_LE( diffy2, 1.e-6 );
 
   RealT x1[numVerts];
   RealT y1[numVerts];

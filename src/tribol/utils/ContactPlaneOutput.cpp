@@ -129,7 +129,7 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
         if ( cp_base.m_fullOverlap ) {
           numPoints += mesh1.numberOfNodesPerElement() + mesh2.numberOfNodesPerElement();
         } else {
-          auto& cp = static_cast<const CommonPlanePair&>( couplingScheme->getContactPlanePair(i) );
+          auto& cp = static_cast<const CommonPlanePair&>( couplingScheme->getContactPlanePair( i ) );
           numPoints += cp.m_numInterpenPoly1Vert + cp.m_numInterpenPoly2Vert;
         }
       }  // end i-loop over contact planes
@@ -139,11 +139,12 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
 
       // loop over all contact planes and output the face coordinates
       for ( int i = 0; i < cpSize; ++i ) {
-        auto& cp_base = couplingScheme->getContactPlanePair(i);
+        auto& cp_base = couplingScheme->getContactPlanePair( i );
         // print interpenetrating portion of each face if not full overlap
-        if ( !cp_base.m_fullOverlap ) { // note this is just for common plane pairs, but mortar will always have full overlap
+        if ( !cp_base.m_fullOverlap ) {  // note this is just for common plane pairs, but mortar will always have full
+                                         // overlap
           // get common plane derived type for interpen prints
-          auto& cp = static_cast<const CommonPlanePair&>( couplingScheme->getContactPlanePair(i) );
+          auto& cp = static_cast<const CommonPlanePair&>( couplingScheme->getContactPlanePair( i ) );
           for ( int j = 0; j < cp.m_numInterpenPoly1Vert; ++j ) {
             axom::fmt::print( faces, "{} {} {}\n", cp.m_interpenG1X[j], cp.m_interpenG1Y[j],
                               dim == 3 ? cp.m_interpenG1Z[j] : 0. );
@@ -173,7 +174,7 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
 
       // output face polygon connectivity. Number of points is the number of face polygon
       // vertices + an index for each face for each contact plane
-      axom::fmt::print( faces, "CELLS {} {}\n", 2 * cpSize, numPoints + (2 * cpSize) );
+      axom::fmt::print( faces, "CELLS {} {}\n", 2 * cpSize, numPoints + ( 2 * cpSize ) );
 
       using RSet = axom::slam::RangeSet<int, int>;
       int connIter = 0;  // connectivity iterator
@@ -183,11 +184,11 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
       int nNodes1, nNodes2;
       for ( int i = 0; i < cpSize; ++i ) {
         auto& cp_base = couplingScheme->getContactPlanePair( i );
-        if (cp_base.m_fullOverlap) {
+        if ( cp_base.m_fullOverlap ) {
           nNodes1 = mesh1.numberOfNodesPerElement();
           nNodes2 = mesh2.numberOfNodesPerElement();
         } else {
-          auto& cp = static_cast<const CommonPlanePair&>( couplingScheme->getContactPlanePair(i) );
+          auto& cp = static_cast<const CommonPlanePair&>( couplingScheme->getContactPlanePair( i ) );
           nNodes1 = cp.m_numInterpenPoly1Vert;
           nNodes2 = cp.m_numInterpenPoly2Vert;
         }
@@ -242,7 +243,7 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
       overlap << cs_id << "\n";
 
       // count the total number of vertices for all contact plane instances.
-      int numPoints = 2 * cpSize; // 2D overlap is 2 vertices per contact plane
+      int numPoints = 2 * cpSize;  // 2D overlap is 2 vertices per contact plane
       if ( dim == 3 ) {
         numPoints = 0;
         for ( int k = 0; k < cpSize; ++k ) {
@@ -314,11 +315,11 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
 
       // print the contact plane pressure scalar data for common plane overlaps
       {
-        if (couplingScheme->getContactMethod() == COMMON_PLANE) {
+        if ( couplingScheme->getContactMethod() == COMMON_PLANE ) {
           axom::fmt::print( overlap, "SCALARS {} {}\n", "overlap_pressure", "float" );
           axom::fmt::print( overlap, "LOOKUP_TABLE default\n" );
           for ( int i = 0; i < cpSize; ++i ) {
-            auto& cp = static_cast<const CommonPlanePair&>(couplingScheme->getContactPlanePair( i ));
+            auto& cp = static_cast<const CommonPlanePair&>( couplingScheme->getContactPlanePair( i ) );
             axom::fmt::print( overlap, "{} ", cp.m_pressure );
           }
           overlap << std::endl;

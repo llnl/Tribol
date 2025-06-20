@@ -170,7 +170,7 @@ class CouplingScheme {
     TRIBOL_HOST_DEVICE RealT getGapTol( int fid1, int fid2 ) const;
 
     /**
-     * @brief Get a view of the computational geometry container 
+     * @brief Get a view of the computational geometry container
      *
      * @return a comp geom view
      */
@@ -879,7 +879,7 @@ class CouplingScheme {
 
   ArrayT<InterfacePair> m_interface_pairs;  ///< List of interface pairs
 
-  CompGeom m_cg_pairs; ///< Computational geometry container object
+  CompGeom m_cg_pairs;  ///< Computational geometry container object
 
   MethodData* m_methodData;  ///< method object holding required interface method data
 

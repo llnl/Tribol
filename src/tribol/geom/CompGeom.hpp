@@ -16,29 +16,27 @@
 namespace tribol {
 
 //-----------------------------------------------------------------------------
-// Computational geometry base class 
+// Computational geometry base class
 // (can be used to extend non-contact-plane classes)
 //-----------------------------------------------------------------------------
 class CompGeomPair {
-
  protected:
-  InterfacePair* m_pair; ///< Face-pair struct for two constituent faces
+  InterfacePair* m_pair;  ///< Face-pair struct for two constituent faces
 
-  TRIBOL_HOST_DEVICE CompGeomPair() {};
+  TRIBOL_HOST_DEVICE CompGeomPair(){};
 
   TRIBOL_HOST_DEVICE CompGeomPair( InterfacePair* pair, const Parameters& params, const int dim )
-      : m_pair( pair ),
-        m_dim( dim ),
-        m_params( params )
+      : m_pair( pair ), m_dim( dim ), m_params( params )
   {
   }
 
-  virtual ~CompGeomPair() = default; 
+  virtual ~CompGeomPair() = default;
 
  public:
   int m_dim;
   Parameters m_params;
-  TRIBOL_HOST_DEVICE virtual FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) = 0;
+  TRIBOL_HOST_DEVICE virtual FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1,
+                                                               const MeshData::Viewer& mesh2 ) = 0;
 };
 
 //-----------------------------------------------------------------------------
@@ -46,12 +44,11 @@ class CompGeomPair {
 //-----------------------------------------------------------------------------
 class ContactPlanePair : public CompGeomPair {
  protected:
-
   /**
    * @brief Constructs a ContactPlane object
    *
    */
-  TRIBOL_HOST_DEVICE ContactPlanePair() {};
+  TRIBOL_HOST_DEVICE ContactPlanePair(){};
 
   /**
    * @brief Overloaded constructor
@@ -61,12 +58,12 @@ class ContactPlanePair : public CompGeomPair {
 
   virtual ~ContactPlanePair() = default;
 
-  static constexpr int max_nodes_per_overlap{8};
+  static constexpr int max_nodes_per_overlap{ 8 };
 
  public:
-  bool m_inContact; ///< True if face-pair is in contact
-  RealT m_gap;      ///< Face-pair gap
-  RealT m_gapTol;   ///< Face-pair gap tolerance
+  bool m_inContact;  ///< True if face-pair is in contact
+  RealT m_gap;       ///< Face-pair gap
+  RealT m_gapTol;    ///< Face-pair gap tolerance
 
   RealT m_e1X;  ///< Global x-component of first in-plane basis vector
   RealT m_e1Y;  ///< Global y-component of first in-plane basis vector
@@ -92,19 +89,19 @@ class ContactPlanePair : public CompGeomPair {
   RealT m_nY;  ///< Global y-component of contact plane unit normal
   RealT m_nZ;  ///< Global z-component of contact plane unit normal (zero out for 2D)
 
-  int m_numPolyVert;  ///< Number of vertices in overlapping polygon
-  RealT m_polyX[ max_nodes_per_overlap ]; ///< Global x-components of overlap polygon's vertices
-  RealT m_polyY[ max_nodes_per_overlap ]; ///< Global y-components of overlap polygon's vertices
-  RealT m_polyZ[ max_nodes_per_overlap ]; ///< Global z-components of overlap polygon's vertices
+  int m_numPolyVert;                     ///< Number of vertices in overlapping polygon
+  RealT m_polyX[max_nodes_per_overlap];  ///< Global x-components of overlap polygon's vertices
+  RealT m_polyY[max_nodes_per_overlap];  ///< Global y-components of overlap polygon's vertices
+  RealT m_polyZ[max_nodes_per_overlap];  ///< Global z-components of overlap polygon's vertices
 
-  RealT m_polyLocX[ max_nodes_per_overlap ];  ///< Pointer to local x-components of overlap polygon's vertices
-  RealT m_polyLocY[ max_nodes_per_overlap ];  ///< Pointer to local y-components of overlap polygon's vertices
-  
+  RealT m_polyLocX[max_nodes_per_overlap];  ///< Pointer to local x-components of overlap polygon's vertices
+  RealT m_polyLocY[max_nodes_per_overlap];  ///< Pointer to local y-components of overlap polygon's vertices
+
   // cp area
-  bool  m_fullOverlap {true}; ///< Indicates if a full overlap (true) or interpen overlap (false) is used
-  RealT m_areaFrac; ///< Face area fraction used to determine overlap area cutoff
-  RealT m_areaMin;  ///< Minimum overlap area for inclusion into the active set
-  RealT m_area;     ///< Overlap area
+  bool m_fullOverlap{ true };  ///< Indicates if a full overlap (true) or interpen overlap (false) is used
+  RealT m_areaFrac;            ///< Face area fraction used to determine overlap area cutoff
+  RealT m_areaMin;             ///< Minimum overlap area for inclusion into the active set
+  RealT m_area;                ///< Overlap area
 
   /// \name Contact plane routines
   /// @{
@@ -117,7 +114,8 @@ class ContactPlanePair : public CompGeomPair {
    *
    * \return face geometry error
    */
-  TRIBOL_HOST_DEVICE virtual FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) = 0;
+  TRIBOL_HOST_DEVICE virtual FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1,
+                                                               const MeshData::Viewer& mesh2 ) = 0;
 
   /*!
    * \brief check to see if face-pairs are interacting
@@ -127,7 +125,8 @@ class ContactPlanePair : public CompGeomPair {
    *
    * \return face geometry error
    */
-  TRIBOL_HOST_DEVICE virtual FaceGeomError checkFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) = 0;
+  TRIBOL_HOST_DEVICE virtual FaceGeomError checkFacePair( const MeshData::Viewer& mesh1,
+                                                          const MeshData::Viewer& mesh2 ) = 0;
 
   /*!
    * \brief check to see if edge-pairs are interacting
@@ -137,17 +136,19 @@ class ContactPlanePair : public CompGeomPair {
    *
    * \return face geometry error
    */
-  TRIBOL_HOST_DEVICE virtual FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) = 0;
+  TRIBOL_HOST_DEVICE virtual FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1,
+                                                          const MeshData::Viewer& mesh2 ) = 0;
 
   /*!
-   * \brief Compute the projected overlap in 2D 
+   * \brief Compute the projected overlap in 2D
    *
    * \param [in] m1 mesh data viewer for mesh 1
    * \param [in] m2 mesh data viewer for mesh 2
    *
    * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
    */
-  TRIBOL_HOST_DEVICE virtual FaceGeomError computeOverlap2D( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) = 0;
+  TRIBOL_HOST_DEVICE virtual FaceGeomError computeOverlap2D( const MeshData::Viewer& m1,
+                                                             const MeshData::Viewer& m2 ) = 0;
   /*!
    * \brief Compute the projected overlap in 3D
    *
@@ -166,7 +167,8 @@ class ContactPlanePair : public CompGeomPair {
    */
   TRIBOL_HOST_DEVICE virtual FaceGeomError computeOverlap3D( const RealT* x1, const RealT* y1, const RealT* z1,
                                                              const RealT* x2, const RealT* y2, const RealT* z2,
-                                                             const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) = 0;
+                                                             const MeshData::Viewer& m1,
+                                                             const MeshData::Viewer& m2 ) = 0;
   /*!
    * \brief Compute a local basis on the contact plane
    *
@@ -288,14 +290,12 @@ class ContactPlanePair : public CompGeomPair {
 // Common Plane Computational Geometry Class
 //-----------------------------------------------------------------------------
 class CommonPlanePair : public ContactPlanePair {
-
  public:
-
   /*!
    * @brief Constructs a common plane contact plane
    *
    */
-  TRIBOL_HOST_DEVICE CommonPlanePair() {};
+  TRIBOL_HOST_DEVICE CommonPlanePair(){};
 
   /*!
    * @brief Overloaded constructor
@@ -310,7 +310,6 @@ class CommonPlanePair : public ContactPlanePair {
   ~CommonPlanePair() = default;
 
  protected:
-
   // Assuming a convex quadrilateral in 3D with only TWO line/edge plane intersections,
   // you can have a max of 5 vertices associated with the interpenetrating portion of the
   // four node quadrilateral face. This configuration is a 1-3 configuration with 3 nodes
@@ -318,30 +317,36 @@ class CommonPlanePair : public ContactPlanePair {
   static constexpr int max_nodes_per_intersection{ 5 };
 
  public:
+  int m_numInterpenPoly1Vert;                       ///< Number of vertices on face 1 interpenetrating polygon
+  RealT m_interpenG1X[max_nodes_per_intersection];  ///< Global x-coordinate of face 1 interpenetrating polygon as
+                                                    ///< projected onto the common plane
+  RealT m_interpenG1Y[max_nodes_per_intersection];  ///< Global y-coordinate of face 1 interpenetrating polygon as
+                                                    ///< projected onto the common plane
+  RealT m_interpenG1Z[max_nodes_per_intersection];  ///< Global z-coordinate of face 1 interpenetrating polygon as
+                                                    ///< projected onto the common plane
 
-  int m_numInterpenPoly1Vert; ///< Number of vertices on face 1 interpenetrating polygon
-  RealT m_interpenG1X[ max_nodes_per_intersection ];  ///< Global x-coordinate of face 1 interpenetrating polygon as projected onto the common plane 
-  RealT m_interpenG1Y[ max_nodes_per_intersection ];  ///< Global y-coordinate of face 1 interpenetrating polygon as projected onto the common plane
-  RealT m_interpenG1Z[ max_nodes_per_intersection ];  ///< Global z-coordinate of face 1 interpenetrating polygon as projected onto the common plane
+  int m_numInterpenPoly2Vert;                       ///< Number of vertices on face 2 interpenetrating polygon
+  RealT m_interpenG2X[max_nodes_per_intersection];  ///< Global x-coordinate of face 2 interpenetrating polygon as
+                                                    ///< projected onto the common plane
+  RealT m_interpenG2Y[max_nodes_per_intersection];  ///< Global y-coordinate of face 2 interpenetrating polygon as
+                                                    ///< projected onto the common plane
+  RealT m_interpenG2Z[max_nodes_per_intersection];  ///< Global z-coordinate of face 2 interpenetrating polygon as
+                                                    ///< projected onto the common plane
 
-  int m_numInterpenPoly2Vert; ///< Number of vertices on face 2 interpenetrating polygon
-  RealT m_interpenG2X[ max_nodes_per_intersection ];  ///< Global x-coordinate of face 2 interpenetrating polygon as projected onto the common plane
-  RealT m_interpenG2Y[ max_nodes_per_intersection ];  ///< Global y-coordinate of face 2 interpenetrating polygon as projected onto the common plane 
-  RealT m_interpenG2Z[ max_nodes_per_intersection ];  ///< Global z-coordinate of face 2 interpenetrating polygon as projected onto the common plane
-
-  RealT m_velGap; ///< Velocity gap
-  RealT m_ratePressure; ///< gap-rate pressure
-  RealT m_pressure; ///< kinematic contact pressure
+  RealT m_velGap;        ///< Velocity gap
+  RealT m_ratePressure;  ///< gap-rate pressure
+  RealT m_pressure;      ///< kinematic contact pressure
 
   /*!
    * \brief check to see if face-pairs are interacting
    *
    * \param [in] mesh1 mesh data viewer for mesh 1
    * \param [in] mesh2 mesh data viewer for mesh 2
-   * 
+   *
    * \return face geometry error
    */
-  TRIBOL_HOST_DEVICE FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+  TRIBOL_HOST_DEVICE FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1,
+                                                       const MeshData::Viewer& mesh2 ) override;
 
   /*!
    * \brief check to see if common plane face-pairs are interacting
@@ -349,7 +354,8 @@ class CommonPlanePair : public ContactPlanePair {
    * \param [in] mesh1 mesh data viewer for mesh 1
    * \param [in] mesh2 mesh data viewer for mesh 2
    */
-   TRIBOL_HOST_DEVICE FaceGeomError checkFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+  TRIBOL_HOST_DEVICE FaceGeomError checkFacePair( const MeshData::Viewer& mesh1,
+                                                  const MeshData::Viewer& mesh2 ) override;
 
   /*!
    * \brief check to see if common plane edge-pairs are interacting
@@ -357,7 +363,8 @@ class CommonPlanePair : public ContactPlanePair {
    * \param [in] mesh1 mesh data viewer for mesh 1
    * \param [in] mesh2 mesh data viewer for mesh 2
    */
-   TRIBOL_HOST_DEVICE FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+  TRIBOL_HOST_DEVICE FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1,
+                                                  const MeshData::Viewer& mesh2 ) override;
 
   /*!
    * \brief Compute the projected overlap of the interpenetrating portions of each face in 2D
@@ -384,19 +391,19 @@ class CommonPlanePair : public ContactPlanePair {
    *
    * \pre this routine assumes that the two four node quadrilaterals are planar
    */
-  TRIBOL_HOST_DEVICE FaceGeomError computeOverlap3D( const RealT* x1, const RealT* y1, const RealT* z1,
-                                                     const RealT* x2, const RealT* y2, const RealT* z2,
-                                                     const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
+  TRIBOL_HOST_DEVICE FaceGeomError computeOverlap3D( const RealT* x1, const RealT* y1, const RealT* z1, const RealT* x2,
+                                                     const RealT* y2, const RealT* z2, const MeshData::Viewer& m1,
+                                                     const MeshData::Viewer& m2 ) override;
 
   /*!
    * \brief Project face or interpen vertices onto common plane and compute overlap
    *
-   * \param [in] fx1 x-coordinates of the first planar whole or partial face 
-   * \param [in] fy1 y-coordinates of the first planar whole or partial face 
-   * \param [in] fz1 z-coordinates of the first planar whole or partial face 
-   * \param [in] fx2 x-coordinates of the second planar whole or partial face 
-   * \param [in] fy2 y-coordinates of the second planar whole or partial face 
-   * \param [in] fz2 z-coordinates of the second planar whole or partial face 
+   * \param [in] fx1 x-coordinates of the first planar whole or partial face
+   * \param [in] fy1 y-coordinates of the first planar whole or partial face
+   * \param [in] fz1 z-coordinates of the first planar whole or partial face
+   * \param [in] fx2 x-coordinates of the second planar whole or partial face
+   * \param [in] fy2 y-coordinates of the second planar whole or partial face
+   * \param [in] fz2 z-coordinates of the second planar whole or partial face
    * \param [in] num_vert_1 number of vertices in first whole or partial face
    * \param [in] num_vert_2 number of vertices in second whole or partial face
    * \param [in] m1 mesh data viewer for mesh 1
@@ -406,9 +413,12 @@ class CommonPlanePair : public ContactPlanePair {
    *
    * \pre this routine assumes each whole or partial face is planar
    */
-  TRIBOL_HOST_DEVICE FaceGeomError projectPointsAndComputeOverlap( RealT const* const fx1, RealT const* const fy1, RealT const* const fz1,
-                                                                   RealT const* const fx2, RealT const* const fy2, RealT const* const fz2,
-                                                                   const int num_vert_1, const int num_vert_2, const MeshData::Viewer& m1, const MeshData::Viewer& m2 );
+  TRIBOL_HOST_DEVICE FaceGeomError projectPointsAndComputeOverlap( RealT const* const fx1, RealT const* const fy1,
+                                                                   RealT const* const fz1, RealT const* const fx2,
+                                                                   RealT const* const fy2, RealT const* const fz2,
+                                                                   const int num_vert_1, const int num_vert_2,
+                                                                   const MeshData::Viewer& m1,
+                                                                   const MeshData::Viewer& m2 );
   /*!
    * \brief Compute the unit normal that defines the contact plane
    * \param [in] m1 mesh data viewer for mesh 1
@@ -447,7 +457,7 @@ class CommonPlanePair : public ContactPlanePair {
    * \param [in] m1 mesh data viewer for mesh 1
    * \param [in] m2 mesh data viewer for mesh 2
    * \param [in] scale Scale to help find centroid-to-face projections
-   * 
+   *
    * \note this routine computes and stores the gap on the CommonPlane object
    */
   TRIBOL_HOST_DEVICE void centroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2, RealT scale );
@@ -473,20 +483,18 @@ class CommonPlanePair : public ContactPlanePair {
                                                   const int faceId1, const int faceId2, const Parameters& params,
                                                   const RealT gap );
 
-}; // end class CommonPlanePair
+};  // end class CommonPlanePair
 
 //-----------------------------------------------------------------------------
 // Single Mortar Computational Geometry Class
 //-----------------------------------------------------------------------------
 class MortarPlanePair : public ContactPlanePair {
-
  public:
-
   /*!
    * @brief Constructs a Mortar contact plane
    *
    */
-  TRIBOL_HOST_DEVICE MortarPlanePair() {};
+  TRIBOL_HOST_DEVICE MortarPlanePair(){};
 
   /*!
    * @brief Overloaded constructor
@@ -508,7 +516,8 @@ class MortarPlanePair : public ContactPlanePair {
    *
    * \return face geometry error
    */
-  TRIBOL_HOST_DEVICE FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+  TRIBOL_HOST_DEVICE FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1,
+                                                       const MeshData::Viewer& mesh2 ) override;
 
   /*!
    * \brief check to see if mortar plane face-pairs are interacting
@@ -516,7 +525,8 @@ class MortarPlanePair : public ContactPlanePair {
    * \param [in] mesh1 mesh data viewer for mesh 1
    * \param [in] mesh2 mesh data viewer for mesh 2
    */
-   TRIBOL_HOST_DEVICE FaceGeomError checkFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+  TRIBOL_HOST_DEVICE FaceGeomError checkFacePair( const MeshData::Viewer& mesh1,
+                                                  const MeshData::Viewer& mesh2 ) override;
 
   /*!
    * \brief check to see if mortar plane edge-pairs are interacting
@@ -524,7 +534,8 @@ class MortarPlanePair : public ContactPlanePair {
    * \param [in] mesh1 mesh data viewer for mesh 1
    * \param [in] mesh2 mesh data viewer for mesh 2
    */
-   TRIBOL_HOST_DEVICE FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+  TRIBOL_HOST_DEVICE FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1,
+                                                  const MeshData::Viewer& mesh2 ) override;
 
   /*!
    * \brief Compute the projected overlap in 2D
@@ -537,7 +548,7 @@ class MortarPlanePair : public ContactPlanePair {
   TRIBOL_HOST_DEVICE FaceGeomError computeOverlap2D( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
 
   /*!
-   * \brief Compute the projected overlap in 3D 
+   * \brief Compute the projected overlap in 3D
    *
    * \param [in] x1 x-coordinates of the first planar quadrilateral
    * \param [in] y1 y-coordinates of the first planar quadrilateral
@@ -552,9 +563,9 @@ class MortarPlanePair : public ContactPlanePair {
    *
    * \pre this routine assumes that the two four node quadrilaterals are planar
    */
-  TRIBOL_HOST_DEVICE FaceGeomError computeOverlap3D( const RealT* x1, const RealT* y1, const RealT* z1,
-                                                     const RealT* x2, const RealT* y2, const RealT* z2,
-                                                     const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
+  TRIBOL_HOST_DEVICE FaceGeomError computeOverlap3D( const RealT* x1, const RealT* y1, const RealT* z1, const RealT* x2,
+                                                     const RealT* y2, const RealT* z2, const MeshData::Viewer& m1,
+                                                     const MeshData::Viewer& m2 ) override;
 
   /*!
    * \brief Compute the unit normal that defines the contact plane
@@ -573,20 +584,18 @@ class MortarPlanePair : public ContactPlanePair {
    */
   TRIBOL_HOST_DEVICE void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
 
-}; // end class MortarPlanePair
+};  // end class MortarPlanePair
 
 //-----------------------------------------------------------------------------
 // Aligned Mortar Computational Geometry Class
 //-----------------------------------------------------------------------------
 class AlignedMortarPlanePair : public ContactPlanePair {
-
  public:
-
   /*!
    * @brief Constructs a Mortar-based contact plane
    *
    */
-  TRIBOL_HOST_DEVICE AlignedMortarPlanePair() {};
+  TRIBOL_HOST_DEVICE AlignedMortarPlanePair(){};
 
   /*!
    * @brief Overloaded constructor
@@ -608,7 +617,8 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    *
    * \return face geometry error
    */
-  TRIBOL_HOST_DEVICE FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+  TRIBOL_HOST_DEVICE FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1,
+                                                       const MeshData::Viewer& mesh2 ) override;
 
   /*!
    * \brief check to see if aligned mortar plane face-pairs are interacting
@@ -618,7 +628,8 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    *
    * \note Aligned mortar only works in 3D (e.g. face-pairs)
    */
-   TRIBOL_HOST_DEVICE FaceGeomError checkFacePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+  TRIBOL_HOST_DEVICE FaceGeomError checkFacePair( const MeshData::Viewer& mesh1,
+                                                  const MeshData::Viewer& mesh2 ) override;
 
   /*!
    * \brief check to see if aligned mortar plane edge-pairs are interacting
@@ -626,7 +637,8 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    * \param [in] mesh1 mesh data viewer for mesh 1
    * \param [in] mesh2 mesh data viewer for mesh 2
    */
-   TRIBOL_HOST_DEVICE FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) override;
+  TRIBOL_HOST_DEVICE FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1,
+                                                  const MeshData::Viewer& mesh2 ) override;
 
   /*!
    * \brief Compute the projected overlap in 2D
@@ -638,7 +650,7 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    */
   TRIBOL_HOST_DEVICE FaceGeomError computeOverlap2D( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
   /*!
-   * \brief Compute the projected overlap in 3D 
+   * \brief Compute the projected overlap in 3D
    *
    * \param [in] x1 x-coordinates of the first planar quadrilateral
    * \param [in] y1 y-coordinates of the first planar quadrilateral
@@ -653,9 +665,9 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    *
    * \pre this routine assumes that the two four node quadrilaterals are planar
    */
-  TRIBOL_HOST_DEVICE FaceGeomError computeOverlap3D( const RealT* x1, const RealT* y1, const RealT* z1,
-                                                     const RealT* x2, const RealT* y2, const RealT* z2,
-                                                     const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
+  TRIBOL_HOST_DEVICE FaceGeomError computeOverlap3D( const RealT* x1, const RealT* y1, const RealT* z1, const RealT* x2,
+                                                     const RealT* y2, const RealT* z2, const MeshData::Viewer& m1,
+                                                     const MeshData::Viewer& m2 ) override;
 
   /*!
    * \brief Compute the unit normal that defines the contact plane
@@ -674,211 +686,214 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    */
   TRIBOL_HOST_DEVICE void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
 
-}; // end class AlignedMortarPlanePair
+};  // end class AlignedMortarPlanePair
 
 //-----------------------------------------------------------------------------
 // Comp geom container class
 //-----------------------------------------------------------------------------
 class CompGeom {
+ public:
+  /**
+   * @brief Nested class for holding views (non-owned, shallow copies) of the CompGeom data
+   */
+  class Viewer {
+   public:
+    /**
+     * @brief Construct a new CompGeom::Viewer object
+     *
+     * @param cg CompGeom object to create a view of
+     */
+    Viewer( CompGeom& cg )
+        : m_common_plane_pairs( cg.m_common_plane_pairs.view() ),
+          m_mortar_plane_pairs( cg.m_mortar_plane_pairs.view() ),
+          m_aligned_mortar_plane_pairs( cg.m_aligned_mortar_plane_pairs.view() )
+    {
+    }
 
-  public:
+    /**
+     * @brief Get the array view of common plane pairs
+     *
+     * @return ArrayViewT of common plane pairs
+     */
+    TRIBOL_HOST_DEVICE const ArrayViewT<CommonPlanePair>& getCommonPlanePairs() const { return m_common_plane_pairs; }
 
-   /**
-    * @brief Nested class for holding views (non-owned, shallow copies) of the CompGeom data
-    */
-   class Viewer {
-    public:
+    /**
+     * @brief Get a single common plane from the array view
+     *
+     * @return common plane object
+     */
+    TRIBOL_HOST_DEVICE CommonPlanePair& getCommonPlane( int id ) const { return m_common_plane_pairs[id]; }
 
-     /**
-      * @brief Construct a new CompGeom::Viewer object
-      *
-      * @param cg CompGeom object to create a view of
-      */
-     Viewer ( CompGeom& cg )
-       : m_common_plane_pairs( cg.m_common_plane_pairs.view() ),
-         m_mortar_plane_pairs( cg.m_mortar_plane_pairs.view() ),
-         m_aligned_mortar_plane_pairs( cg.m_aligned_mortar_plane_pairs.view() )
-     {
-     }
+    /**
+     * @brief Get the array view of mortar plane pairs
+     *
+     * @return ArrayViewT of mortar plane pairs
+     */
+    TRIBOL_HOST_DEVICE const ArrayViewT<MortarPlanePair>& getMortarPlanePairs() const { return m_mortar_plane_pairs; }
 
-     /**
-      * @brief Get the array view of common plane pairs
-      *
-      * @return ArrayViewT of common plane pairs
-      */
-     TRIBOL_HOST_DEVICE const ArrayViewT<CommonPlanePair>& getCommonPlanePairs() const { return m_common_plane_pairs; }
+    /**
+     * @brief Get a single mortar plane from the array view
+     *
+     * @return mortar plane object
+     */
+    TRIBOL_HOST_DEVICE MortarPlanePair& getMortarPlane( int id ) const { return m_mortar_plane_pairs[id]; }
 
-     /**
-      * @brief Get a single common plane from the array view
-      *
-      * @return common plane object
-      */
-     TRIBOL_HOST_DEVICE CommonPlanePair& getCommonPlane( int id ) const { return m_common_plane_pairs[id]; }
+    /**
+     * @brief Get the array view of aligned mortar plane pairs
+     *
+     * @return ArrayViewT of aligned mortar plane pairs
+     */
+    TRIBOL_HOST_DEVICE const ArrayViewT<AlignedMortarPlanePair>& getAlignedMortarPlanePairs() const
+    {
+      return m_aligned_mortar_plane_pairs;
+    }
 
-     /**
-      * @brief Get the array view of mortar plane pairs
-      *
-      * @return ArrayViewT of mortar plane pairs
-      */
-     TRIBOL_HOST_DEVICE const ArrayViewT<MortarPlanePair>& getMortarPlanePairs() const { return m_mortar_plane_pairs; }
+    /**
+     * @brief Get a single aligned mortar plane from the array view
+     *
+     * @return algined mortar plane object
+     */
+    TRIBOL_HOST_DEVICE AlignedMortarPlanePair& getAlignedMortarPlane( int id ) const
+    {
+      return m_aligned_mortar_plane_pairs[id];
+    }
 
-     /**
-      * @brief Get a single mortar plane from the array view
-      *
-      * @return mortar plane object
-      */
-     TRIBOL_HOST_DEVICE MortarPlanePair& getMortarPlane( int id ) const { return m_mortar_plane_pairs[id]; }
+    /**
+     * @brief Add a contact plane to the appropriate array view
+     *
+     */
+    TRIBOL_HOST_DEVICE void addContactPlane( ContactPlanePair& contact_plane, const int id, const ContactMethod method )
+    {
+      switch ( method ) {
+        case COMMON_PLANE: {
+          // if (auto* plane = dynamic_cast<CommonPlanePair*>(&contact_plane)) {
+          //   m_common_plane_pairs[id] = std::move( *plane );
+          // }
+          m_common_plane_pairs[id] = std::move( static_cast<CommonPlanePair&>( contact_plane ) );
+          break;
+        }
+        case SINGLE_MORTAR:
+        case MORTAR_WEIGHTS: {
+          m_mortar_plane_pairs[id] = std::move( static_cast<MortarPlanePair&>( contact_plane ) );
+          break;
+        }
+        case ALIGNED_MORTAR: {
+          m_aligned_mortar_plane_pairs[id] = std::move( static_cast<AlignedMortarPlanePair&>( contact_plane ) );
+          break;
+        }
+        default: {
+          // no-op
+          break;
+        }
+      }  // end switch
+    }
 
-     /**
-      * @brief Get the array view of aligned mortar plane pairs
-      *
-      * @return ArrayViewT of aligned mortar plane pairs
-      */
-     TRIBOL_HOST_DEVICE const ArrayViewT<AlignedMortarPlanePair>& getAlignedMortarPlanePairs() const { return m_aligned_mortar_plane_pairs; }
+   private:
+    ArrayViewT<CommonPlanePair> m_common_plane_pairs;
+    ArrayViewT<MortarPlanePair> m_mortar_plane_pairs;
+    ArrayViewT<AlignedMortarPlanePair> m_aligned_mortar_plane_pairs;
 
-     /**
-      * @brief Get a single aligned mortar plane from the array view
-      *
-      * @return algined mortar plane object
-      */
-     TRIBOL_HOST_DEVICE AlignedMortarPlanePair& getAlignedMortarPlane( int id ) const { return m_aligned_mortar_plane_pairs[id]; }
+  };  // end CompGeom::Viewer
 
-     /**
-      * @brief Add a contact plane to the appropriate array view
-      *
-      */
-      TRIBOL_HOST_DEVICE void addContactPlane( ContactPlanePair& contact_plane, const int id, const ContactMethod method ) {
-        switch (method) {
-          case COMMON_PLANE: {
-            //if (auto* plane = dynamic_cast<CommonPlanePair*>(&contact_plane)) {
-            //  m_common_plane_pairs[id] = std::move( *plane );
-            //}
-            m_common_plane_pairs[id] = std::move( static_cast<CommonPlanePair&>(contact_plane) );
-            break;
-          }
-          case SINGLE_MORTAR:
-          case MORTAR_WEIGHTS: {
-            m_mortar_plane_pairs[id] = std::move( static_cast<MortarPlanePair&>(contact_plane) );
-            break;
-          }
-          case ALIGNED_MORTAR: {
-            m_aligned_mortar_plane_pairs[id] = std::move( static_cast<AlignedMortarPlanePair&>(contact_plane) );
-            break;
-          }
-          default: {
-            // no-op
-            break;
-          }
-        } // end switch
+  /*!
+   * @brief Constructs a comp geom object
+   *
+   */
+  TRIBOL_HOST_DEVICE CompGeom(){};
+
+  /*!
+   * @brief Destructor
+   *
+   */
+  virtual ~CompGeom() = default;
+
+  // Prevent copying
+  CompGeom( const CompGeom& other ) = delete;
+  CompGeom& operator=( const CompGeom& other ) = delete;
+  // Enable moving
+  CompGeom( CompGeom&& other ) = default;
+  CompGeom& operator=( CompGeom&& other ) = default;
+
+  /**
+   * @brief Construct a non-owned, shallow copy of the CompGeom data
+   *
+   * @return CompGeom::Viewer type
+   */
+  CompGeom::Viewer getView() { return *this; }
+
+  /**
+   * @brief Get the list of common plane pairs
+   *
+   * @return ArrayT of common plane pairs
+   */
+  const ArrayT<CommonPlanePair>& getCommonPlanePairs() const { return m_common_plane_pairs; }
+
+  /**
+   * @brief Get a single common plane
+   *
+   * @return common plane object
+   */
+  const CommonPlanePair& getCommonPlane( int id ) const { return m_common_plane_pairs[id]; }
+
+  /**
+   * @brief Get the list of mortar plane pairs
+   *
+   * @return ArrayT of mortar plane pairs
+   */
+  const ArrayT<MortarPlanePair>& getMortarPlanePairs() const { return m_mortar_plane_pairs; }
+
+  /**
+   * @brief Get a single mortar plane
+   *
+   * @return mortar plane object
+   */
+  const MortarPlanePair& getMortarPlane( int id ) const { return m_mortar_plane_pairs[id]; }
+
+  /**
+   * @brief Get the list of aligned mortar plane pairs
+   *
+   * @return ArrayT of aligned mortar plane pairs
+   */
+  const ArrayT<AlignedMortarPlanePair>& getAlignedMortarPlanePairs() const { return m_aligned_mortar_plane_pairs; }
+
+  /**
+   * @brief Get a single aligned mortar plane
+   *
+   * @return aligned mortar plane object
+   */
+  const AlignedMortarPlanePair& getAlignedMortarPlane( int id ) const { return m_aligned_mortar_plane_pairs[id]; }
+
+  /**
+   * @brief Allocate contact plane pairs arrays based on contact method
+   *
+   */
+  void allocatePlanePairs( const ContactMethod method, const int num_pairs, const int allocator_id )
+  {
+    // clear and allocate the appropriate computational geometry pairs
+    switch ( method ) {
+      case COMMON_PLANE: {
+        m_common_plane_pairs = ArrayT<CommonPlanePair>( num_pairs, num_pairs, allocator_id );
+        break;
       }
+      case SINGLE_MORTAR:
+      case MORTAR_WEIGHTS: {
+        m_mortar_plane_pairs = ArrayT<MortarPlanePair>( num_pairs, num_pairs, allocator_id );
+        break;
+      }
+      case ALIGNED_MORTAR: {
+        m_aligned_mortar_plane_pairs = ArrayT<AlignedMortarPlanePair>( num_pairs, num_pairs, allocator_id );
+        break;
+      }
+      default: {
+        // no-op
+        break;
+      }
+    }  // end switch
+  }
 
-     private:
-
-      ArrayViewT<CommonPlanePair> m_common_plane_pairs;
-      ArrayViewT<MortarPlanePair> m_mortar_plane_pairs;
-      ArrayViewT<AlignedMortarPlanePair> m_aligned_mortar_plane_pairs;
-
-   }; // end CompGeom::Viewer
-  
-   /*!
-    * @brief Constructs a comp geom object
-    *
-    */
-   TRIBOL_HOST_DEVICE CompGeom() {};
-
-   /*!
-    * @brief Destructor
-    *
-    */
-   virtual ~CompGeom() = default; 
-
-   // Prevent copying
-   CompGeom( const CompGeom& other ) = delete;
-   CompGeom& operator=( const CompGeom& other ) = delete;
-   // Enable moving
-   CompGeom( CompGeom&& other ) = default;
-   CompGeom& operator=( CompGeom&& other ) = default;
-
-   /**
-    * @brief Construct a non-owned, shallow copy of the CompGeom data
-    *
-    * @return CompGeom::Viewer type
-    */
-   CompGeom::Viewer getView() { return *this; }
-
-   /**
-    * @brief Get the list of common plane pairs
-    *
-    * @return ArrayT of common plane pairs
-    */
-   const ArrayT<CommonPlanePair>& getCommonPlanePairs() const { return m_common_plane_pairs; }
-
-   /**
-    * @brief Get a single common plane
-    *
-    * @return common plane object
-    */
-   const CommonPlanePair& getCommonPlane( int id ) const { return m_common_plane_pairs[id]; }
-
-   /**
-    * @brief Get the list of mortar plane pairs
-    *
-    * @return ArrayT of mortar plane pairs
-    */
-   const ArrayT<MortarPlanePair>& getMortarPlanePairs() const { return m_mortar_plane_pairs; }
-
-   /**
-    * @brief Get a single mortar plane
-    *
-    * @return mortar plane object
-    */
-   const MortarPlanePair& getMortarPlane( int id ) const { return m_mortar_plane_pairs[id]; }
-
-   /**
-    * @brief Get the list of aligned mortar plane pairs
-    *
-    * @return ArrayT of aligned mortar plane pairs
-    */
-   const ArrayT<AlignedMortarPlanePair>& getAlignedMortarPlanePairs() const { return m_aligned_mortar_plane_pairs; }
-
-   /**
-    * @brief Get a single aligned mortar plane
-    *
-    * @return aligned mortar plane object
-    */
-   const AlignedMortarPlanePair& getAlignedMortarPlane( int id ) const { return m_aligned_mortar_plane_pairs[id]; }
-
-   /**
-    * @brief Allocate contact plane pairs arrays based on contact method
-    *
-    */
-   void allocatePlanePairs( const ContactMethod method, const int num_pairs, const int allocator_id )
-   {
-       // clear and allocate the appropriate computational geometry pairs
-       switch (method) {
-         case COMMON_PLANE: {
-           m_common_plane_pairs = ArrayT<CommonPlanePair>( num_pairs, num_pairs, allocator_id );
-           break;
-         }
-         case SINGLE_MORTAR:
-         case MORTAR_WEIGHTS: {
-           m_mortar_plane_pairs = ArrayT<MortarPlanePair>( num_pairs, num_pairs, allocator_id );
-           break;
-         }
-         case ALIGNED_MORTAR: {
-           m_aligned_mortar_plane_pairs = ArrayT<AlignedMortarPlanePair>( num_pairs, num_pairs, allocator_id );
-           break;
-         }
-         default: {
-           // no-op
-           break;
-         }
-       } // end switch
-   }
-
-   int getNumActivePairs( const ContactMethod method ) const
-   {
-    switch (method) {
+  int getNumActivePairs( const ContactMethod method ) const
+  {
+    switch ( method ) {
       case COMMON_PLANE: {
         return m_common_plane_pairs.size();
         break;
@@ -896,16 +911,17 @@ class CompGeom {
         // no-op
         break;
       }
-    } // end switch
+    }  // end switch
     return 0;
-   } // end getNumActivePairs()
+  }  // end getNumActivePairs()
 
-   /**
-    * @brief Resize the appropriate contact plane array view
-    *
-    */
-   TRIBOL_HOST_DEVICE void resizeActivePairs( ContactMethod method, int size ) {
-    switch (method) {
+  /**
+   * @brief Resize the appropriate contact plane array view
+   *
+   */
+  TRIBOL_HOST_DEVICE void resizeActivePairs( ContactMethod method, int size )
+  {
+    switch ( method ) {
       case COMMON_PLANE: {
         m_common_plane_pairs.resize( size );
         break;
@@ -923,16 +939,14 @@ class CompGeom {
         // no-op
         break;
       }
-    } // end switch
-   } // end resizeActivePairs()
+    }  // end switch
+  }    // end resizeActivePairs()
 
-  private:
-
-   ArrayT<CommonPlanePair> m_common_plane_pairs;
-   ArrayT<MortarPlanePair> m_mortar_plane_pairs;
-   ArrayT<AlignedMortarPlanePair> m_aligned_mortar_plane_pairs;
+ private:
+  ArrayT<CommonPlanePair> m_common_plane_pairs;
+  ArrayT<MortarPlanePair> m_mortar_plane_pairs;
+  ArrayT<AlignedMortarPlanePair> m_aligned_mortar_plane_pairs;
 };
-
 
 //-----------------------------------------------------------------------------
 // Free functions

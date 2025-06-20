@@ -196,7 +196,7 @@ void ComputeAlignedMortarGaps( CouplingScheme* cs )
     }
 
     auto& cg_pairs = cs->getCompGeom();
-    auto& plane = cg_pairs.getAlignedMortarPlane(cpID);
+    auto& plane = cg_pairs.getAlignedMortarPlane( cpID );
 
     // get pair indices
     IndexT index1 = pair.m_element_id1;

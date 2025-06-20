@@ -21,11 +21,9 @@
 
 namespace tribol {
 
-TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT x, RealT y, RealT z,
-                                           RealT nx, RealT ny, RealT nz,
-                                           RealT cx, RealT cy, RealT cz,
-                                           RealT& e1x, RealT& e1y, RealT& e1z,
-                                           RealT& e2x, RealT& e2y, RealT& e2z )
+TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT x, RealT y, RealT z, RealT nx, RealT ny, RealT nz, RealT cx, RealT cy,
+                                           RealT cz, RealT& e1x, RealT& e1y, RealT& e1z, RealT& e2x, RealT& e2y,
+                                           RealT& e2z )
 {
   e1x = x - cx;
   e1y = y - cy;
@@ -34,9 +32,8 @@ TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT x, RealT y, RealT z,
   // check the square of the magnitude of the first basis vector to catch
   // if the point (x,y,z) is really close to the centroid
   RealT sqrMag = e1x * e1x + e1y * e1y + e1z * e1z;
-  if ( sqrMag < 1.E-12 )
-  {
-    RealT scale = 10.; // just scale it 10x the original distance
+  if ( sqrMag < 1.E-12 ) {
+    RealT scale = 10.;  // just scale it 10x the original distance
     RealT x_new = x + scale;
     RealT y_new = y + scale;
     RealT z_new = z + scale;
@@ -61,19 +58,19 @@ TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT x, RealT y, RealT z,
   // compute the second, and orthogonal, in-plane basis vector as the
   // cross product between the face normal and e1. This will be unit because
   // the normal and e1 are unit.
-  
-  e2x = (ny * e1z) - (nz * e1y);
-  e2y = (nz * e1x) - (nx * e1z);
-  e2z = (nx * e1y) - (ny * e1x);
- 
-  mag = magnitude( e2x, e2y, e2z ); 
+
+  e2x = ( ny * e1z ) - ( nz * e1y );
+  e2y = ( nz * e1x ) - ( nx * e1z );
+  e2z = ( nx * e1y ) - ( ny * e1x );
+
+  mag = magnitude( e2x, e2y, e2z );
   inv_mag = 1.0 / mag;
 
   e2x *= inv_mag;
   e2y *= inv_mag;
   e2z *= inv_mag;
-  
-} // end ComputeLocalBasis()
+
+}  // end ComputeLocalBasis()
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ProjectFaceNodesToPlane( const MeshData::Viewer& mesh, int faceId, RealT nrmlX, RealT nrmlY,
                                                  RealT nrmlZ, RealT cX, RealT cY, RealT cZ, RealT* pX, RealT* pY,
@@ -132,11 +129,10 @@ TRIBOL_HOST_DEVICE void ProjectPointsToPlane( const RealT* x, const RealT* y, co
                                               const RealT ny, const RealT nz, const RealT ox, const RealT oy,
                                               const RealT oz, RealT* px, RealT* py, RealT* pz, const int num_points )
 {
-  for (int i=0; i<num_points; ++i)
-  {
+  for ( int i = 0; i < num_points; ++i ) {
     ProjectPointToPlane( x[i], y[i], z[i], nx, ny, nz, ox, oy, oz, px[i], py[i], pz[i] );
   }
-} // end ProjectPointsToPlane()
+}  // end ProjectPointsToPlane()
 
 //------------------------------------------------------------------------------
 void PlaneTo2DCoords( const RealT* x, const RealT* x0, const RealT* e1, const RealT* e2, RealT* xp, RealT* yp,
@@ -454,8 +450,8 @@ TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( const RealT* const pX, const Real
     // in the plane so the out-of-plane component should be zero.
     pLX[i] = vX * e1X + vY * e1Y + vZ * e1Z;  // projection onto e1
     pLY[i] = vX * e2X + vY * e2Y + vZ * e2Z;  // projection onto e2
-    //pLX[i] = pX[i] * e1X + pY[i] * e1Y + pZ[i] * e1Z;  // projection onto e1
-    //pLY[i] = pX[i] * e2X + pY[i] * e2Y + pZ[i] * e2Z;  // projection onto e2
+    // pLX[i] = pX[i] * e1X + pY[i] * e1Y + pZ[i] * e1Z;  // projection onto e1
+    // pLY[i] = pX[i] * e2X + pY[i] * e2Y + pZ[i] * e2Z;  // projection onto e2
   }
 
   return;
@@ -663,7 +659,8 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     SLIC_DEBUG( "Intersection2DPolygon(): one or more degenerate faces with < 3 vertices." );
 #endif
     area = 0.0;
-    SLIC_INFO("Intersection2DPolygon(): with numVertexA<3 or numVertexB<3: " << numVertexA << ", " << numVertexB << "." );
+    SLIC_INFO( "Intersection2DPolygon(): with numVertexA<3 or numVertexB<3: " << numVertexA << ", " << numVertexB
+                                                                              << "." );
     return INVALID_FACE_INPUT;
   }
 
@@ -685,7 +682,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   }
 
   // maximum number of vertices for potentially clipped four node quads (for use later)
-  constexpr int max_nodes_per_element = 5; // TODO SRW switched to 5 as max interpen clipped polygon can have 5
+  constexpr int max_nodes_per_element = 5;  // TODO SRW switched to 5 as max interpen clipped polygon can have 5
 
   // allocate an array to hold ids of interior vertices
   int interiorVAId[max_nodes_per_element];
@@ -865,7 +862,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
         if ( intersect[interId] ) {
           edgeATemp[interId] = ia;
           edgeBTemp[interId] = jb;
-          ++interId; // increment intersection counter for segments that intersect
+          ++interId;  // increment intersection counter for segments that intersect
         }
       }
     }  // end loop over A segments
@@ -1032,9 +1029,8 @@ FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE FaceGeomError CheckSegOverlap( const RealT* const pX1, const RealT* const pY1,
-                                                  const RealT* const pX2, const RealT* const pY2,
-                                                  const int nV1, const int nV2, RealT* overlapX, RealT* overlapY,
-                                                  RealT& area )
+                                                  const RealT* const pX2, const RealT* const pY2, const int nV1,
+                                                  const int nV2, RealT* overlapX, RealT* overlapY, RealT& area )
 {
   // TODO: Re-write in a way where the assert isn't needed
 #ifdef TRIBOL_USE_CUDA
@@ -1490,7 +1486,7 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
       y = yMinVert;
       duplicate = true;
       return false;
-    } else if (interior[idMin]) {
+    } else if ( interior[idMin] ) {
       x = xMinVert;
       y = yMinVert;
       duplicate = true;
@@ -1934,10 +1930,9 @@ void Vertex2DOrderToCCW( const RealT* const x, const RealT* const y, RealT* xTem
 }  // end Vertex2DOrderToCCW()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void Plane3DTo2D( const RealT* const x, const RealT* const y, const RealT* const z,
-                                     const RealT nx, const RealT ny, const RealT nz,
-                                     const RealT cx, const RealT cy, const RealT cz, const int num_verts,
-                                     RealT* x_loc, RealT* y_loc )
+TRIBOL_HOST_DEVICE void Plane3DTo2D( const RealT* const x, const RealT* const y, const RealT* const z, const RealT nx,
+                                     const RealT ny, const RealT nz, const RealT cx, const RealT cy, const RealT cz,
+                                     const int num_verts, RealT* x_loc, RealT* y_loc )
 {
   RealT e1x, e1y, e1z;
   RealT e2x, e2y, e2z;
@@ -1958,10 +1953,9 @@ TRIBOL_HOST_DEVICE void Plane3DTo2D( const RealT* const x, const RealT* const y,
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void Point3DTo2D( const RealT x, const RealT y, const RealT z,
-                                     const RealT nx, const RealT ny, const RealT nz,
-                                     const RealT cx, const RealT cy, const RealT cz,
-                                     RealT& x_loc, RealT& y_loc )
+TRIBOL_HOST_DEVICE void Point3DTo2D( const RealT x, const RealT y, const RealT z, const RealT nx, const RealT ny,
+                                     const RealT nz, const RealT cx, const RealT cy, const RealT cz, RealT& x_loc,
+                                     RealT& y_loc )
 {
   RealT e1x, e1y, e1z;
   RealT e2x, e2y, e2z;
@@ -1983,15 +1977,15 @@ TRIBOL_HOST_DEVICE void Point3DTo2D( const RealT x, const RealT y, const RealT z
 TRIBOL_HOST_DEVICE int IsPointOrientedInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp )
 {
   int val = ( yp - y[0] ) * ( x[1] - xp ) - ( xp - x[0] ) * ( y[1] - yp );
-  if (val == 0) return 0;
-  return (val > 0) ? 1 : 2; // clockwise or counterclockwise
+  if ( val == 0 ) return 0;
+  return ( val > 0 ) ? 1 : 2;  // clockwise or counterclockwise
 }
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE bool OnEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp )
 {
   RealT xmax, xmin, ymax, ymin;
-  if (x[0] > x[1]) {
+  if ( x[0] > x[1] ) {
     xmax = x[0];
     xmin = x[1];
   } else {
@@ -1999,7 +1993,7 @@ TRIBOL_HOST_DEVICE bool OnEdge( const RealT* const x, const RealT* const y, Real
     xmin = x[0];
   }
 
-  if (y[0] > y[1]) {
+  if ( y[0] > y[1] ) {
     ymax = y[0];
     ymin = y[1];
   } else {
@@ -2008,10 +2002,10 @@ TRIBOL_HOST_DEVICE bool OnEdge( const RealT* const x, const RealT* const y, Real
   }
 
   // add fuzz to catch nearly coincident vertices
-  RealT l = magnitude( x[1] - x[0], y[1] - y[0] ); // edge length
-  RealT fuzz = 0.01 * l; // add 1% fuzz
+  RealT l = magnitude( x[1] - x[0], y[1] - y[0] );  // edge length
+  RealT fuzz = 0.01 * l;                            // add 1% fuzz
 
-  if ( xp <= (xmax+fuzz) && xp >= (xmin-fuzz) && yp <= (ymax+fuzz) && yp >= (ymin-fuzz) ) {
+  if ( xp <= ( xmax + fuzz ) && xp >= ( xmin - fuzz ) && yp <= ( ymax + fuzz ) && yp >= ( ymin - fuzz ) ) {
     return true;
   }
   return false;
@@ -2022,18 +2016,17 @@ TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const 
 {
   int isOriented = IsPointOrientedInEdge( x, y, xp, yp );
 
-  if (isOriented == 0) {
+  if ( isOriented == 0 ) {
     return OnEdge( x, y, xp, yp );
   }
 
   return false;
-
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_nodes_2,
-                                          RealT* projLocX1, RealT* projLocY1, RealT* projLocX2,
-                                          RealT* projLocY2, RealT& cx, RealT& cy, RealT& area, const int isym )
+TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_nodes_2, RealT* projLocX1,
+                                          RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, RealT& cx, RealT& cy,
+                                          RealT& area, const int isym )
 {
   // change the vertex ordering of one of the faces so that the two match
   constexpr int max_nodes_per_elem = 4;
@@ -2052,10 +2045,9 @@ TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_n
     ++k;
   }
 
-  PolyInterYCentroid( num_nodes_1, projLocX1, projLocY1, num_nodes_2, x2Temp, y2Temp,
-                      isym, area, cy );
-  //PolyInterYCentroid( num_nodes_1, projLocY1, projLocX1, num_nodes_2, y2Temp, x2Temp,
-  //                    isym, area, cx );
+  PolyInterYCentroid( num_nodes_1, projLocX1, projLocY1, num_nodes_2, x2Temp, y2Temp, isym, area, cy );
+  // PolyInterYCentroid( num_nodes_1, projLocY1, projLocX1, num_nodes_2, y2Temp, x2Temp,
+  //                     isym, area, cx );
 
   return;
 

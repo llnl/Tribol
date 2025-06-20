@@ -220,7 +220,7 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
     }
 
     auto& cg_pairs = cs->getCompGeom();
-    auto& plane = cg_pairs.getMortarPlane(cpID);
+    auto& plane = cg_pairs.getMortarPlane( cpID );
 
     // get pair indices
     IndexT index1 = pair.m_element_id1;
@@ -368,7 +368,7 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
     }
 
     auto& cg_pairs = cs->getCompGeom();
-    auto& plane = cg_pairs.getMortarPlane(cpID);
+    auto& plane = cg_pairs.getMortarPlane( cpID );
 
     // get pair indices
     IndexT index1 = pair.m_element_id1;
@@ -1174,7 +1174,7 @@ int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs )
     }
 
     auto& cg_pairs = cs->getCompGeom();
-    auto& plane = cg_pairs.getMortarPlane(cpID);
+    auto& plane = cg_pairs.getMortarPlane( cpID );
 
     // get pair indices
     IndexT index1 = pair.m_element_id1;

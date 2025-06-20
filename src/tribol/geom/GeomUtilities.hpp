@@ -13,7 +13,7 @@ namespace tribol {
 
 /*!
  *
- * \brief computes a local basis on the plane defined by the given point-normal data 
+ * \brief computes a local basis on the plane defined by the given point-normal data
  *
  * \param [in] x x-component of reference point on the plane used to compute the first basis vector
  * \param [in] y y-component of reference point on the plane used to compute the first basis vector
@@ -31,13 +31,11 @@ namespace tribol {
  * \param [in,out] e2y y-component of second basis vector
  * \param [in,out] e2z z-component of second basis vector
  *
- * \pre the coordinates x,y,z lie on the plane defined by <nx,ny,nz> and <cx,cy,cz> 
+ * \pre the coordinates x,y,z lie on the plane defined by <nx,ny,nz> and <cx,cy,cz>
  */
-TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT x, RealT y, RealT z,
-                                           RealT nx, RealT ny, RealT nz,
-                                           RealT cx, RealT cy, RealT cz,
-                                           RealT& e1x, RealT& e1y, RealT& e1z,
-                                           RealT& e2x, RealT& e2y, RealT& e2z );
+TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT x, RealT y, RealT z, RealT nx, RealT ny, RealT nz, RealT cx, RealT cy,
+                                           RealT cz, RealT& e1x, RealT& e1y, RealT& e1z, RealT& e2x, RealT& e2y,
+                                           RealT& e2z );
 
 /*!
  *
@@ -460,7 +458,7 @@ FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int
 
 /*!
  *
- * \brief computes the segment overlap between two linear edges projected onto the same 2D plane 
+ * \brief computes the segment overlap between two linear edges projected onto the same 2D plane
  *
  * \param [in] pX1 x-coordinates of edge 1 as projected onto a common plane
  * \param [in] pY1 y-coordinates of edge 1 as projected onto a common plane
@@ -475,9 +473,8 @@ FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int
  * \pre project each edge to a common 2D plane
  */
 TRIBOL_HOST_DEVICE FaceGeomError CheckSegOverlap( const RealT* const pX1, const RealT* const pY1,
-                                                  const RealT* const pX2, const RealT* const pY2,
-                                                  const int nV1, const int nV2, RealT* overlapX, RealT* overlapY,
-                                                  RealT& area );
+                                                  const RealT* const pX2, const RealT* const pY2, const int nV1,
+                                                  const int nV2, RealT* overlapX, RealT* overlapY, RealT& area );
 
 /*!
  *
@@ -765,7 +762,7 @@ void Vertex2DOrderToCCW( const RealT* const x, const RealT* const y, RealT* xTem
 
 /*!
  *
- * \brief Converts a planar polygon's 3D vertex coordinates to 2D 
+ * \brief Converts a planar polygon's 3D vertex coordinates to 2D
  *
  * \param [in] x pointer to x-component coordinates
  * \param [in] y pointer to y-component coordinates
@@ -786,14 +783,13 @@ void Vertex2DOrderToCCW( const RealT* const x, const RealT* const y, RealT* xTem
  *       passed to this routine
  *
  */
-TRIBOL_HOST_DEVICE void Plane3DTo2D( const RealT* const x, const RealT* const y, const RealT* const z,
-                                     const RealT nx, const RealT ny, const RealT nz,
-                                     const RealT cx, const RealT cy, const RealT cz, const int num_verts,
-                                     RealT* x_loc, RealT* y_loc );
+TRIBOL_HOST_DEVICE void Plane3DTo2D( const RealT* const x, const RealT* const y, const RealT* const z, const RealT nx,
+                                     const RealT ny, const RealT nz, const RealT cx, const RealT cy, const RealT cz,
+                                     const int num_verts, RealT* x_loc, RealT* y_loc );
 
 /*!
  *
- * \brief Converts a planar polygon's 3D vertex coordinates to 2D 
+ * \brief Converts a planar polygon's 3D vertex coordinates to 2D
  *
  * \param [in] x to x-component coordinates
  * \param [in] y to y-component coordinates
@@ -813,10 +809,9 @@ TRIBOL_HOST_DEVICE void Plane3DTo2D( const RealT* const x, const RealT* const y,
  *       passed to this routine
  *
  */
-TRIBOL_HOST_DEVICE void Point3DTo2D( const RealT x, const RealT y, const RealT z,
-                                     const RealT nx, const RealT ny, const RealT nz,
-                                     const RealT cx, const RealT cy, const RealT cz,
-                                     RealT& x_loc, RealT& y_loc );
+TRIBOL_HOST_DEVICE void Point3DTo2D( const RealT x, const RealT y, const RealT z, const RealT nx, const RealT ny,
+                                     const RealT nz, const RealT cx, const RealT cy, const RealT cz, RealT& x_loc,
+                                     RealT& y_loc );
 
 /*!
  *
@@ -874,8 +869,8 @@ TRIBOL_HOST_DEVICE int IsPointOrientedInEdge( const RealT* const x, const RealT*
  * \param [in] isym 0 for planar symmetry, 1 for axial symmetry
  */
 TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_nodes_2, RealT* projLocX1,
-                                          RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, 
-                                          RealT& cx, RealT& cy, RealT& area, const int isym );
+                                          RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, RealT& cx, RealT& cy,
+                                          RealT& area, const int isym );
 
 }  // namespace tribol
 

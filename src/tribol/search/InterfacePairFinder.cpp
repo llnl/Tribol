@@ -136,29 +136,27 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
   }  // end of dim == 2
 
   /// Check #5: check to see if at least one vertex from one face lies inside the other face
-  ///           when projected to that other face's face-plane. This check is a proxy for 
+  ///           when projected to that other face's face-plane. This check is a proxy for
   ///           determining if there is a positive area of overlap
-  if (dim == 3)
-  {
+  if ( dim == 3 ) {
     // get each face's nodal coordinates
-    constexpr int max_nodes_per_face = 4; 
+    constexpr int max_nodes_per_face = 4;
     constexpr int max_dim = 3;
-    RealT x1[ max_nodes_per_face ];
-    RealT y1[ max_nodes_per_face ];
-    RealT z1[ max_nodes_per_face ];
+    RealT x1[max_nodes_per_face];
+    RealT y1[max_nodes_per_face];
+    RealT z1[max_nodes_per_face];
 
-    RealT x2[ max_nodes_per_face ];
-    RealT y2[ max_nodes_per_face ];
-    RealT z2[ max_nodes_per_face ];
+    RealT x2[max_nodes_per_face];
+    RealT y2[max_nodes_per_face];
+    RealT z2[max_nodes_per_face];
     for ( int i = 0; i < mesh1.numberOfNodesPerElement(); ++i ) {
       const int nodeId_1 = mesh1.getGlobalNodeId( element_id1, i );
       x1[i] = mesh1.getPosition()[0][nodeId_1];
       y1[i] = mesh1.getPosition()[1][nodeId_1];
       z1[i] = mesh1.getPosition()[2][nodeId_1];
-
     }
 
-    for ( int i = 0; i < mesh2.numberOfNodesPerElement(); ++i) {
+    for ( int i = 0; i < mesh2.numberOfNodesPerElement(); ++i ) {
       const int nodeId_2 = mesh2.getGlobalNodeId( element_id2, i );
       x2[i] = mesh2.getPosition()[0][nodeId_2];
       y2[i] = mesh2.getPosition()[1][nodeId_2];
@@ -199,14 +197,14 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
 
     // project 'prime' face nodal coordinates onto the plane ('bar' coords) defined by the OTHER face
     ProjectPointsToPlane( &x1_prime[0], &y1_prime[0], &z1_prime[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
-                          &x1_bar[0], &y1_bar[0], &z1_bar[0], mesh1.numberOfNodesPerElement() ); // project face 1 to 2
+                          &x1_bar[0], &y1_bar[0], &z1_bar[0], mesh1.numberOfNodesPerElement() );  // project face 1 to 2
     ProjectPointsToPlane( &x2_prime[0], &y2_prime[0], &z2_prime[0], fn1[0], fn1[1], fn1[2], cx1[0], cx1[1], cx1[2],
-                          &x2_bar[0], &y2_bar[0], &z2_bar[0], mesh2.numberOfNodesPerElement() ); // project face 2 to 1 
+                          &x2_bar[0], &y2_bar[0], &z2_bar[0], mesh2.numberOfNodesPerElement() );  // project face 2 to 1
 
-    RealT x1_bar_local[ max_nodes_per_face ];
-    RealT y1_bar_local[ max_nodes_per_face ];
-    RealT x2_bar_local[ max_nodes_per_face ];
-    RealT y2_bar_local[ max_nodes_per_face ];
+    RealT x1_bar_local[max_nodes_per_face];
+    RealT y1_bar_local[max_nodes_per_face];
+    RealT x2_bar_local[max_nodes_per_face];
+    RealT y2_bar_local[max_nodes_per_face];
 
     // 3D coordinates to local 2D coordinates
     Plane3DTo2D( &x1_bar[0], &y1_bar[0], &z1_bar[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
@@ -220,25 +218,22 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
                  mesh2.numberOfNodesPerElement(), &x2_bar_local[0], &y2_bar_local[0] );
 
     RealT cx, cy, area;
-    CheckPolyOverlap( mesh1.numberOfNodesPerElement(), mesh2.numberOfNodesPerElement(),
-                      &x1_bar_local[0], &y1_bar_local[0], &x2_bar_local[0], &y2_bar_local[0],
-                      cx, cy, area, 0 );
+    CheckPolyOverlap( mesh1.numberOfNodesPerElement(), mesh2.numberOfNodesPerElement(), &x1_bar_local[0],
+                      &y1_bar_local[0], &x2_bar_local[0], &y2_bar_local[0], cx, cy, area, 0 );
 
-    if (area < 1.e-15)
-    {
+    if ( area < 1.e-15 ) {
       return false;
     }
-  // end dim == 3
+    // end dim == 3
   } else {
-
     // project edge 1 onto edge 2 and check to see if edge 1 vertices lie inside edge 2
     //
     // get each face's nodal coordinates
     constexpr int max_nodes_per_face = 2;
     constexpr int max_dim = 2;
-    RealT x2[ max_nodes_per_face ];
-    RealT y2[ max_nodes_per_face ];
-    for ( int i = 0; i < mesh2.numberOfNodesPerElement(); ++i) {
+    RealT x2[max_nodes_per_face];
+    RealT y2[max_nodes_per_face];
+    for ( int i = 0; i < mesh2.numberOfNodesPerElement(); ++i ) {
       const int nodeId_2 = mesh2.getGlobalNodeId( element_id2, i );
       x2[i] = mesh2.getPosition()[0][nodeId_2];
       y2[i] = mesh2.getPosition()[1][nodeId_2];
@@ -261,11 +256,11 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     bool inside1 = IsPointInEdge( &x2[0], &y2[0], projX1[0], projY1[0] );
     bool inside2 = IsPointInEdge( &x2[0], &y2[0], projX1[1], projY1[1] );
 
-    if (!inside1 && !inside2) {
+    if ( !inside1 && !inside2 ) {
       return false;
     }
 
-  } // end dim == 2
+  }  // end dim == 2
 
   // if we made it here we passed all checks
   return true;

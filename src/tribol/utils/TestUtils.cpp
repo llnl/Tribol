@@ -687,27 +687,25 @@ void TestMesh::setupContactMeshTet( int numElemsX1, int numElemsY1, int numElems
 
 }  // end setupContactMeshTet()
 //------------------------------------------------------------------------------
-void TestMesh::rotateContactMesh( const int mesh_id, RealT theta_x, RealT theta_y, RealT theta_z,
-                                  RealT shift_x, RealT shift_y, RealT shift_z )
+void TestMesh::rotateContactMesh( const int mesh_id, RealT theta_x, RealT theta_y, RealT theta_z, RealT shift_x,
+                                  RealT shift_y, RealT shift_z )
 {
   // mortar is block 1, mesh_id 0
   // nonmortar is block 2, mesh_id 1
   int num_nodes = 0;
   int offset = 0;
-  if (mesh_id == 0) {
+  if ( mesh_id == 0 ) {
     num_nodes = this->numMortarNodes;
-  }
-  else if (mesh_id == 1) {
+  } else if ( mesh_id == 1 ) {
     num_nodes = this->numNonmortarNodes;
     offset = this->numMortarNodes;
-  }
-  else {
-    SLIC_ERROR("rotateContactMesh(): invalid mesh id");
+  } else {
+    SLIC_ERROR( "rotateContactMesh(): invalid mesh id" );
     return;
   }
 
-  if (this->x == nullptr || this->y == nullptr || this->z == nullptr) {
-    SLIC_ERROR("rotateContactMesh(): must setup contact mesh prior to calling this routine."); 
+  if ( this->x == nullptr || this->y == nullptr || this->z == nullptr ) {
+    SLIC_ERROR( "rotateContactMesh(): must setup contact mesh prior to calling this routine." );
   }
 
   theta_x *= M_PI / 180;
@@ -718,17 +716,17 @@ void TestMesh::rotateContactMesh( const int mesh_id, RealT theta_x, RealT theta_
   RealT beta = theta_y;
   RealT gamma = theta_x;
 
-  RealT rot00 = std::cos(alpha) * std::cos(beta);
-  RealT rot01 = std::cos(alpha) * std::sin(beta) * std::sin(gamma) - std::sin(alpha) * std::cos(gamma);
-  RealT rot02 = std::cos(alpha) * std::sin(beta) * std::cos(gamma) + std::sin(alpha) * std::sin(gamma);
-  RealT rot10 = std::sin(alpha) * std::cos(beta);
-  RealT rot11 = std::sin(alpha) * std::sin(beta) * std::sin(gamma) + std::cos(alpha) * std::cos(gamma);
-  RealT rot12 = std::sin(alpha) * std::sin(beta) * std::cos(gamma) - std::cos(alpha) * std::sin(gamma);
-  RealT rot20 = -std::sin(beta);
-  RealT rot21 = std::cos(beta) * std::sin(gamma);
-  RealT rot22 = std::cos(beta) * std::cos(gamma); 
+  RealT rot00 = std::cos( alpha ) * std::cos( beta );
+  RealT rot01 = std::cos( alpha ) * std::sin( beta ) * std::sin( gamma ) - std::sin( alpha ) * std::cos( gamma );
+  RealT rot02 = std::cos( alpha ) * std::sin( beta ) * std::cos( gamma ) + std::sin( alpha ) * std::sin( gamma );
+  RealT rot10 = std::sin( alpha ) * std::cos( beta );
+  RealT rot11 = std::sin( alpha ) * std::sin( beta ) * std::sin( gamma ) + std::cos( alpha ) * std::cos( gamma );
+  RealT rot12 = std::sin( alpha ) * std::sin( beta ) * std::cos( gamma ) - std::cos( alpha ) * std::sin( gamma );
+  RealT rot20 = -std::sin( beta );
+  RealT rot21 = std::cos( beta ) * std::sin( gamma );
+  RealT rot22 = std::cos( beta ) * std::cos( gamma );
 
-  for (int i=0; i<num_nodes; ++i) {
+  for ( int i = 0; i < num_nodes; ++i ) {
     int idx = offset + i;
 
     // perform shift
@@ -759,23 +757,21 @@ void TestMesh::translateContactMesh( const int mesh_id, RealT shift_x, RealT shi
   // nonmortar is block 2, mesh_id 1
   int num_nodes = 0;
   int offset = 0;
-  if (mesh_id == 0) {
+  if ( mesh_id == 0 ) {
     num_nodes = this->numMortarNodes;
-  }
-  else if (mesh_id == 1) {
+  } else if ( mesh_id == 1 ) {
     num_nodes = this->numNonmortarNodes;
     offset = this->numMortarNodes;
-  }
-  else {
-    SLIC_ERROR("translateContactMesh(): invalid mesh id");
+  } else {
+    SLIC_ERROR( "translateContactMesh(): invalid mesh id" );
     return;
   }
 
-  if (this->x == nullptr || this->y == nullptr || this->z == nullptr) {
-    SLIC_ERROR("translateContactMesh(): must setup contact mesh prior to calling this routine."); 
+  if ( this->x == nullptr || this->y == nullptr || this->z == nullptr ) {
+    SLIC_ERROR( "translateContactMesh(): must setup contact mesh prior to calling this routine." );
   }
 
-  for (int i=0; i<num_nodes; ++i) {
+  for ( int i = 0; i < num_nodes; ++i ) {
     int idx = offset + i;
 
     this->x[idx] += shift_x;
