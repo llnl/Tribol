@@ -717,7 +717,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     }
   }
 
-  std::cout << "Intersection2DPolygon() numVAI: " << numVAI << std::endl;
+  //std::cout << "Intersection2DPolygon() numVAI: " << numVAI << std::endl;
 
   // check to see if ALL of A is in B; then A is the overlapping polygon.
   if ( numVAI == numVertexA ) {
@@ -750,7 +750,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     }
   }
 
-  std::cout << "Intersection2DPolygon() numVBI: " << numVBI << std::endl;
+  //std::cout << "Intersection2DPolygon() numVBI: " << numVBI << std::endl;
 
   // check to see if ALL of B is in A; then B is the overlapping polygon.
   if ( numVBI == numVertexB ) {

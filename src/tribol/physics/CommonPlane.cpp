@@ -76,12 +76,12 @@ TRIBOL_HOST_DEVICE RealT ComputeGapRatePressure( CommonPlanePair& plane, const M
 
   StackArrayT<RealT, max_dim * max_nodes_per_elem> x1;
   StackArrayT<RealT, max_dim * max_nodes_per_elem> v1;
-  m1.getFaceCoords( fId1, x1 );
+  plane.getFace1Coords( x1 ); // get avg face coords off the contact plane
   m1.getFaceVelocities( fId1, v1 );
 
   StackArrayT<RealT, max_dim * max_nodes_per_elem> x2;
   StackArrayT<RealT, max_dim * max_nodes_per_elem> v2;
-  m2.getFaceCoords( fId2, x2 );
+  plane.getFace2Coords( x2 ); // get avg face coords off the contact plane
   m2.getFaceVelocities( fId2, v2 );
 
   //////////////////////////////////////////////////////////
@@ -278,27 +278,12 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     }
     initRealArray( xVert, xVert_size, 0. );
 
-    //      // get projected face coordinates
-    //      cpManager.getProjectedFaceCoords( cpID, 0, &xf1[0] ); // face 0 = first face
-    //      cpManager.getProjectedFaceCoords( cpID, 1, &xf2[0] ); // face 1 = second face
-
     // get current configuration, physical coordinates of each face
-    mesh1.getFaceCoords( index1, &xf1[0] );
-    mesh2.getFaceCoords( index2, &xf2[0] );
+    plane.getFace1Coords( &xf1[0] );
+    plane.getFace2Coords( &xf2[0] );
 
     // construct array of polygon overlap vertex coordinates
-    if ( dim == 2 ) {
-      for ( IndexT j{ 0 }; j < numPolyVert; ++j ) {
-        xVert[dim * j] = plane.m_polyX[j];
-        xVert[dim * j + 1] = plane.m_polyY[j];
-      }
-    } else {
-      for ( IndexT j{ 0 }; j < numPolyVert; ++j ) {
-        xVert[dim * j] = plane.m_polyX[j];
-        xVert[dim * j + 1] = plane.m_polyY[j];
-        xVert[dim * j + 2] = plane.m_polyZ[j];
-      }
-    }
+    plane.getOverlapVertices( &xVert[0] );
 
     // instantiate surface contact element struct. Note, this is done with current
     // configuration face coordinates (i.e. NOT on the contact plane) and overlap
