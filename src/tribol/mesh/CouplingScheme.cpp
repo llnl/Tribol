@@ -1030,6 +1030,8 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 
   SLIC_DEBUG( "Coupling scheme " << m_id << " has " << numPairs << " pairs." );
 
+  //std::cout << "Coupling scheme " << m_id << " has " << numPairs << " pairs." << std::endl;
+
   // loop over all pairs and perform geometry checks to see if they are
   // interacting
   auto pairs = getInterfacePairs().view();
@@ -1147,9 +1149,6 @@ bool CouplingScheme::init()
 #ifdef BUILD_REDECOMP
     if ( this->hasMfemData() && this->getMfemMeshData()->GetLORFactor() > 1 ) {
       this->m_effective_binning_proximity_scale *= static_cast<RealT>( this->getMfemMeshData()->GetLORFactor() );
-      // set the parameters binning proximity scale to be consistent with the effective.
-      // TODO consolidate use later
-      this->getParameters().binning_proximity_scale *= static_cast<RealT>( this->getMfemMeshData()->GetLORFactor() );
     }
 #endif
 
