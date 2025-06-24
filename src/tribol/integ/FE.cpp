@@ -283,7 +283,7 @@ int InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA,
     {
       cm_11 += -( djde_11 * f_x + djde_11 * f_y + djde_11 * f_z );
       cm_12 += -( djde_x_12 * f_x + djde_y_12 * f_y + djde_z_12 * f_z );
-      cm_21 = cm_12; // TODO SRW should this be +=
+      cm_21 = cm_12;
       cm_22 += -( djde_22 * f_x + djde_22 * f_y + djde_22 * f_z );
     }
 
@@ -328,7 +328,7 @@ int InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA,
         err = 1;
       }
 #if !defined( TRIBOL_USE_ENZYME )
-      //SLIC_WARNING_IF( !in_quad, "InvIso(): (xi,eta) coordinate does not lie inside isoparametric quad." );
+      SLIC_WARNING_IF( !in_quad, "InvIso(): (xi,eta) coordinate does not lie inside isoparametric quad." );
 #endif
 
       return err ;

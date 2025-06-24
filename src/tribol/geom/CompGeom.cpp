@@ -41,7 +41,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair( InterfacePair& pair, const 
     case MORTAR_WEIGHTS:
     case SINGLE_MORTAR: {
       MortarPlanePair mortar_plane( &pair, params, mesh1.spatialDimension() );
-      face_err = mortar_plane.checkInterfacePair( mesh1, mesh2 );  // TODO SRW fix/write this routine
+      face_err = mortar_plane.checkInterfacePair( mesh1, mesh2 );
       inContact = mortar_plane.m_inContact;
       my_plane = &mortar_plane;
       break;
@@ -643,7 +643,12 @@ TRIBOL_HOST_DEVICE void CommonPlanePair::resetPlanePointAndCentroidGap( const Me
   // scale the centroidGap projections using the updated effective binning scale
   // times the max face radius premultiplied by a safety factor to ensure
   // we find the overlap-centroid-to-face intersection
-  RealT fs = 1.;
+  RealT fs = 10.;
+
+  // TODO I can get binning proximity off the parameters, but the effective binning takes
+  // into account LOR factor that lives on the coupling scheme. Effective binning scale
+  // is likely what we want to use here to be consistent with binning? DO NOT set binning
+  // proximity on parameters to effective. This resulted in failed mfem tests
   RealT scale = fs * this->m_params.binning_proximity_scale * radius;
 
   // compute the gap at the overlap centroid as projected onto each face
@@ -1430,6 +1435,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
     }
 
     // project face coordinates onto common plane and compute overlap
+    
     FaceGeomError interpen_error = this->projectPointsAndComputeOverlap( &cfx1[0], &cfy1[0], &cfz1[0], &cfx2[0],
                                                                          &cfy2[0], &cfz2[0], numV[0], numV[1], m1, m2 );
     overlap_error = interpen_error;
