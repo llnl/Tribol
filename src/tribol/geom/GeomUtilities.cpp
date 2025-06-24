@@ -1790,7 +1790,7 @@ TRIBOL_HOST_DEVICE void PolyReorderWithNormal( RealT* const x, RealT* const y, R
   RealT v = dotProd( pNrmlX, pNrmlY, pNrmlZ, nX, nY, nZ );
 
   // check to see if v is negative. If so, reorient the vertices
-  constexpr int max_nodes_per_overlap = 8;
+  constexpr int max_nodes_per_overlap = 5 * 2; // max face polygon for interpen can be 5
   if ( v < 0 ) {
     RealT xTemp[max_nodes_per_overlap];
     RealT yTemp[max_nodes_per_overlap];
