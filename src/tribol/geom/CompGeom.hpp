@@ -63,21 +63,21 @@ class ContactPlanePair : public CompGeomPair {
   static constexpr int max_face_nodes{ 4 };
 
  public:
-  RealT m_x1_prime[ max_face_nodes ];
-  RealT m_y1_prime[ max_face_nodes ];
-  RealT m_z1_prime[ max_face_nodes ];
+  RealT m_x1_prime[max_face_nodes];
+  RealT m_y1_prime[max_face_nodes];
+  RealT m_z1_prime[max_face_nodes];
 
-  RealT m_x2_prime[ max_face_nodes ];
-  RealT m_y2_prime[ max_face_nodes ];
-  RealT m_z2_prime[ max_face_nodes ];
+  RealT m_x2_prime[max_face_nodes];
+  RealT m_y2_prime[max_face_nodes];
+  RealT m_z2_prime[max_face_nodes];
 
-  RealT m_x1_bar[ max_face_nodes ];
-  RealT m_y1_bar[ max_face_nodes ];
-  RealT m_z1_bar[ max_face_nodes ];
+  RealT m_x1_bar[max_face_nodes];
+  RealT m_y1_bar[max_face_nodes];
+  RealT m_z1_bar[max_face_nodes];
 
-  RealT m_x2_bar[ max_face_nodes ];
-  RealT m_y2_bar[ max_face_nodes ];
-  RealT m_z2_bar[ max_face_nodes ];
+  RealT m_x2_bar[max_face_nodes];
+  RealT m_y2_bar[max_face_nodes];
+  RealT m_z2_bar[max_face_nodes];
 
   bool m_inContact;  ///< True if face-pair is in contact
   RealT m_gap;       ///< Face-pair gap
@@ -107,7 +107,7 @@ class ContactPlanePair : public CompGeomPair {
   RealT m_nY;  ///< Global y-component of contact plane unit normal
   RealT m_nZ;  ///< Global z-component of contact plane unit normal (zero out for 2D)
 
-  int m_numPolyVert; ///< Number of vertices in overlapping polygon
+  int m_numPolyVert;                     ///< Number of vertices in overlapping polygon
   RealT m_polyX[max_nodes_per_overlap];  ///< Global x-components of overlap polygon's vertices
   RealT m_polyY[max_nodes_per_overlap];  ///< Global y-components of overlap polygon's vertices
   RealT m_polyZ[max_nodes_per_overlap];  ///< Global z-components of overlap polygon's vertices
@@ -126,21 +126,23 @@ class ContactPlanePair : public CompGeomPair {
 
   TRIBOL_HOST_DEVICE void getFace1Coords( RealT* x1 ) const;
 
-  TRIBOL_HOST_DEVICE void getFace2Coords( RealT* x2 ) const;;
+  TRIBOL_HOST_DEVICE void getFace2Coords( RealT* x2 ) const;
+  ;
 
   TRIBOL_HOST_DEVICE void getFace1ProjectedCoords( RealT* x1_proj ) const;
 
   TRIBOL_HOST_DEVICE void getFace2ProjectedCoords( RealT* x2_proj ) const;
 
-  TRIBOL_HOST_DEVICE void getContactPlaneNormal( RealT* normal ) const {
+  TRIBOL_HOST_DEVICE void getContactPlaneNormal( RealT* normal ) const
+  {
     normal[0] = m_nX;
     normal[1] = m_nY;
-    if (m_dim == 3) {
+    if ( m_dim == 3 ) {
       normal[2] = m_nZ;
     }
   }
 
-  TRIBOL_HOST_DEVICE void getOverlapVertices( RealT * overlap_verts ) const;
+  TRIBOL_HOST_DEVICE void getOverlapVertices( RealT* overlap_verts ) const;
 
   /*!
    * \brief check to see if interface pairs are interacting

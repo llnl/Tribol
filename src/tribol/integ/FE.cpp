@@ -323,7 +323,7 @@ int InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA,
         }
       }
 
-      if (!in_quad) {
+      if ( !in_quad ) {
         std::cout << "Inv Iso mapped point: " << xi[0] << ", " << xi[1] << std::endl;
         err = 1;
       }
@@ -331,7 +331,7 @@ int InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA,
       SLIC_WARNING_IF( !in_quad, "InvIso(): (xi,eta) coordinate does not lie inside isoparametric quad." );
 #endif
 
-      return err ;
+      return err;
     }
   }
 

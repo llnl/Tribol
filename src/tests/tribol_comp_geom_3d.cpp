@@ -1377,8 +1377,9 @@ TEST_F( CompGeomTest, aligned_mortar_check_1 )
   // call tribol setup and update
   tribol::TestControlParameters parameters;  // struct does not hold info right now
 
-  int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
-      tribol::ALIGNED_MORTAR, tribol::LAGRANGE_MULTIPLIER, tribol::FRICTIONLESS, tribol::NO_SLIDING, false, parameters );
+  int test_mesh_update_err =
+      this->m_mesh.tribolSetupAndUpdate( tribol::ALIGNED_MORTAR, tribol::LAGRANGE_MULTIPLIER, tribol::FRICTIONLESS,
+                                         tribol::NO_SLIDING, false, parameters );
 
   EXPECT_EQ( test_mesh_update_err, 0 );
 

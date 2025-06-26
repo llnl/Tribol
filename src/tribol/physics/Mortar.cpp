@@ -354,7 +354,7 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
 
     // get overlap coords
     plane.getOverlapVertices( &overlapX[0] );
-    
+
     // instantiate contact surface element for purposes of computing
     // mortar weights. Note, this uses projected face coords
     SurfaceContactElem elem( dim, &mortarX_bar[0], &nonmortarX_bar[0], &overlapX[0], numNodesPerFace,
@@ -1136,7 +1136,7 @@ int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs )
     auto& cg_pairs = cs->getCompGeom();
     auto& plane = cg_pairs.getMortarPlane( cpID );
 
-    RealT overlapX[dim*plane.m_numPolyVert];
+    RealT overlapX[dim * plane.m_numPolyVert];
 
     // get pair indices
     IndexT index1 = pair.m_element_id1;
@@ -1148,7 +1148,7 @@ int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs )
 
     // construct array of polygon overlap vertex coordinates
     plane.getOverlapVertices( &overlapX[0] );
- 
+
     // instantiate contact surface element for purposes of computing
     // mortar weights. Note, this uses projected face coords
     SurfaceContactElem elem( dim, &mortarX_bar[0], &nonmortarX_bar[0], &overlapX[0], numNodesPerFace,
