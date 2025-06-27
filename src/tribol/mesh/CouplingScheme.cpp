@@ -1028,7 +1028,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // loop over number of interface pairs
   IndexT numPairs = m_interface_pairs.size();
 
-  SLIC_DEBUG( "Coupling scheme " << m_id << " has " << numPairs << " pairs." );
+  //SLIC_DEBUG( "Coupling scheme " << m_id << " has " << numPairs << " pairs." );
 
   // std::cout << "Coupling scheme " << m_id << " has " << numPairs << " pairs." << std::endl;
 
@@ -1099,11 +1099,11 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // or issue in the cg that a host-code does desire to have resolved. For this reason, this
   // message is kept at the warning level.
   ArrayT<int, 1, MemorySpace::Host> pair_err_host( pair_err_data );
-  SLIC_DEBUG_IF( pair_err_host[0] != 0, "CouplingScheme::apply(): possible issues with orientation, "
-                                            << "input, or invalid overlaps in CheckInterfacePair()." );
+  //SLIC_DEBUG_IF( pair_err_host[0] != 0, "CouplingScheme::apply(): possible issues with orientation, "
+  //                                          << "input, or invalid overlaps in CheckInterfacePair()." );
 
   // aggregate across ranks for this coupling scheme? SRW
-  SLIC_DEBUG( "Number of active interface pairs: " << getNumActivePairs() );
+  //SLIC_DEBUG( "Number of active interface pairs: " << getNumActivePairs() );
 
   // wrapper around contact method, case, and
   // enforcement to apply the interface physics in both
@@ -1112,8 +1112,8 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // appropriate physics in the normal and tangential directions.
   int err = ApplyInterfacePhysics( this, cycle, t );
 
-  SLIC_WARNING_IF( err != 0, "CouplingScheme::apply(): error in ApplyInterfacePhysics for "
-                                 << "coupling scheme, " << this->m_id << "." );
+  //SLIC_WARNING_IF( err != 0, "CouplingScheme::apply(): error in ApplyInterfacePhysics for "
+  //                               << "coupling scheme, " << this->m_id << "." );
 
   // compute Tribol timestep vote on the coupling scheme
   if ( err == 0 && getNumActivePairs() > 0 ) {
