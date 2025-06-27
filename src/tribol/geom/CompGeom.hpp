@@ -957,7 +957,7 @@ class CompGeom {
    * @brief Resize the appropriate contact plane array view
    *
    */
-  TRIBOL_HOST_DEVICE void resizeActivePairs( ContactMethod method, int size )
+  void resizeActivePairs( ContactMethod method, int size )
   {
     switch ( method ) {
       case COMMON_PLANE: {
