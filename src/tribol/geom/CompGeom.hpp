@@ -837,7 +837,7 @@ class CompGeom {
    * @brief Constructs a comp geom object
    *
    */
-  TRIBOL_HOST_DEVICE CompGeom(){};
+  CompGeom(){};
 
   /*!
    * @brief Destructor
