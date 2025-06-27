@@ -76,12 +76,12 @@ TRIBOL_HOST_DEVICE RealT ComputeGapRatePressure( CommonPlanePair& plane, const M
 
   StackArrayT<RealT, max_dim * max_nodes_per_elem> x1;
   StackArrayT<RealT, max_dim * max_nodes_per_elem> v1;
-  plane.getFace1Coords( x1 ); // get avg face coords off the contact plane
+  plane.getFace1Coords( x1 );  // get avg face coords off the contact plane
   m1.getFaceVelocities( fId1, v1 );
 
   StackArrayT<RealT, max_dim * max_nodes_per_elem> x2;
   StackArrayT<RealT, max_dim * max_nodes_per_elem> v2;
-  plane.getFace2Coords( x2 ); // get avg face coords off the contact plane
+  plane.getFace2Coords( x2 );  // get avg face coords off the contact plane
   m2.getFaceVelocities( fId2, v2 );
 
   //////////////////////////////////////////////////////////

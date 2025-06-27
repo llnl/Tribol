@@ -718,7 +718,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     }
   }
 
-  //std::cout << "Intersection2DPolygon() numVAI: " << numVAI << std::endl;
+  // std::cout << "Intersection2DPolygon() numVAI: " << numVAI << std::endl;
 
   // check to see if ALL of A is in B; then A is the overlapping polygon.
   if ( numVAI == numVertexA ) {
@@ -751,7 +751,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     }
   }
 
-  //std::cout << "Intersection2DPolygon() numVBI: " << numVBI << std::endl;
+  // std::cout << "Intersection2DPolygon() numVBI: " << numVBI << std::endl;
 
   // check to see if ALL of B is in A; then B is the overlapping polygon.
   if ( numVBI == numVertexB ) {
@@ -873,11 +873,12 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   }    // end loop over B segments
 
   // count the number of segment-segment intersections
-  //std::cout << "Before counting number of segment-segment intersections" << std::endl;
+  // std::cout << "Before counting number of segment-segment intersections" << std::endl;
   int numSegInter = 0;
   for ( int i = 0; i < interId; ++i ) {
     if ( intersect[i] ) ++numSegInter;
   }
+  // std::cout << "After counting number of segment-segment intersections" << std::endl;
 
   // add check for case where there are no interior vertices or
   // intersection vertices
@@ -898,7 +899,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   RealT polyYTemp[max_identified_points];
   OverlapVertexType vertTypeTemp[max_identified_points];
 
-  //std::cout << "Before filling polyXtemp" << std::endl;
+  // std::cout << "Before filling polyXtemp" << std::endl;
 
   // fill polyXTemp and polyYTemp with the intersection points
   int k = 0;
@@ -912,7 +913,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       ++k;
     }
   }
-  //std::cout << "After filling polyXtemp" << std::endl;
+  // std::cout << "After filling polyXtemp" << std::endl;
 
   // fill polyX and polyY with the vertices on A that lie in B
   for ( int i = 0; i < numVertexA; ++i ) {
@@ -934,7 +935,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       ++k;
     }
   }
-  //std::cout << "After fulling polyXtemp with vertices on A that lie in B" << std::endl;
+  // std::cout << "After fulling polyXtemp with vertices on A that lie in B" << std::endl;
 
   for ( int i = 0; i < numVertexB; ++i ) {
     if ( interiorVBId[i] != -1 ) {
@@ -955,17 +956,18 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       ++k;
     }
   }
-  //std::cout << "After filling polyXtemp with vertices in B that lie in A" << std::endl;
+  // std::cout << "After filling polyXtemp with vertices in B that lie in A" << std::endl;
 
   // reorder the unordered vertices and check segment length against tolerance for edge collapse.
   // Only do this for overlaps with 3 or more vertices. We skip any overlap that degenerates to <3 vertices
   if ( numPolyVert > 2 ) {
     // order the unordered vertices (in counter clockwise fashion)
     int vertIdx[max_intersections];
+    // std::cout << "before calling initIntArray with size: " << max_intersections  << std::endl;
     initIntArray( vertIdx, max_intersections, 0 );
-    //std::cout << "Before calling PolyReorder with " << numPolyVert << "polygon vertices" << std::endl;
+    // std::cout << "Before calling PolyReorder with " << numPolyVert << "polygon vertices" << std::endl;
     PolyReorder( &polyXTemp[0], &polyYTemp[0], &vertIdx[0], numPolyVert );
-    //std::cout << "after calling polyreorder" << std::endl;
+    // std::cout << "after calling polyreorder" << std::endl;
 
     OverlapVertexType vertTypeTemp2[max_identified_points];
     int edgeATemp2[max_intersections];
@@ -1793,7 +1795,7 @@ TRIBOL_HOST_DEVICE void PolyReorderWithNormal( RealT* const x, RealT* const y, R
   RealT v = dotProd( pNrmlX, pNrmlY, pNrmlZ, nX, nY, nZ );
 
   // check to see if v is negative. If so, reorient the vertices
-  constexpr int max_nodes_per_overlap = 5 * 2; // max face polygon for interpen can be 5
+  constexpr int max_nodes_per_overlap = 5 * 2;  // max face polygon for interpen can be 5
   if ( v < 0 ) {
     RealT xTemp[max_nodes_per_overlap];
     RealT yTemp[max_nodes_per_overlap];

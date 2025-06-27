@@ -82,23 +82,18 @@ TRIBOL_HOST_DEVICE void EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( Surfac
                            elem.faceCoords2[elem.dim * i + 2], elem.overlapNormal[0], elem.overlapNormal[1],
                            elem.overlapNormal[2], cx[0], cx[1], cx[2], projX2[elem.dim * i], projX2[elem.dim * i + 1],
                            projX2[elem.dim * i + 2] );
-
     }
-  } else { // dim == 2
+  } else {  // dim == 2
     // loop over number of nodes per edge (same for each mesh) and project nodes to common plane.
     // Can use the integration point as the point in the point-normal data.
     for ( int i = 0; i < elem.m_mesh1->numberOfNodesPerElement(); ++i ) {
-      ProjectPointToSegment( elem.faceCoords1[elem.dim * i], elem.faceCoords1[elem.dim * i + 1],
-                             elem.overlapNormal[0], elem.overlapNormal[1], cx[0], cx[1], projX1[elem.dim * i],
-                             projX1[elem.dim * i + 1] );
+      ProjectPointToSegment( elem.faceCoords1[elem.dim * i], elem.faceCoords1[elem.dim * i + 1], elem.overlapNormal[0],
+                             elem.overlapNormal[1], cx[0], cx[1], projX1[elem.dim * i], projX1[elem.dim * i + 1] );
 
-      ProjectPointToSegment( elem.faceCoords2[elem.dim * i], elem.faceCoords2[elem.dim * i + 1],
-                             elem.overlapNormal[0], elem.overlapNormal[1], cx[0], cx[1], projX2[elem.dim * i],
-                             projX2[elem.dim * i + 1] );
+      ProjectPointToSegment( elem.faceCoords2[elem.dim * i], elem.faceCoords2[elem.dim * i + 1], elem.overlapNormal[0],
+                             elem.overlapNormal[1], cx[0], cx[1], projX2[elem.dim * i], projX2[elem.dim * i + 1] );
     }
   }
-
-  
 
   // loop over nodes and compute nodal force integral
   // contributions
