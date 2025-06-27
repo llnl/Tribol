@@ -604,7 +604,8 @@ void ComputeSingleMortarJacobian( SurfaceContactElem& elem )
 //------------------------------------------------------------------------------
 int ApplyNormalEnzyme( CouplingScheme* cs )
 {
-  auto& cg_view = cs->getCompGeom().getView();
+  auto cs_view = cs->getView();
+  auto& cg_view = cs_view.getCompGeomView();
   auto planes_view = cg_view.getMortarPlanePairs();
   auto& lm_opts = cs->getEnforcementOptions().lm_implicit_options;
   if ( lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||

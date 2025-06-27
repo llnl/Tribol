@@ -1622,12 +1622,14 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::projectPointsAndComputeOverlap
   // std::cout << "num_vert_1, num_vert_2: " << num_vert_1 << ", " << num_vert_2 << std::endl;
 
   // sanity check
+#ifdef TRIBOL_USE_HOST
   if ( m_fullOverlap ) {
     if ( num_vert_1 != m1.numberOfNodesPerElement() || num_vert_2 != m2.numberOfNodesPerElement() ) {
       SLIC_ERROR( "CommonPlanePair::projectPointsAndComputeOverlap(): full overlap requires "
                   << "input number of vertices to match number of nodes per element." );
     }
   }
+#endif
 
   IndexT element_id1 = this->getCpElementId1();
   IndexT element_id2 = this->getCpElementId2();
