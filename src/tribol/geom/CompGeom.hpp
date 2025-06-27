@@ -58,7 +58,7 @@ class ContactPlanePair : public CompGeomPair {
 
   virtual ~ContactPlanePair() = default;
 
-  static constexpr int max_nodes_per_overlap{ 8 };
+  static constexpr int max_nodes_per_overlap{ 10 };
 
   static constexpr int max_face_nodes{ 4 };
 

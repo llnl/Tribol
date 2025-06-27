@@ -1340,10 +1340,6 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
     num_intersections_inside[i] = k_inside;
     num_nodes_otherside[i] = k_otherside;
 
-    //std::cout << "num plane intersections: " << k << std::endl;
-    //std::cout << "num plane intersections inside: " << k_inside << std::endl;
-    //std::cout << "num nodes other side of plane: " << k_otherside << std::endl;
-
   }  // end loop over faces
 
   // we come into this routine with full overlap calculation set to true. Here, we need
@@ -1372,15 +1368,13 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
     m_fullOverlap = false;
   }
 
+  // TODO SRW do we want to do this?
   // reset degenerate intersections back to full overlap
   if ( numV[0] < 3 || numV[1] < 3 ) {
+    //std::cout << "" << std::endl;
+    //std::cout << "SWITCHING to full overlap with numV < 3" << std::endl;
+    //std::cout << "" << std::endl;
     m_fullOverlap = true;
-  }
-
-  // if full overlap then reset overlap-face vertex count
-  if ( m_fullOverlap ) {
-    numV[0] = mesh[0]->numberOfNodesPerElement();
-    numV[1] = mesh[1]->numberOfNodesPerElement();
   }
 
   // allocate arrays to store the vertices for clipped or full face used either
@@ -1436,8 +1430,20 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
 
     // project face coordinates onto common plane and compute overlap
     
+    //std::cout << "Before projectPointsAndComputeOverlap() in !fullOverlap" << std::endl;
+    //std::cout << "num plane intersections 1: " << num_intersections[0] << std::endl;
+    //std::cout << "num plane intersections inside 1: " << num_intersections_inside[0] << std::endl;
+    //std::cout << "num nodes other side of plane 1: " << num_nodes_otherside[0] << std::endl;
+    //std::cout << "total number of points numV 1: " << numV[0] << std::endl;;
+    //std::cout << "" << std::endl;
+    //std::cout << "num plane intersections 2: " << num_intersections[1] << std::endl;
+    //std::cout << "num plane intersections inside 2: " << num_intersections_inside[1] << std::endl;
+    //std::cout << "num nodes other side of plane 2: " << num_nodes_otherside[1] << std::endl;
+    //std::cout << "total number of points numV 2: " << numV[1] << std::endl;
+
     FaceGeomError interpen_error = this->projectPointsAndComputeOverlap( &cfx1[0], &cfy1[0], &cfz1[0], &cfx2[0],
                                                                          &cfy2[0], &cfz2[0], numV[0], numV[1], m1, m2 );
+    //std::cout << "After projectPointsAndComputeOverlap() in !fullOverlap" << std::endl;
     overlap_error = interpen_error;
 
     // geomFilter() checks to see if at least one vertex of one face lies in the other as a proxy
@@ -1447,6 +1453,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
     // portion that is in separation. Ideally, we account for this separated portion for the timestep
     // vote by computing a full overlap area.
     if ( overlap_error == NO_OVERLAP ) {
+      //std::cout << "NO INTERPEN OVERLAP; SWITCHING TO FULL OVERLAP" << std::endl;
       m_fullOverlap = true;  // TODO SRW test this!
     } else if ( overlap_error != NO_FACE_GEOM_ERROR ) {
       return overlap_error;
@@ -1455,6 +1462,8 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
   }  // end if (!m_fullOverlap)
 
   if ( m_fullOverlap ) {  // populate the face vertex array with the face coordinates themselves
+    numV[0] = mesh[0]->numberOfNodesPerElement();
+    numV[1] = mesh[1]->numberOfNodesPerElement();
     // face 1
     for ( int m = 0; m < mesh[0]->numberOfNodesPerElement(); ++m ) {
       // use face averaged "prime" coordinates for consistency
@@ -1472,8 +1481,20 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
     }
 
     // project face coordinates onto common plane and compute overlap
+    //std::cout << "Before projectPointsAndComputeOverlap() in fullOverlap" << std::endl;
+    //std::cout << "num plane intersections 1: " << num_intersections[0] << std::endl;
+    //std::cout << "num plane intersections inside 1: " << num_intersections_inside[0] << std::endl;
+    //std::cout << "num nodes other side of plane 1: " << num_nodes_otherside[0] << std::endl;
+    //std::cout << "total number of points numV 1: " << numV[0] << std::endl;
+    //std::cout << "" << std::endl;
+    //std::cout << "num plane intersections 2: " << num_intersections[1] << std::endl;
+    //std::cout << "num plane intersections inside 2: " << num_intersections_inside[1] << std::endl;
+    //std::cout << "num nodes other side of plane 2: " << num_nodes_otherside[1] << std::endl;
+    //std::cout << "total number of points numV 2: " << numV[1] << std::endl;
+
     FaceGeomError full_error = this->projectPointsAndComputeOverlap( &cfx1[0], &cfy1[0], &cfz1[0], &cfx2[0], &cfy2[0],
                                                                      &cfz2[0], numV[0], numV[1], m1, m2 );
+    //std::cout << "After projectPointsAndComputeOverlap() in fullOverlap" << std::endl;
 
     //std::cout << "overlap error from full overlap calc after projectPointsAndComputeOverlap: " << full_error
     //          << std::endl;
@@ -1589,6 +1610,16 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::projectPointsAndComputeOverlap
     RealT const* const fy2, RealT const* const fz2, const int num_vert_1, const int num_vert_2,
     const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
 {
+  //std::cout << "num_vert_1, num_vert_2: " << num_vert_1 << ", " << num_vert_2 << std::endl;
+
+  // sanity check
+  if (m_fullOverlap) {
+    if (num_vert_1 != m1.numberOfNodesPerElement() || num_vert_2 != m2.numberOfNodesPerElement()) {
+      SLIC_ERROR("CommonPlanePair::projectPointsAndComputeOverlap(): full overlap requires " <<
+                 "input number of vertices to match number of nodes per element.");
+    }
+  }
+
   IndexT element_id1 = this->getCpElementId1();
   IndexT element_id2 = this->getCpElementId2();
 
@@ -1601,6 +1632,8 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::projectPointsAndComputeOverlap
   RealT cfy2_proj[max_nodes_per_overlap];
   RealT cfz2_proj[max_nodes_per_overlap];
 
+//  std::cout << "before projections to common plane" << std::endl;
+
   // project overlap-calc face coordinates to contact plane as currently located
   for ( int i = 0; i < num_vert_1; ++i ) {
     ProjectPointToPlane( fx1[i], fy1[i], fz1[i], m_nX, m_nY, m_nZ, m_cX, m_cY, m_cZ, cfx1_proj[i], cfy1_proj[i],
@@ -1612,6 +1645,8 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::projectPointsAndComputeOverlap
                          cfz2_proj[i] );
   }
 
+//  std::cout << "after projections to common plane" << std::endl;
+
   // declare local coordinate pointers
   RealT cfx1_loc[max_nodes_per_overlap];
   RealT cfy1_loc[max_nodes_per_overlap];
@@ -1619,12 +1654,16 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::projectPointsAndComputeOverlap
   RealT cfx2_loc[max_nodes_per_overlap];
   RealT cfy2_loc[max_nodes_per_overlap];
 
+//  std::cout << "Before global to local" << std::endl;
+
   // convert global coords to local contact plane coordinates
   GlobalTo2DLocalCoords( &cfx1_proj[0], &cfy1_proj[0], &cfz1_proj[0], m_e1X, m_e1Y, m_e1Z, m_e2X, m_e2Y, m_e2Z, m_cX,
                          m_cY, m_cZ, &cfx1_loc[0], &cfy1_loc[0], num_vert_1 );
 
   GlobalTo2DLocalCoords( &cfx2_proj[0], &cfy2_proj[0], &cfz2_proj[0], m_e1X, m_e1Y, m_e1Z, m_e2X, m_e2Y, m_e2Z, m_cX,
                          m_cY, m_cZ, &cfx2_loc[0], &cfy2_loc[0], num_vert_2 );
+
+//  std::cout << "After global to local" << std::endl;
 
   // reorder potentially unordered set of vertices for interpen calcs
   // Note: this routine will order both sets of vertices in counter clockwise orientation.
@@ -1635,6 +1674,8 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::projectPointsAndComputeOverlap
   } else {  // use ElemReverse() per original implementation for full overlaps
     ElemReverse( cfx2_loc, cfy2_loc, num_vert_2 );
   }
+
+//  std::cout << "after elem reverse" << std::endl;
 
   // DEBUG TODO SRW remove after testing
   //for ( int i = 0; i < num_vert_1; ++i ) {
