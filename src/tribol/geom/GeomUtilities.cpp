@@ -670,7 +670,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   // Note 2: Intersection2DPolygon doesn't require consistent face vertex orientation
   // between faces, as long as each are 'ordered' (CW or CCW).
   if ( orientCheck ) {
-
     bool orientA = CheckPolyOrientation( xA, yA, numVertexA );
     bool orientB = CheckPolyOrientation( xB, yB, numVertexB );
 
@@ -857,13 +856,13 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
           return DEGENERATE_OVERLAP;
         }
 
-        //std::cout << "Before SegmentIntersection2D()" << std::endl;
+        // std::cout << "Before SegmentIntersection2D()" << std::endl;
         intersect[interId] =
             SegmentIntersection2D( xA[vAID1], yA[vAID1], xA[vAID2], yA[vAID2], xB[vBID1], yB[vBID1], xB[vBID2],
                                    yB[vBID2], interior, interX[interId], interY[interId], dupl, posTol );
-        //std::cout << "After SegmentIntersection2D()" << std::endl;
+        // std::cout << "After SegmentIntersection2D()" << std::endl;
         if ( intersect[interId] ) {
-          //std::cout << "Found an intersection point" << std::endl;
+          // std::cout << "Found an intersection point" << std::endl;
           edgeATemp[interId] = ia;
           edgeBTemp[interId] = jb;
           ++interId;  // increment intersection counter for segments that intersect
@@ -887,7 +886,8 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     return NO_OVERLAP;
   }
 
-  //std::cout << "Intersection2DPolygon(), numSegInter, numVBI, numVAI: " << numSegInter << ", " << numVBI << ", " << numVAI << std::endl;
+  // std::cout << "Intersection2DPolygon(), numSegInter, numVBI, numVAI: " << numSegInter << ", " << numVBI << ", " <<
+  // numVAI << std::endl;
 
   // allocate temp intersection polygon vertex coordinate arrays to consist
   // of segment-segment intersections and number of interior points in A and B
@@ -1023,7 +1023,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
 
   // compute the area of the polygon
   area = Area2DPolygon( polyX, polyY, numPolyVert );
-
 
   return NO_FACE_GEOM_ERROR;
 
@@ -1521,7 +1520,7 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
 TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, int numPoints, RealT tol, RealT* xnew,
                                                 RealT* ynew, int* newIDs, int& numNewPoints )
 {
-  constexpr int max_nodes_per_overlap = 5*2; // max five interpen vertices in a single cut face
+  constexpr int max_nodes_per_overlap = 5 * 2;  // max five interpen vertices in a single cut face
   int local_newIDs[max_nodes_per_overlap];
   if ( !newIDs ) {
     newIDs = local_newIDs;

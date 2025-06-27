@@ -1100,7 +1100,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // message is kept at the warning level.
   ArrayT<int, 1, MemorySpace::Host> pair_err_host( pair_err_data );
   SLIC_DEBUG_IF( pair_err_host[0] != 0, "CouplingScheme::apply(): possible issues with orientation, "
-                                           << "input, or invalid overlaps in CheckInterfacePair()." );
+                                            << "input, or invalid overlaps in CheckInterfacePair()." );
 
   // aggregate across ranks for this coupling scheme? SRW
   SLIC_DEBUG( "Number of active interface pairs: " << getNumActivePairs() );
