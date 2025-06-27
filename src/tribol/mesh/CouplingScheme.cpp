@@ -1119,7 +1119,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   }
 
   // write output
-  //writeInterfaceOutput( m_output_directory, params.vis_type, cycle, t );
+  writeInterfaceOutput( m_output_directory, params.vis_type, cycle, t );
 
   if ( err != 0 ) {
     return 1;
@@ -1696,7 +1696,7 @@ void CouplingScheme::writeInterfaceOutput( const std::string& dir, const VisType
       case ALIGNED_MORTAR:
       case MORTAR_WEIGHTS:
       case COMMON_PLANE:
-        //WriteContactPlaneMeshToVtk( dir, v_type, m_id, m_mesh_id1, m_mesh_id2, dim, cycle, t );
+        WriteContactPlaneMeshToVtk( dir, v_type, m_id, m_mesh_id1, m_mesh_id2, dim, cycle, t );
         break;
       default:
         // Can this be called on root? SRW
