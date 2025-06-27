@@ -659,8 +659,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     SLIC_DEBUG( "Intersection2DPolygon(): one or more degenerate faces with < 3 vertices." );
 #endif
     area = 0.0;
-    SLIC_INFO( "Intersection2DPolygon(): with numVertexA<3 or numVertexB<3: " << numVertexA << ", " << numVertexB
-                                                                              << "." );
     return INVALID_FACE_INPUT;
   }
 
