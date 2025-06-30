@@ -163,7 +163,7 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     IndexT index2 = plane.getCpElementId2();
 
     RealT gap = plane.m_gap;
-    RealT A = plane.m_area;  // face-pair overlap area
+    RealT A = plane.m_area;
 
     //  don't proceed for gaps that don't violate the constraints. This check
     //  allows for numerically zero interpenetration.
