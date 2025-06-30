@@ -8,10 +8,6 @@
 #include "tribol/mesh/CouplingScheme.hpp"
 
 // AXOM includes
-#ifdef TRIBOL_USE_MPI
-#include <mpi.h>
-#endif
-
 #include "axom/fmt.hpp"
 #include "axom/slam.hpp"
 #include "axom/slic.hpp"
