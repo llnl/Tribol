@@ -9,7 +9,6 @@
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/common/Parameters.hpp"
-#include "axom/slic.hpp"
 
 #include <string>
 
