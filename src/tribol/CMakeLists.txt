@@ -18,8 +18,6 @@ set(tribol_headers
     common/ExecModel.hpp
     common/LoopExec.hpp
     common/Parameters.hpp
-    common/Containers.hpp
-    common/Enzyme.hpp
 
     geom/CompGeom.hpp
     geom/ElementNormal.hpp
