@@ -459,8 +459,9 @@ TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( const RealT* const pX, const Real
 }  // end GlobalTo2DLocalCoords()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( RealT pX, RealT pY, RealT pZ, RealT e1X, RealT e1Y, RealT e1Z, RealT e2X, RealT e2Y,
-                            RealT e2Z, RealT cX, RealT cY, RealT cZ, RealT& pLX, RealT& pLY )
+TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( RealT pX, RealT pY, RealT pZ, RealT e1X, RealT e1Y, RealT e1Z, RealT e2X,
+                                               RealT e2Y, RealT e2Z, RealT cX, RealT cY, RealT cZ, RealT& pLX,
+                                               RealT& pLY )
 {
   // compute the vector between the point on the plane and the input plane point
   RealT vX = pX - cX;
