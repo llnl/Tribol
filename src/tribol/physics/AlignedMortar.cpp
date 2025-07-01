@@ -241,7 +241,7 @@ int ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
   auto pairs = cs->getInterfacePairs();
   const IndexT numPairs = pairs.size();
   auto& cg_pairs = cs->getCompGeom();
-  auto planes = cg_pairs.getAlignedMortarPlanePairs();
+  //auto planes = cg_pairs.getAlignedMortarPlanePairs();
 
   int const dim = cs->spatialDimension();
 
@@ -339,7 +339,8 @@ int ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
     const LagrangeMultiplierImplicitOptions& lm_options = enforcement_options.lm_implicit_options;
     if ( lm_options.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
          lm_options.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ) {
-      auto& plane = planes[cpID];
+      //auto& plane = planes[cpID];
+      auto& plane = cg_pairs.getAlignedMortarPlane(cpID);
 
       // get projected face coords and overlap coords
       RealT mortarX_bar[dim * numNodesPerFace];

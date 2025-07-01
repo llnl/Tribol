@@ -606,16 +606,16 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
 {
   auto cs_view = cs->getView();
   auto& cg_view = cs_view.getCompGeomView();
-  auto planes_view = cg_view.getMortarPlanePairs();
+  //auto planes_view = cg_view.getMortarPlanePairs();
   auto& lm_opts = cs->getEnforcementOptions().lm_implicit_options;
   if ( lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
        lm_opts.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ) {
     if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE ) {
       cs->getMethodData()->reserveBlockJ(
-          { BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER }, planes_view.size() );
+          { BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER }, cg_view.getNumActivePairs(cs->getContactMethod()) );
       cs->createNodalNormalJacobianData();
       cs->getDfDnMethodData()->reserveBlockJ(
-          { BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER }, planes_view.size() );
+          { BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER }, cg_view.getNumActivePairs(cs->getContactMethod() );
       cs->getDnDxMethodData()->reserveBlockJ( { BlockSpace::NONMORTAR }, cs->getMesh2().numberOfElements() );
     } else {
       SLIC_WARNING( "Unsupported Jacobian storage method." );
@@ -633,7 +633,9 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
   int size1 = mesh1.numberOfNodesPerElement();
   int size2 = mesh2.numberOfNodesPerElement();
 
-  for ( auto& plane : planes_view ) {
+  //for ( auto& plane : planes_view ) {
+  for (int idx=0; idx<cg_view.getNumActivePairs(cs->getContactMethod()); ++idx) {
+    auto& plane = cg_view.getMortarPlanePair(idx);
     int elem1 = plane.getCpElementId2();  // switched from tribol convention
     // NOTE: mfem::DenseMatrix data is stored by nodes instead of by vdim
     RealT x1[12];
