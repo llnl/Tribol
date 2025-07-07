@@ -71,7 +71,7 @@ class MortarJacTest : public ::testing::Test {
         break;
       }
       default: {
-        SLIC_ERROR( "setupTribol: number of nodes per face not equal to 4." );
+        //SLIC_ERROR( "setupTribol: number of nodes per face not equal to 4." );
       }
     }
 

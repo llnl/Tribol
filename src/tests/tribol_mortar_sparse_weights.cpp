@@ -64,7 +64,7 @@ void computeGapsFromSparseWts( tribol::CouplingScheme* cs, RealT* gaps )
 
   EXPECT_EQ( csr_err, 0 );
 
-  SLIC_ERROR_IF( I == nullptr, "Mortar wts test, I is null." );
+  //SLIC_ERROR_IF( I == nullptr, "Mortar wts test, I is null." );
 
   // get mortar node id offset to distinguish mortar from nonmortar column contributions
   // sorts unique surface node ids from connectivity

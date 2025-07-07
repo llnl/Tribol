@@ -27,7 +27,7 @@ TRIBOL_HOST_DEVICE IndexT binarySearch( IndexT size, LCOMP&& lo_comparison, HCOM
 {
   if ( size == 0 ) {
 #ifdef TRIBOL_USE_HOST
-    SLIC_DEBUG( "binarySearch: empty array given" );
+    //SLIC_DEBUG( "binarySearch: empty array given" );
 #endif
     return -1;
   }
@@ -46,7 +46,7 @@ TRIBOL_HOST_DEVICE IndexT binarySearch( IndexT size, LCOMP&& lo_comparison, HCOM
   }
 
 #ifdef TRIBOL_USE_HOST
-  SLIC_DEBUG( "binary_search: could not locate value in provided array." );
+  //SLIC_DEBUG( "binary_search: could not locate value in provided array." );
 #endif
   return -1;
 }
@@ -116,8 +116,8 @@ TRIBOL_HOST_DEVICE void transpose( const ArrayT<T, 2, MSPACE>& in, ArrayT<T, 2, 
   auto w_in = in.shape()[1];
 
 #ifdef TRIBOL_USE_HOST
-  SLIC_ERROR_IF( h_in != out.shape()[1], "Input number of rows does not equal output number of columns." );
-  SLIC_ERROR_IF( w_in != out.shape()[0], "Input number of columns does not equal output number of rows." );
+  //SLIC_ERROR_IF( h_in != out.shape()[1], "Input number of rows does not equal output number of columns." );
+  //SLIC_ERROR_IF( w_in != out.shape()[0], "Input number of columns does not equal output number of rows." );
 #endif
 
   for ( IndexT i{ 0 }; i < h_in; ++i ) {

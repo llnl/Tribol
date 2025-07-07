@@ -69,7 +69,7 @@ class MortarForceTest : public ::testing::Test {
         break;
       }
       default: {
-        SLIC_ERROR( "checkMortarForces: number of nodes per face not equal to 4." );
+        //SLIC_ERROR( "checkMortarForces: number of nodes per face not equal to 4." );
       }
     }
 

@@ -127,7 +127,7 @@ TEST_F( MortarGeomTest, mortar_good_patch )
   i_ys.close();
   i_zs.close();
 
-  SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
+  //SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
   int* ixm_data = this->v_ixm.GetData();
@@ -223,7 +223,7 @@ TEST_F( MortarGeomTest, mortar_bad_patch )
   i_ys.close();
   i_zs.close();
 
-  SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
+  //SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
   int* ixm_data = this->v_ixm.GetData();
@@ -319,7 +319,7 @@ TEST_F( MortarGeomTest, mortar_ironing )
   i_ys.close();
   i_zs.close();
 
-  SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
+  //SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
   int* ixm_data = this->v_ixm.GetData();
@@ -382,7 +382,7 @@ TEST_F( MortarGeomTest, mortar_ironing )
     }  // end loop over nonzero columns, I[a]
   }    // end loop over matrix rows
 
-  SLIC_INFO( "Total number of ACTIVE nonmortar nodes: " << num_total_active_nodes );
+  //SLIC_INFO( "Total number of ACTIVE nonmortar nodes: " << num_total_active_nodes );
 
   EXPECT_EQ( num_total_active_nodes, 54 );
 
@@ -445,7 +445,7 @@ TEST_F( MortarGeomTest, mortar_ironing_block_sub_mesh )
   i_ys.close();
   i_zs.close();
 
-  SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
+  //SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
   int* ixm_data = this->v_ixm.GetData();

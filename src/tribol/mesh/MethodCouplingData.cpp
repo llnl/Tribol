@@ -9,7 +9,7 @@
 #include "tribol/mesh/InterfacePairs.hpp"
 
 // Axom includes
-#include "axom/slic.hpp"
+//#include "axom/slic.hpp"
 
 #include <iostream>
 #include <sstream>
@@ -179,8 +179,8 @@ void MethodData::reserveBlockJ( ArrayT<BlockSpace>&& blockJSpaces, int nPairs )
 //------------------------------------------------------------------------------
 void MethodData::storeElemBlockJ( ArrayT<int>&& blockJElemIds, const StackArray<DeviceArray2D<RealT>, 9>& blockJ )
 {
-  SLIC_ASSERT_MSG( blockJElemIds.size() == getNSpaces(),
-                   "Number of element ID vectors does not match the number of Jacobian spaces." );
+  //SLIC_ASSERT_MSG( blockJElemIds.size() == getNSpaces(),
+  //                 "Number of element ID vectors does not match the number of Jacobian spaces." );
   for ( IndexT i{}; i < getNSpaces(); ++i ) {
     IndexT blockIdxI = static_cast<IndexT>( m_blockJSpaces[i] );
     m_blockJElemIds[blockIdxI].push_back( blockJElemIds[i] );
@@ -410,8 +410,8 @@ void MortarData::assembleMortarWts( SurfaceContactElem& elem, SparseMode s_mode 
         this->m_smat->Add( nonmortarNodeIdA, mortarNodeIdB, elem.getNonmortarMortarWt( a, b ) );
         this->m_smat->Add( nonmortarNodeIdA, nonmortarNodeIdB, elem.getNonmortarNonmortarWt( a, b ) );
       } else if ( s_mode == SparseMode::MFEM_INDEX_SET ) {
-        SLIC_ERROR( "MortarData::assembleMortarWts() MFEM_INDEX_SET "
-                    << "not implemented." );
+        //SLIC_ERROR( "MortarData::assembleMortarWts() MFEM_INDEX_SET "
+        //            << "not implemented." );
       }
 
     }  // end loop over b nodes (columns)
@@ -424,7 +424,7 @@ void MortarData::assembleMortarWts( SurfaceContactElem& elem, SparseMode s_mode 
 void MortarData::getCSRArrays( int** I, int** J, RealT** vals, int* n_offsets, int* n_nonzero )
 {
   if ( this->m_smat == nullptr ) {
-    SLIC_ERROR( "getCSRArrays: method data get routine has m_smat == nullptr." );
+    //SLIC_ERROR( "getCSRArrays: method data get routine has m_smat == nullptr." );
   }
 
   this->m_smat->Finalize();

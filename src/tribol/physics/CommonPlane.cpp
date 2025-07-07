@@ -409,8 +409,8 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
   } );
 
   ArrayT<bool, 1, MemorySpace::Host> neg_thickness_host( neg_thickness_data );
-  SLIC_DEBUG_IF( neg_thickness_host[0],
-                 "ApplyNormal<COMMON_PLANE, PENALTY>: negative element thicknesses encountered." );
+  //SLIC_DEBUG_IF( neg_thickness_host[0],
+  //               "ApplyNormal<COMMON_PLANE, PENALTY>: negative element thicknesses encountered." );
 
   ArrayT<int, 1, MemorySpace::Host> err_host( err_data );
   return err_host[0];

@@ -19,7 +19,7 @@
 #include "tribol/utils/Algorithm.hpp"
 
 // Axom includes
-#include "axom/slic.hpp"
+//#include "axom/slic.hpp"
 
 #include <iostream>
 #include <iomanip>
@@ -93,8 +93,8 @@ void ComputeMortarWeights( SurfaceContactElem& elem )
         LinIsoQuadShapeFunc( xi[0], xi[1], a, phiNonmortarA );
         LinIsoQuadShapeFunc( xi[0], xi[1], b, phiNonmortarB );
 
-        SLIC_ERROR_IF( nonmortarNonmortarId > elem.numWts || mortarNonmortarId > elem.numWts,
-                       "ComputeMortarWts: integer ids for weights exceed elem.numWts" );
+        //SLIC_ERROR_IF( nonmortarNonmortarId > elem.numWts || mortarNonmortarId > elem.numWts,
+        //               "ComputeMortarWts: integer ids for weights exceed elem.numWts" );
 
         // compute nonmortar/nonmortar mortar weight
         elem.mortarWts[nonmortarNonmortarId] += integ.wts[ip] * phiNonmortarA * phiNonmortarB;
@@ -116,19 +116,19 @@ void ComputeNodalGap<SINGLE_MORTAR>( SurfaceContactElem& elem )
 {
   // check to make sure mortar weights have been computed locally
   // for the SurfaceContactElem object
-  SLIC_ERROR_IF( elem.mortarWts == nullptr,
-                 "ComputeNodalGap< SINGLE_MORTAR >: compute local weights on input struct first." );
+  //SLIC_ERROR_IF( elem.mortarWts == nullptr,
+  //               "ComputeNodalGap< SINGLE_MORTAR >: compute local weights on input struct first." );
 
   // get mesh instance to store gaps on mesh data object
   auto& nonmortarMesh = *elem.m_mesh2;
   IndexT const* const nonmortarConn = nonmortarMesh.getConnectivity().data();
 
   // will populate local gaps on nonmortar face on nonmortar mesh data object
-  SLIC_ERROR_IF( nonmortarMesh.getNodalFields().m_node_gap.empty(),
-                 "ComputeNodalGap< SINGLE_MORTAR >: allocate gaps on mesh data object." );
+  //SLIC_ERROR_IF( nonmortarMesh.getNodalFields().m_node_gap.empty(),
+  //               "ComputeNodalGap< SINGLE_MORTAR >: allocate gaps on mesh data object." );
 
-  SLIC_ERROR_IF( !nonmortarMesh.hasNodalNormals(),
-                 "ComputeNodalGap< SINGLE_MORTAR >: allocate and compute nodal normals on mesh data object." );
+  //SLIC_ERROR_IF( !nonmortarMesh.hasNodalNormals(),
+  //               "ComputeNodalGap< SINGLE_MORTAR >: allocate and compute nodal normals on mesh data object." );
 
   // compute gap contributions associated with face 2 on the SurfaceContactElem
   // (i.e. nonmortar surface)
@@ -316,7 +316,7 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
                 lm_options.sparse_mode == SparseMode::MFEM_LINKED_LIST ) {
       static_cast<MortarData*>( cs->getMethodData() )->allocateMfemSparseMatrix( numRows );
     } else {
-      SLIC_WARNING( "Unsupported Jacobian storage method." );
+      //SLIC_WARNING( "Unsupported Jacobian storage method." );
       return 1;
     }
   }
@@ -423,7 +423,7 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
                   lm_options.sparse_mode == SparseMode::MFEM_LINKED_LIST ) {
         static_cast<MortarData*>( cs->getMethodData() )->assembleJacobian( elem, lm_options.sparse_mode );
       } else {
-        SLIC_WARNING( "Unsupported Jacobian storage method." );
+        //SLIC_WARNING( "Unsupported Jacobian storage method." );
         return 1;
       }
     }
@@ -619,7 +619,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
           { BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER }, num_active_pairs );
       cs->getDnDxMethodData()->reserveBlockJ( { BlockSpace::NONMORTAR }, cs->getMesh2().numberOfElements() );
     } else {
-      SLIC_WARNING( "Unsupported Jacobian storage method." );
+      //SLIC_WARNING( "Unsupported Jacobian storage method." );
       return 1;
     }
   }
@@ -703,7 +703,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
         cs->getMethodData()->storeElemBlockJ( { elem1, elem2, elem1 }, blockJ );
         cs->getDfDnMethodData()->storeElemBlockJ( { elem1, elem2, elem1 }, blockJ_n );
       } else {
-        SLIC_WARNING( "Unsupported Jacobian storage method." );
+        //SLIC_WARNING( "Unsupported Jacobian storage method." );
         return 1;
       }
     } else if ( lm_opts.eval_mode == ImplicitEvalMode::MORTAR_GAP ||
@@ -1171,8 +1171,8 @@ int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs )
     const EnforcementOptions& enforcement_options = const_cast<EnforcementOptions&>( cs->getEnforcementOptions() );
     const SparseMode sparse_mode = enforcement_options.lm_implicit_options.sparse_mode;
     if ( sparse_mode == SparseMode::MFEM_ELEMENT_DENSE ) {
-      SLIC_WARNING( "GetMethodData<MORTAR_WEIGHTS>() MFEM_ELEMENT_DENSE "
-                    << "Unassembled element dense matrix output not implemented." );
+      //SLIC_WARNING( "GetMethodData<MORTAR_WEIGHTS>() MFEM_ELEMENT_DENSE "
+      //              << "Unassembled element dense matrix output not implemented." );
       return 1;
     }
     static_cast<MortarData*>( cs->getMethodData() )->assembleMortarWts( elem, sparse_mode );

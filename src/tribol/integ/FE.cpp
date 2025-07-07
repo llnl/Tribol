@@ -7,7 +7,7 @@
 #include "tribol/integ/FE.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 
-#include "axom/slic.hpp"
+//#include "axom/slic.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -25,7 +25,7 @@ TRIBOL_HOST_DEVICE int GetNumFaceNodes( int dim, FaceOrderType order_type )
       break;
     default:
 #ifdef TRIBOL_USE_HOST
-      SLIC_ERROR( "GetNumFaceNodes(): order_type not supported." );
+      //SLIC_ERROR( "GetNumFaceNodes(): order_type not supported." );
 #endif
       break;
   }
@@ -37,10 +37,10 @@ TRIBOL_HOST_DEVICE void GalerkinEval( const RealT* const x, const RealT pX, cons
                                       RealT* nodeVals, RealT* galerkinVal )
 {
 #ifdef TRIBOL_USE_HOST
-  SLIC_ERROR_IF( x == nullptr, "GalerkinEval(): input pointer, x, is NULL." );
-  SLIC_ERROR_IF( nodeVals == nullptr, "GalerkinEval(): input pointer, nodeVals, is NULL." );
-  SLIC_ERROR_IF( galerkinVal == nullptr, "GalerkinEval(): input/output pointer, galerkinVal, is NULL." );
-  SLIC_ERROR_IF( galerkinDim < 1, "GalerkinEval(): scalar approximations not yet supported." );
+  //SLIC_ERROR_IF( x == nullptr, "GalerkinEval(): input pointer, x, is NULL." );
+  //SLIC_ERROR_IF( nodeVals == nullptr, "GalerkinEval(): input pointer, nodeVals, is NULL." );
+  //SLIC_ERROR_IF( galerkinVal == nullptr, "GalerkinEval(): input/output pointer, galerkinVal, is NULL." );
+  //SLIC_ERROR_IF( galerkinDim < 1, "GalerkinEval(): scalar approximations not yet supported." );
 #endif
 
   int numNodes = GetNumFaceNodes( dim, order_type );
@@ -56,7 +56,7 @@ TRIBOL_HOST_DEVICE void GalerkinEval( const RealT* const x, const RealT pX, cons
       break;
     default:
 #ifdef TRIBOL_USE_HOST
-      SLIC_ERROR( "GalerkinEval(): basis_type = PARENT not yet supported." );
+      //SLIC_ERROR( "GalerkinEval(): basis_type = PARENT not yet supported." );
 #endif
       break;
   }
@@ -71,7 +71,7 @@ TRIBOL_HOST_DEVICE void EvalBasis( const RealT* const x, const RealT pX, const R
     SegmentBasis( x, pX, pY, vertexId, phi );
   } else {
 #ifdef TRIBOL_USE_HOST
-    SLIC_ERROR( "EvalBasis: invalid numPoints argument." );
+    //SLIC_ERROR( "EvalBasis: invalid numPoints argument." );
 #endif
   }
   return;
@@ -83,7 +83,7 @@ TRIBOL_HOST_DEVICE void SegmentBasis( const RealT* const x, const RealT pX, cons
 {
 #ifdef TRIBOL_USE_HOST
   // note, vertexId is the index, 0 or 1.
-  SLIC_ERROR_IF( vertexId != 0 && vertexId != 1, "SegmentBasis: vertexId is " << vertexId << " but should be 0 or 1." );
+  //SLIC_ERROR_IF( vertexId != 0 && vertexId != 1, "SegmentBasis: vertexId is " << vertexId << " but should be 0 or 1." );
 #endif
 
   const int dim = 2;
@@ -103,12 +103,12 @@ TRIBOL_HOST_DEVICE void SegmentBasis( const RealT* const x, const RealT pX, cons
 
 #ifdef TRIBOL_USE_HOST
   if ( phi > 1.0 || phi < 0.0 ) {
-    SLIC_DEBUG( "SegmentBasis: phi is " << phi << " not between 0. and 1 for vertex " << vertexId << "." );
-    SLIC_DEBUG( "(x0,y0) and (x1,y1): "
-                << "(" << x[0] << ", " << x[1] << "), "
-                << "(" << x[2] << ", " << x[3] << ")." );
-    SLIC_DEBUG( "(px,py): "
-                << "(" << pX << ", " << pY << ")" );
+    //SLIC_DEBUG( "SegmentBasis: phi is " << phi << " not between 0. and 1 for vertex " << vertexId << "." );
+    //SLIC_DEBUG( "(x0,y0) and (x1,y1): "
+    //            << "(" << x[0] << ", " << x[1] << "), "
+    //            << "(" << x[2] << ", " << x[3] << ")." );
+    //SLIC_DEBUG( "(px,py): "
+    //            << "(" << pX << ", " << pY << ")" );
   }
 #endif
 
@@ -120,7 +120,7 @@ TRIBOL_HOST_DEVICE void WachspressBasis( const RealT* const x, const RealT pX, c
                                          const int numPoints, const int vertexId, RealT& phi )
 {
 #ifdef TRIBOL_USE_HOST
-  SLIC_ERROR_IF( numPoints < 3, "WachspressBasis: numPoints < 3." );
+  //SLIC_ERROR_IF( numPoints < 3, "WachspressBasis: numPoints < 3." );
 #endif
 
   // first compute the areas of all the triangles formed by the i-1,i,i+1 vertices.
@@ -199,7 +199,7 @@ TRIBOL_HOST_DEVICE void WachspressBasis( const RealT* const x, const RealT pX, c
 
 #ifdef TRIBOL_USE_HOST
   if ( phi <= 0. || phi > 1. ) {
-    SLIC_ERROR( "Wachspress Basis: phi is not between 0 and 1." );
+    //SLIC_ERROR( "Wachspress Basis: phi is not between 0 and 1." );
   }
 #endif
 
@@ -210,7 +210,7 @@ TRIBOL_HOST_DEVICE void WachspressBasis( const RealT* const x, const RealT pX, c
 int InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA, const int numNodes, RealT xi[2] )
 {
 #if !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( numNodes != 4, "InvIso: routine only for 4 node quads." );
+  //SLIC_ERROR_IF( numNodes != 4, "InvIso: routine only for 4 node quads." );
 #endif
 
   int err = 0;
@@ -328,7 +328,7 @@ int InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA,
         err = 1;
       }
 #if !defined( TRIBOL_USE_ENZYME )
-      SLIC_WARNING_IF( !in_quad, "InvIso(): (xi,eta) coordinate does not lie inside isoparametric quad." );
+      //SLIC_WARNING_IF( !in_quad, "InvIso(): (xi,eta) coordinate does not lie inside isoparametric quad." );
 #endif
 
       return err;
@@ -336,7 +336,7 @@ int InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA,
   }
 
 #if !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( !convrg, "InvIso: Newtons method did not converge." );
+  //SLIC_ERROR_IF( !convrg, "InvIso: Newtons method did not converge." );
 #endif
 
   return err;
@@ -398,7 +398,7 @@ void LinIsoTriShapeFunc( const RealT xi, const RealT eta, const int a, RealT& ph
       break;
     default:
 #if !defined( TRIBOL_USE_ENZYME )
-      SLIC_ERROR( "LinIsoTriShapeFunc: node id is not between 0 and 2." );
+      //SLIC_ERROR( "LinIsoTriShapeFunc: node id is not between 0 and 2." );
 #endif
       break;
   }
@@ -437,7 +437,7 @@ void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& p
       break;
     default:
 #if !defined( TRIBOL_USE_ENZYME )
-      SLIC_ERROR( "LinIsoQuadShapeFunc: node id is not between 0 and 3." );
+      //SLIC_ERROR( "LinIsoQuadShapeFunc: node id is not between 0 and 3." );
 #endif
       return;
   }
@@ -445,7 +445,7 @@ void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& p
   phi = 0.25 * ( 1. + xi_node * xi ) * ( 1. + eta_node * eta );
 
 #if !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( phi > 1.0 || phi < 0.0, "LinIsoQuadShapeFunc: phi is " << phi << " not between 0. and 1." );
+  //SLIC_ERROR_IF( phi > 1.0 || phi < 0.0, "LinIsoQuadShapeFunc: phi is " << phi << " not between 0. and 1." );
 #endif
 
   return;

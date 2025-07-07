@@ -22,7 +22,7 @@
 #endif
 
 // Axom includes
-#include "axom/core.hpp"
+//#include "axom/core.hpp"
 
 namespace tribol {
 // Struct to hold on-rank coupling scheme face-pair reporting data

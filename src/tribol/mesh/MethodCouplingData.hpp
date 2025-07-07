@@ -12,8 +12,8 @@
 #include "tribol/mesh/MeshData.hpp"
 
 // Axom includes
-#include "axom/core.hpp"
-#include "axom/slic.hpp"
+//#include "axom/core.hpp"
+//#include "axom/slic.hpp"
 
 // MFEM includes
 #include "mfem.hpp"

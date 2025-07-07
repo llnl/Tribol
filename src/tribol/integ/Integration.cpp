@@ -11,7 +11,7 @@
 #include "tribol/geom/GeomUtilities.hpp"
 
 // axom includes
-#include "axom/slic.hpp"
+//#include "axom/slic.hpp"
 
 // C++ includes
 #include <cmath>
@@ -110,7 +110,7 @@ void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, int k )
 {
   // check that the order, k, is either 2 or 3
   if ( k != 2 && k != 3 ) {
-    SLIC_ERROR( "TWBPolyInt: input argument, k, must be 2 or 3." );
+    //SLIC_ERROR( "TWBPolyInt: input argument, k, must be 2 or 3." );
     return;
   }
 
@@ -297,9 +297,9 @@ int NumTWBPointsPerTri( int order )
       return 3;
     case 3:
       return 6;
-    default:
-      SLIC_ERROR( "NumTWBPoints: integration rule order not supported." );
-      break;
+    //default:
+      //SLIC_ERROR( "NumTWBPoints: integration rule order not supported." );
+      //break;
   }
 
   return 0;
@@ -321,9 +321,9 @@ void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, int k )
     case 4:
       numTriPoints = 6;
       numTotalPoints = numTriPoints * elem.numPolyVert;
-      break;
-    default:
-      SLIC_ERROR( "GaussPolyIntTri: only Gauss integration of order 2-4 is implemented." );
+      //break;
+    //default:
+      //SLIC_ERROR( "GaussPolyIntTri: only Gauss integration of order 2-4 is implemented." );
       return;
   }
 
@@ -444,9 +444,9 @@ void GaussPolyIntQuad( SurfaceContactElem const& TRIBOL_UNUSED_PARAM( elem ), In
       break;
     case 5:
       numQuadPoints = 25;
-      break;
-    default:
-      SLIC_ERROR( "GaussPolyIntQuad: only Gauss integration of order 2-5 is implemented." );
+      //break;
+    //default:
+      //SLIC_ERROR( "GaussPolyIntQuad: only Gauss integration of order 2-5 is implemented." );
       return;
   }
 

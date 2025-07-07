@@ -49,14 +49,14 @@ void ElementAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
     return;
   }
 
-  SLIC_ERROR_IF( jacobian_data != nullptr, "ElementAvgNodalNormal does not support computing Jacobian data." );
+  //SLIC_ERROR_IF( jacobian_data != nullptr, "ElementAvgNodalNormal does not support computing Jacobian data." );
 
   mesh.allocateNodalNormals();
 
   auto mesh_view = mesh.getView();
   // check to make sure face normals have been computed with
   // a call to computeFaceData
-  SLIC_ERROR_IF( !mesh_view.hasElementNormals(), "MeshData::computeNodalNormals: required face normals not computed." );
+  //SLIC_ERROR_IF( !mesh_view.hasElementNormals(), "MeshData::computeNodalNormals: required face normals not computed." );
 
   // loop over elements
   for ( int i = 0; i < mesh_view.numberOfElements(); ++i ) {
@@ -99,7 +99,7 @@ void ElementAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
 
 void EdgeAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
 {
-  SLIC_ERROR_ROOT_IF( mesh.spatialDimension() != 3, "3D mesh required for vertex averaged normal." );
+  //SLIC_ERROR_ROOT_IF( mesh.spatialDimension() != 3, "3D mesh required for vertex averaged normal." );
 
   mesh.allocateNodalNormals();
 
@@ -112,8 +112,8 @@ void EdgeAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
 
   auto mesh_view = mesh.getView();
 
-  SLIC_ERROR_IF( !mesh_view.hasReferencePosition(),
-                 "Reference coordinates must be registered for vertex averaged normal." );
+  //SLIC_ERROR_IF( !mesh_view.hasReferencePosition(),
+  //               "Reference coordinates must be registered for vertex averaged normal." );
 
   auto num_nodes_per_elem = mesh_view.numberOfNodesPerElement();
   for ( int e{ 0 }; e < mesh_view.numberOfElements(); ++e ) {
@@ -227,7 +227,7 @@ void ElementEdgeAvgNodalNormalJacobian( [[maybe_unused]] const RealT* x, [[maybe
     x_dot[i] = 0.0;
   }
 #else
-  SLIC_ERROR( "ElementEdgeAvgNodalNormalJacobian requires Tribol built with Enzyme support." );
+  //SLIC_ERROR( "ElementEdgeAvgNodalNormalJacobian requires Tribol built with Enzyme support." );
 #endif
 }
 

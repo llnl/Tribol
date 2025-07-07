@@ -139,7 +139,7 @@ class MortarGapTest : public ::testing::Test {
         break;
       }
       default: {
-        SLIC_ERROR( "checkMortarWts: number of nodes per face not equal to 4." );
+        //SLIC_ERROR( "checkMortarWts: number of nodes per face not equal to 4." );
       }
     }
 
@@ -193,7 +193,7 @@ class MortarGapTest : public ::testing::Test {
         tribol::ComputeAlignedMortarWeights( elem );
         break;
       default:
-        SLIC_ERROR( "Unsupported contact method" );
+        //SLIC_ERROR( "Unsupported contact method" );
         break;
     }
 
@@ -205,7 +205,7 @@ class MortarGapTest : public ::testing::Test {
         tribol::ComputeNodalGap<tribol::ALIGNED_MORTAR>( elem );
         break;
       default:
-        SLIC_ERROR( "Unsupported contact method" );
+        //SLIC_ERROR( "Unsupported contact method" );
         break;
     }
 

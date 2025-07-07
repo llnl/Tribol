@@ -130,7 +130,7 @@ TEST_F( HexMeshTest, build_and_check_mfem_hex_mesh )
 
   // perform mfem mesh based sanity checks
   EXPECT_EQ( this->m_mesh.mfem_mesh->SpaceDimension(), 3 );
-  SLIC_INFO( "number of elements: " << this->m_mesh.mfem_mesh->GetNE() << "." );
+  //SLIC_INFO( "number of elements: " << this->m_mesh.mfem_mesh->GetNE() << "." );
   EXPECT_EQ( this->m_mesh.mfem_mesh->GetNE(), this->m_mesh.numMortarElements + this->m_mesh.numNonmortarElements );
   EXPECT_EQ( this->m_mesh.mfem_mesh->GetNV(), this->m_mesh.numMortarNodes + this->m_mesh.numNonmortarNodes );
   EXPECT_EQ( this->m_mesh.mfem_mesh->GetNFbyType( mfem::FaceType::Boundary ),

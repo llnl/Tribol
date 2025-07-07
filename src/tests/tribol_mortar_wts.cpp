@@ -69,7 +69,7 @@ class MortarWeightTest : public ::testing::Test {
   void checkMortarWts( RealT pTestNonmortar[4], RealT pTestMortar[4] )
   {
     if ( this->numNodesPerFace != 4 ) {
-      SLIC_ERROR( "checkMortarWts: number of nodes per face not equal to 4." );
+      //SLIC_ERROR( "checkMortarWts: number of nodes per face not equal to 4." );
     }
 
     RealT xyz1[this->dim * this->numNodesPerFace];

@@ -11,7 +11,7 @@
 #include "tribol/utils/ContactPlaneOutput.hpp"
 
 // Axom includes
-#include "axom/slic.hpp"
+//#include "axom/slic.hpp"
 
 namespace tribol {
 
@@ -101,22 +101,22 @@ int ApplyInterfacePhysics( CouplingScheme* cs, int TRIBOL_UNUSED_PARAM( cycle ),
   // error checking
   if ( err_nrml != 0 ) {
     // note, not all ranks will get here if a rank has null-meshes
-    SLIC_WARNING( "ApplyInterfacePhysics: error in application of "
-                  << "'normal' physics method for "
-                  << "coupling scheme, " << cs->getId() << "." );
+    //SLIC_WARNING( "ApplyInterfacePhysics: error in application of "
+    //              << "'normal' physics method for "
+    //              << "coupling scheme, " << cs->getId() << "." );
 
     return err_nrml;
   } else if ( err_tang != 0 ) {
     // note, not all ranks will get here if a rank has null-meshes
-    SLIC_WARNING( "ApplyInterfacePhysics: error in application of "
-                  << "'tangential' physics method for "
-                  << "coupling scheme, " << cs->getId() << "." );
+    //SLIC_WARNING( "ApplyInterfacePhysics: error in application of "
+    //              << "'tangential' physics method for "
+    //              << "coupling scheme, " << cs->getId() << "." );
 
     return err_tang;
   } else if ( err_data != 0 ) {
     // note, not all ranks will get here if a rank has null-meshes
-    SLIC_WARNING( "ApplyInterfacePhysics: error in call to  "
-                  << "GetMethodData for coupling scheme, " << cs->getId() << "." );
+    //SLIC_WARNING( "ApplyInterfacePhysics: error in call to  "
+    //              << "GetMethodData for coupling scheme, " << cs->getId() << "." );
     return err_data;
   } else {
     // no error

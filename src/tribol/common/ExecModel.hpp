@@ -11,7 +11,7 @@
 
 // Axom includes
 #include "axom/core/memory_management.hpp"
-#include "axom/slic.hpp"
+//#include "axom/slic.hpp"
 
 namespace tribol {
 
@@ -130,12 +130,12 @@ inline bool isOnDevice( ExecutionMode exec )
       return false;
 #endif
     case ExecutionMode::Dynamic:
-      SLIC_ERROR_ROOT( "Dynamic execution mode does not define a memory space location." );
+      //SLIC_ERROR_ROOT( "Dynamic execution mode does not define a memory space location." );
       return false;
     case ExecutionMode::Sequential:
       return false;
     default:
-      SLIC_ERROR_ROOT( "Unknown execution mode." );
+      //SLIC_ERROR_ROOT( "Unknown execution mode." );
       return false;
   }
 }

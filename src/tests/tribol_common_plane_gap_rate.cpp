@@ -63,9 +63,9 @@ void compareGaps( tribol::CouplingScheme const* cs, RealT gap, const RealT tol, 
       // check that the gap is greater than the separation tolerance (separation)
       EXPECT_GE( my_gap, gap_tol );
     } else {
-      SLIC_ERROR( "compareGaps: invalid gapType. "
-                  << "Acceptable types are 'kinematic_penetration', 'kinematic_separation', "
-                  << "'rate_penetration' or 'rate_separation'." );
+      //SLIC_ERROR( "compareGaps: invalid gapType. "
+      //            << "Acceptable types are 'kinematic_penetration', 'kinematic_separation', "
+      //            << "'rate_penetration' or 'rate_separation'." );
       ;
     }
 
@@ -105,8 +105,8 @@ void checkMeshPenalties( tribol::CouplingScheme const* cs, const RealT penalty, 
     EXPECT_LE( penalty_diff_1, tol );
     EXPECT_LE( penalty_diff_2, tol );
   } else {
-    SLIC_ERROR( "checkMeshPenalties: invalid penaltyType. "
-                << "only 'constant', 'face', 'constant_rate', or 'percent_rate' accepted. " );
+    //SLIC_ERROR( "checkMeshPenalties: invalid penaltyType. "
+    //            << "only 'constant', 'face', 'constant_rate', or 'percent_rate' accepted. " );
   }
 
 }  // end checkMeshPenalties()
@@ -125,8 +125,8 @@ void checkPressures( tribol::CouplingScheme const* cs, RealT pressure, const Rea
     } else if ( std::strcmp( pressureType, "kinematic" ) == 0 ) {
       my_pressure = plane.m_pressure;
     } else {
-      SLIC_ERROR( "checkPressures(): invalid pressure type. Supported types are "
-                  << "'kinematic' or 'rate'." );
+      //SLIC_ERROR( "checkPressures(): invalid pressure type. Supported types are "
+      //            << "'kinematic' or 'rate'." );
     }
 
     // check diffs

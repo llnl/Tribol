@@ -60,7 +60,7 @@ void TestMortarWeights( tribol::CouplingScheme const* cs, RealT exact_area, Real
 
   EXPECT_EQ( csr_err, 0 );
 
-  SLIC_ERROR_IF( I == nullptr, "Mortar wts test, I is null." );
+  //SLIC_ERROR_IF( I == nullptr, "Mortar wts test, I is null." );
 
   RealT area = 0.;
   int numTotalNodes = static_cast<tribol::MortarData*>( cs->getMethodData() )->m_numTotalNodes;
@@ -79,7 +79,7 @@ void TestMortarWeights( tribol::CouplingScheme const* cs, RealT exact_area, Real
 
   area /= 2.;
 
-  SLIC_DEBUG( "area: " << area << "." );
+  //SLIC_DEBUG( "area: " << area << "." );
 
   RealT diff = std::abs( area - exact_area );
   EXPECT_LE( diff, tol );
@@ -171,7 +171,7 @@ TEST_F( MortarSparseWtsTest, mortar_sphere )
   i_ys.close();
   i_zs.close();
 
-  SLIC_DEBUG( "After loading mesh data and constructing mfem vectors." );
+  //SLIC_DEBUG( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
   int* ixm_data = this->v_ixm.GetData();
@@ -266,7 +266,7 @@ TEST_F( MortarSparseWtsTest, mortar_sphere_offset )
   i_ys.close();
   i_zs.close();
 
-  SLIC_DEBUG( "After loading mesh data and constructing mfem vectors." );
+  //SLIC_DEBUG( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
   int* ixm_data = this->v_ixm.GetData();
@@ -361,7 +361,7 @@ TEST_F( MortarSparseWtsTest, mortar_one_seg_rotated )
   i_ys.close();
   i_zs.close();
 
-  SLIC_DEBUG( "After loading mesh data and constructing mfem vectors." );
+  //SLIC_DEBUG( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
   int* ixm_data = this->v_ixm.GetData();

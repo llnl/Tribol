@@ -19,7 +19,7 @@
 #include "tribol/integ/FE.hpp"
 
 // Axom includes
-#include "axom/slic.hpp"
+//#include "axom/slic.hpp"
 
 // MFEM includes
 #include "mfem.hpp"
@@ -50,11 +50,11 @@ void CouplingSchemeErrors::printModeErrors()
 {
   switch ( this->cs_mode_error ) {
     case INVALID_MODE: {
-      SLIC_WARNING_ROOT( "The specified ContactMode is invalid." );
+      //SLIC_WARNING_ROOT( "The specified ContactMode is invalid." );
       break;
     }
     case NO_MODE_IMPLEMENTATION: {
-      SLIC_WARNING_ROOT( "The specified ContactMode has no implementation." );
+      //SLIC_WARNING_ROOT( "The specified ContactMode has no implementation." );
       break;
     }
     case NO_MODE_ERROR: {
@@ -70,16 +70,16 @@ void CouplingSchemeErrors::printCaseErrors()
 {
   switch ( this->cs_case_error ) {
     case INVALID_CASE: {
-      SLIC_WARNING_ROOT( "The specified ContactCase is invalid." );
+      //SLIC_WARNING_ROOT( "The specified ContactCase is invalid." );
       break;
     }
     case NO_CASE_IMPLEMENTATION: {
-      SLIC_WARNING_ROOT( "The specified ContactCase has no implementation." );
+      //SLIC_WARNING_ROOT( "The specified ContactCase has no implementation." );
       break;
     }
     case INVALID_CASE_DATA: {
-      SLIC_WARNING_ROOT( "The specified ContactCase has invalid data. "
-                         << "AUTO contact requires element thickness registration." );
+      //SLIC_WARNING_ROOT( "The specified ContactCase has invalid data. "
+      //                   << "AUTO contact requires element thickness registration." );
       break;
     }
     case NO_CASE_ERROR: {
@@ -95,42 +95,42 @@ void CouplingSchemeErrors::printMethodErrors()
 {
   switch ( this->cs_method_error ) {
     case INVALID_ELEMENT_TYPE: {
-      SLIC_WARNING_ROOT( "The specified element type is invalid." );
+      //SLIC_WARNING_ROOT( "The specified element type is invalid." );
       break;
     }
     case INVALID_METHOD: {
-      SLIC_WARNING_ROOT( "The specified ContactMethod is invalid." );
+      //SLIC_WARNING_ROOT( "The specified ContactMethod is invalid." );
       break;
     }
     case NO_METHOD_IMPLEMENTATION: {
-      SLIC_WARNING_ROOT( "The specified ContactMethod has no implementation." );
+      //SLIC_WARNING_ROOT( "The specified ContactMethod has no implementation." );
       break;
     }
     case DIFFERENT_FACE_TYPES: {
-      SLIC_WARNING_ROOT( "The specified ContactMethod does not support different face types." );
+      //SLIC_WARNING_ROOT( "The specified ContactMethod does not support different face types." );
       break;
     }
     case SAME_MESH_IDS: {
-      SLIC_WARNING_ROOT( "The specified ContactMethod cannot be used in coupling schemes with identical mesh IDs." );
+      //SLIC_WARNING_ROOT( "The specified ContactMethod cannot be used in coupling schemes with identical mesh IDs." );
       break;
     }
     case SAME_MESH_IDS_INVALID_DIM: {
-      SLIC_WARNING_ROOT( "The specified ContactMethod is not implemented for the problem dimension and "
-                         << "cannot be used in coupling schemes with identical mesh IDs." );
+      //SLIC_WARNING_ROOT( "The specified ContactMethod is not implemented for the problem dimension and "
+      //                   << "cannot be used in coupling schemes with identical mesh IDs." );
       break;
     }
     case INVALID_DIM: {
-      SLIC_WARNING_ROOT( "The specified ContactMethod is not implemented for the problem dimension." );
+      //SLIC_WARNING_ROOT( "The specified ContactMethod is not implemented for the problem dimension." );
       break;
     }
     case NULL_NODAL_RESPONSE: {
-      SLIC_WARNING_ROOT( "User must call tribol::registerNodalResponse() for each mesh to use this ContactMethod." );
+      //SLIC_WARNING_ROOT( "User must call tribol::registerNodalResponse() for each mesh to use this ContactMethod." );
       break;
     }
     case NULL_REFERENCE_COORDS: {
-      SLIC_WARNING_ROOT(
-          "User must call tribol::registerNodalReferenceCoords() for one or both meshes per registered "
-          "ContactMethod." );
+      //SLIC_WARNING_ROOT(
+      //    "User must call tribol::registerNodalReferenceCoords() for one or both meshes per registered "
+      //    "ContactMethod." );
       break;
     }
     case NO_METHOD_ERROR: {
@@ -146,15 +146,15 @@ void CouplingSchemeErrors::printModelErrors()
 {
   switch ( this->cs_model_error ) {
     case INVALID_MODEL: {
-      SLIC_WARNING_ROOT( "The specified ContactModel is invalid." );
+      //SLIC_WARNING_ROOT( "The specified ContactModel is invalid." );
       break;
     }
     case NO_MODEL_IMPLEMENTATION: {
-      SLIC_WARNING_ROOT( "The specified ContactModel has no implementation." );
+      //SLIC_WARNING_ROOT( "The specified ContactModel has no implementation." );
       break;
     }
     case NO_MODEL_IMPLEMENTATION_FOR_REGISTERED_METHOD: {
-      SLIC_WARNING_ROOT( "The specified ContactModel has no implementation for the registered ContactMethod." );
+      //SLIC_WARNING_ROOT( "The specified ContactModel has no implementation for the registered ContactMethod." );
       break;
     }
     case NO_MODEL_ERROR: {
@@ -170,33 +170,33 @@ void CouplingSchemeErrors::printEnforcementErrors()
 {
   switch ( this->cs_enforcement_error ) {
     case INVALID_ENFORCEMENT: {
-      SLIC_WARNING_ROOT( "The specified EnforcementMethod is invalid." );
+      //SLIC_WARNING_ROOT( "The specified EnforcementMethod is invalid." );
       break;
     }
     case INVALID_ENFORCEMENT_FOR_REGISTERED_METHOD: {
-      SLIC_WARNING_ROOT( "The specified EnforcementMethod is invalid for the registered ContactMethod." );
+      //SLIC_WARNING_ROOT( "The specified EnforcementMethod is invalid for the registered ContactMethod." );
       break;
     }
     case INVALID_ENFORCEMENT_OPTION: {
-      SLIC_WARNING_ROOT( "The specified enforcement option is invalid." );
+      //SLIC_WARNING_ROOT( "The specified enforcement option is invalid." );
       break;
     }
     case OPTIONS_NOT_SET: {
-      SLIC_WARNING_ROOT( "User must call 'tribol::set<EnforcementMethod>Options(..)' to set options for "
-                         << "registered EnforcementMethod." );
+      //SLIC_WARNING_ROOT( "User must call 'tribol::set<EnforcementMethod>Options(..)' to set options for "
+      //                   << "registered EnforcementMethod." );
       break;
     }
     case NO_ENFORCEMENT_IMPLEMENTATION: {
-      SLIC_WARNING_ROOT( "The specified enforcement option has no implementation." );
+      //SLIC_WARNING_ROOT( "The specified enforcement option has no implementation." );
       break;
     }
     case NO_ENFORCEMENT_IMPLEMENTATION_FOR_REGISTERED_METHOD: {
-      SLIC_WARNING_ROOT( "The specified enforcement option has no implementation for the registered ContactMethod." );
+      //SLIC_WARNING_ROOT( "The specified enforcement option has no implementation for the registered ContactMethod." );
       break;
     }
     case NO_ENFORCEMENT_IMPLEMENTATION_FOR_REGISTERED_OPTION: {
-      SLIC_WARNING_ROOT(
-          "The specified enforcement option has no implementation for the specified EnforcementMethod." );
+      //SLIC_WARNING_ROOT(
+      //    "The specified enforcement option has no implementation for the specified EnforcementMethod." );
       break;
     }
     case NO_ENFORCEMENT_ERROR: {
@@ -212,7 +212,7 @@ void CouplingSchemeErrors::printEnforcementDataErrors()
 {
   switch ( this->cs_enforcement_data_error ) {
     case ERROR_IN_REGISTERED_ENFORCEMENT_DATA: {
-      SLIC_WARNING_ROOT( "Error in registered enforcement data; see warnings." );
+      //SLIC_WARNING_ROOT( "Error in registered enforcement data; see warnings." );
       break;
     }
     case NO_ENFORCEMENT_DATA_ERROR: {
@@ -228,15 +228,15 @@ void CouplingSchemeErrors::printExecutionModeErrors()
 {
   switch ( this->cs_execution_mode_error ) {
     case ExecutionModeError::NON_MATCHING_MEMORY_SPACE: {
-      SLIC_WARNING_ROOT( "Memory spaces for meshes do not match; see warnings." );
+      //SLIC_WARNING_ROOT( "Memory spaces for meshes do not match; see warnings." );
       break;
     }
     case ExecutionModeError::BAD_MODE_FOR_MEMORY_SPACE: {
-      SLIC_WARNING_ROOT( "Memory space is not compatible with execution mode; see warnings." );
+      //SLIC_WARNING_ROOT( "Memory space is not compatible with execution mode; see warnings." );
       break;
     }
     case ExecutionModeError::INCOMPATIBLE_METHOD: {
-      SLIC_WARNING_ROOT( "Contact method not compatible with execution mode; see warnings." );
+      //SLIC_WARNING_ROOT( "Contact method not compatible with execution mode; see warnings." );
       break;
     }
     default:
@@ -251,15 +251,15 @@ void CouplingSchemeInfo::printCaseInfo()
 {
   switch ( this->cs_case_info ) {
     case SPECIFYING_NO_SLIDING_WITH_REGISTERED_MODE: {
-      SLIC_DEBUG_ROOT( "Overriding with ContactCase=NO_SLIDING with registered ContactMode." );
+      //SLIC_DEBUG_ROOT( "Overriding with ContactCase=NO_SLIDING with registered ContactMode." );
       break;
     }
     case SPECIFYING_NO_SLIDING_WITH_REGISTERED_METHOD: {
-      SLIC_DEBUG_ROOT( "Overriding with ContactCase=NO_SLIDING with registered ContactMethod." );
+      //SLIC_DEBUG_ROOT( "Overriding with ContactCase=NO_SLIDING with registered ContactMethod." );
       break;
     }
     case SPECIFYING_NONE_WITH_REGISTERED_METHOD: {
-      SLIC_DEBUG_ROOT( "Overriding with ContactCase=NO_CASE with registered ContactMethod." );
+      //SLIC_DEBUG_ROOT( "Overriding with ContactCase=NO_CASE with registered ContactMethod." );
       break;
     }
     case NO_CASE_INFO: {
@@ -275,7 +275,7 @@ void CouplingSchemeInfo::printExecutionModeInfo()
 {
   switch ( this->cs_execution_mode_info ) {
     case ExecutionModeInfo::NONOPTIMAL_MODE_FOR_MEMORY_SPACE: {
-      SLIC_WARNING_ROOT( "Execution mode is not optimal for memory space; see warnings." );
+      //SLIC_WARNING_ROOT( "Execution mode is not optimal for memory space; see warnings." );
       break;
     }
     default:
@@ -288,7 +288,7 @@ void CouplingSchemeInfo::printEnforcementInfo()
 {
   switch ( this->cs_enforcement_info ) {
     case SPECIFYING_NULL_ENFORCEMENT_WITH_REGISTERED_METHOD: {
-      SLIC_DEBUG_ROOT( "Overriding with EnforcementMethod=NULL_ENFORCEMENT with registered ContactMethod." );
+      //SLIC_DEBUG_ROOT( "Overriding with EnforcementMethod=NULL_ENFORCEMENT with registered ContactMethod." );
       break;
     }
     case NO_ENFORCEMENT_INFO: {
@@ -318,16 +318,16 @@ CouplingScheme::CouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, 
       m_methodData( nullptr )
 {
   // error sanity checks
-  SLIC_ERROR_ROOT_IF( mesh_id1 == ANY_MESH, "mesh_id1 cannot be set to ANY_MESH" );
-  SLIC_ERROR_ROOT_IF( !validMeshID( m_mesh_id1 ), "invalid mesh_id1=" << mesh_id1 );
-  SLIC_ERROR_ROOT_IF( !validMeshID( m_mesh_id2 ), "invalid mesh_id2=" << mesh_id2 );
+  //SLIC_ERROR_ROOT_IF( mesh_id1 == ANY_MESH, "mesh_id1 cannot be set to ANY_MESH" );
+  //SLIC_ERROR_ROOT_IF( !validMeshID( m_mesh_id1 ), "invalid mesh_id1=" << mesh_id1 );
+  //SLIC_ERROR_ROOT_IF( !validMeshID( m_mesh_id2 ), "invalid mesh_id2=" << mesh_id2 );
 
-  SLIC_ERROR_ROOT_IF( !in_range( contact_mode, NUM_CONTACT_MODES ), "invalid contact_mode=" << contact_mode );
-  SLIC_ERROR_ROOT_IF( !in_range( contact_method, NUM_CONTACT_METHODS ), "invalid contact_method=" << contact_method );
-  SLIC_ERROR_ROOT_IF( !in_range( contact_model, NUM_CONTACT_MODELS ), "invalid contact_model=" << contact_model );
-  SLIC_ERROR_ROOT_IF( !in_range( enforcement_method, NUM_ENFORCEMENT_METHODS ),
-                      "invalid enforcement_method=" << enforcement_method );
-  SLIC_ERROR_ROOT_IF( !in_range( binning_method, NUM_BINNING_METHODS ), "invalid binning_method=" << binning_method );
+  //SLIC_ERROR_ROOT_IF( !in_range( contact_mode, NUM_CONTACT_MODES ), "invalid contact_mode=" << contact_mode );
+  //SLIC_ERROR_ROOT_IF( !in_range( contact_method, NUM_CONTACT_METHODS ), "invalid contact_method=" << contact_method );
+  //SLIC_ERROR_ROOT_IF( !in_range( contact_model, NUM_CONTACT_MODELS ), "invalid contact_model=" << contact_model );
+  //SLIC_ERROR_ROOT_IF( !in_range( enforcement_method, NUM_ENFORCEMENT_METHODS ),
+  //                    "invalid enforcement_method=" << enforcement_method );
+  //SLIC_ERROR_ROOT_IF( !in_range( binning_method, NUM_BINNING_METHODS ), "invalid binning_method=" << binning_method );
 
   m_contactMode = static_cast<ContactMode>( contact_mode );
   m_contactCase = static_cast<ContactCase>( contact_case );
@@ -378,7 +378,7 @@ bool CouplingScheme::setMeshPointers()
   // verify meshes exist and set pointers to meshes
   MeshManager& meshManager = MeshManager::getInstance();
   if ( !meshManager.findData( this->m_mesh_id1 ) || !meshManager.findData( this->m_mesh_id2 ) ) {
-    SLIC_WARNING_ROOT( "Please register meshes for coupling scheme, " << this->m_id << "." );
+    //SLIC_WARNING_ROOT( "Please register meshes for coupling scheme, " << this->m_id << "." );
     return false;
   }
 
@@ -402,8 +402,8 @@ bool CouplingScheme::isValidCouplingScheme()
 
   // check for invalid mesh topology matches in a coupling scheme
   if ( this->m_mesh1->getElementType() != this->m_mesh2->getElementType() ) {
-    SLIC_WARNING_ROOT( "Coupling scheme " << this->m_id << " does not support meshes with "
-                                          << "different surface element types." );
+    //SLIC_WARNING_ROOT( "Coupling scheme " << this->m_id << " does not support meshes with "
+    //                                      << "different surface element types." );
     this->m_mesh1->isMeshValid() = false;
     this->m_mesh2->isMeshValid() = false;
   }
@@ -829,8 +829,8 @@ int CouplingScheme::checkExecutionModeData()
   this->m_couplingSchemeInfo.cs_execution_mode_info = ExecutionModeInfo::NO_INFO;
 
   if ( this->m_mesh1->getMemorySpace() != this->m_mesh2->getMemorySpace() ) {
-    SLIC_WARNING_ROOT( "Coupling scheme " << this->m_id << ": Paired meshes reside in "
-                                          << "different memory spaces." );
+    //SLIC_WARNING_ROOT( "Coupling scheme " << this->m_id << ": Paired meshes reside in "
+    //                                      << "different memory spaces." );
     this->m_mesh1->isMeshValid() = false;
     this->m_mesh2->isMeshValid() = false;
     this->m_couplingSchemeErrors.cs_execution_mode_error = ExecutionModeError::NON_MATCHING_MEMORY_SPACE;
@@ -844,9 +844,9 @@ int CouplingScheme::checkExecutionModeData()
       // trust the user here...
       this->m_exec_mode = this->m_given_exec_mode;
       if ( this->m_exec_mode == ExecutionMode::Dynamic ) {
-        SLIC_WARNING_ROOT(
-            "Dynamic execution with dynamic memory space. "
-            "Unable to determine execution mode." );
+        //SLIC_WARNING_ROOT(
+        //    "Dynamic execution with dynamic memory space. "
+        //    "Unable to determine execution mode." );
         this->m_couplingSchemeErrors.cs_execution_mode_error = ExecutionModeError::BAD_MODE_FOR_MEMORY_SPACE;
         err = 1;
       }
@@ -861,28 +861,28 @@ int CouplingScheme::checkExecutionModeData()
       this->m_exec_mode = this->m_given_exec_mode;
       if ( this->m_exec_mode == ExecutionMode::Dynamic ) {
 #if defined( TRIBOL_USE_CUDA )
-        SLIC_INFO_ROOT(
-            "Dynamic execution with unified memory space. "
-            "Assuming CUDA parallel execution." );
+        //SLIC_INFO_ROOT(
+        //    "Dynamic execution with unified memory space. "
+        //    "Assuming CUDA parallel execution." );
         this->m_exec_mode = ExecutionMode::Cuda;
 #elif defined( TRIBOL_USE_HIP )
-        SLIC_INFO_ROOT(
-            "Dynamic execution with unified memory space. "
-            "Assuming HIP parallel execution." );
+        //SLIC_INFO_ROOT(
+        //    "Dynamic execution with unified memory space. "
+        //    "Assuming HIP parallel execution." );
         this->m_exec_mode = ExecutionMode::Hip;
 #elif defined( TRIBOL_USE_OPENMP )
-        SLIC_INFO_ROOT(
-            "Dynamic execution with unified memory space. "
-            "Tribol not built with CUDA/HIP support. "
-            "Assuming OpenMP parallel execution." );
+        //SLIC_INFO_ROOT(
+        //    "Dynamic execution with unified memory space. "
+        //    "Tribol not built with CUDA/HIP support. "
+        //    "Assuming OpenMP parallel execution." );
         this->m_exec_mode = ExecutionMode::OpenMP;
         this->m_couplingSchemeInfo.cs_execution_mode_info = ExecutionModeInfo::NONOPTIMAL_MODE_FOR_MEMORY_SPACE;
         err = 2;
 #else
-        SLIC_INFO_ROOT(
-            "Dynamic execution with unified memory space. "
-            "Tribol not built with CUDA/HIP/OpenMP support. "
-            "Assuming sequential execution." );
+        //SLIC_INFO_ROOT(
+        //    "Dynamic execution with unified memory space. "
+        //    "Tribol not built with CUDA/HIP/OpenMP support. "
+        //    "Assuming sequential execution." );
         this->m_exec_mode = ExecutionMode::Sequential;
         this->m_couplingSchemeInfo.cs_execution_mode_info = ExecutionModeInfo::NONOPTIMAL_MODE_FOR_MEMORY_SPACE;
         err = 2;
@@ -900,21 +900,21 @@ int CouplingScheme::checkExecutionModeData()
           break;
         case ExecutionMode::Dynamic:
 #ifdef TRIBOL_USE_OPENMP
-          SLIC_INFO_ROOT(
-              "Dynamic execution with a host memory space. "
-              "Assuming OpenMP parallel execution." );
+          //SLIC_INFO_ROOT(
+          //    "Dynamic execution with a host memory space. "
+          //    "Assuming OpenMP parallel execution." );
           this->m_exec_mode = ExecutionMode::OpenMP;
 #else
-          SLIC_INFO_ROOT(
-              "Dynamic execution with a host memory space. "
-              "Assuming sequential execution." );
+          //SLIC_INFO_ROOT(
+          //    "Dynamic execution with a host memory space. "
+          //    "Assuming sequential execution." );
           this->m_exec_mode = ExecutionMode::Sequential;
 #endif
           break;
         default:
-          SLIC_WARNING_ROOT(
-              "Unsupported execution mode for host memory. "
-              "Unable to determine execution mode." );
+          //SLIC_WARNING_ROOT(
+          //    "Unsupported execution mode for host memory. "
+          //    "Unable to determine execution mode." );
           this->m_couplingSchemeErrors.cs_execution_mode_error = ExecutionModeError::BAD_MODE_FOR_MEMORY_SPACE;
           err = 1;
           break;
@@ -942,9 +942,9 @@ int CouplingScheme::checkExecutionModeData()
           break;
 #endif
         default:
-          SLIC_ERROR_ROOT(
-              "Unknown execution mode for device memory. "
-              "Unable to determine execution mode." );
+          //SLIC_ERROR_ROOT(
+          //    "Unknown execution mode for device memory. "
+          //    "Unable to determine execution mode." );
           this->m_couplingSchemeErrors.cs_execution_mode_error = ExecutionModeError::BAD_MODE_FOR_MEMORY_SPACE;
           err = 1;
           break;
@@ -984,9 +984,9 @@ int CouplingScheme::checkExecutionModeData()
 
   if ( m_contactMethod != COMMON_PLANE ) {
     if ( m_exec_mode != ExecutionMode::Sequential ) {
-      SLIC_WARNING_ROOT(
-          "Only sequential execution on host supported for contact methods "
-          "other than COMMON_PLANE." );
+      //SLIC_WARNING_ROOT(
+      //    "Only sequential execution on host supported for contact methods "
+      //    "other than COMMON_PLANE." );
       this->m_couplingSchemeErrors.cs_execution_mode_error = ExecutionModeError::INCOMPATIBLE_METHOD;
       err = 1;
     }
@@ -1028,7 +1028,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // loop over number of interface pairs
   IndexT numPairs = m_interface_pairs.size();
 
-  SLIC_DEBUG( "Coupling scheme " << m_id << " has " << numPairs << " pairs." );
+  //SLIC_DEBUG( "Coupling scheme " << m_id << " has " << numPairs << " pairs." );
 
   // loop over all pairs and perform geometry checks to see if they are
   // interacting
@@ -1050,37 +1050,37 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // array of size one for counting number of planes on device
   ArrayT<IndexT> planes_ct_data( 1, 1, getAllocatorId() );
   auto planes_ct = planes_ct_data.view();
-  forAllExec( getExecutionMode(), numPairs,
-              [pairs, mesh1, mesh2, params, contact_method, contact_case, cg_view, planes_ct,
-               pair_err] TRIBOL_HOST_DEVICE( IndexT i ) mutable {
-                auto& pair = pairs[i];
+  //forAllExec( getExecutionMode(), numPairs,
+  //            [pairs, mesh1, mesh2, params, contact_method, contact_case, cg_view, planes_ct,
+  //             pair_err] TRIBOL_HOST_DEVICE( IndexT i ) mutable {
+  //              auto& pair = pairs[i];
 
-                // call wrapper around the contact method/case specific
-                // geometry checks to determine whether to include a pair
-                // in the active set
-                bool interact = false;
+  //              // call wrapper around the contact method/case specific
+  //              // geometry checks to determine whether to include a pair
+  //              // in the active set
+  //              bool interact = false;
 
-                FaceGeomError interact_err = CheckInterfacePair( pair, mesh1, mesh2, params, contact_method,
-                                                                 contact_case, interact, cg_view, planes_ct.data() );
+  //              FaceGeomError interact_err = CheckInterfacePair( pair, mesh1, mesh2, params, contact_method,
+  //                                                               contact_case, interact, cg_view, planes_ct.data() );
 
-                // // Update pair reporting data for this coupling scheme
-                // this->updatePairReportingData( interact_err );
+  //              // // Update pair reporting data for this coupling scheme
+  //              // this->updatePairReportingData( interact_err );
 
-                // TODO refine how these errors are handled. Here we skip over face-pairs with errors. That is,
-                // they are not registered for contact, but we don't error out.
-                if ( interact_err != NO_FACE_GEOM_ERROR ) {
-                  pair_err[0] = 1;
-                  pair.m_is_contact_candidate = false;
-                  // TODO consider printing offending face(s) coordinates for debugging
-                  // SLIC_DEBUG("Face geometry error, " << static_cast<int>(interact_err) << "for pair, " << kp << ".");
-                  // continue; // TODO SRW why do we need this? Seems like we want to update interface pair below
-                  // if-statements
-                } else if ( !interact ) {
-                  pair.m_is_contact_candidate = false;
-                } else {
-                  pair.m_is_contact_candidate = true;
-                }
-              } );
+  //              // TODO refine how these errors are handled. Here we skip over face-pairs with errors. That is,
+  //              // they are not registered for contact, but we don't error out.
+  //              if ( interact_err != NO_FACE_GEOM_ERROR ) {
+  //                pair_err[0] = 1;
+  //                pair.m_is_contact_candidate = false;
+  //                // TODO consider printing offending face(s) coordinates for debugging
+  //                // SLIC_DEBUG("Face geometry error, " << static_cast<int>(interact_err) << "for pair, " << kp << ".");
+  //                // continue; // TODO SRW why do we need this? Seems like we want to update interface pair below
+  //                // if-statements
+  //              } else if ( !interact ) {
+  //                pair.m_is_contact_candidate = false;
+  //              } else {
+  //                pair.m_is_contact_candidate = true;
+  //              }
+  //            } );
 
   ArrayT<int, 1, MemorySpace::Host> planes_ct_host( planes_ct_data );
   // shrink array to actual number of contact planes
@@ -1097,21 +1097,21 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // or issue in the cg that a host-code does desire to have resolved. For this reason, this
   // message is kept at the warning level.
   ArrayT<int, 1, MemorySpace::Host> pair_err_host( pair_err_data );
-  SLIC_DEBUG_IF( pair_err_host[0] != 0, "CouplingScheme::apply(): possible issues with orientation, "
-                                            << "input, or invalid overlaps in CheckInterfacePair()." );
+  //SLIC_DEBUG_IF( pair_err_host[0] != 0, "CouplingScheme::apply(): possible issues with orientation, "
+  //                                          << "input, or invalid overlaps in CheckInterfacePair()." );
 
   // aggregate across ranks for this coupling scheme? SRW
-  SLIC_DEBUG( "Number of active interface pairs: " << getNumActivePairs() );
+  //SLIC_DEBUG( "Number of active interface pairs: " << getNumActivePairs() );
 
   // wrapper around contact method, case, and
   // enforcement to apply the interface physics in both
   // normal and tangential directions. This function loops
   // over the pairs on the coupling scheme and applies the
   // appropriate physics in the normal and tangential directions.
-  int err = ApplyInterfacePhysics( this, cycle, t );
-
-  SLIC_WARNING_IF( err != 0, "CouplingScheme::apply(): error in ApplyInterfacePhysics for "
-                                 << "coupling scheme, " << this->m_id << "." );
+  //int err = ApplyInterfacePhysics( this, cycle, t );
+  int err = 0; // TODO remove
+  //SLIC_WARNING_IF( err != 0, "CouplingScheme::apply(): error in ApplyInterfacePhysics for "
+  //                               << "coupling scheme, " << this->m_id << "." );
 
   // compute Tribol timestep vote on the coupling scheme
   if ( err == 0 && getNumActivePairs() > 0 ) {
@@ -1119,7 +1119,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   }
 
   // write output
-  writeInterfaceOutput( m_output_directory, params.vis_type, cycle, t );
+  //writeInterfaceOutput( m_output_directory, params.vis_type, cycle, t );
 
   if ( err != 0 ) {
     return 1;
@@ -1179,23 +1179,23 @@ void CouplingScheme::setSlicLoggingLevel()
   if ( this->m_loggingLevel != LoggingLevel::UNDEFINED ) {
     switch ( this->m_loggingLevel ) {
       case LoggingLevel::DEBUG: {
-        axom::slic::setLoggingMsgLevel( axom::slic::message::Debug );
+        //axom::slic::setLoggingMsgLevel( axom::slic::message::Debug );
         break;
       }
       case LoggingLevel::INFO: {
-        axom::slic::setLoggingMsgLevel( axom::slic::message::Info );
+        //axom::slic::setLoggingMsgLevel( axom::slic::message::Info );
         break;
       }
       case LoggingLevel::WARNING: {
-        axom::slic::setLoggingMsgLevel( axom::slic::message::Warning );
+        //axom::slic::setLoggingMsgLevel( axom::slic::message::Warning );
         break;
       }
       case LoggingLevel::ERROR: {
-        axom::slic::setLoggingMsgLevel( axom::slic::message::Error );
+        //axom::slic::setLoggingMsgLevel( axom::slic::message::Error );
         break;
       }
       default: {
-        axom::slic::setLoggingMsgLevel( axom::slic::message::Warning );
+        //axom::slic::setLoggingMsgLevel( axom::slic::message::Warning );
         break;
       }
     }  // end switch
@@ -1312,374 +1312,374 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                              static_cast<IndexT>( false ) },
                            getAllocatorId() );
   ArrayViewT<IndexT> msg = msg_data;
-  forAllExec( getExecutionMode(), getNumActivePairs(),
-              [cs_view, dim, proj_ratio, msg, dt_temp, dt] TRIBOL_HOST_DEVICE( IndexT i ) {
-                auto& cg_view = cs_view.getCompGeomView();
-                auto& plane = cg_view.getCommonPlane( i );
-
-                auto& mesh1 = cs_view.getMesh1View();
-                auto& mesh2 = cs_view.getMesh2View();
-
-                // get pair indices
-                IndexT index1 = plane.getCpElementId1();
-                IndexT index2 = plane.getCpElementId2();
-
-                constexpr int max_dim = 3;
-                constexpr int max_nodes_per_elem = 4;
-                StackArrayT<RealT, max_dim * max_nodes_per_elem> x1;
-                StackArrayT<RealT, max_dim * max_nodes_per_elem> v1;
-                mesh1.getFaceCoords( index1, x1 );
-                mesh1.getFaceVelocities( index1, v1 );
-
-                StackArrayT<RealT, max_dim * max_nodes_per_elem> x2;
-                StackArrayT<RealT, max_dim * max_nodes_per_elem> v2;
-                mesh2.getFaceCoords( index2, x2 );
-                mesh2.getFaceVelocities( index2, v2 );
-
-                /////////////////////////////////////////////////////////////
-                // calculate face velocities at projected overlap centroid //
-                /////////////////////////////////////////////////////////////
-                StackArrayT<RealT, max_dim> vel_f1;
-                StackArrayT<RealT, max_dim> vel_f2;
-                initRealArray( vel_f1, dim, 0.0 );
-                initRealArray( vel_f2, dim, 0.0 );
-
-                // interpolate nodal velocity at overlap centroid as projected
-                // onto face 1
-                RealT cXf1 = plane.m_cXf1;
-                RealT cYf1 = plane.m_cYf1;
-                RealT cZf1 = ( dim == 3 ) ? plane.m_cZf1 : 0.;
-                GalerkinEval( x1, cXf1, cYf1, cZf1, LINEAR, PHYSICAL, dim, dim, v1, vel_f1 );
-                // interpolate nodal velocity at overlap centroid as projected
-                // onto face 2
-                RealT cXf2 = plane.m_cXf2;
-                RealT cYf2 = plane.m_cYf2;
-                RealT cZf2 = ( dim == 3 ) ? plane.m_cZf2 : 0.;
-                GalerkinEval( x2, cXf2, cYf2, cZf2, LINEAR, PHYSICAL, dim, dim, v2, vel_f2 );
-
-                ////////////////////////////////////////////////
-                //                                            //
-                // Compute Timestep Vote Based on a Few Cases //
-                //                                            //
-                ////////////////////////////////////////////////
-
-                ///////////////////////////////////////////////
-                // compute data common to all timestep votes //
-                ///////////////////////////////////////////////
-
-                // compute velocity projections:
-                // compute the dot product between the face velocities
-                // at the overlap-centroid-to-face projected centroid and each
-                // face's outward unit normal AND the overlap normal.
-                RealT v1_dot_n, v2_dot_n, v1_dot_n1, v2_dot_n2;
-                RealT overlapNormal[max_dim];
-                overlapNormal[0] = plane.m_nX;
-                overlapNormal[1] = plane.m_nY;
-                if ( dim == 3 ) {
-                  overlapNormal[2] = plane.m_nZ;
-                }
-
-                // get face normals
-                RealT fn1[max_dim], fn2[max_dim];
-                mesh1.getFaceNormal( index1, fn1 );
-                mesh2.getFaceNormal( index2, fn2 );
-
-                // compute projections
-                v1_dot_n = dotProd( vel_f1, overlapNormal, dim );
-                v2_dot_n = dotProd( vel_f2, overlapNormal, dim );
-                v1_dot_n1 = dotProd( vel_f1, fn1, dim );
-                v2_dot_n2 = dotProd( vel_f2, fn2, dim );
-
-                // Keep debug print statements. This routine is still in the testing phase
-                // std::cout << "face 1 normal: " << fn1[0] << ", " << fn1[1] << ", " << fn1[2] << std::endl;
-                // std::cout << "face 2 normal: " << fn2[0] << ", " << fn2[1] << ", " << fn2[2] << std::endl;
-                // std::cout << " " << std::endl;
-                // std::cout << "face 1 vel: " << vel_f1[0] << ", " << vel_f1[1] << ", " << vel_f1[2] << std::endl;
-                // std::cout << "face 2 vel: " << vel_f2[0] << ", " << vel_f2[1] << ", " << vel_f2[2] << std::endl;
-                // std::cout << " " << std::endl;
-                // std::cout << "First v1_dot_n1 calc: " << v1_dot_n1 << std::endl;
-                // std::cout << "First v2_dot_n2 calc: " << v2_dot_n2 << std::endl;
-                // std::cout << "First v1_dot_n: " << v1_dot_n << std::endl;
-                // std::cout << "First v2_dot_n: " << v2_dot_n << std::endl;
-
-                // add tiny amount to velocity projections to avoid division by zero.
-                // Note that if these projections are close to zero, there may be
-                // stationary interactions or tangential motion. In this case, any
-                // timestep estimate will be very large, and not control the simulation
-                RealT tiny = 1.e-12;
-                RealT tiny1 = ( v1_dot_n >= 0. ) ? tiny : -1. * tiny;
-                RealT tiny2 = ( v2_dot_n >= 0. ) ? tiny : -1. * tiny;
-                v1_dot_n += tiny1;
-                v2_dot_n += tiny2;
-                // reset tiny velocity based on face normal projections.
-                tiny1 = ( v1_dot_n1 >= 0. ) ? tiny : -1. * tiny;
-                tiny2 = ( v2_dot_n2 >= 0. ) ? tiny : -1. * tiny;
-                v1_dot_n1 += tiny1;
-                v2_dot_n2 += tiny2;
-
-                // Keep debug print statements. This routine is still in the testing phase
-                // std::cout << "Second v1_dot_n1 calc: " << v1_dot_n1 << std::endl;
-                // std::cout << "Second v2_dot_n2 calc: " << v2_dot_n2 << std::endl;
-                // std::cout << "Second v1_dot_n: " << v1_dot_n << std::endl;
-                // std::cout << "Second v2_dot_n: " << v2_dot_n << std::endl;
-
-                // get volume element thicknesses associated with each face in this pair
-                RealT t1 = mesh1.getElementData().m_thickness[index1];
-                RealT t2 = mesh2.getElementData().m_thickness[index2];
-
-                // compute the existing gap vector (recall gap is x1-x2 by convention)
-                RealT gapVec[max_dim];
-                gapVec[0] = plane.m_cXf1 - plane.m_cXf2;
-                gapVec[1] = plane.m_cYf1 - plane.m_cYf2;
-                if ( dim == 3 ) {
-                  gapVec[2] = plane.m_cZf1 - plane.m_cZf2;
-                }
-
-                // compute the dot product between gap vector and the outward unit face normals.
-                RealT gap_f1_n1 = dotProd( gapVec, fn1, dim );
-                RealT gap_f2_n2 = dotProd( gapVec, fn2, dim );
-
-                RealT dt1 = 1.e6;                          // initialize as large number
-                RealT dt2 = 1.e6;                          // initialize as large number
-                RealT alpha = cs_view.getTimestepScale();  // multiplier on timestep estimate
-                bool dt1_check1 = false;
-                bool dt2_check1 = false;
-                bool dt1_vel_check = false;
-                bool dt2_vel_check = false;
-
-                // maximum allowable interpenetration in the normal direction of each element
-                RealT max_delta1 = proj_ratio * t1;
-                RealT max_delta2 = proj_ratio * t2;
-
-                // Separation or interpenetration trigger for check 1 and 2:
-                // check if there is further interpen or separation based on the
-                // velocity projection in the direction of the common-plane normal,
-                // which is in the direction of face-2 normal.
-                // The two cases are:
-                // if v1*n < 0 there is interpen
-                // if v2*n > 0 there is interpen
-                //
-                // Note: we compare strictly to 0. here since a 'tiny' value was
-                // appropriately added to the velocity projections, which is akin
-                // to some tolerancing effect
-                dt1_vel_check = ( v1_dot_n < 0. ) ? true : false;
-                dt2_vel_check = ( v2_dot_n > 0. ) ? true : false;
-
-                //////////////////////////////////////////////////////////////////////////
-                // Check 1. Current interpenetration gap exceeds max allowable interpen //
-                //////////////////////////////////////////////////////////////////////////
-
-                // check if face-pair is in contact (i.e. gap < gap_tol), which is determined
-                // in Common Plane ApplyNormal<>() routine
-                if ( plane.m_inContact ) {
-                  // compute the difference between the 'face-gaps' and the max allowable
-                  // interpen as a function of element thickness. Note, we have to use the
-                  // gap projected onto the outward unit face-normal to check against the
-                  // max allowable gap as a factor of the thickness in the element normal
-                  // direction
-                  RealT delta1 = max_delta1 - gap_f1_n1;  // >0 not exceeding max allowable
-                  RealT delta2 = max_delta2 + gap_f2_n2;  // >0 not exceeding max allowable
-
-                  auto exceed_max_gap1 = ( delta1 < 0. ) ? true : false;
-                  auto exceed_max_gap2 = ( delta2 < 0. ) ? true : false;
-
-                  // if velocity projection indicates further interpenetration, and the gaps
-                  // EXCEED max allowable, then compute time step estimates to reduce overlap
-                  dt1_check1 = ( dt1_vel_check ) ? exceed_max_gap1 : false;
-                  dt2_check1 = ( dt2_vel_check ) ? exceed_max_gap2 : false;
-
-#ifdef TRIBOL_USE_RAJA
-                  RAJA::atomicMax<RAJA::auto_atomic>( &msg[0], static_cast<IndexT>( exceed_max_gap1 ) );
-                  RAJA::atomicMax<RAJA::auto_atomic>( &msg[1], static_cast<IndexT>( exceed_max_gap2 ) );
-#else
-                  msg[0] = exceed_max_gap1;
-                  msg[1] = exceed_max_gap2;
-#endif
-
-                  // compute dt for face 1 and 2 based on the velocity and gap projections onto
-                  // the face-normals for faces where currect gap exceeds max allowable gap.
-                  //
-                  // NOTE:
-                  //
-                  // This calculation RESETS the current gap to be g = 0, and computes a timestep
-                  // such that the velocity projection of the overlap-to-face projected overlap
-                  // centroid does not exceed the max allowable gap.
-                  //
-                  // This avoid a timestep crash in the case that the current gap barely exceeds
-                  // the max allowable and also allows a soft contact response with interpen
-                  // in excess of the max allowable gap without causing timestep crashes.
-                  //
-                  // v1_dot_n1 > 0 and v2_dot_n2 > 0 for further interpen
-                  dt1 = ( dt1_check1 ) ? alpha * max_delta1 / v1_dot_n1 : dt1;
-                  dt2 = ( dt2_check1 ) ? alpha * max_delta2 / v2_dot_n2 : dt2;
-
-                  // Keep debug print statements. This routine is still in the testing phase
-                  // std::cout << "dt1_check1, delta1 and v1_dot_n1: " << dt1_check1 << ", " << max_delta1 << ", " <<
-                  // v1_dot_n1 << std::endl; std::cout << "dt2_check1, delta2 and v2_dot_n2: " << dt2_check1 << ", " <<
-                  // max_delta2 << ", " << v2_dot_n2 << std::endl; std::cout << "dt1 and dt2: " << dt1 << ", " << dt2 <<
-                  // std::endl;
-
-                  // update dt_temp1 only for positive dt1 and/or dt2
-                  if ( dt1 > 0. ) {
-#ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[0], axom::utilities::min( dt1, 1.e6 ) );
-#else
-                    dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(dt1, 1.e6));
-#endif
-                  }
-                  if ( dt2 > 0. ) {
-#ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[0], axom::utilities::min( 1.e6, dt2 ) );
-#else
-                    dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(1.e6, dt2));
-#endif
-                  }
-
-                  if ( dt1 < 0. || dt2 < 0. ) {
-#ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMax<RAJA::auto_atomic>( &msg[2], static_cast<IndexT>( true ) );
-#else
-                    msg[2] = true;
-#endif
-                  }
-                }  // end case 1
-
-                ////////////////////////////////////////////////////////////////////////
-                // 2. Velocity projection exceeds max interpenetration                //
-                //                                                                    //
-                //    Note: This is performed for all contact candidates even if they //
-                //          are not 'in contact' per the common-plane method. Every   //
-                //          contact candidate has a contact plane                     //
-                ////////////////////////////////////////////////////////////////////////
-
-                {
-                  // compute the delta between the velocity projection of each face-projected
-                  // common plane centroid location
-                  //
-                  // First project each face-projected common plane centroid using linear velocity
-                  // projection as approximation of configuration next cycle
-                  RealT proj_delta_x1 = plane.m_cXf1 + dt * vel_f1[0];
-                  RealT proj_delta_y1 = plane.m_cYf1 + dt * vel_f1[1];
-                  RealT proj_delta_z1 = 0.;
-
-                  RealT proj_delta_x2 = plane.m_cXf2 + dt * vel_f2[0];
-                  RealT proj_delta_y2 = plane.m_cYf2 + dt * vel_f2[1];
-                  RealT proj_delta_z2 = 0.;
-
-                  // Second compute the amount of interpenetration as the difference between the two
-                  // velocity projected points
-                  RealT proj_delta_x1_fixed = proj_delta_x1;
-                  RealT proj_delta_y1_fixed = proj_delta_y1;
-
-                  proj_delta_x1 -= proj_delta_x2;
-                  proj_delta_y1 -= proj_delta_y2;
-
-                  proj_delta_x2 -= proj_delta_x1_fixed;
-                  proj_delta_y2 -= proj_delta_y1_fixed;
-
-                  // compute the dot product between each face's delta and the OTHER
-                  // face's outward unit normal. This is the magnitude of interpenetration
-                  // of one face's projected overlap-centroid in the 'thickness-direction'
-                  // of the other face (with whom in may be in contact currently, or in
-                  // a velocity projected sense).
-                  RealT proj_delta_n_1 = proj_delta_x1 * fn2[0] + proj_delta_y1 * fn2[1];
-                  RealT proj_delta_n_2 = proj_delta_x2 * fn1[0] + proj_delta_y2 * fn1[1];
-
-                  if ( dim == 3 ) {
-                    // project the z-component
-                    proj_delta_z1 = plane.m_cZf1 + dt * vel_f1[2];
-                    proj_delta_z2 = plane.m_cZf2 + dt * vel_f2[2];
-
-                    RealT proj_delta_z1_fixed = proj_delta_z1;
-
-                    // compute difference between each projected point
-                    proj_delta_z1 -= proj_delta_z2;
-                    proj_delta_z2 -= proj_delta_z1_fixed;
-
-                    // add the z-component of the projection onto the face normal
-                    proj_delta_n_1 += proj_delta_z1 * fn2[2];
-                    proj_delta_n_2 += proj_delta_z2 * fn1[2];
-                  }
-
-                  // Reset the dt velocity check only for faces with continued interpen that exceeds the
-                  // max allowable gap AND where the current gap did NOT exceed that face's max allowable
-                  // gap per check 1 (would result in same dt calc).
-                  //
-                  // Note:
-                  // If proj_delta_n_i < 0, (i=1,2) there is interpen from the velocity projection.
-                  // Check this interpen against the maximum allowable to determine if a velocity projection
-                  // timestep estimate is still required.
-                  if ( dt1_vel_check && !dt1_check1 )  // continued interpen
-                  {
-                    dt1_vel_check = ( proj_delta_n_1 < 0. )
-                                        ? ( ( std::abs( proj_delta_n_1 ) > max_delta1 ) ? true : false )
-                                        : false;
-                  }
-
-                  if ( dt2_vel_check && !dt2_check1 )  // continued interpen
-                  {
-                    dt2_vel_check = ( proj_delta_n_2 < 0. )
-                                        ? ( ( std::abs( proj_delta_n_2 ) > max_delta2 ) ? true : false )
-                                        : false;
-                  }
-
-                  // compute velocity projection based dt (check 2) using a RESET gap (g=0) such that
-                  // the velocity projected gap does not exceed the max allowable gap. This avoid timestep
-                  // crashes for velocity projected gaps slightly in excess of the max allowable and still
-                  // allows for a soft contact response without a timestep crash.
-                  //
-                  // v1_dot_n1 > 0 and v2_dot_n2 > 0 for further interpen
-                  dt1 = ( dt1_vel_check ) ? alpha * max_delta1 / v1_dot_n1 : dt1;
-                  dt2 = ( dt2_vel_check ) ? alpha * max_delta2 / v2_dot_n2 : dt2;
-
-                  // Keep debug print statements. This routine is still in the testing phase
-                  // std::cout << "dt1_vel_check, (proj_delta_n_1+max_delta1), v1_dot_n1: " << dt1_vel_check << ", "
-                  //          << proj_delta_n_1+max_delta1 << ", " << v1_dot_n1 << std::endl;
-                  // std::cout << "dt2_vel_check, (proj_delta_n_2+max_delta2), v2_dot_n2: " << dt2_vel_check << ", "
-                  //          << proj_delta_n_2+max_delta2 << ", " << v2_dot_n2 << std::endl;
-                  // std::cout << "dt1 and dt2: " << dt1 << ", " << dt2 << std::endl;
-
-                  // update dt_temp2 only for positive dt1 and/or dt2
-                  if ( dt1 > 0. ) {
-#ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[1], axom::utilities::min( dt1, 1.e6 ) );
-#else
-                    dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(dt1, 1.e6));
-#endif
-                  }
-                  if ( dt2 > 0. ) {
-#ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[1], axom::utilities::min( 1.e6, dt2 ) );
-#else
-                    dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(1.e6, dt2));
-#endif
-                  }
-                  if ( dt1 < 0. || dt2 < 0. ) {
-#ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMax<RAJA::auto_atomic>( &msg[3], static_cast<IndexT>( true ) );
-#else
-                    msg[3] = true;
-#endif
-                  }
-
-                }  // end check 2
-              } );
+//  forAllExec( getExecutionMode(), getNumActivePairs(),
+//              [cs_view, dim, proj_ratio, msg, dt_temp, dt] TRIBOL_HOST_DEVICE( IndexT i ) {
+//                auto& cg_view = cs_view.getCompGeomView();
+//                auto& plane = cg_view.getCommonPlane( i );
+//
+//                auto& mesh1 = cs_view.getMesh1View();
+//                auto& mesh2 = cs_view.getMesh2View();
+//
+//                // get pair indices
+//                IndexT index1 = plane.getCpElementId1();
+//                IndexT index2 = plane.getCpElementId2();
+//
+//                constexpr int max_dim = 3;
+//                constexpr int max_nodes_per_elem = 4;
+//                StackArrayT<RealT, max_dim * max_nodes_per_elem> x1;
+//                StackArrayT<RealT, max_dim * max_nodes_per_elem> v1;
+//                mesh1.getFaceCoords( index1, x1 );
+//                mesh1.getFaceVelocities( index1, v1 );
+//
+//                StackArrayT<RealT, max_dim * max_nodes_per_elem> x2;
+//                StackArrayT<RealT, max_dim * max_nodes_per_elem> v2;
+//                mesh2.getFaceCoords( index2, x2 );
+//                mesh2.getFaceVelocities( index2, v2 );
+//
+//                /////////////////////////////////////////////////////////////
+//                // calculate face velocities at projected overlap centroid //
+//                /////////////////////////////////////////////////////////////
+//                StackArrayT<RealT, max_dim> vel_f1;
+//                StackArrayT<RealT, max_dim> vel_f2;
+//                initRealArray( vel_f1, dim, 0.0 );
+//                initRealArray( vel_f2, dim, 0.0 );
+//
+//                // interpolate nodal velocity at overlap centroid as projected
+//                // onto face 1
+//                RealT cXf1 = plane.m_cXf1;
+//                RealT cYf1 = plane.m_cYf1;
+//                RealT cZf1 = ( dim == 3 ) ? plane.m_cZf1 : 0.;
+//                GalerkinEval( x1, cXf1, cYf1, cZf1, LINEAR, PHYSICAL, dim, dim, v1, vel_f1 );
+//                // interpolate nodal velocity at overlap centroid as projected
+//                // onto face 2
+//                RealT cXf2 = plane.m_cXf2;
+//                RealT cYf2 = plane.m_cYf2;
+//                RealT cZf2 = ( dim == 3 ) ? plane.m_cZf2 : 0.;
+//                GalerkinEval( x2, cXf2, cYf2, cZf2, LINEAR, PHYSICAL, dim, dim, v2, vel_f2 );
+//
+//                ////////////////////////////////////////////////
+//                //                                            //
+//                // Compute Timestep Vote Based on a Few Cases //
+//                //                                            //
+//                ////////////////////////////////////////////////
+//
+//                ///////////////////////////////////////////////
+//                // compute data common to all timestep votes //
+//                ///////////////////////////////////////////////
+//
+//                // compute velocity projections:
+//                // compute the dot product between the face velocities
+//                // at the overlap-centroid-to-face projected centroid and each
+//                // face's outward unit normal AND the overlap normal.
+//                RealT v1_dot_n, v2_dot_n, v1_dot_n1, v2_dot_n2;
+//                RealT overlapNormal[max_dim];
+//                overlapNormal[0] = plane.m_nX;
+//                overlapNormal[1] = plane.m_nY;
+//                if ( dim == 3 ) {
+//                  overlapNormal[2] = plane.m_nZ;
+//                }
+//
+//                // get face normals
+//                RealT fn1[max_dim], fn2[max_dim];
+//                mesh1.getFaceNormal( index1, fn1 );
+//                mesh2.getFaceNormal( index2, fn2 );
+//
+//                // compute projections
+//                v1_dot_n = dotProd( vel_f1, overlapNormal, dim );
+//                v2_dot_n = dotProd( vel_f2, overlapNormal, dim );
+//                v1_dot_n1 = dotProd( vel_f1, fn1, dim );
+//                v2_dot_n2 = dotProd( vel_f2, fn2, dim );
+//
+//                // Keep debug print statements. This routine is still in the testing phase
+//                // std::cout << "face 1 normal: " << fn1[0] << ", " << fn1[1] << ", " << fn1[2] << std::endl;
+//                // std::cout << "face 2 normal: " << fn2[0] << ", " << fn2[1] << ", " << fn2[2] << std::endl;
+//                // std::cout << " " << std::endl;
+//                // std::cout << "face 1 vel: " << vel_f1[0] << ", " << vel_f1[1] << ", " << vel_f1[2] << std::endl;
+//                // std::cout << "face 2 vel: " << vel_f2[0] << ", " << vel_f2[1] << ", " << vel_f2[2] << std::endl;
+//                // std::cout << " " << std::endl;
+//                // std::cout << "First v1_dot_n1 calc: " << v1_dot_n1 << std::endl;
+//                // std::cout << "First v2_dot_n2 calc: " << v2_dot_n2 << std::endl;
+//                // std::cout << "First v1_dot_n: " << v1_dot_n << std::endl;
+//                // std::cout << "First v2_dot_n: " << v2_dot_n << std::endl;
+//
+//                // add tiny amount to velocity projections to avoid division by zero.
+//                // Note that if these projections are close to zero, there may be
+//                // stationary interactions or tangential motion. In this case, any
+//                // timestep estimate will be very large, and not control the simulation
+//                RealT tiny = 1.e-12;
+//                RealT tiny1 = ( v1_dot_n >= 0. ) ? tiny : -1. * tiny;
+//                RealT tiny2 = ( v2_dot_n >= 0. ) ? tiny : -1. * tiny;
+//                v1_dot_n += tiny1;
+//                v2_dot_n += tiny2;
+//                // reset tiny velocity based on face normal projections.
+//                tiny1 = ( v1_dot_n1 >= 0. ) ? tiny : -1. * tiny;
+//                tiny2 = ( v2_dot_n2 >= 0. ) ? tiny : -1. * tiny;
+//                v1_dot_n1 += tiny1;
+//                v2_dot_n2 += tiny2;
+//
+//                // Keep debug print statements. This routine is still in the testing phase
+//                // std::cout << "Second v1_dot_n1 calc: " << v1_dot_n1 << std::endl;
+//                // std::cout << "Second v2_dot_n2 calc: " << v2_dot_n2 << std::endl;
+//                // std::cout << "Second v1_dot_n: " << v1_dot_n << std::endl;
+//                // std::cout << "Second v2_dot_n: " << v2_dot_n << std::endl;
+//
+//                // get volume element thicknesses associated with each face in this pair
+//                RealT t1 = mesh1.getElementData().m_thickness[index1];
+//                RealT t2 = mesh2.getElementData().m_thickness[index2];
+//
+//                // compute the existing gap vector (recall gap is x1-x2 by convention)
+//                RealT gapVec[max_dim];
+//                gapVec[0] = plane.m_cXf1 - plane.m_cXf2;
+//                gapVec[1] = plane.m_cYf1 - plane.m_cYf2;
+//                if ( dim == 3 ) {
+//                  gapVec[2] = plane.m_cZf1 - plane.m_cZf2;
+//                }
+//
+//                // compute the dot product between gap vector and the outward unit face normals.
+//                RealT gap_f1_n1 = dotProd( gapVec, fn1, dim );
+//                RealT gap_f2_n2 = dotProd( gapVec, fn2, dim );
+//
+//                RealT dt1 = 1.e6;                          // initialize as large number
+//                RealT dt2 = 1.e6;                          // initialize as large number
+//                RealT alpha = cs_view.getTimestepScale();  // multiplier on timestep estimate
+//                bool dt1_check1 = false;
+//                bool dt2_check1 = false;
+//                bool dt1_vel_check = false;
+//                bool dt2_vel_check = false;
+//
+//                // maximum allowable interpenetration in the normal direction of each element
+//                RealT max_delta1 = proj_ratio * t1;
+//                RealT max_delta2 = proj_ratio * t2;
+//
+//                // Separation or interpenetration trigger for check 1 and 2:
+//                // check if there is further interpen or separation based on the
+//                // velocity projection in the direction of the common-plane normal,
+//                // which is in the direction of face-2 normal.
+//                // The two cases are:
+//                // if v1*n < 0 there is interpen
+//                // if v2*n > 0 there is interpen
+//                //
+//                // Note: we compare strictly to 0. here since a 'tiny' value was
+//                // appropriately added to the velocity projections, which is akin
+//                // to some tolerancing effect
+//                dt1_vel_check = ( v1_dot_n < 0. ) ? true : false;
+//                dt2_vel_check = ( v2_dot_n > 0. ) ? true : false;
+//
+//                //////////////////////////////////////////////////////////////////////////
+//                // Check 1. Current interpenetration gap exceeds max allowable interpen //
+//                //////////////////////////////////////////////////////////////////////////
+//
+//                // check if face-pair is in contact (i.e. gap < gap_tol), which is determined
+//                // in Common Plane ApplyNormal<>() routine
+//                if ( plane.m_inContact ) {
+//                  // compute the difference between the 'face-gaps' and the max allowable
+//                  // interpen as a function of element thickness. Note, we have to use the
+//                  // gap projected onto the outward unit face-normal to check against the
+//                  // max allowable gap as a factor of the thickness in the element normal
+//                  // direction
+//                  RealT delta1 = max_delta1 - gap_f1_n1;  // >0 not exceeding max allowable
+//                  RealT delta2 = max_delta2 + gap_f2_n2;  // >0 not exceeding max allowable
+//
+//                  auto exceed_max_gap1 = ( delta1 < 0. ) ? true : false;
+//                  auto exceed_max_gap2 = ( delta2 < 0. ) ? true : false;
+//
+//                  // if velocity projection indicates further interpenetration, and the gaps
+//                  // EXCEED max allowable, then compute time step estimates to reduce overlap
+//                  dt1_check1 = ( dt1_vel_check ) ? exceed_max_gap1 : false;
+//                  dt2_check1 = ( dt2_vel_check ) ? exceed_max_gap2 : false;
+//
+//#ifdef TRIBOL_USE_RAJA
+//                  RAJA::atomicMax<RAJA::auto_atomic>( &msg[0], static_cast<IndexT>( exceed_max_gap1 ) );
+//                  RAJA::atomicMax<RAJA::auto_atomic>( &msg[1], static_cast<IndexT>( exceed_max_gap2 ) );
+//#else
+//                  msg[0] = exceed_max_gap1;
+//                  msg[1] = exceed_max_gap2;
+//#endif
+//
+//                  // compute dt for face 1 and 2 based on the velocity and gap projections onto
+//                  // the face-normals for faces where currect gap exceeds max allowable gap.
+//                  //
+//                  // NOTE:
+//                  //
+//                  // This calculation RESETS the current gap to be g = 0, and computes a timestep
+//                  // such that the velocity projection of the overlap-to-face projected overlap
+//                  // centroid does not exceed the max allowable gap.
+//                  //
+//                  // This avoid a timestep crash in the case that the current gap barely exceeds
+//                  // the max allowable and also allows a soft contact response with interpen
+//                  // in excess of the max allowable gap without causing timestep crashes.
+//                  //
+//                  // v1_dot_n1 > 0 and v2_dot_n2 > 0 for further interpen
+//                  dt1 = ( dt1_check1 ) ? alpha * max_delta1 / v1_dot_n1 : dt1;
+//                  dt2 = ( dt2_check1 ) ? alpha * max_delta2 / v2_dot_n2 : dt2;
+//
+//                  // Keep debug print statements. This routine is still in the testing phase
+//                  // std::cout << "dt1_check1, delta1 and v1_dot_n1: " << dt1_check1 << ", " << max_delta1 << ", " <<
+//                  // v1_dot_n1 << std::endl; std::cout << "dt2_check1, delta2 and v2_dot_n2: " << dt2_check1 << ", " <<
+//                  // max_delta2 << ", " << v2_dot_n2 << std::endl; std::cout << "dt1 and dt2: " << dt1 << ", " << dt2 <<
+//                  // std::endl;
+//
+//                  // update dt_temp1 only for positive dt1 and/or dt2
+//                  if ( dt1 > 0. ) {
+//#ifdef TRIBOL_USE_RAJA
+//                    RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[0], axom::utilities::min( dt1, 1.e6 ) );
+//#else
+//                    dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(dt1, 1.e6));
+//#endif
+//                  }
+//                  if ( dt2 > 0. ) {
+//#ifdef TRIBOL_USE_RAJA
+//                    RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[0], axom::utilities::min( 1.e6, dt2 ) );
+//#else
+//                    dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(1.e6, dt2));
+//#endif
+//                  }
+//
+//                  if ( dt1 < 0. || dt2 < 0. ) {
+//#ifdef TRIBOL_USE_RAJA
+//                    RAJA::atomicMax<RAJA::auto_atomic>( &msg[2], static_cast<IndexT>( true ) );
+//#else
+//                    msg[2] = true;
+//#endif
+//                  }
+//                }  // end case 1
+//
+//                ////////////////////////////////////////////////////////////////////////
+//                // 2. Velocity projection exceeds max interpenetration                //
+//                //                                                                    //
+//                //    Note: This is performed for all contact candidates even if they //
+//                //          are not 'in contact' per the common-plane method. Every   //
+//                //          contact candidate has a contact plane                     //
+//                ////////////////////////////////////////////////////////////////////////
+//
+//                {
+//                  // compute the delta between the velocity projection of each face-projected
+//                  // common plane centroid location
+//                  //
+//                  // First project each face-projected common plane centroid using linear velocity
+//                  // projection as approximation of configuration next cycle
+//                  RealT proj_delta_x1 = plane.m_cXf1 + dt * vel_f1[0];
+//                  RealT proj_delta_y1 = plane.m_cYf1 + dt * vel_f1[1];
+//                  RealT proj_delta_z1 = 0.;
+//
+//                  RealT proj_delta_x2 = plane.m_cXf2 + dt * vel_f2[0];
+//                  RealT proj_delta_y2 = plane.m_cYf2 + dt * vel_f2[1];
+//                  RealT proj_delta_z2 = 0.;
+//
+//                  // Second compute the amount of interpenetration as the difference between the two
+//                  // velocity projected points
+//                  RealT proj_delta_x1_fixed = proj_delta_x1;
+//                  RealT proj_delta_y1_fixed = proj_delta_y1;
+//
+//                  proj_delta_x1 -= proj_delta_x2;
+//                  proj_delta_y1 -= proj_delta_y2;
+//
+//                  proj_delta_x2 -= proj_delta_x1_fixed;
+//                  proj_delta_y2 -= proj_delta_y1_fixed;
+//
+//                  // compute the dot product between each face's delta and the OTHER
+//                  // face's outward unit normal. This is the magnitude of interpenetration
+//                  // of one face's projected overlap-centroid in the 'thickness-direction'
+//                  // of the other face (with whom in may be in contact currently, or in
+//                  // a velocity projected sense).
+//                  RealT proj_delta_n_1 = proj_delta_x1 * fn2[0] + proj_delta_y1 * fn2[1];
+//                  RealT proj_delta_n_2 = proj_delta_x2 * fn1[0] + proj_delta_y2 * fn1[1];
+//
+//                  if ( dim == 3 ) {
+//                    // project the z-component
+//                    proj_delta_z1 = plane.m_cZf1 + dt * vel_f1[2];
+//                    proj_delta_z2 = plane.m_cZf2 + dt * vel_f2[2];
+//
+//                    RealT proj_delta_z1_fixed = proj_delta_z1;
+//
+//                    // compute difference between each projected point
+//                    proj_delta_z1 -= proj_delta_z2;
+//                    proj_delta_z2 -= proj_delta_z1_fixed;
+//
+//                    // add the z-component of the projection onto the face normal
+//                    proj_delta_n_1 += proj_delta_z1 * fn2[2];
+//                    proj_delta_n_2 += proj_delta_z2 * fn1[2];
+//                  }
+//
+//                  // Reset the dt velocity check only for faces with continued interpen that exceeds the
+//                  // max allowable gap AND where the current gap did NOT exceed that face's max allowable
+//                  // gap per check 1 (would result in same dt calc).
+//                  //
+//                  // Note:
+//                  // If proj_delta_n_i < 0, (i=1,2) there is interpen from the velocity projection.
+//                  // Check this interpen against the maximum allowable to determine if a velocity projection
+//                  // timestep estimate is still required.
+//                  if ( dt1_vel_check && !dt1_check1 )  // continued interpen
+//                  {
+//                    dt1_vel_check = ( proj_delta_n_1 < 0. )
+//                                        ? ( ( std::abs( proj_delta_n_1 ) > max_delta1 ) ? true : false )
+//                                        : false;
+//                  }
+//
+//                  if ( dt2_vel_check && !dt2_check1 )  // continued interpen
+//                  {
+//                    dt2_vel_check = ( proj_delta_n_2 < 0. )
+//                                        ? ( ( std::abs( proj_delta_n_2 ) > max_delta2 ) ? true : false )
+//                                        : false;
+//                  }
+//
+//                  // compute velocity projection based dt (check 2) using a RESET gap (g=0) such that
+//                  // the velocity projected gap does not exceed the max allowable gap. This avoid timestep
+//                  // crashes for velocity projected gaps slightly in excess of the max allowable and still
+//                  // allows for a soft contact response without a timestep crash.
+//                  //
+//                  // v1_dot_n1 > 0 and v2_dot_n2 > 0 for further interpen
+//                  dt1 = ( dt1_vel_check ) ? alpha * max_delta1 / v1_dot_n1 : dt1;
+//                  dt2 = ( dt2_vel_check ) ? alpha * max_delta2 / v2_dot_n2 : dt2;
+//
+//                  // Keep debug print statements. This routine is still in the testing phase
+//                  // std::cout << "dt1_vel_check, (proj_delta_n_1+max_delta1), v1_dot_n1: " << dt1_vel_check << ", "
+//                  //          << proj_delta_n_1+max_delta1 << ", " << v1_dot_n1 << std::endl;
+//                  // std::cout << "dt2_vel_check, (proj_delta_n_2+max_delta2), v2_dot_n2: " << dt2_vel_check << ", "
+//                  //          << proj_delta_n_2+max_delta2 << ", " << v2_dot_n2 << std::endl;
+//                  // std::cout << "dt1 and dt2: " << dt1 << ", " << dt2 << std::endl;
+//
+//                  // update dt_temp2 only for positive dt1 and/or dt2
+//                  if ( dt1 > 0. ) {
+//#ifdef TRIBOL_USE_RAJA
+//                    RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[1], axom::utilities::min( dt1, 1.e6 ) );
+//#else
+//                    dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(dt1, 1.e6));
+//#endif
+//                  }
+//                  if ( dt2 > 0. ) {
+//#ifdef TRIBOL_USE_RAJA
+//                    RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[1], axom::utilities::min( 1.e6, dt2 ) );
+//#else
+//                    dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(1.e6, dt2));
+//#endif
+//                  }
+//                  if ( dt1 < 0. || dt2 < 0. ) {
+//#ifdef TRIBOL_USE_RAJA
+//                    RAJA::atomicMax<RAJA::auto_atomic>( &msg[3], static_cast<IndexT>( true ) );
+//#else
+//                    msg[3] = true;
+//#endif
+//                  }
+//
+//                }  // end check 2
+//              } );
 
   // print general messages once
   // Can we output this message on root? SRW
   ArrayT<IndexT, 1, MemorySpace::Host> msg_host( msg_data );
-  SLIC_DEBUG_IF( msg_host[0] || msg_host[1], "tribol::computeCommonPlaneTimeStep(): "
-                                                 << "there are locations where mesh overlap may be too large. "
-                                                 << "Cannot provide timestep vote. Reduce timestep and/or increase "
-                                                 << "penalty." );
+  //SLIC_DEBUG_IF( msg_host[0] || msg_host[1], "tribol::computeCommonPlaneTimeStep(): "
+  //                                               << "there are locations where mesh overlap may be too large. "
+  //                                               << "Cannot provide timestep vote. Reduce timestep and/or increase "
+  //                                               << "penalty." );
 
-  SLIC_DEBUG_IF( msg_host[2], "tribol::computeCommonPlaneTimeStep():  "
-                                  << "one or more face-pairs have a negative timestep vote based on "
-                                  << "maximum gap check." );
+  //SLIC_DEBUG_IF( msg_host[2], "tribol::computeCommonPlaneTimeStep():  "
+  //                                << "one or more face-pairs have a negative timestep vote based on "
+  //                                << "maximum gap check." );
 
-  SLIC_DEBUG_IF( msg_host[3], "tribol::computeCommonPlaneTimeStep(): "
-                                  << "one or more face-pairs have a negative timestep vote based on "
-                                  << "velocity projection calculation." );
+  //SLIC_DEBUG_IF( msg_host[3], "tribol::computeCommonPlaneTimeStep(): "
+  //                                << "one or more face-pairs have a negative timestep vote based on "
+  //                                << "velocity projection calculation." );
 
   ArrayT<RealT, 1, MemorySpace::Host> dt_temp_host( dt_temp_data );
   dt = axom::utilities::min( dt_temp_host[0], dt_temp_host[1] );
@@ -1700,8 +1700,8 @@ void CouplingScheme::writeInterfaceOutput( const std::string& dir, const VisType
         break;
       default:
         // Can this be called on root? SRW
-        SLIC_INFO( "CouplingScheme::writeInterfaceOutput(): "
-                   << "output routine not yet written for interface method. " );
+        //SLIC_INFO( "CouplingScheme::writeInterfaceOutput(): "
+        //           << "output routine not yet written for interface method. " );
         break;
     }  // end-switch
   }    // end-if
@@ -1741,26 +1741,26 @@ void CouplingScheme::updatePairReportingData( const FaceGeomError face_error )
 //------------------------------------------------------------------------------
 void CouplingScheme::printPairReportingData()
 {
-  SLIC_DEBUG_IF( getInterfacePairs().size() > 0, this->getNumActivePairs() * 100. / getInterfacePairs().size()
-                                                     << "% of binned interface pairs are active contact candidates." );
+  //SLIC_DEBUG_IF( getInterfacePairs().size() > 0, this->getNumActivePairs() * 100. / getInterfacePairs().size()
+  //                                                   << "% of binned interface pairs are active contact candidates." );
 
-  SLIC_DEBUG_IF( this->m_pairReportingData.numBadOrientation > 0,
-                 "Number of bad orientations is "
-                     << this->m_pairReportingData.numBadOrientation << " equaling "
-                     << this->m_pairReportingData.numBadOrientation * 100. / getInterfacePairs().size()
-                     << "% of total number of binned interface pairs." );
+  //SLIC_DEBUG_IF( this->m_pairReportingData.numBadOrientation > 0,
+  //               "Number of bad orientations is "
+  //                   << this->m_pairReportingData.numBadOrientation << " equaling "
+  //                   << this->m_pairReportingData.numBadOrientation * 100. / getInterfacePairs().size()
+  //                   << "% of total number of binned interface pairs." );
 
-  SLIC_DEBUG_IF( this->m_pairReportingData.numBadFaceGeometry > 0,
-                 "Number of bad face geometries is "
-                     << this->m_pairReportingData.numBadFaceGeometry << " equaling "
-                     << this->m_pairReportingData.numBadFaceGeometry * 100. / getInterfacePairs().size()
-                     << "% of total number of binned interface pairs." );
+  //SLIC_DEBUG_IF( this->m_pairReportingData.numBadFaceGeometry > 0,
+  //               "Number of bad face geometries is "
+  //                   << this->m_pairReportingData.numBadFaceGeometry << " equaling "
+  //                   << this->m_pairReportingData.numBadFaceGeometry * 100. / getInterfacePairs().size()
+  //                   << "% of total number of binned interface pairs." );
 
-  SLIC_DEBUG_IF( this->m_pairReportingData.numBadOverlaps > 0,
-                 "Number of bad contact overlaps is "
-                     << this->m_pairReportingData.numBadOverlaps << " equaling "
-                     << this->m_pairReportingData.numBadOverlaps * 100. / getInterfacePairs().size()
-                     << "% of total number of binned interface pairs." );
+  //SLIC_DEBUG_IF( this->m_pairReportingData.numBadOverlaps > 0,
+  //               "Number of bad contact overlaps is "
+  //                   << this->m_pairReportingData.numBadOverlaps << " equaling "
+  //                   << this->m_pairReportingData.numBadOverlaps * 100. / getInterfacePairs().size()
+  //                   << "% of total number of binned interface pairs." );
 }
 
 //------------------------------------------------------------------------------
@@ -1769,7 +1769,7 @@ void CouplingScheme::enableEnzyme( [[maybe_unused]] bool useEnzyme )
 #ifdef TRIBOL_USE_ENZYME
   this->m_useEnzyme = useEnzyme;
 #else
-  SLIC_WARNING( "CouplingScheme::enableEnzyme(): Tribol is not built with Enzyme. Continuing without Enzyme support." );
+  //SLIC_WARNING( "CouplingScheme::enableEnzyme(): Tribol is not built with Enzyme. Continuing without Enzyme support." );
 #endif
 }
 
@@ -1826,22 +1826,22 @@ TRIBOL_HOST_DEVICE RealT CouplingScheme::Viewer::getGapTol( int fid1, int fid2 )
   switch ( m_contact_method ) {
     case SINGLE_MORTAR:
 #ifdef TRIBOL_USE_HOST
-      SLIC_WARNING( "CouplingScheme::getGapTol(): 'SINGLE_MORTAR' "
-                    << "method does not require use of a gap tolerance." );
+      //SLIC_WARNING( "CouplingScheme::getGapTol(): 'SINGLE_MORTAR' "
+      //              << "method does not require use of a gap tolerance." );
 #endif
       break;
 
     case ALIGNED_MORTAR:
 #ifdef TRIBOL_USE_HOST
-      SLIC_WARNING( "CouplingScheme::getGapTol(): 'ALIGNED_MORTAR' "
-                    << "method does not require use of a gap tolerance." );
+      //SLIC_WARNING( "CouplingScheme::getGapTol(): 'ALIGNED_MORTAR' "
+      //              << "method does not require use of a gap tolerance." );
 #endif
       break;
 
     case MORTAR_WEIGHTS:
 #ifdef TRIBOL_USE_HOST
-      SLIC_WARNING( "CouplingScheme::getGapTol(): 'MORTAR_WEIGHTS' "
-                    << "method does not require use of a gap tolerance." );
+      //SLIC_WARNING( "CouplingScheme::getGapTol(): 'MORTAR_WEIGHTS' "
+      //              << "method does not require use of a gap tolerance." );
 #endif
       break;
 

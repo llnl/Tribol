@@ -12,7 +12,7 @@
 #include "tribol/utils/Math.hpp"
 
 #include "axom/core.hpp"
-#include "axom/slic.hpp"
+//#include "axom/slic.hpp"
 
 #include <cmath>
 #include <iomanip>
@@ -72,7 +72,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair( InterfacePair& pair, const 
   if ( face_err != NO_FACE_GEOM_ERROR ) {
     isInteracting = false;
 #ifdef TRIBOL_USE_HOST
-    SLIC_DEBUG( "face_err: " << face_err );
+    //SLIC_DEBUG( "face_err: " << face_err );
 #endif
   } else if ( inContact ) {
 #ifdef TRIBOL_USE_RAJA
@@ -430,7 +430,7 @@ TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::computeOverlap3D( const RealT*
   // or length tolerances (intersecting polygon segment lengths)
   if ( this->m_numPolyVert < 3 ) {
 #ifdef TRIBOL_USE_HOST
-    SLIC_DEBUG( "degenerate polygon intersection detected.\n" );
+    //SLIC_DEBUG( "degenerate polygon intersection detected.\n" );
 #endif
     return DEGENERATE_OVERLAP;
   }
@@ -1011,8 +1011,8 @@ TRIBOL_HOST_DEVICE void ContactPlanePair::computeAreaTol( const MeshData::Viewer
 {
   if ( m_areaFrac < params.overlap_area_frac ) {
 #ifdef TRIBOL_USE_HOST
-    SLIC_DEBUG( "CommonPlanePair::computeAreaTol() the overlap area fraction too small or negative; "
-                << "setting to overlap_area_frac parameter." );
+    //SLIC_DEBUG( "CommonPlanePair::computeAreaTol() the overlap area fraction too small or negative; "
+    //            << "setting to overlap_area_frac parameter." );
 #endif
     m_areaFrac = params.overlap_area_frac;
   }
@@ -1253,9 +1253,9 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
 
       if ( k > 2 ) {  // at most we can have two segment-plane intersections for a single planar, convex face
 #ifdef TRIBOL_USE_HOST
-        SLIC_DEBUG( "CommonPlanePair::computeOverlap3D(): too many segment-face intersections; "
-                    << "check for degenerate face " << m_pair->m_element_id1 << "on mesh " << mesh[i]->meshId()
-                    << "." );
+        //SLIC_DEBUG( "CommonPlanePair::computeOverlap3D(): too many segment-face intersections; "
+        //            << "check for degenerate face " << m_pair->m_element_id1 << "on mesh " << mesh[i]->meshId()
+        //            << "." );
 #endif
         return DEGENERATE_OVERLAP;
       }
@@ -1522,7 +1522,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
   // or length tolerances (intersecting polygon segment lengths)
   if ( m_numPolyVert < 3 ) {
 #ifdef TRIBOL_USE_HOST
-    SLIC_DEBUG( "degenerate polygon intersection detected.\n" );
+    //SLIC_DEBUG( "degenerate polygon intersection detected.\n" );
 #endif
     return DEGENERATE_OVERLAP;
   }
@@ -1625,8 +1625,8 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::projectPointsAndComputeOverlap
 #ifdef TRIBOL_USE_HOST
   if ( m_fullOverlap ) {
     if ( num_vert_1 != m1.numberOfNodesPerElement() || num_vert_2 != m2.numberOfNodesPerElement() ) {
-      SLIC_ERROR( "CommonPlanePair::projectPointsAndComputeOverlap(): full overlap requires "
-                  << "input number of vertices to match number of nodes per element." );
+      //SLIC_ERROR( "CommonPlanePair::projectPointsAndComputeOverlap(): full overlap requires "
+      //            << "input number of vertices to match number of nodes per element." );
     }
   }
 #endif
@@ -1825,9 +1825,9 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap2D( const MeshDa
     // Debug check the number of interpenetrating vertices
     if ( k1 > 1 || k2 > 1 ) {
 #ifdef TRIBOL_USE_HOST
-      SLIC_DEBUG( "CommonPlanePair::computeOverlap2D() more than 2 interpenetrating vertices detected; "
-                  << "check for degenerate geometry for edges (" << edgeId1 << ", " << edgeId2 << ") on meshes ("
-                  << m1.meshId() << ", " << m2.meshId() << ")." );
+      //SLIC_DEBUG( "CommonPlanePair::computeOverlap2D() more than 2 interpenetrating vertices detected; "
+      //            << "check for degenerate geometry for edges (" << edgeId1 << ", " << edgeId2 << ") on meshes ("
+      //            << m1.meshId() << ", " << m2.meshId() << ")." );
 #endif
       return DEGENERATE_OVERLAP;
     }

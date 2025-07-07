@@ -58,8 +58,8 @@ void ComputeAlignedMortarWeights( SurfaceContactElem& elem )
         int nonmortarNonmortarId = elem.numFaceVert * a + b;
         int mortarNonmortarId = elem.numFaceVert * elem.numFaceVert + elem.numFaceVert * a + b;
 
-        SLIC_ERROR_IF( nonmortarNonmortarId > elem.numWts || mortarNonmortarId > elem.numWts,
-                       "ComputeAlignedMortarWeights: integer ids for weights exceed elem.numWts" );
+        //SLIC_ERROR_IF( nonmortarNonmortarId > elem.numWts || mortarNonmortarId > elem.numWts,
+        //               "ComputeAlignedMortarWeights: integer ids for weights exceed elem.numWts" );
 
         // compute nonmortar/nonmortar mortar weight
         elem.mortarWts[nonmortarNonmortarId] += integ.wts[ip] * phiNonmortarA * phiNonmortarB;
@@ -81,8 +81,8 @@ void ComputeNodalGap<ALIGNED_MORTAR>( SurfaceContactElem& elem )
   auto& nonmortarMesh = *elem.m_mesh2;
   const IndexT* const nonmortarConn = nonmortarMesh.getConnectivity().data();
 
-  SLIC_ERROR_IF( nonmortarMesh.getNodalFields().m_node_gap.empty(),
-                 "ComputeNodalGap< ALIGNED_MORTAR >: allocate gaps on mesh data object." );
+  //SLIC_ERROR_IF( nonmortarMesh.getNodalFields().m_node_gap.empty(),
+  //               "ComputeNodalGap< ALIGNED_MORTAR >: allocate gaps on mesh data object." );
 
   // compute gap contributions associated with face 2 on the SurfaceContactElem
   // (i.e. nonmortar surface)

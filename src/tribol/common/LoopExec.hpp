@@ -13,7 +13,7 @@
 #include "tribol/common/ExecModel.hpp"
 
 // Axom includes
-#include "axom/slic.hpp"
+//#include "axom/slic.hpp"
 
 // RAJA includes
 #ifdef TRIBOL_USE_RAJA
@@ -58,13 +58,13 @@ struct forAllType {
 template <ExecutionMode EXEC, typename BODY, bool ASYNC, int BLOCK_SIZE>
 void forAllImpl( forAllType<EXEC>, IndexT, BODY&& )
 {
-  SLIC_ERROR_ROOT( "forAllExec not defined for the given ExecutionMode." );
+  //SLIC_ERROR_ROOT( "forAllExec not defined for the given ExecutionMode." );
 }
 
 template <typename BODY, bool ASYNC, int BLOCK_SIZE>
 void forAllImpl( forAllType<ExecutionMode::Dynamic>, IndexT, BODY&& )
 {
-  SLIC_ERROR_ROOT( "tribol::forAllExec requires an execution mode besides Dynamic." );
+  //SLIC_ERROR_ROOT( "tribol::forAllExec requires an execution mode besides Dynamic." );
 }
 
 template <typename BODY, bool ASYNC, int BLOCK_SIZE>
@@ -179,7 +179,7 @@ void forAllExec( ExecutionMode exec_mode, IndexT N, BODY&& body )
                                                           std::move( body ) );
 #endif
     default:
-      SLIC_ERROR_ROOT( "Unsupported execution mode in a forAllExec loop." );
+      //SLIC_ERROR_ROOT( "Unsupported execution mode in a forAllExec loop." );
       return;
   }
 }

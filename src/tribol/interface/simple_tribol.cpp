@@ -12,7 +12,7 @@
 
 // Axom includes
 #include "axom/core.hpp"
-#include "axom/slic.hpp"
+//#include "axom/slic.hpp"
 
 // C/C++ includes
 #include <string>
@@ -31,12 +31,12 @@ int Initialize( bool init_slic )
 {
   // initialize slic
   if ( init_slic ) {
-    axom::slic::finalize();
-    axom::slic::initialize();
-    std::string format = "[<LEVEL>]: <MESSAGE> \n";
-    axom::slic::setLoggingMsgLevel( axom::slic::message::Info );
+    //axom::slic::finalize();
+    //axom::slic::initialize();
+    //std::string format = "[<LEVEL>]: <MESSAGE> \n";
+    //axom::slic::setLoggingMsgLevel( axom::slic::message::Info );
 
-    axom::slic::addStreamToAllMsgLevels( new axom::slic::GenericOutputStream( &std::cout, format ) );
+    //axom::slic::addStreamToAllMsgLevels( new axom::slic::GenericOutputStream( &std::cout, format ) );
   }
 
   return 0;
@@ -49,7 +49,7 @@ int Finalize( bool finalize_slic )
 
   // finalize slic
   if ( finalize_slic ) {
-    axom::slic::finalize();
+    //axom::slic::finalize();
   }
 
   return 0;
@@ -65,8 +65,8 @@ void SimpleCouplingSetup( const int dim, int cell_type, int contact_method, int 
   (void)dim;  // quiet compiler
 
   if ( contact_method != tribol::MORTAR_WEIGHTS ) {
-    SLIC_ERROR( "SimpleCouplingSetup: simple API only works "
-                << "for MORTAR_WEIGHTS method." );
+    //SLIC_ERROR( "SimpleCouplingSetup: simple API only works "
+    //            << "for MORTAR_WEIGHTS method." );
   }
 
   // register mortar mesh
@@ -101,7 +101,7 @@ void SimpleCouplingSetup( const int dim, int cell_type, int contact_method, int 
   tribol::setLagrangeMultiplierOptions( 0, tribol::ImplicitEvalMode::MORTAR_WEIGHTS_EVAL,
                                         tribol::SparseMode::MFEM_LINKED_LIST );
 
-  axom::slic::flushStreams();
+  //axom::slic::flushStreams();
 
   return;
 }
@@ -111,7 +111,7 @@ int Update( double& dt )
 {
   int err = tribol::update( 1, 1., dt );
 
-  axom::slic::flushStreams();
+  //axom::slic::flushStreams();
 
   return err;
 }

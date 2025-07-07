@@ -7,7 +7,7 @@
 
 #ifdef BUILD_REDECOMP
 
-#include "axom/slic.hpp"
+//#include "axom/slic.hpp"
 
 #include "redecomp/utils/ArrayUtility.hpp"
 
@@ -56,13 +56,13 @@ SubmeshRedecompTransfer::SubmeshRedecompTransfer( mfem::ParFiniteElementSpace& s
 {
   // make sure submesh_fes is a submesh and redecomp's parent is submesh_fes's
   // submesh
-  SLIC_ERROR_ROOT_IF( !mfem::ParSubMesh::IsParSubMesh( submesh_fes_.GetParMesh() ),
-                      "submesh_fes must be on a ParSubMesh." );
-  SLIC_ERROR_ROOT_IF( !submesh_lor_xfer && &redecomp_mesh.getParent() != submesh_fes_.GetParMesh(),
-                      "redecomp's parent must match the submesh_fes ParMesh." );
-  SLIC_ERROR_ROOT_IF(
-      submesh_lor_xfer && &redecomp_mesh.getParent() != submesh_lor_xfer->GetLORGridFn().ParFESpace()->GetParMesh(),
-      "redecomp's parent must match the submesh_fes ParMesh." );
+  //SLIC_ERROR_ROOT_IF( !mfem::ParSubMesh::IsParSubMesh( submesh_fes_.GetParMesh() ),
+  //                    "submesh_fes must be on a ParSubMesh." );
+  //SLIC_ERROR_ROOT_IF( !submesh_lor_xfer && &redecomp_mesh.getParent() != submesh_fes_.GetParMesh(),
+  //                    "redecomp's parent must match the submesh_fes ParMesh." );
+  //SLIC_ERROR_ROOT_IF(
+  //    submesh_lor_xfer && &redecomp_mesh.getParent() != submesh_lor_xfer->GetLORGridFn().ParFESpace()->GetParMesh(),
+  //    "redecomp's parent must match the submesh_fes ParMesh." );
 }
 
 void SubmeshRedecompTransfer::SubmeshToRedecomp( const mfem::ParGridFunction& submesh_src,
@@ -133,8 +133,8 @@ ParentRedecompTransfer::ParentRedecompTransfer( const mfem::ParFiniteElementSpac
   //   !mfem::ParSubMesh::IsParSubMesh(submesh_gridfn_.ParFESpace()->GetParMesh()),
   //   "submesh_gridfn_ must be associated with an mfem::ParSubMesh."
   // );
-  SLIC_ERROR_ROOT_IF( submesh_redecomp_xfer_.GetSubmesh().GetParent() != parent_fes_.GetParMesh(),
-                      "submesh_gridfn's parent mesh must match the parent_fes ParMesh." );
+  //SLIC_ERROR_ROOT_IF( submesh_redecomp_xfer_.GetSubmesh().GetParent() != parent_fes_.GetParMesh(),
+  //                    "submesh_gridfn's parent mesh must match the parent_fes ParMesh." );
 }
 
 void ParentRedecompTransfer::ParentToRedecomp( const mfem::ParGridFunction& parent_src,
@@ -191,13 +191,13 @@ std::vector<RealT*> ParentField::GetRedecompFieldPtrs( mfem::GridFunction& redec
 
 ParentField::UpdateData& ParentField::GetUpdateData()
 {
-  SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
+  //SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
   return *update_data_;
 }
 
 const ParentField::UpdateData& ParentField::GetUpdateData() const
 {
-  SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
+  //SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
   return *update_data_;
 }
 
@@ -246,13 +246,13 @@ std::vector<RealT*> PressureField::GetRedecompFieldPtrs( mfem::GridFunction& red
 
 PressureField::UpdateData& PressureField::GetUpdateData()
 {
-  SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
+  //SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
   return *update_data_;
 }
 
 const PressureField::UpdateData& PressureField::GetUpdateData() const
 {
-  SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
+  //SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
   return *update_data_;
 }
 
@@ -310,11 +310,11 @@ void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale )
 {
   // update coordinates of submesh and LOR mesh
   auto submesh_nodes = dynamic_cast<mfem::ParGridFunction*>( submesh_.GetNodes() );
-  SLIC_ERROR_ROOT_IF( !submesh_nodes, "submesh_ Nodes is not a ParGridFunction." );
+  //SLIC_ERROR_ROOT_IF( !submesh_nodes, "submesh_ Nodes is not a ParGridFunction." );
   submesh_.Transfer( coords_.GetParentGridFn(), *submesh_nodes );
   if ( lor_mesh_.get() ) {
     auto lor_nodes = dynamic_cast<mfem::ParGridFunction*>( lor_mesh_->GetNodes() );
-    SLIC_ERROR_ROOT_IF( !lor_nodes, "lor_mesh_ Nodes is not a ParGridFunction." );
+    //SLIC_ERROR_ROOT_IF( !lor_nodes, "lor_mesh_ Nodes is not a ParGridFunction." );
     submesh_lor_xfer_->SubmeshToLOR( *submesh_nodes, *lor_nodes );
   }
   update_data_ = std::make_unique<UpdateData>( submesh_, lor_mesh_.get(), *coords_.GetParentGridFn().ParFESpace(),
@@ -331,9 +331,9 @@ void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale )
   }
   if ( elem_thickness_ ) {
     if ( !material_modulus_ ) {
-      SLIC_ERROR_ROOT(
-          "Kinematic element penalty requires material modulus information. "
-          "Call registerMfemMaterialModulus() to set this." );
+      //SLIC_ERROR_ROOT(
+      //    "Kinematic element penalty requires material modulus information. "
+      //    "Call registerMfemMaterialModulus() to set this." );
     }
     redecomp::RedecompTransfer redecomp_xfer;
     // set element thickness on redecomp mesh
@@ -419,13 +419,13 @@ void MfemMeshData::ClearRatePenaltyData()
 void MfemMeshData::SetLORFactor( int lor_factor )
 {
   if ( lor_factor <= 1 ) {
-    SLIC_WARNING_ROOT( "lor_factor must be an integer > 1.  LOR factor not changed." );
+    //SLIC_WARNING_ROOT( "lor_factor must be an integer > 1.  LOR factor not changed." );
     return;
   }
   if ( coords_.GetParentGridFn().FESpace()->FEColl()->GetOrder() <= 1 ) {
-    SLIC_WARNING_ROOT(
-        "lor_factor is only applicable to higher order geometry.  "
-        "LOR factor not changed." );
+    //SLIC_WARNING_ROOT(
+    //    "lor_factor is only applicable to higher order geometry.  "
+    //    "LOR factor not changed." );
     return;
   }
   lor_factor_ = lor_factor;
@@ -576,13 +576,13 @@ void MfemMeshData::UpdateData::UpdateConnectivity( const std::set<int>& attribut
 
 MfemMeshData::UpdateData& MfemMeshData::GetUpdateData()
 {
-  SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
+  //SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
   return *update_data_;
 }
 
 const MfemMeshData::UpdateData& MfemMeshData::GetUpdateData() const
 {
-  SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
+  //SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
   return *update_data_;
 }
 
@@ -620,12 +620,12 @@ void MfemMeshData::UpdateData::SetElementData()
         break;
 
       case mfem::Element::POINT:
-        SLIC_ERROR_ROOT( "Unsupported element type!" );
+        //SLIC_ERROR_ROOT( "Unsupported element type!" );
         break;
 
-      default:
-        SLIC_ERROR_ROOT( "Unknown element type!" );
-        break;
+      //default:
+        //SLIC_ERROR_ROOT( "Unknown element type!" );
+        //break;
     }
 
     num_verts_per_elem_ = mfem::Geometry::NumVerts[element_type];
@@ -672,13 +672,13 @@ MfemSubmeshData::UpdateData::UpdateData( mfem::ParFiniteElementSpace& submesh_fe
 
 MfemSubmeshData::UpdateData& MfemSubmeshData::GetUpdateData()
 {
-  SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
+  //SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
   return *update_data_;
 }
 
 const MfemSubmeshData::UpdateData& MfemSubmeshData::GetUpdateData() const
 {
-  SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
+  //SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
   return *update_data_;
 }
 
@@ -686,8 +686,8 @@ MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemS
                                     ContactMethod contact_method )
     : parent_data_{ parent_data }, submesh_data_{ submesh_data }, block_offsets_( 3 ), disp_offsets_( 2 )
 {
-  SLIC_ERROR_ROOT_IF( parent_data.GetParentCoords().ParFESpace()->FEColl()->GetOrder() > 1,
-                      "Higher order meshes not yet supported for Jacobian matrices." );
+  //SLIC_ERROR_ROOT_IF( parent_data.GetParentCoords().ParFESpace()->FEColl()->GetOrder() > 1,
+  //                    "Higher order meshes not yet supported for Jacobian matrices." );
 
   mfem::SubMeshUtils::BuildVdofToVdofMap(
       parent_data_.GetSubmeshFESpace(), *parent_data_.GetParentCoords().FESpace(), parent_data_.GetSubmesh().GetFrom(),
@@ -1154,13 +1154,13 @@ MfemJacobianData::UpdateData::UpdateData( const MfemMeshData& parent_data, const
 
 MfemJacobianData::UpdateData& MfemJacobianData::GetUpdateData()
 {
-  SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
+  //SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
   return *update_data_;
 }
 
 const MfemJacobianData::UpdateData& MfemJacobianData::GetUpdateData() const
 {
-  SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
+  //SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
   return *update_data_;
 }
 

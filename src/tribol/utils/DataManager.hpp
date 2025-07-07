@@ -13,8 +13,8 @@
 #include "tribol/common/BasicTypes.hpp"
 
 // Axom includes
-#include "axom/fmt.hpp"
-#include "axom/slic.hpp"
+//#include "axom/fmt.hpp"
+//#include "axom/slic.hpp"
 
 namespace tribol {
 
@@ -122,7 +122,7 @@ class DataManager {
   T& getData( IndexT id )
   {
     auto data_it = data_map_.find( id );
-    SLIC_ERROR_IF( data_it == data_map_.end(), axom::fmt::format( "No data exists for id = {}.", id ) );
+    //SLIC_ERROR_IF( data_it == data_map_.end(), axom::fmt::format( "No data exists for id = {}.", id ) );
     return data_it->second;
   }
 

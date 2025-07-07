@@ -13,7 +13,7 @@
 #endif
 
 #include "axom/core.hpp"
-#include "axom/slic.hpp"
+//#include "axom/slic.hpp"
 
 #include <float.h>
 #include <cmath>
@@ -433,8 +433,8 @@ TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( const RealT* const pX, const Real
                                                int size )
 {
 #ifdef TRIBOL_USE_HOST
-  SLIC_ERROR_IF( size > 0 && ( pLX == nullptr || pLY == nullptr ),
-                 "GlobalTo2DLocalCoords: local coordinate pointers are null" );
+  //SLIC_ERROR_IF( size > 0 && ( pLX == nullptr || pLY == nullptr ),
+  //               "GlobalTo2DLocalCoords: local coordinate pointers are null" );
 #endif
 
   // TODO SRW restore the scaling of the input points. This is fine as long as it is consistent
@@ -482,7 +482,7 @@ TRIBOL_HOST_DEVICE bool VertexAvgCentroid( const RealT* const x, const RealT* co
                                            const int numVert, RealT& cX, RealT& cY, RealT& cZ )
 {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( numVert == 0, "VertexAvgCentroid: numVert = 0." );
+  //SLIC_ERROR_IF( numVert == 0, "VertexAvgCentroid: numVert = 0." );
 #endif
   if ( numVert == 0 ) {
     return false;
@@ -517,7 +517,7 @@ TRIBOL_HOST_DEVICE bool VertexAvgCentroid( const RealT* const x, const int dim, 
                                            RealT& cZ )
 {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( numVert == 0, "VertexAvgCentroid: numVert = 0." );
+  //SLIC_ERROR_IF( numVert == 0, "VertexAvgCentroid: numVert = 0." );
 #endif
   if ( numVert == 0 ) {
     return false;
@@ -552,8 +552,8 @@ TRIBOL_HOST_DEVICE bool PolyAreaCentroid( const RealT* const x, const int dim, c
                                           RealT& cZ )
 {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( dim != 3, "PolyAreaCentroid: Only compatible with dim = 3." );
-  SLIC_ERROR_IF( numVert == 0, "PolyAreaCentroid: numVert = 0." );
+  //SLIC_ERROR_IF( dim != 3, "PolyAreaCentroid: Only compatible with dim = 3." );
+  //SLIC_ERROR_IF( numVert == 0, "PolyAreaCentroid: numVert = 0." );
 #endif
   if ( numVert == 0 ) {
     return false;
@@ -618,7 +618,7 @@ TRIBOL_HOST_DEVICE bool PolyAreaCentroid( const RealT* const x, const int dim, c
 void PolyCentroid( const RealT* const x, const RealT* const y, const int numVert, RealT& cX, RealT& cY )
 {
 #ifndef TRIBOL_USE_ENZYME
-  SLIC_ERROR_IF( numVert == 0, "PolyAreaCentroid: numVert = 0." );
+  //SLIC_ERROR_IF( numVert == 0, "PolyAreaCentroid: numVert = 0." );
 #endif
 
   // (re)initialize the input/output centroid components
@@ -657,7 +657,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   // check numVertexA and numVertexB to make sure they are 3 (triangle) or more
   if ( numVertexA < 3 || numVertexB < 3 ) {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-    SLIC_DEBUG( "Intersection2DPolygon(): one or more degenerate faces with < 3 vertices." );
+    //SLIC_DEBUG( "Intersection2DPolygon(): one or more degenerate faces with < 3 vertices." );
 #endif
     area = 0.0;
     return INVALID_FACE_INPUT;
@@ -674,7 +674,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
 
     if ( !orientA || !orientB ) {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-      SLIC_DEBUG( "Intersection2DPolygon(): check face orientations for face A." );
+      //SLIC_DEBUG( "Intersection2DPolygon(): check face orientations for face A." );
 #endif
       return FACE_ORIENTATION;
     }
@@ -849,8 +849,8 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       if ( checkA && checkB ) {
         if ( interId >= max_intersections ) {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-          SLIC_DEBUG( "Intersection2DPolygon: number of segment/segment intersections exceeds precomputed maximum; "
-                      << "check for degenerate overlap." );
+          //SLIC_DEBUG( "Intersection2DPolygon: number of segment/segment intersections exceeds precomputed maximum; "
+          //            << "check for degenerate overlap." );
 #endif
           return DEGENERATE_OVERLAP;
         }
@@ -920,8 +920,8 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       // debug
       if ( k > max_identified_points ) {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-        SLIC_DEBUG( "Intersection2DPolygon(): number of A vertices interior to B "
-                    << "polygon exceeds total number of overlap vertices. Check interior vertex id values." );
+        //SLIC_DEBUG( "Intersection2DPolygon(): number of A vertices interior to B "
+        //            << "polygon exceeds total number of overlap vertices. Check interior vertex id values." );
 #endif
         return FACE_VERTEX_INDEX_EXCEEDS_OVERLAP_VERTICES;
       }
@@ -941,8 +941,8 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       // debug
       if ( k > max_identified_points ) {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-        SLIC_DEBUG( "Intersection2DPolygon(): number of B vertices interior to A "
-                    << "polygon exceeds total number of overlap vertices. Check interior vertex id values." );
+        //SLIC_DEBUG( "Intersection2DPolygon(): number of B vertices interior to A "
+        //            << "polygon exceeds total number of overlap vertices. Check interior vertex id values." );
 #endif
         return FACE_VERTEX_INDEX_EXCEEDS_OVERLAP_VERTICES;
       }
@@ -1052,8 +1052,8 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckSegOverlap( const RealT* const pX1, const 
   assert( nV1 == 2 );
   assert( nV2 == 2 );
 #else
-  SLIC_ASSERT( nV1 == 2 );
-  SLIC_ASSERT( nV2 == 2 );
+  //SLIC_ASSERT( nV1 == 2 );
+  //SLIC_ASSERT( nV2 == 2 );
 #endif
 
   // define the edge 1 non-unit directional vector between vertices
@@ -1244,9 +1244,9 @@ TRIBOL_HOST_DEVICE bool Point2DInFace( const RealT xPoint, const RealT yPoint, c
                                        const RealT* const yPoly, const RealT xC, const RealT yC, const int numPolyVert )
 {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( numPolyVert < 3, "Point2DInFace: number of face vertices is less than 3" );
+  //SLIC_ERROR_IF( numPolyVert < 3, "Point2DInFace: number of face vertices is less than 3" );
 
-  SLIC_ERROR_IF( xPoly == nullptr || yPoly == nullptr, "Point2DInFace: input pointer not set" );
+  //SLIC_ERROR_IF( xPoly == nullptr || yPoly == nullptr, "Point2DInFace: input pointer not set" );
 #endif
 
   // if face is triangle (numPolyVert), call Point2DInTri once
@@ -1436,8 +1436,8 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
 
 #if defined( TRIBOL_DEBUG ) && defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
     RealT diffTol = 1.0E-3;
-    SLIC_DEBUG_IF( xDiff > diffTol || yDiff > diffTol,
-                   "SegmentIntersection2D(): Intersection coordinates are not equally derived." );
+    //SLIC_DEBUG_IF( xDiff > diffTol || yDiff > diffTol,
+    //               "SegmentIntersection2D(): Intersection coordinates are not equally derived." );
 #endif
   }
 
@@ -1568,7 +1568,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, 
     if ( newIDs[i] == i ) {
       if ( k > numNewPoints ) {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-        SLIC_DEBUG( "checkPolySegs(): index into polyX/polyY exceeds allocated space" );
+        //SLIC_DEBUG( "checkPolySegs(): index into polyX/polyY exceeds allocated space" );
 #endif
         return FACE_VERTEX_INDEX_EXCEEDS_OVERLAP_VERTICES;
       }
@@ -1588,7 +1588,7 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoi
 {
   if ( numPoints < 3 ) {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-    SLIC_DEBUG( "PolyReorder: numPoints (" << numPoints << ") < 3." );
+    //SLIC_DEBUG( "PolyReorder: numPoints (" << numPoints << ") < 3." );
 #endif
     return false;
   }
@@ -1924,12 +1924,12 @@ bool PlanePlaneIntersection( const RealT x1, const RealT y1, const RealT z1, con
 void Vertex2DOrderToCCW( const RealT* const x, const RealT* const y, RealT* xTemp, RealT* yTemp, const int numVert )
 {
   if ( numVert <= 0 ) {
-    SLIC_DEBUG( "Vertex2DOrderToCCW: numVert <= 0; returning." );
+    //SLIC_DEBUG( "Vertex2DOrderToCCW: numVert <= 0; returning." );
     return;
   }
 
-  SLIC_ERROR_IF( x == nullptr || y == nullptr || xTemp == nullptr || yTemp == nullptr,
-                 "Vertex2DOrderToCCW: must set pointers prior to call to routine." );
+  //SLIC_ERROR_IF( x == nullptr || y == nullptr || xTemp == nullptr || yTemp == nullptr,
+  //               "Vertex2DOrderToCCW: must set pointers prior to call to routine." );
 
   xTemp[0] = x[0];
   yTemp[0] = y[0];
