@@ -464,8 +464,6 @@ struct EnforcementOptions {
  * \brief Coupling scheme parameters struct
  */
 struct Parameters {
-  CommT problem_comm = TRIBOL_COMM_WORLD;  ///! MPI communicator for the problem
-
   RealT binning_proximity_scale =
       4.0;                           ///! Element length multiplier for coarse binning and proximity detection inclusion
   RealT overlap_area_frac = 1.0e-8;  ///! Ratio of overlap area to largest face area for contact inclusion

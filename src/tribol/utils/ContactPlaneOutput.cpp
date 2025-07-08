@@ -54,8 +54,8 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
   int nranks = 1;
   int rank = -1;
 #ifdef TRIBOL_USE_MPI
-  MPI_Comm_rank( couplingScheme->getParameters().problem_comm, &rank );
-  MPI_Comm_size( couplingScheme->getParameters().problem_comm, &nranks );
+  MPI_Comm_rank( couplingScheme->getProblemComm(), &rank );
+  MPI_Comm_size( couplingScheme->getProblemComm(), &nranks );
 #endif
 
   /////////////////////////////////////////

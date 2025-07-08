@@ -233,6 +233,13 @@ class CouplingScheme {
   CouplingScheme& operator=( CouplingScheme&& other ) = default;
 
   /**
+   * @brief Returns the problem communicator 
+   *
+   * @return problem mpi communicator
+   */
+   CommT getProblemComm() { return m_problem_comm; }
+
+  /**
    * @brief Get the ID of the coupling scheme
    *
    * @return unique coupling scheme ID
@@ -425,7 +432,7 @@ class CouplingScheme {
    *
    * @param comm MPI communicator
    */
-  void setMPIComm( CommT comm ) { m_parameters.problem_comm = comm; }
+  void setMPIComm( CommT comm ) { m_problem_comm = comm; }
 
   /**
    * @brief Check whether the coupling scheme has been binned
@@ -839,6 +846,8 @@ class CouplingScheme {
   void computeCommonPlaneTimeStep( RealT& dt );
 
  private:
+  CommT m_problem_comm = TRIBOL_COMM_WORLD;  ///! MPI communicator for the problem
+
   IndexT m_id;  ///< Coupling Scheme id
 
   IndexT m_mesh_id1;  ///< Integer id for mesh 1
