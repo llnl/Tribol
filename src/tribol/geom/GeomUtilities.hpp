@@ -296,9 +296,9 @@ TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( const RealT* const pX, const Real
  * \note this assumes that the point lies in the plane defined by the
  *  2D local basis vectors.
  */
-TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( RealT pX, RealT pY, RealT pZ,
-                                               RealT e1X, RealT e1Y, RealT e1Z, RealT e2X, RealT e2Y,
-                                               RealT e2Z, RealT cX, RealT cY, RealT cZ, RealT& pLX, RealT& pLY );
+TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( RealT pX, RealT pY, RealT pZ, RealT e1X, RealT e1Y, RealT e1Z, RealT e2X,
+                                               RealT e2Y, RealT e2Z, RealT cX, RealT cY, RealT cZ, RealT& pLX,
+                                               RealT& pLY );
 /*!
  *
  * \brief computes the vertex averaged centroid of a point set
