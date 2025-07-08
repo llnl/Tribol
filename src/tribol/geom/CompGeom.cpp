@@ -1725,12 +1725,12 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::projectPointsAndComputeOverlap
 
   // transform local interpenetration overlaps to global coords for the
   // current polygonal overlap
-  for ( int i = 0; i < m_numInterpenPoly1Vert; ++i ) {
+  for ( int i = 0; i < num_vert_1; ++i ) {
     Local2DToGlobalCoords( cfx1_loc[i], cfy1_loc[i], m_e1X, m_e1Y, m_e1Z, m_e2X, m_e2Y, m_e2Z, m_cX, m_cY, m_cZ,
                            m_interpenG1X[i], m_interpenG1Y[i], m_interpenG1Z[i] );
   }
 
-  for ( int i = 0; i < m_numInterpenPoly2Vert; ++i ) {
+  for ( int i = 0; i < num_vert_2; ++i ) {
     Local2DToGlobalCoords( cfx2_loc[i], cfy2_loc[i], m_e1X, m_e1Y, m_e1Z, m_e2X, m_e2Y, m_e2Z, m_cX, m_cY, m_cZ,
                            m_interpenG2X[i], m_interpenG2Y[i], m_interpenG2Z[i] );
   }
