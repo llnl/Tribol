@@ -620,7 +620,7 @@ TRIBOL_HOST_DEVICE void CommonPlanePair::resetPlanePointAndCentroidGap( const Me
   if ( m_dim == 3 ) {
     // construct array of polygon overlap vertex coordinates
     constexpr int max_dim = 3;
-    constexpr int max_nodes_per_overlap = 8;
+    constexpr int max_nodes_per_overlap = 10;
     RealT xVert[max_dim * max_nodes_per_overlap];
 
     for ( IndexT j{ 0 }; j < this->m_numPolyVert; ++j ) {
@@ -1395,14 +1395,14 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
 
   // allocate arrays to store the vertices for clipped or full face used either
   // in the interpen or full overlap calc
-  constexpr int max_nodes_per_overlap = 8;  // TODO confirm that this number may be 5
-  RealT cfx1[max_nodes_per_overlap];        // cfx = clipped face x-coordinate
-  RealT cfy1[max_nodes_per_overlap];
-  RealT cfz1[max_nodes_per_overlap];
+  constexpr int max_nodes_per_clipped_face = 5;  // TODO confirm that this number may be 5
+  RealT cfx1[max_nodes_per_clipped_face];             // cfx = clipped face x-coordinate
+  RealT cfy1[max_nodes_per_clipped_face];
+  RealT cfz1[max_nodes_per_clipped_face];
 
-  RealT cfx2[max_nodes_per_overlap];  // cfx = clipped face x-coordinate
-  RealT cfy2[max_nodes_per_overlap];
-  RealT cfz2[max_nodes_per_overlap];
+  RealT cfx2[max_nodes_per_clipped_face];  // cfx = clipped face x-coordinate
+  RealT cfy2[max_nodes_per_clipped_face];
+  RealT cfz2[max_nodes_per_clipped_face];
 
   FaceGeomError overlap_error = NO_FACE_GEOM_ERROR;
   if ( !m_fullOverlap ) {
@@ -1641,14 +1641,14 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::projectPointsAndComputeOverlap
   IndexT element_id1 = this->getCpElementId1();
   IndexT element_id2 = this->getCpElementId2();
 
-  constexpr int max_nodes_per_overlap = 8;  // TODO confirm that this number may be 5
-  RealT cfx1_proj[max_nodes_per_overlap];
-  RealT cfy1_proj[max_nodes_per_overlap];
-  RealT cfz1_proj[max_nodes_per_overlap];
+  constexpr int max_nodes_per_clipped_face = 5;  // TODO confirm that this number may be 5
+  RealT cfx1_proj[max_nodes_per_clipped_face];
+  RealT cfy1_proj[max_nodes_per_clipped_face];
+  RealT cfz1_proj[max_nodes_per_clipped_face];
 
-  RealT cfx2_proj[max_nodes_per_overlap];
-  RealT cfy2_proj[max_nodes_per_overlap];
-  RealT cfz2_proj[max_nodes_per_overlap];
+  RealT cfx2_proj[max_nodes_per_clipped_face];
+  RealT cfy2_proj[max_nodes_per_clipped_face];
+  RealT cfz2_proj[max_nodes_per_clipped_face];
 
   //  std::cout << "before projections to common plane" << std::endl;
 
@@ -1666,11 +1666,11 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::projectPointsAndComputeOverlap
   //  std::cout << "after projections to common plane" << std::endl;
 
   // declare local coordinate pointers
-  RealT cfx1_loc[max_nodes_per_overlap];
-  RealT cfy1_loc[max_nodes_per_overlap];
+  RealT cfx1_loc[max_nodes_per_clipped_face];
+  RealT cfy1_loc[max_nodes_per_clipped_face];
 
-  RealT cfx2_loc[max_nodes_per_overlap];
-  RealT cfy2_loc[max_nodes_per_overlap];
+  RealT cfx2_loc[max_nodes_per_clipped_face];
+  RealT cfy2_loc[max_nodes_per_clipped_face];
 
   //  std::cout << "Before global to local" << std::endl;
 

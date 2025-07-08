@@ -260,7 +260,7 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     // construct array of nodal coordinates
     constexpr int max_dim = 3;
     constexpr int max_nodes_per_face = 4;
-    constexpr int max_nodes_per_overlap = 8;
+    constexpr int max_nodes_per_overlap = 10;
     RealT xf1[max_dim * max_nodes_per_face];
     RealT xf2[max_dim * max_nodes_per_face];
     RealT xVert[max_dim * max_nodes_per_overlap];
