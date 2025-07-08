@@ -201,7 +201,17 @@ TEST_F( CompGeomTest, common_plane_coincident_vertices_full_overlap )
 
   auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
   RealT diff = std::abs( ( xy2[2] - xy2[0] ) - plane.m_area );
+  //std::cout << "coincident vertices full overlap gap: " << plane.m_gap << std::endl;
+  //std::cout << "in contact" << plane.m_inContact << std::endl;
   EXPECT_LT( diff, 1.e-10 );
+
+  //const auto mesh1 = const_cast<tribol::CouplingScheme*>( couplingScheme )->getMesh1().getView();
+  //const auto mesh2 = const_cast<tribol::CouplingScheme*>( couplingScheme )->getMesh2().getView();
+  //std::cout << "force1 node 0: " << mesh1.getResponse()[0][0] << ", " << mesh1.getResponse()[1][0] << std::endl;
+  //std::cout << "force1 node 1: " << mesh1.getResponse()[0][1] << ", " << mesh1.getResponse()[1][1] << std::endl;
+
+  //std::cout << "force2 node 0: " << mesh2.getResponse()[0][0] << ", " << mesh2.getResponse()[1][0] << std::endl;
+  //std::cout << "force2 node 1: " << mesh2.getResponse()[0][1] << ", " << mesh2.getResponse()[1][1] << std::endl;
 }
 
 TEST_F( CompGeomTest, common_plane_conforming_separation )
@@ -274,7 +284,16 @@ TEST_F( CompGeomTest, common_plane_conforming_separation )
 
   auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
   RealT gap_diff = std::abs( 0.1 - plane.m_gap );
+  //std::cout << "conforming separation gap: " << plane.m_gap << std::endl;
+  //std::cout << "in contact" << plane.m_inContact << std::endl;
   EXPECT_LT( gap_diff, 1.e-10 );
+  //const auto mesh1 = const_cast<tribol::CouplingScheme*>( couplingScheme )->getMesh1().getView();
+  //const auto mesh2 = const_cast<tribol::CouplingScheme*>( couplingScheme )->getMesh2().getView();
+  //std::cout << "force1 node 0: " << mesh1.getResponse()[0][0] << ", " << mesh1.getResponse()[1][0] << std::endl;
+  //std::cout << "force1 node 1: " << mesh1.getResponse()[0][1] << ", " << mesh1.getResponse()[1][1] << std::endl;
+
+  //std::cout << "force1 node 0: " << mesh2.getResponse()[0][0] << ", " << mesh2.getResponse()[1][0] << std::endl;
+  //std::cout << "force1 node 1: " << mesh2.getResponse()[0][1] << ", " << mesh2.getResponse()[1][1] << std::endl;
 }
 
 TEST_F( CompGeomTest, common_plane_coincident_vertex_no_overlap )
@@ -420,11 +439,24 @@ TEST_F( CompGeomTest, common_plane_nearly_coincident_vertex_positive_overlap )
   auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
   RealT diff = std::abs( ( xy2[2] - xy1[2] ) - plane.m_area );
   EXPECT_LT( diff, 1.e-10 );
+  //const auto mesh1 = const_cast<tribol::CouplingScheme*>( couplingScheme )->getMesh1().getView();
+  //const auto mesh2 = const_cast<tribol::CouplingScheme*>( couplingScheme )->getMesh2().getView();
+  //std::cout << "force1 node 0: " << mesh1.getResponse()[0][0] << ", " << mesh1.getResponse()[1][0] << std::endl;
+  //std::cout << "force1 node 1: " << mesh1.getResponse()[0][1] << ", " << mesh1.getResponse()[1][1] << std::endl;
+
+  //std::cout << "force1 node 0: " << mesh2.getResponse()[0][0] << ", " << mesh2.getResponse()[1][0] << std::endl;
+  //std::cout << "force1 node 1: " << mesh2.getResponse()[0][1] << ", " << mesh2.getResponse()[1][1] << std::endl;
+
+  //std::cout << "f1 node 0: " << fx1[0] << ", " << fy1[0] << std::endl;
+  //std::cout << "f1 node 1: " << fx1[1] << ", " << fy1[1] << std::endl;
+
+  //std::cout << "f2 node 0: " << fx2[0] << ", " << fy2[0] << std::endl;
+  //std::cout << "f2 node 1: " << fx2[1] << ", " << fy2[1] << std::endl;
 }
 
 TEST_F( CompGeomTest, common_plane_interpen_check_1 )
 {
-  // This tests checks the interpen overlap code path for an X-like interface pair
+  // This tests checks the interpen overlap code path for a symmetric X-like interface pair
   // configuration
   //
   //                *
@@ -507,9 +539,116 @@ TEST_F( CompGeomTest, common_plane_interpen_check_1 )
   RealT computed_area = 0.5 * length * std::cos( half_theta );
   RealT diff = std::abs( computed_area - plane.m_area );
   EXPECT_LT( diff, 1.e-10 );
+  //std::cout << "contact interpen 1 gap: " << plane.m_gap << std::endl;
+  //std::cout << "in contact" << plane.m_inContact << std::endl;
+  //const auto mesh1 = const_cast<tribol::CouplingScheme*>( couplingScheme )->getMesh1().getView();
+  //const auto mesh2 = const_cast<tribol::CouplingScheme*>( couplingScheme )->getMesh2().getView();
+  //std::cout << "force1 node 0: " << mesh1.getResponse()[0][0] << ", " << mesh1.getResponse()[1][0] << std::endl;
+  //std::cout << "force1 node 1: " << mesh1.getResponse()[0][1] << ", " << mesh1.getResponse()[1][1] << std::endl;
+
+  //std::cout << "force1 node 0: " << mesh2.getResponse()[0][0] << ", " << mesh2.getResponse()[1][0] << std::endl;
+  //std::cout << "force1 node 1: " << mesh2.getResponse()[0][1] << ", " << mesh2.getResponse()[1][1] << std::endl;
 }
 
 TEST_F( CompGeomTest, common_plane_interpen_check_2 )
+{
+  // This tests checks the interpen overlap code path for an unsymmetric X-like interface pair
+  // configuration
+  //                 *
+  //              * 
+  //    --------o----
+  //          *
+  //        *
+  //
+  constexpr int dim = 2;
+  constexpr int numVerts = 2;
+  RealT xy1[dim * numVerts];
+  RealT xy2[dim * numVerts];
+
+  xy1[0] = 1.0;
+  xy1[1] = 0.0;
+  xy1[2] = 0.0;
+  xy1[3] = 0.0;
+
+  xy2[0] = 0.;
+  xy2[1] = -0.1;
+  xy2[2] = 1.;
+  xy2[3] = 0.1;
+
+  RealT x1[numVerts];
+  RealT y1[numVerts];
+  RealT x2[numVerts];
+  RealT y2[numVerts];
+
+  RealT x_shift = 0.25;
+  for ( int i = 0; i < numVerts; ++i ) {
+    x1[i] = xy1[i * dim];
+    y1[i] = xy1[i * dim + 1];
+    x2[i] = xy2[i * dim] + x_shift;
+    y2[i] = xy2[i * dim + 1];
+  }
+
+  tribol::IndexT conn1[2] = { 0, 1 };
+  tribol::IndexT conn2[2] = { 0, 1 };
+
+  tribol::registerMesh( 0, 1, 2, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
+                        tribol::MemorySpace::Host );
+  tribol::registerMesh( 1, 1, 2, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
+                        tribol::MemorySpace::Host );
+
+  RealT fx1[2] = { 0., 0. };
+  RealT fy1[2] = { 0., 0. };
+  RealT fx2[2] = { 0., 0. };
+  RealT fy2[2] = { 0., 0. };
+
+  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], nullptr );
+  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], nullptr );
+
+  tribol::setKinematicConstantPenalty( 0, 1. );
+  tribol::setKinematicConstantPenalty( 1, 1. );
+
+  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                                  tribol::ExecutionMode::Sequential );
+
+  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
+  tribol::setContactAreaFrac( 0, 1.e-12 );
+
+  RealT dt = 1.;
+  int update_err = tribol::update( 1, 1., dt );
+
+  EXPECT_EQ( update_err, 0 );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
+
+  auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
+
+  EXPECT_EQ( plane.m_fullOverlap, false );
+  RealT length = 0.75 - (xy2[0] + x_shift);
+  RealT height = 0. - xy2[1];
+  RealT theta = std::atan( height / length );
+  RealT hyp = length / std::cos(theta); 
+  RealT half_theta = 0.5 * theta;
+  RealT computed_area = hyp * std::cos( half_theta );
+  RealT diff = std::abs( computed_area - plane.m_area );
+  EXPECT_LT( diff, 1.e-10 );
+
+  //std::cout << "contact interpen 2 gap: " << plane.m_gap << std::endl;
+  //std::cout << "in contact" << plane.m_inContact << std::endl;
+  //const auto mesh1 = const_cast<tribol::CouplingScheme*>( couplingScheme )->getMesh1().getView();
+  //const auto mesh2 = const_cast<tribol::CouplingScheme*>( couplingScheme )->getMesh2().getView();
+  //std::cout << "force1 node 0: " << mesh1.getResponse()[0][0] << ", " << mesh1.getResponse()[1][0] << std::endl;
+  //std::cout << "force1 node 1: " << mesh1.getResponse()[0][1] << ", " << mesh1.getResponse()[1][1] << std::endl;
+
+  //std::cout << "force1 node 0: " << mesh2.getResponse()[0][0] << ", " << mesh2.getResponse()[1][0] << std::endl;
+  //std::cout << "force1 node 1: " << mesh2.getResponse()[0][1] << ", " << mesh2.getResponse()[1][1] << std::endl;
+}
+
+TEST_F( CompGeomTest, common_plane_interpen_check_3 )
 {
   // This tests checks the interpen overlap code path for an X-like interface pair
   // configuration where there IS interpenetration, but one edge intersects

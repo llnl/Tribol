@@ -166,6 +166,7 @@ TEST_F( CompGeomTest, common_plane_single_element_full_overlap_check_1 )
 
   RealT computed_gap = -( z_max1 - z_min2 );
   RealT gap_diff = std::abs( plane.m_gap - computed_gap );
+  //std::cout << "contact full overlap gap: " << plane.m_gap << std::endl;
   EXPECT_LE( gap_diff, 1.e-8 );
 
   RealT area_diff = std::abs( plane.m_area - 0.5 );
@@ -440,17 +441,17 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_1 )
   auto& comp_geom = couplingScheme->getCompGeom();
   auto& plane = comp_geom.getCommonPlane( 0 );
 
-  std::cout << "overlap area: " << plane.m_area << std::endl;
+  //std::cout << "overlap area: " << plane.m_area << std::endl;
   ;
 
   RealT hypotenuse = 0.5;
   RealT overlap_gap_point = 0.5 * hypotenuse * std::cos( 0.5 * theta_y * M_PI / 180 );
 
-  std::cout << "overlap_gap_point: " << overlap_gap_point << std::endl;
-  std::cout << "2x overlap_gap_point: " << 2 * overlap_gap_point << std::endl;
+  //std::cout << "overlap_gap_point: " << overlap_gap_point << std::endl;
+  //std::cout << "2x overlap_gap_point: " << 2 * overlap_gap_point << std::endl;
   RealT gap_computed = -2. * overlap_gap_point * std::tan( 0.5 * theta_y * M_PI / 180 );
-  std::cout << "gap_computed: " << gap_computed << std::endl;
-  std::cout << "plane.m_gap: " << plane.m_gap << std::endl;
+  //std::cout << "gap_computed: " << gap_computed << std::endl;
+  //std::cout << "plane.m_gap: " << plane.m_gap << std::endl;
   RealT gap_diff = std::abs( plane.m_gap - gap_computed );
   EXPECT_LE( gap_diff, 1.e-5 );
 
@@ -533,12 +534,12 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_2 )
   }
 
   // Debug
-  for ( int i = 0; i < numVerts; ++i ) {
-    std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
-  }
-  for ( int i = numVerts; i < lengthNodalData; ++i ) {
-    std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
-  }
+  //for ( int i = 0; i < numVerts; ++i ) {
+  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
+  //}
+  //for ( int i = numVerts; i < lengthNodalData; ++i ) {
+  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
+  //}
 
   // register contact mesh
   tribol::IndexT mesh_id = 0;
@@ -561,22 +562,22 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_2 )
   auto& comp_geom = couplingScheme->getCompGeom();
   auto& plane = comp_geom.getCommonPlane( 0 );
 
-  std::cout << "overlap area: " << plane.m_area << std::endl;
-  ;
+  //std::cout << "overlap area: " << plane.m_area << std::endl;
+  
 
-  std::cout << "num_poly_vert: " << plane.m_numPolyVert << std::endl;
+  //std::cout << "num_poly_vert: " << plane.m_numPolyVert << std::endl;
 
-  std::cout << "plane.m_gap: " << plane.m_gap << std::endl;
+  //std::cout << "plane.m_gap: " << plane.m_gap << std::endl;
 
   RealT h = 0.25 / std::cos( fortyfive );
   RealT h_bar = h * std::cos( 0.5 * fortyfive );
   RealT A = h_bar * 0.5;
-  std::cout << "A: " << A << std::endl;
+  //std::cout << "A: " << A << std::endl;
   RealT area_diff = std::abs( A - plane.m_area );
   EXPECT_LE( area_diff, 1.e-8 );
 
   RealT computed_gap = -h_bar * std::tan( 0.5 * fortyfive );
-  std::cout << "computed_gap: " << computed_gap << std::endl;
+  //std::cout << "computed_gap: " << computed_gap << std::endl;
   RealT gap_diff = std::abs( plane.m_gap - computed_gap );
   EXPECT_LE( gap_diff, 1.e-6 );
 }
@@ -654,12 +655,12 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3 )
   }
 
   // Debug
-  for ( int i = 0; i < numVerts; ++i ) {
-    std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
-  }
-  for ( int i = numVerts; i < lengthNodalData; ++i ) {
-    std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
-  }
+  //for ( int i = 0; i < numVerts; ++i ) {
+  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
+  //}
+  //for ( int i = numVerts; i < lengthNodalData; ++i ) {
+  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
+  //}
 
   // register contact mesh
   tribol::IndexT mesh_id = 0;
@@ -682,22 +683,22 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3 )
   auto& comp_geom = couplingScheme->getCompGeom();
   auto& plane = comp_geom.getCommonPlane( 0 );
 
-  std::cout << "overlap area: " << plane.m_area << std::endl;
-  ;
+  //std::cout << "overlap area: " << plane.m_area << std::endl;
+  
 
-  std::cout << "num_poly_vert: " << plane.m_numPolyVert << std::endl;
+  //std::cout << "num_poly_vert: " << plane.m_numPolyVert << std::endl;
 
-  std::cout << "plane.m_gap: " << plane.m_gap << std::endl;
+  //std::cout << "plane.m_gap: " << plane.m_gap << std::endl;
 
   RealT h = 0.25 / std::cos( fortyfive );
   RealT h_bar = h * std::cos( 0.5 * fortyfive );
   RealT A = h_bar * 0.5;
-  std::cout << "A: " << A << std::endl;
+  //std::cout << "A: " << A << std::endl;
   RealT area_diff = std::abs( A - plane.m_area );
   EXPECT_LE( area_diff, 1.e-8 );
 
   RealT computed_gap = -h_bar * std::tan( 0.5 * fortyfive );
-  std::cout << "computed_gap: " << computed_gap << std::endl;
+  //std::cout << "computed_gap: " << computed_gap << std::endl;
   RealT gap_diff = std::abs( plane.m_gap - computed_gap );
   EXPECT_LE( gap_diff, 1.e-6 );
 }
@@ -780,12 +781,12 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_4 )
   }
 
   // Debug
-  for ( int i = 0; i < numVerts; ++i ) {
-    std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
-  }
-  for ( int i = numVerts; i < lengthNodalData; ++i ) {
-    std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
-  }
+  //for ( int i = 0; i < numVerts; ++i ) {
+  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
+  //}
+  //for ( int i = numVerts; i < lengthNodalData; ++i ) {
+  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
+  //}
 
   // register contact mesh
   tribol::IndexT mesh_id = 0;
@@ -808,12 +809,12 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_4 )
   auto& comp_geom = couplingScheme->getCompGeom();
   auto& plane = comp_geom.getCommonPlane( 0 );
 
-  std::cout << "overlap area: " << plane.m_area << std::endl;
-  ;
+  //std::cout << "overlap area: " << plane.m_area << std::endl;
+  
 
-  std::cout << "num_poly_vert: " << plane.m_numPolyVert << std::endl;
+  //std::cout << "num_poly_vert: " << plane.m_numPolyVert << std::endl;
 
-  std::cout << "plane.m_gap: " << plane.m_gap << std::endl;
+  //std::cout << "plane.m_gap: " << plane.m_gap << std::endl;
 
   RealT h = 0.25;                        // height of initial interpen before face rotation
   RealT h_bar = h / std::cos( thirty );  // "height" of interpen after rotation
@@ -825,9 +826,9 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_4 )
   RealT A_bar_bar = h_bar_bar * w_bar;  // area of triangular interpen on common plane
 
   RealT computed_gap = -2 * ( 0.33333 * h_bar_bar ) * std::tan( thirty );
-  std::cout << "computed_gap: " << computed_gap << std::endl;
+  //std::cout << "computed_gap: " << computed_gap << std::endl;
 
-  std::cout << "computed overlap area: " << A_bar_bar << std::endl;
+  //std::cout << "computed overlap area: " << A_bar_bar << std::endl;
 
   RealT area_diff = std::abs( A_bar_bar - plane.m_area );
   EXPECT_LE( area_diff, 1.e-8 );
@@ -931,12 +932,12 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_5 )
   }
 
   // Debug
-  for ( int i = 0; i < numVerts; ++i ) {
-    std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
-  }
-  for ( int i = numVerts; i < lengthNodalData; ++i ) {
-    std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
-  }
+  //for ( int i = 0; i < numVerts; ++i ) {
+  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
+  //}
+  //for ( int i = numVerts; i < lengthNodalData; ++i ) {
+  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
+  //}
 
   // register contact mesh
   tribol::IndexT mesh_id = 0;
@@ -959,14 +960,14 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_5 )
   auto& comp_geom = couplingScheme->getCompGeom();
   auto& plane = comp_geom.getCommonPlane( 0 );
 
-  std::cout << "face 2 area: " << face_2_area << std::endl;
+  //std::cout << "face 2 area: " << face_2_area << std::endl;
 
-  std::cout << "overlap area: " << plane.m_area << std::endl;
-  ;
+  //std::cout << "overlap area: " << plane.m_area << std::endl;
+  
 
-  std::cout << "num_poly_vert: " << plane.m_numPolyVert << std::endl;
+  //std::cout << "num_poly_vert: " << plane.m_numPolyVert << std::endl;
 
-  std::cout << "plane.m_gap: " << plane.m_gap << std::endl;
+  //std::cout << "plane.m_gap: " << plane.m_gap << std::endl;
 
   // see interpen_check_4 for meaning of these variables. These now define
   // the triangular portion of face 2 that is NOT interpenetrating face 1
@@ -982,7 +983,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_5 )
   RealT projection_ratio = A_bar_bar / A_bar;
   RealT A_bar_bar_new = projection_ratio * ( face_2_area - A_bar );
 
-  std::cout << "computed overlap area: " << A_bar_bar_new << std::endl;
+  //std::cout << "computed overlap area: " << A_bar_bar_new << std::endl;
 
   // the gap is not computed easily so use the area and the number
   // of overlap vertices as a stand in for correct computations as

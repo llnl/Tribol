@@ -824,7 +824,7 @@ TRIBOL_HOST_DEVICE void ContactPlanePair::getFace1Coords( RealT* x1 ) const
     x1[2] = m_x1_prime[1];
     x1[3] = m_y1_prime[1];
   } else {
-    for ( int i = 0; i < max_face_nodes; ++i ) {
+    for ( int i = 0; i < 4; ++i ) {
       x1[m_dim * i] = m_x1_prime[i];
       x1[m_dim * i + 1] = m_y1_prime[i];
       x1[m_dim * i + 2] = m_z1_prime[i];
@@ -841,7 +841,7 @@ TRIBOL_HOST_DEVICE void ContactPlanePair::getFace2Coords( RealT* x2 ) const
     x2[2] = m_x2_prime[1];
     x2[3] = m_y2_prime[1];
   } else {
-    for ( int i = 0; i < max_face_nodes; ++i ) {
+    for ( int i = 0; i < 4; ++i ) {
       x2[m_dim * i] = m_x2_prime[i];
       x2[m_dim * i + 1] = m_y2_prime[i];
       x2[m_dim * i + 2] = m_z2_prime[i];
@@ -886,6 +886,13 @@ TRIBOL_HOST_DEVICE void ContactPlanePair::getFace2ProjectedCoords( RealT* x2_pro
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ContactPlanePair::getOverlapVertices( RealT* overlap_verts ) const
 {
+#ifdef TRIBOL_USE_HOST
+  SLIC_ERROR_IF( m_dim == 2 && m_numPolyVert != 2, "ContactPlanePair::getOverlapVertices(): " <<
+                 "number of overlap vertices not equal to 2" );
+  SLIC_ERROR_IF( m_dim == 3 && m_numPolyVert < 3, "ContactPlanePair::getOverlapVertices(): " <<
+                 "number of overlap vertices < 3" );
+#endif
+
   for ( int i = 0; i < m_numPolyVert; ++i ) {
     overlap_verts[m_dim * i] = m_polyX[i];
     overlap_verts[m_dim * i + 1] = m_polyY[i];
@@ -1890,6 +1897,8 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap2D( const MeshDa
 
     if ( m_area < m_areaMin ) {
       return NO_OVERLAP;
+    } else {
+      this->m_numPolyVert = 2;
     }
 
     this->resetPlanePointAndCentroidGap( m1, m2 );
@@ -1925,6 +1934,8 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap2D( const MeshDa
 
     if ( m_area < m_areaMin ) {
       return NO_OVERLAP;
+    } else {
+      this->m_numPolyVert = 2;
     }
 
     this->resetPlanePointAndCentroidGap( m1, m2 );
