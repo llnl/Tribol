@@ -1396,7 +1396,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
   // allocate arrays to store the vertices for clipped or full face used either
   // in the interpen or full overlap calc
   constexpr int max_nodes_per_clipped_face = 5;  // TODO confirm that this number may be 5
-  RealT cfx1[max_nodes_per_clipped_face];             // cfx = clipped face x-coordinate
+  RealT cfx1[max_nodes_per_clipped_face];        // cfx = clipped face x-coordinate
   RealT cfy1[max_nodes_per_clipped_face];
   RealT cfz1[max_nodes_per_clipped_face];
 
