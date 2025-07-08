@@ -887,10 +887,10 @@ TRIBOL_HOST_DEVICE void ContactPlanePair::getFace2ProjectedCoords( RealT* x2_pro
 TRIBOL_HOST_DEVICE void ContactPlanePair::getOverlapVertices( RealT* overlap_verts ) const
 {
 #ifdef TRIBOL_USE_HOST
-  SLIC_ERROR_IF( m_dim == 2 && m_numPolyVert != 2, "ContactPlanePair::getOverlapVertices(): " <<
-                 "number of overlap vertices not equal to 2" );
-  SLIC_ERROR_IF( m_dim == 3 && m_numPolyVert < 3, "ContactPlanePair::getOverlapVertices(): " <<
-                 "number of overlap vertices < 3" );
+  SLIC_ERROR_IF( m_dim == 2 && m_numPolyVert != 2, "ContactPlanePair::getOverlapVertices(): "
+                                                       << "number of overlap vertices not equal to 2" );
+  SLIC_ERROR_IF( m_dim == 3 && m_numPolyVert < 3, "ContactPlanePair::getOverlapVertices(): "
+                                                      << "number of overlap vertices < 3" );
 #endif
 
   for ( int i = 0; i < m_numPolyVert; ++i ) {

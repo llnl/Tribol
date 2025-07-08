@@ -238,11 +238,11 @@ class CouplingScheme {
   CouplingScheme& operator=( CouplingScheme&& other ) = default;
 
   /**
-   * @brief Returns the problem communicator 
+   * @brief Returns the problem communicator
    *
    * @return problem mpi communicator
    */
-   CommT getProblemComm() { return m_problem_comm; }
+  CommT getProblemComm() { return m_problem_comm; }
 
   /**
    * @brief Get the ID of the coupling scheme
