@@ -324,7 +324,7 @@ int InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA,
       }
 
       if ( !in_quad ) {
-        std::cout << "Inv Iso mapped point: " << xi[0] << ", " << xi[1] << std::endl;
+        //std::cout << "Inv Iso mapped point: " << xi[0] << ", " << xi[1] << std::endl;
         err = 1;
       }
 #if !defined( TRIBOL_USE_ENZYME )
