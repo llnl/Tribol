@@ -437,8 +437,6 @@ TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( const RealT* const pX, const Real
                  "GlobalTo2DLocalCoords: local coordinate pointers are null" );
 #endif
 
-  // TODO SRW restore the scaling of the input points. This is fine as long as it is consistent
-
   // loop over projected nodes
   for ( int i = 0; i < size; ++i ) {
     // compute the vector between the point on the plane and the input plane point
@@ -450,8 +448,6 @@ TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( const RealT* const pX, const Real
     // in the plane so the out-of-plane component should be zero.
     pLX[i] = vX * e1X + vY * e1Y + vZ * e1Z;  // projection onto e1
     pLY[i] = vX * e2X + vY * e2Y + vZ * e2Z;  // projection onto e2
-    // pLX[i] = pX[i] * e1X + pY[i] * e1Y + pZ[i] * e1Z;  // projection onto e1
-    // pLY[i] = pX[i] * e2X + pY[i] * e2Y + pZ[i] * e2Z;  // projection onto e2
   }
 
   return;
@@ -681,7 +677,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   }
 
   // maximum number of vertices for potentially clipped four node quads (for use later)
-  constexpr int max_nodes_per_element = 5;  // TODO SRW switched to 5 as max interpen clipped polygon can have 5
+  constexpr int max_nodes_per_element = 5;
 
   // allocate an array to hold ids of interior vertices
   int interiorVAId[max_nodes_per_element];
@@ -716,8 +712,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     }
   }
 
-  // std::cout << "Intersection2DPolygon() numVAI: " << numVAI << std::endl;
-
   // check to see if ALL of A is in B; then A is the overlapping polygon.
   if ( numVAI == numVertexA ) {
     numPolyVert = numVertexA;
@@ -748,8 +742,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       ++numVBI;
     }
   }
-
-  // std::cout << "Intersection2DPolygon() numVBI: " << numVBI << std::endl;
 
   // check to see if ALL of B is in A; then B is the overlapping polygon.
   if ( numVBI == numVertexB ) {
@@ -855,13 +847,10 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
           return DEGENERATE_OVERLAP;
         }
 
-        // std::cout << "Before SegmentIntersection2D()" << std::endl;
         intersect[interId] =
             SegmentIntersection2D( xA[vAID1], yA[vAID1], xA[vAID2], yA[vAID2], xB[vBID1], yB[vBID1], xB[vBID2],
                                    yB[vBID2], interior, interX[interId], interY[interId], dupl, posTol );
-        // std::cout << "After SegmentIntersection2D()" << std::endl;
         if ( intersect[interId] ) {
-          // std::cout << "Found an intersection point" << std::endl;
           edgeATemp[interId] = ia;
           edgeBTemp[interId] = jb;
           ++interId;  // increment intersection counter for segments that intersect
@@ -871,12 +860,10 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   }    // end loop over B segments
 
   // count the number of segment-segment intersections
-  // std::cout << "Before counting number of segment-segment intersections" << std::endl;
   int numSegInter = 0;
   for ( int i = 0; i < interId; ++i ) {
     if ( intersect[i] ) ++numSegInter;
   }
-  // std::cout << "After counting number of segment-segment intersections" << std::endl;
 
   // add check for case where there are no interior vertices or
   // intersection vertices
@@ -884,9 +871,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     area = 0.0;
     return NO_OVERLAP;
   }
-
-  // std::cout << "Intersection2DPolygon(), numSegInter, numVBI, numVAI: " << numSegInter << ", " << numVBI << ", " <<
-  // numVAI << std::endl;
 
   // allocate temp intersection polygon vertex coordinate arrays to consist
   // of segment-segment intersections and number of interior points in A and B
@@ -897,8 +881,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   RealT polyXTemp[max_identified_points];
   RealT polyYTemp[max_identified_points];
   OverlapVertexType vertTypeTemp[max_identified_points];
-
-  // std::cout << "Before filling polyXtemp" << std::endl;
 
   // fill polyXTemp and polyYTemp with the intersection points
   int k = 0;
@@ -912,7 +894,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       ++k;
     }
   }
-  // std::cout << "After filling polyXtemp" << std::endl;
 
   // fill polyX and polyY with the vertices on A that lie in B
   for ( int i = 0; i < numVertexA; ++i ) {
@@ -934,7 +915,6 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       ++k;
     }
   }
-  // std::cout << "After fulling polyXtemp with vertices on A that lie in B" << std::endl;
 
   for ( int i = 0; i < numVertexB; ++i ) {
     if ( interiorVBId[i] != -1 ) {
@@ -955,18 +935,14 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       ++k;
     }
   }
-  // std::cout << "After filling polyXtemp with vertices in B that lie in A" << std::endl;
 
   // reorder the unordered vertices and check segment length against tolerance for edge collapse.
   // Only do this for overlaps with 3 or more vertices. We skip any overlap that degenerates to <3 vertices
   if ( numPolyVert > 2 ) {
     // order the unordered vertices (in counter clockwise fashion)
     int vertIdx[max_intersections];
-    // std::cout << "before calling initIntArray with size: " << max_intersections  << std::endl;
     initIntArray( vertIdx, max_intersections, 0 );
-    // std::cout << "Before calling PolyReorder with " << numPolyVert << "polygon vertices" << std::endl;
     PolyReorder( &polyXTemp[0], &polyYTemp[0], &vertIdx[0], numPolyVert );
-    // std::cout << "after calling polyreorder" << std::endl;
 
     OverlapVertexType vertTypeTemp2[max_identified_points];
     int edgeATemp2[max_intersections];

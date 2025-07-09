@@ -1795,8 +1795,6 @@ CouplingScheme::Viewer::Viewer( CouplingScheme& cs )
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE ContactPlanePair& CouplingScheme::Viewer::getContactPlanePair( IndexT id ) const
 {
-  // TODO SRW static_cast here or at the time this function is called, because you know what
-  // type of plane pair it should be
   switch ( m_contact_method ) {
     case COMMON_PLANE: {
       return m_cg_pairs.getCommonPlane( id );
