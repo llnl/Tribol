@@ -34,7 +34,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Created interfaces for nodal normal and element normal calculations, to simplify addition of new normal computation
   techniques.
 - Introduced `TRIBOL_DEBUG` compiler definition for guarding code that should only be compiled in debug builds
-
+- Added a lot more 2D and 3D computational geometry unit tests covering more face/edge configurations
 
 ### Changed
 - Return negative timestep vote for non-null meshes with null velocity pointers.
@@ -67,7 +67,13 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - `tribol::registerCouplingScheme()` now contains an optional `tribol::ExecutionMode` argument
   that provides a suggested programming model to execute parallel loops.
 - `tribol::LoggingLevel`s renamed from `TRIBOL_<NAME>` to `<NAME>`
-  
+- Changed the computational geometry to work within a class interface that confines method specific
+  comp geom calculations for ease of use/implementation.  
+- All computational geometry for contact planes now uses the average face plane coordinates of each face.
+- Split the computational geometry test into two files, one for 2D and one for 3D.
+- Removed gap separation check that excluded face pairs in favor of including everything within the binning
+  proximity.
+
 ### Fixed
 - Allow null velocity and response pointers for various use cases
 - Tolerancing bug that produced negative timestep estimates in the presence of numerically
@@ -76,6 +82,11 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   instead of common plane normal.
 - Fixed bug in 2D segment-segment overlap calculation on common plane. The current configuration edge lengths
   were being used instead of the projected edges leading to false positives.
+- Fixed various CG bugs including one that always switched interpen overlaps to full overlaps.
+- Fixed a 3D overlap calculation indexing bug that would result in erroneous face-pair exclusion.
+- Increased maximum number of contacting face nodes to 5 to account for interpenetrating configurations
+- Increased maximum number of overlap vertices to 10 based on max clipped face nodes of 5.
+- Moved MPI communicator off Parameters struct and onto the Coupling scheme to fix fmt/slic-macros compiler errors.
 
 ## [Version 0.1.0] - Release date 2023-04-21
 
