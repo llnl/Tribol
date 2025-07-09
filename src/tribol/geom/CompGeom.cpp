@@ -391,7 +391,7 @@ TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::computeOverlap3D( const RealT*
 
   // assuming each face's vertices are ordered WRT that face's outward unit normal,
   // reorder face 2 vertices to be consistent with face 1. DO NOT CALL POLYREORDER()
-  // to do this. 
+  // to do this.
   ElemReverse( X2, Y2, m2.numberOfNodesPerElement() );
 
   // compute intersection polygon and area.
@@ -1435,7 +1435,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
     // portion that is in separation. Ideally, we account for this separated portion for the timestep
     // vote by computing a full overlap area.
     if ( overlap_error == NO_OVERLAP ) {
-      m_fullOverlap = true; 
+      m_fullOverlap = true;
     } else if ( overlap_error != NO_FACE_GEOM_ERROR ) {
       return overlap_error;
     }

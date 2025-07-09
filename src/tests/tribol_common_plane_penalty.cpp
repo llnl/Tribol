@@ -155,7 +155,7 @@ void checkForceSense( tribol::CouplingScheme const* cs, bool isTied = false )
       for ( tribol::IndexT a = 0; a < mesh.numberOfNodesPerElement(); ++a ) {
         int node_id = mesh.getGlobalNodeId( kf, a );
         RealT force_mag = 0.;
-        if (mesh1.spatialDimension() == 3) {
+        if ( mesh1.spatialDimension() == 3 ) {
           force_mag = tribol::dotProd( mesh.getResponse()[0][node_id], mesh.getResponse()[1][node_id],
                                        mesh.getResponse()[2][node_id], mesh.getElementNormals()[0][kf],
                                        mesh.getElementNormals()[1][kf], mesh.getElementNormals()[2][kf] );
@@ -591,11 +591,10 @@ TEST_F( CommonPlaneTest, common_plane_2d_interpen_check )
   RealT half_theta = 0.5 * theta;
   RealT computed_area = hyp * std::cos( half_theta );
   RealT half_area = 0.5 * computed_area;
-  RealT half_gap = half_area * std::tan(half_theta);
+  RealT half_gap = half_area * std::tan( half_theta );
   RealT gap = -2. * half_gap;
   compareGaps( couplingScheme, gap, 1.E-8, "kinematic_penetration" );
 }
-
 
 int main( int argc, char* argv[] )
 {
