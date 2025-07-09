@@ -201,8 +201,6 @@ TEST_F( CompGeomTest, common_plane_coincident_vertices_full_overlap )
 
   auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
   RealT diff = std::abs( ( xy2[2] - xy2[0] ) - plane.m_area );
-  // std::cout << "coincident vertices full overlap gap: " << plane.m_gap << std::endl;
-  // std::cout << "in contact" << plane.m_inContact << std::endl;
   EXPECT_LT( diff, 1.e-10 );
 
   // const auto mesh1 = const_cast<tribol::CouplingScheme*>( couplingScheme )->getMesh1().getView();
@@ -284,8 +282,6 @@ TEST_F( CompGeomTest, common_plane_conforming_separation )
 
   auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
   RealT gap_diff = std::abs( 0.1 - plane.m_gap );
-  // std::cout << "conforming separation gap: " << plane.m_gap << std::endl;
-  // std::cout << "in contact" << plane.m_inContact << std::endl;
   EXPECT_LT( gap_diff, 1.e-10 );
   // const auto mesh1 = const_cast<tribol::CouplingScheme*>( couplingScheme )->getMesh1().getView();
   // const auto mesh2 = const_cast<tribol::CouplingScheme*>( couplingScheme )->getMesh2().getView();
@@ -447,11 +443,6 @@ TEST_F( CompGeomTest, common_plane_nearly_coincident_vertex_positive_overlap )
   // std::cout << "force1 node 0: " << mesh2.getResponse()[0][0] << ", " << mesh2.getResponse()[1][0] << std::endl;
   // std::cout << "force1 node 1: " << mesh2.getResponse()[0][1] << ", " << mesh2.getResponse()[1][1] << std::endl;
 
-  // std::cout << "f1 node 0: " << fx1[0] << ", " << fy1[0] << std::endl;
-  // std::cout << "f1 node 1: " << fx1[1] << ", " << fy1[1] << std::endl;
-
-  // std::cout << "f2 node 0: " << fx2[0] << ", " << fy2[0] << std::endl;
-  // std::cout << "f2 node 1: " << fx2[1] << ", " << fy2[1] << std::endl;
 }
 
 TEST_F( CompGeomTest, common_plane_interpen_check_1 )
@@ -539,8 +530,6 @@ TEST_F( CompGeomTest, common_plane_interpen_check_1 )
   RealT computed_area = 0.5 * length * std::cos( half_theta );
   RealT diff = std::abs( computed_area - plane.m_area );
   EXPECT_LT( diff, 1.e-10 );
-  // std::cout << "contact interpen 1 gap: " << plane.m_gap << std::endl;
-  // std::cout << "in contact" << plane.m_inContact << std::endl;
   // const auto mesh1 = const_cast<tribol::CouplingScheme*>( couplingScheme )->getMesh1().getView();
   // const auto mesh2 = const_cast<tribol::CouplingScheme*>( couplingScheme )->getMesh2().getView();
   // std::cout << "force1 node 0: " << mesh1.getResponse()[0][0] << ", " << mesh1.getResponse()[1][0] << std::endl;
@@ -637,8 +626,6 @@ TEST_F( CompGeomTest, common_plane_interpen_check_2 )
   RealT diff = std::abs( computed_area - plane.m_area );
   EXPECT_LT( diff, 1.e-10 );
 
-  // std::cout << "contact interpen 2 gap: " << plane.m_gap << std::endl;
-  // std::cout << "in contact" << plane.m_inContact << std::endl;
   // const auto mesh1 = const_cast<tribol::CouplingScheme*>( couplingScheme )->getMesh1().getView();
   // const auto mesh2 = const_cast<tribol::CouplingScheme*>( couplingScheme )->getMesh2().getView();
   // std::cout << "force1 node 0: " << mesh1.getResponse()[0][0] << ", " << mesh1.getResponse()[1][0] << std::endl;

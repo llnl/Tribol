@@ -154,9 +154,15 @@ void checkForceSense( tribol::CouplingScheme const* cs, bool isTied = false )
     for ( tribol::IndexT kf = 0; kf < mesh.numberOfElements(); ++kf ) {
       for ( tribol::IndexT a = 0; a < mesh.numberOfNodesPerElement(); ++a ) {
         int node_id = mesh.getGlobalNodeId( kf, a );
-        RealT force_mag = tribol::dotProd( mesh.getResponse()[0][node_id], mesh.getResponse()[1][node_id],
-                                           mesh.getResponse()[2][node_id], mesh.getElementNormals()[0][kf],
-                                           mesh.getElementNormals()[1][kf], mesh.getElementNormals()[2][kf] );
+        RealT force_mag = 0.;
+        if (mesh1.spatialDimension() == 3) {
+          force_mag = tribol::dotProd( mesh.getResponse()[0][node_id], mesh.getResponse()[1][node_id],
+                                       mesh.getResponse()[2][node_id], mesh.getElementNormals()[0][kf],
+                                       mesh.getElementNormals()[1][kf], mesh.getElementNormals()[2][kf] );
+        } else {
+          force_mag = tribol::dotProd( mesh.getResponse()[0][node_id], mesh.getResponse()[1][node_id], 0.,
+                                       mesh.getElementNormals()[0][kf], mesh.getElementNormals()[1][kf], 0. );
+        }
         if ( !isTied ) {
           // <= catches interpenetration AND separation
           EXPECT_LE( force_mag, 0. );
@@ -501,6 +507,97 @@ TEST_F( CommonPlaneTest, tied_contact_check )
 
   tribol::finalize();
 }
+
+TEST_F( CommonPlaneTest, common_plane_2d_interpen_check )
+{
+  // This test checks the forces and gaps of an interpen overlap configuration in 2D
+  //                 *
+  //              *
+  //    --------o----
+  //          *
+  //        *
+  //
+  constexpr int dim = 2;
+  constexpr int numVerts = 2;
+  RealT xy1[dim * numVerts];
+  RealT xy2[dim * numVerts];
+
+  xy1[0] = 1.0;
+  xy1[1] = 0.0;
+  xy1[2] = 0.0;
+  xy1[3] = 0.0;
+
+  xy2[0] = 0.;
+  xy2[1] = -0.1;
+  xy2[2] = 1.;
+  xy2[3] = 0.1;
+
+  RealT x1[numVerts];
+  RealT y1[numVerts];
+  RealT x2[numVerts];
+  RealT y2[numVerts];
+
+  RealT x_shift = 0.25;
+  for ( int i = 0; i < numVerts; ++i ) {
+    x1[i] = xy1[i * dim];
+    y1[i] = xy1[i * dim + 1];
+    x2[i] = xy2[i * dim] + x_shift;
+    y2[i] = xy2[i * dim + 1];
+  }
+
+  tribol::IndexT conn1[2] = { 0, 1 };
+  tribol::IndexT conn2[2] = { 0, 1 };
+
+  tribol::registerMesh( 0, 1, 2, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
+                        tribol::MemorySpace::Host );
+  tribol::registerMesh( 1, 1, 2, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
+                        tribol::MemorySpace::Host );
+
+  RealT fx1[2] = { 0., 0. };
+  RealT fy1[2] = { 0., 0. };
+  RealT fx2[2] = { 0., 0. };
+  RealT fy2[2] = { 0., 0. };
+
+  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], nullptr );
+  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], nullptr );
+
+  tribol::setKinematicConstantPenalty( 0, 1. );
+  tribol::setKinematicConstantPenalty( 1, 1. );
+
+  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                                  tribol::ExecutionMode::Sequential );
+
+  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
+  tribol::setContactAreaFrac( 0, 1.e-12 );
+
+  RealT dt = 1.;
+  int update_err = tribol::update( 1, 1., dt );
+
+  EXPECT_EQ( update_err, 0 );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
+
+  auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
+
+  checkForceSense( couplingScheme );
+
+  RealT length = 0.75 - ( xy2[0] + x_shift );
+  RealT height = 0. - xy2[1];
+  RealT theta = std::atan( height / length );
+  RealT hyp = length / std::cos( theta );
+  RealT half_theta = 0.5 * theta;
+  RealT computed_area = hyp * std::cos( half_theta );
+  RealT half_area = 0.5 * computed_area;
+  RealT half_gap = half_area * std::tan(half_theta);
+  RealT gap = -2. * half_gap;
+  compareGaps( couplingScheme, gap, 1.E-8, "kinematic_penetration" );
+}
+
 
 int main( int argc, char* argv[] )
 {
