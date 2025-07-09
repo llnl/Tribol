@@ -165,7 +165,7 @@ void checkForceSense( tribol::CouplingScheme const* cs, bool isTied = false )
         }
         if ( !isTied ) {
           // <= catches interpenetration AND separation
-          EXPECT_LE( force_mag, 0. );
+          EXPECT_LE( force_mag, -1.e-6 );
         } else {
           // no-op, TIED_NORMAL is a special case where we support
           // all force 'senses' (i.e. tension and compression)
@@ -581,8 +581,6 @@ TEST_F( CommonPlaneTest, common_plane_2d_interpen_check )
   tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
 
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
-
-  auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
 
   checkForceSense( couplingScheme );
 
