@@ -19,38 +19,93 @@
 
 namespace tribol {
 
+/** @brief A class to represent fixed memory capacity that cannot be changed at runtime.
+ *
+ *  @tparam N The fixed capacity size.
+ */
 template <size_t N>
 class FixedCapacity {
  public:
   using size_type = size_t;
 
+  /** @brief Constructor that asserts the capacity is equal to N.
+   *
+   *  @param capacity The capacity to set, which must be equal to N.
+   */
   TRIBOL_HOST_DEVICE FixedCapacity( [[maybe_unused]] size_type capacity ) { assert( capacity == N ); }
+
+  /** @brief The capacity of the memory, which is fixed at compile time.
+   *
+   *  @return The fixed capacity size N.
+   */
   TRIBOL_HOST_DEVICE constexpr size_type capacity() const { return N; }
 
+  /** @brief Sets the capacity, which is a no-op for fixed capacity.
+   *
+   *  @param capacity The capacity to set, which must be equal to N.
+   *  @return The fixed capacity size N.
+   */
   TRIBOL_HOST_DEVICE constexpr size_type setCapacity( size_type ) const { return N; }
 
+  /** @brief Checks if the capacity can be changed at runtime.
+   *
+   *  @return A type indicating that the capacity is fixed and cannot be changed at runtime.
+   */
   using capacity_at_runtime_ = std::false_type;
 };
 
+/** @brief A class to represent runtime capacity that can be changed at runtime.
+ *
+ *  This class allows the capacity to be set at runtime, and it provides methods
+ *  to get and set the capacity.
+ */
 class RuntimeCapacity {
  public:
   using size_type = size_t;
 
+  /** @brief Constructor that initializes the capacity.
+   *
+   *  @param capacity The initial capacity to set.
+   */
   TRIBOL_HOST_DEVICE RuntimeCapacity( size_type capacity ) : capacity_( capacity ) {}
+
+  /** @brief The capacity of the memory.
+   *
+   *  @return The current capacity.
+   */
   TRIBOL_HOST_DEVICE size_type capacity() const { return capacity_; }
 
+  /** @brief Sets the capacity to a new value.
+   *
+   *  @param capacity The new capacity to set.
+   *  @return The new capacity.
+   */
   TRIBOL_HOST_DEVICE size_type setCapacity( size_type capacity )
   {
     capacity_ = capacity;
     return capacity;
   }
 
+  /** @brief Checks if the capacity can be changed at runtime.
+   *
+   *  @return A type indicating that the capacity can be changed at runtime.
+   */
   using capacity_at_runtime_ = std::true_type;
 
  private:
+  /**
+   * @brief The current capacity of the memory.
+   */
   size_type capacity_;
 };
 
+/** @brief A class to represent a memory capacity that is equal to its size.
+ *
+ *  This class inherits from a given capacity type and ensures that the size
+ *  is always equal to the capacity.
+ *
+ *  @tparam Capacity The base capacity type to inherit from.
+ */
 template <typename Capacity>
 class SizeEqCapacity : public Capacity {
  public:
@@ -64,6 +119,8 @@ class SizeEqCapacity : public Capacity {
   }
   TRIBOL_HOST_DEVICE SizeEqCapacity( size_type size ) : Capacity( size ) {}
 
+  TRIBOL_HOST_DEVICE SizeEqCapacity( Capacity&& capacity ) : Capacity( std::move( capacity ) ) {}
+
   TRIBOL_HOST_DEVICE constexpr size_type size() const { return capacity(); }
 
   using Capacity::capacity;
@@ -74,7 +131,7 @@ class SizeEqCapacity : public Capacity {
 
   TRIBOL_HOST_DEVICE constexpr bool sizeAtCapacity() const { return true; }
 
-  constexpr static bool fixed_size_ = true;
+  using fixed_size_ = std::true_type;
 };
 
 template <typename Capacity>
@@ -84,16 +141,41 @@ class SizeLECapacity : public Capacity {
 
   using capacity_type = Capacity;
 
+  /** @brief Constructor that initializes the size and capacity.
+   *
+   *  @param size The initial size to set.
+   *  @param capacity The initial capacity to set, which must be greater than or equal to size.
+   */
   TRIBOL_HOST_DEVICE SizeLECapacity( size_type size, size_type capacity )
       : Capacity( capacity >= size ? capacity : size ), size_( size )
   {
     assert( size <= capacity );
   }
 
+  /** @brief Constructor that initializes the size and takes ownership of an existing capacity.
+   *
+   *  @param size The initial size to set.
+   *  @param capacity The initial capacity to move, which must be greater than or equal to size.
+   */
+  TRIBOL_HOST_DEVICE SizeLECapacity( size_type size, Capacity&& capacity )
+      : Capacity( std::move( capacity ) ), size_( size )
+  {
+    assert( size <= capacity() );
+  }
+
+  /** @brief The size of the memory.
+   *
+   *  @return The current size.
+   */
   TRIBOL_HOST_DEVICE size_type size() const { return size_; }
 
   using Capacity::capacity;
 
+  /** @brief Sets the size of the memory (ensuring it does not exceed capacity).
+   *
+   *  @param size The new size to set.
+   *  @return The new size, which is guaranteed to be less than or equal to the capacity.
+   */
   TRIBOL_HOST_DEVICE size_type setSize( size_type size )
   {
     assert( size <= capacity() );
@@ -105,9 +187,13 @@ class SizeLECapacity : public Capacity {
     return size_;
   }
 
+  /** @brief Checks if the current size of the memory equals its capacity
+   *
+   *  @return True if the size is at capacity, false otherwise.
+   */
   TRIBOL_HOST_DEVICE bool sizeAtCapacity() const { return size() >= capacity(); }
 
-  constexpr static bool fixed_size_ = false;
+  using fixed_size_ = std::false_type;
 
  private:
   size_type size_;
@@ -124,13 +210,17 @@ class ContiguousMemory : public SizeAndCapacity {
   using pointer = T*;
   using const_pointer = const T*;
 
+  TRIBOL_HOST_DEVICE ContiguousMemory( pointer data, SizeAndCapacity&& size_and_capacity )
+      : SizeAndCapacity( std::move( size_and_capacity ) ), data_( data )
+  {
+  }
   TRIBOL_HOST_DEVICE ContiguousMemory( pointer data, size_type size, size_type capacity )
-      : SizeAndCapacity( size, capacity ), data_( data )
+      : ContiguousMemory( data, SizeAndCapacity( size, capacity ) )
   {
   }
   TRIBOL_HOST_DEVICE ContiguousMemory( pointer data, size_type size, size_type capacity,
                                        [[maybe_unused]] size_type stride )
-      : SizeAndCapacity( size, capacity ), data_( data )
+      : ContiguousMemory( data, SizeAndCapacity( size, capacity ) )
   {
     assert( stride == 1 );
   }
@@ -173,10 +263,14 @@ class FixedStride : public SizeAndCapacity {
   using pointer = T*;
   using const_pointer = const T*;
 
-  TRIBOL_HOST_DEVICE FixedStride( pointer data, size_type size, size_type capacity, size_type stride )
-      : SizeAndCapacity( size, capacity ), data_( data ), stride_( stride )
+  TRIBOL_HOST_DEVICE FixedStride( pointer data, size_type stride, SizeAndCapacity&& size_and_capacity )
+      : SizeAndCapacity( std::move( size_and_capacity ) ), data_( data ), stride_( stride )
   {
     assert( stride > 0 );
+  }
+  TRIBOL_HOST_DEVICE FixedStride( pointer data, size_type size, size_type capacity, size_type stride )
+      : FixedStride( data, stride, SizeAndCapacity( size, capacity ) )
+  {
   }
 
   template <typename Ptr>
@@ -264,8 +358,11 @@ class Memory : public Accessor {
   using accessor_type = Accessor;
   using view_type = Memory<Accessor>;
 
+  TRIBOL_HOST_DEVICE Memory( Accessor&& accessor ) : Accessor( std::move( accessor ) )  // move constructor
+  {
+  }
   TRIBOL_HOST_DEVICE Memory( pointer data, size_type size, size_type capacity, size_type stride )
-      : Accessor( data, size, capacity, stride )
+      : Memory( Accessor( data, size, capacity, stride ) )
   {
   }
   TRIBOL_HOST_DEVICE Memory( pointer data, size_type size, size_type stride = 1 ) : Memory( data, size, size, stride )
@@ -500,20 +597,20 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
   {
   }
 
-  TRIBOL_NVCC_EXEC_CHECK_DISABLE
-  TRIBOL_HOST_DEVICE AllocatedMemory( BaseClass&& memory, Allocator&& allocator = Allocator() )
-      : BaseClass( std::move( memory ) ), allocator_( std::move( allocator ) )
-  {
-  }
+  // TRIBOL_NVCC_EXEC_CHECK_DISABLE
+  // TRIBOL_HOST_DEVICE AllocatedMemory( BaseClass&& memory, Allocator&& allocator = Allocator() )
+  //     : BaseClass( std::move( memory ) ), allocator_( std::move( allocator ) )
+  // {
+  // }
 
-  TRIBOL_NVCC_EXEC_CHECK_DISABLE
-  TRIBOL_HOST_DEVICE AllocatedMemory( const AllocatedMemory& src, AllocatedMemory&& dst )
-      : BaseClass( dst.allocator_.allocate( 0 ), 0, 0, 1 )
-  {
-    assert( src.size() == dst.size() );
-    ( *this ) = std::move( dst );
-    allocator_.uninitialized_copy( src.data_, src.data_ + src.size(), data_ );
-  }
+  // TRIBOL_NVCC_EXEC_CHECK_DISABLE
+  // TRIBOL_HOST_DEVICE AllocatedMemory( const AllocatedMemory& src, AllocatedMemory&& dst )
+  //     : BaseClass( dst.allocator_.allocate( 0 ), 0, 0, 1 )
+  // {
+  //   assert( src.size() == dst.size() );
+  //   ( *this ) = std::move( dst );
+  //   allocator_.uninitialized_copy( src.data_, src.data_ + src.size(), data_ );
+  // }
 
   TRIBOL_NVCC_EXEC_CHECK_DISABLE
   TRIBOL_HOST_DEVICE ~AllocatedMemory() { allocator_.deallocate( data_, capacity() ); }
@@ -532,7 +629,7 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
   TRIBOL_HOST_DEVICE AllocatedMemory( AllocatedMemory&& other )
       : BaseClass( other.data_, other.size(), other.capacity(), other.stride() ), allocator_{ other.allocator_ }
   {
-    if constexpr ( !fixed_size_ ) {
+    if constexpr ( !fixed_size_::value ) {
       other.setSize( 0 );
     }
     if constexpr ( capacity_at_runtime_::value ) {
@@ -565,7 +662,7 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
     if ( this != &other ) {
       BaseClass::operator=( std::move( other ) );
       allocator_ = other.allocator_;
-      if constexpr ( !fixed_size_ ) {
+      if constexpr ( !fixed_size_::value ) {
         other.setSize( 0 );
       }
       if constexpr ( capacity_at_runtime_::value ) {
@@ -584,8 +681,8 @@ class AllocatedMemory : public Memory<ContiguousMemory<T, SizeVsCapacity>> {
   using BaseClass::capacity;
   using BaseClass::size;
 
-  using BaseClass::fixed_size_;
   using typename BaseClass::capacity_at_runtime_;
+  using typename BaseClass::fixed_size_;
 
   constexpr static bool initialized_ = false;
 

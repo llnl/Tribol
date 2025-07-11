@@ -6,8 +6,11 @@
 #ifndef SRC_TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_
 #define SRC_TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_
 
+#include <axom/core/execution/execution_space.hpp>
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
+#include "tribol/search/PairIterator.hpp"
 
 namespace tribol {
 
@@ -32,6 +35,33 @@ class SearchBase;
 TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, const MeshData::Viewer& mesh1,
                                     const MeshData::Viewer& mesh2, ContactMode mode, bool auto_contact_check,
                                     RealT element_radius_multiplier );
+
+class CartesianProduct {
+ public:
+  using pair_iterator = AllPairIterator;
+
+  CartesianProduct( const MeshData& mesh1, const MeshData& mesh2, const Parameters& );
+  pair_iterator getPairCandidates();
+
+ private:
+  const MeshData& mesh1_;
+  const MeshData& mesh2_;
+};
+
+template <int Dim>
+class BVHSearch {
+ public:
+  using pair_iterator = ListIterator;
+  // using bvh_type = axom::spin::BVH < Dim, axom::e>
+
+  BVHSearch( const MeshData& mesh1, const MeshData& mesh2, const Parameters& params );
+  pair_iterator getPairCandidates();
+
+ private:
+  Array<size_t> m_candidate_offsets;
+  Array<size_t> m_candidate_counts;
+  Array<size_t> m_candidates;
+};
 
 /*!
  * \class InterfacePairFinder

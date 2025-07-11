@@ -59,6 +59,8 @@ class ArrayBase {
   TRIBOL_HOST_DEVICE value_type& operator[]( size_type i ) { return memory_.at( i ); }
   TRIBOL_HOST_DEVICE const value_type& operator[]( size_type i ) const { return memory_.at( i ); }
 
+  TRIBOL_HOST_DEVICE constexpr size_type size() const { return memory_.size(); }
+
   using iterator_type = typename MemoryT::iterator_type;
   using const_iterator_type = typename MemoryT::const_iterator_type;
 
@@ -101,8 +103,9 @@ class BoundedArray : public ArrayBase<MemoryT> {
   using value_type = T;
   using BaseClass = ArrayBase<MemoryT>;
   using typename BaseClass::size_type;
+  using view_type = ArrayBase<Memory<typename MemoryT::accessor_type>>;
 
-  static_assert( MemoryT::fixed_size_ == false, "BoundedArray must be used with non-fixed size memory" );
+  static_assert( MemoryT::fixed_size_::value == false, "BoundedArray must be used with non-fixed size memory" );
   static_assert( std::is_same<typename MemoryT::value_type, value_type>::value,
                  "BoundedArray must be used with same type as memory" );
 
@@ -111,7 +114,7 @@ class BoundedArray : public ArrayBase<MemoryT> {
 
   using BaseClass::at;
 
-  TRIBOL_HOST_DEVICE constexpr size_type size() const { return memory_.size(); }
+  using BaseClass::size;
   TRIBOL_HOST_DEVICE constexpr size_type capacity() const { return memory_.capacity(); }
 
   template <typename... Args>
@@ -144,6 +147,9 @@ class BoundedArray : public ArrayBase<MemoryT> {
     }
     memory_.setSize( new_size );
   }
+
+  TRIBOL_HOST_DEVICE view_type view() { return view_type( memory_ ); }
+  TRIBOL_HOST_DEVICE const view_type view() const { return view_type( memory_ ); }
 
  protected:
   template <typename MemoryT2>

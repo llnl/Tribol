@@ -138,6 +138,13 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
 
 }  // end geomFilter()
 
+CartesianProduct::CartesianProduct( const MeshData& mesh1, const MeshData& mesh2, const Parameters& )
+    : mesh1_( mesh1 ), mesh2_( mesh2 )
+{
+}
+
+AllPairIterator CartesianProduct::getPairCandidates() { return AllPairIterator( mesh1_, mesh2_ ); }
+
 /*!
  * \brief Base class to compute the candidate pairs for a coupling scheme
  *
