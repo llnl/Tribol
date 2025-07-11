@@ -1572,8 +1572,8 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoi
   RealT xC, yC, zC;
   RealT* z = nullptr;
   constexpr int max_nodes_per_overlap = 10 + 2 * 4;
-  constexpr int max_nodes = 4;
-  RealT proj[max_nodes];
+  constexpr int max_proj_nodes = 8;
+  RealT proj[max_proj_nodes];
 
   int local_newIDs[max_nodes_per_overlap];
   if ( !newIDs ) {
