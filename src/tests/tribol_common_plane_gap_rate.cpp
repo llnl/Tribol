@@ -42,7 +42,7 @@ void compareGaps( tribol::CouplingScheme const* cs, RealT gap, const RealT tol, 
   const auto cs_view = const_cast<tribol::CouplingScheme*>( cs )->getView();
 
   for ( tribol::IndexT cpID = 0; cpID < numPairs; ++cpID ) {
-    auto& plane = static_cast<const tribol::CommonPlanePair&>( cs->getContactPlanePair( cpID ) );
+    auto& plane = cs->getCompGeom().getCommonPlane( cpID );
 
     RealT my_gap = 0.;
     if ( std::strcmp( gapType, "kinematic_penetration" ) == 0 || std::strcmp( gapType, "kinematic_separation" ) == 0 ) {
@@ -117,7 +117,7 @@ void checkPressures( tribol::CouplingScheme const* cs, RealT pressure, const Rea
   tribol::IndexT const numPairs = cs->getNumActivePairs();
 
   for ( tribol::IndexT cpID = 0; cpID < numPairs; ++cpID ) {
-    auto& plane = static_cast<const tribol::CommonPlanePair&>( cs->getContactPlanePair( cpID ) );
+    auto& plane = cs->getCompGeom().getCommonPlane( cpID );
 
     RealT my_pressure = 0.;
     if ( std::strcmp( pressureType, "rate" ) == 0 ) {

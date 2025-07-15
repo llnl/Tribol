@@ -199,7 +199,7 @@ TEST_F( CompGeomTest, common_plane_coincident_vertices_full_overlap )
 
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
-  auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
+  auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
   RealT diff = std::abs( ( xy2[2] - xy2[0] ) - plane.m_area );
   EXPECT_LT( diff, 1.e-10 );
 }
@@ -272,7 +272,7 @@ TEST_F( CompGeomTest, common_plane_conforming_separation )
 
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
-  auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
+  auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
   RealT gap_diff = std::abs( 0.1 - plane.m_gap );
   EXPECT_LT( gap_diff, 1.e-10 );
 }
@@ -417,7 +417,7 @@ TEST_F( CompGeomTest, common_plane_nearly_coincident_vertex_positive_overlap )
 
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
-  auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
+  auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
   RealT diff = std::abs( ( xy2[2] - xy1[2] ) - plane.m_area );
   EXPECT_LT( diff, 1.e-10 );
 }
@@ -497,7 +497,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_1 )
 
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
-  auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
+  auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
 
   EXPECT_EQ( plane.m_fullOverlap, false );
   RealT length = xy1[0] - xy1[2];
@@ -584,7 +584,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_2 )
 
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
-  auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
+  auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
 
   EXPECT_EQ( plane.m_fullOverlap, false );
   RealT length = 0.75 - ( xy2[0] + x_shift );
@@ -673,7 +673,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_3 )
 
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
-  auto& plane = static_cast<const tribol::CommonPlanePair&>( couplingScheme->getContactPlanePair( 0 ) );
+  auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
 
   EXPECT_EQ( plane.m_fullOverlap, true );
   RealT h = 0.5 / std::cos( 45 * M_PI / 180 );
