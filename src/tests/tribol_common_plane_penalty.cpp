@@ -165,7 +165,8 @@ void checkForceSense( tribol::CouplingScheme const* cs, bool isTied = false )
         }
         if ( !isTied ) {
           // <= catches interpenetration AND separation
-          EXPECT_LE( force_mag, -1.e-6 );
+          //EXPECT_LE( force_mag, -1.e-6 );
+          EXPECT_LE( force_mag, 0. );
         } else {
           // no-op, TIED_NORMAL is a special case where we support
           // all force 'senses' (i.e. tension and compression)

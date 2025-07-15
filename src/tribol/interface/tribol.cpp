@@ -12,7 +12,7 @@
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 
-#include "tribol/geom/CompGeom.hpp"
+//#include "tribol/geom/CompGeom.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 
 #include "tribol/physics/Physics.hpp"

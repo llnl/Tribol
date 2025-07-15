@@ -14,7 +14,6 @@
 #include "tribol/utils/Math.hpp"
 #include "tribol/search/InterfacePairFinder.hpp"
 #include "tribol/common/Parameters.hpp"
-#include "tribol/geom/CompGeom.hpp"
 #include "tribol/physics/Physics.hpp"
 #include "tribol/integ/FE.hpp"
 

@@ -195,7 +195,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::checkFacePair( const MeshData:
   // These are the 'prime' coordinates and ensure that our cg is working on
   // truly planar 4 node quadrilaterals
 
-  // get face normmals
+  // get face normals
   constexpr int max_dim = 3;
   RealT fn1[max_dim], fn2[max_dim];
   mesh1.getFaceNormal( element_id1, fn1 );
