@@ -606,7 +606,6 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
 {
   auto cs_view = cs->getView();
   auto& cg_view = cs_view.getCompGeomView();
-  // auto planes_view = cg_view.getMortarPlanePairs();
   int num_active_pairs = cs->getNumActivePairs();
   auto& lm_opts = cs->getEnforcementOptions().lm_implicit_options;
   if ( lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
