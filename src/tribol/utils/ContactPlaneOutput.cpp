@@ -129,7 +129,7 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
         if ( cp_base.m_fullOverlap ) {
           numPoints += mesh1.numberOfNodesPerElement() + mesh2.numberOfNodesPerElement();
         } else {
-          auto& cp = static_cast<const CommonPlanePair&>( couplingScheme->getContactPlanePair( i ) );
+          auto& cp = couplingScheme->getCompGeom().getCommonPlane( i );
           numPoints += cp.m_numInterpenPoly1Vert + cp.m_numInterpenPoly2Vert;
         }
       }  // end i-loop over contact planes
@@ -144,7 +144,7 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
         if ( !cp_base.m_fullOverlap ) {  // note this is just for common plane pairs, but mortar will always have full
                                          // overlap
           // get common plane derived type for interpen prints
-          auto& cp = static_cast<const CommonPlanePair&>( couplingScheme->getContactPlanePair( i ) );
+          auto& cp = couplingScheme->getCompGeom().getCommonPlane( i );
           for ( int j = 0; j < cp.m_numInterpenPoly1Vert; ++j ) {
             axom::fmt::print( faces, "{} {} {}\n", cp.m_interpenG1X[j], cp.m_interpenG1Y[j],
                               dim == 3 ? cp.m_interpenG1Z[j] : 0. );
@@ -188,7 +188,7 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
           nNodes1 = mesh1.numberOfNodesPerElement();
           nNodes2 = mesh2.numberOfNodesPerElement();
         } else {
-          auto& cp = static_cast<const CommonPlanePair&>( couplingScheme->getContactPlanePair( i ) );
+          auto& cp = couplingScheme->getCompGeom().getCommonPlane( i );
           nNodes1 = cp.m_numInterpenPoly1Vert;
           nNodes2 = cp.m_numInterpenPoly2Vert;
         }
@@ -319,7 +319,7 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
           axom::fmt::print( overlap, "SCALARS {} {}\n", "overlap_pressure", "float" );
           axom::fmt::print( overlap, "LOOKUP_TABLE default\n" );
           for ( int i = 0; i < cpSize; ++i ) {
-            auto& cp = static_cast<const CommonPlanePair&>( couplingScheme->getContactPlanePair( i ) );
+            auto& cp = couplingScheme->getCompGeom().getCommonPlane( i );
             axom::fmt::print( overlap, "{} ", cp.m_pressure );
           }
           overlap << std::endl;
