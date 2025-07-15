@@ -748,14 +748,6 @@ class CompGeom {
     }
 
     /**
-     * @brief Get the array view of common plane pairs
-     *
-     * @return ArrayViewT of common plane pairs
-     */
-    // TRIBOL_HOST_DEVICE const ArrayViewT<CommonPlanePair>& getCommonPlanePairs() const { return m_common_plane_pairs;
-    // }
-
-    /**
      * @brief Get a single common plane from the array view
      *
      * @return common plane object
@@ -763,29 +755,11 @@ class CompGeom {
     TRIBOL_HOST_DEVICE CommonPlanePair& getCommonPlane( int id ) const { return m_common_plane_pairs[id]; }
 
     /**
-     * @brief Get the array view of mortar plane pairs
-     *
-     * @return ArrayViewT of mortar plane pairs
-     */
-    // TRIBOL_HOST_DEVICE const ArrayViewT<MortarPlanePair>& getMortarPlanePairs() const { return m_mortar_plane_pairs;
-    // }
-
-    /**
      * @brief Get a single mortar plane from the array view
      *
      * @return mortar plane object
      */
     TRIBOL_HOST_DEVICE MortarPlanePair& getMortarPlane( int id ) const { return m_mortar_plane_pairs[id]; }
-
-    /**
-     * @brief Get the array view of aligned mortar plane pairs
-     *
-     * @return ArrayViewT of aligned mortar plane pairs
-     */
-    // TRIBOL_HOST_DEVICE const ArrayViewT<AlignedMortarPlanePair>& getAlignedMortarPlanePairs() const
-    //{
-    //   return m_aligned_mortar_plane_pairs;
-    // }
 
     /**
      * @brief Get a single aligned mortar plane from the array view
