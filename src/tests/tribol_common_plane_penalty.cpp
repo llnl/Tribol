@@ -518,33 +518,23 @@ TEST_F( CommonPlaneTest, common_plane_2d_interpen_check )
   //          *
   //        *
   //
-  constexpr int dim = 2;
   constexpr int numVerts = 2;
-  RealT xy1[dim * numVerts];
-  RealT xy2[dim * numVerts];
-
-  xy1[0] = 1.0;
-  xy1[1] = 0.0;
-  xy1[2] = 0.0;
-  xy1[3] = 0.0;
-
-  xy2[0] = 0.;
-  xy2[1] = -0.1;
-  xy2[2] = 1.;
-  xy2[3] = 0.1;
 
   RealT x1[numVerts];
   RealT y1[numVerts];
   RealT x2[numVerts];
   RealT y2[numVerts];
 
+  x1[0] = 1.0;
+  x1[1] = 0.0;
+  y1[0] = 0.0;
+  y1[1] = 0.0;
+
   RealT x_shift = 0.25;
-  for ( int i = 0; i < numVerts; ++i ) {
-    x1[i] = xy1[i * dim];
-    y1[i] = xy1[i * dim + 1];
-    x2[i] = xy2[i * dim] + x_shift;
-    y2[i] = xy2[i * dim + 1];
-  }
+  x2[0] = 0. + x_shift;
+  x2[1] = 1. + x_shift;
+  y2[0] = -0.1;
+  y2[1] = 0.1;
 
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
@@ -585,8 +575,8 @@ TEST_F( CommonPlaneTest, common_plane_2d_interpen_check )
 
   checkForceSense( couplingScheme );
 
-  RealT length = 0.75 - ( xy2[0] + x_shift );
-  RealT height = 0. - xy2[1];
+  RealT length = 0.75 - x2[0];
+  RealT height = 0. - y2[0];
   RealT theta = std::atan( height / length );
   RealT hyp = length / std::cos( theta );
   RealT half_theta = 0.5 * theta;
