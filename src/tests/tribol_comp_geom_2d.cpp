@@ -44,15 +44,12 @@ using RealT = tribol::RealT;
  */
 class CompGeomTest : public ::testing::Test {
  public:
-  tribol::TestMesh m_mesh;
 
  protected:
   void SetUp() override {}
 
   void TearDown() override
   {
-    // call clear() on mesh object to be safe
-    this->m_mesh.clear();
   }
 
  protected:
