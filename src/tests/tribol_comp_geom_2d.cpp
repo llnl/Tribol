@@ -791,6 +791,10 @@ TEST_F( CompGeomTest, 2d_projections_1 )
   tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
 
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
+
+  auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
+
+  EXPECT_EQ( plane.m_fullOverlap, true );
 }
 
 TEST_F( CompGeomTest, 2d_projections_2 )
