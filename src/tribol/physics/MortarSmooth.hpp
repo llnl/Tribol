@@ -180,11 +180,11 @@ RealT compute_modified_gap(RealT gap, RealT* nA, RealT* nB);
 
 RealT compute_contact_potential(RealT gap, RealT k1, RealT k2);
 
-void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, RealT k2, int N, RealT* energy);
+void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, RealT k2, int N, RealT lenA, RealT lenB, RealT* energy);
 
-void ComputeSmoothMortarForceEnzyme(double* coords, double del, double k1, double k2, int N, double* dE_dX);
+void ComputeSmoothMortarForceEnzyme(RealT* coords, RealT del, RealT k1, RealT k2, int N, RealT lenA, RealT lenB, RealT* force);
 
-void ComputeSmoothMortarJacobianEnzyme(double* coords, double del, double k1, double k2, int N, double* d2E_d2X);
+void ComputeSmoothMortarJacobianEnzyme(RealT* coords, RealT del, RealT k1, RealT k2, int N, RealT lenA, RealT lenB, RealT* force, RealT* jacobian);
 
 
 
@@ -193,13 +193,13 @@ void ComputeSmoothMortarJacobianEnzyme(double* coords, double del, double k1, do
 //                                      const RealT* x2, RealT* f2, int size2 );
 
 
-void ComputeSmoothMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* g1, int size1,
-                                     const RealT* x2, RealT* f2, int size2 );
+// void ComputeSmoothMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* g1, int size1,
+//                                      const RealT* x2, RealT* f2, int size2 );
 
-void ComputeSmoothMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* df1dx1,
-                                        RealT* df1dx2, RealT* df1dn1, RealT* df1dp1, RealT* g1, RealT* dg1dx1, RealT* dg1dx2,
-                                        RealT* dg1dn1, int size1, const RealT* x2, RealT* f2, RealT* df2dx1, RealT* df2dx2,
-                                        RealT* df2dn1, RealT* df2dp1, int size2 );
+// void ComputeSmoothMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* df1dx1,
+//                                         RealT* df1dx2, RealT* df1dn1, RealT* df1dp1, RealT* g1, RealT* dg1dx1, RealT* dg1dx2,
+//                                         RealT* dg1dn1, int size1, const RealT* x2, RealT* f2, RealT* df2dx1, RealT* df2dx2,
+//                                         RealT* df2dn1, RealT* df2dp1, int size2 );
 #endif
 
 }  // namespace tribol
