@@ -1,0 +1,65 @@
+##############################################################################
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
+# other Tribol Project Developers. See the top-level COPYRIGHT file for details.
+#
+# SPDX-License-Identifier: (MIT)
+##############################################################################
+
+####
+# This is the shared configuration of jobs for toss4
+.on_toss4:
+  variables:
+    ALLOC_OPTIONS: "--reservation=ci --exclusive=user --deadline=now+1hour"
+    ALLOC_COMMAND: "salloc ${ALLOC_OPTIONS} -N ${ALLOC_NODES} -t ${ALLOC_TIME}"
+  tags:
+    - shell
+    - ruby
+  rules:
+    - if: '$CI_COMMIT_BRANCH =~ /_qnone/ || $ON_TOSS4 == "OFF"' #run except if ...
+      when: never
+    - when: on_success
+  before_script:
+    - module load python/3.9.12
+
+
+####
+# Templates
+.src_build_on_toss4:
+  extends: [.src_build_script, .on_toss4]
+  needs: []
+
+
+####
+# Build jobs
+toss4-clang_14_0_6-src:
+  variables:
+    COMPILER: "clang@14.0.6"
+    HOST_CONFIG: "ruby-toss_4_x86_64_ib-${COMPILER}.cmake"
+    ALLOC_NODES: "1"
+    ALLOC_TIME: "20"
+  extends: .src_build_on_toss4
+
+toss4-gcc_10_3_1-src:
+  variables:
+    COMPILER: "gcc@10.3.1"
+    HOST_CONFIG: "ruby-toss_4_x86_64_ib-${COMPILER}.cmake"
+    ALLOC_NODES: "1"
+    ALLOC_TIME: "20"
+  extends: .src_build_on_toss4
+
+ruby-clang_16_0_6-src:
+  variables:
+    COMPILER: "clang@16.0.6"
+    HOST_CONFIG: "ruby-toss_4_x86_64_ib-${COMPILER}.cmake"
+    ALLOC_NODES: "1"
+    ALLOC_TIME: "20"
+  extends: .src_build_on_toss4
+
+ruby-clang_16_0_6-src-release:
+  variables:
+    COMPILER: "clang@16.0.6"
+    HOST_CONFIG: "ruby-toss_4_x86_64_ib-${COMPILER}.cmake"
+    EXTRA_CMAKE_OPTIONS: "-DCMAKE_BUILD_TYPE=Release"
+    ALLOC_NODES: "1"
+    ALLOC_TIME: "20"
+  extends: .src_build_on_toss4

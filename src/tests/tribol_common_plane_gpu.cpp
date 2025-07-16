@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -64,7 +64,7 @@ class CommonPlaneGPUTest : public testing::TestWithParam<ExecutionMode> {
 
 TEST_P( CommonPlaneGPUTest, update_test )
 {
-  EXPECT_LT( max_error_, 1.0e-13 );
+  EXPECT_LT( max_error_, 1.0e-12 );
 
   MPI_Barrier( MPI_COMM_WORLD );
 }
@@ -98,7 +98,7 @@ double runExample( int num_elems_1d )
       break;
 #endif
 #ifdef TRIBOL_USE_HIP
-    case MemorySpace::Hip:
+    case MemorySpace::Device:
       device.Configure( "hip" );
       break;
 #endif

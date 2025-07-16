@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -15,12 +15,12 @@
 
 namespace redecomp {
 
-RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, PartitionType method )
-    : RedecompMesh( parent, DefaultGhostLength( parent ), method )
+RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, PartitionType method, int n_ranks )
+    : RedecompMesh( parent, DefaultGhostLength( parent ), method, n_ranks )
 {
 }
 
-RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length, PartitionType method )
+RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length, PartitionType method, int n_ranks )
     : parent_{ parent }, mpi_{ parent.GetComm() }
 {
   // build partitioner
@@ -54,20 +54,30 @@ RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length, Pa
       SLIC_ERROR_ROOT( "Only 2D and 3D meshes are supported." );
   }
 
-  // preclude degenerate case where num elements/2 < num ranks
-  // factor of 2 on num elements are due to elements being paired for contact
-  auto n_parts = std::min( parent.GetNRanks(), ( static_cast<int>( parent.GetGlobalNE() ) + 1 ) / 2 );
-  p2r_elems_ = BuildP2RElementList( *partitioner, n_parts, ghost_length );
+  SLIC_ERROR_ROOT_IF( n_ranks < 0, "Number of ranks must be non-negative." );
+  SLIC_ERROR_ROOT_IF( n_ranks > parent.GetNRanks(),
+                      "Number of ranks must be less than or equal to the number of MPI ranks." );
+  auto parent_n_els = static_cast<int>( parent.GetGlobalNE() );
+  if ( n_ranks == 0 ) {
+    // preclude degenerate case where num elements/2 < num ranks
+    // factor of 2 on num elements are due to elements being paired for contact
+    // additional factor of 10 targets about 10 pairs/rank on a conforming mesh (and more than 10 on a non-conforming
+    // mesh)
+    n_ranks = std::max( std::min( parent.GetNRanks(), ( parent_n_els + 1 ) / 2 / 10 ), 1 );
+  }
+  SLIC_DEBUG_ROOT( axom::fmt::format( "Repartitioning {} elements onto {} ranks...", parent_n_els, n_ranks ) );
+  // p2r = parent to redecomp
+  p2r_elems_ = BuildP2RElementList( *partitioner, n_ranks, ghost_length );
   BuildRedecomp();
 }
 
-RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, std::unique_ptr<const Partitioner> partitioner )
-    : RedecompMesh( parent, DefaultGhostLength( parent ), std::move( partitioner ) )
+RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, std::unique_ptr<const Partitioner> partitioner, int n_ranks )
+    : RedecompMesh( parent, DefaultGhostLength( parent ), std::move( partitioner ), n_ranks )
 {
 }
 
 RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length,
-                            std::unique_ptr<const Partitioner> partitioner )
+                            std::unique_ptr<const Partitioner> partitioner, int n_ranks )
     : parent_{ parent }, mpi_{ parent.GetComm() }
 {
   // check partitioner
@@ -77,8 +87,7 @@ RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length,
       SLIC_ERROR_ROOT_IF( partitioner2d == nullptr, "Partitioner must be Partitioner2D." );
       auto partition_elems2d = dynamic_cast<const PartitionElements2D*>( partitioner2d->getPartitionEntity() );
       SLIC_ERROR_ROOT_IF( partition_elems2d == nullptr,
-                          "Redecomp requires the PartitionEntity "
-                          "to be PartitionElements." );
+                          "Redecomp requires the PartitionEntity to be PartitionElements." );
       break;
     }
     case 3: {
@@ -86,18 +95,27 @@ RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length,
       SLIC_ERROR_ROOT_IF( partitioner3d == nullptr, "Partitioner must be Partitioner3D." );
       auto partition_elems3d = dynamic_cast<const PartitionElements3D*>( partitioner3d->getPartitionEntity() );
       SLIC_ERROR_ROOT_IF( partition_elems3d == nullptr,
-                          "Redecomp requires the PartitionEntity "
-                          "to be PartitionElements." );
+                          "Redecomp requires the PartitionEntity to be PartitionElements." );
       break;
     }
     default:
       SLIC_ERROR_ROOT( "Only 2D and 3D meshes are supported." );
   }
 
-  // preclude degenerate case where num elements < num ranks
-  auto n_parts = std::min( parent.GetNRanks(), static_cast<int>( parent.GetGlobalNE() ) );
+  SLIC_ERROR_ROOT_IF( n_ranks < 0, "Number of ranks must be non-negative." );
+  SLIC_ERROR_ROOT_IF( n_ranks > parent.GetNRanks(),
+                      "Number of ranks must be less than or equal to the number of MPI ranks." );
+  auto parent_n_els = static_cast<int>( parent.GetGlobalNE() );
+  if ( n_ranks == 0 ) {
+    // preclude degenerate case where num elements/2 < num ranks
+    // factor of 2 on num elements are due to elements being paired for contact
+    // additional factor of 10 targets about 10 pairs/rank on a conforming mesh (and more than 10 on a non-conforming
+    // mesh)
+    n_ranks = std::max( std::min( parent.GetNRanks(), ( parent_n_els + 1 ) / 2 / 10 ), 1 );
+  }
+  SLIC_DEBUG_ROOT( axom::fmt::format( "Repartitioning {} elements onto {} ranks...", parent_n_els, n_ranks ) );
   // p2r = parent to redecomp
-  p2r_elems_ = BuildP2RElementList( *partitioner, n_parts, ghost_length );
+  p2r_elems_ = BuildP2RElementList( *partitioner, n_ranks, ghost_length );
   BuildRedecomp();
 }
 

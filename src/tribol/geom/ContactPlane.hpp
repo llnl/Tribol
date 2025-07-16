@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -220,10 +220,8 @@ class ContactPlane {
    *
    * \param [in] m1 mesh data viewer for mesh 1
    * \param [in] m2 mesh data viewer for mesh 2
-   * \param [in] scale Scale to help find the centroid-to-face projections
    */
-  TRIBOL_HOST_DEVICE void planePointAndCentroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                                    RealT scale );
+  TRIBOL_HOST_DEVICE void planePointAndCentroidGap( const MeshData::Viewer& m1, const MeshData::Viewer& m2 );
 
   /*!
    * \brief Compute the contact plane integral gap expression

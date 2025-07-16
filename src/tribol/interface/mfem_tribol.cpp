@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -228,9 +228,10 @@ void registerMfemReferenceCoords( IndexT cs_id, const mfem::ParGridFunction& ref
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
-  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
-                      "Coupling scheme does not contain MFEM data. "
-                      "Create the coupling scheme using registerMfemCouplingScheme() to register a velocity." );
+  SLIC_ERROR_ROOT_IF(
+      !cs->hasMfemData(),
+      "Coupling scheme does not contain MFEM data. "
+      "Create the coupling scheme using registerMfemCouplingScheme() to register reference coordinates." );
   cs->getMfemMeshData()->SetParentReferenceCoords( reference_coords );
 }
 
@@ -270,11 +271,10 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
           cs_id ) );
   // creates a block Jacobian on the parent mesh/parent-linked boundary submesh based on the element Jacobians stored in
   // the coupling scheme's method data
-#ifdef TRIBOL_USE_ENZYME
   if ( cs->isEnzymeEnabled() ) {
-    auto dfdx = cs->getMfemJacobianData()->GetMfemBlockJacobianEnzyme( *cs->getMethodData() );
-    auto dfdn = cs->getMfemJacobianData()->GetMfemdfdnJacobianEnzyme( *cs->getdnMethodData() );
-    auto dndx = cs->getMfemJacobianData()->GetMfemdndxJacobianEnzyme( cs->getNodalNormal()->getJacobianData() );
+    auto dfdx = cs->getMfemJacobianData()->GetMfemDfDxFullJacobian( *cs->getMethodData() );
+    auto dfdn = cs->getMfemJacobianData()->GetMfemDfDnJacobian( *cs->getDfDnMethodData() );
+    auto dndx = cs->getMfemJacobianData()->GetMfemDnDxJacobian( *cs->getDnDxMethodData() );
     dfdx->SetBlock( 0, 0,
                     mfem::ParAdd( mfem::ParMult( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 0, 0 ) ),
                                                  &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ),
@@ -285,11 +285,8 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
                                   &static_cast<mfem::HypreParMatrix&>( dfdx->GetBlock( 1, 0 ) ) ) );
     return dfdx;
   } else {
-#endif
     return cs->getMfemJacobianData()->GetMfemBlockJacobian( cs->getMethodData() );
-#ifdef TRIBOL_USE_ENZYME
   }
-#endif
 }
 
 void getMfemGap( IndexT cs_id, mfem::Vector& g )
@@ -333,10 +330,15 @@ void updateMfemParallelDecomposition()
       ArrayT<int> mesh_ids{ 2, 2 };
       mesh_ids[0] = mfem_data->GetMesh1ID();
       mesh_ids[1] = mfem_data->GetMesh2ID();
-      // creates a new redecomp mesh based on updated coordinates and updates
-      // transfer operators and displacement, velocity, and response grid
-      // functions based on new redecomp mesh
-      mfem_data->UpdateMfemMeshData();
+      // NOTE: effective binning proximity must be computed independently here, since, in general,
+      // CouplingScheme::init() hasn't been called yet
+      auto effective_binning_proximity = cs.getParameters().binning_proximity_scale;
+      if ( mfem_data->GetLORFactor() > 1 ) {
+        effective_binning_proximity *= static_cast<RealT>( mfem_data->GetLORFactor() );
+      }
+      // creates a new redecomp mesh based on updated coordinates and updates transfer operators and displacement,
+      // velocity, and response grid functions based on new redecomp mesh
+      mfem_data->UpdateMfemMeshData( effective_binning_proximity );
       auto coord_ptrs = mfem_data->GetRedecompCoordsPtrs();
 
       registerMesh( mesh_ids[0], mfem_data->GetMesh1NE(), mfem_data->GetNV(), mfem_data->GetMesh1Conn(),

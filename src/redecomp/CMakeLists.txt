@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level LICENSE file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -72,4 +72,10 @@ install(TARGETS     redecomp
         EXPORT      tribol-targets
         DESTINATION lib
         )
-        
+
+# Add the TRIBOL_DEBUG compile definition, if non-empty
+if(TRIBOL_DEBUG_DEFINE_STRING)
+  blt_add_target_definitions(TO redecomp SCOPE PUBLIC TARGET_DEFINITIONS "${TRIBOL_DEBUG_DEFINE_STRING}")
+  # Define AXOM_DEBUG for SLIC macros
+  blt_add_target_definitions(TO redecomp SCOPE PUBLIC TARGET_DEFINITIONS "${AXOM_DEBUG_DEFINE_STRING}")
+endif()

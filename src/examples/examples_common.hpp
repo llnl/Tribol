@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -313,7 +313,7 @@ int tribol_register_and_update( tribol::TestMesh& mesh, tribol::ContactMethod me
   //                                           //
   ///////////////////////////////////////////////
   const int csIndex = 0;
-  registerCouplingScheme( csIndex, block1_id, block2_id, tribol::SURFACE_TO_SURFACE, tribol::AUTO, method, model,
+  registerCouplingScheme( csIndex, block1_id, block2_id, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, method, model,
                           enforcement, tribol::BINNING_GRID, tribol::ExecutionMode::Sequential );
 
   //////////////////////////////////////////////////////////

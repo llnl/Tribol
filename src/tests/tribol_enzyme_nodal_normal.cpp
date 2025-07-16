@@ -1,43 +1,50 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
 
 //-----------------------------------------------------------------------------
 //
-// file: tribol_enzyme_jacobian.cpp
+// file: tribol_enzyme_nodal_normal.cpp
 //
 //-----------------------------------------------------------------------------
 
 #include <iostream>
 
-#include "redecomp/common/TypeDefs.hpp"
-#include "tribol/common/Parameters.hpp"
 #include "tribol/config.hpp"
-#include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/physics/Mortar.hpp"
-#include "tribol/interface/tribol.hpp"
-#include "tribol/utils/Algorithm.hpp"
 
 #include "gtest/gtest.h"
 
+#ifdef TRIBOL_USE_UMPIRE
+#include "umpire/ResourceManager.hpp"
+#endif
+
+#include "tribol/mesh/MeshData.hpp"
+#include "tribol/mesh/MethodCouplingData.hpp"
+#include "tribol/geom/NodalNormal.hpp"
+#include "tribol/interface/tribol.hpp"
+
 namespace tribol {
 
-class EnzymeNormalTest : public testing::Test {
+/**
+ * @brief Test fixture for the Enzyme-based derivatives of nodal normal calculations.
+ */
+class EnzymeNodalNormalTest : public testing::Test {
  protected:
   double delta_{ 1.0e-7 };
   void SetUp() override {}
 
   void FDCheck( RealT* x, MeshData& mesh )
   {
-    VertexAvgNormal norm( true );
-    norm.Compute( mesh );
+    EdgeAvgNodalNormal normal_method;
+    MethodData dndx_data;
+    normal_method.Compute( mesh, &dndx_data );
     auto num_dofs = mesh.numberOfNodes() * mesh.spatialDimension();
     mfem::SparseMatrix dndx( num_dofs );
-    auto& dndx_data = norm.getJacobianData();
     // get nonmortar/nonmortar contributions
     auto& elem_Js =
         dndx_data.getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) );
+    // assemble element contributions to a global sparse matrix
     auto num_nodes_per_el = mesh.numberOfNodesPerElement();
     for ( int i{ 0 }; i < mesh.numberOfElements(); ++i ) {
       for ( int d1{ 0 }; d1 < mesh.spatialDimension(); ++d1 ) {
@@ -60,13 +67,13 @@ class EnzymeNormalTest : public testing::Test {
 
     mfem::DenseMatrix dndx_fd( num_dofs );
     auto mesh_view = mesh.getView();
-    norm = VertexAvgNormal( false );
     Array2D<RealT> n_base = mesh_view.getNodalNormals();
     for ( int dx{ 0 }; dx < mesh.spatialDimension(); ++dx ) {
       for ( int nx{ 0 }; nx < mesh.numberOfNodes(); ++nx ) {
         auto x_idx = dx * mesh.numberOfNodes() + nx;
         x[dx * mesh.numberOfNodes() + nx] += delta_;
-        norm.Compute( mesh );
+        // Compute without Jacobian contributions
+        normal_method.Compute( mesh );
         auto local_mesh_view = mesh.getView();
         for ( int dn{ 0 }; dn < mesh.spatialDimension(); ++dn ) {
           for ( int nn{ 0 }; nn < mesh.numberOfNodes(); ++nn ) {
@@ -94,7 +101,7 @@ class EnzymeNormalTest : public testing::Test {
   }
 };
 
-TEST_F( EnzymeNormalTest, TwoElementsFlatNormalJacobian )
+TEST_F( EnzymeNodalNormalTest, TwoElementsFlatNormalJacobian )
 {
   // two elements flat
   double x[18] = { 0.0, 0.5, 1.0, 0.0, 0.5, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
@@ -123,6 +130,10 @@ int main( int argc, char* argv[] )
   MPI_Init( &argc, &argv );
 
   ::testing::InitGoogleTest( &argc, argv );
+
+#ifdef TRIBOL_USE_UMPIRE
+  umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
+#endif
 
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
                                     // exiting main scope

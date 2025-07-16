@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -7,6 +7,7 @@
 
 // Tribol includes
 #include "tribol/common/ExecModel.hpp"
+#include "tribol/geom/ElementNormal.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/utils/ContactPlaneOutput.hpp"
@@ -124,6 +125,12 @@ void CouplingSchemeErrors::printMethodErrors()
     }
     case NULL_NODAL_RESPONSE: {
       SLIC_WARNING_ROOT( "User must call tribol::registerNodalResponse() for each mesh to use this ContactMethod." );
+      break;
+    }
+    case NULL_REFERENCE_COORDS: {
+      SLIC_WARNING_ROOT(
+          "User must call tribol::registerNodalReferenceCoords() for one or both meshes per registered "
+          "ContactMethod." );
       break;
     }
     case NO_METHOD_ERROR: {
@@ -338,7 +345,7 @@ CouplingScheme::CouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, 
   m_couplingSchemeInfo.cs_case_info = NO_CASE_INFO;
   m_couplingSchemeInfo.cs_enforcement_info = NO_ENFORCEMENT_INFO;
 
-  m_loggingLevel = TRIBOL_UNDEFINED;
+  m_loggingLevel = LoggingLevel::UNDEFINED;
 
 }  // end CouplingScheme::CouplingScheme()
 
@@ -420,14 +427,6 @@ bool CouplingScheme::isValidCouplingScheme()
     valid = false;
   }
 
-  if ( !this->isValidEnforcement() ) {
-    this->m_couplingSchemeErrors.printEnforcementErrors();
-    valid = false;
-  } else if ( this->checkEnforcementData() != 0 ) {
-    this->m_couplingSchemeErrors.printEnforcementDataErrors();
-    valid = false;
-  }
-
   switch ( this->checkExecutionModeData() ) {
     case 1:
       this->m_couplingSchemeErrors.printExecutionModeErrors();
@@ -439,6 +438,14 @@ bool CouplingScheme::isValidCouplingScheme()
     default:
       // no info or error messages
       break;
+  }
+
+  if ( !this->isValidEnforcement() ) {
+    this->m_couplingSchemeErrors.printEnforcementErrors();
+    valid = false;
+  } else if ( this->checkEnforcementData() != 0 ) {
+    this->m_couplingSchemeErrors.printEnforcementDataErrors();
+    valid = false;
   }
 
   return valid;
@@ -592,6 +599,13 @@ bool CouplingScheme::isValidMethod()
       if ( this->m_mesh2->numberOfElements() > 0 && !this->m_mesh2->getNodalFields().m_is_nodal_response_set ) {
         this->m_couplingSchemeErrors.cs_method_error = NULL_NODAL_RESPONSE;
         return false;
+      }
+    }
+
+    if ( this->m_contactMethod == SINGLE_MORTAR && this->m_useEnzyme ) {
+      // this is only needed on the nonmortar mesh (def'd as mesh2 for Enzyme mortar method)
+      if ( this->m_mesh2->numberOfElements() > 0 && !this->m_mesh2->hasReferencePosition() ) {
+        this->m_couplingSchemeErrors.cs_method_error = NULL_REFERENCE_COORDS;
       }
     }
   }  // end if-check on non-null meshes
@@ -773,8 +787,8 @@ int CouplingScheme::checkEnforcementData()
         case PENALTY: {
           // check penalty data. Note, this routine is guarded against null-meshes
           PenaltyEnforcementOptions& pen_enfrc_options = this->m_enforcementOptions.penalty_options;
-          if ( this->m_mesh1->checkPenaltyData( pen_enfrc_options ) != 0 ||
-               this->m_mesh2->checkPenaltyData( pen_enfrc_options ) != 0 ) {
+          if ( this->m_mesh1->checkPenaltyData( pen_enfrc_options, this->m_exec_mode ) != 0 ||
+               this->m_mesh2->checkPenaltyData( pen_enfrc_options, this->m_exec_mode ) != 0 ) {
             this->m_couplingSchemeErrors.cs_enforcement_data_error = ERROR_IN_REGISTERED_ENFORCEMENT_DATA;
             err = 1;
           }
@@ -1128,10 +1142,26 @@ bool CouplingScheme::init()
     // set individual coupling scheme logging level
     this->setSlicLoggingLevel();
 
+    // set effective binning proximity, based on binning proximity scale and LOR factor
+    this->m_effective_binning_proximity_scale = this->getParameters().binning_proximity_scale;
+#ifdef BUILD_REDECOMP
+    if ( this->hasMfemData() && this->getMfemMeshData()->GetLORFactor() > 1 ) {
+      this->m_effective_binning_proximity_scale *= static_cast<RealT>( this->getMfemMeshData()->GetLORFactor() );
+    }
+#endif
+
     // compute the face data
-    this->m_mesh1->computeFaceData( this->m_exec_mode );
-    if ( this->m_mesh_id2 != this->m_mesh_id1 ) {
-      this->m_mesh2->computeFaceData( this->m_exec_mode );
+    // different element normals for enzyme + mortar (matching Puso and Laursen)
+    if ( this->isEnzymeEnabled() && this->m_contactMethod == SINGLE_MORTAR ) {
+      this->m_mesh1->computeFaceData( this->m_exec_mode, QuadCentroidNormal() );
+      if ( this->m_mesh_id2 != this->m_mesh_id1 ) {
+        this->m_mesh2->computeFaceData( this->m_exec_mode, QuadCentroidNormal() );
+      }
+    } else {
+      this->m_mesh1->computeFaceData( this->m_exec_mode, PalletAvgNormal() );
+      if ( this->m_mesh_id2 != this->m_mesh_id1 ) {
+        this->m_mesh2->computeFaceData( this->m_exec_mode, PalletAvgNormal() );
+      }
     }
 
     this->allocateMethodData();
@@ -1146,21 +1176,21 @@ bool CouplingScheme::init()
 void CouplingScheme::setSlicLoggingLevel()
 {
   // set slic logging level for coupling schemes that have API modified logging levels
-  if ( this->m_loggingLevel != TRIBOL_UNDEFINED ) {
+  if ( this->m_loggingLevel != LoggingLevel::UNDEFINED ) {
     switch ( this->m_loggingLevel ) {
-      case TRIBOL_DEBUG: {
+      case LoggingLevel::DEBUG: {
         axom::slic::setLoggingMsgLevel( axom::slic::message::Debug );
         break;
       }
-      case TRIBOL_INFO: {
+      case LoggingLevel::INFO: {
         axom::slic::setLoggingMsgLevel( axom::slic::message::Info );
         break;
       }
-      case TRIBOL_WARNING: {
+      case LoggingLevel::WARNING: {
         axom::slic::setLoggingMsgLevel( axom::slic::message::Warning );
         break;
       }
-      case TRIBOL_ERROR: {
+      case LoggingLevel::ERROR: {
         axom::slic::setLoggingMsgLevel( axom::slic::message::Error );
         break;
       }
@@ -1278,8 +1308,10 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
   ArrayT<RealT> dt_temp_data( { dt, dt }, getAllocatorId() );
   ArrayViewT<RealT> dt_temp = dt_temp_data;
   // [0]: exceed_max_gap1, [1]: exceed_max_gap2, [2]: neg_dt_gap_msg, [3]: neg_dt_vel_proj_msg
-  ArrayT<bool> msg_data( { false, false, false, false }, getAllocatorId() );
-  ArrayViewT<bool> msg = msg_data;
+  ArrayT<IndexT> msg_data( { static_cast<IndexT>( false ), static_cast<IndexT>( false ), static_cast<IndexT>( false ),
+                             static_cast<IndexT>( false ) },
+                           getAllocatorId() );
+  ArrayViewT<IndexT> msg = msg_data;
   forAllExec( getExecutionMode(), getNumActivePairs(),
               [cs_view, dim, proj_ratio, msg, dt_temp, dt] TRIBOL_HOST_DEVICE( IndexT i ) {
                 auto& plane = cs_view.getContactPlane( i );
@@ -1455,8 +1487,13 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                   dt1_check1 = ( dt1_vel_check ) ? exceed_max_gap1 : false;
                   dt2_check1 = ( dt2_vel_check ) ? exceed_max_gap2 : false;
 
+#ifdef TRIBOL_USE_RAJA
+                  RAJA::atomicMax<RAJA::auto_atomic>( &msg[0], static_cast<IndexT>( exceed_max_gap1 ) );
+                  RAJA::atomicMax<RAJA::auto_atomic>( &msg[1], static_cast<IndexT>( exceed_max_gap2 ) );
+#else
                   msg[0] = exceed_max_gap1;
                   msg[1] = exceed_max_gap2;
+#endif
 
                   // compute dt for face 1 and 2 based on the velocity and gap projections onto
                   // the face-normals for faces where currect gap exceeds max allowable gap.
@@ -1486,21 +1523,24 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 #ifdef TRIBOL_USE_RAJA
                     RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[0], axom::utilities::min( dt1, 1.e6 ) );
 #else
-            dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(dt1, 1.e6));
+                    dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(dt1, 1.e6));
 #endif
                   }
                   if ( dt2 > 0. ) {
 #ifdef TRIBOL_USE_RAJA
                     RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[0], axom::utilities::min( 1.e6, dt2 ) );
 #else
-            dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(1.e6, dt2));
+                    dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(1.e6, dt2));
 #endif
                   }
 
                   if ( dt1 < 0. || dt2 < 0. ) {
+#ifdef TRIBOL_USE_RAJA
+                    RAJA::atomicMax<RAJA::auto_atomic>( &msg[2], static_cast<IndexT>( true ) );
+#else
                     msg[2] = true;
+#endif
                   }
-
                 }  // end case 1
 
                 ////////////////////////////////////////////////////////////////////////
@@ -1512,16 +1552,29 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                 ////////////////////////////////////////////////////////////////////////
 
                 {
-                  // compute delta between velocity projection of face-projected
-                  // overlap centroid and the OTHER face's face-projected overlap
-                  // centroid
-                  RealT proj_delta_x1 = plane.m_cXf1 + dt * vel_f1[0] - plane.m_cXf2;
-                  RealT proj_delta_y1 = plane.m_cYf1 + dt * vel_f1[1] - plane.m_cYf2;
+                  // compute the delta between the velocity projection of each face-projected
+                  // common plane centroid location
+                  //
+                  // First project each face-projected common plane centroid using linear velocity
+                  // projection as approximation of configuration next cycle
+                  RealT proj_delta_x1 = plane.m_cXf1 + dt * vel_f1[0];
+                  RealT proj_delta_y1 = plane.m_cYf1 + dt * vel_f1[1];
                   RealT proj_delta_z1 = 0.;
 
-                  RealT proj_delta_x2 = plane.m_cXf2 + dt * vel_f2[0] - plane.m_cXf1;
-                  RealT proj_delta_y2 = plane.m_cYf2 + dt * vel_f2[1] - plane.m_cYf1;
+                  RealT proj_delta_x2 = plane.m_cXf2 + dt * vel_f2[0];
+                  RealT proj_delta_y2 = plane.m_cYf2 + dt * vel_f2[1];
                   RealT proj_delta_z2 = 0.;
+
+                  // Second compute the amount of interpenetration as the difference between the two
+                  // velocity projected points
+                  RealT proj_delta_x1_fixed = proj_delta_x1;
+                  RealT proj_delta_y1_fixed = proj_delta_y1;
+
+                  proj_delta_x1 -= proj_delta_x2;
+                  proj_delta_y1 -= proj_delta_y2;
+
+                  proj_delta_x2 -= proj_delta_x1_fixed;
+                  proj_delta_y2 -= proj_delta_y1_fixed;
 
                   // compute the dot product between each face's delta and the OTHER
                   // face's outward unit normal. This is the magnitude of interpenetration
@@ -1532,9 +1585,17 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                   RealT proj_delta_n_2 = proj_delta_x2 * fn1[0] + proj_delta_y2 * fn1[1];
 
                   if ( dim == 3 ) {
-                    proj_delta_z1 = plane.m_cZf1 + dt * vel_f1[2] - plane.m_cZf2;
-                    proj_delta_z2 = plane.m_cZf2 + dt * vel_f2[2] - plane.m_cZf1;
+                    // project the z-component
+                    proj_delta_z1 = plane.m_cZf1 + dt * vel_f1[2];
+                    proj_delta_z2 = plane.m_cZf2 + dt * vel_f2[2];
 
+                    RealT proj_delta_z1_fixed = proj_delta_z1;
+
+                    // compute difference between each projected point
+                    proj_delta_z1 -= proj_delta_z2;
+                    proj_delta_z2 -= proj_delta_z1_fixed;
+
+                    // add the z-component of the projection onto the face normal
                     proj_delta_n_1 += proj_delta_z1 * fn2[2];
                     proj_delta_n_2 += proj_delta_z2 * fn1[2];
                   }
@@ -1582,18 +1643,22 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 #ifdef TRIBOL_USE_RAJA
                     RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[1], axom::utilities::min( dt1, 1.e6 ) );
 #else
-            dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(dt1, 1.e6));
+                    dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(dt1, 1.e6));
 #endif
                   }
                   if ( dt2 > 0. ) {
 #ifdef TRIBOL_USE_RAJA
                     RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[1], axom::utilities::min( 1.e6, dt2 ) );
 #else
-            dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(1.e6, dt2));
+                    dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(1.e6, dt2));
 #endif
                   }
                   if ( dt1 < 0. || dt2 < 0. ) {
+#ifdef TRIBOL_USE_RAJA
+                    RAJA::atomicMax<RAJA::auto_atomic>( &msg[3], static_cast<IndexT>( true ) );
+#else
                     msg[3] = true;
+#endif
                   }
 
                 }  // end check 2
@@ -1601,7 +1666,7 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 
   // print general messages once
   // Can we output this message on root? SRW
-  ArrayT<bool, 1, MemorySpace::Host> msg_host( msg_data );
+  ArrayT<IndexT, 1, MemorySpace::Host> msg_host( msg_data );
   SLIC_DEBUG_IF( msg_host[0] || msg_host[1], "tribol::computeCommonPlaneTimeStep(): "
                                                  << "there are locations where mesh overlap may be too large. "
                                                  << "Cannot provide timestep vote. Reduce timestep and/or increase "
@@ -1695,6 +1760,23 @@ void CouplingScheme::printPairReportingData()
                      << this->m_pairReportingData.numBadOverlaps << " equaling "
                      << this->m_pairReportingData.numBadOverlaps * 100. / getInterfacePairs().size()
                      << "% of total number of binned interface pairs." );
+}
+
+//------------------------------------------------------------------------------
+void CouplingScheme::enableEnzyme( [[maybe_unused]] bool useEnzyme )
+{
+#ifdef TRIBOL_USE_ENZYME
+  this->m_useEnzyme = useEnzyme;
+#else
+  SLIC_WARNING( "CouplingScheme::enableEnzyme(): Tribol is not built with Enzyme. Continuing without Enzyme support." );
+#endif
+}
+
+//------------------------------------------------------------------------------
+void CouplingScheme::createNodalNormalJacobianData()
+{
+  m_dfdnJacobian = std::make_unique<MethodData>();
+  m_dndxJacobian = std::make_unique<MethodData>();
 }
 
 //------------------------------------------------------------------------------

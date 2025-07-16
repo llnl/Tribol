@@ -1,5 +1,5 @@
 ##############################################################################
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -17,7 +17,7 @@ variables:
     # Build source and run unit tests.
     - echo -e "section_start:$(date +%s):src_build_and_unit_test\r\e[0K
       Source Build and Unit Tests ${CI_PROJECT_NAME}"
-    - ${ALLOC_COMMAND} python3 scripts/llnl/build_src.py -v --host-config ${HOST_CONFIG} ${EXTRA_BUILD_OPTIONS}
+    - ${ALLOC_COMMAND} python3 scripts/llnl/build_src.py -v --host-config=${HOST_CONFIG} --extra-cmake-options=${EXTRA_CMAKE_OPTIONS} ${EXTRA_BUILD_OPTIONS}
     - echo -e "section_end:$(date +%s):src_build_and_unit_test\r\e[0K"
   artifacts:
     when: always
@@ -29,8 +29,9 @@ variables:
       - _tribol_build_and_test_*/build-*/junit.xml
 
 include:
-  - local: .gitlab/build_ruby.yml
-  - local: .gitlab/build_lassen.yml
+  - local: .gitlab/build_toss4.yml
+  - local: .gitlab/build_blueos.yml
+  - local: .gitlab/build_toss4_cray.yml
   # ID token requirement for Gitlab 17.0+
   - project: 'lc-templates/id_tokens'
     file: 'id_tokens.yml'

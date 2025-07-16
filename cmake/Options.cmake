@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level LICENSE file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -21,3 +21,12 @@ if(TRIBOL_ENABLE_ASAN)
         message(FATAL_ERROR "ENABLE_ASAN only supports Clang and GCC")
     endif()
 endif()
+
+#--------------------------------------------------------------------------
+# Option to control whether TRIBOL_DEBUG_DEFINE compiler define is enabled
+#
+# Possible values are: "ON", "OFF" and "DEFAULT"
+# By default, TRIBOL_DEBUG is defined in Debug and RelWithDebInfo configurations
+#--------------------------------------------------------------------------
+set(TRIBOL_DEBUG_DEFINE "DEFAULT" CACHE STRING "Controls whether TRIBOL_DEBUG compiler define is enabled")
+set_property(CACHE TRIBOL_DEBUG_DEFINE PROPERTY STRINGS "DEFAULT" "ON" "OFF")

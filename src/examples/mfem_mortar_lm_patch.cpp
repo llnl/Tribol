@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -353,7 +353,7 @@ int main( int argc, char** argv )
   // pointer to the BlockOperator HypreParMatrixs in a 2D array and (2) call
   // mfem::HypreParMatrixFromBlocks() to create the merged, single
   // HypreParMatrix (without blocks).
-  mfem::Array2D<mfem::HypreParMatrix*> hypre_blocks( 2, 2 );
+  mfem::Array2D<const mfem::HypreParMatrix*> hypre_blocks( 2, 2 );
   for ( int i{ 0 }; i < 2; ++i ) {
     for ( int j{ 0 }; j < 2; ++j ) {
       if ( A_blk->GetBlock( i, j ).Height() != 0 && A_blk->GetBlock( i, j ).Width() != 0 ) {

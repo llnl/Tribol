@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -626,13 +626,14 @@ class MfemMeshData {
   std::vector<const RealT*> GetRedecompReferenceCoordsPtrs() const { return reference_coords_->GetRedecompFieldPtrs(); }
 
   /**
-   * @brief Build a new redecomp mesh and update grid functions on the redecomp
-   * mesh
+   * @brief Build a new redecomp mesh and update grid functions on the redecomp mesh
    *
-   * @note This method should be called after the coordinate grid function is
-   * updated.
+   * @param binning_proximity_scale Element length multiplier for coarse binning and proximity detection inclusion. This
+   * is needed to size the ghost element layer in the redecomp mesh.
+   *
+   * @note This method should be called after the coordinate grid function is updated.
    */
-  void UpdateMfemMeshData();
+  void UpdateMfemMeshData( RealT binning_proximity_scale );
 
   /**
    * @brief Get the integer identifier for the first Tribol registered mesh
@@ -1013,9 +1014,22 @@ class MfemMeshData {
   }
 
   /**
-   * @brief Set the number of element subdivisions per dimension on the LOR mesh
+   * @brief Get the LOR factor
    *
-   * @param lor_factor Number of element subdivisions per dimension
+   * @note The LOR factor corresponds to the number of LOR elements per HO element applied to each dimension on the LOR
+   * mesh.
+   *
+   * @return int
+   */
+  int GetLORFactor() const { return lor_factor_; }
+
+  /**
+   * @brief Set the LOR factor
+   *
+   * @note The LOR factor corresponds to the number of LOR elements per HO element applied to each dimension on the LOR
+   * mesh.
+   *
+   * @param lor_factor LOR factor
    */
   void SetLORFactor( int lor_factor );
 
@@ -1033,29 +1047,26 @@ class MfemMeshData {
 
  private:
   /**
-   * @brief Creates and stores data that changes when the RedecompMesh is
-   * updated
+   * @brief Creates and stores data that changes when the RedecompMesh is updated
    */
   struct UpdateData {
     /**
      * @brief Construct a new UpdateData object
      *
      * @param submesh Parent-linked boundary submesh of contact elements
-     * @param lor_mesh LOR mesh of contact elements (if using LOR; nullptr
-     * otherwise)
+     * @param lor_mesh LOR mesh of contact elements (if using LOR; nullptr otherwise)
      * @param parent_fes Vector finite element space on the original parent mesh
-     * @param submesh_gridfn Grid function on the parent-linked boundary submesh
-     * used to temporarily store variables being transferred
-     * @param submesh_lor_xfer Submesh to LOR grid function transfer object (if
-     * using LOR; nullptr otherwise)
-     * @param attributes_1 Set of boundary attributes identifying elements in
-     * the first Tribol registered mesh
-     * @param attributes_2 Set of boundary attributes identifying elements in
-     * the second Tribol registered mesh
+     * @param submesh_gridfn Grid function on the parent-linked boundary submesh used to temporarily store variables
+     * being transferred
+     * @param submesh_lor_xfer Submesh to LOR grid function transfer object (if using LOR; nullptr otherwise)
+     * @param attributes_1 Set of boundary attributes identifying elements in the first Tribol registered mesh
+     * @param attributes_2 Set of boundary attributes identifying elements in the second Tribol registered mesh
+     * @param binning_proximity_scale Element length multiplier for coarse binning and proximity detection inclusion.
+     * This is needed to size the ghost element layer in the redecomp mesh.
      */
     UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh, const mfem::ParFiniteElementSpace& parent_fes,
                 mfem::ParGridFunction& submesh_gridfn, SubmeshLORTransfer* submesh_lor_xfer,
-                const std::set<int>& attributes_1, const std::set<int>& attributes_2 );
+                const std::set<int>& attributes_1, const std::set<int>& attributes_2, RealT binning_proximity_scale );
 
     /**
      * @brief Redecomposed boundary element mesh
@@ -1182,8 +1193,7 @@ class MfemMeshData {
   ParentField coords_;
 
   /**
-   * @brief Contains reference coords grid function and transfer operators if
-   * set; nullptr otherwise
+   * @brief Contains reference coords grid function and transfer operators if set; nullptr otherwise
    */
   std::unique_ptr<ParentField> reference_coords_;
 
@@ -1534,29 +1544,37 @@ class MfemJacobianData {
   void UpdateJacobianXfer();
 
   /**
-   * @brief Returns Jacobian contributions as an mfem::BlockOperator
+   * @brief Returns symmetric, off-diagonal Jacobian contributions as an mfem::BlockOperator
    *
    * @param method_data Method data holding element Jacobians
    * @return std::unique_ptr<mfem::BlockOperator>
    */
   std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobian( const MethodData* method_data ) const;
 
-#ifdef TRIBOL_USE_ENZYME
-
   /**
-   * @brief Returns non-symmetric Enzyme-computed Jacobian contributions as an
+   * @brief Returns full, potentially non-symmetric derivative of the force w.r.t. nodal coordinates as an
    * mfem::BlockOperator
    *
    * @param method_data Method data holding element Jacobians
    * @return std::unique_ptr<mfem::BlockOperator>
    */
-  std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobianEnzyme( const MethodData& method_data ) const;
+  std::unique_ptr<mfem::BlockOperator> GetMfemDfDxFullJacobian( const MethodData& method_data ) const;
 
-  std::unique_ptr<mfem::BlockOperator> GetMfemdfdnJacobianEnzyme( const MethodData& method_data ) const;
+  /**
+   * @brief Returns the derivative of the force w.r.t. the normal direction as an mfem::BlockOperator
+   *
+   * @param method_data Method data holding element Jacobians
+   * @return std::unique_ptr<mfem::BlockOperator>
+   */
+  std::unique_ptr<mfem::BlockOperator> GetMfemDfDnJacobian( const MethodData& method_data ) const;
 
-  std::unique_ptr<mfem::BlockOperator> GetMfemdndxJacobianEnzyme( const MethodData& method_data ) const;
-
-#endif
+  /**
+   * @brief Returns the derivative of the normal direction w.r.t. the nodal coordinates as an mfem::BlockOperator
+   *
+   * @param method_data Method data holding element Jacobians
+   * @return std::unique_ptr<mfem::BlockOperator>
+   */
+  std::unique_ptr<mfem::BlockOperator> GetMfemDnDxJacobian( const MethodData& method_data ) const;
 
  private:
   /**
@@ -1573,10 +1591,18 @@ class MfemJacobianData {
     UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data );
 
     /**
-     * @brief Redecomp to parent-linked boundary submesh transfer operator
+     * @brief Redecomp to parent-linked boundary submesh transfer operator, (displacement, displacement) block
      */
     std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_00_;
+
+    /**
+     * @brief Redecomp to parent-linked boundary submesh transfer operator, (displacement, pressure) block
+     */
     std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_01_;
+
+    /**
+     * @brief Redecomp to parent-linked boundary submesh transfer operator, (pressure, displacement) block
+     */
     std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_10_;
   };
 
@@ -1605,11 +1631,15 @@ class MfemJacobianData {
   const MfemSubmeshData& submesh_data_;
 
   /**
-   * @brief Array of offsets equal to number of displacement and pressure
-   * degrees of freedom
+   * @brief Array of offsets equal to number of displacement and pressure degrees of freedom.  Used in HypreParMatrixes
+   * in this class.
    */
   mfem::Array<int> block_offsets_;
 
+  /**
+   * @brief Array of offsets equal to number of displacement degrees of freedom on the parent mesh. Used in
+   * HypreParMatrixes in this class.
+   */
   mfem::Array<int> disp_offsets_;
 
   /**
@@ -1617,6 +1647,9 @@ class MfemJacobianData {
    */
   mfem::Array<int> submesh2parent_vdof_list_;
 
+  /**
+   * @brief Submesh to parent transfer operator
+   */
   std::unique_ptr<mfem::HypreParMatrix> submesh_parent_vdof_xfer_;
 
   /**

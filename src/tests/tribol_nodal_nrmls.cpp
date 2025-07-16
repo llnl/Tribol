@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -6,7 +6,9 @@
 // Tribol includes
 #include "tribol/interface/tribol.hpp"
 #include "tribol/mesh/MeshData.hpp"
+#include "tribol/geom/ElementNormal.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
+#include "tribol/geom/NodalNormal.hpp"
 #include "tribol/utils/Math.hpp"
 
 #ifdef TRIBOL_USE_UMPIRE
@@ -46,9 +48,11 @@ class NodalNormalTest : public ::testing::Test {
     tribol::MeshData& mesh = meshManager.at( mesh_id );
 
     // compute the face data for this mesh
-    mesh.computeFaceData( tribol::ExecutionMode::Sequential );
+    tribol::PalletAvgNormal plane_normal;
+    mesh.computeFaceData( tribol::ExecutionMode::Sequential, plane_normal );
 
-    mesh.computeNodalNormals( dim );
+    tribol::ElementAvgNodalNormal normal_method;
+    normal_method.Compute( mesh );
 
     return;
   }

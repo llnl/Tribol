@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -10,6 +10,7 @@
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/geom/ContactPlane.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
+#include "tribol/geom/NodalNormal.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/integ/Integration.hpp"
 #include "tribol/integ/FE.hpp"
@@ -24,7 +25,6 @@
 #include <iomanip>
 
 #ifdef TRIBOL_USE_ENZYME
-#include "tribol/geom/Normal.hpp"
 #include "tribol/common/Enzyme.hpp"
 #endif
 
@@ -175,8 +175,8 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
   MeshData& nonmortarMeshData = meshManager.at( cs->getMeshId2() );
   // compute nodal normals (do this outside the element loop)
   // Note, this is guarded against zero element meshes
-  int const dim = cs->spatialDimension();
-  nonmortarMeshData.computeNodalNormals( dim );
+  ElementAvgNodalNormal normal_method;
+  normal_method.Compute( nonmortarMeshData );
 
   auto pairs = cs->getInterfacePairs();
   const IndexT numPairs = pairs.size();
@@ -204,6 +204,7 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
 
   // declare local variables to hold face nodal coordinates
   // and overlap vertex coordinates
+  int const dim = cs->spatialDimension();
   IndexT size = dim * numNodesPerFace;
   RealT mortarX[size];
   RealT nonmortarX[size];
@@ -649,16 +650,15 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
 {
   auto planes_view = cs->get3DContactPlanes().view();
   auto& lm_opts = cs->getEnforcementOptions().lm_implicit_options;
-  bool compute_jacobian = false;
   if ( lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
        lm_opts.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ) {
     if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE ) {
       cs->getMethodData()->reserveBlockJ(
           { BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER }, planes_view.size() );
-      cs->createNormalJacobian();
-      cs->getdnMethodData()->reserveBlockJ(
+      cs->createNodalNormalJacobianData();
+      cs->getDfDnMethodData()->reserveBlockJ(
           { BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER }, planes_view.size() );
-      compute_jacobian = true;
+      cs->getDnDxMethodData()->reserveBlockJ( { BlockSpace::NONMORTAR }, cs->getMesh2().numberOfElements() );
     } else {
       SLIC_WARNING( "Unsupported Jacobian storage method." );
       return 1;
@@ -666,8 +666,10 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
   }
   // convention: 1 = nonmortar
   //             2 = mortar
-  cs->createNodalNormal( std::make_unique<VertexAvgNormal>( compute_jacobian ) );
-  cs->getNodalNormal()->Compute( cs->getMesh2() );
+  // This follows the defs used in Puso and Laursen (2004), but is switched from the rest of Tribol. Sticking to the
+  // Puso and Laursen notation here so it's easier to track.
+  EdgeAvgNodalNormal normal_method;
+  normal_method.Compute( cs->getMesh2(), cs->getDnDxMethodData() );
   auto mesh1 = cs->getMesh2().getView();  // switched from tribol convention
   auto mesh2 = cs->getMesh1().getView();  // switched from tribol convention
   int size1 = mesh1.numberOfNodesPerElement();
@@ -730,6 +732,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
       blockJ( 2, 2 ) = DeviceArray2D<RealT>( n_multipliers, n_multipliers );
       blockJ( 2, 2 ).fill( 0.0 );
 
+      // This function also computes the residual contributions
       ComputeMortarJacobianEnzyme( x1, n1, p1, f1, blockJ( 0, 0 ).data(), blockJ( 0, 1 ).data(),
                                    blockJ_n( 0, 0 ).data(), blockJ( 0, 2 ).data(), g1, blockJ( 2, 0 ).data(),
                                    blockJ( 2, 1 ).data(), blockJ_n( 2, 0 ).data(), size1, x2, f2, blockJ( 1, 0 ).data(),
@@ -737,7 +740,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
 
       if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE ) {
         cs->getMethodData()->storeElemBlockJ( { elem1, elem2, elem1 }, blockJ );
-        cs->getdnMethodData()->storeElemBlockJ( { elem1, elem2, elem1 }, blockJ_n );
+        cs->getDfDnMethodData()->storeElemBlockJ( { elem1, elem2, elem1 }, blockJ_n );
       } else {
         SLIC_WARNING( "Unsupported Jacobian storage method." );
         return 1;
@@ -765,15 +768,18 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
 }
 
 //------------------------------------------------------------------------------
-void PlaneTo2DCoords( const RealT* x, const RealT* x0, const RealT* e1, const RealT* e2, RealT* xp, RealT* yp,
-                      int num_coords )
+// NOTE: This version is here because calling PlaneTo2DCoords() in GeomUtilities.hpp doesn't compile with LLDEnzyme on
+// Release with clang 16.0.6.
+// TODO: Fix the issue with Enzyme and call the version in GeomUtilities.hpp
+void PlaneTo2DCoordsEnzyme( const RealT* x, const RealT* x0, const RealT* e1, const RealT* e2, RealT* xp, RealT* yp,
+                            int num_coords )
 {
   for ( int i{ 0 }; i < num_coords; ++i ) {
     xp[i] = 0.0;
     yp[i] = 0.0;
 
     for ( int d{ 0 }; d < 3; ++d ) {
-      RealT v_d = x[3 * i + d] - x0[d];
+      RealT v_d = x[d * num_coords + i] - x0[d];
       xp[i] += v_d * e1[d];
       yp[i] += v_d * e2[d];
     }
@@ -781,12 +787,15 @@ void PlaneTo2DCoords( const RealT* x, const RealT* x0, const RealT* e1, const Re
 }
 
 //------------------------------------------------------------------------------
-void Coords2DToPlane( const RealT* xp, const RealT* yp, const RealT* x0, const RealT* e1, const RealT* e2, RealT* x,
-                      int num_coords )
+// NOTE: This version is here because calling Coords2DToPlane() in GeomUtilities.hpp doesn't compile with LLDEnzyme on
+// Release with clang 16.0.6.
+// TODO: Fix the issue with Enzyme and call the version in GeomUtilities.hpp
+void Coords2DToPlaneEnzyme( const RealT* xp, const RealT* yp, const RealT* x0, const RealT* e1, const RealT* e2,
+                            RealT* x, int num_coords )
 {
   for ( int i{ 0 }; i < num_coords; ++i ) {
     for ( int d{ 0 }; d < 3; ++d ) {
-      x[i * 3 + d] = x0[d] + xp[i] * e1[d] + yp[i] * e2[d];
+      x[d * num_coords + i] = x0[d] + xp[i] * e1[d] + yp[i] * e2[d];
     }
   }
 }
@@ -797,10 +806,6 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
 {
   // convention: elem1 = nonmortar element
   //             elem2 = mortar element
-  //  // TODO: set this based on double/float precision
-  //  constexpr RealT dist_tol = 1.0e-13;
-  //  // cos(pi/2 + angle_tol) = tolerance for aligned edges
-  //  constexpr RealT angle_tol = 1.0e-8;
   constexpr int max_mortar_mat_size = 4 * 4;
   RealT mortar_mat1[max_mortar_mat_size];
   int mortar_mat1_size = size1 * size1;
@@ -820,11 +825,7 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
     }
   }
 
-  // // debug output
-  // std::cout << " x0 (geomtric centroid) = ( " << std::setprecision( 18 ) << x0[0] << ", " << x0[1] << ", " << x0[2]
-  //           << " )" << std::endl;
-
-  // get vector n (normal of elem1)
+  // get vector n (normal of elem1) = de1 x de2
   // NOTE: this limits this routine to quads
   // clang-format off
    RealT de1[3] = {
@@ -848,19 +849,7 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
     n[d] /= n_mag;
   }
 
-  // // debug output
-  // std::cout << " de1 (geomtric centroid) = ( " << std::setprecision( 18 ) << de1[0] << ", " << de1[1] << ", " <<
-  // de1[2]
-  //           << " )" << std::endl;
-  // std::cout << " de2 (geomtric centroid) = ( " << std::setprecision( 18 ) << de2[0] << ", " << de2[1] << ", " <<
-  // de2[2]
-  //           << " )" << std::endl;
-  // std::cout << " n (geomtric centroid) = ( " << std::setprecision( 18 ) << n[0] << ", " << n[1] << ", " << n[2] << "
-  // )"
-  //           << std::endl;
-
-  // x1t = x1 projected to plane p (def'd by x0 and n) (stored by vdim instead
-  // of nodes)
+  // x1t = x1 coordinates projected to plane p (def'd by x0 and n) but in 3d
   constexpr int max_coord_size = 4 * 3;
   RealT x1t[max_coord_size];
   for ( int i{ 0 }; i < size1; ++i ) {
@@ -869,10 +858,10 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       x1diff_mag += n[d] * ( x1[size1 * d + i] - x0[d] );
     }
     for ( int d{ 0 }; d < 3; ++d ) {
-      x1t[i * 3 + d] = x1[size1 * d + i] - n[d] * x1diff_mag;
+      x1t[size1 * d + i] = x1[size1 * d + i] - n[d] * x1diff_mag;
     }
   }
-  // x2t = x2 projected to plane p (stored by vdim instead of nodes)
+  // x2t = x2 coordinates projected to plane p but in 3d
   RealT x2t[max_coord_size];
   for ( int i{ 0 }; i < size2; ++i ) {
     RealT x2diff_mag = 0.0;
@@ -880,22 +869,23 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       x2diff_mag += n[d] * ( x2[size2 * d + i] - x0[d] );
     }
     for ( int d{ 0 }; d < 3; ++d ) {
-      x2t[i * 3 + d] = x2[size2 * d + i] - n[d] * x2diff_mag;
+      x2t[size2 * d + i] = x2[size2 * d + i] - n[d] * x2diff_mag;
     }
   }
   // Tribol's clipping algorithm
-  // create a local basis
+  // create a local basis; e1 is a unit vector aligned with the first edge in element 1
   // clang-format off
    RealT e1[3] = {
-      x1t[3] - x1t[0],
-      x1t[4] - x1t[1],
-      x1t[5] - x1t[2]
+      x1t[1] - x1t[0],
+      x1t[5] - x1t[4],
+      x1t[9] - x1t[8]
    };
   // clang-format on
   RealT e1_mag = std::sqrt( e1[0] * e1[0] + e1[1] * e1[1] + e1[2] * e1[2] );
   for ( int d{ 0 }; d < 3; ++d ) {
     e1[d] /= e1_mag;
   }
+  // e2 is a unit vector = n x e1
   // clang-format off
    RealT e2[3] = {
       n[1]*e1[2] - n[2]*e1[1],
@@ -905,59 +895,30 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
   // clang-format on
   RealT x1t_2d[4];
   RealT y1t_2d[4];
-  PlaneTo2DCoords( x1t, x0, e1, e2, x1t_2d, y1t_2d, size1 );
+  PlaneTo2DCoordsEnzyme( x1t, x0, e1, e2, x1t_2d, y1t_2d, size1 );
   RealT x2t_2d[4];
   RealT y2t_2d[4];
-  PlaneTo2DCoords( x2t, x0, e1, e2, x2t_2d, y2t_2d, size2 );
-  ElemReverse( x2t_2d, y2t_2d, size2 );
+  PlaneTo2DCoordsEnzyme( x2t, x0, e1, e2, x2t_2d, y2t_2d, size2 );
+  // coordinates need to be CCW for both faces. the call to ElemReverse() will reverse the projected 2d coordinates of
+  // element 2, which are in clockwise direction
+  RealT x2t_2d_rev[4];
+  RealT y2t_2d_rev[4];
+  for ( int i{ 0 }; i < size2; ++i ) {
+    x2t_2d_rev[i] = x2t_2d[i];
+    y2t_2d_rev[i] = y2t_2d[i];
+  }
+  ElemReverse( x2t_2d_rev, y2t_2d_rev, size2 );
   RealT xti_2d[8];
   RealT yti_2d[8];
   int overlap_poly_size = 0;
-  Intersection2DPolygonEnzyme( x1t_2d, y1t_2d, size1, x2t_2d, y2t_2d, size2, 1.0e-8, 1.0e-8, xti_2d, yti_2d,
+  Intersection2DPolygonEnzyme( x1t_2d, y1t_2d, size1, x2t_2d_rev, y2t_2d_rev, size2, 1.0e-8, 1.0e-8, xti_2d, yti_2d,
                                &overlap_poly_size );
   RealT overlap_poly_area = Area2DPolygon( xti_2d, yti_2d, overlap_poly_size );
-  if ( overlap_poly_area == 0.0 ) {
+  if ( overlap_poly_area <= 0.0 ) {
     return;
   }
-  RealT xti[8 * 3];
-  Coords2DToPlane( xti_2d, yti_2d, x0, e1, e2, xti, overlap_poly_size );
 
-  // std::cout << std::setprecision( 15 ) << "Number of vertices: " << overlap_poly_size
-  //           << "   Polygon area: " << overlap_poly_area << std::endl;
-  // for ( int i{ 0 }; i < overlap_poly_size; ++i ) {
-  //   std::cout << "  Coord: (" << xti_2d[i] << ", " << yti_2d[i] << ")" << std::endl;
-  // switch (vert_type[i]) {
-  //   case OverlapVertexType::A:
-  //     std::cout << "Vertex A" << std::endl;
-  //     break;
-  //   case OverlapVertexType::B:
-  //     std::cout << "Vertex B" << std::endl;
-  //     break;
-  //   case OverlapVertexType::EdgeEdge:
-  //     std::cout << "Edge/Edge" << std::endl;
-  //     break;
-  // }
-  // }
-
-  // some Tribol calls require x, y, z component vectors of projected coords
-  RealT x1t_comp[4];
-  RealT y1t_comp[4];
-  RealT z1t_comp[4];
-  for ( int i{ 0 }; i < size1; ++i ) {
-    x1t_comp[i] = x1t[i * 3 + 0];
-    y1t_comp[i] = x1t[i * 3 + 1];
-    z1t_comp[i] = x1t[i * 3 + 2];
-  }
-  RealT x2t_comp[4];
-  RealT y2t_comp[4];
-  RealT z2t_comp[4];
-  for ( int i{ 0 }; i < size2; ++i ) {
-    x2t_comp[i] = x2t[i * 3 + 0];
-    y2t_comp[i] = x2t[i * 3 + 1];
-    z2t_comp[i] = x2t[i * 3 + 2];
-  }
-
-  // Create integration rule over polygon
+  // Integrate mortar matrix over the polygon
   // 1. get base triangle integration rule
   RealT base_rule_2d[12];
   RealT base_weights[6];
@@ -988,49 +949,44 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
     base_rule_2d[11] = base_x4;
   }
 
-  // 2. find centroid of the polygon
-  RealT xci[3];
-  PolyAreaCentroid( xti, 3, overlap_poly_size, xci[0], xci[1], xci[2] );
-
-  // 3. build sub-triangles
+  // 2. build the sub-triangles
+  // vert0 = centroid of overlap polygon; this will be used as the first vertex of the sub-triangles
+  RealT tri_0[2];
+  PolyCentroid( xti_2d, yti_2d, overlap_poly_size, tri_0[0], tri_0[1] );
   for ( int i{ 0 }; i < overlap_poly_size; ++i ) {
     int idx1 = i;
     int idx2 = ( i + 1 ) % overlap_poly_size;
-    RealT vert1[3] = { xti[idx1 * 3 + 0], xti[idx1 * 3 + 1], xti[idx1 * 3 + 2] };
-    RealT vert2[3] = { xti[idx2 * 3 + 0], xti[idx2 * 3 + 1], xti[idx2 * 3 + 2] };
-    RealT side1[3] = { vert2[0] - vert1[0], vert2[1] - vert1[1], vert2[2] - vert1[2] };
-    RealT side2[3] = { xci[0] - vert1[0], xci[1] - vert1[1], xci[2] - vert1[2] };
-    // clang-format off
-      RealT area_vec[3] = {
-         side1[1]*side2[2] - side1[2]*side2[1],
-         side1[2]*side2[0] - side1[0]*side2[2],
-         side1[0]*side2[1] - side1[1]*side2[0]
-      };
-    // clang-format on
-    RealT area = 0.5 * std::sqrt( area_vec[0] * area_vec[0] + area_vec[1] * area_vec[1] + area_vec[2] * area_vec[2] );
+    RealT tri_1[2] = { xti_2d[idx1], yti_2d[idx1] };
+    RealT tri_2[2] = { xti_2d[idx2], yti_2d[idx2] };
+    RealT side1[2] = { tri_2[0] - tri_1[0], tri_2[1] - tri_1[1] };
+    RealT side2[2] = { tri_0[0] - tri_1[0], tri_0[1] - tri_1[1] };
+    RealT area = 0.5 * ( side1[0] * side2[1] - side1[1] * side2[0] );
 
-    // 4. map integration points and weights to sub-triangle
+    // the sub-triangle is inverted.  likely something went wrong with CG.  don't try to integrate over it.
+    if ( area <= 0.0 ) {
+      continue;
+    }
+
     for ( int j{ 0 }; j < 6; ++j ) {
-      // obtain shape function evaluations at (xi,eta)
-      RealT xi[2] = { base_rule_2d[j * 2 + 0], base_rule_2d[j * 2 + 1] };
-      RealT phi[3] = { 0., 0., 0. };
-      LinIsoTriShapeFunc( xi[0], xi[1], 0, phi[0] );
-      LinIsoTriShapeFunc( xi[0], xi[1], 1, phi[1] );
-      LinIsoTriShapeFunc( xi[0], xi[1], 2, phi[2] );
+      RealT tri_xi[2] = { base_rule_2d[j * 2 + 0], base_rule_2d[j * 2 + 1] };
+      RealT tri_phi[3] = { 0.0, 0.0, 0.0 };
+      LinIsoTriShapeFunc( tri_xi, tri_phi );
+      RealT tri_quad_pt[2] = { tri_phi[0] * tri_0[0] + tri_phi[1] * tri_1[0] + tri_phi[2] * tri_2[0],
+                               tri_phi[0] * tri_0[1] + tri_phi[1] * tri_1[1] + tri_phi[2] * tri_2[1] };
 
-      RealT quad_pt[3];
-      for ( int d{ 0 }; d < 3; ++d ) {
-        quad_pt[d] = vert1[d] * phi[0] + vert2[d] * phi[1] + xci[d] * phi[2];
-      }
+      // 3. map sub-triangle coordinate to nonmortar and mortar coordinates
+      // NOTE: we ideally want to do this in 2d, but there are finite differencing errors when we do
+      RealT tri_quad_pt_3d[3] = { 0.0, 0.0, 0.0 };
+      Coords2DToPlaneEnzyme( tri_quad_pt, tri_quad_pt + 1, x0, e1, e2, tri_quad_pt_3d, 1 );
+      RealT xi1[2] = { 0.0, 0.0 };
+      InvIso( tri_quad_pt_3d, x1t, x1t + size1, x1t + 2 * size1, size1, xi1 );
+      RealT xi2[2] = { 0.0, 0.0 };
+      InvIso( tri_quad_pt_3d, x2t, x2t + size2, x2t + 2 * size2, size2, xi2 );
+
       RealT quad_wt = base_weights[j] * area;
 
-      // 5. map sub-triangle point to nonmortar and mortar surfaces
-      RealT xi1[2];
-      InvIso( quad_pt, x1t_comp, y1t_comp, z1t_comp, size1, xi1 );
-      RealT xi2[2];
-      InvIso( quad_pt, x2t_comp, y2t_comp, z2t_comp, size2, xi2 );
-
-      // 6. Evaluate mortar matrix (nonmortar/nonmortar contribs)
+      // 4. Evaluate mortar matrix (nonmortar/nonmortar contribs)
+      // NOTE: Nonstandard node numbering with InvIso and LinIsoQuadShapeFunc
       for ( int k{ 0 }; k < size1; ++k ) {
         RealT phiA;
         // NOTE: this limits this routine to quads
@@ -1043,7 +999,7 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
         }
       }
 
-      // 7. Evaluate mortar matrix (nonmortar/mortar contribs)
+      // 5. Evaluate mortar matrix (nonmortar/mortar contribs)
       for ( int k{ 0 }; k < size1; ++k ) {
         RealT phiA;
         // NOTE: this limits this routine to quads
@@ -1076,15 +1032,6 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       g1[i] += n1[d * size1 + i] * gap_v[d];
     }
   }
-
-  // std::cout << "mortar mat 11 = " << std::endl;
-  // for ( int i{ 0 }; i < size1; ++i ) {
-  //   std::cout << "  ";
-  //   for ( int j{ 0 }; j < size1; ++j ) {
-  //     std::cout << std::setprecision( 18 ) << mortar_mat1[j * size1 + i] << "  ";
-  //   }
-  //   std::cout << std::endl;
-  // }
 
   // compute nonmortar force contributions
   for ( int i{ 0 }; i < size1; ++i ) {

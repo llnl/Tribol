@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -10,6 +10,7 @@
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/geom/ContactPlane.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
+#include "tribol/geom/NodalNormal.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/integ/Integration.hpp"
 #include "tribol/integ/FE.hpp"
@@ -152,7 +153,8 @@ void ComputeAlignedMortarGaps( CouplingScheme* cs )
   int const dim = cs->spatialDimension();
   // compute nodal normals (do this outside the element loop)
   // This routine is guarded against a null mesh
-  nonmortarMeshData.computeNodalNormals( dim );
+  ElementAvgNodalNormal normal_method;
+  normal_method.Compute( nonmortarMeshData );
 
   auto pairs = cs->getInterfacePairs();
   const IndexT numPairs = pairs.size();

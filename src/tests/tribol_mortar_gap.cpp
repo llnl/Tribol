@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -11,6 +11,8 @@
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/physics/Mortar.hpp"
 #include "tribol/physics/AlignedMortar.hpp"
+#include "tribol/geom/NodalNormal.hpp"
+#include "tribol/geom/ElementNormal.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/utils/TestUtils.hpp"
 
@@ -154,8 +156,10 @@ class MortarGapTest : public ::testing::Test {
     tribol::MeshData& mortarMesh = meshManager.at( mortarMeshId );
     tribol::MeshData& nonmortarMesh = meshManager.at( nonmortarMeshId );
 
-    mortarMesh.computeFaceData( tribol::ExecutionMode::Sequential );
-    nonmortarMesh.computeFaceData( tribol::ExecutionMode::Sequential );
+    tribol::PalletAvgNormal plane_normal;
+
+    mortarMesh.computeFaceData( tribol::ExecutionMode::Sequential, plane_normal );
+    nonmortarMesh.computeFaceData( tribol::ExecutionMode::Sequential, plane_normal );
 
     gaps.clear();
     int size = 2 * this->numNodesPerFace;
@@ -167,7 +171,8 @@ class MortarGapTest : public ::testing::Test {
 
     tribol::registerMortarGaps( nonmortarMeshId, gaps.data() );
 
-    nonmortarMesh.computeNodalNormals( this->dim );
+    tribol::ElementAvgNodalNormal normal_method;
+    normal_method.Compute( nonmortarMesh );
 
     auto mortarView = mortarMesh.getView();
     auto nonmortarView = nonmortarMesh.getView();

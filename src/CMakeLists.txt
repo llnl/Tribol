@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level LICENSE file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -6,6 +6,11 @@
 #------------------------------------------------------------------------------
 # Set up tribol target
 #------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+# add shared
+#------------------------------------------------------------------------------
+add_subdirectory(shared)
 
 #------------------------------------------------------------------------------
 # add redecomp
@@ -41,3 +46,14 @@ endif()
 if ( TRIBOL_ENABLE_EXAMPLES )
   add_subdirectory(examples)
 endif()
+
+convert_to_native_escaped_file_path(${PROJECT_SOURCE_DIR} TRIBOL_REPO_DIR)
+convert_to_native_escaped_file_path(${CMAKE_BINARY_DIR}   TRIBOL_BIN_DIR)
+
+# Generate config headers
+set(TRIBOL_DATA_DIR ${PROJECT_SOURCE_DIR}/data)
+tribol_configure_file(${PROJECT_SOURCE_DIR}/src/tribol/config.hpp.in
+                      ${PROJECT_BINARY_DIR}/include/tribol/config.hpp)
+
+tribol_configure_file(${PROJECT_SOURCE_DIR}/src/shared/config.hpp.in
+                      ${PROJECT_BINARY_DIR}/include/shared/config.hpp)

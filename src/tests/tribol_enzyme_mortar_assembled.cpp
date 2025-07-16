@@ -1,35 +1,42 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
 
 //-----------------------------------------------------------------------------
 //
-// file: tribol_enzyme_patch.cpp
+// file: tribol_enzyme_mortar_assembled.cpp
 //
 //-----------------------------------------------------------------------------
 
 #include <iostream>
 
-#include "tribol/common/Parameters.hpp"
 #include "tribol/config.hpp"
-#include "tribol/interface/tribol.hpp"
-#include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/physics/Mortar.hpp"
-#include "tribol/utils/Algorithm.hpp"
 
 #include "gtest/gtest.h"
 
+#ifdef TRIBOL_USE_UMPIRE
+#include "umpire/ResourceManager.hpp"
+#endif
+
+#include "mfem.hpp"
+
+#include "shared/mesh/MeshBuilder.hpp"
+#include "tribol/interface/tribol.hpp"
+#include "tribol/mesh/CouplingScheme.hpp"
+
 namespace tribol {
 
-// NOTE: Make sure no vertices on either element pass through an edge. The
-// finite differencing comparison will fail in this case.
-class EnzymePatchTest : public testing::Test {
+/**
+ * @brief Test fixture for the Enzyme-computed Jacobian terms including nodal normal contribution.
+ */
+class EnzymeMortarAssembledTest : public testing::Test {
  protected:
   void SetUp() override {}
 
-  void RunPatchTest( mfem::Mesh& mesh, int bdry_attrib1, int x_el1, int y_el1, int bdry_attrib2, int x_el2, int y_el2,
-                     const double* stencil_dir = nullptr )
+  void RunJacobianTest( mfem::Mesh& mesh, mfem::Vector* pressure, mfem::GridFunction* parent_coords, int bdry_attrib1,
+                        int x_el1, int y_el1, int bdry_attrib2, int x_el2, int y_el2,
+                        const double* stencil_dir = nullptr )
   {
     // create MFEM submesh
     mfem::Array<int> submesh_bdry_attribs( { bdry_attrib1, bdry_attrib2 } );
@@ -38,8 +45,8 @@ class EnzymePatchTest : public testing::Test {
     // create MFEM coordinates grid function
     mfem::H1_FECollection fe_coll( 1, submesh.SpaceDimension() );
     mfem::FiniteElementSpace fe_space( &submesh, &fe_coll, submesh.SpaceDimension() );
-    mfem::GridFunction coords( &fe_space );
-    submesh.SetNodalGridFunction( &coords, false );
+    mfem::GridFunction ref_coords( &fe_space );
+    submesh.SetNodalGridFunction( &ref_coords, false );
 
     // create Tribol connectivity
     auto num_contact_els_mesh0 = x_el1 * y_el1;
@@ -70,6 +77,12 @@ class EnzymePatchTest : public testing::Test {
     }
 
     // register Tribol mesh data
+    mfem::GridFunction coords( &fe_space );
+    if ( parent_coords == nullptr ) {
+      coords = ref_coords;
+    } else {
+      submesh.Transfer( *parent_coords, coords );
+    }
     auto coords_ptr = coords.Read();
     constexpr auto mesh0_id = 0;
     registerMesh( mesh0_id, num_contact_els_mesh0, fe_space.GetNDofs(), mesh0_conn.data(), LINEAR_QUAD, coords_ptr,
@@ -78,8 +91,6 @@ class EnzymePatchTest : public testing::Test {
     registerMesh( mesh1_id, num_contact_els_mesh1, fe_space.GetNDofs(), mesh1_conn.data(), LINEAR_QUAD, coords_ptr,
                   coords_ptr + fe_space.GetNDofs(), coords_ptr + 2 * fe_space.GetNDofs() );
     // mesh will move when we do finite differencing
-    mfem::GridFunction ref_coords( &fe_space );
-    ref_coords = coords;
     auto ref_coords_ptr = ref_coords.Read();
     registerNodalReferenceCoords( mesh0_id, ref_coords_ptr, ref_coords_ptr + fe_space.GetNDofs(),
                                   ref_coords_ptr + 2 * fe_space.GetNDofs() );
@@ -95,9 +106,12 @@ class EnzymePatchTest : public testing::Test {
 
     // create MFEM pressure grid function
     mfem::FiniteElementSpace fe_space_scalar( &submesh, &fe_coll, 1 );
-    mfem::GridFunction pressure( &fe_space_scalar );
-    pressure = 1.0;
-    auto pressure_ptr = pressure.Read();
+    mfem::GridFunction fake_pressure( &fe_space_scalar );
+    fake_pressure = 1.0;
+    if ( pressure == nullptr ) {
+      pressure = &fake_pressure;
+    }
+    auto pressure_ptr = pressure->Read();
     registerMortarPressures( mesh1_id, pressure_ptr );
 
     // create MFEM gap linear form
@@ -198,13 +212,8 @@ class EnzymePatchTest : public testing::Test {
       }
     }
     dfdx_nc.Finalize();
-    mfem::DenseMatrix dfdx_nc_sparse;
-    dfdx_nc.ToDenseMatrix( dfdx_nc_sparse );
-    std::ofstream dfdx_nc_file( "dfdx_nc.mat" );
-    dfdx_nc_sparse.PrintMatlab( dfdx_nc_file );
-    dfdx_nc_file.close();
     mfem::SparseMatrix dfdn( fe_space.GetVSize() );
-    auto& dfdn_data = *cs.getdnMethodData();
+    auto& dfdn_data = *cs.getDfDnMethodData();
     // get mortar/nonmortar contributions
     elem_Js =
         &dfdn_data.getBlockJ()( static_cast<int>( BlockSpace::MORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) );
@@ -232,13 +241,8 @@ class EnzymePatchTest : public testing::Test {
       }
     }
     dfdn.Finalize();
-    mfem::DenseMatrix dfdn_sparse;
-    dfdn.ToDenseMatrix( dfdn_sparse );
-    std::ofstream dfdn_file( "dfdn.mat" );
-    dfdn_sparse.PrintMatlab( dfdn_file );
-    dfdn_file.close();
     mfem::SparseMatrix dndx( fe_space.GetVSize() );
-    auto& dndx_data = cs.getNodalNormal()->getJacobianData();
+    auto& dndx_data = *cs.getDnDxMethodData();
     // get nonmortar/nonmortar contributions
     elem_Js =
         &dndx_data.getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) );
@@ -252,11 +256,6 @@ class EnzymePatchTest : public testing::Test {
       }
     }
     dndx.Finalize();
-    mfem::DenseMatrix dndx_sparse;
-    dndx.ToDenseMatrix( dndx_sparse );
-    std::ofstream dndx_file( "dndx.mat" );
-    dndx_sparse.PrintMatlab( dndx_file );
-    dndx_file.close();
     auto dfdn_dndx = std::unique_ptr<mfem::SparseMatrix>( mfem::Mult( dfdn, dndx ) );
     auto dfdx = std::unique_ptr<mfem::SparseMatrix>( mfem::Add( dfdx_nc, *dfdn_dndx ) );
     mfem::DenseMatrix dfdx_enzyme;
@@ -381,14 +380,14 @@ class EnzymePatchTest : public testing::Test {
     }
     mfem::DenseMatrix dfdp_fd( fe_space.GetVSize(), fe_space_scalar.GetVSize() );
     for ( int i{ 0 }; i < fe_space_scalar.GetVSize(); ++i ) {
-      pressure[i] += delta;
+      ( *pressure )[i] += delta;
       force = 0.0;
       gap = 0.0;
       tribol::update( cycle, t, dt );
       for ( int j{ 0 }; j < fe_space.GetVSize(); ++j ) {
         dfdp_fd( j, i ) = ( force[j] - force_base[j] ) / delta;
       }
-      pressure[i] -= delta;
+      ( *pressure )[i] -= delta;
     }
 
     // write deltas to screen
@@ -397,11 +396,12 @@ class EnzymePatchTest : public testing::Test {
       for ( int j{ 0 }; j < fe_space.GetVSize(); ++j ) {
         auto diff = std::abs( dfdx_enzyme( i, j ) - dfdx_fd( i, j ) );
         if ( diff > delta ) {
+          // if ( std::abs( dfdx_enzyme( i, j ) ) > 1.0e-15 || std::abs( dfdx_fd( i, j ) ) > 1.0e-15 ) {
           std::cout << "  (" << i << ", " << j << ") : Diff: " << diff
                     << "   Ratio: " << dfdx_enzyme( i, j ) / dfdx_fd( i, j ) << "   Enzyme: " << dfdx_enzyme( i, j )
                     << "   FD: " << dfdx_fd( i, j ) << std::endl;
         }
-        // EXPECT_NEAR(dfdx_enzyme(i, j), dfdx_fd(i, j), delta);
+        EXPECT_NEAR( dfdx_enzyme( i, j ), dfdx_fd( i, j ), delta );
       }
     }
     std::cout << "dg/dx ------------------------------" << std::endl;
@@ -412,7 +412,7 @@ class EnzymePatchTest : public testing::Test {
           std::cout << "  (" << i << ", " << j << ") : Diff: " << diff << "   Enzyme: " << dgdx_enzyme( i, j )
                     << "   FD: " << dgdx_fd( i, j ) << std::endl;
         }
-        // EXPECT_NEAR(dgdx_enzyme(i, j), dgdx_fd(i, j), delta);
+        EXPECT_NEAR( dgdx_enzyme( i, j ), dgdx_fd( i, j ), delta );
       }
     }
     std::cout << "df/dp ------------------------------" << std::endl;
@@ -423,13 +423,13 @@ class EnzymePatchTest : public testing::Test {
           std::cout << "  (" << i << ", " << j << ") : Diff: " << diff << "   Enzyme: " << dfdp_enzyme( i, j )
                     << "   FD: " << dfdp_fd( i, j ) << std::endl;
         }
-        // EXPECT_NEAR(dfdp_enzyme(i, j), dfdp_fd(i, j), delta);
+        EXPECT_NEAR( dfdp_enzyme( i, j ), dfdp_fd( i, j ), delta );
       }
     }
   }
 };
 
-TEST_F( EnzymePatchTest, FiniteDiffCheckShifted2x2Meshes )
+TEST_F( EnzymeMortarAssembledTest, FiniteDiffCheckShifted2x2Meshes )
 {
   constexpr auto num_xel_mesh0 = 2;
   constexpr auto num_yel_mesh0 = 2;
@@ -439,55 +439,164 @@ TEST_F( EnzymePatchTest, FiniteDiffCheckShifted2x2Meshes )
   constexpr auto el_height = 1.0;
   constexpr auto xy_shift = 0.1;
 
-  // create mesh0
-  auto mesh0 = mfem::Mesh::MakeCartesian3D( num_xel_mesh0, num_yel_mesh0, 1, mfem::Element::HEXAHEDRON, el_width,
-                                            el_width, el_height );
-  // shift down 0.5% height of element (1% elem thickness interpenetration)
-  for ( int i{ 0 }; i < mesh0.GetNV(); ++i ) {
-    mesh0.GetVertex( i )[2] -= 0.005 * el_height;
-  }
-  // change the mesh0 boundary attribute from 1 to 7
-  constexpr auto old_mesh0_bdry_attrib = 1;
   constexpr auto mesh0_bdry_attrib = 7;
-  for ( int be{ 0 }; be < mesh0.GetNBE(); ++be ) {
-    if ( mesh0.GetBdrAttribute( be ) == old_mesh0_bdry_attrib ) {
-      mesh0.SetBdrAttribute( be, mesh0_bdry_attrib );
-    }
-  }
-
-  // create mesh1
-  auto mesh1 = mfem::Mesh::MakeCartesian3D( num_xel_mesh1, num_yel_mesh1, 1, mfem::Element::HEXAHEDRON, el_width,
-                                            el_width, el_height );
-  // shift down 99.5% height of element (1% elem thickness interpenetration)
-  for ( int i{ 0 }; i < mesh1.GetNV(); ++i ) {
-    mesh1.GetVertex( i )[2] -= 0.995 * el_height;
-  }
-  // shift x and y so the element edges are not overlapping
-  for ( int i{ 0 }; i < mesh1.GetNV(); ++i ) {
-    mesh1.GetVertex( i )[0] += xy_shift;
-    mesh1.GetVertex( i )[1] += xy_shift;
-  }
-  // change the mesh1 boundary attribute from 6 to 8
-  constexpr auto old_mesh1_bdry_attrib = 6;
   constexpr auto mesh1_bdry_attrib = 8;
-  for ( int be{ 0 }; be < mesh1.GetNBE(); ++be ) {
-    if ( mesh1.GetBdrAttribute( be ) == old_mesh1_bdry_attrib ) {
-      mesh1.SetBdrAttribute( be, mesh1_bdry_attrib );
-    }
-  }
 
-  // join two meshes to make a single mesh with disjoint pieces
-  mfem::Mesh* mesh_ptrs[2] = { &mesh0, &mesh1 };
-  mfem::Mesh mesh( mesh_ptrs, 2 );
-  // clear the non-joined mesh
-  mesh0.Clear();
-  mesh1.Clear();
+  // clang-format off
+  auto mesh = shared::MeshBuilder::Unify({
+    shared::MeshBuilder::CubeMesh(num_xel_mesh0, num_yel_mesh0, 1)
+      .scale({el_width, el_width, el_height})
+      // shift down 0.5% height of element (1% elem thickness interpenetration)
+      .translate({0.0, 0.0, -0.005 * el_height})
+      // change the mesh0 boundary attribute from 1 to 7
+      .updateBdrAttrib(1, mesh0_bdry_attrib),
+    shared::MeshBuilder::CubeMesh(num_xel_mesh1, num_yel_mesh1, 1)
+      .scale({el_width, el_width, el_height})
+      // shift down 99.5% height of element (1% elem thickness interpenetration)
+      .translate({0.0, 0.0, -0.995 * el_height})
+      // shift x and y so the element edges are not overlapping
+      .translate({xy_shift, xy_shift, 0.0})
+      // change the mesh1 boundary attribute from 6 to 8
+      .updateBdrAttrib(6, mesh1_bdry_attrib)
+  });
+  // clang-format on
 
-  RunPatchTest( mesh, mesh0_bdry_attrib, num_xel_mesh0, num_yel_mesh0, mesh1_bdry_attrib, num_xel_mesh1,
-                num_yel_mesh1 );
+  RunJacobianTest( mesh, nullptr, nullptr, mesh0_bdry_attrib, num_xel_mesh0, num_yel_mesh0, mesh1_bdry_attrib,
+                   num_xel_mesh1, num_yel_mesh1 );
 }
 
-TEST_F( EnzymePatchTest, FiniteDiffCheckAligned1x1Mesh )
+TEST_F( EnzymeMortarAssembledTest, FiniteDiffCheckShifted1x1Meshes )
+{
+  constexpr auto num_xel_mesh0 = 1;
+  constexpr auto num_yel_mesh0 = 1;
+  constexpr auto num_xel_mesh1 = 1;
+  constexpr auto num_yel_mesh1 = 1;
+
+  constexpr auto mesh0_bdry_attrib = 6;
+  constexpr auto mesh1_bdry_attrib = 7;
+
+  constexpr double eps = 1.0e-7;
+  constexpr double xy_shift = eps * 10.0;
+  // clang-format off
+  auto mesh = shared::MeshBuilder::Unify({
+    shared::MeshBuilder::CubeMesh(1, 1, 1),
+    shared::MeshBuilder::CubeMesh(1, 1, 1)
+      // shift up 99.9% height of element
+      .translate({0.0, 0.0, 0.999})
+      // shift x and y so the element edges are not overlapping
+      .translate({xy_shift, xy_shift, 0.0})
+      // change the mesh1 boundary attribute from 1 to 7
+      .updateBdrAttrib(1, 7)
+      // change the mesh1 boundary attribute from 6 to 8
+      .updateBdrAttrib(6, 8)
+  });
+  // clang-format on
+
+  RunJacobianTest( mesh, nullptr, nullptr, mesh0_bdry_attrib, num_xel_mesh0, num_yel_mesh0, mesh1_bdry_attrib,
+                   num_xel_mesh1, num_yel_mesh1 );
+}
+
+TEST_F( EnzymeMortarAssembledTest, FiniteDiffCheckWarped1x1Meshes )
+{
+  constexpr auto num_xel_mesh0 = 1;
+  constexpr auto num_yel_mesh0 = 1;
+  constexpr auto num_xel_mesh1 = 1;
+  constexpr auto num_yel_mesh1 = 1;
+
+  constexpr auto mesh0_bdry_attrib = 6;
+  constexpr auto mesh1_bdry_attrib = 7;
+
+  constexpr double xy_shift = 0.2;
+  // clang-format off
+  auto mesh = shared::MeshBuilder::Unify({
+    shared::MeshBuilder::CubeMesh(1, 1, 1),
+    shared::MeshBuilder::CubeMesh(1, 1, 1)
+      // shift up 99.9% height of element
+      .translate({0.0, 0.0, 0.999})
+      // shift x and y so the element edges are not overlapping
+      .translate({xy_shift, xy_shift, 0.0})
+      // move a node to warp the contact face
+      .translateNode(1, {0.05, -0.1, 0.005})
+      // change the mesh1 boundary attribute from 1 to 7
+      .updateBdrAttrib(1, 7)
+      // change the mesh1 boundary attribute from 6 to 8
+      .updateBdrAttrib(6, 8)
+  });
+  // clang-format on
+
+  RunJacobianTest( mesh, nullptr, nullptr, mesh0_bdry_attrib, num_xel_mesh0, num_yel_mesh0, mesh1_bdry_attrib,
+                   num_xel_mesh1, num_yel_mesh1 );
+}
+
+TEST_F( EnzymeMortarAssembledTest, FiniteDiffCheckShifted1x1MeshesV2 )
+{
+  constexpr auto num_xel_mesh0 = 1;
+  constexpr auto num_yel_mesh0 = 1;
+  constexpr auto num_xel_mesh1 = 1;
+  constexpr auto num_yel_mesh1 = 1;
+
+  constexpr auto mesh0_bdry_attrib = 6;
+  constexpr auto mesh1_bdry_attrib = 7;
+
+  constexpr double eps = 1.0e-7;
+  constexpr double xy_shift = eps * 10.0;
+  // clang-format off
+  auto mesh = shared::MeshBuilder::Unify({
+    shared::MeshBuilder::CubeMesh(1, 1, 1),
+    shared::MeshBuilder::CubeMesh(1, 1, 1)
+      // shift up 99.9% height of element
+      .translate({0.0, 0.0, 0.999})
+      // shift x and y so the element edges are not overlapping
+      .translate({xy_shift, xy_shift, 0.0})
+      // change the mesh1 boundary attribute from 1 to 7
+      .updateBdrAttrib(1, 7)
+      // change the mesh1 boundary attribute from 6 to 8
+      .updateBdrAttrib(6, 8)
+  });
+  // clang-format on
+
+  mfem::Mesh& mfem_mesh = mesh;
+  auto* ref_coords = mfem_mesh.GetNodes();
+  mfem::GridFunction u( ref_coords->FESpace() );
+  u = 0.0;
+  u[3] = 0.00024404;
+  u[7] = 0.00024404;
+  u[9] = 0.00024404;
+  u[10] = 0.00024404;
+  u[14] = -0.000500488;
+  u[15] = 0.00024404;
+  u[17] = -0.000500488;
+  u[19] = 0.00024404;
+  u[20] = -0.000500488;
+  u[21] = 0.00024404;
+  u[22] = 0.00024404;
+  u[23] = -0.000500488;
+  u[26] = 0.000500488;
+  u[27] = 0.00024404;
+  u[29] = 0.000500488;
+  u[31] = 0.00024404;
+  u[32] = 0.000500488;
+  u[33] = 0.00024404;
+  u[34] = 0.00024404;
+  u[35] = 0.000500488;
+  u[39] = 0.00024404;
+  u[43] = 0.00024404;
+  u[45] = 0.00024404;
+  u[46] = 0.00024404;
+  u += *ref_coords;
+
+  mfem::Vector pressure( 8 );
+  pressure = 0.0;
+  pressure[4] = -0.000372264;
+  pressure[5] = -0.000372264;
+  pressure[6] = -0.000372264;
+  pressure[7] = -0.000372264;
+
+  RunJacobianTest( mesh, &pressure, &u, mesh0_bdry_attrib, num_xel_mesh0, num_yel_mesh0, mesh1_bdry_attrib,
+                   num_xel_mesh1, num_yel_mesh1 );
+}
+
+TEST_F( EnzymeMortarAssembledTest, FiniteDiffCheckAligned1x1Mesh )
 {
   constexpr auto num_xel_mesh0 = 1;
   constexpr auto num_yel_mesh0 = 1;
@@ -497,60 +606,33 @@ TEST_F( EnzymePatchTest, FiniteDiffCheckAligned1x1Mesh )
   constexpr auto el_height = 1.0;
   constexpr auto xy_shift = 0.0;
 
-  // create mesh0
-  auto mesh0 = mfem::Mesh::MakeCartesian3D( num_xel_mesh0, num_yel_mesh0, 1, mfem::Element::HEXAHEDRON, el_width,
-                                            el_width, el_height );
-  // change the mesh0 boundary attribute from 1 to 7
-  constexpr auto old_mesh0_bdry_attrib = 1;
   constexpr auto mesh0_bdry_attrib = 7;
-  for ( int be{ 0 }; be < mesh0.GetNBE(); ++be ) {
-    if ( mesh0.GetBdrAttribute( be ) == old_mesh0_bdry_attrib ) {
-      mesh0.SetBdrAttribute( be, mesh0_bdry_attrib );
-    }
-  }
-
-  // create mesh1
-  auto mesh1 = mfem::Mesh::MakeCartesian3D( num_xel_mesh1, num_yel_mesh1, 1, mfem::Element::HEXAHEDRON, el_width,
-                                            el_width, el_height );
-  // shift down height of element
-  for ( int i{ 0 }; i < mesh1.GetNV(); ++i ) {
-    mesh1.GetVertex( i )[2] -= el_height;
-  }
-  // shift x and y so the element edges are not overlapping
-  for ( int i{ 0 }; i < mesh1.GetNV(); ++i ) {
-    mesh1.GetVertex( i )[0] += xy_shift;
-    mesh1.GetVertex( i )[1] += xy_shift;
-  }
-  // change the mesh1 boundary attribute from 6 to 8
-  constexpr auto old_mesh1_bdry_attrib = 6;
   constexpr auto mesh1_bdry_attrib = 8;
-  for ( int be{ 0 }; be < mesh1.GetNBE(); ++be ) {
-    if ( mesh1.GetBdrAttribute( be ) == old_mesh1_bdry_attrib ) {
-      mesh1.SetBdrAttribute( be, mesh1_bdry_attrib );
-    }
-  }
 
-  // join two meshes to make a single mesh with disjoint pieces
-  mfem::Mesh* mesh_ptrs[2] = { &mesh0, &mesh1 };
-  mfem::Mesh mesh( mesh_ptrs, 2 );
-  // clear the non-joined mesh
-  mesh0.Clear();
-  mesh1.Clear();
+  // clang-format off
+  auto mesh = shared::MeshBuilder::Unify({
+    shared::MeshBuilder::CubeMesh(num_xel_mesh0, num_yel_mesh0, 1)
+      .scale({el_width, el_width, el_height})
+      // change the mesh0 boundary attribute from 1 to 7
+      .updateBdrAttrib(1, mesh0_bdry_attrib),
+    shared::MeshBuilder::CubeMesh(num_xel_mesh1, num_yel_mesh1, 1)
+      .scale({el_width, el_width, el_height})
+      // shift down height of element
+      .translate({0.0, 0.0, -el_height})
+      // shift x and y so the element edges are not overlapping
+      .translate({xy_shift, xy_shift, 0.0})
+      // change the mesh1 boundary attribute from 6 to 8
+      .updateBdrAttrib(6, mesh1_bdry_attrib)
+  });
+  // clang-format on
 
-  // print vertices to screen
-  std::cout << "Mesh vertices" << std::endl;
-  for ( int v{}; v < mesh.GetNV(); ++v ) {
-    std::cout << " ( " << mesh.GetVertex( v )[0] << ", " << mesh.GetVertex( v )[1] << ", " << mesh.GetVertex( v )[2]
-              << " )" << std::endl;
-  }
-
-  // stencil direction
+  // stencil direction (keeps finite differencing from changing the overlap polygons)
   double stencil_dir[48] = { -1.0, -1.0, 1.0, 1.0, 1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0,  1.0,  -1.0, -1.0,
                              -1.0, -1.0, 1.0, 1.0, 1.0, 1.0,  1.0,  1.0, 1.0,  1.0, 1.0, 1.0,  -1.0, -1.0, 1.0,  1.0,
                              1.0,  1.0,  1.0, 1.0, 1.0, 1.0,  1.0,  1.0, 1.0,  1.0, 1.0, 1.0,  -1.0, -1.0, -1.0, -1.0 };
 
-  RunPatchTest( mesh, mesh0_bdry_attrib, num_xel_mesh0, num_yel_mesh0, mesh1_bdry_attrib, num_xel_mesh1, num_yel_mesh1,
-                stencil_dir );
+  RunJacobianTest( mesh, nullptr, nullptr, mesh0_bdry_attrib, num_xel_mesh0, num_yel_mesh0, mesh1_bdry_attrib,
+                   num_xel_mesh1, num_yel_mesh1, stencil_dir );
 }
 
 }  // namespace tribol
@@ -565,6 +647,10 @@ int main( int argc, char* argv[] )
   MPI_Init( &argc, &argv );
 
   ::testing::InitGoogleTest( &argc, argv );
+
+#ifdef TRIBOL_USE_UMPIRE
+  umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
+#endif
 
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized
                                     // when exiting main scope

@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -307,15 +307,33 @@ void setLoggingLevel( IndexT cs_id, LoggingLevel log_level )
   SLIC_ERROR_IF( !cs, "tribol::setLoggingLevel(): "
                           << "invalid CouplingScheme id." );
 
-  if ( !in_range( static_cast<int>( log_level ), static_cast<int>( tribol::NUM_LOGGING_LEVELS ) ) ) {
+  if ( !in_range( static_cast<int>( log_level ), static_cast<int>( LoggingLevel::NUM_LOGGING_LEVELS ) ) ) {
     SLIC_INFO_ROOT( "tribol::setLoggingLevel(): Logging level not an option; "
                     << "using 'warning' level." );
-    cs->setLoggingLevel( tribol::TRIBOL_WARNING );
+    cs->setLoggingLevel( LoggingLevel::WARNING );
   } else {
     cs->setLoggingLevel( log_level );
   }
 
 }  // end setLoggingLevel()
+
+//------------------------------------------------------------------------------
+void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale )
+{
+  // get access to coupling scheme
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setBinningProximityScale(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+  if ( binning_proximity_scale < 2.0 ) {
+    binning_proximity_scale = 2.0;
+    SLIC_WARNING_ROOT(
+        "Setting binning proximity to less than 2.0 can lead to missed contact pairs.  Resetting to 2.0." );
+  }
+
+  cs->getParameters().binning_proximity_scale = binning_proximity_scale;
+
+}  // end setBinningProximityScale()
 
 //------------------------------------------------------------------------------
 void enableTimestepVote( IndexT cs_id, const bool enable )
@@ -330,9 +348,8 @@ void enableTimestepVote( IndexT cs_id, const bool enable )
 
 }  // end enableTimestepVote()
 
-#ifdef TRIBOL_USE_ENZYME
 //------------------------------------------------------------------------------
-void enableEnzyme( IndexT cs_id, bool use_enzyme )
+void enableEnzyme( IndexT cs_id, [[maybe_unused]] bool use_enzyme )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
 
@@ -340,10 +357,13 @@ void enableEnzyme( IndexT cs_id, bool use_enzyme )
   SLIC_ERROR_ROOT_IF( !cs, "tribol::enableEnzyme(): call tribol::registerCouplingScheme() "
                                << "prior to calling this routine." );
 
+#ifdef TRIBOL_USE_ENZYME
   cs->enableEnzyme( use_enzyme );
+#else
+  SLIC_WARNING_ROOT( "tribol::enableEnzyme(): Tribol not built with Enzyme support." );
+#endif
 
 }  // end enableEnzyme()
-#endif
 
 //------------------------------------------------------------------------------
 void registerMesh( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity, int element_type,
@@ -510,8 +530,8 @@ int getJacobianCSRMatrix( int** I, int** J, RealT** vals, IndexT cs_id, int* n_o
 
 //------------------------------------------------------------------------------
 int getElementBlockJacobians( IndexT cs_id, BlockSpace row_block, BlockSpace col_block,
-                              const axom::Array<int>** row_elem_idx, const axom::Array<int>** col_elem_idx,
-                              const axom::Array<mfem::DenseMatrix>** jacobians )
+                              const ArrayT<int>** row_elem_idx, const ArrayT<int>** col_elem_idx,
+                              const ArrayT<mfem::DenseMatrix>** jacobians )
 {
   // get access to coupling scheme
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -531,9 +551,11 @@ int getElementBlockJacobians( IndexT cs_id, BlockSpace row_block, BlockSpace col
     return 1;
   }
   MethodData* method_data = cs->getMethodData();
-  *row_elem_idx = &method_data->getBlockJElementIds()[static_cast<int>( row_block )];
-  *col_elem_idx = &method_data->getBlockJElementIds()[static_cast<int>( col_block )];
-  *jacobians = &method_data->getBlockJ()( static_cast<int>( row_block ), static_cast<int>( col_block ) );
+  if ( method_data != nullptr ) {
+    *row_elem_idx = &method_data->getBlockJElementIds()[static_cast<int>( row_block )];
+    *col_elem_idx = &method_data->getBlockJElementIds()[static_cast<int>( col_block )];
+    *jacobians = &method_data->getBlockJ()( static_cast<int>( row_block ), static_cast<int>( col_block ) );
+  }
   return 0;
 
 }  // end getElementBlockJacobians()
@@ -778,7 +800,8 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
     // to interface pair manager. Note, further computational geometry
     // filtering will be performed on each face-pair indendifying
     // contact candidates.
-    if ( geomFilter( pairIndex1[i], pairIndex2[i], mesh1, mesh2, mode, cs->getParameters().auto_contact_check ) ) {
+    if ( geomFilter( pairIndex1[i], pairIndex2[i], mesh1, mesh2, mode, cs->getParameters().auto_contact_check,
+                     cs->getParameters().binning_proximity_scale ) ) {
       pairs.emplace_back( pairIndex1[i], pairIndex2[i], true );
     }
   }
@@ -809,7 +832,7 @@ int update( int cycle, RealT t, RealT& dt )
     // scheme will not be valid across all ranks and we will skip this coupling scheme
     if ( !cs.init() ) {
       SLIC_WARNING_ROOT( "tribol::update(): skipping invalid CouplingScheme " << cs_pair.first
-                                                                              << "Please see warnings." );
+                                                                              << ". Please see warnings." );
       continue;
     }
 

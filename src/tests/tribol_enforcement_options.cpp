@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -276,7 +276,7 @@ TEST_F( EnforcementOptionsTest, penalty_kinematic_constant_rate_percent_error_2 
   tribol::setKinematicConstantPenalty( 1, penalty );
 
   // incorrectly set the rate_percent value outside of acceptable bounds
-  RealT rate_percent = 1.2;
+  RealT rate_percent = -0.01;
   tribol::setRatePercentPenalty( 0, rate_percent );
   tribol::setRatePercentPenalty( 1, rate_percent );
 

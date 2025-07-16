@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -192,14 +192,14 @@ BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts,
 
         if ( axis_ok ) break;
       }
-      // none of the axes worked.  issue a warning but continue.
-      SLIC_WARNING_ROOT_IF(
-          !axis_ok, axom::fmt::format( "RCB domain decomposition unsuccessful.\n"
-                                       "  Max out of balance tolerance: {}\n"
-                                       "  Total entities to split: {}\n"
-                                       "  Proportion of entities on left of cut: {}\n"
-                                       "  Desired proportion of entites on left of cut: {}\n",
-                                       node_max_out_of_balance, total_node_ents, left_prop, actual_left_prop ) );
+      // none of the axes worked.  issue a debug statement but continue.
+      SLIC_DEBUG_ROOT_IF( !axis_ok,
+                          axom::fmt::format( "RCB domain decomposition unsuccessful.\n"
+                                             "  Max out of balance tolerance: {}\n"
+                                             "  Total entities to split: {}\n"
+                                             "  Proportion of entities on left of cut: {}\n"
+                                             "  Desired proportion of entites on left of cut: {}\n",
+                                             node_max_out_of_balance, total_node_ents, actual_left_prop, left_prop ) );
     }
   }
 

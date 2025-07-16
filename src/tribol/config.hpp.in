@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -32,7 +32,6 @@
 #cmakedefine TRIBOL_USE_SINGLE_PRECISION
 #cmakedefine TRIBOL_USE_MPI
 #cmakedefine TRIBOL_USE_ENZYME
-#cmakedefine TRIBOL_USE_CUSTOM_GRADIENT
 #cmakedefine TRIBOL_USE_UMPIRE
 #cmakedefine TRIBOL_USE_RAJA
 #cmakedefine TRIBOL_USE_CUDA

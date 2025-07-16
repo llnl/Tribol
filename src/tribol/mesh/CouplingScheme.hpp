@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -10,13 +10,15 @@
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
+#include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/utils/DataManager.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/geom/ContactPlane.hpp"
+#include "tribol/geom/ElementNormal.hpp"
 
 #ifdef TRIBOL_USE_ENZYME
-#include "tribol/geom/Normal.hpp"
+#include "tribol/geom/NodalNormal.hpp"
 #endif
 
 // Axom includes
@@ -85,9 +87,6 @@ struct CouplingSchemeInfo {
   void printEnforcementInfo();
   void printExecutionModeInfo();
 };
-
-// forward declaration
-class MethodData;
 
 /*!
  * \brief The CouplingScheme class defines the coupling between two meshes
@@ -636,13 +635,25 @@ class CouplingScheme {
    */
   void printPairReportingData();
 
-#ifdef TRIBOL_USE_ENZYME
+  /**
+   * @brief Get the effective binning proximity scale
+   *
+   * @note The effective binning proximity scale is the user supplied binning proximity scaled by the LOR factor. Thus,
+   * the effective binning proximity is independent of the low-order mesh when a higher-order mesh is used with the MFEM
+   * interface. This is generally the binning proximity that should be used in binning and geometric filtering.
+   *
+   * @pre CouplingScheme::init() must be called prior
+   *
+   * @return effective binning proximity scale
+   */
+  RealT getEffectiveBinningProximityScale() const { return m_effective_binning_proximity_scale; }
+
   /**
    * @brief Enables Enzyme AD for exact Jacobian calculations
    *
    * @param useEnzyme Turns on Enzyme support if true
    */
-  void enableEnzyme( bool useEnzyme ) { m_useEnzyme = useEnzyme; }
+  void enableEnzyme( bool useEnzyme );
 
   /**
    * @brief Is Enzyme AD enabled for exact Jacobian calculations?
@@ -653,33 +664,23 @@ class CouplingScheme {
   bool isEnzymeEnabled() const { return m_useEnzyme; }
 
   /**
-   * @brief Set nodal normal computation method
-   *
-   * @param nodalNormal NodalNormal object
+   * @brief Create MethodData to save Jacobian contributions related to a nodally defined normal
    */
-  void createNodalNormal( std::unique_ptr<NodalNormal>&& nodalNormal ) { m_nodalNormal = std::move( nodalNormal ); }
+  void createNodalNormalJacobianData();
 
   /**
-   * @brief Get pointer to the NodalNormal object
-   *
-   * @return NodalNormal*
-   */
-  NodalNormal* getNodalNormal() { return m_nodalNormal.get(); }
-
-  /**
-   * @brief Create MethodData to save Jacobian contributions related to a
-   * nodally defined normal
-   */
-  void createNormalJacobian() { m_dnJacobian = std::make_unique<MethodData>(); }
-
-  /**
-   * @brief Get the method data for the normal Jacobian contribution
+   * @brief Get the method data for the derivative of the force w.r.t. the normal
    *
    * @return MethodData pointer
    */
-  MethodData* getdnMethodData() const { return m_dnJacobian.get(); }
+  MethodData* getDfDnMethodData() const { return m_dfdnJacobian.get(); }
 
-#endif
+  /**
+   * @brief Get the method data for the derivative of the normal w.r.t. the nodal coordinates
+   *
+   * @return MethodData pointer
+   */
+  MethodData* getDnDxMethodData() const { return m_dndxJacobian.get(); }
 
 #ifdef BUILD_REDECOMP
 
@@ -868,11 +869,9 @@ class CouplingScheme {
   bool m_isBinned;      ///< True if binning has occured
   bool m_isTied;        ///< True if surfaces have been "tied" (Tied contact only)
 
-#ifdef TRIBOL_USE_ENZYME
-  bool m_useEnzyme;                            ///< Use Enzyme for Jacobian calculations
-  std::unique_ptr<NodalNormal> m_nodalNormal;  ///< Method for computing nodal normal (only for Enzyme)
-  std::unique_ptr<MethodData> m_dnJacobian;    ///< Store normal Jacobian contributions
-#endif
+  bool m_useEnzyme = false;                    ///< Use Enzyme for Jacobian calculations
+  std::unique_ptr<MethodData> m_dfdnJacobian;  ///< Store derivative of force w.r.t. normal on element pairs
+  std::unique_ptr<MethodData> m_dndxJacobian;  ///< Store derivative of normal w.r.t. nodal coordinates on element pairs
 
   ArrayT<InterfacePair> m_interface_pairs;  ///< List of interface pairs
 
@@ -886,6 +885,10 @@ class CouplingScheme {
   CouplingSchemeInfo m_couplingSchemeInfo;      ///< struct handling info to be printed
 
   PairReportingData m_pairReportingData;  ///< struct handling on-rank pair reporting data from computational geometry
+
+  RealT m_effective_binning_proximity_scale;  ///< Binning proximity scaled by the LOR factor. Scaling by the LOR factor
+                                              ///< makes proximity detection independent of the LOR factor and based on
+                                              ///< the HO mesh when using the MFEM interface.
 
 #ifdef BUILD_REDECOMP
 

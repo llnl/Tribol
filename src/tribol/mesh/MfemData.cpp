@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -306,7 +306,7 @@ void MfemMeshData::SetParentReferenceCoords( const mfem::ParGridFunction& refere
   }
 }
 
-void MfemMeshData::UpdateMfemMeshData()
+void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale )
 {
   // update coordinates of submesh and LOR mesh
   auto submesh_nodes = dynamic_cast<mfem::ParGridFunction*>( submesh_.GetNodes() );
@@ -317,9 +317,9 @@ void MfemMeshData::UpdateMfemMeshData()
     SLIC_ERROR_ROOT_IF( !lor_nodes, "lor_mesh_ Nodes is not a ParGridFunction." );
     submesh_lor_xfer_->SubmeshToLOR( *submesh_nodes, *lor_nodes );
   }
-  update_data_ =
-      std::make_unique<UpdateData>( submesh_, lor_mesh_.get(), *coords_.GetParentGridFn().ParFESpace(),
-                                    submesh_xfer_gridfn_, submesh_lor_xfer_.get(), attributes_1_, attributes_2_ );
+  update_data_ = std::make_unique<UpdateData>( submesh_, lor_mesh_.get(), *coords_.GetParentGridFn().ParFESpace(),
+                                               submesh_xfer_gridfn_, submesh_lor_xfer_.get(), attributes_1_,
+                                               attributes_2_, binning_proximity_scale );
   coords_.UpdateField( update_data_->vector_xfer_ );
   redecomp_response_.SetSpace( coords_.GetRedecompGridFn().FESpace() );
   redecomp_response_ = 0.0;
@@ -518,8 +518,16 @@ void MfemMeshData::SetMaterialModulus( mfem::Coefficient& modulus_field )
 MfemMeshData::UpdateData::UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh,
                                       const mfem::ParFiniteElementSpace& parent_fes,
                                       mfem::ParGridFunction& submesh_gridfn, SubmeshLORTransfer* submesh_lor_xfer,
-                                      const std::set<int>& attributes_1, const std::set<int>& attributes_2 )
-    : redecomp_mesh_{ lor_mesh ? redecomp::RedecompMesh( *lor_mesh ) : redecomp::RedecompMesh( submesh ) },
+                                      const std::set<int>& attributes_1, const std::set<int>& attributes_2,
+                                      RealT binning_proximity_scale )
+    : redecomp_mesh_{ lor_mesh ? redecomp::RedecompMesh(
+                                     *lor_mesh, binning_proximity_scale *
+                                                    redecomp::RedecompMesh::MaxElementSize(
+                                                        *lor_mesh, redecomp::MPIUtility( lor_mesh->GetComm() ) ) )
+                               : redecomp::RedecompMesh(
+                                     submesh, binning_proximity_scale *
+                                                  redecomp::RedecompMesh::MaxElementSize(
+                                                      submesh, redecomp::MPIUtility( submesh.GetComm() ) ) ) },
       vector_xfer_{ parent_fes, submesh_gridfn, submesh_lor_xfer, redecomp_mesh_ }
 {
   // set element type based on redecomp mesh
@@ -622,8 +630,9 @@ void MfemMeshData::UpdateData::SetElementData()
 
     num_verts_per_elem_ = mfem::Geometry::NumVerts[element_type];
   } else {
-    // just put something here so Tribol will not give a warning for zero element meshes
-    elem_type_ = LINEAR_EDGE;
+    // just put something here so Tribol will not give a warning for zero element meshes.  use a 2d element so arrays
+    // are sized for 3d (max supported dimension) in case they are accessed later on.
+    elem_type_ = LINEAR_QUAD;
     num_verts_per_elem_ = 2;
   }
 }
@@ -675,7 +684,7 @@ const MfemSubmeshData::UpdateData& MfemSubmeshData::GetUpdateData() const
 
 MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data,
                                     ContactMethod contact_method )
-    : parent_data_{ parent_data }, submesh_data_{ submesh_data }, block_offsets_{ 3 }, disp_offsets_{ 2 }
+    : parent_data_{ parent_data }, submesh_data_{ submesh_data }, block_offsets_( 3 ), disp_offsets_( 2 )
 {
   SLIC_ERROR_ROOT_IF( parent_data.GetParentCoords().ParFESpace()->FEColl()->GetOrder() > 1,
                       "Higher order meshes not yet supported for Jacobian matrices." );
@@ -702,9 +711,11 @@ MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemS
 
   auto disp_size = parent_data_.GetParentCoords().ParFESpace()->GetTrueVSize();
   auto lm_size = submesh_data_.GetSubmeshPressure().ParFESpace()->GetTrueVSize();
+  // this is used to size Jacobian contributions that are dependent on the pressure
   block_offsets_[0] = 0;
   block_offsets_[1] = disp_size;
   block_offsets_[2] = disp_size + lm_size;
+  // this is used to size Jacobian contributions that are not dependent on the pressure (e.g. normal)
   disp_offsets_[0] = 0;
   disp_offsets_[1] = disp_size;
 
@@ -872,7 +883,7 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian( con
   auto J_true = std::unique_ptr<mfem::HypreParMatrix>(
       mfem::RAP( submesh_fes.Dof_TrueDof_Matrix(), J_full.get(), parent_trial_fes.Dof_TrueDof_Matrix() ) );
 
-  // Create ones on diagonal of eliminated mortar tdofs (CSR sparse matrix -> HypreParMatrix)
+  // Create ones on diagonal of eliminated mortar tdofs, i.e. inactive dofs (CSR sparse matrix -> HypreParMatrix)
   // I vector
   mfem::Array<int> rows( submesh_fes.GetTrueVSize() + 1 );
   rows = 0;
@@ -906,9 +917,8 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian( con
   return block_J;
 }
 
-#ifdef TRIBOL_USE_ENZYME
-
-std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobianEnzyme( const MethodData& method_data ) const
+// TODO: Merge with GetMfemBlockJacobian() to avoid code duplication
+std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemDfDxFullJacobian( const MethodData& method_data ) const
 {
   // create block operator
   auto block_J = std::make_unique<mfem::BlockOperator>( block_offsets_ );
@@ -997,7 +1007,8 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobianEnzym
                      mfem::RAP( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix(), parent_J_hypre.get(),
                                 parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() ) );
 
-  // Create ones on diagonal of eliminated mortar tdofs (CSR sparse matrix -> HypreParMatrix) I vector
+  // Create ones on diagonal of eliminated mortar tdofs, i.e. inactive dofs (CSR sparse matrix -> HypreParMatrix)
+  // I vector
   auto& submesh_fes = submesh_data_.GetSubmeshFESpace();
   mfem::Array<int> rows( submesh_fes.GetTrueVSize() + 1 );
   rows = 0;
@@ -1028,7 +1039,8 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobianEnzym
   return block_J;
 }
 
-std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdfdnJacobianEnzyme( const MethodData& method_data ) const
+// TODO: Merge with GetMfemBlockJacobian() to avoid code duplication
+std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemDfDnJacobian( const MethodData& method_data ) const
 {
   // create block operator
   auto block_J = std::make_unique<mfem::BlockOperator>( block_offsets_, disp_offsets_ );
@@ -1059,10 +1071,10 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdfdnJacobianEnzyme
 
   // transfer (0, 0) block (residual dof rows, displacement dof cols)
   auto submesh_J = GetUpdateData().submesh_redecomp_xfer_00_->TransferToParallelSparse(
-      mortar_elems, mortar_elems,
+      mortar_elems, nonmortar_elems,
       method_data.getBlockJ()( static_cast<int>( BlockSpace::MORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) ) );
   submesh_J += GetUpdateData().submesh_redecomp_xfer_00_->TransferToParallelSparse(
-      nonmortar_elems, mortar_elems,
+      nonmortar_elems, nonmortar_elems,
       method_data.getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) ) );
   submesh_J.Finalize();
   auto submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_00_->ConvertToHypreParMatrix( submesh_J, false );
@@ -1090,14 +1102,15 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdfdnJacobianEnzyme
   return block_J;
 }
 
-std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdndxJacobianEnzyme( const MethodData& method_data ) const
+// TODO: Merge with GetMfemBlockJacobian() to avoid code duplication
+std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemDnDxJacobian( const MethodData& method_data ) const
 {
   // create block operator
   auto block_J = std::make_unique<mfem::BlockOperator>( disp_offsets_, disp_offsets_ );
   block_J->owns_blocks = 1;
 
   // these are Tribol element ids
-  auto nonmortar_elems = method_data.getBlockJElementIds()[0];
+  auto nonmortar_elems = method_data.getBlockJElementIds()[static_cast<int>( BlockSpace::NONMORTAR )];
   // convert them to redecomp element ids
   const auto& elem_map_2 = parent_data_.GetElemMap2();
   for ( auto& nonmortar_elem : nonmortar_elems ) {
@@ -1106,7 +1119,8 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdndxJacobianEnzyme
 
   // transfer (0, 0) block (residual dof rows, displacement dof cols)
   auto submesh_J = GetUpdateData().submesh_redecomp_xfer_00_->TransferToParallelSparse(
-      nonmortar_elems, nonmortar_elems, method_data.getBlockJ()( 0, 0 ) );
+      nonmortar_elems, nonmortar_elems,
+      method_data.getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) ) );
   submesh_J.Finalize();
   auto submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_00_->ConvertToHypreParMatrix( submesh_J, false );
   // Matrix returned by mfem::RAP copies all existing data and owns its data
@@ -1118,8 +1132,6 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemdndxJacobianEnzyme
   return block_J;
 }
 
-#endif
-
 MfemJacobianData::UpdateData::UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data )
 {
   auto dual_submesh_fes = &submesh_data.GetSubmeshFESpace();
@@ -1128,8 +1140,7 @@ MfemJacobianData::UpdateData::UpdateData( const MfemMeshData& parent_data, const
     dual_submesh_fes = submesh_data.GetLORMeshFESpace();
     primal_submesh_fes = parent_data.GetLORMeshFESpace();
   }
-  // create a matrix transfer operator for moving data from redecomp to the
-  // submesh
+  // create a matrix transfer operator for moving data from redecomp to the submesh
   submesh_redecomp_xfer_00_ = std::make_unique<redecomp::MatrixTransfer>(
       *primal_submesh_fes, *primal_submesh_fes, *parent_data.GetRedecompResponse().FESpace(),
       *parent_data.GetRedecompResponse().FESpace() );

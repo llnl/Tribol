@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -823,7 +823,7 @@ TEST_F( CompGeomTest, codirectional_normals_3d )
 
   tribol::enableTimestepVote( csIndex, true );
 
-  tribol::setLoggingLevel( csIndex, tribol::TRIBOL_DEBUG );
+  tribol::setLoggingLevel( csIndex, tribol::LoggingLevel::DEBUG );
 
   tribol::setPenaltyOptions( csIndex, tribol::KINEMATIC, tribol::KINEMATIC_ELEMENT, tribol::NO_RATE_PENALTY );
 

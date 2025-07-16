@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -30,14 +30,14 @@ constexpr int ANY_MESH = -1;
 /*!
  * \brief Enumerates the logging level options
  */
-enum LoggingLevel
+enum class LoggingLevel
 {
-  TRIBOL_UNDEFINED,  ///! Undefined
-  TRIBOL_DEBUG,      ///! Debug and higher
-  TRIBOL_INFO,       ///! Info and higher
-  TRIBOL_WARNING,    ///! Warning and higher
-  TRIBOL_ERROR,      ///! Errors only
-  NUM_LOGGING_LEVELS = TRIBOL_ERROR
+  UNDEFINED,  ///! Undefined
+  DEBUG,      ///! Debug and higher
+  INFO,       ///! Info and higher
+  WARNING,    ///! Warning and higher
+  ERROR,      ///! Errors only
+  NUM_LOGGING_LEVELS = ERROR
 };
 
 /*!
@@ -357,6 +357,7 @@ enum MethodError
   SAME_MESH_IDS_INVALID_DIM,
   INVALID_DIM,
   NULL_NODAL_RESPONSE,
+  NULL_REFERENCE_COORDS,
   NO_METHOD_ERROR,
   NUM_METHOD_ERRORS
 };
@@ -464,8 +465,10 @@ struct EnforcementOptions {
 struct Parameters {
   CommT problem_comm = TRIBOL_COMM_WORLD;  ///! MPI communicator for the problem
 
-  RealT overlap_area_frac = 1.0e-8;   ///! Ratio of overlap area to largest face area for contact inclusion
-  RealT gap_tol_ratio = 1.0e-12;      ///! Ratio for determining tolerance for active contact gaps
+  RealT binning_proximity_scale =
+      4.0;                           ///! Element length multiplier for coarse binning and proximity detection inclusion
+  RealT overlap_area_frac = 1.0e-8;  ///! Ratio of overlap area to largest face area for contact inclusion
+  RealT gap_tol_ratio = 1.0e-12;     ///! Ratio for determining tolerance for active contact gaps
   RealT gap_separation_ratio = 0.75;  ///! Ratio for determining allowable separation in geometric filtering
   RealT gap_tied_tol = 0.1;           ///! Ratio for determining max separation tied contact can support
   RealT len_collapse_ratio = 1.0e-8;  ///! Ratio of face length providing topology collapse length tolerance

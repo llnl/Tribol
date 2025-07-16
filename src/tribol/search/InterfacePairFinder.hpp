@@ -1,4 +1,4 @@
-// Copyright (c) 2017-2023, Lawrence Livermore National Security, LLC and
+// Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
@@ -26,10 +26,12 @@ class SearchBase;
  * \param [in] mesh2 mesh view for 2nd element in pair
  * \param [in] mode ContactMode
  * \param [in] auto_contact_check Is auto-contact assumed?
+ * \param [in] element_radius_multiplier Scaling applied to max element radius distance check
  *
  */
 TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, const MeshData::Viewer& mesh1,
-                                    const MeshData::Viewer& mesh2, ContactMode mode, bool auto_contact_check );
+                                    const MeshData::Viewer& mesh2, ContactMode mode, bool auto_contact_check,
+                                    RealT element_radius_multiplier );
 
 /*!
  * \class InterfacePairFinder
