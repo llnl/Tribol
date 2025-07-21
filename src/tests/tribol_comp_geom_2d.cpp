@@ -48,9 +48,40 @@ class CompGeomTest : public ::testing::Test {
  protected:
   void SetUp() override {}
 
-  void TearDown() override
+  void SetupAndUpdate2DHostProblem( tribol::IndexT* conn_1, RealT* x_1, RealT* y_1, RealT* fx_1, RealT* fy_1, RealT penalty_1,
+                                    tribol::IndexT* conn_2, RealT* x_2, RealT* y_2, RealT* fx_2, RealT* fy_2, RealT penalty_2,
+                                    tribol::ContactMode c_mode, tribol::ContactCase c_case,
+                                    tribol::ContactMethod c_method, tribol::ContactModel c_model,
+                                    tribol::EnforcementMethod c_enfrc, tribol::BinningMethod c_binning,
+                                    tribol::KinematicPenaltyCalculation c_penalty_calc )
   {
+
+    tribol::registerMesh( 0, 1, 2, conn_1, (int)( tribol::LINEAR_EDGE ), x_1, y_1, nullptr,
+                          tribol::MemorySpace::Host );
+    tribol::registerMesh( 1, 1, 2, conn_2, (int)( tribol::LINEAR_EDGE ), x_2, y_2, nullptr,
+                          tribol::MemorySpace::Host );
+
+    tribol::registerNodalResponse( 0, fx_1, fy_1, nullptr );
+    tribol::registerNodalResponse( 1, fx_2, fy_2, nullptr );
+
+    tribol::setKinematicConstantPenalty( 0, penalty_1 );
+    tribol::setKinematicConstantPenalty( 1, penalty_2 );
+
+    tribol::registerCouplingScheme( 0, 0, 1, c_mode, c_case, c_method,
+                                    c_model, c_enfrc, c_binning,
+                                    tribol::ExecutionMode::Sequential );
+
+    tribol::setPenaltyOptions( 0, tribol::KINEMATIC, c_penalty_calc );
+    tribol::setContactAreaFrac( 0, 1.e-4 );
+
+    RealT dt = 1.;
+    int update_err = tribol::update( 1, 1., dt );
+
+    EXPECT_EQ( update_err, 0 );
+
   }
+
+  void TearDown() override {}
 
  protected:
 };
@@ -93,33 +124,19 @@ TEST_F( CompGeomTest, common_plane_full_interpen_no_overlap )
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
 
-  tribol::registerMesh( 0, 1, 2, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
-                        tribol::MemorySpace::Host );
-  tribol::registerMesh( 1, 1, 2, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
-                        tribol::MemorySpace::Host );
-
   RealT fx1[2] = { 0., 0. };
   RealT fy1[2] = { 0., 0. };
   RealT fx2[2] = { 0., 0. };
   RealT fy2[2] = { 0., 0. };
 
-  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], nullptr );
-  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], nullptr );
+  RealT penalty1 = 1.0;
+  RealT penalty2 = 1.0;
 
-  tribol::setKinematicConstantPenalty( 0, 1. );
-  tribol::setKinematicConstantPenalty( 1, 1. );
-
-  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
-                                  tribol::ExecutionMode::Sequential );
-
-  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
-  tribol::setContactAreaFrac( 0, 1.e-4 );
-
-  RealT dt = 1.;
-  int update_err = tribol::update( 1, 1., dt );
-
-  EXPECT_EQ( update_err, 0 );
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
+                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
+                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                               tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
 
@@ -162,33 +179,19 @@ TEST_F( CompGeomTest, common_plane_coincident_vertices_full_overlap )
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
 
-  tribol::registerMesh( 0, 1, 2, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
-                        tribol::MemorySpace::Host );
-  tribol::registerMesh( 1, 1, 2, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
-                        tribol::MemorySpace::Host );
-
   RealT fx1[2] = { 0., 0. };
   RealT fy1[2] = { 0., 0. };
   RealT fx2[2] = { 0., 0. };
   RealT fy2[2] = { 0., 0. };
 
-  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], nullptr );
-  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], nullptr );
+  RealT penalty1 = 1.;
+  RealT penalty2 = 1.;
 
-  tribol::setKinematicConstantPenalty( 0, 1. );
-  tribol::setKinematicConstantPenalty( 1, 1. );
-
-  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
-                                  tribol::ExecutionMode::Sequential );
-
-  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
-  tribol::setContactAreaFrac( 0, 1.e-4 );
-
-  RealT dt = 1.;
-  int update_err = tribol::update( 1, 1., dt );
-
-  EXPECT_EQ( update_err, 0 );
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
+                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
+                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                               tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
 
@@ -235,33 +238,19 @@ TEST_F( CompGeomTest, common_plane_conforming_separation )
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
 
-  tribol::registerMesh( 0, 1, 2, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
-                        tribol::MemorySpace::Host );
-  tribol::registerMesh( 1, 1, 2, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
-                        tribol::MemorySpace::Host );
-
   RealT fx1[2] = { 0., 0. };
   RealT fy1[2] = { 0., 0. };
   RealT fx2[2] = { 0., 0. };
   RealT fy2[2] = { 0., 0. };
 
-  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], nullptr );
-  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], nullptr );
+  RealT penalty1 = 1.;
+  RealT penalty2 = 1.;
 
-  tribol::setKinematicConstantPenalty( 0, 1. );
-  tribol::setKinematicConstantPenalty( 1, 1. );
-
-  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
-                                  tribol::ExecutionMode::Sequential );
-
-  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
-  tribol::setContactAreaFrac( 0, 1.e-4 );
-
-  RealT dt = 1.;
-  int update_err = tribol::update( 1, 1., dt );
-
-  EXPECT_EQ( update_err, 0 );
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
+                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
+                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                               tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
 
@@ -309,33 +298,19 @@ TEST_F( CompGeomTest, common_plane_coincident_vertex_no_overlap )
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
 
-  tribol::registerMesh( 0, 1, 2, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
-                        tribol::MemorySpace::Host );
-  tribol::registerMesh( 1, 1, 2, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
-                        tribol::MemorySpace::Host );
-
   RealT fx1[2] = { 0., 0. };
   RealT fy1[2] = { 0., 0. };
   RealT fx2[2] = { 0., 0. };
   RealT fy2[2] = { 0., 0. };
 
-  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], nullptr );
-  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], nullptr );
+  RealT penalty1 = 1.;
+  RealT penalty2 = 1.;
 
-  tribol::setKinematicConstantPenalty( 0, 1. );
-  tribol::setKinematicConstantPenalty( 1, 1. );
-
-  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
-                                  tribol::ExecutionMode::Sequential );
-
-  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
-  tribol::setContactAreaFrac( 0, 1.e-4 );
-
-  RealT dt = 1.;
-  int update_err = tribol::update( 1, 1., dt );
-
-  EXPECT_EQ( update_err, 0 );
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
+                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
+                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                               tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
 
@@ -380,33 +355,19 @@ TEST_F( CompGeomTest, common_plane_nearly_coincident_vertex_positive_overlap )
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
 
-  tribol::registerMesh( 0, 1, 2, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
-                        tribol::MemorySpace::Host );
-  tribol::registerMesh( 1, 1, 2, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
-                        tribol::MemorySpace::Host );
-
   RealT fx1[2] = { 0., 0. };
   RealT fy1[2] = { 0., 0. };
   RealT fx2[2] = { 0., 0. };
   RealT fy2[2] = { 0., 0. };
 
-  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], nullptr );
-  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], nullptr );
+  RealT penalty1 = 1.;
+  RealT penalty2 = 1.;
 
-  tribol::setKinematicConstantPenalty( 0, 1. );
-  tribol::setKinematicConstantPenalty( 1, 1. );
-
-  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
-                                  tribol::ExecutionMode::Sequential );
-
-  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
-  tribol::setContactAreaFrac( 0, 1.e-12 );
-
-  RealT dt = 1.;
-  int update_err = tribol::update( 1, 1., dt );
-
-  EXPECT_EQ( update_err, 0 );
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
+                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
+                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                               tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
 
@@ -460,33 +421,19 @@ TEST_F( CompGeomTest, common_plane_interpen_check_1 )
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
 
-  tribol::registerMesh( 0, 1, 2, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
-                        tribol::MemorySpace::Host );
-  tribol::registerMesh( 1, 1, 2, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
-                        tribol::MemorySpace::Host );
-
   RealT fx1[2] = { 0., 0. };
   RealT fy1[2] = { 0., 0. };
   RealT fx2[2] = { 0., 0. };
   RealT fy2[2] = { 0., 0. };
 
-  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], nullptr );
-  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], nullptr );
+  RealT penalty1 = 1.;
+  RealT penalty2 = 1.;
 
-  tribol::setKinematicConstantPenalty( 0, 1. );
-  tribol::setKinematicConstantPenalty( 1, 1. );
-
-  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
-                                  tribol::ExecutionMode::Sequential );
-
-  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
-  tribol::setContactAreaFrac( 0, 1.e-12 );
-
-  RealT dt = 1.;
-  int update_err = tribol::update( 1, 1., dt );
-
-  EXPECT_EQ( update_err, 0 );
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
+                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
+                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                               tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
 
@@ -547,33 +494,19 @@ TEST_F( CompGeomTest, common_plane_interpen_check_2 )
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
 
-  tribol::registerMesh( 0, 1, 2, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
-                        tribol::MemorySpace::Host );
-  tribol::registerMesh( 1, 1, 2, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
-                        tribol::MemorySpace::Host );
-
   RealT fx1[2] = { 0., 0. };
   RealT fy1[2] = { 0., 0. };
   RealT fx2[2] = { 0., 0. };
   RealT fy2[2] = { 0., 0. };
 
-  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], nullptr );
-  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], nullptr );
+  RealT penalty1 = 1.;
+  RealT penalty2 = 1.;
 
-  tribol::setKinematicConstantPenalty( 0, 1. );
-  tribol::setKinematicConstantPenalty( 1, 1. );
-
-  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
-                                  tribol::ExecutionMode::Sequential );
-
-  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
-  tribol::setContactAreaFrac( 0, 1.e-12 );
-
-  RealT dt = 1.;
-  int update_err = tribol::update( 1, 1., dt );
-
-  EXPECT_EQ( update_err, 0 );
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
+                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
+                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                               tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
 
@@ -636,33 +569,19 @@ TEST_F( CompGeomTest, common_plane_interpen_check_3 )
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
 
-  tribol::registerMesh( 0, 1, 2, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
-                        tribol::MemorySpace::Host );
-  tribol::registerMesh( 1, 1, 2, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
-                        tribol::MemorySpace::Host );
-
   RealT fx1[2] = { 0., 0. };
   RealT fy1[2] = { 0., 0. };
   RealT fx2[2] = { 0., 0. };
   RealT fy2[2] = { 0., 0. };
 
-  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], nullptr );
-  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], nullptr );
+  RealT penalty1 = 1.;
+  RealT penalty2 = 1.;
 
-  tribol::setKinematicConstantPenalty( 0, 1. );
-  tribol::setKinematicConstantPenalty( 1, 1. );
-
-  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
-                                  tribol::ExecutionMode::Sequential );
-
-  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
-  tribol::setContactAreaFrac( 0, 1.e-12 );
-
-  RealT dt = 1.;
-  int update_err = tribol::update( 1, 1., dt );
-
-  EXPECT_EQ( update_err, 0 );
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
+                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
+                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                               tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
 
@@ -758,33 +677,19 @@ TEST_F( CompGeomTest, 2d_projections_1 )
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
 
-  tribol::registerMesh( 0, 1, 2, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
-                        tribol::MemorySpace::Host );
-  tribol::registerMesh( 1, 1, 2, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
-                        tribol::MemorySpace::Host );
-
   RealT fx1[2] = { 0., 0. };
   RealT fy1[2] = { 0., 0. };
   RealT fx2[2] = { 0., 0. };
   RealT fy2[2] = { 0., 0. };
 
-  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], nullptr );
-  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], nullptr );
+  RealT penalty1 = 1.;
+  RealT penalty2 = 1.;
 
-  tribol::setKinematicConstantPenalty( 0, 1. );
-  tribol::setKinematicConstantPenalty( 1, 1. );
-
-  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
-                                  tribol::ExecutionMode::Sequential );
-
-  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
-  tribol::setContactAreaFrac( 0, 1.e-4 );
-
-  RealT dt = 1.;
-  int update_err = tribol::update( 1, 1., dt );
-
-  EXPECT_EQ( update_err, 0 );
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
+                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
+                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                               tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
 
