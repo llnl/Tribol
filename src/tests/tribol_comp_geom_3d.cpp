@@ -414,9 +414,11 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_1 )
                                     nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
                                     0. );
 
+  // rotate the first face into the desired configuration
   RealT theta_y = 45.;
   m_mesh.rotateContactMesh( 0, 0., theta_y, 0. );
 
+  // translate the second face into the desired configuration
   RealT shiftx = ( 0.7071 - 0.5 ) + 0.5 / 1.41421356;
   RealT shiftz = ( 1.0 - 0.7071 ) + 0.5 / 1.41421356;
   m_mesh.translateContactMesh( 1, shiftx, 0, -shiftz );
@@ -440,13 +442,16 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_1 )
   auto& comp_geom = couplingScheme->getCompGeom();
   auto& plane = comp_geom.getCommonPlane( 0 );
 
+  // compute length of interpen portion and the overlap centroid for gap calc.
   RealT hypotenuse = 0.5;
   RealT overlap_gap_point = 0.5 * hypotenuse * std::cos( 0.5 * theta_y * M_PI / 180 );
 
+  // compute and check the gap
   RealT gap_computed = -2. * overlap_gap_point * std::tan( 0.5 * theta_y * M_PI / 180 );
   RealT gap_diff = std::abs( plane.m_gap - gap_computed );
   EXPECT_LE( gap_diff, 1.e-5 );
 
+  // check the overlap area
   RealT area_diff = std::abs( plane.m_area - 2. * overlap_gap_point );
   EXPECT_LE( area_diff, 1.e-5 );
 
@@ -546,8 +551,13 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_2 )
   auto& comp_geom = couplingScheme->getCompGeom();
   auto& plane = comp_geom.getCommonPlane( 0 );
 
+  // compute the "length" of the interpen portion of face 2
   RealT h = 0.25 / std::cos( fortyfive );
+
+  // compute that "length" as projected onto the common plane
   RealT h_bar = h * std::cos( 0.5 * fortyfive );
+
+  // compute and check the overlap area
   RealT A = h_bar * 0.5;
   RealT area_diff = std::abs( A - plane.m_area );
   EXPECT_LE( area_diff, 1.e-8 );
@@ -650,12 +660,17 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3 )
   auto& comp_geom = couplingScheme->getCompGeom();
   auto& plane = comp_geom.getCommonPlane( 0 );
 
+  // compute the geometric quantities of the intepren portion of face 2
+  // in otrder to compute the overlap area
   RealT h = 0.25 / std::cos( fortyfive );
   RealT h_bar = h * std::cos( 0.5 * fortyfive );
   RealT A = h_bar * 0.5;
+
+  // check the overlap area
   RealT area_diff = std::abs( A - plane.m_area );
   EXPECT_LE( area_diff, 1.e-8 );
 
+  // compute and check the gap
   RealT computed_gap = -h_bar * std::tan( 0.5 * fortyfive );
   RealT gap_diff = std::abs( plane.m_gap - computed_gap );
   EXPECT_LE( gap_diff, 1.e-6 );
@@ -759,6 +774,9 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_4 )
   auto& comp_geom = couplingScheme->getCompGeom();
   auto& plane = comp_geom.getCommonPlane( 0 );
 
+  // compute the geometric quantities of interest in order to compute the area of overlap and gap
+  // Note: this is somewhat involved and difficult to make super clear. Talk to SRW if you need
+  // more details
   RealT h = 0.25;                        // height of initial interpen before face rotation
   RealT h_bar = h / std::cos( thirty );  // "height" of interpen after rotation
   // RealT w = h * std::tan(fortyfive);  // keep for reference
@@ -769,9 +787,11 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_4 )
   RealT A_bar_bar = h_bar_bar * w_bar;  // area of triangular interpen on common plane
   RealT computed_gap = -2 * ( 0.33333 * h_bar_bar ) * std::tan( thirty );
 
+  // check the area
   RealT area_diff = std::abs( A_bar_bar - plane.m_area );
   EXPECT_LE( area_diff, 1.e-8 );
 
+  // check the gap
   RealT gap_diff = std::abs( plane.m_gap - computed_gap );
   EXPECT_LE( gap_diff, 1.e-6 );
 }

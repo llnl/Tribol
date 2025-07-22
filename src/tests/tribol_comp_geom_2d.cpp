@@ -259,7 +259,7 @@ TEST_F( CompGeomTest, common_plane_conforming_separation )
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
   auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
-  RealT gap_diff = std::abs( 0.1 - plane.m_gap );
+  RealT gap_diff = std::abs( xy2[1] - plane.m_gap );
   EXPECT_LT( gap_diff, 1.e-10 );
 }
 
@@ -444,10 +444,16 @@ TEST_F( CompGeomTest, common_plane_interpen_check_1 )
   auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
 
   EXPECT_EQ( plane.m_fullOverlap, false );
+
+  // compute the length and height of the interpen portion of edge 2
   RealT length = xy1[0] - xy1[2];
   RealT height = xy2[3] - xy2[1];
+
+  // compute the angle between the interpen portions of the edges
   RealT theta = std::atan( height / length );
   RealT half_theta = 0.5 * theta;
+
+  // compute and check the overlap area
   RealT computed_area = 0.5 * length * std::cos( half_theta );
   RealT diff = std::abs( computed_area - plane.m_area );
   EXPECT_LT( diff, 1.e-10 );
@@ -517,9 +523,18 @@ TEST_F( CompGeomTest, common_plane_interpen_check_2 )
   auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
 
   EXPECT_EQ( plane.m_fullOverlap, false );
-  RealT length = 0.75 - ( xy2[0] + x_shift );
-  RealT height = 0. - xy2[1];
+
+  // compute the point at which edge 2 intersects edge 1
+  RealT intercept_point = 0.5 * (xy1[0] - xy1[2]) + x_shift;
+
+  // compute the height and length of the interpen portion of edge 2
+  RealT length = intercept_point - ( xy2[0] + x_shift );
+  RealT height = xy1[1] - xy2[1];
+
+  // compute the angle between the interpen portions of edge 1 and 2
   RealT theta = std::atan( height / length );
+
+  // compute and check the overlap area
   RealT hyp = length / std::cos( theta );
   RealT half_theta = 0.5 * theta;
   RealT computed_area = hyp * std::cos( half_theta );
@@ -592,8 +607,16 @@ TEST_F( CompGeomTest, common_plane_interpen_check_3 )
   auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
 
   EXPECT_EQ( plane.m_fullOverlap, true );
+
+  // compute and check the overlap area
+
+  // compute the hypotenuse (i.e. length of interpen portion of edge 2)
   RealT h = 0.5 / std::cos( 45 * M_PI / 180 );
+
+  // compute the length as projected onto the common plane
   RealT h_bar = h * std::cos( 45 * M_PI / 180 / 2 );
+
+  // check the overlap area
   RealT computed_area = h_bar;
   RealT diff = std::abs( computed_area - plane.m_area );
   EXPECT_LT( diff, 1.e-10 );

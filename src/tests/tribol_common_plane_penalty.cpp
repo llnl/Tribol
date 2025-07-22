@@ -575,12 +575,21 @@ TEST_F( CommonPlaneTest, common_plane_2d_interpen_check )
 
   checkForceSense( couplingScheme );
 
-  RealT length = 0.75 - x2[0];
-  RealT height = 0. - y2[0];
+  // compute the point at which edge 2 intersects edge 1.
+  // then compute the length and height of the interpen portion of edge 2
+  RealT intercept_point = 0.5 * (x1[0] - x1[1]) + x_shift;
+  RealT length = intercept_point - x2[0];
+  RealT height = y1[0] - y2[0];
+ 
+  // compute the angle between the interpen portions of edge 1 and 2
   RealT theta = std::atan( height / length );
+
+  // compute the projected area of overlap
   RealT hyp = length / std::cos( theta );
   RealT half_theta = 0.5 * theta;
   RealT computed_area = hyp * std::cos( half_theta );
+
+  // compute and check the gap at the overlap area centroid
   RealT half_area = 0.5 * computed_area;
   RealT half_gap = half_area * std::tan( half_theta );
   RealT gap = -2. * half_gap;
