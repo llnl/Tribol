@@ -115,15 +115,15 @@ TEST_F( CompGeomTest, common_plane_single_element_full_overlap_check_1 )
   // mesh bounding box with 0.1 interpenetration gap. The contact faces
   // just have a y-shift and overlap will have nodes that lie on edge
   // segments of the opposing face
-  int nMortarElems = 1;
-  int nElemsXM = nMortarElems;
+  int numElems1 = 1;
+  int nElemsXM = numElems1;
   int nElemsYM = 1;
-  int nElemsZM = nMortarElems;
+  int nElemsZM = numElems1;
 
-  int nNonmortarElems = 1;
-  int nElemsXS = nNonmortarElems;
+  int numElems2 = 1;
+  int nElemsXS = numElems2; 
   int nElemsYS = 1;
-  int nElemsZS = nNonmortarElems;
+  int nElemsZS = numElems2; 
 
   int userSpecifiedNumOverlaps = 1;
 
@@ -179,15 +179,15 @@ TEST_F( CompGeomTest, common_plane_single_element_full_overlap_check_2 )
   // mesh bounding box with 0.1 interpenetration gap. The faces will
   // have an x and y shift such that no nodes overlap with nodes/segments of
   // the opposing face
-  int nMortarElems = 1;
-  int nElemsXM = nMortarElems;
+  int numElems1 = 1;
+  int nElemsXM = numElems1;
   int nElemsYM = 1;
-  int nElemsZM = nMortarElems;
+  int nElemsZM = numElems1;
 
-  int nNonmortarElems = 1;
-  int nElemsXS = nNonmortarElems;
+  int numElems2 = 1;
+  int nElemsXS = numElems2; 
   int nElemsYS = 1;
-  int nElemsZS = nNonmortarElems;
+  int nElemsZS = numElems2; 
 
   int userSpecifiedNumOverlaps = 1;
 
@@ -241,15 +241,15 @@ TEST_F( CompGeomTest, common_plane_single_element_full_overlap_check_2 )
 TEST_F( CompGeomTest, common_plane_single_element_full_separation_check_1 )
 {
   // mesh bounding box with 0.1 separation gap and no x/y shift
-  int nMortarElems = 1;
-  int nElemsXM = nMortarElems;
+  int numElems1 = 1;
+  int nElemsXM = numElems1; 
   int nElemsYM = 1;
-  int nElemsZM = nMortarElems;
+  int nElemsZM = numElems1; 
 
-  int nNonmortarElems = 1;
-  int nElemsXS = nNonmortarElems;
+  int numElems2 = 1;
+  int nElemsXS = numElems2; 
   int nElemsYS = 1;
-  int nElemsZS = nNonmortarElems;
+  int nElemsZS = numElems2; 
 
   int userSpecifiedNumOverlaps = 1;
 
@@ -304,15 +304,15 @@ TEST_F( CompGeomTest, common_plane_single_element_full_separation_check_2 )
 {
   // mesh bounding box with 0.1 separation gap. The faces will
   // have an x and y shift
-  int nMortarElems = 1;
-  int nElemsXM = nMortarElems;
+  int numElems1 = 1;
+  int nElemsXM = numElems1;
   int nElemsYM = 1;
-  int nElemsZM = nMortarElems;
+  int nElemsZM = numElems1; 
 
-  int nNonmortarElems = 1;
-  int nElemsXS = nNonmortarElems;
+  int numElems2 = 1;
+  int nElemsXS = numElems2; 
   int nElemsYS = 1;
-  int nElemsZS = nNonmortarElems;
+  int nElemsZS = numElems2; 
 
   int userSpecifiedNumOverlaps = 1;
 
@@ -384,15 +384,15 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_1 )
   //            *       *             *
   //             *      * * * * * * * *
 
-  int nMortarElems = 1;
-  int nElemsXM = nMortarElems;
+  int numElems1 = 1;
+  int nElemsXM = numElems1; 
   int nElemsYM = 1;
-  int nElemsZM = nMortarElems;
+  int nElemsZM = numElems1; 
 
-  int nNonmortarElems = 1;
-  int nElemsXS = nNonmortarElems;
+  int numElems2 = 1;
+  int nElemsXS = numElems2; 
   int nElemsYS = 1;
-  int nElemsZS = nNonmortarElems;
+  int nElemsZS = numElems2; 
 
   int userSpecifiedNumOverlaps = 1;
 
@@ -935,15 +935,15 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_5 )
 
 TEST_F( CompGeomTest, common_plane_perfect_conforming_full_overlap )
 {
-  int nMortarElems = 3;
-  int nElemsXM = nMortarElems;
+  int numElems1 = 3;
+  int nElemsXM = numElems1; 
   int nElemsYM = 3;
-  int nElemsZM = nMortarElems;
+  int nElemsZM = numElems1;
 
-  int nNonmortarElems = 3;
-  int nElemsXS = nNonmortarElems;
+  int numElems2 = 3;
+  int nElemsXS = numElems2; 
   int nElemsYS = 3;
-  int nElemsZS = nNonmortarElems;
+  int nElemsZS = numElems2; 
 
   int userSpecifiedNumOverlaps = 9;
 
@@ -987,15 +987,15 @@ TEST_F( CompGeomTest, common_plane_perfect_conforming_full_overlap )
 
 TEST_F( CompGeomTest, common_plane_xy_shift_full_overlap )
 {
-  int nMortarElems = 3;
-  int nElemsXM = nMortarElems;
+  int numElems1 = 3;
+  int nElemsXM = numElems1; 
   int nElemsYM = 3;
-  int nElemsZM = nMortarElems;
+  int nElemsZM = numElems1; 
 
-  int nNonmortarElems = 3;
-  int nElemsXS = nNonmortarElems;
+  int numElems2 = 3;
+  int nElemsXS = numElems2; 
   int nElemsYS = 3;
-  int nElemsZS = nNonmortarElems;
+  int nElemsZS = numElems2;
 
   int userSpecifiedNumOverlaps = 25;
 
@@ -1039,15 +1039,15 @@ TEST_F( CompGeomTest, common_plane_xy_shift_full_overlap )
 
 TEST_F( CompGeomTest, common_plane_rotated_face_full_overlap )
 {
-  int nMortarElems = 1;
-  int nElemsXM = nMortarElems;
-  int nElemsYM = nMortarElems;
-  int nElemsZM = nMortarElems;
+  int numElems1 = 1;
+  int nElemsXM = numElems1;
+  int nElemsYM = numElems1;
+  int nElemsZM = numElems1;
 
-  int nNonmortarElems = 1;
-  int nElemsXS = nNonmortarElems;
-  int nElemsYS = nNonmortarElems;
-  int nElemsZS = nNonmortarElems;
+  int numElems2 = 1;
+  int nElemsXS = numElems2; 
+  int nElemsYS = numElems2; 
+  int nElemsZS = numElems2; 
 
   int userSpecifiedNumOverlaps = 1;
 

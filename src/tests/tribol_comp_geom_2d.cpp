@@ -145,7 +145,12 @@ TEST_F( CompGeomTest, common_plane_coincident_vertices_full_overlap )
   RealT y2[numVerts];
 
   // this geometry is in contact with coincident vertices when
-  // projected onto the common plane.
+  // projected onto the common plane. Note, the coincident vertices
+  // are up to some tolerance in the CG routines. Here, we make the
+  // x-components for edge 2 vertices "nearly" 0 and "nearly" 1. In fact,
+  // x-coord for vertex 1 of edge 2 is slightly MORE than 0 and x-coord
+  // for vertex 2 of edge 2 is slight LESS than 1.0, which means that
+  // edge 2 technically lies entirely inside edge 1 (up to some tolerance).
   x1[0] = 1.0;
   x1[1] = 0.0;
   y1[0] = 0.0;
@@ -180,6 +185,9 @@ TEST_F( CompGeomTest, common_plane_coincident_vertices_full_overlap )
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
   auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
+  // check overlap area. The analytic overlap is the difference in the x-coords
+  // of edge 2. See note at vertex coordinate initialization at the top of this
+  // test regarding edge 2 lying inside edge 1 (up to some tolerance).
   RealT diff = std::abs( ( x2[1] - x2[0] ) - plane.m_area );
   EXPECT_LT( diff, 1.e-10 );
 }
