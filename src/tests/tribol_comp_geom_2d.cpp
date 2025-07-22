@@ -92,34 +92,24 @@ TEST_F( CompGeomTest, common_plane_full_interpen_no_overlap )
   // this is a configuration from testing that is/was producing an overlap for
   // non-overlapping edges, which in turn produced negative basis function
   // evaluations
-  constexpr int dim = 2;
   constexpr int numVerts = 2;
-  RealT xy1[dim * numVerts];
-  RealT xy2[dim * numVerts];
-
-  // this geometry has two faces that have "passed through" one another, but
-  // don't have a positive area of overlap.
-  xy1[0] = 0.324552;
-  xy1[1] = 0.625596;
-  xy1[2] = 0.16206;
-  xy1[3] = 0.722646;
-
-  xy2[0] = 4.59227e-17;
-  xy2[1] = 0.752178;
-  xy2[2] = 0.161705;
-  xy2[3] = 0.72276;
 
   RealT x1[numVerts];
   RealT y1[numVerts];
   RealT x2[numVerts];
   RealT y2[numVerts];
 
-  for ( int i = 0; i < numVerts; ++i ) {
-    x1[i] = xy1[i * dim];
-    y1[i] = xy1[i * dim + 1];
-    x2[i] = xy2[i * dim];
-    y2[i] = xy2[i * dim + 1];
-  }
+  // this geometry has two faces that have "passed through" one another, but
+  // don't have a positive area of overlap.
+  x1[0] = 0.324552;
+  x1[1] = 0.16206;
+  y1[0] = 0.625596;
+  y1[1] = 0.722646;
+
+  x2[0] = 4.59227e-17;
+  x2[1] = 0.161705;
+  y2[0] = 0.752178;
+  y2[1] = 0.72276;
 
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
@@ -147,34 +137,24 @@ TEST_F( CompGeomTest, common_plane_full_interpen_no_overlap )
 
 TEST_F( CompGeomTest, common_plane_coincident_vertices_full_overlap )
 {
-  constexpr int dim = 2;
   constexpr int numVerts = 2;
-  RealT xy1[dim * numVerts];
-  RealT xy2[dim * numVerts];
-
-  // this geometry is in contact with coincident vertices when
-  // projected onto the common plane.
-  xy1[0] = 1.0;
-  xy1[1] = 0.0;
-  xy1[2] = 0.0;
-  xy1[3] = 0.0;
-
-  xy2[0] = 1.e-12;
-  xy2[1] = -0.1;
-  xy2[2] = 0.999999;
-  xy2[3] = -0.1;
 
   RealT x1[numVerts];
   RealT y1[numVerts];
   RealT x2[numVerts];
   RealT y2[numVerts];
 
-  for ( int i = 0; i < numVerts; ++i ) {
-    x1[i] = xy1[i * dim];
-    y1[i] = xy1[i * dim + 1];
-    x2[i] = xy2[i * dim];
-    y2[i] = xy2[i * dim + 1];
-  }
+  // this geometry is in contact with coincident vertices when
+  // projected onto the common plane.
+  x1[0] = 1.0;
+  x1[1] = 0.0;
+  y1[0] = 0.0;
+  y1[1] = 0.0;
+  
+  x2[0] = 1.e-12;
+  x2[1] = 0.999999;
+  y2[0] = -0.1;
+  y2[1] = -0.1;
 
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
@@ -200,41 +180,31 @@ TEST_F( CompGeomTest, common_plane_coincident_vertices_full_overlap )
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
   auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
-  RealT diff = std::abs( ( xy2[2] - xy2[0] ) - plane.m_area );
+  RealT diff = std::abs( ( x2[1] - x2[0] ) - plane.m_area );
   EXPECT_LT( diff, 1.e-10 );
 }
 
 TEST_F( CompGeomTest, common_plane_conforming_separation )
 {
-  constexpr int dim = 2;
   constexpr int numVerts = 2;
-  RealT xy1[dim * numVerts];
-  RealT xy2[dim * numVerts];
-
-  // this geometry is in contact with coincident vertices when
-  // projected onto the common plane.
-  xy1[0] = 1.0;
-  xy1[1] = 0.0;
-  xy1[2] = 0.0;
-  xy1[3] = 0.0;
-
-  xy2[0] = 0.;
-  xy2[1] = 0.1;
-  xy2[2] = 1.;
-  xy2[3] = 0.1;
 
   RealT x1[numVerts];
   RealT y1[numVerts];
   RealT x2[numVerts];
   RealT y2[numVerts];
 
-  for ( int i = 0; i < numVerts; ++i ) {
-    x1[i] = xy1[i * dim];
-    y1[i] = xy1[i * dim + 1];
-    x2[i] = xy2[i * dim];
-    y2[i] = xy2[i * dim + 1];
-  }
+  // this geometry is in contact with coincident vertices when
+  // projected onto the common plane.
+  x1[0] = 1.0;
+  x1[1] = 0.0; 
+  y1[0] = 0.0;
+  y1[1] = 0.0;
 
+  x2[0] = 0.;
+  x2[1] = 1.;
+  y2[0] = 0.1;
+  y2[1] = 0.1;
+ 
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
 
@@ -259,41 +229,31 @@ TEST_F( CompGeomTest, common_plane_conforming_separation )
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
   auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
-  RealT gap_diff = std::abs( xy2[1] - plane.m_gap );
+  RealT gap_diff = std::abs( y2[0] - plane.m_gap );
   EXPECT_LT( gap_diff, 1.e-10 );
 }
 
 TEST_F( CompGeomTest, common_plane_coincident_vertex_no_overlap )
 {
-  constexpr int dim = 2;
   constexpr int numVerts = 2;
-  RealT xy1[dim * numVerts];
-  RealT xy2[dim * numVerts];
-
-  // this geometry has a pair of 'nearly' coincident vertices that should
-  // produce NO positive area of overlap. Note: the actual overlap is
-  // less than the contact area fraction set by tribol::setContactAreaFrac() below.
-  xy1[0] = 1.0;
-  xy1[1] = 0.0;
-  xy1[2] = 0.0;
-  xy1[3] = 0.0;
-
-  xy2[0] = -1.;
-  xy2[1] = -0.1;
-  xy2[2] = 1.e-8;
-  xy2[3] = -0.1;
 
   RealT x1[numVerts];
   RealT y1[numVerts];
   RealT x2[numVerts];
   RealT y2[numVerts];
 
-  for ( int i = 0; i < numVerts; ++i ) {
-    x1[i] = xy1[i * dim];
-    y1[i] = xy1[i * dim + 1];
-    x2[i] = xy2[i * dim];
-    y2[i] = xy2[i * dim + 1];
-  }
+  // this geometry has a pair of 'nearly' coincident vertices that should
+  // produce NO positive area of overlap. Note: the actual overlap is
+  // less than the contact area fraction set by tribol::setContactAreaFrac() below.
+  x1[0] = 1.0;
+  x1[1] = 0.0; 
+  y1[0] = 0.0;
+  y1[1] = 0.0; 
+ 
+  x2[0] = -1.;
+  x2[1] = 1.e-8;
+  y2[0] = -0.1;
+  y2[1] = -0.1; 
 
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
@@ -321,36 +281,26 @@ TEST_F( CompGeomTest, common_plane_coincident_vertex_no_overlap )
 
 TEST_F( CompGeomTest, common_plane_nearly_coincident_vertex_positive_overlap )
 {
-  constexpr int dim = 2;
   constexpr int numVerts = 2;
-  RealT xy1[dim * numVerts];
-  RealT xy2[dim * numVerts];
-
-  // This geometry has a face-pair with a set of 'nearly' coincident vertices, but a
-  // positive area of overlap that is greater than the contact area frac used in
-  // computing an overlap area threshold. As a result, this face-pair should be
-  // in contact
-  xy1[0] = 1.0;
-  xy1[1] = 0.0;
-  xy1[2] = 0.0;
-  xy1[3] = 0.0;
-
-  xy2[0] = -1.;
-  xy2[1] = -0.1;
-  xy2[2] = 1.e-4;
-  xy2[3] = -0.1;
 
   RealT x1[numVerts];
   RealT y1[numVerts];
   RealT x2[numVerts];
   RealT y2[numVerts];
 
-  for ( int i = 0; i < numVerts; ++i ) {
-    x1[i] = xy1[i * dim];
-    y1[i] = xy1[i * dim + 1];
-    x2[i] = xy2[i * dim];
-    y2[i] = xy2[i * dim + 1];
-  }
+  // This geometry has a face-pair with a set of 'nearly' coincident vertices, but a
+  // positive area of overlap that is greater than the contact area frac used in
+  // computing an overlap area threshold. As a result, this face-pair should be
+  // in contact
+  x1[0] = 1.0;
+  x1[1] = 0.0;
+  y1[0] = 0.0;
+  y1[1] = 0.0;
+
+  x2[0] = -1.;
+  x2[1] = 1.e-4;
+  y2[0] = -0.1;
+  y2[1] = -0.1;
 
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
@@ -376,7 +326,7 @@ TEST_F( CompGeomTest, common_plane_nearly_coincident_vertex_positive_overlap )
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
   auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
-  RealT diff = std::abs( ( xy2[2] - xy1[2] ) - plane.m_area );
+  RealT diff = std::abs( ( x2[1] - x1[1] ) - plane.m_area );
   EXPECT_LT( diff, 1.e-10 );
 }
 
@@ -391,32 +341,23 @@ TEST_F( CompGeomTest, common_plane_interpen_check_1 )
   //       *
   //    *
   //
-  constexpr int dim = 2;
   constexpr int numVerts = 2;
-  RealT xy1[dim * numVerts];
-  RealT xy2[dim * numVerts];
-
-  xy1[0] = 1.0;
-  xy1[1] = 0.0;
-  xy1[2] = 0.0;
-  xy1[3] = 0.0;
-
-  xy2[0] = 0.;
-  xy2[1] = -0.1;
-  xy2[2] = 1.;
-  xy2[3] = 0.1;
 
   RealT x1[numVerts];
   RealT y1[numVerts];
   RealT x2[numVerts];
   RealT y2[numVerts];
 
-  for ( int i = 0; i < numVerts; ++i ) {
-    x1[i] = xy1[i * dim];
-    y1[i] = xy1[i * dim + 1];
-    x2[i] = xy2[i * dim];
-    y2[i] = xy2[i * dim + 1];
-  }
+  x1[0] = 1.0;
+  x1[1] = 0.0;
+  y1[0] = 0.0;
+  y1[1] = 0.0;
+ 
+  x2[0] = 0.;
+  x2[1] = 1.;
+  y2[0] = -0.1;
+  y2[1] = 0.1;
+
 
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
@@ -446,8 +387,8 @@ TEST_F( CompGeomTest, common_plane_interpen_check_1 )
   EXPECT_EQ( plane.m_fullOverlap, false );
 
   // compute the length and height of the interpen portion of edge 2
-  RealT length = xy1[0] - xy1[2];
-  RealT height = xy2[3] - xy2[1];
+  RealT length = x1[0] - x1[1];
+  RealT height = y2[1] - y2[0];
 
   // compute the angle between the interpen portions of the edges
   RealT theta = std::atan( height / length );
@@ -469,34 +410,24 @@ TEST_F( CompGeomTest, common_plane_interpen_check_2 )
   //          *
   //        *
   //
-  constexpr int dim = 2;
   constexpr int numVerts = 2;
-  RealT xy1[dim * numVerts];
-  RealT xy2[dim * numVerts];
-
-  xy1[0] = 1.0;
-  xy1[1] = 0.0;
-  xy1[2] = 0.0;
-  xy1[3] = 0.0;
-
-  xy2[0] = 0.;
-  xy2[1] = -0.1;
-  xy2[2] = 1.;
-  xy2[3] = 0.1;
 
   RealT x1[numVerts];
   RealT y1[numVerts];
   RealT x2[numVerts];
   RealT y2[numVerts];
 
-  RealT x_shift = 0.25;
-  for ( int i = 0; i < numVerts; ++i ) {
-    x1[i] = xy1[i * dim];
-    y1[i] = xy1[i * dim + 1];
-    x2[i] = xy2[i * dim] + x_shift;
-    y2[i] = xy2[i * dim + 1];
-  }
+  x1[0] = 1.0;
+  x1[1] = 0.0;
+  y1[0] = 0.0;
+  y1[1] = 0.0;
 
+  RealT x_shift = 0.25;
+  x2[0] = 0. + x_shift;
+  x2[1] = 1. + x_shift;
+  y2[0] = -0.1;
+  y2[1] = 0.1;
+  
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
 
@@ -525,11 +456,11 @@ TEST_F( CompGeomTest, common_plane_interpen_check_2 )
   EXPECT_EQ( plane.m_fullOverlap, false );
 
   // compute the point at which edge 2 intersects edge 1
-  RealT intercept_point = 0.5 * (xy1[0] - xy1[2]) + x_shift;
+  RealT intercept_point = 0.5 * (x1[0] - x1[1]) + x_shift;
 
   // compute the height and length of the interpen portion of edge 2
-  RealT length = intercept_point - ( xy2[0] + x_shift );
-  RealT height = xy1[1] - xy2[1];
+  RealT length = intercept_point - x2[0];
+  RealT height = y1[0] - y2[0];
 
   // compute the angle between the interpen portions of edge 1 and 2
   RealT theta = std::atan( height / length );
@@ -554,32 +485,22 @@ TEST_F( CompGeomTest, common_plane_interpen_check_3 )
   //             *
   //          *
   //
-  constexpr int dim = 2;
   constexpr int numVerts = 2;
-  RealT xy1[dim * numVerts];
-  RealT xy2[dim * numVerts];
-
-  xy1[0] = 1.0;
-  xy1[1] = 0.0;
-  xy1[2] = 0.0;
-  xy1[3] = 0.0;
-
-  xy2[0] = 0.5;
-  xy2[1] = -0.5;
-  xy2[2] = 1.5;
-  xy2[3] = 0.5;
 
   RealT x1[numVerts];
   RealT y1[numVerts];
   RealT x2[numVerts];
   RealT y2[numVerts];
 
-  for ( int i = 0; i < numVerts; ++i ) {
-    x1[i] = xy1[i * dim];
-    y1[i] = xy1[i * dim + 1];
-    x2[i] = xy2[i * dim];
-    y2[i] = xy2[i * dim + 1];
-  }
+  x1[0] = 1.0;
+  x1[1] = 0.0;
+  y1[0] = 0.0;
+  y1[1] = 0.0;
+
+  x2[0] = 0.5;
+  x2[1] = 1.5;
+  y2[0] = -0.5;
+  y2[1] = 0.5;
 
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
