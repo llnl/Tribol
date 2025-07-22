@@ -81,12 +81,6 @@ class CompGeomTest : public ::testing::Test {
 
   }
 
-  void checkOverlapArea( RealT tribol_area, RealT my_area, RealT tol )
-  {
-    RealT area_diff = std::abs( tribol_area - my_area );
-    EXPECT_LE( area_diff, tol );
-  }
-
   void TearDown() override {}
 
  protected:
@@ -194,7 +188,7 @@ TEST_F( CompGeomTest, common_plane_coincident_vertices_full_overlap )
   // check overlap area. The analytic overlap is the difference in the x-coords
   // of edge 2. See note at vertex coordinate initialization at the top of this
   // test regarding edge 2 lying inside edge 1 (up to some tolerance).
-  checkOverlapArea( plane.m_area, x2[1] - x2[0], 1.e-10 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_area, x2[1] - x2[0] ), 1.e-10 );
 }
 
 TEST_F( CompGeomTest, common_plane_conforming_separation )
@@ -242,8 +236,7 @@ TEST_F( CompGeomTest, common_plane_conforming_separation )
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
   auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
-  RealT gap_diff = std::abs( y2[0] - plane.m_gap );
-  EXPECT_LT( gap_diff, 1.e-10 );
+  EXPECT_LT( tribol::abs_val_diff( y2[0], plane.m_gap ), 1.e-10 );
 }
 
 TEST_F( CompGeomTest, common_plane_coincident_vertex_no_overlap )
@@ -339,7 +332,7 @@ TEST_F( CompGeomTest, common_plane_nearly_coincident_vertex_positive_overlap )
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
   auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
-  checkOverlapArea( plane.m_area, x2[1] - x1[1], 1.e-10 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_area, x2[1] - x1[1] ), 1.e-10 );
 }
 
 TEST_F( CompGeomTest, common_plane_interpen_check_1 )
@@ -408,7 +401,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_1 )
 
   // compute and check the overlap area
   RealT computed_area = 0.5 * length * std::cos( half_theta );
-  checkOverlapArea( plane.m_area, computed_area, 1.e-10 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_area, computed_area ), 1.e-10 );
 }
 
 TEST_F( CompGeomTest, common_plane_interpen_check_2 )
@@ -480,7 +473,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_2 )
   RealT hyp = length / std::cos( theta );
   RealT half_theta = 0.5 * theta;
   RealT computed_area = hyp * std::cos( half_theta );
-  checkOverlapArea( plane.m_area, computed_area, 1.e-10 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_area, computed_area ), 1.e-10 );
 }
 
 TEST_F( CompGeomTest, common_plane_interpen_check_3 )
@@ -549,7 +542,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_3 )
 
   // check the overlap area
   RealT computed_area = h_bar;
-  checkOverlapArea( plane.m_area, computed_area, 1.e-10 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_area, computed_area ), 1.e-10 );
 }
 
 TEST_F( CompGeomTest, 2d_projections_1 )
@@ -606,14 +599,10 @@ TEST_F( CompGeomTest, 2d_projections_1 )
   tribol::ProjectPointToSegment( cx[0], cx[1], faceNormal2[0], faceNormal2[1], cxf2[0], cxf2[1], cxProj2[0],
                                  cxProj2[1] );
 
-  RealT diffx1 = std::abs( cxProj1[0] - 0.738595 );
-  RealT diffy1 = std::abs( cxProj1[1] - 0.0915028 );
-  RealT diffx2 = std::abs( cxProj2[0] - 0.738591 );
-  RealT diffy2 = std::abs( cxProj2[1] - 0.0915022 );
-  EXPECT_LE( diffx1, 1.e-6 );
-  EXPECT_LE( diffy1, 1.e-6 );
-  EXPECT_LE( diffx2, 1.e-6 );
-  EXPECT_LE( diffy2, 1.e-6 );
+  EXPECT_LE( tribol::abs_val_diff( cxProj1[0], 0.738595  ), 1.e-6 );
+  EXPECT_LE( tribol::abs_val_diff( cxProj1[1], 0.0915028 ), 1.e-6 );
+  EXPECT_LE( tribol::abs_val_diff( cxProj2[0], 0.738591  ), 1.e-6 );
+  EXPECT_LE( tribol::abs_val_diff( cxProj2[1], 0.0915022 ), 1.e-6 );
 
   RealT x1[numVerts];
   RealT y1[numVerts];
@@ -709,14 +698,10 @@ TEST_F( CompGeomTest, 2d_projections_2 )
   tribol::ProjectPointToSegment( cx[0], cx[1], faceNormal2[0], faceNormal2[1], cxf2[0], cxf2[1], cxProj2[0],
                                  cxProj2[1] );
 
-  RealT diffx1 = std::abs( cxProj1[0] - cx[0] );
-  RealT diffy1 = std::abs( cxProj1[1] - cx[1] );
-  RealT diffx2 = std::abs( cxProj2[0] - cx[0] );
-  RealT diffy2 = std::abs( cxProj2[1] - cx[1] );
-  EXPECT_LE( diffx1, 1.e-6 );
-  EXPECT_LE( diffy1, 1.e-6 );
-  EXPECT_LE( diffx2, 1.e-6 );
-  EXPECT_LE( diffy2, 1.e-6 );
+  EXPECT_LE( tribol::abs_val_diff(cxProj1[0], cx[0] ), 1.e-6 );
+  EXPECT_LE( tribol::abs_val_diff(cxProj1[1], cx[1] ), 1.e-6 );
+  EXPECT_LE( tribol::abs_val_diff(cxProj2[0], cx[0] ), 1.e-6 );
+  EXPECT_LE( tribol::abs_val_diff(cxProj2[1], cx[1] ), 1.e-6 );
 }
 
 int main( int argc, char* argv[] )

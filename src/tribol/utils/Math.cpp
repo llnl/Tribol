@@ -120,6 +120,11 @@ void bubble_sort( int* const array, const int n )
 }
 
 //------------------------------------------------------------------------------
+RealT abs_val_diff( RealT val1, RealT val2 )
+{
+  return std::abs(val1 - val2);
+}
+//------------------------------------------------------------------------------
 void allocRealArray( RealT** arr, int length, RealT init_val )
 {
   SLIC_ERROR_IF( length == 0, "allocRealArray: please specify nonzero length "

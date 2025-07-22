@@ -70,8 +70,7 @@ void compareGaps( tribol::CouplingScheme const* cs, RealT gap, const RealT tol, 
     }
 
     // check diffs
-    RealT diff = std::abs( my_gap - gap );
-    EXPECT_LE( diff, tol );
+    EXPECT_LE( tribol::abs_val_diff( my_gap, gap ), tol );
   }
 }  // end compareGaps()
 
@@ -86,22 +85,22 @@ void checkMeshPenalties( tribol::CouplingScheme const* cs, const RealT penalty, 
   tribol::MeshData& mesh2 = meshManager.at( meshId2 );
 
   if ( std::strcmp( penaltyType, "constant" ) == 0 ) {
-    RealT penalty_diff_1 = std::abs( mesh1.getElementData().m_penalty_stiffness - penalty );
-    RealT penalty_diff_2 = std::abs( mesh2.getElementData().m_penalty_stiffness - penalty );
+    RealT penalty_diff_1 = tribol::abs_val_diff( mesh1.getElementData().m_penalty_stiffness, penalty );
+    RealT penalty_diff_2 = tribol::abs_val_diff( mesh2.getElementData().m_penalty_stiffness, penalty );
     EXPECT_LE( penalty_diff_1, tol );
     EXPECT_LE( penalty_diff_2, tol );
   } else if ( std::strcmp( penaltyType, "face" ) == 0 ) {
     // no-op, the face-based penalty is checked in a call to tribol::update()
   } else if ( std::strcmp( penaltyType, "constant_rate" ) == 0 ) {
-    RealT penalty_diff_1 = std::abs( mesh1.getElementData().m_rate_penalty_stiffness - penalty );
-    RealT penalty_diff_2 = std::abs( mesh2.getElementData().m_rate_penalty_stiffness - penalty );
+    RealT penalty_diff_1 = tribol::abs_val_diff( mesh1.getElementData().m_rate_penalty_stiffness, penalty );
+    RealT penalty_diff_2 = tribol::abs_val_diff( mesh2.getElementData().m_rate_penalty_stiffness, penalty );
     EXPECT_LE( penalty_diff_1, tol );
     EXPECT_LE( penalty_diff_2, tol );
   } else if ( std::strcmp( penaltyType, "percent_rate" ) == 0 ) {
     RealT penalty1 = mesh1.getElementData().m_rate_percent_stiffness * mesh1.getElementData().m_penalty_stiffness;
     RealT penalty2 = mesh2.getElementData().m_rate_percent_stiffness * mesh2.getElementData().m_penalty_stiffness;
-    RealT penalty_diff_1 = std::abs( penalty1 - penalty );
-    RealT penalty_diff_2 = std::abs( penalty2 - penalty );
+    RealT penalty_diff_1 = tribol::abs_val_diff( penalty1, penalty );
+    RealT penalty_diff_2 = tribol::abs_val_diff( penalty2, penalty );
     EXPECT_LE( penalty_diff_1, tol );
     EXPECT_LE( penalty_diff_2, tol );
   } else {
@@ -130,8 +129,7 @@ void checkPressures( tribol::CouplingScheme const* cs, RealT pressure, const Rea
     }
 
     // check diffs
-    RealT press_diff = std::abs( my_pressure - pressure );
-    EXPECT_LE( press_diff, tol );
+    EXPECT_LE( tribol::abs_val_diff( my_pressure, pressure ), tol );
   }
 }  // end checkPressures()
 

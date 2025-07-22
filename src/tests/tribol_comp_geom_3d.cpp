@@ -98,12 +98,6 @@ class CompGeomTest : public ::testing::Test {
     delete[] vz;
   }
 
-  void checkOverlapArea( RealT tribol_area, RealT my_area, RealT tol )
-  {
-    RealT area_diff = std::abs( tribol_area - my_area );
-    EXPECT_LE( area_diff, tol );
-  }
-
  protected:
   void SetUp() override {}
 
@@ -171,10 +165,9 @@ TEST_F( CompGeomTest, common_plane_single_element_full_overlap_check_1 )
   auto& plane = comp_geom.getCommonPlane( 0 );
 
   RealT computed_gap = -( z_max1 - z_min2 );
-  RealT gap_diff = std::abs( plane.m_gap - computed_gap );
-  EXPECT_LE( gap_diff, 1.e-8 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_gap, computed_gap ), 1.e-8 );
 
-  checkOverlapArea( plane.m_area, 0.5, 1.e-10 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_area, 0.5 ), 1.e-10 );
 
   tribol::finalize();
 }
@@ -234,10 +227,9 @@ TEST_F( CompGeomTest, common_plane_single_element_full_overlap_check_2 )
   auto& plane = comp_geom.getCommonPlane( 0 );
 
   RealT computed_gap = -( z_max1 - z_min2 );
-  RealT gap_diff = std::abs( plane.m_gap - computed_gap );
-  EXPECT_LE( gap_diff, 1.e-8 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_gap, computed_gap ), 1.e-8 );
 
-  checkOverlapArea( plane.m_area, (x_max2 - x_min1) * (y_max2 - y_min1), 1.e-10 );
+  EXPECT_LE( tribol::abs_val_diff(plane.m_area, (x_max2 - x_min1) * (y_max2 - y_min1)), 1.e-10 );
 
   tribol::finalize();
 }
@@ -295,10 +287,9 @@ TEST_F( CompGeomTest, common_plane_single_element_full_separation_check_1 )
   auto& plane = comp_geom.getCommonPlane( 0 );
 
   RealT computed_gap = -( z_max1 - z_min2 );
-  RealT gap_diff = std::abs( plane.m_gap - computed_gap );
-  EXPECT_LE( gap_diff, 1.e-8 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_gap, computed_gap ), 1.e-8 );
 
-  checkOverlapArea( plane.m_area, (x_max2 - x_min1) * (y_max2 - y_min1), 1.e-10 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_area, (x_max2 - x_min1) * (y_max2 - y_min1) ), 1.e-10 );
 
   tribol::finalize();
 }
@@ -357,10 +348,9 @@ TEST_F( CompGeomTest, common_plane_single_element_full_separation_check_2 )
   auto& plane = comp_geom.getCommonPlane( 0 );
 
   RealT computed_gap = -( z_max1 - z_min2 );
-  RealT gap_diff = std::abs( plane.m_gap - computed_gap );
-  EXPECT_LE( gap_diff, 1.e-8 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_gap, computed_gap ), 1.e-8 );
 
-  checkOverlapArea( plane.m_area, (x_max2 - x_min1) * (y_max2 - y_min1), 1.e-10 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_area, (x_max2 - x_min1) * (y_max2 - y_min1) ), 1.e-10 );
 
   tribol::finalize();
 }
@@ -450,11 +440,10 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_1 )
 
   // compute and check the gap
   RealT gap_computed = -2. * overlap_gap_point * std::tan( 0.5 * theta_y * M_PI / 180 );
-  RealT gap_diff = std::abs( plane.m_gap - gap_computed );
-  EXPECT_LE( gap_diff, 1.e-5 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_gap, gap_computed ), 1.e-5 );
 
   // check the overlap area
-  checkOverlapArea( plane.m_area, 2. * overlap_gap_point, 1.e-5 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_area, 2. * overlap_gap_point ), 1.e-5 );
 
   tribol::finalize();
 }
@@ -560,11 +549,10 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_2 )
 
   // compute and check the overlap area
   RealT A = h_bar * 0.5;
-  checkOverlapArea( plane.m_area, A, 1.e-8 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_area, A ), 1.e-8 );
 
   RealT computed_gap = -h_bar * std::tan( 0.5 * fortyfive );
-  RealT gap_diff = std::abs( plane.m_gap - computed_gap );
-  EXPECT_LE( gap_diff, 1.e-6 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_gap, computed_gap ), 1.e-6 );
 }
 
 TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3 )
@@ -667,12 +655,11 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3 )
   RealT A = h_bar * 0.5;
 
   // check the overlap area
-  checkOverlapArea( plane.m_area, A, 1.e-8 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_area, A ), 1.e-8 );
 
   // compute and check the gap
   RealT computed_gap = -h_bar * std::tan( 0.5 * fortyfive );
-  RealT gap_diff = std::abs( plane.m_gap - computed_gap );
-  EXPECT_LE( gap_diff, 1.e-6 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_gap, computed_gap ), 1.e-6 );
 }
 
 TEST_F( CompGeomTest, common_plane_single_element_interpen_check_4 )
@@ -787,11 +774,10 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_4 )
   RealT computed_gap = -2 * ( 0.33333 * h_bar_bar ) * std::tan( thirty );
 
   // check the area
-  checkOverlapArea( plane.m_area, A_bar_bar, 1.e-8 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_area, A_bar_bar ), 1.e-8 );
 
   // check the gap
-  RealT gap_diff = std::abs( plane.m_gap - computed_gap );
-  EXPECT_LE( gap_diff, 1.e-6 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_gap, computed_gap ), 1.e-6 );
 }
 
 TEST_F( CompGeomTest, common_plane_single_element_interpen_check_5 )
@@ -926,7 +912,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_5 )
   // the gap is not computed easily so use the area and the number
   // of overlap vertices as a stand in for correct computations as
   // the gap calculation is verified in other tests
-  checkOverlapArea( plane.m_area, A_bar_bar_new, 1.e-8 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_area, A_bar_bar_new ), 1.e-8 );
   EXPECT_EQ( plane.m_numPolyVert, 5 );
 }
 
@@ -1160,9 +1146,8 @@ TEST_F( CompGeomTest, common_plane_host_code_test )
   auto& comp_geom = couplingScheme->getCompGeom();
   auto& plane = comp_geom.getCommonPlane( 0 );
 
-  checkOverlapArea( plane.m_area, 0.00463028, 1.e-8 );
-  RealT gap_diff = std::abs( plane.m_gap - -0.000193685 );
-  EXPECT_LE( gap_diff, 1.e-8 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_area, 0.00463028 ), 1.e-8 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_gap, -0.000193685 ), 1.e-8 );
 }
 
 TEST_F( CompGeomTest, single_mortar_check_1 )
@@ -1272,7 +1257,7 @@ TEST_F( CompGeomTest, single_mortar_check_2 )
   auto& comp_geom = couplingScheme->getCompGeom();
   auto& plane = comp_geom.getMortarPlane( 0 );
 
-  checkOverlapArea( plane.m_area, std::cos( 45. * M_PI / 180. ), 1.e-8 );
+  EXPECT_LE( tribol::abs_val_diff( plane.m_area, std::cos( 45. * M_PI / 180. ) ), 1.e-8 );
 
   tribol::finalize();
 }
