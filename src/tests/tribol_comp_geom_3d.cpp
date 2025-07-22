@@ -1488,7 +1488,7 @@ TEST_F( CompGeomTest, codirectional_normals_3d )
 TEST_F( CompGeomTest, auto_contact_lt_max_interpen )
 {
   // This test uses auto-contact and checks that the face-pair
-  // is included as a conatct candidate, and is in fact in contact
+  // is included as a contact candidate, and is in fact in contact
   // when the interpenetration is less than the maximum allowable
   // for auto contact
   constexpr int numVerts = 4;
