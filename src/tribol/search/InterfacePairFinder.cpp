@@ -207,15 +207,15 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     RealT y2_bar_local[max_nodes_per_face];
 
     // 3D coordinates to local 2D coordinates
-    Plane3DTo2D( &x1_bar[0], &y1_bar[0], &z1_bar[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
-                 mesh1.numberOfNodesPerElement(), &x1_bar_local[0], &y1_bar_local[0] );
-    Plane3DTo2D( &x2_prime[0], &y2_prime[0], &z2_prime[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
-                 mesh2.numberOfNodesPerElement(), &x2_bar_local[0], &y2_bar_local[0] );
+    Points3DTo2D( &x1_bar[0], &y1_bar[0], &z1_bar[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
+                  mesh1.numberOfNodesPerElement(), &x1_bar_local[0], &y1_bar_local[0] );
+    Points3DTo2D( &x2_prime[0], &y2_prime[0], &z2_prime[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
+                  mesh2.numberOfNodesPerElement(), &x2_bar_local[0], &y2_bar_local[0] );
 
-    Plane3DTo2D( &x1_bar[0], &y1_bar[0], &z1_bar[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
-                 mesh1.numberOfNodesPerElement(), &x1_bar_local[0], &y1_bar_local[0] );
-    Plane3DTo2D( &x2_prime[0], &y2_prime[0], &z2_prime[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
-                 mesh2.numberOfNodesPerElement(), &x2_bar_local[0], &y2_bar_local[0] );
+    Points3DTo2D( &x1_bar[0], &y1_bar[0], &z1_bar[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
+                  mesh1.numberOfNodesPerElement(), &x1_bar_local[0], &y1_bar_local[0] );
+    Points3DTo2D( &x2_prime[0], &y2_prime[0], &z2_prime[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
+                  mesh2.numberOfNodesPerElement(), &x2_bar_local[0], &y2_bar_local[0] );
 
     RealT cx, cy, area;
     CheckPolyOverlap( mesh1.numberOfNodesPerElement(), mesh2.numberOfNodesPerElement(), &x1_bar_local[0],

@@ -1922,9 +1922,9 @@ void Vertex2DOrderToCCW( const RealT* const x, const RealT* const y, RealT* xTem
 }  // end Vertex2DOrderToCCW()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void Plane3DTo2D( const RealT* const x, const RealT* const y, const RealT* const z, const RealT nx,
-                                     const RealT ny, const RealT nz, const RealT cx, const RealT cy, const RealT cz,
-                                     const int num_verts, RealT* x_loc, RealT* y_loc )
+TRIBOL_HOST_DEVICE void Points3DTo2D( const RealT* const x, const RealT* const y, const RealT* const z, const RealT nx,
+                                      const RealT ny, const RealT nz, const RealT cx, const RealT cy, const RealT cz,
+                                      const int num_verts, RealT* x_loc, RealT* y_loc )
 {
   RealT e1x, e1y, e1z;
   RealT e2x, e2y, e2z;
@@ -1944,27 +1944,6 @@ TRIBOL_HOST_DEVICE void Plane3DTo2D( const RealT* const x, const RealT* const y,
   GlobalTo2DLocalCoords( x, y, z, e1x, e1y, e1z, e2x, e2y, e2z, cx, cy, cz, x_loc, y_loc, num_verts );
 }
 
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void Point3DTo2D( const RealT x, const RealT y, const RealT z, const RealT nx, const RealT ny,
-                                     const RealT nz, const RealT cx, const RealT cy, const RealT cz, RealT& x_loc,
-                                     RealT& y_loc )
-{
-  RealT e1x, e1y, e1z;
-  RealT e2x, e2y, e2z;
-  // determine a consistent reference point on the plane used to compute first basis vector
-  RealT px, py, pz;
-  RealT scale = 10;
-  px = cx + scale;
-  py = cy + scale;
-  pz = cz + scale;
-
-  // project that point back onto the plane
-  RealT px_bar, py_bar, pz_bar;
-  ProjectPointToPlane( px, py, pz, nx, ny, nz, cx, cy, cz, px_bar, py_bar, pz_bar );
-
-  ComputeLocalBasis( px_bar, py_bar, pz_bar, nx, ny, nz, cx, cy, cz, e1x, e1y, e1z, e2x, e2y, e2z );
-  GlobalTo2DLocalCoords( x, y, z, e1x, e1y, e1z, e2x, e2y, e2z, cx, cy, cz, x_loc, y_loc );
-}
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE int IsPointOrientedInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp )
 {

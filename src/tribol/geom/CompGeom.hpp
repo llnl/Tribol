@@ -258,7 +258,7 @@ class ContactPlanePair : public CompGeomPair {
    * \pre length(pX), length(pY), length(pZ) >= size
    * \pre length(pLX), length(pLY) >= size
    */
-  TRIBOL_HOST_DEVICE void globalTo2DLocalCoords( RealT* pX, RealT* pY, RealT* pZ, RealT* pLX, RealT* pLY, int size );
+  TRIBOL_HOST_DEVICE void globalTo2DLocalCoords( const RealT* pX, const RealT* pY, const RealT* pZ, RealT* pLX, RealT* pLY, int size );
 
   /*!
    * \brief Compute the local 2D coordinates of a point on the contact plane

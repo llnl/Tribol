@@ -963,7 +963,7 @@ TRIBOL_HOST_DEVICE void ContactPlanePair::computeLocalBasis( const MeshData::Vie
 }  // end CommonPlanePair::computeLocalBasis()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlanePair::globalTo2DLocalCoords( RealT* pX, RealT* pY, RealT* pZ, RealT* pLX,
+TRIBOL_HOST_DEVICE void ContactPlanePair::globalTo2DLocalCoords( const RealT* pX, const RealT* pY, const RealT* pZ, RealT* pLX,
                                                                  RealT* pLY, int size )
 {
   // loop over projected nodes
@@ -1268,19 +1268,17 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::computeOverlap3D( const RealT*
 
           RealT x_other_local[max_nodes_per_elem];
           RealT y_other_local[max_nodes_per_elem];
-          Plane3DTo2D( &x_other[0], &y_other[0], &z_other[0], fn[0], fn[1], fn[2], cx[0], cx[1], cx[2], num_nodes_other,
-                       &x_other_local[0], &y_other_local[0] );
+          Points3DTo2D( &x_other[0], &y_other[0], &z_other[0], fn[0], fn[1], fn[2], cx[0], cx[1], cx[2], num_nodes_other,
+                        &x_other_local[0], &y_other_local[0] );
 
           // get the local coordinates of the current intersection point
           RealT xInter_local, yInter_local;
-          Point3DTo2D( xInter[2 * i + k], yInter[2 * i + k], zInter[2 * i + k], fn[0], fn[1], fn[2], cx[0], cx[1],
-                       cx[2], xInter_local, yInter_local );
+          Points3DTo2D( &xInter[2 * i + k], &yInter[2 * i + k], &zInter[2 * i + k], fn[0], fn[1], fn[2], cx[0], cx[1],
+                        cx[2], 1.0, &xInter_local, &yInter_local );
 
           // get the local coordinates of the other face's centroid
           RealT cx_other_local, cy_other_local;
           RealT cz = 0.;  // dummy arg.
-          // Point3DTo2D( cx[0], cx[1], cx[2], fn[0], fn[1], fn[2], cx[0], cx[1], cx[2], cx_other_local, cy_other_local
-          // );
           VertexAvgCentroid( &x_other_local[0], &y_other_local[0], nullptr, num_nodes_other, cx_other_local,
                              cy_other_local, cz );
 
