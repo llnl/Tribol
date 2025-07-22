@@ -74,13 +74,13 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     return false;
   }
 
-  /// CHECK #4 (3D): Perform radius check, which involves seeing if
-  ///                the distance between the two face vertex averaged
-  ///                centroid is less than the sum of the two face radii
-  ///                premultiplied by a binning scale factor.
-  ///                The face radii are taken to be the magnitude of the
-  ///                longest vector from that face's vertex averaged
-  ///                centroid to one its nodes.
+  /// CHECK #4: Perform radius check, which involves seeing if
+  ///           the distance between the two face vertex averaged
+  ///           centroid is less than the sum of the two face radii
+  ///           premultiplied by a binning scale factor.
+  ///           The face radii are taken to be the magnitude of the
+  ///           longest vector from that face's vertex averaged
+  ///           centroid to one its nodes.
   RealT offset_tol = 0.05;
   if ( dim == 3 ) {
     RealT r1 = mesh1.getFaceRadius()[element_id1];

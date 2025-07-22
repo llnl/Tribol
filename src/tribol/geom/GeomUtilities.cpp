@@ -1945,15 +1945,7 @@ TRIBOL_HOST_DEVICE void Points3DTo2D( const RealT* const x, const RealT* const y
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE int IsPointOrientedInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp )
-{
-  int val = ( yp - y[0] ) * ( x[1] - xp ) - ( xp - x[0] ) * ( y[1] - yp );
-  if ( val == 0 ) return 0;
-  return ( val > 0 ) ? 1 : 2;  // clockwise or counterclockwise
-}
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE bool OnEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp )
+TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp )
 {
   RealT xmax, xmin, ymax, ymin;
   if ( x[0] > x[1] ) {
@@ -1979,18 +1971,6 @@ TRIBOL_HOST_DEVICE bool OnEdge( const RealT* const x, const RealT* const y, Real
   if ( xp <= ( xmax + fuzz ) && xp >= ( xmin - fuzz ) && yp <= ( ymax + fuzz ) && yp >= ( ymin - fuzz ) ) {
     return true;
   }
-  return false;
-}
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp )
-{
-  int isOriented = IsPointOrientedInEdge( x, y, xp, yp );
-
-  if ( isOriented == 0 ) {
-    return OnEdge( x, y, xp, yp );
-  }
-
   return false;
 }
 

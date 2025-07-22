@@ -791,41 +791,15 @@ TRIBOL_HOST_DEVICE void Points3DTo2D( const RealT* const x, const RealT* const y
 
 /*!
  *
- * \brief Checks if the given point is colinear AND lies on the edge with provided coordinates
+ * \brief Checks if the given point lies inside an edge or nearly inside up to some fuzz 
  *
  * \param [in] x to x-component coordinates of the edge's two vertices
  * \param [in] y to y-component coordinates of the edge's two vertices
  * \param [in] xp x-coordinate of the point in question
  * \param [in] yp y-coordinate of the point in question
  *
- * \note this routine calls IsPointOrientedInEdge() to make sure the point is colinear with the edge
- *       and then calls OnEdge() to see if the point lies inside the edge
  */
 TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp );
-
-/*!
- *
- * \brief Checks if the given point lies on the edge with provided coordinates
- *
- * \param [in] x to x-component coordinates of the edge's two vertices
- * \param [in] y to y-component coordinates of the edge's two vertices
- * \param [in] xp x-coordinate of the point in question
- * \param [in] yp y-coordinate of the point in question
- *
- */
-TRIBOL_HOST_DEVICE bool OnEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp );
-
-/*!
- *
- * \brief Checks if the given point is colinear with respect to the edge
- *
- * \param [in] x to x-component coordinates of the edge's two vertices
- * \param [in] y to y-component coordinates of the edge's two vertices
- * \param [in] xp x-coordinate of the point in question
- * \param [in] yp y-coordinate of the point in question
- *
- */
-TRIBOL_HOST_DEVICE int IsPointOrientedInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp );
 
 /*!
  * \brief Check whether two polygons (faces) have a positive area of overlap
