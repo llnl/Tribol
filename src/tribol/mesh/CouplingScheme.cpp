@@ -571,10 +571,20 @@ bool CouplingScheme::isValidMethod()
         return false;
       }
 
-      if ( dim != 3 ) {
+      if (this->m_contactMethod == SINGLE_MORTAR && dim != 3) {
         this->m_couplingSchemeErrors.cs_method_error = INVALID_DIM;
         return false;
       }
+      //Enable 2D for SmoothMortar
+      if (this->m_contactMethod == SMOOTH_MORTAR && (dim != 2 && dim != 3)) {
+      this->m_couplingSchemeErrors.cs_method_error = INVALID_DIM;
+      return false;
+    }
+
+      // if ( dim != 3 ) {
+      //   this->m_couplingSchemeErrors.cs_method_error = INVALID_DIM;
+      //   return false;
+      // }
     } else if ( this->m_contactMethod == COMMON_PLANE ) {
       // check for different face types. This is not yet supported
       if ( this->m_mesh1->numberOfNodesPerElement() != this->m_mesh2->numberOfNodesPerElement() ) {
@@ -1047,31 +1057,31 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                pair_err] TRIBOL_HOST_DEVICE( IndexT i ) mutable {
                 auto& pair = pairs[i];
 
-                // call wrapper around the contact method/case specific
-                // geometry checks to determine whether to include a pair
-                // in the active set
-                bool interact = false;
-                FaceGeomError interact_err =
-                    CheckInterfacePair( pair, mesh1, mesh2, params, contact_method, contact_case, interact, planes_2d,
-                                        planes_3d, planes_ct.data() );
+                // // call wrapper around the contact method/case specific
+                // // geometry checks to determine whether to include a pair
+                // // in the active set
+                // bool interact = false;
+                // FaceGeomError interact_err =
+                //     CheckInterfacePair( pair, mesh1, mesh2, params, contact_method, contact_case, interact, planes_2d,
+                //                         planes_3d, planes_ct.data() );
 
-                // // Update pair reporting data for this coupling scheme
-                // this->updatePairReportingData( interact_err );
+                // // // Update pair reporting data for this coupling scheme
+                // // this->updatePairReportingData( interact_err );
 
-                // TODO refine how these errors are handled. Here we skip over face-pairs with errors. That is,
-                // they are not registered for contact, but we don't error out.
-                if ( interact_err != NO_FACE_GEOM_ERROR ) {
-                  pair_err[0] = 1;
-                  pair.m_is_contact_candidate = false;
-                  // TODO consider printing offending face(s) coordinates for debugging
-                  // SLIC_DEBUG("Face geometry error, " << static_cast<int>(interact_err) << "for pair, " << kp << ".");
-                  // continue; // TODO SRW why do we need this? Seems like we want to update interface pair below
-                  // if-statements
-                } else if ( !interact ) {
-                  pair.m_is_contact_candidate = false;
-                } else {
+                // // TODO refine how these errors are handled. Here we skip over face-pairs with errors. That is,
+                // // they are not registered for contact, but we don't error out.
+                // if ( interact_err != NO_FACE_GEOM_ERROR ) {
+                //   pair_err[0] = 1;
+                //   pair.m_is_contact_candidate = false;
+                //   // TODO consider printing offending face(s) coordinates for debugging
+                //   // SLIC_DEBUG("Face geometry error, " << static_cast<int>(interact_err) << "for pair, " << kp << ".");
+                //   // continue; // TODO SRW why do we need this? Seems like we want to update interface pair below
+                //   // if-statements
+                // } else if ( !interact ) {
+                //   pair.m_is_contact_candidate = false;
+                // } else {
                   pair.m_is_contact_candidate = true;
-                }
+                // }
               } );
 
   ArrayT<int, 1, MemorySpace::Host> planes_ct_host( planes_ct_data );

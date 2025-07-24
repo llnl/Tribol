@@ -22,6 +22,7 @@
 
 #include <iostream>
 #include <iomanip>
+#include <src/serac/physics/contact/contact_config.hpp>
 
 #ifdef TRIBOL_USE_ENZYME
 
@@ -77,6 +78,9 @@ int ApplySmoothNormalEnzyme( CouplingScheme* cs )
   RealT k1 = cs->getMesh1().getElementData().m_penalty_stiffness;
   RealT k2 = cs->getMesh2().getElementData().m_penalty_stiffness;
   constexpr RealT del = 0.01;
+
+
+  
 
   for ( auto& plane : planes_view ) {
     int elem1 = plane.getCpElementId2();  // switched from tribol convention
@@ -162,7 +166,7 @@ int ApplySmoothNormalEnzyme( CouplingScheme* cs )
     }
   }
   
-  return 0;
+return 0;
 }
 
 //------------------------------------------------------------------------------
