@@ -167,17 +167,6 @@ TRIBOL_HOST_DEVICE CommonPlanePair::CommonPlanePair( InterfacePair* pair, const 
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::checkInterfacePair( const MeshData::Viewer& mesh1,
-                                                                      const MeshData::Viewer& mesh2 )
-{
-  if ( m_dim == 2 ) {
-    return this->checkEdgePair( mesh1, mesh2 );
-  } else {
-    return this->checkFacePair( mesh1, mesh2 );
-  }
-}
-
-//------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::checkFacePair( const MeshData::Viewer& mesh1,
                                                                  const MeshData::Viewer& mesh2 )
 {
@@ -290,16 +279,6 @@ TRIBOL_HOST_DEVICE MortarPlanePair::MortarPlanePair( InterfacePair* pair, const 
     : ContactPlanePair( pair, params, dim )
 {
   // no-op
-}
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::checkInterfacePair( const MeshData::Viewer& mesh1,
-                                                                      const MeshData::Viewer& mesh2 )
-{
-  if ( m_dim == 3 ) {
-    return this->checkFacePair( mesh1, mesh2 );
-  }  // note mortar not implemented in 2D
-  return NO_FACE_GEOM_ERROR;
 }
 
 //------------------------------------------------------------------------------
@@ -457,6 +436,7 @@ TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::computeOverlap2D( const MeshDa
                                                                     const MeshData::Viewer& TRIBOL_UNUSED_PARAM( m2 ) )
 {
   // no-op
+  return NO_FACE_GEOM_ERROR;
 }
 
 //------------------------------------------------------------------------------
@@ -467,20 +447,6 @@ TRIBOL_HOST_DEVICE AlignedMortarPlanePair::AlignedMortarPlanePair( InterfacePair
     : ContactPlanePair( pair, params, dim )
 {
   // no-op
-}
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomError AlignedMortarPlanePair::checkInterfacePair( const MeshData::Viewer& mesh1,
-                                                                             const MeshData::Viewer& mesh2 )
-{
-  if ( m_dim == 3 ) {
-    return this->checkFacePair( mesh1, mesh2 );
-  }
-
-  // NOTE the coupling scheme initialization will error out on host if aligned mortar
-  // is trying to be used with dim = 2.
-
-  return NO_FACE_GEOM_ERROR;
 }
 
 //------------------------------------------------------------------------------
@@ -596,6 +562,7 @@ TRIBOL_HOST_DEVICE FaceGeomError AlignedMortarPlanePair::computeOverlap2D(
     const MeshData::Viewer& TRIBOL_UNUSED_PARAM( m1 ), const MeshData::Viewer& TRIBOL_UNUSED_PARAM( m2 ) )
 {
   // no-op
+  return NO_FACE_GEOM_ERROR;
 }
 
 //------------------------------------------------------------------------------

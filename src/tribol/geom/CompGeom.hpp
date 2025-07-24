@@ -34,8 +34,6 @@ class CompGeomPair {
  public:
   int m_dim;
   Parameters m_params;
-  TRIBOL_HOST_DEVICE virtual FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1,
-                                                               const MeshData::Viewer& mesh2 ) = 0;
 };
 
 //-----------------------------------------------------------------------------
@@ -55,11 +53,36 @@ class ContactPlanePair : public CompGeomPair {
    */
   TRIBOL_HOST_DEVICE ContactPlanePair( InterfacePair* pair, const Parameters& params, const int dim );
 
+  /*!
+   * \brief check to see if face-pairs are interacting
+   *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
+   *
+   * \return face geometry error
+   */
+  TRIBOL_HOST_DEVICE virtual FaceGeomError checkFacePair( const MeshData::Viewer& mesh1,
+                                                          const MeshData::Viewer& mesh2 ) { // no-op on base class
+  }
+
+  /*!
+   * \brief check to see if edge-pairs are interacting
+   *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
+   *
+   * \return face geometry error
+   */
+  TRIBOL_HOST_DEVICE virtual FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1,
+                                                  const MeshData::Viewer& mesh2 ) { // no-op on base class
+  }
+
   virtual ~ContactPlanePair() = default;
 
   static constexpr int max_nodes_per_overlap{ 10 };
 
   static constexpr int max_face_nodes{ 4 };
+
 
  public:
   RealT m_x1_prime[max_face_nodes];
@@ -123,6 +146,23 @@ class ContactPlanePair : public CompGeomPair {
   /// \name Contact plane routines
   /// @{
 
+  /*!
+   * \brief check to see if interface pairs are interacting
+   *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
+   *
+   * \return face geometry error
+   */
+  TRIBOL_HOST_DEVICE FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1,
+                                                       const MeshData::Viewer& mesh2 ) {
+    if ( m_dim == 3 ) {
+      return checkFacePair( mesh1, mesh2 );
+    } else {
+      return checkEdgePair( mesh1, mesh2 );
+    }
+  }
+
   TRIBOL_HOST_DEVICE void getFace1Coords( RealT* x1 ) const;
 
   TRIBOL_HOST_DEVICE void getFace2Coords( RealT* x2 ) const;
@@ -142,39 +182,6 @@ class ContactPlanePair : public CompGeomPair {
   }
 
   TRIBOL_HOST_DEVICE void getOverlapVertices( RealT* overlap_verts ) const;
-
-  /*!
-   * \brief check to see if interface pairs are interacting
-   *
-   * \param [in] mesh1 mesh data viewer for mesh 1
-   * \param [in] mesh2 mesh data viewer for mesh 2
-   *
-   * \return face geometry error
-   */
-  TRIBOL_HOST_DEVICE virtual FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1,
-                                                               const MeshData::Viewer& mesh2 ) = 0;
-
-  /*!
-   * \brief check to see if face-pairs are interacting
-   *
-   * \param [in] mesh1 mesh data viewer for mesh 1
-   * \param [in] mesh2 mesh data viewer for mesh 2
-   *
-   * \return face geometry error
-   */
-  TRIBOL_HOST_DEVICE virtual FaceGeomError checkFacePair( const MeshData::Viewer& mesh1,
-                                                          const MeshData::Viewer& mesh2 ) = 0;
-
-  /*!
-   * \brief check to see if edge-pairs are interacting
-   *
-   * \param [in] mesh1 mesh data viewer for mesh 1
-   * \param [in] mesh2 mesh data viewer for mesh 2
-   *
-   * \return face geometry error
-   */
-  TRIBOL_HOST_DEVICE virtual FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1,
-                                                          const MeshData::Viewer& mesh2 ) = 0;
 
   /*!
    * \brief Compute the projected overlap in 2D
@@ -353,6 +360,25 @@ class CommonPlanePair : public ContactPlanePair {
   // interpenetrating and one node not.
   static constexpr int max_nodes_per_intersection{ 5 };
 
+  /*!
+   * \brief check to see if common plane face-pairs are interacting
+   *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
+   */
+  TRIBOL_HOST_DEVICE FaceGeomError checkFacePair( const MeshData::Viewer& mesh1,
+                                                  const MeshData::Viewer& mesh2 ) override;
+
+  /*!
+   * \brief check to see if common plane edge-pairs are interacting
+   *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
+   */
+  TRIBOL_HOST_DEVICE FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1,
+                                                  const MeshData::Viewer& mesh2 ) override;
+
+
  public:
   int m_numInterpenPoly1Vert;                       ///< Number of vertices on face 1 interpenetrating polygon
   RealT m_interpenG1X[max_nodes_per_intersection];  ///< Global x-coordinate of face 1 interpenetrating polygon as
@@ -375,35 +401,6 @@ class CommonPlanePair : public ContactPlanePair {
   RealT m_pressure;      ///< kinematic contact pressure
 
   /*!
-   * \brief check to see if face-pairs are interacting
-   *
-   * \param [in] mesh1 mesh data viewer for mesh 1
-   * \param [in] mesh2 mesh data viewer for mesh 2
-   *
-   * \return face geometry error
-   */
-  TRIBOL_HOST_DEVICE FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1,
-                                                       const MeshData::Viewer& mesh2 ) override;
-
-  /*!
-   * \brief check to see if common plane face-pairs are interacting
-   *
-   * \param [in] mesh1 mesh data viewer for mesh 1
-   * \param [in] mesh2 mesh data viewer for mesh 2
-   */
-  TRIBOL_HOST_DEVICE FaceGeomError checkFacePair( const MeshData::Viewer& mesh1,
-                                                  const MeshData::Viewer& mesh2 ) override;
-
-  /*!
-   * \brief check to see if common plane edge-pairs are interacting
-   *
-   * \param [in] mesh1 mesh data viewer for mesh 1
-   * \param [in] mesh2 mesh data viewer for mesh 2
-   */
-  TRIBOL_HOST_DEVICE FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1,
-                                                  const MeshData::Viewer& mesh2 ) override;
-
-  /*!
    * \brief Compute the projected overlap of the interpenetrating portions of each face in 2D
    *
    * \param [in] m1 mesh data viewer for mesh 1
@@ -412,6 +409,7 @@ class CommonPlanePair : public ContactPlanePair {
    * \return 0 if no error, non-zero (via FaceGeomError enum) otherwise
    */
   TRIBOL_HOST_DEVICE FaceGeomError computeOverlap2D( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
+
   /*!
    * \brief Compute the overlap of the interpenetrating portions of each face in 3D
    *
@@ -545,16 +543,7 @@ class MortarPlanePair : public ContactPlanePair {
    */
   ~MortarPlanePair() = default;
 
-  /*!
-   * \brief check to see if face-pairs are interacting
-   *
-   * \param [in] mesh1 mesh data viewer for mesh 1
-   * \param [in] mesh2 mesh data viewer for mesh 2
-   *
-   * \return face geometry error
-   */
-  TRIBOL_HOST_DEVICE FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1,
-                                                       const MeshData::Viewer& mesh2 ) override;
+ protected:
 
   /*!
    * \brief check to see if mortar plane face-pairs are interacting
@@ -573,6 +562,8 @@ class MortarPlanePair : public ContactPlanePair {
    */
   TRIBOL_HOST_DEVICE FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1,
                                                   const MeshData::Viewer& mesh2 ) override;
+
+ public:
 
   /*!
    * \brief Compute the projected overlap in 2D
@@ -646,17 +637,7 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    */
   ~AlignedMortarPlanePair() = default;
 
-  /*!
-   * \brief check to see if face-pairs are interacting
-   *
-   * \param [in] mesh1 mesh data viewer for mesh 1
-   * \param [in] mesh2 mesh data viewer for mesh 2
-   *
-   * \return face geometry error
-   */
-  TRIBOL_HOST_DEVICE FaceGeomError checkInterfacePair( const MeshData::Viewer& mesh1,
-                                                       const MeshData::Viewer& mesh2 ) override;
-
+ protected:
   /*!
    * \brief check to see if aligned mortar plane face-pairs are interacting
    *
@@ -676,6 +657,8 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    */
   TRIBOL_HOST_DEVICE FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1,
                                                   const MeshData::Viewer& mesh2 ) override;
+
+ public:
 
   /*!
    * \brief Compute the projected overlap in 2D
