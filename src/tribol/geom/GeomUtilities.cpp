@@ -25,6 +25,7 @@ TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT x, RealT y, RealT z, RealT nx, 
                                            RealT cz, RealT& e1x, RealT& e1y, RealT& e1z, RealT& e2x, RealT& e2y,
                                            RealT& e2z )
 {
+  // compute the in-plane e1 basis vector as difference between input point and centroid
   e1x = x - cx;
   e1y = y - cy;
   e1z = z - cz;
