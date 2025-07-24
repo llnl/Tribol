@@ -135,44 +135,78 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     }
   }  // end of dim == 2
 
-  /// Check #5: check to see if at least one vertex from one face lies inside the other face
-  ///           when projected to that other face's face-plane. This check is a proxy for
-  ///           determining if there is a positive area of overlap
-  if ( dim == 3 ) {
-    // get each face's nodal coordinates
-    constexpr int max_nodes_per_face = 4;
-    constexpr int max_dim = 3;
-    RealT x1[max_nodes_per_face];
-    RealT y1[max_nodes_per_face];
-    RealT z1[max_nodes_per_face];
+  /// Check #5: Check to see if there is a positive area of overlap when both faces/edges
+  ///           are projected onto an intermediate plane
+  ///           
+  constexpr int max_nodes_per_face = 4;
+  constexpr int max_dim = 3;
 
-    RealT x2[max_nodes_per_face];
-    RealT y2[max_nodes_per_face];
-    RealT z2[max_nodes_per_face];
-    for ( int i = 0; i < mesh1.numberOfNodesPerElement(); ++i ) {
-      const int nodeId_1 = mesh1.getGlobalNodeId( element_id1, i );
-      x1[i] = mesh1.getPosition()[0][nodeId_1];
-      y1[i] = mesh1.getPosition()[1][nodeId_1];
+  // get each face's nodal coordinates
+  RealT x1[max_nodes_per_face];
+  RealT y1[max_nodes_per_face];
+  RealT z1[max_nodes_per_face];
+
+  RealT x2[max_nodes_per_face];
+  RealT y2[max_nodes_per_face];
+  RealT z2[max_nodes_per_face];
+
+  for ( int i = 0; i < mesh1.numberOfNodesPerElement(); ++i ) {
+    const int nodeId_1 = mesh1.getGlobalNodeId( element_id1, i );
+    x1[i] = mesh1.getPosition()[0][nodeId_1];
+    y1[i] = mesh1.getPosition()[1][nodeId_1];
+    if (dim == 3) {
       z1[i] = mesh1.getPosition()[2][nodeId_1];
     }
+  }
 
-    for ( int i = 0; i < mesh2.numberOfNodesPerElement(); ++i ) {
-      const int nodeId_2 = mesh2.getGlobalNodeId( element_id2, i );
-      x2[i] = mesh2.getPosition()[0][nodeId_2];
-      y2[i] = mesh2.getPosition()[1][nodeId_2];
+  for ( int i = 0; i < mesh2.numberOfNodesPerElement(); ++i ) {
+    const int nodeId_2 = mesh2.getGlobalNodeId( element_id2, i );
+    x2[i] = mesh2.getPosition()[0][nodeId_2];
+    y2[i] = mesh2.getPosition()[1][nodeId_2];
+    if (dim == 3) {
       z2[i] = mesh2.getPosition()[2][nodeId_2];
     }
+  }
 
-    // get face normals
-    RealT fn1[max_dim], fn2[max_dim];
-    mesh1.getFaceNormal( element_id1, fn1 );
-    mesh2.getFaceNormal( element_id2, fn2 );
+  // get face normals
+  RealT fn1[max_dim], fn2[max_dim];
+  mesh1.getFaceNormal( element_id1, fn1 );
+  mesh2.getFaceNormal( element_id2, fn2 );
 
-    // get face centroids
-    RealT cx1[max_dim], cx2[max_dim];
-    mesh1.getFaceCentroid( element_id1, cx1 );
-    mesh2.getFaceCentroid( element_id2, cx2 );
+  // get face centroids
+  RealT cx1[max_dim], cx2[max_dim];
+  mesh1.getFaceCentroid( element_id1, cx1 );
+  mesh2.getFaceCentroid( element_id2, cx2 );
 
+  // compute an intermediate plane by averaging the face normals and centroids
+  // This may be overinclusive for mortar face-pairs for cases where both faces
+  // project to the intermediate plane and have a positive area of overlap, but the
+  // mortar face does not have a positive area of overlap when projected onto the
+  // nonmortar face. However, this avoids common plane edge cases where each face
+  // does not have a positive area of overlap when projected onto the other face,
+  // but they do overlap on the common or intermediate plane
+  RealT n_avg[max_dim];
+  RealT c_avg[max_dim];
+
+  for (int i=0; i<dim; ++i) {
+    n_avg[i] = 0.5 * (fn2[i] - fn1[i]);
+    c_avg[i] = 0.5 * (cx1[i] + cx2[i]);
+  }
+
+  // normalize the intermediate plane normal
+  RealT mag;
+  if (dim == 3) {
+    mag = magnitude( n_avg[0], n_avg[1], n_avg[2] );
+  } else {
+    mag = magnitude( n_avg[0], n_avg[1], 0. );
+  }
+  RealT invMag = 1.0 / mag;
+
+  for (int i=0; i<dim; ++i) {
+    n_avg[i] *= invMag;
+  }
+
+  if (dim == 3) {
     // project each face's nodes to its average face plane to ensure
     // planar faces
     RealT x1_prime[max_nodes_per_face];
@@ -187,7 +221,7 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     ProjectFaceNodesToPlane( mesh2, element_id2, fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2], &x2_prime[0],
                              &y2_prime[0], &z2_prime[0] );
 
-    // now project the planar face vertices onto the other face's plane
+    // now project the planar face vertices onto the intermediate plane
     RealT x1_bar[max_nodes_per_face];
     RealT y1_bar[max_nodes_per_face];
     RealT z1_bar[max_nodes_per_face];
@@ -196,10 +230,10 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     RealT z2_bar[max_nodes_per_face];
 
     // project 'prime' face nodal coordinates onto the plane ('bar' coords) defined by the OTHER face
-    ProjectPointsToPlane( &x1_prime[0], &y1_prime[0], &z1_prime[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
-                          &x1_bar[0], &y1_bar[0], &z1_bar[0], mesh1.numberOfNodesPerElement() );  // project face 1 to 2
-    ProjectPointsToPlane( &x2_prime[0], &y2_prime[0], &z2_prime[0], fn1[0], fn1[1], fn1[2], cx1[0], cx1[1], cx1[2],
-                          &x2_bar[0], &y2_bar[0], &z2_bar[0], mesh2.numberOfNodesPerElement() );  // project face 2 to 1
+    ProjectPointsToPlane( &x1_prime[0], &y1_prime[0], &z1_prime[0], n_avg[0], n_avg[1], n_avg[2], c_avg[0], c_avg[1], c_avg[2],
+                          &x1_bar[0], &y1_bar[0], &z1_bar[0], mesh1.numberOfNodesPerElement() );
+    ProjectPointsToPlane( &x2_prime[0], &y2_prime[0], &z2_prime[0], n_avg[0], n_avg[1], n_avg[2], c_avg[0], c_avg[1], c_avg[2],
+                          &x2_bar[0], &y2_bar[0], &z2_bar[0], mesh2.numberOfNodesPerElement() );
 
     RealT x1_bar_local[max_nodes_per_face];
     RealT y1_bar_local[max_nodes_per_face];
@@ -207,14 +241,9 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     RealT y2_bar_local[max_nodes_per_face];
 
     // 3D coordinates to local 2D coordinates
-    Points3DTo2D( &x1_bar[0], &y1_bar[0], &z1_bar[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
+    Points3DTo2D( &x1_bar[0], &y1_bar[0], &z1_bar[0], n_avg[0], n_avg[1], n_avg[2], c_avg[0], c_avg[1], c_avg[2],
                   mesh1.numberOfNodesPerElement(), &x1_bar_local[0], &y1_bar_local[0] );
-    Points3DTo2D( &x2_prime[0], &y2_prime[0], &z2_prime[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
-                  mesh2.numberOfNodesPerElement(), &x2_bar_local[0], &y2_bar_local[0] );
-
-    Points3DTo2D( &x1_bar[0], &y1_bar[0], &z1_bar[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
-                  mesh1.numberOfNodesPerElement(), &x1_bar_local[0], &y1_bar_local[0] );
-    Points3DTo2D( &x2_prime[0], &y2_prime[0], &z2_prime[0], fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2],
+    Points3DTo2D( &x2_bar[0], &y2_bar[0], &z2_bar[0], n_avg[0], n_avg[1], n_avg[2], c_avg[0], c_avg[1], c_avg[2],
                   mesh2.numberOfNodesPerElement(), &x2_bar_local[0], &y2_bar_local[0] );
 
     RealT cx, cy, area;
@@ -226,37 +255,20 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     }
     // end dim == 3
   } else {
-    // project edge 1 onto edge 2 and check to see if edge 1 vertices lie inside edge 2
-    //
-    // get each face's nodal coordinates
-    constexpr int max_nodes_per_face = 2;
-    constexpr int max_dim = 2;
-    RealT x2[max_nodes_per_face];
-    RealT y2[max_nodes_per_face];
-    for ( int i = 0; i < mesh2.numberOfNodesPerElement(); ++i ) {
-      const int nodeId_2 = mesh2.getGlobalNodeId( element_id2, i );
-      x2[i] = mesh2.getPosition()[0][nodeId_2];
-      y2[i] = mesh2.getPosition()[1][nodeId_2];
-    }
-
-    // project edge 1 onto edge 2 and check for positive area of overlap
-    // get face 2 normals
-    RealT fn2[max_dim];
-    mesh2.getFaceNormal( element_id2, fn2 );
-
-    // get edge 2 centroid
-    RealT cx2[max_dim];
-    mesh2.getFaceCentroid( element_id2, cx2 );
-
     RealT projX1[max_nodes_per_face];
     RealT projY1[max_nodes_per_face];
+    RealT projX2[max_nodes_per_face];
+    RealT projY2[max_nodes_per_face];
 
-    ProjectEdgeNodesToSegment( mesh1, element_id1, fn2[0], fn2[1], cx2[0], cx2[1], &projX1[0], &projY1[0] );
+    // project edge nodes to intermediate plane
+    ProjectEdgeNodesToSegment( mesh1, element_id1, n_avg[0], n_avg[1], c_avg[0], c_avg[1], &projX1[0], &projY1[0] );
+    ProjectEdgeNodesToSegment( mesh2, element_id2, n_avg[0], n_avg[1], c_avg[0], c_avg[1], &projX2[0], &projY2[0] );
 
-    bool inside1 = IsPointInEdge( &x2[0], &y2[0], projX1[0], projY1[0] );
-    bool inside2 = IsPointInEdge( &x2[0], &y2[0], projX1[1], projY1[1] );
+    // check if either of edge 1's projected vertices are inside projected edge 2
+    bool inside_vert1 = IsPointInEdge( &projX2[0], &projY2[0], projX1[0], projY1[0] );
+    bool inside_vert2 = IsPointInEdge( &projX2[0], &projY2[0], projX1[1], projY1[1] );
 
-    if ( !inside1 && !inside2 ) {
+    if ( !inside_vert1 && !inside_vert2 ) {
       return false;
     }
 
