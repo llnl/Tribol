@@ -210,11 +210,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::checkFacePair( const MeshData:
   ////////////////////////////////////////////////
 
   // compute common plane normal, centroid, local basis and area tolerance
-  this->computeNormal( mesh1, mesh2 );
-  this->computePlanePoint( mesh1, mesh2 );
-  this->computeLocalBasis( mesh1 );
-  this->computeAreaTol( mesh1, mesh2, this->m_params );
-
+  computePlaneData( mesh1, mesh2 );
   FaceGeomError interpen_err = this->computeOverlap3D( &m_x1_prime[0], &m_y1_prime[0], &m_z1_prime[0], &m_x2_prime[0],
                                                        &m_y2_prime[0], &m_z2_prime[0], mesh1, mesh2 );
 
@@ -257,9 +253,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::checkEdgePair( const MeshData:
 
   // compute common-plane point-normal data. At this point we don't know where to properly
   // locate the common plane centroid so we just take the average of the two face centroids
-  this->computeNormal( mesh1, mesh2 );
-  this->computePlanePoint( mesh1, mesh2 );
-  this->computeAreaTol( mesh1, mesh2, this->m_params );
+  computePlaneData( mesh1, mesh2 );
 
   FaceGeomError interpen_err = this->computeOverlap2D( mesh1, mesh2 );
   if ( interpen_err != NO_FACE_GEOM_ERROR ) {
@@ -315,10 +309,7 @@ TRIBOL_HOST_DEVICE FaceGeomError MortarPlanePair::checkFacePair( const MeshData:
   ////////////////////////////////////////////////
 
   // compute common plane normal, centroid, local basis and area tolerance
-  this->computeNormal( mesh1, mesh2 );
-  this->computePlanePoint( mesh1, mesh2 );
-  this->computeLocalBasis( mesh1 );
-  this->computeAreaTol( mesh1, mesh2, this->m_params );
+  computePlaneData( mesh1, mesh2 );
 
   // the contact plane has to be properly located prior to computing the interpen overlap
   FaceGeomError interpen_err = this->computeOverlap3D( &m_x1_prime[0], &m_y1_prime[0], &m_z1_prime[0], &m_x2_prime[0],
@@ -477,9 +468,7 @@ TRIBOL_HOST_DEVICE FaceGeomError AlignedMortarPlanePair::checkFacePair( const Me
   // Check #6 see if the two faces are aligned; hence, overlap area being face area
 
   // compute common plane normal, centroid, local basis and area tolerance
-  this->computeNormal( mesh1, mesh2 );
-  this->computePlanePoint( mesh1, mesh2 );
-  this->computeAreaTol( mesh1, mesh2, this->m_params );
+  computePlaneData( mesh1, mesh2 );
   FaceGeomError interpen_err = this->computeOverlap3D( &m_x1_prime[0], &m_y1_prime[0], &m_z1_prime[0], &m_x2_prime[0],
                                                        &m_y2_prime[0], &m_z2_prime[0], mesh1, mesh2 );
 
@@ -969,15 +958,14 @@ void ContactPlanePair::globalTo2DLocalCoords( RealT pX, RealT pY, RealT pZ, Real
 }  // end ContactPlanePair::globalTo2DLocalCoords()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlanePair::computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                                          const Parameters& params )
+TRIBOL_HOST_DEVICE void ContactPlanePair::computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2 )
 {
-  if ( m_areaFrac < params.overlap_area_frac ) {
+  if ( m_areaFrac < this->m_params.overlap_area_frac ) {
 #ifdef TRIBOL_USE_HOST
     SLIC_DEBUG( "CommonPlanePair::computeAreaTol() the overlap area fraction too small or negative; "
                 << "setting to overlap_area_frac parameter." );
 #endif
-    m_areaFrac = params.overlap_area_frac;
+    m_areaFrac = this->m_params.overlap_area_frac;
   }
 
   m_areaMin = m_areaFrac * axom::utilities::min( m1.getElementAreas()[this->getCpElementId1()],

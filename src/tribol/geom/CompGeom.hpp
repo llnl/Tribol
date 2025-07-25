@@ -53,6 +53,8 @@ class ContactPlanePair : public CompGeomPair {
    */
   TRIBOL_HOST_DEVICE ContactPlanePair( InterfacePair* pair, const Parameters& params, const int dim );
 
+  virtual ~ContactPlanePair() = default;
+
   /*!
    * \brief check to see if face-pairs are interacting
    *
@@ -61,9 +63,8 @@ class ContactPlanePair : public CompGeomPair {
    *
    * \return face geometry error
    */
-  TRIBOL_HOST_DEVICE virtual FaceGeomError checkFacePair( const MeshData::Viewer& mesh1,
-                                                          const MeshData::Viewer& mesh2 ) { // no-op on base class
-  }
+  TRIBOL_HOST_DEVICE virtual FaceGeomError checkFacePair( const MeshData::Viewer& TRIBOL_UNUSED_PARAM(mesh1),
+                                                          const MeshData::Viewer& TRIBOL_UNUSED_PARAM(mesh2) ) = 0;
 
   /*!
    * \brief check to see if edge-pairs are interacting
@@ -73,16 +74,44 @@ class ContactPlanePair : public CompGeomPair {
    *
    * \return face geometry error
    */
-  TRIBOL_HOST_DEVICE virtual FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1,
-                                                  const MeshData::Viewer& mesh2 ) { // no-op on base class
-  }
+  TRIBOL_HOST_DEVICE virtual FaceGeomError checkEdgePair( const MeshData::Viewer& TRIBOL_UNUSED_PARAM(mesh1),
+                                                          const MeshData::Viewer& TRIBOL_UNUSED_PARAM(mesh2) ) = 0;
 
-  virtual ~ContactPlanePair() = default;
+  /*!
+   * \brief Compute a local basis on the contact plane
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   */
+  TRIBOL_HOST_DEVICE void computeLocalBasis( const MeshData::Viewer& m1 );
+
+  /*!
+   * \brief Compute the contact plane normal
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   */
+  TRIBOL_HOST_DEVICE virtual void computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) = 0;
+
+  /*!
+   * \brief Compute the contact plane point
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   */
+  TRIBOL_HOST_DEVICE virtual void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) = 0;
+
+  /*!
+   * \brief Compute the contact plane area tolerance
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   */
+  TRIBOL_HOST_DEVICE void computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2 );
+
 
   static constexpr int max_nodes_per_overlap{ 10 };
 
   static constexpr int max_face_nodes{ 4 };
-
 
  public:
   RealT m_x1_prime[max_face_nodes];
@@ -163,6 +192,16 @@ class ContactPlanePair : public CompGeomPair {
     }
   }
 
+  TRIBOL_HOST_DEVICE void computePlaneData( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
+  {
+    computeNormal( mesh1, mesh2 );
+    computePlanePoint( mesh1, mesh2 );
+    computeAreaTol( mesh1, mesh2 );
+    if (m_dim == 3) {
+      computeLocalBasis( mesh1 );
+    }
+  }
+
   TRIBOL_HOST_DEVICE void getFace1Coords( RealT* x1 ) const;
 
   TRIBOL_HOST_DEVICE void getFace2Coords( RealT* x2 ) const;
@@ -213,39 +252,6 @@ class ContactPlanePair : public CompGeomPair {
                                                              const RealT* x2, const RealT* y2, const RealT* z2,
                                                              const MeshData::Viewer& m1,
                                                              const MeshData::Viewer& m2 ) = 0;
-  /*!
-   * \brief Compute a local basis on the contact plane
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   */
-  TRIBOL_HOST_DEVICE void computeLocalBasis( const MeshData::Viewer& m1 );
-
-  /*!
-   * \brief Compute the contact plane normal
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   */
-  TRIBOL_HOST_DEVICE virtual void computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) = 0;
-
-  /*!
-   * \brief Compute the contact plane point
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   */
-  TRIBOL_HOST_DEVICE virtual void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) = 0;
-
-  /*!
-   * \brief Compute the contact plane area tolerance
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   * \param [in] params Coupling scheme-dependent parameters
-   */
-  TRIBOL_HOST_DEVICE void computeAreaTol( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
-                                          const Parameters& params );
-
   /// @}
 
   /// \name Coordinate projection helper routines
@@ -378,6 +384,23 @@ class CommonPlanePair : public ContactPlanePair {
   TRIBOL_HOST_DEVICE FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1,
                                                   const MeshData::Viewer& mesh2 ) override;
 
+  /*!
+   * \brief Compute the unit normal that defines the contact plane
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   */
+  TRIBOL_HOST_DEVICE void computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
+
+  /*!
+   * \brief Computes a reference point on the plane locating it in 3-space
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   *
+   * \note This is taken as the average of the vertex averaged centroids of
+   *  the two faces that are used to define a local contact plane
+   */
+  TRIBOL_HOST_DEVICE void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
 
  public:
   int m_numInterpenPoly1Vert;                       ///< Number of vertices on face 1 interpenetrating polygon
@@ -454,24 +477,6 @@ class CommonPlanePair : public ContactPlanePair {
                                                                    const int num_vert_1, const int num_vert_2,
                                                                    const MeshData::Viewer& m1,
                                                                    const MeshData::Viewer& m2 );
-  /*!
-   * \brief Compute the unit normal that defines the contact plane
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   */
-  TRIBOL_HOST_DEVICE void computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
-
-  /*!
-   * \brief Computes a reference point on the plane locating it in 3-space
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   *
-   * \note This is taken as the average of the vertex averaged centroids of
-   *  the two faces that are used to define a local contact plane
-   */
-  TRIBOL_HOST_DEVICE void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
-
   /*!
    * \brief Recomputes the reference point that locates the plane in 3-space
    *        and the gap between the projected `intersection` poly centroids
@@ -563,6 +568,24 @@ class MortarPlanePair : public ContactPlanePair {
   TRIBOL_HOST_DEVICE FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1,
                                                   const MeshData::Viewer& mesh2 ) override;
 
+  /*!
+   * \brief Compute the unit normal that defines the contact plane
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   */
+  TRIBOL_HOST_DEVICE void computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
+
+  /*!
+   * \brief Computes a reference point on the plane locating it in 3-space
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   *
+   * \note this is taken as the vertex average centroid of the nonmortar face
+   */
+  TRIBOL_HOST_DEVICE void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
+
+
  public:
 
   /*!
@@ -594,23 +617,6 @@ class MortarPlanePair : public ContactPlanePair {
   TRIBOL_HOST_DEVICE FaceGeomError computeOverlap3D( const RealT* x1, const RealT* y1, const RealT* z1, const RealT* x2,
                                                      const RealT* y2, const RealT* z2, const MeshData::Viewer& m1,
                                                      const MeshData::Viewer& m2 ) override;
-
-  /*!
-   * \brief Compute the unit normal that defines the contact plane
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   */
-  TRIBOL_HOST_DEVICE void computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
-
-  /*!
-   * \brief Computes a reference point on the plane locating it in 3-space
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   *
-   * \note this is taken as the vertex average centroid of the nonmortar face
-   */
-  TRIBOL_HOST_DEVICE void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
 
 };  // end class MortarPlanePair
 
@@ -658,6 +664,23 @@ class AlignedMortarPlanePair : public ContactPlanePair {
   TRIBOL_HOST_DEVICE FaceGeomError checkEdgePair( const MeshData::Viewer& mesh1,
                                                   const MeshData::Viewer& mesh2 ) override;
 
+  /*!
+   * \brief Compute the unit normal that defines the contact plane
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   */
+  TRIBOL_HOST_DEVICE void computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
+
+  /*!
+   * \brief Computes a reference point on the plane locating it in 3-space
+   *
+   * \param [in] m1 mesh data viewer for mesh 1
+   * \param [in] m2 mesh data viewer for mesh 2
+   *
+   * \note this is taken as the vertex average centroid of the nonmortar face
+   */
+  TRIBOL_HOST_DEVICE void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
+
  public:
 
   /*!
@@ -688,23 +711,6 @@ class AlignedMortarPlanePair : public ContactPlanePair {
   TRIBOL_HOST_DEVICE FaceGeomError computeOverlap3D( const RealT* x1, const RealT* y1, const RealT* z1, const RealT* x2,
                                                      const RealT* y2, const RealT* z2, const MeshData::Viewer& m1,
                                                      const MeshData::Viewer& m2 ) override;
-
-  /*!
-   * \brief Compute the unit normal that defines the contact plane
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   */
-  TRIBOL_HOST_DEVICE void computeNormal( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
-
-  /*!
-   * \brief Computes a reference point on the plane locating it in 3-space
-   *
-   * \param [in] m1 mesh data viewer for mesh 1
-   * \param [in] m2 mesh data viewer for mesh 2
-   *
-   * \note this is taken as the vertex average centroid of the nonmortar face
-   */
-  TRIBOL_HOST_DEVICE void computePlanePoint( const MeshData::Viewer& m1, const MeshData::Viewer& m2 ) override;
 
 };  // end class AlignedMortarPlanePair
 
