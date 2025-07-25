@@ -1846,7 +1846,7 @@ TRIBOL_HOST_DEVICE RealT CouplingScheme::Viewer::getGapTol( int fid1, int fid2 )
 
       switch ( m_contact_case ) {
         case TIED_NORMAL:
-          gap_tol = m_parameters.gap_tied_tol *
+          gap_tol = m_parameters.binning_proximity_scale *
                     axom::utilities::max( m_mesh1.getFaceRadius()[fid1], m_mesh2.getFaceRadius()[fid2] );
           break;
 
