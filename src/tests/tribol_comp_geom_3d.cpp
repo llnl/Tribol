@@ -1683,7 +1683,7 @@ TEST_F( CompGeomTest, compute_local_basis )
 
   EXPECT_LE( tribol::abs_val_diff( tribol::magnitude( e1x, e1y, e1z ), 1.0 ), 1.e-12 );
   EXPECT_LE( tribol::abs_val_diff( tribol::magnitude( e2x, e2y, e2z ), 1.0 ), 1.e-12 );
-  EXPECT_EQ( tribol::dotProd( e1x, e1y, e1z, e2x, e2y, e2z ), 0.0 );
+  EXPECT_EQ( tribol::abs_val_diff( tribol::dotProd( e1x, e1y, e1z, e2x, e2y, e2z ), 0.0), 1.e-12 );
 
 }
 
