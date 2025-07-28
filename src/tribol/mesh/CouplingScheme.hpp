@@ -465,6 +465,15 @@ class CouplingScheme {
    */
   const ContactPlane& getContactPlane( IndexT id ) const;
 
+
+
+  /**
+   * @brief Returns a reference to the 2D contact planes
+   *
+   * @return reference to the ContactPlane2D array
+   */
+  const ArrayT<ContactPlane2D>& get2DContactPlanes() const { return m_contact_plane2d; }
+
   /**
    * @brief Returns a reference to the 3D contact planes
    *

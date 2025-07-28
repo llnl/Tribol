@@ -968,6 +968,7 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemDfDxFullJacobian( 
   block_J->SetBlock(
       0, 0, mfem::RAP( parent_J_hypre.get(), parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() ) );
 
+      if (method_data.getNSpaces() == 3) {
   // transfer (0, 1) block (residual dof rows, lagrange multiplier dof cols)
   submesh_J = GetUpdateData().submesh_redecomp_xfer_01_->TransferToParallelSparse(
       mortar_elems, lm_elems,
@@ -1035,7 +1036,7 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemDfDxFullJacobian( 
   inactive_sm.SetDataOwner( false );
   inactive_hpm->SetOwnerFlags( 3, 3, 1 );
   block_J->SetBlock( 1, 1, inactive_hpm.release() );
-
+      }
   return block_J;
 }
 

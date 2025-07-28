@@ -37,6 +37,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckInterfacePair( InterfacePair& pair, const 
 
   switch ( cMethod ) {
     case SINGLE_MORTAR:
+    case SMOOTH_MORTAR:
     case MORTAR_WEIGHTS:
     case COMMON_PLANE: {
       // set whether full overlap is to be used or not. Note: SINGLE_MORTAR and

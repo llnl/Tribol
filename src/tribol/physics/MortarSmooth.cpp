@@ -52,15 +52,15 @@ int ApplyNormal<SMOOTH_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
 int ApplySmoothNormalEnzyme( CouplingScheme* cs )
 {
   printf("smoothed enzyme\n");
-  exit(1);
-  auto planes_view = cs->get3DContactPlanes().view();
+//   exit(1);
+  auto planes_view = cs->get2DContactPlanes().view();
   auto& lm_opts = cs->getEnforcementOptions().lm_implicit_options;
   bool compute_jacobian = false;
   if ( lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
        lm_opts.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ) {
     if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE ) {
       cs->getMethodData()->reserveBlockJ(
-          { BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER }, planes_view.size() );
+          { BlockSpace::NONMORTAR, BlockSpace::MORTAR}, planes_view.size() );
       compute_jacobian = true;
     } else {
       SLIC_WARNING( "Unsupported Jacobian storage method." );
@@ -139,7 +139,7 @@ int ApplySmoothNormalEnzyme( CouplingScheme* cs )
     
 
       if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE ) {
-        cs->getMethodData()->storeElemBlockJ( { elem1, elem2, elem1 }, blockJ );
+        cs->getMethodData()->storeElemBlockJ( { elem1, elem2 }, blockJ );
       } else {
         SLIC_WARNING( "Unsupported Jacobian storage method." );
         return 1;
@@ -521,25 +521,25 @@ void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, R
     RealT B1[2] = {coords[6], coords[7]};
 
 
-    RealT AC[2] = {0.5 * (A0[0]+A1[0]), 0.5*(A0[1]+A1[1])};
-    RealT AR[2] = {0.5 * (A0[0]-A1[0]), 0.5*(A0[1]-A1[1])};
-    RealT normAR = std::sqrt(AR[0]*AR[0] + AR[1]*AR[1]);
+    // RealT AC[2] = {0.5 * (A0[0]+A1[0]), 0.5*(A0[1]+A1[1])};
+    // RealT AR[2] = {0.5 * (A0[0]-A1[0]), 0.5*(A0[1]-A1[1])};
+    // RealT normAR = std::sqrt(AR[0]*AR[0] + AR[1]*AR[1]);
 
-    RealT BC[2] = {0.5 * (B0[0]+B1[0]), 0.5*(B0[1]+B1[1])};
-    RealT BR[2] = {0.5 * (B0[0]-B1[0]), 0.5*(B0[1]-B1[1])};
-    RealT normBR = std::sqrt(BR[0]*BR[0] + BR[1]*BR[1]);
+    // RealT BC[2] = {0.5 * (B0[0]+B1[0]), 0.5*(B0[1]+B1[1])};
+    // RealT BR[2] = {0.5 * (B0[0]-B1[0]), 0.5*(B0[1]-B1[1])};
+    // RealT normBR = std::sqrt(BR[0]*BR[0] + BR[1]*BR[1]);
 
-    A0[0] = AC[0] + AR[0] * lenA * 0.5 / normAR;
-    A0[1] = AC[1] + AR[1] * lenA * 0.5 / normAR;
+    // A0[0] = AC[0] + AR[0] * lenA * 0.5 / normAR;
+    // A0[1] = AC[1] + AR[1] * lenA * 0.5 / normAR;
 
-    A1[0] = AC[0] - AR[0] * lenA * 0.5 / normAR;
-    A1[1] = AC[1] - AR[1] * lenA * 0.5 / normAR;
+    // A1[0] = AC[0] - AR[0] * lenA * 0.5 / normAR;
+    // A1[1] = AC[1] - AR[1] * lenA * 0.5 / normAR;
 
-    B0[0] = BC[0] + BR[0] * lenB * 0.5 / normBR;
-    B0[1] = BC[1] + BR[1] * lenB * 0.5 / normBR;;
+    // B0[0] = BC[0] + BR[0] * lenB * 0.5 / normBR;
+    // B0[1] = BC[1] + BR[1] * lenB * 0.5 / normBR;
 
-    B1[0] = BC[0] - BR[0] * lenB * 0.5 / normBR;;
-    B1[1] = BC[1] - BR[1] * lenB * 0.5 / normBR;;
+    // B1[0] = BC[0] - BR[0] * lenB * 0.5 / normBR;
+    // B1[1] = BC[1] - BR[1] * lenB * 0.5 / normBR;
 
     RealT nA[2] = {0.0};
     RealT nB[2] = {0.0};

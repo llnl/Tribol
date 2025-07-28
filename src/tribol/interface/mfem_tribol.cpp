@@ -273,6 +273,7 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
   // the coupling scheme's method data
   if ( cs->isEnzymeEnabled() ) {
     auto dfdx = cs->getMfemJacobianData()->GetMfemDfDxFullJacobian( *cs->getMethodData() );
+    if (cs->getContactMethod() == SINGLE_MORTAR) {
     auto dfdn = cs->getMfemJacobianData()->GetMfemDfDnJacobian( *cs->getDfDnMethodData() );
     auto dndx = cs->getMfemJacobianData()->GetMfemDnDxJacobian( *cs->getDnDxMethodData() );
     dfdx->SetBlock( 0, 0,
@@ -283,6 +284,7 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
                     mfem::ParAdd( mfem::ParMult( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 1, 0 ) ),
                                                  &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ),
                                   &static_cast<mfem::HypreParMatrix&>( dfdx->GetBlock( 1, 0 ) ) ) );
+    }
     return dfdx;
   } else {
     return cs->getMfemJacobianData()->GetMfemBlockJacobian( cs->getMethodData() );
