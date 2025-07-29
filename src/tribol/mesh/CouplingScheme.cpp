@@ -1865,4 +1865,30 @@ TRIBOL_HOST_DEVICE RealT CouplingScheme::Viewer::getGapTol( int fid1, int fid2 )
   return gap_tol;
 }
 
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE bool CouplingScheme::Viewer::pruneMethodFacePair( const IndexT fid1, const IndexT fid2 ) const
+{
+  switch (m_contact_method) {
+    case ALIGNED_MORTAR:
+    case MORTAR_WEIGHTS:
+    case SINGLE_MORTAR:
+    {
+      break;
+    }
+    case COMMON_PLANE:
+    {
+      break;
+    }
+    default:
+    {
+#ifdef TRIBOL_USE_HOST
+      SLIC_ERROR( "CouplingScheme::performMethodPruning(): your contact method does not have a pruning routine." );
+#endif
+      break;
+    }
+  } // end switch
+
+  return true;
+}
+
 } /* namespace tribol */

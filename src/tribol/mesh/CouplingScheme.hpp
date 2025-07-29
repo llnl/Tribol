@@ -181,6 +181,16 @@ class CouplingScheme {
      */
     TRIBOL_HOST_DEVICE const CompGeom::Viewer& getCompGeomView() const { return m_cg_pairs; }
 
+    /**
+     * @brief Perform interface pair pruning based on the contact method 
+     *
+     * \param [in] fid1 id of the first face
+     * \param [in] fid2 id of the second face
+     *
+     * \return true if a contact candidate; otherwise, false
+     */
+    TRIBOL_HOST_DEVICE bool pruneMethodFacePair( const IndexT fid1, const IndexT fid2 ) const;
+
    private:
     /// Struct holding parameters for the coupling scheme
     Parameters m_parameters;

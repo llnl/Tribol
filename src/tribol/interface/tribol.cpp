@@ -786,9 +786,6 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setInterfacePairs(): invalid coupling scheme index." );
 
   auto& pairs = cs->getInterfacePairs();
-  auto& mesh1 = cs->getMesh1();
-  auto& mesh2 = cs->getMesh2();
-
   pairs.clear();
   pairs.reserve( numPairs );
 
@@ -800,7 +797,7 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
     // to interface pair manager. Note, further computational geometry
     // filtering will be performed on each face-pair indendifying
     // contact candidates.
-    if ( geomFilter( pairIndex1[i], pairIndex2[i], mesh1, mesh2, mode, cs->getParameters().auto_contact_check,
+    if ( geomFilter( cs->getView(), pairIndex1[i], pairIndex2[i],mode, cs->getParameters().auto_contact_check,
                      cs->getParameters().binning_proximity_scale ) ) {
       pairs.emplace_back( pairIndex1[i], pairIndex2[i], true );
     }
