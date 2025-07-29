@@ -1670,9 +1670,9 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoi
   // the current reference segment and the jth vertex whose link vector has the smallest
   // dot product with the current reference segment.
 
-  for ( int i = 0; i < ( numPoints - 3 ); ++i )  // increment to (numPoints - 3) or (numPoints - 2)?
+  for ( int i = 0; i < ( numPoints - 2 ); ++i )  // increment to (numPoints - 3) or (numPoints - 2)?
   {
-    int jID;
+    int jID = -1;
     RealT cosThetaMax = -1.;  // this handles angles up to 180 degrees. Not possible for convex polygons
     RealT cosTheta;
     RealT refMag, linkMag;
@@ -1705,9 +1705,11 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoi
 
     // we have found the minimum angle and the corresponding local vertex id.
     // swap ids
-    int swapID = newIDs[nextVertexID];
-    newIDs[nextVertexID] = newIDs[jID];
-    newIDs[jID] = swapID;
+    if (jID > -1) {
+      int swapID = newIDs[nextVertexID];
+      newIDs[nextVertexID] = newIDs[jID];
+      newIDs[jID] = swapID;
+    }
 
   }  // end loop over i
 
@@ -2003,8 +2005,77 @@ TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_n
 
   return;
 
-}  // end ContactPlanePair::checkPolyOverlap()
+}  // end CheckPolyOverlap()
 
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE bool IsOverlapping( const RealT* const x1, const RealT* const y1, const RealT* const z1,
+                                       const RealT* const x2, const RealT* const y2, const RealT* const z2,
+                                       const RealT* const n, const RealT* const c,
+                                       const int numNodesFace1, const int numNodesFace2, const int dim )
+{
+  constexpr int max_nodes_per_face = 4;
+
+  if (dim == 3) {
+    RealT x1_bar[max_nodes_per_face];
+    RealT y1_bar[max_nodes_per_face];
+    RealT z1_bar[max_nodes_per_face];
+    RealT x2_bar[max_nodes_per_face];
+    RealT y2_bar[max_nodes_per_face];
+    RealT z2_bar[max_nodes_per_face];
+
+    // project vertices to plane
+    ProjectPointsToPlane( x1, y1, z1, n[0], n[1], n[2], c[0], c[1], c[2],
+                          &x1_bar[0], &y1_bar[0], &z1_bar[0], numNodesFace1 );
+    ProjectPointsToPlane( x2, y2, z2, n[0], n[1], n[2], c[0], c[1], c[2],
+                          &x2_bar[0], &y2_bar[0], &z2_bar[0], numNodesFace2 );
+
+    RealT x1_bar_local[max_nodes_per_face];
+    RealT y1_bar_local[max_nodes_per_face];
+    RealT x2_bar_local[max_nodes_per_face];
+    RealT y2_bar_local[max_nodes_per_face];
+
+    // 3D coordinates to local 2D coordinates
+    Points3DTo2D( &x1_bar[0], &y1_bar[0], &z1_bar[0], n[0], n[1], n[2], c[0], c[1], c[2],
+                  numNodesFace1, &x1_bar_local[0], &y1_bar_local[0] );
+    Points3DTo2D( &x2_bar[0], &y2_bar[0], &z2_bar[0], n[0], n[1], n[2], c[0], c[1], c[2],
+                  numNodesFace2, &x2_bar_local[0], &y2_bar_local[0] );
+
+    RealT cx, cy, area;
+    CheckPolyOverlap( numNodesFace1, numNodesFace2, &x1_bar_local[0],
+                      &y1_bar_local[0], &x2_bar_local[0], &y2_bar_local[0], cx, cy, area, 0 );
+
+    if ( area < 1.e-15 ) {
+      return false;
+    }
+    // end dim == 3
+  } else {
+    RealT projX1[max_nodes_per_face];
+    RealT projY1[max_nodes_per_face];
+    RealT projX2[max_nodes_per_face];
+    RealT projY2[max_nodes_per_face];
+
+    // project edge nodes to plane
+    for (int i=0; i<numNodesFace1; ++i) {
+      ProjectPointToSegment( x1[i], y1[i], n[0], n[1], c[0], c[1], projX1[i], projY1[i] );
+    }
+
+    for (int i=0; i<numNodesFace2; ++i) {
+      ProjectPointToSegment( x2[i], y2[i], n[0], n[1], c[0], c[1], projX2[i], projY2[i] );
+    }
+
+    // check if either of edge 1's projected vertices are inside projected edge 2
+    bool inside_vert1 = IsPointInEdge( &projX2[0], &projY2[0], projX1[0], projY1[0] );
+    bool inside_vert2 = IsPointInEdge( &projX2[0], &projY2[0], projX1[1], projY1[1] );
+
+    if ( !inside_vert1 && !inside_vert2 ) {
+      return false;
+    }
+
+  }  // end dim == 2
+
+  return true;
+
+}
 //------------------------------------------------------------------------------
 
 }  // end namespace tribol
