@@ -23,13 +23,9 @@ class SearchBase;
  * \param [in] cs_view View of the coupling scheme
  * \param [in] element_id1 id of 1st element in pair
  * \param [in] element_id2 id of 2nd element in pair
- * \param [in] mode ContactMode
- * \param [in] auto_contact_check Is auto-contact assumed?
- * \param [in] element_radius_multiplier Scaling applied to max element radius distance check
  *
  */
-TRIBOL_HOST_DEVICE bool geomFilter( const CouplingScheme::Viewer& cs_view, IndexT element_id1, IndexT element_id2,
-                                    ContactMode mode, bool auto_contact_check, RealT element_radius_multiplier );
+TRIBOL_HOST_DEVICE bool geomFilter( const CouplingScheme::Viewer& cs_view, IndexT element_id1, IndexT element_id2 );
 
 /*!
  * \class InterfacePairFinder

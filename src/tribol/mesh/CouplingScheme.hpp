@@ -153,6 +153,27 @@ class CouplingScheme {
     TRIBOL_HOST_DEVICE const EnforcementOptions& getEnforcementOptions() const { return m_enforcement_options; }
 
     /**
+     * @brief Get the contact mode
+     *
+     * @return const reference to the contact mode
+     */
+    TRIBOL_HOST_DEVICE ContactMode getContactMode() const { return m_contact_mode; }
+
+    /**
+     * @brief Get the parameters struct
+     *
+     * @return a const reference to the parameters 
+     */
+    TRIBOL_HOST_DEVICE const Parameters& getParameters() const { return m_parameters; }
+
+    /**
+     * @brief Get the effective binning proximity scale 
+     *
+     * @return the effective binning proximity scale used on the coupling scheme
+     */
+    TRIBOL_HOST_DEVICE RealT getEffectiveBinningProximityScale() const { return m_effective_binning_proximity_scale; }
+
+    /**
      * @brief Return the contact plane given by id
      *
      * @param id identifier for a contact plane
@@ -194,6 +215,11 @@ class CouplingScheme {
    private:
     /// Struct holding parameters for the coupling scheme
     Parameters m_parameters;
+
+    RealT m_effective_binning_proximity_scale;
+
+    /// Defines the contact mode
+    ContactMode m_contact_mode;
 
     /// Defines the contact case: special algorithmic considerations
     ContactCase m_contact_case;

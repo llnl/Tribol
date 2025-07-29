@@ -1782,6 +1782,8 @@ void CouplingScheme::createNodalNormalJacobianData()
 //------------------------------------------------------------------------------
 CouplingScheme::Viewer::Viewer( CouplingScheme& cs )
     : m_parameters( cs.m_parameters ),
+      m_effective_binning_proximity_scale( cs.m_effective_binning_proximity_scale ),
+      m_contact_mode( cs.m_contactMode ),
       m_contact_case( cs.m_contactCase ),
       m_contact_method( cs.m_contactMethod ),
       m_enforcement_options( cs.m_enforcementOptions ),
