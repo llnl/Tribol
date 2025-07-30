@@ -77,7 +77,8 @@ int ApplySmoothNormalEnzyme( CouplingScheme* cs )
 
   RealT k1 = cs->getMesh1().getElementData().m_penalty_stiffness;
   RealT k2 = cs->getMesh2().getElementData().m_penalty_stiffness;
-  constexpr RealT del = 0.01;
+  std::cout << "k1: " << k1 << " k2: " << k2 << std::endl;
+  constexpr RealT del = 0.001;
 
 
   
@@ -155,13 +156,13 @@ int ApplySmoothNormalEnzyme( CouplingScheme* cs )
     for ( int i = 0; i < size1; ++i ) {
       int node_id = mesh1.getGlobalNodeId( elem1, i );
       for ( int d = 0; d < dim; ++d ) {
-        mesh1.getResponse()[d][node_id] += force[i];     //f1[d * size1 + i];
+        mesh1.getResponse()[d][node_id] += force[i * dim + d];     //f1[d * size1 + i];
       }
     }
     for ( int i{ 0 }; i < size2; ++i ) {
       int node_id = mesh2.getGlobalNodeId( elem2, i );
       for ( int d = 0; d < dim; ++d ) {
-        mesh2.getResponse()[d][node_id] += force[4 + i];  //f2[d * size2 + i];
+        mesh2.getResponse()[d][node_id] += force[dim * (size1 + i) + d];  //f2[d * size2 + i];
       }
     }
   }
@@ -197,7 +198,7 @@ void find_normal(const RealT* coord1, const RealT* coord2, RealT* normal) {
         N_i[0] = -1.0 * std::sqrt((15 + 2 * std::sqrt(30)) / 35);
         N_i[1] = -1.0 * std::sqrt((15 - 2 * std::sqrt(30)) / 35);
         N_i[2] = -std::sqrt((15 - 2 * std::sqrt(30)) / 35);
-        N_i[4] = -std::sqrt((15 + 2 * std::sqrt(30)) / 35);
+        N_i[3] = -std::sqrt((15 + 2 * std::sqrt(30)) / 35);
     }
  }
 
@@ -388,6 +389,7 @@ void compute_integration_bounds(const RealT* projections, RealT* integration_bou
 
     integration_bounds[0] = xi_min;
     integration_bounds[1] = xi_max;
+    std::cout << "xi min: " << xi_min << " xi_max: " << xi_max << std::endl;
 }
 
 void modify_bounds(const RealT* integration_bounds, RealT del, RealT* modified_bounds) {
@@ -500,6 +502,8 @@ RealT compute_gap(const RealT* p, const RealT* B0, const RealT* B1, const RealT*
 RealT compute_modified_gap(RealT gap, RealT* nA, RealT* nB) {
     RealT dot = nA[0] * nB[0] + nA[1] * nB[1];
     RealT eta = (dot < 0) ? -dot:0.0;
+
+    std::cout << "Gap: " << gap * eta << std::endl;
     return gap * eta;
 }
 
@@ -519,6 +523,13 @@ void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, R
     RealT A1[2] = {coords[2], coords[3]};
     RealT B0[2] = {coords[4], coords[5]};
     RealT B1[2] = {coords[6], coords[7]};
+
+
+    std::cout << "len A: " << lenA << " len B: " << lenB << std::endl;
+
+    std::cout << "Node A: " << A0[0] << ", " << A1[0] << std::endl;
+    std::cout << "Node B: " << B0[0] << ", " << B1[0] << std::endl;
+
 
 
     // RealT AC[2] = {0.5 * (A0[0]+A1[0]), 0.5*(A0[1]+A1[1])};
@@ -581,6 +592,7 @@ void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, R
         *energy +=  weights[i] * potential;
     }
     *energy *= lenA * 0.5;
+    std::cout << "energy: " << *energy << std::endl;
 
 }}
 
@@ -618,6 +630,10 @@ void ComputeSmoothMortarForceEnzyme(RealT* coords, RealT del, RealT k1, RealT k2
 
     for(int i = 0; i < 8; ++i) {
         dE_dX[i] = -dcoords[i];
+    }
+
+    for(int i = 0; i < 8; ++i) {
+        std::cout << dE_dX[i] << std::endl;
     }
 }
 
