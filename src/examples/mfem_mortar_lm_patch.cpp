@@ -45,15 +45,6 @@
 
 #include <set>
 
-// Tribol includes
-#include "tribol/config.hpp"
-#include "tribol/common/Parameters.hpp"
-#include "tribol/interface/tribol.hpp"
-#include "tribol/interface/mfem_tribol.hpp"
-
-// Redecomp includes
-#include "redecomp/redecomp.hpp"
-
 #ifdef TRIBOL_USE_UMPIRE
 // Umpire includes
 #include "umpire/ResourceManager.hpp"
@@ -65,6 +56,18 @@
 // Axom includes
 #include "axom/CLI11.hpp"
 #include "axom/slic.hpp"
+
+// Redecomp includes
+#include "redecomp/redecomp.hpp"
+
+// Shared includes
+#include "shared/mesh/MeshBuilder.hpp"
+
+// Tribol includes
+#include "tribol/config.hpp"
+#include "tribol/common/Parameters.hpp"
+#include "tribol/interface/tribol.hpp"
+#include "tribol/interface/mfem_tribol.hpp"
 
 int main( int argc, char** argv )
 {
@@ -92,6 +95,8 @@ int main( int argc, char** argv )
   double lambda = 50.0;
   // Lame parameter mu (shear modulus)
   double mu = 50.0;
+  // Should we mesh with tet elements?
+  bool use_tets = false;
 
   // parse command line options
   axom::CLI::App app{ "mfem_mortar_lm_patch" };
@@ -102,16 +107,16 @@ int main( int argc, char** argv )
   //   ->capture_default_str();
   app.add_option( "-l,--lambda", lambda, "Lame parameter lambda." )->capture_default_str();
   app.add_option( "-m,--mu", mu, "Lame parameter mu (shear modulus)." )->capture_default_str();
+  app.add_option( "-t,--use-tets", use_tets, "Should we use tetrahedral elements?" )->capture_default_str();
   CLI11_PARSE( app, argc, argv );
 
   SLIC_INFO_ROOT( "Running mfem_mortar_lm_patch with the following options:" );
-  SLIC_INFO_ROOT( axom::fmt::format( "refine: {0}", ref_levels ) );
-  SLIC_INFO_ROOT( axom::fmt::format( "lambda: {0}", lambda ) );
-  SLIC_INFO_ROOT( axom::fmt::format( "mu:     {0}\n", mu ) );
+  SLIC_INFO_ROOT( axom::fmt::format( "refine:   {0}", ref_levels ) );
+  SLIC_INFO_ROOT( axom::fmt::format( "lambda:   {0}", lambda ) );
+  SLIC_INFO_ROOT( axom::fmt::format( "mu:       {0}", mu ) );
+  SLIC_INFO_ROOT( axom::fmt::format( "use_tets: {0}\n", use_tets ) );
 
   // fixed options
-  // location of mesh file. TRIBOL_REPO_DIR is defined in tribol/config.hpp
-  std::string mesh_file = TRIBOL_REPO_DIR "/data/two_hex_overlap.mesh";
   // boundary element attributes of mortar surface, the z = 1 plane of the first
   // block
   auto mortar_attrs = std::set<int>( { 4 } );
@@ -134,38 +139,33 @@ int main( int argc, char** argv )
   // Optionally, the mfem::ParMesh can be refined further on each rank by
   // setting par_ref_levels >= 1, though this is disabled below.
   timer.start();
-  std::unique_ptr<mfem::ParMesh> pmesh{ nullptr };
-  {
-    // read serial mesh
-    auto mesh = std::make_unique<mfem::Mesh>( mesh_file.c_str(), 1, 1 );
-
-    // refine serial mesh
-    if ( ref_levels > 0 ) {
-      for ( int i{ 0 }; i < ref_levels; ++i ) {
-        mesh->UniformRefinement();
-      }
-    }
-
-    // create parallel mesh from serial
-    pmesh = std::make_unique<mfem::ParMesh>( MPI_COMM_WORLD, *mesh );
-    mesh.reset( nullptr );
-
-    // further refinement of parallel mesh
-    {
-      // set this to >= 1 to refine the mesh on each rank further
-      int par_ref_levels = 0;
-      for ( int i{ 0 }; i < par_ref_levels; ++i ) {
-        pmesh->UniformRefinement();
-      }
-    }
-  }
+  // build mesh of 2 cubes
+  int nel_per_dir = std::pow( 2, ref_levels );
+  auto elem_type = use_tets ? mfem::Element::TETRAHEDRON : mfem::Element::HEXAHEDRON;
+  // clang-format off
+  mfem::ParMesh mesh = shared::ParMeshBuilder(MPI_COMM_WORLD, shared::MeshBuilder::Unify({
+    shared::MeshBuilder::CubeMesh(nel_per_dir, nel_per_dir, nel_per_dir, elem_type)
+      .updateBdrAttrib(3, 7)
+      .updateBdrAttrib(1, 3)
+      .updateBdrAttrib(4, 7)
+      .updateBdrAttrib(5, 1)
+      .updateBdrAttrib(6, 4),
+    shared::MeshBuilder::CubeMesh(nel_per_dir, nel_per_dir, nel_per_dir, elem_type)
+      .translate({0.0, 0.0, 0.99})
+      .updateBdrAttrib(1, 8)
+      .updateBdrAttrib(3, 7)
+      .updateBdrAttrib(4, 7)
+      .updateBdrAttrib(5, 1)
+      .updateBdrAttrib(8, 5)
+  }));
+  // clang-format on
   timer.stop();
   SLIC_INFO_ROOT( axom::fmt::format( "Time to create parallel mesh: {0:f}ms", timer.elapsedTimeInMilliSec() ) );
 
   // Set up an MFEM data collection for output. We output data in Paraview and
   // VisIt formats.
-  auto paraview_datacoll = mfem::ParaViewDataCollection( "mortar_patch_pv", pmesh.get() );
-  auto visit_datacoll = mfem::VisItDataCollection( "mortar_patch_vi", pmesh.get() );
+  auto paraview_datacoll = mfem::ParaViewDataCollection( "mortar_patch_pv", &mesh );
+  auto visit_datacoll = mfem::VisItDataCollection( "mortar_patch_vi", &mesh );
 
   // This block of code creates position and displacement grid functions (and
   // associated finite element collections and finite element spaces) on the
@@ -174,9 +174,9 @@ int main( int argc, char** argv )
   // functions are registered with the data collections for output.
   timer.start();
   // Finite element collection (shared between all grid functions).
-  auto fe_coll = mfem::H1_FECollection( order, pmesh->SpaceDimension() );
+  auto fe_coll = mfem::H1_FECollection( order, mesh.SpaceDimension() );
   // Finite element space (shared between all grid functions).
-  auto par_fe_space = mfem::ParFiniteElementSpace( pmesh.get(), &fe_coll, pmesh->SpaceDimension() );
+  auto par_fe_space = mfem::ParFiniteElementSpace( &mesh, &fe_coll, mesh.SpaceDimension() );
   // Create coordinate grid function
   auto coords = mfem::ParGridFunction( &par_fe_space );
   // Set coordinate grid function based on nodal locations. In MFEM, nodal
@@ -184,7 +184,7 @@ int main( int argc, char** argv )
   // MFEM meshes, nodal locations can be stored in a grid function or through
   // the vertex coordinates. For consistency, we will create a nodal grid
   // function even for linear meshes.
-  pmesh->SetNodalGridFunction( &coords, false );
+  mesh.SetNodalGridFunction( &coords, false );
   paraview_datacoll.RegisterField( "pos", &coords );
   visit_datacoll.RegisterField( "pos", &coords );
 
@@ -208,7 +208,7 @@ int main( int argc, char** argv )
     // are in the list.
     mfem::Array<int> ess_vdof_marker;
     // Convert x-fixed boundary attributes into markers
-    mfem::Array<int> ess_bdr( pmesh->bdr_attributes.Max() );
+    mfem::Array<int> ess_bdr( mesh.bdr_attributes.Max() );
     ess_bdr = 0;
     for ( auto xfixed_attr : xfixed_attrs ) {
       ess_bdr[xfixed_attr - 1] = 1;
@@ -281,7 +281,7 @@ int main( int argc, char** argv )
   int coupling_scheme_id = 0;
   int mesh1_id = 0;
   int mesh2_id = 1;
-  tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, *pmesh, coords, mortar_attrs,
+  tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs,
                                       nonmortar_attrs, tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING,
                                       tribol::SINGLE_MORTAR, tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER,
                                       tribol::BINNING_GRID );

@@ -86,11 +86,20 @@ void ComputeMortarWeights( SurfaceContactElem& elem )
         RealT xi[2] = { 0., 0. };
 
         InvIso( xp, x1, y1, z1, elem.numFaceVert, xi );
-        LinIsoQuadShapeFunc( xi[0], xi[1], a, phiMortarA );
+        if ( elem.numFaceVert == 4 ) {
+          LinIsoQuadShapeFunc( xi[0], xi[1], a, phiMortarA );
+        } else if ( elem.numFaceVert == 3 ) {
+          LinIsoTriShapeFunc( xi[0], xi[1], a, phiMortarA );
+        }
 
         InvIso( xp, x2, y2, z2, elem.numFaceVert, xi );
-        LinIsoQuadShapeFunc( xi[0], xi[1], a, phiNonmortarA );
-        LinIsoQuadShapeFunc( xi[0], xi[1], b, phiNonmortarB );
+        if ( elem.numFaceVert == 4 ) {
+          LinIsoQuadShapeFunc( xi[0], xi[1], a, phiNonmortarA );
+          LinIsoQuadShapeFunc( xi[0], xi[1], b, phiNonmortarB );
+        } else if ( elem.numFaceVert == 3 ) {
+          LinIsoTriShapeFunc( xi[0], xi[1], a, phiNonmortarA );
+          LinIsoTriShapeFunc( xi[0], xi[1], b, phiNonmortarB );
+        }
 
         SLIC_ERROR_IF( nonmortarNonmortarId > elem.numWts || mortarNonmortarId > elem.numWts,
                        "ComputeMortarWts: integer ids for weights exceed elem.numWts" );
@@ -989,12 +998,18 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       // NOTE: Nonstandard node numbering with InvIso and LinIsoQuadShapeFunc
       for ( int k{ 0 }; k < size1; ++k ) {
         RealT phiA;
-        // NOTE: this limits this routine to quads
-        LinIsoQuadShapeFunc( xi1[0], xi1[1], k, phiA );
+        if ( elem.numFaceVert == 4 ) {
+          LinIsoQuadShapeFunc( xi1[0], xi1[1], k, phiA );
+        } else if ( elem.numFaceVert == 3 ) {
+          LinIsoTriShapeFunc( xi1[0], xi1[1], k, phiA );
+        }
         for ( int l{ 0 }; l < size1; ++l ) {
           RealT phiB;
-          // NOTE: this limits this routine to quads
-          LinIsoQuadShapeFunc( xi1[0], xi1[1], l, phiB );
+          if ( elem.numFaceVert == 4 ) {
+            LinIsoQuadShapeFunc( xi1[0], xi1[1], l, phiB );
+          } else if ( elem.numFaceVert == 3 ) {
+            LinIsoTriShapeFunc( xi1[0], xi1[1], l, phiB );
+          }
           mortar_mat1[k * size1 + l] += phiA * phiB * quad_wt;
         }
       }
@@ -1002,12 +1017,18 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       // 5. Evaluate mortar matrix (nonmortar/mortar contribs)
       for ( int k{ 0 }; k < size1; ++k ) {
         RealT phiA;
-        // NOTE: this limits this routine to quads
-        LinIsoQuadShapeFunc( xi1[0], xi1[1], k, phiA );
+        if ( elem.numFaceVert == 4 ) {
+          LinIsoQuadShapeFunc( xi1[0], xi1[1], k, phiA );
+        } else if ( elem.numFaceVert == 3 ) {
+          LinIsoTriShapeFunc( xi1[0], xi1[1], k, phiA );
+        }
         for ( int l{ 0 }; l < size2; ++l ) {
           RealT phiB;
-          // NOTE: this limits this routine to quads
-          LinIsoQuadShapeFunc( xi2[0], xi2[1], l, phiB );
+          if ( elem.numFaceVert == 4 ) {
+            LinIsoQuadShapeFunc( xi2[0], xi2[1], l, phiB );
+          } else if ( elem.numFaceVert == 3 ) {
+            LinIsoTriShapeFunc( xi2[0], xi2[1], l, phiB );
+          }
           mortar_mat2[k * size2 + l] += phiA * phiB * quad_wt;
         }
       }
