@@ -3,18 +3,10 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+#include <mfem/mesh/element.hpp>
 #include <set>
 
 #include <gtest/gtest.h>
-
-// Tribol includes
-#include "tribol/config.hpp"
-#include "tribol/common/Parameters.hpp"
-#include "tribol/interface/tribol.hpp"
-#include "tribol/interface/mfem_tribol.hpp"
-
-// Redecomp includes
-#include "redecomp/redecomp.hpp"
 
 #ifdef TRIBOL_USE_UMPIRE
 // Umpire includes
@@ -28,24 +20,34 @@
 #include "axom/CLI11.hpp"
 #include "axom/slic.hpp"
 
+// Shared includes
+#include "shared/mesh/MeshBuilder.hpp"
+
+// Redecomp includes
+#include "redecomp/redecomp.hpp"
+
+// Tribol includes
+#include "tribol/config.hpp"
+#include "tribol/common/Parameters.hpp"
+#include "tribol/interface/tribol.hpp"
+#include "tribol/interface/mfem_tribol.hpp"
+
 /**
  * @brief This tests the Tribol MFEM interface running a contact patch test.
  *
  */
-class MfemMortarTest : public testing::TestWithParam<int> {
+class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Element::Type>> {
  protected:
   tribol::RealT max_disp_;
   void SetUp() override
   {
     // number of times to uniformly refine the serial mesh before constructing the
     // parallel mesh
-    int ref_levels = GetParam();
+    int ref_levels = std::get<0>( GetParam() );
     // polynomial order of the finite element discretization
     int order = 1;
 
     // fixed options
-    // location of mesh file. TRIBOL_REPO_DIR is defined in tribol/config.hpp
-    std::string mesh_file = TRIBOL_REPO_DIR "/data/two_hex_overlap.mesh";
     // boundary element attributes of mortar surface
     auto mortar_attrs = std::set<int>( { 4 } );
     // boundary element attributes of nonmortar surface
@@ -57,40 +59,34 @@ class MfemMortarTest : public testing::TestWithParam<int> {
     // boundary element attributes of z-fixed surfaces (3: surface at z = 0, 6: surface at z = 1.99)
     auto zfixed_attrs = std::set<int>( { 3, 6 } );
 
-    // read mesh
-    std::unique_ptr<mfem::ParMesh> pmesh{ nullptr };
-    {
-      // read serial mesh
-      auto mesh = std::make_unique<mfem::Mesh>( mesh_file.c_str(), 1, 1 );
-
-      // refine serial mesh
-      if ( ref_levels > 0 ) {
-        for ( int i{ 0 }; i < ref_levels; ++i ) {
-          mesh->UniformRefinement();
-        }
-      }
-
-      // create parallel mesh from serial
-      pmesh = std::make_unique<mfem::ParMesh>( MPI_COMM_WORLD, *mesh );
-      mesh.reset( nullptr );
-
-      // further refinement of parallel mesh
-      {
-        int par_ref_levels = 0;
-        for ( int i{ 0 }; i < par_ref_levels; ++i ) {
-          pmesh->UniformRefinement();
-        }
-      }
-    }
+    // build mesh of 2 cubes
+    int nel_per_dir = std::pow( 2, ref_levels );
+    // clang-format off
+    mfem::ParMesh mesh = shared::ParMeshBuilder(MPI_COMM_WORLD, shared::MeshBuilder::Unify({
+      shared::MeshBuilder::CubeMesh(nel_per_dir, nel_per_dir, nel_per_dir, std::get<1>(GetParam()))
+        .updateBdrAttrib(3, 7)
+        .updateBdrAttrib(1, 3)
+        .updateBdrAttrib(4, 7)
+        .updateBdrAttrib(5, 1)
+        .updateBdrAttrib(6, 4),
+      shared::MeshBuilder::CubeMesh(nel_per_dir, nel_per_dir, nel_per_dir, std::get<1>(GetParam()))
+        .translate({0.0, 0.0, 0.99})
+        .updateBdrAttrib(1, 8)
+        .updateBdrAttrib(3, 7)
+        .updateBdrAttrib(4, 7)
+        .updateBdrAttrib(5, 1)
+        .updateBdrAttrib(8, 5)
+    }));
+    // clang-format on
 
     // grid function for higher-order nodes
-    auto fe_coll = mfem::H1_FECollection( order, pmesh->SpaceDimension() );
-    auto par_fe_space = mfem::ParFiniteElementSpace( pmesh.get(), &fe_coll, pmesh->SpaceDimension() );
+    auto fe_coll = mfem::H1_FECollection( order, mesh.SpaceDimension() );
+    auto par_fe_space = mfem::ParFiniteElementSpace( &mesh, &fe_coll, mesh.SpaceDimension() );
     auto coords = mfem::ParGridFunction( &par_fe_space );
     if ( order > 1 ) {
-      pmesh->SetNodalGridFunction( &coords, false );
+      mesh.SetNodalGridFunction( &coords, false );
     } else {
-      pmesh->GetNodes( coords );
+      mesh.GetNodes( coords );
     }
 
     // grid function for displacement
@@ -101,7 +97,7 @@ class MfemMortarTest : public testing::TestWithParam<int> {
     mfem::Array<int> ess_tdof_list;
     {
       mfem::Array<int> ess_vdof_marker;
-      mfem::Array<int> ess_bdr( pmesh->bdr_attributes.Max() );
+      mfem::Array<int> ess_bdr( mesh.bdr_attributes.Max() );
       ess_bdr = 0;
       for ( auto xfixed_attr : xfixed_attrs ) {
         ess_bdr[xfixed_attr - 1] = 1;
@@ -144,7 +140,7 @@ class MfemMortarTest : public testing::TestWithParam<int> {
     int coupling_scheme_id = 0;
     int mesh1_id = 0;
     int mesh2_id = 1;
-    tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, *pmesh, coords, mortar_attrs,
+    tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs,
                                         nonmortar_attrs, tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING,
                                         tribol::SINGLE_MORTAR, tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER,
                                         tribol::BINNING_GRID );
@@ -206,7 +202,9 @@ TEST_P( MfemMortarTest, mass_matrix_transfer )
   MPI_Barrier( MPI_COMM_WORLD );
 }
 
-INSTANTIATE_TEST_SUITE_P( tribol, MfemMortarTest, testing::Values( 2 ) );
+INSTANTIATE_TEST_SUITE_P( tribol, MfemMortarTest,
+                          testing::Values( std::make_tuple( 2, mfem::Element::Type::HEXAHEDRON ),
+                                           std::make_tuple( 2, mfem::Element::Type::TETRAHEDRON ) ) );
 
 //------------------------------------------------------------------------------
 #include "axom/slic/core/SimpleLogger.hpp"

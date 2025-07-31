@@ -94,6 +94,31 @@ class InvIsoTest : public ::testing::Test {
     }
   }
 
+  /**
+   * @brief Run a test on a triangular element.
+   *
+   * @param x0 The zero-th coordinate of the triangle (3D, CCW ordering).
+   * @param x1 The first coordinate of the triangle (3D, CCW ordering).
+   * @param x2 The second coordinate of the triangle (3D, CCW ordering).
+   * @param xi The point to test (xi \in [0, 1], eta \in [0, 1 - xi]).
+   */
+  void RunTriTest( const tribol::RealT* x0, const tribol::RealT* x1, const tribol::RealT* x2, const tribol::RealT* xi )
+  {
+    tribol::RealT x[3] = { 0.0, 0.0, 0.0 };
+    tribol::RealT phi[3] = { 0.0, 0.0, 0.0 };
+    tribol::LinIsoTriShapeFunc( xi, phi );
+    for ( int i{ 0 }; i < 3; ++i ) {
+      x[i] += phi[0] * x0[i] + phi[1] * x1[i] + phi[2] * x2[i];
+    }
+    tribol::RealT xi_inviso[2] = { 0.0, 0.0 };
+    tribol::RealT xA[3] = { x0[0], x1[0], x2[0] };
+    tribol::RealT yA[3] = { x0[1], x1[1], x2[1] };
+    tribol::RealT zA[3] = { x0[2], x1[2], x2[2] };
+    tribol::InvIso( x, xA, yA, zA, 3, xi_inviso );
+    EXPECT_NEAR( xi_inviso[0], xi[0], 1.e-12 );
+    EXPECT_NEAR( xi_inviso[1], xi[1], 1.e-12 );
+  }
+
  protected:
   RealT* x{ nullptr };
   RealT* y{ nullptr };
@@ -206,6 +231,46 @@ TEST_F( InvIsoTest, affine_test_point )
   bool convrg = this->InvMap( point, 1.e-6 );
 
   EXPECT_EQ( convrg, true );
+}
+
+TEST_F( InvIsoTest, basic_tri_test )
+{
+  RealT x0[3] = { 0.0, 0.0, 0.0 };
+  RealT x1[3] = { 1.0, 0.0, 0.0 };
+  RealT x2[3] = { 0.5, 1.0, 0.0 };
+  // clang-format off
+  RealT xi[14] = { 0.25, 0.25,
+                  0.0, 0.0,
+                  1.0, 0.0,
+                  0.0, 1.0,
+                  0.5, 0.5,
+                  0.33333, 0.33333,
+                  0.12352634, 0.2345422 };
+  // clang-format on
+
+  for ( int i{ 0 }; i < 7; ++i ) {
+    this->RunTriTest( x0, x1, x2, xi + 2 * i );
+  }
+}
+
+TEST_F( InvIsoTest, narrow_offaxis_tri_test )
+{
+  RealT x0[3] = { 0.2, -0.2, 0.5 };
+  RealT x1[3] = { 1.0, 0.0, 0.5 };
+  RealT x2[3] = { 0.5, 0.1, 0.5 };
+  // clang-format off
+  RealT xi[14] = { 0.25, 0.25,
+                  0.0, 0.0,
+                  1.0, 0.0,
+                  0.0, 1.0,
+                  0.5, 0.5,
+                  0.33333, 0.33333,
+                  0.12352634, 0.2345422 };
+  // clang-format on
+
+  for ( int i{ 0 }; i < 7; ++i ) {
+    this->RunTriTest( x0, x1, x2, xi + 2 * i );
+  }
 }
 
 int main( int argc, char* argv[] )
