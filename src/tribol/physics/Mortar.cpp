@@ -741,8 +741,6 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
       blockJ( 2, 2 ) = DeviceArray2D<RealT>( n_multipliers, n_multipliers );
       blockJ( 2, 2 ).fill( 0.0 );
 
-      ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, size1, x2, f2, size2 );
-
       // This function also computes the residual contributions
       ComputeMortarJacobianEnzyme( x1, n1, p1, f1, blockJ( 0, 0 ).data(), blockJ( 0, 1 ).data(),
                                    blockJ_n( 0, 0 ).data(), blockJ( 0, 2 ).data(), g1, blockJ( 2, 0 ).data(),
