@@ -77,7 +77,7 @@ int ApplySmoothNormalEnzyme( CouplingScheme* cs )
 
   RealT k1 = cs->getMesh1().getElementData().m_penalty_stiffness;
   RealT k2 = cs->getMesh2().getElementData().m_penalty_stiffness;
-  std::cout << "k1: " << k1 << " k2: " << k2 << std::endl;
+//   std::cout << "k1: " << k1 << " k2: " << k2 << std::endl;
   constexpr RealT del = 0.001;
 
 
@@ -136,6 +136,19 @@ int ApplySmoothNormalEnzyme( CouplingScheme* cs )
             }
         }
       }
+
+      for (int br = 0; br < 2; ++br) {
+    for (int bc = 0; bc < 2; ++bc) {
+        std::cout << "blockJ(" << br << ", " << bc << "):" << std::endl;
+        for (int lr = 0; lr < 4; ++lr) {
+            for (int lc = 0; lc < 4; ++lc) {
+                std::cout << blockJ(br, bc)(lr, lc) << " ";
+            }
+            std::cout << std::endl;
+        }
+        std::cout << std::endl;
+    }
+}
 
     
 
@@ -389,7 +402,7 @@ void compute_integration_bounds(const RealT* projections, RealT* integration_bou
 
     integration_bounds[0] = xi_min;
     integration_bounds[1] = xi_max;
-    std::cout << "xi min: " << xi_min << " xi_max: " << xi_max << std::endl;
+    // std::cout << "xi min: " << xi_min << " xi_max: " << xi_max << std::endl;
 }
 
 void modify_bounds(const RealT* integration_bounds, RealT del, RealT* modified_bounds) {
@@ -503,7 +516,7 @@ RealT compute_modified_gap(RealT gap, RealT* nA, RealT* nB) {
     RealT dot = nA[0] * nB[0] + nA[1] * nB[1];
     RealT eta = (dot < 0) ? -dot:0.0;
 
-    std::cout << "Gap: " << gap * eta << std::endl;
+    // std::cout << "Gap: " << gap * eta << std::endl;
     return gap * eta;
 }
 
@@ -525,10 +538,10 @@ void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, R
     RealT B1[2] = {coords[6], coords[7]};
 
 
-    std::cout << "len A: " << lenA << " len B: " << lenB << std::endl;
+    // std::cout << "len A: " << lenA << " len B: " << lenB << std::endl;
 
-    std::cout << "Node A: " << A0[0] << ", " << A1[0] << std::endl;
-    std::cout << "Node B: " << B0[0] << ", " << B1[0] << std::endl;
+    // std::cout << "Node A: " << A0[0] << ", " << A1[0] << std::endl;
+    // std::cout << "Node B: " << B0[0] << ", " << B1[0] << std::endl;
 
 
 
@@ -592,7 +605,7 @@ void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, R
         *energy +=  weights[i] * potential;
     }
     *energy *= lenA * 0.5;
-    std::cout << "energy: " << *energy << std::endl;
+    // std::cout << "energy: " << *energy << std::endl;
 
 }}
 
@@ -629,12 +642,12 @@ void ComputeSmoothMortarForceEnzyme(RealT* coords, RealT del, RealT k1, RealT k2
     __enzyme_autodiff<void>( ComputeSmoothMortarEnergyEnzyme, enzyme_dup, coords, dcoords, enzyme_const, del, enzyme_const, k1, enzyme_const, k2, enzyme_const, N, enzyme_const, lenA, enzyme_const, lenB,enzyme_dup, &E, &dE);
 
     for(int i = 0; i < 8; ++i) {
-        dE_dX[i] = -dcoords[i];
+        dE_dX[i] = dcoords[i];
     }
 
-    for(int i = 0; i < 8; ++i) {
-        std::cout << dE_dX[i] << std::endl;
-    }
+    // for(int i = 0; i < 8; ++i) {
+    //     std::cout << dE_dX[i] << std::endl;
+    // }
 }
 
 
@@ -668,9 +681,26 @@ void ComputeSmoothMortarJacobianEnzyme(RealT* coords, RealT del, RealT k1, RealT
         __enzyme_fwddiff<void>( ComputeSmoothMortarForceEnzyme, coords, d2coords, del, d2del, k1, d2k1, k2, d2k2, N, lenA, d2lenA, lenB, d2lenB, &dE, &d2E);
         for(int j = 0; j < 8; ++j) {
             d2E_d2X[8 * i + j] = d2E[j];
+            std::cout << "position: [" << i << ',' << j << "]: " << d2E_d2X[8 * i + j] << std::endl;
         }
 
     }
+    const int NN = 8;
+int k = 0; // The DOF (column) you want
+
+double result[NN] = {0.0};
+for (int j = 0; j < NN; ++j) {
+    result[j] = d2E_d2X[NN * j + k];
+    // This grabs the k-th column (since your matrix is row-major)
+    // If you want the k-th row, swap indices
+}
+
+// Print result to compare with J_exact
+for (int j = 0; j < NN; ++j) {
+    printf("J exact: %.17g\n", result[j]);
+}
+
+
 }
 
 // void ComputeSmoothMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* df1dx1,
