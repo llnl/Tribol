@@ -715,31 +715,33 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
     if ( lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
          lm_opts.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ) {
       StackArray<DeviceArray2D<RealT>, 9> blockJ_n( 3 );
-      constexpr int n_disp = 12;
+      int n_disp[2] = { size1 * 3, size2 * 3 };
       for ( int i{ 0 }; i < 2; ++i ) {
-        blockJ_n( i, 0 ) = DeviceArray2D<RealT>( n_disp, n_disp );
+        blockJ_n( i, 0 ) = DeviceArray2D<RealT>( n_disp[0], n_disp[0] );
         blockJ_n( i, 0 ).fill( 0.0 );
       }
-      constexpr int n_multipliers = 4;
-      blockJ_n( 2, 0 ) = DeviceArray2D<RealT>( n_multipliers, n_disp );
+      int n_multipliers = size1;
+      blockJ_n( 2, 0 ) = DeviceArray2D<RealT>( n_multipliers, n_disp[0] );
       blockJ_n( 2, 0 ).fill( 0.0 );
 
       StackArray<DeviceArray2D<RealT>, 9> blockJ( 3 );
       for ( int i{}; i < 2; ++i ) {
         for ( int j{}; j < 2; ++j ) {
-          blockJ( i, j ) = DeviceArray2D<RealT>( n_disp, n_disp );
+          blockJ( i, j ) = DeviceArray2D<RealT>( n_disp[i], n_disp[j] );
           blockJ( i, j ).fill( 0.0 );
         }
       }
       for ( int i{}; i < 2; ++i ) {
-        blockJ( i, 2 ) = DeviceArray2D<RealT>( n_disp, n_multipliers );
+        blockJ( i, 2 ) = DeviceArray2D<RealT>( n_disp[i], n_multipliers );
         blockJ( i, 2 ).fill( 0.0 );
         // transpose
-        blockJ( 2, i ) = DeviceArray2D<RealT>( n_multipliers, n_disp );
+        blockJ( 2, i ) = DeviceArray2D<RealT>( n_multipliers, n_disp[i] );
         blockJ( 2, i ).fill( 0.0 );
       }
       blockJ( 2, 2 ) = DeviceArray2D<RealT>( n_multipliers, n_multipliers );
       blockJ( 2, 2 ).fill( 0.0 );
+
+      ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, size1, x2, f2, size2 );
 
       // This function also computes the residual contributions
       ComputeMortarJacobianEnzyme( x1, n1, p1, f1, blockJ( 0, 0 ).data(), blockJ( 0, 1 ).data(),
@@ -891,9 +893,9 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
   // create a local basis; e1 is a unit vector aligned with the first edge in element 1
   // clang-format off
    RealT e1[3] = {
-      x1t[1] - x1t[0],
-      x1t[5] - x1t[4],
-      x1t[9] - x1t[8]
+      x1t[0*size1 + 1] - x1t[0*size1 + 0],
+      x1t[1*size1 + 1] - x1t[1*size1 + 0],
+      x1t[2*size1 + 1] - x1t[2*size1 + 0]
    };
   // clang-format on
   RealT e1_mag = std::sqrt( e1[0] * e1[0] + e1[1] * e1[1] + e1[2] * e1[2] );
