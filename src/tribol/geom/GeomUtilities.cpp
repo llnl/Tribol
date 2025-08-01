@@ -612,7 +612,9 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
 
   // check A in B
   for ( int i = 0; i < numVertexA; ++i ) {
-    if ( Point2DInFace( xA[i], yA[i], xB, yB, xCB, yCB, numVertexB ) ) {
+    // NOTE (EBC): if a point is less than lenTol away from being inside, then include it as interior (since the edge
+    // should be collapsed anyway)
+    if ( Point2DInFace( xA[i], yA[i], xB, yB, xCB, yCB, numVertexB, lenTol ) ) {
       // interior A in B
       interiorVAId[i] = i;
       ++numVAI;
@@ -643,7 +645,9 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
 
   // check B in A
   for ( int i = 0; i < numVertexB; ++i ) {
-    if ( Point2DInFace( xB[i], yB[i], xA, yA, xCA, yCA, numVertexA ) ) {
+    // NOTE (EBC): if a point is less than lenTol away from being inside, then include it as interior (since the edge
+    // should be collapsed anyway)
+    if ( Point2DInFace( xB[i], yB[i], xA, yA, xCA, yCA, numVertexA, lenTol ) ) {
       // interior B in A
       interiorVBId[i] = i;
       ++numVBI;
@@ -965,7 +969,8 @@ TRIBOL_HOST_DEVICE bool CheckPolyOrientation( const RealT* const x, const RealT*
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE bool Point2DInFace( const RealT xPoint, const RealT yPoint, const RealT* const xPoly,
-                                       const RealT* const yPoly, const RealT xC, const RealT yC, const int numPolyVert )
+                                       const RealT* const yPoly, const RealT xC, const RealT yC, const int numPolyVert,
+                                       RealT tol )
 {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( numPolyVert < 3, "Point2DInFace: number of face vertices is less than 3" );
@@ -975,7 +980,7 @@ TRIBOL_HOST_DEVICE bool Point2DInFace( const RealT xPoint, const RealT yPoint, c
 
   // if face is triangle (numPolyVert), call Point2DInTri once
   if ( numPolyVert == 3 ) {
-    return Point2DInTri( xPoint, yPoint, xPoly, yPoly );
+    return Point2DInTri( xPoint, yPoint, xPoly, yPoly, tol );
   }
 
   // loop over triangles and determine if point is inside
@@ -996,7 +1001,9 @@ TRIBOL_HOST_DEVICE bool Point2DInFace( const RealT xPoint, const RealT yPoint, c
     yTri[2] = yC;
 
     // call Point2DInTri for each triangle
-    tri = Point2DInTri( xPoint, yPoint, xTri, yTri );
+    // NOTE (EBC): we should probably "round" the corners around the tolerance so there aren't weird spikes in the
+    // inclusion polygon
+    tri = Point2DInTri( xPoint, yPoint, xTri, yTri, tol );
 
     if ( tri ) {
       return true;
@@ -1007,7 +1014,8 @@ TRIBOL_HOST_DEVICE bool Point2DInFace( const RealT xPoint, const RealT yPoint, c
 }  // end Point2DInFace()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE bool Point2DInTri( const RealT xp, const RealT yp, const RealT* const xTri, const RealT* const yTri )
+TRIBOL_HOST_DEVICE bool Point2DInTri( const RealT xp, const RealT yp, const RealT* const xTri, const RealT* const yTri,
+                                      RealT tol )
 {
   bool inside = false;
 
@@ -1036,11 +1044,9 @@ TRIBOL_HOST_DEVICE bool Point2DInTri( const RealT xp, const RealT yp, const Real
   RealT u = invDet * ( e22 * p1e1 - e12 * p1e2 );
   RealT v = invDet * ( e11 * p1e2 - e12 * p1e1 );
 
-  // u or v may be negative, but numerically zero. Address this
-  u = ( std::abs( u ) < 1.e-12 ) ? 0.0 : u;
-  v = ( std::abs( v ) < 1.e-12 ) ? 0.0 : v;
-
-  if ( ( u >= 0 ) && ( v >= 0 ) && ( u + v <= 1 ) ) {
+  // check if point is inside the triangle within a tolerance
+  // NOTE: the sqrt(2.0) is to keep the length consistent on the incline
+  if ( ( u >= -tol ) && ( v >= -tol ) && ( u + v <= 1 + tol * std::sqrt( 2.0 ) ) ) {
     inside = true;
   }
 
