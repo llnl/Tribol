@@ -125,15 +125,17 @@ int ApplySmoothNormalEnzyme( CouplingScheme* cs )
     
       ComputeSmoothMortarJacobianEnzyme(coords, del, k1, k2, num_quad_points, lenA, lenB, force, jacobian );
 
-      for(int br = 0; br < 2; ++br) {
-        for(int bc = 0; bc < 2; ++ bc) {
-            for(int lr = 0; lr < 4; ++lr) {
-                for (int lc = 0; lc < 4; ++lc) {
-                    int jacobian_row = (br * 4 + lr);
-                    int jacobian_col = (bc * 4 + lc);
-                    blockJ(br, bc)(lr, lc) = jacobian[jacobian_row * 8 + jacobian_col];
-                }
+      
+      int vdim_to_nodes[4] = { 0, 2, 1, 3 };
+      for ( int br = 0; br < 2; ++br ) {
+        for ( int bc = 0; bc < 2; ++bc ) {
+          for ( int lr = 0; lr < 4; ++lr ) {
+            for ( int lc = 0; lc < 4; ++lc ) {
+              int jacobian_row = ( br * 4 + vdim_to_nodes[lr] );
+              int jacobian_col = ( bc * 4 + vdim_to_nodes[lc] );
+              blockJ( br, bc )( lr, lc ) = jacobian[jacobian_row * 8 + jacobian_col];
             }
+          }
         }
       }
 
