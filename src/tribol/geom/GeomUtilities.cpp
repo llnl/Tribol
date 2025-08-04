@@ -612,9 +612,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
 
   // check A in B
   for ( int i = 0; i < numVertexA; ++i ) {
-    // NOTE (EBC): if a point is less than lenTol away from being inside, then include it as interior (since the edge
-    // should be collapsed anyway)
-    if ( Point2DInFace( xA[i], yA[i], xB, yB, xCB, yCB, numVertexB, lenTol ) ) {
+    if ( Point2DInFace( xA[i], yA[i], xB, yB, xCB, yCB, numVertexB ) ) {
       // interior A in B
       interiorVAId[i] = i;
       ++numVAI;
@@ -645,9 +643,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
 
   // check B in A
   for ( int i = 0; i < numVertexB; ++i ) {
-    // NOTE (EBC): if a point is less than lenTol away from being inside, then include it as interior (since the edge
-    // should be collapsed anyway)
-    if ( Point2DInFace( xB[i], yB[i], xA, yA, xCA, yCA, numVertexA, lenTol ) ) {
+    if ( Point2DInFace( xB[i], yB[i], xA, yA, xCA, yCA, numVertexA ) ) {
       // interior B in A
       interiorVBId[i] = i;
       ++numVBI;
@@ -722,7 +718,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   dupl = false;
 
   // loop over segment-segment intersections to find the rest of the
-  // intersecting vertices. This is O(n^2), but segments defined by two
+  // intersection vertices. This is O(n^2), but segments defined by two
   // nodes interior to the other polygon will be skipped. This will catch
   // outlier cases.
   int interId = 0;
@@ -1046,7 +1042,7 @@ TRIBOL_HOST_DEVICE bool Point2DInTri( const RealT xp, const RealT yp, const Real
 
   // check if point is inside the triangle within a tolerance
   // NOTE: the sqrt(2.0) is to keep the length consistent on the incline
-  if ( ( u >= -tol ) && ( v >= -tol ) && ( u + v <= 1 + tol * std::sqrt( 2.0 ) ) ) {
+  if ( ( u >= -tol ) && ( v >= -tol ) && ( u + v <= 1.0 + tol * std::sqrt( 2.0 ) ) ) {
     inside = true;
   }
 
