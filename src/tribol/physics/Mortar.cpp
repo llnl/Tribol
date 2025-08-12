@@ -85,10 +85,10 @@ void ComputeMortarWeights( SurfaceContactElem& elem )
         RealT xp[3] = { integ.xy[elem.dim * ip], integ.xy[elem.dim * ip + 1], integ.xy[elem.dim * ip + 2] };
         RealT xi[2] = { 0., 0. };
 
-        int inv_err = InvIso( xp, x1, y1, z1, elem.numFaceVert, xi );
+        InvIso( xp, x1, y1, z1, elem.numFaceVert, xi );
         LinIsoQuadShapeFunc( xi[0], xi[1], a, phiMortarA );
 
-        inv_err = InvIso( xp, x2, y2, z2, elem.numFaceVert, xi );
+        InvIso( xp, x2, y2, z2, elem.numFaceVert, xi );
 
         LinIsoQuadShapeFunc( xi[0], xi[1], a, phiNonmortarA );
         LinIsoQuadShapeFunc( xi[0], xi[1], b, phiNonmortarB );
@@ -939,9 +939,9 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
       RealT tri_quad_pt_3d[3] = { 0.0, 0.0, 0.0 };
       Coords2DToPlaneEnzyme( tri_quad_pt, tri_quad_pt + 1, x0, e1, e2, tri_quad_pt_3d, 1 );
       RealT xi1[2] = { 0.0, 0.0 };
-      int inv_err = InvIso( tri_quad_pt_3d, x1t, x1t + size1, x1t + 2 * size1, size1, xi1 );
+      InvIso( tri_quad_pt_3d, x1t, x1t + size1, x1t + 2 * size1, size1, xi1 );
       RealT xi2[2] = { 0.0, 0.0 };
-      inv_err = InvIso( tri_quad_pt_3d, x2t, x2t + size2, x2t + 2 * size2, size2, xi2 );
+      InvIso( tri_quad_pt_3d, x2t, x2t + size2, x2t + 2 * size2, size2, xi2 );
 
       RealT quad_wt = base_weights[j] * area;
 

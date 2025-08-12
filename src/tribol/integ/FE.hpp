@@ -105,9 +105,8 @@ TRIBOL_HOST_DEVICE void SegmentBasis( const RealT* const x, const RealT pX, cons
  * \note This routine works in 2D or 3D. In 2D, zA is a nullptr and
  *       x[2] is equal to 0.
  *
- * \return 0 if no error and 1 if coord does not lie inside isoparametric quad
  */
-int InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA, const int numNodes, RealT xi[2] );
+void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA, const int numNodes, RealT xi[2] );
 
 /*!
  *

@@ -207,13 +207,12 @@ TRIBOL_HOST_DEVICE void WachspressBasis( const RealT* const x, const RealT pX, c
 }
 
 //------------------------------------------------------------------------------
-int InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA, const int numNodes, RealT xi[2] )
+void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA, const int numNodes, RealT xi[2] )
 {
 #if !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( numNodes != 4, "InvIso: routine only for 4 node quads." );
 #endif
 
-  int err = 0;
   bool convrg = false;
   int kmax = 15;
   RealT xtol = 1.E-12;
@@ -323,15 +322,14 @@ int InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA,
         }
       }
 
-      if ( !in_quad ) {
+      // debug; keep
+      //if ( !in_quad ) {
         //std::cout << "Inv Iso mapped point: " << xi[0] << ", " << xi[1] << std::endl;
-        err = 1;
-      }
+      //}
+      
 #if !defined( TRIBOL_USE_ENZYME )
       SLIC_WARNING_IF( !in_quad, "InvIso(): (xi,eta) coordinate does not lie inside isoparametric quad." );
 #endif
-
-      return err;
     }
   }
 
@@ -339,7 +337,7 @@ int InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA,
   SLIC_ERROR_IF( !convrg, "InvIso: Newtons method did not converge." );
 #endif
 
-  return err;
+  return;
 }
 
 //------------------------------------------------------------------------------

@@ -188,7 +188,7 @@ TEST_F( CompGeomTest, common_plane_coincident_vertices_full_overlap )
   // check overlap area. The analytic overlap is the difference in the x-coords
   // of edge 2. See note at vertex coordinate initialization at the top of this
   // test regarding edge 2 lying inside edge 1 (up to some tolerance).
-  EXPECT_LE( tribol::abs_val_diff( plane.m_area, x2[1] - x2[0] ), 1.e-10 );
+  EXPECT_NEAR( plane.m_area, x2[1] - x2[0], 1.e-10 );
 }
 
 TEST_F( CompGeomTest, common_plane_conforming_separation )
@@ -332,7 +332,7 @@ TEST_F( CompGeomTest, common_plane_nearly_coincident_vertex_positive_overlap )
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
   auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
-  EXPECT_LE( tribol::abs_val_diff( plane.m_area, x2[1] - x1[1] ), 1.e-10 );
+  EXPECT_NEAR( plane.m_area, x2[1] - x1[1], 1.e-10 );
 }
 
 TEST_F( CompGeomTest, common_plane_interpen_check_1 )
@@ -401,7 +401,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_1 )
 
   // compute and check the overlap area
   RealT computed_area = 0.5 * length * std::cos( half_theta );
-  EXPECT_LE( tribol::abs_val_diff( plane.m_area, computed_area ), 1.e-10 );
+  EXPECT_NEAR( plane.m_area, computed_area, 1.e-10 );
 }
 
 TEST_F( CompGeomTest, common_plane_interpen_check_2 )
@@ -473,7 +473,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_2 )
   RealT hyp = length / std::cos( theta );
   RealT half_theta = 0.5 * theta;
   RealT computed_area = hyp * std::cos( half_theta );
-  EXPECT_LE( tribol::abs_val_diff( plane.m_area, computed_area ), 1.e-10 );
+  EXPECT_NEAR( plane.m_area, computed_area, 1.e-10 );
 }
 
 TEST_F( CompGeomTest, common_plane_interpen_check_3 )
@@ -542,7 +542,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_3 )
 
   // check the overlap area
   RealT computed_area = h_bar;
-  EXPECT_LE( tribol::abs_val_diff( plane.m_area, computed_area ), 1.e-10 );
+  EXPECT_NEAR( plane.m_area, computed_area, 1.e-10 );
 }
 
 TEST_F( CompGeomTest, 2d_projections_1 )
@@ -599,10 +599,10 @@ TEST_F( CompGeomTest, 2d_projections_1 )
   tribol::ProjectPointToSegment( cx[0], cx[1], faceNormal2[0], faceNormal2[1], cxf2[0], cxf2[1], cxProj2[0],
                                  cxProj2[1] );
 
-  EXPECT_LE( tribol::abs_val_diff( cxProj1[0], 0.738595  ), 1.e-6 );
-  EXPECT_LE( tribol::abs_val_diff( cxProj1[1], 0.0915028 ), 1.e-6 );
-  EXPECT_LE( tribol::abs_val_diff( cxProj2[0], 0.738591  ), 1.e-6 );
-  EXPECT_LE( tribol::abs_val_diff( cxProj2[1], 0.0915022 ), 1.e-6 );
+  EXPECT_NEAR( cxProj1[0], 0.7385950, 1.e-6 );
+  EXPECT_NEAR( cxProj1[1], 0.0915028, 1.e-6 );
+  EXPECT_NEAR( cxProj2[0], 0.7385910, 1.e-6 );
+  EXPECT_NEAR( cxProj2[1], 0.0915022, 1.e-6 );
 
   RealT x1[numVerts];
   RealT y1[numVerts];
@@ -698,10 +698,10 @@ TEST_F( CompGeomTest, 2d_projections_2 )
   tribol::ProjectPointToSegment( cx[0], cx[1], faceNormal2[0], faceNormal2[1], cxf2[0], cxf2[1], cxProj2[0],
                                  cxProj2[1] );
 
-  EXPECT_LE( tribol::abs_val_diff(cxProj1[0], cx[0] ), 1.e-6 );
-  EXPECT_LE( tribol::abs_val_diff(cxProj1[1], cx[1] ), 1.e-6 );
-  EXPECT_LE( tribol::abs_val_diff(cxProj2[0], cx[0] ), 1.e-6 );
-  EXPECT_LE( tribol::abs_val_diff(cxProj2[1], cx[1] ), 1.e-6 );
+  EXPECT_NEAR( cxProj1[0], cx[0], 1.e-6 );
+  EXPECT_NEAR( cxProj1[1], cx[1], 1.e-6 );
+  EXPECT_NEAR( cxProj2[0], cx[0], 1.e-6 );
+  EXPECT_NEAR( cxProj2[1], cx[1], 1.e-6 );
 }
 
 int main( int argc, char* argv[] )
