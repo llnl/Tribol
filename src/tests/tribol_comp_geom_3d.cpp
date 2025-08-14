@@ -596,7 +596,6 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3 )
   z[3] = 0.;
 
   // coordinates for face 2
-  RealT fortyfive = 45 * M_PI / 180;
   x[4] = 0.33;
   y[4] = -0.5;
   z[4] = -0.25;
@@ -616,6 +615,117 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3 )
   // rotate 45 degrees about the y-axis
   RealT x_shift = x[4];
   RealT z_shift = z[4];
+  RealT fortyfive = 45 * M_PI / 180;
+  for ( int i = numVerts; i < lengthNodalData; ++i ) {
+    x[i] = x[i] - x_shift;
+    z[i] = z[i] - z_shift;
+    RealT x_rot = x[i] * std::cos( fortyfive ) + z[i] * std::sin( fortyfive );
+    RealT z_rot = x[i] * -std::sin( fortyfive ) + z[i] * std::cos( fortyfive );
+    x[i] = x_rot + x_shift;
+    z[i] = z_rot + z_shift;
+  }
+
+  // register contact mesh
+  tribol::IndexT mesh_id = 0;
+  tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
+                        tribol::MemorySpace::Host );
+
+  RealT dt = 1.0;
+  int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
+
+  EXPECT_EQ( err, 0 );
+  EXPECT_EQ( dt, 1.0 );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( couplingScheme->getNumActivePairs(), 1 );
+
+  auto& comp_geom = couplingScheme->getCompGeom();
+  auto& plane = comp_geom.getCommonPlane( 0 );
+
+  // compute the geometric quantities of the intepren portion of face 2
+  // in order to compute the overlap area
+  RealT h = 0.25 / std::cos( fortyfive );
+  RealT h_bar = h * std::cos( 0.5 * fortyfive );
+  RealT A = h_bar * 0.5;
+
+  // check the overlap area
+  EXPECT_NEAR( plane.m_area, A, 1.e-8 );
+
+  // compute and check the gap
+  RealT computed_gap = -h_bar * std::tan( 0.5 * fortyfive );
+  EXPECT_NEAR( plane.m_gap, computed_gap, 1.e-6 );
+}
+
+TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3_warped )
+{
+  // This test checks where one face has two line-plane intersections inside
+  // the opposing face and the other does not. Specifically this test has
+  // one face that is smaller than the other and then rotated similar to
+  // interpen_check_1 above, but the intersection points lie inside the
+  // other face and not on its outer segments. Furthermore, the two faces
+  // are warped, but in a way that the projections and resulting overlap area
+  // should be the same as the non-warped version of this test above. The two
+  // orthogonal edge-on views of the interaction are (not showing warpedness
+  // for clarity):
+  //
+  //               *               * * * * * *
+  //             *                 *         *
+  //           *                   *         *
+  //  -------o--------       ------o-----    *
+  //       *                       *         *
+  //     *                         *         *
+  //   *                           * * * * * *
+  //
+  //
+
+  constexpr int numVerts = 4;
+  constexpr int numCells = 2;
+  constexpr int lengthNodalData = numCells * numVerts;
+  RealT x[lengthNodalData];
+  RealT y[lengthNodalData];
+  RealT z[lengthNodalData];
+
+  // coordinates for face 1
+  x[0] = 0.;
+  x[1] = 1.;
+  x[2] = 1.;
+  x[3] = 0.;
+
+  y[0] = 0.;
+  y[1] = 0.;
+  y[2] = 1.;
+  y[3] = 1.;
+
+  z[0] = -0.25;
+  z[1] = 0.25;
+  z[2] = -0.25;
+  z[3] = 0.25;
+
+  // coordinates for face 2
+  x[4] = 0.33;
+  y[4] = -0.5;
+  z[4] = -0.25;
+
+  x[5] = x[4];
+  y[5] = 0.5;
+  z[5] = z[4];
+
+  x[6] = x[5];
+  y[6] = y[5];
+  z[6] = 1.0;
+
+  x[7] = x[4];
+  y[7] = y[4];
+  z[7] = z[6];
+
+  // rotate face 2 45 degrees about the y-axis
+  RealT x_shift = x[4];
+  RealT z_shift = z[4];
+  RealT fortyfive = 45 * M_PI / 180;
   for ( int i = numVerts; i < lengthNodalData; ++i ) {
     x[i] = x[i] - x_shift;
     z[i] = z[i] - z_shift;

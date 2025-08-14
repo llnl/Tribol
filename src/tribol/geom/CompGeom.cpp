@@ -201,6 +201,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::checkFacePair( const MeshData:
   ProjectFaceNodesToPlane( mesh2, element_id2, fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2], &m_x2_prime[0],
                            &m_y2_prime[0], &m_z2_prime[0] );
 
+
   // CHECK #6: check if the two faces overlap in a projected sense.
   // To do this check we need to use the contact plane object, which will
   // have its own local basis that needs to be defined
@@ -1066,6 +1067,8 @@ TRIBOL_HOST_DEVICE void CommonPlanePair::centroidGap( const MeshData::Viewer& m1
     cx2z = cx2[2];
   }
 
+  // fine line-plane intersection with average face planes, which is consistent with using the prime coords
+  // for each face
   bool intersect1 = LinePlaneIntersection( xA, yA, zA, xB, yB, zB, cx1[0], cx1[1], cx1z, fn1[0], fn1[1], fn1z, xc1, yc1,
                                            zc1, inPlane );
 
