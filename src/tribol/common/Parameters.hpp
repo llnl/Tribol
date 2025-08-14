@@ -60,6 +60,7 @@ enum InterfaceElementType
 enum VisType
 {
   UNDEFINED_VIS,                ///! Undefined
+  VIS_NONE,                     ///! No visualization output
   VIS_MESH,                     ///! Print registered mesh(es)
   VIS_FACES,                    ///! Print active interface-faces (method specific)
   VIS_OVERLAPS,                 ///! Print interface face-face overlaps
@@ -479,7 +480,7 @@ struct Parameters {
       1.0;  ///! Scale factor (>0) applied to the timestep vote giving users some control over the vote
 
   int vis_cycle_incr = 100;           ///! Frequency for visualizations dumps
-  VisType vis_type = VIS_OVERLAPS;    ///! Type of interface physics visualization output
+  VisType vis_type = VIS_NONE;        ///! Type of interface physics visualization output
   bool enable_timestep_vote = false;  ///! True if host-code desires the timestep vote to be calculated and returned
 
   bool auto_interpen_check = false;  ///! True if the auto-contact interpenetration check is used for full-overlap pairs
