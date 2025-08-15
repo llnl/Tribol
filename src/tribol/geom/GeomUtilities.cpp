@@ -661,7 +661,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   }
 
   // check right hand rule ordering of polygon vertices.
-  // Note 1: This check is consistent with the ordering that comes from PolyReorder()
+  // Note 1: This check is consistent with the ordering that comes from PolyReorderConvex()
   // of two faces with unordered vertices.
   // Note 2: Intersection2DPolygon doesn't require consistent face vertex orientation
   // between faces, as long as each are 'ordered' (CW or CCW).
@@ -943,7 +943,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     // order the unordered vertices (in counter clockwise fashion)
     int vertIdx[max_intersections];
     initIntArray( vertIdx, max_intersections, 0 );
-    PolyReorder( &polyXTemp[0], &polyYTemp[0], &vertIdx[0], numPolyVert );
+    PolyReorderConvex( &polyXTemp[0], &polyYTemp[0], &vertIdx[0], numPolyVert );
 
     OverlapVertexType vertTypeTemp2[max_identified_points];
     int edgeATemp2[max_intersections];
@@ -1561,11 +1561,11 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, 
 }  // end CheckPolySegs()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoints )
+TRIBOL_HOST_DEVICE bool PolyReorderConvex( RealT* x, RealT* y, int* newIDs, int numPoints )
 {
   if ( numPoints < 3 ) {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-    SLIC_DEBUG( "PolyReorder: numPoints (" << numPoints << ") < 3." );
+    SLIC_DEBUG( "PolyReorderConvex: numPoints (" << numPoints << ") < 3." );
 #endif
     return false;
   }
@@ -1682,7 +1682,7 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoi
     refy = y[newIDs[i + 1]] - y[newIDs[i]];
     refMag = magnitude( refx, refy );
 
-    //      SLIC_ERROR_IF(refMag < 1.E-12, "PolyReorder: reference segment for link vector check is nearly zero
+    //      SLIC_ERROR_IF(refMag < 1.E-12, "PolyReorderConvex: reference segment for link vector check is nearly zero
     //      length");
 
     // loop over link vectors of unassigned vertices
@@ -1730,7 +1730,7 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoi
 
   return true;
 
-}  // end PolyReorder()
+}  // end PolyReorderConvex()
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ElemReverse( RealT* const x, RealT* const y, const int numPoints )
@@ -1775,7 +1775,7 @@ TRIBOL_HOST_DEVICE void PolyReorderWithNormal( RealT* const x, RealT* const y, R
 
   // check to see if v is negative. If so, reorient the vertices
   constexpr int max_nodes_per_overlap = 5 * 2;  // max face polygon for interpen can be 5
-  if ( v < 0 ) {
+  if ( v < 0. ) {
     RealT xTemp[max_nodes_per_overlap];
     RealT yTemp[max_nodes_per_overlap];
     RealT zTemp[max_nodes_per_overlap];

@@ -648,7 +648,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, 
  * \note This routine takes the unordered set of vertex coordinates of a star convex
  *  polygon and orders the vertices in counter-clockwise orientation.
  */
-TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoints );
+TRIBOL_HOST_DEVICE bool PolyReorderConvex( RealT* x, RealT* y, int* newIDs, int numPoints );
 
 /*!
  *
