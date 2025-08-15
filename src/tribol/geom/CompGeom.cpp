@@ -1579,7 +1579,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CommonPlanePair::projectPointsAndComputeOverlap
   //       Intersection2DPolygon() assumes consistent ordering between faces
   if ( !m_fullOverlap ) {
     PolyReorderConvex( cfx1_loc, cfy1_loc, nullptr, num_vert_1 );
-    PolyReorderConvex( cfx2_loc, cfy2_loc, nullptr, num_vert_2 );
+       PolyReorderConvex( cfx2_loc, cfy2_loc, nullptr, num_vert_2 );
   } else {  // use ElemReverse() per original implementation for full overlaps
     ElemReverse( cfx2_loc, cfy2_loc, num_vert_2 );
   }
