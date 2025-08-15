@@ -578,60 +578,23 @@ void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, R
 
 
     // RealT AC[2] = {0.5 * (A0[0]+A1[0]), 0.5*(A0[1]+A1[1])};
-    // // // // std::cout << "AC: " << AC[0] << ", " << AC[1] << std::endl;
     // RealT AR[2] = {0.5 * (A0[0]-A1[0]), 0.5*(A0[1]-A1[1])};
-    // // // // std::cout << "AR: " << AR[0] << ", " << AR[1] << std::endl;
-    // // RealT normAR = std::sqrt(AR[0]*AR[0] + AR[1]*AR[1]);
-    // // // // std::cout << "Norm AR: " << normAR << std::endl;
-
-
-
-    
 
     // RealT BC[2] = {0.5 * (B0[0]+B1[0]), 0.5*(B0[1]+B1[1])};
-    // // // // std::cout << "BC: " << BC[0] << ", " << BC[1] << std::endl;
     // RealT BR[2] = {0.5 * (B0[0]-B1[0]), 0.5*(B0[1]-B1[1])};
-    // // // // std::cout << "BR: " << BR[0] << ", " << BR[1] << std::endl;
-    // // RealT normBR = std::sqrt(BR[0]*BR[0] + BR[1]*BR[1]);
 
     // RealT normAR = 0.5 / std::sqrt( AR[0] * AR[0] + AR[1] * AR[1] );
     // RealT normBR = 0.5 / std::sqrt( BR[0] * BR[0] + BR[1] * BR[1] );
 
-    // A0[0] = AC[0] + AR[0] * lenA * normAR;
-    // A0[1] = AC[1] + AR[1] * lenA * normAR;
-
-    // A1[0] = AC[0] - AR[0] * lenA * normAR;
-    // A1[1] = AC[1] - AR[1] * lenA * normAR;
-
-    // B0[0] = BC[0] - BR[0] * lenB * normBR;
-    //  B0[1] = BC[1] - BR[1] * lenB * normBR;
-
-    //  B1[0] = BC[0] + BR[0] * lenB * normBR;
-    // B1[1] = BC[1] + BR[1] * lenB * normBR;
-
-    // // if(normAR == 0.0) {
-    // //     std::cout << "normAR equals 0" << std::endl;
-    // //     std::cout << "AR: " << AR[0] << ", " << AR[1] << std::endl;
-    // //     std::cout << "AC: " << AC[0] << ", " << AC[1] << std::endl;
-    // // }
-
-    // // std::cout << "AC: " << AC[0] << ", " << AC[1] << std::endl;
-    // // std::cout << "AR: " << AR[0] << ", " << AR[1] << std::endl;
-    // // std::cout << "len A: " << lenA << std::endl;
-    // // std::cout << "Norm AR: " << normAR << std::endl;
     // A0[0] = AC[0] + ((AR[0] * lenA * 0.5) / normAR);
-    
     // A0[1] = AC[1] + ((AR[1] * lenA * 0.5) / normAR);
 
     // A1[0] = AC[0] - ((AR[0] * lenA * 0.5) / normAR);
     // A1[1] = AC[1] - ((AR[1] * lenA * 0.5) / normAR);
-    // // std::cout << "BR: " << BR[0] <<  std::endl;
-    // // std::cout << "BC: " << BC[0] << std::endl;
-    // // std::cout << "len B: " << lenB << std::endl;
-    // // std::cout << "Norm BR: " << normBR << std::endl;
-    
+
     // B0[0] = BC[0] + ((BR[0] * lenB * 0.5) / normBR);
     // B0[1] = BC[1] + ((BR[1] * lenB * 0.5) / normBR);
+
     // B1[0] = BC[0] - ((BR[0] * lenB * 0.5) / normBR);
     // B1[1] = BC[1] - ((BR[1] * lenB * 0.5) / normBR);
     
