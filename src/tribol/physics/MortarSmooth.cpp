@@ -22,6 +22,7 @@
 
 #include <iostream>
 #include <iomanip>
+#include <ostream>
 #include <src/serac/physics/contact/contact_config.hpp>
 
 #ifdef TRIBOL_USE_ENZYME
@@ -78,7 +79,7 @@ int ApplySmoothNormalEnzyme( CouplingScheme* cs )
   RealT k1 = cs->getMesh1().getElementData().m_penalty_stiffness;
   RealT k2 = cs->getMesh2().getElementData().m_penalty_stiffness;
 //   std::cout << "k1: " << k1 << " k2: " << k2 << std::endl;
-  constexpr RealT del = 0.001;
+  constexpr RealT del = 0.01;
 
 
   
@@ -139,18 +140,18 @@ int ApplySmoothNormalEnzyme( CouplingScheme* cs )
         }
       }
 
-      for (int br = 0; br < 2; ++br) {
-    for (int bc = 0; bc < 2; ++bc) {
-        std::cout << "blockJ(" << br << ", " << bc << "):" << std::endl;
-        for (int lr = 0; lr < 4; ++lr) {
-            for (int lc = 0; lc < 4; ++lc) {
-                std::cout << blockJ(br, bc)(lr, lc) << " ";
-            }
-            std::cout << std::endl;
-        }
-        std::cout << std::endl;
-    }
-}
+//       for (int br = 0; br < 2; ++br) {
+//     for (int bc = 0; bc < 2; ++bc) {
+//         std::cout << "blockJ(" << br << ", " << bc << "):" << std::endl;
+//         for (int lr = 0; lr < 4; ++lr) {
+//             for (int lc = 0; lc < 4; ++lc) {
+//                 std::cout << blockJ(br, bc)(lr, lc) << " ";
+//             }
+//             std::cout << std::endl;
+//         }
+//         std::cout << std::endl;
+//     }
+// }
 
     
 
@@ -539,38 +540,118 @@ void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, R
     RealT B0[2] = {coords[4], coords[5]};
     RealT B1[2] = {coords[6], coords[7]};
 
+    // for (int i{0}; i < 4; ++i) {
+    //         std::cout << " Coord " << i << ": ( " << coords[i*2] << ", " << coords[i*2+1] << ")" << std::endl;
+    // }
 
-    // std::cout << "len A: " << lenA << " len B: " << lenB << std::endl;
 
-    // std::cout << "Node A: " << A0[0] << ", " << A1[0] << std::endl;
-    // std::cout << "Node B: " << B0[0] << ", " << B1[0] << std::endl;
+    // std::cout << "len A: " << lenA << " len B: " << std::endl;
+
+    // std::cout << "Node A0: " << A0[0] << ", " << A0[1] << std::endl;
+    // std::cout << "Node A1: " << A1[0] << ", " << A1[1] << std::endl;    
+    // std::cout << "Node B0: " << B0[0] << ", " << B0[1] << std::endl;
+    // std::cout << "Node B1: " << B1[0] << ", " << B1[1] << std::endl;
+
+
+
+
+  RealT AC[2] = { 0.5 * ( A0[0] + A1[0] ), 0.5 * ( A0[1] + A1[1] ) };
+  RealT AR[2] = { 0.5 * ( A0[0] - A1[0] ), 0.5 * ( A0[1] - A1[1] ) };
+  RealT normAR = 0.5 / std::sqrt( AR[0] * AR[0] + AR[1] * AR[1] );
+
+  RealT BC[2] = { 0.5 * ( B0[0] + B1[0] ), 0.5 * ( B0[1] + B1[1] ) };
+  RealT BR[2] = { 0.5 * ( B1[0] - B0[0] ), 0.5 * ( B1[1] - B0[1] ) };
+  RealT normBR = 0.5 / std::sqrt( BR[0] * BR[0] + BR[1] * BR[1] );
+
+  A0[0] = AC[0] + AR[0] * lenA * normAR;
+  A0[1] = AC[1] + AR[1] * lenA * normAR;
+
+  A1[0] = AC[0] - AR[0] * lenA * normAR;
+  A1[1] = AC[1] - AR[1] * lenA * normAR;
+  B0[0] = BC[0] - BR[0] * lenB * normBR;
+  B0[1] = BC[1] - BR[1] * lenB * normBR;
+
+  B1[0] = BC[0] + BR[0] * lenB * normBR;
+  B1[1] = BC[1] + BR[1] * lenB * normBR;
+
 
 
 
     // RealT AC[2] = {0.5 * (A0[0]+A1[0]), 0.5*(A0[1]+A1[1])};
+    // // // // std::cout << "AC: " << AC[0] << ", " << AC[1] << std::endl;
     // RealT AR[2] = {0.5 * (A0[0]-A1[0]), 0.5*(A0[1]-A1[1])};
-    // RealT normAR = std::sqrt(AR[0]*AR[0] + AR[1]*AR[1]);
+    // // // // std::cout << "AR: " << AR[0] << ", " << AR[1] << std::endl;
+    // // RealT normAR = std::sqrt(AR[0]*AR[0] + AR[1]*AR[1]);
+    // // // // std::cout << "Norm AR: " << normAR << std::endl;
+
+
+
+    
 
     // RealT BC[2] = {0.5 * (B0[0]+B1[0]), 0.5*(B0[1]+B1[1])};
+    // // // // std::cout << "BC: " << BC[0] << ", " << BC[1] << std::endl;
     // RealT BR[2] = {0.5 * (B0[0]-B1[0]), 0.5*(B0[1]-B1[1])};
-    // RealT normBR = std::sqrt(BR[0]*BR[0] + BR[1]*BR[1]);
+    // // // // std::cout << "BR: " << BR[0] << ", " << BR[1] << std::endl;
+    // // RealT normBR = std::sqrt(BR[0]*BR[0] + BR[1]*BR[1]);
 
-    // A0[0] = AC[0] + AR[0] * lenA * 0.5 / normAR;
-    // A0[1] = AC[1] + AR[1] * lenA * 0.5 / normAR;
+    // RealT normAR = 0.5 / std::sqrt( AR[0] * AR[0] + AR[1] * AR[1] );
+    // RealT normBR = 0.5 / std::sqrt( BR[0] * BR[0] + BR[1] * BR[1] );
 
-    // A1[0] = AC[0] - AR[0] * lenA * 0.5 / normAR;
-    // A1[1] = AC[1] - AR[1] * lenA * 0.5 / normAR;
+    // A0[0] = AC[0] + AR[0] * lenA * normAR;
+    // A0[1] = AC[1] + AR[1] * lenA * normAR;
 
-    // B0[0] = BC[0] + BR[0] * lenB * 0.5 / normBR;
-    // B0[1] = BC[1] + BR[1] * lenB * 0.5 / normBR;
+    // A1[0] = AC[0] - AR[0] * lenA * normAR;
+    // A1[1] = AC[1] - AR[1] * lenA * normAR;
 
-    // B1[0] = BC[0] - BR[0] * lenB * 0.5 / normBR;
-    // B1[1] = BC[1] - BR[1] * lenB * 0.5 / normBR;
+    // B0[0] = BC[0] - BR[0] * lenB * normBR;
+    //  B0[1] = BC[1] - BR[1] * lenB * normBR;
 
+    //  B1[0] = BC[0] + BR[0] * lenB * normBR;
+    // B1[1] = BC[1] + BR[1] * lenB * normBR;
+
+    // // if(normAR == 0.0) {
+    // //     std::cout << "normAR equals 0" << std::endl;
+    // //     std::cout << "AR: " << AR[0] << ", " << AR[1] << std::endl;
+    // //     std::cout << "AC: " << AC[0] << ", " << AC[1] << std::endl;
+    // // }
+
+    // // std::cout << "AC: " << AC[0] << ", " << AC[1] << std::endl;
+    // // std::cout << "AR: " << AR[0] << ", " << AR[1] << std::endl;
+    // // std::cout << "len A: " << lenA << std::endl;
+    // // std::cout << "Norm AR: " << normAR << std::endl;
+    // A0[0] = AC[0] + ((AR[0] * lenA * 0.5) / normAR);
+    
+    // A0[1] = AC[1] + ((AR[1] * lenA * 0.5) / normAR);
+
+    // A1[0] = AC[0] - ((AR[0] * lenA * 0.5) / normAR);
+    // A1[1] = AC[1] - ((AR[1] * lenA * 0.5) / normAR);
+    // // std::cout << "BR: " << BR[0] <<  std::endl;
+    // // std::cout << "BC: " << BC[0] << std::endl;
+    // // std::cout << "len B: " << lenB << std::endl;
+    // // std::cout << "Norm BR: " << normBR << std::endl;
+    
+    // B0[0] = BC[0] + ((BR[0] * lenB * 0.5) / normBR);
+    // B0[1] = BC[1] + ((BR[1] * lenB * 0.5) / normBR);
+    // B1[0] = BC[0] - ((BR[0] * lenB * 0.5) / normBR);
+    // B1[1] = BC[1] - ((BR[1] * lenB * 0.5) / normBR);
+    
+
+    // double x0 = ((BR[0] * lenB * 0.5) / normBR);
+    // B0[0] = BC[0] + x0;
+    // B0[0] = new_B;
+
+
+
+    // B0[0] = BC[0] + x0;
+
+
+
+    // std::cout << "executed line 607" << std::endl;
     RealT nA[2] = {0.0};
     RealT nB[2] = {0.0};
     find_normal(A0, A1, nA);
     find_normal(B0, B1, nB);
+    // std::cout << "executed line 612" << std::endl;
 
     RealT dot_product = nA[0] * nB[0] + nA[1] * nB[1];
 
@@ -606,6 +687,7 @@ void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, R
         RealT potential = compute_contact_potential(smooth_gap, k1, k2);
         *energy +=  weights[i] * potential;
     }
+    // lenA = sqrt((coords[2] - coords[0]) * (coords[2] - coords[0]) + (coords[3] - coords[1]) * (coords[3] - coords[1]));
     *energy *= lenA * 0.5;
     // std::cout << "energy: " << *energy << std::endl;
 
@@ -641,14 +723,15 @@ void ComputeSmoothMortarForceEnzyme(RealT* coords, RealT del, RealT k1, RealT k2
     double dcoords[8] = {0.0};
     double E = 0.0;
     double dE = 1.0;
-    __enzyme_autodiff<void>( ComputeSmoothMortarEnergyEnzyme, enzyme_dup, coords, dcoords, enzyme_const, del, enzyme_const, k1, enzyme_const, k2, enzyme_const, N, enzyme_const, lenA, enzyme_const, lenB,enzyme_dup, &E, &dE);
+    __enzyme_autodiff<void>( ComputeSmoothMortarEnergyEnzyme, enzyme_dup, coords, dcoords, enzyme_const, del, enzyme_const, k1, enzyme_const, k2, enzyme_const, N, enzyme_const, lenA, enzyme_const, lenB, enzyme_dup, &E, &dE);
+    // std::cout << "Computed forces" << std::endl;
 
     for(int i = 0; i < 8; ++i) {
         dE_dX[i] = dcoords[i];
     }
 
     // for(int i = 0; i < 8; ++i) {
-    //     std::cout << dE_dX[i] << std::endl;
+    //     std::cout << "Force[" << i << "]: " << dE_dX[i] << std::endl;
     // }
 }
 
@@ -667,11 +750,11 @@ void ComputeSmoothMortarForceEnzyme(RealT* coords, RealT del, RealT k1, RealT k2
 void ComputeSmoothMortarJacobianEnzyme(RealT* coords, RealT del, RealT k1, RealT k2, int N, RealT lenA, RealT lenB, RealT* force, RealT* d2E_d2X) {
     RealT dE[8] = {0.0};
     RealT d2E[8] = {0.0};
-    RealT dEf[8] = {0.0};
-    ComputeSmoothMortarForceEnzyme(coords, del, k1, k2, N, lenA, lenB, dEf);
-    for(int i = 0; i < 8; ++i) {
-      force[i] = dEf[i];
-    }
+    // RealT dEf[8] = {0.0};
+    // ComputeSmoothMortarForceEnzyme(coords, del, k1, k2, N, lenA, lenB, dEf);
+    // for(int i = 0; i < 8; ++i) {
+    //   force[i] = dEf[i];
+    // }
     for(int i = 0; i < 8; ++i) {
         RealT d2coords[8] = {0.0};
         d2coords[i] = 1.0;
@@ -683,24 +766,28 @@ void ComputeSmoothMortarJacobianEnzyme(RealT* coords, RealT del, RealT k1, RealT
         __enzyme_fwddiff<void>( ComputeSmoothMortarForceEnzyme, coords, d2coords, del, d2del, k1, d2k1, k2, d2k2, N, lenA, d2lenA, lenB, d2lenB, &dE, &d2E);
         for(int j = 0; j < 8; ++j) {
             d2E_d2X[8 * i + j] = d2E[j];
-            std::cout << "position: [" << i << ',' << j << "]: " << d2E_d2X[8 * i + j] << std::endl;
+            // std::cout << "position: [" << i << ',' << j << "]: " << d2E_d2X[8 * i + j] << std::endl;
         }
+        // std::cout << "Computed row " << i << " of the Jacobian" << std::endl;
 
     }
-    const int NN = 8;
-int k = 0; // The DOF (column) you want
+    for(int i = 0; i < 8; ++i) {
+      force[i] = dE[i];
+    }
+//     const int NN = 8;
+// int k = 0; // The DOF (column) you want
 
-double result[NN] = {0.0};
-for (int j = 0; j < NN; ++j) {
-    result[j] = d2E_d2X[NN * j + k];
+// double result[NN] = {0.0};
+// for (int j = 0; j < NN; ++j) {
+//     result[j] = d2E_d2X[NN * j + k];
     // This grabs the k-th column (since your matrix is row-major)
     // If you want the k-th row, swap indices
-}
+// }
 
 // Print result to compare with J_exact
-for (int j = 0; j < NN; ++j) {
-    printf("J exact: %.17g\n", result[j]);
-}
+// for (int j = 0; j < NN; ++j) {
+//     printf("J exact: %.17g\n", result[j]);
+// }
 
 
 }
