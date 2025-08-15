@@ -1795,6 +1795,103 @@ TEST_F( CompGeomTest, compute_local_basis )
 
 }
 
+TEST_F( CompGeomTest, poly_reorder_convex_1 )
+{
+  constexpr int numOverlapVerts = 5;
+  RealT x[numOverlapVerts];
+  RealT y[numOverlapVerts];
+  RealT z[numOverlapVerts];
+  int new_ids[numOverlapVerts];
+
+  // overlap coords with out of order vertices; that is, the ordering
+  // does not march around the convex hull. In particular, they will
+  // be reordered and in a CCW orientation. This test's input order is
+  // (0,3,4,2,1) and we expect (0,1,2,3,4) output ordering
+  x[0] = 0.;
+  x[3] = 1.;
+  x[4] = 1.5;
+  x[2] = 1.25;
+  x[1] = 0.5;
+
+  y[0] = 0.;
+  y[3] = -0.1;
+  y[4] = 0.25;
+  y[2] = 0.75;
+  y[1] = 0.5;
+
+  // dummy z-coords; ensure (x,y) in same plane; used in call to PolyReorderWithNorma()
+  z[0] = 0.;
+  z[1] = 0.;
+  z[2] = 0.;
+  z[3] = 0.;
+  z[4] = 0.;
+
+  SLIC_INFO("Testing PolyReorderConvex().");
+  tribol::PolyReorderConvex( &x[0], &y[0], &new_ids[0], numOverlapVerts );
+
+  EXPECT_EQ( x[0], 0. );
+  EXPECT_EQ( x[1], 1. );
+  EXPECT_EQ( x[2], 1.5 );
+  EXPECT_EQ( x[3], 1.25 );
+  EXPECT_EQ( x[4], 0.5 );
+
+  EXPECT_EQ( y[0], 0. );
+  EXPECT_EQ( y[1], -0.1 );
+  EXPECT_EQ( y[2], 0.25 );
+  EXPECT_EQ( y[3], 0.75 );
+  EXPECT_EQ( y[4], 0.5 );
+
+  // now test reordering with normal where the overlap vertices are now already
+  // ordered correctly
+  SLIC_INFO("Testing PolyReorderWithNormal() already with CCW vertex ordering.");
+  tribol::PolyReorderWithNormal( &x[0], &y[0], &z[0], numOverlapVerts, 0., 0., 1. );
+
+  EXPECT_EQ( x[0], 0. );
+  EXPECT_EQ( x[1], 1. );
+  EXPECT_EQ( x[2], 1.5 );
+  EXPECT_EQ( x[3], 1.25 );
+  EXPECT_EQ( x[4], 0.5 );
+
+  EXPECT_EQ( y[0], 0. );
+  EXPECT_EQ( y[1], -0.1 );
+  EXPECT_EQ( y[2], 0.25 );
+  EXPECT_EQ( y[3], 0.75 );
+  EXPECT_EQ( y[4], 0.5 );
+
+  // now test reordering with normal where the overlap vertices need to be reordered
+  // in CW orientation
+  SLIC_INFO("Testing PolyReorderWithNormal() to reorder in CW vertex ordering.");
+  tribol::PolyReorderWithNormal( &x[0], &y[0], &z[0], numOverlapVerts, 0., 0., -1. );
+
+  EXPECT_EQ( x[0], 0. );
+  EXPECT_EQ( x[4], 1. );
+  EXPECT_EQ( x[3], 1.5 );
+  EXPECT_EQ( x[2], 1.25 );
+  EXPECT_EQ( x[1], 0.5 );
+
+  EXPECT_EQ( y[0], 0. );
+  EXPECT_EQ( y[4], -0.1 );
+  EXPECT_EQ( y[3], 0.25 );
+  EXPECT_EQ( y[2], 0.75 );
+  EXPECT_EQ( y[1], 0.5 );
+
+  // now test reordering the vertices BACK TO CCW orientation
+  SLIC_INFO("Testing PolyReorderWithNormal() to reorder BACK to CCW vertex ordering.");
+  tribol::PolyReorderWithNormal( &x[0], &y[0], &z[0], numOverlapVerts, 0., 0., 1. );
+
+  EXPECT_EQ( x[0], 0. );
+  EXPECT_EQ( x[1], 1. );
+  EXPECT_EQ( x[2], 1.5 );
+  EXPECT_EQ( x[3], 1.25 );
+  EXPECT_EQ( x[4], 0.5 );
+
+  EXPECT_EQ( y[0], 0. );
+  EXPECT_EQ( y[1], -0.1 );
+  EXPECT_EQ( y[2], 0.25 );
+  EXPECT_EQ( y[3], 0.75 );
+  EXPECT_EQ( y[4], 0.5 );
+}
+
 int main( int argc, char* argv[] )
 {
   int result = 0;

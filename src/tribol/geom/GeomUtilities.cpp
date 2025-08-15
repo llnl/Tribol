@@ -1572,8 +1572,14 @@ TRIBOL_HOST_DEVICE bool PolyReorderConvex( RealT* x, RealT* y, int* newIDs, int 
 
   RealT xC, yC, zC;
   RealT* z = nullptr;
-  constexpr int max_nodes_per_overlap = 10 + 2 * 4;
-  constexpr int max_proj_nodes = max_nodes_per_overlap - 2; //8;
+  constexpr int max_nodes_per_overlap = 5 * 2; // 5 max verts for a given interpen face-portion
+
+#if defined( TRIBOL_USE_HOST )
+  SLIC_ERROR_IF( numPoints > max_nodes_per_overlap, "PolyReorderConvex: numPoints exceed maximum " <<
+                 "expected per overlap (" << max_nodes_per_overlap << ")." );
+#endif
+
+  constexpr int max_proj_nodes = max_nodes_per_overlap - 2;
   RealT proj[max_proj_nodes];
 
   int local_newIDs[max_nodes_per_overlap];
@@ -1755,6 +1761,20 @@ TRIBOL_HOST_DEVICE void ElemReverse( RealT* const x, RealT* const y, const int n
 TRIBOL_HOST_DEVICE void PolyReorderWithNormal( RealT* const x, RealT* const y, RealT* const z, const int numPoints,
                                                const RealT nX, const RealT nY, const RealT nZ )
 {
+  if ( numPoints < 3 ) {
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
+    SLIC_DEBUG( "PolyReorderWithNormal(): numPoints (" << numPoints << ") < 3." );
+#endif
+    return;
+  }
+
+  constexpr int max_nodes_per_overlap = 5 * 2;  // max face polygon for interpen can be 5
+
+#if defined( TRIBOL_USE_HOST )
+  SLIC_ERROR_IF( numPoints > max_nodes_per_overlap, "PolyReorderWithNormal: numPoints exceed maximum " <<
+                 "expected per overlap (" << max_nodes_per_overlap << ")." );
+#endif
+
   // form link vectors between second and first vertex and third and first
   // vertex
   RealT lv10X = x[1] - x[0];
@@ -1774,7 +1794,6 @@ TRIBOL_HOST_DEVICE void PolyReorderWithNormal( RealT* const x, RealT* const y, R
   RealT v = dotProd( pNrmlX, pNrmlY, pNrmlZ, nX, nY, nZ );
 
   // check to see if v is negative. If so, reorient the vertices
-  constexpr int max_nodes_per_overlap = 5 * 2;  // max face polygon for interpen can be 5
   if ( v < 0. ) {
     RealT xTemp[max_nodes_per_overlap];
     RealT yTemp[max_nodes_per_overlap];
