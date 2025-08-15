@@ -1573,7 +1573,7 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoi
   RealT xC, yC, zC;
   RealT* z = nullptr;
   constexpr int max_nodes_per_overlap = 10 + 2 * 4;
-  constexpr int max_proj_nodes = 8;
+  constexpr int max_proj_nodes = max_nodes_per_overlap - 2; //8;
   RealT proj[max_proj_nodes];
 
   int local_newIDs[max_nodes_per_overlap];
@@ -1586,30 +1586,27 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoi
     newIDs[i] = i;
   }
 
-  // compute vertex averaged centroid, in local coordinates
+  // compute vertex averaged centroid of input overlap vertices (local coordinates with dummy z args)
   VertexAvgCentroid( x, y, z, numPoints, xC, yC, zC );
 
-  // using the first index into the x,y vertex coordinate arrays as
+  // using the FIRST index into the x,y vertex coordinate arrays as
   // the first vertex of the soon-to-be ordered list of vertices, determine
-  // the next vertex that will comprise the first segment in a counter
+  // the NEXT vertex that will comprise the only the FIRST segment in a counter
   // clockwise ordering of vertices
-  int id1 = -1;
-  int id0 = 0;
-  newIDs[0] = id0;
-
-  for ( int j = 1; j < numPoints; ++j ) {
-    // determine segment vector and normal
-    RealT lambdaX = x[j] - x[id0];
-    RealT lambdaY = y[j] - y[id0];
+  newIDs[0] = 0;
+  for ( int j = newIDs[1]; j < numPoints; ++j ) {
+    // determine current segment vector and normal
+    RealT lambdaX = x[j] - x[ newIDs[0] ];
+    RealT lambdaY = y[j] - y[ newIDs[0] ];
     RealT nrmlx = -lambdaY;
     RealT nrmly = lambdaX;
 
-    // project vectors that span from each point, except j,k, to first vertex (id0), onto the
-    // segment normal. There will always be numPoints-2 projections
-    int pk = 0;
-    for ( int k = 0; k < numPoints; ++k ) {
-      if ( k != id0 && k != j ) {
-        proj[pk] = ( x[k] - x[id0] ) * nrmlx + ( y[k] - y[id0] ) * nrmly;
+    // project all segment vectors between all OTHER vertices and newIDs[0] onto the current
+    // segment vector's normal. There will always be numPoints-2 projections
+    int pk = 0; // projection counter
+    for ( int k = 0; k < numPoints; ++k ) { // loop over all segments
+      if ( k != newIDs[0] && k != j ) { // pick off segments that are NOT the current segment
+        proj[pk] = ( x[k] - x[ newIDs[0] ] ) * nrmlx + ( y[k] - y[ newIDs[0] ] ) * nrmly;
         ++pk;
       }
     }
@@ -1619,18 +1616,21 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoi
     bool neg = false;
     bool pos = false;
     for ( int ip = 0; ip < pk; ++ip ) {
-      if ( neg ) {
+      if ( neg ) { // if neg is previously set to true, keep it true
         neg = true;
       } else if ( !neg ) {
         neg = ( proj[ip] < 0. ) ? true : false;
       }
 
-      if ( pos ) {
+      if ( pos ) { // if pos is previously set to true, keep it true
         pos = true;
       } else if ( !pos ) {
         pos = ( proj[ip] > 0. ) ? true : false;
       }
 
+      // if at least one projection is negative and one positive then the
+      // current vertex of the current segment vector is not the properly
+      // ordered next vertex
       if ( neg && pos ) {
         break;
       }
@@ -1641,43 +1641,42 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoi
     if ( !neg || !pos ) {
       // check the orientation of the nodes to make sure we have the correct
       // one of two segments that will pass the previous test.
-      // Check the dot product between the normal and the vector
+      // Check the dot product between the current segment normal and the vector
       // between the centroid and first (0th) vertex
-      RealT vx = xC - x[id0];
-      RealT vy = yC - y[id0];
+      RealT vx = xC - x[ newIDs[0] ];
+      RealT vy = yC - y[ newIDs[0] ];
 
       RealT prod = nrmlx * vx + nrmly * vy;
 
       // check if the two vertices are a segment on the convex hull and oriented CCW.
       // CCW orientation has prod > 0
       if ( prod > 0 ) {
-        id1 = j;
+        // set newIDs[1] to the current vertex where newIDs[1] and newIDs[0] form the
+        // first segment vector on the convex hull; then, swap ids
+        int oldID1 = newIDs[1];
+        newIDs[1] = j;
+        newIDs[j] = oldID1;
         break;
       }
     }
 
   }  // end loop over j
 
-  // swap ids
-  if ( id1 != -1 ) {
-    newIDs[1] = id1;
-    newIDs[id1] = 1;
-  }
-
-  // given the first (current) reference segment, compute the link vector between the jth vertex
-  // (j cannot be a vertex belonging to the reference segment) and the first vertex of
-  // the given reference segment. The next reference segment is between the second vertex of
-  // the current reference segment and the jth vertex whose link vector has the smallest
-  // dot product with the current reference segment.
-
-  for ( int i = 0; i < ( numPoints - 2 ); ++i )  // increment to (numPoints - 3) or (numPoints - 2)?
+  // given the first segment vector on the convex hull, determine the rest of the vertex ordering
+  //
+  // compute the current reference segment vector between currently ordered vertices. At first, this is simply
+  // taken as the first segment vector determined above. Then, loop over remaining unorderd vertices and compute
+  // the link vector between that unordered vertex and the first vertex in the reference segment vector. These
+  // two vectors share that vertex as a common origin. Then, compute the angle between the link vector and the
+  // current reference vector. The link vector with the smallest angle gives us the next vertex in the ordered set
+  //
+  // Note: increment to (numPoints - 3) as as the (number_of_remaining_vertices-1) where the last vertex
+  // will automatically
+  for ( int i = 0; i < ( numPoints - 3 ); ++i )
   {
-    int jID = -1;
-    RealT cosThetaMax = -1.;  // this handles angles up to 180 degrees. Not possible for convex polygons
-    RealT cosTheta;
     RealT refMag, linkMag;
 
-    // compute reference vector;
+    // compute current ordered reference vector;
     RealT refx, refy;
     refx = x[newIDs[i + 1]] - x[newIDs[i]];
     refy = y[newIDs[i + 1]] - y[newIDs[i]];
@@ -1687,6 +1686,9 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoi
     //      length");
 
     // loop over link vectors of unassigned vertices
+    int jID = -1;
+    RealT cosThetaMax = -1.; // this handles angles up to 180 degrees. Any greater and the polygon is not convex
+    RealT cosTheta;
     int nextVertexID = 2 + i;
     for ( int j = nextVertexID; j < numPoints; ++j ) {
       RealT lx, ly;
@@ -1703,7 +1705,7 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoi
 
     }  // end loop over j
 
-    // we have found the minimum angle and the corresponding local vertex id.
+    // we have found the minimum angle between remaining segment vectors and the corresponding local vertex id.
     // swap ids
     if (jID > -1) {
       int swapID = newIDs[nextVertexID];
@@ -1979,8 +1981,7 @@ TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const 
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_nodes_2, RealT* projLocX1,
-                                          RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, RealT& cx, RealT& cy,
-                                          RealT& area, const int isym )
+                                          RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, RealT& area, const int isym )
 {
   // change the vertex ordering of one of the faces so that the two match
   constexpr int max_nodes_per_elem = 4;
@@ -1999,6 +2000,7 @@ TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_n
     ++k;
   }
 
+  RealT cy;
   PolyInterYCentroid( num_nodes_1, projLocX1, projLocY1, num_nodes_2, x2Temp, y2Temp, isym, area, cy );
   // PolyInterYCentroid( num_nodes_1, projLocY1, projLocX1, num_nodes_2, y2Temp, x2Temp,
   //                     isym, area, cx );
@@ -2040,9 +2042,9 @@ TRIBOL_HOST_DEVICE bool IsOverlapping( const RealT* const x1, const RealT* const
     Points3DTo2D( &x2_bar[0], &y2_bar[0], &z2_bar[0], n[0], n[1], n[2], c[0], c[1], c[2],
                   numNodesFace2, &x2_bar_local[0], &y2_bar_local[0] );
 
-    RealT cx, cy, area;
+    RealT area;
     CheckPolyOverlap( numNodesFace1, numNodesFace2, &x1_bar_local[0],
-                      &y1_bar_local[0], &x2_bar_local[0], &y2_bar_local[0], cx, cy, area, 0 );
+                      &y1_bar_local[0], &x2_bar_local[0], &y2_bar_local[0], area, 0 );
 
     if ( area < 1.e-15 ) {
       return false;

@@ -813,14 +813,11 @@ TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const 
  * \param [in] projLocY1 2D y-coordinates of projected element 1 vertices
  * \param [in] projLocX2 2D x-coordinates of projected element 2 vertices
  * \param [in] projLocY2 2D y-coordinates of projected element 2 vertices
- * \param [in,out] cx local x-coordinate of overlap centroid
- * \param [in,out] cy local y-coordinate of overlap centroid
  * \param [in,out] area area of overlap
  * \param [in] isym 0 for planar symmetry, 1 for axial symmetry
  */
 TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_nodes_2, RealT* projLocX1,
-                                          RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, RealT& cx, RealT& cy,
-                                          RealT& area, const int isym );
+                                          RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, RealT& area, const int isym );
 
 /*!
  * \brief This routine is used to perform Check #5 to see if two faces/edges overlap 
