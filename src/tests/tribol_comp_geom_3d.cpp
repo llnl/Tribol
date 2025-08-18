@@ -1892,6 +1892,39 @@ TEST_F( CompGeomTest, poly_reorder_convex_1 )
   EXPECT_EQ( y[4], 0.5 );
 }
 
+TEST_F( CompGeomTest, project_point_to_plane )
+{
+  // Test the point projection onto a plane with normal <1,1,1> that passes
+  // through the origin (0,0,0)
+  RealT nx = 1.;
+  RealT ny = 1.;
+  RealT nz = 1.;
+
+  // make normal vector unit
+  RealT inv_mag = 1. / tribol::magnitude( nx, ny, nz );
+  nx *= inv_mag;
+  ny *= inv_mag;
+  nz *= inv_mag;
+
+  RealT cx = 0.;
+  RealT cy = 0.;
+  RealT cz = 0.;
+
+  RealT px = 1.;
+  RealT py = 1.;
+  RealT pz = 1.;
+
+  RealT proj_px = 0;
+  RealT proj_py = 0;
+  RealT proj_pz = 0;
+
+  tribol::ProjectPointToPlane( px, py, pz, nx, ny, nz, cx, cy, cz, proj_px, proj_py, proj_pz );
+
+  EXPECT_NEAR( proj_px, 0., 1.e-12 );
+  EXPECT_NEAR( proj_py, 0., 1.e-12 );
+  EXPECT_NEAR( proj_pz, 0., 1.e-12 );
+}
+
 int main( int argc, char* argv[] )
 {
   int result = 0;

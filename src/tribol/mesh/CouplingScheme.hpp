@@ -21,11 +21,6 @@
 #include "tribol/geom/NodalNormal.hpp"
 #endif
 
-// MPI includes
-#ifdef TRIBOL_USE_MPI
-#include <mpi.h>
-#endif
-
 // Axom includes
 #include "axom/core.hpp"
 

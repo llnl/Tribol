@@ -34,7 +34,7 @@ TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT x, RealT y, RealT z, RealT nx, 
   // if the point (x,y,z) is really close to the centroid
   RealT sqrMag = e1x * e1x + e1y * e1y + e1z * e1z;
   if ( sqrMag < 1.E-12 ) {
-    RealT scale = 10.;  // just scale it 10x the original distance
+    RealT scale = 10.;  // just shift the original coordinate by 10
     RealT x_new = x + scale;
     RealT y_new = y + scale;
     RealT z_new = z + scale;
