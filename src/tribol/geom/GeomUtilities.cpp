@@ -21,58 +21,6 @@
 
 namespace tribol {
 
-TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT x, RealT y, RealT z, RealT nx, RealT ny, RealT nz, RealT cx, RealT cy,
-                                           RealT cz, RealT& e1x, RealT& e1y, RealT& e1z, RealT& e2x, RealT& e2y,
-                                           RealT& e2z )
-{
-  // compute the in-plane e1 basis vector as difference between input point and centroid
-  e1x = x - cx;
-  e1y = y - cy;
-  e1z = z - cz;
-
-  // check the square of the magnitude of the first basis vector to catch
-  // if the point (x,y,z) is really close to the centroid
-  RealT sqrMag = e1x * e1x + e1y * e1y + e1z * e1z;
-  if ( sqrMag < 1.E-8 ) {
-    RealT scale = 10.;  // just shift the original coordinate by 10
-    RealT x_new = x + scale;
-    RealT y_new = y + scale;
-    RealT z_new = z + scale;
-
-    // project point onto contact plane
-    RealT px, py, pz;
-    ProjectPointToPlane( x_new, y_new, z_new, nx, ny, nz, cx, cy, cz, px, py, pz );
-
-    e1x = px - cx;
-    e1y = py - cy;
-    e1z = pz - cz;
-  }
-
-  // normalize the first basis vector
-  RealT mag = magnitude( e1x, e1y, e1z );
-  RealT inv_mag = 1.0 / mag;
-
-  e1x *= inv_mag;
-  e1y *= inv_mag;
-  e1z *= inv_mag;
-
-  // compute the second, and orthogonal, in-plane basis vector as the
-  // cross product between the face normal and e1. This will be unit because
-  // the normal and e1 are unit.
-
-  e2x = ( ny * e1z ) - ( nz * e1y );
-  e2y = ( nz * e1x ) - ( nx * e1z );
-  e2z = ( nx * e1y ) - ( ny * e1x );
-
-  mag = magnitude( e2x, e2y, e2z );
-  inv_mag = 1.0 / mag;
-
-  e2x *= inv_mag;
-  e2y *= inv_mag;
-  e2z *= inv_mag;
-
-}  // end ComputeLocalBasis()
-
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT nx, RealT ny, RealT nz, RealT& e1x, RealT& e1y, RealT& e1z,
                                            RealT& e2x, RealT& e2y, RealT& e2z )
@@ -1989,18 +1937,7 @@ TRIBOL_HOST_DEVICE void Points3DTo2D( const RealT* const x, const RealT* const y
   RealT e1x, e1y, e1z;
   RealT e2x, e2y, e2z;
 
-  // determine a consistent reference point on the plane used to compute first basis vector
-  RealT px, py, pz;
-  RealT scale = 10;
-  px = cx + scale;
-  py = cy + scale;
-  pz = cz + scale;
-
-  // project that point back onto the plane
-  RealT px_bar, py_bar, pz_bar;
-  ProjectPointToPlane( px, py, pz, nx, ny, nz, cx, cy, cz, px_bar, py_bar, pz_bar );
-
-  ComputeLocalBasis( px_bar, py_bar, pz_bar, nx, ny, nz, cx, cy, cz, e1x, e1y, e1z, e2x, e2y, e2z );
+  ComputeLocalBasis( nx, ny, nz, e1x, e1y, e1z, e2x, e2y, e2z );
   GlobalTo2DLocalCoords( x, y, z, e1x, e1y, e1z, e2x, e2y, e2z, cx, cy, cz, x_loc, y_loc, num_verts );
 }
 

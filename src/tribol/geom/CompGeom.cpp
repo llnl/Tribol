@@ -848,76 +848,12 @@ TRIBOL_HOST_DEVICE void ContactPlanePair::getOverlapVertices( RealT* overlap_ver
   }
 }
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlanePair::computeLocalBasis( const MeshData::Viewer& m1 )
+TRIBOL_HOST_DEVICE void ContactPlanePair::computeLocalBasis( )
 {
-  // somewhat arbitrarily set the first local basis vector to be
-  // between contact plane centroid and first node on first face as
-  // projected onto the contact plane
-  const int nodeId = m1.getGlobalNodeId( m_pair->m_element_id1, 0 );
-
-  // project to plane
-  RealT pX, pY, pZ;
-  ProjectPointToPlane( m1.getPosition()[0][nodeId], m1.getPosition()[1][nodeId], m1.getPosition()[2][nodeId], m_nX,
-                       m_nY, m_nZ, m_cX, m_cY, m_cZ, pX, pY, pZ );
-
-  // compute first basis vector between projected node and overlap centroid
-  m_e1X = pX - m_cX;
-  m_e1Y = pY - m_cY;
-  m_e1Z = pZ - m_cZ;
-
-  // check the square of the magnitude of the first basis vector to
-  // catch the case where pX = m_cX and so on.
-  RealT sqrMag = m_e1X * m_e1X + m_e1Y * m_e1Y + m_e1Z * m_e1Z;
-
-  if ( sqrMag < 1.E-12 )  // note: tolerance on the square of the magnitude
-  {
-    // translate projected first node by face radius
-    RealT radius = m1.getFaceRadius()[m_pair->m_element_id1];
-    RealT scale = 1.0 * radius;
-
-    RealT pNewX = pX + scale;
-    RealT pNewY = pY + scale;
-    RealT pNewZ = pZ + scale;
-
-    // project point onto contact plane
-    ProjectPointToPlane( pNewX, pNewY, pNewZ, m_nX, m_nY, m_nZ, m_cX, m_cY, m_cZ, pX, pY, pZ );
-
-    m_e1X = pX - m_cX;
-    m_e1Y = pY - m_cY;
-    m_e1Z = pZ - m_cZ;
-  }
-
-  // recompute the magnitude
-  RealT mag = magnitude( m_e1X, m_e1Y, m_e1Z );
-  RealT invMag = 1.0 / mag;
-
-  // normalize the first basis vector
-  m_e1X *= invMag;
-  m_e1Y *= invMag;
-  m_e1Z *= invMag;
-
-  // compute the second, and orthogonal, in-plane basis vector as the
-  // cross product between the cp normal and e1. This will be unit because
-  // the cp normal and e1 are unit.
-  m_e2X = 0.0;
-  m_e2Y = 0.0;
-  m_e2Z = 0.0;
-
-  m_e2X += ( m_nY * m_e1Z ) - ( m_nZ * m_e1Y );
-  m_e2Y += ( m_nZ * m_e1X ) - ( m_nX * m_e1Z );
-  m_e2Z += ( m_nX * m_e1Y ) - ( m_nY * m_e1X );
-
-  // normalize second vector
-  mag = magnitude( m_e2X, m_e2Y, m_e2Z );
-  invMag = 1.0 / mag;
-
-  m_e2X *= invMag;
-  m_e2Y *= invMag;
-  m_e2Z *= invMag;
-
+  ComputeLocalBasis( m_nX, m_nY, m_nZ, m_e1X, m_e1Y, m_e1Z, m_e2X, m_e2Y, m_e2Z );
   return;
 
-}  // end CommonPlanePair::computeLocalBasis()
+}  // end ContactPlanePair::computeLocalBasis()
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ContactPlanePair::globalTo2DLocalCoords( const RealT* pX, const RealT* pY, const RealT* pZ, RealT* pLX,

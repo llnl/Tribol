@@ -80,9 +80,8 @@ class ContactPlanePair : public CompGeomPair {
   /*!
    * \brief Compute a local basis on the contact plane
    *
-   * \param [in] m1 mesh data viewer for mesh 1
    */
-  TRIBOL_HOST_DEVICE void computeLocalBasis( const MeshData::Viewer& m1 );
+  TRIBOL_HOST_DEVICE void computeLocalBasis( );
 
   /*!
    * \brief Compute the contact plane normal
@@ -198,7 +197,7 @@ class ContactPlanePair : public CompGeomPair {
     computePlanePoint( mesh1, mesh2 );
     computeAreaTol( mesh1, mesh2 );
     if (m_dim == 3) {
-      computeLocalBasis( mesh1 );
+      computeLocalBasis( );
     }
   }
 
