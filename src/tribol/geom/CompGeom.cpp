@@ -1242,6 +1242,11 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
   //    other face has zero intersection points that lie INSIDE its opposing face
   // 3) each face has two intersection points that lie INSIDE the other face; this occurs when
   //    one face's two line-plane intersections occur at edge segments of the other face (and vice versa).
+  // 4) one face has two line-plane intersections that are INSIDE the other face, and the other face
+  //    has only ONE line-plane intersection that lies INSIDE the opposing face. This occurs when the first
+  //    face has one intersection point fully interior to the opposing face, and the other intersects the
+  //    face at a vertex or edge. Then, the second face will have a line-plane intersection point through
+  //    one of the first face's edges or vertices.
   //
   // Note: still double check degenerate face-interaction vertex counts and in the case
   //       that one of the criterion above switched to the interpen overlap calc, return
@@ -1253,6 +1258,10 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
   } else if ( num_intersections_inside[0] == 0 && num_intersections_inside[1] == 2 ) {
     m_fullOverlap = false;
   } else if ( num_intersections_inside[0] == 2 && num_intersections_inside[1] == 2 ) {
+    m_fullOverlap = false;
+  } else if ( num_intersections_inside[0] == 2 && num_intersections_inside[1] == 1 ) {
+    m_fullOverlap = false;
+  } else if ( num_intersections_inside[0] == 1 && num_intersections_inside[1] == 2 ) {
     m_fullOverlap = false;
   }
 

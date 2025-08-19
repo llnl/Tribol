@@ -443,6 +443,8 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_1 )
   // check the overlap area
   EXPECT_NEAR( plane.m_area, 2. * overlap_gap_point, 1.e-5 );
 
+  EXPECT_EQ( plane.m_fullOverlap, false );
+
   tribol::finalize();
 }
 
@@ -551,6 +553,8 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_2 )
 
   RealT computed_gap = -h_bar * std::tan( 0.5 * fortyfive );
   EXPECT_NEAR( plane.m_gap, computed_gap, 1.e-6 );
+
+  EXPECT_EQ( plane.m_fullOverlap, false );
 }
 
 TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3 )
@@ -658,6 +662,8 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3 )
   // compute and check the gap
   RealT computed_gap = -h_bar * std::tan( 0.5 * fortyfive );
   EXPECT_NEAR( plane.m_gap, computed_gap, 1.e-6 );
+
+  EXPECT_EQ( plane.m_fullOverlap, false );
 }
 
 TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3_warped )
@@ -768,9 +774,120 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3_warped )
   // compute and check the gap
   RealT computed_gap = -h_bar * std::tan( 0.5 * fortyfive );
   EXPECT_NEAR( plane.m_gap, computed_gap, 1.e-6 );
+
+  EXPECT_EQ( plane.m_fullOverlap, false );
 }
 
 TEST_F( CompGeomTest, common_plane_single_element_interpen_check_4 )
+{
+  // This tests checks the case where one face has two line-plane intersections
+  // that are interior to the other face (one fully interior and the other lying on
+  // the edge of the other face), and the other face has one line-plane
+  // intersection that is interior to the other face, which lies on the edge of
+  // the other face.
+  //
+  // The two orthogonal edge-on views of the interaction are:
+  //
+  //               *               * * * *
+  //             *                 *     *
+  //           *                   *     *
+  //  -------o--------       ------o-----o
+  //       *                       *     *
+  //     *                         *     *
+  //   *                           * * * *
+  //
+  //
+
+  constexpr int numVerts = 4;
+  constexpr int numCells = 2;
+  constexpr int lengthNodalData = numCells * numVerts;
+  RealT x[lengthNodalData];
+  RealT y[lengthNodalData];
+  RealT z[lengthNodalData];
+
+  // coordinates for face 1
+  x[0] = 0.;
+  x[1] = 1.;
+  x[2] = 1.;
+  x[3] = 0.;
+
+  y[0] = 0.;
+  y[1] = 0.;
+  y[2] = 1.;
+  y[3] = 1.;
+
+  z[0] = 0.;
+  z[1] = 0.;
+  z[2] = 0.;
+  z[3] = 0.;
+
+  // coordinates for face 2
+  x[4] = 0.33;
+  y[4] = 0.;
+  z[4] = -0.25;
+
+  x[5] = x[4];
+  y[5] = 0.5;
+  z[5] = z[4];
+
+  x[6] = x[5];
+  y[6] = y[5];
+  z[6] = 1.0;
+
+  x[7] = x[4];
+  y[7] = y[4];
+  z[7] = z[6];
+
+  // rotate 45 degrees about the y-axis
+  RealT x_shift = x[4];
+  RealT z_shift = z[4];
+  RealT fortyfive = 45 * M_PI / 180;
+  for ( int i = numVerts; i < lengthNodalData; ++i ) {
+    x[i] = x[i] - x_shift;
+    z[i] = z[i] - z_shift;
+    RealT x_rot = x[i] * std::cos( fortyfive ) + z[i] * std::sin( fortyfive );
+    RealT z_rot = x[i] * -std::sin( fortyfive ) + z[i] * std::cos( fortyfive );
+    x[i] = x_rot + x_shift;
+    z[i] = z_rot + z_shift;
+  }
+
+  // register contact mesh
+  tribol::IndexT mesh_id = 0;
+  tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
+                        tribol::MemorySpace::Host );
+
+  RealT dt = 1.0;
+  int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
+
+  EXPECT_EQ( err, 0 );
+  EXPECT_EQ( dt, 1.0 );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( couplingScheme->getNumActivePairs(), 1 );
+
+  auto& comp_geom = couplingScheme->getCompGeom();
+  auto& plane = comp_geom.getCommonPlane( 0 );
+
+  // compute the geometric quantities of the intepren portion of face 2
+  // in order to compute the overlap area
+  RealT h = 0.25 / std::cos( fortyfive );
+  RealT h_bar = h * std::cos( 0.5 * fortyfive );
+  RealT A = h_bar * 0.5;
+
+  EXPECT_NEAR( plane.m_area, A, 1.e-8 );
+
+  // compute and check the gap
+  RealT computed_gap = -h_bar * std::tan( 0.5 * fortyfive );
+  EXPECT_NEAR( plane.m_gap, computed_gap, 1.e-6 );
+
+  EXPECT_EQ( plane.m_fullOverlap, false );
+}
+
+TEST_F( CompGeomTest, common_plane_single_element_interpen_check_5 )
 {
   // This test checks the case where one face has two-line plane intersections
   // inside the opposing face and the opposing face has zero that lie inside the
@@ -886,9 +1003,11 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_4 )
 
   // check the gap
   EXPECT_NEAR( plane.m_gap, computed_gap, 1.e-6 );
+
+  EXPECT_EQ( plane.m_fullOverlap, false );
 }
 
-TEST_F( CompGeomTest, common_plane_single_element_interpen_check_5 )
+TEST_F( CompGeomTest, common_plane_single_element_interpen_check_6 )
 {
   // This test checks the case where one face has two-line plane intersections
   // inside the opposing face and the opposing face has zero that lie inside the
@@ -1022,6 +1141,8 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_5 )
   // the gap calculation is verified in other tests
   EXPECT_NEAR( plane.m_area, A_bar_bar_new, 1.e-8 );
   EXPECT_EQ( plane.m_numPolyVert, 5 );
+
+  EXPECT_EQ( plane.m_fullOverlap, false );
 }
 
 TEST_F( CompGeomTest, common_plane_perfect_conforming_full_overlap )
