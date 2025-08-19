@@ -1929,9 +1929,9 @@ TRIBOL_HOST_DEVICE bool CouplingScheme::Viewer::pruneMethodFacePair( const Index
         cx[i] = cx2[i]; 
       }
 
-      //if (IsOverlapping( &x1[0], &y1[0], &z1[0], &x2[0], &y2[0], &z2[0], &nrml[0], &cx[0], num_nodes_face_1, num_nodes_face_2, dim ) ) {
-      //  return false;
-      //}
+      if (IsOverlapping( &x1[0], &y1[0], &z1[0], &x2[0], &y2[0], &z2[0], &nrml[0], &cx[0], num_nodes_face_1, num_nodes_face_2, dim ) ) {
+        return false;
+      }
 
       break;
     }
