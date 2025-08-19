@@ -444,6 +444,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_1 )
   EXPECT_NEAR( plane.m_area, 2. * overlap_gap_point, 1.e-5 );
 
   EXPECT_EQ( plane.m_fullOverlap, false );
+  EXPECT_EQ( plane.m_numPolyVert, 4 );
 
   tribol::finalize();
 }
@@ -555,6 +556,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_2 )
   EXPECT_NEAR( plane.m_gap, computed_gap, 1.e-6 );
 
   EXPECT_EQ( plane.m_fullOverlap, false );
+  EXPECT_EQ( plane.m_numPolyVert, 4 );
 }
 
 TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3 )
@@ -664,6 +666,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3 )
   EXPECT_NEAR( plane.m_gap, computed_gap, 1.e-6 );
 
   EXPECT_EQ( plane.m_fullOverlap, false );
+  EXPECT_EQ( plane.m_numPolyVert, 4 );
 }
 
 TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3_warped )
@@ -776,6 +779,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3_warped )
   EXPECT_NEAR( plane.m_gap, computed_gap, 1.e-6 );
 
   EXPECT_EQ( plane.m_fullOverlap, false );
+  EXPECT_EQ( plane.m_numPolyVert, 4 );
 }
 
 TEST_F( CompGeomTest, common_plane_single_element_interpen_check_4 )
@@ -885,6 +889,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_4 )
   EXPECT_NEAR( plane.m_gap, computed_gap, 1.e-6 );
 
   EXPECT_EQ( plane.m_fullOverlap, false );
+  EXPECT_EQ( plane.m_numPolyVert, 4 );
 }
 
 TEST_F( CompGeomTest, common_plane_single_element_interpen_check_5 )
@@ -1005,6 +1010,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_5 )
   EXPECT_NEAR( plane.m_gap, computed_gap, 1.e-6 );
 
   EXPECT_EQ( plane.m_fullOverlap, false );
+  EXPECT_EQ( plane.m_numPolyVert, 3 );
 }
 
 TEST_F( CompGeomTest, common_plane_single_element_interpen_check_6 )
@@ -1143,6 +1149,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_6 )
   EXPECT_EQ( plane.m_numPolyVert, 5 );
 
   EXPECT_EQ( plane.m_fullOverlap, false );
+  EXPECT_EQ( plane.m_numPolyVert, 5 );
 }
 
 TEST_F( CompGeomTest, common_plane_perfect_conforming_full_overlap )
