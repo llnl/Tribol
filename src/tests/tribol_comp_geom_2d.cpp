@@ -236,7 +236,7 @@ TEST_F( CompGeomTest, common_plane_conforming_separation )
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
   auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
-  EXPECT_LT( tribol::abs_val_diff( y2[0], plane.m_gap ), 1.e-10 );
+  EXPECT_NEAR( y2[0], plane.m_gap, 1.e-10 );
 }
 
 TEST_F( CompGeomTest, common_plane_coincident_vertex_no_overlap )

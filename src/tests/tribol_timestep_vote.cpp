@@ -480,7 +480,7 @@ TEST_F( CommonPlaneTest, large_velocity_small_gap )
 
   RealT dt_vote = parameters.timestep_pen_frac * element_thickness1 / velZ1;
   RealT dt_tol = 1.e-8;
-  EXPECT_LT( tribol::abs_val_diff( parameters.dt, dt_vote ), dt_tol );
+  EXPECT_NEAR( parameters.dt, dt_vote, dt_tol );
 
   tribol::finalize();
 }
@@ -568,7 +568,7 @@ TEST_F( CommonPlaneTest, large_velocity_large_gap )
 
   RealT dt_vote = parameters.timestep_pen_frac * element_thickness1 / velZ1;
   RealT dt_tol = 1.e-8;
-  EXPECT_LT( tribol::abs_val_diff( parameters.dt, dt_vote ), dt_tol );
+  EXPECT_NEAR( parameters.dt, dt_vote, dt_tol );
 
   tribol::finalize();
 }
@@ -825,7 +825,7 @@ TEST_F( CommonPlaneTest, large_velocity_small_separation )
   EXPECT_EQ( test_mesh_update_err, 0 );
   RealT dt_vote = parameters.timestep_pen_frac * element_thickness1 / velZ1;
   RealT dt_tol = 1.e-8;
-  EXPECT_LT( tribol::abs_val_diff( parameters.dt, dt_vote ), dt_tol );
+  EXPECT_NEAR( parameters.dt, dt_vote, dt_tol );
 
   tribol::finalize();
 }
@@ -912,7 +912,7 @@ TEST_F( CommonPlaneTest, large_velocity_small_separation_set_alpha )
   EXPECT_EQ( test_mesh_update_err, 0 );
   RealT dt_vote = parameters.timestep_scale * parameters.timestep_pen_frac * element_thickness1 / velZ1;
   RealT dt_tol = 1.e-8;
-  EXPECT_LT( tribol::abs_val_diff( parameters.dt, dt_vote ), dt_tol );
+  EXPECT_NEAR( parameters.dt, dt_vote, dt_tol );
 
   tribol::finalize();
 }

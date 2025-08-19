@@ -70,7 +70,7 @@ void compareGaps( tribol::CouplingScheme const* cs, RealT gap, const RealT tol, 
     }
 
     // check diffs
-    EXPECT_LE( tribol::abs_val_diff( my_gap, gap ), tol );
+    EXPECT_NEAR( my_gap, gap, tol );
   }
 }  // end compareGaps()
 
@@ -129,7 +129,7 @@ void checkPressures( tribol::CouplingScheme const* cs, RealT pressure, const Rea
     }
 
     // check diffs
-    EXPECT_LE( tribol::abs_val_diff( my_pressure, pressure ), tol );
+    EXPECT_NEAR( my_pressure, pressure, tol );
   }
 }  // end checkPressures()
 
