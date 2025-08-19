@@ -2058,11 +2058,19 @@ TRIBOL_HOST_DEVICE bool IsOverlapping( const RealT* const x1, const RealT* const
     }
 
     // check if either of edge 1's projected vertices are inside projected edge 2
-    bool inside_vert1 = IsPointInEdge( &projX2[0], &projY2[0], projX1[0], projY1[0] );
-    bool inside_vert2 = IsPointInEdge( &projX2[0], &projY2[0], projX1[1], projY1[1] );
+    bool vert1_inside2 = IsPointInEdge( &projX2[0], &projY2[0], projX1[0], projY1[0] );
+    bool vert2_inside2 = IsPointInEdge( &projX2[0], &projY2[0], projX1[1], projY1[1] );
 
-    if ( !inside_vert1 && !inside_vert2 ) {
-      return false;
+    // now, check if either of edge 2's projected vertices are inside projected edge 1
+    // note, if we just checked for 1 in 2, then if 2 lies entirely within 1 we would have missed that
+    bool vert1_inside1 = IsPointInEdge( &projX1[0], &projY1[0], projX2[0], projY2[0] );
+    bool vert2_inside1 = IsPointInEdge( &projX1[0], &projY1[0], projX2[1], projY2[1] );
+
+    // return false if none of the vertices lie inside the other edge
+    if ( !vert1_inside2 && !vert2_inside2 ) {
+      if ( !vert1_inside1 && !vert2_inside1 ) {
+        return false;
+      }
     }
 
   }  // end dim == 2

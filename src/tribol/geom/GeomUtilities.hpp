@@ -785,7 +785,7 @@ TRIBOL_HOST_DEVICE void Points3DTo2D( const RealT* const x, const RealT* const y
 
 /*!
  *
- * \brief Checks if the given point lies inside an edge or nearly inside up to some fuzz 
+ * \brief Checks if the given point lies inside an edge
  *
  * \param [in] x to x-component coordinates of the edge's two vertices
  * \param [in] y to y-component coordinates of the edge's two vertices
