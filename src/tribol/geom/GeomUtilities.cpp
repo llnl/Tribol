@@ -33,7 +33,7 @@ TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT x, RealT y, RealT z, RealT nx, 
   // check the square of the magnitude of the first basis vector to catch
   // if the point (x,y,z) is really close to the centroid
   RealT sqrMag = e1x * e1x + e1y * e1y + e1z * e1z;
-  if ( sqrMag < 1.E-12 ) {
+  if ( sqrMag < 1.E-8 ) {
     RealT scale = 10.;  // just shift the original coordinate by 10
     RealT x_new = x + scale;
     RealT y_new = y + scale;
@@ -72,6 +72,42 @@ TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT x, RealT y, RealT z, RealT nx, 
   e2z *= inv_mag;
 
 }  // end ComputeLocalBasis()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT nx, RealT ny, RealT nz, RealT& e1x, RealT& e1y, RealT& e1z,
+                                           RealT& e2x, RealT& e2y, RealT& e2z )
+{
+  constexpr int max_dim = 3;
+  RealT a[ max_dim ]; 
+  for (int i=0; i<max_dim; ++i) {
+    a[i] = 0.;
+  }
+
+  // define a vector non-parallel to the input unit normal. Do so by
+  // finding the smallest unit normal component and define a corresponding
+  // vector in that direction
+  if ( std::abs(nx) <= std::abs(ny) && std::abs(nx) <= std::abs(nz) ) {
+    a[0] = 1.0;
+  }
+  else if ( std::abs(ny) <= std::abs(nx) && std::abs(ny) <= std::abs(nz) ) {
+    a[1] = 1.0;
+  }
+  else if ( std::abs(nz) <= std::abs(nx) && std::abs(nz) <= std::abs(ny) ) {
+    a[2] = 1.0;
+  }
+
+  // compute the first basis vector as a x n / ||a x n||
+  crossProd( a[0], a[1], a[2], nx, ny, nz, e1x, e1y, e1z );
+  RealT a_cross_n_mag = magnitude( e1x, e1y, e1z );
+  RealT inv_a_cross_n_mag = 1.0 / a_cross_n_mag;
+  e1x *= inv_a_cross_n_mag;
+  e1y *= inv_a_cross_n_mag;
+  e1z *= inv_a_cross_n_mag;
+
+  // now compute the second basis vector as n x e1
+  crossProd( nx, ny, nz, e1x, e1y, e1z, e2x, e2y, e2z );
+}
+
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ProjectFaceNodesToPlane( const MeshData::Viewer& mesh, int faceId, RealT nrmlX, RealT nrmlY,
                                                  RealT nrmlZ, RealT cX, RealT cY, RealT cZ, RealT* pX, RealT* pY,

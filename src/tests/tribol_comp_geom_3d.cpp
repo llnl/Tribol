@@ -1741,24 +1741,19 @@ TEST_F( CompGeomTest, auto_contact_gt_max_interpen )
   EXPECT_EQ( couplingScheme->getNumActivePairs(), 0 );
 }
 
-TEST_F( CompGeomTest, compute_local_basis )
+TEST_F( CompGeomTest, compute_local_basis_1 )
 {
   // Test the calculation of a local basis on a plane with normal <1,1,1> that passes
   // through the origin (0,0,0)
   RealT nx = 1.;
   RealT ny = 1.;
   RealT nz = 1.;
-
-  RealT cx = 0.;
-  RealT cy = 0.;
-  RealT cz = 0.;
-
-  // a reference point on the plane can be taken using the unit vector <1, -1, 0>
-  RealT shift = 0.1; // set some shift to move reference point away from origin
-  RealT sqrt_2 = std::sqrt(2.);
-  RealT px = shift / sqrt_2;
-  RealT py = -shift / sqrt_2;
-  RealT pz = 0.;
+  
+  // make normal vector unit
+  RealT inv_mag = 1. / tribol::magnitude( nx, ny, nz );
+  nx *= inv_mag;
+  ny *= inv_mag;
+  nz *= inv_mag;
 
   // declare local basis vector components
   RealT e1x = 0.;
@@ -1769,30 +1764,89 @@ TEST_F( CompGeomTest, compute_local_basis )
   RealT e2y = 0.;
   RealT e2z = 0.;
 
-  tribol::ComputeLocalBasis( px, py, pz, nx, ny, nz, cx, cy, cz, e1x, e1y, e1z, e2x, e2y, e2z );
+  tribol::ComputeLocalBasis( nx, ny, nz, e1x, e1y, e1z, e2x, e2y, e2z );
 
-  // Debug
-  //std::cout << "e1: " << e1x << ", " << e1y << ", " << e1z << std::endl;
-  //std::cout << "e2: " << e2x << ", " << e2y << ", " << e2z << std::endl;
-
+  EXPECT_NEAR( tribol::magnitude( nx, ny, nz ), 1.0, 1.e-12 );
   EXPECT_NEAR( tribol::magnitude( e1x, e1y, e1z ), 1.0, 1.e-12 );
   EXPECT_NEAR( tribol::magnitude( e2x, e2y, e2z ), 1.0, 1.e-12 );
   EXPECT_NEAR( tribol::dotProd( e1x, e1y, e1z, e2x, e2y, e2z ), 0.0, 1.e-12 );
+  EXPECT_NEAR( tribol::dotProd( e1x, e1y, e1z, nx, ny, nz ), 0.0, 1.e-12 );
+  EXPECT_NEAR( tribol::dotProd( e2x, e2y, e2z, nx, ny, nz ), 0.0, 1.e-12 );
+}
 
-  // redefine a shift away from (0,0,0) within the tolerance for a short e1 basis vector
-  // used in the ComputeLocalBasis() routine
-  shift = 1.e-13; // set some shift to move reference point away from origin
-  sqrt_2 = std::sqrt(2.);
-  px = shift / sqrt_2;
-  py = -shift / sqrt_2;
-  pz = 0.;
+TEST_F( CompGeomTest, compute_local_basis_2 )
+{
+  RealT nx = 1.;
+  RealT ny = 0.;
+  RealT nz = 0.;
+  
+  // declare local basis vector components
+  RealT e1x = 0.;
+  RealT e1y = 0.;
+  RealT e1z = 0.;
 
-  tribol::ComputeLocalBasis( px, py, pz, nx, ny, nz, cx, cy, cz, e1x, e1y, e1z, e2x, e2y, e2z );
+  RealT e2x = 0.;
+  RealT e2y = 0.;
+  RealT e2z = 0.;
 
+  tribol::ComputeLocalBasis( nx, ny, nz, e1x, e1y, e1z, e2x, e2y, e2z );
+
+  EXPECT_NEAR( tribol::magnitude( nx, ny, nz ), 1.0, 1.e-12 );
   EXPECT_NEAR( tribol::magnitude( e1x, e1y, e1z ), 1.0, 1.e-12 );
   EXPECT_NEAR( tribol::magnitude( e2x, e2y, e2z ), 1.0, 1.e-12 );
   EXPECT_NEAR( tribol::dotProd( e1x, e1y, e1z, e2x, e2y, e2z ), 0.0, 1.e-12 );
+  EXPECT_NEAR( tribol::dotProd( e1x, e1y, e1z, nx, ny, nz ), 0.0, 1.e-12 );
+  EXPECT_NEAR( tribol::dotProd( e2x, e2y, e2z, nx, ny, nz ), 0.0, 1.e-12 );
+}
 
+TEST_F( CompGeomTest, compute_local_basis_3 )
+{
+  RealT nx = 0.;
+  RealT ny = 1.;
+  RealT nz = 0.;
+  
+  // declare local basis vector components
+  RealT e1x = 0.;
+  RealT e1y = 0.;
+  RealT e1z = 0.;
+
+  RealT e2x = 0.;
+  RealT e2y = 0.;
+  RealT e2z = 0.;
+
+  tribol::ComputeLocalBasis( nx, ny, nz, e1x, e1y, e1z, e2x, e2y, e2z );
+
+  EXPECT_NEAR( tribol::magnitude( nx, ny, nz ), 1.0, 1.e-12 );
+  EXPECT_NEAR( tribol::magnitude( e1x, e1y, e1z ), 1.0, 1.e-12 );
+  EXPECT_NEAR( tribol::magnitude( e2x, e2y, e2z ), 1.0, 1.e-12 );
+  EXPECT_NEAR( tribol::dotProd( e1x, e1y, e1z, e2x, e2y, e2z ), 0.0, 1.e-12 );
+  EXPECT_NEAR( tribol::dotProd( e1x, e1y, e1z, nx, ny, nz ), 0.0, 1.e-12 );
+  EXPECT_NEAR( tribol::dotProd( e2x, e2y, e2z, nx, ny, nz ), 0.0, 1.e-12 );
+}
+
+TEST_F( CompGeomTest, compute_local_basis_4 )
+{
+  RealT nx = 0.;
+  RealT ny = 0.;
+  RealT nz = 1.;
+  
+  // declare local basis vector components
+  RealT e1x = 0.;
+  RealT e1y = 0.;
+  RealT e1z = 0.;
+
+  RealT e2x = 0.;
+  RealT e2y = 0.;
+  RealT e2z = 0.;
+
+  tribol::ComputeLocalBasis( nx, ny, nz, e1x, e1y, e1z, e2x, e2y, e2z );
+
+  EXPECT_NEAR( tribol::magnitude( nx, ny, nz ), 1.0, 1.e-12 );
+  EXPECT_NEAR( tribol::magnitude( e1x, e1y, e1z ), 1.0, 1.e-12 );
+  EXPECT_NEAR( tribol::magnitude( e2x, e2y, e2z ), 1.0, 1.e-12 );
+  EXPECT_NEAR( tribol::dotProd( e1x, e1y, e1z, e2x, e2y, e2z ), 0.0, 1.e-12 );
+  EXPECT_NEAR( tribol::dotProd( e1x, e1y, e1z, nx, ny, nz ), 0.0, 1.e-12 );
+  EXPECT_NEAR( tribol::dotProd( e2x, e2y, e2z, nx, ny, nz ), 0.0, 1.e-12 );
 }
 
 TEST_F( CompGeomTest, poly_reorder_convex_1 )
@@ -1923,6 +1977,19 @@ TEST_F( CompGeomTest, project_point_to_plane )
   EXPECT_NEAR( proj_px, 0., 1.e-12 );
   EXPECT_NEAR( proj_py, 0., 1.e-12 );
   EXPECT_NEAR( proj_pz, 0., 1.e-12 );
+
+  // now test the projection routine for a point that is on the plane AND coincident with the centroid
+  // point that defines the plane
+  px = 0.;
+  py = 0.;
+  pz = 0.;
+
+  tribol::ProjectPointToPlane( px, py, pz, nx, ny, nz, cx, cy, cz, proj_px, proj_py, proj_pz );
+
+  EXPECT_NEAR( proj_px, 0., 1.e-12 );
+  EXPECT_NEAR( proj_py, 0., 1.e-12 );
+  EXPECT_NEAR( proj_pz, 0., 1.e-12 );
+
 }
 
 int main( int argc, char* argv[] )

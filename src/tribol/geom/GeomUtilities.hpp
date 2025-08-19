@@ -39,6 +39,24 @@ TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT x, RealT y, RealT z, RealT nx, 
 
 /*!
  *
+ * \brief computes a local basis on the plane defined by the given unit normal
+ *
+ * \param [in] nx x-component of plane normal
+ * \param [in] ny y-component of plane normal
+ * \param [in] nz z-component of plane normal
+ * \param [in,out] e1x x-component of first basis vector
+ * \param [in,out] e1y y-component of first basis vector
+ * \param [in,out] e1z z-component of first basis vector
+ * \param [in,out] e2x x-component of second basis vector
+ * \param [in,out] e2y y-component of second basis vector
+ * \param [in,out] e2z z-component of second basis vector
+ *
+ */
+TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT nx, RealT ny, RealT nz, RealT& e1x, RealT& e1y, RealT& e1z,
+                                           RealT& e2x, RealT& e2y, RealT& e2z );
+
+/*!
+ *
  * \brief projects all the nodes (vertices) of a given FE face to a
  *  specified plane
  *
