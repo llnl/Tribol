@@ -1060,15 +1060,15 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                 // in the active set
                 bool interact = false;
 
-                FaceGeomError interact_err = CheckInterfacePair( pair, mesh1, mesh2, params, contact_method,
-                                                                 contact_case, interact, cg_view, planes_ct.data() );
+                FaceGeomException interact_err = CheckInterfacePair( pair, mesh1, mesh2, params, contact_method,
+                                                                     contact_case, interact, cg_view, planes_ct.data() );
 
                 // // Update pair reporting data for this coupling scheme
                 // this->updatePairReportingData( interact_err );
 
                 // TODO refine how these errors are handled. Here we skip over face-pairs with errors. That is,
                 // they are not registered for contact, but we don't error out.
-                if ( interact_err != NO_FACE_GEOM_ERROR ) {
+                if ( interact_err != NO_FACE_GEOM_EXCEPTION ) {
                   pair_err[0] = 1;
                   pair.m_is_contact_candidate = false;
                   // TODO consider printing offending face(s) coordinates for debugging
@@ -1709,10 +1709,10 @@ void CouplingScheme::writeInterfaceOutput( const std::string& dir, const VisType
 }
 
 //------------------------------------------------------------------------------
-void CouplingScheme::updatePairReportingData( const FaceGeomError face_error )
+void CouplingScheme::updatePairReportingData( const FaceGeomException face_exception )
 {
-  switch ( face_error ) {
-    case NO_FACE_GEOM_ERROR: {
+  switch ( face_exception ) {
+    case NO_FACE_GEOM_EXCEPTION: {
       // no-op
       break;
     }

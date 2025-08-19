@@ -400,7 +400,7 @@ enum class OverlapVertexType
  * \param [in,out] edgeB associated vertex or edge on polygon B for each vertex in the intersection polygon.
  * optional. use nullptr if not needed.
  *
- * \return 0 if no error, >0 a face geom error
+ * \return 0 if no exception, >0 a face geom exception
  *
  * \pre length(xA), length(yA) >= numVertexA
  * \pre length(xB), length(yB) >= numVertexB
@@ -409,12 +409,12 @@ enum class OverlapVertexType
  * of points for the intersection polygon
  *
  */
-TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const RealT* yA, int numVertexA,
-                                                        const RealT* xB, const RealT* yB, int numVertexB, RealT posTol,
-                                                        RealT lenTol, RealT* polyX, RealT* polyY, int& numPolyVert,
-                                                        RealT& area, bool orientCheck = true,
-                                                        OverlapVertexType* vertType = nullptr, int* edgeA = nullptr,
-                                                        int* edgeB = nullptr );
+TRIBOL_HOST_DEVICE FaceGeomException Intersection2DPolygon( const RealT* xA, const RealT* yA, int numVertexA,
+                                                            const RealT* xB, const RealT* yB, int numVertexB, RealT posTol,
+                                                            RealT lenTol, RealT* polyX, RealT* polyY, int& numPolyVert,
+                                                            RealT& area, bool orientCheck = true,
+                                                            OverlapVertexType* vertType = nullptr, int* edgeA = nullptr,
+                                                            int* edgeB = nullptr );
 
 #ifdef TRIBOL_USE_ENZYME
 
@@ -434,7 +434,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
  * \param [in,out] polyY array of y coordinates of intersection polygon
  * \param [in,out] numPolyVert number of vertices in intersection polygon
  *
- * \return 0 if no error, >0 a face geom error
+ * \return 0 if no exception, >0 a face geom exception
  *
  * \pre length(xA), length(yA) >= numVertexA
  * \pre length(xB), length(yB) >= numVertexB
@@ -443,9 +443,9 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
  * of points for the intersection polygon
  *
  */
-FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB,
-                                           const RealT* yB, int numVertexB, RealT posTol, RealT lenTol, RealT* polyX,
-                                           RealT* polyY, int* numPolyVert );
+FaceGeomException Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB,
+                                               const RealT* yB, int numVertexB, RealT posTol, RealT lenTol, RealT* polyX,
+                                               RealT* polyY, int* numPolyVert );
 
 #endif
 
@@ -463,11 +463,13 @@ FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int
  * \param [in,out] overlapY pointer to y coordinates of overlapping segment
  * \param [in,out] area overlap area/length
  *
+ * \return 0 if no exception, >0 if a geom exception
+ *
  * \pre project each edge to a common 2D plane
  */
-TRIBOL_HOST_DEVICE FaceGeomError CheckSegOverlap( const RealT* const pX1, const RealT* const pY1,
-                                                  const RealT* const pX2, const RealT* const pY2, const int nV1,
-                                                  const int nV2, RealT* overlapX, RealT* overlapY, RealT& area );
+TRIBOL_HOST_DEVICE FaceGeomException CheckSegOverlap( const RealT* const pX1, const RealT* const pY1,
+                                                      const RealT* const pX2, const RealT* const pY2, const int nV1,
+                                                      const int nV2, RealT* overlapX, RealT* overlapY, RealT& area );
 
 /*!
  *
@@ -608,7 +610,7 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
  * \param [in,out] newIDs array of vertex IDs in new polygon that correspond to input vertices
  * \param [in,out] numNewPoints number of new points
  *
- * \return 0 if no error, >0 a face geom error
+ * \return 0 if no exception, >0 a face geom exception
  *
  * \pre length(x), length(y) >= numPoints
  *
@@ -620,8 +622,8 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
  *  xnew and ynew values are set to x and y, respectively, and numNewPoints
  *  equals numPoints.
  */
-TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, int numPoints, RealT tol, RealT* xnew,
-                                                RealT* ynew, int* newIDs, int& numNewPoints );
+TRIBOL_HOST_DEVICE FaceGeomException CheckPolySegs( const RealT* x, const RealT* y, int numPoints, RealT tol, RealT* xnew,
+                                                    RealT* ynew, int* newIDs, int& numNewPoints );
 
 /*!
  *

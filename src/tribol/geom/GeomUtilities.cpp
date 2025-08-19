@@ -624,11 +624,11 @@ void PolyCentroid( const RealT* const x, const RealT* const y, const int numVert
 }  // end PolyCentroid()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const RealT* yA, int numVertexA,
-                                                        const RealT* xB, const RealT* yB, int numVertexB, RealT posTol,
-                                                        RealT lenTol, RealT* polyX, RealT* polyY, int& numPolyVert,
-                                                        RealT& area, bool orientCheck, OverlapVertexType* vertType,
-                                                        int* edgeA, int* edgeB )
+TRIBOL_HOST_DEVICE FaceGeomException Intersection2DPolygon( const RealT* xA, const RealT* yA, int numVertexA,
+                                                            const RealT* xB, const RealT* yB, int numVertexB, RealT posTol,
+                                                            RealT lenTol, RealT* polyX, RealT* polyY, int& numPolyVert,
+                                                            RealT& area, bool orientCheck, OverlapVertexType* vertType,
+                                                            int* edgeA, int* edgeB )
 {
   // for tribol, if you have called this routine it is because a positive area of
   // overlap between two polygons (faces) exists. This routine does not perform a
@@ -716,7 +716,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       }
     }
     area = Area2DPolygon( polyX, polyY, numVertexA );
-    return NO_FACE_GEOM_ERROR;
+    return NO_FACE_GEOM_EXCEPTION;
   }
 
   // check B in A
@@ -747,7 +747,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       }
     }
     area = Area2DPolygon( polyX, polyY, numVertexB );
-    return NO_FACE_GEOM_ERROR;
+    return NO_FACE_GEOM_EXCEPTION;
   }
 
   // check for coincident interior vertices. That is, a vertex on A interior to
@@ -948,7 +948,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     // > 3 vertices
     int numFinalVert = 0;
 
-    FaceGeomError segErr =
+    FaceGeomException segErr =
         CheckPolySegs( polyXTemp, polyYTemp, numPolyVert, lenTol, polyX, polyY, vertIdx, numFinalVert );
     for ( int i = 0; i < numFinalVert; ++i ) {
       if ( vertType ) {
@@ -984,16 +984,16 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   // compute the area of the polygon
   area = Area2DPolygon( polyX, polyY, numPolyVert );
 
-  return NO_FACE_GEOM_ERROR;
+  return NO_FACE_GEOM_EXCEPTION;
 
 }  // end Intersection2DPolygon()
 
 //------------------------------------------------------------------------------
 #ifdef TRIBOL_USE_ENZYME
 
-FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB,
-                                           const RealT* yB, int numVertexB, RealT posTol, RealT lenTol, RealT* polyX,
-                                           RealT* polyY, int* numPolyVert )
+FaceGeomException Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB,
+                                               const RealT* yB, int numVertexB, RealT posTol, RealT lenTol, RealT* polyX,
+                                               RealT* polyY, int* numPolyVert )
 {
   double area = 0.0;
   constexpr bool orientCheck = true;
@@ -1004,9 +1004,9 @@ FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int
 #endif
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomError CheckSegOverlap( const RealT* const pX1, const RealT* const pY1,
-                                                  const RealT* const pX2, const RealT* const pY2, const int nV1,
-                                                  const int nV2, RealT* overlapX, RealT* overlapY, RealT& area )
+TRIBOL_HOST_DEVICE FaceGeomException CheckSegOverlap( const RealT* const pX1, const RealT* const pY1,
+                                                      const RealT* const pX2, const RealT* const pY2, const int nV1,
+                                                      const int nV2, RealT* overlapX, RealT* overlapY, RealT& area )
 {
   // TODO: Re-write in a way where the assert isn't needed
 #ifdef TRIBOL_USE_CUDA
@@ -1076,7 +1076,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckSegOverlap( const RealT* const pX1, const 
     overlapX[1] = pX2[1];
     overlapY[1] = pY2[1];
 
-    return NO_FACE_GEOM_ERROR;
+    return NO_FACE_GEOM_EXCEPTION;
   }
 
   //
@@ -1121,7 +1121,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckSegOverlap( const RealT* const pX1, const 
     overlapX[1] = pX1[1];
     overlapY[1] = pY1[1];
 
-    return NO_FACE_GEOM_ERROR;
+    return NO_FACE_GEOM_EXCEPTION;
   }
 
   // if inter1 == 0 and inter2 == 0 then there is no overlap
@@ -1156,7 +1156,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckSegOverlap( const RealT* const pX1, const 
   // compute the length of the overlapping segment
   area = magnitude( vecX, vecY );
 
-  return NO_FACE_GEOM_ERROR;
+  return NO_FACE_GEOM_EXCEPTION;
 
 }  // end CommonPlanePair::checkSegOverlap()
 
@@ -1477,8 +1477,8 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
 }  // end SegmentIntersection2D()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, int numPoints, RealT tol, RealT* xnew,
-                                                RealT* ynew, int* newIDs, int& numNewPoints )
+TRIBOL_HOST_DEVICE FaceGeomException CheckPolySegs( const RealT* x, const RealT* y, int numPoints, RealT tol, RealT* xnew,
+                                                    RealT* ynew, int* newIDs, int& numNewPoints )
 {
   constexpr int max_nodes_per_overlap = 5 * 2;  // max five interpen vertices in a single cut face
   int local_newIDs[max_nodes_per_overlap];
@@ -1520,7 +1520,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, 
   // to memory allocation
   if ( numNewPoints < 3 ) {
     // return and degenerated polygon will be skipped over.
-    return NO_FACE_GEOM_ERROR;
+    return NO_FACE_GEOM_EXCEPTION;
   }
 
   // set the coordinates in xnew and ynew
@@ -1540,7 +1540,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, 
     }
   }
 
-  return NO_FACE_GEOM_ERROR;
+  return NO_FACE_GEOM_EXCEPTION;
 
 }  // end CheckPolySegs()
 
