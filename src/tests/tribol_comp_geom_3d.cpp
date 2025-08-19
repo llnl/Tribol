@@ -1992,6 +1992,62 @@ TEST_F( CompGeomTest, project_point_to_plane )
 
 }
 
+TEST_F( CompGeomTest, point_in_face_1 )
+{
+  constexpr int numOverlapVerts = 5;
+  RealT x[numOverlapVerts];
+  RealT y[numOverlapVerts];
+  RealT xp, yp;
+
+  x[0] = 0.;
+  x[1] = 1.;
+  x[2] = 1.;
+  x[3] = 1.;
+  x[4] = 0.;
+
+  y[0] = 0.;
+  y[1] = 0.;
+  y[2] = 0.25;
+  y[3] = 0.75;
+  y[4] = 0.75;
+
+  RealT xc = 0.;
+  RealT yc = 0.;
+  RealT zc = 0.;
+  tribol::VertexAvgCentroid( x, y, nullptr, numOverlapVerts, xc, yc, zc );
+
+  // point at the first vertex exactly
+  xp = 0.;
+  yp = 0.;
+  EXPECT_EQ( tribol::Point2DInFace( xp, yp, x, y, xc, yc, numOverlapVerts ), true );
+
+  // point at another vertex exactly
+  xp = 1.0;
+  yp = 0.25;
+  EXPECT_EQ( tribol::Point2DInFace( xp, yp, x, y, xc, yc, numOverlapVerts ), true );
+
+  // x-coord just barely off the face
+  xp = 1.0000001;
+  yp = 0.5;
+  EXPECT_EQ( tribol::Point2DInFace( xp, yp, x, y, xc, yc, numOverlapVerts ), false );
+
+  // x-coord just barely inside the face
+  xp = 0.9999999;
+  yp = 0.5;
+  EXPECT_EQ( tribol::Point2DInFace( xp, yp, x, y, xc, yc, numOverlapVerts ), true );
+
+  // x and y-coords just barely inside the face
+  xp = 0.999999999999;
+  yp = 0.749999999999;
+  EXPECT_EQ( tribol::Point2DInFace( xp, yp, x, y, xc, yc, numOverlapVerts ), true );
+
+  // x and y-coords just barely outside the face; NOTE: past 12 digits will typically result
+  // in the point being picked up as in the face.
+  xp = 1.000000000001;
+  yp = 0.750000000001;
+  EXPECT_EQ( tribol::Point2DInFace( xp, yp, x, y, xc, yc, numOverlapVerts ), false );
+}
+
 int main( int argc, char* argv[] )
 {
   int result = 0;
