@@ -791,9 +791,15 @@ TRIBOL_HOST_DEVICE void Points3DTo2D( const RealT* const x, const RealT* const y
  * \param [in] y to y-component coordinates of the edge's two vertices
  * \param [in] xp x-coordinate of the point in question
  * \param [in] yp y-coordinate of the point in question
+ * \param [in] fuzz_factor percent of edge length to include in query
+ *
+ * \return true if the point lies inside the edge (or coincident with edge vertices).
+ *
+ * \note the fuzz_factor is 0.0 by default, which will not include vertices that lie just outside the edge up to
+ *       some fuzz. If a user wants a proximity query, they can increase the fuzz factor.
  *
  */
-TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp );
+TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp, RealT fuzz_factor = 0.0 );
 
 /*!
  * \brief Check whether two polygons (faces) have a positive area of overlap

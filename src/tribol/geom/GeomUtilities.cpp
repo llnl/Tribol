@@ -1942,7 +1942,7 @@ TRIBOL_HOST_DEVICE void Points3DTo2D( const RealT* const x, const RealT* const y
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp )
+TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp, RealT fuzz_factor )
 {
   RealT xmax, xmin, ymax, ymin;
   if ( x[0] > x[1] ) {
@@ -1963,7 +1963,7 @@ TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const 
 
   // add fuzz to catch nearly coincident vertices
   RealT l = magnitude( x[1] - x[0], y[1] - y[0] );  // edge length
-  RealT fuzz = 0.01 * l;                            // add 1% fuzz
+  RealT fuzz = fuzz_factor * l;
 
   if ( xp <= ( xmax + fuzz ) && xp >= ( xmin - fuzz ) && yp <= ( ymax + fuzz ) && yp >= ( ymin - fuzz ) ) {
     return true;
