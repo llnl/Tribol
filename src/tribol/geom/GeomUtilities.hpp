@@ -795,6 +795,8 @@ TRIBOL_HOST_DEVICE void Points3DTo2D( const RealT* const x, const RealT* const y
  *
  * \return true if the point lies inside the edge (or coincident with edge vertices).
  *
+ * \pre (xp,yp) to be coliniear with edge defined by (x,y)
+ *
  * \note the fuzz_factor is 0.0 by default, which will not include vertices that lie just outside the edge up to
  *       some fuzz. If a user wants a proximity query, they can increase the fuzz factor.
  *

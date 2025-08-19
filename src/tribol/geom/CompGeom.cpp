@@ -1005,14 +1005,11 @@ TRIBOL_HOST_DEVICE void CommonPlanePair::centroidGap( const MeshData::Viewer& m1
 
   // fine line-plane intersection with average face planes, which is consistent with using the prime coords
   // for each face
-  bool intersect1 = LinePlaneIntersection( xA, yA, zA, xB, yB, zB, cx1[0], cx1[1], cx1z, fn1[0], fn1[1], fn1z, xc1, yc1,
-                                           zc1, inPlane );
+  LinePlaneIntersection( xA, yA, zA, xB, yB, zB, cx1[0], cx1[1], cx1z, fn1[0], fn1[1], fn1z, xc1, yc1,
+                         zc1, inPlane );
 
-  bool intersect2 = LinePlaneIntersection( xA, yA, zA, xB, yB, zB, cx2[0], cx2[1], cx2z, fn2[0], fn2[1], fn2z, xc2, yc2,
-                                           zc2, inPlane );
-
-  TRIBOL_UNUSED_VAR( intersect1 );  // We don't currently use these bool variabeles
-  TRIBOL_UNUSED_VAR( intersect2 );  // but the above function calls modify some parameters
+  LinePlaneIntersection( xA, yA, zA, xB, yB, zB, cx2[0], cx2[1], cx2z, fn2[0], fn2[1], fn2z, xc2, yc2,
+                         zc2, inPlane );
 
   // compute normal gap magnitude (x1 - x2 for positive gap in separation
   // and negative gap in penetration)

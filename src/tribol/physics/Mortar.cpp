@@ -633,9 +633,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
   int size1 = mesh1.numberOfNodesPerElement();
   int size2 = mesh2.numberOfNodesPerElement();
 
-  // for ( auto& plane : planes_view ) {
-  for ( int idx = 0; idx < num_active_pairs; ++idx ) {
-    auto& plane = cg_view.getMortarPlane( idx );
+  for ( auto& plane : cg_view.getMortarPlanes() ) {
     int elem1 = plane.getCpElementId2();  // switched from tribol convention
     // NOTE: mfem::DenseMatrix data is stored by nodes instead of by vdim
     RealT x1[12];
