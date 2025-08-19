@@ -3,7 +3,6 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include <mfem/mesh/element.hpp>
 #include <set>
 
 #include <gtest/gtest.h>
