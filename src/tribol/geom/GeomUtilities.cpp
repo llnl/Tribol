@@ -2003,10 +2003,10 @@ TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_n
 }  // end CheckPolyOverlap()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE bool IsOverlapping( const RealT* const x1, const RealT* const y1, const RealT* const z1,
-                                       const RealT* const x2, const RealT* const y2, const RealT* const z2,
-                                       const RealT* const n, const RealT* const c,
-                                       const int numNodesFace1, const int numNodesFace2, const int dim )
+TRIBOL_HOST_DEVICE bool IsOverlappingOnPlane( const RealT* const x1, const RealT* const y1, const RealT* const z1,
+                                              const RealT* const x2, const RealT* const y2, const RealT* const z2,
+                                              const RealT* const n, const RealT* const c,
+                                              const int numNodesFace1, const int numNodesFace2, const int dim )
 {
   constexpr int max_nodes_per_face = 4;
 
