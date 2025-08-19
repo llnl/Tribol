@@ -18,12 +18,12 @@ namespace tribol {
  * \param [in] nx x-component of plane normal
  * \param [in] ny y-component of plane normal
  * \param [in] nz z-component of plane normal
- * \param [in,out] e1x x-component of first basis vector
- * \param [in,out] e1y y-component of first basis vector
- * \param [in,out] e1z z-component of first basis vector
- * \param [in,out] e2x x-component of second basis vector
- * \param [in,out] e2y y-component of second basis vector
- * \param [in,out] e2z z-component of second basis vector
+ * \param [out] e1x x-component of first basis vector
+ * \param [out] e1y y-component of first basis vector
+ * \param [out] e1z z-component of first basis vector
+ * \param [out] e2x x-component of second basis vector
+ * \param [out] e2y y-component of second basis vector
+ * \param [out] e2z z-component of second basis vector
  *
  */
 TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT nx, RealT ny, RealT nz, RealT& e1x, RealT& e1y, RealT& e1z,
@@ -42,9 +42,9 @@ TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT nx, RealT ny, RealT nz, RealT& 
  * \param [in] cX x coordinate of reference point on the plane
  * \param [in] cY y coordinate of reference point on the plane
  * \param [in] cZ z coordinate of reference point on the plane
- * \param [in,out] pX array of x coordinates of projected nodes
- * \param [in,out] pY array of y coordinates of projected nodes
- * \param [in,out] pZ array of z coordinates of projected nodes
+ * \param [out] pX array of x coordinates of projected nodes
+ * \param [out] pY array of y coordinates of projected nodes
+ * \param [out] pZ array of z coordinates of projected nodes
  *
  * \pre length(pX), length(pY), length(pZ) >= number of nodes on face
  */
@@ -62,8 +62,8 @@ TRIBOL_HOST_DEVICE void ProjectFaceNodesToPlane( const MeshData::Viewer& mesh, i
  * \param [in] nrmlY y-component of the contact segment normal
  * \param [in] cX x-coordinate of a point on the contact segment
  * \param [in] cY y-coordinate of a point on the contact segment
- * \param [in,out] pX pointer to array of projected nodal x-coordinates
- * \param [in,out] pY pointer to array of projected nodal y-coordinates
+ * \param [out] pX pointer to array of projected nodal x-coordinates
+ * \param [out] pY pointer to array of projected nodal y-coordinates
  *
  */
 TRIBOL_HOST_DEVICE void ProjectEdgeNodesToSegment( const MeshData::Viewer& mesh, int edgeId, RealT nrmlX, RealT nrmlY,
@@ -86,9 +86,9 @@ TRIBOL_HOST_DEVICE void ProjectEdgeNodesToSegment( const MeshData::Viewer& mesh,
  * \param [in] oy y coordinate of reference point on plane
  * \param [in] oz z coordinate of reference point on plane
  *
- * \param [in,out] px x coordinate of projected point
- * \param [in,out] py y coordinate of projected point
- * \param [in,out] pz z coordinate of projected point
+ * \param [out] px x coordinate of projected point
+ * \param [out] py y coordinate of projected point
+ * \param [out] pz z coordinate of projected point
  *
  */
 TRIBOL_HOST_DEVICE void ProjectPointToPlane( const RealT x, const RealT y, const RealT z, const RealT nx,
@@ -112,9 +112,9 @@ TRIBOL_HOST_DEVICE void ProjectPointToPlane( const RealT x, const RealT y, const
  * \param [in] oy y coordinate of reference point on plane
  * \param [in] oz z coordinate of reference point on plane
  *
- * \param [in,out] px x coordinates of projected point
- * \param [in,out] py y coordinates of projected point
- * \param [in,out] pz z coordinates of projected point
+ * \param [out] px x coordinates of projected point
+ * \param [out] py y coordinates of projected point
+ * \param [out] pz z coordinates of projected point
  *
  * \param [in] num_points number of points to be projected
  *
@@ -135,8 +135,8 @@ TRIBOL_HOST_DEVICE void ProjectPointsToPlane( const RealT* x, const RealT* y, co
  * \param [in] x0 Origin point on plane, length = 3, [x0, y0, z0]
  * \param [in] e1 First basis vector of the plane, length = 3, [e1x, e1y, e1z]
  * \param [in] e2 Second basis vector of the plane, length = 3, [e2x, e2y, e2z]
- * \param [in,out] xp array of x coordinates of projected points, length = num_coords, [xp0, ..., xpn]
- * \param [in,out] yp array of y coordinates of projected points, length = num_coords, [yp0, ..., ypn]
+ * \param [out] xp array of x coordinates of projected points, length = num_coords, [xp0, ..., xpn]
+ * \param [out] yp array of y coordinates of projected points, length = num_coords, [yp0, ..., ypn]
  * \param [in] num_coords number of coordinates to be projected
  *
  */
@@ -171,14 +171,14 @@ void Coords2DToPlane( const RealT* xp, const RealT* yp, const RealT* x0, const R
  * \param [in] ox x coordinate of reference point on segment
  * \param [in] oy y coordinate of reference point on segment
  *
- * \param [in,out] px x coordinate of projected point
- * \param [in,out] py y coordinate of projected point
+ * \param [out] px x coordinate of projected point
+ * \param [out] py y coordinate of projected point
  *
  */
 TRIBOL_HOST_DEVICE void ProjectPointToSegment( const RealT x, const RealT y, const RealT nx, const RealT ny,
                                                const RealT ox, const RealT oy, RealT& px, RealT& py );
 
-/*!
+/*
  *
  * \brief Method to find the intersection area between two polygons and
  *  the local y-coordinate of the centroid
@@ -190,8 +190,8 @@ TRIBOL_HOST_DEVICE void ProjectPointToSegment( const RealT x, const RealT y, con
  * \param [in] xb array of local x coordintes of polygon b
  * \param [in] yb array of local y coordinates of polygon b
  * \param [in] isym 0 for planar symmetry, 1 for axial symmetry
- * \param [in,out] area intersection polygon's area
- * \param [in,out] ycent local y centroid coordinate
+ * \param [out] area intersection polygon's area
+ * \param [out] ycent local y centroid coordinate
  * \pre length(xa), length(ya) >= namax
  * \pre length(xb), length(yb) >= nbmax
  *
@@ -219,9 +219,9 @@ TRIBOL_HOST_DEVICE void PolyInterYCentroid( const int namax, const RealT* const 
  * \param [in] cX global x coordinate of local basis shift
  * \param [in] cY global y coordinate of local basis shift
  * \param [in] cZ global z coordinate of local basis shift
- * \param [in,out] xg global x coordinate
- * \param [in,out] yg global y coordinate
- * \param [in,out] zg global z coordinate
+ * \param [out] xg global x coordinate
+ * \param [out] yg global y coordinate
+ * \param [out] zg global z coordinate
  *
  * \note this is used to convert a point on a plane in a local
  *  2D coordinate basis to a point in the 3D global coordinate system
@@ -248,8 +248,8 @@ TRIBOL_HOST_DEVICE void Local2DToGlobalCoords( RealT xloc, RealT yloc, RealT e1X
  * \param [in] cX global x coordinate of local basis shift
  * \param [in] cY global y coordinate of local basis shift
  * \param [in] cZ global z coordinate of local basis shift
- * \param [in,out] pLX array of local x coordinates of input points
- * \param [in,out] pLY array of local y coordinates of input points
+ * \param [out] pLX array of local x coordinates of input points
+ * \param [out] pLY array of local y coordinates of input points
  *
  * \pre length(pX) >= size
  * \pre length(pY) >= size
@@ -282,8 +282,8 @@ TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( const RealT* const pX, const Real
  * \param [in] cX global x coordinate of local basis shift
  * \param [in] cY global y coordinate of local basis shift
  * \param [in] cZ global z coordinate of local basis shift
- * \param [in,out] pLX local x coordinate of input point
- * \param [in,out] pLY local y coordinate of input point
+ * \param [out] pLX local x coordinate of input point
+ * \param [out] pLY local y coordinate of input point
  *
  * \note this assumes that the point lies in the plane defined by the
  *  2D local basis vectors.
@@ -299,9 +299,9 @@ TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( RealT pX, RealT pY, RealT pZ, Rea
  * \param [in] y array of y coordinates for point set
  * \param [in] z array of z coordinates for point set
  * \param [in] numVert number of points in point set
- * \param [in,out] cX x coordinate of vertex averaged centroid
- * \param [in,out] cY y coordinate of vertex averaged centroid
- * \param [in,out] cZ z coordinate of vertex averaged centroid
+ * \param [out] cX x coordinate of vertex averaged centroid
+ * \param [out] cY y coordinate of vertex averaged centroid
+ * \param [out] cZ z coordinate of vertex averaged centroid
  *
  * \return true if calculation successful, false if an error occurred
  *
@@ -320,9 +320,9 @@ TRIBOL_HOST_DEVICE bool VertexAvgCentroid( const RealT* const x, const RealT* co
  * \param [in] x array of stacked coordinates for point set
  * \param [in] dim 2D or 3D coordinate dimension
  * \param [in] numVert number of points in point set
- * \param [in,out] cX x coordinate of vertex averaged centroid
- * \param [in,out] cY y coordinate of vertex averaged centroid
- * \param [in,out] cZ z coordinate of vertex averaged centroid
+ * \param [out] cX x coordinate of vertex averaged centroid
+ * \param [out] cY y coordinate of vertex averaged centroid
+ * \param [out] cZ z coordinate of vertex averaged centroid
  *
  * \return true if calculation successful, false if an error occurred
  *
@@ -339,9 +339,9 @@ TRIBOL_HOST_DEVICE bool VertexAvgCentroid( const RealT* const x, const int dim, 
  * \param [in] x array of stacked coordinates for point set
  * \param [in] dim 2D or 3D coordinate dimension
  * \param [in] numVert number of points in point set
- * \param [in,out] cX x coordinate of vertex averaged centroid
- * \param [in,out] cY y coordinate of vertex averaged centroid
- * \param [in,out] cZ z coordinate of vertex averaged centroid
+ * \param [out] cX x coordinate of vertex averaged centroid
+ * \param [out] cY y coordinate of vertex averaged centroid
+ * \param [out] cZ z coordinate of vertex averaged centroid
  *
  * \return true if calculation successful, false if an error occurred
  *
@@ -358,8 +358,8 @@ TRIBOL_HOST_DEVICE bool PolyAreaCentroid( const RealT* const x, const int dim, c
  * \param [in] x array of x-coordinates for point set
  * \param [in] y array of y-coordinates for point set
  * \param [in] numVert number of points in point set
- * \param [in,out] cX x coordinate of vertex averaged centroid
- * \param [in,out] cY y coordinate of vertex averaged centroid
+ * \param [out] cX x coordinate of vertex averaged centroid
+ * \param [out] cY y coordinate of vertex averaged centroid
  *
  * \pre length(x) >= numVert
  *
@@ -388,16 +388,16 @@ enum class OverlapVertexType
  * \param [in] numVertexB number of vertices in polygon B
  * \param [in] posTol position tolerance to collapse segment-segment intersection points
  * \param [in] lenTol length tolerance to collapse short intersection edges
- * \param [in,out] polyX array of x coordinates of intersection polygon
- * \param [in,out] polyY array of y coordinates of intersection polygon
- * \param [in,out] numPolyVert number of vertices in intersection polygon
- * \param [in,out] area intersection polygon area
+ * \param [out] polyX array of x coordinates of intersection polygon
+ * \param [out] polyY array of y coordinates of intersection polygon
+ * \param [out] numPolyVert number of vertices in intersection polygon
+ * \param [out] area intersection polygon area
  * \param [in] orientCheck checks if vertices of each polygon are oriented correctly
- * \param [in,out] vertType classification of each vertex in the intersection polygon. optional. use nullptr if not
+ * \param [out] vertType classification of each vertex in the intersection polygon. optional. use nullptr if not
  * needed.
- * \param [in,out] edgeA associated vertex or edge on polygon A for each vertex in the intersection polygon.
+ * \param [out] edgeA associated vertex or edge on polygon A for each vertex in the intersection polygon.
  * optional. use nullptr if not needed.
- * \param [in,out] edgeB associated vertex or edge on polygon B for each vertex in the intersection polygon.
+ * \param [out] edgeB associated vertex or edge on polygon B for each vertex in the intersection polygon.
  * optional. use nullptr if not needed.
  *
  * \return 0 if no exception, >0 a face geom exception
@@ -430,9 +430,9 @@ TRIBOL_HOST_DEVICE FaceGeomException Intersection2DPolygon( const RealT* xA, con
  * \param [in] numVertexB number of vertices in polygon B
  * \param [in] posTol position tolerance to collapse segment-segment intersection points
  * \param [in] lenTol length tolerance to collapse short intersection edges
- * \param [in,out] polyX array of x coordinates of intersection polygon
- * \param [in,out] polyY array of y coordinates of intersection polygon
- * \param [in,out] numPolyVert number of vertices in intersection polygon
+ * \param [out] polyX array of x coordinates of intersection polygon
+ * \param [out] polyY array of y coordinates of intersection polygon
+ * \param [out] numPolyVert number of vertices in intersection polygon
  *
  * \return 0 if no exception, >0 a face geom exception
  *
@@ -459,9 +459,9 @@ FaceGeomException Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA,
  * \param [in] pY2 y-coordinates of edge 2 as projected onto a common plane
  * \param [in] nV1 number of vertices on edge 1
  * \param [in] nV2 number of vertices on edge 2
- * \param [in,out] overlapX pointer to x coordinates of overlapping segment
- * \param [in,out] overlapY pointer to y coordinates of overlapping segment
- * \param [in,out] area overlap area/length
+ * \param [out] overlapX pointer to x coordinates of overlapping segment
+ * \param [out] overlapY pointer to y coordinates of overlapping segment
+ * \param [out] area overlap area/length
  *
  * \return 0 if no exception, >0 if a geom exception
  *
@@ -572,9 +572,9 @@ TRIBOL_HOST_DEVICE RealT Area3DTri( const RealT* const x, const RealT* const y, 
  * \param [in] yB2 local y coordinate of second vertex (B) of segment 2
  * \param [in] interior array where each element is set to true if the associated
  *             vertex is interior to the polygon to which the other segment belongs
- * \param [in,out] x local coordinate of the intersection point
- * \param [in,out] y local coordinate of the intersection point
- * \param [in,out] duplicate true if intersection point is computed as duplicate polygon
+ * \param [out] x local coordinate of the intersection point
+ * \param [out] y local coordinate of the intersection point
+ * \param [out] duplicate true if intersection point is computed as duplicate polygon
  *                 intersection point
  * \param [in] tol length tolerance for collapsing intersection points to interior points
  *
@@ -605,10 +605,10 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
  * \param [in] y array of local y coordinates of polygon vertices
  * \param [in] numPoints number of polygon vertices
  * \param [in] tol edge segment tolerance
- * \param [in,out] xnew array of new x coordinates
- * \param [in,out] ynew array of new y coordinates
- * \param [in,out] newIDs array of vertex IDs in new polygon that correspond to input vertices
- * \param [in,out] numNewPoints number of new points
+ * \param [out] xnew array of new x coordinates
+ * \param [out] ynew array of new y coordinates
+ * \param [out] newIDs array of vertex IDs in new polygon that correspond to input vertices
+ * \param [out] numNewPoints number of new points
  *
  * \return 0 if no exception, >0 a face geom exception
  *
@@ -691,10 +691,10 @@ TRIBOL_HOST_DEVICE void PolyReorderWithNormal( RealT* const x, RealT* const y, R
  * \param[in] nX x-component of plane's unit normal
  * \param[in] nY y-component of plane's unit normal
  * \param[in] nZ z-component of plane's unit normal
- * \param[in,out] x x-coordinate of intersection point
- * \param[in,out] y y-coordinate of intersection point
- * \param[in,out] z z-coordinate of intersection point
- * \param[in,out] inPlane true if segment lies in the plane
+ * \param[out] x x-coordinate of intersection point
+ * \param[out] y y-coordinate of intersection point
+ * \param[out] z z-coordinate of intersection point
+ * \param[out] inPlane true if segment lies in the plane
  *
  */
 TRIBOL_HOST_DEVICE bool LinePlaneIntersection( const RealT xA, const RealT yA, const RealT zA, const RealT xB,
@@ -718,9 +718,9 @@ TRIBOL_HOST_DEVICE bool LinePlaneIntersection( const RealT xA, const RealT yA, c
  * \param[in] nX2 x-component of plane 2's unit normal
  * \param[in] nY2 y-component of plane 2's unit normal
  * \param[in] nZ2 z-component of plane 2's unit normal
- * \param[in,out] x x-component of point on intersection line
- * \param[in,out] y y-component of point on intersection line
- * \param[in,out] z z-component of point on intersection line
+ * \param[out] x x-component of point on intersection line
+ * \param[out] y y-component of point on intersection line
+ * \param[out] z z-component of point on intersection line
  *
  * \note the line segment is described by the output point (x,y,z), which
  * locates the segment vector, which is n1 x n2, where n1 is the
@@ -746,8 +746,8 @@ bool PlanePlaneIntersection( const RealT x1, const RealT y1, const RealT z1, con
  *
  * \param [in] x x-component coordinates
  * \param [in] y y-component coordinates
- * \param [in,out] xTemp reordered x-component coordinates
- * \param [in,out] yTemp reordered y-component coordinates
+ * \param [out] xTemp reordered x-component coordinates
+ * \param [out] yTemp reordered y-component coordinates
  * \param [in] numVert number of vertices
  *
  * \pre this routine assumes that the original coordinates are in clockwise ordering
@@ -769,8 +769,8 @@ void Vertex2DOrderToCCW( const RealT* const x, const RealT* const y, RealT* xTem
  * \param [in] cy y-component of plane centroid
  * \param [in] cz z-component of plane centroid
  * \param [in] num_verts number of vertices in polygon
- * \param [in,out] x_loc pointer to local x-coordinates
- * \param [in,out] y_loc pointer to local y-coordinates
+ * \param [out] x_loc pointer to local x-coordinates
+ * \param [out] y_loc pointer to local y-coordinates
  *
  * \pre x_loc and y_loc point to pre-allocated memory of length num_verts
  *
@@ -813,7 +813,7 @@ TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const 
  * \param [in] projLocY1 2D y-coordinates of projected element 1 vertices
  * \param [in] projLocX2 2D x-coordinates of projected element 2 vertices
  * \param [in] projLocY2 2D y-coordinates of projected element 2 vertices
- * \param [in,out] area area of overlap
+ * \param [out] area area of overlap
  * \param [in] isym 0 for planar symmetry, 1 for axial symmetry
  */
 TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_nodes_2, RealT* projLocX1,
