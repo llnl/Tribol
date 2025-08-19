@@ -174,16 +174,17 @@ TRIBOL_HOST_DEVICE void PolyInterYCentroid( const int namax, const RealT* const 
   RealT vol;
 
   // calculate origin shift to avoid roundoff errors
-  RealT xorg = FLT_MAX;
-  RealT yorg = FLT_MAX;
-  RealT xa_min = FLT_MAX;
-  RealT xa_max = -FLT_MAX;
-  RealT ya_min = FLT_MAX;
-  RealT ya_max = -FLT_MAX;
-  RealT xb_min = FLT_MAX;
-  RealT xb_max = -FLT_MAX;
-  RealT yb_min = FLT_MAX;
-  RealT yb_max = -FLT_MAX;
+  RealT real_max = std::numeric_limits<RealT>::max();
+  RealT xorg   = real_max;
+  RealT yorg   = real_max;
+  RealT xa_min = real_max;
+  RealT xa_max = -real_max;
+  RealT ya_min = real_max;
+  RealT ya_max = -real_max;
+  RealT xb_min = real_max;
+  RealT xb_max = -real_max;
+  RealT yb_min = real_max;
+  RealT yb_max = -real_max;
 
   RealT qy = 0.0;
 
