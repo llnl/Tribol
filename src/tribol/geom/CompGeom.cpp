@@ -1607,15 +1607,6 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap2D( const Me
   RealT x1_to_project[max_dim], y1_to_project[max_dim];
   RealT x2_to_project[max_dim], y2_to_project[max_dim];
 
-  // project unique intersection point to the contact plane.
-  // The contact plane should have been properly located prior
-  // to this subroutine, in which case the intersection point lies
-  // on the contact plane (segment). We can still do this projection
-  // to be safe and the routine will handle a point that is already
-  // on the plane
-  // RealT xInterProj, yInterProj;
-  // ProjectPointToSegment( xInter, yInter, m_nX, m_nY, m_cX, m_cY, xInterProj, yInterProj );
-
   if ( !m_fullOverlap ) {
     // now isolate which vertex on edge 1 and which vertex on edge 2 lie
     // on the "wrong" side of the contact plane.
