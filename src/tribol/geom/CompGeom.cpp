@@ -1040,8 +1040,8 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
 {
   // outer loop over faces, inner loop over nodes/segments and determine
   // how many 1) line-plane intersections there are (there should at most be
-  // two for interesection polygons or zero for fully separated or fully
-  // interpenetrated faces) and then 2) number of nodes one the current face
+  // two for intersection polygons or zero for fully separated or fully
+  // interpenetrated faces) and then 2) number of nodes on the current face
   // that cross the plane defined by the other face.
 
   // arrays to hold the maximum line-plane intersections for both faces.

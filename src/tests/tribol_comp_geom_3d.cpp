@@ -2048,6 +2048,77 @@ TEST_F( CompGeomTest, point_in_face_1 )
   EXPECT_EQ( tribol::Point2DInFace( xp, yp, x, y, xc, yc, numOverlapVerts ), false );
 }
 
+TEST_F( CompGeomTest, line_plane_intersection_1 )
+{
+  // this tests edge cases where a line has a vertex that lies just outside, just on, and then
+  // just through the plane
+  RealT interx, intery, interz;
+  bool in_plane = false;
+  
+  // define a plane with normal in the z-direction
+  RealT nx = 0.;
+  RealT ny = 0.;
+  RealT nz = 1.;
+
+  // define plane reference point as origin
+  RealT cx = 0.;
+  RealT cy = 0.;
+  RealT cz = 0.;
+
+  RealT xa, ya, za;
+  RealT xb, yb, zb;
+
+  // line passes through plane
+  xa = 0.;
+  ya = 0.;
+  za = -1;
+  xb = 0.;
+  yb = 0.;
+  zb = 1.;
+  EXPECT_EQ( tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz,
+                                            interx, intery, interz, in_plane ), true );
+
+  // second vertex is on plane 
+  xa = 0.;
+  ya = 0.;
+  za = -1;
+  xb = 0.;
+  yb = 0.;
+  zb = 0.;
+  EXPECT_EQ( tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz,
+                                            interx, intery, interz, in_plane ), true );
+
+  // first vertex is on plane 
+  xa = 0.;
+  ya = 0.;
+  za = 0.;
+  xb = 0.;
+  yb = 0.;
+  zb = 1.0;
+  EXPECT_EQ( tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz,
+                                            interx, intery, interz, in_plane ), true );
+  
+  // second vertex just barely passes through the plane
+  xa = 0.;
+  ya = 0.;
+  za = -1;
+  xb = 0.;
+  yb = 0.;
+  zb = 0.000000000001;
+  EXPECT_EQ( tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz,
+                                            interx, intery, interz, in_plane ), true );
+
+  // second vertex just barely outside of passing through plane
+  xa = 0.;
+  ya = 0.;
+  za = -1.;
+  xb = 0.;
+  yb = 0.;
+  zb = -0.000000000001;
+  EXPECT_EQ( tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz,
+                                            interx, intery, interz, in_plane ), false );
+}
+
 int main( int argc, char* argv[] )
 {
   int result = 0;
