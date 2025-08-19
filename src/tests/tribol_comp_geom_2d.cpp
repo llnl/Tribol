@@ -704,6 +704,60 @@ TEST_F( CompGeomTest, 2d_projections_2 )
   EXPECT_NEAR( cxProj2[1], cx[1], 1.e-6 );
 }
 
+TEST_F( CompGeomTest, point_in_edge_1 )
+{
+  constexpr int numVerts = 2;
+  RealT x[ numVerts ];
+  RealT y[ numVerts ];
+  RealT xp, yp;
+
+  x[0] = 0.;
+  x[1] = 1.5;
+
+  y[0] = 0.75;
+  y[1] = 0.75;
+
+  // point at one vertex
+  xp = 0.;
+  yp = 0.75;
+  EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), true );
+
+  // point at other vertex
+  xp = 1.5;
+  yp = 0.75;
+  EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), true );
+
+  // point somewhere inside but away from both edge vertices
+  xp = 0.85;
+  yp = 0.75;
+  EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), true );
+
+  // point just barely inside the first vertex
+  xp = 0.0000000001;
+  yp = 0.75;
+  EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), true );
+  
+  // point just barely inside the second
+  xp = 1.49999999999;
+  yp = 0.75;
+  EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), true );
+
+  // point just barely outside first vertex
+  xp = -0.000000000001;
+  yp = 0.75;
+  EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), false );
+
+  // point just barely outside second vertex
+  xp = 1.5000000000001;
+  yp = 0.75;
+  EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), false );
+
+  // point not even close
+  xp = 2.5; 
+  yp = 0.75;
+  EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), false );
+}
+
 int main( int argc, char* argv[] )
 {
   int result = 0;
