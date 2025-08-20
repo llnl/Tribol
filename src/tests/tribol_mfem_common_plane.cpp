@@ -217,7 +217,10 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::pair<int, tribol:
 
 TEST_P( MfemCommonPlaneTest, common_plane )
 {
-  EXPECT_LT( std::abs( max_disp_ - 0.013637427890739103 ), 2.0e-6 );
+  //EXPECT_LT( std::abs( max_disp_ - 0.013637427890739103 ), 2.0e-6 ); // keep old version
+  EXPECT_LT( std::abs( max_disp_ - 0.0136390367035 ), 2.0e-6 ); // max disp baseline updated 08/20/25 with
+                                                                // with updated shoelace algorithm for Area2DPolygon
+                                                                // and more robust interpen overlap logic handling duplicate vertices
 
   MPI_Barrier( MPI_COMM_WORLD );
 }

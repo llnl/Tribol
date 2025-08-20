@@ -1304,9 +1304,9 @@ TRIBOL_HOST_DEVICE RealT Area2DPolygon( const RealT* const x, const RealT* const
     int ia = i;
     int ib = ( i == ( numPolyVert - 1 ) ) ? 0 : ( i + 1 );
 
-    area += std::abs( 0.5 * ( x[ia] * ( y[ib] - yc ) + x[ib] * ( yc - y[ia] ) + xc * ( y[ia] - y[ib] ) ) );
+    area += x[ia] * y[ib] - y[ia] * x[ib];
   }
-  return area;
+  return std::abs(0.5*area);
 
 }  // end Area2DPolygon()
 

@@ -1140,7 +1140,7 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
 
       if ( k > 2 ) {  // at most we can have two segment-plane intersections for a single planar, convex face
 #ifdef TRIBOL_USE_HOST
-        SLIC_DEBUG( "CommonPlanePair::computeOverlap3D(): too many segment-face intersections; "
+        SLIC_ERROR( "CommonPlanePair::computeOverlap3D(): too many segment-face intersections; "
                     << "check for degenerate face " << m_pair->m_element_id1 << "on mesh " << mesh[i]->meshId()
                     << "." );
 #endif
@@ -1154,9 +1154,15 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
         bool inter = LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx[0], cx[1], cx[2], fn[0], fn[1], fn[2],
                                             xInter[2 * i + k], yInter[2 * i + k], zInter[2 * i + k], inPlane );
 
-        if ( inter ) {
-          // check to see if the line-plane intersection point lies inside the other planar face
+        for (int a = (2 * i + k); a > 2*i; --a) {
+          if ( magnitude( xInter[a] - xInter[a-1], yInter[a] - yInter[a-1], zInter[a] - zInter[a-1] ) < 1.e-10 ) {
+            inter = false; // we already have the point
+          }
+        }
 
+        if ( inter ) {
+
+          // check to see if the line-plane intersection point lies inside the other planar face
           RealT x_other_local[max_nodes_per_elem];
           RealT y_other_local[max_nodes_per_elem];
           Points3DTo2D( &x_other[0], &y_other[0], &z_other[0], fn[0], fn[1], fn[2], cx[0], cx[1], cx[2], num_nodes_other,
@@ -1176,6 +1182,7 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
           // check if local intersection point lies inside other face
           bool check = Point2DInFace( xInter_local, yInter_local, &x_other_local[0], &y_other_local[0], cx_other_local,
                                       cy_other_local, num_nodes_other );
+
           // if intersection point lies in other face then increment intersection counter
           if ( check ) {
             ++k_inside;

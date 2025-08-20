@@ -533,7 +533,7 @@ TRIBOL_HOST_DEVICE bool Point2DInTri( const RealT xp, const RealT yp, const Real
                                       const RealT* const yTri );
 
 /*!
- * \brief computes the area of a polygon
+ * \brief computes the area of a polygon using the shoelace formula (i.e. Gauss's area formula)
  *
  * \param [in] x array of local x coordinates of polygon vertices
  * \param [in] y array of local y coordinates of polygon vertices
@@ -541,7 +541,7 @@ TRIBOL_HOST_DEVICE bool Point2DInTri( const RealT xp, const RealT yp, const Real
  *
  * \return area of polygon
  *
- * \note breaks the polygon into triangles and sums the areas of the triangles
+ * \note this works for convex and non-conves, though non-self-intersecting polygons
  */
 TRIBOL_HOST_DEVICE RealT Area2DPolygon( const RealT* const x, const RealT* const y, const int numPolyVert );
 

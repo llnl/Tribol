@@ -1015,6 +1015,421 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_5 )
 
 TEST_F( CompGeomTest, common_plane_single_element_interpen_check_6 )
 {
+  // This test has a configuration where one face has "inside" intersection
+  // points with the other face exactly at two of the first face's vertices
+  // An edge on view looks like:
+  //
+  //              *
+  //            *   *
+  //          *       *
+  //        *           *
+  //    --o---------------o----
+  //        *           *
+  //          *       *
+  //            *   *
+  //              *
+  //
+  //  where the rotated face is also rotated into the page 30 degrees. The
+  //  intersection points are marked as "o".
+  //
+  constexpr int numVerts = 4;
+  constexpr int numCells = 2;
+  constexpr int lengthNodalData = numCells * numVerts;
+  RealT x[lengthNodalData];
+  RealT y[lengthNodalData];
+  RealT z[lengthNodalData];
+
+  // coordinates for face 1
+  x[0] = -1.;
+  x[1] = 1.;
+  x[2] = 1.;
+  x[3] = -1.;
+
+  y[0] = -1.;
+  y[1] = -1.;
+  y[2] = 1.;
+  y[3] = 1.;
+
+  z[0] = 0.;
+  z[1] = 0.;
+  z[2] = 0.;
+  z[3] = 0.;
+
+  // coordinates for face 2
+  RealT thirty = 30 * M_PI / 180;
+  x[4] = 0.;
+  y[4] = 0.;
+  z[4] = -0.45;
+
+  x[5] = x[4];
+  y[5] = y[4] - z[4];
+  z[5] = 0.;
+
+  x[6] = x[4];
+  y[6] = y[4];
+  z[6] = -z[4];
+
+  x[7] = x[5];
+  y[7] = y[4] + z[4];
+  z[7] = 0.;
+
+  // rotate 30 degrees about the y-axis
+  //RealT x_shift = x[4];
+  //RealT z_shift = z[4];
+  for ( int i = numVerts; i < lengthNodalData; ++i ) {
+    //x[i] = x[i] - x_shift;
+    //z[i] = z[i] - z_shift;
+    RealT x_rot = x[i] * std::cos( thirty ) + z[i] * std::sin( thirty );
+    RealT z_rot = x[i] * -std::sin( thirty ) + z[i] * std::cos( thirty );
+    x[i] = x_rot; //+ x_shift;
+    z[i] = z_rot; //+ z_shift;
+  }
+
+  // Debug print vertices
+  //for ( int i=0; i<4; ++i ) {
+  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
+  //}
+  //std::cout << " " << std::endl;
+
+  //for ( int i=4; i<8; ++i ) {
+  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
+  //}
+
+  // register contact mesh
+  tribol::IndexT mesh_id = 0;
+  tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
+                        tribol::MemorySpace::Host );
+
+  RealT dt = 1.0;
+  int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
+
+  EXPECT_EQ( err, 0 );
+  EXPECT_EQ( dt, 1.0 );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( couplingScheme->getNumActivePairs(), 1 );
+
+  auto& comp_geom = couplingScheme->getCompGeom();
+  auto& plane = comp_geom.getCommonPlane( 0 );
+
+  // compute the geometric quantities of interest in order to compute the area of overlap and gap
+  // Note: this is somewhat involved and difficult to make super clear. Talk to SRW if you need
+  // more details
+  RealT h = 0.45; // height of initial interpen before face rotation
+  RealT h_bar = h * std::cos( thirty );  // "height" of interpen on common plane
+  RealT w_bar = 0.45; // width of triangular interpen after rotation
+  RealT A_bar = h_bar * w_bar;  // area of triangular interpen on common plane
+  RealT computed_gap = -2 * ( 0.333333333333 * h_bar ) * std::tan( thirty );
+
+  // check the area
+  EXPECT_NEAR( plane.m_area, A_bar, 1.e-8 );
+
+  // check the gap
+  EXPECT_NEAR( plane.m_gap, computed_gap, 1.e-6 );
+
+  EXPECT_EQ( plane.m_fullOverlap, false );
+  EXPECT_EQ( plane.m_numPolyVert, 3 );
+}
+
+TEST_F( CompGeomTest, common_plane_single_element_interpen_check_7 )
+{
+  // This test has a configuration where one face has "inside" intersection
+  // points with the other face at one vertex and some epsilon from another vertex.
+  // An edge on view looks like:
+  //
+  //                *
+  //              *   *
+  //            *       *
+  //          *           *
+  //        *               *
+  //    --o---------------o----
+  //        *           *
+  //          *       *
+  //            *   *
+  //              *
+  //
+  //  where the rotated face is also rotated into the page 30 degrees. The
+  //  intersection points are marked as "o".
+  //
+  constexpr int numVerts = 4;
+  constexpr int numCells = 2;
+  constexpr int lengthNodalData = numCells * numVerts;
+  RealT x[lengthNodalData];
+  RealT y[lengthNodalData];
+  RealT z[lengthNodalData];
+
+  // coordinates for face 1
+  x[0] = -1.;
+  x[1] = 1.;
+  x[2] = 1.;
+  x[3] = -1.;
+
+  y[0] = -1.;
+  y[1] = -1.;
+  y[2] = 1.;
+  y[3] = 1.;
+
+  z[0] = 0.;
+  z[1] = 0.;
+  z[2] = 0.;
+  z[3] = 0.;
+
+  // coordinates for face 2
+  RealT epsilon = 1.e-10;
+  RealT thirty = 30 * M_PI / 180;
+  x[4] = 0.;
+  y[4] = 0.;
+  z[4] = -0.45;
+
+  x[5] = x[4];
+  y[5] = y[4] - z[4];
+  z[5] = 0.;
+
+  x[6] = x[4];
+  y[6] = y[4];
+  z[6] = -z[4];
+
+  x[7] = x[5];
+  y[7] = y[4] + z[4];
+  z[7] = epsilon;
+
+  // rotate 30 degrees about the y-axis
+  //RealT x_shift = x[4];
+  //RealT z_shift = z[4];
+  for ( int i = numVerts; i < lengthNodalData; ++i ) {
+    //x[i] = x[i] - x_shift;
+    //z[i] = z[i] - z_shift;
+    RealT x_rot = x[i] * std::cos( thirty ) + z[i] * std::sin( thirty );
+    RealT z_rot = x[i] * -std::sin( thirty ) + z[i] * std::cos( thirty );
+    x[i] = x_rot; //+ x_shift;
+    z[i] = z_rot; //+ z_shift;
+  }
+
+  // Debug print vertices
+  //for ( int i=0; i<4; ++i ) {
+  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
+  //}
+  //std::cout << " " << std::endl;
+
+  //for ( int i=4; i<8; ++i ) {
+  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
+  //}
+
+  // register contact mesh
+  tribol::IndexT mesh_id = 0;
+  tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
+                        tribol::MemorySpace::Host );
+
+  RealT dt = 1.0;
+  int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
+
+  EXPECT_EQ( err, 0 );
+  EXPECT_EQ( dt, 1.0 );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( couplingScheme->getNumActivePairs(), 1 );
+
+  auto& comp_geom = couplingScheme->getCompGeom();
+  auto& plane = comp_geom.getCommonPlane( 0 );
+
+  // compute the geometric quantities of interest in order to compute the area of overlap and gap
+  // Note: this is somewhat involved and difficult to make super clear. Talk to SRW if you need
+  // more details
+  RealT h = 0.45; // height of initial interpen before face rotation
+  RealT h_bar = h * std::cos( thirty );  // "height" of interpen on common plane
+  RealT w_bar = 0.45; // width of triangular interpen after rotation
+  RealT A_bar = h_bar * w_bar;  // area of triangular interpen on common plane
+  RealT computed_gap = -2 * ( 0.333333333333 * h_bar ) * std::tan( thirty );
+
+  // check the area
+  EXPECT_NEAR( plane.m_area, A_bar, 1.e-8 );
+
+  // check the gap
+  EXPECT_NEAR( plane.m_gap, computed_gap, 1.e-6 );
+
+  EXPECT_EQ( plane.m_fullOverlap, false );
+  EXPECT_EQ( plane.m_numPolyVert, 3 );
+}
+
+TEST_F( CompGeomTest, common_plane_single_element_interpen_check_8 )
+{
+  // This test has a x-configuration that should trigger an interpen calculation.
+  // The x-configuration is created by some very small epsilon shift in the z-coordinates
+  // of the second face. An edge-on view of this configuration is:
+  //
+  //   *
+  //   -------*--------
+  //                  *
+  //
+
+  constexpr int numVerts = 4;
+  constexpr int numCells = 2;
+  constexpr int lengthNodalData = numCells * numVerts;
+  RealT x[lengthNodalData];
+  RealT y[lengthNodalData];
+  RealT z[lengthNodalData];
+
+  // coordinates for face 1
+  x[0] = -1.;
+  x[1] = 1.;
+  x[2] = 1.;
+  x[3] = -1.;
+
+  y[0] = -1.;
+  y[1] = -1.;
+  y[2] = 1.;
+  y[3] = 1.;
+
+  z[0] = 0.;
+  z[1] = 0.;
+  z[2] = 0.;
+  z[3] = 0.;
+
+  // coordinates for face 2; rotate the face about the y axis by some epsilon shift in the z-direction
+  RealT epsilon = 1.e-10;
+  x[4] = x[3];
+  x[5] = x[2];
+  x[6] = x[1];
+  x[7] = x[0];
+
+  y[4] = y[3];
+  y[5] = y[2];
+  y[6] = y[1];
+  y[7] = y[0]; 
+
+  z[4] = z[3] + epsilon;
+  z[5] = z[2] - epsilon;
+  z[6] = z[1] - epsilon;
+  z[7] = z[0] + epsilon;
+
+  // register contact mesh
+  tribol::IndexT mesh_id = 0;
+  tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
+                        tribol::MemorySpace::Host );
+
+  RealT dt = 1.0;
+  int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
+
+  EXPECT_EQ( err, 0 );
+  EXPECT_EQ( dt, 1.0 );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( couplingScheme->getNumActivePairs(), 1 );
+
+  auto& comp_geom = couplingScheme->getCompGeom();
+  auto& plane = comp_geom.getCommonPlane( 0 );
+
+  EXPECT_EQ( plane.m_fullOverlap, false );
+  EXPECT_EQ( plane.m_numPolyVert, 4 );
+
+  // check the area
+  EXPECT_NEAR( plane.m_area, 2.0, 1.e-6 );
+
+  // check the gap
+  EXPECT_NEAR( plane.m_gap, epsilon / 2., 1.e-6 );
+
+}
+
+TEST_F( CompGeomTest, common_plane_single_element_interpen_check_9 )
+{
+  // This test checks to see if the geomFilter Check #5 ultimately returns
+  // a contact candidate for a convex quad close to the shape below. The other
+  // face is a square quad and the overlap should be a full overlap
+
+  //
+  //   *           *
+  //   **        **
+  //    * *   *  *
+  //     *  *  *
+  //      *  *
+  //       *
+  //
+
+  constexpr int numVerts = 4;
+  constexpr int numCells = 2;
+  constexpr int lengthNodalData = numCells * numVerts;
+  RealT x[lengthNodalData];
+  RealT y[lengthNodalData];
+  RealT z[lengthNodalData];
+
+  // coordinates for face 1
+  x[0] = -1.;
+  x[1] = 1.;
+  x[2] = 1.;
+  x[3] = -1.;
+
+  y[0] = -1.;
+  y[1] = -1.;
+  y[2] = 1.;
+  y[3] = 1.;
+
+  z[0] = 0.;
+  z[1] = 0.;
+  z[2] = 0.;
+  z[3] = 0.;
+
+  // coordinates for face 2
+  x[4] = 0.;
+  x[5] = -0.5;
+  x[6] = 0.;
+  x[7] = 0.5; 
+
+  y[4] = -0.75;
+  y[5] = 0.5;
+  y[6] = 0.;
+  y[7] = 0.5; 
+
+  z[4] = -0.1; 
+  z[5] = -0.1;
+  z[6] = -0.1;
+  z[7] = -0.1;
+
+  // register contact mesh
+  tribol::IndexT mesh_id = 0;
+  tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
+  tribol::registerMesh( mesh_id, numCells, lengthNodalData, &conn[0], (int)( tribol::LINEAR_QUAD ), &x[0], &y[0], &z[0],
+                        tribol::MemorySpace::Host );
+
+  RealT dt = 1.0;
+  int err = setupAndUpdateAutoCommonPlane( mesh_id, 0, lengthNodalData, numCells, dt );
+
+  EXPECT_EQ( err, 0 );
+  EXPECT_EQ( dt, 1.0 );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( couplingScheme->getNumActivePairs(), 1 );
+
+  auto& comp_geom = couplingScheme->getCompGeom();
+  auto& plane = comp_geom.getCommonPlane( 0 );
+
+  EXPECT_EQ( plane.m_fullOverlap, true );
+  EXPECT_EQ( plane.m_numPolyVert, 4 );
+
+  // check the area
+  EXPECT_NEAR( plane.m_area, 0.375, 1.e-6 );
+
+  // check the gap
+  EXPECT_NEAR( plane.m_gap, -0.1, 1.e-6 );
+
+}
+
+TEST_F( CompGeomTest, common_plane_single_element_interpen_check_10 )
+{
   // This test checks the case where one face has two-line plane intersections
   // inside the opposing face and the opposing face has zero that lie inside the
   // other face.
@@ -1200,6 +1615,15 @@ TEST_F( CompGeomTest, common_plane_perfect_conforming_full_overlap )
   tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
 
   EXPECT_EQ( userSpecifiedNumOverlaps, couplingScheme->getNumActivePairs() );
+
+  auto& comp_geom = couplingScheme->getCompGeom();
+  auto& plane = comp_geom.getCommonPlane( 0 );
+
+  EXPECT_EQ( plane.m_fullOverlap, true );
+
+  RealT len = 1.0 / numElems1; 
+  EXPECT_NEAR( plane.m_area, len * len, 1.e-8 );
+  EXPECT_EQ( plane.m_numPolyVert, 4 );
 
   tribol::finalize();
 }

@@ -70,6 +70,8 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
     bool meshes{ false };
 
     switch ( v_type ) {
+      case VIS_NONE:
+        break;
       case VIS_FACES:
         faces = true;
         break;

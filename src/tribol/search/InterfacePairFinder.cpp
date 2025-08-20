@@ -279,8 +279,7 @@ class CartesianProduct : public SearchBase {
           pairs_view[idx] = InterfacePair( fromIdx, toIdx, true );
         } );
 
-    SLIC_INFO( "Coupling scheme has " << contactPairs.size() << " pairs out of a maximum possible of " << maxNumPairs
-                                      << " = " << mesh1NumElems << " * " << mesh2NumElems << "." );
+    SLIC_INFO( "Coupling scheme has " << contactPairs.size() << " pairs out of a maximum possible of " << maxNumPairs << "." );
   }
 
  private:
