@@ -1147,12 +1147,12 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
         SLIC_WARNING( "Degenerate face configuration detected with number of line-plane intersections > 2." );
         SLIC_INFO( "Planar coordinates for face 1 in CommonPlanePair::computeOverlap3D(): " );
         for (int a = 0; a<mesh[0]->numberOfNodesPerElement(); ++a) {
-           std::cout << x1[a] << ", " << y1[a] << ", " << z1[a] << std::endl;
+          std::cout << x1[a] << ", " << y1[a] << ", " << z1[a] << std::endl;
         }
 
         SLIC_INFO( "Planar coordinates for face 2 in CommonPlanePair::computeOverlap3D(): " );
         for (int b = 0; b<mesh[1]->numberOfNodesPerElement(); ++b) {
-           std::cout << x2[b] << ", " << y2[b] << ", " << z2[b] << std::endl;
+          std::cout << x2[b] << ", " << y2[b] << ", " << z2[b] << std::endl;
         }
 
         SLIC_ERROR( "CommonPlanePair::computeOverlap3D(): too many segment-face intersections; "
