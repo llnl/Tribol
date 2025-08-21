@@ -406,6 +406,76 @@ TEST_F( CompGeomTest, common_plane_interpen_check_1 )
 
 TEST_F( CompGeomTest, common_plane_interpen_check_2 )
 {
+  // This tests checks the interpen overlap code path for a symmetric X-like interface pair
+  // configuration where the rotated edge is rotated by some +/- epsilon in the y-direction
+  //
+  //                *
+  //             *  epsilon
+  //    ------o------
+  //       *
+  //    *
+  //
+  constexpr int numVerts = 2;
+
+  RealT x1[numVerts];
+  RealT y1[numVerts];
+  RealT x2[numVerts];
+  RealT y2[numVerts];
+
+  x1[0] = 1.0;
+  x1[1] = 0.0;
+  y1[0] = 0.0;
+  y1[1] = 0.0;
+ 
+  RealT epsilon = 1.e-10;
+  x2[0] = 0.;
+  x2[1] = 1.;
+  y2[0] = 0. - epsilon;
+  y2[1] = 0. + epsilon;
+
+
+  tribol::IndexT conn1[2] = { 0, 1 };
+  tribol::IndexT conn2[2] = { 0, 1 };
+
+  RealT fx1[2] = { 0., 0. };
+  RealT fy1[2] = { 0., 0. };
+  RealT fx2[2] = { 0., 0. };
+  RealT fy2[2] = { 0., 0. };
+
+  RealT penalty1 = 1.;
+  RealT penalty2 = 1.;
+
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
+                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
+                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                               tribol::KINEMATIC_CONSTANT );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
+
+  auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
+
+  EXPECT_EQ( plane.m_fullOverlap, false );
+
+  // compute the length and height of the interpen portion of edge 2
+  RealT length = x1[0] - x1[1];
+  RealT height = y2[1] - y2[0];
+
+  // compute the angle between the interpen portions of the edges
+  RealT theta = std::atan( height / length );
+  RealT half_theta = 0.5 * theta;
+
+  // compute and check the overlap area
+  RealT computed_area = 0.5 * length * std::cos( half_theta );
+  EXPECT_NEAR( plane.m_area, computed_area, 1.e-10 );
+}
+
+TEST_F( CompGeomTest, common_plane_interpen_check_3 )
+{
   // This tests checks the interpen overlap code path for an unsymmetric X-like interface pair
   // configuration
   //                 *
@@ -476,7 +546,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_2 )
   EXPECT_NEAR( plane.m_area, computed_area, 1.e-10 );
 }
 
-TEST_F( CompGeomTest, common_plane_interpen_check_3 )
+TEST_F( CompGeomTest, common_plane_interpen_check_4 )
 {
   // This tests checks the interpen overlap code path for an X-like interface pair
   // configuration where there IS interpenetration, but one edge intersects
