@@ -1138,8 +1138,12 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
       const RealT yb = y[jb];
       const RealT zb = z[jb];
 
-      if ( k > 2 ) {  // at most we can have two segment-plane intersections for a single planar, convex face
+      // check for the case k > 2. This is a 'breaking' assumption in the algorithm. Two planar quadrilaterals
+      // can intersect the plane defined by the other fast AT MOST in two locations. This check points out
+      // unanticipated degenerate cases or bugs. Here, we error out for further investigation
+      if ( k > 2 ) { 
 #ifdef TRIBOL_USE_HOST
+        // TODO print face vertices to screen
         SLIC_ERROR( "CommonPlanePair::computeOverlap3D(): too many segment-face intersections; "
                     << "check for degenerate face " << m_pair->m_element_id1 << "on mesh " << mesh[i]->meshId()
                     << "." );
@@ -1154,6 +1158,13 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
         bool inter = LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx[0], cx[1], cx[2], fn[0], fn[1], fn[2],
                                             xInter[2 * i + k], yInter[2 * i + k], zInter[2 * i + k], inPlane );
 
+        // check for duplicate intersection points. This can arise when the intersection points occur at one face's
+        // vertices. Then, there are two edge segments that share each vertex, which would register a total of 4
+        // line-plane intersections, with two duplications.
+        // TODO verify the use/value of the tolerance for duplicate points. Tolerancing up to 1.e-12 may be ok
+        // NOTE: this would be a very specific case such that a departure from the tolerance likely won't trigger
+        // some other edge case. Two intersection points less than the tolerance from one another would only arise
+        // if two edges of a four node quad form a very acute angle that also interpenetrates the opposing face.
         for (int a = (2 * i + k); a > 2*i; --a) {
           if ( magnitude( xInter[a] - xInter[a-1], yInter[a] - yInter[a-1], zInter[a] - zInter[a-1] ) < 1.e-10 ) {
             inter = false; // we already have the point
