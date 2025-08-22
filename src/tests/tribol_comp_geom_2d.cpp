@@ -44,22 +44,19 @@ using RealT = tribol::RealT;
  */
 class CompGeomTest : public ::testing::Test {
  public:
-
  protected:
   void SetUp() override {}
 
-  void SetupAndUpdate2DHostProblem( tribol::IndexT* conn_1, RealT* x_1, RealT* y_1, RealT* fx_1, RealT* fy_1, RealT penalty_1,
-                                    tribol::IndexT* conn_2, RealT* x_2, RealT* y_2, RealT* fx_2, RealT* fy_2, RealT penalty_2,
-                                    tribol::ContactMode c_mode, tribol::ContactCase c_case,
-                                    tribol::ContactMethod c_method, tribol::ContactModel c_model,
-                                    tribol::EnforcementMethod c_enfrc, tribol::BinningMethod c_binning,
+  void SetupAndUpdate2DHostProblem( tribol::IndexT* conn_1, RealT* x_1, RealT* y_1, RealT* fx_1, RealT* fy_1,
+                                    RealT penalty_1, tribol::IndexT* conn_2, RealT* x_2, RealT* y_2, RealT* fx_2,
+                                    RealT* fy_2, RealT penalty_2, tribol::ContactMode c_mode,
+                                    tribol::ContactCase c_case, tribol::ContactMethod c_method,
+                                    tribol::ContactModel c_model, tribol::EnforcementMethod c_enfrc,
+                                    tribol::BinningMethod c_binning,
                                     tribol::KinematicPenaltyCalculation c_penalty_calc )
   {
-
-    tribol::registerMesh( 0, 1, 2, conn_1, (int)( tribol::LINEAR_EDGE ), x_1, y_1, nullptr,
-                          tribol::MemorySpace::Host );
-    tribol::registerMesh( 1, 1, 2, conn_2, (int)( tribol::LINEAR_EDGE ), x_2, y_2, nullptr,
-                          tribol::MemorySpace::Host );
+    tribol::registerMesh( 0, 1, 2, conn_1, (int)( tribol::LINEAR_EDGE ), x_1, y_1, nullptr, tribol::MemorySpace::Host );
+    tribol::registerMesh( 1, 1, 2, conn_2, (int)( tribol::LINEAR_EDGE ), x_2, y_2, nullptr, tribol::MemorySpace::Host );
 
     tribol::registerNodalResponse( 0, fx_1, fy_1, nullptr );
     tribol::registerNodalResponse( 1, fx_2, fy_2, nullptr );
@@ -67,8 +64,7 @@ class CompGeomTest : public ::testing::Test {
     tribol::setKinematicConstantPenalty( 0, penalty_1 );
     tribol::setKinematicConstantPenalty( 1, penalty_2 );
 
-    tribol::registerCouplingScheme( 0, 0, 1, c_mode, c_case, c_method,
-                                    c_model, c_enfrc, c_binning,
+    tribol::registerCouplingScheme( 0, 0, 1, c_mode, c_case, c_method, c_model, c_enfrc, c_binning,
                                     tribol::ExecutionMode::Sequential );
 
     tribol::setPenaltyOptions( 0, tribol::KINEMATIC, c_penalty_calc );
@@ -78,7 +74,6 @@ class CompGeomTest : public ::testing::Test {
     int update_err = tribol::update( 1, 1., dt );
 
     EXPECT_EQ( update_err, 0 );
-
   }
 
   void TearDown() override {}
@@ -122,10 +117,9 @@ TEST_F( CompGeomTest, common_plane_full_interpen_no_overlap )
   RealT penalty1 = 1.0;
   RealT penalty2 = 1.0;
 
-  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
-                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
-                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1, &conn2[0], &x2[0], &y2[0],
+                               &fx2[0], &fy2[0], penalty2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                               tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
                                tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
@@ -155,7 +149,7 @@ TEST_F( CompGeomTest, common_plane_coincident_vertices_full_overlap )
   x1[1] = 0.0;
   y1[0] = 0.0;
   y1[1] = 0.0;
-  
+
   x2[0] = 1.e-12;
   x2[1] = 0.999999;
   y2[0] = -0.1;
@@ -172,10 +166,9 @@ TEST_F( CompGeomTest, common_plane_coincident_vertices_full_overlap )
   RealT penalty1 = 1.;
   RealT penalty2 = 1.;
 
-  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
-                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
-                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1, &conn2[0], &x2[0], &y2[0],
+                               &fx2[0], &fy2[0], penalty2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                               tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
                                tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
@@ -203,7 +196,7 @@ TEST_F( CompGeomTest, common_plane_conforming_separation )
   // this geometry is in contact with coincident vertices when
   // projected onto the common plane.
   x1[0] = 1.0;
-  x1[1] = 0.0; 
+  x1[1] = 0.0;
   y1[0] = 0.0;
   y1[1] = 0.0;
 
@@ -211,7 +204,7 @@ TEST_F( CompGeomTest, common_plane_conforming_separation )
   x2[1] = 1.;
   y2[0] = 0.1;
   y2[1] = 0.1;
- 
+
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
 
@@ -223,10 +216,9 @@ TEST_F( CompGeomTest, common_plane_conforming_separation )
   RealT penalty1 = 1.;
   RealT penalty2 = 1.;
 
-  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
-                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
-                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1, &conn2[0], &x2[0], &y2[0],
+                               &fx2[0], &fy2[0], penalty2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                               tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
                                tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
@@ -252,14 +244,14 @@ TEST_F( CompGeomTest, common_plane_coincident_vertex_no_overlap )
   // produce NO positive area of overlap. Note: the actual overlap is
   // less than the contact area fraction set by tribol::setContactAreaFrac() below.
   x1[0] = 1.0;
-  x1[1] = 0.0; 
+  x1[1] = 0.0;
   y1[0] = 0.0;
-  y1[1] = 0.0; 
- 
+  y1[1] = 0.0;
+
   x2[0] = -1.;
   x2[1] = 1.e-8;
   y2[0] = -0.1;
-  y2[1] = -0.1; 
+  y2[1] = -0.1;
 
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
@@ -272,10 +264,9 @@ TEST_F( CompGeomTest, common_plane_coincident_vertex_no_overlap )
   RealT penalty1 = 1.;
   RealT penalty2 = 1.;
 
-  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
-                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
-                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1, &conn2[0], &x2[0], &y2[0],
+                               &fx2[0], &fy2[0], penalty2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                               tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
                                tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
@@ -319,10 +310,9 @@ TEST_F( CompGeomTest, common_plane_nearly_coincident_vertex_positive_overlap )
   RealT penalty1 = 1.;
   RealT penalty2 = 1.;
 
-  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
-                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
-                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1, &conn2[0], &x2[0], &y2[0],
+                               &fx2[0], &fy2[0], penalty2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                               tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
                                tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
@@ -357,12 +347,11 @@ TEST_F( CompGeomTest, common_plane_interpen_check_1 )
   x1[1] = 0.0;
   y1[0] = 0.0;
   y1[1] = 0.0;
- 
+
   x2[0] = 0.;
   x2[1] = 1.;
   y2[0] = -0.1;
   y2[1] = 0.1;
-
 
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
@@ -375,10 +364,9 @@ TEST_F( CompGeomTest, common_plane_interpen_check_1 )
   RealT penalty1 = 1.;
   RealT penalty2 = 1.;
 
-  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
-                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
-                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1, &conn2[0], &x2[0], &y2[0],
+                               &fx2[0], &fy2[0], penalty2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                               tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
                                tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
@@ -426,13 +414,12 @@ TEST_F( CompGeomTest, common_plane_interpen_check_2 )
   x1[1] = 0.0;
   y1[0] = 0.0;
   y1[1] = 0.0;
- 
+
   RealT epsilon = 1.e-10;
   x2[0] = 0.;
   x2[1] = 1.;
   y2[0] = 0. - epsilon;
   y2[1] = 0. + epsilon;
-
 
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
@@ -445,10 +432,9 @@ TEST_F( CompGeomTest, common_plane_interpen_check_2 )
   RealT penalty1 = 1.;
   RealT penalty2 = 1.;
 
-  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
-                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
-                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1, &conn2[0], &x2[0], &y2[0],
+                               &fx2[0], &fy2[0], penalty2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                               tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
                                tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
@@ -501,7 +487,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_3 )
   x2[1] = 1. + x_shift;
   y2[0] = -0.1;
   y2[1] = 0.1;
-  
+
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
 
@@ -513,10 +499,9 @@ TEST_F( CompGeomTest, common_plane_interpen_check_3 )
   RealT penalty1 = 1.;
   RealT penalty2 = 1.;
 
-  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
-                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
-                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1, &conn2[0], &x2[0], &y2[0],
+                               &fx2[0], &fy2[0], penalty2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                               tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
                                tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
@@ -530,7 +515,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_3 )
   EXPECT_EQ( plane.m_fullOverlap, false );
 
   // compute the point at which edge 2 intersects edge 1
-  RealT intercept_point = 0.5 * (x1[0] - x1[1]) + x_shift;
+  RealT intercept_point = 0.5 * ( x1[0] - x1[1] ) + x_shift;
 
   // compute the height and length of the interpen portion of edge 2
   RealT length = intercept_point - x2[0];
@@ -586,10 +571,9 @@ TEST_F( CompGeomTest, common_plane_interpen_check_4 )
   RealT penalty1 = 1.;
   RealT penalty2 = 1.;
 
-  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
-                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
-                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1, &conn2[0], &x2[0], &y2[0],
+                               &fx2[0], &fy2[0], penalty2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                               tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
                                tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
@@ -626,7 +610,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_5 )
   //             *
   //          *
   //       *
-  //    * 
+  //    *
   //
   constexpr int numVerts = 2;
 
@@ -640,7 +624,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_5 )
   y1[0] = 0.0;
   y1[1] = 0.0;
 
-  x2[0] = 0.; 
+  x2[0] = 0.;
   x2[1] = 1.0;
   y2[0] = -0.1;
   y2[1] = 0.;
@@ -656,10 +640,9 @@ TEST_F( CompGeomTest, common_plane_interpen_check_5 )
   RealT penalty1 = 1.;
   RealT penalty2 = 1.;
 
-  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
-                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
-                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1, &conn2[0], &x2[0], &y2[0],
+                               &fx2[0], &fy2[0], penalty2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                               tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
                                tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
@@ -697,7 +680,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_6 )
   //             *
   //          *
   //       *
-  //    * 
+  //    *
   //
   constexpr int numVerts = 2;
 
@@ -711,7 +694,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_6 )
   y1[0] = 0.0;
   y1[1] = 0.0;
 
-  x2[0] = 0.; 
+  x2[0] = 0.;
   x2[1] = 1.0000001;
   y2[0] = -0.1;
   y2[1] = 0.0000001;
@@ -727,10 +710,9 @@ TEST_F( CompGeomTest, common_plane_interpen_check_6 )
   RealT penalty1 = 1.;
   RealT penalty2 = 1.;
 
-  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
-                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
-                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1, &conn2[0], &x2[0], &y2[0],
+                               &fx2[0], &fy2[0], penalty2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                               tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
                                tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
@@ -768,7 +750,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_7 )
   //             *
   //          *
   //       *
-  //    * 
+  //    *
   //
   //
   constexpr int numVerts = 2;
@@ -783,7 +765,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_7 )
   y1[0] = 0.0;
   y1[1] = 0.0;
 
-  x2[0] = 0.; 
+  x2[0] = 0.;
   x2[1] = 0.99999999999;
   y2[0] = -0.1;
   y2[1] = 0.000000000001;
@@ -799,10 +781,9 @@ TEST_F( CompGeomTest, common_plane_interpen_check_7 )
   RealT penalty1 = 1.;
   RealT penalty2 = 1.;
 
-  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
-                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
-                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1, &conn2[0], &x2[0], &y2[0],
+                               &fx2[0], &fy2[0], penalty2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                               tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
                                tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
@@ -849,9 +830,9 @@ TEST_F( CompGeomTest, common_plane_interpen_check_8 )
   y1[1] = 0.0;
 
   RealT epsilon = 1.e-10;
-  x2[0] = 0.; 
+  x2[0] = 0.;
   x2[1] = 1.;
-  y2[0] = 0. + epsilon; 
+  y2[0] = 0. + epsilon;
   y2[1] = 0. + epsilon;
 
   tribol::IndexT conn1[2] = { 0, 1 };
@@ -865,10 +846,9 @@ TEST_F( CompGeomTest, common_plane_interpen_check_8 )
   RealT penalty1 = 1.;
   RealT penalty2 = 1.;
 
-  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
-                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
-                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1, &conn2[0], &x2[0], &y2[0],
+                               &fx2[0], &fy2[0], penalty2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                               tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
                                tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
@@ -877,7 +857,6 @@ TEST_F( CompGeomTest, common_plane_interpen_check_8 )
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
   auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
   EXPECT_EQ( plane.m_inContact, false );
-
 }
 
 TEST_F( CompGeomTest, common_plane_interpen_check_9 )
@@ -901,7 +880,7 @@ TEST_F( CompGeomTest, common_plane_interpen_check_9 )
   y1[1] = 0.0;
 
   RealT epsilon = 1.e-10;
-  x2[0] = 0.; 
+  x2[0] = 0.;
   x2[1] = 1.;
   y2[0] = 0. - epsilon;
   y2[1] = 0. - epsilon;
@@ -917,10 +896,9 @@ TEST_F( CompGeomTest, common_plane_interpen_check_9 )
   RealT penalty1 = 1.;
   RealT penalty2 = 1.;
 
-  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
-                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
-                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1, &conn2[0], &x2[0], &y2[0],
+                               &fx2[0], &fy2[0], penalty2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                               tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
                                tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
@@ -929,7 +907,6 @@ TEST_F( CompGeomTest, common_plane_interpen_check_9 )
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
   auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
   EXPECT_EQ( plane.m_inContact, true );
-
 }
 
 TEST_F( CompGeomTest, 2d_projections_1 )
@@ -1014,10 +991,9 @@ TEST_F( CompGeomTest, 2d_projections_1 )
   RealT penalty1 = 1.;
   RealT penalty2 = 1.;
 
-  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
-                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
-                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1, &conn2[0], &x2[0], &y2[0],
+                               &fx2[0], &fy2[0], penalty2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                               tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
                                tribol::KINEMATIC_CONSTANT );
 
   tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
@@ -1094,8 +1070,8 @@ TEST_F( CompGeomTest, 2d_projections_2 )
 TEST_F( CompGeomTest, point_in_edge_1 )
 {
   constexpr int numVerts = 2;
-  RealT x[ numVerts ];
-  RealT y[ numVerts ];
+  RealT x[numVerts];
+  RealT y[numVerts];
   RealT xp, yp;
 
   x[0] = 0.;
@@ -1123,7 +1099,7 @@ TEST_F( CompGeomTest, point_in_edge_1 )
   xp = 0.0000000001;
   yp = 0.75;
   EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), true );
-  
+
   // point just barely inside the second
   xp = 1.49999999999;
   yp = 0.75;
@@ -1140,7 +1116,7 @@ TEST_F( CompGeomTest, point_in_edge_1 )
   EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), false );
 
   // point not even close
-  xp = 2.5; 
+  xp = 2.5;
   yp = 0.75;
   EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), false );
 }

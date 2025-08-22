@@ -26,8 +26,9 @@ namespace tribol {
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE FaceGeomException CheckInterfacePair( InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                          const MeshData::Viewer& mesh2, const Parameters& params,
-                                                         ContactMethod cMethod, ContactCase TRIBOL_UNUSED_PARAM( cCase ),
-                                                         bool& isInteracting, CompGeom::Viewer& cg, IndexT* plane_ct )
+                                                         ContactMethod cMethod,
+                                                         ContactCase TRIBOL_UNUSED_PARAM( cCase ), bool& isInteracting,
+                                                         CompGeom::Viewer& cg, IndexT* plane_ct )
 {
   isInteracting = false;
   bool inContact = false;
@@ -201,7 +202,6 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::checkFacePair( const MeshD
   ProjectFaceNodesToPlane( mesh2, element_id2, fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2], &m_x2_prime[0],
                            &m_y2_prime[0], &m_z2_prime[0] );
 
-
   // CHECK #6: check if the two faces overlap in a projected sense.
   // To do this check we need to use the contact plane object, which will
   // have its own local basis that needs to be defined
@@ -215,20 +215,20 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::checkFacePair( const MeshD
 
   // mark the convexity of each face
   constexpr int max_nodes = 4;
-  RealT x1_loc[ max_nodes ];
-  RealT y1_loc[ max_nodes ];
-  RealT x2_loc[ max_nodes ];
-  RealT y2_loc[ max_nodes ];
+  RealT x1_loc[max_nodes];
+  RealT y1_loc[max_nodes];
+  RealT x2_loc[max_nodes];
+  RealT y2_loc[max_nodes];
   GlobalTo2DLocalCoords( &m_x1_prime[0], &m_y1_prime[0], &m_z1_prime[0], m_e1X, m_e1Y, m_e1Z, m_e2X, m_e2Y, m_e2Z, m_cX,
                          m_cY, m_cZ, &x1_loc[0], &y1_loc[0], mesh1.numberOfNodesPerElement() );
   GlobalTo2DLocalCoords( &m_x2_prime[0], &m_y2_prime[0], &m_z2_prime[0], m_e1X, m_e1Y, m_e1Z, m_e2X, m_e2Y, m_e2Z, m_cX,
                          m_cY, m_cZ, &x2_loc[0], &y2_loc[0], mesh2.numberOfNodesPerElement() );
 
-  m_face1_convex = IsConvex( x1_loc, y1_loc, mesh1.numberOfNodesPerElement() ); 
-  m_face2_convex = IsConvex( x2_loc, y2_loc, mesh2.numberOfNodesPerElement() ); 
+  m_face1_convex = IsConvex( x1_loc, y1_loc, mesh1.numberOfNodesPerElement() );
+  m_face2_convex = IsConvex( x2_loc, y2_loc, mesh2.numberOfNodesPerElement() );
 
-  FaceGeomException interpen_err = this->computeOverlap3D( &m_x1_prime[0], &m_y1_prime[0], &m_z1_prime[0], &m_x2_prime[0],
-                                                           &m_y2_prime[0], &m_z2_prime[0], mesh1, mesh2 );
+  FaceGeomException interpen_err = this->computeOverlap3D(
+      &m_x1_prime[0], &m_y1_prime[0], &m_z1_prime[0], &m_x2_prime[0], &m_y2_prime[0], &m_z2_prime[0], mesh1, mesh2 );
 
   if ( interpen_err != NO_FACE_GEOM_EXCEPTION ) {
     this->m_inContact = false;
@@ -328,8 +328,8 @@ TRIBOL_HOST_DEVICE FaceGeomException MortarPlanePair::checkFacePair( const MeshD
   computePlaneData( mesh1, mesh2 );
 
   // the contact plane has to be properly located prior to computing the interpen overlap
-  FaceGeomException interpen_err = this->computeOverlap3D( &m_x1_prime[0], &m_y1_prime[0], &m_z1_prime[0], &m_x2_prime[0],
-                                                           &m_y2_prime[0], &m_z2_prime[0], mesh1, mesh2 );
+  FaceGeomException interpen_err = this->computeOverlap3D(
+      &m_x1_prime[0], &m_y1_prime[0], &m_z1_prime[0], &m_x2_prime[0], &m_y2_prime[0], &m_z2_prime[0], mesh1, mesh2 );
 
   if ( interpen_err != NO_FACE_GEOM_EXCEPTION ) {
     this->m_inContact = false;
@@ -342,8 +342,9 @@ TRIBOL_HOST_DEVICE FaceGeomException MortarPlanePair::checkFacePair( const MeshD
 }  // end MortarPlanePair::checkFacePair()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomException MortarPlanePair::computeOverlap3D( const RealT* x1, const RealT* y1, const RealT* z1,
-                                                                        const RealT* x2, const RealT* y2, const RealT* z2,
+TRIBOL_HOST_DEVICE FaceGeomException MortarPlanePair::computeOverlap3D( const RealT* x1, const RealT* y1,
+                                                                        const RealT* z1, const RealT* x2,
+                                                                        const RealT* y2, const RealT* z2,
                                                                         const MeshData::Viewer& m1,
                                                                         const MeshData::Viewer& m2 )
 {
@@ -431,16 +432,16 @@ TRIBOL_HOST_DEVICE FaceGeomException MortarPlanePair::computeOverlap3D( const Re
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomException MortarPlanePair::checkEdgePair( const MeshData::Viewer& TRIBOL_UNUSED_PARAM( mesh1 ),
-                                                                     const MeshData::Viewer& TRIBOL_UNUSED_PARAM( mesh2 ) )
+TRIBOL_HOST_DEVICE FaceGeomException MortarPlanePair::checkEdgePair(
+    const MeshData::Viewer& TRIBOL_UNUSED_PARAM( mesh1 ), const MeshData::Viewer& TRIBOL_UNUSED_PARAM( mesh2 ) )
 {
   // no-op; implement when 2D mortar is implemented
   return NO_FACE_GEOM_EXCEPTION;
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomException MortarPlanePair::computeOverlap2D( const MeshData::Viewer& TRIBOL_UNUSED_PARAM( m1 ),
-                                                                        const MeshData::Viewer& TRIBOL_UNUSED_PARAM( m2 ) )
+TRIBOL_HOST_DEVICE FaceGeomException MortarPlanePair::computeOverlap2D(
+    const MeshData::Viewer& TRIBOL_UNUSED_PARAM( m1 ), const MeshData::Viewer& TRIBOL_UNUSED_PARAM( m2 ) )
 {
   // no-op
   return NO_FACE_GEOM_EXCEPTION;
@@ -485,8 +486,8 @@ TRIBOL_HOST_DEVICE FaceGeomException AlignedMortarPlanePair::checkFacePair( cons
 
   // compute common plane normal, centroid, local basis and area tolerance
   computePlaneData( mesh1, mesh2 );
-  FaceGeomException interpen_err = this->computeOverlap3D( &m_x1_prime[0], &m_y1_prime[0], &m_z1_prime[0], &m_x2_prime[0],
-                                                           &m_y2_prime[0], &m_z2_prime[0], mesh1, mesh2 );
+  FaceGeomException interpen_err = this->computeOverlap3D(
+      &m_x1_prime[0], &m_y1_prime[0], &m_z1_prime[0], &m_x2_prime[0], &m_y2_prime[0], &m_z2_prime[0], mesh1, mesh2 );
 
   if ( interpen_err != NO_FACE_GEOM_EXCEPTION ) {
     this->m_inContact = false;
@@ -863,7 +864,7 @@ TRIBOL_HOST_DEVICE void ContactPlanePair::getOverlapVertices( RealT* overlap_ver
   }
 }
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlanePair::computeLocalBasis( )
+TRIBOL_HOST_DEVICE void ContactPlanePair::computeLocalBasis()
 {
   ComputeLocalBasis( m_nX, m_nY, m_nZ, m_e1X, m_e1Y, m_e1Z, m_e2X, m_e2Y, m_e2Z );
   return;
@@ -871,8 +872,8 @@ TRIBOL_HOST_DEVICE void ContactPlanePair::computeLocalBasis( )
 }  // end ContactPlanePair::computeLocalBasis()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlanePair::globalTo2DLocalCoords( const RealT* pX, const RealT* pY, const RealT* pZ, RealT* pLX,
-                                                                 RealT* pLY, int size )
+TRIBOL_HOST_DEVICE void ContactPlanePair::globalTo2DLocalCoords( const RealT* pX, const RealT* pY, const RealT* pZ,
+                                                                 RealT* pLX, RealT* pLY, int size )
 {
   // loop over projected nodes
   for ( int i = 0; i < size; ++i ) {
@@ -1020,11 +1021,11 @@ TRIBOL_HOST_DEVICE void CommonPlanePair::centroidGap( const MeshData::Viewer& m1
 
   // fine line-plane intersection with average face planes, which is consistent with using the prime coords
   // for each face
-  LinePlaneIntersection( xA, yA, zA, xB, yB, zB, cx1[0], cx1[1], cx1z, fn1[0], fn1[1], fn1z, xc1, yc1,
-                         zc1, is_parallel );
+  LinePlaneIntersection( xA, yA, zA, xB, yB, zB, cx1[0], cx1[1], cx1z, fn1[0], fn1[1], fn1z, xc1, yc1, zc1,
+                         is_parallel );
 
-  LinePlaneIntersection( xA, yA, zA, xB, yB, zB, cx2[0], cx2[1], cx2z, fn2[0], fn2[1], fn2z, xc2, yc2,
-                         zc2, is_parallel );
+  LinePlaneIntersection( xA, yA, zA, xB, yB, zB, cx2[0], cx2[1], cx2z, fn2[0], fn2[1], fn2z, xc2, yc2, zc2,
+                         is_parallel );
 
   // compute normal gap magnitude (x1 - x2 for positive gap in separation
   // and negative gap in penetration)
@@ -1048,8 +1049,9 @@ TRIBOL_HOST_DEVICE void CommonPlanePair::centroidGap( const MeshData::Viewer& m1
 }  // end CommonPlanePair::centroidGap()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const RealT* x1, const RealT* y1, const RealT* z1,
-                                                                        const RealT* x2, const RealT* y2, const RealT* z2,
+TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const RealT* x1, const RealT* y1,
+                                                                        const RealT* z1, const RealT* x2,
+                                                                        const RealT* y2, const RealT* z2,
                                                                         const MeshData::Viewer& m1,
                                                                         const MeshData::Viewer& m2 )
 {
@@ -1094,7 +1096,7 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
   StackArrayT<IndexT, 2> num_nodes_otherside( { 0, 0 } );
 
   // compute interpen data for convex face-pairs only
-  if (m_face1_convex && m_face2_convex) {
+  if ( m_face1_convex && m_face2_convex ) {
     for ( int i = 0; i < 2; ++i )  // loop over two constituent faces
     {
       // declare array to hold vertex id for all vertices that interpenetrate
@@ -1158,17 +1160,17 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
         // check for the case k > 2. This is a 'breaking' assumption in the algorithm. Two planar quadrilaterals
         // can intersect the plane defined by the other fast AT MOST in two locations. This check points out
         // unanticipated degenerate cases or bugs. Here, we error out for further investigation
-        if ( k > 2 ) { 
+        if ( k > 2 ) {
 #ifdef TRIBOL_USE_HOST
           // Debug print faces to screen to catch unforeseen degenerate face configurations etc.
           SLIC_WARNING( "Degenerate face configuration detected with number of line-plane intersections > 2." );
           SLIC_INFO( "Planar coordinates for face 1 in CommonPlanePair::computeOverlap3D(): " );
-          for (int a = 0; a<mesh[0]->numberOfNodesPerElement(); ++a) {
+          for ( int a = 0; a < mesh[0]->numberOfNodesPerElement(); ++a ) {
             std::cout << x1[a] << ", " << y1[a] << ", " << z1[a] << std::endl;
           }
 
           SLIC_INFO( "Planar coordinates for face 2 in CommonPlanePair::computeOverlap3D(): " );
-          for (int b = 0; b<mesh[1]->numberOfNodesPerElement(); ++b) {
+          for ( int b = 0; b < mesh[1]->numberOfNodesPerElement(); ++b ) {
             std::cout << x2[b] << ", " << y2[b] << ", " << z2[b] << std::endl;
           }
 
@@ -1193,19 +1195,19 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
           // NOTE: this would be a very specific case such that a departure from the tolerance likely won't trigger
           // some other edge case. Two intersection points less than the tolerance from one another would only arise
           // if two edges of a four node quad form a very acute angle that also interpenetrates the opposing face.
-          for (int a = (2 * i + k); a > 2*i; --a) {
-            if ( magnitude( xInter[a] - xInter[a-1], yInter[a] - yInter[a-1], zInter[a] - zInter[a-1] ) < 1.e-10 ) {
-              inter = false; // we already have the point
+          for ( int a = ( 2 * i + k ); a > 2 * i; --a ) {
+            if ( magnitude( xInter[a] - xInter[a - 1], yInter[a] - yInter[a - 1], zInter[a] - zInter[a - 1] ) <
+                 1.e-10 ) {
+              inter = false;  // we already have the point
             }
           }
 
           if ( inter ) {
-
             // check to see if the line-plane intersection point lies inside the other planar face
             RealT x_other_local[max_nodes_per_elem];
             RealT y_other_local[max_nodes_per_elem];
-            Points3DTo2D( &x_other[0], &y_other[0], &z_other[0], fn[0], fn[1], fn[2], cx[0], cx[1], cx[2], num_nodes_other,
-                          &x_other_local[0], &y_other_local[0] );
+            Points3DTo2D( &x_other[0], &y_other[0], &z_other[0], fn[0], fn[1], fn[2], cx[0], cx[1], cx[2],
+                          num_nodes_other, &x_other_local[0], &y_other_local[0] );
 
             // get the local coordinates of the current intersection point
             RealT xInter_local, yInter_local;
@@ -1219,8 +1221,8 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
                                cy_other_local, cz );
 
             // check if local intersection point lies inside other face
-            bool check = Point2DInFace( xInter_local, yInter_local, &x_other_local[0], &y_other_local[0], cx_other_local,
-                                        cy_other_local, num_nodes_other );
+            bool check = Point2DInFace( xInter_local, yInter_local, &x_other_local[0], &y_other_local[0],
+                                        cx_other_local, cy_other_local, num_nodes_other );
 
             // if intersection point lies in other face then increment intersection counter
             if ( check ) {
@@ -1275,7 +1277,7 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
       num_nodes_otherside[i] = k_otherside;
 
     }  // end loop over faces
-  } // end if-convex
+  }    // end if-convex
 
   // we come into this routine with full overlap calculation set to true. Here, we need
   // to determine if we need to switch to interpen overlap calc. This is cleaner logic
@@ -1313,7 +1315,8 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
   }
 
 #ifdef TRIBOL_USE_HOST
-  SLIC_ERROR_IF( (!m_face1_convex || !m_face2_convex) && !m_fullOverlap, "Must switch to full overlap for non-convex faces!" );
+  SLIC_ERROR_IF( ( !m_face1_convex || !m_face2_convex ) && !m_fullOverlap,
+                 "Must switch to full overlap for non-convex faces!" );
 #endif
 
   // allocate arrays to store the vertices for clipped or full face used either
@@ -1368,8 +1371,8 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
     }
 
     // project face coordinates onto common plane and compute overlap
-    FaceGeomException interpen_error = this->projectPointsAndComputeOverlap( &cfx1[0], &cfy1[0], &cfz1[0], &cfx2[0],
-                                                                             &cfy2[0], &cfz2[0], numV[0], numV[1], m1, m2 );
+    FaceGeomException interpen_error = this->projectPointsAndComputeOverlap(
+        &cfx1[0], &cfy1[0], &cfz1[0], &cfx2[0], &cfy2[0], &cfz2[0], numV[0], numV[1], m1, m2 );
     overlap_error = interpen_error;
 
     // geomFilter() checks to see if at least one vertex of one face lies in the other as a proxy
@@ -1405,8 +1408,8 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
       cfz2[n] = z2[n];
     }
 
-    FaceGeomException full_error = this->projectPointsAndComputeOverlap( &cfx1[0], &cfy1[0], &cfz1[0], &cfx2[0], &cfy2[0],
-                                                                         &cfz2[0], numV[0], numV[1], m1, m2 );
+    FaceGeomException full_error = this->projectPointsAndComputeOverlap( &cfx1[0], &cfy1[0], &cfz1[0], &cfx2[0],
+                                                                         &cfy2[0], &cfz2[0], numV[0], numV[1], m1, m2 );
 
     overlap_error = full_error;
 
@@ -1567,7 +1570,7 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::projectPointsAndComputeOve
   //       Intersection2DPolygon() assumes consistent ordering between faces
   if ( !m_fullOverlap ) {
     PolyReorderConvex( cfx1_loc, cfy1_loc, nullptr, num_vert_1 );
-       PolyReorderConvex( cfx2_loc, cfy2_loc, nullptr, num_vert_2 );
+    PolyReorderConvex( cfx2_loc, cfy2_loc, nullptr, num_vert_2 );
   } else {  // use ElemReverse() per original implementation for full overlaps
     ElemReverse( cfx2_loc, cfy2_loc, num_vert_2 );
   }
@@ -1690,10 +1693,12 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap2D( const Me
     // let's check for a design breaking case
     if ( k1 > 1 || k2 > 1 ) {
 #ifdef TRIBOL_USE_HOST
-      SLIC_INFO( "CommonPlanePair::computeOverlap2D() with more than one intersection point. Offending edge1 vertices are: " <<
-                  xposA1 << ", " << yposA1 << " and " << xposB1 << ", " << yposB1 << "." );
-      SLIC_INFO( "CommonPlanePair::computeOverlap2D() with more than one intersection point. Offending edge2 vertices are: " <<
-                  xposA2 << ", " << yposA2 << " and " << xposB2 << ", " << yposB2 << "." );
+      SLIC_INFO(
+          "CommonPlanePair::computeOverlap2D() with more than one intersection point. Offending edge1 vertices are: "
+          << xposA1 << ", " << yposA1 << " and " << xposB1 << ", " << yposB1 << "." );
+      SLIC_INFO(
+          "CommonPlanePair::computeOverlap2D() with more than one intersection point. Offending edge2 vertices are: "
+          << xposA2 << ", " << yposA2 << " and " << xposB2 << ", " << yposB2 << "." );
 
       SLIC_ERROR( "CommonPlanePair::computeOverlap2D() more than 2 interpenetrating vertices detected; "
                   << "check for degenerate geometry for edges (" << edgeId1 << ", " << edgeId2 << ") on meshes ("

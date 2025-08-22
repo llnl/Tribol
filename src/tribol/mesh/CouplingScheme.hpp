@@ -157,12 +157,12 @@ class CouplingScheme {
     /**
      * @brief Get the parameters struct
      *
-     * @return a const reference to the parameters 
+     * @return a const reference to the parameters
      */
     TRIBOL_HOST_DEVICE const Parameters& getParameters() const { return m_parameters; }
 
     /**
-     * @brief Get the effective binning proximity scale 
+     * @brief Get the effective binning proximity scale
      *
      * @return the effective binning proximity scale used on the coupling scheme
      */
@@ -198,12 +198,12 @@ class CouplingScheme {
     TRIBOL_HOST_DEVICE const CompGeom::Viewer& getCompGeomView() const { return m_cg_pairs; }
 
     /**
-     * @brief Perform interface pair pruning based on the contact method 
+     * @brief Perform interface pair pruning based on the contact method
      *
      * \param [in] fid1 id of the first face
      * \param [in] fid2 id of the second face
      *
-     * \return true if interface pair is to be pruned (excluded); false if the pair is a contact candidate 
+     * \return true if interface pair is to be pruned (excluded); false if the pair is a contact candidate
      */
     TRIBOL_HOST_DEVICE bool pruneMethodFacePair( const IndexT fid1, const IndexT fid2 ) const;
 

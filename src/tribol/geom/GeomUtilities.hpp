@@ -26,8 +26,8 @@ namespace tribol {
  * \param [out] e2z z-component of second basis vector
  *
  */
-TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT nx, RealT ny, RealT nz, RealT& e1x, RealT& e1y, RealT& e1z,
-                                           RealT& e2x, RealT& e2y, RealT& e2z );
+TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT nx, RealT ny, RealT nz, RealT& e1x, RealT& e1y, RealT& e1z, RealT& e2x,
+                                           RealT& e2y, RealT& e2z );
 
 /*!
  *
@@ -410,9 +410,9 @@ enum class OverlapVertexType
  *
  */
 TRIBOL_HOST_DEVICE FaceGeomException Intersection2DPolygon( const RealT* xA, const RealT* yA, int numVertexA,
-                                                            const RealT* xB, const RealT* yB, int numVertexB, RealT posTol,
-                                                            RealT lenTol, RealT* polyX, RealT* polyY, int& numPolyVert,
-                                                            RealT& area, bool orientCheck = true,
+                                                            const RealT* xB, const RealT* yB, int numVertexB,
+                                                            RealT posTol, RealT lenTol, RealT* polyX, RealT* polyY,
+                                                            int& numPolyVert, RealT& area, bool orientCheck = true,
                                                             OverlapVertexType* vertType = nullptr, int* edgeA = nullptr,
                                                             int* edgeB = nullptr );
 
@@ -444,8 +444,8 @@ TRIBOL_HOST_DEVICE FaceGeomException Intersection2DPolygon( const RealT* xA, con
  *
  */
 FaceGeomException Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB,
-                                               const RealT* yB, int numVertexB, RealT posTol, RealT lenTol, RealT* polyX,
-                                               RealT* polyY, int* numPolyVert );
+                                               const RealT* yB, int numVertexB, RealT posTol, RealT lenTol,
+                                               RealT* polyX, RealT* polyY, int* numPolyVert );
 
 #endif
 
@@ -622,8 +622,8 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
  *  xnew and ynew values are set to x and y, respectively, and numNewPoints
  *  equals numPoints.
  */
-TRIBOL_HOST_DEVICE FaceGeomException CheckPolySegs( const RealT* x, const RealT* y, int numPoints, RealT tol, RealT* xnew,
-                                                    RealT* ynew, int* newIDs, int& numNewPoints );
+TRIBOL_HOST_DEVICE FaceGeomException CheckPolySegs( const RealT* x, const RealT* y, int numPoints, RealT tol,
+                                                    RealT* xnew, RealT* ynew, int* newIDs, int& numNewPoints );
 
 /*!
  *
@@ -784,7 +784,6 @@ TRIBOL_HOST_DEVICE void Points3DTo2D( const RealT* const x, const RealT* const y
                                       const RealT ny, const RealT nz, const RealT cx, const RealT cy, const RealT cz,
                                       const int num_verts, RealT* x_loc, RealT* y_loc );
 
-
 /*!
  *
  * \brief Checks if the given point lies inside an edge
@@ -803,7 +802,8 @@ TRIBOL_HOST_DEVICE void Points3DTo2D( const RealT* const x, const RealT* const y
  *       some fuzz. If a user wants a proximity query, they can increase the fuzz factor.
  *
  */
-TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp, RealT fuzz_factor = 0.0 );
+TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp,
+                                       RealT fuzz_factor = 0.0 );
 
 /*!
  * \brief Check whether two polygons (faces) have a positive area of overlap
@@ -821,10 +821,11 @@ TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const 
  * \param [in] isym 0 for planar symmetry, 1 for axial symmetry
  */
 TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_nodes_2, RealT* projLocX1,
-                                          RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, RealT& area, const int isym );
+                                          RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, RealT& area,
+                                          const int isym );
 
 /*!
- * \brief This routine is used to check to see if two faces/edges overlap 
+ * \brief This routine is used to check to see if two faces/edges overlap
  *        as projected to a (d-1) - hyperplane
  *
  * \param [in] x1 pointer to x coords for first face
@@ -846,8 +847,8 @@ TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_n
  */
 TRIBOL_HOST_DEVICE bool IsOverlappingOnPlane( const RealT* const x1, const RealT* const y1, const RealT* const z1,
                                               const RealT* const x2, const RealT* const y2, const RealT* const z2,
-                                              const RealT* const n, const RealT* const c,
-                                              const int numNodesFace1, const int numNodesFace2, const int dim );
+                                              const RealT* const n, const RealT* const c, const int numNodesFace1,
+                                              const int numNodesFace2, const int dim );
 
 /*!
  * \brief check if the planar polygon is convex

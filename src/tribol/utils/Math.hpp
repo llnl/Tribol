@@ -70,8 +70,8 @@ void bubble_sort( int* const array,  ///< [in] Input array of integers
 );
 
 /// compute the absolute value of the difference between two values
-RealT abs_val_diff( RealT val1, ///< [in] first value
-                    RealT val2  ///< [in] second value
+RealT abs_val_diff( RealT val1,  ///< [in] first value
+                    RealT val2   ///< [in] second value
 );
 
 /// allocate and initialize an array of reals

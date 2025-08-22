@@ -22,25 +22,23 @@
 namespace tribol {
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT nx, RealT ny, RealT nz, RealT& e1x, RealT& e1y, RealT& e1z,
-                                           RealT& e2x, RealT& e2y, RealT& e2z )
+TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT nx, RealT ny, RealT nz, RealT& e1x, RealT& e1y, RealT& e1z, RealT& e2x,
+                                           RealT& e2y, RealT& e2z )
 {
   constexpr int max_dim = 3;
-  RealT a[ max_dim ]; 
-  for (int i=0; i<max_dim; ++i) {
+  RealT a[max_dim];
+  for ( int i = 0; i < max_dim; ++i ) {
     a[i] = 0.;
   }
 
   // define a vector non-parallel to the input unit normal. Do so by
   // finding the smallest unit normal component and define a corresponding
   // vector in that direction
-  if ( std::abs(nx) <= std::abs(ny) && std::abs(nx) <= std::abs(nz) ) {
+  if ( std::abs( nx ) <= std::abs( ny ) && std::abs( nx ) <= std::abs( nz ) ) {
     a[0] = 1.0;
-  }
-  else if ( std::abs(ny) <= std::abs(nx) && std::abs(ny) <= std::abs(nz) ) {
+  } else if ( std::abs( ny ) <= std::abs( nx ) && std::abs( ny ) <= std::abs( nz ) ) {
     a[1] = 1.0;
-  }
-  else if ( std::abs(nz) <= std::abs(nx) && std::abs(nz) <= std::abs(ny) ) {
+  } else if ( std::abs( nz ) <= std::abs( nx ) && std::abs( nz ) <= std::abs( ny ) ) {
     a[2] = 1.0;
   }
 
@@ -175,8 +173,8 @@ TRIBOL_HOST_DEVICE void PolyInterYCentroid( const int namax, const RealT* const 
 
   // calculate origin shift to avoid roundoff errors
   RealT real_max = axom::numeric_limits<RealT>::max();
-  RealT xorg   = real_max;
-  RealT yorg   = real_max;
+  RealT xorg = real_max;
+  RealT yorg = real_max;
   RealT xa_min = real_max;
   RealT xa_max = -real_max;
   RealT ya_min = real_max;
@@ -626,10 +624,10 @@ void PolyCentroid( const RealT* const x, const RealT* const y, const int numVert
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE FaceGeomException Intersection2DPolygon( const RealT* xA, const RealT* yA, int numVertexA,
-                                                            const RealT* xB, const RealT* yB, int numVertexB, RealT posTol,
-                                                            RealT lenTol, RealT* polyX, RealT* polyY, int& numPolyVert,
-                                                            RealT& area, bool orientCheck, OverlapVertexType* vertType,
-                                                            int* edgeA, int* edgeB )
+                                                            const RealT* xB, const RealT* yB, int numVertexB,
+                                                            RealT posTol, RealT lenTol, RealT* polyX, RealT* polyY,
+                                                            int& numPolyVert, RealT& area, bool orientCheck,
+                                                            OverlapVertexType* vertType, int* edgeA, int* edgeB )
 {
   // for tribol, if you have called this routine it is because a positive area of
   // overlap between two polygons (faces) exists. This routine does not perform a
@@ -993,8 +991,8 @@ TRIBOL_HOST_DEVICE FaceGeomException Intersection2DPolygon( const RealT* xA, con
 #ifdef TRIBOL_USE_ENZYME
 
 FaceGeomException Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB,
-                                               const RealT* yB, int numVertexB, RealT posTol, RealT lenTol, RealT* polyX,
-                                               RealT* polyY, int* numPolyVert )
+                                               const RealT* yB, int numVertexB, RealT posTol, RealT lenTol,
+                                               RealT* polyX, RealT* polyY, int* numPolyVert )
 {
   double area = 0.0;
   constexpr bool orientCheck = true;
@@ -1298,7 +1296,7 @@ TRIBOL_HOST_DEVICE RealT Area2DPolygon( const RealT* const x, const RealT* const
 
     area += x[ia] * y[ib] - y[ia] * x[ib];
   }
-  return std::abs(0.5*area);
+  return std::abs( 0.5 * area );
 
 }  // end Area2DPolygon()
 
@@ -1470,8 +1468,8 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
 }  // end SegmentIntersection2D()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomException CheckPolySegs( const RealT* x, const RealT* y, int numPoints, RealT tol, RealT* xnew,
-                                                    RealT* ynew, int* newIDs, int& numNewPoints )
+TRIBOL_HOST_DEVICE FaceGeomException CheckPolySegs( const RealT* x, const RealT* y, int numPoints, RealT tol,
+                                                    RealT* xnew, RealT* ynew, int* newIDs, int& numNewPoints )
 {
   constexpr int max_nodes_per_overlap = 5 * 2;  // max five interpen vertices in a single cut face
   int local_newIDs[max_nodes_per_overlap];
@@ -1549,11 +1547,11 @@ TRIBOL_HOST_DEVICE bool PolyReorderConvex( RealT* x, RealT* y, int* newIDs, int 
 
   RealT xC, yC, zC;
   RealT* z = nullptr;
-  constexpr int max_nodes_per_overlap = 5 * 2; // 5 max verts for a given interpen face-portion
+  constexpr int max_nodes_per_overlap = 5 * 2;  // 5 max verts for a given interpen face-portion
 
 #if defined( TRIBOL_USE_HOST )
-  SLIC_ERROR_IF( numPoints > max_nodes_per_overlap, "PolyReorderConvex: numPoints exceed maximum " <<
-                 "expected per overlap (" << max_nodes_per_overlap << ")." );
+  SLIC_ERROR_IF( numPoints > max_nodes_per_overlap, "PolyReorderConvex: numPoints exceed maximum "
+                                                        << "expected per overlap (" << max_nodes_per_overlap << ")." );
 #endif
 
   constexpr int max_proj_nodes = max_nodes_per_overlap - 2;
@@ -1579,17 +1577,17 @@ TRIBOL_HOST_DEVICE bool PolyReorderConvex( RealT* x, RealT* y, int* newIDs, int 
   newIDs[0] = 0;
   for ( int j = newIDs[1]; j < numPoints; ++j ) {
     // determine current segment vector and normal
-    RealT lambdaX = x[j] - x[ newIDs[0] ];
-    RealT lambdaY = y[j] - y[ newIDs[0] ];
+    RealT lambdaX = x[j] - x[newIDs[0]];
+    RealT lambdaY = y[j] - y[newIDs[0]];
     RealT nrmlx = -lambdaY;
     RealT nrmly = lambdaX;
 
     // project all segment vectors between all OTHER vertices and newIDs[0] onto the current
     // segment vector's normal. There will always be numPoints-2 projections
-    int pk = 0; // projection counter
-    for ( int k = 0; k < numPoints; ++k ) { // loop over all segments
-      if ( k != newIDs[0] && k != j ) { // pick off segments that are NOT the current segment
-        proj[pk] = ( x[k] - x[ newIDs[0] ] ) * nrmlx + ( y[k] - y[ newIDs[0] ] ) * nrmly;
+    int pk = 0;                              // projection counter
+    for ( int k = 0; k < numPoints; ++k ) {  // loop over all segments
+      if ( k != newIDs[0] && k != j ) {      // pick off segments that are NOT the current segment
+        proj[pk] = ( x[k] - x[newIDs[0]] ) * nrmlx + ( y[k] - y[newIDs[0]] ) * nrmly;
         ++pk;
       }
     }
@@ -1599,13 +1597,13 @@ TRIBOL_HOST_DEVICE bool PolyReorderConvex( RealT* x, RealT* y, int* newIDs, int 
     bool neg = false;
     bool pos = false;
     for ( int ip = 0; ip < pk; ++ip ) {
-      if ( neg ) { // if neg is previously set to true, keep it true
+      if ( neg ) {  // if neg is previously set to true, keep it true
         neg = true;
       } else if ( !neg ) {
         neg = ( proj[ip] < 0. ) ? true : false;
       }
 
-      if ( pos ) { // if pos is previously set to true, keep it true
+      if ( pos ) {  // if pos is previously set to true, keep it true
         pos = true;
       } else if ( !pos ) {
         pos = ( proj[ip] > 0. ) ? true : false;
@@ -1626,8 +1624,8 @@ TRIBOL_HOST_DEVICE bool PolyReorderConvex( RealT* x, RealT* y, int* newIDs, int 
       // one of two segments that will pass the previous test.
       // Check the dot product between the current segment normal and the vector
       // between the centroid and first (0th) vertex
-      RealT vx = xC - x[ newIDs[0] ];
-      RealT vy = yC - y[ newIDs[0] ];
+      RealT vx = xC - x[newIDs[0]];
+      RealT vy = yC - y[newIDs[0]];
 
       RealT prod = nrmlx * vx + nrmly * vy;
 
@@ -1655,8 +1653,7 @@ TRIBOL_HOST_DEVICE bool PolyReorderConvex( RealT* x, RealT* y, int* newIDs, int 
   //
   // Note: increment to (numPoints - 3) as as the (number_of_remaining_vertices-1) where the last vertex
   // will automatically
-  for ( int i = 0; i < ( numPoints - 3 ); ++i )
-  {
+  for ( int i = 0; i < ( numPoints - 3 ); ++i ) {
     RealT refMag, linkMag;
 
     // compute current ordered reference vector;
@@ -1670,7 +1667,7 @@ TRIBOL_HOST_DEVICE bool PolyReorderConvex( RealT* x, RealT* y, int* newIDs, int 
 
     // loop over link vectors of unassigned vertices
     int jID = -1;
-    RealT cosThetaMax = -1.; // this handles angles up to 180 degrees. Any greater and the polygon is not convex
+    RealT cosThetaMax = -1.;  // this handles angles up to 180 degrees. Any greater and the polygon is not convex
     RealT cosTheta;
     int nextVertexID = 2 + i;
     for ( int j = nextVertexID; j < numPoints; ++j ) {
@@ -1690,7 +1687,7 @@ TRIBOL_HOST_DEVICE bool PolyReorderConvex( RealT* x, RealT* y, int* newIDs, int 
 
     // we have found the minimum angle between remaining segment vectors and the corresponding local vertex id.
     // swap ids
-    if (jID > -1) {
+    if ( jID > -1 ) {
       int swapID = newIDs[nextVertexID];
       newIDs[nextVertexID] = newIDs[jID];
       newIDs[jID] = swapID;
@@ -1748,8 +1745,8 @@ TRIBOL_HOST_DEVICE void PolyReorderWithNormal( RealT* const x, RealT* const y, R
   constexpr int max_nodes_per_overlap = 5 * 2;  // max face polygon for interpen can be 5
 
 #if defined( TRIBOL_USE_HOST )
-  SLIC_ERROR_IF( numPoints > max_nodes_per_overlap, "PolyReorderWithNormal: numPoints exceed maximum " <<
-                 "expected per overlap (" << max_nodes_per_overlap << ")." );
+  SLIC_ERROR_IF( numPoints > max_nodes_per_overlap, "PolyReorderWithNormal: numPoints exceed maximum "
+                                                        << "expected per overlap (" << max_nodes_per_overlap << ")." );
 #endif
 
   // form link vectors between second and first vertex and third and first
@@ -1935,7 +1932,8 @@ TRIBOL_HOST_DEVICE void Points3DTo2D( const RealT* const x, const RealT* const y
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp, RealT fuzz_factor )
+TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp,
+                                       RealT fuzz_factor )
 {
   RealT xmax, xmin, ymax, ymin;
   if ( x[0] > x[1] ) {
@@ -1966,7 +1964,8 @@ TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const 
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_nodes_2, RealT* projLocX1,
-                                          RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, RealT& area, const int isym )
+                                          RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, RealT& area,
+                                          const int isym )
 {
   // change the vertex ordering of one of the faces so that the two match
   constexpr int max_nodes_per_elem = 4;
@@ -1997,12 +1996,12 @@ TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_n
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE bool IsOverlappingOnPlane( const RealT* const x1, const RealT* const y1, const RealT* const z1,
                                               const RealT* const x2, const RealT* const y2, const RealT* const z2,
-                                              const RealT* const n, const RealT* const c,
-                                              const int numNodesFace1, const int numNodesFace2, const int dim )
+                                              const RealT* const n, const RealT* const c, const int numNodesFace1,
+                                              const int numNodesFace2, const int dim )
 {
   constexpr int max_nodes_per_face = 4;
 
-  if (dim == 3) {
+  if ( dim == 3 ) {
     RealT x1_bar[max_nodes_per_face];
     RealT y1_bar[max_nodes_per_face];
     RealT z1_bar[max_nodes_per_face];
@@ -2011,10 +2010,10 @@ TRIBOL_HOST_DEVICE bool IsOverlappingOnPlane( const RealT* const x1, const RealT
     RealT z2_bar[max_nodes_per_face];
 
     // project vertices to plane
-    ProjectPointsToPlane( x1, y1, z1, n[0], n[1], n[2], c[0], c[1], c[2],
-                          &x1_bar[0], &y1_bar[0], &z1_bar[0], numNodesFace1 );
-    ProjectPointsToPlane( x2, y2, z2, n[0], n[1], n[2], c[0], c[1], c[2],
-                          &x2_bar[0], &y2_bar[0], &z2_bar[0], numNodesFace2 );
+    ProjectPointsToPlane( x1, y1, z1, n[0], n[1], n[2], c[0], c[1], c[2], &x1_bar[0], &y1_bar[0], &z1_bar[0],
+                          numNodesFace1 );
+    ProjectPointsToPlane( x2, y2, z2, n[0], n[1], n[2], c[0], c[1], c[2], &x2_bar[0], &y2_bar[0], &z2_bar[0],
+                          numNodesFace2 );
 
     RealT x1_bar_local[max_nodes_per_face];
     RealT y1_bar_local[max_nodes_per_face];
@@ -2022,14 +2021,14 @@ TRIBOL_HOST_DEVICE bool IsOverlappingOnPlane( const RealT* const x1, const RealT
     RealT y2_bar_local[max_nodes_per_face];
 
     // 3D coordinates to local 2D coordinates
-    Points3DTo2D( &x1_bar[0], &y1_bar[0], &z1_bar[0], n[0], n[1], n[2], c[0], c[1], c[2],
-                  numNodesFace1, &x1_bar_local[0], &y1_bar_local[0] );
-    Points3DTo2D( &x2_bar[0], &y2_bar[0], &z2_bar[0], n[0], n[1], n[2], c[0], c[1], c[2],
-                  numNodesFace2, &x2_bar_local[0], &y2_bar_local[0] );
+    Points3DTo2D( &x1_bar[0], &y1_bar[0], &z1_bar[0], n[0], n[1], n[2], c[0], c[1], c[2], numNodesFace1,
+                  &x1_bar_local[0], &y1_bar_local[0] );
+    Points3DTo2D( &x2_bar[0], &y2_bar[0], &z2_bar[0], n[0], n[1], n[2], c[0], c[1], c[2], numNodesFace2,
+                  &x2_bar_local[0], &y2_bar_local[0] );
 
     RealT area;
-    CheckPolyOverlap( numNodesFace1, numNodesFace2, &x1_bar_local[0],
-                      &y1_bar_local[0], &x2_bar_local[0], &y2_bar_local[0], area, 0 );
+    CheckPolyOverlap( numNodesFace1, numNodesFace2, &x1_bar_local[0], &y1_bar_local[0], &x2_bar_local[0],
+                      &y2_bar_local[0], area, 0 );
 
     if ( area < 1.e-15 ) {
       return false;
@@ -2042,11 +2041,11 @@ TRIBOL_HOST_DEVICE bool IsOverlappingOnPlane( const RealT* const x1, const RealT
     RealT projY2[max_nodes_per_face];
 
     // project edge nodes to plane
-    for (int i=0; i<numNodesFace1; ++i) {
+    for ( int i = 0; i < numNodesFace1; ++i ) {
       ProjectPointToSegment( x1[i], y1[i], n[0], n[1], c[0], c[1], projX1[i], projY1[i] );
     }
 
-    for (int i=0; i<numNodesFace2; ++i) {
+    for ( int i = 0; i < numNodesFace2; ++i ) {
       ProjectPointToSegment( x2[i], y2[i], n[0], n[1], c[0], c[1], projX2[i], projY2[i] );
     }
 
@@ -2069,24 +2068,23 @@ TRIBOL_HOST_DEVICE bool IsOverlappingOnPlane( const RealT* const x1, const RealT
   }  // end dim == 2
 
   return true;
-
 }
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE bool IsConvex( const RealT* const x, const RealT* const y, const int numPolyVert )
 {
-  if (numPolyVert < 4) { // triangles are convex
+  if ( numPolyVert < 4 ) {  // triangles are convex
     return true;
   }
 
   bool pos = false;
-  bool neg = false; 
+  bool neg = false;
   for ( int i = 0; i < numPolyVert; ++i ) {
-    RealT ax = x[ (i+1) % numPolyVert ] - x[i];
-    RealT ay = y[ (i+1) % numPolyVert ] - y[i];
+    RealT ax = x[( i + 1 ) % numPolyVert] - x[i];
+    RealT ay = y[( i + 1 ) % numPolyVert] - y[i];
 
-    RealT bx = x[ (i+2) % numPolyVert ] - x[ (i+1) % numPolyVert ];
-    RealT by = y[ (i+2) % numPolyVert ] - y[ (i+1) % numPolyVert ];
+    RealT bx = x[( i + 2 ) % numPolyVert] - x[( i + 1 ) % numPolyVert];
+    RealT by = y[( i + 2 ) % numPolyVert] - y[( i + 1 ) % numPolyVert];
 
     RealT cross = ax * by - ay * bx;
 
@@ -2095,10 +2093,9 @@ TRIBOL_HOST_DEVICE bool IsConvex( const RealT* const x, const RealT* const y, co
     } else if ( cross < 0 ) {
       neg = true;
     }
-    
   }
 
-  if (pos && neg) {
+  if ( pos && neg ) {
     return false;
   } else {
     return true;

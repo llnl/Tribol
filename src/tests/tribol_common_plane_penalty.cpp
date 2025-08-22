@@ -163,7 +163,7 @@ void checkForceSense( tribol::CouplingScheme const* cs, bool isTied = false )
         }
         if ( !isTied ) {
           // <= catches interpenetration AND separation
-          //EXPECT_LE( force_mag, -1.e-6 );
+          // EXPECT_LE( force_mag, -1.e-6 );
           EXPECT_LE( force_mag, 0. );
         } else {
           // no-op, TIED_NORMAL is a special case where we support
@@ -575,10 +575,10 @@ TEST_F( CommonPlaneTest, common_plane_2d_interpen_check )
 
   // compute the point at which edge 2 intersects edge 1.
   // then compute the length and height of the interpen portion of edge 2
-  RealT intercept_point = 0.5 * (x1[0] - x1[1]) + x_shift;
+  RealT intercept_point = 0.5 * ( x1[0] - x1[1] ) + x_shift;
   RealT length = intercept_point - x2[0];
   RealT height = y1[0] - y2[0];
- 
+
   // compute the angle between the interpen portions of edge 1 and 2
   RealT theta = std::atan( height / length );
 

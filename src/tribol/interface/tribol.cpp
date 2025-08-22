@@ -791,7 +791,6 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
 
   // copy the interaction pairs
   for ( int i = 0; i < numPairs; ++i ) {
-
     // perform initial face-pair validity checks to add valid face-pairs
     // to interface pair manager. Note, further computational geometry
     // filtering will be performed on each face-pair indendifying

@@ -1060,8 +1060,8 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                 // in the active set
                 bool interact = false;
 
-                FaceGeomException interact_err = CheckInterfacePair( pair, mesh1, mesh2, params, contact_method,
-                                                                     contact_case, interact, cg_view, planes_ct.data() );
+                FaceGeomException interact_err = CheckInterfacePair(
+                    pair, mesh1, mesh2, params, contact_method, contact_case, interact, cg_view, planes_ct.data() );
 
                 // // Update pair reporting data for this coupling scheme
                 // this->updatePairReportingData( interact_err );
@@ -1875,7 +1875,7 @@ TRIBOL_HOST_DEVICE bool CouplingScheme::Viewer::pruneMethodFacePair( const Index
   constexpr int max_nodes_per_face = 4;
 
   auto& mesh1 = this->getMesh1View();
-  auto& mesh2 = this->getMesh2View(); 
+  auto& mesh2 = this->getMesh2View();
   int dim = mesh1.spatialDimension();
   int num_nodes_face_1 = mesh1.numberOfNodesPerElement();
   int num_nodes_face_2 = mesh2.numberOfNodesPerElement();
@@ -1901,7 +1901,7 @@ TRIBOL_HOST_DEVICE bool CouplingScheme::Viewer::pruneMethodFacePair( const Index
     const int nodeId_1 = mesh1.getGlobalNodeId( fid1, i );
     x1[i] = mesh1.getPosition()[0][nodeId_1];
     y1[i] = mesh1.getPosition()[1][nodeId_1];
-    if (dim == 3) {
+    if ( dim == 3 ) {
       z1[i] = mesh1.getPosition()[2][nodeId_1];
     }
   }
@@ -1910,49 +1910,48 @@ TRIBOL_HOST_DEVICE bool CouplingScheme::Viewer::pruneMethodFacePair( const Index
     const int nodeId_2 = mesh2.getGlobalNodeId( fid2, i );
     x2[i] = mesh2.getPosition()[0][nodeId_2];
     y2[i] = mesh2.getPosition()[1][nodeId_2];
-    if (dim == 3) {
+    if ( dim == 3 ) {
       z2[i] = mesh2.getPosition()[2][nodeId_2];
     }
   }
 
   RealT nrml[max_dim], cx[max_dim];
 
-  switch (m_contact_method) {
+  switch ( m_contact_method ) {
     case ALIGNED_MORTAR:
     case MORTAR_WEIGHTS:
-    case SINGLE_MORTAR:
-    {
+    case SINGLE_MORTAR: {
       // specify the point-normal data used for mortar contact plane methods
       // This is taken as the face 2 (nonmortar) normal and centroid
-      for (int i=0; i<dim; ++i) {
+      for ( int i = 0; i < dim; ++i ) {
         nrml[i] = fn2[i];
-        cx[i] = cx2[i]; 
+        cx[i] = cx2[i];
       }
 
-      if (IsOverlappingOnPlane( &x1[0], &y1[0], &z1[0], &x2[0], &y2[0], &z2[0], &nrml[0], &cx[0], num_nodes_face_1, num_nodes_face_2, dim ) ) {
+      if ( IsOverlappingOnPlane( &x1[0], &y1[0], &z1[0], &x2[0], &y2[0], &z2[0], &nrml[0], &cx[0], num_nodes_face_1,
+                                 num_nodes_face_2, dim ) ) {
         return false;
       }
 
       break;
     }
-    case COMMON_PLANE:
-    {
+    case COMMON_PLANE: {
       // define the common plane
-      for (int i=0; i<dim; ++i) {
-        nrml[i] = 0.5 * (fn2[i] - fn1[i]);
-        cx[i] = 0.5 * (cx1[i] + cx2[i]);
+      for ( int i = 0; i < dim; ++i ) {
+        nrml[i] = 0.5 * ( fn2[i] - fn1[i] );
+        cx[i] = 0.5 * ( cx1[i] + cx2[i] );
       }
 
       // normalize the intermediate plane normal
       RealT mag;
-      if (dim == 3) {
+      if ( dim == 3 ) {
         mag = magnitude( nrml[0], nrml[1], nrml[2] );
       } else {
         mag = magnitude( nrml[0], nrml[1], 0. );
       }
       RealT invMag = 1.0 / mag;
 
-      for (int i=0; i<dim; ++i) {
+      for ( int i = 0; i < dim; ++i ) {
         nrml[i] *= invMag;
       }
 
@@ -1964,13 +1963,13 @@ TRIBOL_HOST_DEVICE bool CouplingScheme::Viewer::pruneMethodFacePair( const Index
       RealT z2_prime[max_nodes_per_face];
 
       // project faces to average face planes
-      if (dim == 3) {
+      if ( dim == 3 ) {
         ProjectFaceNodesToPlane( mesh1, fid1, fn1[0], fn1[1], fn1[2], cx1[0], cx1[1], cx1[2], &x1_prime[0],
                                  &y1_prime[0], &z1_prime[0] );
         ProjectFaceNodesToPlane( mesh2, fid2, fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2], &x2_prime[0],
                                  &y2_prime[0], &z2_prime[0] );
       } else {
-        for (int i=0; i<dim; ++i) {
+        for ( int i = 0; i < dim; ++i ) {
           x1_prime[i] = x1[i];
           y1_prime[i] = y1[i];
           x2_prime[i] = x2[i];
@@ -1978,19 +1977,19 @@ TRIBOL_HOST_DEVICE bool CouplingScheme::Viewer::pruneMethodFacePair( const Index
         }
       }
 
-      if (IsOverlappingOnPlane( &x1_prime[0], &y1_prime[0], &z1_prime[0], &x2_prime[0], &y2_prime[0], &z2_prime[0], &nrml[0], &cx[0], num_nodes_face_1, num_nodes_face_2, dim ) ) {
+      if ( IsOverlappingOnPlane( &x1_prime[0], &y1_prime[0], &z1_prime[0], &x2_prime[0], &y2_prime[0], &z2_prime[0],
+                                 &nrml[0], &cx[0], num_nodes_face_1, num_nodes_face_2, dim ) ) {
         return false;
       }
       break;
     }
-    default:
-    {
+    default: {
 #ifdef TRIBOL_USE_HOST
       SLIC_ERROR( "CouplingScheme::performMethodPruning(): your contact method does not have a pruning routine." );
 #endif
       break;
     }
-  } // end switch
+  }  // end switch
 
   return false;
 }

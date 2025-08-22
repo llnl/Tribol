@@ -121,9 +121,9 @@ TEST_F( CompGeomTest, common_plane_single_element_full_overlap_check_1 )
   int nElemsZM = numElems1;
 
   int numElems2 = 1;
-  int nElemsXS = numElems2; 
+  int nElemsXS = numElems2;
   int nElemsYS = 1;
-  int nElemsZS = numElems2; 
+  int nElemsZS = numElems2;
 
   int userSpecifiedNumOverlaps = 1;
 
@@ -182,9 +182,9 @@ TEST_F( CompGeomTest, common_plane_single_element_full_overlap_check_2 )
   int nElemsZM = numElems1;
 
   int numElems2 = 1;
-  int nElemsXS = numElems2; 
+  int nElemsXS = numElems2;
   int nElemsYS = 1;
-  int nElemsZS = numElems2; 
+  int nElemsZS = numElems2;
 
   int userSpecifiedNumOverlaps = 1;
 
@@ -227,7 +227,7 @@ TEST_F( CompGeomTest, common_plane_single_element_full_overlap_check_2 )
 
   RealT computed_gap = -( z_max1 - z_min2 );
   EXPECT_NEAR( plane.m_gap, computed_gap, 1.e-8 );
-  EXPECT_NEAR( plane.m_area, (x_max2 - x_min1) * (y_max2 - y_min1), 1.e-10 );
+  EXPECT_NEAR( plane.m_area, ( x_max2 - x_min1 ) * ( y_max2 - y_min1 ), 1.e-10 );
 
   tribol::finalize();
 }
@@ -236,14 +236,14 @@ TEST_F( CompGeomTest, common_plane_single_element_full_separation_check_1 )
 {
   // mesh bounding box with 0.1 separation gap and no x/y shift
   int numElems1 = 1;
-  int nElemsXM = numElems1; 
+  int nElemsXM = numElems1;
   int nElemsYM = 1;
-  int nElemsZM = numElems1; 
+  int nElemsZM = numElems1;
 
   int numElems2 = 1;
-  int nElemsXS = numElems2; 
+  int nElemsXS = numElems2;
   int nElemsYS = 1;
-  int nElemsZS = numElems2; 
+  int nElemsZS = numElems2;
 
   int userSpecifiedNumOverlaps = 1;
 
@@ -287,7 +287,7 @@ TEST_F( CompGeomTest, common_plane_single_element_full_separation_check_1 )
   RealT computed_gap = -( z_max1 - z_min2 );
   EXPECT_NEAR( plane.m_gap, computed_gap, 1.e-8 );
 
-  EXPECT_NEAR( plane.m_area, (x_max2 - x_min1) * (y_max2 - y_min1), 1.e-10 );
+  EXPECT_NEAR( plane.m_area, ( x_max2 - x_min1 ) * ( y_max2 - y_min1 ), 1.e-10 );
 
   tribol::finalize();
 }
@@ -299,12 +299,12 @@ TEST_F( CompGeomTest, common_plane_single_element_full_separation_check_2 )
   int numElems1 = 1;
   int nElemsXM = numElems1;
   int nElemsYM = 1;
-  int nElemsZM = numElems1; 
+  int nElemsZM = numElems1;
 
   int numElems2 = 1;
-  int nElemsXS = numElems2; 
+  int nElemsXS = numElems2;
   int nElemsYS = 1;
-  int nElemsZS = numElems2; 
+  int nElemsZS = numElems2;
 
   int userSpecifiedNumOverlaps = 1;
 
@@ -348,7 +348,7 @@ TEST_F( CompGeomTest, common_plane_single_element_full_separation_check_2 )
   RealT computed_gap = -( z_max1 - z_min2 );
   EXPECT_NEAR( plane.m_gap, computed_gap, 1.e-8 );
 
-  EXPECT_NEAR( plane.m_area, (x_max2 - x_min1) * (y_max2 - y_min1), 1.e-10 );
+  EXPECT_NEAR( plane.m_area, ( x_max2 - x_min1 ) * ( y_max2 - y_min1 ), 1.e-10 );
 
   tribol::finalize();
 }
@@ -375,14 +375,14 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_1 )
   //             *      * * * * * * * *
 
   int numElems1 = 1;
-  int nElemsXM = numElems1; 
+  int nElemsXM = numElems1;
   int nElemsYM = 1;
-  int nElemsZM = numElems1; 
+  int nElemsZM = numElems1;
 
   int numElems2 = 1;
-  int nElemsXS = numElems2; 
+  int nElemsXS = numElems2;
   int nElemsYS = 1;
-  int nElemsZS = numElems2; 
+  int nElemsZS = numElems2;
 
   int userSpecifiedNumOverlaps = 1;
 
@@ -1074,26 +1074,26 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_6 )
   z[7] = 0.;
 
   // rotate 30 degrees about the y-axis
-  //RealT x_shift = x[4];
-  //RealT z_shift = z[4];
+  // RealT x_shift = x[4];
+  // RealT z_shift = z[4];
   for ( int i = numVerts; i < lengthNodalData; ++i ) {
-    //x[i] = x[i] - x_shift;
-    //z[i] = z[i] - z_shift;
+    // x[i] = x[i] - x_shift;
+    // z[i] = z[i] - z_shift;
     RealT x_rot = x[i] * std::cos( thirty ) + z[i] * std::sin( thirty );
     RealT z_rot = x[i] * -std::sin( thirty ) + z[i] * std::cos( thirty );
-    x[i] = x_rot; //+ x_shift;
-    z[i] = z_rot; //+ z_shift;
+    x[i] = x_rot;  //+ x_shift;
+    z[i] = z_rot;  //+ z_shift;
   }
 
   // Debug print vertices
-  //for ( int i=0; i<4; ++i ) {
+  // for ( int i=0; i<4; ++i ) {
   //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
   //}
-  //std::cout << " " << std::endl;
+  // std::cout << " " << std::endl;
 
-  //for ( int i=4; i<8; ++i ) {
-  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
-  //}
+  // for ( int i=4; i<8; ++i ) {
+  //   std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
+  // }
 
   // register contact mesh
   tribol::IndexT mesh_id = 0;
@@ -1119,10 +1119,10 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_6 )
   // compute the geometric quantities of interest in order to compute the area of overlap and gap
   // Note: this is somewhat involved and difficult to make super clear. Talk to SRW if you need
   // more details
-  RealT h = 0.45; // height of initial interpen before face rotation
+  RealT h = 0.45;                        // height of initial interpen before face rotation
   RealT h_bar = h * std::cos( thirty );  // "height" of interpen on common plane
-  RealT w_bar = 0.45; // width of triangular interpen after rotation
-  RealT A_bar = h_bar * w_bar;  // area of triangular interpen on common plane
+  RealT w_bar = 0.45;                    // width of triangular interpen after rotation
+  RealT A_bar = h_bar * w_bar;           // area of triangular interpen on common plane
   RealT computed_gap = -2 * ( 0.333333333333 * h_bar ) * std::tan( thirty );
 
   // check the area
@@ -1198,26 +1198,26 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_7 )
   z[7] = epsilon;
 
   // rotate 30 degrees about the y-axis
-  //RealT x_shift = x[4];
-  //RealT z_shift = z[4];
+  // RealT x_shift = x[4];
+  // RealT z_shift = z[4];
   for ( int i = numVerts; i < lengthNodalData; ++i ) {
-    //x[i] = x[i] - x_shift;
-    //z[i] = z[i] - z_shift;
+    // x[i] = x[i] - x_shift;
+    // z[i] = z[i] - z_shift;
     RealT x_rot = x[i] * std::cos( thirty ) + z[i] * std::sin( thirty );
     RealT z_rot = x[i] * -std::sin( thirty ) + z[i] * std::cos( thirty );
-    x[i] = x_rot; //+ x_shift;
-    z[i] = z_rot; //+ z_shift;
+    x[i] = x_rot;  //+ x_shift;
+    z[i] = z_rot;  //+ z_shift;
   }
 
   // Debug print vertices
-  //for ( int i=0; i<4; ++i ) {
+  // for ( int i=0; i<4; ++i ) {
   //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
   //}
-  //std::cout << " " << std::endl;
+  // std::cout << " " << std::endl;
 
-  //for ( int i=4; i<8; ++i ) {
-  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
-  //}
+  // for ( int i=4; i<8; ++i ) {
+  //   std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
+  // }
 
   // register contact mesh
   tribol::IndexT mesh_id = 0;
@@ -1243,10 +1243,10 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_7 )
   // compute the geometric quantities of interest in order to compute the area of overlap and gap
   // Note: this is somewhat involved and difficult to make super clear. Talk to SRW if you need
   // more details
-  RealT h = 0.45; // height of initial interpen before face rotation
+  RealT h = 0.45;                        // height of initial interpen before face rotation
   RealT h_bar = h * std::cos( thirty );  // "height" of interpen on common plane
-  RealT w_bar = 0.45; // width of triangular interpen after rotation
-  RealT A_bar = h_bar * w_bar;  // area of triangular interpen on common plane
+  RealT w_bar = 0.45;                    // width of triangular interpen after rotation
+  RealT A_bar = h_bar * w_bar;           // area of triangular interpen on common plane
   RealT computed_gap = -2 * ( 0.333333333333 * h_bar ) * std::tan( thirty );
 
   // check the area
@@ -1303,7 +1303,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_8 )
   y[4] = y[3];
   y[5] = y[2];
   y[6] = y[1];
-  y[7] = y[0]; 
+  y[7] = y[0];
 
   z[4] = z[3] + epsilon;
   z[5] = z[2] - epsilon;
@@ -1339,7 +1339,6 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_8 )
 
   // check the gap
   EXPECT_NEAR( plane.m_gap, epsilon / 2., 1.e-6 );
-
 }
 
 TEST_F( CompGeomTest, common_plane_single_element_interpen_check_9 )
@@ -1384,14 +1383,14 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_9 )
   x[4] = 0.;
   x[5] = -0.5;
   x[6] = 0.;
-  x[7] = 0.5; 
+  x[7] = 0.5;
 
   y[4] = -0.75;
   y[5] = 0.5;
   y[6] = 0.;
-  y[7] = 0.5; 
+  y[7] = 0.5;
 
-  z[4] = 0.; 
+  z[4] = 0.;
   z[5] = 0.;
   z[6] = 0.;
   z[7] = 0.;
@@ -1409,16 +1408,16 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_9 )
     x[i] = x_rot;
     z[i] = z_rot;
   }
-  
-  // Debug print vertices
-  //for ( int i=0; i<4; ++i ) {
-  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
-  //}
-  //std::cout << " " << std::endl;
 
-  //for ( int i=4; i<8; ++i ) {
+  // Debug print vertices
+  // for ( int i=0; i<4; ++i ) {
   //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
   //}
+  // std::cout << " " << std::endl;
+
+  // for ( int i=4; i<8; ++i ) {
+  //   std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
+  // }
 
   // register contact mesh
   tribol::IndexT mesh_id = 0;
@@ -1449,7 +1448,6 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_9 )
 
   // check the gap
   EXPECT_NEAR( plane.m_gap, 0., 1.e-6 );
-
 }
 
 TEST_F( CompGeomTest, common_plane_single_element_interpen_check_10 )
@@ -1594,14 +1592,14 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_10 )
 TEST_F( CompGeomTest, common_plane_perfect_conforming_full_overlap )
 {
   int numElems1 = 3;
-  int nElemsXM = numElems1; 
+  int nElemsXM = numElems1;
   int nElemsYM = 3;
   int nElemsZM = numElems1;
 
   int numElems2 = 3;
-  int nElemsXS = numElems2; 
+  int nElemsXS = numElems2;
   int nElemsYS = 3;
-  int nElemsZS = numElems2; 
+  int nElemsZS = numElems2;
 
   int userSpecifiedNumOverlaps = 9;
 
@@ -1645,7 +1643,7 @@ TEST_F( CompGeomTest, common_plane_perfect_conforming_full_overlap )
 
   EXPECT_EQ( plane.m_fullOverlap, true );
 
-  RealT len = 1.0 / numElems1; 
+  RealT len = 1.0 / numElems1;
   EXPECT_NEAR( plane.m_area, len * len, 1.e-8 );
   EXPECT_EQ( plane.m_numPolyVert, 4 );
 
@@ -1655,12 +1653,12 @@ TEST_F( CompGeomTest, common_plane_perfect_conforming_full_overlap )
 TEST_F( CompGeomTest, common_plane_xy_shift_full_overlap )
 {
   int numElems1 = 3;
-  int nElemsXM = numElems1; 
+  int nElemsXM = numElems1;
   int nElemsYM = 3;
-  int nElemsZM = numElems1; 
+  int nElemsZM = numElems1;
 
   int numElems2 = 3;
-  int nElemsXS = numElems2; 
+  int nElemsXS = numElems2;
   int nElemsYS = 3;
   int nElemsZS = numElems2;
 
@@ -1712,9 +1710,9 @@ TEST_F( CompGeomTest, common_plane_rotated_face_full_overlap )
   int nElemsZM = numElems1;
 
   int numElems2 = 1;
-  int nElemsXS = numElems2; 
-  int nElemsYS = numElems2; 
-  int nElemsZS = numElems2; 
+  int nElemsXS = numElems2;
+  int nElemsYS = numElems2;
+  int nElemsZS = numElems2;
 
   int userSpecifiedNumOverlaps = 1;
 
@@ -2324,7 +2322,7 @@ TEST_F( CompGeomTest, compute_local_basis_1 )
   RealT nx = 1.;
   RealT ny = 1.;
   RealT nz = 1.;
-  
+
   // make normal vector unit
   RealT inv_mag = 1. / tribol::magnitude( nx, ny, nz );
   nx *= inv_mag;
@@ -2355,7 +2353,7 @@ TEST_F( CompGeomTest, compute_local_basis_2 )
   RealT nx = 1.;
   RealT ny = 0.;
   RealT nz = 0.;
-  
+
   // declare local basis vector components
   RealT e1x = 0.;
   RealT e1y = 0.;
@@ -2380,7 +2378,7 @@ TEST_F( CompGeomTest, compute_local_basis_3 )
   RealT nx = 0.;
   RealT ny = 1.;
   RealT nz = 0.;
-  
+
   // declare local basis vector components
   RealT e1x = 0.;
   RealT e1y = 0.;
@@ -2405,7 +2403,7 @@ TEST_F( CompGeomTest, compute_local_basis_4 )
   RealT nx = 0.;
   RealT ny = 0.;
   RealT nz = 1.;
-  
+
   // declare local basis vector components
   RealT e1x = 0.;
   RealT e1y = 0.;
@@ -2456,7 +2454,7 @@ TEST_F( CompGeomTest, poly_reorder_convex_1 )
   z[3] = 0.;
   z[4] = 0.;
 
-  SLIC_INFO("Testing PolyReorderConvex().");
+  SLIC_INFO( "Testing PolyReorderConvex()." );
   tribol::PolyReorderConvex( &x[0], &y[0], &new_ids[0], numOverlapVerts );
 
   EXPECT_EQ( x[0], 0. );
@@ -2473,7 +2471,7 @@ TEST_F( CompGeomTest, poly_reorder_convex_1 )
 
   // now test reordering with normal where the overlap vertices are now already
   // ordered correctly
-  SLIC_INFO("Testing PolyReorderWithNormal() already with CCW vertex ordering.");
+  SLIC_INFO( "Testing PolyReorderWithNormal() already with CCW vertex ordering." );
   tribol::PolyReorderWithNormal( &x[0], &y[0], &z[0], numOverlapVerts, 0., 0., 1. );
 
   EXPECT_EQ( x[0], 0. );
@@ -2490,7 +2488,7 @@ TEST_F( CompGeomTest, poly_reorder_convex_1 )
 
   // now test reordering with normal where the overlap vertices need to be reordered
   // in CW orientation
-  SLIC_INFO("Testing PolyReorderWithNormal() to reorder in CW vertex ordering.");
+  SLIC_INFO( "Testing PolyReorderWithNormal() to reorder in CW vertex ordering." );
   tribol::PolyReorderWithNormal( &x[0], &y[0], &z[0], numOverlapVerts, 0., 0., -1. );
 
   EXPECT_EQ( x[0], 0. );
@@ -2506,7 +2504,7 @@ TEST_F( CompGeomTest, poly_reorder_convex_1 )
   EXPECT_EQ( y[1], 0.5 );
 
   // now test reordering the vertices BACK TO CCW orientation
-  SLIC_INFO("Testing PolyReorderWithNormal() to reorder BACK to CCW vertex ordering.");
+  SLIC_INFO( "Testing PolyReorderWithNormal() to reorder BACK to CCW vertex ordering." );
   tribol::PolyReorderWithNormal( &x[0], &y[0], &z[0], numOverlapVerts, 0., 0., 1. );
 
   EXPECT_EQ( x[0], 0. );
@@ -2565,7 +2563,6 @@ TEST_F( CompGeomTest, project_point_to_plane )
   EXPECT_NEAR( proj_px, 0., 1.e-12 );
   EXPECT_NEAR( proj_py, 0., 1.e-12 );
   EXPECT_NEAR( proj_pz, 0., 1.e-12 );
-
 }
 
 TEST_F( CompGeomTest, point_in_face_1 )
@@ -2630,7 +2627,7 @@ TEST_F( CompGeomTest, line_plane_intersection_1 )
   // just through the plane
   RealT interx, intery, interz;
   bool in_plane = false;
-  
+
   // define a plane with normal in the z-direction
   RealT nx = 0.;
   RealT ny = 0.;
@@ -2651,29 +2648,32 @@ TEST_F( CompGeomTest, line_plane_intersection_1 )
   xb = 0.;
   yb = 0.;
   zb = 1.;
-  EXPECT_EQ( tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz,
-                                            interx, intery, interz, in_plane ), true );
+  EXPECT_EQ(
+      tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz, interx, intery, interz, in_plane ),
+      true );
 
-  // second vertex is on plane 
+  // second vertex is on plane
   xa = 0.;
   ya = 0.;
   za = -1;
   xb = 0.;
   yb = 0.;
   zb = 0.;
-  EXPECT_EQ( tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz,
-                                            interx, intery, interz, in_plane ), true );
+  EXPECT_EQ(
+      tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz, interx, intery, interz, in_plane ),
+      true );
 
-  // first vertex is on plane 
+  // first vertex is on plane
   xa = 0.;
   ya = 0.;
   za = 0.;
   xb = 0.;
   yb = 0.;
   zb = 1.0;
-  EXPECT_EQ( tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz,
-                                            interx, intery, interz, in_plane ), true );
-  
+  EXPECT_EQ(
+      tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz, interx, intery, interz, in_plane ),
+      true );
+
   // second vertex just barely passes through the plane
   xa = 0.;
   ya = 0.;
@@ -2681,8 +2681,9 @@ TEST_F( CompGeomTest, line_plane_intersection_1 )
   xb = 0.;
   yb = 0.;
   zb = 0.000000000001;
-  EXPECT_EQ( tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz,
-                                            interx, intery, interz, in_plane ), true );
+  EXPECT_EQ(
+      tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz, interx, intery, interz, in_plane ),
+      true );
 
   // second vertex just barely outside of passing through plane
   xa = 0.;
@@ -2691,8 +2692,9 @@ TEST_F( CompGeomTest, line_plane_intersection_1 )
   xb = 0.;
   yb = 0.;
   zb = -0.000000000001;
-  EXPECT_EQ( tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz,
-                                            interx, intery, interz, in_plane ), false );
+  EXPECT_EQ(
+      tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz, interx, intery, interz, in_plane ),
+      false );
 
   // the edge lies in the plane. We expect the in_plane boolean to be true, but there
   // to be no line-plane intersection points
@@ -2701,9 +2703,10 @@ TEST_F( CompGeomTest, line_plane_intersection_1 )
   za = 0.;
   xb = 1.;
   yb = 0.;
-  zb = 0.; 
-  EXPECT_EQ( tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz,
-                                            interx, intery, interz, in_plane ), false );
+  zb = 0.;
+  EXPECT_EQ(
+      tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz, interx, intery, interz, in_plane ),
+      false );
   EXPECT_EQ( in_plane, true );
 
   // the edge lies in the plane. We expect the in_plane boolean to be true, but there
@@ -2713,9 +2716,10 @@ TEST_F( CompGeomTest, line_plane_intersection_1 )
   za = -0.00000001;
   xb = 1.;
   yb = 0.;
-  zb = -0.00000001; 
-  EXPECT_EQ( tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz,
-                                            interx, intery, interz, in_plane ), false );
+  zb = -0.00000001;
+  EXPECT_EQ(
+      tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz, interx, intery, interz, in_plane ),
+      false );
   EXPECT_EQ( in_plane, true );
 }
 
@@ -2730,18 +2734,18 @@ TEST_F( CompGeomTest, convexity_1 )
   //       *
   //
   constexpr int numVerts = 4;
-  RealT x[ numVerts ];
-  RealT y[ numVerts ];
+  RealT x[numVerts];
+  RealT y[numVerts];
 
   x[0] = 0.;
   x[1] = -0.5;
   x[2] = 0.;
-  x[3] = 0.5; 
+  x[3] = 0.5;
 
   y[0] = -0.75;
   y[1] = 0.5;
   y[2] = 0.;
-  y[3] = 0.5; 
+  y[3] = 0.5;
 
   EXPECT_EQ( tribol::IsConvex( x, y, numVerts ), false );
 }
@@ -2757,18 +2761,18 @@ TEST_F( CompGeomTest, convexity_2 )
   //    *       *
   //
   constexpr int numVerts = 4;
-  RealT x[ numVerts ];
-  RealT y[ numVerts ];
+  RealT x[numVerts];
+  RealT y[numVerts];
 
   x[0] = 0.;
   x[1] = 1.;
   x[2] = 1.;
-  x[3] = 0.; 
+  x[3] = 0.;
 
   y[0] = 0.;
   y[1] = 0.;
   y[2] = 1.;
-  y[3] = 1.; 
+  y[3] = 1.;
 
   EXPECT_EQ( tribol::IsConvex( x, y, numVerts ), true );
 }
@@ -2778,13 +2782,13 @@ TEST_F( CompGeomTest, convexity_3 )
   //
   //
   //                 *
-  //      
+  //
   //
   //    *       *         *
   //
   constexpr int numVerts = 4;
-  RealT x[ numVerts ];
-  RealT y[ numVerts ];
+  RealT x[numVerts];
+  RealT y[numVerts];
 
   x[0] = 0.;
   x[1] = 1.;
@@ -2794,7 +2798,7 @@ TEST_F( CompGeomTest, convexity_3 )
   y[0] = 0.;
   y[1] = 0.;
   y[2] = 0.;
-  y[3] = 1.; 
+  y[3] = 1.;
 
   EXPECT_EQ( tribol::IsConvex( x, y, numVerts ), true );
 }

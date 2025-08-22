@@ -323,10 +323,10 @@ void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA
       }
 
       // debug; keep
-      //if ( !in_quad ) {
-        //std::cout << "Inv Iso mapped point: " << xi[0] << ", " << xi[1] << std::endl;
+      // if ( !in_quad ) {
+      // std::cout << "Inv Iso mapped point: " << xi[0] << ", " << xi[1] << std::endl;
       //}
-      
+
 #if !defined( TRIBOL_USE_ENZYME )
       SLIC_WARNING_IF( !in_quad, "InvIso(): (xi,eta) coordinate does not lie inside isoparametric quad." );
 #endif

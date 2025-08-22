@@ -30,7 +30,7 @@ namespace tribol {
 TRIBOL_HOST_DEVICE bool geomFilter( const CouplingScheme::Viewer& cs_view, IndexT element_id1, IndexT element_id2 )
 {
   auto& mesh1 = cs_view.getMesh1View();
-  auto& mesh2 = cs_view.getMesh2View(); 
+  auto& mesh2 = cs_view.getMesh2View();
   bool auto_contact_check = cs_view.getParameters().auto_contact_check;
   // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
   auto element_radius_multiplier = cs_view.getEffectiveBinningProximityScale();
@@ -142,7 +142,7 @@ TRIBOL_HOST_DEVICE bool geomFilter( const CouplingScheme::Viewer& cs_view, Index
 
   /// Check #5: Check to see if there is a positive area of overlap when both faces/edges
   ///           are projected onto an intermediate plane
-  if (cs_view.pruneMethodFacePair( element_id1, element_id2 )) {
+  if ( cs_view.pruneMethodFacePair( element_id1, element_id2 ) ) {
     return false;
   }
 
@@ -232,8 +232,7 @@ class CartesianProduct : public SearchBase {
                     fromIdx = row;
                     toIdx = i - offset;
                   }
-                  isProximate[i] =
-                      geomFilter( cs_view, fromIdx, toIdx );
+                  isProximate[i] = geomFilter( cs_view, fromIdx, toIdx );
 #ifdef TRIBOL_USE_RAJA
                   RAJA::atomicAdd<RAJA::auto_atomic>( pCount, static_cast<int>( isProximate[i] ) );
 #else
@@ -279,7 +278,8 @@ class CartesianProduct : public SearchBase {
           pairs_view[idx] = InterfacePair( fromIdx, toIdx, true );
         } );
 
-    SLIC_INFO( "Coupling scheme has " << contactPairs.size() << " pairs out of a maximum possible of " << maxNumPairs << "." );
+    SLIC_INFO( "Coupling scheme has " << contactPairs.size() << " pairs out of a maximum possible of " << maxNumPairs
+                                      << "." );
   }
 
  private:
@@ -576,20 +576,21 @@ class BvhSearch : public SearchBase {
     auto filtered_candidates = filtered_candidates_data.view();
     const auto cs_view = m_coupling_scheme->getView();
     // count the number of filtered proximate pairs
-    forAllExec( m_coupling_scheme->getExecutionMode(), m_candidates.size(),
-                [cs_view, offsets_view, counts_view, candidates_view, filtered_candidates] TRIBOL_HOST_DEVICE( IndexT i ) {
-                  auto mesh1_elem = algorithm::binarySearch( offsets_view, counts_view, i );
-                  auto mesh2_elem = candidates_view[i];
-                  if ( geomFilter( cs_view, mesh1_elem, mesh2_elem ) ) {
+    forAllExec(
+        m_coupling_scheme->getExecutionMode(), m_candidates.size(),
+        [cs_view, offsets_view, counts_view, candidates_view, filtered_candidates] TRIBOL_HOST_DEVICE( IndexT i ) {
+          auto mesh1_elem = algorithm::binarySearch( offsets_view, counts_view, i );
+          auto mesh2_elem = candidates_view[i];
+          if ( geomFilter( cs_view, mesh1_elem, mesh2_elem ) ) {
 #ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicInc<AtomicPolicy>( filtered_candidates.data() );
+            RAJA::atomicInc<AtomicPolicy>( filtered_candidates.data() );
 #else
-                    ++filtered_candidates[0];
+            ++filtered_candidates[0];
 #endif
-                  } else {
-                    candidates_view[i] = -1;
-                  }
-                } );
+          } else {
+            candidates_view[i] = -1;
+          }
+        } );
 
     ArrayT<IndexT, 1, MemorySpace::Host> filtered_candidates_host( filtered_candidates_data );
     m_coupling_scheme->getInterfacePairs().resize( filtered_candidates_host[0] );
