@@ -1669,10 +1669,16 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap2D( const Me
       }
     }  // end loop over nodes
 
-    // Debug check the number of interpenetrating vertices
+    // Debug check the number of interpenetrating vertices. We should never get here, but
+    // let's check for a design breaking case
     if ( k1 > 1 || k2 > 1 ) {
 #ifdef TRIBOL_USE_HOST
-      SLIC_DEBUG( "CommonPlanePair::computeOverlap2D() more than 2 interpenetrating vertices detected; "
+      SLIC_INFO( "CommonPlanePair::computeOverlap2D() with more than one intersection point. Offending edge1 vertices are: " <<
+                  xposA1 << ", " << yposA1 << " and " << xposB1 << ", " << yposB1 << "." );
+      SLIC_INFO( "CommonPlanePair::computeOverlap2D() with more than one intersection point. Offending edge2 vertices are: " <<
+                  xposA2 << ", " << yposA2 << " and " << xposB2 << ", " << yposB2 << "." );
+
+      SLIC_ERROR( "CommonPlanePair::computeOverlap2D() more than 2 interpenetrating vertices detected; "
                   << "check for degenerate geometry for edges (" << edgeId1 << ", " << edgeId2 << ") on meshes ("
                   << m1.meshId() << ", " << m2.meshId() << ")." );
 #endif
