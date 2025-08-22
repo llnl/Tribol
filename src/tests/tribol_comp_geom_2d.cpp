@@ -415,7 +415,9 @@ TEST_F( CompGeomTest, common_plane_interpen_check_2 )
   y1[0] = 0.0;
   y1[1] = 0.0;
 
-  RealT epsilon = 1.e-10;
+  // NOTE: interpen overlap is still detected with epsilon = 1.e-12; If decreased to 1.e-15
+  // then a full overlap is detected as the two faces are numerically on top of one another
+  RealT epsilon = 1.e-12;
   x2[0] = 0.;
   x2[1] = 1.;
   y2[0] = 0. - epsilon;
@@ -694,10 +696,11 @@ TEST_F( CompGeomTest, common_plane_interpen_check_6 )
   y1[0] = 0.0;
   y1[1] = 0.0;
 
+  RealT epsilon = 1.e-7;
   x2[0] = 0.;
-  x2[1] = 1.0000001;
+  x2[1] = 1. + epsilon;
   y2[0] = -0.1;
-  y2[1] = 0.0000001;
+  y2[1] = 0. + epsilon;
 
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
@@ -765,10 +768,11 @@ TEST_F( CompGeomTest, common_plane_interpen_check_7 )
   y1[0] = 0.0;
   y1[1] = 0.0;
 
+  RealT epsilon = 1.e-12;
   x2[0] = 0.;
-  x2[1] = 0.99999999999;
+  x2[1] = 1. - epsilon; 
   y2[0] = -0.1;
-  y2[1] = 0.000000000001;
+  y2[1] = 0. + epsilon; 
 
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
@@ -829,7 +833,8 @@ TEST_F( CompGeomTest, common_plane_interpen_check_8 )
   y1[0] = 0.0;
   y1[1] = 0.0;
 
-  RealT epsilon = 1.e-10;
+  // Note: an epsilon even of 1.e-15 will not register the pair as in contact
+  RealT epsilon = 1.e-15;
   x2[0] = 0.;
   x2[1] = 1.;
   y2[0] = 0. + epsilon;
@@ -879,7 +884,9 @@ TEST_F( CompGeomTest, common_plane_interpen_check_9 )
   y1[0] = 0.0;
   y1[1] = 0.0;
 
-  RealT epsilon = 1.e-10;
+  // NOTE: the CG will still detect this pair as in contact with an epsilon of 1.e-12. If I go to 1.e-15,
+  // for example, then the pair will be seen as perfectly on top of one another and not marked as in contact
+  RealT epsilon = 1.e-12;
   x2[0] = 0.;
   x2[1] = 1.;
   y2[0] = 0. - epsilon;
@@ -1096,22 +1103,23 @@ TEST_F( CompGeomTest, point_in_edge_1 )
   EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), true );
 
   // point just barely inside the first vertex
-  xp = 0.0000000001;
+  RealT epsilon = 1.e-12;
+  xp = 0. + epsilon; 
   yp = 0.75;
   EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), true );
 
   // point just barely inside the second
-  xp = 1.49999999999;
+  xp = 1.5 - epsilon; 
   yp = 0.75;
   EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), true );
 
   // point just barely outside first vertex
-  xp = -0.000000000001;
+  xp = 0. - epsilon; 
   yp = 0.75;
   EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), false );
 
   // point just barely outside second vertex
-  xp = 1.5000000000001;
+  xp = 1.5 + epsilon; 
   yp = 0.75;
   EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), false );
 

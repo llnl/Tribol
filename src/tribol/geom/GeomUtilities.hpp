@@ -828,7 +828,7 @@ TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_n
 
 /*!
  * \brief This routine is used to check to see if two faces/edges overlap
- *        as projected to a (d-1) - hyperplane
+ *        as projected to a (d-1) - dimensional hyperplane
  *
  * \param [in] x1 pointer to x coords for first face
  * \param [in] y1 pointer to y coords for first face
@@ -845,7 +845,7 @@ TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_n
  * \return true if the faces/edges overlap; otherwise false
  *
  * \note this routine is only to check whether two edges or faces overlap as projected onto a
- *       common or intermediate contact plane (i.e. a (d-1) - hyperplane.
+ *       common or intermediate contact plane (i.e. a (d-1) - dimensional hyperplane.
  */
 TRIBOL_HOST_DEVICE bool IsOverlappingOnPlane( const RealT* const x1, const RealT* const y1, const RealT* const z1,
                                               const RealT* const x2, const RealT* const y2, const RealT* const z2,

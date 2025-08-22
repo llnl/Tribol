@@ -1085,16 +1085,6 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_6 )
     z[i] = z_rot;  //+ z_shift;
   }
 
-  // Debug print vertices
-  // for ( int i=0; i<4; ++i ) {
-  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
-  //}
-  // std::cout << " " << std::endl;
-
-  // for ( int i=4; i<8; ++i ) {
-  //   std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
-  // }
-
   // register contact mesh
   tribol::IndexT mesh_id = 0;
   tribol::IndexT conn[8] = { 0, 1, 2, 3, 4, 5, 6, 7 };  // hard coded for a two face problem
@@ -1179,7 +1169,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_7 )
   z[3] = 0.;
 
   // coordinates for face 2
-  RealT epsilon = 1.e-10;
+  RealT epsilon = 1.e-15;
   RealT thirty = 30 * M_PI / 180;
   x[4] = 0.;
   y[4] = 0.;
@@ -1208,16 +1198,6 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_7 )
     x[i] = x_rot;  //+ x_shift;
     z[i] = z_rot;  //+ z_shift;
   }
-
-  // Debug print vertices
-  // for ( int i=0; i<4; ++i ) {
-  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
-  //}
-  // std::cout << " " << std::endl;
-
-  // for ( int i=4; i<8; ++i ) {
-  //   std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
-  // }
 
   // register contact mesh
   tribol::IndexT mesh_id = 0;
@@ -1294,7 +1274,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_8 )
   z[3] = 0.;
 
   // coordinates for face 2; rotate the face about the y axis by some epsilon shift in the z-direction
-  RealT epsilon = 1.e-10;
+  RealT epsilon = 1.e-15;
   x[4] = x[3];
   x[5] = x[2];
   x[6] = x[1];
@@ -1408,16 +1388,6 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_9 )
     x[i] = x_rot;
     z[i] = z_rot;
   }
-
-  // Debug print vertices
-  // for ( int i=0; i<4; ++i ) {
-  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
-  //}
-  // std::cout << " " << std::endl;
-
-  // for ( int i=4; i<8; ++i ) {
-  //   std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
-  // }
 
   // register contact mesh
   tribol::IndexT mesh_id = 0;
