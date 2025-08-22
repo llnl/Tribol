@@ -1294,11 +1294,6 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
     m_fullOverlap = false;
   }
 
-  // reset degenerate intersections back to full overlap for robustness
-  if ( numV[0] < 3 || numV[1] < 3 ) {
-    m_fullOverlap = true;
-  }
-
   // allocate arrays to store the vertices for clipped or full face used either
   // in the interpen or full overlap calc
   constexpr int max_nodes_per_clipped_face = 5;  // max five nodes for clipped face of 4 node planar quad
