@@ -212,6 +212,21 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::checkFacePair( const MeshD
 
   // compute common plane normal, centroid, local basis and area tolerance
   computePlaneData( mesh1, mesh2 );
+
+  // mark the convexity of each face
+  constexpr int max_nodes = 4;
+  RealT x1_loc[ max_nodes ];
+  RealT y1_loc[ max_nodes ];
+  RealT x2_loc[ max_nodes ];
+  RealT y2_loc[ max_nodes ];
+  GlobalTo2DLocalCoords( &m_x1_prime[0], &m_y1_prime[0], &m_z1_prime[0], m_e1X, m_e1Y, m_e1Z, m_e2X, m_e2Y, m_e2Z, m_cX,
+                         m_cY, m_cZ, &x1_loc[0], &y1_loc[0], mesh1.numberOfNodesPerElement() );
+  GlobalTo2DLocalCoords( &m_x2_prime[0], &m_y2_prime[0], &m_z2_prime[0], m_e1X, m_e1Y, m_e1Z, m_e2X, m_e2Y, m_e2Z, m_cX,
+                         m_cY, m_cZ, &x2_loc[0], &y2_loc[0], mesh2.numberOfNodesPerElement() );
+
+  m_face1_convex = IsConvex( x1_loc, y1_loc, mesh1.numberOfNodesPerElement() ); 
+  m_face2_convex = IsConvex( x2_loc, y2_loc, mesh2.numberOfNodesPerElement() ); 
+
   FaceGeomException interpen_err = this->computeOverlap3D( &m_x1_prime[0], &m_y1_prime[0], &m_z1_prime[0], &m_x2_prime[0],
                                                            &m_y2_prime[0], &m_z2_prime[0], mesh1, mesh2 );
 
@@ -1078,186 +1093,189 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
   StackArrayT<IndexT, 2> num_intersections_inside( { 0, 0 } );
   StackArrayT<IndexT, 2> num_nodes_otherside( { 0, 0 } );
 
-  for ( int i = 0; i < 2; ++i )  // loop over two constituent faces
-  {
-    // declare array to hold vertex id for all vertices that interpenetrate
-    // the contact plane. At most, all nodes pass through common plane for
-    // the current face
-    int interpenVertex[max_nodes_per_elem];
-
-    // point to the correct current face coordinates
-    const RealT *x, *y, *z;
-    const RealT *x_other, *y_other, *z_other;
-    if ( i == 0 ) {
-      x = x1;
-      y = y1;
-      z = z1;
-      x_other = x2;
-      y_other = y2;
-      z_other = z2;
-    } else {
-      x = x2;
-      y = y2;
-      z = z2;
-      x_other = x1;
-      y_other = y1;
-      z_other = z1;
-    }
-
-    // get the other face normal and centroid for line-face-plane intersections
-    RealT fn[max_dim], cx[max_dim];
-    RealT num_nodes_other;
-    if ( i == 0 ) {
-      mesh[1]->getFaceNormal( element_id[1], fn );
-      mesh[1]->getFaceCentroid( element_id[1], cx );
-      num_nodes_other = mesh[1]->numberOfNodesPerElement();
-    } else {
-      mesh[0]->getFaceNormal( element_id[0], fn );
-      mesh[0]->getFaceCentroid( element_id[0], cx );
-      num_nodes_other = mesh[0]->numberOfNodesPerElement();
-    }
-
-    int k = 0;
-    int k_inside = 0;
-    int k_otherside = 0;
-    for ( int j = 0; j < mesh[i]->numberOfNodesPerElement(); ++j )  // loop over face segments
+  // compute interpen data for convex face-pairs only
+  if (m_face1_convex && m_face2_convex) {
+    for ( int i = 0; i < 2; ++i )  // loop over two constituent faces
     {
-      // determine local segment vertex ids
-      int ja = j;
-      int jb = ( j == ( mesh[i]->numberOfNodesPerElement() - 1 ) ) ? 0 : ( j + 1 );
+      // declare array to hold vertex id for all vertices that interpenetrate
+      // the contact plane. At most, all nodes pass through common plane for
+      // the current face
+      int interpenVertex[max_nodes_per_elem];
 
-      // initialize current entry in the vertex id list
-      interpenVertex[ja] = -1;
-
-      // first and second nodes of the current segment
-      const RealT xa = x[ja];
-      const RealT ya = y[ja];
-      const RealT za = z[ja];
-
-      const RealT xb = x[jb];
-      const RealT yb = y[jb];
-      const RealT zb = z[jb];
-
-      // check for the case k > 2. This is a 'breaking' assumption in the algorithm. Two planar quadrilaterals
-      // can intersect the plane defined by the other fast AT MOST in two locations. This check points out
-      // unanticipated degenerate cases or bugs. Here, we error out for further investigation
-      if ( k > 2 ) { 
-#ifdef TRIBOL_USE_HOST
-        // Debug print faces to screen to catch unforeseen degenerate face configurations etc.
-        SLIC_WARNING( "Degenerate face configuration detected with number of line-plane intersections > 2." );
-        SLIC_INFO( "Planar coordinates for face 1 in CommonPlanePair::computeOverlap3D(): " );
-        for (int a = 0; a<mesh[0]->numberOfNodesPerElement(); ++a) {
-          std::cout << x1[a] << ", " << y1[a] << ", " << z1[a] << std::endl;
-        }
-
-        SLIC_INFO( "Planar coordinates for face 2 in CommonPlanePair::computeOverlap3D(): " );
-        for (int b = 0; b<mesh[1]->numberOfNodesPerElement(); ++b) {
-          std::cout << x2[b] << ", " << y2[b] << ", " << z2[b] << std::endl;
-        }
-
-        SLIC_ERROR( "CommonPlanePair::computeOverlap3D(): too many segment-face intersections; "
-                    << "check for degenerate face " << m_pair->m_element_id1 << "on mesh " << mesh[i]->meshId()
-                    << "." );
-#endif
-        return DEGENERATE_OVERLAP;
-      }
-
-      // call segment-to-plane intersection routine
-      if ( k < 2 )  // we haven't found both intersection points yet
-      {
-        // compute the current face's current segment-to-plane intersection using the other face's point-normal data
-        bool inter = LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx[0], cx[1], cx[2], fn[0], fn[1], fn[2],
-                                            xInter[2 * i + k], yInter[2 * i + k], zInter[2 * i + k], is_parallel );
-
-        // check for duplicate intersection points. This can arise when the intersection points occur at one face's
-        // vertices. Then, there are two edge segments that share each vertex, which would register a total of 4
-        // line-plane intersections, with two duplications.
-        // TODO verify the use/value of the tolerance for duplicate points. Tolerancing up to 1.e-12 may be ok
-        // NOTE: this would be a very specific case such that a departure from the tolerance likely won't trigger
-        // some other edge case. Two intersection points less than the tolerance from one another would only arise
-        // if two edges of a four node quad form a very acute angle that also interpenetrates the opposing face.
-        for (int a = (2 * i + k); a > 2*i; --a) {
-          if ( magnitude( xInter[a] - xInter[a-1], yInter[a] - yInter[a-1], zInter[a] - zInter[a-1] ) < 1.e-10 ) {
-            inter = false; // we already have the point
-          }
-        }
-
-        if ( inter ) {
-
-          // check to see if the line-plane intersection point lies inside the other planar face
-          RealT x_other_local[max_nodes_per_elem];
-          RealT y_other_local[max_nodes_per_elem];
-          Points3DTo2D( &x_other[0], &y_other[0], &z_other[0], fn[0], fn[1], fn[2], cx[0], cx[1], cx[2], num_nodes_other,
-                        &x_other_local[0], &y_other_local[0] );
-
-          // get the local coordinates of the current intersection point
-          RealT xInter_local, yInter_local;
-          Points3DTo2D( &xInter[2 * i + k], &yInter[2 * i + k], &zInter[2 * i + k], fn[0], fn[1], fn[2], cx[0], cx[1],
-                        cx[2], 1.0, &xInter_local, &yInter_local );
-
-          // get the local coordinates of the other face's centroid
-          RealT cx_other_local, cy_other_local;
-          RealT cz = 0.;  // dummy arg.
-          VertexAvgCentroid( &x_other_local[0], &y_other_local[0], nullptr, num_nodes_other, cx_other_local,
-                             cy_other_local, cz );
-
-          // check if local intersection point lies inside other face
-          bool check = Point2DInFace( xInter_local, yInter_local, &x_other_local[0], &y_other_local[0], cx_other_local,
-                                      cy_other_local, num_nodes_other );
-
-          // if intersection point lies in other face then increment intersection counter
-          if ( check ) {
-            ++k_inside;
-          }
-
-          // we still want to increment the intersection counter expecting up to 2 line-plane intersections
-          // even if the point is not inside
-          ++k;
-
-        }  // end if (inter)
-      }    // end if (k<2)
-
-      // Secondly: check the current face's current node to see if it lies on the other side of the other face.
-      // do this even if we don't ultimately have an interpen overlap calc.
-      RealT vX = xa - cx[0];
-      RealT vY = ya - cx[1];
-      RealT vZ = za - cx[2];
-
-      // project the vector onto the opposing face's normal
-      RealT proj = vX * fn[0] + vY * fn[1] + vZ * fn[2];
-
-      // check for negative projections meaning a node on one face crosses
-      // the plane defined by the other face
-      interpenVertex[ja] = ( i == 0 && proj < 0. ) ? ja : -1;
-      interpenVertex[ja] = ( i == 1 && proj < 0. ) ? ja : interpenVertex[ja];
-
-      if ( interpenVertex[ja] != -1 ) {
-        ++k_otherside;
-      }
-
-    }  // end loop over nodes
-
-    // count the number of vertices (intersection points and interpen points) for the clipped
-    // portion of the i^th face that interpenetrates the opposing face.
-    numV[i] = k;  // could be zero intersection points
-    for ( int vid = 0; vid < mesh[i]->numberOfNodesPerElement(); ++vid ) {
-      // increment total vertex counter if ids match
-      if ( interpenVertex[vid] == vid ) ++numV[i];
-
-      // populate the face specific id array
+      // point to the correct current face coordinates
+      const RealT *x, *y, *z;
+      const RealT *x_other, *y_other, *z_other;
       if ( i == 0 ) {
-        interpenVertex1[vid] = interpenVertex[vid];
+        x = x1;
+        y = y1;
+        z = z1;
+        x_other = x2;
+        y_other = y2;
+        z_other = z2;
       } else {
-        interpenVertex2[vid] = interpenVertex[vid];
+        x = x2;
+        y = y2;
+        z = z2;
+        x_other = x1;
+        y_other = y1;
+        z_other = z1;
       }
-    }
 
-    // set face specific intersection point count
-    num_intersections[i] = k;
-    num_intersections_inside[i] = k_inside;
-    num_nodes_otherside[i] = k_otherside;
+      // get the other face normal and centroid for line-face-plane intersections
+      RealT fn[max_dim], cx[max_dim];
+      RealT num_nodes_other;
+      if ( i == 0 ) {
+        mesh[1]->getFaceNormal( element_id[1], fn );
+        mesh[1]->getFaceCentroid( element_id[1], cx );
+        num_nodes_other = mesh[1]->numberOfNodesPerElement();
+      } else {
+        mesh[0]->getFaceNormal( element_id[0], fn );
+        mesh[0]->getFaceCentroid( element_id[0], cx );
+        num_nodes_other = mesh[0]->numberOfNodesPerElement();
+      }
 
-  }  // end loop over faces
+      int k = 0;
+      int k_inside = 0;
+      int k_otherside = 0;
+      for ( int j = 0; j < mesh[i]->numberOfNodesPerElement(); ++j )  // loop over face segments
+      {
+        // determine local segment vertex ids
+        int ja = j;
+        int jb = ( j == ( mesh[i]->numberOfNodesPerElement() - 1 ) ) ? 0 : ( j + 1 );
+
+        // initialize current entry in the vertex id list
+        interpenVertex[ja] = -1;
+
+        // first and second nodes of the current segment
+        const RealT xa = x[ja];
+        const RealT ya = y[ja];
+        const RealT za = z[ja];
+
+        const RealT xb = x[jb];
+        const RealT yb = y[jb];
+        const RealT zb = z[jb];
+
+        // check for the case k > 2. This is a 'breaking' assumption in the algorithm. Two planar quadrilaterals
+        // can intersect the plane defined by the other fast AT MOST in two locations. This check points out
+        // unanticipated degenerate cases or bugs. Here, we error out for further investigation
+        if ( k > 2 ) { 
+#ifdef TRIBOL_USE_HOST
+          // Debug print faces to screen to catch unforeseen degenerate face configurations etc.
+          SLIC_WARNING( "Degenerate face configuration detected with number of line-plane intersections > 2." );
+          SLIC_INFO( "Planar coordinates for face 1 in CommonPlanePair::computeOverlap3D(): " );
+          for (int a = 0; a<mesh[0]->numberOfNodesPerElement(); ++a) {
+            std::cout << x1[a] << ", " << y1[a] << ", " << z1[a] << std::endl;
+          }
+
+          SLIC_INFO( "Planar coordinates for face 2 in CommonPlanePair::computeOverlap3D(): " );
+          for (int b = 0; b<mesh[1]->numberOfNodesPerElement(); ++b) {
+            std::cout << x2[b] << ", " << y2[b] << ", " << z2[b] << std::endl;
+          }
+
+          SLIC_ERROR( "CommonPlanePair::computeOverlap3D(): too many segment-face intersections; "
+                      << "check for degenerate face " << m_pair->m_element_id1 << "on mesh " << mesh[i]->meshId()
+                      << "." );
+#endif
+          return DEGENERATE_OVERLAP;
+        }
+
+        // call segment-to-plane intersection routine
+        if ( k < 2 )  // we haven't found both intersection points yet
+        {
+          // compute the current face's current segment-to-plane intersection using the other face's point-normal data
+          bool inter = LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx[0], cx[1], cx[2], fn[0], fn[1], fn[2],
+                                              xInter[2 * i + k], yInter[2 * i + k], zInter[2 * i + k], is_parallel );
+
+          // check for duplicate intersection points. This can arise when the intersection points occur at one face's
+          // vertices. Then, there are two edge segments that share each vertex, which would register a total of 4
+          // line-plane intersections, with two duplications.
+          // TODO verify the use/value of the tolerance for duplicate points. Tolerancing up to 1.e-12 may be ok
+          // NOTE: this would be a very specific case such that a departure from the tolerance likely won't trigger
+          // some other edge case. Two intersection points less than the tolerance from one another would only arise
+          // if two edges of a four node quad form a very acute angle that also interpenetrates the opposing face.
+          for (int a = (2 * i + k); a > 2*i; --a) {
+            if ( magnitude( xInter[a] - xInter[a-1], yInter[a] - yInter[a-1], zInter[a] - zInter[a-1] ) < 1.e-10 ) {
+              inter = false; // we already have the point
+            }
+          }
+
+          if ( inter ) {
+
+            // check to see if the line-plane intersection point lies inside the other planar face
+            RealT x_other_local[max_nodes_per_elem];
+            RealT y_other_local[max_nodes_per_elem];
+            Points3DTo2D( &x_other[0], &y_other[0], &z_other[0], fn[0], fn[1], fn[2], cx[0], cx[1], cx[2], num_nodes_other,
+                          &x_other_local[0], &y_other_local[0] );
+
+            // get the local coordinates of the current intersection point
+            RealT xInter_local, yInter_local;
+            Points3DTo2D( &xInter[2 * i + k], &yInter[2 * i + k], &zInter[2 * i + k], fn[0], fn[1], fn[2], cx[0], cx[1],
+                          cx[2], 1.0, &xInter_local, &yInter_local );
+
+            // get the local coordinates of the other face's centroid
+            RealT cx_other_local, cy_other_local;
+            RealT cz = 0.;  // dummy arg.
+            VertexAvgCentroid( &x_other_local[0], &y_other_local[0], nullptr, num_nodes_other, cx_other_local,
+                               cy_other_local, cz );
+
+            // check if local intersection point lies inside other face
+            bool check = Point2DInFace( xInter_local, yInter_local, &x_other_local[0], &y_other_local[0], cx_other_local,
+                                        cy_other_local, num_nodes_other );
+
+            // if intersection point lies in other face then increment intersection counter
+            if ( check ) {
+              ++k_inside;
+            }
+
+            // we still want to increment the intersection counter expecting up to 2 line-plane intersections
+            // even if the point is not inside
+            ++k;
+
+          }  // end if (inter)
+        }    // end if (k<2)
+
+        // Secondly: check the current face's current node to see if it lies on the other side of the other face.
+        // do this even if we don't ultimately have an interpen overlap calc.
+        RealT vX = xa - cx[0];
+        RealT vY = ya - cx[1];
+        RealT vZ = za - cx[2];
+
+        // project the vector onto the opposing face's normal
+        RealT proj = vX * fn[0] + vY * fn[1] + vZ * fn[2];
+
+        // check for negative projections meaning a node on one face crosses
+        // the plane defined by the other face
+        interpenVertex[ja] = ( i == 0 && proj < 0. ) ? ja : -1;
+        interpenVertex[ja] = ( i == 1 && proj < 0. ) ? ja : interpenVertex[ja];
+
+        if ( interpenVertex[ja] != -1 ) {
+          ++k_otherside;
+        }
+
+      }  // end loop over nodes
+
+      // count the number of vertices (intersection points and interpen points) for the clipped
+      // portion of the i^th face that interpenetrates the opposing face.
+      numV[i] = k;  // could be zero intersection points
+      for ( int vid = 0; vid < mesh[i]->numberOfNodesPerElement(); ++vid ) {
+        // increment total vertex counter if ids match
+        if ( interpenVertex[vid] == vid ) ++numV[i];
+
+        // populate the face specific id array
+        if ( i == 0 ) {
+          interpenVertex1[vid] = interpenVertex[vid];
+        } else {
+          interpenVertex2[vid] = interpenVertex[vid];
+        }
+      }
+
+      // set face specific intersection point count
+      num_intersections[i] = k;
+      num_intersections_inside[i] = k_inside;
+      num_nodes_otherside[i] = k_otherside;
+
+    }  // end loop over faces
+  } // end if-convex
 
   // we come into this routine with full overlap calculation set to true. Here, we need
   // to determine if we need to switch to interpen overlap calc. This is cleaner logic
@@ -1293,6 +1311,10 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
   } else if ( num_intersections_inside[0] == 1 && num_intersections_inside[1] == 2 ) {
     m_fullOverlap = false;
   }
+
+#ifdef TRIBOL_USE_HOST
+  SLIC_ERROR_IF( (!m_face1_convex || !m_face2_convex) && !m_fullOverlap, "Must switch to full overlap for non-convex faces!" );
+#endif
 
   // allocate arrays to store the vertices for clipped or full face used either
   // in the interpen or full overlap calc

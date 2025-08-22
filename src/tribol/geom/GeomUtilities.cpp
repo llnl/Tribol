@@ -1291,14 +1291,6 @@ TRIBOL_HOST_DEVICE RealT Area2DPolygon( const RealT* const x, const RealT* const
 {
   RealT area = 0.;
 
-  // compute vertex-averaged centroid to construct a triangle between segment
-  // vertices and centroid
-  RealT* z = nullptr;
-  RealT xc = 0.0;
-  RealT yc = 0.0;
-  RealT zc = 0.0;
-  VertexAvgCentroid( x, y, z, numPolyVert, xc, yc, zc );
-
   for ( int i = 0; i < numPolyVert; ++i ) {
     // determine vertex indices of the segment
     int ia = i;
@@ -2079,6 +2071,40 @@ TRIBOL_HOST_DEVICE bool IsOverlappingOnPlane( const RealT* const x1, const RealT
   return true;
 
 }
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE bool IsConvex( const RealT* const x, const RealT* const y, const int numPolyVert )
+{
+  if (numPolyVert < 4) { // triangles are convex
+    return true;
+  }
+
+  bool pos = false;
+  bool neg = false; 
+  for ( int i = 0; i < numPolyVert; ++i ) {
+    RealT ax = x[ (i+1) % numPolyVert ] - x[i];
+    RealT ay = y[ (i+1) % numPolyVert ] - y[i];
+
+    RealT bx = x[ (i+2) % numPolyVert ] - x[ (i+1) % numPolyVert ];
+    RealT by = y[ (i+2) % numPolyVert ] - y[ (i+1) % numPolyVert ];
+
+    RealT cross = ax * by - ay * bx;
+
+    if ( cross > 0 ) {
+      pos = true;
+    } else if ( cross < 0 ) {
+      neg = true;
+    }
+    
+  }
+
+  if (pos && neg) {
+    return false;
+  } else {
+    return true;
+  }
+
+}  // end IsConvex()
 //------------------------------------------------------------------------------
 
 }  // end namespace tribol

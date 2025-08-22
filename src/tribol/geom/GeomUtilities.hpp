@@ -849,6 +849,20 @@ TRIBOL_HOST_DEVICE bool IsOverlappingOnPlane( const RealT* const x1, const RealT
                                               const RealT* const n, const RealT* const c,
                                               const int numNodesFace1, const int numNodesFace2, const int dim );
 
+/*!
+ * \brief check if the planar polygon is convex
+ *
+ * \param [in] x array of local x coordinates of polygon vertices
+ * \param [in] y array of local y coordinates of polygon vertices
+ * \param [in] numPolyVert number of polygon vertices
+ *
+ * \return true if convex, false otherwise
+ *
+ * \note this routine does not check for self-intersecting polygons
+ *
+ */
+TRIBOL_HOST_DEVICE bool IsConvex( const RealT* const x, const RealT* const y, const int numPolyVert );
+
 }  // namespace tribol
 
 #endif /* SRC_GEOM_GEOMUTILITIES_HPP_ */

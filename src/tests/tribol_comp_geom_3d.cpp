@@ -1391,10 +1391,34 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_9 )
   y[6] = 0.;
   y[7] = 0.5; 
 
-  z[4] = -0.1; 
-  z[5] = -0.1;
-  z[6] = -0.1;
-  z[7] = -0.1;
+  z[4] = 0.; 
+  z[5] = 0.;
+  z[6] = 0.;
+  z[7] = 0.;
+
+  // check that non-convex areas are computed correctly
+  EXPECT_EQ( tribol::Area2DPolygon( &x[4], &y[4], numVerts ), 0.375 );
+
+  // rotate second face 30 degrees about the y-axis
+  RealT thirty = 30 * M_PI / 180;
+  for ( int i = numVerts; i < lengthNodalData; ++i ) {
+    x[i] = x[i];
+    z[i] = z[i];
+    RealT x_rot = x[i] * std::cos( thirty ) + z[i] * std::sin( thirty );
+    RealT z_rot = x[i] * -std::sin( thirty ) + z[i] * std::cos( thirty );
+    x[i] = x_rot;
+    z[i] = z_rot;
+  }
+  
+  // Debug print vertices
+  //for ( int i=0; i<4; ++i ) {
+  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
+  //}
+  //std::cout << " " << std::endl;
+
+  //for ( int i=4; i<8; ++i ) {
+  //  std::cout << x[i] << " " << y[i] << " " << z[i] << std::endl;
+  //}
 
   // register contact mesh
   tribol::IndexT mesh_id = 0;
@@ -1421,10 +1445,10 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_9 )
   EXPECT_EQ( plane.m_numPolyVert, 4 );
 
   // check the area
-  EXPECT_NEAR( plane.m_area, 0.375, 1.e-6 );
+  EXPECT_NEAR( plane.m_area, 0.36222218, 1.e-6 );
 
   // check the gap
-  EXPECT_NEAR( plane.m_gap, -0.1, 1.e-6 );
+  EXPECT_NEAR( plane.m_gap, 0., 1.e-6 );
 
 }
 
@@ -2693,6 +2717,86 @@ TEST_F( CompGeomTest, line_plane_intersection_1 )
   EXPECT_EQ( tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz,
                                             interx, intery, interz, in_plane ), false );
   EXPECT_EQ( in_plane, true );
+}
+
+TEST_F( CompGeomTest, convexity_1 )
+{
+  //
+  //   *           *
+  //   **        **
+  //    * *   *  *
+  //     *  *  *
+  //      *  *
+  //       *
+  //
+  constexpr int numVerts = 4;
+  RealT x[ numVerts ];
+  RealT y[ numVerts ];
+
+  x[0] = 0.;
+  x[1] = -0.5;
+  x[2] = 0.;
+  x[3] = 0.5; 
+
+  y[0] = -0.75;
+  y[1] = 0.5;
+  y[2] = 0.;
+  y[3] = 0.5; 
+
+  EXPECT_EQ( tribol::IsConvex( x, y, numVerts ), false );
+}
+
+TEST_F( CompGeomTest, convexity_2 )
+{
+  //
+  //
+  //    *       *
+  //
+  //
+  //
+  //    *       *
+  //
+  constexpr int numVerts = 4;
+  RealT x[ numVerts ];
+  RealT y[ numVerts ];
+
+  x[0] = 0.;
+  x[1] = 1.;
+  x[2] = 1.;
+  x[3] = 0.; 
+
+  y[0] = 0.;
+  y[1] = 0.;
+  y[2] = 1.;
+  y[3] = 1.; 
+
+  EXPECT_EQ( tribol::IsConvex( x, y, numVerts ), true );
+}
+
+TEST_F( CompGeomTest, convexity_3 )
+{
+  //
+  //
+  //                 *
+  //      
+  //
+  //    *       *         *
+  //
+  constexpr int numVerts = 4;
+  RealT x[ numVerts ];
+  RealT y[ numVerts ];
+
+  x[0] = 0.;
+  x[1] = 1.;
+  x[2] = 2.;
+  x[3] = 1.5;
+
+  y[0] = 0.;
+  y[1] = 0.;
+  y[2] = 0.;
+  y[3] = 1.; 
+
+  EXPECT_EQ( tribol::IsConvex( x, y, numVerts ), true );
 }
 
 int main( int argc, char* argv[] )

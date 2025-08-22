@@ -113,6 +113,9 @@ class ContactPlanePair : public CompGeomPair {
   static constexpr int max_face_nodes{ 4 };
 
  public:
+  bool m_face1_convex {true}; // assume convex faces
+  bool m_face2_convex {true};
+
   RealT m_x1_prime[max_face_nodes];
   RealT m_y1_prime[max_face_nodes];
   RealT m_z1_prime[max_face_nodes];
