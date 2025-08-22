@@ -551,8 +551,10 @@ bool CouplingScheme::isValidMethod()
 
   // check all methods for basic validity issues for non-null meshes
   if ( !this->m_nullMeshes ) {
-    if ( ( this->m_mesh1->getElementType() != LINEAR_EDGE && this->m_mesh1->getElementType() != LINEAR_QUAD ) ||
-         ( this->m_mesh2->getElementType() != LINEAR_EDGE && this->m_mesh2->getElementType() != LINEAR_QUAD ) ) {
+    if ( ( this->m_mesh1->getElementType() != LINEAR_EDGE && this->m_mesh1->getElementType() != LINEAR_QUAD &&
+           this->m_mesh1->getElementType() != LINEAR_TRIANGLE ) ||
+         ( this->m_mesh2->getElementType() != LINEAR_EDGE && this->m_mesh2->getElementType() != LINEAR_QUAD &&
+           this->m_mesh2->getElementType() != LINEAR_TRIANGLE ) ) {
       this->m_couplingSchemeErrors.cs_method_error = INVALID_ELEMENT_TYPE;
       return false;
     }
@@ -1147,9 +1149,9 @@ bool CouplingScheme::init()
     // compute the face data
     // different element normals for enzyme + mortar (matching Puso and Laursen)
     if ( this->isEnzymeEnabled() && this->m_contactMethod == SINGLE_MORTAR ) {
-      this->m_mesh1->computeFaceData( this->m_exec_mode, QuadCentroidNormal() );
+      this->m_mesh1->computeFaceData( this->m_exec_mode, ElementCentroidNormal() );
       if ( this->m_mesh_id2 != this->m_mesh_id1 ) {
-        this->m_mesh2->computeFaceData( this->m_exec_mode, QuadCentroidNormal() );
+        this->m_mesh2->computeFaceData( this->m_exec_mode, ElementCentroidNormal() );
       }
     } else {
       this->m_mesh1->computeFaceData( this->m_exec_mode, PalletAvgNormal() );

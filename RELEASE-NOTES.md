@@ -34,6 +34,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Created interfaces for nodal normal and element normal calculations, to simplify addition of new normal computation
   techniques.
 - Introduced `TRIBOL_DEBUG` compiler definition for guarding code that should only be compiled in debug builds
+- Support for linear triangle meshes in Tribol's SINGLE_MORTAR method (exact Jacobians through Enzyme or approximate
+  Jacobians)
 
 
 ### Changed
