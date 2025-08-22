@@ -612,8 +612,7 @@ void ComputeSingleMortarJacobian( SurfaceContactElem& elem )
 //------------------------------------------------------------------------------
 int ApplyNormalEnzyme( CouplingScheme* cs )
 {
-  auto cs_view = cs->getView();
-  auto& cg_view = cs_view.getCompGeomView();
+  auto& comp_geom = cs->getCompGeom();
   int num_active_pairs = cs->getNumActivePairs();
   auto& lm_opts = cs->getEnforcementOptions().lm_implicit_options;
   if ( lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
@@ -641,7 +640,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
   int size1 = mesh1.numberOfNodesPerElement();
   int size2 = mesh2.numberOfNodesPerElement();
 
-  for ( auto& plane : cg_view.getMortarPlanes() ) {
+  for ( auto& plane : comp_geom.getMortarPlanePairs() ) {
     int elem1 = plane.getCpElementId2();  // switched from tribol convention
     // NOTE: mfem::DenseMatrix data is stored by nodes instead of by vdim
     RealT x1[12];
