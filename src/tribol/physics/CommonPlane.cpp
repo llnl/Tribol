@@ -76,12 +76,14 @@ TRIBOL_HOST_DEVICE RealT ComputeGapRatePressure( CommonPlanePair& plane, const M
 
   StackArrayT<RealT, max_dim * max_nodes_per_elem> x1;
   StackArrayT<RealT, max_dim * max_nodes_per_elem> v1;
-  plane.getFace1Coords( x1 );  // get avg face coords off the contact plane
+  auto numNodesPerFace1 = m1.numberOfNodesPerElement();
+  plane.getFace1Coords( x1, numNodesPerFace1 );  // get avg face coords off the contact plane
   m1.getFaceVelocities( fId1, v1 );
 
   StackArrayT<RealT, max_dim * max_nodes_per_elem> x2;
   StackArrayT<RealT, max_dim * max_nodes_per_elem> v2;
-  plane.getFace2Coords( x2 );  // get avg face coords off the contact plane
+  auto numNodesPerFace2 = m2.numberOfNodesPerElement();
+  plane.getFace2Coords( x2, numNodesPerFace2 );  // get avg face coords off the contact plane
   m2.getFaceVelocities( fId2, v2 );
 
   //////////////////////////////////////////////////////////
@@ -279,8 +281,8 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     initRealArray( xVert, xVert_size, 0. );
 
     // get current configuration, physical coordinates of each face
-    plane.getFace1Coords( &xf1[0] );
-    plane.getFace2Coords( &xf2[0] );
+    plane.getFace1Coords( &xf1[0], num_nodes_per_face );
+    plane.getFace2Coords( &xf2[0], num_nodes_per_face );
 
     // construct array of polygon overlap vertex coordinates
     plane.getOverlapVertices( &xVert[0] );

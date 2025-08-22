@@ -230,12 +230,12 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
 
     // populate the current configuration nodal coordinates for the
     // two faces; stored on the contact plane object
-    plane.getFace1Coords( &mortarX[0] );
-    plane.getFace2Coords( &nonmortarX[0] );
+    plane.getFace1Coords( &mortarX[0], numNodesPerFace );
+    plane.getFace2Coords( &nonmortarX[0], numNodesPerFace );
 
     // get face coordinates projected onto contact plane
-    plane.getFace1ProjectedCoords( &mortarX_bar[0] );
-    plane.getFace2ProjectedCoords( &nonmortarX_bar[0] );
+    plane.getFace1ProjectedCoords( &mortarX_bar[0], numNodesPerFace );
+    plane.getFace2ProjectedCoords( &nonmortarX_bar[0], numNodesPerFace );
 
     // get overlap vertices
     plane.getOverlapVertices( &overlapX[0] );
@@ -357,8 +357,8 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
     IndexT index2 = pair.m_element_id2;
 
     // get face coordinates projected onto contact plane
-    plane.getFace1ProjectedCoords( &mortarX_bar[0] );
-    plane.getFace2ProjectedCoords( &nonmortarX_bar[0] );
+    plane.getFace1ProjectedCoords( &mortarX_bar[0], numNodesPerFace );
+    plane.getFace2ProjectedCoords( &nonmortarX_bar[0], numNodesPerFace );
 
     // get overlap coords
     plane.getOverlapVertices( &overlapX[0] );
@@ -1169,8 +1169,8 @@ int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs )
     IndexT index2 = pair.m_element_id2;
 
     // get face coordinates projected onto contact plane
-    plane.getFace1ProjectedCoords( &mortarX_bar[0] );
-    plane.getFace2ProjectedCoords( &nonmortarX_bar[0] );
+    plane.getFace1ProjectedCoords( &mortarX_bar[0], numNodesPerFace );
+    plane.getFace2ProjectedCoords( &nonmortarX_bar[0], numNodesPerFace );
 
     // construct array of polygon overlap vertex coordinates
     plane.getOverlapVertices( &overlapX[0] );

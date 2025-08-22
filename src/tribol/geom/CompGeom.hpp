@@ -204,14 +204,14 @@ class ContactPlanePair : public CompGeomPair {
     }
   }
 
-  TRIBOL_HOST_DEVICE void getFace1Coords( RealT* x1 ) const;
+  TRIBOL_HOST_DEVICE void getFace1Coords( RealT* x1, int num_coords ) const;
 
-  TRIBOL_HOST_DEVICE void getFace2Coords( RealT* x2 ) const;
+  TRIBOL_HOST_DEVICE void getFace2Coords( RealT* x2, int num_coords ) const;
   ;
 
-  TRIBOL_HOST_DEVICE void getFace1ProjectedCoords( RealT* x1_proj ) const;
+  TRIBOL_HOST_DEVICE void getFace1ProjectedCoords( RealT* x1_proj, int num_coords ) const;
 
-  TRIBOL_HOST_DEVICE void getFace2ProjectedCoords( RealT* x2_proj ) const;
+  TRIBOL_HOST_DEVICE void getFace2ProjectedCoords( RealT* x2_proj, int num_coords ) const;
 
   TRIBOL_HOST_DEVICE void getContactPlaneNormal( RealT* normal ) const
   {

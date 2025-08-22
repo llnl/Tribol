@@ -198,8 +198,8 @@ void ComputeAlignedMortarGaps( CouplingScheme* cs )
     // onto the common plane, since the aligned mortar gap
     // calculation uses the current configuration nodal coordinates
     // themselves
-    plane.getFace1Coords( &mortarX[0] );
-    plane.getFace2Coords( &nonmortarX[0] );
+    plane.getFace1Coords( &mortarX[0], numNodesPerFace );
+    plane.getFace2Coords( &nonmortarX[0], numNodesPerFace );
 
     plane.getOverlapVertices( &overlapX[0] );
 
@@ -346,8 +346,8 @@ int ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
       RealT mortarX_bar[dim * numNodesPerFace];
       RealT nonmortarX_bar[dim * numNodesPerFace];
       RealT overlapX[dim * plane.m_numPolyVert];
-      plane.getFace1ProjectedCoords( &mortarX_bar[0] );
-      plane.getFace2ProjectedCoords( &nonmortarX_bar[0] );
+      plane.getFace1ProjectedCoords( &mortarX_bar[0], numNodesPerFace );
+      plane.getFace2ProjectedCoords( &nonmortarX_bar[0], numNodesPerFace );
       plane.getOverlapVertices( &overlapX[0] );
 
       // instantiate a new surface contact element with projected face

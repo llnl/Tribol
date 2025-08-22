@@ -778,7 +778,7 @@ TRIBOL_HOST_DEVICE void AlignedMortarPlanePair::computePlanePoint( const MeshDat
 }  // end AlignedMortarPlanePair::computePlanePoint()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlanePair::getFace1Coords( RealT* x1 ) const
+TRIBOL_HOST_DEVICE void ContactPlanePair::getFace1Coords( RealT* x1, int num_coords ) const
 {
   if ( m_dim == 2 ) {
     x1[0] = m_x1_prime[0];
@@ -786,7 +786,7 @@ TRIBOL_HOST_DEVICE void ContactPlanePair::getFace1Coords( RealT* x1 ) const
     x1[2] = m_x1_prime[1];
     x1[3] = m_y1_prime[1];
   } else {
-    for ( int i = 0; i < 4; ++i ) {
+    for ( int i = 0; i < num_coords; ++i ) {
       x1[m_dim * i] = m_x1_prime[i];
       x1[m_dim * i + 1] = m_y1_prime[i];
       x1[m_dim * i + 2] = m_z1_prime[i];
@@ -795,7 +795,7 @@ TRIBOL_HOST_DEVICE void ContactPlanePair::getFace1Coords( RealT* x1 ) const
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlanePair::getFace2Coords( RealT* x2 ) const
+TRIBOL_HOST_DEVICE void ContactPlanePair::getFace2Coords( RealT* x2, int num_coords ) const
 {
   if ( m_dim == 2 ) {
     x2[0] = m_x2_prime[0];
@@ -803,7 +803,7 @@ TRIBOL_HOST_DEVICE void ContactPlanePair::getFace2Coords( RealT* x2 ) const
     x2[2] = m_x2_prime[1];
     x2[3] = m_y2_prime[1];
   } else {
-    for ( int i = 0; i < 4; ++i ) {
+    for ( int i = 0; i < num_coords; ++i ) {
       x2[m_dim * i] = m_x2_prime[i];
       x2[m_dim * i + 1] = m_y2_prime[i];
       x2[m_dim * i + 2] = m_z2_prime[i];
@@ -812,7 +812,7 @@ TRIBOL_HOST_DEVICE void ContactPlanePair::getFace2Coords( RealT* x2 ) const
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlanePair::getFace1ProjectedCoords( RealT* x1_proj ) const
+TRIBOL_HOST_DEVICE void ContactPlanePair::getFace1ProjectedCoords( RealT* x1_proj, int num_coords ) const
 {
   if ( m_dim == 2 ) {
     x1_proj[0] = m_x1_bar[0];
@@ -820,7 +820,7 @@ TRIBOL_HOST_DEVICE void ContactPlanePair::getFace1ProjectedCoords( RealT* x1_pro
     x1_proj[2] = m_x1_bar[1];
     x1_proj[3] = m_y1_bar[1];
   } else {
-    for ( int i = 0; i < max_face_nodes; ++i ) {
+    for ( int i = 0; i < num_coords; ++i ) {
       x1_proj[m_dim * i] = m_x1_bar[i];
       x1_proj[m_dim * i + 1] = m_y1_bar[i];
       x1_proj[m_dim * i + 2] = m_z1_bar[i];
@@ -829,7 +829,7 @@ TRIBOL_HOST_DEVICE void ContactPlanePair::getFace1ProjectedCoords( RealT* x1_pro
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void ContactPlanePair::getFace2ProjectedCoords( RealT* x2_proj ) const
+TRIBOL_HOST_DEVICE void ContactPlanePair::getFace2ProjectedCoords( RealT* x2_proj, int num_coords ) const
 {
   if ( m_dim == 2 ) {
     x2_proj[0] = m_x2_bar[0];
@@ -837,7 +837,7 @@ TRIBOL_HOST_DEVICE void ContactPlanePair::getFace2ProjectedCoords( RealT* x2_pro
     x2_proj[2] = m_x2_bar[1];
     x2_proj[3] = m_y2_bar[1];
   } else {
-    for ( int i = 0; i < max_face_nodes; ++i ) {
+    for ( int i = 0; i < num_coords; ++i ) {
       x2_proj[m_dim * i] = m_x2_bar[i];
       x2_proj[m_dim * i + 1] = m_y2_bar[i];
       x2_proj[m_dim * i + 2] = m_z2_bar[i];
