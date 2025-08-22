@@ -1552,7 +1552,7 @@ TRIBOL_HOST_DEVICE bool PolyReorderConvex( RealT* x, RealT* y, int* newIDs, int 
   RealT* z = nullptr;
   constexpr int max_nodes_per_overlap = 5 * 2;  // 5 max verts for a given interpen face-portion
 
-#if defined( TRIBOL_USE_HOST )
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( numPoints > max_nodes_per_overlap, "PolyReorderConvex: numPoints exceed maximum "
                                                         << "expected per overlap (" << max_nodes_per_overlap << ")." );
 #endif
