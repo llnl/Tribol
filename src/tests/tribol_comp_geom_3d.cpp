@@ -1828,6 +1828,12 @@ TEST_F( CompGeomTest, common_plane_host_code_test )
   auto& comp_geom = couplingScheme->getCompGeom();
   auto& plane = comp_geom.getCommonPlane( 0 );
 
+  // Debug
+  // for (int i=0; i<plane.m_numPolyVert; ++i) {
+  //   std::cout << "overlap verts: " << plane.m_polyX[i] << ", " << plane.m_polyY[i] << ", " << plane.m_polyZ[i] <<
+  //   std::endl;
+  //}
+
   EXPECT_NEAR( plane.m_area, 0.00463028, 1.e-8 );
   EXPECT_NEAR( plane.m_gap, -0.000193685, 1.e-8 );
 }

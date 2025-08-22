@@ -461,7 +461,7 @@ bool MeshData::computeFaceData( ExecutionMode exec_mode, ElemNormalMethod elem_n
 }  // end MeshData::computeFaceData()
 
 template bool MeshData::computeFaceData<PalletAvgNormal>( ExecutionMode, PalletAvgNormal );
-template bool MeshData::computeFaceData<QuadCentroidNormal>( ExecutionMode, QuadCentroidNormal );
+template bool MeshData::computeFaceData<ElementCentroidNormal>( ExecutionMode, ElementCentroidNormal );
 
 //------------------------------------------------------------------------------
 RealT MeshData::computeEdgeLength( int faceId )

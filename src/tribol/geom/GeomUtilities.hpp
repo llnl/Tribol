@@ -495,6 +495,7 @@ TRIBOL_HOST_DEVICE bool CheckPolyOrientation( const RealT* const x, const RealT*
  * \param [in] xC local x coordinate of vertex averaged centroid
  * \param [in] yC local y coordinate of vertex averaged centroid
  * \param [in] numPolyVert number of polygon vertices
+ * \param [in] tol "fuzz" length: how far outside the face a point can be to still be considered inside
  *
  * \return true if the point is in the face, false otherwise.
  *
@@ -509,8 +510,8 @@ TRIBOL_HOST_DEVICE bool CheckPolyOrientation( const RealT* const x, const RealT*
  *  point lies in either of those two triangles.
  */
 TRIBOL_HOST_DEVICE bool Point2DInFace( const RealT xPoint, const RealT yPoint, const RealT* const xPoly,
-                                       const RealT* const yPoly, const RealT xC, const RealT yC,
-                                       const int numPolyVert );
+                                       const RealT* const yPoly, const RealT xC, const RealT yC, const int numPolyVert,
+                                       RealT tol = 1.0e-12 );
 
 /*!
  *
@@ -520,6 +521,7 @@ TRIBOL_HOST_DEVICE bool Point2DInFace( const RealT xPoint, const RealT yPoint, c
  * \param [in] yp local y coordinate of point
  * \param [in] xTri array of local x coordinates of triangle
  * \param [in] yTri array of local y coordinates of triangle
+ * \param [in] tol "fuzz" length: how far outside the triangle a point can be to still be considered inside
  *
  * \return true if the point is inside the triangle, false otherwise
  *
@@ -529,8 +531,8 @@ TRIBOL_HOST_DEVICE bool Point2DInFace( const RealT xPoint, const RealT yPoint, c
  *  determines if those coordinates are inside or out
  *  (http://blackpawn.com/texts/pointinpoly/default.html);
  */
-TRIBOL_HOST_DEVICE bool Point2DInTri( const RealT xp, const RealT yp, const RealT* const xTri,
-                                      const RealT* const yTri );
+TRIBOL_HOST_DEVICE bool Point2DInTri( const RealT xp, const RealT yp, const RealT* const xTri, const RealT* const yTri,
+                                      RealT tol = 1.0e-12 );
 
 /*!
  * \brief computes the area of a polygon using the shoelace formula (i.e. Gauss's area formula)

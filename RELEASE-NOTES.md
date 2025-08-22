@@ -35,6 +35,8 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   techniques.
 - Introduced `TRIBOL_DEBUG` compiler definition for guarding code that should only be compiled in debug builds
 - Added a lot more 2D and 3D computational geometry unit tests covering more face/edge configurations
+- Support for linear triangle meshes in Tribol's SINGLE_MORTAR method (exact Jacobians through Enzyme or approximate
+  Jacobians)
 
 ### Changed
 - Return negative timestep vote for non-null meshes with null velocity pointers.
