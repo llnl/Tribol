@@ -1278,7 +1278,6 @@ TRIBOL_HOST_DEVICE bool Point2DInTri( const RealT xp, const RealT yp, const Real
 
   // check if point is inside the triangle within a tolerance
   if ( ( u >= -tol ) && ( u <= 1. ) && ( v >= -tol ) && ( v <= 1. ) && ( u + v <= 1.0 ) ) {
-
     inside = true;
   }
 
