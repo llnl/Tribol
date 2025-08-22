@@ -87,7 +87,10 @@ TRIBOL_HOST_DEVICE bool ElementCentroidNormal::Compute( const RealT* x, const Re
     de2[1] = x[5] - x[3];
     de2[2] = x[8] - x[6];
   } else {
+// TODO: switch to TRIBOL_DEVICE_CODE when PR 147 merges
+#ifdef TRIBOL_USE_HOST
     SLIC_ERROR( "ElementCentroidNormal::Compute() only 3- and 4-node elements are supported." );
+#endif
   }
   n[0] = de1[1] * de2[2] - de1[2] * de2[1];
   n[1] = de1[2] * de2[0] - de1[0] * de2[2];
