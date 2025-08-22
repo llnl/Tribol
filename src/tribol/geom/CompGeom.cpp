@@ -976,7 +976,7 @@ TRIBOL_HOST_DEVICE void CommonPlanePair::centroidGap( const MeshData::Viewer& m1
     zB = zcg - m_nZ * scale;
   }
 
-  bool inPlane = false;
+  bool is_parallel = false;
   IndexT fId1 = m_pair->m_element_id1;
   IndexT fId2 = m_pair->m_element_id2;
 
@@ -1006,10 +1006,10 @@ TRIBOL_HOST_DEVICE void CommonPlanePair::centroidGap( const MeshData::Viewer& m1
   // fine line-plane intersection with average face planes, which is consistent with using the prime coords
   // for each face
   LinePlaneIntersection( xA, yA, zA, xB, yB, zB, cx1[0], cx1[1], cx1z, fn1[0], fn1[1], fn1z, xc1, yc1,
-                         zc1, inPlane );
+                         zc1, is_parallel );
 
   LinePlaneIntersection( xA, yA, zA, xB, yB, zB, cx2[0], cx2[1], cx2z, fn2[0], fn2[1], fn2z, xc2, yc2,
-                         zc2, inPlane );
+                         zc2, is_parallel );
 
   // compute normal gap magnitude (x1 - x2 for positive gap in separation
   // and negative gap in penetration)
@@ -1059,7 +1059,7 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
     zInter[i] = 0.;
   }
 
-  bool inPlane = false;
+  bool is_parallel = false;
   int numV[2] = { 0, 0 };
 
   // set up vertex id arrays to indicate which face vertices pass through
@@ -1167,7 +1167,7 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
       {
         // compute the current face's current segment-to-plane intersection using the other face's point-normal data
         bool inter = LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx[0], cx[1], cx[2], fn[0], fn[1], fn[2],
-                                            xInter[2 * i + k], yInter[2 * i + k], zInter[2 * i + k], inPlane );
+                                            xInter[2 * i + k], yInter[2 * i + k], zInter[2 * i + k], is_parallel );
 
         // check for duplicate intersection points. This can arise when the intersection points occur at one face's
         // vertices. Then, there are two edge segments that share each vertex, which would register a total of 4

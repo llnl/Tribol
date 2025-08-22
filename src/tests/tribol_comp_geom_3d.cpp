@@ -2669,6 +2669,30 @@ TEST_F( CompGeomTest, line_plane_intersection_1 )
   zb = -0.000000000001;
   EXPECT_EQ( tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz,
                                             interx, intery, interz, in_plane ), false );
+
+  // the edge lies in the plane. We expect the in_plane boolean to be true, but there
+  // to be no line-plane intersection points
+  xa = 0.;
+  ya = 0.;
+  za = 0.;
+  xb = 1.;
+  yb = 0.;
+  zb = 0.; 
+  EXPECT_EQ( tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz,
+                                            interx, intery, interz, in_plane ), false );
+  EXPECT_EQ( in_plane, true );
+
+  // the edge lies in the plane. We expect the in_plane boolean to be true, but there
+  // to be no line-plane intersection points
+  xa = 0.;
+  ya = 0.;
+  za = -0.00000001;
+  xb = 1.;
+  yb = 0.;
+  zb = -0.00000001; 
+  EXPECT_EQ( tribol::LinePlaneIntersection( xa, ya, za, xb, yb, zb, cx, cy, cz, nx, ny, nz,
+                                            interx, intery, interz, in_plane ), false );
+  EXPECT_EQ( in_plane, true );
 }
 
 int main( int argc, char* argv[] )

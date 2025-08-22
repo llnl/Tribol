@@ -1809,7 +1809,7 @@ TRIBOL_HOST_DEVICE void PolyReorderWithNormal( RealT* const x, RealT* const y, R
 TRIBOL_HOST_DEVICE bool LinePlaneIntersection( const RealT xA, const RealT yA, const RealT zA, const RealT xB,
                                                const RealT yB, const RealT zB, const RealT xP, const RealT yP,
                                                const RealT zP, const RealT nX, const RealT nY, const RealT nZ, RealT& x,
-                                               RealT& y, RealT& z, bool& inPlane )
+                                               RealT& y, RealT& z, bool& isParallel )
 {
   // compute segment vector
   RealT lambdaX = xB - xA;
@@ -1824,7 +1824,7 @@ TRIBOL_HOST_DEVICE bool LinePlaneIntersection( const RealT xA, const RealT yA, c
     x = 0.;
     y = 0.;
     z = 0.;
-    inPlane = true;
+    isParallel = true;
     return false;
   }
 
@@ -1845,13 +1845,13 @@ TRIBOL_HOST_DEVICE bool LinePlaneIntersection( const RealT xA, const RealT yA, c
     x = xA + lambdaX * t;
     y = yA + lambdaY * t;
     z = zA + lambdaZ * t;
-    inPlane = false;
+    isParallel = false;
     return true;
   } else {
     x = 0.;
     y = 0.;
     z = 0.;
-    inPlane = false;
+    isParallel = false;
     return false;
   }
 

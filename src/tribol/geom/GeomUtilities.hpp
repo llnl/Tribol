@@ -694,13 +694,15 @@ TRIBOL_HOST_DEVICE void PolyReorderWithNormal( RealT* const x, RealT* const y, R
  * \param[out] x x-coordinate of intersection point
  * \param[out] y y-coordinate of intersection point
  * \param[out] z z-coordinate of intersection point
- * \param[out] inPlane true if segment lies in the plane
+ * \param[out] isParallel true if segment lies parallel to plane
+ *
+ * \note isParallel is true if the line is parallel, but not in plane, or if it is parallel and in plane
  *
  */
 TRIBOL_HOST_DEVICE bool LinePlaneIntersection( const RealT xA, const RealT yA, const RealT zA, const RealT xB,
                                                const RealT yB, const RealT zB, const RealT xP, const RealT yP,
                                                const RealT zP, const RealT nX, const RealT nY, const RealT nZ, RealT& x,
-                                               RealT& y, RealT& z, bool& inPlane );
+                                               RealT& y, RealT& z, bool& isParallel );
 
 /*!
  * \brief computes the line segment that is the intersection between two

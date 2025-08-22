@@ -615,6 +615,323 @@ TEST_F( CompGeomTest, common_plane_interpen_check_4 )
   EXPECT_NEAR( plane.m_area, computed_area, 1.e-10 );
 }
 
+TEST_F( CompGeomTest, common_plane_interpen_check_5 )
+{
+  // This tests a configuration where there is interpenetration with an edge-edge
+  // intersection that lies at a vertex on each edge. This configuration will trigger
+  // a full overlap calculation based on the current 2D cg design
+  //
+  //
+  //    ------------o
+  //             *
+  //          *
+  //       *
+  //    * 
+  //
+  constexpr int numVerts = 2;
+
+  RealT x1[numVerts];
+  RealT y1[numVerts];
+  RealT x2[numVerts];
+  RealT y2[numVerts];
+
+  x1[0] = 1.0;
+  x1[1] = 0.0;
+  y1[0] = 0.0;
+  y1[1] = 0.0;
+
+  x2[0] = 0.; 
+  x2[1] = 1.0;
+  y2[0] = -0.1;
+  y2[1] = 0.;
+
+  tribol::IndexT conn1[2] = { 0, 1 };
+  tribol::IndexT conn2[2] = { 0, 1 };
+
+  RealT fx1[2] = { 0., 0. };
+  RealT fy1[2] = { 0., 0. };
+  RealT fx2[2] = { 0., 0. };
+  RealT fy2[2] = { 0., 0. };
+
+  RealT penalty1 = 1.;
+  RealT penalty2 = 1.;
+
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
+                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
+                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                               tribol::KINEMATIC_CONSTANT );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
+
+  auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
+
+  EXPECT_EQ( plane.m_fullOverlap, true );
+
+  // compute and check the overlap area
+  RealT length = x2[1] - x2[0];
+  RealT height = y2[1] - y2[0];
+
+  // compute the angle between the interpen portions of the edges
+  RealT theta = std::atan( height / length );
+  RealT half_theta = 0.5 * theta;
+
+  RealT computed_area = length * std::cos( half_theta );
+  EXPECT_NEAR( plane.m_area, computed_area, 1.e-10 );
+}
+
+TEST_F( CompGeomTest, common_plane_interpen_check_6 )
+{
+  // This tests a configuration where there is interpenetration with an edge-edge
+  // intersection that lies NEARLY at a vertex on each edge, but outside of the
+  // length tolerance that would collapse the intersection point to the vertex
+  // and trigger a full overlap; thus, we have an interpen overlap.
+  //
+  //
+  //                 * epsilon
+  //    -----------o-
+  //             *
+  //          *
+  //       *
+  //    * 
+  //
+  constexpr int numVerts = 2;
+
+  RealT x1[numVerts];
+  RealT y1[numVerts];
+  RealT x2[numVerts];
+  RealT y2[numVerts];
+
+  x1[0] = 1.0;
+  x1[1] = 0.0;
+  y1[0] = 0.0;
+  y1[1] = 0.0;
+
+  x2[0] = 0.; 
+  x2[1] = 1.0000001;
+  y2[0] = -0.1;
+  y2[1] = 0.0000001;
+
+  tribol::IndexT conn1[2] = { 0, 1 };
+  tribol::IndexT conn2[2] = { 0, 1 };
+
+  RealT fx1[2] = { 0., 0. };
+  RealT fy1[2] = { 0., 0. };
+  RealT fx2[2] = { 0., 0. };
+  RealT fy2[2] = { 0., 0. };
+
+  RealT penalty1 = 1.;
+  RealT penalty2 = 1.;
+
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
+                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
+                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                               tribol::KINEMATIC_CONSTANT );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
+
+  auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
+
+  EXPECT_EQ( plane.m_fullOverlap, false );
+
+  // compute and check the overlap area
+  RealT length = x2[1] - x2[0];
+  RealT height = y2[1] - y2[0];
+
+  // compute the angle between the interpen portions of the edges
+  RealT theta = std::atan( height / length );
+  RealT half_theta = 0.5 * theta;
+
+  RealT computed_area = length * std::cos( half_theta );
+  EXPECT_NEAR( plane.m_area, computed_area, 1.e-6 );
+}
+
+TEST_F( CompGeomTest, common_plane_interpen_check_7 )
+{
+  // This tests a configuration where there is interpenetration with an edge-edge
+  // intersection that lies NEARLY at a vertex on each edge. This configuration will trigger
+  // an full overlap calculation if the intersection point is within some length tolerance
+  // of the vertex. Here, we are close enough that the point is "collapsed" to the vertex,
+  // which in turn triggers a full overlap
+  //
+  //                 * epsilon
+  //    -----------o-
+  //             *
+  //          *
+  //       *
+  //    * 
+  //
+  //
+  constexpr int numVerts = 2;
+
+  RealT x1[numVerts];
+  RealT y1[numVerts];
+  RealT x2[numVerts];
+  RealT y2[numVerts];
+
+  x1[0] = 1.0;
+  x1[1] = 0.0;
+  y1[0] = 0.0;
+  y1[1] = 0.0;
+
+  x2[0] = 0.; 
+  x2[1] = 0.99999999999;
+  y2[0] = -0.1;
+  y2[1] = 0.000000000001;
+
+  tribol::IndexT conn1[2] = { 0, 1 };
+  tribol::IndexT conn2[2] = { 0, 1 };
+
+  RealT fx1[2] = { 0., 0. };
+  RealT fy1[2] = { 0., 0. };
+  RealT fx2[2] = { 0., 0. };
+  RealT fy2[2] = { 0., 0. };
+
+  RealT penalty1 = 1.;
+  RealT penalty2 = 1.;
+
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
+                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
+                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                               tribol::KINEMATIC_CONSTANT );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
+
+  auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
+
+  EXPECT_EQ( plane.m_fullOverlap, true );
+
+  // compute and check the overlap area
+  RealT length = x2[1] - x2[0];
+  RealT height = y2[1] - y2[0];
+
+  // compute the angle between the interpen portions of the edges
+  RealT theta = std::atan( height / length );
+  RealT half_theta = 0.5 * theta;
+
+  RealT computed_area = length * std::cos( half_theta );
+  EXPECT_NEAR( plane.m_area, computed_area, 1.e-6 );
+}
+
+TEST_F( CompGeomTest, common_plane_interpen_check_8 )
+{
+  // This test checks two faces that are in separation up to some epsilon.
+  // There should be one active pair due to proximity, but not in contact
+  //
+  // **************
+  // -------------- epsilon
+  //
+  //
+  constexpr int numVerts = 2;
+
+  RealT x1[numVerts];
+  RealT y1[numVerts];
+  RealT x2[numVerts];
+  RealT y2[numVerts];
+
+  x1[0] = 1.0;
+  x1[1] = 0.0;
+  y1[0] = 0.0;
+  y1[1] = 0.0;
+
+  RealT epsilon = 1.e-10;
+  x2[0] = 0.; 
+  x2[1] = 1.;
+  y2[0] = 0. + epsilon; 
+  y2[1] = 0. + epsilon;
+
+  tribol::IndexT conn1[2] = { 0, 1 };
+  tribol::IndexT conn2[2] = { 0, 1 };
+
+  RealT fx1[2] = { 0., 0. };
+  RealT fy1[2] = { 0., 0. };
+  RealT fx2[2] = { 0., 0. };
+  RealT fy2[2] = { 0., 0. };
+
+  RealT penalty1 = 1.;
+  RealT penalty2 = 1.;
+
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
+                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
+                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                               tribol::KINEMATIC_CONSTANT );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+  EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
+  auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
+  EXPECT_EQ( plane.m_inContact, false );
+
+}
+
+TEST_F( CompGeomTest, common_plane_interpen_check_9 )
+{
+  // This test checks two faces that are in full interpen up to some epsilon.
+  //
+  // -------------- epsilon
+  // **************
+  //
+  //
+  constexpr int numVerts = 2;
+
+  RealT x1[numVerts];
+  RealT y1[numVerts];
+  RealT x2[numVerts];
+  RealT y2[numVerts];
+
+  x1[0] = 1.0;
+  x1[1] = 0.0;
+  y1[0] = 0.0;
+  y1[1] = 0.0;
+
+  RealT epsilon = 1.e-10;
+  x2[0] = 0.; 
+  x2[1] = 1.;
+  y2[0] = 0. - epsilon;
+  y2[1] = 0. - epsilon;
+
+  tribol::IndexT conn1[2] = { 0, 1 };
+  tribol::IndexT conn2[2] = { 0, 1 };
+
+  RealT fx1[2] = { 0., 0. };
+  RealT fy1[2] = { 0., 0. };
+  RealT fx2[2] = { 0., 0. };
+  RealT fy2[2] = { 0., 0. };
+
+  RealT penalty1 = 1.;
+  RealT penalty2 = 1.;
+
+  SetupAndUpdate2DHostProblem( &conn1[0], &x1[0], &y1[0], &fx1[0], &fy1[0], penalty1,
+                               &conn2[0], &x2[0], &y2[0], &fx2[0], &fy2[0], penalty2,
+                               tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                               tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                               tribol::KINEMATIC_CONSTANT );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+  EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
+  auto& plane = couplingScheme->getCompGeom().getCommonPlane( 0 );
+  EXPECT_EQ( plane.m_inContact, true );
+
+}
+
 TEST_F( CompGeomTest, 2d_projections_1 )
 {
   constexpr int dim = 2;
