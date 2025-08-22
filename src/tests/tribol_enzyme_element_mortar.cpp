@@ -394,59 +394,42 @@ class EnzymeElementMortarTest : public testing::Test {
    */
   void SimplifiedJacobianCheck( double* x1, double* x2, double* n1, double* p1, int num_nodes = 4 )
   {
-    constexpr int num_disp_dofs = 12;
-    double f1[num_disp_dofs];  // Array to store forces for the first face
-    double f2[num_disp_dofs];  // Array to store forces for the second face
-    constexpr int num_pres_dofs = 4;
-    double g1[num_pres_dofs];  // Array to store gap for the first face
+    constexpr int max_num_disp_dofs = 12;
+    constexpr int max_num_pres_dofs = 4;
 
-    double df1dx1[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the first face w.r.t. the coordinates
-                                                   // of the first face
-    double df1dx2[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the first face w.r.t. the coordinates
-                                                   // of the second face
-    double df1dn1[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the first face w.r.t. the normal of the
-                                                   // first face
-    for ( int i{ 0 }; i < num_disp_dofs * num_disp_dofs; ++i ) {
-      df1dx1[i] = 0.0;
-      df1dx2[i] = 0.0;
-      df1dn1[i] = 0.0;
-    }
-    double df1dp1[num_disp_dofs * num_pres_dofs];  // Derivative of the force on the first face w.r.t. the pressure of
-                                                   // the first face
-    for ( int i{ 0 }; i < num_disp_dofs * num_pres_dofs; ++i ) {
-      df1dp1[i] = 0.0;
-    }
-    double dg1dx1[num_pres_dofs * num_disp_dofs];  // Derivative of the gap on the first face w.r.t. the coordinates of
-                                                   // the first face
-    double dg1dx2[num_pres_dofs * num_disp_dofs];  // Derivative of the gap on the first face w.r.t. the coordinates of
-                                                   // the second face
-    double dg1dn1[num_pres_dofs * num_disp_dofs];  // Derivative of the gap on the first face w.r.t. the normal of the
-                                                   // first face
-    for ( int i{ 0 }; i < num_pres_dofs * num_disp_dofs; ++i ) {
-      dg1dx1[i] = 0.0;
-      dg1dx2[i] = 0.0;
-      dg1dn1[i] = 0.0;
-    }
-    double df2dx1[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the second face w.r.t. the coordinates
-                                                   // of the first face
-    double df2dx2[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the second face w.r.t. the coordinates
-                                                   // of the second face
-    double df2dn1[num_disp_dofs * num_disp_dofs];  // Derivative of the force on the second face w.r.t. the normal of
-                                                   // the first face
-    for ( int i{ 0 }; i < num_disp_dofs * num_disp_dofs; ++i ) {
-      df2dx1[i] = 0.0;
-      df2dx2[i] = 0.0;
-      df2dn1[i] = 0.0;
-    }
-    double df2dp1[num_disp_dofs * num_pres_dofs];  // Derivative of the force on the second face w.r.t. the pressure of
-                                                   // the first face
-    for ( int i{ 0 }; i < num_disp_dofs * num_pres_dofs; ++i ) {
-      df2dp1[i] = 0.0;
-    }
+    // Array to store forces for the first face
+    double f1[max_num_disp_dofs] = { 0.0 };
+    // Array to store forces for the second face
+    double f2[max_num_disp_dofs] = { 0.0 };
+    // Array to store gap for the first face
+    double g1[max_num_pres_dofs] = { 0.0 };
+    // Derivative of the force on the first face w.r.t. the coordinates of the first face
+    double df1dx1[max_num_disp_dofs * max_num_disp_dofs] = { 0.0 };
+    // Derivative of the force on the first face w.r.t. the coordinates of the second face
+    double df1dx2[max_num_disp_dofs * max_num_disp_dofs] = { 0.0 };
+    // Derivative of the force on the first face w.r.t. the normal of the first face
+    double df1dn1[max_num_disp_dofs * max_num_disp_dofs] = { 0.0 };
+    // Derivative of the force on the first face w.r.t. the pressure of the first face
+    double df1dp1[max_num_disp_dofs * max_num_pres_dofs] = { 0.0 };
+    // Derivative of the gap on the first face w.r.t. the coordinates of the first face
+    double dg1dx1[max_num_pres_dofs * max_num_disp_dofs] = { 0.0 };
+    // Derivative of the gap on the first face w.r.t. the coordinates of the second face
+    double dg1dx2[max_num_pres_dofs * max_num_disp_dofs] = { 0.0 };
+    // Derivative of the gap on the first face w.r.t. the normal of the first face
+    double dg1dn1[max_num_pres_dofs * max_num_disp_dofs] = { 0.0 };
+    // Derivative of the force on the second face w.r.t. the coordinates of the first face
+    double df2dx1[max_num_disp_dofs * max_num_disp_dofs] = { 0.0 };
+    // Derivative of the force on the second face w.r.t. the coordinates of the second face
+    double df2dx2[max_num_disp_dofs * max_num_disp_dofs] = { 0.0 };
+    // Derivative of the force on the second face w.r.t. the normal of the first face
+    double df2dn1[max_num_disp_dofs * max_num_disp_dofs] = { 0.0 };
+    // Derivative of the force on the second face w.r.t. the pressure of the first face
+    double df2dp1[max_num_disp_dofs * max_num_pres_dofs] = { 0.0 };
 
     ComputeMortarJacobianEnzyme( x1, n1, p1, f1, df1dx1, df1dx2, df1dn1, df1dp1, g1, dg1dx1, dg1dx2, dg1dn1, num_nodes,
                                  x2, f2, df2dx1, df2dx2, df2dn1, df2dp1, num_nodes );
 
+    // NOTE: This will still work for triangles since the unused nodes are ignored.
     int conn[4] = { 0, 1, 2, 3 };
     tribol::InterfaceElementType interface_element_type = tribol::InterfaceElementType::LINEAR_QUAD;
     if ( num_nodes == 3 ) {
@@ -466,20 +449,14 @@ class EnzymeElementMortarTest : public testing::Test {
                             ContactMethod::SINGLE_MORTAR, ContactModel::FRICTIONLESS,
                             EnforcementMethod::LAGRANGE_MULTIPLIER, BinningMethod::BINNING_GRID,
                             ExecutionMode::Sequential );
-    double f1t[num_disp_dofs];  // Array to store non-Enzyme forces for the first face
-    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
-      f1t[i] = 0.0;
-    }
+    // Array to store non-Enzyme forces for the first face
+    double f1t[max_num_disp_dofs] = { 0.0 };
     registerNodalResponse( mesh_id1, f1t, f1t + num_nodes, f1t + 2 * num_nodes );
-    double f2t[num_disp_dofs];  // Array to store non-Enzyme forces for the second face
-    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
-      f2t[i] = 0.0;
-    }
+    // Array to store non-Enzyme forces for the second face
+    double f2t[max_num_disp_dofs] = { 0.0 };
     registerNodalResponse( mesh_id2, f2t, f2t + num_nodes, f2t + 2 * num_nodes );
-    double g1t[num_pres_dofs];  // Array to store non-Enzyme gap for the first face
-    for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
-      g1t[i] = 0.0;
-    }
+    // Array to store non-Enzyme gap for the first face
+    double g1t[max_num_pres_dofs] = { 0.0 };
     registerMortarGaps( mesh_id1, g1t );
     registerMortarPressures( mesh_id1, p1 );
     setLagrangeMultiplierOptions( cs_id, ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN, SparseMode::MFEM_ELEMENT_DENSE );
@@ -496,11 +473,14 @@ class EnzymeElementMortarTest : public testing::Test {
                               &col_elem_idx, &jacobians );
 
     double max_diff{ 0.0 };
+    constexpr int dim = 3;
+    int num_disp_dofs = num_nodes * dim;
+    int num_pres_dofs = num_nodes;
 
     std::cout << "df1/dp -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < 3 * num_nodes; ++i ) {
-      for ( int j{ 0 }; j < num_nodes; ++j ) {
-        int idx_e = num_nodes * i + j;
+    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
+      for ( int j{ 0 }; j < num_pres_dofs; ++j ) {
+        int idx_e = num_pres_dofs * i + j;
         auto diff = std::abs( df1dp1[idx_e] - ( *jacobians )[0].Data()[idx_e] );
         max_diff = std::max( max_diff, diff );
         if ( diff > approx_j_err_ ) {
@@ -515,9 +495,9 @@ class EnzymeElementMortarTest : public testing::Test {
                               &jacobians );
 
     std::cout << "df2/dp -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < 3 * num_nodes; ++i ) {
-      for ( int j{ 0 }; j < num_nodes; ++j ) {
-        int idx_e = num_nodes * i + j;
+    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
+      for ( int j{ 0 }; j < num_pres_dofs; ++j ) {
+        int idx_e = num_pres_dofs * i + j;
         auto diff = std::abs( df2dp1[idx_e] - ( *jacobians )[0].Data()[idx_e] );
         max_diff = std::max( max_diff, diff );
         if ( diff > approx_j_err_ ) {
@@ -532,9 +512,9 @@ class EnzymeElementMortarTest : public testing::Test {
                               &col_elem_idx, &jacobians );
 
     std::cout << "dg/dx1 -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < 3 * num_nodes; ++i ) {
-      for ( int j{ 0 }; j < num_nodes; ++j ) {
-        int idx_e = num_nodes * i + j;
+    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
+      for ( int j{ 0 }; j < num_pres_dofs; ++j ) {
+        int idx_e = num_pres_dofs * i + j;
         auto diff = std::abs( dg1dx1[idx_e] - ( *jacobians )[0].Data()[idx_e] );
         max_diff = std::max( max_diff, diff );
         if ( diff > approx_j_err_ ) {
@@ -549,9 +529,9 @@ class EnzymeElementMortarTest : public testing::Test {
                               &jacobians );
 
     std::cout << "dg/dx2 -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < 3 * num_nodes; ++i ) {
-      for ( int j{ 0 }; j < num_nodes; ++j ) {
-        int idx_e = num_nodes * i + j;
+    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
+      for ( int j{ 0 }; j < num_pres_dofs; ++j ) {
+        int idx_e = num_pres_dofs * i + j;
         auto diff = std::abs( dg1dx2[idx_e] - ( *jacobians )[0].Data()[idx_e] );
         max_diff = std::max( max_diff, diff );
         if ( diff > approx_j_err_ ) {
@@ -565,7 +545,7 @@ class EnzymeElementMortarTest : public testing::Test {
     std::cout << "max_diff for approximate Jacobian comparison test: " << max_diff << std::endl;
 
     std::cout << "g -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < num_nodes; ++i ) {
+    for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
       auto diff = std::abs( g1[i] - g1t[i] );
       if ( diff > tribol_vs_enzyme_err_ ) {
         std::cout << "[" << i << "] Enzyme: " << g1[i] << "  Tribol: " << g1t[i] << std::endl;
@@ -574,7 +554,7 @@ class EnzymeElementMortarTest : public testing::Test {
     }
 
     std::cout << "f1 -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < 3 * num_nodes; ++i ) {
+    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
       auto diff = std::abs( f1[i] - f1t[i] );
       if ( diff > tribol_vs_enzyme_err_ ) {
         std::cout << "[" << i << "] Enzyme: " << f1[i] << "  Tribol: " << f1t[i] << std::endl;
@@ -583,7 +563,7 @@ class EnzymeElementMortarTest : public testing::Test {
     }
 
     std::cout << "f2 -------------------------------------- " << std::endl;
-    for ( int i{ 0 }; i < 3 * num_nodes; ++i ) {
+    for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
       auto diff = std::abs( f2[i] - f2t[i] );
       if ( diff > tribol_vs_enzyme_err_ ) {
         std::cout << "[" << i << "] Enzyme: " << f2[i] << "  Tribol: " << f2t[i] << std::endl;

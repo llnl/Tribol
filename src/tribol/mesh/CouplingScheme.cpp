@@ -1149,9 +1149,9 @@ bool CouplingScheme::init()
     // compute the face data
     // different element normals for enzyme + mortar (matching Puso and Laursen)
     if ( this->isEnzymeEnabled() && this->m_contactMethod == SINGLE_MORTAR ) {
-      this->m_mesh1->computeFaceData( this->m_exec_mode, QuadCentroidNormal() );
+      this->m_mesh1->computeFaceData( this->m_exec_mode, ElementCentroidNormal() );
       if ( this->m_mesh_id2 != this->m_mesh_id1 ) {
-        this->m_mesh2->computeFaceData( this->m_exec_mode, QuadCentroidNormal() );
+        this->m_mesh2->computeFaceData( this->m_exec_mode, ElementCentroidNormal() );
       }
     } else {
       this->m_mesh1->computeFaceData( this->m_exec_mode, PalletAvgNormal() );

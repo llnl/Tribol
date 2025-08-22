@@ -95,7 +95,8 @@ class InvIsoTest : public ::testing::Test {
   }
 
   /**
-   * @brief Run a test on a triangular element.
+   * @brief Given a coordinate point xi in the reference triangle, compute the corresponding physical coordinate. Then
+   * verify InvIso maps the coordinate back to xi.
    *
    * @param x0 The zero-th coordinate of the triangle (3D, CCW ordering).
    * @param x1 The first coordinate of the triangle (3D, CCW ordering).
@@ -233,6 +234,19 @@ TEST_F( InvIsoTest, affine_test_point )
   EXPECT_EQ( convrg, true );
 }
 
+/*
+       x2
+       /\
+      /  \
+     /    \
+    /      \
+   /        \
+  x0---------x1
+
+  x0 = (0.0, 0.0, 0.0)
+  x1 = (1.0, 0.0, 0.0)
+  x2 = (0.5, 1.0, 0.0)
+*/
 TEST_F( InvIsoTest, basic_tri_test )
 {
   RealT x0[3] = { 0.0, 0.0, 0.0 };
@@ -253,11 +267,12 @@ TEST_F( InvIsoTest, basic_tri_test )
   }
 }
 
+// tests a narrower triangle that is out of the xy plane
 TEST_F( InvIsoTest, narrow_offaxis_tri_test )
 {
   RealT x0[3] = { 0.2, -0.2, 0.5 };
   RealT x1[3] = { 1.0, 0.0, 0.5 };
-  RealT x2[3] = { 0.5, 0.1, 0.5 };
+  RealT x2[3] = { 0.5, 0.1, 0.0 };
   // clang-format off
   RealT xi[14] = { 0.25, 0.25,
                   0.0, 0.0,

@@ -7,6 +7,8 @@
 
 #include <cmath>
 
+#include "axom/slic.hpp"
+
 #include "tribol/utils/Math.hpp"
 
 namespace tribol {
@@ -62,8 +64,8 @@ TRIBOL_HOST_DEVICE bool PalletAvgNormal::Compute( const RealT* x, const RealT* c
   return face_ok;
 }
 
-TRIBOL_HOST_DEVICE bool QuadCentroidNormal::Compute( const RealT* x, const RealT* c, RealT* n, int num_nodes,
-                                                     RealT& area ) const
+TRIBOL_HOST_DEVICE bool ElementCentroidNormal::Compute( const RealT* x, const RealT* c, RealT* n, int num_nodes,
+                                                        RealT& area ) const
 {
   area = 0.0;
   // get vector n (normal of elem1) = de1 x de2, where de1 and de2 are tangent vectors evaluated at the
@@ -84,6 +86,8 @@ TRIBOL_HOST_DEVICE bool QuadCentroidNormal::Compute( const RealT* x, const RealT
     de2[0] = x[2] - x[0];
     de2[1] = x[5] - x[3];
     de2[2] = x[8] - x[6];
+  } else {
+    SLIC_ERROR( "ElementCentroidNormal::Compute() only 3- and 4-node elements are supported." );
   }
   n[0] = de1[1] * de2[2] - de1[2] * de2[1];
   n[1] = de1[2] * de2[0] - de1[0] * de2[2];
