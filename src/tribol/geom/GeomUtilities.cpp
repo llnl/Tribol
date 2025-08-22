@@ -1,5 +1,5 @@
 // Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
-// other Tribol Project Developers. See the top-level LICENSE file for details.
+// other Tribol Project developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
 
@@ -1277,9 +1277,8 @@ TRIBOL_HOST_DEVICE bool Point2DInTri( const RealT xp, const RealT yp, const Real
   RealT v = invDet * ( e11 * p1e2 - e12 * p1e1 );
 
   // check if point is inside the triangle within a tolerance
-  // NOTE: the sqrt(2.0) is to keep the length consistent on the incline
-
   if ( ( u >= -tol ) && ( u <= 1. ) && ( v >= -tol ) && ( v <= 1. ) && ( u + v <= 1.0 ) ) {
+
     inside = true;
   }
 
