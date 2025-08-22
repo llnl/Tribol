@@ -770,9 +770,9 @@ TEST_F( CompGeomTest, common_plane_interpen_check_7 )
 
   RealT epsilon = 1.e-12;
   x2[0] = 0.;
-  x2[1] = 1. - epsilon; 
+  x2[1] = 1. - epsilon;
   y2[0] = -0.1;
-  y2[1] = 0. + epsilon; 
+  y2[1] = 0. + epsilon;
 
   tribol::IndexT conn1[2] = { 0, 1 };
   tribol::IndexT conn2[2] = { 0, 1 };
@@ -1104,22 +1104,22 @@ TEST_F( CompGeomTest, point_in_edge_1 )
 
   // point just barely inside the first vertex
   RealT epsilon = 1.e-12;
-  xp = 0. + epsilon; 
+  xp = 0. + epsilon;
   yp = 0.75;
   EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), true );
 
   // point just barely inside the second
-  xp = 1.5 - epsilon; 
+  xp = 1.5 - epsilon;
   yp = 0.75;
   EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), true );
 
   // point just barely outside first vertex
-  xp = 0. - epsilon; 
+  xp = 0. - epsilon;
   yp = 0.75;
   EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), false );
 
   // point just barely outside second vertex
-  xp = 1.5 + epsilon; 
+  xp = 1.5 + epsilon;
   yp = 0.75;
   EXPECT_EQ( tribol::IsPointInEdge( x, y, xp, yp ), false );
 
