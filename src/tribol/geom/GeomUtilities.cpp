@@ -2078,6 +2078,11 @@ TRIBOL_HOST_DEVICE bool IsConvex( const RealT* const x, const RealT* const y, co
     return true;
   }
 
+  // for each vertex B, form the two segments AB and BC using the triple (A,B,C).
+  // Take the cross product of the two segments. For a convex polygon the cross
+  // products are all the same sign (positive or negative depending on how the polygon
+  // "turns"). Cross products == 0 can be ignored. This indicates colinear segments
+  // and does not help in determining the turning of the polygon
   bool pos = false;
   bool neg = false;
   for ( int i = 0; i < numPolyVert; ++i ) {
@@ -2089,6 +2094,10 @@ TRIBOL_HOST_DEVICE bool IsConvex( const RealT* const x, const RealT* const y, co
 
     RealT cross = ax * by - ay * bx;
 
+    // check for strict positivity or negativity of the cross product.
+    // Again, cross == 0 can be ignored indicating colinear segments,
+    // which does not break convexity, but does not indicate how the
+    // polygon turns.
     if ( cross > 0 ) {
       pos = true;
     } else if ( cross < 0 ) {
