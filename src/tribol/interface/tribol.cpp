@@ -12,7 +12,7 @@
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 
-#include "tribol/geom/ContactPlane.hpp"
+//#include "tribol/geom/CompGeom.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 
 #include "tribol/physics/Physics.hpp"
@@ -786,22 +786,16 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setInterfacePairs(): invalid coupling scheme index." );
 
   auto& pairs = cs->getInterfacePairs();
-  auto& mesh1 = cs->getMesh1();
-  auto& mesh2 = cs->getMesh2();
-
   pairs.clear();
   pairs.reserve( numPairs );
 
   // copy the interaction pairs
   for ( int i = 0; i < numPairs; ++i ) {
-    ContactMode mode = cs->getContactMode();
-
     // perform initial face-pair validity checks to add valid face-pairs
     // to interface pair manager. Note, further computational geometry
     // filtering will be performed on each face-pair indendifying
     // contact candidates.
-    if ( geomFilter( pairIndex1[i], pairIndex2[i], mesh1, mesh2, mode, cs->getParameters().auto_contact_check,
-                     cs->getParameters().binning_proximity_scale ) ) {
+    if ( geomFilter( cs->getView(), pairIndex1[i], pairIndex2[i] ) ) {
       pairs.emplace_back( pairIndex1[i], pairIndex2[i], true );
     }
   }

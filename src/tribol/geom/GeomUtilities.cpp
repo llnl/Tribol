@@ -1,10 +1,11 @@
 // Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
-// other Tribol Project Developers. See the top-level LICENSE file for details.
+// other Tribol Project developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
 
 #include "GeomUtilities.hpp"
-#include "ContactPlane.hpp"
+#include "CompGeom.hpp"
+#include "tribol/mesh/MeshData.hpp"
 #include "tribol/utils/Math.hpp"
 
 #ifdef TRIBOL_USE_ENZYME
@@ -20,6 +21,70 @@
 
 namespace tribol {
 
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void ComputeLocalBasis( RealT nx, RealT ny, RealT nz, RealT& e1x, RealT& e1y, RealT& e1z, RealT& e2x,
+                                           RealT& e2y, RealT& e2z )
+{
+  constexpr int max_dim = 3;
+  RealT a[max_dim];
+  for ( int i = 0; i < max_dim; ++i ) {
+    a[i] = 0.;
+  }
+
+  // define a vector non-parallel to the input unit normal. Do so by
+  // finding the smallest unit normal component and define a corresponding
+  // vector in that direction
+  if ( std::abs( nx ) <= std::abs( ny ) && std::abs( nx ) <= std::abs( nz ) ) {
+    a[0] = 1.0;
+  } else if ( std::abs( ny ) <= std::abs( nx ) && std::abs( ny ) <= std::abs( nz ) ) {
+    a[1] = 1.0;
+  } else if ( std::abs( nz ) <= std::abs( nx ) && std::abs( nz ) <= std::abs( ny ) ) {
+    a[2] = 1.0;
+  }
+
+  // compute the first basis vector as a x n / ||a x n||
+  crossProd( a[0], a[1], a[2], nx, ny, nz, e1x, e1y, e1z );
+  RealT a_cross_n_mag = magnitude( e1x, e1y, e1z );
+  RealT inv_a_cross_n_mag = 1.0 / a_cross_n_mag;
+  e1x *= inv_a_cross_n_mag;
+  e1y *= inv_a_cross_n_mag;
+  e1z *= inv_a_cross_n_mag;
+
+  // now compute the second basis vector as n x e1
+  crossProd( nx, ny, nz, e1x, e1y, e1z, e2x, e2y, e2z );
+}
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void ProjectFaceNodesToPlane( const MeshData::Viewer& mesh, int faceId, RealT nrmlX, RealT nrmlY,
+                                                 RealT nrmlZ, RealT cX, RealT cY, RealT cZ, RealT* pX, RealT* pY,
+                                                 RealT* pZ )
+{
+  // loop over nodes and project onto the plane defined by the point-normal
+  // input arguments
+  for ( int i = 0; i < mesh.numberOfNodesPerElement(); ++i ) {
+    const int nodeId = mesh.getGlobalNodeId( faceId, i );
+    ProjectPointToPlane( mesh.getPosition()[0][nodeId], mesh.getPosition()[1][nodeId], mesh.getPosition()[2][nodeId],
+                         nrmlX, nrmlY, nrmlZ, cX, cY, cZ, pX[i], pY[i], pZ[i] );
+  }
+
+  return;
+
+}  // end ProjectFaceNodesToPlane()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void ProjectEdgeNodesToSegment( const MeshData::Viewer& mesh, int edgeId, RealT nrmlX, RealT nrmlY,
+                                                   RealT cX, RealT cY, RealT* pX, RealT* pY )
+{
+  for ( int i = 0; i < mesh.numberOfNodesPerElement(); ++i ) {
+    const int nodeId = mesh.getGlobalNodeId( edgeId, i );
+    ProjectPointToSegment( mesh.getPosition()[0][nodeId], mesh.getPosition()[1][nodeId], nrmlX, nrmlY, cX, cY, pX[i],
+                           pY[i] );
+  }
+
+  return;
+}
+
+//------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ProjectPointToPlane( const RealT x, const RealT y, const RealT z, const RealT nx,
                                              const RealT ny, const RealT nz, const RealT ox, const RealT oy,
                                              const RealT oz, RealT& px, RealT& py, RealT& pz )
@@ -41,6 +106,16 @@ TRIBOL_HOST_DEVICE void ProjectPointToPlane( const RealT x, const RealT y, const
   return;
 
 }  // end ProjectPointToPlane()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void ProjectPointsToPlane( const RealT* x, const RealT* y, const RealT* z, const RealT nx,
+                                              const RealT ny, const RealT nz, const RealT ox, const RealT oy,
+                                              const RealT oz, RealT* px, RealT* py, RealT* pz, const int num_points )
+{
+  for ( int i = 0; i < num_points; ++i ) {
+    ProjectPointToPlane( x[i], y[i], z[i], nx, ny, nz, ox, oy, oz, px[i], py[i], pz[i] );
+  }
+}  // end ProjectPointsToPlane()
 
 //------------------------------------------------------------------------------
 void PlaneTo2DCoords( const RealT* x, const RealT* x0, const RealT* e1, const RealT* e2, RealT* xp, RealT* yp,
@@ -97,6 +172,7 @@ TRIBOL_HOST_DEVICE void PolyInterYCentroid( const int namax, const RealT* const 
   RealT vol;
 
   // calculate origin shift to avoid roundoff errors
+  // TODO figure out numeric limits associated with RealT that also works on device
   RealT xorg = FLT_MAX;
   RealT yorg = FLT_MAX;
   RealT xa_min = FLT_MAX;
@@ -363,8 +439,9 @@ TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( const RealT* const pX, const Real
 }  // end GlobalTo2DLocalCoords()
 
 //------------------------------------------------------------------------------
-void GlobalTo2DLocalCoords( RealT pX, RealT pY, RealT pZ, RealT e1X, RealT e1Y, RealT e1Z, RealT e2X, RealT e2Y,
-                            RealT e2Z, RealT cX, RealT cY, RealT cZ, RealT& pLX, RealT& pLY )
+TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( RealT pX, RealT pY, RealT pZ, RealT e1X, RealT e1Y, RealT e1Z, RealT e2X,
+                                               RealT e2Y, RealT e2Z, RealT cX, RealT cY, RealT cZ, RealT& pLX,
+                                               RealT& pLY )
 {
   // compute the vector between the point on the plane and the input plane point
   RealT vX = pX - cX;
@@ -546,11 +623,11 @@ void PolyCentroid( const RealT* const x, const RealT* const y, const int numVert
 }  // end PolyCentroid()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const RealT* yA, int numVertexA,
-                                                        const RealT* xB, const RealT* yB, int numVertexB, RealT posTol,
-                                                        RealT lenTol, RealT* polyX, RealT* polyY, int& numPolyVert,
-                                                        RealT& area, bool orientCheck, OverlapVertexType* vertType,
-                                                        int* edgeA, int* edgeB )
+TRIBOL_HOST_DEVICE FaceGeomException Intersection2DPolygon( const RealT* xA, const RealT* yA, int numVertexA,
+                                                            const RealT* xB, const RealT* yB, int numVertexB,
+                                                            RealT posTol, RealT lenTol, RealT* polyX, RealT* polyY,
+                                                            int& numPolyVert, RealT& area, bool orientCheck,
+                                                            OverlapVertexType* vertType, int* edgeA, int* edgeB )
 {
   // for tribol, if you have called this routine it is because a positive area of
   // overlap between two polygons (faces) exists. This routine does not perform a
@@ -567,7 +644,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   }
 
   // check right hand rule ordering of polygon vertices.
-  // Note 1: This check is consistent with the ordering that comes from PolyReorder()
+  // Note 1: This check is consistent with the ordering that comes from PolyReorderConvex()
   // of two faces with unordered vertices.
   // Note 2: Intersection2DPolygon doesn't require consistent face vertex orientation
   // between faces, as long as each are 'ordered' (CW or CCW).
@@ -583,8 +660,8 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     }
   }
 
-  // maximum number of vertices (for use later)
-  constexpr int max_nodes_per_element = 4;
+  // maximum number of vertices for potentially clipped four node quads (for use later)
+  constexpr int max_nodes_per_element = 5;
 
   // allocate an array to hold ids of interior vertices
   int interiorVAId[max_nodes_per_element];
@@ -638,7 +715,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       }
     }
     area = Area2DPolygon( polyX, polyY, numVertexA );
-    return NO_FACE_GEOM_ERROR;
+    return NO_FACE_GEOM_EXCEPTION;
   }
 
   // check B in A
@@ -669,7 +746,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       }
     }
     area = Area2DPolygon( polyX, polyY, numVertexB );
-    return NO_FACE_GEOM_ERROR;
+    return NO_FACE_GEOM_EXCEPTION;
   }
 
   // check for coincident interior vertices. That is, a vertex on A interior to
@@ -744,6 +821,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
       bool checkB = true;
 
       // if both segments are not defined by nodes interior to the other polygon
+      // UPDATE: just check all segment-segment intersections for robustness
       if ( checkA && checkB ) {
         if ( interId >= max_intersections ) {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
@@ -759,8 +837,8 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
         if ( intersect[interId] ) {
           edgeATemp[interId] = ia;
           edgeBTemp[interId] = jb;
+          ++interId;  // increment intersection counter for segments that intersect
         }
-        ++interId;
       }
     }  // end loop over A segments
   }    // end loop over B segments
@@ -775,7 +853,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
   // intersection vertices
   if ( numSegInter == 0 && numVBI == 0 && numVAI == 0 ) {
     area = 0.0;
-    return NO_FACE_GEOM_ERROR;
+    return NO_OVERLAP;
   }
 
   // allocate temp intersection polygon vertex coordinate arrays to consist
@@ -848,7 +926,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     // order the unordered vertices (in counter clockwise fashion)
     int vertIdx[max_intersections];
     initIntArray( vertIdx, max_intersections, 0 );
-    PolyReorder( polyXTemp, polyYTemp, vertIdx, numPolyVert );
+    PolyReorderConvex( &polyXTemp[0], &polyYTemp[0], &vertIdx[0], numPolyVert );
 
     OverlapVertexType vertTypeTemp2[max_identified_points];
     int edgeATemp2[max_intersections];
@@ -869,7 +947,7 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     // > 3 vertices
     int numFinalVert = 0;
 
-    FaceGeomError segErr =
+    FaceGeomException segErr =
         CheckPolySegs( polyXTemp, polyYTemp, numPolyVert, lenTol, polyX, polyY, vertIdx, numFinalVert );
     for ( int i = 0; i < numFinalVert; ++i ) {
       if ( vertType ) {
@@ -894,26 +972,27 @@ TRIBOL_HOST_DEVICE FaceGeomError Intersection2DPolygon( const RealT* xA, const R
     if ( numFinalVert < 3 ) {
       numPolyVert = 0;
       area = 0.0;
-      return NO_FACE_GEOM_ERROR;  // punt on degenerated or collapsed overlaps
+      return NO_OVERLAP;  // punt on degenerated or collapsed overlaps
     }
   } else {
     numPolyVert = 0;
     area = 0.0;
-    return NO_FACE_GEOM_ERROR;  // don't return error here. We should tolerate 'collapsed' (zero area) overlaps
+    return NO_OVERLAP;  // don't return error here. We should tolerate 'collapsed' (zero area) overlaps
   }
 
   // compute the area of the polygon
   area = Area2DPolygon( polyX, polyY, numPolyVert );
 
-  return NO_FACE_GEOM_ERROR;
+  return NO_FACE_GEOM_EXCEPTION;
 
 }  // end Intersection2DPolygon()
 
+//------------------------------------------------------------------------------
 #ifdef TRIBOL_USE_ENZYME
 
-FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB,
-                                           const RealT* yB, int numVertexB, RealT posTol, RealT lenTol, RealT* polyX,
-                                           RealT* polyY, int* numPolyVert )
+FaceGeomException Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB,
+                                               const RealT* yB, int numVertexB, RealT posTol, RealT lenTol,
+                                               RealT* polyX, RealT* polyY, int* numPolyVert )
 {
   double area = 0.0;
   constexpr bool orientCheck = true;
@@ -922,6 +1001,163 @@ FaceGeomError Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int
 }
 
 #endif
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE FaceGeomException CheckSegOverlap( const RealT* const pX1, const RealT* const pY1,
+                                                      const RealT* const pX2, const RealT* const pY2, const int nV1,
+                                                      const int nV2, RealT* overlapX, RealT* overlapY, RealT& area )
+{
+  // TODO: Re-write in a way where the assert isn't needed
+#ifdef TRIBOL_USE_CUDA
+  assert( nV1 == 2 );
+  assert( nV2 == 2 );
+#else
+  SLIC_ASSERT( nV1 == 2 );
+  SLIC_ASSERT( nV2 == 2 );
+#endif
+
+  // define the edge 1 non-unit directional vector between vertices
+  // 2 and 1
+  RealT lvx1 = pX1[1] - pX1[0];
+  RealT lvy1 = pY1[1] - pY1[0];
+
+  RealT e1_len = magnitude( lvx1, lvy1 );
+
+  // define the edge 2 non-unit directional vector between vertices
+  // 2 and 1
+  RealT lvx2 = pX2[1] - pX2[0];
+  RealT lvy2 = pY2[1] - pY2[0];
+
+  RealT e2_len = magnitude( lvx2, lvy2 );
+
+  //
+  // perform the all-in-1 check
+  //
+
+  // compute vector between each edge 2 vertex and vertex 1 on edge 1.
+  // Then dot that vector with the directional vector of edge 1 to see
+  // if they are codirectional (projection > 0 indicating edge 2 vertex
+  // lies within or beyond edge 1. If so, check, that this vector length is
+  // less than edge 1 length indicating that the vertex lies within edge 1
+  int inter2 = 0;
+  int twoInOneId = -1;
+  for ( int i = 0; i < nV2; ++i ) {
+    RealT vx = pX2[i] - pX1[0];
+    RealT vy = pY2[i] - pY1[0];
+
+    // compute projection onto edge 1 directional vector. (Positive if codirectional,
+    // negative otherwise. Only positive projections will be potential overlap vertex candidates
+    RealT proj = vx * lvx1 + vy * lvy1;
+
+    // compute length of <vx,vy>; if vLen < some tolerance we have a
+    // coincident node
+    RealT vLen = magnitude( vx, vy );
+
+    // check for >= 0 projections and vector lengths <= edge 1 length. This
+    // indicates an edge 2 vertex interior to edge 1, or coincident vertices in
+    // the case of projection = 0 or vector length is equal to edge 1 length
+    if ( proj >= 0 && vLen <= e1_len )  // interior vertex
+    {
+      twoInOneId = i;
+      ++inter2;
+    }
+  }
+
+  // if both vertices pass the above criteria than 2 is in 1
+  if ( inter2 == 2 ) {
+    // set the contact plane (segment) length
+    area = e2_len;
+
+    // set the vertices of the overlap segment
+    overlapX[0] = pX2[0];
+    overlapY[0] = pY2[0];
+
+    overlapX[1] = pX2[1];
+    overlapY[1] = pY2[1];
+
+    return NO_FACE_GEOM_EXCEPTION;
+  }
+
+  //
+  // perform the all-in-2 check
+  //
+
+  // compute vector between each edge 1 vertex and vertex 1 on edge 2.
+  // Then dot that vector with the directional vector of edge 2 to see
+  // if they are codirectional. If so, check, that this vector length is
+  // less than edge 2 length indicating that the vertex is within edge 2
+  int inter1 = 0;
+  int oneInTwoId = -1;
+  for ( int i = 0; i < nV1; ++i ) {
+    RealT vx = pX1[i] - pX2[0];
+    RealT vy = pY1[i] - pY2[0];
+
+    // compute projection onto edge 2 directional vector
+    RealT proj = vx * lvx2 + vy * lvy2;
+
+    // compute length of <vx,vy>
+    RealT vLen = magnitude( vx, vy );
+
+    // check for >= 0 projections and vector lengths <= edge 2 length. This
+    // indicates an edge 1 vertex interior to edge 2 or is coincident if the
+    // projection is zero or vector length is equal to edge 2 length
+    if ( proj >= 0. && vLen <= e2_len )  // interior vertex
+    {
+      oneInTwoId = i;
+      ++inter1;
+    }
+  }
+
+  // if both vertices pass the above criteria then 1 is in 2.
+  if ( inter1 == 2 ) {
+    // set the contact plane (segment) length
+    area = e1_len;
+
+    // set the overlap segment vertices on the contact plane object
+    overlapX[0] = pX1[0];
+    overlapY[0] = pY1[0];
+
+    overlapX[1] = pX1[1];
+    overlapY[1] = pY1[1];
+
+    return NO_FACE_GEOM_EXCEPTION;
+  }
+
+  // if inter1 == 0 and inter2 == 0 then there is no overlap
+  if ( inter1 == 0 && inter2 == 0 ) {
+    area = 0.0;
+    return NO_OVERLAP;
+  }
+
+  // there is a chance that oneInTowId or twoInOneId is not actually set,
+  // in which case we don't have an overlap.
+  if ( oneInTwoId == -1 || twoInOneId == -1 ) {
+    area = 0.0;
+    return NO_OVERLAP;
+  }
+
+  // if we are here, we have ruled out all-in-1 and all-in-2 overlaps,
+  // and non-overlapping edges, but have the case where edge 1 and
+  // edge 2 overlap some finite distance that is less than either of their
+  // lengths. We have vertex information from the all-in-one checks
+  // indicating which vertices on one edge are within the other edge
+
+  // set the segment vertices
+  overlapX[0] = pX1[oneInTwoId];
+  overlapY[0] = pY1[oneInTwoId];
+  overlapX[1] = pX2[twoInOneId];
+  overlapY[1] = pY2[twoInOneId];
+
+  // compute vector between "inter"-vertices
+  RealT vecX = overlapX[1] - overlapX[0];
+  RealT vecY = overlapY[1] - overlapY[0];
+
+  // compute the length of the overlapping segment
+  area = magnitude( vecX, vecY );
+
+  return NO_FACE_GEOM_EXCEPTION;
+
+}  // end CommonPlanePair::checkSegOverlap()
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE bool CheckPolyOrientation( const RealT* const x, const RealT* const y, const int numVertex )
@@ -1041,8 +1277,7 @@ TRIBOL_HOST_DEVICE bool Point2DInTri( const RealT xp, const RealT yp, const Real
   RealT v = invDet * ( e11 * p1e2 - e12 * p1e1 );
 
   // check if point is inside the triangle within a tolerance
-  // NOTE: the sqrt(2.0) is to keep the length consistent on the incline
-  if ( ( u >= -tol ) && ( v >= -tol ) && ( u + v <= 1.0 + tol * std::sqrt( 2.0 ) ) ) {
+  if ( ( u >= -tol ) && ( u <= 1. ) && ( v >= -tol ) && ( v <= 1. ) && ( u + v <= 1.0 ) ) {
     inside = true;
   }
 
@@ -1055,22 +1290,14 @@ TRIBOL_HOST_DEVICE RealT Area2DPolygon( const RealT* const x, const RealT* const
 {
   RealT area = 0.;
 
-  // compute vertex-averaged centroid to construct a triangle between segment
-  // vertices and centroid
-  RealT* z = nullptr;
-  RealT xc = 0.0;
-  RealT yc = 0.0;
-  RealT zc = 0.0;
-  VertexAvgCentroid( x, y, z, numPolyVert, xc, yc, zc );
-
   for ( int i = 0; i < numPolyVert; ++i ) {
     // determine vertex indices of the segment
     int ia = i;
     int ib = ( i == ( numPolyVert - 1 ) ) ? 0 : ( i + 1 );
 
-    area += std::abs( 0.5 * ( x[ia] * ( y[ib] - yc ) + x[ib] * ( yc - y[ia] ) + xc * ( y[ia] - y[ib] ) ) );
+    area += x[ia] * y[ib] - y[ia] * x[ib];
   }
-  return area;
+  return std::abs( 0.5 * area );
 
 }  // end Area2DPolygon()
 
@@ -1118,6 +1345,7 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
   RealT det = -lambdaX1 * lambdaY2 + lambdaX2 * lambdaY1;
 
   // return false if det = 0. Check for numerically zero determinant
+  // nearly colinear edges will have det ~= 0.
   RealT detTol = 1.E-12;
   if ( det > -detTol && det < detTol ) {
     x = 0.;
@@ -1221,7 +1449,12 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
   // the computed intersection point to the interior point and mark the duplicate boolean.
   // Also do this for the argument, interior, set to nullptr
   if ( distRatio < tol ) {
-    if ( interior == nullptr || interior[idMin] ) {
+    if ( interior == nullptr ) {
+      x = xMinVert;
+      y = yMinVert;
+      duplicate = true;
+      return false;
+    } else if ( interior[idMin] ) {
       x = xMinVert;
       y = yMinVert;
       duplicate = true;
@@ -1236,10 +1469,10 @@ TRIBOL_HOST_DEVICE bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, 
 }  // end SegmentIntersection2D()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, int numPoints, RealT tol, RealT* xnew,
-                                                RealT* ynew, int* newIDs, int& numNewPoints )
+TRIBOL_HOST_DEVICE FaceGeomException CheckPolySegs( const RealT* x, const RealT* y, int numPoints, RealT tol,
+                                                    RealT* xnew, RealT* ynew, int* newIDs, int& numNewPoints )
 {
-  constexpr int max_nodes_per_overlap = 8;
+  constexpr int max_nodes_per_overlap = 5 * 2;  // max five interpen vertices in a single cut face
   int local_newIDs[max_nodes_per_overlap];
   if ( !newIDs ) {
     newIDs = local_newIDs;
@@ -1279,7 +1512,7 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, 
   // to memory allocation
   if ( numNewPoints < 3 ) {
     // return and degenerated polygon will be skipped over.
-    return NO_FACE_GEOM_ERROR;
+    return NO_FACE_GEOM_EXCEPTION;
   }
 
   // set the coordinates in xnew and ynew
@@ -1299,24 +1532,31 @@ TRIBOL_HOST_DEVICE FaceGeomError CheckPolySegs( const RealT* x, const RealT* y, 
     }
   }
 
-  return NO_FACE_GEOM_ERROR;
+  return NO_FACE_GEOM_EXCEPTION;
 
 }  // end CheckPolySegs()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoints )
+TRIBOL_HOST_DEVICE bool PolyReorderConvex( RealT* x, RealT* y, int* newIDs, int numPoints )
 {
   if ( numPoints < 3 ) {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-    SLIC_DEBUG( "PolyReorder: numPoints (" << numPoints << ") < 3." );
+    SLIC_DEBUG( "PolyReorderConvex: numPoints (" << numPoints << ") < 3." );
 #endif
     return false;
   }
 
   RealT xC, yC, zC;
   RealT* z = nullptr;
-  constexpr int max_nodes_per_overlap = 8 + 2 * 4;
-  RealT proj[max_nodes_per_overlap - 2];
+  constexpr int max_nodes_per_overlap = 5 * 2;  // 5 max verts for a given interpen face-portion
+
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
+  SLIC_ERROR_IF( numPoints > max_nodes_per_overlap, "PolyReorderConvex: numPoints exceed maximum "
+                                                        << "expected per overlap (" << max_nodes_per_overlap << ")." );
+#endif
+
+  constexpr int max_proj_nodes = max_nodes_per_overlap - 2;
+  RealT proj[max_proj_nodes];
 
   int local_newIDs[max_nodes_per_overlap];
   if ( !newIDs ) {
@@ -1328,30 +1568,27 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoi
     newIDs[i] = i;
   }
 
-  // compute vertex averaged centroid, in local coordinates
+  // compute vertex averaged centroid of input overlap vertices (local coordinates with dummy z args)
   VertexAvgCentroid( x, y, z, numPoints, xC, yC, zC );
 
-  // using the first index into the x,y vertex coordinate arrays as
+  // using the FIRST index into the x,y vertex coordinate arrays as
   // the first vertex of the soon-to-be ordered list of vertices, determine
-  // the next vertex that will comprise the first segment in a counter
+  // the NEXT vertex that will comprise the only the FIRST segment in a counter
   // clockwise ordering of vertices
-  int id1 = -1;
-  int id0 = 0;
-  newIDs[0] = id0;
-
-  for ( int j = 1; j < numPoints; ++j ) {
-    // determine segment vector and normal
-    RealT lambdaX = x[j] - x[id0];
-    RealT lambdaY = y[j] - y[id0];
+  newIDs[0] = 0;
+  for ( int j = newIDs[1]; j < numPoints; ++j ) {
+    // determine current segment vector and normal
+    RealT lambdaX = x[j] - x[newIDs[0]];
+    RealT lambdaY = y[j] - y[newIDs[0]];
     RealT nrmlx = -lambdaY;
     RealT nrmly = lambdaX;
 
-    // project vectors that span from each point, except j,k, to first vertex (id0), onto the
-    // segment normal. There will always be numPoints-2 projections
-    int pk = 0;
-    for ( int k = 0; k < numPoints; ++k ) {
-      if ( k != id0 && k != j ) {
-        proj[pk] = ( x[k] - x[id0] ) * nrmlx + ( y[k] - y[id0] ) * nrmly;
+    // project all segment vectors between all OTHER vertices and newIDs[0] onto the current
+    // segment vector's normal. There will always be numPoints-2 projections
+    int pk = 0;                              // projection counter
+    for ( int k = 0; k < numPoints; ++k ) {  // loop over all segments
+      if ( k != newIDs[0] && k != j ) {      // pick off segments that are NOT the current segment
+        proj[pk] = ( x[k] - x[newIDs[0]] ) * nrmlx + ( y[k] - y[newIDs[0]] ) * nrmly;
         ++pk;
       }
     }
@@ -1361,18 +1598,21 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoi
     bool neg = false;
     bool pos = false;
     for ( int ip = 0; ip < pk; ++ip ) {
-      if ( neg ) {
+      if ( neg ) {  // if neg is previously set to true, keep it true
         neg = true;
       } else if ( !neg ) {
         neg = ( proj[ip] < 0. ) ? true : false;
       }
 
-      if ( pos ) {
+      if ( pos ) {  // if pos is previously set to true, keep it true
         pos = true;
       } else if ( !pos ) {
         pos = ( proj[ip] > 0. ) ? true : false;
       }
 
+      // if at least one projection is negative and one positive then the
+      // current vertex of the current segment vector is not the properly
+      // ordered next vertex
       if ( neg && pos ) {
         break;
       }
@@ -1383,52 +1623,53 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoi
     if ( !neg || !pos ) {
       // check the orientation of the nodes to make sure we have the correct
       // one of two segments that will pass the previous test.
-      // Check the dot product between the normal and the vector
+      // Check the dot product between the current segment normal and the vector
       // between the centroid and first (0th) vertex
-      RealT vx = xC - x[id0];
-      RealT vy = yC - y[id0];
+      RealT vx = xC - x[newIDs[0]];
+      RealT vy = yC - y[newIDs[0]];
 
       RealT prod = nrmlx * vx + nrmly * vy;
 
       // check if the two vertices are a segment on the convex hull and oriented CCW.
       // CCW orientation has prod > 0
       if ( prod > 0 ) {
-        id1 = j;
+        // set newIDs[1] to the current vertex where newIDs[1] and newIDs[0] form the
+        // first segment vector on the convex hull; then, swap ids
+        int oldID1 = newIDs[1];
+        newIDs[1] = j;
+        newIDs[j] = oldID1;
         break;
       }
     }
 
   }  // end loop over j
 
-  // swap ids
-  if ( id1 != -1 ) {
-    newIDs[1] = id1;
-    newIDs[id1] = 1;
-  }
-
-  // given the first (current) reference segment, compute the link vector between the jth vertex
-  // (j cannot be a vertex belonging to the reference segment) and the first vertex of
-  // the given reference segment. The next reference segment is between the second vertex of
-  // the current reference segment and the jth vertex whose link vector has the smallest
-  // dot product with the current reference segment.
-
-  for ( int i = 0; i < ( numPoints - 3 ); ++i )  // increment to (numPoints - 3) or (numPoints - 2)?
-  {
-    int jID;
-    RealT cosThetaMax = -1.;  // this handles angles up to 180 degrees. Not possible for convex polygons
-    RealT cosTheta;
+  // given the first segment vector on the convex hull, determine the rest of the vertex ordering
+  //
+  // compute the current reference segment vector between currently ordered vertices. At first, this is simply
+  // taken as the first segment vector determined above. Then, loop over remaining unorderd vertices and compute
+  // the link vector between that unordered vertex and the first vertex in the reference segment vector. These
+  // two vectors share that vertex as a common origin. Then, compute the angle between the link vector and the
+  // current reference vector. The link vector with the smallest angle gives us the next vertex in the ordered set
+  //
+  // Note: increment to (numPoints - 3) as as the (number_of_remaining_vertices-1) where the last vertex
+  // will automatically
+  for ( int i = 0; i < ( numPoints - 3 ); ++i ) {
     RealT refMag, linkMag;
 
-    // compute reference vector;
+    // compute current ordered reference vector;
     RealT refx, refy;
     refx = x[newIDs[i + 1]] - x[newIDs[i]];
     refy = y[newIDs[i + 1]] - y[newIDs[i]];
     refMag = magnitude( refx, refy );
 
-    //      SLIC_ERROR_IF(refMag < 1.E-12, "PolyReorder: reference segment for link vector check is nearly zero
+    //      SLIC_ERROR_IF(refMag < 1.E-12, "PolyReorderConvex: reference segment for link vector check is nearly zero
     //      length");
 
     // loop over link vectors of unassigned vertices
+    int jID = -1;
+    RealT cosThetaMax = -1.;  // this handles angles up to 180 degrees. Any greater and the polygon is not convex
+    RealT cosTheta;
     int nextVertexID = 2 + i;
     for ( int j = nextVertexID; j < numPoints; ++j ) {
       RealT lx, ly;
@@ -1445,11 +1686,13 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoi
 
     }  // end loop over j
 
-    // we have found the minimum angle and the corresponding local vertex id.
+    // we have found the minimum angle between remaining segment vectors and the corresponding local vertex id.
     // swap ids
-    int swapID = newIDs[nextVertexID];
-    newIDs[nextVertexID] = newIDs[jID];
-    newIDs[jID] = swapID;
+    if ( jID > -1 ) {
+      int swapID = newIDs[nextVertexID];
+      newIDs[nextVertexID] = newIDs[jID];
+      newIDs[jID] = swapID;
+    }
 
   }  // end loop over i
 
@@ -1468,7 +1711,7 @@ TRIBOL_HOST_DEVICE bool PolyReorder( RealT* x, RealT* y, int* newIDs, int numPoi
 
   return true;
 
-}  // end PolyReorder()
+}  // end PolyReorderConvex()
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE void ElemReverse( RealT* const x, RealT* const y, const int numPoints )
@@ -1493,6 +1736,20 @@ TRIBOL_HOST_DEVICE void ElemReverse( RealT* const x, RealT* const y, const int n
 TRIBOL_HOST_DEVICE void PolyReorderWithNormal( RealT* const x, RealT* const y, RealT* const z, const int numPoints,
                                                const RealT nX, const RealT nY, const RealT nZ )
 {
+  if ( numPoints < 3 ) {
+#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
+    SLIC_DEBUG( "PolyReorderWithNormal(): numPoints (" << numPoints << ") < 3." );
+#endif
+    return;
+  }
+
+  constexpr int max_nodes_per_overlap = 5 * 2;  // max face polygon for interpen can be 5
+
+#if defined( TRIBOL_USE_HOST )
+  SLIC_ERROR_IF( numPoints > max_nodes_per_overlap, "PolyReorderWithNormal: numPoints exceed maximum "
+                                                        << "expected per overlap (" << max_nodes_per_overlap << ")." );
+#endif
+
   // form link vectors between second and first vertex and third and first
   // vertex
   RealT lv10X = x[1] - x[0];
@@ -1512,8 +1769,7 @@ TRIBOL_HOST_DEVICE void PolyReorderWithNormal( RealT* const x, RealT* const y, R
   RealT v = dotProd( pNrmlX, pNrmlY, pNrmlZ, nX, nY, nZ );
 
   // check to see if v is negative. If so, reorient the vertices
-  constexpr int max_nodes_per_overlap = 8;
-  if ( v < 0 ) {
+  if ( v < 0. ) {
     RealT xTemp[max_nodes_per_overlap];
     RealT yTemp[max_nodes_per_overlap];
     RealT zTemp[max_nodes_per_overlap];
@@ -1543,7 +1799,7 @@ TRIBOL_HOST_DEVICE void PolyReorderWithNormal( RealT* const x, RealT* const y, R
 TRIBOL_HOST_DEVICE bool LinePlaneIntersection( const RealT xA, const RealT yA, const RealT zA, const RealT xB,
                                                const RealT yB, const RealT zB, const RealT xP, const RealT yP,
                                                const RealT zP, const RealT nX, const RealT nY, const RealT nZ, RealT& x,
-                                               RealT& y, RealT& z, bool& inPlane )
+                                               RealT& y, RealT& z, bool& isParallel )
 {
   // compute segment vector
   RealT lambdaX = xB - xA;
@@ -1553,12 +1809,12 @@ TRIBOL_HOST_DEVICE bool LinePlaneIntersection( const RealT xA, const RealT yA, c
   // check dot product with plane normal
   RealT prod = lambdaX * nX + lambdaY * nY + lambdaZ * nZ;
 
-  if ( prod == 0. )  // line lies in plane
+  if ( prod == 0. )  // line lies in plane or parallel to plane
   {
     x = 0.;
     y = 0.;
     z = 0.;
-    inPlane = true;
+    isParallel = true;
     return false;
   }
 
@@ -1579,13 +1835,13 @@ TRIBOL_HOST_DEVICE bool LinePlaneIntersection( const RealT xA, const RealT yA, c
     x = xA + lambdaX * t;
     y = yA + lambdaY * t;
     z = zA + lambdaZ * t;
-    inPlane = false;
+    isParallel = false;
     return true;
   } else {
     x = 0.;
     y = 0.;
     z = 0.;
-    inPlane = false;
+    isParallel = false;
     return false;
   }
 
@@ -1664,6 +1920,198 @@ void Vertex2DOrderToCCW( const RealT* const x, const RealT* const y, RealT* xTem
 
 }  // end Vertex2DOrderToCCW()
 
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void Points3DTo2D( const RealT* const x, const RealT* const y, const RealT* const z, const RealT nx,
+                                      const RealT ny, const RealT nz, const RealT cx, const RealT cy, const RealT cz,
+                                      const int num_verts, RealT* x_loc, RealT* y_loc )
+{
+  RealT e1x, e1y, e1z;
+  RealT e2x, e2y, e2z;
+
+  ComputeLocalBasis( nx, ny, nz, e1x, e1y, e1z, e2x, e2y, e2z );
+  GlobalTo2DLocalCoords( x, y, z, e1x, e1y, e1z, e2x, e2y, e2z, cx, cy, cz, x_loc, y_loc, num_verts );
+}
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE bool IsPointInEdge( const RealT* const x, const RealT* const y, RealT xp, RealT yp,
+                                       RealT fuzz_factor )
+{
+  RealT xmax, xmin, ymax, ymin;
+  if ( x[0] > x[1] ) {
+    xmax = x[0];
+    xmin = x[1];
+  } else {
+    xmax = x[1];
+    xmin = x[0];
+  }
+
+  if ( y[0] > y[1] ) {
+    ymax = y[0];
+    ymin = y[1];
+  } else {
+    ymax = y[1];
+    ymin = y[0];
+  }
+
+  // add fuzz to catch nearly coincident vertices
+  RealT l = magnitude( x[1] - x[0], y[1] - y[0] );  // edge length
+  RealT fuzz = fuzz_factor * l;
+
+  if ( xp <= ( xmax + fuzz ) && xp >= ( xmin - fuzz ) && yp <= ( ymax + fuzz ) && yp >= ( ymin - fuzz ) ) {
+    return true;
+  }
+  return false;
+}
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void CheckPolyOverlap( const int num_nodes_1, const int num_nodes_2, RealT* projLocX1,
+                                          RealT* projLocY1, RealT* projLocX2, RealT* projLocY2, RealT& area,
+                                          const int isym )
+{
+  // change the vertex ordering of one of the faces so that the two match
+  constexpr int max_nodes_per_elem = 4;
+  RealT x2Temp[max_nodes_per_elem];
+  RealT y2Temp[max_nodes_per_elem];
+
+  // set first vertex coordinates the same
+  x2Temp[0] = projLocX2[0];
+  y2Temp[0] = projLocY2[0];
+
+  // reorder
+  int k = 1;
+  for ( int i = ( num_nodes_2 - 1 ); i > 0; --i ) {
+    x2Temp[k] = projLocX2[i];
+    y2Temp[k] = projLocY2[i];
+    ++k;
+  }
+
+  RealT cy;
+  PolyInterYCentroid( num_nodes_1, projLocX1, projLocY1, num_nodes_2, x2Temp, y2Temp, isym, area, cy );
+  // PolyInterYCentroid( num_nodes_1, projLocY1, projLocX1, num_nodes_2, y2Temp, x2Temp,
+  //                     isym, area, cx );
+
+  return;
+
+}  // end CheckPolyOverlap()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE bool IsOverlappingOnPlane( const RealT* const x1, const RealT* const y1, const RealT* const z1,
+                                              const RealT* const x2, const RealT* const y2, const RealT* const z2,
+                                              const RealT* const n, const RealT* const c, const int numNodesFace1,
+                                              const int numNodesFace2, const int dim )
+{
+  constexpr int max_nodes_per_face = 4;
+
+  if ( dim == 3 ) {
+    RealT x1_bar[max_nodes_per_face];
+    RealT y1_bar[max_nodes_per_face];
+    RealT z1_bar[max_nodes_per_face];
+    RealT x2_bar[max_nodes_per_face];
+    RealT y2_bar[max_nodes_per_face];
+    RealT z2_bar[max_nodes_per_face];
+
+    // project vertices to plane
+    ProjectPointsToPlane( x1, y1, z1, n[0], n[1], n[2], c[0], c[1], c[2], &x1_bar[0], &y1_bar[0], &z1_bar[0],
+                          numNodesFace1 );
+    ProjectPointsToPlane( x2, y2, z2, n[0], n[1], n[2], c[0], c[1], c[2], &x2_bar[0], &y2_bar[0], &z2_bar[0],
+                          numNodesFace2 );
+
+    RealT x1_bar_local[max_nodes_per_face];
+    RealT y1_bar_local[max_nodes_per_face];
+    RealT x2_bar_local[max_nodes_per_face];
+    RealT y2_bar_local[max_nodes_per_face];
+
+    // 3D coordinates to local 2D coordinates
+    Points3DTo2D( &x1_bar[0], &y1_bar[0], &z1_bar[0], n[0], n[1], n[2], c[0], c[1], c[2], numNodesFace1,
+                  &x1_bar_local[0], &y1_bar_local[0] );
+    Points3DTo2D( &x2_bar[0], &y2_bar[0], &z2_bar[0], n[0], n[1], n[2], c[0], c[1], c[2], numNodesFace2,
+                  &x2_bar_local[0], &y2_bar_local[0] );
+
+    RealT area;
+    CheckPolyOverlap( numNodesFace1, numNodesFace2, &x1_bar_local[0], &y1_bar_local[0], &x2_bar_local[0],
+                      &y2_bar_local[0], area, 0 );
+
+    if ( area < 1.e-15 ) {
+      return false;
+    }
+    // end dim == 3
+  } else {
+    RealT projX1[max_nodes_per_face];
+    RealT projY1[max_nodes_per_face];
+    RealT projX2[max_nodes_per_face];
+    RealT projY2[max_nodes_per_face];
+
+    // project edge nodes to plane
+    for ( int i = 0; i < numNodesFace1; ++i ) {
+      ProjectPointToSegment( x1[i], y1[i], n[0], n[1], c[0], c[1], projX1[i], projY1[i] );
+    }
+
+    for ( int i = 0; i < numNodesFace2; ++i ) {
+      ProjectPointToSegment( x2[i], y2[i], n[0], n[1], c[0], c[1], projX2[i], projY2[i] );
+    }
+
+    // check if either of edge 1's projected vertices are inside projected edge 2
+    bool vert1_inside2 = IsPointInEdge( &projX2[0], &projY2[0], projX1[0], projY1[0] );
+    bool vert2_inside2 = IsPointInEdge( &projX2[0], &projY2[0], projX1[1], projY1[1] );
+
+    // now, check if either of edge 2's projected vertices are inside projected edge 1
+    // note, if we just checked for 1 in 2, then if 2 lies entirely within 1 we would have missed that
+    bool vert1_inside1 = IsPointInEdge( &projX1[0], &projY1[0], projX2[0], projY2[0] );
+    bool vert2_inside1 = IsPointInEdge( &projX1[0], &projY1[0], projX2[1], projY2[1] );
+
+    // return false if none of the vertices lie inside the other edge
+    if ( !vert1_inside2 && !vert2_inside2 ) {
+      if ( !vert1_inside1 && !vert2_inside1 ) {
+        return false;
+      }
+    }
+
+  }  // end dim == 2
+
+  return true;
+}
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE bool IsConvex( const RealT* const x, const RealT* const y, const int numPolyVert )
+{
+  if ( numPolyVert < 4 ) {  // triangles are convex
+    return true;
+  }
+
+  // for each vertex B, form the two segments AB and BC using the triple (A,B,C).
+  // Take the cross product of the two segments. For a convex polygon the cross
+  // products are all the same sign (positive or negative depending on how the polygon
+  // "turns"). Cross products == 0 can be ignored. This indicates colinear segments
+  // and does not help in determining the turning of the polygon
+  bool pos = false;
+  bool neg = false;
+  for ( int i = 0; i < numPolyVert; ++i ) {
+    RealT ax = x[( i + 1 ) % numPolyVert] - x[i];
+    RealT ay = y[( i + 1 ) % numPolyVert] - y[i];
+
+    RealT bx = x[( i + 2 ) % numPolyVert] - x[( i + 1 ) % numPolyVert];
+    RealT by = y[( i + 2 ) % numPolyVert] - y[( i + 1 ) % numPolyVert];
+
+    RealT cross = ax * by - ay * bx;
+
+    // check for strict positivity or negativity of the cross product.
+    // Again, cross == 0 can be ignored indicating colinear segments,
+    // which does not break convexity, but does not indicate how the
+    // polygon turns.
+    if ( cross > 0 ) {
+      pos = true;
+    } else if ( cross < 0 ) {
+      neg = true;
+    }
+  }
+
+  if ( pos && neg ) {
+    return false;
+  } else {
+    return true;
+  }
+
+}  // end IsConvex()
 //------------------------------------------------------------------------------
 
 }  // end namespace tribol

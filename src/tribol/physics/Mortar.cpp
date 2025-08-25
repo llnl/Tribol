@@ -8,7 +8,7 @@
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/geom/ContactPlane.hpp"
+#include "tribol/geom/CompGeom.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/geom/NodalNormal.hpp"
 #include "tribol/common/Parameters.hpp"
@@ -189,7 +189,6 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
 
   auto pairs = cs->getInterfacePairs();
   const IndexT numPairs = pairs.size();
-  auto planes = cs->get3DContactPlanes();
 
   ////////////////////////////////////////////////////////////////////////
   //
@@ -198,18 +197,7 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
   ////////////////////////////////////////////////////////////////////////
   auto mortarMesh = cs->getMesh1().getView();
   auto nonmortarMesh = cs->getMesh2().getView();
-
   IndexT const numNodesPerFace = mortarMesh.numberOfNodesPerElement();
-
-  RealT const* const x1 = mortarMesh.getPosition()[0].data();
-  RealT const* const y1 = mortarMesh.getPosition()[1].data();
-  RealT const* const z1 = mortarMesh.getPosition()[2].data();
-  IndexT const* const mortarConn = mortarMesh.getConnectivity().data();
-
-  RealT const* const x2 = nonmortarMesh.getPosition()[0].data();
-  RealT const* const y2 = nonmortarMesh.getPosition()[1].data();
-  RealT const* const z2 = nonmortarMesh.getPosition()[2].data();
-  IndexT const* nonmortarConn = nonmortarMesh.getConnectivity().data();
 
   // declare local variables to hold face nodal coordinates
   // and overlap vertex coordinates
@@ -217,6 +205,8 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
   IndexT size = dim * numNodesPerFace;
   RealT mortarX[size];
   RealT nonmortarX[size];
+  RealT mortarX_bar[size];
+  RealT nonmortarX_bar[size];
 
   ////////////////////////////////////////////////////////////////////
   // compute nonmortar gaps to determine active set of contact dofs //
@@ -229,54 +219,30 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
       continue;
     }
 
-    auto& plane = planes[cpID];
+    auto& cg_pairs = cs->getCompGeom();
+    auto& plane = cg_pairs.getMortarPlane( cpID );
+
+    RealT overlapX[dim * plane.m_numPolyVert];
 
     // get pair indices
     IndexT index1 = pair.m_element_id1;
     IndexT index2 = pair.m_element_id2;
 
     // populate the current configuration nodal coordinates for the
-    // two faces
-    for ( int i = 0; i < numNodesPerFace; ++i ) {
-      int id = dim * i;
-      IndexT mortar_id = mortarConn[numNodesPerFace * index1 + i];
-      IndexT nonmortar_id = nonmortarConn[numNodesPerFace * index2 + i];
+    // two faces; stored on the contact plane object
+    plane.getFace1Coords( &mortarX[0], numNodesPerFace );
+    plane.getFace2Coords( &nonmortarX[0], numNodesPerFace );
 
-      mortarX[id] = x1[mortar_id];
-      mortarX[id + 1] = y1[mortar_id];
-      mortarX[id + 2] = z1[mortar_id];
-      nonmortarX[id] = x2[nonmortar_id];
-      nonmortarX[id + 1] = y2[nonmortar_id];
-      nonmortarX[id + 2] = z2[nonmortar_id];
-    }
+    // get face coordinates projected onto contact plane
+    plane.getFace1ProjectedCoords( &mortarX_bar[0], numNodesPerFace );
+    plane.getFace2ProjectedCoords( &nonmortarX_bar[0], numNodesPerFace );
 
-    // get projected face coordinates
-    // stores projected coordinates in row-major format
-    ArrayT<RealT, 2> mortarX_bar( numNodesPerFace, dim );
-    ArrayT<RealT, 2> nonmortarX_bar( numNodesPerFace, dim );
-    // stores projected coordinates in column-major format
-    ArrayT<RealT, 2> mortarX_barT( dim, numNodesPerFace );
-    ArrayT<RealT, 2> nonmortarX_barT( dim, numNodesPerFace );
-    ProjectFaceNodesToPlane( mortarMesh, index1, plane.m_nX, plane.m_nY, plane.m_nZ, plane.m_cX, plane.m_cY, plane.m_cZ,
-                             &mortarX_barT( 0, 0 ), &mortarX_barT( 1, 0 ), &mortarX_barT( 2, 0 ) );
-    ProjectFaceNodesToPlane( nonmortarMesh, index2, plane.m_nX, plane.m_nY, plane.m_nZ, plane.m_cX, plane.m_cY,
-                             plane.m_cZ, &nonmortarX_barT( 0, 0 ), &nonmortarX_barT( 1, 0 ), &nonmortarX_barT( 2, 0 ) );
-    // populate row-major projected coordinates for the purpose of sending to
-    // the SurfaceContactElem struct
-    algorithm::transpose<MemorySpace::Dynamic>( mortarX_barT, mortarX_bar );
-    algorithm::transpose<MemorySpace::Dynamic>( nonmortarX_barT, nonmortarX_bar );
-
-    // construct array of polygon overlap vertex coordinates
-    ArrayT<RealT, 2> overlapX( plane.m_numPolyVert, dim );
-    for ( IndexT i{ 0 }; i < plane.m_numPolyVert; ++i ) {
-      overlapX( i, 0 ) = plane.m_polyX[i];
-      overlapX( i, 1 ) = plane.m_polyY[i];
-      overlapX( i, 2 ) = plane.m_polyZ[i];
-    }
+    // get overlap vertices
+    plane.getOverlapVertices( &overlapX[0] );
 
     // instantiate contact surface element for purposes of computing
     // mortar weights. Note, this uses projected face coords
-    SurfaceContactElem elem( dim, mortarX_bar.data(), nonmortarX_bar.data(), overlapX.data(), numNodesPerFace,
+    SurfaceContactElem elem( dim, &mortarX_bar[0], &nonmortarX_bar[0], &overlapX[0], numNodesPerFace,
                              plane.m_numPolyVert, &mortarMesh, &nonmortarMesh, index1, index2 );
 
     // compute the mortar weights to be stored on the surface
@@ -323,7 +289,6 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
 
   auto pairs = cs->getInterfacePairs();
   const IndexT numPairs = pairs.size();
-  auto planes = cs->get3DContactPlanes();
 
   int const dim = cs->spatialDimension();
 
@@ -364,6 +329,11 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
     }
   }
 
+  // declare local variables to hold projected face nodal coordinates
+  IndexT size = dim * numNodesPerFace;
+  RealT mortarX_bar[size];
+  RealT nonmortarX_bar[size];
+
   ////////////////////////////////////////////////////////////////
   //                                                            //
   // compute equilibrium residual and/or Jacobian contributions //
@@ -377,40 +347,25 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
       continue;
     }
 
-    auto& plane = planes[cpID];
+    auto& cg_pairs = cs->getCompGeom();
+    auto& plane = cg_pairs.getMortarPlane( cpID );
+
+    RealT overlapX[dim * plane.m_numPolyVert];
 
     // get pair indices
     IndexT index1 = pair.m_element_id1;
     IndexT index2 = pair.m_element_id2;
 
-    // get projected face coordinates
-    // stores projected coordinates in row-major format
-    ArrayT<RealT, 2> mortarX_bar( numNodesPerFace, dim );
-    ArrayT<RealT, 2> nonmortarX_bar( numNodesPerFace, dim );
-    // stores projected coordinates in column-major format
-    ArrayT<RealT, 2> mortarX_barT( dim, numNodesPerFace );
-    ArrayT<RealT, 2> nonmortarX_barT( dim, numNodesPerFace );
-    ProjectFaceNodesToPlane( mortarMesh, index1, plane.m_nX, plane.m_nY, plane.m_nZ, plane.m_cX, plane.m_cY, plane.m_cZ,
-                             &mortarX_barT( 0, 0 ), &mortarX_barT( 1, 0 ), &mortarX_barT( 2, 0 ) );
-    ProjectFaceNodesToPlane( nonmortarMesh, index2, plane.m_nX, plane.m_nY, plane.m_nZ, plane.m_cX, plane.m_cY,
-                             plane.m_cZ, &nonmortarX_barT( 0, 0 ), &nonmortarX_barT( 1, 0 ), &nonmortarX_barT( 2, 0 ) );
-    // populate row-major projected coordinates for the purpose of sending to
-    // the SurfaceContactElem struct
-    algorithm::transpose<MemorySpace::Dynamic>( mortarX_barT, mortarX_bar );
-    algorithm::transpose<MemorySpace::Dynamic>( nonmortarX_barT, nonmortarX_bar );
+    // get face coordinates projected onto contact plane
+    plane.getFace1ProjectedCoords( &mortarX_bar[0], numNodesPerFace );
+    plane.getFace2ProjectedCoords( &nonmortarX_bar[0], numNodesPerFace );
 
-    // construct array of polygon overlap vertex coordinates
-    // TODO: get rid of this copy
-    ArrayT<RealT, 2> overlapX( plane.m_numPolyVert, dim );
-    for ( IndexT i{ 0 }; i < plane.m_numPolyVert; ++i ) {
-      overlapX( i, 0 ) = plane.m_polyX[i];
-      overlapX( i, 1 ) = plane.m_polyY[i];
-      overlapX( i, 2 ) = plane.m_polyZ[i];
-    }
+    // get overlap coords
+    plane.getOverlapVertices( &overlapX[0] );
 
     // instantiate contact surface element for purposes of computing
     // mortar weights. Note, this uses projected face coords
-    SurfaceContactElem elem( dim, mortarX_bar.data(), nonmortarX_bar.data(), overlapX.data(), numNodesPerFace,
+    SurfaceContactElem elem( dim, &mortarX_bar[0], &nonmortarX_bar[0], &overlapX[0], numNodesPerFace,
                              plane.m_numPolyVert, &mortarMesh, &nonmortarMesh, index1, index2 );
 
     //////////////////////////////////
@@ -657,16 +612,17 @@ void ComputeSingleMortarJacobian( SurfaceContactElem& elem )
 //------------------------------------------------------------------------------
 int ApplyNormalEnzyme( CouplingScheme* cs )
 {
-  auto planes_view = cs->get3DContactPlanes().view();
+  auto& comp_geom = cs->getCompGeom();
+  int num_active_pairs = cs->getNumActivePairs();
   auto& lm_opts = cs->getEnforcementOptions().lm_implicit_options;
   if ( lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
        lm_opts.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ) {
     if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE ) {
       cs->getMethodData()->reserveBlockJ(
-          { BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER }, planes_view.size() );
+          { BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER }, num_active_pairs );
       cs->createNodalNormalJacobianData();
       cs->getDfDnMethodData()->reserveBlockJ(
-          { BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER }, planes_view.size() );
+          { BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER }, num_active_pairs );
       cs->getDnDxMethodData()->reserveBlockJ( { BlockSpace::NONMORTAR }, cs->getMesh2().numberOfElements() );
     } else {
       SLIC_WARNING( "Unsupported Jacobian storage method." );
@@ -684,7 +640,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
   int size1 = mesh1.numberOfNodesPerElement();
   int size2 = mesh2.numberOfNodesPerElement();
 
-  for ( auto& plane : planes_view ) {
+  for ( auto& plane : comp_geom.getMortarPlanePairs() ) {
     int elem1 = plane.getCpElementId2();  // switched from tribol convention
     // NOTE: mfem::DenseMatrix data is stored by nodes instead of by vdim
     RealT x1[12];
@@ -1175,13 +1131,16 @@ int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs )
 
   auto pairs = cs->getInterfacePairs();
   IndexT const numPairs = pairs.size();
-  auto planes = cs->get3DContactPlanes();
 
   const int dim = cs->spatialDimension();
 
   auto mortarMesh = cs->getMesh1().getView();
   auto nonmortarMesh = cs->getMesh2().getView();
   IndexT const numNodesPerFace = mortarMesh.numberOfNodesPerElement();
+
+  const int size = dim * numNodesPerFace;
+  RealT mortarX_bar[size];
+  RealT nonmortarX_bar[size];
 
   int numRows = cs->getNumTotalNodes();
   static_cast<MortarData*>( cs->getMethodData() )->allocateMfemSparseMatrix( numRows );
@@ -1200,39 +1159,25 @@ int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs )
       continue;
     }
 
-    auto& plane = planes[cpID];
+    auto& cg_pairs = cs->getCompGeom();
+    auto& plane = cg_pairs.getMortarPlane( cpID );
+
+    RealT overlapX[dim * plane.m_numPolyVert];
 
     // get pair indices
     IndexT index1 = pair.m_element_id1;
     IndexT index2 = pair.m_element_id2;
 
-    // get projected face coordinates
-    // stores projected coordinates in row-major format
-    ArrayT<RealT, 2> mortarX_bar( numNodesPerFace, dim );
-    ArrayT<RealT, 2> nonmortarX_bar( numNodesPerFace, dim );
-    // stores projected coordinates in column-major format
-    ArrayT<RealT, 2> mortarX_barT( dim, numNodesPerFace );
-    ArrayT<RealT, 2> nonmortarX_barT( dim, numNodesPerFace );
-    ProjectFaceNodesToPlane( mortarMesh, index1, plane.m_nX, plane.m_nY, plane.m_nZ, plane.m_cX, plane.m_cY, plane.m_cZ,
-                             &mortarX_barT( 0, 0 ), &mortarX_barT( 1, 0 ), &mortarX_barT( 2, 0 ) );
-    ProjectFaceNodesToPlane( nonmortarMesh, index2, plane.m_nX, plane.m_nY, plane.m_nZ, plane.m_cX, plane.m_cY,
-                             plane.m_cZ, &nonmortarX_barT( 0, 0 ), &nonmortarX_barT( 1, 0 ), &nonmortarX_barT( 2, 0 ) );
-    // populate row-major projected coordinates for the purpose of sending to
-    // the SurfaceContactElem struct
-    algorithm::transpose<MemorySpace::Dynamic>( mortarX_barT, mortarX_bar );
-    algorithm::transpose<MemorySpace::Dynamic>( nonmortarX_barT, nonmortarX_bar );
+    // get face coordinates projected onto contact plane
+    plane.getFace1ProjectedCoords( &mortarX_bar[0], numNodesPerFace );
+    plane.getFace2ProjectedCoords( &nonmortarX_bar[0], numNodesPerFace );
 
     // construct array of polygon overlap vertex coordinates
-    ArrayT<RealT, 2> overlapX( plane.m_numPolyVert, dim );
-    for ( IndexT i{ 0 }; i < plane.m_numPolyVert; ++i ) {
-      overlapX( i, 0 ) = plane.m_polyX[i];
-      overlapX( i, 1 ) = plane.m_polyY[i];
-      overlapX( i, 2 ) = plane.m_polyZ[i];
-    }
+    plane.getOverlapVertices( &overlapX[0] );
 
     // instantiate contact surface element for purposes of computing
     // mortar weights. Note, this uses projected face coords
-    SurfaceContactElem elem( dim, mortarX_bar.data(), nonmortarX_bar.data(), overlapX.data(), numNodesPerFace,
+    SurfaceContactElem elem( dim, &mortarX_bar[0], &nonmortarX_bar[0], &overlapX[0], numNodesPerFace,
                              plane.m_numPolyVert, &mortarMesh, &nonmortarMesh, index1, index2 );
 
     // compute the mortar weights to be stored on the surface

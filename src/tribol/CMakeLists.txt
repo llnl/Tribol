@@ -19,7 +19,7 @@ set(tribol_headers
     common/LoopExec.hpp
     common/Parameters.hpp
 
-    geom/ContactPlane.hpp
+    geom/CompGeom.hpp
     geom/ElementNormal.hpp
     geom/GeomUtilities.hpp
     geom/NodalNormal.hpp
@@ -54,7 +54,7 @@ set(tribol_headers
 ## list of sources
 set(tribol_sources
      
-    geom/ContactPlane.cpp
+    geom/CompGeom.cpp
     geom/ElementNormal.cpp
     geom/GeomUtilities.cpp
     geom/NodalNormal.cpp

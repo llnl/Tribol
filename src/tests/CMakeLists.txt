@@ -13,7 +13,8 @@ set( tribol_tests
      tribol_common_plane_penalty.cpp
      tribol_common_plane_gap_rate.cpp
      tribol_common_plane_gpu.cpp
-     tribol_comp_geom.cpp
+     tribol_comp_geom_2d.cpp
+     tribol_comp_geom_3d.cpp
      tribol_coupling_scheme.cpp
      tribol_coupling_scheme_manager.cpp
      tribol_enforcement_options.cpp

@@ -8,7 +8,7 @@
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/geom/ContactPlane.hpp"
+#include "tribol/geom/CompGeom.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/integ/Integration.hpp"
@@ -40,7 +40,7 @@ TRIBOL_HOST_DEVICE RealT ComputePenaltyStiffnessPerArea( const RealT K1_over_t1,
 }  // end ComputePenaltyStiffnessPerArea
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE RealT ComputeGapRatePressure( ContactPlane& plane, const MeshData::Viewer& m1,
+TRIBOL_HOST_DEVICE RealT ComputeGapRatePressure( CommonPlanePair& plane, const MeshData::Viewer& m1,
                                                  const MeshData::Viewer& m2, RealT element_penalty,
                                                  RatePenaltyCalculation rate_calc )
 {
@@ -76,12 +76,14 @@ TRIBOL_HOST_DEVICE RealT ComputeGapRatePressure( ContactPlane& plane, const Mesh
 
   StackArrayT<RealT, max_dim * max_nodes_per_elem> x1;
   StackArrayT<RealT, max_dim * max_nodes_per_elem> v1;
-  m1.getFaceCoords( fId1, x1 );
+  auto numNodesPerFace1 = m1.numberOfNodesPerElement();
+  plane.getFace1Coords( x1, numNodesPerFace1 );  // get avg face coords off the contact plane
   m1.getFaceVelocities( fId1, v1 );
 
   StackArrayT<RealT, max_dim * max_nodes_per_elem> x2;
   StackArrayT<RealT, max_dim * max_nodes_per_elem> v2;
-  m2.getFaceCoords( fId2, x2 );
+  auto numNodesPerFace2 = m2.numberOfNodesPerElement();
+  plane.getFace2Coords( x2, numNodesPerFace2 );  // get avg face coords off the contact plane
   m2.getFaceVelocities( fId2, v2 );
 
   //////////////////////////////////////////////////////////
@@ -153,7 +155,8 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
   auto cs_view = cs->getView();
   const auto num_pairs = cs->getNumActivePairs();
   forAllExec( cs->getExecutionMode(), num_pairs, [cs_view, err, neg_thickness] TRIBOL_HOST_DEVICE( IndexT i ) {
-    auto& plane = cs_view.getContactPlane( i );
+    auto& cg_view = cs_view.getCompGeomView();
+    auto& plane = cg_view.getCommonPlane( i );
 
     auto& mesh1 = cs_view.getMesh1View();
     auto& mesh2 = cs_view.getMesh2View();
@@ -259,7 +262,7 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     // construct array of nodal coordinates
     constexpr int max_dim = 3;
     constexpr int max_nodes_per_face = 4;
-    constexpr int max_nodes_per_overlap = 8;
+    constexpr int max_nodes_per_overlap = 10;
     RealT xf1[max_dim * max_nodes_per_face];
     RealT xf2[max_dim * max_nodes_per_face];
     RealT xVert[max_dim * max_nodes_per_overlap];
@@ -272,35 +275,17 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     auto numPolyVert = 2;
     // update if we are in 3d
     if ( dim == 3 ) {
-      auto& cp3 = static_cast<ContactPlane3D&>( plane );
-      numPolyVert = cp3.m_numPolyVert;
+      numPolyVert = plane.m_numPolyVert;
       xVert_size = 3 * numPolyVert;
     }
     initRealArray( xVert, xVert_size, 0. );
 
-    //      // get projected face coordinates
-    //      cpManager.getProjectedFaceCoords( cpID, 0, &xf1[0] ); // face 0 = first face
-    //      cpManager.getProjectedFaceCoords( cpID, 1, &xf2[0] ); // face 1 = second face
-
     // get current configuration, physical coordinates of each face
-    mesh1.getFaceCoords( index1, &xf1[0] );
-    mesh2.getFaceCoords( index2, &xf2[0] );
+    plane.getFace1Coords( &xf1[0], num_nodes_per_face );
+    plane.getFace2Coords( &xf2[0], num_nodes_per_face );
 
     // construct array of polygon overlap vertex coordinates
-    if ( dim == 2 ) {
-      auto& cp2 = static_cast<ContactPlane2D&>( plane );
-      for ( IndexT j{ 0 }; j < numPolyVert; ++j ) {
-        xVert[dim * j] = cp2.m_segX[j];
-        xVert[dim * j + 1] = cp2.m_segY[j];
-      }
-    } else {
-      auto& cp3 = static_cast<ContactPlane3D&>( plane );
-      for ( IndexT j{ 0 }; j < numPolyVert; ++j ) {
-        xVert[dim * j] = cp3.m_polyX[j];
-        xVert[dim * j + 1] = cp3.m_polyY[j];
-        xVert[dim * j + 2] = cp3.m_polyZ[j];
-      }
-    }
+    plane.getOverlapVertices( &xVert[0] );
 
     // instantiate surface contact element struct. Note, this is done with current
     // configuration face coordinates (i.e. NOT on the contact plane) and overlap
