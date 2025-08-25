@@ -1197,7 +1197,7 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
           // NOTE: this would be a very specific case such that a departure from the tolerance likely won't trigger
           // some other edge case. Two intersection points less than the tolerance from one another would only arise
           // if two edges of a four node quad form a very acute angle that also interpenetrates the opposing face.
-          if (inter) {
+          if ( inter ) {
             for ( int a = ( 2 * i + k ); a > 2 * i; --a ) {
               if ( magnitude( xInter[a] - xInter[a - 1], yInter[a] - yInter[a - 1], zInter[a] - zInter[a - 1] ) <
                    1.e-10 ) {
@@ -1246,7 +1246,7 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
 
         // Secondly: check the current face's current node to see if it lies on the other side of the other face.
         // do this even if we don't ultimately have an interpen overlap calc.
-        if (intersection_is_node == false) {
+        if ( intersection_is_node == false ) {
           RealT vX = xa - cx[0];
           RealT vY = ya - cx[1];
           RealT vZ = za - cx[2];
