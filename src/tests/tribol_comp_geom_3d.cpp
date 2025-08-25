@@ -493,7 +493,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_2 )
 
   // coordinates for face 2
   RealT fortyfive = 45 * M_PI / 180;
-  x[4] = 0.33;
+  x[4] = 1.0 / 3.0;
   y[4] = 0.25;
   z[4] = -0.25;
 
@@ -602,7 +602,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3 )
   z[3] = 0.;
 
   // coordinates for face 2
-  x[4] = 0.33;
+  x[4] = 1.0 / 3.0;
   y[4] = -0.5;
   z[4] = -0.25;
 
@@ -715,7 +715,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_3_warped )
   z[3] = 0.25;
 
   // coordinates for face 2
-  x[4] = 0.33;
+  x[4] = 1.0 / 3.0;
   y[4] = -0.5;
   z[4] = -0.25;
 
@@ -826,7 +826,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_4 )
   z[3] = 0.;
 
   // coordinates for face 2
-  x[4] = 0.33;
+  x[4] = 1.0 / 3.0;
   y[4] = 0.;
   z[4] = -0.25;
 
@@ -941,7 +941,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_5 )
   // coordinates for face 2
   RealT thirty = 30 * M_PI / 180;
   RealT fortyfive = 45 * M_PI / 180;
-  x[4] = 0.33;
+  x[4] = 1.0 / 3.0;
   y[4] = 0.5;
   z[4] = -0.25;
 
@@ -993,6 +993,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_5 )
   // compute the geometric quantities of interest in order to compute the area of overlap and gap
   // Note: this is somewhat involved and difficult to make super clear. Talk to SRW if you need
   // more details
+  RealT third = 1.0 / 3.0;
   RealT h = 0.25;                        // height of initial interpen before face rotation
   RealT h_bar = h / std::cos( thirty );  // "height" of interpen after rotation
   // RealT w = h * std::tan(fortyfive);  // keep for reference
@@ -1001,7 +1002,7 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_5 )
   // RealT A = w * h; // keep for reference
   // RealT A_bar = w_bar * h_bar; // keep for reference
   RealT A_bar_bar = h_bar_bar * w_bar;  // area of triangular interpen on common plane
-  RealT computed_gap = -2 * ( 0.33333 * h_bar_bar ) * std::tan( thirty );
+  RealT computed_gap = -2 * ( third * h_bar_bar ) * std::tan( thirty );
 
   // check the area
   EXPECT_NEAR( plane.m_area, A_bar_bar, 1.e-8 );
@@ -1109,11 +1110,12 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_6 )
   // compute the geometric quantities of interest in order to compute the area of overlap and gap
   // Note: this is somewhat involved and difficult to make super clear. Talk to SRW if you need
   // more details
+  RealT third = 1.0 / 3.0;
   RealT h = 0.45;                        // height of initial interpen before face rotation
   RealT h_bar = h * std::cos( thirty );  // "height" of interpen on common plane
   RealT w_bar = 0.45;                    // width of triangular interpen after rotation
   RealT A_bar = h_bar * w_bar;           // area of triangular interpen on common plane
-  RealT computed_gap = -2 * ( 0.333333333333 * h_bar ) * std::tan( thirty );
+  RealT computed_gap = -2 * ( third * h_bar ) * std::tan( thirty );
 
   // check the area
   EXPECT_NEAR( plane.m_area, A_bar, 1.e-8 );
@@ -1223,11 +1225,12 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_7 )
   // compute the geometric quantities of interest in order to compute the area of overlap and gap
   // Note: this is somewhat involved and difficult to make super clear. Talk to SRW if you need
   // more details
+  RealT third = 1.0 / 3.0;
   RealT h = 0.45;                        // height of initial interpen before face rotation
   RealT h_bar = h * std::cos( thirty );  // "height" of interpen on common plane
   RealT w_bar = 0.45;                    // width of triangular interpen after rotation
   RealT A_bar = h_bar * w_bar;           // area of triangular interpen on common plane
-  RealT computed_gap = -2 * ( 0.333333333333 * h_bar ) * std::tan( thirty );
+  RealT computed_gap = -2 * ( third * h_bar ) * std::tan( thirty );
 
   // check the area
   EXPECT_NEAR( plane.m_area, A_bar, 1.e-8 );
@@ -1470,10 +1473,11 @@ TEST_F( CompGeomTest, common_plane_single_element_interpen_check_10 )
   // coordinates for face 2
   RealT thirty = 30 * M_PI / 180;
   RealT fortyfive = 45 * M_PI / 180;
+  RealT third = 1.0 / 3.0;
   // shift the x-coord so when we lower second face it is still within
   // full coverage of the first face when projected to common plane
   RealT small_x_shift = 0.1;
-  x[4] = 0.33 + small_x_shift;
+  x[4] = third + small_x_shift;
   y[4] = 0.5;
   z[4] = -0.25;
 
