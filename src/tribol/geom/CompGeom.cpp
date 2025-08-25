@@ -1141,6 +1141,8 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
       int k_otherside = 0;
       for ( int j = 0; j < mesh[i]->numberOfNodesPerElement(); ++j )  // loop over face segments
       {
+        bool intersection_is_node = false;
+
         // determine local segment vertex ids
         int ja = j;
         int jb = ( j == ( mesh[i]->numberOfNodesPerElement() - 1 ) ) ? 0 : ( j + 1 );
@@ -1195,10 +1197,16 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
           // NOTE: this would be a very specific case such that a departure from the tolerance likely won't trigger
           // some other edge case. Two intersection points less than the tolerance from one another would only arise
           // if two edges of a four node quad form a very acute angle that also interpenetrates the opposing face.
-          for ( int a = ( 2 * i + k ); a > 2 * i; --a ) {
-            if ( magnitude( xInter[a] - xInter[a - 1], yInter[a] - yInter[a - 1], zInter[a] - zInter[a - 1] ) <
-                 1.e-10 ) {
-              inter = false;  // we already have the point
+          if (inter) {
+            for ( int a = ( 2 * i + k ); a > 2 * i; --a ) {
+              if ( magnitude( xInter[a] - xInter[a - 1], yInter[a] - yInter[a - 1], zInter[a] - zInter[a - 1] ) <
+                   1.e-10 ) {
+                inter = false;  // we already have the point
+              }
+            }
+
+            if ( magnitude( xInter[2 * i + k] - xa, yInter[2 * i + k] - ya, zInter[2 * i + k] - za ) < 1.e-10 ) {
+              intersection_is_node = true;
             }
           }
 
@@ -1238,20 +1246,22 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap3D( const Re
 
         // Secondly: check the current face's current node to see if it lies on the other side of the other face.
         // do this even if we don't ultimately have an interpen overlap calc.
-        RealT vX = xa - cx[0];
-        RealT vY = ya - cx[1];
-        RealT vZ = za - cx[2];
+        if (intersection_is_node == false) {
+          RealT vX = xa - cx[0];
+          RealT vY = ya - cx[1];
+          RealT vZ = za - cx[2];
 
-        // project the vector onto the opposing face's normal
-        RealT proj = vX * fn[0] + vY * fn[1] + vZ * fn[2];
+          // project the vector onto the opposing face's normal
+          RealT proj = vX * fn[0] + vY * fn[1] + vZ * fn[2];
 
-        // check for negative projections meaning a node on one face crosses
-        // the plane defined by the other face
-        interpenVertex[ja] = ( i == 0 && proj < 0. ) ? ja : -1;
-        interpenVertex[ja] = ( i == 1 && proj < 0. ) ? ja : interpenVertex[ja];
+          // check for negative projections meaning a node on one face crosses
+          // the plane defined by the other face
+          interpenVertex[ja] = ( i == 0 && proj < 0. ) ? ja : -1;
+          interpenVertex[ja] = ( i == 1 && proj < 0. ) ? ja : interpenVertex[ja];
 
-        if ( interpenVertex[ja] != -1 ) {
-          ++k_otherside;
+          if ( interpenVertex[ja] != -1 ) {
+            ++k_otherside;
+          }
         }
 
       }  // end loop over nodes
