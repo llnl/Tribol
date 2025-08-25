@@ -71,10 +71,11 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - `tribol::LoggingLevel`s renamed from `TRIBOL_<NAME>` to `<NAME>`
 - Changed the computational geometry to work within a class interface that confines method specific
   comp geom calculations for ease of use/implementation.  
-- All computational geometry for contact planes now uses the average face plane coordinates of each face.
+- All computational geometry for common planes now uses the average face plane coordinates of each face.
 - Split the computational geometry test into two files, one for 2D and one for 3D.
 - Removed gap separation check that excluded face pairs in favor of including everything within the binning
   proximity.
+- Added check for face convexity. If non-convex, a full overlap calculation is triggered for common-plane.
 
 ### Fixed
 - Allow null velocity and response pointers for various use cases
@@ -89,6 +90,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Increased maximum number of contacting face nodes to 5 to account for interpenetrating configurations
 - Increased maximum number of overlap vertices to 10 based on max clipped face nodes of 5.
 - Moved MPI communicator off Parameters struct and onto the Coupling scheme to fix fmt/slic-macros compiler errors.
+- Updated Area2DPolygon() to use the shoelace algorithm that works with nonconvex polygons.
 
 ## [Version 0.1.0] - Release date 2023-04-21
 
