@@ -109,7 +109,7 @@ int ApplySmoothNormalEnzyme( CouplingScheme* cs )
 
       constexpr int n_disp = 4;
   
-      StackArray<DeviceArray2D<RealT>, 9> blockJ( 2 );
+      StackArray<DeviceArray2D<RealT>, 4> blockJ( 2 );
       for ( int i{}; i < 2; ++i ) {
         for ( int j{}; j < 2; ++j ) {
           blockJ( i, j ) = DeviceArray2D<RealT>( n_disp, n_disp );
@@ -273,7 +273,6 @@ bool segmentsIntersect(const RealT A0[2], const RealT A1[2],
         };
 
         // Check if endpoints overlap
-        for (int i = 0; i < 2; ++i) {
             if (between(A0[0], A1[0], B0[0]) && between(A0[1], A1[1], B0[1])) {
                 intersection[0] = B0[0];
                 intersection[1] = B0[1];
@@ -294,7 +293,6 @@ bool segmentsIntersect(const RealT A0[2], const RealT A1[2],
                 intersection[1] = A1[1];
                 return true;
             }
-        }
         // Overlap but not at a single point
         return false;
     }
@@ -321,6 +319,7 @@ void find_intersection(const RealT* A0, const RealT* A1, const RealT* p, const R
     if(std::abs(det) < 1e-12) {
         intersection[0] = p[0];
         intersection[1] = p[1];
+        return;
     }
 
     RealT inv_det = 1.0 / det;
