@@ -596,7 +596,7 @@ TEST_F( CommonPlaneTest, common_plane_2d_interpen_check )
 
 TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )
 {
-  // this test has two edges in separation so there should be no contribution
+  // this test has two edges with zero gap so there should be no contribution
   // from the kinematic constraint enforcement, only the velocity based viscous
   // tangential term
   constexpr int numVerts = 2;
@@ -611,10 +611,11 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )
   y1[0] = 0.0;
   y1[1] = 0.0;
 
+  RealT gap = 0.01;
   x2[0] = 0.0;
   x2[1] = 1.0; 
-  y2[0] = 0.1; 
-  y2[1] = 0.1; 
+  y2[0] = -gap; 
+  y2[1] = -gap; 
 
   tribol::IndexT conn1[numVerts] = { 0, 1 };
   tribol::IndexT conn2[numVerts] = { 0, 1 };
@@ -667,17 +668,18 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
   // check forces
+  RealT force_y = 0.5 * gap / numVerts;
   for ( int i=0; i<numVerts; ++i ) { 
     EXPECT_NEAR( fx1[i], -.5, 1.e-10 );
-    EXPECT_NEAR( fy1[i], 0., 1.e-10 );
+    EXPECT_NEAR( fy1[i], -force_y, 1.e-10 );
     EXPECT_NEAR( fx2[i], .5, 1.e-10 );
-    EXPECT_NEAR( fy2[i], 0., 1.e-10 );
+    EXPECT_NEAR( fy2[i], force_y, 1.e-10 );
   }
 }
 
 TEST_F( CommonPlaneTest, common_plane_viscous_tangential_3d )
 {
-  // this test has two faces in separation so there should be no contribution
+  // this test has two faces with zero gap so there should be no contribution
   // from the kinematic constraint enforcement, only the velocity based viscous
   // tangential term
   constexpr int numVerts = 4;
@@ -707,21 +709,22 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_3d )
   z1[3] = 0.0;
 
   // second faces coords
+  RealT gap = 0.01;
   x2[0] = 0.0;
   y2[0] = 0.0;
-  z2[0] = 0.1;
+  z2[0] = -gap;
 
   x2[1] = 0.0;
   y2[1] = 1.0;
-  z2[1] = 0.1;
+  z2[1] = -gap;
 
   x2[2] = 1.0;
   y2[2] = 1.0;
-  z2[2] = 0.1;
+  z2[2] = -gap;
 
   x2[3] = 1.0;
   y2[3] = 0.0;
-  z2[3] = 0.1;
+  z2[3] = -gap;
 
   tribol::IndexT conn1[numVerts] = { 0, 1, 2, 3 };
   tribol::IndexT conn2[numVerts] = { 0, 1, 2, 3 };
@@ -779,14 +782,15 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_3d )
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
   // check forces
+  RealT force_z = 0.5 * gap / numVerts;
   for ( int i=0; i<numVerts; ++i ) {
     EXPECT_NEAR( fx1[i], -.5, 1.e-10 );
     EXPECT_NEAR( fy1[i], -.5, 1.e-10 );
-    EXPECT_NEAR( fz1[i], 0., 1.e-10 );
+    EXPECT_NEAR( fz1[i], -force_z, 1.e-10 );
 
     EXPECT_NEAR( fx2[i], 0.5, 1.e-10 );
     EXPECT_NEAR( fy2[i], 0.5, 1.e-10 );
-    EXPECT_NEAR( fz2[i], 0., 1.e-10 );
+    EXPECT_NEAR( fz2[i], force_z, 1.e-10 );
   }
 }
 

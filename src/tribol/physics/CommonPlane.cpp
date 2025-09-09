@@ -335,6 +335,7 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
 
     // compute contact force (spring force)
     RealT contact_force = totalPressure * A;
+
     RealT force_x = overlapNormal[0] * contact_force;
     RealT force_y = overlapNormal[1] * contact_force;
     RealT force_z = 0.;
@@ -433,8 +434,12 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
   forAllExec( cs->getExecutionMode(), num_pairs, [cs_view, err] TRIBOL_HOST_DEVICE( IndexT i ) {
     auto& cg_view = cs_view.getCompGeomView();
     auto& plane = cg_view.getCommonPlane( i );
-    const auto dim = plane.m_dim;
 
+    if ( !plane.m_inContact ) {
+      return;
+    }
+
+    const auto dim = plane.m_dim;
     auto& mesh1 = cs_view.getMesh1View();
     auto& mesh2 = cs_view.getMesh2View();
 
