@@ -455,7 +455,7 @@ void registerIntElementField( IndexT mesh_id, const IntElementFields field, int*
  * \param [in] contact_mode the type of contact, e.g. SURFACE_TO_SURFACE
  * \param [in] contact_case the specific case of contact application, e.g. auto
  * \param [in] contact_method the contact method, e.g. SINGLE_MORTAR
- * \param [in] contact_model the contact model, e.g. COULOMB
+ * \param [in] contact_model the contact model, e.g. FRICTION_COULOMB
  * \param [in] enforcement_method the enforcement method, e.g. PENALTY
  * \param [in] binning_method the binning method, e.g. BINNING_GRID
  * \param [in] given_exec_mode preferred execution mode for RAJA kernels

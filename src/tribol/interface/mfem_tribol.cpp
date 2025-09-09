@@ -44,7 +44,7 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
     }
     // TODO add the following if they are implemented with Lagrange multipliers:
     //
-    // 1) contact_model == COULOMB
+    // 1) contact_model == FRICTION_COULOMB
     // 2) contact_case == TIED_NORMAL
     // 3) contact_case == TIED_FULL
     //
