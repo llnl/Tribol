@@ -43,7 +43,10 @@ int ApplyInterfacePhysics( CouplingScheme* cs, int TRIBOL_UNUSED_PARAM( cycle ),
           }
           // query the model for application of tangential physics
           switch ( cs->getContactModel() ) {
-            // no tangential physics implemented yet
+            case VISCOUS_TANGENTIAL: {
+              err_tang = ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( cs );
+              break;
+            }
             default: {
               break;
             }

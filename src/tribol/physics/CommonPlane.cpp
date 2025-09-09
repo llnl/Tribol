@@ -419,4 +419,201 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
 
 }  // end ApplyNormal<COMMON_PLANE, PENALTY>()
 
+//------------------------------------------------------------------------------
+template <>
+int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* cs ) {
+
+  ///////////////////////////////
+  // loop over interface pairs //
+  ///////////////////////////////
+  ArrayT<int> err_data( { 0 }, cs->getAllocatorId() );
+  ArrayViewT<int> err = err_data;
+  auto cs_view = cs->getView();
+  const auto num_pairs = cs->getNumActivePairs();
+  forAllExec( cs->getExecutionMode(), num_pairs, [cs_view, err] TRIBOL_HOST_DEVICE( IndexT i ) {
+    auto& cg_view = cs_view.getCompGeomView();
+    auto& plane = cg_view.getCommonPlane( i );
+    const auto dim = plane.m_dim;
+
+    auto& mesh1 = cs_view.getMesh1View();
+    auto& mesh2 = cs_view.getMesh2View();
+
+    // get pair indices
+    IndexT index1 = plane.getCpElementId1();
+    IndexT index2 = plane.getCpElementId2();
+
+    // TODO write this routine
+    // compute the velocity gap and pressure contribution
+    constexpr int max_dim = 3;
+    constexpr int max_nodes_per_elem = 4;
+    constexpr int max_nodes_per_overlap = 10;
+
+    StackArrayT<RealT, max_dim * max_nodes_per_elem> x1;
+    StackArrayT<RealT, max_dim * max_nodes_per_elem> v1;
+    auto numNodesPerFace1 = mesh1.numberOfNodesPerElement();
+    plane.getFace1Coords( x1, numNodesPerFace1 );  // get avg face coords off the contact plane
+    mesh1.getFaceVelocities( index1, v1 );
+
+    StackArrayT<RealT, max_dim * max_nodes_per_elem> x2;
+    StackArrayT<RealT, max_dim * max_nodes_per_elem> v2;
+    auto numNodesPerFace2 = mesh2.numberOfNodesPerElement();
+    plane.getFace2Coords( x2, numNodesPerFace2 );  // get avg face coords off the contact plane
+    mesh2.getFaceVelocities( index2, v2 );
+
+    //////////////////////////////////////////////////////////
+    // compute velocity Galerkin approximation at projected //
+    // overlap centroid                                     //
+    //////////////////////////////////////////////////////////
+    RealT vel_f1[max_dim];
+    RealT vel_f2[max_dim];
+    initRealArray( vel_f1, dim, 0. );
+    initRealArray( vel_f2, dim, 0. );
+
+    // interpolate nodal velocity at overlap centroid as projected
+    // onto face 1
+    RealT cXf1 = plane.m_cXf1;
+    RealT cYf1 = plane.m_cYf1;
+    RealT cZf1 = ( dim == 3 ) ? plane.m_cZf1 : 0.;
+    GalerkinEval( x1, cXf1, cYf1, cZf1, LINEAR, PHYSICAL, dim, dim, v1, vel_f1 );
+
+    // interpolate nodal velocity at overlap centroid as projected
+    // onto face 2
+    RealT cXf2 = plane.m_cXf2;
+    RealT cYf2 = plane.m_cYf2;
+    RealT cZf2 = ( dim == 3 ) ? plane.m_cZf2 : 0.;
+    GalerkinEval( x2, cXf2, cYf2, cZf2, LINEAR, PHYSICAL, dim, dim, v2, vel_f2 );
+
+    // compute velocity gap vector
+    RealT velGap[max_dim];
+    velGap[0] = vel_f1[0] - vel_f2[0];
+    velGap[1] = vel_f1[1] - vel_f2[1];
+    if ( dim == 3 ) {
+      velGap[2] = vel_f1[2] - vel_f2[2];
+    }
+
+    // subtract off the common-plane normal component of the velocity gap
+    RealT velGap_dot_n = velGap[0] * plane.m_nX + velGap[1] * plane.m_nY;
+    if ( dim == 3 ) {
+      velGap_dot_n += velGap[2] * plane.m_nZ;
+    }
+    RealT velGapTan[max_dim];
+    velGapTan[0] = velGap[0] - velGap_dot_n * plane.m_nX;
+    velGapTan[1] = velGap[1] - velGap_dot_n * plane.m_nY;
+    if ( dim == 3 ) {
+      velGapTan[2] = velGap[2] - velGap_dot_n * plane.m_nZ;
+    }
+
+    // setup the contact element struct for purposes of evaluating basis functions on overlap
+    // initialize assuming 2d
+    RealT xVert[max_dim * max_nodes_per_overlap];
+    auto xVert_size = 4;
+    auto numPolyVert = 2;
+    // update if we are in 3d
+    if ( dim == 3 ) {
+      numPolyVert = plane.m_numPolyVert;
+      xVert_size = 3 * numPolyVert;
+    }
+    initRealArray( xVert, xVert_size, 0. );
+
+    // construct array of polygon overlap vertex coordinates
+    plane.getOverlapVertices( &xVert[0] );
+
+    // instantiate surface contact element struct. Note, this is done with current
+    // configuration face coordinates (i.e. NOT on the contact plane) and overlap
+    // coordinates ON the contact plane. The surface contact element does not need
+    // to be used this way, but the developer should do the book-keeping.
+    SurfaceContactElem cntctElem( dim, x1, x2, xVert, numNodesPerFace1, numPolyVert, &mesh1, &mesh2, index1,
+                                  index2 );
+
+    // set SurfaceContactElem face normals and overlap normal
+    RealT faceNormal1[max_dim];
+    RealT faceNormal2[max_dim];
+    RealT overlapNormal[max_dim];
+
+    mesh1.getFaceNormal( index1, faceNormal1 );
+    mesh2.getFaceNormal( index2, faceNormal2 );
+    overlapNormal[0] = plane.m_nX;
+    overlapNormal[1] = plane.m_nY;
+    if ( dim == 3 ) {
+      overlapNormal[2] = plane.m_nZ;
+    }
+
+    cntctElem.faceNormal1 = faceNormal1;
+    cntctElem.faceNormal2 = faceNormal2;
+    cntctElem.overlapNormal = overlapNormal;
+    cntctElem.overlapArea = plane.m_area;
+
+    // create arrays to hold nodal residual weak form integral evaluations
+    RealT phi1[max_nodes_per_elem];
+    RealT phi2[max_nodes_per_elem];
+    initRealArray( phi1, numNodesPerFace1, 0. );
+    initRealArray( phi2, numNodesPerFace2, 0. );
+
+    ////////////////////////////////////////////////////////////////////////
+    // Integration of contact integrals: integral of shape functions over //
+    // contact overlap patch                                              //
+    ////////////////////////////////////////////////////////////////////////
+    EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( cntctElem, phi1, phi2 );
+
+    /////////////////////////////////////////////////////
+    // Computation of tangential viscous damping force //
+    /////////////////////////////////////////////////////
+    RealT visc = 1.0; // TODO grab viscous scalar 
+    RealT force_x = visc * velGapTan[0];
+    RealT force_y = visc * velGapTan[1];
+    RealT force_z = 0.;
+    if ( dim == 3 ) {
+      force_z = visc * velGapTan[2];
+    }
+
+    //////////////////////////////////////////////////////
+    // loop over nodes and compute contact nodal forces //
+    //////////////////////////////////////////////////////
+    for ( IndexT a = 0; a < numNodesPerFace1; ++a ) {
+      IndexT node0 = mesh1.getGlobalNodeId( index1, a );
+      IndexT node1 = mesh2.getGlobalNodeId( index2, a );
+
+      const RealT nodal_force_x1 = force_x * phi1[a];
+      const RealT nodal_force_y1 = force_y * phi1[a];
+      const RealT nodal_force_z1 = force_z * phi1[a];
+
+      const RealT nodal_force_x2 = force_x * phi2[a];
+      const RealT nodal_force_y2 = force_y * phi2[a];
+      const RealT nodal_force_z2 = force_z * phi2[a];
+
+      // accumulate contributions in host code's registered nodal force arrays
+#ifdef TRIBOL_USE_RAJA
+      RAJA::atomicAdd<RAJA::auto_atomic>( &mesh1.getResponse()[0][node0], -nodal_force_x1 );
+      RAJA::atomicAdd<RAJA::auto_atomic>( &mesh2.getResponse()[0][node1], nodal_force_x2 );
+
+      RAJA::atomicAdd<RAJA::auto_atomic>( &mesh1.getResponse()[1][node0], -nodal_force_y1 );
+      RAJA::atomicAdd<RAJA::auto_atomic>( &mesh2.getResponse()[1][node1], nodal_force_y2 );
+
+      // there is no z component for 2D
+      if ( dim == 3 ) {
+        RAJA::atomicAdd<RAJA::auto_atomic>( &mesh1.getResponse()[2][node0], -nodal_force_z1 );
+        RAJA::atomicAdd<RAJA::auto_atomic>( &mesh2.getResponse()[2][node1], nodal_force_z2 );
+      }
+#else
+          mesh1.getResponse()[0][node0] -= nodal_force_x1;
+          mesh2.getResponse()[0][node1] += nodal_force_x2;
+
+          mesh1.getResponse()[1][node0] -= nodal_force_y1;
+          mesh2.getResponse()[1][node1] += nodal_force_y2;
+
+          // there is no z component for 2D
+          if (dim == 3)
+          {
+            mesh1.getResponse()[2][node0] -= nodal_force_z1;
+            mesh2.getResponse()[2][node1] += nodal_force_z2;
+          }
+#endif
+    }  // end for loop over face nodes
+
+  } );
+
+  return 0;
+}
+//------------------------------------------------------------------------------
+
 }  // namespace tribol
