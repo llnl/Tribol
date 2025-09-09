@@ -594,6 +594,194 @@ TEST_F( CommonPlaneTest, common_plane_2d_interpen_check )
   compareGaps( couplingScheme, gap, 1.E-8, "kinematic_penetration" );
 }
 
+TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )
+{
+  // this test has two edges in separation so there should be no contribution
+  // from the kinematic constraint enforcement, only the velocity based viscous
+  // tangential term
+  constexpr int numVerts = 2;
+
+  RealT x1[numVerts];
+  RealT y1[numVerts];
+  RealT x2[numVerts];
+  RealT y2[numVerts];
+
+  x1[0] = 1.0;
+  x1[1] = 0.0;
+  y1[0] = 0.0;
+  y1[1] = 0.0;
+
+  x2[0] = 0.0;
+  x2[1] = 1.0; 
+  y2[0] = 0.1; 
+  y2[1] = 0.1; 
+
+  tribol::IndexT conn1[numVerts] = { 0, 1 };
+  tribol::IndexT conn2[numVerts] = { 0, 1 };
+
+  tribol::registerMesh( 0, 1, numVerts, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
+                        tribol::MemorySpace::Host );
+  tribol::registerMesh( 1, 1, numVerts, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
+                        tribol::MemorySpace::Host );
+
+  RealT fx1[numVerts] = { 0., 0. };
+  RealT fy1[numVerts] = { 0., 0. };
+  RealT fx2[numVerts] = { 0., 0. };
+  RealT fy2[numVerts] = { 0., 0. };
+
+  // set nodal velocities in <1,1> and <-1,-1> directions
+  RealT vx1[numVerts] = { 1., 1. };
+  RealT vy1[numVerts] = { 1., 1. };
+  RealT vx2[numVerts] = { -1., -1. };
+  RealT vy2[numVerts] = { -1., -1. };
+
+  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], nullptr );
+  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], nullptr );
+
+  tribol::registerNodalVelocities( 0, &vx1[0], &vy1[0], nullptr );
+  tribol::registerNodalVelocities( 1, &vx2[0], &vy2[0], nullptr );
+
+  tribol::setKinematicConstantPenalty( 0, 1. );
+  tribol::setKinematicConstantPenalty( 1, 1. );
+
+  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                  tribol::VISCOUS_TANGENTIAL, tribol::PENALTY, tribol::BINNING_GRID,
+                                  tribol::ExecutionMode::Sequential );
+
+  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
+  tribol::setContactAreaFrac( 0, 1.e-12 );
+
+  RealT dt = 1.;
+  int update_err = tribol::update( 1, 1., dt );
+
+  EXPECT_EQ( update_err, 0 );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
+
+  // check forces
+  for ( int i=0; i<numVerts; ++i ) { 
+    EXPECT_NEAR( fx1[i], -1., 1.e-10 );
+    EXPECT_NEAR( fy1[i], 0., 1.e-10 );
+    EXPECT_NEAR( fx2[i], 1., 1.e-10 );
+    EXPECT_NEAR( fy2[i], 0., 1.e-10 );
+  }
+}
+
+TEST_F( CommonPlaneTest, common_plane_viscous_tangential_3d )
+{
+  // this test has two faces in separation so there should be no contribution
+  // from the kinematic constraint enforcement, only the velocity based viscous
+  // tangential term
+  constexpr int numVerts = 4;
+
+  RealT x1[numVerts];
+  RealT y1[numVerts];
+  RealT z1[numVerts];
+  RealT x2[numVerts];
+  RealT y2[numVerts];
+  RealT z2[numVerts];
+
+  // first face's coords
+  x1[0] = 0.0;
+  y1[0] = 0.0;
+  z1[0] = 0.0;
+
+  x1[1] = 1.0;
+  y1[1] = 0.0;
+  z1[1] = 0.0;
+
+  x1[2] = 1.0;
+  y1[2] = 1.0;
+  z1[2] = 0.0;
+
+  x1[3] = 0.0;
+  y1[3] = 1.0;
+  z1[3] = 0.0;
+
+  // second faces coords
+  x2[0] = 0.0;
+  y2[0] = 0.0;
+  z2[0] = 0.1;
+
+  x2[1] = 0.0;
+  y2[1] = 1.0;
+  z2[1] = 0.1;
+
+  x2[2] = 1.0;
+  y2[2] = 1.0;
+  z2[2] = 0.1;
+
+  x2[3] = 1.0;
+  y2[3] = 0.0;
+  z2[3] = 0.1;
+
+  tribol::IndexT conn1[numVerts] = { 0, 1, 2, 3 };
+  tribol::IndexT conn2[numVerts] = { 0, 1, 2, 3 };
+
+  tribol::registerMesh( 0, 1, numVerts, &conn1[0], (int)( tribol::LINEAR_QUAD ), &x1[0], &y1[0], &z1[0],
+                        tribol::MemorySpace::Host );
+  tribol::registerMesh( 1, 1, numVerts, &conn2[0], (int)( tribol::LINEAR_QUAD ), &x2[0], &y2[0], &z2[0],
+                        tribol::MemorySpace::Host );
+
+  RealT fx1[numVerts] = { 0., 0., 0., 0. };
+  RealT fy1[numVerts] = { 0., 0., 0., 0. };
+  RealT fz1[numVerts] = { 0., 0., 0., 0. };
+  
+  RealT fx2[numVerts] = { 0., 0., 0., 0. };
+  RealT fy2[numVerts] = { 0., 0., 0., 0. };
+  RealT fz2[numVerts] = { 0., 0., 0., 0. };
+
+  // set nodal velocities in <2,2,2> and <-2,-2,-2> directions
+  RealT vx1[numVerts] = { 2., 2., 2., 2. };
+  RealT vy1[numVerts] = { 2., 2., 2., 2. };
+  RealT vz1[numVerts] = { 2., 2., 2., 2. };
+  RealT vx2[numVerts] = { -2., -2., -2., -2. };
+  RealT vy2[numVerts] = { -2., -2., -2., -2. };
+  RealT vz2[numVerts] = { 2., 2., 2., 2. };
+
+  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], &fz1[0] );
+  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], &fz2[0] );
+
+  tribol::registerNodalVelocities( 0, &vx1[0], &vy1[0], &vz1[0] );
+  tribol::registerNodalVelocities( 1, &vx2[0], &vy2[0], &vz2[0] );
+
+  tribol::setKinematicConstantPenalty( 0, 1. );
+  tribol::setKinematicConstantPenalty( 1, 1. );
+
+  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                  tribol::VISCOUS_TANGENTIAL, tribol::PENALTY, tribol::BINNING_GRID,
+                                  tribol::ExecutionMode::Sequential );
+
+  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
+  tribol::setContactAreaFrac( 0, 1.e-12 );
+
+  RealT dt = 1.;
+  int update_err = tribol::update( 1, 1., dt );
+
+  EXPECT_EQ( update_err, 0 );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+
+  EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
+
+  // check forces
+  for ( int i=0; i<numVerts; ++i ) {
+    EXPECT_NEAR( fx1[i], -1., 1.e-10 );
+    EXPECT_NEAR( fy1[i], -1., 1.e-10 );
+    EXPECT_NEAR( fz1[i], 0., 1.e-10 );
+
+    EXPECT_NEAR( fx2[i], 1., 1.e-10 );
+    EXPECT_NEAR( fy2[i], 1., 1.e-10 );
+    EXPECT_NEAR( fz2[i], 0., 1.e-10 );
+  }
+}
+
 int main( int argc, char* argv[] )
 {
   int result = 0;
