@@ -644,6 +644,10 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )
   tribol::setKinematicConstantPenalty( 0, 1. );
   tribol::setKinematicConstantPenalty( 1, 1. );
 
+  RealT visc_coeff = 0.5;
+  tribol::registerRealElementField( 0, tribol::VISCOUS_DAMPING_COEFF, &visc_coeff );
+  tribol::registerRealElementField( 1, tribol::VISCOUS_DAMPING_COEFF, &visc_coeff );
+
   tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
                                   tribol::VISCOUS_TANGENTIAL, tribol::PENALTY, tribol::BINNING_GRID,
                                   tribol::ExecutionMode::Sequential );
@@ -664,9 +668,9 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )
 
   // check forces
   for ( int i=0; i<numVerts; ++i ) { 
-    EXPECT_NEAR( fx1[i], -1., 1.e-10 );
+    EXPECT_NEAR( fx1[i], -.5, 1.e-10 );
     EXPECT_NEAR( fy1[i], 0., 1.e-10 );
-    EXPECT_NEAR( fx2[i], 1., 1.e-10 );
+    EXPECT_NEAR( fx2[i], .5, 1.e-10 );
     EXPECT_NEAR( fy2[i], 0., 1.e-10 );
   }
 }
@@ -752,6 +756,10 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_3d )
   tribol::setKinematicConstantPenalty( 0, 1. );
   tribol::setKinematicConstantPenalty( 1, 1. );
 
+  RealT visc_coeff = 0.5;
+  tribol::registerRealElementField( 0, tribol::VISCOUS_DAMPING_COEFF, &visc_coeff );
+  tribol::registerRealElementField( 1, tribol::VISCOUS_DAMPING_COEFF, &visc_coeff );
+
   tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
                                   tribol::VISCOUS_TANGENTIAL, tribol::PENALTY, tribol::BINNING_GRID,
                                   tribol::ExecutionMode::Sequential );
@@ -772,12 +780,12 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_3d )
 
   // check forces
   for ( int i=0; i<numVerts; ++i ) {
-    EXPECT_NEAR( fx1[i], -1., 1.e-10 );
-    EXPECT_NEAR( fy1[i], -1., 1.e-10 );
+    EXPECT_NEAR( fx1[i], -.5, 1.e-10 );
+    EXPECT_NEAR( fy1[i], -.5, 1.e-10 );
     EXPECT_NEAR( fz1[i], 0., 1.e-10 );
 
-    EXPECT_NEAR( fx2[i], 1., 1.e-10 );
-    EXPECT_NEAR( fy2[i], 1., 1.e-10 );
+    EXPECT_NEAR( fx2[i], 0.5, 1.e-10 );
+    EXPECT_NEAR( fy2[i], 0.5, 1.e-10 );
     EXPECT_NEAR( fz2[i], 0., 1.e-10 );
   }
 }

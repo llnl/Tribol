@@ -210,6 +210,7 @@ enum RealElementFields
   RATE_PERCENT_STIFFNESS,        ///! Percent rate penalty stiffness
   BULK_MODULUS,                  ///! Element bulk modulus
   YOUNGS_MODULUS,                ///! Element Young's modulus
+  VISCOUS_DAMPING_COEFF,         ///! Element/material viscous damping coefficient for tangential damping
   ELEMENT_THICKNESS,             ///! Element thickness in contact normal direction
   NUM_REAL_ELEMENT_FIELDS = ELEMENT_THICKNESS
 };

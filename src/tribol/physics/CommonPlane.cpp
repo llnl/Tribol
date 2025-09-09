@@ -558,7 +558,7 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
     /////////////////////////////////////////////////////
     // Computation of tangential viscous damping force //
     /////////////////////////////////////////////////////
-    RealT visc = 1.0; // TODO grab viscous scalar 
+    RealT visc = 0.5 * ( mesh1.getElementData().m_viscous_damping_coeff + mesh2.getElementData().m_viscous_damping_coeff );
     RealT force_x = visc * velGapTan[0];
     RealT force_y = visc * velGapTan[1];
     RealT force_z = 0.;

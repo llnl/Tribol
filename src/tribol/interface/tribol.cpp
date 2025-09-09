@@ -739,6 +739,21 @@ void registerRealElementField( IndexT mesh_id, const RealElementFields field, co
 
       break;
     }
+    case VISCOUS_DAMPING_COEFF: {
+      if ( fieldVariable == nullptr ) {
+        if ( mesh->numberOfElements() > 0 ) {
+          SLIC_ERROR( "tribol::registerRealElementField(): null pointer to data for "
+                      << "'VISCOUS_DAMPING_COEFF' on mesh " << mesh_id << "." );
+          mesh->getElementData().m_is_viscous_damping_coeff_set = false;
+        } else {
+          mesh->getElementData().m_is_viscous_damping_coeff_set = true;
+        }
+      } else {
+        mesh->getElementData().m_viscous_damping_coeff = *fieldVariable;
+        mesh->getElementData().m_is_viscous_damping_coeff_set = true;
+      }
+      break;
+    }
     default: {
       SLIC_ERROR( "tribol::registerRealElementField(): the field argument "
                   << "on mesh " << mesh_id << " is not an accepted tribol real element field." );
