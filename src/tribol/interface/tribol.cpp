@@ -130,6 +130,12 @@ void setRatePercentPenalty( IndexT mesh_id, RealT r_p )
 }  // end setRatePercentPenalty()
 
 //------------------------------------------------------------------------------
+void setViscousDampingCoeff( IndexT mesh_id, RealT coeff )
+{
+  registerRealElementField( mesh_id, VISCOUS_DAMPING_COEFF, &coeff );
+}
+
+//------------------------------------------------------------------------------
 void setAutoContactPenScale( IndexT cs_id, RealT scale )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -737,6 +743,21 @@ void registerRealElementField( IndexT mesh_id, const RealElementFields field, co
         }
       }
 
+      break;
+    }
+    case VISCOUS_DAMPING_COEFF: {
+      if ( fieldVariable == nullptr ) {
+        if ( mesh->numberOfElements() > 0 ) {
+          SLIC_ERROR( "tribol::registerRealElementField(): null pointer to data for "
+                      << "'VISCOUS_DAMPING_COEFF' on mesh " << mesh_id << "." );
+          mesh->getElementData().m_is_viscous_damping_coeff_set = false;
+        } else {
+          mesh->getElementData().m_is_viscous_damping_coeff_set = true;
+        }
+      } else {
+        mesh->getElementData().m_viscous_damping_coeff = *fieldVariable;
+        mesh->getElementData().m_is_viscous_damping_coeff_set = true;
+      }
       break;
     }
     default: {

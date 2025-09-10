@@ -134,7 +134,8 @@ enum ContactModel
 {
   NO_CONTACT,                      ///! No contact
   FRICTIONLESS,                    ///! Frictionless, normal contact only
-  COULOMB,                         ///! Coulomb friction model, not supported
+  VISCOUS_TANGENTIAL,              ///! Velocity based tangential damping (viscous) term added to contact force
+  FRICTION_COULOMB,                ///! Coulomb friction model, not supported
   ADHESION_SEPARATION_SCALAR_LAW,  ///! Scalar pressure law for the separation of adhered surfaces (Used with tied
                                    /// contact)
   NULL_MODEL,                      ///! Null model, for use with ContactMethod = MORTAR_WEIGHTS
@@ -209,6 +210,7 @@ enum RealElementFields
   RATE_PERCENT_STIFFNESS,        ///! Percent rate penalty stiffness
   BULK_MODULUS,                  ///! Element bulk modulus
   YOUNGS_MODULUS,                ///! Element Young's modulus
+  VISCOUS_DAMPING_COEFF,         ///! Element/material viscous damping coefficient for tangential damping
   ELEMENT_THICKNESS,             ///! Element thickness in contact normal direction
   NUM_REAL_ELEMENT_FIELDS = ELEMENT_THICKNESS
 };
