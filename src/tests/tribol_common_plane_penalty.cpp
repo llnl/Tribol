@@ -748,7 +748,7 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_3d )
   RealT vz1[numVerts] = { 2., 2., 2., 2. };
   RealT vx2[numVerts] = { -2., -2., -2., -2. };
   RealT vy2[numVerts] = { -2., -2., -2., -2. };
-  RealT vz2[numVerts] = { 2., 2., 2., 2. };
+  RealT vz2[numVerts] = { -2., -2., -2., -2. };
 
   tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], &fz1[0] );
   tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], &fz2[0] );
