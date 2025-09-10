@@ -596,9 +596,8 @@ TEST_F( CommonPlaneTest, common_plane_2d_interpen_check )
 
 TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )
 {
-  // this test has two edges with zero gap so there should be no contribution
-  // from the kinematic constraint enforcement, only the velocity based viscous
-  // tangential term
+  // This test has two edges with initial full interpen and tangential velocity,
+  // which will trigger a viscous force term
   constexpr int numVerts = 2;
 
   RealT x1[numVerts];
@@ -667,7 +666,9 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )
 
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
-  // check forces
+  // check forces. The in-plane tangential force is the velocity distributed evenly to the
+  // two nodes, while the normal force corresponds to two springs in parallel with the
+  // specified constant penalty stiffness, then divided amongst the edge nodes
   RealT force_y = 0.5 * gap / numVerts;
   for ( int i = 0; i < numVerts; ++i ) {
     EXPECT_NEAR( fx1[i], -.5, 1.e-10 );
@@ -679,9 +680,8 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )
 
 TEST_F( CommonPlaneTest, common_plane_viscous_tangential_3d )
 {
-  // this test has two faces with zero gap so there should be no contribution
-  // from the kinematic constraint enforcement, only the velocity based viscous
-  // tangential term
+  // this test has two faces with some initial full interpen and a tangential velocity
+  // that will trigger a viscous force term.
   constexpr int numVerts = 4;
 
   RealT x1[numVerts];
@@ -781,7 +781,9 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_3d )
 
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
-  // check forces
+  // check forces. The in plane force will be the relative velocity multiplied by the
+  // viscous coefficient then distributed amongst the nodes, while the normal force
+  // is the two springs in parallel times the gap and then distributed to the nodes.
   RealT force_z = 0.5 * gap / numVerts;
   for ( int i = 0; i < numVerts; ++i ) {
     EXPECT_NEAR( fx1[i], -.5, 1.e-10 );
