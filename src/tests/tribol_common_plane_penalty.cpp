@@ -666,14 +666,16 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )
 
   EXPECT_EQ( 1, couplingScheme->getNumActivePairs() );
 
-  // check forces. The in-plane tangential force is the velocity distributed evenly to the
-  // two nodes, while the normal force corresponds to two springs in parallel with the
-  // specified constant penalty stiffness, then divided amongst the edge nodes
+  // check forces. The in-plane tangential force is the relative tangential velocity gap multiplied
+  // by the viscous coefficient then evenly distributed to the two nodes, while the normal force 
+  // corresponds to two springs in parallel with the specified constant penalty stiffness, then multiplied
+  // by the gap and then divided amongst the edge nodes
   RealT force_y = 0.5 * gap / numVerts;
+  RealT force_x = visc_coeff * (vx1[0] - vx2[0]) / numVerts;
   for ( int i = 0; i < numVerts; ++i ) {
-    EXPECT_NEAR( fx1[i], -.5, 1.e-10 );
+    EXPECT_NEAR( fx1[i], -force_x, 1.e-10 );
     EXPECT_NEAR( fy1[i], -force_y, 1.e-10 );
-    EXPECT_NEAR( fx2[i], .5, 1.e-10 );
+    EXPECT_NEAR( fx2[i], force_x, 1.e-10 );
     EXPECT_NEAR( fy2[i], force_y, 1.e-10 );
   }
 }
@@ -785,13 +787,14 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_3d )
   // viscous coefficient then distributed amongst the nodes, while the normal force
   // is the two springs in parallel times the gap and then distributed to the nodes.
   RealT force_z = 0.5 * gap / numVerts;
+  RealT force_x_and_y = visc_coeff * (vx1[0] - vx2[0]) / numVerts;
   for ( int i = 0; i < numVerts; ++i ) {
-    EXPECT_NEAR( fx1[i], -.5, 1.e-10 );
-    EXPECT_NEAR( fy1[i], -.5, 1.e-10 );
+    EXPECT_NEAR( fx1[i], -force_x_and_y, 1.e-10 );
+    EXPECT_NEAR( fy1[i], -force_x_and_y, 1.e-10 );
     EXPECT_NEAR( fz1[i], -force_z, 1.e-10 );
 
-    EXPECT_NEAR( fx2[i], 0.5, 1.e-10 );
-    EXPECT_NEAR( fy2[i], 0.5, 1.e-10 );
+    EXPECT_NEAR( fx2[i], force_x_and_y, 1.e-10 );
+    EXPECT_NEAR( fy2[i], force_x_and_y, 1.e-10 );
     EXPECT_NEAR( fz2[i], force_z, 1.e-10 );
   }
 }
