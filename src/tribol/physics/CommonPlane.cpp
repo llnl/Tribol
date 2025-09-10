@@ -422,8 +422,8 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
 
 //------------------------------------------------------------------------------
 template <>
-int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* cs ) {
-
+int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* cs )
+{
   ///////////////////////////////
   // loop over interface pairs //
   ///////////////////////////////
@@ -447,7 +447,6 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
     IndexT index1 = plane.getCpElementId1();
     IndexT index2 = plane.getCpElementId2();
 
-    // TODO write this routine
     // compute the velocity gap and pressure contribution
     constexpr int max_dim = 3;
     constexpr int max_nodes_per_elem = 4;
@@ -527,8 +526,7 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
     // configuration face coordinates (i.e. NOT on the contact plane) and overlap
     // coordinates ON the contact plane. The surface contact element does not need
     // to be used this way, but the developer should do the book-keeping.
-    SurfaceContactElem cntctElem( dim, x1, x2, xVert, numNodesPerFace1, numPolyVert, &mesh1, &mesh2, index1,
-                                  index2 );
+    SurfaceContactElem cntctElem( dim, x1, x2, xVert, numNodesPerFace1, numPolyVert, &mesh1, &mesh2, index1, index2 );
 
     // set SurfaceContactElem face normals and overlap normal
     RealT faceNormal1[max_dim];
@@ -563,7 +561,8 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
     /////////////////////////////////////////////////////
     // Computation of tangential viscous damping force //
     /////////////////////////////////////////////////////
-    RealT visc = 0.5 * ( mesh1.getElementData().m_viscous_damping_coeff + mesh2.getElementData().m_viscous_damping_coeff );
+    RealT visc =
+        0.5 * ( mesh1.getElementData().m_viscous_damping_coeff + mesh2.getElementData().m_viscous_damping_coeff );
     RealT force_x = visc * velGapTan[0];
     RealT force_y = visc * velGapTan[1];
     RealT force_z = 0.;
@@ -614,10 +613,10 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
           }
 #endif
     }  // end for loop over face nodes
-
   } );
 
-  return 0;
+  ArrayT<int, 1, MemorySpace::Host> err_host( err_data );
+  return err_host[0];
 }
 //------------------------------------------------------------------------------
 

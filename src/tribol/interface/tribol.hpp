@@ -87,6 +87,13 @@ void setKinematicElementPenalty( IndexT mesh_id, const RealT* material_modulus, 
 void setRateConstantPenalty( IndexT mesh_id, RealT r_k );
 
 /*!
+ * \brief Sets the tangential viscous damping coefficient
+ * \param [in] mesh_id mesh id for penalty stiffness
+ * \param [in] coeff viscous damping coefficient
+ */
+void setViscousDampingCoeff( IndexT mesh_id, RealT coeff );
+
+/*!
  * \brief Sets the percent rate penalty stiffness
  * \param [in] mesh_id mesh id for penalty stiffness
  * \param [in] r_p rate penalty as percent of kinematic penalty

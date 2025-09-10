@@ -658,7 +658,8 @@ bool CouplingScheme::isValidModel()
     }
 
     case COMMON_PLANE: {
-      if ( this->m_contactModel != FRICTIONLESS && this->m_contactModel != NULL_MODEL && this->m_contactModel != VISCOUS_TANGENTIAL ) {
+      if ( this->m_contactModel != FRICTIONLESS && this->m_contactModel != NULL_MODEL &&
+           this->m_contactModel != VISCOUS_TANGENTIAL ) {
         this->m_couplingSchemeErrors.cs_model_error = NO_MODEL_IMPLEMENTATION_FOR_REGISTERED_METHOD;
         return false;
       }

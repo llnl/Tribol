@@ -130,6 +130,12 @@ void setRatePercentPenalty( IndexT mesh_id, RealT r_p )
 }  // end setRatePercentPenalty()
 
 //------------------------------------------------------------------------------
+void setViscousDampingCoeff( IndexT mesh_id, RealT coeff )
+{
+  registerRealElementField( mesh_id, VISCOUS_DAMPING_COEFF, &coeff );
+}
+
+//------------------------------------------------------------------------------
 void setAutoContactPenScale( IndexT cs_id, RealT scale )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );

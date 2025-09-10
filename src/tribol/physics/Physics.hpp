@@ -11,8 +11,8 @@
 namespace tribol {
 
 // forward declarations
-//struct InterfacePair;
-//struct SurfaceContactElem;
+// struct InterfacePair;
+// struct SurfaceContactElem;
 class CouplingScheme;
 
 /*!

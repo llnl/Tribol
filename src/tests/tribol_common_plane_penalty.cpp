@@ -613,9 +613,9 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )
 
   RealT gap = 0.01;
   x2[0] = 0.0;
-  x2[1] = 1.0; 
-  y2[0] = -gap; 
-  y2[1] = -gap; 
+  x2[1] = 1.0;
+  y2[0] = -gap;
+  y2[1] = -gap;
 
   tribol::IndexT conn1[numVerts] = { 0, 1 };
   tribol::IndexT conn2[numVerts] = { 0, 1 };
@@ -669,7 +669,7 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )
 
   // check forces
   RealT force_y = 0.5 * gap / numVerts;
-  for ( int i=0; i<numVerts; ++i ) { 
+  for ( int i = 0; i < numVerts; ++i ) {
     EXPECT_NEAR( fx1[i], -.5, 1.e-10 );
     EXPECT_NEAR( fy1[i], -force_y, 1.e-10 );
     EXPECT_NEAR( fx2[i], .5, 1.e-10 );
@@ -737,7 +737,7 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_3d )
   RealT fx1[numVerts] = { 0., 0., 0., 0. };
   RealT fy1[numVerts] = { 0., 0., 0., 0. };
   RealT fz1[numVerts] = { 0., 0., 0., 0. };
-  
+
   RealT fx2[numVerts] = { 0., 0., 0., 0. };
   RealT fy2[numVerts] = { 0., 0., 0., 0. };
   RealT fz2[numVerts] = { 0., 0., 0., 0. };
@@ -783,7 +783,7 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_3d )
 
   // check forces
   RealT force_z = 0.5 * gap / numVerts;
-  for ( int i=0; i<numVerts; ++i ) {
+  for ( int i = 0; i < numVerts; ++i ) {
     EXPECT_NEAR( fx1[i], -.5, 1.e-10 );
     EXPECT_NEAR( fy1[i], -.5, 1.e-10 );
     EXPECT_NEAR( fz1[i], -force_z, 1.e-10 );
