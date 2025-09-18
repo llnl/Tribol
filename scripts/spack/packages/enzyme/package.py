@@ -18,7 +18,7 @@ class Enzyme(CMakePackage):
     """
 
     homepage = "https://enzyme.mit.edu"
-    url = "https://github.com/wsmoses/Enzyme/archive/v0.0.172.tar.gz"
+    url = "https://github.com/wsmoses/Enzyme/archive/v0.0.198.tar.gz"
     list_url = "https://github.com/wsmoses/Enzyme/releases"
     git = "https://github.com/wsmoses/Enzyme"
 
@@ -27,6 +27,7 @@ class Enzyme(CMakePackage):
     root_cmakelists_dir = "enzyme"
 
     version("main", branch="main")
+    version("0.0.198", sha256="f852d1d223410ff2bac981a8c90900a2ad71fc33035d9c768a97c36d45b91705")
     version("0.0.180", sha256="d65a8e889413bb9518da00d65524c07352f1794b55c163f0db6828844c779ed4")
     version("0.0.173", sha256="b8477fb5bead9e9ece76d450ebd0afee99914235c6e1a6ef8c05bf288e3c0478")
     version("0.0.172", sha256="688200164787d543641cb446cff20f6a8e8b5c92bb7032ebe7f867efa67ceafb")
@@ -50,7 +51,8 @@ class Enzyme(CMakePackage):
     depends_on("llvm@9:16", when="@0.0.69:0.0.79")
     depends_on("llvm@11:16", when="@0.0.80:0.0.99")
     depends_on("llvm@11:19", when="@0.0.100:0.0.148")
-    depends_on("llvm@15:19", when="@0.0.149:")
+    depends_on("llvm@15:19", when="@0.0.149:0.0.180")
+    depends_on("llvm@15:", when="@0.0.198:")
     depends_on("cmake@3.13:", type="build")
 
     # TODO: Comment out when after Spack 1.0 and push to Spack's builtin repo, this may not be enough
