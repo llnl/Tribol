@@ -7,7 +7,7 @@ import os
 from os.path import join as pjoin
 
 from spack.package import *
-from spack.pkg.builtin.axom import Axom as BuiltinAxom
+from spack_repo.builtin.packages.axom.package import Axom as BuiltinAxom
 
 class Axom(BuiltinAxom):
 
