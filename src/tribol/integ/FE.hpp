@@ -8,6 +8,8 @@
 
 #include <cmath>
 
+#include "axom/slic.hpp"
+
 #include "tribol/common/Parameters.hpp"
 
 namespace tribol {

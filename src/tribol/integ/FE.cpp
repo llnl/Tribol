@@ -5,10 +5,6 @@
 
 #include "tribol/integ/FE.hpp"
 
-#include <algorithm>
-
-#include "axom/slic.hpp"
-
 #include "tribol/utils/Math.hpp"
 
 namespace tribol {
