@@ -9,6 +9,8 @@
 // C++ includes
 #include <cmath>
 
+#include "axom/slic.hpp"
+
 #include "tribol/common/BasicTypes.hpp"
 
 namespace tribol {

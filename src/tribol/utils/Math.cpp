@@ -5,9 +5,6 @@
 
 #include "tribol/utils/Math.hpp"
 
-// AXOM includes
-#include "axom/slic.hpp"
-
 namespace tribol {
 
 TRIBOL_HOST_DEVICE RealT magnitude( RealT const vx, RealT const vy, RealT const vz )
