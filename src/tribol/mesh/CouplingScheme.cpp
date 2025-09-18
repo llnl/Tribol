@@ -558,7 +558,7 @@ bool CouplingScheme::isValidMethod()
     }
 
     if ( this->m_contactMethod == ALIGNED_MORTAR || this->m_contactMethod == MORTAR_WEIGHTS ||
-         this->m_contactMethod == SINGLE_MORTAR || this->m_contactMethod == SMOOTH_MORTAR) {
+         this->m_contactMethod == SINGLE_MORTAR || this->m_contactMethod == SMOOTH_MORTAR ) {
       if ( this->m_mesh1->numberOfNodesPerElement() != this->m_mesh2->numberOfNodesPerElement() ) {
         this->m_couplingSchemeErrors.cs_method_error = DIFFERENT_FACE_TYPES;
         return false;
@@ -571,15 +571,15 @@ bool CouplingScheme::isValidMethod()
         return false;
       }
 
-      if (this->m_contactMethod == SINGLE_MORTAR && dim != 3) {
+      if ( this->m_contactMethod == SINGLE_MORTAR && dim != 3 ) {
         this->m_couplingSchemeErrors.cs_method_error = INVALID_DIM;
         return false;
       }
-      //Enable 2D for SmoothMortar
-      if (this->m_contactMethod == SMOOTH_MORTAR && (dim != 2 && dim != 3)) {
-      this->m_couplingSchemeErrors.cs_method_error = INVALID_DIM;
-      return false;
-    }
+      // Enable 2D for SmoothMortar
+      if ( this->m_contactMethod == SMOOTH_MORTAR && ( dim != 2 && dim != 3 ) ) {
+        this->m_couplingSchemeErrors.cs_method_error = INVALID_DIM;
+        return false;
+      }
 
       // if ( dim != 3 ) {
       //   this->m_couplingSchemeErrors.cs_method_error = INVALID_DIM;
@@ -600,7 +600,7 @@ bool CouplingScheme::isValidMethod()
     }
 
     if ( this->m_contactMethod == ALIGNED_MORTAR || this->m_contactMethod == SINGLE_MORTAR ||
-         this->m_contactMethod == COMMON_PLANE || this->m_contactMethod == SMOOTH_MORTAR) {
+         this->m_contactMethod == COMMON_PLANE || this->m_contactMethod == SMOOTH_MORTAR ) {
       if ( this->m_mesh1->numberOfElements() > 0 && !this->m_mesh1->getNodalFields().m_is_nodal_response_set ) {
         this->m_couplingSchemeErrors.cs_method_error = NULL_NODAL_RESPONSE;
         return false;
@@ -1038,7 +1038,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // clear contact planes to be populated/allocated anew for this cycle.
   // initially allocate array of numPairs size, then shrink to the actual number of pairs
   if ( spatialDimension() == 2 ) {
-    printf("2d\n");
+    // printf("2d\n");
     m_contact_plane2d = ArrayT<ContactPlane2D>( numPairs, numPairs, getAllocatorId() );
     m_contact_plane3d = ArrayT<ContactPlane3D>( 0, 1, getAllocatorId() );
   } else {
@@ -1144,7 +1144,7 @@ bool CouplingScheme::init()
   // check for valid coupling scheme only for non-null-meshes
   this->m_isValid = this->isValidCouplingScheme();
 
-  if (this->m_contactMethod == SMOOTH_MORTAR) {
+  if ( this->m_contactMethod == SMOOTH_MORTAR ) {
     this->m_isValid = true;
   }
 

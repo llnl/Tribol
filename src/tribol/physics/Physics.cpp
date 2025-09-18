@@ -75,7 +75,7 @@ int ApplyInterfacePhysics( CouplingScheme* cs, int TRIBOL_UNUSED_PARAM( cycle ),
         case LAGRANGE_MULTIPLIER:
           switch ( cs->getContactModel() ) {
             case FRICTIONLESS:
-              printf("next apply normal\n");
+              // printf("next apply normal\n");
               err_nrml = ApplyNormal<SMOOTH_MORTAR, LAGRANGE_MULTIPLIER>( cs );
               break;
             default:
