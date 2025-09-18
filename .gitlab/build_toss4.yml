@@ -27,7 +27,7 @@
 ####
 # Templates
 .src_build_on_toss4:
-  extends: [.src_build_script, .on_toss4, .src_workflow]
+  extends: [.src_build_script, .on_toss4]
 
 
 ####
