@@ -8,9 +8,6 @@
 // AXOM includes
 #include "axom/slic.hpp"
 
-// C++ includes
-#include <cmath>
-
 namespace tribol {
 
 TRIBOL_HOST_DEVICE RealT magnitude( RealT const vx, RealT const vy, RealT const vz )
@@ -27,9 +24,6 @@ RealT magnitude( RealT const* const v, int const dim )
   }
   return sqrt( mag );
 }
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE RealT magnitude( RealT const vx, RealT const vy ) { return sqrt( vx * vx + vy * vy ); }
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE RealT dotProd( RealT const* const v, RealT const* const w, int const dim )
@@ -124,8 +118,7 @@ RealT abs_val_diff( RealT val1, RealT val2 ) { return std::abs( val1 - val2 ); }
 //------------------------------------------------------------------------------
 void allocRealArray( RealT** arr, int length, RealT init_val )
 {
-  SLIC_ERROR_IF( length == 0, "allocRealArray: please specify nonzero length "
-                                  << "for array allocation." );
+  SLIC_ERROR_IF( length == 0, "allocRealArray: please specify nonzero length " << "for array allocation." );
 
   *arr = new RealT[length];
   initRealArray( *arr, length, init_val );
@@ -134,8 +127,7 @@ void allocRealArray( RealT** arr, int length, RealT init_val )
 //------------------------------------------------------------------------------
 void allocRealArray( RealT** arr, const int length, const RealT* const data )
 {
-  SLIC_ERROR_IF( length == 0, "allocRealArray: please specify nonzero length "
-                                  << "for array allocation." );
+  SLIC_ERROR_IF( length == 0, "allocRealArray: please specify nonzero length " << "for array allocation." );
 
   if ( data == nullptr ) {
     SLIC_ERROR( "allocRealArray: input data pointer not set." );
@@ -153,8 +145,7 @@ void allocRealArray( RealT** arr, const int length, const RealT* const data )
 //------------------------------------------------------------------------------
 void allocIntArray( int** arr, int length, int init_val )
 {
-  SLIC_ERROR_IF( length == 0, "allocIntArray: please specify nonzero length "
-                                  << "for array allocation." );
+  SLIC_ERROR_IF( length == 0, "allocIntArray: please specify nonzero length " << "for array allocation." );
 
   *arr = new int[length];
   initIntArray( *arr, length, init_val );
@@ -163,8 +154,7 @@ void allocIntArray( int** arr, int length, int init_val )
 //------------------------------------------------------------------------------
 void allocIntArray( int** arr, const int length, const int* const data )
 {
-  SLIC_ERROR_IF( length == 0, "allocIntArray: please specify nonzero length "
-                                  << "for array allocation." );
+  SLIC_ERROR_IF( length == 0, "allocIntArray: please specify nonzero length " << "for array allocation." );
 
   if ( data == nullptr ) {
     SLIC_ERROR( "allocIntArray: input data pointer not set." );
@@ -182,48 +172,10 @@ void allocIntArray( int** arr, const int length, const int* const data )
 //------------------------------------------------------------------------------
 void allocBoolArray( bool** arr, int length, bool init_val )
 {
-  SLIC_ERROR_IF( length == 0, "allocBoolArray: please specify nonzero length "
-                                  << "for array allocation." );
+  SLIC_ERROR_IF( length == 0, "allocBoolArray: please specify nonzero length " << "for array allocation." );
 
   *arr = new bool[length];
   initBoolArray( *arr, length, init_val );
-}
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void initRealArray( RealT* arr, int length, RealT init_val )
-{
-#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( arr == nullptr, "initRealArray(): "
-                                     << "input pointer to array is null." );
-#endif
-
-  for ( int i = 0; i < length; ++i ) {
-    arr[i] = init_val;
-  }
-}
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void initIntArray( int* arr, int length, int init_val )
-{
-#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( arr == nullptr, "initIntArray(): "
-                                     << "input pointer to array is null." );
-#endif
-  for ( int i = 0; i < length; ++i ) {
-    arr[i] = init_val;
-  }
-}
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void initBoolArray( bool* arr, int length, bool init_val )
-{
-#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( arr == nullptr, "initBoolArray(): "
-                                     << "input pointer to array is null." );
-#endif
-  for ( int i = 0; i < length; ++i ) {
-    arr[i] = init_val;
-  }
 }
 //------------------------------------------------------------------------------
 
