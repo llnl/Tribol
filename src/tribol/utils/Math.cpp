@@ -118,7 +118,8 @@ RealT abs_val_diff( RealT val1, RealT val2 ) { return std::abs( val1 - val2 ); }
 //------------------------------------------------------------------------------
 void allocRealArray( RealT** arr, int length, RealT init_val )
 {
-  SLIC_ERROR_IF( length == 0, "allocRealArray: please specify nonzero length " << "for array allocation." );
+  SLIC_ERROR_IF( length == 0, "allocRealArray: please specify nonzero length "
+                                  << "for array allocation." );
 
   *arr = new RealT[length];
   initRealArray( *arr, length, init_val );
@@ -127,7 +128,8 @@ void allocRealArray( RealT** arr, int length, RealT init_val )
 //------------------------------------------------------------------------------
 void allocRealArray( RealT** arr, const int length, const RealT* const data )
 {
-  SLIC_ERROR_IF( length == 0, "allocRealArray: please specify nonzero length " << "for array allocation." );
+  SLIC_ERROR_IF( length == 0, "allocRealArray: please specify nonzero length "
+                                  << "for array allocation." );
 
   if ( data == nullptr ) {
     SLIC_ERROR( "allocRealArray: input data pointer not set." );
@@ -145,7 +147,8 @@ void allocRealArray( RealT** arr, const int length, const RealT* const data )
 //------------------------------------------------------------------------------
 void allocIntArray( int** arr, int length, int init_val )
 {
-  SLIC_ERROR_IF( length == 0, "allocIntArray: please specify nonzero length " << "for array allocation." );
+  SLIC_ERROR_IF( length == 0, "allocIntArray: please specify nonzero length "
+                                  << "for array allocation." );
 
   *arr = new int[length];
   initIntArray( *arr, length, init_val );
@@ -154,7 +157,8 @@ void allocIntArray( int** arr, int length, int init_val )
 //------------------------------------------------------------------------------
 void allocIntArray( int** arr, const int length, const int* const data )
 {
-  SLIC_ERROR_IF( length == 0, "allocIntArray: please specify nonzero length " << "for array allocation." );
+  SLIC_ERROR_IF( length == 0, "allocIntArray: please specify nonzero length "
+                                  << "for array allocation." );
 
   if ( data == nullptr ) {
     SLIC_ERROR( "allocIntArray: input data pointer not set." );
@@ -172,7 +176,8 @@ void allocIntArray( int** arr, const int length, const int* const data )
 //------------------------------------------------------------------------------
 void allocBoolArray( bool** arr, int length, bool init_val )
 {
-  SLIC_ERROR_IF( length == 0, "allocBoolArray: please specify nonzero length " << "for array allocation." );
+  SLIC_ERROR_IF( length == 0, "allocBoolArray: please specify nonzero length "
+                                  << "for array allocation." );
 
   *arr = new bool[length];
   initBoolArray( *arr, length, init_val );
