@@ -3,6 +3,9 @@
 #
 # SPDX-License-Identifier: (MIT)
 
+# Can't import like this
+#from spack_repo.builtin.build_systems.cmake import CMakePackage
+
 from spack.package import *
 
 
@@ -15,7 +18,7 @@ class Enzyme(CMakePackage):
     """
 
     homepage = "https://enzyme.mit.edu"
-    url = "https://github.com/wsmoses/Enzyme/archive/v0.0.173.tar.gz"
+    url = "https://github.com/wsmoses/Enzyme/archive/v0.0.172.tar.gz"
     list_url = "https://github.com/wsmoses/Enzyme/releases"
     git = "https://github.com/wsmoses/Enzyme"
 
@@ -24,6 +27,7 @@ class Enzyme(CMakePackage):
     root_cmakelists_dir = "enzyme"
 
     version("main", branch="main")
+    version("0.0.180", sha256="d65a8e889413bb9518da00d65524c07352f1794b55c163f0db6828844c779ed4")
     version("0.0.173", sha256="b8477fb5bead9e9ece76d450ebd0afee99914235c6e1a6ef8c05bf288e3c0478")
     version("0.0.172", sha256="688200164787d543641cb446cff20f6a8e8b5c92bb7032ebe7f867efa67ceafb")
     version("0.0.135", sha256="49c798534faec7ba524a3ed053dd4352d690a44d3cad5a14915c9398dc9b175b")
@@ -46,17 +50,27 @@ class Enzyme(CMakePackage):
     depends_on("llvm@9:16", when="@0.0.69:0.0.79")
     depends_on("llvm@11:16", when="@0.0.80:0.0.99")
     depends_on("llvm@11:19", when="@0.0.100:0.0.148")
-    depends_on("llvm@15:19", when="@0.0.149:0.0.172")
-    depends_on("llvm@15:20", when="@0.0.173:")
+    depends_on("llvm@15:19", when="@0.0.149:")
     depends_on("cmake@3.13:", type="build")
+
+    # TODO: Comment out when after Spack 1.0 and push to Spack's builtin repo, this may not be enough
+    # You can end up compiling with gcc but linking to llvm in certain cases
+    #conflicts("%cxx=gcc")
 
     def cmake_args(self):
         spec = self.spec
-        args = ["-DLLVM_DIR=" + spec["llvm"].prefix.lib + "/cmake/llvm"]
+        # TODO: push to Spack's builtin repo
+        # On Ubuntu 24, with apt installed packages this dir doesn't exist. Error:
+        #   Looking for LLVM_DIR at /usr/lib/cmake/llvm
+        #   CMake Error at CMakeLists.txt:60 (message):
+        #     The given LLVM_DIR does not exist.  Typo?
+        #args = ["-DLLVM_DIR=" + spec["llvm"].prefix.lib + "/cmake/llvm"]
+        args = ["-DLLVM_DIR=" + spec["llvm"].prefix]
         return args
 
     @property
     def libs(self):
+        # TODO: External Enzyme won't have llvm here
         ver = self.spec["llvm"].version.up_to(1)
         libs = ["LLVMEnzyme-{0}".format(ver), "ClangEnzyme-{0}".format(ver)]
         if self.version >= Version("0.0.32"):  # TODO actual lower bound
@@ -64,17 +78,19 @@ class Enzyme(CMakePackage):
 
         return find_libraries(libs, root=self.prefix, recursive=True)
 
-    def setup_dependent_build_environment(self, env, dependent_spec):
-        # Get the LLVMEnzyme and ClangEnzyme lib paths
-        llvm, lld, clang = self.libs
+    def setup_dependent_build_environment(
+        self, env: EnvironmentModifications, dependent_spec: Spec
+    ) -> None:
+        # Get the LLVMEnzyme, ClangEnzyme and LLDEnzyme lib paths and set
+        # environment variables
+        ver = self.spec["llvm"].version.up_to(1)
 
-        if not "ClangEnzyme-" in clang:
-            llvm, clang = clang, llvm
-        if not "ClangEnzyme-" in clang:
-            lld, clang = clang, lld
-        if "LLDEnzyme-" in llvm:
-            lld, llvm = llvm, lld
-
+        llvm = find_libraries("LLVMEnzyme-{0}".format(ver), root=self.prefix, recursive=True)
         env.set("LLVMENZYME", llvm)
-        env.set("LLDENZYME", lld)
+
+        clang = find_libraries("ClangEnzyme-{0}".format(ver), root=self.prefix, recursive=True)
         env.set("CLANGENZYME", clang)
+
+        if self.version >= Version("0.0.32"):  # TODO actual lower bound
+            lld = find_libraries("LLDEnzyme-{0}".format(ver), root=self.prefix, recursive=True)
+            env.set("LLDMENZYME", lld)
