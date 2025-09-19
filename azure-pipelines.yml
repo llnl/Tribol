@@ -34,20 +34,21 @@ jobs:
           HOST_CONFIG: 'gcc@13.1.0.cmake'
           BUILD_TYPE: 'Release'
           BUILD_REDECOMP: 'On'
-      linux_gcc12_cuda_debug:
-          VM_ImageName: 'ubuntu-22.04'
-          Compiler_ImageName: $(GCC_12_CUDA_ImageName)
-          TEST_TARGET: 'linux_gcc12_cuda'
-          HOST_CONFIG: 'gcc@12.3.0_cuda.cmake'
-          BUILD_TYPE: 'Debug'
-          BUILD_REDECOMP: 'On'
-      linux_gcc12_cuda_release:
-          VM_ImageName: 'ubuntu-22.04'
-          Compiler_ImageName: $(GCC_12_CUDA_ImageName)
-          TEST_TARGET: 'linux_gcc12_cuda'
-          HOST_CONFIG: 'gcc@12.3.0_cuda.cmake'
-          BUILD_TYPE: 'Release'
-          BUILD_REDECOMP: 'On'
+      # TODO (EBC): figure out why CUDA build is not starting on Azure
+      # linux_gcc12_cuda_debug:
+      #     VM_ImageName: 'ubuntu-22.04'
+      #     Compiler_ImageName: $(GCC_12_CUDA_ImageName)
+      #     TEST_TARGET: 'linux_gcc12_cuda'
+      #     HOST_CONFIG: 'gcc@12.3.0_cuda.cmake'
+      #     BUILD_TYPE: 'Debug'
+      #     BUILD_REDECOMP: 'On'
+      # linux_gcc12_cuda_release:
+      #     VM_ImageName: 'ubuntu-22.04'
+      #     Compiler_ImageName: $(GCC_12_CUDA_ImageName)
+      #     TEST_TARGET: 'linux_gcc12_cuda'
+      #     HOST_CONFIG: 'gcc@12.3.0_cuda.cmake'
+      #     BUILD_TYPE: 'Release'
+      #     BUILD_REDECOMP: 'On'
       linux_clang14_debug:
           VM_ImageName: 'ubuntu-22.04'
           Compiler_ImageName: $(Clang_14_ImageName)
