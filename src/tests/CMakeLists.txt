@@ -239,7 +239,7 @@ endif()
 
 if( TRIBOL_USE_ENZYME )
 
-  set(enzyme_smoke_depends LLDEnzymeFlags gtest)
+  set(enzyme_smoke_depends ClangEnzymeFlags gtest)
   blt_add_executable(
     NAME enzyme_smoke_test
     SOURCES enzyme_smoke.cpp

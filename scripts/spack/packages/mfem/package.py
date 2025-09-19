@@ -4,16 +4,18 @@
 # SPDX-License-Identifier: (BSD-3-Clause)
 
 from spack.package import *
-from spack.pkg.builtin.mfem import Mfem as BuiltinMfem
+from spack_repo.builtin.packages.mfem.package import Mfem as BuiltinMfem
 
 class Mfem(BuiltinMfem):
 
     # Note: Make sure this sha coincides with the git submodule
     # Note: We add a number to the end of the real version number to indicate that we have
     # moved forward past the release. Increment the last number when updating the commit sha.
-    version("4.7.0.2", commit="9c162692de60a900f0881a3d3c94c51b5f99d6c8")
+    version("4.8.0.1", commit="d9c1c34fdfaf3f7a9f56dfc82f7c083082a36fca")
 
     variant('asan', default=False, description='Add Address Sanitizer flags')
+
+    depends_on("fortran", type="build", when="+strumpack")
 
     # AddressSanitizer (ASan) is only supported by GCC and (some) LLVM-derived
     # compilers. Denylist compilers not known to support ASan

@@ -93,45 +93,13 @@ set(TPL_ROOT "/usr/WS2/smithdev/libs/serac/toss_4_x86_64_ib_cray/2025_04_16_13_4
 
 set(AXOM_DIR "${TPL_ROOT}/axom-0.10.1.1-4udyvzqnaoic74uv3zcumyguv5mbqqcg" CACHE PATH "")
 
-#set(CAMP_DIR "${TPL_ROOT}/camp-2024.07.0-223y52kngyoyilxr7gz3i4pe5btnm5uq" CACHE PATH "")
-
-#set(CONDUIT_DIR "${TPL_ROOT}/conduit-0.9.2-wo23sn3yekayvxjphe2eu4vvmvkqrovj" CACHE PATH "")
-
-#set(LUA_DIR "/usr" CACHE PATH "")
-
 set(MFEM_DIR "${TPL_ROOT}/mfem-4.8.0.1-s6vr55m7kq5gylxswlaqy5usltbrslzd" CACHE PATH "")
 
-#set(HDF5_DIR "${TPL_ROOT}/hdf5-1.8.23-zhqxrmbx5hqezzazejozk5l7wuz3ijx6" CACHE PATH "")
-
-#set(HYPRE_DIR "${TPL_ROOT}/hypre-2.26.0-sffmaz74r5zmnzir6l73deslw36yypsh" CACHE PATH "")
-
-#set(METIS_DIR "${TPL_ROOT}/metis-5.1.0-q4s4zr5oj2vsyc4eqjy22wrwndgb4fnh" CACHE PATH "")
-
-#set(PARMETIS_DIR "${TPL_ROOT}/parmetis-4.0.3-7o2cbbpbawncpn24yftcj24gbopz4aev" CACHE PATH "")
-
-#set(NETCDF_DIR "${TPL_ROOT}/netcdf-c-4.7.4-m3moxxpcdu3id35a6ib662pmcpe6hlxt" CACHE PATH "")
-
-#set(SUPERLUDIST_DIR "${TPL_ROOT}/superlu-dist-8.1.2-ulxns2zfpqyuezhrgxjh7do45ezer2m5" CACHE PATH "")
-
-#set(ADIAK_DIR "${TPL_ROOT}/adiak-0.4.1-djvwhzv7uucbw342y2lxn6mjv4onnzeh" CACHE PATH "")
-
-# AMGX not built
-
-#set(CALIPER_DIR "${TPL_ROOT}/caliper-2.12.1-h2elmogt2mtorvunf67jrcxqdcrzjjem" CACHE PATH "")
-
-# PETSC not built
+set(ENZYME_DIR "/usr/WS2/smithdev/toss_4_x86_64_ib_cray/rocm-6.2.1/enzyme/0.0.180" CACHE PATH "")
 
 set(RAJA_DIR "${TPL_ROOT}/raja-2024.07.0-m322mdffprdfso4vg7iox3n5goelhtyp" CACHE PATH "")
 
-# SLEPC not built
-
-#set(STRUMPACK_DIR "${TPL_ROOT}/strumpack-8.0.0-w5kwnpidy7gzm4q2kplzw7ip2hebkojg" CACHE PATH "")
-
-#set(SUNDIALS_DIR "${TPL_ROOT}/sundials-6.7.0-ihjcn5jozjo6hqxvueljdahsvpg4fpyr" CACHE PATH "")
-
 set(UMPIRE_DIR "${TPL_ROOT}/umpire-2024.07.0-h4aizqln4js5uo6o5dnkkjadcq5apw37" CACHE PATH "")
-
-#set(TRIBOL_DIR "${TPL_ROOT}/tribol-0.1.0.18-neize4eyd3wxmeuui44az2x5ecqfe2pd" CACHE PATH "")
 
 #------------------------------------------------------------------------------
 # Devtools
