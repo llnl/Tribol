@@ -13,10 +13,12 @@
 /*
  * Version Information
  */
+/* clang-format off */
 #define TRIBOL_VERSION_MAJOR @TRIBOL_VERSION_MAJOR@
 #define TRIBOL_VERSION_MINOR @TRIBOL_VERSION_MINOR@
 #define TRIBOL_VERSION_PATCH @TRIBOL_VERSION_PATCH@
-#define TRIBOL_VERSION_FULL  "@TRIBOL_VERSION_FULL@"
+#define TRIBOL_VERSION_FULL "@TRIBOL_VERSION_FULL@"
+/* clang-format on */
 
 /*
  * Directories
