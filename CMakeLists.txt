@@ -45,7 +45,7 @@ if ("${PROJECT_SOURCE_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
     # Set some default BLT options before loading BLT only if not included in
     # another project
     if (NOT BLT_CXX_STD)
-        set(BLT_CXX_STD "c++17" CACHE STRING "")
+        set(BLT_CXX_STD "c++14" CACHE STRING "")
     endif()
 
     # These BLT tools are not used in Tribol, turn them off
