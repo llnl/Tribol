@@ -3,14 +3,9 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include "tribol/utils/Math.hpp"
 #include "tribol/integ/FE.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
 
-#include "axom/slic.hpp"
-
-#include <algorithm>
-#include <cmath>
+#include "tribol/utils/Math.hpp"
 
 namespace tribol {
 
@@ -207,138 +202,6 @@ TRIBOL_HOST_DEVICE void WachspressBasis( const RealT* const x, const RealT pX, c
 }
 
 //------------------------------------------------------------------------------
-void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA, const int numNodes, RealT xi[2] )
-{
-#if !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( numNodes != 4, "InvIso: routine only for 4 node quads." );
-#endif
-
-  bool convrg = false;
-  int kmax = 15;
-  RealT xtol = 1.E-12;
-
-  RealT x_sol[2] = { 0., 0. };
-
-  // derivatives of the Jacobian wrt (xi,eta)
-  RealT djde_11 = 0.;
-  RealT djde_x_12 = 0.25 * ( xA[0] - xA[1] + xA[2] - xA[3] );
-  RealT djde_y_12 = 0.25 * ( yA[0] - yA[1] + yA[2] - yA[3] );
-  RealT djde_z_12 = 0.25 * ( zA[0] - zA[1] + zA[2] - zA[3] );
-  RealT djde_22 = 0.;
-
-  // loop over newton iterations
-  for ( int k = 0; k < kmax; ++k ) {
-    // evaluate Jacobian
-    RealT j_x_1 = 0.25 * ( xA[0] * ( 1. + x_sol[1] ) - xA[1] * ( 1. + x_sol[1] ) - xA[2] * ( 1. - x_sol[1] ) +
-                           xA[3] * ( 1. - x_sol[1] ) );
-
-    RealT j_y_1 = 0.25 * ( yA[0] * ( 1. + x_sol[1] ) - yA[1] * ( 1. + x_sol[1] ) - yA[2] * ( 1. - x_sol[1] ) +
-                           yA[3] * ( 1. - x_sol[1] ) );
-
-    RealT j_z_1 = 0.25 * ( zA[0] * ( 1. + x_sol[1] ) - zA[1] * ( 1. + x_sol[1] ) - zA[2] * ( 1. - x_sol[1] ) +
-                           zA[3] * ( 1. - x_sol[1] ) );
-
-    RealT j_x_2 = 0.25 * ( xA[0] * ( 1. + x_sol[0] ) + xA[1] * ( 1. - x_sol[0] ) - xA[2] * ( 1. - x_sol[0] ) -
-                           xA[3] * ( 1. + x_sol[0] ) );
-
-    RealT j_y_2 = 0.25 * ( yA[0] * ( 1. + x_sol[0] ) + yA[1] * ( 1. - x_sol[0] ) - yA[2] * ( 1. - x_sol[0] ) -
-                           yA[3] * ( 1. + x_sol[0] ) );
-
-    RealT j_z_2 = 0.25 * ( zA[0] * ( 1. + x_sol[0] ) + zA[1] * ( 1. - x_sol[0] ) - zA[2] * ( 1. - x_sol[0] ) -
-                           zA[3] * ( 1. + x_sol[0] ) );
-
-    // evaluate the residual
-    RealT f_x =
-        x[0] - 0.25 * ( ( 1. + x_sol[0] ) * ( 1. + x_sol[1] ) * xA[0] + ( 1. - x_sol[0] ) * ( 1. + x_sol[1] ) * xA[1] +
-                        ( 1. - x_sol[0] ) * ( 1. - x_sol[1] ) * xA[2] + ( 1. + x_sol[0] ) * ( 1. - x_sol[1] ) * xA[3] );
-
-    RealT f_y =
-        x[1] - 0.25 * ( ( 1. + x_sol[0] ) * ( 1. + x_sol[1] ) * yA[0] + ( 1. - x_sol[0] ) * ( 1. + x_sol[1] ) * yA[1] +
-                        ( 1. - x_sol[0] ) * ( 1. - x_sol[1] ) * yA[2] + ( 1. + x_sol[0] ) * ( 1. - x_sol[1] ) * yA[3] );
-
-    RealT f_z =
-        x[2] - 0.25 * ( ( 1. + x_sol[0] ) * ( 1. + x_sol[1] ) * zA[0] + ( 1. - x_sol[0] ) * ( 1. + x_sol[1] ) * zA[1] +
-                        ( 1. - x_sol[0] ) * ( 1. - x_sol[1] ) * zA[2] + ( 1. + x_sol[0] ) * ( 1. - x_sol[1] ) * zA[3] );
-
-    // compute J' * J
-    RealT JTJ_11 = j_x_1 * j_x_1 + j_y_1 * j_y_1 + j_z_1 * j_z_1;
-    RealT JTJ_12 = j_x_1 * j_x_2 + j_y_1 * j_y_2 + j_z_1 * j_z_2;
-    // RealT JTJ_21 = JTJ_12;
-    RealT JTJ_22 = j_x_2 * j_x_2 + j_y_2 * j_y_2 + j_z_2 * j_z_2;
-    ;
-
-    // compute J' * F
-    RealT JTF_1 = j_x_1 * f_x + j_y_1 * f_y + j_z_1 * f_z;
-    RealT JTF_2 = j_x_2 * f_x + j_y_2 * f_y + j_z_2 * f_z;
-
-    // for first few steps don't do exact Newton.
-    RealT cm_11 = JTJ_11;  //- (djde_11 * f_x + djde_11 * f_y + djde_11 * f_z);
-    RealT cm_12 = JTJ_12;  //- (djde_x_12 * f_x + djde_y_12 * f_y + djde_z_12 * f_z);
-    RealT cm_21 = cm_12;
-    RealT cm_22 = JTJ_22;  //- (djde_22 * f_x + djde_22 * f_y + djde_22 * f_z);
-
-    // do exact Newton for steps beyond first few
-    if ( k > 2 )  // set to 2 per mortar method testing
-    {
-      cm_11 += -( djde_11 * f_x + djde_11 * f_y + djde_11 * f_z );
-      cm_12 += -( djde_x_12 * f_x + djde_y_12 * f_y + djde_z_12 * f_z );
-      cm_21 = cm_12;
-      cm_22 += -( djde_22 * f_x + djde_22 * f_y + djde_22 * f_z );
-    }
-
-    RealT detI = 1. / ( cm_11 * cm_22 - cm_12 * cm_21 );
-
-    RealT cmi_11 = cm_22 * detI;
-    RealT cmi_22 = cm_11 * detI;
-    RealT cmi_12 = -cm_12 * detI;
-    RealT cmi_21 = -cm_21 * detI;
-
-    RealT dxi_1 = cmi_11 * JTF_1 + cmi_12 * JTF_2;
-    RealT dxi_2 = cmi_21 * JTF_1 + cmi_22 * JTF_2;
-
-    x_sol[0] += dxi_1;
-    x_sol[1] += dxi_2;
-
-    RealT abs_dxi_1 = std::abs( dxi_1 );
-    RealT abs_dxi_2 = std::abs( dxi_2 );
-
-    if ( abs_dxi_1 <= xtol && abs_dxi_2 <= xtol ) {
-      convrg = true;
-      xi[0] = x_sol[0];
-      xi[1] = x_sol[1];
-
-      //       check to make sure point is inside isoparametric quad
-      bool in_quad = true;
-      if ( std::abs( xi[0] ) > 1. || std::abs( xi[1] ) > 1. ) {
-        if ( std::abs( xi[0] ) > 1. + 100 * xtol ||
-             std::abs( xi[1] ) > 1. + 100 * xtol )  // should have some tolerance dependent conv tol?
-        {
-          in_quad = false;
-        } else {
-          xi[0] = std::min( xi[0], 1. );
-          xi[1] = std::min( xi[1], 1. );
-          xi[0] = std::max( xi[0], -1. );
-          xi[1] = std::max( xi[1], -1. );
-        }
-      }
-
-#if !defined( TRIBOL_USE_ENZYME )
-      SLIC_WARNING_IF( !in_quad, "InvIso(): (xi,eta) coordinate does not lie "
-                                     << "inside isoparametric quad." );
-#endif
-
-      return;
-    }
-  }
-
-#if !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( !convrg, "InvIso: Newtons method did not converge." );
-#endif
-
-  return;
-}
-
-//------------------------------------------------------------------------------
 void FwdMapLinTri( const RealT xi[2], RealT xa[3], RealT ya[3], RealT za[3], RealT x[3] )
 {
   // initialize output array
@@ -376,74 +239,6 @@ void FwdMapLinQuad( const RealT xi[2], RealT xa[4], RealT ya[4], RealT za[4], Re
     x[1] += ya[j] * phi[j];
     x[2] += za[j] * phi[j];
   }
-  return;
-}
-
-//------------------------------------------------------------------------------
-void LinIsoTriShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi )
-{
-  switch ( a ) {
-    case 0:
-      phi = 1 - xi - eta;
-      break;
-    case 1:
-      phi = xi;
-      break;
-    case 2:
-      phi = eta;
-      break;
-    default:
-#if !defined( TRIBOL_USE_ENZYME )
-      SLIC_ERROR( "LinIsoTriShapeFunc: node id is not between 0 and 2." );
-#endif
-      break;
-  }
-
-  return;
-}
-
-//------------------------------------------------------------------------------
-void LinIsoTriShapeFunc( const RealT* xi, RealT* phi )
-{
-  phi[0] = 1.0 - xi[0] - xi[1];
-  phi[1] = xi[0];
-  phi[2] = xi[1];
-}
-
-//------------------------------------------------------------------------------
-void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi )
-{
-  RealT xi_node, eta_node;
-  switch ( a ) {
-    case 0:
-      xi_node = 1.;
-      eta_node = 1.;
-      break;
-    case 1:
-      xi_node = -1.;
-      eta_node = 1.;
-      break;
-    case 2:
-      xi_node = -1.;
-      eta_node = -1.;
-      break;
-    case 3:
-      xi_node = 1.;
-      eta_node = -1.;
-      break;
-    default:
-#if !defined( TRIBOL_USE_ENZYME )
-      SLIC_ERROR( "LinIsoQuadShapeFunc: node id is not between 0 and 3." );
-#endif
-      return;
-  }
-
-  phi = 0.25 * ( 1. + xi_node * xi ) * ( 1. + eta_node * eta );
-
-#if !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( phi > 1.0 || phi < 0.0, "LinIsoQuadShapeFunc: phi is " << phi << " not between 0. and 1." );
-#endif
-
   return;
 }
 

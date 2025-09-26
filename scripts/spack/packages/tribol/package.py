@@ -147,7 +147,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     depends_on("python", when="+devtools")
     depends_on("py-shroud", when="+devtools+fortran")
     depends_on("py-sphinx", when="+devtools")
-    depends_on("llvm@14+clang+python", when="+devtools")
+    depends_on("llvm@19+clang", when="+devtools")
 
     conflicts("+cuda", when="+rocm")
     conflicts("+openmp", when="+rocm")
@@ -202,8 +202,6 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
                     entries.append(cmake_cache_string("BLT_EXE_LINKER_FLAGS", flags, description))
         else:
             entries.append(cmake_cache_option("ENABLE_FORTRAN", False))
-
-        entries.append(cmake_cache_string("BLT_CXX_STD", "c++14", ""))
 
         # Add optimization flag workaround for Debug builds with
         # cray compiler or newer HIP

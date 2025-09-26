@@ -79,7 +79,7 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
     }
     // TODO add the following if they are implemented with Lagrange multipliers:
     //
-    // 1) contact_model == COULOMB
+    // 1) contact_model == FRICTION_COULOMB
     // 2) contact_case == TIED_NORMAL
     // 3) contact_case == TIED_FULL
     //
@@ -133,6 +133,21 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
   cs->getMfemMeshData()->ClearAllPenaltyData();
   cs->getMfemMeshData()->SetMesh1KinematicConstantPenalty( mesh1_penalty );
   cs->getMfemMeshData()->SetMesh2KinematicConstantPenalty( mesh2_penalty );
+}
+
+void setMfemViscousDampingCoeff( IndexT cs_id, RealT mesh1_coeff, RealT mesh2_coeff )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF(
+      !cs->hasMfemData(),
+      "Coupling scheme does not contain MFEM data. "
+      "Create the coupling scheme using registerMfemCouplingScheme() to set the viscous damping coefficient." );
+  cs->getMfemMeshData()->SetMesh1ViscousDampingCoeff( mesh1_coeff );
+  cs->getMfemMeshData()->SetMesh2ViscousDampingCoeff( mesh2_coeff );
 }
 
 void setMfemKinematicElementPenalty( IndexT cs_id, mfem::Coefficient& modulus_coefficient )
@@ -450,6 +465,13 @@ void updateMfemParallelDecomposition()
           setRatePercentPenalty( mesh_ids[0], *mfem_data->GetMesh1RatePercentPenalty() );
           setRatePercentPenalty( mesh_ids[1], *mfem_data->GetMesh2RatePercentPenalty() );
         }
+      }
+      if ( cs.getContactModel() == VISCOUS_TANGENTIAL ) {
+        SLIC_ERROR_ROOT_IF(
+            !mfem_data->GetMesh1ViscousDampingCoeff() || !mfem_data->GetMesh2ViscousDampingCoeff(),
+            "Tangential viscous damping coefficients have not been set.  Call setMfemViscousDampingCoeff()." );
+        setViscousDampingCoeff( mesh_ids[0], *mfem_data->GetMesh1ViscousDampingCoeff() );
+        setViscousDampingCoeff( mesh_ids[1], *mfem_data->GetMesh2ViscousDampingCoeff() );
       }
     }
   }

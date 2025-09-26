@@ -689,6 +689,100 @@ void TestMesh::setupContactMeshTet( int numElemsX1, int numElemsY1, int numElems
 
 }  // end setupContactMeshTet()
 //------------------------------------------------------------------------------
+void TestMesh::rotateContactMesh( const int mesh_id, RealT theta_x, RealT theta_y, RealT theta_z, RealT shift_x,
+                                  RealT shift_y, RealT shift_z )
+{
+  // mortar is block 1, mesh_id 0
+  // nonmortar is block 2, mesh_id 1
+  int num_nodes = 0;
+  int offset = 0;
+  if ( mesh_id == 0 ) {
+    num_nodes = this->numMortarNodes;
+  } else if ( mesh_id == 1 ) {
+    num_nodes = this->numNonmortarNodes;
+    offset = this->numMortarNodes;
+  } else {
+    SLIC_ERROR( "rotateContactMesh(): invalid mesh id" );
+    return;
+  }
+
+  if ( this->x == nullptr || this->y == nullptr || this->z == nullptr ) {
+    SLIC_ERROR( "rotateContactMesh(): must setup contact mesh prior to calling this routine." );
+  }
+
+  theta_x *= M_PI / 180;
+  theta_y *= M_PI / 180;
+  theta_z *= M_PI / 180;
+
+  RealT alpha = theta_z;
+  RealT beta = theta_y;
+  RealT gamma = theta_x;
+
+  RealT rot00 = std::cos( alpha ) * std::cos( beta );
+  RealT rot01 = std::cos( alpha ) * std::sin( beta ) * std::sin( gamma ) - std::sin( alpha ) * std::cos( gamma );
+  RealT rot02 = std::cos( alpha ) * std::sin( beta ) * std::cos( gamma ) + std::sin( alpha ) * std::sin( gamma );
+  RealT rot10 = std::sin( alpha ) * std::cos( beta );
+  RealT rot11 = std::sin( alpha ) * std::sin( beta ) * std::sin( gamma ) + std::cos( alpha ) * std::cos( gamma );
+  RealT rot12 = std::sin( alpha ) * std::sin( beta ) * std::cos( gamma ) - std::cos( alpha ) * std::sin( gamma );
+  RealT rot20 = -std::sin( beta );
+  RealT rot21 = std::cos( beta ) * std::sin( gamma );
+  RealT rot22 = std::cos( beta ) * std::cos( gamma );
+
+  for ( int i = 0; i < num_nodes; ++i ) {
+    int idx = offset + i;
+
+    // perform shift
+    RealT x_shifted = this->x[idx] - shift_x;
+    RealT y_shifted = this->y[idx] - shift_y;
+    RealT z_shifted = this->z[idx] - shift_z;
+
+    // perform rotation
+    RealT x_temp = x_shifted * rot00 + y_shifted * rot01 + z_shifted * rot02;
+    RealT y_temp = x_shifted * rot10 + y_shifted * rot11 + z_shifted * rot12;
+    RealT z_temp = x_shifted * rot20 + y_shifted * rot21 + z_shifted * rot22;
+
+    // shift back
+    x_temp += shift_x;
+    y_temp += shift_y;
+    z_temp += shift_z;
+
+    this->x[idx] = x_temp;
+    this->y[idx] = y_temp;
+    this->z[idx] = z_temp;
+  }
+}
+
+//------------------------------------------------------------------------------
+void TestMesh::translateContactMesh( const int mesh_id, RealT shift_x, RealT shift_y, RealT shift_z )
+{
+  // mortar is block 1, mesh_id 0
+  // nonmortar is block 2, mesh_id 1
+  int num_nodes = 0;
+  int offset = 0;
+  if ( mesh_id == 0 ) {
+    num_nodes = this->numMortarNodes;
+  } else if ( mesh_id == 1 ) {
+    num_nodes = this->numNonmortarNodes;
+    offset = this->numMortarNodes;
+  } else {
+    SLIC_ERROR( "translateContactMesh(): invalid mesh id" );
+    return;
+  }
+
+  if ( this->x == nullptr || this->y == nullptr || this->z == nullptr ) {
+    SLIC_ERROR( "translateContactMesh(): must setup contact mesh prior to calling this routine." );
+  }
+
+  for ( int i = 0; i < num_nodes; ++i ) {
+    int idx = offset + i;
+
+    this->x[idx] += shift_x;
+    this->y[idx] += shift_y;
+    this->z[idx] += shift_z;
+  }
+}
+
+//------------------------------------------------------------------------------
 void TestMesh::allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY, RealT valZ )
 {
   // Check that mesh ids are not the same. The TestMesh class was built around
@@ -1008,7 +1102,7 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
     setPlotCycleIncrement( csIndex, 1 );
   }
 
-  setLoggingLevel( csIndex, TRIBOL_WARNING );
+  setLoggingLevel( csIndex, LoggingLevel::WARNING );
 
   if ( method == COMMON_PLANE && enforcement == PENALTY ) {
     PenaltyConstraintType constraint_type =

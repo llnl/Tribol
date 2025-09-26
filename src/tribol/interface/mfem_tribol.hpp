@@ -152,6 +152,17 @@ void setMfemRatePercentPenalty( IndexT cs_id, RealT mesh1_ratio, RealT mesh2_rat
 void setMfemKinematicPenaltyScale( IndexT cs_id, RealT mesh1_scale, RealT mesh2_scale );
 
 /**
+ * @brief Adds a tangential viscous damping coefficient to each mesh
+ *
+ * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
+ *
+ * @param cs_id The ID of the coupling scheme with the MFEM mesh
+ * @param mesh1_coeff Tangential viscous damping coefficient for the first contact surface mesh
+ * @param mesh2_coeff Tangential viscous damping coefficient for the second contact surface mesh
+ */
+void setMfemViscousDampingCoeff( IndexT cs_id, RealT mesh1_coeff, RealT mesh2_coeff );
+
+/**
  * @brief Computes element thickness for the volume elements associated with the contact surface mesh.
  *
  * Element thickness is calculated at the origin of the isoparametric volume element in the direction given by the

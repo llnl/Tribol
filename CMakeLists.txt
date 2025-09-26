@@ -45,7 +45,7 @@ if ("${PROJECT_SOURCE_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
     # Set some default BLT options before loading BLT only if not included in
     # another project
     if (NOT BLT_CXX_STD)
-        set(BLT_CXX_STD "c++14" CACHE STRING "")
+        set(BLT_CXX_STD "c++17" CACHE STRING "")
     endif()
 
     # These BLT tools are not used in Tribol, turn them off
@@ -128,9 +128,44 @@ if (TRIBOL_STYLE_CI_ONLY)
 endif()
 
 #------------------------------------------------------------------------------
-# Add TPLs and source directories
+# Add TPLs
 #------------------------------------------------------------------------------
 include(cmake/SetupThirdParty.cmake)
+
+#------------------------------------------------------------------------------
+# Set up TRIBOL_DEBUG compiler define string, as appropriate, based on config
+# type. Result is stored in TRIBOL_DEBUG_DEFINE_STRING cache variable
+#------------------------------------------------------------------------------
+set(TRIBOL_DEBUG_DEFINE_STRING "")
+
+# Handle the three valid values for TRIBOL_DEBUG_DEFINE: {on, off, default}
+string(TOUPPER "${TRIBOL_DEBUG_DEFINE}" _tribol_debug_define_upper)
+if("${_tribol_debug_define_upper}" MATCHES "ON|TRUE")
+  set(TRIBOL_DEBUG_DEFINE_STRING "TRIBOL_DEBUG")
+elseif("${_tribol_debug_define_upper}" MATCHES "OFF|FALSE")
+  # no-op
+elseif("${_tribol_debug_define_upper}" MATCHES "DEFAULT")
+  # Default behavior is to be on for Debug and RelWithDebInfo configurations and off otherwise
+  if(NOT CMAKE_CONFIGURATION_TYPES) # This case handles single-config generators, e.g. make
+      if( CMAKE_BUILD_TYPE MATCHES "(Debug|RelWithDebInfo)" )
+        set(TRIBOL_DEBUG_DEFINE_STRING "TRIBOL_DEBUG")
+      endif()
+  else () # This case handles multi-config generators, e.g. MSVC
+      set(TRIBOL_DEBUG_DEFINE_STRING "$<$<CONFIG:Debug,RelWithDebInfo>:TRIBOL_DEBUG>")
+  endif()
+else()  # Handle bad value for TRIBOL_DEBUG_DEFINE config variable
+  message(FATAL_ERROR 
+    "Invalid value for TRIBOL_DEBUG_DEFINE. Must be 'DEFAULT', 'ON' or 'OFF'; was '${TRIBOL_DEBUG_DEFINE}'")
+endif()
+
+set(TRIBOL_DEBUG_DEFINE_STRING "${TRIBOL_DEBUG_DEFINE_STRING}" CACHE STRING "" FORCE)
+# Define AXOM_DEBUG for SLIC macros
+string(REPLACE "TRIBOL" "AXOM" AXOM_DEBUG_DEFINE_STRING TRIBOL_DEBUG_DEFINE_STRING)
+set(AXOM_DEBUG_DEFINE_STRING "${AXOM_DEBUG_DEFINE_STRING}" CACHE STRING "" FORCE)
+
+#------------------------------------------------------------------------------
+# Add source directory
+#------------------------------------------------------------------------------
 add_subdirectory(src)
 
 if ( TRIBOL_ENABLE_DOCS )

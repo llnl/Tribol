@@ -893,6 +893,34 @@ class MfemMeshData {
   const RealT* GetMesh2RatePercentPenalty() const { return rate_percent_ratio_2_.get(); }
 
   /**
+   * @brief Sets the tangential viscous damping coefficient on mesh 1
+   *
+   * @param coeff coefficient for viscous damping
+   */
+  void SetMesh1ViscousDampingCoeff( RealT coeff ) { viscous_damping_coeff_1_ = std::make_unique<RealT>( coeff ); }
+
+  /**
+   * @brief Sets the tangential viscous damping coefficient on mesh 2
+   *
+   * @param coeff coefficient for viscous damping
+   */
+  void SetMesh2ViscousDampingCoeff( RealT coeff ) { viscous_damping_coeff_2_ = std::make_unique<RealT>( coeff ); }
+
+  /**
+   * @brief Get the tangential viscous damping coefficient for the first registered Tribol mesh
+   *
+   * @return const RealT*
+   */
+  const RealT* GetMesh1ViscousDampingCoeff() const { return viscous_damping_coeff_1_.get(); }
+
+  /**
+   * @brief Get the tangential viscous damping coefficient for the second registered Tribol mesh
+   *
+   * @return const RealT*
+   */
+  const RealT* GetMesh2ViscousDampingCoeff() const { return viscous_damping_coeff_2_.get(); }
+
+  /**
    * @brief Get a pointer to the element thickness array for the first Tribol
    * registered mesh
    *
@@ -1283,6 +1311,16 @@ class MfemMeshData {
    * Tribol registered mesh
    */
   std::unique_ptr<RealT> rate_percent_ratio_2_;
+
+  /**
+   * @brief Tangential viscous damping coefficient for the first Tribol registered mesh
+   */
+  std::unique_ptr<RealT> viscous_damping_coeff_1_;
+
+  /**
+   * @brief Tangential viscous damping coefficient for the second Tribol registered mesh
+   */
+  std::unique_ptr<RealT> viscous_damping_coeff_2_;
 
   /**
    * @brief Stores element thicknesses for element-based penalty calculations on

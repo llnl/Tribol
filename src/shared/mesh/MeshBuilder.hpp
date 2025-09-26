@@ -55,9 +55,11 @@ class MeshBuilder {
    * @param n_x_els Number of elements in the x direction (>0).
    * @param n_y_els Number of elements in the y direction (>0).
    * @param n_z_els Number of elements in the z direction (>0).
+   * @param elem_type The type of elements to use in the mesh (default is HEXAHEDRON).
    * @return A new MeshBuilder object representing the cube mesh.
    */
-  static MeshBuilder CubeMesh( int n_x_els, int n_y_els, int n_z_els );
+  static MeshBuilder CubeMesh( int n_x_els, int n_y_els, int n_z_els,
+                               mfem::Element::Type elem_type = mfem::Element::HEXAHEDRON );
 
   /**
    * @brief Creates a hypercube mesh occupying the unit hypercube, [0, 1]^dim.

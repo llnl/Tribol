@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: (MIT)
 
-cmake_minimum_required(VERSION 3.8 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
 
 @PACKAGE_INIT@
 
@@ -40,6 +40,10 @@ if(NOT TRIBOL_FOUND)
   set(TRIBOL_USE_UMPIRE "@TRIBOL_USE_UMPIRE@")
   set(TRIBOL_USE_RAJA   "@TRIBOL_USE_RAJA@")
   set(TRIBOL_USE_ENZYME "@TRIBOL_USE_ENZYME@")
+
+  # Configuration for Tribol compiler defines
+  set(TRIBOL_DEBUG_DEFINE         "@TRIBOL_DEBUG_DEFINE@")
+  set(TRIBOL_DEBUG_DEFINE_STRING  "@TRIBOL_DEBUG_DEFINE_STRING@")
   
   #----------------------------------------------------------------------------
   # Bring in required dependencies for this Tribol configuration

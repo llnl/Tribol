@@ -160,10 +160,9 @@ bool MeshElemData::isValidRatePenalty( PenaltyEnforcementOptions& pen_options )
         SLIC_WARNING( "MeshElemData::isValidRatePenalty(): "
                       << "percent rate penalty data not set." );
         return false;
-      } else if ( this->m_rate_percent_stiffness < pen_options.tiny_penalty ||
-                  this->m_rate_percent_stiffness > ( 1. - pen_options.tiny_penalty ) ) {
+      } else if ( this->m_rate_percent_stiffness < 0.0 ) {
         SLIC_WARNING( "MeshElemData::isValidRatePenalty(): "
-                      << "rate percent penalty not in (0,1)." );
+                      << "rate percent penalty less than 0." );
         return false;
       }
       break;
@@ -462,7 +461,7 @@ bool MeshData::computeFaceData( ExecutionMode exec_mode, ElemNormalMethod elem_n
 }  // end MeshData::computeFaceData()
 
 template bool MeshData::computeFaceData<PalletAvgNormal>( ExecutionMode, PalletAvgNormal );
-template bool MeshData::computeFaceData<QuadCentroidNormal>( ExecutionMode, QuadCentroidNormal );
+template bool MeshData::computeFaceData<ElementCentroidNormal>( ExecutionMode, ElementCentroidNormal );
 
 //------------------------------------------------------------------------------
 RealT MeshData::computeEdgeLength( int faceId )
@@ -667,6 +666,18 @@ TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceNormal( int const face_id, Real
   return;
 
 }  // end MeshData::getFaceNormal()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceCentroid( int const face_id, RealT* cx ) const
+{
+  for ( int d{ 0 }; d < spatialDimension(); ++d ) {
+    cx[d] = m_c[d][face_id];
+  }
+  return;
+
+}  // end MeshData::getFaceNormal()
+
+//------------------------------------------------------------------------------
 
 }  // namespace tribol
 

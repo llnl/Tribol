@@ -7,6 +7,7 @@
 
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/common/Parameters.hpp"
+#include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
@@ -26,10 +27,15 @@ namespace tribol {
 /*!
  *  Perform geometry/proximity checks 1-4
  */
-TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, const MeshData::Viewer& mesh1,
-                                    const MeshData::Viewer& mesh2, ContactMode mode, bool auto_contact_check,
-                                    RealT element_radius_multiplier )
+TRIBOL_HOST_DEVICE bool geomFilter( const CouplingScheme::Viewer& cs_view, IndexT element_id1, IndexT element_id2 )
 {
+  auto& mesh1 = cs_view.getMesh1View();
+  auto& mesh2 = cs_view.getMesh2View();
+  bool auto_contact_check = cs_view.getParameters().auto_contact_check;
+  // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
+  auto element_radius_multiplier = cs_view.getEffectiveBinningProximityScale();
+  auto mode = cs_view.getContactMode();
+
   /// CHECK #1: Check to make sure the two face ids are not the same
   ///           and the two mesh ids are not the same.
   if ( ( mesh1.meshId() == mesh2.meshId() ) && ( element_id1 == element_id2 ) ) {
@@ -40,13 +46,13 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
 
   /// CHECK #2: Auto-contact precludes faces that share a common
   ///           node(s). We want to preclude two adjacent faces from interacting
-  //            due to problematic configurations, such as corners where the
-  //            configuration and opposing normals appear to be in contact, but
-  //            are not.
-  //
-  //            Note: non-auto-contact coupling schemes should typically be amongst
-  //                  topologically disconnected surfaces unless it is known apriori that
-  //                  face-pairs with shared nodes can in fact contact.
+  ///           due to problematic configurations, such as corners where the
+  ///           configuration and opposing normals appear to be in contact, but
+  ///           are not.
+  ///
+  ///           Note: non-auto-contact coupling schemes should typically be amongst
+  ///                 topologically disconnected surfaces unless it is known apriori that
+  ///                 face-pairs with shared nodes can in fact contact.
   if ( auto_contact_check ) {
     for ( IndexT i{ 0 }; i < mesh1.numberOfNodesPerElement(); ++i ) {
       int node1 = mesh1.getGlobalNodeId( element_id1, i );
@@ -73,12 +79,13 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
     return false;
   }
 
-  /// CHECK #4 (3D): Perform radius check, which involves seeing if
-  ///                the distance between the two face vertex averaged
-  ///                centroid is less than the sum of the two face radii.
-  ///                The face radii are taken to be the magnitude of the
-  ///                longest vector from that face's vertex averaged
-  ///                centroid to one its nodes.
+  /// CHECK #4: Perform radius check, which involves seeing if
+  ///           the distance between the two face vertex averaged
+  ///           centroid is less than the sum of the two face radii
+  ///           premultiplied by a binning scale factor.
+  ///           The face radii are taken to be the magnitude of the
+  ///           longest vector from that face's vertex averaged
+  ///           centroid to one its nodes.
   RealT offset_tol = 0.05;
   if ( dim == 3 ) {
     RealT r1 = mesh1.getFaceRadius()[element_id1];
@@ -132,6 +139,12 @@ TRIBOL_HOST_DEVICE bool geomFilter( IndexT element_id1, IndexT element_id2, cons
       return false;
     }
   }  // end of dim == 2
+
+  /// Check #5: Check to see if there is a positive area of overlap when both faces/edges
+  ///           are projected onto an intermediate plane
+  if ( cs_view.pruneMethodFacePair( element_id1, element_id2 ) ) {
+    return false;
+  }
 
   // if we made it here we passed all checks
   return true;
@@ -207,16 +220,10 @@ class CartesianProduct : public SearchBase {
     ArrayT<int> countArray( 1, 1, m_coupling_scheme->getAllocatorId() );
     int* pCount = countArray.data();
 
-    ContactMode cmode = m_coupling_scheme->getContactMode();
-
-    bool auto_contact_check = m_coupling_scheme->getParameters().auto_contact_check;
-    // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
-    auto e_binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
-
+    const auto cs_view = m_coupling_scheme->getView();
     // count how many pairs are proximate
     forAllExec( m_coupling_scheme->getExecutionMode(), maxNumPairs,
-                [mesh1NumElems, mesh2NumElems, is_symm, isProximate, mesh1, mesh2, cmode, pCount, auto_contact_check,
-                 e_binning_proximity_scale] TRIBOL_HOST_DEVICE( IndexT i ) {
+                [cs_view, mesh1NumElems, mesh2NumElems, is_symm, isProximate, pCount] TRIBOL_HOST_DEVICE( IndexT i ) {
                   IndexT fromIdx = i / mesh2NumElems;
                   IndexT toIdx = i % mesh2NumElems;
                   if ( is_symm ) {
@@ -225,8 +232,7 @@ class CartesianProduct : public SearchBase {
                     fromIdx = row;
                     toIdx = i - offset;
                   }
-                  isProximate[i] =
-                      geomFilter( fromIdx, toIdx, mesh1, mesh2, cmode, auto_contact_check, e_binning_proximity_scale );
+                  isProximate[i] = geomFilter( cs_view, fromIdx, toIdx );
 #ifdef TRIBOL_USE_RAJA
                   RAJA::atomicAdd<RAJA::auto_atomic>( pCount, static_cast<int>( isProximate[i] ) );
 #else
@@ -273,7 +279,7 @@ class CartesianProduct : public SearchBase {
         } );
 
     SLIC_INFO( "Coupling scheme has " << contactPairs.size() << " pairs out of a maximum possible of " << maxNumPairs
-                                      << " = " << mesh1NumElems << " * " << mesh2NumElems << "." );
+                                      << "." );
   }
 
  private:
@@ -434,8 +440,7 @@ class GridSearch : public SearchBase {
         // TODO: Add extra filter by bbox
 
         // Preliminary geometry/proximity checks, SRW
-        bool contact = geomFilter( fromIdx, toIdx, mesh1, mesh2, m_coupling_scheme->getContactMode(),
-                                   m_coupling_scheme->getParameters().auto_contact_check, e_binning_proximity_scale );
+        bool contact = geomFilter( m_coupling_scheme->getView(), fromIdx, toIdx );
 
         if ( contact ) {
           contactPairs.emplace_back( fromIdx, toIdx, true );
@@ -568,29 +573,23 @@ class BvhSearch : public SearchBase {
     // with device kernels
     ArrayT<IndexT> filtered_candidates_data( 1, 1, m_coupling_scheme->getAllocatorId() );
     auto filtered_candidates = filtered_candidates_data.view();
-    const auto mesh1 = m_coupling_scheme->getMesh1().getView();
-    const auto mesh2 = m_coupling_scheme->getMesh2().getView();
-    auto cmode = m_coupling_scheme->getContactMode();
-    bool auto_contact_check = m_coupling_scheme->getParameters().auto_contact_check;
-    // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
-    auto e_binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
+    const auto cs_view = m_coupling_scheme->getView();
     // count the number of filtered proximate pairs
-    forAllExec( m_coupling_scheme->getExecutionMode(), m_candidates.size(),
-                [mesh1, mesh2, offsets_view, counts_view, candidates_view, filtered_candidates, cmode,
-                 auto_contact_check, e_binning_proximity_scale] TRIBOL_HOST_DEVICE( IndexT i ) {
-                  auto mesh1_elem = candidates_view[i];
-                  auto mesh2_elem = algorithm::binarySearch( offsets_view, counts_view, i );
-                  if ( geomFilter( mesh1_elem, mesh2_elem, mesh1, mesh2, cmode, auto_contact_check,
-                                   e_binning_proximity_scale ) ) {
+    forAllExec(
+        m_coupling_scheme->getExecutionMode(), m_candidates.size(),
+        [cs_view, offsets_view, counts_view, candidates_view, filtered_candidates] TRIBOL_HOST_DEVICE( IndexT i ) {
+          auto mesh1_elem = candidates_view[i];
+          auto mesh2_elem = algorithm::binarySearch( offsets_view, counts_view, i );
+          if ( geomFilter( cs_view, mesh1_elem, mesh2_elem ) ) {
 #ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicInc<AtomicPolicy>( filtered_candidates.data() );
+            RAJA::atomicInc<AtomicPolicy>( filtered_candidates.data() );
 #else
-                    ++filtered_candidates[0];
+            ++filtered_candidates[0];
 #endif
-                  } else {
-                    candidates_view[i] = -1;
-                  }
-                } );
+          } else {
+            candidates_view[i] = -1;
+          }
+        } );
 
     ArrayT<IndexT, 1, MemorySpace::Host> filtered_candidates_host( filtered_candidates_data );
     m_coupling_scheme->getInterfacePairs().resize( filtered_candidates_host[0] );

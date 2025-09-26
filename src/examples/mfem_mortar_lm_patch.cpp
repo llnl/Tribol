@@ -38,15 +38,6 @@
 
 #include <set>
 
-// Tribol includes
-#include "tribol/config.hpp"
-#include "tribol/common/Parameters.hpp"
-#include "tribol/interface/tribol.hpp"
-#include "tribol/interface/mfem_tribol.hpp"
-
-// Redecomp includes
-#include "redecomp/redecomp.hpp"
-
 #ifdef TRIBOL_USE_UMPIRE
 // Umpire includes
 #include "umpire/ResourceManager.hpp"
@@ -58,6 +49,18 @@
 // Axom includes
 #include "axom/CLI11.hpp"
 #include "axom/slic.hpp"
+
+// Redecomp includes
+#include "redecomp/redecomp.hpp"
+
+// Shared includes
+#include "shared/mesh/MeshBuilder.hpp"
+
+// Tribol includes
+#include "tribol/config.hpp"
+#include "tribol/common/Parameters.hpp"
+#include "tribol/interface/tribol.hpp"
+#include "tribol/interface/mfem_tribol.hpp"
 
 int main( int argc, char** argv )
 {
@@ -86,6 +89,8 @@ int main( int argc, char** argv )
   // device configuration string (see mfem::Device::Configure() for valid options). This example has been tested on
   // "cpu" and "cuda".
   std::string device_config = "cpu";
+  // Should we mesh with tet elements?
+  bool use_tets = false;
 
   // parse command line options
   axom::CLI::App app{ "mfem_mortar_lm_patch" };
@@ -99,13 +104,15 @@ int main( int argc, char** argv )
   app.add_option( "-d,--device", device_config,
                   "Device configuration string, see mfem::Device::Configure() for valid options." )
       ->capture_default_str();
+  app.add_option( "-t,--use-tets", use_tets, "Should we use tetrahedral elements?" )->capture_default_str();
   CLI11_PARSE( app, argc, argv );
 
   SLIC_INFO_ROOT( "Running mfem_mortar_lm_patch with the following options:" );
-  SLIC_INFO_ROOT( axom::fmt::format( "refine: {0}", ref_levels ) );
-  SLIC_INFO_ROOT( axom::fmt::format( "lambda: {0}", lambda ) );
-  SLIC_INFO_ROOT( axom::fmt::format( "mu:     {0}", mu ) );
-  SLIC_INFO_ROOT( axom::fmt::format( "device: {0}\n", device_config ) );
+  SLIC_INFO_ROOT( axom::fmt::format( "refine:   {0}", ref_levels ) );
+  SLIC_INFO_ROOT( axom::fmt::format( "lambda:   {0}", lambda ) );
+  SLIC_INFO_ROOT( axom::fmt::format( "mu:       {0}", mu ) );
+  SLIC_INFO_ROOT( axom::fmt::format( "device:   {0}", device_config ) );
+  SLIC_INFO_ROOT( axom::fmt::format( "use_tets: {0}\n", use_tets ) );
 
   // enable devices such as GPUs
   mfem::Device device( device_config );
@@ -114,8 +121,6 @@ int main( int argc, char** argv )
   }
 
   // fixed options
-  // location of mesh file. TRIBOL_REPO_DIR is defined in tribol/config.hpp
-  std::string mesh_file = TRIBOL_REPO_DIR "/data/two_hex_overlap.mesh";
   // boundary element attributes of mortar surface, the z = 1 plane of the first block
   std::set<int> mortar_attrs( { 4 } );
   // boundary element attributes of nonmortar surface, the z = 0.99 plane of the second block
@@ -135,26 +140,31 @@ int main( int argc, char** argv )
   // then create an mfem::ParMesh. Optionally, the mfem::ParMesh can be refined further on each rank by setting
   // par_ref_levels >= 1, though this is disabled below.
   timer.start();
-  // read serial mesh
-  mfem::Mesh serial_mesh( mesh_file );
-  // refine serial mesh
-  for ( int i{ 0 }; i < ref_levels; ++i ) {
-    serial_mesh.UniformRefinement();
-  }
-  mfem::ParMesh mesh( MPI_COMM_WORLD, serial_mesh );
-  serial_mesh.Clear();
-  // further refinement of parallel mesh
-  {
-    // set this to >= 1 to refine the mesh on each rank further
-    int par_ref_levels = 0;
-    for ( int i{ 0 }; i < par_ref_levels; ++i ) {
-      mesh.UniformRefinement();
-    }
-  }
+  // build mesh of 2 cubes
+  int nel_per_dir = std::pow( 2, ref_levels );
+  auto elem_type = use_tets ? mfem::Element::TETRAHEDRON : mfem::Element::HEXAHEDRON;
+  // clang-format off
+  mfem::ParMesh mesh = shared::ParMeshBuilder(MPI_COMM_WORLD, shared::MeshBuilder::Unify({
+    shared::MeshBuilder::CubeMesh(nel_per_dir, nel_per_dir, nel_per_dir, elem_type)
+      .updateBdrAttrib(3, 7)
+      .updateBdrAttrib(1, 3)
+      .updateBdrAttrib(4, 7)
+      .updateBdrAttrib(5, 1)
+      .updateBdrAttrib(6, 4),
+    shared::MeshBuilder::CubeMesh(nel_per_dir, nel_per_dir, nel_per_dir, elem_type)
+      .translate({0.0, 0.0, 0.99})
+      .updateBdrAttrib(1, 8)
+      .updateBdrAttrib(3, 7)
+      .updateBdrAttrib(4, 7)
+      .updateBdrAttrib(5, 1)
+      .updateBdrAttrib(8, 5)
+  }));
+  // clang-format on
   timer.stop();
   SLIC_INFO_ROOT( axom::fmt::format( "Time to create parallel mesh: {0:f}ms", timer.elapsedTimeInMilliSec() ) );
 
-  // Set up an MFEM data collection for output. We output data in Paraview and VisIt formats.
+  // Set up an MFEM data collection for output. We output data in Paraview and
+  // VisIt formats.
   mfem::ParaViewDataCollection paraview_datacoll( "mortar_patch_pv", &mesh );
   mfem::VisItDataCollection visit_datacoll( "mortar_patch_vi", &mesh );
 

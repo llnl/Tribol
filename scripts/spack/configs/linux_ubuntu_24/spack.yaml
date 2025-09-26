@@ -24,6 +24,10 @@ spack:
   # Regular TPLs do not need views
   view: false
 
+  include:
+    - ../defaults.yaml
+    - ../versions.yaml
+
   packages:
     all:
       target: [ivybridge]
@@ -162,15 +166,3 @@ spack:
       externals:
       - spec: py-sphinx@7.2.6
         prefix: /usr
-
-    # Globally lock version of third party libraries that work on this platform
-    axom:
-      require: "@0.10.1.2~shared~examples~fortran~lua~tools"
-    camp:
-      require: "@2024.07.0"
-    conduit:
-      variants: ~shared~test~examples~utilities
-    raja:
-      require: "@2024.07.0~shared~examples~exercises"
-    umpire:
-      require: "@2024.07.0~shared~examples"

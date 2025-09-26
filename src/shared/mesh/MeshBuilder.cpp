@@ -22,9 +22,9 @@ MeshBuilder MeshBuilder::SquareMesh( int n_x_els, int n_y_els )
   return mfem::Mesh::MakeCartesian2D( n_x_els, n_y_els, mfem::Element::QUADRILATERAL );
 }
 
-MeshBuilder MeshBuilder::CubeMesh( int n_x_els, int n_y_els, int n_z_els )
+MeshBuilder MeshBuilder::CubeMesh( int n_x_els, int n_y_els, int n_z_els, mfem::Element::Type elem_type )
 {
-  return mfem::Mesh::MakeCartesian3D( n_x_els, n_y_els, n_z_els, mfem::Element::HEXAHEDRON );
+  return mfem::Mesh::MakeCartesian3D( n_x_els, n_y_els, n_z_els, elem_type );
 }
 
 MeshBuilder MeshBuilder::HypercubeMesh( int dim, int n_els )
