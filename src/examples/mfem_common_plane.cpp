@@ -15,7 +15,8 @@
  *
  * The example uses the Tribol MFEM interface, which supports decomposed (MPI) meshes and has experimental support for
  * higher order meshes using low-order refinement of higher-order geometry representations. Comments in the main
- * function below give details on each step of the example code.
+ * function below give details on each step of the example code. The example code can run on HIP/CUDA, where
+ * available.
  *
  * Example runs (from repo root directory):
  *   - mpirun -np 4 {build_dir}/examples/mfem_common_plane_ex
