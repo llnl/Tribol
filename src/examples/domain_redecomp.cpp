@@ -202,7 +202,7 @@ void RedecompExample( mfem::ParMesh& pmesh, int order, double max_out_of_balance
   // Note: if you want to accept the default options for RedecompMesh (transfer
   // by elements and RCB partitioning), you can call the constructor with just
   // the mfem::ParMesh, i.e.
-  //   auto redecomp_mesh = redecomp::RedecompMesh(&pmesh);
+  //   auto redecomp_mesh = redecomp::RedecompMesh(pmesh);
   // See RedecompMesh.hpp for all available constructors
 
   axom::utilities::Timer timer{ false };
