@@ -839,12 +839,15 @@ int getTotalNumberOfContactPairs( IndexT cs_id )
 // note this routine is only for host calls
 #ifdef TRIBOL_USE_HOST
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-  auto comm = cs->getProblemComm();
-  int local_num_pairs = cs->getNumActivePairs();
-  int global_num_pairs = 0;
-  MPI_Allreduce( &local_num_pairs, &global_num_pairs, 1, MPI_INT, MPI_SUM, comm );
-  return global_num_pairs;
+  if ( cs != nullptr ) {
+    auto comm = cs->getProblemComm();
+    int local_num_pairs = cs->getNumActivePairs();
+    int global_num_pairs = 0;
+    MPI_Allreduce( &local_num_pairs, &global_num_pairs, 1, MPI_INT, MPI_SUM, comm );
+    return global_num_pairs;
+  }
 #endif
+  return 0;
 }
 
 //------------------------------------------------------------------------------
