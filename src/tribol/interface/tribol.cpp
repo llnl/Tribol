@@ -836,8 +836,6 @@ int getNumberOfContactPairsOnRank( IndexT cs_id )
 //------------------------------------------------------------------------------
 int getTotalNumberOfContactPairs( IndexT cs_id )
 {
-// note this routine is only for host calls
-#ifdef TRIBOL_USE_HOST
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   if ( cs != nullptr ) {
     auto comm = cs->getProblemComm();
@@ -846,7 +844,6 @@ int getTotalNumberOfContactPairs( IndexT cs_id )
     MPI_Allreduce( &local_num_pairs, &global_num_pairs, 1, MPI_INT, MPI_SUM, comm );
     return global_num_pairs;
   }
-#endif
   return 0;
 }
 
