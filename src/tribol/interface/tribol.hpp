@@ -498,7 +498,7 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* mesh_id1, I
  *
  * \param [in] cs_id coupling scheme id
  *
- * \return the number of contact pairs on rank 
+ * \return the number of contact pairs on rank
  */
 int getNumberOfContactPairsOnRank( IndexT cs_id );
 
