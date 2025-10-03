@@ -37,6 +37,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 - Added a lot more 2D and 3D computational geometry unit tests covering more face/edge configurations
 - Support for linear triangle meshes in Tribol's SINGLE_MORTAR method (exact Jacobians through Enzyme or approximate
   Jacobians)
+- Added API function to get the number of active contact pairs on a coupling scheme.
 
 ### Changed
 - Return negative timestep vote for non-null meshes with null velocity pointers.
