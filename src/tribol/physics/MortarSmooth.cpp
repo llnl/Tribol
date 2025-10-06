@@ -82,6 +82,7 @@ int ApplySmoothNormalEnzyme( CouplingScheme* cs )
   constexpr RealT del = 0.01;
 
 
+
   
 
   for ( auto& plane : planes_view ) {
@@ -109,7 +110,7 @@ int ApplySmoothNormalEnzyme( CouplingScheme* cs )
 
       constexpr int n_disp = 4;
   
-      StackArray<DeviceArray2D<RealT>, 4> blockJ( 2 );
+      StackArray<DeviceArray2D<RealT>, 9> blockJ( 2 );
       for ( int i{}; i < 2; ++i ) {
         for ( int j{}; j < 2; ++j ) {
           blockJ( i, j ) = DeviceArray2D<RealT>( n_disp, n_disp );
@@ -121,10 +122,20 @@ int ApplySmoothNormalEnzyme( CouplingScheme* cs )
 
       RealT jacobian[64] = {0.0};
 
+    RealT A0[2] = {coords[0], coords[1]};
+    RealT A1[2] = {coords[2], coords[3]};
+    RealT B0[2] = {coords[4], coords[5]};
+    RealT B1[2] = {coords[6], coords[7]};
+
+        RealT projections[2];
+        get_projections(A0, A1, B0, B1, projections, del);
+
+
+
       RealT lenA = sqrt((coords[2] - coords[0]) * (coords[2] - coords[0]) + (coords[3] - coords[1]) * (coords[3] - coords[1]));
       RealT lenB = sqrt((coords[6] - coords[4]) * (coords[6] - coords[4]) + (coords[7] - coords[5]) * (coords[7] - coords[5]));
     
-      ComputeSmoothMortarJacobianEnzyme(coords, del, k1, k2, num_quad_points, lenA, lenB, force, jacobian );
+      ComputeSmoothMortarJacobianEnzyme(coords, del, k1, k2, num_quad_points, lenA, projections, force, jacobian );
 
       
       int vdim_to_nodes[4] = { 0, 2, 1, 3 };
@@ -163,11 +174,18 @@ int ApplySmoothNormalEnzyme( CouplingScheme* cs )
       }
     } else if ( lm_opts.eval_mode == ImplicitEvalMode::MORTAR_GAP ||
                 lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL ) {
+                RealT A0[2] = {coords[0], coords[1]};
+                RealT A1[2] = {coords[2], coords[3]};
+                RealT B0[2] = {coords[4], coords[5]};
+                RealT B1[2] = {coords[6], coords[7]};
+
+        RealT projections[2];
+        get_projections(A0, A1, B0, B1, projections, del);
 
       constexpr int num_quad_points = 3;
       RealT lenA = sqrt((coords[2] - coords[0]) * (coords[2] - coords[0]) + (coords[3] - coords[1]) * (coords[3] - coords[1]));
       RealT lenB = sqrt((coords[6] - coords[4]) * (coords[6] - coords[4]) + (coords[7] - coords[5]) * (coords[7] - coords[5]));
-      ComputeSmoothMortarForceEnzyme( coords, del, k1, k2, num_quad_points, lenA, lenB, force);
+      ComputeSmoothMortarForceEnzyme( coords, del, k1, k2, num_quad_points, lenA, projections, force);
     }
     for ( int i = 0; i < size1; ++i ) {
       int node_id = mesh1.getGlobalNodeId( elem1, i );
@@ -335,48 +353,75 @@ void find_intersection(const RealT* A0, const RealT* A1, const RealT* p, const R
 }
 
 
+
+
 void get_projections(const RealT* A0, const RealT* A1, const RealT* B0, const RealT* B1, RealT* projections, RealT del) {
-    RealT nA[2] = {0.0};
     RealT nB[2] = {0.0}; 
-    find_normal(A0, A1, nA);
     find_normal(B0, B1, nB);
+    
     RealT end_points[2] = {-0.5, 0.5}; 
     for (int i = 0; i < 2; ++i) {
         RealT p[2] = {0.0};
-
-        RealT intersection[2] = {0.0};
-        RealT seg_intersection[2] = {0.0};
         iso_map(B0, B1, end_points[i], p);
+        
+        RealT intersection[2] = {0.0};
         find_intersection(A0, A1, p, nB, intersection);
 
+        // Convert intersection to parametric coordinate on A
         RealT dx = A1[0] - A0[0];
         RealT dy = A1[1] - A0[1];
         RealT len2 = dx*dx + dy*dy;
         RealT xiA = ((intersection[0] - A0[0]) * dx + (intersection[1] - A0[1]) * dy) / len2;
-        RealT nB_unit[2] = { nB[0], nB[1] };
-        RealT norm = std::sqrt(nB_unit[0]*nB_unit[0] + nB_unit[1]*nB_unit[1]);
-        nB_unit[0] /= norm;
-        nB_unit[1] /= norm;
-
-        RealT dx_gap = intersection[0] - p[0];
-        RealT dy_gap = intersection[1] - p[1];
-        RealT gap = dx_gap * nB_unit[0] + dy_gap * nB_unit[1];
-
-        if(segmentsIntersect(A0, A1, B0, B1, seg_intersection) &&  gap > 0.0) {
-
-                xiA = ((seg_intersection[0] - A0[0]) * dx + (seg_intersection[1] - A0[1]) * dy) / len2;
-                if (xiA < del) { 
-                  xiA = del;
-                }
-
-        }
-        xiA = xiA - 0.5;
+        
+        // Apply constraints and convert to reference interval
+        xiA = std::max(del, std::min(1.0 - del, xiA)) - 0.5;
         projections[i] = xiA;
     }
 }
 
 
-void compute_integration_bounds(const RealT* projections, RealT* integration_bounds) {
+// void get_projections(const RealT* A0, const RealT* A1, const RealT* B0, const RealT* B1, RealT* projections, RealT del) {
+//     RealT nA[2] = {0.0};
+//     RealT nB[2] = {0.0}; 
+//     find_normal(A0, A1, nA);
+//     find_normal(B0, B1, nB);
+//     RealT end_points[2] = {-0.5, 0.5}; 
+//     for (int i = 0; i < 2; ++i) {
+//         RealT p[2] = {0.0};
+
+//         RealT intersection[2] = {0.0};
+//         RealT seg_intersection[2] = {0.0};
+//         iso_map(B0, B1, end_points[i], p);
+//         find_intersection(A0, A1, p, nB, intersection);
+
+//         RealT dx = A1[0] - A0[0];
+//         RealT dy = A1[1] - A0[1];
+//         RealT len2 = dx*dx + dy*dy;
+//         RealT xiA = ((intersection[0] - A0[0]) * dx + (intersection[1] - A0[1]) * dy) / len2;
+//         RealT nB_unit[2] = { nB[0], nB[1] };
+//         RealT norm = std::sqrt(nB_unit[0]*nB_unit[0] + nB_unit[1]*nB_unit[1]);
+//         nB_unit[0] /= norm;
+//         nB_unit[1] /= norm;
+
+//         RealT dx_gap = intersection[0] - p[0];
+//         RealT dy_gap = intersection[1] - p[1];
+//         RealT gap = dx_gap * nB_unit[0] + dy_gap * nB_unit[1];
+
+//         if(segmentsIntersect(A0, A1, B0, B1, seg_intersection) &&  gap > 0.0) {
+
+//                 xiA = ((seg_intersection[0] - A0[0]) * dx + (seg_intersection[1] - A0[1]) * dy) / len2;
+//                 if (xiA < del) { 
+//                   xiA = del;
+//                 }
+
+//         }
+//         xiA = xiA - 0.5;
+//         projections[i] = xiA;
+//     }
+// }
+
+
+void compute_integration_bounds(const RealT* projections, RealT* integration_bounds, RealT del) {
     RealT xi_min = projections[0];
     RealT xi_max = projections[0];
     for (int i = 0; i < 2; ++i) {
@@ -389,17 +434,17 @@ void compute_integration_bounds(const RealT* projections, RealT* integration_bou
 
     }
 
-    if (xi_max < -0.5) {
-        xi_max = -0.5;
+    if (xi_max < -0.5 - del) {
+        xi_max = -0.5 - del;
     }
-    if(xi_min > 0.5) {
-        xi_min  = 0.5;
+    if(xi_min > 0.5 + del) {
+        xi_min  = 0.5 + del;
     }
-    if (xi_min < -0.5) { 
-        xi_min = -0.5;
+    if (xi_min < -0.5 - del) { 
+        xi_min = -0.5 -del;
     }
-    if (xi_max > 0.5) {
-        xi_max = 0.5;
+    if (xi_max > 0.5 + del) {
+        xi_max = 0.5 + del;
     }
 
     integration_bounds[0] = xi_min;
@@ -467,9 +512,9 @@ void compute_quadrature_point(const RealT* integration_bounds, const RealT* A0, 
     RealT eta_values[N];
     determine_legendre_nodes(N, eta_values);
 
-    for (int i = 0; i < N; ++i) {
-        eta_values[i] *= 0.5;
-    }
+    // for (int i = 0; i < N; ++i) {
+    //     eta_values[i] *= 0.5;
+    // }
 
     RealT xi_min = integration_bounds[0];
     RealT xi_max = integration_bounds[1];
@@ -497,43 +542,64 @@ void assign_weights(const RealT* integration_bounds, int N, RealT* weights) {
     }
 }
 
-RealT compute_gap(const RealT* p, const RealT* B0, const RealT* B1, const RealT* nB) {
-    RealT nB_orig[2] = {nB[0], nB[1]};
+RealT compute_gap(const RealT* p, const RealT* B0, const RealT* B1, const RealT* nA, const RealT* A0, const RealT* A1) {
+    RealT nA_orig[2] = {nA[0], nA[1]};
 
-    RealT len = std::sqrt(nB[0] * nB[0] + nB[1] * nB[1]);
-    nB_orig[0] /= len;
-    nB_orig[1] /= len;
+    RealT len = std::sqrt(nA[0] * nA[0] + nA[1] * nA[1]);
+    nA_orig[0] /= len;
+    nA_orig[1] /= len;
     RealT intersection[2] = {0.0};
-    find_intersection(B0, B1, p, nB_orig, intersection);
+    find_intersection(A0, A1, p, nA_orig, intersection);
 
 
     RealT dx = intersection[0] - p[0];
     RealT dy = intersection[1] - p[1];
 
-    RealT gap = dx * nB_orig[0] + dy * nB_orig[1];
+    RealT gap = dx * nA_orig[0] + dy * nA_orig[1];
+    gap *= -1;
+    // std::cout << "GAP: " << gap << std::endl;
     return gap;
 }
+
+
+// RealT compute_gap(const RealT* p, const RealT* B0, const RealT* B1, const RealT* nB, const RealT* A0, const RealT* A1) {
+//     RealT nB_orig[2] = {nB[0], nB[1]};
+
+//     RealT len = std::sqrt(nB[0] * nB[0] + nB[1] * nB[1]);
+//     nB_orig[0] /= len;
+//     nB_orig[1] /= len;
+//     RealT intersection[2] = {0.0};
+//     find_intersection(A0, A1, p, nB_orig, intersection);
+
+
+//     RealT dx = intersection[0] - p[0];
+//     RealT dy = intersection[1] - p[1];
+
+//     RealT gap = dx * nB_orig[0] + dy * nB_orig[1];
+//     return gap;
+// }
 
 RealT compute_modified_gap(RealT gap, RealT* nA, RealT* nB) {
     RealT dot = nA[0] * nB[0] + nA[1] * nB[1];
     RealT eta = (dot < 0) ? -dot:0.0;
 
-    // std::cout << "Gap: " << gap * eta << std::endl;
+    // std::cout << "GAP: " << gap * eta << std::endl;
     return gap * eta;
 }
 
 RealT compute_contact_potential(RealT gap, RealT k1, RealT k2) {
-    if (gap < 1e-10) {
+    if (gap > -1e-10) {
         return 0;
     }
-    RealT pot = k1 * (gap * gap) - k2 * (gap * gap * gap);
+    RealT gap1 = -gap;
+    RealT pot = k1 * (gap1 * gap1) - k2 * (gap1 * gap1 * gap1);
     return pot;
 }
 
 
 
 
-void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, RealT k2, int N, RealT lenA, RealT lenB, RealT* energy) {
+void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, RealT k2, int N, RealT lenA, RealT* projections, RealT* energy) {
     RealT A0[2] = {coords[0], coords[1]};
     RealT A1[2] = {coords[2], coords[3]};
     RealT B0[2] = {coords[4], coords[5]};
@@ -552,26 +618,26 @@ void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, R
     // std::cout << "Node B1: " << B1[0] << ", " << B1[1] << std::endl;
 
 
+// std::cout << "TRICK TURNED OFF" << std::endl;
 
+//   RealT AC[2] = { 0.5 * ( A0[0] + A1[0] ), 0.5 * ( A0[1] + A1[1] ) };
+//   RealT AR[2] = { 0.5 * ( A0[0] - A1[0] ), 0.5 * ( A0[1] - A1[1] ) };
+//   RealT normAR = 0.5 / std::sqrt( AR[0] * AR[0] + AR[1] * AR[1] );
 
-  RealT AC[2] = { 0.5 * ( A0[0] + A1[0] ), 0.5 * ( A0[1] + A1[1] ) };
-  RealT AR[2] = { 0.5 * ( A0[0] - A1[0] ), 0.5 * ( A0[1] - A1[1] ) };
-  RealT normAR = 0.5 / std::sqrt( AR[0] * AR[0] + AR[1] * AR[1] );
+//   RealT BC[2] = { 0.5 * ( B0[0] + B1[0] ), 0.5 * ( B0[1] + B1[1] ) };
+//   RealT BR[2] = { 0.5 * ( B1[0] - B0[0] ), 0.5 * ( B1[1] - B0[1] ) };
+//   RealT normBR = 0.5 / std::sqrt( BR[0] * BR[0] + BR[1] * BR[1] );
 
-  RealT BC[2] = { 0.5 * ( B0[0] + B1[0] ), 0.5 * ( B0[1] + B1[1] ) };
-  RealT BR[2] = { 0.5 * ( B1[0] - B0[0] ), 0.5 * ( B1[1] - B0[1] ) };
-  RealT normBR = 0.5 / std::sqrt( BR[0] * BR[0] + BR[1] * BR[1] );
+//   A0[0] = AC[0] + AR[0] * lenA * normAR;
+//   A0[1] = AC[1] + AR[1] * lenA * normAR;
 
-  A0[0] = AC[0] + AR[0] * lenA * normAR;
-  A0[1] = AC[1] + AR[1] * lenA * normAR;
+//   A1[0] = AC[0] - AR[0] * lenA * normAR;
+//   A1[1] = AC[1] - AR[1] * lenA * normAR;
+//   B0[0] = BC[0] - BR[0] * lenB * normBR;
+//   B0[1] = BC[1] - BR[1] * lenB * normBR;
 
-  A1[0] = AC[0] - AR[0] * lenA * normAR;
-  A1[1] = AC[1] - AR[1] * lenA * normAR;
-  B0[0] = BC[0] - BR[0] * lenB * normBR;
-  B0[1] = BC[1] - BR[1] * lenB * normBR;
-
-  B1[0] = BC[0] + BR[0] * lenB * normBR;
-  B1[1] = BC[1] + BR[1] * lenB * normBR;
+//   B1[0] = BC[0] + BR[0] * lenB * normBR;
+//   B1[1] = BC[1] + BR[1] * lenB * normBR;
 
 
 
@@ -623,11 +689,11 @@ void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, R
 
     else{
 
-    RealT projections[2];
-    get_projections(A0, A1, B0, B1, projections, del);
+    // RealT projections[2];
+    // get_projections(A0, A1, B0, B1, projections, del);
 
     RealT integration_bounds[2];
-    compute_integration_bounds(projections, integration_bounds);
+    compute_integration_bounds(projections, integration_bounds, del);
 
     RealT modified_bounds[2];
     modify_bounds(integration_bounds, del, modified_bounds);
@@ -636,22 +702,25 @@ void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, R
     modify_bounds_for_weight(integration_bounds, del, modified_bounds_w); 
 
     RealT quad_points[2 * N];
-    compute_quadrature_point(modified_bounds, A0, A1, N, quad_points);
+    compute_quadrature_point(modified_bounds, B0, B1, N, quad_points);
 
     RealT weights[N];
     assign_weights(modified_bounds_w, N, weights);
+    // std::cout << "Integration Bounds: " << modified_bounds[0] << ", " << modified_bounds[1] << std::endl;
 
     *energy = 0.0;
     for(int i = 0; i < N; ++i) {
         RealT p[2] = {quad_points[2 * i], quad_points[2 * i + 1]};
-        RealT gap = compute_gap(p, B0, B1, nB);
+        RealT gap = compute_gap(p, B0, B1, nA, A0, A1);
         RealT smooth_gap = compute_modified_gap(gap, nA, nB);
+        // std::cout << "GAP: " << gap << " at point: " << B0[0] << ", " << B0[1] << " and " << B1[0] << " , " << B1[1] << " and qp is: " << p[0] << " , " << p[1] << std::endl;
         RealT potential = compute_contact_potential(smooth_gap, k1, k2);
+        // std::cout << "ENERGY: " << potential * weights[i] << std::endl;
         *energy +=  weights[i] * potential;
     }
     // lenA = sqrt((coords[2] - coords[0]) * (coords[2] - coords[0]) + (coords[3] - coords[1]) * (coords[3] - coords[1]));
     *energy *= lenA * 0.5;
-    // std::cout << "energy: " << *energy << std::endl;
+    // std::cout << "ENERGY: " << *energy << std::endl;
 
 }}
 
@@ -680,21 +749,21 @@ void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, R
 
 
 
-void ComputeSmoothMortarForceEnzyme(RealT* coords, RealT del, RealT k1, RealT k2, int N, RealT lenA, RealT lenB, RealT* dE_dX) 
+void ComputeSmoothMortarForceEnzyme(RealT* coords, RealT del, RealT k1, RealT k2, int N, RealT lenA, RealT* projections, RealT* dE_dX) 
 {
     double dcoords[8] = {0.0};
     double E = 0.0;
     double dE = 1.0;
-    __enzyme_autodiff<void>( ComputeSmoothMortarEnergyEnzyme, enzyme_dup, coords, dcoords, enzyme_const, del, enzyme_const, k1, enzyme_const, k2, enzyme_const, N, enzyme_const, lenA, enzyme_const, lenB, enzyme_dup, &E, &dE);
+    __enzyme_autodiff<void>( ComputeSmoothMortarEnergyEnzyme, enzyme_dup, coords, dcoords, enzyme_const, del, enzyme_const, k1, enzyme_const, k2, enzyme_const, N, enzyme_const, lenA, enzyme_const, projections, enzyme_dup, &E, &dE);
     // std::cout << "Computed forces" << std::endl;
 
     for(int i = 0; i < 8; ++i) {
         dE_dX[i] = dcoords[i];
     }
 
-    // for(int i = 0; i < 8; ++i) {
-    //     std::cout << "Force[" << i << "]: " << dE_dX[i] << std::endl;
-    // }
+    for(int i = 0; i < 8; ++i) {
+        // std::cout << "Force[" << i << "]: " << dE_dX[i] << std::endl;
+    }
 }
 
 
@@ -709,7 +778,7 @@ void ComputeSmoothMortarForceEnzyme(RealT* coords, RealT del, RealT k1, RealT k2
 
 //------------------------------------------------------------------------------
 
-void ComputeSmoothMortarJacobianEnzyme(RealT* coords, RealT del, RealT k1, RealT k2, int N, RealT lenA, RealT lenB, RealT* force, RealT* d2E_d2X) {
+void ComputeSmoothMortarJacobianEnzyme(RealT* coords, RealT del, RealT k1, RealT k2, int N, RealT lenA, RealT* projections, RealT* force, RealT* d2E_d2X) {
     RealT dE[8] = {0.0};
     RealT d2E[8] = {0.0};
     // RealT dEf[8] = {0.0};
@@ -724,8 +793,8 @@ void ComputeSmoothMortarJacobianEnzyme(RealT* coords, RealT del, RealT k1, RealT
         RealT d2del = 0.0;
         RealT d2k2 = 0.0;
         RealT d2lenA = 0.0;
-        RealT d2lenB = 0.0;
-        __enzyme_fwddiff<void>( ComputeSmoothMortarForceEnzyme, coords, d2coords, del, d2del, k1, d2k1, k2, d2k2, N, lenA, d2lenA, lenB, d2lenB, &dE, &d2E);
+        RealT dprojections[2] = {0.0, 0.0};
+        __enzyme_fwddiff<void>( ComputeSmoothMortarForceEnzyme, coords, d2coords, del, d2del, k1, d2k1, k2, d2k2, N, lenA, d2lenA, projections, dprojections, &dE, &d2E);
         for(int j = 0; j < 8; ++j) {
             d2E_d2X[8 * i + j] = d2E[j];
             // std::cout << "position: [" << i << ',' << j << "]: " << d2E_d2X[8 * i + j] << std::endl;

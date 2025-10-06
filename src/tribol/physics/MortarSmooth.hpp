@@ -164,7 +164,7 @@ bool segmentsIntersect(const RealT A0[2], const RealT A1[2],
 
 void get_projections(const RealT* A0, const RealT* A1, const RealT* B0, const RealT* B1, RealT* projections, RealT del);
 
-void compute_integration_bounds(const RealT* projections, RealT* integration_bounds);
+void compute_integration_bounds(const RealT* projections, RealT* integration_bounds, RealT del);
 
 void modify_bounds(const RealT* integration_bounds, RealT del, RealT* modified_bounds);
 
@@ -174,17 +174,17 @@ void compute_quadrature_point(const RealT* integration_bounds, const RealT* A0, 
 
 void assign_weights(const RealT* integration_bounds, int N, RealT* weights);
 
-RealT compute_gap(const RealT* p, const RealT* B0, const RealT* B1, const RealT* nB);
+RealT compute_gap(const RealT* p, const RealT* B0, const RealT* B1, const RealT* nB, const RealT* A0, const RealT* A1);
 
 RealT compute_modified_gap(RealT gap, RealT* nA, RealT* nB); 
 
 RealT compute_contact_potential(RealT gap, RealT k1, RealT k2);
 
-void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, RealT k2, int N, RealT lenA, RealT lenB, RealT* energy);
+void ComputeSmoothMortarEnergyEnzyme(const RealT* coords, RealT del, RealT k1, RealT k2, int N, RealT lenA, RealT* projections, RealT* energy);
 
-void ComputeSmoothMortarForceEnzyme(RealT* coords, RealT del, RealT k1, RealT k2, int N, RealT lenA, RealT lenB, RealT* force);
+void ComputeSmoothMortarForceEnzyme(RealT* coords, RealT del, RealT k1, RealT k2, int N, RealT lenA, RealT* projections, RealT* force);
 
-void ComputeSmoothMortarJacobianEnzyme(RealT* coords, RealT del, RealT k1, RealT k2, int N, RealT lenA, RealT lenB, RealT* force, RealT* jacobian);
+void ComputeSmoothMortarJacobianEnzyme(RealT* coords, RealT del, RealT k1, RealT k2, int N, RealT lenA, RealT* projections, RealT* force, RealT* jacobian);
 
 
 
