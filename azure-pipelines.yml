@@ -73,7 +73,7 @@ jobs:
     submodules: recursive
   - script:  |
       echo " -e $TEST_TARGET -e HOST_CONFIG $(Compiler_ImageName) ./scripts/llnl/build_src.py $BUILD_SRC_OPTS -v --host-config $HOST_CONFIG --extra-cmake-options \"${CMAKE_OPTS} -DCMAKE_BUILD_TYPE=$BUILD_TYPE\""
-      docker run --rm -v `pwd`:$(HOME_DIR)/tribol -e TEST_TARGET -e HOST_CONFIG $(Compiler_ImageName) ./tribol/scripts/llnl/build_src.py $BUILD_SRC_OPTS -v --host-config $HOST_CONFIG --extra-cmake-options "$(BASE_CMAKE_OPTS) ${CMAKE_OPTS} -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_REDECOMP=$(BUILD_REDECOMP)"
+      docker run --rm -v `pwd`:$(HOME_DIR)/tribol -e TEST_TARGET -e HOST_CONFIG $(Compiler_ImageName) ./tribol/scripts/llnl/build_src.py $BUILD_SRC_OPTS -v --host-config $HOST_CONFIG --extra-cmake-options "${CMAKE_OPTS} -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DBUILD_REDECOMP=$(BUILD_REDECOMP)"
 
     displayName: '$(TEST_TARGET) Build & Test'
   - task: PublishTestResults@2
