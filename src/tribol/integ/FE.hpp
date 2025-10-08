@@ -114,8 +114,8 @@ inline void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const Re
                     RealT xi[2] )
 {
   if ( numNodes == 4 ) {
-    int kmax = 15;
-    RealT xtol = 1.E-12;
+    constexpr int kmax = 15;
+    constexpr RealT xtol = 1.E-12;
 
     RealT x_sol[2] = { 0., 0. };
 
@@ -127,7 +127,8 @@ inline void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const Re
     RealT djde_22 = 0.;
 
     // loop over newton iterations
-    for ( int k = 0; k < kmax; ++k ) {
+    int k = 0;
+    for ( ; k < kmax; ++k ) {
       // evaluate Jacobian
       RealT j_x_1 = 0.25 * ( xA[0] * ( 1. + x_sol[1] ) - xA[1] * ( 1. + x_sol[1] ) - xA[2] * ( 1. - x_sol[1] ) +
                              xA[3] * ( 1. - x_sol[1] ) );
