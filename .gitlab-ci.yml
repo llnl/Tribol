@@ -6,6 +6,7 @@
 ##############################################################################
 
 variables:
+  GIT_STRATEGY: clone
   GIT_SUBMODULE_STRATEGY: recursive
   PROJECT_ALLOC_NAME: ${CI_PROJECT_NAME}_ci_${CI_PIPELINE_ID}
   BUILD_ROOT: ${CI_PROJECT_DIR}
@@ -18,20 +19,23 @@ variables:
     # Build source and run unit tests.
     - echo -e "section_start:$(date +%s):src_build_and_unit_test\r\e[0K
       Source Build and Unit Tests ${CI_PROJECT_NAME}"
-    - ${ALLOC_COMMAND} python3 scripts/llnl/build_src.py -v --host-config=${HOST_CONFIG} --extra-cmake-options=${EXTRA_CMAKE_OPTIONS} ${EXTRA_BUILD_OPTIONS}
+    - ./scripts/gitlab/build_and_test.sh
     - echo -e "section_end:$(date +%s):src_build_and_unit_test\r\e[0K"
   artifacts:
+    expire_in: 2 weeks
     when: always
     paths:
       - _tribol_build_and_test_*/output.log*.txt
       - _tribol_build_and_test_*/build-*/output.log*.txt
+      - _tribol_build_and_test_*/build-*/*.*.logs/*.log
+      - _tribol_build_and_test_*/build-*/*.*.logs/*.err
     reports:
       junit:
       - _tribol_build_and_test_*/build-*/junit.xml
+      - _tribol_build_and_test_*/build-*/*.*.logs/atsr.xml
 
 include:
   - local: .gitlab/build_toss4.yml
-  - local: .gitlab/build_blueos.yml
   - local: .gitlab/build_toss4_cray.yml
   # ID token requirement for Gitlab 17.0+
   - project: 'lc-templates/id_tokens'
