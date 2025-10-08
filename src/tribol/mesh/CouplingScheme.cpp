@@ -1931,9 +1931,9 @@ TRIBOL_HOST_DEVICE bool CouplingScheme::Viewer::pruneMethodFacePair( const Index
         cx[i] = cx2[i];
       }
 
-      if ( IsOverlappingOnPlane( &x1[0], &y1[0], &z1[0], &x2[0], &y2[0], &z2[0], &nrml[0], &cx[0], num_nodes_face_1,
-                                 num_nodes_face_2, dim ) ) {
-        return false;
+      if ( !IsOverlappingOnPlane( &x1[0], &y1[0], &z1[0], &x2[0], &y2[0], &z2[0], &nrml[0], &cx[0], num_nodes_face_1,
+                                  num_nodes_face_2, dim ) ) {
+        return true;
       }
 
       break;
@@ -1972,17 +1972,19 @@ TRIBOL_HOST_DEVICE bool CouplingScheme::Viewer::pruneMethodFacePair( const Index
         ProjectFaceNodesToPlane( mesh2, fid2, fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2], &x2_prime[0],
                                  &y2_prime[0], &z2_prime[0] );
       } else {
-        for ( int i = 0; i < dim; ++i ) {
+        for ( int i = 0; i < num_nodes_face_1; ++i ) {
           x1_prime[i] = x1[i];
           y1_prime[i] = y1[i];
+        }
+        for ( int i = 0; i < num_nodes_face_2; ++i ) {
           x2_prime[i] = x2[i];
           y2_prime[i] = y2[i];
         }
       }
 
-      if ( IsOverlappingOnPlane( &x1_prime[0], &y1_prime[0], &z1_prime[0], &x2_prime[0], &y2_prime[0], &z2_prime[0],
-                                 &nrml[0], &cx[0], num_nodes_face_1, num_nodes_face_2, dim ) ) {
-        return false;
+      if ( !IsOverlappingOnPlane( &x1_prime[0], &y1_prime[0], &z1_prime[0], &x2_prime[0], &y2_prime[0], &z2_prime[0],
+                                  &nrml[0], &cx[0], num_nodes_face_1, num_nodes_face_2, dim ) ) {
+        return true;
       }
       break;
     }
