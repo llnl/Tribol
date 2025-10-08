@@ -64,11 +64,18 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     # Dependencies
     # -----------------------------------------------------------------------
     # Basic dependencies
+    depends_on("c", type="build")
+    depends_on("cxx", type="build")
+    # TODO: make this conditional on fortran variant when spack is updated to pass fortran compiler to dependencies 
+    # based on the toolchain
+    depends_on("fortran", type="build")
+
+    depends_on("mpi")
+
     depends_on("cmake@3.14:", type="build")
     depends_on("cmake@3.21:", type="build", when="+rocm")
     depends_on("blt@0.6.2:", type="build")
 
-    depends_on("mpi")
 
     # Other libraries
     depends_on("mfem@4.7.0.2:+lapack")
