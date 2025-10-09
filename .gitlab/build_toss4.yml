@@ -9,14 +9,15 @@
 # This is the shared configuration of jobs for toss4
 .on_toss4:
   variables:
-    SCHEDULER_PARAMETERS: "--reservation=ci --exclusive=user --deadline=now+${ALLOC_DEADLINE}minutes -N ${ALLOC_NODES} -t ${ALLOC_TIME} -A ${ALLOC_BANK}"
-    ALLOC_DEADLINE: "180" # Allocation times must be less than this value
+    ALLOC_OPTIONS: "--reservation=ci --exclusive=user --deadline=now+1hour"
+    ALLOC_COMMAND: "salloc ${ALLOC_OPTIONS} -N ${ALLOC_NODES} -t ${ALLOC_TIME}"
   tags:
-    - batch
+    - shell
     - dane
   rules:
     - if: '$CI_COMMIT_BRANCH =~ /_qnone/ || $ON_TOSS4 == "OFF"' #run except if ...
       when: never
+    - when: on_success
   before_script:
     # We could also extract the CMake executable location from the hostconfig in common_build_functions
     # like we do in config-build
