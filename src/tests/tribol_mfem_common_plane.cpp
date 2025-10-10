@@ -40,8 +40,7 @@
  * penalty for this case.  As a result, the test comparisons are the same for both penalty types.
  *
  */
-class MfemCommonPlaneTest
-    : public testing::TestWithParam<std::tuple<int, tribol::KinematicPenaltyCalculation, std::string>> {
+class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol::KinematicPenaltyCalculation>> {
  protected:
   tribol::RealT max_disp_;
   void SetUp() override
@@ -80,19 +79,12 @@ class MfemCommonPlaneTest
     // velocity will be applied
     auto moving_attrs = std::set<int>( { 2 } );
 
-    // enable devices such as GPUs
-    mfem::Device device( std::get<2>( GetParam() ) );
-
+#if defined( TRIBOL_USE_CUDA )
+    tribol::ExecutionMode exec_mode = tribol::ExecutionMode::Cuda;
+#elif defined( TRIBOL_USE_HIP )
+    tribol::ExecutionMode exec_mode = tribol::ExecutionMode::Hip;
+#else
     tribol::ExecutionMode exec_mode = tribol::ExecutionMode::Sequential;
-#ifdef TRIBOL_USE_CUDA
-    if ( device.Allows( mfem::Backend::CUDA_MASK ) ) {
-      exec_mode = tribol::ExecutionMode::Cuda;
-    }
-#endif
-#ifdef TRIBOL_USE_HIP
-    if ( device.Allows( mfem::Backend::HIP_MASK ) ) {
-      exec_mode = tribol::ExecutionMode::Hip;
-    }
 #endif
 
     // read mesh
@@ -207,10 +199,6 @@ class MfemCommonPlaneTest
     max_disp_ = displacement.Max();
     MPI_Allreduce( MPI_IN_PLACE, &max_disp_, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD );
 
-    // Delete coupling schemes and meshes before mfem::Device goes out of scope, since that will delete the memory
-    // manager and all managed memory. Without this, when new coupling schemes are registered over the old ones, the
-    // memory of the old coupling scheme will try to be deleted but it will not exist since it was already deleted when
-    // mfem::Device went out of scope.
     tribol::finalize();
   }
 };
@@ -224,25 +212,10 @@ TEST_P( MfemCommonPlaneTest, common_plane )
 }
 
 INSTANTIATE_TEST_SUITE_P( tribol, MfemCommonPlaneTest,
-                          testing::Values( std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, "cpu" ),
-                                           std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, "cpu" ),
-                                           std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, "cpu" ),
-                                           std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, "cpu" )
-#ifdef TRIBOL_USE_CUDA
-                                               ,
-                                           std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, "cuda" ),
-                                           std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, "cuda" ),
-                                           std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, "cuda" ),
-                                           std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, "cuda" )
-#endif
-#ifdef TRIBOL_USE_HIP
-                                               ,
-                                           std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, "hip" ),
-                                           std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, "hip" ),
-                                           std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, "hip" ),
-                                           std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, "hip" )
-#endif
-                                               ) );
+                          testing::Values( std::make_tuple( 1, tribol::KINEMATIC_CONSTANT ),
+                                           std::make_tuple( 1, tribol::KINEMATIC_ELEMENT ),
+                                           std::make_tuple( 2, tribol::KINEMATIC_CONSTANT ),
+                                           std::make_tuple( 2, tribol::KINEMATIC_ELEMENT ) ) );
 
 //------------------------------------------------------------------------------
 int main( int argc, char* argv[] )
@@ -256,6 +229,18 @@ int main( int argc, char* argv[] )
 #ifdef TRIBOL_USE_UMPIRE
   umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
 #endif
+
+#if defined( TRIBOL_USE_CUDA )
+  std::string device_str( "cuda" );
+#elif defined( TRIBOL_USE_HIP )
+  std::string device_str( "hip" );
+#else
+  std::string device_str( "cpu" );
+#endif
+
+  mfem::Device device( device_str );
+
+  std::cout << "Running test on " << device_str << std::endl;
 
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
                                     // exiting main scope
