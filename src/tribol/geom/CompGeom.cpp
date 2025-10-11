@@ -24,16 +24,41 @@ namespace tribol {
 //------------------------------------------------------------------------------
 // free functions
 //------------------------------------------------------------------------------
+template <typename T>
+TRIBOL_HOST_DEVICE FaceGeomException CheckInterfacePairByMethod(
+    InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, const Parameters& params,
+    ContactCase TRIBOL_UNUSED_PARAM( cCase ), bool& isInteracting, CompGeom::Viewer& cg, IndexT* plane_ct )
+{
+  T my_plane( &pair, params, mesh1.spatialDimension() );
+  FaceGeomException face_err = my_plane.checkInterfacePair( mesh1, mesh2 );
+
+  if ( face_err != NO_FACE_GEOM_EXCEPTION ) {
+    isInteracting = false;
+#ifdef TRIBOL_USE_HOST
+    SLIC_DEBUG( "face_err: " << face_err );
+#endif
+  } else if ( my_plane.m_inContact ) {
+#ifdef TRIBOL_USE_RAJA
+    auto idx = RAJA::atomicInc<RAJA::auto_atomic>( plane_ct );
+#else
+    auto idx = *plane_ct;
+    ++( *plane_ct );
+#endif
+    cg.getPlane<T>( idx ) = my_plane;
+    isInteracting = true;
+  } else {
+    isInteracting = false;
+  }
+
+  return face_err;
+}
+
 TRIBOL_HOST_DEVICE FaceGeomException CheckInterfacePair( InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                          const MeshData::Viewer& mesh2, const Parameters& params,
-                                                         ContactMethod cMethod,
-                                                         ContactCase TRIBOL_UNUSED_PARAM( cCase ), bool& isInteracting,
+                                                         ContactMethod cMethod, ContactCase cCase, bool& isInteracting,
                                                          CompGeom::Viewer& cg, IndexT* plane_ct )
 {
-  isInteracting = false;
-  bool inContact = false;
   FaceGeomException face_err = NO_FACE_GEOM_EXCEPTION;
-  ContactPlanePair* my_plane;
 
   // note: will likely need the ContactCase for specialized
   // geometry check(s)/routine(s)
@@ -41,24 +66,18 @@ TRIBOL_HOST_DEVICE FaceGeomException CheckInterfacePair( InterfacePair& pair, co
   switch ( cMethod ) {
     case MORTAR_WEIGHTS:
     case SINGLE_MORTAR: {
-      MortarPlanePair mortar_plane( &pair, params, mesh1.spatialDimension() );
-      face_err = mortar_plane.checkInterfacePair( mesh1, mesh2 );
-      inContact = mortar_plane.m_inContact;
-      my_plane = &mortar_plane;
+      face_err =
+          CheckInterfacePairByMethod<MortarPlanePair>( pair, mesh1, mesh2, params, cCase, isInteracting, cg, plane_ct );
       break;
     }
     case COMMON_PLANE: {
-      CommonPlanePair common_plane( &pair, params, mesh1.spatialDimension() );
-      face_err = common_plane.checkInterfacePair( mesh1, mesh2 );
-      inContact = common_plane.m_inContact;
-      my_plane = &common_plane;
+      face_err =
+          CheckInterfacePairByMethod<CommonPlanePair>( pair, mesh1, mesh2, params, cCase, isInteracting, cg, plane_ct );
       break;
     }
     case ALIGNED_MORTAR: {
-      AlignedMortarPlanePair aligned_mortar_plane( &pair, params, mesh1.spatialDimension() );
-      face_err = aligned_mortar_plane.checkInterfacePair( mesh1, mesh2 );
-      inContact = aligned_mortar_plane.m_inContact;
-      my_plane = &aligned_mortar_plane;
+      face_err = CheckInterfacePairByMethod<AlignedMortarPlanePair>( pair, mesh1, mesh2, params, cCase, isInteracting,
+                                                                     cg, plane_ct );
       break;
     }
     default: {
@@ -66,25 +85,6 @@ TRIBOL_HOST_DEVICE FaceGeomException CheckInterfacePair( InterfacePair& pair, co
       break;
     }
   }  // end switch
-
-  // check errors and contact status and add ContactPlanePair accordingly
-  if ( face_err != NO_FACE_GEOM_EXCEPTION ) {
-    isInteracting = false;
-#ifdef TRIBOL_USE_HOST
-    SLIC_DEBUG( "face_err: " << face_err );
-#endif
-  } else if ( inContact ) {
-#ifdef TRIBOL_USE_RAJA
-    auto idx = RAJA::atomicInc<RAJA::auto_atomic>( plane_ct );
-#else
-    auto idx = *plane_ct;
-    ++( *plane_ct );
-#endif
-    cg.addContactPlane( *my_plane, idx, cMethod );
-    isInteracting = true;
-  } else {
-    isInteracting = false;
-  }
 
   return face_err;
 
