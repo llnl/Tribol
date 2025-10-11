@@ -778,24 +778,6 @@ class CompGeom {
     template <typename T>
     TRIBOL_HOST_DEVICE T& getPlane( int id );
 
-    template <>
-    TRIBOL_HOST_DEVICE CommonPlanePair& getPlane<CommonPlanePair>( int id )
-    {
-      return m_common_plane_pairs[id];
-    };
-
-    template <>
-    TRIBOL_HOST_DEVICE MortarPlanePair& getPlane<MortarPlanePair>( int id )
-    {
-      return m_mortar_plane_pairs[id];
-    };
-
-    template <>
-    TRIBOL_HOST_DEVICE AlignedMortarPlanePair& getPlane<AlignedMortarPlanePair>( int id )
-    {
-      return m_aligned_mortar_plane_pairs[id];
-    };
-
    private:
     ArrayViewT<CommonPlanePair> m_common_plane_pairs;
     ArrayViewT<MortarPlanePair> m_mortar_plane_pairs;

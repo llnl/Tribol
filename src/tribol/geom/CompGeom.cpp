@@ -1860,5 +1860,22 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap2D( const Me
 }  // end CommonPlanePair::computeOverlap2D()
 
 //------------------------------------------------------------------------------
+template <>
+TRIBOL_HOST_DEVICE CommonPlanePair& CompGeom::Viewer::getPlane<CommonPlanePair>( int id )
+{
+  return m_common_plane_pairs[id];
+};
+
+template <>
+TRIBOL_HOST_DEVICE MortarPlanePair& CompGeom::Viewer::getPlane<MortarPlanePair>( int id )
+{
+  return m_mortar_plane_pairs[id];
+};
+
+template <>
+TRIBOL_HOST_DEVICE AlignedMortarPlanePair& CompGeom::Viewer::getPlane<AlignedMortarPlanePair>( int id )
+{
+  return m_aligned_mortar_plane_pairs[id];
+};
 
 }  // namespace tribol
