@@ -236,7 +236,7 @@ int main( int argc, char* argv[] )
 #elif defined( TRIBOL_USE_HIP )
   std::string device_str( "hip" );
 #elif defined( TRIBOL_USE_OPENMP )
-  std::string device_str( "openmp" );
+  std::string device_str( "omp" );
 #else
   std::string device_str( "cpu" );
 #endif
