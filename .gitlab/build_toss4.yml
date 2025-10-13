@@ -17,6 +17,7 @@
   rules:
     - if: '$CI_COMMIT_BRANCH =~ /_qnone/ || $ON_TOSS4 == "OFF"' #run except if ...
       when: never
+    - when: on_success
   before_script:
     # We could also extract the CMake executable location from the hostconfig in common_build_functions
     # like we do in config-build
