@@ -9,10 +9,9 @@
 # This is the shared configuration of jobs for toss4_cray
 .on_toss4_cray:
   variables:
-    ALLOC_OPTIONS: "--exclusive"
-    ALLOC_COMMAND: "salloc ${ALLOC_OPTIONS} -N ${ALLOC_NODES} -t ${ALLOC_TIME}"
+    SCHEDULER_PARAMETERS: "--queue pci --exclusive --time-limit=${ALLOC_TIME}m --nodes=${ALLOC_NODES}"
   tags:
-    - shell
+    - batch
     - tioga
   rules:
     - if: '$CI_COMMIT_BRANCH =~ /_qnone/ || $ON_TOSS4_CRAY == "OFF"' #run except if ...
@@ -25,7 +24,6 @@
 # Templates
 .src_build_on_toss4_cray:
   extends: [.src_build_script, .on_toss4_cray]
-  needs: []
 
 ####
 # Build jobs

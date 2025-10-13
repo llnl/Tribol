@@ -19,17 +19,13 @@
       when: never
     - when: on_success
   before_script:
-    # We could also extract the CMake executable location from the hostconfig in common_build_functions
-    # like we do in config-build
     - module load cmake/3.23.1
-    - module load texlive
 
 
 ####
 # Templates
 .src_build_on_toss4:
   extends: [.src_build_script, .on_toss4]
-  needs: []
 
 ####
 # Build jobs
