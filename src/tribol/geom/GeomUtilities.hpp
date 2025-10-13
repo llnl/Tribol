@@ -483,10 +483,10 @@ TRIBOL_HOST_DEVICE inline bool CheckPolyOrientation( const RealT* const x, const
     if ( prod < 0. )  // don't keep checking
     {
       check = false;
-      return check;
+      break;
     }
   }
-  return check;  // should equal true if here.
+  return check;
 }
 
 /*!
@@ -1468,11 +1468,6 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
       edgeATemp2[i] = edgeATemp[vertIdx[i]];
       edgeBTemp2[i] = edgeBTemp[vertIdx[i]];
     }
-    for ( int i = 0; i < numPolyVert; ++i ) {
-      vertTypeTemp[i] = vertTypeTemp2[i];
-      edgeATemp[i] = edgeATemp2[i];
-      edgeBTemp[i] = edgeBTemp2[i];
-    }
 
     // check length of segs against tolerance and collapse short segments if necessary
     // This is where polyX and polyY get allocated for any overlap that remains with
@@ -1483,13 +1478,13 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
         CheckPolySegs( polyXTemp, polyYTemp, numPolyVert, lenTol, polyX, polyY, vertIdx, numFinalVert );
     for ( int i = 0; i < numFinalVert; ++i ) {
       if ( vertType ) {
-        vertType[i] = vertTypeTemp[vertIdx[i]];
+        vertType[i] = vertTypeTemp2[vertIdx[i]];
       }
       if ( edgeA ) {
-        edgeA[i] = edgeATemp[vertIdx[i]];
+        edgeA[i] = edgeATemp2[vertIdx[i]];
       }
       if ( edgeB ) {
-        edgeB[i] = edgeBTemp[vertIdx[i]];
+        edgeB[i] = edgeBTemp2[vertIdx[i]];
       }
     }
 
