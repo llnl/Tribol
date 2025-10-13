@@ -114,9 +114,8 @@ inline void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const Re
                     RealT xi[2] )
 {
   if ( numNodes == 4 ) {
-    bool convrg = false;
-    int kmax = 15;
-    RealT xtol = 1.E-12;
+    constexpr int kmax = 15;
+    constexpr RealT xtol = 1.E-12;
 
     RealT x_sol[2] = { 0., 0. };
 
@@ -128,7 +127,8 @@ inline void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const Re
     RealT djde_22 = 0.;
 
     // loop over newton iterations
-    for ( int k = 0; k < kmax; ++k ) {
+    int k = 0;
+    for ( ; k < kmax; ++k ) {
       // evaluate Jacobian
       RealT j_x_1 = 0.25 * ( xA[0] * ( 1. + x_sol[1] ) - xA[1] * ( 1. + x_sol[1] ) - xA[2] * ( 1. - x_sol[1] ) +
                              xA[3] * ( 1. - x_sol[1] ) );
@@ -207,15 +207,14 @@ inline void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const Re
       RealT abs_dxi_2 = std::abs( dxi_2 );
 
       if ( abs_dxi_1 <= xtol && abs_dxi_2 <= xtol ) {
-        convrg = true;
         xi[0] = x_sol[0];
         xi[1] = x_sol[1];
 
         //       check to make sure point is inside isoparametric quad
         bool in_quad = true;
         if ( std::abs( xi[0] ) > 1. || std::abs( xi[1] ) > 1. ) {
-          if ( std::abs( xi[0] ) > 1. + 100 * xtol ||
-               std::abs( xi[1] ) > 1. + 100 * xtol )  // should have some tolerance dependent conv tol?
+          if ( std::abs( xi[0] ) > 1. + 100. * xtol ||
+               std::abs( xi[1] ) > 1. + 100. * xtol )  // should have some tolerance dependent conv tol?
           {
             in_quad = false;
           } else {
@@ -230,15 +229,13 @@ inline void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const Re
         SLIC_WARNING_IF( !in_quad, "InvIso(): (xi,eta) coordinate does not lie inside isoparametric quad." );
 #endif
 
-        return;
+        break;
       }
     }
 
 #if !defined( TRIBOL_USE_ENZYME )
-    SLIC_ERROR_IF( !convrg, "InvIso: Newtons method did not converge." );
+    SLIC_ERROR_IF( k == kmax, "InvIso: Newtons method did not converge." );
 #endif
-
-    return;
 
   } else if ( numNodes == 3 ) {
     // use area (barycentric) coords to get xi, eta
