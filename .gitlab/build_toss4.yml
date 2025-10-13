@@ -28,7 +28,7 @@
 # Templates
 .src_build_on_toss4:
   extends: [.src_build_script, .on_toss4]
-
+  needs: []
 
 ####
 # Build jobs

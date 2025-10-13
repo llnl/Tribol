@@ -25,6 +25,7 @@
 # Templates
 .src_build_on_toss4_cray:
   extends: [.src_build_script, .on_toss4_cray]
+  needs: []
 
 ####
 # Build jobs
