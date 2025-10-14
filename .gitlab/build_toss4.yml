@@ -9,27 +9,23 @@
 # This is the shared configuration of jobs for toss4
 .on_toss4:
   variables:
-    ALLOC_OPTIONS: "--reservation=ci --exclusive=user --deadline=now+1hour"
-    ALLOC_COMMAND: "salloc ${ALLOC_OPTIONS} -N ${ALLOC_NODES} -t ${ALLOC_TIME}"
+    SCHEDULER_PARAMETERS: "--reservation=ci --exclusive=user --deadline=now+${ALLOC_DEADLINE}minutes -N ${ALLOC_NODES} -t ${ALLOC_TIME}"
+    ALLOC_DEADLINE: "180" # Allocation times must be less than this value
   tags:
-    - shell
+    - batch
     - dane
   rules:
     - if: '$CI_COMMIT_BRANCH =~ /_qnone/ || $ON_TOSS4 == "OFF"' #run except if ...
       when: never
     - when: on_success
   before_script:
-    # We could also extract the CMake executable location from the hostconfig in common_build_functions
-    # like we do in config-build
     - module load cmake/3.23.1
-    - module load texlive
 
 
 ####
 # Templates
 .src_build_on_toss4:
   extends: [.src_build_script, .on_toss4]
-
 
 ####
 # Build jobs
@@ -57,3 +53,4 @@ toss4-gcc_13_3_1-src:
     ALLOC_NODES: "1"
     ALLOC_TIME: "20"
   extends: .src_build_on_toss4
+  
