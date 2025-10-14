@@ -135,7 +135,7 @@ int main( int argc, char** argv )
   SLIC_INFO_ROOT( axom::fmt::format( "mu:                {0}", mu ) );
   SLIC_INFO_ROOT( axom::fmt::format( "device:            {0}\n", device_config ) );
 
-  // enable devices such as GPUs
+  // configure the devices available for MFEM kernel launches
   mfem::Device device( device_config );
   if ( rank == 0 ) {
     device.Print();

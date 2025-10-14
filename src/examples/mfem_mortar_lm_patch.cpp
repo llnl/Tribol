@@ -48,10 +48,8 @@
 
 // Axom includes
 #include "axom/CLI11.hpp"
+#include "axom/core.hpp"
 #include "axom/slic.hpp"
-
-// Redecomp includes
-#include "redecomp/redecomp.hpp"
 
 // Shared includes
 #include "shared/mesh/MeshBuilder.hpp"
@@ -114,7 +112,7 @@ int main( int argc, char** argv )
   SLIC_INFO_ROOT( axom::fmt::format( "device:   {0}", device_config ) );
   SLIC_INFO_ROOT( axom::fmt::format( "use_tets: {0}\n", use_tets ) );
 
-  // enable devices such as GPUs
+  // configure the devices available for MFEM kernel launches
   mfem::Device device( device_config );
   if ( rank == 0 ) {
     device.Print();
@@ -241,8 +239,8 @@ int main( int argc, char** argv )
   // Assemble the on-rank bilinear form stiffness matrix.
   a.Assemble();
   // Reduce to tdofs and form a hypre parallel matrix for parallel solution of the linear system.
-  auto A = std::make_unique<mfem::HypreParMatrix>();
-  a.FormSystemMatrix( ess_tdof_list, *A );
+  auto A_elasticity = std::make_unique<mfem::HypreParMatrix>();
+  a.FormSystemMatrix( ess_tdof_list, *A_elasticity );
   timer.stop();
   SLIC_INFO_ROOT(
       axom::fmt::format( "Time to create and assemble internal stiffness: {0:f}ms", timer.elapsedTimeInMilliSec() ) );
@@ -292,9 +290,9 @@ int main( int argc, char** argv )
   // NOTE: The submesh contains both the mortar and nonmortar surfaces, but pressure DOFs are only present on the
   // nonmortar surface. The pressure DOFs on the mortar surface are eliminated in the returned matrix with ones on the
   // diagonal.
-  auto A_blk = tribol::getMfemBlockJacobian( coupling_scheme_id );
+  auto A = tribol::getMfemBlockJacobian( coupling_scheme_id );
   // Add the Jacobian from the elasticity bilinear form to the top left block
-  A_blk->SetBlock( 0, 0, A.release() );
+  A->SetBlock( 0, 0, A_elasticity.release() );
   timer.stop();
   SLIC_INFO_ROOT(
       axom::fmt::format( "Time to setup Tribol and compute Jacobian: {0:f}ms", timer.elapsedTimeInMilliSec() ) );
@@ -311,24 +309,25 @@ int main( int argc, char** argv )
 
   timer.start();
   // Create a RHS vector storing forces and gaps. Note no external forces are present in this problem.
-  mfem::Vector B_blk( A_blk->Height() );
-  B_blk.UseDevice( true );
-  B_blk = 0.0;
+  mfem::Vector B( A->Height() );
+  // This tells MFEM to use the device for the vector operations (if a device is configured, defaults to CPU).
+  B.UseDevice( true );
+  B = 0.0;
   // This API call returns the mortar nodal gap vector to an (uninitialized) vector. The function sizes and initializes
   // the vector.
   mfem::Vector gap;
   gap.UseDevice( true );
   tribol::getMfemGap( coupling_scheme_id, gap );
-  mfem::Vector gap_true( B_blk, n_disp_dofs, n_lm_dofs );
+  mfem::Vector gap_true( B, n_disp_dofs, n_lm_dofs );
   // gap is a dual vector, so (gap tdof vector) = P^T * (gap ldof vector)
   auto& P_submesh = *pressure.ParFESpace()->GetProlongationMatrix();
   P_submesh.MultTranspose( gap, gap_true );
-  B_blk.SyncMemory( gap_true );
+  B.SyncMemory( gap_true );
 
   // Create a solution vector storing displacement and pressures.
-  mfem::Vector X_blk( A_blk->Width() );
-  X_blk.UseDevice( true );
-  X_blk = 0.0;
+  mfem::Vector X( A->Width() );
+  X.UseDevice( true );
+  X = 0.0;
 
   // Create a single HypreParMatrix from blocks for the solver. This process requires two steps: (1) store pointer to
   // the BlockOperator HypreParMatrixs in a 2D array and (2) call mfem::HypreParMatrixFromBlocks() to create the merged,
@@ -336,9 +335,9 @@ int main( int argc, char** argv )
   mfem::Array2D<const mfem::HypreParMatrix*> hypre_blocks( 2, 2 );
   for ( int i{ 0 }; i < 2; ++i ) {
     for ( int j{ 0 }; j < 2; ++j ) {
-      if ( A_blk->GetBlock( i, j ).Height() != 0 && A_blk->GetBlock( i, j ).Width() != 0 ) {
+      if ( A->GetBlock( i, j ).Height() != 0 && A->GetBlock( i, j ).Width() != 0 ) {
         hypre_blocks( i, j ) =
-            const_cast<mfem::HypreParMatrix*>( dynamic_cast<const mfem::HypreParMatrix*>( &A_blk->GetBlock( i, j ) ) );
+            const_cast<mfem::HypreParMatrix*>( dynamic_cast<const mfem::HypreParMatrix*>( &A->GetBlock( i, j ) ) );
       } else {
         hypre_blocks( i, j ) = nullptr;
       }
@@ -354,10 +353,10 @@ int main( int argc, char** argv )
   solver.SetOperator( *A_merged );
   // TODO: find a preconditioner
   // solver.SetPreconditioner( prec );
-  solver.Mult( B_blk, X_blk );
+  solver.Mult( B, X );
 
   // Move the block displacements to the displacement grid function.
-  mfem::Vector displacement_true( X_blk, 0, n_disp_dofs );
+  mfem::Vector displacement_true( X, 0, n_disp_dofs );
   fespace.GetProlongationMatrix()->Mult( displacement_true, displacement );
   // Fix the sign on the displacements.
   displacement.Neg();
@@ -365,7 +364,7 @@ int main( int argc, char** argv )
   coords += displacement;
 
   // Update the pressure degrees of freedom
-  mfem::Vector pressure_true( X_blk, n_disp_dofs, n_lm_dofs );
+  mfem::Vector pressure_true( X, n_disp_dofs, n_lm_dofs );
   P_submesh.Mult( pressure_true, pressure );
 
   timer.stop();
@@ -377,8 +376,8 @@ int main( int argc, char** argv )
   mfem::Vector f_int_true( fespace.GetTrueVSize() );
   f_int_true = 0.0;
   mfem::Vector f_contact_true( f_int_true );
-  A_blk->GetBlock( 0, 0 ).Mult( displacement_true, f_int_true );
-  A_blk->GetBlock( 0, 1 ).Mult( pressure_true, f_contact_true );
+  A->GetBlock( 0, 0 ).Mult( displacement_true, f_int_true );
+  A->GetBlock( 0, 1 ).Mult( pressure_true, f_contact_true );
   mfem::Vector resid_true( f_int_true );
   resid_true += f_contact_true;
   for ( int i{ 0 }; i < ess_tdof_list.Size(); ++i ) {
@@ -396,7 +395,7 @@ int main( int argc, char** argv )
   // This should be true if the solver converges.
   mfem::Vector gap_resid_true( gap_true.Size() );
   gap_resid_true = 0.0;
-  A_blk->GetBlock( 1, 0 ).Mult( displacement_true, gap_resid_true );
+  A->GetBlock( 1, 0 ).Mult( displacement_true, gap_resid_true );
   gap_resid_true -= gap_true;
   auto gap_resid_linf = gap_resid_true.Normlinf();
   if ( rank == 0 ) {

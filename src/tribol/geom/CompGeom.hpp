@@ -53,8 +53,6 @@ class ContactPlanePair : public CompGeomPair {
    */
   TRIBOL_HOST_DEVICE ContactPlanePair( InterfacePair* pair, const Parameters& params, const int dim );
 
-  virtual ~ContactPlanePair() = default;
-
   /*!
    * \brief check to see if face-pairs are interacting
    *
@@ -777,35 +775,8 @@ class CompGeom {
       return m_aligned_mortar_plane_pairs[id];
     }
 
-    /**
-     * @brief Add a contact plane to the appropriate array view
-     *
-     */
-    TRIBOL_HOST_DEVICE void addContactPlane( ContactPlanePair& contact_plane, const int id, const ContactMethod method )
-    {
-      switch ( method ) {
-        case COMMON_PLANE: {
-          // if (auto* plane = dynamic_cast<CommonPlanePair*>(&contact_plane)) {
-          //   m_common_plane_pairs[id] = std::move( *plane );
-          // }
-          m_common_plane_pairs[id] = std::move( static_cast<CommonPlanePair&>( contact_plane ) );
-          break;
-        }
-        case SINGLE_MORTAR:
-        case MORTAR_WEIGHTS: {
-          m_mortar_plane_pairs[id] = std::move( static_cast<MortarPlanePair&>( contact_plane ) );
-          break;
-        }
-        case ALIGNED_MORTAR: {
-          m_aligned_mortar_plane_pairs[id] = std::move( static_cast<AlignedMortarPlanePair&>( contact_plane ) );
-          break;
-        }
-        default: {
-          // no-op
-          break;
-        }
-      }  // end switch
-    }
+    template <typename T>
+    TRIBOL_HOST_DEVICE T& getPlane( int id );
 
    private:
     ArrayViewT<CommonPlanePair> m_common_plane_pairs;
