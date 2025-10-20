@@ -8,13 +8,13 @@
 // Tribol includes
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/geom/ElementNormal.hpp"
+#include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/utils/ContactPlaneOutput.hpp"
 #include "tribol/utils/Math.hpp"
 #include "tribol/search/InterfacePairFinder.hpp"
 #include "tribol/common/Parameters.hpp"
-#include "tribol/geom/ContactPlane.hpp"
 #include "tribol/physics/Physics.hpp"
 #include "tribol/integ/FE.hpp"
 
@@ -350,13 +350,26 @@ CouplingScheme::CouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, 
 }  // end CouplingScheme::CouplingScheme()
 
 //------------------------------------------------------------------------------
-const ContactPlane& CouplingScheme::getContactPlane( IndexT id ) const
+const ContactPlanePair& CouplingScheme::getContactPlanePair( IndexT id ) const
 {
-  if ( spatialDimension() == 2 ) {
-    return m_contact_plane2d[id];
-  } else {
-    return m_contact_plane3d[id];
-  }
+  switch ( this->m_contactMethod ) {
+    case COMMON_PLANE: {
+      return m_cg_pairs.getCommonPlane( id );
+      break;
+    }
+    case MORTAR_WEIGHTS:
+    case SINGLE_MORTAR: {
+      return m_cg_pairs.getMortarPlane( id );
+      break;
+    }
+    case ALIGNED_MORTAR: {
+      return m_cg_pairs.getAlignedMortarPlane( id );
+      break;
+    }
+    default: {
+      // no-op
+    }
+  }  // end switch
 }
 
 //------------------------------------------------------------------------------
@@ -551,8 +564,10 @@ bool CouplingScheme::isValidMethod()
 
   // check all methods for basic validity issues for non-null meshes
   if ( !this->m_nullMeshes ) {
-    if ( ( this->m_mesh1->getElementType() != LINEAR_EDGE && this->m_mesh1->getElementType() != LINEAR_QUAD ) ||
-         ( this->m_mesh2->getElementType() != LINEAR_EDGE && this->m_mesh2->getElementType() != LINEAR_QUAD ) ) {
+    if ( ( this->m_mesh1->getElementType() != LINEAR_EDGE && this->m_mesh1->getElementType() != LINEAR_QUAD &&
+           this->m_mesh1->getElementType() != LINEAR_TRIANGLE ) ||
+         ( this->m_mesh2->getElementType() != LINEAR_EDGE && this->m_mesh2->getElementType() != LINEAR_QUAD &&
+           this->m_mesh2->getElementType() != LINEAR_TRIANGLE ) ) {
       this->m_couplingSchemeErrors.cs_method_error = INVALID_ELEMENT_TYPE;
       return false;
     }
@@ -643,7 +658,8 @@ bool CouplingScheme::isValidModel()
     }
 
     case COMMON_PLANE: {
-      if ( this->m_contactModel != FRICTIONLESS && this->m_contactModel != NULL_MODEL ) {
+      if ( this->m_contactModel != FRICTIONLESS && this->m_contactModel != NULL_MODEL &&
+           this->m_contactModel != VISCOUS_TANGENTIAL ) {
         this->m_couplingSchemeErrors.cs_model_error = NO_MODEL_IMPLEMENTATION_FOR_REGISTERED_METHOD;
         return false;
       }
@@ -1024,24 +1040,21 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   auto contact_case = m_contactCase;
   ArrayT<int> pair_err_data( 1, 1, getAllocatorId() );
   auto pair_err = pair_err_data.view();
-  // clear contact planes to be populated/allocated anew for this cycle.
-  // initially allocate array of numPairs size, then shrink to the actual number of pairs
-  if ( spatialDimension() == 2 ) {
-    m_contact_plane2d = ArrayT<ContactPlane2D>( numPairs, numPairs, getAllocatorId() );
-    m_contact_plane3d = ArrayT<ContactPlane3D>( 0, 1, getAllocatorId() );
-  } else {
-    m_contact_plane2d = ArrayT<ContactPlane2D>( 0, 1, getAllocatorId() );
-    m_contact_plane3d = ArrayT<ContactPlane3D>( numPairs, numPairs, getAllocatorId() );
-  }
-  auto planes_2d = m_contact_plane2d.view();
-  auto planes_3d = m_contact_plane3d.view();
+
+  // allocate planes based on contact method
+  m_cg_pairs.allocatePlanePairs( contact_method, numPairs, getAllocatorId() );
+
+  // get comp geom container view after allocating pair arrays
+  auto cg_view = m_cg_pairs.getView();
+
+  // get mesh views
   auto mesh1 = getMesh1().getView();
   auto mesh2 = getMesh2().getView();
   // array of size one for counting number of planes on device
   ArrayT<IndexT> planes_ct_data( 1, 1, getAllocatorId() );
   auto planes_ct = planes_ct_data.view();
   forAllExec( getExecutionMode(), numPairs,
-              [pairs, mesh1, mesh2, params, contact_method, contact_case, planes_2d, planes_3d, planes_ct,
+              [pairs, mesh1, mesh2, params, contact_method, contact_case, cg_view, planes_ct,
                pair_err] TRIBOL_HOST_DEVICE( IndexT i ) mutable {
                 auto& pair = pairs[i];
 
@@ -1049,16 +1062,16 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                 // geometry checks to determine whether to include a pair
                 // in the active set
                 bool interact = false;
-                FaceGeomError interact_err =
-                    CheckInterfacePair( pair, mesh1, mesh2, params, contact_method, contact_case, interact, planes_2d,
-                                        planes_3d, planes_ct.data() );
+
+                FaceGeomException interact_err = CheckInterfacePair(
+                    pair, mesh1, mesh2, params, contact_method, contact_case, interact, cg_view, planes_ct.data() );
 
                 // // Update pair reporting data for this coupling scheme
                 // this->updatePairReportingData( interact_err );
 
                 // TODO refine how these errors are handled. Here we skip over face-pairs with errors. That is,
                 // they are not registered for contact, but we don't error out.
-                if ( interact_err != NO_FACE_GEOM_ERROR ) {
+                if ( interact_err != NO_FACE_GEOM_EXCEPTION ) {
                   pair_err[0] = 1;
                   pair.m_is_contact_candidate = false;
                   // TODO consider printing offending face(s) coordinates for debugging
@@ -1074,11 +1087,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 
   ArrayT<int, 1, MemorySpace::Host> planes_ct_host( planes_ct_data );
   // shrink array to actual number of contact planes
-  if ( spatialDimension() == 2 ) {
-    m_contact_plane2d.resize( planes_ct_host[0] );
-  } else {
-    m_contact_plane3d.resize( planes_ct_host[0] );
-  }
+  m_cg_pairs.resizeActivePairs( contact_method, planes_ct_host[0] );
 
   // Here, the pair_err is checked, which detects an issue with a face-pair geometry
   // (which has been skipped over for contact eligibility) and reports this warning.
@@ -1091,8 +1100,8 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // or issue in the cg that a host-code does desire to have resolved. For this reason, this
   // message is kept at the warning level.
   ArrayT<int, 1, MemorySpace::Host> pair_err_host( pair_err_data );
-  SLIC_INFO_IF( pair_err_host[0] != 0, "CouplingScheme::apply(): possible issues with orientation, "
-                                           << "input, or invalid overlaps in CheckInterfacePair()." );
+  SLIC_DEBUG_IF( pair_err_host[0] != 0, "CouplingScheme::apply(): possible issues with orientation, "
+                                            << "input, or invalid overlaps in CheckInterfacePair()." );
 
   // aggregate across ranks for this coupling scheme? SRW
   SLIC_DEBUG( "Number of active interface pairs: " << getNumActivePairs() );
@@ -1147,9 +1156,9 @@ bool CouplingScheme::init()
     // compute the face data
     // different element normals for enzyme + mortar (matching Puso and Laursen)
     if ( this->isEnzymeEnabled() && this->m_contactMethod == SINGLE_MORTAR ) {
-      this->m_mesh1->computeFaceData( this->m_exec_mode, QuadCentroidNormal() );
+      this->m_mesh1->computeFaceData( this->m_exec_mode, ElementCentroidNormal() );
       if ( this->m_mesh_id2 != this->m_mesh_id1 ) {
-        this->m_mesh2->computeFaceData( this->m_exec_mode, QuadCentroidNormal() );
+        this->m_mesh2->computeFaceData( this->m_exec_mode, ElementCentroidNormal() );
       }
     } else {
       this->m_mesh1->computeFaceData( this->m_exec_mode, PalletAvgNormal() );
@@ -1308,7 +1317,8 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
   ArrayViewT<IndexT> msg = msg_data;
   forAllExec( getExecutionMode(), getNumActivePairs(),
               [cs_view, dim, proj_ratio, msg, dt_temp, dt] TRIBOL_HOST_DEVICE( IndexT i ) {
-                auto& plane = cs_view.getContactPlane( i );
+                auto& cg_view = cs_view.getCompGeomView();
+                auto& plane = cg_view.getCommonPlane( i );
 
                 auto& mesh1 = cs_view.getMesh1View();
                 auto& mesh2 = cs_view.getMesh2View();
@@ -1702,10 +1712,10 @@ void CouplingScheme::writeInterfaceOutput( const std::string& dir, const VisType
 }
 
 //------------------------------------------------------------------------------
-void CouplingScheme::updatePairReportingData( const FaceGeomError face_error )
+void CouplingScheme::updatePairReportingData( const FaceGeomException face_exception )
 {
-  switch ( face_error ) {
-    case NO_FACE_GEOM_ERROR: {
+  switch ( face_exception ) {
+    case NO_FACE_GEOM_EXCEPTION: {
       // no-op
       break;
     }
@@ -1776,24 +1786,38 @@ void CouplingScheme::createNodalNormalJacobianData()
 //------------------------------------------------------------------------------
 CouplingScheme::Viewer::Viewer( CouplingScheme& cs )
     : m_parameters( cs.m_parameters ),
+      m_effective_binning_proximity_scale( cs.m_effective_binning_proximity_scale ),
+      m_contact_mode( cs.m_contactMode ),
       m_contact_case( cs.m_contactCase ),
       m_contact_method( cs.m_contactMethod ),
       m_enforcement_options( cs.m_enforcementOptions ),
       m_mesh1( cs.getMesh1().getView() ),
       m_mesh2( cs.getMesh2().getView() ),
-      m_contact_plane2d( cs.m_contact_plane2d ),
-      m_contact_plane3d( cs.m_contact_plane3d )
+      m_cg_pairs( cs.m_cg_pairs )
 {
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE ContactPlane& CouplingScheme::Viewer::getContactPlane( IndexT id ) const
+TRIBOL_HOST_DEVICE ContactPlanePair& CouplingScheme::Viewer::getContactPlanePair( IndexT id ) const
 {
-  if ( spatialDimension() == 2 ) {
-    return m_contact_plane2d[id];
-  } else {
-    return m_contact_plane3d[id];
-  }
+  switch ( m_contact_method ) {
+    case COMMON_PLANE: {
+      return m_cg_pairs.getCommonPlane( id );
+      break;
+    }
+    case MORTAR_WEIGHTS:
+    case SINGLE_MORTAR: {
+      return m_cg_pairs.getMortarPlane( id );
+      break;
+    }
+    case ALIGNED_MORTAR: {
+      return m_cg_pairs.getAlignedMortarPlane( id );
+      break;
+    }
+    default: {
+      // no-op
+    }
+  }  // end switch
 }
 
 //------------------------------------------------------------------------------
@@ -1828,7 +1852,7 @@ TRIBOL_HOST_DEVICE RealT CouplingScheme::Viewer::getGapTol( int fid1, int fid2 )
 
       switch ( m_contact_case ) {
         case TIED_NORMAL:
-          gap_tol = m_parameters.gap_tied_tol *
+          gap_tol = m_parameters.binning_proximity_scale *
                     axom::utilities::max( m_mesh1.getFaceRadius()[fid1], m_mesh2.getFaceRadius()[fid2] );
           break;
 
@@ -1845,6 +1869,134 @@ TRIBOL_HOST_DEVICE RealT CouplingScheme::Viewer::getGapTol( int fid1, int fid2 )
   }  // end switch over m_contactMethod
 
   return gap_tol;
+}
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE bool CouplingScheme::Viewer::pruneMethodFacePair( const IndexT fid1, const IndexT fid2 ) const
+{
+  constexpr int max_dim = 3;
+  constexpr int max_nodes_per_face = 4;
+
+  auto& mesh1 = this->getMesh1View();
+  auto& mesh2 = this->getMesh2View();
+  int dim = mesh1.spatialDimension();
+  int num_nodes_face_1 = mesh1.numberOfNodesPerElement();
+  int num_nodes_face_2 = mesh2.numberOfNodesPerElement();
+
+  RealT fn1[max_dim], cx1[max_dim];
+  mesh1.getFaceNormal( fid1, fn1 );
+  mesh1.getFaceCentroid( fid1, cx1 );
+
+  RealT fn2[max_dim], cx2[max_dim];
+  mesh2.getFaceNormal( fid2, fn2 );
+  mesh2.getFaceCentroid( fid2, cx2 );
+
+  // get each face's nodal coordinates
+  RealT x1[max_nodes_per_face];
+  RealT y1[max_nodes_per_face];
+  RealT z1[max_nodes_per_face];
+
+  RealT x2[max_nodes_per_face];
+  RealT y2[max_nodes_per_face];
+  RealT z2[max_nodes_per_face];
+
+  for ( int i = 0; i < mesh1.numberOfNodesPerElement(); ++i ) {
+    const int nodeId_1 = mesh1.getGlobalNodeId( fid1, i );
+    x1[i] = mesh1.getPosition()[0][nodeId_1];
+    y1[i] = mesh1.getPosition()[1][nodeId_1];
+    if ( dim == 3 ) {
+      z1[i] = mesh1.getPosition()[2][nodeId_1];
+    }
+  }
+
+  for ( int i = 0; i < mesh2.numberOfNodesPerElement(); ++i ) {
+    const int nodeId_2 = mesh2.getGlobalNodeId( fid2, i );
+    x2[i] = mesh2.getPosition()[0][nodeId_2];
+    y2[i] = mesh2.getPosition()[1][nodeId_2];
+    if ( dim == 3 ) {
+      z2[i] = mesh2.getPosition()[2][nodeId_2];
+    }
+  }
+
+  RealT nrml[max_dim], cx[max_dim];
+
+  switch ( m_contact_method ) {
+    case ALIGNED_MORTAR:
+    case MORTAR_WEIGHTS:
+    case SINGLE_MORTAR: {
+      // specify the point-normal data used for mortar contact plane methods
+      // This is taken as the face 2 (nonmortar) normal and centroid
+      for ( int i = 0; i < dim; ++i ) {
+        nrml[i] = fn2[i];
+        cx[i] = cx2[i];
+      }
+
+      if ( !IsOverlappingOnPlane( &x1[0], &y1[0], &z1[0], &x2[0], &y2[0], &z2[0], &nrml[0], &cx[0], num_nodes_face_1,
+                                  num_nodes_face_2, dim ) ) {
+        return true;
+      }
+
+      break;
+    }
+    case COMMON_PLANE: {
+      // define the common plane
+      for ( int i = 0; i < dim; ++i ) {
+        nrml[i] = 0.5 * ( fn2[i] - fn1[i] );
+        cx[i] = 0.5 * ( cx1[i] + cx2[i] );
+      }
+
+      // normalize the intermediate plane normal
+      RealT mag;
+      if ( dim == 3 ) {
+        mag = magnitude( nrml[0], nrml[1], nrml[2] );
+      } else {
+        mag = magnitude( nrml[0], nrml[1], 0. );
+      }
+      RealT invMag = 1.0 / mag;
+
+      for ( int i = 0; i < dim; ++i ) {
+        nrml[i] *= invMag;
+      }
+
+      RealT x1_prime[max_nodes_per_face];
+      RealT y1_prime[max_nodes_per_face];
+      RealT z1_prime[max_nodes_per_face];
+      RealT x2_prime[max_nodes_per_face];
+      RealT y2_prime[max_nodes_per_face];
+      RealT z2_prime[max_nodes_per_face];
+
+      // project faces to average face planes
+      if ( dim == 3 ) {
+        ProjectFaceNodesToPlane( mesh1, fid1, fn1[0], fn1[1], fn1[2], cx1[0], cx1[1], cx1[2], &x1_prime[0],
+                                 &y1_prime[0], &z1_prime[0] );
+        ProjectFaceNodesToPlane( mesh2, fid2, fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2], &x2_prime[0],
+                                 &y2_prime[0], &z2_prime[0] );
+      } else {
+        for ( int i = 0; i < num_nodes_face_1; ++i ) {
+          x1_prime[i] = x1[i];
+          y1_prime[i] = y1[i];
+        }
+        for ( int i = 0; i < num_nodes_face_2; ++i ) {
+          x2_prime[i] = x2[i];
+          y2_prime[i] = y2[i];
+        }
+      }
+
+      if ( !IsOverlappingOnPlane( &x1_prime[0], &y1_prime[0], &z1_prime[0], &x2_prime[0], &y2_prime[0], &z2_prime[0],
+                                  &nrml[0], &cx[0], num_nodes_face_1, num_nodes_face_2, dim ) ) {
+        return true;
+      }
+      break;
+    }
+    default: {
+#ifdef TRIBOL_USE_HOST
+      SLIC_ERROR( "CouplingScheme::performMethodPruning(): your contact method does not have a pruning routine." );
+#endif
+      break;
+    }
+  }  // end switch
+
+  return false;
 }
 
 } /* namespace tribol */

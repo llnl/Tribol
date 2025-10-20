@@ -14,7 +14,8 @@ set( tribol_tests
      tribol_common_plane_gap_rate.cpp
      tribol_common_plane_gpu.cpp
      tribol_containers.cpp
-     tribol_comp_geom.cpp
+     tribol_comp_geom_2d.cpp
+     tribol_comp_geom_3d.cpp
      tribol_coupling_scheme.cpp
      tribol_coupling_scheme_manager.cpp
      tribol_enforcement_options.cpp
@@ -240,7 +241,7 @@ endif()
 
 if( TRIBOL_USE_ENZYME )
 
-  set(enzyme_smoke_depends LLDEnzymeFlags gtest)
+  set(enzyme_smoke_depends ClangEnzymeFlags gtest)
   blt_add_executable(
     NAME enzyme_smoke_test
     SOURCES enzyme_smoke.cpp

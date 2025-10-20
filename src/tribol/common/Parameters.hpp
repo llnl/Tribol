@@ -60,6 +60,7 @@ enum InterfaceElementType
 enum VisType
 {
   UNDEFINED_VIS,                ///! Undefined
+  VIS_NONE,                     ///! No visualization output
   VIS_MESH,                     ///! Print registered mesh(es)
   VIS_FACES,                    ///! Print active interface-faces (method specific)
   VIS_OVERLAPS,                 ///! Print interface face-face overlaps
@@ -133,7 +134,8 @@ enum ContactModel
 {
   NO_CONTACT,                      ///! No contact
   FRICTIONLESS,                    ///! Frictionless, normal contact only
-  COULOMB,                         ///! Coulomb friction model, not supported
+  VISCOUS_TANGENTIAL,              ///! Velocity based tangential damping (viscous) term added to contact force
+  FRICTION_COULOMB,                ///! Coulomb friction model, not supported
   ADHESION_SEPARATION_SCALAR_LAW,  ///! Scalar pressure law for the separation of adhered surfaces (Used with tied
                                    /// contact)
   NULL_MODEL,                      ///! Null model, for use with ContactMethod = MORTAR_WEIGHTS
@@ -208,6 +210,7 @@ enum RealElementFields
   RATE_PERCENT_STIFFNESS,        ///! Percent rate penalty stiffness
   BULK_MODULUS,                  ///! Element bulk modulus
   YOUNGS_MODULUS,                ///! Element Young's modulus
+  VISCOUS_DAMPING_COEFF,         ///! Element/material viscous damping coefficient for tangential damping
   ELEMENT_THICKNESS,             ///! Element thickness in contact normal direction
   NUM_REAL_ELEMENT_FIELDS = ELEMENT_THICKNESS
 };
@@ -309,15 +312,17 @@ enum BasisEvalType
 /*!
  * \brief Enumerates face-pair computational geometry errors
  */
-enum FaceGeomError
+enum FaceGeomException
 {
-  NO_FACE_GEOM_ERROR,                          ///! No face geometry error
-  FACE_ORIENTATION,                            ///! Face vertices not ordered consistent with outward unit normal
-  INVALID_FACE_INPUT,                          ///! Invalid input
-  DEGENERATE_OVERLAP,                          ///! Issues with overlap calculation resulting in degenerate overlap
+  NO_FACE_GEOM_EXCEPTION,             ///! No face geometry error indicating an overlap intersection
+  NO_OVERLAP,                         ///! Indicates that no actual overlap exists, but does not indicate an error
+  FACE_ORIENTATION,                   ///! Face vertices not ordered consistent with outward unit normal
+  INVALID_FACE_INPUT,                 ///! Invalid input
+  DEGENERATE_OVERLAP,                 ///! Issues with overlap calculation resulting in degenerate overlap
+  EXCEEDS_AUTO_CONTACT_LENGTH_SCALE,  ///! Gap exceeds auto contact length scale
   FACE_VERTEX_INDEX_EXCEEDS_OVERLAP_VERTICES,  ///! Very specific debug indexing error where face vertex count exceeds
-                                               /// overlap vertex count in cg routine
-  NUM_FACE_GEOM_ERRORS
+                                               ///  overlap vertex count in cg routine
+  NUM_FACE_GEOM_EXCEPTIONS
 };
 
 /*!
@@ -462,14 +467,11 @@ struct EnforcementOptions {
  * \brief Coupling scheme parameters struct
  */
 struct Parameters {
-  CommT problem_comm = TRIBOL_COMM_WORLD;  ///! MPI communicator for the problem
-
   RealT binning_proximity_scale =
       4.0;                           ///! Element length multiplier for coarse binning and proximity detection inclusion
   RealT overlap_area_frac = 1.0e-8;  ///! Ratio of overlap area to largest face area for contact inclusion
   RealT gap_tol_ratio = 1.0e-12;     ///! Ratio for determining tolerance for active contact gaps
-  RealT gap_separation_ratio = 0.75;  ///! Ratio for determining allowable separation in geometric filtering
-  RealT gap_tied_tol = 0.1;           ///! Ratio for determining max separation tied contact can support
+  // RealT gap_tied_tol = 0.1;          ///! Ratio for determining max separation tied contact can support
   RealT len_collapse_ratio = 1.0e-8;  ///! Ratio of face length providing topology collapse length tolerance
   RealT projection_ratio = 1.0e-10;   ///! Ratio for defining nonzero projections
   RealT auto_contact_pen_frac =
@@ -480,7 +482,7 @@ struct Parameters {
       1.0;  ///! Scale factor (>0) applied to the timestep vote giving users some control over the vote
 
   int vis_cycle_incr = 100;           ///! Frequency for visualizations dumps
-  VisType vis_type = VIS_OVERLAPS;    ///! Type of interface physics visualization output
+  VisType vis_type = VIS_NONE;        ///! Type of interface physics visualization output
   bool enable_timestep_vote = false;  ///! True if host-code desires the timestep vote to be calculated and returned
 
   bool auto_interpen_check = false;  ///! True if the auto-contact interpenetration check is used for full-overlap pairs

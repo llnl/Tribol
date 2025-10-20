@@ -55,10 +55,13 @@ struct MeshElemData {
   RealT m_rate_penalty_stiffness{ 0. };  ///< single scalar rate penalty stiffness for each mesh
   RealT m_rate_percent_stiffness{ 0. };  ///< rate penalty is percentage of gap penalty
 
+  RealT m_viscous_damping_coeff{ 0. };
+
   bool m_is_kinematic_constant_penalty_set{ false };  ///< True if single kinematic constant penalty is set
   bool m_is_kinematic_element_penalty_set{ false };   ///< True if the element-wise kinematic penalty is set
   bool m_is_rate_constant_penalty_set{ false };       ///< True if the constant rate penalty is set
   bool m_is_rate_percent_penalty_set{ false };        ///< True if the rate percent penalty is set
+  bool m_is_viscous_damping_coeff_set{ false };
 
   bool m_is_element_thickness_set{ false };  ///< True if element thickness is set
 
@@ -360,6 +363,16 @@ class MeshData {
      *
      */
     TRIBOL_HOST_DEVICE void getFaceNormal( IndexT face_id, RealT* nrml ) const;
+
+    /*!
+     *
+     * \brief returns pointer to array of stacked face centroid components
+     *
+     * \param [in] face_id integer id of face
+     * \param [in/out] cx pointer to array of stacked components of the face centroid components
+     *
+     */
+    TRIBOL_HOST_DEVICE void getFaceCentroid( IndexT face_id, RealT* cx ) const;
 
    private:
     /// Unique mesh ID

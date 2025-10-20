@@ -14,7 +14,7 @@
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/utils/DataManager.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
-#include "tribol/geom/ContactPlane.hpp"
+#include "tribol/geom/CompGeom.hpp"
 #include "tribol/geom/ElementNormal.hpp"
 
 #ifdef TRIBOL_USE_ENZYME
@@ -148,12 +148,33 @@ class CouplingScheme {
     TRIBOL_HOST_DEVICE const EnforcementOptions& getEnforcementOptions() const { return m_enforcement_options; }
 
     /**
+     * @brief Get the contact mode
+     *
+     * @return const reference to the contact mode
+     */
+    TRIBOL_HOST_DEVICE ContactMode getContactMode() const { return m_contact_mode; }
+
+    /**
+     * @brief Get the parameters struct
+     *
+     * @return a const reference to the parameters
+     */
+    TRIBOL_HOST_DEVICE const Parameters& getParameters() const { return m_parameters; }
+
+    /**
+     * @brief Get the effective binning proximity scale
+     *
+     * @return the effective binning proximity scale used on the coupling scheme
+     */
+    TRIBOL_HOST_DEVICE RealT getEffectiveBinningProximityScale() const { return m_effective_binning_proximity_scale; }
+
+    /**
      * @brief Return the contact plane given by id
      *
      * @param id identifier for a contact plane
      * @return contact plane object
      */
-    TRIBOL_HOST_DEVICE ContactPlane& getContactPlane( IndexT id ) const;
+    TRIBOL_HOST_DEVICE ContactPlanePair& getContactPlanePair( IndexT id ) const;
 
     /**
      * @brief Get the timestep scale
@@ -169,9 +190,31 @@ class CouplingScheme {
      */
     TRIBOL_HOST_DEVICE RealT getGapTol( int fid1, int fid2 ) const;
 
+    /**
+     * @brief Get a view of the computational geometry container
+     *
+     * @return a comp geom view
+     */
+    TRIBOL_HOST_DEVICE const CompGeom::Viewer& getCompGeomView() const { return m_cg_pairs; }
+
+    /**
+     * @brief Perform interface pair pruning based on the contact method
+     *
+     * \param [in] fid1 id of the first face
+     * \param [in] fid2 id of the second face
+     *
+     * \return true if interface pair is to be pruned (excluded); false if the pair is a contact candidate
+     */
+    TRIBOL_HOST_DEVICE bool pruneMethodFacePair( const IndexT fid1, const IndexT fid2 ) const;
+
    private:
     /// Struct holding parameters for the coupling scheme
     Parameters m_parameters;
+
+    RealT m_effective_binning_proximity_scale;
+
+    /// Defines the contact mode
+    ContactMode m_contact_mode;
 
     /// Defines the contact case: special algorithmic considerations
     ContactCase m_contact_case;
@@ -188,11 +231,8 @@ class CouplingScheme {
     /// View of the second mesh
     MeshData::Viewer m_mesh2;
 
-    /// Array view of 2D contact planes
-    ArrayViewT<ContactPlane2D> m_contact_plane2d;
-
-    /// Array view of 3D contact planes
-    ArrayViewT<ContactPlane3D> m_contact_plane3d;
+    /// View of computational geometry container
+    CompGeom::Viewer m_cg_pairs;
 
   };  // end class CouplingScheme::Viewer
 
@@ -211,7 +251,7 @@ class CouplingScheme {
    * @param [in] contact_mode the type of contact, e.g. SURFACE_TO_SURFACE
    * @param [in] contact_case the specific case of contact application, e.g. auto
    * @param [in] contact_method the contact method, e.g. SINGLE_MORTAR
-   * @param [in] contact_model the contact model, e.g. COULOMB
+   * @param [in] contact_model the contact model, e.g. FRICTION_COULOMB
    * @param [in] enforcement_method the enforcement method, e.g. PENALTY
    * @param [in] binning_method the binning method, e.g. BINNING_GRID
    *
@@ -227,6 +267,13 @@ class CouplingScheme {
   // Enable moving
   CouplingScheme( CouplingScheme&& other ) = default;
   CouplingScheme& operator=( CouplingScheme&& other ) = default;
+
+  /**
+   * @brief Returns the problem communicator
+   *
+   * @return problem mpi communicator
+   */
+  CommT getProblemComm() { return m_problem_comm; }
 
   /**
    * @brief Get the ID of the coupling scheme
@@ -275,6 +322,13 @@ class CouplingScheme {
 
   /// @overload
   const MeshData& getMesh2() const { return *m_mesh2; }
+
+  /**
+   * @brief Get a reference to the computational geometry container
+   *
+   * @return CompGeom reference
+   */
+  const CompGeom& getCompGeom() const { return m_cg_pairs; }
 
   /**
    * @brief Get the execution mode for the coupling scheme
@@ -414,7 +468,7 @@ class CouplingScheme {
    *
    * @param comm MPI communicator
    */
-  void setMPIComm( CommT comm ) { m_parameters.problem_comm = comm; }
+  void setMPIComm( CommT comm ) { m_problem_comm = comm; }
 
   /**
    * @brief Check whether the coupling scheme has been binned
@@ -455,7 +509,7 @@ class CouplingScheme {
    *
    * @return number of active interface pairs
    */
-  int getNumActivePairs() const { return std::max( m_contact_plane2d.size(), m_contact_plane3d.size() ); }
+  int getNumActivePairs() const { return m_cg_pairs.getNumActivePairs( getContactMethod() ); }
 
   /**
    * @brief Return the contact plane given by id
@@ -463,14 +517,7 @@ class CouplingScheme {
    * @param id identifier for a contact plane
    * @return contact plane object
    */
-  const ContactPlane& getContactPlane( IndexT id ) const;
-
-  /**
-   * @brief Returns a reference to the 3D contact planes
-   *
-   * @return reference to the ContactPlane3D array
-   */
-  const ArrayT<ContactPlane3D>& get3DContactPlanes() const { return m_contact_plane3d; }
+  const ContactPlanePair& getContactPlanePair( IndexT id ) const;
 
   /**
    * @brief Set whether the coupling scheme has been binned
@@ -624,11 +671,11 @@ class CouplingScheme {
   LoggingLevel getLoggingLevel() const { return m_loggingLevel; }
 
   /**
-   * @brief This updates the total number of types of face geometry errors
+   * @brief This updates the total number of types of face geometry exceptions
    *
-   * @pre The face_error is generated by calling CheckInterfacePair()
+   * @pre The face_exception is generated by calling CheckInterfacePair()
    */
-  void updatePairReportingData( const FaceGeomError face_error );
+  void updatePairReportingData( const FaceGeomException face_exception );
 
   /**
    * @brief This debug prints the total number of types of face geometry errors
@@ -835,6 +882,8 @@ class CouplingScheme {
   void computeCommonPlaneTimeStep( RealT& dt );
 
  private:
+  CommT m_problem_comm = TRIBOL_COMM_WORLD;  ///! MPI communicator for the problem
+
   IndexT m_id;  ///< Coupling Scheme id
 
   IndexT m_mesh_id1;  ///< Integer id for mesh 1
@@ -875,8 +924,7 @@ class CouplingScheme {
 
   ArrayT<InterfacePair> m_interface_pairs;  ///< List of interface pairs
 
-  ArrayT<ContactPlane2D> m_contact_plane2d;  ///< List of 2D contact planes
-  ArrayT<ContactPlane3D> m_contact_plane3d;  ///< List of 3D contact planes
+  CompGeom m_cg_pairs;  ///< Computational geometry container object
 
   MethodData* m_methodData;  ///< method object holding required interface method data
 

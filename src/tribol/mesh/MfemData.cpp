@@ -398,6 +398,8 @@ void MfemMeshData::ClearAllPenaltyData()
   kinematic_constant_penalty_2_.reset( nullptr );
   kinematic_penalty_scale_1_.reset( nullptr );
   kinematic_penalty_scale_2_.reset( nullptr );
+  viscous_damping_coeff_1_.reset( nullptr );
+  viscous_damping_coeff_2_.reset( nullptr );
   elem_thickness_.reset( nullptr );
   redecomp_elem_thickness_.reset( nullptr );
   tribol_elem_thickness_1_.reset( nullptr );

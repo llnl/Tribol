@@ -56,9 +56,9 @@ class PalletAvgNormal : public ElementNormal {
 };
 
 /**
- * @brief Computes element normal at the origin of the isoparametric element
+ * @brief Computes element normal at the origin of the isoparametric element (triangle or quadrilateral)
  */
-class QuadCentroidNormal : public ElementNormal {
+class ElementCentroidNormal : public ElementNormal {
  public:
   /**
    * @brief Computes element normal at the origin of the isoparametric element
@@ -66,7 +66,7 @@ class QuadCentroidNormal : public ElementNormal {
    * @param [in] x Nodal coordinates for the element (stored by nodes, i.e. [x0, x1, x2, y0, y1, y2, z0, z1, z2])
    * @param [in] c Centroid for the element (length = spatial dimension)
    * @param [out] n Unit vector in the normal direction (length = spatial dimension)
-   * @param [in] num_nodes Number of nodes in the element
+   * @param [in] num_nodes Number of nodes in the element (either 3 or 4)
    * @param [out] area Area of the element
    * @return Is face data OK?  true = yes; false = no
    */

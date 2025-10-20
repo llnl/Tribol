@@ -7,16 +7,17 @@
 #define SRC_TRIBOL_CONFIG_HPP_
 
 /*
- * Note: Use only C-style comments in this file
- *       since it might be included from a C file
+ * Note: Use only C-style comments in this file since it might be included from a C file
  */
 
 /*
  * Version Information
  */
-#define TRIBOL_VERSION_MAJOR @TRIBOL_VERSION_MAJOR @
-#define TRIBOL_VERSION_MINOR @TRIBOL_VERSION_MINOR @
-#define TRIBOL_VERSION_PATCH @TRIBOL_VERSION_PATCH @
+/* clang-format off */
+#define TRIBOL_VERSION_MAJOR @TRIBOL_VERSION_MAJOR@
+#define TRIBOL_VERSION_MINOR @TRIBOL_VERSION_MINOR@
+#define TRIBOL_VERSION_PATCH @TRIBOL_VERSION_PATCH@
+/* clang-format on */
 #define TRIBOL_VERSION_FULL "@TRIBOL_VERSION_FULL@"
 
 /*

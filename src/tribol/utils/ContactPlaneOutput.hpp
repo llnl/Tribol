@@ -9,9 +9,6 @@
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 
-// AXOM includes
-#include "axom/slic.hpp"
-
 // C++ includes
 #include <string>
 

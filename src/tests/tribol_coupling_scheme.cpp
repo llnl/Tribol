@@ -381,7 +381,7 @@ TEST_F( CouplingSchemeTest, mortar_coulomb )
   tribol::registerMortarPressures( 1, &pressures[0] );
 
   tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::SINGLE_MORTAR,
-                                  tribol::COULOMB, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID,
+                                  tribol::FRICTION_COULOMB, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID,
                                   tribol::ExecutionMode::Sequential );
 
   tribol::setLagrangeMultiplierOptions( 0, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN,
@@ -430,7 +430,7 @@ TEST_F( CouplingSchemeTest, common_plane_coulomb )
   tribol::setKinematicConstantPenalty( 1, penalty );
 
   tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                                  tribol::COULOMB, tribol::PENALTY, tribol::BINNING_GRID,
+                                  tribol::FRICTION_COULOMB, tribol::PENALTY, tribol::BINNING_GRID,
                                   tribol::ExecutionMode::Sequential );
 
   tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );

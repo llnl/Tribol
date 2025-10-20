@@ -14,4 +14,4 @@ class TribolDevtools(BundlePackage):
     depends_on("python")
     depends_on("py-shroud")
     depends_on("py-sphinx")
-    depends_on("llvm@14+clang+python")
+    depends_on("llvm@19+clang")
