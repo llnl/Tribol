@@ -6,10 +6,10 @@
 ##############################################################################
 
 variables:
+  GIT_STRATEGY: clone
   GIT_SUBMODULE_STRATEGY: recursive
   PROJECT_ALLOC_NAME: ${CI_PROJECT_NAME}_ci_${CI_PIPELINE_ID}
   BUILD_ROOT: ${CI_PROJECT_DIR}
-  ALLOC_BANK: eng
 
 ####
 # Templates
@@ -21,6 +21,7 @@ variables:
     - ${ALLOC_COMMAND} python3 scripts/llnl/build_src.py -v --host-config=${HOST_CONFIG} --extra-cmake-options=${EXTRA_CMAKE_OPTIONS} ${EXTRA_BUILD_OPTIONS}
     - echo -e "section_end:$(date +%s):src_build_and_unit_test\r\e[0K"
   artifacts:
+    expire_in: 2 weeks
     when: always
     paths:
       - _tribol_build_and_test_*/output.log*.txt
@@ -31,7 +32,8 @@ variables:
 
 include:
   - local: .gitlab/build_toss4.yml
-  - local: .gitlab/build_blueos.yml
+  #TODO: swap this for matrix
+  #- local: .gitlab/build_blueos.yml
   - local: .gitlab/build_toss4_cray.yml
   # ID token requirement for Gitlab 17.0+
   - project: 'lc-templates/id_tokens'
