@@ -246,16 +246,6 @@ int main( int argc, char* argv[] )
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
                                     // exiting main scope
 
-// TODO: figure out why stack size is no longer statically deterministic in CouplingScheme::apply
-#ifdef TRIBOL_USE_CUDA
-  size_t stackSize;
-  cudaDeviceGetLimit( &stackSize, cudaLimitStackSize );
-  SLIC_DEBUG( "Current CUDA stack size limit: " << stackSize << " bytes." );
-  stackSize *= 8;  // determined from experimentation
-  SLIC_DEBUG( "Setting stack size limit to " << stackSize << " bytes." );
-  cudaDeviceSetLimit( cudaLimitStackSize, stackSize );
-#endif
-
   result = RUN_ALL_TESTS();
 
   MPI_Finalize();

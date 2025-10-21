@@ -4,19 +4,18 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "gtest/gtest.h"
-#include <gtest/gtest.h>
-
-#include "tribol/common/ExecModel.hpp"
-#include "tribol/interface/tribol.hpp"
 
 #include "mfem.hpp"
-
-#include "axom/core.hpp"
 
 #ifdef TRIBOL_USE_UMPIRE
 // Umpire includes
 #include "umpire/ResourceManager.hpp"
 #endif
+
+#include "axom/slic.hpp"
+
+#include "tribol/common/ExecModel.hpp"
+#include "tribol/interface/tribol.hpp"
 
 namespace tribol {
 
@@ -246,16 +245,6 @@ int main( int argc, char* argv[] )
 
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
                                     // exiting main scope
-
-// TODO: figure out why stack size is no longer statically deterministic in CouplingScheme::apply
-#ifdef TRIBOL_USE_CUDA
-  size_t stackSize;
-  cudaDeviceGetLimit( &stackSize, cudaLimitStackSize );
-  SLIC_DEBUG( "Current CUDA stack size limit: " << stackSize << " bytes." );
-  stackSize *= 8;  // determined from experimentation
-  SLIC_DEBUG( "Setting stack size limit to " << stackSize << " bytes." );
-  cudaDeviceSetLimit( cudaLimitStackSize, stackSize );
-#endif
 
   result = RUN_ALL_TESTS();
 
