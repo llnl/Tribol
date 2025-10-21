@@ -427,11 +427,9 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
   ///////////////////////////////
   // loop over interface pairs //
   ///////////////////////////////
-  ArrayT<int> err_data( { 0 }, cs->getAllocatorId() );
-  ArrayViewT<int> err = err_data;
   auto cs_view = cs->getView();
   const auto num_pairs = cs->getNumActivePairs();
-  forAllExec( cs->getExecutionMode(), num_pairs, [cs_view, err] TRIBOL_HOST_DEVICE( IndexT i ) {
+  forAllExec( cs->getExecutionMode(), num_pairs, [cs_view] TRIBOL_HOST_DEVICE( IndexT i ) {
     auto& cg_view = cs_view.getCompGeomView();
     auto& plane = cg_view.getCommonPlane( i );
 
@@ -615,8 +613,7 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
     }  // end for loop over face nodes
   } );
 
-  ArrayT<int, 1, MemorySpace::Host> err_host( err_data );
-  return err_host[0];
+  return 0;
 }
 //------------------------------------------------------------------------------
 

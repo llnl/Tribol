@@ -410,7 +410,7 @@ class UmpireAllocator {
 
   void deallocate( T* p, size_type n ) const { allocator_.deallocate( p, n ); }
 
-  void uninitialized_copy( T* first, T* last, T* d_first ) const
+  void uninitialized_copy( T* first, T*, T* d_first ) const
   {
     auto& rm = umpire::ResourceManager::getInstance();
     rm.copy( d_first, first );

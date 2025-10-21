@@ -211,14 +211,14 @@ inline void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const Re
         xi[1] = x_sol[1];
 
         //       check to make sure point is inside isoparametric quad_wt
-#if defined(TRIBOL_DEBUG) && !defined( TRIBOL_USE_ENZYME )
+#if !defined( TRIBOL_USE_ENZYME )
         bool in_quad = true;
 #endif
         if ( std::abs( xi[0] ) > 1. || std::abs( xi[1] ) > 1. ) {
           if ( std::abs( xi[0] ) > 1. + 100. * xtol ||
                std::abs( xi[1] ) > 1. + 100. * xtol )  // should have some tolerance dependent conv tol?
           {
-#if defined(TRIBOL_DEBUG) && !defined( TRIBOL_USE_ENZYME )
+#if !defined( TRIBOL_USE_ENZYME )
             in_quad = false;
 #endif
           } else {
