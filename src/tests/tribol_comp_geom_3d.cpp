@@ -55,7 +55,7 @@ class CompGeomTest : public ::testing::Test {
   {
     // if element thickness is not registered by test, then register dummy
     // element thickness in order to use auto contact
-    RealT element_thickness[numCells];
+    tribol::BoundedArray<tribol::RealT> element_thickness( numCells );
     if ( !m_isElementThicknessRegistered ) {
       for ( int i = 0; i < numCells; ++i ) {
         element_thickness[i] = 1.0;

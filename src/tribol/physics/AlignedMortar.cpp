@@ -183,7 +183,7 @@ void ComputeAlignedMortarGaps( CouplingScheme* cs )
     auto& cg_pairs = cs->getCompGeom();
     auto& plane = cg_pairs.getAlignedMortarPlane( cpID );
 
-    RealT overlapX[dim * plane.m_numPolyVert];
+    VectorArray<RealT> overlapX( dim, plane.m_numPolyVert );
 
     // get pair indices
     IndexT index1 = pair.m_element_id1;
@@ -204,7 +204,7 @@ void ComputeAlignedMortarGaps( CouplingScheme* cs )
     // configuration face coordinates. We need the current
     // configuration face coordinates here in order to correctly
     // compute the mortar gaps.
-    SurfaceContactElem elem_for_gap( dim, mortarX.memory(), nonmortarX.memory(), overlapX.data(), numNodesPerFace,
+    SurfaceContactElem elem_for_gap( dim, mortarX.memory(), nonmortarX.memory(), overlapX.memory(), numNodesPerFace,
                                      plane.m_numPolyVert, &mortarMesh, &nonmortarMesh, index1, index2 );
 
     /////////////////////////
@@ -339,16 +339,16 @@ int ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
       auto& plane = cg_pairs.getAlignedMortarPlane( cpID );
 
       // get projected face coords and overlap coords
-      RealT mortarX_bar[dim * numNodesPerFace];
-      RealT nonmortarX_bar[dim * numNodesPerFace];
-      RealT overlapX[dim * plane.m_numPolyVert];
+      BoundedArray2D<RealT> mortarX_bar( dim, numNodesPerFace );
+      BoundedArray2D<RealT> nonmortarX_bar( dim, numNodesPerFace );
+      BoundedArray2D<RealT> overlapX( dim, plane.m_numPolyVert );
       plane.getFace1ProjectedCoords( &mortarX_bar[0], numNodesPerFace );
       plane.getFace2ProjectedCoords( &nonmortarX_bar[0], numNodesPerFace );
       plane.getOverlapVertices( &overlapX[0] );
 
       // instantiate a new surface contact element with projected face
       // coordinates
-      SurfaceContactElem elem_for_jac( dim, &mortarX_bar[0], &nonmortarX_bar[0], &overlapX[0], numNodesPerFace,
+      SurfaceContactElem elem_for_jac( dim, mortarX_bar.memory(), nonmortarX_bar.memory(), overlapX.memory(), numNodesPerFace,
                                        plane.m_numPolyVert, &mortarMesh, &nonmortarMesh, index1, index2 );
 
       // HAVE TO set the number of active constraints. For now set to

@@ -97,11 +97,7 @@ class SizeLECapacity : public Capacity {
   TRIBOL_HOST_DEVICE size_type setSize( size_type size )
   {
     assert( size <= capacity() );
-    assert( size >= 0 );
     size_ = size <= capacity() ? size : capacity();
-    if ( size_ < 0 ) {
-      size_ = 0;
-    }
     return size_;
   }
 
@@ -383,6 +379,7 @@ class Allocator {
 
   TRIBOL_HOST_DEVICE void deallocate( T* p, size_type ) const { ::operator delete( p ); }
 
+  TRIBOL_NVCC_EXEC_CHECK_DISABLE
   TRIBOL_HOST_DEVICE void uninitialized_copy( T* first, T* last, T* d_first ) const
   {
     std::uninitialized_copy( first, last, d_first );
@@ -416,7 +413,7 @@ class UmpireAllocator {
   void uninitialized_copy( T* first, T* last, T* d_first ) const
   {
     auto& rm = umpire::ResourceManager::getInstance();
-    rm.copy( d_first, first, ( last - first ) );
+    rm.copy( d_first, first );
   }
 
  private:

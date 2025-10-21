@@ -165,7 +165,6 @@ class BoundedArray2D : public BoundedArray<T, MemoryT> {
   TRIBOL_HOST_DEVICE BoundedArray2D( size_type height, size_type width, size_type max_height )
       : BaseClass( height * width, max_height * width ), height_( height ), width_( width ), max_height_( max_height )
   {
-    assert( height >= 0 && width >= 0 );
     assert( size() == height * width );
     assert( capacity() == max_height * width );
   }
@@ -245,7 +244,6 @@ class BoundedArray2D : public BoundedArray<T, MemoryT> {
         width_( other.width() ),
         max_height_( other.max_height() )
   {
-    assert( height_ >= 0 && width_ >= 0 );
     assert( size() == height_ * width_ );
     assert( capacity() == max_height_ * width_ );
   }
