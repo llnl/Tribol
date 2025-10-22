@@ -116,8 +116,8 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol
     displacement = 0.0;
 
     // grid function for velocity
-    mfem::ParGridFunction v{ &par_fe_space };
-    v = 0.0;
+    mfem::ParGridFunction velocity{ &par_fe_space };
+    velocity = 0.0;
 
     // set initial velocity
     mfem::Vector init_velocity_vector( { 0.0, 0.0, -std::abs( initial_v ) } );
@@ -131,7 +131,7 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol
       init_velocity_coeff_array.Append( &init_velocity_coeff );
     }
     mfem::PWVectorCoefficient initial_v_coeff( mesh.SpaceDimension(), moving_attrs_array, init_velocity_coeff_array );
-    v.ProjectCoefficient( initial_v_coeff );
+    velocity.ProjectCoefficient( initial_v_coeff );
 
     // recover dirichlet bc tdof list
     mfem::Array<int> ess_vdof_list;
@@ -164,7 +164,7 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol
                                         contact_surf_2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
                                         tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY,
                                         tribol::BINNING_BVH, exec_mode );
-    tribol::registerMfemVelocity( 0, v );
+    tribol::registerMfemVelocity( 0, velocity );
     if ( std::get<1>( GetParam() ) == tribol::KINEMATIC_CONSTANT ) {
       tribol::setMfemKinematicConstantPenalty( coupling_scheme_id, p_kine, p_kine );
     } else {
@@ -184,7 +184,7 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol
       tribol::getMfemResponse( 0, op.f_ext );
 
       op.SetTime( t );
-      solver.Step( displacement, v, t, dt );
+      solver.Step( displacement, velocity, t, dt );
 
       coords.Set( 1.0, ref_coords );
       coords += displacement;

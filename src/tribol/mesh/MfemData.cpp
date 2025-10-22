@@ -13,11 +13,12 @@
 
 namespace tribol {
 
-SubmeshLORTransfer::SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh )
+SubmeshLORTransfer::SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh, bool use_ea )
     : lor_gridfn_{ CreateLORGridFunction(
           lor_mesh, std::make_unique<mfem::H1_FECollection>( 1, lor_mesh.SpaceDimension() ), submesh_fes.GetVDim() ) },
       lor_xfer_{ submesh_fes, *lor_gridfn_->ParFESpace() }
 {
+  lor_xfer_.UseEA( use_ea );
 }
 
 void SubmeshLORTransfer::TransferToLORGridFn( const mfem::ParGridFunction& submesh_src )
@@ -485,7 +486,8 @@ void MfemMeshData::SetLORFactor( int lor_factor )
   lor_mesh_ = std::make_unique<mfem::ParMesh>(
       mfem::ParMesh::MakeRefined( submesh_, lor_factor, mfem::BasisType::ClosedUniform ) );
   lor_mesh_->EnsureNodes();
-  submesh_lor_xfer_ = std::make_unique<SubmeshLORTransfer>( *submesh_xfer_gridfn_.ParFESpace(), *lor_mesh_ );
+  submesh_lor_xfer_ =
+      std::make_unique<SubmeshLORTransfer>( *submesh_xfer_gridfn_.ParFESpace(), *lor_mesh_, use_device_ );
 }
 
 void MfemMeshData::ComputeElementThicknesses()

@@ -45,8 +45,9 @@ class SubmeshLORTransfer {
    * @param submesh_fes Higher order finite element space on the parent-linked
    * boundary submesh
    * @param lor_mesh LOR mesh
+   * @param use_ea Whether to use device-friendly element assembly for the transfer (default: false)
    */
-  SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh );
+  SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh, bool use_ea = false );
 
   /**
    * @brief Transfers data from a higher-order grid function on a parent-linked
