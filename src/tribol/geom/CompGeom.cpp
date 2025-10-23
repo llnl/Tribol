@@ -29,8 +29,14 @@ TRIBOL_HOST_DEVICE FaceGeomException CheckInterfacePairByMethod(
     InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, const Parameters& params,
     ContactCase TRIBOL_UNUSED_PARAM( cCase ), bool& isInteracting, CompGeom::Viewer& cg, IndexT* plane_ct )
 {
-  T my_plane( &pair, params, mesh1.spatialDimension() );
-  FaceGeomException face_err = my_plane.checkInterfacePair( mesh1, mesh2 );
+  auto dim = mesh1.spatialDimension();
+  T my_plane( &pair, params, dim );
+  FaceGeomException face_err = NO_FACE_GEOM_EXCEPTION;
+  if ( dim == 3 ) {
+    face_err = my_plane.checkFacePair( mesh1, mesh2 );
+  } else {
+    face_err = my_plane.checkEdgePair( mesh1, mesh2 );
+  }
 
   if ( face_err != NO_FACE_GEOM_EXCEPTION ) {
     isInteracting = false;
@@ -227,7 +233,8 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::checkFacePair( const MeshD
   m_face1_convex = IsConvex( x1_loc, y1_loc, mesh1.numberOfNodesPerElement() );
   m_face2_convex = IsConvex( x2_loc, y2_loc, mesh2.numberOfNodesPerElement() );
 
-  FaceGeomException interpen_err = this->computeOverlap3D(
+  // explicitly call compute overlap routine for common plane so CUDA can determine stack size
+  FaceGeomException interpen_err = CommonPlanePair::computeOverlap3D(
       &m_x1_prime[0], &m_y1_prime[0], &m_z1_prime[0], &m_x2_prime[0], &m_y2_prime[0], &m_z2_prime[0], mesh1, mesh2 );
 
   if ( interpen_err != NO_FACE_GEOM_EXCEPTION ) {
@@ -271,7 +278,8 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::checkEdgePair( const MeshD
   // locate the common plane centroid so we just take the average of the two face centroids
   computePlaneData( mesh1, mesh2 );
 
-  FaceGeomException interpen_err = this->computeOverlap2D( mesh1, mesh2 );
+  // explicitly call compute overlap routine for common plane so CUDA can determine stack size
+  FaceGeomException interpen_err = CommonPlanePair::computeOverlap2D( mesh1, mesh2 );
   if ( interpen_err != NO_FACE_GEOM_EXCEPTION ) {
     this->m_inContact = false;
     return interpen_err;
