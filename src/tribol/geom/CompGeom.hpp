@@ -54,28 +54,6 @@ class ContactPlanePair : public CompGeomPair {
   TRIBOL_HOST_DEVICE ContactPlanePair( InterfacePair* pair, const Parameters& params, const int dim );
 
   /*!
-   * \brief check to see if face-pairs are interacting
-   *
-   * \param [in] mesh1 mesh data viewer for mesh 1
-   * \param [in] mesh2 mesh data viewer for mesh 2
-   *
-   * \return face geometry exception
-   */
-  TRIBOL_HOST_DEVICE virtual FaceGeomException checkFacePair(
-      const MeshData::Viewer& TRIBOL_UNUSED_PARAM( mesh1 ), const MeshData::Viewer& TRIBOL_UNUSED_PARAM( mesh2 ) ) = 0;
-
-  /*!
-   * \brief check to see if edge-pairs are interacting
-   *
-   * \param [in] mesh1 mesh data viewer for mesh 1
-   * \param [in] mesh2 mesh data viewer for mesh 2
-   *
-   * \return face geometry exception
-   */
-  TRIBOL_HOST_DEVICE virtual FaceGeomException checkEdgePair(
-      const MeshData::Viewer& TRIBOL_UNUSED_PARAM( mesh1 ), const MeshData::Viewer& TRIBOL_UNUSED_PARAM( mesh2 ) ) = 0;
-
-  /*!
    * \brief Compute a local basis on the contact plane
    *
    */
@@ -175,22 +153,26 @@ class ContactPlanePair : public CompGeomPair {
   /// @{
 
   /*!
-   * \brief check to see if interface pairs are interacting
+   * \brief check to see if face-pairs are interacting
    *
    * \param [in] mesh1 mesh data viewer for mesh 1
    * \param [in] mesh2 mesh data viewer for mesh 2
    *
    * \return face geometry exception
    */
-  TRIBOL_HOST_DEVICE FaceGeomException checkInterfacePair( const MeshData::Viewer& mesh1,
-                                                           const MeshData::Viewer& mesh2 )
-  {
-    if ( m_dim == 3 ) {
-      return checkFacePair( mesh1, mesh2 );
-    } else {
-      return checkEdgePair( mesh1, mesh2 );
-    }
-  }
+  TRIBOL_HOST_DEVICE virtual FaceGeomException checkFacePair(
+      const MeshData::Viewer& TRIBOL_UNUSED_PARAM( mesh1 ), const MeshData::Viewer& TRIBOL_UNUSED_PARAM( mesh2 ) ) = 0;
+
+  /*!
+   * \brief check to see if edge-pairs are interacting
+   *
+   * \param [in] mesh1 mesh data viewer for mesh 1
+   * \param [in] mesh2 mesh data viewer for mesh 2
+   *
+   * \return face geometry exception
+   */
+  TRIBOL_HOST_DEVICE virtual FaceGeomException checkEdgePair(
+      const MeshData::Viewer& TRIBOL_UNUSED_PARAM( mesh1 ), const MeshData::Viewer& TRIBOL_UNUSED_PARAM( mesh2 ) ) = 0;
 
   TRIBOL_HOST_DEVICE void computePlaneData( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
   {
@@ -360,13 +342,6 @@ class CommonPlanePair : public ContactPlanePair {
    */
   ~CommonPlanePair() = default;
 
- protected:
-  // Assuming a convex quadrilateral in 3D with only TWO line/edge plane intersections,
-  // you can have a max of 5 vertices associated with the interpenetrating portion of the
-  // four node quadrilateral face. This configuration is a 1-3 configuration with 3 nodes
-  // interpenetrating and one node not.
-  static constexpr int max_nodes_per_intersection{ 5 };
-
   /*!
    * \brief check to see if common plane face-pairs are interacting
    *
@@ -388,6 +363,13 @@ class CommonPlanePair : public ContactPlanePair {
    */
   TRIBOL_HOST_DEVICE FaceGeomException checkEdgePair( const MeshData::Viewer& mesh1,
                                                       const MeshData::Viewer& mesh2 ) override;
+
+ protected:
+  // Assuming a convex quadrilateral in 3D with only TWO line/edge plane intersections,
+  // you can have a max of 5 vertices associated with the interpenetrating portion of the
+  // four node quadrilateral face. This configuration is a 1-3 configuration with 3 nodes
+  // interpenetrating and one node not.
+  static constexpr int max_nodes_per_intersection{ 5 };
 
   /*!
    * \brief Compute the unit normal that defines the contact plane
@@ -554,8 +536,6 @@ class MortarPlanePair : public ContactPlanePair {
    *
    */
   ~MortarPlanePair() = default;
-
- protected:
   /*!
    * \brief check to see if mortar plane face-pairs are interacting
    *
@@ -578,6 +558,7 @@ class MortarPlanePair : public ContactPlanePair {
   TRIBOL_HOST_DEVICE FaceGeomException checkEdgePair( const MeshData::Viewer& mesh1,
                                                       const MeshData::Viewer& mesh2 ) override;
 
+ protected:
   /*!
    * \brief Compute the unit normal that defines the contact plane
    * \param [in] m1 mesh data viewer for mesh 1
@@ -653,7 +634,6 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    */
   ~AlignedMortarPlanePair() = default;
 
- protected:
   /*!
    * \brief check to see if aligned mortar plane face-pairs are interacting
    *
@@ -678,6 +658,7 @@ class AlignedMortarPlanePair : public ContactPlanePair {
   TRIBOL_HOST_DEVICE FaceGeomException checkEdgePair( const MeshData::Viewer& mesh1,
                                                       const MeshData::Viewer& mesh2 ) override;
 
+ protected:
   /*!
    * \brief Compute the unit normal that defines the contact plane
    * \param [in] m1 mesh data viewer for mesh 1
