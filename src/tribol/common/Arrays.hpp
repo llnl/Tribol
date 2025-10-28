@@ -19,8 +19,11 @@
 namespace tribol {
 
 /**
- * @brief Base class template for array-like containers that use a memory management policy
- * @tparam _MemoryT The memory management policy type
+ * @brief Base class template for array-like containers that use a memory type to hold data.
+ * @tparam _MemoryT The underlying memory holding array data.
+ *
+ * @note This class provides common functionality for array containers, including element access,
+ * iteration, and memory management. Elements are default initialized upon construction.
  */
 template <typename _MemoryT>
 class ArrayBase {
@@ -34,12 +37,12 @@ class ArrayBase {
   /** @brief Const pointer type for array elements */
   using ConstPointerT_ = typename _MemoryT::ConstPointerT_;
 
-  /** @brief Memory management policy type */
+  /** @brief Type of memory holding underlying data */
   using MemoryT_ = _MemoryT;
 
   /**
-   * @brief Constructs array with given memory policy
-   * @param memory Memory policy to use
+   * @brief Constructs array using existing memory. Memory is default initialized if needed.
+   * @param memory Memory to wrap
    */
   TRIBOL_NVCC_EXEC_CHECK_DISABLE
   TRIBOL_HOST_DEVICE ArrayBase( MemoryT_&& memory ) : memory_( std::move( memory ) )
@@ -135,25 +138,38 @@ class ArrayBase {
   /** @brief Get const iterator to end */
   TRIBOL_HOST_DEVICE ConstIteratorT_ end() const { return memory_.end(); }
 
-  /** @brief Get reference to memory policy */
+  /** @brief Get reference to underlying memory */
   TRIBOL_HOST_DEVICE MemoryT_& memory() { return memory_; }
 
-  /** @brief Get const reference to memory policy */
+  /** @brief Get const reference to underlying memory */
   TRIBOL_HOST_DEVICE const MemoryT_& memory() const { return memory_; }
 
   /** @brief Convert to memory view type */
   TRIBOL_HOST_DEVICE operator typename MemoryT_::ViewT_() const { return memory_; }
 
  protected:
-  /** @brief Memory policy instance */
+  /** @brief Memory instance */
   MemoryT_ memory_;
 };
 
+/**
+ * @brief Fixed-size array container with compile-time size.
+ *
+ * @tparam _T The type of elements stored in the array.
+ * @tparam _N The compile-time size of the array.
+ * @tparam _MemoryT The underlying memory holding array data, defaults to StackMemory.
+ *
+ * This class provides a fixed-size array container where the size is known at compile time. It uses stack memory by
+ * default and provides random access to elements.
+ */
 template <typename _T, SizeT _N, class _MemoryT = StackMemory<_T, _N>>
 class FixedArray : public ArrayBase<_MemoryT> {
  public:
+  /** @brief Base class type */
   using BaseClassT_ = ArrayBase<_MemoryT>;
+  /** @brief Memory type */
   using typename BaseClassT_::MemoryT_;
+  /** @brief Value type stored in the array */
   using typename BaseClassT_::ValueT_;
 
   static_assert( std::is_same<ValueT_, _T>::value, "BoundedArray must be used with same type as memory" );
