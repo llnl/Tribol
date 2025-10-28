@@ -13,7 +13,7 @@ namespace tribol {
 template <typename T, typename VectorT = Vector<T>>
 class Hyperplane {
  public:
-  using value_type = typename VectorT::value_type;
+  using value_type = typename VectorT::ValueT_;
 
   static_assert( std::is_same<T, value_type>::value, "Hyperplane must be used with the same type as the vector type" );
 

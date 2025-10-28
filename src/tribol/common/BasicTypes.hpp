@@ -6,16 +6,19 @@
 #ifndef SRC_TRIBOL_COMMON_BASICTYPES_HPP_
 #define SRC_TRIBOL_COMMON_BASICTYPES_HPP_
 
-// Tribol includes
+// Tribol config include
 #include "tribol/config.hpp"
 
-// Axom includes
-#include "axom/core/Types.hpp"
+// C includes
+#include <cstddef>
 
 // MPI includes
 #ifdef TRIBOL_USE_MPI
 #include <mpi.h>
 #endif
+
+// Axom includes
+#include "axom/core/Types.hpp"
 
 namespace tribol {
 
@@ -35,6 +38,9 @@ using CommT = int;
 
 // match index type used in axom (since data is held in axom data structures)
 using IndexT = axom::IndexType;
+
+// size type matching size of addressable memory
+using SizeT = size_t;
 
 #ifdef TRIBOL_USE_SINGLE_PRECISION
 

@@ -66,7 +66,7 @@ class MemoryTest : public ::testing::Test {
 #else
                                                   tribol::Allocator<int>>
 #endif
-        ::view_type;
+        ::ViewT_;
 
     // typical memory allocated for an array
     auto int_pool = tribol::AllocatedMemory<int,
