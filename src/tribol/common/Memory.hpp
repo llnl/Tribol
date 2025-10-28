@@ -158,9 +158,7 @@ class RuntimeCapacity {
 template <typename _CapacityT>
 class SizeEqCapacity : public _CapacityT {
  public:
-  /**
-   * @brief Alias for the underlying Capacity type.
-   */
+  /// @brief Alias for the underlying Capacity type.
   using CapacityT_ = _CapacityT;
 
   /**
@@ -224,9 +222,7 @@ class SizeEqCapacity : public _CapacityT {
    */
   TRIBOL_HOST_DEVICE constexpr bool sizeAtCapacity() const { return true; }
 
-  /**
-   * @brief Type indicating that the policy represents a container size that matches container capacity.
-   */
+  /// @brief Type indicating that the policy represents a container size that matches container capacity.
   using IsSizeEqCapacityT_ = std::true_type;
 };
 
@@ -242,9 +238,7 @@ class SizeEqCapacity : public _CapacityT {
 template <typename _CapacityT>
 class SizeLECapacity : public _CapacityT {
  public:
-  /**
-   * @brief Alias for the underlying Capacity type.
-   */
+  /// @brief Alias for the underlying Capacity type.
   using CapacityT_ = _CapacityT;
 
   /**
@@ -295,9 +289,7 @@ class SizeLECapacity : public _CapacityT {
    */
   TRIBOL_HOST_DEVICE bool sizeAtCapacity() const { return size() >= capacity(); }
 
-  /**
-   * @brief Type indicating that the policy represents independent size and capacity values.
-   */
+  /// @brief Type indicating that the policy represents independent size and capacity values.
   using IsSizeEqCapacityT_ = std::false_type;
 
  private:
@@ -324,24 +316,16 @@ class SizeLECapacity : public _CapacityT {
 template <typename _T, class _SizeAndCapacityT>
 class ContiguousMemory : public _SizeAndCapacityT {
  public:
-  /**
-   * @brief Alias for the underlying SizeAndCapacity type.
-   */
+  /// @brief Alias for the underlying SizeAndCapacity type.
   using SizeAndCapacityT_ = _SizeAndCapacityT;
 
-  /**
-   * @brief The type of elements stored in the memory.
-   */
+  /// @brief The type of elements stored in the memory.
   using ValueT_ = _T;
 
-  /**
-   * @brief Pointer type for accessing elements.
-   */
+  /// @brief Pointer type for accessing elements.
   using PointerT_ = _T*;
 
-  /**
-   * @brief Const pointer type for accessing elements.
-   */
+  /// @brief Const pointer type for accessing elements.
   using ConstPointerT_ = const _T*;
 
   /**
@@ -390,14 +374,10 @@ class ContiguousMemory : public _SizeAndCapacityT {
   /// @overload
   TRIBOL_HOST_DEVICE const ValueT_& operator[]( SizeT i ) const { return at( i ); }
 
-  /**
-   * @brief Iterator type for the memory block.
-   */
+  /// @brief Iterator type for the memory block.
   using IteratorT_ = PointerT_;
 
-  /**
-   * @brief Const iterator type for the memory block.
-   */
+  /// @brief Const iterator type for the memory block.
   using ConstIteratorT_ = ConstPointerT_;
 
   /**
@@ -418,9 +398,7 @@ class ContiguousMemory : public _SizeAndCapacityT {
   /// @overload
   TRIBOL_HOST_DEVICE ConstIteratorT_ end() const { return data_ + size(); }
 
-  /**
-   * @brief Get the size of the memory block.
-   */
+  /// @brief Get the size of the memory block.
   using SizeAndCapacityT_::size;
 
   /**
@@ -445,9 +423,7 @@ class ContiguousMemory : public _SizeAndCapacityT {
   TRIBOL_HOST_DEVICE operator PointerT_() const { return data_; }
 
  protected:
-  /**
-   * @brief Pointer to the beginning of the memory block.
-   */
+  /// @brief Pointer to the beginning of the memory block.
   PointerT_ data_;
 };
 
@@ -466,29 +442,19 @@ class ContiguousMemory : public _SizeAndCapacityT {
 template <typename _T, class _SizeAndCapacityT>
 class FixedStride : public _SizeAndCapacityT {
  public:
-  /**
-   * @brief Alias for the underlying SizeAndCapacity type.
-   */
+  /// @brief Alias for the underlying SizeAndCapacity type.
   using SizeAndCapacityT_ = _SizeAndCapacityT;
 
-  /**
-   * @brief Alias for the underlying Capacity type.
-   */
+  /// @brief Alias for the underlying Capacity type.
   using typename SizeAndCapacityT_::CapacityT_;
 
-  /**
-   * @brief The type of elements stored in the memory.
-   */
+  /// @brief The type of elements stored in the memory.
   using ValueT_ = _T;
 
-  /**
-   * @brief Pointer type for accessing elements.
-   */
+  /// @brief Pointer type for accessing elements.
   using PointerT_ = _T*;
 
-  /**
-   * @brief Const pointer type for accessing elements.
-   */
+  /// @brief Const pointer type for accessing elements.
   using ConstPointerT_ = const _T*;
 
   /**
@@ -512,9 +478,7 @@ class FixedStride : public _SizeAndCapacityT {
    */
   template <typename _PointerT>
   struct IteratorBase {
-    /**
-     * @brief Pointer type for the iterator.
-     */
+    /// @brief Pointer type for the iterator.
     using PointerT_ = _PointerT;
 
     /**
@@ -621,25 +585,17 @@ class FixedStride : public _SizeAndCapacityT {
     TRIBOL_HOST_DEVICE ValueT_& operator*() { return *ptr_; }
 
    private:
-    /**
-     * @brief Pointer to the beginning of the memory block.
-     */
+    /// @brief Pointer to the beginning of the memory block.
     PointerT_ ptr_;
 
-    /**
-     * @brief The stride between elements.
-     */
+    /// @brief The stride between elements.
     SizeT stride_;
   };
 
-  /**
-   * @brief Iterator type for the memory block.
-   */
+  /// @brief Iterator type for the memory block.
   using IteratorT_ = IteratorBase<PointerT_>;
 
-  /**
-   * @brief Const iterator type for the memory block.
-   */
+  /// @brief Const iterator type for the memory block.
   using ConstIteratorT_ = IteratorBase<ConstPointerT_>;
 
   /**
@@ -680,9 +636,7 @@ class FixedStride : public _SizeAndCapacityT {
   /// @overload
   TRIBOL_HOST_DEVICE ConstIteratorT_ end() const { return ConstIteratorT_( data_ + size() * stride_, stride_ ); }
 
-  /**
-   * @brief Get the size of the memory block.
-   */
+  /// @brief Get the size of the memory block.
   using SizeAndCapacityT_::size;
 
   /**
@@ -707,14 +661,10 @@ class FixedStride : public _SizeAndCapacityT {
   TRIBOL_HOST_DEVICE operator PointerT_() const { return data_; }
 
  protected:
-  /**
-   * @brief Pointer to the beginning of the memory block.
-   */
+  /// @brief Pointer to the beginning of the memory block.
   PointerT_ data_;
 
-  /**
-   * @brief The stride between elements.
-   */
+  /// @brief The stride between elements.
   SizeT stride_;
 };
 
@@ -729,24 +679,16 @@ class FixedStride : public _SizeAndCapacityT {
 template <class _AccessorT>
 class Memory : public _AccessorT {
  public:
-  /**
-   * @brief Alias for the underlying _AccessorT template type.
-   */
+  /// @brief Alias for the underlying _AccessorT template type.
   using AccessorT_ = _AccessorT;
 
-  /**
-   * @brief Pointer type for the memory block.
-   */
+  /// @brief Pointer type for the memory block.
   using typename AccessorT_::PointerT_;
 
-  /**
-   * @brief The type of elements stored in the memory.
-   */
+  /// @brief The type of elements stored in the memory.
   using typename AccessorT_::ValueT_;
 
-  /**
-   * @brief Alias for the view type.
-   */
+  /// @brief Alias for the view type.
   using ViewT_ = Memory<AccessorT_>;
 
   /**
@@ -851,14 +793,10 @@ class Memory : public _AccessorT {
   /// @overload
   TRIBOL_HOST_DEVICE Memory<AccessorT_> view() const { return Memory<AccessorT_>( *this ); }
 
-  /**
-   * @brief Get the size of the memory block.
-   */
+  /// @brief Get the size of the memory block.
   using AccessorT_::size;
 
-  /**
-   * @brief Get a pointer to the underlying data.
-   */
+  /// @brief Get a pointer to the underlying data.
   using AccessorT_::data;
 
   /**
@@ -884,14 +822,10 @@ class Memory : public _AccessorT {
 template <typename _T, SizeT _N, template <typename> class _SizeVsCapacityT = SizeEqCapacity>
 class StackMemory : public Memory<ContiguousMemory<_T, _SizeVsCapacityT<FixedCapacity<_N>>>> {
  public:
-  /**
-   * @brief Base class for the StackMemory.
-   */
+  /// @brief Base class for the StackMemory.
   using BaseClassT_ = Memory<ContiguousMemory<_T, _SizeVsCapacityT<FixedCapacity<_N>>>>;
 
-  /**
-   * @brief The type of elements stored in the memory.
-   */
+  /// @brief The type of elements stored in the memory.
   using typename BaseClassT_::ValueT_;
 
   /**
@@ -951,25 +885,17 @@ class StackMemory : public Memory<ContiguousMemory<_T, _SizeVsCapacityT<FixedCap
     return *this;
   }
 
-  /**
-   * @brief Destructor.
-   */
+  /// @brief Destructor.
   TRIBOL_DEFAULT_HOST_DEVICE ~StackMemory() = default;
 
-  /**
-   * @brief Type indicator that the memory is not initialized.
-   */
+  /// @brief Type indicator that the memory is not initialized.
   using IsInitializedT_ = std::false_type;
 
  private:
-  /**
-   * @brief Using declaration to access the protected data_ member from the base class.
-   */
+  /// @brief Using declaration to access the protected data_ member from the base class.
   using BaseClassT_::data_;
 
-  /**
-   * @brief Underlying stack-allocated data storage.
-   */
+  /// @brief Underlying stack-allocated data storage.
   ValueT_ stack_data_[_N];
 };
 
@@ -984,19 +910,13 @@ class Allocator {
   static_assert( !std::is_volatile<_T>::value, "Allocator does not support volatile types" );
 
  public:
-  /**
-   * @brief The type of elements to allocate.
-   */
+  /// @brief The type of elements to allocate.
   using ValueT_ = _T;
 
-  /**
-   * @brief Pointer type for the allocated memory.
-   */
+  /// @brief Pointer type for the allocated memory.
   using PointerT_ = _T*;
 
-  /**
-   * @brief The signed/integral type used to represent differences between pointers.
-   */
+  /// @brief The signed/integral type used to represent differences between pointers.
   using DifferenceT_ = ptrdiff_t;
 
   /**
@@ -1055,19 +975,13 @@ TRIBOL_HOST_DEVICE inline constexpr bool operator==( const Allocator<_T>&, const
 template <typename _T, MemorySpace _Mem>
 class UmpireAllocator {
  public:
-  /**
-   * @brief The type of elements to allocate.
-   */
+  /// @brief The type of elements to allocate.
   using ValueT_ = _T;
 
-  /**
-   * @brief Pointer type for the allocated memory.
-   */
+  /// @brief Pointer type for the allocated memory.
   using PointerT_ = ValueT_*;
 
-  /**
-   * @brief The signed/integral type used to represent differences between pointers.
-   */
+  /// @brief The signed/integral type used to represent differences between pointers.
   using DifferenceT_ = ptrdiff_t;
 
   /**
@@ -1077,9 +991,7 @@ class UmpireAllocator {
    */
   UmpireAllocator( umpire::Allocator allocator ) : allocator_{ std::move( allocator ) } {}
 
-  /**
-   * @brief Construct an UmpireAllocator for a specific memory space.
-   */
+  /// @brief Construct an UmpireAllocator for a specific memory space.
   UmpireAllocator()
       : UmpireAllocator( umpire::ResourceManager::getInstance().getAllocator( getResourceAllocatorID( _Mem ) ) )
   {
@@ -1132,19 +1044,13 @@ class UmpireAllocator {
 template <typename _T>
 class DynamicAllocator {
  public:
-  /**
-   * @brief The type of elements to allocate.
-   */
+  /// @brief The type of elements to allocate.
   using ValueT_ = _T;
 
-  /**
-   * @brief Pointer type for the allocated memory.
-   */
+  /// @brief Pointer type for the allocated memory.
   using PointerT_ = ValueT_*;
 
-  /**
-   * @brief Construct a DynamicAllocator with the default allocator ID.
-   */
+  /// @brief Construct a DynamicAllocator with the default allocator ID.
   TRIBOL_NVCC_EXEC_CHECK_DISABLE
   TRIBOL_HOST_DEVICE DynamicAllocator() : allocator_id_( getDefaultAllocatorID() ) {}
 
@@ -1216,9 +1122,7 @@ class DynamicAllocator {
   TRIBOL_HOST_DEVICE int id() const { return allocator_id_; }
 
  private:
-  /**
-   * @brief The ID of the allocator to use.
-   */
+  /// @brief The ID of the allocator to use.
   int allocator_id_;
 };
 
@@ -1238,24 +1142,16 @@ class DynamicAllocator {
 template <typename _T, class _AllocatorT = Allocator<_T>, class _SizeVsCapacityT = SizeLECapacity<RuntimeCapacity>>
 class AllocatedMemory : public Memory<ContiguousMemory<_T, _SizeVsCapacityT>> {
  public:
-  /**
-   * @brief Base class for the AllocatedMemory.
-   */
+  /// @brief Base class for the AllocatedMemory.
   using BaseClassT_ = Memory<ContiguousMemory<_T, _SizeVsCapacityT>>;
 
-  /**
-   * @brief Alias for the underlying Allocator type.
-   */
+  /// @brief Alias for the underlying Allocator type.
   using AllocatorT_ = _AllocatorT;
 
-  /**
-   * @brief Pointer type for the memory block.
-   */
+  /// @brief Pointer type for the memory block.
   using typename BaseClassT_::PointerT_;
 
-  /**
-   * @brief Value type for the memory block.
-   */
+  /// @brief Value type for the memory block.
   using typename BaseClassT_::ValueT_;
 
   static_assert( std::is_same<typename _AllocatorT::ValueT_, ValueT_>::value,
@@ -1317,9 +1213,7 @@ class AllocatedMemory : public Memory<ContiguousMemory<_T, _SizeVsCapacityT>> {
     allocator_.uninitialized_copy( src.data_, src.data_ + src.size(), data_ );
   }
 
-  /**
-   * @brief Destructor.
-   */
+  /// @brief Destructor.
   TRIBOL_NVCC_EXEC_CHECK_DISABLE
   TRIBOL_HOST_DEVICE ~AllocatedMemory() { allocator_.deallocate( data_, capacity() ); }
 
@@ -1411,39 +1305,26 @@ class AllocatedMemory : public Memory<ContiguousMemory<_T, _SizeVsCapacityT>> {
    */
   TRIBOL_HOST_DEVICE const AllocatorT_& allocator() const { return allocator_; }
 
-  /**
-   * @brief Get the capacity of the memory block.
-   */
+  /// @brief Get the capacity of the memory block.
   using BaseClassT_::capacity;
-  /**
-   * @brief Get the size of the memory block.
-   */
+
+  /// @brief Get the size of the memory block.
   using BaseClassT_::size;
 
-  /**
-   * @brief Type indicating if capacity can be changed at runtime.
-   */
+  /// @brief Type indicating if capacity can be changed at runtime.
   using typename BaseClassT_::IsCapacityFixedT_;
 
-  /**
-   * @brief Type indicating if size is fixed to match capacity.
-   */
+  /// @brief Type indicating if size is fixed to match capacity.
   using typename BaseClassT_::IsSizeEqCapacityT_;
 
-  /**
-   * @brief Type indicating that the memory is not initialized.
-   */
+  /// @brief Type indicating that the memory is not initialized.
   using IsInitializedT_ = std::false_type;
 
  private:
-  /**
-   * @brief Using declaration to access the protected data_ member from the base class.
-   */
+  /// @brief Using declaration to access the protected data_ member from the base class.
   using BaseClassT_::data_;
 
-  /**
-   * @brief Allocator used for memory management.
-   */
+  /// @brief Allocator used for memory management.
   AllocatorT_ allocator_;
 };
 
