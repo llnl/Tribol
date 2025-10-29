@@ -16,6 +16,7 @@
 
 #include <tuple>
 #include <vector>
+#include <string>
 #include <type_traits>
 #include <cstdint>
 
@@ -105,7 +106,7 @@ struct Wrapper {
 };
 
 // using Types = std::tuple<int, std::pair<int, int>, Wrapper<int>, std::string>;
-using Types = std::tuple<int, std::pair<int, int>>;
+using Types = std::tuple<tribol::RealT, int, std::pair<int, int>, Wrapper<int>, std::string>;
 
 //-----------------------------------------------------------------------------
 // Helper functions for generating type names and values
@@ -114,6 +115,11 @@ using Types = std::tuple<int, std::pair<int, int>>;
 template <typename T>
 struct get_value_impl {
   static T get( int i ) { return static_cast<T>( i ); }
+};
+
+template <>
+struct get_value_impl<tribol::RealT> {
+  static tribol::RealT get( tribol::RealT i ) { return static_cast<tribol::RealT>( i ); }
 };
 
 template <typename T>
@@ -139,6 +145,12 @@ T get_value( int i )
 
 template <typename T>
 std::string get_type_name();
+
+template <>
+std::string get_type_name<tribol::RealT>()
+{
+  return "tribol::RealT";
+}
 
 template <>
 std::string get_type_name<int>()
@@ -348,15 +360,15 @@ void RegisterBenchmark()
   // clang-format off
   if((args_benchmark_features & ArrayFeatureBenchmarks::Constructors) != ArrayFeatureBenchmarks::None)
   {
-    // benchmark::RegisterBenchmark(tname("axom::Array::ctor"), &ctor<axom::Array<T>>)->Apply(CustomArgs);
+    benchmark::RegisterBenchmark(tname("axom::Array::ctor"), &ctor<axom::Array<T>>)->Apply(CustomArgs);
 
     // benchmark::RegisterBenchmark(tname("tribol::Array<DynamicAllocator>::ctor"), &ctor<tribol::Array<T>>)->Apply(CustomArgs);
 
-    // benchmark::RegisterBenchmark(tname("tribol::Array<Allocator>::ctor"), &ctor<tribol::Array<T, tribol::Allocator<T>>>)->Apply(CustomArgs);
+    benchmark::RegisterBenchmark(tname("tribol::Array<Allocator>::ctor"), &ctor<tribol::Array<T, tribol::Allocator<T>>>)->Apply(CustomArgs);
 
     // benchmark::RegisterBenchmark(tname("tribol::Vector::ctor"), &ctor<tribol::Vector<T>>)->Apply(CustomArgs);
 
-    // benchmark::RegisterBenchmark(tname("std::vector::ctor"), &ctor<std::vector<T>>)->Apply(CustomArgs);
+    benchmark::RegisterBenchmark(tname("std::vector::ctor"), &ctor<std::vector<T>>)->Apply(CustomArgs);
   }
 
   if((args_benchmark_features & ArrayFeatureBenchmarks::Insertion) != ArrayFeatureBenchmarks::None)
