@@ -35,6 +35,9 @@ class ArrayBase {
   /// @brief Type of values stored in the array
   using ValueT_ = typename _MemoryT::ValueT_;
 
+  /// @brief Type alias for the value type (for STL compatibility)
+  using value_type = ValueT_;
+
   /// @brief Pointer type for array elements
   using PointerT_ = typename _MemoryT::PointerT_;
 
