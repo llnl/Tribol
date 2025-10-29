@@ -721,7 +721,7 @@ class Memory : public _AccessorT {
    * The copy constructor is explicitly defined so the move constructor is not implicitly generated. Moving should
    * behave the same as copying for this view class.
    */
-  TRIBOL_HOST_DEVICE Memory( const Memory& other ) = default;
+  TRIBOL_DEFAULT_HOST_DEVICE Memory( const Memory& other ) = default;
 
   /**
    * @brief Copy assignment operator.
@@ -729,7 +729,7 @@ class Memory : public _AccessorT {
    * @param other The Memory view to copy.
    * @return A reference to this Memory view.
    */
-  TRIBOL_HOST_DEVICE Memory& operator=( const Memory& other ) = default;
+  TRIBOL_DEFAULT_HOST_DEVICE Memory& operator=( const Memory& other ) = default;
 
   /**
    * @brief Access an element at a specific index with bounds checking.

@@ -416,7 +416,6 @@ class BoundedArray2D : public BoundedArray<_T, _MemoryT> {
         width_( width ),
         max_height_( height )
   {
-    assert( height >= 0 && width >= 0 );
     assert( size() == height * width );
     assert( capacity() == max_height_ * width );
   }
