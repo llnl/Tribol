@@ -133,7 +133,7 @@ endif()
 include(cmake/SetupThirdParty.cmake)
 
 #------------------------------------------------------------------------------
-# Set up TRIBOL_DEBUG compiler define string, as appropriate, based on config
+# Set up TRIBOL_DEBUG_BUILD compiler define string, as appropriate, based on config
 # type. Result is stored in TRIBOL_DEBUG_DEFINE_STRING cache variable
 #------------------------------------------------------------------------------
 set(TRIBOL_DEBUG_DEFINE_STRING "")
@@ -141,17 +141,17 @@ set(TRIBOL_DEBUG_DEFINE_STRING "")
 # Handle the three valid values for TRIBOL_DEBUG_DEFINE: {on, off, default}
 string(TOUPPER "${TRIBOL_DEBUG_DEFINE}" _tribol_debug_define_upper)
 if("${_tribol_debug_define_upper}" MATCHES "ON|TRUE")
-  set(TRIBOL_DEBUG_DEFINE_STRING "TRIBOL_DEBUG")
+  set(TRIBOL_DEBUG_DEFINE_STRING "TRIBOL_DEBUG_BUILD")
 elseif("${_tribol_debug_define_upper}" MATCHES "OFF|FALSE")
   # no-op
 elseif("${_tribol_debug_define_upper}" MATCHES "DEFAULT")
   # Default behavior is to be on for Debug and RelWithDebInfo configurations and off otherwise
   if(NOT CMAKE_CONFIGURATION_TYPES) # This case handles single-config generators, e.g. make
       if( CMAKE_BUILD_TYPE MATCHES "(Debug|RelWithDebInfo)" )
-        set(TRIBOL_DEBUG_DEFINE_STRING "TRIBOL_DEBUG")
+        set(TRIBOL_DEBUG_DEFINE_STRING "TRIBOL_DEBUG_BUILD")
       endif()
   else () # This case handles multi-config generators, e.g. MSVC
-      set(TRIBOL_DEBUG_DEFINE_STRING "$<$<CONFIG:Debug,RelWithDebInfo>:TRIBOL_DEBUG>")
+      set(TRIBOL_DEBUG_DEFINE_STRING "$<$<CONFIG:Debug,RelWithDebInfo>:TRIBOL_DEBUG_BUILD>")
   endif()
 else()  # Handle bad value for TRIBOL_DEBUG_DEFINE config variable
   message(FATAL_ERROR 
@@ -161,6 +161,7 @@ endif()
 set(TRIBOL_DEBUG_DEFINE_STRING "${TRIBOL_DEBUG_DEFINE_STRING}" CACHE STRING "" FORCE)
 # Define AXOM_DEBUG for SLIC macros
 string(REPLACE "TRIBOL" "AXOM" AXOM_DEBUG_DEFINE_STRING "${TRIBOL_DEBUG_DEFINE_STRING}")
+string(REPLACE "_BUILD" "" AXOM_DEBUG_DEFINE_STRING "${AXOM_DEBUG_DEFINE_STRING}")
 set(AXOM_DEBUG_DEFINE_STRING "${AXOM_DEBUG_DEFINE_STRING}" CACHE STRING "" FORCE)
 
 #------------------------------------------------------------------------------

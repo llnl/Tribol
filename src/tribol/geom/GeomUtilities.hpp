@@ -750,7 +750,7 @@ TRIBOL_HOST_DEVICE inline bool SegmentIntersection2D( RealT xA1, RealT yA1, Real
     xDiff = ( xDiff < 0. ) ? -1.0 * xDiff : xDiff;
     yDiff = ( yDiff < 0. ) ? -1.0 * yDiff : yDiff;
 
-#if defined( TRIBOL_DEBUG ) && defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
+#if defined( TRIBOL_DEBUG_BUILD ) && defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
     RealT diffTol = 1.0E-3;
     SLIC_DEBUG_IF( xDiff > diffTol || yDiff > diffTol,
                    "SegmentIntersection2D(): Intersection coordinates are not equally derived." );

@@ -28,5 +28,5 @@ endif()
 # Possible values are: "ON", "OFF" and "DEFAULT"
 # By default, TRIBOL_DEBUG is defined in Debug and RelWithDebInfo configurations
 #--------------------------------------------------------------------------
-set(TRIBOL_DEBUG_DEFINE "DEFAULT" CACHE STRING "Controls whether TRIBOL_DEBUG compiler define is enabled")
+set(TRIBOL_DEBUG_DEFINE "DEFAULT" CACHE STRING "Controls whether TRIBOL_DEBUG_BUILD compiler define is enabled")
 set_property(CACHE TRIBOL_DEBUG_DEFINE PROPERTY STRINGS "DEFAULT" "ON" "OFF")

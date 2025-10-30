@@ -73,7 +73,7 @@ install(TARGETS     redecomp
         DESTINATION lib
         )
 
-# Add the TRIBOL_DEBUG compile definition, if non-empty
+# Add the TRIBOL_DEBUG_BUILD compiler definition, if non-empty
 if(TRIBOL_DEBUG_DEFINE_STRING)
   blt_add_target_definitions(TO redecomp SCOPE PUBLIC TARGET_DEFINITIONS "${TRIBOL_DEBUG_DEFINE_STRING}")
   # Define AXOM_DEBUG for SLIC macros
