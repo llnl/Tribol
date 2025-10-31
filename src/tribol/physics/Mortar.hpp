@@ -6,6 +6,9 @@
 #ifndef SRC_TRIBOL_PHYSICS_MORTAR_HPP_
 #define SRC_TRIBOL_PHYSICS_MORTAR_HPP_
 
+// Tribol config include
+#include "tribol/config.hpp"
+
 #include "tribol/common/Parameters.hpp"
 #include "Physics.hpp"
 

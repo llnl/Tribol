@@ -6,10 +6,14 @@
 #ifndef SRC_TRIBOL_INTEG_FE_HPP_
 #define SRC_TRIBOL_INTEG_FE_HPP_
 
+// Tribol config include
+#include "tribol/config.hpp"
+
+// C includes
 #include <cmath>
 
-#include "axom/slic.hpp"
-
+// Tribol includes
+#include "tribol/common/ErrorHandling.hpp"
 #include "tribol/common/Parameters.hpp"
 
 namespace tribol {
@@ -211,16 +215,12 @@ inline void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const Re
         xi[1] = x_sol[1];
 
         //       check to make sure point is inside isoparametric quad_wt
-#if !defined( TRIBOL_USE_ENZYME )
         bool in_quad = true;
-#endif
         if ( std::abs( xi[0] ) > 1. || std::abs( xi[1] ) > 1. ) {
           if ( std::abs( xi[0] ) > 1. + 100. * xtol ||
                std::abs( xi[1] ) > 1. + 100. * xtol )  // should have some tolerance dependent conv tol?
           {
-#if !defined( TRIBOL_USE_ENZYME )
             in_quad = false;
-#endif
           } else {
             xi[0] = std::min( xi[0], 1. );
             xi[1] = std::min( xi[1], 1. );
@@ -229,17 +229,14 @@ inline void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const Re
           }
         }
 
-#if !defined( TRIBOL_USE_ENZYME )
-        SLIC_WARNING_IF( !in_quad, "InvIso(): (xi,eta) coordinate does not lie inside isoparametric quad." );
-#endif
+        LOG( WARNING_IF, ENZYME_LOGGING, !in_quad,
+             "InvIso(): (xi,eta) coordinate does not lie inside isoparametric quad." );
 
         break;
       }
     }
 
-#if !defined( TRIBOL_USE_ENZYME )
-    SLIC_ERROR_IF( k == kmax, "InvIso: Newtons method did not converge." );
-#endif
+    // LOG( WARNING_IF, ENZYME_LOGGING, k == kmax, "InvIso: Newtons method did not converge." );
 
   } else if ( numNodes == 3 ) {
     // use area (barycentric) coords to get xi, eta
@@ -257,9 +254,7 @@ inline void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const Re
     RealT eta_area = std::sqrt( a_cr_c[0] * a_cr_c[0] + a_cr_c[1] * a_cr_c[1] + a_cr_c[2] * a_cr_c[2] );
     xi[1] = eta_area / area;
   } else {
-#if !defined( TRIBOL_USE_ENZYME )
-    SLIC_ERROR( "Invalid number of nodes: " << numNodes );
-#endif
+    LOG( WARNING, ENZYME_LOGGING, "Invalid number of nodes: " << numNodes );
   }
 }
 

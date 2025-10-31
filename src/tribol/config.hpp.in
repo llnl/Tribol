@@ -40,4 +40,9 @@
 #cmakedefine TRIBOL_USE_OPENMP
 #cmakedefine BUILD_REDECOMP
 
+/* Set ENZYME_ACTIVE to NOT_ACTIVE by default. Override where necessary. */
+#define ENZYME_ACTIVE 0
+/* Default to SLIC logging in Enzyme'd functions when Enzyme is off. */
+#define ENZYME_LOGGING SLIC
+
 #endif /* SRC_TRIBOL_CONFIG_HPP_ */

@@ -5,6 +5,9 @@
 
 #include "Mortar.hpp"
 
+// Tribol includes
+#include "tribol/common/Enzyme.hpp"
+#include "tribol/common/ErrorHandling.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
@@ -17,14 +20,6 @@
 #include "tribol/integ/Integration.hpp"
 #include "tribol/integ/FE.hpp"
 #include "tribol/utils/Math.hpp"
-#include "tribol/utils/Algorithm.hpp"
-
-// Axom includes
-#include "axom/slic.hpp"
-
-#ifdef TRIBOL_USE_ENZYME
-#include "tribol/common/Enzyme.hpp"
-#endif
 
 namespace tribol {
 
@@ -690,8 +685,9 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
       // This function also computes the residual contributions
       ComputeMortarJacobianEnzyme( x1, n1, p1, f1, blockJ( 0, 0 ).memory(), blockJ( 0, 1 ).memory(),
                                    blockJ_n( 0, 0 ).memory(), blockJ( 0, 2 ).memory(), g1, blockJ( 2, 0 ).memory(),
-                                   blockJ( 2, 1 ).memory(), blockJ_n( 2, 0 ).memory(), size1, x2, f2, blockJ( 1, 0 ).memory(),
-                                   blockJ( 1, 1 ).memory(), blockJ_n( 1, 0 ).memory(), blockJ( 1, 2 ).memory(), size2 );
+                                   blockJ( 2, 1 ).memory(), blockJ_n( 2, 0 ).memory(), size1, x2, f2,
+                                   blockJ( 1, 0 ).memory(), blockJ( 1, 1 ).memory(), blockJ_n( 1, 0 ).memory(),
+                                   blockJ( 1, 2 ).memory(), size2 );
 
       if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE ) {
         cs->getMethodData()->storeElemBlockJ( { elem1, elem2, elem1 }, blockJ );

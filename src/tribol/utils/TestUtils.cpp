@@ -793,25 +793,25 @@ void TestMesh::allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY,
                      << "mortarMeshId and nonmortarMeshId prior to calling this routine." );
 
 // check to see if pointers have been set
-#ifdef TRIBOL_DEBUG
+#ifdef TRIBOL_DEBUG_BUILD
   bool deleteVels = false;
 #endif
   if ( mesh_id == this->mortarMeshId ) {
     if ( this->vx1 != nullptr ) {
       delete[] this->vx1;
-#ifdef TRIBOL_DEBUG
+#ifdef TRIBOL_DEBUG_BUILD
       deleteVels = true;
 #endif
     }
     if ( this->vy1 != nullptr ) {
       delete[] this->vy1;
-#ifdef TRIBOL_DEBUG
+#ifdef TRIBOL_DEBUG_BUILD
       deleteVels = true;
 #endif
     }
     if ( this->vz1 != nullptr ) {
       delete[] this->vz1;
-#ifdef TRIBOL_DEBUG
+#ifdef TRIBOL_DEBUG_BUILD
       deleteVels = true;
 #endif
     }
@@ -824,19 +824,19 @@ void TestMesh::allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY,
   } else if ( mesh_id == this->nonmortarMeshId ) {
     if ( this->vx2 != nullptr ) {
       delete[] this->vx2;
-#ifdef TRIBOL_DEBUG
+#ifdef TRIBOL_DEBUG_BUILD
       deleteVels = true;
 #endif
     }
     if ( this->vy2 != nullptr ) {
       delete[] this->vy2;
-#ifdef TRIBOL_DEBUG
+#ifdef TRIBOL_DEBUG_BUILD
       deleteVels = true;
 #endif
     }
     if ( this->vz2 != nullptr ) {
       delete[] this->vz2;
-#ifdef TRIBOL_DEBUG
+#ifdef TRIBOL_DEBUG_BUILD
       deleteVels = true;
 #endif
     }
@@ -867,13 +867,13 @@ void TestMesh::allocateAndSetBulkModulus( IndexT mesh_id, RealT val )
                      << "mortarMeshId and nonmortarMeshId prior to calling this routine." );
 
   // check to see if pointers have been set
-#ifdef TRIBOL_DEBUG
+#ifdef TRIBOL_DEBUG_BUILD
   bool deleteData = false;
 #endif
   if ( mesh_id == this->mortarMeshId ) {
     if ( this->mortar_bulk_mod != nullptr ) {
       delete[] this->mortar_bulk_mod;
-#ifdef TRIBOL_DEBUG
+#ifdef TRIBOL_DEBUG_BUILD
       deleteData = true;
 #endif
     }
@@ -882,7 +882,7 @@ void TestMesh::allocateAndSetBulkModulus( IndexT mesh_id, RealT val )
   } else if ( mesh_id == this->nonmortarMeshId ) {
     if ( this->nonmortar_bulk_mod != nullptr ) {
       delete[] this->nonmortar_bulk_mod;
-#ifdef TRIBOL_DEBUG
+#ifdef TRIBOL_DEBUG_BUILD
       deleteData = true;
 #endif
     }
@@ -902,13 +902,13 @@ void TestMesh::allocateAndSetBulkModulus( IndexT mesh_id, RealT val )
 void TestMesh::allocateAndSetElementThickness( IndexT mesh_id, RealT t )
 {
   // check to see if pointers have been set
-#ifdef TRIBOL_DEBUG
+#ifdef TRIBOL_DEBUG_BUILD
   bool deleteData = false;
 #endif
   if ( mesh_id == this->mortarMeshId ) {
     if ( this->mortar_element_thickness != nullptr ) {
       delete[] this->mortar_element_thickness;
-#ifdef TRIBOL_DEBUG
+#ifdef TRIBOL_DEBUG_BUILD
       deleteData = true;
 #endif
     }
@@ -917,7 +917,7 @@ void TestMesh::allocateAndSetElementThickness( IndexT mesh_id, RealT t )
   } else if ( mesh_id == this->nonmortarMeshId ) {
     if ( this->nonmortar_element_thickness != nullptr ) {
       delete[] this->nonmortar_element_thickness;
-#ifdef TRIBOL_DEBUG
+#ifdef TRIBOL_DEBUG_BUILD
       deleteData = true;
 #endif
     }

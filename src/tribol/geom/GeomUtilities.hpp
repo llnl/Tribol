@@ -6,6 +6,11 @@
 #ifndef SRC_TRIBOL_GEOM_GEOMUTILITIES_HPP_
 #define SRC_TRIBOL_GEOM_GEOMUTILITIES_HPP_
 
+// Tribol config include
+#include "tribol/config.hpp"
+
+// Tribol includes
+#include "tribol/common/ErrorHandling.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/utils/Math.hpp"
@@ -333,7 +338,8 @@ TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( RealT pX, RealT pY, RealT pZ, Rea
 TRIBOL_HOST_DEVICE inline bool VertexAvgCentroid( const RealT* const x, const RealT* const y, const RealT* const z,
                                                   const int numVert, RealT& cX, RealT& cY, RealT& cZ )
 {
-#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
+  // TODO (EBC): Remove errors in kernel code. Instead return error information and signal errors outside kernel.
+#if defined( TRIBOL_ON_DEVICE ) && !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( numVert == 0, "VertexAvgCentroid: numVert = 0." );
 #endif
   if ( numVert == 0 ) {
@@ -416,9 +422,8 @@ TRIBOL_HOST_DEVICE bool PolyAreaCentroid( const RealT* const x, const int dim, c
  */
 inline void PolyCentroid( const RealT* const x, const RealT* const y, const int numVert, RealT& cX, RealT& cY )
 {
-#ifndef TRIBOL_USE_ENZYME
-  SLIC_ERROR_IF( numVert == 0, "PolyAreaCentroid: numVert = 0." );
-#endif
+  // TODO (EBC): Remove errors in enzyme code. Instead return error information and signal errors outside kernel.
+  LOG( ERROR_IF, ENZYME_LOGGING, numVert == 0, "PolyAreaCentroid: numVert = 0." );
 
   // (re)initialize the input/output centroid components
   cX = 0.0;
@@ -574,7 +579,8 @@ TRIBOL_HOST_DEVICE inline bool Point2DInFace( const RealT xPoint, const RealT yP
                                               const RealT* const yPoly, const RealT xC, const RealT yC,
                                               const int numPolyVert, RealT tol = 1.0e-12 )
 {
-#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
+  // TODO (EBC): Remove errors in device/enzyme code. Instead return error information and signal errors outside kernel.
+#if defined( TRIBOL_DEVICE_CODE ) && !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( numPolyVert < 3, "Point2DInFace: number of face vertices is less than 3" );
 
   SLIC_ERROR_IF( xPoly == nullptr || yPoly == nullptr, "Point2DInFace: input pointer not set" );
@@ -733,29 +739,27 @@ TRIBOL_HOST_DEVICE inline bool SegmentIntersection2D( RealT xA1, RealT yA1, Real
     return false;
   }
 
-  // TODO refine how these debug calculations are guarded
-  {
-    // debug check to make sure the intersection coordinates derived from
-    // each segment equation (scaled with tA and tB) are the same to some
-    // tolerance
-    RealT xTest1 = xA1 + lambdaX1 * tA;
-    RealT yTest1 = yA1 + lambdaY1 * tA;
-    RealT xTest2 = xA2 + lambdaX2 * tB;
-    RealT yTest2 = yA2 + lambdaY2 * tB;
+#if defined( TRIBOL_DEBUG_BUILD ) && !defined( TRIBOL_DEVICE_CODE )
+  // debug check to make sure the intersection coordinates derived from
+  // each segment equation (scaled with tA and tB) are the same to some
+  // tolerance
+  RealT xTest1 = xA1 + lambdaX1 * tA;
+  RealT yTest1 = yA1 + lambdaY1 * tA;
+  RealT xTest2 = xA2 + lambdaX2 * tB;
+  RealT yTest2 = yA2 + lambdaY2 * tB;
 
-    RealT xDiff = xTest1 - xTest2;
-    RealT yDiff = yTest1 - yTest2;
+  RealT xDiff = xTest1 - xTest2;
+  RealT yDiff = yTest1 - yTest2;
 
-    // make sure the differences are positive
-    xDiff = ( xDiff < 0. ) ? -1.0 * xDiff : xDiff;
-    yDiff = ( yDiff < 0. ) ? -1.0 * yDiff : yDiff;
+  // make sure the differences are positive
+  xDiff = ( xDiff < 0. ) ? -1.0 * xDiff : xDiff;
+  yDiff = ( yDiff < 0. ) ? -1.0 * yDiff : yDiff;
 
-#if defined( TRIBOL_DEBUG_BUILD ) && defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-    RealT diffTol = 1.0E-3;
-    SLIC_DEBUG_IF( xDiff > diffTol || yDiff > diffTol,
+  RealT diffTol = 1.0E-3;
+
+  ENZYME_DEBUG_IF( xDiff > diffTol || yDiff > diffTol,
                    "SegmentIntersection2D(): Intersection coordinates are not equally derived." );
 #endif
-  }
 
   // if we get here then it means we have an intersection point.
   // Find the minimum distance of the intersection point to any of the segment
@@ -850,9 +854,7 @@ TRIBOL_HOST_DEVICE inline bool SegmentIntersection2D( RealT xA1, RealT yA1, Real
 TRIBOL_HOST_DEVICE inline bool PolyReorderConvex( RealT* x, RealT* y, int* newIDs, int numPoints )
 {
   if ( numPoints < 3 ) {
-#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-    SLIC_DEBUG( "PolyReorderConvex: numPoints (" << numPoints << ") < 3." );
-#endif
+    ENZYME_DEBUG( "PolyReorderConvex: numPoints < 3. Points not reordered." );
     return false;
   }
 

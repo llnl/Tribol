@@ -6,8 +6,10 @@
 #ifndef SRC_TRIBOL_COMMON_ENZYME_HPP_
 #define SRC_TRIBOL_COMMON_ENZYME_HPP_
 
-// Tribol includes
+// Tribol config include
 #include "tribol/config.hpp"
+
+// Tribol includes
 #include "tribol/common/BasicTypes.hpp"
 
 #ifdef TRIBOL_USE_ENZYME
@@ -36,6 +38,13 @@ TRIBOL_HOST_DEVICE return_type __enzyme_autodiff( Args... );
 // Forward mode autodiff
 template <typename return_type, typename... Args>
 TRIBOL_HOST_DEVICE return_type __enzyme_fwddiff( Args... );
+
+// Redefine ENZYME_ACTIVE based on whether Enzyme is being used
+#undef ENZYME_ACTIVE
+#define ENZYME_ACTIVE 1
+// Redefine ENZYME_LOGGING to BASIC when Enzyme is being used. SLIC does not work with ClangEnzyme.
+#undef ENZYME_LOGGING
+#define ENZYME_LOGGING BASIC
 #endif
 
 #endif /* SRC_TRIBOL_COMMON_ENZYME_HPP_ */

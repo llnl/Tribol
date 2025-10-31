@@ -4,19 +4,14 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "GeomUtilities.hpp"
-#include "CompGeom.hpp"
-#include "tribol/mesh/MeshData.hpp"
-#include "tribol/utils/Math.hpp"
 
-#ifdef TRIBOL_USE_ENZYME
-#include "tribol/common/Enzyme.hpp"
-#endif
-
-#include "axom/core.hpp"
-#include "axom/slic.hpp"
-
+// C includes
 #include <float.h>
 #include <cmath>
+
+// Tribol includes
+#include "tribol/mesh/MeshData.hpp"
+#include "tribol/utils/Math.hpp"
 
 namespace tribol {
 
@@ -388,7 +383,7 @@ TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( const RealT* const pX, const Real
                                                RealT cX, RealT cY, RealT cZ, RealT* const pLX, RealT* const pLY,
                                                int size )
 {
-#ifdef TRIBOL_USE_HOST
+#ifdef TRIBOL_ON_DEVICE
   SLIC_ERROR_IF( size > 0 && ( pLX == nullptr || pLY == nullptr ),
                  "GlobalTo2DLocalCoords: local coordinate pointers are null" );
 #endif
@@ -433,7 +428,7 @@ TRIBOL_HOST_DEVICE void GlobalTo2DLocalCoords( RealT pX, RealT pY, RealT pZ, Rea
 TRIBOL_HOST_DEVICE bool VertexAvgCentroid( const RealT* const x, const int dim, const int numVert, RealT& cX, RealT& cY,
                                            RealT& cZ )
 {
-#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
+#if defined( TRIBOL_DEVICE_CODE ) && !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( numVert == 0, "VertexAvgCentroid: numVert = 0." );
 #endif
   if ( numVert == 0 ) {
@@ -468,7 +463,7 @@ TRIBOL_HOST_DEVICE bool VertexAvgCentroid( const RealT* const x, const int dim, 
 TRIBOL_HOST_DEVICE bool PolyAreaCentroid( const RealT* const x, const int dim, const int numVert, RealT& cX, RealT& cY,
                                           RealT& cZ )
 {
-#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
+#if defined( TRIBOL_ON_DEVICE ) && !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( dim != 3, "PolyAreaCentroid: Only compatible with dim = 3." );
   SLIC_ERROR_IF( numVert == 0, "PolyAreaCentroid: numVert = 0." );
 #endif
@@ -703,15 +698,14 @@ TRIBOL_HOST_DEVICE void PolyReorderWithNormal( RealT* const x, RealT* const y, R
                                                const RealT nX, const RealT nY, const RealT nZ )
 {
   if ( numPoints < 3 ) {
-#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-    SLIC_DEBUG( "PolyReorderWithNormal(): numPoints (" << numPoints << ") < 3." );
-#endif
+    SLIC_DEBUG( "PolyReorderWithNormal(): numPoints < 3, no reordering performed." );
     return;
   }
 
   constexpr int max_nodes_per_overlap = 5 * 2;  // max face polygon for interpen can be 5
 
-#if defined( TRIBOL_USE_HOST )
+  // TODO (EBC): Remove errors in kernel code. Instead return error information and signal errors outside kernel.
+#if defined( TRIBOL_DEVICE_CODE )
   SLIC_ERROR_IF( numPoints > max_nodes_per_overlap, "PolyReorderWithNormal: numPoints exceed maximum "
                                                         << "expected per overlap (" << max_nodes_per_overlap << ")." );
 #endif
