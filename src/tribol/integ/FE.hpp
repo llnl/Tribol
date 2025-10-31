@@ -234,8 +234,10 @@ inline void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const Re
     }
 
 #if !defined( TRIBOL_USE_ENZYME )
-    SLIC_WARNING_IF( k == kmax, "InvIso: Newtons method did not converge." );
-    throw std::runtime_error( "InvIso: Newtons method did not converge." );
+    if ( k == kmax ) {
+      SLIC_WARNING( "InvIso: Newtons method did not converge." );
+      throw std::runtime_error( "InvIso: Newtons method did not converge." );
+    }
 #endif
 
   } else if ( numNodes == 3 ) {
