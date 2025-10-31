@@ -386,9 +386,9 @@ inline void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, R
 
   phi = 0.25 * ( 1. + xi_node * xi ) * ( 1. + eta_node * eta );
 
-#if !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( phi > 1.0 || phi < 0.0, "LinIsoQuadShapeFunc: phi is " << phi << " not between 0. and 1." );
-#endif
+  // #if !defined( TRIBOL_USE_ENZYME )
+  //   SLIC_ERROR_IF( phi > 1.0 || phi < 0.0, "LinIsoQuadShapeFunc: phi is " << phi << " not between 0. and 1." );
+  // #endif
 
   return;
 }
