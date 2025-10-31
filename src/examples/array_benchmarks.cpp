@@ -106,7 +106,8 @@ struct Wrapper {
 };
 
 // using Types = std::tuple<int, std::pair<int, int>, Wrapper<int>, std::string>;
-using Types = std::tuple<tribol::RealT, int, std::pair<int, int>, Wrapper<int>, std::string>;
+using Types = std::tuple<int, tribol::RealT, std::pair<int, tribol::RealT>, bool,
+                         std::string>;  // tribol::RealT, int>;  //, std::pair<int, int>, std::string>;
 
 //-----------------------------------------------------------------------------
 // Helper functions for generating type names and values
@@ -125,6 +126,16 @@ struct get_value_impl<tribol::RealT> {
 template <typename T>
 struct get_value_impl<std::pair<T, T>> {
   static std::pair<T, T> get( int i ) { return std::make_pair( static_cast<T>( i ), static_cast<T>( i + 1 ) ); }
+};
+
+template <typename T1, typename T2>
+struct get_value_impl<std::pair<T1, T2>> {
+  static std::pair<T1, T2> get( int i ) { return std::make_pair( static_cast<T1>( i ), static_cast<T2>( i + 1 ) ); }
+};
+
+template <>
+struct get_value_impl<bool> {
+  static bool get( int i ) { return bool{ static_cast<bool>( i % 2 ) }; }
 };
 
 template <typename T>
@@ -165,9 +176,21 @@ std::string get_type_name<std::pair<int, int>>()
 }
 
 template <>
+std::string get_type_name<std::pair<int, tribol::RealT>>()
+{
+  return "std::pair<int, tribol::RealT>";
+}
+
+template <>
 std::string get_type_name<Wrapper<int>>()
 {
   return "Wrapper<int>";
+}
+
+template <>
+std::string get_type_name<bool>()
+{
+  return "bool";
 }
 
 template <>
@@ -362,7 +385,7 @@ void RegisterBenchmark()
   {
     benchmark::RegisterBenchmark(tname("axom::Array::ctor"), &ctor<axom::Array<T>>)->Apply(CustomArgs);
 
-    // benchmark::RegisterBenchmark(tname("tribol::Array<DynamicAllocator>::ctor"), &ctor<tribol::Array<T>>)->Apply(CustomArgs);
+    benchmark::RegisterBenchmark(tname("tribol::Array<DynamicAllocator>::ctor"), &ctor<tribol::Array<T>>)->Apply(CustomArgs);
 
     benchmark::RegisterBenchmark(tname("tribol::Array<Allocator>::ctor"), &ctor<tribol::Array<T, tribol::Allocator<T>>>)->Apply(CustomArgs);
 
@@ -373,19 +396,19 @@ void RegisterBenchmark()
 
   if((args_benchmark_features & ArrayFeatureBenchmarks::Insertion) != ArrayFeatureBenchmarks::None)
   {
-    // benchmark::RegisterBenchmark(tname("tribol::Array<DynamicAllocator>::push_back_startEmpty"), &push_back_startEmpty<tribol::Array<T>>)->Apply(CustomArgs);
-    // benchmark::RegisterBenchmark(tname("tribol::Array<DynamicAllocator>::emplace_back_startEmpty"), &emplace_back_startEmpty<tribol::Array<T>>)->Apply(CustomArgs);
-    // benchmark::RegisterBenchmark(tname("tribol::Array<DynamicAllocator>::push_back_initialReserve"), & push_back_initialReserve<tribol::Array<T>>)->Apply(CustomArgs);
-    // benchmark::RegisterBenchmark(tname("tribol::Array<DynamicAllocator>::emplace_back_initialReserve"), &emplace_back_initialReserve<tribol::Array<T>>)->Apply(CustomArgs);
+    benchmark::RegisterBenchmark(tname("tribol::Array<DynamicAllocator>::push_back_startEmpty"), &push_back_startEmpty<tribol::Array<T>>)->Apply(CustomArgs);
+    benchmark::RegisterBenchmark(tname("tribol::Array<DynamicAllocator>::emplace_back_startEmpty"), &emplace_back_startEmpty<tribol::Array<T>>)->Apply(CustomArgs);
+    benchmark::RegisterBenchmark(tname("tribol::Array<DynamicAllocator>::push_back_initialReserve"), & push_back_initialReserve<tribol::Array<T>>)->Apply(CustomArgs);
+    benchmark::RegisterBenchmark(tname("tribol::Array<DynamicAllocator>::emplace_back_initialReserve"), &emplace_back_initialReserve<tribol::Array<T>>)->Apply(CustomArgs);
 
-    // benchmark::RegisterBenchmark(tname("tribol::Array<Allocator>::push_back_startEmpty"), &push_back_startEmpty<tribol::Array<T, tribol::Allocator<T>>>)->Apply(CustomArgs);
+    benchmark::RegisterBenchmark(tname("tribol::Array<Allocator>::push_back_startEmpty"), &push_back_startEmpty<tribol::Array<T, tribol::Allocator<T>>>)->Apply(CustomArgs);
     benchmark::RegisterBenchmark(tname("tribol::Array<Allocator>::emplace_back_startEmpty"), &emplace_back_startEmpty<tribol::Array<T, tribol::Allocator<T>>>)->Apply(CustomArgs);
-    // benchmark::RegisterBenchmark(tname("tribol::Array<Allocator>::push_back_initialReserve"), & push_back_initialReserve<tribol::Array<T, tribol::Allocator<T>>>)->Apply(CustomArgs);
+    benchmark::RegisterBenchmark(tname("tribol::Array<Allocator>::push_back_initialReserve"), & push_back_initialReserve<tribol::Array<T, tribol::Allocator<T>>>)->Apply(CustomArgs);
     benchmark::RegisterBenchmark(tname("tribol::Array<Allocator>::emplace_back_initialReserve"), &emplace_back_initialReserve<tribol::Array<T, tribol::Allocator<T>>>)->Apply(CustomArgs);
 
-    // benchmark::RegisterBenchmark(tname("axom::Array::push_back_startEmpty"), &push_back_startEmpty<axom::Array<T>>)->Apply(CustomArgs);
+    benchmark::RegisterBenchmark(tname("axom::Array::push_back_startEmpty"), &push_back_startEmpty<axom::Array<T>>)->Apply(CustomArgs);
     benchmark::RegisterBenchmark(tname("axom::Array::emplace_back_startEmpty"), &emplace_back_startEmpty<axom::Array<T>>)->Apply(CustomArgs);
-    // benchmark::RegisterBenchmark(tname("axom::Array::push_back_initialReserve"), & push_back_initialReserve<axom::Array<T>>)->Apply(CustomArgs);
+    benchmark::RegisterBenchmark(tname("axom::Array::push_back_initialReserve"), & push_back_initialReserve<axom::Array<T>>)->Apply(CustomArgs);
     benchmark::RegisterBenchmark(tname("axom::Array::emplace_back_initialReserve"), &emplace_back_initialReserve<axom::Array<T>>)->Apply(CustomArgs);
     
     // benchmark::RegisterBenchmark(tname("tribol::Vector::push_back_startEmpty"), &push_back_startEmpty<tribol::Vector<T>>)->Apply(CustomArgs);
@@ -393,9 +416,9 @@ void RegisterBenchmark()
     // benchmark::RegisterBenchmark(tname("tribol::Vector::push_back_initialReserve"), &push_back_initialReserve<tribol::Vector<T>>)->Apply(CustomArgs);
     // benchmark::RegisterBenchmark(tname("tribol::Vector::emplace_back_initialReserve"), &emplace_back_initialReserve<tribol::Vector<T>>)->Apply(CustomArgs);
     
-    // benchmark::RegisterBenchmark(tname("std::vector::push_back_startEmpty"), &push_back_startEmpty<std::vector<T>>)->Apply(CustomArgs);
+    benchmark::RegisterBenchmark(tname("std::vector::push_back_startEmpty"), &push_back_startEmpty<std::vector<T>>)->Apply(CustomArgs);
     benchmark::RegisterBenchmark(tname("std::vector::emplace_back_startEmpty"), &emplace_back_startEmpty<std::vector<T>>)->Apply(CustomArgs);
-    // benchmark::RegisterBenchmark(tname("std::vector::push_back_initialReserve"), &push_back_initialReserve<std::vector<T>>)->Apply(CustomArgs);
+    benchmark::RegisterBenchmark(tname("std::vector::push_back_initialReserve"), &push_back_initialReserve<std::vector<T>>)->Apply(CustomArgs);
     benchmark::RegisterBenchmark(tname("std::vector::emplace_back_initialReserve"), &emplace_back_initialReserve<std::vector<T>>)->Apply(CustomArgs);
   }
 
