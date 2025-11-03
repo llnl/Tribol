@@ -24,6 +24,9 @@
       "+rocm+umpire+raja %rocmcc@6.3.1 amdgpu_target=gfx942,gfx90a ^hip@6.3.1 ^rocprim@6.3.1 ^hsa-rocr-dev@6.3.1 ^llvm-amdgpu@6.3.1 ^raja~openmp+rocm ^umpire~openmp+rocm" ],
     
     "macos_tahoe_aarch64":
-    [ "+enzyme" ]
+    [ "+enzyme" ],
+
+    "linux_ubuntu_24":
+    [ "+cuda+raja+umpire+enzyme cuda_arch=86 %clang_19"]
       
 }

@@ -1,20 +1,16 @@
-# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
-# other Tribol Project Developers. See the top-level LICENSE file for details.
-#
-# SPDX-License-Identifier: (MIT)
-
 spack:
   compilers::
   - compiler:
-      spec: clang@16.0.6
+      spec: clang@=19.1.1
       paths:
-        cc: /usr/lib/llvm-16/bin/clang
-        cxx: /usr/lib/llvm-16/bin/clang++
+        cc: /usr/lib/llvm-19/bin/clang
+        cxx: /usr/lib/llvm-19/bin/clang++
         f77: /usr/bin/gfortran
         fc: /usr/bin/gfortran
-      flags: 
-        cflags: -pthread
-        cxxflags: -pthread
+      flags:
+        cflags: -fPIC
+        cxxflags: -fPIC
+        fflags: -fPIC
       operating_system: ubuntu24.04
       target: x86_64
       modules: []
@@ -25,144 +21,221 @@ spack:
   view: false
 
   include:
-    - ../defaults.yaml
-    - ../versions.yaml
+  - ../defaults.yaml
+  - ../versions.yaml
+
+  toolchains:
+    clang_19:
+    - spec: '%c=llvm'
+      when: '%c'
+    - spec: '%cxx=llvm'
+      when: '%cxx'
+    - spec: '%fortran=gcc'
+      when: '%fortran'
+    - spec: '%openmpi@4.1.6'
+      when: '%mpi'
+    gcc_13:
+    - spec: '%c=gcc'
+      when: '%c'
+    - spec: '%cxx=gcc'
+      when: '%cxx'
+    - spec: '%fortran=gcc'
+      when: '%fortran'
+    - spec: '%openmpi@4.1.6'
+      when: '%mpi'
 
   packages:
-    all:
-      target: [ivybridge]
-      compiler: [gcc]
-      providers:
-        blas: [openblas]
-        lapack: [openblas]
+    #Compiler packages
+    gcc:
+      externals:
+      - spec: gcc@13.3.0 languages:=c,c++,fortran
+        prefix: /usr
+        extra_attributes:
+          compilers:
+            c: /usr/bin/gcc
+            cxx: /usr/bin/g++
+            fortran: /usr/bin/gfortran
+    llvm:
+      externals:
+      - spec: llvm@19.1.1+clang~lld~lldb
+        prefix: /usr/lib/llvm-19
+        extra_attributes:
+          compilers:
+            c: /usr/lib/llvm-19/bin/clang
+            cxx: /usr/lib/llvm-19/bin/clang++
+          flags:
+            fflags: -fPIC
 
-    # Lock down versions of packages we depend on
-    autoconf:
+    awk:
       buildable: false
+    fortran:
+      buildable: false
+    cxx:
+      buildable: false
+    libllvm:
+      buildable: false
+    mpi:
+      buildable: false
+    D:
+      buildable: false
+    golang:
+      buildable: false
+    fuse:
+      buildable: false
+    c:
+      buildable: false
+    grep:
       externals:
-      - spec: autoconf@2.71
+      - spec: grep@3.11
         prefix: /usr
-    automake:
       buildable: false
-      externals:
-      - spec: automake@1.16.5
-        prefix: /usr
-    bzip2:
-      buildable: false
-      externals:
-      - spec: bzip2@1.0.8
-        prefix: /
-    cuda:
-      buildable: false
-      externals:
-      - spec: cuda@12.8.0
-        prefix: /usr/local/cuda
-    gettext:
-      buildable: false
-      externals:
-      - spec: gettext@0.21
-        prefix: /usr
-    gmake:
-      buildable: false
-      externals:
-      - spec: gmake@4.3
-        prefix: /usr
-    hwloc:
-      buildable: false
-      externals:
-      - spec: hwloc@2.10.0
-        prefix: /usr
-    libevent:
-      buildable: false
-      externals:
-      - spec: libevent@2.1.12
-        prefix: /usr
-    libtool:
-      buildable: false
-      externals:
-      - spec: libtool@2.4.7
-        prefix: /usr
-    m4:
-      buildable: false
-      externals:
-      - spec: m4@1.4.19
-        prefix: /usr
-    numactl:
-      buildable: false
-      externals:
-      - spec: numactl@2.0.14
-        prefix: /usr
     openssh:
       externals:
       - spec: openssh@9.6p1
         prefix: /usr
+      buildable: false
+    hwloc:
+      externals:
+      - spec: hwloc@2.10.0
+        prefix: /usr
+      buildable: false
+    groff:
+      externals:
+      - spec: groff@1.23.0
+        prefix: /usr
+      buildable: false
+    file:
+      externals:
+      - spec: file@5.45
+        prefix: /usr
+      buildable: false
+    lua:
+      externals:
+      - spec: lua@5.2
+        prefix: /usr
+      buildable: false
+    unzip:
+      externals:
+      - spec: unzip@6.0
+        prefix: /usr
+      buildable: false
+    ncurses:
+      externals:
+      - spec: ncurses@6.4.20240113+termlib abi=6
+        prefix: /usr
+      buildable: false
     openssl:
       externals:
       - spec: openssl@3.0.13
         prefix: /usr
-    openblas:
       buildable: false
+    binutils:
       externals:
-      - spec: openblas@0.3.26
-        prefix: /usr/lib/x86_64-linux-gnu/
-    perl:
-      buildable: false
-      externals:
-      - spec: perl@5.38.2
+      - spec: binutils@2.42+gold~headers
         prefix: /usr
-    pkg-config:
       buildable: false
+    git:
       externals:
-      - spec: pkg-config@1.8.1
+      - spec: git@2.43.0~tcltk
         prefix: /usr
-    pmix:
       buildable: false
+    bash:
       externals:
-      - spec: pmix@5.0.1
+      - spec: bash@5.2.21
         prefix: /usr
-    tar:
       buildable: false
+    coreutils:
       externals:
-      - spec: tar@1.35
-        prefix: /
-    unzip:
-      buildable: false
-      externals:
-      - spec: unzip@6.0
+      - spec: coreutils@9.4
         prefix: /usr
-    zlib:
       buildable: false
+    cuda:
       externals:
-      - spec: zlib@1.5.5
+      - spec: cuda@12.8.93
+        prefix: /usr/local/cuda
+      buildable: false
+    gnupg:
+      externals:
+      - spec: gnupg@2.4.4
         prefix: /usr
-
-    # Lock in versions of Devtools
+      buildable: false
+    diffutils:
+      externals:
+      - spec: diffutils@3.10
+        prefix: /usr
+      buildable: false
+    rsync:
+      externals:
+      - spec: rsync@3.2.7
+        prefix: /usr
+      buildable: false
+    gmake:
+      externals:
+      - spec: gmake@4.3
+        prefix: /usr
+      buildable: false
     cmake:
-      buildable: false
       externals:
       - spec: cmake@3.28.3
         prefix: /usr
-    doxygen:
-      version: [1.8.17]
       buildable: false
+    libfuse:
       externals:
-      - spec: doxygen@1.8.17
+      - spec: libfuse@3.14.0
         prefix: /usr
-    llvm:
-      version: [14.0.6]
       buildable: false
-      externals:
-      - spec: llvm@14.0.6+clang
-        prefix: /usr/lib/llvm-14
     python:
-      version: [3.12.3]
-      buildable: false
       externals:
-      - spec: python@3.12.3
+      - spec: python@3.12.3+bz2+crypt+ctypes+dbm+lzma+pyexpat~pythoncmd+readline+sqlite3+ssl~tkinter+uuid+zlib
         prefix: /usr
-    py-sphinx:
-      version: [7.2.6]
       buildable: false
+    bzip2:
       externals:
-      - spec: py-sphinx@7.2.6
+      - spec: bzip2@1.0.8
         prefix: /usr
+      buildable: false
+    xz:
+      externals:
+      - spec: xz@5.4.5
+        prefix: /usr
+      buildable: false
+    tar:
+      externals:
+      - spec: tar@1.35
+        prefix: /usr
+      buildable: false
+    gettext:
+      externals:
+      - spec: gettext@0.21
+        prefix: /usr
+      buildable: false
+    openmpi:
+      externals:
+      - spec: openmpi@4.1.6~cuda+cxx~cxx_exceptions+java~memchecker+pmi~static~wrapper-rpath fabrics=ofi,psm,psm2,ucx schedulers=slurm
+        prefix: /usr
+      buildable: false
+    curl:
+      externals:
+      - spec: curl@8.5.0+gssapi+ldap+nghttp2
+        prefix: /usr
+      buildable: false
+    perl:
+      externals:
+      - spec: perl@5.38.2~cpanm+opcode+open+shared+threads
+        prefix: /usr
+      buildable: false
+    sed:
+      externals:
+      - spec: sed@4.9
+        prefix: /usr
+      buildable: false
+    findutils:
+      externals:
+      - spec: findutils@4.9.0
+        prefix: /usr
+      buildable: false
+    gawk:
+      externals:
+      - spec: gawk@5.2.1
+        prefix: /usr
+      buildable: false

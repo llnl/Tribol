@@ -24,16 +24,47 @@ namespace tribol {
 //------------------------------------------------------------------------------
 // free functions
 //------------------------------------------------------------------------------
+template <typename T>
+TRIBOL_HOST_DEVICE FaceGeomException CheckInterfacePairByMethod(
+    InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, const Parameters& params,
+    ContactCase TRIBOL_UNUSED_PARAM( cCase ), bool& isInteracting, CompGeom::Viewer& cg, IndexT* plane_ct )
+{
+  auto dim = mesh1.spatialDimension();
+  T my_plane( &pair, params, dim );
+  FaceGeomException face_err = NO_FACE_GEOM_EXCEPTION;
+  if ( dim == 3 ) {
+    face_err = my_plane.checkFacePair( mesh1, mesh2 );
+  } else {
+    face_err = my_plane.checkEdgePair( mesh1, mesh2 );
+  }
+
+  if ( face_err != NO_FACE_GEOM_EXCEPTION ) {
+    isInteracting = false;
+#ifdef TRIBOL_USE_HOST
+    SLIC_DEBUG( "face_err: " << face_err );
+#endif
+  } else if ( my_plane.m_inContact ) {
+#ifdef TRIBOL_USE_RAJA
+    auto idx = RAJA::atomicInc<RAJA::auto_atomic>( plane_ct );
+#else
+    auto idx = *plane_ct;
+    ++( *plane_ct );
+#endif
+    cg.getPlane<T>( idx ) = my_plane;
+    isInteracting = true;
+  } else {
+    isInteracting = false;
+  }
+
+  return face_err;
+}
+
 TRIBOL_HOST_DEVICE FaceGeomException CheckInterfacePair( InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                          const MeshData::Viewer& mesh2, const Parameters& params,
-                                                         ContactMethod cMethod,
-                                                         ContactCase TRIBOL_UNUSED_PARAM( cCase ), bool& isInteracting,
+                                                         ContactMethod cMethod, ContactCase cCase, bool& isInteracting,
                                                          CompGeom::Viewer& cg, IndexT* plane_ct )
 {
-  isInteracting = false;
-  bool inContact = false;
   FaceGeomException face_err = NO_FACE_GEOM_EXCEPTION;
-  ContactPlanePair* my_plane;
 
   // note: will likely need the ContactCase for specialized
   // geometry check(s)/routine(s)
@@ -41,24 +72,18 @@ TRIBOL_HOST_DEVICE FaceGeomException CheckInterfacePair( InterfacePair& pair, co
   switch ( cMethod ) {
     case MORTAR_WEIGHTS:
     case SINGLE_MORTAR: {
-      MortarPlanePair mortar_plane( &pair, params, mesh1.spatialDimension() );
-      face_err = mortar_plane.checkInterfacePair( mesh1, mesh2 );
-      inContact = mortar_plane.m_inContact;
-      my_plane = &mortar_plane;
+      face_err =
+          CheckInterfacePairByMethod<MortarPlanePair>( pair, mesh1, mesh2, params, cCase, isInteracting, cg, plane_ct );
       break;
     }
     case COMMON_PLANE: {
-      CommonPlanePair common_plane( &pair, params, mesh1.spatialDimension() );
-      face_err = common_plane.checkInterfacePair( mesh1, mesh2 );
-      inContact = common_plane.m_inContact;
-      my_plane = &common_plane;
+      face_err =
+          CheckInterfacePairByMethod<CommonPlanePair>( pair, mesh1, mesh2, params, cCase, isInteracting, cg, plane_ct );
       break;
     }
     case ALIGNED_MORTAR: {
-      AlignedMortarPlanePair aligned_mortar_plane( &pair, params, mesh1.spatialDimension() );
-      face_err = aligned_mortar_plane.checkInterfacePair( mesh1, mesh2 );
-      inContact = aligned_mortar_plane.m_inContact;
-      my_plane = &aligned_mortar_plane;
+      face_err = CheckInterfacePairByMethod<AlignedMortarPlanePair>( pair, mesh1, mesh2, params, cCase, isInteracting,
+                                                                     cg, plane_ct );
       break;
     }
     default: {
@@ -66,25 +91,6 @@ TRIBOL_HOST_DEVICE FaceGeomException CheckInterfacePair( InterfacePair& pair, co
       break;
     }
   }  // end switch
-
-  // check errors and contact status and add ContactPlanePair accordingly
-  if ( face_err != NO_FACE_GEOM_EXCEPTION ) {
-    isInteracting = false;
-#ifdef TRIBOL_USE_HOST
-    SLIC_DEBUG( "face_err: " << face_err );
-#endif
-  } else if ( inContact ) {
-#ifdef TRIBOL_USE_RAJA
-    auto idx = RAJA::atomicInc<RAJA::auto_atomic>( plane_ct );
-#else
-    auto idx = *plane_ct;
-    ++( *plane_ct );
-#endif
-    cg.addContactPlane( *my_plane, idx, cMethod );
-    isInteracting = true;
-  } else {
-    isInteracting = false;
-  }
 
   return face_err;
 
@@ -227,7 +233,8 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::checkFacePair( const MeshD
   m_face1_convex = IsConvex( x1_loc, y1_loc, mesh1.numberOfNodesPerElement() );
   m_face2_convex = IsConvex( x2_loc, y2_loc, mesh2.numberOfNodesPerElement() );
 
-  FaceGeomException interpen_err = this->computeOverlap3D(
+  // explicitly call compute overlap routine for common plane so CUDA can determine stack size
+  FaceGeomException interpen_err = CommonPlanePair::computeOverlap3D(
       &m_x1_prime[0], &m_y1_prime[0], &m_z1_prime[0], &m_x2_prime[0], &m_y2_prime[0], &m_z2_prime[0], mesh1, mesh2 );
 
   if ( interpen_err != NO_FACE_GEOM_EXCEPTION ) {
@@ -271,7 +278,8 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::checkEdgePair( const MeshD
   // locate the common plane centroid so we just take the average of the two face centroids
   computePlaneData( mesh1, mesh2 );
 
-  FaceGeomException interpen_err = this->computeOverlap2D( mesh1, mesh2 );
+  // explicitly call compute overlap routine for common plane so CUDA can determine stack size
+  FaceGeomException interpen_err = CommonPlanePair::computeOverlap2D( mesh1, mesh2 );
   if ( interpen_err != NO_FACE_GEOM_EXCEPTION ) {
     this->m_inContact = false;
     return interpen_err;
@@ -1860,5 +1868,22 @@ TRIBOL_HOST_DEVICE FaceGeomException CommonPlanePair::computeOverlap2D( const Me
 }  // end CommonPlanePair::computeOverlap2D()
 
 //------------------------------------------------------------------------------
+template <>
+TRIBOL_HOST_DEVICE CommonPlanePair& CompGeom::Viewer::getPlane<CommonPlanePair>( int id )
+{
+  return m_common_plane_pairs[id];
+};
+
+template <>
+TRIBOL_HOST_DEVICE MortarPlanePair& CompGeom::Viewer::getPlane<MortarPlanePair>( int id )
+{
+  return m_mortar_plane_pairs[id];
+};
+
+template <>
+TRIBOL_HOST_DEVICE AlignedMortarPlanePair& CompGeom::Viewer::getPlane<AlignedMortarPlanePair>( int id )
+{
+  return m_aligned_mortar_plane_pairs[id];
+};
 
 }  // namespace tribol
