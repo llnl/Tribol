@@ -668,6 +668,64 @@ class FixedStride : public _SizeAndCapacityT {
   SizeT stride_;
 };
 
+template <typename _T, class _SizeAndCapacityT>
+class FixedStrideByDim : public FixedStride<_T, _SizeAndCapacityT> {
+ public:
+  /// @brief Base class for the FixedStrideByDim.
+  using BaseClassT_ = FixedStride<_T, _SizeAndCapacityT>;
+
+  /// @brief Alias for the underlying SizeAndCapacity type.
+  using typename BaseClassT_::SizeAndCapacityT_;
+
+  /// @brief The type of elements stored in the memory.
+  using typename BaseClassT_::ValueT_;
+
+  /// @brief Pointer type for accessing elements.
+  using typename BaseClassT_::PointerT_;
+
+  /// @brief Const pointer type for accessing elements.
+  using typename BaseClassT_::ConstPointerT_;
+
+  TRIBOL_HOST_DEVICE FixedStrideByDim( PointerT_ data, std::initializer_list<SizeT> size_by_dim, SizeT capacity,
+                                       std::initializer_list<SizeT> stride_by_dim )
+      : BaseClassT_( data, product( size_by_dim ), capacity, min( stride_by_dim ) )
+  {
+  }
+
+ private:
+  template <typename _ListT>
+  TRIBOL_HOST_DEVICE _ListT product( const std::initializer_list<_ListT>& values )
+  {
+    _ListT result = 1;
+    for ( auto value : values ) {
+      result *= value;
+    }
+    return result;
+  }
+
+  template <typename _ListT>
+  TRIBOL_HOST_DEVICE _ListT min( const std::initializer_list<_ListT>& values )
+  {
+    _ListT result = std::numeric_limits<_ListT>::max();
+    for ( auto value : values ) {
+      if ( value < result ) {
+        result = value;
+      }
+    }
+    return result;
+  }
+};
+
+template <typename _T, size_t _N, class _AccessorT = ContiguousMemory<_T, SizeEqCapacity<FixedCapacity<_N>>>>
+class MultiDimStride {
+ public:
+  using ValueT_ = _T;
+  using AccessorT_ = _AccessorT;
+
+ private:
+  AccessorT_ accessor_[_N];
+};
+
 /**
  * @brief Base class for a memory block with arbitrary stride and size/capacity management. No data ownership so it can
  * be used as a view.
