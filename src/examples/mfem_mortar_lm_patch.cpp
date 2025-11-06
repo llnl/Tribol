@@ -84,8 +84,7 @@ int main( int argc, char** argv )
   double lambda = 50.0;
   // Lame parameter mu (shear modulus)
   double mu = 50.0;
-  // device configuration string (see mfem::Device::Configure() for valid options). This example has been tested on
-  // "cpu" and "cuda".
+  // device configuration string (see mfem::Device::Configure() for valid options)
   std::string device_config = "cpu";
   // Should we mesh with tet elements?
   bool use_tets = false;
@@ -99,9 +98,10 @@ int main( int argc, char** argv )
   //   ->capture_default_str();
   app.add_option( "-l,--lambda", lambda, "Lame parameter lambda." )->capture_default_str();
   app.add_option( "-m,--mu", mu, "Lame parameter mu (shear modulus)." )->capture_default_str();
-  app.add_option( "-d,--device", device_config,
-                  "Device configuration string, see mfem::Device::Configure() for valid options." )
-      ->capture_default_str();
+  // TODO: GPU support for implicit mortar
+  // app.add_option( "-d,--device", device_config,
+  //                 "Device configuration string, see mfem::Device::Configure() for valid options." )
+  //     ->capture_default_str();
   app.add_option( "-t,--use-tets", use_tets, "Should we use tetrahedral elements?" )->capture_default_str();
   CLI11_PARSE( app, argc, argv );
 
@@ -109,7 +109,6 @@ int main( int argc, char** argv )
   SLIC_INFO_ROOT( axom::fmt::format( "refine:   {0}", ref_levels ) );
   SLIC_INFO_ROOT( axom::fmt::format( "lambda:   {0}", lambda ) );
   SLIC_INFO_ROOT( axom::fmt::format( "mu:       {0}", mu ) );
-  SLIC_INFO_ROOT( axom::fmt::format( "device:   {0}", device_config ) );
   SLIC_INFO_ROOT( axom::fmt::format( "use_tets: {0}\n", use_tets ) );
 
   // configure the devices available for MFEM kernel launches

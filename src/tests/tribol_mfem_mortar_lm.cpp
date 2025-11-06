@@ -219,7 +219,7 @@ class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Eleme
   }
 };
 
-TEST_P( MfemMortarTest, mass_matrix_transfer )
+TEST_P( MfemMortarTest, check_mortar_displacement )
 {
   EXPECT_LT( std::abs( max_disp_ - 0.005 ), 1.0e-6 );
 
@@ -247,19 +247,6 @@ int main( int argc, char* argv[] )
 
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
                                     // exiting main scope
-
-#if defined( TRIBOL_USE_CUDA )
-  std::string device_str( "cuda" );
-#elif defined( TRIBOL_USE_HIP )
-  std::string device_str( "hip" );
-#elif defined( TRIBOL_USE_OPENMP )
-  std::string device_str( "omp" );
-#else
-  std::string device_str( "cpu" );
-#endif
-
-  mfem::Device device( device_str );
-  device.Print();
 
   result = RUN_ALL_TESTS();
 
