@@ -187,7 +187,6 @@ std::vector<const RealT*> ParentField::GetRedecompFieldPtrs() const
 {
   auto data_ptrs = std::vector<const RealT*>( 3, nullptr );
   if ( GetRedecompGridFn().FESpace()->GetNDofs() > 0 ) {
-    // Tribol only computes on host
     auto data = GetRedecompGridFn().Read( GetRedecompGridFn().UseDevice() );
     for ( size_t i{}; i < static_cast<size_t>( GetRedecompGridFn().FESpace()->GetVDim() ); ++i ) {
       data_ptrs[i] = data + GetRedecompGridFn().FESpace()->DofToVDof( 0, i );
@@ -200,7 +199,6 @@ std::vector<RealT*> ParentField::GetRedecompFieldPtrs( mfem::GridFunction& redec
 {
   auto data_ptrs = std::vector<RealT*>( 3, nullptr );
   if ( redecomp_gridfn.FESpace()->GetNDofs() > 0 ) {
-    // Tribol only computes on host
     auto data = redecomp_gridfn.ReadWrite( redecomp_gridfn.UseDevice() );
     for ( size_t i{}; i < static_cast<size_t>( redecomp_gridfn.FESpace()->GetVDim() ); ++i ) {
       data_ptrs[i] = data + redecomp_gridfn.FESpace()->DofToVDof( 0, i );
@@ -247,10 +245,9 @@ std::vector<const RealT*> PressureField::GetRedecompFieldPtrs() const
 {
   auto data_ptrs = std::vector<const RealT*>( 3, nullptr );
   if ( GetRedecompGridFn().FESpace()->GetNDofs() > 0 ) {
-    // Tribol only computes on host
-    auto data = GetRedecompGridFn().HostRead();
+    auto data = GetRedecompGridFn().Read( GetRedecompGridFn().UseDevice() );
     for ( size_t i{}; i < static_cast<size_t>( GetRedecompGridFn().FESpace()->GetVDim() ); ++i ) {
-      data_ptrs[i] = &data[GetRedecompGridFn().FESpace()->DofToVDof( 0, i )];
+      data_ptrs[i] = data + GetRedecompGridFn().FESpace()->DofToVDof( 0, i );
     }
   }
   return data_ptrs;
@@ -260,10 +257,9 @@ std::vector<RealT*> PressureField::GetRedecompFieldPtrs( mfem::GridFunction& red
 {
   auto data_ptrs = std::vector<RealT*>( 3, nullptr );
   if ( redecomp_gridfn.FESpace()->GetNDofs() > 0 ) {
-    // Tribol only computes on host
-    auto data = redecomp_gridfn.HostReadWrite();
+    auto data = redecomp_gridfn.ReadWrite( redecomp_gridfn.UseDevice() );
     for ( size_t i{}; i < static_cast<size_t>( redecomp_gridfn.FESpace()->GetVDim() ); ++i ) {
-      data_ptrs[i] = &data[redecomp_gridfn.FESpace()->DofToVDof( 0, i )];
+      data_ptrs[i] = data + redecomp_gridfn.FESpace()->DofToVDof( 0, i );
     }
   }
   return data_ptrs;

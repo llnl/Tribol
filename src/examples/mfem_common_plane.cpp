@@ -13,10 +13,9 @@
  * velocity is applied to the second block in the negative z-direction and fixed velocity boundary conditions are
  * applied to the first block at z = 0. Contact constraints are enforced using the common plane algorithm.
  *
- * The example uses the Tribol MFEM interface, which supports decomposed (MPI) meshes and has experimental support for
- * higher order meshes using low-order refinement of higher-order geometry representations. Comments in the main
- * function below give details on each step of the example code. The example code can run on HIP/CUDA, where
- * available.
+ * The example uses the Tribol MFEM interface, which supports decomposed (MPI) meshes and has support for higher order
+ * meshes using low-order refinement of higher-order geometry representations. Comments in the main function below give
+ * details on each step of the example code. The example code can run on HIP/CUDA, where available.
  *
  * Example runs (from repo root directory):
  *   - mpirun -np 4 {build_dir}/examples/mfem_common_plane_ex
@@ -174,9 +173,10 @@ int main( int argc, char** argv )
     shared::MeshBuilder::CubeMesh( 1, 1, 1 ),
     shared::MeshBuilder::CubeMesh( 1, 1, 1 )
       .translate( { 0.0, 0.0, 1.0 + initial_sep } )
-      .updateAttrib( 1, 2 )
-      .updateBdrAttrib( 1, 7 )
-      .updateBdrAttrib( 6, 8 )
+      .updateAttrib( 1, 2 )    // changes attribute in all volume elements from 1 to 2 so it doesn't clash with the 
+                               // first (bottom) mesh
+      .updateBdrAttrib( 1, 7 ) // set the bottom surface to boundary attribute 7
+      .updateBdrAttrib( 6, 8 ) // set the top surface to boundary attribute 8
   } ).refine( ref_levels ) );
   // clang-format on
   timer.stop();
@@ -294,8 +294,8 @@ int main( int argc, char** argv )
                                       contact_surf_2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
                                       tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_BVH, exec_mode );
   tribol::setMPIComm( coupling_scheme_id, MPI_COMM_WORLD );
-  // This API call adds a velocity field to the coupling scheme. This is used for computing the maximum common plane
-  // timestep and, if activated, gap rate penalty.
+  // This API call adds a velocity field to the coupling scheme. This is used for computing the maximum allowable common
+  // plane timestep and, if activated, gap rate penalty.
   tribol::registerMfemVelocity( coupling_scheme_id, velocity );
   // The type of penalty enforcement and the penalty parameters are set here (i.e. rate vs. kinematic and the method of
   // setting the penalty value).

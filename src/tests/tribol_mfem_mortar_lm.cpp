@@ -180,6 +180,7 @@ class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Eleme
       B_blk.SyncMemory( G );
     }
 
+    // create a single hypreparmatrix (A_merged) from the block operator (A_blk)
     mfem::Array2D<const mfem::HypreParMatrix*> hypre_blocks( 2, 2 );
     for ( int i{ 0 }; i < 2; ++i ) {
       for ( int j{ 0 }; j < 2; ++j ) {
@@ -247,9 +248,18 @@ int main( int argc, char* argv[] )
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
                                     // exiting main scope
 
-#ifdef TRIBOL_ENABLE_CUDA
-  mfem::Device device( "cuda" );
+#if defined( TRIBOL_USE_CUDA )
+  std::string device_str( "cuda" );
+#elif defined( TRIBOL_USE_HIP )
+  std::string device_str( "hip" );
+#elif defined( TRIBOL_USE_OPENMP )
+  std::string device_str( "omp" );
+#else
+  std::string device_str( "cpu" );
 #endif
+
+  mfem::Device device( device_str );
+  device.Print();
 
   result = RUN_ALL_TESTS();
 

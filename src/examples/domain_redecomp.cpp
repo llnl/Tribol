@@ -84,8 +84,7 @@ int main( int argc, char** argv )
   // coarse meshes. note, the RCB method prevents max_out_of_balance from being so small that decomposition is
   // impossible on very coarse meshes, though the decomposition can still fail with the simple checks implemented.
   double max_out_of_balance = 0.05;
-  // device configuration string (see mfem::Device::Configure() for valid options). This example has been tested on
-  // "cpu" and "cuda"
+  // device configuration string (see mfem::Device::Configure() for valid options)
   std::string device_config = "cpu";
 
   axom::CLI::App app{ "domain_redecomp" };

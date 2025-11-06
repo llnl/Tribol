@@ -93,9 +93,10 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol
       shared::MeshBuilder::CubeMesh( 1, 1, 1 ),
       shared::MeshBuilder::CubeMesh( 1, 1, 1 )
         .translate( { 0.0, 0.0, 1.0 + initial_sep } )
-        .updateAttrib( 1, 2 )
-        .updateBdrAttrib( 1, 7 )
-        .updateBdrAttrib( 6, 8 )
+        .updateAttrib( 1, 2 )    // changes attribute in all volume elements from 1 to 2 so it doesn't clash with the 
+                                 // first (bottom) mesh
+        .updateBdrAttrib( 1, 7 ) // set the bottom surface to boundary attribute 7
+        .updateBdrAttrib( 6, 8 ) // set the top surface to boundary attribute 8
     } ).refine( ref_levels ) );
     // clang-format on
 

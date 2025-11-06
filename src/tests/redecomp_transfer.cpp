@@ -84,9 +84,7 @@ TEST_P( TransferTest, element_gridfn_transfer )
 {
   // test grid function transfer
   auto transfer_map = RedecompTransfer();
-  orig_->ReadWrite();
   transfer_map.TransferToSerial( *orig_, *xfer_ );
-  xfer_->ReadWrite();
   transfer_map.TransferToParallel( *xfer_, *final_ );
   EXPECT_LT( Calcl2Error( *orig_, *final_ ), 1.0e-13 );
 
@@ -97,10 +95,7 @@ TEST_P( TransferTest, element_quadfn_transfer )
 {
   // test quadrature function transfer
   auto transfer_map = RedecompTransfer();
-  orig_quad_fn_->ReadWrite();
-  xfer_quad_fn_->Read();
   transfer_map.TransferToSerial( *orig_quad_fn_, *xfer_quad_fn_ );
-  xfer_quad_fn_->ReadWrite();
   transfer_map.TransferToParallel( *xfer_quad_fn_, *final_quad_fn_ );
   EXPECT_LT( Calcl2Error( *orig_quad_fn_, *final_quad_fn_ ), 1.0e-13 );
 
@@ -110,9 +105,7 @@ TEST_P( TransferTest, element_quadfn_transfer )
 TEST_P( TransferTest, node_gridfn_transfer )
 {
   auto transfer_map = RedecompTransfer( *par_vector_space_, *redecomp_vector_space_ );
-  orig_->ReadWrite();
   transfer_map.TransferToSerial( *orig_, *xfer_ );
-  xfer_->ReadWrite();
   transfer_map.TransferToParallel( *xfer_, *final_ );
   EXPECT_LT( Calcl2Error( *orig_, *final_ ), 1.0e-13 );
 
