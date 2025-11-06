@@ -20,6 +20,9 @@
 #include "umpire/TypedAllocator.hpp"
 #endif
 
+// Axom includes
+#include "axom/core.hpp"
+
 // Tribol includes
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/ExecModel.hpp"
@@ -668,7 +671,7 @@ class FixedStride : public _SizeAndCapacityT {
   SizeT stride_;
 };
 
-template <typename _T, class _SizeAndCapacityT>
+template <typename _T, int _Dim, class _SizeAndCapacityT>
 class FixedStrideByDim : public FixedStride<_T, _SizeAndCapacityT> {
  public:
   /// @brief Base class for the FixedStrideByDim.
@@ -686,15 +689,18 @@ class FixedStrideByDim : public FixedStride<_T, _SizeAndCapacityT> {
   /// @brief Const pointer type for accessing elements.
   using typename BaseClassT_::ConstPointerT_;
 
-  TRIBOL_HOST_DEVICE FixedStrideByDim( PointerT_ data, std::initializer_list<SizeT> size_by_dim, SizeT capacity,
-                                       std::initializer_list<SizeT> stride_by_dim )
-      : BaseClassT_( data, product( size_by_dim ), capacity, min( stride_by_dim ) )
+  TRIBOL_HOST_DEVICE FixedStrideByDim( PointerT_ data, axom::StackArray<SizeT, _Dim> size_by_dim, SizeT capacity,
+                                       axom::StackArray<SizeT, _Dim> stride_by_dim )
+      : BaseClassT_( data, product( size_by_dim ), capacity, min( stride_by_dim ) ),
+        size_by_dim_( std::move( size_by_dim ) ),
+        stride_by_dim_( std::move( stride_by_dim ) )
   {
+    verifyMemoryIsContiguous();
   }
 
  private:
-  template <typename _ListT>
-  TRIBOL_HOST_DEVICE _ListT product( const std::initializer_list<_ListT>& values )
+  template <typename _ListT, template <typename, int> typename _ContainerT>
+  TRIBOL_HOST_DEVICE _ListT product( const _ContainerT<_ListT, _Dim>& values )
   {
     _ListT result = 1;
     for ( auto value : values ) {
@@ -703,8 +709,8 @@ class FixedStrideByDim : public FixedStride<_T, _SizeAndCapacityT> {
     return result;
   }
 
-  template <typename _ListT>
-  TRIBOL_HOST_DEVICE _ListT min( const std::initializer_list<_ListT>& values )
+  template <typename _ListT, template <typename, int> typename _ContainerT>
+  TRIBOL_HOST_DEVICE _ListT min( const _ContainerT<_ListT, _Dim>& values )
   {
     _ListT result = std::numeric_limits<_ListT>::max();
     for ( auto value : values ) {
@@ -714,6 +720,16 @@ class FixedStrideByDim : public FixedStride<_T, _SizeAndCapacityT> {
     }
     return result;
   }
+
+  TRIBOL_HOST_DEVICE void verifyMemoryIsContiguous() const {}
+
+  template <int _DimToCheck>
+  void checkContinuityByDim( SizeT expected_size ) const
+  {
+  }
+
+  axom::StackArray<SizeT, _Dim> size_by_dim_;
+  axom::StackArray<SizeT, _Dim> stride_by_dim_;
 };
 
 template <typename _T, size_t _N, class _AccessorT = ContiguousMemory<_T, SizeEqCapacity<FixedCapacity<_N>>>>
