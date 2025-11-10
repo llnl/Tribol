@@ -7,7 +7,13 @@
 
 #include "mfem.hpp"
 
+#ifdef TRIBOL_USE_UMPIRE
+// Umpire includes
+#include "umpire/ResourceManager.hpp"
+#endif
+
 #include "tribol/config.hpp"
+
 #include "redecomp/redecomp.hpp"
 
 namespace redecomp {
@@ -125,8 +131,16 @@ int main( int argc, char* argv[] )
 
   ::testing::InitGoogleTest( &argc, argv );
 
+#ifdef TRIBOL_USE_UMPIRE
+  umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
+#endif
+
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
                                     // exiting main scope
+
+#ifdef TRIBOL_ENABLE_CUDA
+  mfem::Device device( "cuda" );
+#endif
 
   result = RUN_ALL_TESTS();
 

@@ -870,7 +870,11 @@ int update( int cycle, RealT t, RealT& dt )
 }  // end update()
 
 //------------------------------------------------------------------------------
-void finalize() { CouplingSchemeManager::getInstance().clear(); }
+void finalize()
+{
+  CouplingSchemeManager::getInstance().clear();
+  MeshManager::getInstance().clear();
+}
 
 //------------------------------------------------------------------------------
 }  // namespace tribol

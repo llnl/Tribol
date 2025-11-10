@@ -68,6 +68,7 @@ void RedecompTransfer::TransferToSerial( const mfem::QuadratureFunction& src, mf
 
   // map received quadrature point values to local quadrature points
   auto vals = mfem::Vector();
+  vals.UseDevice( true );
   auto n_ranks = redecomp->getMPIUtility().NRanks();
   for ( int r{ 0 }; r < n_ranks; ++r ) {
     auto first_el = redecomp->getRedecompToParentElemOffsets()[r];
@@ -75,8 +76,10 @@ void RedecompTransfer::TransferToSerial( const mfem::QuadratureFunction& src, mf
     auto quadpt_ct = 0;
     for ( int e{ first_el }; e < last_el; ++e ) {
       dst.GetValues( e, vals );
-      vals = &dst_vals[r][quadpt_ct];
+      const mfem::Vector dof_vals( &dst_vals[r][quadpt_ct], vals.Size() );
+      vals = dof_vals;
       quadpt_ct += vals.Size();
+      dst.SyncMemory( vals );
     }
   }
 }
@@ -121,6 +124,7 @@ void RedecompTransfer::TransferToParallel( const mfem::QuadratureFunction& src, 
 
   // map received quadrature point values to local quadrature points
   auto vals = mfem::Vector();
+  vals.UseDevice( true );
   auto n_ranks = redecomp->getMPIUtility().NRanks();
   for ( int r{ 0 }; r < n_ranks; ++r ) {
     auto quadpt_ct = 0;
@@ -130,6 +134,7 @@ void RedecompTransfer::TransferToParallel( const mfem::QuadratureFunction& src, 
         dst.GetValues( redecomp->getParentToRedecompElems().first[r][e], vals );
         vals = &dst_vals[r][quadpt_ct];
         quadpt_ct += vals.Size();
+        dst.SyncMemory( vals );
       }
     }
   }
