@@ -594,8 +594,8 @@ void MfemMeshData::UpdateData::UpdateConnectivity( const std::set<int>& attribut
                                                    const std::set<int>& attributes_2 )
 {
   // create this on host since MFEM connectivity data is stored there
-  Array2D<int, MemorySpace::Host> conn_1_host;
-  Array2D<int, MemorySpace::Host> conn_2_host;
+  Array2D<IndexT, MemorySpace::Host> conn_1_host;
+  Array2D<IndexT, MemorySpace::Host> conn_2_host;
   Array1D<int, MemorySpace::Host> elem_map_1_host;
   Array1D<int, MemorySpace::Host> elem_map_2_host;
   conn_1_host.reserve( redecomp_mesh_.GetNE() * num_verts_per_elem_ );
@@ -635,8 +635,8 @@ void MfemMeshData::UpdateData::UpdateConnectivity( const std::set<int>& attribut
     elem_map_2_ = std::move( elem_map_2_host );
   } else {
     // copy to new memory space
-    conn_1_ = Array2D<int>( conn_1_host, allocator_id_ );
-    conn_2_ = Array2D<int>( conn_2_host, allocator_id_ );
+    conn_1_ = Array2D<IndexT>( conn_1_host, allocator_id_ );
+    conn_2_ = Array2D<IndexT>( conn_2_host, allocator_id_ );
     elem_map_1_ = Array1D<int>( elem_map_1_host, allocator_id_ );
     elem_map_2_ = Array1D<int>( elem_map_2_host, allocator_id_ );
   }

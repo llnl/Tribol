@@ -810,11 +810,6 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
   pairs.clear();
   pairs.reserve( numPairs );
 
-  ContactMode mode = cs->getContactMode();
-
-  auto& params = cs->getParameters();
-  bool intermediatePlane = cs->getContactMethod() == COMMON_PLANE ? true : false;
-
   // copy the interaction pairs
   for ( int i = 0; i < numPairs; ++i ) {
     // perform initial face-pair validity checks to add valid face-pairs

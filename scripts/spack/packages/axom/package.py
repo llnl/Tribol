@@ -15,7 +15,7 @@ class Axom(BuiltinAxom):
     #  moved forward past the release. Increment the last number when updating the commit sha.
     version("0.10.1.1", commit="44562f92a400204e33915f48b848eb68e80a1bf1", submodules=False)
 
-    variant("int64", default=False, description="Use 64bit integers for index type")
+    variant("int64", default=True, description="Use 64bit integers for index type")
     
     def cmake_args(self):
         options = []
