@@ -36,6 +36,18 @@ TRIBOL_HOST_DEVICE RealT ComputePenaltyStiffnessPerArea( const RealT K1_over_t1,
 template <>
 int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs );
 
+/*!
+ *
+ * \brief routine to apply interface physics in the direction tangential to the interface
+ *
+ * \param [in] cs pointer to the coupling scheme
+ *
+ * \return 0 if no error
+ *
+ */
+template <>
+int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* cs );
+
 }  // end namespace tribol
 
 #endif /* SRC_PHYSICS_COMMONPLANE_HPP_ */

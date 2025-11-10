@@ -4,11 +4,9 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "mfem_tribol.hpp"
-#include "tribol/common/Parameters.hpp"
 
 #ifdef BUILD_REDECOMP
 
-// Tribol includes
 #include "tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 
@@ -18,16 +16,53 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
                                  const mfem::ParGridFunction& current_coords, std::set<int> b_attributes_1,
                                  std::set<int> b_attributes_2, ContactMode contact_mode, ContactCase contact_case,
                                  ContactMethod contact_method, ContactModel contact_model,
-                                 EnforcementMethod enforcement_method, BinningMethod binning_method )
+                                 EnforcementMethod enforcement_method, BinningMethod binning_method,
+                                 ExecutionMode exec_mode )
 {
+  // verify valid execution mode and set memory space
+  MemorySpace mem_space = MemorySpace::Host;
+#ifdef TRIBOL_USE_CUDA
+  if ( exec_mode == ExecutionMode::Cuda ) {
+    mem_space = MemorySpace::Device;
+    SLIC_ERROR_ROOT_IF( !mfem::Device::Allows( mfem::Backend::CUDA_MASK ), "CUDA execution is not enabled in MFEM." );
+  }
+#endif
+#ifdef TRIBOL_USE_HIP
+  if ( exec_mode == ExecutionMode::Hip ) {
+    mem_space = MemorySpace::Device;
+    SLIC_ERROR_ROOT_IF( !mfem::Device::Allows( mfem::Backend::HIP_MASK ), "HIP execution is not enabled in MFEM." );
+  }
+#endif
+  if ( exec_mode == ExecutionMode::Dynamic ) {
+    // start with trying to use openmp...
+#ifdef TRIBOL_USE_OPENMP
+    exec_mode = ExecutionMode::OpenMP;
+#else
+    // ...but default with sequential
+    exec_mode = ExecutionMode::Sequential;
+#endif
+    // try to use device, if built and if mfem is using it
+#if defined( TRIBOL_USE_CUDA )
+    if ( mfem::Device::Allows( mfem::Backend::CUDA ) ) {
+      exec_mode = ExecutionMode::Cuda;
+      mem_space = MemorySpace::Device;
+    }
+#elif defined( TRIBOL_USE_HIP )
+    if ( mfem::Device::Allows( mfem::Backend::HIP ) ) {
+      exec_mode = ExecutionMode::Hip;
+      mem_space = MemorySpace::Device;
+    }
+#endif
+  }
   // create transfer operators from parent mesh to redecomp mesh
-  auto mfem_data = std::make_unique<MfemMeshData>( mesh_id_1, mesh_id_2, mesh, current_coords,
-                                                   std::move( b_attributes_1 ), std::move( b_attributes_2 ) );
+  auto mfem_data =
+      std::make_unique<MfemMeshData>( mesh_id_1, mesh_id_2, mesh, current_coords, std::move( b_attributes_1 ),
+                                      std::move( b_attributes_2 ), exec_mode, mem_space );
   // register empty meshes so the coupling scheme is valid
-  registerMesh( mesh_id_1, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, MemorySpace::Host );
-  registerMesh( mesh_id_2, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, MemorySpace::Host );
+  registerMesh( mesh_id_1, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, mem_space );
+  registerMesh( mesh_id_2, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, mem_space );
   registerCouplingScheme( cs_id, mesh_id_1, mesh_id_2, contact_mode, contact_case, contact_method, contact_model,
-                          enforcement_method, binning_method, ExecutionMode::Sequential );
+                          enforcement_method, binning_method, exec_mode );
   auto& cs = CouplingSchemeManager::getInstance().at( cs_id );
   cs.setMPIComm( mesh.GetComm() );
 
@@ -44,7 +79,7 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
     }
     // TODO add the following if they are implemented with Lagrange multipliers:
     //
-    // 1) contact_model == COULOMB
+    // 1) contact_model == FRICTION_COULOMB
     // 2) contact_case == TIED_NORMAL
     // 3) contact_case == TIED_FULL
     //
@@ -98,6 +133,21 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
   cs->getMfemMeshData()->ClearAllPenaltyData();
   cs->getMfemMeshData()->SetMesh1KinematicConstantPenalty( mesh1_penalty );
   cs->getMfemMeshData()->SetMesh2KinematicConstantPenalty( mesh2_penalty );
+}
+
+void setMfemViscousDampingCoeff( IndexT cs_id, RealT mesh1_coeff, RealT mesh2_coeff )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF(
+      !cs->hasMfemData(),
+      "Coupling scheme does not contain MFEM data. "
+      "Create the coupling scheme using registerMfemCouplingScheme() to set the viscous damping coefficient." );
+  cs->getMfemMeshData()->SetMesh1ViscousDampingCoeff( mesh1_coeff );
+  cs->getMfemMeshData()->SetMesh2ViscousDampingCoeff( mesh2_coeff );
 }
 
 void setMfemKinematicElementPenalty( IndexT cs_id, mfem::Coefficient& modulus_coefficient )
@@ -342,9 +392,11 @@ void updateMfemParallelDecomposition( int n_ranks )
       auto coord_ptrs = mfem_data->GetRedecompCoordsPtrs();
 
       registerMesh( mesh_ids[0], mfem_data->GetMesh1NE(), mfem_data->GetNV(), mfem_data->GetMesh1Conn(),
-                    mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2], MemorySpace::Host );
+                    mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2],
+                    mfem_data->GetMemorySpace() );
       registerMesh( mesh_ids[1], mfem_data->GetMesh2NE(), mfem_data->GetNV(), mfem_data->GetMesh2Conn(),
-                    mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2], MemorySpace::Host );
+                    mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2],
+                    mfem_data->GetMemorySpace() );
 
       auto f_ptrs = mfem_data->GetRedecompResponsePtrs();
       registerNodalResponse( mesh_ids[0], f_ptrs[0], f_ptrs[1], f_ptrs[2] );
@@ -413,6 +465,13 @@ void updateMfemParallelDecomposition( int n_ranks )
           setRatePercentPenalty( mesh_ids[0], *mfem_data->GetMesh1RatePercentPenalty() );
           setRatePercentPenalty( mesh_ids[1], *mfem_data->GetMesh2RatePercentPenalty() );
         }
+      }
+      if ( cs.getContactModel() == VISCOUS_TANGENTIAL ) {
+        SLIC_ERROR_ROOT_IF(
+            !mfem_data->GetMesh1ViscousDampingCoeff() || !mfem_data->GetMesh2ViscousDampingCoeff(),
+            "Tangential viscous damping coefficients have not been set.  Call setMfemViscousDampingCoeff()." );
+        setViscousDampingCoeff( mesh_ids[0], *mfem_data->GetMesh1ViscousDampingCoeff() );
+        setViscousDampingCoeff( mesh_ids[1], *mfem_data->GetMesh2ViscousDampingCoeff() );
       }
     }
   }

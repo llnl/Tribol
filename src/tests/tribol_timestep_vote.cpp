@@ -479,9 +479,8 @@ TEST_F( CommonPlaneTest, large_velocity_small_gap )
   EXPECT_EQ( test_mesh_update_err, 0 );
 
   RealT dt_vote = parameters.timestep_pen_frac * element_thickness1 / velZ1;
-  RealT dt_diff = std::abs( parameters.dt - dt_vote );
   RealT dt_tol = 1.e-8;
-  EXPECT_LT( dt_diff, dt_tol );
+  EXPECT_NEAR( parameters.dt, dt_vote, dt_tol );
 
   tribol::finalize();
 }
@@ -568,9 +567,8 @@ TEST_F( CommonPlaneTest, large_velocity_large_gap )
   EXPECT_EQ( test_mesh_update_err, 0 );
 
   RealT dt_vote = parameters.timestep_pen_frac * element_thickness1 / velZ1;
-  RealT dt_diff = std::abs( parameters.dt - dt_vote );
   RealT dt_tol = 1.e-8;
-  EXPECT_LT( dt_diff, dt_tol );
+  EXPECT_NEAR( parameters.dt, dt_vote, dt_tol );
 
   tribol::finalize();
 }
@@ -662,9 +660,9 @@ TEST_F( CommonPlaneTest, separation_velocity_small_gap )
 
 TEST_F( CommonPlaneTest, large_velocity_large_separation )
 {
-  // This test uses two blocks with a large initial separation, and an interpen
-  // velocity small enough that it should not trigger a timestep vote from the
-  // velocity projection check
+  // This test uses two blocks with a large initial separation, but within
+  // the binning proximity, and a small enough velocity that a timestep vote
+  // should not be triggered
   this->m_mesh.mortarMeshId = 0;
   this->m_mesh.nonmortarMeshId = 1;
 
@@ -703,20 +701,20 @@ TEST_F( CommonPlaneTest, large_velocity_large_separation )
                                     0. );
 
   // specify dt and component velocities for each block.
-  // Large velocity in the z-direction will incite a change in the
-  // timestep. This velocity is computed on the high side using the
-  // hardcoded rule that one face cannot interpen the other
-  // exceeding 30% of the other's element thickness.
+  // The velocity in the z-direction is such that there is interpenetration
+  // given the initial separation, but does not exceed the 30% element thickness that
+  // would trigger a timestep vote. Note, each z-dir velocity is multiplied by 0.5
+  // to account for the combined velocity of the two blocks coming toward one another.
   RealT dt = 1.0;
   RealT bulk_mod1 = 1.0;
   RealT bulk_mod2 = 1.0;
-  RealT vel_factor = 10.;
+  RealT vel_factor = 1.0;
   RealT velX1 = 0.;
   RealT velY1 = 0.;
-  RealT velZ1 = vel_factor * 0.3 * element_thickness1 / dt;
+  RealT velZ1 = 0.5 * vel_factor * ( z_min2 - z_max1 + 0.25 * element_thickness1 ) / dt;
   RealT velX2 = 0.;
   RealT velY2 = 0.;
-  RealT velZ2 = vel_factor * 0.3 * element_thickness2 / dt;
+  RealT velZ2 = 0.5 * vel_factor * ( z_min2 - z_max1 + 0.25 * element_thickness2 ) / dt;
 
   this->m_mesh.allocateAndSetVelocities( m_mesh.mortarMeshId, velX1, velY1, velZ1 );
   this->m_mesh.allocateAndSetVelocities( m_mesh.nonmortarMeshId, velX2, velY2, -velZ2 );
@@ -826,9 +824,8 @@ TEST_F( CommonPlaneTest, large_velocity_small_separation )
 
   EXPECT_EQ( test_mesh_update_err, 0 );
   RealT dt_vote = parameters.timestep_pen_frac * element_thickness1 / velZ1;
-  RealT dt_diff = std::abs( parameters.dt - dt_vote );
   RealT dt_tol = 1.e-8;
-  EXPECT_LT( dt_diff, dt_tol );
+  EXPECT_NEAR( parameters.dt, dt_vote, dt_tol );
 
   tribol::finalize();
 }
@@ -914,9 +911,8 @@ TEST_F( CommonPlaneTest, large_velocity_small_separation_set_alpha )
 
   EXPECT_EQ( test_mesh_update_err, 0 );
   RealT dt_vote = parameters.timestep_scale * parameters.timestep_pen_frac * element_thickness1 / velZ1;
-  RealT dt_diff = std::abs( parameters.dt - dt_vote );
   RealT dt_tol = 1.e-8;
-  EXPECT_LT( dt_diff, dt_tol );
+  EXPECT_NEAR( parameters.dt, dt_vote, dt_tol );
 
   tribol::finalize();
 }

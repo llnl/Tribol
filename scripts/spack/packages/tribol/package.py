@@ -64,11 +64,18 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     # Dependencies
     # -----------------------------------------------------------------------
     # Basic dependencies
+    depends_on("c", type="build")
+    depends_on("cxx", type="build")
+    # TODO: make this conditional on fortran variant when spack is updated to pass fortran compiler to dependencies 
+    # based on the toolchain
+    depends_on("fortran", type="build")
+
+    depends_on("mpi")
+
     depends_on("cmake@3.14:", type="build")
     depends_on("cmake@3.21:", type="build", when="+rocm")
     depends_on("blt@0.6.2:", type="build")
 
-    depends_on("mpi")
 
     # Other libraries
     depends_on("mfem@4.7.0.2:+lapack")
@@ -147,7 +154,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     depends_on("python", when="+devtools")
     depends_on("py-shroud", when="+devtools+fortran")
     depends_on("py-sphinx", when="+devtools")
-    depends_on("llvm@14+clang+python", when="+devtools")
+    depends_on("llvm@19+clang", when="+devtools")
 
     conflicts("+cuda", when="+rocm")
     conflicts("+openmp", when="+rocm")
@@ -202,8 +209,6 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
                     entries.append(cmake_cache_string("BLT_EXE_LINKER_FLAGS", flags, description))
         else:
             entries.append(cmake_cache_option("ENABLE_FORTRAN", False))
-
-        entries.append(cmake_cache_string("BLT_CXX_STD", "c++14", ""))
 
         # Add optimization flag workaround for Debug builds with
         # cray compiler or newer HIP

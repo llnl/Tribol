@@ -22,9 +22,9 @@ MeshBuilder MeshBuilder::SquareMesh( int n_x_els, int n_y_els )
   return mfem::Mesh::MakeCartesian2D( n_x_els, n_y_els, mfem::Element::QUADRILATERAL );
 }
 
-MeshBuilder MeshBuilder::CubeMesh( int n_x_els, int n_y_els, int n_z_els )
+MeshBuilder MeshBuilder::CubeMesh( int n_x_els, int n_y_els, int n_z_els, mfem::Element::Type elem_type )
 {
-  return mfem::Mesh::MakeCartesian3D( n_x_els, n_y_els, n_z_els, mfem::Element::HEXAHEDRON );
+  return mfem::Mesh::MakeCartesian3D( n_x_els, n_y_els, n_z_els, elem_type );
 }
 
 MeshBuilder MeshBuilder::HypercubeMesh( int dim, int n_els )
@@ -78,6 +78,14 @@ MeshBuilder&& MeshBuilder::translateNode( int node_id, std::initializer_list<dou
   for ( int d = 0; d < mesh_.SpaceDimension(); ++d ) {
     auto vdof = coords.FESpace()->DofToVDof( node_id, d );
     coords[vdof] += *( dx.begin() + d );
+  }
+  return std::move( *this );
+}
+
+MeshBuilder&& MeshBuilder::refine( int n_times )
+{
+  for ( int i = 0; i < n_times; ++i ) {
+    mesh_.UniformRefinement();
   }
   return std::move( *this );
 }

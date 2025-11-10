@@ -461,7 +461,7 @@ bool MeshData::computeFaceData( ExecutionMode exec_mode, ElemNormalMethod elem_n
 }  // end MeshData::computeFaceData()
 
 template bool MeshData::computeFaceData<PalletAvgNormal>( ExecutionMode, PalletAvgNormal );
-template bool MeshData::computeFaceData<QuadCentroidNormal>( ExecutionMode, QuadCentroidNormal );
+template bool MeshData::computeFaceData<ElementCentroidNormal>( ExecutionMode, ElementCentroidNormal );
 
 //------------------------------------------------------------------------------
 RealT MeshData::computeEdgeLength( int faceId )
@@ -666,6 +666,18 @@ TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceNormal( IndexT face_id, RealT* 
   return;
 
 }  // end MeshData::getFaceNormal()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceCentroid( int const face_id, RealT* cx ) const
+{
+  for ( int d{ 0 }; d < spatialDimension(); ++d ) {
+    cx[d] = m_c[d][face_id];
+  }
+  return;
+
+}  // end MeshData::getFaceNormal()
+
+//------------------------------------------------------------------------------
 
 }  // namespace tribol
 

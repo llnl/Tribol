@@ -5,12 +5,6 @@
 
 #include "tribol/utils/Math.hpp"
 
-// AXOM includes
-#include "axom/slic.hpp"
-
-// C++ includes
-#include <cmath>
-
 namespace tribol {
 
 TRIBOL_HOST_DEVICE RealT magnitude( RealT const vx, RealT const vy, RealT const vz )
@@ -27,9 +21,6 @@ RealT magnitude( RealT const* const v, int const dim )
   }
   return sqrt( mag );
 }
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE RealT magnitude( RealT const vx, RealT const vy ) { return sqrt( vx * vx + vy * vy ); }
 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE RealT dotProd( RealT const* const v, RealT const* const w, int const dim )
@@ -126,6 +117,8 @@ template void bubble_sort( long* array, int n );
 template void bubble_sort( long long* array, int n );
 
 //------------------------------------------------------------------------------
+RealT abs_val_diff( RealT val1, RealT val2 ) { return std::abs( val1 - val2 ); }
+//------------------------------------------------------------------------------
 void allocRealArray( RealT** arr, int length, RealT init_val )
 {
   SLIC_ERROR_IF( length == 0, "allocRealArray: please specify nonzero length "
@@ -207,31 +200,6 @@ void allocBoolArray( bool** arr, int length, bool init_val )
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void initRealArray( RealT* arr, int length, RealT init_val )
-{
-#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( arr == nullptr, "initRealArray(): "
-                                     << "input pointer to array is null." );
-#endif
-
-  for ( int i = 0; i < length; ++i ) {
-    arr[i] = init_val;
-  }
-}
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void initIntArray( int* arr, int length, int init_val )
-{
-#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( arr == nullptr, "initIntArray(): "
-                                     << "input pointer to array is null." );
-#endif
-  for ( int i = 0; i < length; ++i ) {
-    arr[i] = init_val;
-  }
-}
-
-//------------------------------------------------------------------------------
 template <typename T>
 TRIBOL_HOST_DEVICE void initArray( T* arr, int length, T init_val )
 {
@@ -244,17 +212,6 @@ TRIBOL_HOST_DEVICE void initArray( T* arr, int length, T init_val )
   }
 }
 
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void initBoolArray( bool* arr, int length, bool init_val )
-{
-#if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( arr == nullptr, "initBoolArray(): "
-                                     << "input pointer to array is null." );
-#endif
-  for ( int i = 0; i < length; ++i ) {
-    arr[i] = init_val;
-  }
-}
 //------------------------------------------------------------------------------
 
 }  // namespace tribol

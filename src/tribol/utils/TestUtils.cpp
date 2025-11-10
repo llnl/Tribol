@@ -16,6 +16,8 @@
 #include "axom/core.hpp"
 #include "axom/slic.hpp"
 
+#include "mfem/general/forall.hpp"
+
 namespace tribol {
 
 ////////////////////////////////
@@ -686,6 +688,100 @@ void TestMesh::setupContactMeshTet( int numElemsX1, int numElemsY1, int numElems
   this->mesh_constructed = true;
 
 }  // end setupContactMeshTet()
+//------------------------------------------------------------------------------
+void TestMesh::rotateContactMesh( const int mesh_id, RealT theta_x, RealT theta_y, RealT theta_z, RealT shift_x,
+                                  RealT shift_y, RealT shift_z )
+{
+  // mortar is block 1, mesh_id 0
+  // nonmortar is block 2, mesh_id 1
+  int num_nodes = 0;
+  int offset = 0;
+  if ( mesh_id == 0 ) {
+    num_nodes = this->numMortarNodes;
+  } else if ( mesh_id == 1 ) {
+    num_nodes = this->numNonmortarNodes;
+    offset = this->numMortarNodes;
+  } else {
+    SLIC_ERROR( "rotateContactMesh(): invalid mesh id" );
+    return;
+  }
+
+  if ( this->x == nullptr || this->y == nullptr || this->z == nullptr ) {
+    SLIC_ERROR( "rotateContactMesh(): must setup contact mesh prior to calling this routine." );
+  }
+
+  theta_x *= M_PI / 180;
+  theta_y *= M_PI / 180;
+  theta_z *= M_PI / 180;
+
+  RealT alpha = theta_z;
+  RealT beta = theta_y;
+  RealT gamma = theta_x;
+
+  RealT rot00 = std::cos( alpha ) * std::cos( beta );
+  RealT rot01 = std::cos( alpha ) * std::sin( beta ) * std::sin( gamma ) - std::sin( alpha ) * std::cos( gamma );
+  RealT rot02 = std::cos( alpha ) * std::sin( beta ) * std::cos( gamma ) + std::sin( alpha ) * std::sin( gamma );
+  RealT rot10 = std::sin( alpha ) * std::cos( beta );
+  RealT rot11 = std::sin( alpha ) * std::sin( beta ) * std::sin( gamma ) + std::cos( alpha ) * std::cos( gamma );
+  RealT rot12 = std::sin( alpha ) * std::sin( beta ) * std::cos( gamma ) - std::cos( alpha ) * std::sin( gamma );
+  RealT rot20 = -std::sin( beta );
+  RealT rot21 = std::cos( beta ) * std::sin( gamma );
+  RealT rot22 = std::cos( beta ) * std::cos( gamma );
+
+  for ( int i = 0; i < num_nodes; ++i ) {
+    int idx = offset + i;
+
+    // perform shift
+    RealT x_shifted = this->x[idx] - shift_x;
+    RealT y_shifted = this->y[idx] - shift_y;
+    RealT z_shifted = this->z[idx] - shift_z;
+
+    // perform rotation
+    RealT x_temp = x_shifted * rot00 + y_shifted * rot01 + z_shifted * rot02;
+    RealT y_temp = x_shifted * rot10 + y_shifted * rot11 + z_shifted * rot12;
+    RealT z_temp = x_shifted * rot20 + y_shifted * rot21 + z_shifted * rot22;
+
+    // shift back
+    x_temp += shift_x;
+    y_temp += shift_y;
+    z_temp += shift_z;
+
+    this->x[idx] = x_temp;
+    this->y[idx] = y_temp;
+    this->z[idx] = z_temp;
+  }
+}
+
+//------------------------------------------------------------------------------
+void TestMesh::translateContactMesh( const int mesh_id, RealT shift_x, RealT shift_y, RealT shift_z )
+{
+  // mortar is block 1, mesh_id 0
+  // nonmortar is block 2, mesh_id 1
+  int num_nodes = 0;
+  int offset = 0;
+  if ( mesh_id == 0 ) {
+    num_nodes = this->numMortarNodes;
+  } else if ( mesh_id == 1 ) {
+    num_nodes = this->numNonmortarNodes;
+    offset = this->numMortarNodes;
+  } else {
+    SLIC_ERROR( "translateContactMesh(): invalid mesh id" );
+    return;
+  }
+
+  if ( this->x == nullptr || this->y == nullptr || this->z == nullptr ) {
+    SLIC_ERROR( "translateContactMesh(): must setup contact mesh prior to calling this routine." );
+  }
+
+  for ( int i = 0; i < num_nodes; ++i ) {
+    int idx = offset + i;
+
+    this->x[idx] += shift_x;
+    this->y[idx] += shift_y;
+    this->z[idx] += shift_z;
+  }
+}
+
 //------------------------------------------------------------------------------
 void TestMesh::allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY, RealT valZ )
 {
@@ -1721,7 +1817,9 @@ void CentralDiffSolver::Step( mfem::Vector& x, mfem::Vector& dxdt, double& t, do
   dxdt.Add( 0.5 * dt, accel );
 
   // set homogeneous velocity BC at t + dt/2
-  SetHomogeneousBC( dxdt );
+  auto bc_vdofs_ptr = bc_vdofs.Read();
+  auto dxdt_ptr = dxdt.Write();
+  mfem::forall( bc_vdofs.Size(), [=] MFEM_HOST_DEVICE( int i ) { dxdt_ptr[bc_vdofs_ptr[i]] = 0.0; } );
 
   // set displacement at t + dt
   x.Add( dt, dxdt );
@@ -1736,34 +1834,15 @@ void CentralDiffSolver::Step( mfem::Vector& x, mfem::Vector& dxdt, double& t, do
   dxdt.Add( 0.5 * dt, accel );
 }
 
-void CentralDiffSolver::SetHomogeneousBC( mfem::Vector& dxdt ) const
-{
-  for ( auto bc_vdof : bc_vdofs ) {
-    dxdt[bc_vdof] = 0.0;
-  }
-}
-
 #ifdef TRIBOL_USE_MPI
+
 ExplicitMechanics::ExplicitMechanics( mfem::ParFiniteElementSpace& fespace, mfem::Coefficient& rho,
                                       mfem::Coefficient& lambda, mfem::Coefficient& mu )
-    : f_ext{ &fespace }, elasticity{ &fespace }, inv_lumped_mass( fespace.GetVSize() )
+    : f_ext{ &fespace }, elasticity{ &fespace }, inv_lumped_mass( ComputeInvMass( fespace, rho ) )
 {
-  // create inverse lumped mass matrix; store as a vector
-  mfem::ParBilinearForm mass{ &fespace };
-  mass.AddDomainIntegrator( new mfem::VectorMassIntegrator( rho ) );
-  mass.Assemble();
-  mfem::Vector ones( fespace.GetVSize() );
-  ones = 1.0;
-  mass.SpMat().Mult( ones, inv_lumped_mass );
-  mfem::Vector mass_true( fespace.GetTrueVSize() );
-  const Operator& P = *fespace.GetProlongationMatrix();
-  P.MultTranspose( inv_lumped_mass, mass_true );
-  for ( int i{ 0 }; i < mass_true.Size(); ++i ) {
-    mass_true[i] = 1.0 / mass_true[i];
-  }
-  P.Mult( mass_true, inv_lumped_mass );
-
   // create elasticity stiffness matrix
+  // Note: not implemented for ElasticityIntegrator
+  // elasticity.SetAssemblyLevel(mfem::AssemblyLevel::PARTIAL);
   elasticity.AddDomainIntegrator( new mfem::ElasticityIntegrator( lambda, mu ) );
   elasticity.Assemble();
 }
@@ -1772,25 +1851,51 @@ void ExplicitMechanics::Mult( const mfem::Vector& u, const mfem::Vector& AXOM_UN
                               mfem::Vector& a ) const
 {
   mfem::Vector f( u.Size() );
+  f.UseDevice( true );
   f = 0.0;
 
   mfem::Vector f_int( f.Size() );
+  f_int.UseDevice( true );
   elasticity.Mult( u, f_int );
   f.Add( -1.0, f_int );
 
   f.Add( 1.0, f_ext );
-
   // sum forces over ranks
   auto& fespace = *elasticity.ParFESpace();
   const Operator& P = *fespace.GetProlongationMatrix();
   mfem::Vector f_true( fespace.GetTrueVSize() );
+  f_true.UseDevice( true );
   P.MultTranspose( f, f_true );
   P.Mult( f_true, f );
 
-  for ( int i{ 0 }; i < inv_lumped_mass.Size(); ++i ) {
-    a[i] = inv_lumped_mass[i] * f[i];
-  }
+  auto a_ptr = a.Write();
+  auto inv_lumped_mass_ptr = inv_lumped_mass.Read();
+  auto f_ptr = f.Read();
+  mfem::forall( inv_lumped_mass.Size(),
+                [=] MFEM_HOST_DEVICE( int i ) { a_ptr[i] = inv_lumped_mass_ptr[i] * f_ptr[i]; } );
 }
+
+mfem::Vector ExplicitMechanics::ComputeInvMass( mfem::ParFiniteElementSpace& fespace, mfem::Coefficient& rho )
+{
+  mfem::Vector inv_lumped_mass( fespace.GetVSize() );
+  inv_lumped_mass.UseDevice( true );
+  mfem::ParLinearForm mass( &fespace );
+  mfem::VectorArrayCoefficient rho_vector( fespace.GetVDim() );
+  for ( int d{ 0 }; d < fespace.GetVDim(); ++d ) {
+    rho_vector.Set( d, &rho, false );
+  }
+  mass.AddDomainIntegrator( new mfem::VectorDomainLFIntegrator( rho_vector ) );
+  mass.Assemble();
+  mfem::Vector mass_true( fespace.GetTrueVSize() );
+  mass_true.UseDevice( true );
+  const Operator& P = *fespace.GetProlongationMatrix();
+  P.MultTranspose( mass, mass_true );
+  auto mass_true_ptr = mass_true.ReadWrite();
+  mfem::forall( mass_true.Size(), [=] MFEM_HOST_DEVICE( int i ) { mass_true_ptr[i] = 1.0 / mass_true_ptr[i]; } );
+  P.Mult( mass_true, inv_lumped_mass );
+  return inv_lumped_mass;
+}
+
 #endif
 
 }  // namespace mfem_ext

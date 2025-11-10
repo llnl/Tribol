@@ -59,7 +59,8 @@ void TransferByNodes::TransferToSerial( const mfem::ParGridFunction& src, mfem::
 
   // send and receive DOF values from other ranks
   auto dst_dofs = MPIArray<double, 2>( &redecomp_->getMPIUtility() );
-  dst_dofs.SendRecvEach( [&src, src_fes, &src_nodes]( int dst_rank ) {
+  auto src_ptr = src.HostRead();
+  dst_dofs.SendRecvEach( [src_ptr, src_fes, &src_nodes]( int dst_rank ) {
     auto src_dofs = axom::Array<double, 2>();
     auto n_vdofs = src_fes->GetVDim();
     auto n_src_dofs = src_nodes.first[dst_rank].size();
@@ -67,7 +68,7 @@ void TransferByNodes::TransferToSerial( const mfem::ParGridFunction& src, mfem::
     src_dofs.resize( axom::ArrayOptions::Uninitialized(), n_vdofs, n_src_dofs );
     for ( int d{ 0 }; d < n_vdofs; ++d ) {
       for ( int j{ 0 }; j < n_src_dofs; ++j ) {
-        src_dofs( d, j ) = src( src_fes->DofToVDof( src_nodes.first[dst_rank][j], d ) );
+        src_dofs( d, j ) = src_ptr[src_fes->DofToVDof( src_nodes.first[dst_rank][j], d )];
       }
     }
     return src_dofs;
@@ -76,10 +77,11 @@ void TransferByNodes::TransferToSerial( const mfem::ParGridFunction& src, mfem::
   // map received DOF values to local DOFs
   auto n_vdofs = src_fes->GetVDim();
   auto n_ranks = redecomp_->getMPIUtility().NRanks();
+  auto dst_ptr = dst.HostWrite();
   for ( int i{ 0 }; i < n_ranks; ++i ) {
     for ( int d{ 0 }; d < n_vdofs; ++d ) {
       for ( int j{ 0 }; j < dst_nodes.first[i].size(); ++j ) {
-        dst( dst_fes->DofToVDof( dst_nodes.first[i][j], d ) ) = dst_dofs[i]( d, j );
+        dst_ptr[dst_fes->DofToVDof( dst_nodes.first[i][j], d )] = dst_dofs[i]( d, j );
       }
     }
   }
@@ -105,7 +107,8 @@ void TransferByNodes::TransferToParallel( const mfem::GridFunction& src, mfem::P
 
   // send and receive non-ghost DOF values from other ranks
   auto dst_dofs = MPIArray<double, 2>( &redecomp_->getMPIUtility() );
-  dst_dofs.SendRecvEach( [&src, src_fes, &src_nodes]( int dst_rank ) {
+  auto src_ptr = src.HostRead();
+  dst_dofs.SendRecvEach( [src_ptr, src_fes, &src_nodes]( int dst_rank ) {
     auto src_dofs = axom::Array<double, 2>();
     auto n_vdofs = src_fes->GetVDim();
     auto n_src_dofs = src_nodes.first[dst_rank].size();
@@ -115,7 +118,7 @@ void TransferByNodes::TransferToParallel( const mfem::GridFunction& src, mfem::P
     for ( int j{ 0 }; j < n_src_dofs; ++j ) {
       if ( !src_nodes.second[dst_rank][j] ) {
         for ( int d{ 0 }; d < n_vdofs; ++d ) {
-          src_dofs( d, dof_ct ) = src( src_fes->DofToVDof( src_nodes.first[dst_rank][j], d ) );
+          src_dofs( d, dof_ct ) = src_ptr[src_fes->DofToVDof( src_nodes.first[dst_rank][j], d )];
         }
         ++dof_ct;
       }
@@ -127,12 +130,13 @@ void TransferByNodes::TransferToParallel( const mfem::GridFunction& src, mfem::P
   // map received non-ghost DOF values to dst
   auto n_vdofs = src_fes->GetVDim();
   auto n_ranks = redecomp_->getMPIUtility().NRanks();
+  auto dst_ptr = dst.HostWrite();
   for ( int i{ 0 }; i < n_ranks; ++i ) {
     auto dof_ct = 0;
     for ( int j{ 0 }; j < dst_nodes.first[i].size(); ++j ) {
       if ( !dst_nodes.second[i][j] ) {
         for ( int d{ 0 }; d < n_vdofs; ++d ) {
-          dst( dst_fes->DofToVDof( dst_nodes.first[i][j], d ) ) = dst_dofs[i]( d, dof_ct );
+          dst_ptr[dst_fes->DofToVDof( dst_nodes.first[i][j], d )] = dst_dofs[i]( d, dof_ct );
         }
         ++dof_ct;
       }

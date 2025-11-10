@@ -10,10 +10,10 @@
 
 #ifdef BUILD_REDECOMP
 
-#include "tribol/common/Parameters.hpp"
-
-// MFEM includes
 #include "mfem.hpp"
+
+#include "tribol/common/Parameters.hpp"
+#include "tribol/common/ExecModel.hpp"
 
 namespace tribol {
 
@@ -49,13 +49,15 @@ namespace tribol {
  * @param [in] contact_model
  * @param [in] enforcement_method
  * @param [in] binning_method
+ * @param [in] exec_mode Execution mode for the coupling scheme (Sequential by default)
  */
 void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, const mfem::ParMesh& mesh,
                                  const mfem::ParGridFunction& current_coords, std::set<int> b_attributes_1,
                                  std::set<int> b_attributes_2, ContactMode contact_mode, ContactCase contact_case,
                                  ContactMethod contact_method, ContactModel contact_model,
                                  EnforcementMethod enforcement_method,
-                                 BinningMethod binning_method = DEFAULT_BINNING_METHOD );
+                                 BinningMethod binning_method = DEFAULT_BINNING_METHOD,
+                                 ExecutionMode exec_mode = ExecutionMode::Sequential );
 
 /**
  * @brief Sets factor of refinement in low-order refined (LOR) representation of
@@ -148,6 +150,17 @@ void setMfemRatePercentPenalty( IndexT cs_id, RealT mesh1_ratio, RealT mesh2_rat
  * @param mesh2_scale Scaling coefficient of the kinematic penalty for the second contact surface mesh
  */
 void setMfemKinematicPenaltyScale( IndexT cs_id, RealT mesh1_scale, RealT mesh2_scale );
+
+/**
+ * @brief Adds a tangential viscous damping coefficient to each mesh
+ *
+ * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
+ *
+ * @param cs_id The ID of the coupling scheme with the MFEM mesh
+ * @param mesh1_coeff Tangential viscous damping coefficient for the first contact surface mesh
+ * @param mesh2_coeff Tangential viscous damping coefficient for the second contact surface mesh
+ */
+void setMfemViscousDampingCoeff( IndexT cs_id, RealT mesh1_coeff, RealT mesh2_coeff );
 
 /**
  * @brief Computes element thickness for the volume elements associated with the contact surface mesh.

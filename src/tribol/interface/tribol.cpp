@@ -12,7 +12,7 @@
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 
-#include "tribol/geom/ContactPlane.hpp"
+//#include "tribol/geom/CompGeom.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 
 #include "tribol/physics/Physics.hpp"
@@ -128,6 +128,12 @@ void setRatePercentPenalty( IndexT mesh_id, RealT r_p )
   registerRealElementField( mesh_id, RATE_PERCENT_STIFFNESS, &r_p );
 
 }  // end setRatePercentPenalty()
+
+//------------------------------------------------------------------------------
+void setViscousDampingCoeff( IndexT mesh_id, RealT coeff )
+{
+  registerRealElementField( mesh_id, VISCOUS_DAMPING_COEFF, &coeff );
+}
 
 //------------------------------------------------------------------------------
 void setAutoContactPenScale( IndexT cs_id, RealT scale )
@@ -739,6 +745,21 @@ void registerRealElementField( IndexT mesh_id, const RealElementFields field, co
 
       break;
     }
+    case VISCOUS_DAMPING_COEFF: {
+      if ( fieldVariable == nullptr ) {
+        if ( mesh->numberOfElements() > 0 ) {
+          SLIC_ERROR( "tribol::registerRealElementField(): null pointer to data for "
+                      << "'VISCOUS_DAMPING_COEFF' on mesh " << mesh_id << "." );
+          mesh->getElementData().m_is_viscous_damping_coeff_set = false;
+        } else {
+          mesh->getElementData().m_is_viscous_damping_coeff_set = true;
+        }
+      } else {
+        mesh->getElementData().m_viscous_damping_coeff = *fieldVariable;
+        mesh->getElementData().m_is_viscous_damping_coeff_set = true;
+      }
+      break;
+    }
     default: {
       SLIC_ERROR( "tribol::registerRealElementField(): the field argument "
                   << "on mesh " << mesh_id << " is not an accepted tribol real element field." );
@@ -786,9 +807,6 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setInterfacePairs(): invalid coupling scheme index." );
 
   auto& pairs = cs->getInterfacePairs();
-  auto& mesh1 = cs->getMesh1();
-  auto& mesh2 = cs->getMesh2();
-
   pairs.clear();
   pairs.reserve( numPairs );
 
@@ -803,8 +821,7 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
     // to interface pair manager. Note, further computational geometry
     // filtering will be performed on each face-pair indendifying
     // contact candidates.
-    if ( geomFilter( pairIndex1[i], pairIndex2[i], mesh1, mesh2, mode, cs->getParameters().auto_contact_check,
-                     cs->getParameters().binning_proximity_scale, intermediatePlane, params ) ) {
+    if ( geomFilter( cs->getView(), pairIndex1[i], pairIndex2[i] ) ) {
       pairs.emplace_back( pairIndex1[i], pairIndex2[i], true );
     }
   }
@@ -858,7 +875,11 @@ int update( int cycle, RealT t, RealT& dt )
 }  // end update()
 
 //------------------------------------------------------------------------------
-void finalize() { CouplingSchemeManager::getInstance().clear(); }
+void finalize()
+{
+  CouplingSchemeManager::getInstance().clear();
+  MeshManager::getInstance().clear();
+}
 
 //------------------------------------------------------------------------------
 }  // namespace tribol

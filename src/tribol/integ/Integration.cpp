@@ -73,54 +73,25 @@ TRIBOL_HOST_DEVICE void EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( Surfac
     // loop over number of nodes per face (same for each mesh) and project nodes to common plane.
     // Can use the integration point as the point in the point-normal data.
     for ( int i = 0; i < elem.m_mesh1->numberOfNodesPerElement(); ++i ) {
-      const int nodeId1 = elem.m_mesh1->getGlobalNodeId( elem.faceId1, i );
-      ProjectPointToPlane( elem.m_mesh1->getPosition()[0][nodeId1], elem.m_mesh1->getPosition()[1][nodeId1],
-                           elem.m_mesh1->getPosition()[2][nodeId1], elem.overlapNormal[0], elem.overlapNormal[1],
+      ProjectPointToPlane( elem.faceCoords1[elem.dim * i], elem.faceCoords1[elem.dim * i + 1],
+                           elem.faceCoords1[elem.dim * i + 2], elem.overlapNormal[0], elem.overlapNormal[1],
                            elem.overlapNormal[2], cx[0], cx[1], cx[2], projX1[elem.dim * i], projX1[elem.dim * i + 1],
                            projX1[elem.dim * i + 2] );
 
-#ifdef TRIBOL_USE_HOST
-      SLIC_DEBUG( "face 1 projected vertex " << i << ": " << elem.m_mesh1->getPosition()[0][nodeId1] << ", "
-                                             << elem.m_mesh1->getPosition()[1][nodeId1]
-                                             << elem.m_mesh1->getPosition()[2][nodeId1] );
-#endif
-
-      const int nodeId2 = elem.m_mesh2->getGlobalNodeId( elem.faceId2, i );
-      ProjectPointToPlane( elem.m_mesh2->getPosition()[0][nodeId2], elem.m_mesh2->getPosition()[1][nodeId2],
-                           elem.m_mesh2->getPosition()[2][nodeId2], elem.overlapNormal[0], elem.overlapNormal[1],
+      ProjectPointToPlane( elem.faceCoords2[elem.dim * i], elem.faceCoords2[elem.dim * i + 1],
+                           elem.faceCoords2[elem.dim * i + 2], elem.overlapNormal[0], elem.overlapNormal[1],
                            elem.overlapNormal[2], cx[0], cx[1], cx[2], projX2[elem.dim * i], projX2[elem.dim * i + 1],
                            projX2[elem.dim * i + 2] );
-
-#ifdef TRIBOL_USE_HOST
-      SLIC_DEBUG( "face 2 projected vertex " << i << ": " << elem.m_mesh2->getPosition()[0][nodeId2] << ", "
-                                             << elem.m_mesh2->getPosition()[1][nodeId2]
-                                             << elem.m_mesh2->getPosition()[2][nodeId2] );
-#endif
     }
-  } else {
+  } else {  // dim == 2
     // loop over number of nodes per edge (same for each mesh) and project nodes to common plane.
     // Can use the integration point as the point in the point-normal data.
     for ( int i = 0; i < elem.m_mesh1->numberOfNodesPerElement(); ++i ) {
-      const int nodeId1 = elem.m_mesh1->getGlobalNodeId( elem.faceId1, i );
+      ProjectPointToSegment( elem.faceCoords1[elem.dim * i], elem.faceCoords1[elem.dim * i + 1], elem.overlapNormal[0],
+                             elem.overlapNormal[1], cx[0], cx[1], projX1[elem.dim * i], projX1[elem.dim * i + 1] );
 
-      ProjectPointToSegment( elem.m_mesh1->getPosition()[0][nodeId1], elem.m_mesh1->getPosition()[1][nodeId1],
-                             elem.overlapNormal[0], elem.overlapNormal[1], cx[0], cx[1], projX1[elem.dim * i],
-                             projX1[elem.dim * i + 1] );
-
-#ifdef TRIBOL_USE_HOST
-      SLIC_DEBUG( "edge 1 projected vertex " << i << ": " << elem.m_mesh1->getPosition()[0][nodeId1] << ", "
-                                             << elem.m_mesh1->getPosition()[1][nodeId1] );
-#endif
-
-      const int nodeId2 = elem.m_mesh2->getGlobalNodeId( elem.faceId2, i );
-      ProjectPointToSegment( elem.m_mesh2->getPosition()[0][nodeId2], elem.m_mesh2->getPosition()[1][nodeId2],
-                             elem.overlapNormal[0], elem.overlapNormal[1], cx[0], cx[1], projX2[elem.dim * i],
-                             projX2[elem.dim * i + 1] );
-
-#ifdef TRIBOL_USE_HOST
-      SLIC_DEBUG( "edge 2 projected vertex " << i << ": " << elem.m_mesh2->getPosition()[0][nodeId2] << ", "
-                                             << elem.m_mesh2->getPosition()[1][nodeId2] );
-#endif
+      ProjectPointToSegment( elem.faceCoords2[elem.dim * i], elem.faceCoords2[elem.dim * i + 1], elem.overlapNormal[0],
+                             elem.overlapNormal[1], cx[0], cx[1], projX2[elem.dim * i], projX2[elem.dim * i + 1] );
     }
   }
 

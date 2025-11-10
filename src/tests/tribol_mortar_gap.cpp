@@ -208,8 +208,6 @@ class MortarGapTest : public ::testing::Test {
         SLIC_ERROR( "Unsupported contact method" );
         break;
     }
-
-    tribol::finalize();
   }
 
  protected:
@@ -286,6 +284,8 @@ class MortarGapTest : public ::testing::Test {
 
   void TearDown() override
   {
+    tribol::finalize();
+
     if ( this->x1 != nullptr ) {
       delete[] this->x1;
       this->x1 = nullptr;

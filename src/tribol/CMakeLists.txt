@@ -19,7 +19,7 @@ set(tribol_headers
     common/LoopExec.hpp
     common/Parameters.hpp
 
-    geom/ContactPlane.hpp
+    geom/CompGeom.hpp
     geom/ElementNormal.hpp
     geom/GeomUtilities.hpp
     geom/NodalNormal.hpp
@@ -54,7 +54,7 @@ set(tribol_headers
 ## list of sources
 set(tribol_sources
      
-    geom/ContactPlane.cpp
+    geom/CompGeom.cpp
     geom/ElementNormal.cpp
     geom/GeomUtilities.cpp
     geom/NodalNormal.cpp
@@ -107,7 +107,7 @@ blt_list_append(TO tribol_depends ELEMENTS blt::mpi IF TRIBOL_USE_MPI )
 blt_list_append(TO tribol_depends ELEMENTS redecomp IF BUILD_REDECOMP )
 blt_list_append(TO tribol_depends ELEMENTS umpire IF TRIBOL_USE_UMPIRE )
 blt_list_append(TO tribol_depends ELEMENTS RAJA IF TRIBOL_USE_RAJA )
-blt_list_append(TO tribol_depends ELEMENTS LLDEnzymeFlags IF TRIBOL_USE_ENZYME)
+blt_list_append(TO tribol_depends ELEMENTS ClangEnzymeFlags IF TRIBOL_USE_ENZYME)
 message(STATUS "Tribol library dependencies: ${tribol_depends}")
 
 ## create the library
