@@ -12,6 +12,8 @@
 // Tribol includes
 #include "tribol/common/BasicTypes.hpp"
 
+#ifdef TRIBOL_USE_ENZYME
+
 extern int enzyme_dup;
 extern int enzyme_dupnoneed;
 extern int enzyme_out;
@@ -46,7 +48,7 @@ TRIBOL_HOST_DEVICE return_type __enzyme_fwddiff( Args... );
 #define TRIBOL_ENZYME_INACTIVENOFREE
 #define TRIBOL_ENZYME_INACTIVE
 #define TRIBOL_ENZYME_FN_LIKE( x )
-#endif
+#endif /* TRIBOL_USE_ENZYME */
 
 #define TRIBOL_ENZYME_FN_LIKE_FREE TRIBOL_ENZYME_FN_LIKE( free )
 #define TRIBOL_ENZYME_FN_LIKE_DYNCAST TRIBOL_ENZYME_FN_LIKE( __dynamic_cast )
