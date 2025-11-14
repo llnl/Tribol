@@ -300,7 +300,7 @@ MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParM
       lor_factor_{ 0 },
       exec_mode_{ exec_mode },
       mem_space_{ mem_space },
-      use_device_{ mem_space == MemorySpace::Device },
+      use_device_{ isOnDevice( exec_mode ) },
       allocator_id_{ getResourceAllocatorID( mem_space ) }
 {
   // make sure a grid function exists on the submesh
