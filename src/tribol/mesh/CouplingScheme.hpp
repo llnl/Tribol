@@ -400,7 +400,7 @@ class CouplingScheme {
    *
    * @return MethodData pointer
    */
-  MethodData* getMethodData() const { return m_methodData; }
+  MethodData* getMethodData() const { return m_methodData.get(); }
 
   /**
    * @brief Get the enforcement options for the enforcement method
@@ -926,7 +926,7 @@ class CouplingScheme {
 
   CompGeom m_cg_pairs;  ///< Computational geometry container object
 
-  MethodData* m_methodData;  ///< method object holding required interface method data
+  std::unique_ptr<MethodData> m_methodData;  ///< method object holding required interface method data
 
   EnforcementOptions m_enforcementOptions;      ///< struct with options underneath chosen enforcement
   CouplingSchemeErrors m_couplingSchemeErrors;  ///< struct handling coupling scheme errors

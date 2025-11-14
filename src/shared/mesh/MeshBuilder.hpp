@@ -98,6 +98,13 @@ class MeshBuilder {
   MeshBuilder&& translateNode( int node_id, std::initializer_list<double> dx );
 
   /**
+   * @brief Refines the mesh uniformly a specified number of times.
+   * @param n_times The number of times to refine the mesh.
+   * @return An rvalue reference to the updated MeshBuilder object.
+   */
+  MeshBuilder&& refine( int n_times );
+
+  /**
    * @brief Updates an attribute in the mesh.
    * @param old_attrib The old attribute value.
    * @param new_attrib The new attribute value.

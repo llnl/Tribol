@@ -82,6 +82,14 @@ MeshBuilder&& MeshBuilder::translateNode( int node_id, std::initializer_list<dou
   return std::move( *this );
 }
 
+MeshBuilder&& MeshBuilder::refine( int n_times )
+{
+  for ( int i = 0; i < n_times; ++i ) {
+    mesh_.UniformRefinement();
+  }
+  return std::move( *this );
+}
+
 MeshBuilder&& MeshBuilder::updateAttrib( int old_attrib, int new_attrib )
 {
   for ( int i = 0; i < mesh_.GetNE(); ++i ) {

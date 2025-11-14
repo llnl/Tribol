@@ -62,6 +62,15 @@ using RealT = double;
 #define TRIBOL_HOST_DEVICE
 #endif
 
+// Execution space identifier for defaulted constructors and destructors
+#ifdef TRIBOL_USE_HIP
+#define TRIBOL_DEFAULT_DEVICE __device__
+#define TRIBOL_DEFAULT_HOST_DEVICE __host__ __device__
+#else
+#define TRIBOL_DEFAULT_DEVICE
+#define TRIBOL_DEFAULT_HOST_DEVICE
+#endif
+
 // Define variable when loops are computed on host
 #if !( defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP ) )
 #define TRIBOL_USE_HOST

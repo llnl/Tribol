@@ -84,7 +84,7 @@ class DeviceArray : public DeviceArrayData<T> {
  public:
   TRIBOL_HOST_DEVICE DeviceArray() : DeviceArrayData<T>() {}
   TRIBOL_HOST_DEVICE DeviceArray( IndexT size ) : DeviceArrayData<T>( size ) {}
-  TRIBOL_HOST_DEVICE ~DeviceArray() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE ~DeviceArray() = default;
 
   TRIBOL_HOST_DEVICE DeviceArray( const DeviceArray& other ) : DeviceArrayData<T>( other ) {}
   TRIBOL_HOST_DEVICE DeviceArray( DeviceArray&& other ) : DeviceArrayData<T>( std::move( other ) ) {}
@@ -124,7 +124,7 @@ class DeviceArray2D : public DeviceArrayData<T> {
       : DeviceArrayData<T>( width * height ), height_{ height }, width_{ width }
   {
   }
-  TRIBOL_HOST_DEVICE ~DeviceArray2D() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE ~DeviceArray2D() = default;
 
   TRIBOL_HOST_DEVICE DeviceArray2D( const DeviceArray2D& other )
       : DeviceArrayData<T>( other ), height_{ other.height_ }, width_{ other.width_ }
@@ -191,15 +191,15 @@ class DeviceArray2D : public DeviceArrayData<T> {
 template <typename T, IndexT N>
 class StackArray {
  public:
-  TRIBOL_HOST_DEVICE StackArray() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE StackArray() = default;
   TRIBOL_HOST_DEVICE StackArray( IndexT width ) : width_{ width } {}
-  TRIBOL_HOST_DEVICE ~StackArray() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE ~StackArray() = default;
 
-  TRIBOL_HOST_DEVICE StackArray( const StackArray& other ) = default;
-  TRIBOL_HOST_DEVICE StackArray( StackArray&& other ) = default;
+  TRIBOL_DEFAULT_HOST_DEVICE StackArray( const StackArray& other ) = default;
+  TRIBOL_DEFAULT_HOST_DEVICE StackArray( StackArray&& other ) = default;
 
-  TRIBOL_HOST_DEVICE StackArray& operator=( const StackArray& other ) = default;
-  TRIBOL_HOST_DEVICE StackArray& operator=( StackArray&& other ) = default;
+  TRIBOL_DEFAULT_HOST_DEVICE StackArray& operator=( const StackArray& other ) = default;
+  TRIBOL_DEFAULT_HOST_DEVICE StackArray& operator=( StackArray&& other ) = default;
 
   TRIBOL_HOST_DEVICE operator T*() noexcept { return &data_[0]; }
   TRIBOL_HOST_DEVICE operator const T*() const noexcept { return &data_[0]; }

@@ -987,9 +987,7 @@ int CouplingScheme::checkExecutionModeData()
 
   if ( m_contactMethod != COMMON_PLANE ) {
     if ( m_exec_mode != ExecutionMode::Sequential ) {
-      SLIC_WARNING_ROOT(
-          "Only sequential execution on host supported for contact methods "
-          "other than COMMON_PLANE." );
+      SLIC_WARNING_ROOT( "Only sequential execution on host supported for contact methods other than COMMON_PLANE." );
       this->m_couplingSchemeErrors.cs_execution_mode_error = ExecutionModeError::INCOMPATIBLE_METHOD;
       err = 1;
     }
@@ -1121,8 +1119,10 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
     computeTimeStep( dt );
   }
 
-  // write output
-  writeInterfaceOutput( m_output_directory, params.vis_type, cycle, t );
+  // write contact plane output if it is on host
+  if ( !isOnDevice( this->m_exec_mode ) ) {
+    writeInterfaceOutput( m_output_directory, params.vis_type, cycle, t );
+  }
 
   if ( err != 0 ) {
     return 1;
@@ -1217,15 +1217,15 @@ void CouplingScheme::allocateMethodData()
     case MORTAR_WEIGHTS:
     case SINGLE_MORTAR: {
       // dynamically allocate method data object
-      this->m_methodData = new MortarData;
-      static_cast<MortarData*>( m_methodData )->m_numTotalNodes = this->m_numTotalNodes;
+      this->m_methodData = std::make_unique<MortarData>();
+      static_cast<MortarData*>( m_methodData.get() )->m_numTotalNodes = this->m_numTotalNodes;
       break;
     }  // end case SINGLE_MORTAR
     default: {
       this->m_methodData = nullptr;
       break;
     }
-  }  // end if on non-null meshes
+  }
 }  // end CouplingScheme::allocateMethodData()
 
 //------------------------------------------------------------------------------
