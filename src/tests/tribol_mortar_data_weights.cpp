@@ -137,6 +137,7 @@ TEST_F( MortarSparseWtsTest, mortar_sphere )
   std::ifstream i_ys( ys_file );
   std::ifstream i_zs( zs_file );
 
+  // This replicates mfem::Array::Load() and is needed because mfem::Array doesn't work with 64-bit integers
   this->v_ixm.resize( this->lengthMortarConn );
   for ( int i{ 0 }; i < this->lengthMortarConn; ++i ) {
     i_ixm >> v_ixm[i];
@@ -237,6 +238,7 @@ TEST_F( MortarSparseWtsTest, mortar_sphere_offset )
   std::ifstream i_ys( ys_file );
   std::ifstream i_zs( zs_file );
 
+  // This replicates mfem::Array::Load() and is needed because mfem::Array doesn't work with 64-bit integers
   this->v_ixm.resize( this->lengthMortarConn );
   for ( int i{ 0 }; i < this->lengthMortarConn; ++i ) {
     i_ixm >> v_ixm[i];
@@ -337,6 +339,7 @@ TEST_F( MortarSparseWtsTest, mortar_one_seg_rotated )
   std::ifstream i_ys( ys_file );
   std::ifstream i_zs( zs_file );
 
+  // This replicates mfem::Array::Load() and is needed because mfem::Array doesn't work with 64-bit integers
   this->v_ixm.resize( this->lengthMortarConn );
   for ( int i{ 0 }; i < this->lengthMortarConn; ++i ) {
     i_ixm >> v_ixm[i];

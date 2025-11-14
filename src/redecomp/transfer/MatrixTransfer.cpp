@@ -50,7 +50,7 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
                                                              const axom::Array<int>& trial_elem_idx,
                                                              const axom::Array<mfem::DenseMatrix>& src_elem_mat ) const
 {
-  // TODO: we need a SparseMatrix-like data structure that allows HYPRE_BigInt on the columns
+  // TODO (EBC): we need a SparseMatrix-like data structure that allows HYPRE_BigInt on the columns
   auto parentJ = mfem::SparseMatrix( parent_test_fes_.GetVSize(), parent_trial_fes_.GlobalVSize() );
 
   // verify inputs
@@ -150,9 +150,9 @@ std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::ConvertToHypreParMatrix( m
   SLIC_ERROR_IF( sparse.Width() != parent_trial_fes_.GlobalVSize(),
                  "Width of sparse must match number of trial ParFiniteElementSpace global dofs." );
 
-  // TODO: mfem::SparseMatrix uses int for global column values; this needs to be HYPRE_BigInt to be compatible with
-  // mfem::HypreParMatrix. The following copy is a hack to get this working for now, but true support for HYPRE_BigInt
-  // needs a data structure for sparse that allows HYPRE_BigInt on the columns (J)
+  // TODO (EBC): mfem::SparseMatrix uses int for global column values; this needs to be HYPRE_BigInt to be compatible
+  // with mfem::HypreParMatrix. The following copy is a hack to get this working for now, but true support for
+  // HYPRE_BigInt needs a data structure for sparse that allows HYPRE_BigInt on the columns (J)
   auto* J_int = sparse.GetJ();
   auto num_J_vals = sparse.NumNonZeroElems();
   mfem::Array<HYPRE_BigInt> J_bigint( num_J_vals );
@@ -420,6 +420,7 @@ MPIArray<HYPRE_BigInt> MatrixTransfer::buildRecvTrialElemDofs( const RedecompMes
               for ( int i{ 0 }; i < n_elem_dofs; ++i ) {
                 dof_array[i] = first_dof + static_cast<HYPRE_BigInt>( int_dof_array[i] );
               }
+              // NOTE (EBC): this can probably be used when redecomp is GPU-ified
               // auto dof_array_write = dof_array.HostWrite();
               // auto int_dof_array_read = int_dof_array.HostRead();
               // mfem::forall_switch( false, n_elem_dofs,

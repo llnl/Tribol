@@ -879,6 +879,8 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian( con
 
   // transform J values from submesh to (global) parent mesh
   mfem::Array<HYPRE_BigInt> J( submesh_J.NumNonZeroElems() );
+  // This copy is needed to convert mfem::SparseMatrix int J values to the HYPRE_BigInt values the mfem::HypreParMatrix
+  // constructor needs
   auto* J_int = submesh_J.GetJ();
   for ( int i{ 0 }; i < J.Size(); ++i ) {
     J[i] = J_int[i];

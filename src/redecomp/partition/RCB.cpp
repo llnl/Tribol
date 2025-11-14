@@ -29,27 +29,28 @@ std::vector<EntityIndexByRank> RCB<NDIMS>::generatePartitioning(
   // Build a partitioning using recursive coordinate bisection
   auto problem_tree = BuildProblemTree( n_parts, coords_by_mesh, ghost_len );
 
-  // Ensures ranks with elements are evenly distributed throughout the partition
-  auto rank_multiplier = this->getMPIUtility().NRanks() / n_parts;
+  // Ensures ranks with entities are evenly distributed throughout the partition. E.g. if 10 MPI ranks are allocated and
+  // n_parts == 2, then put entities on rank 0 and rank 5.
+  auto rank_jump_interval = this->getMPIUtility().NRanks() / n_parts;
 
   for ( const auto& coords : coords_by_mesh ) {
     // Build a list of coords that belong in each of the RCB entity parts
     auto ent_idx = MPIArray<int>( &this->getMPIUtility() );
     auto ent_ghost = MPIArray<bool>( &this->getMPIUtility() );
     for ( int i{ 0 }; i < n_parts; ++i ) {
-      auto rank = i * rank_multiplier;
+      auto rank = i * rank_jump_interval;
       ent_idx[rank].reserve( coords.size() );
       ent_ghost[rank].reserve( coords.size() );
     }
     for ( int i{ 0 }; i < coords.size(); ++i ) {
       auto dest = DetermineDomain( problem_tree, coords[i] );
-      auto rank = dest * rank_multiplier;
+      auto rank = dest * rank_jump_interval;
       ent_idx[rank].push_back( i );
       ent_ghost[rank].push_back( false );
       const auto& neighbors = problem_tree( dest ).neighbor_bboxes_;
       for ( int j{ 0 }; j < neighbors.size(); ++j ) {
         if ( problem_tree( neighbors[j] ).ghost_bbox_.contains( coords[i] ) ) {
-          auto neighbor_rank = neighbors[j] * rank_multiplier;
+          auto neighbor_rank = neighbors[j] * rank_jump_interval;
           ent_idx[neighbor_rank].push_back( i );
           ent_ghost[neighbor_rank].push_back( true );
         }
