@@ -90,7 +90,8 @@ int binary_search( const int* const array, const int n, const int val )
 }
 
 //------------------------------------------------------------------------------
-void swap_val( int* xp, int* yp )
+template <typename T>
+void swap_val( T* xp, T* yp )
 {
   int temp = *xp;
   *xp = *yp;
@@ -98,7 +99,8 @@ void swap_val( int* xp, int* yp )
 }
 
 //------------------------------------------------------------------------------
-void bubble_sort( int* const array, const int n )
+template <typename T>
+void bubble_sort( T* array, int n )
 {
   int i, j;
   for ( i = 0; i < n - 1; ++i ) {
@@ -109,6 +111,10 @@ void bubble_sort( int* const array, const int n )
     }
   }
 }
+
+template void bubble_sort( int* array, int n );
+template void bubble_sort( long* array, int n );
+template void bubble_sort( long long* array, int n );
 
 //------------------------------------------------------------------------------
 RealT abs_val_diff( RealT val1, RealT val2 ) { return std::abs( val1 - val2 ); }
@@ -171,6 +177,19 @@ void allocIntArray( int** arr, const int length, const int* const data )
 }
 
 //------------------------------------------------------------------------------
+template <typename T>
+void allocArray( T** arr, int length, T init_val )
+{
+  SLIC_ERROR_IF( length == 0, "allocIntArray: please specify nonzero length "
+                                  << "for array allocation." );
+
+  *arr = new T[length];
+  initArray( *arr, length, init_val );
+}
+
+template void allocArray( IndexT** arr, int length, IndexT init_val );
+
+//------------------------------------------------------------------------------
 void allocBoolArray( bool** arr, int length, bool init_val )
 {
   SLIC_ERROR_IF( length == 0, "allocBoolArray: please specify nonzero length "
@@ -179,6 +198,20 @@ void allocBoolArray( bool** arr, int length, bool init_val )
   *arr = new bool[length];
   initBoolArray( *arr, length, init_val );
 }
+
+//------------------------------------------------------------------------------
+template <typename T>
+TRIBOL_HOST_DEVICE void initArray( T* arr, int length, T init_val )
+{
+#ifdef TRIBOL_USE_HOST
+  SLIC_ERROR_IF( arr == nullptr, "initIntArray(): "
+                                     << "input pointer to array is null." );
+#endif
+  for ( int i = 0; i < length; ++i ) {
+    arr[i] = init_val;
+  }
+}
+
 //------------------------------------------------------------------------------
 
 }  // namespace tribol

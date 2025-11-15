@@ -54,4 +54,16 @@ MPI_Datatype MPIUtility::GetMPIType<int>() const
   return MPI_INT;
 }
 
+template <>
+MPI_Datatype MPIUtility::GetMPIType<long long>() const
+{
+  return MPI_LONG_LONG;
+}
+
+template <>
+MPI_Datatype MPIUtility::GetMPIType<long>() const
+{
+  return MPI_LONG;
+}
+
 }  // end namespace redecomp

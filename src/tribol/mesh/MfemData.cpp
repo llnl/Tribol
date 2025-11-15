@@ -336,7 +336,7 @@ void MfemMeshData::SetParentReferenceCoords( const mfem::ParGridFunction& refere
   }
 }
 
-void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale )
+void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks )
 {
   // update coordinates of submesh and LOR mesh
   auto submesh_nodes = dynamic_cast<mfem::ParGridFunction*>( submesh_.GetNodes() );
@@ -349,7 +349,7 @@ void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale )
   }
   update_data_ = std::make_unique<UpdateData>( submesh_, lor_mesh_.get(), *coords_.GetParentGridFn().ParFESpace(),
                                                submesh_xfer_gridfn_, submesh_lor_xfer_.get(), attributes_1_,
-                                               attributes_2_, binning_proximity_scale, allocator_id_ );
+                                               attributes_2_, binning_proximity_scale, allocator_id_, n_ranks );
   coords_.UpdateField( update_data_->vector_xfer_, use_device_ );
   // NOTE: SetSpace() would be preferrable to call here, but it looks like all memory isn't mapped to
   // mfem::MemoryManager when this is used. TODO: Debug this and switch to SetSpace()
@@ -569,15 +569,18 @@ MfemMeshData::UpdateData::UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* 
                                       const mfem::ParFiniteElementSpace& parent_fes,
                                       mfem::ParGridFunction& submesh_gridfn, SubmeshLORTransfer* submesh_lor_xfer,
                                       const std::set<int>& attributes_1, const std::set<int>& attributes_2,
-                                      RealT binning_proximity_scale, int allocator_id )
-    : redecomp_mesh_{ lor_mesh ? redecomp::RedecompMesh(
-                                     *lor_mesh, binning_proximity_scale *
-                                                    redecomp::RedecompMesh::MaxElementSize(
-                                                        *lor_mesh, redecomp::MPIUtility( lor_mesh->GetComm() ) ) )
-                               : redecomp::RedecompMesh(
-                                     submesh, binning_proximity_scale *
-                                                  redecomp::RedecompMesh::MaxElementSize(
-                                                      submesh, redecomp::MPIUtility( submesh.GetComm() ) ) ) },
+                                      RealT binning_proximity_scale, int allocator_id, int n_ranks )
+    : redecomp_mesh_{ lor_mesh
+                          ? redecomp::RedecompMesh(
+                                *lor_mesh,
+                                binning_proximity_scale * redecomp::RedecompMesh::MaxElementSize(
+                                                              *lor_mesh, redecomp::MPIUtility( lor_mesh->GetComm() ) ),
+                                redecomp::RedecompMesh::RCB, n_ranks )
+                          : redecomp::RedecompMesh(
+                                submesh,
+                                binning_proximity_scale * redecomp::RedecompMesh::MaxElementSize(
+                                                              submesh, redecomp::MPIUtility( submesh.GetComm() ) ),
+                                redecomp::RedecompMesh::RCB, n_ranks ) },
       vector_xfer_{ parent_fes, submesh_gridfn, submesh_lor_xfer, redecomp_mesh_ },
       allocator_id_{ allocator_id }
 {
@@ -591,8 +594,8 @@ void MfemMeshData::UpdateData::UpdateConnectivity( const std::set<int>& attribut
                                                    const std::set<int>& attributes_2 )
 {
   // create this on host since MFEM connectivity data is stored there
-  Array2D<int, MemorySpace::Host> conn_1_host;
-  Array2D<int, MemorySpace::Host> conn_2_host;
+  Array2D<IndexT, MemorySpace::Host> conn_1_host;
+  Array2D<IndexT, MemorySpace::Host> conn_2_host;
   Array1D<int, MemorySpace::Host> elem_map_1_host;
   Array1D<int, MemorySpace::Host> elem_map_2_host;
   conn_1_host.reserve( redecomp_mesh_.GetNE() * num_verts_per_elem_ );
@@ -632,8 +635,8 @@ void MfemMeshData::UpdateData::UpdateConnectivity( const std::set<int>& attribut
     elem_map_2_ = std::move( elem_map_2_host );
   } else {
     // copy to new memory space
-    conn_1_ = Array2D<int>( conn_1_host, allocator_id_ );
-    conn_2_ = Array2D<int>( conn_2_host, allocator_id_ );
+    conn_1_ = Array2D<IndexT>( conn_1_host, allocator_id_ );
+    conn_2_ = Array2D<IndexT>( conn_2_host, allocator_id_ );
     elem_map_1_ = Array1D<int>( elem_map_1_host, allocator_id_ );
     elem_map_2_ = Array1D<int>( elem_map_2_host, allocator_id_ );
   }
@@ -756,13 +759,16 @@ MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemS
   SLIC_ERROR_ROOT_IF( parent_data.GetParentCoords().ParFESpace()->FEColl()->GetOrder() > 1,
                       "Higher order meshes not yet supported for Jacobian matrices." );
 
-  mfem::SubMeshUtils::BuildVdofToVdofMap(
-      parent_data_.GetSubmeshFESpace(), *parent_data_.GetParentCoords().FESpace(), parent_data_.GetSubmesh().GetFrom(),
-      parent_data_.GetSubmesh().GetParentElementIDMap(), submesh2parent_vdof_list_ );
+  mfem::Array<int> vdof_list_int;
+
+  mfem::SubMeshUtils::BuildVdofToVdofMap( parent_data_.GetSubmeshFESpace(), *parent_data_.GetParentCoords().FESpace(),
+                                          parent_data_.GetSubmesh().GetFrom(),
+                                          parent_data_.GetSubmesh().GetParentElementIDMap(), vdof_list_int );
 
   auto dof_offset = parent_data_.GetParentCoords().ParFESpace()->GetMyDofOffset();
-  for ( auto& vdof : submesh2parent_vdof_list_ ) {
-    vdof = vdof + dof_offset;
+  submesh2parent_vdof_list_.SetSize( vdof_list_int.Size() );
+  for ( int i{ 0 }; i < vdof_list_int.Size(); ++i ) {
+    submesh2parent_vdof_list_[i] = dof_offset + static_cast<HYPRE_BigInt>( vdof_list_int[i] );
   }
 
   auto& parent_fes = *parent_data_.GetParentCoords().ParFESpace();
@@ -871,8 +877,14 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian( con
       GetUpdateData().submesh_redecomp_xfer_10_->TransferToParallelSparse( lm_elems, nonmortar_elems, *elem_J_2 );
   submesh_J.Finalize();
 
-  // transform J values from submesh to parent mesh
-  auto J = submesh_J.GetJ();
+  // transform J values from submesh to (global) parent mesh
+  mfem::Array<HYPRE_BigInt> J( submesh_J.NumNonZeroElems() );
+  // This copy is needed to convert mfem::SparseMatrix int J values to the HYPRE_BigInt values the mfem::HypreParMatrix
+  // constructor needs
+  auto* J_int = submesh_J.GetJ();
+  for ( int i{ 0 }; i < J.Size(); ++i ) {
+    J[i] = J_int[i];
+  }
   auto submesh_vector_fes = parent_data_.GetSubmeshFESpace();
   auto mpi = redecomp::MPIUtility( submesh_vector_fes.GetComm() );
   auto submesh_dof_offsets = ArrayT<int>( mpi.NRanks() + 1, mpi.NRanks() + 1 );
@@ -945,7 +957,7 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian( con
   // trial space is on the parent mesh, not the submesh
   auto J_full = std::make_unique<mfem::HypreParMatrix>( mpi.MPIComm(), submesh_fes.GetVSize(),
                                                         submesh_fes.GlobalVSize(), parent_trial_fes.GlobalVSize(),
-                                                        submesh_J.GetI(), submesh_J.GetJ(), submesh_J.GetData(),
+                                                        submesh_J.GetI(), J.GetData(), submesh_J.GetData(),
                                                         submesh_fes.GetDofOffsets(), parent_trial_fes.GetDofOffsets() );
   auto J_true = std::unique_ptr<mfem::HypreParMatrix>(
       mfem::RAP( submesh_fes.Dof_TrueDof_Matrix(), J_full.get(), parent_trial_fes.Dof_TrueDof_Matrix() ) );

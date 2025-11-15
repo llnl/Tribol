@@ -109,7 +109,7 @@ TEST_F( EnzymeNodalNormalTest, TwoElementsFlatNormalJacobian )
   for ( int i{ 0 }; i < 18; ++i ) {
     xref[i] = x[i];
   }
-  int conn[8] = { 0, 1, 4, 3, 1, 2, 5, 4 };
+  IndexT conn[8] = { 0, 1, 4, 3, 1, 2, 5, 4 };
   constexpr auto mesh_id = 0;
   registerMesh( mesh_id, 2, 6, conn, InterfaceElementType::LINEAR_QUAD, x, x + 6, x + 12 );
   registerNodalReferenceCoords( mesh_id, xref, xref + 6, xref + 12 );
