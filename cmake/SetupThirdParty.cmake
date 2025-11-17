@@ -196,6 +196,36 @@ foreach(dep ${EXPORTED_TPL_DEPS})
   endif()
 endforeach()
 
+#------------------------------------------------------------------------------
+# Caliper
+#------------------------------------------------------------------------------
+if(TRIBOL_ENABLE_PROFILING AND NOT CALIPER_DIR)
+    message(FATAL_ERROR "TRIBOL_ENABLE_PROFILING cannot be ON without CALIPER_DIR defined. Either specify a host \
+                          config with CALIPER_DIR, or rebuild Tribol TPLs with +profiling variant.")
+endif()
+
+if(CALIPER_DIR AND TRIBOL_ENABLE_PROFILING)
+    tribol_assert_path_exists(${CALIPER_DIR})
+
+    # Should this logic be in the Caliper CMake package?
+    # If CMake version doesn't support CUDAToolkit the libraries
+    # are just "baked in"
+    if(TRIBOL_ENABLE_CUDA)
+        if(CMAKE_VERSION VERSION_LESS 3.17)
+            message(FATAL_ERROR "Tribol+Caliper+CUDA requires CMake > 3.17.")
+        else()
+            find_package(CUDAToolkit REQUIRED)
+        endif() 
+    endif()
+
+    find_dependency(caliper REQUIRED PATHS "${CALIPER_DIR}")
+    message(STATUS "Caliper support is ON")
+    set(TRIBOL_USE_CALIPER TRUE)
+else()
+    message(STATUS "Caliper support is OFF")
+    set(TRIBOL_USE_CALIPER FALSE)
+endif()
+
 message(STATUS "--------------------------\n"
                "Finished configuring TPLs")
 
