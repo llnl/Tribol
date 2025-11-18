@@ -22,8 +22,10 @@ void testFunction()
 
 TEST( caliper_smoke, basic_use ) { testFunction(); }
 
-int main( int, char** )
+int main( int argc, char* argv[] )
 {
+  ::testing::InitGoogleTest( &argc, argv );
+
   cali::ConfigManager mgr;
   mgr.add( "runtime-report,spot" );
   mgr.start();
