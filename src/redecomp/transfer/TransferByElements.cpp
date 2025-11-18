@@ -7,12 +7,15 @@
 
 #include "axom/slic.hpp"
 
+#include "shared/infrastructure/Profiling.hpp"
+
 #include "redecomp/RedecompMesh.hpp"
 
 namespace redecomp {
 
 void TransferByElements::TransferToSerial( const mfem::ParGridFunction& src, mfem::GridFunction& dst ) const
 {
+  TRIBOL_MARK_FUNCTION;
   // checks to make sure src and dst are valid
   auto redecomp = dynamic_cast<RedecompMesh*>( dst.FESpace()->GetMesh() );
   SLIC_ERROR_ROOT_IF( redecomp == nullptr, "The Mesh of GridFunction dst must be a Redecomp mesh." );
@@ -67,6 +70,7 @@ void TransferByElements::TransferToSerial( const mfem::ParGridFunction& src, mfe
 
 void TransferByElements::TransferToParallel( const mfem::GridFunction& src, mfem::ParGridFunction& dst ) const
 {
+  TRIBOL_MARK_FUNCTION;
   // checks to make sure src and dst are valid
   auto redecomp = dynamic_cast<RedecompMesh*>( src.FESpace()->GetMesh() );
   SLIC_ERROR_ROOT_IF( redecomp == nullptr, "The Mesh of GridFunction dst must be a Redecomp mesh." );
