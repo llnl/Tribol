@@ -11,9 +11,9 @@
 
 #include "axom/slic.hpp"
 
-#include "redecomp/utils/ArrayUtility.hpp"
+#include "shared/infrastructure/Profiling.hpp"
 
-#include "tribol/utils/Profiling.hpp"
+#include "redecomp/utils/ArrayUtility.hpp"
 
 namespace tribol {
 
@@ -228,6 +228,7 @@ ParentField::UpdateData::UpdateData( ParentRedecompTransfer& parent_redecomp_xfe
                                      const mfem::ParGridFunction& parent_gridfn, bool use_device )
     : parent_redecomp_xfer_{ parent_redecomp_xfer }, redecomp_gridfn_{ &parent_redecomp_xfer.GetRedecompFESpace() }
 {
+  TRIBOL_MARK_FUNCTION;
   redecomp_gridfn_.UseDevice( use_device );
   redecomp_gridfn_ = 0.0;
   parent_redecomp_xfer_.ParentToRedecomp( parent_gridfn, redecomp_gridfn_ );

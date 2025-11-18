@@ -3,17 +3,17 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_TRIBOL_UTILS_PROFILING_HPP_
-#define SRC_TRIBOL_UTILS_PROFILING_HPP_
+#ifndef SRC_SHARED_INFRASTRUCTURE_PROFILING_HPP_
+#define SRC_SHARED_INFRASTRUCTURE_PROFILING_HPP_
 
 /**
- * @file profiling.hpp
+ * @file Profiling.hpp
  *
  * @brief Various helper functions and macros for profiling using Caliper
  */
 
-// Tribol config include
-#include "tribol/config.hpp"
+// Shared config include
+#include "shared/config.hpp"
 
 #ifdef TRIBOL_USE_CALIPER
 #include "caliper/cali.h"
@@ -76,4 +76,4 @@
 #define TRIBOL_MARK_SCOPE( name )
 #endif
 
-#endif  // SRC_TRIBOL_UTILS_PROFILING_HPP_
+#endif  // SRC_SHARED_INFRASTRUCTURE_PROFILING_HPP_

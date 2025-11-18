@@ -7,6 +7,8 @@
 
 #include "axom/slic.hpp"
 
+#include "shared/infrastructure/Profiling.hpp"
+
 #include "redecomp/RedecompTransfer.hpp"
 #include "redecomp/transfer/TransferByNodes.hpp"
 #include "redecomp/partition/Partitioner.hpp"
@@ -23,6 +25,7 @@ RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, PartitionType method, i
 RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length, PartitionType method, int n_ranks )
     : parent_{ parent }, mpi_{ parent.GetComm() }
 {
+  TRIBOL_MARK_FUNCTION;
   // build partitioner
   std::unique_ptr<Partitioner> partitioner = nullptr;
   switch ( parent_.SpaceDimension() ) {
@@ -80,6 +83,7 @@ RedecompMesh::RedecompMesh( const mfem::ParMesh& parent, double ghost_length,
                             std::unique_ptr<const Partitioner> partitioner, int n_ranks )
     : parent_{ parent }, mpi_{ parent.GetComm() }
 {
+  TRIBOL_MARK_FUNCTION;
   // check partitioner
   switch ( parent_.SpaceDimension() ) {
     case 2: {
@@ -139,6 +143,7 @@ EntityIndexByRank RedecompMesh::BuildP2RElementList( const Partitioner& partitio
 
 void RedecompMesh::BuildRedecomp()
 {
+  TRIBOL_MARK_FUNCTION;
   // dimension information
   Dim = parent_.Dimension();
   spaceDim = parent_.SpaceDimension();
