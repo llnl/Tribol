@@ -108,6 +108,7 @@ blt_list_append(TO tribol_depends ELEMENTS redecomp IF BUILD_REDECOMP )
 blt_list_append(TO tribol_depends ELEMENTS umpire IF TRIBOL_USE_UMPIRE )
 blt_list_append(TO tribol_depends ELEMENTS RAJA IF TRIBOL_USE_RAJA )
 blt_list_append(TO tribol_depends ELEMENTS ClangEnzymeFlags IF TRIBOL_USE_ENZYME)
+blt_list_append(TO tribol_depends ELEMENTS caliper IF TRIBOL_USE_CALIPER)
 message(STATUS "Tribol library dependencies: ${tribol_depends}")
 
 ## create the library
