@@ -49,6 +49,7 @@ void RedecompTransfer::TransferToSerial( const mfem::QuadratureFunction& src, mf
                       "Redecomp -> ParMesh relationship." );
 
   // send and receive quadrature point values from other ranks
+  TRIBOL_MARK_BEGIN( "Send and receive values over MPI" );
   auto dst_vals = MPIArray<double>( &redecomp->getMPIUtility() );
   dst_vals.SendRecvEach( [redecomp, &src]( int dest ) {
     auto src_vals = axom::Array<double>();
@@ -72,8 +73,10 @@ void RedecompTransfer::TransferToSerial( const mfem::QuadratureFunction& src, mf
     }
     return src_vals;
   } );
+  TRIBOL_MARK_END( "Send and receive values over MPI" );
 
   // map received quadrature point values to local quadrature points
+  TRIBOL_MARK_BEGIN( "Map received values to local values" );
   auto vals = mfem::Vector();
   vals.UseDevice( true );
   auto n_ranks = redecomp->getMPIUtility().NRanks();
@@ -89,6 +92,7 @@ void RedecompTransfer::TransferToSerial( const mfem::QuadratureFunction& src, mf
       dst.SyncMemory( vals );
     }
   }
+  TRIBOL_MARK_END( "Map received values to local values" );
 }
 
 void RedecompTransfer::TransferToParallel( const mfem::QuadratureFunction& src, mfem::QuadratureFunction& dst ) const
