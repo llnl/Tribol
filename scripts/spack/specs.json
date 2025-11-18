@@ -27,7 +27,7 @@
     [ "+enzyme" ],
 
     "linux_ubuntu_24":
-    [ "+raja+umpire+enzyme+profiling %clang_19",
-      "+cuda+raja+umpire+enzyme+profiling cuda_arch=86 %clang_19" ]
+    [ "+raja+umpire+enzyme+profiling ^hypre+int64 %clang_19",
+      "+cuda+raja+umpire+enzyme+profiling cuda_arch=86 ^hypre+int64 %clang_19" ]
       
 }
