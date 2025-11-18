@@ -6,7 +6,8 @@
 #ifndef SRC_MESH_MFEMDATA_HPP_
 #define SRC_MESH_MFEMDATA_HPP_
 
-#include "tribol/common/BasicTypes.hpp"
+// Tribol config include
+#include "tribol/config.hpp"
 
 #ifdef BUILD_REDECOMP
 
@@ -18,6 +19,7 @@
 #include "axom/core.hpp"
 #include "redecomp/redecomp.hpp"
 
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 

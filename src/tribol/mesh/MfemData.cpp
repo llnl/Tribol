@@ -5,11 +5,15 @@
 
 #include "tribol/mesh/MfemData.hpp"
 
+#include "tribol/config.hpp"
+
 #ifdef BUILD_REDECOMP
 
 #include "axom/slic.hpp"
 
 #include "redecomp/utils/ArrayUtility.hpp"
+
+#include "tribol/utils/Profiling.hpp"
 
 namespace tribol {
 
@@ -338,6 +342,7 @@ void MfemMeshData::SetParentReferenceCoords( const mfem::ParGridFunction& refere
 
 void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks )
 {
+  TRIBOL_MARK_FUNCTION;
   // update coordinates of submesh and LOR mesh
   auto submesh_nodes = dynamic_cast<mfem::ParGridFunction*>( submesh_.GetNodes() );
   SLIC_ERROR_ROOT_IF( !submesh_nodes, "submesh_ Nodes is not a ParGridFunction." );
