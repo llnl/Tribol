@@ -40,6 +40,7 @@ void SubmeshLORTransfer::TransferFromLORVector( mfem::Vector& submesh_dst ) cons
 
 void SubmeshLORTransfer::SubmeshToLOR( const mfem::ParGridFunction& submesh_src, mfem::ParGridFunction& lor_dst )
 {
+  TRIBOL_MARK_FUNCTION;
   // make sure host data is up to date.  this transfer needs to be on the host until submesh supports device transfer
   submesh_src.HostRead();
   lor_dst.HostWrite();
@@ -346,7 +347,9 @@ void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
   // update coordinates of submesh and LOR mesh
   auto submesh_nodes = dynamic_cast<mfem::ParGridFunction*>( submesh_.GetNodes() );
   SLIC_ERROR_ROOT_IF( !submesh_nodes, "submesh_ Nodes is not a ParGridFunction." );
+  TRIBOL_MARK_BEGIN( "SubMesh coords transfer" );
   submesh_.Transfer( coords_.GetParentGridFn(), *submesh_nodes );
+  TRIBOL_MARK_END( "SubMesh coords transfer" );
   if ( lor_mesh_.get() ) {
     auto lor_nodes = dynamic_cast<mfem::ParGridFunction*>( lor_mesh_->GetNodes() );
     SLIC_ERROR_ROOT_IF( !lor_nodes, "lor_mesh_ Nodes is not a ParGridFunction." );
@@ -589,6 +592,7 @@ MfemMeshData::UpdateData::UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* 
       vector_xfer_{ parent_fes, submesh_gridfn, submesh_lor_xfer, redecomp_mesh_ },
       allocator_id_{ allocator_id }
 {
+  TRIBOL_MARK_FUNCTION;
   // set element type based on redecomp mesh
   SetElementData();
   // updates the connectivity of the tribol surface mesh
