@@ -7,6 +7,8 @@
 
 #include "axom/slic.hpp"
 
+#include "shared/infrastructure/Profiling.hpp"
+
 #include "redecomp/RedecompMesh.hpp"
 #include "redecomp/transfer/TransferByNodes.hpp"
 #include "redecomp/transfer/TransferByElements.hpp"
@@ -38,6 +40,7 @@ void RedecompTransfer::TransferToParallel( const mfem::GridFunction& src, mfem::
 
 void RedecompTransfer::TransferToSerial( const mfem::QuadratureFunction& src, mfem::QuadratureFunction& dst ) const
 {
+  TRIBOL_MARK_FUNCTION;
   // checks to make sure src and dst are valid
   auto redecomp = dynamic_cast<RedecompMesh*>( dst.GetSpace()->GetMesh() );
   SLIC_ERROR_ROOT_IF( redecomp == nullptr, "The Mesh of QuadratureFunction dst must be a Redecomp mesh." );
@@ -86,6 +89,7 @@ void RedecompTransfer::TransferToSerial( const mfem::QuadratureFunction& src, mf
 
 void RedecompTransfer::TransferToParallel( const mfem::QuadratureFunction& src, mfem::QuadratureFunction& dst ) const
 {
+  TRIBOL_MARK_FUNCTION;
   // checks to make sure src and dst are valid
   auto redecomp = dynamic_cast<RedecompMesh*>( src.GetSpace()->GetMesh() );
   SLIC_ERROR_ROOT_IF( redecomp == nullptr, "The Mesh of QuadratureFunction src must be a Redecomp mesh." );
