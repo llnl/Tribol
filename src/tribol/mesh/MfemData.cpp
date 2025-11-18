@@ -348,17 +348,23 @@ void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
   // update coordinates of submesh and LOR mesh
   auto submesh_nodes = dynamic_cast<mfem::ParGridFunction*>( submesh_.GetNodes() );
   SLIC_ERROR_ROOT_IF( !submesh_nodes, "submesh_ Nodes is not a ParGridFunction." );
-  TRIBOL_MARK_BEGIN( "SubMesh coords transfer" );
+  TRIBOL_MARK_BEGIN( "Update SubMesh coords" );
   submesh_.Transfer( coords_.GetParentGridFn(), *submesh_nodes );
-  TRIBOL_MARK_END( "SubMesh coords transfer" );
+  TRIBOL_MARK_END( "Update SubMesh coords" );
   if ( lor_mesh_.get() ) {
+    TRIBOL_MARK_BEGIN( "Update LOR coords" );
     auto lor_nodes = dynamic_cast<mfem::ParGridFunction*>( lor_mesh_->GetNodes() );
     SLIC_ERROR_ROOT_IF( !lor_nodes, "lor_mesh_ Nodes is not a ParGridFunction." );
     submesh_lor_xfer_->SubmeshToLOR( *submesh_nodes, *lor_nodes );
+    TRIBOL_MARK_END( "Update LOR coords" );
   }
+  TRIBOL_MARK_BEGIN( "Build new Redecomp mesh" );
   update_data_ = std::make_unique<UpdateData>( submesh_, lor_mesh_.get(), *coords_.GetParentGridFn().ParFESpace(),
                                                submesh_xfer_gridfn_, submesh_lor_xfer_.get(), attributes_1_,
                                                attributes_2_, binning_proximity_scale, allocator_id_, n_ranks );
+  TRIBOL_MARK_END( "Build new Redecomp mesh" );
+
+  TRIBOL_MARK_BEGIN( "Copy fields to Redecomp mesh" );
   coords_.UpdateField( update_data_->vector_xfer_, use_device_ );
   // NOTE: SetSpace() would be preferrable to call here, but it looks like all memory isn't mapped to
   // mfem::MemoryManager when this is used. TODO: Debug this and switch to SetSpace()
@@ -371,12 +377,14 @@ void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
   if ( velocity_ ) {
     velocity_->UpdateField( update_data_->vector_xfer_, use_device_ );
   }
+  TRIBOL_MARK_END( "Copy fields to Redecomp mesh" );
   if ( elem_thickness_ ) {
     if ( !material_modulus_ ) {
       SLIC_ERROR_ROOT(
           "Kinematic element penalty requires material modulus information. "
           "Call registerMfemMaterialModulus() to set this." );
     }
+    TRIBOL_MARK_BEGIN( "Copy element thickness to Redecomp mesh" );
     redecomp::RedecompTransfer redecomp_xfer;
     // set element thickness on redecomp mesh
     redecomp_elem_thickness_ =
@@ -430,6 +438,7 @@ void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
                 [tribol_m2_view, redecomp_m_view, elem_map2_view] TRIBOL_HOST_DEVICE( int i ) {
                   tribol_m2_view[i] = redecomp_m_view[elem_map2_view[i]];
                 } );
+    TRIBOL_MARK_END( "Copy element thickness to Redecomp mesh" );
   }
 }
 
