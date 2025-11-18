@@ -85,9 +85,13 @@ void RedecompTransfer::TransferToSerial( const mfem::QuadratureFunction& src, mf
     auto last_el = redecomp->getRedecompToParentElemOffsets()[r + 1];
     auto quadpt_ct = 0;
     for ( int e{ first_el }; e < last_el; ++e ) {
+      TRIBOL_MARK_BEGIN( "Read element values" );
       dst.GetValues( e, vals );
       const mfem::Vector dof_vals( &dst_vals[r][quadpt_ct], vals.Size() );
+      TRIBOL_MARK_END( "Read element values" );
+      TRIBOL_MARK_BEGIN( "Copy element values" );
       vals = dof_vals;
+      TRIBOL_MARK_END( "Copy element values" );
       quadpt_ct += vals.Size();
       dst.SyncMemory( vals );
     }
