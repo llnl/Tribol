@@ -57,11 +57,15 @@ void RedecompTransfer::TransferToSerial( const mfem::QuadratureFunction& src, mf
     if ( n_els > 0 ) {
       auto vals = mfem::Vector();
       // guess the size of send_vals based on the size of the first element
+      TRIBOL_MARK_BEGIN( "Getting element values" );
       src.GetValues( src_elem_idx[0], vals );
+      TRIBOL_MARK_END( "Getting element values" );
       src_vals.reserve( vals.Size() * n_els );
       auto quadpt_ct = 0;
       for ( auto src_elem_id : src_elem_idx ) {
+        TRIBOL_MARK_BEGIN( "Getting element values" );
         src.GetValues( src_elem_id, vals );
+        TRIBOL_MARK_END( "Getting element values" );
         src_vals.insert( quadpt_ct, vals.Size(), vals.GetData() );
         quadpt_ct += vals.Size();
       }
