@@ -78,7 +78,8 @@ void RedecompTransfer::TransferToSerial( const mfem::QuadratureFunction& src, mf
   // map received quadrature point values to local quadrature points
   TRIBOL_MARK_BEGIN( "Map received values to local values" );
   auto vals = mfem::Vector();
-  vals.UseDevice( true );
+  // vals.UseDevice( true );
+  dst.HostWrite();
   auto n_ranks = redecomp->getMPIUtility().NRanks();
   for ( int r{ 0 }; r < n_ranks; ++r ) {
     auto first_el = redecomp->getRedecompToParentElemOffsets()[r];
@@ -93,7 +94,6 @@ void RedecompTransfer::TransferToSerial( const mfem::QuadratureFunction& src, mf
       vals = dof_vals;
       TRIBOL_MARK_END( "Copy element values" );
       quadpt_ct += vals.Size();
-      dst.SyncMemory( vals );
     }
   }
   TRIBOL_MARK_END( "Map received values to local values" );
