@@ -7,6 +7,8 @@
 
 #include "axom/slic.hpp"
 
+#include "shared/infrastructure/Profiling.hpp"
+
 #include "redecomp/common/TypeDefs.hpp"
 #include "redecomp/utils/ArrayUtility.hpp"
 #include "redecomp/utils/MPIUtility.hpp"
@@ -23,6 +25,7 @@ template <int NDIMS>
 std::vector<EntityIndexByRank> RCB<NDIMS>::generatePartitioning(
     int n_parts, const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh, double ghost_len ) const
 {
+  TRIBOL_MARK_FUNCTION;
   auto partitioning = std::vector<EntityIndexByRank>();
   partitioning.reserve( coords_by_mesh.size() );
 
@@ -72,6 +75,7 @@ BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts,
                                                         const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh,
                                                         double ghost_len ) const
 {
+  TRIBOL_MARK_FUNCTION;
   // subdivide the domain into n_parts pieces.  create a bisection tree of the
   // domain so we can focus on one piece at a time.
   auto problem_tree = BisecTree<RCBInfo<NDIMS>>( n_parts );

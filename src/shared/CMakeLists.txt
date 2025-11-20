@@ -6,6 +6,7 @@
 ## list of headers
 set(shared_headers
 
+    infrastructure/Profiling.hpp
     mesh/MeshBuilder.hpp
     )
 
@@ -17,7 +18,8 @@ set(shared_sources
 
 ## setup the dependency list for tribol shared library
 set(shared_depends mfem)
-blt_list_append(TO tribol_depends ELEMENTS blt::mpi IF TRIBOL_USE_MPI )
+blt_list_append(TO shared_depends ELEMENTS blt::mpi IF TRIBOL_USE_MPI )
+blt_list_append(TO shared_depends ELEMENTS caliper IF TRIBOL_USE_CALIPER )
 message(STATUS "Tribol shared library dependencies: ${shared_depends}")
 
 ## create the library
