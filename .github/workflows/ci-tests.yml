@@ -57,7 +57,7 @@ jobs:
       volumes:
       - /home/smith/smith
       # Required - default is set to user "smith"
-      options: --user root
+      options: --user smith
     steps:
       - name: Checkout Tribol
         uses: actions/checkout@v4
@@ -101,7 +101,7 @@ jobs:
       volumes:
       - /home/smith/smith
       # Required - default is set to user "smith"
-      options: --user root
+      options: --user smith
       env:
         CHECK_TYPE: ${{ matrix.check_type }}
         HOST_CONFIG: llvm@19.1.1.cmake
