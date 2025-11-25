@@ -1,5 +1,7 @@
 # Tribol: Contact Interface Physics Library
 
+[![Build Status](https://github.com/LLNL/tribol/actions/workflows/unit-tests.yml/badge.svg)](https://github.com/LLNL/tribol/actions/workflows/unit-tests.yml)
+
 High fidelity simulations modeling complex interactions of moving bodies require specialized contact algorithms to
 enforce zero-interpenetration constraints between surfaces. Tribol provides a unified interface for various 
 contact algorithms, including contact search, detection and enforcement, thereby enabling the research and development 
