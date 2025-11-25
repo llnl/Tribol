@@ -73,6 +73,7 @@ jobs:
       - name: Build and Test ${{ matrix.config.host_config }} ${{ matrix.build_type }}
         timeout-minutes: 60
         run: |
+          pwd && ls -lha && ls -lha /home/smith/smith_tpls/gcc-14.2.0/mpich-4.2.0-nsv6egqtra6rlwyfouhma2bku23mjf4u && \
           ./scripts/llnl/build_src.py ${{ matrix.config.build_src_opts }} \
             --verbose \
             --host-config ${{ matrix.config.host_config }} \
