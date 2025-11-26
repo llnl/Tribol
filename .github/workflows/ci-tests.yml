@@ -73,7 +73,7 @@ jobs:
       - name: Build and Test ${{ matrix.config.host_config }} ${{ matrix.build_type }}
         timeout-minutes: 60
         run: |
-          pwd && ls -lha && ls -lha /home && && \
+          pwd && ls -lha && ls -lha /home && \
           ./scripts/llnl/build_src.py ${{ matrix.config.build_src_opts }} \
             --verbose \
             --host-config ${{ matrix.config.host_config }} \
