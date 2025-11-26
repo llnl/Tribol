@@ -55,7 +55,7 @@ jobs:
     container:
       image: ${{ matrix.config.compiler_image }}
       volumes:
-      - /home/smith/smith
+      - /home/smith
       # Required - default is set to user "smith"
       options: --user root
     steps:
@@ -99,7 +99,7 @@ jobs:
     container:
       image: ${{ needs.set_image_vars.outputs.clang_docker_image }}
       volumes:
-      - /home/smith/smith
+      - /home/smith
       # Required - default is set to user "smith"
       options: --user root
       env:

@@ -17,7 +17,6 @@ function or_die () {
     fi
 }
 
-or_die cd tribol
 git submodule init 
 git submodule update 
 
