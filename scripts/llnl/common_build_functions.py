@@ -593,9 +593,7 @@ def on_rz():
 
 
 def get_script_dir():
-    # NOTE: sys.argv[0] is based-on the script that is calling get_script_dir (e.g. build_tpls.py). This is to properly
-    # handle the case where this `scripts/llnl` directory is being symlinked by Tribol. 
-    return os.path.dirname(os.path.abspath(sys.argv[0]))
+    return os.path.dirname(os.path.abspath(__file__))
 
 
 def get_project_name():
