@@ -1083,7 +1083,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                 }
               } );
 
-  ArrayT<int, 1, MemorySpace::Host> planes_ct_host( planes_ct_data );
+  ArrayT<IndexT, 1, MemorySpace::Host> planes_ct_host( planes_ct_data );
   // shrink array to actual number of contact planes
   m_cg_pairs.resizeActivePairs( contact_method, planes_ct_host[0] );
 

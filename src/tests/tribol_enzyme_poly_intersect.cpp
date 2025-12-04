@@ -49,9 +49,9 @@ class EnzymePolyIntersectTest : public testing::Test {
     // EdgeEdge = intersection of edges
     OverlapVertexType type[max_overlap_vert];
     // this stores which edge or vertex on element 1 the overlap vertex is associated with
-    IndexT edge1[max_overlap_vert];
+    int edge1[max_overlap_vert];
     // this stores which edge or vertex on element 2 the overlap vertex is associated with
-    IndexT edge2[max_overlap_vert];
+    int edge2[max_overlap_vert];
     for ( int i{ 0 }; i < max_overlap_vert; ++i ) {
       xi[i] = 0.0;
       xi[i + max_overlap_vert] = 0.0;

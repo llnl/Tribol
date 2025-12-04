@@ -658,7 +658,7 @@ TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceVelocities( IndexT face_id, Rea
 }  // end MeshData::Viewer::getFaceVelocities()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceNormal( int const face_id, RealT* nrml ) const
+TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceNormal( IndexT face_id, RealT* nrml ) const
 {
   for ( int d{ 0 }; d < spatialDimension(); ++d ) {
     nrml[d] = m_n[d][face_id];
@@ -668,7 +668,7 @@ TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceNormal( int const face_id, Real
 }  // end MeshData::getFaceNormal()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceCentroid( int const face_id, RealT* cx ) const
+TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceCentroid( IndexT face_id, RealT* cx ) const
 {
   for ( int d{ 0 }; d < spatialDimension(); ++d ) {
     cx[d] = m_c[d][face_id];

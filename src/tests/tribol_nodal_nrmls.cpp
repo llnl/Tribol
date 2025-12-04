@@ -37,7 +37,7 @@ class NodalNormalTest : public ::testing::Test {
   int dim;
 
   void computeNodalNormals( int cell_type, RealT const* const x, RealT const* const y, RealT const* const z,
-                            int const* const conn, int const numCells, int const numNodes, int const dim )
+                            const tribol::IndexT* conn, int const numCells, int const numNodes, int const dim )
   {
     // register the mesh with tribol
     const tribol::IndexT mesh_id = 0;
@@ -76,7 +76,7 @@ TEST_F( NodalNormalTest, two_quad_inverted_v )
   int numFaces = 2;
   int numNodesPerFace = 4;
   int cellType = (int)( tribol::LINEAR_QUAD );
-  int conn[numFaces * numNodesPerFace];
+  tribol::IndexT conn[numFaces * numNodesPerFace];
 
   // setup connectivity for the two faces ensuring nodes
   // are ordered consistent with an outward unit normal

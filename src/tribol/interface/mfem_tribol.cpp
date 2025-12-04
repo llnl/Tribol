@@ -369,7 +369,7 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id )
   return cs->getMfemSubmeshData()->GetSubmeshPressure();
 }
 
-void updateMfemParallelDecomposition()
+void updateMfemParallelDecomposition( int n_ranks )
 {
   for ( auto& cs_pair : CouplingSchemeManager::getInstance() ) {
     auto& cs = cs_pair.second;
@@ -388,7 +388,7 @@ void updateMfemParallelDecomposition()
       }
       // creates a new redecomp mesh based on updated coordinates and updates transfer operators and displacement,
       // velocity, and response grid functions based on new redecomp mesh
-      mfem_data->UpdateMfemMeshData( effective_binning_proximity );
+      mfem_data->UpdateMfemMeshData( effective_binning_proximity, n_ranks );
       auto coord_ptrs = mfem_data->GetRedecompCoordsPtrs();
 
       registerMesh( mesh_ids[0], mfem_data->GetMesh1NE(), mfem_data->GetNV(), mfem_data->GetMesh1Conn(),

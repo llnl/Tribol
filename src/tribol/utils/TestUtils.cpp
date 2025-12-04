@@ -339,10 +339,10 @@ void TestMesh::setupContactMeshHex( int numElemsX1, int numElemsY1, int numElems
   this->numTotalElements = numElementsBlock1 + numElementsBlock2;
   this->numTotalFaces = this->numNonmortarFaces + this->numMortarFaces;
 
-  this->elConn1 = new int[this->numNodesPerElement * this->numMortarElements];
-  this->elConn2 = new int[this->numNodesPerElement * this->numNonmortarElements];
-  this->faceConn1 = new int[this->numNodesPerFace * this->numMortarFaces];
-  this->faceConn2 = new int[this->numNodesPerFace * this->numNonmortarFaces];
+  this->elConn1 = new IndexT[this->numNodesPerElement * this->numMortarElements];
+  this->elConn2 = new IndexT[this->numNodesPerElement * this->numNonmortarElements];
+  this->faceConn1 = new IndexT[this->numNodesPerFace * this->numMortarFaces];
+  this->faceConn2 = new IndexT[this->numNodesPerFace * this->numNonmortarFaces];
   this->x = new RealT[this->numTotalNodes];
   this->y = new RealT[this->numTotalNodes];
   this->z = new RealT[this->numTotalNodes];
@@ -352,7 +352,7 @@ void TestMesh::setupContactMeshHex( int numElemsX1, int numElemsY1, int numElems
   int numElemsX, numElemsY, numElemsZ;
   RealT xMax, yMax, zMax, xMin, yMin, zMin;
   RealT theta;
-  int *elConn, *faceConn;
+  IndexT *elConn, *faceConn;
   for ( int iblk = 0; iblk < 2; ++iblk ) {
     if ( iblk == 0 ) {
       ndOffset = 0;
@@ -526,15 +526,15 @@ void TestMesh::setupContactMeshTet( int numElemsX1, int numElemsY1, int numElems
   bool keep_coords = true;
   this->clear( keep_coords );
 
-  allocIntArray( &this->faceConn1, this->numNodesPerFace * this->numMortarFaces, -1 );
-  allocIntArray( &this->faceConn2, this->numNodesPerFace * this->numNonmortarFaces, -1 );
-  allocIntArray( &this->elConn1, this->numNodesPerElement * this->numMortarElements, -1 );
-  allocIntArray( &this->elConn2, this->numNodesPerElement * this->numNonmortarElements, -1 );
+  allocArray( &this->faceConn1, this->numNodesPerFace * this->numMortarFaces, static_cast<IndexT>( -1 ) );
+  allocArray( &this->faceConn2, this->numNodesPerFace * this->numNonmortarFaces, static_cast<IndexT>( -1 ) );
+  allocArray( &this->elConn1, this->numNodesPerElement * this->numMortarElements, static_cast<IndexT>( -1 ) );
+  allocArray( &this->elConn2, this->numNodesPerElement * this->numNonmortarElements, static_cast<IndexT>( -1 ) );
 
   // tet element connectivity
   int ndOffset;
   int numElemsX, numElemsY, numElemsZ;
-  int *elConn, *faceConn;
+  IndexT *elConn, *faceConn;
   for ( int iblk = 0; iblk < 2; ++iblk ) {
     if ( iblk == 0 ) {
       ndOffset = 0;
@@ -1533,7 +1533,7 @@ void TestMesh::computeElementJacobianContributions( mfem::SparseMatrix* const A,
     }
 
     // sum contributions into global jacobian input/output argument
-    int* el_conn;
+    IndexT* el_conn;
     for ( int i = 0; i < fe->GetDof(); ++i ) {
       for ( int j = 0; j < fe->GetDof(); ++j ) {
         // get global indices

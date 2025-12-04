@@ -51,6 +51,8 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
             description="Build development tools (Sphinx, Doxygen, Shroud, clang-format)")
     variant("asan", default=False,
             description="Build with address sanitizer flags")
+    variant("profiling", default=False,
+            description="Build with hooks for Caliper performance analysis")
     variant("umpire",   default=False,
             description="Build with portable memory access support")
     variant("raja",     default=False,
@@ -93,6 +95,9 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
 
     depends_on("mfem+metis+mpi", when="+redecomp")
     depends_on("mfem+asan", when="+asan")
+
+    with when("+profiling"):
+        depends_on("caliper+mpi")
     
     with when("+openmp"):
         depends_on("axom+openmp")
@@ -105,25 +110,33 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
 
     for val in CudaPackage.cuda_arch_values:
         ext_cuda_dep = f"+cuda cuda_arch={val}"
-        depends_on(f"mfem{ext_cuda_dep}", when=f"{ext_cuda_dep}")
-        depends_on(f"axom{ext_cuda_dep}", when=f"{ext_cuda_dep}")
+        depends_on(f"mfem {ext_cuda_dep}", when=f"{ext_cuda_dep}")
+        depends_on(f"axom {ext_cuda_dep}", when=f"{ext_cuda_dep}")
         # NOTE: Tribol requires RAJA and Umpire for CUDA support
-        depends_on(f"raja{ext_cuda_dep}", when=f"{ext_cuda_dep}")
-        depends_on(f"umpire{ext_cuda_dep}", when=f"{ext_cuda_dep}")
+        depends_on(f"raja {ext_cuda_dep}", when=f"{ext_cuda_dep}")
+        depends_on(f"umpire {ext_cuda_dep}", when=f"{ext_cuda_dep}")
+        # NOTE: Caliper is an optional dependency
+        depends_on(f"caliper {ext_cuda_dep}", when=f"+profiling {ext_cuda_dep}")
 
     for val in ROCmPackage.amdgpu_targets:
         ext_rocm_dep = f"+rocm amdgpu_target={val}"
-        depends_on(f"mfem{ext_rocm_dep}", when=f"{ext_rocm_dep}")
-        depends_on(f"axom{ext_rocm_dep}", when=f"{ext_rocm_dep}")
+        depends_on(f"mfem {ext_rocm_dep}", when=f"{ext_rocm_dep}")
+        depends_on(f"axom {ext_rocm_dep}", when=f"{ext_rocm_dep}")
         # NOTE: Tribol requires RAJA and Umpire for HIP support
-        depends_on(f"raja{ext_rocm_dep}", when=f"{ext_rocm_dep}")
-        depends_on(f"umpire{ext_rocm_dep}", when=f"{ext_rocm_dep}")
+        depends_on(f"raja {ext_rocm_dep}", when=f"{ext_rocm_dep}")
+        depends_on(f"umpire {ext_rocm_dep}", when=f"{ext_rocm_dep}")
+        # NOTE: Caliper is an optional dependency
+        depends_on(f"caliper {ext_rocm_dep}", when=f"+profiling {ext_rocm_dep}")
 
     depends_on("rocprim", when="+rocm")
+
     
     # Optional (require our variant in "when")
     for dep in ["raja", "umpire"]:
         depends_on("{0} build_type=Debug".format(dep), when="+{0} build_type=Debug".format(dep))
+    
+    # Optional, but variant name doesn't match package name
+    depends_on("caliper build_type=Debug".format(dep), when="+profiling build_type=Debug")
         
     # Required
     for dep in ["axom", "conduit", "metis", "parmetis"]:
@@ -395,7 +408,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
                                             dep_dir))
 
         # optional tpls
-        for dep in ('raja', 'umpire', 'enzyme'):
+        for dep in ('raja', 'umpire', 'enzyme', 'caliper'):
             if spec.satisfies('^{0}'.format(dep)):
                 dep_dir = get_spec_path(spec, dep, path_replacements)
                 entries.append(cmake_cache_path('%s_DIR' % dep.upper(),

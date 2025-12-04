@@ -310,7 +310,7 @@ void MPIUtility::Send( const T& container, int dest, int tag ) const
 template <typename T, axom::MemorySpace Sp>
 void MPIUtility::Send( const axom::Array<T, 2, Sp>& container, int dest, int tag ) const
 {
-  MPI_Send( container.shape().m_data, 2, GetMPIType<int>(), dest, tag, comm_ );
+  MPI_Send( container.shape().m_data, 2, GetMPIType<axom::IndexType>(), dest, tag, comm_ );
   MPI_Send( container.data(), container.size(), GetMPIDatatype( container.data() ), dest, tag, comm_ );
 }
 
@@ -326,7 +326,7 @@ template <typename T, axom::MemorySpace Sp>
 std::unique_ptr<MPIUtility::Request> MPIUtility::Isend( const axom::Array<T, 2, Sp>& container, int dest,
                                                         int tag ) const
 {
-  MPI_Send( container.shape().m_data, 2, GetMPIType<int>(), dest, tag, comm_ );
+  MPI_Send( container.shape().m_data, 2, GetMPIType<axom::IndexType>(), dest, tag, comm_ );
   auto request = std::make_unique<MPI_Request>();
   MPI_Isend( container.data(), container.size(), GetMPIDatatype( container.data() ), dest, tag, comm_, request.get() );
   return std::make_unique<Request>( std::move( request ) );
@@ -349,8 +349,8 @@ template <typename T, axom::MemorySpace Sp>
 axom::Array<T, 2, Sp> MPIUtility::Recv( type<axom::Array<T, 2, Sp>>, int source, int tag ) const
 {
   auto container = axom::Array<T, 2, Sp>();
-  axom::StackArray<int, 2> dim_size;
-  MPI_Recv( dim_size.m_data, 2, GetMPIDatatype( container.data() ), source, tag, comm_, &status_ );
+  axom::StackArray<axom::IndexType, 2> dim_size;
+  MPI_Recv( dim_size.m_data, 2, GetMPIType<axom::IndexType>(), source, tag, comm_, &status_ );
   container.reserve( dim_size[0] * dim_size[1] );
   container.resize( dim_size[0], dim_size[1] );
   MPI_Recv( container.data(), container.size(), GetMPIDatatype( container.data() ), source, tag, comm_, &status_ );
