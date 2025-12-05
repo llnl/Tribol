@@ -25,7 +25,7 @@
 #include <iomanip>
 
 #ifdef TRIBOL_USE_ENZYME
-#include "tribol/common/Enzyme.hpp"
+#include "mfem/general/enzyme.hpp"
 #endif
 
 namespace tribol {
