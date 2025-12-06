@@ -516,61 +516,212 @@ class BoundedArray2D : public BoundedArray<_T, _MemoryT> {
     assert( j < width_ );
     return BoundedArray<ValueT_, Memory<FixedStride<ValueT_, typename MemoryT_::SizeAndCapacityT_>>>(
         Memory<FixedStride<ValueT_, typename MemoryT_::SizeAndCapacityT_>>( &at( 0, j ), height_, height_,
-                                                                            memory_.stride() * width_ ) );
-  }
-
- protected:
-  /**
-   * @brief Copy-construct from a BoundedArray2D with a different memory policy.
-   *
-   * This constructor creates a new BoundedArray2D by copying the view from `other` into the supplied `memory`. It is
-   * useful for constructing array adapters that share the same logical contents but differ in how the underlying memory
-   * is managed.
-   *
-   * @tparam _Memory2T Memory type of the source array.
-   * @param other Source array to copy from.
-   * @param memory Memory object (policy) to use for the newly-constructed array.
-   */
-  template <typename _Memory2T>
-  TRIBOL_HOST_DEVICE BoundedArray2D( const BoundedArray2D<ValueT_, _Memory2T>& other, MemoryT_&& memory )
-      : BaseClassT_( other, std::move( memory ) ),
-        height_( other.height() ),
-        width_( other.width() ),
-        max_height_( other.max_height() )
-  {
-    assert( size() == height_ * width_ );
-    assert( capacity() == max_height_ * width_ );
-  }
-
-  /// @brief Using declaration to access base class element emplacement.
-  using BaseClassT_::emplace_back;
-
-  /// @brief Using declaration to access base class pop_back.
-  using BaseClassT_::pop_back;
-
-  /// @brief Using declaration to access base class push_back.
-  using BaseClassT_::push_back;
-
-  /// @brief Using declaration to access base class resize.
-  using BaseClassT_::resize;
-
-  /// @brief Using declaration to access the protected memory_ member from the base class.
-  using BaseClassT_::memory_;
-
-  /// @brief Logical height (number of rows).
-  SizeT height_;
-
-  /// @brief Number of columns (width).
-  SizeT width_;
-
-  /// @brief Maximum height (capacity in rows).
-  SizeT max_height_;
-};
-
-/**
- * @brief Policy class responsible for growing an AllocatedMemory when capacity is insufficient.
- *
- * ArrayResizer implements a resize growth strategy used by `Array` and other dynamic containers. By default it grows
+                                                                                                                                                         memory_.stride() * width_ ) );
+                                                                              }
+                                                                            
+                                                                             protected:
+                                                                              /**
+                                                                               * @brief Copy-construct from a BoundedArray2D with a different memory policy.
+                                                                               *
+                                                                               * This constructor creates a new BoundedArray2D by copying the view from `other` into the supplied `memory`. It is
+                                                                               * useful for constructing array adapters that share the same logical contents but differ in how the underlying memory
+                                                                               * is managed.
+                                                                               *
+                                                                               * @tparam _Memory2T Memory type of the source array.
+                                                                               * @param other Source array to copy from.
+                                                                               * @param memory Memory object (policy) to use for the newly-constructed array.
+                                                                               */
+                                                                              template <typename _Memory2T>
+                                                                              TRIBOL_HOST_DEVICE BoundedArray2D( const BoundedArray2D<ValueT_, _Memory2T>& other, MemoryT_&& memory )
+                                                                                  : BaseClassT_( other, std::move( memory ) ),
+                                                                                    height_( other.height() ),
+                                                                                    width_( other.width() ),
+                                                                                    max_height_( other.max_height() )
+                                                                              {
+                                                                                assert( size() == height_ * width_ );
+                                                                                assert( capacity() == max_height_ * width_ );
+                                                                              }
+                                                                            
+                                                                              /// @brief Using declaration to access base class element emplacement.
+                                                                              using BaseClassT_::emplace_back;
+                                                                            
+                                                                              /// @brief Using declaration to access base class pop_back.
+                                                                              using BaseClassT_::pop_back;
+                                                                            
+                                                                              /// @brief Using declaration to access base class push_back.
+                                                                              using BaseClassT_::push_back;
+                                                                            
+                                                                              /// @brief Using declaration to access base class resize.
+                                                                              using BaseClassT_::resize;
+                                                                            
+                                                                              /// @brief Using declaration to access the protected memory_ member from the base class.
+                                                                              using BaseClassT_::memory_;
+                                                                            
+                                                                              /// @brief Logical height (number of rows).
+                                                                              SizeT height_;
+                                                                            
+                                                                              /// @brief Number of columns (width).
+                                                                              SizeT width_;
+                                                                            
+                                                                              /// @brief Maximum height (capacity in rows).
+                                                                              SizeT max_height_;
+                                                                            };
+                                                                            
+                                                                            /**
+                                                                             * @brief N-dimensional bounded array.
+                                                                             *
+                                                                             * BoundedArrayND stores elements in a contiguous block, accessed via
+                                                                             * N-dimensional indices. It uses a row-major layout. The capacity of the
+                                                                             * array can be larger than its logical size along the first dimension, allowing
+                                                                             * for growth, similar to BoundedArray2D's height vs max_height.
+                                                                             *
+                                                                             * This implementation uses FixedStrideByDim to provide multi-dimensional
+                                                                             * access and slicing capabilities.
+                                                                             *
+                                                                             * @tparam _T Value type stored in the ND array.
+                                                                             * @tparam _Dim The number of dimensions.
+                                                                             * @tparam _MemoryT Memory policy providing contiguous backing storage.
+                                                                             */
+                                                                            template <typename _T, int _Dim, class _MemoryT = AllocatedMemory<_T>>
+                                                                            class BoundedArrayND
+                                                                            {
+                                                                            public:
+                                                                              using MemoryT_ = _MemoryT;
+                                                                              using ValueT_ = typename MemoryT_::ValueT_;
+                                                                            
+                                                                              /**
+                                                                               * @brief Construct a BoundedArrayND with explicit logical dimensions and
+                                                                               *        capacity for the first dimension.
+                                                                               *
+                                                                               * @param size_by_dim Logical dimensions (shape) of the array.
+                                                                               * @param capacity_dim0 Capacity of the first dimension. Must be >= size_by_dim[0].
+                                                                               */
+                                                                              TRIBOL_HOST_DEVICE BoundedArrayND(
+                                                                                  const axom::StackArray<SizeT, _Dim>& size_by_dim,
+                                                                                  SizeT capacity_dim0)
+                                                                                : size_by_dim_(size_by_dim),
+                                                                                  capacity_by_dim_(size_by_dim)
+                                                                              {
+                                                                                capacity_by_dim_[0] = capacity_dim0;
+                                                                                assert(capacity_by_dim_[0] >= size_by_dim_[0]);
+                                                                            
+                                                                                SizeT logical_size = tribol::algorithm::product(size_by_dim_);
+                                                                            
+                                                                                axom::StackArray<SizeT, _Dim> capacity_shape = capacity_by_dim_;
+                                                                                SizeT capacity_size = tribol::algorithm::product(capacity_shape);
+                                                                            
+                                                                                memory_ = MemoryT_(logical_size, capacity_size);
+                                                                            
+                                                                                // initialize strides based on capacity, for row-major layout
+                                                                                stride_by_dim_[_Dim-1] = 1;
+                                                                                for (int d = _Dim - 2; d >= 0; --d) {
+                                                                                    stride_by_dim_[d] = stride_by_dim_[d+1] * capacity_by_dim_[d+1];
+                                                                                }
+                                                                              }
+                                                                            
+                                                                              /**
+                                                                               * @brief Construct a BoundedArrayND where capacity equals size.
+                                                                               */
+                                                                              TRIBOL_HOST_DEVICE BoundedArrayND(const axom::StackArray<SizeT, _Dim>& size_by_dim)
+                                                                                : BoundedArrayND(size_by_dim, size_by_dim[0])
+                                                                              {}
+                                                                            
+                                                                              /**
+                                                                               * @brief Default-construct an empty ND array.
+                                                                               */
+                                                                              TRIBOL_HOST_DEVICE BoundedArrayND()
+                                                                                : BoundedArrayND(axom::StackArray<SizeT, _Dim>())
+                                                                              {}
+                                                                            
+                                                                              /**
+                                                                               * @brief Variadic operator() for element access or slicing.
+                                                                               *
+                                                                               * Forwards to a FixedStrideByDim view. This allows both getting a value
+                                                                               * (e.g., arr(i,j,k)) or a sub-array view (e.g., arr(i) or arr(i,j)).
+                                                                               */
+                                                                              template <typename... Idxs>
+                                                                              TRIBOL_HOST_DEVICE auto operator()(Idxs... indices)
+                                                                              {
+                                                                                // The accessor needs the SizeAndCapacity policy of the underlying memory.
+                                                                                using SizeAndCapacityPolicy = typename MemoryT_::AccessorT_::SizeAndCapacityT_;
+                                                                                using Accessor = FixedStrideByDim<_T, _Dim, SizeAndCapacityPolicy>;
+                                                                                
+                                                                                Accessor accessor_view(
+                                                                                    memory_.data(),
+                                                                                    size_by_dim_,
+                                                                                    memory_.capacity(),
+                                                                                    stride_by_dim_
+                                                                                );
+                                                                            
+                                                                                return accessor_view(indices...);
+                                                                              }
+                                                                            
+                                                                              /// @overload
+                                                                              template <typename... Idxs>
+                                                                              TRIBOL_HOST_DEVICE auto operator()(Idxs... indices) const
+                                                                              {
+                                                                                using SizeAndCapacityPolicy = typename MemoryT_::AccessorT_::SizeAndCapacityT_;
+                                                                                using Accessor = FixedStrideByDim<const _T, _Dim, SizeAndCapacityPolicy>;
+                                                                            
+                                                                                Accessor accessor_view(
+                                                                                    memory_.data(),
+                                                                                    size_by_dim_,
+                                                                                    memory_.capacity(),
+                                                                                    stride_by_dim_
+                                                                                );
+                                                                            
+                                                                                return accessor_view(indices...);
+                                                                              }
+                                                                            
+                                                                              /**
+                                                                               * @brief Access element at specified N-dimensional index with bounds checking.
+                                                                               *
+                                                                               * @param indices An array representing the indices for each dimension.
+                                                                               * @return Reference to the element at the specified location.
+                                                                               */
+                                                                              TRIBOL_HOST_DEVICE ValueT_& at(const axom::StackArray<SizeT, _Dim>& indices)
+                                                                              {
+                                                                                SizeT offset = 0;
+                                                                                for (int d = 0; d < _Dim; ++d) {
+                                                                                  assert(indices[d] < size_by_dim_[d]);
+                                                                                  offset += indices[d] * stride_by_dim_[d];
+                                                                                }
+                                                                                return memory_.data()[offset];
+                                                                              }
+                                                                            
+                                                                              /// @overload
+                                                                              TRIBOL_HOST_DEVICE const ValueT_& at(const axom::StackArray<SizeT, _Dim>& indices) const
+                                                                              {
+                                                                                SizeT offset = 0;
+                                                                                for (int d = 0; d < _Dim; ++d) {
+                                                                                  assert(indices[d] < size_by_dim_[d]);
+                                                                                  offset += indices[d] * stride_by_dim_[d];
+                                                                                }
+                                                                                return memory_.data()[offset];
+                                                                              }
+                                                                            
+                                                                              /// @brief Return the total number of logically valid elements.
+                                                                              TRIBOL_HOST_DEVICE SizeT size() const { return memory_.size(); }
+                                                                            
+                                                                              /// @brief Return the total number of elements that can be stored.
+                                                                              TRIBOL_HOST_DEVICE SizeT capacity() const { return memory_.capacity(); }
+                                                                            
+                                                                              /// @brief Return the logical shape of the array.
+                                                                              TRIBOL_HOST_DEVICE const axom::StackArray<SizeT, _Dim>& shape() const { return size_by_dim_; }
+                                                                            
+                                                                              /// @brief Return the capacity shape of the array.
+                                                                              TRIBOL_HOST_DEVICE const axom::StackArray<SizeT, _Dim>& capacity_shape() const { return capacity_by_dim_; }
+                                                                            
+                                                                            protected:
+                                                                              MemoryT_ memory_;
+                                                                              axom::StackArray<SizeT, _Dim> size_by_dim_;
+                                                                              axom::StackArray<SizeT, _Dim> capacity_by_dim_;
+                                                                              axom::StackArray<SizeT, _Dim> stride_by_dim_;
+                                                                            };
+                                                                            
+                                                                            /**
+                                                                             * @brief Policy class responsible for growing an AllocatedMemory when capacity is insufficient.
+                                                                             * * ArrayResizer implements a resize growth strategy used by `Array` and other dynamic containers. By default it grows
  * capacity by a ratio (default_resize_ratio_) and ensures a minimal delta is applied when requested.
  *
  * @tparam _T Element type.

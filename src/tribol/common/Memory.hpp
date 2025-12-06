@@ -26,6 +26,7 @@
 // Tribol includes
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/ExecModel.hpp"
+#include "tribol/utils/Algorithm.hpp"
 
 namespace tribol {
 
@@ -691,55 +692,147 @@ class FixedStrideByDim : public FixedStride<_T, _SizeAndCapacityT> {
 
   TRIBOL_HOST_DEVICE FixedStrideByDim( PointerT_ data, axom::StackArray<SizeT, _Dim> size_by_dim, SizeT capacity,
                                        axom::StackArray<SizeT, _Dim> stride_by_dim )
-      : BaseClassT_( data, product( size_by_dim ), capacity, min( stride_by_dim ) ),
+      : BaseClassT_( data, tribol::algorithm::product( size_by_dim ), capacity,
+                     tribol::algorithm::min( stride_by_dim ) ),
         size_by_dim_( std::move( size_by_dim ) ),
         stride_by_dim_( std::move( stride_by_dim ) )
   {
     verifyMemoryIsContiguous();
   }
 
- private:
-  template <typename _ListT, template <typename, int> typename _ContainerT>
-  TRIBOL_HOST_DEVICE _ListT product( const _ContainerT<_ListT, _Dim>& values )
+  TRIBOL_HOST_DEVICE ValueT_& at( const axom::StackArray<SizeT, _Dim>& indices )
   {
-    _ListT result = 1;
-    for ( auto value : values ) {
-      result *= value;
+    SizeT offset = 0;
+    for ( int d = 0; d < _Dim; ++d ) {
+      assert( indices[d] < size_by_dim_[d] );
+      offset += indices[d] * stride_by_dim_[d];
     }
-    return result;
+    return this->data_[offset];
   }
 
-  template <typename _ListT, template <typename, int> typename _ContainerT>
-  TRIBOL_HOST_DEVICE _ListT min( const _ContainerT<_ListT, _Dim>& values )
+  TRIBOL_HOST_DEVICE const ValueT_& at( const axom::StackArray<SizeT, _Dim>& indices ) const
   {
-    _ListT result = std::numeric_limits<_ListT>::max();
-    for ( auto value : values ) {
-      if ( value < result ) {
-        result = value;
+    SizeT offset = 0;
+    for ( int d = 0; d < _Dim; ++d ) {
+      assert( indices[d] < size_by_dim_[d] );
+      offset += indices[d] * stride_by_dim_[d];
+    }
+    return this->data_[offset];
+  }
+
+  template <typename... Idxs>
+  TRIBOL_HOST_DEVICE auto operator()( Idxs... indices )
+  {
+    constexpr int k = sizeof...( Idxs );
+    static_assert( k <= _Dim, "Too many indices provided to operator()." );
+
+    if constexpr ( k == _Dim ) {
+      SizeT idx_array[] = { static_cast<SizeT>( indices )... };
+      SizeT offset = 0;
+      for ( int d = 0; d < _Dim; ++d ) {
+        assert( idx_array[d] < size_by_dim_[d] );
+        offset += idx_array[d] * stride_by_dim_[d];
+      }
+      return ( this->data_[offset] );
+    } else {
+      static_assert( k > 0, "Cannot call with zero indices." );
+      constexpr int NewDim = _Dim - k;
+
+      SizeT idx_array[] = { static_cast<SizeT>( indices )... };
+      SizeT offset = 0;
+      for ( int d = 0; d < k; ++d ) {
+        assert( idx_array[d] < size_by_dim_[d] );
+        offset += idx_array[d] * stride_by_dim_[d];
+      }
+      PointerT_ new_data = this->data_ + offset;
+
+      axom::StackArray<SizeT, NewDim> new_size_by_dim;
+      axom::StackArray<SizeT, NewDim> new_stride_by_dim;
+      SizeT new_capacity = 1;
+
+      for ( int d = 0; d < NewDim; ++d ) {
+        new_size_by_dim[d] = this->size_by_dim_[k + d];
+        new_stride_by_dim[d] = this->stride_by_dim_[k + d];
+        new_capacity *= new_size_by_dim[d];
+      }
+
+      using ReturnT = FixedStrideByDim<_T, NewDim, _SizeAndCapacityT>;
+      return ReturnT( new_data, new_size_by_dim, new_capacity, new_stride_by_dim );
+    }
+  }
+
+  template <typename... Idxs>
+  TRIBOL_HOST_DEVICE auto operator()( Idxs... indices ) const
+  {
+    constexpr int k = sizeof...( Idxs );
+    static_assert( k <= _Dim, "Too many indices provided to operator()." );
+
+    if constexpr ( k == _Dim ) {
+      SizeT idx_array[] = { static_cast<SizeT>( indices )... };
+      SizeT offset = 0;
+      for ( int d = 0; d < _Dim; ++d ) {
+        assert( idx_array[d] < size_by_dim_[d] );
+        offset += idx_array[d] * stride_by_dim_[d];
+      }
+      return ( this->data_[offset] );
+    } else {
+      static_assert( k > 0, "Cannot call with zero indices." );
+      constexpr int NewDim = _Dim - k;
+
+      SizeT idx_array[] = { static_cast<SizeT>( indices )... };
+      SizeT offset = 0;
+      for ( int d = 0; d < k; ++d ) {
+        assert( idx_array[d] < size_by_dim_[d] );
+        offset += idx_array[d] * stride_by_dim_[d];
+      }
+      ConstPointerT_ new_data = this->data_ + offset;
+
+      axom::StackArray<SizeT, NewDim> new_size_by_dim;
+      axom::StackArray<SizeT, NewDim> new_stride_by_dim;
+      SizeT new_capacity = 1;
+
+      for ( int d = 0; d < NewDim; ++d ) {
+        new_size_by_dim[d] = this->size_by_dim_[k + d];
+        new_stride_by_dim[d] = this->stride_by_dim_[k + d];
+        new_capacity *= new_size_by_dim[d];
+      }
+
+      using ReturnT = FixedStrideByDim<const _T, NewDim, _SizeAndCapacityT>;
+      return ReturnT( new_data, new_size_by_dim, new_capacity, new_stride_by_dim );
+    }
+  }
+
+ private:
+  TRIBOL_HOST_DEVICE void verifyMemoryIsContiguous() const
+  {
+    if constexpr ( _Dim > 1 ) {
+      axom::StackArray<int, _Dim> sorted_indices;
+      for ( int i = 0; i < _Dim; ++i ) {
+        sorted_indices[i] = i;
+      }
+
+      // Sort indices based on corresponding strides (and sizes for tie-breaking)
+      auto comp = [this]( int idx1, int idx2 ) {
+        if ( stride_by_dim_[idx1] < stride_by_dim_[idx2] ) {
+          return true;
+        }
+        if ( stride_by_dim_[idx1] > stride_by_dim_[idx2] ) {
+          return false;
+        }
+        return size_by_dim_[idx1] < size_by_dim_[idx2];
+      };
+      tribol::algorithm::bubbleSort( sorted_indices, comp );
+
+      // Check for contiguous layout using sorted dimensions
+      for ( int i = 0; i < _Dim - 1; ++i ) {
+        assert( stride_by_dim_[sorted_indices[i + 1]] ==
+                stride_by_dim_[sorted_indices[i]] * size_by_dim_[sorted_indices[i]] );
       }
     }
-    return result;
-  }
-
-  TRIBOL_HOST_DEVICE void verifyMemoryIsContiguous() const {}
-
-  template <int _DimToCheck>
-  void checkContinuityByDim( SizeT expected_size ) const
-  {
   }
 
   axom::StackArray<SizeT, _Dim> size_by_dim_;
   axom::StackArray<SizeT, _Dim> stride_by_dim_;
-};
-
-template <typename _T, size_t _N, class _AccessorT = ContiguousMemory<_T, SizeEqCapacity<FixedCapacity<_N>>>>
-class MultiDimStride {
- public:
-  using ValueT_ = _T;
-  using AccessorT_ = _AccessorT;
-
- private:
-  AccessorT_ accessor_[_N];
 };
 
 /**
