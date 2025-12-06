@@ -3,8 +3,6 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include "tribol/common/Arrays.hpp"
-
 #include "tribol/utils/TestUtils.hpp"
 #include "tribol/utils/Math.hpp"
 
@@ -1388,7 +1386,7 @@ void TestMesh::setupMfemMesh( bool fix_orientation )
   // add mortar elements and vertices. Not sure if order of adding
   // elements matters, but adding vertices should probably correspond
   // to the global contiguous id system
-  BoundedArray<int> mConn( this->numNodesPerElement );
+  Array1D<int> mConn( this->numNodesPerElement );
   for ( int iel = 0; iel < this->numMortarElements; ++iel ) {
     for ( int idx = 0; idx < this->numNodesPerElement; ++idx ) {
       int index = iel * this->numNodesPerElement + idx;
@@ -1396,11 +1394,11 @@ void TestMesh::setupMfemMesh( bool fix_orientation )
     }
     switch ( this->cellType ) {
       case LINEAR_TRIANGLE: {
-        this->mfem_mesh->AddTet( mConn.memory() );
+        this->mfem_mesh->AddTet( mConn.data() );
         break;
       }
       case LINEAR_QUAD: {
-        this->mfem_mesh->AddHex( mConn.memory() );
+        this->mfem_mesh->AddHex( mConn.data() );
         break;
       }
       default: {
@@ -1421,7 +1419,7 @@ void TestMesh::setupMfemMesh( bool fix_orientation )
   // add nonmortar elements and vertices. Not sure if order of adding
   // elements matters, but adding vertices should probably correspond
   // to the global contiguous id system
-  BoundedArray<int> sConn( this->numNodesPerElement );
+  Array1D<int> sConn( this->numNodesPerElement );
   for ( int iel = 0; iel < this->numNonmortarElements; ++iel ) {
     for ( int idx = 0; idx < this->numNodesPerElement; ++idx ) {
       int index = iel * this->numNodesPerElement + idx;

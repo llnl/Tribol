@@ -11,15 +11,12 @@ endif()
 ## list of headers
 set(tribol_headers
 
-    common/Arrays.hpp
     common/ArrayTypes.hpp
     common/BasicTypes.hpp
     common/Enzyme.hpp
     common/ExecModel.hpp
     common/LoopExec.hpp
-    common/Memory.hpp
     common/Parameters.hpp
-    #common/Vector.hpp
 
     geom/CompGeom.hpp
     geom/ElementNormal.hpp

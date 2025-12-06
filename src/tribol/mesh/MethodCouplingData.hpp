@@ -8,7 +8,6 @@
 
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/Parameters.hpp"
-#include "tribol/common/Arrays.hpp"
 #include "tribol/mesh/MeshData.hpp"
 
 // Axom includes
@@ -95,7 +94,7 @@ struct SurfaceContactElem {
 
   int numActiveGaps;  ///< Number of local face-pair active gaps
 
-  BoundedArray2D<BoundedArray2D<RealT>> blockJ;  ///< Block element Jacobian contributions
+  Array2D<Array2D<RealT>> blockJ;  ///< Block element Jacobian contributions
 
   /// routine to allocate space to store mortar weights
   void allocateMortarWts();
@@ -222,7 +221,7 @@ class MethodData {
    * \param [in] blockJ 2D array of element Jacobian contributions (each array
    * entry corresponds to a block of the Jacobian matrix)
    */
-  void storeElemBlockJ( ArrayT<int>&& blockJElemIds, const BoundedArray2D<BoundedArray2D<RealT>>& blockJ );
+  void storeElemBlockJ( ArrayT<int>&& blockJElemIds, const Array2D<Array2D<RealT>>& blockJ );
 
   /*!
    * \brief Returns the number of blocks in the Jacobian matrix

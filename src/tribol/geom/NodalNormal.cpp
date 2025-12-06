@@ -5,7 +5,6 @@
 
 #include "NodalNormal.hpp"
 
-#include "tribol/common/Arrays.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/utils/Math.hpp"
 
@@ -130,9 +129,9 @@ void EdgeAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
       }
     }
     if ( jacobian_data != nullptr ) {
-      BoundedArray2D<BoundedArray2D<RealT>> blockJ( 1, 1 );
-      blockJ( 0, 0 ) = BoundedArray2D<RealT>( num_nodes_per_elem * 3, num_nodes_per_elem * 3 );
-      ElementEdgeAvgNodalNormalJacobian( x, xref, n, blockJ( 0, 0 ).memory(), num_nodes_per_elem );
+      Array2D<Array2D<RealT>> blockJ( 1, 1 );
+      blockJ( 0, 0 ) = Array2D<RealT>( num_nodes_per_elem * 3, num_nodes_per_elem * 3 );
+      ElementEdgeAvgNodalNormalJacobian( x, xref, n, blockJ( 0, 0 ).data(), num_nodes_per_elem );
       jacobian_data->storeElemBlockJ( { e }, blockJ );
     } else {
       ElementEdgeAvgNodalNormal( x, xref, n, num_nodes_per_elem );

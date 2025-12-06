@@ -11,9 +11,12 @@
 
 // Tribol includes
 #include "tribol/common/BasicTypes.hpp"
-#include "tribol/common/Arrays.hpp"
+#include "tribol/common/ArrayTypes.hpp"
 
 namespace tribol {
+
+// Dynamic extent constant
+inline constexpr std::size_t dynamic_extent = static_cast<std::size_t>(-1);
 
 /**
  * @brief Generic N-dimensional vector container backed by a memory-backed Array.
@@ -26,17 +29,14 @@ namespace tribol {
  * @tparam _MemoryT The underlying memory/container type used to store elements. Defaults to an
  *                  `AllocatedMemory` with `SizeEqCapacity<RuntimeCapacity>` policy.
  */
-template <typename _T, typename _MemoryT = AllocatedMemory<_T, Allocator<_T>, SizeEqCapacity<RuntimeCapacity>>>
-class Vector : public ArrayBase<_MemoryT> {
+template <typename _T, SizeT _Dim = dynamic_extent, typename _ContainerT = Array1D<_T>>
+class Vector : public _ContainerT {
  public:
   /// @brief Base class type (Array facade over the memory type).
-  using BaseClassT_ = ArrayBase<_MemoryT>;
-
-  /// @brief Underlying memory type used by this vector.
-  using typename BaseClassT_::MemoryT_;
+  using BaseClassT_ = _ContainerT;
 
   /// @brief Value type stored in the vector.
-  using typename BaseClassT_::ValueT_;
+  using ValueT_ = _T;
 
   static_assert( std::is_same<_T, ValueT_>::value, "Vector must be used with the same type as the memory type" );
 
@@ -46,7 +46,11 @@ class Vector : public ArrayBase<_MemoryT> {
    * @param dim Logical dimension (number of elements).
    * @param capacity Allocated capacity for the underlying storage.
    */
-  TRIBOL_HOST_DEVICE Vector( SizeT dim, SizeT capacity ) : BaseClassT_( MemoryT_( dim, capacity ) ) {}
+  TRIBOL_HOST_DEVICE Vector( SizeT dim, SizeT capacity ) : BaseClassT_( dim, capacity ) {
+    if constexpr ( _Dim != dynamic_extent) {
+      assert( dim == _Dim );
+    }
+  }
 
   /**
    * @brief Construct a vector with dimension equal to capacity.
@@ -57,20 +61,24 @@ class Vector : public ArrayBase<_MemoryT> {
   TRIBOL_HOST_DEVICE Vector( SizeT dim ) : Vector( dim, dim ) {}
 
   /**
-   * @brief Construct a vector from an existing memory object (move).
+   * @brief Construct a vector from an existing array object (move).
    *
-   * @param memory Memory object to take ownership of (moved).
+   * @param array Memory object to take ownership of (moved).
    */
-  TRIBOL_HOST_DEVICE Vector( MemoryT_&& memory ) : BaseClassT_( std::move( memory ) ) {}
+  TRIBOL_HOST_DEVICE Vector( BaseClassT_&& array ) : BaseClassT_( std::move( array ) ) {
+    if constexpr ( _Dim != dynamic_extent) {
+      assert( dim() == _Dim );
+    }
+  }
 
-  /// @brief Access the underlying memory object.
-  using BaseClassT_::memory;
+  /// @brief Access the underlying memory.
+  using BaseClassT_::data;
 
   /// @brief Return the logical dimension (number of elements) of the vector.
-  TRIBOL_HOST_DEVICE constexpr SizeT dim() const { return memory().size(); }
+  TRIBOL_HOST_DEVICE constexpr SizeT dim() const { return data().size(); }
 
-  /// @brief Bring base-class element accessor (at) into scope.
-  using BaseClassT_::at;
+  /// @brief Bring base-class element accessor (operator[]) into scope.
+  using BaseClassT_::operator[];
 
   /**
    * @brief Element-wise addition.
@@ -80,13 +88,18 @@ class Vector : public ArrayBase<_MemoryT> {
    * @param other Vector to add to this vector (must have same dimension).
    * @return A new Vector containing the element-wise sum.
    */
-  TRIBOL_HOST_DEVICE Vector operator+( const Vector& other ) const
+  template <typename _T2, SizeT _Dim2, typename _ContainerT2>
+  TRIBOL_HOST_DEVICE Vector operator+( const Vector<_T2, _Dim2, _ContainerT2>& other ) const
   {
-    assert( other.dim() == dim() );
+    if constexpr ( _Dim == dynamic_extent || _Dim2 == dynamic_extent ) {
+      assert( other.dim() == dim() );
+    } else {
+      static_assert( _Dim == _Dim2 );
+    }
 
     Vector result( dim() );
     for ( SizeT i{ 0 }; i < dim(); ++i ) {
-      result.at( i ) = at( i ) + other.at( i );
+      result[i] = (*this)[i] + other[i];
     }
     return result;
   }
@@ -98,13 +111,18 @@ class Vector : public ArrayBase<_MemoryT> {
    * @param other Vector to subtract from this vector (must have same dimension).
    * @return A new Vector containing the element-wise difference.
    */
-  TRIBOL_HOST_DEVICE Vector operator-( const Vector& other ) const
+  template <typename _T2, SizeT _Dim2, typename _ContainerT2>
+  TRIBOL_HOST_DEVICE Vector operator-( const Vector<_T2, _Dim2, _ContainerT2>& other ) const
   {
-    assert( other.dim() == dim() );
+    if constexpr ( _Dim == dynamic_extent || _Dim2 == dynamic_extent ) {
+      assert( other.dim() == dim() );
+    } else {
+      static_assert( _Dim == _Dim2 );
+    }
 
     Vector result( dim() );
     for ( SizeT i{ 0 }; i < dim(); ++i ) {
-      result.at( i ) = at( i ) - other.at( i );
+      result[i] = (*this)[i] - other[i];
     }
     return result;
   }
@@ -120,7 +138,7 @@ class Vector : public ArrayBase<_MemoryT> {
   {
     Vector result( dim() );
     for ( SizeT i{ 0 }; i < dim(); ++i ) {
-      result.at( i ) = at( i ) * scalar;
+      result[i] = (*this)[i] * scalar;
     }
     return result;
   }
@@ -138,7 +156,7 @@ class Vector : public ArrayBase<_MemoryT> {
 
     Vector result( dim() );
     for ( SizeT i{ 0 }; i < dim(); ++i ) {
-      result.at( i ) = at( i ) / scalar;
+      result[i] = (*this)[i] / scalar;
     }
     return result;
   }
@@ -148,12 +166,17 @@ class Vector : public ArrayBase<_MemoryT> {
    * @param other Vector to add into this vector (must have same dimension).
    * @return Reference to this vector after modification.
    */
-  TRIBOL_HOST_DEVICE Vector& operator+=( const Vector& other )
+  template <typename _T2, SizeT _Dim2, typename _ContainerT2>
+  TRIBOL_HOST_DEVICE Vector& operator+=( const Vector<_T2, _Dim2, _ContainerT2>& other )
   {
-    assert( other.dim() == dim() );
+    if constexpr ( _Dim == dynamic_extent || _Dim2 == dynamic_extent ) {
+      assert( other.dim() == dim() );
+    } else {
+      static_assert( _Dim == _Dim2 );
+    }
 
     for ( SizeT i{ 0 }; i < dim(); ++i ) {
-      at( i ) += other.at( i );
+      (*this)[i] += other[i];
     }
     return *this;
   }
@@ -163,12 +186,17 @@ class Vector : public ArrayBase<_MemoryT> {
    * @param other Vector to subtract from this vector (must have same dimension).
    * @return Reference to this vector after modification.
    */
-  TRIBOL_HOST_DEVICE Vector& operator-=( const Vector& other )
+  template <typename _T2, SizeT _Dim2, typename _ContainerT2>
+  TRIBOL_HOST_DEVICE Vector& operator-=( const Vector<_T2, _Dim2, _ContainerT2>& other )
   {
-    assert( other.dim() == dim() );
+    if constexpr ( _Dim == dynamic_extent || _Dim2 == dynamic_extent ) {
+      assert( other.dim() == dim() );
+    } else {
+      static_assert( _Dim == _Dim2 );
+    }
 
     for ( SizeT i{ 0 }; i < dim(); ++i ) {
-      at( i ) -= other.at( i );
+      (*this)[i] -= other[i];
     }
     return *this;
   }
@@ -181,7 +209,7 @@ class Vector : public ArrayBase<_MemoryT> {
   TRIBOL_HOST_DEVICE Vector& operator*=( const ValueT_& scalar )
   {
     for ( SizeT i{ 0 }; i < dim(); ++i ) {
-      at( i ) *= scalar;
+      (*this)[i] *= scalar;
     }
     return *this;
   }
@@ -196,7 +224,7 @@ class Vector : public ArrayBase<_MemoryT> {
     assert( scalar != ValueT_( 0 ) );
 
     for ( SizeT i{ 0 }; i < dim(); ++i ) {
-      at( i ) /= scalar;
+      (*this)[i] /= scalar;
     }
     return *this;
   }
@@ -208,13 +236,21 @@ class Vector : public ArrayBase<_MemoryT> {
    * @param other Vector to compare with.
    * @return true if the vectors are equal, false otherwise.
    */
-  TRIBOL_HOST_DEVICE bool operator==( const Vector& other ) const
+  template <typename _T2, SizeT _Dim2, typename _ContainerT2>
+  TRIBOL_HOST_DEVICE bool operator==( const Vector<_T2, _Dim2, _ContainerT2>& other ) const
   {
-    if ( dim() != other.dim() ) {
-      return false;
+    if constexpr ( _Dim == dynamic_extent || _Dim2 == dynamic_extent ) {
+      if ( dim() != other.dim() ) {
+        return false;
+      }
+    } else {
+      if constexpr ( _Dim != _Dim2 ) {
+        return false;
+      }
     }
+
     for ( SizeT i{ 0 }; i < dim(); ++i ) {
-      if ( at( i ) != other.at( i ) ) {
+      if ( (*this)[i] != other[i] ) {
         return false;
       }
     }
@@ -226,23 +262,27 @@ class Vector : public ArrayBase<_MemoryT> {
    * @param other Vector to compare with.
    * @return true if the vectors are not equal, false otherwise.
    */
-  TRIBOL_HOST_DEVICE bool operator!=( const Vector& other ) const { return !operator==( other ); }
+  template <typename _T2, SizeT _Dim2, typename _ContainerT2>
+  TRIBOL_HOST_DEVICE bool operator!=( const Vector<_T2, _Dim2, _ContainerT2>& other ) const { return !operator==( other ); }
 
   /**
    * @brief Dot product with another vector.
    *
-   * @tparam _Memory2T Memory type of the other vector.
    * @param other Vector to compute the dot product with. Must have same dimension.
    * @return The scalar dot product result.
    */
-  template <typename _Memory2T>
-  TRIBOL_HOST_DEVICE ValueT_ dot( const Vector<ValueT_, _Memory2T>& other )
+  template <typename _T2, SizeT _Dim2, typename _ContainerT2>
+  TRIBOL_HOST_DEVICE ValueT_ dot( const Vector<_T2, _Dim2, _ContainerT2>& other )
   {
-    assert( other.dim() == dim() );
+    if constexpr ( _Dim == dynamic_extent || _Dim2 == dynamic_extent ) {
+      assert( other.dim() == dim() );
+    } else {
+      static_assert( _Dim == _Dim2 );
+    }
 
     ValueT_ result = ValueT_();
     for ( SizeT i{ 0 }; i < dim(); ++i ) {
-      result += at( i ) * other.at( i );
+      result += (*this)[i] * other[i];
     }
     return result;
   }
@@ -250,20 +290,28 @@ class Vector : public ArrayBase<_MemoryT> {
    * @brief Cross product (3D only).
    *
    * Computes the cross product of two 3-dimensional vectors and returns the resulting 3-vector.
-   * @tparam _Memory2T Memory type of the other vector.
    * @param other Right-hand-side vector for the cross product (3D).
    * @return A 3-dimensional Vector representing the cross product.
    */
-  template <typename _Memory2T>
-  TRIBOL_HOST_DEVICE Vector cross( const Vector<ValueT_, _Memory2T>& other ) const
+  template <typename _T2, SizeT _Dim2, typename _ContainerT2>
+  TRIBOL_HOST_DEVICE Vector cross( const Vector<_T2, _Dim2, _ContainerT2>& other ) const
   {
-    assert( dim() == 3 );
-    assert( other.dim() == 3 );
+    if constexpr ( _Dim == dynamic_extent ) {
+        assert( dim() == 3 );
+    } else {
+        static_assert( _Dim == 3 );
+    }
 
-    Vector<ValueT_, MemoryT_> result( 3 );
-    result.at( 0 ) = at( 1 ) * other.at( 2 ) - at( 2 ) * other.at( 1 );
-    result.at( 1 ) = at( 2 ) * other.at( 0 ) - at( 0 ) * other.at( 2 );
-    result.at( 2 ) = at( 0 ) * other.at( 1 ) - at( 1 ) * other.at( 0 );
+    if constexpr ( _Dim2 == dynamic_extent ) {
+        assert( other.dim() == 3 );
+    } else {
+        static_assert( _Dim2 == 3 );
+    }
+
+    Vector result( 3 );
+    result[0] = (*this)[1] * other[2] - (*this)[2] * other[1];
+    result[1] = (*this)[2] * other[0] - (*this)[0] * other[2];
+    result[2] = (*this)[0] * other[1] - (*this)[1] * other[0];
     return result;
   }
   /**
@@ -274,18 +322,32 @@ class Vector : public ArrayBase<_MemoryT> {
    * @param other2 Second vector in the triple product (3D).
    * @return Scalar value of the triple product.
    */
-  template <typename _MemoryT2, typename _MemoryT3>
-  TRIBOL_HOST_DEVICE ValueT_ tripleProduct( const Vector<ValueT_, _MemoryT2>& other1,
-                                            const Vector<ValueT_, _MemoryT3>& other2 ) const
+  template <typename _T2, SizeT _Dim2, typename _ContainerT2, typename _T3, SizeT _Dim3, typename _ContainerT3>
+  TRIBOL_HOST_DEVICE ValueT_ tripleProduct( const Vector<_T2, _Dim2, _ContainerT2>& other1,
+                                            const Vector<_T3, _Dim3, _ContainerT3>& other2 ) const
   {
-    assert( dim() == 3 );
-    assert( other1.dim() == 3 );
-    assert( other2.dim() == 3 );
+    if constexpr ( _Dim == dynamic_extent ) {
+        assert( dim() == 3 );
+    } else {
+        static_assert( _Dim == 3 );
+    }
+
+    if constexpr ( _Dim2 == dynamic_extent ) {
+        assert( other1.dim() == 3 );
+    } else {
+        static_assert( _Dim2 == 3 );
+    }
+
+    if constexpr ( _Dim3 == dynamic_extent ) {
+        assert( other2.dim() == 3 );
+    } else {
+        static_assert( _Dim3 == 3 );
+    }
 
     ValueT_ result = ValueT_();
-    result += at( 0 ) * ( other1.at( 1 ) * other2.at( 2 ) - other1.at( 2 ) * other2.at( 1 ) );
-    result += at( 1 ) * ( other1.at( 2 ) * other2.at( 0 ) - other1.at( 0 ) * other2.at( 2 ) );
-    result += at( 2 ) * ( other1.at( 0 ) * other2.at( 1 ) - other1.at( 1 ) * other2.at( 0 ) );
+    result += (*this)[0] * ( other1[1] * other2[2] - other1[2] * other2[1] );
+    result += (*this)[1] * ( other1[2] * other2[0] - other1[0] * other2[2] );
+    result += (*this)[2] * ( other1[0] * other2[1] - other1[1] * other2[0] );
     return result;
   }
 
@@ -300,7 +362,7 @@ class Vector : public ArrayBase<_MemoryT> {
   {
     ValueT_ result = ValueT_();
     for ( SizeT i{ 0 }; i < dim(); ++i ) {
-      result += at( i ) * at( i );
+      result += (*this)[i] * (*this)[i];
     }
     return result;
   }
@@ -323,7 +385,7 @@ class Vector : public ArrayBase<_MemoryT> {
     ValueT_ norm_value = norm();
     if ( norm_value > ValueT_( 0 ) ) {
       for ( SizeT i{ 0 }; i < dim(); ++i ) {
-        at( i ) /= norm_value;
+        (*this)[i] /= norm_value;
       }
     }
   }
@@ -332,51 +394,63 @@ class Vector : public ArrayBase<_MemoryT> {
 /**
  * @brief Fixed-size vector with compile-time dimension.
  *
- * `FixedVector` is a convenience alias for a `Vector` whose storage is a `StackMemory` of size `_N`.
+ * `FixedVector` is a convenience alias for a `Vector` whose storage is a `StackArrayT` of size `_N`.
  * @tparam _T Element value type.
  * @tparam _N Compile-time fixed dimension.
  */
 template <typename _T, SizeT _N>
-class FixedVector : public Vector<_T, StackMemory<_T, _N>> {
+class FixedVector : public Vector<_T, _N, StackArrayT<_T, _N>> {
+ public:
+  using BaseClassT_ = Vector<_T, _N, StackArrayT<_T, _N>>;
+  using ContainerT_ = StackArrayT<_T, _N>;
+
+  /**
+   * @brief Default constructor.
+   */
+  TRIBOL_HOST_DEVICE FixedVector() : BaseClassT_( ContainerT_() ) {}
+
+  /**
+   * @brief Construct from existing container.
+   */
+  TRIBOL_HOST_DEVICE FixedVector( ContainerT_&& array ) : BaseClassT_( std::move( array ) ) {}
 };
 
 /**
- * @brief Array-of-vectors stored as a 2D bounded array.
+ * @brief Array-of-vectors stored as a 2D array.
  *
  * `VectorArray` represents a collection of vectors all with the same dimension. It is implemented as a
- * `BoundedArray2D` where each row corresponds to a vector.
+ * `Array2D` where each row corresponds to a vector.
  *
  * @tparam _T Element value type for each vector component.
- * @tparam _MemoryT Underlying memory type for the 2D array.
+ * @tparam _ContainerT Underlying memory type for the 2D array.
  */
-template <typename _T, typename _MemoryT = AllocatedMemory<_T, Allocator<_T>, SizeLECapacity<RuntimeCapacity>>>
-class VectorArray : public BoundedArray2D<_T, _MemoryT> {
+template <typename _T, SizeT _Dim = dynamic_extent, typename _ContainerT = Array2D<_T>>
+class VectorArray : public _ContainerT {
  public:
-  using BaseClassT_ = BoundedArray2D<_T, _MemoryT>;
-  using typename BaseClassT_::MemoryT_;
-  using typename BaseClassT_::ValueT_;
+  using BaseClassT_ = _ContainerT;
+  using ValueT_ = _T;
 
-  static_assert( std::is_same<_T, ValueT_>::value, "VectorArray must be used with the same type as the memory type" );
+  static_assert( std::is_same<_T, typename BaseClassT_::value_type>::value, "VectorArray must be used with the same type as the memory type" );
 
   /**
    * @brief Construct a VectorArray with explicit dimension and counts.
    *
    * @param dim Dimension of each vector (number of columns).
    * @param num_vectors Number of vectors (rows).
-   * @param capacity Capacity (in rows) for the underlying storage.
    */
-  TRIBOL_HOST_DEVICE VectorArray( SizeT dim, SizeT num_vectors, SizeT capacity )
-      : BaseClassT_( num_vectors, dim, capacity )
+  TRIBOL_HOST_DEVICE VectorArray( SizeT dim, SizeT num_vectors )
+      : BaseClassT_( num_vectors, dim )
   {
   }
 
-  /**
-   * @brief Construct a VectorArray where capacity == num_vectors.
-   */
-  TRIBOL_HOST_DEVICE VectorArray( SizeT dim, SizeT num_vectors ) : VectorArray( dim, num_vectors, num_vectors ) {}
-
-  /// @brief Bring rowView from base class into scope.
-  using BaseClassT_::rowView;
+  TRIBOL_HOST_DEVICE void setVector( SizeT i, const Vector<_T, _Dim, Array1D<_T>>& vector)
+  {
+    assert( i < this->shape()[0] );
+    const SizeT num_cols = this->shape()[1];
+    for ( SizeT j{ 0 }; j < num_cols; ++j ) {
+      (*this)(i, j) = vector[j];
+    }
+  }
 
   /**
    * @brief Return the i-th row as a Vector view (non-owning).
@@ -384,10 +458,23 @@ class VectorArray : public BoundedArray2D<_T, _MemoryT> {
    * The returned Vector references the underlying memory; no copy is performed.
    * @param i Row index to retrieve.
    */
-  TRIBOL_HOST_DEVICE Vector<_T, Memory<typename _MemoryT::AccessorT_>> getVector( SizeT i ) const
+  TRIBOL_HOST_DEVICE Vector<_T, _Dim, Array1DView<_T>> getVector( SizeT i ) const
   {
-    assert( i < this->height() );
-    return Vector<_T, Memory<typename _MemoryT::AccessorT_>>( rowView( i ).memory() );
+    assert( i < this->shape()[0] );
+    const SizeT num_cols = this->shape()[1];
+    return Vector<_T, _Dim, Array1DView<_T>>( Array1DView<_T>( &(*this)(i, 0), num_cols ) );
+  }
+
+  /**
+   * @brief Return the i-th row as a Vector view (non-owning) - Mutable.
+   *
+   * @param i Row index to retrieve.
+   */
+  TRIBOL_HOST_DEVICE Vector<_T, _Dim, Array1DView<_T>> getVector( SizeT i )
+  {
+    assert( i < this->shape()[0] );
+    const SizeT num_cols = this->shape()[1];
+    return Vector<_T, _Dim, Array1DView<_T>>( Array1DView<_T>( &(*this)(i, 0), num_cols ) );
   }
 };
 

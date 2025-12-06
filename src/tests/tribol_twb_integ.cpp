@@ -37,17 +37,17 @@ class TWBIntegTest : public ::testing::Test {
 
   bool integrate( RealT const tol )
   {
-    tribol::VectorArray<RealT> xyz( this->dim, 0, this->numNodes );
+    tribol::VectorArray<RealT> xyz( this->dim, this->numNodes );
 
     // generate stacked coordinate array
     for ( int j = 0; j < this->numNodes; ++j ) {
-      xyz.push_back( { x[j], y[j], z[j] } );
+      xyz.setVector( j, tribol::Vector<RealT>({ x[j], y[j], z[j] }) );
     }  // end loop over nodes
 
     // instantiate SurfaceContactElem struct. Note, this object is instantiated
     // using face 1 as face 2, but these faces are not used in this test so this
     // is ok.
-    tribol::SurfaceContactElem elem( this->dim, xyz.memory(), xyz.memory(), xyz.memory(), this->numNodes,
+    tribol::SurfaceContactElem elem( this->dim, xyz.data(), xyz.data(), xyz.data(), this->numNodes,
                                      this->numNodes, nullptr, nullptr, 0, 0 );
 
     // instantiate integration object
@@ -63,7 +63,7 @@ class TWBIntegTest : public ::testing::Test {
 
     for ( int a = 0; a < this->numNodes; ++a ) {
       for ( int ip = 0; ip < integ.numIPs; ++ip ) {
-        tribol::WachspressBasis( xyz.memory(), integ.xy[dim * ip], integ.xy[dim * ip + 1], integ.xy[dim * ip + 2],
+        tribol::WachspressBasis( xyz.data(), integ.xy[dim * ip], integ.xy[dim * ip + 1], integ.xy[dim * ip + 2],
                                  this->numNodes, a, phi );
 
         areaTest += integ.wts[ip] * phi;

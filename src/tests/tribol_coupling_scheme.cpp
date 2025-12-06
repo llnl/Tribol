@@ -7,7 +7,6 @@
 #include "tribol/interface/tribol.hpp"
 #include "tribol/utils/TestUtils.hpp"
 #include "tribol/utils/Math.hpp"
-#include "tribol/common/Arrays.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 
@@ -198,8 +197,8 @@ TEST_F( CouplingSchemeTest, single_mortar_2D )
 
   // register dummy nodal fields so error doesn't return from field
   // registration
-  tribol::BoundedArray<RealT> gaps( this->m_lengthNodalData );
-  tribol::BoundedArray<RealT> pressures( this->m_lengthNodalData );
+  tribol::Array1D<RealT> gaps( this->m_lengthNodalData );
+  tribol::Array1D<RealT> pressures( this->m_lengthNodalData );
 
   tribol::registerMortarGaps( 1, &gaps[0] );
   tribol::registerMortarPressures( 1, &pressures[0] );
@@ -227,8 +226,8 @@ TEST_F( CouplingSchemeTest, aligned_mortar_2D )
 
   // register dummy nodal fields so error doesn't return from field
   // registration
-  tribol::BoundedArray<RealT> gaps( this->m_lengthNodalData );
-  tribol::BoundedArray<RealT> pressures( this->m_lengthNodalData );
+  tribol::Array1D<RealT> gaps( this->m_lengthNodalData );
+  tribol::Array1D<RealT> pressures( this->m_lengthNodalData );
 
   tribol::registerMortarGaps( 1, &gaps[0] );
   tribol::registerMortarPressures( 1, &pressures[0] );
@@ -277,8 +276,8 @@ TEST_F( CouplingSchemeTest, single_mortar_3D_penalty )
 
   // register dummy nodal fields so error doesn't return from field
   // registration
-  tribol::BoundedArray<RealT> gaps( this->m_lengthNodalData );
-  tribol::BoundedArray<RealT> pressures( this->m_lengthNodalData );
+  tribol::Array1D<RealT> gaps( this->m_lengthNodalData );
+  tribol::Array1D<RealT> pressures( this->m_lengthNodalData );
 
   tribol::registerMortarGaps( 1, &gaps[0] );
   tribol::registerMortarPressures( 1, &pressures[0] );
@@ -345,8 +344,8 @@ TEST_F( CouplingSchemeTest, mortar_tied )
 
   // register dummy nodal fields so error doesn't return from field
   // registration
-  tribol::BoundedArray<RealT> gaps( this->m_lengthNodalData );
-  tribol::BoundedArray<RealT> pressures( this->m_lengthNodalData );
+  tribol::Array1D<RealT> gaps( this->m_lengthNodalData );
+  tribol::Array1D<RealT> pressures( this->m_lengthNodalData );
 
   tribol::registerMortarGaps( 1, &gaps[0] );
   tribol::registerMortarPressures( 1, &pressures[0] );
@@ -374,8 +373,8 @@ TEST_F( CouplingSchemeTest, mortar_coulomb )
 
   // register dummy nodal fields so error doesn't return from field
   // registration
-  tribol::BoundedArray<RealT> gaps( this->m_lengthNodalData );
-  tribol::BoundedArray<RealT> pressures( this->m_lengthNodalData );
+  tribol::Array1D<RealT> gaps( this->m_lengthNodalData );
+  tribol::Array1D<RealT> pressures( this->m_lengthNodalData );
 
   tribol::registerMortarGaps( 1, &gaps[0] );
   tribol::registerMortarPressures( 1, &pressures[0] );
@@ -805,8 +804,8 @@ TEST_F( CouplingSchemeTest, single_mortar_null_response_pointers )
   registerDummy3DMesh( 0, numCells, setResponse );
   registerDummy3DMesh( 1, numCells, setResponse );
 
-  tribol::BoundedArray<RealT> gaps( this->m_lengthNodalData );
-  tribol::BoundedArray<RealT> pressures( this->m_lengthNodalData );
+  tribol::Array1D<RealT> gaps( this->m_lengthNodalData );
+  tribol::Array1D<RealT> pressures( this->m_lengthNodalData );
 
   tribol::registerMortarGaps( 1, &gaps[0] );
   tribol::registerMortarPressures( 1, &pressures[0] );

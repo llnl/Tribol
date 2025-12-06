@@ -8,7 +8,6 @@
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/geom/ElementNormal.hpp"
 #include "tribol/geom/NodalNormal.hpp"
-#include "tribol/common/Arrays.hpp"
 #include "tribol/utils/Math.hpp"
 
 #ifdef TRIBOL_USE_UMPIRE
@@ -73,23 +72,22 @@ TEST_F( NodalNormalTest, two_quad_inverted_v )
   int numFaces = 2;
   int numNodesPerFace = 4;
   int cellType = (int)( tribol::LINEAR_QUAD );
-  tribol::BoundedArray2D<int> conn( numFaces, numNodesPerFace );
+  tribol::Array2D<int> conn( numFaces, numNodesPerFace );
 
   // setup connectivity for the two faces ensuring nodes
   // are ordered consistent with an outward unit normal
   for ( int i = 0; i < numNodesPerFace; ++i ) {
-    conn[i] = i;
+    conn(0, i) = i;
   }
-
-  conn[4] = 0;
-  conn[5] = 5;
-  conn[6] = 4;
-  conn[7] = 1;
+  conn(1, 0) = 0;
+  conn(1, 1) = 5;
+  conn(1, 2) = 4;
+  conn(1, 3) = 1;
 
   // setup the nodal coordinates of the mesh
-  tribol::BoundedArray<RealT> x( numNodesPerFace + 2 );
-  tribol::BoundedArray<RealT> y( numNodesPerFace + 2 );
-  tribol::BoundedArray<RealT> z( numNodesPerFace + 2 );
+  tribol::ArrayT<RealT> x( numNodesPerFace + 2 );
+  tribol::ArrayT<RealT> y( numNodesPerFace + 2 );
+  tribol::ArrayT<RealT> z( numNodesPerFace + 2 );
 
   x[0] = 0.;
   x[1] = 0.;
@@ -113,7 +111,7 @@ TEST_F( NodalNormalTest, two_quad_inverted_v )
   z[5] = -1.;
 
   // compute the nodal normals
-  computeNodalNormals( cellType, &x[0], &y[0], &z[0], &conn[0], numFaces, 6 );
+  computeNodalNormals( cellType, x.data(), y.data(), z.data(), conn.data(), numFaces, 6 );
 
   tribol::MeshManager& meshManager = tribol::MeshManager::getInstance();
   auto mesh = meshManager.at( 0 ).getView();

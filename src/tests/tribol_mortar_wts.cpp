@@ -71,21 +71,21 @@ class MortarWeightTest : public ::testing::Test {
       SLIC_ERROR( "checkMortarWts: number of nodes per face not equal to 4." );
     }
 
-    tribol::VectorArray<RealT> xyz1( this->dim, 0, this->numNodesPerFace );
-    tribol::VectorArray<RealT> xyz2( this->dim, 0, this->numNodesPerFace );
-    tribol::VectorArray<RealT> xyzOverlap( this->dim, 0, this->numOverlapNodes );
+    tribol::VectorArray<RealT> xyz1( this->dim, this->numNodesPerFace );
+    tribol::VectorArray<RealT> xyz2( this->dim, this->numNodesPerFace );
+    tribol::VectorArray<RealT> xyzOverlap( this->dim, this->numOverlapNodes );
 
     // generate stacked coordinate array
     for ( int j = 0; j < this->numNodesPerFace; ++j ) {
-      xyz1.push_back( { x1[j], y1[j], z1[j] } );
-      xyz2.push_back( { x2[j], y2[j], z2[j] } );
-      xyzOverlap.push_back( { xOverlap[j], yOverlap[j], zOverlap[j] } );
+      xyz1.setVector( j, tribol::Vector<RealT>({ x1[j], y1[j], z1[j] }) );
+      xyz2.setVector( j, tribol::Vector<RealT>({ x2[j], y2[j], z2[j] }) );
+      xyzOverlap.setVector( j, tribol::Vector<RealT>({ xOverlap[j], yOverlap[j], zOverlap[j] }) );
     }  // end loop over nodes
 
     // instantiate SurfaceContactElem struct. Note, this object is instantiated
     // using face 1, face 2, and the set overlap polygon. Note, the mesh ids are set
     // equal to 0, and the face ids are 0 and 1, respectively.
-    tribol::SurfaceContactElem elem( this->dim, xyz1.memory(), xyz2.memory(), xyzOverlap.memory(),
+    tribol::SurfaceContactElem elem( this->dim, xyz1.data(), xyz2.data(), xyzOverlap.data(),
                                      this->numNodesPerFace, this->numOverlapNodes, 0, 0, 0, 1 );
 
     // compute the mortar weights to be stored on

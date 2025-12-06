@@ -41,7 +41,7 @@ class IsoIntegTest : public ::testing::Test {
 
   bool integrate( RealT const tol )
   {
-    tribol::VectorArray<RealT> xyz( this->dim, 0, this->numNodes );
+    tribol::VectorArray<RealT> xyz( this->dim, this->numNodes );
 
     RealT* x = this->x;
     RealT* y = this->y;
@@ -49,13 +49,13 @@ class IsoIntegTest : public ::testing::Test {
 
     // generate stacked coordinate array
     for ( int j = 0; j < this->numNodes; ++j ) {
-      xyz.push_back( { x[j], y[j], z[j] } );
+      xyz.setVector(j, tribol::Vector<RealT>({ x[j], y[j], z[j] }) );
     }  // end loop over nodes
 
     // instantiate SurfaceContactElem struct. Note, this object is instantiated
     // using face 1 as face 2, but these faces are not used in this test so this
     // is ok.
-    tribol::SurfaceContactElem elem( this->dim, xyz.memory(), xyz.memory(), xyz.memory(), this->numNodes,
+    tribol::SurfaceContactElem elem( this->dim, xyz.data(), xyz.data(), xyz.data(), this->numNodes,
                                      this->numNodes, nullptr, nullptr, 0, 0 );
 
     // instantiate integration object

@@ -12,7 +12,7 @@
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/geom/NodalNormal.hpp"
 #include "tribol/geom/Vector.hpp"
-#include "tribol/common/Arrays.hpp"
+#include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/integ/Integration.hpp"
 #include "tribol/integ/FE.hpp"
@@ -41,12 +41,12 @@ void ComputeMortarWeights( SurfaceContactElem& elem )
   //   TWBPolyInt( elem, integ, 3 );
 
   // get individual arrays of coordinates for each face
-  BoundedArray<RealT> x1( elem.numFaceVert );
-  BoundedArray<RealT> y1( elem.numFaceVert );
-  BoundedArray<RealT> z1( elem.numFaceVert );
-  BoundedArray<RealT> x2( elem.numFaceVert );
-  BoundedArray<RealT> y2( elem.numFaceVert );
-  BoundedArray<RealT> z2( elem.numFaceVert );
+  Array1D<RealT> x1( elem.numFaceVert );
+  Array1D<RealT> y1( elem.numFaceVert );
+  Array1D<RealT> z1( elem.numFaceVert );
+  Array1D<RealT> x2( elem.numFaceVert );
+  Array1D<RealT> y2( elem.numFaceVert );
+  Array1D<RealT> z2( elem.numFaceVert );
 
   for ( int i = 0; i < elem.numFaceVert; ++i ) {
     x1[i] = elem.faceCoords1[elem.dim * i];
@@ -83,14 +83,14 @@ void ComputeMortarWeights( SurfaceContactElem& elem )
         RealT xp[3] = { integ.xy[elem.dim * ip], integ.xy[elem.dim * ip + 1], integ.xy[elem.dim * ip + 2] };
         RealT xi[2] = { 0., 0. };
 
-        InvIso( xp, x1.memory(), y1.memory(), z1.memory(), elem.numFaceVert, xi );
+        InvIso( xp, x1.data(), y1.data(), z1.data(), elem.numFaceVert, xi );
         if ( elem.numFaceVert == 4 ) {
           LinIsoQuadShapeFunc( xi[0], xi[1], a, phiMortarA );
         } else if ( elem.numFaceVert == 3 ) {
           LinIsoTriShapeFunc( xi[0], xi[1], a, phiMortarA );
         }
 
-        InvIso( xp, x2.memory(), y2.memory(), z2.memory(), elem.numFaceVert, xi );
+        InvIso( xp, x2.data(), y2.data(), z2.data(), elem.numFaceVert, xi );
         if ( elem.numFaceVert == 4 ) {
           LinIsoQuadShapeFunc( xi[0], xi[1], a, phiNonmortarA );
           LinIsoQuadShapeFunc( xi[0], xi[1], b, phiNonmortarB );
@@ -164,8 +164,8 @@ void ComputeNodalGap<SINGLE_MORTAR>( SurfaceContactElem& elem )
       RealT nab_1 = elem.getNonmortarMortarWt( a, b );     // nonmortar-mortar weight
       RealT nab_2 = elem.getNonmortarNonmortarWt( a, b );  // nonmortar-nonmortar weight
 
-      g1 += dotProd( &nrml_a[0], &elem.faceCoords1[elem.dim * b], elem.dim ) * nab_1;
-      g2 += dotProd( &nrml_a[0], &elem.faceCoords2[elem.dim * b], elem.dim ) * nab_2;
+      g1 += dotProd( nrml_a.data(), &elem.faceCoords1[elem.dim * b], elem.dim ) * nab_1;
+      g2 += dotProd( nrml_a.data(), &elem.faceCoords2[elem.dim * b], elem.dim ) * nab_2;
     }
 
     // store local gap
@@ -227,19 +227,19 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
 
     // populate the current configuration nodal coordinates for the
     // two faces; stored on the contact plane object
-    plane.getFace1Coords( &mortarX[0], numNodesPerFace );
-    plane.getFace2Coords( &nonmortarX[0], numNodesPerFace );
+    plane.getFace1Coords( mortarX.data(), numNodesPerFace );
+    plane.getFace2Coords( nonmortarX.data(), numNodesPerFace );
 
     // get face coordinates projected onto contact plane
-    plane.getFace1ProjectedCoords( &mortarX_bar[0], numNodesPerFace );
-    plane.getFace2ProjectedCoords( &nonmortarX_bar[0], numNodesPerFace );
+    plane.getFace1ProjectedCoords( mortarX_bar.data(), numNodesPerFace );
+    plane.getFace2ProjectedCoords( nonmortarX_bar.data(), numNodesPerFace );
 
     // get overlap vertices
-    plane.getOverlapVertices( overlapX.memory() );
+    plane.getOverlapVertices( overlapX.data() );
 
     // instantiate contact surface element for purposes of computing
     // mortar weights. Note, this uses projected face coords
-    SurfaceContactElem elem( dim, &mortarX_bar[0], &nonmortarX_bar[0], &overlapX[0], numNodesPerFace,
+    SurfaceContactElem elem( dim, mortarX_bar.data(), nonmortarX_bar.data(), overlapX.data(), numNodesPerFace,
                              plane.m_numPolyVert, &mortarMesh, &nonmortarMesh, index1, index2 );
 
     // compute the mortar weights to be stored on the surface
@@ -249,8 +249,8 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
 
     // compute mortar gaps. Note, we have to now use current configuration
     // nodal coordinates on the contact element
-    elem.faceCoords1 = &mortarX[0];
-    elem.faceCoords2 = &nonmortarX[0];
+    elem.faceCoords1 = mortarX.data();
+    elem.faceCoords2 = nonmortarX.data();
 
     ComputeNodalGap<SINGLE_MORTAR>( elem );
 
@@ -353,15 +353,15 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
     IndexT index2 = pair.m_element_id2;
 
     // get face coordinates projected onto contact plane
-    plane.getFace1ProjectedCoords( &mortarX_bar[0], numNodesPerFace );
-    plane.getFace2ProjectedCoords( &nonmortarX_bar[0], numNodesPerFace );
+    plane.getFace1ProjectedCoords( mortarX_bar.data(), numNodesPerFace );
+    plane.getFace2ProjectedCoords( nonmortarX_bar.data(), numNodesPerFace );
 
     // get overlap coords
-    plane.getOverlapVertices( &overlapX[0] );
+    plane.getOverlapVertices( overlapX.data() );
 
     // instantiate contact surface element for purposes of computing
     // mortar weights. Note, this uses projected face coords
-    SurfaceContactElem elem( dim, &mortarX_bar[0], &nonmortarX_bar[0], &overlapX[0], numNodesPerFace,
+    SurfaceContactElem elem( dim, mortarX_bar.data(), nonmortarX_bar.data(), overlapX.data(), numNodesPerFace,
                              plane.m_numPolyVert, &mortarMesh, &nonmortarMesh, index1, index2 );
 
     //////////////////////////////////
@@ -488,22 +488,22 @@ void ComputeResidualJacobian<SINGLE_MORTAR, DUAL>( SurfaceContactElem& elem )
       int elem_xdof = elem.getJacobianIndex( SurfaceContactElem::JrpBlock, a, b );
       int dim_offset = elem.getJacobianDimOffset( SurfaceContactElem::JrpBlock );
       elem.blockJ( static_cast<IndexT>( BlockSpace::MORTAR ),
-                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )[elem_xdof] += nrml_b[0] * n_mortar_b;
+                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) ).data()[elem_xdof] += nrml_b[0] * n_mortar_b;
       elem.blockJ( static_cast<IndexT>( BlockSpace::MORTAR ),
-                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )[elem_xdof + dim_offset] +=
+                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) ).data()[elem_xdof + dim_offset] +=
           nrml_b[1] * n_mortar_b;
       elem.blockJ( static_cast<IndexT>( BlockSpace::MORTAR ),
-                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )[elem_xdof + 2 * dim_offset] +=
+                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) ).data()[elem_xdof + 2 * dim_offset] +=
           nrml_b[2] * n_mortar_b;
 
       // Fill block (1, 2)
       elem.blockJ( static_cast<IndexT>( BlockSpace::NONMORTAR ),
-                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )[elem_xdof] -= nrml_b[0] * n_nonmortar_b;
+                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) ).data()[elem_xdof] -= nrml_b[0] * n_nonmortar_b;
       elem.blockJ( static_cast<IndexT>( BlockSpace::NONMORTAR ),
-                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )[elem_xdof + dim_offset] -=
+                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) ).data()[elem_xdof + dim_offset] -=
           nrml_b[1] * n_nonmortar_b;
       elem.blockJ( static_cast<IndexT>( BlockSpace::NONMORTAR ),
-                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )[elem_xdof + 2 * dim_offset] -=
+                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) ).data()[elem_xdof + 2 * dim_offset] -=
           nrml_b[2] * n_nonmortar_b;
 
     }  // end loop over b nodes
@@ -553,19 +553,19 @@ void ComputeConstraintJacobian<SINGLE_MORTAR, PRIMAL>( SurfaceContactElem& elem 
       int dim_offset = elem.getJacobianDimOffset( SurfaceContactElem::JguBlock );
       int elem_xdof = elem.getJacobianIndex( SurfaceContactElem::JguBlock, a, b );
       elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                   static_cast<IndexT>( BlockSpace::MORTAR ) )[elem_xdof] += nrml_a[0] * n_mortar_a;
+                   static_cast<IndexT>( BlockSpace::MORTAR ) ).data()[elem_xdof] += nrml_a[0] * n_mortar_a;
       elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                   static_cast<IndexT>( BlockSpace::MORTAR ) )[elem_xdof + dim_offset] += nrml_a[1] * n_mortar_a;
+                   static_cast<IndexT>( BlockSpace::MORTAR ) ).data()[elem_xdof + dim_offset] += nrml_a[1] * n_mortar_a;
       elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                   static_cast<IndexT>( BlockSpace::MORTAR ) )[elem_xdof + 2 * dim_offset] += nrml_a[2] * n_mortar_a;
+                   static_cast<IndexT>( BlockSpace::MORTAR ) ).data()[elem_xdof + 2 * dim_offset] += nrml_a[2] * n_mortar_a;
 
       // Fill block (2, 1)
       elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                   static_cast<IndexT>( BlockSpace::NONMORTAR ) )[elem_xdof] -= nrml_a[0] * n_nonmortar_a;
+                   static_cast<IndexT>( BlockSpace::NONMORTAR ) ).data()[elem_xdof] -= nrml_a[0] * n_nonmortar_a;
       elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                   static_cast<IndexT>( BlockSpace::NONMORTAR ) )[elem_xdof + dim_offset] -= nrml_a[1] * n_nonmortar_a;
+                   static_cast<IndexT>( BlockSpace::NONMORTAR ) ).data()[elem_xdof + dim_offset] -= nrml_a[1] * n_nonmortar_a;
       elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                   static_cast<IndexT>( BlockSpace::NONMORTAR ) )[elem_xdof + 2 * dim_offset] -=
+                   static_cast<IndexT>( BlockSpace::NONMORTAR ) ).data()[elem_xdof + 2 * dim_offset] -=
           nrml_a[2] * n_nonmortar_a;
 
     }  // end loop over b nodes
@@ -666,32 +666,32 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
     }
     if ( lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
          lm_opts.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ) {
-      BoundedArray2D<BoundedArray2D<RealT>> blockJ_n( 3, 3 );
+      Array2D<Array2D<RealT>> blockJ_n( 3, 3 );
       int n_disp[2] = { size1 * 3, size2 * 3 };
       for ( int i{ 0 }; i < 2; ++i ) {
-        blockJ_n( i, 0 ) = BoundedArray2D<RealT>( n_disp[0], n_disp[0] );
+        blockJ_n( i, 0 ) = Array2D<RealT>( n_disp[0], n_disp[0] );
       }
       int n_multipliers = size1;
-      blockJ_n( 2, 0 ) = BoundedArray2D<RealT>( n_multipliers, n_disp[0] );
+      blockJ_n( 2, 0 ) = Array2D<RealT>( n_multipliers, n_disp[0] );
 
-      BoundedArray2D<BoundedArray2D<RealT>> blockJ( 3, 3 );
+      Array2D<Array2D<RealT>> blockJ( 3, 3 );
       for ( int i{}; i < 2; ++i ) {
         for ( int j{}; j < 2; ++j ) {
-          blockJ( i, j ) = BoundedArray2D<RealT>( n_disp[i], n_disp[j] );
+          blockJ( i, j ) = Array2D<RealT>( n_disp[i], n_disp[j] );
         }
       }
       for ( int i{}; i < 2; ++i ) {
-        blockJ( i, 2 ) = BoundedArray2D<RealT>( n_disp[i], n_multipliers );
+        blockJ( i, 2 ) = Array2D<RealT>( n_disp[i], n_multipliers );
         // transpose
-        blockJ( 2, i ) = BoundedArray2D<RealT>( n_multipliers, n_disp[i] );
+        blockJ( 2, i ) = Array2D<RealT>( n_multipliers, n_disp[i] );
       }
-      blockJ( 2, 2 ) = BoundedArray2D<RealT>( n_multipliers, n_multipliers );
+      blockJ( 2, 2 ) = Array2D<RealT>( n_multipliers, n_multipliers );
 
       // This function also computes the residual contributions
-      ComputeMortarJacobianEnzyme( x1, n1, p1, f1, blockJ( 0, 0 ).memory(), blockJ( 0, 1 ).memory(),
-                                   blockJ_n( 0, 0 ).memory(), blockJ( 0, 2 ).memory(), g1, blockJ( 2, 0 ).memory(),
-                                   blockJ( 2, 1 ).memory(), blockJ_n( 2, 0 ).memory(), size1, x2, f2, blockJ( 1, 0 ).memory(),
-                                   blockJ( 1, 1 ).memory(), blockJ_n( 1, 0 ).memory(), blockJ( 1, 2 ).memory(), size2 );
+      ComputeMortarJacobianEnzyme( x1, n1, p1, f1, blockJ( 0, 0 ).data(), blockJ( 0, 1 ).data(),
+                                   blockJ_n( 0, 0 ).data(), blockJ( 0, 2 ).data(), g1, blockJ( 2, 0 ).data(),
+                                   blockJ( 2, 1 ).data(), blockJ_n( 2, 0 ).data(), size1, x2, f2, blockJ( 1, 0 ).data(),
+                                   blockJ( 1, 1 ).data(), blockJ_n( 1, 0 ).data(), blockJ( 1, 2 ).data(), size2 );
 
       if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE ) {
         cs->getMethodData()->storeElemBlockJ( { elem1, elem2, elem1 }, blockJ );
@@ -1125,15 +1125,15 @@ int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs )
     IndexT index2 = pair.m_element_id2;
 
     // get face coordinates projected onto contact plane
-    plane.getFace1ProjectedCoords( &mortarX_bar[0], numNodesPerFace );
-    plane.getFace2ProjectedCoords( &nonmortarX_bar[0], numNodesPerFace );
+    plane.getFace1ProjectedCoords( mortarX_bar.data(), numNodesPerFace );
+    plane.getFace2ProjectedCoords( nonmortarX_bar.data(), numNodesPerFace );
 
     // construct array of polygon overlap vertex coordinates
-    plane.getOverlapVertices( &overlapX[0] );
+    plane.getOverlapVertices( overlapX.data() );
 
     // instantiate contact surface element for purposes of computing
     // mortar weights. Note, this uses projected face coords
-    SurfaceContactElem elem( dim, &mortarX_bar[0], &nonmortarX_bar[0], &overlapX[0], numNodesPerFace,
+    SurfaceContactElem elem( dim, mortarX_bar.data(), nonmortarX_bar.data(), overlapX.data(), numNodesPerFace,
                              plane.m_numPolyVert, &mortarMesh, &nonmortarMesh, index1, index2 );
 
     // compute the mortar weights to be stored on the surface
