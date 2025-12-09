@@ -315,13 +315,13 @@ void TestMesh::setupContactMeshHex( int numElemsX1, int numElemsY1, int numElems
   RealT h2 = ( zMax2 - zMin2 ) / numElemsZ2;
   RealT mesh_gap = zMin2 - zMax1;
 
-  SLIC_ERROR_IF( mesh_gap < -h1, "TestMesh::setupContactMeshHex(): "
-                                     << "Initial mesh configuration has a gap greater than the "
-                                     << "element thickness in block 1." );
+  SLIC_ERROR_IF( mesh_gap < -h1,
+                 "TestMesh::setupContactMeshHex(): " << "Initial mesh configuration has a gap greater than the "
+                                                     << "element thickness in block 1." );
 
-  SLIC_ERROR_IF( mesh_gap < -h2, "TestMesh::setupContactMeshHex(): "
-                                     << "Initial mesh configuration has a gap greater than the "
-                                     << "element thickness in block 2." );
+  SLIC_ERROR_IF( mesh_gap < -h2,
+                 "TestMesh::setupContactMeshHex(): " << "Initial mesh configuration has a gap greater than the "
+                                                     << "element thickness in block 2." );
 
   numElementsBlock1 = numElemsX1 * numElemsY1 * numElemsZ1;
   numNodesBlock1 = ( numElemsX1 + 1 ) * ( numElemsY1 + 1 ) * ( numElemsZ1 + 1 );
@@ -429,8 +429,8 @@ void TestMesh::setupContactMeshHex( int numElemsX1, int numElemsY1, int numElems
           this->z[idx] = xyz[2];
           ++ctr;
         }  // end loop over x nodes
-      }    // end loop over y nodes
-    }      // end loop over z nodes
+      }  // end loop over y nodes
+    }  // end loop over z nodes
 
     // populate element connectivity arrays
     ctr = 0;
@@ -453,8 +453,8 @@ void TestMesh::setupContactMeshHex( int numElemsX1, int numElemsY1, int numElems
           ++ctr;
 
         }  // end loop over x elements
-      }    // end loop over y elements
-    }      // end loop over z elements
+      }  // end loop over y elements
+    }  // end loop over z elements
 
     // populate contact surface connectivity
     // Note: element connectivity is not necessarily consistent with outward unit normal at
@@ -622,8 +622,8 @@ void TestMesh::setupContactMeshTet( int numElemsX1, int numElemsY1, int numElems
           ++ctr;  // incrememnt for next local tet
 
         }  // end loop over x elements
-      }    // end loop over y elements
-    }      // end loop over z elements
+      }  // end loop over y elements
+    }  // end loop over z elements
 
     // populate contact surface connectivity
     // Note: element connectivity is not necessarily consistent with outward unit normal at
@@ -681,7 +681,7 @@ void TestMesh::setupContactMeshTet( int numElemsX1, int numElemsY1, int numElems
           ++ctr;  // increment counter to next tet face
         }
       }  // end loop over x-direction elements
-    }    // end loop over y-direction elements
+    }  // end loop over y-direction elements
 
   }  // end for loop over blocks
 
@@ -833,12 +833,11 @@ void TestMesh::allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY,
 
     registered_velocities2 = true;
   } else {
-    SLIC_ERROR( "TestMesh::allocateAndSetVelocities(): "
-                << "not a valid mesh id." );
+    SLIC_ERROR( "TestMesh::allocateAndSetVelocities(): " << "not a valid mesh id." );
   }
 
-  SLIC_DEBUG_IF( deleteVels, "TestMesh::allocateAndSetVelocities(): "
-                                 << "a velocity array has been deleted and reallocated." );
+  SLIC_DEBUG_IF( deleteVels,
+                 "TestMesh::allocateAndSetVelocities(): " << "a velocity array has been deleted and reallocated." );
 
 }  // end TestMesh::allocateAndSetVelocities()
 
@@ -869,8 +868,7 @@ void TestMesh::allocateAndSetBulkModulus( IndexT mesh_id, RealT val )
 
     allocRealArray( &this->nonmortar_bulk_mod, this->numNonmortarFaces, val );
   } else {
-    SLIC_ERROR( "TestMesh::allocateAndSetBulkModulus(): "
-                << "not a valid mesh id." );
+    SLIC_ERROR( "TestMesh::allocateAndSetBulkModulus(): " << "not a valid mesh id." );
   }
 
   SLIC_DEBUG_IF( deleteData, "TestMesh::allocateAndSetBulkModulus(): "
@@ -898,8 +896,7 @@ void TestMesh::allocateAndSetElementThickness( IndexT mesh_id, RealT t )
 
     allocRealArray( &this->nonmortar_element_thickness, this->numNonmortarFaces, t );
   } else {
-    SLIC_ERROR( "TestMesh::allocateAndSetElementThickness(): "
-                << "not a valid mesh id." );
+    SLIC_ERROR( "TestMesh::allocateAndSetElementThickness(): " << "not a valid mesh id." );
   }
 
   SLIC_DEBUG_IF( deleteData, "TestMesh::allocateAndSetElementThickness(): "
@@ -1027,16 +1024,16 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
       setKinematicConstantPenalty( this->nonmortarMeshId, params.const_penalty );
     } else {
       if ( this->mortar_bulk_mod == nullptr ) {
-        SLIC_DEBUG_ROOT( "TestMesh::tribolSetupAndUpdate(): "
-                         << "mortar_bulk_mod not set; registering default value." );
+        SLIC_DEBUG_ROOT(
+            "TestMesh::tribolSetupAndUpdate(): " << "mortar_bulk_mod not set; registering default value." );
         this->mortar_bulk_mod = new RealT[this->numMortarFaces];
         for ( int i = 0; i < this->numMortarFaces; ++i ) {
           this->mortar_bulk_mod[i] = params.const_penalty;  // non-physical for testing
         }
       }
       if ( this->mortar_element_thickness == nullptr ) {
-        SLIC_DEBUG_ROOT( "TestMesh::tribolSetupAndUpdate(): "
-                         << "mortar_element_thickness not set; registering default value." );
+        SLIC_DEBUG_ROOT(
+            "TestMesh::tribolSetupAndUpdate(): " << "mortar_element_thickness not set; registering default value." );
         this->mortar_element_thickness = new RealT[this->numMortarFaces];
         for ( int i = 0; i < this->numMortarFaces; ++i ) {
           this->mortar_element_thickness[i] = 1.;  // non-physical for testing
@@ -1044,16 +1041,16 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
       }
 
       if ( this->nonmortar_bulk_mod == nullptr ) {
-        SLIC_DEBUG_ROOT( "TestMesh::tribolSetupAndUpdate(): "
-                         << "nonmortar_bulk_mod not set; registering default value." );
+        SLIC_DEBUG_ROOT(
+            "TestMesh::tribolSetupAndUpdate(): " << "nonmortar_bulk_mod not set; registering default value." );
         this->nonmortar_bulk_mod = new RealT[this->numNonmortarFaces];
         for ( int i = 0; i < this->numNonmortarFaces; ++i ) {
           this->nonmortar_bulk_mod[i] = params.const_penalty;  // non-physical for testing
         }
       }
       if ( this->nonmortar_element_thickness == nullptr ) {
-        SLIC_DEBUG_ROOT( "TestMesh::tribolSetupAndUpdate(): "
-                         << "nonmortar_element_thickness not set; registering default value." );
+        SLIC_DEBUG_ROOT(
+            "TestMesh::tribolSetupAndUpdate(): " << "nonmortar_element_thickness not set; registering default value." );
         this->nonmortar_element_thickness = new RealT[this->numNonmortarFaces];
         for ( int i = 0; i < this->numNonmortarFaces; ++i ) {
           this->nonmortar_element_thickness[i] = 1.;  // non-physical for testing
@@ -1346,8 +1343,8 @@ void TestMesh::setupPatchTestPressureDofs( IndexT mesh_id, int numElemsX, int nu
 //------------------------------------------------------------------------------
 void TestMesh::setupMfemMesh( bool fix_orientation )
 {
-  SLIC_ERROR_IF( !this->mesh_constructed, "TestMesh::setupMfemMesh(): "
-                                              << "test mesh must be constructed prior to calling this routine." );
+  SLIC_ERROR_IF( !this->mesh_constructed,
+                 "TestMesh::setupMfemMesh(): " << "test mesh must be constructed prior to calling this routine." );
 
   SLIC_ERROR_IF( this->dim != 3, "TestMesh::setupMfemMesh(): Mfem meshes of dimension, "
                                      << this->dim << ", are not supported at this time." );
@@ -1381,7 +1378,7 @@ void TestMesh::setupMfemMesh( bool fix_orientation )
         SLIC_ERROR( "Element type not supported for creating mfem mesh from test mesh." );
       }
     }  // end switch on surface element type
-  }    // end loop over mortar elements
+  }  // end loop over mortar elements
 
   for ( int i = 0; i < this->numMortarNodes; ++i ) {
     RealT vert[3] = { 0., 0., 0. };
@@ -1414,7 +1411,7 @@ void TestMesh::setupMfemMesh( bool fix_orientation )
         SLIC_ERROR( "Element type not supported for creating mfem mesh from test mesh." );
       }
     }  // end switch on surface element type
-  }    // end loop over nonmortar elements
+  }  // end loop over nonmortar elements
 
   for ( int i = 0; i < this->numNonmortarNodes; ++i ) {
     RealT vert[3] = { 0., 0., 0. };
@@ -1492,8 +1489,8 @@ void TestMesh::computeEquilibriumJacobian( mfem::SparseMatrix* const A, mfem::El
 void TestMesh::computeElementJacobianContributions( mfem::SparseMatrix* const A, mfem::ElasticityIntegrator* eInt,
                                                     mfem::FiniteElementSpace* fe_space, bool matrixDebug )
 {
-  SLIC_ERROR_IF( A == nullptr, "TestMesh::computeElementJacobianContributions(): "
-                                   << "input pointer to sparse matrix is null." );
+  SLIC_ERROR_IF( A == nullptr,
+                 "TestMesh::computeElementJacobianContributions(): " << "input pointer to sparse matrix is null." );
   SLIC_ERROR_IF( eInt == nullptr, "TestMesh::computeElementJacobianContributions(): "
                                       << "input pointer to elasticity integrator is null." );
   SLIC_ERROR_IF( fe_space == nullptr, "TestMesh::computeElementJacobianContributions(): "
@@ -1560,18 +1557,16 @@ void TestMesh::computeElementJacobianContributions( mfem::SparseMatrix* const A,
         }
 
       }  // end loop over column dofs
-    }    // end loop over row dofs
-  }      // end of loop over elements
+    }  // end loop over row dofs
+  }  // end of loop over elements
 }  // end TestMesh::computeElementJacobianContributions()
 
 //------------------------------------------------------------------------------
 void TestMesh::tribolMatrixToSystemMatrix( mfem::DenseMatrix* const ATribol, mfem::SparseMatrix* const ASystem )
 {
-  SLIC_ERROR_IF( ATribol == nullptr, "TestMesh::tribolMatrixToSystemMatrix(): "
-                                         << "ATribol pointer is null." );
+  SLIC_ERROR_IF( ATribol == nullptr, "TestMesh::tribolMatrixToSystemMatrix(): " << "ATribol pointer is null." );
 
-  SLIC_ERROR_IF( ATribol == nullptr, "TestMesh::tribolMatrixToSystemMatrix(): "
-                                         << "ASystem pointer is null." );
+  SLIC_ERROR_IF( ATribol == nullptr, "TestMesh::tribolMatrixToSystemMatrix(): " << "ASystem pointer is null." );
 
   int solveSize = this->dim * this->numTotalNodes + this->numNonmortarSurfaceNodes;
 
@@ -1642,10 +1637,8 @@ void TestMesh::getGapEvals( RealT* const v )
 //------------------------------------------------------------------------------
 void TestMesh::enforceDirichletBCs( mfem::SparseMatrix* const A, mfem::Vector* const b, bool contact )
 {
-  SLIC_ERROR_IF( A == nullptr, "TestMesh::enforceDirichletBCs(): "
-                                   << "input pointer to sparse matrix is null." );
-  SLIC_ERROR_IF( b == nullptr, "TestMesh::enforceDirichletBCs(): "
-                                   << "input pointer to rhs vector, b, is null." );
+  SLIC_ERROR_IF( A == nullptr, "TestMesh::enforceDirichletBCs(): " << "input pointer to sparse matrix is null." );
+  SLIC_ERROR_IF( b == nullptr, "TestMesh::enforceDirichletBCs(): " << "input pointer to rhs vector, b, is null." );
 
   int *dirBCX, *dirBCY, *dirBCZ, *presDofs;
   RealT *dirValX, *dirValY, *dirValZ;
@@ -1717,7 +1710,7 @@ void TestMesh::enforceDirichletBCs( mfem::SparseMatrix* const A, mfem::Vector* c
       }  // end if (!contact)
 
     }  // end loop over number of nodes
-  }    // end loop over mesh blocks
+  }  // end loop over mesh blocks
 }  // end TestMesh::enforceDirichletBCs()
 
 //------------------------------------------------------------------------------

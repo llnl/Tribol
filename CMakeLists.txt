@@ -76,7 +76,7 @@ if ("${PROJECT_SOURCE_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
         endif()
     endforeach()
 
-    set(BLT_REQUIRED_CLANGFORMAT_VERSION  "14" CACHE STRING "")
+    set(BLT_REQUIRED_CLANGFORMAT_VERSION  "19" CACHE STRING "")
 endif()
 
 include(${BLT_SOURCE_DIR}/SetupBLT.cmake)
