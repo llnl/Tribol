@@ -75,6 +75,8 @@ set(TPL_ROOT "/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/2025_11_20_17_51_08/
 
 set(AXOM_DIR "${TPL_ROOT}/axom-0.12.0.0-i37xne6rixnhgwrptvzzfbrgcmdryhoo" CACHE PATH "")
 
+set(MFEM_DIR "${TPL_ROOT}/mfem-4.9.0.2-rnhik76bnx6j6665kwbnzm355av6lpmp" CACHE PATH "")
+
 # ENZYME not built
 
 set(RAJA_DIR "${TPL_ROOT}/raja-2025.09.0-ume2ifdwlyie3yynwdvhyf2uxjykqpvc" CACHE PATH "")
