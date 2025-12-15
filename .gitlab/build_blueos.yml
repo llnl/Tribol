@@ -9,9 +9,9 @@
 # This is the share configuration of jobs for blueos
 .on_blueos:
   variables:
-    ALLOC_COMMAND: lalloc ${ALLOC_NODES} -W ${ALLOC_TIME} -q pci
+    SCHEDULER_PARAMETERS: -nnodes ${ALLOC_NODES} -W ${ALLOC_TIME} -q pci -G ${ALLOC_BANK}
   tags:
-    - shell
+    - batch
     - lassen
   rules:
     - if: '$CI_COMMIT_BRANCH =~ /_lnone/ || $ON_BLUEOS == "OFF"' #run except if ...
@@ -25,7 +25,7 @@
     # like we do in config-build
     - module load cmake/3.23.1
     # Workaround for multiple before_scripts - see https://gitlab.com/gitlab-org/gitlab-runner/-/issues/2301
-    # See also https://github.com/LLNL/serac/pull/417#discussion_r631194968
+    # See also https://github.com/LLNL/smith/pull/417#discussion_r631194968
     - if [[ $CUDA_BUILD == "ON" ]]; then module load cuda/11.8.0; fi
 
 ####
