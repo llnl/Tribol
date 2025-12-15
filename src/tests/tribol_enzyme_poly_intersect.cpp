@@ -21,7 +21,6 @@
 
 #include "mfem.hpp"
 
-#include "tribol/common/Enzyme.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 
 namespace tribol {
