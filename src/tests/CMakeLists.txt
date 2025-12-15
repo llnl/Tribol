@@ -256,3 +256,22 @@ if( TRIBOL_USE_ENZYME )
 
 endif()
 
+if( TRIBOL_USE_CALIPER )
+
+  set(caliper_smoke_depends caliper gtest)
+  blt_add_executable(
+    NAME caliper_smoke_test
+    SOURCES caliper_smoke.cpp
+    OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+    DEPENDS_ON ${caliper_smoke_depends} ${tribol_device_depends}
+    FOLDER tribol/tests )
+
+  blt_add_test( NAME caliper_smoke_test
+                COMMAND caliper_smoke_test )
+
+  if (ENABLE_CUDA)
+    set_target_properties(caliper_smoke_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
+  endif()
+
+endif()
+

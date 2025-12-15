@@ -68,13 +68,15 @@ int binary_search( const int* const array,  ///< [in] pointer to array of intege
 );
 
 /// routine to swap values between two arrays
-void swap_val( int* xp,  ///< [in] Pointer to value to be swapped
-               int* yp   ///< [out] Pointer to new value
+template <typename T>
+void swap_val( T* xp,  ///< [in] Pointer to value to be swapped
+               T* yp   ///< [out] Pointer to new value
 );
 
 /// bubble sort elements of one array in increasing order
-void bubble_sort( int* const array,  ///< [in] Input array of integers
-                  const int n        ///< [in] Size of array
+template <typename T>
+void bubble_sort( T* array,  ///< [in] Input array to be sorted
+                  int n      ///< [in] Size of array
 );
 
 /// compute the absolute value of the difference between two values
@@ -94,6 +96,10 @@ void allocIntArray( int** arr, int length, int init_val );
 /// allocate an array of integers and initialize with a pointer to data
 void allocIntArray( int** arr, const int length, const int* const data );
 
+/// allocate and initialize an array of type T
+template <typename T>
+void allocArray( T** arr, int length, T init_val );
+
 /// allocate and initialize an array of booleans
 void allocBoolArray( bool** arr, int length, bool init_val );
 
@@ -101,8 +107,7 @@ void allocBoolArray( bool** arr, int length, bool init_val );
 TRIBOL_HOST_DEVICE inline void initRealArray( RealT* arr, int length, RealT init_val )
 {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( arr == nullptr, "initRealArray(): "
-                                     << "input pointer to array is null." );
+  SLIC_ERROR_IF( arr == nullptr, "initRealArray(): " << "input pointer to array is null." );
 #endif
 
   for ( int i = 0; i < length; ++i ) {
@@ -114,20 +119,22 @@ TRIBOL_HOST_DEVICE inline void initRealArray( RealT* arr, int length, RealT init
 TRIBOL_HOST_DEVICE inline void initIntArray( int* arr, int length, int init_val )
 {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( arr == nullptr, "initIntArray(): "
-                                     << "input pointer to array is null." );
+  SLIC_ERROR_IF( arr == nullptr, "initIntArray(): " << "input pointer to array is null." );
 #endif
   for ( int i = 0; i < length; ++i ) {
     arr[i] = init_val;
   }
 }
 
+/// initialize a array of type T
+template <typename T>
+TRIBOL_HOST_DEVICE void initArray( T* arr, int length, T init_val );
+
 /// initialize a array of booleans
 TRIBOL_HOST_DEVICE inline void initBoolArray( bool* arr, int length, bool init_val )
 {
 #if defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_USE_ENZYME )
-  SLIC_ERROR_IF( arr == nullptr, "initBoolArray(): "
-                                     << "input pointer to array is null." );
+  SLIC_ERROR_IF( arr == nullptr, "initBoolArray(): " << "input pointer to array is null." );
 #endif
   for ( int i = 0; i < length; ++i ) {
     arr[i] = init_val;

@@ -37,9 +37,10 @@ if(NOT TRIBOL_FOUND)
   set(TRIBOL_USE_64BIT_INDEXTYPE  "@TRIBOL_USE_64BIT_INDEXTYPE@")
 
   # TPLs
-  set(TRIBOL_USE_UMPIRE "@TRIBOL_USE_UMPIRE@")
-  set(TRIBOL_USE_RAJA   "@TRIBOL_USE_RAJA@")
-  set(TRIBOL_USE_ENZYME "@TRIBOL_USE_ENZYME@")
+  set(TRIBOL_USE_UMPIRE  "@TRIBOL_USE_UMPIRE@")
+  set(TRIBOL_USE_RAJA    "@TRIBOL_USE_RAJA@")
+  set(TRIBOL_USE_ENZYME  "@TRIBOL_USE_ENZYME@")
+  set(TRIBOL_USE_CALIPER "@TRIBOL_USE_CALIPER@")
 
   # Configuration for Tribol compiler defines
   set(TRIBOL_DEBUG_DEFINE         "@TRIBOL_DEBUG_DEFINE@")
@@ -54,15 +55,6 @@ if(NOT TRIBOL_FOUND)
   set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB32_PATHS TRUE)
   set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS TRUE)
   set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIBX32_PATHS TRUE)
-
-  # Enzyme is optional
-  if(TRIBOL_USE_ENZYME)
-    set(TRIBOL_ENZYME_DIR  "@ENZYME_DIR@")
-    if(NOT ENZYME_DIR) 
-      set(ENZYME_DIR "${TRIBOL_ENZYME_DIR}")
-    endif()
-    find_dependency(Enzyme REQUIRED PATHS "${ENZYME_DIR}")
-  endif()
 
   # Umpire is optional
   if(TRIBOL_USE_UMPIRE)
@@ -80,6 +72,24 @@ if(NOT TRIBOL_FOUND)
       set(RAJA_DIR "${TRIBOL_RAJA_DIR}")
     endif()
     find_dependency(RAJA REQUIRED PATHS "${RAJA_DIR}")
+  endif()
+
+  # Enzyme is optional
+  if(TRIBOL_USE_ENZYME)
+    set(TRIBOL_ENZYME_DIR  "@ENZYME_DIR@")
+    if(NOT ENZYME_DIR) 
+      set(ENZYME_DIR "${TRIBOL_ENZYME_DIR}")
+    endif()
+    find_dependency(Enzyme REQUIRED PATHS "${ENZYME_DIR}")
+  endif()
+
+  # Caliper is optional
+  if(TRIBOL_USE_CALIPER)
+    set(TRIBOL_CALIPER_DIR  "@CALIPER_DIR@")
+    if(NOT CALIPER_DIR) 
+      set(CALIPER_DIR "${TRIBOL_CALIPER_DIR}")
+    endif()
+    find_dependency(caliper REQUIRED PATHS "${CALIPER_DIR}")
   endif()
 
   # axom is a required TPL. It is either external, or built-in

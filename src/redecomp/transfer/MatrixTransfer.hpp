@@ -152,10 +152,11 @@ class MatrixTransfer {
    * @param trial_redecomp Redecomp mesh of the trial space
    * @param test_elem_idx List of element IDs on the redecomp test space
    * @param trial_elem_idx List of element IDs on the redecomp trial space
-   * @return MPIArray<int>
+   * @return MPIArray<HYPRE_BigInt>
    */
-  MPIArray<int> buildRecvTrialElemDofs( const RedecompMesh& trial_redecomp, const axom::Array<int>& test_elem_idx,
-                                        const axom::Array<int>& trial_elem_idx ) const;
+  MPIArray<HYPRE_BigInt> buildRecvTrialElemDofs( const RedecompMesh& trial_redecomp,
+                                                 const axom::Array<int>& test_elem_idx,
+                                                 const axom::Array<int>& trial_elem_idx ) const;
 
   /**
    * @brief Returns MPIUtility pointer for the MatrixTransfer object

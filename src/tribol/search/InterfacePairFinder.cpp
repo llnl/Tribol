@@ -159,8 +159,8 @@ TRIBOL_HOST_DEVICE bool geomFilter( const CouplingScheme::Viewer& cs_view, Index
  */
 class SearchBase {
  public:
-  SearchBase(){};
-  virtual ~SearchBase(){};
+  SearchBase() {};
+  virtual ~SearchBase() {};
   /*!
    * Prepares the object for spatial searches
    */
@@ -205,7 +205,7 @@ class CartesianProduct : public SearchBase {
     IndexT mesh2NumElems = mesh2.numberOfElements();
 
     // Reserve memory for boolean array indicating which pairs are proximate
-    int maxNumPairs = mesh1NumElems * mesh2NumElems;
+    IndexT maxNumPairs = mesh1NumElems * mesh2NumElems;
     bool is_symm = m_coupling_scheme->getMeshId1() == m_coupling_scheme->getMeshId2();
     if ( is_symm ) {
       // account for symmetry: the max number of pairs when the meshes are the
@@ -236,7 +236,9 @@ class CartesianProduct : public SearchBase {
 #ifdef TRIBOL_USE_RAJA
                   RAJA::atomicAdd<RAJA::auto_atomic>( pCount, static_cast<int>( isProximate[i] ) );
 #else
-                  if (isProximate[i]) { ++(*pCount); }
+                  if ( isProximate[i] ) {
+                    ++( *pCount );
+                  }
 #endif
                 } );
 
@@ -390,9 +392,8 @@ class GridSearch : public SearchBase {
 
     // Output some info for debugging
     if ( true ) {
-      SLIC_DEBUG( "Implicit Grid info: "
-                  << "\n Mesh 1 bounding box (inflated): " << m_gridBBox << "\n Avg range: " << ranges
-                  << "\n Computed resolution: " << resolution );
+      SLIC_DEBUG( "Implicit Grid info: " << "\n Mesh 1 bounding box (inflated): " << m_gridBBox
+                                         << "\n Avg range: " << ranges << "\n Computed resolution: " << resolution );
 
       SpatialBoundingBox bbox2;
       for ( int i = 0; i < m_mesh2.numberOfElements(); ++i ) {

@@ -406,10 +406,10 @@ class TestMesh {
   int* presDofs2;    ///< Pointer to nonmortar node ids with a pressure BC
 
   // Pointers to connectivity data
-  int* faceConn1;  ///< Pointer to mortar face connectivity
-  int* faceConn2;  ///< Pointer to nonmortar face connectivity
-  int* elConn1;    ///< Pointer to mortar element connectivity
-  int* elConn2;    ///< Pointer to nonmortar element connectivity
+  IndexT* faceConn1;  ///< Pointer to mortar face connectivity
+  IndexT* faceConn2;  ///< Pointer to nonmortar face connectivity
+  IndexT* elConn1;    ///< Pointer to mortar element connectivity
+  IndexT* elConn2;    ///< Pointer to nonmortar element connectivity
 
   // TODO can we make these mfem grid functions?
   RealT* fx1;  ///< Mortar nodal forces, x-component
@@ -449,8 +449,8 @@ class TestMesh {
   RealT* getX() const { return x; }
   RealT* getY() const { return y; }
   RealT* getZ() const { return z; }
-  int* getMortarFaceConnectivity() const { return faceConn1; }
-  int* getNonmortarFaceConnectivity() const { return faceConn2; }
+  IndexT* getMortarFaceConnectivity() const { return faceConn1; }
+  IndexT* getNonmortarFaceConnectivity() const { return faceConn2; }
 
   int getNumTotalNodes() const { return numTotalNodes; }
 

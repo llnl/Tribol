@@ -8,6 +8,8 @@
 
 #include "axom/core.hpp"
 
+#include "shared/infrastructure/Profiling.hpp"
+
 #include "redecomp/utils/MPIUtility.hpp"
 
 namespace redecomp {
@@ -109,6 +111,7 @@ class MPIArray : public ArrayType {
   template <typename F>
   void SendRecvEach( F&& build_send )
   {
+    TRIBOL_MARK_FUNCTION;
     mpi_->SendRecvEach(
         type<axom::Array<T, DIM>>(), std::forward<F>( build_send ),
         [this]( axom::Array<T, DIM>&& recv_data, axom::IndexType src ) { at( src ) = std::move( recv_data ); } );

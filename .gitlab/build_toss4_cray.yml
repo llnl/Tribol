@@ -10,9 +10,11 @@
 .on_toss4_cray:
   variables:
     SCHEDULER_PARAMETERS: "--queue pci --exclusive --time-limit=${ALLOC_TIME}m --nodes=${ALLOC_NODES}"
+    COMPILER: "llvm-amdgpu@6.4.2"
+    HOST_CONFIG: "tuolumne-toss_4_x86_64_ib_cray-${COMPILER}_hip.cmake"
   tags:
     - batch
-    - tioga
+    - tuolumne
   rules:
     - if: '$CI_COMMIT_BRANCH =~ /_qnone/ || $ON_TOSS4_CRAY == "OFF"' #run except if ...
       when: never
@@ -27,11 +29,8 @@
 
 ####
 # Build jobs
-toss4_cray-rocmcc_6_2_1-src:
+toss4_cray-llvm_amdgpu_6_4_2-src:
   variables:
-    COMPILER: "rocmcc@6.2.1"
-    HOST_CONFIG: "tioga-toss_4_x86_64_ib_cray-${COMPILER}_hip.cmake"
     ALLOC_NODES: "1"
     ALLOC_TIME: "30"
   extends: .src_build_on_toss4_cray
- 

@@ -9,6 +9,8 @@
 
 #include "axom/slic.hpp"
 
+#include "shared/infrastructure/Profiling.hpp"
+
 #include "redecomp/RedecompMesh.hpp"
 #include "redecomp/common/TypeDefs.hpp"
 
@@ -20,6 +22,7 @@ TransferByNodes::TransferByNodes( const mfem::ParFiniteElementSpace& parent_fes,
       redecomp_fes_{ &redecomp_fes },
       redecomp_{ dynamic_cast<const RedecompMesh*>( redecomp_fes.GetMesh() ) }
 {
+  TRIBOL_MARK_FUNCTION;
   SLIC_ERROR_ROOT_IF( redecomp_ == nullptr,
                       "The Redecomp mesh pointer is null.  Does the redecomp_fes contain an "
                       "underlying Redecomp mesh?" );
@@ -41,6 +44,7 @@ TransferByNodes::TransferByNodes( const mfem::ParFiniteElementSpace& parent_fes,
 
 void TransferByNodes::TransferToSerial( const mfem::ParGridFunction& src, mfem::GridFunction& dst ) const
 {
+  TRIBOL_MARK_FUNCTION;
   // define transfer-specific data
   auto src_fes = src.ParFESpace();
   auto dst_fes = dst.FESpace();
@@ -89,6 +93,7 @@ void TransferByNodes::TransferToSerial( const mfem::ParGridFunction& src, mfem::
 
 void TransferByNodes::TransferToParallel( const mfem::GridFunction& src, mfem::ParGridFunction& dst ) const
 {
+  TRIBOL_MARK_FUNCTION;
   // define transfer specific data
   auto src_fes = src.FESpace();
   auto dst_fes = dst.ParFESpace();
@@ -146,6 +151,7 @@ void TransferByNodes::TransferToParallel( const mfem::GridFunction& src, mfem::P
 
 EntityIndexByRank TransferByNodes::P2RNodeList( bool use_global_ids )
 {
+  TRIBOL_MARK_FUNCTION;
   // p2r = parent to redecomp
   auto p2r_node_idx = MPIArray<int>( &redecomp_->getMPIUtility() );
   auto p2r_node_ghost = MPIArray<bool>( &redecomp_->getMPIUtility() );
@@ -187,6 +193,7 @@ EntityIndexByRank TransferByNodes::P2RNodeList( bool use_global_ids )
 
 EntityIndexByRank TransferByNodes::R2PNodeList()
 {
+  TRIBOL_MARK_FUNCTION;
   // r2p = redecomp to parent
   auto r2p_node_idx = MPIArray<int>( &redecomp_->getMPIUtility() );
   auto r2p_node_ghost = MPIArray<bool>( &redecomp_->getMPIUtility() );

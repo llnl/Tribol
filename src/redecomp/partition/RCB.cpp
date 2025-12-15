@@ -7,6 +7,8 @@
 
 #include "axom/slic.hpp"
 
+#include "shared/infrastructure/Profiling.hpp"
+
 #include "redecomp/common/TypeDefs.hpp"
 #include "redecomp/utils/ArrayUtility.hpp"
 #include "redecomp/utils/MPIUtility.hpp"
@@ -23,29 +25,37 @@ template <int NDIMS>
 std::vector<EntityIndexByRank> RCB<NDIMS>::generatePartitioning(
     int n_parts, const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh, double ghost_len ) const
 {
+  TRIBOL_MARK_FUNCTION;
   auto partitioning = std::vector<EntityIndexByRank>();
   partitioning.reserve( coords_by_mesh.size() );
 
   // Build a partitioning using recursive coordinate bisection
   auto problem_tree = BuildProblemTree( n_parts, coords_by_mesh, ghost_len );
 
+  // Ensures ranks with entities are evenly distributed throughout the partition. E.g. if 10 MPI ranks are allocated and
+  // n_parts == 2, then put entities on rank 0 and rank 5.
+  auto rank_jump_interval = this->getMPIUtility().NRanks() / n_parts;
+
   for ( const auto& coords : coords_by_mesh ) {
     // Build a list of coords that belong in each of the RCB entity parts
     auto ent_idx = MPIArray<int>( &this->getMPIUtility() );
     auto ent_ghost = MPIArray<bool>( &this->getMPIUtility() );
     for ( int i{ 0 }; i < n_parts; ++i ) {
-      ent_idx[i].reserve( coords.size() );
-      ent_ghost[i].reserve( coords.size() );
+      auto rank = i * rank_jump_interval;
+      ent_idx[rank].reserve( coords.size() );
+      ent_ghost[rank].reserve( coords.size() );
     }
     for ( int i{ 0 }; i < coords.size(); ++i ) {
       auto dest = DetermineDomain( problem_tree, coords[i] );
-      ent_idx[dest].push_back( i );
-      ent_ghost[dest].push_back( false );
+      auto rank = dest * rank_jump_interval;
+      ent_idx[rank].push_back( i );
+      ent_ghost[rank].push_back( false );
       const auto& neighbors = problem_tree( dest ).neighbor_bboxes_;
       for ( int j{ 0 }; j < neighbors.size(); ++j ) {
         if ( problem_tree( neighbors[j] ).ghost_bbox_.contains( coords[i] ) ) {
-          ent_idx[neighbors[j]].push_back( i );
-          ent_ghost[neighbors[j]].push_back( true );
+          auto neighbor_rank = neighbors[j] * rank_jump_interval;
+          ent_idx[neighbor_rank].push_back( i );
+          ent_ghost[neighbor_rank].push_back( true );
         }
       }
     }
@@ -65,6 +75,7 @@ BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts,
                                                         const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh,
                                                         double ghost_len ) const
 {
+  TRIBOL_MARK_FUNCTION;
   // subdivide the domain into n_parts pieces.  create a bisection tree of the
   // domain so we can focus on one piece at a time.
   auto problem_tree = BisecTree<RCBInfo<NDIMS>>( n_parts );

@@ -239,3 +239,8 @@ spack:
       - spec: gawk@5.2.1
         prefix: /usr
       buildable: false
+    elfutils:
+      externals:
+      - spec: elfutils@0.190
+        prefix: /usr
+      buildable: false
