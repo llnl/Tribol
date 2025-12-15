@@ -22,7 +22,7 @@ class CompGeomPair {
  protected:
   InterfacePair* m_pair;  ///< Face-pair struct for two constituent faces
 
-  TRIBOL_HOST_DEVICE CompGeomPair(){};
+  TRIBOL_HOST_DEVICE CompGeomPair() {};
 
   TRIBOL_HOST_DEVICE CompGeomPair( InterfacePair* pair, const Parameters& params, const int dim )
       : m_pair( pair ), m_dim( dim ), m_params( params )
@@ -45,7 +45,7 @@ class ContactPlanePair : public CompGeomPair {
    * @brief Constructs a ContactPlane object
    *
    */
-  TRIBOL_HOST_DEVICE ContactPlanePair(){};
+  TRIBOL_HOST_DEVICE ContactPlanePair() {};
 
   /**
    * @brief Overloaded constructor
@@ -328,7 +328,7 @@ class CommonPlanePair : public ContactPlanePair {
    * @brief Constructs a common plane contact plane
    *
    */
-  TRIBOL_HOST_DEVICE CommonPlanePair(){};
+  TRIBOL_HOST_DEVICE CommonPlanePair() {};
 
   /*!
    * @brief Overloaded constructor
@@ -523,7 +523,7 @@ class MortarPlanePair : public ContactPlanePair {
    * @brief Constructs a Mortar contact plane
    *
    */
-  TRIBOL_HOST_DEVICE MortarPlanePair(){};
+  TRIBOL_HOST_DEVICE MortarPlanePair() {};
 
   /*!
    * @brief Overloaded constructor
@@ -620,7 +620,7 @@ class AlignedMortarPlanePair : public ContactPlanePair {
    * @brief Constructs a Mortar-based contact plane
    *
    */
-  TRIBOL_HOST_DEVICE AlignedMortarPlanePair(){};
+  TRIBOL_HOST_DEVICE AlignedMortarPlanePair() {};
 
   /*!
    * @brief Overloaded constructor
@@ -770,7 +770,7 @@ class CompGeom {
    * @brief Constructs a comp geom object
    *
    */
-  CompGeom(){};
+  CompGeom() {};
 
   /*!
    * @brief Destructor
@@ -911,7 +911,7 @@ class CompGeom {
         break;
       }
     }  // end switch
-  }    // end resizeActivePairs()
+  }  // end resizeActivePairs()
 
  private:
   ArrayT<CommonPlanePair> m_common_plane_pairs;

@@ -61,8 +61,8 @@ class TWBIntegTest : public ::testing::Test {
             xy[this->dim * j + k] = z[j];
             break;
         }  // end switch
-      }    // end loop over dimension
-    }      // end loop over nodes
+      }  // end loop over dimension
+    }  // end loop over nodes
 
     // instantiate SurfaceContactElem struct. Note, this object is instantiated
     // using face 1 as face 2, but these faces are not used in this test so this
