@@ -705,7 +705,7 @@ TEST_F( EnzymeElementMortarTest, ShiftedXYNonmortarElementMinorInterpenetration 
   FDCheck( x1, x2, n1, p1 );
 }
 
-// NOTE: this configuration is designed to match a test in Serac
+// NOTE: this configuration is designed to match a test in Smith
 TEST_F( EnzymeElementMortarTest, ShiftedXYNonmortarElementMinorInterpenetrationV2 )
 {
   // slightly offset
