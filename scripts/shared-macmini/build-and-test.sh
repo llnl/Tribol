@@ -35,7 +35,7 @@ print_run_log(){
 print_run_log cd $PROJECT_DIR
 
 # Update repo
-print_run_log git checkout feature/chapman39/macmini-ci # TODO Change this to `develop` before merge; for testing purposes only
+print_run_log git checkout develop
 print_run_log git pull
 print_run_log git submodule update --init --recursive
 
