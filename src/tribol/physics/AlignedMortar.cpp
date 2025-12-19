@@ -64,8 +64,8 @@ void ComputeAlignedMortarWeights( SurfaceContactElem& elem )
         elem.mortarWts[mortarNonmortarId] += integ.wts[ip] * phiMortarA * phiNonmortarB;
 
       }  // end loop over integration points
-    }    // end loop over nodes on side 2
-  }      // end loop over nodes on side 1
+    }  // end loop over nodes on side 2
+  }  // end loop over nodes on side 1
 
 }  // end ComputeAlignedMortarWeights()
 

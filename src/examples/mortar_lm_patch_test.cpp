@@ -115,9 +115,8 @@ int main( int argc, char** argv )
   if ( err == 1 ) {
     SLIC_WARNING( "Returned from tribol_register_and_update with error." );
   } else {
-    SLIC_INFO( "Tribol update executed successfully. "
-               << "Preparing mfem mesh and linear algebra for "
-               << "computation of pressure Lagrange multipliers." );
+    SLIC_INFO( "Tribol update executed successfully. " << "Preparing mfem mesh and linear algebra for "
+                                                       << "computation of pressure Lagrange multipliers." );
   }
 
   //////////////////////////////////////////////////////////
@@ -152,8 +151,7 @@ int main( int argc, char** argv )
     mfem::SparseMatrix* tribolJac{ nullptr };
     int sparseMatErr = tribol::getJacobianSparseMatrix( &tribolJac, 0 );
 
-    SLIC_ERROR_IF( sparseMatErr != 0, "mortar_lm_patch_test.cpp: error "
-                                          << "gettting Tribol mfem sparse matrix." );
+    SLIC_ERROR_IF( sparseMatErr != 0, "mortar_lm_patch_test.cpp: error " << "gettting Tribol mfem sparse matrix." );
 
     SLIC_INFO( "Setup mfem mesh and grabbed Tribol sparse data." );
 

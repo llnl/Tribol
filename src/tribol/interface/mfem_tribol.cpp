@@ -4,11 +4,9 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "mfem_tribol.hpp"
-#include "tribol/common/Parameters.hpp"
 
 #ifdef BUILD_REDECOMP
 
-// Tribol includes
 #include "tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 
@@ -18,16 +16,53 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
                                  const mfem::ParGridFunction& current_coords, std::set<int> b_attributes_1,
                                  std::set<int> b_attributes_2, ContactMode contact_mode, ContactCase contact_case,
                                  ContactMethod contact_method, ContactModel contact_model,
-                                 EnforcementMethod enforcement_method, BinningMethod binning_method )
+                                 EnforcementMethod enforcement_method, BinningMethod binning_method,
+                                 ExecutionMode exec_mode )
 {
+  // verify valid execution mode and set memory space
+  MemorySpace mem_space = MemorySpace::Host;
+#ifdef TRIBOL_USE_CUDA
+  if ( exec_mode == ExecutionMode::Cuda ) {
+    mem_space = MemorySpace::Device;
+    SLIC_ERROR_ROOT_IF( !mfem::Device::Allows( mfem::Backend::CUDA_MASK ), "CUDA execution is not enabled in MFEM." );
+  }
+#endif
+#ifdef TRIBOL_USE_HIP
+  if ( exec_mode == ExecutionMode::Hip ) {
+    mem_space = MemorySpace::Device;
+    SLIC_ERROR_ROOT_IF( !mfem::Device::Allows( mfem::Backend::HIP_MASK ), "HIP execution is not enabled in MFEM." );
+  }
+#endif
+  if ( exec_mode == ExecutionMode::Dynamic ) {
+    // start with trying to use openmp...
+#ifdef TRIBOL_USE_OPENMP
+    exec_mode = ExecutionMode::OpenMP;
+#else
+    // ...but default with sequential
+    exec_mode = ExecutionMode::Sequential;
+#endif
+    // try to use device, if built and if mfem is using it
+#if defined( TRIBOL_USE_CUDA )
+    if ( mfem::Device::Allows( mfem::Backend::CUDA ) ) {
+      exec_mode = ExecutionMode::Cuda;
+      mem_space = MemorySpace::Device;
+    }
+#elif defined( TRIBOL_USE_HIP )
+    if ( mfem::Device::Allows( mfem::Backend::HIP ) ) {
+      exec_mode = ExecutionMode::Hip;
+      mem_space = MemorySpace::Device;
+    }
+#endif
+  }
   // create transfer operators from parent mesh to redecomp mesh
-  auto mfem_data = std::make_unique<MfemMeshData>( mesh_id_1, mesh_id_2, mesh, current_coords,
-                                                   std::move( b_attributes_1 ), std::move( b_attributes_2 ) );
+  auto mfem_data =
+      std::make_unique<MfemMeshData>( mesh_id_1, mesh_id_2, mesh, current_coords, std::move( b_attributes_1 ),
+                                      std::move( b_attributes_2 ), exec_mode, mem_space );
   // register empty meshes so the coupling scheme is valid
-  registerMesh( mesh_id_1, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, MemorySpace::Host );
-  registerMesh( mesh_id_2, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, MemorySpace::Host );
+  registerMesh( mesh_id_1, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, mem_space );
+  registerMesh( mesh_id_2, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, mem_space );
   registerCouplingScheme( cs_id, mesh_id_1, mesh_id_2, contact_mode, contact_case, contact_method, contact_model,
-                          enforcement_method, binning_method, ExecutionMode::Sequential );
+                          enforcement_method, binning_method, exec_mode );
   auto& cs = CouplingSchemeManager::getInstance().at( cs_id );
   cs.setMPIComm( mesh.GetComm() );
 
@@ -334,7 +369,7 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id )
   return cs->getMfemSubmeshData()->GetSubmeshPressure();
 }
 
-void updateMfemParallelDecomposition()
+void updateMfemParallelDecomposition( int n_ranks )
 {
   for ( auto& cs_pair : CouplingSchemeManager::getInstance() ) {
     auto& cs = cs_pair.second;
@@ -353,13 +388,15 @@ void updateMfemParallelDecomposition()
       }
       // creates a new redecomp mesh based on updated coordinates and updates transfer operators and displacement,
       // velocity, and response grid functions based on new redecomp mesh
-      mfem_data->UpdateMfemMeshData( effective_binning_proximity );
+      mfem_data->UpdateMfemMeshData( effective_binning_proximity, n_ranks );
       auto coord_ptrs = mfem_data->GetRedecompCoordsPtrs();
 
       registerMesh( mesh_ids[0], mfem_data->GetMesh1NE(), mfem_data->GetNV(), mfem_data->GetMesh1Conn(),
-                    mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2], MemorySpace::Host );
+                    mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2],
+                    mfem_data->GetMemorySpace() );
       registerMesh( mesh_ids[1], mfem_data->GetMesh2NE(), mfem_data->GetNV(), mfem_data->GetMesh2Conn(),
-                    mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2], MemorySpace::Host );
+                    mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2],
+                    mfem_data->GetMemorySpace() );
 
       auto f_ptrs = mfem_data->GetRedecompResponsePtrs();
       registerNodalResponse( mesh_ids[0], f_ptrs[0], f_ptrs[1], f_ptrs[2] );

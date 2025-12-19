@@ -54,8 +54,8 @@ class MortarGeomTest : public ::testing::Test {
   mfem::Vector v_xs;
   mfem::Vector v_ys;
   mfem::Vector v_zs;
-  mfem::Array<int> v_ixm;
-  mfem::Array<int> v_ixs;
+  tribol::Array1D<tribol::IndexT> v_ixm;
+  tribol::Array1D<tribol::IndexT> v_ixs;
 
   int lengthMortarConn;
   int lengthNonmortarConn;
@@ -106,11 +106,17 @@ TEST_F( MortarGeomTest, mortar_good_patch )
   std::ifstream i_ys( ys_file );
   std::ifstream i_zs( zs_file );
 
-  this->v_ixm.SetSize( this->lengthMortarConn );
-  this->v_ixs.SetSize( this->lengthNonmortarConn );
+  // This replicates mfem::Array::Load() and is needed because mfem::Array doesn't work with 64-bit integers
+  this->v_ixm.resize( this->lengthMortarConn );
+  for ( int i{ 0 }; i < this->lengthMortarConn; ++i ) {
+    i_ixm >> v_ixm[i];
+  }
 
-  this->v_ixm.Load( i_ixm, 1 );
-  this->v_ixs.Load( i_ixs, 1 );
+  this->v_ixs.resize( this->lengthNonmortarConn );
+  for ( int i{ 0 }; i < this->lengthNonmortarConn; ++i ) {
+    i_ixs >> v_ixs[i];
+  }
+
   this->v_xm.Load( i_xm, this->lengthMortarNodes );
   this->v_ym.Load( i_ym, this->lengthMortarNodes );
   this->v_zm.Load( i_zm, this->lengthMortarNodes );
@@ -130,8 +136,8 @@ TEST_F( MortarGeomTest, mortar_good_patch )
   SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
-  int* ixm_data = this->v_ixm.GetData();
-  int* ixs_data = this->v_ixs.GetData();
+  tribol::IndexT* ixm_data = this->v_ixm.data();
+  tribol::IndexT* ixs_data = this->v_ixs.data();
   RealT* xm_data = this->v_xm.GetData();
   RealT* ym_data = this->v_ym.GetData();
   RealT* zm_data = this->v_zm.GetData();
@@ -202,11 +208,17 @@ TEST_F( MortarGeomTest, mortar_bad_patch )
   std::ifstream i_ys( ys_file );
   std::ifstream i_zs( zs_file );
 
-  this->v_ixm.SetSize( this->lengthMortarConn );
-  this->v_ixs.SetSize( this->lengthNonmortarConn );
+  // This replicates mfem::Array::Load() and is needed because mfem::Array doesn't work with 64-bit integers
+  this->v_ixm.resize( this->lengthMortarConn );
+  for ( int i{ 0 }; i < this->lengthMortarConn; ++i ) {
+    i_ixm >> v_ixm[i];
+  }
 
-  this->v_ixm.Load( i_ixm, 1 );
-  this->v_ixs.Load( i_ixs, 1 );
+  this->v_ixs.resize( this->lengthNonmortarConn );
+  for ( int i{ 0 }; i < this->lengthNonmortarConn; ++i ) {
+    i_ixs >> v_ixs[i];
+  }
+
   this->v_xm.Load( i_xm, this->lengthMortarNodes );
   this->v_ym.Load( i_ym, this->lengthMortarNodes );
   this->v_zm.Load( i_zm, this->lengthMortarNodes );
@@ -226,8 +238,8 @@ TEST_F( MortarGeomTest, mortar_bad_patch )
   SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
-  int* ixm_data = this->v_ixm.GetData();
-  int* ixs_data = this->v_ixs.GetData();
+  tribol::IndexT* ixm_data = this->v_ixm.data();
+  tribol::IndexT* ixs_data = this->v_ixs.data();
   RealT* xm_data = this->v_xm.GetData();
   RealT* ym_data = this->v_ym.GetData();
   RealT* zm_data = this->v_zm.GetData();
@@ -298,11 +310,17 @@ TEST_F( MortarGeomTest, mortar_ironing )
   std::ifstream i_ys( ys_file );
   std::ifstream i_zs( zs_file );
 
-  this->v_ixm.SetSize( this->lengthMortarConn );
-  this->v_ixs.SetSize( this->lengthNonmortarConn );
+  // This replicates mfem::Array::Load() and is needed because mfem::Array doesn't work with 64-bit integers
+  this->v_ixm.resize( this->lengthMortarConn );
+  for ( int i{ 0 }; i < this->lengthMortarConn; ++i ) {
+    i_ixm >> v_ixm[i];
+  }
 
-  this->v_ixm.Load( i_ixm, 1 );
-  this->v_ixs.Load( i_ixs, 1 );
+  this->v_ixs.resize( this->lengthNonmortarConn );
+  for ( int i{ 0 }; i < this->lengthNonmortarConn; ++i ) {
+    i_ixs >> v_ixs[i];
+  }
+
   this->v_xm.Load( i_xm, this->lengthMortarNodes );
   this->v_ym.Load( i_ym, this->lengthMortarNodes );
   this->v_zm.Load( i_zm, this->lengthMortarNodes );
@@ -322,8 +340,8 @@ TEST_F( MortarGeomTest, mortar_ironing )
   SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
-  int* ixm_data = this->v_ixm.GetData();
-  int* ixs_data = this->v_ixs.GetData();
+  tribol::IndexT* ixm_data = this->v_ixm.data();
+  tribol::IndexT* ixs_data = this->v_ixs.data();
   RealT* xm_data = this->v_xm.GetData();
   RealT* ym_data = this->v_ym.GetData();
   RealT* zm_data = this->v_zm.GetData();
@@ -380,7 +398,7 @@ TEST_F( MortarGeomTest, mortar_ironing )
         ++num_total_active_nodes;
       }
     }  // end loop over nonzero columns, I[a]
-  }    // end loop over matrix rows
+  }  // end loop over matrix rows
 
   SLIC_INFO( "Total number of ACTIVE nonmortar nodes: " << num_total_active_nodes );
 
@@ -424,11 +442,17 @@ TEST_F( MortarGeomTest, mortar_ironing_block_sub_mesh )
   std::ifstream i_ys( ys_file );
   std::ifstream i_zs( zs_file );
 
-  this->v_ixm.SetSize( this->lengthMortarConn );
-  this->v_ixs.SetSize( this->lengthNonmortarConn );
+  // This replicates mfem::Array::Load() and is needed because mfem::Array doesn't work with 64-bit integers
+  this->v_ixm.resize( this->lengthMortarConn );
+  for ( int i{ 0 }; i < this->lengthMortarConn; ++i ) {
+    i_ixm >> v_ixm[i];
+  }
 
-  this->v_ixm.Load( i_ixm, 1 );
-  this->v_ixs.Load( i_ixs, 1 );
+  this->v_ixs.resize( this->lengthNonmortarConn );
+  for ( int i{ 0 }; i < this->lengthNonmortarConn; ++i ) {
+    i_ixs >> v_ixs[i];
+  }
+
   this->v_xm.Load( i_xm, this->lengthMortarNodes );
   this->v_ym.Load( i_ym, this->lengthMortarNodes );
   this->v_zm.Load( i_zm, this->lengthMortarNodes );
@@ -448,8 +472,8 @@ TEST_F( MortarGeomTest, mortar_ironing_block_sub_mesh )
   SLIC_INFO( "After loading mesh data and constructing mfem vectors." );
 
   // get pointers to mfem vector data
-  int* ixm_data = this->v_ixm.GetData();
-  int* ixs_data = this->v_ixs.GetData();
+  tribol::IndexT* ixm_data = this->v_ixm.data();
+  tribol::IndexT* ixs_data = this->v_ixs.data();
   RealT* xm_data = this->v_xm.GetData();
   RealT* ym_data = this->v_ym.GetData();
   RealT* zm_data = this->v_zm.GetData();

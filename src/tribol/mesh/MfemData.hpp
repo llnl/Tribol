@@ -6,7 +6,8 @@
 #ifndef SRC_TRIBOL_MESH_MFEMDATA_HPP_
 #define SRC_TRIBOL_MESH_MFEMDATA_HPP_
 
-#include "tribol/common/BasicTypes.hpp"
+// Tribol config include
+#include "tribol/config.hpp"
 
 #ifdef BUILD_REDECOMP
 
@@ -18,6 +19,7 @@
 #include "axom/core.hpp"
 #include "redecomp/redecomp.hpp"
 
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 
@@ -45,8 +47,9 @@ class SubmeshLORTransfer {
    * @param submesh_fes Higher order finite element space on the parent-linked
    * boundary submesh
    * @param lor_mesh LOR mesh
+   * @param use_ea Whether to use device-friendly element assembly for the transfer (default: false)
    */
-  SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh );
+  SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh, bool use_ea = false );
 
   /**
    * @brief Transfers data from a higher-order grid function on a parent-linked
@@ -345,8 +348,9 @@ class ParentField {
    * @brief Set a new transfer object when the redecomp mesh has been updated
    *
    * @param xfer Updated parent mesh to redecomp mesh transfer object
+   * @param use_device If true, use device memory for the redecomp grid function
    */
-  void UpdateField( ParentRedecompTransfer& parent_redecomp_xfer );
+  void UpdateField( ParentRedecompTransfer& parent_redecomp_xfer, bool use_device );
 
   /**
    * @brief Get the parent grid function
@@ -399,8 +403,10 @@ class ParentField {
      *
      * @param parent_redecomp_xfer Parent to redecomp field transfer object
      * @param parent_gridfn Grid function on the original, parent mesh
+     * @param use_device If true, use device memory for the redecomp grid function
      */
-    UpdateData( ParentRedecompTransfer& parent_redecomp_xfer, const mfem::ParGridFunction& parent_gridfn );
+    UpdateData( ParentRedecompTransfer& parent_redecomp_xfer, const mfem::ParGridFunction& parent_gridfn,
+                bool use_device );
 
     /**
      * @brief Parent to redecomp field transfer object
@@ -584,8 +590,8 @@ class MfemMeshData {
    * in the second Tribol registered mesh
    */
   MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParMesh& parent_mesh,
-                const mfem::ParGridFunction& current_coords, std::set<int>&& attributes_1,
-                std::set<int>&& attributes_2 );
+                const mfem::ParGridFunction& current_coords, std::set<int>&& attributes_1, std::set<int>&& attributes_2,
+                ExecutionMode exec_mode, MemorySpace mem_space );
 
   /**
    * @brief Get coordinate grid function on the parent mesh
@@ -630,10 +636,11 @@ class MfemMeshData {
    *
    * @param binning_proximity_scale Element length multiplier for coarse binning and proximity detection inclusion. This
    * is needed to size the ghost element layer in the redecomp mesh.
+   * @param n_ranks Number of ranks in the parallel decomposition
    *
    * @note This method should be called after the coordinate grid function is updated.
    */
-  void UpdateMfemMeshData( RealT binning_proximity_scale );
+  void UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks );
 
   /**
    * @brief Get the integer identifier for the first Tribol registered mesh
@@ -709,14 +716,14 @@ class MfemMeshData {
    *
    * @note The third entry is nullptr in two dimensions
    */
-  std::vector<RealT*> GetRedecompResponsePtrs() { return ParentField::GetRedecompFieldPtrs( redecomp_response_ ); }
+  std::vector<RealT*> GetRedecompResponsePtrs() { return ParentField::GetRedecompFieldPtrs( *redecomp_response_ ); }
 
   /**
    * @brief Get the nodal response grid function on the redecomp mesh
    *
    * @return const mfem::GridFunction&
    */
-  const mfem::GridFunction& GetRedecompResponse() const { return redecomp_response_; }
+  const mfem::GridFunction& GetRedecompResponse() const { return *redecomp_response_; }
 
   /**
    * @brief Get the nodal response vector on the parent mesh
@@ -953,17 +960,17 @@ class MfemMeshData {
    * @brief Get the map from Tribol registered mesh 1 element indices to
    * redecomp mesh element indices
    *
-   * @return const std::vector<int>&
+   * @return const ArrayT<int>&
    */
-  const std::vector<int>& GetElemMap1() const { return GetUpdateData().elem_map_1_; }
+  const Array1D<int>& GetElemMap1() const { return GetUpdateData().elem_map_1_; }
 
   /**
    * @brief Get the map from Tribol registered mesh 2 element indices to
    * redecomp mesh element indices
    *
-   * @return const std::vector<int>&
+   * @return const ArrayT<int>&
    */
-  const std::vector<int>& GetElemMap2() const { return GetUpdateData().elem_map_2_; }
+  const Array1D<int>& GetElemMap2() const { return GetUpdateData().elem_map_2_; }
 
   /**
    * @brief Get the parent-linked boundary submesh containing both contact
@@ -1073,6 +1080,13 @@ class MfemMeshData {
    */
   void SetMaterialModulus( mfem::Coefficient& modulus_field );
 
+  /**
+   * @brief Get the memory space used by the Tribol fields
+   *
+   * @return MemorySpace
+   */
+  MemorySpace GetMemorySpace() const { return mem_space_; }
+
  private:
   /**
    * @brief Creates and stores data that changes when the RedecompMesh is updated
@@ -1085,16 +1099,19 @@ class MfemMeshData {
      * @param lor_mesh LOR mesh of contact elements (if using LOR; nullptr otherwise)
      * @param parent_fes Vector finite element space on the original parent mesh
      * @param submesh_gridfn Grid function on the parent-linked boundary submesh used to temporarily store variables
-     * being transferred
+     *        being transferred
      * @param submesh_lor_xfer Submesh to LOR grid function transfer object (if using LOR; nullptr otherwise)
      * @param attributes_1 Set of boundary attributes identifying elements in the first Tribol registered mesh
      * @param attributes_2 Set of boundary attributes identifying elements in the second Tribol registered mesh
      * @param binning_proximity_scale Element length multiplier for coarse binning and proximity detection inclusion.
-     * This is needed to size the ghost element layer in the redecomp mesh.
+     *        This is needed to size the ghost element layer in the redecomp mesh.
+     * @param n_ranks Number of ranks in the parallel decomposition
+     * @param allocator_id Allocation space ID for Tribol memory
      */
     UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh, const mfem::ParFiniteElementSpace& parent_fes,
                 mfem::ParGridFunction& submesh_gridfn, SubmeshLORTransfer* submesh_lor_xfer,
-                const std::set<int>& attributes_1, const std::set<int>& attributes_2, RealT binning_proximity_scale );
+                const std::set<int>& attributes_1, const std::set<int>& attributes_2, RealT binning_proximity_scale,
+                int n_ranks, int allocator_id );
 
     /**
      * @brief Redecomposed boundary element mesh
@@ -1110,25 +1127,25 @@ class MfemMeshData {
      * @brief Redecomp mesh element connectivity for the first Tribol registered
      * mesh
      */
-    ArrayT<int, 2> conn_1_;
+    Array2D<IndexT> conn_1_;
 
     /**
      * @brief Redecomp mesh element connectivity for the second Tribol
      * registered mesh
      */
-    ArrayT<int, 2> conn_2_;
+    Array2D<IndexT> conn_2_;
 
     /**
      * @brief Map from first Tribol registered mesh element indices to redecomp
      * mesh element indices
      */
-    std::vector<int> elem_map_1_;
+    Array1D<int> elem_map_1_;
 
     /**
      * @brief Map from second Tribol registered mesh element indices to redecomp
      * mesh element indices
      */
-    std::vector<int> elem_map_2_;
+    Array1D<int> elem_map_2_;
 
     /**
      * @brief Type of elements on the contact meshes
@@ -1139,6 +1156,11 @@ class MfemMeshData {
      * @brief Number of vertices on each element in the contact meshes
      */
     int num_verts_per_elem_;
+
+    /**
+     * @brief Umpire allocator ID for Tribol data
+     */
+    int allocator_id_;
 
    private:
     /**
@@ -1355,7 +1377,29 @@ class MfemMeshData {
   /**
    * @brief Nodal response grid function on the redecomp mesh
    */
-  mfem::GridFunction redecomp_response_;
+  std::unique_ptr<mfem::GridFunction> redecomp_response_;
+  // NOTE: redecomp_response_ doesn't need to be a pointer, but SetSpace() doesn't seem to register memory correctly
+  // when on device. TODO: Debug this and remove the pointer.
+
+  /**
+   * @brief Execution mode for Tribol
+   */
+  ExecutionMode exec_mode_;
+
+  /**
+   * @brief Memory space for Tribol
+   */
+  MemorySpace mem_space_;
+
+  /**
+   * @brief Whether to use device memory for MFEM data
+   */
+  bool use_device_;
+
+  /**
+   * @brief Umpire allocator ID for Tribol data
+   */
+  int allocator_id_;
 
   /**
    * @brief Merges two STL containers
@@ -1683,7 +1727,7 @@ class MfemJacobianData {
   /**
    * @brief List giving global parent vdof given the submesh vdof
    */
-  mfem::Array<int> submesh2parent_vdof_list_;
+  mfem::Array<HYPRE_BigInt> submesh2parent_vdof_list_;
 
   /**
    * @brief Submesh to parent transfer operator

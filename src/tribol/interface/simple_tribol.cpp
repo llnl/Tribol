@@ -56,17 +56,16 @@ int Finalize( bool finalize_slic )
 }
 
 void SimpleCouplingSetup( const int dim, int cell_type, int contact_method, int mortar_numCells,
-                          int mortar_lengthNodalData, const int* mortar_connectivity, const double* mortar_x,
+                          int mortar_lengthNodalData, const tribol::IndexT* mortar_connectivity, const double* mortar_x,
                           const double* mortar_y, const double* mortar_z, int nonmortar_numCells,
-                          int nonmortar_lengthNodalData, const int* nonmortar_connectivity, const double* nonmortar_x,
-                          const double* nonmortar_y, const double* nonmortar_z, const double area_frac,
-                          double* mortar_gaps, double* mortar_pressures )
+                          int nonmortar_lengthNodalData, const tribol::IndexT* nonmortar_connectivity,
+                          const double* nonmortar_x, const double* nonmortar_y, const double* nonmortar_z,
+                          const double area_frac, double* mortar_gaps, double* mortar_pressures )
 {
   (void)dim;  // quiet compiler
 
   if ( contact_method != tribol::MORTAR_WEIGHTS ) {
-    SLIC_ERROR( "SimpleCouplingSetup: simple API only works "
-                << "for MORTAR_WEIGHTS method." );
+    SLIC_ERROR( "SimpleCouplingSetup: simple API only works " << "for MORTAR_WEIGHTS method." );
   }
 
   // register mortar mesh

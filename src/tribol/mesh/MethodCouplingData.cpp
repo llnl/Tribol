@@ -354,7 +354,7 @@ void MortarData::assembleJacobian( SurfaceContactElem& elem, SparseMode s_mode )
       // Jacobian
 
     }  // end loop over b nodes
-  }    // end loop over a nodes
+  }  // end loop over a nodes
 
   return;
 }  // end of MortarData::assembleJacobian()
@@ -406,12 +406,11 @@ void MortarData::assembleMortarWts( SurfaceContactElem& elem, SparseMode s_mode 
         this->m_smat->Add( nonmortarNodeIdA, mortarNodeIdB, elem.getNonmortarMortarWt( a, b ) );
         this->m_smat->Add( nonmortarNodeIdA, nonmortarNodeIdB, elem.getNonmortarNonmortarWt( a, b ) );
       } else if ( s_mode == SparseMode::MFEM_INDEX_SET ) {
-        SLIC_ERROR( "MortarData::assembleMortarWts() MFEM_INDEX_SET "
-                    << "not implemented." );
+        SLIC_ERROR( "MortarData::assembleMortarWts() MFEM_INDEX_SET " << "not implemented." );
       }
 
     }  // end loop over b nodes (columns)
-  }    // end loop over a nodes (rows)
+  }  // end loop over a nodes (rows)
 
   return;
 }  // end of MortarData::assembleMortarWts()

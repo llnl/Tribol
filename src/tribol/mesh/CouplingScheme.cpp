@@ -541,7 +541,7 @@ bool CouplingScheme::isValidCase()
       default:
         this->m_parameters.auto_contact_check = false;
     }  // end switch on case
-  }    // end if check on common-plane
+  }  // end if check on common-plane
 
   return isValid;
 }  // end CouplingScheme::isValidCase()
@@ -815,7 +815,7 @@ int CouplingScheme::checkEnforcementData()
           // no-op
           break;
       }  // end switch over enforcement method
-    }    // end case COMMON_PLANE
+    }  // end case COMMON_PLANE
     default:
       // no-op
       break;
@@ -989,9 +989,7 @@ int CouplingScheme::checkExecutionModeData()
 
   if ( m_contactMethod != COMMON_PLANE ) {
     if ( m_exec_mode != ExecutionMode::Sequential ) {
-      SLIC_WARNING_ROOT(
-          "Only sequential execution on host supported for contact methods "
-          "other than COMMON_PLANE." );
+      SLIC_WARNING_ROOT( "Only sequential execution on host supported for contact methods other than COMMON_PLANE." );
       this->m_couplingSchemeErrors.cs_execution_mode_error = ExecutionModeError::INCOMPATIBLE_METHOD;
       err = 1;
     }
@@ -1087,7 +1085,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                 }
               } );
 
-  ArrayT<int, 1, MemorySpace::Host> planes_ct_host( planes_ct_data );
+  ArrayT<IndexT, 1, MemorySpace::Host> planes_ct_host( planes_ct_data );
   // shrink array to actual number of contact planes
   m_cg_pairs.resizeActivePairs( contact_method, planes_ct_host[0] );
 
@@ -1115,16 +1113,18 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // appropriate physics in the normal and tangential directions.
   int err = ApplyInterfacePhysics( this, cycle, t );
 
-  SLIC_WARNING_IF( err != 0, "CouplingScheme::apply(): error in ApplyInterfacePhysics for "
-                                 << "coupling scheme, " << this->m_id << "." );
+  SLIC_WARNING_IF( err != 0, "CouplingScheme::apply(): error in ApplyInterfacePhysics for " << "coupling scheme, "
+                                                                                            << this->m_id << "." );
 
   // compute Tribol timestep vote on the coupling scheme
   if ( err == 0 && getNumActivePairs() > 0 ) {
     computeTimeStep( dt );
   }
 
-  // write output
-  writeInterfaceOutput( m_output_directory, params.vis_type, cycle, t );
+  // write contact plane output if it is on host
+  if ( !isOnDevice( this->m_exec_mode ) ) {
+    writeInterfaceOutput( m_output_directory, params.vis_type, cycle, t );
+  }
 
   if ( err != 0 ) {
     return 1;
@@ -1204,7 +1204,7 @@ void CouplingScheme::setSlicLoggingLevel()
         break;
       }
     }  // end switch
-  }    // end if
+  }  // end if
 }
 
 //------------------------------------------------------------------------------
@@ -1219,15 +1219,15 @@ void CouplingScheme::allocateMethodData()
     case MORTAR_WEIGHTS:
     case SINGLE_MORTAR: {
       // dynamically allocate method data object
-      this->m_methodData = new MortarData;
-      static_cast<MortarData*>( m_methodData )->m_numTotalNodes = this->m_numTotalNodes;
+      this->m_methodData = std::make_unique<MortarData>();
+      static_cast<MortarData*>( m_methodData.get() )->m_numTotalNodes = this->m_numTotalNodes;
       break;
     }  // end case SINGLE_MORTAR
     default: {
       this->m_methodData = nullptr;
       break;
     }
-  }  // end if on non-null meshes
+  }
 }  // end CouplingScheme::allocateMethodData()
 
 //------------------------------------------------------------------------------
@@ -1705,11 +1705,11 @@ void CouplingScheme::writeInterfaceOutput( const std::string& dir, const VisType
         break;
       default:
         // Can this be called on root? SRW
-        SLIC_INFO( "CouplingScheme::writeInterfaceOutput(): "
-                   << "output routine not yet written for interface method. " );
+        SLIC_INFO(
+            "CouplingScheme::writeInterfaceOutput(): " << "output routine not yet written for interface method. " );
         break;
     }  // end-switch
-  }    // end-if
+  }  // end-if
   return;
 }
 

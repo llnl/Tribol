@@ -42,7 +42,7 @@ class MortarJacTest : public ::testing::Test {
 
   RealT* getZCoords() { return z; }
 
-  void setupTribol( int* conn1, int* conn2, tribol::ContactMethod method )
+  void setupTribol( tribol::IndexT* conn1, tribol::IndexT* conn2, tribol::ContactMethod method )
   {
     // Note, this assumes that numNodes is the total number of
     // nodes encompassing the two meshes that will be registered
@@ -219,8 +219,8 @@ TEST_F( MortarJacTest, jac_input_test )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  tribol::Array1D<int> conn1( numNodesPerFace );
-  tribol::Array1D<int> conn2( numNodesPerFace );
+  tribol::Array1D<tribol::IndexT> conn1( numNodesPerFace );
+  tribol::Array1D<tribol::IndexT> conn2( numNodesPerFace );
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
@@ -294,8 +294,8 @@ TEST_F( MortarJacTest, update_jac_test )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  tribol::Array1D<int> conn1( numNodesPerFace );
-  tribol::Array1D<int> conn2( numNodesPerFace );
+  tribol::Array1D<tribol::IndexT> conn1( numNodesPerFace );
+  tribol::Array1D<tribol::IndexT> conn2( numNodesPerFace );
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;

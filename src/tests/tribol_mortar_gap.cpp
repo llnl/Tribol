@@ -78,7 +78,7 @@ class MortarGapTest : public ::testing::Test {
 
   RealT* getZOverlapCoords() { return zOverlap; }
 
-  void checkMortarGaps( int* conn1, int* conn2, tribol::ContactMethod method )
+  void checkMortarGaps( tribol::IndexT* conn1, tribol::IndexT* conn2, tribol::ContactMethod method )
   {
     // declare arrays to hold stacked coordinates for each
     // face used in initializing a SurfaceContactElem struct
@@ -173,8 +173,6 @@ class MortarGapTest : public ::testing::Test {
         SLIC_ERROR( "Unsupported contact method" );
         break;
     }
-
-    tribol::finalize();
   }
 
  protected:
@@ -251,6 +249,8 @@ class MortarGapTest : public ::testing::Test {
 
   void TearDown() override
   {
+    tribol::finalize();
+
     if ( this->x1 != nullptr ) {
       delete[] this->x1;
       this->x1 = nullptr;
@@ -364,8 +364,8 @@ TEST_F( MortarGapTest, parallel_misaligned )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  tribol::Array1D<int> conn1( numNodesPerFace );
-  tribol::Array1D<int> conn2( numNodesPerFace );
+  tribol::Array1D<tribol::IndexT> conn1( numNodesPerFace );
+  tribol::Array1D<tribol::IndexT> conn2( numNodesPerFace );
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
@@ -452,8 +452,8 @@ TEST_F( MortarGapTest, parallel_aligned )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  tribol::Array1D<int> conn1( numNodesPerFace );
-  tribol::Array1D<int> conn2( numNodesPerFace );
+  tribol::Array1D<tribol::IndexT> conn1( numNodesPerFace );
+  tribol::Array1D<tribol::IndexT> conn2( numNodesPerFace );
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
@@ -540,8 +540,8 @@ TEST_F( MortarGapTest, parallel_simple_aligned )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  tribol::Array1D<int> conn1( numNodesPerFace );
-  tribol::Array1D<int> conn2( numNodesPerFace );
+  tribol::Array1D<tribol::IndexT> conn1( numNodesPerFace );
+  tribol::Array1D<tribol::IndexT> conn2( numNodesPerFace );
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;

@@ -3,19 +3,21 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+#include "tribol/config.hpp"
+
 #include "gtest/gtest.h"
 
-#include "tribol/common/ExecModel.hpp"
-#include "tribol/interface/tribol.hpp"
-
 #include "mfem.hpp"
-
-#include "axom/core.hpp"
 
 #ifdef TRIBOL_USE_UMPIRE
 // Umpire includes
 #include "umpire/ResourceManager.hpp"
 #endif
+
+#include "axom/slic.hpp"
+
+#include "tribol/common/ExecModel.hpp"
+#include "tribol/interface/tribol.hpp"
 
 namespace tribol {
 
@@ -28,94 +30,35 @@ double runExample( int num_elems_1d );
  * tribol::update() is called to update forces.  These forces are checked versus
  * a reference result for the given mesh configuration.
  */
-class CommonPlaneGPUTest : public testing::TestWithParam<ExecutionMode> {
+class CommonPlaneGPUTest : public testing::Test {
  protected:
   double max_error_;
   void SetUp() override
   {
     int ref_level = 2;
-    switch ( GetParam() ) {
-      case ExecutionMode::Sequential:
-        max_error_ = runExample<MemorySpace::Host, ExecutionMode::Sequential>( ref_level );
-        break;
-#ifdef TRIBOL_USE_OPENMP
-      case ExecutionMode::OpenMP:
-        max_error_ = runExample<MemorySpace::Host, ExecutionMode::OpenMP>( ref_level );
-        break;
+#if defined( TRIBOL_USE_CUDA )
+    max_error_ = runExample<MemorySpace::Device, ExecutionMode::Cuda>( ref_level );
+#elif defined( TRIBOL_USE_HIP )
+    max_error_ = runExample<MemorySpace::Device, ExecutionMode::Hip>( ref_level );
+#elif defined( TRIBOL_USE_OPENMP )
+    max_error_ = runExample<MemorySpace::Host, ExecutionMode::OpenMP>( ref_level );
+#else
+    max_error_ = runExample<MemorySpace::Host, ExecutionMode::Sequential>( ref_level );
 #endif
-#ifdef TRIBOL_USE_CUDA
-      case ExecutionMode::Cuda:
-        max_error_ = runExample<MemorySpace::Device, ExecutionMode::Cuda>( ref_level );
-        break;
-#endif
-#ifdef TRIBOL_USE_HIP
-      case ExecutionMode::Hip:
-        max_error_ = runExample<MemorySpace::Device, ExecutionMode::Hip>( ref_level );
-        break;
-#endif
-      default:
-        // no-op for default
-        break;
-    }
     max_error_ -= 250.0;
   }
 };
 
-TEST_P( CommonPlaneGPUTest, update_test )
+TEST_F( CommonPlaneGPUTest, update_test )
 {
   EXPECT_LT( std::abs( max_error_ ), 1.0e-11 );
 
   MPI_Barrier( MPI_COMM_WORLD );
 }
 
-INSTANTIATE_TEST_SUITE_P( tribol, CommonPlaneGPUTest,
-                          testing::Values( ExecutionMode::Sequential
-#ifdef TRIBOL_USE_OPENMP
-                                           ,
-                                           ExecutionMode::OpenMP
-#endif
-#ifdef TRIBOL_USE_CUDA
-                                           ,
-                                           ExecutionMode::Cuda
-#endif
-#ifdef TRIBOL_USE_HIP
-                                           ,
-                                           ExecutionMode::Hip
-#endif
-                                           ) );
-
 template <MemorySpace MSPACE, ExecutionMode EXEC>
 double runExample( int num_elems_1d )
 {
-  // This controls which device/programming model is targeted in MFEM. When set
-  // to "cuda" or "hip", on device pointers point to GPU memory.
-  mfem::Device device;
-  switch ( MSPACE ) {
-#ifdef TRIBOL_USE_CUDA
-    case MemorySpace::Device:
-      device.Configure( "cuda" );
-      break;
-#endif
-#ifdef TRIBOL_USE_HIP
-    case MemorySpace::Device:
-      device.Configure( "hip" );
-      break;
-#endif
-    default:
-#if defined( TRIBOL_USE_OPENMP ) && defined( MFEM_USE_OPENMP )
-      if ( EXEC == ExecutionMode::OpenMP ) {
-        device.Configure( "omp" );
-      } else
-#endif
-      // NOTE: if we specify OpenMP on this problem but MFEM doesn't support
-      // OpenMP, we can just do all our MFEM work without it
-      {
-        device.Configure( "cpu" );
-      }
-      break;
-  }
-  device.Print();
-
   // Creating MFEM mesh
 
   int num_contact_elems = num_elems_1d * num_elems_1d;
@@ -288,6 +231,19 @@ int main( int argc, char* argv[] )
 #ifdef TRIBOL_USE_UMPIRE
   umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
 #endif
+
+#if defined( TRIBOL_USE_CUDA )
+  std::string device_str( "cuda" );
+#elif defined( TRIBOL_USE_HIP )
+  std::string device_str( "hip" );
+#elif defined( TRIBOL_USE_OPENMP )
+  std::string device_str( "omp" );
+#else
+  std::string device_str( "cpu" );
+#endif
+
+  mfem::Device device( device_str );
+  device.Print();
 
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
                                     // exiting main scope

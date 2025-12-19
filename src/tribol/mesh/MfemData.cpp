@@ -5,19 +5,24 @@
 
 #include "tribol/mesh/MfemData.hpp"
 
+#include "tribol/config.hpp"
+
 #ifdef BUILD_REDECOMP
 
 #include "axom/slic.hpp"
+
+#include "shared/infrastructure/Profiling.hpp"
 
 #include "redecomp/utils/ArrayUtility.hpp"
 
 namespace tribol {
 
-SubmeshLORTransfer::SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh )
+SubmeshLORTransfer::SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh, bool use_ea )
     : lor_gridfn_{ CreateLORGridFunction(
           lor_mesh, std::make_unique<mfem::H1_FECollection>( 1, lor_mesh.SpaceDimension() ), submesh_fes.GetVDim() ) },
       lor_xfer_{ submesh_fes, *lor_gridfn_->ParFESpace() }
 {
+  lor_xfer_.UseEA( use_ea );
 }
 
 void SubmeshLORTransfer::TransferToLORGridFn( const mfem::ParGridFunction& submesh_src )
@@ -27,11 +32,18 @@ void SubmeshLORTransfer::TransferToLORGridFn( const mfem::ParGridFunction& subme
 
 void SubmeshLORTransfer::TransferFromLORVector( mfem::Vector& submesh_dst ) const
 {
+  // make sure host data is up to date.  this transfer needs to be on the host until submesh supports device transfer
+  lor_gridfn_->HostRead();
+  submesh_dst.HostWrite();
   lor_xfer_.ForwardOperator().MultTranspose( *lor_gridfn_, submesh_dst );
 }
 
 void SubmeshLORTransfer::SubmeshToLOR( const mfem::ParGridFunction& submesh_src, mfem::ParGridFunction& lor_dst )
 {
+  TRIBOL_MARK_FUNCTION;
+  // make sure host data is up to date.  this transfer needs to be on the host until submesh supports device transfer
+  submesh_src.HostRead();
+  lor_dst.HostWrite();
   lor_xfer_.ForwardOperator().Mult( submesh_src, lor_dst );
 }
 
@@ -41,6 +53,9 @@ std::unique_ptr<mfem::ParGridFunction> SubmeshLORTransfer::CreateLORGridFunction
   auto lor_gridfn = std::make_unique<mfem::ParGridFunction>(
       new mfem::ParFiniteElementSpace( &lor_mesh, lor_fec.get(), vdim, mfem::Ordering::byNODES ) );
   lor_gridfn->MakeOwner( lor_fec.release() );
+  // NOTE: This needs to be false until submesh supports device transfer. Otherwise, there will be extra copies to/from
+  // device.
+  lor_gridfn->UseDevice( false );
   return lor_gridfn;
 }
 
@@ -91,6 +106,7 @@ void SubmeshRedecompTransfer::RedecompToSubmesh( const mfem::GridFunction& redec
   // transfer data from redecomp mesh
   mfem::ParGridFunction dst_gridfn( dst_fespace_ptr, *dst_ptr );
   redecomp_xfer_.TransferToParallel( redecomp_src, dst_gridfn );
+  dst_ptr->SyncMemory( dst_gridfn );
 
   // using redecomp, shared dof values are set equal (i.e. a ParGridFunction), but we want the sum of shared dof values
   // to equal the actual dof value when transferring dual fields (i.e. force and gap) back to the parallel mesh
@@ -98,13 +114,17 @@ void SubmeshRedecompTransfer::RedecompToSubmesh( const mfem::GridFunction& redec
 
   // P_I is the row index vector on the MFEM prolongation matrix. If there are no column entries for the row, then the
   // DOF is owned by another rank.
-  auto P_I = dst_fespace_ptr->Dof_TrueDof_Matrix()->GetDiagMemoryI();
+  auto dst_data = dst_ptr->HostWrite();
+  auto P_I =
+      mfem::Read( dst_fespace_ptr->Dof_TrueDof_Matrix()->GetDiagMemoryI(), dst_fespace_ptr->GetVSize() + 1, false );
   HYPRE_Int tdof_ct{ 0 };
+  // TODO: Convert to mfem::forall() once submesh transfers on device and once GPU-enabled MPI is in redecomp (dst_data
+  // is always on host now so not needed yet)
   for ( int i{ 0 }; i < dst_fespace_ptr->GetVSize(); ++i ) {
     if ( P_I[i + 1] != tdof_ct ) {
       ++tdof_ct;
     } else {
-      ( *dst_ptr )[i] = 0.0;
+      dst_data[i] = 0.0;
     }
   }
   // if using LOR, transfer data from LOR mesh to submesh
@@ -152,6 +172,7 @@ void ParentRedecompTransfer::RedecompToParent( const mfem::GridFunction& redecom
   // submesh transfer requires a grid function.  create one using parent_dst's data
   mfem::ParGridFunction parent_gridfn( &parent_fes_, parent_dst );
   submesh_redecomp_xfer_.GetSubmesh().Transfer( submesh_gridfn_, parent_gridfn );
+  parent_dst.SyncMemory( parent_gridfn );
 }
 
 ParentField::ParentField( const mfem::ParGridFunction& parent_gridfn ) : parent_gridfn_{ parent_gridfn } {}
@@ -162,17 +183,18 @@ void ParentField::SetParentGridFn( const mfem::ParGridFunction& parent_gridfn )
   update_data_.reset( nullptr );
 }
 
-void ParentField::UpdateField( ParentRedecompTransfer& parent_redecomp_xfer )
+void ParentField::UpdateField( ParentRedecompTransfer& parent_redecomp_xfer, bool use_device )
 {
-  update_data_ = std::make_unique<UpdateData>( parent_redecomp_xfer, parent_gridfn_ );
+  update_data_ = std::make_unique<UpdateData>( parent_redecomp_xfer, parent_gridfn_, use_device );
 }
 
 std::vector<const RealT*> ParentField::GetRedecompFieldPtrs() const
 {
   auto data_ptrs = std::vector<const RealT*>( 3, nullptr );
   if ( GetRedecompGridFn().FESpace()->GetNDofs() > 0 ) {
+    auto data = GetRedecompGridFn().Read( GetRedecompGridFn().UseDevice() );
     for ( size_t i{}; i < static_cast<size_t>( GetRedecompGridFn().FESpace()->GetVDim() ); ++i ) {
-      data_ptrs[i] = &GetRedecompGridFn()( GetRedecompGridFn().FESpace()->DofToVDof( 0, i ) );
+      data_ptrs[i] = data + GetRedecompGridFn().FESpace()->DofToVDof( 0, i );
     }
   }
   return data_ptrs;
@@ -182,8 +204,9 @@ std::vector<RealT*> ParentField::GetRedecompFieldPtrs( mfem::GridFunction& redec
 {
   auto data_ptrs = std::vector<RealT*>( 3, nullptr );
   if ( redecomp_gridfn.FESpace()->GetNDofs() > 0 ) {
+    auto data = redecomp_gridfn.ReadWrite( redecomp_gridfn.UseDevice() );
     for ( size_t i{}; i < static_cast<size_t>( redecomp_gridfn.FESpace()->GetVDim() ); ++i ) {
-      data_ptrs[i] = &redecomp_gridfn( redecomp_gridfn.FESpace()->DofToVDof( 0, i ) );
+      data_ptrs[i] = data + redecomp_gridfn.FESpace()->DofToVDof( 0, i );
     }
   }
   return data_ptrs;
@@ -202,9 +225,11 @@ const ParentField::UpdateData& ParentField::GetUpdateData() const
 }
 
 ParentField::UpdateData::UpdateData( ParentRedecompTransfer& parent_redecomp_xfer,
-                                     const mfem::ParGridFunction& parent_gridfn )
+                                     const mfem::ParGridFunction& parent_gridfn, bool use_device )
     : parent_redecomp_xfer_{ parent_redecomp_xfer }, redecomp_gridfn_{ &parent_redecomp_xfer.GetRedecompFESpace() }
 {
+  TRIBOL_MARK_FUNCTION;
+  redecomp_gridfn_.UseDevice( use_device );
   redecomp_gridfn_ = 0.0;
   parent_redecomp_xfer_.ParentToRedecomp( parent_gridfn, redecomp_gridfn_ );
 }
@@ -226,8 +251,9 @@ std::vector<const RealT*> PressureField::GetRedecompFieldPtrs() const
 {
   auto data_ptrs = std::vector<const RealT*>( 3, nullptr );
   if ( GetRedecompGridFn().FESpace()->GetNDofs() > 0 ) {
+    auto data = GetRedecompGridFn().Read( GetRedecompGridFn().UseDevice() );
     for ( size_t i{}; i < static_cast<size_t>( GetRedecompGridFn().FESpace()->GetVDim() ); ++i ) {
-      data_ptrs[i] = &GetRedecompGridFn()( GetRedecompGridFn().FESpace()->DofToVDof( 0, i ) );
+      data_ptrs[i] = data + GetRedecompGridFn().FESpace()->DofToVDof( 0, i );
     }
   }
   return data_ptrs;
@@ -237,8 +263,9 @@ std::vector<RealT*> PressureField::GetRedecompFieldPtrs( mfem::GridFunction& red
 {
   auto data_ptrs = std::vector<RealT*>( 3, nullptr );
   if ( redecomp_gridfn.FESpace()->GetNDofs() > 0 ) {
+    auto data = redecomp_gridfn.ReadWrite( redecomp_gridfn.UseDevice() );
     for ( size_t i{}; i < static_cast<size_t>( redecomp_gridfn.FESpace()->GetVDim() ); ++i ) {
-      data_ptrs[i] = &redecomp_gridfn( redecomp_gridfn.FESpace()->DofToVDof( 0, i ) );
+      data_ptrs[i] = data + redecomp_gridfn.FESpace()->DofToVDof( 0, i );
     }
   }
   return data_ptrs;
@@ -260,13 +287,15 @@ PressureField::UpdateData::UpdateData( SubmeshRedecompTransfer& submesh_redecomp
                                        const mfem::ParGridFunction& submesh_gridfn )
     : submesh_redecomp_xfer_{ submesh_redecomp_xfer }, redecomp_gridfn_{ &submesh_redecomp_xfer.GetRedecompFESpace() }
 {
+  // keep on host since tribol does computations there
+  redecomp_gridfn_.UseDevice( false );
   redecomp_gridfn_ = 0.0;
   submesh_redecomp_xfer_.SubmeshToRedecomp( submesh_gridfn, redecomp_gridfn_ );
 }
 
 MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParMesh& parent_mesh,
                             const mfem::ParGridFunction& current_coords, std::set<int>&& attributes_1,
-                            std::set<int>&& attributes_2 )
+                            std::set<int>&& attributes_2, ExecutionMode exec_mode, MemorySpace mem_space )
     : mesh_id_1_{ mesh_id_1 },
       mesh_id_2_{ mesh_id_2 },
       parent_mesh_{ parent_mesh },
@@ -274,7 +303,11 @@ MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParM
       attributes_2_{ std::move( attributes_2 ) },
       submesh_{ CreateSubmesh( parent_mesh_, attributes_1_, attributes_2_ ) },
       coords_{ current_coords },
-      lor_factor_{ 0 }
+      lor_factor_{ 0 },
+      exec_mode_{ exec_mode },
+      mem_space_{ mem_space },
+      use_device_{ isOnDevice( exec_mode ) },
+      allocator_id_{ getResourceAllocatorID( mem_space ) }
 {
   // make sure a grid function exists on the submesh
   submesh_.EnsureNodes();
@@ -285,6 +318,9 @@ MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParM
   submesh_xfer_gridfn_.SetSpace( new mfem::ParFiniteElementSpace(
       &submesh_, submesh_fec.get(), current_coords.ParFESpace()->GetVDim(), mfem::Ordering::byNODES ) );
   submesh_xfer_gridfn_.MakeOwner( submesh_fec.release() );
+  // NOTE: This needs to be on host until the submesh transfer supports device.  Otherwise, there will be extra
+  // transfers to/from device.
+  submesh_xfer_gridfn_.UseDevice( false );
 
   // build LOR submesh
   if ( current_coords.FESpace()->FEColl()->GetOrder() > 1 ) {
@@ -306,80 +342,109 @@ void MfemMeshData::SetParentReferenceCoords( const mfem::ParGridFunction& refere
   }
 }
 
-void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale )
+void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks )
 {
+  TRIBOL_MARK_FUNCTION;
   // update coordinates of submesh and LOR mesh
   auto submesh_nodes = dynamic_cast<mfem::ParGridFunction*>( submesh_.GetNodes() );
   SLIC_ERROR_ROOT_IF( !submesh_nodes, "submesh_ Nodes is not a ParGridFunction." );
+  TRIBOL_MARK_BEGIN( "Update SubMesh coords" );
   submesh_.Transfer( coords_.GetParentGridFn(), *submesh_nodes );
+  TRIBOL_MARK_END( "Update SubMesh coords" );
   if ( lor_mesh_.get() ) {
+    TRIBOL_MARK_BEGIN( "Update LOR coords" );
     auto lor_nodes = dynamic_cast<mfem::ParGridFunction*>( lor_mesh_->GetNodes() );
     SLIC_ERROR_ROOT_IF( !lor_nodes, "lor_mesh_ Nodes is not a ParGridFunction." );
     submesh_lor_xfer_->SubmeshToLOR( *submesh_nodes, *lor_nodes );
+    TRIBOL_MARK_END( "Update LOR coords" );
   }
+  TRIBOL_MARK_BEGIN( "Build new Redecomp mesh" );
   update_data_ = std::make_unique<UpdateData>( submesh_, lor_mesh_.get(), *coords_.GetParentGridFn().ParFESpace(),
                                                submesh_xfer_gridfn_, submesh_lor_xfer_.get(), attributes_1_,
-                                               attributes_2_, binning_proximity_scale );
-  coords_.UpdateField( update_data_->vector_xfer_ );
-  redecomp_response_.SetSpace( coords_.GetRedecompGridFn().FESpace() );
-  redecomp_response_ = 0.0;
+                                               attributes_2_, binning_proximity_scale, allocator_id_, n_ranks );
+  TRIBOL_MARK_END( "Build new Redecomp mesh" );
+
+  TRIBOL_MARK_BEGIN( "Copy fields to Redecomp mesh" );
+  coords_.UpdateField( update_data_->vector_xfer_, use_device_ );
+  // NOTE: SetSpace() would be preferrable to call here, but it looks like all memory isn't mapped to
+  // mfem::MemoryManager when this is used. TODO: Debug this and switch to SetSpace()
+  redecomp_response_ = std::make_unique<mfem::GridFunction>( coords_.GetRedecompGridFn().FESpace() );
+  redecomp_response_->UseDevice( use_device_ );
+  ( *redecomp_response_ ) = 0.0;
   if ( reference_coords_ ) {
-    reference_coords_->UpdateField( update_data_->vector_xfer_ );
+    reference_coords_->UpdateField( update_data_->vector_xfer_, use_device_ );
   }
   if ( velocity_ ) {
-    velocity_->UpdateField( update_data_->vector_xfer_ );
+    velocity_->UpdateField( update_data_->vector_xfer_, use_device_ );
   }
+  TRIBOL_MARK_END( "Copy fields to Redecomp mesh" );
   if ( elem_thickness_ ) {
     if ( !material_modulus_ ) {
       SLIC_ERROR_ROOT(
           "Kinematic element penalty requires material modulus information. "
           "Call registerMfemMaterialModulus() to set this." );
     }
+    TRIBOL_MARK_BEGIN( "Copy element thickness to Redecomp mesh" );
     redecomp::RedecompTransfer redecomp_xfer;
     // set element thickness on redecomp mesh
     redecomp_elem_thickness_ =
         std::make_unique<mfem::QuadratureFunction>( new mfem::QuadratureSpace( &GetRedecompMesh(), 0 ) );
     redecomp_elem_thickness_->SetOwnsSpace( true );
+    redecomp_elem_thickness_->UseDevice( use_device_ );
     *redecomp_elem_thickness_ = 0.0;
     redecomp_xfer.TransferToSerial( *elem_thickness_, *redecomp_elem_thickness_ );
     // set element thickness on tribol mesh
-    tribol_elem_thickness_1_ = std::make_unique<ArrayT<RealT>>( 0, GetElemMap1().empty() ? 1 : GetElemMap1().size() );
-    for ( auto redecomp_e : GetElemMap1() ) {
-      mfem::Vector quad_val;
-      redecomp_elem_thickness_->GetValues( redecomp_e, quad_val );
-      tribol_elem_thickness_1_->push_back( quad_val[0] );
-    }
-    tribol_elem_thickness_2_ = std::make_unique<ArrayT<RealT>>( 0, GetElemMap2().empty() ? 1 : GetElemMap2().size() );
-    for ( auto redecomp_e : GetElemMap2() ) {
-      mfem::Vector quad_val;
-      redecomp_elem_thickness_->GetValues( redecomp_e, quad_val );
-      tribol_elem_thickness_2_->push_back( quad_val[0] );
-    }
+    tribol_elem_thickness_1_ = std::make_unique<ArrayT<RealT>>(
+        GetElemMap1().size(), GetElemMap1().empty() ? 1 : GetElemMap1().size(), allocator_id_ );
+    auto redecomp_t_view = redecomp_elem_thickness_->Read( use_device_ );
+    ArrayViewT<RealT> tribol_t1_view( *tribol_elem_thickness_1_ );
+    ArrayViewT<const int> elem_map1_view( GetElemMap1() );
+    // NOTE: this assumes 1 thickness value per element. This is NOT true, in general, for mfem::QuadratureFunction.
+    forAllExec( exec_mode_, GetElemMap1().size(),
+                [tribol_t1_view, redecomp_t_view, elem_map1_view] TRIBOL_HOST_DEVICE( int i ) {
+                  tribol_t1_view[i] = redecomp_t_view[elem_map1_view[i]];
+                } );
+    tribol_elem_thickness_2_ = std::make_unique<ArrayT<RealT>>(
+        GetElemMap2().size(), GetElemMap2().empty() ? 1 : GetElemMap2().size(), allocator_id_ );
+    ArrayViewT<RealT> tribol_t2_view( *tribol_elem_thickness_2_ );
+    ArrayViewT<const int> elem_map2_view( GetElemMap2() );
+    // NOTE: this assumes 1 thickness value per element. This is NOT true, in general, for mfem::QuadratureFunction.
+    forAllExec( exec_mode_, GetElemMap2().size(),
+                [tribol_t2_view, redecomp_t_view, elem_map2_view] TRIBOL_HOST_DEVICE( int i ) {
+                  tribol_t2_view[i] = redecomp_t_view[elem_map2_view[i]];
+                } );
     // set material modulus on redecomp mesh
     redecomp_material_modulus_ =
         std::make_unique<mfem::QuadratureFunction>( new mfem::QuadratureSpace( &GetRedecompMesh(), 0 ) );
     redecomp_material_modulus_->SetOwnsSpace( true );
+    redecomp_material_modulus_->UseDevice( use_device_ );
     *redecomp_material_modulus_ = 0.0;
     redecomp_xfer.TransferToSerial( *material_modulus_, *redecomp_material_modulus_ );
     // set material modulus on tribol mesh
-    tribol_material_modulus_1_ = std::make_unique<ArrayT<RealT>>( 0, GetElemMap1().empty() ? 1 : GetElemMap1().size() );
-    for ( auto redecomp_e : GetElemMap1() ) {
-      mfem::Vector quad_val;
-      redecomp_material_modulus_->GetValues( redecomp_e, quad_val );
-      tribol_material_modulus_1_->push_back( quad_val[0] );
-    }
-    tribol_material_modulus_2_ = std::make_unique<ArrayT<RealT>>( 0, GetElemMap2().empty() ? 1 : GetElemMap2().size() );
-    for ( auto redecomp_e : GetElemMap2() ) {
-      mfem::Vector quad_val;
-      redecomp_material_modulus_->GetValues( redecomp_e, quad_val );
-      tribol_material_modulus_2_->push_back( quad_val[0] );
-    }
+    tribol_material_modulus_1_ = std::make_unique<ArrayT<RealT>>(
+        GetElemMap1().size(), GetElemMap1().empty() ? 1 : GetElemMap1().size(), allocator_id_ );
+    auto redecomp_m_view = redecomp_material_modulus_->Read( use_device_ );
+    ArrayViewT<RealT> tribol_m1_view( *tribol_material_modulus_1_ );
+    // NOTE: this assumes 1 thickness value per element. This is NOT true, in general, for mfem::QuadratureFunction.
+    forAllExec( exec_mode_, GetElemMap1().size(),
+                [tribol_m1_view, redecomp_m_view, elem_map1_view] TRIBOL_HOST_DEVICE( int i ) {
+                  tribol_m1_view[i] = redecomp_m_view[elem_map1_view[i]];
+                } );
+    tribol_material_modulus_2_ = std::make_unique<ArrayT<RealT>>(
+        GetElemMap2().size(), GetElemMap2().empty() ? 1 : GetElemMap2().size(), allocator_id_ );
+    ArrayViewT<RealT> tribol_m2_view( *tribol_material_modulus_2_ );
+    // NOTE: this assumes 1 thickness value per element. This is NOT true, in general, for mfem::QuadratureFunction.
+    forAllExec( exec_mode_, GetElemMap2().size(),
+                [tribol_m2_view, redecomp_m_view, elem_map2_view] TRIBOL_HOST_DEVICE( int i ) {
+                  tribol_m2_view[i] = redecomp_m_view[elem_map2_view[i]];
+                } );
+    TRIBOL_MARK_END( "Copy element thickness to Redecomp mesh" );
   }
 }
 
 void MfemMeshData::GetParentResponse( mfem::Vector& r ) const
 {
-  GetParentRedecompTransfer().RedecompToParent( redecomp_response_, r );
+  GetParentRedecompTransfer().RedecompToParent( *redecomp_response_, r );
 }
 
 void MfemMeshData::SetParentVelocity( const mfem::ParGridFunction& velocity )
@@ -435,7 +500,8 @@ void MfemMeshData::SetLORFactor( int lor_factor )
   lor_mesh_ = std::make_unique<mfem::ParMesh>(
       mfem::ParMesh::MakeRefined( submesh_, lor_factor, mfem::BasisType::ClosedUniform ) );
   lor_mesh_->EnsureNodes();
-  submesh_lor_xfer_ = std::make_unique<SubmeshLORTransfer>( *submesh_xfer_gridfn_.ParFESpace(), *lor_mesh_ );
+  submesh_lor_xfer_ =
+      std::make_unique<SubmeshLORTransfer>( *submesh_xfer_gridfn_.ParFESpace(), *lor_mesh_, use_device_ );
 }
 
 void MfemMeshData::ComputeElementThicknesses()
@@ -521,17 +587,22 @@ MfemMeshData::UpdateData::UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* 
                                       const mfem::ParFiniteElementSpace& parent_fes,
                                       mfem::ParGridFunction& submesh_gridfn, SubmeshLORTransfer* submesh_lor_xfer,
                                       const std::set<int>& attributes_1, const std::set<int>& attributes_2,
-                                      RealT binning_proximity_scale )
-    : redecomp_mesh_{ lor_mesh ? redecomp::RedecompMesh(
-                                     *lor_mesh, binning_proximity_scale *
-                                                    redecomp::RedecompMesh::MaxElementSize(
-                                                        *lor_mesh, redecomp::MPIUtility( lor_mesh->GetComm() ) ) )
-                               : redecomp::RedecompMesh(
-                                     submesh, binning_proximity_scale *
-                                                  redecomp::RedecompMesh::MaxElementSize(
-                                                      submesh, redecomp::MPIUtility( submesh.GetComm() ) ) ) },
-      vector_xfer_{ parent_fes, submesh_gridfn, submesh_lor_xfer, redecomp_mesh_ }
+                                      RealT binning_proximity_scale, int allocator_id, int n_ranks )
+    : redecomp_mesh_{ lor_mesh
+                          ? redecomp::RedecompMesh(
+                                *lor_mesh,
+                                binning_proximity_scale * redecomp::RedecompMesh::MaxElementSize(
+                                                              *lor_mesh, redecomp::MPIUtility( lor_mesh->GetComm() ) ),
+                                redecomp::RedecompMesh::RCB, n_ranks )
+                          : redecomp::RedecompMesh(
+                                submesh,
+                                binning_proximity_scale * redecomp::RedecompMesh::MaxElementSize(
+                                                              submesh, redecomp::MPIUtility( submesh.GetComm() ) ),
+                                redecomp::RedecompMesh::RCB, n_ranks ) },
+      vector_xfer_{ parent_fes, submesh_gridfn, submesh_lor_xfer, redecomp_mesh_ },
+      allocator_id_{ allocator_id }
 {
+  TRIBOL_MARK_FUNCTION;
   // set element type based on redecomp mesh
   SetElementData();
   // updates the connectivity of the tribol surface mesh
@@ -541,39 +612,53 @@ MfemMeshData::UpdateData::UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* 
 void MfemMeshData::UpdateData::UpdateConnectivity( const std::set<int>& attributes_1,
                                                    const std::set<int>& attributes_2 )
 {
-  conn_1_.reserve( redecomp_mesh_.GetNE() * num_verts_per_elem_ );
-  conn_2_.reserve( redecomp_mesh_.GetNE() * num_verts_per_elem_ );
-  elem_map_1_.reserve( static_cast<size_t>( redecomp_mesh_.GetNE() ) );
-  elem_map_2_.reserve( static_cast<size_t>( redecomp_mesh_.GetNE() ) );
+  // create this on host since MFEM connectivity data is stored there
+  Array2D<IndexT, MemorySpace::Host> conn_1_host;
+  Array2D<IndexT, MemorySpace::Host> conn_2_host;
+  Array1D<int, MemorySpace::Host> elem_map_1_host;
+  Array1D<int, MemorySpace::Host> elem_map_2_host;
+  conn_1_host.reserve( redecomp_mesh_.GetNE() * num_verts_per_elem_ );
+  conn_2_host.reserve( redecomp_mesh_.GetNE() * num_verts_per_elem_ );
+  elem_map_1_host.reserve( static_cast<size_t>( redecomp_mesh_.GetNE() ) );
+  elem_map_2_host.reserve( static_cast<size_t>( redecomp_mesh_.GetNE() ) );
   for ( int e{}; e < redecomp_mesh_.GetNE(); ++e ) {
     auto elem_attrib = redecomp_mesh_.GetAttribute( e );
     auto elem_conn = mfem::Array<int>();
     redecomp_mesh_.GetElementVertices( e, elem_conn );
     for ( auto attribute_1 : attributes_1 ) {
       if ( attribute_1 == elem_attrib ) {
-        elem_map_1_.push_back( e );
-        conn_1_.resize( elem_map_1_.size(), num_verts_per_elem_ );
+        elem_map_1_host.push_back( e );
+        conn_1_host.resize( elem_map_1_host.size(), num_verts_per_elem_ );
         for ( int v{}; v < num_verts_per_elem_; ++v ) {
-          conn_1_( elem_map_1_.size() - 1, v ) = elem_conn[v];
+          conn_1_host( elem_map_1_host.size() - 1, v ) = elem_conn[v];
         }
         break;
       }
     }
     for ( auto attribute_2 : attributes_2 ) {
       if ( attribute_2 == elem_attrib ) {
-        elem_map_2_.push_back( e );
-        conn_2_.resize( elem_map_2_.size(), num_verts_per_elem_ );
+        elem_map_2_host.push_back( e );
+        conn_2_host.resize( elem_map_2_host.size(), num_verts_per_elem_ );
         for ( int v{}; v < num_verts_per_elem_; ++v ) {
-          conn_2_( elem_map_2_.size() - 1, v ) = elem_conn[v];
+          conn_2_host( elem_map_2_host.size() - 1, v ) = elem_conn[v];
         }
         break;
       }
     }
   }
-  conn_1_.shrink();
-  conn_2_.shrink();
-  elem_map_1_.shrink_to_fit();
-  elem_map_2_.shrink_to_fit();
+  if ( allocator_id_ == conn_1_host.getAllocatorID() ) {
+    // same memory space, just move
+    conn_1_ = std::move( conn_1_host );
+    conn_2_ = std::move( conn_2_host );
+    elem_map_1_ = std::move( elem_map_1_host );
+    elem_map_2_ = std::move( elem_map_2_host );
+  } else {
+    // copy to new memory space
+    conn_1_ = Array2D<IndexT>( conn_1_host, allocator_id_ );
+    conn_2_ = Array2D<IndexT>( conn_2_host, allocator_id_ );
+    elem_map_1_ = Array1D<int>( elem_map_1_host, allocator_id_ );
+    elem_map_2_ = Array1D<int>( elem_map_2_host, allocator_id_ );
+  }
 }
 
 MfemMeshData::UpdateData& MfemMeshData::GetUpdateData()
@@ -595,7 +680,9 @@ mfem::ParSubMesh MfemMeshData::CreateSubmesh( const mfem::ParMesh& parent_mesh, 
   // reference to attributes. Then we can construct submesh_ in the initializer
   // list without this function (because CreateFromBoundary will be willing to
   // take an rvalue for attributes)
+  // NOTE (EBC): This has been updated in the latest MFEM. Make the change when MFEM is updated.
   auto attributes_array = arrayFromSet( mergeContainers( attributes_1, attributes_2 ) );
+  // NOTE (EBC): The Nodes ParGridFunction is created on host. No support for creating this on device yet.
   return mfem::ParSubMesh::CreateFromBoundary( parent_mesh, attributes_array );
 }
 
@@ -691,13 +778,16 @@ MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemS
   SLIC_ERROR_ROOT_IF( parent_data.GetParentCoords().ParFESpace()->FEColl()->GetOrder() > 1,
                       "Higher order meshes not yet supported for Jacobian matrices." );
 
-  mfem::SubMeshUtils::BuildVdofToVdofMap(
-      parent_data_.GetSubmeshFESpace(), *parent_data_.GetParentCoords().FESpace(), parent_data_.GetSubmesh().GetFrom(),
-      parent_data_.GetSubmesh().GetParentElementIDMap(), submesh2parent_vdof_list_ );
+  mfem::Array<int> vdof_list_int;
+
+  mfem::SubMeshUtils::BuildVdofToVdofMap( parent_data_.GetSubmeshFESpace(), *parent_data_.GetParentCoords().FESpace(),
+                                          parent_data_.GetSubmesh().GetFrom(),
+                                          parent_data_.GetSubmesh().GetParentElementIDMap(), vdof_list_int );
 
   auto dof_offset = parent_data_.GetParentCoords().ParFESpace()->GetMyDofOffset();
-  for ( auto& vdof : submesh2parent_vdof_list_ ) {
-    vdof = vdof + dof_offset;
+  submesh2parent_vdof_list_.SetSize( vdof_list_int.Size() );
+  for ( int i{ 0 }; i < vdof_list_int.Size(); ++i ) {
+    submesh2parent_vdof_list_[i] = dof_offset + static_cast<HYPRE_BigInt>( vdof_list_int[i] );
   }
 
   auto& parent_fes = *parent_data_.GetParentCoords().ParFESpace();
@@ -806,8 +896,14 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian( con
       GetUpdateData().submesh_redecomp_xfer_10_->TransferToParallelSparse( lm_elems, nonmortar_elems, *elem_J_2 );
   submesh_J.Finalize();
 
-  // transform J values from submesh to parent mesh
-  auto J = submesh_J.GetJ();
+  // transform J values from submesh to (global) parent mesh
+  mfem::Array<HYPRE_BigInt> J( submesh_J.NumNonZeroElems() );
+  // This copy is needed to convert mfem::SparseMatrix int J values to the HYPRE_BigInt values the mfem::HypreParMatrix
+  // constructor needs
+  auto* J_int = submesh_J.GetJ();
+  for ( int i{ 0 }; i < J.Size(); ++i ) {
+    J[i] = J_int[i];
+  }
   auto submesh_vector_fes = parent_data_.GetSubmeshFESpace();
   auto mpi = redecomp::MPIUtility( submesh_vector_fes.GetComm() );
   auto submesh_dof_offsets = ArrayT<int>( mpi.NRanks() + 1, mpi.NRanks() + 1 );
@@ -880,7 +976,7 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian( con
   // trial space is on the parent mesh, not the submesh
   auto J_full = std::make_unique<mfem::HypreParMatrix>( mpi.MPIComm(), submesh_fes.GetVSize(),
                                                         submesh_fes.GlobalVSize(), parent_trial_fes.GlobalVSize(),
-                                                        submesh_J.GetI(), submesh_J.GetJ(), submesh_J.GetData(),
+                                                        submesh_J.GetI(), J.GetData(), submesh_J.GetData(),
                                                         submesh_fes.GetDofOffsets(), parent_trial_fes.GetDofOffsets() );
   auto J_true = std::unique_ptr<mfem::HypreParMatrix>(
       mfem::RAP( submesh_fes.Dof_TrueDof_Matrix(), J_full.get(), parent_trial_fes.Dof_TrueDof_Matrix() ) );
@@ -906,11 +1002,12 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian( con
   auto inactive_hpm = std::make_unique<mfem::HypreParMatrix>( J_true->GetComm(), J_true->GetGlobalNumRows(),
                                                               J_true->GetRowStarts(), &inactive_sm );
   // Have the mfem::HypreParMatrix manage the data pointers
-  rows.GetMemory().SetHostPtrOwner( false );
-  mortar_tdofs.GetMemory().SetHostPtrOwner( false );
-  ones.GetMemory().SetHostPtrOwner( false );
-  inactive_sm.SetDataOwner( false );
-  inactive_hpm->SetOwnerFlags( 3, 3, 1 );
+  rows.GetMemory().ClearOwnerFlags();
+  mortar_tdofs.GetMemory().ClearOwnerFlags();
+  ones.GetMemory().ClearOwnerFlags();
+  inactive_sm.GetMemoryI().ClearOwnerFlags();
+  inactive_sm.GetMemoryJ().ClearOwnerFlags();
+  inactive_sm.GetMemoryData().ClearOwnerFlags();
 
   block_J->SetBlock( 0, 1, J_true->Transpose() );
   block_J->SetBlock( 1, 0, J_true.release() );

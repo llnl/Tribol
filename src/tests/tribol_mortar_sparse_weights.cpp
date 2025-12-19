@@ -112,7 +112,7 @@ void computeGapsFromSparseWts( tribol::CouplingScheme* cs, RealT* gaps )
       }  // end if-block
 
     }  // end loop over nonzero columns, I[a]
-  }    // end loop over matrix rows
+  }  // end loop over matrix rows
 
 }  // end ComputeGapsFromSparseWts()
 

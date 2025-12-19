@@ -430,7 +430,7 @@ class EnzymeElementMortarTest : public testing::Test {
                                  x2, f2, df2dx1, df2dx2, df2dn1, df2dp1, num_nodes );
 
     // NOTE: This will still work for triangles since the unused nodes are ignored.
-    int conn[4] = { 0, 1, 2, 3 };
+    IndexT conn[4] = { 0, 1, 2, 3 };
     tribol::InterfaceElementType interface_element_type = tribol::InterfaceElementType::LINEAR_QUAD;
     if ( num_nodes == 3 ) {
       interface_element_type = tribol::InterfaceElementType::LINEAR_TRIANGLE;
@@ -705,7 +705,7 @@ TEST_F( EnzymeElementMortarTest, ShiftedXYNonmortarElementMinorInterpenetration 
   FDCheck( x1, x2, n1, p1 );
 }
 
-// NOTE: this configuration is designed to match a test in Serac
+// NOTE: this configuration is designed to match a test in Smith
 TEST_F( EnzymeElementMortarTest, ShiftedXYNonmortarElementMinorInterpenetrationV2 )
 {
   // slightly offset

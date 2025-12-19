@@ -34,7 +34,7 @@ class CouplingSchemeTest : public ::testing::Test {
  public:
   int m_numCells;
   int m_lengthNodalData;
-  int* m_connectivity{ nullptr };
+  tribol::IndexT* m_connectivity{ nullptr };
   int m_elementType;
   RealT* m_x{ nullptr };
   RealT* m_y{ nullptr };
@@ -57,7 +57,7 @@ class CouplingSchemeTest : public ::testing::Test {
     m_elementType = (int)( tribol::LINEAR_EDGE );  // 1D edge for 2D mesh
 
     if ( m_numCells > 0 ) {
-      m_connectivity = new int[m_lengthNodalData];
+      m_connectivity = new tribol::IndexT[m_lengthNodalData];
       m_x = new RealT[m_lengthNodalData];
       m_y = new RealT[m_lengthNodalData];
       if ( set_response ) {
@@ -101,7 +101,7 @@ class CouplingSchemeTest : public ::testing::Test {
     m_elementType = (int)( tribol::LINEAR_QUAD );  // 2D face in 3D mesh
 
     if ( m_numCells > 0 ) {
-      m_connectivity = new int[m_lengthNodalData];
+      m_connectivity = new tribol::IndexT[m_lengthNodalData];
       m_x = new RealT[m_lengthNodalData];
       m_y = new RealT[m_lengthNodalData];
       m_z = new RealT[m_lengthNodalData];
@@ -580,8 +580,8 @@ TEST_F( CouplingSchemeTest, invalid_mesh_in_coupling_scheme )
   int numFaces2 = 1;
   constexpr int numTotalNodes1 = 2;
   constexpr int numTotalNodes2 = 4;
-  int faceConn1[numTotalNodes1] = { 0, 1 };        // dummy triangle connectivity (invalid)
-  int faceConn2[numTotalNodes2] = { 4, 5, 6, 7 };  // dummy quadrilateral connectivity (valid)
+  tribol::IndexT faceConn1[numTotalNodes1] = { 0, 1 };        // dummy triangle connectivity (invalid)
+  tribol::IndexT faceConn2[numTotalNodes2] = { 4, 5, 6, 7 };  // dummy quadrilateral connectivity (valid)
   RealT x1[numTotalNodes1] = { 0., 0.5 };
   RealT y1[numTotalNodes1] = { 0., 0. };
   RealT z1[numTotalNodes1] = { 0., 0. };

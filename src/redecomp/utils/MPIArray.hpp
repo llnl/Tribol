@@ -8,6 +8,8 @@
 
 #include "axom/core.hpp"
 
+#include "shared/infrastructure/Profiling.hpp"
+
 #include "redecomp/utils/MPIUtility.hpp"
 
 namespace redecomp {
@@ -18,8 +20,8 @@ namespace redecomp {
  * @tparam T Array data type
  * @tparam DIM Array dimension
  */
-template <typename T, int DIM = 1>
-class MPIArray : public axom::Array<axom::Array<T, DIM>> {
+template <typename T, int DIM = 1, typename ArrayType = axom::Array<axom::Array<T, DIM>>>
+class MPIArray : public ArrayType {
  public:
   /**
    * @brief Construct a new MPIArray object
@@ -27,8 +29,7 @@ class MPIArray : public axom::Array<axom::Array<T, DIM>> {
    * @param mpi MPIUtility to define MPI_Comm for MPI operations
    * @param array Array data
    */
-  MPIArray( const MPIUtility* mpi, const axom::Array<axom::Array<T, DIM>>& array )
-      : axom::Array<axom::Array<T, DIM>>( array ), mpi_{ mpi }
+  MPIArray( const MPIUtility* mpi, const ArrayType& array ) : ArrayType( array ), mpi_{ mpi }
   {
     this->reserve( mpi_->NRanks() );
     this->resize( mpi_->NRanks() );
@@ -41,8 +42,7 @@ class MPIArray : public axom::Array<axom::Array<T, DIM>> {
    * @param mpi MPIUtility to define MPI_Comm for MPI operations
    * @param array Array data
    */
-  MPIArray( const MPIUtility* mpi, axom::Array<axom::Array<T, DIM>>&& array )
-      : axom::Array<axom::Array<T, DIM>>( std::move( array ) ), mpi_{ mpi }
+  MPIArray( const MPIUtility* mpi, ArrayType&& array ) : ArrayType( std::move( array ) ), mpi_{ mpi }
   {
     this->reserve( mpi_->NRanks() );
     this->resize( mpi_->NRanks() );
@@ -54,7 +54,7 @@ class MPIArray : public axom::Array<axom::Array<T, DIM>> {
    *
    * @param mpi MPIUtility to define MPI_Comm for MPI operations
    */
-  MPIArray( const MPIUtility* mpi ) : MPIArray( mpi, axom::Array<axom::Array<T, DIM>>( 0, 0 ) ) {}
+  MPIArray( const MPIUtility* mpi ) : MPIArray( mpi, ArrayType( 0, 0 ) ) {}
 
   /**
    * @brief Construct an empty MPIArray object (note: object cannot be used)
@@ -111,6 +111,7 @@ class MPIArray : public axom::Array<axom::Array<T, DIM>> {
   template <typename F>
   void SendRecvEach( F&& build_send )
   {
+    TRIBOL_MARK_FUNCTION;
     mpi_->SendRecvEach(
         type<axom::Array<T, DIM>>(), std::forward<F>( build_send ),
         [this]( axom::Array<T, DIM>&& recv_data, axom::IndexType src ) { at( src ) = std::move( recv_data ); } );

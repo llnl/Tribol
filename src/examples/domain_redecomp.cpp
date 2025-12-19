@@ -8,36 +8,27 @@
  *
  * @brief Demonstrates redecomp::RedecompMesh and redecomp transfer capability
  *
- * Demonstrates use of redecomp::RedecompMesh to build a RCB-based
- * redecomposition of an mfem::ParMesh, then transfers an mfem::ParGridFunction
- * and an mfem::QuadratureFunction to an mfem::GridFunction and an
- * mfem::QuadratureFunction on the redecomp::RedecompMesh and vice versa.
+ * Demonstrates use of redecomp::RedecompMesh to build a RCB-based redecomposition of an mfem::ParMesh, then transfers
+ * an mfem::ParGridFunction and an mfem::QuadratureFunction to an mfem::GridFunction and an mfem::QuadratureFunction on
+ * the redecomp::RedecompMesh and vice versa.
  *
- * Though redecomp::RedecompMesh contains pieces of the mesh spread across
- * ranks, it is a serial mesh which derives from mfem::Mesh. All coordination
- * with other ranks must be done by transferring data to the parent
- * mfem::ParMesh level. Beyond the decomposition method (RCB vs. typically metis
- * k-way), a redecomp::RedecompMesh differs from an mfem::ParMesh because it
- * includes a layer of ghost elements at the on-rank domain boundaries.
- * Quantities on ghost elements are typically transferred to fields on the
- * redecomp::RedecompMesh, but are not transferred back to the mfem::ParMesh.
+ * Though redecomp::RedecompMesh contains pieces of the mesh spread across ranks, it is a serial mesh which derives from
+ * mfem::Mesh. All coordination with other ranks must be done by transferring data to the parent mfem::ParMesh level.
+ * Beyond the decomposition method (RCB vs. typically metis k-way), a redecomp::RedecompMesh differs from an
+ * mfem::ParMesh because it includes a layer of ghost elements at the on-rank domain boundaries. Quantities on ghost
+ * elements are typically transferred to fields on the redecomp::RedecompMesh, but are not transferred back to the
+ * mfem::ParMesh.
  *
- * This example illustrates the envisioned typical workflow for using
- * redecomp::RedecompMesh:
- *   1. Create a RedecompMesh by providing a parent ParMesh (and optionally a
- *      method of repartitioning the domain)
- *   2. Create fields on the RedecompMesh (mfem::GridFunction and/or
- *      mfem::QuadratureFunction)
- *   3. Creating a RedecompTransfer object which provides methods to transfer an
- *      mfem::ParGridFunction and an mfem::QuadratureFunction from the parent
- *      ParMesh to the RedecompMesh and vice versa
- *   4. Transferring the mfem::ParGridfunction and/or mfem::QuadratureFunction
- *      on the parent ParMesh to the mfem::GridFunction and/or
- *      mfem::QuadratureFunction on the RedecompMesh
- *   5. Performing an update on the mfem::GridFunction and/or
- *      mfem::QuadratureFunction at the RedecompMesh level
- *   6. Transferring the mfem::GridFunction and/or mfem::QuadratureFunction on
- *      the RedecompMesh back to the corresponding functions on the ParMesh
+ * This example illustrates the envisioned typical workflow for using redecomp::RedecompMesh:
+ *   1. Create a RedecompMesh by providing a parent ParMesh (and optionally a method of repartitioning the domain)
+ *   2. Create fields on the RedecompMesh (mfem::GridFunction and/or mfem::QuadratureFunction)
+ *   3. Creating a RedecompTransfer object which provides methods to transfer an mfem::ParGridFunction and an
+ *      mfem::QuadratureFunction from the parent ParMesh to the RedecompMesh and vice versa
+ *   4. Transferring the mfem::ParGridfunction and/or mfem::QuadratureFunction on the parent ParMesh to the
+ *      mfem::GridFunction and/or mfem::QuadratureFunction on the RedecompMesh
+ *   5. Performing an update on the mfem::GridFunction and/or mfem::QuadratureFunction at the RedecompMesh level
+ *   6. Transferring the mfem::GridFunction and/or mfem::QuadratureFunction on the RedecompMesh back to the
+ *      corresponding functions on the ParMesh
  *
  * Example runs (from repo root directory):
  *   - mpirun -np 4 {build_dir}/examples/domain_redecomp_ex -r 1 -m data/two_hex.mesh
@@ -45,8 +36,7 @@
  *   - mpirun -np 4 {build_dir}/examples/domain_redecomp_ex -r 1 -o 2 -m data/two_hex.mesh
  *   - mpirun -np 4 {build_dir}/examples/domain_redecomp_ex -r 1 -o 2 -m data/star.mesh
  *
- * Example output on both the RedecompMesh and the ParMesh can be viewed in
- * VisIt.
+ * Example output on both the RedecompMesh and the ParMesh can be viewed in VisIt.
  */
 
 #include <string>
@@ -56,9 +46,11 @@
 
 #include "axom/CLI11.hpp"
 #include "axom/slic.hpp"
+
 #include "mfem.hpp"
 
 #include "redecomp/redecomp.hpp"
+
 #include "tribol/config.hpp"
 
 template <int NDIMS>
@@ -83,19 +75,17 @@ int main( int argc, char** argv )
   // command line options
   // location of mesh file. TRIBOL_REPO_DIR is defined in tribol/config.hpp
   std::string mesh_file = TRIBOL_REPO_DIR "/data/star.mesh";
-  // number of times to uniformly refine the serial mesh before constructing the
-  // parallel mesh
+  // number of times to uniformly refine the serial mesh before constructing the parallel mesh
   int ref_levels = 0;
   // polynomial order of the finite element discretization
   int order = 1;
-  // 0 < max_out_of_balance <= 1; determines the maximum proportion the number
-  // of elements in each partition is allowed to deviate from an exactly
-  // balanced decomposition. lower values are better, but this may need to be
-  // increased for coarse meshes. note, the RCB method prevents
-  // max_out_of_balance from being so small that decomposition is impossible on
-  // very coarse meshes, though the decomposition can still fail with the simple
-  // checks implemented.
+  // 0 < max_out_of_balance <= 1; determines the maximum proportion the number of elements in each partition is allowed
+  // to deviate from an exactly balanced decomposition. lower values are better, but this may need to be increased for
+  // coarse meshes. note, the RCB method prevents max_out_of_balance from being so small that decomposition is
+  // impossible on very coarse meshes, though the decomposition can still fail with the simple checks implemented.
   double max_out_of_balance = 0.05;
+  // device configuration string (see mfem::Device::Configure() for valid options)
+  std::string device_config = "cpu";
 
   axom::CLI::App app{ "domain_redecomp" };
   app.add_option( "-m,--mesh", mesh_file, "Mesh file to use." )
@@ -105,13 +95,23 @@ int main( int argc, char** argv )
   app.add_option( "-o,--order", order, "Finite element order (polynomial degree)." )->capture_default_str();
   app.add_option( "-t,--tol", max_out_of_balance, "Max proportion of out-of-balance elements in RCB decomposition." )
       ->capture_default_str();
+  app.add_option( "-d,--device", device_config,
+                  "Device configuration string, see mfem::Device::Configure() for valid options." )
+      ->capture_default_str();
   CLI11_PARSE( app, argc, argv );
 
   SLIC_INFO_ROOT( "Running domain_redecomp with the following options:" );
   SLIC_INFO_ROOT( axom::fmt::format( "mesh:   {0}", mesh_file ) );
   SLIC_INFO_ROOT( axom::fmt::format( "refine: {0}", ref_levels ) );
   SLIC_INFO_ROOT( axom::fmt::format( "order:  {0}", order ) );
-  SLIC_INFO_ROOT( axom::fmt::format( "tol:    {0}\n", max_out_of_balance ) );
+  SLIC_INFO_ROOT( axom::fmt::format( "tol:    {0}", max_out_of_balance ) );
+  SLIC_INFO_ROOT( axom::fmt::format( "device: {0}\n", device_config ) );
+
+  // configure the devices available for MFEM kernel launches
+  mfem::Device device( device_config );
+  if ( rank == 0 ) {
+    device.Print();
+  }
 
   // read serial mesh
   auto mesh = std::make_unique<mfem::Mesh>( mesh_file.c_str(), 1, 1 );
@@ -172,10 +172,9 @@ void RedecompExample( mfem::ParMesh& pmesh, int order, double max_out_of_balance
   } else {
     pmesh.GetNodes( par_x_ref_elem );
   }
-  // This is the grid function we are transferring. The "node" and "element"
-  // suffixes refer to the transfer methods that will be used later
-  // (node-by-node and element-by-element, respectively). See the note after
-  // STEP 3A for more information.
+  // This is the grid function we are transferring. The "node" and "element" suffixes refer to the transfer methods that
+  // will be used later (node-by-node and element-by-element, respectively). See the note after STEP 3A for more
+  // information.
   auto par_x_ref_node = par_x_ref_elem;
 
   // create visit output data collection for pmesh
@@ -184,11 +183,9 @@ void RedecompExample( mfem::ParMesh& pmesh, int order, double max_out_of_balance
   /////////////////////////////////////////////////////////////////////////////
   // STEP 1: Create RedecompMesh
   /////////////////////////////////////////////////////////////////////////////
-  // Note: if you want to accept the default options for RedecompMesh (transfer
-  // by elements and RCB partitioning), you can call the constructor with just
-  // the mfem::ParMesh, i.e.
-  //   auto redecomp_mesh = redecomp::RedecompMesh(&pmesh);
-  // See RedecompMesh.hpp for all available constructors
+  // Note: if you want to accept the default options for RedecompMesh (transfer by elements and RCB partitioning), you
+  // can call the constructor with just the mfem::ParMesh, i.e. auto redecomp_mesh = redecomp::RedecompMesh(pmesh); See
+  // RedecompMesh.hpp for all available constructors
 
   axom::utilities::Timer timer{ false };
   timer.start();
@@ -217,16 +214,12 @@ void RedecompExample( mfem::ParMesh& pmesh, int order, double max_out_of_balance
   /////////////////////////////////////////////////////////////////////////////
   // STEP 3A: Create transfer object (element-by-element)
   /////////////////////////////////////////////////////////////////////////////
-  // Note: GridFunctions can be transferred element-by-element or node-by-node.
-  // Element-by-element transfer is trivially constructed and can be applied to
-  // any GridFunction. Node-by-node transfer is specific to FiniteElementSpaces
-  // on RedecompMesh and on the ParMesh. Since the node-by-node transfer map is
-  // not trivially constructed, it is intended for transferring multiple H1
-  // fields.  See TransferByElements.hpp and TransferByNodes.hpp for more
-  // information.
+  // Note: GridFunctions can be transferred element-by-element or node-by-node. Element-by-element transfer is trivially
+  // constructed and can be applied to any GridFunction. Node-by-node transfer is specific to FiniteElementSpaces on
+  // RedecompMesh and on the ParMesh. Since the node-by-node transfer map is not trivially constructed, it is intended
+  // for transferring multiple H1 fields.  See TransferByElements.hpp and TransferByNodes.hpp for more information.
   //
-  // Note: Only element-by-element transfer is needed for QuadratureFunctions.
-  // This transfer object is used later there.
+  // Note: Only element-by-element transfer is needed for QuadratureFunctions. This transfer object is used later there.
 
   timer.start();
   auto elem_transfer = redecomp::RedecompTransfer();
@@ -239,6 +232,8 @@ void RedecompExample( mfem::ParMesh& pmesh, int order, double max_out_of_balance
   /////////////////////////////////////////////////////////////////////////////
 
   timer.start();
+  // Redecomp does transfers on host, so if par_x_ref_elem DOF data is on device, it will be copied to host and the
+  // device DOF data of redecomp_x_ref_elem will be marked as invalid.
   elem_transfer.TransferToSerial( par_x_ref_elem, redecomp_x_ref_elem );
   timer.stop();
   SLIC_INFO_ROOT(
@@ -259,6 +254,8 @@ void RedecompExample( mfem::ParMesh& pmesh, int order, double max_out_of_balance
   /////////////////////////////////////////////////////////////////////////////
 
   timer.start();
+  // Redecomp does transfers on host, so if par_x_ref_node DOF data is on device, it will be copied to host and the
+  // device DOF data of redecomp_x_ref_node will be marked as invalid.
   node_transfer.TransferToSerial( par_x_ref_node, redecomp_x_ref_node );
   timer.stop();
   SLIC_INFO_ROOT(
@@ -274,6 +271,8 @@ void RedecompExample( mfem::ParMesh& pmesh, int order, double max_out_of_balance
   /////////////////////////////////////////////////////////////////////////////
 
   timer.start();
+  // Redecomp does transfers on host, so if redecomp_x_ref_elem DOF data is on device, it will be copied to host and the
+  // device DOF data of par_x_ref_elem will be marked as invalid.
   elem_transfer.TransferToParallel( redecomp_x_ref_elem, par_x_ref_elem );
   timer.stop();
   SLIC_INFO_ROOT(
@@ -285,6 +284,8 @@ void RedecompExample( mfem::ParMesh& pmesh, int order, double max_out_of_balance
   /////////////////////////////////////////////////////////////////////////////
 
   timer.start();
+  // Redecomp does transfers on host, so if redecomp_x_ref_node DOF data is on device, it will be copied to host and the
+  // device DOF data of par_x_ref_node will be marked as invalid.
   node_transfer.TransferToParallel( redecomp_x_ref_node, par_x_ref_node );
   timer.stop();
   SLIC_INFO_ROOT(
@@ -328,6 +329,8 @@ void RedecompExample( mfem::ParMesh& pmesh, int order, double max_out_of_balance
   /////////////////////////////////////////////////////////////////////////////
 
   timer.start();
+  // Redecomp does transfers on host, so if quad_fn quadrature point data is on device, it will be copied to host and
+  // the device quadrature point data in redecomp_quad_fn will be marked as invalid.
   elem_transfer.TransferToSerial( quad_fn, redecomp_quad_fn );
   timer.stop();
   SLIC_INFO_ROOT( axom::fmt::format( "Time to transfer quadrature function: {0:f}ms", timer.elapsedTimeInMilliSec() ) );
@@ -342,6 +345,9 @@ void RedecompExample( mfem::ParMesh& pmesh, int order, double max_out_of_balance
   /////////////////////////////////////////////////////////////////////////////
 
   timer.start();
+  // Redecomp does transfers on host, so if redecomp_quad_fn quadrature point
+  // data is on device, it will be copied to host and the device quadrature
+  // point data in quad_fn will be marked as invalid.
   elem_transfer.TransferToParallel( redecomp_quad_fn, quad_fn );
   timer.stop();
   SLIC_INFO_ROOT(

@@ -43,10 +43,6 @@ class IsoIntegTest : public ::testing::Test {
   {
     tribol::VectorArray<RealT> xyz( this->dim, this->numNodes );
 
-    RealT* x = this->x;
-    RealT* y = this->y;
-    RealT* z = this->z;
-
     // generate stacked coordinate array
     for ( int j = 0; j < this->numNodes; ++j ) {
       xyz.setVector(j, tribol::Vector<RealT>({ x[j], y[j], z[j] }) );

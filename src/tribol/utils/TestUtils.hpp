@@ -406,10 +406,10 @@ class TestMesh {
   int* presDofs2;    ///< Pointer to nonmortar node ids with a pressure BC
 
   // Pointers to connectivity data
-  int* faceConn1;  ///< Pointer to mortar face connectivity
-  int* faceConn2;  ///< Pointer to nonmortar face connectivity
-  int* elConn1;    ///< Pointer to mortar element connectivity
-  int* elConn2;    ///< Pointer to nonmortar element connectivity
+  IndexT* faceConn1;  ///< Pointer to mortar face connectivity
+  IndexT* faceConn2;  ///< Pointer to nonmortar face connectivity
+  IndexT* elConn1;    ///< Pointer to mortar element connectivity
+  IndexT* elConn2;    ///< Pointer to nonmortar element connectivity
 
   // TODO can we make these mfem grid functions?
   RealT* fx1;  ///< Mortar nodal forces, x-component
@@ -449,8 +449,8 @@ class TestMesh {
   RealT* getX() const { return x; }
   RealT* getY() const { return y; }
   RealT* getZ() const { return z; }
-  int* getMortarFaceConnectivity() const { return faceConn1; }
-  int* getNonmortarFaceConnectivity() const { return faceConn2; }
+  IndexT* getMortarFaceConnectivity() const { return faceConn1; }
+  IndexT* getNonmortarFaceConnectivity() const { return faceConn2; }
 
   int getNumTotalNodes() const { return numTotalNodes; }
 
@@ -504,13 +504,6 @@ class CentralDiffSolver : public mfem::SecondOrderODESolver {
    * @brief Tracks whether a step has been taken yet
    */
   bool first_step;
-
-  /**
-   * @brief Applies homogeneous BCs to dxdt
-   *
-   * @param dxdt Velocity vector
-   */
-  void SetHomogeneousBC( mfem::Vector& dxdt ) const;
 };
 
 #ifdef TRIBOL_USE_MPI
@@ -539,6 +532,15 @@ class ExplicitMechanics : public mfem::SecondOrderTimeDependentOperator {
    * @param a Acceleration vector
    */
   void Mult( const mfem::Vector& u, const mfem::Vector& dudt, mfem::Vector& a ) const override;
+
+  /**
+   * @brief Computes inverse lumped mass matrix
+   *
+   * @param fespace FE space of displacement field
+   * @param rho Density coefficient
+   * @return mfem::Vector holding mass
+   */
+  static mfem::Vector ComputeInvMass( mfem::ParFiniteElementSpace& fespace, mfem::Coefficient& rho );
 
   /**
    * @brief External force contribution (must be manually updated)
