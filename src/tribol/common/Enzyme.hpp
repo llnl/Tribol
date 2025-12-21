@@ -13,14 +13,14 @@
 #ifdef TRIBOL_USE_ENZYME
 #include "mfem/general/enzyme.hpp"
 
-#ifndef TRIBOL_USE_HOST
-// When compiling with CUDA/HIP, the MFEM/Enzyme headers may declare
-// enzyme_const/dup/etc with __device__ or __constant__ attributes.
-// Reading these variables in host code triggers warnings or errors.
+#if !defined( TRIBOL_USE_HOST ) && !defined( TRIBOL_DEVICE_CODE )
+// When compiling with NVCC or HIPCC, the compiler performs multiple passes.
+// In the HOST pass, reading the __device__ or __constant__ globals (like
+// enzyme_const) triggers warnings.
 //
 // To fix this, we declare host-side aliases that map to the same
-// underlying assembly symbols ("enzyme_const", etc.) required by the
-// Enzyme pass, but without the device attributes.
+// underlying assembly symbols required by the Enzyme pass, but without
+// the device attributes.
 extern "C" {
 extern int tribol_host_enzyme_const asm( "enzyme_const" );
 extern int tribol_host_enzyme_dup asm( "enzyme_dup" );
@@ -34,7 +34,10 @@ extern int tribol_host_enzyme_dupnoneed asm( "enzyme_dupnoneed" );
 #define TRIBOL_ENZYME_DUPNONEED tribol_host_enzyme_dupnoneed
 
 #else
-// Standard C++ compilation
+// We are either:
+// 1. In a device compilation pass (__CUDA_ARCH__ or __HIP_DEVICE_COMPILE__ defined).
+// 2. Using a standard host compiler (GCC, Clang, etc.).
+// In these cases, we use the symbols provided by the Enzyme/MFEM headers.
 #define TRIBOL_ENZYME_CONST enzyme_const
 #define TRIBOL_ENZYME_DUP enzyme_dup
 #define TRIBOL_ENZYME_OUT enzyme_out
