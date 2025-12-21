@@ -47,8 +47,8 @@ class IsoIntegTest : public ::testing::Test {
     // instantiate SurfaceContactElem struct. Note, this object is instantiated
     // using face 1 as face 2, but these faces are not used in this test so this
     // is ok.
-    tribol::SurfaceContactElem elem( this->dim, xyz.data(), xyz.data(), xyz.data(), this->numNodes,
-                                     this->numNodes, nullptr, nullptr, 0, 0 );
+    tribol::SurfaceContactElem elem( this->dim, xyz.data(), xyz.data(), xyz.data(), this->numNodes, this->numNodes,
+                                     nullptr, nullptr, 0, 0 );
 
     // instantiate integration object
     tribol::IntegPts integ;

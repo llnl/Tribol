@@ -482,24 +482,23 @@ void ComputeResidualJacobian<SINGLE_MORTAR, DUAL>( SurfaceContactElem& elem )
       // Fill block (0, 2)
       int elem_xdof = elem.getJacobianIndex( SurfaceContactElem::JrpBlock, a, b );
       int dim_offset = elem.getJacobianDimOffset( SurfaceContactElem::JrpBlock );
-      elem.blockJ( static_cast<IndexT>( BlockSpace::MORTAR ),
-                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) ).data()[elem_xdof] += nrml_b[0] * n_mortar_b;
-      elem.blockJ( static_cast<IndexT>( BlockSpace::MORTAR ),
-                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) ).data()[elem_xdof + dim_offset] +=
-          nrml_b[1] * n_mortar_b;
-      elem.blockJ( static_cast<IndexT>( BlockSpace::MORTAR ),
-                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) ).data()[elem_xdof + 2 * dim_offset] +=
-          nrml_b[2] * n_mortar_b;
+      elem.blockJ( static_cast<IndexT>( BlockSpace::MORTAR ), static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+          .data()[elem_xdof] += nrml_b[0] * n_mortar_b;
+      elem.blockJ( static_cast<IndexT>( BlockSpace::MORTAR ), static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+          .data()[elem_xdof + dim_offset] += nrml_b[1] * n_mortar_b;
+      elem.blockJ( static_cast<IndexT>( BlockSpace::MORTAR ), static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+          .data()[elem_xdof + 2 * dim_offset] += nrml_b[2] * n_mortar_b;
 
       // Fill block (1, 2)
       elem.blockJ( static_cast<IndexT>( BlockSpace::NONMORTAR ),
-                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) ).data()[elem_xdof] -= nrml_b[0] * n_nonmortar_b;
+                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+          .data()[elem_xdof] -= nrml_b[0] * n_nonmortar_b;
       elem.blockJ( static_cast<IndexT>( BlockSpace::NONMORTAR ),
-                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) ).data()[elem_xdof + dim_offset] -=
-          nrml_b[1] * n_nonmortar_b;
+                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+          .data()[elem_xdof + dim_offset] -= nrml_b[1] * n_nonmortar_b;
       elem.blockJ( static_cast<IndexT>( BlockSpace::NONMORTAR ),
-                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) ).data()[elem_xdof + 2 * dim_offset] -=
-          nrml_b[2] * n_nonmortar_b;
+                   static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+          .data()[elem_xdof + 2 * dim_offset] -= nrml_b[2] * n_nonmortar_b;
 
     }  // end loop over b nodes
 
@@ -547,21 +546,23 @@ void ComputeConstraintJacobian<SINGLE_MORTAR, PRIMAL>( SurfaceContactElem& elem 
       // Fill block (2, 0)
       int dim_offset = elem.getJacobianDimOffset( SurfaceContactElem::JguBlock );
       int elem_xdof = elem.getJacobianIndex( SurfaceContactElem::JguBlock, a, b );
-      elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                   static_cast<IndexT>( BlockSpace::MORTAR ) ).data()[elem_xdof] += nrml_a[0] * n_mortar_a;
-      elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                   static_cast<IndexT>( BlockSpace::MORTAR ) ).data()[elem_xdof + dim_offset] += nrml_a[1] * n_mortar_a;
-      elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                   static_cast<IndexT>( BlockSpace::MORTAR ) ).data()[elem_xdof + 2 * dim_offset] += nrml_a[2] * n_mortar_a;
+      elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ), static_cast<IndexT>( BlockSpace::MORTAR ) )
+          .data()[elem_xdof] += nrml_a[0] * n_mortar_a;
+      elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ), static_cast<IndexT>( BlockSpace::MORTAR ) )
+          .data()[elem_xdof + dim_offset] += nrml_a[1] * n_mortar_a;
+      elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ), static_cast<IndexT>( BlockSpace::MORTAR ) )
+          .data()[elem_xdof + 2 * dim_offset] += nrml_a[2] * n_mortar_a;
 
       // Fill block (2, 1)
       elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                   static_cast<IndexT>( BlockSpace::NONMORTAR ) ).data()[elem_xdof] -= nrml_a[0] * n_nonmortar_a;
+                   static_cast<IndexT>( BlockSpace::NONMORTAR ) )
+          .data()[elem_xdof] -= nrml_a[0] * n_nonmortar_a;
       elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                   static_cast<IndexT>( BlockSpace::NONMORTAR ) ).data()[elem_xdof + dim_offset] -= nrml_a[1] * n_nonmortar_a;
+                   static_cast<IndexT>( BlockSpace::NONMORTAR ) )
+          .data()[elem_xdof + dim_offset] -= nrml_a[1] * n_nonmortar_a;
       elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                   static_cast<IndexT>( BlockSpace::NONMORTAR ) ).data()[elem_xdof + 2 * dim_offset] -=
-          nrml_a[2] * n_nonmortar_a;
+                   static_cast<IndexT>( BlockSpace::NONMORTAR ) )
+          .data()[elem_xdof + 2 * dim_offset] -= nrml_a[2] * n_nonmortar_a;
 
     }  // end loop over b nodes
 

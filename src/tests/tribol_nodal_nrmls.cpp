@@ -77,12 +77,12 @@ TEST_F( NodalNormalTest, two_quad_inverted_v )
   // setup connectivity for the two faces ensuring nodes
   // are ordered consistent with an outward unit normal
   for ( int i = 0; i < numNodesPerFace; ++i ) {
-    conn(0, i) = i;
+    conn( 0, i ) = i;
   }
-  conn(1, 0) = 0;
-  conn(1, 1) = 5;
-  conn(1, 2) = 4;
-  conn(1, 3) = 1;
+  conn( 1, 0 ) = 0;
+  conn( 1, 1 ) = 5;
+  conn( 1, 2 ) = 4;
+  conn( 1, 3 ) = 1;
 
   // setup the nodal coordinates of the mesh
   tribol::ArrayT<RealT> x( numNodesPerFace + 2 );

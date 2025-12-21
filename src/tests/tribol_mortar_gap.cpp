@@ -154,8 +154,8 @@ class MortarGapTest : public ::testing::Test {
     // instantiate SurfaceContactElem struct. Note, this object is instantiated
     // using face 1, face 2, and the set overlap polygon. Note, the mesh ids are set
     // equal to 0, and the face ids are 0 and 1, respectively.
-    tribol::SurfaceContactElem elem( this->dim, xyz1.data(), xyz2.data(), xyzOverlap.data(),
-                                     this->numNodesPerFace, this->numOverlapNodes, &mortarView, &nonmortarView, 0, 0 );
+    tribol::SurfaceContactElem elem( this->dim, xyz1.data(), xyz2.data(), xyzOverlap.data(), this->numNodesPerFace,
+                                     this->numOverlapNodes, &mortarView, &nonmortarView, 0, 0 );
 
     // compute the mortar weights to be stored on
     // the surface contact element struct.

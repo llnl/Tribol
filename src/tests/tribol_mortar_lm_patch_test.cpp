@@ -123,13 +123,13 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
   tribol::Array2D<RealT> xyz( m_mesh.dim, m_mesh.numTotalNodes );
   tribol::Array2D<RealT> xyz_inc( m_mesh.dim, m_mesh.numTotalNodes );
   for ( int i = 0; i < this->m_mesh.numTotalNodes; ++i ) {
-    xyz(0, i) = this->m_mesh.x[i];
-    xyz(1, i) = this->m_mesh.y[i];
-    xyz(2, i) = this->m_mesh.z[i];
+    xyz( 0, i ) = this->m_mesh.x[i];
+    xyz( 1, i ) = this->m_mesh.y[i];
+    xyz( 2, i ) = this->m_mesh.z[i];
 
-    xyz_inc(0, i) = 0.0;
-    xyz_inc(1, i) = 0.0;
-    xyz_inc(2, i) = 0.0;
+    xyz_inc( 0, i ) = 0.0;
+    xyz_inc( 1, i ) = 0.0;
+    xyz_inc( 2, i ) = 0.0;
   }
 
   // define the FE collection and finite element space
@@ -281,8 +281,8 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
   // mesh array as that of the reference configuration
   for ( int i = 0; i < this->m_mesh.numTotalNodes; ++i ) {
     for ( int j = 0; j < this->m_mesh.dim; ++j ) {
-      xyz(j, i) += sol_data[this->m_mesh.dim * i + j];
-      xyz_inc(j, i) = sol_data[this->m_mesh.dim * i + j];
+      xyz( j, i ) += sol_data[this->m_mesh.dim * i + j];
+      xyz_inc( j, i ) = sol_data[this->m_mesh.dim * i + j];
     }
   }
 

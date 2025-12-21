@@ -168,8 +168,7 @@ template <typename Container>
 TRIBOL_HOST_DEVICE typename Container::value_type product( const Container& c )
 {
   typename Container::value_type result = 1;
-  for ( auto val : c )
-  {
+  for ( auto val : c ) {
     result *= val;
   }
   return result;
@@ -186,10 +185,8 @@ template <typename Container>
 TRIBOL_HOST_DEVICE typename Container::value_type min( const Container& c )
 {
   typename Container::value_type result = std::numeric_limits<typename Container::value_type>::max();
-  for ( auto val : c )
-  {
-    if ( val < result )
-    {
+  for ( auto val : c ) {
+    if ( val < result ) {
       result = val;
     }
   }
