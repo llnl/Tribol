@@ -13,6 +13,7 @@ set(tribol_headers
 
     common/ArrayTypes.hpp
     common/BasicTypes.hpp
+    common/Containers.hpp
     common/ExecModel.hpp
     common/LoopExec.hpp
     common/Parameters.hpp
@@ -22,7 +23,6 @@ set(tribol_headers
     geom/GeomUtilities.hpp
     geom/Hyperplane.hpp
     geom/NodalNormal.hpp
-    geom/Vector.hpp
 
     integ/FE.hpp
     integ/Integration.hpp
@@ -49,7 +49,7 @@ set(tribol_headers
     utils/DataManager.hpp
     utils/Math.hpp
     utils/TestUtils.hpp
-    )
+)
 
 ## list of sources
 set(tribol_sources
