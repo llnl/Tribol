@@ -6,15 +6,9 @@
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/mesh/InterfacePairs.hpp"
 
 // Axom includes
 #include "axom/slic.hpp"
-
-#include <iostream>
-#include <sstream>
-#include <iomanip>
-#include <fstream>
 
 namespace tribol {
 
@@ -53,7 +47,8 @@ void SurfaceContactElem::allocateBlockJ( EnforcementMethod enf )
   int nPrimal = this->dim * this->numFaceVert;
   for ( int i{}; i < 2; ++i ) {
     for ( int j{}; j < 2; ++j ) {
-      this->blockJ( i, j ) = Array2D<RealT>( nPrimal, nPrimal );
+      this->blockJ( i, j ) = DeviceArray2D<RealT>( nPrimal, nPrimal );
+      this->blockJ( i, j ).fill( 0.0 );
     }
   }
 
@@ -61,11 +56,14 @@ void SurfaceContactElem::allocateBlockJ( EnforcementMethod enf )
     // number of element Lagrange multiplier degrees of freedom
     int nDual = this->numFaceVert;
     for ( int i{}; i < 2; ++i ) {
-      this->blockJ( i, 2 ) = Array2D<RealT>( nPrimal, nDual );
+      this->blockJ( i, 2 ) = DeviceArray2D<RealT>( nPrimal, nDual );
+      this->blockJ( i, 2 ).fill( 0.0 );
       // transpose
-      this->blockJ( 2, i ) = Array2D<RealT>( nDual, nPrimal );
+      this->blockJ( 2, i ) = DeviceArray2D<RealT>( nDual, nPrimal );
+      this->blockJ( 2, i ).fill( 0.0 );
     }
-    this->blockJ( 2, 2 ) = Array2D<RealT>( nDual, nDual );
+    this->blockJ( 2, 2 ) = DeviceArray2D<RealT>( nDual, nDual );
+    this->blockJ( 2, 2 ).fill( 0.0 );
   }
 }
 
@@ -173,7 +171,7 @@ void MethodData::reserveBlockJ( ArrayT<BlockSpace>&& blockJSpaces, int nPairs )
 }
 
 //------------------------------------------------------------------------------
-void MethodData::storeElemBlockJ( ArrayT<int>&& blockJElemIds, const Array2D<Array2D<RealT>>& blockJ )
+void MethodData::storeElemBlockJ( ArrayT<int>&& blockJElemIds, const StackArray<DeviceArray2D<RealT>, 9>& blockJ )
 {
   SLIC_ASSERT_MSG( blockJElemIds.size() == getNSpaces(),
                    "Number of element ID vectors does not match the number of Jacobian spaces." );
@@ -185,7 +183,7 @@ void MethodData::storeElemBlockJ( ArrayT<int>&& blockJElemIds, const Array2D<Arr
       // convert to mfem::DenseMatrix
       auto& block = blockJ( i, j );
       // this DenseMatrix is a "view" of block
-      mfem::DenseMatrix block_densemat( const_cast<RealT*>( block.data() ), block.shape()[0], block.shape()[1] );
+      mfem::DenseMatrix block_densemat( const_cast<RealT*>( block.data() ), block.height(), block.width() );
       // deep copy should happen here
       m_blockJ( blockIdxI, blockIdxJ ).push_back( block_densemat );
     }

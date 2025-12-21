@@ -9,6 +9,9 @@
 // Tribol config include
 #include "tribol/config.hpp"
 
+// Axom includes
+#include "axom/primal.hpp"
+
 // Tribol includes
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/geom/Vector.hpp"
@@ -25,7 +28,7 @@ namespace tribol {
  * @tparam _T Element numeric type for vector components.
  * @tparam _VectorT Vector type used for points and normals (defaults to `Vector<_T>`).
  */
-template <typename _T, typename _VectorT = Vector<_T>>
+template <typename _T, int _Dim, typename _VectorT = axom::primal::Vector<_T, _Dim>>
 class Hyperplane {
  public:
   /// @brief Alias for the vector type used by this hyperplane.

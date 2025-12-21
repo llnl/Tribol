@@ -17,7 +17,6 @@
 #include "tribol/integ/Integration.hpp"
 #include "tribol/integ/FE.hpp"
 #include "tribol/utils/Math.hpp"
-#include "tribol/utils/Algorithm.hpp"
 
 // Axom includes
 #include "axom/slic.hpp"
@@ -200,10 +199,10 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
   // declare local variables to hold face nodal coordinates
   // and overlap vertex coordinates
   int const dim = cs->spatialDimension();
-  VectorArray<RealT> mortarX( dim, numNodesPerFace );
-  VectorArray<RealT> nonmortarX( dim, numNodesPerFace );
-  VectorArray<RealT> mortarX_bar( dim, numNodesPerFace );
-  VectorArray<RealT> nonmortarX_bar( dim, numNodesPerFace );
+  Array2D<RealT> mortarX( numNodesPerFace, dim );
+  Array2D<RealT> nonmortarX( numNodesPerFace, dim );
+  Array2D<RealT> mortarX_bar( numNodesPerFace, dim );
+  Array2D<RealT> nonmortarX_bar( numNodesPerFace, dim );
 
   ////////////////////////////////////////////////////////////////////
   // compute nonmortar gaps to determine active set of contact dofs //
@@ -219,7 +218,7 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
     auto& cg_pairs = cs->getCompGeom();
     auto& plane = cg_pairs.getMortarPlane( cpID );
 
-    VectorArray<RealT> overlapX( dim, plane.m_numPolyVert );
+    Array2D<RealT> overlapX( plane.m_numPolyVert, dim );
 
     // get pair indices
     IndexT index1 = pair.m_element_id1;
@@ -327,8 +326,8 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
   }
 
   // declare local variables to hold projected face nodal coordinates
-  VectorArray<RealT> mortarX_bar( dim, numNodesPerFace );
-  VectorArray<RealT> nonmortarX_bar( dim, numNodesPerFace );
+  Array2D<RealT> mortarX_bar( numNodesPerFace, dim );
+  Array2D<RealT> nonmortarX_bar( numNodesPerFace, dim );
 
   ////////////////////////////////////////////////////////////////
   //                                                            //
@@ -346,7 +345,7 @@ int ApplyNormal<SINGLE_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
     auto& cg_pairs = cs->getCompGeom();
     auto& plane = cg_pairs.getMortarPlane( cpID );
 
-    VectorArray<RealT> overlapX( dim, plane.m_numPolyVert );
+    Array2D<RealT> overlapX( plane.m_numPolyVert, dim );
 
     // get pair indices
     IndexT index1 = pair.m_element_id1;
@@ -666,26 +665,32 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
     }
     if ( lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ||
          lm_opts.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ) {
-      Array2D<Array2D<RealT>> blockJ_n( 3, 3 );
+      StackArray<DeviceArray2D<RealT>, 9> blockJ_n( 3 );
       int n_disp[2] = { size1 * 3, size2 * 3 };
       for ( int i{ 0 }; i < 2; ++i ) {
-        blockJ_n( i, 0 ) = Array2D<RealT>( n_disp[0], n_disp[0] );
+        blockJ_n( i, 0 ) = DeviceArray2D<RealT>( n_disp[0], n_disp[0] );
+        blockJ_n( i, 0 ).fill( 0.0 );
       }
       int n_multipliers = size1;
-      blockJ_n( 2, 0 ) = Array2D<RealT>( n_multipliers, n_disp[0] );
+      blockJ_n( 2, 0 ) = DeviceArray2D<RealT>( n_multipliers, n_disp[0] );
+      blockJ_n( 2, 0 ).fill( 0.0 );
 
-      Array2D<Array2D<RealT>> blockJ( 3, 3 );
+      StackArray<DeviceArray2D<RealT>, 9> blockJ( 3 );
       for ( int i{}; i < 2; ++i ) {
         for ( int j{}; j < 2; ++j ) {
-          blockJ( i, j ) = Array2D<RealT>( n_disp[i], n_disp[j] );
+          blockJ( i, j ) = DeviceArray2D<RealT>( n_disp[i], n_disp[j] );
+          blockJ( i, j ).fill( 0.0 );
         }
       }
       for ( int i{}; i < 2; ++i ) {
-        blockJ( i, 2 ) = Array2D<RealT>( n_disp[i], n_multipliers );
+        blockJ( i, 2 ) = DeviceArray2D<RealT>( n_disp[i], n_multipliers );
+        blockJ( i, 2 ).fill( 0.0 );
         // transpose
-        blockJ( 2, i ) = Array2D<RealT>( n_multipliers, n_disp[i] );
+        blockJ( 2, i ) = DeviceArray2D<RealT>( n_multipliers, n_disp[i] );
+        blockJ( 2, i ).fill( 0.0 );
       }
-      blockJ( 2, 2 ) = Array2D<RealT>( n_multipliers, n_multipliers );
+      blockJ( 2, 2 ) = DeviceArray2D<RealT>( n_multipliers, n_multipliers );
+      blockJ( 2, 2 ).fill( 0.0 );
 
       // This function also computes the residual contributions
       ComputeMortarJacobianEnzyme( x1, n1, p1, f1, blockJ( 0, 0 ).data(), blockJ( 0, 1 ).data(),
@@ -1095,8 +1100,8 @@ int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs )
   auto nonmortarMesh = cs->getMesh2().getView();
   IndexT const numNodesPerFace = mortarMesh.numberOfNodesPerElement();
 
-  VectorArray<RealT> mortarX_bar( dim, numNodesPerFace );
-  VectorArray<RealT> nonmortarX_bar( dim, numNodesPerFace );
+  Array2D<RealT> mortarX_bar( numNodesPerFace, dim );
+  Array2D<RealT> nonmortarX_bar( numNodesPerFace, dim );
 
   int numRows = cs->getNumTotalNodes();
   static_cast<MortarData*>( cs->getMethodData() )->allocateMfemSparseMatrix( numRows );
@@ -1118,7 +1123,7 @@ int GetMethodData<MORTAR_WEIGHTS>( CouplingScheme* cs )
     auto& cg_pairs = cs->getCompGeom();
     auto& plane = cg_pairs.getMortarPlane( cpID );
 
-    VectorArray<RealT> overlapX( dim, plane.m_numPolyVert );
+    Array2D<RealT> overlapX( plane.m_numPolyVert, dim );
 
     // get pair indices
     IndexT index1 = pair.m_element_id1;

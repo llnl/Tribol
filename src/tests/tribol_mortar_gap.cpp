@@ -82,18 +82,28 @@ class MortarGapTest : public ::testing::Test {
   {
     // declare arrays to hold stacked coordinates for each
     // face used in initializing a SurfaceContactElem struct
-    tribol::VectorArray<RealT> xyz1( this->dim, this->numNodesPerFace );
-    tribol::VectorArray<RealT> xyz2( this->dim, this->numNodesPerFace );
+    tribol::Array2D<RealT> xyz1( this->numNodesPerFace, this->dim );
+    tribol::Array2D<RealT> xyz2( this->numNodesPerFace, this->dim );
 
     // declare array to hold overlap vertices used for
     // initializing a SurfaceContactElem struct
-    tribol::VectorArray<RealT> xyzOverlap( this->dim, this->numOverlapNodes );
+    tribol::Array2D<RealT> xyzOverlap( this->numOverlapNodes, this->dim );
 
     // generate stacked coordinate array
     for ( int j = 0; j < this->numNodesPerFace; ++j ) {
-      xyz1.setVector( j, tribol::Vector<RealT>({ x1[j], y1[j], z1[j] }));
-      xyz2.setVector( j, tribol::Vector<RealT>({ x2[j], y2[j], z2[j] }));
-      xyzOverlap.setVector( j, tribol::Vector<RealT>({ xOverlap[j], yOverlap[j], zOverlap[j] }));
+      xyz1( j, 0 ) = x1[j];
+      xyz1( j, 1 ) = y1[j];
+      xyz1( j, 2 ) = z1[j];
+
+      xyz2( j, 0 ) = x2[j];
+      xyz2( j, 1 ) = y2[j];
+      xyz2( j, 2 ) = z2[j];
+    }
+
+    for ( int j = 0; j < this->numOverlapNodes; ++j ) {
+      xyzOverlap( j, 0 ) = xOverlap[j];
+      xyzOverlap( j, 1 ) = yOverlap[j];
+      xyzOverlap( j, 2 ) = zOverlap[j];
     }  // end loop over nodes
 
     // register the mesh with tribol

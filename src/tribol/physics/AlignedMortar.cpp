@@ -166,8 +166,8 @@ void ComputeAlignedMortarGaps( CouplingScheme* cs )
   const IndexT numNodesPerFace = mortarMesh.numberOfNodesPerElement();
 
   // arrays to store face coords
-  VectorArray<RealT> mortarX( dim, numNodesPerFace );
-  VectorArray<RealT> nonmortarX( dim, numNodesPerFace );
+  Array2D<RealT> mortarX( numNodesPerFace, dim );
+  Array2D<RealT> nonmortarX( numNodesPerFace, dim );
 
   ////////////////////////////
   // compute nonmortar gaps //
@@ -183,7 +183,7 @@ void ComputeAlignedMortarGaps( CouplingScheme* cs )
     auto& cg_pairs = cs->getCompGeom();
     auto& plane = cg_pairs.getAlignedMortarPlane( cpID );
 
-    VectorArray<RealT> overlapX( dim, plane.m_numPolyVert );
+    Array2D<RealT> overlapX( plane.m_numPolyVert, dim );
 
     // get pair indices
     IndexT index1 = pair.m_element_id1;
@@ -339,9 +339,9 @@ int ApplyNormal<ALIGNED_MORTAR, LAGRANGE_MULTIPLIER>( CouplingScheme* cs )
       auto& plane = cg_pairs.getAlignedMortarPlane( cpID );
 
       // get projected face coords and overlap coords
-      Array2D<RealT> mortarX_bar( dim, numNodesPerFace );
-      Array2D<RealT> nonmortarX_bar( dim, numNodesPerFace );
-      Array2D<RealT> overlapX( dim, plane.m_numPolyVert );
+      Array2D<RealT> mortarX_bar( numNodesPerFace, dim );
+      Array2D<RealT> nonmortarX_bar( numNodesPerFace, dim );
+      Array2D<RealT> overlapX( plane.m_numPolyVert, dim );
       plane.getFace1ProjectedCoords( mortarX_bar.data(), numNodesPerFace );
       plane.getFace2ProjectedCoords( nonmortarX_bar.data(), numNodesPerFace );
       plane.getOverlapVertices( overlapX.data() );

@@ -129,8 +129,9 @@ void EdgeAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
       }
     }
     if ( jacobian_data != nullptr ) {
-      Array2D<Array2D<RealT>> blockJ( 1, 1 );
-      blockJ( 0, 0 ) = Array2D<RealT>( num_nodes_per_elem * 3, num_nodes_per_elem * 3 );
+      StackArray<DeviceArray2D<RealT>, 9> blockJ( 3 );
+      blockJ( 0, 0 ) = DeviceArray2D<RealT>( num_nodes_per_elem * 3, num_nodes_per_elem * 3 );
+      blockJ( 0, 0 ).fill( 0.0 );
       ElementEdgeAvgNodalNormalJacobian( x, xref, n, blockJ( 0, 0 ).data(), num_nodes_per_elem );
       jacobian_data->storeElemBlockJ( { e }, blockJ );
     } else {

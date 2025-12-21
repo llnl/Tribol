@@ -7,6 +7,7 @@
 #define SRC_TRIBOL_MESH_METHODCOUPLINGDATA_HPP_
 
 #include "tribol/common/ArrayTypes.hpp"
+#include "tribol/common/Containers.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
 
@@ -66,7 +67,7 @@ struct SurfaceContactElem {
         mortarWts( nullptr ),
         numWts( 0 ),
         numActiveGaps( 0 ),
-        blockJ( 3, 3 )
+        blockJ( 3 )
 
   {
   }
@@ -94,7 +95,7 @@ struct SurfaceContactElem {
 
   int numActiveGaps;  ///< Number of local face-pair active gaps
 
-  Array2D<Array2D<RealT>> blockJ;  ///< Block element Jacobian contributions
+  StackArray<DeviceArray2D<RealT>, 9> blockJ;  ///< Block element Jacobian contributions
 
   /// routine to allocate space to store mortar weights
   void allocateMortarWts();
@@ -221,7 +222,7 @@ class MethodData {
    * \param [in] blockJ 2D array of element Jacobian contributions (each array
    * entry corresponds to a block of the Jacobian matrix)
    */
-  void storeElemBlockJ( ArrayT<int>&& blockJElemIds, const Array2D<Array2D<RealT>>& blockJ );
+  void storeElemBlockJ( ArrayT<int>&& blockJElemIds, const StackArray<DeviceArray2D<RealT>, 9>& blockJ );
 
   /*!
    * \brief Returns the number of blocks in the Jacobian matrix

@@ -3,18 +3,18 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-// Tribol includes
-#include "tribol/geom/Vector.hpp"
-#include "tribol/mesh/MethodCouplingData.hpp"
-#include "tribol/integ/Integration.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
-#include "tribol/integ/FE.hpp"
+// c++ includes
+#include <cmath>  // std::abs
 
 // gtest includes
 #include "gtest/gtest.h"
 
-// c++ includes
-#include <cmath>  // std::abs
+// Tribol includes
+#include "tribol/common/ArrayTypes.hpp"
+#include "tribol/mesh/MethodCouplingData.hpp"
+#include "tribol/integ/Integration.hpp"
+#include "tribol/geom/GeomUtilities.hpp"
+#include "tribol/integ/FE.hpp"
 
 using RealT = tribol::RealT;
 
@@ -31,7 +31,7 @@ using RealT = tribol::RealT;
 class IsoIntegTest : public ::testing::Test {
  public:
   int numNodes;
-  int dim;
+  static constexpr int dim = 3;
 
   RealT* getXCoords() { return x; }
 
@@ -41,18 +41,21 @@ class IsoIntegTest : public ::testing::Test {
 
   bool integrate( RealT const tol )
   {
-    tribol::VectorArray<RealT> xyz( this->dim, this->numNodes );
+    // axom::primal::ZipIndexable<axom::primal::Vector<RealT, dim>> xyz;
+    tribol::Array2D<RealT> xyz( this->numNodes, dim );
 
     // generate stacked coordinate array
     for ( int j = 0; j < this->numNodes; ++j ) {
-      xyz.setVector(j, tribol::Vector<RealT>({ x[j], y[j], z[j] }) );
+      xyz( j, 0 ) = x[j];
+      xyz( j, 1 ) = y[j];
+      xyz( j, 2 ) = z[j];
     }  // end loop over nodes
 
     // instantiate SurfaceContactElem struct. Note, this object is instantiated
     // using face 1 as face 2, but these faces are not used in this test so this
     // is ok.
-    tribol::SurfaceContactElem elem( this->dim, xyz.data(), xyz.data(), xyz.data(), this->numNodes,
-                                     this->numNodes, nullptr, nullptr, 0, 0 );
+    tribol::SurfaceContactElem elem( this->dim, xyz.data(), xyz.data(), xyz.data(), this->numNodes, this->numNodes,
+                                     nullptr, nullptr, 0, 0 );
 
     // instantiate integration object
     tribol::IntegPts integ;
@@ -89,7 +92,6 @@ class IsoIntegTest : public ::testing::Test {
   void SetUp() override
   {
     this->numNodes = 4;
-    this->dim = 3;
 
     if ( this->x == nullptr ) {
       this->x = new RealT[this->numNodes];

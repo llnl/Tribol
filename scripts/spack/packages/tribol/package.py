@@ -81,6 +81,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
 
     # Other libraries
     depends_on("mfem@4.7.0.2:+lapack")
+    depends_on("mfem@4.9.0:+lapack", when="+enzyme")
     depends_on("axom@0.9:")
 
     depends_on("raja@2024.02.0:", when="+raja")
@@ -95,6 +96,8 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
 
     depends_on("mfem+metis+mpi", when="+redecomp")
     depends_on("mfem+asan", when="+asan")
+    # Tribol uses MFEM's enzyme header
+    depends_on("mfem+enzyme", when="+enzyme")
 
     with when("+profiling"):
         depends_on("caliper+mpi")
