@@ -11,8 +11,8 @@
 #include "tribol/geom/CompGeom.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/geom/NodalNormal.hpp"
-#include "tribol/geom/Vector.hpp"
 #include "tribol/common/ArrayTypes.hpp"
+#include "tribol/common/Enzyme.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/integ/Integration.hpp"
 #include "tribol/integ/FE.hpp"
@@ -20,10 +20,6 @@
 
 // Axom includes
 #include "axom/slic.hpp"
-
-#ifdef TRIBOL_USE_ENZYME
-#include "mfem/general/enzyme.hpp"
-#endif
 
 namespace tribol {
 
@@ -145,7 +141,7 @@ void ComputeNodalGap<SINGLE_MORTAR>( SurfaceContactElem& elem )
     RealT g2 = 0.;
 
     // get global nonmortar node number from connectivity
-    Vector<RealT> nrml_a( elem.dim );
+    Array1D<RealT> nrml_a( elem.dim );
     int glbId = nonmortarConn[elem.numFaceVert * elem.faceId2 + a];
     nrml_a[0] = nonmortarMesh.getNodalNormals()[0][glbId];
     nrml_a[1] = nonmortarMesh.getNodalNormals()[1][glbId];
@@ -462,7 +458,7 @@ void ComputeResidualJacobian<SINGLE_MORTAR, DUAL>( SurfaceContactElem& elem )
     for ( int b = 0; b < elem.numFaceVert; ++b ) {
       // get global nonmortar node id to index into nodal normals on
       // nonmortar mesh
-      Vector<RealT> nrml_b( elem.dim );
+      Array1D<RealT> nrml_b( elem.dim );
       int glbId = nonmortarConn[elem.numFaceVert * elem.faceId2 + b];
 
       // We assemble ALL nonmortar node contributions, even if gap is in separation.
@@ -524,7 +520,7 @@ void ComputeConstraintJacobian<SINGLE_MORTAR, PRIMAL>( SurfaceContactElem& elem 
   for ( int a = 0; a < elem.numFaceVert; ++a ) {
     // get global nonmortar node id to index into nodal normals on
     // nonmortar mesh
-    Vector<RealT> nrml_a( elem.dim );
+    Array1D<RealT> nrml_a( elem.dim );
     int glbId = nonmortarConn[elem.numFaceVert * elem.faceId2 + a];
 
     // We assemble ALL nonmortar node contributions even if gap is in separation.
@@ -1014,15 +1010,15 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
     x1_dot[i] = 1.0;
     // clang-format off
       __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
-         enzyme_dup, x1, x1_dot,
-         enzyme_const, n1,
-         enzyme_const, p1,
-         enzyme_dup, f1, &df1dx1[size1*3*i],
-         enzyme_dup, g1, &dg1dx1[size1*i],
-         enzyme_const, size1,
-         enzyme_const, x2,
-         enzyme_dup, f2, &df2dx1[size1*3*i],
-         enzyme_const, size2);
+         TRIBOL_ENZYME_DUP, x1, x1_dot,
+         TRIBOL_ENZYME_CONST, n1,
+         TRIBOL_ENZYME_CONST, p1,
+         TRIBOL_ENZYME_DUP, f1, &df1dx1[size1*3*i],
+         TRIBOL_ENZYME_DUP, g1, &dg1dx1[size1*i],
+         TRIBOL_ENZYME_CONST, size1,
+         TRIBOL_ENZYME_CONST, x2,
+         TRIBOL_ENZYME_DUP, f2, &df2dx1[size1*3*i],
+         TRIBOL_ENZYME_CONST, size2);
     // clang-format on
     x1_dot[i] = 0.0;
   }
@@ -1031,15 +1027,15 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
     n1_dot[i] = 1.0;
     // clang-format off
       __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
-         enzyme_const, x1,
-         enzyme_dup, n1, n1_dot,
-         enzyme_const, p1,
-         enzyme_dup, f1, &df1dn1[size1*3*i],
-         enzyme_dup, g1, &dg1dn1[size1*i],
-         enzyme_const, size1,
-         enzyme_const, x2,
-         enzyme_dup, f2, &df2dn1[size1*3*i],
-         enzyme_const, size2);
+         TRIBOL_ENZYME_CONST, x1,
+         TRIBOL_ENZYME_DUP, n1, n1_dot,
+         TRIBOL_ENZYME_CONST, p1,
+         TRIBOL_ENZYME_DUP, f1, &df1dn1[size1*3*i],
+         TRIBOL_ENZYME_DUP, g1, &dg1dn1[size1*i],
+         TRIBOL_ENZYME_CONST, size1,
+         TRIBOL_ENZYME_CONST, x2,
+         TRIBOL_ENZYME_DUP, f2, &df2dn1[size1*3*i],
+         TRIBOL_ENZYME_CONST, size2);
     // clang-format on
     n1_dot[i] = 0.0;
   }
@@ -1048,15 +1044,15 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
     p1_dot[i] = 1.0;
     // clang-format off
       __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
-         enzyme_const, x1,
-         enzyme_const, n1,
-         enzyme_dup, p1, p1_dot,
-         enzyme_dup, f1, &df1dp1[size1*3*i],
-         enzyme_const, g1,
-         enzyme_const, size1,
-         enzyme_const, x2,
-         enzyme_dup, f2, &df2dp1[size1*3*i],
-         enzyme_const, size2);
+         TRIBOL_ENZYME_CONST, x1,
+         TRIBOL_ENZYME_CONST, n1,
+         TRIBOL_ENZYME_DUP, p1, p1_dot,
+         TRIBOL_ENZYME_DUP, f1, &df1dp1[size1*3*i],
+         TRIBOL_ENZYME_CONST, g1,
+         TRIBOL_ENZYME_CONST, size1,
+         TRIBOL_ENZYME_CONST, x2,
+         TRIBOL_ENZYME_DUP, f2, &df2dp1[size1*3*i],
+         TRIBOL_ENZYME_CONST, size2);
     // clang-format on
     p1_dot[i] = 0.0;
   }
@@ -1065,15 +1061,15 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
     x2_dot[i] = 1.0;
     // clang-format off
       __enzyme_fwddiff<void>((void*)ComputeMortarForceEnzyme,
-         enzyme_const, x1,
-         enzyme_const, n1,
-         enzyme_const, p1,
-         enzyme_dup, f1, &df1dx2[size2*3*i],
-         enzyme_dup, g1, &dg1dx2[size2*i],
-         enzyme_const, size1,
-         enzyme_dup, x2, x2_dot,
-         enzyme_dup, f2, &df2dx2[size2*3*i],
-         enzyme_const, size2);
+         TRIBOL_ENZYME_CONST, x1,
+         TRIBOL_ENZYME_CONST, n1,
+         TRIBOL_ENZYME_CONST, p1,
+         TRIBOL_ENZYME_DUP, f1, &df1dx2[size2*3*i],
+         TRIBOL_ENZYME_DUP, g1, &dg1dx2[size2*i],
+         TRIBOL_ENZYME_CONST, size1,
+         TRIBOL_ENZYME_DUP, x2, x2_dot,
+         TRIBOL_ENZYME_DUP, f2, &df2dx2[size2*3*i],
+         TRIBOL_ENZYME_CONST, size2);
     // clang-format on
     x2_dot[i] = 0.0;
   }

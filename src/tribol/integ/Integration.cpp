@@ -9,7 +9,6 @@
 #include "tribol/utils/Math.hpp"
 #include "tribol/integ/FE.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
-#include "tribol/geom/Vector.hpp"
 
 // axom includes
 #include "axom/slic.hpp"
@@ -199,7 +198,7 @@ void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, int k )
   // compute the vertex averaged centroid of the overlap polygon. Note
   // that the coordinates of the overlap polygon are always assumed to be
   // 3D
-  Vector<RealT> xc( elem.dim );
+  Array1D<RealT> xc( elem.dim );
   for ( int i = 0; i < elem.dim; ++i ) {
     xc[i] = 0.;
   }

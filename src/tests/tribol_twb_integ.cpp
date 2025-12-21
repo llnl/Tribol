@@ -8,7 +8,6 @@
 #include "tribol/integ/Integration.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/integ/FE.hpp"
-#include "tribol/geom/Vector.hpp"
 
 // gtest includes
 #include "gtest/gtest.h"

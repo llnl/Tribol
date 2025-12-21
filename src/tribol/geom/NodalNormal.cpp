@@ -5,12 +5,9 @@
 
 #include "NodalNormal.hpp"
 
+#include "tribol/common/Enzyme.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/utils/Math.hpp"
-
-#ifdef TRIBOL_USE_ENZYME
-#include "mfem/general/enzyme.hpp"
-#endif
 
 namespace tribol {
 
@@ -222,8 +219,9 @@ void ElementEdgeAvgNodalNormalJacobian( [[maybe_unused]] const RealT* x, [[maybe
   RealT x_dot[12] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
   for ( int i{ 0 }; i < num_nodes_per_elem * 3; ++i ) {
     x_dot[i] = 1.0;
-    __enzyme_fwddiff<void>( (void*)ElementEdgeAvgNodalNormal, enzyme_dup, x, x_dot, enzyme_const, xref, enzyme_dup, n,
-                            &dndx[num_nodes_per_elem * 3 * i], enzyme_const, num_nodes_per_elem );
+    __enzyme_fwddiff<void>( (void*)ElementEdgeAvgNodalNormal, TRIBOL_ENZYME_DUP, x, x_dot, TRIBOL_ENZYME_CONST, xref,
+                            TRIBOL_ENZYME_DUP, n, &dndx[num_nodes_per_elem * 3 * i], TRIBOL_ENZYME_CONST,
+                            num_nodes_per_elem );
     x_dot[i] = 0.0;
   }
 #else

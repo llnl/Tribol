@@ -6,7 +6,6 @@
 // Tribol includes
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/physics/Mortar.hpp"
-#include "tribol/geom/Vector.hpp"
 
 // Axom includes
 #include "axom/slic.hpp"

@@ -11,7 +11,6 @@
 #include "tribol/geom/CompGeom.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/geom/NodalNormal.hpp"
-#include "tribol/geom/Vector.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/integ/Integration.hpp"
 #include "tribol/integ/FE.hpp"
@@ -102,7 +101,7 @@ void ComputeNodalGap<ALIGNED_MORTAR>( SurfaceContactElem& elem )
   // loop over nodes on nonmortar side
   for ( int a = 0; a < elem.numFaceVert; ++a ) {
     // get global nonmortar node number from connectivity
-    Vector<RealT> nrml_a( elem.dim );
+    Array1D<RealT> nrml_a( elem.dim );
     int glbId = nonmortarConn[elem.numFaceVert * elem.faceId2 + a];
     nrml_a[0] = nonmortarMesh.getNodalNormals()[0][glbId];
     nrml_a[1] = nonmortarMesh.getNodalNormals()[1][glbId];

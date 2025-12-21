@@ -6,7 +6,6 @@
 // Tribol includes
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/interface/tribol.hpp"
-#include "tribol/geom/Vector.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
