@@ -8,43 +8,45 @@
 
 #include "tribol/config.hpp"
 
+#include "tribol/common/BasicTypes.hpp"
+
 #ifdef TRIBOL_USE_ENZYME
-  #include "mfem/general/enzyme.hpp"
+#include "mfem/general/enzyme.hpp"
 
-  #if defined( __CUDACC__ ) || defined( __HIPCC__ )
-    // When compiling with CUDA/HIP, the MFEM/Enzyme headers may declare
-    // enzyme_const/dup/etc with __device__ or __constant__ attributes.
-    // Reading these variables in host code triggers warnings or errors.
-    //
-    // To fix this, we declare host-side aliases that map to the same
-    // underlying assembly symbols ("enzyme_const", etc.) required by the
-    // Enzyme pass, but without the device attributes.
-    extern "C" {
-      extern int tribol_host_enzyme_const asm("enzyme_const");
-      extern int tribol_host_enzyme_dup   asm("enzyme_dup");
-      extern int tribol_host_enzyme_out   asm("enzyme_out");
-      extern int tribol_host_enzyme_dupnoneed asm("enzyme_dupnoneed");
-    }
+#ifndef TRIBOL_USE_HOST
+// When compiling with CUDA/HIP, the MFEM/Enzyme headers may declare
+// enzyme_const/dup/etc with __device__ or __constant__ attributes.
+// Reading these variables in host code triggers warnings or errors.
+//
+// To fix this, we declare host-side aliases that map to the same
+// underlying assembly symbols ("enzyme_const", etc.) required by the
+// Enzyme pass, but without the device attributes.
+extern "C" {
+extern int tribol_host_enzyme_const asm( "enzyme_const" );
+extern int tribol_host_enzyme_dup asm( "enzyme_dup" );
+extern int tribol_host_enzyme_out asm( "enzyme_out" );
+extern int tribol_host_enzyme_dupnoneed asm( "enzyme_dupnoneed" );
+}
 
-    #define TRIBOL_ENZYME_CONST tribol_host_enzyme_const
-    #define TRIBOL_ENZYME_DUP   tribol_host_enzyme_dup
-    #define TRIBOL_ENZYME_OUT   tribol_host_enzyme_out
-    #define TRIBOL_ENZYME_DUPNONEED tribol_host_enzyme_dupnoneed
-
-  #else
-    // Standard C++ compilation
-    #define TRIBOL_ENZYME_CONST enzyme_const
-    #define TRIBOL_ENZYME_DUP   enzyme_dup
-    #define TRIBOL_ENZYME_OUT   enzyme_out
-    #define TRIBOL_ENZYME_DUPNONEED enzyme_dupnoneed
-  #endif
+#define TRIBOL_ENZYME_CONST tribol_host_enzyme_const
+#define TRIBOL_ENZYME_DUP tribol_host_enzyme_dup
+#define TRIBOL_ENZYME_OUT tribol_host_enzyme_out
+#define TRIBOL_ENZYME_DUPNONEED tribol_host_enzyme_dupnoneed
 
 #else
-  // Fallback definitions if Enzyme is disabled
-  #define TRIBOL_ENZYME_CONST 0
-  #define TRIBOL_ENZYME_DUP 0
-  #define TRIBOL_ENZYME_OUT 0
-  #define TRIBOL_ENZYME_DUPNONEED 0
+// Standard C++ compilation
+#define TRIBOL_ENZYME_CONST enzyme_const
+#define TRIBOL_ENZYME_DUP enzyme_dup
+#define TRIBOL_ENZYME_OUT enzyme_out
+#define TRIBOL_ENZYME_DUPNONEED enzyme_dupnoneed
+#endif
+
+#else
+// Fallback definitions if Enzyme is disabled
+#define TRIBOL_ENZYME_CONST 0
+#define TRIBOL_ENZYME_DUP 0
+#define TRIBOL_ENZYME_OUT 0
+#define TRIBOL_ENZYME_DUPNONEED 0
 #endif
 
 #endif /* SRC_TRIBOL_COMMON_ENZYME_HPP_ */
