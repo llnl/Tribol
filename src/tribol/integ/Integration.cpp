@@ -22,7 +22,6 @@ template <>
 TRIBOL_HOST_DEVICE void EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( SurfaceContactElem const& elem,
                                                                           RealT* const integ1, RealT* const integ2 )
 {
-  printf( "Inside EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>\n" );
   // compute the area centroid of the overlap polygon,
   // or vertex avg. centroid of the overlap segment, which
   // serves as the single integration point
@@ -32,7 +31,6 @@ TRIBOL_HOST_DEVICE void EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( Surfac
   } else {
     PolyAreaCentroid( elem.overlapCoords, elem.dim, elem.numPolyVert, cx[0], cx[1], cx[2] );
   }
-  printf( "cx: %f, %f, %f", cx[0], cx[1], cx[2] );
 
   // debug: leave commented out so we don't enter loop
   {
@@ -96,8 +94,6 @@ TRIBOL_HOST_DEVICE void EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( Surfac
                              elem.overlapNormal[1], cx[0], cx[1], projX2[elem.dim * i], projX2[elem.dim * i + 1] );
     }
   }
-  printf( "projX1: %f, %f, %f", projX1[0], projX1[1], projX1[2] );
-  printf( "projX2: %f, %f, %f", projX2[0], projX2[1], projX2[2] );
 
   // loop over nodes and compute nodal force integral
   // contributions
