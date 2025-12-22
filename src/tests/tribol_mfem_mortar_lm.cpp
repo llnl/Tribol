@@ -245,6 +245,19 @@ int main( int argc, char* argv[] )
   umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
 #endif
 
+#if defined( TRIBOL_USE_CUDA )
+  std::string device_str( "cuda" );
+#elif defined( TRIBOL_USE_HIP )
+  std::string device_str( "hip" );
+#elif defined( TRIBOL_USE_OPENMP )
+  std::string device_str( "omp" );
+#else
+  std::string device_str( "cpu" );
+#endif
+
+  mfem::Device device( device_str );
+  device.Print();
+
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
                                     // exiting main scope
 

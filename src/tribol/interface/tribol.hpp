@@ -6,7 +6,7 @@
 #ifndef SRC_TRIBOL_INTERFACE_TRIBOL_HPP_
 #define SRC_TRIBOL_INTERFACE_TRIBOL_HPP_
 
-#include "tribol/common/ExecModel.hpp"
+#include "shared/ExecModel.hpp"
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 

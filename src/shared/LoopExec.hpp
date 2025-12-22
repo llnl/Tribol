@@ -3,14 +3,14 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_TRIBOL_COMMON_LOOPEXEC_HPP_
-#define SRC_TRIBOL_COMMON_LOOPEXEC_HPP_
+#ifndef SHARED_LOOPEXEC_HPP_
+#define SHARED_LOOPEXEC_HPP_
 
 // C++ includes
 #include <type_traits>
 
 // Tribol includes
-#include "tribol/common/ExecModel.hpp"
+#include "shared/ExecModel.hpp"
 
 // Axom includes
 #include "axom/slic.hpp"

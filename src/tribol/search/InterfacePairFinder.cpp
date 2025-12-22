@@ -5,7 +5,7 @@
 
 #include "tribol/search/InterfacePairFinder.hpp"
 
-#include "tribol/common/ExecModel.hpp"
+#include "shared/ExecModel.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"

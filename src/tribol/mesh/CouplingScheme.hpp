@@ -6,8 +6,8 @@
 #define SRC_TRIBOL_MESH_COUPLINGSCHEME_HPP_
 
 // Tribol includes
-#include "tribol/common/BasicTypes.hpp"
-#include "tribol/common/ExecModel.hpp"
+#include "shared/BasicTypes.hpp"
+#include "shared/ExecModel.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"

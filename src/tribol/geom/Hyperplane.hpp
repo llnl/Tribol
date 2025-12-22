@@ -13,7 +13,7 @@
 #include "axom/primal.hpp"
 
 // Tribol includes
-#include "tribol/common/BasicTypes.hpp"
+#include "shared/BasicTypes.hpp"
 #include "tribol/geom/Vector.hpp"
 
 namespace tribol {

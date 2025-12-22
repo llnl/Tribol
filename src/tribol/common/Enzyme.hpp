@@ -8,7 +8,7 @@
 
 #include "tribol/config.hpp"
 
-#include "tribol/common/BasicTypes.hpp"
+#include "shared/BasicTypes.hpp"
 
 #ifdef TRIBOL_USE_ENZYME
 #include "mfem/general/enzyme.hpp"

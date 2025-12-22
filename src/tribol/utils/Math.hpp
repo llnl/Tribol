@@ -11,7 +11,7 @@
 
 #include "axom/slic.hpp"
 
-#include "tribol/common/BasicTypes.hpp"
+#include "shared/BasicTypes.hpp"
 
 namespace tribol {
 

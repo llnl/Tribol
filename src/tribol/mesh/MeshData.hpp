@@ -9,7 +9,7 @@
 #include <ostream>
 
 #include "tribol/common/ArrayTypes.hpp"
-#include "tribol/common/LoopExec.hpp"
+#include "shared/LoopExec.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/geom/ElementNormal.hpp"
 #include "tribol/utils/DataManager.hpp"

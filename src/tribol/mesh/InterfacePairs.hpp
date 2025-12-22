@@ -6,7 +6,7 @@
 #ifndef SRC_TRIBOL_MESH_INTERFACE_PAIRS_HPP_
 #define SRC_TRIBOL_MESH_INTERFACE_PAIRS_HPP_
 
-#include "tribol/common/BasicTypes.hpp"
+#include "shared/BasicTypes.hpp"
 
 namespace tribol {
 

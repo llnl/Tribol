@@ -7,7 +7,7 @@
 #define SRC_TRIBOL_COMMON_ARRAYTYPES_HPP_
 
 // Tribol includes
-#include "tribol/common/ExecModel.hpp"
+#include "shared/ExecModel.hpp"
 
 #include "axom/core/Array.hpp"
 #include "axom/core/ArrayView.hpp"

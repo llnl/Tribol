@@ -19,7 +19,7 @@
 #include "axom/core.hpp"
 #include "redecomp/redecomp.hpp"
 
-#include "tribol/common/BasicTypes.hpp"
+#include "shared/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 

@@ -6,7 +6,7 @@
 #ifndef SRC_TRIBOL_GEOM_ELEMENTNORMAL_HPP_
 #define SRC_TRIBOL_GEOM_ELEMENTNORMAL_HPP_
 
-#include "tribol/common/BasicTypes.hpp"
+#include "shared/BasicTypes.hpp"
 
 namespace tribol {
 

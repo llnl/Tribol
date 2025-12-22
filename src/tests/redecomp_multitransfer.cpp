@@ -264,8 +264,16 @@ int main( int argc, char* argv[] )
 
   ::testing::InitGoogleTest( &argc, argv );
 
+#ifdef TRIBOL_USE_UMPIRE
+  umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
+#endif
+
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
                                     // exiting main scope
+
+#ifdef TRIBOL_USE_CUDA
+  mfem::Device device( "cuda" );
+#endif
 
   result = RUN_ALL_TESTS();
 

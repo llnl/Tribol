@@ -7,7 +7,7 @@
 #define SRC_TRIBOL_COMMON_PARAMETERS_HPP_
 
 // Tribol includes
-#include "tribol/common/BasicTypes.hpp"
+#include "shared/BasicTypes.hpp"
 
 #include <string>
 

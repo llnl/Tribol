@@ -10,7 +10,7 @@
 #include <utility>
 
 // Tribol includes
-#include "tribol/common/BasicTypes.hpp"
+#include "shared/BasicTypes.hpp"
 
 namespace tribol {
 

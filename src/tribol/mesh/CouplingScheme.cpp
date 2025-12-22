@@ -6,7 +6,7 @@
 #include "tribol/mesh/CouplingScheme.hpp"
 
 // Tribol includes
-#include "tribol/common/ExecModel.hpp"
+#include "shared/ExecModel.hpp"
 #include "tribol/geom/ElementNormal.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"

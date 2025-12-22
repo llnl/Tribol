@@ -6,7 +6,7 @@
 #include "tribol.hpp"
 
 // Tribol includes
-#include "tribol/common/ExecModel.hpp"
+#include "shared/ExecModel.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/interface/simple_tribol.hpp"
 

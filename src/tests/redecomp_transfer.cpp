@@ -138,7 +138,7 @@ int main( int argc, char* argv[] )
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
                                     // exiting main scope
 
-#ifdef TRIBOL_ENABLE_CUDA
+#ifdef TRIBOL_USE_CUDA
   mfem::Device device( "cuda" );
 #endif
 

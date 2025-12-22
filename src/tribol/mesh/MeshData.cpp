@@ -10,7 +10,7 @@
 #include <fstream>
 
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/common/ExecModel.hpp"
+#include "shared/ExecModel.hpp"
 #include "tribol/geom/ElementNormal.hpp"
 #include "tribol/utils/Math.hpp"
 
