@@ -52,7 +52,8 @@ foreach( test ${tribol_tests} )
     FOLDER tribol/tests )
 
   blt_add_test( NAME ${test_name}
-                COMMAND ${test_name}_test )
+                COMMAND ${test_name}_test
+                NUM_MPI_TASKS 1 )
 
   if (ENABLE_CUDA)
     set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
@@ -192,7 +193,8 @@ if( TRIBOL_USE_ENZYME )
       FOLDER tribol/tests )
 
     blt_add_test( NAME ${test_name}
-                  COMMAND ${test_name}_test )
+                  COMMAND ${test_name}_test
+                  NUM_MPI_TASKS 1 )
 
     if (ENABLE_CUDA)
       set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
