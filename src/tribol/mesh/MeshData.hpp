@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_MESH_MESHDATA_HPP_
-#define SRC_MESH_MESHDATA_HPP_
+#ifndef SRC_TRIBOL_MESH_MESHDATA_HPP_
+#define SRC_TRIBOL_MESH_MESHDATA_HPP_
 
 #include <ostream>
 
@@ -677,13 +677,13 @@ class MeshData {
   MultiArrayView<const RealT> m_vel;           ///< Nodal velocity
   MultiArrayView<RealT> m_response;            ///< Nodal responses (forces)
 
-  Array2D<RealT> m_node_n;  ///< Outward unit node normals
+  ArrayT<RealT, 2> m_node_n;  ///< Outward unit node normals
 
   // Element field data
   Array2DView<const IndexT> m_connectivity;  ///< Element connectivity arrays
 
-  Array2D<RealT> m_c;            ///< Vertex averaged element centroids
-  Array2D<RealT> m_n;            ///< Outward unit element normals
+  ArrayT<RealT, 2> m_c;          ///< Vertex averaged element centroids
+  ArrayT<RealT, 2> m_n;          ///< Outward unit element normals
   Array1D<RealT> m_face_radius;  ///< Face radius used in low level proximity check
   Array1D<RealT> m_area;         ///< Element areas
 
@@ -753,4 +753,4 @@ using MeshManager = DataManager<MeshData>;
 /// \a ostream operator to print a \a MeshData instance to \a os
 std::ostream& operator<<( std::ostream& os, const tribol::MeshData& md );
 
-#endif /* SRC_MESH_MESHDATA_HPP_ */
+#endif /* SRC_TRIBOL_MESH_MESHDATA_HPP_ */

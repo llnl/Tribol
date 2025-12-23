@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_INTEG_FE_HPP_
-#define SRC_INTEG_FE_HPP_
+#ifndef SRC_TRIBOL_INTEG_FE_HPP_
+#define SRC_TRIBOL_INTEG_FE_HPP_
 
 #include <cmath>
 
@@ -210,13 +210,17 @@ inline void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const Re
         xi[0] = x_sol[0];
         xi[1] = x_sol[1];
 
-        //       check to make sure point is inside isoparametric quad
+        //       check to make sure point is inside isoparametric quad_wt
+#if !defined( TRIBOL_USE_ENZYME )
         bool in_quad = true;
+#endif
         if ( std::abs( xi[0] ) > 1. || std::abs( xi[1] ) > 1. ) {
           if ( std::abs( xi[0] ) > 1. + 100. * xtol ||
                std::abs( xi[1] ) > 1. + 100. * xtol )  // should have some tolerance dependent conv tol?
           {
+#if !defined( TRIBOL_USE_ENZYME )
             in_quad = false;
+#endif
           } else {
             xi[0] = std::min( xi[0], 1. );
             xi[1] = std::min( xi[1], 1. );
@@ -412,4 +416,4 @@ void DetJQuad( const RealT xi, const RealT eta, const RealT* x, const int dim, R
 
 }  // namespace tribol
 
-#endif /* SRC_INTEG_FE_HPP_ */
+#endif /* SRC_TRIBOL_INTEG_FE_HPP_ */

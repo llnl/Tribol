@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_MESH_MFEMDATA_HPP_
-#define SRC_MESH_MFEMDATA_HPP_
+#ifndef SRC_TRIBOL_MESH_MFEMDATA_HPP_
+#define SRC_TRIBOL_MESH_MFEMDATA_HPP_
 
 // Tribol config include
 #include "tribol/config.hpp"
@@ -1749,4 +1749,4 @@ class MfemJacobianData {
 
 #endif /* BUILD_REDECOMP */
 
-#endif /* SRC_MESH_MFEMDATA_HPP_ */
+#endif /* SRC_TRIBOL_MESH_MFEMDATA_HPP_ */

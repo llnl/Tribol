@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_REDECOMP_MATRIXTRANSFER_HPP_
-#define SRC_REDECOMP_MATRIXTRANSFER_HPP_
+#ifndef SRC_REDECOMP_TRANSFER_MATRIXTRANSFER_HPP_
+#define SRC_REDECOMP_TRANSFER_MATRIXTRANSFER_HPP_
 
 #include "mfem.hpp"
 
@@ -202,4 +202,4 @@ class MatrixTransfer {
 
 }  // end namespace redecomp
 
-#endif /* SRC_REDECOMP_MATRIXTRANSFER_HPP_ */
+#endif /* SRC_REDECOMP_TRANSFER_MATRIXTRANSFER_HPP_ */

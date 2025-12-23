@@ -792,20 +792,28 @@ void TestMesh::allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY,
                  "TestMesh::allocateAndSetVelocities(): please set unique "
                      << "mortarMeshId and nonmortarMeshId prior to calling this routine." );
 
-  // check to see if pointers have been set
+// check to see if pointers have been set
+#ifdef TRIBOL_DEBUG
   bool deleteVels = false;
+#endif
   if ( mesh_id == this->mortarMeshId ) {
     if ( this->vx1 != nullptr ) {
       delete[] this->vx1;
+#ifdef TRIBOL_DEBUG
       deleteVels = true;
+#endif
     }
     if ( this->vy1 != nullptr ) {
       delete[] this->vy1;
+#ifdef TRIBOL_DEBUG
       deleteVels = true;
+#endif
     }
     if ( this->vz1 != nullptr ) {
       delete[] this->vz1;
+#ifdef TRIBOL_DEBUG
       deleteVels = true;
+#endif
     }
 
     allocRealArray( &this->vx1, this->numTotalNodes, valX );
@@ -816,15 +824,21 @@ void TestMesh::allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY,
   } else if ( mesh_id == this->nonmortarMeshId ) {
     if ( this->vx2 != nullptr ) {
       delete[] this->vx2;
+#ifdef TRIBOL_DEBUG
       deleteVels = true;
+#endif
     }
     if ( this->vy2 != nullptr ) {
       delete[] this->vy2;
+#ifdef TRIBOL_DEBUG
       deleteVels = true;
+#endif
     }
     if ( this->vz2 != nullptr ) {
       delete[] this->vz2;
+#ifdef TRIBOL_DEBUG
       deleteVels = true;
+#endif
     }
 
     allocRealArray( &this->vx2, this->numTotalNodes, valX );
@@ -852,18 +866,24 @@ void TestMesh::allocateAndSetBulkModulus( IndexT mesh_id, RealT val )
                      << "mortarMeshId and nonmortarMeshId prior to calling this routine." );
 
   // check to see if pointers have been set
+#ifdef TRIBOL_DEBUG
   bool deleteData = false;
+#endif
   if ( mesh_id == this->mortarMeshId ) {
     if ( this->mortar_bulk_mod != nullptr ) {
       delete[] this->mortar_bulk_mod;
+#ifdef TRIBOL_DEBUG
       deleteData = true;
+#endif
     }
 
     allocRealArray( &this->mortar_bulk_mod, this->numMortarFaces, val );
   } else if ( mesh_id == this->nonmortarMeshId ) {
     if ( this->nonmortar_bulk_mod != nullptr ) {
       delete[] this->nonmortar_bulk_mod;
+#ifdef TRIBOL_DEBUG
       deleteData = true;
+#endif
     }
 
     allocRealArray( &this->nonmortar_bulk_mod, this->numNonmortarFaces, val );
@@ -880,18 +900,24 @@ void TestMesh::allocateAndSetBulkModulus( IndexT mesh_id, RealT val )
 void TestMesh::allocateAndSetElementThickness( IndexT mesh_id, RealT t )
 {
   // check to see if pointers have been set
+#ifdef TRIBOL_DEBUG
   bool deleteData = false;
+#endif
   if ( mesh_id == this->mortarMeshId ) {
     if ( this->mortar_element_thickness != nullptr ) {
       delete[] this->mortar_element_thickness;
+#ifdef TRIBOL_DEBUG
       deleteData = true;
+#endif
     }
 
     allocRealArray( &this->mortar_element_thickness, this->numMortarFaces, t );
   } else if ( mesh_id == this->nonmortarMeshId ) {
     if ( this->nonmortar_element_thickness != nullptr ) {
       delete[] this->nonmortar_element_thickness;
+#ifdef TRIBOL_DEBUG
       deleteData = true;
+#endif
     }
 
     allocRealArray( &this->nonmortar_element_thickness, this->numNonmortarFaces, t );
@@ -1359,7 +1385,7 @@ void TestMesh::setupMfemMesh( bool fix_orientation )
   // add mortar elements and vertices. Not sure if order of adding
   // elements matters, but adding vertices should probably correspond
   // to the global contiguous id system
-  int mConn[this->numNodesPerElement];
+  Array1D<int> mConn( this->numNodesPerElement );
   for ( int iel = 0; iel < this->numMortarElements; ++iel ) {
     for ( int idx = 0; idx < this->numNodesPerElement; ++idx ) {
       int index = iel * this->numNodesPerElement + idx;
@@ -1367,11 +1393,11 @@ void TestMesh::setupMfemMesh( bool fix_orientation )
     }
     switch ( this->cellType ) {
       case LINEAR_TRIANGLE: {
-        this->mfem_mesh->AddTet( &mConn[0] );
+        this->mfem_mesh->AddTet( mConn.data() );
         break;
       }
       case LINEAR_QUAD: {
-        this->mfem_mesh->AddHex( &mConn[0] );
+        this->mfem_mesh->AddHex( mConn.data() );
         break;
       }
       default: {
@@ -1386,13 +1412,13 @@ void TestMesh::setupMfemMesh( bool fix_orientation )
     vert[1] = this->y[i];
     vert[2] = this->z[i];
 
-    this->mfem_mesh->AddVertex( &vert[0] );
+    this->mfem_mesh->AddVertex( vert );
   }
 
   // add nonmortar elements and vertices. Not sure if order of adding
   // elements matters, but adding vertices should probably correspond
   // to the global contiguous id system
-  int sConn[this->numNodesPerElement];
+  Array1D<int> sConn( this->numNodesPerElement );
   for ( int iel = 0; iel < this->numNonmortarElements; ++iel ) {
     for ( int idx = 0; idx < this->numNodesPerElement; ++idx ) {
       int index = iel * this->numNodesPerElement + idx;

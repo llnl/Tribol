@@ -4,10 +4,8 @@
 // SPDX-License-Identifier: (MIT)
 
 // Tribol includes
-#include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/physics/Mortar.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
 
 // Axom includes
 #include "axom/slic.hpp"
@@ -72,51 +70,32 @@ class MortarWeightTest : public ::testing::Test {
       SLIC_ERROR( "checkMortarWts: number of nodes per face not equal to 4." );
     }
 
-    RealT xyz1[this->dim * this->numNodesPerFace];
-    RealT xyz2[this->dim * this->numNodesPerFace];
-    RealT xyzOverlap[this->dim * this->numOverlapNodes];
-    RealT* xy1 = xyz1;
-    RealT* xy2 = xyz2;
-    RealT* xyOverlap = xyzOverlap;
-
-    RealT* x1 = this->x1;
-    RealT* y1 = this->y1;
-    RealT* z1 = this->z1;
-    RealT* x2 = this->x2;
-    RealT* y2 = this->y2;
-    RealT* z2 = this->z2;
-    RealT* xo = this->xOverlap;
-    RealT* yo = this->yOverlap;
-    RealT* zo = this->zOverlap;
+    tribol::Array2D<RealT> xyz1( this->numNodesPerFace, this->dim );
+    tribol::Array2D<RealT> xyz2( this->numNodesPerFace, this->dim );
+    tribol::Array2D<RealT> xyzOverlap( this->numOverlapNodes, this->dim );
 
     // generate stacked coordinate array
     for ( int j = 0; j < this->numNodesPerFace; ++j ) {
-      for ( int k = 0; k < this->dim; ++k ) {
-        switch ( k ) {
-          case 0:
-            xy1[this->dim * j + k] = x1[j];
-            xy2[this->dim * j + k] = x2[j];
-            xyOverlap[this->dim * j + k] = xo[j];
-            break;
-          case 1:
-            xy1[this->dim * j + k] = y1[j];
-            xy2[this->dim * j + k] = y2[j];
-            xyOverlap[this->dim * j + k] = yo[j];
-            break;
-          case 2:
-            xy1[this->dim * j + k] = z1[j];
-            xy2[this->dim * j + k] = z2[j];
-            xyOverlap[this->dim * j + k] = zo[j];
-            break;
-        }  // end switch
-      }  // end loop over dimension
+      xyz1( j, 0 ) = x1[j];
+      xyz1( j, 1 ) = y1[j];
+      xyz1( j, 2 ) = z1[j];
+
+      xyz2( j, 0 ) = x2[j];
+      xyz2( j, 1 ) = y2[j];
+      xyz2( j, 2 ) = z2[j];
+    }
+
+    for ( int j = 0; j < this->numOverlapNodes; ++j ) {
+      xyzOverlap( j, 0 ) = xOverlap[j];
+      xyzOverlap( j, 1 ) = yOverlap[j];
+      xyzOverlap( j, 2 ) = zOverlap[j];
     }  // end loop over nodes
 
     // instantiate SurfaceContactElem struct. Note, this object is instantiated
     // using face 1, face 2, and the set overlap polygon. Note, the mesh ids are set
     // equal to 0, and the face ids are 0 and 1, respectively.
-    tribol::SurfaceContactElem elem( this->dim, xy1, xy2, xyOverlap, this->numNodesPerFace, this->numOverlapNodes, 0, 0,
-                                     0, 1 );
+    tribol::SurfaceContactElem elem( this->dim, xyz1.data(), xyz2.data(), xyzOverlap.data(), this->numNodesPerFace,
+                                     this->numOverlapNodes, 0, 0, 0, 1 );
 
     // compute the mortar weights to be stored on
     // the surface contact element struct.

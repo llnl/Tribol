@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_PHYSICS_COMMONPLANE_HPP_
-#define SRC_PHYSICS_COMMONPLANE_HPP_
+#ifndef SRC_TRIBOL_PHYSICS_COMMONPLANE_HPP_
+#define SRC_TRIBOL_PHYSICS_COMMONPLANE_HPP_
 
 #include "Physics.hpp"
 
@@ -50,4 +50,4 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
 
 }  // end namespace tribol
 
-#endif /* SRC_PHYSICS_COMMONPLANE_HPP_ */
+#endif /* SRC_TRIBOL_PHYSICS_COMMONPLANE_HPP_ */

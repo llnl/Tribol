@@ -13,9 +13,6 @@
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/physics/Mortar.hpp"
-#include "tribol/physics/AlignedMortar.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
 
 // Axom includes
 #include "axom/slic.hpp"
@@ -30,13 +27,6 @@
 
 // gtest includes
 #include "gtest/gtest.h"
-
-// c++ includes
-#include <cmath>  // std::abs, std::cos, std::sin
-#include <iostream>
-#include <sstream>
-#include <iomanip>
-#include <fstream>
 
 using RealT = tribol::RealT;
 
@@ -80,7 +70,7 @@ void computeGapsFromSparseWts( tribol::CouplingScheme* cs, RealT* gaps )
   int numTotalNodes = static_cast<tribol::MortarData*>( cs->getMethodData() )->m_numTotalNodes;
   for ( int a = 0; a < numTotalNodes; ++a ) {
     // get nonmortar nodal normal
-    RealT nrml_a[dim];
+    tribol::Array1D<RealT> nrml_a( dim );
     nrml_a[0] = nonmortarMesh.getNodalNormals()[0][a];  // array is global length; no index out (?)
     nrml_a[1] = nonmortarMesh.getNodalNormals()[1][a];
     if ( dim == 3 ) {
@@ -90,8 +80,8 @@ void computeGapsFromSparseWts( tribol::CouplingScheme* cs, RealT* gaps )
     // loop over range of nonzero column entries
     for ( int b = I[a]; b < I[a + 1]; ++b ) {
       // get face coordinates for node J[b], i.e. column node id
-      RealT mortar_xyz[dim];
-      RealT nonmortar_xyz[dim];
+      tribol::Array1D<RealT> mortar_xyz( dim );
+      tribol::Array1D<RealT> nonmortar_xyz( dim );
 
       for ( int i = 0; i < dim; ++i ) {
         mortar_xyz[i] = 0.;

@@ -17,7 +17,6 @@
 
 #include <float.h>
 #include <cmath>
-#include <iostream>
 
 namespace tribol {
 

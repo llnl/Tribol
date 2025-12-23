@@ -367,7 +367,9 @@ const ContactPlanePair& CouplingScheme::getContactPlanePair( IndexT id ) const
       break;
     }
     default: {
-      // no-op
+      // won't get here, but just return something to suppress warnings
+      return m_cg_pairs.getMortarPlane( id );
+      break;
     }
   }  // end switch
 }
@@ -1815,7 +1817,9 @@ TRIBOL_HOST_DEVICE ContactPlanePair& CouplingScheme::Viewer::getContactPlanePair
       break;
     }
     default: {
-      // no-op
+      // won't get here, but just return something to suppress warnings
+      return m_cg_pairs.getMortarPlane( id );
+      break;
     }
   }  // end switch
 }

@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_
-#define TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_
+#ifndef SRC_TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_
+#define SRC_TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_
 
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
@@ -57,4 +57,4 @@ class InterfacePairFinder {
 
 }  // end namespace tribol
 
-#endif /* TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_ */
+#endif /* SRC_TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_ */

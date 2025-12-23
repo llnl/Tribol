@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_REDECOMP_GRIDFNTRANSFER_HPP_
-#define SRC_REDECOMP_GRIDFNTRANSFER_HPP_
+#ifndef SRC_REDECOMP_TRANSFER_GRIDFNTRANSFER_HPP_
+#define SRC_REDECOMP_TRANSFER_GRIDFNTRANSFER_HPP_
 
 #include "mfem.hpp"
 
@@ -43,4 +43,4 @@ class GridFnTransfer {
 
 }  // end namespace redecomp
 
-#endif /* SRC_REDECOMP_GRIDFNTRANSFER_HPP_ */
+#endif /* SRC_REDECOMP_TRANSFER_GRIDFNTRANSFER_HPP_ */

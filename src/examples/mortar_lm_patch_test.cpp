@@ -8,13 +8,7 @@
 // Tribol includes
 #include "tribol/interface/tribol.hpp"
 #include "tribol/utils/TestUtils.hpp"
-#include "tribol/utils/Math.hpp"
 #include "tribol/common/Parameters.hpp"
-#include "tribol/mesh/MethodCouplingData.hpp"
-#include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/mesh/InterfacePairs.hpp"
-#include "tribol/mesh/MeshData.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
 
 // Axom includes
 #include "axom/slic.hpp"
@@ -25,9 +19,7 @@
 #endif
 
 // C/C++ includes
-#include <cmath>    // for std::sin() and std::cos()
-#include <string>   // for std::string and operators
-#include <sstream>  // for std::ostringstream
+#include <string>  // for std::string and operators
 
 //----------------------------------------------------------------------------------
 // Example command line arguments for running this example. This test creates two
@@ -196,10 +188,8 @@ int main( int argc, char** argv )
     // instantiate mfem vector for RHS contributions
     int rhs_size = mesh.dim * mesh.numTotalNodes +  // equilibrium equations
                    mesh.numNonmortarSurfaceNodes;   // gap equations
-    RealT b[rhs_size];
-    tribol::initRealArray( &b[0], rhs_size, 0. );
-    mfem::Vector rhs( &b[0], rhs_size );
-    rhs = 0.;  // initialize
+    mfem::Vector rhs( rhs_size );
+    rhs = 0.0;  // initialize
 
     SLIC_INFO( "Finalized initial oversized sparse matrix and created rhs vector." );
 
@@ -230,7 +220,7 @@ int main( int argc, char** argv )
     /////////////////////////////////////////
     // populate RHS with gap contributions //
     /////////////////////////////////////////
-    mesh.getGapEvals( &b[0] );
+    mesh.getGapEvals( rhs.GetData() );
 
     SLIC_INFO( "Populated RHS gap contributions." );
 

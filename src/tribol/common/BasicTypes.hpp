@@ -3,19 +3,22 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef TRIBOL_COMMON_BASICTYPES_HPP_
-#define TRIBOL_COMMON_BASICTYPES_HPP_
+#ifndef SRC_TRIBOL_COMMON_BASICTYPES_HPP_
+#define SRC_TRIBOL_COMMON_BASICTYPES_HPP_
 
-// Tribol includes
+// Tribol config include
 #include "tribol/config.hpp"
 
-// Axom includes
-#include "axom/core/Types.hpp"
+// C includes
+#include <cstddef>
 
 // MPI includes
 #ifdef TRIBOL_USE_MPI
 #include <mpi.h>
 #endif
+
+// Axom includes
+#include "axom/core/Types.hpp"
 
 namespace tribol {
 
@@ -35,6 +38,9 @@ using CommT = int;
 
 // match index type used in axom (since data is held in axom data structures)
 using IndexT = axom::IndexType;
+
+// size type matching size of addressable memory
+using SizeT = size_t;
 
 #ifdef TRIBOL_USE_SINGLE_PRECISION
 
@@ -71,11 +77,23 @@ using RealT = double;
 #define TRIBOL_DEFAULT_HOST_DEVICE
 #endif
 
-// Define variable when loops are computed on host
+// Defined when Tribol doesn't have a device available
 #if !( defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP ) )
 #define TRIBOL_USE_HOST
 #endif
 
+// Define variable when in device code
+#if defined( __CUDA_ARCH__ ) || defined( __HIP_DEVICE_COMPILE__ )
+#define TRIBOL_DEVICE_CODE
+#endif
+
+// Ignore host code in __host__ __device__ code warning on NVCC
+#ifdef TRIBOL_USE_CUDA
+#define TRIBOL_NVCC_EXEC_CHECK_DISABLE #pragma nv_exec_check_disable
+#else
+#define TRIBOL_NVCC_EXEC_CHECK_DISABLE
+#endif
+
 }  // namespace tribol
 
-#endif /* TRIBOL_COMMON_BASICTYPES_HPP_ */
+#endif /* SRC_TRIBOL_COMMON_BASICTYPES_HPP_ */

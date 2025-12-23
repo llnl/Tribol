@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_UTILS_MATH_HPP_
-#define SRC_UTILS_MATH_HPP_
+#ifndef SRC_TRIBOL_UTILS_MATH_HPP_
+#define SRC_TRIBOL_UTILS_MATH_HPP_
 
 // C++ includes
 #include <cmath>
@@ -143,4 +143,4 @@ TRIBOL_HOST_DEVICE inline void initBoolArray( bool* arr, int length, bool init_v
 
 }  // namespace tribol
 
-#endif /* SRC_UTILS_MATH_HPP_ */
+#endif /* SRC_TRIBOL_UTILS_MATH_HPP_ */

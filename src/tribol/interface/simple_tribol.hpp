@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SIMPLE_TRIBOL_HPP_
-#define SIMPLE_TRIBOL_HPP_
+#ifndef SRC_TRIBOL_INTERFACE_SIMPLE_TRIBOL_HPP_
+#define SRC_TRIBOL_INTERFACE_SIMPLE_TRIBOL_HPP_
 
 #include "tribol/common/Parameters.hpp"
 
@@ -90,4 +90,4 @@ int GetSimpleCouplingCSR( int** I, int** J, double** vals, int* n_offsets, int* 
 
 /// @}
 
-#endif /* SIMPLE_TRIBOL_HPP_ */
+#endif /* SRC_TRIBOL_INTERFACE_SIMPLE_TRIBOL_HPP_ */

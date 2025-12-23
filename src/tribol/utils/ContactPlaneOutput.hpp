@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_UTILS_CONTACTPLANEOUTPUT_HPP_
-#define SRC_UTILS_CONTACTPLANEOUTPUT_HPP_
+#ifndef SRC_TRIBOL_UTILS_CONTACTPLANEOUTPUT_HPP_
+#define SRC_TRIBOL_UTILS_CONTACTPLANEOUTPUT_HPP_
 
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
@@ -37,4 +37,4 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
 
 }  // namespace tribol
 
-#endif /* SRC_UTILS_CONTACTPLANEOUTPUT_HPP_ */
+#endif /* SRC_TRIBOL_UTILS_CONTACTPLANEOUTPUT_HPP_ */

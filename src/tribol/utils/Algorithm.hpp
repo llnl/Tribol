@@ -3,10 +3,13 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_UTILS_ALGORITHM_HPP_
-#define SRC_UTILS_ALGORITHM_HPP_
+#ifndef SRC_TRIBOL_UTILS_ALGORITHM_HPP_
+#define SRC_TRIBOL_UTILS_ALGORITHM_HPP_
 
 #include "tribol/common/ArrayTypes.hpp"
+
+#include <utility>
+#include <limits>
 
 namespace tribol {
 
@@ -127,8 +130,71 @@ TRIBOL_HOST_DEVICE void transpose( const ArrayT<T, 2, MSPACE>& in, ArrayT<T, 2, 
   }
 }
 
+/**
+ * @brief Implements a generic bubble sort algorithm
+ *
+ * @tparam Container Type of container to sort
+ * @tparam Compare Comparator function object
+ * @param c Container to sort
+ * @param comp Comparator, returns true if first arg is less than second
+ */
+template <typename Container, typename Compare>
+TRIBOL_HOST_DEVICE void bubbleSort( Container& c, Compare comp )
+{
+  using std::swap;
+
+  const auto size = c.size();
+  if ( size < 2 ) {
+    return;
+  }
+
+  for ( decltype( size ) i = 0; i < size - 1; ++i ) {
+    for ( decltype( size ) j = 0; j < size - i - 1; ++j ) {
+      if ( comp( c[j + 1], c[j] ) ) {
+        swap( c[j], c[j + 1] );
+      }
+    }
+  }
+}
+
+/**
+ * @brief Computes the product of all elements in a container.
+ *
+ * @tparam Container Type of container
+ * @param c Container to compute product of
+ * @return The product of all elements in the container
+ */
+template <typename Container>
+TRIBOL_HOST_DEVICE typename Container::value_type product( const Container& c )
+{
+  typename Container::value_type result = 1;
+  for ( auto val : c ) {
+    result *= val;
+  }
+  return result;
+}
+
+/**
+ * @brief Finds the minimum element in a container.
+ *
+ * @tparam Container Type of container
+ * @param c Container to find the minimum element of
+ * @return The minimum element in the container
+ */
+template <typename Container>
+TRIBOL_HOST_DEVICE typename Container::value_type min( const Container& c )
+{
+  typename Container::value_type result = std::numeric_limits<typename Container::value_type>::max();
+  for ( auto val : c ) {
+    if ( val < result ) {
+      result = val;
+    }
+  }
+  return result;
+}
+
 }  // namespace algorithm
 
 }  // namespace tribol
 
-#endif /* SRC_UTILS_ALGORITHM_HPP_ */
+#endif /* SRC_TRIBOL_UTILS_ALGORITHM_HPP_ */

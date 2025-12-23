@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_COMMON_EXECMODEL_HPP_
-#define SRC_COMMON_EXECMODEL_HPP_
+#ifndef SRC_TRIBOL_COMMON_EXECMODEL_HPP_
+#define SRC_TRIBOL_COMMON_EXECMODEL_HPP_
 
 // Tribol includes
 #include "tribol/common/BasicTypes.hpp"
@@ -102,6 +102,8 @@ inline umpire::resource::MemoryResourceType toUmpireMemoryType( MemorySpace mem_
 
 #endif
 
+inline int getDefaultAllocatorID() { return axom::getDefaultAllocatorID(); }
+
 inline int getResourceAllocatorID( MemorySpace mem_space )
 {
   int allocator_id = axom::getDefaultAllocatorID();
@@ -142,4 +144,4 @@ inline bool isOnDevice( ExecutionMode exec )
 
 }  // namespace tribol
 
-#endif /* SRC_COMMON_EXECMODEL_HPP_ */
+#endif /* SRC_TRIBOL_COMMON_EXECMODEL_HPP_ */

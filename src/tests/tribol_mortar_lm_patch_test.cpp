@@ -7,12 +7,6 @@
 #include "tribol/interface/tribol.hpp"
 #include "tribol/utils/TestUtils.hpp"
 #include "tribol/common/Parameters.hpp"
-#include "tribol/mesh/MethodCouplingData.hpp"
-#include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/mesh/MeshData.hpp"
-#include "tribol/physics/Mortar.hpp"
-#include "tribol/physics/AlignedMortar.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
 
 #ifdef TRIBOL_USE_UMPIRE
 // Umpire includes
@@ -126,16 +120,16 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
   // setup a temporary stacked array of nodal coordinates for use in the instantiation
   // of a reference configuration grid function. The nodal coordinates are stacked x, then
   // y, then z. Also setup a local interleaved array of incremental nodal displacements.
-  RealT xyz[this->m_mesh.dim * this->m_mesh.numTotalNodes];
-  RealT xyz_inc[this->m_mesh.dim * this->m_mesh.numTotalNodes];
+  tribol::Array2D<RealT> xyz( m_mesh.dim, m_mesh.numTotalNodes );
+  tribol::Array2D<RealT> xyz_inc( m_mesh.dim, m_mesh.numTotalNodes );
   for ( int i = 0; i < this->m_mesh.numTotalNodes; ++i ) {
-    xyz[i] = this->m_mesh.x[i];
-    xyz[this->m_mesh.numTotalNodes + i] = this->m_mesh.y[i];
-    xyz[2 * this->m_mesh.numTotalNodes + i] = this->m_mesh.z[i];
+    xyz( 0, i ) = this->m_mesh.x[i];
+    xyz( 1, i ) = this->m_mesh.y[i];
+    xyz( 2, i ) = this->m_mesh.z[i];
 
-    xyz_inc[this->m_mesh.dim * i] = 0.;
-    xyz_inc[this->m_mesh.dim * i + 1] = 0.;
-    xyz_inc[this->m_mesh.dim * i + 2] = 0.;
+    xyz_inc( 0, i ) = 0.0;
+    xyz_inc( 1, i ) = 0.0;
+    xyz_inc( 2, i ) = 0.0;
   }
 
   // define the FE collection and finite element space
@@ -177,15 +171,9 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
   // (space dimension) x (total number of mesh nodes) + (number of nonmortar nodes in contact),
   // where the last addition is for the pressure lagrange multiplier field
   int rhs_size = this->m_mesh.dim * this->m_mesh.numTotalNodes + this->m_mesh.numNonmortarSurfaceNodes;
-  RealT b[rhs_size];
-
-  // initialize b vector
-  for ( int i = 0; i < rhs_size; ++i ) {
-    b[i] = 0.;
-  }
-
   // instantiate mfem vector for right hand side
-  mfem::Vector rhs( &b[0], rhs_size );
+  mfem::Vector rhs( rhs_size );
+  rhs = 0.0;
 
   ////////////////////////////////////////////////////
   //                                                //
@@ -210,7 +198,7 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
   // called again with the updated contact solution, so doing so would actually
   // mess with the RHS in a negative way
   if ( contact ) {
-    this->m_mesh.getGapEvals( &b[0] );
+    this->m_mesh.getGapEvals( rhs.GetData() );
   }
 
   // zero out all Dirichlet BC components for each block
@@ -293,13 +281,13 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
   // mesh array as that of the reference configuration
   for ( int i = 0; i < this->m_mesh.numTotalNodes; ++i ) {
     for ( int j = 0; j < this->m_mesh.dim; ++j ) {
-      xyz[this->m_mesh.numTotalNodes * j + i] += sol_data[this->m_mesh.dim * i + j];
-      xyz_inc[this->m_mesh.numTotalNodes * j + i] = sol_data[this->m_mesh.dim * i + j];
+      xyz( j, i ) += sol_data[this->m_mesh.dim * i + j];
+      xyz_inc( j, i ) = sol_data[this->m_mesh.dim * i + j];
     }
   }
 
   // compute stress update
-  mfem::GridFunction u( fe_space, &xyz_inc[0] );
+  mfem::GridFunction u( fe_space, xyz_inc.data() );
   const int tdim = this->m_mesh.dim * ( this->m_mesh.dim + 1 ) / 2;
   mfem::FiniteElementSpace flux_fespace( this->m_mesh.mfem_mesh, &fe_coll, tdim );
   mfem::GridFunction stress( &flux_fespace );
@@ -343,7 +331,7 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
     this->m_mesh.mfem_mesh->PrintVTK( mesh_ref_ofs, 0, 0 );
 
     // set the current configuration vector and mesh node grid function for output
-    mfem::Vector x_cur( &xyz[0], this->m_mesh.dim * this->m_mesh.numTotalNodes );
+    mfem::Vector x_cur( xyz.data(), this->m_mesh.dim * this->m_mesh.numTotalNodes );
     this->m_mesh.mfem_mesh->SetNodes( x_cur );
 
     // print current mesh
@@ -381,7 +369,7 @@ void MortarLMPatchTest::computeContactSolution( int nMortarElemsX, int nMortarEl
     rhs_vec.open( "rhs_" + suffix_rhs.str() );
 
     for ( int i = 0; i < jac.NumRows(); ++i ) {
-      rhs_vec << b[i] << "\n";
+      rhs_vec << rhs[i] << "\n";
       sol_vec << sol_data[i] << "\n";
       for ( int j = 0; j < jac.NumCols(); ++j ) {
         RealT val = dJac( i, j );

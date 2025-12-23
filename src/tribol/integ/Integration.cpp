@@ -121,9 +121,8 @@ void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, int k )
 
   integ.initialize( 3, numTotalPoints );
 
-  // declare local array to hold barycentric coordinates for each
-  // triangle
-  RealT bary[elem.dim * numTriPoints];
+  // declare local array to hold barycentric coordinates for each triangle
+  Array2D<RealT> bary( numTriPoints, elem.dim );
 
   switch ( k ) {
     case 2:
@@ -133,17 +132,17 @@ void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, int k )
       }
 
       // first barycentric point
-      bary[0] = 0.1666666666667;
-      bary[1] = 0.6666666666667;
-      bary[2] = 1. - bary[0] - bary[1];
+      bary( 0, 0 ) = 0.1666666666667;
+      bary( 0, 1 ) = 0.6666666666667;
+      bary( 0, 2 ) = 1. - bary( 0, 0 ) - bary( 0, 1 );
       // second barycentric point
-      bary[3] = 0.6666666666667;
-      bary[4] = 0.1666666666667;
-      bary[5] = 1. - bary[3] - bary[4];
+      bary( 1, 0 ) = 0.6666666666667;
+      bary( 1, 1 ) = 0.1666666666667;
+      bary( 1, 2 ) = 1. - bary( 1, 0 ) - bary( 1, 1 );
       // third barycentric point
-      bary[6] = 0.1666666666667;
-      bary[7] = 0.1666666666667;
-      bary[8] = 1. - bary[6] - bary[7];
+      bary( 2, 0 ) = 0.1666666666667;
+      bary( 2, 1 ) = 0.1666666666667;
+      bary( 2, 2 ) = 1. - bary( 2, 0 ) - bary( 2, 1 );
       break;
 
     case 3:
@@ -166,36 +165,36 @@ void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, int k )
       }
 
       // first barycentric point
-      bary[0] = 0.0915762135098;
-      bary[1] = bary[0];
-      bary[2] = 1. - bary[0] - bary[1];
+      bary( 0, 0 ) = 0.0915762135098;
+      bary( 0, 1 ) = bary( 0, 0 );
+      bary( 0, 2 ) = 1. - bary( 0, 0 ) - bary( 0, 1 );
       // second barycentric point
-      bary[3] = 0.8168475729805;
-      bary[4] = bary[0];
-      bary[5] = 1. - bary[3] - bary[4];
+      bary( 1, 0 ) = 0.8168475729805;
+      bary( 1, 1 ) = bary( 0, 0 );
+      bary( 1, 2 ) = 1. - bary( 1, 0 ) - bary( 1, 1 );
       // third barycentric point
-      bary[6] = bary[0];
-      bary[7] = bary[3];
-      bary[8] = 1. - bary[6] - bary[7];
+      bary( 2, 0 ) = bary( 0, 0 );
+      bary( 2, 1 ) = bary( 1, 0 );
+      bary( 2, 2 ) = 1. - bary( 2, 0 ) - bary( 2, 1 );
       // fourth barycentric point
-      bary[9] = 0.1081030181681;
-      bary[10] = 0.4459484909160;
-      bary[11] = 1. - bary[9] - bary[10];
+      bary( 3, 0 ) = 0.1081030181681;
+      bary( 3, 1 ) = 0.4459484909160;
+      bary( 3, 2 ) = 1. - bary( 3, 0 ) - bary( 3, 1 );
       // fifth barycentric point
-      bary[12] = bary[10];
-      bary[13] = bary[9];
-      bary[14] = 1. - bary[12] - bary[13];
+      bary( 4, 0 ) = bary( 3, 1 );
+      bary( 4, 1 ) = bary( 3, 0 );
+      bary( 4, 2 ) = 1. - bary( 4, 0 ) - bary( 4, 1 );
       // sixth barycentric point
-      bary[15] = bary[10];
-      bary[16] = bary[10];
-      bary[17] = 1. - bary[15] - bary[16];
+      bary( 5, 0 ) = bary( 3, 1 );
+      bary( 5, 1 ) = bary( 3, 1 );
+      bary( 5, 2 ) = 1. - bary( 5, 0 ) - bary( 5, 1 );
       break;
   }
 
   // compute the vertex averaged centroid of the overlap polygon. Note
   // that the coordinates of the overlap polygon are always assumed to be
   // 3D
-  RealT xc[elem.dim];
+  Array1D<RealT> xc( elem.dim );
   for ( int i = 0; i < elem.dim; ++i ) {
     xc[i] = 0.;
   }
@@ -235,14 +234,14 @@ void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, int k )
     for ( int m = 0; m < numTriPoints; ++m ) {
       integ.wts[numTriPoints * k + m] *= 0.5 * area;
       integ.xy[( elem.dim * numTriPoints ) * k + ( elem.dim * m )] =
-          bary[elem.dim * m] * elem.overlapCoords[elem.dim * k] +
-          bary[elem.dim * m + 1] * elem.overlapCoords[elem.dim * ( k + 1 )] + bary[elem.dim * m + 2] * xc[0];
+          bary( m, 0 ) * elem.overlapCoords[elem.dim * k] + bary( m, 1 ) * elem.overlapCoords[elem.dim * ( k + 1 )] +
+          bary( m, 2 ) * xc[0];
       integ.xy[( elem.dim * numTriPoints ) * k + ( elem.dim * m ) + 1] =
-          bary[elem.dim * m] * elem.overlapCoords[elem.dim * k + 1] +
-          bary[elem.dim * m + 1] * elem.overlapCoords[elem.dim * ( k + 1 ) + 1] + bary[elem.dim * m + 2] * xc[1];
+          bary( m, 0 ) * elem.overlapCoords[elem.dim * k + 1] +
+          bary( m, 1 ) * elem.overlapCoords[elem.dim * ( k + 1 ) + 1] + bary( m, 2 ) * xc[1];
       integ.xy[( elem.dim * numTriPoints ) * k + ( elem.dim * m ) + 2] =
-          bary[elem.dim * m] * elem.overlapCoords[elem.dim * k + 2] +
-          bary[elem.dim * m + 1] * elem.overlapCoords[elem.dim * ( k + 1 ) + 2] + bary[elem.dim * m + 2] * xc[2];
+          bary( m, 0 ) * elem.overlapCoords[elem.dim * k + 2] +
+          bary( m, 1 ) * elem.overlapCoords[elem.dim * ( k + 1 ) + 2] + bary( m, 2 ) * xc[2];
     }  // end loop over number of points per triangle
   }  // end loop over (n-1) number of triangles
 
@@ -265,14 +264,14 @@ void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, int k )
   for ( int i = 0; i < numTriPoints; ++i ) {
     integ.wts[numTriPoints * ( elem.numPolyVert - 1 ) + i] *= 0.5 * area;
     integ.xy[elem.dim * numTriPoints * ( elem.numPolyVert - 1 ) + ( elem.dim * i )] =
-        bary[elem.dim * i] * elem.overlapCoords[elem.dim * ( elem.numPolyVert - 1 )] +
-        bary[elem.dim * i + 1] * elem.overlapCoords[0] + bary[elem.dim * i + 2] * xc[0];
+        bary( i, 0 ) * elem.overlapCoords[elem.dim * ( elem.numPolyVert - 1 )] + bary( i, 1 ) * elem.overlapCoords[0] +
+        bary( i, 2 ) * xc[0];
     integ.xy[elem.dim * numTriPoints * ( elem.numPolyVert - 1 ) + ( elem.dim * i ) + 1] =
-        bary[elem.dim * i] * elem.overlapCoords[elem.dim * ( elem.numPolyVert - 1 ) + 1] +
-        bary[elem.dim * i + 1] * elem.overlapCoords[1] + bary[elem.dim * i + 2] * xc[1];
+        bary( i, 0 ) * elem.overlapCoords[elem.dim * ( elem.numPolyVert - 1 ) + 1] +
+        bary( i, 1 ) * elem.overlapCoords[1] + bary( i, 2 ) * xc[1];
     integ.xy[elem.dim * numTriPoints * ( elem.numPolyVert - 1 ) + ( elem.dim * i ) + 2] =
-        bary[elem.dim * i] * elem.overlapCoords[elem.dim * ( elem.numPolyVert - 1 ) + 2] +
-        bary[elem.dim * i + 1] * elem.overlapCoords[2] + bary[elem.dim * i + 2] * xc[2];
+        bary( i, 0 ) * elem.overlapCoords[elem.dim * ( elem.numPolyVert - 1 ) + 2] +
+        bary( i, 1 ) * elem.overlapCoords[2] + bary( i, 2 ) * xc[2];
   }  // end loop over numTriPoints for last triangle
   return;
 }

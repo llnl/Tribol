@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_COMMON_LOOPEXEC_HPP_
-#define SRC_COMMON_LOOPEXEC_HPP_
+#ifndef SRC_TRIBOL_COMMON_LOOPEXEC_HPP_
+#define SRC_TRIBOL_COMMON_LOOPEXEC_HPP_
 
 // C++ includes
 #include <type_traits>
@@ -185,4 +185,4 @@ void forAllExec( ExecutionMode exec_mode, IndexT N, BODY&& body )
 
 }  // namespace tribol
 
-#endif /* SRC_COMMON_LOOPEXEC_HPP_ */
+#endif /* SRC_TRIBOL_COMMON_LOOPEXEC_HPP_ */

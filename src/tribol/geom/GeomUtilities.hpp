@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_GEOM_GEOMUTILITIES_HPP_
-#define SRC_GEOM_GEOMUTILITIES_HPP_
+#ifndef SRC_TRIBOL_GEOM_GEOMUTILITIES_HPP_
+#define SRC_TRIBOL_GEOM_GEOMUTILITIES_HPP_
 
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
@@ -1824,4 +1824,4 @@ TRIBOL_HOST_DEVICE bool IsConvex( const RealT* const x, const RealT* const y, co
 
 }  // namespace tribol
 
-#endif /* SRC_GEOM_GEOMUTILITIES_HPP_ */
+#endif /* SRC_TRIBOL_GEOM_GEOMUTILITIES_HPP_ */

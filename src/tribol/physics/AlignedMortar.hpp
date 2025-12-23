@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_PHYSICS_ALIGNEDMORTAR_HPP_
-#define SRC_PHYSICS_ALIGNEDMORTAR_HPP_
+#ifndef SRC_TRIBOL_PHYSICS_ALIGNEDMORTAR_HPP_
+#define SRC_TRIBOL_PHYSICS_ALIGNEDMORTAR_HPP_
 
 #include "Mortar.hpp"
 #include "Physics.hpp"
@@ -132,4 +132,4 @@ void ComputeAlignedMortarJacobian( SurfaceContactElem& elem );
 
 }  // namespace tribol
 
-#endif /* SRC_PHYSICS_ALIGNEDMORTAR_HPP_ */
+#endif /* SRC_TRIBOL_PHYSICS_ALIGNEDMORTAR_HPP_ */

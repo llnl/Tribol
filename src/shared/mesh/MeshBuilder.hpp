@@ -1,5 +1,5 @@
-#ifndef SRC_SHARED_MESHBUILDER_HPP_
-#define SRC_SHARED_MESHBUILDER_HPP_
+#ifndef SRC_SHARED_MESH_MESHBUILDER_HPP_
+#define SRC_SHARED_MESH_MESHBUILDER_HPP_
 
 #include <initializer_list>
 
@@ -220,4 +220,4 @@ class ParMeshBuilder {
 
 }  // namespace shared
 
-#endif  // SRC_SHARED_MESHBUILDER_HPP_
+#endif  // SRC_SHARED_MESH_MESHBUILDER_HPP_

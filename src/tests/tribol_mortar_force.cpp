@@ -7,11 +7,6 @@
 #include "tribol/interface/tribol.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/mesh/MeshData.hpp"
-#include "tribol/physics/Mortar.hpp"
-#include "tribol/physics/AlignedMortar.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
-#include "tribol/utils/TestUtils.hpp"
 
 #ifdef TRIBOL_USE_UMPIRE
 // Umpire includes
@@ -80,25 +75,13 @@ class MortarForceTest : public ::testing::Test {
     tribol::registerMesh( mortarMeshId, 1, this->numNodes, conn1, cellType, x, y, z, tribol::MemorySpace::Host );
     tribol::registerMesh( nonmortarMeshId, 1, this->numNodes, conn2, cellType, x, y, z, tribol::MemorySpace::Host );
 
-    // register nodal forces
-    RealT *fx1, *fy1, *fz1;
-    RealT *fx2, *fy2, *fz2;
+    tribol::Array1D<RealT> fx1( this->numNodes );
+    tribol::Array1D<RealT> fy1( this->numNodes );
+    tribol::Array1D<RealT> fz1( this->numNodes );
 
-    RealT forceX1[this->numNodes];
-    RealT forceY1[this->numNodes];
-    RealT forceZ1[this->numNodes];
-
-    RealT forceX2[this->numNodes];
-    RealT forceY2[this->numNodes];
-    RealT forceZ2[this->numNodes];
-
-    fx1 = forceX1;
-    fy1 = forceY1;
-    fz1 = forceZ1;
-
-    fx2 = forceX2;
-    fy2 = forceY2;
-    fz2 = forceZ2;
+    tribol::Array1D<RealT> fx2( this->numNodes );
+    tribol::Array1D<RealT> fy2( this->numNodes );
+    tribol::Array1D<RealT> fz2( this->numNodes );
 
     // initialize force arrays
     for ( int i = 0; i < this->numNodes; ++i ) {
@@ -110,8 +93,8 @@ class MortarForceTest : public ::testing::Test {
       fz2[i] = 0.;
     }
 
-    tribol::registerNodalResponse( mortarMeshId, fx1, fy1, fz1 );
-    tribol::registerNodalResponse( nonmortarMeshId, fx2, fy2, fz2 );
+    tribol::registerNodalResponse( mortarMeshId, fx1.data(), fy1.data(), fz1.data() );
+    tribol::registerNodalResponse( nonmortarMeshId, fx2.data(), fy2.data(), fz2.data() );
 
     // register nodal pressure and nodal gap array for the nonmortar mesh
     RealT *gaps, *pressures;
@@ -348,15 +331,15 @@ TEST_F( MortarForceTest, parallel_misaligned )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  tribol::IndexT conn1[numNodesPerFace];
-  tribol::IndexT conn2[numNodesPerFace];
+  tribol::Array1D<tribol::IndexT> conn1( numNodesPerFace );
+  tribol::Array1D<tribol::IndexT> conn2( numNodesPerFace );
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
     conn2[i] = numNodesPerFace + i;
   }
 
-  this->checkMortarForces( &conn1[0], &conn2[0], tribol::SINGLE_MORTAR );
+  this->checkMortarForces( conn1.data(), conn2.data(), tribol::SINGLE_MORTAR );
 }
 
 TEST_F( MortarForceTest, parallel_aligned )
@@ -416,15 +399,15 @@ TEST_F( MortarForceTest, parallel_aligned )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  tribol::IndexT conn1[numNodesPerFace];
-  tribol::IndexT conn2[numNodesPerFace];
+  tribol::Array1D<tribol::IndexT> conn1( numNodesPerFace );
+  tribol::Array1D<tribol::IndexT> conn2( numNodesPerFace );
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
     conn2[i] = numNodesPerFace + i;
   }
 
-  this->checkMortarForces( &conn1[0], &conn2[0], tribol::SINGLE_MORTAR );
+  this->checkMortarForces( conn1.data(), conn2.data(), tribol::SINGLE_MORTAR );
 }
 
 TEST_F( MortarForceTest, non_parallel_misaligned )
@@ -484,15 +467,15 @@ TEST_F( MortarForceTest, non_parallel_misaligned )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  tribol::IndexT conn1[numNodesPerFace];
-  tribol::IndexT conn2[numNodesPerFace];
+  tribol::Array1D<tribol::IndexT> conn1( numNodesPerFace );
+  tribol::Array1D<tribol::IndexT> conn2( numNodesPerFace );
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
     conn2[i] = numNodesPerFace + i;
   }
 
-  this->checkMortarForces( &conn1[0], &conn2[0], tribol::SINGLE_MORTAR );
+  this->checkMortarForces( conn1.data(), conn2.data(), tribol::SINGLE_MORTAR );
 }
 
 TEST_F( MortarForceTest, non_parallel_aligned )
@@ -552,15 +535,15 @@ TEST_F( MortarForceTest, non_parallel_aligned )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  tribol::IndexT conn1[numNodesPerFace];
-  tribol::IndexT conn2[numNodesPerFace];
+  tribol::Array1D<tribol::IndexT> conn1( numNodesPerFace );
+  tribol::Array1D<tribol::IndexT> conn2( numNodesPerFace );
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
     conn2[i] = numNodesPerFace + i;
   }
 
-  this->checkMortarForces( &conn1[0], &conn2[0], tribol::SINGLE_MORTAR );
+  this->checkMortarForces( conn1.data(), conn2.data(), tribol::SINGLE_MORTAR );
 }
 
 TEST_F( MortarForceTest, parallel_simple_aligned )
@@ -620,15 +603,15 @@ TEST_F( MortarForceTest, parallel_simple_aligned )
 
   // register a tribol mesh for computing mortar gaps
   int numNodesPerFace = 4;
-  tribol::IndexT conn1[numNodesPerFace];
-  tribol::IndexT conn2[numNodesPerFace];
+  tribol::Array1D<tribol::IndexT> conn1( numNodesPerFace );
+  tribol::Array1D<tribol::IndexT> conn2( numNodesPerFace );
 
   for ( int i = 0; i < numNodesPerFace; ++i ) {
     conn1[i] = i;
     conn2[i] = numNodesPerFace + i;
   }
 
-  this->checkMortarForces( &conn1[0], &conn2[0], tribol::ALIGNED_MORTAR );
+  this->checkMortarForces( conn1.data(), conn2.data(), tribol::ALIGNED_MORTAR );
 }
 
 int main( int argc, char* argv[] )

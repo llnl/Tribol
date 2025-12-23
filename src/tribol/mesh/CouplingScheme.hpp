@@ -2,8 +2,8 @@
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
-#ifndef TRIBOL_COUPLINGSCHEME_HPP_
-#define TRIBOL_COUPLINGSCHEME_HPP_
+#ifndef SRC_TRIBOL_MESH_COUPLINGSCHEME_HPP_
+#define SRC_TRIBOL_MESH_COUPLINGSCHEME_HPP_
 
 // Tribol includes
 #include "tribol/common/BasicTypes.hpp"
@@ -952,4 +952,4 @@ using CouplingSchemeManager = DataManager<CouplingScheme>;
 
 } /* namespace tribol */
 
-#endif /* SRC_MESH_COUPLINGSCHEME_HPP_ */
+#endif /* SRC_TRIBOL_MESH_COUPLINGSCHEME_HPP_ */

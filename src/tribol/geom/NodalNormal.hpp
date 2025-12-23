@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_GEOM_NODALNORMAL_HPP_
-#define SRC_GEOM_NODALNORMAL_HPP_
+#ifndef SRC_TRIBOL_GEOM_NODALNORMAL_HPP_
+#define SRC_TRIBOL_GEOM_NODALNORMAL_HPP_
 
 #include "tribol/config.hpp"
 
@@ -65,4 +65,4 @@ class EdgeAvgNodalNormal : public NodalNormal {
 
 }  // namespace tribol
 
-#endif /* SRC_GEOM_NODALNORMAL_HPP_ */
+#endif /* SRC_TRIBOL_GEOM_NODALNORMAL_HPP_ */

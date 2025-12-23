@@ -6,15 +6,9 @@
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/mesh/InterfacePairs.hpp"
 
 // Axom includes
 #include "axom/slic.hpp"
-
-#include <iostream>
-#include <sstream>
-#include <iomanip>
-#include <fstream>
 
 namespace tribol {
 
@@ -189,7 +183,7 @@ void MethodData::storeElemBlockJ( ArrayT<int>&& blockJElemIds, const StackArray<
       // convert to mfem::DenseMatrix
       auto& block = blockJ( i, j );
       // this DenseMatrix is a "view" of block
-      mfem::DenseMatrix block_densemat( block.data(), block.height(), block.width() );
+      mfem::DenseMatrix block_densemat( const_cast<RealT*>( block.data() ), block.height(), block.width() );
       // deep copy should happen here
       m_blockJ( blockIdxI, blockIdxJ ).push_back( block_densemat );
     }
@@ -282,29 +276,31 @@ void MortarData::assembleJacobian( SurfaceContactElem& elem, SparseMode s_mode )
       // Mortar-Lagrange multiplier block (0, 2)
       this->m_smat->Add( i, j,
                          elem.blockJ( static_cast<IndexT>( BlockSpace::MORTAR ),
-                                      static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )[localId] );
+                                      static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+                             .data()[localId] );
       this->m_smat->Add( i + 1, j,
                          elem.blockJ( static_cast<IndexT>( BlockSpace::MORTAR ),
-                                      static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )[localId + dimOffset] );
-      this->m_smat->Add(
-          i + 2, j,
-          elem.blockJ(
-              static_cast<IndexT>( BlockSpace::MORTAR ),
-              static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )[localId + 2 * dimOffset] );  // assume 3D for now
+                                      static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+                             .data()[localId + dimOffset] );
+      this->m_smat->Add( i + 2, j,
+                         elem.blockJ( static_cast<IndexT>( BlockSpace::MORTAR ),
+                                      static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+                             .data()[localId + 2 * dimOffset] );  // assume 3D for now
 
       // Nonmortar-Lagrange Multiplier block (1, 2)
       i = elem.dim * nonmortarNodeIdA;  // nonmortar row contributions
       this->m_smat->Add( i, j,
                          elem.blockJ( static_cast<IndexT>( BlockSpace::NONMORTAR ),
-                                      static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )[localId] );
+                                      static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+                             .data()[localId] );
       this->m_smat->Add( i + 1, j,
                          elem.blockJ( static_cast<IndexT>( BlockSpace::NONMORTAR ),
-                                      static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )[localId + dimOffset] );
-      this->m_smat->Add(
-          i + 2, j,
-          elem.blockJ(
-              static_cast<IndexT>( BlockSpace::NONMORTAR ),
-              static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )[localId + 2 * dimOffset] );  // assume 3D for now
+                                      static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+                             .data()[localId + dimOffset] );
+      this->m_smat->Add( i + 2, j,
+                         elem.blockJ( static_cast<IndexT>( BlockSpace::NONMORTAR ),
+                                      static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ) )
+                             .data()[localId + 2 * dimOffset] );  // assume 3D for now
 
       ////////////////////////////////////////////////////////////////
       // Assemble Jgu contributions (lower-left off-diagonal block) //
@@ -321,27 +317,31 @@ void MortarData::assembleJacobian( SurfaceContactElem& elem, SparseMode s_mode )
       // Lagrange-multiplier-mortar block (2, 0)
       this->m_smat->Add( i, j,
                          elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                                      static_cast<IndexT>( BlockSpace::MORTAR ) )[localId] );
+                                      static_cast<IndexT>( BlockSpace::MORTAR ) )
+                             .data()[localId] );
       this->m_smat->Add( i, j + 1,
                          elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                                      static_cast<IndexT>( BlockSpace::MORTAR ) )[localId + dimOffset] );
-      this->m_smat->Add(
-          i, j + 2,
-          elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                       static_cast<IndexT>( BlockSpace::MORTAR ) )[localId + 2 * dimOffset] );  // assume 3D for now
+                                      static_cast<IndexT>( BlockSpace::MORTAR ) )
+                             .data()[localId + dimOffset] );
+      this->m_smat->Add( i, j + 2,
+                         elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
+                                      static_cast<IndexT>( BlockSpace::MORTAR ) )
+                             .data()[localId + 2 * dimOffset] );  // assume 3D for now
 
       // Lagrange multiplier-nonmortar block (2, 1)
       j = elem.dim * nonmortarNodeIdA;  // nonmortar column contributions
       this->m_smat->Add( i, j,
                          elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                                      static_cast<IndexT>( BlockSpace::NONMORTAR ) )[localId] );
+                                      static_cast<IndexT>( BlockSpace::NONMORTAR ) )
+                             .data()[localId] );
       this->m_smat->Add( i, j + 1,
                          elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                                      static_cast<IndexT>( BlockSpace::NONMORTAR ) )[localId + dimOffset] );
-      this->m_smat->Add(
-          i, j + 2,
-          elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                       static_cast<IndexT>( BlockSpace::NONMORTAR ) )[localId + 2 * dimOffset] );  // assume 3D for now
+                                      static_cast<IndexT>( BlockSpace::NONMORTAR ) )
+                             .data()[localId + dimOffset] );
+      this->m_smat->Add( i, j + 2,
+                         elem.blockJ( static_cast<IndexT>( BlockSpace::LAGRANGE_MULTIPLIER ),
+                                      static_cast<IndexT>( BlockSpace::NONMORTAR ) )
+                             .data()[localId + 2 * dimOffset] );  // assume 3D for now
 
       //////////////////////////////////////////////////
       // Assemble Jru contributions (matrix 11-block) //

@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_GEOM_COMPGEOM_HPP_
-#define SRC_GEOM_COMPGEOM_HPP_
+#ifndef SRC_TRIBOL_GEOM_COMPGEOM_HPP_
+#define SRC_TRIBOL_GEOM_COMPGEOM_HPP_
 
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
@@ -950,4 +950,4 @@ TRIBOL_HOST_DEVICE FaceGeomException CheckInterfacePair( InterfacePair& pair, co
 
 }  // namespace tribol
 
-#endif /* SRC_GEOM_COMPGEOM_HPP_ */
+#endif /* SRC_TRIBOL_GEOM_COMPGEOM_HPP_ */

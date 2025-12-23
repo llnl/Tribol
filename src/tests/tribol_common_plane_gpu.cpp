@@ -3,6 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+#include "tribol/config.hpp"
+
 #include "gtest/gtest.h"
 
 #include "mfem.hpp"

@@ -331,4 +331,4 @@ class BisecTree {
 
 }  // end namespace redecomp
 
-#endif /* SRC_REDECOMP_BISECTREE_HPP_ */
+#endif /* SRC_REDECOMP_UTILS_BISECTREE_HPP_ */

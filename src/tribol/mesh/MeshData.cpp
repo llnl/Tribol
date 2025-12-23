@@ -324,12 +324,12 @@ bool MeshData::computeFaceData( ExecutionMode exec_mode, ElemNormalMethod elem_n
   constexpr RealT nrml_mag_tol = 1.0e-15;
 
   // allocate m_c
-  m_c = Array2D<RealT>( { m_dim, numberOfElements() }, m_allocator_id );
+  m_c = ArrayT<RealT, 2>( { m_dim, numberOfElements() }, m_allocator_id );
   // initialize m_c
   m_c.fill( 0.0 );
 
   // allocate m_n
-  m_n = Array2D<RealT>( { m_dim, numberOfElements() }, m_allocator_id );
+  m_n = ArrayT<RealT, 2>( { m_dim, numberOfElements() }, m_allocator_id );
   // initialize m_n
   m_n.fill( 0.0 );
 
@@ -476,7 +476,7 @@ RealT MeshData::computeEdgeLength( int faceId )
 //------------------------------------------------------------------------------
 void MeshData::allocateNodalNormals()
 {
-  m_node_n = Array2D<RealT>( { m_dim, m_num_nodes }, m_allocator_id );
+  m_node_n = ArrayT<RealT, 2>( { m_dim, m_num_nodes }, m_allocator_id );
   m_node_n.fill( 0.0 );
 }  // end MeshData::allocateNodalNormals()
 

@@ -3,8 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef EXAMPLES_COMMON_HPP_
-#define EXAMPLES_COMMON_HPP_
+#ifndef SRC_EXAMPLES_EXAMPLES_COMMON_HPP_
+#define SRC_EXAMPLES_EXAMPLES_COMMON_HPP_
 
 // axom includes
 #include "axom/core.hpp"
@@ -425,4 +425,4 @@ void initialize_logger( tribol::CommT problem_comm )
  */
 void finalize_logger() { slic::finalize(); }
 
-#endif /* EXAMPLES_COMMON_HPP_ */
+#endif /* SRC_EXAMPLES_EXAMPLES_COMMON_HPP_ */
