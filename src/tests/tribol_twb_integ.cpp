@@ -36,13 +36,13 @@ class TWBIntegTest : public ::testing::Test {
 
   bool integrate( RealT const tol )
   {
-    tribol::Array2D<RealT> xyz( this->dim, this->numNodes );
+    tribol::Array2D<RealT> xyz( this->numNodes, this->dim );
 
     // generate stacked coordinate array
     for ( int j = 0; j < this->numNodes; ++j ) {
-      xyz( 0, j ) = x[j];
-      xyz( 1, j ) = y[j];
-      xyz( 2, j ) = z[j];
+      xyz( j, 0 ) = x[j];
+      xyz( j, 1 ) = y[j];
+      xyz( j, 2 ) = z[j];
     }  // end loop over nodes
 
     // instantiate SurfaceContactElem struct. Note, this object is instantiated
