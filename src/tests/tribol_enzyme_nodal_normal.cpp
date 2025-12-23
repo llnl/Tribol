@@ -67,7 +67,7 @@ class EnzymeNodalNormalTest : public testing::Test {
 
     mfem::DenseMatrix dndx_fd( num_dofs );
     auto mesh_view = mesh.getView();
-    axom::Array<RealT, 2> n_base = mesh_view.getNodalNormals();
+    tribol::Array2D<RealT> n_base = mesh_view.getNodalNormals();
     for ( int dx{ 0 }; dx < mesh.spatialDimension(); ++dx ) {
       for ( int nx{ 0 }; nx < mesh.numberOfNodes(); ++nx ) {
         auto x_idx = dx * mesh.numberOfNodes() + nx;
