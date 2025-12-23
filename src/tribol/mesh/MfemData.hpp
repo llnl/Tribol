@@ -637,10 +637,13 @@ class MfemMeshData {
    * @param binning_proximity_scale Element length multiplier for coarse binning and proximity detection inclusion. This
    * is needed to size the ghost element layer in the redecomp mesh.
    * @param n_ranks Number of ranks in the parallel decomposition
+   * @param force_new_redecomp If true, construct a new RedecompMesh even if displacement threshold is not met (default
+   * = false)
+   * @return True if a new RedecompMesh is created by this method
    *
    * @note This method should be called after the coordinate grid function is updated.
    */
-  void UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks );
+  bool UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks, bool force_new_redecomp = false );
 
   /**
    * @brief Get the integer identifier for the first Tribol registered mesh
@@ -1087,6 +1090,13 @@ class MfemMeshData {
    */
   MemorySpace GetMemorySpace() const { return mem_space_; }
 
+  /**
+   * @brief Sets the displacement threshold for triggering a new parallel decomposition
+   *
+   * @param val Threshold value
+   */
+  void SetRedecompTriggerDisplacement( RealT val ) { redecomp_trigger_displacement_ = val; }
+
  private:
   /**
    * @brief Creates and stores data that changes when the RedecompMesh is updated
@@ -1107,11 +1117,13 @@ class MfemMeshData {
      *        This is needed to size the ghost element layer in the redecomp mesh.
      * @param n_ranks Number of ranks in the parallel decomposition
      * @param allocator_id Allocation space ID for Tribol memory
+     * @param redecomp_trigger_displacement Additional length to add to redecomp ghost length equal to the
+     *        displacement required to trigger a new RedecompMesh to be built.
      */
     UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh, const mfem::ParFiniteElementSpace& parent_fes,
                 mfem::ParGridFunction& submesh_gridfn, SubmeshLORTransfer* submesh_lor_xfer,
                 const std::set<int>& attributes_1, const std::set<int>& attributes_2, RealT binning_proximity_scale,
-                int n_ranks, int allocator_id );
+                int n_ranks, int allocator_id, RealT redecomp_trigger_displacement );
 
     /**
      * @brief Redecomposed boundary element mesh
@@ -1402,6 +1414,16 @@ class MfemMeshData {
   int allocator_id_;
 
   /**
+   * @brief Threshold for max nodal displacement change to trigger a new parallel decomposition
+   */
+  RealT redecomp_trigger_displacement_;
+
+  /**
+   * @brief Parent coordinate values at the time of the last parallel decomposition
+   */
+  mutable mfem::Vector coords_at_last_redecomp_;
+
+  /**
    * @brief Merges two STL containers
    *
    * @tparam T container type
@@ -1459,8 +1481,9 @@ class MfemSubmeshData {
    * functions
    *
    * @param redecomp_mesh Updated redecomp mesh
+   * @param new_redecomp If true, construct an updated SubmeshRedecompTransfer object for new RedecompMesh
    */
-  void UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_mesh );
+  void UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_mesh, bool new_redecomp = true );
 
   /**
    * @brief Get pointers to component arrays of the pressure on the redecomp

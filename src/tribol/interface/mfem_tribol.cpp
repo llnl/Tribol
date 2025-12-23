@@ -119,6 +119,20 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
   cs->getMfemMeshData()->SetLORFactor( lor_factor );
 }
 
+void setMfemRedecompTriggerDisplacement( IndexT cs_id, RealT val )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF(
+      !cs->hasMfemData(),
+      "Coupling scheme does not contain MFEM data. "
+      "Create the coupling scheme using registerMfemCouplingScheme() to set the trigger displacement." );
+  cs->getMfemMeshData()->SetRedecompTriggerDisplacement( val );
+}
+
 void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT mesh2_penalty )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -369,7 +383,7 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id )
   return cs->getMfemSubmeshData()->GetSubmeshPressure();
 }
 
-void updateMfemParallelDecomposition( int n_ranks )
+void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
 {
   for ( auto& cs_pair : CouplingSchemeManager::getInstance() ) {
     auto& cs = cs_pair.second;
@@ -386,9 +400,9 @@ void updateMfemParallelDecomposition( int n_ranks )
       if ( mfem_data->GetLORFactor() > 1 ) {
         effective_binning_proximity *= static_cast<RealT>( mfem_data->GetLORFactor() );
       }
-      // creates a new redecomp mesh based on updated coordinates and updates transfer operators and displacement,
-      // velocity, and response grid functions based on new redecomp mesh
-      mfem_data->UpdateMfemMeshData( effective_binning_proximity, n_ranks );
+      // creates a new redecomp mesh based on updated coordinates (if criteria is met) and updates transfer operators
+      // and displacement, velocity, and response grid functions based on new redecomp mesh
+      auto new_redecomp = mfem_data->UpdateMfemMeshData( effective_binning_proximity, n_ranks, force_new_redecomp );
       auto coord_ptrs = mfem_data->GetRedecompCoordsPtrs();
 
       registerMesh( mesh_ids[0], mfem_data->GetMesh1NE(), mfem_data->GetNV(), mfem_data->GetMesh1Conn(),
@@ -417,12 +431,12 @@ void updateMfemParallelDecomposition( int n_ranks )
         auto submesh_data = cs.getMfemSubmeshData();
         // updates submesh-native grid functions and transfer operators on
         // the new redecomp mesh
-        submesh_data->UpdateMfemSubmeshData( mfem_data->GetRedecompMesh() );
+        submesh_data->UpdateMfemSubmeshData( mfem_data->GetRedecompMesh(), new_redecomp );
         auto g_ptrs = submesh_data->GetRedecompGapPtrs();
         registerMortarGaps( mesh_ids[1], g_ptrs[0] );
         auto p_ptrs = submesh_data->GetRedecompPressurePtrs();
         registerMortarPressures( mesh_ids[1], p_ptrs[0] );
-        if ( cs.hasMfemJacobianData() ) {
+        if ( cs.hasMfemJacobianData() && new_redecomp ) {
           // updates Jacobian transfer operator for new redecomp mesh
           cs.getMfemJacobianData()->UpdateJacobianXfer();
         }

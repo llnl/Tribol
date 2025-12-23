@@ -86,6 +86,16 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
 void setMfemLORFactor( IndexT cs_id, int lor_factor );
 
 /**
+ * @brief Sets the displacement threshold for triggering a new parallel decomposition
+ *
+ * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
+ *
+ * @param [in] cs_id The ID of the coupling scheme
+ * @param [in] val Threshold value
+ */
+void setMfemRedecompTriggerDisplacement( IndexT cs_id, RealT val );
+
+/**
  * @brief Clears existing penalty data and sets kinematic constant penalty
  *
  * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
@@ -289,10 +299,12 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id );
  * @brief Updates mesh parallel decomposition and related grid functions/Jacobian when coordinates are updated
  *
  * @param n_ranks Number of ranks in the parallel decomposition; automatically determine when set to 0 (default)
+ * @param force_new_redecomp If true, construct a new RedecompMesh even if displacement threshold is not met (default =
+ * false)
  *
  * @pre Coupling schemes must be registered using registerMfemCouplingScheme()
  */
-void updateMfemParallelDecomposition( int n_ranks = 0 );
+void updateMfemParallelDecomposition( int n_ranks = 0, bool force_new_redecomp = false );
 
 /**
  * @brief Create VisIt output of the parallel repartitioned RedecompMesh
