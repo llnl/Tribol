@@ -5,8 +5,20 @@
 
 #include "tribol/mesh/CouplingScheme.hpp"
 
-// Tribol includes
+// C++ includes
+#include <cmath>
+
+// MFEM includes
+#include "mfem.hpp"
+
+// Axom includes
+#include "axom/slic.hpp"
+
+// Shared includes
 #include "shared/ExecModel.hpp"
+#include "shared/LoopExec.hpp"
+
+// Tribol includes
 #include "tribol/geom/ElementNormal.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
@@ -17,15 +29,6 @@
 #include "tribol/common/Parameters.hpp"
 #include "tribol/physics/Physics.hpp"
 #include "tribol/integ/FE.hpp"
-
-// Axom includes
-#include "axom/slic.hpp"
-
-// MFEM includes
-#include "mfem.hpp"
-
-// C++ includes
-#include <cmath>
 
 namespace tribol {
 

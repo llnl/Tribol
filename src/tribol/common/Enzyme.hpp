@@ -6,8 +6,10 @@
 #ifndef SRC_TRIBOL_COMMON_ENZYME_HPP_
 #define SRC_TRIBOL_COMMON_ENZYME_HPP_
 
+// Tribol config include
 #include "tribol/config.hpp"
 
+// Shared includes
 #include "shared/BasicTypes.hpp"
 
 #ifdef TRIBOL_USE_ENZYME

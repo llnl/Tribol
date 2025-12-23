@@ -6,7 +6,7 @@
 #ifndef SHARED_BASICTYPES_HPP_
 #define SHARED_BASICTYPES_HPP_
 
-// Tribol config include
+// Shared config include
 #include "shared/config.hpp"
 
 // C includes

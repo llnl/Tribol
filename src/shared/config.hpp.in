@@ -3,12 +3,11 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SHARED_CONFIG_HPP_
-#define SHARED_CONFIG_HPP_
+#ifndef SRC_SHARED_CONFIG_HPP_
+#define SRC_SHARED_CONFIG_HPP_
 
 /*
- * Note: Use only C-style comments in this file
- *       since it might be included from a C file
+ * Note: Use only C-style comments in this file since it might be included from a C file
  */
 
 /*
@@ -24,4 +23,4 @@
 #cmakedefine TRIBOL_USE_HIP
 #cmakedefine TRIBOL_USE_OPENMP
 
-#endif /* SHARED_CONFIG_HPP_ */
+#endif /* SRC_SHARED_CONFIG_HPP_ */

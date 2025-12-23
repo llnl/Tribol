@@ -6,12 +6,15 @@
 #ifndef SRC_TRIBOL_MESH_MESHDATA_HPP_
 #define SRC_TRIBOL_MESH_MESHDATA_HPP_
 
+// C++ includes
 #include <ostream>
 
+// Shared includes
+#include "shared/ExecModel.hpp"
+
+// Tribol includes
 #include "tribol/common/ArrayTypes.hpp"
-#include "shared/LoopExec.hpp"
 #include "tribol/common/Parameters.hpp"
-#include "tribol/geom/ElementNormal.hpp"
 #include "tribol/utils/DataManager.hpp"
 
 namespace tribol {

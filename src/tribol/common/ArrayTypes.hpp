@@ -6,11 +6,12 @@
 #ifndef SRC_TRIBOL_COMMON_ARRAYTYPES_HPP_
 #define SRC_TRIBOL_COMMON_ARRAYTYPES_HPP_
 
-// Tribol includes
-#include "shared/ExecModel.hpp"
-
+// Axom includes
 #include "axom/core/Array.hpp"
 #include "axom/core/ArrayView.hpp"
+
+// Shared includes
+#include "shared/ExecModel.hpp"
 
 namespace tribol {
 

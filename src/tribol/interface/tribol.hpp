@@ -6,14 +6,18 @@
 #ifndef SRC_TRIBOL_INTERFACE_TRIBOL_HPP_
 #define SRC_TRIBOL_INTERFACE_TRIBOL_HPP_
 
-#include "shared/ExecModel.hpp"
-#include "tribol/common/ArrayTypes.hpp"
-#include "tribol/common/Parameters.hpp"
-
+// C++ includes
 #include <string>
 
 // MFEM includes
 #include "mfem.hpp"
+
+// Shared includes
+#include "shared/ExecModel.hpp"
+
+// Tribol includes
+#include "tribol/common/ArrayTypes.hpp"
+#include "tribol/common/Parameters.hpp"
 
 namespace tribol {
 

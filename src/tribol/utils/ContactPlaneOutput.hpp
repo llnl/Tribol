@@ -6,11 +6,14 @@
 #ifndef SRC_TRIBOL_UTILS_CONTACTPLANEOUTPUT_HPP_
 #define SRC_TRIBOL_UTILS_CONTACTPLANEOUTPUT_HPP_
 
-#include "shared/BasicTypes.hpp"
-#include "tribol/common/Parameters.hpp"
-
 // C++ includes
 #include <string>
+
+// Shared includes
+#include "shared/BasicTypes.hpp"
+
+// Tribol includes
+#include "tribol/common/Parameters.hpp"
 
 namespace tribol {
 

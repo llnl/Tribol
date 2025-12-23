@@ -5,9 +5,14 @@
 #ifndef SRC_TRIBOL_MESH_COUPLINGSCHEME_HPP_
 #define SRC_TRIBOL_MESH_COUPLINGSCHEME_HPP_
 
-// Tribol includes
+// Tribol config include
+#include "tribol/config.hpp"
+
+// Shared includes
 #include "shared/BasicTypes.hpp"
 #include "shared/ExecModel.hpp"
+
+// Tribol includes
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
@@ -15,14 +20,10 @@
 #include "tribol/utils/DataManager.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/geom/CompGeom.hpp"
-#include "tribol/geom/ElementNormal.hpp"
 
 #ifdef TRIBOL_USE_ENZYME
 #include "tribol/geom/NodalNormal.hpp"
 #endif
-
-// Axom includes
-#include "axom/core.hpp"
 
 namespace tribol {
 // Struct to hold on-rank coupling scheme face-pair reporting data

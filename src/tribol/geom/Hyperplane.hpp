@@ -6,15 +6,11 @@
 #ifndef SRC_TRIBOL_GEOM_HYPERPLANE_HPP_
 #define SRC_TRIBOL_GEOM_HYPERPLANE_HPP_
 
-// Tribol config include
-#include "tribol/config.hpp"
-
 // Axom includes
 #include "axom/primal.hpp"
 
-// Tribol includes
+// Shared includes
 #include "shared/BasicTypes.hpp"
-#include "tribol/geom/Vector.hpp"
 
 namespace tribol {
 

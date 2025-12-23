@@ -3,19 +3,23 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+#include "tribol/mesh/MeshData.hpp"
+
+// C++ includes
 #include <cmath>
 #include <iostream>
-#include <sstream>
-#include <iomanip>
-#include <fstream>
 
-#include "tribol/mesh/MeshData.hpp"
-#include "shared/ExecModel.hpp"
-#include "tribol/geom/ElementNormal.hpp"
-#include "tribol/utils/Math.hpp"
-
+// Axom includes
 #include "axom/slic.hpp"
 #include "axom/fmt.hpp"
+
+// Shared includes
+#include "shared/ExecModel.hpp"
+#include "shared/LoopExec.hpp"
+
+// Tribol includes
+#include "tribol/geom/ElementNormal.hpp"
+#include "tribol/utils/Math.hpp"
 
 namespace tribol {
 

@@ -3,21 +3,20 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include "tribol.hpp"
-
-// Tribol includes
-#include "shared/ExecModel.hpp"
-#include "tribol/common/Parameters.hpp"
 #include "tribol/interface/simple_tribol.hpp"
-
-// Axom includes
-#include "axom/core.hpp"
-#include "axom/slic.hpp"
 
 // C/C++ includes
 #include <string>
-#include <unordered_map>
-#include <fstream>
+
+// Axom includes
+#include "axom/slic.hpp"
+
+// Shared includes
+#include "shared/ExecModel.hpp"
+
+// Tribol includes
+#include "tribol.hpp"
+#include "tribol/common/Parameters.hpp"
 
 //------------------------------------------------------------------------------
 // Interface Implementation

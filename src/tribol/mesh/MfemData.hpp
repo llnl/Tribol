@@ -11,15 +11,23 @@
 
 #ifdef BUILD_REDECOMP
 
+// C++ includes
 #include <set>
 #include <vector>
 
+// MFEM includes
 #include "mfem.hpp"
 
+// Axom includes
 #include "axom/core.hpp"
+
+// Shared includes
+#include "shared/BasicTypes.hpp"
+
+// Redecomp includes
 #include "redecomp/redecomp.hpp"
 
-#include "shared/BasicTypes.hpp"
+// Tribol includes
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 
