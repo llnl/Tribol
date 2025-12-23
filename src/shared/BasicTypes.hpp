@@ -12,6 +12,9 @@
 // C includes
 #include <cstddef>
 
+// C++ includes
+#include <type_traits>
+
 // MPI includes
 #ifdef TRIBOL_USE_MPI
 #include <mpi.h>
@@ -19,6 +22,9 @@
 
 // Axom includes
 #include "axom/core/Types.hpp"
+
+// MFEM includes
+#include "mfem.hpp"
 
 namespace tribol {
 
@@ -52,6 +58,9 @@ using RealT = float;
 using RealT = double;
 
 #endif
+
+// mfem's real_t should match ours
+static_assert( std::is_same_v<RealT, mfem::real_t>, "tribol::RealT and mfem::real_t are required to match" );
 
 #define TRIBOL_UNUSED_VAR AXOM_UNUSED_VAR
 #define TRIBOL_UNUSED_PARAM AXOM_UNUSED_PARAM

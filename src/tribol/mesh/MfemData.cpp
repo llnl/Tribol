@@ -326,6 +326,10 @@ MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParM
   if ( current_coords.FESpace()->FEColl()->GetOrder() > 1 ) {
     SetLORFactor( current_coords.FESpace()->FEColl()->GetOrder() );
   }
+
+  // set default redecomp trigger displacement
+  auto mpi = redecomp::MPIUtility( parent_mesh_.GetComm() );
+  redecomp_trigger_displacement_ = redecomp::RedecompMesh::MaxElementSize( parent_mesh_, mpi );
 }
 
 void MfemMeshData::SetParentCoords( const mfem::ParGridFunction& current_coords )
@@ -342,35 +346,82 @@ void MfemMeshData::SetParentReferenceCoords( const mfem::ParGridFunction& refere
   }
 }
 
-void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks )
+bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks, bool force_new_redecomp )
 {
   TRIBOL_MARK_FUNCTION;
-  // update coordinates of submesh and LOR mesh
-  auto submesh_nodes = dynamic_cast<mfem::ParGridFunction*>( submesh_.GetNodes() );
-  SLIC_ERROR_ROOT_IF( !submesh_nodes, "submesh_ Nodes is not a ParGridFunction." );
-  TRIBOL_MARK_BEGIN( "Update SubMesh coords" );
-  submesh_.Transfer( coords_.GetParentGridFn(), *submesh_nodes );
-  TRIBOL_MARK_END( "Update SubMesh coords" );
-  if ( lor_mesh_.get() ) {
-    TRIBOL_MARK_BEGIN( "Update LOR coords" );
-    auto lor_nodes = dynamic_cast<mfem::ParGridFunction*>( lor_mesh_->GetNodes() );
-    SLIC_ERROR_ROOT_IF( !lor_nodes, "lor_mesh_ Nodes is not a ParGridFunction." );
-    submesh_lor_xfer_->SubmeshToLOR( *submesh_nodes, *lor_nodes );
-    TRIBOL_MARK_END( "Update LOR coords" );
+
+  // check if redecomp mesh needs to be updated
+  TRIBOL_MARK_BEGIN( "Check if new Redecomp mesh is needed" );
+  if ( !force_new_redecomp && update_data_ ) {
+    // compute max displacement change
+    auto& current_coords_gf = coords_.GetParentGridFn();
+    // Use inf-norm of coordinate differences as a proxy for max displacement change.
+    const RealT* d_curr = current_coords_gf.Read();
+    const RealT* d_last = coords_at_last_redecomp_.Read();
+    mfem::Vector max_diff( 1 );
+    max_diff.UseDevice( use_device_ );
+    max_diff = 0.0;
+    RealT* d_max_diff = max_diff.Write();
+    forAllExec( exec_mode_, current_coords_gf.Size(), [d_curr, d_last, d_max_diff] TRIBOL_HOST_DEVICE( int i ) {
+#ifdef TRIBOL_USE_RAJA
+      RAJA::atomicMax<RAJA::auto_atomic>( d_max_diff, std::abs( d_curr[i] - d_last[i] ) );
+#else
+      d_max_diff[0] = std::max( d_max_diff[0], std::abs( d_curr[i] - d_last[i] ) );
+#endif
+    } );
+    RealT* h_max_diff = max_diff.HostReadWrite();
+    // Allreduce to get global max
+    MPI_Allreduce( MPI_IN_PLACE, h_max_diff, 1, MPI_DOUBLE, MPI_MAX, parent_mesh_.GetComm() );
+
+    // If max change is greater than threshold, make a new RedecompMesh
+    // NOTE: max_diff is the max component diff, i.e. x, y, z components are considered separately
+    if ( *h_max_diff > redecomp_trigger_displacement_ ) {
+      force_new_redecomp = true;
+    }
   }
+  TRIBOL_MARK_END( "Check if new Redecomp mesh is needed" );
+
   TRIBOL_MARK_BEGIN( "Build new Redecomp mesh" );
-  update_data_ = std::make_unique<UpdateData>( submesh_, lor_mesh_.get(), *coords_.GetParentGridFn().ParFESpace(),
-                                               submesh_xfer_gridfn_, submesh_lor_xfer_.get(), attributes_1_,
-                                               attributes_2_, binning_proximity_scale, allocator_id_, n_ranks );
+  bool rebuilt = false;
+  if ( force_new_redecomp || !update_data_ ) {
+    // update coordinates of submesh and LOR mesh
+    auto submesh_nodes = dynamic_cast<mfem::ParGridFunction*>( submesh_.GetNodes() );
+    SLIC_ERROR_ROOT_IF( !submesh_nodes, "submesh_ Nodes is not a ParGridFunction." );
+    TRIBOL_MARK_BEGIN( "Update SubMesh coords" );
+    submesh_.Transfer( coords_.GetParentGridFn(), *submesh_nodes );
+    TRIBOL_MARK_END( "Update SubMesh coords" );
+    if ( lor_mesh_.get() ) {
+      TRIBOL_MARK_BEGIN( "Update LOR coords" );
+      auto lor_nodes = dynamic_cast<mfem::ParGridFunction*>( lor_mesh_->GetNodes() );
+      SLIC_ERROR_ROOT_IF( !lor_nodes, "lor_mesh_ Nodes is not a ParGridFunction." );
+      submesh_lor_xfer_->SubmeshToLOR( *submesh_nodes, *lor_nodes );
+      TRIBOL_MARK_END( "Update LOR coords" );
+    }
+    update_data_ =
+        std::make_unique<UpdateData>( submesh_, lor_mesh_.get(), *coords_.GetParentGridFn().ParFESpace(),
+                                      submesh_xfer_gridfn_, submesh_lor_xfer_.get(), attributes_1_, attributes_2_,
+                                      binning_proximity_scale, n_ranks, allocator_id_, redecomp_trigger_displacement_ );
+    rebuilt = true;
+  }
+
+  // this is done here so the redecomp grid fn is updated before we update redecomp_response_
+  coords_.UpdateField( update_data_->vector_xfer_, use_device_ );
+
+  if ( rebuilt ) {
+    // NOTE: SetSpace() would be preferrable to call here, but it looks like all memory isn't mapped to
+    // mfem::MemoryManager when this is used. TODO: Debug this and switch to SetSpace()
+    redecomp_response_ = std::make_unique<mfem::GridFunction>( coords_.GetRedecompGridFn().FESpace() );
+    redecomp_response_->UseDevice( use_device_ );
+
+    // Store current coordinates
+    coords_at_last_redecomp_.SetSize( coords_.GetParentGridFn().Size() );
+    coords_at_last_redecomp_ = coords_.GetParentGridFn();
+  }
   TRIBOL_MARK_END( "Build new Redecomp mesh" );
 
   TRIBOL_MARK_BEGIN( "Copy fields to Redecomp mesh" );
-  coords_.UpdateField( update_data_->vector_xfer_, use_device_ );
-  // NOTE: SetSpace() would be preferrable to call here, but it looks like all memory isn't mapped to
-  // mfem::MemoryManager when this is used. TODO: Debug this and switch to SetSpace()
-  redecomp_response_ = std::make_unique<mfem::GridFunction>( coords_.GetRedecompGridFn().FESpace() );
-  redecomp_response_->UseDevice( use_device_ );
   ( *redecomp_response_ ) = 0.0;
+
   if ( reference_coords_ ) {
     reference_coords_->UpdateField( update_data_->vector_xfer_, use_device_ );
   }
@@ -378,7 +429,8 @@ void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
     velocity_->UpdateField( update_data_->vector_xfer_, use_device_ );
   }
   TRIBOL_MARK_END( "Copy fields to Redecomp mesh" );
-  if ( elem_thickness_ ) {
+
+  if ( rebuilt && elem_thickness_ ) {
     if ( !material_modulus_ ) {
       SLIC_ERROR_ROOT(
           "Kinematic element penalty requires material modulus information. "
@@ -440,6 +492,8 @@ void MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
                 } );
     TRIBOL_MARK_END( "Copy element thickness to Redecomp mesh" );
   }
+
+  return rebuilt;
 }
 
 void MfemMeshData::GetParentResponse( mfem::Vector& r ) const
@@ -587,17 +641,20 @@ MfemMeshData::UpdateData::UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* 
                                       const mfem::ParFiniteElementSpace& parent_fes,
                                       mfem::ParGridFunction& submesh_gridfn, SubmeshLORTransfer* submesh_lor_xfer,
                                       const std::set<int>& attributes_1, const std::set<int>& attributes_2,
-                                      RealT binning_proximity_scale, int allocator_id, int n_ranks )
+                                      RealT binning_proximity_scale, int n_ranks, int allocator_id,
+                                      RealT redecomp_trigger_displacement )
     : redecomp_mesh_{ lor_mesh
                           ? redecomp::RedecompMesh(
                                 *lor_mesh,
                                 binning_proximity_scale * redecomp::RedecompMesh::MaxElementSize(
-                                                              *lor_mesh, redecomp::MPIUtility( lor_mesh->GetComm() ) ),
+                                                              *lor_mesh, redecomp::MPIUtility( lor_mesh->GetComm() ) ) +
+                                    redecomp_trigger_displacement,
                                 redecomp::RedecompMesh::RCB, n_ranks )
                           : redecomp::RedecompMesh(
                                 submesh,
                                 binning_proximity_scale * redecomp::RedecompMesh::MaxElementSize(
-                                                              submesh, redecomp::MPIUtility( submesh.GetComm() ) ),
+                                                              submesh, redecomp::MPIUtility( submesh.GetComm() ) ) +
+                                    redecomp_trigger_displacement,
                                 redecomp::RedecompMesh::RCB, n_ranks ) },
       vector_xfer_{ parent_fes, submesh_gridfn, submesh_lor_xfer, redecomp_mesh_ },
       allocator_id_{ allocator_id }
@@ -737,10 +794,12 @@ MfemSubmeshData::MfemSubmeshData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_
   submesh_pressure_ = 0.0;
 }
 
-void MfemSubmeshData::UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_mesh )
+void MfemSubmeshData::UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_mesh, bool new_redecomp )
 {
-  update_data_ =
-      std::make_unique<UpdateData>( *submesh_pressure_.ParFESpace(), submesh_lor_xfer_.get(), redecomp_mesh );
+  if ( new_redecomp || !update_data_ ) {
+    update_data_ =
+        std::make_unique<UpdateData>( *submesh_pressure_.ParFESpace(), submesh_lor_xfer_.get(), redecomp_mesh );
+  }
   pressure_.UpdateField( update_data_->pressure_xfer_ );
   redecomp_gap_.SetSpace( pressure_.GetRedecompGridFn().FESpace() );
   redecomp_gap_ = 0.0;
