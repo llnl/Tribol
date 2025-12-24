@@ -41,7 +41,6 @@ class IsoIntegTest : public ::testing::Test {
 
   bool integrate( RealT const tol )
   {
-    // axom::primal::ZipIndexable<axom::primal::Vector<RealT, dim>> xyz;
     tribol::Array2D<RealT> xyz( this->numNodes, dim );
 
     // generate stacked coordinate array
