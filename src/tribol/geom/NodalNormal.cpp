@@ -9,7 +9,7 @@
 #include "tribol/utils/Math.hpp"
 
 #ifdef TRIBOL_USE_ENZYME
-#include "mfem/mfem.hpp"
+#include "mfem.hpp"
 #endif
 
 namespace tribol {
