@@ -108,6 +108,9 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 
     if (ENABLE_CUDA)
       set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
+      target_compile_options(${test_name}_test PRIVATE
+        $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>>:-G>
+      )
     endif()
 
   endforeach()

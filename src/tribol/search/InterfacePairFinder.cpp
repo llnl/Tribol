@@ -12,6 +12,7 @@
 
 // Shared includes
 #include "shared/ExecModel.hpp"
+#include "shared/LoopExec.hpp"
 
 // Tribol includes
 #include "tribol/common/Parameters.hpp"

@@ -5,15 +5,14 @@
 
 #include "CommonPlane.hpp"
 
+#include "shared/LoopExec.hpp"
+
 #include "tribol/mesh/MethodCouplingData.hpp"
-#include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/geom/CompGeom.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/integ/Integration.hpp"
 #include "tribol/integ/FE.hpp"
-#include "tribol/utils/ContactPlaneOutput.hpp"
 #include "tribol/utils/Math.hpp"
 
 namespace tribol {

@@ -9,9 +9,10 @@
 
 #ifdef BUILD_REDECOMP
 
-#include "axom/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 
 #include "shared/infrastructure/Profiling.hpp"
+#include "shared/LoopExec.hpp"
 
 #include "redecomp/utils/ArrayUtility.hpp"
 
