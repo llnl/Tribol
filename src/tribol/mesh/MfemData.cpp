@@ -312,6 +312,9 @@ MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParM
 {
   // make sure a grid function exists on the submesh
   submesh_.EnsureNodes();
+  if ( auto submesh_nodes = dynamic_cast<mfem::ParGridFunction*>( submesh_.GetNodes() ) ) {
+    submesh_nodes->UseDevice( use_device_ );
+  }
 
   // create submesh grid function
   std::unique_ptr<mfem::FiniteElementCollection> submesh_fec{
@@ -555,6 +558,9 @@ void MfemMeshData::SetLORFactor( int lor_factor )
   lor_mesh_ = std::make_unique<mfem::ParMesh>(
       mfem::ParMesh::MakeRefined( submesh_, lor_factor, mfem::BasisType::ClosedUniform ) );
   lor_mesh_->EnsureNodes();
+  if ( auto lor_nodes = dynamic_cast<mfem::ParGridFunction*>( lor_mesh_->GetNodes() ) ) {
+    lor_nodes->UseDevice( use_device_ );
+  }
   submesh_lor_xfer_ =
       std::make_unique<SubmeshLORTransfer>( *submesh_xfer_gridfn_.ParFESpace(), *lor_mesh_, use_device_ );
 }
@@ -785,11 +791,13 @@ void MfemMeshData::UpdateData::SetElementData()
 }
 
 MfemSubmeshData::MfemSubmeshData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh,
-                                  std::unique_ptr<mfem::FiniteElementCollection> pressure_fec, int pressure_vdim )
+                                  std::unique_ptr<mfem::FiniteElementCollection> pressure_fec, int pressure_vdim,
+                                  bool use_device )
     : submesh_pressure_{ new mfem::ParFiniteElementSpace( &submesh, pressure_fec.get(), pressure_vdim ) },
       pressure_{ submesh_pressure_ },
       submesh_lor_xfer_{ lor_mesh ? std::make_unique<SubmeshLORTransfer>( *submesh_pressure_.ParFESpace(), *lor_mesh )
-                                  : nullptr }
+                                  : nullptr },
+      use_device_{ use_device }
 {
   submesh_pressure_.MakeOwner( pressure_fec.release() );
   submesh_pressure_ = 0.0;
@@ -803,6 +811,7 @@ void MfemSubmeshData::UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_me
   }
   pressure_.UpdateField( update_data_->pressure_xfer_ );
   redecomp_gap_.SetSpace( pressure_.GetRedecompGridFn().FESpace() );
+  redecomp_gap_.UseDevice( use_device_ );
   redecomp_gap_ = 0.0;
 }
 

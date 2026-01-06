@@ -20,6 +20,7 @@ std::vector<CoordList<NDIMS>> PartitionElements<NDIMS>::EntityCoordinates(
   for ( auto par_mesh : par_meshes ) {
     auto n_elems = par_mesh->GetNE();
     if ( n_elems == 0 ) {
+      elem_centroids.emplace_back( mfem::Vector() );
       continue;
     }
 
