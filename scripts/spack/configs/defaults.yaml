@@ -9,6 +9,9 @@ packages:
   hdf5:
     require:
     - spec: ~shared~mpi
+  mfem:
+    require:
+      - cxxflags="-g -O2"
   raja:
     require:
     - spec: "~shared~examples~exercises"
