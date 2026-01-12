@@ -34,8 +34,6 @@ void SubmeshLORTransfer::TransferToLORGridFn( const mfem::ParGridFunction& subme
 void SubmeshLORTransfer::TransferFromLORVector( mfem::Vector& submesh_dst ) const
 {
   // make sure host data is up to date.  this transfer needs to be on the host until submesh supports device transfer
-  lor_gridfn_->HostRead();
-  submesh_dst.HostWrite();
   lor_xfer_.ForwardOperator().MultTranspose( *lor_gridfn_, submesh_dst );
 }
 
@@ -43,8 +41,6 @@ void SubmeshLORTransfer::SubmeshToLOR( const mfem::ParGridFunction& submesh_src,
 {
   TRIBOL_MARK_FUNCTION;
   // make sure host data is up to date.  this transfer needs to be on the host until submesh supports device transfer
-  submesh_src.HostRead();
-  lor_dst.HostWrite();
   lor_xfer_.ForwardOperator().Mult( submesh_src, lor_dst );
 }
 
@@ -54,9 +50,6 @@ std::unique_ptr<mfem::ParGridFunction> SubmeshLORTransfer::CreateLORGridFunction
   auto lor_gridfn = std::make_unique<mfem::ParGridFunction>(
       new mfem::ParFiniteElementSpace( &lor_mesh, lor_fec.get(), vdim, mfem::Ordering::byNODES ) );
   lor_gridfn->MakeOwner( lor_fec.release() );
-  // NOTE: This needs to be false until submesh supports device transfer. Otherwise, there will be extra copies to/from
-  // device.
-  lor_gridfn->UseDevice( false );
   return lor_gridfn;
 }
 
@@ -312,9 +305,6 @@ MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParM
 {
   // make sure a grid function exists on the submesh
   submesh_.EnsureNodes();
-  if ( auto submesh_nodes = dynamic_cast<mfem::ParGridFunction*>( submesh_.GetNodes() ) ) {
-    submesh_nodes->UseDevice( use_device_ );
-  }
 
   // create submesh grid function
   std::unique_ptr<mfem::FiniteElementCollection> submesh_fec{
@@ -322,9 +312,6 @@ MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParM
   submesh_xfer_gridfn_.SetSpace( new mfem::ParFiniteElementSpace(
       &submesh_, submesh_fec.get(), current_coords.ParFESpace()->GetVDim(), mfem::Ordering::byNODES ) );
   submesh_xfer_gridfn_.MakeOwner( submesh_fec.release() );
-  // NOTE: This needs to be on host until the submesh transfer supports device.  Otherwise, there will be extra
-  // transfers to/from device.
-  submesh_xfer_gridfn_.UseDevice( false );
 
   // build LOR submesh
   if ( current_coords.FESpace()->FEColl()->GetOrder() > 1 ) {
@@ -360,12 +347,12 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
     // compute max displacement change
     auto& current_coords_gf = coords_.GetParentGridFn();
     // Use inf-norm of coordinate differences as a proxy for max displacement change.
-    const RealT* d_curr = current_coords_gf.Read();
-    const RealT* d_last = coords_at_last_redecomp_.Read();
+    const RealT* d_curr = current_coords_gf.Read( use_device_ );
+    const RealT* d_last = coords_at_last_redecomp_.Read( use_device_ );
     mfem::Vector max_diff( 1 );
     max_diff.UseDevice( use_device_ );
     max_diff = 0.0;
-    RealT* d_max_diff = max_diff.Write();
+    RealT* d_max_diff = max_diff.Write( use_device_ );
     forAllExec( exec_mode_, current_coords_gf.Size(), [d_curr, d_last, d_max_diff] TRIBOL_HOST_DEVICE( int i ) {
 #ifdef TRIBOL_USE_RAJA
       RAJA::atomicMax<RAJA::auto_atomic>( d_max_diff, std::abs( d_curr[i] - d_last[i] ) );
@@ -558,9 +545,6 @@ void MfemMeshData::SetLORFactor( int lor_factor )
   lor_mesh_ = std::make_unique<mfem::ParMesh>(
       mfem::ParMesh::MakeRefined( submesh_, lor_factor, mfem::BasisType::ClosedUniform ) );
   lor_mesh_->EnsureNodes();
-  if ( auto lor_nodes = dynamic_cast<mfem::ParGridFunction*>( lor_mesh_->GetNodes() ) ) {
-    lor_nodes->UseDevice( use_device_ );
-  }
   submesh_lor_xfer_ =
       std::make_unique<SubmeshLORTransfer>( *submesh_xfer_gridfn_.ParFESpace(), *lor_mesh_, use_device_ );
 }
