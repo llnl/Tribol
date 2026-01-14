@@ -41,6 +41,24 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
   std::array<tribol::BinningMethod, 3> binning_methods_{ tribol::BINNING_CARTESIAN_PRODUCT, tribol::BINNING_GRID,
                                                          tribol::BINNING_BVH };
 
+  /**
+   * @brief Execution mode for the test
+   */
+  tribol::ExecutionMode exec_mode_;
+
+  void SetUp() override
+  {
+#if defined( TRIBOL_USE_CUDA )
+    exec_mode_ = tribol::ExecutionMode::Cuda;
+#elif defined( TRIBOL_USE_HIP )
+    exec_mode_ = tribol::ExecutionMode::Hip;
+#elif defined( TRIBOL_USE_OPENMP )
+    exec_mode_ = tribol::ExecutionMode::OpenMP;
+#else
+    exec_mode_ = tribol::ExecutionMode::Sequential;
+#endif
+  }
+
   void UpdateTribol( shared::ParMeshBuilder& mesh, int coupling_scheme_id )
   {
     tribol::updateMfemParallelDecomposition();
@@ -70,7 +88,8 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
     constexpr int mesh2_id = 1;
     tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, mesh, mesh.getNodes(), contact_surf_1,
                                         contact_surf_2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
-                                        tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, binning_method );
+                                        tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, binning_method,
+                                        exec_mode_ );
     tribol::setMfemKinematicConstantPenalty( coupling_scheme_id, penalty, penalty );
     tribol::setBinningProximityScale( coupling_scheme_id, binning_proximity );
 
@@ -182,7 +201,7 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
     tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, std::get<0>( mesh ),
                                         std::get<0>( mesh ).getNodes(), std::get<1>( mesh ), std::get<2>( mesh ),
                                         tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::SINGLE_MORTAR,
-                                        tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, binning_method );
+                                        tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, binning_method, exec_mode_ );
     tribol::setLagrangeMultiplierOptions( coupling_scheme_id, tribol::ImplicitEvalMode::MORTAR_RESIDUAL );
     tribol::getMfemPressure( coupling_scheme_id ) = 1.0;
     tribol::setBinningProximityScale( coupling_scheme_id, binning_proximity );
@@ -231,6 +250,8 @@ TEST_P( ProximityTest, CheckForceValues3DCommonPlane )
   MPI_Barrier( MPI_COMM_WORLD );
 }
 
+#ifdef TRIBOL_USE_HOST
+// NOTE: Mortar doesn't work on device
 TEST_P( ProximityTest, CheckForceValues3DMortar )
 {
   auto should_have_force = std::get<3>( GetParam() );
@@ -250,6 +271,7 @@ TEST_P( ProximityTest, CheckForceValues3DMortar )
 
   MPI_Barrier( MPI_COMM_WORLD );
 }
+#endif
 
 // The parameters for the tuple are: finite element order (int), binning proximity parameter (multiplier of element
 // length), amount of element interpenetration, and whether or not we expect Tribol to consider the interface pair in
@@ -276,22 +298,6 @@ int main( int argc, char* argv[] )
   int result = 0;
 
   MPI_Init( &argc, &argv );
-
-  int rank;
-  MPI_Comm_rank( MPI_COMM_WORLD, &rank );
-
-  // Only make Rank 0 wait (or whichever rank you want to debug)
-  if ( rank == 0 ) {
-    volatile int debug_wait = 1;
-    printf( "Rank %d is ready to attach. PID: %d\n", rank, getpid() );
-    fflush( stdout );
-
-    while ( debug_wait ) {
-      sleep( 1 );  // Sleep to avoid burning 100% CPU
-    }
-  }
-
-  MPI_Barrier( MPI_COMM_WORLD );  // Keep other ranks from running ahead
 
   ::testing::InitGoogleTest( &argc, argv );
 
