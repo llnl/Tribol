@@ -37,9 +37,8 @@ public:
   Point<NDIMS> GetPoint( int k ) const
   {
     Point<NDIMS> pt;
-    int n_pts = coords_.Size() / NDIMS;
     for ( int d = 0; d < NDIMS; ++d ) {
-      pt[d] = coords_( k + d * n_pts );
+      pt[d] = coords_( k * NDIMS + d );
     }
     return pt;
   }
