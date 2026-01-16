@@ -62,31 +62,47 @@ void TransferByNodes::TransferToSerial( const mfem::ParGridFunction& src, mfem::
                       "in TransferByNodes." );
 
   // send and receive DOF values from other ranks
-  auto dst_dofs = MPIArray<double, axom::Array<double, 2>>( &redecomp_->getMPIUtility() );
-  auto src_ptr = src.HostRead();
-  dst_dofs.SendRecvEach( [src_ptr, src_fes, &src_nodes]( int dst_rank ) {
-    auto src_dofs = axom::Array<double, 2>();
-    auto n_vdofs = src_fes->GetVDim();
-    auto n_src_dofs = src_nodes.first[dst_rank].Size();
-    src_dofs.reserve( n_vdofs * n_src_dofs );
-    src_dofs.resize( axom::ArrayOptions::Uninitialized(), n_vdofs, n_src_dofs );
-    for ( int d{ 0 }; d < n_vdofs; ++d ) {
-      for ( int j{ 0 }; j < n_src_dofs; ++j ) {
-        src_dofs( d, j ) = src_ptr[src_fes->DofToVDof( src_nodes.first[dst_rank][j], d )];
-      }
-    }
-    return src_dofs;
-  } );
+  auto dst_dofs = MPIArray<double, mfem::Vector>( &redecomp_->getMPIUtility() );
+  dst_dofs.SendRecvEach(
+      [src_fes, &src_nodes, &src]( int dst_rank ) {
+        mfem::Vector src_dofs;
+        src_dofs.UseDevice( src.UseDevice() );
+        auto n_vdofs = src_fes->GetVDim();
+        auto n_src_dofs = src_nodes.first[dst_rank].Size();
+        if ( n_src_dofs > 0 ) {
+          mfem::Array<int> all_vdofs;
+          all_vdofs.Reserve( n_vdofs * n_src_dofs );
+          for ( int d{ 0 }; d < n_vdofs; ++d ) {
+            for ( int j{ 0 }; j < n_src_dofs; ++j ) {
+              all_vdofs.Append( src_fes->DofToVDof( src_nodes.first[dst_rank][j], d ) );
+            }
+          }
+
+          all_vdofs.GetMemory().UseDevice( src.UseDevice() );
+          src_dofs.SetSize( all_vdofs.Size() );
+          src.GetSubVector( all_vdofs, src_dofs );
+        }
+        return src_dofs;
+      },
+      src.UseDevice() );
 
   // map received DOF values to local DOFs
   auto n_vdofs = src_fes->GetVDim();
   auto n_ranks = redecomp_->getMPIUtility().NRanks();
-  auto dst_ptr = dst.HostWrite();
   for ( int i{ 0 }; i < n_ranks; ++i ) {
-    for ( int d{ 0 }; d < n_vdofs; ++d ) {
-      for ( int j{ 0 }; j < dst_nodes.first[i].Size(); ++j ) {
-        dst_ptr[dst_fes->DofToVDof( dst_nodes.first[i][j], d )] = dst_dofs[i]( d, j );
+    if ( dst_nodes.first[i].Size() > 0 ) {
+      mfem::Array<int> all_vdofs;
+      all_vdofs.Reserve( n_vdofs * dst_nodes.first[i].Size() );
+      for ( int d{ 0 }; d < n_vdofs; ++d ) {
+        for ( int j{ 0 }; j < dst_nodes.first[i].Size(); ++j ) {
+          all_vdofs.Append( dst_fes->DofToVDof( dst_nodes.first[i][j], d ) );
+        }
       }
+      all_vdofs.GetMemory().UseDevice( dst.UseDevice() );
+      // set explicitly in case e.g. src is on device and dst is on host or vice versa
+      dst_dofs[i].Read( dst.UseDevice() );
+      dst_dofs[i].UseDevice( dst.UseDevice() );
+      dst.SetSubVector( all_vdofs, dst_dofs[i] );
     }
   }
 }
@@ -111,40 +127,64 @@ void TransferByNodes::TransferToParallel( const mfem::GridFunction& src, mfem::P
                       "in TransferByNodes." );
 
   // send and receive non-ghost DOF values from other ranks
-  auto dst_dofs = MPIArray<double, axom::Array<double, 2>>( &redecomp_->getMPIUtility() );
-  auto src_ptr = src.HostRead();
-  dst_dofs.SendRecvEach( [src_ptr, src_fes, &src_nodes]( int dst_rank ) {
-    auto src_dofs = axom::Array<double, 2>();
-    auto n_vdofs = src_fes->GetVDim();
-    auto n_src_dofs = src_nodes.first[dst_rank].Size();
-    src_dofs.reserve( n_vdofs * n_src_dofs );
-    src_dofs.resize( axom::ArrayOptions::Uninitialized(), n_vdofs, n_src_dofs );
-    auto dof_ct = 0;
-    for ( int j{ 0 }; j < n_src_dofs; ++j ) {
-      if ( !src_nodes.second[dst_rank][j] ) {
-        for ( int d{ 0 }; d < n_vdofs; ++d ) {
-          src_dofs( d, dof_ct ) = src_ptr[src_fes->DofToVDof( src_nodes.first[dst_rank][j], d )];
+  auto dst_dofs = MPIArray<double, mfem::Vector>( &redecomp_->getMPIUtility() );
+  dst_dofs.SendRecvEach(
+      [src_fes, &src_nodes, &src]( int dst_rank ) {
+        mfem::Vector src_dofs;
+        src_dofs.UseDevice( src.UseDevice() );
+        auto n_vdofs = src_fes->GetVDim();
+        auto n_src_dofs = src_nodes.first[dst_rank].Size();
+        auto count = 0;
+        for ( int j{ 0 }; j < n_src_dofs; ++j ) {
+          if ( !src_nodes.second[dst_rank][j] ) {
+            ++count;
+          }
         }
-        ++dof_ct;
-      }
-    }
-    src_dofs.shrink();
-    return src_dofs;
-  } );
+        if ( count > 0 ) {
+          mfem::Array<int> all_vdofs;
+          all_vdofs.Reserve( n_vdofs * count );
+          for ( int j{ 0 }; j < n_src_dofs; ++j ) {
+            if ( !src_nodes.second[dst_rank][j] ) {
+              for ( int d{ 0 }; d < n_vdofs; ++d ) {
+                all_vdofs.Append( src_fes->DofToVDof( src_nodes.first[dst_rank][j], d ) );
+              }
+            }
+          }
+
+          all_vdofs.GetMemory().UseDevice( src.UseDevice() );
+          src_dofs.SetSize( all_vdofs.Size() );
+          src.GetSubVector( all_vdofs, src_dofs );
+        }
+        return src_dofs;
+      },
+      src.UseDevice() );
 
   // map received non-ghost DOF values to dst
   auto n_vdofs = src_fes->GetVDim();
   auto n_ranks = redecomp_->getMPIUtility().NRanks();
-  auto dst_ptr = dst.HostWrite();
   for ( int i{ 0 }; i < n_ranks; ++i ) {
-    auto dof_ct = 0;
+    auto count = 0;
     for ( int j{ 0 }; j < dst_nodes.first[i].Size(); ++j ) {
       if ( !dst_nodes.second[i][j] ) {
-        for ( int d{ 0 }; d < n_vdofs; ++d ) {
-          dst_ptr[dst_fes->DofToVDof( dst_nodes.first[i][j], d )] = dst_dofs[i]( d, dof_ct );
-        }
-        ++dof_ct;
+        ++count;
       }
+    }
+    if ( count > 0 ) {
+      mfem::Array<int> all_vdofs;
+      all_vdofs.Reserve( n_vdofs * count );
+      for ( int j{ 0 }; j < dst_nodes.first[i].Size(); ++j ) {
+        if ( !dst_nodes.second[i][j] ) {
+          for ( int d{ 0 }; d < n_vdofs; ++d ) {
+            all_vdofs.Append( dst_fes->DofToVDof( dst_nodes.first[i][j], d ) );
+          }
+        }
+      }
+
+      all_vdofs.GetMemory().UseDevice( dst.UseDevice() );
+      // set explicitly in case e.g. src is on device and dst is on host or vice versa
+      dst_dofs[i].Read( dst.UseDevice() );
+      dst_dofs[i].UseDevice( dst.UseDevice() );
+      dst.SetSubVector( all_vdofs, dst_dofs[i] );
     }
   }
 }

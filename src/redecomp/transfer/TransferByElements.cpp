@@ -50,9 +50,8 @@ void TransferByElements::TransferToSerial( const mfem::ParGridFunction& src, mfe
             all_vdofs.Append( elem_vdofs );
           }
 
-          src_dofs.SetSize( all_vdofs.Size() );
           all_vdofs.GetMemory().UseDevice( src.UseDevice() );
-          src_dofs.UseDevice( src.UseDevice() );
+          src_dofs.SetSize( all_vdofs.Size() );
           src.GetSubVector( all_vdofs, src_dofs );
         }
         return src_dofs;
@@ -75,6 +74,7 @@ void TransferByElements::TransferToSerial( const mfem::ParGridFunction& src, mfe
         dst.FESpace()->GetElementVDofs( e, elem_vdofs );
         all_vdofs.Append( elem_vdofs );
       }
+
       all_vdofs.GetMemory().UseDevice( dst.UseDevice() );
       // set explicitly in case e.g. src is on device and dst is on host or vice versa
       dst_dofs[r].Read( dst.UseDevice() );
@@ -126,9 +126,9 @@ void TransferByElements::TransferToParallel( const mfem::GridFunction& src, mfem
               all_vdofs.Append( elem_vdofs );
             }
           }
-          src_dofs.SetSize( all_vdofs.Size() );
+          
           all_vdofs.GetMemory().UseDevice( src.UseDevice() );
-          src_dofs.UseDevice( src.UseDevice() );
+          src_dofs.SetSize( all_vdofs.Size() );
           src.GetSubVector( all_vdofs, src_dofs );
         }
         return src_dofs;
@@ -152,6 +152,7 @@ void TransferByElements::TransferToParallel( const mfem::GridFunction& src, mfem
           all_vdofs.Append( elem_vdofs );
         }
       }
+
       if ( all_vdofs.Size() > 0 ) {
         all_vdofs.GetMemory().UseDevice( dst.UseDevice() );
         // set explicitly in case e.g. src is on device and dst is on host or vice versa
