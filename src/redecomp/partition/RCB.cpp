@@ -44,8 +44,8 @@ std::vector<EntityIndexByRank> RCB<NDIMS>::generatePartitioning( int n_parts,
     auto ent_ghost = MPIArray<bool>( &this->getMPIUtility() );
     for ( int i{ 0 }; i < n_parts; ++i ) {
       auto rank = i * rank_jump_interval;
-      ent_idx[rank].reserve( num_coords );
-      ent_ghost[rank].reserve( num_coords );
+      ent_idx[rank].Reserve( num_coords );
+      ent_ghost[rank].Reserve( num_coords );
     }
     for ( int i{ 0 }; i < num_coords; ++i ) {
       Point<NDIMS> coord = coords.GetPoint( i );
@@ -63,8 +63,10 @@ std::vector<EntityIndexByRank> RCB<NDIMS>::generatePartitioning( int n_parts,
       }
     }
     for ( int i{ 0 }; i < n_parts; ++i ) {
-      ent_idx[i].shrink();
-      ent_ghost[i].shrink();
+      auto tmp_idx = ent_idx[i];
+      ent_idx[i] = std::move(tmp_idx);
+      auto tmp_ghost = ent_ghost[i];
+      ent_ghost[i] = std::move(tmp_ghost);
     }
 
     partitioning.emplace_back( std::move( ent_idx ), std::move( ent_ghost ) );

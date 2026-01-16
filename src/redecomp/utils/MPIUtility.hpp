@@ -11,6 +11,8 @@
 
 #include <mpi.h>
 
+#include "mfem.hpp"
+
 #include "axom/core.hpp"
 #include "axom/slic.hpp"
 
@@ -151,6 +153,18 @@ class MPIUtility {
   std::unique_ptr<Request> Isend( const T& container, int dest, int tag = 0 ) const;
 
   /**
+   * @brief Calls MPI_Isend (non-blocking send) on an array stored in an mfem::Array
+   *
+   * @tparam T Type stored in mfem::Array
+   * @param container Stores the data to send
+   * @param dest Rank to send the data in container to
+   * @param tag MPI tag for identifying the data
+   * @return Request object to track completion of the send
+   */
+  template <typename T>
+  std::unique_ptr<Request> Isend( const mfem::Array<T>& container, int dest, int tag = 0 ) const;
+
+  /**
    * @brief Calls MPI_Isend (non-blocking send) on a 2D axom::Array
    *
    * @tparam T Data type of an element in the array: bool, double, int currently supported
@@ -173,6 +187,17 @@ class MPIUtility {
    */
   template <typename T>
   T Recv( type<T>, int source, int tag = 0 ) const;
+
+  /**
+   * @brief Calls MPI_Recv on an array stored in an mfem::Array
+   *
+   * @tparam T Data type of the data container
+   * @param source MPI rank data is coming from
+   * @param tag MPI tag for identifying the data
+   * @return Container of type mfem::Array<T> holding data sent
+   */
+  template <typename T>
+  mfem::Array<T> Recv( type<mfem::Array<T>>, int source, int tag = 0 ) const;
 
   /**
    * @brief Calls MPI_Recv on an 2D array stored in an axom::Array
@@ -321,6 +346,15 @@ std::unique_ptr<MPIUtility::Request> MPIUtility::Isend( const T& container, int 
   return std::make_unique<Request>( std::move( request ) );
 }
 
+template <typename T>
+std::unique_ptr<MPIUtility::Request> MPIUtility::Isend( const mfem::Array<T>& container, int dest, int tag ) const
+{
+  auto request = std::make_unique<MPI_Request>();
+  MPI_Isend( container, container.Size(), GetMPIType<typename std::remove_cv<T>::type>(), dest, tag, comm_,
+             request.get() );
+  return std::make_unique<Request>( std::move( request ) );
+}
+
 template <typename T, axom::MemorySpace Sp>
 std::unique_ptr<MPIUtility::Request> MPIUtility::Isend( const axom::Array<T, 2, Sp>& container, int dest,
                                                         int tag ) const
@@ -341,6 +375,18 @@ T MPIUtility::Recv( type<T>, int source, int tag ) const
   container.reserve( count );
   container.resize( count );
   MPI_Recv( container.data(), count, GetMPIDatatype( container.data() ), source, tag, comm_, &status_ );
+  return container;
+}
+
+template <typename T>
+mfem::Array<T> MPIUtility::Recv( type<mfem::Array<T>>, int source, int tag ) const
+{
+  auto container = mfem::Array<T>();
+  MPI_Probe( source, tag, comm_, &status_ );
+  int count;
+  MPI_Get_count( &status_, GetMPIType<typename std::remove_cv<T>::type>(), &count );
+  container.SetSize( count );
+  MPI_Recv( container, count, GetMPIType<typename std::remove_cv<T>::type>(), source, tag, comm_, &status_ );
   return container;
 }
 

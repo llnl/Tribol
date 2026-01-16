@@ -6,7 +6,7 @@
 #ifndef SRC_REDECOMP_UTILS_MPIARRAY_HPP_
 #define SRC_REDECOMP_UTILS_MPIARRAY_HPP_
 
-#include "axom/core.hpp"
+#include "mfem.hpp"
 
 #include "shared/infrastructure/Profiling.hpp"
 
@@ -15,25 +15,23 @@
 namespace redecomp {
 
 /**
- * @brief Creates and manages per-MPI-rank axom::Arrays
+ * @brief Creates and manages per-MPI-rank arrays
  *
  * @tparam T Array data type
- * @tparam DIM Array dimension
+ * @tparam ArrayType Array type on each rank
  */
-template <typename T, int DIM = 1, typename ArrayType = axom::Array<axom::Array<T, DIM>>>
-class MPIArray : public ArrayType {
+template <typename T, typename ArrayType = mfem::Array<T>>
+class MPIArray : public std::vector<ArrayType> {
  public:
+  typedef ArrayType ArrayT;
   /**
    * @brief Construct a new MPIArray object
    *
    * @param mpi MPIUtility to define MPI_Comm for MPI operations
    * @param array Array data
    */
-  MPIArray( const MPIUtility* mpi, const ArrayType& array ) : ArrayType( array ), mpi_{ mpi }
+  MPIArray( const MPIUtility* mpi, const std::vector<ArrayType>& array ) : std::vector<ArrayType>( array ), mpi_{ mpi }
   {
-    this->reserve( mpi_->NRanks() );
-    this->resize( mpi_->NRanks() );
-    this->shrink();
   }
 
   /**
@@ -42,11 +40,9 @@ class MPIArray : public ArrayType {
    * @param mpi MPIUtility to define MPI_Comm for MPI operations
    * @param array Array data
    */
-  MPIArray( const MPIUtility* mpi, ArrayType&& array ) : ArrayType( std::move( array ) ), mpi_{ mpi }
+  MPIArray( const MPIUtility* mpi, std::vector<ArrayType>&& array )
+      : std::vector<ArrayType>( std::move( array ) ), mpi_{ mpi }
   {
-    this->reserve( mpi_->NRanks() );
-    this->resize( mpi_->NRanks() );
-    this->shrink();
   }
 
   /**
@@ -54,7 +50,7 @@ class MPIArray : public ArrayType {
    *
    * @param mpi MPIUtility to define MPI_Comm for MPI operations
    */
-  MPIArray( const MPIUtility* mpi ) : MPIArray( mpi, ArrayType( 0, 0 ) ) {}
+  MPIArray( const MPIUtility* mpi ) : MPIArray( mpi, std::vector<ArrayType>( mpi->NRanks() ) ) {}
 
   /**
    * @brief Construct an empty MPIArray object (note: object cannot be used)
@@ -62,59 +58,58 @@ class MPIArray : public ArrayType {
   MPIArray() = default;
 
   /**
-   * @brief Returns the axom::Array at the given rank
+   * @brief Returns the array at the given rank
    *
    * @param rank The MPI rank of the array
-   * @return axom::Array<T, DIM>& holding array values at rank
+   * @return ArrayType reference holding array values at rank
    */
-  axom::Array<T, DIM>& at( axom::IndexType rank ) { return this->operator[]( rank ); }
+  ArrayType& at( axom::IndexType rank ) { return this->operator[]( rank ); }
 
   /**
-   * @brief Returns the axom::Array at the given rank
+   * @brief Returns the array at the given rank
    *
    * @param rank The MPI rank of the array
-   * @return axom::Array<T, DIM>& holding array values at rank
+   * @return ArrayType reference holding array values at rank
    */
-  const axom::Array<T, DIM>& at( axom::IndexType rank ) const { return this->operator[]( rank ); }
+  const ArrayType& at( axom::IndexType rank ) const { return this->operator[]( rank ); }
 
   /**
    * @brief Sends the Array data to all other MPI ranks
    *
    * @param data Data to send to other ranks
    */
-  static void SendAll( const axom::Array<T, DIM>& data ) { data.mpi_.SendAll( data ); }
+  static void SendAll( const ArrayType& data ) { data.mpi_.SendAll( data ); }
 
   /**
    * @brief Receive data sent from a call to MPIArray::SendAll()
    *
    * @param src The source rank of the data
    */
-  void RecvSendAll( axom::IndexType src ) { at( src ) = mpi_->RecvSendAll( type<axom::Array<T, DIM>>(), src ); }
+  void RecvSendAll( axom::IndexType src ) { at( src ) = mpi_->RecvSendAll( type<ArrayType>(), src ); }
 
   /**
    * @brief Sends the MPIArray data to all other MPI ranks while receiving from other ranks
    *
    * @param data Data to send to other ranks
    */
-  void SendRecvArrayEach( const MPIArray<T, DIM>& data )
+  void SendRecvArrayEach( const MPIArray& data )
   {
     mpi_->SendRecvEach(
-        type<axom::Array<T, DIM>>(), [data]( axom::IndexType dst ) { return data.at( dst ); },
-        [this]( axom::Array<T, DIM>&& recv_data, axom::IndexType src ) { at( src ) = std::move( recv_data ); } );
+        type<ArrayType>(), [data]( axom::IndexType dst ) { return data.at( dst ); },
+        [this]( ArrayType&& recv_data, axom::IndexType src ) { at( src ) = std::move( recv_data ); } );
   }
 
   /**
    * @brief Create data to send to all other MPI ranks while receiving from other ranks
    *
-   * @param build_send A lambda which returns an axom::Array<T, DIM> to send to the input rank
+   * @param build_send A lambda which returns an ArrayType to send to the input rank
    */
   template <typename F>
   void SendRecvEach( F&& build_send )
   {
     TRIBOL_MARK_FUNCTION;
-    mpi_->SendRecvEach(
-        type<axom::Array<T, DIM>>(), std::forward<F>( build_send ),
-        [this]( axom::Array<T, DIM>&& recv_data, axom::IndexType src ) { at( src ) = std::move( recv_data ); } );
+    mpi_->SendRecvEach( type<ArrayType>(), std::forward<F>( build_send ),
+                        [this]( ArrayType&& recv_data, axom::IndexType src ) { at( src ) = std::move( recv_data ); } );
   }
 
  private:

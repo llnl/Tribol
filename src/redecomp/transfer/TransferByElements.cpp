@@ -32,21 +32,19 @@ void TransferByElements::TransferToSerial( const mfem::ParGridFunction& src, mfe
   // send and receive DOF values from other ranks
   auto dst_dofs = MPIArray<double>( &redecomp->getMPIUtility() );
   dst_dofs.SendRecvEach( [redecomp, &src]( int dest ) {
-    auto src_dofs = axom::Array<double>();
+    auto src_dofs = MPIArray<double>::ArrayT();
     const auto& src_elem_idx = redecomp->getParentToRedecompElems().first[dest];
-    auto n_els = src_elem_idx.size();
+    auto n_els = src_elem_idx.Size();
     if ( n_els > 0 ) {
       auto elem_vdofs = mfem::Array<int>();
       auto dof_vals = mfem::Vector();
       // guess the size of src_dofs based on the size of the first element
       src.FESpace()->GetElementVDofs( src_elem_idx[0], elem_vdofs );
-      src_dofs.reserve( elem_vdofs.Size() * n_els );
-      auto vdof_ct = 0;
+      src_dofs.Reserve( elem_vdofs.Size() * n_els );
       for ( int e{ 0 }; e < n_els; ++e ) {
         src.FESpace()->GetElementVDofs( src_elem_idx[e], elem_vdofs );
         src.GetSubVector( elem_vdofs, dof_vals );
-        src_dofs.insert( vdof_ct, dof_vals.Size(), dof_vals.GetData() );
-        vdof_ct += dof_vals.Size();
+        src_dofs.Append( dof_vals.GetData(), dof_vals.Size() );
       }
     }
     return src_dofs;
@@ -87,7 +85,7 @@ void TransferByElements::TransferToParallel( const mfem::GridFunction& src, mfem
   // send and receive non-ghost DOF values from other ranks
   auto dst_dofs = MPIArray<double>( &redecomp->getMPIUtility() );
   dst_dofs.SendRecvEach( [redecomp, &src]( int dest ) {
-    auto src_dofs = axom::Array<double>();
+    auto src_dofs = MPIArray<double>::ArrayT();
     auto first_el = redecomp->getRedecompToParentElemOffsets()[dest];
     auto last_el = redecomp->getRedecompToParentElemOffsets()[dest + 1];
     auto n_els = last_el - first_el;
@@ -96,18 +94,18 @@ void TransferByElements::TransferToParallel( const mfem::GridFunction& src, mfem
       auto dof_vals = mfem::Vector();
       // guess the size of src_dofs based on the size of the first element
       src.FESpace()->GetElementVDofs( first_el, elem_vdofs );
-      src_dofs.reserve( elem_vdofs.Size() * n_els );
+      src_dofs.Reserve( elem_vdofs.Size() * n_els );
       auto vdof_ct = 0;
       auto ghost_ct = 0;
       for ( int e{ first_el }; e < last_el; ++e ) {
         // skip ghost elements
-        if ( ghost_ct < redecomp->getRedecompToParentGhostElems()[dest].size() &&
+        if ( ghost_ct < redecomp->getRedecompToParentGhostElems()[dest].Size() &&
              redecomp->getRedecompToParentGhostElems()[dest][ghost_ct] == e ) {
           ++ghost_ct;
         } else {
           src.FESpace()->GetElementVDofs( e, elem_vdofs );
           src.GetSubVector( elem_vdofs, dof_vals );
-          src_dofs.insert( vdof_ct, dof_vals.Size(), dof_vals.GetData() );
+          src_dofs.Append( dof_vals.GetData(), dof_vals.Size() );
           vdof_ct += dof_vals.Size();
         }
       }
@@ -120,7 +118,7 @@ void TransferByElements::TransferToParallel( const mfem::GridFunction& src, mfem
   auto n_ranks = redecomp->getMPIUtility().NRanks();
   for ( int r{ 0 }; r < n_ranks; ++r ) {
     auto vdof_ct = 0;
-    for ( int e{ 0 }; e < redecomp->getParentToRedecompElems().first[r].size(); ++e ) {
+    for ( int e{ 0 }; e < redecomp->getParentToRedecompElems().first[r].Size(); ++e ) {
       // skip ghost elements
       if ( !redecomp->getParentToRedecompElems().second[r][e] ) {
         dst.FESpace()->GetElementVDofs( redecomp->getParentToRedecompElems().first[r][e], elem_vdofs );

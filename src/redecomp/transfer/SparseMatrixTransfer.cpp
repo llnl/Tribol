@@ -84,10 +84,10 @@ std::unique_ptr<mfem::HypreParMatrix> SparseMatrixTransfer::TransferToParallel( 
     // guess size and preallocate
     auto approx_size = 2 * src.NumNonZeroElems() / n_ranks;
     for ( int r{ 0 }; r < n_ranks; ++r ) {
-      send_matrix_data[r].reserve( approx_size );
-      send_parent_local_row_offsets[r].reserve( approx_size );
-      send_parent_local_col_offsets[r].reserve( approx_size );
-      send_parent_col_ranks[r].reserve( approx_size );
+      send_matrix_data[r].Reserve( approx_size );
+      send_parent_local_row_offsets[r].Reserve( approx_size );
+      send_parent_local_col_offsets[r].Reserve( approx_size );
+      send_parent_col_ranks[r].Reserve( approx_size );
     }
 
     auto src_I = src.GetI();
@@ -110,7 +110,7 @@ std::unique_ptr<mfem::HypreParMatrix> SparseMatrixTransfer::TransferToParallel( 
         test_ghost_ct = 0;
       }
       // skip unowned elements
-      if ( test_ghost_ct < test_ghost_elems[test_parent_rank].size() &&
+      if ( test_ghost_ct < test_ghost_elems[test_parent_rank].Size() &&
            test_elem_id == test_ghost_elems[test_parent_rank][test_ghost_ct] ) {
         // the element is a ghost on this rank. increase the index to check for the next ghost (since they are sorted in
         // ascending order).
@@ -145,11 +145,11 @@ std::unique_ptr<mfem::HypreParMatrix> SparseMatrixTransfer::TransferToParallel( 
       // do per-rank communication to transform local_col from offsets to element ids
       auto send_col_offsets_by_rank = MPIArray<int>( &getMPIUtility() );
       // guess size and preallocate
-      auto approx_rank_size = 2 * send_parent_local_col_offsets[r].size() / n_ranks;
+      auto approx_rank_size = 2 * send_parent_local_col_offsets[r].Size() / n_ranks;
       for ( auto& send_col_offsets : send_col_offsets_by_rank ) {
-        send_col_offsets.reserve( approx_rank_size );
+        send_col_offsets.Reserve( approx_rank_size );
       }
-      for ( int i{ 0 }; i < send_parent_local_col_offsets[r].size(); ++i ) {
+      for ( int i{ 0 }; i < send_parent_local_col_offsets[r].Size(); ++i ) {
         send_col_offsets_by_rank[send_parent_col_ranks[r][i]].push_back( send_parent_local_col_offsets[r][i] );
       }
       auto recv_col_offsets_by_rank = MPIArray<int>( &getMPIUtility() );
@@ -164,7 +164,7 @@ std::unique_ptr<mfem::HypreParMatrix> SparseMatrixTransfer::TransferToParallel( 
       send_col_offsets_by_rank.SendRecvArrayEach( recv_col_offsets_by_rank );
       // fill send_parent_local_col_offsets with local element ids
       axom::Array<int> per_rank_ct( n_ranks, n_ranks );
-      for ( int i{ 0 }; i < send_parent_local_col_offsets[r].size(); ++i ) {
+      for ( int i{ 0 }; i < send_parent_local_col_offsets[r].Size(); ++i ) {
         auto col_rank = send_parent_col_ranks[r][i];
         send_parent_local_col_offsets[r][i] = send_col_offsets_by_rank[col_rank][per_rank_ct[col_rank]++];
       }
@@ -203,7 +203,7 @@ std::unique_ptr<mfem::HypreParMatrix> SparseMatrixTransfer::TransferToParallel( 
   // local offdiagonal matrix to the global offdiagonal matrix.
   std::map<HYPRE_BigInt, int> cmap_j_offd;
   for ( int r{ 0 }; r < n_ranks; ++r ) {
-    for ( int i{ 0 }; i < recv_parent_col_ranks[r].size(); ++i ) {
+    for ( int i{ 0 }; i < recv_parent_col_ranks[r].Size(); ++i ) {
       auto col_rank = recv_parent_col_ranks[r][i];
       if ( col_rank == my_rank ) {
         ++diag_nnz;
@@ -243,7 +243,7 @@ std::unique_ptr<mfem::HypreParMatrix> SparseMatrixTransfer::TransferToParallel( 
   mfem::Memory<HYPRE_Int> j_offd( offd_nnz );
   mfem::Memory<double> data_offd( offd_nnz );
   for ( int r{ 0 }; r < n_ranks; ++r ) {
-    for ( int i{ 0 }; i < recv_parent_col_ranks[r].size(); ++i ) {
+    for ( int i{ 0 }; i < recv_parent_col_ranks[r].Size(); ++i ) {
       auto curr_row = recv_parent_local_row[r][i];
       auto curr_col = recv_parent_local_col[r][i];
       auto col_rank = recv_parent_col_ranks[r][i];

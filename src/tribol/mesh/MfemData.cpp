@@ -980,12 +980,9 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian( con
   auto J_idx = redecomp::MPIArray<int>( &mpi );
   auto est_num_J = submesh_J.NumNonZeroElems() / mpi.NRanks();
   for ( int r{}; r < mpi.NRanks(); ++r ) {
-    if ( r == mpi.MyRank() ) {
-      send_J_by_rank[r].shrink();
-      J_idx[r].shrink();
-    } else {
-      send_J_by_rank[r].reserve( est_num_J );
-      J_idx[r].reserve( est_num_J );
+    if ( r != mpi.MyRank() ) {
+      send_J_by_rank[r].Reserve( est_num_J );
+      J_idx[r].Reserve( est_num_J );
     }
   }
   for ( int j{}; j < submesh_J.NumNonZeroElems(); ++j ) {
@@ -1013,7 +1010,7 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian( con
   // step 4) send the updated parent J values back and update the J vector
   send_J_by_rank.SendRecvArrayEach( recv_J_by_rank );
   for ( int r{}; r < mpi.NRanks(); ++r ) {
-    for ( int j{}; j < send_J_by_rank[r].size(); ++j ) {
+    for ( int j{}; j < send_J_by_rank[r].Size(); ++j ) {
       J[J_idx[r][j]] = send_J_by_rank[r][j];
     }
   }

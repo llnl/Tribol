@@ -17,9 +17,9 @@ namespace redecomp {
  * @tparam NDIMS Number of dimensions
  * @tparam ORDERING Element DOF ordering (LEXICOGRAPHIC or NATIVE)
  */
-template <int NDIMS, mfem::ElementDofOrdering ORDERING = mfem::ElementDofOrdering::LEXICOGRAPHIC>
+template <int NDIMS>
 class CoordList {
-public:
+ public:
   /**
    * @brief Construct a new Coord List object
    * 
@@ -42,13 +42,6 @@ public:
     }
     return pt;
   }
-
-  /**
-   * @brief Get the Ordering
-   * 
-   * @return mfem::ElementDofOrdering 
-   */
-  static constexpr mfem::ElementDofOrdering GetOrdering() { return ORDERING; }
 
   /**
    * @brief Get the underlying coordinate vector
