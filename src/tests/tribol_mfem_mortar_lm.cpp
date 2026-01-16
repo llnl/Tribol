@@ -136,7 +136,6 @@ class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Eleme
     a.FormSystemMatrix( ess_tdof_list, *A );
 
     // set up tribol
-    coords.ReadWrite();
     int coupling_scheme_id = 0;
     int mesh1_id = 0;
     int mesh2_id = 1;
@@ -146,7 +145,6 @@ class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Eleme
                                         tribol::BINNING_GRID );
     tribol::setLagrangeMultiplierOptions( 0, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN );
 
-    coords.ReadWrite();
     // update tribol (compute contact contribution to force and stiffness)
     tribol::updateMfemParallelDecomposition();
     tribol::RealT dt{ 1.0 };  // time is arbitrary here (no timesteps)
@@ -238,6 +236,22 @@ int main( int argc, char* argv[] )
   int result = 0;
 
   MPI_Init( &argc, &argv );
+
+  // int rank;
+  // MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+
+  // // Only make Rank 0 wait (or whichever rank you want to debug)
+  // if ( rank == 0 ) {
+  //   volatile int debug_wait = 1;
+  //   printf( "Rank %d is ready to attach. PID: %d\n", rank, getpid() );
+  //   fflush( stdout );
+
+  //   while ( debug_wait ) {
+  //     sleep( 1 );  // Sleep to avoid burning 100% CPU
+  //   }
+  // }
+
+  // MPI_Barrier( MPI_COMM_WORLD );
 
   ::testing::InitGoogleTest( &argc, argv );
 

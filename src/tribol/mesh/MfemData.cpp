@@ -108,19 +108,16 @@ void SubmeshRedecompTransfer::RedecompToSubmesh( const mfem::GridFunction& redec
 
   // P_I is the row index vector on the MFEM prolongation matrix. If there are no column entries for the row, then the
   // DOF is owned by another rank.
-  auto dst_data = dst_ptr->HostWrite();
-  auto P_I =
-      mfem::Read( dst_fespace_ptr->Dof_TrueDof_Matrix()->GetDiagMemoryI(), dst_fespace_ptr->GetVSize() + 1, false );
-  HYPRE_Int tdof_ct{ 0 };
-  // TODO: Convert to mfem::forall() once submesh transfers on device and once GPU-enabled MPI is in redecomp (dst_data
-  // is always on host now so not needed yet)
-  for ( int i{ 0 }; i < dst_fespace_ptr->GetVSize(); ++i ) {
-    if ( P_I[i + 1] != tdof_ct ) {
-      ++tdof_ct;
-    } else {
+  auto dst_data = dst_ptr->ReadWrite( dst_ptr->UseDevice() );
+  auto P_I = mfem::Read( dst_fespace_ptr->Dof_TrueDof_Matrix()->GetDiagMemoryI(), dst_fespace_ptr->GetVSize() + 1,
+                         dst_ptr->UseDevice() );
+  // set non-owned DOF values to zero.
+  // P_I[i+1] == P_I[i] implies no diagonal entry, so the DOF is not owned.
+  mfem::forall_switch( dst_ptr->UseDevice(), dst_fespace_ptr->GetVSize(), [=] MFEM_HOST_DEVICE( int i ) {
+    if ( P_I[i + 1] == P_I[i] ) {
       dst_data[i] = 0.0;
     }
-  }
+  } );
   // if using LOR, transfer data from LOR mesh to submesh
   if ( submesh_lor_xfer_ ) {
     submesh_lor_xfer_->TransferFromLORVector( submesh_dst );
@@ -281,7 +278,7 @@ PressureField::UpdateData::UpdateData( SubmeshRedecompTransfer& submesh_redecomp
                                        const mfem::ParGridFunction& submesh_gridfn )
     : submesh_redecomp_xfer_{ submesh_redecomp_xfer }, redecomp_gridfn_{ &submesh_redecomp_xfer.GetRedecompFESpace() }
 {
-  // keep on host since tribol does computations there
+  // keep on host since tribol always does mortar computations there (update when mortar is on gpu)
   redecomp_gridfn_.UseDevice( false );
   redecomp_gridfn_ = 0.0;
   submesh_redecomp_xfer_.SubmeshToRedecomp( submesh_gridfn, redecomp_gridfn_ );

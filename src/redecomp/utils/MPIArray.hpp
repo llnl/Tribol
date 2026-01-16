@@ -84,32 +84,39 @@ class MPIArray : public std::vector<ArrayType> {
    * @brief Receive data sent from a call to MPIArray::SendAll()
    *
    * @param src The source rank of the data
+   * @param use_device Whether to allocate the received array on device
    */
-  void RecvSendAll( axom::IndexType src ) { at( src ) = mpi_->RecvSendAll( type<ArrayType>(), src ); }
+  void RecvSendAll( axom::IndexType src, bool use_device = false )
+  {
+    at( src ) = mpi_->RecvSendAll( type<ArrayType>(), src, use_device );
+  }
 
   /**
    * @brief Sends the MPIArray data to all other MPI ranks while receiving from other ranks
    *
    * @param data Data to send to other ranks
+   * @param use_device Whether to allocate the received array on device
    */
-  void SendRecvArrayEach( const MPIArray& data )
+  void SendRecvArrayEach( const MPIArray& data, bool use_device = false )
   {
     mpi_->SendRecvEach(
         type<ArrayType>(), [data]( axom::IndexType dst ) { return data.at( dst ); },
-        [this]( ArrayType&& recv_data, axom::IndexType src ) { at( src ) = std::move( recv_data ); } );
+        [this]( ArrayType&& recv_data, axom::IndexType src ) { at( src ) = std::move( recv_data ); }, use_device );
   }
 
   /**
    * @brief Create data to send to all other MPI ranks while receiving from other ranks
    *
    * @param build_send A lambda which returns an ArrayType to send to the input rank
+   * @param use_device Whether to allocate the received array on device
    */
   template <typename F>
-  void SendRecvEach( F&& build_send )
+  void SendRecvEach( F&& build_send, bool use_device = false )
   {
     TRIBOL_MARK_FUNCTION;
     mpi_->SendRecvEach( type<ArrayType>(), std::forward<F>( build_send ),
-                        [this]( ArrayType&& recv_data, axom::IndexType src ) { at( src ) = std::move( recv_data ); } );
+                        [this]( ArrayType&& recv_data, axom::IndexType src ) { at( src ) = std::move( recv_data ); },
+                        use_device );
   }
 
  private:
