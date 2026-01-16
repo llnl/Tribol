@@ -140,6 +140,15 @@ class MPIUtility {
   void Send( const mfem::Array<T>& container, int dest, int tag = 0 ) const;
 
   /**
+   * @brief Calls MPI_Send on a vector stored in an mfem::Vector
+   *
+   * @param container Stores the data to send
+   * @param dest Rank to send the data in container to
+   * @param tag MPI tag for identifying the data
+   */
+  void Send( const mfem::Vector& container, int dest, int tag = 0 ) const;
+
+  /**
    * @brief Calls MPI_Send on an 2D array stored in an axom::Array
    *
    * @tparam T Data type of an element in the array: bool, double, int currently supported
@@ -174,6 +183,16 @@ class MPIUtility {
    */
   template <typename T>
   std::unique_ptr<Request> Isend( const mfem::Array<T>& container, int dest, int tag = 0 ) const;
+
+  /**
+   * @brief Calls MPI_Isend (non-blocking send) on a vector stored in an mfem::Vector
+   *
+   * @param container Stores the data to send
+   * @param dest Rank to send the data in container to
+   * @param tag MPI tag for identifying the data
+   * @return Request object to track completion of the send
+   */
+  std::unique_ptr<Request> Isend( const mfem::Vector& container, int dest, int tag = 0 ) const;
 
   /**
    * @brief Calls MPI_Isend (non-blocking send) on a 2D axom::Array
@@ -211,6 +230,16 @@ class MPIUtility {
    */
   template <typename T>
   mfem::Array<T> Recv( type<mfem::Array<T>>, int source, int tag = 0, bool use_device = false ) const;
+
+  /**
+   * @brief Calls MPI_Recv on a vector stored in an mfem::Vector
+   *
+   * @param source MPI rank data is coming from
+   * @param tag MPI tag for identifying the data
+   * @param use_device Whether to allocate the received vector on device (if GPU-aware MPI is available)
+   * @return Container of type mfem::Vector holding data sent
+   */
+  mfem::Vector Recv( type<mfem::Vector>, int source, int tag = 0, bool use_device = false ) const;
 
   /**
    * @brief Calls MPI_Recv on an 2D array stored in an axom::Array

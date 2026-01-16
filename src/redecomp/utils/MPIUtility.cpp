@@ -19,6 +19,50 @@ MPIUtility::Request::Request( std::unique_ptr<MPI_Request> request ) : request_{
 
 void MPIUtility::Request::Wait() { MPI_Wait( request_.get(), &status_ ); }
 
+void MPIUtility::Send( const mfem::Vector& container, int dest, int tag ) const
+{
+  const void* data = nullptr;
+  if ( container.UseDevice() && mfem::Device::GetGPUAwareMPI() ) {
+    data = container.Read();
+  } else {
+    data = container.HostRead();
+  }
+  MPI_Send( data, container.Size(), GetMPIDatatype( container.HostRead() ), dest, tag, comm_ );
+}
+
+std::unique_ptr<MPIUtility::Request> MPIUtility::Isend( const mfem::Vector& container, int dest, int tag ) const
+{
+  auto request = std::make_unique<MPI_Request>();
+  const void* data = nullptr;
+  if ( container.UseDevice() && mfem::Device::GetGPUAwareMPI() ) {
+    data = container.Read();
+  } else {
+    data = container.HostRead();
+  }
+  MPI_Isend( data, container.Size(), GetMPIDatatype( container.HostRead() ), dest, tag, comm_, request.get() );
+  return std::make_unique<Request>( std::move( request ) );
+}
+
+mfem::Vector MPIUtility::Recv( type<mfem::Vector>, int source, int tag, bool use_device ) const
+{
+  auto container = mfem::Vector();
+  if ( use_device && mfem::Device::GetGPUAwareMPI() ) {
+    container.UseDevice( true );
+  }
+  MPI_Probe( source, tag, comm_, &status_ );
+  int count;
+  MPI_Get_count( &status_, GetMPIDatatype( container.HostRead() ), &count );
+  container.SetSize( count );
+  void* data = nullptr;
+  if ( container.UseDevice() && mfem::Device::GetGPUAwareMPI() ) {
+    data = container.Write();
+  } else {
+    data = container.HostWrite();
+  }
+  MPI_Recv( data, count, GetMPIDatatype( container.HostRead() ), source, tag, comm_, &status_ );
+  return container;
+}
+
 BisecTree<int> MPIUtility::BuildSendTree( int rank ) const
 {
   auto send_tree = BisecTree<int>( n_ranks_ );

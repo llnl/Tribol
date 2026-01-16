@@ -32,18 +32,16 @@ void TransferByElements::TransferToSerial( const mfem::ParGridFunction& src, mfe
                       "not the same." );
 
   // send and receive DOF values from other ranks
-  auto dst_dofs = MPIArray<double>( &redecomp->getMPIUtility() );
+  MPIArray<double, mfem::Vector> dst_dofs( &redecomp->getMPIUtility() );
   dst_dofs.SendRecvEach(
       [redecomp, &src]( int dest ) {
-        auto src_dofs = MPIArray<double>::ArrayT();
-        if constexpr ( std::is_same_v<MPIArray<double>::ArrayT, mfem::Array<double>> ) {
-          src_dofs.GetMemory().UseDevice( src.UseDevice() );
-        }
+        mfem::Vector src_dofs;
+        src_dofs.UseDevice( src.UseDevice() );
         const auto& src_elem_idx = redecomp->getParentToRedecompElems().first[dest];
         auto n_els = src_elem_idx.Size();
         if ( n_els > 0 ) {
-          auto elem_vdofs = mfem::Array<int>();
-          auto all_vdofs = mfem::Array<int>();
+          mfem::Array<int> elem_vdofs;
+          mfem::Array<int> all_vdofs;
           // guess the size of src_dofs based on the size of the first element
           src.FESpace()->GetElementVDofs( src_elem_idx[0], elem_vdofs );
           all_vdofs.Reserve( elem_vdofs.Size() * n_els );
@@ -51,43 +49,25 @@ void TransferByElements::TransferToSerial( const mfem::ParGridFunction& src, mfe
             src.FESpace()->GetElementVDofs( src_elem_idx[e], elem_vdofs );
             all_vdofs.Append( elem_vdofs );
           }
-          if constexpr ( std::is_same_v<MPIArray<double>::ArrayT, mfem::Array<double>> ) {
-            all_vdofs.GetMemory().UseDevice( src.UseDevice() );
-            all_vdofs.Read( src.UseDevice() );
-          }
 
-          mfem::Vector src_dofs_vec( all_vdofs.Size() );
-          if constexpr ( std::is_same_v<MPIArray<double>::ArrayT, mfem::Array<double>> ) {
-            src_dofs_vec.UseDevice( src.UseDevice() );
-          }
-          src_dofs_vec = 0.0;
-          src.GetSubVector( all_vdofs, src_dofs_vec );
-
-          src_dofs.SetSize( src_dofs_vec.Size() );
-          if constexpr ( std::is_same_v<MPIArray<double>::ArrayT, mfem::Array<double>> ) {
-            auto d_src = src_dofs.Write( src.UseDevice() );
-            auto d_vec = src_dofs_vec.Read( src.UseDevice() );
-            mfem::forall_switch( src.UseDevice(), src_dofs.Size(),
-                                 [=] MFEM_HOST_DEVICE( int i ) { d_src[i] = d_vec[i]; } );
-          } else {
-            auto h_src = src_dofs.HostWrite();
-            auto h_vec = src_dofs_vec.HostRead();
-            std::memcpy( h_src, h_vec, src_dofs.Size() * sizeof( double ) );
-          }
+          src_dofs.SetSize( all_vdofs.Size() );
+          all_vdofs.GetMemory().UseDevice( src.UseDevice() );
+          src_dofs.UseDevice( src.UseDevice() );
+          src.GetSubVector( all_vdofs, src_dofs );
         }
         return src_dofs;
       },
       src.UseDevice() );
 
   // map received DOF values to local DOFs
-  auto elem_vdofs = mfem::Array<int>();
+  mfem::Array<int> elem_vdofs;
   auto n_ranks = redecomp->getMPIUtility().NRanks();
   for ( int r{ 0 }; r < n_ranks; ++r ) {
     auto first_el = redecomp->getRedecompToParentElemOffsets()[r];
     auto last_el = redecomp->getRedecompToParentElemOffsets()[r + 1];
     auto n_els = last_el - first_el;
     if ( n_els > 0 ) {
-      auto all_vdofs = mfem::Array<int>();
+      mfem::Array<int> all_vdofs;
       // guess the size of all_vdofs based on the size of the first element
       dst.FESpace()->GetElementVDofs( first_el, elem_vdofs );
       all_vdofs.Reserve( elem_vdofs.Size() * n_els );
@@ -95,27 +75,11 @@ void TransferByElements::TransferToSerial( const mfem::ParGridFunction& src, mfe
         dst.FESpace()->GetElementVDofs( e, elem_vdofs );
         all_vdofs.Append( elem_vdofs );
       }
-      if constexpr ( std::is_same_v<MPIArray<double>::ArrayT, mfem::Array<double>> ) {
-        // in case src is not using device and dst is (or vice versa)
-        dst_dofs[r].GetMemory().UseDevice( dst.UseDevice() );
-        dst_dofs[r].Read( dst.UseDevice() );
-        all_vdofs.GetMemory().UseDevice( dst.UseDevice() );
-        all_vdofs.Read( dst.UseDevice() );
-      }
-      mfem::Vector dof_vals( dst_dofs[r].Size() );
-      dof_vals = 0.0;
-      if constexpr ( std::is_same_v<MPIArray<double>::ArrayT, mfem::Array<double>> ) {
-        dof_vals.UseDevice( dst.UseDevice() );
-        auto d_dest = dof_vals.Write( dst.UseDevice() );
-        auto d_src = dst_dofs[r].Read( dst.UseDevice() );
-        mfem::forall_switch( dst.UseDevice(), dof_vals.Size(),
-                             [=] MFEM_HOST_DEVICE( int i ) { d_dest[i] = d_src[i]; } );
-      } else {
-        auto h_dest = dof_vals.HostWrite();
-        auto h_src = dst_dofs[r].HostRead();
-        std::memcpy( h_dest, h_src, dof_vals.Size() * sizeof( double ) );
-      }
-      dst.SetSubVector( all_vdofs, dof_vals );
+      all_vdofs.GetMemory().UseDevice( dst.UseDevice() );
+      // set explicitly in case e.g. src is on device and dst is on host or vice versa
+      dst_dofs[r].Read( dst.UseDevice() );
+      dst_dofs[r].UseDevice( dst.UseDevice() );
+      dst.SetSubVector( all_vdofs, dst_dofs[r] );
     }
   }
 }
@@ -137,19 +101,17 @@ void TransferByElements::TransferToParallel( const mfem::GridFunction& src, mfem
                       "not the same." );
 
   // send and receive non-ghost DOF values from other ranks
-  auto dst_dofs = MPIArray<double>( &redecomp->getMPIUtility() );
+  MPIArray<double, mfem::Vector> dst_dofs( &redecomp->getMPIUtility() );
   dst_dofs.SendRecvEach(
       [redecomp, &src]( int dest ) {
-        auto src_dofs = MPIArray<double>::ArrayT();
-        if constexpr ( std::is_same_v<MPIArray<double>::ArrayT, mfem::Array<double>> ) {
-          src_dofs.GetMemory().UseDevice( src.UseDevice() );
-        }
+        mfem::Vector src_dofs;
+        src_dofs.UseDevice( src.UseDevice() );
         auto first_el = redecomp->getRedecompToParentElemOffsets()[dest];
         auto last_el = redecomp->getRedecompToParentElemOffsets()[dest + 1];
         auto n_els = last_el - first_el;
         if ( n_els > 0 ) {
-          auto elem_vdofs = mfem::Array<int>();
-          auto all_vdofs = mfem::Array<int>();
+          mfem::Array<int> elem_vdofs;
+          mfem::Array<int> all_vdofs;
           // guess the size of src_dofs based on the size of the first element
           src.FESpace()->GetElementVDofs( first_el, elem_vdofs );
           all_vdofs.Reserve( elem_vdofs.Size() * n_els );
@@ -164,42 +126,22 @@ void TransferByElements::TransferToParallel( const mfem::GridFunction& src, mfem
               all_vdofs.Append( elem_vdofs );
             }
           }
-          if constexpr ( std::is_same_v<MPIArray<double>::ArrayT, mfem::Array<double>> ) {
-            all_vdofs.GetMemory().UseDevice( src.UseDevice() );
-            all_vdofs.Read( src.UseDevice() );
-          }
-
-          mfem::Vector src_dofs_vec( all_vdofs.Size() );
-          if constexpr ( std::is_same_v<MPIArray<double>::ArrayT, mfem::Array<double>> ) {
-            src_dofs_vec.UseDevice( src.UseDevice() );
-          }
-          src_dofs_vec = 0.0;
-          src.GetSubVector( all_vdofs, src_dofs_vec );
-
-          src_dofs.SetSize( src_dofs_vec.Size() );
-          if constexpr ( std::is_same_v<MPIArray<double>::ArrayT, mfem::Array<double>> ) {
-            src_dofs.GetMemory().UseDevice( src.UseDevice() );
-            auto d_src = src_dofs.Write( src.UseDevice() );
-            auto d_vec = src_dofs_vec.Read( src.UseDevice() );
-            mfem::forall_switch( src.UseDevice(), src_dofs.Size(),
-                                 [=] MFEM_HOST_DEVICE( int i ) { d_src[i] = d_vec[i]; } );
-          } else {
-            auto h_src = src_dofs.HostWrite();
-            auto h_vec = src_dofs_vec.HostRead();
-            std::memcpy( h_src, h_vec, src_dofs.Size() * sizeof( double ) );
-          }
+          src_dofs.SetSize( all_vdofs.Size() );
+          all_vdofs.GetMemory().UseDevice( src.UseDevice() );
+          src_dofs.UseDevice( src.UseDevice() );
+          src.GetSubVector( all_vdofs, src_dofs );
         }
         return src_dofs;
       },
       src.UseDevice() );
 
   // map received non-ghost DOF values to local DOFs
-  auto elem_vdofs = mfem::Array<int>();
+  mfem::Array<int> elem_vdofs;
   auto n_ranks = redecomp->getMPIUtility().NRanks();
   for ( int r{ 0 }; r < n_ranks; ++r ) {
     auto n_els = redecomp->getParentToRedecompElems().first[r].Size();
     if ( n_els > 0 ) {
-      auto all_vdofs = mfem::Array<int>();
+      mfem::Array<int> all_vdofs;
       // guess the size of all_vdofs based on the size of the first element
       dst.FESpace()->GetElementVDofs( redecomp->getParentToRedecompElems().first[r][0], elem_vdofs );
       all_vdofs.Reserve( n_els * elem_vdofs.Size() );
@@ -211,28 +153,12 @@ void TransferByElements::TransferToParallel( const mfem::GridFunction& src, mfem
         }
       }
       if ( all_vdofs.Size() > 0 ) {
-        if constexpr ( std::is_same_v<MPIArray<double>::ArrayT, mfem::Array<double>> ) {
-          // in case src is not using device and dst is (or vice versa)
-          dst_dofs[r].GetMemory().UseDevice( dst.UseDevice() );
-          dst_dofs[r].Read( dst.UseDevice() );
-          all_vdofs.GetMemory().UseDevice( dst.UseDevice() );
-          all_vdofs.Read( dst.UseDevice() );
-        }
-        mfem::Vector dof_vals( dst_dofs[r].Size() );
-        dof_vals = 0.0;
-        if constexpr ( std::is_same_v<MPIArray<double>::ArrayT, mfem::Array<double>> ) {
-          dof_vals.UseDevice( dst.UseDevice() );
-          auto d_dest = dof_vals.Write( dst.UseDevice() );
-          auto d_src = dst_dofs[r].Read( dst.UseDevice() );
-          mfem::forall_switch( dst.UseDevice(), dof_vals.Size(),
-                               [=] MFEM_HOST_DEVICE( int i ) { d_dest[i] = d_src[i]; } );
-        } else {
-          auto h_dest = dof_vals.HostWrite();
-          auto h_src = dst_dofs[r].HostRead();
-          std::memcpy( h_dest, h_src, dof_vals.Size() * sizeof( double ) );
-        }
-        dst.SetSubVector( all_vdofs, dof_vals );
+        all_vdofs.GetMemory().UseDevice( dst.UseDevice() );
+        // set explicitly in case e.g. src is on device and dst is on host or vice versa
+        dst_dofs[r].Read( dst.UseDevice() );
+        dst_dofs[r].UseDevice( dst.UseDevice() );
       }
+      dst.SetSubVector( all_vdofs, dst_dofs[r] );
     }
   }
 }
