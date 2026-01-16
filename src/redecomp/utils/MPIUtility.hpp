@@ -129,6 +129,17 @@ class MPIUtility {
   void Send( const T& container, int dest, int tag = 0 ) const;
 
   /**
+   * @brief Calls MPI_Send on an array stored in an mfem::Array
+   *
+   * @tparam T Type stored in mfem::Array
+   * @param container Stores the data to send
+   * @param dest Rank to send the data in container to
+   * @param tag MPI tag for identifying the data
+   */
+  template <typename T>
+  void Send( const mfem::Array<T>& container, int dest, int tag = 0 ) const;
+
+  /**
    * @brief Calls MPI_Send on an 2D array stored in an axom::Array
    *
    * @tparam T Data type of an element in the array: bool, double, int currently supported
@@ -331,6 +342,18 @@ void MPIUtility::Send( const T& container, int dest, int tag ) const
   MPI_Send( container.data(), container.size(), GetMPIDatatype( container.data() ), dest, tag, comm_ );
 }
 
+template <typename T>
+void MPIUtility::Send( const mfem::Array<T>& container, int dest, int tag ) const
+{
+  const void* data = nullptr;
+  if ( container.UseDevice() && mfem::Device::GetGPUAwareMPI() ) {
+    data = container.Read();
+  } else {
+    data = container.HostRead();
+  }
+  MPI_Send( data, container.Size(), GetMPIType<typename std::remove_cv<T>::type>(), dest, tag, comm_ );
+}
+
 template <typename T, axom::MemorySpace Sp>
 void MPIUtility::Send( const axom::Array<T, 2, Sp>& container, int dest, int tag ) const
 {
@@ -350,7 +373,13 @@ template <typename T>
 std::unique_ptr<MPIUtility::Request> MPIUtility::Isend( const mfem::Array<T>& container, int dest, int tag ) const
 {
   auto request = std::make_unique<MPI_Request>();
-  MPI_Isend( container, container.Size(), GetMPIType<typename std::remove_cv<T>::type>(), dest, tag, comm_,
+  const void* data = nullptr;
+  if ( container.UseDevice() && mfem::Device::GetGPUAwareMPI() ) {
+    data = container.Read();
+  } else {
+    data = container.HostRead();
+  }
+  MPI_Isend( data, container.Size(), GetMPIType<typename std::remove_cv<T>::type>(), dest, tag, comm_,
              request.get() );
   return std::make_unique<Request>( std::move( request ) );
 }
@@ -386,7 +415,13 @@ mfem::Array<T> MPIUtility::Recv( type<mfem::Array<T>>, int source, int tag ) con
   int count;
   MPI_Get_count( &status_, GetMPIType<typename std::remove_cv<T>::type>(), &count );
   container.SetSize( count );
-  MPI_Recv( container, count, GetMPIType<typename std::remove_cv<T>::type>(), source, tag, comm_, &status_ );
+  void* data = nullptr;
+  if ( container.UseDevice() && mfem::Device::GetGPUAwareMPI() ) {
+    data = container.Write();
+  } else {
+    data = container.HostWrite();
+  }
+  MPI_Recv( data, count, GetMPIType<typename std::remove_cv<T>::type>(), source, tag, comm_, &status_ );
   return container;
 }
 
