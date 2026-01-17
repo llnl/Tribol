@@ -273,6 +273,8 @@ int main( int argc, char* argv[] )
 
 #ifdef TRIBOL_USE_CUDA
   mfem::Device device( "cuda" );
+#elif defined( TRIBOL_USE_HIP )
+  mfem::Device device( "hip" );
 #endif
 
   result = RUN_ALL_TESTS();

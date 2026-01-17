@@ -299,22 +299,6 @@ int main( int argc, char* argv[] )
 
   MPI_Init( &argc, &argv );
 
-  // int rank;
-  // MPI_Comm_rank( MPI_COMM_WORLD, &rank );
-
-  // // Only make Rank 0 wait (or whichever rank you want to debug)
-  // if ( rank == 0 ) {
-  //   volatile int debug_wait = 1;
-  //   printf( "Rank %d is ready to attach. PID: %d\n", rank, getpid() );
-  //   fflush( stdout );
-
-  //   while ( debug_wait ) {
-  //     sleep( 1 );  // Sleep to avoid burning 100% CPU
-  //   }
-  // }
-
-  // MPI_Barrier( MPI_COMM_WORLD );
-
   ::testing::InitGoogleTest( &argc, argv );
 
 #ifdef TRIBOL_USE_UMPIRE
