@@ -83,6 +83,7 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
       redecomp_massmatrix.cpp
       redecomp_rectmatrix.cpp
       redecomp_sparsematrix.cpp
+      redecomp_gpu_mpi.cpp
       )
 
   set(redecomp_test_depends tribol gtest)

@@ -22,5 +22,6 @@
 #cmakedefine TRIBOL_USE_CUDA
 #cmakedefine TRIBOL_USE_HIP
 #cmakedefine TRIBOL_USE_OPENMP
+#cmakedefine TRIBOL_USE_GPU_MPI
 
 #endif /* SRC_SHARED_CONFIG_HPP_ */
