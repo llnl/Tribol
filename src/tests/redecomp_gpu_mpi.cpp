@@ -151,12 +151,15 @@ int main( int argc, char* argv[] )
 
 #if defined( TRIBOL_USE_CUDA )
   mfem::Device device( "cuda" );
-#elif defined( TRIBOL_USE_HIP )
-  mfem::Device device( "hip" );
-#endif
   // Enable GPU Aware MPI
   mfem::Device::SetGPUAwareMPI( true );
   device.Print();
+#elif defined( TRIBOL_USE_HIP )
+  mfem::Device device( "hip" );
+  // Enable GPU Aware MPI
+  mfem::Device::SetGPUAwareMPI( true );
+  device.Print();
+#endif
 
   axom::slic::SimpleLogger logger;
 
