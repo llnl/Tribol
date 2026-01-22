@@ -9,6 +9,14 @@ from os.path import join as pjoin
 
 from spack.package import *
 from spack.util.executable import which_string
+from spack_repo.builtin.build_systems.cached_cmake import (
+    CachedCMakePackage,
+    cmake_cache_option,
+    cmake_cache_path,
+    cmake_cache_string,
+)
+from spack_repo.builtin.build_systems.cuda import CudaPackage
+from spack_repo.builtin.build_systems.rocm import ROCmPackage
 
 def get_spec_path(spec, package_name, path_replacements={}, use_bin=False):
     """Extracts the prefix path for the given spack package
@@ -51,7 +59,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
             description="Build development tools (Sphinx, Doxygen, Shroud, clang-format)")
     variant("asan", default=False,
             description="Build with address sanitizer flags")
-    variant("profiling", default=False,
+    variant("caliper", default=False,
             description="Build with hooks for Caliper performance analysis")
     variant("umpire",   default=False,
             description="Build with portable memory access support")
@@ -99,7 +107,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     # Tribol uses MFEM's enzyme header
     depends_on("mfem+enzyme", when="+enzyme")
 
-    with when("+profiling"):
+    with when("+caliper"):
         depends_on("caliper+mpi")
     
     with when("+openmp"):
@@ -119,7 +127,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
         depends_on(f"raja {ext_cuda_dep}", when=f"{ext_cuda_dep}")
         depends_on(f"umpire {ext_cuda_dep}", when=f"{ext_cuda_dep}")
         # NOTE: Caliper is an optional dependency
-        depends_on(f"caliper {ext_cuda_dep}", when=f"+profiling {ext_cuda_dep}")
+        depends_on(f"caliper {ext_cuda_dep}", when=f"+caliper {ext_cuda_dep}")
 
     for val in ROCmPackage.amdgpu_targets:
         ext_rocm_dep = f"+rocm amdgpu_target={val}"
@@ -129,7 +137,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
         depends_on(f"raja {ext_rocm_dep}", when=f"{ext_rocm_dep}")
         depends_on(f"umpire {ext_rocm_dep}", when=f"{ext_rocm_dep}")
         # NOTE: Caliper is an optional dependency
-        depends_on(f"caliper {ext_rocm_dep}", when=f"+profiling {ext_rocm_dep}")
+        depends_on(f"caliper {ext_rocm_dep}", when=f"+caliper {ext_rocm_dep}")
 
     depends_on("rocprim", when="+rocm")
 
@@ -139,7 +147,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
         depends_on("{0} build_type=Debug".format(dep), when="+{0} build_type=Debug".format(dep))
     
     # Optional, but variant name doesn't match package name
-    depends_on("caliper build_type=Debug".format(dep), when="+profiling build_type=Debug")
+    depends_on("caliper build_type=Debug".format(dep), when="+caliper build_type=Debug")
         
     # Required
     for dep in ["axom", "conduit", "metis", "parmetis"]:
@@ -175,7 +183,8 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     conflicts("+cuda", when="+rocm")
     conflicts("+openmp", when="+rocm")
 
-    requires("%clang", when="+enzyme")
+    for compiler_ in ["aocc", "cce", "gcc", "nag", "fj", "intel", "nvhpc", "xl"]:
+        conflicts("+enzyme", when=f"%[virtuals=c,cxx] {compiler_}")
 
     def _get_sys_type(self, spec):
         sys_type = spec.architecture
@@ -183,6 +192,11 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
         if "SYS_TYPE" in env:
             sys_type = env["SYS_TYPE"]
         return sys_type
+
+    def is_fortran_compiler(self, compiler):
+        if self.compiler.fc is not None and compiler in self.compiler.fc:
+            return True
+        return False
 
     @property
     def cache_name(self):
@@ -262,30 +276,33 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
 
             entries.append(cmake_cache_option("ENABLE_HIP", True))
 
-            rocm_root = spec["hip"].prefix
-            if not spec.satisfies("^hip@6.0.0:"):
-                rocm_root = "{0}/..".format(rocm_root)
-            entries.append(cmake_cache_path("ROCM_PATH", rocm_root))
+            hip_link_flags = ""
 
-            hip_link_flags = "-L{0}/lib -Wl,-rpath,{0}/lib ".format(rocm_root)
+            rocm_root = spec["llvm-amdgpu"].prefix
+            entries.append(cmake_cache_path("ROCM_ROOT_DIR", rocm_root))
 
             # Recommended MPI flags
             hip_link_flags += "-lxpmem "
-            hip_link_flags += "-L/opt/cray/pe/mpich/{0}/gtl/lib ".format(spec["mpi"].version)
-            hip_link_flags += "-Wl,-rpath,/opt/cray/pe/mpich/{0}/gtl/lib ".format(spec["mpi"].version)
+            hip_link_flags += "-L/opt/cray/pe/mpich/{0}/gtl/lib ".format(spec["mpi"].version.up_to(3))
+            hip_link_flags += "-Wl,-rpath,/opt/cray/pe/mpich/{0}/gtl/lib ".format(
+                spec["mpi"].version.up_to(3)
+            )
             hip_link_flags += "-lmpi_gtl_hsa "
 
-            # needed for lapack support in mfem
             if spec.satisfies("^hip@6.0.0:"):
                 hip_link_flags += "-L{0}/lib/llvm/lib -Wl,-rpath,{0}/lib/llvm/lib ".format(rocm_root)
             else:
                 hip_link_flags += "-L{0}/llvm/lib -Wl,-rpath,{0}/llvm/lib ".format(rocm_root)
             hip_link_flags += "-lpgmath "
+            # Only amdclang requires this path; cray compiler fails if this is included
+            if spec.satisfies("%llvm-amdgpu"):
+                hip_link_flags += "-L{0}/lib -Wl,-rpath,{0}/lib ".format(rocm_root)
+
             # Fixes for mpi for rocm until wrapper paths are fixed
             # These flags are already part of the wrapped compilers on TOSS4 systems
-            if "+fortran" in spec and self.is_fortran_compiler("amdflang"):
+            if spec.satisfies("+fortran") and self.is_fortran_compiler("amdflang"):
                 hip_link_flags += "-Wl,--disable-new-dtags "
-                hip_link_flags += "-lflang -lflangrti -lompstub "
+                hip_link_flags += "-lflang -lflangrti "
 
             # Remove extra link library for crayftn
             if "+fortran" in spec and self.is_fortran_compiler("crayftn"):
@@ -294,10 +311,11 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
                 )
 
             # Additional libraries for TOSS4
-            hip_link_flags += "-L{0}/lib -Wl,-rpath,{0}/lib ".format(rocm_root)
-            if not spec.satisfies("^hip@6.0.0:"):
-                hip_link_flags += "-L{0}/hip/lib -Wl,-rpath,{0}/hip/lib ".format(rocm_root)
             hip_link_flags += "-lamdhip64 -lhsakmt -lhsa-runtime64 -lamd_comgr "
+            if spec.satisfies("+openmp"):
+                hip_link_flags += "-lompstub "
+            if spec.satisfies("^hipblas"):
+                hip_link_flags += "-lhipblas"
 
             entries.append(cmake_cache_string("CMAKE_EXE_LINKER_FLAGS", hip_link_flags))
 
@@ -468,5 +486,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
             "TRIBOL_ENABLE_TESTS", "tests"))
         options.append(self.define_from_variant(
             "TRIBOL_ENABLE_ASAN", "asan"))
+        options.append(self.define_from_variant(
+            "TRIBOL_ENABLE_PROFILING", "caliper"))
 
         return options
