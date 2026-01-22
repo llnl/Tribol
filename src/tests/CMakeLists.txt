@@ -54,19 +54,12 @@ foreach( test ${tribol_tests} )
   blt_add_test( NAME ${test_name}
                 COMMAND ${test_name}_test )
 
-  if (ENABLE_CUDA)
-    set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
-  endif()
-
   if (ENABLE_HIP)
-    target_compile_options(${test_name}_test PRIVATE -fgpu-rdc)
     target_compile_options(${test_name}_test PRIVATE
         $<$<CONFIG:Debug>:
             -ggdb
         >
     )
-    target_link_options(${test_name}_test PRIVATE -fgpu-rdc)
-    target_link_options(${test_name}_test PRIVATE --hip-link)
   endif()
 
 endforeach()
@@ -105,10 +98,6 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
                     NUM_MPI_TASKS ${nranks} )
     endforeach()
 
-    if (ENABLE_CUDA)
-      set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
-    endif()
-
   endforeach()
 
 endif()
@@ -145,20 +134,13 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
                     COMMAND ${test_name}_test
                     NUM_MPI_TASKS ${nranks} )
     endforeach()
-
-    if (ENABLE_CUDA)
-      set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
-    endif()
     
     if (ENABLE_HIP)
-      target_compile_options(${test_name}_test PRIVATE -fgpu-rdc)
       target_compile_options(${test_name}_test PRIVATE
           $<$<CONFIG:Debug>:
               -ggdb
           >
       )
-      target_link_options(${test_name}_test PRIVATE -fgpu-rdc)
-      target_link_options(${test_name}_test PRIVATE --hip-link)
     endif()
 
   endforeach()
@@ -193,20 +175,13 @@ if( TRIBOL_USE_ENZYME )
 
     blt_add_test( NAME ${test_name}
                   COMMAND ${test_name}_test )
-
-    if (ENABLE_CUDA)
-      set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
-    endif()
     
     if (ENABLE_HIP)
-      target_compile_options(${test_name}_test PRIVATE -fgpu-rdc)
       target_compile_options(${test_name}_test PRIVATE
           $<$<CONFIG:Debug>:
               -ggdb
           >
       )
-      target_link_options(${test_name}_test PRIVATE -fgpu-rdc)
-      target_link_options(${test_name}_test PRIVATE --hip-link)
     endif()
 
   endforeach()
@@ -232,10 +207,6 @@ if( MFEM_FOUND )
   blt_add_test( NAME mfem_smoke_test
                 COMMAND mfem_smoke_test )
 
-  if (ENABLE_CUDA)
-    set_target_properties(mfem_smoke_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
-  endif()
-
 endif()
 
 if( TRIBOL_USE_ENZYME )
@@ -251,10 +222,6 @@ if( TRIBOL_USE_ENZYME )
   blt_add_test( NAME enzyme_smoke_test
                 COMMAND enzyme_smoke_test )
 
-  if (ENABLE_CUDA)
-    set_target_properties(enzyme_smoke_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
-  endif()
-
 endif()
 
 if( TRIBOL_USE_CALIPER )
@@ -269,10 +236,6 @@ if( TRIBOL_USE_CALIPER )
 
   blt_add_test( NAME caliper_smoke_test
                 COMMAND caliper_smoke_test )
-
-  if (ENABLE_CUDA)
-    set_target_properties(caliper_smoke_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
-  endif()
 
 endif()
 
