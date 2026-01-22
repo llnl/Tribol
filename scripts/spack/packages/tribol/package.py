@@ -76,9 +76,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     # Basic dependencies
     depends_on("c", type="build")
     depends_on("cxx", type="build")
-    # TODO: make this conditional on fortran variant when spack is updated to pass fortran compiler to dependencies 
-    # based on the toolchain
-    depends_on("fortran", type="build")
+    depends_on("fortran", type="build", when="+fortran")
 
     depends_on("mpi")
 
