@@ -5,17 +5,15 @@
 
 #include <cmath>
 #include <iostream>
-#include <sstream>
-#include <iomanip>
-#include <fstream>
-
-#include "tribol/mesh/MeshData.hpp"
-#include "tribol/common/ExecModel.hpp"
-#include "tribol/geom/ElementNormal.hpp"
-#include "tribol/utils/Math.hpp"
 
 #include "axom/slic.hpp"
 #include "axom/fmt.hpp"
+
+#include "tribol/mesh/MeshData.hpp"
+#include "tribol/common/ExecModel.hpp"
+#include "tribol/common/LoopExec.hpp"
+#include "tribol/geom/ElementNormal.hpp"
+#include "tribol/utils/Math.hpp"
 
 namespace tribol {
 
@@ -43,20 +41,22 @@ bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_optio
   switch ( kin_calc ) {
     case KINEMATIC_CONSTANT: {
       if ( !this->m_is_kinematic_constant_penalty_set ) {
-        SLIC_WARNING( "MeshElemData::isValidKinematicPenalty(): " << "single stiffness penalty not set." );
+        SLIC_WARNING( "MeshElemData::isValidKinematicPenalty(): "
+                      << "single stiffness penalty not set." );
         return false;
       } else if ( this->m_penalty_stiffness < pen_options.tiny_penalty ) {
-        SLIC_WARNING( "MeshElemData::isValidKinematicPenalty(): " << "single stiffness penalty less than threshold ("
-                                                                  << pen_options.tiny_penalty
-                                                                  << "). Consider increasing "
-                                                                  << "for your problem." );
+        SLIC_WARNING( "MeshElemData::isValidKinematicPenalty(): "
+                      << "single stiffness penalty less than threshold (" << pen_options.tiny_penalty
+                      << "). Consider increasing "
+                      << "for your problem." );
         return false;
       }
       break;
     }  // end case KINEMATIC_CONSTANT
     case KINEMATIC_ELEMENT: {
       if ( !this->m_is_kinematic_element_penalty_set ) {
-        SLIC_WARNING( "MeshElemData::isValidKinematicPenalty(): " << "element-wise penalty data not set." );
+        SLIC_WARNING( "MeshElemData::isValidKinematicPenalty(): "
+                      << "element-wise penalty data not set." );
         return false;
       }
 
@@ -141,22 +141,26 @@ bool MeshElemData::isValidRatePenalty( PenaltyEnforcementOptions& pen_options )
     }  // end case NONE
     case RATE_CONSTANT: {
       if ( !this->m_is_rate_constant_penalty_set ) {
-        SLIC_WARNING( "MeshElemData::isValidRatePenalty(): " << "constant rate penalty data not set." );
+        SLIC_WARNING( "MeshElemData::isValidRatePenalty(): "
+                      << "constant rate penalty data not set." );
         return false;
       } else if ( this->m_rate_penalty_stiffness < pen_options.tiny_penalty ) {
-        SLIC_WARNING( "MeshElemData::isValidRatePenalty(): " << "constant rate penalty less than threshold ("
-                                                             << pen_options.tiny_penalty << "). Consider increasing "
-                                                             << "for your problem." );
+        SLIC_WARNING( "MeshElemData::isValidRatePenalty(): "
+                      << "constant rate penalty less than threshold (" << pen_options.tiny_penalty
+                      << "). Consider increasing "
+                      << "for your problem." );
         return false;
       }
       break;
     }  // end case RATE_CONSTANT
     case RATE_PERCENT: {
       if ( !this->m_is_rate_percent_penalty_set ) {
-        SLIC_WARNING( "MeshElemData::isValidRatePenalty(): " << "percent rate penalty data not set." );
+        SLIC_WARNING( "MeshElemData::isValidRatePenalty(): "
+                      << "percent rate penalty data not set." );
         return false;
       } else if ( this->m_rate_percent_stiffness < 0.0 ) {
-        SLIC_WARNING( "MeshElemData::isValidRatePenalty(): " << "rate percent penalty less than 0." );
+        SLIC_WARNING( "MeshElemData::isValidRatePenalty(): "
+                      << "rate percent penalty less than 0." );
         return false;
       }
       break;
@@ -204,8 +208,8 @@ MeshData::MeshData( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const
       m_is_valid = false;
     }
     if ( connectivity == nullptr ) {
-      SLIC_WARNING_ROOT( "tribol::MeshData(): pointer to mesh connectivity is " << "a null pointer for mesh id "
-                                                                                << m_mesh_id << "." );
+      SLIC_WARNING_ROOT( "tribol::MeshData(): pointer to mesh connectivity is "
+                         << "a null pointer for mesh id " << m_mesh_id << "." );
     }
   }
 
@@ -299,9 +303,9 @@ Array1D<IndexT> MeshData::sortSurfaceNodeIds()
   // compute number of unique integer ids
   int unique_size = sorted_conn.size() - num_dup;
 
-  SLIC_ERROR_IF( unique_size <= 0,
-                 "MeshData::sortSurfaceNodeIds(): " << "invalid connectivity array; "
-                                                    << "only single unique id in connectivity array." );
+  SLIC_ERROR_IF( unique_size <= 0, "MeshData::sortSurfaceNodeIds(): "
+                                       << "invalid connectivity array; "
+                                       << "only single unique id in connectivity array." );
 
   // allocate array to store unique, sorted node ids on mesh object
   auto sorted_surface_node_ids = ArrayT<IndexT>( 0, unique_size );
@@ -442,7 +446,7 @@ bool MeshData::computeFaceData( ExecutionMode exec_mode, ElemNormalMethod elem_n
                   for ( IndexT d{ 0 }; d < dim; ++d ) {
                     n[d][i] = n_elem[d];
                   }
-                }  // end if (dim == 3)
+                }   // end if (dim == 3)
               } );  // end element loop
 
   ArrayT<IndexT, 1, MemorySpace::Host> face_data_ok_host( face_data_ok_data );
@@ -525,7 +529,7 @@ int MeshData::checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options, Exec
         // no-op, quiet compiler
         break;
     }  // end switch over constraint types
-  }  // end if-non-null mesh
+  }    // end if-non-null mesh
 
   return err;
 }  // end MeshData::checkPenaltyData()
@@ -618,58 +622,6 @@ MeshData::Viewer::Viewer( MeshData& mesh )
       m_element_data( mesh.m_element_data )
 {
 }
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceCoords( IndexT face_id, RealT* coords ) const
-{
-  auto dim = spatialDimension();
-
-  for ( IndexT a{ 0 }; a < numberOfNodesPerElement(); ++a ) {
-    IndexT node_id = getGlobalNodeId( face_id, a );
-    for ( int d{ 0 }; d < dim; ++d ) {
-      coords[dim * a + d] = m_position[d][node_id];
-    }
-  }
-
-  return;
-
-}  // end MeshData::Viewer::getFaceCoords()
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceVelocities( IndexT face_id, RealT* vels ) const
-{
-  auto dim = spatialDimension();
-
-  for ( IndexT a{ 0 }; a < numberOfNodesPerElement(); ++a ) {
-    IndexT node_id = getGlobalNodeId( face_id, a );
-    for ( int d{ 0 }; d < dim; ++d ) {
-      vels[dim * a + d] = m_vel[d][node_id];
-    }
-  }
-
-  return;
-
-}  // end MeshData::Viewer::getFaceVelocities()
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceNormal( IndexT face_id, RealT* nrml ) const
-{
-  for ( int d{ 0 }; d < spatialDimension(); ++d ) {
-    nrml[d] = m_n[d][face_id];
-  }
-  return;
-
-}  // end MeshData::getFaceNormal()
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceCentroid( IndexT face_id, RealT* cx ) const
-{
-  for ( int d{ 0 }; d < spatialDimension(); ++d ) {
-    cx[d] = m_c[d][face_id];
-  }
-  return;
-
-}  // end MeshData::getFaceNormal()
 
 //------------------------------------------------------------------------------
 

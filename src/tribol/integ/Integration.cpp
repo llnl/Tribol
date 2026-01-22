@@ -18,94 +18,6 @@
 
 namespace tribol {
 
-template <>
-TRIBOL_HOST_DEVICE void EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( SurfaceContactElem const& elem,
-                                                                          RealT* const integ1, RealT* const integ2 )
-{
-  // compute the area centroid of the overlap polygon,
-  // or vertex avg. centroid of the overlap segment, which
-  // serves as the single integration point
-  RealT cx[3] = { 0., 0., 0. };
-  if ( elem.dim == 2 ) {
-    VertexAvgCentroid( elem.overlapCoords, elem.dim, elem.numPolyVert, cx[0], cx[1], cx[2] );
-  } else {
-    PolyAreaCentroid( elem.overlapCoords, elem.dim, elem.numPolyVert, cx[0], cx[1], cx[2] );
-  }
-
-  // debug: leave commented out so we don't enter loop
-  {
-    // SLIC_DEBUG("Integration point: " << cx[0] << ", " << cx[1]);
-
-    // SLIC_DEBUG("Overlap area: " << elem.overlapArea);
-    // SLIC_DEBUG("Overlap coords: ");
-    // for (int i=0; i<elem.numPolyVert; ++i)
-    //{
-    //    if (elem.dim==2)
-    //    {
-    //       SLIC_DEBUG(elem.overlapCoords[elem.dim*i] << ", " << elem.overlapCoords[elem.dim*i+1]);
-    //    }
-    //    else
-    //    {
-    //       SLIC_DEBUG(elem.overlapCoords[elem.dim*i] << ", " << elem.overlapCoords[elem.dim*i+1] << ", "
-    //       elem.overlapCoords[elem.dim*i+2]);
-    //    }
-    // }
-  }
-
-  /////////////////////////////////////////////////////////////////////////
-  //                                                                     //
-  // Project each face/edge to the common plane overlap                  //
-  //                                                                     //
-  //   Note: projecting integration point to current configuration faces //
-  //         will have same basis evaluation as projecting faces to      //
-  //         the common plane on which the integration point is          //
-  //         originally defined.                                         //
-  //                                                                     //
-  /////////////////////////////////////////////////////////////////////////
-
-  // allocate max stacked arrays of coordinates. The basis function evaluation
-  // later in this routine requires data in this format
-  constexpr int max_vertex_coords_per_elem = 3 * 4;
-  RealT projX1[max_vertex_coords_per_elem];
-  RealT projX2[max_vertex_coords_per_elem];
-
-  if ( elem.dim == 3 ) {
-    // loop over number of nodes per face (same for each mesh) and project nodes to common plane.
-    // Can use the integration point as the point in the point-normal data.
-    for ( int i = 0; i < elem.m_mesh1->numberOfNodesPerElement(); ++i ) {
-      ProjectPointToPlane( elem.faceCoords1[elem.dim * i], elem.faceCoords1[elem.dim * i + 1],
-                           elem.faceCoords1[elem.dim * i + 2], elem.overlapNormal[0], elem.overlapNormal[1],
-                           elem.overlapNormal[2], cx[0], cx[1], cx[2], projX1[elem.dim * i], projX1[elem.dim * i + 1],
-                           projX1[elem.dim * i + 2] );
-
-      ProjectPointToPlane( elem.faceCoords2[elem.dim * i], elem.faceCoords2[elem.dim * i + 1],
-                           elem.faceCoords2[elem.dim * i + 2], elem.overlapNormal[0], elem.overlapNormal[1],
-                           elem.overlapNormal[2], cx[0], cx[1], cx[2], projX2[elem.dim * i], projX2[elem.dim * i + 1],
-                           projX2[elem.dim * i + 2] );
-    }
-  } else {  // dim == 2
-    // loop over number of nodes per edge (same for each mesh) and project nodes to common plane.
-    // Can use the integration point as the point in the point-normal data.
-    for ( int i = 0; i < elem.m_mesh1->numberOfNodesPerElement(); ++i ) {
-      ProjectPointToSegment( elem.faceCoords1[elem.dim * i], elem.faceCoords1[elem.dim * i + 1], elem.overlapNormal[0],
-                             elem.overlapNormal[1], cx[0], cx[1], projX1[elem.dim * i], projX1[elem.dim * i + 1] );
-
-      ProjectPointToSegment( elem.faceCoords2[elem.dim * i], elem.faceCoords2[elem.dim * i + 1], elem.overlapNormal[0],
-                             elem.overlapNormal[1], cx[0], cx[1], projX2[elem.dim * i], projX2[elem.dim * i + 1] );
-    }
-  }
-
-  // loop over nodes and compute nodal force integral
-  // contributions
-  for ( int a = 0; a < elem.numFaceVert; ++a ) {
-    EvalBasis( &projX1[0], cx[0], cx[1], cx[2], elem.numFaceVert, a, integ1[a] );
-    EvalBasis( &projX2[0], cx[0], cx[1], cx[2], elem.numFaceVert, a, integ2[a] );
-  }
-
-  return;
-}
-
-//------------------------------------------------------------------------------
 void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, int k )
 {
   // check that the order, k, is either 2 or 3
@@ -243,7 +155,7 @@ void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, int k )
           bary( m, 0 ) * elem.overlapCoords[elem.dim * k + 2] +
           bary( m, 1 ) * elem.overlapCoords[elem.dim * ( k + 1 ) + 2] + bary( m, 2 ) * xc[2];
     }  // end loop over number of points per triangle
-  }  // end loop over (n-1) number of triangles
+  }    // end loop over (n-1) number of triangles
 
   // populate last triangle's integration point coordinates
   vx = elem.overlapCoords[elem.dim * ( elem.numPolyVert - 1 )] - elem.overlapCoords[0];
@@ -421,7 +333,7 @@ void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, int k )
       integ.xy[( ( integ.ipDim ) * numTriPoints ) * j + ( integ.ipDim * k ) + 1] = x[1];
       integ.xy[( ( integ.ipDim ) * numTriPoints ) * j + ( integ.ipDim * k ) + 2] = x[2];
     }  // end loop over number of ips per triangle
-  }  // end loop over triangles
+  }    // end loop over triangles
 
   delete[] coords;
 }
