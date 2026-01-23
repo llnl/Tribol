@@ -31,8 +31,8 @@ namespace tribol {
  */
 class SearchBase {
  public:
-  SearchBase(){};
-  virtual ~SearchBase(){};
+  SearchBase() {};
+  virtual ~SearchBase() {};
   /*!
    * Prepares the object for spatial searches
    */
@@ -264,9 +264,8 @@ class GridSearch : public SearchBase {
 
     // Output some info for debugging
     if ( true ) {
-      SLIC_DEBUG( "Implicit Grid info: "
-                  << "\n Mesh 1 bounding box (inflated): " << m_gridBBox << "\n Avg range: " << ranges
-                  << "\n Computed resolution: " << resolution );
+      SLIC_DEBUG( "Implicit Grid info: " << "\n Mesh 1 bounding box (inflated): " << m_gridBBox
+                                         << "\n Avg range: " << ranges << "\n Computed resolution: " << resolution );
 
       SpatialBoundingBox bbox2;
       for ( int i = 0; i < m_mesh2.numberOfElements(); ++i ) {

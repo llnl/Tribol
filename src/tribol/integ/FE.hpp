@@ -511,11 +511,9 @@ TRIBOL_HOST_DEVICE inline void SegmentBasis( const RealT* const x, const RealT p
 #ifdef TRIBOL_USE_HOST
   if ( phi > 1.0 || phi < 0.0 ) {
     SLIC_DEBUG( "SegmentBasis: phi is " << phi << " not between 0. and 1 for vertex " << vertexId << "." );
-    SLIC_DEBUG( "(x0,y0) and (x1,y1): "
-                << "(" << x[0] << ", " << x[1] << "), "
-                << "(" << x[2] << ", " << x[3] << ")." );
-    SLIC_DEBUG( "(px,py): "
-                << "(" << pX << ", " << pY << ")" );
+    SLIC_DEBUG( "(x0,y0) and (x1,y1): " << "(" << x[0] << ", " << x[1] << "), "
+                                        << "(" << x[2] << ", " << x[3] << ")." );
+    SLIC_DEBUG( "(px,py): " << "(" << pX << ", " << pY << ")" );
   }
 #endif
 

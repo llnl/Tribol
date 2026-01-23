@@ -536,7 +536,7 @@ bool CouplingScheme::isValidCase()
       default:
         this->m_parameters.auto_contact_check = false;
     }  // end switch on case
-  }    // end if check on common-plane
+  }  // end if check on common-plane
 
   return isValid;
 }  // end CouplingScheme::isValidCase()
@@ -810,7 +810,7 @@ int CouplingScheme::checkEnforcementData()
           // no-op
           break;
       }  // end switch over enforcement method
-    }    // end case COMMON_PLANE
+    }  // end case COMMON_PLANE
     default:
       // no-op
       break;
@@ -1108,8 +1108,8 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // appropriate physics in the normal and tangential directions.
   int err = ApplyInterfacePhysics( this, cycle, t );
 
-  SLIC_WARNING_IF( err != 0, "CouplingScheme::apply(): error in ApplyInterfacePhysics for "
-                                 << "coupling scheme, " << this->m_id << "." );
+  SLIC_WARNING_IF( err != 0, "CouplingScheme::apply(): error in ApplyInterfacePhysics for " << "coupling scheme, "
+                                                                                            << this->m_id << "." );
 
   // compute Tribol timestep vote on the coupling scheme
   if ( err == 0 && getNumActivePairs() > 0 ) {
@@ -1199,7 +1199,7 @@ void CouplingScheme::setSlicLoggingLevel()
         break;
       }
     }  // end switch
-  }    // end if
+  }  // end if
 }
 
 //------------------------------------------------------------------------------
@@ -1700,11 +1700,11 @@ void CouplingScheme::writeInterfaceOutput( const std::string& dir, const VisType
         break;
       default:
         // Can this be called on root? SRW
-        SLIC_INFO( "CouplingScheme::writeInterfaceOutput(): "
-                   << "output routine not yet written for interface method. " );
+        SLIC_INFO(
+            "CouplingScheme::writeInterfaceOutput(): " << "output routine not yet written for interface method. " );
         break;
     }  // end-switch
-  }    // end-if
+  }  // end-if
   return;
 }
 

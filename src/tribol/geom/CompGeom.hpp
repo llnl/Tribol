@@ -772,7 +772,7 @@ class CompGeom {
    * @brief Constructs a comp geom object
    *
    */
-  CompGeom(){};
+  CompGeom() {};
 
   /*!
    * @brief Destructor
@@ -913,7 +913,7 @@ class CompGeom {
         break;
       }
     }  // end switch
-  }    // end resizeActivePairs()
+  }  // end resizeActivePairs()
 
  private:
   ArrayT<CommonPlanePair> m_common_plane_pairs;
@@ -1794,10 +1794,10 @@ TRIBOL_HOST_DEVICE inline void ContactPlanePair::getFace2ProjectedCoords( RealT*
 TRIBOL_HOST_DEVICE inline void ContactPlanePair::getOverlapVertices( RealT* overlap_verts ) const
 {
 #ifdef TRIBOL_USE_HOST
-  SLIC_ERROR_IF( m_dim == 2 && m_numPolyVert != 2, "ContactPlanePair::getOverlapVertices(): "
-                                                       << "number of overlap vertices not equal to 2" );
-  SLIC_ERROR_IF( m_dim == 3 && m_numPolyVert < 3, "ContactPlanePair::getOverlapVertices(): "
-                                                      << "number of overlap vertices < 3" );
+  SLIC_ERROR_IF( m_dim == 2 && m_numPolyVert != 2,
+                 "ContactPlanePair::getOverlapVertices(): " << "number of overlap vertices not equal to 2" );
+  SLIC_ERROR_IF( m_dim == 3 && m_numPolyVert < 3,
+                 "ContactPlanePair::getOverlapVertices(): " << "number of overlap vertices < 3" );
 #endif
 
   for ( int i = 0; i < m_numPolyVert; ++i ) {
@@ -2171,7 +2171,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
             ++k;
 
           }  // end if (inter)
-        }    // end if (k<2)
+        }  // end if (k<2)
 
         // Secondly: check the current face's current node to see if it lies on the other side of the other face.
         // do this even if we don't ultimately have an interpen overlap calc.
@@ -2216,7 +2216,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
       num_nodes_otherside[i] = k_otherside;
 
     }  // end loop over faces
-  }    // end if-convex
+  }  // end if-convex
 
   // we come into this routine with full overlap calculation set to true. Here, we need
   // to determine if we need to switch to interpen overlap calc. This is cleaner logic

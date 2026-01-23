@@ -1379,7 +1379,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
         }
       }
     }  // end loop over A segments
-  }    // end loop over B segments
+  }  // end loop over B segments
 
   // count the number of segment-segment intersections
   int numSegInter = 0;
