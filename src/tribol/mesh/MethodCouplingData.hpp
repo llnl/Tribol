@@ -205,7 +205,7 @@ class MethodData {
   /*!
    * \brief Destructor
    */
-  ~MethodData() {};
+  virtual ~MethodData() {};
 
   /*!
    * \brief allocate element Jacobian matrix storage
