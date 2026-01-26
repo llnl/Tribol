@@ -72,6 +72,51 @@ foreach( test ${tribol_tests} )
 endforeach()
 
 #------------------------------------------------------------------------------
+# Add MPI tests
+#------------------------------------------------------------------------------
+if ( TRIBOL_USE_MPI )
+
+  set( mpi_tests
+       tribol_par_sparse_mat.cpp
+     )
+
+  set(mpi_test_depends tribol gtest)
+
+  foreach( test ${mpi_tests} )
+
+    get_filename_component( test_name ${test} NAME_WE )
+
+    blt_add_executable(
+      NAME ${test_name}_test
+      SOURCES ${test}
+      OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+      DEPENDS_ON ${mpi_test_depends} ${tribol_device_depends}
+      FOLDER tribol/tests )
+
+    blt_add_test( NAME ${test_name}
+                  COMMAND ${test_name}_test
+                  NUM_MPI_TASKS 2 )
+
+    if (ENABLE_CUDA)
+      set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
+    endif()
+
+    if (ENABLE_HIP)
+      target_compile_options(${test_name}_test PRIVATE -fgpu-rdc)
+      target_compile_options(${test_name}_test PRIVATE
+          $<$<CONFIG:Debug>:
+              -ggdb
+          >
+      )
+      target_link_options(${test_name}_test PRIVATE -fgpu-rdc)
+      target_link_options(${test_name}_test PRIVATE --hip-link)
+    endif()
+
+  endforeach()
+
+endif()
+
+#------------------------------------------------------------------------------
 # Add redecomp tests
 #------------------------------------------------------------------------------
 if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
