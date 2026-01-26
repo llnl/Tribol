@@ -339,14 +339,17 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
     auto dfdx = cs->getMfemJacobianData()->GetMfemDfDxFullJacobian( *cs->getMethodData() );
     auto dfdn = cs->getMfemJacobianData()->GetMfemDfDnJacobian( *cs->getDfDnMethodData() );
     auto dndx = cs->getMfemJacobianData()->GetMfemDnDxJacobian( *cs->getDnDxMethodData() );
-    dfdx->SetBlock( 0, 0,
-                    mfem::ParAdd( mfem::ParMult( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 0, 0 ) ),
-                                                 &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ),
-                                  &static_cast<mfem::HypreParMatrix&>( dfdx->GetBlock( 0, 0 ) ) ) );
-    dfdx->SetBlock( 1, 0,
-                    mfem::ParAdd( mfem::ParMult( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 1, 0 ) ),
-                                                 &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ),
-                                  &static_cast<mfem::HypreParMatrix&>( dfdx->GetBlock( 1, 0 ) ) ) );
+
+    auto block_00 = ( ParSparseMatView( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 0, 0 ) ) ) *
+                      &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ) +
+                    &static_cast<mfem::HypreParMatrix&>( dfdx->GetBlock( 0, 0 ) );
+    dfdx->SetBlock( 0, 0, block_00.release() );
+
+    auto block_10 = ( ParSparseMatView( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 1, 0 ) ) ) *
+                      &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ) +
+                    &static_cast<mfem::HypreParMatrix&>( dfdx->GetBlock( 1, 0 ) );
+    dfdx->SetBlock( 1, 0, block_10.release() );
+
     return dfdx;
   } else {
     return cs->getMfemJacobianData()->GetMfemBlockJacobian( cs->getMethodData() );
