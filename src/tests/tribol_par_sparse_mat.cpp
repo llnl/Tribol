@@ -85,6 +85,29 @@ TEST_F( ParSparseMatTest, Construction )
   EXPECT_NEAR( y.Max(), 3.0, 1e-12 );
 }
 
+// Test View
+TEST_F( ParSparseMatTest, View )
+{
+  int rank;
+  MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+  if ( rank == 0 ) std::cout << "Testing View..." << std::endl;
+
+  auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
+  tribol::ParSparseMat A = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 2.0 );
+
+  // Construct View
+  tribol::ParSparseMatView view( &A.get() );
+
+  EXPECT_EQ( view.get().Height(), A.get().Height() );
+
+  // Operate on View
+  tribol::ParSparseMat B = view * 2.0;
+  mfem::Vector x( A.get().Width() ), y( A.get().Height() );
+  x = 1.0;
+  B.get().Mult( x, y );
+  EXPECT_NEAR( y.Max(), 4.0, 1e-12 );
+}
+
 // Test Addition
 TEST_F( ParSparseMatTest, Addition )
 {
