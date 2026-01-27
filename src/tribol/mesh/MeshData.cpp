@@ -5,17 +5,15 @@
 
 #include <cmath>
 #include <iostream>
-#include <sstream>
-#include <iomanip>
-#include <fstream>
-
-#include "tribol/mesh/MeshData.hpp"
-#include "tribol/common/ExecModel.hpp"
-#include "tribol/geom/ElementNormal.hpp"
-#include "tribol/utils/Math.hpp"
 
 #include "axom/slic.hpp"
 #include "axom/fmt.hpp"
+
+#include "tribol/mesh/MeshData.hpp"
+#include "tribol/common/ExecModel.hpp"
+#include "tribol/common/LoopExec.hpp"
+#include "tribol/geom/ElementNormal.hpp"
+#include "tribol/utils/Math.hpp"
 
 namespace tribol {
 
@@ -618,58 +616,6 @@ MeshData::Viewer::Viewer( MeshData& mesh )
       m_element_data( mesh.m_element_data )
 {
 }
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceCoords( IndexT face_id, RealT* coords ) const
-{
-  auto dim = spatialDimension();
-
-  for ( IndexT a{ 0 }; a < numberOfNodesPerElement(); ++a ) {
-    IndexT node_id = getGlobalNodeId( face_id, a );
-    for ( int d{ 0 }; d < dim; ++d ) {
-      coords[dim * a + d] = m_position[d][node_id];
-    }
-  }
-
-  return;
-
-}  // end MeshData::Viewer::getFaceCoords()
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceVelocities( IndexT face_id, RealT* vels ) const
-{
-  auto dim = spatialDimension();
-
-  for ( IndexT a{ 0 }; a < numberOfNodesPerElement(); ++a ) {
-    IndexT node_id = getGlobalNodeId( face_id, a );
-    for ( int d{ 0 }; d < dim; ++d ) {
-      vels[dim * a + d] = m_vel[d][node_id];
-    }
-  }
-
-  return;
-
-}  // end MeshData::Viewer::getFaceVelocities()
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceNormal( IndexT face_id, RealT* nrml ) const
-{
-  for ( int d{ 0 }; d < spatialDimension(); ++d ) {
-    nrml[d] = m_n[d][face_id];
-  }
-  return;
-
-}  // end MeshData::getFaceNormal()
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void MeshData::Viewer::getFaceCentroid( IndexT face_id, RealT* cx ) const
-{
-  for ( int d{ 0 }; d < spatialDimension(); ++d ) {
-    cx[d] = m_c[d][face_id];
-  }
-  return;
-
-}  // end MeshData::getFaceNormal()
 
 //------------------------------------------------------------------------------
 
