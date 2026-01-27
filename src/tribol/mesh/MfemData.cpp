@@ -1056,8 +1056,6 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian( con
     ParSparseMat inactive_hpm_full =
         ParSparseMat::diagonalMatrix( TRIBOL_COMM_WORLD, submesh_fes_full.GlobalTrueVSize(),
                                       submesh_fes_full.GetTrueDofOffsets(), 1.0, mortar_tdof_list_, false );
-    inactive_hpm_full.get().SetOwnerFlags( 3, inactive_hpm_full.get().OwnsOffd(),
-                                           inactive_hpm_full.get().OwnsColMap() );
 
     if ( block_J->IsZeroBlock( 1, 1 ) ) {
       block_J->SetBlock( 1, 1, inactive_hpm_full.release() );

@@ -86,8 +86,7 @@ ParSparseMat::ParSparseMat( std::unique_ptr<mfem::HypreParMatrix> mat )
 {
 }
 
-ParSparseMat::ParSparseMat( MPI_Comm comm, HYPRE_BigInt glob_size, HYPRE_BigInt* row_starts,
-                            mfem::SparseMatrix&& diag )
+ParSparseMat::ParSparseMat( MPI_Comm comm, HYPRE_BigInt glob_size, HYPRE_BigInt* row_starts, mfem::SparseMatrix&& diag )
     : ParSparseMatView( nullptr )
 {
   m_owned_mat = std::make_unique<mfem::HypreParMatrix>( comm, glob_size, row_starts, &diag );
@@ -95,7 +94,8 @@ ParSparseMat::ParSparseMat( MPI_Comm comm, HYPRE_BigInt glob_size, HYPRE_BigInt*
   diag.GetMemoryI().ClearOwnerFlags();
   diag.GetMemoryJ().ClearOwnerFlags();
   diag.GetMemoryData().ClearOwnerFlags();
-  m_owned_mat->SetOwnerFlags( -1, m_owned_mat->OwnsOffd(), m_owned_mat->OwnsColMap() );
+  auto hypre_owned_arrays = -1;
+  m_owned_mat->SetOwnerFlags( hypre_owned_arrays, m_owned_mat->OwnsOffd(), m_owned_mat->OwnsColMap() );
 }
 
 ParSparseMat::ParSparseMat( ParSparseMat&& other ) noexcept
@@ -188,7 +188,8 @@ ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_si
   mfem::Array<HYPRE_BigInt> row_starts_copy = row_starts;
   auto mat = std::make_unique<mfem::HypreParMatrix>( comm, global_size, row_starts_copy, &inactive_diag );
   mat->CopyRowStarts();
-  mat->SetOwnerFlags( -1, mat->OwnsOffd(), mat->OwnsColMap() );
+  auto hypre_owned_arrays = -1;
+  mat->SetOwnerFlags( hypre_owned_arrays, mat->OwnsOffd(), mat->OwnsColMap() );
   return ParSparseMat( std::move( mat ) );
 }
 

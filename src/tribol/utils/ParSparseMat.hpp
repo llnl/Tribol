@@ -213,7 +213,8 @@ class ParSparseMat : public ParSparseMatView {
    * @param row_starts Row partitioning (global offsets)
    * @param diag_val Value for the diagonal entries
    * @param ordered_rows Sorted array of local row indices. Defaults to empty.
-   * @param skip_rows If true (default), ordered_rows are skipped (zero entries). If false, ordered_rows are the only entries.
+   * @param skip_rows If true (default), ordered_rows are skipped (zero entries). If false, ordered_rows are the only
+   * entries.
    * @return ParSparseMat The constructed diagonal matrix
    */
   static ParSparseMat diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_size,
@@ -229,7 +230,8 @@ class ParSparseMat : public ParSparseMatView {
    * @param row_starts Row partitioning (global offsets)
    * @param diag_val Value for the diagonal entries
    * @param ordered_rows Sorted array of local row indices. Defaults to empty.
-   * @param skip_rows If true (default), ordered_rows are skipped (zero entries). If false, ordered_rows are the only entries.
+   * @param skip_rows If true (default), ordered_rows are skipped (zero entries). If false, ordered_rows are the only
+   * entries.
    * @return ParSparseMat The constructed diagonal matrix
    */
   static ParSparseMat diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_size, HYPRE_BigInt* row_starts,
