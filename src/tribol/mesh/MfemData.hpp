@@ -1650,14 +1650,6 @@ class MfemJacobianData {
   void UpdateJacobianXfer();
 
   /**
-   * @brief Returns symmetric, off-diagonal Jacobian contributions as an mfem::BlockOperator
-   *
-   * @param method_data Method data holding element Jacobians
-   * @return std::unique_ptr<mfem::BlockOperator>
-   */
-  std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobian( const MethodData* method_data ) const;
-
-  /**
    * @brief Returns a Jacobian as an mfem::BlockOperator
    *
    * @param method_data Method data holding element Jacobians
@@ -1672,31 +1664,6 @@ class MfemJacobianData {
                                                              const std::vector<BlockSpace>& col_spaces,
                                                              const std::vector<int>& row_blocks,
                                                              const std::vector<int>& col_blocks ) const;
-
-  /**
-   * @brief Returns full, potentially non-symmetric derivative of the force w.r.t. nodal coordinates as an
-   * mfem::BlockOperator
-   *
-   * @param method_data Method data holding element Jacobians
-   * @return std::unique_ptr<mfem::BlockOperator>
-   */
-  std::unique_ptr<mfem::BlockOperator> GetMfemDfDxFullJacobian( const MethodData& method_data ) const;
-
-  /**
-   * @brief Returns the derivative of the force w.r.t. the normal direction as an mfem::BlockOperator
-   *
-   * @param method_data Method data holding element Jacobians
-   * @return std::unique_ptr<mfem::BlockOperator>
-   */
-  std::unique_ptr<mfem::BlockOperator> GetMfemDfDnJacobian( const MethodData& method_data ) const;
-
-  /**
-   * @brief Returns the derivative of the normal direction w.r.t. the nodal coordinates as an mfem::BlockOperator
-   *
-   * @param method_data Method data holding element Jacobians
-   * @return std::unique_ptr<mfem::BlockOperator>
-   */
-  std::unique_ptr<mfem::BlockOperator> GetMfemDnDxJacobian( const MethodData& method_data ) const;
 
  private:
   /**
