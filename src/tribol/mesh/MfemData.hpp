@@ -12,6 +12,7 @@
 #ifdef BUILD_REDECOMP
 
 #include <set>
+#include <utility>
 #include <vector>
 
 #include "mfem.hpp"
@@ -1659,11 +1660,9 @@ class MfemJacobianData {
    * @param col_blocks List of column block indices corresponding to col_spaces
    * @return std::unique_ptr<mfem::BlockOperator>
    */
-  std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobian( const MethodData& method_data,
-                                                             const std::vector<BlockSpace>& row_spaces,
-                                                             const std::vector<BlockSpace>& col_spaces,
-                                                             const std::vector<int>& row_blocks,
-                                                             const std::vector<int>& col_blocks ) const;
+  std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobian(
+      const MethodData& method_data, const std::vector<std::pair<int, BlockSpace>>& row_info,
+      const std::vector<std::pair<int, BlockSpace>>& col_info ) const;
 
  private:
   /**
@@ -1680,19 +1679,11 @@ class MfemJacobianData {
     UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data );
 
     /**
-     * @brief Redecomp to parent-linked boundary submesh transfer operator, (displacement, displacement) block
+     * @brief Redecomp to parent-linked boundary submesh transfer operators
+     *
+     * @note Indexed by (row_block, col_block)
      */
-    std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_00_;
-
-    /**
-     * @brief Redecomp to parent-linked boundary submesh transfer operator, (displacement, pressure) block
-     */
-    std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_01_;
-
-    /**
-     * @brief Redecomp to parent-linked boundary submesh transfer operator, (pressure, displacement) block
-     */
-    std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_10_;
+    Array2D<std::unique_ptr<redecomp::MatrixTransfer>> submesh_redecomp_xfer_;
   };
 
   /**
