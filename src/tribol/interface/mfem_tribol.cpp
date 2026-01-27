@@ -335,10 +335,18 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
           cs_id ) );
   // creates a block Jacobian on the parent mesh/parent-linked boundary submesh based on the element Jacobians stored in
   // the coupling scheme's method data
+  const std::vector<BlockSpace> all_spaces{ BlockSpace::MORTAR, BlockSpace::NONMORTAR,
+                                            BlockSpace::LAGRANGE_MULTIPLIER };
+  const std::vector<int> all_blocks{ 0, 0, 1 };
   if ( cs->isEnzymeEnabled() ) {
-    auto dfdx = cs->getMfemJacobianData()->GetMfemDfDxFullJacobian( *cs->getMethodData() );
-    auto dfdn = cs->getMfemJacobianData()->GetMfemDfDnJacobian( *cs->getDfDnMethodData() );
-    auto dndx = cs->getMfemJacobianData()->GetMfemDnDxJacobian( *cs->getDnDxMethodData() );
+    auto dfdx = cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getMethodData(), all_spaces, all_spaces,
+                                                                 all_blocks, all_blocks );
+    const std::vector<BlockSpace> nonmortar_space{ BlockSpace::NONMORTAR };
+    const std::vector<int> disp_block{ 0 };
+    auto dfdn = cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getDfDnMethodData(), all_spaces, nonmortar_space,
+                                                                 all_blocks, disp_block );
+    auto dndx = cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getDnDxMethodData(), nonmortar_space,
+                                                                 nonmortar_space, disp_block, disp_block );
 
     auto block_00 = ( ParSparseMatView( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 0, 0 ) ) ) *
                       &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ) +
@@ -352,7 +360,8 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
 
     return dfdx;
   } else {
-    return cs->getMfemJacobianData()->GetMfemBlockJacobian( cs->getMethodData() );
+    return cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getMethodData(), all_spaces, all_spaces, all_blocks,
+                                                            all_blocks );
   }
 }
 

@@ -1658,6 +1658,22 @@ class MfemJacobianData {
   std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobian( const MethodData* method_data ) const;
 
   /**
+   * @brief Returns a Jacobian as an mfem::BlockOperator
+   *
+   * @param method_data Method data holding element Jacobians
+   * @param row_spaces List of BlockSpaces for the rows
+   * @param col_spaces List of BlockSpaces for the columns
+   * @param row_blocks List of row block indices corresponding to row_spaces
+   * @param col_blocks List of column block indices corresponding to col_spaces
+   * @return std::unique_ptr<mfem::BlockOperator>
+   */
+  std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobian( const MethodData& method_data,
+                                                             const std::vector<BlockSpace>& row_spaces,
+                                                             const std::vector<BlockSpace>& col_spaces,
+                                                             const std::vector<int>& row_blocks,
+                                                             const std::vector<int>& col_blocks ) const;
+
+  /**
    * @brief Returns full, potentially non-symmetric derivative of the force w.r.t. nodal coordinates as an
    * mfem::BlockOperator
    *
