@@ -335,18 +335,16 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
           cs_id ) );
   // creates a block Jacobian on the parent mesh/parent-linked boundary submesh based on the element Jacobians stored in
   // the coupling scheme's method data
-  const std::vector<BlockSpace> all_spaces{ BlockSpace::MORTAR, BlockSpace::NONMORTAR,
-                                            BlockSpace::LAGRANGE_MULTIPLIER };
-  const std::vector<int> all_blocks{ 0, 0, 1 };
+  const std::vector<std::pair<int, BlockSpace>> all_info{ { 0, BlockSpace::MORTAR },
+                                                         { 0, BlockSpace::NONMORTAR },
+                                                         { 1, BlockSpace::LAGRANGE_MULTIPLIER } };
   if ( cs->isEnzymeEnabled() ) {
-    auto dfdx = cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getMethodData(), all_spaces, all_spaces,
-                                                                 all_blocks, all_blocks );
-    const std::vector<BlockSpace> nonmortar_space{ BlockSpace::NONMORTAR };
-    const std::vector<int> disp_block{ 0 };
-    auto dfdn = cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getDfDnMethodData(), all_spaces, nonmortar_space,
-                                                                 all_blocks, disp_block );
-    auto dndx = cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getDnDxMethodData(), nonmortar_space,
-                                                                 nonmortar_space, disp_block, disp_block );
+    auto dfdx = cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getMethodData(), all_info, all_info );
+    const std::vector<std::pair<int, BlockSpace>> nonmortar_info{ { 0, BlockSpace::NONMORTAR } };
+    auto dfdn =
+        cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getDfDnMethodData(), all_info, nonmortar_info );
+    auto dndx =
+        cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getDnDxMethodData(), nonmortar_info, nonmortar_info );
 
     auto block_00 = ( ParSparseMatView( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 0, 0 ) ) ) *
                       &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ) +
@@ -360,8 +358,7 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
 
     return dfdx;
   } else {
-    return cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getMethodData(), all_spaces, all_spaces, all_blocks,
-                                                            all_blocks );
+    return cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getMethodData(), all_info, all_info );
   }
 }
 

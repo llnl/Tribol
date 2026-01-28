@@ -9,6 +9,8 @@
 
 #ifdef BUILD_REDECOMP
 
+#include <map>
+
 #include "axom/slic.hpp"
 
 #include "shared/infrastructure/Profiling.hpp"
@@ -925,27 +927,40 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian(
     if ( info.first > max_col_block ) max_col_block = info.first;
   }
 
+  SLIC_ERROR_ROOT_IF( max_row_block > GetUpdateData().submesh_redecomp_xfer_.shape()[0] ||
+                          max_col_block > GetUpdateData().submesh_redecomp_xfer_.shape()[1],
+                      axom::fmt::format( "No transfer object for row {0} and col {1}", max_row_block, max_col_block ) );
+
   const mfem::Array<int>& row_offsets = ( max_row_block == 0 ) ? disp_offsets_ : block_offsets_;
   const mfem::Array<int>& col_offsets = ( max_col_block == 0 ) ? disp_offsets_ : block_offsets_;
 
   auto block_J = std::make_unique<mfem::BlockOperator>( row_offsets, col_offsets );
   block_J->owns_blocks = 1;
 
-  std::vector<std::vector<std::unique_ptr<mfem::SparseMatrix>>> submesh_matrices( max_row_block + 1 );
-  for ( auto& row : submesh_matrices ) {
-    row.resize( max_col_block + 1 );
+  // Map unique (r_blk, c_blk) -> list of (row_space, col_space) pairs
+  std::map<std::pair<int, int>, std::vector<std::pair<BlockSpace, BlockSpace>>> block_contribs;
+
+  for ( const auto& r_pair : row_info ) {
+    for ( const auto& c_pair : col_info ) {
+      block_contribs[{ r_pair.first, c_pair.first }].push_back( { r_pair.second, c_pair.second } );
+    }
   }
 
-  const std::vector<const Array1D<int>*> elem_map_by_space{ &parent_data_.GetElemMap1(), &parent_data_.GetElemMap2() };
+  // Maps BlockSpaces (MORTAR, NONMORTAR, LAGRANGE_MULTIPLIER) to a tribol element map
+  const std::vector<const Array1D<int>*> elem_map_by_space{ &parent_data_.GetElemMap1(), &parent_data_.GetElemMap2(),
+                                                            &parent_data_.GetElemMap2() };
 
-  // Iterate over blocks
-  for ( const auto& r_pair : row_info ) {
-    int r_blk = r_pair.first;
-    BlockSpace rs = r_pair.second;
+  // Iterate over unique blocks
+  for ( const auto& entry : block_contribs ) {
+    int r_blk = entry.first.first;
+    int c_blk = entry.first.second;
+    const auto& contribs = entry.second;
 
-    for ( const auto& c_pair : col_info ) {
-      int c_blk = c_pair.first;
-      BlockSpace cs = c_pair.second;
+    std::unique_ptr<mfem::SparseMatrix> submesh_J;
+
+    for ( const auto& pair : contribs ) {
+      BlockSpace rs = pair.first;
+      BlockSpace cs = pair.second;
 
       // Get block from method_data
       const auto& J_block = method_data.getBlockJ()( static_cast<int>( rs ), static_cast<int>( cs ) );
@@ -962,61 +977,52 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian(
       ArrayT<int> col_redecomp_ids;
       col_redecomp_ids.reserve( col_elem_ids_tribol.size() );
       for ( auto id : col_elem_ids_tribol ) {
-        col_redecomp_ids.push_back( ( *elem_map_by_space[static_cast<size_t>( rs )] )[static_cast<size_t>( id )] );
+        col_redecomp_ids.push_back( ( *elem_map_by_space[static_cast<size_t>( cs )] )[static_cast<size_t>( id )] );
       }
 
       // Pick transfer object
-      redecomp::MatrixTransfer* xfer = nullptr;
-      if ( r_blk < GetUpdateData().submesh_redecomp_xfer_.shape()[0] &&
-           c_blk < GetUpdateData().submesh_redecomp_xfer_.shape()[1] ) {
-        xfer = GetUpdateData().submesh_redecomp_xfer_( r_blk, c_blk ).get();
-      }
+      redecomp::MatrixTransfer* xfer = GetUpdateData().submesh_redecomp_xfer_( r_blk, c_blk ).get();
 
-      if ( !xfer ) {
-        continue;
-      }
-
-      auto J_contrib = xfer->TransferToParallelSparse( row_redecomp_ids, col_redecomp_ids, J_block );
-      if ( !submesh_matrices[r_blk][c_blk] ) {
-        submesh_matrices[r_blk][c_blk] = std::make_unique<mfem::SparseMatrix>( std::move( J_contrib ) );
-      } else {
-        ( *submesh_matrices[r_blk][c_blk] ) += J_contrib;
+      // No transfer object for LAGRANGE_MULTIPLER, LAGRANGE_MULTIPLIER block
+      if ( xfer != nullptr ) {
+        auto J_contrib = xfer->TransferToParallelSparse( row_redecomp_ids, col_redecomp_ids, J_block );
+        if ( !submesh_J ) {
+          submesh_J = std::make_unique<mfem::SparseMatrix>( std::move( J_contrib ) );
+        } else {
+          ( *submesh_J ) += J_contrib;
+        }
       }
     }
-  }
 
-  for ( int r_blk = 0; r_blk <= max_row_block; ++r_blk ) {
-    for ( int c_blk = 0; c_blk <= max_col_block; ++c_blk ) {
-      if ( submesh_matrices[r_blk][c_blk] ) {
-        submesh_matrices[r_blk][c_blk]->Finalize();
+    if ( submesh_J ) {
+      submesh_J->Finalize();
 
-        // Pick xfer again for conversion
-        redecomp::MatrixTransfer* xfer = GetUpdateData().submesh_redecomp_xfer_( r_blk, c_blk ).get();
+      // Pick xfer again for conversion
+      redecomp::MatrixTransfer* xfer = GetUpdateData().submesh_redecomp_xfer_( r_blk, c_blk ).get();
 
-        auto submesh_J_hypre = xfer->ConvertToHypreParMatrix( *submesh_matrices[r_blk][c_blk], false );
+      auto submesh_J_hypre = xfer->ConvertToHypreParMatrix( *submesh_J, false );
 
-        mfem::HypreParMatrix* block_mat = nullptr;
+      mfem::HypreParMatrix* block_mat = nullptr;
 
-        if ( r_blk == 0 && c_blk == 0 ) {
-          ParSparseMatView submesh_J_view( submesh_J_hypre.get() );
-          auto parent_J = submesh_J_view.RAP( *submesh_parent_vdof_xfer_ );
-          ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
-          block_mat = parent_J.RAP( parent_P ).release();
-        } else if ( r_blk == 0 && c_blk == 1 ) {
-          auto parent_J = submesh_parent_vdof_xfer_->transpose() * submesh_J_hypre.get();
-          block_mat = ParSparseMat::RAP( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix(), parent_J,
-                                         submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() )
-                          .release();
-        } else if ( r_blk == 1 && c_blk == 0 ) {
-          ParSparseMatView submesh_J_view( submesh_J_hypre.get() );
-          auto parent_J = submesh_J_view * ( *submesh_parent_vdof_xfer_ );
-          ParSparseMatView submesh_P( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() );
-          ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
-          block_mat = ParSparseMat::RAP( submesh_P, parent_J, parent_P ).release();
-        }
-
-        block_J->SetBlock( r_blk, c_blk, block_mat );
+      if ( r_blk == 0 && c_blk == 0 ) {
+        ParSparseMatView submesh_J_view( submesh_J_hypre.get() );
+        auto parent_J = submesh_J_view.RAP( *submesh_parent_vdof_xfer_ );
+        ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
+        block_mat = parent_J.RAP( parent_P ).release();
+      } else if ( r_blk == 0 && c_blk == 1 ) {
+        auto parent_J = submesh_parent_vdof_xfer_->transpose() * submesh_J_hypre.get();
+        block_mat = ParSparseMat::RAP( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix(), parent_J,
+                                       submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() )
+                        .release();
+      } else if ( r_blk == 1 && c_blk == 0 ) {
+        ParSparseMatView submesh_J_view( submesh_J_hypre.get() );
+        auto parent_J = submesh_J_view * ( *submesh_parent_vdof_xfer_ );
+        ParSparseMatView submesh_P( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() );
+        ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
+        block_mat = ParSparseMat::RAP( submesh_P, parent_J, parent_P ).release();
       }
+
+      block_J->SetBlock( r_blk, c_blk, block_mat );
     }
   }
 

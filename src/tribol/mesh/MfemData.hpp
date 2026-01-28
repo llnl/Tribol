@@ -1654,10 +1654,11 @@ class MfemJacobianData {
    * @brief Returns a Jacobian as an mfem::BlockOperator
    *
    * @param method_data Method data holding element Jacobians
-   * @param row_spaces List of BlockSpaces for the rows
-   * @param col_spaces List of BlockSpaces for the columns
-   * @param row_blocks List of row block indices corresponding to row_spaces
-   * @param col_blocks List of column block indices corresponding to col_spaces
+   * @param row_info List of {block_row_index, BlockSpace} pairs. Since a single block row in the output matrix might
+   * aggregate DOFs from multiple Tribol spaces (e.g. Mortar and NonMortar spaces might both map to the Displacement
+   * block 0), this vector defines the mapping from each Tribol space to its corresponding block row index.
+   * @param col_info List of {block_col_index, BlockSpace} pairs. Similar to row_info, this defines the mapping from
+   * each Tribol space to its corresponding block column index.
    * @return std::unique_ptr<mfem::BlockOperator>
    */
   std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobian(
