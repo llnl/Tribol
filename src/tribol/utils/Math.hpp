@@ -16,10 +16,13 @@
 namespace tribol {
 
 /// returns the magnitude of a 3-vector
-TRIBOL_HOST_DEVICE RealT magnitude( RealT const vx,  ///< [in] x-component of the input vector
-                                    RealT const vy,  ///< [in] y-component of the input vector
-                                    RealT const vz   ///< [in] z-component of the input vector
-);
+TRIBOL_HOST_DEVICE inline RealT magnitude( RealT const vx,  ///< [in] x-component of the input vector
+                                           RealT const vy,  ///< [in] y-component of the input vector
+                                           RealT const vz   ///< [in] z-component of the input vector
+)
+{
+  return sqrt( vx * vx + vy * vy + vz * vz );
+}
 
 /// returns the magnitude of a 2-vector
 TRIBOL_HOST_DEVICE inline RealT magnitude( RealT const vx,  ///< [in] x-component of the input vector
@@ -30,36 +33,59 @@ TRIBOL_HOST_DEVICE inline RealT magnitude( RealT const vx,  ///< [in] x-componen
 }
 
 /// returns the dot product of two vectors
-TRIBOL_HOST_DEVICE RealT dotProd( RealT const* const v,  ///< [in] first vector
-                                  RealT const* const w,  ///< [in] second vector
-                                  int const dim          ///< [in] dimension of the vectors
-);
+TRIBOL_HOST_DEVICE inline RealT dotProd( RealT const* const v,  ///< [in] first vector
+                                         RealT const* const w,  ///< [in] second vector
+                                         int const dim          ///< [in] dimension of the vectors
+)
+{
+  RealT z = 0;
+  for ( int i = 0; i < dim; ++i ) {
+    z += v[i] * w[i];
+  }
+
+  return z;
+}
 
 /// returns the dot product of two 3-vectors with component-wise input
-TRIBOL_HOST_DEVICE RealT dotProd( RealT const aX,  ///< [in] x-component of first vector
-                                  RealT const aY,  ///< [in] y-component of first vector
-                                  RealT const aZ,  ///< [in] z-component of first vector
-                                  RealT const bX,  ///< [in] x-component of second vector
-                                  RealT const bY,  ///< [in] y-component of second vector
-                                  RealT const bZ   ///< [in] z-component of second vector
-);
+TRIBOL_HOST_DEVICE inline RealT dotProd( RealT const aX,  ///< [in] x-component of first vector
+                                         RealT const aY,  ///< [in] y-component of first vector
+                                         RealT const aZ,  ///< [in] z-component of first vector
+                                         RealT const bX,  ///< [in] x-component of second vector
+                                         RealT const bY,  ///< [in] y-component of second vector
+                                         RealT const bZ   ///< [in] z-component of second vector
+)
+{
+  return aX * bX + aY * bY + aZ * bZ;
+}
 
 /// returns the magnitude of the cross product of two 3-vectors
-TRIBOL_HOST_DEVICE RealT magCrossProd( RealT const a[3],  ///< [in] array of components of first 3-vector
-                                       RealT const b[3]   ///< [in] array of components of second 3-vector
-);
+TRIBOL_HOST_DEVICE inline RealT magCrossProd( RealT const a[3],  ///< [in] array of components of first 3-vector
+                                              RealT const b[3]   ///< [in] array of components of second 3-vector
+)
+{
+  RealT vi = a[1] * b[2] - a[2] * b[1];
+  RealT vj = a[2] * b[0] - a[0] * b[2];
+  RealT vk = a[0] * b[1] - a[1] * b[0];
+
+  return magnitude( vi, vj, vk );
+}
 
 /// computes and returns the constituent cross product terms of two 3-vectors with component-wise input
-TRIBOL_HOST_DEVICE void crossProd( RealT const aX,  ///< [in] x-component of first vector
-                                   RealT const aY,  ///< [in] y-component of first vector
-                                   RealT const aZ,  ///< [in] z-component of first vector
-                                   RealT const bX,  ///< [in] x-component of second vector
-                                   RealT const bY,  ///< [in] y-component of second vector
-                                   RealT const bZ,  ///< [in] z-component of second vector
-                                   RealT& prodX,    ///< [in,out] j x k (i-component) product term
-                                   RealT& prodY,    ///< [in,out] i x k (j-component) product term
-                                   RealT& prodZ     ///< [in,out] i x j (k-component) product term
-);
+TRIBOL_HOST_DEVICE inline void crossProd( RealT const aX,  ///< [in] x-component of first vector
+                                          RealT const aY,  ///< [in] y-component of first vector
+                                          RealT const aZ,  ///< [in] z-component of first vector
+                                          RealT const bX,  ///< [in] x-component of second vector
+                                          RealT const bY,  ///< [in] y-component of second vector
+                                          RealT const bZ,  ///< [in] z-component of second vector
+                                          RealT& prodX,    ///< [in,out] j x k (i-component) product term
+                                          RealT& prodY,    ///< [in,out] i x k (j-component) product term
+                                          RealT& prodZ     ///< [in,out] i x j (k-component) product term
+)
+{
+  prodX = aY * bZ - aZ * bY;
+  prodY = aZ * bX - aX * bZ;
+  prodZ = aX * bY - aY * bX;
+}
 
 /// binary search algorithm on presorted array
 int binary_search( const int* const array,  ///< [in] pointer to array of integer values
@@ -128,7 +154,15 @@ TRIBOL_HOST_DEVICE inline void initIntArray( int* arr, int length, int init_val 
 
 /// initialize a array of type T
 template <typename T>
-TRIBOL_HOST_DEVICE void initArray( T* arr, int length, T init_val );
+TRIBOL_HOST_DEVICE void initArray( T* arr, int length, T init_val )
+{
+#ifdef TRIBOL_USE_HOST
+  SLIC_ERROR_IF( arr == nullptr, "initIntArray(): " << "input pointer to array is null." );
+#endif
+  for ( int i = 0; i < length; ++i ) {
+    arr[i] = init_val;
+  }
+}
 
 /// initialize a array of booleans
 TRIBOL_HOST_DEVICE inline void initBoolArray( bool* arr, int length, bool init_val )
