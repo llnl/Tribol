@@ -3,48 +3,32 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_TRIBOL_PHYSICS_CONTACTFORMULATION_HPP_
-#define SRC_TRIBOL_PHYSICS_CONTACTFORMULATION_HPP_
+#ifndef SRC_TRIBOL_PHYSICS_MORTARFORMULATION_HPP_
+#define SRC_TRIBOL_PHYSICS_MORTARFORMULATION_HPP_
 
-#include "tribol/common/Parameters.hpp"
-#include "tribol/common/ArrayTypes.hpp"
-#include "tribol/mesh/InterfacePairs.hpp"
-
-#include <memory>
-
-// Forward declarations for MFEM types
-namespace mfem {
-class Vector;
-class HypreParMatrix;
-class ParGridFunction;
-}  // namespace mfem
+#include "tribol/physics/ContactFormulation.hpp"
 
 namespace tribol {
 
-// Forward declaration
-class MethodData;
-
-/*!
- * \brief Base class for contact formulations.
- *
- * This class provides a polymorphic interface for contact algorithms,
- * allowing for modular implementation of new physics and formulations.
- */
-class ContactFormulation {
+template <typename IntegrationRule, typename PointwiseGapAndNormal, typename ForceAndGapMethod>
+class MortarFormulation : public ContactFormulation {
  public:
-  /**
-   * @brief Virtual destructor
-   */
-  virtual ~ContactFormulation() = default;
+  MortarFormulation( IntegrationRule&& integration_rule, PointwiseGapAndNormal&& pointwise_gap_and_normal,
+                     ForceAndGapMethod&& force_and_gap_method )
+      : integration_rule_( std::move( integration_rule ) ),
+        pointwise_gap_and_normal_( std::move( pointwise_gap_and_normal ) ),
+        force_and_gap_method_( std::move( force_and_gap_method ) )
+  {
+  }
 
   /**
    * @brief Sets the initial set of candidate interface pairs
    *
    * @param pairs View of the coarse-binned interface pairs
-   * @param check_level In general, higher values mean more checks and 0 means don't do checks. See specific methods for
-   * details.
+   * @param check_level In general, higher values mean more checks and 0 means don't do checks. See
+   * IntegrationRule::findPairsInContact() for details.
    */
-  virtual void setInterfacePairs( ArrayT<InterfacePair>&& pairs, int check_level ) = 0;
+  void setInterfacePairs( ArrayT<InterfacePair>&& pairs, int check_level ) override;
 
   /**
    * @brief Updates the integration rule
@@ -53,28 +37,28 @@ class ContactFormulation {
    *
    * @note Requires setInterfacePairs() to be called first.
    */
-  virtual void updateIntegrationRule() = 0;
+  void updateIntegrationRule() override;
 
   /**
    * @brief Updates nodal gaps
    *
    * @note Requires updateIntegrationRule() to be called first.
    */
-  virtual void updateNodalGaps() = 0;
+  void updateNodalGaps() override;
 
   /**
    * @brief Updates nodal forces/residual
    *
    * @note Requires updateNodalGaps() to be called first.
    */
-  virtual void updateNodalForces() = 0;
+  void updateNodalForces() override;
 
   /**
    * @brief Computes the maximum allowable timestep for the formulation
    *
    * @return maximum allowable timestep
    */
-  virtual RealT computeTimeStep() = 0;
+  RealT computeTimeStep() override;
 
 #ifdef BUILD_REDECOMP
   /**
@@ -84,7 +68,7 @@ class ContactFormulation {
    *
    * @note Requires updateNodalForces() to be called first.
    */
-  virtual void getMfemForce( mfem::Vector& forces ) const = 0;
+  void getMfemForce( mfem::Vector& forces ) const override;
 
   /**
    * @brief Populates the provided MFEM vector with gap values
@@ -95,14 +79,14 @@ class ContactFormulation {
    *
    * @note Requires updateNodalGaps() to be called first.
    */
-  virtual void getMfemGap( mfem::Vector& gaps ) const = 0;
+  void getMfemGap( mfem::Vector& gaps ) const override;
 
   /**
    * @brief Returns a reference to the MFEM pressure grid function
    *
    * @return mfem::ParGridFunction& Reference to the pressure grid function
    */
-  virtual mfem::ParGridFunction& getMfemPressure() = 0;
+  mfem::ParGridFunction& getMfemPressure() override;
 
   /**
    * @brief Get the derivative of force with respect to displacement
@@ -111,7 +95,7 @@ class ContactFormulation {
    *
    * @note Requires updateNodalForces() to be called first.
    */
-  virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx() const = 0;
+  std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx() const = 0;
 
   /**
    * @brief Get the derivative of gap with respect to displacement
@@ -120,7 +104,7 @@ class ContactFormulation {
    *
    * @note Requires updateNodalGaps() to be called first.
    */
-  virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx() const = 0;
+  std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx() const override;
 
   /**
    * @brief Get the derivative of force with respect to pressure
@@ -129,10 +113,15 @@ class ContactFormulation {
    *
    * @note Requires updateNodalForces() to be called first.
    */
-  virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const = 0;
+  std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const override;
 #endif
+
+ private:
+  IntegrationRule integration_rule_;
+  PointwiseGapAndNormal pointwise_gap_and_normal_;
+  ForceAndGapMethod force_and_gap_method_;
 };
 
 }  // namespace tribol
 
-#endif /* SRC_TRIBOL_PHYSICS_CONTACTFORMULATION_HPP_ */
+#endif /* SRC_TRIBOL_PHYSICS_MORTARFORMULATION_HPP_ */
