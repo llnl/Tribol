@@ -1068,15 +1068,10 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                 // they are not registered for contact, but we don't error out.
                 if ( interact_err != NO_FACE_GEOM_EXCEPTION ) {
                   pair_err[0] = 1;
-                  pair.m_is_contact_candidate = false;
                   // TODO consider printing offending face(s) coordinates for debugging
                   // SLIC_DEBUG("Face geometry error, " << static_cast<int>(interact_err) << "for pair, " << kp << ".");
                   // continue; // TODO SRW why do we need this? Seems like we want to update interface pair below
                   // if-statements
-                } else if ( !interact ) {
-                  pair.m_is_contact_candidate = false;
-                } else {
-                  pair.m_is_contact_candidate = true;
                 }
               } );
 
