@@ -11,6 +11,22 @@
 
 namespace tribol {
 
+struct IntegrationPointAndWeight {
+  Array1D<RealT> point1_;
+  Array1D<RealT> point2_;
+  RealT weight_;
+};
+
+/**
+ * @brief Struct to hold integration points and weights for a single contact pair.
+ *
+ * Stores integration points on both surfaces of the contact interface.
+ */
+struct IntegrationPoints {
+  InterfacePair pair_;
+  Array1D<IntegrationPointAndWeight> points_;
+};
+
 /**
  * @brief Abstract base class for contact integration rules.
  *
@@ -45,6 +61,16 @@ class IntegrationRule {
    * @param gap_method Method object for gap/normal calculations
    */
   virtual void updateRule( PointwiseGapAndNormal& gap_method ) = 0;
+
+  /**
+   * @brief Returns the computed integration points.
+   */
+  virtual const ArrayT<IntegrationPoints>& getRule() const = 0;
+
+  /**
+   * @brief Returns the active interface pairs.
+   */
+  virtual const ArrayT<InterfacePair>& getPairs() const = 0;
 };
 
 }  // namespace tribol
