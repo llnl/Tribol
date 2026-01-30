@@ -11,31 +11,31 @@ template <typename IntegrationRule, typename PointwiseGapAndNormal, typename For
 void MortarFormulation<IntegrationRule, PointwiseGapAndNormal, ForceAndGapMethod>::setInterfacePairs(
     ArrayT<InterfacePair>&& pairs, int check_level )
 {
-  integration_rule_.template findPairsInContact<PointwiseGapAndNormal>( std::move( pairs ), check_level );
+  integration_rule_.findPairsInContact( std::move( pairs ), check_level, pointwise_gap_and_normal_ );
 }
 
 template <typename IntegrationRule, typename PointwiseGapAndNormal, typename ForceAndGapMethod>
 void MortarFormulation<IntegrationRule, PointwiseGapAndNormal, ForceAndGapMethod>::updateIntegrationRule()
 {
-  integration_rule_.template updateRule<PointwiseGapAndNormal>();
+  integration_rule_.updateRule( pointwise_gap_and_normal_ );
 }
 
 template <typename IntegrationRule, typename PointwiseGapAndNormal, typename ForceAndGapMethod>
 void MortarFormulation<IntegrationRule, PointwiseGapAndNormal, ForceAndGapMethod>::updateNodalGaps()
 {
-  force_and_gap_method_.template updateNodalGaps<PointwiseGapAndNormal>( integration_rule_.getRule() );
+  force_and_gap_method_.updateNodalGaps( integration_rule_, pointwise_gap_and_normal_ );
 }
 
 template <typename IntegrationRule, typename PointwiseGapAndNormal, typename ForceAndGapMethod>
 void MortarFormulation<IntegrationRule, PointwiseGapAndNormal, ForceAndGapMethod>::updateNodalForces()
 {
-  force_and_gap_method_.template updateNodalForces<PointwiseGapAndNormal>( integration_rule_.getRule() );
+  force_and_gap_method_.updateNodalForces( integration_rule_, pointwise_gap_and_normal_ );
 }
 
 template <typename IntegrationRule, typename PointwiseGapAndNormal, typename ForceAndGapMethod>
 RealT MortarFormulation<IntegrationRule, PointwiseGapAndNormal, ForceAndGapMethod>::computeTimeStep()
 {
-  force_and_gap_method_.computeTimeStep( integration_rule_.getRule() );
+  force_and_gap_method_.computeTimeStep( integration_rule_, pointwise_gap_and_normal_ );
 }
 
 template <typename IntegrationRule, typename PointwiseGapAndNormal, typename ForceAndGapMethod>

@@ -50,6 +50,10 @@ class ContactFormulation {
    * @brief Updates the integration rule
    *
    * Determines overlapping contact pairs and computes necessary integration data (e.g. quadrature points, weights).
+   * This method is meant to be called if the host code wishes to access a quadrature rule without computing
+   * forces/gaps/etc. updateNodalGaps()/updateNodalForces() should also update the integration rule when those methods
+   * are called, since their derivatives are usually dependent on the integration rule and computing them inside
+   * force/gap functions simplifies usage of AD tools such as Enzyme.
    *
    * @note Requires setInterfacePairs() to be called first.
    */
@@ -58,7 +62,7 @@ class ContactFormulation {
   /**
    * @brief Updates nodal gaps
    *
-   * @note Requires updateIntegrationRule() to be called first.
+   * @note Requires setInterfacePairs() to be called first.
    */
   virtual void updateNodalGaps() = 0;
 
