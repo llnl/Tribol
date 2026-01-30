@@ -15,20 +15,39 @@
 
 namespace tribol {
 
+template <int Dim>
+struct ConstantNormalEvaluator {
+  using VectorType = axom::primal::Vector<RealT, Dim>;
+  using ParamPointType = axom::primal::Point<RealT, Dim - 1>;
+
+  VectorType m_normal;
+
+  TRIBOL_HOST_DEVICE ConstantNormalEvaluator( const VectorType& n ) : m_normal( n ) {}
+
+  TRIBOL_HOST_DEVICE void operator()( const ParamPointType& /*pt*/, VectorType& normal ) const
+  {
+    normal = m_normal;
+  }
+};
+
 /**
  * @brief Abstract base class for pointwise gap and normal computation.
  * 
  * @tparam Dim Spatial dimension
+ * @tparam NormalEvaluatorType Functor type for evaluating the normal on device
  */
-template <int Dim>
+template <int Dim, typename NormalEvaluatorType>
 class PointwiseGapAndNormal {
  public:
+  static_assert( Dim >= 1 && Dim <= 3, "PointwiseGapAndNormal: Dim must be 1, 2, or 3." );
+
   using VectorType = axom::primal::Vector<RealT, Dim>;
+  using PointType = axom::primal::Point<RealT, Dim>;
   using ParamPointType = axom::primal::Point<RealT, Dim - 1>;
 
   using GapNormalEvaluator = std::function<void( const ParamPointType& param_pt, VectorType& gap, VectorType& normal )>;
   using GapEvaluator = std::function<void( const ParamPointType& param_pt, VectorType& gap )>;
-  using NormalEvaluator = std::function<void( const ParamPointType& param_pt, VectorType& normal )>;
+  using NormalEvaluator = NormalEvaluatorType;
 
   virtual ~PointwiseGapAndNormal() = default;
 
@@ -89,12 +108,7 @@ class PointwiseGapAndNormal {
   /**
    * @brief Returns a callable object that computes only the normal for a specific pair.
    */
-  virtual NormalEvaluator getNormalEvaluator( const InterfacePair& pair, int faceID ) const
-  {
-    return [this, pair, faceID]( const ParamPointType& param_pt, VectorType& normal ) {
-      this->computeNormal( pair, faceID, param_pt, normal );
-    };
-  }
+  virtual NormalEvaluator getNormalEvaluator( const InterfacePair& pair, int faceID ) const = 0;
 };
 
 }  // namespace tribol
