@@ -41,6 +41,7 @@ set(tribol_headers
     physics/CommonPlane.hpp
     physics/Mortar.hpp
     physics/Physics.hpp
+    physics/new_method.hpp
 
     search/InterfacePairFinder.hpp
 
@@ -49,6 +50,7 @@ set(tribol_headers
     utils/DataManager.hpp
     utils/Math.hpp
     utils/TestUtils.hpp
+
     )
 
 ## list of sources
@@ -76,12 +78,14 @@ set(tribol_sources
     physics/CommonPlane.cpp
     physics/Mortar.cpp
     physics/Physics.cpp
+    physics/new_method.cpp
      
     search/InterfacePairFinder.cpp
 
     utils/ContactPlaneOutput.cpp
     utils/Math.cpp
     utils/TestUtils.cpp
+
     )
 
 if (ENABLE_FORTRAN)

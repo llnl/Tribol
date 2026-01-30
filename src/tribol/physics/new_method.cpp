@@ -118,8 +118,6 @@ void find_intersection(const double* A0, const double* A1,
     const double inv_det = 1.0 / det;
     double alpha = (d[0]*n[1] - d[1]*n[0]) * inv_det;
 
-    // if (alpha < 0.0) alpha = 0.0;
-    // if (alpha > 1.0) alpha = 1.0;
 
     intersection[0] = A0[0] + alpha * tA[0];
     intersection[1] = A0[1] + alpha * tA[1];
@@ -158,48 +156,21 @@ void get_projections(const double* A0, const double* A1,
     double xi_min = std::min(xi0, xi1);
     double xi_max = std::max(xi0, xi1);
 
-    // double X[2], tA, uB;
-    // if (segmentsIntersect2D(A0, A1, B0, B1, X, &tA, &uB)) {
-    //     const double xiA_int = tA - 0.5;           
-    //     xi_min = std::min(xi_min, xiA_int);
-    //     xi_max = std::max(xi_max, xiA_int);
-    // }
-    // std::cout << "xi_min in gp: " << xi_min << " xi_max: " << xi_max << std::endl;
 
     projections[0] = xi_min;
     projections[1] = xi_max;
 }
 
 
-//     double compute_local_gap(const double A0[2], const double A1[2], const double B0[2], const double B1[2], double xiA) {
-//     double nA[2], nB[2];
-
-//     find_normal(A0, A1, nA);
-//     find_normal(B0, B1, nB);
-
-//     double x1[2];
-//     iso_map(A0, A1, xiA, x1);
-
-//     double x2[2];
-//     find_intersection(B0, B1, x1, nB, x2);
-
-//     double dx = x1[0] - x2[0];
-//     double dy = x1[1] - x2[1];
-
-//     double gn = -(dx*nB[0] + dy*nB[1]);
-
-//     double dot = nB[0] * nA[0] + nB[1] * nA[1];
-//     double eta = (dot < 0) ? dot: 0.0;
-//     return gn * eta;
-// }
-
-    static void gtilde_kernel(const double* x, const Gparams* gp, double* g_tilde_out) {
+    static void gtilde_kernel(const double* x, const Gparams* gp, double* g_tilde_out, double* A_out) {
         const double A0[2] = {x[0], x[1]};
         const double A1[2] = {x[2], x[3]};
         const double B0[2] = {x[4], x[5]};
         const double B1[2] = {x[6], x[7]};
         
         const double J = std::sqrt((A1[0]-A0[0])*(A1[0]-A0[0]) + (A1[1]-A0[1])*(A1[1]-A0[1]));
+
+        const double J_ref = std::sqrt((A1[0]-A0[0])*(A1[0]-A0[0]) + (A1[1]-A0[1])*(A1[1]-A0[1]));
 
         double nB[2];
         find_normal(B0, B1, nB);
@@ -210,6 +181,7 @@ void get_projections(const double* A0, const double* A1,
         double eta = (dot < 0) ? dot : 0.0;
 
         double g1 = 0.0, g2 = 0.0;
+        double AI_1 = 0.0, AI_2 = 0.0; 
 
         for (int i = 0; i < gp->N; ++i) {
             const double xiA = gp -> qp[i]; 
@@ -225,10 +197,6 @@ void get_projections(const double* A0, const double* A1,
             double x2[2];
             find_intersection(B0, B1, x1, nB, x2);
 
-            // lagged coupled point on B for this qp
-            // const double x2x = gp->x2[2*i + 0];
-            // const double x2y = gp->x2[2*i + 1];
-
             const double dx = x1[0] - x2[0];
             const double dy = x1[1] - x2[1];
 
@@ -238,32 +206,26 @@ void get_projections(const double* A0, const double* A1,
 
             g1 += w * N1 * g * J;
             g2 += w * N2 * g * J;
+
+            AI_1 += w * N1 * J_ref;
+            AI_2 += w * N2 * J_ref;
         }
 
         g_tilde_out[0] = g1;
         g_tilde_out[1] = g2;
+
+        A_out[0] = AI_1;
+        A_out[1] = AI_2;
         // std::cout << "G tilde: " << g1 << ", " << g2 << std::endl;
     }
 
-// static void gtilde1_out(const double* x, const Gparams* gp, double* out)
-// {
-//   double gt[2];
-//   gtilde_kernel(x, gp, gt);
-//   *out = gt[0];
-// }
-
-// static void gtilde2_out(const double* x, const Gparams* gp, double* out)
-// {
-//   double gt[2];
-//   gtilde_kernel(x, gp, gt);
-//   *out = gt[1];
-// }
 
 static void gtilde1_out(const double* x, const void* gp_void, double* out)
 {
   const Gparams* gp = static_cast<const Gparams*>(gp_void);
   double gt[2];
-  gtilde_kernel(x, gp, gt);
+  double A_out[2];
+  gtilde_kernel(x, gp, gt, A_out);
   *out = gt[0];
 }
 
@@ -271,8 +233,27 @@ static void gtilde2_out(const double* x, const void* gp_void, double* out)
 {
   const Gparams* gp = static_cast<const Gparams*>(gp_void);
   double gt[2];
-  gtilde_kernel(x, gp, gt);
+  double A_out[2];
+  gtilde_kernel(x, gp, gt, A_out);
   *out = gt[1];
+}
+
+static void A1_out(const double* x, const void* gp_void, double* out)
+{
+  const Gparams* gp = static_cast<const Gparams*>(gp_void);
+  double gt[2];
+  double A_out[2];
+  gtilde_kernel(x, gp, gt, A_out);
+  *out = A_out[0];
+}
+
+static void A2_out(const double* x, const void* gp_void, double* out)
+{
+  const Gparams* gp = static_cast<const Gparams*>(gp_void);
+  double gt[2];
+  double A_out[2];
+  gtilde_kernel(x, gp, gt, A_out);
+  *out = A_out[1];
 }
 
 void grad_gtilde1(const double* x, const Gparams* gp, double* dgt1_du) {
@@ -299,6 +280,32 @@ void grad_gtilde2(const double*x, const Gparams* gp, double* dgt2_du) {
         dgt2_du[i] = dx[i]; 
     }
 }
+
+void grad_A1(const double* x, const Gparams* gp, double* dA1_du) {
+    double dx[8] = {0.0};
+    double out = 0.0;
+    double dout = 1.0;
+
+    __enzyme_autodiff<void>((void*) A1_out, enzyme_dup, x, dx, enzyme_const, (const void*)gp, enzyme_dup, &out, &dout);
+
+    for (int i = 0; i < 8; ++i) {
+        dA1_du[i] = dx[i];
+    }
+}
+
+
+void grad_A2(const double*x, const Gparams* gp, double* dA2_du) {
+    double dx[8] = {0.0};
+    double out = 0.0;
+    double dout = 1.0;
+
+    __enzyme_autodiff<void>((void*) A2_out, enzyme_dup, x, dx, enzyme_const, (const void*)gp, enzyme_dup, &out, &dout);
+
+    for (int i = 0; i < 8; ++i) {
+        dA2_du[i] = dx[i]; 
+    }
+}
+
 
 void d2gtilde1(const double* x, const Gparams* gp, double* H1) {
   for (int col = 0; col < 8; ++col) {
@@ -328,6 +335,38 @@ void d2gtilde2(const double* x, const Gparams* gp, double* H2) {
 
     for (int row = 0; row < 8; ++row) {
       H2[row*8 + col] = dgrad[row]; 
+    }
+  }
+}
+
+void get_d2A1(const double* x, const Gparams* gp, double* H1) {
+  for (int col = 0; col < 8; ++col) {
+    double dx[8] = {0.0};
+    dx[col] = 1.0;                
+
+    double grad[8]  = {0.0};       
+    double dgrad[8] = {0.0};       
+
+    __enzyme_fwddiff<void>((void*)grad_A1, x, dx, enzyme_const, (const void*)gp, enzyme_dup, grad, dgrad);
+
+    for (int row = 0; row < 8; ++row) {
+      H1[row*8 + col] = dgrad[row]; 
+    }
+  }
+}
+
+void get_d2A2(const double* x, const Gparams* gp, double* H1) {
+  for (int col = 0; col < 8; ++col) {
+    double dx[8] = {0.0};
+    dx[col] = 1.0;                
+
+    double grad[8]  = {0.0};       
+    double dgrad[8] = {0.0};       
+
+    __enzyme_fwddiff<void>((void*)grad_A2, x, dx, enzyme_const, (const void*)gp, enzyme_dup, grad, dgrad);
+
+    for (int row = 0; row < 8; ++row) {
+      H1[row*8 + col] = dgrad[row]; 
     }
   }
 }
@@ -374,42 +413,9 @@ std::array<double, 2> ContactSmoothing::bounds_from_projections(const std::array
         xi_max = 0.5 + del;
     }
 
-
-    // xi_min = std::max(xi_min, -0.5 - del);
-    // xi_max = std::min(xi_max,  0.5 + del);
-    // std::cout << "xi min: " << xi_min  << " xi max: " << xi_max << std::endl;
-
     return {xi_min, xi_max}; 
 }
 
-// std::array<double, 2> ContactSmoothing::smooth_bounds(const std::array<double, 2>& bounds) const {
-//     std::array<double, 2> smooth_bounds;
-//     const double del = p_.del;
-//     for (int i = 0; i < 2; ++i) {
-//         double xi = 0.0;
-//         double xi_hat = 0.0;
-//         xi = bounds[i] + 0.5;
-//         // std::cout << "xi: " << xi << std::endl;
-//         if (0 <= xi && xi <= del) {
-//             xi_hat = ((xi)*(xi)) / (2.0 * del * (1.0 - del));
-//             // std::cout << "Zone 1" << std::endl;
-//         }
-//         else if((1.0 - del) <= xi && xi <= 1.0) {
-//             xi_hat =  1.0 -(((1.0 - xi) * (1.0 - xi)) / (2 * del * (1.0 - del)));
-//             // std::cout << "Zone 2" << std::endl;
-//         }
-//         else if(del <= xi && xi <= (1.0 - del)) { 
-//             xi_hat = ((2.0 * xi) - del) / (2.0 * (1.0 - del));
-//             // std::cout << "Zone 3" << std::endl;
-//         }
-//         smooth_bounds[i] = xi_hat - 0.5;
-//         // std::cout << "Smooth Bounds: " << smooth_bounds[i] << std::endl;
-        
-//     }
-
-//     return smooth_bounds;
-
-// }
 
 std::array<double, 2> ContactSmoothing::smooth_bounds(const std::array<double, 2>& bounds) const {
     std::array<double, 2> smooth_bounds;
@@ -494,28 +500,8 @@ double ContactEvaluator::gap(const Mesh& mesh, const Element& A, const Element& 
     double x2[2] = {0.0};
     find_intersection(B0, B1, x1, nB, x2);
 
-    // std::cout << "x2: " << x2[0] << ", " << x2[1] << std::endl;
-
-    // double dx1 = B1[0] - B0[0];
-    // double dy1 = B1[1] - B0[1];
-
-    // double norm_sq = dx1*dx1 + dy1*dy1;
-
-    // double cross = (x2[0] - B0[0]) * dy1 - (x2[1] - B0[1]) * dx1;
-
-    // double t = ((x2[0] - B0[0]) * dx1 + (x2[1] - B0[1]) * dy1) / norm_sq;
-
-    // bool on_segment = (std::abs(cross) < 1e-10) && (t >= 0.0 && t <= 1.0);
-
- 
-
     double dx = x1[0] - x2[0];
     double dy = x1[1] - x2[1];
-
-    // if (on_segment == false) {
-    //     dx = 0.0;
-    //     dy = 0.0;
-    // }
 
     double gn = -(dx * nB[0] + dy * nB[1]); //signed normal gap
     // std::cout << "gap: " << gn << std::endl;
@@ -524,7 +510,7 @@ double ContactEvaluator::gap(const Mesh& mesh, const Element& A, const Element& 
 
     // std::cout << "GAP: " << gn << "  eta = " << eta << " smooth gap = " << gn * eta << std::endl;
 
-    return gn * eta; //eta is the dot product that smoothes the gap (I forget if we are doing this trick or not)
+    return gn * eta; 
 }
 
 
@@ -535,6 +521,7 @@ NodalContactData ContactEvaluator::compute_nodal_contact_data(const Mesh& mesh, 
     double J = std::sqrt((std::pow((A1[0] - A0[0]),2) + std::pow((A1[1] - A0[1]),2)));
     double J_ref = std::sqrt(std::pow(A1[0] - A0[0], 2) + 
                              std::pow(A1[1] - A0[1], 2));
+    // double J_ref = std::sqrt((std::pow((1.0 - 0.0), 2) + std::pow((-0.5 + 0.5), 2)));
 
     auto projs = projections(mesh, A, B);
 
@@ -576,6 +563,7 @@ NodalContactData ContactEvaluator::compute_nodal_contact_data(const Mesh& mesh, 
         double  gn = gap(mesh, A, B, xiA);
         // double gn_active = (gn < 0.0) ? gn : 0.0;
         double gn_active = gn;
+        // std::cout << "gap: " << gn << std::endl;
 
         g_tilde1 += w * N1 * gn_active * J;
         g_tilde2 += w * N2 * gn_active * J;
@@ -587,31 +575,71 @@ NodalContactData ContactEvaluator::compute_nodal_contact_data(const Mesh& mesh, 
 
         AI_1 += w * N1 * J_ref;   
         AI_2 += w * N2 * J_ref;  
-        // std::cout << "AI_1: " << AI_1 << ", AI_2: " << AI_2 << std::endl; 
+        // std::cout <<  AI_1 << ","<<  AI_2 << std::endl; 
     }
+    // std::cout <<  AI_1 << ","<<  AI_2 << std::endl; 
     // std::cout << "A: " << AI_1 << ", " << AI_2 << std::endl;
-
-    double g1 = g_tilde1 / AI_1;
-    double g2 = g_tilde2 / AI_2;
-
-    //KKT Conditons
-    double p1 = (g1 < 0.0) ? p_.k * g1 : 0.0;
-    double p2 = (g2 < 0.0) ? p_.k * g2 : 0.0;
+    // std::cout <<  g_tilde1 << ","<<  g_tilde2 << std::endl;
 
     NodalContactData contact_data;
 
-    contact_data.pressures = {p1, p2};
+    contact_data.AI = {AI_1, AI_2};
     contact_data.g_tilde = {g_tilde1, g_tilde2};
+    // double g1 = g_tilde1 / AI_1;
+    // double g2 = g_tilde2 / AI_2;
+    // // std::cout <<  g1 << ","<<  g2 << std::endl;
+
+    // //KKT Conditons
+    // double p1 = (g1 < 0.0) ? p_.k * g1 : 0.0;
+    // double p2 = (g2 < 0.0) ? p_.k * g2 : 0.0;
+
+    // NodalContactData contact_data;
+
+    // contact_data.pressures = {p1, p2};
+    // contact_data.g_tilde = {g_tilde1, g_tilde2};
 
     return contact_data;
+}
 
+std::array<double, 2> ContactEvaluator::compute_pressures(const NodalContactData& ncd) const {
+    double gt1 = ncd.g_tilde[0];
+    double gt2 = ncd.g_tilde[1];
+
+    // std::cout << "gt: " << gt1 << ", " << gt2 << std::endl;
+
+
+    double A1 = ncd.AI[0];
+    double A2 = ncd.AI[1];
+
+    double g1 = gt1/A1;
+    double g2 = gt2/A2;
+
+    // //KKT Conditons
+    double p1 = (g1 < 0.0) ? p_.k * g1 : 0.0;
+    double p2 = (g2 < 0.0) ? p_.k * g2 : 0.0;
+    std::array<double, 2> pressures;
+
+    pressures = {p1, p2};
+
+    for (int i = 0; i < 2; ++i) {
+        if (ncd.AI[i] < 1e-12) {
+            pressures[i] = 0.0;
+        }
+    }
+    // std::cout << "pressures: " << pressures[0] << ", " << pressures[1] << std::endl;
+
+    return pressures;
 }
 
 double ContactEvaluator::compute_contact_energy(const Mesh& mesh, const Element& A, const Element& B) const {
     NodalContactData contact_data;
-     contact_data = compute_nodal_contact_data(mesh, A, B);
+    contact_data = compute_nodal_contact_data(mesh, A, B);
 
-    double contact_energy = contact_data.pressures[0] * contact_data.g_tilde[0] + contact_data.pressures[1] * contact_data.g_tilde[1];
+    std::array<double, 2> pressures;
+    pressures = compute_pressures(contact_data);
+
+
+    double contact_energy = pressures[0] * contact_data.g_tilde[0] + pressures[1] * contact_data.g_tilde[1];
     return contact_energy;
 }
 
@@ -671,25 +699,94 @@ void ContactEvaluator::grad_gtilde(const Mesh& mesh, const Element& A, const Ele
   dgt1_dx[i] = dg1_du[i];
   dgt2_dx[i] = dg2_du[i];
 }
+}
+
+void ContactEvaluator::grad_trib_area(const Mesh& mesh, const Element& A, const Element& B, double dA1_dx[8], double dA2_dx[8]) const {
+    double A0[2], A1[2], B0[2], B1[2];
+
+    endpoints(mesh, A, A0, A1);
+    endpoints(mesh, B, B0, B1);
+
+    double x[8] = {A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1]};
+
+    double nB[2], nA[2];
+    find_normal(B0, B1, nB);
+    find_normal(A0, A1, nA);
+
+    double dot = nB[0] * nA[0] + nB[1] * nA[1];
+    double eta = (dot < 0) ? dot:0.0;
+
+    auto projs = projections(mesh, A, B);
+
+    auto bounds = smoother_.bounds_from_projections(projs);
+    auto smooth_bounds = smoother_.smooth_bounds(bounds);
+
+    auto qp = compute_quadrature(smooth_bounds);
+
+    const int N = static_cast<int>(qp.qp.size());
+
+    std::vector<double> x2(2 * N);
+
+    for (int i = 0; i < N; ++i) {
+        double x1[2] = {0.0};
+        iso_map(A0, A1, qp.qp[i], x1);
+        double x2_i[2] = {0.0};
+        find_intersection(B0, B1, x1, nB, x2_i);
+        x2[2*i] = x2_i[0];
+        x2[2*i+1] = x2_i[1];
+    }
+
+
+    Gparams gp;
+    gp.N = N;
+    gp.qp = qp.qp.data();
+    gp.w = qp.w.data();
+    gp.x2 =x2.data();
+
+    grad_A1(x, &gp, dA1_dx);
+    grad_A2(x, &gp, dA2_dx);
 
 }
+
 
 std::array<double, 8> ContactEvaluator::compute_contact_forces(const Mesh& mesh, const Element& A, const Element& B) const {
     double dg_tilde1[8] = {0.0};
     double dg_tilde2[8] = {0.0};
+    double dA1[8] = {0.0};
+    double dA2[8] = {0.0};
+    std::array<double*, 2> dg_t;
+    std::array<double*, 2> dA_I;
+    dg_t = {dg_tilde1, dg_tilde2};
+    dA_I = {dA1, dA2};
+
+
 
     grad_gtilde(mesh, A, B, dg_tilde1, dg_tilde2);
+    grad_trib_area(mesh, A, B, dA1, dA2); 
 
     NodalContactData ncd;
-
     ncd = compute_nodal_contact_data(mesh, A, B);
+    // std::cout << "A: " << ncd.AI[0] << ", " << ncd.AI[1] << std::endl;
+    // std::cout << "g: " << ncd.g_tilde[0] << ", " << ncd.g_tilde[1] << std::endl;
+
+
+    std::array<double, 2> pressures;
+    pressures = compute_pressures(ncd);
+    // std::cout << "Pressures: " << pressures[0] << ", " << pressures[1] << std::endl;
 
     std::array<double,  8> f = {0.0};
 
     for(int i = 0; i < 8; ++i) {
-        f[i] = 2.0 * (ncd.pressures[0] * dg_tilde1[i] + ncd.pressures[1] * dg_tilde2[i]);
+        for (int j = 0; j < 2; ++j) {
+            double g = 0.0;
+            g = ncd.g_tilde[j] / ncd.AI[j];
+            if (ncd.AI[j] < 1e-12) {
+                g = 0.0;
+            }
+            f[i] += (2*pressures[j]*dg_t[j][i] - pressures[j] * g * dA_I[j][i]);
+            
+        }
     }
-
     return f;
 }
 
@@ -744,8 +841,113 @@ void ContactEvaluator::d2_g2tilde(const Mesh& mesh, const Element& A, const Elem
     }
 }
 
+void ContactEvaluator::compute_d2A_d2u(const Mesh& mesh, const Element& A, const Element& B, double d2A1[64], double d2A2[64]) const {
+    double A0[2], A1[2], B0[2], B1[2];
 
+    endpoints(mesh, A, A0, A1);
+    endpoints(mesh, B, B0, B1);
 
+    double x[8] = {A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1]};
+
+    double nB[2], nA[2];
+
+    find_normal(B0, B1, nB);
+    find_normal(A0, A1, nA);
+
+    double dot = nB[0] * nA[0] + nB[1] * nA[1];
+
+    auto projs = projections(mesh, A, B);
+    auto bounds = smoother_.bounds_from_projections(projs);
+    auto smooth_bounds = smoother_.smooth_bounds(bounds);
+
+    auto qp = compute_quadrature(smooth_bounds);
+
+    const int N = static_cast<int>(qp.qp.size());
+    std::vector<double> x2(2 * N);
+
+    for (int i = 0; i < N; ++i) {
+        double x1[2] = {0.0};
+        iso_map(A0, A1, qp.qp[i], x1);
+        double x2_i[2] = {0.0};
+        find_intersection(B0, B1, x1, nB, x2_i);
+        x2[2*i] = x2_i[0];
+        x2[2*i+1] = x2_i[1];
+    }
+
+        Gparams gp;
+    gp.N = N;
+    gp.qp = qp.qp.data();
+    gp.w = qp.w.data();
+    gp.x2 =x2.data();
+
+    double d2A1_d2u[64] = {0.0};
+    double d2A2_d2u[64] = {0.0};
+
+    get_d2A1(x, &gp, d2A1_d2u);
+    get_d2A2(x, &gp, d2A2_d2u);
+
+    for (int i = 0; i < 64; ++i) {
+        d2A1[i] = d2A1_d2u[i];
+        d2A2[i] = d2A2_d2u[i];
+    }
+}
+
+std::array<std::array<double, 8>, 8> ContactEvaluator::compute_stiffness_matrix(const Mesh &mesh, const Element& A, const Element& B) const {
+    NodalContactData ncd;
+    ncd = compute_nodal_contact_data(mesh, A , B); 
+
+    std::array<double, 2> gI;
+    for (int i = 0; i < 2; ++i) {
+        gI[i] = ncd.g_tilde[i] / ncd.AI[i];
+    }
+
+    double dg_tilde1[8], dg_tilde2[8], dAI1[8], dAI2[8];
+
+    grad_gtilde(mesh, A, B, dg_tilde1, dg_tilde2); 
+    grad_trib_area(mesh, A, B, dAI1, dAI2);
+
+    double d2_gtilde1[64], d2_gtilde2[64], d2_dA1[64], d2_dA2[64];
+
+    d2_g2tilde(mesh, A, B, d2_gtilde1, d2_gtilde2); 
+    compute_d2A_d2u(mesh, A, B, d2_dA1, d2_dA2); 
+
+    std::array<double*, 2> dg_t = {dg_tilde1, dg_tilde2};
+    std::array<double*, 2> dA = {dAI1, dAI2};
+
+    std::array<double*, 2> ddg_t = {d2_gtilde1, d2_gtilde2};
+    std::array<double*, 2> ddA = {d2_dA1, d2_dA2};
+
+    std::array<std::array<double, 8>, 8> K_mat = {0.0};
+
+    for (int i = 0; i < 2; ++i) {
+        for (int k = 0; k < 8; ++k) {
+            for (int j = 0; j < 8; ++j) {
+                //term 1: 
+                K_mat[k][j] += p_.k*(2 / ncd.AI[i]) * dg_t[i][k] * dg_t[i][j];
+
+                //term2:
+                K_mat[k][j] += -p_.k*(2 * gI[i] / ncd.AI[i]) * dg_t[i][k] * dA[i][j];
+
+                //term3:
+                K_mat[k][j] += -p_.k*(2 * gI[i] / ncd.AI[i]) * dA[i][k] * dg_t[i][j];
+
+                //term 4:
+                K_mat[k][j] += p_.k*(2 *gI[i]*gI[i] / ncd.AI[i]) * dA[i][k] * dA[i][j];
+
+                //term 5;
+                K_mat[k][j] += p_.k*2.0 * gI[i] * ddg_t[i][k*8 + j];
+
+                //term 6:
+                K_mat[k][j] += -p_.k*gI[i]*gI[i] * ddA[i][k*8 + j];
+
+                if (ncd.AI[i] < 1e-12) {
+                    K_mat[k][j] = 0.0;
+                }
+        }
+    }
+    }
+    return K_mat;
+}
 
 
 
@@ -753,8 +955,10 @@ std::pair<double, double> ContactEvaluator::eval_gtilde(const Mesh& mesh, const 
     NodalContactData ncd = compute_nodal_contact_data(mesh, A, B);
     double gt1 = ncd.g_tilde[0];
     double gt2 = ncd.g_tilde[1];
+    double A1 = ncd.AI[0];
+    double A2 = ncd.AI[1];
 
-    return {gt1, gt2};
+    return {A1, A2};
 }
 
 
@@ -782,8 +986,8 @@ ContactEvaluator::eval_gtilde_fixed_qp(Mesh& mesh,
         const double gn = gap(mesh, A, B, xiA);   // still depends on geometry
         const double gn_active = gn;              // or your (gn<0?gn:0) logic
 
-        gt1 += w * N1 * gn_active * J;
-        gt2 += w * N2 * gn_active * J;
+        gt1 += w * N1  * J;
+        gt2 += w * N2 * J;
     }
 
     return {gt1, gt2};
@@ -823,7 +1027,7 @@ FiniteDiffResult ContactEvaluator::validate_g_tilde(Mesh& mesh, const Element& A
     // ===== GET AND REORDER ENZYME GRADIENTS =====
     double dgt1_dx[8] = {0.0};
     double dgt2_dx[8] = {0.0};
-    grad_gtilde(mesh, A, B, dgt1_dx, dgt2_dx);
+    grad_trib_area(mesh, A, B, dgt1_dx, dgt2_dx);
     
     // Map from node_id to position in x[8]
     std::map<int, int> node_to_x_idx;
@@ -910,8 +1114,8 @@ void ContactEvaluator::grad_gtilde_with_qp(const Mesh& mesh, const Element& A, c
     gp.qp = qp_fixed.qp.data();  // Use FIXED quadrature
     gp.w = qp_fixed.w.data();
     
-    grad_gtilde1(x, &gp, dgt1_dx);
-    grad_gtilde2(x, &gp, dgt2_dx);
+    grad_A1(x, &gp, dgt1_dx);
+    grad_A2(x, &gp, dgt2_dx);
 }
 
 FiniteDiffResult ContactEvaluator::validate_hessian(Mesh& mesh, const Element& A, const Element& B, double epsilon) const {
@@ -923,7 +1127,7 @@ FiniteDiffResult ContactEvaluator::validate_hessian(Mesh& mesh, const Element& A
     QuadPoints qp0 = compute_quadrature(smooth_bounds0);
     double hess1[64] = {0.0};
     double hess2[64] = {0.0};
-    d2_g2tilde(mesh, A, B, hess1, hess2);
+    compute_d2A_d2u(mesh, A, B, hess1, hess2);
 
     const int ndof = 8;
     result.fd_gradient_g1.assign(ndof*ndof, 0.0);

@@ -32,7 +32,7 @@ struct ContactParams {
 };
 
 struct NodalContactData {
-    std::array<double, 2> pressures;
+    std::array<double, 2> AI;
     std::array<double, 2> g_tilde;
 };
 
@@ -75,12 +75,20 @@ class ContactEvaluator {
                       const Element& B) const;
 
         void grad_gtilde(const Mesh& mesh, const Element& A, const Element& B,
-                         double dgt1_dx[64], double dgt2_dx[64]) const;
+                         double dgt1_dx[8], double dgt2_dx[8]) const;
+
+        void grad_trib_area(const Mesh& mesh, const Element& A, const Element& B, 
+                            double dA1_dx[8], double dA2_dx[8]) const; 
 
         void d2_g2tilde(const Mesh& mesh, const Element& A, const Element& B,
-                        double dgt1_dx[8], double dgt2_dx[8]) const;
+                        double dgt1_dx[64], double dgt2_dx[64]) const;
+
+        void compute_d2A_d2u(const Mesh& mesh, const Element& A, const Element& B,
+                             double dgt1_dx[64], double dgt2_dx[64]) const;
 
         std::array<double, 8> compute_contact_forces(const Mesh& mesh, const Element& A, const Element& B) const;
+
+        std::array<std::array<double, 8>, 8> compute_stiffness_matrix(const Mesh& mesh, const Element& A, const Element& B) const;
 
         std::pair<double, double> eval_gtilde(const Mesh& mesh,
                                               const Element& A, 
@@ -127,9 +135,8 @@ class ContactEvaluator {
                                                          const Element& A, 
                                                          const Element& B) const; 
         
-
+        std::array<double, 2> compute_pressures(const NodalContactData& ncd) const;
         
-
 
                                        
 };
