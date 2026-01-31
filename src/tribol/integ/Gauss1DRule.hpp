@@ -10,6 +10,7 @@
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/geom/Segment.hpp"
+#include "tribol/integ/SegmentIntegrationSurface.hpp"
 
 #include <cmath>
 
@@ -27,6 +28,15 @@ namespace tribol {
 template <int FaceID, typename PointwiseGapAndNormal, int Dim>
 class Gauss1DRule : public IntegrationRule<PointwiseGapAndNormal, Dim> {
  public:
+  using IntegrationSurface = SegmentIntegrationSurface<Dim>;
+  using VectorType = typename PointwiseGapAndNormal::VectorType;
+  using PointType = typename PointwiseGapAndNormal::PointType;
+  using ParamPointType = typename PointwiseGapAndNormal::ParamPointType;
+
+  static_assert( std::is_same_v<IntegrationSurface, typename PointwiseGapAndNormal::IntegrationSurface>,
+                 "PointwiseGapAndNormal must use SegmentIntegrationSurface<Dim> integration surfaces to be compatible "
+                 "with Gauss1DRule." );
+
   /**
    * @brief Constructor
    * @param mesh1 View of mesh 1
@@ -74,47 +84,55 @@ class Gauss1DRule : public IntegrationRule<PointwiseGapAndNormal, Dim> {
     auto counts_view = counts.view();
     auto keep_view = keep_flags.view();
 
-    forAllExec( exec_mode_, num_pairs,
-                [pairs_view, mesh1_view, mesh2_view, counts_view, keep_view] TRIBOL_HOST_DEVICE( IndexT i ) {
-                  auto& pair = pairs_view[i];
+    forAllExec(
+        exec_mode_, num_pairs,
+        [pairs_view, mesh1_view, mesh2_view, counts_view, keep_view, gap_method] TRIBOL_HOST_DEVICE( IndexT i ) {
+          auto& pair = pairs_view[i];
 
-                  // Determine "Face A" (defines the line) and "Face B" (projects onto it)
-                  IndexT elemA = ( FaceID == 1 ) ? pair.m_element_id1 : pair.m_element_id2;
-                  IndexT elemB = ( FaceID == 1 ) ? pair.m_element_id2 : pair.m_element_id1;
-                  auto& meshA = ( FaceID == 1 ) ? mesh1_view : mesh2_view;
-                  auto& meshB = ( FaceID == 1 ) ? mesh2_view : mesh1_view;
+          // Determine "Face A" (defines the line) and "Face B" (projects onto it)
+          IndexT elemA = ( FaceID == 1 ) ? pair.m_element_id1 : pair.m_element_id2;
+          IndexT elemB = ( FaceID == 1 ) ? pair.m_element_id2 : pair.m_element_id1;
+          auto& meshA = ( FaceID == 1 ) ? mesh1_view : mesh2_view;
+          auto& meshB = ( FaceID == 1 ) ? mesh2_view : mesh1_view;
 
-                  // Get Coordinates
-                  RealT stackedA[2 * 3];
-                  meshA.getFaceCoords( elemA, stackedA );
-                  Segment<Dim> segA( stackedA );
+          // Get Coordinates
+          RealT stackedA[2 * 3];
+          meshA.getFaceCoords( elemA, stackedA );
+          Segment<Dim> segA( stackedA );
 
-                  RealT stackedB[2 * 3];
-                  meshB.getFaceCoords( elemB, stackedB );
-                  Segment<Dim> segB( stackedB );
+          RealT stackedB[2 * 3];
+          meshB.getFaceCoords( elemB, stackedB );
+          Segment<Dim> segB( stackedB );
 
-                  if ( segA.lengthSq() < 1.0e-14 ) {
-                    keep_view[i] = 0;
-                    return;
-                  }
+          if ( segA.lengthSq() < 1.0e-14 ) {
+            keep_view[i] = 0;
+            return;
+          }
 
-                  RealT tB_min, tB_max;
-                  segA.projectSegment( segB, tB_min, tB_max );
+          // Compute Normal using gap_method
+          IntegrationSurface surface( FaceID, segA );
+          VectorType normal;
+          ParamPointType param_pt;  // default init
+          gap_method.computeNormal( pair, surface, param_pt, normal );
 
-                  RealT t_start = ( 0.0 > tB_min ) ? 0.0 : tB_min;
-                  RealT t_end = ( 1.0 < tB_max ) ? 1.0 : tB_max;
+          // Project with Normal
+          RealT xiB_min, xiB_max;
+          segA.projectSegment( segB, normal, xiB_min, xiB_max );
 
-                  if ( t_end <= t_start ) {
-                    keep_view[i] = 0;
-                  } else {
-                    keep_view[i] = 1;
+          RealT xi_start = ( -1.0 > xiB_min ) ? -1.0 : xiB_min;
+          RealT xi_end = ( 1.0 < xiB_max ) ? 1.0 : xiB_max;
+
+          if ( xi_end <= xi_start ) {
+            keep_view[i] = 0;
+          } else {
+            keep_view[i] = 1;
 #ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicInc<RAJA::auto_atomic>( &counts_view[0] );
+            RAJA::atomicInc<RAJA::auto_atomic>( &counts_view[0] );
 #else
-                    counts_view[0]++;
+            counts_view[0]++;
 #endif
-                  }
-                } );
+          }
+        } );
 
     // Get number of active pairs on host
     ArrayT<int, 1, MemorySpace::Host> counts_host( counts );
@@ -197,28 +215,42 @@ class Gauss1DRule : public IntegrationRule<PointwiseGapAndNormal, Dim> {
 
       data.points_.resize( order_ );
 
+      IntegrationSurface surface( FaceID, segA );
+
       for ( int k = 0; k < order_; ++k ) {
         auto& ip = data.points_[k];
         ip.point1_.resize( Dim );
         ip.point2_.resize( Dim );
 
-        RealT xi = gp[k];
-        RealT t = 0.5 * ( ( t_end - t_start ) * xi + ( t_end + t_start ) );
+        RealT xi_gauss = gp[k];
+        // t in [0, 1]
+        RealT t = 0.5 * ( ( t_end - t_start ) * xi_gauss + ( t_end + t_start ) );
+        // xi in [-1, 1]
+        RealT xi = 2.0 * t - 1.0;
 
         // Physical coordinate on the integration segment (Face A)
-        RealT P_A[3] = { 0.0, 0.0, 0.0 };
-        auto P_A_Pt = segA.eval( t );
+        // Use xi for eval
+        auto P_A_Pt = segA.eval( xi );
         for ( int d = 0; d < Dim; ++d ) {
-          P_A[d] = P_A_Pt[d];
           ip.point1_[d] = P_A_Pt[d];
         }
 
-        // Project to opposite face (Face B)
-        RealT projectedB[3] = { 0.0, 0.0, 0.0 };
-        gap_method.projectPointToOppositeSurface( pair, FaceID, P_A, projectedB );
+        // Compute gap and normal
+        VectorType gap;
+        VectorType normal;
+        ParamPointType param_pt;  // 1D parameter
+        param_pt[0] = xi;
+
+        gap_method.computeGapVectorAndNormal( pair, surface, param_pt, gap, normal );
+
+        // P_target = P_source + gap (if Source is FaceA)
+        // Check gap direction convention:
+        // Gap is defined as P_target - P_source in ClosestPoint2D.
+        // So P_target = P_source + gap.
+        PointType P_B_Pt = P_A_Pt + gap;
 
         for ( int d = 0; d < Dim; ++d ) {
-          ip.point2_[d] = projectedB[d];
+          ip.point2_[d] = P_B_Pt[d];
         }
 
         ip.weight_ = gw[k] * physical_jacobian;

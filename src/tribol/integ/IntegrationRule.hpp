@@ -57,7 +57,6 @@ class IntegrationRule {
   /**
    * @brief Updates the integration rule (e.g., computes quadrature points and weights)
    *
-   * @tparam PointwiseGapAndNormal Policy type for gap and normal computation
    * @param gap_method Method object for gap/normal calculations
    */
   virtual void updateRule( PointwiseGapAndNormal& gap_method ) = 0;
