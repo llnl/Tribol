@@ -14,6 +14,8 @@
 #include <set>
 #include <map>
 
+namespace tribol {
+
 namespace {
 
     struct Gparams {
@@ -84,12 +86,12 @@ void determine_legendre_nodes(int N, std::vector<double>& x)
     mapped_coord[1] =  N1 * coord1[1] + N2 * coord2[1];
 }
 
-inline void endpoints(const Mesh& mesh, const Element& e, double P0[2], double P1[2])
+inline void endpoints(const MeshData::Viewer& mesh, int elem_id, double P0[2], double P1[2])
 {
-    const Node& n0 = mesh.node(e.node_ids[0]);
-    const Node& n1 = mesh.node(e.node_ids[1]);
-    P0[0] = n0.x; P0[1] = n0.y;
-    P1[0] = n1.x; P1[1] = n1.y;
+    double P0_P1[4];
+    mesh.getFaceCoords(elem_id, P0_P1);
+    P0[0] = P0_P1[0]; P0[1] = P0_P1[1];
+    P1[0] = P0_P1[2]; P1[1] = P0_P1[3];
 }
 
 void find_intersection(const double* A0, const double* A1,
@@ -162,7 +164,7 @@ void get_projections(const double* A0, const double* A1,
 }
 
 
-    static void gtilde_kernel(const double* x, const Gparams* gp, double* g_tilde_out, double* A_out) {
+    void gtilde_kernel(const double* x, const Gparams* gp, double* g_tilde_out, double* A_out) {
         const double A0[2] = {x[0], x[1]};
         const double A1[2] = {x[2], x[3]};
         const double B0[2] = {x[4], x[5]};
@@ -373,21 +375,16 @@ void get_d2A2(const double* x, const Gparams* gp, double* H1) {
 
 }
 
-std::array<double, 2> ContactEvaluator::projections(const Mesh& mesh, 
-                                                    const Element& A,
-                                                    const Element& B) const {
-    const Node& A0 = mesh.node(A.node_ids[0]);
-    const Node& A1 = mesh.node(A.node_ids[1]);
-    const Node& B0 = mesh.node(B.node_ids[0]);
-    const Node& B1 = mesh.node(B.node_ids[1]);
-
-    double A0_arr[2] = {A0.x, A0.y};
-    double A1_arr[2] = {A1.x, A1.y};
-    double B0_arr[2] = {B0.x, B0.y};
-    double B1_arr[2] = {B1.x, B1.y};
+std::array<double, 2> ContactEvaluator::projections(const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2) const {
+    double A0[2];
+    double A1[2];
+    endpoints(mesh1, pair.m_element_id1, A0, A1);
+    double B0[2];
+    double B1[2];
+    endpoints(mesh2, pair.m_element_id2, B0, B1);
 
     double projs[2];
-    get_projections(A0_arr, A1_arr, B0_arr, B1_arr, projs);
+    get_projections(A0, A1, B0, B1, projs);
 
     // std::cout << "Projections: " << projs[0] << ", " << projs[1] << std::endl;
     return {projs[0], projs[1]};
@@ -480,11 +477,11 @@ QuadPoints ContactEvaluator::compute_quadrature(const std::array<double, 2>& xi_
     return out;
 }
 
-double ContactEvaluator::gap(const Mesh& mesh, const Element& A, const Element& B, double xiA) const {
+double ContactEvaluator::gap(const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, double xiA) const {
     double A0[2], A1[2], B0[2], B1[2];
 
-    endpoints(mesh, A, A0, A1);
-    endpoints(mesh, B, B0, B1);
+    endpoints(mesh1, pair.m_element_id1, A0, A1);
+    endpoints(mesh2, pair.m_element_id2, B0, B1);
 
     double nA[2] = {0.0};
     double nB[2] = {0.0};
@@ -514,16 +511,17 @@ double ContactEvaluator::gap(const Mesh& mesh, const Element& A, const Element& 
 }
 
 
-NodalContactData ContactEvaluator::compute_nodal_contact_data(const Mesh& mesh, const Element& A, const Element& B) const {
-    double A0[2], A1[2];
-    endpoints(mesh, A, A0, A1);
+NodalContactData ContactEvaluator:: compute_nodal_contact_data(const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2) const {
+    double A0[2];
+    double A1[2];
+    endpoints(mesh1, pair.m_element_id1, A0, A1);
 
     double J = std::sqrt((std::pow((A1[0] - A0[0]),2) + std::pow((A1[1] - A0[1]),2)));
     double J_ref = std::sqrt(std::pow(A1[0] - A0[0], 2) + 
                              std::pow(A1[1] - A0[1], 2));
     // double J_ref = std::sqrt((std::pow((1.0 - 0.0), 2) + std::pow((-0.5 + 0.5), 2)));
 
-    auto projs = projections(mesh, A, B);
+    auto projs = projections(pair, mesh1, mesh2);
 
     auto bounds = smoother_.bounds_from_projections(projs);
     auto smooth_bounds = smoother_.smooth_bounds(bounds);
@@ -560,14 +558,14 @@ NodalContactData ContactEvaluator::compute_nodal_contact_data(const Mesh& mesh, 
         // double N1_full = 0.5 - xiA_full;
         // double N2_full = 0.5 + xiA_full;
 
-        double  gn = gap(mesh, A, B, xiA);
+        double  gn = gap(pair, mesh1, mesh2, xiA);
         // double gn_active = (gn < 0.0) ? gn : 0.0;
         double gn_active = gn;
         // std::cout << "gap: " << gn << std::endl;
 
         g_tilde1 += w * N1 * gn_active * J;
         g_tilde2 += w * N2 * gn_active * J;
-        double G = g_tilde1 + g_tilde2; 
+        // double G = g_tilde1 + g_tilde2; 
         // std::cout << "G: " << G << std::endl;
 
         // std::cout << "G~1: " << g_tilde1 << ", G~2:" << g_tilde2 << std::endl; 
@@ -631,9 +629,9 @@ std::array<double, 2> ContactEvaluator::compute_pressures(const NodalContactData
     return pressures;
 }
 
-double ContactEvaluator::compute_contact_energy(const Mesh& mesh, const Element& A, const Element& B) const {
+double ContactEvaluator::compute_contact_energy(const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2) const {
     NodalContactData contact_data;
-    contact_data = compute_nodal_contact_data(mesh, A, B);
+    contact_data = compute_nodal_contact_data(pair, mesh1, mesh2);
 
     std::array<double, 2> pressures;
     pressures = compute_pressures(contact_data);
@@ -643,12 +641,20 @@ double ContactEvaluator::compute_contact_energy(const Mesh& mesh, const Element&
     return contact_energy;
 }
 
-void ContactEvaluator::grad_gtilde(const Mesh& mesh, const Element& A, const Element& B, double dgt1_dx[8], double dgt2_dx[8]) const {
+void ContactEvaluator::gtilde_and_area(const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, double gtilde[2], double area[2]) const {
+    auto ncd = compute_nodal_contact_data(pair, mesh1, mesh2);
+    gtilde[0] = ncd.g_tilde[0];
+    gtilde[1] = ncd.g_tilde[1];
+    area[0] = ncd.AI[0];
+    area[1] = ncd.AI[1];
+}
+
+void ContactEvaluator::grad_gtilde(const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, double dgt1_dx[8], double dgt2_dx[8]) const {
     double A0[2], A1[2], B0[2], B1[2];
     
 
-    endpoints(mesh, A, A0, A1);
-    endpoints(mesh, B, B0, B1);
+    endpoints(mesh1, pair.m_element_id1, A0, A1);
+    endpoints(mesh2, pair.m_element_id2, B0, B1);
 
     double x[8] = {A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1]};
 
@@ -656,10 +662,10 @@ void ContactEvaluator::grad_gtilde(const Mesh& mesh, const Element& A, const Ele
     find_normal(B0, B1, nB);
     find_normal(A0, A1, nA);
 
-    double dot = nB[0] * nA[0] + nB[1] * nA[1];
-    double eta = (dot < 0) ? dot:0.0;
+    // double dot = nB[0] * nA[0] + nB[1] * nA[1];
+    // double eta = (dot < 0) ? dot:0.0;
 
-    auto projs = projections(mesh, A, B);
+    auto projs = projections(pair, mesh1, mesh2);
 
     auto bounds = smoother_.bounds_from_projections(projs);
     auto smooth_bounds = smoother_.smooth_bounds(bounds);
@@ -701,11 +707,11 @@ void ContactEvaluator::grad_gtilde(const Mesh& mesh, const Element& A, const Ele
 }
 }
 
-void ContactEvaluator::grad_trib_area(const Mesh& mesh, const Element& A, const Element& B, double dA1_dx[8], double dA2_dx[8]) const {
+void ContactEvaluator::grad_trib_area(const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, double dA1_dx[8], double dA2_dx[8]) const {
     double A0[2], A1[2], B0[2], B1[2];
 
-    endpoints(mesh, A, A0, A1);
-    endpoints(mesh, B, B0, B1);
+    endpoints(mesh1, pair.m_element_id1, A0, A1);
+    endpoints(mesh2, pair.m_element_id2, B0, B1);
 
     double x[8] = {A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1]};
 
@@ -713,10 +719,10 @@ void ContactEvaluator::grad_trib_area(const Mesh& mesh, const Element& A, const 
     find_normal(B0, B1, nB);
     find_normal(A0, A1, nA);
 
-    double dot = nB[0] * nA[0] + nB[1] * nA[1];
-    double eta = (dot < 0) ? dot:0.0;
+    // double dot = nB[0] * nA[0] + nB[1] * nA[1];
+    // double eta = (dot < 0) ? dot:0.0;
 
-    auto projs = projections(mesh, A, B);
+    auto projs = projections(pair, mesh1, mesh2);
 
     auto bounds = smoother_.bounds_from_projections(projs);
     auto smooth_bounds = smoother_.smooth_bounds(bounds);
@@ -749,7 +755,7 @@ void ContactEvaluator::grad_trib_area(const Mesh& mesh, const Element& A, const 
 }
 
 
-std::array<double, 8> ContactEvaluator::compute_contact_forces(const Mesh& mesh, const Element& A, const Element& B) const {
+std::array<double, 8> ContactEvaluator::compute_contact_forces(const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2) const {
     double dg_tilde1[8] = {0.0};
     double dg_tilde2[8] = {0.0};
     double dA1[8] = {0.0};
@@ -761,11 +767,11 @@ std::array<double, 8> ContactEvaluator::compute_contact_forces(const Mesh& mesh,
 
 
 
-    grad_gtilde(mesh, A, B, dg_tilde1, dg_tilde2);
-    grad_trib_area(mesh, A, B, dA1, dA2); 
+    grad_gtilde(pair, mesh1, mesh2, dg_tilde1, dg_tilde2);
+    grad_trib_area(pair, mesh1, mesh2, dA1, dA2); 
 
     NodalContactData ncd;
-    ncd = compute_nodal_contact_data(mesh, A, B);
+    ncd = compute_nodal_contact_data(pair, mesh1, mesh2);
     // std::cout << "A: " << ncd.AI[0] << ", " << ncd.AI[1] << std::endl;
     // std::cout << "g: " << ncd.g_tilde[0] << ", " << ncd.g_tilde[1] << std::endl;
 
@@ -790,11 +796,11 @@ std::array<double, 8> ContactEvaluator::compute_contact_forces(const Mesh& mesh,
     return f;
 }
 
-void ContactEvaluator::d2_g2tilde(const Mesh& mesh, const Element& A, const Element& B, double H1[64], double H2[64]) const {
+void ContactEvaluator::d2_g2tilde(const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, double H1[64], double H2[64]) const {
     double A0[2], A1[2], B0[2], B1[2];
 
-    endpoints(mesh, A, A0, A1);
-    endpoints(mesh, B, B0, B1);
+    endpoints(mesh1, pair.m_element_id1, A0, A1);
+    endpoints(mesh2, pair.m_element_id2, B0, B1);
 
     double x[8] = {A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1]};
 
@@ -802,10 +808,10 @@ void ContactEvaluator::d2_g2tilde(const Mesh& mesh, const Element& A, const Elem
     find_normal(B0, B1, nB);
     find_normal(A0, A1, nA);
 
-    double dot = nB[0] * nA[0] + nB[1] * nA[1];
-    double eta = (dot < 0) ? dot:0.0;
+    // double dot = nB[0] * nA[0] + nB[1] * nA[1];
+    // double eta = (dot < 0) ? dot:0.0;
 
-    auto projs = projections(mesh, A, B);
+    auto projs = projections(pair, mesh1, mesh2);
     auto bounds = smoother_.bounds_from_projections(projs);
     auto smooth_bounds = smoother_.smooth_bounds(bounds);
 
@@ -841,11 +847,11 @@ void ContactEvaluator::d2_g2tilde(const Mesh& mesh, const Element& A, const Elem
     }
 }
 
-void ContactEvaluator::compute_d2A_d2u(const Mesh& mesh, const Element& A, const Element& B, double d2A1[64], double d2A2[64]) const {
+void ContactEvaluator::compute_d2A_d2u(const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, double d2A1[64], double d2A2[64]) const {
     double A0[2], A1[2], B0[2], B1[2];
 
-    endpoints(mesh, A, A0, A1);
-    endpoints(mesh, B, B0, B1);
+    endpoints(mesh1, pair.m_element_id1, A0, A1);
+    endpoints(mesh2, pair.m_element_id2, B0, B1);
 
     double x[8] = {A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1]};
 
@@ -854,9 +860,9 @@ void ContactEvaluator::compute_d2A_d2u(const Mesh& mesh, const Element& A, const
     find_normal(B0, B1, nB);
     find_normal(A0, A1, nA);
 
-    double dot = nB[0] * nA[0] + nB[1] * nA[1];
+    // double dot = nB[0] * nA[0] + nB[1] * nA[1];
 
-    auto projs = projections(mesh, A, B);
+    auto projs = projections(pair, mesh1, mesh2);
     auto bounds = smoother_.bounds_from_projections(projs);
     auto smooth_bounds = smoother_.smooth_bounds(bounds);
 
@@ -892,9 +898,9 @@ void ContactEvaluator::compute_d2A_d2u(const Mesh& mesh, const Element& A, const
     }
 }
 
-std::array<std::array<double, 8>, 8> ContactEvaluator::compute_stiffness_matrix(const Mesh &mesh, const Element& A, const Element& B) const {
+std::array<std::array<double, 8>, 8> ContactEvaluator::compute_stiffness_matrix(const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2) const {
     NodalContactData ncd;
-    ncd = compute_nodal_contact_data(mesh, A , B); 
+    ncd = compute_nodal_contact_data(pair, mesh1, mesh2); 
 
     std::array<double, 2> gI;
     for (int i = 0; i < 2; ++i) {
@@ -903,13 +909,13 @@ std::array<std::array<double, 8>, 8> ContactEvaluator::compute_stiffness_matrix(
 
     double dg_tilde1[8], dg_tilde2[8], dAI1[8], dAI2[8];
 
-    grad_gtilde(mesh, A, B, dg_tilde1, dg_tilde2); 
-    grad_trib_area(mesh, A, B, dAI1, dAI2);
+    grad_gtilde(pair, mesh1, mesh2, dg_tilde1, dg_tilde2); 
+    grad_trib_area(pair, mesh1, mesh2, dAI1, dAI2);
 
     double d2_gtilde1[64], d2_gtilde2[64], d2_dA1[64], d2_dA2[64];
 
-    d2_g2tilde(mesh, A, B, d2_gtilde1, d2_gtilde2); 
-    compute_d2A_d2u(mesh, A, B, d2_dA1, d2_dA2); 
+    d2_g2tilde(pair, mesh1, mesh2, d2_gtilde1, d2_gtilde2); 
+    compute_d2A_d2u(pair, mesh1, mesh2, d2_dA1, d2_dA2); 
 
     std::array<double*, 2> dg_t = {dg_tilde1, dg_tilde2};
     std::array<double*, 2> dA = {dAI1, dAI2};
@@ -917,7 +923,7 @@ std::array<std::array<double, 8>, 8> ContactEvaluator::compute_stiffness_matrix(
     std::array<double*, 2> ddg_t = {d2_gtilde1, d2_gtilde2};
     std::array<double*, 2> ddA = {d2_dA1, d2_dA2};
 
-    std::array<std::array<double, 8>, 8> K_mat = {0.0};
+    std::array<std::array<double, 8>, 8> K_mat = {{{0.0}}};
 
     for (int i = 0; i < 2; ++i) {
         for (int k = 0; k < 8; ++k) {
@@ -951,10 +957,10 @@ std::array<std::array<double, 8>, 8> ContactEvaluator::compute_stiffness_matrix(
 
 
 
-std::pair<double, double> ContactEvaluator::eval_gtilde(const Mesh& mesh, const Element& A, const Element& B) const {
-    NodalContactData ncd = compute_nodal_contact_data(mesh, A, B);
-    double gt1 = ncd.g_tilde[0];
-    double gt2 = ncd.g_tilde[1];
+std::pair<double, double> ContactEvaluator::eval_gtilde(const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2) const {
+    NodalContactData ncd = compute_nodal_contact_data(pair, mesh1, mesh2);
+    // double gt1 = ncd.g_tilde[0];
+    // double gt2 = ncd.g_tilde[1];
     double A1 = ncd.AI[0];
     double A2 = ncd.AI[1];
 
@@ -964,13 +970,11 @@ std::pair<double, double> ContactEvaluator::eval_gtilde(const Mesh& mesh, const 
 
 
 std::pair<double,double>
-ContactEvaluator::eval_gtilde_fixed_qp(Mesh& mesh,
-                                       const Element& A,
-                                       const Element& B,
+ContactEvaluator::eval_gtilde_fixed_qp(const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& /*mesh2*/,
                                        const QuadPoints& qp_fixed) const
 {
     double A0[2], A1[2];
-    endpoints(mesh, A, A0, A1);
+    endpoints(mesh1, pair.m_element_id1, A0, A1);
 
     const double J = std::sqrt((A1[0]-A0[0])*(A1[0]-A0[0]) + (A1[1]-A0[1])*(A1[1]-A0[1]));
 
@@ -983,8 +987,8 @@ ContactEvaluator::eval_gtilde_fixed_qp(Mesh& mesh,
         const double N1 = 0.5 - xiA;
         const double N2 = 0.5 + xiA;
 
-        const double gn = gap(mesh, A, B, xiA);   // still depends on geometry
-        const double gn_active = gn;              // or your (gn<0?gn:0) logic
+        // const double gn = gap(pair, mesh1, mesh2, xiA);   // still depends on geometry
+        // const double gn_active = gn;              // or your (gn<0?gn:0) logic
 
         gt1 += w * N1  * J;
         gt2 += w * N2 * J;
@@ -995,115 +999,117 @@ ContactEvaluator::eval_gtilde_fixed_qp(Mesh& mesh,
 
 
 
-FiniteDiffResult ContactEvaluator::validate_g_tilde(Mesh& mesh, const Element& A, const Element& B, double epsilon) const {
+// FiniteDiffResult ContactEvaluator::validate_g_tilde(const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, double epsilon) const {
         
-    FiniteDiffResult result;
+//     FiniteDiffResult result;
 
-    auto projs0 = projections(mesh, A, B);
-    auto bounds0 = smoother_.bounds_from_projections(projs0);
-    auto smooth_bounds0 = smoother_.smooth_bounds(bounds0);
-    QuadPoints qp0 = compute_quadrature(smooth_bounds0);
+//     auto projs0 = projections(pair, mesh1, mesh2);
+//     auto bounds0 = smoother_.bounds_from_projections(projs0);
+//     auto smooth_bounds0 = smoother_.smooth_bounds(bounds0);
+//     QuadPoints qp0 = compute_quadrature(smooth_bounds0);
 
-// auto [g1_base, g2_base] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
+// // auto [g1_base, g2_base] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
 
-    auto [g1_base, g2_base] = eval_gtilde(mesh, A, B);
-    result.g_tilde1_baseline = g1_base;
-    result.g_tilde2_baseline = g2_base;
+//     auto [g1_base, g2_base] = eval_gtilde(pair, mesh1, mesh2);
+//     result.g_tilde1_baseline = g1_base;
+//     result.g_tilde2_baseline = g2_base;
 
-    // Collect nodes in sorted order
-    std::set<int> node_set;
-    node_set.insert(A.node_ids[0]);
-    node_set.insert(A.node_ids[1]);
-    node_set.insert(B.node_ids[0]);
-    node_set.insert(B.node_ids[1]);
+//     // Collect nodes in sorted order
+//     std::set<int> node_set;
+//     auto A_conn = mesh1.getConnectivity()(pair.m_element_id1);
+//     node_set.insert(A_conn[0]);
+//     node_set.insert(A_conn[1]);
+//     auto B_conn = mesh2.getConnectivity()(pair.m_element_id2);
+//     node_set.insert(B_conn[0]);
+//     node_set.insert(B_conn[1]);
 
-    result.node_ids = std::vector<int>(node_set.begin(), node_set.end());
-    std::sort(result.node_ids.begin(), result.node_ids.end());
+//     result.node_ids = std::vector<int>(node_set.begin(), node_set.end());
+//     std::sort(result.node_ids.begin(), result.node_ids.end());
 
-    int num_dofs = result.node_ids.size() * 2;
-    result.fd_gradient_g1.resize(num_dofs);
-    result.fd_gradient_g2.resize(num_dofs);
+//     int num_dofs = result.node_ids.size() * 2;
+//     result.fd_gradient_g1.resize(num_dofs);
+//     result.fd_gradient_g2.resize(num_dofs);
     
-    // ===== GET AND REORDER ENZYME GRADIENTS =====
-    double dgt1_dx[8] = {0.0};
-    double dgt2_dx[8] = {0.0};
-    grad_trib_area(mesh, A, B, dgt1_dx, dgt2_dx);
+//     // ===== GET AND REORDER ENZYME GRADIENTS =====
+//     double dgt1_dx[8] = {0.0};
+//     double dgt2_dx[8] = {0.0};
+//     grad_trib_area(pair, mesh1, mesh2, dgt1_dx, dgt2_dx);
     
-    // Map from node_id to position in x[8]
-    std::map<int, int> node_to_x_idx;
-    node_to_x_idx[A.node_ids[0]] = 0;  // A0 → x[0,1]
-    node_to_x_idx[A.node_ids[1]] = 1;  // A1 → x[2,3]
-    node_to_x_idx[B.node_ids[0]] = 2;  // B0 → x[4,5]
-    node_to_x_idx[B.node_ids[1]] = 3;  // B1 → x[6,7]
+//     // Map from node_id to position in x[8]
+//     std::map<int, int> node_to_x_idx;
+//     node_to_x_idx[A_conn[0]] = 0;  // A0 → x[0,1]
+//     node_to_x_idx[A_conn[1]] = 1;  // A1 → x[2,3]
+//     node_to_x_idx[B_conn[0]] = 2;  // B0 → x[4,5]
+//     node_to_x_idx[B_conn[1]] = 3;  // B1 → x[6,7]
     
-    // Reorder Enzyme gradients to match sorted node order
-    result.analytical_gradient_g1.resize(num_dofs);
-    result.analytical_gradient_g2.resize(num_dofs);
+//     // Reorder Enzyme gradients to match sorted node order
+//     result.analytical_gradient_g1.resize(num_dofs);
+//     result.analytical_gradient_g2.resize(num_dofs);
     
-    for (size_t i = 0; i < result.node_ids.size(); ++i) {
-        int node_id = result.node_ids[i];
-        int x_idx = node_to_x_idx[node_id];
+//     for (size_t i = 0; i < result.node_ids.size(); ++i) {
+//         int node_id = result.node_ids[i];
+//         int x_idx = node_to_x_idx[node_id];
         
-        result.analytical_gradient_g1[2*i + 0] = dgt1_dx[2*x_idx + 0];  // x component
-        result.analytical_gradient_g1[2*i + 1] = dgt1_dx[2*x_idx + 1];  // y component
-        result.analytical_gradient_g2[2*i + 0] = dgt2_dx[2*x_idx + 0];
-        result.analytical_gradient_g2[2*i + 1] = dgt2_dx[2*x_idx + 1];
-    }
-    // =
+//         result.analytical_gradient_g1[2*i + 0] = dgt1_dx[2*x_idx + 0];  // x component
+//         result.analytical_gradient_g1[2*i + 1] = dgt1_dx[2*x_idx + 1];  // y component
+//         result.analytical_gradient_g2[2*i + 0] = dgt2_dx[2*x_idx + 0];
+//         result.analytical_gradient_g2[2*i + 1] = dgt2_dx[2*x_idx + 1];
+//     }
+//     // =
 
 
-    int dof_idx = 0;
-    //X-direction
-    for (int node_id : result.node_ids) {
-        {
-            double original = mesh.node(node_id).x;
+//     int dof_idx = 0;
+//     //X-direction
+//     for (int node_id : result.node_ids) {
+//         {
+//             double original = mesh.node(node_id).x;
 
-            mesh.node(node_id).x = original + epsilon;
-            auto [g1_plus, g2_plus] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
+//             mesh.node(node_id).x = original + epsilon;
+//             auto [g1_plus, g2_plus] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
 
-            mesh.node(node_id).x = original - epsilon;
-            auto [g1_minus, g2_minus] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
+//             mesh.node(node_id).x = original - epsilon;
+//             auto [g1_minus, g2_minus] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
 
-            //Restorre orginal
-            mesh.node(node_id).x = original;
+//             //Restorre orginal
+//             mesh.node(node_id).x = original;
 
-            result.fd_gradient_g1[dof_idx] = (g1_plus - g1_minus) / (2.0 * epsilon);
-            result.fd_gradient_g2[dof_idx] = (g2_plus - g2_minus) / (2.0 * epsilon);
+//             result.fd_gradient_g1[dof_idx] = (g1_plus - g1_minus) / (2.0 * epsilon);
+//             result.fd_gradient_g2[dof_idx] = (g2_plus - g2_minus) / (2.0 * epsilon);
 
-            dof_idx++;
-        }
+//             dof_idx++;
+//         }
     
-    //y - direction 
-        {
-            double original = mesh.node(node_id).y;
+//     //y - direction 
+//         {
+//             double original = mesh.node(node_id).y;
             
-            // +epsilon
-            mesh.node(node_id).y = original + epsilon;
-            auto [g1_plus, g2_plus] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
+//             // +epsilon
+//             mesh.node(node_id).y = original + epsilon;
+//             auto [g1_plus, g2_plus] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
             
-            // -epsilon
-            mesh.node(node_id).y = original - epsilon;
-            auto [g1_minus, g2_minus] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
+//             // -epsilon
+//             mesh.node(node_id).y = original - epsilon;
+//             auto [g1_minus, g2_minus] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
             
-            // Restore
-            mesh.node(node_id).y = original;
+//             // Restore
+//             mesh.node(node_id).y = original;
             
-            // Central difference
-            result.fd_gradient_g1[dof_idx] = (g1_plus - g1_minus) / (2.0 * epsilon);
-            result.fd_gradient_g2[dof_idx] = (g2_plus - g2_minus) / (2.0 * epsilon);
+//             // Central difference
+//             result.fd_gradient_g1[dof_idx] = (g1_plus - g1_minus) / (2.0 * epsilon);
+//             result.fd_gradient_g2[dof_idx] = (g2_plus - g2_minus) / (2.0 * epsilon);
             
-            dof_idx++;
-        }
-    }
-    return result;
-}
+//             dof_idx++;
+//         }
+//     }
+//     return result;
+// }
 
-void ContactEvaluator::grad_gtilde_with_qp(const Mesh& mesh, const Element& A, const Element& B,
+void ContactEvaluator::grad_gtilde_with_qp(const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                          const QuadPoints& qp_fixed, 
                          double dgt1_dx[8], double dgt2_dx[8]) const {
     double A0[2], A1[2], B0[2], B1[2];
-    endpoints(mesh, A, A0, A1);
-    endpoints(mesh, B, B0, B1);
+    endpoints(mesh1, pair.m_element_id1, A0, A1);
+    endpoints(mesh2, pair.m_element_id2, B0, B1);
     
     double x[8] = {A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1]};
     
@@ -1118,216 +1124,216 @@ void ContactEvaluator::grad_gtilde_with_qp(const Mesh& mesh, const Element& A, c
     grad_A2(x, &gp, dgt2_dx);
 }
 
-FiniteDiffResult ContactEvaluator::validate_hessian(Mesh& mesh, const Element& A, const Element& B, double epsilon) const {
-    FiniteDiffResult result;
+// FiniteDiffResult ContactEvaluator::validate_hessian(Mesh& mesh, const Element& A, const Element& B, double epsilon) const {
+//     FiniteDiffResult result;
 
-    auto projs0 = projections(mesh, A, B);
-    auto bounds0 = smoother_.bounds_from_projections(projs0);
-    auto smooth_bounds0 = smoother_.smooth_bounds(bounds0);
-    QuadPoints qp0 = compute_quadrature(smooth_bounds0);
-    double hess1[64] = {0.0};
-    double hess2[64] = {0.0};
-    compute_d2A_d2u(mesh, A, B, hess1, hess2);
+//     auto projs0 = projections(mesh, A, B);
+//     auto bounds0 = smoother_.bounds_from_projections(projs0);
+//     auto smooth_bounds0 = smoother_.smooth_bounds(bounds0);
+//     QuadPoints qp0 = compute_quadrature(smooth_bounds0);
+//     double hess1[64] = {0.0};
+//     double hess2[64] = {0.0};
+//     compute_d2A_d2u(mesh, A, B, hess1, hess2);
 
-    const int ndof = 8;
-    result.fd_gradient_g1.assign(ndof*ndof, 0.0);
-    result.fd_gradient_g2.assign(ndof*ndof, 0.0);
-    result.analytical_gradient_g1.resize(ndof * ndof);
-    result.analytical_gradient_g2.resize(ndof * ndof);
+//     const int ndof = 8;
+//     result.fd_gradient_g1.assign(ndof*ndof, 0.0);
+//     result.fd_gradient_g2.assign(ndof*ndof, 0.0);
+//     result.analytical_gradient_g1.resize(ndof * ndof);
+//     result.analytical_gradient_g2.resize(ndof * ndof);
 
-    result.analytical_gradient_g1.assign(hess1, hess1 + 64);
-    result.analytical_gradient_g2.assign(hess2, hess2 + 64);
+//     result.analytical_gradient_g1.assign(hess1, hess1 + 64);
+//     result.analytical_gradient_g2.assign(hess2, hess2 + 64);
 
-int nodes[4] = { A.node_ids[0], A.node_ids[1], B.node_ids[0], B.node_ids[1] };
+// int nodes[4] = { A.node_ids[0], A.node_ids[1], B.node_ids[0], B.node_ids[1] };
 
-int col = 0;
-for (int k = 0; k < 4; ++k) {
-  for (int comp = 0; comp < 2; ++comp) { // 0=x, 1=y
-    Node& n = mesh.node(nodes[k]);
-    double& coord = (comp == 0) ? n.x : n.y;
-    double orig = coord;
+// int col = 0;
+// for (int k = 0; k < 4; ++k) {
+//   for (int comp = 0; comp < 2; ++comp) { // 0=x, 1=y
+//     Node& n = mesh.node(nodes[k]);
+//     double& coord = (comp == 0) ? n.x : n.y;
+//     double orig = coord;
 
-    double g1p[8]={0}, g1m[8]={0}, g2p[8]={0}, g2m[8]={0};
+//     double g1p[8]={0}, g1m[8]={0}, g2p[8]={0}, g2m[8]={0};
 
-    coord = orig + epsilon; grad_gtilde_with_qp(mesh, A, B, qp0, g1p, g2p);
-    coord = orig - epsilon; grad_gtilde_with_qp(mesh, A, B, qp0, g1m, g2m);
-    coord = orig;
+//     coord = orig + epsilon; grad_gtilde_with_qp(mesh, A, B, qp0, g1p, g2p);
+//     coord = orig - epsilon; grad_gtilde_with_qp(mesh, A, B, qp0, g1m, g2m);
+//     coord = orig;
 
-    for (int i = 0; i < 8; ++i) {
-      result.fd_gradient_g1[i*8 + col] = (g1p[i] - g1m[i]) / (2*epsilon);
-      result.fd_gradient_g2[i*8 + col] = (g2p[i] - g2m[i]) / (2*epsilon);
-    }
-    ++col;
-  }
+//     for (int i = 0; i < 8; ++i) {
+//       result.fd_gradient_g1[i*8 + col] = (g1p[i] - g1m[i]) / (2*epsilon);
+//       result.fd_gradient_g2[i*8 + col] = (g2p[i] - g2m[i]) / (2*epsilon);
+//     }
+//     ++col;
+//   }
+// }
+// return result;
+// }
+
+// static const char* C_RESET = "\033[0m";
+// static const char* C_OK    = "\033[32m";
+// static const char* C_WARN  = "\033[33m";
+// static const char* C_BAD   = "\033[31m";
+
+
+// void ContactEvaluator::print_hessian_comparison(const FiniteDiffResult& val) const
+// {
+//     std::cout << std::setprecision(12) << std::scientific;
+//     std::cout << "\n" << std::string(120, '=') << "\n";
+//     std::cout << "Hessian Validation for g_tilde\n";
+//     std::cout << std::string(120, '=') << "\n";
+//     std::cout << "Baseline: g_tilde1 = " << val.g_tilde1_baseline
+//               << ", g_tilde2 = " << val.g_tilde2_baseline << "\n\n";
+
+//     const int ndof = 8;
+//     const char* dof_names[8] = {"A0_x","A0_y","A1_x","A1_y","B0_x","B0_y","B1_x","B1_y"};
+
+//     const double abs_tol_ok   = 1e-6;
+//     const double abs_tol_warn = 1e-3;
+//     const double rel_tol_pct  = 10.0;
+//     const double eps_denom    = 1e-14;
+
+//     auto print_one = [&](const char* label,
+//                          const double* fdH,
+//                          const double* anH,
+//                          int& error_count_out)
+//     {
+//         std::cout << std::string(120, '-') << "\n";
+//         std::cout << label << "\n";
+//         std::cout << std::string(120, '-') << "\n";
+
+//         // --- Matrix header ---
+//         std::cout << std::setw(8) << "Row\\Col";
+//         for (int j = 0; j < ndof; ++j) std::cout << std::setw(12) << dof_names[j];
+//         std::cout << "\n" << std::string(120, '-') << "\n";
+
+//         // --- Matrix view (FD value; colored by abs diff vs analytical) ---
+//         for (int i = 0; i < ndof; ++i) {
+//             std::cout << std::setw(8) << dof_names[i];
+//             for (int j = 0; j < ndof; ++j) {
+//                 const double fd = fdH[i*ndof + j];
+//                 const double an = anH[i*ndof + j];
+//                 const double abs_err = std::abs(fd - an);
+
+//                 const char* c = C_OK;
+//                 if (abs_err >= abs_tol_warn) c = C_BAD;
+//                 else if (abs_err >= abs_tol_ok) c = C_WARN;
+
+//                 std::cout << c << std::setw(12) << fd << C_RESET;
+//             }
+//             std::cout << "\n";
+//         }
+
+//         // --- Detailed comparison ---
+//         std::cout << "\n" << std::string(120, '-') << "\n";
+//         std::cout << "Detailed mismatches:\n";
+//         std::cout << std::string(120, '-') << "\n";
+//         std::cout << std::setw(8)  << "Row"
+//                   << std::setw(8)  << "Col"
+//                   << std::setw(20) << "FD (central)"
+//                   << std::setw(20) << "Analytical"
+//                   << std::setw(20) << "Abs Error"
+//                   << std::setw(20) << "Rel Error (%)"
+//                   << std::setw(14) << "Sign\n";
+//         std::cout << std::string(120, '-') << "\n";
+
+//         error_count_out = 0;
+
+//         double max_abs_err = 0.0;
+//         double max_rel_pct = 0.0;
+//         int max_i_abs = -1, max_j_abs = -1;
+//         int max_i_rel = -1, max_j_rel = -1;
+
+//         int sign_flip_count = 0;
+
+//         for (int i = 0; i < ndof; ++i) {
+//             for (int j = 0; j < ndof; ++j) {
+//                 const double fd = fdH[i*ndof + j];
+//                 const double an = anH[i*ndof + j];
+//                 const double abs_err = std::abs(fd - an);
+
+//                 const double denom = std::max(std::max(std::abs(fd), std::abs(an)), eps_denom);
+//                 const double rel_pct = (abs_err / denom) * 100.0;
+
+//                 const bool both_tiny = (std::abs(fd) < eps_denom && std::abs(an) < eps_denom);
+//                 const bool sign_match = both_tiny || (fd * an >= 0.0);
+
+//                 if (!sign_match) sign_flip_count++;
+
+//                 if (abs_err > max_abs_err) { max_abs_err = abs_err; max_i_abs = i; max_j_abs = j; }
+//                 if (rel_pct > max_rel_pct) { max_rel_pct = rel_pct; max_i_rel = i; max_j_rel = j; }
+
+//                 const bool print = (abs_err > abs_tol_ok) || (!sign_match) || (rel_pct > rel_tol_pct);
+
+//                 if (print) {
+//                     const char* c = (abs_err >= abs_tol_warn || !sign_match) ? C_BAD :
+//                                     (abs_err >= abs_tol_ok) ? C_WARN : C_OK;
+
+//                     std::cout << c
+//                               << std::setw(8)  << i
+//                               << std::setw(8)  << j
+//                               << std::setw(20) << fd
+//                               << std::setw(20) << an
+//                               << std::setw(20) << abs_err
+//                               << std::setw(20) << rel_pct
+//                               << std::setw(14) << (sign_match ? "✓" : "✗ FLIP")
+//                               << C_RESET << "\n";
+
+//                     // Count as "problem" if big rel error or sign flip (your original logic)
+//                     if (!sign_match || rel_pct > rel_tol_pct) error_count_out++;
+//                 }
+//             }
+//         }
+
+//         // --- Symmetry check (optional but useful) ---
+//         double max_asym_fd = 0.0, max_asym_an = 0.0;
+//         for (int i = 0; i < ndof; ++i) {
+//             for (int j = i+1; j < ndof; ++j) {
+//                 max_asym_fd = std::max(max_asym_fd, std::abs(fdH[i*ndof+j] - fdH[j*ndof+i]));
+//                 max_asym_an = std::max(max_asym_an, std::abs(anH[i*ndof+j] - anH[j*ndof+i]));
+//             }
+//         }
+
+//         std::cout << "\n";
+//         if (error_count_out == 0) {
+//             std::cout << "All entries match within thresholds! ✓\n";
+//         } else {
+//             std::cout << "Found " << error_count_out << " problematic entries\n";
+//         }
+
+//         std::cout << "Max abs error: " << max_abs_err
+//                   << " at (" << max_i_abs << "," << max_j_abs << ")\n";
+//         std::cout << "Max rel error: " << max_rel_pct
+//                   << "% at (" << max_i_rel << "," << max_j_rel << ")\n";
+//         std::cout << "Sign flips: " << sign_flip_count << "\n";
+//         std::cout << "Symmetry (FD max |H_ij - H_ji|): " << max_asym_fd << "\n";
+//         std::cout << "Symmetry (AN max |H_ij - H_ji|): " << max_asym_an << "\n";
+//     };
+
+//     int error_count_g1 = 0;
+//     int error_count_g2 = 0;
+
+//     print_one("∂²g̃₁/∂x² Hessian:",
+//               val.fd_gradient_g1.data(),          // if these are std::vector<double>
+//               val.analytical_gradient_g1.data(),
+//               error_count_g1);
+
+//     std::cout << "\n";
+
+//     print_one("∂²g̃₂/∂x² Hessian:",
+//               val.fd_gradient_g2.data(),
+//               val.analytical_gradient_g2.data(),
+//               error_count_g2);
+
+//     std::cout << "\n" << std::string(120, '=') << "\n";
+//     std::cout << "SUMMARY:\n";
+//     std::cout << "  g_tilde1 Hessian: " << (error_count_g1 == 0 ? "✓ PASS" : "✗ FAIL")
+//               << " (" << error_count_g1 << " errors)\n";
+//     std::cout << "  g_tilde2 Hessian: " << (error_count_g2 == 0 ? "✓ PASS" : "✗ FAIL")
+//               << " (" << error_count_g2 << " errors)\n";
+//     std::cout << std::string(120, '=') << "\n\n";
+// }
+
 }
-return result;
-}
-
-static const char* C_RESET = "\033[0m";
-static const char* C_OK    = "\033[32m";
-static const char* C_WARN  = "\033[33m";
-static const char* C_BAD   = "\033[31m";
-
-
-void ContactEvaluator::print_hessian_comparison(const FiniteDiffResult& val) const
-{
-    std::cout << std::setprecision(12) << std::scientific;
-    std::cout << "\n" << std::string(120, '=') << "\n";
-    std::cout << "Hessian Validation for g_tilde\n";
-    std::cout << std::string(120, '=') << "\n";
-    std::cout << "Baseline: g_tilde1 = " << val.g_tilde1_baseline
-              << ", g_tilde2 = " << val.g_tilde2_baseline << "\n\n";
-
-    const int ndof = 8;
-    const char* dof_names[8] = {"A0_x","A0_y","A1_x","A1_y","B0_x","B0_y","B1_x","B1_y"};
-
-    const double abs_tol_ok   = 1e-6;
-    const double abs_tol_warn = 1e-3;
-    const double rel_tol_pct  = 10.0;
-    const double eps_denom    = 1e-14;
-
-    auto print_one = [&](const char* label,
-                         const double* fdH,
-                         const double* anH,
-                         int& error_count_out)
-    {
-        std::cout << std::string(120, '-') << "\n";
-        std::cout << label << "\n";
-        std::cout << std::string(120, '-') << "\n";
-
-        // --- Matrix header ---
-        std::cout << std::setw(8) << "Row\\Col";
-        for (int j = 0; j < ndof; ++j) std::cout << std::setw(12) << dof_names[j];
-        std::cout << "\n" << std::string(120, '-') << "\n";
-
-        // --- Matrix view (FD value; colored by abs diff vs analytical) ---
-        for (int i = 0; i < ndof; ++i) {
-            std::cout << std::setw(8) << dof_names[i];
-            for (int j = 0; j < ndof; ++j) {
-                const double fd = fdH[i*ndof + j];
-                const double an = anH[i*ndof + j];
-                const double abs_err = std::abs(fd - an);
-
-                const char* c = C_OK;
-                if (abs_err >= abs_tol_warn) c = C_BAD;
-                else if (abs_err >= abs_tol_ok) c = C_WARN;
-
-                std::cout << c << std::setw(12) << fd << C_RESET;
-            }
-            std::cout << "\n";
-        }
-
-        // --- Detailed comparison ---
-        std::cout << "\n" << std::string(120, '-') << "\n";
-        std::cout << "Detailed mismatches:\n";
-        std::cout << std::string(120, '-') << "\n";
-        std::cout << std::setw(8)  << "Row"
-                  << std::setw(8)  << "Col"
-                  << std::setw(20) << "FD (central)"
-                  << std::setw(20) << "Analytical"
-                  << std::setw(20) << "Abs Error"
-                  << std::setw(20) << "Rel Error (%)"
-                  << std::setw(14) << "Sign\n";
-        std::cout << std::string(120, '-') << "\n";
-
-        error_count_out = 0;
-
-        double max_abs_err = 0.0;
-        double max_rel_pct = 0.0;
-        int max_i_abs = -1, max_j_abs = -1;
-        int max_i_rel = -1, max_j_rel = -1;
-
-        int sign_flip_count = 0;
-
-        for (int i = 0; i < ndof; ++i) {
-            for (int j = 0; j < ndof; ++j) {
-                const double fd = fdH[i*ndof + j];
-                const double an = anH[i*ndof + j];
-                const double abs_err = std::abs(fd - an);
-
-                const double denom = std::max(std::max(std::abs(fd), std::abs(an)), eps_denom);
-                const double rel_pct = (abs_err / denom) * 100.0;
-
-                const bool both_tiny = (std::abs(fd) < eps_denom && std::abs(an) < eps_denom);
-                const bool sign_match = both_tiny || (fd * an >= 0.0);
-
-                if (!sign_match) sign_flip_count++;
-
-                if (abs_err > max_abs_err) { max_abs_err = abs_err; max_i_abs = i; max_j_abs = j; }
-                if (rel_pct > max_rel_pct) { max_rel_pct = rel_pct; max_i_rel = i; max_j_rel = j; }
-
-                const bool print = (abs_err > abs_tol_ok) || (!sign_match) || (rel_pct > rel_tol_pct);
-
-                if (print) {
-                    const char* c = (abs_err >= abs_tol_warn || !sign_match) ? C_BAD :
-                                    (abs_err >= abs_tol_ok) ? C_WARN : C_OK;
-
-                    std::cout << c
-                              << std::setw(8)  << i
-                              << std::setw(8)  << j
-                              << std::setw(20) << fd
-                              << std::setw(20) << an
-                              << std::setw(20) << abs_err
-                              << std::setw(20) << rel_pct
-                              << std::setw(14) << (sign_match ? "✓" : "✗ FLIP")
-                              << C_RESET << "\n";
-
-                    // Count as "problem" if big rel error or sign flip (your original logic)
-                    if (!sign_match || rel_pct > rel_tol_pct) error_count_out++;
-                }
-            }
-        }
-
-        // --- Symmetry check (optional but useful) ---
-        double max_asym_fd = 0.0, max_asym_an = 0.0;
-        for (int i = 0; i < ndof; ++i) {
-            for (int j = i+1; j < ndof; ++j) {
-                max_asym_fd = std::max(max_asym_fd, std::abs(fdH[i*ndof+j] - fdH[j*ndof+i]));
-                max_asym_an = std::max(max_asym_an, std::abs(anH[i*ndof+j] - anH[j*ndof+i]));
-            }
-        }
-
-        std::cout << "\n";
-        if (error_count_out == 0) {
-            std::cout << "All entries match within thresholds! ✓\n";
-        } else {
-            std::cout << "Found " << error_count_out << " problematic entries\n";
-        }
-
-        std::cout << "Max abs error: " << max_abs_err
-                  << " at (" << max_i_abs << "," << max_j_abs << ")\n";
-        std::cout << "Max rel error: " << max_rel_pct
-                  << "% at (" << max_i_rel << "," << max_j_rel << ")\n";
-        std::cout << "Sign flips: " << sign_flip_count << "\n";
-        std::cout << "Symmetry (FD max |H_ij - H_ji|): " << max_asym_fd << "\n";
-        std::cout << "Symmetry (AN max |H_ij - H_ji|): " << max_asym_an << "\n";
-    };
-
-    int error_count_g1 = 0;
-    int error_count_g2 = 0;
-
-    print_one("∂²g̃₁/∂x² Hessian:",
-              val.fd_gradient_g1.data(),          // if these are std::vector<double>
-              val.analytical_gradient_g1.data(),
-              error_count_g1);
-
-    std::cout << "\n";
-
-    print_one("∂²g̃₂/∂x² Hessian:",
-              val.fd_gradient_g2.data(),
-              val.analytical_gradient_g2.data(),
-              error_count_g2);
-
-    std::cout << "\n" << std::string(120, '=') << "\n";
-    std::cout << "SUMMARY:\n";
-    std::cout << "  g_tilde1 Hessian: " << (error_count_g1 == 0 ? "✓ PASS" : "✗ FAIL")
-              << " (" << error_count_g1 << " errors)\n";
-    std::cout << "  g_tilde2 Hessian: " << (error_count_g2 == 0 ? "✓ PASS" : "✗ FAIL")
-              << " (" << error_count_g2 << " errors)\n";
-    std::cout << std::string(120, '=') << "\n\n";
-}
-
-
 
 
 
