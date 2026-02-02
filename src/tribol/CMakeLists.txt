@@ -41,6 +41,9 @@ set(tribol_headers
     physics/AlignedMortar.hpp
     physics/CommonPlane.hpp
     physics/ContactFormulation.hpp
+    physics/ElementForceAndGap.hpp
+    physics/ForceAndGapMethod.hpp
+    physics/ModularFormulation.hpp
     physics/Mortar.hpp
     physics/Physics.hpp
 
