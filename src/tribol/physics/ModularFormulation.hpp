@@ -3,18 +3,18 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_TRIBOL_PHYSICS_MORTARFORMULATION_HPP_
-#define SRC_TRIBOL_PHYSICS_MORTARFORMULATION_HPP_
+#ifndef SRC_TRIBOL_PHYSICS_MODULARFORMULATION_HPP_
+#define SRC_TRIBOL_PHYSICS_MODULARFORMULATION_HPP_
 
 #include "tribol/physics/ContactFormulation.hpp"
 
 namespace tribol {
 
 template <typename IntegrationRule, typename PointwiseGapAndNormal, typename ForceAndGapMethod>
-class MortarFormulation : public ContactFormulation {
+class ModularFormulation : public ContactFormulation {
  public:
-  MortarFormulation( IntegrationRule&& integration_rule, PointwiseGapAndNormal&& pointwise_gap_and_normal,
-                     ForceAndGapMethod&& force_and_gap_method )
+  ModularFormulation( IntegrationRule&& integration_rule, PointwiseGapAndNormal&& pointwise_gap_and_normal,
+                      ForceAndGapMethod&& force_and_gap_method )
       : integration_rule_( std::move( integration_rule ) ),
         pointwise_gap_and_normal_( std::move( pointwise_gap_and_normal ) ),
         force_and_gap_method_( std::move( force_and_gap_method ) )
@@ -124,4 +124,4 @@ class MortarFormulation : public ContactFormulation {
 
 }  // namespace tribol
 
-#endif /* SRC_TRIBOL_PHYSICS_MORTARFORMULATION_HPP_ */
+#endif /* SRC_TRIBOL_PHYSICS_MODULARFORMULATION_HPP_ */
