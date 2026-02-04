@@ -198,6 +198,7 @@ if( TRIBOL_USE_ENZYME )
       tribol_enzyme_mortar_assembled.cpp
       tribol_enzyme_poly_intersect.cpp
       tribol_mfem_mortar_energy.cpp
+      new_mortar_deriv.cpp
       )
 
   set(combined_test_depends tribol gtest)
