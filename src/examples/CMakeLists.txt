@@ -9,7 +9,6 @@ set( contact_examples
      common_plane.cpp
      mortar_lm_patch_test.cpp
      step_1_lobatto.cpp
-     new_method_test.cpp
      )
 
 
@@ -102,6 +101,7 @@ if ( BUILD_REDECOMP )
 
   set( examples
       mfem_mortar_lm_patch.cpp
+      mfem_mortar_energy_patch.cpp
       mfem_common_plane.cpp
       )
 
