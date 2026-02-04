@@ -238,6 +238,18 @@ class ParSparseMat : public ParSparseMatView {
                                       double diag_val, const mfem::Array<int>& ordered_rows = mfem::Array<int>(),
                                       bool skip_rows = true );
 
+  /**
+   * @brief Returns a diagonal matrix with the values from the given vector on the diagonal
+   *
+   * @param comm MPI communicator
+   * @param global_size Global size of the matrix (rows and columns)
+   * @param row_starts Row partitioning (global offsets)
+   * @param diag_vals Vector containing the values for the diagonal entries. Size must match local rows.
+   * @return ParSparseMat The constructed diagonal matrix
+   */
+  static ParSparseMat diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_size, HYPRE_BigInt* row_starts,
+                                      const mfem::Vector& diag_vals );
+
  private:
   std::unique_ptr<mfem::HypreParMatrix> m_owned_mat;
 };

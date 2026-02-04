@@ -203,4 +203,35 @@ ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_si
   return diagonalMatrix( comm, global_size, row_starts_array, diag_val, ordered_rows, skip_rows );
 }
 
+ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_size, HYPRE_BigInt* row_starts,
+                                           const mfem::Vector& diag_vals )
+{
+  int num_local_rows = diag_vals.Size();
+
+  mfem::Array<int> rows( num_local_rows + 1 );
+  mfem::Array<int> cols( num_local_rows );
+  rows[0] = 0;
+
+  for ( int i = 0; i < num_local_rows; ++i ) {
+    rows[i + 1] = i + 1;
+    cols[i] = i;
+  }
+
+  rows.GetMemory().SetHostPtrOwner( false );
+  cols.GetMemory().SetHostPtrOwner( false );
+
+  mfem::Vector vals = diag_vals;
+  vals.GetMemory().SetHostPtrOwner( false );
+
+  mfem::SparseMatrix inactive_diag( rows.GetData(), cols.GetData(), vals.GetData(), num_local_rows, num_local_rows,
+                                    false, false, true );
+  inactive_diag.SetDataOwner( false );
+
+  auto mat = std::make_unique<mfem::HypreParMatrix>( comm, global_size, row_starts, &inactive_diag );
+  mat->CopyRowStarts();
+  auto mfem_owned_arrays = 3;
+  mat->SetOwnerFlags( mfem_owned_arrays, mat->OwnsOffd(), mat->OwnsColMap() );
+  return ParSparseMat( std::move( mat ) );
+}
+
 }  // namespace tribol
