@@ -41,9 +41,11 @@ set(tribol_headers
     physics/AlignedMortar.hpp
     physics/CommonPlane.hpp
     physics/ContactFormulation.hpp
+    physics/ContactFormulationFactory.hpp
     physics/Mortar.hpp
-    physics/Physics.hpp
     physics/new_method.hpp
+    physics/NewMethodAdapter.hpp
+    physics/Physics.hpp
 
     search/InterfacePairFinder.hpp
 
@@ -77,9 +79,11 @@ set(tribol_sources
 
     physics/AlignedMortar.cpp
     physics/CommonPlane.cpp
+    physics/ContactFormulationFactory.cpp
     physics/Mortar.cpp
-    physics/Physics.cpp
     physics/new_method.cpp
+    physics/NewMethodAdapter.cpp
+    physics/Physics.cpp
      
     search/InterfacePairFinder.cpp
 
