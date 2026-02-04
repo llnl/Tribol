@@ -306,6 +306,12 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r )
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
+
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->getMfemForce( r );
+    return;
+  }
+
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to return a response vector." );
@@ -319,6 +325,31 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
+
+  if ( cs->hasContactFormulation() ) {
+    auto* formulation = cs->getContactFormulation();
+    // Use formulation derivatives
+    auto DfDx = formulation->getMfemDfDx();
+    auto DfDp = formulation->getMfemDfDp();
+    auto DgDx = formulation->getMfemDgDx();
+
+    // Determine sizes
+    mfem::Array<int> offsets( 3 );
+    offsets[0] = 0;
+    offsets[1] = DfDx->Height();                             // Force rows (displacement dofs)
+    offsets[2] = offsets[1] + ( DfDp ? DfDp->Width() : 0 );  // Pressure cols (pressure dofs)
+
+    auto blockOp = std::make_unique<mfem::BlockOperator>( offsets );
+    if ( DfDx ) blockOp->SetBlock( 0, 0, DfDx.release() );
+    if ( DfDp ) blockOp->SetBlock( 0, 1, DfDp.release() );
+    if ( DgDx ) blockOp->SetBlock( 1, 0, DgDx.release() );
+    // 1,1 block (DgDp) is implicitly zero for standard contact
+
+    // Manually set ownership to avoid leaks, as BlockOperator owns nothing by default
+    blockOp->owns_blocks = 1;
+    return blockOp;
+  }
+
   SparseMode sparse_mode = cs->getEnforcementOptions().lm_implicit_options.sparse_mode;
   if ( sparse_mode != SparseMode::MFEM_ELEMENT_DENSE ) {
     SLIC_ERROR_ROOT(
@@ -335,14 +366,12 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
           cs_id ) );
   // creates a block Jacobian on the parent mesh/parent-linked boundary submesh based on the element Jacobians stored in
   // the coupling scheme's method data
-  const std::vector<std::pair<int, BlockSpace>> all_info{ { 0, BlockSpace::MORTAR },
-                                                         { 0, BlockSpace::NONMORTAR },
-                                                         { 1, BlockSpace::LAGRANGE_MULTIPLIER } };
+  const std::vector<std::pair<int, BlockSpace>> all_info{
+      { 0, BlockSpace::MORTAR }, { 0, BlockSpace::NONMORTAR }, { 1, BlockSpace::LAGRANGE_MULTIPLIER } };
   if ( cs->isEnzymeEnabled() ) {
     auto dfdx = cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getMethodData(), all_info, all_info );
     const std::vector<std::pair<int, BlockSpace>> nonmortar_info{ { 0, BlockSpace::NONMORTAR } };
-    auto dfdn =
-        cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getDfDnMethodData(), all_info, nonmortar_info );
+    auto dfdn = cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getDfDnMethodData(), all_info, nonmortar_info );
     auto dndx =
         cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getDnDxMethodData(), nonmortar_info, nonmortar_info );
 
@@ -362,6 +391,51 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
   }
 }
 
+std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+
+  if ( cs->hasContactFormulation() ) {
+    return cs->getContactFormulation()->getMfemDfDx();
+  }
+  SLIC_ERROR_ROOT( "getMfemDfDx() is only supported for coupling schemes with a ContactFormulation." );
+  return nullptr;
+}
+
+std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+
+  if ( cs->hasContactFormulation() ) {
+    return cs->getContactFormulation()->getMfemDfDp();
+  }
+  SLIC_ERROR_ROOT( "getMfemDfDp() is only supported for coupling schemes with a ContactFormulation." );
+  return nullptr;
+}
+
+std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+
+  if ( cs->hasContactFormulation() ) {
+    return cs->getContactFormulation()->getMfemDgDx();
+  }
+  SLIC_ERROR_ROOT( "getMfemDgDx() is only supported for coupling schemes with a ContactFormulation." );
+  return nullptr;
+}
+
 void getMfemGap( IndexT cs_id, mfem::Vector& g )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -369,6 +443,12 @@ void getMfemGap( IndexT cs_id, mfem::Vector& g )
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
+
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->getMfemGap( g );
+    return;
+  }
+
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(),
                       axom::fmt::format( "Coupling scheme cs_id={0} does not contain MFEM pressure field data. "
                                          "Create the coupling scheme using registerMfemCouplingScheme() and set the "
@@ -384,6 +464,11 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id )
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
+
+  if ( cs->hasContactFormulation() ) {
+    return cs->getContactFormulation()->getMfemPressure();
+  }
+
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(),
                       axom::fmt::format( "Coupling scheme cs_id={0} does not contain MFEM pressure field data. "
                                          "Create the coupling scheme using registerMfemCouplingScheme() and set the "
@@ -436,7 +521,8 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
       }
       if ( cs.getEnforcementMethod() == LAGRANGE_MULTIPLIER ) {
         SLIC_ERROR_ROOT_IF( cs.getContactModel() != FRICTIONLESS, "Only frictionless contact is supported." );
-        SLIC_ERROR_ROOT_IF( cs.getContactMethod() != SINGLE_MORTAR, "Only single mortar contact is supported." );
+        SLIC_ERROR_ROOT_IF( cs.getContactMethod() != SINGLE_MORTAR && cs.getContactMethod() != ENERGY_MORTAR,
+                            "Only single mortar or ENERGY_MORTAR contact is supported." );
         auto submesh_data = cs.getMfemSubmeshData();
         // updates submesh-native grid functions and transfer operators on
         // the new redecomp mesh

@@ -269,6 +269,30 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r );
 std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id );
 
 /**
+ * @brief Get the derivative of the force with respect to displacement
+ *
+ * @param cs_id Coupling scheme id with a registered MFEM mesh
+ * @return Unique pointer to MFEM HypreParMatrix
+ */
+std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx( IndexT cs_id );
+
+/**
+ * @brief Get the derivative of the force with respect to pressure
+ *
+ * @param cs_id Coupling scheme id with a registered MFEM mesh
+ * @return Unique pointer to MFEM HypreParMatrix
+ */
+std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp( IndexT cs_id );
+
+/**
+ * @brief Get the derivative of the gap with respect to displacement
+ *
+ * @param cs_id Coupling scheme id with a registered MFEM mesh
+ * @return Unique pointer to MFEM HypreParMatrix
+ */
+std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx( IndexT cs_id );
+
+/**
  * @brief Returns gap vector to a given mfem::Vector
  *
  * @note This is stored as an MFEM dual vector, meaning the shared DOFs expect to be summed over all ranks to obtain
