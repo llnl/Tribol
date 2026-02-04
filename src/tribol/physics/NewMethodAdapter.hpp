@@ -44,6 +44,8 @@ class NewMethodAdapter : public ContactFormulation {
 
   RealT computeTimeStep() override;
 
+  RealT getEnergy() const override { return energy_; }
+
   void getMfemForce( mfem::Vector& forces ) const override;
 
   void getMfemGap( mfem::Vector& gaps ) const override;
@@ -57,27 +59,6 @@ class NewMethodAdapter : public ContactFormulation {
   std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const override;
 
  private:
-  /**
-   * @brief Updates the local Mesh struct used by the new_method physics
-   *
-   * Syncs coordinates from MfemMeshData's RedecompMesh to the local new_method::Mesh.
-   */
-  void updateLocalMesh();
-
-  /**
-   * @brief Assembles global Jacobian matrix J_g = d(g_tilde)/dx
-   *
-   * @return std::unique_ptr<mfem::HypreParMatrix>
-   */
-  std::unique_ptr<mfem::HypreParMatrix> assembleJacobianG() const;
-
-  /**
-   * @brief Assembles global Jacobian matrix J_A = d(A)/dx
-   *
-   * @return std::unique_ptr<mfem::HypreParMatrix>
-   */
-  std::unique_ptr<mfem::HypreParMatrix> assembleJacobianA() const;
-
   // --- Member Variables ---
 
   MfemMeshData& mfem_data_;
@@ -98,6 +79,7 @@ class NewMethodAdapter : public ContactFormulation {
   ParSparseMat dA_dx_;
 
   mfem::HypreParVector pressure_vec_;  // This holds p = k * g / A
+  RealT energy_;
   mfem::Vector force_vec_;
   mutable ParSparseMat df_dx_;
 

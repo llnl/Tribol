@@ -76,6 +76,15 @@ class ContactFormulation {
    */
   virtual RealT computeTimeStep() = 0;
 
+  /**
+   * @brief Returns the energy stored by the contact constraints (if supported by the method)
+   *
+   * @note Requires updateNodalForces() to be called first.
+   *
+   * @return contact energy
+   */
+  virtual RealT getEnergy() const = 0;
+
 #ifdef BUILD_REDECOMP
   /**
    * @brief Adds computed forces to the provided MFEM vector

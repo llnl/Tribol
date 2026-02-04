@@ -131,21 +131,15 @@ void NewMethodAdapter::updateNodalGaps()
   P_submesh.MultTranspose( A_linear_form, A_vec_ );
 
   // Move gap and area derivatives to HypreParMatrix (submesh rows, parent mesh cols)
-  const std::vector<std::pair<int, BlockSpace>> all_info{
-      { 0, BlockSpace::NONMORTAR }, { 0, BlockSpace::MORTAR }, { 1, BlockSpace::LAGRANGE_MULTIPLIER } };
-  auto dg_tilde_dx_block = jac_data_.GetMfemBlockJacobian( dg_tilde_dx, all_info, all_info );
+  const std::vector<std::pair<int, BlockSpace>> row_info{ { 1, BlockSpace::LAGRANGE_MULTIPLIER } };
+  const std::vector<std::pair<int, BlockSpace>> col_info{ { 0, BlockSpace::NONMORTAR }, { 0, BlockSpace::MORTAR } };
+  auto dg_tilde_dx_block = jac_data_.GetMfemBlockJacobian( dg_tilde_dx, row_info, col_info );
   dg_tilde_dx_block->owns_blocks = false;
   dg_tilde_dx_ = ParSparseMat( static_cast<mfem::HypreParMatrix*>( &dg_tilde_dx_block->GetBlock( 1, 0 ) ) );
-  delete &dg_tilde_dx_block->GetBlock( 0, 0 );
-  delete &dg_tilde_dx_block->GetBlock( 0, 1 );
-  delete &dg_tilde_dx_block->GetBlock( 1, 1 );
 
-  auto dA_dx_block = jac_data_.GetMfemBlockJacobian( dA_dx, all_info, all_info );
+  auto dA_dx_block = jac_data_.GetMfemBlockJacobian( dA_dx, row_info, col_info );
   dA_dx_block->owns_blocks = false;
   dA_dx_ = ParSparseMat( static_cast<mfem::HypreParMatrix*>( &dA_dx_block->GetBlock( 1, 0 ) ) );
-  delete &dA_dx_block->GetBlock( 0, 0 );
-  delete &dA_dx_block->GetBlock( 0, 1 );
-  delete &dA_dx_block->GetBlock( 1, 1 );
 }
 
 void NewMethodAdapter::updateNodalForces()
@@ -161,6 +155,12 @@ void NewMethodAdapter::updateNodalForces()
       pressure_vec_[i] = params_.k * g_tilde_vec_[i] / A_vec_[i];
     }
   }
+
+  energy_ = 0.0;
+  for ( int i{ 0 }; i < pressure_vec_.Size(); ++i ) {
+    energy_ += pressure_vec_[i] * g_tilde_vec_[i];
+  }
+  MPI_Allreduce( MPI_IN_PLACE, &energy_, 1, MPI_DOUBLE, MPI_SUM, submesh_data_.GetSubmeshFESpace().GetComm() );
 
   mfem::HypreParVector k_over_a( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
   k_over_a = 0.0;
@@ -178,13 +178,13 @@ void NewMethodAdapter::updateNodalForces()
     }
   }
 
-  ParSparseMat dp_dx( *dg_tilde_dx_.get() );
+  ParSparseMat dp_dx( dg_tilde_dx_.get() );
   dp_dx->ScaleRows( k_over_a );
-  ParSparseMat dp_dx_temp( *dA_dx_.get() );
+  ParSparseMat dp_dx_temp( dA_dx_.get() );
   dp_dx_temp->ScaleRows( p_over_a );
   dp_dx -= dp_dx_temp;
 
-  force_vec_ = pressure_vec_ * dg_tilde_dx_ - g_tilde_vec_ * dp_dx;
+  force_vec_ = ( pressure_vec_ * dg_tilde_dx_ ).Add( 1.0, g_tilde_vec_ * dp_dx );
 
   MethodData df_dx_data;
   df_dx_data.reserveBlockJ( { BlockSpace::NONMORTAR, BlockSpace::MORTAR }, pairs_.size() );
@@ -284,11 +284,11 @@ void NewMethodAdapter::updateNodalForces()
     }
   }
 
-  auto& parent_fes = *mfem_data_.GetParentCoords().ParFESpace();
-  auto p_over_a_diag = ParSparseMat::diagonalMatrix( parent_fes.GetComm(), parent_fes.GlobalTrueVSize(),
-                                                     parent_fes.GetTrueDofOffsets(), p_over_a );
-  auto pg2_over_asq_diag = ParSparseMat::diagonalMatrix( parent_fes.GetComm(), parent_fes.GlobalTrueVSize(),
-                                                         parent_fes.GetTrueDofOffsets(), pg2_over_asq );
+  auto& submesh_fes = submesh_data_.GetSubmeshFESpace();
+  auto p_over_a_diag = ParSparseMat::diagonalMatrix( submesh_fes.GetComm(), submesh_fes.GlobalTrueVSize(),
+                                                     submesh_fes.GetTrueDofOffsets(), p_over_a );
+  auto pg2_over_asq_diag = ParSparseMat::diagonalMatrix( submesh_fes.GetComm(), submesh_fes.GlobalTrueVSize(),
+                                                         submesh_fes.GetTrueDofOffsets(), pg2_over_asq );
 
   df_dx_ -= ParSparseMat::RAP( dg_tilde_dx_, p_over_a_diag, dA_dx_ );
   df_dx_ -= ParSparseMat::RAP( dA_dx_, p_over_a_diag, dg_tilde_dx_ );
@@ -334,6 +334,10 @@ std::unique_ptr<mfem::HypreParMatrix> NewMethodAdapter::getMfemDgDx() const
   return std::unique_ptr<mfem::HypreParMatrix>( dg_tilde_dx_.release() );
 }
 
-std::unique_ptr<mfem::HypreParMatrix> NewMethodAdapter::getMfemDfDp() const { return nullptr; }
+std::unique_ptr<mfem::HypreParMatrix> NewMethodAdapter::getMfemDfDp() const
+{
+  SLIC_ERROR_ROOT( "NewMethod does not support getMfemDfDp()" );
+  return nullptr;
+}
 
 }  // namespace tribol
