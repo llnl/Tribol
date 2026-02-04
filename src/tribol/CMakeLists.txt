@@ -60,7 +60,6 @@ set(tribol_headers
 set(tribol_sources
      
     geom/CompGeom.cpp
-    geom/ElementNormal.cpp
     geom/GeomUtilities.cpp
     geom/NodalNormal.cpp
 
@@ -72,7 +71,6 @@ set(tribol_sources
     interface/tribol.cpp
 
     mesh/CouplingScheme.cpp
-    mesh/InterfacePairs.cpp
     mesh/MeshData.cpp
     mesh/MethodCouplingData.cpp
     mesh/MfemData.cpp
@@ -129,14 +127,11 @@ blt_add_library(
 
 # Add separable compilation flag
 if(ENABLE_HIP)
-    target_compile_options(tribol PRIVATE -fgpu-rdc)
     target_compile_options(tribol PRIVATE
         $<$<CONFIG:Debug>:
             -ggdb
         >
     )
-    target_link_options(tribol PRIVATE -fgpu-rdc)
-    target_link_options(tribol PRIVATE --hip-link)
 endif()
 
 # Don't propagate internal dependencies
