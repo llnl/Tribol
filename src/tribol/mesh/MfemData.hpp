@@ -1530,6 +1530,13 @@ class MfemSubmeshData {
   const mfem::GridFunction& GetRedecompGap() const { return redecomp_gap_; }
 
   /**
+   * @brief Get the gap grid function on the redecomp mesh
+   *
+   * @return const mfem::GridFunction&
+   */
+  mfem::GridFunction& GetRedecompGap() { return redecomp_gap_; }
+
+  /**
    * @brief Get the gap vector on the parent-linked boundary submesh
    *
    * @note This is stored as an MFEM dual vector, meaning the shared DOFs are expected to be summed over all ranks to
