@@ -60,6 +60,19 @@ int main( int argc, char** argv )
   int rank;
   MPI_Comm_rank( MPI_COMM_WORLD, &rank );
 
+  // // Only make Rank 0 wait (or whichever rank you want to debug)
+  // if ( rank == 0 ) {
+  //   volatile int debug_wait = 1;
+  //   printf( "Rank %d is ready to attach. PID: %d\n", rank, getpid() );
+  //   fflush( stdout );
+
+  //   while ( debug_wait ) {
+  //     sleep( 1 );  // Sleep to avoid burning 100% CPU
+  //   }
+  // }
+
+  // MPI_Barrier( MPI_COMM_WORLD );  // Keep other ranks from running ahead
+
 #ifdef TRIBOL_USE_UMPIRE
   umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
 #endif
@@ -78,7 +91,9 @@ int main( int argc, char** argv )
   // Lame parameter mu (shear modulus)
   double mu = 50.0;
   // Penalty parameter
-  double penalty = 50.0;
+  double penalty = 1000.0;
+  // Write debug data to screen (force and stiffness)
+  bool debug = false;
   // device configuration string (see mfem::Device::Configure() for valid options)
   std::string device_config = "cpu";
 
@@ -88,6 +103,7 @@ int main( int argc, char** argv )
   app.add_option( "-l,--lambda", lambda, "Lame parameter lambda." )->capture_default_str();
   app.add_option( "-m,--mu", mu, "Lame parameter mu (shear modulus)." )->capture_default_str();
   app.add_option( "-p,--penalty", penalty, "Contact penalty parameter." )->capture_default_str();
+  app.add_option( "-d,--debug", debug, "Write debug data to screen (force and stiffness)." )->capture_default_str();
   // app.add_option( "-d,--device", device_config, "Device configuration string." )->capture_default_str();
 
   CLI11_PARSE( app, argc, argv );
@@ -106,41 +122,37 @@ int main( int argc, char** argv )
 
   // fixed options
   // boundary element attributes of mortar surface, the z = 1 plane of the first block
-  std::set<int> mortar_attrs( { 4 } );
+  std::set<int> mortar_attrs( { 5 } );
   // boundary element attributes of nonmortar surface, the z = 0.99 plane of the second block
-  std::set<int> nonmortar_attrs( { 5 } );
-  // boundary element attributes of x-fixed surfaces (at x = 0)
-  std::vector<std::set<int>> fixed_attrs( 3 );
-  fixed_attrs[0] = { 1 };
-  // boundary element attributes of y-fixed surfaces (at y = 0)
-  fixed_attrs[1] = { 2 };
-  // boundary element attributes of z-fixed surfaces (3: surface at z = 0, 6: surface at z = 1.99)
-  fixed_attrs[2] = { 3, 6 };
+  std::set<int> nonmortar_attrs( { 3 } );
+  // boundary element attributes of x-fixed surfaces (left side)
+  auto xfixed_attrs = std::set<int>( { 4 } );
+  // boundary element attributes of y-fixed surfaces (bottom of bottom square, top of top square)
+  auto yfixed_attrs = std::set<int>( { 1 } );
 
   // create an axom timer to give wall times for each step
   axom::utilities::Timer timer{ false };
 
   timer.start();
-  // build mesh of 2 cubes
+  // build mesh of 2 squares
   int nel_per_dir = std::pow( 2, ref_levels );
-  auto elem_type = mfem::Element::HEXAHEDRON;
+
   // clang-format off
   mfem::ParMesh mesh = shared::ParMeshBuilder(MPI_COMM_WORLD, shared::MeshBuilder::Unify({
-    shared::MeshBuilder::CubeMesh(nel_per_dir, nel_per_dir, nel_per_dir, elem_type)
-      .updateBdrAttrib(3, 7)
-      .updateBdrAttrib(1, 3)
-      .updateBdrAttrib(4, 7)
-      .updateBdrAttrib(5, 1)
-      .updateBdrAttrib(6, 4),
-    shared::MeshBuilder::CubeMesh(nel_per_dir, nel_per_dir, nel_per_dir, elem_type)
-      .translate({0.0, 0.0, 0.99})
-      .updateBdrAttrib(1, 8)
-      .updateBdrAttrib(3, 7)
-      .updateBdrAttrib(4, 7)
-      .updateBdrAttrib(5, 1)
-      .updateBdrAttrib(8, 5)
+    shared::MeshBuilder::SquareMesh(nel_per_dir, nel_per_dir) // Bottom mesh [0,1]x[0,1]
+      .updateBdrAttrib(1, 1) // Bottom (Fixed Y)
+      .updateBdrAttrib(2, 2) // Right
+      .updateBdrAttrib(3, 3) // Top (NonMortar)
+      .updateBdrAttrib(4, 4), // Left (Fixed X)
+    shared::MeshBuilder::SquareMesh(nel_per_dir, nel_per_dir) // Top mesh [0,1]x[0,1]
+      .translate({0.0, 0.99}) // Shift up to [0,1]x[0.99, 1.99]. Overlap 0.01.
+      .updateBdrAttrib(1, 5) // Bottom (Mortar)
+      .updateBdrAttrib(2, 2) // Right
+      .updateBdrAttrib(3, 1) // Top (Fixed Y)
+      .updateBdrAttrib(4, 4) // Left (Fixed X)
   }));
   // clang-format on
+
   timer.stop();
   SLIC_INFO_ROOT( axom::fmt::format( "Time to create parallel mesh: {0:f}ms", timer.elapsedTimeInMilliSec() ) );
 
@@ -175,28 +187,24 @@ int main( int argc, char** argv )
   timer.start();
   mfem::Array<int> ess_tdof_list;
   {
-    // First, build an array of "markers" (i.e. booleans) to denote which vdofs are in the list.
-    mfem::Array<int> ess_vdof_marker( fespace.GetVSize() );
-    ess_vdof_marker = 0;
-    for ( int d = 0; d < 3; ++d ) {
-      // convert boundary attributes into markers for active attributes on the dimension d
-      mfem::Array<int> ess_bdr( mesh.bdr_attributes.Max() );
-      ess_bdr = 0;
-      for ( auto xfixed_attr : fixed_attrs[d] ) {
-        ess_bdr[xfixed_attr - 1] = 1;
-      }
-      mfem::Array<int> new_ess_vdof_marker;
-      // Find all vdofs with the given boundary marker
-      fespace.GetEssentialVDofs( ess_bdr, new_ess_vdof_marker, d );
-      // Compute union of existing marked vdofs with vdofs marked on dimension d
-      for ( int j = 0; j < new_ess_vdof_marker.Size(); ++j ) {
-        ess_vdof_marker[j] = ess_vdof_marker[j] || new_ess_vdof_marker[j];
-      }
+    mfem::Array<int> ess_vdof_marker;
+    mfem::Array<int> ess_bdr( mesh.bdr_attributes.Max() );
+    ess_bdr = 0;
+    for ( auto xfixed_attr : xfixed_attrs ) {
+      if ( xfixed_attr <= ess_bdr.Size() ) ess_bdr[xfixed_attr - 1] = 1;
     }
-    // Convert the vdofs to tdofs to remove duplicate values over ranks
+    fespace.GetEssentialVDofs( ess_bdr, ess_vdof_marker, 0 );
+    mfem::Array<int> new_ess_vdof_marker;
+    ess_bdr = 0;
+    for ( auto yfixed_attr : yfixed_attrs ) {
+      if ( yfixed_attr <= ess_bdr.Size() ) ess_bdr[yfixed_attr - 1] = 1;
+    }
+    fespace.GetEssentialVDofs( ess_bdr, new_ess_vdof_marker, 1 );
+    for ( int i{ 0 }; i < ess_vdof_marker.Size(); ++i ) {
+      ess_vdof_marker[i] = ess_vdof_marker[i] || new_ess_vdof_marker[i];
+    }
     mfem::Array<int> ess_tdof_marker;
     fespace.GetRestrictionMatrix()->BooleanMult( ess_vdof_marker, ess_tdof_marker );
-    // Convert the tdof marker array to a tdof list
     mfem::FiniteElementSpace::MarkerToList( ess_tdof_marker, ess_tdof_list );
   }
   timer.stop();
@@ -254,6 +262,7 @@ int main( int argc, char** argv )
 
   // Add contact stiffness to elasticity stiffness
   auto A_total = std::unique_ptr<mfem::HypreParMatrix>( mfem::Add( 1.0, *A_elasticity, 1.0, *A_contact ) );
+  A_total->EliminateRowsCols( ess_tdof_list );
 
   timer.stop();
   SLIC_INFO_ROOT(
@@ -268,6 +277,66 @@ int main( int argc, char** argv )
   mfem::Vector f_contact( fespace.GetTrueVSize() );
   f_contact = 0.0;
   tribol::getMfemResponse( coupling_scheme_id, f_contact );
+  f_contact.Neg();
+  for ( int i{ 0 }; i < ess_tdof_list.Size(); ++i ) {
+    f_contact( ess_tdof_list[i] ) = 0.0;
+  }
+
+  if ( debug ) {
+    int my_rank;
+    MPI_Comm_rank( MPI_COMM_WORLD, &my_rank );
+    int num_ranks;
+    MPI_Comm_size( MPI_COMM_WORLD, &num_ranks );
+    int dim = mesh.SpaceDimension();
+    int ndofs = fespace.GetNDofs();
+
+    // Prolong contact force to grid function space
+    mfem::Vector f_contact_nodes( fespace.GetVSize() );
+    fespace.GetProlongationMatrix()->Mult( f_contact, f_contact_nodes );
+
+    for ( int r = 0; r < num_ranks; ++r ) {
+      if ( my_rank == r ) {
+        std::cout << "Rank " << my_rank << " Coordinates:" << std::endl;
+        for ( int i = 0; i < ndofs; ++i ) {
+          std::cout << "node " << i << ": (";
+          for ( int d = 0; d < dim; ++d ) {
+            std::cout << coords( fespace.DofToVDof( i, d ) ) << ( d < dim - 1 ? ", " : "" );
+          }
+          std::cout << ")" << std::endl;
+        }
+
+        std::cout << "Rank " << my_rank << " Contact Forces:" << std::endl;
+        for ( int i = 0; i < ndofs; ++i ) {
+          std::cout << "node " << i << ": (";
+          for ( int d = 0; d < dim; ++d ) {
+            std::cout << f_contact_nodes( fespace.DofToVDof( i, d ) ) << ( d < dim - 1 ? ", " : "" );
+          }
+          std::cout << ")" << std::endl;
+        }
+        mfem::SparseMatrix sm_ela;
+        A_elasticity->MergeDiagAndOffd( sm_ela );
+        mfem::DenseMatrix dm_ela;
+        sm_ela.ToDenseMatrix( dm_ela );
+        std::cout << "Rank " << my_rank << " Elasticity Stiffness:" << std::endl;
+        dm_ela.Print( std::cout );
+
+        mfem::SparseMatrix sm_con;
+        A_contact->MergeDiagAndOffd( sm_con );
+        mfem::DenseMatrix dm_con;
+        sm_con.ToDenseMatrix( dm_con );
+        std::cout << "Rank " << my_rank << " Contact Stiffness:" << std::endl;
+        dm_con.Print( std::cout );
+
+        mfem::SparseMatrix sm_tot;
+        A_total->MergeDiagAndOffd( sm_tot );
+        mfem::DenseMatrix dm_tot;
+        sm_tot.ToDenseMatrix( dm_tot );
+        std::cout << "Rank " << my_rank << " Total Stiffness:" << std::endl;
+        dm_tot.Print( std::cout );
+      }
+      MPI_Barrier( MPI_COMM_WORLD );
+    }
+  }
 
   // Create a solution vector storing displacement
   mfem::Vector X( fespace.GetTrueVSize() );
