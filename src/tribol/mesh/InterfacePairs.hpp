@@ -11,10 +11,13 @@
 namespace tribol {
 
 struct InterfacePair {
-  TRIBOL_HOST_DEVICE InterfacePair( IndexT element_id1, IndexT element_id2, bool is_contact_candidate = true );
+  TRIBOL_HOST_DEVICE InterfacePair( IndexT element_id1, IndexT element_id2, bool is_contact_candidate = true )
+      : m_element_id1( element_id1 ), m_element_id2( element_id2 ), m_is_contact_candidate( is_contact_candidate )
+  {
+  }
 
   // overload constructor to handle zero input arguments
-  TRIBOL_HOST_DEVICE InterfacePair();
+  TRIBOL_HOST_DEVICE InterfacePair() : m_element_id1( -1 ), m_element_id2( -1 ), m_is_contact_candidate( true ) {}
 
   // Element id for face 1
   IndexT m_element_id1;

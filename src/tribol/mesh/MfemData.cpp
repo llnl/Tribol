@@ -17,6 +17,8 @@
 
 #include "redecomp/utils/ArrayUtility.hpp"
 
+#include "tribol/common/LoopExec.hpp"
+
 namespace tribol {
 
 SubmeshLORTransfer::SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh, bool use_ea )

@@ -68,15 +68,6 @@ void SurfaceContactElem::allocateBlockJ( EnforcementMethod enf )
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void SurfaceContactElem::deallocateElem()
-{
-  if ( this->mortarWts != nullptr ) {
-    delete[] this->mortarWts;
-    this->mortarWts = nullptr;
-  }
-}
-
-//------------------------------------------------------------------------------
 RealT SurfaceContactElem::getMortarNonmortarWt( const int a, const int b )
 {
   // note: the mortar wts are stored in a stacked array with nonmortar-nonmortar
