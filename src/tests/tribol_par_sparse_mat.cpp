@@ -3,15 +3,17 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include <gtest/gtest.h>
-
-#include "tribol/utils/ParSparseMat.hpp"
 #include "tribol/config.hpp"
-#include "mfem.hpp"
+
+#include <gtest/gtest.h>
 
 #ifdef TRIBOL_USE_MPI
 #include <mpi.h>
 #endif
+
+#include "mfem.hpp"
+
+#include "tribol/utils/ParSparseMat.hpp"
 
 class ParSparseMatTest : public ::testing::Test {
  protected:

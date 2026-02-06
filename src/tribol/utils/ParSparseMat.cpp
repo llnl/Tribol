@@ -151,46 +151,72 @@ ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_si
     num_local_rows = static_cast<int>( row_starts[rank + 1] - row_starts[rank] );
   }
 
-  int num_ordered_rows = ordered_rows.Size();
-  int num_diag_entries = skip_rows ? ( num_local_rows - num_ordered_rows ) : num_ordered_rows;
+  // NOTE: mfem::HypreParMatrix(MPI_Comm, HYPRE_BigInt, HYPRE_BigInt*, SparseMatrix*) does not take ownership
+  // of the provided CSR arrays (see MFEM docs). To avoid dangling pointers and allocator mismatches, build
+  // the ParCSR data using the HypreParMatrix constructor that takes ownership of raw arrays allocated with
+  // new[].
 
-  mfem::Array<int> rows( num_local_rows + 1 );
-  mfem::Array<int> cols( num_diag_entries );
-  rows[0] = 0;
+  const int num_ordered_rows = ordered_rows.Size();
+  if ( num_local_rows < 0 ) {
+    num_local_rows = 0;
+  }
 
-  int diag_entry_ct = 0;
+  // Count selected diagonal entries in a first pass (do not rely on ordered_rows being unique/in-range).
+  HYPRE_Int num_diag_entries = 0;
   int ordered_idx = 0;
-  for ( int i{ 0 }; i < num_local_rows; ++i ) {
-    bool is_ordered = ( ordered_idx < num_ordered_rows && ordered_rows[ordered_idx] == i );
-    bool add_entry = skip_rows ? !is_ordered : is_ordered;
-
-    if ( add_entry ) {
-      cols[diag_entry_ct] = i;
-      ++diag_entry_ct;
-    }
-    rows[i + 1] = diag_entry_ct;
-
-    if ( is_ordered ) {
+  for ( int i = 0; i < num_local_rows; ++i ) {
+    while ( ordered_idx < num_ordered_rows && ordered_rows[ordered_idx] < i ) {
       ++ordered_idx;
+    }
+    const bool is_in_list = ( ordered_idx < num_ordered_rows && ordered_rows[ordered_idx] == i );
+    const bool add_entry = skip_rows ? !is_in_list : is_in_list;
+    if ( add_entry ) {
+      ++num_diag_entries;
     }
   }
 
-  rows.GetMemory().SetHostPtrOwner( false );
-  cols.GetMemory().SetHostPtrOwner( false );
-  mfem::Vector vals( num_diag_entries );
-  vals = diag_val;
-  vals.GetMemory().SetHostPtrOwner( false );
-  mfem::SparseMatrix inactive_diag( rows.GetData(), cols.GetData(), vals.GetData(), num_local_rows, num_local_rows,
-                                    false, false, true );
-  // if the size of vals is zero, SparseMatrix creates its own memory which it owns.  explicitly prevent this...
-  inactive_diag.SetDataOwner( false );
+  auto* diag_i = new HYPRE_Int[num_local_rows + 1];
+  auto* diag_j = ( num_diag_entries > 0 ) ? new HYPRE_Int[num_diag_entries] : nullptr;
+  auto* diag_data = ( num_diag_entries > 0 ) ? new mfem::real_t[num_diag_entries] : nullptr;
+
+  // No off-diagonal entries for a purely diagonal matrix.
+  auto* offd_i = new HYPRE_Int[num_local_rows + 1];
+  auto* offd_j = static_cast<HYPRE_Int*>( nullptr );
+  auto* offd_data = static_cast<mfem::real_t*>( nullptr );
+  auto* offd_col_map = static_cast<HYPRE_BigInt*>( nullptr );
+
+  diag_i[0] = 0;
+  for ( int i = 0; i < num_local_rows + 1; ++i ) {
+    offd_i[i] = 0;
+  }
+
+  HYPRE_Int diag_entry_ct = 0;
+  ordered_idx = 0;
+  for ( int i = 0; i < num_local_rows; ++i ) {
+    while ( ordered_idx < num_ordered_rows && ordered_rows[ordered_idx] < i ) {
+      ++ordered_idx;
+    }
+    const bool is_in_list = ( ordered_idx < num_ordered_rows && ordered_rows[ordered_idx] == i );
+    const bool add_entry = skip_rows ? !is_in_list : is_in_list;
+
+    if ( add_entry ) {
+      diag_j[diag_entry_ct] = static_cast<HYPRE_Int>( i );
+      diag_data[diag_entry_ct] = diag_val;
+      ++diag_entry_ct;
+    }
+    diag_i[i + 1] = diag_entry_ct;
+  }
+
   // copy row_starts to a new array
   mfem::Array<HYPRE_BigInt> row_starts_copy = row_starts;
-  auto mat = std::make_unique<mfem::HypreParMatrix>( comm, global_size, row_starts_copy, &inactive_diag );
-  mat->CopyRowStarts();
+  auto diag_hpm = std::make_unique<mfem::HypreParMatrix>( comm, global_size, global_size, row_starts_copy.GetData(),
+                                                          row_starts_copy.GetData(), diag_i, diag_j, diag_data, offd_i,
+                                                          offd_j, offd_data, 0, offd_col_map, true );
+  diag_hpm->CopyRowStarts();
+  diag_hpm->CopyColStarts();
   auto mfem_owned_arrays = 3;
-  mat->SetOwnerFlags( mfem_owned_arrays, mat->OwnsOffd(), mat->OwnsColMap() );
-  return ParSparseMat( std::move( mat ) );
+  diag_hpm->SetOwnerFlags( mfem_owned_arrays, diag_hpm->OwnsOffd(), diag_hpm->OwnsColMap() );
+  return ParSparseMat( std::move( diag_hpm ) );
 }
 
 ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_size, HYPRE_BigInt* row_starts,
