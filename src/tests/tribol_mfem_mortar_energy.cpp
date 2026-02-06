@@ -35,7 +35,7 @@
  * @brief This tests the Tribol MFEM interface running a contact patch test using ENERGY_MORTAR.
  *
  */
-class MfemMortarEnergyTest : public testing::TestWithParam<std::tuple<int, mfem::Element::Type>> {
+class MfemMortarEnergyTest : public testing::TestWithParam<std::tuple<int>> {
  protected:
   tribol::RealT max_disp_;
   void SetUp() override
@@ -53,8 +53,8 @@ class MfemMortarEnergyTest : public testing::TestWithParam<std::tuple<int, mfem:
     auto nonmortar_attrs = std::set<int>( { 3 } );
     // boundary element attributes of x-fixed surfaces (left side)
     auto xfixed_attrs = std::set<int>( { 4 } );
-    // boundary element attributes of y-fixed surfaces (bottom of bottom square)
-    auto yfixed_attrs = std::set<int>( { 1 } );
+    // boundary element attributes of y-fixed surfaces (bottom of bottom square, top of top square)
+    auto yfixed_attrs = std::set<int>( { 1, 6 } );
 
     // build mesh of 2 squares
     int nel_per_dir = std::pow( 2, ref_levels );
@@ -70,7 +70,7 @@ class MfemMortarEnergyTest : public testing::TestWithParam<std::tuple<int, mfem:
         .translate({0.0, 0.99}) // Shift up to [0,1]x[0.99, 1.99]. Overlap 0.01.
         .updateBdrAttrib(1, 5) // Bottom (Mortar)
         .updateBdrAttrib(2, 2) // Right
-        .updateBdrAttrib(3, 6) // Top
+        .updateBdrAttrib(3, 6) // Top (Fixed Y)
         .updateBdrAttrib(4, 4) // Left (Fixed X)
     }));
     // clang-format on
@@ -136,7 +136,7 @@ class MfemMortarEnergyTest : public testing::TestWithParam<std::tuple<int, mfem:
     tribol::setLagrangeMultiplierOptions( coupling_scheme_id, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN );
 
     // Set Penalty options
-    tribol::setMfemKinematicConstantPenalty( coupling_scheme_id, 50.0, 50.0 );
+    tribol::setMfemKinematicConstantPenalty( coupling_scheme_id, 1000.0, 1000.0 );
 
     coords.ReadWrite();
     // update tribol (compute contact contribution to force and stiffness)
@@ -151,19 +151,14 @@ class MfemMortarEnergyTest : public testing::TestWithParam<std::tuple<int, mfem:
     mfem::Vector f_contact( par_fe_space.GetTrueVSize() );
     f_contact = 0.0;
     tribol::getMfemResponse( coupling_scheme_id, f_contact );
+    f_contact.Neg();
+    for ( int i{ 0 }; i < ess_tdof_list.Size(); ++i ) {
+      f_contact( ess_tdof_list[i] ) = 0.0;
+    }
 
     // Add contact stiffness to elasticity stiffness
-    // mfem::Add(1.0, *A, 1.0, *A_cont) returns a new HypreParMatrix
     auto A_total = std::unique_ptr<mfem::HypreParMatrix>( mfem::Add( 1.0, *A, 1.0, *A_cont ) );
-
-    // Create RHS.
-    // We want to solve (K_elast + K_contact) * du = f_contact + (f_ext=0)
-    // f_contact returned by Tribol is usually the force exerted by contact on the nodes.
-    // Ideally, Residual R = F_int(u) - F_ext - F_contact.
-    // Here we assume linear: K_elast * u - F_contact = 0 ?
-    // If we start at u=0, F_int=0.
-    // If we have overlap, F_contact is repulsive (pushing nodes apart).
-    // So K * du = F_contact.
+    A_total->EliminateRowsCols( ess_tdof_list );
 
     // Solve for X (displacement)
     mfem::Vector X( par_fe_space.GetTrueVSize() );
@@ -182,9 +177,6 @@ class MfemMortarEnergyTest : public testing::TestWithParam<std::tuple<int, mfem:
       auto& P = *par_fe_space.GetProlongationMatrix();
       P.Mult( X, displacement );
     }
-    // Note: tribol_mfem_mortar_lm.cpp does `displacement.Neg()` because LM solution X_blk usually gives displacement
-    // correction. Here, if F_contact pushes apart, X should separate the meshes. Top mesh moves up, Bottom mesh moves
-    // down. Top mesh (y~1.0) -> +dy Bottom mesh (y~1.0) -> -dy
 
     // We can check max displacement magnitude.
     auto local_max = displacement.Max();
@@ -195,35 +187,15 @@ class MfemMortarEnergyTest : public testing::TestWithParam<std::tuple<int, mfem:
 
 TEST_P( MfemMortarEnergyTest, check_mortar_displacement )
 {
-  // Expected displacement:
-  // Overlap is 0.01.
-  // Two blocks of equal stiffness.
-  // They should push apart to resolve overlap?
-  // If penalty is high enough, they separate by ~0.005 each.
-  // If penalty is comparable to modulus (50.0 vs 50.0), it might be soft.
-  // With k=50, E=50...
-  // Force ~ k * delta.
-  // Displacement ~ F / k_elast.
-  // This is a coupled system.
-  // Let's just check that max_disp_ is positive and roughly correct order of magnitude.
-  // In LM test (overlap 0.01?), result was 0.005.
-  // Here we use penalty. If k=infinite, it should be 0.005.
-  // With k=50, it will be less than 0.005 (remaining overlap).
-
-  // Actually, tribol_mfem_mortar_lm.cpp test uses overlap 0.01 (0.99 vs 1.0).
-  // Displacement result is 0.005.
-  // Here we use same parameters.
-
-  // We expect some displacement.
+  // Penalty enforcement with nonlinear contact enforcement. Let's just check that max_disp_ is positive and roughly
+  // correct order of magnitude.
   EXPECT_GT( max_disp_, 0.0 );
   EXPECT_LT( max_disp_, 0.01 );
 
   MPI_Barrier( MPI_COMM_WORLD );
 }
 
-INSTANTIATE_TEST_SUITE_P( tribol, MfemMortarEnergyTest,
-                          testing::Values( std::make_tuple( 2, mfem::Element::Type::QUADRILATERAL ),
-                                           std::make_tuple( 2, mfem::Element::Type::TRIANGLE ) ) );
+INSTANTIATE_TEST_SUITE_P( tribol, MfemMortarEnergyTest, testing::Values( std::make_tuple( 2 ) ) );
 
 //------------------------------------------------------------------------------
 #include "axom/slic/core/SimpleLogger.hpp"
