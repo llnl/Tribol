@@ -1023,10 +1023,8 @@ void CouplingScheme::performBinning()
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
   if ( m_formulation_impl ) {
-    // performBinning();
     if ( m_interface_pairs.size() > 0 ) {
       m_formulation_impl->setInterfacePairs( std::move( m_interface_pairs ), 0 );
-      m_formulation_impl->updateIntegrationRule();
     }
     m_formulation_impl->updateNodalGaps();
     m_formulation_impl->updateNodalForces();
