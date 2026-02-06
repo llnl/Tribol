@@ -99,7 +99,8 @@ int main( int argc, char** argv )
   SLIC_INFO_ROOT( axom::fmt::format( "refine:   {0}", ref_levels ) );
   SLIC_INFO_ROOT( axom::fmt::format( "lambda:   {0}", lambda ) );
   SLIC_INFO_ROOT( axom::fmt::format( "mu:       {0}", mu ) );
-  SLIC_INFO_ROOT( axom::fmt::format( "penalty:  {0}\n", penalty ) );
+  SLIC_INFO_ROOT( axom::fmt::format( "penalty:  {0}", penalty ) );
+  SLIC_INFO_ROOT( axom::fmt::format( "debug:    {0}\n", debug ) );
 
   // configure the devices available for MFEM kernel launches
   mfem::Device device( device_config );
