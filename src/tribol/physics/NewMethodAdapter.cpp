@@ -7,10 +7,17 @@
 
 namespace tribol {
 
-NewMethodAdapter::NewMethodAdapter( MfemMeshData& mfem_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
-                                    MeshData& mesh1, MeshData& mesh2, double k, double delta, int N )
-    : mfem_data_( mfem_data ), submesh_data_( submesh_data ), jac_data_( jac_data ), mesh1_( mesh1 ), mesh2_( mesh2 )
+NewMethodAdapter::NewMethodAdapter( MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, MeshData& mesh1,
+                                    MeshData& mesh2, double k, double delta, int N )
+    // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
+    // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
+    : submesh_data_( submesh_data ), jac_data_( jac_data ), mesh1_( mesh2 ), mesh2_( mesh1 )
 {
+  if ( mesh1.numberOfNodes() > 0 && mesh2.numberOfNodes() > 0 ) {
+    SLIC_ERROR_ROOT_IF( mesh1.spatialDimension() != 2 || mesh2.spatialDimension() != 2,
+                        "ENERGY_MORTAR requires 2D meshes." );
+  }
+
   params_.k = k;
   params_.del = delta;
   params_.N = N;
@@ -33,7 +40,7 @@ void NewMethodAdapter::updateNodalGaps()
   // NOTE: user should have called updateMfemParallelDecomposition() with updated coords before calling this
 
   // Tribol level data structures for storing gap, area, and derivatives
-  auto redecomp_gap = submesh_data_.GetRedecompGap();
+  auto& redecomp_gap = submesh_data_.GetRedecompGap();
   mfem::GridFunction redecomp_area( redecomp_gap.FESpace() );
   redecomp_area = 0.0;
   MethodData dg_tilde_dx;
@@ -41,19 +48,23 @@ void NewMethodAdapter::updateNodalGaps()
                              pairs_.size() );
   MethodData dA_dx;
   dA_dx.reserveBlockJ( { BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER }, pairs_.size() );
+  const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
   auto mesh1_view = mesh1_.getView();
   auto mesh2_view = mesh2_.getView();
 
   // Compute local contributions
   for ( const auto& pair : pairs_ ) {
-    const auto elem1 = static_cast<int>( pair.m_element_id1 );
-    const auto elem2 = static_cast<int>( pair.m_element_id2 );
+    // These need to be flipped, since the pairs are determined with element 1 associated with mesh 1, and we flipped
+    // the mesh numbers to be consistent with the literature and since the underlying method integrates on element 1
+    InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
+    const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
+    const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
 
     double g_tilde_elem[2];
     double A_elem[2];
 
-    evaluator_->gtilde_and_area( pair, mesh1_view, mesh2_view, g_tilde_elem, A_elem );
+    evaluator_->gtilde_and_area( flipped_pair, mesh1_view, mesh2_view, g_tilde_elem, A_elem );
 
     if ( A_elem[0] <= 0.0 && A_elem[1] <= 0.0 ) {
       continue;
@@ -71,46 +82,46 @@ void NewMethodAdapter::updateNodalGaps()
     // compute g_tilde first derivative
     double dg_dx_node1[8];
     double dg_dx_node2[8];
-    evaluator_->grad_gtilde( pair, mesh1_view, mesh2_view, dg_dx_node1, dg_dx_node2 );
+    evaluator_->grad_gtilde( flipped_pair, mesh1_view, mesh2_view, dg_dx_node1, dg_dx_node2 );
     StackArray<DeviceArray2D<RealT>, 9> dg_tilde_dx_block( 3 );
     dg_tilde_dx_block( 2, 0 ) = DeviceArray2D<RealT>( 2, 4 );
     dg_tilde_dx_block( 2, 0 ).fill( 0.0 );
     dg_tilde_dx_block( 2, 1 ) = DeviceArray2D<RealT>( 2, 4 );
     dg_tilde_dx_block( 2, 1 ).fill( 0.0 );
     for ( int i{ 0 }; i < 4; ++i ) {
-      dg_tilde_dx_block( 2, 0 )( 0, i ) = dg_dx_node1[i];
+      dg_tilde_dx_block( 2, 0 )( 0, i ) = dg_dx_node1[node_idx[i]];
     }
     for ( int i{ 0 }; i < 4; ++i ) {
-      dg_tilde_dx_block( 2, 0 )( 1, i ) = dg_dx_node2[i];
+      dg_tilde_dx_block( 2, 0 )( 1, i ) = dg_dx_node2[node_idx[i]];
     }
     for ( int i{ 0 }; i < 4; ++i ) {
-      dg_tilde_dx_block( 2, 1 )( 0, i ) = dg_dx_node1[i + 4];
+      dg_tilde_dx_block( 2, 1 )( 0, i ) = dg_dx_node1[node_idx[i + 4]];
     }
     for ( int i{ 0 }; i < 4; ++i ) {
-      dg_tilde_dx_block( 2, 1 )( 1, i ) = dg_dx_node2[i + 4];
+      dg_tilde_dx_block( 2, 1 )( 1, i ) = dg_dx_node2[node_idx[i + 4]];
     }
     dg_tilde_dx.storeElemBlockJ( { elem1, elem2, elem1 }, dg_tilde_dx_block );
 
     // compute area first derivative
     double dA_dx_node1[8];
     double dA_dx_node2[8];
-    evaluator_->grad_trib_area( pair, mesh1_view, mesh2_view, dA_dx_node1, dA_dx_node2 );
+    evaluator_->grad_trib_area( flipped_pair, mesh1_view, mesh2_view, dA_dx_node1, dA_dx_node2 );
     StackArray<DeviceArray2D<RealT>, 9> dA_dx_block( 3 );
     dA_dx_block( 2, 0 ) = DeviceArray2D<RealT>( 2, 4 );
     dA_dx_block( 2, 0 ).fill( 0.0 );
     dA_dx_block( 2, 1 ) = DeviceArray2D<RealT>( 2, 4 );
     dA_dx_block( 2, 1 ).fill( 0.0 );
     for ( int i{ 0 }; i < 4; ++i ) {
-      dA_dx_block( 2, 0 )( 0, i ) = dA_dx_node1[i];
+      dA_dx_block( 2, 0 )( 0, i ) = dA_dx_node1[node_idx[i]];
     }
     for ( int i{ 0 }; i < 4; ++i ) {
-      dA_dx_block( 2, 0 )( 1, i ) = dA_dx_node2[i];
+      dA_dx_block( 2, 0 )( 1, i ) = dA_dx_node2[node_idx[i]];
     }
     for ( int i{ 0 }; i < 4; ++i ) {
-      dA_dx_block( 2, 1 )( 0, i ) = dA_dx_node1[i + 4];
+      dA_dx_block( 2, 1 )( 0, i ) = dA_dx_node1[node_idx[i + 4]];
     }
     for ( int i{ 0 }; i < 4; ++i ) {
-      dA_dx_block( 2, 1 )( 1, i ) = dA_dx_node2[i + 4];
+      dA_dx_block( 2, 1 )( 1, i ) = dA_dx_node2[node_idx[i + 4]];
     }
     dA_dx.storeElemBlockJ( { elem1, elem2, elem1 }, dA_dx_block );
   }
@@ -188,31 +199,52 @@ void NewMethodAdapter::updateNodalForces()
 
   MethodData df_dx_data;
   df_dx_data.reserveBlockJ( { BlockSpace::NONMORTAR, BlockSpace::MORTAR }, pairs_.size() );
+  const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
+
+  mfem::GridFunction redecomp_pressure( submesh_data_.GetRedecompGap() );
+  mfem::ParGridFunction submesh_pressure(
+      const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
+  submesh_pressure.SetFromTrueDofs( pressure_vec_ );
+  submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_pressure, redecomp_pressure );
+
+  mfem::GridFunction redecomp_g_tilde( submesh_data_.GetRedecompGap() );
+  mfem::ParGridFunction submesh_g_tilde(
+      const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
+  submesh_g_tilde.SetFromTrueDofs( g_tilde_vec_ );
+  submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_g_tilde, redecomp_g_tilde );
+
+  mfem::GridFunction redecomp_A( submesh_data_.GetRedecompGap() );
+  mfem::ParGridFunction submesh_A( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
+  submesh_A.SetFromTrueDofs( A_vec_ );
+  submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_A, redecomp_A );
 
   auto mesh1_view = mesh1_.getView();
   auto mesh2_view = mesh2_.getView();
 
   // get pairwise action of second derivatives of gaps and pressure for stiffness contribution
   for ( auto& pair : pairs_ ) {
-    const auto elem1 = static_cast<int>( pair.m_element_id1 );
+    // These need to be flipped, since the pairs are determined with element 1 associated with mesh 1, and we flipped
+    // the mesh numbers to be consistent with the literature and since the underlying method integrates on element 1
+    InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
+    const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
     const auto node11 = mesh1_view.getConnectivity()( elem1, 0 );
     const auto node12 = mesh1_view.getConnectivity()( elem1, 1 );
-    const auto elem2 = static_cast<int>( pair.m_element_id2 );
+    const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
 
-    const RealT pressure1 = 2.0 * pressure_vec_[node11];
-    const RealT pressure2 = 2.0 * pressure_vec_[node12];
+    const RealT pressure1 = 2.0 * redecomp_pressure[node11];
+    const RealT pressure2 = 2.0 * redecomp_pressure[node12];
 
     if ( pressure1 == 0.0 && pressure2 == 0.0 ) {
       continue;
     }
 
-    const RealT g_p_ainv1 = -g_tilde_vec_[node11] * pressure_vec_[node11] / A_vec_[node11];
-    const RealT g_p_ainv2 = -g_tilde_vec_[node12] * pressure_vec_[node12] / A_vec_[node12];
+    const RealT g_p_ainv1 = -redecomp_g_tilde[node11] * redecomp_pressure[node11] / redecomp_A[node11];
+    const RealT g_p_ainv2 = -redecomp_g_tilde[node12] * redecomp_pressure[node12] / redecomp_A[node12];
 
     double df_dx_node1[64];
     double df_dx_node2[64];
     // ordering: [dg/(dx0dx0) dg/(dy0dx0) dg/(dx1dx0) ...]
-    evaluator_->d2_g2tilde( pair, mesh1_view, mesh2_view, df_dx_node1, df_dx_node2 );
+    evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, df_dx_node1, df_dx_node2 );
     StackArray<DeviceArray2D<RealT>, 9> df_dx_block( 2 );
     df_dx_block( 0, 0 ) = DeviceArray2D<RealT>( 4, 4 );
     df_dx_block( 0, 0 ).fill( 0.0 );
@@ -224,47 +256,51 @@ void NewMethodAdapter::updateNodalForces()
     df_dx_block( 1, 1 ).fill( 0.0 );
     for ( int j{ 0 }; j < 4; ++j ) {
       for ( int i{ 0 }; i < 4; ++i ) {
-        df_dx_block( 0, 0 )( i, j ) = pressure1 * df_dx_node1[i + j * 8] + pressure2 * df_dx_node2[i + j * 8];
+        df_dx_block( 0, 0 )( i, j ) = pressure1 * df_dx_node1[node_idx[i] + node_idx[j] * 8] +
+                                      pressure2 * df_dx_node2[node_idx[i] + node_idx[j] * 8];
       }
     }
     for ( int j{ 0 }; j < 4; ++j ) {
       for ( int i{ 0 }; i < 4; ++i ) {
-        df_dx_block( 0, 1 )( i, j ) =
-            pressure1 * df_dx_node1[i + ( j + 4 ) * 8] + pressure2 * df_dx_node2[i + ( j + 4 ) * 8];
+        df_dx_block( 0, 1 )( i, j ) = pressure1 * df_dx_node1[node_idx[i] + node_idx[j + 4] * 8] +
+                                      pressure2 * df_dx_node2[node_idx[i] + node_idx[j + 4] * 8];
       }
     }
     for ( int j{ 0 }; j < 4; ++j ) {
       for ( int i{ 0 }; i < 4; ++i ) {
-        df_dx_block( 1, 0 )( i, j ) = pressure1 * df_dx_node1[i + 4 + j * 8] + pressure2 * df_dx_node2[i + 4 + j * 8];
+        df_dx_block( 1, 0 )( i, j ) = pressure1 * df_dx_node1[node_idx[i + 4] + node_idx[j] * 8] +
+                                      pressure2 * df_dx_node2[node_idx[i + 4] + node_idx[j] * 8];
       }
     }
     for ( int j{ 0 }; j < 4; ++j ) {
       for ( int i{ 0 }; i < 4; ++i ) {
-        df_dx_block( 1, 1 )( i, j ) =
-            pressure1 * df_dx_node1[i + 4 + ( j + 4 ) * 8] + pressure2 * df_dx_node2[i + 4 + ( j + 4 ) * 8];
+        df_dx_block( 1, 1 )( i, j ) = pressure1 * df_dx_node1[node_idx[i + 4] + node_idx[j + 4] * 8] +
+                                      pressure2 * df_dx_node2[node_idx[i + 4] + node_idx[j + 4] * 8];
       }
     }
-    evaluator_->compute_d2A_d2u( pair, mesh1_view, mesh2_view, df_dx_node1, df_dx_node2 );
+    evaluator_->compute_d2A_d2u( flipped_pair, mesh1_view, mesh2_view, df_dx_node1, df_dx_node2 );
     for ( int j{ 0 }; j < 4; ++j ) {
       for ( int i{ 0 }; i < 4; ++i ) {
-        df_dx_block( 0, 0 )( i, j ) += g_p_ainv1 * df_dx_node1[i + j * 8] + g_p_ainv2 * df_dx_node2[i + j * 8];
-      }
-    }
-    for ( int j{ 0 }; j < 4; ++j ) {
-      for ( int i{ 0 }; i < 4; ++i ) {
-        df_dx_block( 0, 1 )( i, j ) +=
-            g_p_ainv1 * df_dx_node1[i + ( j + 4 ) * 8] + g_p_ainv2 * df_dx_node2[i + ( j + 4 ) * 8];
+        df_dx_block( 0, 0 )( i, j ) += g_p_ainv1 * df_dx_node1[node_idx[i] + node_idx[j] * 8] +
+                                       g_p_ainv2 * df_dx_node2[node_idx[i] + node_idx[j] * 8];
       }
     }
     for ( int j{ 0 }; j < 4; ++j ) {
       for ( int i{ 0 }; i < 4; ++i ) {
-        df_dx_block( 1, 0 )( i, j ) += g_p_ainv1 * df_dx_node1[i + 4 + j * 8] + g_p_ainv2 * df_dx_node2[i + 4 + j * 8];
+        df_dx_block( 0, 1 )( i, j ) += g_p_ainv1 * df_dx_node1[node_idx[i] + node_idx[j + 4] * 8] +
+                                       g_p_ainv2 * df_dx_node2[node_idx[i] + node_idx[j + 4] * 8];
       }
     }
     for ( int j{ 0 }; j < 4; ++j ) {
       for ( int i{ 0 }; i < 4; ++i ) {
-        df_dx_block( 1, 1 )( i, j ) +=
-            g_p_ainv1 * df_dx_node1[i + 4 + ( j + 4 ) * 8] + g_p_ainv2 * df_dx_node2[i + 4 + ( j + 4 ) * 8];
+        df_dx_block( 1, 0 )( i, j ) += g_p_ainv1 * df_dx_node1[node_idx[i + 4] + node_idx[j] * 8] +
+                                       g_p_ainv2 * df_dx_node2[node_idx[i + 4] + node_idx[j] * 8];
+      }
+    }
+    for ( int j{ 0 }; j < 4; ++j ) {
+      for ( int i{ 0 }; i < 4; ++i ) {
+        df_dx_block( 1, 1 )( i, j ) += g_p_ainv1 * df_dx_node1[node_idx[i + 4] + node_idx[j + 4] * 8] +
+                                       g_p_ainv2 * df_dx_node2[node_idx[i + 4] + node_idx[j + 4] * 8];
       }
     }
     df_dx_data.storeElemBlockJ( { elem1, elem2 }, df_dx_block );

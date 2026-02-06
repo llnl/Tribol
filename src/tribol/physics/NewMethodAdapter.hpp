@@ -27,8 +27,8 @@ class NewMethodAdapter : public ContactFormulation {
    * @param delta Smoothing length
    * @param N Quadrature order
    */
-  NewMethodAdapter( MfemMeshData& mfem_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, MeshData& mesh1,
-                    MeshData& mesh2, double k, double delta, int N );
+  NewMethodAdapter( MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, MeshData& mesh1, MeshData& mesh2,
+                    double k, double delta, int N );
 
   virtual ~NewMethodAdapter() = default;
 
@@ -61,7 +61,6 @@ class NewMethodAdapter : public ContactFormulation {
  private:
   // --- Member Variables ---
 
-  MfemMeshData& mfem_data_;
   MfemSubmeshData& submesh_data_;
   MfemJacobianData& jac_data_;
   MeshData& mesh1_;
