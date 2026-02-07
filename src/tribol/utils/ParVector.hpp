@@ -159,6 +159,9 @@ class ParVector : public ParVectorView {
   /// Copy constructor
   ParVector( const ParVector& other );
 
+  /// Copy constructor (non-const)
+  ParVector( ParVector& other ) : ParVector( static_cast<const ParVector&>( other ) ) {}
+
   /// Copy assignment
   ParVector& operator=( const ParVector& other );
 
@@ -186,12 +189,12 @@ class ParVector : public ParVectorView {
   /**
    * @brief Component-wise in-place multiplication: x[i] *= y[i]
    */
-  ParVector& multiply( const ParVectorView& other );
+  ParVector& multiplyInPlace( const ParVectorView& other );
 
   /**
    * @brief Component-wise in-place division: x[i] /= y[i]
    */
-  ParVector& divide( const ParVectorView& other );
+  ParVector& divideInPlace( const ParVectorView& other );
 
  private:
   std::unique_ptr<mfem::HypreParVector> m_owned_vec;

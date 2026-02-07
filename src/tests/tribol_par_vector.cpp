@@ -192,7 +192,7 @@ TEST_F( ParVectorTest, ComponentWise )
   EXPECT_NEAR( v3.Max(), 8.0, 1e-12 );
 
   // multiply in-place
-  v1.multiply( v2 );
+  v1.multiplyInPlace( v2 );
   EXPECT_NEAR( v1.Max(), 8.0, 1e-12 );
 
   // divide
@@ -200,7 +200,7 @@ TEST_F( ParVectorTest, ComponentWise )
   EXPECT_NEAR( v4.Max(), 2.0, 1e-12 );
 
   // divide in-place
-  v1.divide( v2 );
+  v1.divideInPlace( v2 );
   EXPECT_NEAR( v1.Max(), 2.0, 1e-12 );
 }
 

@@ -97,18 +97,18 @@ ParVector& ParVector::operator*=( double s )
 ParVector ParVectorView::multiply( const ParVectorView& other ) const
 {
   ParVector result( new mfem::HypreParVector( *m_vec ) );
-  result.multiply( other );
+  result.multiplyInPlace( other );
   return result;
 }
 
 ParVector ParVectorView::divide( const ParVectorView& other ) const
 {
   ParVector result( new mfem::HypreParVector( *m_vec ) );
-  result.divide( other );
+  result.divideInPlace( other );
   return result;
 }
 
-ParVector& ParVector::multiply( const ParVectorView& other )
+ParVector& ParVector::multiplyInPlace( const ParVectorView& other )
 {
   SLIC_ASSERT( m_vec->Size() == other.get().Size() );
   int n = m_vec->Size();
@@ -121,7 +121,7 @@ ParVector& ParVector::multiply( const ParVectorView& other )
   return *this;
 }
 
-ParVector& ParVector::divide( const ParVectorView& other )
+ParVector& ParVector::divideInPlace( const ParVectorView& other )
 {
   SLIC_ASSERT( m_vec->Size() == other.get().Size() );
   int n = m_vec->Size();
