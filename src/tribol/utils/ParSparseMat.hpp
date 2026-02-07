@@ -8,6 +8,7 @@
 
 #include "tribol/config.hpp"
 #include "mfem.hpp"
+#include "tribol/utils/ParVector.hpp"
 
 #include <memory>
 #include <utility>
@@ -54,6 +55,16 @@ class ParSparseMatView {
   const mfem::HypreParMatrix* operator->() const { return m_mat; }
 
   /**
+   * @brief Returns the number of local rows
+   */
+  int Height() const { return m_mat->Height(); }
+
+  /**
+   * @brief Returns the number of local columns
+   */
+  int Width() const { return m_mat->Width(); }
+
+  /**
    * @brief Matrix addition: returns A + B
    */
   friend ParSparseMat operator+( const ParSparseMatView& lhs, const ParSparseMatView& rhs );
@@ -76,7 +87,7 @@ class ParSparseMatView {
   /**
    * @brief Matrix-vector multiplication: returns y = A * x
    */
-  mfem::Vector operator*( const mfem::Vector& x ) const;
+  ParVector operator*( const ParVectorView& x ) const;
 
   /**
    * @brief Returns the transpose of the matrix
@@ -125,7 +136,7 @@ class ParSparseMatView {
   /**
    * @brief Vector-Matrix multiplication: returns y = x^T * A (computed as A^T * x)
    */
-  friend mfem::Vector operator*( const mfem::Vector& x, const ParSparseMatView& mat );
+  friend ParVector operator*( const ParVectorView& x, const ParSparseMatView& mat );
 
  protected:
   mfem::HypreParMatrix* m_mat;

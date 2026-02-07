@@ -36,10 +36,10 @@ ParSparseMat operator*( const ParSparseMatView& lhs, const ParSparseMatView& rhs
   return ParSparseMat( result );
 }
 
-mfem::Vector ParSparseMatView::operator*( const mfem::Vector& x ) const
+ParVector ParSparseMatView::operator*( const ParVectorView& x ) const
 {
-  mfem::Vector y( m_mat->Height() );
-  m_mat->Mult( x, y );
+  ParVector y( *m_mat );
+  m_mat->Mult( const_cast<mfem::HypreParVector&>( x.get() ), y.get() );
   return y;
 }
 
@@ -71,10 +71,10 @@ ParSparseMat ParSparseMatView::EliminateCols( const mfem::Array<int>& cols )
 
 ParSparseMat operator*( double s, const ParSparseMatView& mat ) { return mat * s; }
 
-mfem::Vector operator*( const mfem::Vector& x, const ParSparseMatView& mat )
+ParVector operator*( const ParVectorView& x, const ParSparseMatView& mat )
 {
-  mfem::Vector y( mat.m_mat->Width() );
-  mat.m_mat->MultTranspose( x, y );
+  ParVector y( *mat.m_mat, 1 );
+  mat.m_mat->MultTranspose( const_cast<mfem::HypreParVector&>( x.get() ), y.get() );
   return y;
 }
 

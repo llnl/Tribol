@@ -49,6 +49,7 @@ set(tribol_headers
     utils/ContactPlaneOutput.hpp
     utils/DataManager.hpp
     utils/Math.hpp
+    utils/ParVector.hpp
     utils/ParSparseMat.hpp
     utils/TestUtils.hpp
 )
@@ -81,6 +82,7 @@ set(tribol_sources
 
     utils/ContactPlaneOutput.cpp
     utils/Math.cpp
+    utils/ParVector.cpp
     utils/ParSparseMat.cpp
     utils/TestUtils.cpp
     )

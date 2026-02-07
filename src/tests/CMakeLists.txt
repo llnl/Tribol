@@ -71,6 +71,7 @@ if ( TRIBOL_USE_MPI )
 
   set( mpi_tests
        tribol_par_sparse_mat.cpp
+       tribol_par_vector.cpp
      )
 
   set(mpi_test_depends tribol gtest)
