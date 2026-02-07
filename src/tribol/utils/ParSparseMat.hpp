@@ -30,39 +30,39 @@ class ParSparseMatView {
    *
    * @param mat Pointer to the mfem HypreParMatrix
    */
-  ParSparseMatView( mfem::HypreParMatrix* mat ) : m_mat( mat ) {}
+  ParSparseMatView( mfem::HypreParMatrix* mat ) : mat_( mat ) {}
 
   virtual ~ParSparseMatView() = default;
 
   /**
    * @brief Access the underlying mfem::HypreParMatrix
    */
-  mfem::HypreParMatrix& get() { return *m_mat; }
+  mfem::HypreParMatrix& get() { return *mat_; }
 
   /**
    * @brief Access the underlying mfem::HypreParMatrix (const)
    */
-  const mfem::HypreParMatrix& get() const { return *m_mat; }
+  const mfem::HypreParMatrix& get() const { return *mat_; }
 
   /**
    * @brief Access underlying matrix members via arrow operator
    */
-  mfem::HypreParMatrix* operator->() { return m_mat; }
+  mfem::HypreParMatrix* operator->() { return mat_; }
 
   /**
    * @brief Access underlying matrix members via arrow operator (const)
    */
-  const mfem::HypreParMatrix* operator->() const { return m_mat; }
+  const mfem::HypreParMatrix* operator->() const { return mat_; }
 
   /**
    * @brief Returns the number of local rows
    */
-  int Height() const { return m_mat->Height(); }
+  int Height() const { return mat_->Height(); }
 
   /**
    * @brief Returns the number of local columns
    */
-  int Width() const { return m_mat->Width(); }
+  int Width() const { return mat_->Width(); }
 
   /**
    * @brief Matrix addition: returns A + B
@@ -139,7 +139,7 @@ class ParSparseMatView {
   friend ParVector operator*( const ParVectorView& x, const ParSparseMatView& mat );
 
  protected:
-  mfem::HypreParMatrix* m_mat;
+  mfem::HypreParMatrix* mat_;
 };
 
 /**
@@ -180,9 +180,9 @@ class ParSparseMat : public ParSparseMatView {
   template <typename... Args>
   explicit ParSparseMat( Args&&... args )
       : ParSparseMatView( nullptr ),
-        m_owned_mat( std::make_unique<mfem::HypreParMatrix>( std::forward<Args>( args )... ) )
+        owned_mat_( std::make_unique<mfem::HypreParMatrix>( std::forward<Args>( args )... ) )
   {
-    m_mat = m_owned_mat.get();
+    mat_ = owned_mat_.get();
   }
 
   /// Move constructor
@@ -250,7 +250,7 @@ class ParSparseMat : public ParSparseMatView {
                                       bool skip_rows = true );
 
  private:
-  std::unique_ptr<mfem::HypreParMatrix> m_owned_mat;
+  std::unique_ptr<mfem::HypreParMatrix> owned_mat_;
 };
 
 }  // namespace tribol

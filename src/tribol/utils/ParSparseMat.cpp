@@ -12,25 +12,25 @@ namespace tribol {
 
 ParSparseMat operator+( const ParSparseMatView& lhs, const ParSparseMatView& rhs )
 {
-  mfem::HypreParMatrix* result = mfem::Add( 1.0, *lhs.m_mat, 1.0, *rhs.m_mat );
+  mfem::HypreParMatrix* result = mfem::Add( 1.0, *lhs.mat_, 1.0, *rhs.mat_ );
   return ParSparseMat( result );
 }
 
 ParSparseMat operator-( const ParSparseMatView& lhs, const ParSparseMatView& rhs )
 {
-  mfem::HypreParMatrix* result = mfem::Add( 1.0, *lhs.m_mat, -1.0, *rhs.m_mat );
+  mfem::HypreParMatrix* result = mfem::Add( 1.0, *lhs.mat_, -1.0, *rhs.mat_ );
   return ParSparseMat( result );
 }
 
 ParSparseMat ParSparseMatView::operator*( double s ) const
 {
-  mfem::HypreParMatrix* result = mfem::Add( s, *m_mat, 0.0, *m_mat );
+  mfem::HypreParMatrix* result = mfem::Add( s, *mat_, 0.0, *mat_ );
   return ParSparseMat( result );
 }
 
 ParSparseMat operator*( const ParSparseMatView& lhs, const ParSparseMatView& rhs )
 {
-  mfem::HypreParMatrix* result = mfem::ParMult( lhs.m_mat, rhs.m_mat );
+  mfem::HypreParMatrix* result = mfem::ParMult( lhs.mat_, rhs.mat_ );
   result->CopyRowStarts();
   result->CopyColStarts();
   return ParSparseMat( result );
@@ -38,52 +38,52 @@ ParSparseMat operator*( const ParSparseMatView& lhs, const ParSparseMatView& rhs
 
 ParVector ParSparseMatView::operator*( const ParVectorView& x ) const
 {
-  ParVector y( *m_mat );
-  m_mat->Mult( const_cast<mfem::HypreParVector&>( x.get() ), y.get() );
+  ParVector y( *mat_ );
+  mat_->Mult( const_cast<mfem::HypreParVector&>( x.get() ), y.get() );
   return y;
 }
 
-ParSparseMat ParSparseMatView::transpose() const { return ParSparseMat( m_mat->Transpose() ); }
+ParSparseMat ParSparseMatView::transpose() const { return ParSparseMat( mat_->Transpose() ); }
 
 ParSparseMat ParSparseMatView::square() const { return *this * *this; }
 
 ParSparseMat ParSparseMatView::RAP( const ParSparseMatView& P ) const
 {
-  return ParSparseMat( mfem::RAP( m_mat, P.m_mat ) );
+  return ParSparseMat( mfem::RAP( mat_, P.mat_ ) );
 }
 
 ParSparseMat ParSparseMatView::RAP( const ParSparseMatView& A, const ParSparseMatView& P )
 {
-  return ParSparseMat( mfem::RAP( A.m_mat, P.m_mat ) );
+  return ParSparseMat( mfem::RAP( A.mat_, P.mat_ ) );
 }
 
 ParSparseMat ParSparseMatView::RAP( const ParSparseMatView& R, const ParSparseMatView& A, const ParSparseMatView& P )
 {
-  return ParSparseMat( mfem::RAP( R.m_mat, A.m_mat, P.m_mat ) );
+  return ParSparseMat( mfem::RAP( R.mat_, A.mat_, P.mat_ ) );
 }
 
-void ParSparseMatView::EliminateRows( const mfem::Array<int>& rows ) { m_mat->EliminateRows( rows ); }
+void ParSparseMatView::EliminateRows( const mfem::Array<int>& rows ) { mat_->EliminateRows( rows ); }
 
 ParSparseMat ParSparseMatView::EliminateCols( const mfem::Array<int>& cols )
 {
-  return ParSparseMat( m_mat->EliminateCols( cols ) );
+  return ParSparseMat( mat_->EliminateCols( cols ) );
 }
 
 ParSparseMat operator*( double s, const ParSparseMatView& mat ) { return mat * s; }
 
 ParVector operator*( const ParVectorView& x, const ParSparseMatView& mat )
 {
-  ParVector y( *mat.m_mat, 1 );
-  mat.m_mat->MultTranspose( const_cast<mfem::HypreParVector&>( x.get() ), y.get() );
+  ParVector y( *mat.mat_, 1 );
+  mat.mat_->MultTranspose( const_cast<mfem::HypreParVector&>( x.get() ), y.get() );
   return y;
 }
 
 // ParSparseMat implementations
 
-ParSparseMat::ParSparseMat( mfem::HypreParMatrix* mat ) : ParSparseMatView( mat ), m_owned_mat( mat ) {}
+ParSparseMat::ParSparseMat( mfem::HypreParMatrix* mat ) : ParSparseMatView( mat ), owned_mat_( mat ) {}
 
 ParSparseMat::ParSparseMat( std::unique_ptr<mfem::HypreParMatrix> mat )
-    : ParSparseMatView( mat.get() ), m_owned_mat( std::move( mat ) )
+    : ParSparseMatView( mat.get() ), owned_mat_( std::move( mat ) )
 {
 }
 
@@ -94,37 +94,37 @@ ParSparseMat::ParSparseMat( MPI_Comm comm, HYPRE_BigInt glob_size, HYPRE_BigInt*
   HYPRE_MemoryLocation old_hypre_mem_location;
   HYPRE_GetMemoryLocation( &old_hypre_mem_location );
   HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
-  m_owned_mat = std::make_unique<mfem::HypreParMatrix>( comm, glob_size, row_starts, &diag );
-  m_mat = m_owned_mat.get();
+  owned_mat_ = std::make_unique<mfem::HypreParMatrix>( comm, glob_size, row_starts, &diag );
+  mat_ = owned_mat_.get();
   diag.GetMemoryI().ClearOwnerFlags();
   diag.GetMemoryJ().ClearOwnerFlags();
   diag.GetMemoryData().ClearOwnerFlags();
   auto mfem_owned_arrays = 3;
-  m_owned_mat->SetOwnerFlags( mfem_owned_arrays, m_owned_mat->OwnsOffd(), m_owned_mat->OwnsColMap() );
+  owned_mat_->SetOwnerFlags( mfem_owned_arrays, owned_mat_->OwnsOffd(), owned_mat_->OwnsColMap() );
   // Return hypre's memory location to what it was before
   HYPRE_SetMemoryLocation( old_hypre_mem_location );
 }
 
 ParSparseMat::ParSparseMat( ParSparseMat&& other ) noexcept
-    : ParSparseMatView( other.m_owned_mat.get() ), m_owned_mat( std::move( other.m_owned_mat ) )
+    : ParSparseMatView( other.owned_mat_.get() ), owned_mat_( std::move( other.owned_mat_ ) )
 {
-  other.m_mat = nullptr;
+  other.mat_ = nullptr;
 }
 
 ParSparseMat& ParSparseMat::operator=( ParSparseMat&& other ) noexcept
 {
   if ( this != &other ) {
-    m_owned_mat = std::move( other.m_owned_mat );
-    m_mat = m_owned_mat.get();
-    other.m_mat = nullptr;
+    owned_mat_ = std::move( other.owned_mat_ );
+    mat_ = owned_mat_.get();
+    other.mat_ = nullptr;
   }
   return *this;
 }
 
 mfem::HypreParMatrix* ParSparseMat::release()
 {
-  m_mat = nullptr;
-  return m_owned_mat.release();
+  mat_ = nullptr;
+  return owned_mat_.release();
 }
 
 ParSparseMat& ParSparseMat::operator+=( const ParSparseMatView& other )

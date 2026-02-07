@@ -29,61 +29,61 @@ class ParVectorView {
    *
    * @param vec Pointer to the mfem HypreParVector
    */
-  ParVectorView( mfem::HypreParVector* vec ) : m_vec( vec ) {}
+  ParVectorView( mfem::HypreParVector* vec ) : vec_( vec ) {}
 
   virtual ~ParVectorView() = default;
 
   /**
    * @brief Access the underlying mfem::HypreParVector
    */
-  mfem::HypreParVector& get() { return *m_vec; }
+  mfem::HypreParVector& get() { return *vec_; }
 
   /**
    * @brief Access the underlying mfem::HypreParVector (const)
    */
-  const mfem::HypreParVector& get() const { return *m_vec; }
+  const mfem::HypreParVector& get() const { return *vec_; }
 
   /**
    * @brief Access underlying vector members via arrow operator
    */
-  mfem::HypreParVector* operator->() { return m_vec; }
+  mfem::HypreParVector* operator->() { return vec_; }
 
   /**
    * @brief Access underlying vector members via arrow operator (const)
    */
-  const mfem::HypreParVector* operator->() const { return m_vec; }
+  const mfem::HypreParVector* operator->() const { return vec_; }
 
   /**
    * @brief Access local vector entry
    */
-  mfem::real_t& operator[]( int i ) { return ( *m_vec )[i]; }
+  mfem::real_t& operator[]( int i ) { return ( *vec_ )[i]; }
 
   /**
    * @brief Access local vector entry (const)
    */
-  const mfem::real_t& operator[]( int i ) const { return ( *m_vec )[i]; }
+  const mfem::real_t& operator[]( int i ) const { return ( *vec_ )[i]; }
 
   /**
    * @brief Sets all entries of the vector to the given value
    *
    * @param val Value to set
    */
-  void Fill( double val ) { *m_vec = val; }
+  void Fill( double val ) { *vec_ = val; }
 
   /**
    * @brief Returns the local size of the vector
    */
-  int Size() const { return m_vec->Size(); }
+  int Size() const { return vec_->Size(); }
 
   /**
    * @brief Returns the maximum value in the vector
    */
-  mfem::real_t Max() const { return m_vec->Max(); }
+  mfem::real_t Max() const { return vec_->Max(); }
 
   /**
    * @brief Returns the minimum value in the vector
    */
-  mfem::real_t Min() const { return m_vec->Min(); }
+  mfem::real_t Min() const { return vec_->Min(); }
 
   /**
    * @brief Component-wise multiplication: returns z[i] = x[i] * y[i]
@@ -116,7 +116,7 @@ class ParVectorView {
   friend ParVector operator*( double s, const ParVectorView& vec );
 
  protected:
-  mfem::HypreParVector* m_vec;
+  mfem::HypreParVector* vec_;
 };
 
 /**
@@ -144,10 +144,9 @@ class ParVector : public ParVectorView {
   /// Template constructor forwarding arguments to mfem::HypreParVector constructor
   template <typename... Args>
   explicit ParVector( Args&&... args )
-      : ParVectorView( nullptr ),
-        m_owned_vec( std::make_unique<mfem::HypreParVector>( std::forward<Args>( args )... ) )
+      : ParVectorView( nullptr ), owned_vec_( std::make_unique<mfem::HypreParVector>( std::forward<Args>( args )... ) )
   {
-    m_vec = m_owned_vec.get();
+    vec_ = owned_vec_.get();
   }
 
   /// Move constructor
@@ -159,7 +158,7 @@ class ParVector : public ParVectorView {
   /// Copy constructor
   ParVector( const ParVector& other );
 
-  /// Copy constructor (non-const)
+  /// Copy constructor (non-const; prevents the template constructor from trying to match this case)
   ParVector( ParVector& other ) : ParVector( static_cast<const ParVector&>( other ) ) {}
 
   /// Copy assignment
@@ -197,7 +196,7 @@ class ParVector : public ParVectorView {
   ParVector& divideInPlace( const ParVectorView& other );
 
  private:
-  std::unique_ptr<mfem::HypreParVector> m_owned_vec;
+  std::unique_ptr<mfem::HypreParVector> owned_vec_;
 };
 
 }  // namespace tribol
