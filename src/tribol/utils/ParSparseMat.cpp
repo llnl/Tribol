@@ -92,8 +92,8 @@ ParSparseMat::ParSparseMat( MPI_Comm comm, HYPRE_BigInt glob_size, HYPRE_BigInt*
 {
   // ParSparseMat is host only now. Make sure CSR data is copied on host in the constructor.
   HYPRE_MemoryLocation old_hypre_mem_location;
-  HYPRE_GetMemoryLocation(&old_hypre_mem_location);
-  HYPRE_SetMemoryLocation(HYPRE_MEMORY_HOST);
+  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
   m_owned_mat = std::make_unique<mfem::HypreParMatrix>( comm, glob_size, row_starts, &diag );
   m_mat = m_owned_mat.get();
   diag.GetMemoryI().ClearOwnerFlags();
@@ -102,7 +102,7 @@ ParSparseMat::ParSparseMat( MPI_Comm comm, HYPRE_BigInt glob_size, HYPRE_BigInt*
   auto mfem_owned_arrays = 3;
   m_owned_mat->SetOwnerFlags( mfem_owned_arrays, m_owned_mat->OwnsOffd(), m_owned_mat->OwnsColMap() );
   // Return hypre's memory location to what it was before
-  HYPRE_SetMemoryLocation(old_hypre_mem_location);
+  HYPRE_SetMemoryLocation( old_hypre_mem_location );
 }
 
 ParSparseMat::ParSparseMat( ParSparseMat&& other ) noexcept
