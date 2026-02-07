@@ -257,7 +257,8 @@ TEST_F( ParSparseMatTest, Elimination )
   // Eliminate row 0 (globally)
   // Determine if I own row 0
   mfem::Array<int> rows_to_elim;
-  if ( row_starts[rank] == 0 ) {
+  int row_starts_idx = HYPRE_AssumedPartitionCheck() ? 0 : rank;
+  if ( row_starts[row_starts_idx] == 0 ) {
     rows_to_elim.Append( 0 );
   }
   A.EliminateRows( rows_to_elim );
@@ -268,7 +269,7 @@ TEST_F( ParSparseMatTest, Elimination )
   x = 1.0;
   y = A * x;  // y = A * x
 
-  // if rank owns row 0, the result for that row should be 1.0 * x[0] = 1.0 (since diag is 1.0)
+  // if rank owns row 0, the result for that row should be 0.0 * x[0] = 0.0 (since diag is 0.0)
   // other rows should be 3.0
 
   // local row 0 on rank 0 is global row 0
