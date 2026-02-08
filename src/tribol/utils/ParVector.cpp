@@ -7,6 +7,8 @@
 
 #include "axom/slic.hpp"
 
+#include "tribol/common/BasicTypes.hpp"
+
 namespace tribol {
 
 ParVector::ParVector( mfem::HypreParVector* vec ) : ParVectorView( vec ), owned_vec_( vec ) {}
@@ -116,7 +118,7 @@ ParVector& ParVector::multiplyInPlace( const ParVectorView& other )
     bool use_device = vec_->UseDevice() || other.get().UseDevice();
     auto d_vec = vec_->ReadWrite( use_device );
     auto d_other = other.get().Read( use_device );
-    mfem::forall_switch( use_device, n, [=] MFEM_DEVICE( int i ) { d_vec[i] *= d_other[i]; } );
+    mfem::forall_switch( use_device, n, [=] TRIBOL_HOST_DEVICE( int i ) { d_vec[i] *= d_other[i]; } );
   }
   return *this;
 }
@@ -129,7 +131,7 @@ ParVector& ParVector::divideInPlace( const ParVectorView& other )
     bool use_device = vec_->UseDevice() || other.get().UseDevice();
     auto d_vec = vec_->ReadWrite( use_device );
     auto d_other = other.get().Read( use_device );
-    mfem::forall_switch( use_device, n, [=] MFEM_DEVICE( int i ) { d_vec[i] /= d_other[i]; } );
+    mfem::forall_switch( use_device, n, [=] TRIBOL_HOST_DEVICE( int i ) { d_vec[i] /= d_other[i]; } );
   }
   return *this;
 }
