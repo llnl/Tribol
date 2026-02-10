@@ -29,7 +29,7 @@ class ParVectorView {
    *
    * @param vec Pointer to the mfem HypreParVector
    */
-  ParVectorView( mfem::HypreParVector* vec ) : vec_( vec ) {}
+  ParVectorView( mfem::HypreParVector* vec );
 
   virtual ~ParVectorView() = default;
 
@@ -143,9 +143,15 @@ class ParVector : public ParVectorView {
 
   /// Template constructor forwarding arguments to mfem::HypreParVector constructor
   template <typename... Args>
-  explicit ParVector( Args&&... args )
-      : ParVectorView( nullptr ), owned_vec_( std::make_unique<mfem::HypreParVector>( std::forward<Args>( args )... ) )
+  explicit ParVector( Args&&... args ) : ParVectorView( nullptr ), owned_vec_( nullptr )
   {
+    // ParVector is host-only for now.
+    HYPRE_MemoryLocation old_hypre_mem_location;
+    HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+    HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
+    owned_vec_ = std::make_unique<mfem::HypreParVector>( std::forward<Args>( args )... );
+    // Return hypre's memory location to what it was before
+    HYPRE_SetMemoryLocation( old_hypre_mem_location );
     vec_ = owned_vec_.get();
   }
 

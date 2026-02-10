@@ -5,11 +5,20 @@
 
 #include "tribol/utils/ParVector.hpp"
 
+#include <_hypre_parcsr_mv.h>
+
 #include "axom/slic.hpp"
 
 #include "tribol/common/BasicTypes.hpp"
 
 namespace tribol {
+
+ParVectorView::ParVectorView( mfem::HypreParVector* vec ) : vec_( vec )
+{
+  SLIC_ERROR_ROOT_IF(
+      vec != nullptr && hypre_ParVectorMemoryLocation( vec->operator hypre_ParVector*() ) != HYPRE_MEMORY_HOST,
+      "ParVectorView currently requires host data." );
+}
 
 ParVector::ParVector( mfem::HypreParVector* vec ) : ParVectorView( vec ), owned_vec_( vec ) {}
 
@@ -34,16 +43,24 @@ ParVector& ParVector::operator=( ParVector&& other ) noexcept
   return *this;
 }
 
-ParVector::ParVector( const ParVector& other )
-    : ParVectorView( nullptr ), owned_vec_( std::make_unique<mfem::HypreParVector>( *other.vec_ ) )
+ParVector::ParVector( const ParVector& other ) : ParVectorView( nullptr ), owned_vec_( nullptr )
 {
+  HYPRE_MemoryLocation old_hypre_mem_location;
+  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
+  owned_vec_ = std::make_unique<mfem::HypreParVector>( *other.vec_ );
+  HYPRE_SetMemoryLocation( old_hypre_mem_location );
   vec_ = owned_vec_.get();
 }
 
 ParVector& ParVector::operator=( const ParVector& other )
 {
   if ( this != &other ) {
+    HYPRE_MemoryLocation old_hypre_mem_location;
+    HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+    HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
     owned_vec_ = std::make_unique<mfem::HypreParVector>( *other.vec_ );
+    HYPRE_SetMemoryLocation( old_hypre_mem_location );
     vec_ = owned_vec_.get();
   }
   return *this;
@@ -57,21 +74,21 @@ mfem::HypreParVector* ParVector::release()
 
 ParVector operator+( const ParVectorView& lhs, const ParVectorView& rhs )
 {
-  ParVector result( new mfem::HypreParVector( lhs.get() ) );
+  ParVector result( lhs.get() );
   result.get().Add( 1.0, rhs.get() );
   return result;
 }
 
 ParVector operator-( const ParVectorView& lhs, const ParVectorView& rhs )
 {
-  ParVector result( new mfem::HypreParVector( lhs.get() ) );
+  ParVector result( lhs.get() );
   result.get().Add( -1.0, rhs.get() );
   return result;
 }
 
 ParVector ParVectorView::operator*( double s ) const
 {
-  ParVector result( new mfem::HypreParVector( *vec_ ) );
+  ParVector result( *vec_ );
   result.get() *= s;
   return result;
 }
@@ -98,14 +115,14 @@ ParVector& ParVector::operator*=( double s )
 
 ParVector ParVectorView::multiply( const ParVectorView& other ) const
 {
-  ParVector result( new mfem::HypreParVector( *vec_ ) );
+  ParVector result( *vec_ );
   result.multiplyInPlace( other );
   return result;
 }
 
 ParVector ParVectorView::divide( const ParVectorView& other ) const
 {
-  ParVector result( new mfem::HypreParVector( *vec_ ) );
+  ParVector result( *vec_ );
   result.divideInPlace( other );
   return result;
 }

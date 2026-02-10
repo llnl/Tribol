@@ -63,12 +63,19 @@ TEST_F( ParVectorTest, Construction )
   auto row_starts_array = GetRowStarts( MPI_COMM_WORLD, size );
 
   // 1. From mfem::HypreParVector*
+  HYPRE_MemoryLocation old_hypre_mem_location;
+  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
   mfem::HypreParVector* v1 = new mfem::HypreParVector( MPI_COMM_WORLD, size, row_starts_array.GetData() );
+  HYPRE_SetMemoryLocation( old_hypre_mem_location );
   tribol::ParVector pv1( v1 );
   EXPECT_EQ( pv1.Size(), local_size );
 
   // 2. From unique_ptr
+  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
   auto v2 = std::make_unique<mfem::HypreParVector>( MPI_COMM_WORLD, size, row_starts_array.GetData() );
+  HYPRE_SetMemoryLocation( old_hypre_mem_location );
   tribol::ParVector pv2( std::move( v2 ) );
   EXPECT_EQ( pv2.Size(), local_size );
 

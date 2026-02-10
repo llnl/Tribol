@@ -4,42 +4,59 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "tribol/utils/ParSparseMat.hpp"
+
 #include <HYPRE_utilities.h>
+#include <_hypre_parcsr_mv.h>
+
+#include "axom/slic.hpp"
 
 namespace tribol {
 
 // ParSparseMatView implementations
 
+ParSparseMatView::ParSparseMatView( mfem::HypreParMatrix* mat ) : mat_( mat )
+{
+  SLIC_ERROR_ROOT_IF(
+      mat != nullptr && hypre_ParCSRMatrixMemoryLocation( mat->operator hypre_ParCSRMatrix*() ) != HYPRE_MEMORY_HOST,
+      "ParSparseMatView currently requires host data." );
+}
+
 ParSparseMat operator+( const ParSparseMatView& lhs, const ParSparseMatView& rhs )
 {
-  mfem::HypreParMatrix* result = mfem::Add( 1.0, *lhs.mat_, 1.0, *rhs.mat_ );
-  return ParSparseMat( result );
+  return ParSparseMatView::add( 1.0, lhs, 1.0, rhs );
 }
 
 ParSparseMat operator-( const ParSparseMatView& lhs, const ParSparseMatView& rhs )
 {
-  mfem::HypreParMatrix* result = mfem::Add( 1.0, *lhs.mat_, -1.0, *rhs.mat_ );
-  return ParSparseMat( result );
+  return ParSparseMatView::add( 1.0, lhs, -1.0, rhs );
 }
 
-ParSparseMat ParSparseMatView::operator*( double s ) const
-{
-  mfem::HypreParMatrix* result = mfem::Add( s, *mat_, 0.0, *mat_ );
-  return ParSparseMat( result );
-}
+ParSparseMat ParSparseMatView::operator*( double s ) const { return add( s, *this, 0.0, *this ); }
 
 ParSparseMat operator*( const ParSparseMatView& lhs, const ParSparseMatView& rhs )
 {
+  // Prevent mfem::ParMult from creating device arrays
+  HYPRE_MemoryLocation old_hypre_mem_location;
+  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
   mfem::HypreParMatrix* result = mfem::ParMult( lhs.mat_, rhs.mat_ );
   result->CopyRowStarts();
   result->CopyColStarts();
+  constexpr auto hypre_owned_host_arrays = -1;
+  result->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
+  HYPRE_SetMemoryLocation( old_hypre_mem_location );
   return ParSparseMat( result );
 }
 
 ParVector ParSparseMatView::operator*( const ParVectorView& x ) const
 {
   ParVector y( *mat_ );
+  // Prevent HypreParMatrix::Mult from changing memory from host to device
+  HYPRE_MemoryLocation old_hypre_mem_location;
+  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
   mat_->Mult( const_cast<mfem::HypreParVector&>( x.get() ), y.get() );
+  HYPRE_SetMemoryLocation( old_hypre_mem_location );
   return y;
 }
 
@@ -62,11 +79,24 @@ ParSparseMat ParSparseMatView::RAP( const ParSparseMatView& R, const ParSparseMa
   return ParSparseMat( mfem::RAP( R.mat_, A.mat_, P.mat_ ) );
 }
 
-void ParSparseMatView::EliminateRows( const mfem::Array<int>& rows ) { mat_->EliminateRows( rows ); }
+void ParSparseMatView::EliminateRows( const mfem::Array<int>& rows )
+{
+  // Prevent HypreParMatrix::EliminateRows from changing memory from host to device
+  HYPRE_MemoryLocation old_hypre_mem_location;
+  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
+  mat_->EliminateRows( rows );
+  HYPRE_SetMemoryLocation( old_hypre_mem_location );
+}
 
 ParSparseMat ParSparseMatView::EliminateCols( const mfem::Array<int>& cols )
 {
+  // Prevent HypreParMatrix::EliminateRows from changing memory from host to device
+  HYPRE_MemoryLocation old_hypre_mem_location;
+  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
   return ParSparseMat( mat_->EliminateCols( cols ) );
+  HYPRE_SetMemoryLocation( old_hypre_mem_location );
 }
 
 ParSparseMat operator*( double s, const ParSparseMatView& mat ) { return mat * s; }
@@ -74,8 +104,26 @@ ParSparseMat operator*( double s, const ParSparseMatView& mat ) { return mat * s
 ParVector operator*( const ParVectorView& x, const ParSparseMatView& mat )
 {
   ParVector y( *mat.mat_, 1 );
+  // Prevent HypreParMatrix::MultTranspose from changing memory from host to device
+  HYPRE_MemoryLocation old_hypre_mem_location;
+  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
   mat.mat_->MultTranspose( const_cast<mfem::HypreParVector&>( x.get() ), y.get() );
+  HYPRE_SetMemoryLocation( old_hypre_mem_location );
   return y;
+}
+
+ParSparseMat ParSparseMatView::add( RealT alpha, const ParSparseMatView& A, RealT beta, const ParSparseMatView& B )
+{
+  // Prevent HypreParMatrix::Add from returning data on device
+  HYPRE_MemoryLocation old_hypre_mem_location;
+  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
+  mfem::HypreParMatrix* result = mfem::Add( alpha, A.get(), beta, B.get() );
+  constexpr auto hypre_owned_host_arrays = -1;
+  result->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
+  HYPRE_SetMemoryLocation( old_hypre_mem_location );
+  return ParSparseMat( result );
 }
 
 // ParSparseMat implementations
@@ -90,7 +138,7 @@ ParSparseMat::ParSparseMat( std::unique_ptr<mfem::HypreParMatrix> mat )
 ParSparseMat::ParSparseMat( MPI_Comm comm, HYPRE_BigInt glob_size, HYPRE_BigInt* row_starts, mfem::SparseMatrix&& diag )
     : ParSparseMatView( nullptr )
 {
-  // ParSparseMat is host only now. Make sure CSR data is copied on host in the constructor.
+  // ParSparseMat works with host data for now. Make sure CSR data is copied on host in the constructor.
   HYPRE_MemoryLocation old_hypre_mem_location;
   HYPRE_GetMemoryLocation( &old_hypre_mem_location );
   HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
@@ -99,8 +147,9 @@ ParSparseMat::ParSparseMat( MPI_Comm comm, HYPRE_BigInt glob_size, HYPRE_BigInt*
   diag.GetMemoryI().ClearOwnerFlags();
   diag.GetMemoryJ().ClearOwnerFlags();
   diag.GetMemoryData().ClearOwnerFlags();
-  auto mfem_owned_arrays = 3;
-  owned_mat_->SetOwnerFlags( mfem_owned_arrays, owned_mat_->OwnsOffd(), owned_mat_->OwnsColMap() );
+  constexpr auto mfem_owned_host_arrays = 3;
+  constexpr auto hypre_owned_host_arrays = -1;
+  owned_mat_->SetOwnerFlags( mfem_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
   // Return hypre's memory location to what it was before
   HYPRE_SetMemoryLocation( old_hypre_mem_location );
 }
@@ -158,11 +207,6 @@ ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_si
     num_local_rows = static_cast<int>( row_starts[rank + 1] - row_starts[rank] );
   }
 
-  // NOTE: mfem::HypreParMatrix(MPI_Comm, HYPRE_BigInt, HYPRE_BigInt*, SparseMatrix*) does not take ownership
-  // of the provided CSR arrays (see MFEM docs). To avoid dangling pointers and allocator mismatches, build
-  // the ParCSR data using the HypreParMatrix constructor that takes ownership of raw arrays allocated with
-  // new[].
-
   const int num_ordered_rows = ordered_rows.Size();
   if ( num_local_rows < 0 ) {
     num_local_rows = 0;
@@ -216,13 +260,19 @@ ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_si
 
   // copy row_starts to a new array
   mfem::Array<HYPRE_BigInt> row_starts_copy = row_starts;
+  // ParSparseMat is host only for now
+  HYPRE_MemoryLocation old_hypre_mem_location;
+  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
   auto diag_hpm = std::make_unique<mfem::HypreParMatrix>( comm, global_size, global_size, row_starts_copy.GetData(),
                                                           row_starts_copy.GetData(), diag_i, diag_j, diag_data, offd_i,
                                                           offd_j, offd_data, 0, offd_col_map, true );
+  // Return hypre's memory location to what it was before
+  HYPRE_SetMemoryLocation( old_hypre_mem_location );
   diag_hpm->CopyRowStarts();
   diag_hpm->CopyColStarts();
-  auto mfem_owned_arrays = 3;
-  diag_hpm->SetOwnerFlags( mfem_owned_arrays, diag_hpm->OwnsOffd(), diag_hpm->OwnsColMap() );
+  constexpr auto mfem_owned_host_arrays = 3;
+  diag_hpm->SetOwnerFlags( mfem_owned_host_arrays, mfem_owned_host_arrays, diag_hpm->OwnsColMap() );
   return ParSparseMat( std::move( diag_hpm ) );
 }
 

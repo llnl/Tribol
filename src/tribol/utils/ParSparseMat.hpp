@@ -6,12 +6,15 @@
 #ifndef SRC_TRIBOL_UTILS_PARSPARSEMAT_HPP_
 #define SRC_TRIBOL_UTILS_PARSPARSEMAT_HPP_
 
-#include "tribol/config.hpp"
-#include "mfem.hpp"
-#include "tribol/utils/ParVector.hpp"
-
 #include <memory>
 #include <utility>
+
+#include "tribol/config.hpp"
+
+#include "mfem.hpp"
+
+#include "tribol/common/BasicTypes.hpp"
+#include "tribol/utils/ParVector.hpp"
 
 namespace tribol {
 
@@ -30,7 +33,7 @@ class ParSparseMatView {
    *
    * @param mat Pointer to the mfem HypreParMatrix
    */
-  ParSparseMatView( mfem::HypreParMatrix* mat ) : mat_( mat ) {}
+  ParSparseMatView( mfem::HypreParMatrix* mat );
 
   virtual ~ParSparseMatView() = default;
 
@@ -139,6 +142,8 @@ class ParSparseMatView {
   friend ParVector operator*( const ParVectorView& x, const ParSparseMatView& mat );
 
  protected:
+  static ParSparseMat add( RealT alpha, const ParSparseMatView& A, RealT beta, const ParSparseMatView& B );
+
   mfem::HypreParMatrix* mat_;
 };
 
@@ -178,10 +183,15 @@ class ParSparseMat : public ParSparseMatView {
 
   /// Template constructor forwarding arguments to mfem::HypreParMatrix constructor
   template <typename... Args>
-  explicit ParSparseMat( Args&&... args )
-      : ParSparseMatView( nullptr ),
-        owned_mat_( std::make_unique<mfem::HypreParMatrix>( std::forward<Args>( args )... ) )
+  explicit ParSparseMat( Args&&... args ) : ParSparseMatView( nullptr ), owned_mat_( nullptr )
   {
+    // ParSparseMat is host-only for now.
+    HYPRE_MemoryLocation old_hypre_mem_location;
+    HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+    HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
+    owned_mat_ = std::make_unique<mfem::HypreParMatrix>( std::forward<Args>( args )... );
+    // Return hypre's memory location to what it was before
+    HYPRE_SetMemoryLocation( old_hypre_mem_location );
     mat_ = owned_mat_.get();
   }
 
