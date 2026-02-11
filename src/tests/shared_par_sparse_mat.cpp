@@ -3,15 +3,18 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include <gtest/gtest.h>
+#include "shared/config.hpp"
 
-#include "tribol/utils/ParSparseMat.hpp"
-#include "tribol/config.hpp"
-#include "mfem.hpp"
+#include <gtest/gtest.h>
 
 #ifdef TRIBOL_USE_MPI
 #include <mpi.h>
 #endif
+
+#include "mfem.hpp"
+
+#include "shared/math/ParVector.hpp"
+#include "shared/math/ParSparseMat.hpp"
 
 class ParSparseMatTest : public ::testing::Test {
  protected:
@@ -61,27 +64,27 @@ TEST_F( ParSparseMatTest, Construction )
 
   // 1. From mfem::HypreParMatrix*
   mfem::HypreParMatrix* m1 =
-      tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, size, row_starts_array, 1.0 ).release();
-  tribol::ParSparseMat psm1( m1 );
-  EXPECT_EQ( psm1.get().Height(), local_size );
+      shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, size, row_starts_array, 1.0 ).release();
+  shared::ParSparseMat psm1( m1 );
+  EXPECT_EQ( psm1.Height(), local_size );
 
   // 2. From unique_ptr
   auto m2 = std::unique_ptr<mfem::HypreParMatrix>(
-      tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, size, row_starts_array, 2.0 ).release() );
-  tribol::ParSparseMat psm2( std::move( m2 ) );
-  EXPECT_EQ( psm2.get().Height(), local_size );
+      shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, size, row_starts_array, 2.0 ).release() );
+  shared::ParSparseMat psm2( std::move( m2 ) );
+  EXPECT_EQ( psm2.Height(), local_size );
 
   // 3. From SparseMatrix rvalue
   mfem::SparseMatrix diag( local_size );
   for ( int i = 0; i < local_size; ++i ) diag.Set( i, i, 3.0 );
   diag.Finalize();
 
-  tribol::ParSparseMat psm3( MPI_COMM_WORLD, (HYPRE_BigInt)size, row_starts_array.GetData(), std::move( diag ) );
-  EXPECT_EQ( psm3.get().Height(), local_size );
+  shared::ParSparseMat psm3( MPI_COMM_WORLD, (HYPRE_BigInt)size, row_starts_array.GetData(), std::move( diag ) );
+  EXPECT_EQ( psm3.Height(), local_size );
 
   mfem::Vector x( local_size ), y( local_size );
   x = 1.0;
-  psm3.get().Mult( x, y );
+  psm3->Mult( x, y );
   EXPECT_NEAR( y.Max(), 3.0, 1e-12 );
 }
 
@@ -93,18 +96,18 @@ TEST_F( ParSparseMatTest, View )
   if ( rank == 0 ) std::cout << "Testing View..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParSparseMat A = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 2.0 );
+  shared::ParSparseMat A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 2.0 );
 
   // Construct View
-  tribol::ParSparseMatView view( &A.get() );
+  shared::ParSparseMatView view( &A.get() );
 
-  EXPECT_EQ( view.get().Height(), A.get().Height() );
+  EXPECT_EQ( view.Height(), A.Height() );
 
   // Operate on View
-  tribol::ParSparseMat B = view * 2.0;
-  mfem::Vector x( A.get().Width() ), y( A.get().Height() );
-  x = 1.0;
-  B.get().Mult( x, y );
+  shared::ParSparseMat B = view * 2.0;
+  shared::ParVector x( B.get() );
+  x.Fill( 1.0 );
+  auto y = B * x;
   EXPECT_NEAR( y.Max(), 4.0, 1e-12 );
 }
 
@@ -116,21 +119,21 @@ TEST_F( ParSparseMatTest, Addition )
   if ( rank == 0 ) std::cout << "Testing Addition..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParSparseMat A = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 2.0 );
-  tribol::ParSparseMat B = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 3.0 );
+  shared::ParSparseMat A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 2.0 );
+  shared::ParSparseMat B = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 3.0 );
 
   // A + B
-  tribol::ParSparseMat C = A + B;
-  mfem::Vector x( A.get().Width() ), y( A.get().Height() );
+  shared::ParSparseMat C = A + B;
+  mfem::Vector x( A.Width() ), y( A.Height() );
   x = 1.0;
-  C.get().Mult( x, y );
+  C->Mult( x, y );
   // Result should be (2+3)*1 = 5
   EXPECT_NEAR( y.Max(), 5.0, 1e-12 );
   EXPECT_NEAR( y.Min(), 5.0, 1e-12 );
 
   // A += B
   A += B;
-  A.get().Mult( x, y );
+  A->Mult( x, y );
   EXPECT_NEAR( y.Max(), 5.0, 1e-12 );
 }
 
@@ -142,20 +145,20 @@ TEST_F( ParSparseMatTest, Subtraction )
   if ( rank == 0 ) std::cout << "Testing Subtraction..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParSparseMat A = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 5.0 );
-  tribol::ParSparseMat B = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 2.0 );
+  shared::ParSparseMat A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 5.0 );
+  shared::ParSparseMat B = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 2.0 );
 
   // A - B
-  tribol::ParSparseMat C = A - B;
-  mfem::Vector x( A.get().Width() ), y( A.get().Height() );
+  shared::ParSparseMat C = A - B;
+  mfem::Vector x( A.Width() ), y( A.Height() );
   x = 1.0;
-  C.get().Mult( x, y );
+  C->Mult( x, y );
   // Result should be (5-2)*1 = 3
   EXPECT_NEAR( y.Max(), 3.0, 1e-12 );
 
   // A -= B
   A -= B;
-  A.get().Mult( x, y );
+  A->Mult( x, y );
   EXPECT_NEAR( y.Max(), 3.0, 1e-12 );
 }
 
@@ -167,18 +170,18 @@ TEST_F( ParSparseMatTest, ScalarMult )
   if ( rank == 0 ) std::cout << "Testing Scalar Multiplication..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParSparseMat A = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 2.0 );
+  shared::ParSparseMat A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 2.0 );
 
   // A * s
-  tribol::ParSparseMat B = A * 3.0;
-  mfem::Vector x( A.get().Width() ), y( A.get().Height() );
+  shared::ParSparseMat B = A * 3.0;
+  mfem::Vector x( A.Width() ), y( A.Height() );
   x = 1.0;
-  B.get().Mult( x, y );
+  B->Mult( x, y );
   EXPECT_NEAR( y.Max(), 6.0, 1e-12 );
 
   // s * A
-  tribol::ParSparseMat C = 4.0 * A;
-  C.get().Mult( x, y );
+  shared::ParSparseMat C = 4.0 * A;
+  C->Mult( x, y );
   EXPECT_NEAR( y.Max(), 8.0, 1e-12 );
 }
 
@@ -190,20 +193,20 @@ TEST_F( ParSparseMatTest, MatrixMult )
   if ( rank == 0 ) std::cout << "Testing Matrix Multiplication..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParSparseMat A = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 2.0 );
-  tribol::ParSparseMat B = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 3.0 );
+  shared::ParSparseMat A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 2.0 );
+  shared::ParSparseMat B = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 3.0 );
 
   // A * B
-  tribol::ParSparseMat C = A * B;
-  mfem::Vector x( A.get().Width() ), y( A.get().Height() );
+  shared::ParSparseMat C = A * B;
+  mfem::Vector x( A.Width() ), y( A.Height() );
   x = 1.0;
-  C.get().Mult( x, y );
+  C->Mult( x, y );
   // Result should be (2*3)*1 = 6
   EXPECT_NEAR( y.Max(), 6.0, 1e-12 );
 
   // A *= B
   A *= B;
-  A.get().Mult( x, y );
+  A->Mult( x, y );
   EXPECT_NEAR( y.Max(), 6.0, 1e-12 );
 }
 
@@ -215,12 +218,17 @@ TEST_F( ParSparseMatTest, MatVecMult )
   if ( rank == 0 ) std::cout << "Testing Matrix-Vector Multiplication..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParSparseMat A = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 2.0 );
-  mfem::Vector x( A.get().Width() );
-  x = 1.0;
+  shared::ParSparseMat A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 2.0 );
+  HYPRE_MemoryLocation old_hypre_mem_location;
+  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
+  mfem::HypreParVector x_hypre( A.get(), 1 );
+  HYPRE_SetMemoryLocation( old_hypre_mem_location );
+  x_hypre = 1.0;
+  shared::ParVectorView x( &x_hypre );
 
   // y = A * x
-  mfem::Vector y = A * x;
+  shared::ParVector y = A * x;
   EXPECT_NEAR( y.Max(), 2.0, 1e-12 );
 }
 
@@ -232,12 +240,12 @@ TEST_F( ParSparseMatTest, VecMatMult )
   if ( rank == 0 ) std::cout << "Testing Vector-Matrix Multiplication..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParSparseMat A = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 3.0 );
-  mfem::Vector x( A.get().Height() );
-  x = 1.0;
+  shared::ParSparseMat A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 3.0 );
+  shared::ParVector x( A.get(), 0 );
+  x.Fill( 1.0 );
 
   // y = x^T * A
-  mfem::Vector y = x * A;
+  shared::ParVector y = x * A;
   EXPECT_NEAR( y.Max(), 3.0, 1e-12 );
   EXPECT_NEAR( y.Min(), 3.0, 1e-12 );
 }
@@ -250,23 +258,24 @@ TEST_F( ParSparseMatTest, Elimination )
   if ( rank == 0 ) std::cout << "Testing Elimination..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParSparseMat A = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 3.0 );
+  shared::ParSparseMat A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 3.0 );
 
   // Eliminate row 0 (globally)
   // Determine if I own row 0
   mfem::Array<int> rows_to_elim;
-  if ( row_starts[rank] == 0 ) {
+  int row_starts_idx = HYPRE_AssumedPartitionCheck() ? 0 : rank;
+  if ( row_starts[row_starts_idx] == 0 ) {
     rows_to_elim.Append( 0 );
   }
   A.EliminateRows( rows_to_elim );
 
   // Check if row 0 is identity (or zero with diagonal 1)
   // Diagonal matrix means we can just check multiplication
-  mfem::Vector x( A.get().Height() ), y( A.get().Height() );
-  x = 1.0;
-  y = A * x;  // y = A * x
+  shared::ParVector x( A.get(), 1 );
+  x.Fill( 1.0 );
+  shared::ParVector y = A * x;  // y = A * x
 
-  // if rank owns row 0, the result for that row should be 1.0 * x[0] = 1.0 (since diag is 1.0)
+  // if rank owns row 0, the result for that row should be 0.0 * x[0] = 0.0 (since diag is 0.0)
   // other rows should be 3.0
 
   // local row 0 on rank 0 is global row 0
@@ -281,25 +290,26 @@ TEST_F( ParSparseMatTest, Elimination )
     }
   }
 
-  A = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 3.0 );
+  A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 3.0 );
   int num_procs;
   MPI_Comm_size( MPI_COMM_WORLD, &num_procs );
 
   // Eliminate last local col
-  auto last_local_col = A.get().Width() - 1;
+  auto last_local_col = A.Width() - 1;
   mfem::Array<int> cols_to_elim( { last_local_col } );
 
-  tribol::ParSparseMat Ae = A.EliminateCols( cols_to_elim );
+  shared::ParSparseMat Ae = A.EliminateCols( cols_to_elim );
 
   // Now check A * e_last = 0
   // Create vector with 1 at last_local_col, 0 elsewhere
-  x = 0.0;
-  x[last_local_col] = 1.0;
-  y = A * x;
-  EXPECT_NEAR( y[last_local_col], 0.0, 1e-12 );
+  shared::ParVector x_last( A.get(), 1 );
+  x_last.Fill( 0.0 );
+  x_last[last_local_col] = 1.0;
+  shared::ParVector y_last = A * x_last;
+  EXPECT_NEAR( y_last[last_local_col], 0.0, 1e-12 );
 
   // Check Ae * e_last = original value
-  mfem::Vector ye = Ae * x;
+  shared::ParVector ye = Ae * x_last;
   double expected_val = 3.0;
 
   EXPECT_NEAR( ye[last_local_col], expected_val, 1e-12 );
@@ -313,18 +323,18 @@ TEST_F( ParSparseMatTest, TransposeSquare )
   if ( rank == 0 ) std::cout << "Testing Transpose and Square..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParSparseMat A = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 2.0 );
+  shared::ParSparseMat A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 2.0 );
 
   // Transpose (Diagonal matrix is symmetric)
-  tribol::ParSparseMat At = A.transpose();
-  mfem::Vector x( A.get().Width() ), y( A.get().Height() );
-  x = 1.0;
-  At.get().Mult( x, y );
+  shared::ParSparseMat At = A.transpose();
+  shared::ParVector x( At.get(), 0 );
+  x.Fill( 1.0 );
+  auto y = At * x;
   EXPECT_NEAR( y.Max(), 2.0, 1e-12 );
 
   // Square
-  tribol::ParSparseMat A2 = A.square();
-  A2.get().Mult( x, y );
+  shared::ParSparseMat A2 = A.square();
+  y = A2 * x;
   EXPECT_NEAR( y.Max(), 4.0, 1e-12 );
 }
 
@@ -337,20 +347,20 @@ TEST_F( ParSparseMatTest, RAP )
 
   // Use Identity for P to simplify testing: P^T * A * P = I * A * I = A
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParSparseMat A = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 5.0 );
-  tribol::ParSparseMat P = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 1.0 );
-  tribol::ParSparseMat R = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 1.0 );
+  shared::ParSparseMat A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 5.0 );
+  shared::ParSparseMat P = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 1.0 );
+  shared::ParSparseMat R = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 1.0 );
 
   // RAP(P)
-  tribol::ParSparseMat Res1 = A.RAP( P );
-  mfem::Vector x( A.get().Width() ), y( A.get().Height() );
-  x = 1.0;
-  Res1.get().Mult( x, y );
+  shared::ParSparseMat Res1 = A.RAP( P );
+  shared::ParVector x( A.get(), 0 );
+  x.Fill( 1.0 );
+  auto y = Res1 * x;
   EXPECT_NEAR( y.Max(), 5.0, 1e-12 );
 
   // RAP(R, A, P)
-  tribol::ParSparseMat Res2 = tribol::ParSparseMat::RAP( R, A, P );
-  Res2.get().Mult( x, y );
+  shared::ParSparseMat Res2 = shared::ParSparseMat::RAP( R, A, P );
+  y = Res2 * x;
   EXPECT_NEAR( y.Max(), 5.0, 1e-12 );
 }
 
@@ -366,10 +376,10 @@ TEST_F( ParSparseMatTest, Accessors )
   if ( rank == 0 ) std::cout << "Testing Accessors..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, size );
-  tribol::ParSparseMat A = tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, size, row_starts, 1.0 );
+  shared::ParSparseMat A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, size, row_starts, 1.0 );
 
   // get()
-  EXPECT_EQ( A.get().Height(), local_size );
+  EXPECT_EQ( A.Height(), local_size );
 
   // operator->
   EXPECT_EQ( A->Height(), local_size );

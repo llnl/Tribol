@@ -375,12 +375,12 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
     auto dndx =
         cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getDnDxMethodData(), nonmortar_info, nonmortar_info );
 
-    auto block_00 = ( ParSparseMatView( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 0, 0 ) ) ) *
+    auto block_00 = ( shared::ParSparseMatView( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 0, 0 ) ) ) *
                       &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ) +
                     &static_cast<mfem::HypreParMatrix&>( dfdx->GetBlock( 0, 0 ) );
     dfdx->SetBlock( 0, 0, block_00.release() );
 
-    auto block_10 = ( ParSparseMatView( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 1, 0 ) ) ) *
+    auto block_10 = ( shared::ParSparseMatView( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 1, 0 ) ) ) *
                       &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ) +
                     &static_cast<mfem::HypreParMatrix&>( dfdx->GetBlock( 1, 0 ) );
     dfdx->SetBlock( 1, 0, block_10.release() );

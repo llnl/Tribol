@@ -859,7 +859,7 @@ MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemS
   mfem::Vector submesh_parent_data( submesh2parent_vdof_list_.Size() );
   submesh_parent_data = 1.0;
   // This constructor copies all of the data, so don't worry about ownership of the CSR data
-  submesh_parent_vdof_xfer_ = std::make_unique<ParSparseMat>(
+  submesh_parent_vdof_xfer_ = std::make_unique<shared::ParSparseMat>(
       TRIBOL_COMM_WORLD, submesh_fes.GetVSize(), submesh_fes.GlobalVSize(), parent_fes.GlobalVSize(),
       submesh_parent_I.data(), submesh2parent_vdof_list_.GetData(), submesh_parent_data.GetData(),
       submesh_fes.GetDofOffsets(), parent_fes.GetDofOffsets() );
@@ -1002,26 +1002,24 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian(
       // Pick xfer again for conversion
       redecomp::MatrixTransfer* xfer = GetUpdateData().submesh_redecomp_xfer_( r_blk, c_blk ).get();
 
-      auto submesh_J_hypre = xfer->ConvertToHypreParMatrix( *submesh_J, false );
+      auto submesh_J_hypre = xfer->ConvertToParSparseMat( std::move( *submesh_J.release() ), false );
 
       mfem::HypreParMatrix* block_mat = nullptr;
 
       if ( r_blk == 0 && c_blk == 0 ) {
-        ParSparseMatView submesh_J_view( submesh_J_hypre.get() );
-        auto parent_J = submesh_J_view.RAP( *submesh_parent_vdof_xfer_ );
-        ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
+        auto parent_J = submesh_J_hypre.RAP( *submesh_parent_vdof_xfer_ );
+        shared::ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
         block_mat = parent_J.RAP( parent_P ).release();
       } else if ( r_blk == 0 && c_blk == 1 ) {
-        auto parent_J = submesh_parent_vdof_xfer_->transpose() * submesh_J_hypre.get();
-        block_mat = ParSparseMat::RAP( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix(), parent_J,
-                                       submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() )
+        auto parent_J = submesh_parent_vdof_xfer_->transpose() * submesh_J_hypre;
+        block_mat = shared::ParSparseMat::RAP( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix(),
+                                               parent_J, submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() )
                         .release();
       } else if ( r_blk == 1 && c_blk == 0 ) {
-        ParSparseMatView submesh_J_view( submesh_J_hypre.get() );
-        auto parent_J = submesh_J_view * ( *submesh_parent_vdof_xfer_ );
-        ParSparseMatView submesh_P( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() );
-        ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
-        block_mat = ParSparseMat::RAP( submesh_P, parent_J, parent_P ).release();
+        auto parent_J = submesh_J_hypre * ( *submesh_parent_vdof_xfer_ );
+        shared::ParSparseMatView submesh_P( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() );
+        shared::ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
+        block_mat = shared::ParSparseMat::RAP( submesh_P, parent_J, parent_P ).release();
       }
 
       block_J->SetBlock( r_blk, c_blk, block_mat );
@@ -1039,9 +1037,9 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian(
 
   if ( has_11 ) {
     auto& submesh_fes_full = submesh_data_.GetSubmeshFESpace();
-    ParSparseMat inactive_hpm_full =
-        ParSparseMat::diagonalMatrix( TRIBOL_COMM_WORLD, submesh_fes_full.GlobalTrueVSize(),
-                                      submesh_fes_full.GetTrueDofOffsets(), 1.0, mortar_tdof_list_, false );
+    shared::ParSparseMat inactive_hpm_full =
+        shared::ParSparseMat::diagonalMatrix( TRIBOL_COMM_WORLD, submesh_fes_full.GlobalTrueVSize(),
+                                              submesh_fes_full.GetTrueDofOffsets(), 1.0, mortar_tdof_list_, false );
 
     if ( block_J->IsZeroBlock( 1, 1 ) ) {
       block_J->SetBlock( 1, 1, inactive_hpm_full.release() );

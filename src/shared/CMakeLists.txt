@@ -6,18 +6,24 @@
 ## list of headers
 set(shared_headers
 
+    common/BasicTypes.hpp
+    common/ExecModel.hpp
     infrastructure/Profiling.hpp
+    math/ParSparseMat.hpp
+    math/ParVector.hpp
     mesh/MeshBuilder.hpp
     )
 
 ## list of sources
 set(shared_sources
 
+    math/ParSparseMat.cpp
+    math/ParVector.cpp
     mesh/MeshBuilder.cpp
     )
 
 ## setup the dependency list for tribol shared library
-set(shared_depends mfem)
+set(shared_depends mfem axom::core)
 blt_list_append(TO shared_depends ELEMENTS blt::mpi IF TRIBOL_USE_MPI )
 blt_list_append(TO shared_depends ELEMENTS caliper IF TRIBOL_USE_CALIPER )
 message(STATUS "Tribol shared library dependencies: ${shared_depends}")
@@ -31,7 +37,7 @@ blt_add_library(
     FOLDER shared
     )
 
-# Add separable compilation flag
+# Add debug flag
 if(ENABLE_HIP)
     target_compile_options(tribol_shared PRIVATE
         $<$<CONFIG:Debug>:

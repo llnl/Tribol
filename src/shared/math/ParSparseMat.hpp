@@ -3,16 +3,26 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_TRIBOL_UTILS_PARSPARSEMAT_HPP_
-#define SRC_TRIBOL_UTILS_PARSPARSEMAT_HPP_
+#ifndef SRC_SHARED_MATH_PARSPARSEMAT_HPP_
+#define SRC_SHARED_MATH_PARSPARSEMAT_HPP_
 
-#include "tribol/config.hpp"
-#include "mfem.hpp"
+#include "shared/config.hpp"
 
 #include <memory>
-#include <utility>
 
-namespace tribol {
+#include "mfem.hpp"
+
+#include "shared/common/BasicTypes.hpp"
+#include "shared/common/ExecModel.hpp"
+#include "shared/math/ParVector.hpp"
+
+#ifdef TRIBOL_USE_MPI
+#include <HYPRE_utilities.h>
+#endif
+
+namespace shared {
+
+#ifdef TRIBOL_USE_MPI
 
 class ParSparseMat;
 
@@ -29,29 +39,39 @@ class ParSparseMatView {
    *
    * @param mat Pointer to the mfem HypreParMatrix
    */
-  ParSparseMatView( mfem::HypreParMatrix* mat ) : m_mat( mat ) {}
+  ParSparseMatView( mfem::HypreParMatrix* mat );
 
   virtual ~ParSparseMatView() = default;
 
   /**
    * @brief Access the underlying mfem::HypreParMatrix
    */
-  mfem::HypreParMatrix& get() { return *m_mat; }
+  mfem::HypreParMatrix& get() { return *mat_; }
 
   /**
    * @brief Access the underlying mfem::HypreParMatrix (const)
    */
-  const mfem::HypreParMatrix& get() const { return *m_mat; }
+  const mfem::HypreParMatrix& get() const { return *mat_; }
 
   /**
    * @brief Access underlying matrix members via arrow operator
    */
-  mfem::HypreParMatrix* operator->() { return m_mat; }
+  mfem::HypreParMatrix* operator->() { return mat_; }
 
   /**
    * @brief Access underlying matrix members via arrow operator (const)
    */
-  const mfem::HypreParMatrix* operator->() const { return m_mat; }
+  const mfem::HypreParMatrix* operator->() const { return mat_; }
+
+  /**
+   * @brief Returns the number of local rows
+   */
+  int Height() const { return mat_->Height(); }
+
+  /**
+   * @brief Returns the number of local columns
+   */
+  int Width() const { return mat_->Width(); }
 
   /**
    * @brief Matrix addition: returns A + B
@@ -76,7 +96,7 @@ class ParSparseMatView {
   /**
    * @brief Matrix-vector multiplication: returns y = A * x
    */
-  mfem::Vector operator*( const mfem::Vector& x ) const;
+  ParVector operator*( const ParVectorView& x ) const;
 
   /**
    * @brief Returns the transpose of the matrix
@@ -99,9 +119,9 @@ class ParSparseMatView {
   static ParSparseMat RAP( const ParSparseMatView& A, const ParSparseMatView& P );
 
   /**
-   * @brief Returns R * A * P
+   * @brief Returns Rt^T * A * P
    */
-  static ParSparseMat RAP( const ParSparseMatView& R, const ParSparseMatView& A, const ParSparseMatView& P );
+  static ParSparseMat RAP( const ParSparseMatView& Rt, const ParSparseMatView& A, const ParSparseMatView& P );
 
   /**
    * @brief Eliminates the rows from the matrix
@@ -125,10 +145,71 @@ class ParSparseMatView {
   /**
    * @brief Vector-Matrix multiplication: returns y = x^T * A (computed as A^T * x)
    */
-  friend mfem::Vector operator*( const mfem::Vector& x, const ParSparseMatView& mat );
+  friend ParVector operator*( const ParVectorView& x, const ParSparseMatView& mat );
 
  protected:
-  mfem::HypreParMatrix* m_mat;
+  static ParSparseMat add( RealT alpha, const ParSparseMatView& A, RealT beta, const ParSparseMatView& B );
+
+  /**
+   * @brief Helper to invoke a Hypre method with a specific memory location
+   */
+  template <MemorySpace MSPACE, typename F>
+  static auto invokeHypreMethod( F&& f )
+  {
+    HYPRE_MemoryLocation old_hypre_mem_location;
+    HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+
+    if constexpr ( MSPACE == MemorySpace::Host ) {
+      HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
+    }
+
+    if constexpr ( std::is_same_v<decltype( f() ), void> ) {
+      f();
+      HYPRE_SetMemoryLocation( old_hypre_mem_location );
+    } else {
+      auto result = f();
+      if constexpr ( std::is_same_v<decltype( result ), mfem::HypreParMatrix*> ) {
+        if ( result ) {
+          if constexpr ( MSPACE == MemorySpace::Host ) {
+            constexpr int hypre_owned_host_arrays = -1;
+            result->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
+          }
+        }
+      }
+      HYPRE_SetMemoryLocation( old_hypre_mem_location );
+      return result;
+    }
+  }
+
+  /**
+   * @brief Creates a mfem::HypreParMatrix with a specific memory location and sets owner flags
+   *
+   * @tparam MSPACE Memory space to use
+   * @tparam F Lambda type
+   * @param f Lambda that returns a mfem::HypreParMatrix*
+   * @return mfem::HypreParMatrix* The created matrix
+   */
+  template <MemorySpace MSPACE, typename F, std::enable_if_t<std::is_invocable_v<F>, int> = 0>
+  static auto createHypreParMatrix( F&& f )
+  {
+    return invokeHypreMethod<MSPACE>( std::forward<F>( f ) );
+  }
+
+  /**
+   * @brief Creates a mfem::HypreParMatrix with a specific memory location and sets owner flags
+   *
+   * @tparam MSPACE Memory space to use
+   * @tparam Args Constructor argument types
+   * @param args Constructor arguments
+   * @return mfem::HypreParMatrix* The created matrix
+   */
+  template <MemorySpace MSPACE, typename... Args>
+  static mfem::HypreParMatrix* createHypreParMatrix( Args&&... args )
+  {
+    return invokeHypreMethod<MSPACE>( [&]() { return new mfem::HypreParMatrix( std::forward<Args>( args )... ); } );
+  }
+
+  mfem::HypreParMatrix* mat_;
 };
 
 /**
@@ -169,9 +250,9 @@ class ParSparseMat : public ParSparseMatView {
   template <typename... Args>
   explicit ParSparseMat( Args&&... args )
       : ParSparseMatView( nullptr ),
-        m_owned_mat( std::make_unique<mfem::HypreParMatrix>( std::forward<Args>( args )... ) )
+        owned_mat_( createHypreParMatrix<MemorySpace::Host>( std::forward<Args>( args )... ) )
   {
-    m_mat = m_owned_mat.get();
+    mat_ = owned_mat_.get();
   }
 
   /// Move constructor
@@ -251,9 +332,11 @@ class ParSparseMat : public ParSparseMatView {
                                       const mfem::Vector& diag_vals );
 
  private:
-  std::unique_ptr<mfem::HypreParMatrix> m_owned_mat;
+  std::unique_ptr<mfem::HypreParMatrix> owned_mat_;
 };
 
-}  // namespace tribol
+#endif  // #ifdef TRIBOL_USE_MPI
 
-#endif /* SRC_TRIBOL_UTILS_PARSPARSEMAT_HPP_ */
+}  // namespace shared
+
+#endif /* SRC_SHARED_MATH_PARSPARSEMAT_HPP_ */

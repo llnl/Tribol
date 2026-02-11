@@ -17,13 +17,13 @@
 
 #include "mfem.hpp"
 
-#include "axom/core.hpp"
+#include "shared/math/ParSparseMat.hpp"
+
 #include "redecomp/redecomp.hpp"
 
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
-#include "tribol/utils/ParSparseMat.hpp"
 
 namespace tribol {
 
@@ -1738,7 +1738,7 @@ class MfemJacobianData {
   /**
    * @brief Submesh to parent transfer operator
    */
-  std::unique_ptr<ParSparseMat> submesh_parent_vdof_xfer_;
+  std::unique_ptr<shared::ParSparseMat> submesh_parent_vdof_xfer_;
 
   /**
    * @brief List of submesh true dofs that only exist on the mortar surface
