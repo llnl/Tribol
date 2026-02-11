@@ -7,6 +7,7 @@
 set(shared_headers
 
     common/BasicTypes.hpp
+    common/ExecModel.hpp
     infrastructure/Profiling.hpp
     math/ParSparseMat.hpp
     math/ParVector.hpp
