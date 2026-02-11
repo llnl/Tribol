@@ -6,6 +6,8 @@
 #ifndef SRC_TRIBOL_PHYSICS_NEWMETHODADAPTER_HPP_
 #define SRC_TRIBOL_PHYSICS_NEWMETHODADAPTER_HPP_
 
+#include "tribol/config.hpp"
+
 #include "tribol/physics/ContactFormulation.hpp"
 #include "tribol/physics/new_method.hpp"
 #include "tribol/mesh/MfemData.hpp"
@@ -46,6 +48,7 @@ class NewMethodAdapter : public ContactFormulation {
 
   RealT getEnergy() const override { return energy_; }
 
+#ifdef BUILD_REDECOMP
   void getMfemForce( mfem::Vector& forces ) const override;
 
   void getMfemGap( mfem::Vector& gaps ) const override;
@@ -57,9 +60,12 @@ class NewMethodAdapter : public ContactFormulation {
   std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx() const override;
 
   std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const override;
+#endif
 
  private:
   // --- Member Variables ---
+
+  double area_tol_{ 1.0e-14 };
 
   MfemSubmeshData& submesh_data_;
   MfemJacobianData& jac_data_;
@@ -72,15 +78,15 @@ class NewMethodAdapter : public ContactFormulation {
   ArrayT<InterfacePair> pairs_;
 
   // These store the assembled nodal values
-  mfem::HypreParVector g_tilde_vec_;
-  mfem::HypreParVector A_vec_;
-  mutable ParSparseMat dg_tilde_dx_;
-  ParSparseMat dA_dx_;
+  shared::ParVector g_tilde_vec_;
+  shared::ParVector A_vec_;
+  mutable shared::ParSparseMat dg_tilde_dx_;
+  shared::ParSparseMat dA_dx_;
 
-  mfem::HypreParVector pressure_vec_;  // This holds p = k * g / A
+  shared::ParVector pressure_vec_;  // This holds p = k * g / A
   RealT energy_;
-  mfem::Vector force_vec_;
-  mutable ParSparseMat df_dx_;
+  shared::ParVector force_vec_;
+  mutable shared::ParSparseMat df_dx_;
 
   // Pressure GridFunction wrapper (required by interface)
   // We wrap the pressure_vec_ in a ParGridFunction for return

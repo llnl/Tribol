@@ -404,12 +404,12 @@ TEST_F( ParSparseMatTest, DiagonalFromVector )
     diag_vals[i] = static_cast<double>( rank * 100 + i );
   }
 
-  tribol::ParSparseMat A =
-      tribol::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, size, row_starts.GetData(), diag_vals );
+  shared::ParSparseMat A =
+      shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, size, row_starts.GetData(), diag_vals );
 
-  mfem::Vector x( local_size ), y( local_size );
-  x = 1.0;
-  y = A * x;
+  shared::ParVector x( A.get(), 0 );
+  x.Fill( 1.0 );
+  auto y = A * x;
 
   for ( int i = 0; i < local_size; ++i ) {
     EXPECT_NEAR( y[i], static_cast<double>( rank * 100 + i ), 1e-12 );

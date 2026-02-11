@@ -6,6 +6,8 @@
 #ifndef SRC_TRIBOL_PHYSICS_CONTACTFORMULATION_HPP_
 #define SRC_TRIBOL_PHYSICS_CONTACTFORMULATION_HPP_
 
+#include "tribol/config.hpp"
+
 #include "tribol/common/Parameters.hpp"
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"

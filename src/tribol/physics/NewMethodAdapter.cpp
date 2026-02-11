@@ -131,26 +131,26 @@ void NewMethodAdapter::updateNodalGaps()
       const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
   submesh_data_.GetSubmeshGap( g_tilde_linear_form );
   auto& P_submesh = *submesh_data_.GetSubmeshFESpace().GetProlongationMatrix();
-  g_tilde_vec_ = mfem::HypreParVector( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
-  g_tilde_vec_ = 0.0;
-  P_submesh.MultTranspose( g_tilde_linear_form, g_tilde_vec_ );
+  g_tilde_vec_ = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
+  g_tilde_vec_.Fill( 0.0 );
+  P_submesh.MultTranspose( g_tilde_linear_form, g_tilde_vec_.get() );
 
   mfem::ParLinearForm A_linear_form( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
   submesh_data_.GetPressureTransfer().RedecompToSubmesh( redecomp_area, A_linear_form );
-  A_vec_ = mfem::HypreParVector( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
-  A_vec_ = 0.0;
-  P_submesh.MultTranspose( A_linear_form, A_vec_ );
+  A_vec_ = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
+  A_vec_.Fill( 0.0 );
+  P_submesh.MultTranspose( A_linear_form, A_vec_.get() );
 
   // Move gap and area derivatives to HypreParMatrix (submesh rows, parent mesh cols)
   const std::vector<std::pair<int, BlockSpace>> row_info{ { 1, BlockSpace::LAGRANGE_MULTIPLIER } };
   const std::vector<std::pair<int, BlockSpace>> col_info{ { 0, BlockSpace::NONMORTAR }, { 0, BlockSpace::MORTAR } };
   auto dg_tilde_dx_block = jac_data_.GetMfemBlockJacobian( dg_tilde_dx, row_info, col_info );
   dg_tilde_dx_block->owns_blocks = false;
-  dg_tilde_dx_ = ParSparseMat( static_cast<mfem::HypreParMatrix*>( &dg_tilde_dx_block->GetBlock( 1, 0 ) ) );
+  dg_tilde_dx_ = shared::ParSparseMat( static_cast<mfem::HypreParMatrix*>( &dg_tilde_dx_block->GetBlock( 1, 0 ) ) );
 
   auto dA_dx_block = jac_data_.GetMfemBlockJacobian( dA_dx, row_info, col_info );
   dA_dx_block->owns_blocks = false;
-  dA_dx_ = ParSparseMat( static_cast<mfem::HypreParMatrix*>( &dA_dx_block->GetBlock( 1, 0 ) ) );
+  dA_dx_ = shared::ParSparseMat( static_cast<mfem::HypreParMatrix*>( &dA_dx_block->GetBlock( 1, 0 ) ) );
 }
 
 void NewMethodAdapter::updateNodalForces()
@@ -159,19 +159,17 @@ void NewMethodAdapter::updateNodalForces()
 
   // compute nodal pressures. these are used in the Hessian vector product below so we don't have to assemble a Hessian
   // NOTE: in general, pressure should likely be set by the host code
-  pressure_vec_.SetSize( g_tilde_vec_.Size() );
-  pressure_vec_ = 0.0;
-  for ( int i{ 0 }; i < pressure_vec_.Size(); ++i ) {
-    if ( A_vec_[i] > 1.0e-14 && g_tilde_vec_[i] <= 0.0 ) {
-      pressure_vec_[i] = params_.k * g_tilde_vec_[i] / A_vec_[i];
-    }
-  }
+  pressure_vec_ = ( params_.k * g_tilde_vec_ ).divideInPlace( A_vec_, area_tol_ );
+
+  // energy_ = pressure_vec_.dot( g_tilde_vec_ );
 
   energy_ = 0.0;
   for ( int i{ 0 }; i < pressure_vec_.Size(); ++i ) {
     energy_ += pressure_vec_[i] * g_tilde_vec_[i];
   }
   MPI_Allreduce( MPI_IN_PLACE, &energy_, 1, MPI_DOUBLE, MPI_SUM, submesh_data_.GetSubmeshFESpace().GetComm() );
+
+  // auto k_over_a = params_.k * A_vec_.inverse( area_tol_ );
 
   mfem::HypreParVector k_over_a( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
   k_over_a = 0.0;
@@ -181,21 +179,15 @@ void NewMethodAdapter::updateNodalForces()
     }
   }
 
-  mfem::HypreParVector p_over_a( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
-  p_over_a = 0.0;
-  for ( int i{ 0 }; i < p_over_a.Size(); ++i ) {
-    if ( A_vec_[i] > 1.0e-14 ) {
-      p_over_a[i] = pressure_vec_[i] / A_vec_[i];
-    }
-  }
+  auto p_over_a = pressure_vec_.divide( A_vec_, area_tol_ );
 
-  ParSparseMat dp_dx( dg_tilde_dx_.get() );
+  shared::ParSparseMat dp_dx( dg_tilde_dx_.get() );
   dp_dx->ScaleRows( k_over_a );
-  ParSparseMat dp_dx_temp( dA_dx_.get() );
-  dp_dx_temp->ScaleRows( p_over_a );
+  shared::ParSparseMat dp_dx_temp( dA_dx_.get() );
+  dp_dx_temp->ScaleRows( p_over_a.get() );
   dp_dx -= dp_dx_temp;
 
-  force_vec_ = ( pressure_vec_ * dg_tilde_dx_ ).Add( 1.0, g_tilde_vec_ * dp_dx );
+  force_vec_ = ( pressure_vec_ * dg_tilde_dx_ ) + ( g_tilde_vec_ * dp_dx );
 
   MethodData df_dx_data;
   df_dx_data.reserveBlockJ( { BlockSpace::NONMORTAR, BlockSpace::MORTAR }, pairs_.size() );
@@ -204,18 +196,18 @@ void NewMethodAdapter::updateNodalForces()
   mfem::GridFunction redecomp_pressure( submesh_data_.GetRedecompGap() );
   mfem::ParGridFunction submesh_pressure(
       const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
-  submesh_pressure.SetFromTrueDofs( pressure_vec_ );
+  submesh_pressure.SetFromTrueDofs( pressure_vec_.get() );
   submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_pressure, redecomp_pressure );
 
   mfem::GridFunction redecomp_g_tilde( submesh_data_.GetRedecompGap() );
   mfem::ParGridFunction submesh_g_tilde(
       const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
-  submesh_g_tilde.SetFromTrueDofs( g_tilde_vec_ );
+  submesh_g_tilde.SetFromTrueDofs( g_tilde_vec_.get() );
   submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_g_tilde, redecomp_g_tilde );
 
   mfem::GridFunction redecomp_A( submesh_data_.GetRedecompGap() );
   mfem::ParGridFunction submesh_A( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
-  submesh_A.SetFromTrueDofs( A_vec_ );
+  submesh_A.SetFromTrueDofs( A_vec_.get() );
   submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_A, redecomp_A );
 
   auto mesh1_view = mesh1_.getView();
@@ -310,25 +302,22 @@ void NewMethodAdapter::updateNodalForces()
   const std::vector<std::pair<int, BlockSpace>> all_info{ { 0, BlockSpace::NONMORTAR }, { 0, BlockSpace::MORTAR } };
   auto df_dx_block = jac_data_.GetMfemBlockJacobian( df_dx_data, all_info, all_info );
   df_dx_block->owns_blocks = false;
-  df_dx_ = ParSparseMat( static_cast<mfem::HypreParMatrix*>( &df_dx_block->GetBlock( 0, 0 ) ) );
+  df_dx_ = shared::ParSparseMat( static_cast<mfem::HypreParMatrix*>( &df_dx_block->GetBlock( 0, 0 ) ) );
 
-  mfem::HypreParVector pg2_over_asq( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
-  pg2_over_asq = 0.0;
-  for ( int i{ 0 }; i < pg2_over_asq.Size(); ++i ) {
-    if ( A_vec_[i] > 1.0e-14 ) {
-      pg2_over_asq[i] = 2.0 * pressure_vec_[i] * g_tilde_vec_[i] / ( A_vec_[i] * A_vec_[i] );
-    }
-  }
+  auto pg2_over_asq = ( 2.0 * pressure_vec_ )
+                          .multiplyInPlace( g_tilde_vec_ )
+                          .divideInPlace( A_vec_, area_tol_ )
+                          .divideInPlace( A_vec_, area_tol_ );
 
   auto& submesh_fes = submesh_data_.GetSubmeshFESpace();
-  auto p_over_a_diag = ParSparseMat::diagonalMatrix( submesh_fes.GetComm(), submesh_fes.GlobalTrueVSize(),
-                                                     submesh_fes.GetTrueDofOffsets(), p_over_a );
-  auto pg2_over_asq_diag = ParSparseMat::diagonalMatrix( submesh_fes.GetComm(), submesh_fes.GlobalTrueVSize(),
-                                                         submesh_fes.GetTrueDofOffsets(), pg2_over_asq );
+  auto p_over_a_diag = shared::ParSparseMat::diagonalMatrix( submesh_fes.GetComm(), submesh_fes.GlobalTrueVSize(),
+                                                             submesh_fes.GetTrueDofOffsets(), p_over_a.get() );
+  auto pg2_over_asq_diag = shared::ParSparseMat::diagonalMatrix( submesh_fes.GetComm(), submesh_fes.GlobalTrueVSize(),
+                                                                 submesh_fes.GetTrueDofOffsets(), pg2_over_asq.get() );
 
-  df_dx_ -= ParSparseMat::RAP( dg_tilde_dx_, p_over_a_diag, dA_dx_ );
-  df_dx_ -= ParSparseMat::RAP( dA_dx_, p_over_a_diag, dg_tilde_dx_ );
-  df_dx_ += ParSparseMat::RAP( dA_dx_, pg2_over_asq_diag, dg_tilde_dx_ );
+  df_dx_ -= shared::ParSparseMat::RAP( dg_tilde_dx_, p_over_a_diag, dA_dx_ );
+  df_dx_ -= shared::ParSparseMat::RAP( dA_dx_, p_over_a_diag, dg_tilde_dx_ );
+  df_dx_ += shared::ParSparseMat::RAP( dA_dx_, pg2_over_asq_diag, dg_tilde_dx_ );
   df_dx_ += dp_dx.transpose() * dg_tilde_dx_;
   df_dx_ += dg_tilde_dx_.transpose() * dp_dx;
 }
