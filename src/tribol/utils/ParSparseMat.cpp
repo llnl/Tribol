@@ -16,9 +16,6 @@ namespace tribol {
 
 ParSparseMatView::ParSparseMatView( mfem::HypreParMatrix* mat ) : mat_( mat )
 {
-  SLIC_ERROR_ROOT_IF(
-      mat != nullptr && hypre_ParCSRMatrixMemoryLocation( mat->operator hypre_ParCSRMatrix*() ) != HYPRE_MEMORY_HOST,
-      "ParSparseMatView currently requires host data." );
 }
 
 ParSparseMat operator+( const ParSparseMatView& lhs, const ParSparseMatView& rhs )
@@ -39,9 +36,8 @@ ParSparseMat operator*( const ParSparseMatView& lhs, const ParSparseMatView& rhs
   HYPRE_MemoryLocation old_hypre_mem_location;
   HYPRE_GetMemoryLocation( &old_hypre_mem_location );
   HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
-  mfem::HypreParMatrix* result = mfem::ParMult( lhs.mat_, rhs.mat_ );
-  result->CopyRowStarts();
-  result->CopyColStarts();
+  mfem::HypreParMatrix* result = mfem::ParMult( lhs.mat_, rhs.mat_, true );
+  // This is needed so the destructor doesn't think the hypre data is device data
   constexpr auto hypre_owned_host_arrays = -1;
   result->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
   HYPRE_SetMemoryLocation( old_hypre_mem_location );
@@ -60,23 +56,64 @@ ParVector ParSparseMatView::operator*( const ParVectorView& x ) const
   return y;
 }
 
-ParSparseMat ParSparseMatView::transpose() const { return ParSparseMat( mat_->Transpose() ); }
+ParSparseMat ParSparseMatView::transpose() const {
+  HYPRE_MemoryLocation old_hypre_mem_location;
+  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
+  ParSparseMat mat_transpose( mat_->Transpose() );
+  // This is needed so the destructor doesn't think the hypre data is device data
+  constexpr auto hypre_owned_host_arrays = -1;
+  mat_transpose->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
+  HYPRE_SetMemoryLocation( old_hypre_mem_location );
+  return mat_transpose;
+}
 
 ParSparseMat ParSparseMatView::square() const { return *this * *this; }
 
 ParSparseMat ParSparseMatView::RAP( const ParSparseMatView& P ) const
 {
-  return ParSparseMat( mfem::RAP( mat_, P.mat_ ) );
+  HYPRE_MemoryLocation old_hypre_mem_location;
+  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
+  mat_->HostRead();
+  P->HostRead();
+  ParSparseMat rap( mfem::RAP( mat_, P.mat_ ) );
+  // This is needed so the destructor doesn't think the hypre data is device data
+  constexpr auto hypre_owned_host_arrays = -1;
+  rap->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
+  HYPRE_SetMemoryLocation( old_hypre_mem_location );
+  return rap;
 }
 
 ParSparseMat ParSparseMatView::RAP( const ParSparseMatView& A, const ParSparseMatView& P )
 {
-  return ParSparseMat( mfem::RAP( A.mat_, P.mat_ ) );
+  HYPRE_MemoryLocation old_hypre_mem_location;
+  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
+  A->HostRead();
+  P->HostRead();
+  ParSparseMat rap( mfem::RAP( A.mat_, P.mat_ ) );
+  // This is needed so the destructor doesn't think the hypre data is device data
+  constexpr auto hypre_owned_host_arrays = -1;
+  rap->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
+  HYPRE_SetMemoryLocation( old_hypre_mem_location );
+  return rap;
 }
 
 ParSparseMat ParSparseMatView::RAP( const ParSparseMatView& R, const ParSparseMatView& A, const ParSparseMatView& P )
 {
-  return ParSparseMat( mfem::RAP( R.mat_, A.mat_, P.mat_ ) );
+  HYPRE_MemoryLocation old_hypre_mem_location;
+  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
+  R->HostRead();
+  A->HostRead();
+  P->HostRead();
+  ParSparseMat rap( mfem::RAP( R.mat_, A.mat_, P.mat_ ) );
+  // This is needed so the destructor doesn't think the hypre data is device data
+  constexpr auto hypre_owned_host_arrays = -1;
+  rap->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
+  HYPRE_SetMemoryLocation( old_hypre_mem_location );
+  return rap;
 }
 
 void ParSparseMatView::EliminateRows( const mfem::Array<int>& rows )
@@ -91,12 +128,16 @@ void ParSparseMatView::EliminateRows( const mfem::Array<int>& rows )
 
 ParSparseMat ParSparseMatView::EliminateCols( const mfem::Array<int>& cols )
 {
-  // Prevent HypreParMatrix::EliminateRows from changing memory from host to device
+  // Prevent HypreParMatrix::EliminateCols from changing memory from host to device
   HYPRE_MemoryLocation old_hypre_mem_location;
   HYPRE_GetMemoryLocation( &old_hypre_mem_location );
   HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
-  return ParSparseMat( mat_->EliminateCols( cols ) );
+  ParSparseMat elim_cols_mat( mat_->EliminateCols( cols ) );
+  // This is needed so the destructor doesn't think the hypre data is device data
+  constexpr auto hypre_owned_host_arrays = -1;
+  elim_cols_mat->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
   HYPRE_SetMemoryLocation( old_hypre_mem_location );
+  return elim_cols_mat;
 }
 
 ParSparseMat operator*( double s, const ParSparseMatView& mat ) { return mat * s; }
@@ -120,6 +161,7 @@ ParSparseMat ParSparseMatView::add( RealT alpha, const ParSparseMatView& A, Real
   HYPRE_GetMemoryLocation( &old_hypre_mem_location );
   HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
   mfem::HypreParMatrix* result = mfem::Add( alpha, A.get(), beta, B.get() );
+  // This is needed so the destructor doesn't think the hypre data is device data
   constexpr auto hypre_owned_host_arrays = -1;
   result->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
   HYPRE_SetMemoryLocation( old_hypre_mem_location );
@@ -148,6 +190,7 @@ ParSparseMat::ParSparseMat( MPI_Comm comm, HYPRE_BigInt glob_size, HYPRE_BigInt*
   diag.GetMemoryJ().ClearOwnerFlags();
   diag.GetMemoryData().ClearOwnerFlags();
   constexpr auto mfem_owned_host_arrays = 3;
+  // This is needed so the destructor doesn't think the hypre data is device data
   constexpr auto hypre_owned_host_arrays = -1;
   owned_mat_->SetOwnerFlags( mfem_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
   // Return hypre's memory location to what it was before
@@ -271,8 +314,8 @@ ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_si
   HYPRE_SetMemoryLocation( old_hypre_mem_location );
   diag_hpm->CopyRowStarts();
   diag_hpm->CopyColStarts();
-  constexpr auto mfem_owned_host_arrays = 3;
-  diag_hpm->SetOwnerFlags( mfem_owned_host_arrays, mfem_owned_host_arrays, diag_hpm->OwnsColMap() );
+  constexpr auto hypre_owned_host_arrays = -1;
+  diag_hpm->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
   return ParSparseMat( std::move( diag_hpm ) );
 }
 

@@ -190,6 +190,9 @@ class ParSparseMat : public ParSparseMatView {
     HYPRE_GetMemoryLocation( &old_hypre_mem_location );
     HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
     owned_mat_ = std::make_unique<mfem::HypreParMatrix>( std::forward<Args>( args )... );
+    // This is needed so the destructor doesn't think the hypre data is device data
+    constexpr auto hypre_owned_host_arrays = -1;
+    owned_mat_->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
     // Return hypre's memory location to what it was before
     HYPRE_SetMemoryLocation( old_hypre_mem_location );
     mat_ = owned_mat_.get();

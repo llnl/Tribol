@@ -43,7 +43,7 @@ std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::TransferToParallel(
 {
   auto J_sparse = TransferToParallelSparse( test_elem_idx, trial_elem_idx, src_elem_mat );
   J_sparse.Finalize();
-  return ConvertToHypreParMatrix( J_sparse, parallel_assemble );
+  return ConvertToHypreParMatrix( std::move(J_sparse), parallel_assemble );
 }
 
 mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<int>& test_elem_idx,
@@ -142,7 +142,7 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
   return parentJ;
 }
 
-std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::ConvertToHypreParMatrix( mfem::SparseMatrix& sparse,
+std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::ConvertToHypreParMatrix( mfem::SparseMatrix&& sparse,
                                                                                bool parallel_assemble ) const
 {
   SLIC_ERROR_IF( sparse.Height() != parent_test_fes_.GetVSize(),
@@ -161,15 +161,35 @@ std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::ConvertToHypreParMatrix( m
   // update the host pointer
   J_bigint.HostRead();
 
+  // Force hypre to do this on host
+  HYPRE_MemoryLocation old_hypre_mem_location;
+  HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
   auto J_full = std::make_unique<mfem::HypreParMatrix>(
       getMPIUtility().MPIComm(), parent_test_fes_.GetVSize(), parent_test_fes_.GlobalVSize(),
       parent_trial_fes_.GlobalVSize(), sparse.GetI(), J_bigint.GetData(), sparse.GetData(),
       parent_test_fes_.GetDofOffsets(), parent_trial_fes_.GetDofOffsets() );
+  sparse.GetMemoryI().ClearOwnerFlags();
+  sparse.GetMemoryJ().ClearOwnerFlags();
+  sparse.GetMemoryData().ClearOwnerFlags();
+  constexpr auto mfem_owned_host_arrays = 3;
+  constexpr auto hypre_owned_host_arrays = -1;
+  J_full->SetOwnerFlags( mfem_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
   if ( !parallel_assemble ) {
+    // Return hypre's memory location to what it was before
+    HYPRE_SetMemoryLocation( old_hypre_mem_location );
     return J_full;
   } else {
+    auto& P_test = *parent_test_fes_.Dof_TrueDof_Matrix();
+    P_test.HostRead();
+    auto& P_trial = *parent_trial_fes_.Dof_TrueDof_Matrix();
+    P_trial.HostRead();
     auto J_true = std::unique_ptr<mfem::HypreParMatrix>(
-        mfem::RAP( parent_test_fes_.Dof_TrueDof_Matrix(), J_full.get(), parent_trial_fes_.Dof_TrueDof_Matrix() ) );
+        mfem::RAP( &P_test, J_full.get(), &P_trial ) );
+    constexpr auto hypre_owned_host_arrays = -1;
+    J_true->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
+    // Return hypre's memory location to what it was before
+    HYPRE_SetMemoryLocation( old_hypre_mem_location );
     return J_true;
   }
 }

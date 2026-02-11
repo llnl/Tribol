@@ -15,9 +15,6 @@ namespace tribol {
 
 ParVectorView::ParVectorView( mfem::HypreParVector* vec ) : vec_( vec )
 {
-  SLIC_ERROR_ROOT_IF(
-      vec != nullptr && hypre_ParVectorMemoryLocation( vec->operator hypre_ParVector*() ) != HYPRE_MEMORY_HOST,
-      "ParVectorView currently requires host data." );
 }
 
 ParVector::ParVector( mfem::HypreParVector* vec ) : ParVectorView( vec ), owned_vec_( vec ) {}

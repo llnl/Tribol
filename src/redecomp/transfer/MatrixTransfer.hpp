@@ -94,7 +94,7 @@ class MatrixTransfer {
    * HypreParMatrix returned to transform it to the t-dofs if parallel_assemble
    * is false.
    */
-  std::unique_ptr<mfem::HypreParMatrix> ConvertToHypreParMatrix( mfem::SparseMatrix& sparse,
+  std::unique_ptr<mfem::HypreParMatrix> ConvertToHypreParMatrix( mfem::SparseMatrix&& sparse,
                                                                  bool parallel_assemble = true ) const;
 
  private:
