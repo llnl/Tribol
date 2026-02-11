@@ -3,14 +3,16 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include "tribol/utils/ParSparseMat.hpp"
+#include "shared/math/ParSparseMat.hpp"
 
 #include <HYPRE_utilities.h>
 #include <_hypre_parcsr_mv.h>
 
 #include "axom/slic.hpp"
 
-namespace tribol {
+namespace shared {
+
+#ifdef TRIBOL_USE_MPI
 
 // ParSparseMatView implementations
 
@@ -99,15 +101,15 @@ ParSparseMat ParSparseMatView::RAP( const ParSparseMatView& A, const ParSparseMa
   return rap;
 }
 
-ParSparseMat ParSparseMatView::RAP( const ParSparseMatView& R, const ParSparseMatView& A, const ParSparseMatView& P )
+ParSparseMat ParSparseMatView::RAP( const ParSparseMatView& Rt, const ParSparseMatView& A, const ParSparseMatView& P )
 {
   HYPRE_MemoryLocation old_hypre_mem_location;
   HYPRE_GetMemoryLocation( &old_hypre_mem_location );
   HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
-  R->HostRead();
+  Rt->HostRead();
   A->HostRead();
   P->HostRead();
-  ParSparseMat rap( mfem::RAP( R.mat_, A.mat_, P.mat_ ) );
+  ParSparseMat rap( mfem::RAP( Rt.mat_, A.mat_, P.mat_ ) );
   // This is needed so the destructor doesn't think the hypre data is device data
   constexpr auto hypre_owned_host_arrays = -1;
   rap->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
@@ -328,4 +330,6 @@ ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_si
   return diagonalMatrix( comm, global_size, row_starts_array, diag_val, ordered_rows, skip_rows );
 }
 
-}  // namespace tribol
+#endif  // #ifdef TRIBOL_USE_MPI
+
+}  // namespace shared

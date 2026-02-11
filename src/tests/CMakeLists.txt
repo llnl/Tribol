@@ -65,18 +65,18 @@ foreach( test ${tribol_tests} )
 endforeach()
 
 #------------------------------------------------------------------------------
-# Add MPI tests
+# Add shared tests
 #------------------------------------------------------------------------------
 if ( TRIBOL_USE_MPI )
 
-  set( mpi_tests
-       tribol_par_sparse_mat.cpp
-       tribol_par_vector.cpp
+  set( shared_tests
+       shared_par_sparse_mat.cpp
+       shared_par_vector.cpp
      )
 
-  set(mpi_test_depends tribol gtest)
+  set(mpi_test_depends tribol_shared gtest)
 
-  foreach( test ${mpi_tests} )
+  foreach( test ${shared_tests} )
 
     get_filename_component( test_name ${test} NAME_WE )
 
@@ -91,19 +91,12 @@ if ( TRIBOL_USE_MPI )
                   COMMAND ${test_name}_test
                   NUM_MPI_TASKS 2 )
 
-    if (ENABLE_CUDA)
-      set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
-    endif()
-
     if (ENABLE_HIP)
-      target_compile_options(${test_name}_test PRIVATE -fgpu-rdc)
       target_compile_options(${test_name}_test PRIVATE
           $<$<CONFIG:Debug>:
               -ggdb
           >
       )
-      target_link_options(${test_name}_test PRIVATE -fgpu-rdc)
-      target_link_options(${test_name}_test PRIVATE --hip-link)
     endif()
 
   endforeach()

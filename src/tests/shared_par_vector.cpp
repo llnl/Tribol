@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include "tribol/config.hpp"
+#include "shared/config.hpp"
 
 #include <gtest/gtest.h>
 
@@ -13,8 +13,7 @@
 
 #include "mfem.hpp"
 
-#include "tribol/utils/ParVector.hpp"
-#include "tribol/utils/ParSparseMat.hpp"
+#include "shared/math/ParVector.hpp"
 
 class ParVectorTest : public ::testing::Test {
  protected:
@@ -68,7 +67,7 @@ TEST_F( ParVectorTest, Construction )
   HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
   mfem::HypreParVector* v1 = new mfem::HypreParVector( MPI_COMM_WORLD, size, row_starts_array.GetData() );
   HYPRE_SetMemoryLocation( old_hypre_mem_location );
-  tribol::ParVector pv1( v1 );
+  shared::ParVector pv1( v1 );
   EXPECT_EQ( pv1.Size(), local_size );
 
   // 2. From unique_ptr
@@ -76,11 +75,11 @@ TEST_F( ParVectorTest, Construction )
   HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
   auto v2 = std::make_unique<mfem::HypreParVector>( MPI_COMM_WORLD, size, row_starts_array.GetData() );
   HYPRE_SetMemoryLocation( old_hypre_mem_location );
-  tribol::ParVector pv2( std::move( v2 ) );
+  shared::ParVector pv2( std::move( v2 ) );
   EXPECT_EQ( pv2.Size(), local_size );
 
   // 3. Template constructor
-  tribol::ParVector pv3( MPI_COMM_WORLD, size, row_starts_array.GetData() );
+  shared::ParVector pv3( MPI_COMM_WORLD, size, row_starts_array.GetData() );
   EXPECT_EQ( pv3.Size(), local_size );
 }
 
@@ -92,17 +91,17 @@ TEST_F( ParVectorTest, View )
   if ( rank == 0 ) std::cout << "Testing View..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParVector v( MPI_COMM_WORLD, 10, row_starts.GetData() );
+  shared::ParVector v( MPI_COMM_WORLD, 10, row_starts.GetData() );
   v.Fill( 1.0 );
 
   // Construct View
-  tribol::ParVectorView view( &v.get() );
+  shared::ParVectorView view( &v.get() );
 
   EXPECT_EQ( view.Size(), v.Size() );
   EXPECT_NEAR( view.Max(), 1.0, 1e-12 );
 
   // Operate on View
-  tribol::ParVector v2 = view * 2.0;
+  shared::ParVector v2 = view * 2.0;
   EXPECT_NEAR( v2.Max(), 2.0, 1e-12 );
 }
 
@@ -114,7 +113,7 @@ TEST_F( ParVectorTest, Accessors )
   if ( rank == 0 ) std::cout << "Testing Accessors..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParVector v( MPI_COMM_WORLD, 10, row_starts.GetData() );
+  shared::ParVector v( MPI_COMM_WORLD, 10, row_starts.GetData() );
   v.Fill( 0.0 );
   if ( v.Size() > 0 ) {
     v[0] = 5.0;
@@ -135,13 +134,13 @@ TEST_F( ParVectorTest, AddSub )
   if ( rank == 0 ) std::cout << "Testing Addition and Subtraction..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParVector v1( MPI_COMM_WORLD, 10, row_starts.GetData() );
-  tribol::ParVector v2( MPI_COMM_WORLD, 10, row_starts.GetData() );
+  shared::ParVector v1( MPI_COMM_WORLD, 10, row_starts.GetData() );
+  shared::ParVector v2( MPI_COMM_WORLD, 10, row_starts.GetData() );
   v1.Fill( 2.0 );
   v2.Fill( 3.0 );
 
   // v1 + v2
-  tribol::ParVector v3 = v1 + v2;
+  shared::ParVector v3 = v1 + v2;
   EXPECT_NEAR( v3.Max(), 5.0, 1e-12 );
 
   // v1 += v2
@@ -149,7 +148,7 @@ TEST_F( ParVectorTest, AddSub )
   EXPECT_NEAR( v1.Max(), 5.0, 1e-12 );
 
   // v1 - v2
-  tribol::ParVector v4 = v1 - v2;
+  shared::ParVector v4 = v1 - v2;
   EXPECT_NEAR( v4.Max(), 2.0, 1e-12 );
 
   // v1 -= v2
@@ -165,15 +164,15 @@ TEST_F( ParVectorTest, ScalarMult )
   if ( rank == 0 ) std::cout << "Testing Scalar Multiplication..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParVector v( MPI_COMM_WORLD, 10, row_starts.GetData() );
+  shared::ParVector v( MPI_COMM_WORLD, 10, row_starts.GetData() );
   v.Fill( 2.0 );
 
   // v * s
-  tribol::ParVector v2 = v * 3.0;
+  shared::ParVector v2 = v * 3.0;
   EXPECT_NEAR( v2.Max(), 6.0, 1e-12 );
 
   // s * v
-  tribol::ParVector v3 = 4.0 * v;
+  shared::ParVector v3 = 4.0 * v;
   EXPECT_NEAR( v3.Max(), 8.0, 1e-12 );
 
   // v *= s
@@ -189,13 +188,13 @@ TEST_F( ParVectorTest, ComponentWise )
   if ( rank == 0 ) std::cout << "Testing Component-wise operations..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParVector v1( MPI_COMM_WORLD, 10, row_starts.GetData() );
-  tribol::ParVector v2( MPI_COMM_WORLD, 10, row_starts.GetData() );
+  shared::ParVector v1( MPI_COMM_WORLD, 10, row_starts.GetData() );
+  shared::ParVector v2( MPI_COMM_WORLD, 10, row_starts.GetData() );
   v1.Fill( 2.0 );
   v2.Fill( 4.0 );
 
   // multiply
-  tribol::ParVector v3 = v1.multiply( v2 );
+  shared::ParVector v3 = v1.multiply( v2 );
   EXPECT_NEAR( v3.Max(), 8.0, 1e-12 );
 
   // multiply in-place
@@ -203,7 +202,7 @@ TEST_F( ParVectorTest, ComponentWise )
   EXPECT_NEAR( v1.Max(), 8.0, 1e-12 );
 
   // divide
-  tribol::ParVector v4 = v1.divide( v2 );
+  shared::ParVector v4 = v1.divide( v2 );
   EXPECT_NEAR( v4.Max(), 2.0, 1e-12 );
 
   // divide in-place
@@ -219,16 +218,16 @@ TEST_F( ParVectorTest, MoveAndRelease )
   if ( rank == 0 ) std::cout << "Testing Move and Release..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParVector v1( MPI_COMM_WORLD, 10, row_starts.GetData() );
+  shared::ParVector v1( MPI_COMM_WORLD, 10, row_starts.GetData() );
   v1.Fill( 7.0 );
 
   // Move constructor
-  tribol::ParVector v2( std::move( v1 ) );
+  shared::ParVector v2( std::move( v1 ) );
   EXPECT_NEAR( v2.Max(), 7.0, 1e-12 );
   EXPECT_EQ( v1.operator->(), nullptr );
 
   // Move assignment
-  tribol::ParVector v3( MPI_COMM_WORLD, 10, row_starts.GetData() );
+  shared::ParVector v3( MPI_COMM_WORLD, 10, row_starts.GetData() );
   v3 = std::move( v2 );
   EXPECT_NEAR( v3.Max(), 7.0, 1e-12 );
   EXPECT_EQ( v2.operator->(), nullptr );
@@ -248,7 +247,7 @@ TEST_F( ParVectorTest, Fill )
   if ( rank == 0 ) std::cout << "Testing Fill..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParVector v( MPI_COMM_WORLD, 10, row_starts.GetData() );
+  shared::ParVector v( MPI_COMM_WORLD, 10, row_starts.GetData() );
 
   v.Fill( 1.0 );
   EXPECT_NEAR( v.Max(), 1.0, 1e-12 );
@@ -267,11 +266,11 @@ TEST_F( ParVectorTest, Copy )
   if ( rank == 0 ) std::cout << "Testing Copy..." << std::endl;
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
-  tribol::ParVector v1( MPI_COMM_WORLD, 10, row_starts.GetData() );
+  shared::ParVector v1( MPI_COMM_WORLD, 10, row_starts.GetData() );
   v1.Fill( 3.0 );
 
   // Copy constructor
-  tribol::ParVector v2( v1 );
+  shared::ParVector v2( v1 );
   EXPECT_NEAR( v2.Max(), 3.0, 1e-12 );
 
   // Verify it's a deep copy
@@ -280,7 +279,7 @@ TEST_F( ParVectorTest, Copy )
   EXPECT_NEAR( v2.Max(), 3.0, 1e-12 );
 
   // Copy assignment
-  tribol::ParVector v3( MPI_COMM_WORLD, 10, row_starts.GetData() );
+  shared::ParVector v3( MPI_COMM_WORLD, 10, row_starts.GetData() );
   v3.Fill( 5.0 );
   v3 = v2;
   EXPECT_NEAR( v3.Max(), 3.0, 1e-12 );

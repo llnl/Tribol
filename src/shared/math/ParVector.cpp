@@ -3,15 +3,15 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include "tribol/utils/ParVector.hpp"
-
-#include <_hypre_parcsr_mv.h>
+#include "shared/math/ParVector.hpp"
 
 #include "axom/slic.hpp"
 
-#include "tribol/common/BasicTypes.hpp"
+#include "shared/common/BasicTypes.hpp"
 
-namespace tribol {
+namespace shared {
+
+#ifdef TRIBOL_USE_MPI
 
 ParVectorView::ParVectorView( mfem::HypreParVector* vec ) : vec_( vec ) {}
 
@@ -148,4 +148,6 @@ ParVector& ParVector::divideInPlace( const ParVectorView& other )
   return *this;
 }
 
-}  // namespace tribol
+#endif  // #ifdef TRIBOL_USE_MPI
+
+}  // namespace shared

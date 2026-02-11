@@ -3,20 +3,21 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_TRIBOL_UTILS_PARSPARSEMAT_HPP_
-#define SRC_TRIBOL_UTILS_PARSPARSEMAT_HPP_
+#ifndef SRC_SHARED_MATH_PARSPARSEMAT_HPP_
+#define SRC_SHARED_MATH_PARSPARSEMAT_HPP_
+
+#include "shared/config.hpp"
 
 #include <memory>
-#include <utility>
-
-#include "tribol/config.hpp"
 
 #include "mfem.hpp"
 
-#include "tribol/common/BasicTypes.hpp"
-#include "tribol/utils/ParVector.hpp"
+#include "shared/common/BasicTypes.hpp"
+#include "shared/math/ParVector.hpp"
 
-namespace tribol {
+namespace shared {
+
+#ifdef TRIBOL_USE_MPI
 
 class ParSparseMat;
 
@@ -113,9 +114,9 @@ class ParSparseMatView {
   static ParSparseMat RAP( const ParSparseMatView& A, const ParSparseMatView& P );
 
   /**
-   * @brief Returns R * A * P
+   * @brief Returns Rt^T * A * P
    */
-  static ParSparseMat RAP( const ParSparseMatView& R, const ParSparseMatView& A, const ParSparseMatView& P );
+  static ParSparseMat RAP( const ParSparseMatView& Rt, const ParSparseMatView& A, const ParSparseMatView& P );
 
   /**
    * @brief Eliminates the rows from the matrix
@@ -266,6 +267,8 @@ class ParSparseMat : public ParSparseMatView {
   std::unique_ptr<mfem::HypreParMatrix> owned_mat_;
 };
 
-}  // namespace tribol
+#endif  // #ifdef TRIBOL_USE_MPI
 
-#endif /* SRC_TRIBOL_UTILS_PARSPARSEMAT_HPP_ */
+}  // namespace shared
+
+#endif /* SRC_SHARED_MATH_PARSPARSEMAT_HPP_ */

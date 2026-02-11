@@ -3,16 +3,19 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_TRIBOL_UTILS_PARVECTOR_HPP_
-#define SRC_TRIBOL_UTILS_PARVECTOR_HPP_
+#ifndef SRC_SHARED_MATH_PARVECTOR_HPP_
+#define SRC_SHARED_MATH_PARVECTOR_HPP_
 
-#include "tribol/config.hpp"
-#include "mfem.hpp"
+#include "shared/config.hpp"
 
 #include <memory>
 #include <utility>
 
-namespace tribol {
+#include "mfem.hpp"
+
+namespace shared {
+
+#ifdef TRIBOL_USE_MPI
 
 class ParVector;
 
@@ -205,6 +208,8 @@ class ParVector : public ParVectorView {
   std::unique_ptr<mfem::HypreParVector> owned_vec_;
 };
 
-}  // namespace tribol
+#endif  // #ifdef TRIBOL_USE_MPI
 
-#endif /* SRC_TRIBOL_UTILS_PARVECTOR_HPP_ */
+}  // namespace shared
+
+#endif /* SRC_SHARED_MATH_PARVECTOR_HPP_ */
