@@ -89,14 +89,21 @@ class ParVectorView {
   mfem::real_t Min() const { return vec_->Min(); }
 
   /**
+   * @brief Returns the dot product with another vector
+   */
+  mfem::real_t dot( const ParVectorView& other ) const;
+
+  /**
    * @brief Component-wise multiplication: returns z[i] = x[i] * y[i]
    */
   ParVector multiply( const ParVectorView& other ) const;
 
   /**
    * @brief Component-wise division: returns z[i] = x[i] / y[i]
+   *
+   * @param tol Sets a tolerance to prevent division by zero
    */
-  ParVector divide( const ParVectorView& other ) const;
+  ParVector divide( const ParVectorView& other, mfem::real_t tol = 1.0e-14 ) const;
 
   /**
    * @brief Vector addition: returns x + y
@@ -201,8 +208,10 @@ class ParVector : public ParVectorView {
 
   /**
    * @brief Component-wise in-place division: x[i] /= y[i]
+   *
+   * @param tol Sets a tolerance to prevent division by zero );
    */
-  ParVector& divideInPlace( const ParVectorView& other );
+  ParVector& divideInPlace( const ParVectorView& other, mfem::real_t tol = 1.0e-14 );
 
  private:
   std::unique_ptr<mfem::HypreParVector> owned_vec_;
