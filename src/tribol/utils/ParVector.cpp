@@ -13,9 +13,7 @@
 
 namespace tribol {
 
-ParVectorView::ParVectorView( mfem::HypreParVector* vec ) : vec_( vec )
-{
-}
+ParVectorView::ParVectorView( mfem::HypreParVector* vec ) : vec_( vec ) {}
 
 ParVector::ParVector( mfem::HypreParVector* vec ) : ParVectorView( vec ), owned_vec_( vec ) {}
 

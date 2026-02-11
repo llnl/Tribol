@@ -14,9 +14,7 @@ namespace tribol {
 
 // ParSparseMatView implementations
 
-ParSparseMatView::ParSparseMatView( mfem::HypreParMatrix* mat ) : mat_( mat )
-{
-}
+ParSparseMatView::ParSparseMatView( mfem::HypreParMatrix* mat ) : mat_( mat ) {}
 
 ParSparseMat operator+( const ParSparseMatView& lhs, const ParSparseMatView& rhs )
 {
@@ -56,7 +54,8 @@ ParVector ParSparseMatView::operator*( const ParVectorView& x ) const
   return y;
 }
 
-ParSparseMat ParSparseMatView::transpose() const {
+ParSparseMat ParSparseMatView::transpose() const
+{
   HYPRE_MemoryLocation old_hypre_mem_location;
   HYPRE_GetMemoryLocation( &old_hypre_mem_location );
   HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );

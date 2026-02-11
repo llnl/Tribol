@@ -43,7 +43,7 @@ std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::TransferToParallel(
 {
   auto J_sparse = TransferToParallelSparse( test_elem_idx, trial_elem_idx, src_elem_mat );
   J_sparse.Finalize();
-  return ConvertToHypreParMatrix( std::move(J_sparse), parallel_assemble );
+  return ConvertToHypreParMatrix( std::move( J_sparse ), parallel_assemble );
 }
 
 mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<int>& test_elem_idx,
@@ -184,8 +184,7 @@ std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::ConvertToHypreParMatrix( m
     P_test.HostRead();
     auto& P_trial = *parent_trial_fes_.Dof_TrueDof_Matrix();
     P_trial.HostRead();
-    auto J_true = std::unique_ptr<mfem::HypreParMatrix>(
-        mfem::RAP( &P_test, J_full.get(), &P_trial ) );
+    auto J_true = std::unique_ptr<mfem::HypreParMatrix>( mfem::RAP( &P_test, J_full.get(), &P_trial ) );
     constexpr auto hypre_owned_host_arrays = -1;
     J_true->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
     // Return hypre's memory location to what it was before
