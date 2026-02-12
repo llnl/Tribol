@@ -128,6 +128,13 @@ ParVector ParVectorView::divide( const ParVectorView& other, mfem::real_t tol ) 
   return result;
 }
 
+ParVector ParVectorView::inverse( mfem::real_t tol ) const
+{
+  ParVector result( *vec_ );
+  result.inverseInPlace( tol );
+  return result;
+}
+
 ParVector& ParVector::multiplyInPlace( const ParVectorView& other )
 {
   SLIC_ASSERT( vec_->Size() == other.get().Size() );
@@ -152,6 +159,21 @@ ParVector& ParVector::divideInPlace( const ParVectorView& other, mfem::real_t to
     mfem::forall_switch( use_device, n, [=] TRIBOL_HOST_DEVICE( int i ) {
       if ( std::abs( d_other[i] ) > tol ) {
         d_vec[i] /= d_other[i];
+      }
+    } );
+  }
+  return *this;
+}
+
+ParVector& ParVector::inverseInPlace( mfem::real_t tol )
+{
+  int n = vec_->Size();
+  if ( n > 0 ) {
+    bool use_device = vec_->UseDevice();
+    auto d_vec = vec_->ReadWrite( use_device );
+    mfem::forall_switch( use_device, n, [=] TRIBOL_HOST_DEVICE( int i ) {
+      if ( std::abs( d_vec[i] ) > tol ) {
+        d_vec[i] = 1.0 / d_vec[i];
       }
     } );
   }
