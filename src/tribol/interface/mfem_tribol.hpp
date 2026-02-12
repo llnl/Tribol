@@ -240,6 +240,8 @@ void registerMfemReferenceCoords( IndexT cs_id, const mfem::ParGridFunction& ref
  */
 void getMfemResponse( IndexT cs_id, mfem::Vector& r );
 
+mfem::HypreParVector getMfemTDofForce( IndexT cs_id );
+
 /**
  * @brief Get assembled contact contributions for the Jacobian matrix
  *
@@ -307,6 +309,8 @@ std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx( IndexT cs_id );
  */
 void getMfemGap( IndexT cs_id, mfem::Vector& g );
 
+mfem::HypreParVector getMfemTDofGap( IndexT cs_id );
+
 /**
  * @brief Returns reference to nodal pressure vector on the submesh surface
  *
@@ -318,6 +322,8 @@ void getMfemGap( IndexT cs_id, mfem::Vector& g );
  * parent-linked boundary submesh
  */
 mfem::ParGridFunction& getMfemPressure( IndexT cs_id );
+
+mfem::HypreParVector getMfemTDofPressure( IndexT cs_id );
 
 /**
  * @brief Updates mesh parallel decomposition and related grid functions/Jacobian when coordinates are updated
