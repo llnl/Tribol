@@ -106,6 +106,13 @@ class ParVectorView {
   ParVector divide( const ParVectorView& other, mfem::real_t tol = 1.0e-14 ) const;
 
   /**
+   * @brief Component-wise inverse: returns z[i] = 1.0 / x[i]
+   *
+   * @param tol Sets a tolerance to prevent division by zero
+   */
+  ParVector inverse( mfem::real_t tol = 1.0e-14 ) const;
+
+  /**
    * @brief Vector addition: returns x + y
    */
   friend ParVector operator+( const ParVectorView& lhs, const ParVectorView& rhs );
@@ -212,6 +219,13 @@ class ParVector : public ParVectorView {
    * @param tol Sets a tolerance to prevent division by zero );
    */
   ParVector& divideInPlace( const ParVectorView& other, mfem::real_t tol = 1.0e-14 );
+
+  /**
+   * @brief Component-wise in-place inverse: x[i] = 1.0 / x[i]
+   *
+   * @param tol Sets a tolerance to prevent division by zero
+   */
+  ParVector& inverseInPlace( mfem::real_t tol = 1.0e-14 );
 
  private:
   std::unique_ptr<mfem::HypreParVector> owned_vec_;

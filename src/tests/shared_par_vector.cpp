@@ -210,6 +210,34 @@ TEST_F( ParVectorTest, ComponentWise )
   EXPECT_NEAR( v1.Max(), 2.0, 1e-12 );
 }
 
+// Test Inverse
+TEST_F( ParVectorTest, Inverse )
+{
+  int rank;
+  MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+  if ( rank == 0 ) std::cout << "Testing Inverse..." << std::endl;
+
+  auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
+  shared::ParVector v1( MPI_COMM_WORLD, 10, row_starts.GetData() );
+  v1.Fill( 2.0 );
+
+  // inverse
+  shared::ParVector v2 = v1.inverse();
+  EXPECT_NEAR( v2.Max(), 0.5, 1e-12 );
+  EXPECT_NEAR( v2.Min(), 0.5, 1e-12 );
+
+  // inverse in-place
+  v1.inverseInPlace();
+  EXPECT_NEAR( v1.Max(), 0.5, 1e-12 );
+  EXPECT_NEAR( v1.Min(), 0.5, 1e-12 );
+
+  // Test with zero and tolerance
+  shared::ParVector v3( MPI_COMM_WORLD, 10, row_starts.GetData() );
+  v3.Fill( 0.0 );
+  v3.inverseInPlace( 1e-14 );
+  EXPECT_NEAR( v3.Max(), 0.0, 1e-12 );
+}
+
 // Test Move and Release
 TEST_F( ParVectorTest, MoveAndRelease )
 {
