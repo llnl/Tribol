@@ -250,7 +250,7 @@ int main( int argc, char** argv )
 
   // Add contact stiffness to elasticity stiffness
   auto A_total = std::unique_ptr<mfem::HypreParMatrix>( mfem::Add( 1.0, *A_elasticity, 1.0, *A_contact ) );
-  A_total->EliminateRowsCols( ess_tdof_list );
+  auto A_elim = std::unique_ptr<mfem::HypreParMatrix>( A_total->EliminateRowsCols( ess_tdof_list ) );
 
   timer.stop();
   SLIC_INFO_ROOT(
