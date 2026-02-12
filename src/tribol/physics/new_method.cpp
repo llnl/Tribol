@@ -16,6 +16,8 @@
 
 namespace tribol {
 
+#ifdef TRIBOL_USE_ENZYME
+
 namespace {
 
 struct Gparams {
@@ -1344,5 +1346,7 @@ void ContactEvaluator::grad_gtilde_with_qp( const InterfacePair& pair, const Mes
 //               << " (" << error_count_g2 << " errors)\n";
 //     std::cout << std::string(120, '=') << "\n\n";
 // }
+
+#endif  // TRIBOL_USE_ENZYME
 
 }  // namespace tribol

@@ -22,7 +22,7 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     double delta = 0.01;
     int N = 3;
 
-#ifdef BUILD_REDECOMP
+#if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
     if ( cs->hasMfemData() ) {
       // Attempt to get penalty from MfemMeshData if available
       auto* k_ptr = cs->getMfemMeshData()->GetMesh1KinematicConstantPenalty();
@@ -37,7 +37,7 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     return std::make_unique<NewMethodAdapter>( *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), cs->getMesh1(),
                                                cs->getMesh2(), k, delta, N );
 #else
-    SLIC_ERROR_ROOT( "ENERGY_MORTAR requires BUILD_REDECOMP" );
+    SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );
     return nullptr;
 #endif
   }

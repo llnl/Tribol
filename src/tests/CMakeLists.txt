@@ -149,7 +149,6 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
   set( combined_tests
       tribol_mfem_common_plane.cpp
       tribol_mfem_mortar_lm.cpp
-      tribol_mfem_mortar_energy.cpp
       tribol_proximity_check.cpp
       tribol_redecomp_tol.cpp
       )
@@ -198,6 +197,7 @@ if( TRIBOL_USE_ENZYME )
       tribol_enzyme_nodal_normal.cpp
       tribol_enzyme_mortar_assembled.cpp
       tribol_enzyme_poly_intersect.cpp
+      tribol_mfem_mortar_energy.cpp
       )
 
   set(combined_test_depends tribol gtest)

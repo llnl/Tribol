@@ -2,10 +2,14 @@
 #include <vector>
 #include <array>
 
+#include "tribol/config.hpp"
+
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
 
 namespace tribol {
+
+#ifdef TRIBOL_USE_ENZYME
 
 struct Node {
   double x, y;
@@ -132,5 +136,7 @@ class ContactEvaluator {
 
   std::array<double, 2> compute_pressures( const NodalContactData& ncd ) const;
 };
+
+#endif  // TRIBOL_USE_ENZYME
 
 }  // namespace tribol

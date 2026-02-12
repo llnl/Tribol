@@ -7,6 +7,8 @@
 
 namespace tribol {
 
+#ifdef TRIBOL_USE_ENZYME
+
 NewMethodAdapter::NewMethodAdapter( MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, MeshData& mesh1,
                                     MeshData& mesh2, double k, double delta, int N )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
@@ -167,18 +169,10 @@ void NewMethodAdapter::updateNodalForces()
 
   auto k_over_a = params_.k * A_vec_.inverse( area_tol_ );
 
-  // mfem::HypreParVector k_over_a( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
-  // k_over_a = 0.0;
-  // for ( int i{ 0 }; i < k_over_a.Size(); ++i ) {
-  //   if ( A_vec_[i] > 1.0e-14 ) {
-  //     k_over_a[i] = params_.k / A_vec_[i];
-  //   }
-  // }
-
   auto p_over_a = pressure_vec_.divide( A_vec_, area_tol_ );
 
   shared::ParSparseMat dp_dx( dg_tilde_dx_.get() );
-  dp_dx->ScaleRows( k_over_a );
+  dp_dx->ScaleRows( k_over_a.get() );
   shared::ParSparseMat dp_dx_temp( dA_dx_.get() );
   dp_dx_temp->ScaleRows( p_over_a.get() );
   dp_dx -= dp_dx_temp;
@@ -339,5 +333,7 @@ std::unique_ptr<mfem::HypreParMatrix> NewMethodAdapter::getMfemDfDp() const
   SLIC_ERROR_ROOT( "NewMethod does not support getMfemDfDp()" );
   return nullptr;
 }
+
+#endif  // TRIBOL_USE_ENZYME
 
 }  // namespace tribol

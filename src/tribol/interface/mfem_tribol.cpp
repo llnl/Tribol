@@ -307,15 +307,21 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r )
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
 
-  if ( cs->hasContactFormulation() ) {
-    cs->getContactFormulation()->getMfemForce( r );
-    return;
-  }
-
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to return a response vector." );
   cs->getMfemMeshData()->GetParentResponse( r );
+}
+
+mfem::HypreParVector getMfemTDofForce( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
+  return cs->getContactFormulation()->getMfemForce();
 }
 
 std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
@@ -444,17 +450,23 @@ void getMfemGap( IndexT cs_id, mfem::Vector& g )
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
 
-  if ( cs->hasContactFormulation() ) {
-    cs->getContactFormulation()->getMfemGap( g );
-    return;
-  }
-
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(),
                       axom::fmt::format( "Coupling scheme cs_id={0} does not contain MFEM pressure field data. "
                                          "Create the coupling scheme using registerMfemCouplingScheme() and set the "
                                          "enforcement_method to LAGRANGE_MULTIPLIER to set the gap vector.",
                                          cs_id ) );
   cs->getMfemSubmeshData()->GetSubmeshGap( g );
+}
+
+mfem::HypreParVector getMfemTDofGap( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
+  return cs->getContactFormulation()->getMfemGap();
 }
 
 mfem::ParGridFunction& getMfemPressure( IndexT cs_id )
@@ -465,16 +477,23 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id )
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
 
-  if ( cs->hasContactFormulation() ) {
-    return cs->getContactFormulation()->getMfemPressure();
-  }
-
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(),
                       axom::fmt::format( "Coupling scheme cs_id={0} does not contain MFEM pressure field data. "
                                          "Create the coupling scheme using registerMfemCouplingScheme() and set the "
                                          "enforcement_method to LAGRANGE_MULTIPLIER to access the pressure field.",
                                          cs_id ) );
   return cs->getMfemSubmeshData()->GetSubmeshPressure();
+}
+
+mfem::HypreParVector getMfemTDofPressure( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
+  return cs->getContactFormulation()->getMfemPressure();
 }
 
 void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )

@@ -19,6 +19,8 @@
 
 namespace tribol {
 
+#ifdef TRIBOL_USE_ENZYME
+
 class NewMethodAdapter : public ContactFormulation {
  public:
   /**
@@ -89,6 +91,8 @@ class NewMethodAdapter : public ContactFormulation {
   shared::ParVector force_vec_;
   mutable shared::ParSparseMat df_dx_;
 };
+
+#endif  // TRIBOL_USE_ENZYME
 
 }  // namespace tribol
 
