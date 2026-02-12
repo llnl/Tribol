@@ -89,31 +89,25 @@ class ContactFormulation {
 
 #ifdef BUILD_REDECOMP
   /**
-   * @brief Adds computed forces to the provided MFEM vector
-   *
-   * @param [in,out] forces MFEM vector to add forces to
+   * @brief Returns t-dof vector of forces on parent mesh
    *
    * @note Requires updateNodalForces() to be called first.
    */
-  virtual void getMfemForce( mfem::Vector& forces ) const = 0;
+  virtual const mfem::HypreParVector& getMfemForce() const = 0;
 
   /**
-   * @brief Populates the provided MFEM vector with gap values
-   *
-   * Resizes the vector if necessary, zeros it out, and sets gap values.
-   *
-   * @param [out] gaps MFEM vector to store gaps in
+   * @brief Returns t-dof vector of gaps on submesh
    *
    * @note Requires updateNodalGaps() to be called first.
    */
-  virtual void getMfemGap( mfem::Vector& gaps ) const = 0;
+  virtual const mfem::HypreParVector& getMfemGap() const = 0;
 
   /**
-   * @brief Returns a reference to the MFEM pressure grid function
+   * @brief Returns a reference to the MFEM pressure t-dof vector
    *
-   * @return mfem::ParGridFunction& Reference to the pressure grid function
+   * @return Reference to the pressure t-dof vector
    */
-  virtual mfem::ParGridFunction& getMfemPressure() = 0;
+  virtual mfem::HypreParVector& getMfemPressure() = 0;
 
   /**
    * @brief Get the derivative of force with respect to displacement

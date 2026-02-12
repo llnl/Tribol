@@ -141,6 +141,8 @@ void NewMethodAdapter::updateNodalGaps()
   A_vec_.Fill( 0.0 );
   P_submesh.MultTranspose( A_linear_form, A_vec_.get() );
 
+  gap_vec_ = g_tilde_vec_.divide( A_vec_, area_tol_ );
+
   // Move gap and area derivatives to HypreParMatrix (submesh rows, parent mesh cols)
   const std::vector<std::pair<int, BlockSpace>> row_info{ { 1, BlockSpace::LAGRANGE_MULTIPLIER } };
   const std::vector<std::pair<int, BlockSpace>> col_info{ { 0, BlockSpace::NONMORTAR }, { 0, BlockSpace::MORTAR } };
@@ -159,25 +161,19 @@ void NewMethodAdapter::updateNodalForces()
 
   // compute nodal pressures. these are used in the Hessian vector product below so we don't have to assemble a Hessian
   // NOTE: in general, pressure should likely be set by the host code
-  pressure_vec_ = ( params_.k * g_tilde_vec_ ).divideInPlace( A_vec_, area_tol_ );
+  pressure_vec_ = params_.k * gap_vec_;
 
-  // energy_ = pressure_vec_.dot( g_tilde_vec_ );
+  energy_ = pressure_vec_.dot( g_tilde_vec_ );
 
-  energy_ = 0.0;
-  for ( int i{ 0 }; i < pressure_vec_.Size(); ++i ) {
-    energy_ += pressure_vec_[i] * g_tilde_vec_[i];
-  }
-  MPI_Allreduce( MPI_IN_PLACE, &energy_, 1, MPI_DOUBLE, MPI_SUM, submesh_data_.GetSubmeshFESpace().GetComm() );
+  auto k_over_a = params_.k * A_vec_.inverse( area_tol_ );
 
-  // auto k_over_a = params_.k * A_vec_.inverse( area_tol_ );
-
-  mfem::HypreParVector k_over_a( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
-  k_over_a = 0.0;
-  for ( int i{ 0 }; i < k_over_a.Size(); ++i ) {
-    if ( A_vec_[i] > 1.0e-14 ) {
-      k_over_a[i] = params_.k / A_vec_[i];
-    }
-  }
+  // mfem::HypreParVector k_over_a( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
+  // k_over_a = 0.0;
+  // for ( int i{ 0 }; i < k_over_a.Size(); ++i ) {
+  //   if ( A_vec_[i] > 1.0e-14 ) {
+  //     k_over_a[i] = params_.k / A_vec_[i];
+  //   }
+  // }
 
   auto p_over_a = pressure_vec_.divide( A_vec_, area_tol_ );
 
@@ -326,27 +322,6 @@ RealT NewMethodAdapter::computeTimeStep()
 {
   // TODO: implement timestep calculation
   return 1.0;
-}
-
-void NewMethodAdapter::getMfemForce( mfem::Vector& forces ) const { forces = force_vec_; }
-
-void NewMethodAdapter::getMfemGap( mfem::Vector& gaps ) const
-{
-  gaps.SetSize( g_tilde_vec_.Size() );
-
-  for ( int i = 0; i < gaps.Size(); ++i ) {
-    if ( A_vec_[i] > 1.0e-14 )
-      gaps[i] = g_tilde_vec_[i] / A_vec_[i];
-    else
-      gaps[i] = 0.0;
-  }
-}
-
-mfem::ParGridFunction& NewMethodAdapter::getMfemPressure()
-{
-  auto& pressure = submesh_data_.GetSubmeshPressure();
-  pressure.SetFromTrueDofs( pressure_vec_ );
-  return pressure;
 }
 
 std::unique_ptr<mfem::HypreParMatrix> NewMethodAdapter::getMfemDfDx() const

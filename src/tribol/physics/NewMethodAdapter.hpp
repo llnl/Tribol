@@ -49,11 +49,11 @@ class NewMethodAdapter : public ContactFormulation {
   RealT getEnergy() const override { return energy_; }
 
 #ifdef BUILD_REDECOMP
-  void getMfemForce( mfem::Vector& forces ) const override;
+  const mfem::HypreParVector& getMfemForce() const override { return force_vec_.get(); }
 
-  void getMfemGap( mfem::Vector& gaps ) const override;
+  const mfem::HypreParVector& getMfemGap() const override { return gap_vec_.get(); }
 
-  mfem::ParGridFunction& getMfemPressure() override;
+  mfem::HypreParVector& getMfemPressure() override { return pressure_vec_.get(); }
 
   std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx() const override;
 
@@ -80,6 +80,7 @@ class NewMethodAdapter : public ContactFormulation {
   // These store the assembled nodal values
   shared::ParVector g_tilde_vec_;
   shared::ParVector A_vec_;
+  shared::ParVector gap_vec_;
   mutable shared::ParSparseMat dg_tilde_dx_;
   shared::ParSparseMat dA_dx_;
 
@@ -87,10 +88,6 @@ class NewMethodAdapter : public ContactFormulation {
   RealT energy_;
   shared::ParVector force_vec_;
   mutable shared::ParSparseMat df_dx_;
-
-  // Pressure GridFunction wrapper (required by interface)
-  // We wrap the pressure_vec_ in a ParGridFunction for return
-  std::unique_ptr<mfem::ParGridFunction> pressure_gf_;
 };
 
 }  // namespace tribol
