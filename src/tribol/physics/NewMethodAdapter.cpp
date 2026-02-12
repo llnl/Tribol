@@ -75,11 +75,11 @@ void NewMethodAdapter::updateNodalGaps()
     auto A_conn = mesh1_view.getConnectivity()( elem1 );
 
     // Add to nodes of Element A
-    redecomp_gap[A_conn[0]] += g_tilde_elem[0];
-    redecomp_gap[A_conn[1]] += g_tilde_elem[1];
+    redecomp_gap( A_conn[0] ) += g_tilde_elem[0];
+    redecomp_gap( A_conn[1] ) += g_tilde_elem[1];
 
-    redecomp_area[A_conn[0]] += A_elem[0];
-    redecomp_area[A_conn[1]] += A_elem[1];
+    redecomp_area( A_conn[0] ) += A_elem[0];
+    redecomp_area( A_conn[1] ) += A_elem[1];
 
     // compute g_tilde first derivative
     double dg_dx_node1[8];
@@ -213,15 +213,15 @@ void NewMethodAdapter::updateNodalForces()
     const auto node12 = mesh1_view.getConnectivity()( elem1, 1 );
     const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
 
-    const RealT pressure1 = 2.0 * redecomp_pressure[node11];
-    const RealT pressure2 = 2.0 * redecomp_pressure[node12];
+    const RealT pressure1 = 2.0 * redecomp_pressure( node11 );
+    const RealT pressure2 = 2.0 * redecomp_pressure( node12 );
 
     if ( pressure1 == 0.0 && pressure2 == 0.0 ) {
       continue;
     }
 
-    const RealT g_p_ainv1 = -redecomp_g_tilde[node11] * redecomp_pressure[node11] / redecomp_A[node11];
-    const RealT g_p_ainv2 = -redecomp_g_tilde[node12] * redecomp_pressure[node12] / redecomp_A[node12];
+    const RealT g_p_ainv1 = -redecomp_g_tilde( node11 ) * redecomp_pressure( node11 ) / redecomp_A( node11 );
+    const RealT g_p_ainv2 = -redecomp_g_tilde( node12 ) * redecomp_pressure( node12 ) / redecomp_A( node12 );
 
     double df_dx_node1[64];
     double df_dx_node2[64];

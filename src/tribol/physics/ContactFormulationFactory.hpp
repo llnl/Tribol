@@ -16,7 +16,7 @@ class CouplingScheme;
 
 /**
  * @brief Factory function to create a ContactFormulation based on the CouplingScheme settings.
- * 
+ *
  * @param cs Pointer to the CouplingScheme
  * @return std::unique_ptr<ContactFormulation> The created formulation, or nullptr if no formulation applies.
  */
