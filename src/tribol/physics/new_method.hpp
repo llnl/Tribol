@@ -104,8 +104,8 @@ class ContactEvaluator {
   std::pair<double, double> eval_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                          const MeshData::Viewer& mesh2 ) const;
 
-  FiniteDiffResult validate_g_tilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                     const MeshData::Viewer& mesh2, double epsilon = 1e-7 ) const;
+  FiniteDiffResult validate_g_tilde( const InterfacePair& pair, MeshData& mesh1,
+                                     MeshData& mesh2, double epsilon = 1e-7 ) const;
 
   void print_gradient_comparison( const FiniteDiffResult& val ) const;
 

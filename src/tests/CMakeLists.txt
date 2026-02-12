@@ -151,6 +151,7 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
       tribol_mfem_mortar_lm.cpp
       tribol_proximity_check.cpp
       tribol_redecomp_tol.cpp
+      tribol_new_energy_patch.cpp
       )
 
   set(combined_test_depends tribol gtest)
