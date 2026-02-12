@@ -54,7 +54,7 @@ class MfemMortarEnergyTest : public testing::TestWithParam<std::tuple<int>> {
     // boundary element attributes of x-fixed surfaces (left side)
     auto xfixed_attrs = std::set<int>( { 4 } );
     // boundary element attributes of y-fixed surfaces (bottom of bottom square, top of top square)
-    auto yfixed_attrs = std::set<int>( { 1, 6 } );
+    auto yfixed_attrs = std::set<int>( { 1 } );
 
     // build mesh of 2 squares
     int nel_per_dir = std::pow( 2, ref_levels );
@@ -70,7 +70,7 @@ class MfemMortarEnergyTest : public testing::TestWithParam<std::tuple<int>> {
         .translate({0.0, 0.99}) // Shift up to [0,1]x[0.99, 1.99]. Overlap 0.01.
         .updateBdrAttrib(1, 5) // Bottom (Mortar)
         .updateBdrAttrib(2, 2) // Right
-        .updateBdrAttrib(3, 6) // Top (Fixed Y)
+        .updateBdrAttrib(3, 1) // Top (Fixed Y)
         .updateBdrAttrib(4, 4) // Left (Fixed X)
     }));
     // clang-format on

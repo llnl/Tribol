@@ -262,9 +262,7 @@ int main( int argc, char** argv )
   timer.start();
 
   // Retrieve contact force (response)
-  mfem::Vector f_contact( fespace.GetTrueVSize() );
-  f_contact = 0.0;
-  tribol::getMfemResponse( coupling_scheme_id, f_contact );
+  auto f_contact = tribol::getMfemTDofForce( coupling_scheme_id );
   f_contact.Neg();
   for ( int i{ 0 }; i < ess_tdof_list.Size(); ++i ) {
     f_contact( ess_tdof_list[i] ) = 0.0;
