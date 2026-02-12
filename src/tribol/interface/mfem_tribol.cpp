@@ -69,7 +69,7 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
   // Set data required for use with Lagrange multiplier enforcement option.
   // Coupling scheme validity will be checked later, but here some initial
   // data is created/initialized for use with LMs.
-  if ( enforcement_method == LAGRANGE_MULTIPLIER ) {
+  if ( enforcement_method == LAGRANGE_MULTIPLIER || contact_method == ENERGY_MORTAR ) {
     std::unique_ptr<mfem::FiniteElementCollection> pressure_fec = std::make_unique<mfem::H1_FECollection>(
         current_coords.FESpace()->FEColl()->GetOrder(), mesh.SpaceDimension() );
     int pressure_vdim = 0;
@@ -95,8 +95,10 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
                                                               std::move( pressure_fec ), pressure_vdim ) );
     // set up Jacobian transfer if the coupling scheme requires it
     auto lm_options = cs.getEnforcementOptions().lm_implicit_options;
-    if ( lm_options.enforcement_option_set && ( lm_options.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ||
-                                                lm_options.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ) ) {
+    if ( ( lm_options.enforcement_option_set &&
+           ( lm_options.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ||
+             lm_options.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ) ) ||
+         contact_method == ENERGY_MORTAR ) {
       // create matrix transfer operator between redecomp and
       // parent/parent-linked boundary submesh
       cs.setMfemJacobianData(
