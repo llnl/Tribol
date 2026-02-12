@@ -1002,7 +1002,7 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian(
       // Pick xfer again for conversion
       redecomp::MatrixTransfer* xfer = GetUpdateData().submesh_redecomp_xfer_( r_blk, c_blk ).get();
 
-      auto submesh_J_hypre = xfer->ConvertToParSparseMat( std::move( *submesh_J.release() ), false );
+      auto submesh_J_hypre = xfer->ConvertToParSparseMat( std::move( *submesh_J ), false );
 
       mfem::HypreParMatrix* block_mat = nullptr;
 

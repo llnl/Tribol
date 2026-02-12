@@ -156,7 +156,7 @@ class MfemMortarEnergyTest : public testing::TestWithParam<std::tuple<int>> {
 
     // Add contact stiffness to elasticity stiffness
     auto A_total = std::unique_ptr<mfem::HypreParMatrix>( mfem::Add( 1.0, *A, 1.0, *A_cont ) );
-    A_total->EliminateRowsCols( ess_tdof_list );
+    auto A_elim = std::unique_ptr<mfem::HypreParMatrix>( A_total->EliminateRowsCols( ess_tdof_list ) );
 
     // Solve for X (displacement)
     mfem::Vector X( par_fe_space.GetTrueVSize() );

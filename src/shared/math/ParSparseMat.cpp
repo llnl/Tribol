@@ -37,7 +37,7 @@ ParSparseMat operator*( const ParSparseMatView& lhs, const ParSparseMatView& rhs
 
 ParVector ParSparseMatView::operator*( const ParVectorView& x ) const
 {
-  ParVector y( *mat_ );
+  ParVector y( *mat_, 1 );
   invokeHypreMethod<MemorySpace::Host>(
       [&]() { mat_->Mult( const_cast<mfem::HypreParVector&>( x.get() ), y.get() ); } );
   return y;
@@ -92,7 +92,7 @@ ParSparseMat operator*( double s, const ParSparseMatView& mat ) { return mat * s
 
 ParVector operator*( const ParVectorView& x, const ParSparseMatView& mat )
 {
-  ParVector y( *mat.mat_, 1 );
+  ParVector y( *mat.mat_, 0 );
   ParSparseMatView::invokeHypreMethod<MemorySpace::Host>(
       [&]() { mat.mat_->MultTranspose( const_cast<mfem::HypreParVector&>( x.get() ), y.get() ); } );
   return y;
