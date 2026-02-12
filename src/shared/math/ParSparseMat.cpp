@@ -122,6 +122,10 @@ ParSparseMat::ParSparseMat( MPI_Comm comm, HYPRE_BigInt glob_size, HYPRE_BigInt*
   diag.GetMemoryI().ClearOwnerFlags();
   diag.GetMemoryJ().ClearOwnerFlags();
   diag.GetMemoryData().ClearOwnerFlags();
+  // The mfem::Memory in mfem::SparseMatrix allocates using operator new [], so mark the diag memory as owned by MFEM so
+  // it can be deleted correctly
+  constexpr int mfem_owned_host_flag = 3;
+  owned_mat_->SetOwnerFlags( mfem_owned_host_flag, owned_mat_->OwnsOffd(), owned_mat_->OwnsColMap() );
 }
 
 ParSparseMat::ParSparseMat( ParSparseMat&& other ) noexcept
@@ -235,6 +239,9 @@ ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_si
       offd_i, offd_j, offd_data, 0, offd_col_map, true ) );
   diag_hpm->CopyRowStarts();
   diag_hpm->CopyColStarts();
+  // We allocated memory using operator new [], so mark all memory as owned by MFEM so it can be deleted correctly
+  constexpr int mfem_owned_host_flag = 3;
+  diag_hpm->SetOwnerFlags( mfem_owned_host_flag, mfem_owned_host_flag, mfem_owned_host_flag );
   return ParSparseMat( std::move( diag_hpm ) );
 }
 
