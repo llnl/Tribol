@@ -341,7 +341,7 @@ CouplingScheme::CouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, 
   m_couplingSchemeInfo.cs_case_info = NO_CASE_INFO;
   m_couplingSchemeInfo.cs_enforcement_info = NO_ENFORCEMENT_INFO;
 
-  m_loggingLevel = LoggingLevel::UNDEFINED;
+  m_loggingLevel = LoggingLevel::Undefined;
 
 }  // end CouplingScheme::CouplingScheme()
 
@@ -1199,21 +1199,21 @@ bool CouplingScheme::init()
 void CouplingScheme::setSlicLoggingLevel()
 {
   // set slic logging level for coupling schemes that have API modified logging levels
-  if ( this->m_loggingLevel != LoggingLevel::UNDEFINED ) {
+  if ( this->m_loggingLevel != LoggingLevel::Undefined ) {
     switch ( this->m_loggingLevel ) {
-      case LoggingLevel::DEBUG: {
+      case LoggingLevel::Debug: {
         axom::slic::setLoggingMsgLevel( axom::slic::message::Debug );
         break;
       }
-      case LoggingLevel::INFO: {
+      case LoggingLevel::Info: {
         axom::slic::setLoggingMsgLevel( axom::slic::message::Info );
         break;
       }
-      case LoggingLevel::WARNING: {
+      case LoggingLevel::Warning: {
         axom::slic::setLoggingMsgLevel( axom::slic::message::Warning );
         break;
       }
-      case LoggingLevel::ERROR: {
+      case LoggingLevel::Error: {
         axom::slic::setLoggingMsgLevel( axom::slic::message::Error );
         break;
       }

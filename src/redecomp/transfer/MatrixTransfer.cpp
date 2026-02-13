@@ -11,6 +11,7 @@
 
 #include "redecomp/RedecompMesh.hpp"
 #include "shared/math/ParSparseMat.hpp"
+#include "shared/infrastructure/Profiling.hpp"
 
 namespace redecomp {
 
@@ -52,6 +53,7 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
                                                              const axom::Array<int>& trial_elem_idx,
                                                              const axom::Array<mfem::DenseMatrix>& src_elem_mat ) const
 {
+  TRIBOL_MARK_SCOPE( "TransferToParallelSparse_Method1" );
   // TODO (EBC): we need a SparseMatrix-like data structure that allows HYPRE_BigInt on the columns
   auto parentJ = mfem::SparseMatrix( parent_test_fes_.GetVSize(), parent_trial_fes_.GlobalVSize() );
 
@@ -77,6 +79,7 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
   auto test_redecomp = dynamic_cast<const RedecompMesh*>( redecomp_test_fes_.GetMesh() );
   auto trial_redecomp = dynamic_cast<const RedecompMesh*>( redecomp_trial_fes_.GetMesh() );
 
+  TRIBOL_MARK_BEGIN( "BuildCommunicationData" );
   // List of entries in src_elem_mat that belong on each parent test space rank.
   // This is needed so we know which rank to send entries in src_elem_mat to.
   auto send_array_ids = buildSendArrayIDs( test_elem_idx );
@@ -98,7 +101,9 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
   // entries received from redecomp ranks.  The second column of recv_mat_sizes
   // determines the offset for each trial element.
   auto recv_trial_elem_dofs = buildRecvTrialElemDofs( *trial_redecomp, test_elem_idx, trial_elem_idx );
+  TRIBOL_MARK_END( "BuildCommunicationData" );
 
+  TRIBOL_MARK_BEGIN( "SendRecvEach" );
   // aggregate dense matrix values, send and assemble
   getMPIUtility().SendRecvEach(
       type<axom::Array<double>>(),
@@ -140,8 +145,202 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
           dof_ct += recv_mat_sizes[src]( e, 0 ) * recv_mat_sizes[src]( e, 1 );
         }
       } );
+  TRIBOL_MARK_END( "SendRecvEach" );
 
   return parentJ;
+}
+
+shared::ParSparseMat MatrixTransfer::TransferToParallel( const axom::Array<int>& test_elem_idx,
+                                                         const axom::Array<int>& trial_elem_idx,
+                                                         const axom::Array<double>& src_elem_mat_data,
+                                                         const axom::Array<int>& src_elem_mat_offsets,
+                                                         bool parallel_assemble ) const
+{
+  TRIBOL_MARK_FUNCTION;
+  // verify inputs
+  SLIC_ERROR_IF( test_elem_idx.size() != trial_elem_idx.size() || test_elem_idx.size() != src_elem_mat_offsets.size(),
+                 "Element index arrays and element Jacobian offsets array must be the same size." );
+  for ( int i{ 0 }; i < test_elem_idx.size(); ++i ) {
+    auto test_e = test_elem_idx[i];
+    auto trial_e = trial_elem_idx[i];
+
+    SLIC_ERROR_IF( test_e < 0, "Invalid primary index value." );
+    SLIC_ERROR_IF( trial_e < 0, "Invalid secondary index value." );
+
+    auto n_test_elem_vdofs = redecomp_test_fes_.GetFE( test_e )->GetDof() * redecomp_test_fes_.GetVDim();
+    auto n_trial_elem_vdofs = redecomp_trial_fes_.GetFE( trial_e )->GetDof() * redecomp_trial_fes_.GetVDim();
+    auto expected_size = n_test_elem_vdofs * n_trial_elem_vdofs;
+
+    // Check that we don't go out of bounds of the data array
+    SLIC_ERROR_IF( src_elem_mat_offsets[i] < 0 || src_elem_mat_offsets[i] + expected_size > src_elem_mat_data.size(),
+                   "Matrix offset and size exceeds data array bounds." );
+  }
+
+  auto test_redecomp = dynamic_cast<const RedecompMesh*>( redecomp_test_fes_.GetMesh() );
+  auto trial_redecomp = dynamic_cast<const RedecompMesh*>( redecomp_trial_fes_.GetMesh() );
+
+  TRIBOL_MARK_BEGIN( "BuildCommunicationData" );
+  // List of entries in src_elem_mat that belong on each parent test space rank.
+  // This is needed so we know which rank to send entries in src_elem_mat to.
+  auto send_array_ids = buildSendArrayIDs( test_elem_idx );
+  // Number of matrix entries to be sent to each parent test space rank.  This
+  // is used to size the array of element matrix values to be sent to other ranks.
+  auto send_num_mat_entries = buildSendNumMatEntries( test_elem_idx, trial_elem_idx );
+  // Number of test and trial vdofs received from test space redecomp ranks.
+  // This is used to determine the beginning and end of each element matrix
+  // received as a single array of values and the beginning and end of vdof indices
+  // received as a single array of values.
+  auto recv_mat_sizes = buildRecvMatSizes( test_elem_idx, trial_elem_idx );
+  // List of test element offsets received from test space redecomp ranks.  The
+  // offset is used with the parent to redecomp map (and the redecomp rank
+  // received from) to determine the parent element ID.  Parent element ID is
+  // used to determine the test vldofs of the element matrix entries received
+  // from redecomp ranks.
+  auto recv_test_elem_offsets = buildRecvTestElemOffsets( *test_redecomp, test_elem_idx );
+  // List of trial element global vdofs corresponding to the element matrix
+  // entries received from redecomp ranks.  The second column of recv_mat_sizes
+  // determines the offset for each trial element.
+  auto recv_trial_elem_dofs = buildRecvTrialElemDofs( *trial_redecomp, test_elem_idx, trial_elem_idx );
+  TRIBOL_MARK_END( "BuildCommunicationData" );
+
+  TRIBOL_MARK_BEGIN( "SetupTriplets" );
+  // Intermediate storage for triplets
+  struct Triplet {
+    int row;
+    HYPRE_BigInt col;
+    double val;
+  };
+  std::vector<Triplet> triplets;
+  // Estimate capacity to reduce reallocations
+  int total_recv_entries = 0;
+  for ( int src = 0; src < getMPIUtility().NRanks(); ++src ) {
+    for ( int e = 0; e < recv_mat_sizes[src].shape()[0]; ++e ) {
+      total_recv_entries += recv_mat_sizes[src]( e, 0 ) * recv_mat_sizes[src]( e, 1 );
+    }
+  }
+  triplets.reserve( total_recv_entries );
+  TRIBOL_MARK_END( "SetupTriplets" );
+
+  TRIBOL_MARK_BEGIN( "SendRecvEach" );
+  // aggregate dense matrix values, send and assemble
+  getMPIUtility().SendRecvEach(
+      type<axom::Array<double>>(),
+      [&send_array_ids, &send_num_mat_entries, &src_elem_mat_data, &src_elem_mat_offsets, &test_elem_idx,
+       &trial_elem_idx, this]( axom::IndexType dst ) {
+        auto send_vals = axom::Array<double>( 0, send_num_mat_entries[dst] );
+
+        for ( auto src_array_idx : send_array_ids[dst] ) {
+          // Calculate size from FE spaces
+          auto test_e = test_elem_idx[src_array_idx];
+          auto trial_e = trial_elem_idx[src_array_idx];
+          auto n_test_elem_vdofs = redecomp_test_fes_.GetFE( test_e )->GetDof() * redecomp_test_fes_.GetVDim();
+          auto n_trial_elem_vdofs = redecomp_trial_fes_.GetFE( trial_e )->GetDof() * redecomp_trial_fes_.GetVDim();
+          auto size = n_test_elem_vdofs * n_trial_elem_vdofs;
+
+          send_vals.append(
+              axom::ArrayView<const double>( &src_elem_mat_data[src_elem_mat_offsets[src_array_idx]], size ) );
+        }
+
+        return send_vals;
+      },
+      [this, test_redecomp, &triplets, &recv_mat_sizes, &recv_trial_elem_dofs, &recv_test_elem_offsets](
+          axom::Array<double>&& send_vals, axom::IndexType src ) {
+        if ( recv_trial_elem_dofs[src].empty() ) {
+          return;
+        }
+        auto trial_dof_ct = 0;
+        auto dof_ct = 0;
+        // element loop
+        for ( int e{ 0 }; e < recv_test_elem_offsets[src].size(); ++e ) {
+          auto test_elem_id = test_redecomp->getParentToRedecompElems().first[src][recv_test_elem_offsets[src][e]];
+          auto test_elem_dofs = mfem::Array<int>();
+          parent_test_fes_.GetElementVDofs( test_elem_id, test_elem_dofs );
+          auto trial_elem_dofs =
+              mfem::Array<HYPRE_BigInt>( &recv_trial_elem_dofs[src][trial_dof_ct], recv_mat_sizes[src]( e, 1 ) );
+          // trial loop
+          for ( int j{ 0 }; j < trial_elem_dofs.Size(); ++j ) {
+            // test loop
+            for ( int i{ 0 }; i < test_elem_dofs.Size(); ++i ) {
+              triplets.push_back( { test_elem_dofs[i], trial_elem_dofs[j],
+                                    // send_vals comes from mfem::SparseMatrix (column major)
+                                    send_vals[dof_ct + i + j * test_elem_dofs.Size()] } );
+            }
+          }
+          trial_dof_ct += recv_mat_sizes[src]( e, 1 );
+          dof_ct += recv_mat_sizes[src]( e, 0 ) * recv_mat_sizes[src]( e, 1 );
+        }
+      } );
+  TRIBOL_MARK_END( "SendRecvEach" );
+
+  TRIBOL_MARK_BEGIN( "SortTriplets" );
+  // Sort triplets by row then column
+  std::sort( triplets.begin(), triplets.end(), []( const Triplet& a, const Triplet& b ) {
+    if ( a.row != b.row ) return a.row < b.row;
+    return a.col < b.col;
+  } );
+  TRIBOL_MARK_END( "SortTriplets" );
+
+  TRIBOL_MARK_BEGIN( "CSRConstruction" );
+  // Count non-zeros and merge duplicates
+  int num_unique_nonzeros = 0;
+  if ( !triplets.empty() ) {
+    num_unique_nonzeros = 1;
+    for ( size_t i = 1; i < triplets.size(); ++i ) {
+      if ( triplets[i].row != triplets[i - 1].row || triplets[i].col != triplets[i - 1].col ) {
+        num_unique_nonzeros++;
+      }
+    }
+  }
+
+  auto num_rows = parent_test_fes_.GetVSize();
+  int* I_ptr = new int[num_rows + 1];
+  HYPRE_BigInt* J_ptr = new HYPRE_BigInt[num_unique_nonzeros];
+  double* data_ptr = new double[num_unique_nonzeros];
+
+  // Initialize I_ptr with zeros
+  for ( int i = 0; i <= num_rows; ++i ) {
+    I_ptr[i] = 0;
+  }
+
+  if ( !triplets.empty() ) {
+    int unique_idx = 0;
+    J_ptr[0] = triplets[0].col;
+    data_ptr[0] = triplets[0].val;
+    I_ptr[triplets[0].row + 1]++;
+
+    for ( size_t i = 1; i < triplets.size(); ++i ) {
+      if ( triplets[i].row == triplets[i - 1].row && triplets[i].col == triplets[i - 1].col ) {
+        data_ptr[unique_idx] += triplets[i].val;
+      } else {
+        unique_idx++;
+        J_ptr[unique_idx] = triplets[i].col;
+        data_ptr[unique_idx] = triplets[i].val;
+        I_ptr[triplets[i].row + 1]++;
+      }
+    }
+  }
+
+  // Transform I_ptr from counts to offsets (prefix sum)
+  for ( int i = 0; i < num_rows; ++i ) {
+    I_ptr[i + 1] += I_ptr[i];
+  }
+  TRIBOL_MARK_END( "CSRConstruction" );
+
+  // Construct rectangular HypreParMatrix
+  shared::ParSparseMat J_full( getMPIUtility().MPIComm(), num_rows, parent_test_fes_.GlobalVSize(),
+                               parent_trial_fes_.GlobalVSize(), I_ptr, J_ptr, data_ptr,
+                               parent_test_fes_.GetDofOffsets(), parent_trial_fes_.GetDofOffsets() );
+
+  if ( !parallel_assemble ) {
+    return J_full;
+  } else {
+    auto P_test = parent_test_fes_.Dof_TrueDof_Matrix();
+    P_test->HostRead();
+    auto P_trial = parent_trial_fes_.Dof_TrueDof_Matrix();
+    P_trial->HostRead();
+    auto J_true = shared::ParSparseMat::RAP( P_test, J_full, P_trial );
+    return J_true;
+  }
 }
 
 shared::ParSparseMat MatrixTransfer::ConvertToParSparseMat( mfem::SparseMatrix&& sparse, bool parallel_assemble ) const
