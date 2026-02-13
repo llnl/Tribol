@@ -68,6 +68,7 @@ class NewMethodAdapter : public ContactFormulation {
   // --- Member Variables ---
 
   double area_tol_{ 1.0e-14 };
+  bool tied_contact_ = false;
 
   MfemSubmeshData& submesh_data_;
   MfemJacobianData& jac_data_;

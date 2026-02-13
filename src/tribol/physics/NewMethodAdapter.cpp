@@ -137,6 +137,17 @@ void NewMethodAdapter::updateNodalGaps()
   g_tilde_vec_.Fill( 0.0 );
   P_submesh.MultTranspose( g_tilde_linear_form, g_tilde_vec_.get() );
 
+  mfem::Array<int> rows_to_elim;
+  if ( !tied_contact_ ) {
+    rows_to_elim.Reserve( g_tilde_vec_.Size() );
+    for ( int i{ 0 }; i < g_tilde_vec_.Size(); ++i ) {
+      if ( g_tilde_vec_[i] > 0.0 ) {
+        g_tilde_vec_[i] = 0.0;
+        rows_to_elim.push_back( i );
+      }
+    }
+  }
+
   mfem::ParLinearForm A_linear_form( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
   submesh_data_.GetPressureTransfer().RedecompToSubmesh( redecomp_area, A_linear_form );
   A_vec_ = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
@@ -151,6 +162,11 @@ void NewMethodAdapter::updateNodalGaps()
   auto dg_tilde_dx_block = jac_data_.GetMfemBlockJacobian( dg_tilde_dx, row_info, col_info );
   dg_tilde_dx_block->owns_blocks = false;
   dg_tilde_dx_ = shared::ParSparseMat( static_cast<mfem::HypreParMatrix*>( &dg_tilde_dx_block->GetBlock( 1, 0 ) ) );
+  if ( !tied_contact_ ) {
+    // technically, we should do this on all the vectors/matrices below, but it looks like the mutliplication operators
+    // below will zero them out anyway
+    dg_tilde_dx_.EliminateRows( rows_to_elim );
+  }
 
   auto dA_dx_block = jac_data_.GetMfemBlockJacobian( dA_dx, row_info, col_info );
   dA_dx_block->owns_blocks = false;
