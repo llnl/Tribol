@@ -9,6 +9,44 @@ namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
+static std::vector<ComputedElementData> convertMethodData( const MethodData& method_data,
+                                                           const std::vector<BlockSpace>& row_spaces,
+                                                           const std::vector<BlockSpace>& col_spaces )
+{
+  std::vector<ComputedElementData> contributions;
+  for ( auto rs : row_spaces ) {
+    for ( auto cs : col_spaces ) {
+      const auto& J_block = method_data.getBlockJ()( static_cast<int>( rs ), static_cast<int>( cs ) );
+      if ( J_block.size() == 0 ) {
+        continue;
+      }
+
+      ComputedElementData data;
+      data.row_space = rs;
+      data.col_space = cs;
+
+      const auto& row_ids = method_data.getBlockJElementIds()[static_cast<int>( rs )];
+      const auto& col_ids = method_data.getBlockJElementIds()[static_cast<int>( cs )];
+
+      data.row_elem_ids.append( axom::ArrayView<const int>( row_ids.data(), row_ids.size() ) );
+      data.col_elem_ids.append( axom::ArrayView<const int>( col_ids.data(), col_ids.size() ) );
+
+      int n_elems = J_block.size();
+      int n_rows = J_block[0].Height();
+      int n_cols = J_block[0].Width();
+      data.jacobian_data.resize( n_elems * n_rows * n_cols );
+      data.jacobian_offsets.resize( n_elems );
+      for ( int k = 0; k < n_elems; ++k ) {
+        data.jacobian_offsets[k] = k * n_rows * n_cols;
+        std::copy( J_block[k].GetData(), J_block[k].GetData() + n_rows * n_cols,
+                   data.jacobian_data.data() + data.jacobian_offsets[k] );
+      }
+      contributions.push_back( std::move( data ) );
+    }
+  }
+  return contributions;
+}
+
 NewMethodAdapter::NewMethodAdapter( MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, MeshData& mesh1,
                                     MeshData& mesh2, double k, double delta, int N )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
@@ -157,20 +195,16 @@ void NewMethodAdapter::updateNodalGaps()
   gap_vec_ = g_tilde_vec_.divide( A_vec_, area_tol_ );
 
   // Move gap and area derivatives to HypreParMatrix (submesh rows, parent mesh cols)
-  const std::vector<std::pair<int, BlockSpace>> row_info{ { 1, BlockSpace::LAGRANGE_MULTIPLIER } };
-  const std::vector<std::pair<int, BlockSpace>> col_info{ { 0, BlockSpace::NONMORTAR }, { 0, BlockSpace::MORTAR } };
-  auto dg_tilde_dx_block = jac_data_.GetMfemBlockJacobian( dg_tilde_dx, row_info, col_info );
-  dg_tilde_dx_block->owns_blocks = false;
-  dg_tilde_dx_ = shared::ParSparseMat( static_cast<mfem::HypreParMatrix*>( &dg_tilde_dx_block->GetBlock( 1, 0 ) ) );
+  dg_tilde_dx_ = jac_data_.GetMfemJacobian(
+      convertMethodData( dg_tilde_dx, { BlockSpace::LAGRANGE_MULTIPLIER }, { BlockSpace::NONMORTAR, BlockSpace::MORTAR } ) );
   if ( !tied_contact_ ) {
     // technically, we should do this on all the vectors/matrices below, but it looks like the mutliplication operators
     // below will zero them out anyway
     dg_tilde_dx_.EliminateRows( rows_to_elim );
   }
 
-  auto dA_dx_block = jac_data_.GetMfemBlockJacobian( dA_dx, row_info, col_info );
-  dA_dx_block->owns_blocks = false;
-  dA_dx_ = shared::ParSparseMat( static_cast<mfem::HypreParMatrix*>( &dA_dx_block->GetBlock( 1, 0 ) ) );
+  dA_dx_ = jac_data_.GetMfemJacobian(
+      convertMethodData( dA_dx, { BlockSpace::LAGRANGE_MULTIPLIER }, { BlockSpace::NONMORTAR, BlockSpace::MORTAR } ) );
 }
 
 void NewMethodAdapter::updateNodalForces()
@@ -305,10 +339,8 @@ void NewMethodAdapter::updateNodalForces()
   }
 
   // Move gap and area derivatives to HypreParMatrix (submesh rows, parent mesh cols)
-  const std::vector<std::pair<int, BlockSpace>> all_info{ { 0, BlockSpace::NONMORTAR }, { 0, BlockSpace::MORTAR } };
-  auto df_dx_block = jac_data_.GetMfemBlockJacobian( df_dx_data, all_info, all_info );
-  df_dx_block->owns_blocks = false;
-  df_dx_ = shared::ParSparseMat( static_cast<mfem::HypreParMatrix*>( &df_dx_block->GetBlock( 0, 0 ) ) );
+  df_dx_ = jac_data_.GetMfemJacobian( convertMethodData(
+      df_dx_data, { BlockSpace::NONMORTAR, BlockSpace::MORTAR }, { BlockSpace::NONMORTAR, BlockSpace::MORTAR } ) );
 
   auto pg2_over_asq = ( 2.0 * pressure_vec_ )
                           .multiplyInPlace( g_tilde_vec_ )
