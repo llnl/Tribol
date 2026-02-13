@@ -3,22 +3,17 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include "tribol/utils/ParVector.hpp"
-
-#include <_hypre_parcsr_mv.h>
+#include "shared/math/ParVector.hpp"
 
 #include "axom/slic.hpp"
 
-#include "tribol/common/BasicTypes.hpp"
+#include "shared/common/BasicTypes.hpp"
 
-namespace tribol {
+namespace shared {
 
-ParVectorView::ParVectorView( mfem::HypreParVector* vec ) : vec_( vec )
-{
-  SLIC_ERROR_ROOT_IF(
-      vec != nullptr && hypre_ParVectorMemoryLocation( vec->operator hypre_ParVector*() ) != HYPRE_MEMORY_HOST,
-      "ParVectorView currently requires host data." );
-}
+#ifdef TRIBOL_USE_MPI
+
+ParVectorView::ParVectorView( mfem::HypreParVector* vec ) : vec_( vec ) {}
 
 ParVector::ParVector( mfem::HypreParVector* vec ) : ParVectorView( vec ), owned_vec_( vec ) {}
 
@@ -113,6 +108,12 @@ ParVector& ParVector::operator*=( double s )
   return *this;
 }
 
+mfem::real_t ParVectorView::dot( const ParVectorView& other ) const
+{
+  SLIC_ASSERT( vec_->Size() == other.get().Size() );
+  return mfem::InnerProduct( vec_, other.vec_ );
+}
+
 ParVector ParVectorView::multiply( const ParVectorView& other ) const
 {
   ParVector result( *vec_ );
@@ -120,10 +121,17 @@ ParVector ParVectorView::multiply( const ParVectorView& other ) const
   return result;
 }
 
-ParVector ParVectorView::divide( const ParVectorView& other ) const
+ParVector ParVectorView::divide( const ParVectorView& other, mfem::real_t tol ) const
 {
   ParVector result( *vec_ );
-  result.divideInPlace( other );
+  result.divideInPlace( other, tol );
+  return result;
+}
+
+ParVector ParVectorView::inverse( mfem::real_t tol ) const
+{
+  ParVector result( *vec_ );
+  result.inverseInPlace( tol );
   return result;
 }
 
@@ -140,7 +148,7 @@ ParVector& ParVector::multiplyInPlace( const ParVectorView& other )
   return *this;
 }
 
-ParVector& ParVector::divideInPlace( const ParVectorView& other )
+ParVector& ParVector::divideInPlace( const ParVectorView& other, mfem::real_t tol )
 {
   SLIC_ASSERT( vec_->Size() == other.get().Size() );
   int n = vec_->Size();
@@ -148,9 +156,30 @@ ParVector& ParVector::divideInPlace( const ParVectorView& other )
     bool use_device = vec_->UseDevice() || other.get().UseDevice();
     auto d_vec = vec_->ReadWrite( use_device );
     auto d_other = other.get().Read( use_device );
-    mfem::forall_switch( use_device, n, [=] TRIBOL_HOST_DEVICE( int i ) { d_vec[i] /= d_other[i]; } );
+    mfem::forall_switch( use_device, n, [=] TRIBOL_HOST_DEVICE( int i ) {
+      if ( std::abs( d_other[i] ) > tol ) {
+        d_vec[i] /= d_other[i];
+      }
+    } );
   }
   return *this;
 }
 
-}  // namespace tribol
+ParVector& ParVector::inverseInPlace( mfem::real_t tol )
+{
+  int n = vec_->Size();
+  if ( n > 0 ) {
+    bool use_device = vec_->UseDevice();
+    auto d_vec = vec_->ReadWrite( use_device );
+    mfem::forall_switch( use_device, n, [=] TRIBOL_HOST_DEVICE( int i ) {
+      if ( std::abs( d_vec[i] ) > tol ) {
+        d_vec[i] = 1.0 / d_vec[i];
+      }
+    } );
+  }
+  return *this;
+}
+
+#endif  // #ifdef TRIBOL_USE_MPI
+
+}  // namespace shared

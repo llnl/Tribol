@@ -10,6 +10,7 @@
 #include "mfem/general/forall.hpp"
 
 #include "redecomp/RedecompMesh.hpp"
+#include "shared/math/ParSparseMat.hpp"
 
 namespace redecomp {
 
@@ -37,13 +38,14 @@ MatrixTransfer::MatrixTransfer( const mfem::ParFiniteElementSpace& parent_test_f
   test_r2p_elem_rank_ = buildRedecomp2ParentElemRank( *test_redecomp, true );
 }
 
-std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::TransferToParallel(
-    const axom::Array<int>& test_elem_idx, const axom::Array<int>& trial_elem_idx,
-    const axom::Array<mfem::DenseMatrix>& src_elem_mat, bool parallel_assemble ) const
+shared::ParSparseMat MatrixTransfer::TransferToParallel( const axom::Array<int>& test_elem_idx,
+                                                         const axom::Array<int>& trial_elem_idx,
+                                                         const axom::Array<mfem::DenseMatrix>& src_elem_mat,
+                                                         bool parallel_assemble ) const
 {
   auto J_sparse = TransferToParallelSparse( test_elem_idx, trial_elem_idx, src_elem_mat );
   J_sparse.Finalize();
-  return ConvertToHypreParMatrix( J_sparse, parallel_assemble );
+  return ConvertToParSparseMat( std::move( J_sparse ), parallel_assemble );
 }
 
 mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<int>& test_elem_idx,
@@ -221,8 +223,8 @@ std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::TransferToParallelSparse(
           auto n_trial_elem_vdofs = redecomp_trial_fes_.GetFE( trial_e )->GetDof() * redecomp_trial_fes_.GetVDim();
           auto size = n_test_elem_vdofs * n_trial_elem_vdofs;
 
-          send_vals.append( axom::ArrayView<const double>( &src_elem_mat_data[src_elem_mat_offsets[src_array_idx]],
-                                                           size ) );
+          send_vals.append(
+              axom::ArrayView<const double>( &src_elem_mat_data[src_elem_mat_offsets[src_array_idx]], size ) );
         }
 
         return send_vals;
@@ -306,13 +308,12 @@ std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::TransferToParallelSparse(
   }
 
   // Construct rectangular HypreParMatrix
-  return std::make_unique<mfem::HypreParMatrix>(
-      getMPIUtility().MPIComm(), num_rows, parent_test_fes_.GlobalVSize(), parent_trial_fes_.GlobalVSize(), I_ptr,
-      J_ptr, data_ptr, parent_test_fes_.GetDofOffsets(), parent_trial_fes_.GetDofOffsets() );
+  return std::make_unique<mfem::HypreParMatrix>( getMPIUtility().MPIComm(), num_rows, parent_test_fes_.GlobalVSize(),
+                                                 parent_trial_fes_.GlobalVSize(), I_ptr, J_ptr, data_ptr,
+                                                 parent_test_fes_.GetDofOffsets(), parent_trial_fes_.GetDofOffsets() );
 }
 
-std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::ConvertToHypreParMatrix( mfem::SparseMatrix& sparse,
-                                                                               bool parallel_assemble ) const
+shared::ParSparseMat MatrixTransfer::ConvertToParSparseMat( mfem::SparseMatrix&& sparse, bool parallel_assemble ) const
 {
   SLIC_ERROR_IF( sparse.Height() != parent_test_fes_.GetVSize(),
                  "Height of sparse must match number of test ParFiniteElementSpace L-dofs." );
@@ -330,15 +331,20 @@ std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::ConvertToHypreParMatrix( m
   // update the host pointer
   J_bigint.HostRead();
 
-  auto J_full = std::make_unique<mfem::HypreParMatrix>(
-      getMPIUtility().MPIComm(), parent_test_fes_.GetVSize(), parent_test_fes_.GlobalVSize(),
-      parent_trial_fes_.GlobalVSize(), sparse.GetI(), J_bigint.GetData(), sparse.GetData(),
-      parent_test_fes_.GetDofOffsets(), parent_trial_fes_.GetDofOffsets() );
+  shared::ParSparseMat J_full( getMPIUtility().MPIComm(), parent_test_fes_.GetVSize(), parent_test_fes_.GlobalVSize(),
+                               parent_trial_fes_.GlobalVSize(), sparse.GetI(), J_bigint.GetData(), sparse.GetData(),
+                               parent_test_fes_.GetDofOffsets(), parent_trial_fes_.GetDofOffsets() );
+  sparse.GetMemoryI().ClearOwnerFlags();
+  sparse.GetMemoryJ().ClearOwnerFlags();
+  sparse.GetMemoryData().ClearOwnerFlags();
   if ( !parallel_assemble ) {
     return J_full;
   } else {
-    auto J_true = std::unique_ptr<mfem::HypreParMatrix>(
-        mfem::RAP( parent_test_fes_.Dof_TrueDof_Matrix(), J_full.get(), parent_trial_fes_.Dof_TrueDof_Matrix() ) );
+    auto P_test = parent_test_fes_.Dof_TrueDof_Matrix();
+    P_test->HostRead();
+    auto P_trial = parent_trial_fes_.Dof_TrueDof_Matrix();
+    P_trial->HostRead();
+    auto J_true = shared::ParSparseMat::RAP( P_test, J_full, P_trial );
     return J_true;
   }
 }

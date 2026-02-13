@@ -3,20 +3,26 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_TRIBOL_UTILS_PARSPARSEMAT_HPP_
-#define SRC_TRIBOL_UTILS_PARSPARSEMAT_HPP_
+#ifndef SRC_SHARED_MATH_PARSPARSEMAT_HPP_
+#define SRC_SHARED_MATH_PARSPARSEMAT_HPP_
+
+#include "shared/config.hpp"
 
 #include <memory>
-#include <utility>
-
-#include "tribol/config.hpp"
 
 #include "mfem.hpp"
 
-#include "tribol/common/BasicTypes.hpp"
-#include "tribol/utils/ParVector.hpp"
+#include "shared/common/BasicTypes.hpp"
+#include "shared/common/ExecModel.hpp"
+#include "shared/math/ParVector.hpp"
 
-namespace tribol {
+#ifdef TRIBOL_USE_MPI
+#include <HYPRE_utilities.h>
+#endif
+
+namespace shared {
+
+#ifdef TRIBOL_USE_MPI
 
 class ParSparseMat;
 
@@ -113,9 +119,9 @@ class ParSparseMatView {
   static ParSparseMat RAP( const ParSparseMatView& A, const ParSparseMatView& P );
 
   /**
-   * @brief Returns R * A * P
+   * @brief Returns Rt^T * A * P
    */
-  static ParSparseMat RAP( const ParSparseMatView& R, const ParSparseMatView& A, const ParSparseMatView& P );
+  static ParSparseMat RAP( const ParSparseMatView& Rt, const ParSparseMatView& A, const ParSparseMatView& P );
 
   /**
    * @brief Eliminates the rows from the matrix
@@ -143,6 +149,65 @@ class ParSparseMatView {
 
  protected:
   static ParSparseMat add( RealT alpha, const ParSparseMatView& A, RealT beta, const ParSparseMatView& B );
+
+  /**
+   * @brief Helper to invoke a Hypre method with a specific memory location
+   */
+  template <MemorySpace MSPACE, typename F>
+  static auto invokeHypreMethod( F&& f )
+  {
+    HYPRE_MemoryLocation old_hypre_mem_location;
+    HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+
+    if constexpr ( MSPACE == MemorySpace::Host ) {
+      HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
+    }
+
+    if constexpr ( std::is_same_v<decltype( f() ), void> ) {
+      f();
+      HYPRE_SetMemoryLocation( old_hypre_mem_location );
+    } else {
+      auto result = f();
+      if constexpr ( std::is_same_v<decltype( result ), mfem::HypreParMatrix*> ) {
+        if ( result ) {
+          if constexpr ( MSPACE == MemorySpace::Host ) {
+            constexpr int hypre_owned_host_arrays = -1;
+            result->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
+          }
+        }
+      }
+      HYPRE_SetMemoryLocation( old_hypre_mem_location );
+      return result;
+    }
+  }
+
+  /**
+   * @brief Creates a mfem::HypreParMatrix with a specific memory location and sets owner flags
+   *
+   * @tparam MSPACE Memory space to use
+   * @tparam F Lambda type
+   * @param f Lambda that returns a mfem::HypreParMatrix*
+   * @return mfem::HypreParMatrix* The created matrix
+   */
+  template <MemorySpace MSPACE, typename F, std::enable_if_t<std::is_invocable_v<F>, int> = 0>
+  static auto createHypreParMatrix( F&& f )
+  {
+    return invokeHypreMethod<MSPACE>( std::forward<F>( f ) );
+  }
+
+  /**
+   * @brief Creates a mfem::HypreParMatrix with a specific memory location and sets owner flags
+   *
+   * @tparam MSPACE Memory space to use
+   * @tparam Args Constructor argument types
+   * @param args Constructor arguments
+   * @return mfem::HypreParMatrix* The created matrix
+   */
+  template <MemorySpace MSPACE, typename... Args>
+  static mfem::HypreParMatrix* createHypreParMatrix( Args&&... args )
+  {
+    return invokeHypreMethod<MSPACE>( [&]() { return new mfem::HypreParMatrix( std::forward<Args>( args )... ); } );
+  }
 
   mfem::HypreParMatrix* mat_;
 };
@@ -183,15 +248,10 @@ class ParSparseMat : public ParSparseMatView {
 
   /// Template constructor forwarding arguments to mfem::HypreParMatrix constructor
   template <typename... Args>
-  explicit ParSparseMat( Args&&... args ) : ParSparseMatView( nullptr ), owned_mat_( nullptr )
+  explicit ParSparseMat( Args&&... args )
+      : ParSparseMatView( nullptr ),
+        owned_mat_( createHypreParMatrix<MemorySpace::Host>( std::forward<Args>( args )... ) )
   {
-    // ParSparseMat is host-only for now.
-    HYPRE_MemoryLocation old_hypre_mem_location;
-    HYPRE_GetMemoryLocation( &old_hypre_mem_location );
-    HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
-    owned_mat_ = std::make_unique<mfem::HypreParMatrix>( std::forward<Args>( args )... );
-    // Return hypre's memory location to what it was before
-    HYPRE_SetMemoryLocation( old_hypre_mem_location );
     mat_ = owned_mat_.get();
   }
 
@@ -263,6 +323,8 @@ class ParSparseMat : public ParSparseMatView {
   std::unique_ptr<mfem::HypreParMatrix> owned_mat_;
 };
 
-}  // namespace tribol
+#endif  // #ifdef TRIBOL_USE_MPI
 
-#endif /* SRC_TRIBOL_UTILS_PARSPARSEMAT_HPP_ */
+}  // namespace shared
+
+#endif /* SRC_SHARED_MATH_PARSPARSEMAT_HPP_ */

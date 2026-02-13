@@ -3,16 +3,19 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_TRIBOL_UTILS_PARVECTOR_HPP_
-#define SRC_TRIBOL_UTILS_PARVECTOR_HPP_
+#ifndef SRC_SHARED_MATH_PARVECTOR_HPP_
+#define SRC_SHARED_MATH_PARVECTOR_HPP_
 
-#include "tribol/config.hpp"
-#include "mfem.hpp"
+#include "shared/config.hpp"
 
 #include <memory>
 #include <utility>
 
-namespace tribol {
+#include "mfem.hpp"
+
+namespace shared {
+
+#ifdef TRIBOL_USE_MPI
 
 class ParVector;
 
@@ -86,14 +89,28 @@ class ParVectorView {
   mfem::real_t Min() const { return vec_->Min(); }
 
   /**
+   * @brief Returns the dot product with another vector
+   */
+  mfem::real_t dot( const ParVectorView& other ) const;
+
+  /**
    * @brief Component-wise multiplication: returns z[i] = x[i] * y[i]
    */
   ParVector multiply( const ParVectorView& other ) const;
 
   /**
    * @brief Component-wise division: returns z[i] = x[i] / y[i]
+   *
+   * @param tol Sets a tolerance to prevent division by zero
    */
-  ParVector divide( const ParVectorView& other ) const;
+  ParVector divide( const ParVectorView& other, mfem::real_t tol = 1.0e-14 ) const;
+
+  /**
+   * @brief Component-wise inverse: returns z[i] = 1.0 / x[i]
+   *
+   * @param tol Sets a tolerance to prevent division by zero
+   */
+  ParVector inverse( mfem::real_t tol = 1.0e-14 ) const;
 
   /**
    * @brief Vector addition: returns x + y
@@ -198,13 +215,24 @@ class ParVector : public ParVectorView {
 
   /**
    * @brief Component-wise in-place division: x[i] /= y[i]
+   *
+   * @param tol Sets a tolerance to prevent division by zero );
    */
-  ParVector& divideInPlace( const ParVectorView& other );
+  ParVector& divideInPlace( const ParVectorView& other, mfem::real_t tol = 1.0e-14 );
+
+  /**
+   * @brief Component-wise in-place inverse: x[i] = 1.0 / x[i]
+   *
+   * @param tol Sets a tolerance to prevent division by zero
+   */
+  ParVector& inverseInPlace( mfem::real_t tol = 1.0e-14 );
 
  private:
   std::unique_ptr<mfem::HypreParVector> owned_vec_;
 };
 
-}  // namespace tribol
+#endif  // #ifdef TRIBOL_USE_MPI
 
-#endif /* SRC_TRIBOL_UTILS_PARVECTOR_HPP_ */
+}  // namespace shared
+
+#endif /* SRC_SHARED_MATH_PARVECTOR_HPP_ */
