@@ -195,10 +195,10 @@ TEST_F( EnforcementOptionsTest, penalty_kinematic_element_error )
 
   tribol::finalize();
 
-  delete bulk_modulus_1;
-  delete bulk_modulus_2;
-  delete element_thickness_1;
-  delete element_thickness_2;
+  delete[] bulk_modulus_1;
+  delete[] bulk_modulus_2;
+  delete[] element_thickness_1;
+  delete[] element_thickness_2;
   delete mesh;
 }
 
@@ -355,10 +355,10 @@ TEST_F( EnforcementOptionsTest, penalty_kinematic_element_pass )
 
   tribol::finalize();
 
-  delete bulk_modulus_1;
-  delete bulk_modulus_2;
-  delete element_thickness_1;
-  delete element_thickness_2;
+  delete[] bulk_modulus_1;
+  delete[] bulk_modulus_2;
+  delete[] element_thickness_1;
+  delete[] element_thickness_2;
   delete mesh;
 }
 
@@ -394,10 +394,10 @@ TEST_F( EnforcementOptionsTest, penalty_kinematic_element_invalid_element_input 
 
   tribol::finalize();
 
-  delete bulk_modulus_1;
-  delete bulk_modulus_2;
-  delete element_thickness_1;
-  delete element_thickness_2;
+  delete[] bulk_modulus_1;
+  delete[] bulk_modulus_2;
+  delete[] element_thickness_1;
+  delete[] element_thickness_2;
   delete mesh;
 }
 

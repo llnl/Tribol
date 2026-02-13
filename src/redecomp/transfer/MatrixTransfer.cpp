@@ -334,9 +334,6 @@ shared::ParSparseMat MatrixTransfer::ConvertToParSparseMat( mfem::SparseMatrix&&
   shared::ParSparseMat J_full( getMPIUtility().MPIComm(), parent_test_fes_.GetVSize(), parent_test_fes_.GlobalVSize(),
                                parent_trial_fes_.GlobalVSize(), sparse.GetI(), J_bigint.GetData(), sparse.GetData(),
                                parent_test_fes_.GetDofOffsets(), parent_trial_fes_.GetDofOffsets() );
-  sparse.GetMemoryI().ClearOwnerFlags();
-  sparse.GetMemoryJ().ClearOwnerFlags();
-  sparse.GetMemoryData().ClearOwnerFlags();
   if ( !parallel_assemble ) {
     return J_full;
   } else {
