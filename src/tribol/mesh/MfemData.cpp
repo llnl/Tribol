@@ -1082,9 +1082,9 @@ const MfemJacobianData::UpdateData& MfemJacobianData::GetUpdateData() const
   return *update_data_;
 }
 
-ParSparseMat MfemJacobianData::GetMfemJacobian( const std::vector<ComputedElementData>& contributions ) const
+shared::ParSparseMat MfemJacobianData::GetMfemJacobian( const std::vector<ComputedElementData>& contributions ) const
 {
-  std::unique_ptr<ParSparseMat> par_J;
+  std::unique_ptr<shared::ParSparseMat> par_J;
 
   // Maps BlockSpaces (MORTAR, NONMORTAR, LAGRANGE_MULTIPLIER) to a tribol element map
   const std::vector<const Array1D<int>*> elem_map_by_space{ &parent_data_.GetElemMap1(), &parent_data_.GetElemMap2(),
@@ -1097,7 +1097,6 @@ ParSparseMat MfemJacobianData::GetMfemJacobian( const std::vector<ComputedElemen
   // 1: Pressure/Gap (LAGRANGE_MULTIPLIER)
   for ( int r_blk = 0; r_blk < 2; ++r_blk ) {
     for ( int c_blk = 0; c_blk < 2; ++c_blk ) {
-      
       // Check if we have a transfer operator for this block
       if ( GetUpdateData().submesh_redecomp_xfer_.shape()[0] <= r_blk ||
            GetUpdateData().submesh_redecomp_xfer_.shape()[1] <= c_blk ||
@@ -1142,30 +1141,31 @@ ParSparseMat MfemJacobianData::GetMfemJacobian( const std::vector<ComputedElemen
 
       if ( global_has_data ) {
         redecomp::MatrixTransfer* xfer = GetUpdateData().submesh_redecomp_xfer_( r_blk, c_blk ).get();
-        auto submesh_J_hypre = xfer->TransferToParallelSparse( row_redecomp_ids, col_redecomp_ids, jacobian_data,
-                                                               jacobian_offsets );
+        auto submesh_J =
+            xfer->TransferToParallel( row_redecomp_ids, col_redecomp_ids, jacobian_data, jacobian_offsets, false );
 
-        ParSparseMatView submesh_J_view( submesh_J_hypre.get() );
-        std::unique_ptr<ParSparseMat> contrib_J;
+        shared::ParSparseMatView submesh_J_view( &submesh_J.get() );
+        std::unique_ptr<shared::ParSparseMat> contrib_J;
 
         if ( r_blk == 0 && c_blk == 0 ) {
           auto parent_J = submesh_J_view.RAP( *submesh_parent_vdof_xfer_ );
-          ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
-          contrib_J = std::make_unique<ParSparseMat>( parent_J.RAP( parent_P ) );
+          shared::ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
+          contrib_J = std::make_unique<shared::ParSparseMat>( parent_J.RAP( parent_P ) );
         } else if ( r_blk == 0 && c_blk == 1 ) {
-          auto parent_J = submesh_parent_vdof_xfer_->transpose() * submesh_J_hypre.get();
-          contrib_J = std::make_unique<ParSparseMat>(
-              ParSparseMat::RAP( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix(), parent_J,
-                                 submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() ) );
+          auto parent_J = submesh_parent_vdof_xfer_->transpose() * submesh_J;
+          contrib_J = std::make_unique<shared::ParSparseMat>(
+              shared::ParSparseMat::RAP( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix(), parent_J,
+                                         submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() ) );
         } else if ( r_blk == 1 && c_blk == 0 ) {
           auto parent_J = submesh_J_view * ( *submesh_parent_vdof_xfer_ );
-          ParSparseMatView submesh_P( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() );
-          ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
-          contrib_J = std::make_unique<ParSparseMat>( ParSparseMat::RAP( submesh_P, parent_J, parent_P ) );
+          shared::ParSparseMatView submesh_P( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() );
+          shared::ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
+          contrib_J =
+              std::make_unique<shared::ParSparseMat>( shared::ParSparseMat::RAP( submesh_P, parent_J, parent_P ) );
         } else {
           // (1, 1) block
-          ParSparseMatView submesh_P( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() );
-          contrib_J = std::make_unique<ParSparseMat>( submesh_J_view.RAP( submesh_P ) );
+          shared::ParSparseMatView submesh_P( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() );
+          contrib_J = std::make_unique<shared::ParSparseMat>( submesh_J_view.RAP( submesh_P ) );
         }
 
         if ( !par_J ) {
@@ -1179,8 +1179,8 @@ ParSparseMat MfemJacobianData::GetMfemJacobian( const std::vector<ComputedElemen
 
   if ( !par_J ) {
     auto& fes = *parent_data_.GetParentCoords().ParFESpace();
-    return ParSparseMat::diagonalMatrix( TRIBOL_COMM_WORLD, fes.GetTrueVSize(), fes.GetTrueDofOffsets(), 0.0,
-                                         mfem::Array<int>(), true );
+    return shared::ParSparseMat::diagonalMatrix( TRIBOL_COMM_WORLD, fes.GetTrueVSize(), fes.GetTrueDofOffsets(), 0.0,
+                                                 mfem::Array<int>(), true );
   }
 
   return std::move( *par_J );

@@ -1635,12 +1635,12 @@ class MfemSubmeshData {
  * @brief Struct to hold computed element data for Jacobian assembly
  */
 struct ComputedElementData {
-  BlockSpace row_space;              ///< Block space for row elements
-  BlockSpace col_space;              ///< Block space for column elements
-  axom::Array<int> row_elem_ids;     ///< Tribol element IDs for rows
-  axom::Array<int> col_elem_ids;     ///< Tribol element IDs for columns
-  axom::Array<double> jacobian_data; ///< Flattened Jacobian data
-  axom::Array<int> jacobian_offsets; ///< Offsets into data for each element
+  BlockSpace row_space;               ///< Block space for row elements
+  BlockSpace col_space;               ///< Block space for column elements
+  axom::Array<int> row_elem_ids;      ///< Tribol element IDs for rows
+  axom::Array<int> col_elem_ids;      ///< Tribol element IDs for columns
+  axom::Array<double> jacobian_data;  ///< Flattened Jacobian data
+  axom::Array<int> jacobian_offsets;  ///< Offsets into data for each element
 };
 
 /**
@@ -1683,7 +1683,7 @@ class MfemJacobianData {
    * @param contributions List of element computed data chunks
    * @return ParSparseMat
    */
-  ParSparseMat GetMfemJacobian( const std::vector<ComputedElementData>& contributions ) const;
+  shared::ParSparseMat GetMfemJacobian( const std::vector<ComputedElementData>& contributions ) const;
 
  private:
   /**
