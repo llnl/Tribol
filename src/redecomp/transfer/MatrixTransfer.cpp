@@ -11,6 +11,7 @@
 
 #include "redecomp/RedecompMesh.hpp"
 #include "shared/math/ParSparseMat.hpp"
+#include "shared/infrastructure/Profiling.hpp"
 
 namespace redecomp {
 
@@ -52,6 +53,7 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
                                                              const axom::Array<int>& trial_elem_idx,
                                                              const axom::Array<mfem::DenseMatrix>& src_elem_mat ) const
 {
+  TRIBOL_MARK_SCOPE( "TransferToParallelSparse_Method1" );
   // TODO (EBC): we need a SparseMatrix-like data structure that allows HYPRE_BigInt on the columns
   auto parentJ = mfem::SparseMatrix( parent_test_fes_.GetVSize(), parent_trial_fes_.GlobalVSize() );
 
@@ -77,6 +79,7 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
   auto test_redecomp = dynamic_cast<const RedecompMesh*>( redecomp_test_fes_.GetMesh() );
   auto trial_redecomp = dynamic_cast<const RedecompMesh*>( redecomp_trial_fes_.GetMesh() );
 
+  TRIBOL_MARK_BEGIN( "BuildCommunicationData" );
   // List of entries in src_elem_mat that belong on each parent test space rank.
   // This is needed so we know which rank to send entries in src_elem_mat to.
   auto send_array_ids = buildSendArrayIDs( test_elem_idx );
@@ -98,7 +101,9 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
   // entries received from redecomp ranks.  The second column of recv_mat_sizes
   // determines the offset for each trial element.
   auto recv_trial_elem_dofs = buildRecvTrialElemDofs( *trial_redecomp, test_elem_idx, trial_elem_idx );
+  TRIBOL_MARK_END( "BuildCommunicationData" );
 
+  TRIBOL_MARK_BEGIN( "SendRecvEach" );
   // aggregate dense matrix values, send and assemble
   getMPIUtility().SendRecvEach(
       type<axom::Array<double>>(),
@@ -140,14 +145,18 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
           dof_ct += recv_mat_sizes[src]( e, 0 ) * recv_mat_sizes[src]( e, 1 );
         }
       } );
+  TRIBOL_MARK_END( "SendRecvEach" );
 
   return parentJ;
 }
 
-std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::TransferToParallelSparse(
-    const axom::Array<int>& test_elem_idx, const axom::Array<int>& trial_elem_idx,
-    const axom::Array<double>& src_elem_mat_data, const axom::Array<int>& src_elem_mat_offsets ) const
+shared::ParSparseMat MatrixTransfer::TransferToParallel( const axom::Array<int>& test_elem_idx,
+                                                         const axom::Array<int>& trial_elem_idx,
+                                                         const axom::Array<double>& src_elem_mat_data,
+                                                         const axom::Array<int>& src_elem_mat_offsets,
+                                                         bool parallel_assemble ) const
 {
+  TRIBOL_MARK_FUNCTION;
   // verify inputs
   SLIC_ERROR_IF( test_elem_idx.size() != trial_elem_idx.size() || test_elem_idx.size() != src_elem_mat_offsets.size(),
                  "Element index arrays and element Jacobian offsets array must be the same size." );
@@ -170,6 +179,7 @@ std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::TransferToParallelSparse(
   auto test_redecomp = dynamic_cast<const RedecompMesh*>( redecomp_test_fes_.GetMesh() );
   auto trial_redecomp = dynamic_cast<const RedecompMesh*>( redecomp_trial_fes_.GetMesh() );
 
+  TRIBOL_MARK_BEGIN( "BuildCommunicationData" );
   // List of entries in src_elem_mat that belong on each parent test space rank.
   // This is needed so we know which rank to send entries in src_elem_mat to.
   auto send_array_ids = buildSendArrayIDs( test_elem_idx );
@@ -191,7 +201,9 @@ std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::TransferToParallelSparse(
   // entries received from redecomp ranks.  The second column of recv_mat_sizes
   // determines the offset for each trial element.
   auto recv_trial_elem_dofs = buildRecvTrialElemDofs( *trial_redecomp, test_elem_idx, trial_elem_idx );
+  TRIBOL_MARK_END( "BuildCommunicationData" );
 
+  TRIBOL_MARK_BEGIN( "SetupTriplets" );
   // Intermediate storage for triplets
   struct Triplet {
     int row;
@@ -207,7 +219,9 @@ std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::TransferToParallelSparse(
     }
   }
   triplets.reserve( total_recv_entries );
+  TRIBOL_MARK_END( "SetupTriplets" );
 
+  TRIBOL_MARK_BEGIN( "SendRecvEach" );
   // aggregate dense matrix values, send and assemble
   getMPIUtility().SendRecvEach(
       type<axom::Array<double>>(),
@@ -256,13 +270,17 @@ std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::TransferToParallelSparse(
           dof_ct += recv_mat_sizes[src]( e, 0 ) * recv_mat_sizes[src]( e, 1 );
         }
       } );
+  TRIBOL_MARK_END( "SendRecvEach" );
 
+  TRIBOL_MARK_BEGIN( "SortTriplets" );
   // Sort triplets by row then column
   std::sort( triplets.begin(), triplets.end(), []( const Triplet& a, const Triplet& b ) {
     if ( a.row != b.row ) return a.row < b.row;
     return a.col < b.col;
   } );
+  TRIBOL_MARK_END( "SortTriplets" );
 
+  TRIBOL_MARK_BEGIN( "CSRConstruction" );
   // Count non-zeros and merge duplicates
   int num_unique_nonzeros = 0;
   if ( !triplets.empty() ) {
@@ -306,11 +324,23 @@ std::unique_ptr<mfem::HypreParMatrix> MatrixTransfer::TransferToParallelSparse(
   for ( int i = 0; i < num_rows; ++i ) {
     I_ptr[i + 1] += I_ptr[i];
   }
+  TRIBOL_MARK_END( "CSRConstruction" );
 
   // Construct rectangular HypreParMatrix
-  return std::make_unique<mfem::HypreParMatrix>( getMPIUtility().MPIComm(), num_rows, parent_test_fes_.GlobalVSize(),
-                                                 parent_trial_fes_.GlobalVSize(), I_ptr, J_ptr, data_ptr,
-                                                 parent_test_fes_.GetDofOffsets(), parent_trial_fes_.GetDofOffsets() );
+  shared::ParSparseMat J_full( getMPIUtility().MPIComm(), num_rows, parent_test_fes_.GlobalVSize(),
+                               parent_trial_fes_.GlobalVSize(), I_ptr, J_ptr, data_ptr,
+                               parent_test_fes_.GetDofOffsets(), parent_trial_fes_.GetDofOffsets() );
+
+  if ( !parallel_assemble ) {
+    return J_full;
+  } else {
+    auto P_test = parent_test_fes_.Dof_TrueDof_Matrix();
+    P_test->HostRead();
+    auto P_trial = parent_trial_fes_.Dof_TrueDof_Matrix();
+    P_trial->HostRead();
+    auto J_true = shared::ParSparseMat::RAP( P_test, J_full, P_trial );
+    return J_true;
+  }
 }
 
 shared::ParSparseMat MatrixTransfer::ConvertToParSparseMat( mfem::SparseMatrix&& sparse, bool parallel_assemble ) const
