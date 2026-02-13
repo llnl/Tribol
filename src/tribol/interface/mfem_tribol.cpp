@@ -540,7 +540,7 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         registerNodalReferenceCoords( mesh_ids[0], xref_ptrs[0], xref_ptrs[1], xref_ptrs[2] );
         registerNodalReferenceCoords( mesh_ids[1], xref_ptrs[0], xref_ptrs[1], xref_ptrs[2] );
       }
-      if ( cs.getEnforcementMethod() == LAGRANGE_MULTIPLIER ) {
+      if ( cs.getEnforcementMethod() == LAGRANGE_MULTIPLIER || cs.getContactMethod() == ENERGY_MORTAR ) {
         SLIC_ERROR_ROOT_IF( cs.getContactModel() != FRICTIONLESS, "Only frictionless contact is supported." );
         SLIC_ERROR_ROOT_IF( cs.getContactMethod() != SINGLE_MORTAR && cs.getContactMethod() != ENERGY_MORTAR,
                             "Only single mortar or ENERGY_MORTAR contact is supported." );
@@ -552,7 +552,7 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         registerMortarGaps( mesh_ids[1], g_ptrs[0] );
         auto p_ptrs = submesh_data->GetRedecompPressurePtrs();
         registerMortarPressures( mesh_ids[1], p_ptrs[0] );
-        if ( cs.hasMfemJacobianData() && new_redecomp ) {
+        if ( ( cs.hasMfemJacobianData() || cs.getContactMethod() == ENERGY_MORTAR ) && new_redecomp ) {
           // updates Jacobian transfer operator for new redecomp mesh
           cs.getMfemJacobianData()->UpdateJacobianXfer();
         }
