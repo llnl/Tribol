@@ -12,11 +12,13 @@
 #ifdef BUILD_REDECOMP
 
 #include <set>
+#include <utility>
 #include <vector>
 
 #include "mfem.hpp"
 
-#include "axom/core.hpp"
+#include "shared/math/ParSparseMat.hpp"
+
 #include "redecomp/redecomp.hpp"
 
 #include "tribol/common/BasicTypes.hpp"
@@ -1630,6 +1632,60 @@ class MfemSubmeshData {
 };
 
 /**
+ * @brief Struct to hold computed element data for Jacobian assembly
+ */
+struct ComputedElementData {
+  BlockSpace row_space;               ///< Block space for row elements
+  BlockSpace col_space;               ///< Block space for column elements
+  axom::Array<int> row_elem_ids;      ///< Tribol element IDs for rows
+  axom::Array<int> col_elem_ids;      ///< Tribol element IDs for columns
+  axom::Array<double> jacobian_data;  ///< Flattened Jacobian data
+  axom::Array<int> jacobian_offsets;  ///< Offsets into data for each element
+};
+
+/**
+ * @brief Helper class to manage Jacobian contributions for different block spaces
+ */
+class JacobianContributions {
+ public:
+  /**
+   * @brief Construct a new JacobianContributions object
+   *
+   * @param blocks List of {row_space, col_space} pairs defining the Jacobian blocks
+   */
+  JacobianContributions( std::initializer_list<std::pair<BlockSpace, BlockSpace>> blocks );
+
+  /**
+   * @brief Reserve memory for each block contribution
+   *
+   * @param n_pairs Number of interface pairs
+   * @param n_entries_per_pair Number of entries in the element Jacobian block
+   */
+  void reserve( int n_pairs, int n_entries_per_pair );
+
+  /**
+   * @brief Add an element Jacobian contribution to a specific block
+   *
+   * @param block_idx Index of the block space pair (in the order provided to the constructor)
+   * @param row_elem_id Tribol element ID for the row space
+   * @param col_elem_id Tribol element ID for the column space
+   * @param data Pointer to the flattened element Jacobian data (column-major)
+   * @param size Number of entries in the element Jacobian data
+   */
+  void push_back( int block_idx, int row_elem_id, int col_elem_id, const double* data, int size );
+
+  /**
+   * @brief Return the underlying contributions vector
+   *
+   * @return const std::vector<ComputedElementData>&
+   */
+  const std::vector<ComputedElementData>& get() const { return contributions_; }
+
+ private:
+  std::vector<ComputedElementData> contributions_;
+};
+
+/**
  * @brief Simplifies transfer of Jacobian matrix data between MFEM and Tribol
  */
 class MfemJacobianData {
@@ -1649,37 +1705,27 @@ class MfemJacobianData {
   void UpdateJacobianXfer();
 
   /**
-   * @brief Returns symmetric, off-diagonal Jacobian contributions as an mfem::BlockOperator
+   * @brief Returns a Jacobian as an mfem::BlockOperator
    *
    * @param method_data Method data holding element Jacobians
+   * @param row_info List of {block_row_index, BlockSpace} pairs. Since a single block row in the output matrix might
+   * aggregate DOFs from multiple Tribol spaces (e.g. Mortar and NonMortar spaces might both map to the Displacement
+   * block 0), this vector defines the mapping from each Tribol space to its corresponding block row index.
+   * @param col_info List of {block_col_index, BlockSpace} pairs. Similar to row_info, this defines the mapping from
+   * each Tribol space to its corresponding block column index.
    * @return std::unique_ptr<mfem::BlockOperator>
    */
-  std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobian( const MethodData* method_data ) const;
+  std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobian(
+      const MethodData& method_data, const std::vector<std::pair<int, BlockSpace>>& row_info,
+      const std::vector<std::pair<int, BlockSpace>>& col_info ) const;
 
   /**
-   * @brief Returns full, potentially non-symmetric derivative of the force w.r.t. nodal coordinates as an
-   * mfem::BlockOperator
+   * @brief Returns a Jacobian as a single ParSparseMat
    *
-   * @param method_data Method data holding element Jacobians
-   * @return std::unique_ptr<mfem::BlockOperator>
+   * @param contributions List of element computed data chunks
+   * @return ParSparseMat
    */
-  std::unique_ptr<mfem::BlockOperator> GetMfemDfDxFullJacobian( const MethodData& method_data ) const;
-
-  /**
-   * @brief Returns the derivative of the force w.r.t. the normal direction as an mfem::BlockOperator
-   *
-   * @param method_data Method data holding element Jacobians
-   * @return std::unique_ptr<mfem::BlockOperator>
-   */
-  std::unique_ptr<mfem::BlockOperator> GetMfemDfDnJacobian( const MethodData& method_data ) const;
-
-  /**
-   * @brief Returns the derivative of the normal direction w.r.t. the nodal coordinates as an mfem::BlockOperator
-   *
-   * @param method_data Method data holding element Jacobians
-   * @return std::unique_ptr<mfem::BlockOperator>
-   */
-  std::unique_ptr<mfem::BlockOperator> GetMfemDnDxJacobian( const MethodData& method_data ) const;
+  shared::ParSparseMat GetMfemJacobian( const std::vector<ComputedElementData>& contributions ) const;
 
  private:
   /**
@@ -1696,19 +1742,11 @@ class MfemJacobianData {
     UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data );
 
     /**
-     * @brief Redecomp to parent-linked boundary submesh transfer operator, (displacement, displacement) block
+     * @brief Redecomp to parent-linked boundary submesh transfer operators
+     *
+     * @note Indexed by (row_block, col_block)
      */
-    std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_00_;
-
-    /**
-     * @brief Redecomp to parent-linked boundary submesh transfer operator, (displacement, pressure) block
-     */
-    std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_01_;
-
-    /**
-     * @brief Redecomp to parent-linked boundary submesh transfer operator, (pressure, displacement) block
-     */
-    std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_10_;
+    Array2D<std::unique_ptr<redecomp::MatrixTransfer>> submesh_redecomp_xfer_;
   };
 
   /**
@@ -1755,7 +1793,7 @@ class MfemJacobianData {
   /**
    * @brief Submesh to parent transfer operator
    */
-  std::unique_ptr<mfem::HypreParMatrix> submesh_parent_vdof_xfer_;
+  std::unique_ptr<shared::ParSparseMat> submesh_parent_vdof_xfer_;
 
   /**
    * @brief List of submesh true dofs that only exist on the mortar surface

@@ -8,7 +8,11 @@
 
 #include "mfem.hpp"
 
-#include "redecomp/common/TypeDefs.hpp"
+#include "axom/core.hpp"
+
+#include "shared/math/ParSparseMat.hpp"
+
+#include "redecomp/utils/MPIArray.hpp"
 
 namespace redecomp {
 
@@ -26,7 +30,7 @@ class RedecompMesh;
  * two-stage transfer process is available. First, TransferToParallel() creates
  * an un-finalized mfem::SparseMatrix with ldofs on the rows and global ldofs on
  * the columns. This mfem::SparseMatrix is designed to be passed to a
- * mfem::HypreParMatrix constructor (done through the ConvertToHypreParMatrix()
+ * mfem::HypreParMatrix constructor (done through the ConvertToParSparseMat()
  * method).  The two-stage process allows easier manipulation of matrix
  * contributions before the matrix is finalized.  Both square and rectangular
  * matrices are supported, necessitating test and trial finite element spaces in
@@ -61,10 +65,10 @@ class MatrixTransfer {
    * HypreParMatrix returned to transform it to the t-dofs if parallel_assemble
    * is false.
    */
-  std::unique_ptr<mfem::HypreParMatrix> TransferToParallel( const axom::Array<int>& test_elem_idx,
-                                                            const axom::Array<int>& trial_elem_idx,
-                                                            const axom::Array<mfem::DenseMatrix>& src_elem_mat,
-                                                            bool parallel_assemble = true ) const;
+  shared::ParSparseMat TransferToParallel( const axom::Array<int>& test_elem_idx,
+                                           const axom::Array<int>& trial_elem_idx,
+                                           const axom::Array<mfem::DenseMatrix>& src_elem_mat,
+                                           bool parallel_assemble = true ) const;
 
   /**
    * @brief Transfers element RedecompMesh matrices to parent mfem::ParMesh
@@ -83,6 +87,26 @@ class MatrixTransfer {
                                                const axom::Array<mfem::DenseMatrix>& src_elem_mat ) const;
 
   /**
+   * @brief Transfers element RedecompMesh matrices to parent mfem::ParMesh
+   *
+   * @param test_elem_idx List of element IDs on the redecomp test space
+   * @param trial_elem_idx List of element IDs on the redecomp trial space
+   * @param src_elem_mat_data Flattened array of element-level dense matrices from the redecomp mesh
+   * @param src_elem_mat_offsets Offsets into src_elem_mat_data for each element
+   * @param parallel_assemble Performs parallel assembly (transforms to tdofs)
+   * on the HypreParMatrix if true, returns ldofs otherwise
+   * @return mfem::HypreParMatrix on the parent mesh (ldofs on the rows, global
+   * ldofs on the columns) in rectangular format
+   *
+   * @note This method constructs the parallel matrix directly, bypassing mfem::SparseMatrix.
+   */
+  shared::ParSparseMat TransferToParallel( const axom::Array<int>& test_elem_idx,
+                                           const axom::Array<int>& trial_elem_idx,
+                                           const axom::Array<double>& src_elem_mat_data,
+                                           const axom::Array<int>& src_elem_mat_offsets,
+                                           bool parallel_assemble = true ) const;
+
+  /**
    * @brief Converts SparseMatrix from TransferToParallelSparse to HypreParMatrix
    *
    * @param sparse Finalized mfem::SparseMatrix returned from TransferToParallel
@@ -94,8 +118,7 @@ class MatrixTransfer {
    * HypreParMatrix returned to transform it to the t-dofs if parallel_assemble
    * is false.
    */
-  std::unique_ptr<mfem::HypreParMatrix> ConvertToHypreParMatrix( mfem::SparseMatrix& sparse,
-                                                                 bool parallel_assemble = true ) const;
+  shared::ParSparseMat ConvertToParSparseMat( mfem::SparseMatrix&& sparse, bool parallel_assemble = true ) const;
 
  private:
   /**

@@ -32,12 +32,12 @@ constexpr int ANY_MESH = -1;
  */
 enum class LoggingLevel
 {
-  UNDEFINED,  ///! Undefined
-  DEBUG,      ///! Debug and higher
-  INFO,       ///! Info and higher
-  WARNING,    ///! Warning and higher
-  ERROR,      ///! Errors only
-  NUM_LOGGING_LEVELS = ERROR
+  Undefined,  ///! Undefined
+  Debug,      ///! Debug and higher
+  Info,       ///! Info and higher
+  Warning,    ///! Warning and higher
+  Error,      ///! Errors only
+  NumLoggingLevels = Error
 };
 
 /*!

@@ -65,6 +65,45 @@ foreach( test ${tribol_tests} )
 endforeach()
 
 #------------------------------------------------------------------------------
+# Add shared tests
+#------------------------------------------------------------------------------
+if ( TRIBOL_USE_MPI )
+
+  set( shared_tests
+       shared_par_sparse_mat.cpp
+       shared_par_vector.cpp
+     )
+
+  set(mpi_test_depends tribol_shared gtest)
+
+  foreach( test ${shared_tests} )
+
+    get_filename_component( test_name ${test} NAME_WE )
+
+    blt_add_executable(
+      NAME ${test_name}_test
+      SOURCES ${test}
+      OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+      DEPENDS_ON ${mpi_test_depends} ${tribol_device_depends}
+      FOLDER tribol/tests )
+
+    blt_add_test( NAME ${test_name}
+                  COMMAND ${test_name}_test
+                  NUM_MPI_TASKS 2 )
+
+    if (ENABLE_HIP)
+      target_compile_options(${test_name}_test PRIVATE
+          $<$<CONFIG:Debug>:
+              -ggdb
+          >
+      )
+    endif()
+
+  endforeach()
+
+endif()
+
+#------------------------------------------------------------------------------
 # Add redecomp tests
 #------------------------------------------------------------------------------
 if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
@@ -110,6 +149,7 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
   set( combined_tests
       tribol_mfem_common_plane.cpp
       tribol_mfem_mortar_lm.cpp
+      tribol_mfem_jacobian.cpp
       tribol_proximity_check.cpp
       tribol_redecomp_tol.cpp
       )
