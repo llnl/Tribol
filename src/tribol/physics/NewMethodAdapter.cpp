@@ -46,30 +46,13 @@ void NewMethodAdapter::updateNodalGaps()
   mfem::GridFunction redecomp_area( redecomp_gap.FESpace() );
   redecomp_area = 0.0;
 
-  std::vector<ComputedElementData> dg_tilde_dx_contribs( 2 );
-  dg_tilde_dx_contribs[0].row_space = BlockSpace::LAGRANGE_MULTIPLIER;
-  dg_tilde_dx_contribs[0].col_space = BlockSpace::NONMORTAR;
-  dg_tilde_dx_contribs[1].row_space = BlockSpace::LAGRANGE_MULTIPLIER;
-  dg_tilde_dx_contribs[1].col_space = BlockSpace::MORTAR;
+  JacobianContributions dg_tilde_dx_contribs( { { BlockSpace::LAGRANGE_MULTIPLIER, BlockSpace::NONMORTAR },
+                                                { BlockSpace::LAGRANGE_MULTIPLIER, BlockSpace::MORTAR } } );
+  JacobianContributions dA_dx_contribs( { { BlockSpace::LAGRANGE_MULTIPLIER, BlockSpace::NONMORTAR },
+                                          { BlockSpace::LAGRANGE_MULTIPLIER, BlockSpace::MORTAR } } );
 
-  std::vector<ComputedElementData> dA_dx_contribs( 2 );
-  dA_dx_contribs[0].row_space = BlockSpace::LAGRANGE_MULTIPLIER;
-  dA_dx_contribs[0].col_space = BlockSpace::NONMORTAR;
-  dA_dx_contribs[1].row_space = BlockSpace::LAGRANGE_MULTIPLIER;
-  dA_dx_contribs[1].col_space = BlockSpace::MORTAR;
-
-  for ( auto& contrib : dg_tilde_dx_contribs ) {
-    contrib.row_elem_ids.reserve( pairs_.size() );
-    contrib.col_elem_ids.reserve( pairs_.size() );
-    contrib.jacobian_data.reserve( pairs_.size() * 8 );
-    contrib.jacobian_offsets.reserve( pairs_.size() );
-  }
-  for ( auto& contrib : dA_dx_contribs ) {
-    contrib.row_elem_ids.reserve( pairs_.size() );
-    contrib.col_elem_ids.reserve( pairs_.size() );
-    contrib.jacobian_data.reserve( pairs_.size() * 8 );
-    contrib.jacobian_offsets.reserve( pairs_.size() );
-  }
+  dg_tilde_dx_contribs.reserve( pairs_.size(), 8 );
+  dA_dx_contribs.reserve( pairs_.size(), 8 );
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
@@ -114,13 +97,8 @@ void NewMethodAdapter::updateNodalGaps()
       dg_tilde_dx_blocks[1][i * 2] = dg_dx_node1[node_idx[i + 4]];
       dg_tilde_dx_blocks[1][i * 2 + 1] = dg_dx_node2[node_idx[i + 4]];
     }
-    for ( int i{ 0 }; i < 2; ++i ) {
-      auto& contrib = dg_tilde_dx_contribs[i];
-      contrib.row_elem_ids.push_back( elem1 );
-      contrib.col_elem_ids.push_back( i == 0 ? elem1 : elem2 );
-      contrib.jacobian_offsets.push_back( contrib.jacobian_data.size() );
-      contrib.jacobian_data.append( axom::ArrayView<const double>( dg_tilde_dx_blocks[i], 8 ) );
-    }
+    dg_tilde_dx_contribs.push_back( 0, elem1, elem1, dg_tilde_dx_blocks[0], 8 );
+    dg_tilde_dx_contribs.push_back( 1, elem1, elem2, dg_tilde_dx_blocks[1], 8 );
 
     double dA_dx_node1[8];
     double dA_dx_node2[8];
@@ -133,13 +111,8 @@ void NewMethodAdapter::updateNodalGaps()
       dA_dx_blocks[1][i * 2] = dA_dx_node1[node_idx[i + 4]];
       dA_dx_blocks[1][i * 2 + 1] = dA_dx_node2[node_idx[i + 4]];
     }
-    for ( int i{ 0 }; i < 2; ++i ) {
-      auto& contrib = dA_dx_contribs[i];
-      contrib.row_elem_ids.push_back( elem1 );
-      contrib.col_elem_ids.push_back( i == 0 ? elem1 : elem2 );
-      contrib.jacobian_offsets.push_back( contrib.jacobian_data.size() );
-      contrib.jacobian_data.append( axom::ArrayView<const double>( dA_dx_blocks[i], 8 ) );
-    }
+    dA_dx_contribs.push_back( 0, elem1, elem1, dA_dx_blocks[0], 8 );
+    dA_dx_contribs.push_back( 1, elem1, elem2, dA_dx_blocks[1], 8 );
   }
 
   // Move gap and area to submesh level vectors
@@ -171,15 +144,16 @@ void NewMethodAdapter::updateNodalGaps()
   gap_vec_ = g_tilde_vec_.divide( A_vec_, area_tol_ );
 
   // Move gap and area derivatives to HypreParMatrix (submesh rows, parent mesh cols)
-  dg_tilde_dx_ = jac_data_.GetMfemJacobian( dg_tilde_dx_contribs );
+  dg_tilde_dx_ = jac_data_.GetMfemJacobian( dg_tilde_dx_contribs.get() );
   if ( !tied_contact_ ) {
     // technically, we should do this on all the vectors/matrices below, but it looks like the mutliplication operators
     // below will zero them out anyway
     dg_tilde_dx_.EliminateRows( rows_to_elim );
   }
 
-  dA_dx_ = jac_data_.GetMfemJacobian( dA_dx_contribs );
+  dA_dx_ = jac_data_.GetMfemJacobian( dA_dx_contribs.get() );
 }
+
 
 void NewMethodAdapter::updateNodalForces()
 {
@@ -203,22 +177,12 @@ void NewMethodAdapter::updateNodalForces()
 
   force_vec_ = ( pressure_vec_ * dg_tilde_dx_ ) + ( g_tilde_vec_ * dp_dx );
 
-  std::vector<ComputedElementData> df_dx_contribs( 4 );
-  df_dx_contribs[0].row_space = BlockSpace::NONMORTAR;
-  df_dx_contribs[0].col_space = BlockSpace::NONMORTAR;
-  df_dx_contribs[1].row_space = BlockSpace::NONMORTAR;
-  df_dx_contribs[1].col_space = BlockSpace::MORTAR;
-  df_dx_contribs[2].row_space = BlockSpace::MORTAR;
-  df_dx_contribs[2].col_space = BlockSpace::NONMORTAR;
-  df_dx_contribs[3].row_space = BlockSpace::MORTAR;
-  df_dx_contribs[3].col_space = BlockSpace::MORTAR;
+  JacobianContributions df_dx_contribs( { { BlockSpace::NONMORTAR, BlockSpace::NONMORTAR },
+                                          { BlockSpace::NONMORTAR, BlockSpace::MORTAR },
+                                          { BlockSpace::MORTAR, BlockSpace::NONMORTAR },
+                                          { BlockSpace::MORTAR, BlockSpace::MORTAR } } );
 
-  for ( auto& contrib : df_dx_contribs ) {
-    contrib.row_elem_ids.reserve( pairs_.size() );
-    contrib.col_elem_ids.reserve( pairs_.size() );
-    contrib.jacobian_data.reserve( pairs_.size() * 16 );
-    contrib.jacobian_offsets.reserve( pairs_.size() );
-  }
+  df_dx_contribs.reserve( pairs_.size(), 16 );
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
@@ -285,19 +249,15 @@ void NewMethodAdapter::updateNodalForces()
       }
     }
 
-    for ( int i{ 0 }; i < 2; ++i ) {
-      for ( int j{ 0 }; j < 2; ++j ) {
-        auto& contrib = df_dx_contribs[i * 2 + j];
-        contrib.row_elem_ids.push_back( i == 0 ? elem1 : elem2 );
-        contrib.col_elem_ids.push_back( j == 0 ? elem1 : elem2 );
-        contrib.jacobian_offsets.push_back( contrib.jacobian_data.size() );
-        contrib.jacobian_data.append( axom::ArrayView<const double>( df_dx_blocks[i][j], 16 ) );
-      }
-    }
+    df_dx_contribs.push_back( 0, elem1, elem1, df_dx_blocks[0][0], 16 );
+    df_dx_contribs.push_back( 1, elem1, elem2, df_dx_blocks[0][1], 16 );
+    df_dx_contribs.push_back( 2, elem2, elem1, df_dx_blocks[1][0], 16 );
+    df_dx_contribs.push_back( 3, elem2, elem2, df_dx_blocks[1][1], 16 );
   }
 
   // Move gap and area derivatives to HypreParMatrix (submesh rows, parent mesh cols)
-  df_dx_ = jac_data_.GetMfemJacobian( df_dx_contribs );
+  df_dx_ = jac_data_.GetMfemJacobian( df_dx_contribs.get() );
+
 
   auto pg2_over_asq = ( 2.0 * pressure_vec_ )
                           .multiplyInPlace( g_tilde_vec_ )
