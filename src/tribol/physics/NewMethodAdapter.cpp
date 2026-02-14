@@ -9,44 +9,6 @@ namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
-static std::vector<ComputedElementData> convertMethodData( const MethodData& method_data,
-                                                           const std::vector<BlockSpace>& row_spaces,
-                                                           const std::vector<BlockSpace>& col_spaces )
-{
-  std::vector<ComputedElementData> contributions;
-  for ( auto rs : row_spaces ) {
-    for ( auto cs : col_spaces ) {
-      const auto& J_block = method_data.getBlockJ()( static_cast<int>( rs ), static_cast<int>( cs ) );
-      if ( J_block.size() == 0 ) {
-        continue;
-      }
-
-      ComputedElementData data;
-      data.row_space = rs;
-      data.col_space = cs;
-
-      const auto& row_ids = method_data.getBlockJElementIds()[static_cast<int>( rs )];
-      const auto& col_ids = method_data.getBlockJElementIds()[static_cast<int>( cs )];
-
-      data.row_elem_ids.append( axom::ArrayView<const int>( row_ids.data(), row_ids.size() ) );
-      data.col_elem_ids.append( axom::ArrayView<const int>( col_ids.data(), col_ids.size() ) );
-
-      int n_elems = J_block.size();
-      int n_rows = J_block[0].Height();
-      int n_cols = J_block[0].Width();
-      data.jacobian_data.resize( n_elems * n_rows * n_cols );
-      data.jacobian_offsets.resize( n_elems );
-      for ( int k = 0; k < n_elems; ++k ) {
-        data.jacobian_offsets[k] = k * n_rows * n_cols;
-        std::copy( J_block[k].GetData(), J_block[k].GetData() + n_rows * n_cols,
-                   data.jacobian_data.data() + data.jacobian_offsets[k] );
-      }
-      contributions.push_back( std::move( data ) );
-    }
-  }
-  return contributions;
-}
-
 NewMethodAdapter::NewMethodAdapter( MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, MeshData& mesh1,
                                     MeshData& mesh2, double k, double delta, int N )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
@@ -83,11 +45,32 @@ void NewMethodAdapter::updateNodalGaps()
   auto& redecomp_gap = submesh_data_.GetRedecompGap();
   mfem::GridFunction redecomp_area( redecomp_gap.FESpace() );
   redecomp_area = 0.0;
-  MethodData dg_tilde_dx;
-  dg_tilde_dx.reserveBlockJ( { BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER },
-                             pairs_.size() );
-  MethodData dA_dx;
-  dA_dx.reserveBlockJ( { BlockSpace::NONMORTAR, BlockSpace::MORTAR, BlockSpace::LAGRANGE_MULTIPLIER }, pairs_.size() );
+
+  std::vector<ComputedElementData> dg_tilde_dx_contribs( 2 );
+  dg_tilde_dx_contribs[0].row_space = BlockSpace::LAGRANGE_MULTIPLIER;
+  dg_tilde_dx_contribs[0].col_space = BlockSpace::NONMORTAR;
+  dg_tilde_dx_contribs[1].row_space = BlockSpace::LAGRANGE_MULTIPLIER;
+  dg_tilde_dx_contribs[1].col_space = BlockSpace::MORTAR;
+
+  std::vector<ComputedElementData> dA_dx_contribs( 2 );
+  dA_dx_contribs[0].row_space = BlockSpace::LAGRANGE_MULTIPLIER;
+  dA_dx_contribs[0].col_space = BlockSpace::NONMORTAR;
+  dA_dx_contribs[1].row_space = BlockSpace::LAGRANGE_MULTIPLIER;
+  dA_dx_contribs[1].col_space = BlockSpace::MORTAR;
+
+  for ( auto& contrib : dg_tilde_dx_contribs ) {
+    contrib.row_elem_ids.reserve( pairs_.size() );
+    contrib.col_elem_ids.reserve( pairs_.size() );
+    contrib.jacobian_data.reserve( pairs_.size() * 8 );
+    contrib.jacobian_offsets.reserve( pairs_.size() );
+  }
+  for ( auto& contrib : dA_dx_contribs ) {
+    contrib.row_elem_ids.reserve( pairs_.size() );
+    contrib.col_elem_ids.reserve( pairs_.size() );
+    contrib.jacobian_data.reserve( pairs_.size() * 8 );
+    contrib.jacobian_offsets.reserve( pairs_.size() );
+  }
+
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
   auto mesh1_view = mesh1_.getView();
@@ -122,48 +105,41 @@ void NewMethodAdapter::updateNodalGaps()
     // compute g_tilde first derivative
     double dg_dx_node1[8];
     double dg_dx_node2[8];
+    // TODO: make grad_gtilde return directly in dg_tilde_dx_blocks format
     evaluator_->grad_gtilde( flipped_pair, mesh1_view, mesh2_view, dg_dx_node1, dg_dx_node2 );
-    StackArray<DeviceArray2D<RealT>, 9> dg_tilde_dx_block( 3 );
-    dg_tilde_dx_block( 2, 0 ) = DeviceArray2D<RealT>( 2, 4 );
-    dg_tilde_dx_block( 2, 0 ).fill( 0.0 );
-    dg_tilde_dx_block( 2, 1 ) = DeviceArray2D<RealT>( 2, 4 );
-    dg_tilde_dx_block( 2, 1 ).fill( 0.0 );
+    double dg_tilde_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
-      dg_tilde_dx_block( 2, 0 )( 0, i ) = dg_dx_node1[node_idx[i]];
+      dg_tilde_dx_blocks[0][i * 2] = dg_dx_node1[node_idx[i]];
+      dg_tilde_dx_blocks[0][i * 2 + 1] = dg_dx_node2[node_idx[i]];
+      dg_tilde_dx_blocks[1][i * 2] = dg_dx_node1[node_idx[i + 4]];
+      dg_tilde_dx_blocks[1][i * 2 + 1] = dg_dx_node2[node_idx[i + 4]];
     }
-    for ( int i{ 0 }; i < 4; ++i ) {
-      dg_tilde_dx_block( 2, 0 )( 1, i ) = dg_dx_node2[node_idx[i]];
+    for ( int i{ 0 }; i < 2; ++i ) {
+      auto& contrib = dg_tilde_dx_contribs[i];
+      contrib.row_elem_ids.push_back( elem1 );
+      contrib.col_elem_ids.push_back( i == 0 ? elem1 : elem2 );
+      contrib.jacobian_offsets.push_back( contrib.jacobian_data.size() );
+      contrib.jacobian_data.append( axom::ArrayView<const double>( dg_tilde_dx_blocks[i], 8 ) );
     }
-    for ( int i{ 0 }; i < 4; ++i ) {
-      dg_tilde_dx_block( 2, 1 )( 0, i ) = dg_dx_node1[node_idx[i + 4]];
-    }
-    for ( int i{ 0 }; i < 4; ++i ) {
-      dg_tilde_dx_block( 2, 1 )( 1, i ) = dg_dx_node2[node_idx[i + 4]];
-    }
-    dg_tilde_dx.storeElemBlockJ( { elem1, elem2, elem1 }, dg_tilde_dx_block );
 
-    // compute area first derivative
     double dA_dx_node1[8];
     double dA_dx_node2[8];
+    // TODO: make grad_trib_area return directly in dA_dx_blocks format
     evaluator_->grad_trib_area( flipped_pair, mesh1_view, mesh2_view, dA_dx_node1, dA_dx_node2 );
-    StackArray<DeviceArray2D<RealT>, 9> dA_dx_block( 3 );
-    dA_dx_block( 2, 0 ) = DeviceArray2D<RealT>( 2, 4 );
-    dA_dx_block( 2, 0 ).fill( 0.0 );
-    dA_dx_block( 2, 1 ) = DeviceArray2D<RealT>( 2, 4 );
-    dA_dx_block( 2, 1 ).fill( 0.0 );
+    double dA_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
-      dA_dx_block( 2, 0 )( 0, i ) = dA_dx_node1[node_idx[i]];
+      dA_dx_blocks[0][i * 2] = dA_dx_node1[node_idx[i]];
+      dA_dx_blocks[0][i * 2 + 1] = dA_dx_node2[node_idx[i]];
+      dA_dx_blocks[1][i * 2] = dA_dx_node1[node_idx[i + 4]];
+      dA_dx_blocks[1][i * 2 + 1] = dA_dx_node2[node_idx[i + 4]];
     }
-    for ( int i{ 0 }; i < 4; ++i ) {
-      dA_dx_block( 2, 0 )( 1, i ) = dA_dx_node2[node_idx[i]];
+    for ( int i{ 0 }; i < 2; ++i ) {
+      auto& contrib = dA_dx_contribs[i];
+      contrib.row_elem_ids.push_back( elem1 );
+      contrib.col_elem_ids.push_back( i == 0 ? elem1 : elem2 );
+      contrib.jacobian_offsets.push_back( contrib.jacobian_data.size() );
+      contrib.jacobian_data.append( axom::ArrayView<const double>( dA_dx_blocks[i], 8 ) );
     }
-    for ( int i{ 0 }; i < 4; ++i ) {
-      dA_dx_block( 2, 1 )( 0, i ) = dA_dx_node1[node_idx[i + 4]];
-    }
-    for ( int i{ 0 }; i < 4; ++i ) {
-      dA_dx_block( 2, 1 )( 1, i ) = dA_dx_node2[node_idx[i + 4]];
-    }
-    dA_dx.storeElemBlockJ( { elem1, elem2, elem1 }, dA_dx_block );
   }
 
   // Move gap and area to submesh level vectors
@@ -195,16 +171,14 @@ void NewMethodAdapter::updateNodalGaps()
   gap_vec_ = g_tilde_vec_.divide( A_vec_, area_tol_ );
 
   // Move gap and area derivatives to HypreParMatrix (submesh rows, parent mesh cols)
-  dg_tilde_dx_ = jac_data_.GetMfemJacobian(
-      convertMethodData( dg_tilde_dx, { BlockSpace::LAGRANGE_MULTIPLIER }, { BlockSpace::NONMORTAR, BlockSpace::MORTAR } ) );
+  dg_tilde_dx_ = jac_data_.GetMfemJacobian( dg_tilde_dx_contribs );
   if ( !tied_contact_ ) {
     // technically, we should do this on all the vectors/matrices below, but it looks like the mutliplication operators
     // below will zero them out anyway
     dg_tilde_dx_.EliminateRows( rows_to_elim );
   }
 
-  dA_dx_ = jac_data_.GetMfemJacobian(
-      convertMethodData( dA_dx, { BlockSpace::LAGRANGE_MULTIPLIER }, { BlockSpace::NONMORTAR, BlockSpace::MORTAR } ) );
+  dA_dx_ = jac_data_.GetMfemJacobian( dA_dx_contribs );
 }
 
 void NewMethodAdapter::updateNodalForces()
@@ -229,8 +203,23 @@ void NewMethodAdapter::updateNodalForces()
 
   force_vec_ = ( pressure_vec_ * dg_tilde_dx_ ) + ( g_tilde_vec_ * dp_dx );
 
-  MethodData df_dx_data;
-  df_dx_data.reserveBlockJ( { BlockSpace::NONMORTAR, BlockSpace::MORTAR }, pairs_.size() );
+  std::vector<ComputedElementData> df_dx_contribs( 4 );
+  df_dx_contribs[0].row_space = BlockSpace::NONMORTAR;
+  df_dx_contribs[0].col_space = BlockSpace::NONMORTAR;
+  df_dx_contribs[1].row_space = BlockSpace::NONMORTAR;
+  df_dx_contribs[1].col_space = BlockSpace::MORTAR;
+  df_dx_contribs[2].row_space = BlockSpace::MORTAR;
+  df_dx_contribs[2].col_space = BlockSpace::NONMORTAR;
+  df_dx_contribs[3].row_space = BlockSpace::MORTAR;
+  df_dx_contribs[3].col_space = BlockSpace::MORTAR;
+
+  for ( auto& contrib : df_dx_contribs ) {
+    contrib.row_elem_ids.reserve( pairs_.size() );
+    contrib.col_elem_ids.reserve( pairs_.size() );
+    contrib.jacobian_data.reserve( pairs_.size() * 16 );
+    contrib.jacobian_offsets.reserve( pairs_.size() );
+  }
+
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
   mfem::GridFunction redecomp_pressure( submesh_data_.GetRedecompGap() );
@@ -273,74 +262,42 @@ void NewMethodAdapter::updateNodalForces()
     const RealT g_p_ainv1 = -redecomp_g_tilde( node11 ) * redecomp_pressure( node11 ) / redecomp_A( node11 );
     const RealT g_p_ainv2 = -redecomp_g_tilde( node12 ) * redecomp_pressure( node12 ) / redecomp_A( node12 );
 
-    double df_dx_node1[64];
-    double df_dx_node2[64];
+    double d2g_dx2_node1[64];
+    double d2g_dx2_node2[64];
     // ordering: [dg/(dx0dx0) dg/(dy0dx0) dg/(dx1dx0) ...]
-    evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, df_dx_node1, df_dx_node2 );
-    StackArray<DeviceArray2D<RealT>, 9> df_dx_block( 2 );
-    df_dx_block( 0, 0 ) = DeviceArray2D<RealT>( 4, 4 );
-    df_dx_block( 0, 0 ).fill( 0.0 );
-    df_dx_block( 0, 1 ) = DeviceArray2D<RealT>( 4, 4 );
-    df_dx_block( 0, 1 ).fill( 0.0 );
-    df_dx_block( 1, 0 ) = DeviceArray2D<RealT>( 4, 4 );
-    df_dx_block( 1, 0 ).fill( 0.0 );
-    df_dx_block( 1, 1 ) = DeviceArray2D<RealT>( 4, 4 );
-    df_dx_block( 1, 1 ).fill( 0.0 );
-    for ( int j{ 0 }; j < 4; ++j ) {
-      for ( int i{ 0 }; i < 4; ++i ) {
-        df_dx_block( 0, 0 )( i, j ) = pressure1 * df_dx_node1[node_idx[i] + node_idx[j] * 8] +
-                                      pressure2 * df_dx_node2[node_idx[i] + node_idx[j] * 8];
+    evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2 );
+
+    double d2A_dx2_node1[64];
+    double d2A_dx2_node2[64];
+    evaluator_->compute_d2A_d2u( flipped_pair, mesh1_view, mesh2_view, d2A_dx2_node1, d2A_dx2_node2 );
+
+    double df_dx_blocks[2][2][16];
+    for ( int i{ 0 }; i < 2; ++i ) {
+      for ( int j{ 0 }; j < 2; ++j ) {
+        for ( int k{ 0 }; k < 4; ++k ) {
+          for ( int l{ 0 }; l < 4; ++l ) {
+            df_dx_blocks[i][j][l + k * 4] = pressure1 * d2g_dx2_node1[node_idx[l + i * 4] + node_idx[k + j * 4] * 8] +
+                                            pressure2 * d2g_dx2_node2[node_idx[l + i * 4] + node_idx[k + j * 4] * 8] +
+                                            g_p_ainv1 * d2A_dx2_node1[node_idx[l + i * 4] + node_idx[k + j * 4] * 8] +
+                                            g_p_ainv2 * d2A_dx2_node2[node_idx[l + i * 4] + node_idx[k + j * 4] * 8];
+          }
+        }
       }
     }
-    for ( int j{ 0 }; j < 4; ++j ) {
-      for ( int i{ 0 }; i < 4; ++i ) {
-        df_dx_block( 0, 1 )( i, j ) = pressure1 * df_dx_node1[node_idx[i] + node_idx[j + 4] * 8] +
-                                      pressure2 * df_dx_node2[node_idx[i] + node_idx[j + 4] * 8];
+
+    for ( int i{ 0 }; i < 2; ++i ) {
+      for ( int j{ 0 }; j < 2; ++j ) {
+        auto& contrib = df_dx_contribs[i * 2 + j];
+        contrib.row_elem_ids.push_back( i == 0 ? elem1 : elem2 );
+        contrib.col_elem_ids.push_back( j == 0 ? elem1 : elem2 );
+        contrib.jacobian_offsets.push_back( contrib.jacobian_data.size() );
+        contrib.jacobian_data.append( axom::ArrayView<const double>( df_dx_blocks[i][j], 16 ) );
       }
     }
-    for ( int j{ 0 }; j < 4; ++j ) {
-      for ( int i{ 0 }; i < 4; ++i ) {
-        df_dx_block( 1, 0 )( i, j ) = pressure1 * df_dx_node1[node_idx[i + 4] + node_idx[j] * 8] +
-                                      pressure2 * df_dx_node2[node_idx[i + 4] + node_idx[j] * 8];
-      }
-    }
-    for ( int j{ 0 }; j < 4; ++j ) {
-      for ( int i{ 0 }; i < 4; ++i ) {
-        df_dx_block( 1, 1 )( i, j ) = pressure1 * df_dx_node1[node_idx[i + 4] + node_idx[j + 4] * 8] +
-                                      pressure2 * df_dx_node2[node_idx[i + 4] + node_idx[j + 4] * 8];
-      }
-    }
-    evaluator_->compute_d2A_d2u( flipped_pair, mesh1_view, mesh2_view, df_dx_node1, df_dx_node2 );
-    for ( int j{ 0 }; j < 4; ++j ) {
-      for ( int i{ 0 }; i < 4; ++i ) {
-        df_dx_block( 0, 0 )( i, j ) += g_p_ainv1 * df_dx_node1[node_idx[i] + node_idx[j] * 8] +
-                                       g_p_ainv2 * df_dx_node2[node_idx[i] + node_idx[j] * 8];
-      }
-    }
-    for ( int j{ 0 }; j < 4; ++j ) {
-      for ( int i{ 0 }; i < 4; ++i ) {
-        df_dx_block( 0, 1 )( i, j ) += g_p_ainv1 * df_dx_node1[node_idx[i] + node_idx[j + 4] * 8] +
-                                       g_p_ainv2 * df_dx_node2[node_idx[i] + node_idx[j + 4] * 8];
-      }
-    }
-    for ( int j{ 0 }; j < 4; ++j ) {
-      for ( int i{ 0 }; i < 4; ++i ) {
-        df_dx_block( 1, 0 )( i, j ) += g_p_ainv1 * df_dx_node1[node_idx[i + 4] + node_idx[j] * 8] +
-                                       g_p_ainv2 * df_dx_node2[node_idx[i + 4] + node_idx[j] * 8];
-      }
-    }
-    for ( int j{ 0 }; j < 4; ++j ) {
-      for ( int i{ 0 }; i < 4; ++i ) {
-        df_dx_block( 1, 1 )( i, j ) += g_p_ainv1 * df_dx_node1[node_idx[i + 4] + node_idx[j + 4] * 8] +
-                                       g_p_ainv2 * df_dx_node2[node_idx[i + 4] + node_idx[j + 4] * 8];
-      }
-    }
-    df_dx_data.storeElemBlockJ( { elem1, elem2 }, df_dx_block );
   }
 
   // Move gap and area derivatives to HypreParMatrix (submesh rows, parent mesh cols)
-  df_dx_ = jac_data_.GetMfemJacobian( convertMethodData(
-      df_dx_data, { BlockSpace::NONMORTAR, BlockSpace::MORTAR }, { BlockSpace::NONMORTAR, BlockSpace::MORTAR } ) );
+  df_dx_ = jac_data_.GetMfemJacobian( df_dx_contribs );
 
   auto pg2_over_asq = ( 2.0 * pressure_vec_ )
                           .multiplyInPlace( g_tilde_vec_ )
