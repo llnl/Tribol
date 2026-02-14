@@ -1186,6 +1186,35 @@ shared::ParSparseMat MfemJacobianData::GetMfemJacobian( const std::vector<Comput
   return std::move( *par_J );
 }
 
+JacobianContributions::JacobianContributions( std::initializer_list<std::pair<BlockSpace, BlockSpace>> blocks )
+{
+  for ( const auto& block : blocks ) {
+    ComputedElementData data;
+    data.row_space = block.first;
+    data.col_space = block.second;
+    contributions_.push_back( std::move( data ) );
+  }
+}
+
+void JacobianContributions::reserve( int n_pairs, int n_entries_per_pair )
+{
+  for ( auto& contrib : contributions_ ) {
+    contrib.row_elem_ids.reserve( n_pairs );
+    contrib.col_elem_ids.reserve( n_pairs );
+    contrib.jacobian_data.reserve( n_pairs * n_entries_per_pair );
+    contrib.jacobian_offsets.reserve( n_pairs );
+  }
+}
+
+void JacobianContributions::push_back( int block_idx, int row_elem_id, int col_elem_id, const double* data, int size )
+{
+  auto& contrib = contributions_[block_idx];
+  contrib.row_elem_ids.push_back( row_elem_id );
+  contrib.col_elem_ids.push_back( col_elem_id );
+  contrib.jacobian_offsets.push_back( contrib.jacobian_data.size() );
+  contrib.jacobian_data.append( axom::ArrayView<const double>( data, size ) );
+}
+
 }  // namespace tribol
 
 #endif /* BUILD_REDECOMP */

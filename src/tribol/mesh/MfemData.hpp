@@ -1651,6 +1651,48 @@ struct ComputedElementData {
 };
 
 /**
+ * @brief Helper class to manage Jacobian contributions for different block spaces
+ */
+class JacobianContributions {
+ public:
+  /**
+   * @brief Construct a new JacobianContributions object
+   *
+   * @param blocks List of {row_space, col_space} pairs defining the Jacobian blocks
+   */
+  JacobianContributions( std::initializer_list<std::pair<BlockSpace, BlockSpace>> blocks );
+
+  /**
+   * @brief Reserve memory for each block contribution
+   *
+   * @param n_pairs Number of interface pairs
+   * @param n_entries_per_pair Number of entries in the element Jacobian block
+   */
+  void reserve( int n_pairs, int n_entries_per_pair );
+
+  /**
+   * @brief Add an element Jacobian contribution to a specific block
+   *
+   * @param block_idx Index of the block space pair (in the order provided to the constructor)
+   * @param row_elem_id Tribol element ID for the row space
+   * @param col_elem_id Tribol element ID for the column space
+   * @param data Pointer to the flattened element Jacobian data (column-major)
+   * @param size Number of entries in the element Jacobian data
+   */
+  void push_back( int block_idx, int row_elem_id, int col_elem_id, const double* data, int size );
+
+  /**
+   * @brief Return the underlying contributions vector
+   *
+   * @return const std::vector<ComputedElementData>&
+   */
+  const std::vector<ComputedElementData>& get() const { return contributions_; }
+
+ private:
+  std::vector<ComputedElementData> contributions_;
+};
+
+/**
  * @brief Simplifies transfer of Jacobian matrix data between MFEM and Tribol
  */
 class MfemJacobianData {
