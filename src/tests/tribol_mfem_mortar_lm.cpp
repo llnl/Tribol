@@ -35,7 +35,7 @@
  * @brief This tests the Tribol MFEM interface running a contact patch test.
  *
  */
-class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Element::Type>> {
+class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Element::Type, double>> {
  protected:
   tribol::RealT max_disp_;
   void SetUp() override
@@ -45,6 +45,8 @@ class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Eleme
     int ref_levels = std::get<0>( GetParam() );
     // polynomial order of the finite element discretization
     int order = 1;
+
+    double residual_gap = std::get<2>( GetParam() );
 
     // fixed options
     // boundary element attributes of mortar surface
@@ -145,6 +147,7 @@ class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Eleme
                                         tribol::SINGLE_MORTAR, tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER,
                                         tribol::BINNING_GRID );
     tribol::setLagrangeMultiplierOptions( 0, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN );
+    tribol::setResidualGap( coupling_scheme_id, residual_gap );
 
     coords.ReadWrite();
     // update tribol (compute contact contribution to force and stiffness)
@@ -221,14 +224,17 @@ class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Eleme
 
 TEST_P( MfemMortarTest, check_mortar_displacement )
 {
-  EXPECT_LT( std::abs( max_disp_ - 0.005 ), 1.0e-6 );
+  double residual_gap = std::get<2>( GetParam() );
+  EXPECT_LT( std::abs( max_disp_ - ( 0.005 + residual_gap / 2.0 ) ), 1.0e-6 );
 
   MPI_Barrier( MPI_COMM_WORLD );
 }
 
 INSTANTIATE_TEST_SUITE_P( tribol, MfemMortarTest,
-                          testing::Values( std::make_tuple( 2, mfem::Element::Type::HEXAHEDRON ),
-                                           std::make_tuple( 2, mfem::Element::Type::TETRAHEDRON ) ) );
+                          testing::Values( std::make_tuple( 2, mfem::Element::Type::HEXAHEDRON, 0.0 ),
+                                           std::make_tuple( 2, mfem::Element::Type::HEXAHEDRON, 0.01 ),
+                                           std::make_tuple( 2, mfem::Element::Type::TETRAHEDRON, 0.0 ),
+                                           std::make_tuple( 2, mfem::Element::Type::TETRAHEDRON, 0.01 ) ) );
 
 //------------------------------------------------------------------------------
 #include "axom/slic/core/SimpleLogger.hpp"
