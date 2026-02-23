@@ -43,23 +43,14 @@ void ComputeAlignedMortarWeights( SurfaceContactElem& elem );
  *
  * \brief compute a contact element's contribution to nodal gaps
  *
- * \param [in] cs pointer to the coupling scheme
+ * \note explicit specialization for aligned mortar method
  *
- */
-template <ContactMethod M>
-void ComputeNodalGap( SurfaceContactElem& elem );
-
-/*!
- *
- * \brief compute a contact element's contribution to nodal gaps
- *
- * \note explicit specialization for single mortar method
- *
- * \param [in] cs pointer to the coupling scheme
+ * \param [in] elem surface contact element object for contact face-pair
+ * \param [in] residual_gap user-defined residual gap
  *
  */
 template <>
-void ComputeNodalGap<ALIGNED_MORTAR>( SurfaceContactElem& elem );
+void ComputeNodalGap<ALIGNED_MORTAR>( SurfaceContactElem& elem, RealT residual_gap );
 
 /*!
  *

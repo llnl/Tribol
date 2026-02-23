@@ -338,6 +338,19 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale )
 }  // end setBinningProximityScale()
 
 //------------------------------------------------------------------------------
+void setResidualGap( IndexT cs_id, RealT residual_gap )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  // check to see if coupling scheme exists
+  SLIC_ERROR_ROOT_IF(
+      !cs, "tribol::setResidualGap(): call tribol::registerCouplingScheme() " << "prior to calling this routine." );
+
+  cs->getParameters().residual_gap = residual_gap;
+
+}  // end setResidualGap()
+
+//------------------------------------------------------------------------------
 void enableTimestepVote( IndexT cs_id, const bool enable )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );

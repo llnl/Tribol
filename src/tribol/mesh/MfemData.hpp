@@ -639,11 +639,13 @@ class MfemMeshData {
    * @param n_ranks Number of ranks in the parallel decomposition
    * @param force_new_redecomp If true, construct a new RedecompMesh even if displacement threshold is not met (default
    * = false)
+   * @param residual_gap Residual gap to add to ghost layer thickness (default = 0.0)
    * @return True if a new RedecompMesh is created by this method
    *
    * @note This method should be called after the coordinate grid function is updated.
    */
-  bool UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks, bool force_new_redecomp = false );
+  bool UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks, bool force_new_redecomp = false,
+                           RealT residual_gap = 0.0 );
 
   /**
    * @brief Get the integer identifier for the first Tribol registered mesh
@@ -1119,11 +1121,12 @@ class MfemMeshData {
      * @param allocator_id Allocation space ID for Tribol memory
      * @param redecomp_trigger_displacement Additional length to add to redecomp ghost length equal to the
      *        displacement required to trigger a new RedecompMesh to be built.
+     * @param residual_gap user-defined residual gap
      */
     UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh, const mfem::ParFiniteElementSpace& parent_fes,
                 mfem::ParGridFunction& submesh_gridfn, SubmeshLORTransfer* submesh_lor_xfer,
                 const std::set<int>& attributes_1, const std::set<int>& attributes_2, RealT binning_proximity_scale,
-                int n_ranks, int allocator_id, RealT redecomp_trigger_displacement );
+                int n_ranks, int allocator_id, RealT redecomp_trigger_displacement, RealT residual_gap );
 
     /**
      * @brief Redecomposed boundary element mesh

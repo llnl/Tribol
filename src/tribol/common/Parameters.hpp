@@ -496,6 +496,8 @@ struct Parameters {
   // constituent face elements, then we don't consider the face-pair a contact candidate.
   // Note, auto-contact will require registration of element thicknesses.
   bool auto_contact_check = false;  ///! True if auto-contact checks should be enabled
+
+  RealT residual_gap = 0.0;  ///! User defined residual gap constraint
 };
 
 }  // namespace tribol

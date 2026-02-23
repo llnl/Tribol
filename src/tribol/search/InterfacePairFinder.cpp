@@ -23,27 +23,6 @@ namespace spin = axom::spin;
 
 namespace tribol {
 
-/*!
- * \brief Base class to compute the candidate pairs for a coupling scheme
- *
- * \a initialize() must be called prior to \a findInterfacePairs()
- *
- */
-class SearchBase {
- public:
-  SearchBase() {};
-  virtual ~SearchBase() {};
-  /*!
-   * Prepares the object for spatial searches
-   */
-  virtual void initialize() = 0;
-
-  /*!
-   * Find candidates in first mesh for each element in second mesh of coupling scheme.
-   */
-  virtual void findInterfacePairs() = 0;
-};
-
 ///////////////////////////////////////////////////////////////////////////////
 
 /*!
@@ -64,7 +43,7 @@ class CartesianProduct : public SearchBase {
    * Constructs a CartesianProduct instance over CouplingScheme \a couplingScheme
    * \pre couplingScheme is not null
    */
-  CartesianProduct( CouplingScheme* couplingScheme ) : m_coupling_scheme( couplingScheme ) {}
+  CartesianProduct( CouplingScheme* couplingScheme ) : SearchBase( couplingScheme ) {}
 
   void initialize() override {}
 
@@ -92,10 +71,9 @@ class CartesianProduct : public SearchBase {
     ArrayT<int> countArray( 1, 1, m_coupling_scheme->getAllocatorId() );
     int* pCount = countArray.data();
 
-    const auto cs_view = m_coupling_scheme->getView();
     // count how many pairs are proximate
     forAllExec( m_coupling_scheme->getExecutionMode(), maxNumPairs,
-                [cs_view, mesh1NumElems, mesh2NumElems, is_symm, isProximate, pCount] TRIBOL_HOST_DEVICE( IndexT i ) {
+                [this, mesh1NumElems, mesh2NumElems, is_symm, isProximate, pCount] TRIBOL_HOST_DEVICE( IndexT i ) {
                   IndexT fromIdx = i / mesh2NumElems;
                   IndexT toIdx = i % mesh2NumElems;
                   if ( is_symm ) {
@@ -104,7 +82,7 @@ class CartesianProduct : public SearchBase {
                     fromIdx = row;
                     toIdx = i - offset;
                   }
-                  isProximate[i] = geomFilter( cs_view, fromIdx, toIdx );
+                  isProximate[i] = geomFilter( fromIdx, toIdx );
 #ifdef TRIBOL_USE_RAJA
                   RAJA::atomicAdd<RAJA::auto_atomic>( pCount, static_cast<int>( isProximate[i] ) );
 #else
@@ -156,8 +134,6 @@ class CartesianProduct : public SearchBase {
                                       << "." );
   }
 
- private:
-  CouplingScheme* m_coupling_scheme;
 };  // End of CartesianProduct definition
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -191,7 +167,7 @@ class GridSearch : public SearchBase {
    * \pre couplingScheme is not null
    */
   GridSearch( CouplingScheme* couplingScheme )
-      : m_coupling_scheme( couplingScheme ),
+      : SearchBase( couplingScheme ),
         m_mesh1( m_coupling_scheme->getMesh1().getView() ),
         m_mesh2( m_coupling_scheme->getMesh2().getView() )
   {
@@ -231,9 +207,10 @@ class GridSearch : public SearchBase {
     // * Find the average extents (range) of the boxes Assumption is that elements are roughly the same size
     // * Grid resolution for each dimension is overall box width divided by half the average element width
     SpaceVec ranges;
+    RealT residual_gap = m_coupling_scheme->getParameters().residual_gap;
     for ( int i = 0; i < m_mesh1.numberOfElements(); ++i ) {
       auto& bbox = m_meshBBoxes1[i];
-      inflateBBox( bbox, e_binning_proximity_scale );
+      inflateBBox( bbox, e_binning_proximity_scale, residual_gap );
 
       ranges += bbox.range();
 
@@ -294,9 +271,10 @@ class GridSearch : public SearchBase {
     // Find matches in first mesh (with index 'fromIdx')
     // with candidate elements in second mesh (with index 'toIdx')
     // int k = 0;  // Debug only
+    RealT residual_gap = m_coupling_scheme->getParameters().residual_gap;
     for ( int toIdx = 0; toIdx < m_mesh2.numberOfElements(); ++toIdx ) {
       SpatialBoundingBox bbox = elementBoundingBox( m_mesh2, toIdx );
-      inflateBBox( bbox, e_binning_proximity_scale );
+      inflateBBox( bbox, e_binning_proximity_scale, residual_gap );
 
       // Query the mesh
       auto candidateBits = m_grid.getCandidates( bbox );
@@ -313,7 +291,7 @@ class GridSearch : public SearchBase {
         // TODO: Add extra filter by bbox
 
         // Preliminary geometry/proximity checks, SRW
-        bool contact = geomFilter( m_coupling_scheme->getView(), fromIdx, toIdx );
+        bool contact = geomFilter( fromIdx, toIdx );
 
         if ( contact ) {
           contactPairs.emplace_back( fromIdx, toIdx, true );
@@ -347,16 +325,15 @@ class GridSearch : public SearchBase {
     return box;
   }
   /*!
-   * Expands bounding box by range_multiplier * the longest dimension's range
+   * Expands bounding box by range_multiplier * the longest dimension's range + residual gap
    */
-  void inflateBBox( SpatialBoundingBox& bbox, RealT range_multiplier )
+  void inflateBBox( SpatialBoundingBox& bbox, RealT range_multiplier, RealT residual_gap = 0.0 )
   {
     int d = bbox.getLongestDimension();
-    const RealT expansionFac = range_multiplier * bbox.range()[d];
+    const RealT expansionFac = range_multiplier * bbox.range()[d] + residual_gap;
     bbox.expand( expansionFac );
   }
 
-  CouplingScheme* m_coupling_scheme;
   const MeshData::Viewer m_mesh1;
   const MeshData::Viewer m_mesh2;
 
@@ -395,7 +372,7 @@ class BvhSearch : public SearchBase {
    * \pre couplingScheme is not null
    */
   BvhSearch( CouplingScheme* coupling_scheme )
-      : m_coupling_scheme( coupling_scheme ),
+      : SearchBase( coupling_scheme ),
         m_mesh1( m_coupling_scheme->getMesh1().getView() ),
         m_mesh2( m_coupling_scheme->getMesh2().getView() ),
         m_boxes1( axom::ArrayOptions::Uninitialized{}, m_mesh1.numberOfElements(), m_mesh1.numberOfElements(),
@@ -416,11 +393,11 @@ class BvhSearch : public SearchBase {
   void initialize() override
   {
     // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
-    buildMeshBBoxes( m_boxes1, m_coupling_scheme->getMesh1().getView(),
-                     m_coupling_scheme->getEffectiveBinningProximityScale() );
+    auto e_binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
+    auto residual_gap = m_coupling_scheme->getParameters().residual_gap;
+    buildMeshBBoxes( m_boxes1, m_coupling_scheme->getMesh1().getView(), e_binning_proximity_scale, residual_gap );
     // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
-    buildMeshBBoxes( m_boxes2, m_coupling_scheme->getMesh2().getView(),
-                     m_coupling_scheme->getEffectiveBinningProximityScale() );
+    buildMeshBBoxes( m_boxes2, m_coupling_scheme->getMesh2().getView(), e_binning_proximity_scale, residual_gap );
   }  // end initialize()
 
   /*!
@@ -446,23 +423,21 @@ class BvhSearch : public SearchBase {
     // with device kernels
     ArrayT<IndexT> filtered_candidates_data( 1, 1, m_coupling_scheme->getAllocatorId() );
     auto filtered_candidates = filtered_candidates_data.view();
-    const auto cs_view = m_coupling_scheme->getView();
     // count the number of filtered proximate pairs
-    forAllExec(
-        m_coupling_scheme->getExecutionMode(), m_candidates.size(),
-        [cs_view, offsets_view, counts_view, candidates_view, filtered_candidates] TRIBOL_HOST_DEVICE( IndexT i ) {
-          auto mesh1_elem = candidates_view[i];
-          auto mesh2_elem = algorithm::binarySearch( offsets_view, counts_view, i );
-          if ( geomFilter( cs_view, mesh1_elem, mesh2_elem ) ) {
+    forAllExec( m_coupling_scheme->getExecutionMode(), m_candidates.size(),
+                [this, offsets_view, counts_view, candidates_view, filtered_candidates] TRIBOL_HOST_DEVICE( IndexT i ) {
+                  auto mesh1_elem = candidates_view[i];
+                  auto mesh2_elem = algorithm::binarySearch( offsets_view, counts_view, i );
+                  if ( geomFilter( mesh1_elem, mesh2_elem ) ) {
 #ifdef TRIBOL_USE_RAJA
-            RAJA::atomicInc<AtomicPolicy>( filtered_candidates.data() );
+                    RAJA::atomicInc<AtomicPolicy>( filtered_candidates.data() );
 #else
             ++filtered_candidates[0];
 #endif
-          } else {
-            candidates_view[i] = -1;
-          }
-        } );
+                  } else {
+                    candidates_view[i] = -1;
+                  }
+                } );
 
     ArrayT<IndexT, 1, MemorySpace::Host> filtered_candidates_host( filtered_candidates_data );
     m_coupling_scheme->getInterfacePairs().resize( filtered_candidates_host[0] );
@@ -493,11 +468,11 @@ class BvhSearch : public SearchBase {
         } );
   }  // end findInterfacePairs()
 
-  void buildMeshBBoxes( ArrayT<BoxT>& boxes, const MeshData::Viewer& mesh, RealT binning_proximity )
+  void buildMeshBBoxes( ArrayT<BoxT>& boxes, const MeshData::Viewer& mesh, RealT binning_proximity, RealT residual_gap )
   {
     auto boxes_view = boxes.view();
     forAllExec( m_coupling_scheme->getExecutionMode(), mesh.numberOfElements(),
-                [this, mesh, boxes_view, binning_proximity] TRIBOL_HOST_DEVICE( IndexT i ) {
+                [this, mesh, boxes_view, binning_proximity, residual_gap] TRIBOL_HOST_DEVICE( IndexT i ) {
                   BoxT box;
                   auto num_nodes_per_elem = mesh.numberOfNodesPerElement();
                   for ( IndexT j{ 0 }; j < num_nodes_per_elem; ++j ) {
@@ -513,7 +488,7 @@ class BvhSearch : public SearchBase {
                   mesh.getFaceNormal( i, vnorm );
                   VectorT faceNormal( vnorm );
                   RealT faceRadius = mesh.getFaceRadius()[i];
-                  expandBBoxNormal( box, faceNormal, binning_proximity * faceRadius );
+                  expandBBoxNormal( box, faceNormal, binning_proximity * faceRadius + residual_gap );
                   boxes_view[i] = std::move( box );
                 } );
   }
@@ -541,7 +516,6 @@ class BvhSearch : public SearchBase {
    */
   TRIBOL_HOST_DEVICE void inflateBBox( BoxT& bbox, const RealT faceRadius ) { bbox.expand( faceRadius ); }
 
-  CouplingScheme* m_coupling_scheme;
   const MeshData::Viewer m_mesh1;
   const MeshData::Viewer m_mesh2;
   ArrayT<BoxT> m_boxes1;
