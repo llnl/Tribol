@@ -32,7 +32,7 @@ class NewMethodAdapter : public ContactFormulation {
    * @param N Quadrature order
    */
   NewMethodAdapter( MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, MeshData& mesh1, MeshData& mesh2,
-                    double k, double delta, int N );
+                    double k, double delta, int N, bool use_penalty_ = true );
 
   virtual ~NewMethodAdapter() = default;
 
@@ -62,10 +62,26 @@ class NewMethodAdapter : public ContactFormulation {
   std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx() const override;
 
   std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const override;
+
+  void evaluateContactResidual( const mfem::HypreParVector& lambda,
+                                 mfem::HypreParVector& r_force,
+                                 mfem::HypreParVector& r_gap);
+                              
+  //Lagrange multiplier mode
+  void evaluateContactJacobian( const mfem::HypreParVector& lambda, 
+                                std::unique_ptr<mfem::HypreParMatrix>& df_du,
+                                std::unique_ptr<mfem::HypreParMatrix>& df_dlambda);
+  
+  void compute_df_du_lagrange( const mfem::HypreParVector& lambda, 
+                               std::unique_ptr<mfem::HypreParMatrix>& df_du);
+
+
 #endif
 
  private:
   // --- Member Variables ---
+
+  bool use_penalty_;
 
   double area_tol_{ 1.0e-14 };
   bool tied_contact_ = false;

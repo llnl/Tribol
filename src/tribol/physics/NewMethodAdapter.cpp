@@ -4,16 +4,18 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "tribol/physics/NewMethodAdapter.hpp"
+#include "tribol/common/Parameters.hpp"
+#include "tribol/mesh/MfemData.hpp"
 
 namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
 NewMethodAdapter::NewMethodAdapter( MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, MeshData& mesh1,
-                                    MeshData& mesh2, double k, double delta, int N )
+                                    MeshData& mesh2, double k, double delta, int N, bool use_penalty_ )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
-    : submesh_data_( submesh_data ), jac_data_( jac_data ), mesh1_( mesh2 ), mesh2_( mesh1 )
+    : submesh_data_( submesh_data ), jac_data_( jac_data ), mesh1_( mesh2 ), mesh2_( mesh1 ), use_penalty_( use_penalty_ )
 {
   if ( mesh1.numberOfNodes() > 0 && mesh2.numberOfNodes() > 0 ) {
     SLIC_ERROR_ROOT_IF( mesh1.spatialDimension() != 2 || mesh2.spatialDimension() != 2,
@@ -125,7 +127,7 @@ void NewMethodAdapter::updateNodalGaps()
   P_submesh.MultTranspose( g_tilde_linear_form, g_tilde_vec_.get() );
 
   mfem::Array<int> rows_to_elim;
-  if ( !tied_contact_ ) {
+  if ( !tied_contact_ && use_penalty_) {
     rows_to_elim.Reserve( g_tilde_vec_.Size() );
     for ( int i{ 0 }; i < g_tilde_vec_.Size(); ++i ) {
       if ( g_tilde_vec_[i] > 0.0 ) {
@@ -145,7 +147,7 @@ void NewMethodAdapter::updateNodalGaps()
 
   // Move gap and area derivatives to HypreParMatrix (submesh rows, parent mesh cols)
   dg_tilde_dx_ = jac_data_.GetMfemJacobian( dg_tilde_dx_contribs.get() );
-  if ( !tied_contact_ ) {
+  if ( !tied_contact_ && use_penalty_) {
     // technically, we should do this on all the vectors/matrices below, but it looks like the mutliplication operators
     // below will zero them out anyway
     dg_tilde_dx_.EliminateRows( rows_to_elim );
@@ -161,6 +163,7 @@ void NewMethodAdapter::updateNodalForces()
 
   // compute nodal pressures. these are used in the Hessian vector product below so we don't have to assemble a Hessian
   // NOTE: in general, pressure should likely be set by the host code
+
   pressure_vec_ = params_.k * gap_vec_;
 
   energy_ = pressure_vec_.dot( g_tilde_vec_ );
@@ -282,6 +285,107 @@ RealT NewMethodAdapter::computeTimeStep()
   // TODO: implement timestep calculation
   return 1.0;
 }
+
+void NewMethodAdapter::compute_df_du_lagrange( const mfem::HypreParVector& lambda, 
+                                               std::unique_ptr<mfem::HypreParMatrix>& df_du)
+{
+  //Convert Lambda to redecomp space for element wise access 
+  mfem::GridFunction redecomp_lambda( submesh_data_.GetRedecompGap() );
+  mfem::ParGridFunction submesh_lambda(
+      const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
+  submesh_lambda.SetFromTrueDofs(lambda );
+  submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_lambda, redecomp_lambda);
+
+  JacobianContributions df_dx_contribs( { { BlockSpace::NONMORTAR, BlockSpace::NONMORTAR },
+                                                      { BlockSpace::NONMORTAR, BlockSpace::MORTAR},
+                                                      { BlockSpace::MORTAR, BlockSpace::NONMORTAR },
+                                                      { BlockSpace::MORTAR, BlockSpace::MORTAR}});
+
+  df_dx_contribs.reserve( pairs_.size(), 16);
+
+  const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7};
+
+  auto mesh1_view = mesh1_.getView();
+  auto mesh2_view = mesh2_.getView();
+    // Loop over element pairs and compute Hessian contributions
+  for ( auto& pair : pairs_ ) {
+    InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
+    const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
+    const auto node11 = mesh1_view.getConnectivity()( elem1, 0 );
+    const auto node12 = mesh1_view.getConnectivity()( elem1, 1 );
+    const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
+
+    // Get lambda values at nodes (no factor of 2 in Lagrange mode)
+    const RealT lambda1 = redecomp_lambda( node11 );
+    const RealT lambda2 = redecomp_lambda( node12 );
+
+    // if ( lambda1 == 0.0 && lambda2 == 0.0 ) {
+    //   continue;
+    // }
+
+    // Compute Hessian of g̃
+    double d2g_dx2_node1[64];
+    double d2g_dx2_node2[64];
+    evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2 );
+
+    // Assemble df/du blocks: df/du = λ · d²g̃/du²
+    double df_dx_blocks[2][2][16];
+    for ( int i{ 0 }; i < 2; ++i ) {
+      for ( int j{ 0 }; j < 2; ++j ) {
+        for ( int k{ 0 }; k < 4; ++k ) {
+          for ( int l{ 0 }; l < 4; ++l ) {
+            df_dx_blocks[i][j][l + k * 4] = lambda1 * d2g_dx2_node1[node_idx[l + i * 4] + node_idx[k + j * 4] * 8] +
+                                            lambda2 * d2g_dx2_node2[node_idx[l + i * 4] + node_idx[k + j * 4] * 8];
+          }
+        }
+      }
+    }
+
+    df_dx_contribs.push_back( 0, elem1, elem1, df_dx_blocks[0][0], 16 );
+    df_dx_contribs.push_back( 1, elem1, elem2, df_dx_blocks[0][1], 16 );
+    df_dx_contribs.push_back( 2, elem2, elem1, df_dx_blocks[1][0], 16 );
+    df_dx_contribs.push_back( 3, elem2, elem2, df_dx_blocks[1][1], 16 );
+  }
+
+    auto df_dx_temp = jac_data_.GetMfemJacobian( df_dx_contribs.get() );
+
+    df_du = std::unique_ptr<mfem::HypreParMatrix>( df_dx_temp.release() );
+}
+
+
+void NewMethodAdapter::evaluateContactResidual( const mfem::HypreParVector& lambda,
+                                                mfem::HypreParVector& r_force,
+                                                mfem::HypreParVector& r_gap )
+{
+  SLIC_ERROR_ROOT_IF(use_penalty_, "evaluateContactResidual() should only be  called in lagrange multiplier mode");
+
+  SLIC_ERROR_ROOT_IF( g_tilde_vec_.Size() == 0, "updateNodalGaps() must be called before evaluateContactResidual()");
+
+  //Force residual = r_f = lambda * dg_tilde/du
+  dg_tilde_dx_->MultTranspose(lambda, r_force);
+
+  //gap residual
+  r_gap = g_tilde_vec_.get();
+}
+
+void NewMethodAdapter::evaluateContactJacobian( const mfem::HypreParVector& lambda,
+                                                std::unique_ptr<mfem::HypreParMatrix>& df_du,
+                                                std::unique_ptr<mfem::HypreParMatrix>& df_dlambda )
+{
+  SLIC_ERROR_ROOT_IF( use_penalty_, 
+                      "evaluateContactJacobian() should only be called in Lagrange multiplier mode" );
+  
+  SLIC_ERROR_ROOT_IF( g_tilde_vec_.Size() == 0,
+                      "updateNodalGaps() must be called before evaluateContactJacobian()" );
+
+  // df/dlambda = dg_tilde/du:
+  df_dlambda = std::unique_ptr<mfem::HypreParMatrix>( dg_tilde_dx_.release() );
+
+  //df/du = lambda * d2g_tilde/du2
+  compute_df_du_lagrange( lambda, df_du ); 
+
+}
+
 
 std::unique_ptr<mfem::HypreParMatrix> NewMethodAdapter::getMfemDfDx() const
 {

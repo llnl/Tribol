@@ -135,6 +135,14 @@ class ContactFormulation {
    * @note Requires updateNodalForces() to be called first.
    */
   virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const = 0;
+
+  virtual void evaluateContactResidual( const mfem::HypreParVector& lambda,
+                                        mfem::HypreParVector& r_force,
+                                        mfem::HypreParVector& r_gap ) = 0;
+
+  virtual void evaluateContactJacobian( const mfem::HypreParVector& lambda,
+                                        std::unique_ptr<mfem::HypreParMatrix>& df_du,
+                                        std::unique_ptr<mfem::HypreParMatrix>& df_dlambda ) = 0;
 #endif
 };
 
