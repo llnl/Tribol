@@ -19,7 +19,7 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
   if ( cs->getContactMethod() == ENERGY_MORTAR ) {
     // Default parameters for now, or extract from CouplingScheme if available
     double k = 1.0;
-    double delta = 0.0;
+    double delta = 0.2;
     int N = 3;
     bool use_penalty_ = (cs->getEnforcementMethod() == PENALTY);
 

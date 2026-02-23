@@ -460,8 +460,8 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
 
     // int nel_per_dir_top = std::pow( 2, ref_levels );
     // int nel_per_dir_bottom = std::pow(3, ref_levels);
-    int nel_per_dir_top = 4;
-    int nel_per_dir_bottom = 4;
+    int nel_per_dir_top = 10;
+    int nel_per_dir_bottom = 3;
 
     // clang-format off
     mfem::ParMesh mesh = shared::ParMeshBuilder(MPI_COMM_WORLD, shared::MeshBuilder::Unify({
