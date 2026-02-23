@@ -18,13 +18,13 @@ class SearchBase;
  * @brief Performs a geometric filter on two elements to determine if they are a contact candidate
  *
  * @param cs_view View of the coupling scheme
- * @param fid1 ID of element in the first mesh
- * @param fid2 ID of element in the second mesh
+ * @param element_id1 ID of element in the first mesh
+ * @param element_id2 ID of element in the second mesh
  * @return true Elements are a contact candidate
  * @return false Elements are NOT a contact candidate
  */
-TRIBOL_HOST_DEVICE inline bool geomFilter( const CouplingScheme::Viewer& cs_view, const IndexT element_id1,
-                                           const IndexT element_id2 )
+TRIBOL_HOST_DEVICE inline bool geomFilter( const CouplingScheme::Viewer& cs_view, IndexT element_id1,
+                                           IndexT element_id2 )
 {
   auto& mesh1 = cs_view.getMesh1View();
   auto& mesh2 = cs_view.getMesh2View();
@@ -176,8 +176,8 @@ class SearchBase {
   /**
    * @brief Performs a geometric filter on two elements to determine if they are a contact candidate
    *
-   * @param fid1 ID of element in the first mesh
-   * @param fid2 ID of element in the second mesh
+   * @param element_id1 ID of element in the first mesh
+   * @param element_id2 ID of element in the second mesh
    * @return true Elements are a contact candidate
    * @return false Elements are NOT a contact candidate
    */
