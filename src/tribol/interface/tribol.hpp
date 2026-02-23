@@ -226,6 +226,15 @@ void setLoggingLevel( IndexT cs_id, LoggingLevel log_level );
 void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
 
 /*!
+ * @brief Sets the residual gap for a coupling scheme
+ *
+ * @param [in] cs_id coupling scheme id
+ * @param [in] residual_gap the gap offset. Positive values shift the contact surface away from the mesh
+ * surface, making contact occur earlier (with a gap). Effective gap = kinematic gap - residual gap.
+ */
+void setResidualGap( IndexT cs_id, RealT residual_gap );
+
+/*!
  * \brief Enable the contact timestep vote
  *
  * \param [in] cs_id coupling scheme id

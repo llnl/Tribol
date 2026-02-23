@@ -6,42 +6,41 @@
 #ifndef SRC_TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_
 #define SRC_TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_
 
-#include "tribol/common/Parameters.hpp"
-#include "tribol/mesh/MeshData.hpp"
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
+#include "tribol/utils/Math.hpp"
 
 namespace tribol {
 
-// Forward Declarations
 class SearchBase;
 
-/// Free functions
-
-/*!
- * \brief Basic geometry/proximity checks for face pairs
+/**
+ * @brief Performs a geometric filter on two elements to determine if they are a contact candidate
  *
- * \param [in] cs_view View of the coupling scheme
- * \param [in] element_id1 id of 1st element in pair
- * \param [in] element_id2 id of 2nd element in pair
- *
+ * @param cs_view View of the coupling scheme
+ * @param fid1 ID of element in the first mesh
+ * @param fid2 ID of element in the second mesh
+ * @return true Elements are a contact candidate
+ * @return false Elements are NOT a contact candidate
  */
-TRIBOL_HOST_DEVICE inline bool geomFilter( const CouplingScheme::Viewer& cs_view, IndexT element_id1,
-                                           IndexT element_id2 )
+TRIBOL_HOST_DEVICE inline bool geomFilter( const CouplingScheme::Viewer& cs_view, const IndexT element_id1,
+                                           const IndexT element_id2 )
 {
   auto& mesh1 = cs_view.getMesh1View();
   auto& mesh2 = cs_view.getMesh2View();
   bool auto_contact_check = cs_view.getParameters().auto_contact_check;
   // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
-  auto element_radius_multiplier = cs_view.getEffectiveBinningProximityScale();
+  auto binning_proximity_scale = cs_view.getEffectiveBinningProximityScale();
+  auto dim = cs_view.spatialDimension();
   auto mode = cs_view.getContactMode();
+  auto& params = cs_view.getParameters();
+  RealT residual_gap = params.residual_gap;
 
   /// CHECK #1: Check to make sure the two face ids are not the same
   ///           and the two mesh ids are not the same.
   if ( ( mesh1.meshId() == mesh2.meshId() ) && ( element_id1 == element_id2 ) ) {
     return false;
   }
-
-  int dim = mesh1.spatialDimension();
 
   /// CHECK #2: Auto-contact precludes faces that share a common
   ///           node(s). We want to preclude two adjacent faces from interacting
@@ -85,20 +84,21 @@ TRIBOL_HOST_DEVICE inline bool geomFilter( const CouplingScheme::Viewer& cs_view
   ///           The face radii are taken to be the magnitude of the
   ///           longest vector from that face's vertex averaged
   ///           centroid to one its nodes.
-  RealT offset_tol = 0.05;
+  constexpr RealT offset_tol = 0.05;
+
   if ( dim == 3 ) {
+    // get face radius off the mesh data
     RealT r1 = mesh1.getFaceRadius()[element_id1];
     RealT r2 = mesh2.getFaceRadius()[element_id2];
 
-    // set maximum offset of face centroids for inclusion
-    RealT distMax = element_radius_multiplier * ( r1 + r2 );  // default is sum of face radii
+    RealT distMax = binning_proximity_scale * ( r1 + r2 ) + residual_gap;
 
     // check if the contact mode is conforming, in which case the
     // faces are supposed to be aligned
     if ( mode == SURFACE_TO_SURFACE_CONFORMING ) {
       // use 5% of max face radius for conforming case as
       // tolerance on face offsets
-      distMax *= offset_tol;
+      distMax = offset_tol * binning_proximity_scale * ( r1 + r2 ) + residual_gap;
     }
 
     // compute the distance between the two face centroids
@@ -117,14 +117,14 @@ TRIBOL_HOST_DEVICE inline bool geomFilter( const CouplingScheme::Viewer& cs_view
     RealT e1 = 0.5 * mesh1.getElementAreas()[element_id1];
     RealT e2 = 0.5 * mesh2.getElementAreas()[element_id2];
 
-    RealT distMax = element_radius_multiplier * ( e1 + e2 );
+    RealT distMax = binning_proximity_scale * ( e1 + e2 ) + residual_gap;
 
     // check if the contact mode is conforming, in which case the
     // edges are supposed to be aligned
     if ( mode == SURFACE_TO_SURFACE_CONFORMING ) {
       // use 5% of max face radius for conforming case as
       // tolerance on face offsets
-      distMax *= offset_tol;
+      distMax = offset_tol * binning_proximity_scale * ( e1 + e2 ) + residual_gap;
     }
 
     // compute the distance between the two edge centroids
@@ -147,8 +147,45 @@ TRIBOL_HOST_DEVICE inline bool geomFilter( const CouplingScheme::Viewer& cs_view
 
   // if we made it here we passed all checks
   return true;
+}
 
-}  // end geomFilter()
+/*!
+ * \class SearchBase
+ *
+ * \brief This is the base class for the candidate search
+ */
+class SearchBase {
+ public:
+  SearchBase( CouplingScheme* cs ) : m_coupling_scheme( cs ) {}
+
+  virtual ~SearchBase() {}
+
+  /*!
+   * Initializes the search strategy
+   */
+  virtual void initialize() = 0;
+
+  /*!
+   * Performs the candidate search
+   */
+  virtual void findInterfacePairs() = 0;
+
+ protected:
+  CouplingScheme* m_coupling_scheme;
+
+  /**
+   * @brief Performs a geometric filter on two elements to determine if they are a contact candidate
+   *
+   * @param fid1 ID of element in the first mesh
+   * @param fid2 ID of element in the second mesh
+   * @return true Elements are a contact candidate
+   * @return false Elements are NOT a contact candidate
+   */
+  TRIBOL_HOST_DEVICE inline bool geomFilter( const IndexT element_id1, const IndexT element_id2 ) const
+  {
+    return tribol::geomFilter( m_coupling_scheme->getView(), element_id1, element_id2 );
+  }
+};
 
 /*!
  * \class InterfacePairFinder

@@ -1050,8 +1050,9 @@ TRIBOL_HOST_DEVICE inline RealT CouplingScheme::Viewer::getGapTol( IndexT fid1, 
           break;
 
         default:
-          gap_tol = -1. * m_parameters.gap_tol_ratio *
-                    axom::utilities::max( m_mesh1.getFaceRadius()[fid1], m_mesh2.getFaceRadius()[fid2] );
+          gap_tol = m_parameters.residual_gap -
+                    m_parameters.gap_tol_ratio *
+                        axom::utilities::max( m_mesh1.getFaceRadius()[fid1], m_mesh2.getFaceRadius()[fid2] );
           break;
 
       }  // end switch over m_contactModel

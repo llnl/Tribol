@@ -507,6 +507,7 @@ struct Parameters {
 
   EnforcementLocation enforcement_location =
       EnforcementLocation::QuadraturePoint;  ///! Defaults to quadrature-point enforcement
+  RealT residual_gap = 0.0;  ///! User defined residual gap constraint
 };
 
 }  // namespace tribol
