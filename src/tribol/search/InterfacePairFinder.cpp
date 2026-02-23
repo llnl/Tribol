@@ -23,6 +23,27 @@ namespace spin = axom::spin;
 
 namespace tribol {
 
+/*!
+ * \brief Base class to compute the candidate pairs for a coupling scheme
+ *
+ * \a initialize() must be called prior to \a findInterfacePairs()
+ *
+ */
+class SearchBase {
+ public:
+  SearchBase() {};
+  virtual ~SearchBase() {};
+  /*!
+   * Prepares the object for spatial searches
+   */
+  virtual void initialize() = 0;
+
+  /*!
+   * Find candidates in first mesh for each element in second mesh of coupling scheme.
+   */
+  virtual void findInterfacePairs() = 0;
+};
+
 ///////////////////////////////////////////////////////////////////////////////
 
 /*!
@@ -43,7 +64,7 @@ class CartesianProduct : public SearchBase {
    * Constructs a CartesianProduct instance over CouplingScheme \a couplingScheme
    * \pre couplingScheme is not null
    */
-  CartesianProduct( CouplingScheme* couplingScheme ) : SearchBase( couplingScheme ) {}
+  CartesianProduct( CouplingScheme* couplingScheme ) : m_coupling_scheme( couplingScheme ) {}
 
   void initialize() override {}
 
@@ -61,7 +82,6 @@ class CartesianProduct : public SearchBase {
     if ( is_symm ) {
       // account for symmetry: the max number of pairs when the meshes are the
       // same is the upper triangular portion of the cartesian product pair
-      // matrix
       maxNumPairs = mesh1NumElems * ( mesh1NumElems + 1 ) / 2;
     }
     ArrayT<bool> proximityArray( maxNumPairs, maxNumPairs, m_coupling_scheme->getAllocatorId() );
@@ -71,9 +91,10 @@ class CartesianProduct : public SearchBase {
     ArrayT<int> countArray( 1, 1, m_coupling_scheme->getAllocatorId() );
     int* pCount = countArray.data();
 
+    const auto cs_view = m_coupling_scheme->getView();
     // count how many pairs are proximate
     forAllExec( m_coupling_scheme->getExecutionMode(), maxNumPairs,
-                [this, mesh1NumElems, mesh2NumElems, is_symm, isProximate, pCount] TRIBOL_HOST_DEVICE( IndexT i ) {
+                [cs_view, mesh1NumElems, mesh2NumElems, is_symm, isProximate, pCount] TRIBOL_HOST_DEVICE( IndexT i ) {
                   IndexT fromIdx = i / mesh2NumElems;
                   IndexT toIdx = i % mesh2NumElems;
                   if ( is_symm ) {
@@ -82,7 +103,7 @@ class CartesianProduct : public SearchBase {
                     fromIdx = row;
                     toIdx = i - offset;
                   }
-                  isProximate[i] = geomFilter( fromIdx, toIdx );
+                  isProximate[i] = geomFilter( cs_view, fromIdx, toIdx );
 #ifdef TRIBOL_USE_RAJA
                   RAJA::atomicAdd<RAJA::auto_atomic>( pCount, static_cast<int>( isProximate[i] ) );
 #else
@@ -134,6 +155,8 @@ class CartesianProduct : public SearchBase {
                                       << "." );
   }
 
+ private:
+  CouplingScheme* m_coupling_scheme;
 };  // End of CartesianProduct definition
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -167,7 +190,7 @@ class GridSearch : public SearchBase {
    * \pre couplingScheme is not null
    */
   GridSearch( CouplingScheme* couplingScheme )
-      : SearchBase( couplingScheme ),
+      : m_coupling_scheme( couplingScheme ),
         m_mesh1( m_coupling_scheme->getMesh1().getView() ),
         m_mesh2( m_coupling_scheme->getMesh2().getView() )
   {
@@ -291,7 +314,7 @@ class GridSearch : public SearchBase {
         // TODO: Add extra filter by bbox
 
         // Preliminary geometry/proximity checks, SRW
-        bool contact = geomFilter( fromIdx, toIdx );
+        bool contact = geomFilter( m_coupling_scheme->getView(), fromIdx, toIdx );
 
         if ( contact ) {
           contactPairs.emplace_back( fromIdx, toIdx, true );
@@ -334,6 +357,7 @@ class GridSearch : public SearchBase {
     bbox.expand( expansionFac );
   }
 
+  CouplingScheme* m_coupling_scheme;
   const MeshData::Viewer m_mesh1;
   const MeshData::Viewer m_mesh2;
 
@@ -372,7 +396,7 @@ class BvhSearch : public SearchBase {
    * \pre couplingScheme is not null
    */
   BvhSearch( CouplingScheme* coupling_scheme )
-      : SearchBase( coupling_scheme ),
+      : m_coupling_scheme( coupling_scheme ),
         m_mesh1( m_coupling_scheme->getMesh1().getView() ),
         m_mesh2( m_coupling_scheme->getMesh2().getView() ),
         m_boxes1( axom::ArrayOptions::Uninitialized{}, m_mesh1.numberOfElements(), m_mesh1.numberOfElements(),
@@ -423,21 +447,23 @@ class BvhSearch : public SearchBase {
     // with device kernels
     ArrayT<IndexT> filtered_candidates_data( 1, 1, m_coupling_scheme->getAllocatorId() );
     auto filtered_candidates = filtered_candidates_data.view();
+    const auto cs_view = m_coupling_scheme->getView();
     // count the number of filtered proximate pairs
-    forAllExec( m_coupling_scheme->getExecutionMode(), m_candidates.size(),
-                [this, offsets_view, counts_view, candidates_view, filtered_candidates] TRIBOL_HOST_DEVICE( IndexT i ) {
-                  auto mesh1_elem = candidates_view[i];
-                  auto mesh2_elem = algorithm::binarySearch( offsets_view, counts_view, i );
-                  if ( geomFilter( mesh1_elem, mesh2_elem ) ) {
+    forAllExec(
+        m_coupling_scheme->getExecutionMode(), m_candidates.size(),
+        [cs_view, offsets_view, counts_view, candidates_view, filtered_candidates] TRIBOL_HOST_DEVICE( IndexT i ) {
+          auto mesh1_elem = candidates_view[i];
+          auto mesh2_elem = algorithm::binarySearch( offsets_view, counts_view, i );
+          if ( geomFilter( cs_view, mesh1_elem, mesh2_elem ) ) {
 #ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicInc<AtomicPolicy>( filtered_candidates.data() );
+            RAJA::atomicInc<AtomicPolicy>( filtered_candidates.data() );
 #else
             ++filtered_candidates[0];
 #endif
-                  } else {
-                    candidates_view[i] = -1;
-                  }
-                } );
+          } else {
+            candidates_view[i] = -1;
+          }
+        } );
 
     ArrayT<IndexT, 1, MemorySpace::Host> filtered_candidates_host( filtered_candidates_data );
     m_coupling_scheme->getInterfacePairs().resize( filtered_candidates_host[0] );
@@ -516,6 +542,7 @@ class BvhSearch : public SearchBase {
    */
   TRIBOL_HOST_DEVICE void inflateBBox( BoxT& bbox, const RealT faceRadius ) { bbox.expand( faceRadius ); }
 
+  CouplingScheme* m_coupling_scheme;
   const MeshData::Viewer m_mesh1;
   const MeshData::Viewer m_mesh2;
   ArrayT<BoxT> m_boxes1;
