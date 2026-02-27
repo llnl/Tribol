@@ -114,9 +114,9 @@ class MPIArray : public std::vector<ArrayType> {
   void SendRecvEach( F&& build_send, bool use_device = false )
   {
     TRIBOL_MARK_FUNCTION;
-    mpi_->SendRecvEach( type<ArrayType>(), std::forward<F>( build_send ),
-                        [this]( ArrayType&& recv_data, axom::IndexType src ) { at( src ) = std::move( recv_data ); },
-                        use_device );
+    mpi_->SendRecvEach(
+        type<ArrayType>(), std::forward<F>( build_send ),
+        [this]( ArrayType&& recv_data, axom::IndexType src ) { at( src ) = std::move( recv_data ); }, use_device );
   }
 
  private:

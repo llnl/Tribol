@@ -126,7 +126,7 @@ void TransferByElements::TransferToParallel( const mfem::GridFunction& src, mfem
               all_vdofs.Append( elem_vdofs );
             }
           }
-          
+
           all_vdofs.GetMemory().UseDevice( src.UseDevice() );
           src_dofs.SetSize( all_vdofs.Size() );
           src.GetSubVector( all_vdofs, src_dofs );

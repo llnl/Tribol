@@ -13,7 +13,7 @@ namespace redecomp {
 
 /**
  * @brief CoordList class that holds a 2D mfem::Vector and provides access to points.
- * 
+ *
  * @tparam NDIMS Number of dimensions
  * @tparam ORDERING Element DOF ordering (LEXICOGRAPHIC or NATIVE)
  */
@@ -22,17 +22,17 @@ class CoordList {
  public:
   /**
    * @brief Construct a new Coord List object
-   * 
-   * @param coords Vector containing coordinates. Expected layout: ByVDIM 
+   *
+   * @param coords Vector containing coordinates. Expected layout: ByVDIM
    * (all x coordinates, then all y coordinates, etc.)
    */
   CoordList( mfem::Vector coords ) : coords_( std::move( coords ) ) {}
 
   /**
    * @brief Create a Point object for the k-th node
-   * 
+   *
    * @param k Index of the node
-   * @return Point<NDIMS> 
+   * @return Point<NDIMS>
    */
   Point<NDIMS> GetPoint( int k ) const
   {
@@ -45,19 +45,19 @@ class CoordList {
 
   /**
    * @brief Get the underlying coordinate vector
-   * 
-   * @return const mfem::Vector& 
+   *
+   * @return const mfem::Vector&
    */
   const mfem::Vector& GetCoords() const { return coords_; }
 
   /**
    * @brief Get the number of coordinates
-   * 
-   * @return int 
+   *
+   * @return int
    */
   int GetNumCoords() const { return coords_.Size() / NDIMS; }
 
-private:
+ private:
   mfem::Vector coords_;
 };
 

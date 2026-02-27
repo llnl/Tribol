@@ -34,7 +34,8 @@ class PartitionEntity {
    * @param par_meshes Input meshes
    * @return Vector of array of points from each entity on each mesh
    */
-  virtual std::vector<CoordList<NDIMS>> EntityCoordinates( const std::vector<const mfem::ParMesh*>& par_meshes ) const = 0;
+  virtual std::vector<CoordList<NDIMS>> EntityCoordinates(
+      const std::vector<const mfem::ParMesh*>& par_meshes ) const = 0;
 
   /**
    * @brief Destroy the PartitionEntity object

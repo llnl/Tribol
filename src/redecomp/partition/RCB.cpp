@@ -64,9 +64,9 @@ std::vector<EntityIndexByRank> RCB<NDIMS>::generatePartitioning( int n_parts,
     }
     for ( int i{ 0 }; i < n_parts; ++i ) {
       auto tmp_idx = ent_idx[i];
-      ent_idx[i] = std::move(tmp_idx);
+      ent_idx[i] = std::move( tmp_idx );
       auto tmp_ghost = ent_ghost[i];
-      ent_ghost[i] = std::move(tmp_ghost);
+      ent_ghost[i] = std::move( tmp_ghost );
     }
 
     partitioning.emplace_back( std::move( ent_idx ), std::move( ent_ghost ) );
@@ -76,7 +76,8 @@ std::vector<EntityIndexByRank> RCB<NDIMS>::generatePartitioning( int n_parts,
 }
 
 template <int NDIMS>
-BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts, const std::vector<CoordList<NDIMS>>& coords_by_mesh,
+BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts,
+                                                        const std::vector<CoordList<NDIMS>>& coords_by_mesh,
                                                         double ghost_len ) const
 {
   TRIBOL_MARK_FUNCTION;

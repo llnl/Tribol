@@ -413,8 +413,7 @@ std::unique_ptr<MPIUtility::Request> MPIUtility::Isend( const mfem::Array<T>& co
   } else {
     data = container.HostRead();
   }
-  MPI_Isend( data, container.Size(), GetMPIType<typename std::remove_cv<T>::type>(), dest, tag, comm_,
-             request.get() );
+  MPI_Isend( data, container.Size(), GetMPIType<typename std::remove_cv<T>::type>(), dest, tag, comm_, request.get() );
   return std::make_unique<Request>( std::move( request ) );
 }
 
