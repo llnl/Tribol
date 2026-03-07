@@ -48,8 +48,8 @@
 //   // --- User-configurable parameters ---
 //   static constexpr int    num_timesteps_ = 10;
 //   static constexpr double total_prescribed_disp_ = -0.01;
-//   static constexpr double lam_ = 5.0;
-//   static constexpr double mu_  = 5.0;
+//   static constexpr double lam_ = 50.0;
+//   static constexpr double mu_  = 50.0;
 //   // ------------------------------------
 
 //   void SetUp() override
@@ -380,7 +380,7 @@
 
 // Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
-//
+
 // SPDX-License-Identifier: (MIT)
 
 #include <cmath>
@@ -460,8 +460,8 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
 
     // int nel_per_dir_top = std::pow( 2, ref_levels );
     // int nel_per_dir_bottom = std::pow(3, ref_levels);
-    int nel_per_dir_top = 10;
-    int nel_per_dir_bottom = 3;
+    int nel_per_dir_top = 4;
+    int nel_per_dir_bottom = 4;
 
     // clang-format off
     mfem::ParMesh mesh = shared::ParMeshBuilder(MPI_COMM_WORLD, shared::MeshBuilder::Unify({

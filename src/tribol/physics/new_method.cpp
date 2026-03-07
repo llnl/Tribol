@@ -423,7 +423,7 @@ std::array<double, 2> ContactSmoothing::bounds_from_projections( const std::arra
   double xi_min = std::min( proj[0], proj[1] );
   double xi_max = std::max( proj[0], proj[1] );
 
-  const double del = p_.del;
+  // const double del = p_.del;
 
     if ( xi_max < -0.5) {
     xi_max = -0.5;
