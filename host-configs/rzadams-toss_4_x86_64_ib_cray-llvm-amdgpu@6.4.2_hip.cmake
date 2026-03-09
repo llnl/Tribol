@@ -97,8 +97,6 @@ set(AXOM_DIR "${TPL_ROOT}/axom-0.12.0.1-oedeczoaqi3govmvr3qd4w3ir7jxobim" CACHE 
 
 set(MFEM_DIR "${TPL_ROOT}/mfem-4.9.1.1-qga6acnz7ejqrjnjn4i2qsixu3yuycd3" CACHE PATH "")
 
-set(ADIAK_DIR "${TPL_ROOT}/adiak-0.4.1-3bix57nuclcu255t4zcoq2nrgmz3oq4p" CACHE PATH "")
-
 set(CALIPER_DIR "${TPL_ROOT}/caliper-2.12.1-am6ehnzp2m2z5f6ekxcuwrf2ugzhewqi" CACHE PATH "")
 
 set(ENZYME_DIR "${TPL_ROOT}/enzyme-0.0.249-zpsgmqbv7vldpmzugxl7vx3n5b7qapkk" CACHE PATH "")

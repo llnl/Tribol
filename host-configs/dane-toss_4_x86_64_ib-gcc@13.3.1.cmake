@@ -77,8 +77,6 @@ set(AXOM_DIR "${TPL_ROOT}/axom-0.12.0.1-o47bcdfl72xt4qenhbrnhybpbxthhgv6" CACHE 
 
 set(MFEM_DIR "${TPL_ROOT}/mfem-4.9.1.1-ybgs32e3fejsyluja5viharlhbjc2pwr" CACHE PATH "")
 
-set(ADIAK_DIR "${TPL_ROOT}/adiak-0.4.1-l6ht437dth4h5vj42eybrzayi3tnelgf" CACHE PATH "")
-
 set(CALIPER_DIR "${TPL_ROOT}/caliper-2.12.1-r4enksghxtrrlgn4bd4z7v4rkzsq7ctx" CACHE PATH "")
 
 # ENZYME not built
