@@ -30,8 +30,8 @@ struct Mesh {
 };
 
 struct QuadPoints {
-  std::vector<double> qp;  // quadpoints
-  std::vector<double> w;   // weights
+  std::array<double, 3> qp;
+  std::array<double, 3> w;  // weights
 };
 
 struct ContactParams {
@@ -63,9 +63,9 @@ class ContactSmoothing {
  public:
   explicit ContactSmoothing( const ContactParams& p ) : p_( p ) {}  // Constructor
 
-  std::array<double, 2> bounds_from_projections( const std::array<double, 2>& proj ) const;
+  static std::array<double, 2> bounds_from_projections( const std::array<double, 2>& proj );
 
-  std::array<double, 2> smooth_bounds( const std::array<double, 2>& bounds ) const;
+  static std::array<double, 2> smooth_bounds( const std::array<double, 2>& bounds );
 
  private:
   ContactParams p_;
@@ -101,6 +101,8 @@ class ContactEvaluator {
                                                                  const MeshData::Viewer& mesh1,
                                                                  const MeshData::Viewer& mesh2 ) const;
 
+  static QuadPoints compute_quadrature( const std::array<double, 2>& xi_bounds );
+
   std::pair<double, double> eval_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                          const MeshData::Viewer& mesh2 ) const;
 
@@ -123,7 +125,7 @@ class ContactEvaluator {
  private:
   ContactParams p_;
   ContactSmoothing smoother_;
-  QuadPoints compute_quadrature( const std::array<double, 2>& xi_bounds ) const;
+ 
 
   std::array<double, 2> projections( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                      const MeshData::Viewer& mesh2 ) const;
