@@ -1067,7 +1067,11 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                 // TODO refine how these errors are handled. Here we skip over face-pairs with errors. That is,
                 // they are not registered for contact, but we don't error out.
                 if ( interact_err != NO_FACE_GEOM_EXCEPTION ) {
+#ifdef TRIBOL_USE_RAJA
+                  RAJA::atomicMax<RAJA::auto_atomic>( &pair_err[0], 1 );
+#else
                   pair_err[0] = 1;
+#endif
                   pair.m_is_contact_candidate = false;
                   // TODO consider printing offending face(s) coordinates for debugging
                   // SLIC_DEBUG("Face geometry error, " << static_cast<int>(interact_err) << "for pair, " << kp << ".");
