@@ -1146,7 +1146,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 //------------------------------------------------------------------------------
 bool CouplingScheme::init()
 {
-  if ( !m_formulation_impl && m_contactMethod == ENERGY_MORTAR ) {
+  if ( m_contactMethod == ENERGY_MORTAR ) {
     // these calls still need to be made to set mesh pointers and allocator id
     if ( !setMeshPointers() || checkExecutionModeData() != 0 ) {
       return false;
