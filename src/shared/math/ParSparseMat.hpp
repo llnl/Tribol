@@ -246,6 +246,21 @@ class ParSparseMat : public ParSparseMatView {
    */
   ParSparseMat( MPI_Comm comm, HYPRE_BigInt glob_size, HYPRE_BigInt* row_starts, mfem::SparseMatrix&& diag );
 
+  /**
+   * @brief Construct from MPI communicator, global size, row/column starts, and mfem::SparseMatrix rvalue
+   *
+   * @param comm MPI communicator
+   * @param global_num_rows Global number of rows
+   * @param global_num_cols Global number of columns
+   * @param row_starts Global row partitioning
+   * @param col_starts Global column partitioning
+   * @param diag Local diagonal block SparseMatrix (rvalue)
+   *
+   * @note The HypreParMatrix will take ownership of the I, J, and Data from diag.
+   */
+  ParSparseMat( MPI_Comm comm, HYPRE_BigInt global_num_rows, HYPRE_BigInt global_num_cols, HYPRE_BigInt* row_starts,
+                HYPRE_BigInt* col_starts, mfem::SparseMatrix&& diag );
+
   /// Template constructor forwarding arguments to mfem::HypreParMatrix constructor
   template <typename... Args>
   explicit ParSparseMat( Args&&... args )
