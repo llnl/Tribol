@@ -1126,7 +1126,10 @@ shared::ParSparseMat MfemJacobianData::GetMfemJacobian( const std::vector<Comput
             col_redecomp_ids.push_back(
                 ( *elem_map_by_space[static_cast<size_t>( contrib.col_space )] )[static_cast<size_t>( id )] );
           }
-          jacobian_data.append( axom::ArrayView<const double>( contrib.jacobian_data ) );
+          // NOTE (EBC): This can be removed when Axom PR 1819 goes in
+          if ( contrib.jacobian_data.size() > 0 ) {
+            jacobian_data.append( axom::ArrayView<const double>( contrib.jacobian_data ) );
+          }
           jacobian_offsets.reserve( jacobian_offsets.size() + contrib.jacobian_offsets.size() );
           for ( auto offset : contrib.jacobian_offsets ) {
             jacobian_offsets.push_back( current_offset + offset );
