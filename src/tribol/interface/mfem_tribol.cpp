@@ -344,8 +344,8 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
     // Determine sizes
     mfem::Array<int> offsets( 3 );
     offsets[0] = 0;
-    offsets[1] = DfDx->Height();                             // Force rows (displacement dofs)
-    offsets[2] = offsets[1] + ( DfDp ? DfDp->Width() : 0 );  // Pressure cols (pressure dofs)
+    offsets[1] = DfDx->Height();                                                     // Force rows (displacement dofs)
+    offsets[2] = offsets[1] + ( DfDp ? DfDp->Width() : DgDx ? DgDx->Height() : 0 );  // Pressure cols (pressure dofs)
 
     auto blockOp = std::make_unique<mfem::BlockOperator>( offsets );
     if ( DfDx ) blockOp->SetBlock( 0, 0, DfDx.release() );
@@ -444,7 +444,6 @@ std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx( IndexT cs_id )
   return nullptr;
 }
 
-
 //**************** */NEW LAGRANGE FUNTIONS:
 mfem::ParFiniteElementSpace& getMfemContactFESpace( IndexT cs_id )
 {
@@ -454,14 +453,11 @@ mfem::ParFiniteElementSpace& getMfemContactFESpace( IndexT cs_id )
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(),
-                      axom::fmt::format( "Coupling scheme cs_id={0} does not contain MFEM submesh data.",
-                                         cs_id ) );
+                      axom::fmt::format( "Coupling scheme cs_id={0} does not contain MFEM submesh data.", cs_id ) );
   return const_cast<mfem::ParFiniteElementSpace&>( cs->getMfemSubmeshData()->GetSubmeshFESpace() );
 }
 
-void evaluateContactResidual( IndexT cs_id,
-                              const mfem::HypreParVector& lambda,
-                              mfem::HypreParVector& r_force,
+void evaluateContactResidual( IndexT cs_id, const mfem::HypreParVector& lambda, mfem::HypreParVector& r_force,
                               mfem::HypreParVector& r_gap )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -469,13 +465,11 @@ void evaluateContactResidual( IndexT cs_id,
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
-  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(),
-                      "Coupling scheme does not contain a contact formulation." );
+  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
   cs->getContactFormulation()->evaluateContactResidual( lambda, r_force, r_gap );
 }
 
-void evaluateContactJacobian( IndexT cs_id,
-                              const mfem::HypreParVector& lambda,
+void evaluateContactJacobian( IndexT cs_id, const mfem::HypreParVector& lambda,
                               std::unique_ptr<mfem::HypreParMatrix>& df_du,
                               std::unique_ptr<mfem::HypreParMatrix>& df_dlambda )
 {
@@ -484,8 +478,7 @@ void evaluateContactJacobian( IndexT cs_id,
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
-  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(),
-                      "Coupling scheme does not contain a contact formulation." );
+  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
   cs->getContactFormulation()->evaluateContactJacobian( lambda, df_du, df_dlambda );
 }
 

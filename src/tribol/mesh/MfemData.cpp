@@ -860,7 +860,7 @@ MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemS
   submesh_parent_data = 1.0;
   // This constructor copies all of the data, so don't worry about ownership of the CSR data
   submesh_parent_vdof_xfer_ = std::make_unique<shared::ParSparseMat>(
-      TRIBOL_COMM_WORLD, submesh_fes.GetVSize(), submesh_fes.GlobalVSize(), parent_fes.GlobalVSize(),
+      parent_fes.GetComm(), submesh_fes.GetVSize(), submesh_fes.GlobalVSize(), parent_fes.GlobalVSize(),
       submesh_parent_I.data(), submesh2parent_vdof_list_.GetData(), submesh_parent_data.GetData(),
       submesh_fes.GetDofOffsets(), parent_fes.GetDofOffsets() );
 
@@ -1037,9 +1037,9 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian(
 
   if ( has_11 ) {
     auto& submesh_fes_full = submesh_data_.GetSubmeshFESpace();
-    shared::ParSparseMat inactive_hpm_full =
-        shared::ParSparseMat::diagonalMatrix( TRIBOL_COMM_WORLD, submesh_fes_full.GlobalTrueVSize(),
-                                              submesh_fes_full.GetTrueDofOffsets(), 1.0, mortar_tdof_list_, false );
+    auto comm = parent_data_.GetParentCoords().ParFESpace()->GetComm();
+    shared::ParSparseMat inactive_hpm_full = shared::ParSparseMat::diagonalMatrix(
+        comm, submesh_fes_full.GlobalTrueVSize(), submesh_fes_full.GetTrueDofOffsets(), 1.0, mortar_tdof_list_, false );
 
     if ( block_J->IsZeroBlock( 1, 1 ) ) {
       block_J->SetBlock( 1, 1, inactive_hpm_full.release() );
@@ -1126,7 +1126,10 @@ shared::ParSparseMat MfemJacobianData::GetMfemJacobian( const std::vector<Comput
             col_redecomp_ids.push_back(
                 ( *elem_map_by_space[static_cast<size_t>( contrib.col_space )] )[static_cast<size_t>( id )] );
           }
-          jacobian_data.append( axom::ArrayView<const double>( contrib.jacobian_data ) );
+          // NOTE (EBC): This can be removed when Axom PR 1819 goes in
+          if ( contrib.jacobian_data.size() > 0 ) {
+            jacobian_data.append( axom::ArrayView<const double>( contrib.jacobian_data ) );
+          }
           jacobian_offsets.reserve( jacobian_offsets.size() + contrib.jacobian_offsets.size() );
           for ( auto offset : contrib.jacobian_offsets ) {
             jacobian_offsets.push_back( current_offset + offset );
@@ -1178,9 +1181,27 @@ shared::ParSparseMat MfemJacobianData::GetMfemJacobian( const std::vector<Comput
   }
 
   if ( !par_J ) {
-    auto& fes = *parent_data_.GetParentCoords().ParFESpace();
-    return shared::ParSparseMat::diagonalMatrix( TRIBOL_COMM_WORLD, fes.GetTrueVSize(), fes.GetTrueDofOffsets(), 0.0,
-                                                 mfem::Array<int>(), true );
+    int target_r_blk = 0;
+    int target_c_blk = 0;
+    if ( !contributions.empty() ) {
+      target_r_blk = ( contributions[0].row_space == BlockSpace::LAGRANGE_MULTIPLIER ) ? 1 : 0;
+      target_c_blk = ( contributions[0].col_space == BlockSpace::LAGRANGE_MULTIPLIER ) ? 1 : 0;
+    }
+
+    auto& row_fes =
+        ( target_r_blk == 0 ) ? *parent_data_.GetParentCoords().ParFESpace() : submesh_data_.GetSubmeshFESpace();
+    auto& col_fes =
+        ( target_c_blk == 0 ) ? *parent_data_.GetParentCoords().ParFESpace() : submesh_data_.GetSubmeshFESpace();
+
+    if ( target_r_blk == target_c_blk ) {
+      return shared::ParSparseMat::diagonalMatrix( comm, row_fes.GlobalTrueVSize(), row_fes.GetTrueDofOffsets(), 0.0,
+                                                   mfem::Array<int>(), true );
+    } else {
+      mfem::SparseMatrix empty_diag( row_fes.GetTrueVSize(), col_fes.GetTrueVSize() );
+      empty_diag.Finalize();
+      return shared::ParSparseMat( comm, row_fes.GlobalTrueVSize(), col_fes.GlobalTrueVSize(),
+                                   row_fes.GetTrueDofOffsets(), col_fes.GetTrueDofOffsets(), std::move( empty_diag ) );
+    }
   }
 
   return std::move( *par_J );
