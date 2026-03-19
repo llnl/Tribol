@@ -9,6 +9,18 @@
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/utils/Math.hpp"
 
+#ifdef TRIBOL_DEBUG
+#include <cmath>
+#include <fstream>
+#include <limits>
+#include <sstream>
+#include <string>
+
+#ifdef TRIBOL_USE_MPI
+#include <mpi.h>
+#endif
+#endif
+
 namespace tribol {
 
 // forward declare free functions for enzyme.  these shouldn't be used outside the class, so no need to put them in the
@@ -39,6 +51,137 @@ void ElementEdgeAvgNodalNormal( const RealT* x, const RealT* xref, RealT* n, int
  */
 void ElementEdgeAvgNodalNormalJacobian( const RealT* x, const RealT* xref, RealT* n, RealT* dndx,
                                         int num_nodes_per_elem );
+
+#ifdef TRIBOL_DEBUG
+namespace {
+
+bool hasNaN( const RealT* data, int n )
+{
+  for ( int i = 0; i < n; ++i ) {
+    if ( std::isnan( static_cast<double>( data[i] ) ) ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void normalize3( RealT& x, RealT& y, RealT& z )
+{
+  const RealT mag = std::sqrt( x * x + y * y + z * z );
+  if ( mag > RealT( 0 ) ) {
+    x /= mag;
+    y /= mag;
+    z /= mag;
+  }
+}
+
+void computeElementNormalFromCoords( const RealT* x, int nnode, RealT& nx, RealT& ny, RealT& nz )
+{
+  // Use (v1 - v0) x (v2 - v0), assuming at least 3 vertices.
+  const RealT v0x = x[0 * nnode + 0];
+  const RealT v0y = x[1 * nnode + 0];
+  const RealT v0z = x[2 * nnode + 0];
+  const RealT e1x = x[0 * nnode + 1] - v0x;
+  const RealT e1y = x[1 * nnode + 1] - v0y;
+  const RealT e1z = x[2 * nnode + 1] - v0z;
+  const RealT e2x = x[0 * nnode + 2] - v0x;
+  const RealT e2y = x[1 * nnode + 2] - v0y;
+  const RealT e2z = x[2 * nnode + 2] - v0z;
+
+  nx = e1y * e2z - e1z * e2y;
+  ny = e1z * e2x - e1x * e2z;
+  nz = e1x * e2y - e1y * e2x;
+  normalize3( nx, ny, nz );
+}
+
+bool referenceEdgeMagnitudesValid( const RealT* xref, int nnode, RealT tol )
+{
+  for ( int i{ 0 }; i < nnode; ++i ) {
+    const int node0 = ( i - 1 + nnode ) % nnode;
+    const int node1 = i;
+    const int node2 = ( i + 1 ) % nnode;
+
+    RealT e1[3] = { xref[0 * nnode + node2] - xref[0 * nnode + node1],
+                    xref[1 * nnode + node2] - xref[1 * nnode + node1],
+                    xref[2 * nnode + node2] - xref[2 * nnode + node1] };
+    RealT e2[3] = { xref[0 * nnode + node0] - xref[0 * nnode + node1],
+                    xref[1 * nnode + node0] - xref[1 * nnode + node1],
+                    xref[2 * nnode + node0] - xref[2 * nnode + node1] };
+
+    const RealT ni_ref[3] = { e1[1] * e2[2] - e1[2] * e2[1],
+                              e1[2] * e2[0] - e1[0] * e2[2],
+                              e1[0] * e2[1] - e1[1] * e2[0] };
+    const RealT ni_mag = std::sqrt( ni_ref[0] * ni_ref[0] + ni_ref[1] * ni_ref[1] + ni_ref[2] * ni_ref[2] );
+    if ( !std::isfinite( static_cast<double>( ni_mag ) ) || ni_mag < tol ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void writeEdgeAvgNormalElemToVTK( int elem_id, int nnode, const RealT* x, const RealT* n, const std::string& tag )
+{
+#ifdef TRIBOL_USE_MPI
+  int rank = 0;
+  MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+#endif
+
+  std::ostringstream base;
+  base << "tribol_edge_avg_nodal_normal_nan_elem_" << elem_id;
+  if ( !tag.empty() ) {
+    base << "_" << tag;
+  }
+#ifdef TRIBOL_USE_MPI
+  base << "_rank_" << rank;
+#endif
+  const std::string vtk_path = base.str() + ".vtk";
+
+  std::ofstream out( vtk_path );
+  if ( !out ) {
+    SLIC_WARNING_ROOT( "ElementEdgeAvgNodalNormalJacobian() produced NaNs. Failed to write VTK debug file: " << vtk_path );
+    return;
+  }
+
+  out << "# vtk DataFile Version 3.0\n";
+  out << "Tribol EdgeAvgNodalNormal NaN debug (elem=" << elem_id << ")\n";
+  out << "ASCII\n";
+  out << "DATASET POLYDATA\n";
+  out << "POINTS " << nnode << " float\n";
+  for ( int i = 0; i < nnode; ++i ) {
+    out << x[0 * nnode + i] << " " << x[1 * nnode + i] << " " << x[2 * nnode + i] << "\n";
+  }
+
+  out << "POLYGONS 1 " << ( 1 + nnode ) << "\n";
+  out << nnode;
+  for ( int i = 0; i < nnode; ++i ) {
+    out << " " << i;
+  }
+  out << "\n";
+
+  out << "POINT_DATA " << nnode << "\n";
+  out << "VECTORS normals float\n";
+
+  RealT enx = 0.0, eny = 0.0, enz = 0.0;
+  computeElementNormalFromCoords( x, nnode, enx, eny, enz );
+  for ( int i = 0; i < nnode; ++i ) {
+    const RealT nx = n[0 * nnode + i];
+    const RealT ny = n[1 * nnode + i];
+    const RealT nz = n[2 * nnode + i];
+    const bool n_has_nan = std::isnan( static_cast<double>( nx ) ) || std::isnan( static_cast<double>( ny ) ) ||
+                           std::isnan( static_cast<double>( nz ) );
+    if ( n_has_nan ) {
+      out << enx << " " << eny << " " << enz << "\n";
+    } else {
+      out << nx << " " << ny << " " << nz << "\n";
+    }
+  }
+
+  SLIC_WARNING_ROOT( "ElementEdgeAvgNodalNormalJacobian() produced NaNs. Wrote VTK debug file: " << vtk_path
+                                                                                                 << " (open in ParaView; use Glyph on `normals`)." );
+}
+
+}  // namespace
+#endif  // TRIBOL_DEBUG
 
 void ElementAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
 {
@@ -113,26 +256,74 @@ void EdgeAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
                  "Reference coordinates must be registered for vertex averaged normal." );
 
   auto num_nodes_per_elem = mesh_view.numberOfNodesPerElement();
+#ifdef TRIBOL_DEBUG
+  auto first_elem_for_node = ArrayT<int>( mesh.numberOfNodes(), mesh.getAllocatorId() );
+  first_elem_for_node.fill( -1 );
+  constexpr RealT ref_tol = 1.0e-15;
+  const RealT qnan = std::numeric_limits<RealT>::quiet_NaN();
+#endif
   for ( int e{ 0 }; e < mesh_view.numberOfElements(); ++e ) {
     RealT x[12];
     RealT xref[12];
     RealT n[12];
     for ( int i{ 0 }; i < num_nodes_per_elem; ++i ) {
       int node_id = mesh_view.getGlobalNodeId( e, i );
+#ifdef TRIBOL_DEBUG
+      if ( first_elem_for_node[node_id] < 0 ) {
+        first_elem_for_node[node_id] = e;
+      }
+#endif
       for ( int d{ 0 }; d < 3; ++d ) {
         x[d * num_nodes_per_elem + i] = mesh_view.getPosition()[d][node_id];
         xref[d * num_nodes_per_elem + i] = mesh_view.getReferencePosition()[d][node_id];
         n[d * num_nodes_per_elem + i] = 0.0;
       }
     }
+#ifdef TRIBOL_DEBUG
+    const bool ref_ok = referenceEdgeMagnitudesValid( xref, num_nodes_per_elem, ref_tol );
+    if ( !ref_ok ) {
+      RealT nnan[12];
+      for ( int i = 0; i < 3 * num_nodes_per_elem; ++i ) {
+        nnan[i] = qnan;
+      }
+      writeEdgeAvgNormalElemToVTK( e, num_nodes_per_elem, xref, nnan, "bad_xref" );
+    }
+#endif
     if ( jacobian_data != nullptr ) {
       StackArray<DeviceArray2D<RealT>, 9> blockJ( 3 );
       blockJ( 0, 0 ) = DeviceArray2D<RealT>( num_nodes_per_elem * 3, num_nodes_per_elem * 3 );
       blockJ( 0, 0 ).fill( 0.0 );
+#ifdef TRIBOL_DEBUG
+      if ( ref_ok ) {
+        ElementEdgeAvgNodalNormalJacobian( x, xref, n, blockJ( 0, 0 ).data(), num_nodes_per_elem );
+        if ( hasNaN( n, num_nodes_per_elem * 3 ) ||
+             hasNaN( blockJ( 0, 0 ).data(), static_cast<int>( blockJ( 0, 0 ).size() ) ) ) {
+          writeEdgeAvgNormalElemToVTK( e, num_nodes_per_elem, x, n, "jacobian_nan" );
+        }
+      } else {
+        for ( int i = 0; i < 3 * num_nodes_per_elem; ++i ) {
+          n[i] = 0.0;
+        }
+      }
+#else
       ElementEdgeAvgNodalNormalJacobian( x, xref, n, blockJ( 0, 0 ).data(), num_nodes_per_elem );
+#endif
       jacobian_data->storeElemBlockJ( { e }, blockJ );
     } else {
+#ifdef TRIBOL_DEBUG
+      if ( ref_ok ) {
+        ElementEdgeAvgNodalNormal( x, xref, n, num_nodes_per_elem );
+        if ( hasNaN( n, num_nodes_per_elem * 3 ) ) {
+          writeEdgeAvgNormalElemToVTK( e, num_nodes_per_elem, x, n, "normal_nan" );
+        }
+      } else {
+        for ( int i = 0; i < 3 * num_nodes_per_elem; ++i ) {
+          n[i] = 0.0;
+        }
+      }
+#else
       ElementEdgeAvgNodalNormal( x, xref, n, num_nodes_per_elem );
+#endif
     }
     // assemble normal contribution
     for ( int i{ 0 }; i < num_nodes_per_elem; ++i ) {
@@ -142,7 +333,23 @@ void EdgeAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
       }
     }
     // compute reference normal
+#ifdef TRIBOL_DEBUG
+    if ( ref_ok ) {
+      ElementEdgeAvgNodalNormal( xref, xref, n, num_nodes_per_elem );
+      if ( hasNaN( n, num_nodes_per_elem * 3 ) ) {
+        writeEdgeAvgNormalElemToVTK( e, num_nodes_per_elem, xref, n, "ref_normal_nan" );
+        for ( int i = 0; i < 3 * num_nodes_per_elem; ++i ) {
+          n[i] = 0.0;
+        }
+      }
+    } else {
+      for ( int i = 0; i < 3 * num_nodes_per_elem; ++i ) {
+        n[i] = 0.0;
+      }
+    }
+#else
     ElementEdgeAvgNodalNormal( xref, xref, n, num_nodes_per_elem );
+#endif
     // assemble reference normal contribution
     for ( int i{ 0 }; i < num_nodes_per_elem; ++i ) {
       int node_id = mesh_view.getGlobalNodeId( e, i );
@@ -155,7 +362,30 @@ void EdgeAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
     // compute magnitude of reference normal (and store it in the first column)
     n0( 0, i ) = std::sqrt( n0( 0, i ) * n0( 0, i ) + n0( 1, i ) * n0( 1, i ) + n0( 2, i ) * n0( 2, i ) );
     // scale normals by reference normal magnitude
+#ifdef TRIBOL_DEBUG
+    const bool n0_ok = std::isfinite( static_cast<double>( n0( 0, i ) ) ) && n0( 0, i ) >= ref_tol;
+    if ( !n0_ok ) {
+      const int e_dbg = first_elem_for_node[i];
+      if ( e_dbg >= 0 ) {
+        RealT x_dbg[12];
+        RealT n_dbg[12];
+        for ( int a = 0; a < num_nodes_per_elem; ++a ) {
+          const int node_id = mesh_view.getGlobalNodeId( e_dbg, a );
+          for ( int d = 0; d < 3; ++d ) {
+            x_dbg[d * num_nodes_per_elem + a] = mesh_view.getPosition()[d][node_id];
+            n_dbg[d * num_nodes_per_elem + a] = mesh_view.getNodalNormals()( d, node_id );
+          }
+        }
+        std::ostringstream tag;
+        tag << "bad_n0_node_" << i;
+        writeEdgeAvgNormalElemToVTK( e_dbg, num_nodes_per_elem, x_dbg, n_dbg, tag.str() );
+      }
+      continue;
+    }
+    if ( n0_ok ) {
+#else
     if ( n0( 0, i ) >= 1.0e-15 ) {
+#endif
       for ( int d{ 0 }; d < 3; ++d ) {
         mesh_view.getNodalNormals()( d, i ) /= n0( 0, i );
       }
@@ -169,7 +399,35 @@ void EdgeAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
     for ( auto& blockJ_mat : blockJ_mats ) {
       for ( int i{ 0 }; i < num_nodes_per_elem; ++i ) {
         int node_id = mesh_view.getGlobalNodeId( e_ct, i );
+#ifdef TRIBOL_DEBUG
+        const RealT den = n0( 0, node_id );
+        const bool den_ok = std::isfinite( static_cast<double>( den ) ) && den >= ref_tol;
+        if ( !den_ok ) {
+          RealT x_dbg[12];
+          RealT n_dbg[12];
+          for ( int a = 0; a < num_nodes_per_elem; ++a ) {
+            const int nid = mesh_view.getGlobalNodeId( e_ct, a );
+            for ( int d = 0; d < 3; ++d ) {
+              x_dbg[d * num_nodes_per_elem + a] = mesh_view.getPosition()[d][nid];
+              n_dbg[d * num_nodes_per_elem + a] = mesh_view.getNodalNormals()( d, nid );
+            }
+          }
+          std::ostringstream tag;
+          tag << "bad_n0_node_" << node_id << "_jacobian";
+          writeEdgeAvgNormalElemToVTK( e_ct, num_nodes_per_elem, x_dbg, n_dbg, tag.str() );
+          if ( !std::isfinite( static_cast<double>( den ) ) ) {
+            for ( int d{ 0 }; d < 3; ++d ) {
+              for ( int j{ 0 }; j < 3 * num_nodes_per_elem; ++j ) {
+                blockJ_mat( d * num_nodes_per_elem + i, j ) = 0.0;
+              }
+            }
+          }
+          continue;
+        }
+        if ( den_ok ) {
+#else
         if ( n0( 0, node_id ) >= 1.0e-15 ) {
+#endif
           for ( int d{ 0 }; d < 3; ++d ) {
             for ( int j{ 0 }; j < 3 * num_nodes_per_elem; ++j ) {
               blockJ_mat( d * num_nodes_per_elem + i, j ) /= n0( 0, node_id );
@@ -184,6 +442,9 @@ void EdgeAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
 
 void ElementEdgeAvgNodalNormal( const RealT* x, const RealT* xref, RealT* n, int num_nodes_per_elem )
 {
+#ifdef TRIBOL_DEBUG
+  const RealT qnan = std::numeric_limits<RealT>::quiet_NaN();
+#endif
   for ( int i{ 0 }; i < num_nodes_per_elem; ++i ) {
     int node0 = ( i - 1 + num_nodes_per_elem ) % num_nodes_per_elem;
     int node1 = i;
@@ -205,8 +466,24 @@ void ElementEdgeAvgNodalNormal( const RealT* x, const RealT* xref, RealT* n, int
     e2[2] = xref[2 * num_nodes_per_elem + node0] - xref[2 * num_nodes_per_elem + node1];
     RealT ni_ref[3] = { e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0] };
     RealT ni_mag = std::sqrt( ni_ref[0] * ni_ref[0] + ni_ref[1] * ni_ref[1] + ni_ref[2] * ni_ref[2] );
-    for ( int d{ 0 }; d < 3; ++d ) {
-      n[d * num_nodes_per_elem + i] = ni[d] / ni_mag;
+    bool mag_ok = ( ni_mag >= 1.0e-15 );
+#ifdef TRIBOL_DEBUG
+    mag_ok = mag_ok && std::isfinite( static_cast<double>( ni_mag ) );
+#endif
+    if ( mag_ok ) {
+      for ( int d{ 0 }; d < 3; ++d ) {
+        n[d * num_nodes_per_elem + i] = ni[d] / ni_mag;
+      }
+    } else {
+#ifdef TRIBOL_DEBUG
+      for ( int d{ 0 }; d < 3; ++d ) {
+        n[d * num_nodes_per_elem + i] = qnan;
+      }
+#else
+      for ( int d{ 0 }; d < 3; ++d ) {
+        n[d * num_nodes_per_elem + i] = 0.0;
+      }
+#endif
     }
   }
 }
