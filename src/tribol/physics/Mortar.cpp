@@ -21,6 +21,17 @@
 // Axom includes
 #include "axom/slic.hpp"
 
+#ifdef TRIBOL_DEBUG
+#include <cmath>
+#include <fstream>
+#include <sstream>
+#include <string>
+
+#ifdef TRIBOL_USE_MPI
+#include <mpi.h>
+#endif
+#endif
+
 namespace tribol {
 
 void ComputeMortarWeights( SurfaceContactElem& elem )
@@ -601,6 +612,126 @@ void ComputeSingleMortarJacobian( SurfaceContactElem& elem )
 
 #ifdef TRIBOL_USE_ENZYME
 
+#ifdef TRIBOL_DEBUG
+namespace {
+
+bool hasNaN( const RealT* data, int n )
+{
+  for ( int i = 0; i < n; ++i ) {
+    if ( std::isnan( static_cast<double>( data[i] ) ) ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void normalize3( RealT& x, RealT& y, RealT& z )
+{
+  const RealT mag = std::sqrt( x * x + y * y + z * z );
+  if ( mag > RealT( 0 ) ) {
+    x /= mag;
+    y /= mag;
+    z /= mag;
+  }
+}
+
+void computeElementNormalFromCoords( const RealT* x, int nnode, RealT& nx, RealT& ny, RealT& nz )
+{
+  // Use (v1 - v0) x (v2 - v0), assuming at least 3 vertices.
+  const RealT v0x = x[0 * nnode + 0];
+  const RealT v0y = x[1 * nnode + 0];
+  const RealT v0z = x[2 * nnode + 0];
+  const RealT e1x = x[0 * nnode + 1] - v0x;
+  const RealT e1y = x[1 * nnode + 1] - v0y;
+  const RealT e1z = x[2 * nnode + 1] - v0z;
+  const RealT e2x = x[0 * nnode + 2] - v0x;
+  const RealT e2y = x[1 * nnode + 2] - v0y;
+  const RealT e2z = x[2 * nnode + 2] - v0z;
+
+  nx = e1y * e2z - e1z * e2y;
+  ny = e1z * e2x - e1x * e2z;
+  nz = e1x * e2y - e1y * e2x;
+  normalize3( nx, ny, nz );
+}
+
+void writeMortarPairToVTK( int elem1, int size1, const RealT* x1, const RealT* n1, int elem2, int size2, const RealT* x2 )
+{
+#ifdef TRIBOL_USE_MPI
+  int rank = 0;
+  MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+#endif
+
+  const int nv = size1 + size2;
+  std::ostringstream base;
+  base << "tribol_mortar_nan_elem1_" << elem1 << "_elem2_" << elem2;
+#ifdef TRIBOL_USE_MPI
+  base << "_rank_" << rank;
+#endif
+  const std::string vtk_path = base.str() + ".vtk";
+
+  std::ofstream out( vtk_path );
+  if ( !out ) {
+    SLIC_WARNING_ROOT( "ComputeMortarJacobianEnzyme() produced NaNs. Failed to write VTK debug file: " << vtk_path );
+    return;
+  }
+
+  out << "# vtk DataFile Version 3.0\n";
+  out << "Tribol mortar NaN debug (elem1=" << elem1 << ", elem2=" << elem2 << ")\n";
+  out << "ASCII\n";
+  out << "DATASET POLYDATA\n";
+  out << "POINTS " << nv << " float\n";
+  for ( int i = 0; i < size1; ++i ) {
+    out << x1[0 * size1 + i] << " " << x1[1 * size1 + i] << " " << x1[2 * size1 + i] << "\n";
+  }
+  for ( int i = 0; i < size2; ++i ) {
+    out << x2[0 * size2 + i] << " " << x2[1 * size2 + i] << " " << x2[2 * size2 + i] << "\n";
+  }
+
+  const int poly1_n = size1;
+  const int poly2_n = size2;
+  const int num_polys = 2;
+  const int poly_list_size = ( 1 + poly1_n ) + ( 1 + poly2_n );
+  out << "POLYGONS " << num_polys << " " << poly_list_size << "\n";
+  out << poly1_n;
+  for ( int i = 0; i < size1; ++i ) {
+    out << " " << i;
+  }
+  out << "\n";
+  out << poly2_n;
+  for ( int i = 0; i < size2; ++i ) {
+    out << " " << ( size1 + i );
+  }
+  out << "\n";
+
+  out << "POINT_DATA " << nv << "\n";
+  out << "VECTORS normals float\n";
+
+  RealT n1x = 0.0, n1y = 0.0, n1z = 0.0;
+  computeElementNormalFromCoords( x1, size1, n1x, n1y, n1z );
+  for ( int i = 0; i < size1; ++i ) {
+    const bool n1_has_nan = std::isnan( static_cast<double>( n1[0 * size1 + i] ) ) ||
+                            std::isnan( static_cast<double>( n1[1 * size1 + i] ) ) ||
+                            std::isnan( static_cast<double>( n1[2 * size1 + i] ) );
+    if ( n1_has_nan ) {
+      out << n1x << " " << n1y << " " << n1z << "\n";
+    } else {
+      out << n1[0 * size1 + i] << " " << n1[1 * size1 + i] << " " << n1[2 * size1 + i] << "\n";
+    }
+  }
+
+  RealT n2x = 0.0, n2y = 0.0, n2z = 0.0;
+  computeElementNormalFromCoords( x2, size2, n2x, n2y, n2z );
+  for ( int i = 0; i < size2; ++i ) {
+    out << n2x << " " << n2y << " " << n2z << "\n";
+  }
+
+  SLIC_WARNING_ROOT( "ComputeMortarJacobianEnzyme() produced NaNs. Wrote VTK debug file: " << vtk_path
+                                                                                           << " (open in ParaView; use Glyph on `normals`)." );
+}
+
+}  // namespace
+#endif  // TRIBOL_DEBUG
+
 //------------------------------------------------------------------------------
 int ApplyNormalEnzyme( CouplingScheme* cs )
 {
@@ -694,6 +825,29 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
                                    blockJ_n( 0, 0 ).data(), blockJ( 0, 2 ).data(), g1, blockJ( 2, 0 ).data(),
                                    blockJ( 2, 1 ).data(), blockJ_n( 2, 0 ).data(), size1, x2, f2, blockJ( 1, 0 ).data(),
                                    blockJ( 1, 1 ).data(), blockJ_n( 1, 0 ).data(), blockJ( 1, 2 ).data(), size2 );
+
+#ifdef TRIBOL_DEBUG
+      {
+        const bool has_nan =
+            hasNaN( f1, size1 * 3 ) || hasNaN( f2, size2 * 3 ) || hasNaN( g1, size1 ) ||
+            hasNaN( blockJ( 0, 0 ).data(), static_cast<int>( blockJ( 0, 0 ).size() ) ) ||
+            hasNaN( blockJ( 0, 1 ).data(), static_cast<int>( blockJ( 0, 1 ).size() ) ) ||
+            hasNaN( blockJ( 1, 0 ).data(), static_cast<int>( blockJ( 1, 0 ).size() ) ) ||
+            hasNaN( blockJ( 1, 1 ).data(), static_cast<int>( blockJ( 1, 1 ).size() ) ) ||
+            hasNaN( blockJ( 0, 2 ).data(), static_cast<int>( blockJ( 0, 2 ).size() ) ) ||
+            hasNaN( blockJ( 1, 2 ).data(), static_cast<int>( blockJ( 1, 2 ).size() ) ) ||
+            hasNaN( blockJ( 2, 0 ).data(), static_cast<int>( blockJ( 2, 0 ).size() ) ) ||
+            hasNaN( blockJ( 2, 1 ).data(), static_cast<int>( blockJ( 2, 1 ).size() ) ) ||
+            hasNaN( blockJ( 2, 2 ).data(), static_cast<int>( blockJ( 2, 2 ).size() ) ) ||
+            hasNaN( blockJ_n( 0, 0 ).data(), static_cast<int>( blockJ_n( 0, 0 ).size() ) ) ||
+            hasNaN( blockJ_n( 1, 0 ).data(), static_cast<int>( blockJ_n( 1, 0 ).size() ) ) ||
+            hasNaN( blockJ_n( 2, 0 ).data(), static_cast<int>( blockJ_n( 2, 0 ).size() ) );
+
+        if ( has_nan ) {
+          writeMortarPairToVTK( elem1, size1, x1, n1, elem2, size2, x2 );
+        }
+      }
+#endif
 
       if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE ) {
         cs->getMethodData()->storeElemBlockJ( { elem1, elem2, elem1 }, blockJ );
