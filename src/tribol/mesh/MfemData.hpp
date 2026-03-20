@@ -22,7 +22,7 @@
 #include "axom/core.hpp"
 
 // Shared includes
-#include "shared/BasicTypes.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 // Redecomp includes
 #include "redecomp/redecomp.hpp"

@@ -3,11 +3,11 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SHARED_BASICTYPES_HPP_
-#define SHARED_BASICTYPES_HPP_
+#ifndef SRC_TRIBOL_COMMON_BASICTYPES_HPP_
+#define SRC_TRIBOL_COMMON_BASICTYPES_HPP_
 
-// Shared config include
-#include "shared/config.hpp"
+// Tribol config include
+#include "tribol/config.hpp"
 
 // C includes
 #include <cstddef>

@@ -13,7 +13,7 @@
 #include "mfem.hpp"
 
 // Shared includes
-#include "shared/ExecModel.hpp"
+#include "tribol/common/ExecModel.hpp"
 
 // Tribol includes
 #include "tribol/common/ArrayTypes.hpp"

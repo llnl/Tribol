@@ -6,9 +6,6 @@
 ## list of headers
 set(shared_headers
 
-    BasicTypes.hpp
-    ExecModel.hpp
-    LoopExec.hpp
     infrastructure/Profiling.hpp
     mesh/MeshBuilder.hpp
     )
@@ -23,9 +20,6 @@ set(shared_sources
 set(shared_depends mfem)
 blt_list_append(TO shared_depends ELEMENTS blt::mpi IF TRIBOL_USE_MPI )
 blt_list_append(TO shared_depends ELEMENTS caliper IF TRIBOL_USE_CALIPER )
-blt_list_append(TO shared_depends ELEMENTS umpire IF TRIBOL_USE_UMPIRE )
-blt_list_append(TO shared_depends ELEMENTS RAJA IF TRIBOL_USE_RAJA )
-blt_list_append(TO shared_depends ELEMENTS ClangEnzymeFlags IF TRIBOL_USE_ENZYME)
 message(STATUS "Tribol shared library dependencies: ${shared_depends}")
 
 ## create the library
@@ -76,4 +70,3 @@ if(TRIBOL_DEBUG_DEFINE_STRING)
   # Define AXOM_DEBUG for SLIC macros
   blt_add_target_definitions(TO tribol_shared SCOPE PUBLIC TARGET_DEFINITIONS "${AXOM_DEBUG_DEFINE_STRING}")
 endif()
-

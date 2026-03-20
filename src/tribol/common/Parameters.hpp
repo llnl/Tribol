@@ -7,7 +7,7 @@
 #define SRC_TRIBOL_COMMON_PARAMETERS_HPP_
 
 // Shared includes
-#include "shared/BasicTypes.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 namespace tribol {
 

@@ -10,7 +10,7 @@
 #include "tribol/config.hpp"
 
 // Shared includes
-#include "shared/BasicTypes.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 #ifdef TRIBOL_USE_ENZYME
 #include "mfem/general/enzyme.hpp"

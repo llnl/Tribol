@@ -3,25 +3,18 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SRC_SHARED_CONFIG_HPP_
-#define SRC_SHARED_CONFIG_HPP_
+#ifndef SHARED_CONFIG_HPP_
+#define SHARED_CONFIG_HPP_
 
 /*
- * Note: Use only C-style comments in this file since it might be included from a C file
+ * Note: Use only C-style comments in this file
+ *       since it might be included from a C file
  */
 
 /*
  * Build information
  */
-#cmakedefine TRIBOL_USE_SINGLE_PRECISION
 #cmakedefine TRIBOL_USE_CALIPER
 #cmakedefine TRIBOL_USE_MPI
-#cmakedefine TRIBOL_USE_UMPIRE
-#cmakedefine TRIBOL_USE_RAJA
-#cmakedefine TRIBOL_USE_ENZYME
-#cmakedefine TRIBOL_USE_CUDA
-#cmakedefine TRIBOL_USE_HIP
-#cmakedefine TRIBOL_USE_OPENMP
-#cmakedefine TRIBOL_USE_GPU_MPI
 
-#endif /* SRC_SHARED_CONFIG_HPP_ */
+#endif /* SHARED_CONFIG_HPP_ */

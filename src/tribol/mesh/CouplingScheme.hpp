@@ -9,8 +9,8 @@
 #include "tribol/config.hpp"
 
 // Shared includes
-#include "shared/BasicTypes.hpp"
-#include "shared/ExecModel.hpp"
+#include "tribol/common/BasicTypes.hpp"
+#include "tribol/common/ExecModel.hpp"
 
 // Tribol includes
 #include "tribol/common/Parameters.hpp"

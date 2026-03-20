@@ -13,7 +13,7 @@
 #include "mfem.hpp"
 
 #include "tribol/common/Parameters.hpp"
-#include "shared/ExecModel.hpp"
+#include "tribol/common/ExecModel.hpp"
 
 namespace tribol {
 

@@ -12,7 +12,7 @@
 #include "axom/slic/interface/slic_macros.hpp"
 
 #include "shared/infrastructure/Profiling.hpp"
-#include "shared/LoopExec.hpp"
+#include "tribol/common/LoopExec.hpp"
 
 #include "redecomp/utils/ArrayUtility.hpp"
 

@@ -3,7 +3,7 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include "shared/config.hpp"
+#include "tribol/config.hpp"
 
 #include <memory>
 

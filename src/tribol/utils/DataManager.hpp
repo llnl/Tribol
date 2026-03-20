@@ -10,7 +10,7 @@
 #include <unordered_map>
 
 // Shared includes
-#include "shared/BasicTypes.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 // Axom includes
 #include "axom/fmt.hpp"

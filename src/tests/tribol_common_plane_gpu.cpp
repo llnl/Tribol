@@ -16,7 +16,7 @@
 
 #include "axom/slic.hpp"
 
-#include "shared/ExecModel.hpp"
+#include "tribol/common/ExecModel.hpp"
 #include "tribol/interface/tribol.hpp"
 
 namespace tribol {

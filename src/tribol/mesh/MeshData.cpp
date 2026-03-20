@@ -14,8 +14,8 @@
 #include "axom/fmt.hpp"
 
 // Shared includes
-#include "shared/ExecModel.hpp"
-#include "shared/LoopExec.hpp"
+#include "tribol/common/ExecModel.hpp"
+#include "tribol/common/LoopExec.hpp"
 
 // Tribol includes
 #include "tribol/geom/ElementNormal.hpp"

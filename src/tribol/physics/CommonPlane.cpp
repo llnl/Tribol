@@ -5,7 +5,7 @@
 
 #include "CommonPlane.hpp"
 
-#include "shared/LoopExec.hpp"
+#include "tribol/common/LoopExec.hpp"
 
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"

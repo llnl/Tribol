@@ -13,7 +13,7 @@
 #include "axom/slic.hpp"
 
 // Shared includes
-#include "shared/BasicTypes.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 namespace tribol {
 

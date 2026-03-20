@@ -10,7 +10,7 @@
 #include <string>
 
 // Shared includes
-#include "shared/BasicTypes.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 // Tribol includes
 #include "tribol/common/Parameters.hpp"

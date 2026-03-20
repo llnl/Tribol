@@ -9,8 +9,8 @@
 // C++ includes
 #include <utility>
 
-// Shared includes
-#include "shared/BasicTypes.hpp"
+// Tribol includes
+#include "tribol/common/BasicTypes.hpp"
 
 namespace tribol {
 

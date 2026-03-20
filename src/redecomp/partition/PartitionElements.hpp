@@ -8,8 +8,6 @@
 
 #include "redecomp/partition/PartitionEntity.hpp"
 
-#include "shared/BasicTypes.hpp"
-
 namespace redecomp {
 
 /**

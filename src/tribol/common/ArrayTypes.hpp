@@ -11,7 +11,7 @@
 #include "axom/core/ArrayView.hpp"
 
 // Shared includes
-#include "shared/ExecModel.hpp"
+#include "tribol/common/ExecModel.hpp"
 
 namespace tribol {
 

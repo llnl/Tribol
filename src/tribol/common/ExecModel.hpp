@@ -3,11 +3,11 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#ifndef SHARED_EXECMODEL_HPP_
-#define SHARED_EXECMODEL_HPP_
+#ifndef SRC_TRIBOL_COMMON_EXECMODEL_HPP_
+#define SRC_TRIBOL_COMMON_EXECMODEL_HPP_
 
 // Tribol includes
-#include "shared/BasicTypes.hpp"
+#include "tribol/common/BasicTypes.hpp"
 
 // Axom includes
 #include "axom/core/memory_management.hpp"
