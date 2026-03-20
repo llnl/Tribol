@@ -6,7 +6,6 @@
 #include "CommonPlane.hpp"
 
 #include "tribol/common/LoopExec.hpp"
-
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/geom/CompGeom.hpp"
@@ -17,28 +16,6 @@
 
 namespace tribol {
 
-TRIBOL_HOST_DEVICE RealT ComputePenaltyStiffnessPerArea( const RealT K1_over_t1, const RealT K2_over_t2 )
-{
-  // compute face-pair specific penalty stiffness per unit area.
-  // Note: This assumes that each face has a spring stiffness
-  // equal to that side's material Bulk modulus, K, over the
-  // thickness of the volume element to which that face belongs,
-  // times the overlap area. That is, K1_over_t1 * A and K2_over_t2 * A. We
-  // then assume the two springs are in series and compute an
-  // equivalent spring stiffness as,
-  // k_eq = A*(K1_over_t1)*(K2_over_t2) / ((K1_over_t1)+(K2_over_t2).
-  // Note, the host code registers each face's (K/t) as a penalty scale.
-  //
-  // UNITS: we multiply k_eq above by the overlap area A, to get a
-  // stiffness per unit area. This will make the force calculations
-  // commensurate with the previous calculations using only the
-  // constant registered penalty scale.
-
-  return K1_over_t1 * K2_over_t2 / ( K1_over_t1 + K2_over_t2 );
-
-}  // end ComputePenaltyStiffnessPerArea
-
-//------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE RealT ComputeGapRatePressure( CommonPlanePair& plane, const MeshData::Viewer& m1,
                                                  const MeshData::Viewer& m2, RealT element_penalty,
                                                  RatePenaltyCalculation rate_calc )

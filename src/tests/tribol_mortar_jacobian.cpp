@@ -251,9 +251,6 @@ TEST_F( MortarJacTest, jac_input_test )
   EXPECT_EQ( numCols, my_num_rows );
 
   tribol::finalize();
-
-  // delete the jacobian matrix
-  delete jac;
 }
 
 TEST_F( MortarJacTest, update_jac_test )
@@ -339,9 +336,6 @@ TEST_F( MortarJacTest, update_jac_test )
   matrix.close();
 
   tribol::finalize();
-
-  // delete the jacobian matrix
-  delete jac;
 }
 
 int main( int argc, char* argv[] )

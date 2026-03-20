@@ -16,6 +16,8 @@
 
 #include "redecomp/utils/ArrayUtility.hpp"
 
+#include "tribol/common/LoopExec.hpp"
+
 namespace tribol {
 
 SubmeshLORTransfer::SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh, bool use_ea )
@@ -1179,7 +1181,7 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemDfDxFullJacobian( 
   mortar_tdofs.GetMemory().SetHostPtrOwner( false );
   ones.GetMemory().SetHostPtrOwner( false );
   inactive_sm.SetDataOwner( false );
-  inactive_hpm->SetOwnerFlags( 3, 3, 1 );
+  inactive_hpm->SetOwnerFlags( 3, inactive_hpm->OwnsOffd(), inactive_hpm->OwnsColMap() );
   block_J->SetBlock( 1, 1, inactive_hpm.release() );
 
   return block_J;

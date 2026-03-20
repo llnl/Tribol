@@ -11,10 +11,6 @@
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MeshData.hpp"
 
-// Axom includes
-#include "axom/core.hpp"
-#include "axom/slic.hpp"
-
 // MFEM includes
 #include "mfem.hpp"
 
@@ -188,7 +184,13 @@ struct SurfaceContactElem {
   void allocateBlockJ( EnforcementMethod enf );
 
   /// delete routine
-  TRIBOL_HOST_DEVICE void deallocateElem();
+  TRIBOL_HOST_DEVICE void deallocateElem()
+  {
+    if ( this->mortarWts != nullptr ) {
+      delete[] this->mortarWts;
+      this->mortarWts = nullptr;
+    }
+  }
 
 };  // end of SurfaceContactElem definition
 
@@ -203,7 +205,7 @@ class MethodData {
   /*!
    * \brief Destructor
    */
-  ~MethodData() {};
+  virtual ~MethodData() {};
 
   /*!
    * \brief allocate element Jacobian matrix storage

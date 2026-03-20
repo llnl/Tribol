@@ -29,43 +29,6 @@ RealT magnitude( RealT const* const v, int const dim )
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE RealT dotProd( RealT const* const v, RealT const* const w, int const dim )
-{
-  RealT z = 0;
-  for ( int i = 0; i < dim; ++i ) {
-    z += v[i] * w[i];
-  }
-
-  return z;
-}
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE RealT dotProd( RealT const aX, RealT const aY, RealT const aZ, RealT const bX, RealT const bY,
-                                  RealT const bZ )
-{
-  return aX * bX + aY * bY + aZ * bZ;
-}
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE RealT magCrossProd( RealT const a[3], RealT const b[3] )
-{
-  RealT vi = a[1] * b[2] - a[2] * b[1];
-  RealT vj = a[2] * b[0] - a[0] * b[2];
-  RealT vk = a[0] * b[1] - a[1] * b[0];
-
-  return magnitude( vi, vj, vk );
-}
-
-//------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE void crossProd( RealT const aX, RealT const aY, RealT const aZ, RealT const bX, RealT const bY,
-                                   RealT const bZ, RealT& prodX, RealT& prodY, RealT& prodZ )
-{
-  prodX = aY * bZ - aZ * bY;
-  prodY = aZ * bX - aX * bZ;
-  prodZ = aX * bY - aY * bX;
-}
-
-//------------------------------------------------------------------------------
 int binary_search( const int* const array, const int n, const int val )
 {
   if ( n == 0 ) {
@@ -197,18 +160,6 @@ void allocBoolArray( bool** arr, int length, bool init_val )
 
   *arr = new bool[length];
   initBoolArray( *arr, length, init_val );
-}
-
-//------------------------------------------------------------------------------
-template <typename T>
-TRIBOL_HOST_DEVICE void initArray( T* arr, int length, T init_val )
-{
-#ifdef TRIBOL_USE_HOST
-  SLIC_ERROR_IF( arr == nullptr, "initIntArray(): " << "input pointer to array is null." );
-#endif
-  for ( int i = 0; i < length; ++i ) {
-    arr[i] = init_val;
-  }
 }
 
 //------------------------------------------------------------------------------

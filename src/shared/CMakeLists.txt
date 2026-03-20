@@ -33,14 +33,11 @@ blt_add_library(
 
 # Add separable compilation flag
 if(ENABLE_HIP)
-    target_compile_options(tribol_shared PRIVATE -fgpu-rdc)
     target_compile_options(tribol_shared PRIVATE
         $<$<CONFIG:Debug>:
             -ggdb
         >
     )
-    target_link_options(tribol_shared PRIVATE -fgpu-rdc)
-    target_link_options(tribol_shared PRIVATE --hip-link)
 endif()
 
 # Don't propagate internal dependencies

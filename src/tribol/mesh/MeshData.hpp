@@ -345,7 +345,7 @@ class MeshData {
      * \param [in/out] coords pointer to an array of stacked (x,y,z) nodal coordinates
      *
      */
-    TRIBOL_HOST_DEVICE void getFaceCoords( IndexT face_id, RealT* coords ) const;
+    TRIBOL_HOST_DEVICE inline void getFaceCoords( IndexT face_id, RealT* coords ) const;
 
     /*!
      *
@@ -355,7 +355,7 @@ class MeshData {
      * \param [in/out] nodalVel pointer to an array of stacked (x,y,z) nodal velocities
      *
      */
-    TRIBOL_HOST_DEVICE void getFaceVelocities( IndexT face_id, RealT* vels ) const;
+    TRIBOL_HOST_DEVICE inline void getFaceVelocities( IndexT face_id, RealT* vels ) const;
 
     /*!
      *
@@ -365,7 +365,7 @@ class MeshData {
      * \param [in/out] nrml pointer to array of stacked components of the face normal vector
      *
      */
-    TRIBOL_HOST_DEVICE void getFaceNormal( IndexT face_id, RealT* nrml ) const;
+    TRIBOL_HOST_DEVICE inline void getFaceNormal( IndexT face_id, RealT* nrml ) const;
 
     /*!
      *
@@ -375,7 +375,7 @@ class MeshData {
      * \param [in/out] cx pointer to array of stacked components of the face centroid components
      *
      */
-    TRIBOL_HOST_DEVICE void getFaceCentroid( IndexT face_id, RealT* cx ) const;
+    TRIBOL_HOST_DEVICE inline void getFaceCentroid( IndexT face_id, RealT* cx ) const;
 
    private:
     /// Unique mesh ID
@@ -750,6 +750,61 @@ MultiArrayView<T> MeshData::createNodalVector( T* x, T* y, T* z ) const
 }
 
 using MeshManager = DataManager<MeshData>;
+
+//-----------------------------------------------------------------------------
+// Implementations
+//-----------------------------------------------------------------------------
+
+TRIBOL_HOST_DEVICE inline void MeshData::Viewer::getFaceCoords( IndexT face_id, RealT* coords ) const
+{
+  auto dim = spatialDimension();
+
+  for ( IndexT a{ 0 }; a < numberOfNodesPerElement(); ++a ) {
+    IndexT node_id = getGlobalNodeId( face_id, a );
+    for ( int d{ 0 }; d < dim; ++d ) {
+      coords[dim * a + d] = m_position[d][node_id];
+    }
+  }
+
+  return;
+
+}  // end MeshData::Viewer::getFaceCoords()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE inline void MeshData::Viewer::getFaceVelocities( IndexT face_id, RealT* vels ) const
+{
+  auto dim = spatialDimension();
+
+  for ( IndexT a{ 0 }; a < numberOfNodesPerElement(); ++a ) {
+    IndexT node_id = getGlobalNodeId( face_id, a );
+    for ( int d{ 0 }; d < dim; ++d ) {
+      vels[dim * a + d] = m_vel[d][node_id];
+    }
+  }
+
+  return;
+
+}  // end MeshData::Viewer::getFaceVelocities()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE inline void MeshData::Viewer::getFaceNormal( IndexT face_id, RealT* nrml ) const
+{
+  for ( int d{ 0 }; d < spatialDimension(); ++d ) {
+    nrml[d] = m_n[d][face_id];
+  }
+  return;
+
+}  // end MeshData::getFaceNormal()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE inline void MeshData::Viewer::getFaceCentroid( IndexT face_id, RealT* cx ) const
+{
+  for ( int d{ 0 }; d < spatialDimension(); ++d ) {
+    cx[d] = m_c[d][face_id];
+  }
+  return;
+
+}  // end MeshData::getFaceNormal()
 
 }  // end namespace tribol
 
