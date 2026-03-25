@@ -35,14 +35,12 @@ void SubmeshLORTransfer::TransferToLORGridFn( const mfem::ParGridFunction& subme
 
 void SubmeshLORTransfer::TransferFromLORVector( mfem::Vector& submesh_dst ) const
 {
-  // make sure host data is up to date.  this transfer needs to be on the host until submesh supports device transfer
   lor_xfer_.ForwardOperator().MultTranspose( *lor_gridfn_, submesh_dst );
 }
 
 void SubmeshLORTransfer::SubmeshToLOR( const mfem::ParGridFunction& submesh_src, mfem::ParGridFunction& lor_dst )
 {
   TRIBOL_MARK_FUNCTION;
-  // make sure host data is up to date.  this transfer needs to be on the host until submesh supports device transfer
   lor_xfer_.ForwardOperator().Mult( submesh_src, lor_dst );
 }
 

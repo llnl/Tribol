@@ -38,7 +38,10 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
   /**
    * @brief Binning methods to test for each contact problem.
    */
-  std::array<tribol::BinningMethod, 3> binning_methods_{ tribol::BINNING_CARTESIAN_PRODUCT, tribol::BINNING_GRID,
+  std::vector<tribol::BinningMethod> binning_methods_{ tribol::BINNING_CARTESIAN_PRODUCT,
+#ifdef TRIBOL_USE_HOST
+                                                         tribol::BINNING_GRID,
+#endif
                                                          tribol::BINNING_BVH };
 
   /**
@@ -70,6 +73,9 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
     mfem::LinearForm r( &mesh.getNodesFESpace() );
     r = 0.0;
     tribol::getMfemResponse( coupling_scheme_id, r );
+    // Ensure the host view is valid for Max()/Print() regardless of whether the
+    // response was produced on device.
+    r.HostRead();
     // A non-zero response indicates that interface pairs are considered actively in contact by Tribol
     max_force_ = r.Max();
 
@@ -316,6 +322,9 @@ int main( int argc, char* argv[] )
 #endif
 
   mfem::Device device( device_str );
+#ifdef TRIBOL_USE_GPU_MPI
+  device.SetGPUAwareMPI( true );
+#endif
   device.Print();
 
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
