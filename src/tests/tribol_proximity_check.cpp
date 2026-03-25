@@ -207,7 +207,7 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
     tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, std::get<0>( mesh ),
                                         std::get<0>( mesh ).getNodes(), std::get<1>( mesh ), std::get<2>( mesh ),
                                         tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::SINGLE_MORTAR,
-                                        tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, binning_method, exec_mode_ );
+                                        tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, binning_method, tribol::ExecutionMode::Sequential );
     tribol::setLagrangeMultiplierOptions( coupling_scheme_id, tribol::ImplicitEvalMode::MORTAR_RESIDUAL );
     tribol::getMfemPressure( coupling_scheme_id ) = 1.0;
     tribol::setBinningProximityScale( coupling_scheme_id, binning_proximity );
