@@ -40,9 +40,9 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
    */
   std::vector<tribol::BinningMethod> binning_methods_{ tribol::BINNING_CARTESIAN_PRODUCT,
 #ifdef TRIBOL_USE_HOST
-                                                         tribol::BINNING_GRID,
+                                                       tribol::BINNING_GRID,
 #endif
-                                                         tribol::BINNING_BVH };
+                                                       tribol::BINNING_BVH };
 
   /**
    * @brief Execution mode for the test
@@ -204,10 +204,10 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
     constexpr int coupling_scheme_id = 0;
     constexpr int mesh1_id = 0;
     constexpr int mesh2_id = 1;
-    tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, std::get<0>( mesh ),
-                                        std::get<0>( mesh ).getNodes(), std::get<1>( mesh ), std::get<2>( mesh ),
-                                        tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::SINGLE_MORTAR,
-                                        tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, binning_method, tribol::ExecutionMode::Sequential );
+    tribol::registerMfemCouplingScheme(
+        coupling_scheme_id, mesh1_id, mesh2_id, std::get<0>( mesh ), std::get<0>( mesh ).getNodes(),
+        std::get<1>( mesh ), std::get<2>( mesh ), tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::SINGLE_MORTAR,
+        tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, binning_method, tribol::ExecutionMode::Sequential );
     tribol::setLagrangeMultiplierOptions( coupling_scheme_id, tribol::ImplicitEvalMode::MORTAR_RESIDUAL );
     tribol::getMfemPressure( coupling_scheme_id ) = 1.0;
     tribol::setBinningProximityScale( coupling_scheme_id, binning_proximity );
