@@ -21,6 +21,7 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     double k = 1000.0;
     double delta = 0.1;
     int N = 3;
+    bool enzyme_quadrature = true;
     bool use_penalty_ = (cs->getEnforcementMethod() == PENALTY);
 
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
@@ -36,7 +37,7 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     SLIC_ERROR_ROOT_IF( !cs->hasMfemJacobianData(), "ENERGY_MORTAR requires MFEM Jacobian data." );
 
     return std::make_unique<NewMethodAdapter>( *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), cs->getMesh1(),
-                                               cs->getMesh2(), k, delta, N, use_penalty_ );
+                                               cs->getMesh2(), k, delta, N, enzyme_quadrature, use_penalty_ );
 #else
     SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );
     return nullptr;

@@ -38,6 +38,7 @@ struct ContactParams {
   double del;
   double k;
   int N;
+  bool enzyme_quadrature;
 };
 
 struct NodalContactData {
