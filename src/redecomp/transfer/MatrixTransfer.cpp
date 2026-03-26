@@ -223,7 +223,7 @@ MPIArray<int> MatrixTransfer::buildSendArrayIDs( const axom::Array<int>& test_el
   }
   for ( auto send_array_ids_rank : send_array_ids ) {
     auto tmp_send_array_ids_rank = send_array_ids_rank;
-    std::swap( send_array_ids_rank, tmp_send_array_ids_rank );
+    send_array_ids_rank = std::move( tmp_send_array_ids_rank );
   }
 
   return send_array_ids;
