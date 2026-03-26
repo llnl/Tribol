@@ -11,16 +11,24 @@
 
 #ifdef BUILD_REDECOMP
 
+// C++ includes
 #include <set>
 #include <utility>
 #include <vector>
 
+// MFEM includes
 #include "mfem.hpp"
 
+// Axom includes
+#include "axom/core.hpp"
+
+// Shared includes
 #include "shared/math/ParSparseMat.hpp"
 
+// Redecomp includes
 #include "redecomp/redecomp.hpp"
 
+// Tribol includes
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
@@ -1474,9 +1482,10 @@ class MfemSubmeshData {
    * otherwise)
    * @param pressure_fec Finite element collection of the pressure field
    * @param pressure_vdim Vector dimension of the pressure field
+   * @param use_device Whether to use device memory
    */
   MfemSubmeshData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh,
-                   std::unique_ptr<mfem::FiniteElementCollection> pressure_fec, int pressure_vdim );
+                   std::unique_ptr<mfem::FiniteElementCollection> pressure_fec, int pressure_vdim, bool use_device );
 
   /**
    * @brief Build a new transfer operator and update redecomp-level grid
@@ -1629,6 +1638,11 @@ class MfemSubmeshData {
    * @brief UpdateData object created upon call to UpdateSubmeshData()
    */
   std::unique_ptr<UpdateData> update_data_;
+
+  /**
+   * @brief Whether to use device memory for MFEM data
+   */
+  bool use_device_;
 };
 
 /**

@@ -18,6 +18,9 @@ include(CMakeFindDependencyMacro)
 #------------------------------------------------------------------------------
 if(TRIBOL_USE_CUDA)
   set(tribol_device_depends blt::cuda CACHE STRING "" FORCE)
+
+  # This lets clangd see includes with CUDA builds
+  set(CMAKE_CUDA_USE_RESPONSE_FILE_FOR_INCLUDES OFF)
 endif()
 if(TRIBOL_USE_HIP)
   set(tribol_device_depends blt::hip CACHE STRING "" FORCE)

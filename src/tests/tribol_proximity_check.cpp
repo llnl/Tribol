@@ -38,8 +38,29 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
   /**
    * @brief Binning methods to test for each contact problem.
    */
-  std::array<tribol::BinningMethod, 3> binning_methods_{ tribol::BINNING_CARTESIAN_PRODUCT, tribol::BINNING_GRID,
-                                                         tribol::BINNING_BVH };
+  std::vector<tribol::BinningMethod> binning_methods_{ tribol::BINNING_CARTESIAN_PRODUCT,
+#ifdef TRIBOL_USE_HOST
+                                                       tribol::BINNING_GRID,
+#endif
+                                                       tribol::BINNING_BVH };
+
+  /**
+   * @brief Execution mode for the test
+   */
+  tribol::ExecutionMode exec_mode_;
+
+  void SetUp() override
+  {
+#if defined( TRIBOL_USE_CUDA )
+    exec_mode_ = tribol::ExecutionMode::Cuda;
+#elif defined( TRIBOL_USE_HIP )
+    exec_mode_ = tribol::ExecutionMode::Hip;
+#elif defined( TRIBOL_USE_OPENMP )
+    exec_mode_ = tribol::ExecutionMode::OpenMP;
+#else
+    exec_mode_ = tribol::ExecutionMode::Sequential;
+#endif
+  }
 
   void UpdateTribol( shared::ParMeshBuilder& mesh, int coupling_scheme_id )
   {
@@ -52,6 +73,9 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
     mfem::LinearForm r( &mesh.getNodesFESpace() );
     r = 0.0;
     tribol::getMfemResponse( coupling_scheme_id, r );
+    // Ensure the host view is valid for Max()/Print() regardless of whether the
+    // response was produced on device.
+    r.HostRead();
     // A non-zero response indicates that interface pairs are considered actively in contact by Tribol
     max_force_ = r.Max();
 
@@ -70,7 +94,8 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
     constexpr int mesh2_id = 1;
     tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, mesh, mesh.getNodes(), contact_surf_1,
                                         contact_surf_2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
-                                        tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, binning_method );
+                                        tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY, binning_method,
+                                        exec_mode_ );
     tribol::setMfemKinematicConstantPenalty( coupling_scheme_id, penalty, penalty );
     tribol::setBinningProximityScale( coupling_scheme_id, binning_proximity );
 
@@ -179,10 +204,10 @@ class ProximityTest : public testing::TestWithParam<std::tuple<int, tribol::Real
     constexpr int coupling_scheme_id = 0;
     constexpr int mesh1_id = 0;
     constexpr int mesh2_id = 1;
-    tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, std::get<0>( mesh ),
-                                        std::get<0>( mesh ).getNodes(), std::get<1>( mesh ), std::get<2>( mesh ),
-                                        tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::SINGLE_MORTAR,
-                                        tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, binning_method );
+    tribol::registerMfemCouplingScheme(
+        coupling_scheme_id, mesh1_id, mesh2_id, std::get<0>( mesh ), std::get<0>( mesh ).getNodes(),
+        std::get<1>( mesh ), std::get<2>( mesh ), tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::SINGLE_MORTAR,
+        tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, binning_method, tribol::ExecutionMode::Sequential );
     tribol::setLagrangeMultiplierOptions( coupling_scheme_id, tribol::ImplicitEvalMode::MORTAR_RESIDUAL );
     tribol::getMfemPressure( coupling_scheme_id ) = 1.0;
     tribol::setBinningProximityScale( coupling_scheme_id, binning_proximity );
@@ -231,6 +256,8 @@ TEST_P( ProximityTest, CheckForceValues3DCommonPlane )
   MPI_Barrier( MPI_COMM_WORLD );
 }
 
+#ifdef TRIBOL_USE_HOST
+// NOTE: Mortar doesn't work on device
 TEST_P( ProximityTest, CheckForceValues3DMortar )
 {
   auto should_have_force = std::get<3>( GetParam() );
@@ -250,6 +277,7 @@ TEST_P( ProximityTest, CheckForceValues3DMortar )
 
   MPI_Barrier( MPI_COMM_WORLD );
 }
+#endif
 
 // The parameters for the tuple are: finite element order (int), binning proximity parameter (multiplier of element
 // length), amount of element interpenetration, and whether or not we expect Tribol to consider the interface pair in
@@ -282,6 +310,22 @@ int main( int argc, char* argv[] )
 #ifdef TRIBOL_USE_UMPIRE
   umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
 #endif
+
+#if defined( TRIBOL_USE_CUDA )
+  std::string device_str( "cuda" );
+#elif defined( TRIBOL_USE_HIP )
+  std::string device_str( "hip" );
+#elif defined( TRIBOL_USE_OPENMP )
+  std::string device_str( "omp" );
+#else
+  std::string device_str( "cpu" );
+#endif
+
+  mfem::Device device( device_str );
+#ifdef TRIBOL_USE_GPU_MPI
+  device.SetGPUAwareMPI( true );
+#endif
+  device.Print();
 
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
                                     // exiting main scope

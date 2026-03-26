@@ -115,13 +115,13 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
       },
       [this, test_redecomp, &parentJ, &recv_mat_sizes, &recv_trial_elem_dofs, &recv_test_elem_offsets](
           axom::Array<double>&& send_vals, axom::IndexType src ) {
-        if ( recv_trial_elem_dofs[src].empty() ) {
+        if ( recv_trial_elem_dofs[src].IsEmpty() ) {
           return;
         }
         auto trial_dof_ct = 0;
         auto dof_ct = 0;
         // element loop
-        for ( int e{ 0 }; e < recv_test_elem_offsets[src].size(); ++e ) {
+        for ( int e{ 0 }; e < recv_test_elem_offsets[src].Size(); ++e ) {
           auto test_elem_id = test_redecomp->getParentToRedecompElems().first[src][recv_test_elem_offsets[src][e]];
           auto test_elem_dofs = mfem::Array<int>();
           parent_test_fes_.GetElementVDofs( test_elem_id, test_elem_dofs );
@@ -196,7 +196,7 @@ axom::Array<int> MatrixTransfer::buildRedecomp2ParentElemRank( const RedecompMes
         r = r2p_elem_rank[e];
         ghost_ct = 0;
       }
-      if ( ghost_ct < ghost_elems[r].size() && ghost_elems[r][ghost_ct] == e ) {
+      if ( ghost_ct < ghost_elems[r].Size() && ghost_elems[r][ghost_ct] == e ) {
         r2p_elem_rank[e] = -1;
         ++ghost_ct;
       }
@@ -213,7 +213,7 @@ MPIArray<int> MatrixTransfer::buildSendArrayIDs( const axom::Array<int>& test_el
   auto n_ranks = getMPIUtility().NRanks();
   auto est_max_elems = 2 * test_elem_idx.size() / n_ranks;
   for ( int r{ 0 }; r < n_ranks; ++r ) {
-    send_array_ids[r].reserve( est_max_elems );
+    send_array_ids[r].Reserve( est_max_elems );
   }
   for ( int i{ 0 }; i < test_elem_idx.size(); ++i ) {
     auto test_e = test_elem_idx[i];
@@ -225,7 +225,8 @@ MPIArray<int> MatrixTransfer::buildSendArrayIDs( const axom::Array<int>& test_el
     }
   }
   for ( auto send_array_ids_rank : send_array_ids ) {
-    send_array_ids_rank.shrink();
+    auto tmp_send_array_ids_rank = send_array_ids_rank;
+    send_array_ids_rank = std::move( tmp_send_array_ids_rank );
   }
 
   return send_array_ids;
@@ -253,15 +254,15 @@ axom::Array<int> MatrixTransfer::buildSendNumMatEntries( const axom::Array<int>&
   return send_num_mat_entries;
 }
 
-MPIArray<int, 2> MatrixTransfer::buildRecvMatSizes( const axom::Array<int>& test_elem_idx,
-                                                    const axom::Array<int>& trial_elem_idx ) const
+MPIArray<int, axom::Array<int, 2>> MatrixTransfer::buildRecvMatSizes( const axom::Array<int>& test_elem_idx,
+                                                                      const axom::Array<int>& trial_elem_idx ) const
 {
-  auto recv_mat_sizes = MPIArray<int, 2>( &getMPIUtility() );
+  auto recv_mat_sizes = MPIArray<int, axom::Array<int, 2>>( &getMPIUtility() );
 
   // Number of test and trial vdofs for each element matrix to be sent to each
   // parent test space rank.  MPI communication is used to turn this array into
   // recv_mat_sizes.
-  auto send_mat_sizes = MPIArray<int, 2>( &getMPIUtility() );
+  auto send_mat_sizes = MPIArray<int, axom::Array<int, 2>>( &getMPIUtility() );
   auto n_ranks = getMPIUtility().NRanks();
   auto est_max_elems = 2 * test_elem_idx.size() / n_ranks;
   for ( int r{ 0 }; r < n_ranks; ++r ) {
@@ -298,7 +299,7 @@ MPIArray<int> MatrixTransfer::buildRecvTestElemOffsets( const RedecompMesh& test
   auto n_ranks = getMPIUtility().NRanks();
   auto est_max_elems = 2 * test_elem_idx.size() / n_ranks;
   for ( int r{ 0 }; r < n_ranks; ++r ) {
-    send_test_elem_offsets[r].reserve( est_max_elems );
+    send_test_elem_offsets[r].Reserve( est_max_elems );
   }
   const auto& test_r2p_elem_offsets = test_redecomp.getRedecompToParentElemOffsets();
   for ( int i{ 0 }; i < test_elem_idx.size(); ++i ) {
@@ -326,13 +327,13 @@ MPIArray<HYPRE_BigInt> MatrixTransfer::buildRecvTrialElemDofs( const RedecompMes
   // List of trial element offsets sorted by the parent test space rank and the
   // parent trial space rank it belongs to.  Used to get the trial space parent
   // vdofs (on the parent trial space rank) onto the parent test space rank.
-  auto send_trial_elem_offsets = MPIArray<axom::Array<int>>( &getMPIUtility() );
+  auto send_trial_elem_offsets = MPIArray<mfem::Array<int>, std::vector<mfem::Array<int>>>( &getMPIUtility() );
   // Used to order the trial vdofs by element in the same order as received test
   // elements.  Stores the ordered trial rank of the vdofs.
   auto send_trial_elem_rank = MPIArray<int>( &getMPIUtility() );
   // Used to order the trial vdofs by element in the same order as received test
   // elements.  Stores the start index and length of the vdofs for each element.
-  auto send_trial_dof_extents = MPIArray<int, 2>( &getMPIUtility() );
+  auto send_trial_dof_extents = MPIArray<int, axom::Array<int, 2>>( &getMPIUtility() );
   // Total trial element vdofs to be sent to each parent test space rank
   auto send_trial_dof_sizes = axom::Array<int>( n_ranks, n_ranks );
   // Running count of number of DOFs in each send test/trial rank combo.  Used
@@ -348,14 +349,13 @@ MPIArray<HYPRE_BigInt> MatrixTransfer::buildRecvTrialElemDofs( const RedecompMes
   auto est_max_elems = 2 * test_elem_idx.size() / n_ranks;
   for ( int r{ 0 }; r < n_ranks; ++r ) {
     send_trial_elem_offsets[r].resize( n_ranks );
-    send_trial_elem_offsets[r].shrink();
     for ( auto& send_trial_elem_offsets_rank : send_trial_elem_offsets[r] ) {
-      send_trial_elem_offsets_rank.reserve( est_max_elems / n_ranks );
+      send_trial_elem_offsets_rank.Reserve( est_max_elems / n_ranks );
     }
-    send_trial_elem_rank[r].reserve( est_max_elems );
+    send_trial_elem_rank[r].Reserve( est_max_elems );
     send_trial_dof_extents[r].reserve( 2 * est_max_elems );
-    trial_elem_offsets_dof_ct[r].resize( n_ranks );
-    trial_elem_offsets_dof_ct[r].shrink();
+    trial_elem_offsets_dof_ct[r].SetSize( n_ranks );
+    trial_elem_offsets_dof_ct[r] = 0;
   }
 
   const auto& trial_r2p_elem_offsets = trial_redecomp.getRedecompToParentElemOffsets();
@@ -384,20 +384,20 @@ MPIArray<HYPRE_BigInt> MatrixTransfer::buildRecvTrialElemDofs( const RedecompMes
   }
 
   // grab test DOFs from the parent rank and return them to the redecomp rank
-  auto unsorted_trial_dofs = axom::Array<axom::Array<axom::Array<HYPRE_BigInt>>>( n_ranks, n_ranks );
+  auto unsorted_trial_dofs = std::vector<std::vector<mfem::Array<HYPRE_BigInt>>>( n_ranks );
   for ( auto& test_dof_rank : unsorted_trial_dofs ) {
-    test_dof_rank = axom::Array<axom::Array<HYPRE_BigInt>>( n_ranks, n_ranks );
+    test_dof_rank = std::vector<mfem::Array<HYPRE_BigInt>>( n_ranks );
   }
   const auto& trial_p2r_elems = trial_redecomp.getParentToRedecompElems();
   for ( int dst_test_r{ 0 }; dst_test_r < n_ranks; ++dst_test_r ) {
     // send parent trial element offsets to parent trial rank
     auto recv_trial_elem_offsets = MPIArray<int>( &getMPIUtility() );
     getMPIUtility().SendRecvEach(
-        type<axom::Array<int>>(),
+        type<mfem::Array<int>>(),
         [dst_test_r, &send_trial_elem_offsets]( axom::IndexType dst_trial_r ) {
           return send_trial_elem_offsets[dst_test_r][dst_trial_r];
         },
-        [&recv_trial_elem_offsets]( axom::Array<int>&& send_vals, axom::IndexType src_trial_r ) {
+        [&recv_trial_elem_offsets]( mfem::Array<int>&& send_vals, axom::IndexType src_trial_r ) {
           recv_trial_elem_offsets[src_trial_r] = std::move( send_vals );
         } );
     // send parent trial vdofs back to test redecomp rank
@@ -405,19 +405,19 @@ MPIArray<HYPRE_BigInt> MatrixTransfer::buildRecvTrialElemDofs( const RedecompMes
     auto trial_dofs_by_rank = MPIArray<HYPRE_BigInt>( &getMPIUtility() );
     trial_dofs_by_rank.SendRecvEach(
         [this, &trial_p2r_elems, &recv_trial_elem_offsets, first_dof]( axom::IndexType src_trial_r ) {
-          auto trial_dofs = axom::Array<HYPRE_BigInt>();
+          auto trial_dofs = MPIArray<HYPRE_BigInt>::ArrayT();
 
           const auto& rank_elem_offsets = recv_trial_elem_offsets[src_trial_r];
-          auto n_elems = rank_elem_offsets.size();
+          auto n_elems = rank_elem_offsets.Size();
           if ( n_elems > 0 ) {
             auto elem_id = trial_p2r_elems.first[src_trial_r][rank_elem_offsets[0]];
             auto est_n_dofs = n_elems * parent_trial_fes_.GetFE( elem_id )->GetDof() * parent_trial_fes_.GetVDim();
-            trial_dofs.reserve( est_n_dofs );
+            trial_dofs.Reserve( est_n_dofs );
             for ( auto elem_offset : rank_elem_offsets ) {
               elem_id = trial_p2r_elems.first[src_trial_r][elem_offset];
               auto n_elem_dofs = parent_trial_fes_.GetFE( elem_id )->GetDof() * parent_trial_fes_.GetVDim();
-              trial_dofs.resize( trial_dofs.size() + n_elem_dofs );
-              auto dof_array = mfem::Array<HYPRE_BigInt>( &trial_dofs[trial_dofs.size() - n_elem_dofs], n_elem_dofs );
+              trial_dofs.SetSize( trial_dofs.Size() + n_elem_dofs );
+              auto dof_array = mfem::Array<HYPRE_BigInt>( &trial_dofs[trial_dofs.Size() - n_elem_dofs], n_elem_dofs );
               auto int_dof_array = mfem::Array<int>( n_elem_dofs );
               parent_trial_fes_.GetElementVDofs( elem_id, int_dof_array );
               for ( int i{ 0 }; i < n_elem_dofs; ++i ) {
@@ -440,13 +440,13 @@ MPIArray<HYPRE_BigInt> MatrixTransfer::buildRecvTrialElemDofs( const RedecompMes
   }
   // construct trial vdof vectors for each test rank
   for ( int test_r{ 0 }; test_r < n_ranks; ++test_r ) {
-    send_trial_elem_dofs[test_r].reserve( send_trial_dof_sizes[test_r] );
-    auto n_trial_elems = send_trial_elem_rank[test_r].size();
+    send_trial_elem_dofs[test_r].Reserve( send_trial_dof_sizes[test_r] );
+    auto n_trial_elems = send_trial_elem_rank[test_r].Size();
     for ( int e{ 0 }; e < n_trial_elems; ++e ) {
-      auto trial_elem_dofs = axom::ArrayView<HYPRE_BigInt>(
+      auto trial_elem_dofs = mfem::Array<HYPRE_BigInt>(
           &unsorted_trial_dofs[test_r][send_trial_elem_rank[test_r][e]][send_trial_dof_extents[test_r]( e, 0 )],
-          { send_trial_dof_extents[test_r]( e, 1 ) } );
-      send_trial_elem_dofs[test_r].append( trial_elem_dofs );
+          send_trial_dof_extents[test_r]( e, 1 ) );
+      send_trial_elem_dofs[test_r].Append( trial_elem_dofs );
     }
   }
   recv_trial_elem_dofs.SendRecvArrayEach( send_trial_elem_dofs );

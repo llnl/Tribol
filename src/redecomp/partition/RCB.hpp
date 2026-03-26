@@ -83,8 +83,7 @@ class RCB : public PartitionMethod<NDIMS> {
    * @param ghost_len Sets length to include entities as ghost on each subdomain
    * @return List of points and ghost entities on each subdomain sorted by mesh
    */
-  std::vector<EntityIndexByRank> generatePartitioning( int n_parts,
-                                                       const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh,
+  std::vector<EntityIndexByRank> generatePartitioning( int n_parts, const std::vector<CoordList<NDIMS>>& coords_by_mesh,
                                                        double ghost_len ) const override;
 
  private:
@@ -96,7 +95,7 @@ class RCB : public PartitionMethod<NDIMS> {
    * @param ghost_len Sets length to include entities as ghost on each subdomain
    * @return BisecTree of bounding boxes defining subdomains and ghost subdomains
    */
-  BisecTree<RCBInfo<NDIMS>> BuildProblemTree( int n_parts, const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh,
+  BisecTree<RCBInfo<NDIMS>> BuildProblemTree( int n_parts, const std::vector<CoordList<NDIMS>>& coords_by_mesh,
                                               double ghost_len ) const;
 
   /**
@@ -105,7 +104,7 @@ class RCB : public PartitionMethod<NDIMS> {
    * @param coords_by_mesh On-rank coords sorted by mesh
    * @return BoundingBox<NDIMS> Bounding box of coords on all ranks
    */
-  BoundingBox<NDIMS> DomainBoundingBox( const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh ) const;
+  BoundingBox<NDIMS> DomainBoundingBox( const std::vector<CoordList<NDIMS>>& coords_by_mesh ) const;
 
   /**
    * @brief Counts the entities across all ranks in the two given bounding boxes
@@ -116,7 +115,7 @@ class RCB : public PartitionMethod<NDIMS> {
    * @return std::pair<int, int> Entity counts in each bounding box
    */
   std::pair<int, int> CountEntities( const BoundingBox<NDIMS>& left_bbox, const BoundingBox<NDIMS>& right_bbox,
-                                     const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh ) const;
+                                     const std::vector<CoordList<NDIMS>>& coords_by_mesh ) const;
 
   /**
    * @brief Find the domain at the base of the BisecTree the coord belongs to
