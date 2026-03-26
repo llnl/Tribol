@@ -200,6 +200,7 @@ if( TRIBOL_USE_ENZYME )
       tribol_enzyme_poly_intersect.cpp
       tribol_mfem_mortar_energy.cpp
       tribol_new_energy_patch.cpp
+      tribol_new_energy_patch_LM.cpp
       )
 
   set(combined_test_depends tribol gtest)
