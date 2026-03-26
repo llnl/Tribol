@@ -1055,6 +1055,8 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian( con
   inactive_sm.GetMemoryI().ClearOwnerFlags();
   inactive_sm.GetMemoryJ().ClearOwnerFlags();
   inactive_sm.GetMemoryData().ClearOwnerFlags();
+  constexpr int mfem_owned_host_flag = 3;
+  inactive_hpm->SetOwnerFlags(mfem_owned_host_flag, inactive_hpm->OwnsOffd(), inactive_hpm->OwnsColMap());
 
   block_J->SetBlock( 0, 1, J_true->Transpose() );
   block_J->SetBlock( 1, 0, J_true.release() );
