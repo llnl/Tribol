@@ -157,6 +157,14 @@ void get_projections( const double* A0, const double* A1, const double* B0, cons
   const double dxA = A1[0] - A0[0];
   const double dyA = A1[1] - A0[1];
   const double len2A = dxA * dxA + dyA * dyA;
+  const double lenA = std::sqrt(dxA * dxA + dyA * dyA);
+  // std::cout << "Length A: " << lenA << std::endl;
+
+  const double dxB = B1[0] - B0[0];
+  const double dyB = B1[1] - B0[1];
+  const double lenB = std::sqrt(dxB * dxB + dyB * dyB);
+  // std::cout << "Length B: " << lenB << std::endl;
+
 
   const double* B_endpoints[2] = { B0, B1 };
 
@@ -697,39 +705,40 @@ std::array<double, 2> ContactSmoothing::bounds_from_projections( const std::arra
 
   // const double del = 0.1;
 
-    if ( xi_max < -0.5) {
-    xi_max = -0.5;
-  }
-  if ( xi_min > 0.5 ) {
-    xi_min = 0.5;
-  }
-  if ( xi_min < -0.5 ) {
-    xi_min = -0.5;
-  }
-  if ( xi_max > 0.5 ) {
-    xi_max = 0.5;
-  }
+  //   if ( xi_max < -0.5) {
+  //   xi_max = -0.5;
+  // }
+  // if ( xi_min > 0.5 ) {
+  //   xi_min = 0.5;
+  // }
+  // if ( xi_min < -0.5 ) {
+  //   xi_min = -0.5;
+  // }
+  // if ( xi_max > 0.5 ) {
+  //   xi_max = 0.5;
+  // }
 
-  // if ( xi_max < -0.5 - del ) {
-  //   xi_max = -0.5 - del;
-  // }
-  // if ( xi_min > 0.5 + del ) {
-  //   xi_min = 0.5 + del;
-  // }
-  // if ( xi_min < -0.5 - del ) {
-  //   xi_min = -0.5 - del;
-  // }
-  // if ( xi_max > 0.5 + del ) {
-  //   xi_max = 0.5 + del;
-  // }
+  if ( xi_max < -0.5 - del ) {
+    xi_max = -0.5 - del;
+  }
+  if ( xi_min > 0.5 + del ) {
+    xi_min = 0.5 + del;
+  }
+  if ( xi_min < -0.5 - del ) {
+    xi_min = -0.5 - del;
+  }
+  if ( xi_max > 0.5 + del ) {
+    xi_max = 0.5 + del;
+  }
 
   return { xi_min, xi_max };
 }
 
-std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 2>& bounds )
+
+std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 2>& bounds ) const
 {
   std::array<double, 2> smooth_bounds;
-  const double del = 0.1;
+  const double del = p_.del;
   for ( int i = 0; i < 2; ++i ) {
     double xi = 0.0;
     double xi_hat = 0.0;
@@ -762,6 +771,8 @@ std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 
 }
 
 
+<<<<<<< HEAD
+=======
 
 // std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 2>& bounds )
 // {
@@ -794,6 +805,40 @@ std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 
 //   return smooth_bounds;
 // }
 
+
+
+>>>>>>> 7d9957052e73614562a9b9a3827e3a5c876eadfa
+
+// std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 2>& bounds ) const
+// {
+//   std::array<double, 2> smooth_bounds;
+//   const double del = p_.del;
+//   for ( int i = 0; i < 2; ++i ) {
+//     double xi = 0.0;
+//     double xi_hat = 0.0;
+//     xi = bounds[i] + 0.5;
+//     if (del == 0.0) {
+//       xi_hat = xi;
+//     }
+//     else{
+//     if ( 0.0 <= xi && xi <= del ) {
+//       xi_hat = (xi*xi*(2 * del -xi)) / (del * del);
+//       // std::cout << "zone1" << std::endl;
+//     } else if ( ( 1.0 - del ) <= xi && xi <= 1.0 ) {
+//       // std::cout << "Zone 2: " << std::endl;
+//       xi_hat = 1 - ((1 - xi)*(1 - xi) * (2 * del - ( 1 - xi )) / (del * del));
+    
+//     } else if ( del <= xi && xi <= ( 1.0 - del ) ) {
+//       xi_hat = xi;
+//       // std::cout << "zone3" << std::endl;
+//     }
+//     }
+//     smooth_bounds[i] = xi_hat - 0.5;
+//       // std::cout << "Smooth Bounds: " << smooth_bounds[i] << std::endl;
+//   }
+
+//   return smooth_bounds;
+// }
 
 
 
