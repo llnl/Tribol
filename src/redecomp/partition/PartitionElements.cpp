@@ -13,7 +13,6 @@ template <int NDIMS>
 std::vector<CoordList<NDIMS>> PartitionElements<NDIMS>::EntityCoordinates(
     const std::vector<const mfem::ParMesh*>& par_meshes ) const
 {
-  // check if device is available to MFEM
   auto elem_centroids = std::vector<CoordList<NDIMS>>();
   elem_centroids.reserve( par_meshes.size() );
 
