@@ -22,8 +22,9 @@ RCB<NDIMS>::RCB( const MPI_Comm& comm, double max_out_of_balance, int n_try_new_
 }
 
 template <int NDIMS>
-std::vector<EntityIndexByRank> RCB<NDIMS>::generatePartitioning(
-    int n_parts, const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh, double ghost_len ) const
+std::vector<EntityIndexByRank> RCB<NDIMS>::generatePartitioning( int n_parts,
+                                                                 const std::vector<CoordList<NDIMS>>& coords_by_mesh,
+                                                                 double ghost_len ) const
 {
   TRIBOL_MARK_FUNCTION;
   auto partitioning = std::vector<EntityIndexByRank>();
@@ -37,22 +38,24 @@ std::vector<EntityIndexByRank> RCB<NDIMS>::generatePartitioning(
   auto rank_jump_interval = this->getMPIUtility().NRanks() / n_parts;
 
   for ( const auto& coords : coords_by_mesh ) {
+    auto num_coords = coords.GetNumCoords();
     // Build a list of coords that belong in each of the RCB entity parts
     auto ent_idx = MPIArray<int>( &this->getMPIUtility() );
     auto ent_ghost = MPIArray<bool>( &this->getMPIUtility() );
     for ( int i{ 0 }; i < n_parts; ++i ) {
       auto rank = i * rank_jump_interval;
-      ent_idx[rank].reserve( coords.size() );
-      ent_ghost[rank].reserve( coords.size() );
+      ent_idx[rank].Reserve( num_coords );
+      ent_ghost[rank].Reserve( num_coords );
     }
-    for ( int i{ 0 }; i < coords.size(); ++i ) {
-      auto dest = DetermineDomain( problem_tree, coords[i] );
+    for ( int i{ 0 }; i < num_coords; ++i ) {
+      Point<NDIMS> coord = coords.GetPoint( i );
+      auto dest = DetermineDomain( problem_tree, coord );
       auto rank = dest * rank_jump_interval;
       ent_idx[rank].push_back( i );
       ent_ghost[rank].push_back( false );
       const auto& neighbors = problem_tree( dest ).neighbor_bboxes_;
       for ( int j{ 0 }; j < neighbors.size(); ++j ) {
-        if ( problem_tree( neighbors[j] ).ghost_bbox_.contains( coords[i] ) ) {
+        if ( problem_tree( neighbors[j] ).ghost_bbox_.contains( coord ) ) {
           auto neighbor_rank = neighbors[j] * rank_jump_interval;
           ent_idx[neighbor_rank].push_back( i );
           ent_ghost[neighbor_rank].push_back( true );
@@ -60,8 +63,10 @@ std::vector<EntityIndexByRank> RCB<NDIMS>::generatePartitioning(
       }
     }
     for ( int i{ 0 }; i < n_parts; ++i ) {
-      ent_idx[i].shrink();
-      ent_ghost[i].shrink();
+      auto tmp_idx = ent_idx[i];
+      ent_idx[i] = std::move( tmp_idx );
+      auto tmp_ghost = ent_ghost[i];
+      ent_ghost[i] = std::move( tmp_ghost );
     }
 
     partitioning.emplace_back( std::move( ent_idx ), std::move( ent_ghost ) );
@@ -72,7 +77,7 @@ std::vector<EntityIndexByRank> RCB<NDIMS>::generatePartitioning(
 
 template <int NDIMS>
 BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts,
-                                                        const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh,
+                                                        const std::vector<CoordList<NDIMS>>& coords_by_mesh,
                                                         double ghost_len ) const
 {
   TRIBOL_MARK_FUNCTION;
@@ -107,7 +112,7 @@ BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts,
   // compute total number of entities in the domain
   auto total_ents = 0;
   for ( const auto& coords : coords_by_mesh ) {
-    total_ents += coords.size();
+    total_ents += coords.GetNumCoords();
   }
   total_ents = TotalEntities( total_ents );
   // construct an AABB of the whole domain in the root node
@@ -231,13 +236,15 @@ BisecTree<RCBInfo<NDIMS>> RCB<NDIMS>::BuildProblemTree( int n_parts,
 }
 
 template <int NDIMS>
-BoundingBox<NDIMS> RCB<NDIMS>::DomainBoundingBox( const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh ) const
+BoundingBox<NDIMS> RCB<NDIMS>::DomainBoundingBox( const std::vector<CoordList<NDIMS>>& coords_by_mesh ) const
 {
   auto on_rank_bbox = BoundingBox<NDIMS>();
   size_t num_coords{ 0 };
   for ( const auto& coords : coords_by_mesh ) {
-    on_rank_bbox.addBox( BoundingBox<NDIMS>( coords.data(), coords.size() ) );
-    num_coords += coords.size();
+    for ( int i = 0; i < coords.GetNumCoords(); ++i ) {
+      on_rank_bbox.addPoint( coords.GetPoint( i ) );
+    }
+    num_coords += coords.GetNumCoords();
   }
   auto min_coord = on_rank_bbox.getMin();
   auto max_coord = on_rank_bbox.getMax();
@@ -256,12 +263,13 @@ BoundingBox<NDIMS> RCB<NDIMS>::DomainBoundingBox( const std::vector<axom::Array<
 template <int NDIMS>
 std::pair<int, int> RCB<NDIMS>::CountEntities( const BoundingBox<NDIMS>& left_bbox,
                                                const BoundingBox<NDIMS>& right_bbox,
-                                               const std::vector<axom::Array<Point<NDIMS>>>& coords_by_mesh ) const
+                                               const std::vector<CoordList<NDIMS>>& coords_by_mesh ) const
 {
   auto n_ents = std::make_pair( 0, 0 );
 
   for ( const auto& coords : coords_by_mesh ) {
-    for ( const auto& coord : coords ) {
+    for ( int i = 0; i < coords.GetNumCoords(); ++i ) {
+      Point<NDIMS> coord = coords.GetPoint( i );
       if ( left_bbox.contains( coord ) )
         n_ents.first += 1;
       else if ( right_bbox.contains( coord ) )

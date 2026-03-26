@@ -67,4 +67,3 @@ if(TRIBOL_DEBUG_DEFINE_STRING)
   # Define AXOM_DEBUG for SLIC macros
   blt_add_target_definitions(TO tribol_shared SCOPE PUBLIC TARGET_DEFINITIONS "${AXOM_DEBUG_DEFINE_STRING}")
 endif()
-

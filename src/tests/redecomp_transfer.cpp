@@ -3,6 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+#include "tribol/config.hpp"
+
 #include <gtest/gtest.h>
 
 #include "mfem.hpp"
@@ -11,8 +13,6 @@
 // Umpire includes
 #include "umpire/ResourceManager.hpp"
 #endif
-
-#include "tribol/config.hpp"
 
 #include "redecomp/redecomp.hpp"
 
@@ -138,8 +138,10 @@ int main( int argc, char* argv[] )
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
                                     // exiting main scope
 
-#ifdef TRIBOL_ENABLE_CUDA
+#ifdef TRIBOL_USE_CUDA
   mfem::Device device( "cuda" );
+#elif defined( TRIBOL_USE_HIP )
+  mfem::Device device( "hip" );
 #endif
 
   result = RUN_ALL_TESTS();
