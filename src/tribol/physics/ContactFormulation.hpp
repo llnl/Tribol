@@ -136,8 +136,7 @@ class ContactFormulation {
    */
   virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const = 0;
 
-  virtual void evaluateContactResidual( const mfem::HypreParVector& lambda,
-                                        mfem::HypreParVector& r_force,
+  virtual void evaluateContactResidual( const mfem::HypreParVector& lambda, mfem::HypreParVector& r_force,
                                         mfem::HypreParVector& r_gap ) = 0;
 
   virtual void evaluateContactJacobian( const mfem::HypreParVector& lambda,

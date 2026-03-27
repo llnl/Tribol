@@ -69,13 +69,13 @@
 //     mfem::ParMesh mesh = shared::ParMeshBuilder(MPI_COMM_WORLD, shared::MeshBuilder::Unify({
 //       shared::MeshBuilder::SquareMesh(nel_per_dir, nel_per_dir)
 //         .updateBdrAttrib(1, 1)   // bottom (Fixed Y)
-//         .updateBdrAttrib(2, 2)   // right 
+//         .updateBdrAttrib(2, 2)   // right
 //         .updateBdrAttrib(3, 3)   // top  (NonMortar)
 //         .updateBdrAttrib(4, 4),  // left (X-fixed)
 //       shared::MeshBuilder::SquareMesh(nel_per_dir, nel_per_dir)
 //         .translate({0.0, 1.0})
 //         .updateBdrAttrib(1, 5)   // bottom (Mortar)
-//         .updateBdrAttrib(2, 2)   // right 
+//         .updateBdrAttrib(2, 2)   // right
 //         .updateBdrAttrib(3, 6)   // top  (prescribed displacement)
 //         .updateBdrAttrib(4, 4)   // left  (Fixed x)
 //     }));
@@ -90,7 +90,6 @@
 //     } else {
 //       mesh.GetNodes( coords );
 //     }
-
 
 //     //Grid fucntion for displacement
 //     mfem::ParGridFunction displacement( &par_fe_space );
@@ -376,8 +375,6 @@
 //   return result;
 // }
 
-
-
 // Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
@@ -438,11 +435,11 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
   double l2_err_y_;
 
   // --- User-configurable parameters ---
-  static constexpr int    num_timesteps_ = 1;
+  static constexpr int num_timesteps_ = 1;
   static constexpr double total_prescribed_disp_ = -0.01;
   static constexpr double lam_ = 50.0;
-  static constexpr double mu_  = 50.0;
-  static constexpr int    max_newton_iter_ = 10;
+  static constexpr double mu_ = 50.0;
+  static constexpr int max_newton_iter_ = 10;
   static constexpr double newton_rtol_ = 1.0e-10;
   static constexpr double newton_atol_ = 1.0e-12;
   // ------------------------------------
@@ -452,9 +449,9 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
     int ref_levels = std::get<0>( GetParam() );
     int order = 1;
 
-    auto mortar_attrs     = std::set<int>( { 5 } );
-    auto nonmortar_attrs  = std::set<int>( { 3 } );
-    auto xfixed_attrs     = std::set<int>( { 4 } );
+    auto mortar_attrs = std::set<int>( { 5 } );
+    auto nonmortar_attrs = std::set<int>( { 3 } );
+    auto xfixed_attrs = std::set<int>( { 4 } );
     auto yfixed_bottom_attrs = std::set<int>( { 1 } );
     auto prescribed_attrs = std::set<int>( { 6 } );
 
@@ -508,30 +505,27 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
       bdr = 0;
       for ( auto a : xfixed_attrs ) bdr[a - 1] = 1;
       par_fe_space.GetEssentialVDofs( bdr, tmp, 0 );
-      for ( int i = 0; i < tmp.Size(); ++i )
-        ess_vdof_marker[i] = ess_vdof_marker[i] || tmp[i];
+      for ( int i = 0; i < tmp.Size(); ++i ) ess_vdof_marker[i] = ess_vdof_marker[i] || tmp[i];
     }
 
-// Pin corners: bottom-left of bottom block (0,0) and top-left of top block (0,2)
-// {
-//   const double tol = 1.0e-10;
-//   const std::vector<std::pair<double, double>> pin_pts = { {0.0, 0.0}, {0.0, 2.0} };
+    // Pin corners: bottom-left of bottom block (0,0) and top-left of top block (0,2)
+    // {
+    //   const double tol = 1.0e-10;
+    //   const std::vector<std::pair<double, double>> pin_pts = { {0.0, 0.0}, {0.0, 2.0} };
 
-//   for ( int v = 0; v < mesh.GetNV(); ++v ) {
-//     const double* vc = mesh.GetVertex(v);
-//     for ( auto& [px, py] : pin_pts ) {
-//       if ( std::abs(vc[0] - px) < tol && std::abs(vc[1] - py) < tol ) {
-//         mfem::Array<int> vdofs;
-//         par_fe_space.GetVertexVDofs( v, vdofs );
-//         for ( int i = 0; i < vdofs.Size(); ++i )
-//           ess_vdof_marker[ vdofs[i] ] = 1;
-//         break;
-//       }
-//     }
-//   }
-// }
-
-
+    //   for ( int v = 0; v < mesh.GetNV(); ++v ) {
+    //     const double* vc = mesh.GetVertex(v);
+    //     for ( auto& [px, py] : pin_pts ) {
+    //       if ( std::abs(vc[0] - px) < tol && std::abs(vc[1] - py) < tol ) {
+    //         mfem::Array<int> vdofs;
+    //         par_fe_space.GetVertexVDofs( v, vdofs );
+    //         for ( int i = 0; i < vdofs.Size(); ++i )
+    //           ess_vdof_marker[ vdofs[i] ] = 1;
+    //         break;
+    //       }
+    //     }
+    //   }
+    // }
 
     // y-fixed on bottom
     {
@@ -540,8 +534,7 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
       bdr = 0;
       for ( auto a : yfixed_bottom_attrs ) bdr[a - 1] = 1;
       par_fe_space.GetEssentialVDofs( bdr, tmp, 1 );
-      for ( int i = 0; i < tmp.Size(); ++i )
-        ess_vdof_marker[i] = ess_vdof_marker[i] || tmp[i];
+      for ( int i = 0; i < tmp.Size(); ++i ) ess_vdof_marker[i] = ess_vdof_marker[i] || tmp[i];
     }
 
     // y-prescribed on top
@@ -554,8 +547,7 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
       for ( auto a : prescribed_attrs ) bdr[a - 1] = 1;
       par_fe_space.GetEssentialVDofs( bdr, tmp, 1 );
       prescribed_vdof_marker = tmp;
-      for ( int i = 0; i < tmp.Size(); ++i )
-        ess_vdof_marker[i] = ess_vdof_marker[i] || tmp[i];
+      for ( int i = 0; i < tmp.Size(); ++i ) ess_vdof_marker[i] = ess_vdof_marker[i] || tmp[i];
     }
 
     mfem::Array<int> ess_tdof_list;
@@ -590,7 +582,7 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
 
     mfem::ParGridFunction exact_disp( &par_fe_space );
     exact_disp = 0.0;
-    visit_dc.RegisterField( "Exact Replacement", &exact_disp);
+    visit_dc.RegisterField( "Exact Replacement", &exact_disp );
     visit_dc.SetCycle( 0 );
     visit_dc.SetTime( 0.0 );
     visit_dc.Save();
@@ -611,8 +603,7 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
     mfem::HypreParVector* lambda = nullptr;
     int contact_size = 0;
 
-    for ( int step = 1; step <= num_timesteps_; ++step )
-    {
+    for ( int step = 1; step <= num_timesteps_; ++step ) {
       double current_prescribed_disp = disp_increment * step;
 
       // Build prescribed displacement vector
@@ -629,8 +620,7 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
       }
 
       // ---- Newton iteration ----
-      for ( int newton = 0; newton < max_newton_iter_; ++newton )
-      {
+      for ( int newton = 0; newton < max_newton_iter_; ++newton ) {
         // Update coordinates with current displacement
         {
           auto& P = *par_fe_space.GetProlongationMatrix();
@@ -641,11 +631,9 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
 
         // Register tribol and update contact data
         coords.ReadWrite();
-        tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords,
-                                            mortar_attrs, nonmortar_attrs,
-                                            tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING,
-                                            tribol::ENERGY_MORTAR, tribol::FRICTIONLESS,
-                                            tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID );
+        tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
+                                            tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
+                                            tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID );
         tribol::setLagrangeMultiplierOptions( cs_id, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN );
 
         tribol::updateMfemParallelDecomposition();
@@ -664,7 +652,7 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         // ---- Evaluate contact residual ----
         mfem::HypreParVector r_contact_force( &par_fe_space );  // G^T * lambda (disp-sized)
         r_contact_force = 0.0;
-        mfem::HypreParVector r_gap( &contact_fes );             // g_tilde (contact-sized)
+        mfem::HypreParVector r_gap( &contact_fes );  // g_tilde (contact-sized)
         r_gap = 0.0;
 
         // TODO: adapt to actual tribol API
@@ -673,8 +661,8 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         tribol::evaluateContactResidual( cs_id, *lambda, r_contact_force, r_gap );
 
         // ---- Evaluate contact Jacobian blocks ----
-        std::unique_ptr<mfem::HypreParMatrix> H;   // lambda * d2g/du2 (disp x disp)
-        std::unique_ptr<mfem::HypreParMatrix> G;   // dg/du (contact x disp)
+        std::unique_ptr<mfem::HypreParMatrix> H;  // lambda * d2g/du2 (disp x disp)
+        std::unique_ptr<mfem::HypreParMatrix> G;  // dg/du (contact x disp)
         // TODO: adapt to actual tribol API
         tribol::evaluateContactJacobian( cs_id, *lambda, H, G );
 
@@ -688,11 +676,11 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         // from the Newton system and keeping them fixed at the prescribed values.
 
         mfem::Vector R_u( disp_size );
-        K_elastic->Mult( U, R_u );       // R_u = K * U
-        R_u += r_contact_force;           // R_u += G^T * lambda
+        K_elastic->Mult( U, R_u );  // R_u = K * U
+        R_u += r_contact_force;     // R_u += G^T * lambda
 
         mfem::Vector R_lambda( contact_size );
-        R_lambda = r_gap;                 // R_lambda = g_tilde
+        R_lambda = r_gap;  // R_lambda = g_tilde
 
         // Compute residual norms for convergence check
         double norm_R_u = mfem::InnerProduct( MPI_COMM_WORLD, R_u, R_u );
@@ -703,8 +691,7 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         }
         double residual_norm = std::sqrt( std::abs( norm_R_u ) + norm_R_lambda );
 
-        SLIC_INFO( "  Step " << step << " Newton " << newton
-                   << " | residual = " << residual_norm );
+        SLIC_INFO( "  Step " << step << " Newton " << newton << " | residual = " << residual_norm );
 
         if ( newton > 0 && residual_norm < newton_atol_ ) {
           SLIC_INFO( "  Newton converged (abs tol) at iteration " << newton );
@@ -789,8 +776,8 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         solver.SetOperator( J_block );
         solver.Mult( rhs, delta );
 
-        SLIC_INFO( "    Solver converged: " << solver.GetConverged()
-                   << " in " << solver.GetNumIterations() << " iterations" );
+        SLIC_INFO( "    Solver converged: " << solver.GetConverged() << " in " << solver.GetNumIterations()
+                                            << " iterations" );
 
         // ---- Update solution ----
 
@@ -807,15 +794,13 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
 
       }  // end Newton loop
 
-      SLIC_INFO( "Timestep " << step << "/" << num_timesteps_
-                 << " | prescribed disp = " << current_prescribed_disp );
+      SLIC_INFO( "Timestep " << step << "/" << num_timesteps_ << " | prescribed disp = " << current_prescribed_disp );
 
       // Save VisIt output
       {
         auto& P = *par_fe_space.GetProlongationMatrix();
         P.Mult( U, displacement );
       }
-
 
     }  // end timestep loop
 
@@ -842,17 +827,12 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
 
     SLIC_INFO( "Analytical: eps_yy = " << eps_yy << ", eps_xx = " << eps_xx );
 
-    mfem::VectorFunctionCoefficient exact_sol_coeff( 2,
-      [eps_xx, eps_yy]( const mfem::Vector& x, mfem::Vector& u ) {
-        u[0] = eps_xx * x[0];
-        u[1] = eps_yy * x[1];
-      } );
-
-
+    mfem::VectorFunctionCoefficient exact_sol_coeff( 2, [eps_xx, eps_yy]( const mfem::Vector& x, mfem::Vector& u ) {
+      u[0] = eps_xx * x[0];
+      u[1] = eps_yy * x[1];
+    } );
 
     exact_disp.ProjectCoefficient( exact_sol_coeff );
-
-
 
     visit_dc.SetCycle( 1 );
     visit_dc.SetTime( 1.0 );
@@ -873,9 +853,9 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
 
     for ( int i = 0; i < n; ++i ) {
       ux_exact( i ) = exact_disp( i );
-      ux_num( i )   = displacement( i );
+      ux_num( i ) = displacement( i );
       uy_exact( i ) = exact_disp( n + i );
-      uy_num( i )   = displacement( n + i );
+      uy_num( i ) = displacement( n + i );
     }
 
     mfem::ParGridFunction ux_err( ux_exact );
@@ -890,8 +870,7 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
     SLIC_INFO( "L2 error (x):      " << l2_err_x_ );
     SLIC_INFO( "L2 error (y):      " << l2_err_y_ );
     SLIC_INFO( "Consistency check |err_vec^2 - (err_x^2 + err_y^2)| = "
-               << std::abs( l2_err_vec_ * l2_err_vec_
-                            - ( l2_err_x_ * l2_err_x_ + l2_err_y_ * l2_err_y_ ) ) );
+               << std::abs( l2_err_vec_ * l2_err_vec_ - ( l2_err_x_ * l2_err_x_ + l2_err_y_ * l2_err_y_ ) ) );
   }
 };
 
@@ -899,8 +878,8 @@ TEST_P( MfemMortarEnergyLagrangePatchTest, check_patch_test )
 {
   EXPECT_GT( max_disp_, 0.0 );
   EXPECT_NEAR( 0.0, l2_err_vec_, 1.0e-2 );
-  EXPECT_NEAR( 0.0, l2_err_x_,  1.0e-2 );
-  EXPECT_NEAR( 0.0, l2_err_y_,  1.0e-2 );
+  EXPECT_NEAR( 0.0, l2_err_x_, 1.0e-2 );
+  EXPECT_NEAR( 0.0, l2_err_y_, 1.0e-2 );
 
   MPI_Barrier( MPI_COMM_WORLD );
 }

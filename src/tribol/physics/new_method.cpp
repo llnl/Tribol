@@ -61,7 +61,7 @@ void determine_legendre_nodes( int N, std::vector<double>& x )
     x[1] = -a;
     x[2] = a;
     x[3] = b;
-    } else if ( N == 5 ) {
+  } else if ( N == 5 ) {
     const double a = std::sqrt( 5.0 - 2.0 * std::sqrt( 10.0 / 7.0 ) ) / 3.0;
     const double b = std::sqrt( 5.0 + 2.0 * std::sqrt( 10.0 / 7.0 ) ) / 3.0;
     x[0] = -b;
@@ -86,7 +86,7 @@ void determine_legendre_weights( int N, std::vector<double>& W )
     W[0] = 5.0 / 9.0;
     W[1] = 8.0 / 9.0;
     W[2] = 5.0 / 9.0;
-  } else if (N ==4) {
+  } else if ( N == 4 ) {
     W[0] = ( 18 - std::sqrt( 30 ) ) / 36.0;
     W[1] = ( 18 + std::sqrt( 30 ) ) / 36.0;
     W[2] = ( 18 + std::sqrt( 30 ) ) / 36.0;
@@ -101,7 +101,6 @@ void determine_legendre_weights( int N, std::vector<double>& W )
     assert( false && "Unsupported quadrature order" );
   }
 }
-
 
 void iso_map( const double* coord1, const double* coord2, double xi, double* mapped_coord )
 {
@@ -425,7 +424,7 @@ std::array<double, 2> ContactSmoothing::bounds_from_projections( const std::arra
 
   const double del = p_.del;
 
-    if ( xi_max < -0.5) {
+  if ( xi_max < -0.5 ) {
     xi_max = -0.5;
   }
   if ( xi_min > 0.5 ) {
@@ -489,8 +488,6 @@ std::array<double, 2> ContactSmoothing::bounds_from_projections( const std::arra
 //   return smooth_bounds;
 // }
 
-
-
 std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 2>& bounds ) const
 {
   std::array<double, 2> smooth_bounds;
@@ -499,37 +496,27 @@ std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 
     double xi = 0.0;
     double xi_hat = 0.0;
     xi = bounds[i] + 0.5;
-    if (del == 0.0) {
+    if ( del == 0.0 ) {
       xi_hat = xi;
-    }
-    else{
-    if ( 0.0 <= xi && xi <= del ) {
-      xi_hat = (xi*xi*(2 * del -xi)) / (del * del);
-      std::cout << "zone1" << std::endl;
-    } else if ( ( 1.0 - del ) <= xi && xi <= 1.0 ) {
-      std::cout << "Zone 2: " << std::endl;
-      xi_hat = 1 - ((1 - xi)*(1 - xi) * (2 * del - ( 1 - xi )) / (del * del));
-    
-    } else if ( del <= xi && xi <= ( 1.0 - del ) ) {
-      xi_hat = xi;
-      std::cout << "zone3" << std::endl;
-    }
+    } else {
+      if ( 0.0 <= xi && xi <= del ) {
+        xi_hat = ( xi * xi * ( 2 * del - xi ) ) / ( del * del );
+        std::cout << "zone1" << std::endl;
+      } else if ( ( 1.0 - del ) <= xi && xi <= 1.0 ) {
+        std::cout << "Zone 2: " << std::endl;
+        xi_hat = 1 - ( ( 1 - xi ) * ( 1 - xi ) * ( 2 * del - ( 1 - xi ) ) / ( del * del ) );
+
+      } else if ( del <= xi && xi <= ( 1.0 - del ) ) {
+        xi_hat = xi;
+        std::cout << "zone3" << std::endl;
+      }
     }
     smooth_bounds[i] = xi_hat - 0.5;
-      std::cout << "Smooth Bounds: " << smooth_bounds[i] << std::endl;
+    std::cout << "Smooth Bounds: " << smooth_bounds[i] << std::endl;
   }
 
   return smooth_bounds;
 }
-
-
-
-
-
-
-
-
-
 
 QuadPoints ContactEvaluator::compute_quadrature( const std::array<double, 2>& xi_bounds ) const
 {
