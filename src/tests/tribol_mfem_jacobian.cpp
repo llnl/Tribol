@@ -7,6 +7,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cmath>
 
 // MFEM includes
@@ -340,26 +341,46 @@ TEST_F( MfemJacobianTest, lor_transfer_matches_mfem_l2projection_h1 )
   // Also compare on a small set of unit true-dof vectors, prolonged to a
   // conforming DOF vector before applying the operators. This helps localize
   // mismatches to specific true-dofs (e.g. shared/constrained dofs).
-  std::vector<int> sample_tdofs;
-  const int ntdof_local = ho_fes.GetTrueVSize();
-  if ( ntdof_local > 0 ) {
-    sample_tdofs.push_back( 0 );
-  }
-  if ( ntdof_local > 1 ) {
-    sample_tdofs.push_back( ntdof_local / 2 );
-  }
-  if ( ntdof_local > 2 ) {
-    sample_tdofs.push_back( ntdof_local - 1 );
-  }
-  for ( int i = 1; static_cast<int>( sample_tdofs.size() ) < std::min( 5, ntdof_local ); ++i ) {
-    sample_tdofs.push_back( i );
+  int myrank = 0;
+  int nranks = 1;
+  MPI_Comm_rank( MPI_COMM_WORLD, &myrank );
+  MPI_Comm_size( MPI_COMM_WORLD, &nranks );
+
+  // Choose a small set of *global* true-dof indices and broadcast it so all
+  // ranks execute the same number of MPI collectives (some ranks may own zero
+  // local true-dofs).
+  std::vector<long long> sample_gtdofs;
+  {
+    const HYPRE_BigInt* tdof_offsets = ho_fes.GetTrueDofOffsets();
+    ASSERT_NE( tdof_offsets, nullptr );
+    const HYPRE_BigInt global_true = tdof_offsets[nranks];
+
+    if ( myrank == 0 && global_true > 0 ) {
+      sample_gtdofs = {0,
+                       static_cast<long long>( global_true / 2 ),
+                       static_cast<long long>( global_true - 1 ),
+                       static_cast<long long>( global_true / 3 ),
+                       static_cast<long long>( ( 2 * global_true ) / 3 )};
+      std::sort( sample_gtdofs.begin(), sample_gtdofs.end() );
+      sample_gtdofs.erase( std::unique( sample_gtdofs.begin(), sample_gtdofs.end() ), sample_gtdofs.end() );
+      if ( static_cast<int>( sample_gtdofs.size() ) > 5 ) {
+        sample_gtdofs.resize( 5 );
+      }
+    }
+
+    int n = static_cast<int>( sample_gtdofs.size() );
+    MPI_Bcast( &n, 1, MPI_INT, 0, MPI_COMM_WORLD );
+    sample_gtdofs.resize( static_cast<size_t>( n ) );
+    if ( n > 0 ) {
+      MPI_Bcast( sample_gtdofs.data(), n, MPI_LONG_LONG, 0, MPI_COMM_WORLD );
+    }
   }
 
   double local_max_err = 0.0;
-  int local_max_tdof = -1;
+  long long local_max_gtdof = -1;
   double global_max_err = 0.0;
   int global_max_rank = -1;
-  int global_max_tdof = -1;
+  long long global_max_gtdof = -1;
   double local_max_res_vs_pt = 0.0;
   double local_max_res_vs_wpt = 0.0;
   double global_max_res_vs_pt = 0.0;
@@ -395,9 +416,19 @@ TEST_F( MfemJacobianTest, lor_transfer_matches_mfem_l2projection_h1 )
   mfem::Vector y_tribol_unit( lor_fes.GetVSize() );
   mfem::Vector diff_unit( lor_fes.GetVSize() );
 
-  for ( int idx : sample_tdofs ) {
+  for ( long long gtdof_ll : sample_gtdofs ) {
+    const HYPRE_BigInt gtdof = static_cast<HYPRE_BigInt>( gtdof_ll );
+
     e_true = 0.0;
-    e_true[idx] = 1.0;
+    {
+      const auto& tdof_offsets = ho_fes.GetTrueDofOffsets();
+      const HYPRE_BigInt lo = tdof_offsets[myrank];
+      const HYPRE_BigInt hi = tdof_offsets[myrank + 1];
+      if ( gtdof >= lo && gtdof < hi ) {
+        const int local = static_cast<int>( gtdof - lo );
+        e_true[local] = 1.0;
+      }
+    }
 
     x_unit = 0.0;
     if ( P_ho ) {
@@ -468,12 +499,9 @@ TEST_F( MfemJacobianTest, lor_transfer_matches_mfem_l2projection_h1 )
     const double err = std::sqrt( global_norm2 );
     if ( err > local_max_err ) {
       local_max_err = err;
-      local_max_tdof = idx;
+      local_max_gtdof = gtdof_ll;
     }
   }
-
-  int myrank = 0;
-  MPI_Comm_rank( MPI_COMM_WORLD, &myrank );
 
   struct {
     double val;
@@ -485,19 +513,16 @@ TEST_F( MfemJacobianTest, lor_transfer_matches_mfem_l2projection_h1 )
   global_max_err = out.val;
   global_max_rank = out.rank;
 
-  global_max_tdof = local_max_tdof;
-  MPI_Bcast( &global_max_tdof, 1, MPI_INT, global_max_rank, MPI_COMM_WORLD );
+  global_max_gtdof = local_max_gtdof;
+  MPI_Bcast( &global_max_gtdof, 1, MPI_LONG_LONG, global_max_rank, MPI_COMM_WORLD );
 
   MPI_Allreduce( &local_max_res_vs_pt, &global_max_res_vs_pt, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD );
   MPI_Allreduce( &local_max_res_vs_wpt, &global_max_res_vs_wpt, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD );
 
   if ( global_max_err >= 1e-10 ) {
     if ( myrank == 0 ) {
-      const auto& tdof_offsets = ho_fes.GetTrueDofOffsets();
-      const long long gtdof =
-          static_cast<long long>( tdof_offsets[global_max_rank] + static_cast<HYPRE_BigInt>( global_max_tdof ) );
       ADD_FAILURE() << "Max unit-tdof mismatch: err=" << global_max_err << " at rank=" << global_max_rank
-                    << " local_tdof=" << global_max_tdof << " global_tdof=" << gtdof
+                    << " global_tdof=" << global_max_gtdof
                     << " (max ||R_ho - P^T||=" << global_max_res_vs_pt
                     << ", max ||R_ho - W*P^T||=" << global_max_res_vs_wpt << ")";
     }
