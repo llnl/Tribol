@@ -12,6 +12,9 @@
 #include "umpire/ResourceManager.hpp"
 #endif
 
+// Axom includes
+#include "axom/core.hpp"
+
 // MFEM includes
 #include "mfem.hpp"
 

@@ -28,6 +28,7 @@
 
     "linux_ubuntu_24":
     [ "+raja+umpire+enzyme+profiling ^hypre+int64 %clang_19",
-      "+cuda+raja+umpire+enzyme+profiling cuda_arch=86 ^hypre+int64 %clang_19" ]
+      "+cuda+raja+umpire+enzyme cuda_arch=89 ^openmpi+cuda cuda_arch=89 fabrics=ucx ^ucx+cuda cuda_arch=89 ^hypre+int64 %clang_19"
+    ]
       
 }

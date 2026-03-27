@@ -5,21 +5,64 @@
 
 #include "PartitionElements.hpp"
 
+#include "mfem.hpp"
+
 namespace redecomp {
 
 template <int NDIMS>
-std::vector<axom::Array<Point<NDIMS>>> PartitionElements<NDIMS>::EntityCoordinates(
+std::vector<CoordList<NDIMS>> PartitionElements<NDIMS>::EntityCoordinates(
     const std::vector<const mfem::ParMesh*>& par_meshes ) const
 {
-  auto elem_centroids = std::vector<axom::Array<Point<NDIMS>>>();
+  auto elem_centroids = std::vector<CoordList<NDIMS>>();
   elem_centroids.reserve( par_meshes.size() );
+
   for ( auto par_mesh : par_meshes ) {
     auto n_elems = par_mesh->GetNE();
-    elem_centroids.emplace_back( n_elems, n_elems );
-    for ( int i{ 0 }; i < n_elems; ++i ) {
-      auto vec_centroid = mfem::Vector( elem_centroids.back()[i].data(), NDIMS );
-      // TODO: const version of GetElementCenter()
-      const_cast<mfem::ParMesh*>( par_mesh )->GetElementCenter( i, vec_centroid );
+    if ( n_elems == 0 ) {
+      elem_centroids.emplace_back( mfem::Vector() );
+      continue;
+    }
+
+    auto compute_centroids = [&]( const mfem::ParGridFunction& coords ) {
+      mfem::Vector mesh_centroids( n_elems * NDIMS );
+      mesh_centroids.UseDevice( coords.UseDevice() );
+      // Create an IntegrationRule with a single point: the reference center
+      // Assuming a single element type in the mesh
+      mfem::Geometry::Type geom_type = par_mesh->GetElementBaseGeometry( 0 );
+      mfem::IntegrationRule ir;
+      ir.Append( mfem::Geometries.GetCenter( geom_type ) );
+
+      // Setup QuadratureInterpolator. We want to evaluate the 'nodes' GridFunction at the integration points (centers).
+      auto fes = coords.FESpace();
+      const mfem::QuadratureInterpolator* qi = fes->GetQuadratureInterpolator( ir );
+
+      //    We need the ElementRestriction to convert the global 'nodes' vector to E-vector.
+      //    We use LEXICOGRAPHIC ordering which is required for Tensor product evaluation
+      //    often used on device for quads/hexes.
+      const mfem::Operator* er = fes->GetElementRestriction( mfem::ElementDofOrdering::LEXICOGRAPHIC );
+
+      mfem::Vector e_vec( er->Height() );
+
+      // Perform the calculation on device.
+      //    a) Global to Element (E-vector)
+      er->Mult( coords, e_vec );
+      //    b) Interpolate to Quadrature points (Q-vector)
+      qi->Values( e_vec, mesh_centroids );
+
+      return mesh_centroids;
+    };
+
+    auto coords = dynamic_cast<const mfem::ParGridFunction*>( par_mesh->GetNodes() );
+    if ( coords ) {
+      elem_centroids.emplace_back( compute_centroids( *coords ) );
+    } else {
+      // Create temporary nodes
+      auto* non_const_mesh = const_cast<mfem::ParMesh*>( par_mesh );
+      mfem::H1_FECollection fec( 1, NDIMS );
+      mfem::ParFiniteElementSpace fes( non_const_mesh, &fec, NDIMS );
+      mfem::ParGridFunction nodes( &fes );
+      non_const_mesh->GetNodes( nodes );
+      elem_centroids.emplace_back( compute_centroids( nodes ) );
     }
   }
   return elem_centroids;

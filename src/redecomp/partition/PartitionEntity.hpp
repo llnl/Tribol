@@ -10,6 +10,7 @@
 
 #include "mfem.hpp"
 
+#include "redecomp/common/CoordList.hpp"
 #include "redecomp/common/TypeDefs.hpp"
 
 namespace redecomp {
@@ -33,7 +34,7 @@ class PartitionEntity {
    * @param par_meshes Input meshes
    * @return Vector of array of points from each entity on each mesh
    */
-  virtual std::vector<axom::Array<Point<NDIMS>>> EntityCoordinates(
+  virtual std::vector<CoordList<NDIMS>> EntityCoordinates(
       const std::vector<const mfem::ParMesh*>& par_meshes ) const = 0;
 
   /**

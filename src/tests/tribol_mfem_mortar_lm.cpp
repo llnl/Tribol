@@ -138,7 +138,6 @@ class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Eleme
     a.FormSystemMatrix( ess_tdof_list, *A );
 
     // set up tribol
-    coords.ReadWrite();
     int coupling_scheme_id = 0;
     int mesh1_id = 0;
     int mesh2_id = 1;
@@ -149,7 +148,6 @@ class MfemMortarTest : public testing::TestWithParam<std::tuple<int, mfem::Eleme
     tribol::setLagrangeMultiplierOptions( 0, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN );
     tribol::setResidualGap( coupling_scheme_id, residual_gap );
 
-    coords.ReadWrite();
     // update tribol (compute contact contribution to force and stiffness)
     tribol::updateMfemParallelDecomposition();
     tribol::RealT dt{ 1.0 };  // time is arbitrary here (no timesteps)
@@ -250,6 +248,19 @@ int main( int argc, char* argv[] )
 #ifdef TRIBOL_USE_UMPIRE
   umpire::ResourceManager::getInstance();  // initialize umpire's ResouceManager
 #endif
+
+#if defined( TRIBOL_USE_CUDA )
+  std::string device_str( "cuda" );
+#elif defined( TRIBOL_USE_HIP )
+  std::string device_str( "hip" );
+#elif defined( TRIBOL_USE_OPENMP )
+  std::string device_str( "omp" );
+#else
+  std::string device_str( "cpu" );
+#endif
+
+  mfem::Device device( device_str );
+  device.Print();
 
   axom::slic::SimpleLogger logger;  // create & initialize test logger, finalized when
                                     // exiting main scope
