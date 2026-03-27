@@ -126,7 +126,8 @@ class CartesianProduct : public SearchBase {
     auto& contactPairs = m_coupling_scheme->getInterfacePairs();
     contactPairs.resize( countArray_host[0] );
 
-    countArray.fill( 0 );
+    int zero = 0;
+    axom::copy(countArray.data(), &zero, sizeof(int));
     auto pairs_view = m_coupling_scheme->getInterfacePairs().view();
     // fill proximate pairs array
     forAllExec(
