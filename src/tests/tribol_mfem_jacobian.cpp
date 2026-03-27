@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 
 // MFEM includes
 #include "mfem.hpp"
@@ -529,6 +530,122 @@ TEST_F( MfemJacobianTest, lor_transfer_matches_mfem_l2projection_h1 )
   }
 
   EXPECT_LT( global_max_err, 1e-10 );
+}
+
+TEST_F( MfemJacobianTest, lor_transfer_fallback_buildH1TrueRestriction_matches_mfem )
+{
+  // Force Tribol to use its explicit BuildH1TrueRestriction() path (instead of
+  // reusing MFEM's internal true-dof operator) when building the HO->LOR transfer.
+  setenv( "TRIBOL_MFEM_FORCE_LOR_FALLBACK", "1", 1 );
+
+  int ref_levels = 0;
+  int nel_per_dir = std::pow( 2, ref_levels );
+
+  auto mortar_attrs = std::set<int>( { 4 } );
+  auto nonmortar_attrs = std::set<int>( { 5 } );
+
+  // clang-format off
+  mfem::ParMesh mesh = shared::ParMeshBuilder(MPI_COMM_WORLD, shared::MeshBuilder::Unify({
+    shared::MeshBuilder::CubeMesh(nel_per_dir, nel_per_dir, nel_per_dir)
+      .updateBdrAttrib(3, 7)
+      .updateBdrAttrib(1, 3)
+      .updateBdrAttrib(4, 7)
+      .updateBdrAttrib(5, 1)
+      .updateBdrAttrib(6, 4),
+    shared::MeshBuilder::CubeMesh(nel_per_dir, nel_per_dir, nel_per_dir)
+      .translate({0.0, 0.0, 0.99})
+      .updateBdrAttrib(1, 8)
+      .updateBdrAttrib(3, 7)
+      .updateBdrAttrib(4, 7)
+      .updateBdrAttrib(5, 1)
+      .updateBdrAttrib(8, 5)
+  }));
+  // clang-format on
+
+  const int order = 2;
+  mesh.SetCurvature( order );
+  auto* nodes = dynamic_cast<mfem::ParGridFunction*>( mesh.GetNodes() );
+  ASSERT_NE( nodes, nullptr );
+  mfem::ParGridFunction coords( nodes->ParFESpace() );
+  coords = *nodes;
+
+  int cs_id = 3;
+  int mesh1_id = 0;
+  int mesh2_id = 1;
+  tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
+                                      tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::SINGLE_MORTAR,
+                                      tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID );
+  tribol::updateMfemParallelDecomposition();
+
+  auto& cs_manager = tribol::CouplingSchemeManager::getInstance();
+  auto* cs = cs_manager.findData( cs_id );
+  ASSERT_NE( cs, nullptr );
+
+  auto* mesh_data = cs->getMfemMeshData();
+  auto* submesh_data = cs->getMfemSubmeshData();
+  ASSERT_NE( mesh_data, nullptr );
+  ASSERT_NE( submesh_data, nullptr );
+
+  cs->setMfemJacobianData(
+      std::make_unique<tribol::MfemJacobianData>( *mesh_data, *submesh_data, cs->getContactMethod() ) );
+  auto* jac_data = cs->getMfemJacobianData();
+  ASSERT_NE( jac_data, nullptr );
+  jac_data->UpdateJacobianXfer();
+
+  const auto* T = jac_data->GetDisplacementHoToLorTransfer();
+  ASSERT_NE( T, nullptr );
+
+  const mfem::ParFiniteElementSpace& ho_fes = mesh_data->GetSubmeshFESpace();
+  const mfem::ParFiniteElementSpace* lor_fes_ptr = mesh_data->GetLORMeshFESpace();
+  ASSERT_NE( lor_fes_ptr, nullptr );
+  const mfem::ParFiniteElementSpace& lor_fes = *lor_fes_ptr;
+
+  auto& ho_fes_nc = const_cast<mfem::ParFiniteElementSpace&>( ho_fes );
+  auto& lor_fes_nc = const_cast<mfem::ParFiniteElementSpace&>( lor_fes );
+  mfem::L2ProjectionGridTransfer mfem_xfer( ho_fes_nc, lor_fes_nc );
+  mfem_xfer.UseEA( false );
+  const mfem::Operator& F = mfem_xfer.ForwardOperator();
+
+  mfem::Vector x_ho_true( ho_fes.GetTrueVSize() );
+  {
+    int myid = 0;
+    MPI_Comm_rank( MPI_COMM_WORLD, &myid );
+    const HYPRE_BigInt* tdof_offsets = ho_fes.GetTrueDofOffsets();
+    ASSERT_NE( tdof_offsets, nullptr );
+    const double g0 = static_cast<double>( tdof_offsets[myid] );
+    for ( int i = 0; i < x_ho_true.Size(); ++i ) {
+      x_ho_true[i] = std::sin( 0.1 * ( g0 + static_cast<double>( i ) + 1.0 ) );
+    }
+  }
+
+  mfem::Vector x_ho( ho_fes.GetVSize() );
+  x_ho = 0.0;
+  const mfem::Operator* P_ho = ho_fes.GetProlongationMatrix();
+  if ( P_ho ) {
+    P_ho->Mult( x_ho_true, x_ho );
+  } else {
+    x_ho = x_ho_true;
+  }
+
+  mfem::Vector y_mfem( lor_fes.GetVSize() );
+  y_mfem = 0.0;
+  F.Mult( x_ho, y_mfem );
+
+  mfem::Vector y_tribol( lor_fes.GetVSize() );
+  y_tribol = 0.0;
+  T->get().Mult( x_ho, y_tribol );
+
+  mfem::Vector diff( y_mfem.Size() );
+  diff = 0.0;
+  diff += y_mfem;
+  diff -= y_tribol;
+
+  double local_norm2 = diff * diff;
+  double global_norm2 = 0.0;
+  MPI_Allreduce( &local_norm2, &global_norm2, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
+  EXPECT_LT( std::sqrt( global_norm2 ), 1e-10 );
+
+  unsetenv( "TRIBOL_MFEM_FORCE_LOR_FALLBACK" );
 }
 
 int main( int argc, char* argv[] )
