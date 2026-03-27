@@ -1226,6 +1226,13 @@ MfemSubmeshData::MfemSubmeshData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_
   submesh_pressure_ = 0.0;
 }
 
+void MfemSubmeshData::SetLORMesh( mfem::ParMesh* lor_mesh )
+{
+  submesh_lor_xfer_ =
+      lor_mesh ? std::make_unique<SubmeshLORTransfer>( *submesh_pressure_.ParFESpace(), *lor_mesh ) : nullptr;
+  update_data_.reset( nullptr );
+}
+
 void MfemSubmeshData::UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_mesh, bool new_redecomp )
 {
   if ( new_redecomp || !update_data_ ) {
