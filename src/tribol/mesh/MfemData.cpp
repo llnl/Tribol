@@ -12,6 +12,7 @@
 #include <map>
 #include <vector>
 #include <cstdlib>
+#include <cstring>
 
 #include "axom/slic.hpp"
 
@@ -35,6 +36,14 @@ class L2ProjectionH1SpaceHack : public mfem::L2ProjectionGridTransfer::L2Project
 
   const mfem::Operator* GetTrueRestriction() const { return R.get(); }
 };
+
+bool GetEnvBool( const char* name )
+{
+  const char* v = std::getenv( name );
+  if ( v == nullptr ) return false;
+  // Treat explicit "0" as false; anything else means enabled.
+  return !( v[0] == '0' && v[1] == '\0' );
+}
 
 void TDofsListByVDim( const mfem::ParFiniteElementSpace& fes, int vdim, mfem::Array<int>& tdofs_list )
 {
@@ -198,95 +207,93 @@ shared::ParSparseMat BuildH1TrueRestriction( const mfem::ParFiniteElementSpace& 
   const int ndof_ho = ho_scalar.GetNDofs();
   const int ndof_lor = lor_scalar.GetNDofs();
 
-  if ( nel_ho == 0 || nel_lor == 0 || ndof_ho == 0 || ndof_lor == 0 ) {
-    mfem::SparseMatrix empty_diag( lor_scalar.GetVSize(), ho_scalar.GetVSize() );
-    empty_diag.Finalize();
-    return shared::ParSparseMat( mesh_ho->GetComm(), lor_scalar.GlobalVSize(), ho_scalar.GlobalVSize(),
-                                 lor_scalar.GetDofOffsets(), ho_scalar.GetDofOffsets(), std::move( empty_diag ) );
-  }
-
-  const mfem::CoarseFineTransformations& cf_tr = mesh_lor->GetRefinementTransforms();
-  mfem::Table ho2lor;
-  BuildHo2Lor( ho2lor, nel_ho, nel_lor, cf_tr );
-
-  mfem::Vector ML_inv( ndof_lor );
-  ML_inv = 0.0;
-
-  // Assemble lumped LOR mass row-sums on ldofs
-  for ( int ilor = 0; ilor < nel_lor; ++ilor ) {
-    const mfem::Geometry::Type geom = mesh_lor->GetElementBaseGeometry( ilor );
-    const mfem::FiniteElement& fe_lor = *lor_scalar.GetFE( ilor );
-    mfem::ElementTransformation* el_tr = lor_scalar.GetElementTransformation( ilor );
-
-    const int order = 2 * fe_lor.GetOrder() + el_tr->OrderW();
-    const mfem::IntegrationRule* ir = &mfem::IntRules.Get( geom, order );
-
-    const int nedof_lor = fe_lor.GetDof();
-    mfem::Vector ML_el( nedof_lor );
-    mfem::Vector shape_lor( nedof_lor );
-    ML_el = 0.0;
-
-    for ( int i = 0; i < ir->GetNPoints(); ++i ) {
-      const mfem::IntegrationPoint& ip_lor = ir->IntPoint( i );
-      fe_lor.CalcShape( ip_lor, shape_lor );
-      el_tr->SetIntPoint( &ip_lor );
-      shape_lor *= ( el_tr->Weight() * ip_lor.weight );
-      ML_el += shape_lor;
-    }
-
-    mfem::Array<int> dofs_lor( nedof_lor );
-    lor_scalar.GetElementDofs( ilor, dofs_lor );
-    ML_inv.AddElementVector( dofs_lor, ML_el );
-  }
-
-  LumpedMassInverse( lor_scalar, ML_inv );
-
   mfem::SparseMatrix R_dof( ndof_lor, ndof_ho );
-
+  mfem::Vector ML_inv;
+  mfem::Table ho2lor;
   mfem::IntegrationPointTransformation ip_tr;
   mfem::IsoparametricTransformation& emb_tr = ip_tr.Transf;
 
-  for ( int iho = 0; iho < nel_ho; ++iho ) {
-    mfem::Array<int> lor_els;
-    ho2lor.GetRow( iho, lor_els );
-    if ( lor_els.Size() == 0 ) continue;
+  // Even if a rank has no local elements/DOFs (e.g. small meshes on many MPI
+  // ranks), all ranks must still participate in the subsequent parallel
+  // multiplies. In that case we simply build an empty local operator here.
+  if ( nel_ho > 0 && nel_lor > 0 && ndof_ho > 0 && ndof_lor > 0 ) {
+    const mfem::CoarseFineTransformations& cf_tr = mesh_lor->GetRefinementTransforms();
+    BuildHo2Lor( ho2lor, nel_ho, nel_lor, cf_tr );
 
-    const mfem::Geometry::Type geom = mesh_ho->GetElementBaseGeometry( iho );
-    const mfem::FiniteElement& fe_ho = *ho_scalar.GetFE( iho );
-    const mfem::FiniteElement& fe_lor = *lor_scalar.GetFE( lor_els[0] );
-    mfem::ElementTransformation* tr_ho = ho_scalar.GetElementTransformation( iho );
+    ML_inv.SetSize( ndof_lor );
+    ML_inv = 0.0;
 
-    emb_tr.SetIdentityTransformation( geom );
-    const mfem::DenseTensor& pmats = cf_tr.point_matrices[geom];
+    // Assemble lumped LOR mass row-sums on ldofs
+    for ( int ilor = 0; ilor < nel_lor; ++ilor ) {
+      const mfem::Geometry::Type geom = mesh_lor->GetElementBaseGeometry( ilor );
+      const mfem::FiniteElement& fe_lor = *lor_scalar.GetFE( ilor );
+      mfem::ElementTransformation* el_tr = lor_scalar.GetElementTransformation( ilor );
 
-    const int nedof_ho = fe_ho.GetDof();
-    const int nedof_lor = fe_lor.GetDof();
-    mfem::DenseMatrix M_LH_el( nedof_lor, nedof_ho );
-    mfem::DenseMatrix R_el( nedof_lor, nedof_ho );
+      const int order = 2 * fe_lor.GetOrder() + el_tr->OrderW();
+      const mfem::IntegrationRule* ir = &mfem::IntRules.Get( geom, order );
 
-    mfem::Array<int> dofs_ho( nedof_ho );
-    ho_scalar.GetElementDofs( iho, dofs_ho );
+      const int nedof_lor = fe_lor.GetDof();
+      mfem::Vector ML_el( nedof_lor );
+      mfem::Vector shape_lor( nedof_lor );
+      ML_el = 0.0;
 
-    for ( int iref = 0; iref < lor_els.Size(); ++iref ) {
-      const int ilor = lor_els[iref];
-      mfem::ElementTransformation* tr_lor = lor_scalar.GetElementTransformation( ilor );
-
-      emb_tr.SetPointMat( pmats( cf_tr.embeddings[ilor].matrix ) );
-
-      ElemMixedMass( geom, fe_ho, fe_lor, tr_ho, tr_lor, ip_tr, M_LH_el );
+      for ( int i = 0; i < ir->GetNPoints(); ++i ) {
+        const mfem::IntegrationPoint& ip_lor = ir->IntPoint( i );
+        fe_lor.CalcShape( ip_lor, shape_lor );
+        el_tr->SetIntPoint( &ip_lor );
+        shape_lor *= ( el_tr->Weight() * ip_lor.weight );
+        ML_el += shape_lor;
+      }
 
       mfem::Array<int> dofs_lor( nedof_lor );
       lor_scalar.GetElementDofs( ilor, dofs_lor );
+      ML_inv.AddElementVector( dofs_lor, ML_el );
+    }
 
-      R_el = M_LH_el;
-      mfem::Vector row;
-      for ( int r = 0; r < nedof_lor; ++r ) {
-        R_el.GetRow( r, row );
-        row *= ML_inv[dofs_lor[r]];
-        R_el.SetRow( r, row );
+    LumpedMassInverse( lor_scalar, ML_inv );
+
+    for ( int iho = 0; iho < nel_ho; ++iho ) {
+      mfem::Array<int> lor_els;
+      ho2lor.GetRow( iho, lor_els );
+      if ( lor_els.Size() == 0 ) continue;
+
+      const mfem::Geometry::Type geom = mesh_ho->GetElementBaseGeometry( iho );
+      const mfem::FiniteElement& fe_ho = *ho_scalar.GetFE( iho );
+      const mfem::FiniteElement& fe_lor = *lor_scalar.GetFE( lor_els[0] );
+      mfem::ElementTransformation* tr_ho = ho_scalar.GetElementTransformation( iho );
+
+      emb_tr.SetIdentityTransformation( geom );
+      const mfem::DenseTensor& pmats = cf_tr.point_matrices[geom];
+
+      const int nedof_ho = fe_ho.GetDof();
+      const int nedof_lor = fe_lor.GetDof();
+      mfem::DenseMatrix M_LH_el( nedof_lor, nedof_ho );
+      mfem::DenseMatrix R_el( nedof_lor, nedof_ho );
+
+      mfem::Array<int> dofs_ho( nedof_ho );
+      ho_scalar.GetElementDofs( iho, dofs_ho );
+
+      for ( int iref = 0; iref < lor_els.Size(); ++iref ) {
+        const int ilor = lor_els[iref];
+        mfem::ElementTransformation* tr_lor = lor_scalar.GetElementTransformation( ilor );
+
+        emb_tr.SetPointMat( pmats( cf_tr.embeddings[ilor].matrix ) );
+
+        ElemMixedMass( geom, fe_ho, fe_lor, tr_ho, tr_lor, ip_tr, M_LH_el );
+
+        mfem::Array<int> dofs_lor( nedof_lor );
+        lor_scalar.GetElementDofs( ilor, dofs_lor );
+
+        R_el = M_LH_el;
+        mfem::Vector row;
+        for ( int r = 0; r < nedof_lor; ++r ) {
+          R_el.GetRow( r, row );
+          row *= ML_inv[dofs_lor[r]];
+          R_el.SetRow( r, row );
+        }
+
+        R_dof.AddSubMatrix( dofs_lor, dofs_ho, R_el );
       }
-
-      R_dof.AddSubMatrix( dofs_lor, dofs_ho, R_el );
     }
   }
 
@@ -1544,9 +1551,9 @@ shared::ParSparseMat MfemJacobianData::BuildLORTransferMatrix( const mfem::ParFi
 
   shared::ParSparseMatView P_lor( const_cast<mfem::HypreParMatrix*>( lor_scalar_fes.Dof_TrueDof_Matrix() ) );
   std::unique_ptr<L2ProjectionH1SpaceHack> mfem_h1;
-  std::unique_ptr<shared::ParSparseMat> R_true_fallback;
+  std::unique_ptr<shared::ParSparseMat> R_true_owned;
 
-  const bool force_fallback = ( std::getenv( "TRIBOL_MFEM_FORCE_LOR_FALLBACK" ) != nullptr );
+  const bool force_fallback = GetEnvBool( "TRIBOL_MFEM_FORCE_LOR_FALLBACK" );
 
   const mfem::HypreParMatrix* R_hypre = nullptr;
   if ( !force_fallback ) {
@@ -1557,8 +1564,8 @@ shared::ParSparseMat MfemJacobianData::BuildLORTransferMatrix( const mfem::ParFi
 
   if ( R_hypre == nullptr ) {
     mfem_h1.reset();
-    R_true_fallback = std::make_unique<shared::ParSparseMat>( BuildH1TrueRestriction( ho_scalar_fes, lor_scalar_fes ) );
-    R_hypre = &R_true_fallback->get();
+    R_true_owned = std::make_unique<shared::ParSparseMat>( BuildH1TrueRestriction( ho_scalar_fes, lor_scalar_fes ) );
+    R_hypre = &R_true_owned->get();
   }
 
   shared::ParSparseMatView R_true_view( const_cast<mfem::HypreParMatrix*>( R_hypre ) );
