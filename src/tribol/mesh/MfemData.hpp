@@ -1479,6 +1479,17 @@ class MfemSubmeshData {
                    std::unique_ptr<mfem::FiniteElementCollection> pressure_fec, int pressure_vdim );
 
   /**
+   * @brief Update (or clear) the LOR mesh used for pressure/gap transfers
+   *
+   * @note This should be called if the owning MfemMeshData rebuilds its LOR mesh
+   * (e.g., via MfemMeshData::SetLORFactor()). This resets internal transfer data
+   * so the next UpdateMfemSubmeshData() rebuilds consistent redecomp transfers.
+   *
+   * @param lor_mesh New LOR mesh pointer (nullptr disables LOR transfers)
+   */
+  void SetLORMesh( mfem::ParMesh* lor_mesh );
+
+  /**
    * @brief Build a new transfer operator and update redecomp-level grid
    * functions
    *
