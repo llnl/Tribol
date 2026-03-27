@@ -11,6 +11,7 @@
 
 #include <map>
 #include <vector>
+#include <cstdlib>
 
 #include "axom/slic.hpp"
 
@@ -1545,9 +1546,14 @@ shared::ParSparseMat MfemJacobianData::BuildLORTransferMatrix( const mfem::ParFi
   std::unique_ptr<L2ProjectionH1SpaceHack> mfem_h1;
   std::unique_ptr<shared::ParSparseMat> R_true_fallback;
 
-  mfem_h1 = std::make_unique<L2ProjectionH1SpaceHack>( ho_scalar_fes, lor_scalar_fes, false );
-  const mfem::Operator* R_op = mfem_h1->GetTrueRestriction();
-  auto* R_hypre = dynamic_cast<const mfem::HypreParMatrix*>( R_op );
+  const bool force_fallback = ( std::getenv( "TRIBOL_MFEM_FORCE_LOR_FALLBACK" ) != nullptr );
+
+  const mfem::HypreParMatrix* R_hypre = nullptr;
+  if ( !force_fallback ) {
+    mfem_h1 = std::make_unique<L2ProjectionH1SpaceHack>( ho_scalar_fes, lor_scalar_fes, false );
+    const mfem::Operator* R_op = mfem_h1->GetTrueRestriction();
+    R_hypre = dynamic_cast<const mfem::HypreParMatrix*>( R_op );
+  }
 
   if ( R_hypre == nullptr ) {
     mfem_h1.reset();
