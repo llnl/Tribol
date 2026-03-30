@@ -128,7 +128,7 @@ class CartesianProduct : public SearchBase {
 
     int zero = 0;
     // Workaround for axom::Array::fill() issue for optimized CUDA code, see Axom #1833.
-    axom::copy( countArray.data(), &zero, sizeof(int) );
+    axom::copy( countArray.data(), &zero, sizeof( int ) );
     auto pairs_view = m_coupling_scheme->getInterfacePairs().view();
     // fill proximate pairs array
     forAllExec(
