@@ -12,3 +12,11 @@ endif()
 
 # Need to add symbols to dynamic symtab in order to be visible from stacktraces
 string(APPEND CMAKE_EXE_LINKER_FLAGS " -rdynamic")
+
+# Apple ld warns about duplicate -l flags when the same library is reachable
+# via multiple dependency paths (common with Spack-built CMake targets that use
+# raw -l strings instead of imported targets). Suppress the spurious warning.
+if(APPLE)
+    string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,-no_warn_duplicate_libraries")
+endif()
+
