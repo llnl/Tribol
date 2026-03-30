@@ -300,7 +300,7 @@ void RedecompMesh::BuildRedecomp()
     }
     return parent_gelems;
   } );
-  for ( int i{ 1 }; i < r2p_ghost_elems_.size(); ++i ) {
+  for ( size_t i{ 1 }; i < r2p_ghost_elems_.size(); ++i ) {
     for ( auto& recv_gelem : r2p_ghost_elems_[i] ) {
       recv_gelem += r2p_elem_offsets_[i];
     }
