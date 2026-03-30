@@ -52,23 +52,21 @@ void RedecompTransfer::TransferToSerial( const mfem::QuadratureFunction& src, mf
   TRIBOL_MARK_BEGIN( "Send and receive values over MPI" );
   auto dst_vals = MPIArray<double>( &redecomp->getMPIUtility() );
   dst_vals.SendRecvEach( [redecomp, &src]( int dest ) {
-    auto src_vals = axom::Array<double>();
+    auto src_vals = MPIArray<double>::ArrayT();
     const auto& src_elem_idx = redecomp->getParentToRedecompElems().first[dest];
-    auto n_els = src_elem_idx.size();
+    auto n_els = src_elem_idx.Size();
     if ( n_els > 0 ) {
       auto vals = mfem::Vector();
       // guess the size of send_vals based on the size of the first element
       TRIBOL_MARK_BEGIN( "Getting element values" );
       src.GetValues( src_elem_idx[0], vals );
       TRIBOL_MARK_END( "Getting element values" );
-      src_vals.reserve( vals.Size() * n_els );
-      auto quadpt_ct = 0;
+      src_vals.Reserve( vals.Size() * n_els );
       for ( auto src_elem_id : src_elem_idx ) {
         TRIBOL_MARK_BEGIN( "Getting element values" );
         src.GetValues( src_elem_id, vals );
         TRIBOL_MARK_END( "Getting element values" );
-        src_vals.insert( quadpt_ct, vals.Size(), vals.GetData() );
-        quadpt_ct += vals.Size();
+        src_vals.Append( vals.GetData(), vals.Size() );
       }
     }
     return src_vals;
@@ -112,7 +110,7 @@ void RedecompTransfer::TransferToParallel( const mfem::QuadratureFunction& src, 
   // send and receive quadrature point values from other ranks
   auto dst_vals = MPIArray<double>( &redecomp->getMPIUtility() );
   dst_vals.SendRecvEach( [redecomp, &src]( int dest ) {
-    auto src_vals = axom::Array<double>();
+    auto src_vals = MPIArray<double>::ArrayT();
     auto first_el = redecomp->getRedecompToParentElemOffsets()[dest];
     auto last_el = redecomp->getRedecompToParentElemOffsets()[dest + 1];
     auto n_els = last_el - first_el;
@@ -120,18 +118,16 @@ void RedecompTransfer::TransferToParallel( const mfem::QuadratureFunction& src, 
       auto vals = mfem::Vector();
       // guess the size of send_vals based on the size of the first element
       src.GetValues( first_el, vals );
-      src_vals.reserve( vals.Size() * n_els );
-      auto quadpt_ct = 0;
+      src_vals.Reserve( vals.Size() * n_els );
       auto ghost_ct = 0;
       for ( int e{ first_el }; e < last_el; ++e ) {
         // skip ghost elements
-        if ( ghost_ct < redecomp->getRedecompToParentGhostElems()[dest].size() &&
+        if ( ghost_ct < redecomp->getRedecompToParentGhostElems()[dest].Size() &&
              redecomp->getRedecompToParentGhostElems()[dest][ghost_ct] == e ) {
           ++ghost_ct;
         } else {
           src.GetValues( e, vals );
-          src_vals.insert( quadpt_ct, vals.Size(), vals.GetData() );
-          quadpt_ct += vals.Size();
+          src_vals.Append( vals.GetData(), vals.Size() );
         }
       }
     }
@@ -144,7 +140,7 @@ void RedecompTransfer::TransferToParallel( const mfem::QuadratureFunction& src, 
   auto n_ranks = redecomp->getMPIUtility().NRanks();
   for ( int r{ 0 }; r < n_ranks; ++r ) {
     auto quadpt_ct = 0;
-    for ( int e{ 0 }; e < redecomp->getParentToRedecompElems().first[r].size(); ++e ) {
+    for ( int e{ 0 }; e < redecomp->getParentToRedecompElems().first[r].Size(); ++e ) {
       // skip ghost elements
       if ( !redecomp->getParentToRedecompElems().second[r][e] ) {
         dst.GetValues( redecomp->getParentToRedecompElems().first[r][e], vals );

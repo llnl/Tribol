@@ -6,10 +6,10 @@
 #ifndef SRC_TRIBOL_UTILS_DATAMANAGER_HPP_
 #define SRC_TRIBOL_UTILS_DATAMANAGER_HPP_
 
-// C/C++ includes
+// C++ includes
 #include <unordered_map>
 
-// Tribol includes
+// Shared includes
 #include "tribol/common/BasicTypes.hpp"
 
 // Axom includes

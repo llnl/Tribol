@@ -155,8 +155,8 @@ class MatrixTransfer {
    * @param trial_elem_idx List of element IDs on the redecomp trial space
    * @return MPIArray<int, 2>
    */
-  MPIArray<int, 2> buildRecvMatSizes( const axom::Array<int>& test_elem_idx,
-                                      const axom::Array<int>& trial_elem_idx ) const;
+  MPIArray<int, axom::Array<int, 2>> buildRecvMatSizes( const axom::Array<int>& test_elem_idx,
+                                                        const axom::Array<int>& trial_elem_idx ) const;
 
   /**
    * @brief List of test element offsets received from test space redecomp ranks

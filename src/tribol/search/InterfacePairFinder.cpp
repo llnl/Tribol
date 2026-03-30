@@ -5,17 +5,22 @@
 
 #include "tribol/search/InterfacePairFinder.hpp"
 
+// Axom includes
+#include "axom/slic.hpp"
+#include "axom/primal.hpp"
+#include "axom/spin.hpp"
+
+// Shared includes
 #include "tribol/common/ExecModel.hpp"
+#include "tribol/common/LoopExec.hpp"
+
+// Tribol includes
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/utils/Algorithm.hpp"
 #include "tribol/common/LoopExec.hpp"
-
-#include "axom/slic.hpp"
-#include "axom/primal.hpp"
-#include "axom/spin.hpp"
 
 // Define some namespace aliases to help with axom usage
 namespace primal = axom::primal;

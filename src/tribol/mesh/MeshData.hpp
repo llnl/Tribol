@@ -6,8 +6,13 @@
 #ifndef SRC_TRIBOL_MESH_MESHDATA_HPP_
 #define SRC_TRIBOL_MESH_MESHDATA_HPP_
 
+// C++ includes
 #include <ostream>
 
+// Shared includes
+#include "tribol/common/ExecModel.hpp"
+
+// Tribol includes
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/utils/DataManager.hpp"
