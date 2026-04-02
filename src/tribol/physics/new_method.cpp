@@ -501,18 +501,18 @@ std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 
     } else {
       if ( 0.0 <= xi && xi <= del ) {
         xi_hat = ( xi * xi * ( 2 * del - xi ) ) / ( del * del );
-        std::cout << "zone1" << std::endl;
+        // std::cout << "zone1" << std::endl;
       } else if ( ( 1.0 - del ) <= xi && xi <= 1.0 ) {
-        std::cout << "Zone 2: " << std::endl;
+        // std::cout << "Zone 2: " << std::endl;
         xi_hat = 1 - ( ( 1 - xi ) * ( 1 - xi ) * ( 2 * del - ( 1 - xi ) ) / ( del * del ) );
 
       } else if ( del <= xi && xi <= ( 1.0 - del ) ) {
         xi_hat = xi;
-        std::cout << "zone3" << std::endl;
+        // std::cout << "zone3" << std::endl;
       }
     }
     smooth_bounds[i] = xi_hat - 0.5;
-    std::cout << "Smooth Bounds: " << smooth_bounds[i] << std::endl;
+    // std::cout << "Smooth Bounds: " << smooth_bounds[i] << std::endl;
   }
 
   return smooth_bounds;
