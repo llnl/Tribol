@@ -138,6 +138,13 @@ class ParSparseMatView {
   ParSparseMat EliminateCols( const mfem::Array<int>& cols );
 
   /**
+   * @brief Eliminates the rows and columns from the matrix
+   *
+   * @param cols Array of rows and columns to eliminate
+   */
+  ParSparseMat EliminateRowsCols( const mfem::Array<int>& rows_cols );
+
+  /**
    * @brief Scalar-Matrix multiplication: returns s * A
    */
   friend ParSparseMat operator*( double s, const ParSparseMatView& mat );

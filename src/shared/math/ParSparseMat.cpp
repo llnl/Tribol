@@ -88,6 +88,12 @@ ParSparseMat ParSparseMatView::EliminateCols( const mfem::Array<int>& cols )
   return ParSparseMat( createHypreParMatrix<MemorySpace::Host>( [&]() { return mat_->EliminateCols( cols ); } ) );
 }
 
+ParSparseMat ParSparseMatView::EliminateRowsCols( const mfem::Array<int>& rows_cols )
+{
+  return ParSparseMat(
+      createHypreParMatrix<MemorySpace::Host>( [&]() { return mat_->EliminateRowsCols( rows_cols ); } ) );
+}
+
 ParSparseMat operator*( double s, const ParSparseMatView& mat ) { return mat * s; }
 
 ParVector operator*( const ParVectorView& x, const ParSparseMatView& mat )
