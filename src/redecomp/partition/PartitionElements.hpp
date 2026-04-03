@@ -24,8 +24,7 @@ class PartitionElements : public PartitionEntity<NDIMS> {
    * @param par_meshes Input meshes
    * @return Vector of array of points from each entity on each mesh
    */
-  std::vector<axom::Array<Point<NDIMS>>> EntityCoordinates(
-      const std::vector<const mfem::ParMesh*>& par_meshes ) const override;
+  std::vector<CoordList<NDIMS>> EntityCoordinates( const std::vector<const mfem::ParMesh*>& par_meshes ) const override;
 };
 
 using PartitionElements2D = PartitionElements<2>;

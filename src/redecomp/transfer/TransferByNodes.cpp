@@ -62,31 +62,47 @@ void TransferByNodes::TransferToSerial( const mfem::ParGridFunction& src, mfem::
                       "in TransferByNodes." );
 
   // send and receive DOF values from other ranks
-  auto dst_dofs = MPIArray<double, 2>( &redecomp_->getMPIUtility() );
-  auto src_ptr = src.HostRead();
-  dst_dofs.SendRecvEach( [src_ptr, src_fes, &src_nodes]( int dst_rank ) {
-    auto src_dofs = axom::Array<double, 2>();
-    auto n_vdofs = src_fes->GetVDim();
-    auto n_src_dofs = src_nodes.first[dst_rank].size();
-    src_dofs.reserve( n_vdofs * n_src_dofs );
-    src_dofs.resize( axom::ArrayOptions::Uninitialized(), n_vdofs, n_src_dofs );
-    for ( int d{ 0 }; d < n_vdofs; ++d ) {
-      for ( int j{ 0 }; j < n_src_dofs; ++j ) {
-        src_dofs( d, j ) = src_ptr[src_fes->DofToVDof( src_nodes.first[dst_rank][j], d )];
-      }
-    }
-    return src_dofs;
-  } );
+  auto dst_dofs = MPIArray<double, mfem::Vector>( &redecomp_->getMPIUtility() );
+  dst_dofs.SendRecvEach(
+      [src_fes, &src_nodes, &src]( int dst_rank ) {
+        mfem::Vector src_dofs;
+        src_dofs.UseDevice( src.UseDevice() );
+        auto n_vdofs = src_fes->GetVDim();
+        auto n_src_dofs = src_nodes.first[dst_rank].Size();
+        if ( n_src_dofs > 0 ) {
+          mfem::Array<int> all_vdofs;
+          all_vdofs.Reserve( n_vdofs * n_src_dofs );
+          for ( int d{ 0 }; d < n_vdofs; ++d ) {
+            for ( int j{ 0 }; j < n_src_dofs; ++j ) {
+              all_vdofs.Append( src_fes->DofToVDof( src_nodes.first[dst_rank][j], d ) );
+            }
+          }
+
+          all_vdofs.GetMemory().UseDevice( src.UseDevice() );
+          src_dofs.SetSize( all_vdofs.Size() );
+          src.GetSubVector( all_vdofs, src_dofs );
+        }
+        return src_dofs;
+      },
+      src.UseDevice() );
 
   // map received DOF values to local DOFs
   auto n_vdofs = src_fes->GetVDim();
   auto n_ranks = redecomp_->getMPIUtility().NRanks();
-  auto dst_ptr = dst.HostWrite();
   for ( int i{ 0 }; i < n_ranks; ++i ) {
-    for ( int d{ 0 }; d < n_vdofs; ++d ) {
-      for ( int j{ 0 }; j < dst_nodes.first[i].size(); ++j ) {
-        dst_ptr[dst_fes->DofToVDof( dst_nodes.first[i][j], d )] = dst_dofs[i]( d, j );
+    if ( dst_nodes.first[i].Size() > 0 ) {
+      mfem::Array<int> all_vdofs;
+      all_vdofs.Reserve( n_vdofs * dst_nodes.first[i].Size() );
+      for ( int d{ 0 }; d < n_vdofs; ++d ) {
+        for ( int j{ 0 }; j < dst_nodes.first[i].Size(); ++j ) {
+          all_vdofs.Append( dst_fes->DofToVDof( dst_nodes.first[i][j], d ) );
+        }
       }
+      all_vdofs.GetMemory().UseDevice( dst.UseDevice() );
+      // set explicitly in case e.g. src is on device and dst is on host or vice versa
+      dst_dofs[i].Read( dst.UseDevice() );
+      dst_dofs[i].UseDevice( dst.UseDevice() );
+      dst.SetSubVector( all_vdofs, dst_dofs[i] );
     }
   }
 }
@@ -111,40 +127,64 @@ void TransferByNodes::TransferToParallel( const mfem::GridFunction& src, mfem::P
                       "in TransferByNodes." );
 
   // send and receive non-ghost DOF values from other ranks
-  auto dst_dofs = MPIArray<double, 2>( &redecomp_->getMPIUtility() );
-  auto src_ptr = src.HostRead();
-  dst_dofs.SendRecvEach( [src_ptr, src_fes, &src_nodes]( int dst_rank ) {
-    auto src_dofs = axom::Array<double, 2>();
-    auto n_vdofs = src_fes->GetVDim();
-    auto n_src_dofs = src_nodes.first[dst_rank].size();
-    src_dofs.reserve( n_vdofs * n_src_dofs );
-    src_dofs.resize( axom::ArrayOptions::Uninitialized(), n_vdofs, n_src_dofs );
-    auto dof_ct = 0;
-    for ( int j{ 0 }; j < n_src_dofs; ++j ) {
-      if ( !src_nodes.second[dst_rank][j] ) {
-        for ( int d{ 0 }; d < n_vdofs; ++d ) {
-          src_dofs( d, dof_ct ) = src_ptr[src_fes->DofToVDof( src_nodes.first[dst_rank][j], d )];
+  auto dst_dofs = MPIArray<double, mfem::Vector>( &redecomp_->getMPIUtility() );
+  dst_dofs.SendRecvEach(
+      [src_fes, &src_nodes, &src]( int dst_rank ) {
+        mfem::Vector src_dofs;
+        src_dofs.UseDevice( src.UseDevice() );
+        auto n_vdofs = src_fes->GetVDim();
+        auto n_src_dofs = src_nodes.first[dst_rank].Size();
+        auto count = 0;
+        for ( int j{ 0 }; j < n_src_dofs; ++j ) {
+          if ( !src_nodes.second[dst_rank][j] ) {
+            ++count;
+          }
         }
-        ++dof_ct;
-      }
-    }
-    src_dofs.shrink();
-    return src_dofs;
-  } );
+        if ( count > 0 ) {
+          mfem::Array<int> all_vdofs;
+          all_vdofs.Reserve( n_vdofs * count );
+          for ( int j{ 0 }; j < n_src_dofs; ++j ) {
+            if ( !src_nodes.second[dst_rank][j] ) {
+              for ( int d{ 0 }; d < n_vdofs; ++d ) {
+                all_vdofs.Append( src_fes->DofToVDof( src_nodes.first[dst_rank][j], d ) );
+              }
+            }
+          }
+
+          all_vdofs.GetMemory().UseDevice( src.UseDevice() );
+          src_dofs.SetSize( all_vdofs.Size() );
+          src.GetSubVector( all_vdofs, src_dofs );
+        }
+        return src_dofs;
+      },
+      src.UseDevice() );
 
   // map received non-ghost DOF values to dst
   auto n_vdofs = src_fes->GetVDim();
   auto n_ranks = redecomp_->getMPIUtility().NRanks();
-  auto dst_ptr = dst.HostWrite();
   for ( int i{ 0 }; i < n_ranks; ++i ) {
-    auto dof_ct = 0;
-    for ( int j{ 0 }; j < dst_nodes.first[i].size(); ++j ) {
+    auto count = 0;
+    for ( int j{ 0 }; j < dst_nodes.first[i].Size(); ++j ) {
       if ( !dst_nodes.second[i][j] ) {
-        for ( int d{ 0 }; d < n_vdofs; ++d ) {
-          dst_ptr[dst_fes->DofToVDof( dst_nodes.first[i][j], d )] = dst_dofs[i]( d, dof_ct );
-        }
-        ++dof_ct;
+        ++count;
       }
+    }
+    if ( count > 0 ) {
+      mfem::Array<int> all_vdofs;
+      all_vdofs.Reserve( n_vdofs * count );
+      for ( int j{ 0 }; j < dst_nodes.first[i].Size(); ++j ) {
+        if ( !dst_nodes.second[i][j] ) {
+          for ( int d{ 0 }; d < n_vdofs; ++d ) {
+            all_vdofs.Append( dst_fes->DofToVDof( dst_nodes.first[i][j], d ) );
+          }
+        }
+      }
+
+      all_vdofs.GetMemory().UseDevice( dst.UseDevice() );
+      // set explicitly in case e.g. src is on device and dst is on host or vice versa
+      dst_dofs[i].Read( dst.UseDevice() );
+      dst_dofs[i].UseDevice( dst.UseDevice() );
+      dst.SetSubVector( all_vdofs, dst_dofs[i] );
     }
   }
 }
@@ -159,14 +199,14 @@ EntityIndexByRank TransferByNodes::P2RNodeList( bool use_global_ids )
   const auto& p2r_elem_ghost = redecomp_->getParentToRedecompElems().second;
   auto n_ranks = redecomp_->getMPIUtility().NRanks();
   for ( int r{ 0 }; r < n_ranks; ++r ) {
-    auto n_els = p2r_elem_idx[r].size();
+    auto n_els = p2r_elem_idx[r].Size();
     if ( n_els > 0 ) {
       auto n_dofs = parent_fes_->GetFE( p2r_elem_idx[r][0] )->GetDof();
-      p2r_node_idx[r].reserve( n_els * n_dofs );
-      p2r_node_ghost[r].reserve( n_els * n_dofs );
+      p2r_node_idx[r].Reserve( n_els * n_dofs );
+      p2r_node_ghost[r].Reserve( n_els * n_dofs );
       auto node_idx_map = std::unordered_map<int, int>();
       auto dof_ct = 0;
-      for ( int e{ 0 }; e < p2r_elem_idx[r].size(); ++e ) {
+      for ( int e{ 0 }; e < p2r_elem_idx[r].Size(); ++e ) {
         auto is_elem_ghost = p2r_elem_ghost[r][e];
         auto elem_dofs = mfem::Array<int>();
         parent_fes_->GetElementDofs( p2r_elem_idx[r][e], elem_dofs );
@@ -184,8 +224,10 @@ EntityIndexByRank TransferByNodes::P2RNodeList( bool use_global_ids )
           }
         }
       }
-      p2r_node_idx[r].shrink();
-      p2r_node_ghost[r].shrink();
+      auto tmp_p2r_node_idx = p2r_node_idx[r];
+      auto tmp_p2r_node_ghost = p2r_node_ghost[r];
+      std::swap( p2r_node_idx[r], tmp_p2r_node_idx );
+      std::swap( p2r_node_ghost[r], tmp_p2r_node_ghost );
     }
   }
   return { std::move( p2r_node_idx ), std::move( p2r_node_ghost ) };
@@ -204,14 +246,14 @@ EntityIndexByRank TransferByNodes::R2PNodeList()
     auto n_els = last_el - first_el;
     if ( n_els > 0 ) {
       auto n_dofs = redecomp_fes_->GetFE( first_el )->GetDof();
-      r2p_node_idx[r].reserve( n_els * n_dofs );
-      r2p_node_ghost[r].reserve( n_els * n_dofs );
+      r2p_node_idx[r].Reserve( n_els * n_dofs );
+      r2p_node_ghost[r].Reserve( n_els * n_dofs );
       auto node_idx_map = std::unordered_map<int, int>();
       auto dof_ct = 0;
       auto ghost_ct = 0;
       for ( int e{ first_el }; e < last_el; ++e ) {
         auto is_elem_ghost = false;
-        if ( ghost_ct < redecomp_->getRedecompToParentGhostElems()[r].size() &&
+        if ( ghost_ct < redecomp_->getRedecompToParentGhostElems()[r].Size() &&
              redecomp_->getRedecompToParentGhostElems()[r][ghost_ct] == e ) {
           ++ghost_ct;
           is_elem_ghost = true;
@@ -229,8 +271,10 @@ EntityIndexByRank TransferByNodes::R2PNodeList()
           }
         }
       }
-      r2p_node_idx[r].shrink();
-      r2p_node_idx[r].shrink();
+      auto tmp_r2p_node_idx = r2p_node_idx[r];
+      auto tmp_r2p_node_ghost = r2p_node_ghost[r];
+      std::swap( r2p_node_idx[r], tmp_r2p_node_idx );
+      std::swap( r2p_node_ghost[r], tmp_r2p_node_ghost );
     }
   }
   return { std::move( r2p_node_idx ), std::move( r2p_node_ghost ) };

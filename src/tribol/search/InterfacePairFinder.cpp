@@ -5,17 +5,22 @@
 
 #include "tribol/search/InterfacePairFinder.hpp"
 
+// Axom includes
+#include "axom/slic.hpp"
+#include "axom/primal.hpp"
+#include "axom/spin.hpp"
+
+// Shared includes
 #include "tribol/common/ExecModel.hpp"
+#include "tribol/common/LoopExec.hpp"
+
+// Tribol includes
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/utils/Algorithm.hpp"
 #include "tribol/common/LoopExec.hpp"
-
-#include "axom/slic.hpp"
-#include "axom/primal.hpp"
-#include "axom/spin.hpp"
 
 // Define some namespace aliases to help with axom usage
 namespace primal = axom::primal;
@@ -121,7 +126,9 @@ class CartesianProduct : public SearchBase {
     auto& contactPairs = m_coupling_scheme->getInterfacePairs();
     contactPairs.resize( countArray_host[0] );
 
-    countArray.fill( 0 );
+    int zero = 0;
+    // Workaround for axom::Array::fill() issue for optimized CUDA code, see Axom #1833.
+    axom::copy( countArray.data(), &zero, sizeof( int ) );
     auto pairs_view = m_coupling_scheme->getInterfacePairs().view();
     // fill proximate pairs array
     forAllExec(

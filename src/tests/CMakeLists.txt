@@ -52,7 +52,8 @@ foreach( test ${tribol_tests} )
     FOLDER tribol/tests )
 
   blt_add_test( NAME ${test_name}
-                COMMAND ${test_name}_test )
+                COMMAND ${test_name}_test
+                NUM_MPI_TASKS 1 )
 
   if (ENABLE_HIP)
     target_compile_options(${test_name}_test PRIVATE
@@ -114,6 +115,7 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
       redecomp_massmatrix.cpp
       redecomp_rectmatrix.cpp
       redecomp_sparsematrix.cpp
+      redecomp_gpu_mpi.cpp
       )
 
   set(redecomp_test_depends tribol gtest)
@@ -137,6 +139,12 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
                     NUM_MPI_TASKS ${nranks} )
     endforeach()
 
+    if (ENABLE_CUDA)
+      set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
+      target_compile_options(${test_name}_test PRIVATE
+        $<$<AND:$<COMPILE_LANGUAGE:CUDA>,$<CONFIG:Debug>>:-G>
+      )
+    endif()
   endforeach()
 
 endif()
@@ -215,6 +223,10 @@ if( TRIBOL_USE_ENZYME )
 
     blt_add_test( NAME ${test_name}
                   COMMAND ${test_name}_test )
+
+    if (ENABLE_CUDA)
+      set_target_properties(${test_name}_test PROPERTIES CUDA_SEPARABLE_COMPILATION On)
+    endif()
     
     if (ENABLE_HIP)
       target_compile_options(${test_name}_test PRIVATE
@@ -236,7 +248,7 @@ if( MFEM_FOUND )
 
   set(mfem_smoke_depends mfem gtest)
   # MFEM's openmp dependency isn't being picked up by FindMFEM.cmake. Force it to be added for now.
-  blt_list_append(TO mfem_smoke_depends ELEMENTS blt::openmp IF TRIBOL_USE_OPENMP )
+  blt_list_append(TO mfem_smoke_depends ELEMENTS blt::openmp IF ENABLE_OPENMP )
   blt_add_executable(
     NAME mfem_smoke_test
     SOURCES mfem_smoke.cpp
@@ -278,4 +290,3 @@ if( TRIBOL_USE_CALIPER )
                 COMMAND caliper_smoke_test )
 
 endif()
-

@@ -10,6 +10,7 @@ set( redecomp_headers
      MultiRedecomp.hpp
      RedecompMesh.hpp
      RedecompTransfer.hpp
+     common/CoordList.hpp
      common/TypeDefs.hpp
      partition/PartitionElements.hpp
      partition/PartitionEntity.hpp

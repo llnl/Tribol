@@ -164,7 +164,7 @@ void RedecompMesh::BuildRedecomp()
   auto vert_idx_map = std::unordered_map<int, int>();
   auto vert_ct = 0;
   for ( int r{ 0 }; r < n_ranks; ++r ) {
-    for ( int v{ 0 }; v < r2p_vert_idx[r].size(); ++v ) {
+    for ( int v{ 0 }; v < r2p_vert_idx[r].Size(); ++v ) {
       auto vert_idx_it = vert_idx_map.emplace( r2p_vert_idx[r][v], vert_ct );
       r2p_vert_idx[r][v] = vert_idx_it.first->second;
       if ( vert_idx_it.second ) {
@@ -175,11 +175,11 @@ void RedecompMesh::BuildRedecomp()
 
   // send vertex coords from parent to redecomp
   p2r_verts = vertex_transfer.P2RNodeList( false );
-  auto redecomp_coords = MPIArray<double, 2>( &mpi_ );
+  auto redecomp_coords = MPIArray<double, axom::Array<double, 2>>( &mpi_ );
   redecomp_coords.SendRecvEach( [this, &p2r_verts]( int dest ) {
     auto parent_coords = axom::Array<double, 2>();
     const auto& vert_idx = p2r_verts.first[dest];
-    auto n_coords = vert_idx.size();
+    auto n_coords = vert_idx.Size();
     parent_coords.reserve( 3 * n_coords );
     parent_coords.resize( n_coords, 3 );
     for ( int v{ 0 }; v < n_coords; ++v ) {
@@ -194,7 +194,7 @@ void RedecompMesh::BuildRedecomp()
   NumOfVertices = vert_idx_map.size();
   vertices.SetSize( NumOfVertices );
   for ( int r{ 0 }; r < n_ranks; ++r ) {
-    for ( int v{ 0 }; v < r2p_vert_idx[r].size(); ++v ) {
+    for ( int v{ 0 }; v < r2p_vert_idx[r].Size(); ++v ) {
       for ( int d{ 0 }; d < parent_.SpaceDimension(); ++d ) {
         vertices[r2p_vert_idx[r][v]]( d ) = redecomp_coords[r]( v, d );
       }
@@ -205,17 +205,18 @@ void RedecompMesh::BuildRedecomp()
   // Send and receive element types
   auto redecomp_etypes = MPIArray<int>( &mpi_ );
   redecomp_etypes.SendRecvEach( [this]( int dest ) {
-    auto parent_etypes = axom::Array<int>( p2r_elems_.first[dest].size(), p2r_elems_.first[dest].size() );
-    for ( int e{ 0 }; e < p2r_elems_.first[dest].size(); ++e ) {
+    auto parent_etypes = MPIArray<int>::ArrayT( p2r_elems_.first[dest].Size() );
+    for ( int e{ 0 }; e < p2r_elems_.first[dest].Size(); ++e ) {
       parent_etypes[e] = parent_.GetElementType( p2r_elems_.first[dest][e] );
     }
     return parent_etypes;
   } );
   // Find length of element connectivities
-  auto parent_tot_conns = axom::Array<int>( n_ranks, n_ranks );
+  auto parent_tot_conns = mfem::Array<int>( n_ranks );
+  parent_tot_conns = 0;
   for ( int r{ 0 }; r < n_ranks; ++r ) {
     const auto& elem_idx = p2r_elems_.first[r];
-    auto n_elems = elem_idx.size();
+    auto n_elems = elem_idx.Size();
     for ( int e{ 0 }; e < n_elems; ++e ) {
       parent_tot_conns[r] += parent_.GetElement( elem_idx[e] )->GetNVertices();
     }
@@ -223,10 +224,10 @@ void RedecompMesh::BuildRedecomp()
   // Send and receive element connectivities
   auto redecomp_conns = MPIArray<int>( &mpi_ );
   redecomp_conns.SendRecvEach( [this, &parent_tot_conns, &parent_vertex_fes]( int dest ) {
-    auto parent_conns = axom::Array<int>( parent_tot_conns[dest], parent_tot_conns[dest] );
+    auto parent_conns = MPIArray<int>::ArrayT( parent_tot_conns[dest] );
     parent_tot_conns[dest] = 0;
     const auto& elem_idx = p2r_elems_.first[dest];
-    for ( int e{ 0 }; e < elem_idx.size(); ++e ) {
+    for ( int e{ 0 }; e < elem_idx.Size(); ++e ) {
       mfem::Array<int> elem_conn;
       parent_.GetElement( elem_idx[e] )->GetVertices( elem_conn );
       for ( int v{ 0 }; v < elem_conn.Size(); ++v ) {
@@ -240,8 +241,8 @@ void RedecompMesh::BuildRedecomp()
   auto redecomp_attribs = MPIArray<int>( &mpi_ );
   redecomp_attribs.SendRecvEach( [this]( int dest ) {
     const auto& elem_idx = p2r_elems_.first[dest];
-    auto n_elems = elem_idx.size();
-    auto parent_attribs = axom::Array<int>( n_elems, n_elems );
+    auto n_elems = elem_idx.Size();
+    auto parent_attribs = MPIArray<int>::ArrayT( n_elems );
     for ( int e{ 0 }; e < n_elems; ++e ) {
       parent_attribs[e] = parent_.GetElement( elem_idx[e] )->GetAttribute();
     }
@@ -251,13 +252,13 @@ void RedecompMesh::BuildRedecomp()
   // NOTE: Don't use NumOfElements.  AddElement() will increment it.
   auto n_els = 0;
   for ( const auto& redecomp_etype : redecomp_etypes ) {
-    n_els += redecomp_etype.size();
+    n_els += redecomp_etype.Size();
   }
   elements.SetSize( n_els );
   // Create elements
   for ( int r{ 0 }; r < n_ranks; ++r ) {
     auto conn_ct = 0;
-    for ( int e{ 0 }; e < redecomp_etypes[r].size(); ++e ) {
+    for ( int e{ 0 }; e < redecomp_etypes[r].Size(); ++e ) {
       auto el = NewElement( redecomp_etypes[r][e] );
       el->SetVertices( &redecomp_conns[r][conn_ct] );
       for ( int k{ 0 }; k < el->GetNVertices(); ++k ) {
@@ -278,9 +279,9 @@ void RedecompMesh::BuildRedecomp()
   r2p_elem_offsets_.reserve( n_ranks + 1 );
   r2p_elem_offsets_.resize( n_ranks + 1 );
   mpi_.SendRecvEach(
-      type<axom::Array<int>>(),
-      [this]( int dest ) { return axom::Array<int>( { static_cast<int>( p2r_elems_.first[dest].size() ) } ); },
-      [this]( axom::Array<int>&& recv_data, int source ) { r2p_elem_offsets_[source + 1] = recv_data[0]; } );
+      type<mfem::Array<int>>(),
+      [this]( int dest ) { return mfem::Array<int>( { static_cast<int>( p2r_elems_.first[dest].Size() ) } ); },
+      [this]( mfem::Array<int>&& recv_data, int source ) { r2p_elem_offsets_[source + 1] = recv_data[0]; } );
   for ( int i{ 2 }; i < n_ranks + 1; ++i ) {
     r2p_elem_offsets_[i] += r2p_elem_offsets_[i - 1];
   }
@@ -289,8 +290,9 @@ void RedecompMesh::BuildRedecomp()
   // r2p = redecomp to parent
   r2p_ghost_elems_ = MPIArray<int>( &mpi_ );
   r2p_ghost_elems_.SendRecvEach( [this]( int dest ) {
-    auto n_elems = p2r_elems_.second[dest].size();
-    auto parent_gelems = axom::Array<int>( 0, n_elems );
+    auto n_elems = p2r_elems_.second[dest].Size();
+    auto parent_gelems = MPIArray<int>::ArrayT( 0 );
+    parent_gelems.Reserve( n_elems );
     for ( int i{ 0 }; i < n_elems; ++i ) {
       if ( p2r_elems_.second[dest][i] ) {
         parent_gelems.push_back( i );
