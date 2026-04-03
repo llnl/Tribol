@@ -245,13 +245,13 @@ shared::ParSparseMat MatrixTransfer::TransferToParallel( const axom::Array<int>&
       },
       [this, test_redecomp, &triplets, &recv_mat_sizes, &recv_trial_elem_dofs, &recv_test_elem_offsets](
           axom::Array<double>&& send_vals, axom::IndexType src ) {
-        if ( recv_trial_elem_dofs[src].empty() ) {
+        if ( recv_trial_elem_dofs[src].IsEmpty() ) {
           return;
         }
         auto trial_dof_ct = 0;
         auto dof_ct = 0;
         // element loop
-        for ( int e{ 0 }; e < recv_test_elem_offsets[src].size(); ++e ) {
+        for ( int e{ 0 }; e < recv_test_elem_offsets[src].Size(); ++e ) {
           auto test_elem_id = test_redecomp->getParentToRedecompElems().first[src][recv_test_elem_offsets[src][e]];
           auto test_elem_dofs = mfem::Array<int>();
           parent_test_fes_.GetElementVDofs( test_elem_id, test_elem_dofs );
