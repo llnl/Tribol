@@ -391,14 +391,8 @@ TEST_P( MfemLorTransferParamTest, lor_transfer_matches_mfem )
   auto* mesh_data = cs->getMfemMeshData();
   ASSERT_NE( mesh_data, nullptr );
 
-  // registerMfemCouplingScheme() creates submesh/jacobian data using the
-  // default LOR factor (geometry order). Override it here, then rebuild
-  // submesh + jacobian data so they use the updated LOR mesh.
   if ( p.lor_factor != mesh_data->GetLORFactor() ) {
-    mesh_data->SetLORFactor( p.lor_factor );
-    auto pressure_fec = std::make_unique<mfem::H1_FECollection>( p.order, mesh.SpaceDimension() );
-    cs->setMfemSubmeshData( std::make_unique<tribol::MfemSubmeshData>( mesh_data->GetSubmesh(), mesh_data->GetLORMesh(),
-                                                                       std::move( pressure_fec ), 1, false ) );
+    tribol::setMfemLORFactor( cs_id, p.lor_factor );
   }
 
   tribol::updateMfemParallelDecomposition( n_ranks, true );
