@@ -49,6 +49,8 @@ std::vector<CoordList<NDIMS>> PartitionElements<NDIMS>::EntityCoordinates(
       //    b) Interpolate to Quadrature points (Q-vector)
       qi->Values( e_vec, mesh_centroids );
 
+      // NOTE: mesh_centroids will be fed into the RCB PartitionMethod and CoordList which are host only. make sure host is updated.
+      mesh_centroids.HostRead();
       return mesh_centroids;
     };
 
