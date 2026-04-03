@@ -123,8 +123,8 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
     cs->getMfemSubmeshData()->SetLORMesh( cs->getMfemMeshData()->GetLORMesh() );
   }
   if ( cs->hasMfemJacobianData() && cs->getMfemSubmeshData() ) {
-    cs->setMfemJacobianData(
-        std::make_unique<MfemJacobianData>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), cs->getContactMethod() ) );
+    cs->setMfemJacobianData( std::make_unique<MfemJacobianData>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
+                                                                 cs->getContactMethod() ) );
   }
 }
 
