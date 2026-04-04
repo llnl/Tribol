@@ -351,7 +351,7 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
     max_diff.UseDevice( use_device_ );
     max_diff = 0.0;
     RealT* d_max_diff = max_diff.Write( use_device_ );
-// Note: A true reduction would be more efficient here.
+    // Note: A true reduction would be more efficient here.
     // However, it is not currently implemented because forAllExec would need
     // to know the execution mode at compile time to instantiate the correct reducer.
     forAllExec( exec_mode_, current_coords_gf.Size(), [d_curr, d_last, d_max_diff] TRIBOL_HOST_DEVICE( int i ) {

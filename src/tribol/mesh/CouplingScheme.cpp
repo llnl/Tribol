@@ -1054,7 +1054,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // array of size one for counting number of planes on device
   ArrayT<IndexT> planes_ct_data( 1, 1, getAllocatorId() );
   auto planes_ct = planes_ct_data.view();
-// Note: A true reduction would be more efficient here.
+  // Note: A true reduction would be more efficient here.
   // However, it is not currently implemented because forAllExec would need
   // to know the execution mode at compile time to instantiate the correct reducer.
   forAllExec( getExecutionMode(), numPairs,
@@ -1321,7 +1321,7 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                              static_cast<IndexT>( false ) },
                            getAllocatorId() );
   ArrayViewT<IndexT> msg = msg_data;
-// Note: A true reduction would be more efficient here.
+  // Note: A true reduction would be more efficient here.
   // However, it is not currently implemented because forAllExec would need
   // to know the execution mode at compile time to instantiate the correct reducer.
   forAllExec( getExecutionMode(), getNumActivePairs(),

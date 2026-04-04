@@ -148,7 +148,7 @@ class CartesianProduct : public SearchBase {
             toIdx = i - offset;
           }
 
-      // get unique index for the array
+          // get unique index for the array
           auto idx = tribol::atomicInc( pCount );
 
           pairs_view[idx] = InterfacePair( fromIdx, toIdx, true );
@@ -479,7 +479,7 @@ class BvhSearch : public SearchBase {
           auto mesh1_elem = candidates_view[i];
           auto mesh2_elem = algorithm::binarySearch( offsets_view, counts_view, i );
 
-      // get unique index for the array
+          // get unique index for the array
           auto idx = tribol::atomicInc( filtered_candidates.data() );
 
           pairs_view[idx] = InterfacePair( mesh1_elem, mesh2_elem, true );

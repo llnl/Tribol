@@ -16,49 +16,53 @@
 namespace tribol {
 
 template <typename T, typename U>
-TRIBOL_HOST_DEVICE inline T atomicAdd(T* addr, U val) {
+TRIBOL_HOST_DEVICE inline T atomicAdd( T* addr, U val )
+{
 #ifdef TRIBOL_USE_RAJA
-    return RAJA::atomicAdd<RAJA::auto_atomic>(addr, static_cast<T>(val));
+  return RAJA::atomicAdd<RAJA::auto_atomic>( addr, static_cast<T>( val ) );
 #else
-    T old = *addr;
-    *addr += static_cast<T>(val);
-    return old;
+  T old = *addr;
+  *addr += static_cast<T>( val );
+  return old;
 #endif
 }
 
 template <typename T, typename U>
-TRIBOL_HOST_DEVICE inline T atomicMin(T* addr, U val) {
+TRIBOL_HOST_DEVICE inline T atomicMin( T* addr, U val )
+{
 #ifdef TRIBOL_USE_RAJA
-    return RAJA::atomicMin<RAJA::auto_atomic>(addr, static_cast<T>(val));
+  return RAJA::atomicMin<RAJA::auto_atomic>( addr, static_cast<T>( val ) );
 #else
-    T old = *addr;
-    *addr = axom::utilities::min(*addr, static_cast<T>(val));
-    return old;
+  T old = *addr;
+  *addr = axom::utilities::min( *addr, static_cast<T>( val ) );
+  return old;
 #endif
 }
 
 template <typename T, typename U>
-TRIBOL_HOST_DEVICE inline T atomicMax(T* addr, U val) {
+TRIBOL_HOST_DEVICE inline T atomicMax( T* addr, U val )
+{
 #ifdef TRIBOL_USE_RAJA
-    return RAJA::atomicMax<RAJA::auto_atomic>(addr, static_cast<T>(val));
+  return RAJA::atomicMax<RAJA::auto_atomic>( addr, static_cast<T>( val ) );
 #else
-    T old = *addr;
-    *addr = axom::utilities::max(*addr, static_cast<T>(val));
-    return old;
+  T old = *addr;
+  *addr = axom::utilities::max( *addr, static_cast<T>( val ) );
+  return old;
 #endif
 }
 
 template <typename T>
-TRIBOL_HOST_DEVICE inline T atomicInc(T* addr) {
+TRIBOL_HOST_DEVICE inline T atomicInc( T* addr )
+{
 #ifdef TRIBOL_USE_RAJA
-    return RAJA::atomicInc<RAJA::auto_atomic>(addr);
+  return RAJA::atomicInc<RAJA::auto_atomic>( addr );
 #else
-    T old = *addr;
-    (*addr)++;
-    return old;
+  T old = *addr;
+  ( *addr )++;
+  return old;
 #endif
 }
 
-} // namespace tribol
+}  // namespace tribol
 
 #endif /* SRC_TRIBOL_COMMON_ATOMICS_HPP_ */

@@ -69,7 +69,7 @@ bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_optio
       Array1DView<const RealT> mod = this->m_mat_mod;
       Array1DView<const RealT> thickness = this->m_thickness;
 
-// Note: A true reduction would be more efficient here.
+      // Note: A true reduction would be more efficient here.
       // However, it is not currently implemented because forAllExec would need
       // to know the execution mode at compile time to instantiate the correct reducer.
       forAllExec( exec_mode, this->m_num_cells, [mod, thickness, mod_ok, thickness_ok] TRIBOL_HOST_DEVICE( IndexT i ) {
