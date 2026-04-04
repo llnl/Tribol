@@ -12,6 +12,7 @@ endif()
 set(tribol_headers
 
     common/ArrayTypes.hpp
+    common/Atomics.hpp
     common/BasicTypes.hpp
     common/Containers.hpp
     common/Enzyme.hpp
