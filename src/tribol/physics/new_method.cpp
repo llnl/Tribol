@@ -481,83 +481,173 @@ static void gtilde2_out( const double* x, const double* nB, double length_A, dou
   *out = gt[1];
 }
 
-static void A1_out( const double* x, const double* nB, double length_A, double* out)
+
+static void A1_out( const double* x, double* out )
 {
-  double A0[2], A1[2], B0[2], B1[2];
+  double A0[2] = { x[0], x[1] };
+  double A1[2] = { x[2], x[3] };
+  double B0[2] = { x[4], x[5] };
+  double B1[2] = { x[6], x[7] };
 
-  A0[0] = x[0];
-  A0[1] = x[1];
-  A1[0] = x[2];
-  A1[1] = x[3];
-  B0[0] = x[4];
-  B0[1] = x[5];
-  B1[0] = x[6];
-  B1[1] = x[7];
+  double projs[2] = { 0 };
+  get_projections( A0, A1, B0, B1, projs );
 
-  // double length_A = std::sqrt((x[2]-x[0])*(x[2]-x[0]) + (x[3]-x[1])*(x[3]-x[1]));
-  double projs[2] = {0};
-  get_projections(A0, A1, B1, B0, projs);
-  std::array<double, 2> projections = {projs[0], projs[1]};
+  const double del = 0.1;
+  double xi_min = std::min( projs[0], projs[1] );
+  double xi_max = std::max( projs[0], projs[1] );
+  if ( xi_max < -0.5 - del ) xi_max = -0.5 - del;
+  if ( xi_min >  0.5 + del ) xi_min =  0.5 + del;
+  if ( xi_min < -0.5 - del ) xi_min = -0.5 - del;
+  if ( xi_max >  0.5 + del ) xi_max =  0.5 + del;
 
+  double sb[2];
+  double raw[2] = { xi_min, xi_max };
+  for ( int i = 0; i < 2; ++i ) {
+    double xi = raw[i] + 0.5;
+    double xi_hat = 0.0;
+    if ( -del <= xi && xi <= del ) {
+      xi_hat = ( 1.0/(4.0*del) )*xi*xi + 0.5*xi + del/4.0;
+    } else if ( (1.0-del) <= xi && xi <= (1.0+del) ) {
+      double b = -1.0/(4.0*del);
+      double c = 0.5 + 1.0/(2.0*del);
+      double d = 1.0-del + (1.0/(4.0*del))*(1.0-del)*(1.0-del)
+                 - 0.5*(1.0-del) - (1.0-del)/(2.0*del);
+      xi_hat = b*xi*xi + c*xi + d;
+    } else {
+      xi_hat = xi;
+    }
+    sb[i] = xi_hat - 0.5;
+  }
 
-  auto bounds = ContactSmoothing::bounds_from_projections(projections);
-  auto xi_bounds = ContactSmoothing::smooth_bounds(bounds);
-
-
-  auto qp = ContactEvaluator::compute_quadrature(xi_bounds);
-
-  const int N = static_cast<int>(qp.qp.size());
-
-  Gparams gp;
-  gp.N = N;
-  gp.qp = qp.qp.data();
-  gp.w = qp.w.data();
-  gp.x2 =nullptr;
-
-  double gt[2];
-  double A_out[2];
-  gtilde_kernel(x, &gp, gt, nB, length_A, A_out);
-  *out = A_out[0];
+  const double J_ref = std::sqrt( (A1[0]-A0[0])*(A1[0]-A0[0]) + (A1[1]-A0[1])*(A1[1]-A0[1]) );
+  double AI_1 = J_ref * ( 0.5*(sb[1] - sb[0]) - 0.5*(sb[1]*sb[1] - sb[0]*sb[0]) );
+  *out = AI_1;
 }
 
-static void A2_out(const double* x, const double* nB, double length_A, double* out)
+static void A2_out( const double* x, double* out )
 {
-    double A0[2], A1[2], B0[2], B1[2];
+  double A0[2] = { x[0], x[1] };
+  double A1[2] = { x[2], x[3] };
+  double B0[2] = { x[4], x[5] };
+  double B1[2] = { x[6], x[7] };
 
-    A0[0] = x[0];
-    A0[1] = x[1];
-    A1[0] = x[2];
-    A1[1] = x[3];
-    B0[0] = x[4];
-    B0[1] = x[5];
-    B1[0] = x[6];
-    B1[1] = x[7];
+  double projs[2] = { 0 };
+  get_projections( A0, A1, B0, B1, projs );
 
-    // double length_A = std::sqrt((x[2]-x[0])*(x[2]-x[0]) + (x[3]-x[1])*(x[3]-x[1]));
-    double projs[2] = {0};
-    get_projections(A0, A1, B1, B0, projs);
-    std::array<double, 2> projections = {projs[0], projs[1]};
+  const double del = 0.1;
+  double xi_min = std::min( projs[0], projs[1] );
+  double xi_max = std::max( projs[0], projs[1] );
+  if ( xi_max < -0.5 - del ) xi_max = -0.5 - del;
+  if ( xi_min >  0.5 + del ) xi_min =  0.5 + del;
+  if ( xi_min < -0.5 - del ) xi_min = -0.5 - del;
+  if ( xi_max >  0.5 + del ) xi_max =  0.5 + del;
 
+  double sb[2];
+  double raw[2] = { xi_min, xi_max };
+  for ( int i = 0; i < 2; ++i ) {
+    double xi = raw[i] + 0.5;
+    double xi_hat = 0.0;
+    if ( -del <= xi && xi <= del ) {
+      xi_hat = ( 1.0/(4.0*del) )*xi*xi + 0.5*xi + del/4.0;
+    } else if ( (1.0-del) <= xi && xi <= (1.0+del) ) {
+      double b = -1.0/(4.0*del);
+      double c = 0.5 + 1.0/(2.0*del);
+      double d = 1.0-del + (1.0/(4.0*del))*(1.0-del)*(1.0-del)
+                 - 0.5*(1.0-del) - (1.0-del)/(2.0*del);
+      xi_hat = b*xi*xi + c*xi + d;
+    } else {
+      xi_hat = xi;
+    }
+    sb[i] = xi_hat - 0.5;
+  }
 
-    auto bounds = ContactSmoothing::bounds_from_projections(projections);
-    auto xi_bounds = ContactSmoothing::smooth_bounds(bounds);
-
-
-    auto qp = ContactEvaluator::compute_quadrature(xi_bounds);
-
-    const int N = static_cast<int>(qp.qp.size());
-
-    Gparams gp;
-    gp.N = N;
-    gp.qp = qp.qp.data();
-    gp.w = qp.w.data();
-    gp.x2 =nullptr;
-
-  double gt[2];
-  double A_out[2];
-  gtilde_kernel(x, &gp, gt, nB, length_A, A_out);
-  *out = A_out[1];
+  const double J_ref = std::sqrt( (A1[0]-A0[0])*(A1[0]-A0[0]) + (A1[1]-A0[1])*(A1[1]-A0[1]) );
+  double AI_2 = J_ref * ( 0.5*(sb[1] - sb[0]) + 0.5*(sb[1]*sb[1] - sb[0]*sb[0]) );
+  *out = AI_2;
 }
+
+
+
+
+
+
+// static void A1_out( const double* x, const double* nB, double length_A, double* out)
+// {
+//   double A0[2], A1[2], B0[2], B1[2];
+
+//   A0[0] = x[0];
+//   A0[1] = x[1];
+//   A1[0] = x[2];
+//   A1[1] = x[3];
+//   B0[0] = x[4];
+//   B0[1] = x[5];
+//   B1[0] = x[6];
+//   B1[1] = x[7];
+
+//   // double length_A = std::sqrt((x[2]-x[0])*(x[2]-x[0]) + (x[3]-x[1])*(x[3]-x[1]));
+//   double projs[2] = {0};
+//   get_projections(A0, A1, B1, B0, projs);
+//   std::array<double, 2> projections = {projs[0], projs[1]};
+
+
+//   auto bounds = ContactSmoothing::bounds_from_projections(projections);
+//   auto xi_bounds = ContactSmoothing::smooth_bounds(bounds);
+
+
+//   auto qp = ContactEvaluator::compute_quadrature(xi_bounds);
+
+//   const int N = static_cast<int>(qp.qp.size());
+
+//   Gparams gp;
+//   gp.N = N;
+//   gp.qp = qp.qp.data();
+//   gp.w = qp.w.data();
+//   gp.x2 =nullptr;
+
+//   double gt[2];
+//   double A_out[2];
+//   gtilde_kernel(x, &gp, gt, nB, length_A, A_out);
+//   *out = A_out[0];
+// }
+
+// static void A2_out(const double* x, const double* nB, double length_A, double* out)
+// {
+//     double A0[2], A1[2], B0[2], B1[2];
+
+//     A0[0] = x[0];
+//     A0[1] = x[1];
+//     A1[0] = x[2];
+//     A1[1] = x[3];
+//     B0[0] = x[4];
+//     B0[1] = x[5];
+//     B1[0] = x[6];
+//     B1[1] = x[7];
+
+//     // double length_A = std::sqrt((x[2]-x[0])*(x[2]-x[0]) + (x[3]-x[1])*(x[3]-x[1]));
+//     double projs[2] = {0};
+//     get_projections(A0, A1, B1, B0, projs);
+//     std::array<double, 2> projections = {projs[0], projs[1]};
+
+
+//     auto bounds = ContactSmoothing::bounds_from_projections(projections);
+//     auto xi_bounds = ContactSmoothing::smooth_bounds(bounds);
+
+
+//     auto qp = ContactEvaluator::compute_quadrature(xi_bounds);
+
+//     const int N = static_cast<int>(qp.qp.size());
+
+//     Gparams gp;
+//     gp.N = N;
+//     gp.qp = qp.qp.data();
+//     gp.w = qp.w.data();
+//     gp.x2 =nullptr;
+
+//   double gt[2];
+//   double A_out[2];
+//   gtilde_kernel(x, &gp, gt, nB, length_A, A_out);
+//   *out = A_out[1];
+// }
 
 void grad_gtilde1( const double* x, const double* nB, double length_A, double* dgt1_du)
 {
@@ -585,31 +675,60 @@ void grad_gtilde2( const double* x, const double* nB, double length_A, double* d
   }
 }
 
-void grad_A1(const double* x, const double* nB, double length_A, double* dA1_du)
+
+void grad_A1( const double* x, const double* nB, double length_A, double* dA1_du )
 {
   double dx[8] = { 0.0 };
-  double out = 0.0;
-  double dout = 1.0;
+  double out   = 0.0;
+  double dout  = 1.0;
 
-  __enzyme_autodiff<void>( (void*)A1_out, enzyme_dup, x, dx, enzyme_const, nB, enzyme_const, enzyme_const, length_A, enzyme_dup, &out, &dout);
+  __enzyme_autodiff<void>( (void*)A1_out, enzyme_dup, x, dx, enzyme_dup, &out, &dout );
 
   for ( int i = 0; i < 8; ++i ) {
     dA1_du[i] = dx[i];
   }
 }
 
-void grad_A2( const double* x, const double* nB, double length_A, double* dA2_du)
+void grad_A2( const double* x, const double* nB, double length_A, double* dA2_du )
 {
   double dx[8] = { 0.0 };
-  double out = 0.0;
-  double dout = 1.0;
+  double out   = 0.0;
+  double dout  = 1.0;
 
-  __enzyme_autodiff<void>( (void*)A2_out, enzyme_dup, x, dx, enzyme_const, nB, enzyme_const, enzyme_const, length_A, enzyme_dup, &out, &dout);
+  __enzyme_autodiff<void>( (void*)A2_out, enzyme_dup, x, dx, enzyme_dup, &out, &dout );
 
   for ( int i = 0; i < 8; ++i ) {
     dA2_du[i] = dx[i];
   }
 }
+
+
+
+// void grad_A1(const double* x, const double* nB, double length_A, double* dA1_du)
+// {
+//   double dx[8] = { 0.0 };
+//   double out = 0.0;
+//   double dout = 1.0;
+
+//   __enzyme_autodiff<void>( (void*)A1_out, enzyme_dup, x, dx, enzyme_const, nB, enzyme_const, length_A, enzyme_dup, &out, &dout);
+
+//   for ( int i = 0; i < 8; ++i ) {
+//     dA1_du[i] = dx[i];
+//   }
+// }
+
+// void grad_A2( const double* x, const double* nB, double length_A, double* dA2_du)
+// {
+//   double dx[8] = { 0.0 };
+//   double out = 0.0;
+//   double dout = 1.0;
+
+//   __enzyme_autodiff<void>( (void*)A2_out, enzyme_dup, x, dx, enzyme_const, nB, enzyme_const, length_A, enzyme_dup, &out, &dout);
+
+//   for ( int i = 0; i < 8; ++i ) {
+//     dA2_du[i] = dx[i];
+//   }
+// }
 
 void d2gtilde1( const double* x, const double* nB, double length_A, double* H1 )
 {
@@ -620,7 +739,7 @@ void d2gtilde1( const double* x, const double* nB, double length_A, double* H1 )
     double grad[8] = { 0.0 };
     double dgrad[8] = { 0.0 };
 
-    __enzyme_fwddiff<void>( (void*)grad_gtilde1, x, dx, enzyme_const, nB, enzyme_const, enzyme_const, length_A, enzyme_dup, grad, dgrad );
+    __enzyme_fwddiff<void>( (void*)grad_gtilde1, x, dx, enzyme_const, nB, enzyme_const, length_A, enzyme_dup, grad, dgrad );
 
     for ( int row = 0; row < 8; ++row ) {
       H1[row * 8 + col] = dgrad[row];
@@ -637,7 +756,7 @@ void d2gtilde2( const double* x, const double* nB, double length_A, double* H2 )
     double grad[8] = { 0.0 };
     double dgrad[8] = { 0.0 };
 
-    __enzyme_fwddiff<void>( (void*)grad_gtilde2, x, dx, enzyme_const, nB, enzyme_const, enzyme_const, length_A, enzyme_dup, grad, dgrad );
+    __enzyme_fwddiff<void>( (void*)grad_gtilde2, x, dx, enzyme_const, nB, enzyme_const, length_A, enzyme_dup, grad, dgrad );
 
     for ( int row = 0; row < 8; ++row ) {
       H2[row * 8 + col] = dgrad[row];
@@ -654,7 +773,7 @@ void get_d2A1( const double* x, const double* nB, double length_A, double* H1 )
     double grad[8] = { 0.0 };
     double dgrad[8] = { 0.0 };
 
-    __enzyme_fwddiff<void>( (void*)grad_A1, x, dx, enzyme_const, nB, enzyme_const, enzyme_const, length_A, enzyme_dup, grad, dgrad );
+    __enzyme_fwddiff<void>( (void*)grad_A1, x, dx, enzyme_const, nB, enzyme_const, length_A, enzyme_dup, grad, dgrad );
 
     for ( int row = 0; row < 8; ++row ) {
       H1[row * 8 + col] = dgrad[row];
@@ -671,7 +790,7 @@ void get_d2A2( const double* x, const double* nB, double length_A, double* H1 )
     double grad[8] = { 0.0 };
     double dgrad[8] = { 0.0 };
 
-    __enzyme_fwddiff<void>( (void*)grad_A2, x, dx, enzyme_const, nB, enzyme_const, enzyme_const, length_A, enzyme_dup, grad, dgrad );
+    __enzyme_fwddiff<void>( (void*)grad_A2, x, dx, enzyme_const, nB, enzyme_const, length_A, enzyme_dup, grad, dgrad );
 
     for ( int row = 0; row < 8; ++row ) {
       H1[row * 8 + col] = dgrad[row];
@@ -1136,6 +1255,8 @@ void ContactEvaluator::grad_trib_area( const InterfacePair& pair, const MeshData
     grad_A2_quad(x, &gp, dA2_dx);
   }
   else{  
+    // grad_A1( x, nB, length_A, dA1_dx);
+    // grad_A2( x, nB, length_A, dA2_dx);
     grad_A1( x, nB, length_A, dA1_dx);
     grad_A2( x, nB, length_A, dA2_dx);
   }
@@ -1355,12 +1476,11 @@ std::pair<double, double> ContactEvaluator::eval_gtilde( const InterfacePair& pa
   NodalContactData ncd = compute_nodal_contact_data( pair, mesh1, mesh2 );
   // double gt1 = ncd.g_tilde[0];
   // double gt2 = ncd.g_tilde[1];
-  double A1 = ncd.AI[0];
-  double A2 = ncd.AI[1];
+  double A1 = ncd.g_tilde[0];
+  double A2 = ncd.g_tilde[1];
 
   return { A1, A2 };
 }
-
 
 
 
@@ -1372,202 +1492,542 @@ FiniteDiffResult ContactEvaluator::validate_g_tilde( const InterfacePair& pair, 
   auto viewer1 = mesh1.getView();
   auto viewer2 = mesh2.getView();
 
-  auto projs0 = projections( pair, viewer1, viewer2 );
-  auto bounds0 = smoother_.bounds_from_projections( projs0 );
+  auto projs0         = projections( pair, viewer1, viewer2 );
+  auto bounds0        = smoother_.bounds_from_projections( projs0 );
   auto smooth_bounds0 = smoother_.smooth_bounds( bounds0 );
-  QuadPoints qp0 = compute_quadrature( smooth_bounds0 );
-
-  // auto [g1_base, g2_base] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
+  QuadPoints qp0;
+  if ( !p_.enzyme_quadrature ) {
+    qp0 = compute_quadrature( smooth_bounds0 );
+  }
 
   auto [g1_base, g2_base] = eval_gtilde( pair, viewer1, viewer2 );
+  std::cout << "eval_gtilde:           " << g1_base << ", " << g2_base << "\n";
+  if ( !p_.enzyme_quadrature ) {
+    auto [g1_check, g2_check] = eval_gtilde_fixed_qp( pair, viewer1, viewer2, qp0 );
+    std::cout << "eval_gtilde_fixed_qp:  " << g1_check << ", " << g2_check << "\n";
+  }
+
   result.g_tilde1_baseline = g1_base;
   result.g_tilde2_baseline = g2_base;
 
-  // Collect nodes in sorted order
-  std::set<int> node_set;
   auto A_conn = viewer1.getConnectivity()( pair.m_element_id1 );
-  node_set.insert( A_conn[0] );
-  node_set.insert( A_conn[1] );
   auto B_conn = viewer2.getConnectivity()( pair.m_element_id2 );
-  node_set.insert( B_conn[0] );
-  node_set.insert( B_conn[1] );
 
-  result.node_ids = std::vector<int>( node_set.begin(), node_set.end() );
-  // std::sort(result.node_ids.begin(), result.node_ids.end()); //Redundant??
+  result.node_ids = { (int)A_conn[0], (int)A_conn[1], (int)B_conn[0], (int)B_conn[1] };
 
-  int num_dofs = result.node_ids.size() * 2;
+  const int num_dofs = 8;
   result.fd_gradient_g1.resize( num_dofs );
   result.fd_gradient_g2.resize( num_dofs );
-
-  // ===== GET AND REORDER ENZYME GRADIENTS =====
-  double dgt1_dx[8] = { 0.0 };
-  double dgt2_dx[8] = { 0.0 };
-  grad_trib_area( pair, viewer1, viewer2, dgt1_dx, dgt2_dx );
-
-  // Map from node_id to position in x[8]
-  std::map<int, int> node_to_x_idx;
-  node_to_x_idx[A_conn[0]] = 0;  // A0 → x[0,1]
-  node_to_x_idx[A_conn[1]] = 1;  // A1 → x[2,3]
-  node_to_x_idx[B_conn[0]] = 2;  // B0 → x[4,5]
-  node_to_x_idx[B_conn[1]] = 3;  // B1 → x[6,7]
-
-  // Reorder Enzyme gradients to match sorted node order
   result.analytical_gradient_g1.resize( num_dofs );
   result.analytical_gradient_g2.resize( num_dofs );
 
-  for ( size_t i = 0; i < result.node_ids.size(); ++i ) {
-    int node_id = result.node_ids[i];
-    int x_idx = node_to_x_idx[node_id];
-
-    result.analytical_gradient_g1[2 * i + 0] = dgt1_dx[2 * x_idx + 0];  // x component
-    result.analytical_gradient_g1[2 * i + 1] = dgt1_dx[2 * x_idx + 1];  // y component
-    result.analytical_gradient_g2[2 * i + 0] = dgt2_dx[2 * x_idx + 0];
-    result.analytical_gradient_g2[2 * i + 1] = dgt2_dx[2 * x_idx + 1];
+  // ===== ANALYTICAL GRADIENTS =====
+  double dgt1_dx[8] = { 0.0 };
+  double dgt2_dx[8] = { 0.0 };
+  grad_trib_area( pair, viewer1, viewer2, dgt1_dx, dgt2_dx );
+  for ( int i = 0; i < 8; ++i ) {
+    result.analytical_gradient_g1[i] = dgt1_dx[i];
+    result.analytical_gradient_g2[i] = dgt2_dx[i];
   }
-  // =
 
+  // ===== SNAPSHOT ORIGINAL COORDS (long-lived so setPosition never dangles) =====
+  int num_nodes1 = mesh1.numberOfNodes();
+  std::vector<RealT> x1_orig( num_nodes1 ), y1_orig( num_nodes1 );
+  {
+    auto pos = mesh1.getView().getPosition();
+    for ( int i = 0; i < num_nodes1; ++i ) {
+      x1_orig[i] = pos[0][i];
+      y1_orig[i] = pos[1][i];
+    }
+  }
+
+  int num_nodes2 = mesh2.numberOfNodes();
+  std::vector<RealT> x2_orig( num_nodes2 ), y2_orig( num_nodes2 );
+  {
+    auto pos = mesh2.getView().getPosition();
+    for ( int i = 0; i < num_nodes2; ++i ) {
+      x2_orig[i] = pos[0][i];
+      y2_orig[i] = pos[1][i];
+    }
+  }
+
+  // Helper lambda to evaluate using the correct path
+  auto eval = [&]( const MeshData::Viewer& v1, const MeshData::Viewer& v2 ) -> std::pair<double, double> {
+    return p_.enzyme_quadrature
+               ? eval_gtilde( pair, v1, v2 )
+               : eval_gtilde_fixed_qp( pair, v1, v2, qp0 );
+  };
+
+  // ===== FINITE DIFFERENCE GRADIENTS =====
   int dof_idx = 0;
-  // X-direction
 
-  std::set<IndexT> mesh1_nodes = { A_conn[0], A_conn[1] };
-  std::set<IndexT> mesh2_nodes = { B_conn[0], B_conn[1] };
+  // A nodes → perturb mesh1
+  for ( int k = 0; k < 2; ++k ) {
+    int local_node = A_conn[k];
 
-  for ( int node_id : result.node_ids ) {
+    // x perturbation
     {
-      bool is_in_mesh1 = ( mesh1_nodes.count( node_id ) > 0 );
-      MeshData& mesh_to_perturb = is_in_mesh1 ? mesh1 : mesh2;
+      auto x_pert = x1_orig;
+      x_pert[local_node] += epsilon;
+      mesh1.setPosition( x_pert.data(), y1_orig.data(), nullptr );
+      auto [g1p, g2p] = eval( mesh1.getView(), mesh2.getView() );
 
-      // Store Original Mesh coords:
-      auto pos = mesh_to_perturb.getView().getPosition();
-      int num_nodes = mesh_to_perturb.numberOfNodes();
-      int dim = mesh_to_perturb.spatialDimension();
+      x_pert[local_node] = x1_orig[local_node] - epsilon;
+      mesh1.setPosition( x_pert.data(), y1_orig.data(), nullptr );
+      auto [g1m, g2m] = eval( mesh1.getView(), mesh2.getView() );
 
-      std::vector<RealT> x_original( num_nodes );
-      std::vector<RealT> y_original( num_nodes );
-      std::vector<RealT> z_original( num_nodes );
-
-      for ( int i = 0; i < num_nodes; ++i ) {
-        x_original[i] = pos[0][i];
-        y_original[i] = pos[1][i];
-        if ( dim == 3 ) z_original[i] = pos[2][i];
-      }
-
-      std::vector<RealT> x_pert = x_original;
-      x_pert[node_id] += epsilon;
-      mesh_to_perturb.setPosition( x_pert.data(), y_original.data(), dim == 3 ? z_original.data() : nullptr );
-
-      // Evalaute with x_plus
-      auto viewer1_plus = mesh1.getView();
-      auto viewer2_plus = mesh2.getView();
-
-      auto [g1_plus, g2_plus] = eval_gtilde_fixed_qp( pair, viewer1_plus, viewer2_plus, qp0 );
-
-      x_pert[node_id] = x_original[node_id] - epsilon;
-
-      mesh_to_perturb.setPosition( x_pert.data(), y_original.data(), dim == 3 ? z_original.data() : nullptr );
-
-      auto viewer1_minus = mesh1.getView();
-      auto viewer2_minus = mesh2.getView();
-
-      auto [g1_minus, g2_minus] = eval_gtilde_fixed_qp( pair, viewer1_minus, viewer2_minus, qp0 );
-
-      // Restore orginal
-      mesh_to_perturb.setPosition( x_original.data(), y_original.data(), dim == 3 ? z_original.data() : nullptr );
-
-      // Compute gradient
-      result.fd_gradient_g1[dof_idx] = ( g1_plus - g1_minus ) / ( 2.0 * epsilon );
-      result.fd_gradient_g2[dof_idx] = ( g2_plus - g2_minus ) / ( 2.0 * epsilon );
-
-      dof_idx++;
-    }
-    {
-      bool is_in_mesh1 = ( mesh1_nodes.count( node_id ) > 0 );
-      MeshData& mesh_to_perturb = is_in_mesh1 ? mesh1 : mesh2;
-
-      // Store Original Mesh coords:
-      auto pos = mesh_to_perturb.getView().getPosition();
-      int num_nodes = mesh_to_perturb.numberOfNodes();
-      int dim = mesh_to_perturb.spatialDimension();
-
-      std::vector<RealT> x_original( num_nodes );
-      std::vector<RealT> y_original( num_nodes );
-      std::vector<RealT> z_original( num_nodes );
-
-      for ( int i = 0; i < num_nodes; ++i ) {
-        x_original[i] = pos[0][i];
-        y_original[i] = pos[1][i];
-        if ( dim == 3 ) z_original[i] = pos[2][i];
-      }
-      std::vector<RealT> y_pert = y_original;
-
-      y_pert[node_id] += epsilon;
-
-      mesh_to_perturb.setPosition( x_original.data(), y_pert.data(), dim == 3 ? z_original.data() : nullptr );
-
-      auto viewer1_plus2 = mesh1.getView();
-      auto viewer2_plus2 = mesh2.getView();
-
-      auto [g1_plus, g2_plus] = eval_gtilde_fixed_qp( pair, viewer1_plus2, viewer2_plus2, qp0 );
-
-      y_pert[node_id] = y_original[node_id] - epsilon;
-
-      mesh_to_perturb.setPosition( x_original.data(), y_pert.data(), dim == 3 ? z_original.data() : nullptr );
-
-      auto viewer1_minus2 = mesh1.getView();
-      auto viewer2_minus2 = mesh2.getView();
-      auto [g1_minus, g2_minus] = eval_gtilde_fixed_qp( pair, viewer1_minus2, viewer2_minus2, qp0 );
-
-      mesh_to_perturb.setPosition( x_original.data(), y_original.data(), dim == 3 ? z_original.data() : nullptr );
-
-      result.fd_gradient_g1[dof_idx] = ( g1_plus - g1_minus ) / ( 2.0 * epsilon );
-      result.fd_gradient_g2[dof_idx] = ( g2_plus - g2_minus ) / ( 2.0 * epsilon );
-
+      mesh1.setPosition( x1_orig.data(), y1_orig.data(), nullptr );
+      result.fd_gradient_g1[dof_idx] = ( g1p - g1m ) / ( 2.0 * epsilon );
+      result.fd_gradient_g2[dof_idx] = ( g2p - g2m ) / ( 2.0 * epsilon );
       dof_idx++;
     }
 
-    //         double original = mesh.node(node_id).x;
+    // y perturbation
+    {
+      auto y_pert = y1_orig;
+      y_pert[local_node] += epsilon;
+      mesh1.setPosition( x1_orig.data(), y_pert.data(), nullptr );
+      auto [g1p, g2p] = eval( mesh1.getView(), mesh2.getView() );
 
-    //         double x_plus =
+      y_pert[local_node] = y1_orig[local_node] - epsilon;
+      mesh1.setPosition( x1_orig.data(), y_pert.data(), nullptr );
+      auto [g1m, g2m] = eval( mesh1.getView(), mesh2.getView() );
 
-    //         mesh.node(node_id).x = original + epsilon;
-    //         auto [g1_plus, g2_plus] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
-
-    //         mesh.node(node_id).x = original - epsilon;
-    //         auto [g1_minus, g2_minus] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
-
-    //         //Restorre orginal
-    //         mesh.node(node_id).x = original;
-
-    //         result.fd_gradient_g1[dof_idx] = (g1_plus - g1_minus) / (2.0 * epsilon);
-    //         result.fd_gradient_g2[dof_idx] = (g2_plus - g2_minus) / (2.0 * epsilon);
-
-    //         dof_idx++;
-    //     }
-
-    // //y - direction
-    //     {
-    //         double original = mesh.node(node_id).y;
-
-    //         // +epsilon
-    //         mesh.node(node_id).y = original + epsilon;
-    //         auto [g1_plus, g2_plus] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
-
-    //         // -epsilon
-    //         mesh.node(node_id).y = original - epsilon;
-    //         auto [g1_minus, g2_minus] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
-
-    //         // Restore
-    //         mesh.node(node_id).y = original;
-
-    //         // Central difference
-    //         result.fd_gradient_g1[dof_idx] = (g1_plus - g1_minus) / (2.0 * epsilon);
-    //         result.fd_gradient_g2[dof_idx] = (g2_plus - g2_minus) / (2.0 * epsilon);
-
-    //         dof_idx++;
-    //     }
+      mesh1.setPosition( x1_orig.data(), y1_orig.data(), nullptr );
+      result.fd_gradient_g1[dof_idx] = ( g1p - g1m ) / ( 2.0 * epsilon );
+      result.fd_gradient_g2[dof_idx] = ( g2p - g2m ) / ( 2.0 * epsilon );
+      dof_idx++;
+    }
   }
+
+  // B nodes → perturb mesh2
+  for ( int k = 0; k < 2; ++k ) {
+    int local_node = B_conn[k];
+
+    // x perturbation
+    {
+      auto x_pert = x2_orig;
+      x_pert[local_node] += epsilon;
+      mesh2.setPosition( x_pert.data(), y2_orig.data(), nullptr );
+      auto [g1p, g2p] = eval( mesh1.getView(), mesh2.getView() );
+
+      x_pert[local_node] = x2_orig[local_node] - epsilon;
+      mesh2.setPosition( x_pert.data(), y2_orig.data(), nullptr );
+      auto [g1m, g2m] = eval( mesh1.getView(), mesh2.getView() );
+
+      mesh2.setPosition( x2_orig.data(), y2_orig.data(), nullptr );
+      result.fd_gradient_g1[dof_idx] = ( g1p - g1m ) / ( 2.0 * epsilon );
+      result.fd_gradient_g2[dof_idx] = ( g2p - g2m ) / ( 2.0 * epsilon );
+      dof_idx++;
+    }
+
+    // y perturbation
+    {
+      auto y_pert = y2_orig;
+      y_pert[local_node] += epsilon;
+      mesh2.setPosition( x2_orig.data(), y_pert.data(), nullptr );
+      auto [g1p, g2p] = eval( mesh1.getView(), mesh2.getView() );
+
+      y_pert[local_node] = y2_orig[local_node] - epsilon;
+      mesh2.setPosition( x2_orig.data(), y_pert.data(), nullptr );
+      auto [g1m, g2m] = eval( mesh1.getView(), mesh2.getView() );
+
+      mesh2.setPosition( x2_orig.data(), y2_orig.data(), nullptr );
+      result.fd_gradient_g1[dof_idx] = ( g1p - g1m ) / ( 2.0 * epsilon );
+      result.fd_gradient_g2[dof_idx] = ( g2p - g2m ) / ( 2.0 * epsilon );
+      dof_idx++;
+    }
+  }
+
   return result;
 }
+
+
+
+
+
+
+//GOOD TEST BELOW********
+
+// FiniteDiffResult ContactEvaluator::validate_g_tilde( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
+//                                                      double epsilon ) const
+// {
+//   FiniteDiffResult result;
+
+//   auto viewer1 = mesh1.getView();
+//   auto viewer2 = mesh2.getView();
+
+//   auto projs0      = projections( pair, viewer1, viewer2 );
+//   auto bounds0     = smoother_.bounds_from_projections( projs0 );
+//   auto smooth_bounds0 = smoother_.smooth_bounds( bounds0 );
+//   QuadPoints qp0;
+//   if ( !p_.enzyme_quadrature ) {
+//     qp0 = compute_quadrature( smooth_bounds0 );
+//   }
+
+//   auto [g1_base, g2_base]   = eval_gtilde( pair, viewer1, viewer2 );
+//   auto [g1_check, g2_check] = eval_gtilde_fixed_qp( pair, viewer1, viewer2, qp0 );
+//   std::cout << "eval_gtilde:           " << g1_base  << ", " << g2_base  << "\n";
+//   std::cout << "eval_gtilde_fixed_qp:  " << g1_check << ", " << g2_check << "\n";
+
+//   result.g_tilde1_baseline = g1_base;
+//   result.g_tilde2_baseline = g2_base;
+
+//   auto A_conn = viewer1.getConnectivity()( pair.m_element_id1 );
+//   auto B_conn = viewer2.getConnectivity()( pair.m_element_id2 );
+
+//   result.node_ids = { (int)A_conn[0], (int)A_conn[1], (int)B_conn[0], (int)B_conn[1] };
+
+//   const int num_dofs = 8;
+//   result.fd_gradient_g1.resize( num_dofs );
+//   result.fd_gradient_g2.resize( num_dofs );
+//   result.analytical_gradient_g1.resize( num_dofs );
+//   result.analytical_gradient_g2.resize( num_dofs );
+
+//   // ===== ANALYTICAL GRADIENTS =====
+//   double dgt1_dx[8] = { 0.0 };
+//   double dgt2_dx[8] = { 0.0 };
+//   grad_trib_area( pair, viewer1, viewer2, dgt1_dx, dgt2_dx );
+//   for ( int i = 0; i < 8; ++i ) {
+//     result.analytical_gradient_g1[i] = dgt1_dx[i];
+//     result.analytical_gradient_g2[i] = dgt2_dx[i];
+//   }
+
+//   // ===== SNAPSHOT ORIGINAL COORDS (long-lived so setPosition never dangles) =====
+//   int num_nodes1 = mesh1.numberOfNodes();
+//   int dim1       = mesh1.spatialDimension();
+//   std::vector<RealT> x1_orig( num_nodes1 ), y1_orig( num_nodes1 );
+//   {
+//     auto pos = mesh1.getView().getPosition();
+//     for ( int i = 0; i < num_nodes1; ++i ) {
+//       x1_orig[i] = pos[0][i];
+//       y1_orig[i] = pos[1][i];
+//     }
+//   }
+
+//   int num_nodes2 = mesh2.numberOfNodes();
+//   int dim2       = mesh2.spatialDimension();
+//   std::vector<RealT> x2_orig( num_nodes2 ), y2_orig( num_nodes2 );
+//   {
+//     auto pos = mesh2.getView().getPosition();
+//     for ( int i = 0; i < num_nodes2; ++i ) {
+//       x2_orig[i] = pos[0][i];
+//       y2_orig[i] = pos[1][i];
+//     }
+//   }
+
+//   // ===== FINITE DIFFERENCE GRADIENTS =====
+//   int dof_idx = 0;
+
+//   // A nodes → perturb mesh1
+//   for ( int k = 0; k < 2; ++k ) {
+//     int local_node = A_conn[k];
+
+//     // x perturbation
+//     {
+//       auto x_pert = x1_orig;
+//       x_pert[local_node] += epsilon;
+//       mesh1.setPosition( x_pert.data(), y1_orig.data(), nullptr );
+
+//       // DEBUG
+//     auto dbg = mesh1.getView().getPosition();
+//     auto [g1p, g2p] = eval_gtilde_fixed_qp( pair, mesh1.getView(), mesh2.getView(), qp0 );
+
+//       x_pert[local_node] = x1_orig[local_node] - epsilon;
+//       mesh1.setPosition( x_pert.data(), y1_orig.data(), nullptr );
+//       auto [g1m, g2m] = eval_gtilde_fixed_qp( pair, mesh1.getView(), mesh2.getView(), qp0 );
+
+//       mesh1.setPosition( x1_orig.data(), y1_orig.data(), nullptr );
+//       result.fd_gradient_g1[dof_idx] = ( g1p - g1m ) / ( 2.0 * epsilon );
+//       result.fd_gradient_g2[dof_idx] = ( g2p - g2m ) / ( 2.0 * epsilon );
+//       dof_idx++;
+//     }
+
+//     // y perturbation
+//     {
+//       auto y_pert = y1_orig;
+//       y_pert[local_node] += epsilon;
+//       mesh1.setPosition( x1_orig.data(), y_pert.data(), nullptr );
+//       auto [g1p, g2p] = eval_gtilde_fixed_qp( pair, mesh1.getView(), mesh2.getView(), qp0 );
+
+//       y_pert[local_node] = y1_orig[local_node] - epsilon;
+//       mesh1.setPosition( x1_orig.data(), y_pert.data(), nullptr );
+//       auto [g1m, g2m] = eval_gtilde_fixed_qp( pair, mesh1.getView(), mesh2.getView(), qp0 );
+
+//       mesh1.setPosition( x1_orig.data(), y1_orig.data(), nullptr );
+//       result.fd_gradient_g1[dof_idx] = ( g1p - g1m ) / ( 2.0 * epsilon );
+//       result.fd_gradient_g2[dof_idx] = ( g2p - g2m ) / ( 2.0 * epsilon );
+//       dof_idx++;
+//     }
+//   }
+
+//   // B nodes → perturb mesh2
+//   for ( int k = 0; k < 2; ++k ) {
+//     int local_node = B_conn[k];
+
+//     // x perturbation
+//     {
+//       auto x_pert = x2_orig;
+//       x_pert[local_node] += epsilon;
+//       mesh2.setPosition( x_pert.data(), y2_orig.data(), nullptr );
+//       auto [g1p, g2p] = eval_gtilde_fixed_qp( pair, mesh1.getView(), mesh2.getView(), qp0 );
+
+//       x_pert[local_node] = x2_orig[local_node] - epsilon;
+//       mesh2.setPosition( x_pert.data(), y2_orig.data(), nullptr );
+//       auto [g1m, g2m] = eval_gtilde_fixed_qp( pair, mesh1.getView(), mesh2.getView(), qp0 );
+
+//       mesh2.setPosition( x2_orig.data(), y2_orig.data(), nullptr );
+//       result.fd_gradient_g1[dof_idx] = ( g1p - g1m ) / ( 2.0 * epsilon );
+//       result.fd_gradient_g2[dof_idx] = ( g2p - g2m ) / ( 2.0 * epsilon );
+//       dof_idx++;
+//     }
+
+//     // y perturbation
+//     {
+//       auto y_pert = y2_orig;
+//       y_pert[local_node] += epsilon;
+//       mesh2.setPosition( x2_orig.data(), y_pert.data(), nullptr );
+//       auto [g1p, g2p] = eval_gtilde_fixed_qp( pair, mesh1.getView(), mesh2.getView(), qp0 );
+
+//       y_pert[local_node] = y2_orig[local_node] - epsilon;
+//       mesh2.setPosition( x2_orig.data(), y_pert.data(), nullptr );
+//       auto [g1m, g2m] = eval_gtilde_fixed_qp( pair, mesh1.getView(), mesh2.getView(), qp0 );
+
+//       mesh2.setPosition( x2_orig.data(), y2_orig.data(), nullptr );
+//       result.fd_gradient_g1[dof_idx] = ( g1p - g1m ) / ( 2.0 * epsilon );
+//       result.fd_gradient_g2[dof_idx] = ( g2p - g2m ) / ( 2.0 * epsilon );
+//       dof_idx++;
+//     }
+//   }
+
+//   return result;
+// }
+
+// GOOOD TEST END ********
+
+
+// FiniteDiffResult ContactEvaluator::validate_g_tilde( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
+//                                                      double epsilon ) const
+// {
+//   FiniteDiffResult result;
+
+//   auto viewer1 = mesh1.getView();
+//   auto viewer2 = mesh2.getView();
+
+//   auto projs0 = projections( pair, viewer1, viewer2 );
+//   auto bounds0 = smoother_.bounds_from_projections( projs0 );
+//   auto smooth_bounds0 = smoother_.smooth_bounds( bounds0 );
+//   QuadPoints qp0;
+//   if ( !p_.enzyme_quadrature ) {
+//     qp0 = compute_quadrature( smooth_bounds0 );
+//   }
+
+//   // auto [g1_base, g2_base] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
+
+//   auto [g1_base, g2_base] = eval_gtilde( pair, viewer1, viewer2 );
+//   auto [g1_check, g2_check] = eval_gtilde_fixed_qp( pair, viewer1, viewer2, qp0 );
+//   std::cout << "eval_gtilde:           " << g1_base  << ", " << g2_base  << "\n";
+//   std::cout << "eval_gtilde_fixed_qp:  " << g1_check << ", " << g2_check << "\n";
+//   result.g_tilde1_baseline = g1_base;
+//   result.g_tilde2_baseline = g2_base;
+
+//   // Collect nodes in sorted order
+//   std::set<int> node_set;
+//   auto A_conn = viewer1.getConnectivity()( pair.m_element_id1 );
+//   node_set.insert( A_conn[0] );
+//   node_set.insert( A_conn[1] );
+//   auto B_conn = viewer2.getConnectivity()( pair.m_element_id2 );
+//   node_set.insert( B_conn[0] );
+//   node_set.insert( B_conn[1] );
+
+//   result.node_ids = std::vector<int>( node_set.begin(), node_set.end() );
+//   // std::sort(result.node_ids.begin(), result.node_ids.end()); //Redundant??
+
+//   int num_dofs = result.node_ids.size() * 2;
+//   result.fd_gradient_g1.resize( num_dofs );
+//   result.fd_gradient_g2.resize( num_dofs );
+
+//   // ===== GET AND REORDER ENZYME GRADIENTS =====
+//   double dgt1_dx[8] = { 0.0 };
+//   double dgt2_dx[8] = { 0.0 };
+//   grad_trib_area( pair, viewer1, viewer2, dgt1_dx, dgt2_dx );
+
+//   // Map from node_id to position in x[8]
+//   std::map<int, int> node_to_x_idx;
+//   node_to_x_idx[A_conn[0]] = 0;  // A0 → x[0,1]
+//   node_to_x_idx[A_conn[1]] = 1;  // A1 → x[2,3]
+//   node_to_x_idx[B_conn[0]] = 2;  // B0 → x[4,5]
+//   node_to_x_idx[B_conn[1]] = 3;  // B1 → x[6,7]
+
+//   // Reorder Enzyme gradients to match sorted node order
+//   result.analytical_gradient_g1.resize( num_dofs );
+//   result.analytical_gradient_g2.resize( num_dofs );
+
+//   for ( size_t i = 0; i < result.node_ids.size(); ++i ) {
+//     int node_id = result.node_ids[i];
+//     int x_idx = node_to_x_idx[node_id];
+
+//     result.analytical_gradient_g1[2 * i + 0] = dgt1_dx[2 * x_idx + 0];  // x component
+//     result.analytical_gradient_g1[2 * i + 1] = dgt1_dx[2 * x_idx + 1];  // y component
+//     result.analytical_gradient_g2[2 * i + 0] = dgt2_dx[2 * x_idx + 0];
+//     result.analytical_gradient_g2[2 * i + 1] = dgt2_dx[2 * x_idx + 1];
+//   }
+//   // =
+
+//   int dof_idx = 0;
+//   // X-direction
+
+//   std::set<IndexT> mesh1_nodes = { A_conn[0], A_conn[1] };
+//   std::set<IndexT> mesh2_nodes = { B_conn[0], B_conn[1] };
+
+//   for ( int node_id : result.node_ids ) {
+//     {
+//       bool is_in_mesh1 = ( mesh1_nodes.count( node_id ) > 0 );
+//       MeshData& mesh_to_perturb = is_in_mesh1 ? mesh1 : mesh2;
+
+//       // Store Original Mesh coords:
+//       auto pos = mesh_to_perturb.getView().getPosition();
+//       int num_nodes = mesh_to_perturb.numberOfNodes();
+//       int dim = mesh_to_perturb.spatialDimension();
+
+//       std::vector<RealT> x_original( num_nodes );
+//       std::vector<RealT> y_original( num_nodes );
+//       std::vector<RealT> z_original( num_nodes );
+
+//       for ( int i = 0; i < num_nodes; ++i ) {
+//         x_original[i] = pos[0][i];
+//         y_original[i] = pos[1][i];
+//         if ( dim == 3 ) z_original[i] = pos[2][i];
+//       }
+
+//       std::vector<RealT> x_pert = x_original;
+//       x_pert[node_id] += epsilon;
+//       mesh_to_perturb.setPosition( x_pert.data(), y_original.data(), dim == 3 ? z_original.data() : nullptr );
+
+//       // Evalaute with x_plus
+//       auto viewer1_plus = mesh1.getView();
+//       auto viewer2_plus = mesh2.getView();
+
+//       auto [g1_plus, g2_plus] = p_.enzyme_quadrature
+//       ? eval_gtilde( pair, viewer1_plus, viewer2_plus )
+//       : eval_gtilde_fixed_qp( pair, viewer1_plus, viewer2_plus, qp0 );
+
+//       x_pert[node_id] = x_original[node_id] - epsilon;
+
+//       mesh_to_perturb.setPosition( x_pert.data(), y_original.data(), dim == 3 ? z_original.data() : nullptr );
+
+//       auto viewer1_minus = mesh1.getView();
+//       auto viewer2_minus = mesh2.getView();
+
+//       auto [g1_minus, g2_minus] = p_.enzyme_quadrature
+//       ? eval_gtilde( pair, viewer1_minus, viewer2_minus )
+//       : eval_gtilde_fixed_qp( pair, viewer1_minus, viewer2_minus, qp0 );
+
+//       // Restore orginal
+//       mesh_to_perturb.setPosition( x_original.data(), y_original.data(), dim == 3 ? z_original.data() : nullptr );
+
+//       // Compute gradient
+//       result.fd_gradient_g1[dof_idx] = ( g1_plus - g1_minus ) / ( 2.0 * epsilon );
+//       result.fd_gradient_g2[dof_idx] = ( g2_plus - g2_minus ) / ( 2.0 * epsilon );
+
+//       dof_idx++;
+//     }
+//     {
+//       bool is_in_mesh1 = ( mesh1_nodes.count( node_id ) > 0 );
+//       MeshData& mesh_to_perturb = is_in_mesh1 ? mesh1 : mesh2;
+
+//       // Store Original Mesh coords:
+//       auto pos = mesh_to_perturb.getView().getPosition();
+//       int num_nodes = mesh_to_perturb.numberOfNodes();
+//       int dim = mesh_to_perturb.spatialDimension();
+
+//       std::vector<RealT> x_original( num_nodes );
+//       std::vector<RealT> y_original( num_nodes );
+//       std::vector<RealT> z_original( num_nodes );
+
+//       for ( int i = 0; i < num_nodes; ++i ) {
+//         x_original[i] = pos[0][i];
+//         y_original[i] = pos[1][i];
+//         if ( dim == 3 ) z_original[i] = pos[2][i];
+//       }
+//       std::vector<RealT> y_pert = y_original;
+
+//       y_pert[node_id] += epsilon;
+
+//       mesh_to_perturb.setPosition( x_original.data(), y_pert.data(), dim == 3 ? z_original.data() : nullptr );
+
+//       auto viewer1_plus2 = mesh1.getView();
+//       auto viewer2_plus2 = mesh2.getView();
+
+//       // auto [g1_plus, g2_plus] = eval_gtilde_fixed_qp( pair, viewer1_plus2, viewer2_plus2, qp0 );
+
+//       auto [g1_plus, g2_plus] = p_.enzyme_quadrature
+//       ? eval_gtilde( pair, viewer1_plus2, viewer2_plus2 )
+//       : eval_gtilde_fixed_qp( pair, viewer1_plus2, viewer2_plus2, qp0 );
+
+//       y_pert[node_id] = y_original[node_id] - epsilon;
+
+//       mesh_to_perturb.setPosition( x_original.data(), y_pert.data(), dim == 3 ? z_original.data() : nullptr );
+
+//       auto viewer1_minus2 = mesh1.getView();
+//       auto viewer2_minus2 = mesh2.getView();
+//       // auto [g1_minus, g2_minus] = eval_gtilde_fixed_qp( pair, viewer1_minus2, viewer2_minus2, qp0 );
+
+//       auto [g1_minus, g2_minus] = p_.enzyme_quadrature
+//       ? eval_gtilde( pair, viewer1_minus2, viewer2_minus2 )
+//       : eval_gtilde_fixed_qp( pair, viewer1_minus2, viewer2_minus2, qp0 );
+
+//       mesh_to_perturb.setPosition( x_original.data(), y_original.data(), dim == 3 ? z_original.data() : nullptr );
+
+//       result.fd_gradient_g1[dof_idx] = ( g1_plus - g1_minus ) / ( 2.0 * epsilon );
+//       result.fd_gradient_g2[dof_idx] = ( g2_plus - g2_minus ) / ( 2.0 * epsilon );
+
+//       dof_idx++;
+//     }
+
+//     //         double original = mesh.node(node_id).x;
+
+//     //         double x_plus =
+
+//     //         mesh.node(node_id).x = original + epsilon;
+//     //         auto [g1_plus, g2_plus] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
+
+//     //         mesh.node(node_id).x = original - epsilon;
+//     //         auto [g1_minus, g2_minus] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
+
+//     //         //Restorre orginal
+//     //         mesh.node(node_id).x = original;
+
+//     //         result.fd_gradient_g1[dof_idx] = (g1_plus - g1_minus) / (2.0 * epsilon);
+//     //         result.fd_gradient_g2[dof_idx] = (g2_plus - g2_minus) / (2.0 * epsilon);
+
+//     //         dof_idx++;
+//     //     }
+
+//     // //y - direction
+//     //     {
+//     //         double original = mesh.node(node_id).y;
+
+//     //         // +epsilon
+//     //         mesh.node(node_id).y = original + epsilon;
+//     //         auto [g1_plus, g2_plus] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
+
+//     //         // -epsilon
+//     //         mesh.node(node_id).y = original - epsilon;
+//     //         auto [g1_minus, g2_minus] = eval_gtilde_fixed_qp(mesh, A, B, qp0);
+
+//     //         // Restore
+//     //         mesh.node(node_id).y = original;
+
+//     //         // Central difference
+//     //         result.fd_gradient_g1[dof_idx] = (g1_plus - g1_minus) / (2.0 * epsilon);
+//     //         result.fd_gradient_g2[dof_idx] = (g2_plus - g2_minus) / (2.0 * epsilon);
+
+//     //         dof_idx++;
+//     //     }
+//   }
+//   return result;
+// }
 
 
 // void ContactEvaluator::grad_gtilde_with_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1,
@@ -1625,17 +2085,188 @@ std::pair<double, double> ContactEvaluator::eval_gtilde_fixed_qp( const Interfac
 
 
 
-// FiniteDiffResult ContactEvaluator::validate_hessian(Mesh& mesh, const Element& A, const Element& B, double epsilon)
-// const {
+
+FiniteDiffResult ContactEvaluator::validate_hessian( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
+                                                      double epsilon ) const
+{
+  FiniteDiffResult result;
+
+  auto viewer1 = mesh1.getView();
+  auto viewer2 = mesh2.getView();
+
+  double hess1[64] = { 0.0 };
+  double hess2[64] = { 0.0 };
+  compute_d2A_d2u( pair, viewer1, viewer2, hess1, hess2 );
+
+  const int ndof = 8;
+  result.fd_gradient_g1.assign( ndof * ndof, 0.0 );
+  result.fd_gradient_g2.assign( ndof * ndof, 0.0 );
+  result.analytical_gradient_g1.assign( hess1, hess1 + 64 );
+  result.analytical_gradient_g2.assign( hess2, hess2 + 64 );
+
+  auto A_conn = viewer1.getConnectivity()( pair.m_element_id1 );
+  auto B_conn = viewer2.getConnectivity()( pair.m_element_id2 );
+
+  result.node_ids = { (int)A_conn[0], (int)A_conn[1], (int)B_conn[0], (int)B_conn[1] };
+
+  // Use varying-qp evaluator to match what compute_d2A_d2u differentiates through
+  ContactParams params_varying = p_;
+  params_varying.enzyme_quadrature = true;
+  ContactEvaluator eval_varying( params_varying );
+
+  // ===== SNAPSHOT ORIGINAL COORDS =====
+  int num_nodes1 = mesh1.numberOfNodes();
+  std::vector<RealT> x1_orig( num_nodes1 ), y1_orig( num_nodes1 );
+  {
+    auto pos = mesh1.getView().getPosition();
+    for ( int i = 0; i < num_nodes1; ++i ) {
+      x1_orig[i] = pos[0][i];
+      y1_orig[i] = pos[1][i];
+    }
+  }
+
+  int num_nodes2 = mesh2.numberOfNodes();
+  std::vector<RealT> x2_orig( num_nodes2 ), y2_orig( num_nodes2 );
+  {
+    auto pos = mesh2.getView().getPosition();
+    for ( int i = 0; i < num_nodes2; ++i ) {
+      x2_orig[i] = pos[0][i];
+      y2_orig[i] = pos[1][i];
+    }
+  }
+
+  // ===== FINITE DIFFERENCE HESSIAN =====
+  int col = 0;
+
+  // A nodes → perturb mesh1
+  for ( int k = 0; k < 2; ++k ) {
+    int local_node = A_conn[k];
+
+    // x perturbation
+    {
+      double g1p[8] = { 0.0 }, g1m[8] = { 0.0 };
+      double g2p[8] = { 0.0 }, g2m[8] = { 0.0 };
+
+      auto x_pert = x1_orig;
+      x_pert[local_node] += epsilon;
+      mesh1.setPosition( x_pert.data(), y1_orig.data(), nullptr );
+      auto v1p = mesh1.getView(); auto v2p = mesh2.getView();
+      eval_varying.grad_trib_area( pair, v1p, v2p, g1p, g2p );
+
+      x_pert[local_node] = x1_orig[local_node] - epsilon;
+      mesh1.setPosition( x_pert.data(), y1_orig.data(), nullptr );
+      auto v1m = mesh1.getView(); auto v2m = mesh2.getView();
+      eval_varying.grad_trib_area( pair, v1m, v2m, g1m, g2m );
+
+      mesh1.setPosition( x1_orig.data(), y1_orig.data(), nullptr );
+      for ( int i = 0; i < 8; ++i ) {
+        result.fd_gradient_g1[i * 8 + col] = ( g1p[i] - g1m[i] ) / ( 2.0 * epsilon );
+        result.fd_gradient_g2[i * 8 + col] = ( g2p[i] - g2m[i] ) / ( 2.0 * epsilon );
+      }
+      ++col;
+    }
+
+    // y perturbation
+    {
+      double g1p[8] = { 0.0 }, g1m[8] = { 0.0 };
+      double g2p[8] = { 0.0 }, g2m[8] = { 0.0 };
+
+      auto y_pert = y1_orig;
+      y_pert[local_node] += epsilon;
+      mesh1.setPosition( x1_orig.data(), y_pert.data(), nullptr );
+      auto v1p = mesh1.getView(); auto v2p = mesh2.getView();
+      eval_varying.grad_trib_area( pair, v1p, v2p, g1p, g2p );
+
+      y_pert[local_node] = y1_orig[local_node] - epsilon;
+      mesh1.setPosition( x1_orig.data(), y_pert.data(), nullptr );
+      auto v1m = mesh1.getView(); auto v2m = mesh2.getView();
+      eval_varying.grad_trib_area( pair, v1m, v2m, g1m, g2m );
+
+      mesh1.setPosition( x1_orig.data(), y1_orig.data(), nullptr );
+      for ( int i = 0; i < 8; ++i ) {
+        result.fd_gradient_g1[i * 8 + col] = ( g1p[i] - g1m[i] ) / ( 2.0 * epsilon );
+        result.fd_gradient_g2[i * 8 + col] = ( g2p[i] - g2m[i] ) / ( 2.0 * epsilon );
+      }
+      ++col;
+    }
+  }
+
+  // B nodes → perturb mesh2
+  for ( int k = 0; k < 2; ++k ) {
+    int local_node = B_conn[k];
+
+    // x perturbation
+    {
+      double g1p[8] = { 0.0 }, g1m[8] = { 0.0 };
+      double g2p[8] = { 0.0 }, g2m[8] = { 0.0 };
+
+      auto x_pert = x2_orig;
+      x_pert[local_node] += epsilon;
+      mesh2.setPosition( x_pert.data(), y2_orig.data(), nullptr );
+      auto v1p = mesh1.getView(); auto v2p = mesh2.getView();
+      eval_varying.grad_trib_area( pair, v1p, v2p, g1p, g2p );
+
+      x_pert[local_node] = x2_orig[local_node] - epsilon;
+      mesh2.setPosition( x_pert.data(), y2_orig.data(), nullptr );
+      auto v1m = mesh1.getView(); auto v2m = mesh2.getView();
+      eval_varying.grad_trib_area( pair, v1m, v2m, g1m, g2m );
+
+      mesh2.setPosition( x2_orig.data(), y2_orig.data(), nullptr );
+      for ( int i = 0; i < 8; ++i ) {
+        result.fd_gradient_g1[i * 8 + col] = ( g1p[i] - g1m[i] ) / ( 2.0 * epsilon );
+        result.fd_gradient_g2[i * 8 + col] = ( g2p[i] - g2m[i] ) / ( 2.0 * epsilon );
+      }
+      ++col;
+    }
+
+    // y perturbation
+    {
+      double g1p[8] = { 0.0 }, g1m[8] = { 0.0 };
+      double g2p[8] = { 0.0 }, g2m[8] = { 0.0 };
+
+      auto y_pert = y2_orig;
+      y_pert[local_node] += epsilon;
+      mesh2.setPosition( x2_orig.data(), y_pert.data(), nullptr );
+      auto v1p = mesh1.getView(); auto v2p = mesh2.getView();
+      eval_varying.grad_trib_area( pair, v1p, v2p, g1p, g2p );
+
+      y_pert[local_node] = y2_orig[local_node] - epsilon;
+      mesh2.setPosition( x2_orig.data(), y_pert.data(), nullptr );
+      auto v1m = mesh1.getView(); auto v2m = mesh2.getView();
+      eval_varying.grad_trib_area( pair, v1m, v2m, g1m, g2m );
+
+      mesh2.setPosition( x2_orig.data(), y2_orig.data(), nullptr );
+      for ( int i = 0; i < 8; ++i ) {
+        result.fd_gradient_g1[i * 8 + col] = ( g1p[i] - g1m[i] ) / ( 2.0 * epsilon );
+        result.fd_gradient_g2[i * 8 + col] = ( g2p[i] - g2m[i] ) / ( 2.0 * epsilon );
+      }
+      ++col;
+    }
+  }
+
+  return result;
+}
+
+
+
+
+
+
+
+// FiniteDiffResult ContactEvaluator::validate_hessian(const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
+//                                                      double epsilon ) const{
 //     FiniteDiffResult result;
 
-//     auto projs0 = projections(mesh, A, B);
+//     auto viewer1 = mesh1.getView();
+//     auto viewer2 = mesh2.getView();
+
+//     auto projs0 =  projections( pair, viewer1, viewer2 );
 //     auto bounds0 = smoother_.bounds_from_projections(projs0);
 //     auto smooth_bounds0 = smoother_.smooth_bounds(bounds0);
 //     QuadPoints qp0 = compute_quadrature(smooth_bounds0);
 //     double hess1[64] = {0.0};
 //     double hess2[64] = {0.0};
-//     compute_d2A_d2u(mesh, A, B, hess1, hess2);
+//     compute_d2A_d2u(pair, viewer1, viewer2, hess1, hess2);
 
 //     const int ndof = 8;
 //     result.fd_gradient_g1.assign(ndof*ndof, 0.0);
@@ -1645,6 +2276,98 @@ std::pair<double, double> ContactEvaluator::eval_gtilde_fixed_qp( const Interfac
 
 //     result.analytical_gradient_g1.assign(hess1, hess1 + 64);
 //     result.analytical_gradient_g2.assign(hess2, hess2 + 64);
+
+//       // Collect nodes in sorted order
+//     std::set<int> node_set;
+//     auto A_conn = viewer1.getConnectivity()( pair.m_element_id1 );
+//     node_set.insert( A_conn[0] );
+//     node_set.insert( A_conn[1] );
+//     auto B_conn = viewer2.getConnectivity()( pair.m_element_id2 );
+//     node_set.insert( B_conn[0] );
+//     node_set.insert( B_conn[1] );
+
+//     result.node_ids = std::vector<int>( node_set.begin(), node_set.end() );
+
+//     // Map from node_id to position in x[8]
+//     std::map<int, int> node_to_x_idx;
+//     node_to_x_idx[A_conn[0]] = 0;  // A0 → x[0,1]
+//     node_to_x_idx[A_conn[1]] = 1;  // A1 → x[2,3]
+//     node_to_x_idx[B_conn[0]] = 2;  // B0 → x[4,5]
+//     node_to_x_idx[B_conn[1]] = 3;  // B1 → x[6,7]
+
+//     // nodes in x[8] order to match analytical Hessian layout
+//     IndexT nodes[4] = { A_conn[0], A_conn[1], B_conn[0], B_conn[1] };
+
+//     std::set<IndexT> mesh1_nodes = { A_conn[0], A_conn[1] };
+//     std::set<IndexT> mesh2_nodes = { B_conn[0], B_conn[1] };
+
+//     int col = 0;
+//     for ( int k = 0; k < 4; ++k ) {
+//         int node_id = nodes[k];
+//         bool is_in_mesh1 = ( mesh1_nodes.count( node_id ) > 0 );
+//         MeshData& mesh_to_perturb = is_in_mesh1 ? mesh1 : mesh2;
+
+//         for ( int comp = 0; comp < 2; ++comp ) {
+//             auto pos = mesh_to_perturb.getView().getPosition();
+//             int num_nodes = mesh_to_perturb.numberOfNodes();
+//             int dim = mesh_to_perturb.spatialDimension();
+
+//             std::vector<RealT> x_original( num_nodes );
+//             std::vector<RealT> y_original( num_nodes );
+//             std::vector<RealT> z_original( num_nodes );
+//             for ( int i = 0; i < num_nodes; ++i ) {
+//                 x_original[i] = pos[0][i];
+//                 y_original[i] = pos[1][i];
+//                 if ( dim == 3 ) z_original[i] = pos[2][i];
+//             }
+
+//             double g1p[8] = { 0.0 }, g1m[8] = { 0.0 };
+//             double g2p[8] = { 0.0 }, g2m[8] = { 0.0 };
+
+//             if ( comp == 0 ) {
+//                 std::vector<RealT> x_pert = x_original;
+
+//                 x_pert[node_id] += epsilon;
+//                 mesh_to_perturb.setPosition( x_pert.data(), y_original.data(), dim == 3 ? z_original.data() : nullptr );
+//                 auto v1p = mesh1.getView(); auto v2p = mesh2.getView();
+//                 grad_gtilde( pair, v1p, v2p, g1p, g2p );
+
+//                 x_pert[node_id] = x_original[node_id] - epsilon;
+//                 mesh_to_perturb.setPosition( x_pert.data(), y_original.data(), dim == 3 ? z_original.data() : nullptr );
+//                 auto v1m = mesh1.getView(); auto v2m = mesh2.getView();
+//                 grad_gtilde( pair, v1m, v2m, g1m, g2m );
+//             } else {
+//                 std::vector<RealT> y_pert = y_original;
+
+//                 y_pert[node_id] += epsilon;
+//                 mesh_to_perturb.setPosition( x_original.data(), y_pert.data(), dim == 3 ? z_original.data() : nullptr );
+//                 auto v1p = mesh1.getView(); auto v2p = mesh2.getView();
+//                 grad_gtilde( pair, v1p, v2p, g1p, g2p );
+
+//                 y_pert[node_id] = y_original[node_id] - epsilon;
+//                 mesh_to_perturb.setPosition( x_original.data(), y_pert.data(), dim == 3 ? z_original.data() : nullptr );
+//                 auto v1m = mesh1.getView(); auto v2m = mesh2.getView();
+//                 grad_gtilde( pair, v1m, v2m, g1m, g2m );
+//             }
+
+//             mesh_to_perturb.setPosition( x_original.data(), y_original.data(), dim == 3 ? z_original.data() : nullptr );
+
+//             for ( int i = 0; i < 8; ++i ) {
+//                 result.fd_gradient_g1[i * 8 + col] = ( g1p[i] - g1m[i] ) / ( 2.0 * epsilon );
+//                 result.fd_gradient_g2[i * 8 + col] = ( g2p[i] - g2m[i] ) / ( 2.0 * epsilon );
+//             }
+//             ++col;
+//         }
+//     }
+//     return result;
+// }
+    
+
+
+
+
+
+
 
 // int nodes[4] = { A.node_ids[0], A.node_ids[1], B.node_ids[0], B.node_ids[1] };
 
@@ -1657,8 +2380,8 @@ std::pair<double, double> ContactEvaluator::eval_gtilde_fixed_qp( const Interfac
 
 //     double g1p[8]={0}, g1m[8]={0}, g2p[8]={0}, g2m[8]={0};
 
-//     coord = orig + epsilon; grad_gtilde_with_qp(mesh, A, B, qp0, g1p, g2p);
-//     coord = orig - epsilon; grad_gtilde_with_qp(mesh, A, B, qp0, g1m, g2m);
+//     coord = orig + epsilon; grad_gtilde_with_qp(pair, viewer1, viewer2, qp0, g1p, g2p);
+//     coord = orig - epsilon; grad_gtilde_with_qp(pair, viewer1, viewer2, qp0, g1m, g2m);
 //     coord = orig;
 
 //     for (int i = 0; i < 8; ++i) {

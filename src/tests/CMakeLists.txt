@@ -201,6 +201,7 @@ if( TRIBOL_USE_ENZYME )
       tribol_mfem_mortar_energy.cpp
       tribol_new_energy_patch.cpp
       tribol_new_energy_patch_LM.cpp
+      tribol_finite_diff_energy_mortar.cpp
       )
 
   set(combined_test_depends tribol gtest)

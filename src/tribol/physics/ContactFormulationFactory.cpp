@@ -21,7 +21,7 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     double k = 1000.0;
     double delta = 0.1;
     int N = 3;
-    bool enzyme_quadrature = false;
+    bool enzyme_quadrature = true;
     bool use_penalty_ = (cs->getEnforcementMethod() == PENALTY);
 
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
