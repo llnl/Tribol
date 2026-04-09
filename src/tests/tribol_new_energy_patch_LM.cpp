@@ -86,7 +86,6 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         .updateBdrAttrib(3, 6)   // top  (prescribed displacement)
         .updateBdrAttrib(4, 4)   // left  (Fixed x)
     }));
-    // clang-format on
 
     // FE space and grid functions
     auto fe_coll = mfem::H1_FECollection( order, mesh.SpaceDimension() );
@@ -233,7 +232,6 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         tribol::update( step, step * dt, dt );
 
         // ---- Get contact surface FE space and initialize lambda on first pass ----
-        // TODO: adapt to actual tribol API for accessing contact FE space
         auto& contact_fes = tribol::getMfemContactFESpace( cs_id );
         contact_size = contact_fes.GetTrueVSize();
 
@@ -280,9 +278,6 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         }
 
         // ---- Assemble block Jacobian ----
-
-        // SLIC_INFO( "    Building J_uu..." );
-
         // (0,0) block: K + H
         // NOTE: H may be null on the first Newton iteration when lambda = 0
         std::unique_ptr<mfem::HypreParMatrix> J_uu;
@@ -292,13 +287,8 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
           J_uu.reset( new mfem::HypreParMatrix( *K_elastic ) );
         }
 
-        // SLIC_INFO( "    J_uu: " << J_uu->NumRows() << " x " << J_uu->NumCols() );
-        // SLIC_INFO( "    G:    " << G->NumRows() << " x " << G->NumCols() );
-
         // G^T for the (0,1) block
         auto G_T = std::unique_ptr<mfem::HypreParMatrix>( G->Transpose() );
-
-        // SLIC_INFO( "    G^T:  " << G_T->NumRows() << " x " << G_T->NumCols() );
 
         // ---- Apply essential BCs ----
         // Zero out essential DOF rows/cols in J_uu
@@ -314,17 +304,12 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         // Rebuild G from the modified G^T to stay consistent
         G = std::unique_ptr<mfem::HypreParMatrix>( G_T->Transpose() );
 
-        // SLIC_INFO( "    After BC elim - J_uu: " << J_uu->NumRows() << " x " << J_uu->NumCols() );
-        // SLIC_INFO( "    After BC elim - G:    " << G->NumRows() << " x " << G->NumCols() );
-
         // ---- Set up block system ----
 
         mfem::Array<int> block_offsets( 3 );
         block_offsets[0] = 0;
         block_offsets[1] = disp_size;
         block_offsets[2] = disp_size + contact_size;
-
-        // SLIC_INFO( "    Block offsets: [0, " << disp_size << ", " << disp_size + contact_size << "]" );
 
         mfem::BlockOperator J_block( block_offsets );
         J_block.SetBlock( 0, 0, J_uu.get() );
@@ -337,8 +322,6 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         rhs.GetBlock( 0 ).Neg();
         rhs.GetBlock( 1 ) = R_lambda;
         rhs.GetBlock( 1 ).Neg();
-
-        // SLIC_INFO( "    Solving saddle point system..." );
 
         // ---- Solve with unpreconditioned MINRES ----
         // (keep it simple for debugging; add preconditioner once this works)
