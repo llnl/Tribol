@@ -12,7 +12,8 @@ namespace tribol {
 #ifdef TRIBOL_USE_ENZYME
 
 NewMethodAdapter::NewMethodAdapter( MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, MeshData& mesh1,
-                                    MeshData& mesh2, double k, double delta, int N, bool enzyme_quadrature, bool use_penalty_ )
+                                    MeshData& mesh2, double k, double delta, int N, bool enzyme_quadrature,
+                                    bool use_penalty_ )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
     : submesh_data_( submesh_data ),

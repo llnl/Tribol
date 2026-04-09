@@ -22,7 +22,7 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     double delta = 0.1;
     int N = 3;
     bool enzyme_quadrature = true;
-    bool use_penalty_ = (cs->getEnforcementMethod() == PENALTY);
+    bool use_penalty_ = ( cs->getEnforcementMethod() == PENALTY );
 
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
     if ( cs->hasMfemData() ) {

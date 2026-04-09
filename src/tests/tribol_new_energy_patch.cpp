@@ -46,10 +46,10 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
   double l2_err_y_;
 
   // --- User-configurable parameters ---
-  static constexpr int    num_timesteps_ = 10;
+  static constexpr int num_timesteps_ = 10;
   static constexpr double total_prescribed_disp_ = -0.01;
   static constexpr double lam_ = 50.0;
-  static constexpr double mu_  = 50.0;
+  static constexpr double mu_ = 50.0;
   // ------------------------------------
 
   void SetUp() override
@@ -57,9 +57,9 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
     int ref_levels = std::get<0>( GetParam() );
     int order = 1;
 
-    auto mortar_attrs     = std::set<int>( { 5 } );
-    auto nonmortar_attrs  = std::set<int>( { 3 } );
-    auto xfixed_attrs     = std::set<int>( { 4 } );
+    auto mortar_attrs = std::set<int>( { 5 } );
+    auto nonmortar_attrs = std::set<int>( { 3 } );
+    auto xfixed_attrs = std::set<int>( { 4 } );
     auto yfixed_bottom_attrs = std::set<int>( { 1 } );
     auto prescribed_attrs = std::set<int>( { 6 } );
 
@@ -91,15 +91,14 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
       mesh.GetNodes( coords );
     }
 
-
-    //Grid fucntion for displacement
+    // Grid fucntion for displacement
     mfem::ParGridFunction displacement( &par_fe_space );
     displacement = 0.0;
 
     mfem::ParGridFunction ref_coords( &par_fe_space );
     mesh.GetNodes( ref_coords );
 
-    //recover dirchlet bd tdof list
+    // recover dirchlet bd tdof list
     mfem::Array<int> ess_vdof_marker( par_fe_space.GetVSize() );
     ess_vdof_marker = 0;
 
@@ -110,8 +109,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
       bdr = 0;
       for ( auto a : xfixed_attrs ) bdr[a - 1] = 1;
       par_fe_space.GetEssentialVDofs( bdr, tmp, 0 );
-      for ( int i = 0; i < tmp.Size(); ++i )
-        ess_vdof_marker[i] = ess_vdof_marker[i] || tmp[i];
+      for ( int i = 0; i < tmp.Size(); ++i ) ess_vdof_marker[i] = ess_vdof_marker[i] || tmp[i];
     }
 
     // y-fixed on bottom
@@ -121,8 +119,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
       bdr = 0;
       for ( auto a : yfixed_bottom_attrs ) bdr[a - 1] = 1;
       par_fe_space.GetEssentialVDofs( bdr, tmp, 1 );
-      for ( int i = 0; i < tmp.Size(); ++i )
-        ess_vdof_marker[i] = ess_vdof_marker[i] || tmp[i];
+      for ( int i = 0; i < tmp.Size(); ++i ) ess_vdof_marker[i] = ess_vdof_marker[i] || tmp[i];
     }
 
     // y-prescribed on top
@@ -135,8 +132,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
       for ( auto a : prescribed_attrs ) bdr[a - 1] = 1;
       par_fe_space.GetEssentialVDofs( bdr, tmp, 1 );
       prescribed_vdof_marker = tmp;
-      for ( int i = 0; i < tmp.Size(); ++i )
-        ess_vdof_marker[i] = ess_vdof_marker[i] || tmp[i];
+      for ( int i = 0; i < tmp.Size(); ++i ) ess_vdof_marker[i] = ess_vdof_marker[i] || tmp[i];
     }
 
     mfem::Array<int> ess_tdof_list;
@@ -162,7 +158,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
     a.Finalize();
     auto A_elastic_raw = std::unique_ptr<mfem::HypreParMatrix>( a.ParallelAssemble() );
 
-    //Visit Output
+    // Visit Output
     mfem::VisItDataCollection visit_dc( "energy_patch_test", &mesh );
     visit_dc.SetPrecision( 8 );
     visit_dc.RegisterField( "displacement", &displacement );
@@ -178,8 +174,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
     mfem::Vector X( par_fe_space.GetTrueVSize() );
     X = 0.0;
 
-    for ( int step = 1; step <= num_timesteps_; ++step )
-    {
+    for ( int step = 1; step <= num_timesteps_; ++step ) {
       double current_prescribed_disp = disp_increment * step;
 
       // Prescribed displacement vector
@@ -204,11 +199,9 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
       // Re-register tribol each step (internal arrays need fresh allocation
       // when contact pairs change between steps)
       coords.ReadWrite();
-      tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords,
-                                          mortar_attrs, nonmortar_attrs,
-                                          tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING,
-                                          tribol::ENERGY_MORTAR, tribol::FRICTIONLESS,
-                                          tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID );
+      tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
+                                          tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
+                                          tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID );
       tribol::setLagrangeMultiplierOptions( cs_id, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN );
       tribol::setMfemKinematicConstantPenalty( cs_id, 10000.0, 10000.0 );
 
@@ -223,8 +216,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
       f_contact.Neg();
 
       // Inhomogeneous Dirichlet: rhs = f_contact - K * u_prescribed
-      auto A_total = std::unique_ptr<mfem::HypreParMatrix>(
-        mfem::Add( 1.0, *A_elastic_raw, 1.0, *A_cont ) );
+      auto A_total = std::unique_ptr<mfem::HypreParMatrix>( mfem::Add( 1.0, *A_elastic_raw, 1.0, *A_cont ) );
 
       mfem::Vector rhs( par_fe_space.GetTrueVSize() );
       A_total->Mult( X_prescribed, rhs );
@@ -256,8 +248,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
       X = X_free;
       X += X_prescribed;
 
-      SLIC_INFO( "Timestep " << step << "/" << num_timesteps_
-                 << " | prescribed disp = " << current_prescribed_disp );
+      SLIC_INFO( "Timestep " << step << "/" << num_timesteps_ << " | prescribed disp = " << current_prescribed_disp );
 
       // Save VisIt output
       {
@@ -269,7 +260,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
       visit_dc.Save();
     }
 
-    //Get final disaplacent
+    // Get final disaplacent
     {
       auto& P = *par_fe_space.GetProlongationMatrix();
       P.Mult( X, displacement );
@@ -295,11 +286,10 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
 
     SLIC_INFO( "Analytical: eps_yy = " << eps_yy << ", eps_xx = " << eps_xx );
 
-    mfem::VectorFunctionCoefficient exact_sol_coeff( 2,
-      [eps_xx, eps_yy]( const mfem::Vector& x, mfem::Vector& u ) {
-        u[0] = eps_xx * x[0];
-        u[1] = eps_yy * x[1];
-      } );
+    mfem::VectorFunctionCoefficient exact_sol_coeff( 2, [eps_xx, eps_yy]( const mfem::Vector& x, mfem::Vector& u ) {
+      u[0] = eps_xx * x[0];
+      u[1] = eps_yy * x[1];
+    } );
 
     mfem::ParGridFunction exact_disp( &par_fe_space );
     exact_disp.ProjectCoefficient( exact_sol_coeff );
@@ -319,9 +309,9 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
 
     for ( int i = 0; i < n; ++i ) {
       ux_exact( i ) = exact_disp( i );
-      ux_num( i )   = displacement( i );
+      ux_num( i ) = displacement( i );
       uy_exact( i ) = exact_disp( n + i );
-      uy_num( i )   = displacement( n + i );
+      uy_num( i ) = displacement( n + i );
     }
 
     mfem::ParGridFunction ux_err( ux_exact );
@@ -336,8 +326,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
     SLIC_INFO( "L2 error (x):      " << l2_err_x_ );
     SLIC_INFO( "L2 error (y):      " << l2_err_y_ );
     SLIC_INFO( "Consistency check |err_vec^2 - (err_x^2 + err_y^2)| = "
-               << std::abs( l2_err_vec_ * l2_err_vec_
-                            - ( l2_err_x_ * l2_err_x_ + l2_err_y_ * l2_err_y_ ) ) );
+               << std::abs( l2_err_vec_ * l2_err_vec_ - ( l2_err_x_ * l2_err_x_ + l2_err_y_ * l2_err_y_ ) ) );
   }
 };
 
@@ -345,8 +334,8 @@ TEST_P( MfemMortarEnergyPatchTest, check_patch_test )
 {
   EXPECT_GT( max_disp_, 0.0 );
   EXPECT_NEAR( 0.0, l2_err_vec_, 1.0e-2 );
-  EXPECT_NEAR( 0.0, l2_err_x_,  1.0e-2 );
-  EXPECT_NEAR( 0.0, l2_err_y_,  1.0e-2 );
+  EXPECT_NEAR( 0.0, l2_err_x_, 1.0e-2 );
+  EXPECT_NEAR( 0.0, l2_err_y_, 1.0e-2 );
 
   MPI_Barrier( MPI_COMM_WORLD );
 }
@@ -375,4 +364,3 @@ int main( int argc, char* argv[] )
 
   return result;
 }
-

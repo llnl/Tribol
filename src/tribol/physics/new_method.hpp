@@ -107,16 +107,16 @@ class ContactEvaluator {
   std::pair<double, double> eval_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                          const MeshData::Viewer& mesh2 ) const;
 
-  FiniteDiffResult validate_g_tilde( const InterfacePair& pair, MeshData& mesh1,
-                                     MeshData& mesh2, double epsilon = 1e-7 ) const;
+  FiniteDiffResult validate_g_tilde( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
+                                     double epsilon = 1e-7 ) const;
 
   void print_gradient_comparison( const FiniteDiffResult& val ) const;
 
   std::pair<double, double> eval_gtilde_fixed_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                   const MeshData::Viewer& mesh2, const QuadPoints& qp_fixed ) const;
 
-  FiniteDiffResult validate_hessian( const InterfacePair& pair, MeshData& mesh1,
-                                     MeshData& mesh2, double epsilon = 1e-7 ) const;
+  FiniteDiffResult validate_hessian( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
+                                     double epsilon = 1e-7 ) const;
 
   void grad_gtilde_with_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                             const QuadPoints& qp_fixed, double dgt1_dx[8], double dgt2_dx[8] ) const;
@@ -126,7 +126,6 @@ class ContactEvaluator {
  private:
   ContactParams p_;
   ContactSmoothing smoother_;
- 
 
   std::array<double, 2> projections( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                      const MeshData::Viewer& mesh2 ) const;

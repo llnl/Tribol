@@ -327,13 +327,10 @@ mfem::HypreParVector getMfemTDofPressure( IndexT cs_id );
 
 mfem::ParFiniteElementSpace& getMfemContactFESpace( IndexT cs_id );
 
-void evaluateContactResidual( IndexT cs_id,
-                              const mfem::HypreParVector& lambda,
-                              mfem::HypreParVector& r_force,
+void evaluateContactResidual( IndexT cs_id, const mfem::HypreParVector& lambda, mfem::HypreParVector& r_force,
                               mfem::HypreParVector& r_gap );
 
-void evaluateContactJacobian( IndexT cs_id,
-                              const mfem::HypreParVector& lambda,
+void evaluateContactJacobian( IndexT cs_id, const mfem::HypreParVector& lambda,
                               std::unique_ptr<mfem::HypreParMatrix>& df_du,
                               std::unique_ptr<mfem::HypreParMatrix>& df_dlambda );
 

@@ -63,18 +63,14 @@ class NewMethodAdapter : public ContactFormulation {
 
   std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const override;
 
-  void evaluateContactResidual( const mfem::HypreParVector& lambda,
-                                 mfem::HypreParVector& r_force,
-                                 mfem::HypreParVector& r_gap);
-                              
-  //Lagrange multiplier mode
-  void evaluateContactJacobian( const mfem::HypreParVector& lambda, 
-                                std::unique_ptr<mfem::HypreParMatrix>& df_du,
-                                std::unique_ptr<mfem::HypreParMatrix>& df_dlambda);
-  
-  void compute_df_du_lagrange( const mfem::HypreParVector& lambda, 
-                               std::unique_ptr<mfem::HypreParMatrix>& df_du);
+  void evaluateContactResidual( const mfem::HypreParVector& lambda, mfem::HypreParVector& r_force,
+                                mfem::HypreParVector& r_gap );
 
+  // Lagrange multiplier mode
+  void evaluateContactJacobian( const mfem::HypreParVector& lambda, std::unique_ptr<mfem::HypreParMatrix>& df_du,
+                                std::unique_ptr<mfem::HypreParMatrix>& df_dlambda );
+
+  void compute_df_du_lagrange( const mfem::HypreParVector& lambda, std::unique_ptr<mfem::HypreParMatrix>& df_du );
 
 #endif
 
