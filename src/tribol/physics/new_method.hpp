@@ -60,6 +60,13 @@ struct FiniteDiffResult {
   double g_tilde2_baseline;
 };
 
+struct Gparams {
+  int N;
+  const double* qp; 
+  const double* w;
+  const double* x2;
+};
+
 class ContactSmoothing {
  public:
   explicit ContactSmoothing( const ContactParams& p ) : p_( p ) {}  // Constructor
@@ -82,6 +89,8 @@ class ContactEvaluator {
   double compute_contact_energy( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                  const MeshData::Viewer& mesh2 ) const;
 
+  static QuadPoints compute_quadrature( const std::array<double, 2>& xi_bounds );
+
   void gtilde_and_area( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                         double gtilde[2], double area[2] ) const;
 
@@ -97,22 +106,11 @@ class ContactEvaluator {
   void compute_d2A_d2u( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                         double dgt1_dx[64], double dgt2_dx[64] ) const;
 
-  std::array<double, 8> compute_contact_forces( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                const MeshData::Viewer& mesh2 ) const;
-
-  std::array<std::array<double, 8>, 8> compute_stiffness_matrix( const InterfacePair& pair,
-                                                                 const MeshData::Viewer& mesh1,
-                                                                 const MeshData::Viewer& mesh2 ) const;
-
-  static QuadPoints compute_quadrature( const std::array<double, 2>& xi_bounds );
-
   std::pair<double, double> eval_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                          const MeshData::Viewer& mesh2 ) const;
 
   FiniteDiffResult validate_g_tilde( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
                                      double epsilon = 1e-7 ) const;
-
-  void print_gradient_comparison( const FiniteDiffResult& val ) const;
 
   std::pair<double, double> eval_gtilde_fixed_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                   const MeshData::Viewer& mesh2, const QuadPoints& qp_fixed ) const;
@@ -120,17 +118,29 @@ class ContactEvaluator {
   FiniteDiffResult validate_hessian( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
                                      double epsilon = 1e-7 ) const;
 
-  void grad_gtilde_with_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                            const QuadPoints& qp_fixed, double dgt1_dx[8], double dgt2_dx[8] ) const;
-
-  void print_hessian_comparison( const FiniteDiffResult& val ) const;
-
  private:
   ContactParams p_;
   ContactSmoothing smoother_;
 
-  std::array<double, 2> projections( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+  Gparams construct_gparams( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                           const MeshData::Viewer& mesh2 ) const;
+
+
+  std::array<double, 8> compute_contact_forces( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                const MeshData::Viewer& mesh2 ) const;
+
+  std::array<std::array<double, 8>, 8> compute_stiffness_matrix( const InterfacePair& pair,
+                                                                 const MeshData::Viewer& mesh1,
+                                                                 const MeshData::Viewer& mesh2 ) const;
+
+    std::array<double, 2> projections( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                      const MeshData::Viewer& mesh2 ) const;
+
+
+
+  void grad_gtilde_with_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+                            const QuadPoints& qp_fixed, double dgt1_dx[8], double dgt2_dx[8] ) const;
+
 
   double gap( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
               double xiA ) const;

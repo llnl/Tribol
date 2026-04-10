@@ -23,13 +23,15 @@ namespace tribol {
 namespace {
 
 static ContactSmoothing smoother( ContactParams{} );
+static ContactEvaluator eval(ContactParams{});
 
-struct Gparams {
-  int N;
-  const double* qp; 
-  const double* w;
-  const double* x2;
-};
+// struct Gparams {
+//   int N;
+//   const double* qp; 
+//   const double* w;
+//   const double* x2;
+// };
+
 
 void find_normal( const double* coord1, const double* coord2, double* normal )
 {
@@ -158,10 +160,6 @@ void get_projections( const double* A0, const double* A1, const double* B0, cons
   const double dxA = A1[0] - A0[0];
   const double dyA = A1[1] - A0[1];
   const double len2A = dxA * dxA + dyA * dyA;
-
-
-
-
 
 
   const double* B_endpoints[2] = { B0, B1 };
@@ -348,6 +346,7 @@ static void kernel_out_enzyme( const double* x, double* out) {
   B1[0] = x[6];
   B1[1] = x[7];
 
+
   double projs[2] = { 0 };
   get_projections( A0, A1, B0, B1, projs );
   std::array<double, 2> projections = { projs[0], projs[1] };
@@ -423,7 +422,49 @@ void d2_kernel_quad( const double* x, const Gparams* gp, double* H )
   }
 }
 
+
 }  // namespace
+
+
+
+
+Gparams ContactEvaluator::construct_gparams(const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2) const {
+
+      double A0[2], A1[2], B0[2], B1[2];
+
+  endpoints( mesh1, pair.m_element_id1, A0, A1 );
+  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+    double nB[2] = { 0.0 };
+  find_normal( B0, B1, nB );
+
+    auto projs = eval.projections( pair, mesh1, mesh2 );
+    auto bounds = smoother.bounds_from_projections( projs, smoother.get_del() );
+    auto smooth_bounds = smoother.smooth_bounds( bounds, smoother.get_del() );
+
+    auto qp = eval.compute_quadrature( smooth_bounds );
+
+    const int N = static_cast<int>( qp.qp.size() );
+
+    std::vector<double> x2( 2 * N );
+
+    for ( int i = 0; i < N; ++i ) {
+      double x1[2] = { 0.0 };
+      iso_map( A0, A1, qp.qp[i], x1 );
+      double x2_i[2] = { 0.0 };
+      find_intersection( B0, B1, x1, nB, x2_i );
+      x2[2 * i] = x2_i[0];
+      x2[2 * i + 1] = x2_i[1];
+    }
+
+    Gparams gp;
+    gp.N = N;
+    gp.qp = qp.qp.data();
+    gp.w = qp.w.data();
+    gp.x2 = x2.data();
+
+    return gp;
+}
+
 
 std::array<double, 2> ContactEvaluator::projections( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                      const MeshData::Viewer& mesh2 ) const
@@ -661,40 +702,12 @@ void ContactEvaluator::grad_gtilde( const InterfacePair& pair, const MeshData::V
   double dg2_du[8] = { 0.0 };
 
   if ( !p_.enzyme_quadrature ) {
-    auto projs = projections( pair, mesh1, mesh2 );
 
-    auto bounds = smoother_.bounds_from_projections( projs, smoother.get_del() );
-    auto smooth_bounds = smoother_.smooth_bounds( bounds, smoother.get_del() );
-
-    auto qp = compute_quadrature( smooth_bounds );
-
-    const int N = static_cast<int>( qp.qp.size() );
-
-    std::vector<double> x2( 2 * N );
-
-    for ( int i = 0; i < N; ++i ) {
-      double x1[2] = { 0.0 };
-      iso_map( A0, A1, qp.qp[i], x1 );
-      double x2_i[2] = { 0.0 };
-      find_intersection( B0, B1, x1, nB, x2_i );
-      x2[2 * i] = x2_i[0];
-      x2[2 * i + 1] = x2_i[1];
-    }
-
-    Gparams gp;
-    gp.N = N;
-    gp.qp = qp.qp.data();
-    gp.w = qp.w.data();
-    gp.x2 = x2.data();
-
+    Gparams gp = construct_gparams(pair, mesh1, mesh2);
     grad_kernel<KernelOutput::GTILDE1>( x, &gp, dg1_du );
     grad_kernel<KernelOutput::GTILDE2>(  x, &gp, dg2_du);
-    // grad_gtilde1_quad( x, &gp, dg1_du );
-    // grad_gtilde2_quad( x, &gp, dg2_du );
 
   } else {
-    // grad_gtilde1( x, dg1_du );
-    // grad_gtilde2( x, dg2_du );
     grad_kernel_enzyme<KernelOutput::GTILDE1>(x, dg1_du);
     grad_kernel_enzyme<KernelOutput::GTILDE2>(x, dg2_du);
   }
@@ -715,50 +728,19 @@ void ContactEvaluator::grad_trib_area( const InterfacePair& pair, const MeshData
 
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
 
-
   double nB[2], nA[2];
   find_normal( B0, B1, nB );
   find_normal( A0, A1, nA );
 
-
-
   if ( !p_.enzyme_quadrature ) {
-    auto projs = projections( pair, mesh1, mesh2 );
-    auto bounds = smoother_.bounds_from_projections( projs, smoother.get_del() );
-    auto smooth_bounds = smoother_.smooth_bounds( bounds, smoother.get_del() );
 
-    auto qp = compute_quadrature( smooth_bounds );
-
-    const int N = static_cast<int>( qp.qp.size() );
-
-    std::vector<double> x2( 2 * N );
-
-    for ( int i = 0; i < N; ++i ) {
-      double x1[2] = { 0.0 };
-      iso_map( A0, A1, qp.qp[i], x1 );
-      double x2_i[2] = { 0.0 };
-      find_intersection( B0, B1, x1, nB, x2_i );
-      x2[2 * i] = x2_i[0];
-      x2[2 * i + 1] = x2_i[1];
-    }
-
-    Gparams gp;
-    gp.N = N;
-    gp.qp = qp.qp.data();
-    gp.w = qp.w.data();
-    gp.x2 = x2.data();
-
-
+    Gparams gp = construct_gparams(pair, mesh1, mesh2);
     grad_kernel<KernelOutput::A1>( x, &gp, dA1_dx);
     grad_kernel<KernelOutput::A2>( x, &gp, dA2_dx);
-    // grad_A1_quad( x, &gp, dA1_dx );
-    // grad_A2_quad( x, &gp, dA2_dx );
   } else {
 
     grad_kernel_enzyme<KernelOutput::A1>(x, dA1_dx);
     grad_kernel_enzyme<KernelOutput::A2>(x, dA2_dx);
-    // grad_A1( x, dA1_dx );
-    // grad_A2( x, dA2_dx );
   }
 }
 
@@ -818,46 +800,16 @@ void ContactEvaluator::d2_g2tilde( const InterfacePair& pair, const MeshData::Vi
   double d2g2_d2u[64] = { 0.0 };
 
   if ( !p_.enzyme_quadrature ) {
-    auto projs = projections( pair, mesh1, mesh2 );
-    auto bounds = smoother_.bounds_from_projections( projs, smoother.get_del() );
-    auto smooth_bounds = smoother_.smooth_bounds( bounds, smoother.get_del() );
-
-    auto qp = compute_quadrature( smooth_bounds );
-
-    const int N = static_cast<int>( qp.qp.size() );
-
-    std::vector<double> x2( 2 * N );
-
-    for ( int i = 0; i < N; ++i ) {
-      double x1[2] = { 0.0 };
-      iso_map( A0, A1, qp.qp[i], x1 );
-      double x2_i[2] = { 0.0 };
-      find_intersection( B0, B1, x1, nB, x2_i );
-      x2[2 * i] = x2_i[0];
-      x2[2 * i + 1] = x2_i[1];
-    }
-
-    Gparams gp;
-    gp.N = N;
-    gp.qp = qp.qp.data();
-    gp.w = qp.w.data();
-    gp.x2 = x2.data();
+    Gparams gp = construct_gparams(pair, mesh1, mesh2);
 
     d2_kernel_quad<KernelOutput::GTILDE1>(x,&gp,d2g1_d2u);
     d2_kernel_quad<KernelOutput::GTILDE2>(x,&gp,d2g2_d2u);
 
-
-
-    // grad_A1_quad( x, &gp, dA1_dx );
-    // grad_A2_quad( x, &gp, dA2_dx );
   } 
   else{
     d2_kernel<KernelOutput::GTILDE1>( x, d2g1_d2u);
     d2_kernel<KernelOutput::GTILDE2>( x, d2g2_d2u);
   }
-
-  // d2gtilde1( x, d2g1_d2u );
-  // d2gtilde2( x, d2g2_d2u );
 
   for ( int i = 0; i < 64; ++i ) {
     H1[i] = d2g1_d2u[i];
@@ -885,47 +837,15 @@ void ContactEvaluator::compute_d2A_d2u( const InterfacePair& pair, const MeshDat
   double d2A2_d2u[64] = { 0.0 };
 
     if ( !p_.enzyme_quadrature ) {
-    auto projs = projections( pair, mesh1, mesh2 );
-    auto bounds = smoother_.bounds_from_projections( projs, smoother.get_del() );
-    auto smooth_bounds = smoother_.smooth_bounds( bounds, smoother.get_del() );
-
-    auto qp = compute_quadrature( smooth_bounds );
-
-    const int N = static_cast<int>( qp.qp.size() );
-
-    std::vector<double> x2( 2 * N );
-
-    for ( int i = 0; i < N; ++i ) {
-      double x1[2] = { 0.0 };
-      iso_map( A0, A1, qp.qp[i], x1 );
-      double x2_i[2] = { 0.0 };
-      find_intersection( B0, B1, x1, nB, x2_i );
-      x2[2 * i] = x2_i[0];
-      x2[2 * i + 1] = x2_i[1];
-    }
-
-    Gparams gp;
-    gp.N = N;
-    gp.qp = qp.qp.data();
-    gp.w = qp.w.data();
-    gp.x2 = x2.data();
-
+    Gparams gp = construct_gparams(pair, mesh1, mesh2);
     d2_kernel_quad<KernelOutput::A1>(x,&gp,d2A1_d2u);
     d2_kernel_quad<KernelOutput::A2>(x,&gp,d2A2_d2u);
-
-
-
-    // grad_A1_quad( x, &gp, dA1_dx );
-    // grad_A2_quad( x, &gp, dA2_dx );
   } 
     else {
   d2_kernel<KernelOutput::A1>( x, d2A1_d2u);
   d2_kernel<KernelOutput::A2>( x, d2A2_d2u);
   }
   
-
-  // get_d2A1( x, d2A1_d2u );
-  // get_d2A2( x, d2A2_d2u );
 
   for ( int i = 0; i < 64; ++i ) {
     d2A1[i] = d2A1_d2u[i];
