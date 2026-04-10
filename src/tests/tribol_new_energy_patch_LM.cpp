@@ -456,7 +456,7 @@ int main( int argc, char* argv[] )
 
   MPI_Init( &argc, &argv );
   ::testing::InitGoogleTest( &argc, argv );
-
+ 
 #ifdef TRIBOL_USE_UMPIRE
   umpire::ResourceManager::getInstance();
 #endif

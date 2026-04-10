@@ -64,11 +64,13 @@ class ContactSmoothing {
  public:
   explicit ContactSmoothing( const ContactParams& p ) : p_( p ) {}  // Constructor
 
-  static std::array<double, 2> bounds_from_projections( const std::array<double, 2>& proj );
+  double get_del() const { return p_.del; }
 
-  static std::array<double, 2> smooth_bounds( const std::array<double, 2>& bounds );
+  static std::array<double, 2> bounds_from_projections( const std::array<double, 2>& proj, double del );
 
- private:
+  static std::array<double, 2> smooth_bounds( const std::array<double, 2>& bounds, double del );
+
+ private: 
   ContactParams p_;
 };
 

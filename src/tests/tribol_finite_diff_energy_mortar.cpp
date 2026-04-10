@@ -28,6 +28,8 @@
 
 namespace tribol {
 
+static ContactSmoothing smoother( ContactParams{} );
+
 inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], double P1[2] )
 {
   double P0_P1[4];
@@ -59,8 +61,8 @@ FiniteDiffResult ContactEvaluator::validate_g_tilde( const InterfacePair& pair, 
   auto viewer2 = mesh2.getView();
 
   auto projs0 = projections( pair, viewer1, viewer2 );
-  auto bounds0 = smoother_.bounds_from_projections( projs0 );
-  auto smooth_bounds0 = smoother_.smooth_bounds( bounds0 );
+  auto bounds0 = smoother_.bounds_from_projections( projs0, smoother.get_del() );
+  auto smooth_bounds0 = smoother_.smooth_bounds( bounds0, smoother.get_del() );
   QuadPoints qp0;
   if ( !p_.enzyme_quadrature ) {
     qp0 = compute_quadrature( smooth_bounds0 );
@@ -239,7 +241,16 @@ std::pair<double, double> ContactEvaluator::eval_gtilde_fixed_qp( const Interfac
   return { gt1, gt2 };
 }
 
-FiniteDiffResult ContactEvaluator::validate_hessian( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
+
+
+
+
+
+
+
+FiniteDiffResult ContactEvaluator::validate_hessian( const InterfacePair& pair,
+                                                     MeshData& mesh1,
+                                                     MeshData& mesh2,
                                                      double epsilon ) const
 {
   FiniteDiffResult result;
@@ -249,28 +260,29 @@ FiniteDiffResult ContactEvaluator::validate_hessian( const InterfacePair& pair, 
 
   double hess1[64] = { 0.0 };
   double hess2[64] = { 0.0 };
-  compute_d2A_d2u( pair, viewer1, viewer2, hess1, hess2 );
 
   const int ndof = 8;
   result.fd_gradient_g1.assign( ndof * ndof, 0.0 );
   result.fd_gradient_g2.assign( ndof * ndof, 0.0 );
-  result.analytical_gradient_g1.assign( hess1, hess1 + 64 );
-  result.analytical_gradient_g2.assign( hess2, hess2 + 64 );
 
   auto A_conn = viewer1.getConnectivity()( static_cast<std::size_t>( pair.m_element_id1 ) );
   auto B_conn = viewer2.getConnectivity()( static_cast<std::size_t>( pair.m_element_id2 ) );
 
-  result.node_ids = { static_cast<int>( A_conn[0] ), static_cast<int>( A_conn[1] ), static_cast<int>( B_conn[0] ),
-                      static_cast<int>( B_conn[1] ) };
+  result.node_ids = {
+    static_cast<int>( A_conn[0] ),
+    static_cast<int>( A_conn[1] ),
+    static_cast<int>( B_conn[0] ),
+    static_cast<int>( B_conn[1] )
+  };
 
-  ContactParams params_varying = p_;
-  params_varying.enzyme_quadrature = true;
-  ContactEvaluator eval_varying( params_varying );
+  // analytical Hessian
+  d2_g2tilde( pair, viewer1, viewer2, hess1, hess2 );
+  result.analytical_gradient_g1.assign( hess1, hess1 + 64 );
+  result.analytical_gradient_g2.assign( hess2, hess2 + 64 );
 
   // ===== ORIGINAL COORDS =====
   const IndexT num_nodes1 = mesh1.numberOfNodes();
   const std::size_t n1 = static_cast<std::size_t>( num_nodes1 );
-
   std::vector<RealT> x1_orig( n1 ), y1_orig( n1 );
   {
     auto pos = mesh1.getView().getPosition();
@@ -281,145 +293,102 @@ FiniteDiffResult ContactEvaluator::validate_hessian( const InterfacePair& pair, 
     }
   }
 
-  IndexT num_nodes2 = mesh2.numberOfNodes();
+  const IndexT num_nodes2 = mesh2.numberOfNodes();
   const std::size_t n2 = static_cast<std::size_t>( num_nodes2 );
-
   std::vector<RealT> x2_orig( n2 ), y2_orig( n2 );
   {
     auto pos = mesh2.getView().getPosition();
-    for ( int i = 0; i < num_nodes2; ++i ) {
+    for ( IndexT i = 0; i < num_nodes2; ++i ) {
       const std::size_t iu = static_cast<std::size_t>( i );
       x2_orig[iu] = pos[0][i];
       y2_orig[iu] = pos[1][i];
     }
   }
 
-  // ===== FINITE DIFFERENCE HESSIAN =====
-  int col = 0;
+  // ===== FIXED QUADRATURE FOR enzyme_quadrature = false =====
+  QuadPoints qp0;
+  if ( !p_.enzyme_quadrature ) {
+    auto projs0 = projections( pair, viewer1, viewer2 );
+    auto bounds0 = smoother_.bounds_from_projections( projs0, smoother.get_del() );
+    auto smooth_bounds0 = smoother_.smooth_bounds( bounds0, smoother.get_del() );
+    qp0 = compute_quadrature( smooth_bounds0 );
+  }
 
-  // A nodes → perturb mesh1
-  for ( int k = 0; k < 2; ++k ) {
-    const int local_node = A_conn[k];
+  auto eval_from_offsets = [&]( const std::array<double, 8>& du ) -> std::pair<double, double> {
+    auto x1 = x1_orig;
+    auto y1 = y1_orig;
+    auto x2 = x2_orig;
+    auto y2 = y2_orig;
 
-    // x perturbation
-    {
-      double g1p[8] = { 0.0 }, g1m[8] = { 0.0 };
-      double g2p[8] = { 0.0 }, g2m[8] = { 0.0 };
+    x1[static_cast<std::size_t>( A_conn[0] )] += du[0];
+    y1[static_cast<std::size_t>( A_conn[0] )] += du[1];
+    x1[static_cast<std::size_t>( A_conn[1] )] += du[2];
+    y1[static_cast<std::size_t>( A_conn[1] )] += du[3];
 
-      auto x_pert = x1_orig;
-      x_pert[static_cast<std::size_t>( local_node )] += epsilon;
-      mesh1.setPosition( x_pert.data(), y1_orig.data(), nullptr );
-      auto v1p = mesh1.getView();
-      auto v2p = mesh2.getView();
-      eval_varying.grad_trib_area( pair, v1p, v2p, g1p, g2p );
+    x2[static_cast<std::size_t>( B_conn[0] )] += du[4];
+    y2[static_cast<std::size_t>( B_conn[0] )] += du[5];
+    x2[static_cast<std::size_t>( B_conn[1] )] += du[6];
+    y2[static_cast<std::size_t>( B_conn[1] )] += du[7];
 
-      x_pert[static_cast<std::size_t>( local_node )] = x1_orig[static_cast<std::size_t>( local_node )] - epsilon;
-      mesh1.setPosition( x_pert.data(), y1_orig.data(), nullptr );
-      auto v1m = mesh1.getView();
-      auto v2m = mesh2.getView();
-      eval_varying.grad_trib_area( pair, v1m, v2m, g1m, g2m );
+    mesh1.setPosition( x1.data(), y1.data(), nullptr );
+    mesh2.setPosition( x2.data(), y2.data(), nullptr );
 
-      mesh1.setPosition( x1_orig.data(), y1_orig.data(), nullptr );
-
-      for ( std::size_t i = 0; i < 8; ++i ) {
-        const std::size_t idx = i * 8 + static_cast<std::size_t>( col );
-        result.fd_gradient_g1[idx] = ( g1p[i] - g1m[i] ) / ( 2.0 * epsilon );
-        result.fd_gradient_g2[idx] = ( g2p[i] - g2m[i] ) / ( 2.0 * epsilon );
-      }
-      ++col;
+    if ( p_.enzyme_quadrature ) {
+      return eval_gtilde( pair, mesh1.getView(), mesh2.getView() );
+    } else {
+      return eval_gtilde_fixed_qp( pair, mesh1.getView(), mesh2.getView(), qp0 );
     }
+  };
 
-    // y perturbation
-    {
-      double g1p[8] = { 0.0 }, g1m[8] = { 0.0 };
-      double g2p[8] = { 0.0 }, g2m[8] = { 0.0 };
+  const std::array<double, 8> zero = { 0., 0., 0., 0., 0., 0., 0., 0. };
+  const auto [g10, g20] = eval_from_offsets( zero );
 
-      auto y_pert = y1_orig;
-      y_pert[static_cast<std::size_t>( local_node )] += epsilon;
-      mesh1.setPosition( x1_orig.data(), y_pert.data(), nullptr );
-      auto v1p = mesh1.getView();
-      auto v2p = mesh2.getView();
-      eval_varying.grad_trib_area( pair, v1p, v2p, g1p, g2p );
+  // ===== FD HESSIAN =====
+  for ( size_t i = 0; i < ndof; ++i ) {
+    for ( size_t j = 0; j < ndof; ++j ) {
+      const std::size_t idx = static_cast<std::size_t>( i * ndof + j );
 
-      y_pert[static_cast<std::size_t>( local_node )] = y1_orig[static_cast<std::size_t>( local_node )] - epsilon;
-      mesh1.setPosition( x1_orig.data(), y_pert.data(), nullptr );
-      auto v1m = mesh1.getView();
-      auto v2m = mesh2.getView();
-      eval_varying.grad_trib_area( pair, v1m, v2m, g1m, g2m );
+      if ( i == j ) {
+        std::array<double, 8> up = zero;
+        std::array<double, 8> um = zero;
+        up[i] += epsilon;
+        um[i] -= epsilon;
 
-      mesh1.setPosition( x1_orig.data(), y1_orig.data(), nullptr );
+        const auto [g1p, g2p] = eval_from_offsets( up );
+        const auto [g1m, g2m] = eval_from_offsets( um );
 
-      for ( std::size_t i = 0; i < 8; ++i ) {
-        const std::size_t idx = i * 8 + static_cast<std::size_t>( col );
-        result.fd_gradient_g1[idx] = ( g1p[i] - g1m[i] ) / ( 2.0 * epsilon );
-        result.fd_gradient_g2[idx] = ( g2p[i] - g2m[i] ) / ( 2.0 * epsilon );
+        result.fd_gradient_g1[idx] = ( g1p - 2.0 * g10 + g1m ) / ( epsilon * epsilon );
+        result.fd_gradient_g2[idx] = ( g2p - 2.0 * g20 + g2m ) / ( epsilon * epsilon );
+      } else {
+        std::array<double, 8> upp = zero;
+        std::array<double, 8> upm = zero;
+        std::array<double, 8> ump = zero;
+        std::array<double, 8> umm = zero;
+
+        upp[i] += epsilon; upp[j] += epsilon;
+        upm[i] += epsilon; upm[j] -= epsilon;
+        ump[i] -= epsilon; ump[j] += epsilon;
+        umm[i] -= epsilon; umm[j] -= epsilon;
+
+        const auto [g1pp, g2pp] = eval_from_offsets( upp );
+        const auto [g1pm, g2pm] = eval_from_offsets( upm );
+        const auto [g1mp, g2mp] = eval_from_offsets( ump );
+        const auto [g1mm, g2mm] = eval_from_offsets( umm );
+
+        result.fd_gradient_g1[idx] = ( g1pp - g1pm - g1mp + g1mm ) / ( 4.0 * epsilon * epsilon );
+        result.fd_gradient_g2[idx] = ( g2pp - g2pm - g2mp + g2mm ) / ( 4.0 * epsilon * epsilon );
       }
-      ++col;
     }
   }
 
-  // B nodes → perturb mesh2
-  for ( int k = 0; k < 2; ++k ) {
-    int local_node = B_conn[k];
-
-    // x perturbation
-    {
-      double g1p[8] = { 0.0 }, g1m[8] = { 0.0 };
-      double g2p[8] = { 0.0 }, g2m[8] = { 0.0 };
-
-      auto x_pert = x2_orig;
-      x_pert[static_cast<std::size_t>( local_node )] += epsilon;
-      mesh2.setPosition( x_pert.data(), y2_orig.data(), nullptr );
-      auto v1p = mesh1.getView();
-      auto v2p = mesh2.getView();
-      eval_varying.grad_trib_area( pair, v1p, v2p, g1p, g2p );
-
-      x_pert[static_cast<std::size_t>( local_node )] = x2_orig[static_cast<std::size_t>( local_node )] - epsilon;
-      mesh2.setPosition( x_pert.data(), y2_orig.data(), nullptr );
-      auto v1m = mesh1.getView();
-      auto v2m = mesh2.getView();
-      eval_varying.grad_trib_area( pair, v1m, v2m, g1m, g2m );
-
-      mesh2.setPosition( x2_orig.data(), y2_orig.data(), nullptr );
-
-      for ( std::size_t i = 0; i < 8; ++i ) {
-        const std::size_t idx = i * 8 + static_cast<std::size_t>( col );
-        result.fd_gradient_g1[idx] = ( g1p[i] - g1m[i] ) / ( 2.0 * epsilon );
-        result.fd_gradient_g2[idx] = ( g2p[i] - g2m[i] ) / ( 2.0 * epsilon );
-      }
-      ++col;
-    }
-
-    // y perturbation
-    {
-      double g1p[8] = { 0.0 }, g1m[8] = { 0.0 };
-      double g2p[8] = { 0.0 }, g2m[8] = { 0.0 };
-
-      auto y_pert = y2_orig;
-      y_pert[static_cast<std::size_t>( local_node )] += epsilon;
-      mesh2.setPosition( x2_orig.data(), y_pert.data(), nullptr );
-      auto v1p = mesh1.getView();
-      auto v2p = mesh2.getView();
-      eval_varying.grad_trib_area( pair, v1p, v2p, g1p, g2p );
-
-      y_pert[static_cast<std::size_t>( local_node )] = y2_orig[static_cast<std::size_t>( local_node )] - epsilon;
-      mesh2.setPosition( x2_orig.data(), y_pert.data(), nullptr );
-      auto v1m = mesh1.getView();
-      auto v2m = mesh2.getView();
-      eval_varying.grad_trib_area( pair, v1m, v2m, g1m, g2m );
-      mesh2.setPosition( x2_orig.data(), y2_orig.data(), nullptr );
-
-      for ( std::size_t i = 0; i < 8; ++i ) {
-        const std::size_t idx = i * 8 + static_cast<std::size_t>( col );
-        result.fd_gradient_g1[idx] = ( g1p[i] - g1m[i] ) / ( 2.0 * epsilon );
-        result.fd_gradient_g2[idx] = ( g2p[i] - g2m[i] ) / ( 2.0 * epsilon );
-      }
-      ++col;
-    }
-  }
+  mesh1.setPosition( x1_orig.data(), y1_orig.data(), nullptr );
+  mesh2.setPosition( x2_orig.data(), y2_orig.data(), nullptr );
 
   return result;
 }
+
+
+
 
 TEST( GradientCheck, GtildeFDvsAD )
 {
@@ -493,7 +462,7 @@ TEST( HessianCheck, GtildeFDvsAD )
   RealT x2[2] = { 0.2, 0.8 };
   RealT y2[2] = { 0.5, 0.5 };
 
-  IndexT conn1[2] = { 0, 1 };
+  IndexT conn1[2] = { 1, 0 };
   IndexT conn2[2] = { 0, 1 };
 
   MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
@@ -535,7 +504,7 @@ TEST( HessianCheck, GtildeFDvsAD )
           << "Hessian g2 mismatch at [row=" << row << ", col=" << col << "]"
           << "  FD=" << result.fd_gradient_g2[idx] << "  AD=" << result.analytical_gradient_g2[idx];
     }
-  }
+  } 
 }
 
 }  // namespace tribol

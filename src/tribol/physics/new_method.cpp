@@ -22,9 +22,11 @@ namespace tribol {
 
 namespace {
 
+static ContactSmoothing smoother( ContactParams{} );
+
 struct Gparams {
   int N;
-  const double* qp;
+  const double* qp; 
   const double* w;
   const double* x2;
 };
@@ -100,7 +102,7 @@ void determine_legendre_weights( int N, std::array<double, 3>& W )
   } else {
     assert( false && "Unsupported quadrature order" );
   }
-}
+} 
 
 void iso_map( const double* coord1, const double* coord2, double xi, double* mapped_coord )
 {
@@ -156,11 +158,11 @@ void get_projections( const double* A0, const double* A1, const double* B0, cons
   const double dxA = A1[0] - A0[0];
   const double dyA = A1[1] - A0[1];
   const double len2A = dxA * dxA + dyA * dyA;
-  const double lenA = std::sqrt( dxA * dxA + dyA * dyA );
 
-  const double dxB = B1[0] - B0[0];
-  const double dyB = B1[1] - B0[1];
-  const double lenB = std::sqrt( dxB * dxB + dyB * dyB );
+
+
+
+
 
   const double* B_endpoints[2] = { B0, B1 };
 
@@ -302,105 +304,41 @@ void gtilde_kernel_quad( const double* x, const Gparams* gp, double* g_tilde_out
   A_out[1] = AI_2;
 }
 
-static void gtilde1_out_quad( const double* x, const void* gp_void, double* out )
-{
+
+
+enum class KernelOutput { GTILDE1, GTILDE2, A1, A2 };
+
+template <KernelOutput Output>
+static void kernel_out( const double* x, const void* gp_void, double* out) {
   const Gparams* gp = static_cast<const Gparams*>( gp_void );
   double gt[2];
   double A_out[2];
-  gtilde_kernel_quad( x, gp, gt, A_out );
-  *out = gt[0];
+  gtilde_kernel_quad( x, gp, gt, A_out);
+  if constexpr ( Output == KernelOutput::GTILDE1) *out = gt[0];
+  else if constexpr ( Output == KernelOutput::GTILDE2 ) *out = gt[1];
+  else if constexpr ( Output == KernelOutput::A1 ) *out = A_out[0];
+  else if constexpr ( Output == KernelOutput::A2 ) *out = A_out[1];
 }
 
-void grad_gtilde1_quad( const double* x, const Gparams* gp, double* dgt1_du )
-{
-  double dx[8] = { 0.0 };
+template <KernelOutput Output>
+void grad_kernel( const double* x, const Gparams* gp, double* dout_du) {
+  double dx[8] = {0.0};
   double out = 0.0;
   double dout = 1.0;
 
-  __enzyme_autodiff<void>( (void*)gtilde1_out_quad, enzyme_dup, x, dx, enzyme_const, (const void*)gp, enzyme_dup, &out,
-                           &dout );
+  __enzyme_autodiff<void>( (void*)kernel_out<Output>, enzyme_dup, x, dx, enzyme_const, (const void*)gp, enzyme_dup, &out, &dout );
 
-  for ( int i = 0; i < 8; ++i ) {
-    dgt1_du[i] = dx[i];
-  }
+  for ( int i = 0; i < 8; ++i ) dout_du[i] = dx[i];
 }
 
-static void gtilde2_out_quad( const double* x, const void* gp_void, double* out )
-{
-  const Gparams* gp = static_cast<const Gparams*>( gp_void );
-  double gt[2];
-  double A_out[2];
-  gtilde_kernel_quad( x, gp, gt, A_out );
-  *out = gt[1];
-}
 
-static void A1_out_quad( const double* x, const void* gp_void, double* out )
-{
-  const Gparams* gp = static_cast<const Gparams*>( gp_void );
-  double gt[2];
-  double A_out[2];
-  gtilde_kernel_quad( x, gp, gt, A_out );
-  *out = A_out[0];
-}
-
-static void A2_out_quad( const double* x, const void* gp_void, double* out )
-{
-  const Gparams* gp = static_cast<const Gparams*>( gp_void );
-  double gt[2];
-  double A_out[2];
-  gtilde_kernel_quad( x, gp, gt, A_out );
-  *out = A_out[1];
-}
-
-void grad_gtilde2_quad( const double* x, const Gparams* gp, double* dgt2_du )
-{
-  double dx[8] = { 0.0 };
-  double out = 0.0;
-  double dout = 1.0;
-
-  __enzyme_autodiff<void>( (void*)gtilde2_out_quad, enzyme_dup, x, dx, enzyme_const, (const void*)gp, enzyme_dup, &out,
-                           &dout );
-
-  for ( int i = 0; i < 8; ++i ) {
-    dgt2_du[i] = dx[i];
-  }
-}
-
-void grad_A1_quad( const double* x, const Gparams* gp, double* dA1_du )
-{
-  double dx[8] = { 0.0 };
-  double out = 0.0;
-  double dout = 1.0;
-
-  __enzyme_autodiff<void>( (void*)A1_out_quad, enzyme_dup, x, dx, enzyme_const, (const void*)gp, enzyme_dup, &out,
-                           &dout );
-
-  for ( int i = 0; i < 8; ++i ) {
-    dA1_du[i] = dx[i];
-  }
-}
-
-void grad_A2_quad( const double* x, const Gparams* gp, double* dA2_du )
-{
-  double dx[8] = { 0.0 };
-  double out = 0.0;
-  double dout = 1.0;
-
-  __enzyme_autodiff<void>( (void*)A2_out_quad, enzyme_dup, x, dx, enzyme_const, (const void*)gp, enzyme_dup, &out,
-                           &dout );
-
-  for ( int i = 0; i < 8; ++i ) {
-    dA2_du[i] = dx[i];
-  }
-}
 
 //**************************************** */
 // Enzyme functions for varying quadrature:
 
-static void gtilde1_out( const double* x, double* out )
-{
+template <KernelOutput Output> 
+static void kernel_out_enzyme( const double* x, double* out) {
   double A0[2], A1[2], B0[2], B1[2];
-
   A0[0] = x[0];
   A0[1] = x[1];
   A1[0] = x[2];
@@ -414,8 +352,8 @@ static void gtilde1_out( const double* x, double* out )
   get_projections( A0, A1, B0, B1, projs );
   std::array<double, 2> projections = { projs[0], projs[1] };
 
-  auto bounds = ContactSmoothing::bounds_from_projections( projections );
-  auto xi_bounds = ContactSmoothing::smooth_bounds( bounds );
+  auto bounds = ContactSmoothing::bounds_from_projections( projections, smoother.get_del() );
+  auto xi_bounds = ContactSmoothing::smooth_bounds( bounds, smoother.get_del() );
 
   auto qp = ContactEvaluator::compute_quadrature( xi_bounds );
 
@@ -430,181 +368,31 @@ static void gtilde1_out( const double* x, double* out )
   double gt[2];
   double A_out[2];
   gtilde_kernel( x, &gp, gt, A_out );
-  *out = gt[0];
+
+  if constexpr ( Output == KernelOutput::GTILDE1 ) *out = gt[0];
+  else if constexpr ( Output == KernelOutput::GTILDE2 ) *out = gt[1];
+  else if constexpr ( Output == KernelOutput::A1 )     *out = A_out[0];
+  else if constexpr ( Output == KernelOutput::A2 )     *out = A_out[1];
+
 }
 
-static void gtilde2_out( const double* x, double* out )
-{
-  double A0[2], A1[2], B0[2], B1[2];
-
-  A0[0] = x[0];
-  A0[1] = x[1];
-  A1[0] = x[2];
-  A1[1] = x[3];
-  B0[0] = x[4];
-  B0[1] = x[5];
-  B1[0] = x[6];
-  B1[1] = x[7];
-
-  double projs[2] = { 0 };
-  get_projections( A0, A1, B0, B1, projs );
-  std::array<double, 2> projections = { projs[0], projs[1] };
-
-  auto bounds = ContactSmoothing::bounds_from_projections( projections );
-  auto xi_bounds = ContactSmoothing::smooth_bounds( bounds );
-
-  auto qp = ContactEvaluator::compute_quadrature( xi_bounds );
-
-  const int N = static_cast<int>( qp.qp.size() );
-  Gparams gp;
-  gp.N = N;
-  gp.qp = qp.qp.data();
-  gp.w = qp.w.data();
-  gp.x2 = nullptr;
-
-  double gt[2];
-  double A_out[2];
-  gtilde_kernel( x, &gp, gt, A_out );
-  *out = gt[1];
-}
-
-static void A1_out( const double* x, double* out )
-{
-  double A0[2] = { x[0], x[1] };
-  double A1[2] = { x[2], x[3] };
-  double B0[2] = { x[4], x[5] };
-  double B1[2] = { x[6], x[7] };
-
-  double projs[2] = { 0 };
-  get_projections( A0, A1, B0, B1, projs );
-
-  const double del = 0.1;
-  double xi_min = std::min( projs[0], projs[1] );
-  double xi_max = std::max( projs[0], projs[1] );
-  if ( xi_max < -0.5 - del ) xi_max = -0.5 - del;
-  if ( xi_min > 0.5 + del ) xi_min = 0.5 + del;
-  if ( xi_min < -0.5 - del ) xi_min = -0.5 - del;
-  if ( xi_max > 0.5 + del ) xi_max = 0.5 + del;
-
-  double sb[2];
-  double raw[2] = { xi_min, xi_max };
-  for ( int i = 0; i < 2; ++i ) {
-    double xi = raw[i] + 0.5;
-    double xi_hat = 0.0;
-    if ( -del <= xi && xi <= del ) {
-      xi_hat = ( 1.0 / ( 4.0 * del ) ) * xi * xi + 0.5 * xi + del / 4.0;
-    } else if ( ( 1.0 - del ) <= xi && xi <= ( 1.0 + del ) ) {
-      double b = -1.0 / ( 4.0 * del );
-      double c = 0.5 + 1.0 / ( 2.0 * del );
-      double d = 1.0 - del + ( 1.0 / ( 4.0 * del ) ) * ( 1.0 - del ) * ( 1.0 - del ) - 0.5 * ( 1.0 - del ) -
-                 ( 1.0 - del ) / ( 2.0 * del );
-      xi_hat = b * xi * xi + c * xi + d;
-    } else {
-      xi_hat = xi;
-    }
-    sb[i] = xi_hat - 0.5;
-  }
-
-  const double J_ref = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
-  double AI_1 = J_ref * ( 0.5 * ( sb[1] - sb[0] ) - 0.5 * ( sb[1] * sb[1] - sb[0] * sb[0] ) );
-  *out = AI_1;
-}
-
-static void A2_out( const double* x, double* out )
-{
-  double A0[2] = { x[0], x[1] };
-  double A1[2] = { x[2], x[3] };
-  double B0[2] = { x[4], x[5] };
-  double B1[2] = { x[6], x[7] };
-
-  double projs[2] = { 0 };
-  get_projections( A0, A1, B0, B1, projs );
-
-  const double del = 0.1;
-  double xi_min = std::min( projs[0], projs[1] );
-  double xi_max = std::max( projs[0], projs[1] );
-  if ( xi_max < -0.5 - del ) xi_max = -0.5 - del;
-  if ( xi_min > 0.5 + del ) xi_min = 0.5 + del;
-  if ( xi_min < -0.5 - del ) xi_min = -0.5 - del;
-  if ( xi_max > 0.5 + del ) xi_max = 0.5 + del;
-
-  double sb[2];
-  double raw[2] = { xi_min, xi_max };
-  for ( int i = 0; i < 2; ++i ) {
-    double xi = raw[i] + 0.5;
-    double xi_hat = 0.0;
-    if ( -del <= xi && xi <= del ) {
-      xi_hat = ( 1.0 / ( 4.0 * del ) ) * xi * xi + 0.5 * xi + del / 4.0;
-    } else if ( ( 1.0 - del ) <= xi && xi <= ( 1.0 + del ) ) {
-      double b = -1.0 / ( 4.0 * del );
-      double c = 0.5 + 1.0 / ( 2.0 * del );
-      double d = 1.0 - del + ( 1.0 / ( 4.0 * del ) ) * ( 1.0 - del ) * ( 1.0 - del ) - 0.5 * ( 1.0 - del ) -
-                 ( 1.0 - del ) / ( 2.0 * del );
-      xi_hat = b * xi * xi + c * xi + d;
-    } else {
-      xi_hat = xi;
-    }
-    sb[i] = xi_hat - 0.5;
-  }
-
-  const double J_ref = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
-  double AI_2 = J_ref * ( 0.5 * ( sb[1] - sb[0] ) + 0.5 * ( sb[1] * sb[1] - sb[0] * sb[0] ) );
-  *out = AI_2;
-}
-
-void grad_gtilde1( const double* x, double* dgt1_du )
+template <KernelOutput Output>
+void grad_kernel_enzyme( const double* x, double* dout_du )
 {
   double dx[8] = { 0.0 };
   double out = 0.0;
   double dout = 1.0;
 
-  __enzyme_autodiff<void>( (void*)gtilde1_out, enzyme_dup, x, dx, enzyme_dup, &out, &dout );
+  __enzyme_autodiff<void>( (void*)kernel_out_enzyme<Output>, enzyme_dup, x, dx, enzyme_dup, &out, &dout );
 
   for ( int i = 0; i < 8; ++i ) {
-    dgt1_du[i] = dx[i];
-  }
+    dout_du[i] = dx[i];
+  } 
 }
 
-void grad_gtilde2( const double* x, double* dgt2_du )
-{
-  double dx[8] = { 0.0 };
-  double out = 0.0;
-  double dout = 1.0;
 
-  __enzyme_autodiff<void>( (void*)gtilde2_out, enzyme_dup, x, dx, enzyme_dup, &out, &dout );
-
-  for ( int i = 0; i < 8; ++i ) {
-    dgt2_du[i] = dx[i];
-  }
-}
-
-void grad_A1( const double* x, double* dA1_du )
-{
-  double dx[8] = { 0.0 };
-  double out = 0.0;
-  double dout = 1.0;
-
-  __enzyme_autodiff<void>( (void*)A1_out, enzyme_dup, x, dx, enzyme_dup, &out, &dout );
-
-  for ( int i = 0; i < 8; ++i ) {
-    dA1_du[i] = dx[i];
-  }
-}
-
-void grad_A2( const double* x, double* dA2_du )
-{
-  double dx[8] = { 0.0 };
-  double out = 0.0;
-  double dout = 1.0;
-
-  __enzyme_autodiff<void>( (void*)A2_out, enzyme_dup, x, dx, enzyme_dup, &out, &dout );
-
-  for ( int i = 0; i < 8; ++i ) {
-    dA2_du[i] = dx[i];
-  }
-}
-
-void d2gtilde1( const double* x, double* H1 )
+template <KernelOutput Output>
+void d2_kernel( const double* x, double* H )
 {
   for ( int col = 0; col < 8; ++col ) {
     double dx[8] = { 0.0 };
@@ -613,62 +401,25 @@ void d2gtilde1( const double* x, double* H1 )
     double grad[8] = { 0.0 };
     double dgrad[8] = { 0.0 };
 
-    __enzyme_fwddiff<void>( (void*)grad_gtilde1, x, dx, enzyme_dup, grad, dgrad );
+    __enzyme_fwddiff<void>( (void*)grad_kernel_enzyme<Output>, enzyme_dup, x, dx, enzyme_dup, grad, dgrad );
 
-    for ( int row = 0; row < 8; ++row ) {
-      H1[row * 8 + col] = dgrad[row];
-    }
+    for ( int row = 0; row < 8; ++row ) H[row * 8 + col] = dgrad[row];
   }
 }
 
-void d2gtilde2( const double* x, double* H2 )
+
+
+template <KernelOutput Output> 
+void d2_kernel_quad( const double* x, const Gparams* gp, double* H ) 
 {
-  for ( int col = 0; col < 8; ++col ) {
-    double dx[8] = { 0.0 };
+  for ( int col = 0; col < 8; ++col) {
+    double dx[8] = {0.0};
     dx[col] = 1.0;
+    double grad[8] = {0.0};
+    double dgrad[8] = {0.0};
 
-    double grad[8] = { 0.0 };
-    double dgrad[8] = { 0.0 };
-
-    __enzyme_fwddiff<void>( (void*)grad_gtilde2, x, dx, enzyme_dup, grad, dgrad );
-
-    for ( int row = 0; row < 8; ++row ) {
-      H2[row * 8 + col] = dgrad[row];
-    }
-  }
-}
-
-void get_d2A1( const double* x, double* H1 )
-{
-  for ( int col = 0; col < 8; ++col ) {
-    double dx[8] = { 0.0 };
-    dx[col] = 1.0;
-
-    double grad[8] = { 0.0 };
-    double dgrad[8] = { 0.0 };
-
-    __enzyme_fwddiff<void>( (void*)grad_A1, x, dx, enzyme_dup, grad, dgrad );
-
-    for ( int row = 0; row < 8; ++row ) {
-      H1[row * 8 + col] = dgrad[row];
-    }
-  }
-}
-
-void get_d2A2( const double* x, double* H1 )
-{
-  for ( int col = 0; col < 8; ++col ) {
-    double dx[8] = { 0.0 };
-    dx[col] = 1.0;
-
-    double grad[8] = { 0.0 };
-    double dgrad[8] = { 0.0 };
-
-    __enzyme_fwddiff<void>( (void*)grad_A2, x, dx, enzyme_dup, grad, dgrad );
-
-    for ( int row = 0; row < 8; ++row ) {
-      H1[row * 8 + col] = dgrad[row];
-    }
+    __enzyme_fwddiff<void>( (void*)grad_kernel<Output>, enzyme_dup, x, dx, enzyme_const, (const void*)gp, enzyme_dup, grad, dgrad  );
+    for ( int row = 0; row < 8; ++row ) H[row * 8 + col] = dgrad[row];
   }
 }
 
@@ -690,12 +441,10 @@ std::array<double, 2> ContactEvaluator::projections( const InterfacePair& pair, 
   return { projs[0], projs[1] };
 }
 
-std::array<double, 2> ContactSmoothing::bounds_from_projections( const std::array<double, 2>& proj )
+std::array<double, 2> ContactSmoothing::bounds_from_projections( const std::array<double, 2>& proj, double del )
 {
   double xi_min = std::min( proj[0], proj[1] );
   double xi_max = std::max( proj[0], proj[1] );
-
-  const double del = 0.1;
 
   if ( xi_max < -0.5 - del ) {
     xi_max = -0.5 - del;
@@ -713,10 +462,9 @@ std::array<double, 2> ContactSmoothing::bounds_from_projections( const std::arra
   return { xi_min, xi_max };
 }
 
-std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 2>& bounds )
+std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 2>& bounds, double del )
 {
   std::array<double, 2> smooth_bounds;
-  const double del = 0.1;
   for ( int i = 0; i < 2; ++i ) {
     double xi = 0.0;
     double xi_hat = 0.0;
@@ -808,11 +556,11 @@ NodalContactData ContactEvaluator::compute_nodal_contact_data( const InterfacePa
 
   auto projs = projections( pair, mesh1, mesh2 );
 
-  auto bounds = smoother_.bounds_from_projections( projs );
-  auto smooth_bounds = smoother_.smooth_bounds( bounds );
+  auto bounds = smoother_.bounds_from_projections( projs, smoother.get_del() );
+  auto smooth_bounds = smoother_.smooth_bounds( bounds, smoother.get_del() );
 
   auto qp = compute_quadrature( smooth_bounds );
-  auto qp_full = compute_quadrature( { -0.5, 0.5 } );  // for Ai
+
 
   double g_tilde1 = 0.0;
   double g_tilde2 = 0.0;
@@ -902,21 +650,21 @@ void ContactEvaluator::grad_gtilde( const InterfacePair& pair, const MeshData::V
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
 
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  double length_A = std::sqrt( ( x[2] - x[0] ) * ( x[2] - x[0] ) + ( x[3] - x[1] ) * ( x[3] - x[1] ) );
+
 
   double nB[2], nA[2];
   find_normal( B0, B1, nB );
   find_normal( A0, A1, nA );
 
-  double dot = nB[0] * nA[0] + nB[1] * nA[1];
+
   double dg1_du[8] = { 0.0 };
   double dg2_du[8] = { 0.0 };
 
   if ( !p_.enzyme_quadrature ) {
     auto projs = projections( pair, mesh1, mesh2 );
 
-    auto bounds = smoother_.bounds_from_projections( projs );
-    auto smooth_bounds = smoother_.smooth_bounds( bounds );
+    auto bounds = smoother_.bounds_from_projections( projs, smoother.get_del() );
+    auto smooth_bounds = smoother_.smooth_bounds( bounds, smoother.get_del() );
 
     auto qp = compute_quadrature( smooth_bounds );
 
@@ -939,12 +687,16 @@ void ContactEvaluator::grad_gtilde( const InterfacePair& pair, const MeshData::V
     gp.w = qp.w.data();
     gp.x2 = x2.data();
 
-    grad_gtilde1_quad( x, &gp, dg1_du );
-    grad_gtilde2_quad( x, &gp, dg2_du );
+    grad_kernel<KernelOutput::GTILDE1>( x, &gp, dg1_du );
+    grad_kernel<KernelOutput::GTILDE2>(  x, &gp, dg2_du);
+    // grad_gtilde1_quad( x, &gp, dg1_du );
+    // grad_gtilde2_quad( x, &gp, dg2_du );
 
   } else {
-    grad_gtilde1( x, dg1_du );
-    grad_gtilde2( x, dg2_du );
+    // grad_gtilde1( x, dg1_du );
+    // grad_gtilde2( x, dg2_du );
+    grad_kernel_enzyme<KernelOutput::GTILDE1>(x, dg1_du);
+    grad_kernel_enzyme<KernelOutput::GTILDE2>(x, dg2_du);
   }
 
   for ( int i = 0; i < 8; ++i ) {
@@ -962,18 +714,18 @@ void ContactEvaluator::grad_trib_area( const InterfacePair& pair, const MeshData
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
 
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  double length_A = std::sqrt( ( x[2] - x[0] ) * ( x[2] - x[0] ) + ( x[3] - x[1] ) * ( x[3] - x[1] ) );
+
 
   double nB[2], nA[2];
   find_normal( B0, B1, nB );
   find_normal( A0, A1, nA );
 
-  double dot = nB[0] * nA[0] + nB[1] * nA[1];
+
 
   if ( !p_.enzyme_quadrature ) {
     auto projs = projections( pair, mesh1, mesh2 );
-    auto bounds = smoother_.bounds_from_projections( projs );
-    auto smooth_bounds = smoother_.smooth_bounds( bounds );
+    auto bounds = smoother_.bounds_from_projections( projs, smoother.get_del() );
+    auto smooth_bounds = smoother_.smooth_bounds( bounds, smoother.get_del() );
 
     auto qp = compute_quadrature( smooth_bounds );
 
@@ -996,11 +748,17 @@ void ContactEvaluator::grad_trib_area( const InterfacePair& pair, const MeshData
     gp.w = qp.w.data();
     gp.x2 = x2.data();
 
-    grad_A1_quad( x, &gp, dA1_dx );
-    grad_A2_quad( x, &gp, dA2_dx );
+
+    grad_kernel<KernelOutput::A1>( x, &gp, dA1_dx);
+    grad_kernel<KernelOutput::A2>( x, &gp, dA2_dx);
+    // grad_A1_quad( x, &gp, dA1_dx );
+    // grad_A2_quad( x, &gp, dA2_dx );
   } else {
-    grad_A1( x, dA1_dx );
-    grad_A2( x, dA2_dx );
+
+    grad_kernel_enzyme<KernelOutput::A1>(x, dA1_dx);
+    grad_kernel_enzyme<KernelOutput::A2>(x, dA2_dx);
+    // grad_A1( x, dA1_dx );
+    // grad_A2( x, dA2_dx );
   }
 }
 
@@ -1050,20 +808,56 @@ void ContactEvaluator::d2_g2tilde( const InterfacePair& pair, const MeshData::Vi
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
 
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  double length_A = std::sqrt( ( x[2] - x[0] ) * ( x[2] - x[0] ) + ( x[3] - x[1] ) * ( x[3] - x[1] ) );
+
 
   double nB[2], nA[2];
   find_normal( B0, B1, nB );
   find_normal( A0, A1, nA );
 
-  auto projs = projections( pair, mesh1, mesh2 );
-  auto bounds = smoother_.bounds_from_projections( projs );
-
   double d2g1_d2u[64] = { 0.0 };
   double d2g2_d2u[64] = { 0.0 };
 
-  d2gtilde1( x, d2g1_d2u );
-  d2gtilde2( x, d2g2_d2u );
+  if ( !p_.enzyme_quadrature ) {
+    auto projs = projections( pair, mesh1, mesh2 );
+    auto bounds = smoother_.bounds_from_projections( projs, smoother.get_del() );
+    auto smooth_bounds = smoother_.smooth_bounds( bounds, smoother.get_del() );
+
+    auto qp = compute_quadrature( smooth_bounds );
+
+    const int N = static_cast<int>( qp.qp.size() );
+
+    std::vector<double> x2( 2 * N );
+
+    for ( int i = 0; i < N; ++i ) {
+      double x1[2] = { 0.0 };
+      iso_map( A0, A1, qp.qp[i], x1 );
+      double x2_i[2] = { 0.0 };
+      find_intersection( B0, B1, x1, nB, x2_i );
+      x2[2 * i] = x2_i[0];
+      x2[2 * i + 1] = x2_i[1];
+    }
+
+    Gparams gp;
+    gp.N = N;
+    gp.qp = qp.qp.data();
+    gp.w = qp.w.data();
+    gp.x2 = x2.data();
+
+    d2_kernel_quad<KernelOutput::GTILDE1>(x,&gp,d2g1_d2u);
+    d2_kernel_quad<KernelOutput::GTILDE2>(x,&gp,d2g2_d2u);
+
+
+
+    // grad_A1_quad( x, &gp, dA1_dx );
+    // grad_A2_quad( x, &gp, dA2_dx );
+  } 
+  else{
+    d2_kernel<KernelOutput::GTILDE1>( x, d2g1_d2u);
+    d2_kernel<KernelOutput::GTILDE2>( x, d2g2_d2u);
+  }
+
+  // d2gtilde1( x, d2g1_d2u );
+  // d2gtilde2( x, d2g2_d2u );
 
   for ( int i = 0; i < 64; ++i ) {
     H1[i] = d2g1_d2u[i];
@@ -1080,21 +874,58 @@ void ContactEvaluator::compute_d2A_d2u( const InterfacePair& pair, const MeshDat
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
 
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  double length_A = std::sqrt( ( x[2] - x[0] ) * ( x[2] - x[0] ) + ( x[3] - x[1] ) * ( x[3] - x[1] ) );
+
 
   double nB[2], nA[2];
 
   find_normal( B0, B1, nB );
   find_normal( A0, A1, nA );
 
-  auto projs = projections( pair, mesh1, mesh2 );
-  auto bounds = smoother_.bounds_from_projections( projs );
-
   double d2A1_d2u[64] = { 0.0 };
   double d2A2_d2u[64] = { 0.0 };
 
-  get_d2A1( x, d2A1_d2u );
-  get_d2A2( x, d2A2_d2u );
+    if ( !p_.enzyme_quadrature ) {
+    auto projs = projections( pair, mesh1, mesh2 );
+    auto bounds = smoother_.bounds_from_projections( projs, smoother.get_del() );
+    auto smooth_bounds = smoother_.smooth_bounds( bounds, smoother.get_del() );
+
+    auto qp = compute_quadrature( smooth_bounds );
+
+    const int N = static_cast<int>( qp.qp.size() );
+
+    std::vector<double> x2( 2 * N );
+
+    for ( int i = 0; i < N; ++i ) {
+      double x1[2] = { 0.0 };
+      iso_map( A0, A1, qp.qp[i], x1 );
+      double x2_i[2] = { 0.0 };
+      find_intersection( B0, B1, x1, nB, x2_i );
+      x2[2 * i] = x2_i[0];
+      x2[2 * i + 1] = x2_i[1];
+    }
+
+    Gparams gp;
+    gp.N = N;
+    gp.qp = qp.qp.data();
+    gp.w = qp.w.data();
+    gp.x2 = x2.data();
+
+    d2_kernel_quad<KernelOutput::A1>(x,&gp,d2A1_d2u);
+    d2_kernel_quad<KernelOutput::A2>(x,&gp,d2A2_d2u);
+
+
+
+    // grad_A1_quad( x, &gp, dA1_dx );
+    // grad_A2_quad( x, &gp, dA2_dx );
+  } 
+    else {
+  d2_kernel<KernelOutput::A1>( x, d2A1_d2u);
+  d2_kernel<KernelOutput::A2>( x, d2A2_d2u);
+  }
+  
+
+  // get_d2A1( x, d2A1_d2u );
+  // get_d2A2( x, d2A2_d2u );
 
   for ( int i = 0; i < 64; ++i ) {
     d2A1[i] = d2A1_d2u[i];
