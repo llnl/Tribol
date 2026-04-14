@@ -12,8 +12,10 @@
 #include <map>
 
 #include "axom/slic.hpp"
+#include "axom/slic/interface/slic_macros.hpp"
 
 #include "shared/infrastructure/Profiling.hpp"
+#include "tribol/common/LoopExec.hpp"
 
 #include "redecomp/utils/ArrayUtility.hpp"
 
@@ -36,18 +38,12 @@ void SubmeshLORTransfer::TransferToLORGridFn( const mfem::ParGridFunction& subme
 
 void SubmeshLORTransfer::TransferFromLORVector( mfem::Vector& submesh_dst ) const
 {
-  // make sure host data is up to date.  this transfer needs to be on the host until submesh supports device transfer
-  lor_gridfn_->HostRead();
-  submesh_dst.HostWrite();
   lor_xfer_.ForwardOperator().MultTranspose( *lor_gridfn_, submesh_dst );
 }
 
 void SubmeshLORTransfer::SubmeshToLOR( const mfem::ParGridFunction& submesh_src, mfem::ParGridFunction& lor_dst )
 {
   TRIBOL_MARK_FUNCTION;
-  // make sure host data is up to date.  this transfer needs to be on the host until submesh supports device transfer
-  submesh_src.HostRead();
-  lor_dst.HostWrite();
   lor_xfer_.ForwardOperator().Mult( submesh_src, lor_dst );
 }
 
@@ -57,9 +53,6 @@ std::unique_ptr<mfem::ParGridFunction> SubmeshLORTransfer::CreateLORGridFunction
   auto lor_gridfn = std::make_unique<mfem::ParGridFunction>(
       new mfem::ParFiniteElementSpace( &lor_mesh, lor_fec.get(), vdim, mfem::Ordering::byNODES ) );
   lor_gridfn->MakeOwner( lor_fec.release() );
-  // NOTE: This needs to be false until submesh supports device transfer. Otherwise, there will be extra copies to/from
-  // device.
-  lor_gridfn->UseDevice( false );
   return lor_gridfn;
 }
 
@@ -118,19 +111,16 @@ void SubmeshRedecompTransfer::RedecompToSubmesh( const mfem::GridFunction& redec
 
   // P_I is the row index vector on the MFEM prolongation matrix. If there are no column entries for the row, then the
   // DOF is owned by another rank.
-  auto dst_data = dst_ptr->HostWrite();
-  auto P_I =
-      mfem::Read( dst_fespace_ptr->Dof_TrueDof_Matrix()->GetDiagMemoryI(), dst_fespace_ptr->GetVSize() + 1, false );
-  HYPRE_Int tdof_ct{ 0 };
-  // TODO: Convert to mfem::forall() once submesh transfers on device and once GPU-enabled MPI is in redecomp (dst_data
-  // is always on host now so not needed yet)
-  for ( int i{ 0 }; i < dst_fespace_ptr->GetVSize(); ++i ) {
-    if ( P_I[i + 1] != tdof_ct ) {
-      ++tdof_ct;
-    } else {
+  auto dst_data = dst_ptr->ReadWrite( dst_ptr->UseDevice() );
+  auto P_I = mfem::Read( dst_fespace_ptr->Dof_TrueDof_Matrix()->GetDiagMemoryI(), dst_fespace_ptr->GetVSize() + 1,
+                         dst_ptr->UseDevice() );
+  // set non-owned DOF values to zero.
+  // P_I[i+1] == P_I[i] implies no diagonal entry, so the DOF is not owned.
+  mfem::forall_switch( dst_ptr->UseDevice(), dst_fespace_ptr->GetVSize(), [=] MFEM_HOST_DEVICE( int i ) {
+    if ( P_I[i + 1] == P_I[i] ) {
       dst_data[i] = 0.0;
     }
-  }
+  } );
   // if using LOR, transfer data from LOR mesh to submesh
   if ( submesh_lor_xfer_ ) {
     submesh_lor_xfer_->TransferFromLORVector( submesh_dst );
@@ -291,7 +281,7 @@ PressureField::UpdateData::UpdateData( SubmeshRedecompTransfer& submesh_redecomp
                                        const mfem::ParGridFunction& submesh_gridfn )
     : submesh_redecomp_xfer_{ submesh_redecomp_xfer }, redecomp_gridfn_{ &submesh_redecomp_xfer.GetRedecompFESpace() }
 {
-  // keep on host since tribol does computations there
+  // keep on host since tribol always does mortar computations there (update when mortar is on gpu)
   redecomp_gridfn_.UseDevice( false );
   redecomp_gridfn_ = 0.0;
   submesh_redecomp_xfer_.SubmeshToRedecomp( submesh_gridfn, redecomp_gridfn_ );
@@ -322,9 +312,6 @@ MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParM
   submesh_xfer_gridfn_.SetSpace( new mfem::ParFiniteElementSpace(
       &submesh_, submesh_fec.get(), current_coords.ParFESpace()->GetVDim(), mfem::Ordering::byNODES ) );
   submesh_xfer_gridfn_.MakeOwner( submesh_fec.release() );
-  // NOTE: This needs to be on host until the submesh transfer supports device.  Otherwise, there will be extra
-  // transfers to/from device.
-  submesh_xfer_gridfn_.UseDevice( false );
 
   // build LOR submesh
   if ( current_coords.FESpace()->FEColl()->GetOrder() > 1 ) {
@@ -360,12 +347,12 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
     // compute max displacement change
     auto& current_coords_gf = coords_.GetParentGridFn();
     // Use inf-norm of coordinate differences as a proxy for max displacement change.
-    const RealT* d_curr = current_coords_gf.Read();
-    const RealT* d_last = coords_at_last_redecomp_.Read();
+    const RealT* d_curr = current_coords_gf.Read( use_device_ );
+    const RealT* d_last = coords_at_last_redecomp_.Read( use_device_ );
     mfem::Vector max_diff( 1 );
     max_diff.UseDevice( use_device_ );
     max_diff = 0.0;
-    RealT* d_max_diff = max_diff.Write();
+    RealT* d_max_diff = max_diff.Write( use_device_ );
     forAllExec( exec_mode_, current_coords_gf.Size(), [d_curr, d_last, d_max_diff] TRIBOL_HOST_DEVICE( int i ) {
 #ifdef TRIBOL_USE_RAJA
       RAJA::atomicMax<RAJA::auto_atomic>( d_max_diff, std::abs( d_curr[i] - d_last[i] ) );
@@ -788,11 +775,13 @@ void MfemMeshData::UpdateData::SetElementData()
 }
 
 MfemSubmeshData::MfemSubmeshData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh,
-                                  std::unique_ptr<mfem::FiniteElementCollection> pressure_fec, int pressure_vdim )
+                                  std::unique_ptr<mfem::FiniteElementCollection> pressure_fec, int pressure_vdim,
+                                  bool use_device )
     : submesh_pressure_{ new mfem::ParFiniteElementSpace( &submesh, pressure_fec.get(), pressure_vdim ) },
       pressure_{ submesh_pressure_ },
       submesh_lor_xfer_{ lor_mesh ? std::make_unique<SubmeshLORTransfer>( *submesh_pressure_.ParFESpace(), *lor_mesh )
-                                  : nullptr }
+                                  : nullptr },
+      use_device_{ use_device }
 {
   submesh_pressure_.MakeOwner( pressure_fec.release() );
   submesh_pressure_ = 0.0;
@@ -806,6 +795,7 @@ void MfemSubmeshData::UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_me
   }
   pressure_.UpdateField( update_data_->pressure_xfer_ );
   redecomp_gap_.SetSpace( pressure_.GetRedecompGridFn().FESpace() );
+  redecomp_gap_.UseDevice( use_device_ );
   redecomp_gap_ = 0.0;
 }
 
@@ -919,6 +909,7 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian(
     const MethodData& method_data, const std::vector<std::pair<int, BlockSpace>>& row_info,
     const std::vector<std::pair<int, BlockSpace>>& col_info ) const
 {
+<<<<<<< HEAD
   // Determine block structure
   int max_row_block = 0;
   for ( auto info : row_info ) {
@@ -932,6 +923,165 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian(
   SLIC_ERROR_ROOT_IF( max_row_block > GetUpdateData().submesh_redecomp_xfer_.shape()[0] ||
                           max_col_block > GetUpdateData().submesh_redecomp_xfer_.shape()[1],
                       axom::fmt::format( "No transfer object for row {0} and col {1}", max_row_block, max_col_block ) );
+=======
+  // 0 = displacement DOFs, 1 = lagrange multiplier DOFs
+  // (0,0) block is empty (for now using SINGLE_MORTAR with approximate tangent)
+  // (1,1) block is a diagonal matrix with ones on the diagonal of submesh nodes without a Lagrange multiplier DOF
+  // (0,1) and (1,0) are symmetric (for now using SINGLE_MORTAR with approximate tangent)
+  const auto& elem_map_1 = parent_data_.GetElemMap1();
+  const auto& elem_map_2 = parent_data_.GetElemMap2();
+  // empty data structures are needed even when no meshes are on rank since TransferToParallelSparse() needs to be
+  // called on all ranks (even those without data)
+  auto mortar_elems = ArrayT<int>( 0, 0 );
+  auto nonmortar_elems = ArrayT<int>( 0, 0 );
+  auto lm_elems = ArrayT<int>( 0, 0 );
+  auto elem_J_1_ptr = std::make_unique<ArrayT<mfem::DenseMatrix>>( 0, 0 );
+  auto elem_J_2_ptr = std::make_unique<ArrayT<mfem::DenseMatrix>>( 0, 0 );
+  const ArrayT<mfem::DenseMatrix>* elem_J_1 = elem_J_1_ptr.get();
+  const ArrayT<mfem::DenseMatrix>* elem_J_2 = elem_J_2_ptr.get();
+  // this means both of the meshes exist
+  if ( method_data != nullptr && !elem_map_1.empty() && !elem_map_2.empty() ) {
+    mortar_elems = method_data->getBlockJElementIds()[static_cast<int>( BlockSpace::MORTAR )];
+    for ( auto& mortar_elem : mortar_elems ) {
+      mortar_elem = elem_map_1[static_cast<size_t>( mortar_elem )];
+    }
+    nonmortar_elems = method_data->getBlockJElementIds()[static_cast<int>( BlockSpace::NONMORTAR )];
+    for ( auto& nonmortar_elem : nonmortar_elems ) {
+      nonmortar_elem = elem_map_2[static_cast<size_t>( nonmortar_elem )];
+    }
+    lm_elems = method_data->getBlockJElementIds()[static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER )];
+    for ( auto& lm_elem : lm_elems ) {
+      lm_elem = elem_map_2[static_cast<size_t>( lm_elem )];
+    }
+    // get (1,0) block
+    elem_J_1 = &method_data->getBlockJ()( static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER ),
+                                          static_cast<int>( BlockSpace::MORTAR ) );
+    elem_J_2 = &method_data->getBlockJ()( static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER ),
+                                          static_cast<int>( BlockSpace::NONMORTAR ) );
+  }
+  // move to submesh level
+  auto submesh_J =
+      GetUpdateData().submesh_redecomp_xfer_10_->TransferToParallelSparse( lm_elems, mortar_elems, *elem_J_1 );
+  submesh_J +=
+      GetUpdateData().submesh_redecomp_xfer_10_->TransferToParallelSparse( lm_elems, nonmortar_elems, *elem_J_2 );
+  submesh_J.Finalize();
+
+  // transform J values from submesh to (global) parent mesh
+  mfem::Array<HYPRE_BigInt> J( submesh_J.NumNonZeroElems() );
+  // This copy is needed to convert mfem::SparseMatrix int J values to the HYPRE_BigInt values the mfem::HypreParMatrix
+  // constructor needs
+  auto* J_int = submesh_J.GetJ();
+  for ( int i{ 0 }; i < J.Size(); ++i ) {
+    J[i] = J_int[i];
+  }
+  auto submesh_vector_fes = parent_data_.GetSubmeshFESpace();
+  auto mpi = redecomp::MPIUtility( submesh_vector_fes.GetComm() );
+  auto submesh_dof_offsets = ArrayT<int>( mpi.NRanks() + 1, mpi.NRanks() + 1 );
+  // we need the dof offsets of each rank.  check if mfem stores this or if we
+  // need to create it.
+  if ( HYPRE_AssumedPartitionCheck() ) {
+    submesh_dof_offsets[mpi.MyRank() + 1] = submesh_vector_fes.GetDofOffsets()[1];
+    mpi.Allreduce( &submesh_dof_offsets, MPI_SUM );
+  } else {
+    for ( int i{ 0 }; i < mpi.NRanks(); ++i ) {
+      submesh_dof_offsets[i] = submesh_vector_fes.GetDofOffsets()[i];
+    }
+  }
+  // the submesh to parent vdof map only exists for vdofs on rank, so J values
+  // not on rank will need to be transferred to the rank that the vdof exists on
+  // to query the map. the steps are laid out below.
+
+  // step 1) query J values on rank for their parent vdof and package J values
+  // not on rank to send
+  auto send_J_by_rank = redecomp::MPIArray<int>( &mpi );
+  auto J_idx = redecomp::MPIArray<int>( &mpi );
+  auto est_num_J = submesh_J.NumNonZeroElems() / mpi.NRanks();
+  for ( int r{}; r < mpi.NRanks(); ++r ) {
+    if ( r != mpi.MyRank() ) {
+      send_J_by_rank[r].Reserve( est_num_J );
+      J_idx[r].Reserve( est_num_J );
+    }
+  }
+  for ( int j{}; j < submesh_J.NumNonZeroElems(); ++j ) {
+    if ( J[j] >= submesh_dof_offsets[mpi.MyRank()] && J[j] < submesh_dof_offsets[mpi.MyRank() + 1] ) {
+      J[j] = submesh2parent_vdof_list_[J[j] - submesh_dof_offsets[mpi.MyRank()]];
+    } else {
+      for ( int r{}; r < mpi.NRanks(); ++r ) {
+        if ( J[j] >= submesh_dof_offsets[r] && J[j] < submesh_dof_offsets[r + 1] ) {
+          send_J_by_rank[r].push_back( J[j] - submesh_dof_offsets[r] );
+          J_idx[r].push_back( j );
+          break;
+        }
+      }
+    }
+  }
+  // step 2) sends the J values to the ranks that own them
+  auto recv_J_by_rank = redecomp::MPIArray<int>( &mpi );
+  recv_J_by_rank.SendRecvArrayEach( send_J_by_rank );
+  // step 3) query the on-rank map to recover J values
+  for ( int r{}; r < mpi.NRanks(); ++r ) {
+    for ( auto& recv_J : recv_J_by_rank[r] ) {
+      recv_J = submesh2parent_vdof_list_[recv_J];
+    }
+  }
+  // step 4) send the updated parent J values back and update the J vector
+  send_J_by_rank.SendRecvArrayEach( recv_J_by_rank );
+  for ( int r{}; r < mpi.NRanks(); ++r ) {
+    for ( int j{}; j < send_J_by_rank[r].Size(); ++j ) {
+      J[J_idx[r][j]] = send_J_by_rank[r][j];
+    }
+  }
+
+  // create block operator
+  auto block_J = std::make_unique<mfem::BlockOperator>( block_offsets_ );
+  block_J->owns_blocks = 1;
+
+  // fill block operator
+  auto& submesh_fes = submesh_data_.GetSubmeshFESpace();
+  auto& parent_trial_fes = *parent_data_.GetParentCoords().ParFESpace();
+  // NOTE: we don't call MatrixTransfer::ConvertToHypreParMatrix() because the
+  // trial space is on the parent mesh, not the submesh
+  auto J_full = std::make_unique<mfem::HypreParMatrix>( mpi.MPIComm(), submesh_fes.GetVSize(),
+                                                        submesh_fes.GlobalVSize(), parent_trial_fes.GlobalVSize(),
+                                                        submesh_J.GetI(), J.GetData(), submesh_J.GetData(),
+                                                        submesh_fes.GetDofOffsets(), parent_trial_fes.GetDofOffsets() );
+  auto J_true = std::unique_ptr<mfem::HypreParMatrix>(
+      mfem::RAP( submesh_fes.Dof_TrueDof_Matrix(), J_full.get(), parent_trial_fes.Dof_TrueDof_Matrix() ) );
+
+  // Create ones on diagonal of eliminated mortar tdofs, i.e. inactive dofs (CSR sparse matrix -> HypreParMatrix)
+  // I vector
+  mfem::Array<int> rows( submesh_fes.GetTrueVSize() + 1 );
+  rows = 0;
+  auto mortar_tdofs_ct = 0;
+  for ( int i{ 0 }; i < submesh_fes.GetTrueVSize(); ++i ) {
+    if ( mortar_tdofs_ct < mortar_tdof_list_.Size() && mortar_tdof_list_[mortar_tdofs_ct] == i ) {
+      ++mortar_tdofs_ct;
+    }
+    rows[i + 1] = mortar_tdofs_ct;
+  }
+  // J vector
+  mfem::Array<int> mortar_tdofs( mortar_tdof_list_ );
+  // data vector
+  mfem::Vector ones( mortar_tdofs_ct );
+  ones = 1.0;
+  mfem::SparseMatrix inactive_sm( rows.GetData(), mortar_tdofs.GetData(), ones.GetData(), submesh_fes.GetTrueVSize(),
+                                  submesh_fes.GetTrueVSize(), false, false, true );
+  auto inactive_hpm = std::make_unique<mfem::HypreParMatrix>( J_true->GetComm(), J_true->GetGlobalNumRows(),
+                                                              J_true->GetRowStarts(), &inactive_sm );
+  // Have the mfem::HypreParMatrix manage the data pointers
+  rows.GetMemory().ClearOwnerFlags();
+  mortar_tdofs.GetMemory().ClearOwnerFlags();
+  ones.GetMemory().ClearOwnerFlags();
+  inactive_sm.GetMemoryI().ClearOwnerFlags();
+  inactive_sm.GetMemoryJ().ClearOwnerFlags();
+  inactive_sm.GetMemoryData().ClearOwnerFlags();
+  constexpr int mfem_owned_host_flag = 3;
+  inactive_hpm->SetOwnerFlags( mfem_owned_host_flag, inactive_hpm->OwnsOffd(), inactive_hpm->OwnsColMap() );
+
+  block_J->SetBlock( 0, 1, J_true->Transpose() );
+  block_J->SetBlock( 1, 0, J_true.release() );
+  block_J->SetBlock( 1, 1, inactive_hpm.release() );
+>>>>>>> develop
 
   const mfem::Array<int>& row_offsets = ( max_row_block == 0 ) ? disp_offsets_ : block_offsets_;
   const mfem::Array<int>& col_offsets = ( max_col_block == 0 ) ? disp_offsets_ : block_offsets_;

@@ -5,6 +5,9 @@
 
 #include "tribol/mesh/CouplingScheme.hpp"
 
+// C++ includes
+#include <cmath>
+
 // MFEM includes
 #include "mfem.hpp"
 
@@ -15,14 +18,17 @@
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/geom/ElementNormal.hpp"
+#include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/utils/ContactPlaneOutput.hpp"
+#include "tribol/utils/Math.hpp"
 #include "tribol/search/InterfacePairFinder.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/physics/Physics.hpp"
 #include "tribol/physics/ContactFormulationFactory.hpp"
 
+#include "tribol/integ/FE.hpp"
 namespace tribol {
 
 //------------------------------------------------------------------------------

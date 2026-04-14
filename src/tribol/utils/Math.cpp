@@ -5,16 +5,21 @@
 
 #include "tribol/utils/Math.hpp"
 
+// C++ includes
+#include <cmath>
+
+// Axom includes
+#include "axom/slic.hpp"
+
 namespace tribol {
 
-//------------------------------------------------------------------------------
 RealT magnitude( RealT const* const v, int const dim )
 {
   RealT mag = 0.;
   for ( int i = 0; i < dim; ++i ) {
     mag += v[i] * v[i];
   }
-  return sqrt( mag );
+  return std::sqrt( mag );
 }
 
 //------------------------------------------------------------------------------
@@ -51,7 +56,7 @@ int binary_search( const int* const array, const int n, const int val )
 template <typename T>
 void swap_val( T* xp, T* yp )
 {
-  int temp = *xp;
+  T temp = *xp;
   *xp = *yp;
   *yp = temp;
 }

@@ -5,9 +5,14 @@
 #ifndef SRC_TRIBOL_MESH_COUPLINGSCHEME_HPP_
 #define SRC_TRIBOL_MESH_COUPLINGSCHEME_HPP_
 
-// Tribol includes
+// Tribol config include
+#include "tribol/config.hpp"
+
+// Shared includes
 #include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/ExecModel.hpp"
+
+// Tribol includes
 #include "tribol/common/Parameters.hpp"
 #include "tribol/integ/FE.hpp"
 #include "tribol/mesh/MeshData.hpp"

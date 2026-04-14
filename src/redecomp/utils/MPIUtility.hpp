@@ -11,6 +11,8 @@
 
 #include <mpi.h>
 
+#include "mfem.hpp"
+
 #include "axom/core.hpp"
 #include "axom/slic.hpp"
 
@@ -127,6 +129,26 @@ class MPIUtility {
   void Send( const T& container, int dest, int tag = 0 ) const;
 
   /**
+   * @brief Calls MPI_Send on an array stored in an mfem::Array
+   *
+   * @tparam T Type stored in mfem::Array
+   * @param container Stores the data to send
+   * @param dest Rank to send the data in container to
+   * @param tag MPI tag for identifying the data
+   */
+  template <typename T>
+  void Send( const mfem::Array<T>& container, int dest, int tag = 0 ) const;
+
+  /**
+   * @brief Calls MPI_Send on a vector stored in an mfem::Vector
+   *
+   * @param container Stores the data to send
+   * @param dest Rank to send the data in container to
+   * @param tag MPI tag for identifying the data
+   */
+  void Send( const mfem::Vector& container, int dest, int tag = 0 ) const;
+
+  /**
    * @brief Calls MPI_Send on an 2D array stored in an axom::Array
    *
    * @tparam T Data type of an element in the array: bool, double, int currently supported
@@ -151,6 +173,28 @@ class MPIUtility {
   std::unique_ptr<Request> Isend( const T& container, int dest, int tag = 0 ) const;
 
   /**
+   * @brief Calls MPI_Isend (non-blocking send) on an array stored in an mfem::Array
+   *
+   * @tparam T Type stored in mfem::Array
+   * @param container Stores the data to send
+   * @param dest Rank to send the data in container to
+   * @param tag MPI tag for identifying the data
+   * @return Request object to track completion of the send
+   */
+  template <typename T>
+  std::unique_ptr<Request> Isend( const mfem::Array<T>& container, int dest, int tag = 0 ) const;
+
+  /**
+   * @brief Calls MPI_Isend (non-blocking send) on a vector stored in an mfem::Vector
+   *
+   * @param container Stores the data to send
+   * @param dest Rank to send the data in container to
+   * @param tag MPI tag for identifying the data
+   * @return Request object to track completion of the send
+   */
+  std::unique_ptr<Request> Isend( const mfem::Vector& container, int dest, int tag = 0 ) const;
+
+  /**
    * @brief Calls MPI_Isend (non-blocking send) on a 2D axom::Array
    *
    * @tparam T Data type of an element in the array: bool, double, int currently supported
@@ -169,10 +213,33 @@ class MPIUtility {
    * @tparam T Data type of the data container
    * @param source MPI rank data is coming from
    * @param tag MPI tag for identifying the data
+   * @param use_device Whether to allocate the received array on device (if GPU-aware MPI is available)
    * @return Container of type T holding data sent
    */
   template <typename T>
-  T Recv( type<T>, int source, int tag = 0 ) const;
+  T Recv( type<T>, int source, int tag = 0, bool use_device = false ) const;
+
+  /**
+   * @brief Calls MPI_Recv on an array stored in an mfem::Array
+   *
+   * @tparam T Data type of the data container
+   * @param source MPI rank data is coming from
+   * @param tag MPI tag for identifying the data
+   * @param use_device Whether to allocate the received array on device (if GPU-aware MPI is available)
+   * @return Container of type mfem::Array<T> holding data sent
+   */
+  template <typename T>
+  mfem::Array<T> Recv( type<mfem::Array<T>>, int source, int tag = 0, bool use_device = false ) const;
+
+  /**
+   * @brief Calls MPI_Recv on a vector stored in an mfem::Vector
+   *
+   * @param source MPI rank data is coming from
+   * @param tag MPI tag for identifying the data
+   * @param use_device Whether to allocate the received vector on device (if GPU-aware MPI is available)
+   * @return Container of type mfem::Vector holding data sent
+   */
+  mfem::Vector Recv( type<mfem::Vector>, int source, int tag = 0, bool use_device = false ) const;
 
   /**
    * @brief Calls MPI_Recv on an 2D array stored in an axom::Array
@@ -181,10 +248,11 @@ class MPIUtility {
    * @tparam Sp axom::MemorySpace of the axom::Array
    * @param source MPI rank data is coming from
    * @param tag MPI tag for identifying the data
+   * @param use_device Whether to allocate the received array on device (if GPU-aware MPI is available)
    * @return 2D axom::Array holding the data sent
    */
   template <typename T, axom::MemorySpace Sp>
-  axom::Array<T, 2, Sp> Recv( type<axom::Array<T, 2, Sp>>, int source, int tag = 0 ) const;
+  axom::Array<T, 2, Sp> Recv( type<axom::Array<T, 2, Sp>>, int source, int tag = 0, bool use_device = false ) const;
 
   /**
    * @brief Sends the array stored in container to all other ranks
@@ -200,10 +268,11 @@ class MPIUtility {
    *
    * @tparam T Data type of the data container
    * @param rank Rank the data originated from
+   * @param use_device Whether to allocate the received array on device
    * @return Container of type T holding data sent
    */
   template <typename T>
-  T RecvSendAll( type<T>, int rank ) const;
+  T RecvSendAll( type<T>, int rank, bool use_device = false ) const;
 
   /**
    * @brief Sends and receives a different array to each rank
@@ -213,9 +282,10 @@ class MPIUtility {
    * @tparam F2 Lambda with container type T and source rank parameters
    * @param build_send Builds a container of type T holding data to be sent to destination rank
    * @param process_recv Process the data received from another rank
+   * @param use_device Whether to allocate the received array on device
    */
   template <typename T, typename F1, typename F2>
-  void SendRecvEach( type<T>, F1&& build_send, F2&& process_recv ) const;
+  void SendRecvEach( type<T>, F1&& build_send, F2&& process_recv, bool use_device = false ) const;
 
  private:
   /**
@@ -306,6 +376,18 @@ void MPIUtility::Send( const T& container, int dest, int tag ) const
   MPI_Send( container.data(), container.size(), GetMPIDatatype( container.data() ), dest, tag, comm_ );
 }
 
+template <typename T>
+void MPIUtility::Send( const mfem::Array<T>& container, int dest, int tag ) const
+{
+  const void* data = nullptr;
+  if ( container.UseDevice() && mfem::Device::GetGPUAwareMPI() ) {
+    data = container.Read();
+  } else {
+    data = container.HostRead();
+  }
+  MPI_Send( data, container.Size(), GetMPIType<typename std::remove_cv<T>::type>(), dest, tag, comm_ );
+}
+
 template <typename T, axom::MemorySpace Sp>
 void MPIUtility::Send( const axom::Array<T, 2, Sp>& container, int dest, int tag ) const
 {
@@ -321,6 +403,20 @@ std::unique_ptr<MPIUtility::Request> MPIUtility::Isend( const T& container, int 
   return std::make_unique<Request>( std::move( request ) );
 }
 
+template <typename T>
+std::unique_ptr<MPIUtility::Request> MPIUtility::Isend( const mfem::Array<T>& container, int dest, int tag ) const
+{
+  auto request = std::make_unique<MPI_Request>();
+  const void* data = nullptr;
+  if ( container.UseDevice() && mfem::Device::GetGPUAwareMPI() ) {
+    data = container.Read();
+  } else {
+    data = container.HostRead();
+  }
+  MPI_Isend( data, container.Size(), GetMPIType<typename std::remove_cv<T>::type>(), dest, tag, comm_, request.get() );
+  return std::make_unique<Request>( std::move( request ) );
+}
+
 template <typename T, axom::MemorySpace Sp>
 std::unique_ptr<MPIUtility::Request> MPIUtility::Isend( const axom::Array<T, 2, Sp>& container, int dest,
                                                         int tag ) const
@@ -332,7 +428,7 @@ std::unique_ptr<MPIUtility::Request> MPIUtility::Isend( const axom::Array<T, 2, 
 }
 
 template <typename T>
-T MPIUtility::Recv( type<T>, int source, int tag ) const
+T MPIUtility::Recv( type<T>, int source, int tag, bool ) const
 {
   auto container = T();
   MPI_Probe( source, tag, comm_, &status_ );
@@ -344,8 +440,29 @@ T MPIUtility::Recv( type<T>, int source, int tag ) const
   return container;
 }
 
+template <typename T>
+mfem::Array<T> MPIUtility::Recv( type<mfem::Array<T>>, int source, int tag, bool use_device ) const
+{
+  auto container = mfem::Array<T>();
+  if ( use_device && mfem::Device::GetGPUAwareMPI() ) {
+    container.GetMemory().UseDevice( true );
+  }
+  MPI_Probe( source, tag, comm_, &status_ );
+  int count;
+  MPI_Get_count( &status_, GetMPIType<typename std::remove_cv<T>::type>(), &count );
+  container.SetSize( count );
+  void* data = nullptr;
+  if ( container.UseDevice() && mfem::Device::GetGPUAwareMPI() ) {
+    data = container.Write();
+  } else {
+    data = container.HostWrite();
+  }
+  MPI_Recv( data, count, GetMPIType<typename std::remove_cv<T>::type>(), source, tag, comm_, &status_ );
+  return container;
+}
+
 template <typename T, axom::MemorySpace Sp>
-axom::Array<T, 2, Sp> MPIUtility::Recv( type<axom::Array<T, 2, Sp>>, int source, int tag ) const
+axom::Array<T, 2, Sp> MPIUtility::Recv( type<axom::Array<T, 2, Sp>>, int source, int tag, bool ) const
 {
   auto container = axom::Array<T, 2, Sp>();
   axom::StackArray<axom::IndexType, 2> dim_size;
@@ -365,7 +482,7 @@ void MPIUtility::SendAll( const T& container ) const
 }
 
 template <typename T>
-T MPIUtility::RecvSendAll( type<T>, int rank ) const
+T MPIUtility::RecvSendAll( type<T>, int rank, bool use_device ) const
 {
   SLIC_ERROR_IF( rank == my_rank_, "Send and receive rank are the same." );
   const auto send_tree = BuildSendTree( rank );
@@ -377,7 +494,7 @@ T MPIUtility::RecvSendAll( type<T>, int rank ) const
     node_it = it.second;
     it = send_tree.root( lvl_it, node_it );
   }
-  auto container = Recv( type<T>(), *it.second );
+  auto container = Recv( type<T>(), *it.second, 0, use_device );
   SendToRest( container, send_tree, lvl_it, node_it );
   return container;
 }
@@ -404,7 +521,7 @@ void MPIUtility::SendToRest( const T& container, const BisecTree<int>& send_tree
 }
 
 template <typename T, typename F1, typename F2>
-void MPIUtility::SendRecvEach( type<T>, F1&& build_send, F2&& process_recv ) const
+void MPIUtility::SendRecvEach( type<T>, F1&& build_send, F2&& process_recv, bool use_device ) const
 {
   for ( int i{ 1 }; i < n_ranks_; ++i ) {
     // compute which rank we are sending and receiving data to
@@ -418,7 +535,7 @@ void MPIUtility::SendRecvEach( type<T>, F1&& build_send, F2&& process_recv ) con
     auto request = Isend( data, dest );
 
     // receive data and process
-    process_recv( Recv( type<T>(), source ), source );
+    process_recv( Recv( type<T>(), source, 0, use_device ), source );
 
     // wait for send to complete
     request->Wait();

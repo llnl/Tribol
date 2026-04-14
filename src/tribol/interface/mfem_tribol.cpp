@@ -92,7 +92,8 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
     // create pressure field on the parent-linked boundary submesh and
     // transfer operators to the redecomp level
     cs.setMfemSubmeshData( std::make_unique<MfemSubmeshData>( mfem_data->GetSubmesh(), mfem_data->GetLORMesh(),
-                                                              std::move( pressure_fec ), pressure_vdim ) );
+                                                              std::move( pressure_fec ), pressure_vdim,
+                                                              isOnDevice( exec_mode ) ) );
     // set up Jacobian transfer if the coupling scheme requires it
     auto lm_options = cs.getEnforcementOptions().lm_implicit_options;
     if ( ( lm_options.enforcement_option_set &&
