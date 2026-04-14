@@ -19,19 +19,17 @@
 // MFEM includes
 #include "mfem.hpp"
 
-#include "shared/math/ParSparseMat.hpp"
-
-#include "redecomp/redecomp.hpp"
 // Axom includes
 #include "axom/core.hpp"
 
 // Shared includes
-#include "tribol/common/BasicTypes.hpp"
+#include "shared/math/ParSparseMat.hpp"
 
 // Redecomp includes
 #include "redecomp/redecomp.hpp"
 
 // Tribol includes
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 
@@ -1490,6 +1488,17 @@ class MfemSubmeshData {
                    std::unique_ptr<mfem::FiniteElementCollection> pressure_fec, int pressure_vdim, bool use_device );
 
   /**
+   * @brief Update (or clear) the LOR mesh used for pressure/gap transfers
+   *
+   * @note This should be called if the owning MfemMeshData rebuilds its LOR mesh
+   * (e.g., via MfemMeshData::SetLORFactor()). This resets internal transfer data
+   * so the next UpdateMfemSubmeshData() rebuilds consistent redecomp transfers.
+   *
+   * @param lor_mesh New LOR mesh pointer (nullptr disables LOR transfers)
+   */
+  void SetLORMesh( mfem::ParMesh* lor_mesh );
+
+  /**
    * @brief Build a new transfer operator and update redecomp-level grid
    * functions
    *
@@ -1750,7 +1759,36 @@ class MfemJacobianData {
    */
   shared::ParSparseMat GetMfemJacobian( const std::vector<ComputedElementData>& contributions ) const;
 
+  /**
+   * @brief Access the cached HO->LOR displacement transfer matrix (DOF-level)
+   *
+   * @note Returns nullptr if LOR is not active or UpdateJacobianXfer() has not been called.
+   */
+  const shared::ParSparseMat* GetDisplacementHoToLorTransfer() const;
+
+  /**
+   * @brief Access the cached HO->LOR LM (pressure/gap) transfer matrix (DOF-level)
+   *
+   * @note Returns nullptr if LOR is not active or UpdateJacobianXfer() has not been called.
+   */
+  const shared::ParSparseMat* GetLagrangeMultiplierHoToLorTransfer() const;
+
  private:
+  /**
+   * @brief Build a DOF-level transfer matrix from a higher-order FE space to a LOR FE space.
+   *
+   * This constructs a sparse matrix representation matching MFEM's
+   * mfem::L2ProjectionGridTransfer::L2ProjectionH1Space::Mult() behavior, i.e.
+   * y = P_lor * R_true * P_ho^T * x, where P_* are Dof_TrueDof prolongation
+   * matrices and R_true is the L2-projection restriction operator on true dofs.
+   *
+   * @note Only supports continuous (H1) spaces and mfem::Ordering::byNODES.
+   */
+  static shared::ParSparseMat BuildLORTransferMatrix( const mfem::ParFiniteElementSpace& ho_fes,
+                                                      const mfem::ParFiniteElementSpace& lor_fes,
+                                                      const mfem::ParFiniteElementSpace& ho_scalar_fes,
+                                                      const mfem::ParFiniteElementSpace& lor_scalar_fes );
+
   /**
    * @brief Creates and stores data that changes when the redecomp mesh is
    * updated
@@ -1770,6 +1808,22 @@ class MfemJacobianData {
      * @note Indexed by (row_block, col_block)
      */
     Array2D<std::unique_ptr<redecomp::MatrixTransfer>> submesh_redecomp_xfer_;
+
+    /**
+     * @brief Optional HO->LOR transfer matrices (DOF-level) used to map Jacobians back to HO spaces.
+     *
+     * When LOR is active, redecomp-to-parallel transfers produce matrices on the LOR FE spaces.
+     * These operators map HO DOFs to LOR DOFs so we can compute J_ho = T_row^T * J_lor * T_col.
+     */
+    std::unique_ptr<shared::ParSparseMat> T_disp_ho_to_lor_;
+    std::unique_ptr<shared::ParSparseMat> T_lm_ho_to_lor_;
+
+    // Keep scalar FE spaces alive for any intermediate HypreParMatrix objects that may reference their
+    // partitioning arrays (row/col starts) by pointer.
+    std::unique_ptr<mfem::ParFiniteElementSpace> disp_ho_scalar_fes_;
+    std::unique_ptr<mfem::ParFiniteElementSpace> disp_lor_scalar_fes_;
+    std::unique_ptr<mfem::ParFiniteElementSpace> lm_ho_scalar_fes_;
+    std::unique_ptr<mfem::ParFiniteElementSpace> lm_lor_scalar_fes_;
   };
 
   /**

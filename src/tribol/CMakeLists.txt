@@ -43,8 +43,8 @@ set(tribol_headers
     physics/ContactFormulation.hpp
     physics/ContactFormulationFactory.hpp
     physics/Mortar.hpp
-    physics/new_method.hpp
-    physics/NewMethodAdapter.hpp
+    physics/EnergyMortar.hpp
+    physics/EnergyMortarAdapter.hpp
     physics/Physics.hpp
 
     search/InterfacePairFinder.hpp
@@ -80,8 +80,8 @@ set(tribol_sources
     physics/CommonPlane.cpp
     physics/ContactFormulationFactory.cpp
     physics/Mortar.cpp
-    physics/new_method.cpp
-    physics/NewMethodAdapter.cpp
+    physics/EnergyMortar.cpp
+    physics/EnergyMortarAdapter.cpp
     physics/Physics.cpp
      
     search/InterfacePairFinder.cpp

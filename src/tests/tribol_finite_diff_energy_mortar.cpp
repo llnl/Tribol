@@ -5,9 +5,7 @@
 
 #include <cmath>
 #include <set>
-#include "/usr/workspace/lutz23/Smith/repo/tribol/src/tribol/physics/new_method.hpp"
-// #include <tribol/src/tribol/physics/new_method.hpp>
-// #include "tribol/physics/new_method.hpp"
+#include "tribol/physics/EnergyMortar.hpp"
 #include <gtest/gtest.h>
 
 #ifdef TRIBOL_USE_UMPIRE

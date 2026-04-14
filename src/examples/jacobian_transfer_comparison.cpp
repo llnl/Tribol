@@ -7,21 +7,25 @@
 #include <vector>
 #include <chrono>
 
+#include "tribol/config.hpp"
+
+#ifdef TRIBOL_USE_UMPIRE
+#include "umpire/ResourceManager.hpp"
+#endif
+
 #include "mfem.hpp"
+
 #include "axom/core.hpp"
 #include "axom/slic.hpp"
+
 #include "shared/mesh/MeshBuilder.hpp"
-#include "tribol/config.hpp"
+
 #include "tribol/common/Parameters.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-
-#ifdef TRIBOL_USE_UMPIRE
-#include "umpire/ResourceManager.hpp"
-#endif
 
 int main( int argc, char** argv )
 {
@@ -42,7 +46,7 @@ int main( int argc, char** argv )
   app.add_option( "-r,--refine", ref_levels, "Number of times to refine the mesh uniformly." )->capture_default_str();
   CLI11_PARSE( app, argc, argv );
 
-  // 1. Setup mesh (2 blocks)
+  // Setup two-block mesh
   int nel_per_dir = std::pow( 2, ref_levels );
   auto elem_type = mfem::Element::HEXAHEDRON;
   auto mortar_attrs = std::set<int>( { 4 } );
@@ -63,7 +67,7 @@ int main( int argc, char** argv )
   mfem::ParGridFunction coords( &fespace );
   mesh.GetNodes( coords );
 
-  // 2. Register Tribol Coupling Scheme
+  // Register Tribol coupling scheme
   int cs_id = 0;
   tribol::registerMfemCouplingScheme( cs_id, 0, 1, mesh, coords, mortar_attrs, nonmortar_attrs,
                                       tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::SINGLE_MORTAR,
@@ -71,7 +75,7 @@ int main( int argc, char** argv )
   tribol::setMPIComm( cs_id, MPI_COMM_WORLD );
   tribol::updateMfemParallelDecomposition();
 
-  // 3. Setup MfemJacobianData
+  // Setup MFEM Jacobian data
   auto& cs_manager = tribol::CouplingSchemeManager::getInstance();
   auto* cs = cs_manager.findData( cs_id );
   if ( !cs->hasMfemJacobianData() ) {
@@ -81,13 +85,12 @@ int main( int argc, char** argv )
   auto* jac_data = cs->getMfemJacobianData();
   jac_data->UpdateJacobianXfer();
 
-  // 4. Synthesize Jacobian data for comparison
-  // We'll create some dummy element matrices for elements on Mesh 1 (Mortar)
+  // Synthesize Jacobian data for comparison
   int ne1 = cs->getMfemMeshData()->GetMesh1NE();
   int num_nodes_per_elem = 4;  // Quad faces
   int num_dofs_per_elem = num_nodes_per_elem * dim;
 
-  // New format: ComputedElementData
+  // Populate ComputedElementData
   tribol::ComputedElementData new_data;
   new_data.row_space = tribol::BlockSpace::MORTAR;
   new_data.col_space = tribol::BlockSpace::MORTAR;
@@ -96,7 +99,7 @@ int main( int argc, char** argv )
   new_data.row_elem_ids.resize( ne1 );
   new_data.col_elem_ids.resize( ne1 );
 
-  // Prepare MethodData for OLD path comparison
+  // Setup MethodData for comparison
   if ( cs->getMethodData() == nullptr ) {
     cs->allocateMethodData();
   }
@@ -125,17 +128,15 @@ int main( int argc, char** argv )
     method_data->storeElemBlockJ( std::move( ids ), blockJ );
   }
 
-  // 5. Time and assemble using Old Method
+  // Time and assemble with old method
   auto start_old = std::chrono::high_resolution_clock::now();
 
-  // Simulated OLD path logic
   auto xfer = cs->getMfemJacobianData()->GetMfemBlockJacobian( *method_data, { { 0, tribol::BlockSpace::MORTAR } },
                                                                { { 0, tribol::BlockSpace::MORTAR } } );
 
   auto end_old = std::chrono::high_resolution_clock::now();
 
-  // 6. Time and assemble using New Method
-  // We must call this on ALL ranks collectively.
+  // Time and assemble with new method
   std::vector<tribol::ComputedElementData> contribs_vec;
   if ( ne1 > 0 ) {
     contribs_vec.push_back( std::move( new_data ) );
@@ -145,20 +146,14 @@ int main( int argc, char** argv )
   auto par_J_new = jac_data->GetMfemJacobian( contribs_vec );
   auto end_new = std::chrono::high_resolution_clock::now();
 
-  // 7. Verify match
-  // We need to extract the block from BlockOperator if we used GetMfemBlockJacobian
+  // Verify results
   auto* old_hypre = dynamic_cast<mfem::HypreParMatrix*>( &xfer->GetBlock( 0, 0 ) );
   auto* new_hypre = &par_J_new.get();
 
-  // Check difference: A_old - A_new
+  // Check difference
   shared::ParSparseMat diff_psm = shared::ParSparseMatView( old_hypre ) - shared::ParSparseMatView( new_hypre );
 
-  // Verify match by checking NNZ of difference
-  // Since we subtracted, exact match means NNZ should be 0 (or values very small)
-  // mfem::HypreParMatrix doesn't have an easy "max norm" without converting to SparseMatrix
-  // but we can check NNZ. Note that operator- might keep zero entries.
-  // A better way is to check the data array of the resulting matrix.
-
+  // Verify match by checking max error
   double max_err = 0.0;
   HYPRE_ParCSRMatrix diff_csr = diff_psm.get();
   hypre_ParCSRMatrix* diff_parcsr = (hypre_ParCSRMatrix*)diff_csr;
@@ -168,7 +163,6 @@ int main( int argc, char** argv )
   for ( int i = 0; i < num_nonzeros; ++i ) {
     max_err = std::max( max_err, std::abs( data[i] ) );
   }
-  // Also check off-diagonal block
   hypre_CSRMatrix* offd = hypre_ParCSRMatrixOffd( diff_parcsr );
   data = hypre_CSRMatrixData( offd );
   num_nonzeros = hypre_CSRMatrixNumNonzeros( offd );

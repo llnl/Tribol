@@ -120,6 +120,14 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the LOR factor." );
   cs->getMfemMeshData()->SetLORFactor( lor_factor );
+
+  if ( cs->getMfemSubmeshData() ) {
+    cs->getMfemSubmeshData()->SetLORMesh( cs->getMfemMeshData()->GetLORMesh() );
+  }
+  if ( cs->hasMfemJacobianData() && cs->getMfemSubmeshData() ) {
+    cs->setMfemJacobianData( std::make_unique<MfemJacobianData>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
+                                                                 cs->getContactMethod() ) );
+  }
 }
 
 void setMfemRedecompTriggerDisplacement( IndexT cs_id, RealT val )
