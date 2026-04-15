@@ -31,7 +31,7 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @param N Quadrature order
    */
   EnergyMortarAdapter( MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, MeshData& mesh1, MeshData& mesh2,
-                    double k, double delta, int N, bool enzyme_quadrature, bool use_penalty_ = true );
+                       double k, double delta, int N, bool enzyme_quadrature, bool use_penalty_ = true );
 
   virtual ~EnergyMortarAdapter() = default;
 

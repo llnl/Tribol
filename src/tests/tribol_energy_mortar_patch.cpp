@@ -11,7 +11,7 @@
 #ifdef TRIBOL_USE_UMPIRE
 #include "umpire/ResourceManager.hpp"
 #endif
- 
+
 #include "mfem.hpp"
 
 #include "axom/CLI11.hpp"

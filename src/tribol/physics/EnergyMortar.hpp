@@ -62,7 +62,7 @@ struct FiniteDiffResult {
 
 struct Gparams {
   int N;
-  const double* qp; 
+  const double* qp;
   const double* w;
   const double* x2;
 };
@@ -77,7 +77,7 @@ class ContactSmoothing {
 
   static std::array<double, 2> smooth_bounds( const std::array<double, 2>& bounds, double del );
 
- private: 
+ private:
   ContactParams p_;
 };
 
@@ -123,8 +123,7 @@ class ContactEvaluator {
   ContactSmoothing smoother_;
 
   Gparams construct_gparams( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                           const MeshData::Viewer& mesh2 ) const;
-
+                             const MeshData::Viewer& mesh2 ) const;
 
   std::array<double, 8> compute_contact_forces( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                 const MeshData::Viewer& mesh2 ) const;
@@ -133,14 +132,11 @@ class ContactEvaluator {
                                                                  const MeshData::Viewer& mesh1,
                                                                  const MeshData::Viewer& mesh2 ) const;
 
-    std::array<double, 2> projections( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+  std::array<double, 2> projections( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                      const MeshData::Viewer& mesh2 ) const;
-
-
 
   void grad_gtilde_with_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                             const QuadPoints& qp_fixed, double dgt1_dx[8], double dgt2_dx[8] ) const;
-
 
   double gap( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
               double xiA ) const;

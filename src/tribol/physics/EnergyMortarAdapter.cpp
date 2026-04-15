@@ -12,8 +12,8 @@ namespace tribol {
 #ifdef TRIBOL_USE_ENZYME
 
 EnergyMortarAdapter::EnergyMortarAdapter( MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, MeshData& mesh1,
-                                    MeshData& mesh2, double k, double delta, int N, bool enzyme_quadrature,
-                                    bool use_penalty_ )
+                                          MeshData& mesh2, double k, double delta, int N, bool enzyme_quadrature,
+                                          bool use_penalty_ )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
     : submesh_data_( submesh_data ),
@@ -292,7 +292,7 @@ RealT EnergyMortarAdapter::computeTimeStep()
 }
 
 void EnergyMortarAdapter::compute_df_du_lagrange( const mfem::HypreParVector& lambda,
-                                               std::unique_ptr<mfem::HypreParMatrix>& df_du )
+                                                  std::unique_ptr<mfem::HypreParMatrix>& df_du )
 {
   // Convert Lambda to redecomp space for element wise access
   mfem::GridFunction redecomp_lambda( submesh_data_.GetRedecompGap() );
@@ -358,7 +358,7 @@ void EnergyMortarAdapter::compute_df_du_lagrange( const mfem::HypreParVector& la
 }
 
 void EnergyMortarAdapter::evaluateContactResidual( const mfem::HypreParVector& lambda, mfem::HypreParVector& r_force,
-                                                mfem::HypreParVector& r_gap )
+                                                   mfem::HypreParVector& r_gap )
 {
   SLIC_ERROR_ROOT_IF( use_penalty_, "evaluateContactResidual() should only be  called in lagrange multiplier mode" );
 
@@ -372,8 +372,8 @@ void EnergyMortarAdapter::evaluateContactResidual( const mfem::HypreParVector& l
 }
 
 void EnergyMortarAdapter::evaluateContactJacobian( const mfem::HypreParVector& lambda,
-                                                std::unique_ptr<mfem::HypreParMatrix>& df_du,
-                                                std::unique_ptr<mfem::HypreParMatrix>& df_dlambda )
+                                                   std::unique_ptr<mfem::HypreParMatrix>& df_du,
+                                                   std::unique_ptr<mfem::HypreParMatrix>& df_dlambda )
 {
   SLIC_ERROR_ROOT_IF( use_penalty_, "evaluateContactJacobian() should only be called in Lagrange multiplier mode" );
 

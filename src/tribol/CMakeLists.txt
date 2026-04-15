@@ -46,6 +46,7 @@ set(tribol_headers
     physics/EnergyMortar.hpp
     physics/EnergyMortarAdapter.hpp
     physics/Physics.hpp
+    physics/MortarFormulation.hpp
 
     search/InterfacePairFinder.hpp
 

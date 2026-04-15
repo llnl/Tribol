@@ -37,7 +37,7 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     SLIC_ERROR_ROOT_IF( !cs->hasMfemJacobianData(), "ENERGY_MORTAR requires MFEM Jacobian data." );
 
     return std::make_unique<EnergyMortarAdapter>( *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), cs->getMesh1(),
-                                               cs->getMesh2(), k, delta, N, enzyme_quadrature, use_penalty_ );
+                                                  cs->getMesh2(), k, delta, N, enzyme_quadrature, use_penalty_ );
 #else
     SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );
     return nullptr;

@@ -71,10 +71,8 @@ FiniteDiffResult ContactEvaluator::validate_g_tilde( const InterfacePair& pair, 
   result.g_tilde1_baseline = g1_base;
   result.g_tilde2_baseline = g2_base;
 
-
   auto A_conn = viewer1.getConnectivity()( static_cast<std::size_t>( pair.m_element_id1 ) );
   auto B_conn = viewer2.getConnectivity()( static_cast<std::size_t>( pair.m_element_id2 ) );
-
 
   result.node_ids = { static_cast<int>( A_conn[0] ), static_cast<int>( A_conn[1] ), static_cast<int>( B_conn[0] ),
                       static_cast<int>( B_conn[1] ) };
@@ -93,7 +91,6 @@ FiniteDiffResult ContactEvaluator::validate_g_tilde( const InterfacePair& pair, 
     result.analytical_gradient_g1[i] = dgt1_dx[i];
     result.analytical_gradient_g2[i] = dgt2_dx[i];
   }
-
 
   // ===== ORIGINAL COORDS =====
   const IndexT num_nodes1 = mesh1.numberOfNodes();
@@ -229,8 +226,7 @@ std::pair<double, double> ContactEvaluator::eval_gtilde_fixed_qp( const Interfac
     const double N1 = 0.5 - xiA;
     const double N2 = 0.5 + xiA;
 
-    const double gn = gap( pair, mesh1, mesh2, xiA );  
-
+    const double gn = gap( pair, mesh1, mesh2, xiA );
 
     gt1 += w * N1 * J * gn;
     gt2 += w * N2 * J * gn;
@@ -239,16 +235,7 @@ std::pair<double, double> ContactEvaluator::eval_gtilde_fixed_qp( const Interfac
   return { gt1, gt2 };
 }
 
-
-
-
-
-
-
-
-FiniteDiffResult ContactEvaluator::validate_hessian( const InterfacePair& pair,
-                                                     MeshData& mesh1,
-                                                     MeshData& mesh2,
+FiniteDiffResult ContactEvaluator::validate_hessian( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
                                                      double epsilon ) const
 {
   FiniteDiffResult result;
@@ -266,12 +253,8 @@ FiniteDiffResult ContactEvaluator::validate_hessian( const InterfacePair& pair,
   auto A_conn = viewer1.getConnectivity()( static_cast<std::size_t>( pair.m_element_id1 ) );
   auto B_conn = viewer2.getConnectivity()( static_cast<std::size_t>( pair.m_element_id2 ) );
 
-  result.node_ids = {
-    static_cast<int>( A_conn[0] ),
-    static_cast<int>( A_conn[1] ),
-    static_cast<int>( B_conn[0] ),
-    static_cast<int>( B_conn[1] )
-  };
+  result.node_ids = { static_cast<int>( A_conn[0] ), static_cast<int>( A_conn[1] ), static_cast<int>( B_conn[0] ),
+                      static_cast<int>( B_conn[1] ) };
 
   // analytical Hessian
   d2_g2tilde( pair, viewer1, viewer2, hess1, hess2 );
@@ -363,10 +346,14 @@ FiniteDiffResult ContactEvaluator::validate_hessian( const InterfacePair& pair,
         std::array<double, 8> ump = zero;
         std::array<double, 8> umm = zero;
 
-        upp[i] += epsilon; upp[j] += epsilon;
-        upm[i] += epsilon; upm[j] -= epsilon;
-        ump[i] -= epsilon; ump[j] += epsilon;
-        umm[i] -= epsilon; umm[j] -= epsilon;
+        upp[i] += epsilon;
+        upp[j] += epsilon;
+        upm[i] += epsilon;
+        upm[j] -= epsilon;
+        ump[i] -= epsilon;
+        ump[j] += epsilon;
+        umm[i] -= epsilon;
+        umm[j] -= epsilon;
 
         const auto [g1pp, g2pp] = eval_from_offsets( upp );
         const auto [g1pm, g2pm] = eval_from_offsets( upm );
@@ -384,9 +371,6 @@ FiniteDiffResult ContactEvaluator::validate_hessian( const InterfacePair& pair,
 
   return result;
 }
-
-
-
 
 TEST( GradientCheck, GtildeFDvsAD )
 {
@@ -478,11 +462,11 @@ TEST( HessianCheck, GtildeFDvsAD )
   ContactEvaluator evaluator( params );
 
   // ── Run validation ───────────────────────────────────────────────────────
-  const double epsilon = 1e-5;  
+  const double epsilon = 1e-5;
   auto result = evaluator.validate_hessian( pair, mesh1, mesh2, epsilon );
 
   // ── Compare ──────────────────────────────────────────────────────────────
-  const double tol = 1e-4; 
+  const double tol = 1e-4;
   const int ndof = 8;
 
   ASSERT_EQ( result.fd_gradient_g1.size(), 64u );
@@ -502,7 +486,7 @@ TEST( HessianCheck, GtildeFDvsAD )
           << "Hessian g2 mismatch at [row=" << row << ", col=" << col << "]"
           << "  FD=" << result.fd_gradient_g2[idx] << "  AD=" << result.analytical_gradient_g2[idx];
     }
-  } 
+  }
 }
 
 }  // namespace tribol
