@@ -274,8 +274,8 @@ void RedecompMesh::BuildRedecomp()
   auto generate_boundary = false;
   FinalizeTopology( generate_boundary );
   // hack to make sure meshgen is set, even with zero element meshes
-  if (n_els == 0) {
-    if (Dim == 1) {
+  if ( n_els == 0 ) {
+    if ( Dim == 1 ) {
       meshgen = 1;
     } else {
       // assuming 2d quad or hex meshes
