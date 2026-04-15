@@ -25,12 +25,13 @@
 #include "axom/core.hpp"
 
 // Shared includes
-#include "tribol/common/BasicTypes.hpp"
+#include "shared/math/ParSparseMat.hpp"
 
 // Redecomp includes
 #include "redecomp/redecomp.hpp"
 
 // Tribol includes
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 

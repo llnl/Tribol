@@ -273,6 +273,17 @@ void RedecompMesh::BuildRedecomp()
   // Finalize mesh topology
   auto generate_boundary = false;
   FinalizeTopology( generate_boundary );
+  // hack to make sure meshgen is set, even with zero element meshes
+  if ( n_els == 0 ) {
+    if ( Dim == 1 ) {
+      meshgen = 1;
+    } else {
+      // assuming 2d quad or hex meshes
+      meshgen = 2;
+    }
+  } else {
+    SetMeshGen();
+  }
 
   // Fill r2p_elem_offsets_ with element rank offsets
   // r2p = redecomp to parent
