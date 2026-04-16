@@ -371,7 +371,7 @@ shared::ParSparseMat MatrixTransfer::ConvertToParSparseMat( mfem::SparseMatrix&&
     P_test->HostRead();
     auto P_trial = parent_trial_fes_.Dof_TrueDof_Matrix();
     P_trial->HostRead();
-    auto J_true = shared::ParSparseMat::RAP( P_test, J_full, P_trial );
+    auto J_true = shared::ParSparseMat::rap( P_test, J_full, P_trial );
     return J_true;
   }
 }

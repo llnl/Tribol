@@ -41,6 +41,9 @@ class ParSparseMatView {
    */
   ParSparseMatView( mfem::HypreParMatrix* mat );
 
+  /**
+   * @brief Destroy the view without deleting the wrapped matrix
+   */
   virtual ~ParSparseMatView() = default;
 
   /**
@@ -66,35 +69,35 @@ class ParSparseMatView {
   /**
    * @brief Returns the number of local rows
    */
-  int Height() const { return mat_->Height(); }
+  int height() const { return mat_->Height(); }
 
   /**
    * @brief Returns the number of local columns
    */
-  int Width() const { return mat_->Width(); }
+  int width() const { return mat_->Width(); }
 
   /**
-   * @brief Matrix addition: returns A + B
+   * @brief Returns lhs + rhs
    */
   friend ParSparseMat operator+( const ParSparseMatView& lhs, const ParSparseMatView& rhs );
 
   /**
-   * @brief Matrix subtraction: returns A - B
+   * @brief Returns lhs - rhs
    */
   friend ParSparseMat operator-( const ParSparseMatView& lhs, const ParSparseMatView& rhs );
 
   /**
-   * @brief Matrix scalar multiplication: returns s * A
+   * @brief Returns this scaled by s
    */
   ParSparseMat operator*( double s ) const;
 
   /**
-   * @brief Matrix multiplication: returns A * B
+   * @brief Returns lhs * rhs
    */
   friend ParSparseMat operator*( const ParSparseMatView& lhs, const ParSparseMatView& rhs );
 
   /**
-   * @brief Matrix-vector multiplication: returns y = A * x
+   * @brief Returns this * x
    */
   ParVector operator*( const ParVectorView& x ) const;
 
@@ -104,54 +107,60 @@ class ParSparseMatView {
   ParSparseMat transpose() const;
 
   /**
-   * @brief Returns the square of the matrix (A * A)
+   * @brief Returns this squared
    */
   ParSparseMat square() const;
 
   /**
-   * @brief Returns P^T * A * P
+   * @brief Returns P^T * this * P
    */
-  ParSparseMat RAP( const ParSparseMatView& P ) const;
+  ParSparseMat rap( const ParSparseMatView& P ) const;
 
   /**
    * @brief Returns P^T * A * P
    */
-  static ParSparseMat RAP( const ParSparseMatView& A, const ParSparseMatView& P );
+  static ParSparseMat rap( const ParSparseMatView& A, const ParSparseMatView& P );
 
   /**
    * @brief Returns Rt^T * A * P
    */
-  static ParSparseMat RAP( const ParSparseMatView& Rt, const ParSparseMatView& A, const ParSparseMatView& P );
+  static ParSparseMat rap( const ParSparseMatView& Rt, const ParSparseMatView& A, const ParSparseMatView& P );
 
   /**
-   * @brief Eliminates the rows from the matrix
+   * @brief Eliminates chosen rows from the matrix
    *
    * @param rows Array of rows to eliminate
    */
-  void EliminateRows( const mfem::Array<int>& rows );
+  void eliminateRows( const mfem::Array<int>& rows );
 
   /**
-   * @brief Eliminates the columns from the matrix
+   * @brief Eliminates chosen columns from the matrix
    *
    * @param cols Array of columns to eliminate
    */
-  ParSparseMat EliminateCols( const mfem::Array<int>& cols );
+  ParSparseMat eliminateCols( const mfem::Array<int>& cols );
 
   /**
-   * @brief Scalar-Matrix multiplication: returns s * A
+   * @brief Returns s * mat
    */
   friend ParSparseMat operator*( double s, const ParSparseMatView& mat );
 
   /**
-   * @brief Vector-Matrix multiplication: returns y = x^T * A (computed as A^T * x)
+   * @brief Returns x^T * mat, computed as mat^T * x
    */
   friend ParVector operator*( const ParVectorView& x, const ParSparseMatView& mat );
 
  protected:
+  /**
+   * @brief Returns alpha * A + beta * B
+   */
   static ParSparseMat add( RealT alpha, const ParSparseMatView& A, RealT beta, const ParSparseMatView& B );
 
   /**
-   * @brief Helper to invoke a Hypre method with a specific memory location
+   * @brief Temporarily switch Hypre to the requested memory location, invoke f, then restore the previous location
+   *
+   * When f returns a host mfem::HypreParMatrix*, this helper also updates the returned matrix owner flags so MFEM can
+   * release the host arrays correctly.
    */
   template <MemorySpace MSPACE, typename F>
   static auto invokeHypreMethod( F&& f )
@@ -209,6 +218,9 @@ class ParSparseMatView {
     return invokeHypreMethod<MSPACE>( [&]() { return new mfem::HypreParMatrix( std::forward<Args>( args )... ); } );
   }
 
+  /**
+   * @brief Raw pointer to the wrapped parallel matrix
+   */
   mfem::HypreParMatrix* mat_;
 };
 
@@ -261,7 +273,12 @@ class ParSparseMat : public ParSparseMatView {
   ParSparseMat( MPI_Comm comm, HYPRE_BigInt global_num_rows, HYPRE_BigInt global_num_cols, HYPRE_BigInt* row_starts,
                 HYPRE_BigInt* col_starts, mfem::SparseMatrix&& diag );
 
-  /// Template constructor forwarding arguments to mfem::HypreParMatrix constructor
+  /**
+   * @brief Forward arguments to a mfem::HypreParMatrix constructor and take ownership
+   *
+   * @tparam Args Constructor argument types
+   * @param args Constructor arguments
+   */
   template <typename... Args>
   explicit ParSparseMat( Args&&... args )
       : ParSparseMatView( nullptr ),
@@ -270,34 +287,48 @@ class ParSparseMat : public ParSparseMatView {
     mat_ = owned_mat_.get();
   }
 
-  /// Move constructor
+  /**
+   * @brief Move construct from another owned parallel matrix
+   *
+   * @param other Source matrix to move from
+   */
   ParSparseMat( ParSparseMat&& other ) noexcept;
 
-  /// Move assignment
+  /**
+   * @brief Move assign from another owned parallel matrix
+   *
+   * @param other Source matrix to move from
+   * @return ParSparseMat& Reference to this
+   */
   ParSparseMat& operator=( ParSparseMat&& other ) noexcept;
 
-  // Disable copy constructor and assignment
+  /**
+   * @brief Copy construction is disabled
+   */
   ParSparseMat( const ParSparseMat& ) = delete;
+  /**
+   * @brief Copy assignment is disabled
+   */
   ParSparseMat& operator=( const ParSparseMat& ) = delete;
 
   /**
-   * @brief Access and release ownership of the HypreParMatrix pointer. The caller is now resposible for releasing the
+   * @brief Access and release ownership of the HypreParMatrix pointer. The caller is now responsible for releasing the
    * memory.
    */
   mfem::HypreParMatrix* release();
 
   /**
-   * @brief Matrix in-place addition: A += B
+   * @brief Add other into this in place
    */
   ParSparseMat& operator+=( const ParSparseMatView& other );
 
   /**
-   * @brief Matrix in-place subtraction: A -= B
+   * @brief Subtract other from this in place
    */
   ParSparseMat& operator-=( const ParSparseMatView& other );
 
   /**
-   * @brief Matrix in-place multiplication: A *= B
+   * @brief Right-multiply this by other in place
    */
   ParSparseMat& operator*=( const ParSparseMatView& other );
 
@@ -308,9 +339,9 @@ class ParSparseMat : public ParSparseMatView {
    * @param global_size Global size of the matrix (rows and columns)
    * @param row_starts Row partitioning (global offsets)
    * @param diag_val Value for the diagonal entries
-   * @param ordered_rows Sorted array of local row indices. Defaults to empty.
-   * @param skip_rows If true (default), ordered_rows are skipped (zero entries). If false, ordered_rows are the only
-   * entries.
+   * @param ordered_rows Sorted local row indices used to select which diagonal entries are omitted or retained
+   * @param skip_rows If true (default), rows listed in ordered_rows are omitted and all other local diagonal entries
+   * are retained. If false, only rows listed in ordered_rows receive diagonal entries.
    * @return ParSparseMat The constructed diagonal matrix
    */
   static ParSparseMat diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_size,
@@ -325,9 +356,9 @@ class ParSparseMat : public ParSparseMatView {
    * @param global_size Global size of the matrix (rows and columns)
    * @param row_starts Row partitioning (global offsets)
    * @param diag_val Value for the diagonal entries
-   * @param ordered_rows Sorted array of local row indices. Defaults to empty.
-   * @param skip_rows If true (default), ordered_rows are skipped (zero entries). If false, ordered_rows are the only
-   * entries.
+   * @param ordered_rows Sorted local row indices used to select which diagonal entries are omitted or retained
+   * @param skip_rows If true (default), rows listed in ordered_rows are omitted and all other local diagonal entries
+   * are retained. If false, only rows listed in ordered_rows receive diagonal entries.
    * @return ParSparseMat The constructed diagonal matrix
    */
   static ParSparseMat diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_size, HYPRE_BigInt* row_starts,
@@ -335,6 +366,9 @@ class ParSparseMat : public ParSparseMatView {
                                       bool skip_rows = true );
 
  private:
+  /**
+   * @brief Owning storage for the wrapped parallel matrix
+   */
   std::unique_ptr<mfem::HypreParMatrix> owned_mat_;
 };
 

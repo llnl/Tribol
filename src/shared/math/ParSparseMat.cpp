@@ -50,7 +50,7 @@ ParSparseMat ParSparseMatView::transpose() const
 
 ParSparseMat ParSparseMatView::square() const { return *this * *this; }
 
-ParSparseMat ParSparseMatView::RAP( const ParSparseMatView& P ) const
+ParSparseMat ParSparseMatView::rap( const ParSparseMatView& P ) const
 {
   return ParSparseMat( createHypreParMatrix<MemorySpace::Host>( [&]() {
     mat_->HostRead();
@@ -59,7 +59,7 @@ ParSparseMat ParSparseMatView::RAP( const ParSparseMatView& P ) const
   } ) );
 }
 
-ParSparseMat ParSparseMatView::RAP( const ParSparseMatView& A, const ParSparseMatView& P )
+ParSparseMat ParSparseMatView::rap( const ParSparseMatView& A, const ParSparseMatView& P )
 {
   return ParSparseMat( createHypreParMatrix<MemorySpace::Host>( [&]() {
     A->HostRead();
@@ -68,7 +68,7 @@ ParSparseMat ParSparseMatView::RAP( const ParSparseMatView& A, const ParSparseMa
   } ) );
 }
 
-ParSparseMat ParSparseMatView::RAP( const ParSparseMatView& Rt, const ParSparseMatView& A, const ParSparseMatView& P )
+ParSparseMat ParSparseMatView::rap( const ParSparseMatView& Rt, const ParSparseMatView& A, const ParSparseMatView& P )
 {
   return ParSparseMat( createHypreParMatrix<MemorySpace::Host>( [&]() {
     Rt->HostRead();
@@ -78,12 +78,12 @@ ParSparseMat ParSparseMatView::RAP( const ParSparseMatView& Rt, const ParSparseM
   } ) );
 }
 
-void ParSparseMatView::EliminateRows( const mfem::Array<int>& rows )
+void ParSparseMatView::eliminateRows( const mfem::Array<int>& rows )
 {
   invokeHypreMethod<MemorySpace::Host>( [&]() { mat_->EliminateRows( rows ); } );
 }
 
-ParSparseMat ParSparseMatView::EliminateCols( const mfem::Array<int>& cols )
+ParSparseMat ParSparseMatView::eliminateCols( const mfem::Array<int>& cols )
 {
   return ParSparseMat( createHypreParMatrix<MemorySpace::Host>( [&]() { return mat_->EliminateCols( cols ); } ) );
 }
@@ -205,6 +205,7 @@ ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_si
 
   // Count selected diagonal entries in a first pass (do not rely on ordered_rows being unique/in-range).
   HYPRE_Int num_diag_entries = 0;
+  // Cursor into the sorted ordered_rows array while scanning local rows in ascending order.
   int ordered_idx = 0;
   for ( int i = 0; i < num_local_rows; ++i ) {
     while ( ordered_idx < num_ordered_rows && ordered_rows[ordered_idx] < i ) {

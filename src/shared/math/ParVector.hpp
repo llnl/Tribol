@@ -34,6 +34,9 @@ class ParVectorView {
    */
   ParVectorView( mfem::HypreParVector* vec );
 
+  /**
+   * @brief Destroy the view without deleting the wrapped vector
+   */
   virtual ~ParVectorView() = default;
 
   /**
@@ -71,22 +74,22 @@ class ParVectorView {
    *
    * @param val Value to set
    */
-  void Fill( double val ) { *vec_ = val; }
+  void fill( double val ) { *vec_ = val; }
 
   /**
    * @brief Returns the local size of the vector
    */
-  int Size() const { return vec_->Size(); }
+  int size() const { return vec_->Size(); }
 
   /**
    * @brief Returns the maximum value in the vector
    */
-  mfem::real_t Max() const { return vec_->Max(); }
+  mfem::real_t max() const { return vec_->Max(); }
 
   /**
    * @brief Returns the minimum value in the vector
    */
-  mfem::real_t Min() const { return vec_->Min(); }
+  mfem::real_t min() const { return vec_->Min(); }
 
   /**
    * @brief Returns the dot product with another vector
@@ -94,45 +97,48 @@ class ParVectorView {
   mfem::real_t dot( const ParVectorView& other ) const;
 
   /**
-   * @brief Component-wise multiplication: returns z[i] = x[i] * y[i]
+   * @brief Returns the component-wise product of this and other
    */
   ParVector multiply( const ParVectorView& other ) const;
 
   /**
-   * @brief Component-wise division: returns z[i] = x[i] / y[i]
+   * @brief Returns the component-wise quotient of this divided by other
    *
    * @param tol Sets a tolerance to prevent division by zero
    */
   ParVector divide( const ParVectorView& other, mfem::real_t tol = 1.0e-14 ) const;
 
   /**
-   * @brief Component-wise inverse: returns z[i] = 1.0 / x[i]
+   * @brief Returns the component-wise inverse of this
    *
    * @param tol Sets a tolerance to prevent division by zero
    */
   ParVector inverse( mfem::real_t tol = 1.0e-14 ) const;
 
   /**
-   * @brief Vector addition: returns x + y
+   * @brief Returns lhs + rhs
    */
   friend ParVector operator+( const ParVectorView& lhs, const ParVectorView& rhs );
 
   /**
-   * @brief Vector subtraction: returns x - y
+   * @brief Returns lhs - rhs
    */
   friend ParVector operator-( const ParVectorView& lhs, const ParVectorView& rhs );
 
   /**
-   * @brief Vector scalar multiplication: returns s * x
+   * @brief Returns this scaled by s
    */
   ParVector operator*( double s ) const;
 
   /**
-   * @brief Scalar-Vector multiplication: returns s * x
+   * @brief Returns s * vec
    */
   friend ParVector operator*( double s, const ParVectorView& vec );
 
  protected:
+  /**
+   * @brief Raw pointer to the wrapped parallel vector
+   */
   mfem::HypreParVector* vec_;
 };
 
@@ -158,7 +164,12 @@ class ParVector : public ParVectorView {
    */
   explicit ParVector( std::unique_ptr<mfem::HypreParVector> vec );
 
-  /// Template constructor forwarding arguments to mfem::HypreParVector constructor
+  /**
+   * @brief Forward arguments to a mfem::HypreParVector constructor and take ownership
+   *
+   * @tparam Args Constructor argument types
+   * @param args Constructor arguments
+   */
   template <typename... Args>
   explicit ParVector( Args&&... args ) : ParVectorView( nullptr ), owned_vec_( nullptr )
   {
@@ -172,19 +183,41 @@ class ParVector : public ParVectorView {
     vec_ = owned_vec_.get();
   }
 
-  /// Move constructor
+  /**
+   * @brief Move construct from another owned parallel vector
+   *
+   * @param other Source vector to move from
+   */
   ParVector( ParVector&& other ) noexcept;
 
-  /// Move assignment
+  /**
+   * @brief Move assign from another owned parallel vector
+   *
+   * @param other Source vector to move from
+   * @return ParVector& Reference to this
+   */
   ParVector& operator=( ParVector&& other ) noexcept;
 
-  /// Copy constructor
+  /**
+   * @brief Copy construct from another owned parallel vector
+   *
+   * @param other Source vector to copy
+   */
   ParVector( const ParVector& other );
 
-  /// Copy constructor (non-const; prevents the template constructor from trying to match this case)
+  /**
+   * @brief Copy construct from a non-const vector
+   *
+   * @param other Source vector to copy
+   */
   ParVector( ParVector& other ) : ParVector( static_cast<const ParVector&>( other ) ) {}
 
-  /// Copy assignment
+  /**
+   * @brief Copy assign from another owned parallel vector
+   *
+   * @param other Source vector to copy
+   * @return ParVector& Reference to this
+   */
   ParVector& operator=( const ParVector& other );
 
   /**
@@ -194,40 +227,43 @@ class ParVector : public ParVectorView {
   mfem::HypreParVector* release();
 
   /**
-   * @brief Vector in-place addition: x += y
+   * @brief Add other into this in place
    */
   ParVector& operator+=( const ParVectorView& other );
 
   /**
-   * @brief Vector in-place subtraction: x -= y
+   * @brief Subtract other from this in place
    */
   ParVector& operator-=( const ParVectorView& other );
 
   /**
-   * @brief Vector in-place multiplication: x *= s
+   * @brief Scale this by s in place
    */
   ParVector& operator*=( double s );
 
   /**
-   * @brief Component-wise in-place multiplication: x[i] *= y[i]
+   * @brief Multiply this by other component-wise in place
    */
   ParVector& multiplyInPlace( const ParVectorView& other );
 
   /**
-   * @brief Component-wise in-place division: x[i] /= y[i]
+   * @brief Divide this by other component-wise in place
    *
-   * @param tol Sets a tolerance to prevent division by zero );
+   * @param tol Sets a tolerance to prevent division by zero
    */
   ParVector& divideInPlace( const ParVectorView& other, mfem::real_t tol = 1.0e-14 );
 
   /**
-   * @brief Component-wise in-place inverse: x[i] = 1.0 / x[i]
+   * @brief Replace this with its component-wise inverse
    *
    * @param tol Sets a tolerance to prevent division by zero
    */
   ParVector& inverseInPlace( mfem::real_t tol = 1.0e-14 );
 
  private:
+  /**
+   * @brief Owning storage for the wrapped parallel vector
+   */
   std::unique_ptr<mfem::HypreParVector> owned_vec_;
 };
 
