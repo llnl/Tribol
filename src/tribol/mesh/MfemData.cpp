@@ -299,7 +299,7 @@ shared::ParSparseMat BuildH1TrueRestriction( const mfem::ParFiniteElementSpace& 
   shared::ParSparseMat R_local( comm, lor_scalar.GlobalVSize(), ho_scalar.GlobalVSize(), lor_scalar.GetDofOffsets(),
                                 ho_scalar.GetDofOffsets(), std::move( R_dof ) );
 
-  return shared::ParSparseMat::RAP( lor_scalar.Dof_TrueDof_Matrix(), R_local, ho_scalar.Dof_TrueDof_Matrix() );
+  return shared::ParSparseMat::rap( lor_scalar.Dof_TrueDof_Matrix(), R_local, ho_scalar.Dof_TrueDof_Matrix() );
 }
 
 [[maybe_unused]] shared::ParSparseMat ExpandScalarDofTransferByNodes( const shared::ParSparseMat& T_scalar_dof,
@@ -1432,7 +1432,7 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian(
         shared::ParSparseMatView T_row( const_cast<mfem::HypreParMatrix*>( &T_row_mat.get() ) );
         shared::ParSparseMatView T_col( const_cast<mfem::HypreParMatrix*>( &T_col_mat.get() ) );
         mapped_submesh_J =
-            std::make_unique<shared::ParSparseMat>( shared::ParSparseMat::RAP( T_row, submesh_J_view, T_col ) );
+            std::make_unique<shared::ParSparseMat>( shared::ParSparseMat::rap( T_row, submesh_J_view, T_col ) );
         submesh_J_view = shared::ParSparseMatView( &mapped_submesh_J->get() );
       }
 
@@ -1713,30 +1713,30 @@ shared::ParSparseMat MfemJacobianData::GetMfemJacobian( const std::vector<Comput
           shared::ParSparseMatView T_row( const_cast<mfem::HypreParMatrix*>( &T_row_mat.get() ) );
           shared::ParSparseMatView T_col( const_cast<mfem::HypreParMatrix*>( &T_col_mat.get() ) );
           mapped_submesh_J =
-              std::make_unique<shared::ParSparseMat>( shared::ParSparseMat::RAP( T_row, submesh_J_view, T_col ) );
+              std::make_unique<shared::ParSparseMat>( shared::ParSparseMat::rap( T_row, submesh_J_view, T_col ) );
           submesh_J_view = shared::ParSparseMatView( &mapped_submesh_J->get() );
         }
         std::unique_ptr<shared::ParSparseMat> contrib_J;
 
         if ( r_blk == 0 && c_blk == 0 ) {
-          auto parent_J = submesh_J_view.RAP( *submesh_parent_vdof_xfer_ );
+          auto parent_J = submesh_J_view.rap( *submesh_parent_vdof_xfer_ );
           shared::ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
-          contrib_J = std::make_unique<shared::ParSparseMat>( parent_J.RAP( parent_P ) );
+          contrib_J = std::make_unique<shared::ParSparseMat>( parent_J.rap( parent_P ) );
         } else if ( r_blk == 0 && c_blk == 1 ) {
           auto parent_J = submesh_parent_vdof_xfer_->transpose() * submesh_J_view;
           contrib_J = std::make_unique<shared::ParSparseMat>(
-              shared::ParSparseMat::RAP( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix(), parent_J,
+              shared::ParSparseMat::rap( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix(), parent_J,
                                          submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() ) );
         } else if ( r_blk == 1 && c_blk == 0 ) {
           auto parent_J = submesh_J_view * ( *submesh_parent_vdof_xfer_ );
           shared::ParSparseMatView submesh_P( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() );
           shared::ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
           contrib_J =
-              std::make_unique<shared::ParSparseMat>( shared::ParSparseMat::RAP( submesh_P, parent_J, parent_P ) );
+              std::make_unique<shared::ParSparseMat>( shared::ParSparseMat::rap( submesh_P, parent_J, parent_P ) );
         } else {
           // (1, 1) block
           shared::ParSparseMatView submesh_P( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() );
-          contrib_J = std::make_unique<shared::ParSparseMat>( submesh_J_view.RAP( submesh_P ) );
+          contrib_J = std::make_unique<shared::ParSparseMat>( submesh_J_view.rap( submesh_P ) );
         }
 
         if ( !par_J ) {
