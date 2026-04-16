@@ -66,13 +66,13 @@ TEST_F( ParSparseMatTest, Construction )
   mfem::HypreParMatrix* m1 =
       shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, size, row_starts_array, 1.0 ).release();
   shared::ParSparseMat psm1( m1 );
-  EXPECT_EQ( psm1.Height(), local_size );
+  EXPECT_EQ( psm1.height(), local_size );
 
   // 2. From unique_ptr
   auto m2 = std::unique_ptr<mfem::HypreParMatrix>(
       shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, size, row_starts_array, 2.0 ).release() );
   shared::ParSparseMat psm2( std::move( m2 ) );
-  EXPECT_EQ( psm2.Height(), local_size );
+  EXPECT_EQ( psm2.height(), local_size );
 
   // 3. From SparseMatrix rvalue
   mfem::SparseMatrix diag( local_size );
@@ -80,7 +80,7 @@ TEST_F( ParSparseMatTest, Construction )
   diag.Finalize();
 
   shared::ParSparseMat psm3( MPI_COMM_WORLD, (HYPRE_BigInt)size, row_starts_array.GetData(), std::move( diag ) );
-  EXPECT_EQ( psm3.Height(), local_size );
+  EXPECT_EQ( psm3.height(), local_size );
 
   mfem::Vector x( local_size ), y( local_size );
   x = 1.0;
@@ -101,14 +101,14 @@ TEST_F( ParSparseMatTest, View )
   // Construct View
   shared::ParSparseMatView view( &A.get() );
 
-  EXPECT_EQ( view.Height(), A.Height() );
+  EXPECT_EQ( view.height(), A.height() );
 
   // Operate on View
   shared::ParSparseMat B = view * 2.0;
   shared::ParVector x( B.get() );
-  x.Fill( 1.0 );
+  x.fill( 1.0 );
   auto y = B * x;
-  EXPECT_NEAR( y.Max(), 4.0, 1e-12 );
+  EXPECT_NEAR( y.max(), 4.0, 1e-12 );
 }
 
 // Test Addition
@@ -124,7 +124,7 @@ TEST_F( ParSparseMatTest, Addition )
 
   // A + B
   shared::ParSparseMat C = A + B;
-  mfem::Vector x( A.Width() ), y( A.Height() );
+  mfem::Vector x( A.width() ), y( A.height() );
   x = 1.0;
   C->Mult( x, y );
   // Result should be (2+3)*1 = 5
@@ -150,7 +150,7 @@ TEST_F( ParSparseMatTest, Subtraction )
 
   // A - B
   shared::ParSparseMat C = A - B;
-  mfem::Vector x( A.Width() ), y( A.Height() );
+  mfem::Vector x( A.width() ), y( A.height() );
   x = 1.0;
   C->Mult( x, y );
   // Result should be (5-2)*1 = 3
@@ -174,7 +174,7 @@ TEST_F( ParSparseMatTest, ScalarMult )
 
   // A * s
   shared::ParSparseMat B = A * 3.0;
-  mfem::Vector x( A.Width() ), y( A.Height() );
+  mfem::Vector x( A.width() ), y( A.height() );
   x = 1.0;
   B->Mult( x, y );
   EXPECT_NEAR( y.Max(), 6.0, 1e-12 );
@@ -198,7 +198,7 @@ TEST_F( ParSparseMatTest, MatrixMult )
 
   // A * B
   shared::ParSparseMat C = A * B;
-  mfem::Vector x( A.Width() ), y( A.Height() );
+  mfem::Vector x( A.width() ), y( A.height() );
   x = 1.0;
   C->Mult( x, y );
   // Result should be (2*3)*1 = 6
@@ -229,7 +229,7 @@ TEST_F( ParSparseMatTest, MatVecMult )
 
   // y = A * x
   shared::ParVector y = A * x;
-  EXPECT_NEAR( y.Max(), 2.0, 1e-12 );
+  EXPECT_NEAR( y.max(), 2.0, 1e-12 );
 }
 
 // Test Vector-Matrix Multiplication
@@ -242,12 +242,12 @@ TEST_F( ParSparseMatTest, VecMatMult )
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
   shared::ParSparseMat A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 3.0 );
   shared::ParVector x( A.get(), 0 );
-  x.Fill( 1.0 );
+  x.fill( 1.0 );
 
   // y = x^T * A
   shared::ParVector y = x * A;
-  EXPECT_NEAR( y.Max(), 3.0, 1e-12 );
-  EXPECT_NEAR( y.Min(), 3.0, 1e-12 );
+  EXPECT_NEAR( y.max(), 3.0, 1e-12 );
+  EXPECT_NEAR( y.min(), 3.0, 1e-12 );
 }
 
 // Test Elimination
@@ -267,12 +267,12 @@ TEST_F( ParSparseMatTest, Elimination )
   if ( row_starts[row_starts_idx] == 0 ) {
     rows_to_elim.Append( 0 );
   }
-  A.EliminateRows( rows_to_elim );
+  A.eliminateRows( rows_to_elim );
 
   // Check if row 0 is identity (or zero with diagonal 1)
   // Diagonal matrix means we can just check multiplication
   shared::ParVector x( A.get(), 1 );
-  x.Fill( 1.0 );
+  x.fill( 1.0 );
   shared::ParVector y = A * x;  // y = A * x
 
   // if rank owns row 0, the result for that row should be 0.0 * x[0] = 0.0 (since diag is 0.0)
@@ -281,11 +281,11 @@ TEST_F( ParSparseMatTest, Elimination )
   // local row 0 on rank 0 is global row 0
   if ( rank == 0 ) {
     EXPECT_NEAR( y[0], 0.0, 1e-12 );
-    for ( int i = 1; i < y.Size(); ++i ) {
+    for ( int i = 1; i < y.size(); ++i ) {
       EXPECT_NEAR( y[i], 3.0, 1e-12 );
     }
   } else {
-    for ( int i = 0; i < y.Size(); ++i ) {
+    for ( int i = 0; i < y.size(); ++i ) {
       EXPECT_NEAR( y[i], 3.0, 1e-12 );
     }
   }
@@ -295,15 +295,15 @@ TEST_F( ParSparseMatTest, Elimination )
   MPI_Comm_size( MPI_COMM_WORLD, &num_procs );
 
   // Eliminate last local col
-  auto last_local_col = A.Width() - 1;
+  auto last_local_col = A.width() - 1;
   mfem::Array<int> cols_to_elim( { last_local_col } );
 
-  shared::ParSparseMat Ae = A.EliminateCols( cols_to_elim );
+  shared::ParSparseMat Ae = A.eliminateCols( cols_to_elim );
 
   // Now check A * e_last = 0
   // Create vector with 1 at last_local_col, 0 elsewhere
   shared::ParVector x_last( A.get(), 1 );
-  x_last.Fill( 0.0 );
+  x_last.fill( 0.0 );
   x_last[last_local_col] = 1.0;
   shared::ParVector y_last = A * x_last;
   EXPECT_NEAR( y_last[last_local_col], 0.0, 1e-12 );
@@ -328,14 +328,14 @@ TEST_F( ParSparseMatTest, TransposeSquare )
   // Transpose (Diagonal matrix is symmetric)
   shared::ParSparseMat At = A.transpose();
   shared::ParVector x( At.get(), 0 );
-  x.Fill( 1.0 );
+  x.fill( 1.0 );
   auto y = At * x;
-  EXPECT_NEAR( y.Max(), 2.0, 1e-12 );
+  EXPECT_NEAR( y.max(), 2.0, 1e-12 );
 
   // Square
   shared::ParSparseMat A2 = A.square();
   y = A2 * x;
-  EXPECT_NEAR( y.Max(), 4.0, 1e-12 );
+  EXPECT_NEAR( y.max(), 4.0, 1e-12 );
 }
 
 // Test RAP
@@ -351,17 +351,17 @@ TEST_F( ParSparseMatTest, RAP )
   shared::ParSparseMat P = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 1.0 );
   shared::ParSparseMat R = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 1.0 );
 
-  // RAP(P)
-  shared::ParSparseMat Res1 = A.RAP( P );
+  // rap(P)
+  shared::ParSparseMat Res1 = A.rap( P );
   shared::ParVector x( A.get(), 0 );
-  x.Fill( 1.0 );
+  x.fill( 1.0 );
   auto y = Res1 * x;
-  EXPECT_NEAR( y.Max(), 5.0, 1e-12 );
+  EXPECT_NEAR( y.max(), 5.0, 1e-12 );
 
-  // RAP(R, A, P)
-  shared::ParSparseMat Res2 = shared::ParSparseMat::RAP( R, A, P );
+  // rap(R, A, P)
+  shared::ParSparseMat Res2 = shared::ParSparseMat::rap( R, A, P );
   y = Res2 * x;
-  EXPECT_NEAR( y.Max(), 5.0, 1e-12 );
+  EXPECT_NEAR( y.max(), 5.0, 1e-12 );
 }
 
 // Test Accessors
@@ -379,7 +379,7 @@ TEST_F( ParSparseMatTest, Accessors )
   shared::ParSparseMat A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, size, row_starts, 1.0 );
 
   // get()
-  EXPECT_EQ( A.Height(), local_size );
+  EXPECT_EQ( A.height(), local_size );
 
   // operator->
   EXPECT_EQ( A->Height(), local_size );

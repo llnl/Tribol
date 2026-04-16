@@ -994,19 +994,19 @@ std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian(
       mfem::HypreParMatrix* block_mat = nullptr;
 
       if ( r_blk == 0 && c_blk == 0 ) {
-        auto parent_J = submesh_J_hypre.RAP( *submesh_parent_vdof_xfer_ );
+        auto parent_J = submesh_J_hypre.rap( *submesh_parent_vdof_xfer_ );
         shared::ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
-        block_mat = parent_J.RAP( parent_P ).release();
+        block_mat = parent_J.rap( parent_P ).release();
       } else if ( r_blk == 0 && c_blk == 1 ) {
         auto parent_J = submesh_parent_vdof_xfer_->transpose() * submesh_J_hypre;
-        block_mat = shared::ParSparseMat::RAP( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix(),
+        block_mat = shared::ParSparseMat::rap( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix(),
                                                parent_J, submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() )
                         .release();
       } else if ( r_blk == 1 && c_blk == 0 ) {
         auto parent_J = submesh_J_hypre * ( *submesh_parent_vdof_xfer_ );
         shared::ParSparseMatView submesh_P( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() );
         shared::ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
-        block_mat = shared::ParSparseMat::RAP( submesh_P, parent_J, parent_P ).release();
+        block_mat = shared::ParSparseMat::rap( submesh_P, parent_J, parent_P ).release();
       }
 
       block_J->SetBlock( r_blk, c_blk, block_mat );

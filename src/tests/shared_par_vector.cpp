@@ -68,7 +68,7 @@ TEST_F( ParVectorTest, Construction )
   mfem::HypreParVector* v1 = new mfem::HypreParVector( MPI_COMM_WORLD, size, row_starts_array.GetData() );
   HYPRE_SetMemoryLocation( old_hypre_mem_location );
   shared::ParVector pv1( v1 );
-  EXPECT_EQ( pv1.Size(), local_size );
+  EXPECT_EQ( pv1.size(), local_size );
 
   // 2. From unique_ptr
   HYPRE_GetMemoryLocation( &old_hypre_mem_location );
@@ -76,11 +76,11 @@ TEST_F( ParVectorTest, Construction )
   auto v2 = std::make_unique<mfem::HypreParVector>( MPI_COMM_WORLD, size, row_starts_array.GetData() );
   HYPRE_SetMemoryLocation( old_hypre_mem_location );
   shared::ParVector pv2( std::move( v2 ) );
-  EXPECT_EQ( pv2.Size(), local_size );
+  EXPECT_EQ( pv2.size(), local_size );
 
   // 3. Template constructor
   shared::ParVector pv3( MPI_COMM_WORLD, size, row_starts_array.GetData() );
-  EXPECT_EQ( pv3.Size(), local_size );
+  EXPECT_EQ( pv3.size(), local_size );
 }
 
 // Test View
@@ -92,17 +92,17 @@ TEST_F( ParVectorTest, View )
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
   shared::ParVector v( MPI_COMM_WORLD, 10, row_starts.GetData() );
-  v.Fill( 1.0 );
+  v.fill( 1.0 );
 
   // Construct View
   shared::ParVectorView view( &v.get() );
 
-  EXPECT_EQ( view.Size(), v.Size() );
-  EXPECT_NEAR( view.Max(), 1.0, 1e-12 );
+  EXPECT_EQ( view.size(), v.size() );
+  EXPECT_NEAR( view.max(), 1.0, 1e-12 );
 
   // Operate on View
   shared::ParVector v2 = view * 2.0;
-  EXPECT_NEAR( v2.Max(), 2.0, 1e-12 );
+  EXPECT_NEAR( v2.max(), 2.0, 1e-12 );
 }
 
 // Test Accessors
@@ -114,16 +114,16 @@ TEST_F( ParVectorTest, Accessors )
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
   shared::ParVector v( MPI_COMM_WORLD, 10, row_starts.GetData() );
-  v.Fill( 0.0 );
-  if ( v.Size() > 0 ) {
+  v.fill( 0.0 );
+  if ( v.size() > 0 ) {
     v[0] = 5.0;
     EXPECT_NEAR( v[0], 5.0, 1e-12 );
     EXPECT_NEAR( ( *v.operator->() )[0], 5.0, 1e-12 );
   }
 
-  v.Fill( 3.0 );
-  EXPECT_NEAR( v.Max(), 3.0, 1e-12 );
-  EXPECT_NEAR( v.Min(), 3.0, 1e-12 );
+  v.fill( 3.0 );
+  EXPECT_NEAR( v.max(), 3.0, 1e-12 );
+  EXPECT_NEAR( v.min(), 3.0, 1e-12 );
 }
 
 // Test Addition and Subtraction
@@ -136,24 +136,24 @@ TEST_F( ParVectorTest, AddSub )
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
   shared::ParVector v1( MPI_COMM_WORLD, 10, row_starts.GetData() );
   shared::ParVector v2( MPI_COMM_WORLD, 10, row_starts.GetData() );
-  v1.Fill( 2.0 );
-  v2.Fill( 3.0 );
+  v1.fill( 2.0 );
+  v2.fill( 3.0 );
 
   // v1 + v2
   shared::ParVector v3 = v1 + v2;
-  EXPECT_NEAR( v3.Max(), 5.0, 1e-12 );
+  EXPECT_NEAR( v3.max(), 5.0, 1e-12 );
 
   // v1 += v2
   v1 += v2;
-  EXPECT_NEAR( v1.Max(), 5.0, 1e-12 );
+  EXPECT_NEAR( v1.max(), 5.0, 1e-12 );
 
   // v1 - v2
   shared::ParVector v4 = v1 - v2;
-  EXPECT_NEAR( v4.Max(), 2.0, 1e-12 );
+  EXPECT_NEAR( v4.max(), 2.0, 1e-12 );
 
   // v1 -= v2
   v1 -= v2;
-  EXPECT_NEAR( v1.Max(), 2.0, 1e-12 );
+  EXPECT_NEAR( v1.max(), 2.0, 1e-12 );
 }
 
 // Test Scalar Multiplication
@@ -165,19 +165,19 @@ TEST_F( ParVectorTest, ScalarMult )
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
   shared::ParVector v( MPI_COMM_WORLD, 10, row_starts.GetData() );
-  v.Fill( 2.0 );
+  v.fill( 2.0 );
 
   // v * s
   shared::ParVector v2 = v * 3.0;
-  EXPECT_NEAR( v2.Max(), 6.0, 1e-12 );
+  EXPECT_NEAR( v2.max(), 6.0, 1e-12 );
 
   // s * v
   shared::ParVector v3 = 4.0 * v;
-  EXPECT_NEAR( v3.Max(), 8.0, 1e-12 );
+  EXPECT_NEAR( v3.max(), 8.0, 1e-12 );
 
   // v *= s
   v *= 5.0;
-  EXPECT_NEAR( v.Max(), 10.0, 1e-12 );
+  EXPECT_NEAR( v.max(), 10.0, 1e-12 );
 }
 
 // Test Component-wise Multiplication and Division
@@ -190,24 +190,24 @@ TEST_F( ParVectorTest, ComponentWise )
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
   shared::ParVector v1( MPI_COMM_WORLD, 10, row_starts.GetData() );
   shared::ParVector v2( MPI_COMM_WORLD, 10, row_starts.GetData() );
-  v1.Fill( 2.0 );
-  v2.Fill( 4.0 );
+  v1.fill( 2.0 );
+  v2.fill( 4.0 );
 
   // multiply
   shared::ParVector v3 = v1.multiply( v2 );
-  EXPECT_NEAR( v3.Max(), 8.0, 1e-12 );
+  EXPECT_NEAR( v3.max(), 8.0, 1e-12 );
 
   // multiply in-place
   v1.multiplyInPlace( v2 );
-  EXPECT_NEAR( v1.Max(), 8.0, 1e-12 );
+  EXPECT_NEAR( v1.max(), 8.0, 1e-12 );
 
   // divide
   shared::ParVector v4 = v1.divide( v2 );
-  EXPECT_NEAR( v4.Max(), 2.0, 1e-12 );
+  EXPECT_NEAR( v4.max(), 2.0, 1e-12 );
 
   // divide in-place
   v1.divideInPlace( v2 );
-  EXPECT_NEAR( v1.Max(), 2.0, 1e-12 );
+  EXPECT_NEAR( v1.max(), 2.0, 1e-12 );
 }
 
 // Test Inverse
@@ -219,23 +219,23 @@ TEST_F( ParVectorTest, Inverse )
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
   shared::ParVector v1( MPI_COMM_WORLD, 10, row_starts.GetData() );
-  v1.Fill( 2.0 );
+  v1.fill( 2.0 );
 
   // inverse
   shared::ParVector v2 = v1.inverse();
-  EXPECT_NEAR( v2.Max(), 0.5, 1e-12 );
-  EXPECT_NEAR( v2.Min(), 0.5, 1e-12 );
+  EXPECT_NEAR( v2.max(), 0.5, 1e-12 );
+  EXPECT_NEAR( v2.min(), 0.5, 1e-12 );
 
   // inverse in-place
   v1.inverseInPlace();
-  EXPECT_NEAR( v1.Max(), 0.5, 1e-12 );
-  EXPECT_NEAR( v1.Min(), 0.5, 1e-12 );
+  EXPECT_NEAR( v1.max(), 0.5, 1e-12 );
+  EXPECT_NEAR( v1.min(), 0.5, 1e-12 );
 
   // Test with zero and tolerance
   shared::ParVector v3( MPI_COMM_WORLD, 10, row_starts.GetData() );
-  v3.Fill( 0.0 );
+  v3.fill( 0.0 );
   v3.inverseInPlace( 1e-14 );
-  EXPECT_NEAR( v3.Max(), 0.0, 1e-12 );
+  EXPECT_NEAR( v3.max(), 0.0, 1e-12 );
 }
 
 // Test Move and Release
@@ -247,17 +247,17 @@ TEST_F( ParVectorTest, MoveAndRelease )
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
   shared::ParVector v1( MPI_COMM_WORLD, 10, row_starts.GetData() );
-  v1.Fill( 7.0 );
+  v1.fill( 7.0 );
 
   // Move constructor
   shared::ParVector v2( std::move( v1 ) );
-  EXPECT_NEAR( v2.Max(), 7.0, 1e-12 );
+  EXPECT_NEAR( v2.max(), 7.0, 1e-12 );
   EXPECT_EQ( v1.operator->(), nullptr );
 
   // Move assignment
   shared::ParVector v3( MPI_COMM_WORLD, 10, row_starts.GetData() );
   v3 = std::move( v2 );
-  EXPECT_NEAR( v3.Max(), 7.0, 1e-12 );
+  EXPECT_NEAR( v3.max(), 7.0, 1e-12 );
   EXPECT_EQ( v2.operator->(), nullptr );
 
   // Release
@@ -277,13 +277,13 @@ TEST_F( ParVectorTest, Fill )
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
   shared::ParVector v( MPI_COMM_WORLD, 10, row_starts.GetData() );
 
-  v.Fill( 1.0 );
-  EXPECT_NEAR( v.Max(), 1.0, 1e-12 );
-  EXPECT_NEAR( v.Min(), 1.0, 1e-12 );
+  v.fill( 1.0 );
+  EXPECT_NEAR( v.max(), 1.0, 1e-12 );
+  EXPECT_NEAR( v.min(), 1.0, 1e-12 );
 
-  v.Fill( 2.5 );
-  EXPECT_NEAR( v.Max(), 2.5, 1e-12 );
-  EXPECT_NEAR( v.Min(), 2.5, 1e-12 );
+  v.fill( 2.5 );
+  EXPECT_NEAR( v.max(), 2.5, 1e-12 );
+  EXPECT_NEAR( v.min(), 2.5, 1e-12 );
 }
 
 // Test Copy
@@ -295,27 +295,27 @@ TEST_F( ParVectorTest, Copy )
 
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
   shared::ParVector v1( MPI_COMM_WORLD, 10, row_starts.GetData() );
-  v1.Fill( 3.0 );
+  v1.fill( 3.0 );
 
   // Copy constructor
   shared::ParVector v2( v1 );
-  EXPECT_NEAR( v2.Max(), 3.0, 1e-12 );
+  EXPECT_NEAR( v2.max(), 3.0, 1e-12 );
 
   // Verify it's a deep copy
-  v1.Fill( 4.0 );
-  EXPECT_NEAR( v1.Max(), 4.0, 1e-12 );
-  EXPECT_NEAR( v2.Max(), 3.0, 1e-12 );
+  v1.fill( 4.0 );
+  EXPECT_NEAR( v1.max(), 4.0, 1e-12 );
+  EXPECT_NEAR( v2.max(), 3.0, 1e-12 );
 
   // Copy assignment
   shared::ParVector v3( MPI_COMM_WORLD, 10, row_starts.GetData() );
-  v3.Fill( 5.0 );
+  v3.fill( 5.0 );
   v3 = v2;
-  EXPECT_NEAR( v3.Max(), 3.0, 1e-12 );
+  EXPECT_NEAR( v3.max(), 3.0, 1e-12 );
 
   // Verify deep copy for assignment
-  v2.Fill( 6.0 );
-  EXPECT_NEAR( v2.Max(), 6.0, 1e-12 );
-  EXPECT_NEAR( v3.Max(), 3.0, 1e-12 );
+  v2.fill( 6.0 );
+  EXPECT_NEAR( v2.max(), 6.0, 1e-12 );
+  EXPECT_NEAR( v3.max(), 3.0, 1e-12 );
 }
 
 //------------------------------------------------------------------------------
