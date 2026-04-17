@@ -16,11 +16,11 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemSubmeshData& submesh_data, MfemJac
                                           bool use_penalty_ )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
-    : submesh_data_( submesh_data ),
+    : use_penalty_( use_penalty_ ),
+      submesh_data_( submesh_data ),
       jac_data_( jac_data ),
       mesh1_( mesh2 ),
-      mesh2_( mesh1 ),
-      use_penalty_( use_penalty_ )
+      mesh2_( mesh1 )
 {
   if ( mesh1.numberOfNodes() > 0 && mesh2.numberOfNodes() > 0 ) {
     SLIC_ERROR_ROOT_IF( mesh1.spatialDimension() != 2 || mesh2.spatialDimension() != 2,
@@ -130,13 +130,13 @@ void EnergyMortarAdapter::updateNodalGaps()
   submesh_data_.GetSubmeshGap( g_tilde_linear_form );
   auto& P_submesh = *submesh_data_.GetSubmeshFESpace().GetProlongationMatrix();
   g_tilde_vec_ = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
-  g_tilde_vec_.Fill( 0.0 );
+  g_tilde_vec_.fill( 0.0 );
   P_submesh.MultTranspose( g_tilde_linear_form, g_tilde_vec_.get() );
 
   mfem::Array<int> rows_to_elim;
   if ( !tied_contact_ && use_penalty_ ) {
-    rows_to_elim.Reserve( g_tilde_vec_.Size() );
-    for ( int i{ 0 }; i < g_tilde_vec_.Size(); ++i ) {
+    rows_to_elim.Reserve( g_tilde_vec_.size() );
+    for ( int i{ 0 }; i < g_tilde_vec_.size(); ++i ) {
       if ( g_tilde_vec_[i] > 0.0 ) {
         g_tilde_vec_[i] = 0.0;
         rows_to_elim.push_back( i );
@@ -147,7 +147,7 @@ void EnergyMortarAdapter::updateNodalGaps()
   mfem::ParLinearForm A_linear_form( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
   submesh_data_.GetPressureTransfer().RedecompToSubmesh( redecomp_area, A_linear_form );
   A_vec_ = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
-  A_vec_.Fill( 0.0 );
+  A_vec_.fill( 0.0 );
   P_submesh.MultTranspose( A_linear_form, A_vec_.get() );
 
   gap_vec_ = g_tilde_vec_.divide( A_vec_, area_tol_ );
@@ -157,7 +157,7 @@ void EnergyMortarAdapter::updateNodalGaps()
   if ( !tied_contact_ && use_penalty_ ) {
     // technically, we should do this on all the vectors/matrices below, but it looks like the mutliplication operators
     // below will zero them out anyway
-    dg_tilde_dx_.EliminateRows( rows_to_elim );
+    dg_tilde_dx_.eliminateRows( rows_to_elim );
   }
 
   dA_dx_ = jac_data_.GetMfemJacobian( dA_dx_contribs.get() );
@@ -278,9 +278,9 @@ void EnergyMortarAdapter::updateNodalForces()
   auto pg2_over_asq_diag = shared::ParSparseMat::diagonalMatrix( submesh_fes.GetComm(), submesh_fes.GlobalTrueVSize(),
                                                                  submesh_fes.GetTrueDofOffsets(), pg2_over_asq.get() );
 
-  df_dx_ -= shared::ParSparseMat::RAP( dg_tilde_dx_, p_over_a_diag, dA_dx_ );
-  df_dx_ -= shared::ParSparseMat::RAP( dA_dx_, p_over_a_diag, dg_tilde_dx_ );
-  df_dx_ += shared::ParSparseMat::RAP( dA_dx_, pg2_over_asq_diag, dg_tilde_dx_ );
+  df_dx_ -= shared::ParSparseMat::rap( dg_tilde_dx_, p_over_a_diag, dA_dx_ );
+  df_dx_ -= shared::ParSparseMat::rap( dA_dx_, p_over_a_diag, dg_tilde_dx_ );
+  df_dx_ += shared::ParSparseMat::rap( dA_dx_, pg2_over_asq_diag, dg_tilde_dx_ );
   df_dx_ += dp_dx.transpose() * dg_tilde_dx_;
   df_dx_ += dg_tilde_dx_.transpose() * dp_dx;
 }
@@ -362,7 +362,7 @@ void EnergyMortarAdapter::evaluateContactResidual( const mfem::HypreParVector& l
 {
   SLIC_ERROR_ROOT_IF( use_penalty_, "evaluateContactResidual() should only be  called in lagrange multiplier mode" );
 
-  SLIC_ERROR_ROOT_IF( g_tilde_vec_.Size() == 0, "updateNodalGaps() must be called before evaluateContactResidual()" );
+  SLIC_ERROR_ROOT_IF( g_tilde_vec_.size() == 0, "updateNodalGaps() must be called before evaluateContactResidual()" );
 
   // Force residual = r_f = lambda * dg_tilde/du
   dg_tilde_dx_->MultTranspose( lambda, r_force );
@@ -377,7 +377,7 @@ void EnergyMortarAdapter::evaluateContactJacobian( const mfem::HypreParVector& l
 {
   SLIC_ERROR_ROOT_IF( use_penalty_, "evaluateContactJacobian() should only be called in Lagrange multiplier mode" );
 
-  SLIC_ERROR_ROOT_IF( g_tilde_vec_.Size() == 0, "updateNodalGaps() must be called before evaluateContactJacobian()" );
+  SLIC_ERROR_ROOT_IF( g_tilde_vec_.size() == 0, "updateNodalGaps() must be called before evaluateContactJacobian()" );
 
   // df/dlambda = dg_tilde/du:
   df_dlambda = std::unique_ptr<mfem::HypreParMatrix>( dg_tilde_dx_.release() );

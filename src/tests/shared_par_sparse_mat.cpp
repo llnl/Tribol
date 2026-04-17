@@ -500,7 +500,7 @@ TEST_F( ParSparseMatTest, DiagonalFromVector )
       shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, size, row_starts.GetData(), diag_vals );
 
   shared::ParVector x( A.get(), 0 );
-  x.Fill( 1.0 );
+  x.fill( 1.0 );
   auto y = A * x;
 
   for ( int i = 0; i < local_size; ++i ) {
