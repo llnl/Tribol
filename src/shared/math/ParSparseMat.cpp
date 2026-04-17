@@ -19,7 +19,8 @@ ParSparseMatView::ParSparseMatView( mfem::HypreParMatrix* mat ) : mat_( mat ) { 
 
 void ParSparseMatView::ensureHostMemory( mfem::HypreParMatrix* mat )
 {
-  if ( mat ) {
+  // note: HostReadWrite() fails when called on HypreParMatrices created with the default constructor
+  if ( mat && mat->Height() > 0 && mat->Width() > 0 ) {
     mat->HostReadWrite();
   }
 }
