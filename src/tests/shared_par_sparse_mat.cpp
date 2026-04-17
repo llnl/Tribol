@@ -38,6 +38,7 @@ class ParSparseMatTest : public ::testing::Test {
       row_starts[i + 1] = row_starts[i] + local_sizes[i];
     }
     if ( HYPRE_AssumedPartitionCheck() ) {
+      // if this is true, row starts should be {starting on-rank dof, last on-rank dof + 1, total dofs}
       auto total_dofs = row_starts[num_procs];
       row_starts.SetSize( 3 );
       row_starts[0] = row_starts[rank];
@@ -95,6 +96,7 @@ TEST_F( ParSparseMatTest, Construction )
   shared::ParSparseMat psm3( MPI_COMM_WORLD, (HYPRE_BigInt)size, row_starts_array.GetData(), std::move( diag ) );
   EXPECT_EQ( psm3.height(), local_size );
 
+  // basic, non-exhaustive check to make sure matrix multiplication is working
   mfem::Vector x( local_size ), y( local_size );
   x = 1.0;
   psm3->Mult( x, y );
@@ -153,6 +155,7 @@ TEST_F( ParSparseMatTest, View )
 
   // Operate on View
   shared::ParSparseMat B = view * 2.0;
+  // creates a shared::ParVector compatible with the dimensions of B and using the same MPI_Comm
   shared::ParVector x( B.get() );
   x.fill( 1.0 );
   auto y = B * x;
@@ -175,7 +178,7 @@ TEST_F( ParSparseMatTest, Addition )
   mfem::Vector x( A.width() ), y( A.height() );
   x = 1.0;
   C->Mult( x, y );
-  // Result should be (2+3)*1 = 5
+  // Result should be C*x = (A+B)*x = (2+3)*1 = 5
   EXPECT_NEAR( y.Max(), 5.0, 1e-12 );
   EXPECT_NEAR( y.Min(), 5.0, 1e-12 );
 
@@ -440,6 +443,11 @@ TEST_F( ParSparseMatTest, RAP )
   shared::ParVector x( A.get(), 0 );
   x.fill( 1.0 );
   auto y = Res1 * x;
+  EXPECT_NEAR( y.max(), 5.0, 1e-12 );
+
+  // rap(A, P)
+  shared::ParSparseMat ResMid = shared::ParSparseMat::rap( A, P );
+  y = ResMid * x;
   EXPECT_NEAR( y.max(), 5.0, 1e-12 );
 
   // rap(R, A, P)
