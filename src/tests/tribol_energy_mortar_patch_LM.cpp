@@ -86,6 +86,7 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         .updateBdrAttrib(3, 6)   // top  (prescribed displacement)
         .updateBdrAttrib(4, 4)   // left  (Fixed x)
     }));
+    // clang-format on
 
     // FE space and grid functions
     auto fe_coll = mfem::H1_FECollection( order, mesh.SpaceDimension() );
@@ -456,7 +457,7 @@ int main( int argc, char* argv[] )
 
   MPI_Init( &argc, &argv );
   ::testing::InitGoogleTest( &argc, argv );
- 
+
 #ifdef TRIBOL_USE_UMPIRE
   umpire::ResourceManager::getInstance();
 #endif
