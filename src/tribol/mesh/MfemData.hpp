@@ -13,6 +13,7 @@
 
 // C++ includes
 #include <set>
+#include <utility>
 #include <vector>
 
 // MFEM includes
@@ -22,12 +23,13 @@
 #include "axom/core.hpp"
 
 // Shared includes
-#include "tribol/common/BasicTypes.hpp"
+#include "shared/math/ParSparseMat.hpp"
 
 // Redecomp includes
 #include "redecomp/redecomp.hpp"
 
 // Tribol includes
+#include "tribol/common/BasicTypes.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 
@@ -1663,37 +1665,19 @@ class MfemJacobianData {
   void UpdateJacobianXfer();
 
   /**
-   * @brief Returns symmetric, off-diagonal Jacobian contributions as an mfem::BlockOperator
+   * @brief Returns a Jacobian as an mfem::BlockOperator
    *
    * @param method_data Method data holding element Jacobians
+   * @param row_info List of {block_row_index, BlockSpace} pairs. Since a single block row in the output matrix might
+   * aggregate DOFs from multiple Tribol spaces (e.g. Mortar and NonMortar spaces might both map to the Displacement
+   * block 0), this vector defines the mapping from each Tribol space to its corresponding block row index.
+   * @param col_info List of {block_col_index, BlockSpace} pairs. Similar to row_info, this defines the mapping from
+   * each Tribol space to its corresponding block column index.
    * @return std::unique_ptr<mfem::BlockOperator>
    */
-  std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobian( const MethodData* method_data ) const;
-
-  /**
-   * @brief Returns full, potentially non-symmetric derivative of the force w.r.t. nodal coordinates as an
-   * mfem::BlockOperator
-   *
-   * @param method_data Method data holding element Jacobians
-   * @return std::unique_ptr<mfem::BlockOperator>
-   */
-  std::unique_ptr<mfem::BlockOperator> GetMfemDfDxFullJacobian( const MethodData& method_data ) const;
-
-  /**
-   * @brief Returns the derivative of the force w.r.t. the normal direction as an mfem::BlockOperator
-   *
-   * @param method_data Method data holding element Jacobians
-   * @return std::unique_ptr<mfem::BlockOperator>
-   */
-  std::unique_ptr<mfem::BlockOperator> GetMfemDfDnJacobian( const MethodData& method_data ) const;
-
-  /**
-   * @brief Returns the derivative of the normal direction w.r.t. the nodal coordinates as an mfem::BlockOperator
-   *
-   * @param method_data Method data holding element Jacobians
-   * @return std::unique_ptr<mfem::BlockOperator>
-   */
-  std::unique_ptr<mfem::BlockOperator> GetMfemDnDxJacobian( const MethodData& method_data ) const;
+  std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobian(
+      const MethodData& method_data, const std::vector<std::pair<int, BlockSpace>>& row_info,
+      const std::vector<std::pair<int, BlockSpace>>& col_info ) const;
 
  private:
   /**
@@ -1710,19 +1694,11 @@ class MfemJacobianData {
     UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data );
 
     /**
-     * @brief Redecomp to parent-linked boundary submesh transfer operator, (displacement, displacement) block
+     * @brief Redecomp to parent-linked boundary submesh transfer operators
+     *
+     * @note Indexed by (row_block, col_block)
      */
-    std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_00_;
-
-    /**
-     * @brief Redecomp to parent-linked boundary submesh transfer operator, (displacement, pressure) block
-     */
-    std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_01_;
-
-    /**
-     * @brief Redecomp to parent-linked boundary submesh transfer operator, (pressure, displacement) block
-     */
-    std::unique_ptr<redecomp::MatrixTransfer> submesh_redecomp_xfer_10_;
+    Array2D<std::unique_ptr<redecomp::MatrixTransfer>> submesh_redecomp_xfer_;
   };
 
   /**
@@ -1769,7 +1745,7 @@ class MfemJacobianData {
   /**
    * @brief Submesh to parent transfer operator
    */
-  std::unique_ptr<mfem::HypreParMatrix> submesh_parent_vdof_xfer_;
+  std::unique_ptr<shared::ParSparseMat> submesh_parent_vdof_xfer_;
 
   /**
    * @brief List of submesh true dofs that only exist on the mortar surface

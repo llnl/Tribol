@@ -846,7 +846,7 @@ MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemS
   mfem::Vector submesh_parent_data( submesh2parent_vdof_list_.Size() );
   submesh_parent_data = 1.0;
   // This constructor copies all of the data, so don't worry about ownership of the CSR data
-  submesh_parent_vdof_xfer_ = std::make_unique<mfem::HypreParMatrix>(
+  submesh_parent_vdof_xfer_ = std::make_unique<shared::ParSparseMat>(
       TRIBOL_COMM_WORLD, submesh_fes.GetVSize(), submesh_fes.GlobalVSize(), parent_fes.GlobalVSize(),
       submesh_parent_I.data(), submesh2parent_vdof_list_.GetData(), submesh_parent_data.GetData(),
       submesh_fes.GetDofOffsets(), parent_fes.GetDofOffsets() );
@@ -902,385 +902,142 @@ void MfemJacobianData::UpdateJacobianXfer()
   update_data_ = std::make_unique<UpdateData>( parent_data_, submesh_data_ );
 }
 
-std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian( const MethodData* method_data ) const
+std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemBlockJacobian(
+    const MethodData& method_data, const std::vector<std::pair<int, BlockSpace>>& row_info,
+    const std::vector<std::pair<int, BlockSpace>>& col_info ) const
 {
-  // 0 = displacement DOFs, 1 = lagrange multiplier DOFs
-  // (0,0) block is empty (for now using SINGLE_MORTAR with approximate tangent)
-  // (1,1) block is a diagonal matrix with ones on the diagonal of submesh nodes without a Lagrange multiplier DOF
-  // (0,1) and (1,0) are symmetric (for now using SINGLE_MORTAR with approximate tangent)
-  const auto& elem_map_1 = parent_data_.GetElemMap1();
-  const auto& elem_map_2 = parent_data_.GetElemMap2();
-  // empty data structures are needed even when no meshes are on rank since TransferToParallelSparse() needs to be
-  // called on all ranks (even those without data)
-  auto mortar_elems = ArrayT<int>( 0, 0 );
-  auto nonmortar_elems = ArrayT<int>( 0, 0 );
-  auto lm_elems = ArrayT<int>( 0, 0 );
-  auto elem_J_1_ptr = std::make_unique<ArrayT<mfem::DenseMatrix>>( 0, 0 );
-  auto elem_J_2_ptr = std::make_unique<ArrayT<mfem::DenseMatrix>>( 0, 0 );
-  const ArrayT<mfem::DenseMatrix>* elem_J_1 = elem_J_1_ptr.get();
-  const ArrayT<mfem::DenseMatrix>* elem_J_2 = elem_J_2_ptr.get();
-  // this means both of the meshes exist
-  if ( method_data != nullptr && !elem_map_1.empty() && !elem_map_2.empty() ) {
-    mortar_elems = method_data->getBlockJElementIds()[static_cast<int>( BlockSpace::MORTAR )];
-    for ( auto& mortar_elem : mortar_elems ) {
-      mortar_elem = elem_map_1[static_cast<size_t>( mortar_elem )];
-    }
-    nonmortar_elems = method_data->getBlockJElementIds()[static_cast<int>( BlockSpace::NONMORTAR )];
-    for ( auto& nonmortar_elem : nonmortar_elems ) {
-      nonmortar_elem = elem_map_2[static_cast<size_t>( nonmortar_elem )];
-    }
-    lm_elems = method_data->getBlockJElementIds()[static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER )];
-    for ( auto& lm_elem : lm_elems ) {
-      lm_elem = elem_map_2[static_cast<size_t>( lm_elem )];
-    }
-    // get (1,0) block
-    elem_J_1 = &method_data->getBlockJ()( static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                                          static_cast<int>( BlockSpace::MORTAR ) );
-    elem_J_2 = &method_data->getBlockJ()( static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                                          static_cast<int>( BlockSpace::NONMORTAR ) );
+  // Determine block structure
+  int max_row_block = 0;
+  for ( auto info : row_info ) {
+    if ( info.first > max_row_block ) max_row_block = info.first;
   }
-  // move to submesh level
-  auto submesh_J =
-      GetUpdateData().submesh_redecomp_xfer_10_->TransferToParallelSparse( lm_elems, mortar_elems, *elem_J_1 );
-  submesh_J +=
-      GetUpdateData().submesh_redecomp_xfer_10_->TransferToParallelSparse( lm_elems, nonmortar_elems, *elem_J_2 );
-  submesh_J.Finalize();
+  int max_col_block = 0;
+  for ( auto info : col_info ) {
+    if ( info.first > max_col_block ) max_col_block = info.first;
+  }
 
-  // transform J values from submesh to (global) parent mesh
-  mfem::Array<HYPRE_BigInt> J( submesh_J.NumNonZeroElems() );
-  // This copy is needed to convert mfem::SparseMatrix int J values to the HYPRE_BigInt values the mfem::HypreParMatrix
-  // constructor needs
-  auto* J_int = submesh_J.GetJ();
-  for ( int i{ 0 }; i < J.Size(); ++i ) {
-    J[i] = J_int[i];
-  }
-  auto submesh_vector_fes = parent_data_.GetSubmeshFESpace();
-  auto mpi = redecomp::MPIUtility( submesh_vector_fes.GetComm() );
-  auto submesh_dof_offsets = ArrayT<int>( mpi.NRanks() + 1, mpi.NRanks() + 1 );
-  // we need the dof offsets of each rank.  check if mfem stores this or if we
-  // need to create it.
-  if ( HYPRE_AssumedPartitionCheck() ) {
-    submesh_dof_offsets[mpi.MyRank() + 1] = submesh_vector_fes.GetDofOffsets()[1];
-    mpi.Allreduce( &submesh_dof_offsets, MPI_SUM );
-  } else {
-    for ( int i{ 0 }; i < mpi.NRanks(); ++i ) {
-      submesh_dof_offsets[i] = submesh_vector_fes.GetDofOffsets()[i];
-    }
-  }
-  // the submesh to parent vdof map only exists for vdofs on rank, so J values
-  // not on rank will need to be transferred to the rank that the vdof exists on
-  // to query the map. the steps are laid out below.
+  SLIC_ERROR_ROOT_IF( max_row_block > GetUpdateData().submesh_redecomp_xfer_.shape()[0] ||
+                          max_col_block > GetUpdateData().submesh_redecomp_xfer_.shape()[1],
+                      axom::fmt::format( "No transfer object for row {0} and col {1}", max_row_block, max_col_block ) );
 
-  // step 1) query J values on rank for their parent vdof and package J values
-  // not on rank to send
-  auto send_J_by_rank = redecomp::MPIArray<int>( &mpi );
-  auto J_idx = redecomp::MPIArray<int>( &mpi );
-  auto est_num_J = submesh_J.NumNonZeroElems() / mpi.NRanks();
-  for ( int r{}; r < mpi.NRanks(); ++r ) {
-    if ( r != mpi.MyRank() ) {
-      send_J_by_rank[r].Reserve( est_num_J );
-      J_idx[r].Reserve( est_num_J );
+  const mfem::Array<int>& row_offsets = ( max_row_block == 0 ) ? disp_offsets_ : block_offsets_;
+  const mfem::Array<int>& col_offsets = ( max_col_block == 0 ) ? disp_offsets_ : block_offsets_;
+
+  auto block_J = std::make_unique<mfem::BlockOperator>( row_offsets, col_offsets );
+  block_J->owns_blocks = 1;
+
+  // Map unique (r_blk, c_blk) -> list of (row_space, col_space) pairs
+  std::map<std::pair<int, int>, std::vector<std::pair<BlockSpace, BlockSpace>>> block_contribs;
+
+  for ( const auto& r_pair : row_info ) {
+    for ( const auto& c_pair : col_info ) {
+      block_contribs[{ r_pair.first, c_pair.first }].push_back( { r_pair.second, c_pair.second } );
     }
   }
-  for ( int j{}; j < submesh_J.NumNonZeroElems(); ++j ) {
-    if ( J[j] >= submesh_dof_offsets[mpi.MyRank()] && J[j] < submesh_dof_offsets[mpi.MyRank() + 1] ) {
-      J[j] = submesh2parent_vdof_list_[J[j] - submesh_dof_offsets[mpi.MyRank()]];
-    } else {
-      for ( int r{}; r < mpi.NRanks(); ++r ) {
-        if ( J[j] >= submesh_dof_offsets[r] && J[j] < submesh_dof_offsets[r + 1] ) {
-          send_J_by_rank[r].push_back( J[j] - submesh_dof_offsets[r] );
-          J_idx[r].push_back( j );
-          break;
+
+  // Maps BlockSpaces (MORTAR, NONMORTAR, LAGRANGE_MULTIPLIER) to a tribol element map
+  const std::vector<const Array1D<int>*> elem_map_by_space{ &parent_data_.GetElemMap1(), &parent_data_.GetElemMap2(),
+                                                            &parent_data_.GetElemMap2() };
+
+  // Iterate over unique blocks
+  for ( const auto& entry : block_contribs ) {
+    int r_blk = entry.first.first;
+    int c_blk = entry.first.second;
+    const auto& contribs = entry.second;
+
+    std::unique_ptr<mfem::SparseMatrix> submesh_J;
+
+    for ( const auto& pair : contribs ) {
+      BlockSpace rs = pair.first;
+      BlockSpace cs = pair.second;
+
+      // Get block from method_data
+      const auto& J_block = method_data.getBlockJ()( static_cast<int>( rs ), static_cast<int>( cs ) );
+
+      // Map element IDs to redecomp IDs
+      const auto& row_elem_ids_tribol = method_data.getBlockJElementIds()[static_cast<int>( rs )];
+      ArrayT<int> row_redecomp_ids;
+      row_redecomp_ids.reserve( row_elem_ids_tribol.size() );
+      for ( auto id : row_elem_ids_tribol ) {
+        row_redecomp_ids.push_back( ( *elem_map_by_space[static_cast<size_t>( rs )] )[static_cast<size_t>( id )] );
+      }
+
+      const auto& col_elem_ids_tribol = method_data.getBlockJElementIds()[static_cast<int>( cs )];
+      ArrayT<int> col_redecomp_ids;
+      col_redecomp_ids.reserve( col_elem_ids_tribol.size() );
+      for ( auto id : col_elem_ids_tribol ) {
+        col_redecomp_ids.push_back( ( *elem_map_by_space[static_cast<size_t>( cs )] )[static_cast<size_t>( id )] );
+      }
+
+      // Pick transfer object
+      redecomp::MatrixTransfer* xfer = GetUpdateData().submesh_redecomp_xfer_( r_blk, c_blk ).get();
+
+      // No transfer object for LAGRANGE_MULTIPLER, LAGRANGE_MULTIPLIER block
+      if ( xfer != nullptr ) {
+        auto J_contrib = xfer->TransferToParallelSparse( row_redecomp_ids, col_redecomp_ids, J_block );
+        if ( !submesh_J ) {
+          submesh_J = std::make_unique<mfem::SparseMatrix>( std::move( J_contrib ) );
+        } else {
+          ( *submesh_J ) += J_contrib;
         }
       }
     }
-  }
-  // step 2) sends the J values to the ranks that own them
-  auto recv_J_by_rank = redecomp::MPIArray<int>( &mpi );
-  recv_J_by_rank.SendRecvArrayEach( send_J_by_rank );
-  // step 3) query the on-rank map to recover J values
-  for ( int r{}; r < mpi.NRanks(); ++r ) {
-    for ( auto& recv_J : recv_J_by_rank[r] ) {
-      recv_J = submesh2parent_vdof_list_[recv_J];
+
+    if ( submesh_J ) {
+      submesh_J->Finalize();
+
+      // Pick xfer again for conversion
+      redecomp::MatrixTransfer* xfer = GetUpdateData().submesh_redecomp_xfer_( r_blk, c_blk ).get();
+
+      auto submesh_J_hypre = xfer->ConvertToParSparseMat( std::move( *submesh_J ), false );
+
+      mfem::HypreParMatrix* block_mat = nullptr;
+
+      if ( r_blk == 0 && c_blk == 0 ) {
+        auto parent_J = submesh_J_hypre.rap( *submesh_parent_vdof_xfer_ );
+        shared::ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
+        block_mat = parent_J.rap( parent_P ).release();
+      } else if ( r_blk == 0 && c_blk == 1 ) {
+        auto parent_J = submesh_parent_vdof_xfer_->transpose() * submesh_J_hypre;
+        block_mat = shared::ParSparseMat::rap( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix(),
+                                               parent_J, submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() )
+                        .release();
+      } else if ( r_blk == 1 && c_blk == 0 ) {
+        auto parent_J = submesh_J_hypre * ( *submesh_parent_vdof_xfer_ );
+        shared::ParSparseMatView submesh_P( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() );
+        shared::ParSparseMatView parent_P( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
+        block_mat = shared::ParSparseMat::rap( submesh_P, parent_J, parent_P ).release();
+      }
+
+      block_J->SetBlock( r_blk, c_blk, block_mat );
     }
   }
-  // step 4) send the updated parent J values back and update the J vector
-  send_J_by_rank.SendRecvArrayEach( recv_J_by_rank );
-  for ( int r{}; r < mpi.NRanks(); ++r ) {
-    for ( int j{}; j < send_J_by_rank[r].Size(); ++j ) {
-      J[J_idx[r][j]] = send_J_by_rank[r][j];
+
+  // Handle Inactive DOFs for (1, 1)
+  bool has_11 = false;
+  for ( auto rb : row_info )
+    if ( rb.first == 1 ) has_11 = true;
+  bool col_has_1 = false;
+  for ( auto cb : col_info )
+    if ( cb.first == 1 ) col_has_1 = true;
+  has_11 = has_11 && col_has_1;
+
+  if ( has_11 ) {
+    auto& submesh_fes_full = submesh_data_.GetSubmeshFESpace();
+    shared::ParSparseMat inactive_hpm_full =
+        shared::ParSparseMat::diagonalMatrix( TRIBOL_COMM_WORLD, submesh_fes_full.GlobalTrueVSize(),
+                                              submesh_fes_full.GetTrueDofOffsets(), 1.0, mortar_tdof_list_, false );
+
+    if ( block_J->IsZeroBlock( 1, 1 ) ) {
+      block_J->SetBlock( 1, 1, inactive_hpm_full.release() );
     }
   }
-
-  // create block operator
-  auto block_J = std::make_unique<mfem::BlockOperator>( block_offsets_ );
-  block_J->owns_blocks = 1;
-
-  // fill block operator
-  auto& submesh_fes = submesh_data_.GetSubmeshFESpace();
-  auto& parent_trial_fes = *parent_data_.GetParentCoords().ParFESpace();
-  // NOTE: we don't call MatrixTransfer::ConvertToHypreParMatrix() because the
-  // trial space is on the parent mesh, not the submesh
-  auto J_full = std::make_unique<mfem::HypreParMatrix>( mpi.MPIComm(), submesh_fes.GetVSize(),
-                                                        submesh_fes.GlobalVSize(), parent_trial_fes.GlobalVSize(),
-                                                        submesh_J.GetI(), J.GetData(), submesh_J.GetData(),
-                                                        submesh_fes.GetDofOffsets(), parent_trial_fes.GetDofOffsets() );
-  auto J_true = std::unique_ptr<mfem::HypreParMatrix>(
-      mfem::RAP( submesh_fes.Dof_TrueDof_Matrix(), J_full.get(), parent_trial_fes.Dof_TrueDof_Matrix() ) );
-
-  // Create ones on diagonal of eliminated mortar tdofs, i.e. inactive dofs (CSR sparse matrix -> HypreParMatrix)
-  // I vector
-  mfem::Array<int> rows( submesh_fes.GetTrueVSize() + 1 );
-  rows = 0;
-  auto mortar_tdofs_ct = 0;
-  for ( int i{ 0 }; i < submesh_fes.GetTrueVSize(); ++i ) {
-    if ( mortar_tdofs_ct < mortar_tdof_list_.Size() && mortar_tdof_list_[mortar_tdofs_ct] == i ) {
-      ++mortar_tdofs_ct;
-    }
-    rows[i + 1] = mortar_tdofs_ct;
-  }
-  // J vector
-  mfem::Array<int> mortar_tdofs( mortar_tdof_list_ );
-  // data vector
-  mfem::Vector ones( mortar_tdofs_ct );
-  ones = 1.0;
-  mfem::SparseMatrix inactive_sm( rows.GetData(), mortar_tdofs.GetData(), ones.GetData(), submesh_fes.GetTrueVSize(),
-                                  submesh_fes.GetTrueVSize(), false, false, true );
-  auto inactive_hpm = std::make_unique<mfem::HypreParMatrix>( J_true->GetComm(), J_true->GetGlobalNumRows(),
-                                                              J_true->GetRowStarts(), &inactive_sm );
-  // Have the mfem::HypreParMatrix manage the data pointers
-  rows.GetMemory().ClearOwnerFlags();
-  mortar_tdofs.GetMemory().ClearOwnerFlags();
-  ones.GetMemory().ClearOwnerFlags();
-  inactive_sm.GetMemoryI().ClearOwnerFlags();
-  inactive_sm.GetMemoryJ().ClearOwnerFlags();
-  inactive_sm.GetMemoryData().ClearOwnerFlags();
-  constexpr int mfem_owned_host_flag = 3;
-  inactive_hpm->SetOwnerFlags( mfem_owned_host_flag, inactive_hpm->OwnsOffd(), inactive_hpm->OwnsColMap() );
-
-  block_J->SetBlock( 0, 1, J_true->Transpose() );
-  block_J->SetBlock( 1, 0, J_true.release() );
-  block_J->SetBlock( 1, 1, inactive_hpm.release() );
-
-  return block_J;
-}
-
-// TODO: Merge with GetMfemBlockJacobian() to avoid code duplication
-std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemDfDxFullJacobian( const MethodData& method_data ) const
-{
-  // create block operator
-  auto block_J = std::make_unique<mfem::BlockOperator>( block_offsets_ );
-  block_J->owns_blocks = 1;
-
-  // these are Tribol element ids
-  auto mortar_elems = method_data.getBlockJElementIds()[static_cast<int>( BlockSpace::MORTAR )];
-  // convert them to redecomp element ids
-  const auto& elem_map_1 = parent_data_.GetElemMap1();
-  for ( auto& mortar_elem : mortar_elems ) {
-    mortar_elem = elem_map_1[static_cast<size_t>( mortar_elem )];
-  }
-
-  // these are Tribol element ids
-  auto nonmortar_elems = method_data.getBlockJElementIds()[static_cast<int>( BlockSpace::NONMORTAR )];
-  // convert them to redecomp element ids
-  const auto& elem_map_2 = parent_data_.GetElemMap2();
-  for ( auto& nonmortar_elem : nonmortar_elems ) {
-    nonmortar_elem = elem_map_2[static_cast<size_t>( nonmortar_elem )];
-  }
-
-  // these are Tribol element ids
-  auto lm_elems = method_data.getBlockJElementIds()[static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER )];
-  // convert them to redecomp element ids
-  for ( auto& lm_elem : lm_elems ) {
-    lm_elem = elem_map_2[static_cast<size_t>( lm_elem )];
-  }
-
-  // transfer (0, 0) block (residual dof rows, displacement dof cols)
-  auto submesh_J = GetUpdateData().submesh_redecomp_xfer_00_->TransferToParallelSparse(
-      mortar_elems, mortar_elems,
-      method_data.getBlockJ()( static_cast<int>( BlockSpace::MORTAR ), static_cast<int>( BlockSpace::MORTAR ) ) );
-  submesh_J += GetUpdateData().submesh_redecomp_xfer_00_->TransferToParallelSparse(
-      mortar_elems, nonmortar_elems,
-      method_data.getBlockJ()( static_cast<int>( BlockSpace::MORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) ) );
-  submesh_J += GetUpdateData().submesh_redecomp_xfer_00_->TransferToParallelSparse(
-      nonmortar_elems, mortar_elems,
-      method_data.getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ), static_cast<int>( BlockSpace::MORTAR ) ) );
-  submesh_J += GetUpdateData().submesh_redecomp_xfer_00_->TransferToParallelSparse(
-      nonmortar_elems, nonmortar_elems,
-      method_data.getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) ) );
-  submesh_J.Finalize();
-  auto submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_00_->ConvertToHypreParMatrix( submesh_J, false );
-  // Matrix returned by mfem::RAP copies all existing data and owns its data
-  auto parent_J_hypre =
-      std::unique_ptr<mfem::HypreParMatrix>( mfem::RAP( submesh_J_hypre.get(), submesh_parent_vdof_xfer_.get() ) );
-  block_J->SetBlock(
-      0, 0, mfem::RAP( parent_J_hypre.get(), parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() ) );
-
-  // transfer (0, 1) block (residual dof rows, lagrange multiplier dof cols)
-  submesh_J = GetUpdateData().submesh_redecomp_xfer_01_->TransferToParallelSparse(
-      mortar_elems, lm_elems,
-      method_data.getBlockJ()( static_cast<int>( BlockSpace::MORTAR ),
-                               static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER ) ) );
-  submesh_J += GetUpdateData().submesh_redecomp_xfer_01_->TransferToParallelSparse(
-      nonmortar_elems, lm_elems,
-      method_data.getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ),
-                               static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER ) ) );
-  submesh_J.Finalize();
-  submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_01_->ConvertToHypreParMatrix( submesh_J, false );
-  // Matrix returned by mfem::ParMult copies row and column starts since last arg is true. All other data is copied and
-  // owned by the new matrix.
-  parent_J_hypre = std::unique_ptr<mfem::HypreParMatrix>(
-      mfem::ParMult( std::unique_ptr<mfem::HypreParMatrix>( submesh_parent_vdof_xfer_->Transpose() ).get(),
-                     submesh_J_hypre.get(), true ) );
-  block_J->SetBlock( 0, 1,
-                     mfem::RAP( parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix(), parent_J_hypre.get(),
-                                submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix() ) );
-
-  // transfer (1, 0) block (gap dof rows, displacement dof cols)
-  submesh_J = GetUpdateData().submesh_redecomp_xfer_10_->TransferToParallelSparse(
-      lm_elems, mortar_elems,
-      method_data.getBlockJ()( static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                               static_cast<int>( BlockSpace::MORTAR ) ) );
-  submesh_J += GetUpdateData().submesh_redecomp_xfer_10_->TransferToParallelSparse(
-      lm_elems, nonmortar_elems,
-      method_data.getBlockJ()( static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                               static_cast<int>( BlockSpace::NONMORTAR ) ) );
-  submesh_J.Finalize();
-  submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_10_->ConvertToHypreParMatrix( submesh_J, false );
-  // Matrix returned by mfem::ParMult copies row and column starts since last arg is true. All other data is copied and
-  // owned by the new matrix.
-  parent_J_hypre = std::unique_ptr<mfem::HypreParMatrix>( std::unique_ptr<mfem::HypreParMatrix>(
-      mfem::ParMult( submesh_J_hypre.get(), submesh_parent_vdof_xfer_.get(), true ) ) );
-  block_J->SetBlock( 1, 0,
-                     mfem::RAP( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix(), parent_J_hypre.get(),
-                                parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() ) );
-
-  // Create ones on diagonal of eliminated mortar tdofs, i.e. inactive dofs (CSR sparse matrix -> HypreParMatrix)
-  // I vector
-  auto& submesh_fes = submesh_data_.GetSubmeshFESpace();
-  mfem::Array<int> rows( submesh_fes.GetTrueVSize() + 1 );
-  rows = 0;
-  auto mortar_tdofs_ct = 0;
-  for ( int i{ 0 }; i < submesh_fes.GetTrueVSize(); ++i ) {
-    if ( mortar_tdofs_ct < mortar_tdof_list_.Size() && mortar_tdof_list_[mortar_tdofs_ct] == i ) {
-      ++mortar_tdofs_ct;
-    }
-    rows[i + 1] = mortar_tdofs_ct;
-  }
-  // J vector
-  mfem::Array<int> mortar_tdofs( mortar_tdof_list_ );
-  // data vector
-  mfem::Vector ones( mortar_tdofs_ct );
-  ones = 1.0;
-  mfem::SparseMatrix inactive_sm( rows.GetData(), mortar_tdofs.GetData(), ones.GetData(), submesh_fes.GetTrueVSize(),
-                                  submesh_fes.GetTrueVSize(), false, false, true );
-  auto inactive_hpm = std::make_unique<mfem::HypreParMatrix>( TRIBOL_COMM_WORLD, submesh_fes.GlobalTrueVSize(),
-                                                              submesh_fes.GetTrueDofOffsets(), &inactive_sm );
-  // Have the mfem::HypreParMatrix manage the data pointers
-  rows.GetMemory().SetHostPtrOwner( false );
-  mortar_tdofs.GetMemory().SetHostPtrOwner( false );
-  ones.GetMemory().SetHostPtrOwner( false );
-  inactive_sm.SetDataOwner( false );
-  inactive_hpm->SetOwnerFlags( 3, inactive_hpm->OwnsOffd(), inactive_hpm->OwnsColMap() );
-  block_J->SetBlock( 1, 1, inactive_hpm.release() );
-
-  return block_J;
-}
-
-// TODO: Merge with GetMfemBlockJacobian() to avoid code duplication
-std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemDfDnJacobian( const MethodData& method_data ) const
-{
-  // create block operator
-  auto block_J = std::make_unique<mfem::BlockOperator>( block_offsets_, disp_offsets_ );
-  block_J->owns_blocks = 1;
-
-  // these are Tribol element ids
-  auto mortar_elems = method_data.getBlockJElementIds()[static_cast<int>( BlockSpace::MORTAR )];
-  // convert them to redecomp element ids
-  const auto& elem_map_1 = parent_data_.GetElemMap1();
-  for ( auto& mortar_elem : mortar_elems ) {
-    mortar_elem = elem_map_1[static_cast<size_t>( mortar_elem )];
-  }
-
-  // these are Tribol element ids
-  auto nonmortar_elems = method_data.getBlockJElementIds()[static_cast<int>( BlockSpace::NONMORTAR )];
-  // convert them to redecomp element ids
-  const auto& elem_map_2 = parent_data_.GetElemMap2();
-  for ( auto& nonmortar_elem : nonmortar_elems ) {
-    nonmortar_elem = elem_map_2[static_cast<size_t>( nonmortar_elem )];
-  }
-
-  // these are Tribol element ids
-  auto lm_elems = method_data.getBlockJElementIds()[static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER )];
-  // convert them to redecomp element ids
-  for ( auto& lm_elem : lm_elems ) {
-    lm_elem = elem_map_2[static_cast<size_t>( lm_elem )];
-  }
-
-  // transfer (0, 0) block (residual dof rows, displacement dof cols)
-  auto submesh_J = GetUpdateData().submesh_redecomp_xfer_00_->TransferToParallelSparse(
-      mortar_elems, nonmortar_elems,
-      method_data.getBlockJ()( static_cast<int>( BlockSpace::MORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) ) );
-  submesh_J += GetUpdateData().submesh_redecomp_xfer_00_->TransferToParallelSparse(
-      nonmortar_elems, nonmortar_elems,
-      method_data.getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) ) );
-  submesh_J.Finalize();
-  auto submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_00_->ConvertToHypreParMatrix( submesh_J, false );
-  // Matrix returned by mfem::RAP copies all existing data and owns its data
-  auto parent_J_hypre =
-      std::unique_ptr<mfem::HypreParMatrix>( mfem::RAP( submesh_J_hypre.get(), submesh_parent_vdof_xfer_.get() ) );
-  block_J->SetBlock(
-      0, 0, mfem::RAP( parent_J_hypre.get(), parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() ) );
-
-  // transfer (1, 0) block (gap dof rows, displacement dof cols)
-  submesh_J = GetUpdateData().submesh_redecomp_xfer_10_->TransferToParallelSparse(
-      lm_elems, nonmortar_elems,
-      method_data.getBlockJ()( static_cast<int>( BlockSpace::LAGRANGE_MULTIPLIER ),
-                               static_cast<int>( BlockSpace::NONMORTAR ) ) );
-  submesh_J.Finalize();
-  submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_10_->ConvertToHypreParMatrix( submesh_J, false );
-  // Matrix returned by mfem::ParMult copies row and column starts since last arg is true. All other data is copied and
-  // owned by the new matrix.
-  parent_J_hypre = std::unique_ptr<mfem::HypreParMatrix>(
-      mfem::ParMult( submesh_J_hypre.get(), submesh_parent_vdof_xfer_.get(), true ) );
-  block_J->SetBlock( 1, 0,
-                     mfem::RAP( submesh_data_.GetSubmeshFESpace().Dof_TrueDof_Matrix(), parent_J_hypre.get(),
-                                parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() ) );
-
-  return block_J;
-}
-
-// TODO: Merge with GetMfemBlockJacobian() to avoid code duplication
-std::unique_ptr<mfem::BlockOperator> MfemJacobianData::GetMfemDnDxJacobian( const MethodData& method_data ) const
-{
-  // create block operator
-  auto block_J = std::make_unique<mfem::BlockOperator>( disp_offsets_, disp_offsets_ );
-  block_J->owns_blocks = 1;
-
-  // these are Tribol element ids
-  auto nonmortar_elems = method_data.getBlockJElementIds()[static_cast<int>( BlockSpace::NONMORTAR )];
-  // convert them to redecomp element ids
-  const auto& elem_map_2 = parent_data_.GetElemMap2();
-  for ( auto& nonmortar_elem : nonmortar_elems ) {
-    nonmortar_elem = elem_map_2[static_cast<size_t>( nonmortar_elem )];
-  }
-
-  // transfer (0, 0) block (residual dof rows, displacement dof cols)
-  auto submesh_J = GetUpdateData().submesh_redecomp_xfer_00_->TransferToParallelSparse(
-      nonmortar_elems, nonmortar_elems,
-      method_data.getBlockJ()( static_cast<int>( BlockSpace::NONMORTAR ), static_cast<int>( BlockSpace::NONMORTAR ) ) );
-  submesh_J.Finalize();
-  auto submesh_J_hypre = GetUpdateData().submesh_redecomp_xfer_00_->ConvertToHypreParMatrix( submesh_J, false );
-  // Matrix returned by mfem::RAP copies all existing data and owns its data
-  auto parent_J_hypre =
-      std::unique_ptr<mfem::HypreParMatrix>( mfem::RAP( submesh_J_hypre.get(), submesh_parent_vdof_xfer_.get() ) );
-  block_J->SetBlock(
-      0, 0, mfem::RAP( parent_J_hypre.get(), parent_data_.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() ) );
 
   return block_J;
 }
 
 MfemJacobianData::UpdateData::UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data )
+    : submesh_redecomp_xfer_( 2, 2 )
 {
   auto dual_submesh_fes = &submesh_data.GetSubmeshFESpace();
   auto primal_submesh_fes = &parent_data.GetSubmeshFESpace();
@@ -1289,13 +1046,13 @@ MfemJacobianData::UpdateData::UpdateData( const MfemMeshData& parent_data, const
     primal_submesh_fes = parent_data.GetLORMeshFESpace();
   }
   // create a matrix transfer operator for moving data from redecomp to the submesh
-  submesh_redecomp_xfer_00_ = std::make_unique<redecomp::MatrixTransfer>(
+  submesh_redecomp_xfer_( 0, 0 ) = std::make_unique<redecomp::MatrixTransfer>(
       *primal_submesh_fes, *primal_submesh_fes, *parent_data.GetRedecompResponse().FESpace(),
       *parent_data.GetRedecompResponse().FESpace() );
-  submesh_redecomp_xfer_01_ = std::make_unique<redecomp::MatrixTransfer>( *primal_submesh_fes, *dual_submesh_fes,
-                                                                          *parent_data.GetRedecompResponse().FESpace(),
-                                                                          *submesh_data.GetRedecompGap().FESpace() );
-  submesh_redecomp_xfer_10_ = std::make_unique<redecomp::MatrixTransfer>(
+  submesh_redecomp_xfer_( 0, 1 ) = std::make_unique<redecomp::MatrixTransfer>(
+      *primal_submesh_fes, *dual_submesh_fes, *parent_data.GetRedecompResponse().FESpace(),
+      *submesh_data.GetRedecompGap().FESpace() );
+  submesh_redecomp_xfer_( 1, 0 ) = std::make_unique<redecomp::MatrixTransfer>(
       *dual_submesh_fes, *primal_submesh_fes, *submesh_data.GetRedecompGap().FESpace(),
       *parent_data.GetRedecompResponse().FESpace() );
 }

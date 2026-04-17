@@ -15,6 +15,14 @@
  * Build information
  */
 #cmakedefine TRIBOL_USE_CALIPER
+#cmakedefine TRIBOL_USE_ENZYME
+#cmakedefine TRIBOL_USE_RAJA
+#cmakedefine TRIBOL_USE_UMPIRE
+#cmakedefine TRIBOL_USE_SINGLE_PRECISION
 #cmakedefine TRIBOL_USE_MPI
+#cmakedefine TRIBOL_USE_CUDA
+#cmakedefine TRIBOL_USE_HIP
+#cmakedefine TRIBOL_USE_OPENMP
+#cmakedefine TRIBOL_USE_GPU_MPI
 
 #endif /* SHARED_CONFIG_HPP_ */

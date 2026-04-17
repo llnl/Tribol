@@ -118,7 +118,7 @@ blt_add_library(
     FOLDER tribol
     )
 
-# Add separable compilation flag
+# Add debug flag
 if(ENABLE_HIP)
     target_compile_options(tribol PRIVATE
         $<$<CONFIG:Debug>:

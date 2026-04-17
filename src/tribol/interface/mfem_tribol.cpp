@@ -336,23 +336,28 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
           cs_id ) );
   // creates a block Jacobian on the parent mesh/parent-linked boundary submesh based on the element Jacobians stored in
   // the coupling scheme's method data
+  const std::vector<std::pair<int, BlockSpace>> all_info{
+      { 0, BlockSpace::MORTAR }, { 0, BlockSpace::NONMORTAR }, { 1, BlockSpace::LAGRANGE_MULTIPLIER } };
   if ( cs->isEnzymeEnabled() ) {
-    auto dfdx = cs->getMfemJacobianData()->GetMfemDfDxFullJacobian( *cs->getMethodData() );
-    auto dfdn = cs->getMfemJacobianData()->GetMfemDfDnJacobian( *cs->getDfDnMethodData() );
-    auto dndx = cs->getMfemJacobianData()->GetMfemDnDxJacobian( *cs->getDnDxMethodData() );
-    auto dfdx_nconst = std::unique_ptr<mfem::HypreParMatrix>(
-        mfem::ParMult( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 0, 0 ) ),
-                       &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ) );
-    dfdx->SetBlock( 0, 0,
-                    mfem::ParAdd( dfdx_nconst.get(), &static_cast<mfem::HypreParMatrix&>( dfdx->GetBlock( 0, 0 ) ) ) );
-    dfdx_nconst = std::unique_ptr<mfem::HypreParMatrix>(
-        mfem::ParMult( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 1, 0 ) ),
-                       &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ) );
-    dfdx->SetBlock( 1, 0,
-                    mfem::ParAdd( dfdx_nconst.get(), &static_cast<mfem::HypreParMatrix&>( dfdx->GetBlock( 1, 0 ) ) ) );
+    auto dfdx = cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getMethodData(), all_info, all_info );
+    const std::vector<std::pair<int, BlockSpace>> nonmortar_info{ { 0, BlockSpace::NONMORTAR } };
+    auto dfdn = cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getDfDnMethodData(), all_info, nonmortar_info );
+    auto dndx =
+        cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getDnDxMethodData(), nonmortar_info, nonmortar_info );
+
+    auto block_00 = ( shared::ParSparseMatView( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 0, 0 ) ) ) *
+                      &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ) +
+                    &static_cast<mfem::HypreParMatrix&>( dfdx->GetBlock( 0, 0 ) );
+    dfdx->SetBlock( 0, 0, block_00.release() );
+
+    auto block_10 = ( shared::ParSparseMatView( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 1, 0 ) ) ) *
+                      &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ) +
+                    &static_cast<mfem::HypreParMatrix&>( dfdx->GetBlock( 1, 0 ) );
+    dfdx->SetBlock( 1, 0, block_10.release() );
+
     return dfdx;
   } else {
-    return cs->getMfemJacobianData()->GetMfemBlockJacobian( cs->getMethodData() );
+    return cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getMethodData(), all_info, all_info );
   }
 }
 
