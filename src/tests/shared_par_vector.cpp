@@ -37,6 +37,7 @@ class ParVectorTest : public ::testing::Test {
       row_starts[i + 1] = row_starts[i] + local_sizes[i];
     }
     if ( HYPRE_AssumedPartitionCheck() ) {
+      // if this is true, row starts should be {starting on-rank dof, last on-rank dof + 1, total dofs}
       auto total_dofs = row_starts[num_procs];
       row_starts.SetSize( 3 );
       row_starts[0] = row_starts[rank];
