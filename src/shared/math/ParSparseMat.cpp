@@ -15,7 +15,22 @@ namespace shared {
 
 // ParSparseMatView implementations
 
-ParSparseMatView::ParSparseMatView( mfem::HypreParMatrix* mat ) : mat_( mat ) {}
+ParSparseMatView::ParSparseMatView( mfem::HypreParMatrix* mat ) : mat_( mat )
+{
+  ensureHostMemory( mat_ );
+}
+
+void ParSparseMatView::ensureHostMemory( mfem::HypreParMatrix* mat )
+{
+  if ( mat ) {
+    mat->HostReadWrite();
+  }
+}
+
+void ParSparseMatView::ensureHostMemory( const ParSparseMatView& mat )
+{
+  ensureHostMemory( const_cast<mfem::HypreParMatrix*>( &mat.get() ) );
+}
 
 ParSparseMat operator+( const ParSparseMatView& lhs, const ParSparseMatView& rhs )
 {
@@ -31,12 +46,15 @@ ParSparseMat ParSparseMatView::operator*( double s ) const { return add( s, *thi
 
 ParSparseMat operator*( const ParSparseMatView& lhs, const ParSparseMatView& rhs )
 {
+  ParSparseMatView::ensureHostMemory( lhs );
+  ParSparseMatView::ensureHostMemory( rhs );
   return ParSparseMat( ParSparseMatView::createHypreParMatrix<MemorySpace::Host>(
       [&]() { return mfem::ParMult( lhs.mat_, rhs.mat_, true ); } ) );
 }
 
 ParVector ParSparseMatView::operator*( const ParVectorView& x ) const
 {
+  ensureHostMemory( *this );
   ParVector y( *mat_, 1 );
   invokeHypreMethod<MemorySpace::Host>(
       [&]() { mat_->Mult( const_cast<mfem::HypreParVector&>( x.get() ), y.get() ); } );
@@ -45,6 +63,7 @@ ParVector ParSparseMatView::operator*( const ParVectorView& x ) const
 
 ParSparseMat ParSparseMatView::transpose() const
 {
+  ensureHostMemory( *this );
   return ParSparseMat( createHypreParMatrix<MemorySpace::Host>( [&]() { return mat_->Transpose(); } ) );
 }
 
@@ -52,39 +71,41 @@ ParSparseMat ParSparseMatView::square() const { return *this * *this; }
 
 ParSparseMat ParSparseMatView::rap( const ParSparseMatView& P ) const
 {
+  ensureHostMemory( *this );
+  ensureHostMemory( P );
   return ParSparseMat( createHypreParMatrix<MemorySpace::Host>( [&]() {
-    mat_->HostRead();
-    P->HostRead();
     return mfem::RAP( mat_, P.mat_ );
   } ) );
 }
 
 ParSparseMat ParSparseMatView::rap( const ParSparseMatView& A, const ParSparseMatView& P )
 {
+  ensureHostMemory( A );
+  ensureHostMemory( P );
   return ParSparseMat( createHypreParMatrix<MemorySpace::Host>( [&]() {
-    A->HostRead();
-    P->HostRead();
     return mfem::RAP( A.mat_, P.mat_ );
   } ) );
 }
 
 ParSparseMat ParSparseMatView::rap( const ParSparseMatView& Rt, const ParSparseMatView& A, const ParSparseMatView& P )
 {
+  ensureHostMemory( Rt );
+  ensureHostMemory( A );
+  ensureHostMemory( P );
   return ParSparseMat( createHypreParMatrix<MemorySpace::Host>( [&]() {
-    Rt->HostRead();
-    A->HostRead();
-    P->HostRead();
     return mfem::RAP( Rt.mat_, A.mat_, P.mat_ );
   } ) );
 }
 
 void ParSparseMatView::eliminateRows( const mfem::Array<int>& rows )
 {
+  ensureHostMemory( *this );
   invokeHypreMethod<MemorySpace::Host>( [&]() { mat_->EliminateRows( rows ); } );
 }
 
 ParSparseMat ParSparseMatView::eliminateCols( const mfem::Array<int>& cols )
 {
+  ensureHostMemory( *this );
   return ParSparseMat( createHypreParMatrix<MemorySpace::Host>( [&]() { return mat_->EliminateCols( cols ); } ) );
 }
 
@@ -92,6 +113,7 @@ ParSparseMat operator*( double s, const ParSparseMatView& mat ) { return mat * s
 
 ParVector operator*( const ParVectorView& x, const ParSparseMatView& mat )
 {
+  ParSparseMatView::ensureHostMemory( mat );
   ParVector y( *mat.mat_, 0 );
   ParSparseMatView::invokeHypreMethod<MemorySpace::Host>(
       [&]() { mat.mat_->MultTranspose( const_cast<mfem::HypreParVector&>( x.get() ), y.get() ); } );
@@ -100,6 +122,8 @@ ParVector operator*( const ParVectorView& x, const ParSparseMatView& mat )
 
 ParSparseMat ParSparseMatView::add( RealT alpha, const ParSparseMatView& A, RealT beta, const ParSparseMatView& B )
 {
+  ensureHostMemory( A );
+  ensureHostMemory( B );
   return ParSparseMat(
       createHypreParMatrix<MemorySpace::Host>( [&]() { return mfem::Add( alpha, A.get(), beta, B.get() ); } ) );
 }
@@ -119,6 +143,7 @@ ParSparseMat::ParSparseMat( MPI_Comm comm, HYPRE_BigInt glob_size, HYPRE_BigInt*
   owned_mat_.reset( createHypreParMatrix<MemorySpace::Host>(
       [&]() { return new mfem::HypreParMatrix( comm, glob_size, row_starts, &diag ); } ) );
   mat_ = owned_mat_.get();
+  mat_->HostReadWrite();
   diag.GetMemoryI().ClearOwnerFlags();
   diag.GetMemoryJ().ClearOwnerFlags();
   diag.GetMemoryData().ClearOwnerFlags();
@@ -136,6 +161,7 @@ ParSparseMat::ParSparseMat( MPI_Comm comm, HYPRE_BigInt global_num_rows, HYPRE_B
     return new mfem::HypreParMatrix( comm, global_num_rows, global_num_cols, row_starts, col_starts, &diag );
   } ) );
   mat_ = owned_mat_.get();
+  mat_->HostReadWrite();
   diag.GetMemoryI().ClearOwnerFlags();
   diag.GetMemoryJ().ClearOwnerFlags();
   diag.GetMemoryData().ClearOwnerFlags();
@@ -156,6 +182,7 @@ ParSparseMat& ParSparseMat::operator=( ParSparseMat&& other ) noexcept
   if ( this != &other ) {
     owned_mat_ = std::move( other.owned_mat_ );
     mat_ = owned_mat_.get();
+    mat_->HostReadWrite();
     other.mat_ = nullptr;
   }
   return *this;

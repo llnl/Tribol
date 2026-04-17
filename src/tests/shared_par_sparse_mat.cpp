@@ -47,6 +47,20 @@ class ParSparseMatTest : public ::testing::Test {
 
     return row_starts;
   }
+
+  std::unique_ptr<mfem::HypreParMatrix> ParMultWithMemoryLocation( const shared::ParSparseMatView& lhs,
+                                                                   const shared::ParSparseMatView& rhs,
+                                                                   HYPRE_MemoryLocation memory_location )
+  {
+    HYPRE_MemoryLocation old_hypre_mem_location;
+    HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+    HYPRE_SetMemoryLocation( memory_location );
+    auto* result =
+        mfem::ParMult( const_cast<mfem::HypreParMatrix*>( &lhs.get() ), const_cast<mfem::HypreParMatrix*>( &rhs.get() ),
+                       true );
+    HYPRE_SetMemoryLocation( old_hypre_mem_location );
+    return std::unique_ptr<mfem::HypreParMatrix>( result );
+  }
 };
 
 // Test Construction
@@ -86,6 +100,41 @@ TEST_F( ParSparseMatTest, Construction )
   x = 1.0;
   psm3->Mult( x, y );
   EXPECT_NEAR( y.Max(), 3.0, 1e-12 );
+}
+
+TEST_F( ParSparseMatTest, ForwardingConstructor )
+{
+  int rank;
+  MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+  int num_procs;
+  MPI_Comm_size( MPI_COMM_WORLD, &num_procs );
+  constexpr int global_size = 10;
+  const int local_size = global_size / num_procs + ( rank < ( global_size % num_procs ) ? 1 : 0 );
+  if ( rank == 0 ) std::cout << "Testing Forwarding Constructor..." << std::endl;
+
+  auto row_starts = GetRowStarts( MPI_COMM_WORLD, global_size );
+  const int row_starts_idx = HYPRE_AssumedPartitionCheck() ? 0 : rank;
+  const HYPRE_BigInt first_global_row = row_starts[row_starts_idx];
+
+  auto* I = new int[local_size + 1];
+  auto* J = new HYPRE_BigInt[local_size];
+  auto* data = new mfem::real_t[local_size];
+  for ( int i = 0; i < local_size; ++i ) {
+    I[i] = i;
+    J[i] = first_global_row + i;
+    data[i] = 7.0;
+  }
+  I[local_size] = local_size;
+
+  shared::ParSparseMat A( MPI_COMM_WORLD, local_size, static_cast<HYPRE_BigInt>( global_size ),
+                          static_cast<HYPRE_BigInt>( global_size ), I, J, data, row_starts.GetData(),
+                          row_starts.GetData() );
+
+  mfem::Vector x( A.width() ), y( A.height() );
+  x = 1.0;
+  A->Mult( x, y );
+  EXPECT_NEAR( y.Max(), 7.0, 1e-12 );
+  EXPECT_NEAR( y.Min(), 7.0, 1e-12 );
 }
 
 // Test View
@@ -209,6 +258,42 @@ TEST_F( ParSparseMatTest, MatrixMult )
   A->Mult( x, y );
   EXPECT_NEAR( y.Max(), 6.0, 1e-12 );
 }
+
+#if defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP )
+TEST_F( ParSparseMatTest, ExternalMatrixResultIsNormalizedToHost )
+{
+  int rank;
+  MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+  if ( rank == 0 ) std::cout << "Testing External Matrix Host Normalization..." << std::endl;
+
+  auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
+  shared::ParSparseMat A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 2.0 );
+  shared::ParSparseMat B = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 3.0 );
+  shared::ParSparseMat I = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 1.0 );
+
+  auto raw_mult = ParMultWithMemoryLocation( A, B, HYPRE_MEMORY_DEVICE );
+  ASSERT_NE( raw_mult, nullptr );
+
+  shared::ParSparseMat external_result( std::move( raw_mult ) );
+
+  mfem::Vector x( A.width() ), y( A.height() );
+  x = 1.0;
+  external_result->Mult( x, y );
+  EXPECT_NEAR( y.Max(), 6.0, 1e-12 );
+
+  auto sum = external_result + A;
+  sum->Mult( x, y );
+  EXPECT_NEAR( y.Max(), 8.0, 1e-12 );
+
+  auto transposed = external_result.transpose();
+  transposed->Mult( x, y );
+  EXPECT_NEAR( y.Max(), 6.0, 1e-12 );
+
+  auto rap_result = external_result.rap( I );
+  rap_result->Mult( x, y );
+  EXPECT_NEAR( y.Max(), 6.0, 1e-12 );
+}
+#endif
 
 // Test Matrix-Vector Multiplication
 TEST_F( ParSparseMatTest, MatVecMult )
