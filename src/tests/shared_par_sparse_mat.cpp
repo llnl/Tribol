@@ -55,9 +55,8 @@ class ParSparseMatTest : public ::testing::Test {
     HYPRE_MemoryLocation old_hypre_mem_location;
     HYPRE_GetMemoryLocation( &old_hypre_mem_location );
     HYPRE_SetMemoryLocation( memory_location );
-    auto* result =
-        mfem::ParMult( const_cast<mfem::HypreParMatrix*>( &lhs.get() ), const_cast<mfem::HypreParMatrix*>( &rhs.get() ),
-                       true );
+    auto* result = mfem::ParMult( const_cast<mfem::HypreParMatrix*>( &lhs.get() ),
+                                  const_cast<mfem::HypreParMatrix*>( &rhs.get() ), true );
     HYPRE_SetMemoryLocation( old_hypre_mem_location );
     return std::unique_ptr<mfem::HypreParMatrix>( result );
   }
