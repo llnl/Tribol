@@ -15,10 +15,7 @@ namespace shared {
 
 // ParSparseMatView implementations
 
-ParSparseMatView::ParSparseMatView( mfem::HypreParMatrix* mat ) : mat_( mat )
-{
-  ensureHostMemory( mat_ );
-}
+ParSparseMatView::ParSparseMatView( mfem::HypreParMatrix* mat ) : mat_( mat ) { ensureHostMemory( mat_ ); }
 
 void ParSparseMatView::ensureHostMemory( mfem::HypreParMatrix* mat )
 {
@@ -73,18 +70,14 @@ ParSparseMat ParSparseMatView::rap( const ParSparseMatView& P ) const
 {
   ensureHostMemory( *this );
   ensureHostMemory( P );
-  return ParSparseMat( createHypreParMatrix<MemorySpace::Host>( [&]() {
-    return mfem::RAP( mat_, P.mat_ );
-  } ) );
+  return ParSparseMat( createHypreParMatrix<MemorySpace::Host>( [&]() { return mfem::RAP( mat_, P.mat_ ); } ) );
 }
 
 ParSparseMat ParSparseMatView::rap( const ParSparseMatView& A, const ParSparseMatView& P )
 {
   ensureHostMemory( A );
   ensureHostMemory( P );
-  return ParSparseMat( createHypreParMatrix<MemorySpace::Host>( [&]() {
-    return mfem::RAP( A.mat_, P.mat_ );
-  } ) );
+  return ParSparseMat( createHypreParMatrix<MemorySpace::Host>( [&]() { return mfem::RAP( A.mat_, P.mat_ ); } ) );
 }
 
 ParSparseMat ParSparseMatView::rap( const ParSparseMatView& Rt, const ParSparseMatView& A, const ParSparseMatView& P )
@@ -92,9 +85,8 @@ ParSparseMat ParSparseMatView::rap( const ParSparseMatView& Rt, const ParSparseM
   ensureHostMemory( Rt );
   ensureHostMemory( A );
   ensureHostMemory( P );
-  return ParSparseMat( createHypreParMatrix<MemorySpace::Host>( [&]() {
-    return mfem::RAP( Rt.mat_, A.mat_, P.mat_ );
-  } ) );
+  return ParSparseMat(
+      createHypreParMatrix<MemorySpace::Host>( [&]() { return mfem::RAP( Rt.mat_, A.mat_, P.mat_ ); } ) );
 }
 
 void ParSparseMatView::eliminateRows( const mfem::Array<int>& rows )
