@@ -152,6 +152,19 @@ class ParSparseMatView {
 
  protected:
   /**
+   * @brief Force a wrapped Hypre matrix to use valid host storage
+   *
+   * All shared::ParSparseMat operations are currently host-only. This helper may update MFEM's memory residency state
+   * but does not change matrix values.
+   */
+  static void ensureHostMemory( mfem::HypreParMatrix* mat );
+
+  /**
+   * @brief Force a wrapped view operand to use valid host storage
+   */
+  static void ensureHostMemory( const ParSparseMatView& mat );
+
+  /**
    * @brief Returns alpha * A + beta * B
    */
   static ParSparseMat add( RealT alpha, const ParSparseMatView& A, RealT beta, const ParSparseMatView& B );
@@ -180,6 +193,7 @@ class ParSparseMatView {
       if constexpr ( std::is_same_v<decltype( result ), mfem::HypreParMatrix*> ) {
         if ( result ) {
           if constexpr ( MSPACE == MemorySpace::Host ) {
+            ensureHostMemory( result );
             constexpr int hypre_owned_host_arrays = -1;
             result->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
           }
@@ -270,6 +284,7 @@ class ParSparseMat : public ParSparseMatView {
         owned_mat_( createHypreParMatrix<MemorySpace::Host>( std::forward<Args>( args )... ) )
   {
     mat_ = owned_mat_.get();
+    ensureHostMemory( mat_ );
   }
 
   /**
