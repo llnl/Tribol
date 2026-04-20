@@ -25,7 +25,44 @@
 #include "tribol/interface/mfem_tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/mesh/MfemData.hpp"
-#include "tribol/mesh/CouplingScheme.hpp"
+
+namespace {
+
+std::vector<tribol::ComputedElementData> BuildComputedElementData(
+    const tribol::MethodData& method_data,
+    const std::vector<std::pair<tribol::BlockSpace, tribol::BlockSpace>>& contribs )
+{
+  std::vector<tribol::ComputedElementData> computed;
+  computed.reserve( contribs.size() );
+
+  for ( const auto& pair : contribs ) {
+    tribol::ComputedElementData data( pair.first, pair.second );
+
+    const auto& J_block = method_data.getBlockJ()( static_cast<int>( pair.first ), static_cast<int>( pair.second ) );
+    const auto& row_elem_ids = method_data.getBlockJElementIds()[static_cast<int>( pair.first )];
+    const auto& col_elem_ids = method_data.getBlockJElementIds()[static_cast<int>( pair.second )];
+
+    SLIC_ERROR_ROOT_IF( J_block.size() != row_elem_ids.size() || J_block.size() != col_elem_ids.size(),
+                        "MethodData block Jacobians and element-id arrays must have matching sizes." );
+
+    int total_values = 0;
+    for ( int i = 0; i < J_block.size(); ++i ) {
+      total_values += J_block[i].Height() * J_block[i].Width();
+    }
+    data.reserve( J_block.size(), total_values );
+
+    for ( int i = 0; i < J_block.size(); ++i ) {
+      const int size = J_block[i].Height() * J_block[i].Width();
+      data.append( row_elem_ids[i], col_elem_ids[i], J_block[i].GetData(), size );
+    }
+
+    computed.push_back( std::move( data ) );
+  }
+
+  return computed;
+}
+
+}  // namespace
 
 int main( int argc, char** argv )
 {
@@ -74,14 +111,12 @@ int main( int argc, char** argv )
                                       tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID );
   tribol::setMPIComm( cs_id, MPI_COMM_WORLD );
   tribol::updateMfemParallelDecomposition();
+  tribol::setLagrangeMultiplierOptions( cs_id, tribol::ImplicitEvalMode::MORTAR_JACOBIAN,
+                                        tribol::SparseMode::MFEM_ELEMENT_DENSE );
 
   // Setup MFEM Jacobian data
   auto& cs_manager = tribol::CouplingSchemeManager::getInstance();
   auto* cs = cs_manager.findData( cs_id );
-  if ( !cs->hasMfemJacobianData() ) {
-    cs->setMfemJacobianData( std::make_unique<tribol::MfemJacobianData>(
-        *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), cs->getContactMethod() ) );
-  }
   auto* jac_data = cs->getMfemJacobianData();
   jac_data->UpdateJacobianXfer();
 
@@ -91,13 +126,8 @@ int main( int argc, char** argv )
   int num_dofs_per_elem = num_nodes_per_elem * dim;
 
   // Populate ComputedElementData
-  tribol::ComputedElementData new_data;
-  new_data.row_space = tribol::BlockSpace::MORTAR;
-  new_data.col_space = tribol::BlockSpace::MORTAR;
-  new_data.jacobian_data.resize( ne1 * num_dofs_per_elem * num_dofs_per_elem );
-  new_data.jacobian_offsets.resize( ne1 );
-  new_data.row_elem_ids.resize( ne1 );
-  new_data.col_elem_ids.resize( ne1 );
+  tribol::ComputedElementData new_data( tribol::BlockSpace::MORTAR, tribol::BlockSpace::MORTAR );
+  new_data.reserve( ne1, ne1 * num_dofs_per_elem * num_dofs_per_elem );
 
   // Setup MethodData for comparison
   if ( cs->getMethodData() == nullptr ) {
@@ -110,33 +140,30 @@ int main( int argc, char** argv )
   method_data->reserveBlockJ( std::move( spaces ), ne1 );
 
   for ( int e = 0; e < ne1; ++e ) {
-    new_data.row_elem_ids[e] = e;
-    new_data.col_elem_ids[e] = e;
-    new_data.jacobian_offsets[e] = e * num_dofs_per_elem * num_dofs_per_elem;
-
     tribol::StackArray<tribol::DeviceArray2D<tribol::RealT>, 9> blockJ;
     blockJ[0] = tribol::DeviceArray2D<tribol::RealT>( num_dofs_per_elem, num_dofs_per_elem );
+    std::vector<double> elem_vals( num_dofs_per_elem * num_dofs_per_elem );
 
     for ( int i = 0; i < num_dofs_per_elem; ++i ) {
       for ( int j = 0; j < num_dofs_per_elem; ++j ) {
         double val = static_cast<double>( e + i + j );
         blockJ[0]( i, j ) = val;
-        new_data.jacobian_data[new_data.jacobian_offsets[e] + i + j * num_dofs_per_elem] = val;
+        elem_vals[i + j * num_dofs_per_elem] = val;
       }
     }
+
+    new_data.append( e, e, elem_vals.data(), elem_vals.size() );
     tribol::ArrayT<int> ids( { e } );
     method_data->storeElemBlockJ( std::move( ids ), blockJ );
   }
 
-  // Time and assemble with old method
+  // Time and assemble with the MethodData adapter path
+  auto old_contribs = BuildComputedElementData( *method_data, { { tribol::BlockSpace::MORTAR, tribol::BlockSpace::MORTAR } } );
   auto start_old = std::chrono::high_resolution_clock::now();
-
-  auto xfer = cs->getMfemJacobianData()->GetMfemBlockJacobian( *method_data, { { 0, tribol::BlockSpace::MORTAR } },
-                                                               { { 0, tribol::BlockSpace::MORTAR } } );
-
+  auto par_J_old = jac_data->GetMfemJacobian( old_contribs );
   auto end_old = std::chrono::high_resolution_clock::now();
 
-  // Time and assemble with new method
+  // Time and assemble with the direct computed-contribution path
   std::vector<tribol::ComputedElementData> contribs_vec;
   if ( ne1 > 0 ) {
     contribs_vec.push_back( std::move( new_data ) );
@@ -147,7 +174,7 @@ int main( int argc, char** argv )
   auto end_new = std::chrono::high_resolution_clock::now();
 
   // Verify results
-  auto* old_hypre = dynamic_cast<mfem::HypreParMatrix*>( &xfer->GetBlock( 0, 0 ) );
+  auto* old_hypre = &par_J_old.get();
   auto* new_hypre = &par_J_new.get();
 
   // Check difference

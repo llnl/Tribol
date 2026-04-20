@@ -121,6 +121,60 @@ class MatrixTransfer {
   shared::ParSparseMat ConvertToParSparseMat( mfem::SparseMatrix&& sparse, bool parallel_assemble = true ) const;
 
  private:
+  struct CommunicationData {
+    MPIArray<int> send_array_ids;                             ///< Matrix entries to send to each parent rank
+    axom::Array<int> send_num_mat_entries;                    ///< Packed value count sent to each rank
+    MPIArray<int, axom::Array<int, 2>> recv_mat_sizes;       ///< Received per-element test/trial vdof counts
+    MPIArray<int> recv_test_elem_offsets;                     ///< Received test-element offsets on each rank
+    MPIArray<HYPRE_BigInt> recv_trial_elem_dofs;              ///< Received global trial vdofs on each rank
+  };
+
+  /**
+   * @brief Validate shared element-index inputs for redecomp transfer
+   *
+   * @param test_elem_idx List of element IDs on the redecomp test space
+   * @param trial_elem_idx List of element IDs on the redecomp trial space
+   * @param data_size Number of contribution entries stored alongside the element ids
+   * @param data_name Description of the contribution array used in error messages
+   */
+  void validateTransferInputs( const axom::Array<int>& test_elem_idx, const axom::Array<int>& trial_elem_idx,
+                               int data_size, const char* data_name ) const;
+
+  /**
+   * @brief Validate dense element matrices against redecomp FE-space sizes
+   *
+   * @param test_elem_idx List of element IDs on the redecomp test space
+   * @param trial_elem_idx List of element IDs on the redecomp trial space
+   * @param src_elem_mat Dense element matrices on the redecomp mesh
+   */
+  void validateDenseMatrices( const axom::Array<int>& test_elem_idx, const axom::Array<int>& trial_elem_idx,
+                              const axom::Array<mfem::DenseMatrix>& src_elem_mat ) const;
+
+  /**
+   * @brief Validate flattened element matrices against redecomp FE-space sizes
+   *
+   * @param test_elem_idx List of element IDs on the redecomp test space
+   * @param trial_elem_idx List of element IDs on the redecomp trial space
+   * @param src_elem_mat_data Flattened dense element matrices on the redecomp mesh
+   * @param src_elem_mat_offsets Offsets into the flattened element-matrix buffer
+   */
+  void validateFlatMatrices( const axom::Array<int>& test_elem_idx, const axom::Array<int>& trial_elem_idx,
+                             const axom::Array<double>& src_elem_mat_data,
+                             const axom::Array<int>& src_elem_mat_offsets ) const;
+
+  /**
+   * @brief Build shared send/receive metadata for the redecomp->parent transfer
+   *
+   * @param test_redecomp Redecomp mesh of the test space
+   * @param trial_redecomp Redecomp mesh of the trial space
+   * @param test_elem_idx List of element IDs on the redecomp test space
+   * @param trial_elem_idx List of element IDs on the redecomp trial space
+   * @return CommunicationData Packed communication metadata reused by both transfer paths
+   */
+  CommunicationData buildCommunicationData( const RedecompMesh& test_redecomp, const RedecompMesh& trial_redecomp,
+                                            const axom::Array<int>& test_elem_idx,
+                                            const axom::Array<int>& trial_elem_idx ) const;
+
   /**
    * @brief Returns a map of the corresponding parent rank for a given redecomp index
    *
