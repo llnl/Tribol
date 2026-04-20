@@ -1777,12 +1777,12 @@ class SubmeshParentTransferOp : public AssembleableParOperator {
  * @brief Struct to hold computed element data for Jacobian assembly
  */
 struct ComputedElementData {
-  BlockSpace row_space { BlockSpace::MORTAR };  ///< Block space for row elements
-  BlockSpace col_space { BlockSpace::MORTAR };  ///< Block space for column elements
-  axom::Array<int> row_elem_ids;                ///< Tribol element IDs for rows
-  axom::Array<int> col_elem_ids;                ///< Tribol element IDs for columns
-  axom::Array<double> jacobian_data;            ///< Flattened Jacobian data
-  axom::Array<int> value_offsets;               ///< Offsets into jacobian_data for each element
+  BlockSpace row_space{ BlockSpace::MORTAR };  ///< Block space for row elements
+  BlockSpace col_space{ BlockSpace::MORTAR };  ///< Block space for column elements
+  axom::Array<int> row_elem_ids;               ///< Tribol element IDs for rows
+  axom::Array<int> col_elem_ids;               ///< Tribol element IDs for columns
+  axom::Array<double> jacobian_data;           ///< Flattened Jacobian data
+  axom::Array<int> value_offsets;              ///< Offsets into jacobian_data for each element
 
   ComputedElementData() = default;
 
@@ -1878,8 +1878,7 @@ class LogicalJacobianBlockOp : public AssembleableParOperator {
    * @brief Construct one solver-visible Jacobian block from one stage operator and transfer maps
    */
   LogicalJacobianBlockOp( VariableRole row_role, VariableRole col_role,
-                          std::unique_ptr<RedecompJacobianStageOp> stage_op,
-                          LogicalBlockTransferContext context );
+                          std::unique_ptr<RedecompJacobianStageOp> stage_op, LogicalBlockTransferContext context );
 
   /**
    * @brief Assemble the full logical block on solver-facing true-dof spaces

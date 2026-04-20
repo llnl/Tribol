@@ -34,8 +34,7 @@ void MatrixTransfer::validateDenseMatrices( const axom::Array<int>& test_elem_id
   validateTransferInputs( test_elem_idx, trial_elem_idx, src_elem_mat.size(), "element Jacobian contribution array" );
   for ( int i{ 0 }; i < src_elem_mat.size(); ++i ) {
     auto n_test_elem_vdofs = redecomp_test_fes_.GetFE( test_elem_idx[i] )->GetDof() * redecomp_test_fes_.GetVDim();
-    auto n_trial_elem_vdofs =
-        redecomp_trial_fes_.GetFE( trial_elem_idx[i] )->GetDof() * redecomp_trial_fes_.GetVDim();
+    auto n_trial_elem_vdofs = redecomp_trial_fes_.GetFE( trial_elem_idx[i] )->GetDof() * redecomp_trial_fes_.GetVDim();
 
     SLIC_ERROR_IF( src_elem_mat[i].Height() != n_test_elem_vdofs,
                    "The number of test DOFs does not match the size of the element DenseMatrix." );
@@ -49,11 +48,11 @@ void MatrixTransfer::validateFlatMatrices( const axom::Array<int>& test_elem_idx
                                            const axom::Array<double>& src_elem_mat_data,
                                            const axom::Array<int>& src_elem_mat_offsets ) const
 {
-  validateTransferInputs( test_elem_idx, trial_elem_idx, src_elem_mat_offsets.size(), "element Jacobian offsets array" );
+  validateTransferInputs( test_elem_idx, trial_elem_idx, src_elem_mat_offsets.size(),
+                          "element Jacobian offsets array" );
   for ( int i{ 0 }; i < test_elem_idx.size(); ++i ) {
     auto n_test_elem_vdofs = redecomp_test_fes_.GetFE( test_elem_idx[i] )->GetDof() * redecomp_test_fes_.GetVDim();
-    auto n_trial_elem_vdofs =
-        redecomp_trial_fes_.GetFE( trial_elem_idx[i] )->GetDof() * redecomp_trial_fes_.GetVDim();
+    auto n_trial_elem_vdofs = redecomp_trial_fes_.GetFE( trial_elem_idx[i] )->GetDof() * redecomp_trial_fes_.GetVDim();
     auto expected_size = n_test_elem_vdofs * n_trial_elem_vdofs;
 
     SLIC_ERROR_IF( src_elem_mat_offsets[i] < 0 || src_elem_mat_offsets[i] + expected_size > src_elem_mat_data.size(),
@@ -68,10 +67,8 @@ MatrixTransfer::CommunicationData MatrixTransfer::buildCommunicationData( const 
 {
   TRIBOL_MARK_BEGIN( "BuildCommunicationData" );
   CommunicationData comm_data{
-      buildSendArrayIDs( test_elem_idx ),
-      buildSendNumMatEntries( test_elem_idx, trial_elem_idx ),
-      buildRecvMatSizes( test_elem_idx, trial_elem_idx ),
-      buildRecvTestElemOffsets( test_redecomp, test_elem_idx ),
+      buildSendArrayIDs( test_elem_idx ), buildSendNumMatEntries( test_elem_idx, trial_elem_idx ),
+      buildRecvMatSizes( test_elem_idx, trial_elem_idx ), buildRecvTestElemOffsets( test_redecomp, test_elem_idx ),
       buildRecvTrialElemDofs( trial_redecomp, test_elem_idx, trial_elem_idx ) };
   TRIBOL_MARK_END( "BuildCommunicationData" );
   return comm_data;
@@ -140,8 +137,7 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
 
         return send_vals;
       },
-      [this, test_redecomp, &parentJ, &comm_data](
-          axom::Array<double>&& send_vals, axom::IndexType src ) {
+      [this, test_redecomp, &parentJ, &comm_data]( axom::Array<double>&& send_vals, axom::IndexType src ) {
         if ( comm_data.recv_trial_elem_dofs[src].IsEmpty() ) {
           return;
         }
@@ -226,8 +222,7 @@ shared::ParSparseMat MatrixTransfer::TransferToParallel( const axom::Array<int>&
 
         return send_vals;
       },
-      [this, test_redecomp, &triplets, &comm_data](
-          axom::Array<double>&& send_vals, axom::IndexType src ) {
+      [this, test_redecomp, &triplets, &comm_data]( axom::Array<double>&& send_vals, axom::IndexType src ) {
         if ( comm_data.recv_trial_elem_dofs[src].IsEmpty() ) {
           return;
         }

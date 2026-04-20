@@ -122,11 +122,11 @@ class MatrixTransfer {
 
  private:
   struct CommunicationData {
-    MPIArray<int> send_array_ids;                             ///< Matrix entries to send to each parent rank
-    axom::Array<int> send_num_mat_entries;                    ///< Packed value count sent to each rank
-    MPIArray<int, axom::Array<int, 2>> recv_mat_sizes;       ///< Received per-element test/trial vdof counts
-    MPIArray<int> recv_test_elem_offsets;                     ///< Received test-element offsets on each rank
-    MPIArray<HYPRE_BigInt> recv_trial_elem_dofs;              ///< Received global trial vdofs on each rank
+    MPIArray<int> send_array_ids;                       ///< Matrix entries to send to each parent rank
+    axom::Array<int> send_num_mat_entries;              ///< Packed value count sent to each rank
+    MPIArray<int, axom::Array<int, 2>> recv_mat_sizes;  ///< Received per-element test/trial vdof counts
+    MPIArray<int> recv_test_elem_offsets;               ///< Received test-element offsets on each rank
+    MPIArray<HYPRE_BigInt> recv_trial_elem_dofs;        ///< Received global trial vdofs on each rank
   };
 
   /**

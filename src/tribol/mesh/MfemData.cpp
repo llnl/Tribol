@@ -36,7 +36,7 @@ std::unique_ptr<shared::ParSparseMat> TryGetMfemTrueRestrictionMatrix(
   class MfemTrueRestrictionAccessor : public mfem::L2ProjectionGridTransfer::L2ProjectionH1Space {
    public:
     MfemTrueRestrictionAccessor( const mfem::ParFiniteElementSpace& pfes_ho,
-                                const mfem::ParFiniteElementSpace& pfes_lor, bool use_ea )
+                                 const mfem::ParFiniteElementSpace& pfes_lor, bool use_ea )
         : mfem::L2ProjectionGridTransfer::L2ProjectionH1Space( pfes_ho, pfes_lor, use_ea )
     {
     }
@@ -493,7 +493,8 @@ shared::ParSparseMat BuildSubmeshParentTransferMatrixImpl( const mfem::ParFinite
   mfem::Vector submesh_parent_data( submesh2parent_vdof_list.Size() );
   submesh_parent_data = 1.0;
   return shared::ParSparseMat( parent_fes.GetComm(), submesh_fes.GetVSize(), submesh_fes.GlobalVSize(),
-                               parent_fes.GlobalVSize(), submesh_parent_I.data(), submesh2parent_vdof_list.GetData(),
+                               parent_fes.GlobalVSize(), submesh_parent_I.data(),
+                               const_cast<HYPRE_BigInt*>( submesh2parent_vdof_list.GetData() ),
                                submesh_parent_data.GetData(), submesh_fes.GetDofOffsets(), parent_fes.GetDofOffsets() );
 }
 
@@ -677,9 +678,9 @@ shared::ParSparseMat RedecompJacobianStageOp::Assemble() const
   return transfer_.TransferToParallel( row_redecomp_ids, col_redecomp_ids, jacobian_data, value_offsets, false );
 }
 
-LogicalJacobianBlockOp::LogicalJacobianBlockOp(
-    VariableRole row_role, VariableRole col_role, std::unique_ptr<RedecompJacobianStageOp> stage_op,
-    LogicalBlockTransferContext context )
+LogicalJacobianBlockOp::LogicalJacobianBlockOp( VariableRole row_role, VariableRole col_role,
+                                                std::unique_ptr<RedecompJacobianStageOp> stage_op,
+                                                LogicalBlockTransferContext context )
     : AssembleableParOperator( TrueVSizeForRole( row_role, context.parent_fes, context.dual_fes ),
                                TrueVSizeForRole( col_role, context.parent_fes, context.dual_fes ) ),
       row_role_( row_role ),
@@ -707,7 +708,8 @@ shared::ParSparseMat LogicalJacobianBlockOp::Assemble() const
     // An empty logical block still needs a solver-compatible shape. For dual-dual
     // blocks, keep the historical inactive-LM identity rows so elimination behavior
     // matches the pre-refactor assembly path.
-    if ( row_role_ == VariableRole::Dual && col_role_ == VariableRole::Dual && context_.inactive_dual_tdofs.Size() > 0 ) {
+    if ( row_role_ == VariableRole::Dual && col_role_ == VariableRole::Dual &&
+         context_.inactive_dual_tdofs.Size() > 0 ) {
       return shared::ParSparseMat::diagonalMatrix( comm, context_.dual_fes.GlobalTrueVSize(),
                                                    context_.dual_fes.GetTrueDofOffsets(), 1.0,
                                                    context_.inactive_dual_tdofs, false );
@@ -1781,8 +1783,9 @@ std::unique_ptr<LogicalJacobianBlockOp> MfemJacobianData::BuildJacobianBlockOp(
   }
 
   LogicalBlockTransferContext context( GetUpdateData().primary_ho_to_lor_.get(), GetUpdateData().dual_ho_to_lor_.get(),
-                                       *GetUpdateData().submesh_parent_xfer_, *parent_data_.GetParentCoords().ParFESpace(),
-                                       submesh_data_.GetSubmeshFESpace(), mortar_tdof_list_ );
+                                       *GetUpdateData().submesh_parent_xfer_,
+                                       *parent_data_.GetParentCoords().ParFESpace(), submesh_data_.GetSubmeshFESpace(),
+                                       mortar_tdof_list_ );
 
   return std::make_unique<LogicalJacobianBlockOp>( row_role, col_role, std::move( stage_op ), context );
 }

@@ -158,7 +158,8 @@ int main( int argc, char** argv )
   }
 
   // Time and assemble with the MethodData adapter path
-  auto old_contribs = BuildComputedElementData( *method_data, { { tribol::BlockSpace::MORTAR, tribol::BlockSpace::MORTAR } } );
+  auto old_contribs =
+      BuildComputedElementData( *method_data, { { tribol::BlockSpace::MORTAR, tribol::BlockSpace::MORTAR } } );
   auto start_old = std::chrono::high_resolution_clock::now();
   auto par_J_old = jac_data->GetMfemJacobian( old_contribs );
   auto end_old = std::chrono::high_resolution_clock::now();
