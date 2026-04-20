@@ -1657,17 +1657,244 @@ class MfemSubmeshData {
 };
 
 /**
+ * @brief Solver-facing role of a variable space
+ */
+enum class VariableRole
+{
+  Primary,
+  Dual
+};
+
+/**
+ * @brief Surface partition associated with a contribution source
+ */
+enum class SurfacePartition
+{
+  Mortar,
+  Nonmortar,
+  Other
+};
+
+/**
+ * @brief Combined description of a contribution's algebraic role and surface partition
+ */
+struct ContributionSpace {
+  VariableRole role;
+  SurfacePartition partition;
+};
+
+/**
+ * @brief Base class for Jacobian-related operators that can also materialize an explicit matrix
+ */
+class AssembleableParOperator : public mfem::Operator {
+ public:
+  /**
+   * @brief Construct an operator with the given local row and column sizes
+   */
+  AssembleableParOperator( int height, int width );
+
+  /**
+   * @brief Apply the operator to a vector
+   *
+   * @note The default implementation assembles and caches the matrix, then applies it.
+   */
+  void Mult( const mfem::Vector& x, mfem::Vector& y ) const override;
+
+  /**
+   * @brief Materialize the operator as an explicit parallel sparse matrix
+   */
+  virtual shared::ParSparseMat Assemble() const = 0;
+
+  /**
+   * @brief Return a cached assembled matrix, assembling it on first use
+   */
+  const shared::ParSparseMat* GetAssembled() const;
+
+ protected:
+  /**
+   * @brief Build the assembly cache if needed and return it by reference
+   */
+  shared::ParSparseMat& GetOrAssembleCache() const;
+
+ private:
+  mutable std::unique_ptr<shared::ParSparseMat> assembled_cache_;
+};
+
+/**
+ * @brief HO -> LOR transfer operator for one FE-space pair
+ */
+class HoToLorTransferOp : public AssembleableParOperator {
+ public:
+  /**
+   * @brief Construct an operator that maps HO DOFs to LOR DOFs for one field space
+   */
+  HoToLorTransferOp( const mfem::ParFiniteElementSpace& ho_fes, const mfem::ParFiniteElementSpace& lor_fes,
+                     const mfem::ParFiniteElementSpace& ho_scalar_fes,
+                     const mfem::ParFiniteElementSpace& lor_scalar_fes );
+
+  /**
+   * @brief Apply MFEM's runtime HO->LOR transfer without explicitly assembling a matrix
+   */
+  void Mult( const mfem::Vector& x, mfem::Vector& y ) const override;
+
+  /**
+   * @brief Assemble a sparse matrix matching MFEM's HO->LOR transfer action
+   */
+  shared::ParSparseMat Assemble() const override;
+
+ private:
+  const mfem::ParFiniteElementSpace& ho_fes_;
+  const mfem::ParFiniteElementSpace& lor_fes_;
+  const mfem::ParFiniteElementSpace& ho_scalar_fes_;
+  const mfem::ParFiniteElementSpace& lor_scalar_fes_;
+  mutable std::unique_ptr<mfem::L2ProjectionGridTransfer> transfer_;
+};
+
+/**
+ * @brief Submesh -> parent DOF transfer operator
+ */
+class SubmeshParentTransferOp : public AssembleableParOperator {
+ public:
+  /**
+   * @brief Construct an operator that injects boundary-submesh DOFs into the parent FE space
+   */
+  SubmeshParentTransferOp( const mfem::ParFiniteElementSpace& submesh_fes,
+                           const mfem::ParFiniteElementSpace& parent_fes,
+                           const mfem::Array<HYPRE_BigInt>& submesh2parent_vdof_list );
+
+  /**
+   * @brief Assemble the submesh->parent DOF injection matrix
+   */
+  shared::ParSparseMat Assemble() const override;
+
+ private:
+  const mfem::ParFiniteElementSpace& submesh_fes_;
+  const mfem::ParFiniteElementSpace& parent_fes_;
+  const mfem::Array<HYPRE_BigInt>& submesh2parent_vdof_list_;
+};
+
+/**
  * @brief Struct to hold computed element data for Jacobian assembly
  */
 struct ComputedElementData {
-  BlockSpace row_space;               ///< Block space for row elements
-  BlockSpace col_space;               ///< Block space for column elements
-  axom::Array<int> row_elem_ids;      ///< Tribol element IDs for rows
-  axom::Array<int> col_elem_ids;      ///< Tribol element IDs for columns
-  axom::Array<double> jacobian_data;  ///< Flattened Jacobian data
-  axom::Array<int> jacobian_offsets;  ///< Offsets into data for each element
+  BlockSpace row_space { BlockSpace::MORTAR };  ///< Block space for row elements
+  BlockSpace col_space { BlockSpace::MORTAR };  ///< Block space for column elements
+  axom::Array<int> row_elem_ids;                ///< Tribol element IDs for rows
+  axom::Array<int> col_elem_ids;                ///< Tribol element IDs for columns
+  axom::Array<double> jacobian_data;            ///< Flattened Jacobian data
+  axom::Array<int> value_offsets;               ///< Offsets into jacobian_data for each element
+
+  ComputedElementData() = default;
+
+  ComputedElementData( BlockSpace row_space_in, BlockSpace col_space_in )
+      : row_space( row_space_in ), col_space( col_space_in )
+  {
+  }
+
+  /**
+   * @brief Reserve packed storage for a batch of element contributions
+   */
+  void reserve( int n_entries, int n_values )
+  {
+    row_elem_ids.reserve( n_entries );
+    col_elem_ids.reserve( n_entries );
+    jacobian_data.reserve( n_values );
+    value_offsets.reserve( n_entries );
+  }
+
+  /**
+   * @brief Append one flattened element Jacobian contribution
+   */
+  void append( int row_elem_id, int col_elem_id, const double* data, int size )
+  {
+    row_elem_ids.push_back( row_elem_id );
+    col_elem_ids.push_back( col_elem_id );
+    value_offsets.push_back( jacobian_data.size() );
+    if ( size > 0 ) {
+      jacobian_data.append( axom::ArrayView<const double>( data, size ) );
+    }
+  }
+
+  /**
+   * @brief Number of element contributions stored in this packed block
+   */
+  int numEntries() const { return row_elem_ids.size(); }
 };
 
+/**
+ * @brief Jacobian stage operator from redecomp element contributions to a surface FE space pair
+ */
+class RedecompJacobianStageOp : public AssembleableParOperator {
+ public:
+  /**
+   * @brief Construct one redecomp->surface Jacobian stage for a logical row/column pairing
+   */
+  RedecompJacobianStageOp( const redecomp::MatrixTransfer& transfer, std::vector<ComputedElementData> contributions,
+                           const Array1D<int>& mortar_elem_map, const Array1D<int>& nonmortar_elem_map, int height,
+                           int width );
+
+  /**
+   * @brief Assemble the redecomp-stage matrix from flattened element contributions
+   */
+  shared::ParSparseMat Assemble() const override;
+
+ private:
+  const redecomp::MatrixTransfer& transfer_;
+  std::vector<ComputedElementData> contributions_;
+  const Array1D<int>& mortar_elem_map_;
+  const Array1D<int>& nonmortar_elem_map_;
+};
+
+/**
+ * @brief Solver-visible logical Jacobian block assembled from one stage operator
+ */
+struct LogicalBlockTransferContext {
+  const HoToLorTransferOp* primary_ho_to_lor;          ///< Optional HO->LOR map for primary fields
+  const HoToLorTransferOp* dual_ho_to_lor;             ///< Optional HO->LOR map for dual fields
+  const SubmeshParentTransferOp& submesh_parent_xfer;  ///< Required submesh->parent DOF injection
+  const mfem::ParFiniteElementSpace& parent_fes;       ///< Solver-facing primary FE space
+  const mfem::ParFiniteElementSpace& dual_fes;         ///< Solver-facing dual FE space
+  const mfem::Array<int>& inactive_dual_tdofs;         ///< Inactive dual tdofs used for empty dual-dual blocks
+
+  LogicalBlockTransferContext( const HoToLorTransferOp* primary_ho_to_lor_in,
+                               const HoToLorTransferOp* dual_ho_to_lor_in,
+                               const SubmeshParentTransferOp& submesh_parent_xfer_in,
+                               const mfem::ParFiniteElementSpace& parent_fes_in,
+                               const mfem::ParFiniteElementSpace& dual_fes_in,
+                               const mfem::Array<int>& inactive_dual_tdofs_in )
+      : primary_ho_to_lor( primary_ho_to_lor_in ),
+        dual_ho_to_lor( dual_ho_to_lor_in ),
+        submesh_parent_xfer( submesh_parent_xfer_in ),
+        parent_fes( parent_fes_in ),
+        dual_fes( dual_fes_in ),
+        inactive_dual_tdofs( inactive_dual_tdofs_in )
+  {
+  }
+};
+
+class LogicalJacobianBlockOp : public AssembleableParOperator {
+ public:
+  /**
+   * @brief Construct one solver-visible Jacobian block from one stage operator and transfer maps
+   */
+  LogicalJacobianBlockOp( VariableRole row_role, VariableRole col_role,
+                          std::unique_ptr<RedecompJacobianStageOp> stage_op,
+                          LogicalBlockTransferContext context );
+
+  /**
+   * @brief Assemble the full logical block on solver-facing true-dof spaces
+   */
+  shared::ParSparseMat Assemble() const override;
+
+ private:
+  const HoToLorTransferOp* getRowHoToLor() const;
+  const HoToLorTransferOp* getColHoToLor() const;
+
+  VariableRole row_role_;
+  VariableRole col_role_;
+  std::unique_ptr<RedecompJacobianStageOp> stage_op_;
+  LogicalBlockTransferContext context_;
+};
 /**
  * @brief Helper class to manage Jacobian contributions for different block spaces
  */
@@ -1730,19 +1957,13 @@ class MfemJacobianData {
   void UpdateJacobianXfer();
 
   /**
-   * @brief Returns a Jacobian as an mfem::BlockOperator
+   * @brief Build a solver-visible logical Jacobian block operator
    *
-   * @param method_data Method data holding element Jacobians
-   * @param row_info List of {block_row_index, BlockSpace} pairs. Since a single block row in the output matrix might
-   * aggregate DOFs from multiple Tribol spaces (e.g. Mortar and NonMortar spaces might both map to the Displacement
-   * block 0), this vector defines the mapping from each Tribol space to its corresponding block row index.
-   * @param col_info List of {block_col_index, BlockSpace} pairs. Similar to row_info, this defines the mapping from
-   * each Tribol space to its corresponding block column index.
-   * @return std::unique_ptr<mfem::BlockOperator>
+   * @param contributions Element contributions associated with one logical block
+   * @return std::unique_ptr<LogicalJacobianBlockOp>
    */
-  std::unique_ptr<mfem::BlockOperator> GetMfemBlockJacobian(
-      const MethodData& method_data, const std::vector<std::pair<int, BlockSpace>>& row_info,
-      const std::vector<std::pair<int, BlockSpace>>& col_info ) const;
+  std::unique_ptr<LogicalJacobianBlockOp> BuildJacobianBlockOp(
+      const std::vector<ComputedElementData>& contributions ) const;
 
   /**
    * @brief Returns a Jacobian as a single ParSparseMat
@@ -1768,6 +1989,18 @@ class MfemJacobianData {
 
  private:
   /**
+   * @brief Map legacy Tribol block spaces to solver-facing logical roles and surface partitions
+   */
+  static ContributionSpace ToContributionSpace( BlockSpace block_space );
+
+  /**
+   * @brief Build the DOF map that injects submesh DOFs into the parent FE space
+   */
+  static shared::ParSparseMat BuildSubmeshParentTransferMatrix(
+      const mfem::ParFiniteElementSpace& submesh_fes, const mfem::ParFiniteElementSpace& parent_fes,
+      const mfem::Array<HYPRE_BigInt>& submesh2parent_vdof_list );
+
+  /**
    * @brief Build a DOF-level transfer matrix from a higher-order FE space to a LOR FE space.
    *
    * This constructs a sparse matrix representation matching MFEM's
@@ -1787,34 +2020,48 @@ class MfemJacobianData {
    * updated
    */
   struct UpdateData {
+    struct RedecompRoute {
+      /// Logical role of the assembled row space after Tribol block aggregation
+      VariableRole row_role;
+      /// Logical role of the assembled column space after Tribol block aggregation
+      VariableRole col_role;
+      /// Local row size of the intermediate surface matrix produced by this route
+      int height;
+      /// Local column size of the intermediate surface matrix produced by this route
+      int width;
+      /// Redecomp -> surface transfer for this logical row/column pairing
+      std::unique_ptr<redecomp::MatrixTransfer> transfer;
+    };
+
     /**
      * @brief Construct a new UpdateData object
      *
      * @param parent_data MFEM data associated with displacement and velocity
      * @param submesh_data MFEM data associated with pressure and gap
      */
-    UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data );
+    UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data,
+                const mfem::Array<HYPRE_BigInt>& submesh2parent_vdof_list );
 
     /**
-     * @brief Redecomp to parent-linked boundary submesh transfer operators
-     *
-     * @note Indexed by (row_block, col_block)
+     * @brief Redecomp -> surface stage routes used for Jacobian assembly
      */
-    Array2D<std::unique_ptr<redecomp::MatrixTransfer>> submesh_redecomp_xfer_;
+    std::vector<RedecompRoute> redecomp_routes_;
 
     /**
-     * @brief Optional HO->LOR transfer matrices (DOF-level) used to map Jacobians back to HO spaces.
-     *
-     * When LOR is active, redecomp-to-parallel transfers produce matrices on the LOR FE spaces.
-     * These operators map HO DOFs to LOR DOFs so we can compute J_ho = T_row^T * J_lor * T_col.
+     * @brief Optional HO->LOR transfer operators used to map Jacobians back to HO spaces
      */
-    std::unique_ptr<shared::ParSparseMat> T_disp_ho_to_lor_;
-    std::unique_ptr<shared::ParSparseMat> T_lm_ho_to_lor_;
+    std::unique_ptr<HoToLorTransferOp> primary_ho_to_lor_;
+    std::unique_ptr<HoToLorTransferOp> dual_ho_to_lor_;
+
+    /**
+     * @brief Submesh -> parent transfer operator for primary variables
+     */
+    std::unique_ptr<SubmeshParentTransferOp> submesh_parent_xfer_;
 
     // Keep scalar FE spaces alive for any intermediate HypreParMatrix objects that may reference their
     // partitioning arrays (row/col starts) by pointer.
-    std::unique_ptr<mfem::ParFiniteElementSpace> disp_ho_scalar_fes_;
-    std::unique_ptr<mfem::ParFiniteElementSpace> disp_lor_scalar_fes_;
+    std::unique_ptr<mfem::ParFiniteElementSpace> primary_ho_scalar_fes_;
+    std::unique_ptr<mfem::ParFiniteElementSpace> primary_lor_scalar_fes_;
     std::unique_ptr<mfem::ParFiniteElementSpace> lm_ho_scalar_fes_;
     std::unique_ptr<mfem::ParFiniteElementSpace> lm_lor_scalar_fes_;
   };
