@@ -21,6 +21,10 @@ namespace {
 
 mfem::Array<int> BuildSolverOffsets( int max_block, int primary_size, int dual_size )
 {
+  // Compatibility helper: map Tribol's current hard-coded 2x2 solver block layout
+  // (primary/dual) into mfem::BlockOperator offsets. This is only used by the
+  // MFEM-interface convenience Jacobian path and should eventually move to the
+  // physics routine (or host code) that actually defines the block structure.
   mfem::Array<int> offsets( max_block + 2 );
   offsets[0] = 0;
   offsets[1] = primary_size;
@@ -33,6 +37,10 @@ mfem::Array<int> BuildSolverOffsets( int max_block, int primary_size, int dual_s
 std::vector<ComputedElementData> BuildComputedElementData(
     const MethodData& method_data, const std::vector<std::pair<BlockSpace, BlockSpace>>& contribs )
 {
+  // Compatibility helper: convert legacy MethodData block-J storage into the
+  // newer packed ComputedElementData representation used by the MFEM transfer
+  // code. This glue should eventually live alongside the physics routines that
+  // own MethodData and understand the intended block partitioning.
   std::vector<ComputedElementData> computed;
   computed.reserve( contribs.size() );
 
@@ -69,6 +77,11 @@ std::unique_ptr<mfem::BlockOperator> BuildMfemBlockJacobian( const CouplingSchem
                                                              const std::vector<std::pair<int, BlockSpace>>& row_info,
                                                              const std::vector<std::pair<int, BlockSpace>>& col_info )
 {
+  // Compatibility helper: assemble a solver-facing mfem::BlockOperator from
+  // MethodData. The specific block sizing and mapping (row_info/col_info) is a
+  // policy decision that belongs in the physics routine (or host application)
+  // where the meaning of "block 0/1" is defined; this is kept here so the
+  // existing public convenience API can continue to work.
   const auto* jac_data = cs.getMfemJacobianData();
   const auto* mesh_data = cs.getMfemMeshData();
   const auto* submesh_data = cs.getMfemSubmeshData();
