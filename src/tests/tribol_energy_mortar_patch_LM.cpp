@@ -19,6 +19,7 @@
 #include "axom/CLI11.hpp"
 #include "axom/slic.hpp"
 
+#include "shared/math/ParSparseMat.hpp"
 #include "shared/mesh/MeshBuilder.hpp"
 #include "redecomp/redecomp.hpp"
 
@@ -26,6 +27,20 @@
 #include "tribol/common/Parameters.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
+
+namespace {
+
+template <typename F>
+void WithHypreHostMemory( F&& f )
+{
+  HYPRE_MemoryLocation old_loc;
+  HYPRE_GetMemoryLocation( &old_loc );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
+  f();
+  HYPRE_SetMemoryLocation( old_loc );
+}
+
+}  // namespace
 
 /**
  * @brief Contact patch test using ENERGY_MORTAR with Lagrange multiplier
@@ -281,29 +296,28 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         // ---- Assemble block Jacobian ----
         // (0,0) block: K + H
         // NOTE: H may be null on the first Newton iteration when lambda = 0
-        std::unique_ptr<mfem::HypreParMatrix> J_uu;
-        if ( H && H->NumRows() > 0 ) {
-          J_uu.reset( mfem::Add( 1.0, *K_elastic, 1.0, *H ) );
-        } else {
-          J_uu.reset( new mfem::HypreParMatrix( *K_elastic ) );
-        }
+        shared::ParSparseMat J_uu =
+            ( H && H->NumRows() > 0 )
+                ? ( shared::ParSparseMatView( K_elastic.get() ) + shared::ParSparseMatView( H.get() ) )
+                : ( shared::ParSparseMatView( K_elastic.get() ) * 1.0 );
 
         // G^T for the (0,1) block
-        auto G_T = std::unique_ptr<mfem::HypreParMatrix>( G->Transpose() );
+        shared::ParSparseMat G_T = shared::ParSparseMatView( G.get() ).transpose();
 
         // ---- Apply essential BCs ----
         // Zero out essential DOF rows/cols in J_uu
         for ( int i = 0; i < ess_tdof_list.Size(); ++i ) {
           R_u( ess_tdof_list[i] ) = 0.0;
         }
-        J_uu->EliminateRowsCols( ess_tdof_list );
+        WithHypreHostMemory( [&]() {
+          J_uu.get().HostReadWrite();
+          J_uu.get().EliminateRowsCols( ess_tdof_list );
+        } );
 
         // Zero out essential DOF rows in G^T (cols in G)
         // Use EliminateRows on G^T which is simpler than EliminateCols on G
-        G_T->EliminateRows( ess_tdof_list );
-
-        // Rebuild G from the modified G^T to stay consistent
-        G = std::unique_ptr<mfem::HypreParMatrix>( G_T->Transpose() );
+        G_T.eliminateRows( ess_tdof_list );
+        shared::ParSparseMat G_mod = G_T.transpose();
 
         // ---- Set up block system ----
 
@@ -313,9 +327,9 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         block_offsets[2] = disp_size + contact_size;
 
         mfem::BlockOperator J_block( block_offsets );
-        J_block.SetBlock( 0, 0, J_uu.get() );
-        J_block.SetBlock( 0, 1, G_T.get() );
-        J_block.SetBlock( 1, 0, G.get() );
+        J_block.SetBlock( 0, 0, &J_uu.get() );
+        J_block.SetBlock( 0, 1, &G_T.get() );
+        J_block.SetBlock( 1, 0, &G_mod.get() );
 
         // Block RHS = -[R_u; R_lambda]
         mfem::BlockVector rhs( block_offsets );

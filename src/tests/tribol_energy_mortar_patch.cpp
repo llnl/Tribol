@@ -17,6 +17,7 @@
 #include "axom/CLI11.hpp"
 #include "axom/slic.hpp"
 
+#include "shared/math/ParSparseMat.hpp"
 #include "shared/mesh/MeshBuilder.hpp"
 #include "redecomp/redecomp.hpp"
 
@@ -216,10 +217,12 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
       f_contact.Neg();
 
       // Inhomogeneous Dirichlet: rhs = f_contact - K * u_prescribed
-      auto A_total = std::unique_ptr<mfem::HypreParMatrix>( mfem::Add( 1.0, *A_elastic_raw, 1.0, *A_cont ) );
+      // Form A_total on host; mfem::Add may dispatch through Hypre device paths in HIP builds.
+      shared::ParSparseMat A_total =
+          shared::ParSparseMatView( A_elastic_raw.get() ) + shared::ParSparseMatView( A_cont.get() );
 
       mfem::Vector rhs( par_fe_space.GetTrueVSize() );
-      A_total->Mult( X_prescribed, rhs );
+      A_total.get().Mult( X_prescribed, rhs );
       rhs.Neg();
       rhs += f_contact;
 
@@ -227,22 +230,31 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
         rhs( ess_tdof_list[i] ) = 0.0;
       }
 
-      A_total->EliminateRowsCols( ess_tdof_list );
+      A_total.get().EliminateRowsCols( ess_tdof_list );
 
       mfem::Vector X_free( par_fe_space.GetTrueVSize() );
       X_free = 0.0;
 
-      mfem::HypreBoomerAMG amg( *A_total );
-      amg.SetElasticityOptions( &par_fe_space );
-      amg.SetPrintLevel( 0 );
+      // Preconditioner: BoomerAMG on CPU builds; use MFEM's built-in diagonal/Jacobi smoother on GPU builds where
+      // BoomerAMG may assert/crash with GPU-enabled Hypre.
+#if defined( MFEM_USE_CUDA ) || defined( MFEM_USE_HIP ) || defined( MFEM_USE_RAJA )
+      // DSmoother operates on SparseMatrix and fails when MINRES passes a HypreParMatrix
+      // into prec.SetOperator(). Use HypreSmoother Jacobi, which accepts HypreParMatrix.
+      mfem::HypreSmoother prec;
+      prec.SetType( mfem::HypreSmoother::Jacobi );
+#else
+      mfem::HypreBoomerAMG prec( A_total.get() );
+      prec.SetElasticityOptions( &par_fe_space );
+      prec.SetPrintLevel( 0 );
+#endif
 
       mfem::MINRESSolver solver( MPI_COMM_WORLD );
       solver.SetRelTol( 1.0e-8 );
       solver.SetAbsTol( 1.0e-12 );
       solver.SetMaxIter( 5000 );
       solver.SetPrintLevel( step == num_timesteps_ ? 3 : 1 );
-      solver.SetPreconditioner( amg );
-      solver.SetOperator( *A_total );
+      solver.SetPreconditioner( prec );
+      solver.SetOperator( A_total.get() );
       solver.Mult( rhs, X_free );
 
       X = X_free;
