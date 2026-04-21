@@ -994,19 +994,18 @@ TEST_P( MfemLorTransferParamTest, lor_transfer_matches_mfem )
   CompareHoToLorTransfers( F, T->get(), *ho_fes, *lor_fes );
 }
 
-INSTANTIATE_TEST_SUITE_P(
-    MfemLorTransfer, MfemLorTransferParamTest,
-    testing::Values( LorTransferParams{ 2, 2, FieldKind::Displacement },
-                     LorTransferParams{ 2, 3, FieldKind::Displacement },  // lor_factor > order
-                     LorTransferParams{ 2, 4, FieldKind::Displacement },  // lor_factor > order
-                     LorTransferParams{ 3, 2, FieldKind::Displacement },  // lor_factor < order
-                     LorTransferParams{ 3, 3, FieldKind::Displacement },
-                     LorTransferParams{ 3, 4, FieldKind::Displacement },  // lor_factor > order
-                     LorTransferParams{ 2, 2, FieldKind::LagrangeMultiplier },
-                     LorTransferParams{ 2, 3, FieldKind::LagrangeMultiplier },
-                     LorTransferParams{ 3, 3, FieldKind::LagrangeMultiplier },
-                     LorTransferParams{ 3, 4, FieldKind::LagrangeMultiplier } ),
-    ParamsToString );
+INSTANTIATE_TEST_SUITE_P( MfemLorTransfer, MfemLorTransferParamTest,
+                          testing::Values( LorTransferParams{ 2, 2, FieldKind::Displacement },
+                                           LorTransferParams{ 2, 3, FieldKind::Displacement },  // lor_factor > order
+                                           LorTransferParams{ 2, 4, FieldKind::Displacement },  // lor_factor > order
+                                           LorTransferParams{ 3, 2, FieldKind::Displacement },  // lor_factor < order
+                                           LorTransferParams{ 3, 3, FieldKind::Displacement },
+                                           LorTransferParams{ 3, 4, FieldKind::Displacement },  // lor_factor > order
+                                           LorTransferParams{ 2, 2, FieldKind::LagrangeMultiplier },
+                                           LorTransferParams{ 2, 3, FieldKind::LagrangeMultiplier },
+                                           LorTransferParams{ 3, 3, FieldKind::LagrangeMultiplier },
+                                           LorTransferParams{ 3, 4, FieldKind::LagrangeMultiplier } ),
+                          ParamsToString );
 
 int main( int argc, char* argv[] )
 {
