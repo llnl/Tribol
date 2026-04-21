@@ -2008,6 +2008,9 @@ class MfemJacobianData {
    * matrices and R_true is the L2-projection restriction operator on true dofs.
    *
    * @note Only supports continuous (H1) spaces and mfem::Ordering::byNODES.
+   *
+   * @note This assembled build path requires MFEM to expose the true-dof restriction
+   * operator as an assembled mfem::HypreParMatrix when `use_ea=false`.
    */
   static shared::ParSparseMat BuildLORTransferMatrix( const mfem::ParFiniteElementSpace& ho_fes,
                                                       const mfem::ParFiniteElementSpace& lor_fes,

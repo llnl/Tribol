@@ -22,17 +22,12 @@ namespace tribol {
 
 namespace {
 
-bool GetEnvBool( const char* name )
-{
-  const char* v = std::getenv( name );
-  if ( v == nullptr ) return false;
-  // Treat explicit "0" as false; anything else means enabled.
-  return !( v[0] == '0' && v[1] == '\0' );
-}
-
 std::unique_ptr<shared::ParSparseMat> TryGetMfemTrueRestrictionMatrix(
     const mfem::ParFiniteElementSpace& ho_scalar_fes, const mfem::ParFiniteElementSpace& lor_scalar_fes )
 {
+  // MFEM builds the true-dof restriction operator inside its L2 projection transfer
+  // helper, but does not expose it publicly. We use a tiny derived class to read
+  // out the internal `R` pointer and clone it when it is an assembled HypreParMatrix.
   class MfemTrueRestrictionAccessor : public mfem::L2ProjectionGridTransfer::L2ProjectionH1Space {
    public:
     MfemTrueRestrictionAccessor( const mfem::ParFiniteElementSpace& pfes_ho,
@@ -58,6 +53,9 @@ std::unique_ptr<shared::ParSparseMat> TryGetMfemTrueRestrictionMatrix(
 
 void TDofsListByVDim( const mfem::ParFiniteElementSpace& fes, int vdim, mfem::Array<int>& tdofs_list )
 {
+  // Build the subset of true dofs that correspond to one vector component. When a
+  // restriction matrix is available, use it to correctly handle constrained dofs;
+  // otherwise, fall back to the raw vdof list.
   const mfem::SparseMatrix* R_mat = fes.GetRestrictionMatrix();
   if ( R_mat ) {
     mfem::Array<int> x_vdofs_list( fes.GetNDofs() );
@@ -76,6 +74,8 @@ void TDofsListByVDim( const mfem::ParFiniteElementSpace& fes, int vdim, mfem::Ar
 shared::ParSparseMat BuildTrueDofExtract( const mfem::ParFiniteElementSpace& vec_fes,
                                           const mfem::ParFiniteElementSpace& scalar_fes, int vdim )
 {
+  // Construct a sparse selection operator E such that x_scalar_true = E * x_vec_true,
+  // pulling out one component from a vector-valued true-dof vector.
   mfem::Array<int> tdofs_list;
   TDofsListByVDim( vec_fes, vdim, tdofs_list );
   SLIC_ERROR_ROOT_IF( tdofs_list.Size() != scalar_fes.GetTrueVSize(),
@@ -100,6 +100,8 @@ shared::ParSparseMat BuildTrueDofExtract( const mfem::ParFiniteElementSpace& vec
 shared::ParSparseMat BuildTrueDofInject( const mfem::ParFiniteElementSpace& vec_fes,
                                          const mfem::ParFiniteElementSpace& scalar_fes, int vdim )
 {
+  // Construct a sparse injection operator S such that y_vec_true += S * y_scalar_true,
+  // inserting one component back into a vector-valued true-dof vector.
   mfem::Array<int> tdofs_list;
   TDofsListByVDim( vec_fes, vdim, tdofs_list );
   SLIC_ERROR_ROOT_IF( tdofs_list.Size() != scalar_fes.GetTrueVSize(),
@@ -139,321 +141,6 @@ shared::ParSparseMat BuildTrueDofInject( const mfem::ParFiniteElementSpace& vec_
                                vec_fes.GetTrueDofOffsets(), scalar_fes.GetTrueDofOffsets(), std::move( diag ) );
 }
 
-void BuildHo2Lor( mfem::Table& ho2lor, int nel_ho, int nel_lor, const mfem::CoarseFineTransformations& cf_tr )
-{
-  ho2lor.MakeI( nel_ho );
-  for ( int ilor = 0; ilor < nel_lor; ++ilor ) {
-    const int iho = cf_tr.embeddings[ilor].parent;
-    ho2lor.AddAColumnInRow( iho );
-  }
-  ho2lor.MakeJ();
-  for ( int ilor = 0; ilor < nel_lor; ++ilor ) {
-    const int iho = cf_tr.embeddings[ilor].parent;
-    ho2lor.AddConnection( iho, ilor );
-  }
-  ho2lor.ShiftUpI();
-}
-
-void ElemMixedMass( mfem::Geometry::Type geom, const mfem::FiniteElement& fe_ho, const mfem::FiniteElement& fe_lor,
-                    mfem::ElementTransformation* tr_ho, mfem::ElementTransformation* tr_lor,
-                    mfem::IntegrationPointTransformation& ip_tr, mfem::DenseMatrix& M_mixed_el )
-{
-  const int order = fe_lor.GetOrder() + fe_ho.GetOrder() + tr_lor->OrderW();
-  const mfem::IntegrationRule* ir = &mfem::IntRules.Get( geom, order );
-  M_mixed_el = 0.0;
-  for ( int i = 0; i < ir->GetNPoints(); ++i ) {
-    const mfem::IntegrationPoint& ip_lor = ir->IntPoint( i );
-    mfem::IntegrationPoint ip_ho;
-    ip_tr.Transform( ip_lor, ip_ho );
-
-    mfem::Vector shape_lor( fe_lor.GetDof() );
-    fe_lor.CalcShape( ip_lor, shape_lor );
-
-    mfem::Vector shape_ho( fe_ho.GetDof() );
-    tr_ho->SetIntPoint( &ip_ho );
-    fe_ho.CalcPhysShape( *tr_ho, shape_ho );
-
-    tr_lor->SetIntPoint( &ip_lor );
-    double w = ip_lor.weight;
-    if ( fe_lor.GetMapType() == mfem::FiniteElement::VALUE ) {
-      w *= tr_lor->Weight();
-    }
-    shape_lor *= w;
-    mfem::AddMultVWt( shape_lor, shape_ho, M_mixed_el );
-  }
-}
-
-void LumpedMassInverse( const mfem::ParFiniteElementSpace& fes_lor_scalar, mfem::Vector& ML_inv_ldof )
-{
-  mfem::Vector ML_inv_true( fes_lor_scalar.GetTrueVSize() );
-  const mfem::Operator* P = fes_lor_scalar.GetProlongationMatrix();
-  if ( P ) {
-    P->MultTranspose( ML_inv_ldof, ML_inv_true );
-  } else {
-    ML_inv_true = ML_inv_ldof;
-  }
-
-  ML_inv_true.Reciprocal();
-
-  if ( P ) {
-    P->Mult( ML_inv_true, ML_inv_ldof );
-  } else {
-    ML_inv_ldof = ML_inv_true;
-  }
-}
-
-shared::ParSparseMat BuildH1TrueRestriction( const mfem::ParFiniteElementSpace& ho_scalar,
-                                             const mfem::ParFiniteElementSpace& lor_scalar )
-{
-  SLIC_ERROR_ROOT_IF( ho_scalar.FEColl()->GetContType() != mfem::FiniteElementCollection::CONTINUOUS ||
-                          lor_scalar.FEColl()->GetContType() != mfem::FiniteElementCollection::CONTINUOUS,
-                      "LOR transfer only supports continuous (H1) spaces." );
-
-  auto* mesh_ho = ho_scalar.GetParMesh();
-  auto* mesh_lor = lor_scalar.GetParMesh();
-  SLIC_ERROR_ROOT_IF( mesh_ho == nullptr || mesh_lor == nullptr, "Null ParMesh in LOR transfer." );
-
-  const int nel_ho = mesh_ho->GetNE();
-  const int nel_lor = mesh_lor->GetNE();
-  const int ndof_ho = ho_scalar.GetNDofs();
-  const int ndof_lor = lor_scalar.GetNDofs();
-
-  mfem::SparseMatrix R_dof( ndof_lor, ndof_ho );
-  mfem::Vector ML_inv;
-  mfem::Table ho2lor;
-  mfem::IntegrationPointTransformation ip_tr;
-  mfem::IsoparametricTransformation& emb_tr = ip_tr.Transf;
-
-  // Even if a rank has no local elements/DOFs (e.g. small meshes on many MPI
-  // ranks), all ranks must still participate in the subsequent parallel
-  // multiplies. In that case we simply build an empty local operator here.
-  if ( nel_ho > 0 && nel_lor > 0 && ndof_ho > 0 && ndof_lor > 0 ) {
-    const mfem::CoarseFineTransformations& cf_tr = mesh_lor->GetRefinementTransforms();
-    BuildHo2Lor( ho2lor, nel_ho, nel_lor, cf_tr );
-
-    ML_inv.SetSize( ndof_lor );
-    ML_inv = 0.0;
-
-    // Assemble lumped LOR mass row-sums on ldofs
-    for ( int ilor = 0; ilor < nel_lor; ++ilor ) {
-      const mfem::Geometry::Type geom = mesh_lor->GetElementBaseGeometry( ilor );
-      const mfem::FiniteElement& fe_lor = *lor_scalar.GetFE( ilor );
-      mfem::ElementTransformation* el_tr = lor_scalar.GetElementTransformation( ilor );
-
-      const int order = 2 * fe_lor.GetOrder() + el_tr->OrderW();
-      const mfem::IntegrationRule* ir = &mfem::IntRules.Get( geom, order );
-
-      const int nedof_lor = fe_lor.GetDof();
-      mfem::Vector ML_el( nedof_lor );
-      mfem::Vector shape_lor( nedof_lor );
-      ML_el = 0.0;
-
-      for ( int i = 0; i < ir->GetNPoints(); ++i ) {
-        const mfem::IntegrationPoint& ip_lor = ir->IntPoint( i );
-        fe_lor.CalcShape( ip_lor, shape_lor );
-        el_tr->SetIntPoint( &ip_lor );
-        shape_lor *= ( el_tr->Weight() * ip_lor.weight );
-        ML_el += shape_lor;
-      }
-
-      mfem::Array<int> dofs_lor( nedof_lor );
-      lor_scalar.GetElementDofs( ilor, dofs_lor );
-      ML_inv.AddElementVector( dofs_lor, ML_el );
-    }
-
-    LumpedMassInverse( lor_scalar, ML_inv );
-
-    for ( int iho = 0; iho < nel_ho; ++iho ) {
-      mfem::Array<int> lor_els;
-      ho2lor.GetRow( iho, lor_els );
-      if ( lor_els.Size() == 0 ) continue;
-
-      const mfem::Geometry::Type geom = mesh_ho->GetElementBaseGeometry( iho );
-      const mfem::FiniteElement& fe_ho = *ho_scalar.GetFE( iho );
-      const mfem::FiniteElement& fe_lor = *lor_scalar.GetFE( lor_els[0] );
-      mfem::ElementTransformation* tr_ho = ho_scalar.GetElementTransformation( iho );
-
-      emb_tr.SetIdentityTransformation( geom );
-      const mfem::DenseTensor& pmats = cf_tr.point_matrices[geom];
-
-      const int nedof_ho = fe_ho.GetDof();
-      const int nedof_lor = fe_lor.GetDof();
-      mfem::DenseMatrix M_LH_el( nedof_lor, nedof_ho );
-      mfem::DenseMatrix R_el( nedof_lor, nedof_ho );
-
-      mfem::Array<int> dofs_ho( nedof_ho );
-      ho_scalar.GetElementDofs( iho, dofs_ho );
-
-      for ( int iref = 0; iref < lor_els.Size(); ++iref ) {
-        const int ilor = lor_els[iref];
-        mfem::ElementTransformation* tr_lor = lor_scalar.GetElementTransformation( ilor );
-
-        emb_tr.SetPointMat( pmats( cf_tr.embeddings[ilor].matrix ) );
-
-        ElemMixedMass( geom, fe_ho, fe_lor, tr_ho, tr_lor, ip_tr, M_LH_el );
-
-        mfem::Array<int> dofs_lor( nedof_lor );
-        lor_scalar.GetElementDofs( ilor, dofs_lor );
-
-        R_el = M_LH_el;
-        mfem::Vector row;
-        for ( int r = 0; r < nedof_lor; ++r ) {
-          R_el.GetRow( r, row );
-          row *= ML_inv[dofs_lor[r]];
-          R_el.SetRow( r, row );
-        }
-
-        R_dof.AddSubMatrix( dofs_lor, dofs_ho, R_el );
-      }
-    }
-  }
-
-  R_dof.Finalize();
-
-  auto comm = mesh_ho->GetComm();
-  shared::ParSparseMat R_local( comm, lor_scalar.GlobalVSize(), ho_scalar.GlobalVSize(), lor_scalar.GetDofOffsets(),
-                                ho_scalar.GetDofOffsets(), std::move( R_dof ) );
-
-  return shared::ParSparseMat::rap( lor_scalar.Dof_TrueDof_Matrix(), R_local, ho_scalar.Dof_TrueDof_Matrix() );
-}
-
-[[maybe_unused]] shared::ParSparseMat ExpandScalarDofTransferByNodes( const shared::ParSparseMat& T_scalar_dof,
-                                                                      const mfem::ParFiniteElementSpace& ho_fes,
-                                                                      const mfem::ParFiniteElementSpace& lor_fes,
-                                                                      HYPRE_BigInt ho_scalar_dof_offset )
-{
-  (void)ho_scalar_dof_offset;
-  SLIC_ERROR_ROOT_IF( ho_fes.GetVDim() != lor_fes.GetVDim(), "HO/LOR vdim mismatch in LOR transfer." );
-  const int vdim = ho_fes.GetVDim();
-  SLIC_ERROR_ROOT_IF(
-      ho_fes.GetOrdering() != mfem::Ordering::byNODES || lor_fes.GetOrdering() != mfem::Ordering::byNODES,
-      "LOR transfer expansion only supports mfem::Ordering::byNODES." );
-
-  auto& A = T_scalar_dof.get();
-  const int nrows_scalar = A.Height();
-  SLIC_ERROR_ROOT_IF( nrows_scalar * vdim != lor_fes.GetVSize(), "Unexpected LOR scalar row size in transfer." );
-
-  mfem::SparseMatrix diag;
-  A.GetDiag( diag );
-
-  mfem::SparseMatrix offd;
-  HYPRE_BigInt* col_map_offd = nullptr;
-  A.GetOffd( offd, col_map_offd );
-
-  const int* diagI = diag.GetI();
-  const int* diagJ = diag.GetJ();
-  const double* diagData = diag.GetData();
-  SLIC_ERROR_ROOT_IF( diagI == nullptr || diagJ == nullptr || diagData == nullptr, "Invalid diag block in transfer." );
-
-  const int* offdI = offd.GetI();
-  const int* offdJ = offd.GetJ();
-  const double* offdData = offd.GetData();
-  const bool has_offd = ( offdI != nullptr && offdJ != nullptr && offdData != nullptr );
-
-  const int nrows_vec = nrows_scalar * vdim;
-  const int ncols_diag_scalar = diag.Width();
-  const int ncols_offd_scalar = has_offd ? offd.Width() : 0;
-
-  SLIC_ERROR_ROOT_IF( ncols_diag_scalar * vdim != ho_fes.GetVSize(),
-                      "Unexpected HO scalar column size in transfer expansion." );
-
-  // Build expanded diag block (local columns) and expanded offd block (off-rank columns).
-  std::vector<int> I_diag_vec( static_cast<size_t>( nrows_vec + 1 ), 0 );
-  std::vector<int> I_offd_vec( static_cast<size_t>( nrows_vec + 1 ), 0 );
-
-  for ( int i = 0; i < nrows_scalar; ++i ) {
-    const int diag_row_nnz = diagI[i + 1] - diagI[i];
-    const int offd_row_nnz = has_offd ? ( offdI[i + 1] - offdI[i] ) : 0;
-    for ( int d = 0; d < vdim; ++d ) {
-      const int vr = i * vdim + d;
-      I_diag_vec[static_cast<size_t>( vr + 1 )] = I_diag_vec[static_cast<size_t>( vr )] + diag_row_nnz;
-      I_offd_vec[static_cast<size_t>( vr + 1 )] = I_offd_vec[static_cast<size_t>( vr )] + offd_row_nnz;
-    }
-  }
-
-  const int nnz_diag_vec = I_diag_vec.back();
-  const int nnz_offd_vec = I_offd_vec.back();
-
-  auto* J_diag_vec = new int[nnz_diag_vec];
-  auto* data_diag_vec = new double[nnz_diag_vec];
-
-  int* J_offd_vec = nullptr;
-  double* data_offd_vec = nullptr;
-  HYPRE_BigInt* col_map_offd_vec = nullptr;
-
-  if ( nnz_offd_vec > 0 ) {
-    J_offd_vec = new int[nnz_offd_vec];
-    data_offd_vec = new double[nnz_offd_vec];
-    SLIC_ERROR_ROOT_IF( col_map_offd == nullptr, "Null col_map_offd in scalar transfer matrix." );
-    col_map_offd_vec = new HYPRE_BigInt[static_cast<size_t>( ncols_offd_scalar * vdim )];
-    for ( int j = 0; j < ncols_offd_scalar; ++j ) {
-      const HYPRE_BigInt g_scalar = col_map_offd[j];
-      for ( int d = 0; d < vdim; ++d ) {
-        col_map_offd_vec[static_cast<size_t>( j * vdim + d )] = g_scalar * static_cast<HYPRE_BigInt>( vdim ) + d;
-      }
-    }
-  }
-
-  for ( int i = 0; i < nrows_scalar; ++i ) {
-    const int diag_begin = diagI[i];
-    const int diag_end = diagI[i + 1];
-    const int offd_begin = has_offd ? offdI[i] : 0;
-    const int offd_end = has_offd ? offdI[i + 1] : 0;
-
-    for ( int d = 0; d < vdim; ++d ) {
-      const int vr = i * vdim + d;
-
-      int out_diag = I_diag_vec[static_cast<size_t>( vr )];
-      for ( int k = diag_begin; k < diag_end; ++k, ++out_diag ) {
-        J_diag_vec[out_diag] = diagJ[k] * vdim + d;
-        data_diag_vec[out_diag] = diagData[k];
-      }
-
-      if ( nnz_offd_vec > 0 ) {
-        int out_offd = I_offd_vec[static_cast<size_t>( vr )];
-        for ( int k = offd_begin; k < offd_end; ++k, ++out_offd ) {
-          J_offd_vec[out_offd] = offdJ[k] * vdim + d;
-          data_offd_vec[out_offd] = offdData[k];
-        }
-      }
-    }
-  }
-
-  auto* I_diag_raw = new int[nrows_vec + 1];
-  for ( int i = 0; i <= nrows_vec; ++i ) I_diag_raw[i] = I_diag_vec[static_cast<size_t>( i )];
-  auto* I_offd_raw = new int[nrows_vec + 1];
-  for ( int i = 0; i <= nrows_vec; ++i ) I_offd_raw[i] = I_offd_vec[static_cast<size_t>( i )];
-
-  mfem::SparseMatrix diag_vec( I_diag_raw, J_diag_vec, data_diag_vec, nrows_vec, ncols_diag_scalar * vdim, true, true,
-                               true );
-  mfem::SparseMatrix offd_vec;
-  if ( nnz_offd_vec > 0 ) {
-    offd_vec = mfem::SparseMatrix( I_offd_raw, J_offd_vec, data_offd_vec, nrows_vec, ncols_offd_scalar * vdim, true,
-                                   true, true );
-  } else {
-    delete[] I_offd_raw;
-    offd_vec = mfem::SparseMatrix( nrows_vec, 0 );
-    offd_vec.Finalize();
-  }
-
-  auto* hypre =
-      new mfem::HypreParMatrix( lor_fes.GetComm(), lor_fes.GlobalVSize(), ho_fes.GlobalVSize(), lor_fes.GetDofOffsets(),
-                                ho_fes.GetDofOffsets(), &diag_vec, &offd_vec, col_map_offd_vec );
-  // HypreParMatrix steals the CSR arrays from diag_vec/offd_vec; prevent the stack
-  // SparseMatrix objects from freeing them on scope exit.
-  diag_vec.GetMemoryI().ClearOwnerFlags();
-  diag_vec.GetMemoryJ().ClearOwnerFlags();
-  diag_vec.GetMemoryData().ClearOwnerFlags();
-  offd_vec.GetMemoryI().ClearOwnerFlags();
-  offd_vec.GetMemoryJ().ClearOwnerFlags();
-  offd_vec.GetMemoryData().ClearOwnerFlags();
-
-  constexpr int mfem_owned_host_flag = 3;
-  hypre->SetOwnerFlags( mfem_owned_host_flag, mfem_owned_host_flag, mfem_owned_host_flag );
-
-  return shared::ParSparseMat( std::unique_ptr<mfem::HypreParMatrix>( hypre ) );
-}
-
 }  // namespace
 
 namespace {
@@ -463,6 +150,7 @@ namespace {
 int TrueVSizeForRole( VariableRole role, const mfem::ParFiniteElementSpace& primary_fes,
                       const mfem::ParFiniteElementSpace& dual_fes )
 {
+  // Logical Jacobian blocks are solver-visible and always live in true-dof space.
   return ( role == VariableRole::Primary ) ? primary_fes.GetTrueVSize() : dual_fes.GetTrueVSize();
 }
 
@@ -471,6 +159,8 @@ int TrueVSizeForRole( VariableRole role, const mfem::ParFiniteElementSpace& prim
 const Array1D<int>& ElemMapForSpace( BlockSpace space, const Array1D<int>& mortar_elem_map,
                                      const Array1D<int>& nonmortar_elem_map )
 {
+  // Tribol uses different element-id domains per block space, but the redecomp stage
+  // expects element indices in one of the two redecomp surface meshes.
   switch ( space ) {
     case BlockSpace::MORTAR:
       return mortar_elem_map;
@@ -487,6 +177,8 @@ shared::ParSparseMat BuildSubmeshParentTransferMatrixImpl( const mfem::ParFinite
                                                            const mfem::ParFiniteElementSpace& parent_fes,
                                                            const mfem::Array<HYPRE_BigInt>& submesh2parent_vdof_list )
 {
+  // Build a pure injection matrix that maps submesh vdofs into the parent space.
+  // Each submesh vdof contributes to exactly one parent vdof with a unit entry.
   // Each submesh vdof contributes directly to exactly one parent vdof, so this is a
   // pure gather/injection matrix with unit entries.
   auto submesh_parent_I = redecomp::ArrayUtility::IndexArray<int>( submesh2parent_vdof_list.Size() + 1 );
@@ -503,6 +195,8 @@ shared::ParSparseMat BuildHoToLorTransferMatrixImpl( const mfem::ParFiniteElemen
                                                      const mfem::ParFiniteElementSpace& ho_scalar_fes,
                                                      const mfem::ParFiniteElementSpace& lor_scalar_fes )
 {
+  // Assemble an explicit HO->LOR transfer matrix that matches MFEM's runtime L2
+  // projection transfer operator. This is used for tests and for assembled Jacobians.
   SLIC_ERROR_ROOT_IF(
       ho_fes.GetOrdering() != mfem::Ordering::byNODES || lor_fes.GetOrdering() != mfem::Ordering::byNODES,
       "LOR transfer matrix build only supports mfem::Ordering::byNODES." );
@@ -511,21 +205,12 @@ shared::ParSparseMat BuildHoToLorTransferMatrixImpl( const mfem::ParFiniteElemen
                       "Scalar FE spaces must be vdim=1." );
 
   shared::ParSparseMatView P_lor( const_cast<mfem::HypreParMatrix*>( lor_scalar_fes.Dof_TrueDof_Matrix() ) );
-  std::unique_ptr<shared::ParSparseMat> R_true_owned;
-
-  const bool force_fallback = GetEnvBool( "TRIBOL_MFEM_FORCE_LOR_FALLBACK" );
-
-  if ( !force_fallback ) {
-    // Prefer MFEM's assembled true-space restriction when it is available so the
-    // explicit matrix matches the runtime transfer path as closely as possible.
-    R_true_owned = TryGetMfemTrueRestrictionMatrix( ho_scalar_fes, lor_scalar_fes );
-  }
-
-  if ( !R_true_owned ) {
-    // MFEM does not always expose an assembled true-space restriction, so keep a
-    // deterministic explicit fallback for tests and for assembled transfer paths.
-    R_true_owned = std::make_unique<shared::ParSparseMat>( BuildH1TrueRestriction( ho_scalar_fes, lor_scalar_fes ) );
-  }
+  std::unique_ptr<shared::ParSparseMat> R_true_owned = TryGetMfemTrueRestrictionMatrix( ho_scalar_fes, lor_scalar_fes );
+  SLIC_ERROR_ROOT_IF(
+      !R_true_owned,
+      "Failed to access MFEM's assembled true-dof restriction operator for HO->LOR transfer. "
+      "This build expects mfem::L2ProjectionGridTransfer::L2ProjectionH1Space(use_ea=false) to store R as a "
+      "mfem::HypreParMatrix." );
 
   const mfem::HypreParMatrix* P_ho_scalar = ho_scalar_fes.Dof_TrueDof_Matrix();
   SLIC_ERROR_ROOT_IF( P_ho_scalar == nullptr, "Null HO scalar Dof_TrueDof_Matrix() in LOR transfer build." );

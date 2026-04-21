@@ -81,7 +81,6 @@ struct LorTransferParams {
   int order = 2;
   int lor_factor = 2;
   FieldKind field = FieldKind::Displacement;
-  bool force_fallback = false;
 };
 
 struct JacobianTestContext {
@@ -102,8 +101,7 @@ std::string ParamsToString( const testing::TestParamInfo<LorTransferParams>& inf
 {
   const auto& p = info.param;
   const char* field = ( p.field == FieldKind::Displacement ) ? "disp" : "lm";
-  const char* fb = p.force_fallback ? "fallback" : "mfemR";
-  return "p" + std::to_string( p.order ) + "_lor" + std::to_string( p.lor_factor ) + "_" + field + "_" + fb;
+  return "p" + std::to_string( p.order ) + "_lor" + std::to_string( p.lor_factor ) + "_" + field;
 }
 
 bool BuildConsistentHoVector( const mfem::ParFiniteElementSpace& ho_fes, mfem::Vector& x_ho )
@@ -899,10 +897,9 @@ class MfemLorTransferParamTest : public MfemJacobianTest, public testing::WithPa
 
 TEST_P( MfemLorTransferParamTest, lor_transfer_matches_mfem )
 {
-  // Sweep polynomial order, LOR factor, field kind, and fallback mode against MFEM's
-  // forward transfer operator.
+  // Sweep polynomial order, LOR factor, and field kind against MFEM's forward
+  // transfer operator.
   const auto p = GetParam();
-  EnvVarGuard guard( "TRIBOL_MFEM_FORCE_LOR_FALLBACK", p.force_fallback ? "1" : nullptr );
 
   int ref_levels = 0;
   int nel_per_dir = std::pow( 2, ref_levels );
@@ -999,18 +996,16 @@ TEST_P( MfemLorTransferParamTest, lor_transfer_matches_mfem )
 
 INSTANTIATE_TEST_SUITE_P(
     MfemLorTransfer, MfemLorTransferParamTest,
-    testing::Values( LorTransferParams{ 2, 2, FieldKind::Displacement, false },
-                     LorTransferParams{ 2, 3, FieldKind::Displacement, false },  // lor_factor > order
-                     LorTransferParams{ 2, 4, FieldKind::Displacement, false },  // lor_factor > order
-                     LorTransferParams{ 3, 2, FieldKind::Displacement, false },  // lor_factor < order
-                     LorTransferParams{ 3, 3, FieldKind::Displacement, false },
-                     LorTransferParams{ 3, 4, FieldKind::Displacement, false },  // lor_factor > order
-                     LorTransferParams{ 2, 2, FieldKind::LagrangeMultiplier, false },
-                     LorTransferParams{ 2, 3, FieldKind::LagrangeMultiplier, false },
-                     LorTransferParams{ 3, 3, FieldKind::LagrangeMultiplier, false },
-                     LorTransferParams{ 3, 4, FieldKind::LagrangeMultiplier, false },
-                     LorTransferParams{ 3, 4, FieldKind::Displacement, true },  // force BuildH1TrueRestriction()
-                     LorTransferParams{ 3, 4, FieldKind::LagrangeMultiplier, true } ),
+    testing::Values( LorTransferParams{ 2, 2, FieldKind::Displacement },
+                     LorTransferParams{ 2, 3, FieldKind::Displacement },  // lor_factor > order
+                     LorTransferParams{ 2, 4, FieldKind::Displacement },  // lor_factor > order
+                     LorTransferParams{ 3, 2, FieldKind::Displacement },  // lor_factor < order
+                     LorTransferParams{ 3, 3, FieldKind::Displacement },
+                     LorTransferParams{ 3, 4, FieldKind::Displacement },  // lor_factor > order
+                     LorTransferParams{ 2, 2, FieldKind::LagrangeMultiplier },
+                     LorTransferParams{ 2, 3, FieldKind::LagrangeMultiplier },
+                     LorTransferParams{ 3, 3, FieldKind::LagrangeMultiplier },
+                     LorTransferParams{ 3, 4, FieldKind::LagrangeMultiplier } ),
     ParamsToString );
 
 int main( int argc, char* argv[] )
