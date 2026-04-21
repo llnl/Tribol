@@ -520,96 +520,49 @@ void ExpectParMatricesNear( const mfem::HypreParMatrix& actual, const shared::Pa
 
 TEST_F( MfemJacobianTest, direct_jacobian_assembly )
 {
-  // The assembled convenience API should still match the new logical-operator path.
-  int n_ranks;
-  MPI_Comm_size( MPI_COMM_WORLD, &n_ranks );
+  // The assembled convenience API should still match the new logical-operator path
+  // in both linear and LOR cases.
+  for ( const int order : { 1, 2 } ) {
+    SCOPED_TRACE( ::testing::Message() << "order=" << order );
+    WithJacobianData( order, []( const JacobianTestContext& ctx ) {
+      auto* mesh_data = ctx.mesh_data;
+      auto* jac_data = ctx.jac_data;
 
-  int ref_levels = 0;
-  int nel_per_dir = std::pow( 2, ref_levels );
+      std::vector<tribol::ComputedElementData> contributions;
 
-  auto mortar_attrs = std::set<int>( { 4 } );
-  auto nonmortar_attrs = std::set<int>( { 5 } );
+      if ( mesh_data->GetMesh1NE() > 0 ) {
+        // Hex element has 8 nodes
+        int num_dofs_per_elem = 8 * mesh_data->GetParentCoords().ParFESpace()->GetVDim();
+        int mat_size = num_dofs_per_elem * num_dofs_per_elem;
 
-  // clang-format off
-  mfem::ParMesh mesh = shared::ParMeshBuilder(MPI_COMM_WORLD, shared::MeshBuilder::Unify({
-    shared::MeshBuilder::CubeMesh(nel_per_dir, nel_per_dir, nel_per_dir)
-      .updateBdrAttrib(3, 7)
-      .updateBdrAttrib(1, 3)
-      .updateBdrAttrib(4, 7)
-      .updateBdrAttrib(5, 1)
-      .updateBdrAttrib(6, 4),
-    shared::MeshBuilder::CubeMesh(nel_per_dir, nel_per_dir, nel_per_dir)
-      .translate({0.0, 0.0, 0.99})
-      .updateBdrAttrib(1, 8)
-      .updateBdrAttrib(3, 7)
-      .updateBdrAttrib(4, 7)
-      .updateBdrAttrib(5, 1)
-      .updateBdrAttrib(8, 5)
-  }));
-  // clang-format on
+        tribol::ComputedElementData contrib( tribol::BlockSpace::MORTAR, tribol::BlockSpace::MORTAR );
+        std::vector<double> values( static_cast<size_t>( mat_size ), 1.0 );
+        contrib.reserve( 1, mat_size );
+        contrib.append( 0, 0, values.data(), mat_size );
 
-  int dim = mesh.SpaceDimension();
-  int order = 1;
-  mfem::H1_FECollection fe_coll( order, dim );
-  mfem::ParFiniteElementSpace par_fe_space( &mesh, &fe_coll, dim );
-  mfem::ParGridFunction coords( &par_fe_space );
-  mesh.GetNodes( coords );
+        contributions.push_back( contrib );
+      }
 
-  int cs_id = 0;
-  int mesh1_id = 0;
-  int mesh2_id = 1;
-  tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
-                                      tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::SINGLE_MORTAR,
-                                      tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID );
+      auto ParJ = jac_data->GetMfemJacobian( contributions );
+      auto block_op = jac_data->BuildJacobianBlockOp( contributions );
+      auto ParJ_from_op = block_op->Assemble();
 
-  tribol::updateMfemParallelDecomposition( n_ranks, true );
+      int local_contrib = contributions.size();
+      int global_contrib = 0;
+      MPI_Allreduce( &local_contrib, &global_contrib, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
 
-  auto& cs_manager = tribol::CouplingSchemeManager::getInstance();
-  auto* cs = cs_manager.findData( cs_id );
-  ASSERT_NE( cs, nullptr );
-
-  auto* mesh_data = cs->getMfemMeshData();
-  auto* submesh_data = cs->getMfemSubmeshData();
-  ASSERT_NE( mesh_data, nullptr );
-  ASSERT_NE( submesh_data, nullptr );
-  cs->setMfemJacobianData(
-      std::make_unique<tribol::MfemJacobianData>( *mesh_data, *submesh_data, cs->getContactMethod() ) );
-  auto* jac_data = cs->getMfemJacobianData();
-  ASSERT_NE( jac_data, nullptr );
-
-  jac_data->UpdateJacobianXfer();
-
-  std::vector<tribol::ComputedElementData> contributions;
-
-  int num_dofs_per_elem = 8 * dim;  // Hex element, 8 nodes, 3 dims
-  int mat_size = num_dofs_per_elem * num_dofs_per_elem;
-
-  tribol::ComputedElementData contrib( tribol::BlockSpace::MORTAR, tribol::BlockSpace::MORTAR );
-
-  if ( mesh_data->GetMesh1NE() > 0 ) {
-    std::vector<double> values( static_cast<size_t>( mat_size ), 1.0 );
-    contrib.reserve( 1, mat_size );
-    contrib.append( 0, 0, values.data(), mat_size );
-
-    contributions.push_back( contrib );
-  }
-
-  auto ParJ = jac_data->GetMfemJacobian( contributions );
-  auto block_op = jac_data->BuildJacobianBlockOp( contributions );
-  auto ParJ_from_op = block_op->Assemble();
-
-  int local_contrib = contributions.size();
-  int global_contrib = 0;
-  MPI_Allreduce( &local_contrib, &global_contrib, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
-
-  if ( global_contrib > 0 ) {
-    EXPECT_GT( ParJ->NNZ(), 0 );
-    auto diff = shared::ParSparseMatView( &ParJ.get() ) - shared::ParSparseMatView( &ParJ_from_op.get() );
-    EXPECT_LT( MaxAbsMatrixEntry( shared::ParSparseMatView( &diff.get() ) ), 1e-12 );
-  } else {
-    if ( n_ranks == 1 ) {
-      FAIL() << "No surface elements found on mesh 1 in serial run.";
-    }
+      if ( global_contrib > 0 ) {
+        EXPECT_GT( ParJ->NNZ(), 0 );
+        auto diff = shared::ParSparseMatView( &ParJ.get() ) - shared::ParSparseMatView( &ParJ_from_op.get() );
+        EXPECT_LT( MaxAbsMatrixEntry( shared::ParSparseMatView( &diff.get() ) ), 1e-12 );
+      } else {
+        int n_ranks;
+        MPI_Comm_size( MPI_COMM_WORLD, &n_ranks );
+        if ( n_ranks == 1 ) {
+          FAIL() << "No surface elements found on mesh 1 in serial run.";
+        }
+      }
+    } );
   }
 }
 
@@ -729,96 +682,7 @@ TEST_F( MfemJacobianTest, logical_jacobian_primary_primary_aggregates_mortar_and
   }
 }
 
-TEST_F( MfemJacobianTest, direct_jacobian_assembly_lor )
-{
-  // The assembled convenience API should still match the logical-operator path when LOR is active.
-  int n_ranks;
-  MPI_Comm_size( MPI_COMM_WORLD, &n_ranks );
 
-  int ref_levels = 0;
-  int nel_per_dir = std::pow( 2, ref_levels );
-
-  auto mortar_attrs = std::set<int>( { 4 } );
-  auto nonmortar_attrs = std::set<int>( { 5 } );
-
-  // clang-format off
-  mfem::ParMesh mesh = shared::ParMeshBuilder(MPI_COMM_WORLD, shared::MeshBuilder::Unify({
-    shared::MeshBuilder::CubeMesh(nel_per_dir, nel_per_dir, nel_per_dir)
-      .updateBdrAttrib(3, 7)
-      .updateBdrAttrib(1, 3)
-      .updateBdrAttrib(4, 7)
-      .updateBdrAttrib(5, 1)
-      .updateBdrAttrib(6, 4),
-    shared::MeshBuilder::CubeMesh(nel_per_dir, nel_per_dir, nel_per_dir)
-      .translate({0.0, 0.0, 0.99})
-      .updateBdrAttrib(1, 8)
-      .updateBdrAttrib(3, 7)
-      .updateBdrAttrib(4, 7)
-      .updateBdrAttrib(5, 1)
-      .updateBdrAttrib(8, 5)
-  }));
-  // clang-format on
-
-  int dim = mesh.SpaceDimension();
-  int order = 2;
-  mesh.SetCurvature( order );
-  auto* nodes = dynamic_cast<mfem::ParGridFunction*>( mesh.GetNodes() );
-  ASSERT_NE( nodes, nullptr );
-  mfem::ParGridFunction coords( nodes->ParFESpace() );
-  coords = *nodes;
-
-  int cs_id = 1;
-  int mesh1_id = 0;
-  int mesh2_id = 1;
-  tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
-                                      tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::SINGLE_MORTAR,
-                                      tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID );
-
-  tribol::updateMfemParallelDecomposition( n_ranks, true );
-
-  auto& cs_manager = tribol::CouplingSchemeManager::getInstance();
-  auto* cs = cs_manager.findData( cs_id );
-  ASSERT_NE( cs, nullptr );
-
-  auto* mesh_data = cs->getMfemMeshData();
-  auto* submesh_data = cs->getMfemSubmeshData();
-  ASSERT_NE( mesh_data, nullptr );
-  ASSERT_NE( submesh_data, nullptr );
-  cs->setMfemJacobianData(
-      std::make_unique<tribol::MfemJacobianData>( *mesh_data, *submesh_data, cs->getContactMethod() ) );
-  auto* jac_data = cs->getMfemJacobianData();
-  ASSERT_NE( jac_data, nullptr );
-  jac_data->UpdateJacobianXfer();
-
-  std::vector<tribol::ComputedElementData> contributions;
-
-  int mat_size = 0;
-  if ( mesh_data->GetMesh1NE() > 0 ) {
-    int num_dofs_per_elem = 8 * dim;
-    mat_size = num_dofs_per_elem * num_dofs_per_elem;
-    tribol::ComputedElementData contrib( tribol::BlockSpace::MORTAR, tribol::BlockSpace::MORTAR );
-    std::vector<double> values( static_cast<size_t>( mat_size ), 1.0 );
-    contrib.reserve( 1, mat_size );
-    contrib.append( 0, 0, values.data(), mat_size );
-    contributions.push_back( contrib );
-  }
-
-  auto ParJ = jac_data->GetMfemJacobian( contributions );
-  auto block_op = jac_data->BuildJacobianBlockOp( contributions );
-  auto ParJ_from_op = block_op->Assemble();
-
-  int local_contrib = static_cast<int>( contributions.size() );
-  int global_contrib = 0;
-  MPI_Allreduce( &local_contrib, &global_contrib, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
-
-  if ( global_contrib > 0 ) {
-    EXPECT_GT( ParJ->NNZ(), 0 );
-    auto diff = shared::ParSparseMatView( &ParJ.get() ) - shared::ParSparseMatView( &ParJ_from_op.get() );
-    EXPECT_LT( MaxAbsMatrixEntry( shared::ParSparseMatView( &diff.get() ) ), 1e-12 );
-  } else if ( n_ranks == 1 ) {
-    FAIL() << "No surface elements found on mesh 1 in serial run.";
-  }
-}
 
 TEST_F( MfemJacobianTest, mfem_block_jacobian_preserves_block_values_and_layout )
 {
