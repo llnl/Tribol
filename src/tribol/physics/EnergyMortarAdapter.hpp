@@ -25,13 +25,16 @@ class EnergyMortarAdapter : public ContactFormulation {
   /**
    * @brief Constructor
    *
-   * @param mfem_data Reference to Tribol's MFEM mesh data
+   * @param mesh_data MFEM mesh data for the parent/primary variables
+   * @param submesh_data MFEM submesh data for the dual variables (pressure/gap/LM)
+   * @param jac_data MFEM Jacobian transfer data
    * @param k Penalty stiffness
    * @param delta Smoothing length
    * @param N Quadrature order
    */
-  EnergyMortarAdapter( MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, MeshData& mesh1, MeshData& mesh2,
-                       double k, double delta, int N, bool enzyme_quadrature, bool use_penalty_ = true );
+  EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
+                       MeshData& mesh1, MeshData& mesh2, double k, double delta, int N, bool enzyme_quadrature,
+                       bool use_penalty_ = true );
 
   virtual ~EnergyMortarAdapter() = default;
 
@@ -81,6 +84,7 @@ class EnergyMortarAdapter : public ContactFormulation {
   double area_tol_{ 1.0e-14 };
   bool tied_contact_ = false;
 
+  MfemMeshData& mesh_data_;
   MfemSubmeshData& submesh_data_;
   MfemJacobianData& jac_data_;
   MeshData& mesh1_;

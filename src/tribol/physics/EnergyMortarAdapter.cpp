@@ -4,19 +4,76 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "tribol/physics/EnergyMortarAdapter.hpp"
-#include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/MfemData.hpp"
 
 namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
-EnergyMortarAdapter::EnergyMortarAdapter( MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, MeshData& mesh1,
-                                          MeshData& mesh2, double k, double delta, int N, bool enzyme_quadrature,
-                                          bool use_penalty_ )
+namespace {
+
+PackedPairJacobianContribs MakePackedJacobianContribs( const mfem::ParFiniteElementSpace& row_surface_fes,
+                                                       const mfem::ParFiniteElementSpace& col_surface_fes,
+                                                       const mfem::FiniteElementSpace& row_redecomp_fes,
+                                                       const mfem::FiniteElementSpace& col_redecomp_fes,
+                                                       const Array1D<int>& row_elem_map,
+                                                       const Array1D<int>& col_elem_map )
+{
+  return PackedPairJacobianContribs( row_surface_fes, col_surface_fes, row_redecomp_fes, col_redecomp_fes, row_elem_map,
+                                     col_elem_map );
+}
+
+shared::ParSparseMat AssembleSolverJacobian( const MfemMeshData& mesh_data, const MfemSubmeshData& submesh_data,
+                                             const MfemJacobianData& jac_data,
+                                             std::vector<PackedPairJacobianContribs> contributions,
+                                             bool row_is_pressure, bool col_is_pressure )
+{
+  auto lor_or_submesh_jacobian = jac_data.AssembleLorOrSubmeshJacobian( contributions );
+
+  std::vector<shared::ParSparseMatView> row_ops;
+  std::vector<shared::ParSparseMatView> col_ops;
+  std::vector<std::unique_ptr<shared::ParSparseMat>> owned_mats;
+
+  auto build_ops = [&]( bool is_pressure, std::vector<shared::ParSparseMatView>& ops ) {
+    if ( is_pressure ) {
+      ops.emplace_back( submesh_data.GetSubmeshFESpace().Dof_TrueDof_Matrix() );
+      if ( const auto* lm_ho_to_lor = jac_data.GetLagrangeMultiplierHoToLorTransferMat() ) {
+        owned_mats.push_back( std::make_unique<shared::ParSparseMat>( lm_ho_to_lor->Assemble() ) );
+        ops.emplace_back( &owned_mats.back()->get() );
+      }
+      return;
+    }
+
+    ops.emplace_back( mesh_data.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
+
+    const auto* submesh_parent = jac_data.GetSubmeshParentTransferMat();
+    SLIC_ERROR_ROOT_IF( submesh_parent == nullptr,
+                        "Missing submesh-parent transfer builder (call UpdateJacobianXfer())." );
+    owned_mats.push_back( std::make_unique<shared::ParSparseMat>( submesh_parent->Assemble() ) );
+    ops.emplace_back( &owned_mats.back()->get() );
+
+    if ( const auto* disp_ho_to_lor = jac_data.GetDisplacementHoToLorTransferMat() ) {
+      owned_mats.push_back( std::make_unique<shared::ParSparseMat>( disp_ho_to_lor->Assemble() ) );
+      ops.emplace_back( &owned_mats.back()->get() );
+    }
+  };
+
+  build_ops( row_is_pressure, row_ops );
+  build_ops( col_is_pressure, col_ops );
+
+  JacobianAssembler assembler( std::move( row_ops ), std::move( col_ops ) );
+  return assembler.Assemble( std::move( lor_or_submesh_jacobian ) );
+}
+
+}  // namespace
+
+EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
+                                          MfemJacobianData& jac_data, MeshData& mesh1, MeshData& mesh2, double k,
+                                          double delta, int N, bool enzyme_quadrature, bool use_penalty )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
-    : use_penalty_( use_penalty_ ),
+    : use_penalty_( use_penalty ),
+      mesh_data_( mesh_data ),
       submesh_data_( submesh_data ),
       jac_data_( jac_data ),
       mesh1_( mesh2 ),
@@ -55,13 +112,27 @@ void EnergyMortarAdapter::updateNodalGaps()
   mfem::GridFunction redecomp_area( redecomp_gap.FESpace() );
   redecomp_area = 0.0;
 
-  JacobianContributions dg_tilde_dx_contribs( { { BlockSpace::LAGRANGE_MULTIPLIER, BlockSpace::NONMORTAR },
-                                                { BlockSpace::LAGRANGE_MULTIPLIER, BlockSpace::MORTAR } } );
-  JacobianContributions dA_dx_contribs( { { BlockSpace::LAGRANGE_MULTIPLIER, BlockSpace::NONMORTAR },
-                                          { BlockSpace::LAGRANGE_MULTIPLIER, BlockSpace::MORTAR } } );
+  const bool use_lor = ( mesh_data_.GetLORMesh() != nullptr );
+  const auto& displacement_surface_fes = use_lor ? *mesh_data_.GetLORMeshFESpace() : mesh_data_.GetSubmeshFESpace();
+  const auto& pressure_surface_fes = use_lor ? *submesh_data_.GetLORMeshFESpace() : submesh_data_.GetSubmeshFESpace();
+  const auto& displacement_redecomp_fes = *mesh_data_.GetRedecompResponse().FESpace();
+  const auto& pressure_redecomp_fes = *submesh_data_.GetRedecompGap().FESpace();
+  const auto& mortar_elem_map = mesh_data_.GetElemMap1();
+  const auto& nonmortar_elem_map = mesh_data_.GetElemMap2();
 
-  dg_tilde_dx_contribs.reserve( pairs_.size(), 8 );
-  dA_dx_contribs.reserve( pairs_.size(), 8 );
+  auto dg_lm_nm = MakePackedJacobianContribs( pressure_surface_fes, displacement_surface_fes, pressure_redecomp_fes,
+                                              displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
+  auto dg_lm_m = MakePackedJacobianContribs( pressure_surface_fes, displacement_surface_fes, pressure_redecomp_fes,
+                                             displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
+  auto dA_lm_nm = MakePackedJacobianContribs( pressure_surface_fes, displacement_surface_fes, pressure_redecomp_fes,
+                                              displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
+  auto dA_lm_m = MakePackedJacobianContribs( pressure_surface_fes, displacement_surface_fes, pressure_redecomp_fes,
+                                             displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
+
+  dg_lm_nm.reserve( pairs_.size(), 8 );
+  dg_lm_m.reserve( pairs_.size(), 8 );
+  dA_lm_nm.reserve( pairs_.size(), 8 );
+  dA_lm_m.reserve( pairs_.size(), 8 );
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
@@ -106,8 +177,8 @@ void EnergyMortarAdapter::updateNodalGaps()
       dg_tilde_dx_blocks[1][i * 2] = dg_dx_node1[node_idx[i + 4]];
       dg_tilde_dx_blocks[1][i * 2 + 1] = dg_dx_node2[node_idx[i + 4]];
     }
-    dg_tilde_dx_contribs.push_back( 0, elem1, elem1, dg_tilde_dx_blocks[0], 8 );
-    dg_tilde_dx_contribs.push_back( 1, elem1, elem2, dg_tilde_dx_blocks[1], 8 );
+    dg_lm_nm.append( elem1, elem1, dg_tilde_dx_blocks[0], 8 );
+    dg_lm_m.append( elem1, elem2, dg_tilde_dx_blocks[1], 8 );
 
     double dA_dx_node1[8];
     double dA_dx_node2[8];
@@ -120,8 +191,8 @@ void EnergyMortarAdapter::updateNodalGaps()
       dA_dx_blocks[1][i * 2] = dA_dx_node1[node_idx[i + 4]];
       dA_dx_blocks[1][i * 2 + 1] = dA_dx_node2[node_idx[i + 4]];
     }
-    dA_dx_contribs.push_back( 0, elem1, elem1, dA_dx_blocks[0], 8 );
-    dA_dx_contribs.push_back( 1, elem1, elem2, dA_dx_blocks[1], 8 );
+    dA_lm_nm.append( elem1, elem1, dA_dx_blocks[0], 8 );
+    dA_lm_m.append( elem1, elem2, dA_dx_blocks[1], 8 );
   }
 
   // Move gap and area to submesh level vectors
@@ -152,15 +223,23 @@ void EnergyMortarAdapter::updateNodalGaps()
 
   gap_vec_ = g_tilde_vec_.divide( A_vec_, area_tol_ );
 
-  // Move gap and area derivatives to HypreParMatrix (submesh rows, parent mesh cols)
-  dg_tilde_dx_ = jac_data_.GetMfemJacobian( dg_tilde_dx_contribs.get() );
+  // Move gap and area derivatives to (pressure true-dof rows, displacement true-dof cols)
+  std::vector<PackedPairJacobianContribs> dg_contribs;
+  dg_contribs.reserve( 2 );
+  dg_contribs.push_back( std::move( dg_lm_nm ) );
+  dg_contribs.push_back( std::move( dg_lm_m ) );
+  dg_tilde_dx_ = AssembleSolverJacobian( mesh_data_, submesh_data_, jac_data_, std::move( dg_contribs ), true, false );
   if ( !tied_contact_ && use_penalty_ ) {
     // technically, we should do this on all the vectors/matrices below, but it looks like the mutliplication operators
     // below will zero them out anyway
     dg_tilde_dx_.eliminateRows( rows_to_elim );
   }
 
-  dA_dx_ = jac_data_.GetMfemJacobian( dA_dx_contribs.get() );
+  std::vector<PackedPairJacobianContribs> dA_contribs;
+  dA_contribs.reserve( 2 );
+  dA_contribs.push_back( std::move( dA_lm_nm ) );
+  dA_contribs.push_back( std::move( dA_lm_m ) );
+  dA_dx_ = AssembleSolverJacobian( mesh_data_, submesh_data_, jac_data_, std::move( dA_contribs ), true, false );
 }
 
 void EnergyMortarAdapter::updateNodalForces()
@@ -186,12 +265,29 @@ void EnergyMortarAdapter::updateNodalForces()
 
   force_vec_ = ( pressure_vec_ * dg_tilde_dx_ ) + ( g_tilde_vec_ * dp_dx );
 
-  JacobianContributions df_dx_contribs( { { BlockSpace::NONMORTAR, BlockSpace::NONMORTAR },
-                                          { BlockSpace::NONMORTAR, BlockSpace::MORTAR },
-                                          { BlockSpace::MORTAR, BlockSpace::NONMORTAR },
-                                          { BlockSpace::MORTAR, BlockSpace::MORTAR } } );
+  const bool use_lor = ( mesh_data_.GetLORMesh() != nullptr );
+  const auto& displacement_surface_fes = use_lor ? *mesh_data_.GetLORMeshFESpace() : mesh_data_.GetSubmeshFESpace();
+  const auto& displacement_redecomp_fes = *mesh_data_.GetRedecompResponse().FESpace();
+  const auto& mortar_elem_map = mesh_data_.GetElemMap1();
+  const auto& nonmortar_elem_map = mesh_data_.GetElemMap2();
 
-  df_dx_contribs.reserve( pairs_.size(), 16 );
+  auto df_nm_nm =
+      MakePackedJacobianContribs( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                  displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
+  auto df_nm_m =
+      MakePackedJacobianContribs( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                  displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
+  auto df_m_nm =
+      MakePackedJacobianContribs( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                  displacement_redecomp_fes, mortar_elem_map, nonmortar_elem_map );
+  auto df_m_m =
+      MakePackedJacobianContribs( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                  displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
+
+  df_nm_nm.reserve( pairs_.size(), 16 );
+  df_nm_m.reserve( pairs_.size(), 16 );
+  df_m_nm.reserve( pairs_.size(), 16 );
+  df_m_m.reserve( pairs_.size(), 16 );
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
@@ -258,14 +354,20 @@ void EnergyMortarAdapter::updateNodalForces()
       }
     }
 
-    df_dx_contribs.push_back( 0, elem1, elem1, df_dx_blocks[0][0], 16 );
-    df_dx_contribs.push_back( 1, elem1, elem2, df_dx_blocks[0][1], 16 );
-    df_dx_contribs.push_back( 2, elem2, elem1, df_dx_blocks[1][0], 16 );
-    df_dx_contribs.push_back( 3, elem2, elem2, df_dx_blocks[1][1], 16 );
+    df_nm_nm.append( elem1, elem1, df_dx_blocks[0][0], 16 );
+    df_nm_m.append( elem1, elem2, df_dx_blocks[0][1], 16 );
+    df_m_nm.append( elem2, elem1, df_dx_blocks[1][0], 16 );
+    df_m_m.append( elem2, elem2, df_dx_blocks[1][1], 16 );
   }
 
-  // Move gap and area derivatives to HypreParMatrix (submesh rows, parent mesh cols)
-  df_dx_ = jac_data_.GetMfemJacobian( df_dx_contribs.get() );
+  // Move stiffness contributions to (parent true-dof rows, parent true-dof cols)
+  std::vector<PackedPairJacobianContribs> df_contribs;
+  df_contribs.reserve( 4 );
+  df_contribs.push_back( std::move( df_nm_nm ) );
+  df_contribs.push_back( std::move( df_nm_m ) );
+  df_contribs.push_back( std::move( df_m_nm ) );
+  df_contribs.push_back( std::move( df_m_m ) );
+  df_dx_ = AssembleSolverJacobian( mesh_data_, submesh_data_, jac_data_, std::move( df_contribs ), false, false );
 
   auto pg2_over_asq = ( 2.0 * pressure_vec_ )
                           .multiplyInPlace( g_tilde_vec_ )
@@ -301,12 +403,29 @@ void EnergyMortarAdapter::compute_df_du_lagrange( const mfem::HypreParVector& la
   submesh_lambda.SetFromTrueDofs( lambda );
   submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_lambda, redecomp_lambda );
 
-  JacobianContributions df_dx_contribs( { { BlockSpace::NONMORTAR, BlockSpace::NONMORTAR },
-                                          { BlockSpace::NONMORTAR, BlockSpace::MORTAR },
-                                          { BlockSpace::MORTAR, BlockSpace::NONMORTAR },
-                                          { BlockSpace::MORTAR, BlockSpace::MORTAR } } );
+  const bool use_lor = ( mesh_data_.GetLORMesh() != nullptr );
+  const auto& displacement_surface_fes = use_lor ? *mesh_data_.GetLORMeshFESpace() : mesh_data_.GetSubmeshFESpace();
+  const auto& displacement_redecomp_fes = *mesh_data_.GetRedecompResponse().FESpace();
+  const auto& mortar_elem_map = mesh_data_.GetElemMap1();
+  const auto& nonmortar_elem_map = mesh_data_.GetElemMap2();
 
-  df_dx_contribs.reserve( pairs_.size(), 16 );
+  auto df_nm_nm =
+      MakePackedJacobianContribs( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                  displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
+  auto df_nm_m =
+      MakePackedJacobianContribs( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                  displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
+  auto df_m_nm =
+      MakePackedJacobianContribs( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                  displacement_redecomp_fes, mortar_elem_map, nonmortar_elem_map );
+  auto df_m_m =
+      MakePackedJacobianContribs( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                  displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
+
+  df_nm_nm.reserve( pairs_.size(), 16 );
+  df_nm_m.reserve( pairs_.size(), 16 );
+  df_m_nm.reserve( pairs_.size(), 16 );
+  df_m_m.reserve( pairs_.size(), 16 );
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
@@ -346,14 +465,20 @@ void EnergyMortarAdapter::compute_df_du_lagrange( const mfem::HypreParVector& la
       }
     }
 
-    df_dx_contribs.push_back( 0, elem1, elem1, df_dx_blocks[0][0], 16 );
-    df_dx_contribs.push_back( 1, elem1, elem2, df_dx_blocks[0][1], 16 );
-    df_dx_contribs.push_back( 2, elem2, elem1, df_dx_blocks[1][0], 16 );
-    df_dx_contribs.push_back( 3, elem2, elem2, df_dx_blocks[1][1], 16 );
+    df_nm_nm.append( elem1, elem1, df_dx_blocks[0][0], 16 );
+    df_nm_m.append( elem1, elem2, df_dx_blocks[0][1], 16 );
+    df_m_nm.append( elem2, elem1, df_dx_blocks[1][0], 16 );
+    df_m_m.append( elem2, elem2, df_dx_blocks[1][1], 16 );
   }
 
-  auto df_dx_temp = jac_data_.GetMfemJacobian( df_dx_contribs.get() );
-
+  std::vector<PackedPairJacobianContribs> df_contribs;
+  df_contribs.reserve( 4 );
+  df_contribs.push_back( std::move( df_nm_nm ) );
+  df_contribs.push_back( std::move( df_nm_m ) );
+  df_contribs.push_back( std::move( df_m_nm ) );
+  df_contribs.push_back( std::move( df_m_m ) );
+  auto df_dx_temp =
+      AssembleSolverJacobian( mesh_data_, submesh_data_, jac_data_, std::move( df_contribs ), false, false );
   df_du = std::unique_ptr<mfem::HypreParMatrix>( df_dx_temp.release() );
 }
 
