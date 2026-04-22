@@ -102,7 +102,6 @@ if ( BUILD_REDECOMP )
       mfem_mortar_lm_patch.cpp
       mfem_mortar_energy_patch.cpp
       mfem_common_plane.cpp
-      jacobian_transfer_comparison.cpp
       )
 
   foreach( example ${examples} )

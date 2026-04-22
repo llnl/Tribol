@@ -113,6 +113,7 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
       redecomp_transfer.cpp
       redecomp_multitransfer.cpp
       redecomp_massmatrix.cpp
+      redecomp_matrixtransfer_equivalence.cpp
       redecomp_rectmatrix.cpp
       redecomp_sparsematrix.cpp
       redecomp_gpu_mpi.cpp
