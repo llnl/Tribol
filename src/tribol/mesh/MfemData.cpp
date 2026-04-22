@@ -1261,9 +1261,9 @@ shared::ParSparseMat MfemJacobianData::AssembleLorOrSubmeshJacobian(
   return redecomp_xfer.Assemble();
 }
 
-shared::ParSparseMat MfemJacobianData::GetMfemJacobian( const mfem::ParFiniteElementSpace* row_final_fes,
-                                                        const mfem::ParFiniteElementSpace* col_final_fes,
-                                                        const std::vector<PackedPairJacobianContribs>& contributions ) const
+shared::ParSparseMat MfemJacobianData::GetMfemJacobian(
+    const mfem::ParFiniteElementSpace* row_final_fes, const mfem::ParFiniteElementSpace* col_final_fes,
+    const std::vector<PackedPairJacobianContribs>& contributions ) const
 {
   SLIC_ERROR_ROOT_IF( row_final_fes == nullptr || col_final_fes == nullptr,
                       "GetMfemJacobian() requires non-null final FE-space pointers." );
@@ -1301,8 +1301,9 @@ shared::ParSparseMat MfemJacobianData::GetMfemJacobian( const mfem::ParFiniteEle
 
       if ( surface_fes == primary_lor_fes ) {
         const auto* ho_to_lor = GetDisplacementHoToLorTransferMat();
-        SLIC_ERROR_ROOT_IF( ho_to_lor == nullptr,
-                            "GetMfemJacobian(): missing primary HO->LOR transfer builder (call UpdateJacobianXfer())." );
+        SLIC_ERROR_ROOT_IF(
+            ho_to_lor == nullptr,
+            "GetMfemJacobian(): missing primary HO->LOR transfer builder (call UpdateJacobianXfer())." );
         owned_mats.push_back( std::make_unique<shared::ParSparseMat>( ho_to_lor->Assemble() ) );
         ops.emplace_back( &owned_mats.back()->get() );
         return;
