@@ -110,12 +110,12 @@ shared::ParSparseMat AssembleSolverBlockJacobian( const JacobianTestContext& ctx
                                                  inactive_tdofs, false );
   }
 
-  const mfem::ParFiniteElementSpace* row_final_fes =
-      ( row_block == SolverBlock::Primary ) ? ctx.mesh_data->GetParentCoords().ParFESpace()
-                                            : &ctx.submesh_data->GetSubmeshFESpace();
-  const mfem::ParFiniteElementSpace* col_final_fes =
-      ( col_block == SolverBlock::Primary ) ? ctx.mesh_data->GetParentCoords().ParFESpace()
-                                            : &ctx.submesh_data->GetSubmeshFESpace();
+  const mfem::ParFiniteElementSpace* row_final_fes = ( row_block == SolverBlock::Primary )
+                                                         ? ctx.mesh_data->GetParentCoords().ParFESpace()
+                                                         : &ctx.submesh_data->GetSubmeshFESpace();
+  const mfem::ParFiniteElementSpace* col_final_fes = ( col_block == SolverBlock::Primary )
+                                                         ? ctx.mesh_data->GetParentCoords().ParFESpace()
+                                                         : &ctx.submesh_data->GetSubmeshFESpace();
   return ctx.jac_data->GetMfemJacobian( row_final_fes, col_final_fes, contributions );
 }
 

@@ -1938,8 +1938,8 @@ class MfemJacobianData {
    * - multiplier submesh FE space (submesh_data_.GetSubmeshFESpace())
    */
   shared::ParSparseMat GetMfemJacobian( const mfem::ParFiniteElementSpace* row_final_fes,
-                                       const mfem::ParFiniteElementSpace* col_final_fes,
-                                       const std::vector<PackedPairJacobianContribs>& contributions ) const;
+                                        const mfem::ParFiniteElementSpace* col_final_fes,
+                                        const std::vector<PackedPairJacobianContribs>& contributions ) const;
 
   /**
    * @brief Access the HO->LOR displacement transfer builder (DOF-level), if active
