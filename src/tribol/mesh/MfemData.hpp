@@ -1934,6 +1934,21 @@ class MfemJacobianData {
       const std::vector<PackedPairJacobianContribs>& contributions ) const;
 
   /**
+   * @brief Assemble a solver-visible Jacobian on caller-provided final FE spaces
+   *
+   * This composes the intermediate LOR/submesh DOF-level Jacobian (assembled from redecomp element contributions)
+   * with explicit transfer operators to produce a Jacobian on the true-dof spaces of @p row_final_fes and
+   * @p col_final_fes.
+   *
+   * @note @p row_final_fes and @p col_final_fes must be one of:
+   * - parent FE space (parent_data_.GetParentCoords().ParFESpace())
+   * - multiplier submesh FE space (submesh_data_.GetSubmeshFESpace())
+   */
+  shared::ParSparseMat GetMfemJacobian( const mfem::ParFiniteElementSpace* row_final_fes,
+                                       const mfem::ParFiniteElementSpace* col_final_fes,
+                                       const std::vector<PackedPairJacobianContribs>& contributions ) const;
+
+  /**
    * @brief Access the HO->LOR displacement transfer builder (DOF-level), if active
    *
    * @note Returns nullptr if LOR is not active or UpdateJacobianXfer() has not been called.

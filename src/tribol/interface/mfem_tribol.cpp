@@ -217,46 +217,12 @@ std::unique_ptr<mfem::BlockOperator> BuildMfemBlockJacobian( const CouplingSchem
       continue;
     }
 
-    auto lor_or_submesh_jacobian = jac_data->AssembleLorOrSubmeshJacobian( contributions );
+    const mfem::ParFiniteElementSpace* row_final_fes =
+        ( r_blk == 0 ) ? mesh_data->GetParentCoords().ParFESpace() : &submesh_data->GetSubmeshFESpace();
+    const mfem::ParFiniteElementSpace* col_final_fes =
+        ( c_blk == 0 ) ? mesh_data->GetParentCoords().ParFESpace() : &submesh_data->GetSubmeshFESpace();
 
-    // Assemble explicit transfer operators for this solver-visible block.
-    // row/col transfer chains map solver true-dofs into the DOF space of lor_or_submesh_jacobian.
-    std::vector<shared::ParSparseMatView> row_ops;
-    std::vector<shared::ParSparseMatView> col_ops;
-
-    // Keep any assembled transfer matrices alive for the duration of Assemble().
-    std::vector<std::unique_ptr<shared::ParSparseMat>> owned_mats;
-
-    auto build_ops = [&]( int blk, std::vector<shared::ParSparseMatView>& ops ) {
-      if ( blk == 0 ) {
-        // Primary block: parent true-dofs -> parent dofs -> submesh dofs -> (optional) LOR dofs.
-        ops.emplace_back( mesh_data->GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
-
-        const auto* submesh_parent = jac_data->GetSubmeshParentTransferMat();
-        SLIC_ERROR_ROOT_IF( submesh_parent == nullptr, "Missing submesh-parent transfer builder." );
-        owned_mats.push_back( std::make_unique<shared::ParSparseMat>( submesh_parent->Assemble() ) );
-        ops.emplace_back( &owned_mats.back()->get() );
-
-        if ( const auto* disp_ho_to_lor = jac_data->GetDisplacementHoToLorTransferMat() ) {
-          owned_mats.push_back( std::make_unique<shared::ParSparseMat>( disp_ho_to_lor->Assemble() ) );
-          ops.emplace_back( &owned_mats.back()->get() );
-        }
-        return;
-      }
-
-      // Dual block: LM true-dofs -> LM dofs -> (optional) LOR dofs.
-      ops.emplace_back( submesh_data->GetSubmeshFESpace().Dof_TrueDof_Matrix() );
-      if ( const auto* lm_ho_to_lor = jac_data->GetLagrangeMultiplierHoToLorTransferMat() ) {
-        owned_mats.push_back( std::make_unique<shared::ParSparseMat>( lm_ho_to_lor->Assemble() ) );
-        ops.emplace_back( &owned_mats.back()->get() );
-      }
-    };
-
-    build_ops( r_blk, row_ops );
-    build_ops( c_blk, col_ops );
-
-    JacobianAssembler assembler( std::move( row_ops ), std::move( col_ops ) );
-    auto block_mat = assembler.Assemble( std::move( lor_or_submesh_jacobian ) );
+    auto block_mat = jac_data->GetMfemJacobian( row_final_fes, col_final_fes, contributions );
 
     if ( block_mat->NNZ() > 0 || ( r_blk == 1 && c_blk == 1 ) ) {
       block_J->SetBlock( r_blk, c_blk, block_mat.release() );

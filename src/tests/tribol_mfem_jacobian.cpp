@@ -110,44 +110,13 @@ shared::ParSparseMat AssembleSolverBlockJacobian( const JacobianTestContext& ctx
                                                  inactive_tdofs, false );
   }
 
-  auto lor_or_submesh_jacobian = ctx.jac_data->AssembleLorOrSubmeshJacobian( contributions );
-
-  std::vector<shared::ParSparseMatView> row_ops;
-  std::vector<shared::ParSparseMatView> col_ops;
-
-  // Keep assembled transfer matrices alive for the duration of Assemble().
-  std::vector<std::unique_ptr<shared::ParSparseMat>> owned_mats;
-
-  auto add_ops = [&]( SolverBlock blk, std::vector<shared::ParSparseMatView>& ops ) {
-    if ( blk == SolverBlock::Primary ) {
-      ops.emplace_back( ctx.mesh_data->GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
-
-      const auto* submesh_parent = ctx.jac_data->GetSubmeshParentTransferMat();
-      SLIC_ERROR_ROOT_IF( submesh_parent == nullptr, "Missing submesh-parent transfer builder." );
-      owned_mats.push_back( std::make_unique<shared::ParSparseMat>( submesh_parent->Assemble() ) );
-      ops.emplace_back( &owned_mats.back()->get() );
-
-      if ( const auto* disp_ho_to_lor = ctx.jac_data->GetDisplacementHoToLorTransferMat() ) {
-        owned_mats.push_back( std::make_unique<shared::ParSparseMat>( disp_ho_to_lor->Assemble() ) );
-        ops.emplace_back( &owned_mats.back()->get() );
-      }
-      return;
-    }
-
-    ops.emplace_back( ctx.submesh_data->GetSubmeshFESpace().Dof_TrueDof_Matrix() );
-    if ( const auto* lm_ho_to_lor = ctx.jac_data->GetLagrangeMultiplierHoToLorTransferMat() ) {
-      owned_mats.push_back( std::make_unique<shared::ParSparseMat>( lm_ho_to_lor->Assemble() ) );
-      ops.emplace_back( &owned_mats.back()->get() );
-    }
-  };
-
-  add_ops( row_block, row_ops );
-  add_ops( col_block, col_ops );
-
-  tribol::JacobianAssembler assembler( std::move( row_ops ), std::move( col_ops ) );
-  auto block = assembler.Assemble( std::move( lor_or_submesh_jacobian ) );
-
-  return block;
+  const mfem::ParFiniteElementSpace* row_final_fes =
+      ( row_block == SolverBlock::Primary ) ? ctx.mesh_data->GetParentCoords().ParFESpace()
+                                            : &ctx.submesh_data->GetSubmeshFESpace();
+  const mfem::ParFiniteElementSpace* col_final_fes =
+      ( col_block == SolverBlock::Primary ) ? ctx.mesh_data->GetParentCoords().ParFESpace()
+                                            : &ctx.submesh_data->GetSubmeshFESpace();
+  return ctx.jac_data->GetMfemJacobian( row_final_fes, col_final_fes, contributions );
 }
 
 bool BuildConsistentHoVector( const mfem::ParFiniteElementSpace& ho_fes, mfem::Vector& x_ho )
