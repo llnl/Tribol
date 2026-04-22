@@ -1261,6 +1261,86 @@ shared::ParSparseMat MfemJacobianData::AssembleLorOrSubmeshJacobian(
   return redecomp_xfer.Assemble();
 }
 
+shared::ParSparseMat MfemJacobianData::GetMfemJacobian( const mfem::ParFiniteElementSpace* row_final_fes,
+                                                        const mfem::ParFiniteElementSpace* col_final_fes,
+                                                        const std::vector<PackedPairJacobianContribs>& contributions ) const
+{
+  SLIC_ERROR_ROOT_IF( row_final_fes == nullptr || col_final_fes == nullptr,
+                      "GetMfemJacobian() requires non-null final FE-space pointers." );
+  SLIC_ERROR_ROOT_IF( contributions.empty(),
+                      "GetMfemJacobian() requires a non-empty contributions vector so surface-space metadata is "
+                      "available on all ranks." );
+
+  const auto* row_surface_fes = contributions.front().row_surface_fes;
+  const auto* col_surface_fes = contributions.front().col_surface_fes;
+  SLIC_ERROR_ROOT_IF( row_surface_fes == nullptr || col_surface_fes == nullptr,
+                      "PackedPairJacobianContribs must provide row/col surface FE spaces." );
+
+  auto lor_or_submesh_jacobian = AssembleLorOrSubmeshJacobian( contributions );
+
+  std::vector<shared::ParSparseMatView> row_ops;
+  std::vector<shared::ParSparseMatView> col_ops;
+  std::vector<std::unique_ptr<shared::ParSparseMat>> owned_mats;
+
+  const mfem::ParFiniteElementSpace* parent_fes = parent_data_.GetParentCoords().ParFESpace();
+  const mfem::ParFiniteElementSpace* primary_submesh_fes = &parent_data_.GetSubmeshFESpace();
+  const mfem::ParFiniteElementSpace* multiplier_submesh_fes = &submesh_data_.GetSubmeshFESpace();
+  const mfem::ParFiniteElementSpace* primary_lor_fes = parent_data_.GetLORMeshFESpace();
+  const mfem::ParFiniteElementSpace* multiplier_lor_fes = submesh_data_.GetLORMeshFESpace();
+
+  auto build_ops = [&]( const mfem::ParFiniteElementSpace* final_fes, const mfem::ParFiniteElementSpace* surface_fes,
+                        std::vector<shared::ParSparseMatView>& ops ) {
+    ops.emplace_back( final_fes->Dof_TrueDof_Matrix() );
+
+    if ( final_fes == parent_fes ) {
+      const auto* submesh_parent = GetSubmeshParentTransferMat();
+      SLIC_ERROR_ROOT_IF( submesh_parent == nullptr,
+                          "GetMfemJacobian(): missing submesh-parent transfer builder (call UpdateJacobianXfer())." );
+      owned_mats.push_back( std::make_unique<shared::ParSparseMat>( submesh_parent->Assemble() ) );
+      ops.emplace_back( &owned_mats.back()->get() );
+
+      if ( surface_fes == primary_lor_fes ) {
+        const auto* ho_to_lor = GetDisplacementHoToLorTransferMat();
+        SLIC_ERROR_ROOT_IF( ho_to_lor == nullptr,
+                            "GetMfemJacobian(): missing primary HO->LOR transfer builder (call UpdateJacobianXfer())." );
+        owned_mats.push_back( std::make_unique<shared::ParSparseMat>( ho_to_lor->Assemble() ) );
+        ops.emplace_back( &owned_mats.back()->get() );
+        return;
+      }
+
+      SLIC_ERROR_ROOT_IF( surface_fes != primary_submesh_fes,
+                          "GetMfemJacobian(): parent final space requires a primary submesh FE space (HO or LOR) in "
+                          "contributions." );
+      return;
+    } else if ( final_fes == multiplier_submesh_fes ) {
+      // Multiplier submesh final space
+      if ( surface_fes == multiplier_lor_fes ) {
+        const auto* ho_to_lor = GetLagrangeMultiplierHoToLorTransferMat();
+        SLIC_ERROR_ROOT_IF(
+            ho_to_lor == nullptr,
+            "GetMfemJacobian(): missing multiplier HO->LOR transfer builder (call UpdateJacobianXfer())." );
+        owned_mats.push_back( std::make_unique<shared::ParSparseMat>( ho_to_lor->Assemble() ) );
+        ops.emplace_back( &owned_mats.back()->get() );
+        return;
+      }
+
+      SLIC_ERROR_ROOT_IF(
+          surface_fes != multiplier_submesh_fes,
+          "GetMfemJacobian(): multiplier submesh final space requires a multiplier submesh FE space (HO or LOR) in "
+          "contributions." );
+      return;
+    } else {
+      SLIC_ERROR_ROOT( "GetMfemJacobian(): unsupported final FE space pointer." );
+    }
+  };
+
+  build_ops( row_final_fes, row_surface_fes, row_ops );
+  build_ops( col_final_fes, col_surface_fes, col_ops );
+
+  JacobianAssembler assembler( std::move( row_ops ), std::move( col_ops ) );
+  return assembler.Assemble( std::move( lor_or_submesh_jacobian ) );
+}
+
 }  // namespace tribol
 
 #endif /* BUILD_REDECOMP */
