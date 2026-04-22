@@ -23,48 +23,6 @@ PackedPairJacobianContribs MakePackedJacobianContribs( const mfem::ParFiniteElem
                                      col_elem_map );
 }
 
-shared::ParSparseMat AssembleSolverJacobian( const MfemMeshData& mesh_data, const MfemSubmeshData& submesh_data,
-                                             const MfemJacobianData& jac_data,
-                                             std::vector<PackedPairJacobianContribs> contributions,
-                                             bool row_is_pressure, bool col_is_pressure )
-{
-  auto lor_or_submesh_jacobian = jac_data.AssembleLorOrSubmeshJacobian( contributions );
-
-  std::vector<shared::ParSparseMatView> row_ops;
-  std::vector<shared::ParSparseMatView> col_ops;
-  std::vector<std::unique_ptr<shared::ParSparseMat>> owned_mats;
-
-  auto build_ops = [&]( bool is_pressure, std::vector<shared::ParSparseMatView>& ops ) {
-    if ( is_pressure ) {
-      ops.emplace_back( submesh_data.GetSubmeshFESpace().Dof_TrueDof_Matrix() );
-      if ( const auto* lm_ho_to_lor = jac_data.GetLagrangeMultiplierHoToLorTransferMat() ) {
-        owned_mats.push_back( std::make_unique<shared::ParSparseMat>( lm_ho_to_lor->Assemble() ) );
-        ops.emplace_back( &owned_mats.back()->get() );
-      }
-      return;
-    }
-
-    ops.emplace_back( mesh_data.GetParentCoords().ParFESpace()->Dof_TrueDof_Matrix() );
-
-    const auto* submesh_parent = jac_data.GetSubmeshParentTransferMat();
-    SLIC_ERROR_ROOT_IF( submesh_parent == nullptr,
-                        "Missing submesh-parent transfer builder (call UpdateJacobianXfer())." );
-    owned_mats.push_back( std::make_unique<shared::ParSparseMat>( submesh_parent->Assemble() ) );
-    ops.emplace_back( &owned_mats.back()->get() );
-
-    if ( const auto* disp_ho_to_lor = jac_data.GetDisplacementHoToLorTransferMat() ) {
-      owned_mats.push_back( std::make_unique<shared::ParSparseMat>( disp_ho_to_lor->Assemble() ) );
-      ops.emplace_back( &owned_mats.back()->get() );
-    }
-  };
-
-  build_ops( row_is_pressure, row_ops );
-  build_ops( col_is_pressure, col_ops );
-
-  JacobianAssembler assembler( std::move( row_ops ), std::move( col_ops ) );
-  return assembler.Assemble( std::move( lor_or_submesh_jacobian ) );
-}
-
 }  // namespace
 
 EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
@@ -228,7 +186,8 @@ void EnergyMortarAdapter::updateNodalGaps()
   dg_contribs.reserve( 2 );
   dg_contribs.push_back( std::move( dg_lm_nm ) );
   dg_contribs.push_back( std::move( dg_lm_m ) );
-  dg_tilde_dx_ = AssembleSolverJacobian( mesh_data_, submesh_data_, jac_data_, std::move( dg_contribs ), true, false );
+  dg_tilde_dx_ = jac_data_.GetMfemJacobian( &submesh_data_.GetSubmeshFESpace(), mesh_data_.GetParentCoords().ParFESpace(),
+                                           dg_contribs );
   if ( !tied_contact_ && use_penalty_ ) {
     // technically, we should do this on all the vectors/matrices below, but it looks like the mutliplication operators
     // below will zero them out anyway
@@ -239,7 +198,8 @@ void EnergyMortarAdapter::updateNodalGaps()
   dA_contribs.reserve( 2 );
   dA_contribs.push_back( std::move( dA_lm_nm ) );
   dA_contribs.push_back( std::move( dA_lm_m ) );
-  dA_dx_ = AssembleSolverJacobian( mesh_data_, submesh_data_, jac_data_, std::move( dA_contribs ), true, false );
+  dA_dx_ = jac_data_.GetMfemJacobian( &submesh_data_.GetSubmeshFESpace(), mesh_data_.GetParentCoords().ParFESpace(),
+                                     dA_contribs );
 }
 
 void EnergyMortarAdapter::updateNodalForces()
@@ -367,7 +327,8 @@ void EnergyMortarAdapter::updateNodalForces()
   df_contribs.push_back( std::move( df_nm_m ) );
   df_contribs.push_back( std::move( df_m_nm ) );
   df_contribs.push_back( std::move( df_m_m ) );
-  df_dx_ = AssembleSolverJacobian( mesh_data_, submesh_data_, jac_data_, std::move( df_contribs ), false, false );
+  df_dx_ = jac_data_.GetMfemJacobian( mesh_data_.GetParentCoords().ParFESpace(), mesh_data_.GetParentCoords().ParFESpace(),
+                                     df_contribs );
 
   auto pg2_over_asq = ( 2.0 * pressure_vec_ )
                           .multiplyInPlace( g_tilde_vec_ )
@@ -478,7 +439,8 @@ void EnergyMortarAdapter::compute_df_du_lagrange( const mfem::HypreParVector& la
   df_contribs.push_back( std::move( df_m_nm ) );
   df_contribs.push_back( std::move( df_m_m ) );
   auto df_dx_temp =
-      AssembleSolverJacobian( mesh_data_, submesh_data_, jac_data_, std::move( df_contribs ), false, false );
+      jac_data_.GetMfemJacobian( mesh_data_.GetParentCoords().ParFESpace(), mesh_data_.GetParentCoords().ParFESpace(),
+                                 df_contribs );
   df_du = std::unique_ptr<mfem::HypreParMatrix>( df_dx_temp.release() );
 }
 
