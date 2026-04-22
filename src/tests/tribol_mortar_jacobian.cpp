@@ -3,22 +3,31 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+// Tribol includes
+#include "tribol/interface/tribol.hpp"
+#include "tribol/common/Parameters.hpp"
+
+// Axom includes
+#include "axom/slic.hpp"
+
+// MFEM includes
+#include "mfem.hpp"
+
+// gtest includes
+#include "gtest/gtest.h"
+
+// c++ includes
 #include <iostream>
 #include <sstream>
 #include <fstream>
 
-#include "gtest/gtest.h"
-
-#include "mfem.hpp"
-
-#include "axom/slic.hpp"
-
-#include "tribol/interface/tribol.hpp"
-#include "tribol/common/Parameters.hpp"
-
 using RealT = tribol::RealT;
 
-// Test fixture for implicit mortar method Jacobian
+/*!
+ * Test fixture class with some setup necessary to test
+ * and compute the Jacobian matrix for an implicit
+ * mortar method with Lagrange multipliers
+ */
 class MortarJacTest : public ::testing::Test {
  public:
   int numNodes;
@@ -35,12 +44,17 @@ class MortarJacTest : public ::testing::Test {
 
   void setupTribol( tribol::IndexT* conn1, tribol::IndexT* conn2, tribol::ContactMethod method )
   {
-    // Get coordinates
+    // Note, this assumes that numNodes is the total number of
+    // nodes encompassing the two meshes that will be registered
+    // with tribol, and that the conn1 and conn2 connectivity arrays
+    // reflect a global, contiguous index space
+
+    // grab coordinate data
     RealT* x = this->x;
     RealT* y = this->y;
     RealT* z = this->z;
 
-    // Register Tribol mesh
+    // register the mesh with tribol
     int cellType = static_cast<int>( tribol::UNDEFINED_ELEMENT );
     switch ( this->numNodesPerFace ) {
       case 4: {
@@ -55,6 +69,7 @@ class MortarJacTest : public ::testing::Test {
     const int mortarMeshId = 0;
     const int nonmortarMeshId = 1;
 
+    // register mesh
     tribol::registerMesh( mortarMeshId, 1, this->numNodes, conn1, cellType, x, y, z, tribol::MemorySpace::Host );
     tribol::registerMesh( nonmortarMeshId, 1, this->numNodes, conn2, cellType, x, y, z, tribol::MemorySpace::Host );
 
@@ -66,7 +81,7 @@ class MortarJacTest : public ::testing::Test {
     tribol::Array1D<RealT> fy2( this->numNodes );
     tribol::Array1D<RealT> fz2( this->numNodes );
 
-    // Initialize forces
+    // initialize force arrays
     for ( int i = 0; i < this->numNodes; ++i ) {
       fx1[i] = 0.;
       fy1[i] = 0.;
@@ -85,17 +100,18 @@ class MortarJacTest : public ::testing::Test {
     pressures = tribol::ArrayT<RealT>( this->numNodes,
                                        this->numNodes );  // length of total mesh to use global connectivity to index
 
-    // Initialize gaps and pressures
+    // initialize gaps and pressures. Initialize all
+    // nonmortar pressures to 1.0
     for ( int i = 0; i < this->numNodes; ++i ) {
       gaps[i] = 0.;
       pressures[i] = 1.;
     }
 
-    // Register gaps and pressures
+    // register nodal gaps and pressures
     tribol::registerMortarGaps( nonmortarMeshId, gaps.data() );
     tribol::registerMortarPressures( nonmortarMeshId, pressures.data() );
 
-    // Register coupling scheme
+    // register coupling scheme
     const int csIndex = 0;
     tribol::registerCouplingScheme( csIndex, mortarMeshId, nonmortarMeshId, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
                                     method, tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER,
