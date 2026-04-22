@@ -12,17 +12,6 @@ namespace tribol {
 
 namespace {
 
-PackedPairJacobianContribs MakePackedJacobianContribs( const mfem::ParFiniteElementSpace& row_surface_fes,
-                                                       const mfem::ParFiniteElementSpace& col_surface_fes,
-                                                       const mfem::FiniteElementSpace& row_redecomp_fes,
-                                                       const mfem::FiniteElementSpace& col_redecomp_fes,
-                                                       const Array1D<int>& row_elem_map,
-                                                       const Array1D<int>& col_elem_map )
-{
-  return PackedPairJacobianContribs( row_surface_fes, col_surface_fes, row_redecomp_fes, col_redecomp_fes, row_elem_map,
-                                     col_elem_map );
-}
-
 }  // namespace
 
 EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
@@ -78,14 +67,14 @@ void EnergyMortarAdapter::updateNodalGaps()
   const auto& mortar_elem_map = mesh_data_.GetElemMap1();
   const auto& nonmortar_elem_map = mesh_data_.GetElemMap2();
 
-  auto dg_lm_nm = MakePackedJacobianContribs( pressure_surface_fes, displacement_surface_fes, pressure_redecomp_fes,
-                                              displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
-  auto dg_lm_m = MakePackedJacobianContribs( pressure_surface_fes, displacement_surface_fes, pressure_redecomp_fes,
-                                             displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
-  auto dA_lm_nm = MakePackedJacobianContribs( pressure_surface_fes, displacement_surface_fes, pressure_redecomp_fes,
-                                              displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
-  auto dA_lm_m = MakePackedJacobianContribs( pressure_surface_fes, displacement_surface_fes, pressure_redecomp_fes,
-                                             displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
+  PackedPairJacobianContribs dg_lm_nm( pressure_surface_fes, displacement_surface_fes, pressure_redecomp_fes,
+                                       displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
+  PackedPairJacobianContribs dg_lm_m( pressure_surface_fes, displacement_surface_fes, pressure_redecomp_fes,
+                                      displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
+  PackedPairJacobianContribs dA_lm_nm( pressure_surface_fes, displacement_surface_fes, pressure_redecomp_fes,
+                                       displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
+  PackedPairJacobianContribs dA_lm_m( pressure_surface_fes, displacement_surface_fes, pressure_redecomp_fes,
+                                      displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
 
   dg_lm_nm.reserve( pairs_.size(), 8 );
   dg_lm_m.reserve( pairs_.size(), 8 );
@@ -186,8 +175,8 @@ void EnergyMortarAdapter::updateNodalGaps()
   dg_contribs.reserve( 2 );
   dg_contribs.push_back( std::move( dg_lm_nm ) );
   dg_contribs.push_back( std::move( dg_lm_m ) );
-  dg_tilde_dx_ = jac_data_.GetMfemJacobian( &submesh_data_.GetSubmeshFESpace(), mesh_data_.GetParentCoords().ParFESpace(),
-                                           dg_contribs );
+  dg_tilde_dx_ = jac_data_.GetMfemJacobian( &submesh_data_.GetSubmeshFESpace(),
+                                            mesh_data_.GetParentCoords().ParFESpace(), dg_contribs );
   if ( !tied_contact_ && use_penalty_ ) {
     // technically, we should do this on all the vectors/matrices below, but it looks like the mutliplication operators
     // below will zero them out anyway
@@ -199,7 +188,7 @@ void EnergyMortarAdapter::updateNodalGaps()
   dA_contribs.push_back( std::move( dA_lm_nm ) );
   dA_contribs.push_back( std::move( dA_lm_m ) );
   dA_dx_ = jac_data_.GetMfemJacobian( &submesh_data_.GetSubmeshFESpace(), mesh_data_.GetParentCoords().ParFESpace(),
-                                     dA_contribs );
+                                      dA_contribs );
 }
 
 void EnergyMortarAdapter::updateNodalForces()
@@ -231,18 +220,14 @@ void EnergyMortarAdapter::updateNodalForces()
   const auto& mortar_elem_map = mesh_data_.GetElemMap1();
   const auto& nonmortar_elem_map = mesh_data_.GetElemMap2();
 
-  auto df_nm_nm =
-      MakePackedJacobianContribs( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                  displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
-  auto df_nm_m =
-      MakePackedJacobianContribs( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                  displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
-  auto df_m_nm =
-      MakePackedJacobianContribs( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                  displacement_redecomp_fes, mortar_elem_map, nonmortar_elem_map );
-  auto df_m_m =
-      MakePackedJacobianContribs( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                  displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
+  PackedPairJacobianContribs df_nm_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                       displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
+  PackedPairJacobianContribs df_nm_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                      displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
+  PackedPairJacobianContribs df_m_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                      displacement_redecomp_fes, mortar_elem_map, nonmortar_elem_map );
+  PackedPairJacobianContribs df_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                     displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
 
   df_nm_nm.reserve( pairs_.size(), 16 );
   df_nm_m.reserve( pairs_.size(), 16 );
@@ -327,8 +312,8 @@ void EnergyMortarAdapter::updateNodalForces()
   df_contribs.push_back( std::move( df_nm_m ) );
   df_contribs.push_back( std::move( df_m_nm ) );
   df_contribs.push_back( std::move( df_m_m ) );
-  df_dx_ = jac_data_.GetMfemJacobian( mesh_data_.GetParentCoords().ParFESpace(), mesh_data_.GetParentCoords().ParFESpace(),
-                                     df_contribs );
+  df_dx_ = jac_data_.GetMfemJacobian( mesh_data_.GetParentCoords().ParFESpace(),
+                                      mesh_data_.GetParentCoords().ParFESpace(), df_contribs );
 
   auto pg2_over_asq = ( 2.0 * pressure_vec_ )
                           .multiplyInPlace( g_tilde_vec_ )
@@ -370,18 +355,14 @@ void EnergyMortarAdapter::compute_df_du_lagrange( const mfem::HypreParVector& la
   const auto& mortar_elem_map = mesh_data_.GetElemMap1();
   const auto& nonmortar_elem_map = mesh_data_.GetElemMap2();
 
-  auto df_nm_nm =
-      MakePackedJacobianContribs( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                  displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
-  auto df_nm_m =
-      MakePackedJacobianContribs( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                  displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
-  auto df_m_nm =
-      MakePackedJacobianContribs( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                  displacement_redecomp_fes, mortar_elem_map, nonmortar_elem_map );
-  auto df_m_m =
-      MakePackedJacobianContribs( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                  displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
+  PackedPairJacobianContribs df_nm_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                       displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
+  PackedPairJacobianContribs df_nm_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                      displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
+  PackedPairJacobianContribs df_m_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                      displacement_redecomp_fes, mortar_elem_map, nonmortar_elem_map );
+  PackedPairJacobianContribs df_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                     displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
 
   df_nm_nm.reserve( pairs_.size(), 16 );
   df_nm_m.reserve( pairs_.size(), 16 );
@@ -438,9 +419,8 @@ void EnergyMortarAdapter::compute_df_du_lagrange( const mfem::HypreParVector& la
   df_contribs.push_back( std::move( df_nm_m ) );
   df_contribs.push_back( std::move( df_m_nm ) );
   df_contribs.push_back( std::move( df_m_m ) );
-  auto df_dx_temp =
-      jac_data_.GetMfemJacobian( mesh_data_.GetParentCoords().ParFESpace(), mesh_data_.GetParentCoords().ParFESpace(),
-                                 df_contribs );
+  auto df_dx_temp = jac_data_.GetMfemJacobian( mesh_data_.GetParentCoords().ParFESpace(),
+                                               mesh_data_.GetParentCoords().ParFESpace(), df_contribs );
   df_du = std::unique_ptr<mfem::HypreParMatrix>( df_dx_temp.release() );
 }
 
