@@ -143,89 +143,62 @@ shared::ParSparseMat BuildTrueDofInject( const mfem::ParFiniteElementSpace& vec_
 
 }  // namespace
 
-namespace {
-
-// Logical blocks always size themselves in the solver-visible true-dof space, not
-// the intermediate redecomp or submesh spaces.
-int TrueVSizeForRole( VariableRole role, const mfem::ParFiniteElementSpace& primary_fes,
-                      const mfem::ParFiniteElementSpace& dual_fes )
+HoToLorTransferAction::HoToLorTransferAction( const mfem::ParFiniteElementSpace& ho_fes,
+                                              const mfem::ParFiniteElementSpace& lor_fes, bool use_ea )
+    : mfem::Operator( lor_fes.GetVSize(), ho_fes.GetVSize() ), ho_fes_( ho_fes ), lor_fes_( lor_fes )
 {
-  // Logical Jacobian blocks are solver-visible and always live in true-dof space.
-  return ( role == VariableRole::Primary ) ? primary_fes.GetTrueVSize() : dual_fes.GetTrueVSize();
+  transfer_ = std::make_unique<mfem::L2ProjectionGridTransfer>( const_cast<mfem::ParFiniteElementSpace&>( ho_fes_ ),
+                                                                const_cast<mfem::ParFiniteElementSpace&>( lor_fes_ ) );
+  transfer_->UseEA( use_ea );
 }
 
-// Mortar and LM contributions use different Tribol element-id domains but both map
-// to mesh 2's redecomp element numbering on the transfer side.
-const Array1D<int>& ElemMapForSpace( BlockSpace space, const Array1D<int>& mortar_elem_map,
-                                     const Array1D<int>& nonmortar_elem_map )
+void HoToLorTransferAction::Mult( const mfem::Vector& x, mfem::Vector& y ) const
 {
-  // Tribol uses different element-id domains per block space, but the redecomp stage
-  // expects element indices in one of the two redecomp surface meshes.
-  switch ( space ) {
-    case BlockSpace::MORTAR:
-      return mortar_elem_map;
-    case BlockSpace::NONMORTAR:
-    case BlockSpace::LAGRANGE_MULTIPLIER:
-      return nonmortar_elem_map;
-    default:
-      SLIC_ERROR_ROOT( "Unsupported block space." );
-      return mortar_elem_map;
-  }
+  transfer_->ForwardOperator().Mult( x, y );
 }
 
-shared::ParSparseMat BuildSubmeshParentTransferMatrixImpl( const mfem::ParFiniteElementSpace& submesh_fes,
-                                                           const mfem::ParFiniteElementSpace& parent_fes,
-                                                           const mfem::Array<HYPRE_BigInt>& submesh2parent_vdof_list )
+HoToLorTransferMat::HoToLorTransferMat( const mfem::ParFiniteElementSpace& ho_fes,
+                                        const mfem::ParFiniteElementSpace& lor_fes,
+                                        const mfem::ParFiniteElementSpace& ho_scalar_fes,
+                                        const mfem::ParFiniteElementSpace& lor_scalar_fes )
+    : ho_fes_( ho_fes ), lor_fes_( lor_fes ), ho_scalar_fes_( ho_scalar_fes ), lor_scalar_fes_( lor_scalar_fes )
 {
-  // Build a pure injection matrix that maps submesh vdofs into the parent space.
-  // Each submesh vdof contributes to exactly one parent vdof with a unit entry.
-  // Each submesh vdof contributes directly to exactly one parent vdof, so this is a
-  // pure gather/injection matrix with unit entries.
-  auto submesh_parent_I = redecomp::ArrayUtility::IndexArray<int>( submesh2parent_vdof_list.Size() + 1 );
-  mfem::Vector submesh_parent_data( submesh2parent_vdof_list.Size() );
-  submesh_parent_data = 1.0;
-  return shared::ParSparseMat( parent_fes.GetComm(), submesh_fes.GetVSize(), submesh_fes.GlobalVSize(),
-                               parent_fes.GlobalVSize(), submesh_parent_I.data(),
-                               const_cast<HYPRE_BigInt*>( submesh2parent_vdof_list.GetData() ),
-                               submesh_parent_data.GetData(), submesh_fes.GetDofOffsets(), parent_fes.GetDofOffsets() );
 }
 
-shared::ParSparseMat BuildHoToLorTransferMatrixImpl( const mfem::ParFiniteElementSpace& ho_fes,
-                                                     const mfem::ParFiniteElementSpace& lor_fes,
-                                                     const mfem::ParFiniteElementSpace& ho_scalar_fes,
-                                                     const mfem::ParFiniteElementSpace& lor_scalar_fes )
+shared::ParSparseMat HoToLorTransferMat::Assemble() const
 {
   // Assemble an explicit HO->LOR transfer matrix that matches MFEM's runtime L2
   // projection transfer operator. This is used for tests and for assembled Jacobians.
   SLIC_ERROR_ROOT_IF(
-      ho_fes.GetOrdering() != mfem::Ordering::byNODES || lor_fes.GetOrdering() != mfem::Ordering::byNODES,
+      ho_fes_.GetOrdering() != mfem::Ordering::byNODES || lor_fes_.GetOrdering() != mfem::Ordering::byNODES,
       "LOR transfer matrix build only supports mfem::Ordering::byNODES." );
-  SLIC_ERROR_ROOT_IF( ho_fes.GetVDim() != lor_fes.GetVDim(), "HO/LOR vdim mismatch in LOR transfer." );
-  SLIC_ERROR_ROOT_IF( ho_scalar_fes.GetVDim() != 1 || lor_scalar_fes.GetVDim() != 1,
+  SLIC_ERROR_ROOT_IF( ho_fes_.GetVDim() != lor_fes_.GetVDim(), "HO/LOR vdim mismatch in LOR transfer." );
+  SLIC_ERROR_ROOT_IF( ho_scalar_fes_.GetVDim() != 1 || lor_scalar_fes_.GetVDim() != 1,
                       "Scalar FE spaces must be vdim=1." );
 
-  shared::ParSparseMatView P_lor( const_cast<mfem::HypreParMatrix*>( lor_scalar_fes.Dof_TrueDof_Matrix() ) );
-  std::unique_ptr<shared::ParSparseMat> R_true_owned = TryGetMfemTrueRestrictionMatrix( ho_scalar_fes, lor_scalar_fes );
+  shared::ParSparseMatView P_lor( const_cast<mfem::HypreParMatrix*>( lor_scalar_fes_.Dof_TrueDof_Matrix() ) );
+  std::unique_ptr<shared::ParSparseMat> R_true_owned =
+      TryGetMfemTrueRestrictionMatrix( ho_scalar_fes_, lor_scalar_fes_ );
   SLIC_ERROR_ROOT_IF(
       !R_true_owned,
       "Failed to access MFEM's assembled true-dof restriction operator for HO->LOR transfer. "
       "This build expects mfem::L2ProjectionGridTransfer::L2ProjectionH1Space(use_ea=false) to store R as a "
       "mfem::HypreParMatrix." );
 
-  const mfem::HypreParMatrix* P_ho_scalar = ho_scalar_fes.Dof_TrueDof_Matrix();
+  const mfem::HypreParMatrix* P_ho_scalar = ho_scalar_fes_.Dof_TrueDof_Matrix();
   SLIC_ERROR_ROOT_IF( P_ho_scalar == nullptr, "Null HO scalar Dof_TrueDof_Matrix() in LOR transfer build." );
   std::unique_ptr<mfem::HypreParMatrix> P_ho_scalar_T( P_ho_scalar->Transpose() );
   SLIC_ERROR_ROOT_IF( P_ho_scalar_T == nullptr, "Failed to transpose HO scalar Dof_TrueDof_Matrix()." );
 
-  if ( ho_fes.GetVDim() == 1 ) {
+  if ( ho_fes_.GetVDim() == 1 ) {
     shared::ParSparseMatView P_ho_T_view( P_ho_scalar_T.get() );
     return P_lor * ( *R_true_owned ) * P_ho_T_view;
   }
 
-  const int vdim = ho_fes.GetVDim();
-  shared::ParSparseMatView P_lor_vec( const_cast<mfem::HypreParMatrix*>( lor_fes.Dof_TrueDof_Matrix() ) );
+  const int vdim = ho_fes_.GetVDim();
+  shared::ParSparseMatView P_lor_vec( const_cast<mfem::HypreParMatrix*>( lor_fes_.Dof_TrueDof_Matrix() ) );
 
-  const mfem::HypreParMatrix* P_ho_vec = ho_fes.Dof_TrueDof_Matrix();
+  const mfem::HypreParMatrix* P_ho_vec = ho_fes_.Dof_TrueDof_Matrix();
   SLIC_ERROR_ROOT_IF( P_ho_vec == nullptr, "Null HO vector Dof_TrueDof_Matrix() in LOR transfer build." );
   std::unique_ptr<mfem::HypreParMatrix> P_ho_vec_T( P_ho_vec->Transpose() );
   SLIC_ERROR_ROOT_IF( P_ho_vec_T == nullptr, "Failed to transpose HO vector Dof_TrueDof_Matrix()." );
@@ -235,8 +208,8 @@ shared::ParSparseMat BuildHoToLorTransferMatrixImpl( const mfem::ParFiniteElemen
   for ( int d = 0; d < vdim; ++d ) {
     // MFEM's vector-valued transfer is assembled component-by-component in true-dof
     // space, then composed back to DOF space through the vector prolongation.
-    auto E_ho_d = BuildTrueDofExtract( ho_fes, ho_scalar_fes, d );
-    auto S_lor_d = BuildTrueDofInject( lor_fes, lor_scalar_fes, d );
+    auto E_ho_d = BuildTrueDofExtract( ho_fes_, ho_scalar_fes_, d );
+    auto S_lor_d = BuildTrueDofInject( lor_fes_, lor_scalar_fes_, d );
 
     auto block = S_lor_d * ( *R_true_owned ) * E_ho_d;
 
@@ -250,80 +223,33 @@ shared::ParSparseMat BuildHoToLorTransferMatrixImpl( const mfem::ParFiniteElemen
   return P_lor_vec * ( *R_vec_true ) * R_ho_vec;
 }
 
-}  // namespace
-
-AssembleableParOperator::AssembleableParOperator( int height, int width ) : mfem::Operator( height, width ) {}
-
-shared::ParSparseMat& AssembleableParOperator::GetOrAssembleCache() const
-{
-  if ( !assembled_cache_ ) {
-    // The phase-1 "matrix-free" API still assembles on demand for most operators, so
-    // cache the result to keep repeated Mult()/Assemble() calls consistent and cheap.
-    assembled_cache_ = std::make_unique<shared::ParSparseMat>( Assemble() );
-  }
-  return *assembled_cache_;
-}
-
-const shared::ParSparseMat* AssembleableParOperator::GetAssembled() const { return &GetOrAssembleCache(); }
-
-void AssembleableParOperator::Mult( const mfem::Vector& x, mfem::Vector& y ) const
-{
-  GetOrAssembleCache().get().Mult( x, y );
-}
-
-HoToLorTransferOp::HoToLorTransferOp( const mfem::ParFiniteElementSpace& ho_fes,
-                                      const mfem::ParFiniteElementSpace& lor_fes,
-                                      const mfem::ParFiniteElementSpace& ho_scalar_fes,
-                                      const mfem::ParFiniteElementSpace& lor_scalar_fes )
-    : AssembleableParOperator( lor_fes.GetVSize(), ho_fes.GetVSize() ),
-      ho_fes_( ho_fes ),
-      lor_fes_( lor_fes ),
-      ho_scalar_fes_( ho_scalar_fes ),
-      lor_scalar_fes_( lor_scalar_fes )
-{
-  transfer_ = std::make_unique<mfem::L2ProjectionGridTransfer>( const_cast<mfem::ParFiniteElementSpace&>( ho_fes_ ),
-                                                                const_cast<mfem::ParFiniteElementSpace&>( lor_fes_ ) );
-  transfer_->UseEA( false );
-}
-
-void HoToLorTransferOp::Mult( const mfem::Vector& x, mfem::Vector& y ) const
-{
-  transfer_->ForwardOperator().Mult( x, y );
-}
-
-shared::ParSparseMat HoToLorTransferOp::Assemble() const
-{
-  return BuildHoToLorTransferMatrixImpl( ho_fes_, lor_fes_, ho_scalar_fes_, lor_scalar_fes_ );
-}
-
-SubmeshParentTransferOp::SubmeshParentTransferOp( const mfem::ParFiniteElementSpace& submesh_fes,
-                                                  const mfem::ParFiniteElementSpace& parent_fes,
-                                                  const mfem::Array<HYPRE_BigInt>& submesh2parent_vdof_list )
-    : AssembleableParOperator( submesh_fes.GetVSize(), parent_fes.GetVSize() ),
-      submesh_fes_( submesh_fes ),
-      parent_fes_( parent_fes ),
-      submesh2parent_vdof_list_( submesh2parent_vdof_list )
+SubmeshParentTransferMat::SubmeshParentTransferMat( const mfem::ParFiniteElementSpace& submesh_fes,
+                                                    const mfem::ParFiniteElementSpace& parent_fes,
+                                                    const mfem::Array<HYPRE_BigInt>& submesh2parent_vdof_list )
+    : submesh_fes_( submesh_fes ), parent_fes_( parent_fes ), submesh2parent_vdof_list_( submesh2parent_vdof_list )
 {
 }
 
-shared::ParSparseMat SubmeshParentTransferOp::Assemble() const
+shared::ParSparseMat SubmeshParentTransferMat::Assemble() const
 {
-  return BuildSubmeshParentTransferMatrixImpl( submesh_fes_, parent_fes_, submesh2parent_vdof_list_ );
+  // Build a pure injection matrix that maps submesh vdofs into the parent space.
+  // Each submesh vdof contributes directly to exactly one parent vdof with a unit entry.
+  auto submesh_parent_I = redecomp::ArrayUtility::IndexArray<int>( submesh2parent_vdof_list_.Size() + 1 );
+  mfem::Vector submesh_parent_data( submesh2parent_vdof_list_.Size() );
+  submesh_parent_data = 1.0;
+  return shared::ParSparseMat(
+      parent_fes_.GetComm(), submesh_fes_.GetVSize(), submesh_fes_.GlobalVSize(), parent_fes_.GlobalVSize(),
+      submesh_parent_I.data(), const_cast<HYPRE_BigInt*>( submesh2parent_vdof_list_.GetData() ),
+      submesh_parent_data.GetData(), submesh_fes_.GetDofOffsets(), parent_fes_.GetDofOffsets() );
 }
 
-RedecompJacobianStageOp::RedecompJacobianStageOp( const redecomp::MatrixTransfer& transfer,
-                                                  std::vector<ComputedElementData> contributions,
-                                                  const Array1D<int>& mortar_elem_map,
-                                                  const Array1D<int>& nonmortar_elem_map, int height, int width )
-    : AssembleableParOperator( height, width ),
-      transfer_( transfer ),
-      contributions_( std::move( contributions ) ),
-      mortar_elem_map_( mortar_elem_map ),
-      nonmortar_elem_map_( nonmortar_elem_map )
+RedecompJacobianTransfer::RedecompJacobianTransfer( const redecomp::MatrixTransfer& transfer,
+                                                    std::vector<PackedPairJacobianContribs> contributions )
+    : transfer_( transfer ), contributions_( std::move( contributions ) )
 {
 }
 
-shared::ParSparseMat RedecompJacobianStageOp::Assemble() const
+shared::ParSparseMat RedecompJacobianTransfer::Assemble() const
 {
   axom::Array<int> row_redecomp_ids;
   axom::Array<int> col_redecomp_ids;
@@ -333,19 +259,19 @@ shared::ParSparseMat RedecompJacobianStageOp::Assemble() const
   for ( const auto& contrib : contributions_ ) {
     SLIC_ERROR_ROOT_IF( contrib.row_elem_ids.size() != contrib.col_elem_ids.size() ||
                             contrib.row_elem_ids.size() != contrib.value_offsets.size(),
-                        "ComputedElementData arrays must have matching sizes." );
+                        "PackedPairJacobianContribs arrays must have matching sizes." );
+    SLIC_ERROR_ROOT_IF( contrib.row_elem_map == nullptr || contrib.col_elem_map == nullptr,
+                        "PackedPairJacobianContribs must provide row/col element maps for redecomp transfer." );
 
     const int current_offset = jacobian_data.size();
     row_redecomp_ids.reserve( row_redecomp_ids.size() + contrib.numEntries() );
     for ( auto id : contrib.row_elem_ids ) {
-      row_redecomp_ids.push_back(
-          ElemMapForSpace( contrib.row_space, mortar_elem_map_, nonmortar_elem_map_ )[static_cast<size_t>( id )] );
+      row_redecomp_ids.push_back( ( *contrib.row_elem_map )[static_cast<size_t>( id )] );
     }
 
     col_redecomp_ids.reserve( col_redecomp_ids.size() + contrib.numEntries() );
     for ( auto id : contrib.col_elem_ids ) {
-      col_redecomp_ids.push_back(
-          ElemMapForSpace( contrib.col_space, mortar_elem_map_, nonmortar_elem_map_ )[static_cast<size_t>( id )] );
+      col_redecomp_ids.push_back( ( *contrib.col_elem_map )[static_cast<size_t>( id )] );
     }
 
     if ( contrib.jacobian_data.size() > 0 ) {
@@ -363,102 +289,31 @@ shared::ParSparseMat RedecompJacobianStageOp::Assemble() const
   return transfer_.TransferToParallel( row_redecomp_ids, col_redecomp_ids, jacobian_data, value_offsets, false );
 }
 
-LogicalJacobianBlockOp::LogicalJacobianBlockOp( VariableRole row_role, VariableRole col_role,
-                                                std::unique_ptr<RedecompJacobianStageOp> stage_op,
-                                                LogicalBlockTransferContext context )
-    : AssembleableParOperator( TrueVSizeForRole( row_role, context.parent_fes, context.dual_fes ),
-                               TrueVSizeForRole( col_role, context.parent_fes, context.dual_fes ) ),
-      row_role_( row_role ),
-      col_role_( col_role ),
-      stage_op_( std::move( stage_op ) ),
-      context_( context )
+JacobianAssembler::JacobianAssembler( std::vector<shared::ParSparseMatView> row_transfer_ops,
+                                      std::vector<shared::ParSparseMatView> col_transfer_ops )
+    : row_transfer_ops_( std::move( row_transfer_ops ) ), col_transfer_ops_( std::move( col_transfer_ops ) )
 {
 }
 
-const HoToLorTransferOp* LogicalJacobianBlockOp::getRowHoToLor() const
+shared::ParSparseMat JacobianAssembler::Assemble( shared::ParSparseMat lor_or_submesh_jacobian ) const
 {
-  return ( row_role_ == VariableRole::Primary ) ? context_.primary_ho_to_lor : context_.dual_ho_to_lor;
-}
+  // Apply column transfers on the right (reverse order) to build A * M_col.
+  // Then apply row transfers on the left (reverse order, transposed) to build M_row^T * ( ... ).
+  shared::ParSparseMat assembled = std::move( lor_or_submesh_jacobian );
 
-const HoToLorTransferOp* LogicalJacobianBlockOp::getColHoToLor() const
-{
-  return ( col_role_ == VariableRole::Primary ) ? context_.primary_ho_to_lor : context_.dual_ho_to_lor;
-}
-
-shared::ParSparseMat LogicalJacobianBlockOp::Assemble() const
-{
-  auto comm = context_.parent_fes.GetComm();
-
-  if ( !stage_op_ ) {
-    // An empty logical block still needs a solver-compatible shape. For dual-dual
-    // blocks, keep the historical inactive-LM identity rows so elimination behavior
-    // matches the pre-refactor assembly path.
-    if ( row_role_ == VariableRole::Dual && col_role_ == VariableRole::Dual &&
-         context_.inactive_dual_tdofs.Size() > 0 ) {
-      return shared::ParSparseMat::diagonalMatrix( comm, context_.dual_fes.GlobalTrueVSize(),
-                                                   context_.dual_fes.GetTrueDofOffsets(), 1.0,
-                                                   context_.inactive_dual_tdofs, false );
-    }
-
-    auto& row_fes = ( row_role_ == VariableRole::Primary ) ? context_.parent_fes : context_.dual_fes;
-    auto& col_fes = ( col_role_ == VariableRole::Primary ) ? context_.parent_fes : context_.dual_fes;
-    if ( row_role_ == col_role_ ) {
-      return shared::ParSparseMat::diagonalMatrix( comm, row_fes.GlobalTrueVSize(), row_fes.GetTrueDofOffsets(), 0.0,
-                                                   mfem::Array<int>(), true );
-    }
-
-    mfem::SparseMatrix empty_diag( row_fes.GetTrueVSize(), col_fes.GetTrueVSize() );
-    empty_diag.Finalize();
-    return shared::ParSparseMat( comm, row_fes.GlobalTrueVSize(), col_fes.GlobalTrueVSize(),
-                                 row_fes.GetTrueDofOffsets(), col_fes.GetTrueDofOffsets(), std::move( empty_diag ) );
+  for ( size_t i = col_transfer_ops_.size(); i-- > 0; ) {
+    shared::ParSparseMatView lhs( &assembled.get() );
+    assembled = lhs * col_transfer_ops_[i];
   }
 
-  auto stage_mat = stage_op_->Assemble();
-  std::unique_ptr<shared::ParSparseMat> mapped_stage;
-  shared::ParSparseMatView stage_view( &stage_mat.get() );
-  auto* row_ho_to_lor = getRowHoToLor();
-  auto* col_ho_to_lor = getColHoToLor();
-  if ( row_ho_to_lor || col_ho_to_lor ) {
-    SLIC_ERROR_ROOT_IF( row_ho_to_lor == nullptr || col_ho_to_lor == nullptr,
-                        "HO->LOR transfer operators must be available for both row and column roles." );
-    shared::ParSparseMatView T_row( const_cast<mfem::HypreParMatrix*>( &row_ho_to_lor->GetAssembled()->get() ) );
-    shared::ParSparseMatView T_col( const_cast<mfem::HypreParMatrix*>( &col_ho_to_lor->GetAssembled()->get() ) );
-    mapped_stage = std::make_unique<shared::ParSparseMat>( shared::ParSparseMat::rap( T_row, stage_view, T_col ) );
-    stage_view = shared::ParSparseMatView( &mapped_stage->get() );
+  for ( size_t i = row_transfer_ops_.size(); i-- > 0; ) {
+    auto op_t = row_transfer_ops_[i].transpose();
+    shared::ParSparseMatView lhs( &op_t.get() );
+    shared::ParSparseMatView rhs( &assembled.get() );
+    assembled = lhs * rhs;
   }
 
-  shared::ParSparseMatView parent_P( context_.parent_fes.Dof_TrueDof_Matrix() );
-  shared::ParSparseMatView dual_P( context_.dual_fes.Dof_TrueDof_Matrix() );
-  std::unique_ptr<shared::ParSparseMatView> submesh_parent;
-  if ( row_role_ == VariableRole::Primary || col_role_ == VariableRole::Primary ) {
-    submesh_parent = std::make_unique<shared::ParSparseMatView>(
-        const_cast<mfem::HypreParMatrix*>( &context_.submesh_parent_xfer.GetAssembled()->get() ) );
-  }
-
-  // The stage matrix lives on the surface FE spaces. Each branch below applies the
-  // remaining surface->solver mapping for one logical row/column pairing.
-  if ( row_role_ == VariableRole::Primary && col_role_ == VariableRole::Primary ) {
-    auto parent_J = stage_view.rap( *submesh_parent );
-    return parent_J.rap( parent_P );
-  }
-
-  if ( row_role_ == VariableRole::Primary && col_role_ == VariableRole::Dual ) {
-    auto parent_J = submesh_parent->transpose() * stage_view;
-    return shared::ParSparseMat::rap( parent_P, parent_J, dual_P );
-  }
-
-  if ( row_role_ == VariableRole::Dual && col_role_ == VariableRole::Primary ) {
-    auto parent_J = stage_view * *submesh_parent;
-    return shared::ParSparseMat::rap( dual_P, parent_J, parent_P );
-  }
-
-  auto dual_J = stage_view.rap( dual_P );
-  if ( dual_J->NNZ() == 0 && context_.inactive_dual_tdofs.Size() > 0 ) {
-    return shared::ParSparseMat::diagonalMatrix( comm, context_.dual_fes.GlobalTrueVSize(),
-                                                 context_.dual_fes.GetTrueDofOffsets(), 1.0,
-                                                 context_.inactive_dual_tdofs, false );
-  }
-  return dual_J;
+  return assembled;
 }
 
 SubmeshLORTransfer::SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh, bool use_ea )
@@ -1269,9 +1124,8 @@ const MfemSubmeshData::UpdateData& MfemSubmeshData::GetUpdateData() const
   return *update_data_;
 }
 
-MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data,
-                                    ContactMethod contact_method )
-    : parent_data_{ parent_data }, submesh_data_{ submesh_data }, block_offsets_( 3 ), disp_offsets_( 2 )
+MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data )
+    : parent_data_{ parent_data }, submesh_data_{ submesh_data }
 {
   if ( parent_data.GetParentCoords().ParFESpace()->FEColl()->GetOrder() > 1 ) {
     SLIC_ERROR_ROOT_IF( parent_data.GetLORMesh() == nullptr,
@@ -1291,62 +1145,6 @@ MfemJacobianData::MfemJacobianData( const MfemMeshData& parent_data, const MfemS
   for ( int i{ 0 }; i < vdof_list_int.Size(); ++i ) {
     submesh2parent_vdof_list_[i] = dof_offset + static_cast<HYPRE_BigInt>( vdof_list_int[i] );
   }
-
-  auto& parent_fes = *parent_data_.GetParentCoords().ParFESpace();
-  auto& submesh_fes = parent_data_.GetSubmeshFESpace();
-  auto submesh_parent_I = redecomp::ArrayUtility::IndexArray<int>( submesh2parent_vdof_list_.Size() + 1 );
-  mfem::Vector submesh_parent_data( submesh2parent_vdof_list_.Size() );
-  submesh_parent_data = 1.0;
-  // This constructor copies all of the data, so don't worry about ownership of the CSR data
-  submesh_parent_vdof_xfer_ = std::make_unique<shared::ParSparseMat>(
-      parent_fes.GetComm(), submesh_fes.GetVSize(), submesh_fes.GlobalVSize(), parent_fes.GlobalVSize(),
-      submesh_parent_I.data(), submesh2parent_vdof_list_.GetData(), submesh_parent_data.GetData(),
-      submesh_fes.GetDofOffsets(), parent_fes.GetDofOffsets() );
-
-  auto disp_size = parent_data_.GetParentCoords().ParFESpace()->GetTrueVSize();
-  auto lm_size = submesh_data_.GetSubmeshPressure().ParFESpace()->GetTrueVSize();
-  // this is used to size Jacobian contributions that are dependent on the pressure
-  block_offsets_[0] = 0;
-  block_offsets_[1] = disp_size;
-  block_offsets_[2] = disp_size + lm_size;
-  // this is used to size Jacobian contributions that are not dependent on the pressure (e.g. normal)
-  disp_offsets_[0] = 0;
-  disp_offsets_[1] = disp_size;
-
-  // Rows/columns of pressure/gap DOFs only on the mortar surface need to be eliminated from the Jacobian when using
-  // single mortar. The code in this block creates a list of the true DOFs only on the mortar surface.
-  if ( contact_method == SINGLE_MORTAR ) {
-    // Get submesh
-    auto& submesh_fe_space = submesh_data_.GetSubmeshFESpace();
-    auto& submesh = parent_data_.GetSubmesh();
-    // Create marker of attributes for faster querying
-    mfem::Array<int> attr_marker( submesh.attributes.Max() );
-    attr_marker = 0;
-    for ( auto nonmortar_attr : parent_data_.GetBoundaryAttribs2() ) {
-      attr_marker[nonmortar_attr - 1] = 1;
-    }
-    // Create marker of dofs only on mortar surface
-    mfem::Array<int> mortar_dof_marker( submesh_fe_space.GetVSize() );
-    mortar_dof_marker = 1;
-    for ( int e{ 0 }; e < submesh.GetNE(); ++e ) {
-      if ( attr_marker[submesh_fe_space.GetAttribute( e ) - 1] ) {
-        mfem::Array<int> vdofs;
-        submesh_fe_space.GetElementVDofs( e, vdofs );
-        for ( int d{ 0 }; d < vdofs.Size(); ++d ) {
-          int k = vdofs[d];
-          if ( k < 0 ) {
-            k = -1 - k;
-          }
-          mortar_dof_marker[k] = 0;
-        }
-      }
-    }
-    // Convert marker of dofs to marker of tdofs
-    mfem::Array<int> mortar_tdof_marker( submesh_fe_space.GetTrueVSize() );
-    submesh_fe_space.GetRestrictionMatrix()->BooleanMult( mortar_dof_marker, mortar_tdof_marker );
-    // Convert markers of tdofs only on mortar surface to a list
-    mfem::FiniteElementSpace::MarkerToList( mortar_tdof_marker, mortar_tdof_list_ );
-  }
 }
 
 void MfemJacobianData::UpdateJacobianXfer()
@@ -1357,32 +1155,9 @@ void MfemJacobianData::UpdateJacobianXfer()
 MfemJacobianData::UpdateData::UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data,
                                           const mfem::Array<HYPRE_BigInt>& submesh2parent_vdof_list )
 {
-  auto dual_submesh_fes = &submesh_data.GetSubmeshFESpace();
-  auto primal_submesh_fes = &parent_data.GetSubmeshFESpace();
-  if ( parent_data.GetLORMesh() ) {
-    dual_submesh_fes = submesh_data.GetLORMeshFESpace();
-    primal_submesh_fes = parent_data.GetLORMeshFESpace();
-  }
-
-  redecomp_routes_.push_back(
-      { VariableRole::Primary, VariableRole::Primary, primal_submesh_fes->GetVSize(), primal_submesh_fes->GetVSize(),
-        std::make_unique<redecomp::MatrixTransfer>( *primal_submesh_fes, *primal_submesh_fes,
-                                                    *parent_data.GetRedecompResponse().FESpace(),
-                                                    *parent_data.GetRedecompResponse().FESpace() ) } );
-  redecomp_routes_.push_back(
-      { VariableRole::Primary, VariableRole::Dual, primal_submesh_fes->GetVSize(), dual_submesh_fes->GetVSize(),
-        std::make_unique<redecomp::MatrixTransfer>( *primal_submesh_fes, *dual_submesh_fes,
-                                                    *parent_data.GetRedecompResponse().FESpace(),
-                                                    *submesh_data.GetRedecompGap().FESpace() ) } );
-  redecomp_routes_.push_back(
-      { VariableRole::Dual, VariableRole::Primary, dual_submesh_fes->GetVSize(), primal_submesh_fes->GetVSize(),
-        std::make_unique<redecomp::MatrixTransfer>( *dual_submesh_fes, *primal_submesh_fes,
-                                                    *submesh_data.GetRedecompGap().FESpace(),
-                                                    *parent_data.GetRedecompResponse().FESpace() ) } );
-
   // This route is only used when mapping primary rows back to the parent mesh, but
   // it changes whenever the submesh numbering changes so it belongs in UpdateData.
-  submesh_parent_xfer_ = std::make_unique<SubmeshParentTransferOp>(
+  submesh_parent_xfer_ = std::make_unique<SubmeshParentTransferMat>(
       parent_data.GetSubmeshFESpace(), *parent_data.GetParentCoords().ParFESpace(), submesh2parent_vdof_list );
 
   if ( parent_data.GetLORMesh() ) {
@@ -1402,19 +1177,11 @@ MfemJacobianData::UpdateData::UpdateData( const MfemMeshData& parent_data, const
         submesh_data.GetLORMeshFESpace()->GetOrdering() );
 
     primary_ho_to_lor_ =
-        std::make_unique<HoToLorTransferOp>( parent_data.GetSubmeshFESpace(), *parent_data.GetLORMeshFESpace(),
-                                             *primary_ho_scalar_fes_, *primary_lor_scalar_fes_ );
-    dual_ho_to_lor_ = std::make_unique<HoToLorTransferOp>(
+        std::make_unique<HoToLorTransferMat>( parent_data.GetSubmeshFESpace(), *parent_data.GetLORMeshFESpace(),
+                                              *primary_ho_scalar_fes_, *primary_lor_scalar_fes_ );
+    dual_ho_to_lor_ = std::make_unique<HoToLorTransferMat>(
         submesh_data.GetSubmeshFESpace(), *submesh_data.GetLORMeshFESpace(), *lm_ho_scalar_fes_, *lm_lor_scalar_fes_ );
   }
-}
-
-shared::ParSparseMat MfemJacobianData::BuildLORTransferMatrix( const mfem::ParFiniteElementSpace& ho_fes,
-                                                               const mfem::ParFiniteElementSpace& lor_fes,
-                                                               const mfem::ParFiniteElementSpace& ho_scalar_fes,
-                                                               const mfem::ParFiniteElementSpace& lor_scalar_fes )
-{
-  return BuildHoToLorTransferMatrixImpl( ho_fes, lor_fes, ho_scalar_fes, lor_scalar_fes );
 }
 
 MfemJacobianData::UpdateData& MfemJacobianData::GetUpdateData()
@@ -1429,97 +1196,69 @@ const MfemJacobianData::UpdateData& MfemJacobianData::GetUpdateData() const
   return *update_data_;
 }
 
-const shared::ParSparseMat* MfemJacobianData::GetDisplacementHoToLorTransfer() const
+const HoToLorTransferMat* MfemJacobianData::GetDisplacementHoToLorTransferMat() const
 {
   if ( !update_data_ ) return nullptr;
-  return update_data_->primary_ho_to_lor_ ? update_data_->primary_ho_to_lor_->GetAssembled() : nullptr;
+  return update_data_->primary_ho_to_lor_.get();
 }
 
-const shared::ParSparseMat* MfemJacobianData::GetLagrangeMultiplierHoToLorTransfer() const
+const HoToLorTransferMat* MfemJacobianData::GetLagrangeMultiplierHoToLorTransferMat() const
 {
   if ( !update_data_ ) return nullptr;
-  return update_data_->dual_ho_to_lor_ ? update_data_->dual_ho_to_lor_->GetAssembled() : nullptr;
+  return update_data_->dual_ho_to_lor_.get();
 }
 
-std::unique_ptr<LogicalJacobianBlockOp> MfemJacobianData::BuildJacobianBlockOp(
-    const std::vector<ComputedElementData>& contributions ) const
+const SubmeshParentTransferMat* MfemJacobianData::GetSubmeshParentTransferMat() const
 {
-  VariableRole row_role = VariableRole::Primary;
-  VariableRole col_role = VariableRole::Primary;
-  if ( !contributions.empty() ) {
-    row_role = ToContributionSpace( contributions.front().row_space ).role;
-    col_role = ToContributionSpace( contributions.front().col_space ).role;
-    for ( const auto& contrib : contributions ) {
-      SLIC_ERROR_ROOT_IF( ToContributionSpace( contrib.row_space ).role != row_role ||
-                              ToContributionSpace( contrib.col_space ).role != col_role,
-                          "All contributions passed to BuildJacobianBlockOp() must belong to the same logical block." );
-    }
+  if ( !update_data_ ) return nullptr;
+  return update_data_->submesh_parent_xfer_.get();
+}
+
+shared::ParSparseMat MfemJacobianData::AssembleLorOrSubmeshJacobian(
+    const std::vector<PackedPairJacobianContribs>& contributions ) const
+{
+  SLIC_ERROR_ROOT_IF( contributions.empty(),
+                      "AssembleLorOrSubmeshJacobian() requires a non-empty contributions vector so the row/col surface "
+                      "FE-space metadata is available on all ranks." );
+
+  const mfem::ParFiniteElementSpace* row_surface_fes = contributions.front().row_surface_fes;
+  const mfem::ParFiniteElementSpace* col_surface_fes = contributions.front().col_surface_fes;
+  const mfem::FiniteElementSpace* row_redecomp_fes = contributions.front().row_redecomp_fes;
+  const mfem::FiniteElementSpace* col_redecomp_fes = contributions.front().col_redecomp_fes;
+  SLIC_ERROR_ROOT_IF( row_surface_fes == nullptr || col_surface_fes == nullptr,
+                      "PackedPairJacobianContribs must provide row/col surface FE spaces." );
+  SLIC_ERROR_ROOT_IF( row_redecomp_fes == nullptr || col_redecomp_fes == nullptr,
+                      "PackedPairJacobianContribs must provide row/col redecomp FE spaces." );
+  for ( const auto& contrib : contributions ) {
+    SLIC_ERROR_ROOT_IF( contrib.row_surface_fes != row_surface_fes || contrib.col_surface_fes != col_surface_fes,
+                        "All contributions passed to AssembleLorOrSubmeshJacobian() must belong to the same surface "
+                        "row/column FE-space pairing." );
+    SLIC_ERROR_ROOT_IF( contrib.row_redecomp_fes != row_redecomp_fes || contrib.col_redecomp_fes != col_redecomp_fes,
+                        "All contributions passed to AssembleLorOrSubmeshJacobian() must belong to the same redecomp "
+                        "row/column FE-space pairing." );
   }
 
-  std::unique_ptr<RedecompJacobianStageOp> stage_op;
-  for ( const auto& route : GetUpdateData().redecomp_routes_ ) {
-    if ( route.row_role == row_role && route.col_role == col_role ) {
-      // Surface partition differences stay inside the contribution list. At the
-      // logical-block level we only need the route for the aggregated row/column roles.
-      stage_op = std::make_unique<RedecompJacobianStageOp>( *route.transfer, contributions, parent_data_.GetElemMap1(),
-                                                            parent_data_.GetElemMap2(), route.height, route.width );
-      break;
-    }
+  // If there are no element pairs anywhere, return an explicit empty matrix on the appropriate surface-space DOF layout
+  // (and let higher layers apply any solver-specific fill rules).
+  int local_pairs = 0;
+  for ( const auto& contrib : contributions ) {
+    local_pairs += contrib.numEntries();
+  }
+  int global_pairs = 0;
+  MPI_Allreduce( &local_pairs, &global_pairs, 1, MPI_INT, MPI_SUM,
+                 parent_data_.GetParentCoords().ParFESpace()->GetComm() );
+  if ( global_pairs == 0 ) {
+    mfem::SparseMatrix empty_diag( row_surface_fes->GetVSize(), col_surface_fes->GetVSize() );
+    empty_diag.Finalize();
+    return shared::ParSparseMat( row_surface_fes->GetComm(), row_surface_fes->GlobalVSize(),
+                                 col_surface_fes->GlobalVSize(), row_surface_fes->GetDofOffsets(),
+                                 col_surface_fes->GetDofOffsets(), std::move( empty_diag ) );
   }
 
-  LogicalBlockTransferContext context( GetUpdateData().primary_ho_to_lor_.get(), GetUpdateData().dual_ho_to_lor_.get(),
-                                       *GetUpdateData().submesh_parent_xfer_,
-                                       *parent_data_.GetParentCoords().ParFESpace(), submesh_data_.GetSubmeshFESpace(),
-                                       mortar_tdof_list_ );
-
-  return std::make_unique<LogicalJacobianBlockOp>( row_role, col_role, std::move( stage_op ), context );
-}
-
-shared::ParSparseMat MfemJacobianData::GetMfemJacobian( const std::vector<ComputedElementData>& contributions ) const
-{
-  return BuildJacobianBlockOp( contributions )->Assemble();
-}
-
-ContributionSpace MfemJacobianData::ToContributionSpace( BlockSpace block_space )
-{
-  switch ( block_space ) {
-    case BlockSpace::MORTAR:
-      return { VariableRole::Primary, SurfacePartition::Mortar };
-    case BlockSpace::NONMORTAR:
-      return { VariableRole::Primary, SurfacePartition::Nonmortar };
-    case BlockSpace::LAGRANGE_MULTIPLIER:
-      return { VariableRole::Dual, SurfacePartition::Other };
-    default:
-      SLIC_ERROR_ROOT( "Unsupported block space." );
-      return { VariableRole::Primary, SurfacePartition::Other };
-  }
-}
-
-shared::ParSparseMat MfemJacobianData::BuildSubmeshParentTransferMatrix(
-    const mfem::ParFiniteElementSpace& submesh_fes, const mfem::ParFiniteElementSpace& parent_fes,
-    const mfem::Array<HYPRE_BigInt>& submesh2parent_vdof_list )
-{
-  return BuildSubmeshParentTransferMatrixImpl( submesh_fes, parent_fes, submesh2parent_vdof_list );
-}
-
-JacobianContributions::JacobianContributions( std::initializer_list<std::pair<BlockSpace, BlockSpace>> blocks )
-{
-  for ( const auto& block : blocks ) {
-    contributions_.push_back( ComputedElementData( block.first, block.second ) );
-  }
-}
-
-void JacobianContributions::reserve( int n_pairs, int n_entries_per_pair )
-{
-  for ( auto& contrib : contributions_ ) {
-    contrib.reserve( n_pairs, n_pairs * n_entries_per_pair );
-  }
-}
-
-void JacobianContributions::push_back( int block_idx, int row_elem_id, int col_elem_id, const double* data, int size )
-{
-  auto& contrib = contributions_[block_idx];
-  contrib.append( row_elem_id, col_elem_id, data, size );
+  // Build the redecomp transfer route for this call
+  redecomp::MatrixTransfer transfer( *row_surface_fes, *col_surface_fes, *row_redecomp_fes, *col_redecomp_fes );
+  RedecompJacobianTransfer redecomp_xfer( transfer, contributions );
+  return redecomp_xfer.Assemble();
 }
 
 }  // namespace tribol

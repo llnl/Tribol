@@ -246,8 +246,8 @@ void setLagrangeMultiplierOptions( IndexT cs_id, ImplicitEvalMode evalMode, Spar
     lm_options.sparse_mode = SparseMode::MFEM_ELEMENT_DENSE;
     if ( !cs->hasMfemJacobianData() && ( lm_options.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ||
                                          lm_options.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ) ) {
-      cs->setMfemJacobianData( std::make_unique<MfemJacobianData>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
-                                                                   cs->getContactMethod() ) );
+      cs->setMfemJacobianData(
+          std::make_unique<MfemJacobianData>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData() ) );
     }
   }
 
