@@ -138,11 +138,11 @@ std::vector<PackedPairJacobianContribs> BuildPackedPairJacobianContribs(
     SLIC_ERROR_ROOT_IF( J_block.size() != row_elem_ids.size() || J_block.size() != col_elem_ids.size(),
                         "MethodData block Jacobians and element-id arrays must have matching sizes." );
 
-    int max_values_per_entry = 0;
+    int total_scalar_values = 0;
     for ( int i = 0; i < J_block.size(); ++i ) {
-      max_values_per_entry = std::max( max_values_per_entry, J_block[i].Height() * J_block[i].Width() );
+      total_scalar_values += J_block[i].Height() * J_block[i].Width();
     }
-    data.reserve( J_block.size(), max_values_per_entry );
+    data.reserve( J_block.size(), total_scalar_values );
 
     for ( int i = 0; i < J_block.size(); ++i ) {
       // MatrixTransfer expects one flat buffer plus per-element offsets, so keep

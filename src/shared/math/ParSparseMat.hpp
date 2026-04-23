@@ -268,6 +268,15 @@ class ParSparseMat : public ParSparseMatView {
    * @param row_starts Global row partitioning
    * @param diag Local diagonal block SparseMatrix (rvalue)
    *
+   * The "diag" matrix here is the on-rank (diagonal) CSR block used by HYPRE's ParCSRMatrix representation:
+   * it stores only entries whose column indices fall within this rank's locally-owned column range.
+   * In other words, `diag` represents the block of the global matrix on rows owned by this rank and columns
+   * owned by this rank. Any off-rank couplings belong to the ParCSR "offd" block and are not provided through
+   * this argument.
+   *
+   * The column indices in `diag` are local to this rank's diagonal block (i.e., in `[0, local_num_cols)`),
+   * consistent with MFEM's `mfem::HypreParMatrix` constructor that takes a `mfem::SparseMatrix* diag`.
+   *
    * @note The HypreParMatrix will take ownership of the I, J, and Data from diag.
    */
   ParSparseMat( MPI_Comm comm, HYPRE_BigInt glob_size, HYPRE_BigInt* row_starts, mfem::SparseMatrix&& diag );
@@ -281,6 +290,12 @@ class ParSparseMat : public ParSparseMatView {
    * @param row_starts Global row partitioning
    * @param col_starts Global column partitioning
    * @param diag Local diagonal block SparseMatrix (rvalue)
+   *
+   * This is the diagonal (on-rank) CSR block of the HYPRE ParCSR matrix: rows owned by this rank, and columns
+   * owned by this rank (as defined by `col_starts`). Entries that couple to off-rank columns are part of the
+   * ParCSR "offd" block and are not included in `diag`.
+   *
+   * The column indices in `diag` are local to this rank's diagonal block (i.e., in `[0, local_num_cols)`).
    *
    * @note The HypreParMatrix will take ownership of the I, J, and Data from diag.
    */

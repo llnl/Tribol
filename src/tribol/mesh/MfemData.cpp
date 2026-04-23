@@ -243,13 +243,13 @@ shared::ParSparseMat SubmeshParentTransferMat::Assemble() const
       submesh_parent_data.GetData(), submesh_fes_.GetDofOffsets(), parent_fes_.GetDofOffsets() );
 }
 
-RedecompJacobianTransfer::RedecompJacobianTransfer( const redecomp::MatrixTransfer& transfer,
-                                                    std::vector<PackedPairJacobianContribs> contributions )
+RedecompJacobianAssembler::RedecompJacobianAssembler( const redecomp::MatrixTransfer& transfer,
+                                                      std::vector<PackedPairJacobianContribs> contributions )
     : transfer_( transfer ), contributions_( std::move( contributions ) )
 {
 }
 
-shared::ParSparseMat RedecompJacobianTransfer::Assemble() const
+shared::ParSparseMat RedecompJacobianAssembler::Assemble() const
 {
   axom::Array<int> row_redecomp_ids;
   axom::Array<int> col_redecomp_ids;
@@ -1257,7 +1257,7 @@ shared::ParSparseMat MfemJacobianData::AssembleLorOrSubmeshJacobian(
 
   // Build the redecomp transfer route for this call
   redecomp::MatrixTransfer transfer( *row_surface_fes, *col_surface_fes, *row_redecomp_fes, *col_redecomp_fes );
-  RedecompJacobianTransfer redecomp_xfer( transfer, contributions );
+  RedecompJacobianAssembler redecomp_xfer( transfer, contributions );
   return redecomp_xfer.Assemble();
 }
 

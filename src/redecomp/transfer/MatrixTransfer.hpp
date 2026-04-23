@@ -91,7 +91,7 @@ class MatrixTransfer {
    *
    * @param test_elem_idx List of element IDs on the redecomp test space
    * @param trial_elem_idx List of element IDs on the redecomp trial space
-   * @param src_elem_mat_data Flattened array of element-level dense matrices from the redecomp mesh
+   * @param src_elem_mat_data Flattened array of element-level dense matrix data from the redecomp mesh
    * @param src_elem_mat_offsets Offsets into src_elem_mat_data for each element
    * @param parallel_assemble Performs parallel assembly (transforms to tdofs)
    * on the HypreParMatrix if true, returns ldofs otherwise
@@ -121,6 +121,16 @@ class MatrixTransfer {
   shared::ParSparseMat ConvertToParSparseMat( mfem::SparseMatrix&& sparse, bool parallel_assemble = true ) const;
 
  private:
+  /**
+   * @brief Precomputed send/receive metadata for redecomp->parent element-matrix transfer
+   *
+   * MatrixTransfer communicates element Jacobian contributions from the ranks that own the redecomp elements
+   * to the ranks that own the corresponding parent mfem::ParMesh elements. CommunicationData stores the per-rank
+   * packing plan (what to send) and the unpacking metadata (how to interpret received buffers) so the transfer
+   * kernels can focus on inserting values into the parent mfem::ParMesh sparse matrix.
+   *
+   * All arrays are indexed by MPI rank unless otherwise noted.
+   */
   struct CommunicationData {
     MPIArray<int> send_array_ids;                       ///< Matrix entries to send to each parent rank
     axom::Array<int> send_num_mat_entries;              ///< Packed value count sent to each rank

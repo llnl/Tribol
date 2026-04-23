@@ -451,8 +451,8 @@ TEST_F( MfemJacobianTest, computed_element_data_append_tracks_offsets )
   // - jacobian_data is the concatenation of all appended values.
   // - Optional metadata pointers remain null when the default constructor is used.
   //
-  // reserve() uses a per-entry value count; this test appends blocks of sizes 2 and 3.
-  contrib.reserve( 2, 3 );
+  // reserve() takes a total scalar-value count; this test appends blocks of sizes 2 and 3 (total 5).
+  contrib.reserve( 2, 5 );
 
   const double first[] = { 1.0, 2.0 };
   const double second[] = { 3.0, 4.0, 5.0 };
@@ -656,7 +656,7 @@ TEST_F( MfemJacobianTest, lor_or_submesh_jacobian_and_solver_composition_smoke )
   }
 }
 
-TEST_F( MfemJacobianTest, logical_jacobian_primary_dual_assembles_in_ho_and_lor )
+TEST_F( MfemJacobianTest, jacobian_primary_dual_assembles_in_ho_and_lor )
 {
   // Assembles a solver-visible primary->dual Jacobian block from a single constant element contribution.
   //
@@ -686,7 +686,7 @@ TEST_F( MfemJacobianTest, logical_jacobian_primary_dual_assembles_in_ho_and_lor 
   }
 }
 
-TEST_F( MfemJacobianTest, logical_jacobian_dual_primary_assembles_in_ho_and_lor )
+TEST_F( MfemJacobianTest, jacobian_dual_primary_assembles_in_ho_and_lor )
 {
   // Assembles a solver-visible dual->primary Jacobian block from a single constant element contribution.
   //
@@ -716,7 +716,7 @@ TEST_F( MfemJacobianTest, logical_jacobian_dual_primary_assembles_in_ho_and_lor 
   }
 }
 
-TEST_F( MfemJacobianTest, logical_jacobian_dual_dual_inactive_dofs_form_identity )
+TEST_F( MfemJacobianTest, jacobian_dual_dual_inactive_dofs_form_identity )
 {
   // Verifies the single-mortar solver compatibility behavior for empty dual-dual blocks.
   //
@@ -752,7 +752,7 @@ TEST_F( MfemJacobianTest, logical_jacobian_dual_dual_inactive_dofs_form_identity
   } );
 }
 
-TEST_F( MfemJacobianTest, logical_jacobian_primary_primary_aggregates_mortar_and_nonmortar_contributions )
+TEST_F( MfemJacobianTest, jacobian_primary_primary_aggregates_mortar_and_nonmortar_contributions )
 {
   // Verifies that mortar/nonmortar contribution partitions are summed into one solver-visible
   // primary-primary Jacobian block.

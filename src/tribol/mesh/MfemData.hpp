@@ -1729,6 +1729,7 @@ class HoToLorTransferMat {
 
 /**
  * @brief Submesh -> parent DOF transfer matrix builder
+ * It does not cache assembled results.
  */
 class SubmeshParentTransferMat {
  public:
@@ -1803,16 +1804,16 @@ struct PackedPairJacobianContribs {
   /**
    * @brief Reserve packed storage for a batch of element contributions
    *
-   * @param n_entries Number of element-pair contributions that will be appended.
-   * @param n_values_per_entry Expected number of scalar values per appended entry.
-   * This is used to reserve `n_entries * n_values_per_entry` capacity in `jacobian_data`.
+   * @param n_pairs Number of element-pair contributions that will be appended.
+   * @param n_jacobian_scalar_values Total number of scalar Jacobian values that will be appended across all pairs.
+   * This is used to reserve capacity in @ref jacobian_data.
    */
-  void reserve( int n_entries, int n_values_per_entry )
+  void reserve( int n_pairs, int n_jacobian_scalar_values )
   {
-    row_elem_ids.reserve( n_entries );
-    col_elem_ids.reserve( n_entries );
-    jacobian_data.reserve( n_entries * n_values_per_entry );
-    value_offsets.reserve( n_entries );
+    row_elem_ids.reserve( n_pairs );
+    col_elem_ids.reserve( n_pairs );
+    jacobian_data.reserve( n_jacobian_scalar_values );
+    value_offsets.reserve( n_pairs );
   }
 
   /**
@@ -1842,16 +1843,16 @@ struct PackedPairJacobianContribs {
 /**
  * @brief Assemble a Jacobian on LOR/submesh surface FE spaces from redecomp element contributions
  */
-class RedecompJacobianTransfer {
+class RedecompJacobianAssembler {
  public:
   /**
-   * @brief Construct one redecomp->surface Jacobian transfer for a logical row/column pairing
+   * @brief Construct one redecomp->surface Jacobian transfer for a row/column pairing
    *
    * @param transfer Redecomp transfer route for the given row/col surface FE spaces
    * @param contributions Packed element Jacobian contributions for one row/col FE-space pairing
    */
-  RedecompJacobianTransfer( const redecomp::MatrixTransfer& transfer,
-                            std::vector<PackedPairJacobianContribs> contributions );
+  RedecompJacobianAssembler( const redecomp::MatrixTransfer& transfer,
+                             std::vector<PackedPairJacobianContribs> contributions );
 
   /**
    * @brief Assemble the redecomp-stage matrix from flattened element contributions
@@ -1868,7 +1869,7 @@ class RedecompJacobianTransfer {
 /**
  * @brief Assemble a solver-visible Jacobian by composing a LOR/submesh Jacobian with explicit transfer operators
  *
- * The transfer operators must be explicit assembled sparse matrices. Each transfer list is an ordered chain that maps
+ * The transfer operators must be explicitly assembled sparse matrices. Each transfer list is an ordered chain that maps
  * from solver true DOFs into the corresponding DOF space of the input Jacobian:
  *   x0 (true dofs) -> op[0] -> op[1] -> ... -> xN (lor/submesh dofs)
  *
@@ -1919,9 +1920,9 @@ class MfemJacobianData {
    * @brief Assemble a Jacobian on the LOR or submesh DOF spaces using redecomp::MatrixTransfer
    *
    * This returns the intermediate Jacobian prior to any solver-block mapping. Method-specific code is expected to
-   * compose this matrix with true-dof and optional HO/LOR/submesh-parent transfer operators.
+   * compose this matrix with (optional LOR/)submesh/parent true-dof transfer operators.
    *
-   * @note The contributions must correspond to a single logical row/column pairing (e.g. primary-primary).
+   * @note The contributions must correspond to a single logical row/column pairing
    */
   shared::ParSparseMat AssembleLorOrSubmeshJacobian(
       const std::vector<PackedPairJacobianContribs>& contributions ) const;
