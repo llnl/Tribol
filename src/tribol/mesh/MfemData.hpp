@@ -1695,16 +1695,15 @@ class HoToLorTransferAction : public mfem::Operator {
  * @brief HO -> LOR transfer matrix builder for one FE-space pair
  *
  * This type is assembled-only and returns an explicit HypreParMatrix wrapper.
- * It does not cache assembled results.
  */
 class HoToLorTransferMat {
  public:
   /**
    * @brief Construct a builder that maps HO DOFs to LOR DOFs for one field space
    *
-   * @param ho_fes Higher-order (HO) finite element space on the surface
-   * @param lor_fes Low-order refined (LOR) finite element space on the surface
-   * @param ho_scalar_fes Scalar (vdim=1) companion space on the HO mesh (used to assemble component operators)
+   * @param ho_fes Higher-order (HO) finite element space on the submesh
+   * @param lor_fes Low-order refined (LOR) finite element space on the LOR mesh
+   * @param ho_scalar_fes Scalar (vdim=1) companion space on the submesh (used to assemble component operators)
    * @param lor_scalar_fes Scalar (vdim=1) companion space on the LOR mesh (used to assemble component operators)
    */
   HoToLorTransferMat( const mfem::ParFiniteElementSpace& ho_fes, const mfem::ParFiniteElementSpace& lor_fes,
@@ -1729,7 +1728,6 @@ class HoToLorTransferMat {
 
 /**
  * @brief Submesh -> parent DOF transfer matrix builder
- * It does not cache assembled results.
  */
 class SubmeshParentTransferMat {
  public:
@@ -1759,7 +1757,7 @@ class SubmeshParentTransferMat {
 };
 
 /**
- * @brief Packed Jacobian contributions for one row/col FE-space pairing
+ * @brief Packed Jacobian contributions for one row/col FE-space + Tribol mesh pairing
  *
  * This struct stores stacked element-pair Jacobian contributions along with:
  * - the row/col surface finite element spaces the assembled matrix lives on, and

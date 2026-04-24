@@ -1257,8 +1257,8 @@ shared::ParSparseMat MfemJacobianData::AssembleLorOrSubmeshJacobian(
 
   // Build the redecomp transfer route for this call
   redecomp::MatrixTransfer transfer( *row_surface_fes, *col_surface_fes, *row_redecomp_fes, *col_redecomp_fes );
-  RedecompJacobianAssembler redecomp_xfer( transfer, contributions );
-  return redecomp_xfer.Assemble();
+  RedecompJacobianAssembler lor_or_submesh_jacobian( transfer, contributions );
+  return lor_or_submesh_jacobian.Assemble();
 }
 
 shared::ParSparseMat MfemJacobianData::GetMfemJacobian(
