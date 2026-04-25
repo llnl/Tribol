@@ -964,7 +964,7 @@ TEST_P( MfemLorTransferParamTest, lor_transfer_matches_mfem )
     lor_fes = mesh_data->GetLORMeshFESpace();
     ASSERT_NE( lor_fes, nullptr );
     ASSERT_EQ( jac_data->ParentPath().surface_fes, lor_fes );
-    // ParentPath(): [P_parent, parent->submesh, ho->lor]
+    // ParentPath(): [P_parent, parent->submesh, submesh->lor]
     ASSERT_GE( jac_data->ParentPath().owned_ops.size(), 2u );
     T = jac_data->ParentPath().owned_ops.back().get();
   } else {
@@ -972,7 +972,7 @@ TEST_P( MfemLorTransferParamTest, lor_transfer_matches_mfem )
     lor_fes = submesh_data->GetLORMeshFESpace();
     ASSERT_NE( lor_fes, nullptr );
     ASSERT_EQ( jac_data->SubmeshPath().surface_fes, lor_fes );
-    // SubmeshPath(): [P_dual, ho->lor]
+    // SubmeshPath(): [P_dual, submesh->lor]
     ASSERT_GE( jac_data->SubmeshPath().owned_ops.size(), 1u );
     T = jac_data->SubmeshPath().owned_ops.back().get();
   }

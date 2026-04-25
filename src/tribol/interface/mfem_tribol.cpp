@@ -88,6 +88,8 @@ std::vector<PackedPairJacobianContribs> BuildPackedPairJacobianContribs(
 
   for ( const auto& pair : contribs ) {
     auto surface_fes_for = [&]( BlockSpace space ) -> const mfem::ParFiniteElementSpace& {
+      // "Surface" here means the parent FE space of the redecomp FE space used for the transfer. In this MFEM path
+      // that surface FE space is either the LOR surface mesh (when LOR is active) or the boundary submesh (otherwise).
       const auto& primary_surface_fes = *jac_data.ParentPath().surface_fes;
       const auto& dual_surface_fes = *jac_data.SubmeshPath().surface_fes;
       switch ( space ) {

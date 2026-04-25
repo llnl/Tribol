@@ -312,6 +312,9 @@ shared::ParSparseMat MfemJacobianTransfer::Assemble(
   const auto* col_surface_fes = contributions.front().col_surface_fes;
   const auto* row_redecomp_fes = contributions.front().row_redecomp_fes;
   const auto* col_redecomp_fes = contributions.front().col_redecomp_fes;
+  // "Surface" FE spaces are the parent FE spaces of the redecomp FE spaces used for the transfer. In this MFEM path
+  // those surface FE spaces are either on the LOR surface mesh (when LOR is active) or on the boundary submesh
+  // (otherwise), and they define the DOF layout of the intermediate redecomp-to-surface Jacobian.
 
   SLIC_ERROR_ROOT_IF( row_surface_fes == nullptr || col_surface_fes == nullptr,
                       "MfemJacobianTransfer::Assemble: contributions must provide row/col surface FE spaces." );
@@ -1227,6 +1230,10 @@ MfemJacobianData::UpdateData::UpdateData( const MfemMeshData& parent_data, const
                                           const mfem::Array<HYPRE_BigInt>& submesh2parent_vdof_list )
 {
   // Build cached pathways that map final true dofs into the selected surface DOF layouts.
+  // Here, "surface" refers to the parent FE spaces of the redecomp FE spaces used during redecomp transfer.
+  // In this MFEM setup, those parent (surface) FE spaces live on either:
+  // - the LOR surface mesh (when LOR is active), or
+  // - the boundary submesh (otherwise).
   parent_path_.final_fes = parent_data.GetParentCoords().ParFESpace();
   parent_path_.owned_ops.clear();
   parent_path_.ops.clear();

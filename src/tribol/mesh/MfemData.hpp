@@ -1667,8 +1667,8 @@ class HoToLorTransferAction : public mfem::Operator {
   /**
    * @brief Construct an action that maps HO DOFs to LOR DOFs for one field space
    *
-   * @param ho_fes Higher-order (HO) finite element space on the surface
-   * @param lor_fes Low-order refined (LOR) finite element space on the surface
+   * @param ho_fes Higher-order (HO) finite element space
+   * @param lor_fes Low-order refined (LOR) finite element space
    * @param use_ea Whether to use element assembly in MFEM's transfer operator
    */
   HoToLorTransferAction( const mfem::ParFiniteElementSpace& ho_fes, const mfem::ParFiniteElementSpace& lor_fes,
@@ -1701,10 +1701,10 @@ class HoToLorTransferMat {
   /**
    * @brief Construct a builder that maps HO DOFs to LOR DOFs for one field space
    *
-   * @param ho_fes Higher-order (HO) finite element space on the submesh
-   * @param lor_fes Low-order refined (LOR) finite element space on the LOR mesh
-   * @param ho_scalar_fes Scalar (vdim=1) companion space on the submesh (used to assemble component operators)
-   * @param lor_scalar_fes Scalar (vdim=1) companion space on the LOR mesh (used to assemble component operators)
+   * @param ho_fes Higher-order (HO) finite element space
+   * @param lor_fes Low-order refined (LOR) finite element space
+   * @param ho_scalar_fes Scalar (vdim=1) HO companion space (used to assemble component operators)
+   * @param lor_scalar_fes Scalar (vdim=1) LOR companion space (used to assemble component operators)
    */
   HoToLorTransferMat( const mfem::ParFiniteElementSpace& ho_fes, const mfem::ParFiniteElementSpace& lor_fes,
                       const mfem::ParFiniteElementSpace& ho_scalar_fes,
@@ -1762,6 +1762,10 @@ class SubmeshParentTransferMat {
  * This struct stores stacked element-pair Jacobian contributions along with:
  * - the row/col surface finite element spaces the assembled matrix lives on, and
  * - the row/col redecomp finite element spaces and Tribol mesh element-id maps
+ *
+ * In this context, "surface" refers to the parent FE spaces of the redecomp FE spaces used during redecomp transfer.
+ * In the MFEM integration those parent (surface) FE spaces live on either the LOR surface mesh (when LOR is active)
+ * or the boundary submesh (otherwise).
  *
  * Each instance is tied to a single row/col surface FE space pairing and a single row/col Tribol mesh
  * (via the element maps).
@@ -1840,6 +1844,10 @@ struct PackedPairJacobianContribs {
 
 /**
  * @brief Assemble a Jacobian on LOR/submesh surface FE spaces from redecomp element contributions
+ *
+ * Here, "surface" refers to the parent FE spaces of the redecomp FE spaces used for the transfer. In the MFEM
+ * integration those parent (surface) FE spaces live on either the LOR surface mesh (when LOR is active) or the
+ * boundary submesh (otherwise).
  */
 class RedecompJacobianAssembler {
  public:
@@ -1901,7 +1909,8 @@ class JacobianAssembler {
  * @brief A fixed transfer pathway from a solver-visible FE space (true dofs) to a surface FE space (dofs)
  *
  * This stores an ordered chain of explicit sparse matrices that map from the true dofs of @ref final_fes to the dofs
- * of @ref surface_fes (LOR, if active, submesh otherwise):
+ * of @ref surface_fes. Here, "surface" refers to the parent FE space of the redecomp FE space used during transfer:
+ * it is either on the LOR surface mesh (when LOR is active) or on the boundary submesh (otherwise):
  *   x_true -> ops[0] -> ops[1] -> ... -> x_surface
  *
  * The first operator is typically MFEM's prolongation matrix `final_fes->Dof_TrueDof_Matrix()`. Additional operators
