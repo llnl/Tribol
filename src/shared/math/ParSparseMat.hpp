@@ -194,6 +194,9 @@ class ParSparseMatView {
         if ( result ) {
           if constexpr ( MSPACE == MemorySpace::Host ) {
             ensureHostMemory( result );
+            // Ensure the partitioning arrays are owned by the matrix (do not alias external FE spaces).
+            result->CopyRowStarts();
+            result->CopyColStarts();
             constexpr int hypre_owned_host_arrays = -1;
             result->SetOwnerFlags( hypre_owned_host_arrays, hypre_owned_host_arrays, hypre_owned_host_arrays );
           }

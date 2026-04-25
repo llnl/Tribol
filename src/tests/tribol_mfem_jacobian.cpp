@@ -378,47 +378,47 @@ const tribol::Array1D<int>& ElemMapForBlock( const tribol::MfemMeshData& mesh_da
   }
 }
 
-tribol::PackedPairJacobianContribs MakeConstantContribution( const tribol::MfemMeshData& mesh_data,
-                                                             const tribol::MfemSubmeshData& submesh_data,
+tribol::PackedPairJacobianContribs MakeConstantContribution( const JacobianTestContext& ctx,
                                                              tribol::BlockSpace row_space, tribol::BlockSpace col_space,
                                                              double value )
 {
   // Use one local element pair and fill its dense contribution with a constant so
   // assembled values stay easy to reason about in the tests below.
-  const bool use_lor = ( mesh_data.GetLORMesh() != nullptr );
   auto surface_fes_for = [&]( tribol::BlockSpace space ) -> const mfem::ParFiniteElementSpace& {
+    const auto& primary_surface_fes = *ctx.jac_data->ParentPath().surface_fes;
+    const auto& dual_surface_fes = *ctx.jac_data->SubmeshPath().surface_fes;
     switch ( space ) {
       case tribol::BlockSpace::MORTAR:
       case tribol::BlockSpace::NONMORTAR:
-        return use_lor ? *mesh_data.GetLORMeshFESpace() : mesh_data.GetSubmeshFESpace();
+        return primary_surface_fes;
       case tribol::BlockSpace::LAGRANGE_MULTIPLIER:
-        return use_lor ? *submesh_data.GetLORMeshFESpace() : submesh_data.GetSubmeshFESpace();
+        return dual_surface_fes;
       default:
         ADD_FAILURE() << "Unsupported block space.";
-        return use_lor ? *mesh_data.GetLORMeshFESpace() : mesh_data.GetSubmeshFESpace();
+        return primary_surface_fes;
     }
   };
 
   auto elem_map_for = [&]( tribol::BlockSpace space ) -> const tribol::Array1D<int>& {
     switch ( space ) {
       case tribol::BlockSpace::MORTAR:
-        return mesh_data.GetElemMap1();
+        return ctx.mesh_data->GetElemMap1();
       case tribol::BlockSpace::NONMORTAR:
       case tribol::BlockSpace::LAGRANGE_MULTIPLIER:
-        return mesh_data.GetElemMap2();
+        return ctx.mesh_data->GetElemMap2();
       default:
         ADD_FAILURE() << "Unsupported block space.";
-        return mesh_data.GetElemMap1();
+        return ctx.mesh_data->GetElemMap1();
     }
   };
 
   tribol::PackedPairJacobianContribs contrib( surface_fes_for( row_space ), surface_fes_for( col_space ),
-                                              RedecompFESpaceForBlock( mesh_data, submesh_data, row_space ),
-                                              RedecompFESpaceForBlock( mesh_data, submesh_data, col_space ),
+                                              RedecompFESpaceForBlock( *ctx.mesh_data, *ctx.submesh_data, row_space ),
+                                              RedecompFESpaceForBlock( *ctx.mesh_data, *ctx.submesh_data, col_space ),
                                               elem_map_for( row_space ), elem_map_for( col_space ) );
 
-  const auto& row_map = ElemMapForBlock( mesh_data, row_space );
-  const auto& col_map = ElemMapForBlock( mesh_data, col_space );
+  const auto& row_map = ElemMapForBlock( *ctx.mesh_data, row_space );
+  const auto& col_map = ElemMapForBlock( *ctx.mesh_data, col_space );
   if ( row_map.size() == 0 || col_map.size() == 0 ) {
     return contrib;
   }
@@ -428,8 +428,10 @@ tribol::PackedPairJacobianContribs MakeConstantContribution( const tribol::MfemM
 
   mfem::Array<int> row_dofs;
   mfem::Array<int> col_dofs;
-  RedecompFESpaceForBlock( mesh_data, submesh_data, row_space ).GetElementVDofs( row_redecomp_elem, row_dofs );
-  RedecompFESpaceForBlock( mesh_data, submesh_data, col_space ).GetElementVDofs( col_redecomp_elem, col_dofs );
+  RedecompFESpaceForBlock( *ctx.mesh_data, *ctx.submesh_data, row_space )
+      .GetElementVDofs( row_redecomp_elem, row_dofs );
+  RedecompFESpaceForBlock( *ctx.mesh_data, *ctx.submesh_data, col_space )
+      .GetElementVDofs( col_redecomp_elem, col_dofs );
 
   std::vector<double> values( static_cast<size_t>( row_dofs.Size() * col_dofs.Size() ), value );
   contrib.reserve( 1, static_cast<int>( values.size() ) );
@@ -594,8 +596,8 @@ TEST_F( MfemJacobianTest, lor_or_submesh_jacobian_and_solver_composition_smoke )
   // Smoke-test the Jacobian transfer API end-to-end on a minimal synthetic contribution set.
   //
   // Pass conditions (when any rank owns a surface element pair):
-  // - AssembleLorOrSubmeshJacobian() produces a non-empty sparse matrix on the surface space.
-  // - The solver-visible Jacobian assembled via the explicit transfer chain is also non-empty.
+  // - Redecomp-to-surface assembly produces a non-empty sparse matrix on the surface space.
+  // - The solver-visible Jacobian assembled via GetMfemJacobian() is also non-empty.
   //
   // Pass conditions (when there are no local surface element pairs on a rank):
   // - Assembly still succeeds and produces correctly-sized (possibly empty) matrices.
@@ -612,8 +614,7 @@ TEST_F( MfemJacobianTest, lor_or_submesh_jacobian_and_solver_composition_smoke )
         int num_dofs_per_elem = 8 * mesh_data->GetParentCoords().ParFESpace()->GetVDim();
         int mat_size = num_dofs_per_elem * num_dofs_per_elem;
 
-        const bool use_lor = ( mesh_data->GetLORMesh() != nullptr );
-        auto& primary_surface_fes = use_lor ? *mesh_data->GetLORMeshFESpace() : mesh_data->GetSubmeshFESpace();
+        auto& primary_surface_fes = *ctx.jac_data->ParentPath().surface_fes;
         tribol::PackedPairJacobianContribs contrib(
             primary_surface_fes, primary_surface_fes, *mesh_data->GetRedecompResponse().FESpace(),
             *mesh_data->GetRedecompResponse().FESpace(), mesh_data->GetElemMap1(), mesh_data->GetElemMap1() );
@@ -625,15 +626,29 @@ TEST_F( MfemJacobianTest, lor_or_submesh_jacobian_and_solver_composition_smoke )
       } else {
         // Provide metadata even when there are no local elements so assembly can
         // still build correctly-sized empty matrices on all ranks.
-        const bool use_lor = ( mesh_data->GetLORMesh() != nullptr );
-        auto& primary_surface_fes = use_lor ? *mesh_data->GetLORMeshFESpace() : mesh_data->GetSubmeshFESpace();
+        auto& primary_surface_fes = *ctx.jac_data->ParentPath().surface_fes;
         contributions.emplace_back(
             primary_surface_fes, primary_surface_fes, *mesh_data->GetRedecompResponse().FESpace(),
             *mesh_data->GetRedecompResponse().FESpace(), mesh_data->GetElemMap1(), mesh_data->GetElemMap1() );
       }
 
-      auto lor_or_submesh_jacobian = jac_data->AssembleLorOrSubmeshJacobian( contributions );
-      auto ParJ = AssembleSolverBlockJacobian( ctx, contributions, SolverBlock::Primary, SolverBlock::Primary );
+      // Assemble the intermediate surface Jacobian directly through redecomp::MatrixTransfer to validate the
+      // redecomp->surface stage independently of solver composition.
+      const auto* row_surface_fes = contributions.front().row_surface_fes;
+      const auto* col_surface_fes = contributions.front().col_surface_fes;
+      const auto* row_redecomp_fes = contributions.front().row_redecomp_fes;
+      const auto* col_redecomp_fes = contributions.front().col_redecomp_fes;
+      ASSERT_NE( row_surface_fes, nullptr );
+      ASSERT_NE( col_surface_fes, nullptr );
+      ASSERT_NE( row_redecomp_fes, nullptr );
+      ASSERT_NE( col_redecomp_fes, nullptr );
+
+      redecomp::MatrixTransfer transfer( *row_surface_fes, *col_surface_fes, *row_redecomp_fes, *col_redecomp_fes );
+      tribol::RedecompJacobianAssembler redecomp_to_surface( transfer, contributions );
+      auto surface_jacobian = redecomp_to_surface.Assemble();
+
+      auto ParJ = jac_data->GetMfemJacobian( mesh_data->GetParentCoords().ParFESpace(),
+                                             mesh_data->GetParentCoords().ParFESpace(), contributions );
 
       int local_pairs = 0;
       for ( const auto& contrib : contributions ) {
@@ -643,7 +658,7 @@ TEST_F( MfemJacobianTest, lor_or_submesh_jacobian_and_solver_composition_smoke )
       MPI_Allreduce( &local_pairs, &global_pairs, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
 
       if ( global_pairs > 0 ) {
-        EXPECT_GT( lor_or_submesh_jacobian->NNZ(), 0 );
+        EXPECT_GT( surface_jacobian->NNZ(), 0 );
         EXPECT_GT( ParJ->NNZ(), 0 );
       } else {
         int n_ranks;
@@ -668,8 +683,7 @@ TEST_F( MfemJacobianTest, jacobian_primary_dual_assembles_in_ho_and_lor )
     SCOPED_TRACE( ::testing::Message() << "order=" << order );
     WithJacobianData( order, [&]( const JacobianTestContext& ctx ) {
       std::vector<tribol::PackedPairJacobianContribs> contributions{
-          MakeConstantContribution( *ctx.mesh_data, *ctx.submesh_data, tribol::BlockSpace::MORTAR,
-                                    tribol::BlockSpace::LAGRANGE_MULTIPLIER, 2.0 ) };
+          MakeConstantContribution( ctx, tribol::BlockSpace::MORTAR, tribol::BlockSpace::LAGRANGE_MULTIPLIER, 2.0 ) };
 
       auto mat = AssembleSolverBlockJacobian( ctx, contributions, SolverBlock::Primary, SolverBlock::Dual );
 
@@ -698,8 +712,7 @@ TEST_F( MfemJacobianTest, jacobian_dual_primary_assembles_in_ho_and_lor )
     SCOPED_TRACE( ::testing::Message() << "order=" << order );
     WithJacobianData( order, [&]( const JacobianTestContext& ctx ) {
       std::vector<tribol::PackedPairJacobianContribs> contributions{
-          MakeConstantContribution( *ctx.mesh_data, *ctx.submesh_data, tribol::BlockSpace::LAGRANGE_MULTIPLIER,
-                                    tribol::BlockSpace::MORTAR, 2.5 ) };
+          MakeConstantContribution( ctx, tribol::BlockSpace::LAGRANGE_MULTIPLIER, tribol::BlockSpace::MORTAR, 2.5 ) };
 
       auto mat = AssembleSolverBlockJacobian( ctx, contributions, SolverBlock::Dual, SolverBlock::Primary );
 
@@ -727,8 +740,7 @@ TEST_F( MfemJacobianTest, jacobian_dual_dual_inactive_dofs_form_identity )
   // - The assembled dual-dual block is square on the dual (submesh) true-dof space.
   // - The diagonal is exactly 1.0 on the inactive dual tdofs and 0.0 elsewhere.
   WithJacobianData( 1, [&]( const JacobianTestContext& ctx ) {
-    const bool use_lor = ( ctx.mesh_data->GetLORMesh() != nullptr );
-    auto& dual_surface_fes = use_lor ? *ctx.submesh_data->GetLORMeshFESpace() : ctx.submesh_data->GetSubmeshFESpace();
+    auto& dual_surface_fes = *ctx.jac_data->SubmeshPath().surface_fes;
     std::vector<tribol::PackedPairJacobianContribs> contributions{ tribol::PackedPairJacobianContribs(
         dual_surface_fes, dual_surface_fes, *ctx.submesh_data->GetRedecompGap().FESpace(),
         *ctx.submesh_data->GetRedecompGap().FESpace(), ctx.mesh_data->GetElemMap2(), ctx.mesh_data->GetElemMap2() ) };
@@ -764,14 +776,11 @@ TEST_F( MfemJacobianTest, jacobian_primary_primary_aggregates_mortar_and_nonmort
   for ( const int order : { 1, 2 } ) {
     SCOPED_TRACE( ::testing::Message() << "order=" << order );
     WithJacobianData( order, [&]( const JacobianTestContext& ctx ) {
-      const auto mm = MakeConstantContribution( *ctx.mesh_data, *ctx.submesh_data, tribol::BlockSpace::MORTAR,
-                                                tribol::BlockSpace::MORTAR, 1.0 );
-      const auto mn = MakeConstantContribution( *ctx.mesh_data, *ctx.submesh_data, tribol::BlockSpace::MORTAR,
-                                                tribol::BlockSpace::NONMORTAR, 2.0 );
-      const auto nm = MakeConstantContribution( *ctx.mesh_data, *ctx.submesh_data, tribol::BlockSpace::NONMORTAR,
-                                                tribol::BlockSpace::MORTAR, 3.0 );
-      const auto nn = MakeConstantContribution( *ctx.mesh_data, *ctx.submesh_data, tribol::BlockSpace::NONMORTAR,
-                                                tribol::BlockSpace::NONMORTAR, 4.0 );
+      const auto mm = MakeConstantContribution( ctx, tribol::BlockSpace::MORTAR, tribol::BlockSpace::MORTAR, 1.0 );
+      const auto mn = MakeConstantContribution( ctx, tribol::BlockSpace::MORTAR, tribol::BlockSpace::NONMORTAR, 2.0 );
+      const auto nm = MakeConstantContribution( ctx, tribol::BlockSpace::NONMORTAR, tribol::BlockSpace::MORTAR, 3.0 );
+      const auto nn =
+          MakeConstantContribution( ctx, tribol::BlockSpace::NONMORTAR, tribol::BlockSpace::NONMORTAR, 4.0 );
 
       auto combined =
           AssembleSolverBlockJacobian( ctx, { mm, mn, nm, nn }, SolverBlock::Primary, SolverBlock::Primary );
@@ -814,37 +823,31 @@ TEST_F( MfemJacobianTest, mfem_block_jacobian_preserves_block_values_and_layout 
 
     auto expected_00 = AssembleSolverBlockJacobian(
         ctx,
-        { MakeConstantContribution( *ctx.mesh_data, *ctx.submesh_data, tribol::BlockSpace::MORTAR,
-                                    tribol::BlockSpace::MORTAR, 1.0 ),
-          MakeConstantContribution( *ctx.mesh_data, *ctx.submesh_data, tribol::BlockSpace::MORTAR,
-                                    tribol::BlockSpace::NONMORTAR, 2.0 ),
-          MakeConstantContribution( *ctx.mesh_data, *ctx.submesh_data, tribol::BlockSpace::NONMORTAR,
-                                    tribol::BlockSpace::MORTAR, 4.0 ),
-          MakeConstantContribution( *ctx.mesh_data, *ctx.submesh_data, tribol::BlockSpace::NONMORTAR,
-                                    tribol::BlockSpace::NONMORTAR, 5.0 ) },
+        { MakeConstantContribution( ctx, tribol::BlockSpace::MORTAR, tribol::BlockSpace::MORTAR, 1.0 ),
+          MakeConstantContribution( ctx, tribol::BlockSpace::MORTAR, tribol::BlockSpace::NONMORTAR, 2.0 ),
+          MakeConstantContribution( ctx, tribol::BlockSpace::NONMORTAR, tribol::BlockSpace::MORTAR, 4.0 ),
+          MakeConstantContribution( ctx, tribol::BlockSpace::NONMORTAR, tribol::BlockSpace::NONMORTAR, 5.0 ) },
         SolverBlock::Primary, SolverBlock::Primary );
 
     auto expected_01 = AssembleSolverBlockJacobian(
         ctx,
-        { MakeConstantContribution( *ctx.mesh_data, *ctx.submesh_data, tribol::BlockSpace::MORTAR,
-                                    tribol::BlockSpace::LAGRANGE_MULTIPLIER, 3.0 ),
-          MakeConstantContribution( *ctx.mesh_data, *ctx.submesh_data, tribol::BlockSpace::NONMORTAR,
-                                    tribol::BlockSpace::LAGRANGE_MULTIPLIER, 6.0 ) },
+        { MakeConstantContribution( ctx, tribol::BlockSpace::MORTAR, tribol::BlockSpace::LAGRANGE_MULTIPLIER, 3.0 ),
+          MakeConstantContribution( ctx, tribol::BlockSpace::NONMORTAR, tribol::BlockSpace::LAGRANGE_MULTIPLIER,
+                                    6.0 ) },
         SolverBlock::Primary, SolverBlock::Dual );
 
     auto expected_10 = AssembleSolverBlockJacobian(
         ctx,
-        { MakeConstantContribution( *ctx.mesh_data, *ctx.submesh_data, tribol::BlockSpace::LAGRANGE_MULTIPLIER,
-                                    tribol::BlockSpace::MORTAR, 7.0 ),
-          MakeConstantContribution( *ctx.mesh_data, *ctx.submesh_data, tribol::BlockSpace::LAGRANGE_MULTIPLIER,
-                                    tribol::BlockSpace::NONMORTAR, 8.0 ) },
+        { MakeConstantContribution( ctx, tribol::BlockSpace::LAGRANGE_MULTIPLIER, tribol::BlockSpace::MORTAR, 7.0 ),
+          MakeConstantContribution( ctx, tribol::BlockSpace::LAGRANGE_MULTIPLIER, tribol::BlockSpace::NONMORTAR,
+                                    8.0 ) },
         SolverBlock::Dual, SolverBlock::Primary );
 
-    auto expected_11 = AssembleSolverBlockJacobian(
-        ctx,
-        { MakeConstantContribution( *ctx.mesh_data, *ctx.submesh_data, tribol::BlockSpace::LAGRANGE_MULTIPLIER,
-                                    tribol::BlockSpace::LAGRANGE_MULTIPLIER, 0.0 ) },
-        SolverBlock::Dual, SolverBlock::Dual );
+    auto expected_11 =
+        AssembleSolverBlockJacobian( ctx,
+                                     { MakeConstantContribution( ctx, tribol::BlockSpace::LAGRANGE_MULTIPLIER,
+                                                                 tribol::BlockSpace::LAGRANGE_MULTIPLIER, 0.0 ) },
+                                     SolverBlock::Dual, SolverBlock::Dual );
 
     const auto* block_00 = dynamic_cast<const mfem::HypreParMatrix*>( &block_J->GetBlock( 0, 0 ) );
     const auto* block_01 = dynamic_cast<const mfem::HypreParMatrix*>( &block_J->GetBlock( 0, 1 ) );
@@ -954,20 +957,24 @@ TEST_P( MfemLorTransferParamTest, lor_transfer_matches_mfem )
 
   const mfem::ParFiniteElementSpace* ho_fes = nullptr;
   const mfem::ParFiniteElementSpace* lor_fes = nullptr;
-  std::unique_ptr<shared::ParSparseMat> T;
+  const shared::ParSparseMat* T = nullptr;
 
   if ( p.field == FieldKind::Displacement ) {
     ho_fes = &mesh_data->GetSubmeshFESpace();
     lor_fes = mesh_data->GetLORMeshFESpace();
-    const auto* mat = jac_data->GetDisplacementHoToLorTransferMat();
-    ASSERT_NE( mat, nullptr );
-    T = std::make_unique<shared::ParSparseMat>( mat->Assemble() );
+    ASSERT_NE( lor_fes, nullptr );
+    ASSERT_EQ( jac_data->ParentPath().surface_fes, lor_fes );
+    // ParentPath(): [P_parent, parent->submesh, ho->lor]
+    ASSERT_GE( jac_data->ParentPath().owned_ops.size(), 2u );
+    T = jac_data->ParentPath().owned_ops.back().get();
   } else {
     ho_fes = &submesh_data->GetSubmeshFESpace();
     lor_fes = submesh_data->GetLORMeshFESpace();
-    const auto* mat = jac_data->GetLagrangeMultiplierHoToLorTransferMat();
-    ASSERT_NE( mat, nullptr );
-    T = std::make_unique<shared::ParSparseMat>( mat->Assemble() );
+    ASSERT_NE( lor_fes, nullptr );
+    ASSERT_EQ( jac_data->SubmeshPath().surface_fes, lor_fes );
+    // SubmeshPath(): [P_dual, ho->lor]
+    ASSERT_GE( jac_data->SubmeshPath().owned_ops.size(), 1u );
+    T = jac_data->SubmeshPath().owned_ops.back().get();
   }
 
   ASSERT_NE( ho_fes, nullptr );

@@ -1896,6 +1896,57 @@ class JacobianAssembler {
   /// Transfer operators mapping solver col true DOFs into the Jacobian's col DOF space
   std::vector<shared::ParSparseMatView> col_transfer_ops_;
 };
+
+/**
+ * @brief A fixed transfer pathway from a solver-visible FE space (true dofs) to a surface FE space (dofs)
+ *
+ * This stores an ordered chain of explicit sparse matrices that map from the true dofs of @ref final_fes to the dofs
+ * of @ref surface_fes (LOR, if active, submesh otherwise):
+ *   x_true -> ops[0] -> ops[1] -> ... -> x_surface
+ *
+ * The first operator is typically MFEM's prolongation matrix `final_fes->Dof_TrueDof_Matrix()`. Additional operators
+ * may include submesh restriction and HO->LOR transfer matrices, depending on the chosen surface space.
+ *
+ * @note Performance: this struct currently stores the factorized chain. If profiling shows the repeated sparse
+ * matrix multiplications in JacobianAssembler are a bottleneck, consider precomputing and caching the combined
+ * pathway operator `M = ops[0] * ops[1] * ...` in UpdateJacobianXfer() and storing just `M`.
+ */
+struct MfemJacobianPath {
+  /// Solver-visible final FE space (defines the input true dofs)
+  const mfem::ParFiniteElementSpace* final_fes{ nullptr };
+  /// Surface FE space that the intermediate redecomp-to-surface Jacobian is assembled on
+  const mfem::ParFiniteElementSpace* surface_fes{ nullptr };
+
+  /// Owned assembled operators that appear in @ref ops
+  std::vector<std::unique_ptr<shared::ParSparseMat>> owned_ops;
+  /// Operator chain mapping final true dofs into surface dofs
+  std::vector<shared::ParSparseMatView> ops;
+};
+
+/**
+ * @brief End-to-end Jacobian transfer: redecomp contributions -> surface Jacobian -> solver-visible Jacobian
+ *
+ * This composes a redecomp-to-surface Jacobian (assembled from element-pair contributions) with explicit row/col
+ * transfer pathways to produce a solver-visible Jacobian on the true dof spaces of the chosen final FE spaces.
+ */
+class MfemJacobianTransfer {
+ public:
+  /**
+   * @brief Construct a transfer pipeline for one solver-visible (row_final, col_final) pairing
+   */
+  MfemJacobianTransfer( const MfemJacobianPath& row_path, const MfemJacobianPath& col_path );
+
+  /**
+   * @brief Assemble a solver-visible Jacobian from packed redecomp element contributions
+   *
+   * @note The contributions must be for a single row/col surface FE-space pairing and must match the provided paths.
+   */
+  shared::ParSparseMat Assemble( const std::vector<PackedPairJacobianContribs>& contributions ) const;
+
+ private:
+  const MfemJacobianPath& row_path_;
+  const MfemJacobianPath& col_path_;
+};
 /**
  * @brief Simplifies transfer of Jacobian matrix data between MFEM and Tribol
  */
@@ -1915,17 +1966,6 @@ class MfemJacobianData {
   void UpdateJacobianXfer();
 
   /**
-   * @brief Assemble a Jacobian on the LOR or submesh DOF spaces using redecomp::MatrixTransfer
-   *
-   * This returns the intermediate Jacobian prior to any solver-block mapping. Method-specific code is expected to
-   * compose this matrix with (optional LOR/)submesh/parent true-dof transfer operators.
-   *
-   * @note The contributions must correspond to a single logical row/column pairing
-   */
-  shared::ParSparseMat AssembleLorOrSubmeshJacobian(
-      const std::vector<PackedPairJacobianContribs>& contributions ) const;
-
-  /**
    * @brief Assemble a solver-visible Jacobian on caller-provided final FE spaces
    *
    * This composes the intermediate LOR/submesh DOF-level Jacobian (assembled from redecomp element contributions)
@@ -1941,25 +1981,23 @@ class MfemJacobianData {
                                         const std::vector<PackedPairJacobianContribs>& contributions ) const;
 
   /**
-   * @brief Access the HO->LOR displacement transfer builder (DOF-level), if active
+   * @brief Access the transfer pathway for parent-final Jacobians
    *
-   * @note Returns nullptr if LOR is not active or UpdateJacobianXfer() has not been called.
+   * This maps from the parent true dofs into the selected primary surface DOF space (LOR if active, otherwise submesh).
+   *
+   * @note Requires UpdateJacobianXfer() to have been called.
    */
-  const HoToLorTransferMat* GetDisplacementHoToLorTransferMat() const;
+  const MfemJacobianPath& ParentPath() const;
 
   /**
-   * @brief Access the HO->LOR LM transfer builder (DOF-level), if active
+   * @brief Access the transfer pathway for submesh-final Jacobians
    *
-   * @note Returns nullptr if LOR is not active or UpdateJacobianXfer() has not been called.
-   */
-  const HoToLorTransferMat* GetLagrangeMultiplierHoToLorTransferMat() const;
-
-  /**
-   * @brief Access the submesh->parent restriction builder (DOF-level)
+   * This maps from the multiplier submesh true dofs into the selected dual surface DOF space (LOR if active, otherwise
+   * submesh).
    *
-   * @note Returns nullptr if UpdateJacobianXfer() has not been called.
+   * @note Requires UpdateJacobianXfer() to have been called.
    */
-  const SubmeshParentTransferMat* GetSubmeshParentTransferMat() const;
+  const MfemJacobianPath& SubmeshPath() const;
 
  private:
   /**
@@ -1977,32 +2015,14 @@ class MfemJacobianData {
                 const mfem::Array<HYPRE_BigInt>& submesh2parent_vdof_list );
 
     /**
-     * @brief Optional HO->LOR transfer operators used to map Jacobians back to HO spaces
+     * @brief Transfer pathway for parent-final Jacobians
      */
-    std::unique_ptr<HoToLorTransferMat> primary_ho_to_lor_;
-    std::unique_ptr<HoToLorTransferMat> dual_ho_to_lor_;
+    MfemJacobianPath parent_path_;
 
     /**
-     * @brief Submesh -> parent transfer operator for primary variables
+     * @brief Transfer pathway for submesh-final Jacobians
      */
-    std::unique_ptr<SubmeshParentTransferMat> submesh_parent_xfer_;
-
-    /**
-     * @brief Scalar (vdim=1) HO primary surface FE space (kept alive for Hypre partitioning arrays)
-     */
-    std::unique_ptr<mfem::ParFiniteElementSpace> primary_ho_scalar_fes_;
-    /**
-     * @brief Scalar (vdim=1) LOR primary surface FE space (kept alive for Hypre partitioning arrays)
-     */
-    std::unique_ptr<mfem::ParFiniteElementSpace> primary_lor_scalar_fes_;
-    /**
-     * @brief Scalar (vdim=1) HO dual surface FE space (kept alive for Hypre partitioning arrays)
-     */
-    std::unique_ptr<mfem::ParFiniteElementSpace> lm_ho_scalar_fes_;
-    /**
-     * @brief Scalar (vdim=1) LOR dual surface FE space (kept alive for Hypre partitioning arrays)
-     */
-    std::unique_ptr<mfem::ParFiniteElementSpace> lm_lor_scalar_fes_;
+    MfemJacobianPath submesh_path_;
   };
 
   /**

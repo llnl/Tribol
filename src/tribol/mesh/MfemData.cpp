@@ -289,6 +289,77 @@ shared::ParSparseMat RedecompJacobianAssembler::Assemble() const
   return transfer_.TransferToParallel( row_redecomp_ids, col_redecomp_ids, jacobian_data, value_offsets, false );
 }
 
+MfemJacobianTransfer::MfemJacobianTransfer( const MfemJacobianPath& row_path, const MfemJacobianPath& col_path )
+    : row_path_( row_path ), col_path_( col_path )
+{
+  SLIC_ERROR_ROOT_IF( row_path_.final_fes == nullptr || row_path_.surface_fes == nullptr,
+                      "MfemJacobianTransfer: row_path must provide non-null final_fes and surface_fes." );
+  SLIC_ERROR_ROOT_IF( col_path_.final_fes == nullptr || col_path_.surface_fes == nullptr,
+                      "MfemJacobianTransfer: col_path must provide non-null final_fes and surface_fes." );
+  SLIC_ERROR_ROOT_IF( row_path_.ops.empty() || col_path_.ops.empty(),
+                      "MfemJacobianTransfer: row/col operator chains must be non-empty." );
+}
+
+shared::ParSparseMat MfemJacobianTransfer::Assemble(
+    const std::vector<PackedPairJacobianContribs>& contributions ) const
+{
+  SLIC_ERROR_ROOT_IF(
+      contributions.empty(),
+      "MfemJacobianTransfer::Assemble: requires a non-empty contributions vector so FE-space metadata is "
+      "available on all ranks." );
+
+  const auto* row_surface_fes = contributions.front().row_surface_fes;
+  const auto* col_surface_fes = contributions.front().col_surface_fes;
+  const auto* row_redecomp_fes = contributions.front().row_redecomp_fes;
+  const auto* col_redecomp_fes = contributions.front().col_redecomp_fes;
+
+  SLIC_ERROR_ROOT_IF( row_surface_fes == nullptr || col_surface_fes == nullptr,
+                      "MfemJacobianTransfer::Assemble: contributions must provide row/col surface FE spaces." );
+  SLIC_ERROR_ROOT_IF( row_redecomp_fes == nullptr || col_redecomp_fes == nullptr,
+                      "MfemJacobianTransfer::Assemble: contributions must provide row/col redecomp FE spaces." );
+
+  for ( const auto& contrib : contributions ) {
+    SLIC_ERROR_ROOT_IF( contrib.row_surface_fes != row_surface_fes || contrib.col_surface_fes != col_surface_fes,
+                        "MfemJacobianTransfer::Assemble: all contributions must belong to the same surface row/column "
+                        "FE-space pairing." );
+    SLIC_ERROR_ROOT_IF( contrib.row_redecomp_fes != row_redecomp_fes || contrib.col_redecomp_fes != col_redecomp_fes,
+                        "MfemJacobianTransfer::Assemble: all contributions must belong to the same redecomp row/column "
+                        "FE-space pairing." );
+  }
+
+  SLIC_ERROR_ROOT_IF( row_surface_fes != row_path_.surface_fes,
+                      "MfemJacobianTransfer::Assemble: row contributions surface FE space does not match the selected "
+                      "row transfer pathway." );
+  SLIC_ERROR_ROOT_IF( col_surface_fes != col_path_.surface_fes,
+                      "MfemJacobianTransfer::Assemble: column contributions surface FE space does not match the "
+                      "selected column transfer pathway." );
+
+  int local_pairs = 0;
+  for ( const auto& contrib : contributions ) {
+    local_pairs += contrib.numEntries();
+  }
+  int global_pairs = 0;
+  MPI_Allreduce( &local_pairs, &global_pairs, 1, MPI_INT, MPI_SUM, row_surface_fes->GetComm() );
+
+  // If there are no element pairs anywhere, build an explicit empty matrix on the appropriate surface-space DOF layout.
+  shared::ParSparseMat surface_jacobian = [&]() -> shared::ParSparseMat {
+    if ( global_pairs == 0 ) {
+      mfem::SparseMatrix empty_diag( row_surface_fes->GetVSize(), col_surface_fes->GetVSize() );
+      empty_diag.Finalize();
+      return shared::ParSparseMat( row_surface_fes->GetComm(), row_surface_fes->GlobalVSize(),
+                                   col_surface_fes->GlobalVSize(), row_surface_fes->GetDofOffsets(),
+                                   col_surface_fes->GetDofOffsets(), std::move( empty_diag ) );
+    }
+
+    redecomp::MatrixTransfer transfer( *row_surface_fes, *col_surface_fes, *row_redecomp_fes, *col_redecomp_fes );
+    RedecompJacobianAssembler redecomp_to_surface( transfer, contributions );
+    return redecomp_to_surface.Assemble();
+  }();
+
+  JacobianAssembler assembler( row_path_.ops, col_path_.ops );
+  return assembler.Assemble( std::move( surface_jacobian ) );
+}
+
 JacobianAssembler::JacobianAssembler( std::vector<shared::ParSparseMatView> row_transfer_ops,
                                       std::vector<shared::ParSparseMatView> col_transfer_ops )
     : row_transfer_ops_( std::move( row_transfer_ops ) ), col_transfer_ops_( std::move( col_transfer_ops ) )
@@ -1155,32 +1226,58 @@ void MfemJacobianData::UpdateJacobianXfer()
 MfemJacobianData::UpdateData::UpdateData( const MfemMeshData& parent_data, const MfemSubmeshData& submesh_data,
                                           const mfem::Array<HYPRE_BigInt>& submesh2parent_vdof_list )
 {
-  // This route is only used when mapping primary rows back to the parent mesh, but
-  // it changes whenever the submesh numbering changes so it belongs in UpdateData.
-  submesh_parent_xfer_ = std::make_unique<SubmeshParentTransferMat>(
-      parent_data.GetSubmeshFESpace(), *parent_data.GetParentCoords().ParFESpace(), submesh2parent_vdof_list );
+  // Build cached pathways that map final true dofs into the selected surface DOF layouts.
+  parent_path_.final_fes = parent_data.GetParentCoords().ParFESpace();
+  parent_path_.owned_ops.clear();
+  parent_path_.ops.clear();
+  parent_path_.ops.emplace_back( parent_path_.final_fes->Dof_TrueDof_Matrix() );
+
+  // Always include the parent->submesh restriction (primary variables live on the boundary submesh).
+  {
+    SubmeshParentTransferMat submesh_parent_xfer(
+        parent_data.GetSubmeshFESpace(), *parent_data.GetParentCoords().ParFESpace(), submesh2parent_vdof_list );
+    auto submesh_parent_mat = submesh_parent_xfer.Assemble();
+    parent_path_.owned_ops.push_back( std::make_unique<shared::ParSparseMat>( std::move( submesh_parent_mat ) ) );
+    parent_path_.ops.emplace_back( &parent_path_.owned_ops.back()->get() );
+  }
 
   if ( parent_data.GetLORMesh() ) {
-    // Keep scalar spaces alive because MFEM/Hypre operators may keep raw pointers to
-    // their partitioning arrays.
-    primary_ho_scalar_fes_ = std::make_unique<mfem::ParFiniteElementSpace>(
+    parent_path_.surface_fes = parent_data.GetLORMeshFESpace();
+    auto primary_ho_scalar_fes = std::make_unique<mfem::ParFiniteElementSpace>(
         parent_data.GetSubmeshFESpace().GetParMesh(), parent_data.GetSubmeshFESpace().FEColl(), 1,
         parent_data.GetSubmeshFESpace().GetOrdering() );
-    primary_lor_scalar_fes_ = std::make_unique<mfem::ParFiniteElementSpace>(
+    auto primary_lor_scalar_fes = std::make_unique<mfem::ParFiniteElementSpace>(
         parent_data.GetLORMeshFESpace()->GetParMesh(), parent_data.GetLORMeshFESpace()->FEColl(), 1,
         parent_data.GetLORMeshFESpace()->GetOrdering() );
-    lm_ho_scalar_fes_ = std::make_unique<mfem::ParFiniteElementSpace>( submesh_data.GetSubmeshFESpace().GetParMesh(),
-                                                                       submesh_data.GetSubmeshFESpace().FEColl(), 1,
-                                                                       submesh_data.GetSubmeshFESpace().GetOrdering() );
-    lm_lor_scalar_fes_ = std::make_unique<mfem::ParFiniteElementSpace>(
+    HoToLorTransferMat primary_ho_to_lor( parent_data.GetSubmeshFESpace(), *parent_data.GetLORMeshFESpace(),
+                                          *primary_ho_scalar_fes, *primary_lor_scalar_fes );
+    auto ho_to_lor_mat = primary_ho_to_lor.Assemble();
+    parent_path_.owned_ops.push_back( std::make_unique<shared::ParSparseMat>( std::move( ho_to_lor_mat ) ) );
+    parent_path_.ops.emplace_back( &parent_path_.owned_ops.back()->get() );
+  } else {
+    parent_path_.surface_fes = &parent_data.GetSubmeshFESpace();
+  }
+
+  submesh_path_.final_fes = &submesh_data.GetSubmeshFESpace();
+  submesh_path_.owned_ops.clear();
+  submesh_path_.ops.clear();
+  submesh_path_.ops.emplace_back( submesh_path_.final_fes->Dof_TrueDof_Matrix() );
+
+  if ( parent_data.GetLORMesh() ) {
+    submesh_path_.surface_fes = submesh_data.GetLORMeshFESpace();
+    auto lm_ho_scalar_fes = std::make_unique<mfem::ParFiniteElementSpace>(
+        submesh_data.GetSubmeshFESpace().GetParMesh(), submesh_data.GetSubmeshFESpace().FEColl(), 1,
+        submesh_data.GetSubmeshFESpace().GetOrdering() );
+    auto lm_lor_scalar_fes = std::make_unique<mfem::ParFiniteElementSpace>(
         submesh_data.GetLORMeshFESpace()->GetParMesh(), submesh_data.GetLORMeshFESpace()->FEColl(), 1,
         submesh_data.GetLORMeshFESpace()->GetOrdering() );
-
-    primary_ho_to_lor_ =
-        std::make_unique<HoToLorTransferMat>( parent_data.GetSubmeshFESpace(), *parent_data.GetLORMeshFESpace(),
-                                              *primary_ho_scalar_fes_, *primary_lor_scalar_fes_ );
-    dual_ho_to_lor_ = std::make_unique<HoToLorTransferMat>(
-        submesh_data.GetSubmeshFESpace(), *submesh_data.GetLORMeshFESpace(), *lm_ho_scalar_fes_, *lm_lor_scalar_fes_ );
+    HoToLorTransferMat dual_ho_to_lor( submesh_data.GetSubmeshFESpace(), *submesh_data.GetLORMeshFESpace(),
+                                       *lm_ho_scalar_fes, *lm_lor_scalar_fes );
+    auto ho_to_lor_mat = dual_ho_to_lor.Assemble();
+    submesh_path_.owned_ops.push_back( std::make_unique<shared::ParSparseMat>( std::move( ho_to_lor_mat ) ) );
+    submesh_path_.ops.emplace_back( &submesh_path_.owned_ops.back()->get() );
+  } else {
+    submesh_path_.surface_fes = &submesh_data.GetSubmeshFESpace();
   }
 }
 
@@ -1196,69 +1293,16 @@ const MfemJacobianData::UpdateData& MfemJacobianData::GetUpdateData() const
   return *update_data_;
 }
 
-const HoToLorTransferMat* MfemJacobianData::GetDisplacementHoToLorTransferMat() const
+const MfemJacobianPath& MfemJacobianData::ParentPath() const
 {
-  if ( !update_data_ ) return nullptr;
-  return update_data_->primary_ho_to_lor_.get();
+  SLIC_ERROR_ROOT_IF( !update_data_, "ParentPath() requires UpdateJacobianXfer() to have been called." );
+  return update_data_->parent_path_;
 }
 
-const HoToLorTransferMat* MfemJacobianData::GetLagrangeMultiplierHoToLorTransferMat() const
+const MfemJacobianPath& MfemJacobianData::SubmeshPath() const
 {
-  if ( !update_data_ ) return nullptr;
-  return update_data_->dual_ho_to_lor_.get();
-}
-
-const SubmeshParentTransferMat* MfemJacobianData::GetSubmeshParentTransferMat() const
-{
-  if ( !update_data_ ) return nullptr;
-  return update_data_->submesh_parent_xfer_.get();
-}
-
-shared::ParSparseMat MfemJacobianData::AssembleLorOrSubmeshJacobian(
-    const std::vector<PackedPairJacobianContribs>& contributions ) const
-{
-  SLIC_ERROR_ROOT_IF( contributions.empty(),
-                      "AssembleLorOrSubmeshJacobian() requires a non-empty contributions vector so the row/col surface "
-                      "FE-space metadata is available on all ranks." );
-
-  const mfem::ParFiniteElementSpace* row_surface_fes = contributions.front().row_surface_fes;
-  const mfem::ParFiniteElementSpace* col_surface_fes = contributions.front().col_surface_fes;
-  const mfem::FiniteElementSpace* row_redecomp_fes = contributions.front().row_redecomp_fes;
-  const mfem::FiniteElementSpace* col_redecomp_fes = contributions.front().col_redecomp_fes;
-  SLIC_ERROR_ROOT_IF( row_surface_fes == nullptr || col_surface_fes == nullptr,
-                      "PackedPairJacobianContribs must provide row/col surface FE spaces." );
-  SLIC_ERROR_ROOT_IF( row_redecomp_fes == nullptr || col_redecomp_fes == nullptr,
-                      "PackedPairJacobianContribs must provide row/col redecomp FE spaces." );
-  for ( const auto& contrib : contributions ) {
-    SLIC_ERROR_ROOT_IF( contrib.row_surface_fes != row_surface_fes || contrib.col_surface_fes != col_surface_fes,
-                        "All contributions passed to AssembleLorOrSubmeshJacobian() must belong to the same surface "
-                        "row/column FE-space pairing." );
-    SLIC_ERROR_ROOT_IF( contrib.row_redecomp_fes != row_redecomp_fes || contrib.col_redecomp_fes != col_redecomp_fes,
-                        "All contributions passed to AssembleLorOrSubmeshJacobian() must belong to the same redecomp "
-                        "row/column FE-space pairing." );
-  }
-
-  // If there are no element pairs anywhere, return an explicit empty matrix on the appropriate surface-space DOF layout
-  // (and let higher layers apply any solver-specific fill rules).
-  int local_pairs = 0;
-  for ( const auto& contrib : contributions ) {
-    local_pairs += contrib.numEntries();
-  }
-  int global_pairs = 0;
-  MPI_Allreduce( &local_pairs, &global_pairs, 1, MPI_INT, MPI_SUM,
-                 parent_data_.GetParentCoords().ParFESpace()->GetComm() );
-  if ( global_pairs == 0 ) {
-    mfem::SparseMatrix empty_diag( row_surface_fes->GetVSize(), col_surface_fes->GetVSize() );
-    empty_diag.Finalize();
-    return shared::ParSparseMat( row_surface_fes->GetComm(), row_surface_fes->GlobalVSize(),
-                                 col_surface_fes->GlobalVSize(), row_surface_fes->GetDofOffsets(),
-                                 col_surface_fes->GetDofOffsets(), std::move( empty_diag ) );
-  }
-
-  // Build the redecomp transfer route for this call
-  redecomp::MatrixTransfer transfer( *row_surface_fes, *col_surface_fes, *row_redecomp_fes, *col_redecomp_fes );
-  RedecompJacobianAssembler lor_or_submesh_jacobian( transfer, contributions );
-  return lor_or_submesh_jacobian.Assemble();
+  SLIC_ERROR_ROOT_IF( !update_data_, "SubmeshPath() requires UpdateJacobianXfer() to have been called." );
+  return update_data_->submesh_path_;
 }
 
 shared::ParSparseMat MfemJacobianData::GetMfemJacobian(
@@ -1267,79 +1311,32 @@ shared::ParSparseMat MfemJacobianData::GetMfemJacobian(
 {
   SLIC_ERROR_ROOT_IF( row_final_fes == nullptr || col_final_fes == nullptr,
                       "GetMfemJacobian() requires non-null final FE-space pointers." );
-  SLIC_ERROR_ROOT_IF( contributions.empty(),
-                      "GetMfemJacobian() requires a non-empty contributions vector so surface-space metadata is "
-                      "available on all ranks." );
-
-  const auto* row_surface_fes = contributions.front().row_surface_fes;
-  const auto* col_surface_fes = contributions.front().col_surface_fes;
-  SLIC_ERROR_ROOT_IF( row_surface_fes == nullptr || col_surface_fes == nullptr,
-                      "PackedPairJacobianContribs must provide row/col surface FE spaces." );
-
-  auto lor_or_submesh_jacobian = AssembleLorOrSubmeshJacobian( contributions );
-
-  std::vector<shared::ParSparseMatView> row_ops;
-  std::vector<shared::ParSparseMatView> col_ops;
-  std::vector<std::unique_ptr<shared::ParSparseMat>> owned_mats;
+  SLIC_ERROR_ROOT_IF( !update_data_, "GetMfemJacobian() requires UpdateJacobianXfer() to have been called." );
 
   const mfem::ParFiniteElementSpace* parent_fes = parent_data_.GetParentCoords().ParFESpace();
-  const mfem::ParFiniteElementSpace* primary_submesh_fes = &parent_data_.GetSubmeshFESpace();
   const mfem::ParFiniteElementSpace* multiplier_submesh_fes = &submesh_data_.GetSubmeshFESpace();
-  const mfem::ParFiniteElementSpace* primary_lor_fes = parent_data_.GetLORMeshFESpace();
-  const mfem::ParFiniteElementSpace* multiplier_lor_fes = submesh_data_.GetLORMeshFESpace();
 
-  auto build_ops = [&]( const mfem::ParFiniteElementSpace* final_fes, const mfem::ParFiniteElementSpace* surface_fes,
-                        std::vector<shared::ParSparseMatView>& ops ) {
-    ops.emplace_back( final_fes->Dof_TrueDof_Matrix() );
+  const MfemJacobianPath* row_path = nullptr;
+  const MfemJacobianPath* col_path = nullptr;
 
-    if ( final_fes == parent_fes ) {
-      const auto* submesh_parent = GetSubmeshParentTransferMat();
-      SLIC_ERROR_ROOT_IF( submesh_parent == nullptr,
-                          "GetMfemJacobian(): missing submesh-parent transfer builder (call UpdateJacobianXfer())." );
-      owned_mats.push_back( std::make_unique<shared::ParSparseMat>( submesh_parent->Assemble() ) );
-      ops.emplace_back( &owned_mats.back()->get() );
+  if ( row_final_fes == parent_fes ) {
+    row_path = &ParentPath();
+  } else if ( row_final_fes == multiplier_submesh_fes ) {
+    row_path = &SubmeshPath();
+  } else {
+    SLIC_ERROR_ROOT( "GetMfemJacobian(): unsupported row_final_fes pointer." );
+  }
 
-      if ( surface_fes == primary_lor_fes ) {
-        const auto* ho_to_lor = GetDisplacementHoToLorTransferMat();
-        SLIC_ERROR_ROOT_IF(
-            ho_to_lor == nullptr,
-            "GetMfemJacobian(): missing primary HO->LOR transfer builder (call UpdateJacobianXfer())." );
-        owned_mats.push_back( std::make_unique<shared::ParSparseMat>( ho_to_lor->Assemble() ) );
-        ops.emplace_back( &owned_mats.back()->get() );
-        return;
-      }
+  if ( col_final_fes == parent_fes ) {
+    col_path = &ParentPath();
+  } else if ( col_final_fes == multiplier_submesh_fes ) {
+    col_path = &SubmeshPath();
+  } else {
+    SLIC_ERROR_ROOT( "GetMfemJacobian(): unsupported col_final_fes pointer." );
+  }
 
-      SLIC_ERROR_ROOT_IF( surface_fes != primary_submesh_fes,
-                          "GetMfemJacobian(): parent final space requires a primary submesh FE space (HO or LOR) in "
-                          "contributions." );
-      return;
-    } else if ( final_fes == multiplier_submesh_fes ) {
-      // Multiplier submesh final space
-      if ( surface_fes == multiplier_lor_fes ) {
-        const auto* ho_to_lor = GetLagrangeMultiplierHoToLorTransferMat();
-        SLIC_ERROR_ROOT_IF(
-            ho_to_lor == nullptr,
-            "GetMfemJacobian(): missing multiplier HO->LOR transfer builder (call UpdateJacobianXfer())." );
-        owned_mats.push_back( std::make_unique<shared::ParSparseMat>( ho_to_lor->Assemble() ) );
-        ops.emplace_back( &owned_mats.back()->get() );
-        return;
-      }
-
-      SLIC_ERROR_ROOT_IF(
-          surface_fes != multiplier_submesh_fes,
-          "GetMfemJacobian(): multiplier submesh final space requires a multiplier submesh FE space (HO or LOR) in "
-          "contributions." );
-      return;
-    } else {
-      SLIC_ERROR_ROOT( "GetMfemJacobian(): unsupported final FE space pointer." );
-    }
-  };
-
-  build_ops( row_final_fes, row_surface_fes, row_ops );
-  build_ops( col_final_fes, col_surface_fes, col_ops );
-
-  JacobianAssembler assembler( std::move( row_ops ), std::move( col_ops ) );
-  return assembler.Assemble( std::move( lor_or_submesh_jacobian ) );
+  MfemJacobianTransfer transfer( *row_path, *col_path );
+  return transfer.Assemble( contributions );
 }
 
 }  // namespace tribol
