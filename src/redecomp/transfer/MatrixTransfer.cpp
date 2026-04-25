@@ -11,8 +11,91 @@
 
 #include "redecomp/RedecompMesh.hpp"
 #include "shared/math/ParSparseMat.hpp"
+#include "shared/infrastructure/Profiling.hpp"
 
 namespace redecomp {
+
+void MatrixTransfer::validateTransferInputs( const axom::Array<int>& test_elem_idx,
+                                             const axom::Array<int>& trial_elem_idx, int data_size,
+                                             const char* data_name ) const
+{
+  SLIC_ERROR_IF(
+      test_elem_idx.size() != trial_elem_idx.size() || test_elem_idx.size() != data_size,
+      axom::fmt::format( "redecomp::MatrixTransfer::validateTransferInputs: test/trial element-id arrays and {} must "
+                         "have the same length. Got test_elem_idx.size()={}, trial_elem_idx.size()={}, {}.size()={}. "
+                         "Expected one data entry per (test_elem_idx[i], trial_elem_idx[i]) pair.",
+                         data_name, test_elem_idx.size(), trial_elem_idx.size(), data_name, data_size ) );
+  for ( int i{ 0 }; i < test_elem_idx.size(); ++i ) {
+    SLIC_ERROR_IF( test_elem_idx[i] < 0,
+                   axom::fmt::format( "redecomp::MatrixTransfer::validateTransferInputs: invalid test element index at "
+                                      "entry {} (value={}). Expected a non-negative redecomp element id.",
+                                      i, test_elem_idx[i] ) );
+    SLIC_ERROR_IF(
+        trial_elem_idx[i] < 0,
+        axom::fmt::format( "redecomp::MatrixTransfer::validateTransferInputs: invalid trial element index at entry {} "
+                           "(value={}). Expected a non-negative redecomp element id.",
+                           i, trial_elem_idx[i] ) );
+  }
+}
+
+void MatrixTransfer::validateDenseMatrices( const axom::Array<int>& test_elem_idx,
+                                            const axom::Array<int>& trial_elem_idx,
+                                            const axom::Array<mfem::DenseMatrix>& src_elem_mat ) const
+{
+  validateTransferInputs( test_elem_idx, trial_elem_idx, src_elem_mat.size(), "element Jacobian contribution array" );
+  for ( int i{ 0 }; i < src_elem_mat.size(); ++i ) {
+    auto n_test_elem_vdofs = redecomp_test_fes_.GetFE( test_elem_idx[i] )->GetDof() * redecomp_test_fes_.GetVDim();
+    auto n_trial_elem_vdofs = redecomp_trial_fes_.GetFE( trial_elem_idx[i] )->GetDof() * redecomp_trial_fes_.GetVDim();
+
+    SLIC_ERROR_IF(
+        src_elem_mat[i].Height() != n_test_elem_vdofs,
+        axom::fmt::format(
+            "redecomp::MatrixTransfer::validateDenseMatrices: DenseMatrix height mismatch for entry {} "
+            "(test_elem_idx={}, trial_elem_idx={}). Got Height()={}, expected {} (= test_FE_dofs * test_vdim). ",
+            i, test_elem_idx[i], trial_elem_idx[i], src_elem_mat[i].Height(), n_test_elem_vdofs ) );
+    SLIC_ERROR_IF(
+        src_elem_mat[i].Width() != n_trial_elem_vdofs,
+        axom::fmt::format(
+            "redecomp::MatrixTransfer::validateDenseMatrices: DenseMatrix width mismatch for entry {} "
+            "(test_elem_idx={}, trial_elem_idx={}). Got Width()={}, expected {} (= trial_FE_dofs * trial_vdim). ",
+            i, test_elem_idx[i], trial_elem_idx[i], src_elem_mat[i].Width(), n_trial_elem_vdofs ) );
+  }
+}
+
+void MatrixTransfer::validateFlatMatrices( const axom::Array<int>& test_elem_idx,
+                                           const axom::Array<int>& trial_elem_idx,
+                                           const axom::Array<double>& src_elem_mat_data,
+                                           const axom::Array<int>& src_elem_mat_offsets ) const
+{
+  validateTransferInputs( test_elem_idx, trial_elem_idx, src_elem_mat_offsets.size(),
+                          "element Jacobian offsets array" );
+  for ( int i{ 0 }; i < test_elem_idx.size(); ++i ) {
+    auto n_test_elem_vdofs = redecomp_test_fes_.GetFE( test_elem_idx[i] )->GetDof() * redecomp_test_fes_.GetVDim();
+    auto n_trial_elem_vdofs = redecomp_trial_fes_.GetFE( trial_elem_idx[i] )->GetDof() * redecomp_trial_fes_.GetVDim();
+    auto expected_size = n_test_elem_vdofs * n_trial_elem_vdofs;
+
+    SLIC_ERROR_IF(
+        src_elem_mat_offsets[i] < 0 || src_elem_mat_offsets[i] + expected_size > src_elem_mat_data.size(),
+        axom::fmt::format( "redecomp::MatrixTransfer::validateFlatMatrices: flat-buffer bounds error for entry {} "
+                           "(test_elem_idx={}, trial_elem_idx={}). offset={}, expected_entry_size={}, data.size()={}. ",
+                           i, test_elem_idx[i], trial_elem_idx[i], src_elem_mat_offsets[i], expected_size,
+                           src_elem_mat_data.size() ) );
+  }
+}
+
+MatrixTransfer::CommunicationData MatrixTransfer::buildCommunicationData( const RedecompMesh& test_redecomp,
+                                                                          const RedecompMesh& trial_redecomp,
+                                                                          const axom::Array<int>& test_elem_idx,
+                                                                          const axom::Array<int>& trial_elem_idx ) const
+{
+  TRIBOL_MARK_BEGIN( "BuildCommunicationData" );
+  CommunicationData comm_data{
+      buildSendArrayIDs( test_elem_idx ), buildSendNumMatEntries( test_elem_idx, trial_elem_idx ),
+      buildRecvMatSizes( test_elem_idx, trial_elem_idx ), buildRecvTestElemOffsets( test_redecomp, test_elem_idx ),
+      buildRecvTrialElemDofs( trial_redecomp, test_elem_idx, trial_elem_idx ) };
+  TRIBOL_MARK_END( "BuildCommunicationData" );
+  return comm_data;
+}
 
 MatrixTransfer::MatrixTransfer( const mfem::ParFiniteElementSpace& parent_test_fes,
                                 const mfem::ParFiniteElementSpace& parent_trial_fes,
@@ -25,14 +108,21 @@ MatrixTransfer::MatrixTransfer( const mfem::ParFiniteElementSpace& parent_test_f
 {
   auto test_redecomp = dynamic_cast<const RedecompMesh*>( redecomp_test_fes_.GetMesh() );
   auto trial_redecomp = dynamic_cast<const RedecompMesh*>( redecomp_trial_fes_.GetMesh() );
-  SLIC_ERROR_ROOT_IF( test_redecomp == nullptr, "The Redecomp test finite element space must have a Redecomp mesh." );
-  SLIC_ERROR_ROOT_IF( trial_redecomp == nullptr, "The Redecomp trial finite element space must have a Redecomp mesh." );
+  SLIC_ERROR_ROOT_IF( test_redecomp == nullptr,
+                      "redecomp::MatrixTransfer::MatrixTransfer: redecomp_test_fes must be defined on a "
+                      "redecomp::RedecompMesh (dynamic_cast failed)." );
+  SLIC_ERROR_ROOT_IF( trial_redecomp == nullptr,
+                      "redecomp::MatrixTransfer::MatrixTransfer: redecomp_trial_fes must be defined on a "
+                      "redecomp::RedecompMesh (dynamic_cast failed)." );
   SLIC_ERROR_ROOT_IF( &test_redecomp->getParent() != parent_test_fes_.GetParMesh(),
-                      "The parent test finite element space mesh must be linked to the test Redecomp mesh." );
+                      "redecomp::MatrixTransfer::MatrixTransfer: parent_test_fes mesh does not match the parent mesh "
+                      "used to build redecomp_test_fes." );
   SLIC_ERROR_ROOT_IF( &trial_redecomp->getParent() != parent_trial_fes_.GetParMesh(),
-                      "The parent trial finite element space mesh must be linked to the trial Redecomp mesh." );
+                      "redecomp::MatrixTransfer::MatrixTransfer: parent_trial_fes mesh does not match the parent mesh "
+                      "used to build redecomp_trial_fes." );
   SLIC_ERROR_ROOT_IF( &test_redecomp->getMPIUtility().MPIComm() != &trial_redecomp->getMPIUtility().MPIComm(),
-                      "MPI Communicator must match in test and trial spaces." );
+                      "redecomp::MatrixTransfer::MatrixTransfer: MPI communicator mismatch between test and trial "
+                      "redecomp meshes. Both FE spaces must be created on the same MPI_Comm." );
 
   trial_r2p_elem_rank_ = buildRedecomp2ParentElemRank( *trial_redecomp, false );
   test_r2p_elem_rank_ = buildRedecomp2ParentElemRank( *test_redecomp, true );
@@ -52,60 +142,24 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
                                                              const axom::Array<int>& trial_elem_idx,
                                                              const axom::Array<mfem::DenseMatrix>& src_elem_mat ) const
 {
+  TRIBOL_MARK_SCOPE( "TransferToParallelSparse_Method1" );
   // TODO (EBC): we need a SparseMatrix-like data structure that allows HYPRE_BigInt on the columns
   auto parentJ = mfem::SparseMatrix( parent_test_fes_.GetVSize(), parent_trial_fes_.GlobalVSize() );
 
-  // verify inputs
-  SLIC_ERROR_IF( test_elem_idx.size() != trial_elem_idx.size() || test_elem_idx.size() != src_elem_mat.size(),
-                 "Element index arrays and element Jacobian contribution array must be the same size." );
-  for ( int i{ 0 }; i < src_elem_mat.size(); ++i ) {
-    auto test_e = test_elem_idx[i];
-    auto trial_e = trial_elem_idx[i];
-
-    SLIC_ERROR_IF( test_e < 0, "Invalid primary index value." );
-    SLIC_ERROR_IF( trial_e < 0, "Invalid secondary index value." );
-
-    auto n_test_elem_vdofs = redecomp_test_fes_.GetFE( test_e )->GetDof() * redecomp_test_fes_.GetVDim();
-    auto n_trial_elem_vdofs = redecomp_trial_fes_.GetFE( trial_e )->GetDof() * redecomp_trial_fes_.GetVDim();
-
-    SLIC_ERROR_IF( src_elem_mat[i].Height() != n_test_elem_vdofs,
-                   "The number of test DOFs does not match the size of the element DenseMatrix." );
-    SLIC_ERROR_IF( src_elem_mat[i].Width() != n_trial_elem_vdofs,
-                   "The number of trial DOFs does not match the size of the element DenseMatrix." );
-  }
+  validateDenseMatrices( test_elem_idx, trial_elem_idx, src_elem_mat );
 
   auto test_redecomp = dynamic_cast<const RedecompMesh*>( redecomp_test_fes_.GetMesh() );
   auto trial_redecomp = dynamic_cast<const RedecompMesh*>( redecomp_trial_fes_.GetMesh() );
+  auto comm_data = buildCommunicationData( *test_redecomp, *trial_redecomp, test_elem_idx, trial_elem_idx );
 
-  // List of entries in src_elem_mat that belong on each parent test space rank.
-  // This is needed so we know which rank to send entries in src_elem_mat to.
-  auto send_array_ids = buildSendArrayIDs( test_elem_idx );
-  // Number of matrix entries to be sent to each parent test space rank.  This
-  // is used to size the array of element matrix values to be sent to other ranks.
-  auto send_num_mat_entries = buildSendNumMatEntries( test_elem_idx, trial_elem_idx );
-  // Number of test and trial vdofs received from test space redecomp ranks.
-  // This is used to determine the beginning and end of each element matrix
-  // received as a single array of values and the beginning and end of vdof indices
-  // received as a single array of values.
-  auto recv_mat_sizes = buildRecvMatSizes( test_elem_idx, trial_elem_idx );
-  // List of test element offsets received from test space redecomp ranks.  The
-  // offset is used with the parent to redecomp map (and the redecomp rank
-  // received from) to determine the parent element ID.  Parent element ID is
-  // used to determine the test vldofs of the element matrix entries received
-  // from redecomp ranks.
-  auto recv_test_elem_offsets = buildRecvTestElemOffsets( *test_redecomp, test_elem_idx );
-  // List of trial element global vdofs corresponding to the element matrix
-  // entries received from redecomp ranks.  The second column of recv_mat_sizes
-  // determines the offset for each trial element.
-  auto recv_trial_elem_dofs = buildRecvTrialElemDofs( *trial_redecomp, test_elem_idx, trial_elem_idx );
-
+  TRIBOL_MARK_BEGIN( "SendRecvEach" );
   // aggregate dense matrix values, send and assemble
   getMPIUtility().SendRecvEach(
       type<axom::Array<double>>(),
-      [&send_array_ids, &send_num_mat_entries, &src_elem_mat]( axom::IndexType dst ) {
-        auto send_vals = axom::Array<double>( 0, send_num_mat_entries[dst] );
+      [&comm_data, &src_elem_mat]( axom::IndexType dst ) {
+        auto send_vals = axom::Array<double>( 0, comm_data.send_num_mat_entries[dst] );
 
-        for ( auto src_array_idx : send_array_ids[dst] ) {
+        for ( auto src_array_idx : comm_data.send_array_ids[dst] ) {
           send_vals.append(
               axom::ArrayView<double>( src_elem_mat[src_array_idx].Data(),
                                        src_elem_mat[src_array_idx].Width() * src_elem_mat[src_array_idx].Height() ) );
@@ -113,20 +167,20 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
 
         return send_vals;
       },
-      [this, test_redecomp, &parentJ, &recv_mat_sizes, &recv_trial_elem_dofs, &recv_test_elem_offsets](
-          axom::Array<double>&& send_vals, axom::IndexType src ) {
-        if ( recv_trial_elem_dofs[src].IsEmpty() ) {
+      [this, test_redecomp, &parentJ, &comm_data]( axom::Array<double>&& send_vals, axom::IndexType src ) {
+        if ( comm_data.recv_trial_elem_dofs[src].IsEmpty() ) {
           return;
         }
         auto trial_dof_ct = 0;
         auto dof_ct = 0;
         // element loop
-        for ( int e{ 0 }; e < recv_test_elem_offsets[src].Size(); ++e ) {
-          auto test_elem_id = test_redecomp->getParentToRedecompElems().first[src][recv_test_elem_offsets[src][e]];
+        for ( int e{ 0 }; e < comm_data.recv_test_elem_offsets[src].Size(); ++e ) {
+          auto test_elem_id =
+              test_redecomp->getParentToRedecompElems().first[src][comm_data.recv_test_elem_offsets[src][e]];
           auto test_elem_dofs = mfem::Array<int>();
           parent_test_fes_.GetElementVDofs( test_elem_id, test_elem_dofs );
-          auto trial_elem_dofs =
-              mfem::Array<HYPRE_BigInt>( &recv_trial_elem_dofs[src][trial_dof_ct], recv_mat_sizes[src]( e, 1 ) );
+          auto trial_elem_dofs = mfem::Array<HYPRE_BigInt>( &comm_data.recv_trial_elem_dofs[src][trial_dof_ct],
+                                                            comm_data.recv_mat_sizes[src]( e, 1 ) );
           // trial loop
           for ( int j{ 0 }; j < trial_elem_dofs.Size(); ++j ) {
             // test loop
@@ -136,20 +190,180 @@ mfem::SparseMatrix MatrixTransfer::TransferToParallelSparse( const axom::Array<i
                            send_vals[dof_ct + i + j * test_elem_dofs.Size()] );
             }
           }
-          trial_dof_ct += recv_mat_sizes[src]( e, 1 );
-          dof_ct += recv_mat_sizes[src]( e, 0 ) * recv_mat_sizes[src]( e, 1 );
+          trial_dof_ct += comm_data.recv_mat_sizes[src]( e, 1 );
+          dof_ct += comm_data.recv_mat_sizes[src]( e, 0 ) * comm_data.recv_mat_sizes[src]( e, 1 );
         }
       } );
+  TRIBOL_MARK_END( "SendRecvEach" );
 
   return parentJ;
 }
 
+shared::ParSparseMat MatrixTransfer::TransferToParallel( const axom::Array<int>& test_elem_idx,
+                                                         const axom::Array<int>& trial_elem_idx,
+                                                         const axom::Array<double>& src_elem_mat_data,
+                                                         const axom::Array<int>& src_elem_mat_offsets,
+                                                         bool parallel_assemble ) const
+{
+  TRIBOL_MARK_FUNCTION;
+  validateFlatMatrices( test_elem_idx, trial_elem_idx, src_elem_mat_data, src_elem_mat_offsets );
+
+  auto test_redecomp = dynamic_cast<const RedecompMesh*>( redecomp_test_fes_.GetMesh() );
+  auto trial_redecomp = dynamic_cast<const RedecompMesh*>( redecomp_trial_fes_.GetMesh() );
+  auto comm_data = buildCommunicationData( *test_redecomp, *trial_redecomp, test_elem_idx, trial_elem_idx );
+
+  TRIBOL_MARK_BEGIN( "SetupTriplets" );
+  // Intermediate storage for triplets
+  struct Triplet {
+    int row;
+    HYPRE_BigInt col;
+    double val;
+  };
+  std::vector<Triplet> triplets;
+  // Estimate capacity to reduce reallocations
+  int total_recv_entries = 0;
+  for ( int src = 0; src < getMPIUtility().NRanks(); ++src ) {
+    for ( int e = 0; e < comm_data.recv_mat_sizes[src].shape()[0]; ++e ) {
+      total_recv_entries += comm_data.recv_mat_sizes[src]( e, 0 ) * comm_data.recv_mat_sizes[src]( e, 1 );
+    }
+  }
+  triplets.reserve( total_recv_entries );
+  TRIBOL_MARK_END( "SetupTriplets" );
+
+  TRIBOL_MARK_BEGIN( "SendRecvEach" );
+  // aggregate dense matrix values, send and assemble
+  getMPIUtility().SendRecvEach(
+      type<axom::Array<double>>(),
+      [&comm_data, &src_elem_mat_data, &src_elem_mat_offsets, &test_elem_idx, &trial_elem_idx,
+       this]( axom::IndexType dst ) {
+        auto send_vals = axom::Array<double>( 0, comm_data.send_num_mat_entries[dst] );
+
+        for ( auto src_array_idx : comm_data.send_array_ids[dst] ) {
+          // Calculate size from FE spaces
+          auto test_e = test_elem_idx[src_array_idx];
+          auto trial_e = trial_elem_idx[src_array_idx];
+          auto n_test_elem_vdofs = redecomp_test_fes_.GetFE( test_e )->GetDof() * redecomp_test_fes_.GetVDim();
+          auto n_trial_elem_vdofs = redecomp_trial_fes_.GetFE( trial_e )->GetDof() * redecomp_trial_fes_.GetVDim();
+          auto size = n_test_elem_vdofs * n_trial_elem_vdofs;
+
+          send_vals.append(
+              axom::ArrayView<const double>( &src_elem_mat_data[src_elem_mat_offsets[src_array_idx]], size ) );
+        }
+
+        return send_vals;
+      },
+      [this, test_redecomp, &triplets, &comm_data]( axom::Array<double>&& send_vals, axom::IndexType src ) {
+        if ( comm_data.recv_trial_elem_dofs[src].IsEmpty() ) {
+          return;
+        }
+        auto trial_dof_ct = 0;
+        auto dof_ct = 0;
+        // element loop
+        for ( int e{ 0 }; e < comm_data.recv_test_elem_offsets[src].Size(); ++e ) {
+          auto test_elem_id =
+              test_redecomp->getParentToRedecompElems().first[src][comm_data.recv_test_elem_offsets[src][e]];
+          auto test_elem_dofs = mfem::Array<int>();
+          parent_test_fes_.GetElementVDofs( test_elem_id, test_elem_dofs );
+          auto trial_elem_dofs = mfem::Array<HYPRE_BigInt>( &comm_data.recv_trial_elem_dofs[src][trial_dof_ct],
+                                                            comm_data.recv_mat_sizes[src]( e, 1 ) );
+          // trial loop
+          for ( int j{ 0 }; j < trial_elem_dofs.Size(); ++j ) {
+            // test loop
+            for ( int i{ 0 }; i < test_elem_dofs.Size(); ++i ) {
+              triplets.push_back( { test_elem_dofs[i], trial_elem_dofs[j],
+                                    // send_vals comes from mfem::SparseMatrix (column major)
+                                    send_vals[dof_ct + i + j * test_elem_dofs.Size()] } );
+            }
+          }
+          trial_dof_ct += comm_data.recv_mat_sizes[src]( e, 1 );
+          dof_ct += comm_data.recv_mat_sizes[src]( e, 0 ) * comm_data.recv_mat_sizes[src]( e, 1 );
+        }
+      } );
+  TRIBOL_MARK_END( "SendRecvEach" );
+
+  TRIBOL_MARK_BEGIN( "SortTriplets" );
+  // Sort triplets by row then column
+  std::sort( triplets.begin(), triplets.end(), []( const Triplet& a, const Triplet& b ) {
+    if ( a.row != b.row ) return a.row < b.row;
+    return a.col < b.col;
+  } );
+  TRIBOL_MARK_END( "SortTriplets" );
+
+  TRIBOL_MARK_BEGIN( "CSRConstruction" );
+  // Count non-zeros and merge duplicates
+  int num_unique_nonzeros = 0;
+  if ( !triplets.empty() ) {
+    num_unique_nonzeros = 1;
+    for ( size_t i = 1; i < triplets.size(); ++i ) {
+      if ( triplets[i].row != triplets[i - 1].row || triplets[i].col != triplets[i - 1].col ) {
+        num_unique_nonzeros++;
+      }
+    }
+  }
+
+  auto num_rows = parent_test_fes_.GetVSize();
+  int* I_ptr = new int[num_rows + 1];
+  HYPRE_BigInt* J_ptr = new HYPRE_BigInt[num_unique_nonzeros];
+  double* data_ptr = new double[num_unique_nonzeros];
+
+  // Initialize I_ptr with zeros
+  for ( int i = 0; i <= num_rows; ++i ) {
+    I_ptr[i] = 0;
+  }
+
+  if ( !triplets.empty() ) {
+    int unique_idx = 0;
+    J_ptr[0] = triplets[0].col;
+    data_ptr[0] = triplets[0].val;
+    I_ptr[triplets[0].row + 1]++;
+
+    for ( size_t i = 1; i < triplets.size(); ++i ) {
+      if ( triplets[i].row == triplets[i - 1].row && triplets[i].col == triplets[i - 1].col ) {
+        data_ptr[unique_idx] += triplets[i].val;
+      } else {
+        unique_idx++;
+        J_ptr[unique_idx] = triplets[i].col;
+        data_ptr[unique_idx] = triplets[i].val;
+        I_ptr[triplets[i].row + 1]++;
+      }
+    }
+  }
+
+  // Transform I_ptr from counts to offsets (prefix sum)
+  for ( int i = 0; i < num_rows; ++i ) {
+    I_ptr[i + 1] += I_ptr[i];
+  }
+  TRIBOL_MARK_END( "CSRConstruction" );
+
+  // Construct rectangular HypreParMatrix
+  shared::ParSparseMat J_full( getMPIUtility().MPIComm(), num_rows, parent_test_fes_.GlobalVSize(),
+                               parent_trial_fes_.GlobalVSize(), I_ptr, J_ptr, data_ptr,
+                               parent_test_fes_.GetDofOffsets(), parent_trial_fes_.GetDofOffsets() );
+
+  if ( !parallel_assemble ) {
+    return J_full;
+  } else {
+    auto P_test = parent_test_fes_.Dof_TrueDof_Matrix();
+    P_test->HostRead();
+    auto P_trial = parent_trial_fes_.Dof_TrueDof_Matrix();
+    P_trial->HostRead();
+    auto J_true = shared::ParSparseMat::rap( P_test, J_full, P_trial );
+    return J_true;
+  }
+}
+
 shared::ParSparseMat MatrixTransfer::ConvertToParSparseMat( mfem::SparseMatrix&& sparse, bool parallel_assemble ) const
 {
-  SLIC_ERROR_IF( sparse.Height() != parent_test_fes_.GetVSize(),
-                 "Height of sparse must match number of test ParFiniteElementSpace L-dofs." );
-  SLIC_ERROR_IF( sparse.Width() != parent_trial_fes_.GlobalVSize(),
-                 "Width of sparse must match number of trial ParFiniteElementSpace global dofs." );
+  SLIC_ERROR_IF(
+      sparse.Height() != parent_test_fes_.GetVSize(),
+      axom::fmt::format( "redecomp::MatrixTransfer::ConvertToParSparseMat: sparse.Height() mismatch. Got {}, expected "
+                         "{} (= parent_test_fes_.GetVSize()).",
+                         sparse.Height(), parent_test_fes_.GetVSize() ) );
+  SLIC_ERROR_IF(
+      sparse.Width() != parent_trial_fes_.GlobalVSize(),
+      axom::fmt::format( "redecomp::MatrixTransfer::ConvertToParSparseMat: sparse.Width() mismatch. Got {}, expected "
+                         "{} (= parent_trial_fes_.GlobalVSize()).",
+                         sparse.Width(), parent_trial_fes_.GlobalVSize() ) );
 
   // TODO (EBC): mfem::SparseMatrix uses int for global column values; this needs to be HYPRE_BigInt to be compatible
   // with mfem::HypreParMatrix. The following copy is a hack to get this working for now, but true support for

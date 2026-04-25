@@ -19,7 +19,8 @@ ParSparseMatView::ParSparseMatView( mfem::HypreParMatrix* mat ) : mat_( mat ) { 
 
 void ParSparseMatView::ensureHostMemory( mfem::HypreParMatrix* mat )
 {
-  if ( mat ) {
+  // note: HostReadWrite() fails when called on HypreParMatrices created with the default constructor
+  if ( mat && mat->Height() > 0 && mat->Width() > 0 ) {
     mat->HostReadWrite();
   }
 }
@@ -134,6 +135,24 @@ ParSparseMat::ParSparseMat( MPI_Comm comm, HYPRE_BigInt glob_size, HYPRE_BigInt*
 {
   owned_mat_.reset( createHypreParMatrix<MemorySpace::Host>(
       [&]() { return new mfem::HypreParMatrix( comm, glob_size, row_starts, &diag ); } ) );
+  mat_ = owned_mat_.get();
+  mat_->HostReadWrite();
+  diag.GetMemoryI().ClearOwnerFlags();
+  diag.GetMemoryJ().ClearOwnerFlags();
+  diag.GetMemoryData().ClearOwnerFlags();
+  // The mfem::Memory in mfem::SparseMatrix allocates using operator new [], so mark the diag memory as owned by MFEM so
+  // it can be deleted correctly
+  constexpr int mfem_owned_host_flag = 3;
+  owned_mat_->SetOwnerFlags( mfem_owned_host_flag, owned_mat_->OwnsOffd(), owned_mat_->OwnsColMap() );
+}
+
+ParSparseMat::ParSparseMat( MPI_Comm comm, HYPRE_BigInt global_num_rows, HYPRE_BigInt global_num_cols,
+                            HYPRE_BigInt* row_starts, HYPRE_BigInt* col_starts, mfem::SparseMatrix&& diag )
+    : ParSparseMatView( nullptr )
+{
+  owned_mat_.reset( createHypreParMatrix<MemorySpace::Host>( [&]() {
+    return new mfem::HypreParMatrix( comm, global_num_rows, global_num_cols, row_starts, col_starts, &diag );
+  } ) );
   mat_ = owned_mat_.get();
   mat_->HostReadWrite();
   diag.GetMemoryI().ClearOwnerFlags();

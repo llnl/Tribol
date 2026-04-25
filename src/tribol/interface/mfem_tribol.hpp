@@ -20,21 +20,17 @@ namespace tribol {
 /**
  * @brief Define and register a coupling scheme over an MFEM mesh
  *
- * This function is designed to enable simple registration of a contact coupling
- * scheme over a parallel MFEM mesh. Contact surfaces are defined via a list of
- * one or more boundary attributes, which is used to construct a single contact
- * surface mfem::ParSubMesh. Calling this function stores the data needed to
- * create a coupling scheme; however, the coupling scheme is not created until
- * updateMfemParallelDecomposition() is called. The meshes used in the Tribol
- * coupling scheme are created after the parallel domains are rebalanced (using
- * the redecomp library) through the call to updateMfemParallelDecomposition().
+ * This function is designed to enable simple registration of a contact coupling scheme over a parallel MFEM mesh.
+ * Contact surfaces are defined via a list of one or more boundary attributes, which is used to construct a single
+ * contact surface mfem::ParSubMesh (a boundary submesh extracted from the volume mesh). Calling this function stores
+ * the data needed to create a coupling scheme; however, the coupling scheme is not created until
+ * updateMfemParallelDecomposition() is called. The meshes used in the Tribol coupling scheme are created after the
+ * parallel domains are rebalanced (using the redecomp library) through the call to updateMfemParallelDecomposition().
  *
- * If the registered mesh contains a higher-order Nodes grid function, then a
- * low-order refined (LOR) mesh is created (if needed) to use Tribol's linear
- * contact methodologies. LOR support is currently limited to methods that do
- * not require Jacobian calculations, and is still experimental. The low-order
- * refinement factor equals the order of the Nodes grid function, but can be
- * overridden using setMfemLowOrderRefinedFactor().
+ * If the registered mesh contains a higher-order Nodes grid function, then a low-order refined (LOR) mesh is created
+ * (if needed) to use Tribol's linear contact methodologies. LOR support is currently limited to methods that do not
+ * require Jacobian calculations, and is still experimental. The low-order refinement factor equals the order of the
+ * Nodes grid function, but can be overridden using setMfemLowOrderRefinedFactor().
  *
  * @param [in] cs_id Index to use for the coupling scheme
  * @param [in] mesh_id_1 The first ID of the contact surface mesh

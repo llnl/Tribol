@@ -7,10 +7,236 @@
 
 #ifdef BUILD_REDECOMP
 
+#include <algorithm>
+#include <map>
+#include <utility>
+#include <vector>
+
 #include "tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 
 namespace tribol {
+
+namespace {
+
+mfem::Array<int> BuildSolverOffsets( int max_block, int primary_size, int dual_size )
+{
+  // Compatibility helper: map Tribol's current hard-coded 2x2 solver block layout (primary/dual) into
+  // mfem::BlockOperator offsets. This is only used by the MFEM-interface convenience Jacobian path and should
+  // eventually move to the physics routine (or host code) that actually defines the block structure.
+  mfem::Array<int> offsets( max_block + 2 );
+  offsets[0] = 0;
+  offsets[1] = primary_size;
+  if ( max_block > 0 ) {
+    offsets[2] = primary_size + dual_size;
+  }
+  return offsets;
+}
+
+mfem::Array<int> ComputeSingleMortarInactiveDualTrueDofs( const MfemMeshData& mesh_data,
+                                                          const MfemSubmeshData& submesh_data )
+{
+  // Compatibility helper: for single mortar, eliminate LM rows/cols that are not on the nonmortar side by constraining
+  // them in the solver's dual-dual block.
+  auto& submesh_fe_space = submesh_data.GetSubmeshFESpace();
+  auto& submesh = mesh_data.GetSubmesh();
+
+  // Create marker of attributes for faster querying.
+  mfem::Array<int> attr_marker( submesh.attributes.Max() );
+  attr_marker = 0;
+  for ( auto nonmortar_attr : mesh_data.GetBoundaryAttribs2() ) {
+    attr_marker[nonmortar_attr - 1] = 1;
+  }
+
+  // Create marker of dofs only on the mortar surface.
+  mfem::Array<int> mortar_dof_marker( submesh_fe_space.GetVSize() );
+  mortar_dof_marker = 1;
+  for ( int e{ 0 }; e < submesh.GetNE(); ++e ) {
+    if ( attr_marker[submesh_fe_space.GetAttribute( e ) - 1] ) {
+      mfem::Array<int> vdofs;
+      submesh_fe_space.GetElementVDofs( e, vdofs );
+      for ( int d{ 0 }; d < vdofs.Size(); ++d ) {
+        int k = vdofs[d];
+        if ( k < 0 ) {
+          k = -1 - k;
+        }
+        mortar_dof_marker[k] = 0;
+      }
+    }
+  }
+
+  // Convert marker of dofs to marker of tdofs.
+  mfem::Array<int> mortar_tdof_marker( submesh_fe_space.GetTrueVSize() );
+  submesh_fe_space.GetRestrictionMatrix()->BooleanMult( mortar_dof_marker, mortar_tdof_marker );
+
+  // Convert markers of tdofs only on mortar surface to a list.
+  mfem::Array<int> mortar_tdof_list;
+  mfem::FiniteElementSpace::MarkerToList( mortar_tdof_marker, mortar_tdof_list );
+  return mortar_tdof_list;
+}
+
+std::vector<PackedPairJacobianContribs> BuildPackedPairJacobianContribs(
+    const MfemJacobianData& jac_data, const MfemMeshData& mesh_data, const MfemSubmeshData& submesh_data,
+    const MethodData& method_data, const std::vector<std::pair<BlockSpace, BlockSpace>>& contribs )
+{
+  // Compatibility helper: convert legacy MethodData block-J storage into the
+  // newer packed PackedPairJacobianContribs representation used by the MFEM transfer
+  // code. This glue should eventually live alongside the physics routines that
+  // own MethodData and understand the intended block partitioning.
+  std::vector<PackedPairJacobianContribs> computed;
+  computed.reserve( contribs.size() );
+
+  for ( const auto& pair : contribs ) {
+    auto surface_fes_for = [&]( BlockSpace space ) -> const mfem::ParFiniteElementSpace& {
+      // "Surface" here means the parent FE space of the redecomp FE space used for the transfer. In this MFEM path
+      // that surface FE space is either the LOR surface mesh (when LOR is active) or the boundary submesh (otherwise).
+      const auto& primary_surface_fes = *jac_data.ParentPath().surface_fes;
+      const auto& dual_surface_fes = *jac_data.SubmeshPath().surface_fes;
+      switch ( space ) {
+        case BlockSpace::MORTAR:
+        case BlockSpace::NONMORTAR:
+          return primary_surface_fes;
+        case BlockSpace::LAGRANGE_MULTIPLIER:
+          return dual_surface_fes;
+        default:
+          SLIC_ERROR_ROOT( "Unsupported block space." );
+          return primary_surface_fes;
+      }
+    };
+
+    auto redecomp_fes_for = [&]( BlockSpace space ) -> const mfem::FiniteElementSpace& {
+      switch ( space ) {
+        case BlockSpace::MORTAR:
+        case BlockSpace::NONMORTAR:
+          return *mesh_data.GetRedecompResponse().FESpace();
+        case BlockSpace::LAGRANGE_MULTIPLIER:
+          return *submesh_data.GetRedecompGap().FESpace();
+        default:
+          SLIC_ERROR_ROOT( "Unsupported block space." );
+          return *mesh_data.GetRedecompResponse().FESpace();
+      }
+    };
+
+    auto elem_map_for = [&]( BlockSpace space ) -> const Array1D<int>& {
+      switch ( space ) {
+        case BlockSpace::MORTAR:
+          return mesh_data.GetElemMap1();
+        case BlockSpace::NONMORTAR:
+        case BlockSpace::LAGRANGE_MULTIPLIER:
+          return mesh_data.GetElemMap2();
+        default:
+          SLIC_ERROR_ROOT( "Unsupported block space." );
+          return mesh_data.GetElemMap1();
+      }
+    };
+
+    PackedPairJacobianContribs data( surface_fes_for( pair.first ), surface_fes_for( pair.second ),
+                                     redecomp_fes_for( pair.first ), redecomp_fes_for( pair.second ),
+                                     elem_map_for( pair.first ), elem_map_for( pair.second ) );
+
+    const auto& J_block = method_data.getBlockJ()( static_cast<int>( pair.first ), static_cast<int>( pair.second ) );
+    const auto& row_elem_ids = method_data.getBlockJElementIds()[static_cast<int>( pair.first )];
+    const auto& col_elem_ids = method_data.getBlockJElementIds()[static_cast<int>( pair.second )];
+
+    SLIC_ERROR_ROOT_IF( J_block.size() != row_elem_ids.size() || J_block.size() != col_elem_ids.size(),
+                        "MethodData block Jacobians and element-id arrays must have matching sizes." );
+
+    int total_scalar_values = 0;
+    for ( int i = 0; i < J_block.size(); ++i ) {
+      total_scalar_values += J_block[i].Height() * J_block[i].Width();
+    }
+    data.reserve( J_block.size(), total_scalar_values );
+
+    for ( int i = 0; i < J_block.size(); ++i ) {
+      // MatrixTransfer expects one flat buffer plus per-element offsets, so keep
+      // the packed layout but hide the offset bookkeeping behind append().
+      const int size = J_block[i].Height() * J_block[i].Width();
+      data.append( row_elem_ids[i], col_elem_ids[i], J_block[i].GetData(), size );
+    }
+
+    computed.push_back( std::move( data ) );
+  }
+
+  return computed;
+}
+
+std::unique_ptr<mfem::BlockOperator> BuildMfemBlockJacobian( const CouplingScheme& cs, const MethodData& method_data,
+                                                             const std::vector<std::pair<int, BlockSpace>>& row_info,
+                                                             const std::vector<std::pair<int, BlockSpace>>& col_info )
+{
+  // Compatibility helper: assemble a solver-facing mfem::BlockOperator from
+  // MethodData. The specific block sizing and mapping (row_info/col_info) is a
+  // policy decision that belongs in the physics routine (or host application)
+  // where the meaning of "block 0/1" is defined; this is kept here so the
+  // existing public convenience API can continue to work.
+  const auto* jac_data = cs.getMfemJacobianData();
+  const auto* mesh_data = cs.getMfemMeshData();
+  const auto* submesh_data = cs.getMfemSubmeshData();
+  SLIC_ERROR_ROOT_IF( jac_data == nullptr || mesh_data == nullptr || submesh_data == nullptr,
+                      "MFEM Jacobian block assembly requires initialized MFEM mesh, submesh, and Jacobian data." );
+
+  int max_row_block = 0;
+  for ( const auto& info : row_info ) {
+    max_row_block = std::max( max_row_block, info.first );
+  }
+  int max_col_block = 0;
+  for ( const auto& info : col_info ) {
+    max_col_block = std::max( max_col_block, info.first );
+  }
+
+  const int primary_size = mesh_data->GetParentCoords().ParFESpace()->GetTrueVSize();
+  const int dual_size = submesh_data->GetSubmeshFESpace().GetTrueVSize();
+  auto row_offsets = BuildSolverOffsets( max_row_block, primary_size, dual_size );
+  auto col_offsets = BuildSolverOffsets( max_col_block, primary_size, dual_size );
+
+  auto block_J = std::make_unique<mfem::BlockOperator>( row_offsets, col_offsets );
+  block_J->owns_blocks = 1;
+
+  // Multiple Tribol block spaces can map into the same solver block, so collect
+  // those contributions first and transfer each solver-visible block once.
+  std::map<std::pair<int, int>, std::vector<std::pair<BlockSpace, BlockSpace>>> block_contribs;
+  for ( const auto& r_pair : row_info ) {
+    for ( const auto& c_pair : col_info ) {
+      block_contribs[{ r_pair.first, c_pair.first }].push_back( { r_pair.second, c_pair.second } );
+    }
+  }
+
+  for ( const auto& entry : block_contribs ) {
+    const int r_blk = entry.first.first;
+    const int c_blk = entry.first.second;
+    auto contributions =
+        BuildPackedPairJacobianContribs( *jac_data, *mesh_data, *submesh_data, method_data, entry.second );
+
+    // Compatibility: dual-dual blocks are solver constraints and do not flow through redecomp transfer.
+    if ( r_blk == 1 && c_blk == 1 ) {
+      auto comm = mesh_data->GetParentCoords().ParFESpace()->GetComm();
+      auto& dual_fes = submesh_data->GetSubmeshFESpace();
+      mfem::Array<int> inactive_tdofs;
+      if ( cs.getContactMethod() == SINGLE_MORTAR ) {
+        inactive_tdofs = ComputeSingleMortarInactiveDualTrueDofs( *mesh_data, *submesh_data );
+      }
+      auto block_mat = shared::ParSparseMat::diagonalMatrix( comm, dual_fes.GlobalTrueVSize(),
+                                                             dual_fes.GetTrueDofOffsets(), 1.0, inactive_tdofs, false );
+      block_J->SetBlock( r_blk, c_blk, block_mat.release() );
+      continue;
+    }
+
+    const mfem::ParFiniteElementSpace* row_final_fes =
+        ( r_blk == 0 ) ? mesh_data->GetParentCoords().ParFESpace() : &submesh_data->GetSubmeshFESpace();
+    const mfem::ParFiniteElementSpace* col_final_fes =
+        ( c_blk == 0 ) ? mesh_data->GetParentCoords().ParFESpace() : &submesh_data->GetSubmeshFESpace();
+
+    auto block_mat = jac_data->GetMfemJacobian( row_final_fes, col_final_fes, contributions );
+
+    if ( block_mat->NNZ() > 0 || ( r_blk == 1 && c_blk == 1 ) ) {
+      block_J->SetBlock( r_blk, c_blk, block_mat.release() );
+    }
+  }
+
+  return block_J;
+}
+
+}  // namespace
 
 void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, const mfem::ParMesh& mesh,
                                  const mfem::ParGridFunction& current_coords, std::set<int> b_attributes_1,
@@ -100,8 +326,7 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
                                                 lm_options.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ) ) {
       // create matrix transfer operator between redecomp and
       // parent/parent-linked boundary submesh
-      cs.setMfemJacobianData(
-          std::make_unique<MfemJacobianData>( *mfem_data, *cs.getMfemSubmeshData(), contact_method ) );
+      cs.setMfemJacobianData( std::make_unique<MfemJacobianData>( *mfem_data, *cs.getMfemSubmeshData() ) );
     }
   }
   cs.setMfemMeshData( std::move( mfem_data ) );
@@ -118,6 +343,13 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to set the LOR factor." );
   cs->getMfemMeshData()->SetLORFactor( lor_factor );
+
+  if ( cs->getMfemSubmeshData() ) {
+    cs->getMfemSubmeshData()->SetLORMesh( cs->getMfemMeshData()->GetLORMesh() );
+  }
+  if ( cs->hasMfemJacobianData() && cs->getMfemSubmeshData() ) {
+    cs->setMfemJacobianData( std::make_unique<MfemJacobianData>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData() ) );
+  }
 }
 
 void setMfemRedecompTriggerDisplacement( IndexT cs_id, RealT val )
@@ -339,11 +571,10 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
   const std::vector<std::pair<int, BlockSpace>> all_info{
       { 0, BlockSpace::MORTAR }, { 0, BlockSpace::NONMORTAR }, { 1, BlockSpace::LAGRANGE_MULTIPLIER } };
   if ( cs->isEnzymeEnabled() ) {
-    auto dfdx = cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getMethodData(), all_info, all_info );
+    auto dfdx = BuildMfemBlockJacobian( *cs, *cs->getMethodData(), all_info, all_info );
     const std::vector<std::pair<int, BlockSpace>> nonmortar_info{ { 0, BlockSpace::NONMORTAR } };
-    auto dfdn = cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getDfDnMethodData(), all_info, nonmortar_info );
-    auto dndx =
-        cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getDnDxMethodData(), nonmortar_info, nonmortar_info );
+    auto dfdn = BuildMfemBlockJacobian( *cs, *cs->getDfDnMethodData(), all_info, nonmortar_info );
+    auto dndx = BuildMfemBlockJacobian( *cs, *cs->getDnDxMethodData(), nonmortar_info, nonmortar_info );
 
     auto block_00 = ( shared::ParSparseMatView( &static_cast<mfem::HypreParMatrix&>( dfdn->GetBlock( 0, 0 ) ) ) *
                       &static_cast<mfem::HypreParMatrix&>( dndx->GetBlock( 0, 0 ) ) ) +
@@ -357,7 +588,7 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
 
     return dfdx;
   } else {
-    return cs->getMfemJacobianData()->GetMfemBlockJacobian( *cs->getMethodData(), all_info, all_info );
+    return BuildMfemBlockJacobian( *cs, *cs->getMethodData(), all_info, all_info );
   }
 }
 

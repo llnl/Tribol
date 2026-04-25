@@ -113,6 +113,7 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
       redecomp_transfer.cpp
       redecomp_multitransfer.cpp
       redecomp_massmatrix.cpp
+      redecomp_matrixtransfer_equivalence.cpp
       redecomp_rectmatrix.cpp
       redecomp_sparsematrix.cpp
       redecomp_gpu_mpi.cpp
@@ -157,6 +158,7 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
   set( combined_tests
       tribol_mfem_common_plane.cpp
       tribol_mfem_mortar_lm.cpp
+      tribol_mfem_jacobian.cpp
       tribol_proximity_check.cpp
       tribol_redecomp_tol.cpp
       )
