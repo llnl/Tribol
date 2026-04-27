@@ -19,11 +19,22 @@ void MatrixTransfer::validateTransferInputs( const axom::Array<int>& test_elem_i
                                              const axom::Array<int>& trial_elem_idx, int data_size,
                                              const char* data_name ) const
 {
-  SLIC_ERROR_IF( test_elem_idx.size() != trial_elem_idx.size() || test_elem_idx.size() != data_size,
-                 axom::fmt::format( "Element index arrays and {} must be the same size.", data_name ) );
+  SLIC_ERROR_IF(
+      test_elem_idx.size() != trial_elem_idx.size() || test_elem_idx.size() != data_size,
+      axom::fmt::format( "redecomp::MatrixTransfer::validateTransferInputs: test/trial element-id arrays and {} must "
+                         "have the same length. Got test_elem_idx.size()={}, trial_elem_idx.size()={}, {}.size()={}. "
+                         "Expected one data entry per (test_elem_idx[i], trial_elem_idx[i]) pair.",
+                         data_name, test_elem_idx.size(), trial_elem_idx.size(), data_name, data_size ) );
   for ( int i{ 0 }; i < test_elem_idx.size(); ++i ) {
-    SLIC_ERROR_IF( test_elem_idx[i] < 0, "Invalid primary index value." );
-    SLIC_ERROR_IF( trial_elem_idx[i] < 0, "Invalid secondary index value." );
+    SLIC_ERROR_IF( test_elem_idx[i] < 0,
+                   axom::fmt::format( "redecomp::MatrixTransfer::validateTransferInputs: invalid test element index at "
+                                      "entry {} (value={}). Expected a non-negative redecomp element id.",
+                                      i, test_elem_idx[i] ) );
+    SLIC_ERROR_IF(
+        trial_elem_idx[i] < 0,
+        axom::fmt::format( "redecomp::MatrixTransfer::validateTransferInputs: invalid trial element index at entry {} "
+                           "(value={}). Expected a non-negative redecomp element id.",
+                           i, trial_elem_idx[i] ) );
   }
 }
 
@@ -36,10 +47,18 @@ void MatrixTransfer::validateDenseMatrices( const axom::Array<int>& test_elem_id
     auto n_test_elem_vdofs = redecomp_test_fes_.GetFE( test_elem_idx[i] )->GetDof() * redecomp_test_fes_.GetVDim();
     auto n_trial_elem_vdofs = redecomp_trial_fes_.GetFE( trial_elem_idx[i] )->GetDof() * redecomp_trial_fes_.GetVDim();
 
-    SLIC_ERROR_IF( src_elem_mat[i].Height() != n_test_elem_vdofs,
-                   "The number of test DOFs does not match the size of the element DenseMatrix." );
-    SLIC_ERROR_IF( src_elem_mat[i].Width() != n_trial_elem_vdofs,
-                   "The number of trial DOFs does not match the size of the element DenseMatrix." );
+    SLIC_ERROR_IF(
+        src_elem_mat[i].Height() != n_test_elem_vdofs,
+        axom::fmt::format(
+            "redecomp::MatrixTransfer::validateDenseMatrices: DenseMatrix height mismatch for entry {} "
+            "(test_elem_idx={}, trial_elem_idx={}). Got Height()={}, expected {} (= test_FE_dofs * test_vdim). ",
+            i, test_elem_idx[i], trial_elem_idx[i], src_elem_mat[i].Height(), n_test_elem_vdofs ) );
+    SLIC_ERROR_IF(
+        src_elem_mat[i].Width() != n_trial_elem_vdofs,
+        axom::fmt::format(
+            "redecomp::MatrixTransfer::validateDenseMatrices: DenseMatrix width mismatch for entry {} "
+            "(test_elem_idx={}, trial_elem_idx={}). Got Width()={}, expected {} (= trial_FE_dofs * trial_vdim). ",
+            i, test_elem_idx[i], trial_elem_idx[i], src_elem_mat[i].Width(), n_trial_elem_vdofs ) );
   }
 }
 
@@ -55,8 +74,12 @@ void MatrixTransfer::validateFlatMatrices( const axom::Array<int>& test_elem_idx
     auto n_trial_elem_vdofs = redecomp_trial_fes_.GetFE( trial_elem_idx[i] )->GetDof() * redecomp_trial_fes_.GetVDim();
     auto expected_size = n_test_elem_vdofs * n_trial_elem_vdofs;
 
-    SLIC_ERROR_IF( src_elem_mat_offsets[i] < 0 || src_elem_mat_offsets[i] + expected_size > src_elem_mat_data.size(),
-                   "Matrix offset and size exceeds data array bounds." );
+    SLIC_ERROR_IF(
+        src_elem_mat_offsets[i] < 0 || src_elem_mat_offsets[i] + expected_size > src_elem_mat_data.size(),
+        axom::fmt::format( "redecomp::MatrixTransfer::validateFlatMatrices: flat-buffer bounds error for entry {} "
+                           "(test_elem_idx={}, trial_elem_idx={}). offset={}, expected_entry_size={}, data.size()={}. ",
+                           i, test_elem_idx[i], trial_elem_idx[i], src_elem_mat_offsets[i], expected_size,
+                           src_elem_mat_data.size() ) );
   }
 }
 
@@ -85,14 +108,21 @@ MatrixTransfer::MatrixTransfer( const mfem::ParFiniteElementSpace& parent_test_f
 {
   auto test_redecomp = dynamic_cast<const RedecompMesh*>( redecomp_test_fes_.GetMesh() );
   auto trial_redecomp = dynamic_cast<const RedecompMesh*>( redecomp_trial_fes_.GetMesh() );
-  SLIC_ERROR_ROOT_IF( test_redecomp == nullptr, "The Redecomp test finite element space must have a Redecomp mesh." );
-  SLIC_ERROR_ROOT_IF( trial_redecomp == nullptr, "The Redecomp trial finite element space must have a Redecomp mesh." );
+  SLIC_ERROR_ROOT_IF( test_redecomp == nullptr,
+                      "redecomp::MatrixTransfer::MatrixTransfer: redecomp_test_fes must be defined on a "
+                      "redecomp::RedecompMesh (dynamic_cast failed)." );
+  SLIC_ERROR_ROOT_IF( trial_redecomp == nullptr,
+                      "redecomp::MatrixTransfer::MatrixTransfer: redecomp_trial_fes must be defined on a "
+                      "redecomp::RedecompMesh (dynamic_cast failed)." );
   SLIC_ERROR_ROOT_IF( &test_redecomp->getParent() != parent_test_fes_.GetParMesh(),
-                      "The parent test finite element space mesh must be linked to the test Redecomp mesh." );
+                      "redecomp::MatrixTransfer::MatrixTransfer: parent_test_fes mesh does not match the parent mesh "
+                      "used to build redecomp_test_fes." );
   SLIC_ERROR_ROOT_IF( &trial_redecomp->getParent() != parent_trial_fes_.GetParMesh(),
-                      "The parent trial finite element space mesh must be linked to the trial Redecomp mesh." );
+                      "redecomp::MatrixTransfer::MatrixTransfer: parent_trial_fes mesh does not match the parent mesh "
+                      "used to build redecomp_trial_fes." );
   SLIC_ERROR_ROOT_IF( &test_redecomp->getMPIUtility().MPIComm() != &trial_redecomp->getMPIUtility().MPIComm(),
-                      "MPI Communicator must match in test and trial spaces." );
+                      "redecomp::MatrixTransfer::MatrixTransfer: MPI communicator mismatch between test and trial "
+                      "redecomp meshes. Both FE spaces must be created on the same MPI_Comm." );
 
   trial_r2p_elem_rank_ = buildRedecomp2ParentElemRank( *trial_redecomp, false );
   test_r2p_elem_rank_ = buildRedecomp2ParentElemRank( *test_redecomp, true );
@@ -324,10 +354,16 @@ shared::ParSparseMat MatrixTransfer::TransferToParallel( const axom::Array<int>&
 
 shared::ParSparseMat MatrixTransfer::ConvertToParSparseMat( mfem::SparseMatrix&& sparse, bool parallel_assemble ) const
 {
-  SLIC_ERROR_IF( sparse.Height() != parent_test_fes_.GetVSize(),
-                 "Height of sparse must match number of test ParFiniteElementSpace L-dofs." );
-  SLIC_ERROR_IF( sparse.Width() != parent_trial_fes_.GlobalVSize(),
-                 "Width of sparse must match number of trial ParFiniteElementSpace global dofs." );
+  SLIC_ERROR_IF(
+      sparse.Height() != parent_test_fes_.GetVSize(),
+      axom::fmt::format( "redecomp::MatrixTransfer::ConvertToParSparseMat: sparse.Height() mismatch. Got {}, expected "
+                         "{} (= parent_test_fes_.GetVSize()).",
+                         sparse.Height(), parent_test_fes_.GetVSize() ) );
+  SLIC_ERROR_IF(
+      sparse.Width() != parent_trial_fes_.GlobalVSize(),
+      axom::fmt::format( "redecomp::MatrixTransfer::ConvertToParSparseMat: sparse.Width() mismatch. Got {}, expected "
+                         "{} (= parent_trial_fes_.GlobalVSize()).",
+                         sparse.Width(), parent_trial_fes_.GlobalVSize() ) );
 
   // TODO (EBC): mfem::SparseMatrix uses int for global column values; this needs to be HYPRE_BigInt to be compatible
   // with mfem::HypreParMatrix. The following copy is a hack to get this working for now, but true support for

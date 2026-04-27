@@ -76,8 +76,8 @@ mfem::Array<int> ComputeSingleMortarInactiveDualTrueDofs( const MfemMeshData& me
 }
 
 std::vector<PackedPairJacobianContribs> BuildPackedPairJacobianContribs(
-    const MfemMeshData& mesh_data, const MfemSubmeshData& submesh_data, const MethodData& method_data,
-    const std::vector<std::pair<BlockSpace, BlockSpace>>& contribs )
+    const MfemJacobianData& jac_data, const MfemMeshData& mesh_data, const MfemSubmeshData& submesh_data,
+    const MethodData& method_data, const std::vector<std::pair<BlockSpace, BlockSpace>>& contribs )
 {
   // Compatibility helper: convert legacy MethodData block-J storage into the
   // newer packed PackedPairJacobianContribs representation used by the MFEM transfer
@@ -88,16 +88,19 @@ std::vector<PackedPairJacobianContribs> BuildPackedPairJacobianContribs(
 
   for ( const auto& pair : contribs ) {
     auto surface_fes_for = [&]( BlockSpace space ) -> const mfem::ParFiniteElementSpace& {
-      const bool use_lor = ( mesh_data.GetLORMesh() != nullptr );
+      // "Surface" here means the parent FE space of the redecomp FE space used for the transfer. In this MFEM path
+      // that surface FE space is either the LOR surface mesh (when LOR is active) or the boundary submesh (otherwise).
+      const auto& primary_surface_fes = *jac_data.ParentPath().surface_fes;
+      const auto& dual_surface_fes = *jac_data.SubmeshPath().surface_fes;
       switch ( space ) {
         case BlockSpace::MORTAR:
         case BlockSpace::NONMORTAR:
-          return use_lor ? *mesh_data.GetLORMeshFESpace() : mesh_data.GetSubmeshFESpace();
+          return primary_surface_fes;
         case BlockSpace::LAGRANGE_MULTIPLIER:
-          return use_lor ? *submesh_data.GetLORMeshFESpace() : submesh_data.GetSubmeshFESpace();
+          return dual_surface_fes;
         default:
           SLIC_ERROR_ROOT( "Unsupported block space." );
-          return use_lor ? *mesh_data.GetLORMeshFESpace() : mesh_data.GetSubmeshFESpace();
+          return primary_surface_fes;
       }
     };
 
@@ -138,11 +141,11 @@ std::vector<PackedPairJacobianContribs> BuildPackedPairJacobianContribs(
     SLIC_ERROR_ROOT_IF( J_block.size() != row_elem_ids.size() || J_block.size() != col_elem_ids.size(),
                         "MethodData block Jacobians and element-id arrays must have matching sizes." );
 
-    int max_values_per_entry = 0;
+    int total_scalar_values = 0;
     for ( int i = 0; i < J_block.size(); ++i ) {
-      max_values_per_entry = std::max( max_values_per_entry, J_block[i].Height() * J_block[i].Width() );
+      total_scalar_values += J_block[i].Height() * J_block[i].Width();
     }
-    data.reserve( J_block.size(), max_values_per_entry );
+    data.reserve( J_block.size(), total_scalar_values );
 
     for ( int i = 0; i < J_block.size(); ++i ) {
       // MatrixTransfer expects one flat buffer plus per-element offsets, so keep
@@ -201,7 +204,8 @@ std::unique_ptr<mfem::BlockOperator> BuildMfemBlockJacobian( const CouplingSchem
   for ( const auto& entry : block_contribs ) {
     const int r_blk = entry.first.first;
     const int c_blk = entry.first.second;
-    auto contributions = BuildPackedPairJacobianContribs( *mesh_data, *submesh_data, method_data, entry.second );
+    auto contributions =
+        BuildPackedPairJacobianContribs( *jac_data, *mesh_data, *submesh_data, method_data, entry.second );
 
     // Compatibility: dual-dual blocks are solver constraints and do not flow through redecomp transfer.
     if ( r_blk == 1 && c_blk == 1 ) {
