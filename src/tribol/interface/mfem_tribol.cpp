@@ -542,6 +542,18 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r )
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
 
+  // For coupling schemes using a ContactFormulation (e.g. ENERGY_MORTAR), the force vector is stored directly by the
+  // formulation.
+  if ( cs->hasContactFormulation() ) {
+    const auto& f = cs->getContactFormulation()->getMfemForce();
+    if ( r.Size() == 0 ) {
+      r.SetSize( f.Size() );
+    }
+    SLIC_ERROR_ROOT_IF( r.Size() != f.Size(), "getMfemResponse(): size mismatch with formulation force vector." );
+    r = f;
+    return;
+  }
+
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to return a response vector." );
@@ -676,46 +688,6 @@ std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx( IndexT cs_id )
   return nullptr;
 }
 
-//**************** */NEW LAGRANGE FUNTIONS:
-mfem::ParFiniteElementSpace& getMfemContactFESpace( IndexT cs_id )
-{
-  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-  SLIC_ERROR_ROOT_IF(
-      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                              "to create a coupling scheme with this cs_id.",
-                              cs_id ) );
-  SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(),
-                      axom::fmt::format( "Coupling scheme cs_id={0} does not contain MFEM submesh data.", cs_id ) );
-  return const_cast<mfem::ParFiniteElementSpace&>( cs->getMfemSubmeshData()->GetSubmeshFESpace() );
-}
-
-void evaluateContactResidual( IndexT cs_id, const mfem::HypreParVector& lambda, mfem::HypreParVector& r_force,
-                              mfem::HypreParVector& r_gap )
-{
-  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-  SLIC_ERROR_ROOT_IF(
-      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                              "to create a coupling scheme with this cs_id.",
-                              cs_id ) );
-  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
-  cs->getContactFormulation()->evaluateContactResidual( lambda, r_force, r_gap );
-}
-
-void evaluateContactJacobian( IndexT cs_id, const mfem::HypreParVector& lambda,
-                              std::unique_ptr<mfem::HypreParMatrix>& df_du,
-                              std::unique_ptr<mfem::HypreParMatrix>& df_dlambda )
-{
-  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-  SLIC_ERROR_ROOT_IF(
-      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                              "to create a coupling scheme with this cs_id.",
-                              cs_id ) );
-  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
-  cs->getContactFormulation()->evaluateContactJacobian( lambda, df_du, df_dlambda );
-}
-
-/////***************** */END LAGRANGE FUNCTIONS
-
 void getMfemGap( IndexT cs_id, mfem::Vector& g )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -759,7 +731,7 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id )
   return cs->getMfemSubmeshData()->GetSubmeshPressure();
 }
 
-mfem::HypreParVector getMfemTDofPressure( IndexT cs_id )
+mfem::HypreParVector& getMfemTDofPressure( IndexT cs_id )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(

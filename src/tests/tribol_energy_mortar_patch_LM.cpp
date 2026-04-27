@@ -19,7 +19,6 @@
 #include "axom/CLI11.hpp"
 #include "axom/slic.hpp"
 
-#include "shared/math/ParSparseMat.hpp"
 #include "shared/mesh/MeshBuilder.hpp"
 #include "redecomp/redecomp.hpp"
 
@@ -27,20 +26,6 @@
 #include "tribol/common/Parameters.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
-
-namespace {
-
-template <typename F>
-void WithHypreHostMemory( F&& f )
-{
-  HYPRE_MemoryLocation old_loc;
-  HYPRE_GetMemoryLocation( &old_loc );
-  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
-  f();
-  HYPRE_SetMemoryLocation( old_loc );
-}
-
-}  // namespace
 
 /**
  * @brief Contact patch test using ENERGY_MORTAR with Lagrange multiplier
@@ -76,6 +61,8 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
   void SetUp() override
   {
     int ref_levels = std::get<0>( GetParam() );
+    // keep the tuple of parameters around in case we want to add some parametric variations later
+    (void)ref_levels;
     int order = 1;
 
     auto mortar_attrs = std::set<int>( { 5 } );
@@ -201,15 +188,26 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
     tribol::RealT dt = 1.0 / num_timesteps_;
     int cs_id = 0, mesh1_id = 0, mesh2_id = 1;
 
+    // Register tribol once; coordinates are updated in-place each Newton iteration.
+    coords.ReadWrite();
+    tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
+                                        tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
+                                        tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID );
+    tribol::setLagrangeMultiplierOptions( cs_id, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN );
+
+    auto& pressure = tribol::getMfemPressure( cs_id );
+    auto& contact_fes = *pressure.ParFESpace();
+    const int contact_size = contact_fes.GetTrueVSize();
+
     const int disp_size = par_fe_space.GetTrueVSize();
 
     mfem::Vector U( disp_size );  // total displacement true-dof vector
     U = 0.0;
 
-    // Lambda persists across timesteps (warm start)
-    // NOTE: sized after first tribol registration when contact FE space is known
-    mfem::HypreParVector* lambda = nullptr;
-    int contact_size = 0;
+    // Lagrange multiplier (true-dof) vector persists across timesteps (warm start)
+    mfem::HypreParVector lambda( &contact_fes );
+    lambda = 0.0;
+    bool formulation_ready = false;  // formulation is created on first tribol::update()
 
     for ( int step = 1; step <= num_timesteps_; ++step ) {
       double current_prescribed_disp = disp_increment * step;
@@ -237,38 +235,22 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         coords = ref_coords;
         coords += displacement;
 
-        // Register tribol and update contact data
-        coords.ReadWrite();
-        tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
-                                            tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
-                                            tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID );
-        tribol::setLagrangeMultiplierOptions( cs_id, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN );
-
         tribol::updateMfemParallelDecomposition();
-        tribol::update( step, step * dt, dt );
-
-        // ---- Get contact surface FE space and initialize lambda on first pass ----
-        auto& contact_fes = tribol::getMfemContactFESpace( cs_id );
-        contact_size = contact_fes.GetTrueVSize();
-
-        if ( lambda == nullptr ) {
-          lambda = new mfem::HypreParVector( &contact_fes );
-          *lambda = 0.0;
+        if ( formulation_ready ) {
+          // Set lambda for LM assembly prior to calling update().
+          auto& tribol_lambda = tribol::getMfemTDofPressure( cs_id );
+          tribol_lambda = 0.0;
+          tribol_lambda.Add( 1.0, lambda );
         }
+        tribol::update( step, step * dt, dt );
+        formulation_ready = true;
 
-        // ---- Evaluate contact residual ----
-        mfem::HypreParVector r_contact_force( &par_fe_space );  // G^T * lambda (disp-sized)
-        r_contact_force = 0.0;
-        mfem::HypreParVector r_gap( &contact_fes );  // g_tilde (contact-sized)
-        r_gap = 0.0;
-
-        tribol::evaluateContactResidual( cs_id, *lambda, r_contact_force, r_gap );
-
-        // ---- Evaluate contact Jacobian blocks ----
-        std::unique_ptr<mfem::HypreParMatrix> H;  // lambda * d2g/du2 (disp x disp)
-        std::unique_ptr<mfem::HypreParMatrix> G;  // dg/du (contact x disp)
-
-        tribol::evaluateContactJacobian( cs_id, *lambda, H, G );
+        // Contact residual and Jacobian blocks (LM mode)
+        auto r_contact_force = tribol::getMfemTDofForce( cs_id );  // G^T * lambda (disp-sized)
+        auto r_gap = tribol::getMfemTDofGap( cs_id );              // g_tilde (contact-sized)
+        auto H = tribol::getMfemDfDx( cs_id );                     // lambda * d2g/du2 (disp x disp)
+        auto df_dlambda = tribol::getMfemDfDp( cs_id );            // G^T (disp x contact)
+        ASSERT_TRUE( df_dlambda != nullptr );
 
         mfem::Vector R_u( disp_size );
         K_elastic->Mult( U, R_u );  // R_u = K * U
@@ -296,40 +278,38 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         // ---- Assemble block Jacobian ----
         // (0,0) block: K + H
         // NOTE: H may be null on the first Newton iteration when lambda = 0
-        shared::ParSparseMat J_uu =
-            ( H && H->NumRows() > 0 )
-                ? ( shared::ParSparseMatView( K_elastic.get() ) + shared::ParSparseMatView( H.get() ) )
-                : ( shared::ParSparseMatView( K_elastic.get() ) * 1.0 );
+        std::unique_ptr<mfem::HypreParMatrix> J_uu;
+        if ( H && H->NumRows() > 0 ) {
+          J_uu.reset( mfem::Add( 1.0, *K_elastic, 1.0, *H ) );
+        } else {
+          J_uu = std::make_unique<mfem::HypreParMatrix>( *K_elastic );
+        }
 
         // G^T for the (0,1) block
-        shared::ParSparseMat G_T = shared::ParSparseMatView( G.get() ).transpose();
+        auto G_T = std::unique_ptr<mfem::HypreParMatrix>( std::move( df_dlambda ) );
 
         // ---- Apply essential BCs ----
         // Zero out essential DOF rows/cols in J_uu
         for ( int i = 0; i < ess_tdof_list.Size(); ++i ) {
           R_u( ess_tdof_list[i] ) = 0.0;
         }
-        WithHypreHostMemory( [&]() {
-          J_uu.get().HostReadWrite();
-          J_uu.get().EliminateRowsCols( ess_tdof_list );
-        } );
+        J_uu->EliminateRowsCols( ess_tdof_list );
 
         // Zero out essential DOF rows in G^T (cols in G)
         // Use EliminateRows on G^T which is simpler than EliminateCols on G
-        G_T.eliminateRows( ess_tdof_list );
-        shared::ParSparseMat G_mod = G_T.transpose();
+        G_T->EliminateRows( ess_tdof_list );
+        auto G_mod = std::unique_ptr<mfem::HypreParMatrix>( G_T->Transpose() );
 
         // ---- Set up block system ----
-
         mfem::Array<int> block_offsets( 3 );
         block_offsets[0] = 0;
         block_offsets[1] = disp_size;
         block_offsets[2] = disp_size + contact_size;
 
         mfem::BlockOperator J_block( block_offsets );
-        J_block.SetBlock( 0, 0, &J_uu.get() );
-        J_block.SetBlock( 0, 1, &G_T.get() );
-        J_block.SetBlock( 1, 0, &G_mod.get() );
+        J_block.SetBlock( 0, 0, J_uu.get() );
+        J_block.SetBlock( 0, 1, G_T.get() );
+        J_block.SetBlock( 1, 0, G_mod.get() );
 
         // Block RHS = -[R_u; R_lambda]
         mfem::BlockVector rhs( block_offsets );
@@ -340,7 +320,6 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
 
         // ---- Solve with unpreconditioned MINRES ----
         // (keep it simple for debugging; add preconditioner once this works)
-
         mfem::BlockVector delta( block_offsets );
         delta = 0.0;
 
@@ -356,18 +335,16 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
                                             << " iterations" );
 
         // ---- Update solution ----
-
         mfem::Vector& delta_u = delta.GetBlock( 0 );
         mfem::Vector& delta_lambda = delta.GetBlock( 1 );
 
         U += delta_u;
-        *lambda += delta_lambda;
+        lambda.Add( 1.0, delta_lambda );
 
         // Re-enforce prescribed DOFs exactly (guard against solver drift)
         for ( int i = 0; i < prescribed_tdof_list.Size(); ++i ) {
           U( prescribed_tdof_list[i] ) = current_prescribed_disp;
         }
-
       }  // end Newton loop
 
       SLIC_INFO( "Timestep " << step << "/" << num_timesteps_ << " | prescribed disp = " << current_prescribed_disp );
@@ -379,9 +356,6 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
       }
 
     }  // end timestep loop
-
-    // Clean up
-    delete lambda;
 
     // ---- Get final displacement ----
     {

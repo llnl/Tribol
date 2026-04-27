@@ -22,7 +22,10 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     double delta = 0.1;
     int N = 3;
     bool enzyme_quadrature = true;
-    bool use_penalty_ = ( cs->getEnforcementMethod() == PENALTY );
+    // ENERGY_MORTAR supports a penalty-style mode driven by the kinematic penalty parameters, even if the coupling
+    // scheme is registered with LM enforcement (which is often done to enable submesh/pressure infrastructure).
+    const auto& penalty_opts = cs->getEnforcementOptions().penalty_options;
+    bool use_penalty_ = penalty_opts.kinematic_calc_set;
 
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
     if ( cs->hasMfemData() ) {

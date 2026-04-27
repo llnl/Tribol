@@ -1161,7 +1161,14 @@ bool CouplingScheme::init()
     if ( !setMeshPointers() || checkExecutionModeData() != 0 ) {
       return false;
     }
-    m_formulation_impl = createContactFormulation( this );
+    // Only create the formulation once. tribol::update() calls init() each cycle; recreating here would reset
+    // formulation state (e.g. LM vector).
+    if ( !m_formulation_impl ) {
+      m_formulation_impl = createContactFormulation( this );
+    }
+    if ( m_formulation_impl ) {
+      m_formulation_impl->updateMeshes( *m_mesh1, *m_mesh2 );
+    }
   }
 
   if ( m_formulation_impl ) {

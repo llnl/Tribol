@@ -25,12 +25,17 @@ namespace tribol {
 
 // Forward declaration
 class MethodData;
+class MeshData;
 
 /*!
  * \brief Base class for contact formulations.
  *
- * This class provides a polymorphic interface for contact algorithms,
- * allowing for modular implementation of new physics and formulations.
+ * This class provides a polymorphic interface for contact algorithms, allowing for modular implementation of new
+ * physics and formulations.
+ *
+ * NOTE (EBC): This class is still a work-in-progress. It's eventual design should incorporate specific choices for
+ * coarse binning and take in the relevant input data in the constructor directly (i.e. Tribol mesh data, mfem meshes,
+ * etc.)
  */
 class ContactFormulation {
  public:
@@ -53,21 +58,23 @@ class ContactFormulation {
    *
    * Determines overlapping contact pairs and computes necessary integration data (e.g. quadrature points, weights).
    *
-   * @note Requires setInterfacePairs() to be called first.
+   * @note Many formulations require setInterfacePairs() to be called first.
+   * Some formulations may treat this as a no-op.
    */
   virtual void updateIntegrationRule() = 0;
 
   /**
    * @brief Updates nodal gaps
    *
-   * @note Requires updateIntegrationRule() to be called first.
+   * @note Many formulations require updateIntegrationRule() to be called first.
+   * Some formulations assemble gaps directly from the stored interface pairs.
    */
   virtual void updateNodalGaps() = 0;
 
   /**
    * @brief Updates nodal forces/residual
    *
-   * @note Requires updateNodalGaps() to be called first.
+   * @note Many formulations require updateNodalGaps() to be called first.
    */
   virtual void updateNodalForces() = 0;
 
@@ -87,6 +94,16 @@ class ContactFormulation {
    */
   virtual RealT getEnergy() const = 0;
 
+  /**
+   * @brief Update mesh references used by the formulation (optional)
+   *
+   * Some workflows re-register meshes each cycle (e.g. MFEM + redecomp), which can replace the underlying MeshData
+   * instances. Formulations that cache mesh pointers/references can override this to refresh their internal handles.
+   *
+   * @note Called by CouplingScheme during initialization each update cycle.
+   */
+  virtual void updateMeshes( MeshData& /*mesh1*/, MeshData& /*mesh2*/ ) {}
+
 #ifdef BUILD_REDECOMP
   /**
    * @brief Returns t-dof vector of forces on parent mesh
@@ -103,9 +120,9 @@ class ContactFormulation {
   virtual const mfem::HypreParVector& getMfemGap() const = 0;
 
   /**
-   * @brief Returns a reference to the MFEM pressure t-dof vector
+   * @brief Returns a reference to the MFEM dual t-dof vector
    *
-   * @return Reference to the pressure t-dof vector
+   * @return Reference to the dual t-dof vector (e.g. pressure in penalty mode, or Lagrange multiplier in LM mode)
    */
   virtual mfem::HypreParVector& getMfemPressure() = 0;
 
@@ -119,7 +136,7 @@ class ContactFormulation {
   virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx() const = 0;
 
   /**
-   * @brief Get the derivative of gap with respect to displacement
+   * @brief Get the derivative of the gap constraint with respect to displacement
    *
    * @return Unique pointer to MFEM HypreParMatrix
    *
@@ -128,7 +145,7 @@ class ContactFormulation {
   virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx() const = 0;
 
   /**
-   * @brief Get the derivative of force with respect to pressure
+   * @brief Get the derivative of force with respect to the dual variable
    *
    * @return Unique pointer to mfem::HypreParMatrix
    *
@@ -136,12 +153,6 @@ class ContactFormulation {
    */
   virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const = 0;
 
-  virtual void evaluateContactResidual( const mfem::HypreParVector& lambda, mfem::HypreParVector& r_force,
-                                        mfem::HypreParVector& r_gap ) = 0;
-
-  virtual void evaluateContactJacobian( const mfem::HypreParVector& lambda,
-                                        std::unique_ptr<mfem::HypreParMatrix>& df_du,
-                                        std::unique_ptr<mfem::HypreParMatrix>& df_dlambda ) = 0;
 #endif
 };
 

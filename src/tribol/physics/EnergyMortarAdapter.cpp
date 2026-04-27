@@ -10,10 +10,6 @@ namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
-namespace {
-
-}  // namespace
-
 EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
                                           MfemJacobianData& jac_data, MeshData& mesh1, MeshData& mesh2, double k,
                                           double delta, int N, bool enzyme_quadrature, bool use_penalty )
@@ -23,8 +19,8 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
       mesh_data_( mesh_data ),
       submesh_data_( submesh_data ),
       jac_data_( jac_data ),
-      mesh1_( mesh2 ),
-      mesh2_( mesh1 )
+      mesh1_( &mesh2 ),
+      mesh2_( &mesh1 )
 {
   if ( mesh1.numberOfNodes() > 0 && mesh2.numberOfNodes() > 0 ) {
     SLIC_ERROR_ROOT_IF( mesh1.spatialDimension() != 2 || mesh2.spatialDimension() != 2,
@@ -37,6 +33,26 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
   params_.enzyme_quadrature = enzyme_quadrature;
 
   evaluator_ = std::make_unique<ContactEvaluator>( params_ );
+
+  // Allocate the (pressure) true-dof vector early so host code can set it via tribol::getMfemTDofPressure() after the
+  // formulation is created. In penalty mode this is overwritten in updateNodalForces(); in LM mode it is treated as the
+  // Lagrange multiplier vector (lambda).
+  pressure_vec_ = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
+  pressure_vec_.fill( 0.0 );
+}
+
+void EnergyMortarAdapter::updateMeshes( MeshData& mesh1, MeshData& mesh2 )
+{
+  // Maintain the same "flipped" convention as the constructor.
+  mesh1_ = &mesh2;
+  mesh2_ = &mesh1;
+}
+
+const mfem::HypreParVector& EnergyMortarAdapter::getMfemGap() const
+{
+  // Penalty mode uses the normalized gap g = g_tilde / A. LM mode enforces the unnormalized constraint g_tilde = 0,
+  // consistent with dg/dx returned by getMfemDgDx().
+  return use_penalty_ ? gap_vec_.get() : g_tilde_vec_.get();
 }
 
 void EnergyMortarAdapter::setInterfacePairs( ArrayT<InterfacePair>&& pairs, int /*check_level*/ )
@@ -83,8 +99,9 @@ void EnergyMortarAdapter::updateNodalGaps()
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
-  auto mesh1_view = mesh1_.getView();
-  auto mesh2_view = mesh2_.getView();
+  SLIC_ERROR_ROOT_IF( mesh1_ == nullptr || mesh2_ == nullptr, "ENERGY_MORTAR meshes not set." );
+  auto mesh1_view = mesh1_->getView();
+  auto mesh2_view = mesh2_->getView();
 
   // Compute local contributions
   for ( const auto& pair : pairs_ ) {
@@ -195,15 +212,39 @@ void EnergyMortarAdapter::updateNodalForces()
 {
   // NOTE: user should have called updateNodalGaps() with updated coords before calling this
 
-  // compute nodal pressures. these are used in the Hessian vector product below so we don't have to assemble a Hessian
-  // NOTE: in general, pressure should likely be set by the host code
-
-  pressure_vec_ = params_.k * gap_vec_;
+  if ( use_penalty_ ) {
+    // Penalty mode: p = k * (g_tilde / A)
+    pressure_vec_ = params_.k * gap_vec_;
+  } else {
+    // LM mode: pressure_vec_ is treated as the Lagrange multiplier vector (lambda)
+    SLIC_ERROR_ROOT_IF( pressure_vec_.size() == 0,
+                        "LM vector is not initialized. Call tribol::update() once to initialize the formulation." );
+    SLIC_ERROR_ROOT_IF( pressure_vec_.size() != g_tilde_vec_.size(),
+                        "LM vector size mismatch with contact dofs (g_tilde)." );
+  }
 
   energy_ = pressure_vec_.dot( g_tilde_vec_ );
 
-  auto k_over_a = params_.k * A_vec_.inverse( area_tol_ );
+  if ( !use_penalty_ ) {
+    // -------------------------------------------------------------------------
+    // LM mode: force = G^T * lambda and df/dx = lambda · d^2(g_tilde)/dx^2
+    // -------------------------------------------------------------------------
+    force_vec_ = pressure_vec_ * dg_tilde_dx_;
 
+    mfem::GridFunction redecomp_lambda( submesh_data_.GetRedecompGap() );
+    mfem::ParGridFunction submesh_lambda(
+        const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
+    submesh_lambda.SetFromTrueDofs( pressure_vec_.get() );
+    submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_lambda, redecomp_lambda );
+
+    df_dx_ = computeDfDxSecondDerivativesLM( redecomp_lambda );
+    return;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Penalty mode: force and Jacobian include pressure/area coupling terms
+  // ---------------------------------------------------------------------------
+  auto k_over_a = params_.k * A_vec_.inverse( area_tol_ );
   auto p_over_a = pressure_vec_.divide( A_vec_, area_tol_ );
 
   shared::ParSparseMat dp_dx( dg_tilde_dx_.get() );
@@ -214,29 +255,7 @@ void EnergyMortarAdapter::updateNodalForces()
 
   force_vec_ = ( pressure_vec_ * dg_tilde_dx_ ) + ( g_tilde_vec_ * dp_dx );
 
-  // TODO (EBC): Move transfer-specific logic out of this file
-  const bool use_lor = ( mesh_data_.GetLORMesh() != nullptr );
-  const auto& displacement_surface_fes = use_lor ? *mesh_data_.GetLORMeshFESpace() : mesh_data_.GetSubmeshFESpace();
-  const auto& displacement_redecomp_fes = *mesh_data_.GetRedecompResponse().FESpace();
-  const auto& mortar_elem_map = mesh_data_.GetElemMap1();
-  const auto& nonmortar_elem_map = mesh_data_.GetElemMap2();
-
-  PackedPairJacobianContribs df_nm_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                       displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
-  PackedPairJacobianContribs df_nm_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                      displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
-  PackedPairJacobianContribs df_m_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                      displacement_redecomp_fes, mortar_elem_map, nonmortar_elem_map );
-  PackedPairJacobianContribs df_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
-                                     displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
-
-  df_nm_nm.reserve( pairs_.size(), 16 );
-  df_nm_m.reserve( pairs_.size(), 16 );
-  df_m_nm.reserve( pairs_.size(), 16 );
-  df_m_m.reserve( pairs_.size(), 16 );
-
-  const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
-
+  // TODO (EBC): Move transfer path-specific logic out of this file
   mfem::GridFunction redecomp_pressure( submesh_data_.GetRedecompGap() );
   mfem::ParGridFunction submesh_pressure(
       const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
@@ -254,67 +273,7 @@ void EnergyMortarAdapter::updateNodalForces()
   submesh_A.SetFromTrueDofs( A_vec_.get() );
   submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_A, redecomp_A );
 
-  auto mesh1_view = mesh1_.getView();
-  auto mesh2_view = mesh2_.getView();
-
-  // get pairwise action of second derivatives of gaps and pressure for stiffness contribution
-  for ( auto& pair : pairs_ ) {
-    // These need to be flipped, since the pairs are determined with element 1 associated with mesh 1, and we flipped
-    // the mesh numbers to be consistent with the literature and since the underlying method integrates on element 1
-    InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
-    const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
-    const auto node11 = mesh1_view.getConnectivity()( elem1, 0 );
-    const auto node12 = mesh1_view.getConnectivity()( elem1, 1 );
-    const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
-
-    const RealT pressure1 = 2.0 * redecomp_pressure( node11 );
-    const RealT pressure2 = 2.0 * redecomp_pressure( node12 );
-
-    if ( pressure1 == 0.0 && pressure2 == 0.0 ) {
-      continue;
-    }
-
-    const RealT g_p_ainv1 = -redecomp_g_tilde( node11 ) * redecomp_pressure( node11 ) / redecomp_A( node11 );
-    const RealT g_p_ainv2 = -redecomp_g_tilde( node12 ) * redecomp_pressure( node12 ) / redecomp_A( node12 );
-
-    double d2g_dx2_node1[64];
-    double d2g_dx2_node2[64];
-    // ordering: [dg/(dx0dx0) dg/(dy0dx0) dg/(dx1dx0) ...]
-    evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2 );
-
-    double d2A_dx2_node1[64];
-    double d2A_dx2_node2[64];
-    evaluator_->compute_d2A_d2u( flipped_pair, mesh1_view, mesh2_view, d2A_dx2_node1, d2A_dx2_node2 );
-
-    double df_dx_blocks[2][2][16];
-    for ( int i{ 0 }; i < 2; ++i ) {
-      for ( int j{ 0 }; j < 2; ++j ) {
-        for ( int k{ 0 }; k < 4; ++k ) {
-          for ( int l{ 0 }; l < 4; ++l ) {
-            df_dx_blocks[i][j][l + k * 4] = pressure1 * d2g_dx2_node1[node_idx[l + i * 4] + node_idx[k + j * 4] * 8] +
-                                            pressure2 * d2g_dx2_node2[node_idx[l + i * 4] + node_idx[k + j * 4] * 8] +
-                                            g_p_ainv1 * d2A_dx2_node1[node_idx[l + i * 4] + node_idx[k + j * 4] * 8] +
-                                            g_p_ainv2 * d2A_dx2_node2[node_idx[l + i * 4] + node_idx[k + j * 4] * 8];
-          }
-        }
-      }
-    }
-
-    df_nm_nm.append( elem1, elem1, df_dx_blocks[0][0], 16 );
-    df_nm_m.append( elem1, elem2, df_dx_blocks[0][1], 16 );
-    df_m_nm.append( elem2, elem1, df_dx_blocks[1][0], 16 );
-    df_m_m.append( elem2, elem2, df_dx_blocks[1][1], 16 );
-  }
-
-  // Move stiffness contributions to (parent true-dof rows, parent true-dof cols)
-  std::vector<PackedPairJacobianContribs> df_contribs;
-  df_contribs.reserve( 4 );
-  df_contribs.push_back( std::move( df_nm_nm ) );
-  df_contribs.push_back( std::move( df_nm_m ) );
-  df_contribs.push_back( std::move( df_m_nm ) );
-  df_contribs.push_back( std::move( df_m_m ) );
-  df_dx_ = jac_data_.GetMfemJacobian( mesh_data_.GetParentCoords().ParFESpace(),
-                                      mesh_data_.GetParentCoords().ParFESpace(), df_contribs );
+  df_dx_ = computeDfDxSecondDerivativesPenalty( redecomp_pressure, redecomp_g_tilde, redecomp_A );
 
   auto pg2_over_asq = ( 2.0 * pressure_vec_ )
                           .multiplyInPlace( g_tilde_vec_ )
@@ -340,16 +299,8 @@ RealT EnergyMortarAdapter::computeTimeStep()
   return 1.0;
 }
 
-void EnergyMortarAdapter::compute_df_du_lagrange( const mfem::HypreParVector& lambda,
-                                                  std::unique_ptr<mfem::HypreParMatrix>& df_du )
+shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesLM( const mfem::GridFunction& redecomp_lambda )
 {
-  // Convert Lambda to redecomp space for element wise access
-  mfem::GridFunction redecomp_lambda( submesh_data_.GetRedecompGap() );
-  mfem::ParGridFunction submesh_lambda(
-      const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
-  submesh_lambda.SetFromTrueDofs( lambda );
-  submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_lambda, redecomp_lambda );
-
   const bool use_lor = ( mesh_data_.GetLORMesh() != nullptr );
   const auto& displacement_surface_fes = use_lor ? *mesh_data_.GetLORMeshFESpace() : mesh_data_.GetSubmeshFESpace();
   const auto& displacement_redecomp_fes = *mesh_data_.GetRedecompResponse().FESpace();
@@ -372,9 +323,10 @@ void EnergyMortarAdapter::compute_df_du_lagrange( const mfem::HypreParVector& la
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
-  auto mesh1_view = mesh1_.getView();
-  auto mesh2_view = mesh2_.getView();
-  // Loop over element pairs and compute Hessian contributions
+  SLIC_ERROR_ROOT_IF( mesh1_ == nullptr || mesh2_ == nullptr, "ENERGY_MORTAR meshes not set." );
+  auto mesh1_view = mesh1_->getView();
+  auto mesh2_view = mesh2_->getView();
+
   for ( auto& pair : pairs_ ) {
     InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
     const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
@@ -382,27 +334,20 @@ void EnergyMortarAdapter::compute_df_du_lagrange( const mfem::HypreParVector& la
     const auto node12 = mesh1_view.getConnectivity()( elem1, 1 );
     const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
 
-    // Get lambda values at nodes (no factor of 2 in Lagrange mode)
     const RealT lambda1 = redecomp_lambda( node11 );
     const RealT lambda2 = redecomp_lambda( node12 );
 
-    // if ( lambda1 == 0.0 && lambda2 == 0.0 ) {
-    //   continue;
-    // }
-
-    // Compute Hessian of g̃
     double d2g_dx2_node1[64];
     double d2g_dx2_node2[64];
     evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2 );
 
-    // Assemble df/du blocks: df/du = λ · d²g̃/du²
     double df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
       for ( int j{ 0 }; j < 2; ++j ) {
         for ( int k{ 0 }; k < 4; ++k ) {
           for ( int l{ 0 }; l < 4; ++l ) {
-            df_dx_blocks[i][j][l + k * 4] = lambda1 * d2g_dx2_node1[node_idx[l + i * 4] + node_idx[k + j * 4] * 8] +
-                                            lambda2 * d2g_dx2_node2[node_idx[l + i * 4] + node_idx[k + j * 4] * 8];
+            const auto idx = node_idx[l + i * 4] + node_idx[k + j * 4] * 8;
+            df_dx_blocks[i][j][l + k * 4] = lambda1 * d2g_dx2_node1[idx] + lambda2 * d2g_dx2_node2[idx];
           }
         }
       }
@@ -420,38 +365,92 @@ void EnergyMortarAdapter::compute_df_du_lagrange( const mfem::HypreParVector& la
   df_contribs.push_back( std::move( df_nm_m ) );
   df_contribs.push_back( std::move( df_m_nm ) );
   df_contribs.push_back( std::move( df_m_m ) );
-  auto df_dx_temp = jac_data_.GetMfemJacobian( mesh_data_.GetParentCoords().ParFESpace(),
-                                               mesh_data_.GetParentCoords().ParFESpace(), df_contribs );
-  df_du = std::unique_ptr<mfem::HypreParMatrix>( df_dx_temp.release() );
+  return jac_data_.GetMfemJacobian( mesh_data_.GetParentCoords().ParFESpace(), mesh_data_.GetParentCoords().ParFESpace(),
+                                    df_contribs );
 }
 
-void EnergyMortarAdapter::evaluateContactResidual( const mfem::HypreParVector& lambda, mfem::HypreParVector& r_force,
-                                                   mfem::HypreParVector& r_gap )
+shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesPenalty( const mfem::GridFunction& redecomp_pressure,
+                                                                               const mfem::GridFunction& redecomp_g_tilde,
+                                                                               const mfem::GridFunction& redecomp_A )
 {
-  SLIC_ERROR_ROOT_IF( use_penalty_, "evaluateContactResidual() should only be  called in lagrange multiplier mode" );
+  const bool use_lor = ( mesh_data_.GetLORMesh() != nullptr );
+  const auto& displacement_surface_fes = use_lor ? *mesh_data_.GetLORMeshFESpace() : mesh_data_.GetSubmeshFESpace();
+  const auto& displacement_redecomp_fes = *mesh_data_.GetRedecompResponse().FESpace();
+  const auto& mortar_elem_map = mesh_data_.GetElemMap1();
+  const auto& nonmortar_elem_map = mesh_data_.GetElemMap2();
 
-  SLIC_ERROR_ROOT_IF( g_tilde_vec_.size() == 0, "updateNodalGaps() must be called before evaluateContactResidual()" );
+  PackedPairJacobianContribs df_nm_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                       displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
+  PackedPairJacobianContribs df_nm_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                      displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
+  PackedPairJacobianContribs df_m_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                      displacement_redecomp_fes, mortar_elem_map, nonmortar_elem_map );
+  PackedPairJacobianContribs df_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                     displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
 
-  // Force residual = r_f = lambda * dg_tilde/du
-  dg_tilde_dx_->MultTranspose( lambda, r_force );
+  df_nm_nm.reserve( pairs_.size(), 16 );
+  df_nm_m.reserve( pairs_.size(), 16 );
+  df_m_nm.reserve( pairs_.size(), 16 );
+  df_m_m.reserve( pairs_.size(), 16 );
 
-  // gap residual
-  r_gap = g_tilde_vec_.get();
-}
+  const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
-void EnergyMortarAdapter::evaluateContactJacobian( const mfem::HypreParVector& lambda,
-                                                   std::unique_ptr<mfem::HypreParMatrix>& df_du,
-                                                   std::unique_ptr<mfem::HypreParMatrix>& df_dlambda )
-{
-  SLIC_ERROR_ROOT_IF( use_penalty_, "evaluateContactJacobian() should only be called in Lagrange multiplier mode" );
+  SLIC_ERROR_ROOT_IF( mesh1_ == nullptr || mesh2_ == nullptr, "ENERGY_MORTAR meshes not set." );
+  auto mesh1_view = mesh1_->getView();
+  auto mesh2_view = mesh2_->getView();
 
-  SLIC_ERROR_ROOT_IF( g_tilde_vec_.size() == 0, "updateNodalGaps() must be called before evaluateContactJacobian()" );
+  for ( auto& pair : pairs_ ) {
+    InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
+    const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
+    const auto node11 = mesh1_view.getConnectivity()( elem1, 0 );
+    const auto node12 = mesh1_view.getConnectivity()( elem1, 1 );
+    const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
 
-  // df/dlambda = dg_tilde/du:
-  df_dlambda = std::unique_ptr<mfem::HypreParMatrix>( dg_tilde_dx_.release() );
+    const RealT pressure1 = 2.0 * redecomp_pressure( node11 );
+    const RealT pressure2 = 2.0 * redecomp_pressure( node12 );
 
-  // df/du = lambda * d2g_tilde/du2
-  compute_df_du_lagrange( lambda, df_du );
+    if ( pressure1 == 0.0 && pressure2 == 0.0 ) {
+      continue;
+    }
+
+    const RealT g_p_ainv1 = -redecomp_g_tilde( node11 ) * redecomp_pressure( node11 ) / redecomp_A( node11 );
+    const RealT g_p_ainv2 = -redecomp_g_tilde( node12 ) * redecomp_pressure( node12 ) / redecomp_A( node12 );
+
+    double d2g_dx2_node1[64];
+    double d2g_dx2_node2[64];
+    evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2 );
+
+    double d2A_dx2_node1[64];
+    double d2A_dx2_node2[64];
+    evaluator_->compute_d2A_d2u( flipped_pair, mesh1_view, mesh2_view, d2A_dx2_node1, d2A_dx2_node2 );
+
+    double df_dx_blocks[2][2][16];
+    for ( int i{ 0 }; i < 2; ++i ) {
+      for ( int j{ 0 }; j < 2; ++j ) {
+        for ( int k{ 0 }; k < 4; ++k ) {
+          for ( int l{ 0 }; l < 4; ++l ) {
+            const auto idx = node_idx[l + i * 4] + node_idx[k + j * 4] * 8;
+            df_dx_blocks[i][j][l + k * 4] = pressure1 * d2g_dx2_node1[idx] + pressure2 * d2g_dx2_node2[idx] +
+                                            g_p_ainv1 * d2A_dx2_node1[idx] + g_p_ainv2 * d2A_dx2_node2[idx];
+          }
+        }
+      }
+    }
+
+    df_nm_nm.append( elem1, elem1, df_dx_blocks[0][0], 16 );
+    df_nm_m.append( elem1, elem2, df_dx_blocks[0][1], 16 );
+    df_m_nm.append( elem2, elem1, df_dx_blocks[1][0], 16 );
+    df_m_m.append( elem2, elem2, df_dx_blocks[1][1], 16 );
+  }
+
+  std::vector<PackedPairJacobianContribs> df_contribs;
+  df_contribs.reserve( 4 );
+  df_contribs.push_back( std::move( df_nm_nm ) );
+  df_contribs.push_back( std::move( df_nm_m ) );
+  df_contribs.push_back( std::move( df_m_nm ) );
+  df_contribs.push_back( std::move( df_m_m ) );
+  return jac_data_.GetMfemJacobian( mesh_data_.GetParentCoords().ParFESpace(), mesh_data_.GetParentCoords().ParFESpace(),
+                                    df_contribs );
 }
 
 std::unique_ptr<mfem::HypreParMatrix> EnergyMortarAdapter::getMfemDfDx() const
@@ -466,8 +465,14 @@ std::unique_ptr<mfem::HypreParMatrix> EnergyMortarAdapter::getMfemDgDx() const
 
 std::unique_ptr<mfem::HypreParMatrix> EnergyMortarAdapter::getMfemDfDp() const
 {
-  // SLIC_ERROR_ROOT( "EnergyMortar does not support getMfemDfDp()" );
-  return nullptr;
+  if ( use_penalty_ ) {
+    return nullptr;
+  }
+  // TODO (EBC): figure out better lifetime for this. if you called getMfemDgDx() before this, then dg_tilde_dx_ will be
+  // null.
+  // LM mode: df/dlambda = (d g_tilde / dx)^T
+  auto df_dlambda = dg_tilde_dx_.transpose();
+  return std::unique_ptr<mfem::HypreParMatrix>( df_dlambda.release() );
 }
 
 #endif  // TRIBOL_USE_ENZYME
