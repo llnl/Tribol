@@ -214,6 +214,7 @@ void EnergyMortarAdapter::updateNodalForces()
 
   force_vec_ = ( pressure_vec_ * dg_tilde_dx_ ) + ( g_tilde_vec_ * dp_dx );
 
+  // TODO (EBC): Move transfer-specific logic out of this file
   const bool use_lor = ( mesh_data_.GetLORMesh() != nullptr );
   const auto& displacement_surface_fes = use_lor ? *mesh_data_.GetLORMeshFESpace() : mesh_data_.GetSubmeshFESpace();
   const auto& displacement_redecomp_fes = *mesh_data_.GetRedecompResponse().FESpace();
