@@ -48,6 +48,7 @@ struct FiniteDiffResult {
   double g_tilde2_baseline;
 };
 
+<<<<<<< HEAD
 ///Holds data for computations 
 struct Gparams {
   int N;              //No. of quad points
@@ -55,6 +56,13 @@ struct Gparams {
   const double* w;    //Weights
   const double* x2;   //Coordinates
 };
+=======
+  struct Gparams {
+    int N = 0;
+    std::vector<double> qp;
+    std::vector<double> w;
+  };
+>>>>>>> 3f21568bf66d2ac55b81f298f5336c5bb22d9830
 
 /// Provides smoothing operations for the Energy Mortar contact formulation.
 ///

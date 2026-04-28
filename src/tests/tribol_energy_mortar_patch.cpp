@@ -157,7 +157,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
     a.AddDomainIntegrator( new mfem::ElasticityIntegrator( lambda_coeff, mu_coeff ) );
     a.Assemble();
     a.Finalize();
-    auto A_elastic_raw = std::unique_ptr<mfem::HypreParMatrix>( a.ParallelAssemble() );
+    shared::ParSparseMat A_elastic( a.ParallelAssemble() );
 
     // Visit Output
     mfem::VisItDataCollection visit_dc( "energy_patch_test", &mesh );
@@ -209,7 +209,9 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
       tribol::updateMfemParallelDecomposition();
       tribol::update( step, step * dt, dt );
 
-      auto A_cont = tribol::getMfemDfDx( cs_id );
+      auto A_cont_ptr = tribol::getMfemDfDx( cs_id );
+      ASSERT_TRUE( A_cont_ptr != nullptr );
+      shared::ParSparseMat A_cont( std::move( A_cont_ptr ) );
 
       mfem::Vector f_contact( par_fe_space.GetTrueVSize() );
       f_contact = 0.0;
@@ -219,7 +221,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
       // Inhomogeneous Dirichlet: rhs = f_contact - K * u_prescribed
       // Form A_total on host; mfem::Add may dispatch through Hypre device paths in HIP builds.
       shared::ParSparseMat A_total =
-          shared::ParSparseMatView( A_elastic_raw.get() ) + shared::ParSparseMatView( A_cont.get() );
+          shared::ParSparseMatView( &A_elastic.get() ) + shared::ParSparseMatView( &A_cont.get() );
 
       mfem::Vector rhs( par_fe_space.GetTrueVSize() );
       A_total.get().Mult( X_prescribed, rhs );
@@ -230,7 +232,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
         rhs( ess_tdof_list[i] ) = 0.0;
       }
 
-      A_total.get().EliminateRowsCols( ess_tdof_list );
+      A_total.eliminateRowsCols( ess_tdof_list );
 
       mfem::Vector X_free( par_fe_space.GetTrueVSize() );
       X_free = 0.0;

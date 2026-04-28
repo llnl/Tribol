@@ -134,6 +134,13 @@ class ParSparseMatView {
   void eliminateRows( const mfem::Array<int>& rows );
 
   /**
+   * @brief Eliminates chosen rows and columns from the matrix
+   *
+   * @param rows_cols Array of rows/columns to eliminate
+   */
+  void eliminateRowsCols( const mfem::Array<int>& rows_cols );
+
+  /**
    * @brief Eliminates chosen columns from the matrix
    *
    * @param cols Array of columns to eliminate
