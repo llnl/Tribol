@@ -60,12 +60,11 @@ struct FiniteDiffResult {
   double g_tilde2_baseline;
 };
 
-struct Gparams {
-  int N;
-  const double* qp;
-  const double* w;
-  const double* x2;
-};
+  struct Gparams {
+    int N = 0;
+    std::vector<double> qp;
+    std::vector<double> w;
+  };
 
 class ContactSmoothing {
  public:
