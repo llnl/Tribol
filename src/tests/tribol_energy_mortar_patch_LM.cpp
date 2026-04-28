@@ -249,13 +249,13 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         // Contact residual and Jacobian blocks (LM mode)
         auto r_contact_force = tribol::getMfemTDofForce( cs_id );  // G^T * lambda (disp-sized)
         auto r_gap = tribol::getMfemTDofGap( cs_id );              // g_tilde (contact-sized)
-        auto H_ptr = tribol::getMfemDfDx( cs_id );          // lambda * d2g/du2 (disp x disp)
-        auto G_T_ptr = tribol::getMfemDfDp( cs_id );        // G^T (disp x contact)
+        auto H_ptr = tribol::getMfemDfDx( cs_id );                 // lambda * d2g/du2 (disp x disp)
+        auto G_T_ptr = tribol::getMfemDfDp( cs_id );               // G^T (disp x contact)
         ASSERT_TRUE( G_T_ptr != nullptr );
 
         mfem::Vector R_u( disp_size );
         K_elastic.get().Mult( U, R_u );  // R_u = K * U
-        R_u += r_contact_force;     // R_u += G^T * lambda
+        R_u += r_contact_force;          // R_u += G^T * lambda
 
         mfem::Vector R_lambda( contact_size );
         R_lambda = r_gap;  // R_lambda = g_tilde
