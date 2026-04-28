@@ -19,6 +19,7 @@
 #include "axom/CLI11.hpp"
 #include "axom/slic.hpp"
 
+#include "shared/math/ParSparseMat.hpp"
 #include "shared/mesh/MeshBuilder.hpp"
 #include "redecomp/redecomp.hpp"
 
@@ -167,7 +168,7 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
     a.AddDomainIntegrator( new mfem::ElasticityIntegrator( lambda_coeff, mu_coeff ) );
     a.Assemble();
     a.Finalize();
-    auto K_elastic = std::unique_ptr<mfem::HypreParMatrix>( a.ParallelAssemble() );
+    shared::ParSparseMat K_elastic( a.ParallelAssemble() );
 
     // ---- VisIt output ----
 
@@ -248,12 +249,12 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         // Contact residual and Jacobian blocks (LM mode)
         auto r_contact_force = tribol::getMfemTDofForce( cs_id );  // G^T * lambda (disp-sized)
         auto r_gap = tribol::getMfemTDofGap( cs_id );              // g_tilde (contact-sized)
-        auto H = tribol::getMfemDfDx( cs_id );                     // lambda * d2g/du2 (disp x disp)
-        auto df_dlambda = tribol::getMfemDfDp( cs_id );            // G^T (disp x contact)
-        ASSERT_TRUE( df_dlambda != nullptr );
+        auto H_ptr = tribol::getMfemDfDx( cs_id );          // lambda * d2g/du2 (disp x disp)
+        auto G_T_ptr = tribol::getMfemDfDp( cs_id );        // G^T (disp x contact)
+        ASSERT_TRUE( G_T_ptr != nullptr );
 
         mfem::Vector R_u( disp_size );
-        K_elastic->Mult( U, R_u );  // R_u = K * U
+        K_elastic.get().Mult( U, R_u );  // R_u = K * U
         R_u += r_contact_force;     // R_u += G^T * lambda
 
         mfem::Vector R_lambda( contact_size );
@@ -278,27 +279,30 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         // ---- Assemble block Jacobian ----
         // (0,0) block: K + H
         // NOTE: H may be null on the first Newton iteration when lambda = 0
-        std::unique_ptr<mfem::HypreParMatrix> J_uu;
-        if ( H && H->NumRows() > 0 ) {
-          J_uu.reset( mfem::Add( 1.0, *K_elastic, 1.0, *H ) );
-        } else {
-          J_uu = std::make_unique<mfem::HypreParMatrix>( *K_elastic );
+        std::optional<shared::ParSparseMat> H;
+        if ( H_ptr ) {
+          H.emplace( std::move( H_ptr ) );
         }
 
+        shared::ParSparseMat J_uu =
+            ( H && H->get().NumRows() > 0 )
+                ? ( shared::ParSparseMatView( &K_elastic.get() ) + shared::ParSparseMatView( &H->get() ) )
+                : ( shared::ParSparseMatView( &K_elastic.get() ) * 1.0 );
+
         // G^T for the (0,1) block
-        auto G_T = std::unique_ptr<mfem::HypreParMatrix>( std::move( df_dlambda ) );
+        shared::ParSparseMat G_T( std::move( G_T_ptr ) );
 
         // ---- Apply essential BCs ----
         // Zero out essential DOF rows/cols in J_uu
         for ( int i = 0; i < ess_tdof_list.Size(); ++i ) {
           R_u( ess_tdof_list[i] ) = 0.0;
         }
-        J_uu->EliminateRowsCols( ess_tdof_list );
+        J_uu.eliminateRowsCols( ess_tdof_list );
 
         // Zero out essential DOF rows in G^T (cols in G)
         // Use EliminateRows on G^T which is simpler than EliminateCols on G
-        G_T->EliminateRows( ess_tdof_list );
-        auto G_mod = std::unique_ptr<mfem::HypreParMatrix>( G_T->Transpose() );
+        G_T.eliminateRows( ess_tdof_list );
+        shared::ParSparseMat G_mod = G_T.transpose();
 
         // ---- Set up block system ----
         mfem::Array<int> block_offsets( 3 );
@@ -307,9 +311,9 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         block_offsets[2] = disp_size + contact_size;
 
         mfem::BlockOperator J_block( block_offsets );
-        J_block.SetBlock( 0, 0, J_uu.get() );
-        J_block.SetBlock( 0, 1, G_T.get() );
-        J_block.SetBlock( 1, 0, G_mod.get() );
+        J_block.SetBlock( 0, 0, &J_uu.get() );
+        J_block.SetBlock( 0, 1, &G_T.get() );
+        J_block.SetBlock( 1, 0, &G_mod.get() );
 
         // Block RHS = -[R_u; R_lambda]
         mfem::BlockVector rhs( block_offsets );
