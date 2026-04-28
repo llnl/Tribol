@@ -463,9 +463,11 @@ Gparams ContactEvaluator::construct_gparams( const InterfacePair& pair, const Me
 
   Gparams gp;
   gp.N = N;
-  gp.qp = qp.qp.data();
-  gp.w = qp.w.data();
-  gp.x2 = x2.data();
+  for (size_t i{}; i < qp.qp.size(); ++i) {
+    gp.N++;
+    gp.qp.push_back(qp.qp[i]);
+    gp.w.push_back(qp.w[i]);
+  }
 
   return gp;
 }
