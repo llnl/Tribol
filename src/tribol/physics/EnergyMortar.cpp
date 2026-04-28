@@ -390,13 +390,13 @@ static void kernel_out_enzyme( const double* x, double* out )
 
   auto qp = ContactEvaluator::compute_quadrature( xi_bounds );
 
-  const int N = static_cast<int>( qp.qp.size() );
-
   Gparams gp;
-  gp.N = N;
-  gp.qp = qp.qp.data();
-  gp.w = qp.w.data();
-  gp.x2 = nullptr;
+  gp.N = static_cast<int>( qp.qp.size() );
+  for ( size_t i = 0; i < qp.qp.size(); ++i ) {
+  gp.qp.push_back( qp.qp[i] );
+  gp.w.push_back( qp.w[i] );
+}
+
 
   double gt[2];
   double A_out[2];
@@ -499,13 +499,14 @@ Gparams ContactEvaluator::construct_gparams( const InterfacePair& pair, const Me
     x2[2 * i + 1] = x2_i[1];
   }
 
-  Gparams gp;
-  gp.N = N;
-  for (size_t i{}; i < qp.qp.size(); ++i) {
-    gp.N++;
-    gp.qp.push_back(qp.qp[i]);
-    gp.w.push_back(qp.w[i]);
-  }
+
+Gparams gp;
+gp.N = static_cast<int>( qp.qp.size() );
+
+for ( size_t i = 0; i < qp.qp.size(); ++i ) {
+  gp.qp.push_back( qp.qp[i] );
+  gp.w.push_back( qp.w[i] );
+}
 
   return gp;
 }

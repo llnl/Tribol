@@ -11,33 +11,31 @@ namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
-
-//EnergyMortar uses a 3-point Gauss-Legendre quad rule
+// EnergyMortar uses a 3-point Gauss-Legendre quad rule
 struct QuadPoints {
-  std::array<double, 3> qp; //qp locations
-  std::array<double, 3> w;  // weights
+  std::array<double, 3> qp;  // qp locations
+  std::array<double, 3> w;   // weights
 };
-
 
 struct ContactParams {
-  double del;               //Smoothing Parameter
-  double k;                 //Penalty 
-  int N;                    //Quadrature Points
-  bool enzyme_quadrature;   //Determines how enzyming is performed (default = True)
+  double del;              // Smoothing Parameter
+  double k;                // Penalty
+  int N;                   // Quadrature Points
+  bool enzyme_quadrature;  // Determines how enzyming is performed (default = True)
 };
 
-//Weighted gap and trib area
+// Weighted gap and trib area
 struct NodalContactData {
-  std::array<double, 2> AI; //Trib area
-  std::array<double, 2> g_tilde; //Weighted gap
+  std::array<double, 2> AI;       // Trib area
+  std::array<double, 2> g_tilde;  // Weighted gap
 };
 
-///For Finite Difference Test
+/// For Finite Difference Test
 struct FDResult {
   std::array<double, 2> dgt;
 };
 
-///For Finite Difference Test
+/// For Finite Difference Test
 struct FiniteDiffResult {
   std::vector<double> fd_gradient_g1;
   std::vector<double> fd_gradient_g2;
@@ -48,21 +46,11 @@ struct FiniteDiffResult {
   double g_tilde2_baseline;
 };
 
-<<<<<<< HEAD
-///Holds data for computations 
 struct Gparams {
-  int N;              //No. of quad points
-  const double* qp;   //Quad points
-  const double* w;    //Weights
-  const double* x2;   //Coordinates
+  int N = 0;
+  std::vector<double> qp;
+  std::vector<double> w;
 };
-=======
-  struct Gparams {
-    int N = 0;
-    std::vector<double> qp;
-    std::vector<double> w;
-  };
->>>>>>> 3f21568bf66d2ac55b81f298f5336c5bb22d9830
 
 /// Provides smoothing operations for the Energy Mortar contact formulation.
 ///
@@ -72,29 +60,25 @@ class ContactSmoothing {
  public:
   explicit ContactSmoothing( const ContactParams& p ) : p_( p ) {}  // Constructor
 
-  double get_del() const { return p_.del; }   //getter for delta (smoothing parameter)
-
+  double get_del() const { return p_.del; }  // getter for delta (smoothing parameter)
 
   /// Clamp the projected overlap interval to the extended smoothing support.
   ///
   /// The input `proj` contains the local projection bounds of edge B onto edge A.
   /// The returned interval is restricted to the extended local range
   /// `[-0.5 - del, 0.5 + del]`.
-  static std::array<double, 2> bounds_from_projections( const std::array<double, 2>& proj, double del ); 
+  static std::array<double, 2> bounds_from_projections( const std::array<double, 2>& proj, double del );
 
   /// Smooth the integration bounds using the smoothing length `del`.
   ///
   /// The returned bounds are obtained by applying the endpoint smoothing map to
   /// the clamped integration interval. When `del = 0`, the bounds are returned
   /// without smoothing.
-  static std::array<double, 2> smooth_bounds( const std::array<double, 2>& bounds, double del );        //Smooths bounds 
+  static std::array<double, 2> smooth_bounds( const std::array<double, 2>& bounds, double del );  // Smooths bounds
 
  private:
   ContactParams p_;
 };
-
-
-
 
 /// Evaluates Energy Mortar contact quantities for a single interface pair.
 ///
@@ -112,7 +96,6 @@ class ContactEvaluator {
   explicit ContactEvaluator( const ContactParams& p )
       : p_( p ), smoother_( p ) {}  // constructor - copies params into the object
 
-  
   /// Compute the scalar contact energy contribution for one interface pair.
   ///
   /// This evaluates the smoothed nodal gap integrals, computes the corresponding
@@ -135,7 +118,7 @@ class ContactEvaluator {
   /// contributions, while `area` stores the corresponding tributary area
   /// contributions.
   void compute_gtilde_and_area( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                        double gtilde[2], double area[2] ) const;
+                                double gtilde[2], double area[2] ) const;
 
   /// Compute first derivatives of the nodal smoothed gap integrals.
   ///
@@ -182,7 +165,7 @@ class ContactEvaluator {
   ///
   /// This is a convenience wrapper for obtaining only the gap integral
   /// quantities without also returning the tributary areas for the Finite
-  ///difference test.
+  /// difference test.
   std::pair<double, double> eval_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                          const MeshData::Viewer& mesh2 ) const;
 
@@ -242,7 +225,6 @@ class ContactEvaluator {
   std::array<std::array<double, 8>, 8> compute_stiffness_matrix( const InterfacePair& pair,
                                                                  const MeshData::Viewer& mesh1,
                                                                  const MeshData::Viewer& mesh2 ) const;
-
 
   /// Compute the local projection bounds of edge B onto edge A.
   ///

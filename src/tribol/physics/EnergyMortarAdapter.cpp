@@ -114,7 +114,7 @@ void EnergyMortarAdapter::updateNodalGaps()
     double g_tilde_elem[2];
     double A_elem[2];
 
-    evaluator_->gtilde_and_area( flipped_pair, mesh1_view, mesh2_view, g_tilde_elem, A_elem );
+    evaluator_->compute_gtilde_and_area( flipped_pair, mesh1_view, mesh2_view, g_tilde_elem, A_elem );
 
     if ( A_elem[0] <= 0.0 && A_elem[1] <= 0.0 ) {
       continue;
