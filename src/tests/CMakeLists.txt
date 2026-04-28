@@ -207,6 +207,7 @@ if( TRIBOL_USE_ENZYME )
       tribol_enzyme_nodal_normal.cpp
       tribol_enzyme_mortar_assembled.cpp
       tribol_enzyme_poly_intersect.cpp
+      enzyme_neohookean.cpp
       )
 
   set(combined_test_depends tribol gtest)
