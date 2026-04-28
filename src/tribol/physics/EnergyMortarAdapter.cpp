@@ -365,13 +365,13 @@ shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesLM( const 
   df_contribs.push_back( std::move( df_nm_m ) );
   df_contribs.push_back( std::move( df_m_nm ) );
   df_contribs.push_back( std::move( df_m_m ) );
-  return jac_data_.GetMfemJacobian( mesh_data_.GetParentCoords().ParFESpace(), mesh_data_.GetParentCoords().ParFESpace(),
-                                    df_contribs );
+  return jac_data_.GetMfemJacobian( mesh_data_.GetParentCoords().ParFESpace(),
+                                    mesh_data_.GetParentCoords().ParFESpace(), df_contribs );
 }
 
-shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesPenalty( const mfem::GridFunction& redecomp_pressure,
-                                                                               const mfem::GridFunction& redecomp_g_tilde,
-                                                                               const mfem::GridFunction& redecomp_A )
+shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesPenalty(
+    const mfem::GridFunction& redecomp_pressure, const mfem::GridFunction& redecomp_g_tilde,
+    const mfem::GridFunction& redecomp_A )
 {
   const bool use_lor = ( mesh_data_.GetLORMesh() != nullptr );
   const auto& displacement_surface_fes = use_lor ? *mesh_data_.GetLORMeshFESpace() : mesh_data_.GetSubmeshFESpace();
@@ -449,8 +449,8 @@ shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesPenalty( c
   df_contribs.push_back( std::move( df_nm_m ) );
   df_contribs.push_back( std::move( df_m_nm ) );
   df_contribs.push_back( std::move( df_m_m ) );
-  return jac_data_.GetMfemJacobian( mesh_data_.GetParentCoords().ParFESpace(), mesh_data_.GetParentCoords().ParFESpace(),
-                                    df_contribs );
+  return jac_data_.GetMfemJacobian( mesh_data_.GetParentCoords().ParFESpace(),
+                                    mesh_data_.GetParentCoords().ParFESpace(), df_contribs );
 }
 
 std::unique_ptr<mfem::HypreParMatrix> EnergyMortarAdapter::getMfemDfDx() const
