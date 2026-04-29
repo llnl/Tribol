@@ -246,7 +246,7 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r );
  * @pre Tribol data must be up to date for current geometry by calling update()
  *
  * @param [in] cs_id The ID of the coupling scheme with the MFEM mesh
- * @return mfem::HypreParVector True-dof force vector (returned by value)
+ * @return mfem::HypreParVector True-dof force vector (returned by value) on the parent mesh
  */
 mfem::HypreParVector getMfemTDofForce( IndexT cs_id );
 
