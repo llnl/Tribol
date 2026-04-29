@@ -22,8 +22,10 @@ namespace tribol {
 
 namespace {
 
-static ContactSmoothing smoother( ContactParams{} );
-static ContactEvaluator eval( ContactParams{} );
+struct KernelParams {
+  int N = 3;         // No. of quadrature points
+  double del = 0.1;  // Smoothing parameter
+};
 
 // Compute a unit normal vector for the line segment from coord1 to coord2
 void find_normal( const double* coord1, const double* coord2, double* normal )
@@ -37,7 +39,7 @@ void find_normal( const double* coord1, const double* coord2, double* normal )
   normal[1] = -dx;
 }
 
-//Gets the respective gauss-legendre nodes dependant on quadrature order
+// Gets the respective gauss-legendre nodes dependant on quadrature order
 void determine_legendre_nodes( int N, std::array<double, 3>& x )
 {
   // x.resize( N );
@@ -72,7 +74,7 @@ void determine_legendre_nodes( int N, std::array<double, 3>& x )
   }
 }
 
-//Gets the respective gauss-legendre weights dependant on quadrature order
+// Gets the respective gauss-legendre weights dependant on quadrature order
 void determine_legendre_weights( int N, std::array<double, 3>& W )
 {
   // W.resize( N );
@@ -101,9 +103,8 @@ void determine_legendre_weights( int N, std::array<double, 3>& W )
   }
 }
 
-
-//Map a point from the 1D parent segment coordinate to physical coordinates.
-//Parametric space: [-0.5, 0.5]
+// Map a point from the 1D parent segment coordinate to physical coordinates.
+// Parametric space: [-0.5, 0.5]
 void iso_map( const double* coord1, const double* coord2, double xi, double* mapped_coord )
 {
   double N1 = 0.5 - xi;
@@ -112,7 +113,8 @@ void iso_map( const double* coord1, const double* coord2, double xi, double* map
   mapped_coord[1] = N1 * coord1[1] + N2 * coord2[1];
 }
 
-// Extract the two endpoint coordinates for the given mesh face.
+// reutrns the two (x, y) coordintates for a given edge. P0 and P1 are the respective (x,y)
+// coordinates it returns
 inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], double P1[2] )
 {
   double P0_P1[4];
@@ -123,9 +125,24 @@ inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], 
   P1[1] = P0_P1[3];
 }
 
-// Intersect edge A with the projection line originating from edge B.
-// The projection line starts at point p on edge B and follows direction nB;
-// if nB is degenerate or the lines are nearly parallel, fall back to p.
+// Projects the point p onto the infinite line defined by edge A, using nB as
+// the projection direction.
+//
+// Edge A defines the target line:
+//
+//     x_A(xiA) = A0 + xiA * (A1 - A0)
+//
+// The projection line is the line passing through p in the direction nB:
+// Point p is assumed to be on edge B
+//
+//     x_proj(beta) = p + beta * nB
+//
+// This function computes the point where the projection line intersects the
+// infinite line containing edge A.
+// The returned intersection is not restricted to the finite segment A0--A1.
+// If xiA is outside [0, 1], the intersection lies on the infinite extension of
+// edge A. If nB is degenerate, or if the projection direction is nearly parallel
+// to edge A, the function falls back to returning p.
 void find_intersection( const double* A0, const double* A1, const double* p, const double* nB, double* intersection )
 {
   const double tA[2] = { A1[0] - A0[0], A1[1] - A0[1] };
@@ -156,6 +173,9 @@ void find_intersection( const double* A0, const double* A1, const double* p, con
 }
 
 // Project the endpoints of edge B onto edge A and return their local coordinates on A.
+// The varibale projections is retuned with the coordinates in the parametric space where
+// the projections of edge B intersect edge A
+// If the projection lie outside of Edge A, the endpoint (in the parametric space) are returned
 void get_projections( const double* A0, const double* A1, const double* B0, const double* B1, double* projections )
 {
   double nB[2] = { 0.0, 0.0 };
@@ -211,12 +231,13 @@ void gtilde_kernel( const double* x, Gparams* gp, double* g_tilde_out, double* A
 
   // Only keep the contribution when the edge normals oppose each other.
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  double eta = ( dot < 0 ) ? dot : 0.0;
+  // double eta = ( dot < 0 ) ? dot : 0.0; //Normal smoothing
+  double eta = dot;
 
   double g1 = 0.0, g2 = 0.0;
   double AI_1 = 0.0, AI_2 = 0.0;
 
-  for ( int i = 0; i < gp->N; ++i ) {
+  for ( int i = 0; i < 3; ++i ) {
     const double xiA = gp->qp[i];
     const double w = gp->w[i];
 
@@ -227,7 +248,7 @@ void gtilde_kernel( const double* x, Gparams* gp, double* g_tilde_out, double* A
     double x1[2];
     iso_map( A0, A1, xiA, x1 );
 
-    // Project the quadrature point on edge A onto edge B along B's normal.
+    // Project the quadrature point on edge A (nonmortar) onto edge B (mortar) along B's normal.
     double x2[2];
     find_intersection( B0, B1, x1, nB, x2 );
 
@@ -276,12 +297,13 @@ void gtilde_kernel_quad( const double* x, const Gparams* gp, double* g_tilde_out
   find_normal( A0, A1, nA );
   // Only keep the contribution when the edge normals oppose each other.
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  double eta = ( dot < 0 ) ? dot : 0.0;
+  // double eta = ( dot < 0 ) ? dot : 0.0;
+  double eta = dot;
 
   double g1 = 0.0, g2 = 0.0;
   double AI_1 = 0.0, AI_2 = 0.0;
 
-  for ( int i = 0; i < gp->N; ++i ) {
+  for ( int i = 0; i < 3; ++i ) {
     const double xiA = gp->qp[i];
     const double w = gp->w[i];
 
@@ -292,7 +314,7 @@ void gtilde_kernel_quad( const double* x, const Gparams* gp, double* g_tilde_out
     double x1[2];
     iso_map( A0, A1, xiA, x1 );
 
-    // Project the quadrature point on edge A onto edge B along B's normal.
+    // Project the quadrature point on edge A (non mortar) onto edge B (mortar) along B's normal.
     double x2[2];
     find_intersection( B0, B1, x1, nB, x2 );
 
@@ -368,7 +390,7 @@ void grad_kernel( const double* x, const Gparams* gp, double* dout_du )
 template <KernelOutput Output>
 static void kernel_out_enzyme( const double* x, double* out )
 {
-
+  KernelParams kp;
   // x stores the two endpoints of edge A followed by the two endpoints of edge B.
   double A0[2], A1[2], B0[2], B1[2];
   A0[0] = x[0];
@@ -385,18 +407,16 @@ static void kernel_out_enzyme( const double* x, double* out )
   std::array<double, 2> projections = { projs[0], projs[1] };
 
   // Recompute the integration bounds and quadrature from the current geometry.
-  auto bounds = ContactSmoothing::bounds_from_projections( projections, smoother.get_del() );
-  auto xi_bounds = ContactSmoothing::smooth_bounds( bounds, smoother.get_del() );
+  auto bounds = ContactSmoothing::bounds_from_projections( projections, kp.del );
+  auto xi_bounds = ContactSmoothing::smooth_bounds( bounds, kp.del );
 
-  auto qp = ContactEvaluator::compute_quadrature( xi_bounds );
+  auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, kp.N );
 
   Gparams gp;
-  gp.N = static_cast<int>( qp.qp.size() );
-  for ( size_t i = 0; i < qp.qp.size(); ++i ) {
-  gp.qp.push_back( qp.qp[i] );
-  gp.w.push_back( qp.w[i] );
-}
-
+  for ( std::size_t i = 0; i < qp.qp.size(); ++i ) {
+    gp.qp[i] = qp.qp[i];
+    gp.w[i] = qp.w[i];
+  }
 
   double gt[2];
   double A_out[2];
@@ -467,8 +487,8 @@ void d2_kernel_quad( const double* x, const Gparams* gp, double* H )
 }  // namespace
 
 // Construct the quadrature data needed to evaluate the smoothed gap kernel.
-Gparams ContactEvaluator::construct_gparams( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                             const MeshData::Viewer& mesh2 ) const
+Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                   const MeshData::Viewer& mesh2 ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
@@ -478,11 +498,11 @@ Gparams ContactEvaluator::construct_gparams( const InterfacePair& pair, const Me
   find_normal( B0, B1, nB );
 
   // Build the smoothed integration bounds from the projection of edge B onto edge A.
-  auto projs = eval.projections( pair, mesh1, mesh2 );
-  auto bounds = smoother.bounds_from_projections( projs, smoother.get_del() );
-  auto smooth_bounds = smoother.smooth_bounds( bounds, smoother.get_del() );
+  auto projs = EnergyMortarCalculator::compute_projection_bounds( pair, mesh1, mesh2 );
+  auto bounds = smoother_.bounds_from_projections( projs, p_.del );
+  auto smooth_bounds = smoother_.smooth_bounds( bounds, p_.del );
 
-  auto qp = eval.compute_quadrature( smooth_bounds );
+  auto qp = EnergyMortarCalculator::compute_quadrature( smooth_bounds, p_.N );
 
   const int N = static_cast<int>( qp.qp.size() );
 
@@ -499,21 +519,20 @@ Gparams ContactEvaluator::construct_gparams( const InterfacePair& pair, const Me
     x2[2 * i + 1] = x2_i[1];
   }
 
+  Gparams gp;
+  // int N = eval.get_N();
 
-Gparams gp;
-gp.N = static_cast<int>( qp.qp.size() );
-
-for ( size_t i = 0; i < qp.qp.size(); ++i ) {
-  gp.qp.push_back( qp.qp[i] );
-  gp.w.push_back( qp.w[i] );
-}
+  for ( std::size_t i = 0; i < qp.qp.size(); ++i ) {
+    gp.qp[i] = qp.qp[i];
+    gp.w[i] = qp.w[i];
+  }
 
   return gp;
 }
 
 // Return the local projection bounds of edge B onto edge A for this interface pair.
-std::array<double, 2> ContactEvaluator::projections( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                     const MeshData::Viewer& mesh2 ) const
+std::array<double, 2> EnergyMortarCalculator::projections( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                           const MeshData::Viewer& mesh2 ) const
 {
   double A0[2];
   double A1[2];
@@ -552,6 +571,10 @@ std::array<double, 2> ContactSmoothing::bounds_from_projections( const std::arra
 }
 
 // Smooth the integration bounds using a C1 ramp near the ends of edge A.
+// Specific too the smoothing techniques in EnergyMortar. This smooths the
+// Bounds of intergration by applying a quadratic ramping function near the ends of the paramteric
+// space. The smooth region/length is defined by the input del. The returned 'bounds' is the new bounds
+// of intergation that result after the quadratic ramping has been applied.
 std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 2>& bounds, double del )
 {
   std::array<double, 2> smooth_bounds;
@@ -586,9 +609,8 @@ std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 
 }
 
 // Build a three-point Gauss-Legendre quadrature rule over the local integration bounds.
-QuadPoints ContactEvaluator::compute_quadrature( const std::array<double, 2>& xi_bounds )
+QuadPoints EnergyMortarCalculator::compute_quadrature( const std::array<double, 2>& xi_bounds, int N )
 {
-  const int N = 3;
   QuadPoints out;
 
   std::array<double, 3> qpoints;
@@ -611,8 +633,8 @@ QuadPoints ContactEvaluator::compute_quadrature( const std::array<double, 2>& xi
 }
 
 // Evaluate the weighted normal gap at local coordinate xiA on edge A.
-double ContactEvaluator::gap( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                              double xiA ) const
+double EnergyMortarCalculator::compute_weighted_normal_gap( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                            const MeshData::Viewer& mesh2, double xiA ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
@@ -642,8 +664,9 @@ double ContactEvaluator::gap( const InterfacePair& pair, const MeshData::Viewer&
 }
 
 // Assemble nodal gap and tributary area data for the current interface pair.
-NodalContactData ContactEvaluator::compute_nodal_contact_data( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                               const MeshData::Viewer& mesh2 ) const
+NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const InterfacePair& pair,
+                                                                     const MeshData::Viewer& mesh1,
+                                                                     const MeshData::Viewer& mesh2 ) const
 {
   double A0[2];
   double A1[2];
@@ -655,10 +678,10 @@ NodalContactData ContactEvaluator::compute_nodal_contact_data( const InterfacePa
   auto projs = projections( pair, mesh1, mesh2 );
 
   // Build the smoothed integration interval from the projection bounds.
-  auto bounds = smoother_.bounds_from_projections( projs, smoother.get_del() );
-  auto smooth_bounds = smoother_.smooth_bounds( bounds, smoother.get_del() );
+  auto bounds = smoother_.bounds_from_projections( projs, p_.del );
+  auto smooth_bounds = smoother_.smooth_bounds( bounds, p_.del );
 
-  auto qp = compute_quadrature( smooth_bounds );
+  auto qp = compute_quadrature( smooth_bounds, p_.N );
 
   double g_tilde1 = 0.0;
   double g_tilde2 = 0.0;
@@ -672,7 +695,7 @@ NodalContactData ContactEvaluator::compute_nodal_contact_data( const InterfacePa
     double N2 = 0.5 + xiA;
 
     // Evaluate the weighted gap at the current quadrature point on edge A.
-    double gn = gap( pair, mesh1, mesh2, xiA );
+    double gn = compute_weighted_normal_gap( pair, mesh1, mesh2, xiA );
     double gn_active = gn;
 
     g_tilde1 += w * N1 * gn_active * J;
@@ -690,53 +713,10 @@ NodalContactData ContactEvaluator::compute_nodal_contact_data( const InterfacePa
   return contact_data;
 }
 
-// Compute nodal penalty pressures from the smoothed nodal gaps and tributary areas.
-std::array<double, 2> ContactEvaluator::compute_penalty_pressures( const NodalContactData& ncd ) const
-{
-  double gt1 = ncd.g_tilde[0];
-  double gt2 = ncd.g_tilde[1];
-
-  double A1 = ncd.AI[0];
-  double A2 = ncd.AI[1];
-
-  // Convert integrated gap quantities to area-averaged nodal gaps.
-  double g1 = gt1 / A1;
-  double g2 = gt2 / A2;
-
-  // //KKT Conditons
-  double p1 = ( g1 < 0.0 ) ? p_.k * g1 : 0.0;
-  double p2 = ( g2 < 0.0 ) ? p_.k * g2 : 0.0;
-  std::array<double, 2> pressures;
-
-  pressures = { p1, p2 };
-
-  // Suppress pressure contributions from nodes with negligible tributary area.
-  for ( int i = 0; i < 2; ++i ) {
-    if ( ncd.AI[i] < 1e-12 ) {
-      pressures[i] = 0.0;
-    }
-  }
-
-  return pressures;
-}
-
-// Compute the penalty contact energy from the nodal pressures and smoothed gaps.
-double ContactEvaluator::compute_contact_energy( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                 const MeshData::Viewer& mesh2 ) const
-{
-  NodalContactData contact_data;
-  contact_data = compute_nodal_contact_data( pair, mesh1, mesh2 );
-
-  std::array<double, 2> pressures;
-  pressures = compute_penalty_pressures( contact_data );
-
-  double contact_energy = pressures[0] * contact_data.g_tilde[0] + pressures[1] * contact_data.g_tilde[1];
-  return contact_energy;
-}
-
 // Return the nodal smoothed gaps and tributary areas for the interface pair.
-void ContactEvaluator::compute_gtilde_and_area( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                        const MeshData::Viewer& mesh2, double gtilde[2], double area[2] ) const
+void EnergyMortarCalculator::compute_gtilde_and_area( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                      const MeshData::Viewer& mesh2, double gtilde[2],
+                                                      double area[2] ) const
 {
   auto ncd = compute_nodal_contact_data( pair, mesh1, mesh2 );
   gtilde[0] = ncd.g_tilde[0];
@@ -746,8 +726,8 @@ void ContactEvaluator::compute_gtilde_and_area( const InterfacePair& pair, const
 }
 
 // Compute derivatives of the two nodal smoothed gaps with respect to the endpoint coordinates.
-void ContactEvaluator::grad_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                    const MeshData::Viewer& mesh2, double dgt1_dx[8], double dgt2_dx[8] ) const
+void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                          const MeshData::Viewer& mesh2, double dgt1_dx[8], double dgt2_dx[8] ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
@@ -782,8 +762,8 @@ void ContactEvaluator::grad_gtilde( const InterfacePair& pair, const MeshData::V
 }
 
 // Compute derivatives of the two nodal tributary areas with respect to the endpoint coordinates
-void ContactEvaluator::grad_trib_area( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                       const MeshData::Viewer& mesh2, double dA1_dx[8], double dA2_dx[8] ) const
+void EnergyMortarCalculator::grad_trib_area( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                             const MeshData::Viewer& mesh2, double dA1_dx[8], double dA2_dx[8] ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
@@ -808,49 +788,9 @@ void ContactEvaluator::grad_trib_area( const InterfacePair& pair, const MeshData
   }
 }
 
-// Compute the contact force vector by differentiating the nodal contact energy.
-std::array<double, 8> ContactEvaluator::compute_contact_forces( const InterfacePair& pair,
-                                                                const MeshData::Viewer& mesh1,
-                                                                const MeshData::Viewer& mesh2 ) const
-{
-  double dg_tilde1[8] = { 0.0 };
-  double dg_tilde2[8] = { 0.0 };
-  double dA1[8] = { 0.0 };
-  double dA2[8] = { 0.0 };
-  std::array<double*, 2> dg_t;
-  std::array<double*, 2> dA_I;
-  dg_t = { dg_tilde1, dg_tilde2 };
-  dA_I = { dA1, dA2 };
-
-  // Compute derivatives of the integrated gaps and tributary areas.
-  grad_gtilde( pair, mesh1, mesh2, dg_tilde1, dg_tilde2 );
-  grad_trib_area( pair, mesh1, mesh2, dA1, dA2 );
-
-  NodalContactData ncd;
-  ncd = compute_nodal_contact_data( pair, mesh1, mesh2 );
-
-  std::array<double, 2> pressures;
-  pressures = compute_penalty_pressures( ncd );
-
-  std::array<double, 8> f = { 0.0 };
-
-  for ( int i = 0; i < 8; ++i ) {
-    for ( int j = 0; j < 2; ++j ) {
-      double g = 0.0;
-      g = ncd.g_tilde[j] / ncd.AI[j];
-      if ( ncd.AI[j] < 1e-12 ) {
-        g = 0.0;
-      }
-      // Differentiate the pressure-gap energy contribution at node j.
-      f[i] += ( 2 * pressures[j] * dg_t[j][i] - pressures[j] * g * dA_I[j][i] );
-    }
-  }
-  return f;
-}
-
 // Compute the Hessians of the two nodal smoothed gaps with respect to the endpoint coordinates.
-void ContactEvaluator::d2_g2tilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                   const MeshData::Viewer& mesh2, double H1[64], double H2[64] ) const
+void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                         const MeshData::Viewer& mesh2, double H1[64], double H2[64] ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
@@ -885,8 +825,8 @@ void ContactEvaluator::d2_g2tilde( const InterfacePair& pair, const MeshData::Vi
 }
 
 // Compute the Hessians of the two nodal tributary areas with respect to the endpoint coordinates.
-void ContactEvaluator::compute_d2A_d2u( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                        const MeshData::Viewer& mesh2, double d2A1[64], double d2A2[64] ) const
+void EnergyMortarCalculator::compute_d2A_d2u( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                              const MeshData::Viewer& mesh2, double d2A1[64], double d2A2[64] ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
@@ -918,70 +858,6 @@ void ContactEvaluator::compute_d2A_d2u( const InterfacePair& pair, const MeshDat
     d2A1[i] = d2A1_d2u[i];
     d2A2[i] = d2A2_d2u[i];
   }
-}
-
-// Assemble the 8x8 contact stiffness matrix from gap, area, gradient, and Hessian terms.
-std::array<std::array<double, 8>, 8> ContactEvaluator::compute_stiffness_matrix( const InterfacePair& pair,
-                                                                                 const MeshData::Viewer& mesh1,
-                                                                                 const MeshData::Viewer& mesh2 ) const
-{
-  NodalContactData ncd;
-  ncd = compute_nodal_contact_data( pair, mesh1, mesh2 );
-
-  std::array<double, 2> gI;
-  for ( int i = 0; i < 2; ++i ) {
-    gI[i] = ncd.g_tilde[i] / ncd.AI[i];
-  }
-
-  double dg_tilde1[8], dg_tilde2[8], dAI1[8], dAI2[8];
-
-  // First derivatives of the nodal smoothed gaps and tributary areas.
-  grad_gtilde( pair, mesh1, mesh2, dg_tilde1, dg_tilde2 );
-  grad_trib_area( pair, mesh1, mesh2, dAI1, dAI2 );
-
-  double d2_gtilde1[64], d2_gtilde2[64], d2_dA1[64], d2_dA2[64];
-
-  // Second derivatives of the nodal smoothed gaps and tributary areas.
-  d2_g2tilde( pair, mesh1, mesh2, d2_gtilde1, d2_gtilde2 );
-  compute_d2A_d2u( pair, mesh1, mesh2, d2_dA1, d2_dA2 );
-
-  std::array<double*, 2> dg_t = { dg_tilde1, dg_tilde2 };
-  std::array<double*, 2> dA = { dAI1, dAI2 };
-
-  std::array<double*, 2> ddg_t = { d2_gtilde1, d2_gtilde2 };
-  std::array<double*, 2> ddA = { d2_dA1, d2_dA2 };
-
-  std::array<std::array<double, 8>, 8> K_mat = { { { 0.0 } } };
-
-  for ( int i = 0; i < 2; ++i ) {
-    for ( int k = 0; k < 8; ++k ) {
-      for ( int j = 0; j < 8; ++j ) {
-        // Differentiate the force contribution from node i with respect to coordinate j.
-        // term 1:
-        K_mat[k][j] += p_.k * ( 2 / ncd.AI[i] ) * dg_t[i][k] * dg_t[i][j];
-
-        // term2:
-        K_mat[k][j] += -p_.k * ( 2 * gI[i] / ncd.AI[i] ) * dg_t[i][k] * dA[i][j];
-
-        // term3:
-        K_mat[k][j] += -p_.k * ( 2 * gI[i] / ncd.AI[i] ) * dA[i][k] * dg_t[i][j];
-
-        // term 4:
-        K_mat[k][j] += p_.k * ( 2 * gI[i] * gI[i] / ncd.AI[i] ) * dA[i][k] * dA[i][j];
-
-        // term 5;
-        K_mat[k][j] += p_.k * 2.0 * gI[i] * ddg_t[i][k * 8 + j];
-
-        // term 6:
-        K_mat[k][j] += -p_.k * gI[i] * gI[i] * ddA[i][k * 8 + j];
-
-        if ( ncd.AI[i] < 1e-12 ) {
-          K_mat[k][j] = 0.0;
-        }
-      }
-    }
-  }
-  return K_mat;
 }
 
 #endif  // TRIBOL_USE_ENZYME

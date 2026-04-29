@@ -240,7 +240,7 @@ class EnergyMortarAdapter : public ContactFormulation {
   /**
    * @brief Evaluator implementing ENERGY_MORTAR element-level computations
    */
-  std::unique_ptr<ContactEvaluator> evaluator_;
+  std::unique_ptr<EnergyMortarCalculator> evaluator_;
 
   // Stored InterfacePairs
 

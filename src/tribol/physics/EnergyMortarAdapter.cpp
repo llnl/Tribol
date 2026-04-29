@@ -32,7 +32,7 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
   params_.N = N;
   params_.enzyme_quadrature = enzyme_quadrature;
 
-  evaluator_ = std::make_unique<ContactEvaluator>( params_ );
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 
   // Allocate the (pressure) true-dof vector early so host code can set it via tribol::getMfemTDofPressure() after the
   // formulation is created. In penalty mode this is overwritten in updateNodalForces(); in LM mode it is treated as the

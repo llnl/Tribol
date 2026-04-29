@@ -26,7 +26,7 @@
 
 namespace tribol {
 
-static ContactSmoothing smoother( ContactParams{} );
+// static ContactSmoothing smoother( ContactParams{} );
 
 inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], double P1[2] )
 {
@@ -38,8 +38,8 @@ inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], 
   P1[1] = P0_P1[3];
 }
 
-std::pair<double, double> ContactEvaluator::eval_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                         const MeshData::Viewer& mesh2 ) const
+std::pair<double, double> EnergyMortarCalculator::eval_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                               const MeshData::Viewer& mesh2 ) const
 {
   NodalContactData ncd = compute_nodal_contact_data( pair, mesh1, mesh2 );
   // double gt1 = ncd.g_tilde[0];
@@ -50,8 +50,8 @@ std::pair<double, double> ContactEvaluator::eval_gtilde( const InterfacePair& pa
   return { A1, A2 };
 }
 
-FiniteDiffResult ContactEvaluator::validate_g_tilde( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
-                                                     double epsilon ) const
+FiniteDiffResult EnergyMortarCalculator::validate_g_tilde( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
+                                                           double epsilon ) const
 {
   FiniteDiffResult result;
 
@@ -59,11 +59,11 @@ FiniteDiffResult ContactEvaluator::validate_g_tilde( const InterfacePair& pair, 
   auto viewer2 = mesh2.getView();
 
   auto projs0 = projections( pair, viewer1, viewer2 );
-  auto bounds0 = smoother_.bounds_from_projections( projs0, smoother.get_del() );
-  auto smooth_bounds0 = smoother_.smooth_bounds( bounds0, smoother.get_del() );
+  auto bounds0 = smoother_.bounds_from_projections( projs0, p_.del );
+  auto smooth_bounds0 = smoother_.smooth_bounds( bounds0, p_.del );
   QuadPoints qp0;
   if ( !p_.enzyme_quadrature ) {
-    qp0 = compute_quadrature( smooth_bounds0 );
+    qp0 = compute_quadrature( smooth_bounds0, p_.N );
   }
 
   auto [g1_base, g2_base] = eval_gtilde( pair, viewer1, viewer2 );
@@ -207,10 +207,10 @@ FiniteDiffResult ContactEvaluator::validate_g_tilde( const InterfacePair& pair, 
   return result;
 }
 
-std::pair<double, double> ContactEvaluator::eval_gtilde_fixed_qp( const InterfacePair& pair,
-                                                                  const MeshData::Viewer& mesh1,
-                                                                  const MeshData::Viewer& mesh2,
-                                                                  const QuadPoints& qp_fixed ) const
+std::pair<double, double> EnergyMortarCalculator::eval_gtilde_fixed_qp( const InterfacePair& pair,
+                                                                        const MeshData::Viewer& mesh1,
+                                                                        const MeshData::Viewer& mesh2,
+                                                                        const QuadPoints& qp_fixed ) const
 {
   double A0[2], A1[2];
   endpoints( mesh1, pair.m_element_id1, A0, A1 );
@@ -226,7 +226,7 @@ std::pair<double, double> ContactEvaluator::eval_gtilde_fixed_qp( const Interfac
     const double N1 = 0.5 - xiA;
     const double N2 = 0.5 + xiA;
 
-    const double gn = gap( pair, mesh1, mesh2, xiA );
+    const double gn = compute_weighted_normal_gap( pair, mesh1, mesh2, xiA );
 
     gt1 += w * N1 * J * gn;
     gt2 += w * N2 * J * gn;
@@ -235,8 +235,8 @@ std::pair<double, double> ContactEvaluator::eval_gtilde_fixed_qp( const Interfac
   return { gt1, gt2 };
 }
 
-FiniteDiffResult ContactEvaluator::validate_hessian( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
-                                                     double epsilon ) const
+FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
+                                                           double epsilon ) const
 {
   FiniteDiffResult result;
 
@@ -290,9 +290,9 @@ FiniteDiffResult ContactEvaluator::validate_hessian( const InterfacePair& pair, 
   QuadPoints qp0;
   if ( !p_.enzyme_quadrature ) {
     auto projs0 = projections( pair, viewer1, viewer2 );
-    auto bounds0 = smoother_.bounds_from_projections( projs0, smoother.get_del() );
-    auto smooth_bounds0 = smoother_.smooth_bounds( bounds0, smoother.get_del() );
-    qp0 = compute_quadrature( smooth_bounds0 );
+    auto bounds0 = smoother_.bounds_from_projections( projs0, p_.del );
+    auto smooth_bounds0 = smoother_.smooth_bounds( bounds0, p_.del );
+    qp0 = compute_quadrature( smooth_bounds0, p_.N );
   }
 
   auto eval_from_offsets = [&]( const std::array<double, 8>& du ) -> std::pair<double, double> {
@@ -391,13 +391,13 @@ TEST( GradientCheck, GtildeFDvsAD )
   InterfacePair pair( 0, 0 );
 
   // ── Evaluator setup ──────────────────────────────────────────────────────
-  ContactParams params;
-  params.del = 0.1;                 // smoothing m
-  params.k = 1.0;                   // penalty stiffness
-  params.N = 3;                     // quadrature points
-  params.enzyme_quadrature = true;  // use the non-Enzyme quadrature path
+  ContactParams params_;
+  params_.del = 0.1;                 // smoothing m
+  params_.k = 1.0;                   // penalty stiffness
+  params_.N = 3;                     // quadrature points
+  params_.enzyme_quadrature = true;  // use the non-Enzyme quadrature path
 
-  ContactEvaluator evaluator( params );
+  EnergyMortarCalculator evaluator_( params_ );
 
   // ── Run validation ───────────────────────────────────────────────────────
   const double epsilon = 1e-7;
@@ -405,12 +405,9 @@ TEST( GradientCheck, GtildeFDvsAD )
   RealT y1_plus[2] = { epsilon, 0.0 };
   RealT y1_minus[2] = { -epsilon, 0.0 };
   mesh1.setPosition( x1, y1_plus, nullptr );
-  auto [gp1, gp2] = evaluator.eval_gtilde( pair, mesh1.getView(), mesh2.getView() );
   mesh1.setPosition( x1, y1_minus, nullptr );
-  auto [gm1, gm2] = evaluator.eval_gtilde( pair, mesh1.getView(), mesh2.getView() );
   mesh1.setPosition( x1, y1, nullptr );
-  std::cout << "Manual FD DOF1: " << ( gp1 - gm1 ) / ( 2 * epsilon ) << ", " << ( gp2 - gm2 ) / ( 2 * epsilon ) << "\n";
-  auto result = evaluator.validate_g_tilde( pair, mesh1, mesh2, epsilon );
+  auto result = evaluator_.validate_g_tilde( pair, mesh1, mesh2, epsilon );
 
   // ── Compare ──────────────────────────────────────────────────────────────
   const double tol = 1e-6;
@@ -453,17 +450,17 @@ TEST( HessianCheck, GtildeFDvsAD )
   InterfacePair pair( 0, 0 );
 
   // ── Evaluator setup ──────────────────────────────────────────────────────
-  ContactParams params;
-  params.del = 0.1;
-  params.k = 1.0;
-  params.N = 4;
-  params.enzyme_quadrature = true;
+  ContactParams params_;
+  params_.del = 0.1;
+  params_.k = 1.0;
+  params_.N = 3;
+  params_.enzyme_quadrature = true;
 
-  ContactEvaluator evaluator( params );
+  EnergyMortarCalculator evaluator_( params_ );
 
   // ── Run validation ───────────────────────────────────────────────────────
   const double epsilon = 1e-5;
-  auto result = evaluator.validate_hessian( pair, mesh1, mesh2, epsilon );
+  auto result = evaluator_.validate_hessian( pair, mesh1, mesh2, epsilon );
 
   // ── Compare ──────────────────────────────────────────────────────────────
   const double tol = 1e-4;
