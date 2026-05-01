@@ -784,6 +784,7 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         registerNodalReferenceCoords( mesh_ids[0], xref_ptrs[0], xref_ptrs[1], xref_ptrs[2] );
         registerNodalReferenceCoords( mesh_ids[1], xref_ptrs[0], xref_ptrs[1], xref_ptrs[2] );
       }
+      // TODO: consider redesign where a specific method isn't checked and just the enforcement method is checked
       if ( cs.getEnforcementMethod() == LAGRANGE_MULTIPLIER || cs.getContactMethod() == ENERGY_MORTAR ) {
         SLIC_ERROR_ROOT_IF( cs.getContactModel() != FRICTIONLESS, "Only frictionless contact is supported." );
         SLIC_ERROR_ROOT_IF( cs.getContactMethod() != SINGLE_MORTAR && cs.getContactMethod() != ENERGY_MORTAR,
