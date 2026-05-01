@@ -13,7 +13,7 @@ namespace tribol {
 std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs )
 {
   if ( !cs ) {
-    SLIC_ERROR_ROOT("User must register coupling scheme prior to calling createContactFormulation");
+    SLIC_ERROR_ROOT( "User must register coupling scheme prior to calling createContactFormulation" );
     return nullptr;
   }
 

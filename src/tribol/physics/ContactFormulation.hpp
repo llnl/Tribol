@@ -124,7 +124,7 @@ class ContactFormulation {
    *
    * @return Reference to the dual t-dof vector (e.g. pressure in penalty mode, or Lagrange multiplier in LM mode)
    *
-   * TODO: specify what mesh object this is define on. 
+   * TODO: specify what mesh object this is define on.
    */
   virtual mfem::HypreParVector& getMfemPressure() = 0;
 

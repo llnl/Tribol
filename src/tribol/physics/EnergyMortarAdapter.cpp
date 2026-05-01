@@ -64,7 +64,7 @@ void EnergyMortarAdapter::setInterfacePairs( ArrayT<InterfacePair>&& pairs, int 
 
 void EnergyMortarAdapter::updateIntegrationRule()
 {
-  SLIC_WARNING_ROOT("Update integration rule not implemmented for any method");
+  SLIC_WARNING_ROOT( "Update integration rule not implemmented for any method" );
   // TODO: break out integration rule as a separate method
 }
 
@@ -297,7 +297,7 @@ void EnergyMortarAdapter::updateNodalForces()
 
 RealT EnergyMortarAdapter::computeTimeStep()
 {
-  SLIC_INFO_ROOT("computeTimestep() not implemented for EnergyMortar");
+  SLIC_INFO_ROOT( "computeTimestep() not implemented for EnergyMortar" );
   // TODO: implement timestep calculation
   return 1.0;
 }

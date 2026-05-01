@@ -197,7 +197,7 @@ class EnergyMortarAdapter : public ContactFormulation {
   /**
    * @brief If true, treat contact as tied (no opening) for gap filtering logic
    */
-   // TODO: avoid duplication of coupling scheme data that drives algorithmic combinatorics
+  // TODO: avoid duplication of coupling scheme data that drives algorithmic combinatorics
   bool tied_contact_ = false;
 
   /**

@@ -1159,7 +1159,8 @@ bool CouplingScheme::init()
   if ( m_contactMethod == ENERGY_MORTAR ) {
     // these calls still need to be made to set mesh pointers and allocator id
     if ( !setMeshPointers() || checkExecutionModeData() != 0 ) {
-      //TODO: consider design; should these checks be specific to a contact formulation or are they specific to ENERGY_MORTAR?
+      // TODO: consider design; should these checks be specific to a contact formulation or are they specific to
+      // ENERGY_MORTAR?
       return false;
     }
     // Only create the formulation once. tribol::update() calls init() each cycle; recreating here would reset

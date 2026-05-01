@@ -22,9 +22,8 @@ namespace tribol {
 
 namespace {
 
-
-// This MUST match what the ContactParams struct has in EnergyMortarAdapter 
-// Theese had to be saved locally in order for enzyme to work correctly 
+// This MUST match what the ContactParams struct has in EnergyMortarAdapter
+// Theese had to be saved locally in order for enzyme to work correctly
 struct KernelParams {
   int N = 3;         // No. of quadrature points
   double del = 0.1;  // Smoothing parameter
