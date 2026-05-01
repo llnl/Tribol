@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "tribol/physics/EnergyMortarAdapter.hpp"
+#include <axom/slic/interface/slic_macros.hpp>
 #include "tribol/mesh/MfemData.hpp"
 
 namespace tribol {
@@ -57,12 +58,13 @@ const mfem::HypreParVector& EnergyMortarAdapter::getMfemGap() const
 
 void EnergyMortarAdapter::setInterfacePairs( ArrayT<InterfacePair>&& pairs, int /*check_level*/ )
 {
-  // TODO: improved pair identification
+  // TODO: Consider design and how this interacts with binning and CG
   pairs_ = std::move( pairs );
 }
 
 void EnergyMortarAdapter::updateIntegrationRule()
 {
+  SLIC_WARNING_ROOT( "Update integration rule not implemmented for any method" );
   // TODO: break out integration rule as a separate method
 }
 
@@ -295,6 +297,7 @@ void EnergyMortarAdapter::updateNodalForces()
 
 RealT EnergyMortarAdapter::computeTimeStep()
 {
+  SLIC_INFO_ROOT( "computeTimestep() not implemented for EnergyMortar" );
   // TODO: implement timestep calculation
   return 1.0;
 }

@@ -22,6 +22,8 @@ namespace tribol {
 
 namespace {
 
+// This MUST match what the ContactParams struct has in EnergyMortarAdapter
+// Theese had to be saved locally in order for enzyme to work correctly
 struct KernelParams {
   int N = 3;         // No. of quadrature points
   double del = 0.1;  // Smoothing parameter
@@ -113,7 +115,7 @@ void iso_map( const double* coord1, const double* coord2, double xi, double* map
   mapped_coord[1] = N1 * coord1[1] + N2 * coord2[1];
 }
 
-// reutrns the two (x, y) coordintates for a given edge. P0 and P1 are the respective (x,y)
+// returns P0 and P1 which are the edge vertex coordinates associated with the edge with elem_id.
 // coordinates it returns
 inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], double P1[2] )
 {
@@ -172,10 +174,10 @@ void find_intersection( const double* A0, const double* A1, const double* p, con
   intersection[1] = A0[1] + alpha * tA[1];
 }
 
-// Project the endpoints of edge B onto edge A and return their local coordinates on A.
-// The varibale projections is retuned with the coordinates in the parametric space where
+// Project the verticies of edge B onto edge A and return their local coordinates on A.
+// The variable projections is retuned with the coordinates in the parametric space where
 // the projections of edge B intersect edge A
-// If the projection lie outside of Edge A, the endpoint (in the parametric space) are returned
+// If the projection lies outside of Edge A, the bounds (in the parametric space) are returned
 void get_projections( const double* A0, const double* A1, const double* B0, const double* B1, double* projections )
 {
   double nB[2] = { 0.0, 0.0 };
