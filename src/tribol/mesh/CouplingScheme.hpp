@@ -1063,6 +1063,7 @@ TRIBOL_HOST_DEVICE inline RealT CouplingScheme::Viewer::getGapTol( int fid1, int
 TRIBOL_HOST_DEVICE inline bool CouplingScheme::Viewer::pruneMethodFacePair( const IndexT fid1, const IndexT fid2 ) const
 {
   if ( m_contact_method == ENERGY_MORTAR ) {
+    //TODO: Clarify why  ENERGY_MORTAR doesn't prune method face pairs
     return false;
   }
 

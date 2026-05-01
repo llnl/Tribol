@@ -13,6 +13,7 @@ namespace tribol {
 std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs )
 {
   if ( !cs ) {
+    SLIC_ERROR_ROOT("User must register coupling scheme prior to calling createContactFormulation");
     return nullptr;
   }
 
@@ -25,6 +26,7 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     // ENERGY_MORTAR supports a penalty-style mode driven by the kinematic penalty parameters, even if the coupling
     // scheme is registered with LM enforcement (which is often done to enable submesh/pressure infrastructure).
     const auto& penalty_opts = cs->getEnforcementOptions().penalty_options;
+    // TODO: Figure out how contact formulations interact with coupling scheme duplication (SRW)
     bool use_penalty_ = penalty_opts.kinematic_calc_set;
 
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
