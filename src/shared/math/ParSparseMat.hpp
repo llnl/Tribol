@@ -134,6 +134,13 @@ class ParSparseMatView {
   void eliminateRows( const mfem::Array<int>& rows );
 
   /**
+   * @brief Eliminates chosen rows and columns from the matrix
+   *
+   * @param rows_cols Array of rows/columns to eliminate
+   */
+  void eliminateRowsCols( const mfem::Array<int>& rows_cols );
+
+  /**
    * @brief Eliminates chosen columns from the matrix
    *
    * @param cols Array of columns to eliminate
@@ -397,6 +404,18 @@ class ParSparseMat : public ParSparseMatView {
   static ParSparseMat diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_size, HYPRE_BigInt* row_starts,
                                       double diag_val, const mfem::Array<int>& ordered_rows = mfem::Array<int>(),
                                       bool skip_rows = true );
+
+  /**
+   * @brief Returns a diagonal matrix with the values from the given vector on the diagonal
+   *
+   * @param comm MPI communicator
+   * @param global_size Global size of the matrix (rows and columns)
+   * @param row_starts Row partitioning (global offsets)
+   * @param diag_vals Vector containing the values for the diagonal entries. Size must match local rows.
+   * @return ParSparseMat The constructed diagonal matrix
+   */
+  static ParSparseMat diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_size, HYPRE_BigInt* row_starts,
+                                      const mfem::Vector& diag_vals );
 
  private:
   /**

@@ -477,6 +477,37 @@ TEST_F( ParSparseMatTest, Accessors )
   EXPECT_EQ( A->Height(), local_size );
 }
 
+// Test Construction from Vector
+TEST_F( ParSparseMatTest, DiagonalFromVector )
+{
+  int rank;
+  MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+  if ( rank == 0 ) std::cout << "Testing Construction from Vector..." << std::endl;
+
+  int num_procs;
+  MPI_Comm_size( MPI_COMM_WORLD, &num_procs );
+  constexpr int size = 10;
+  int local_size = size / num_procs + ( rank < ( size % num_procs ) ? 1 : 0 );
+
+  auto row_starts = GetRowStarts( MPI_COMM_WORLD, size );
+
+  mfem::Vector diag_vals( local_size );
+  for ( int i = 0; i < local_size; ++i ) {
+    diag_vals[i] = static_cast<double>( rank * 100 + i );
+  }
+
+  shared::ParSparseMat A =
+      shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, size, row_starts.GetData(), diag_vals );
+
+  shared::ParVector x( A.get(), 0 );
+  x.fill( 1.0 );
+  auto y = A * x;
+
+  for ( int i = 0; i < local_size; ++i ) {
+    EXPECT_NEAR( y[i], static_cast<double>( rank * 100 + i ), 1e-12 );
+  }
+}
+
 //------------------------------------------------------------------------------
 #include "axom/slic/core/SimpleLogger.hpp"
 

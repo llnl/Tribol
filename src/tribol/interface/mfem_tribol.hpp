@@ -237,6 +237,20 @@ void registerMfemReferenceCoords( IndexT cs_id, const mfem::ParGridFunction& ref
 void getMfemResponse( IndexT cs_id, mfem::Vector& r );
 
 /**
+ * @brief Returns the true-dof force vector associated with contact
+ *
+ * @note This returns a true-dof vector (i.e. values on shared DOFs are already consistent across ranks).
+ *
+ * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
+ * @pre Redecomp mesh must be created and up to date by calling updateMfemParallelDecomposition()
+ * @pre Tribol data must be up to date for current geometry by calling update()
+ *
+ * @param [in] cs_id The ID of the coupling scheme with the MFEM mesh
+ * @return mfem::HypreParVector True-dof force vector (returned by value) on the parent mesh
+ */
+mfem::HypreParVector getMfemTDofForce( IndexT cs_id );
+
+/**
  * @brief Get assembled contact contributions for the Jacobian matrix
  *
  * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
@@ -265,6 +279,30 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r );
 std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id );
 
 /**
+ * @brief Get the derivative of the force with respect to displacement
+ *
+ * @param cs_id Coupling scheme id with a registered MFEM mesh
+ * @return Unique pointer to MFEM HypreParMatrix
+ */
+std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx( IndexT cs_id );
+
+/**
+ * @brief Get the derivative of the force with respect to pressure
+ *
+ * @param cs_id Coupling scheme id with a registered MFEM mesh
+ * @return Unique pointer to MFEM HypreParMatrix
+ */
+std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp( IndexT cs_id );
+
+/**
+ * @brief Get the derivative of the gap with respect to displacement
+ *
+ * @param cs_id Coupling scheme id with a registered MFEM mesh
+ * @return Unique pointer to MFEM HypreParMatrix
+ */
+std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx( IndexT cs_id );
+
+/**
  * @brief Returns gap vector to a given mfem::Vector
  *
  * @note This is stored as an MFEM dual vector, meaning the shared DOFs expect to be summed over all ranks to obtain
@@ -280,6 +318,20 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id );
 void getMfemGap( IndexT cs_id, mfem::Vector& g );
 
 /**
+ * @brief Returns the true-dof gap vector associated with contact
+ *
+ * @note This returns a true-dof vector (i.e. values on shared DOFs are already consistent across ranks).
+ *
+ * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
+ * @pre Redecomp mesh must be created and up to date by calling updateMfemParallelDecomposition()
+ * @pre Tribol data must be up to date for current geometry by calling update()
+ *
+ * @param [in] cs_id The ID of the coupling scheme with the MFEM mesh
+ * @return mfem::HypreParVector True-dof gap vector (returned by value)
+ */
+mfem::HypreParVector getMfemTDofGap( IndexT cs_id );
+
+/**
  * @brief Returns reference to nodal pressure vector on the submesh surface
  *
  * @pre Coupling scheme cs_id must be registered using
@@ -290,6 +342,19 @@ void getMfemGap( IndexT cs_id, mfem::Vector& g );
  * parent-linked boundary submesh
  */
 mfem::ParGridFunction& getMfemPressure( IndexT cs_id );
+
+/**
+ * @brief Returns a reference to the true-dof dual vector (pressure/LM)
+ *
+ * In penalty-style methods, this corresponds to the pressure true-dof vector. In Lagrange-multiplier-based methods,
+ * this may be interpreted as the multiplier vector.
+ *
+ * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
+ *
+ * @param [in] cs_id The ID of the coupling scheme with the MFEM mesh
+ * @return mfem::HypreParVector& Reference to the true-dof dual vector
+ */
+mfem::HypreParVector& getMfemTDofPressure( IndexT cs_id );
 
 /**
  * @brief Updates mesh parallel decomposition and related grid functions/Jacobian when coordinates are updated

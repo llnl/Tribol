@@ -211,23 +211,34 @@ double LocalDiagonalEntry( const mfem::HypreParMatrix& mat, int local_row )
 {
   // Helper to read the local diagonal entry (i,i) out of Hypre's diagonal CSR block. Used to validate the dual-dual
   // constraint identity block without needing a full matrix compare.
-  HYPRE_ParCSRMatrix csr = const_cast<mfem::HypreParMatrix&>( mat );
-  auto* parcsr = (hypre_ParCSRMatrix*)csr;
-  auto* diag = hypre_ParCSRMatrixDiag( parcsr );
-  auto* I = hypre_CSRMatrixI( diag );
-  auto* J = hypre_CSRMatrixJ( diag );
-  auto* data = hypre_CSRMatrixData( diag );
+  HYPRE_MemoryLocation old_loc;
+  HYPRE_GetMemoryLocation( &old_loc );
+  HYPRE_SetMemoryLocation( HYPRE_MEMORY_HOST );
 
-  if ( I == nullptr || J == nullptr || data == nullptr ) {
-    return 0.0;
-  }
+  auto& nc_mat = const_cast<mfem::HypreParMatrix&>( mat );
+  nc_mat.HostReadWrite();  // Ensure the underlying Hypre data are valid on host.
 
-  for ( int jj = I[local_row]; jj < I[local_row + 1]; ++jj ) {
-    if ( J[jj] == local_row ) {
-      return data[jj];
+  double result = 0.0;
+  if ( local_row >= 0 && local_row < nc_mat.NumRows() ) {
+    HYPRE_ParCSRMatrix csr = nc_mat;
+    auto* parcsr = (hypre_ParCSRMatrix*)csr;
+    auto* diag = hypre_ParCSRMatrixDiag( parcsr );
+    auto* I = hypre_CSRMatrixI( diag );
+    auto* J = hypre_CSRMatrixJ( diag );
+    auto* data = hypre_CSRMatrixData( diag );
+
+    if ( I && J && data ) {
+      for ( int jj = I[local_row]; jj < I[local_row + 1]; ++jj ) {
+        if ( J[jj] == local_row ) {
+          result = data[jj];
+          break;
+        }
+      }
     }
   }
-  return 0.0;
+
+  HYPRE_SetMemoryLocation( old_loc );
+  return result;
 }
 
 mfem::DenseMatrix ConstantDenseMatrix( int rows, int cols, double value )
@@ -572,12 +583,6 @@ std::vector<int> BuildInactiveDualTdofs( const tribol::MfemMeshData& mesh_data,
   return expected;
 }
 
-std::unique_ptr<mfem::HypreParMatrix> CloneHypre( const shared::ParSparseMat& mat )
-{
-  // Make an owning HypreParMatrix copy so tests can directly query CSR arrays (e.g., diagonal entries).
-  return std::make_unique<mfem::HypreParMatrix>( mat.get() );
-}
-
 void ExpectParMatricesNear( const mfem::HypreParMatrix& actual, const shared::ParSparseMat& expected,
                             double tol = 1e-12 )
 {
@@ -756,10 +761,11 @@ TEST_F( MfemJacobianTest, jacobian_dual_dual_inactive_dofs_form_identity )
       is_inactive[static_cast<size_t>( tdof )] = 1;
     }
 
-    const auto hypre = CloneHypre( mat );
-    for ( int i = 0; i < hypre->NumRows(); ++i ) {
+    // Avoid copying mfem::HypreParMatrix (unsafe with Hypre GPU memory-location tracking).
+    const mfem::HypreParMatrix& hypre = mat.get();
+    for ( int i = 0; i < hypre.NumRows(); ++i ) {
       const double expected = is_inactive[static_cast<size_t>( i )] ? 1.0 : 0.0;
-      EXPECT_DOUBLE_EQ( LocalDiagonalEntry( *hypre, i ), expected );
+      EXPECT_DOUBLE_EQ( LocalDiagonalEntry( hypre, i ), expected );
     }
   } );
 }

@@ -26,6 +26,8 @@
 #include "tribol/search/InterfacePairFinder.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/physics/Physics.hpp"
+#include "tribol/physics/ContactFormulationFactory.hpp"
+
 #include "tribol/integ/FE.hpp"
 namespace tribol {
 
@@ -1026,6 +1028,16 @@ void CouplingScheme::performBinning()
 //------------------------------------------------------------------------------
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
+  if ( m_formulation_impl ) {
+    if ( m_interface_pairs.size() > 0 ) {
+      m_formulation_impl->setInterfacePairs( std::move( m_interface_pairs ), 0 );
+    }
+    m_formulation_impl->updateNodalGaps();
+    m_formulation_impl->updateNodalForces();
+    dt = m_formulation_impl->computeTimeStep();
+    return 0;
+  }
+
   auto& params = m_parameters;
 
   // loop over number of interface pairs
@@ -1144,8 +1156,27 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 //------------------------------------------------------------------------------
 bool CouplingScheme::init()
 {
-  // check for valid coupling scheme only for non-null-meshes
-  this->m_isValid = this->isValidCouplingScheme();
+  if ( m_contactMethod == ENERGY_MORTAR ) {
+    // these calls still need to be made to set mesh pointers and allocator id
+    if ( !setMeshPointers() || checkExecutionModeData() != 0 ) {
+      return false;
+    }
+    // Only create the formulation once. tribol::update() calls init() each cycle; recreating here would reset
+    // formulation state (e.g. LM vector).
+    if ( !m_formulation_impl ) {
+      m_formulation_impl = createContactFormulation( this );
+    }
+    if ( m_formulation_impl ) {
+      m_formulation_impl->updateMeshes( *m_mesh1, *m_mesh2 );
+    }
+  }
+
+  if ( m_formulation_impl ) {
+    this->m_isValid = true;
+  } else {
+    // check for valid coupling scheme only for non-null-meshes
+    this->m_isValid = this->isValidCouplingScheme();
+  }
 
   if ( this->m_isValid ) {
     // set individual coupling scheme logging level

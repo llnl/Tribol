@@ -96,6 +96,12 @@ void ParSparseMatView::eliminateRows( const mfem::Array<int>& rows )
   invokeHypreMethod<MemorySpace::Host>( [&]() { mat_->EliminateRows( rows ); } );
 }
 
+void ParSparseMatView::eliminateRowsCols( const mfem::Array<int>& rows_cols )
+{
+  ensureHostMemory( *this );
+  invokeHypreMethod<MemorySpace::Host>( [&]() { mat_->EliminateRowsCols( rows_cols ); } );
+}
+
 ParSparseMat ParSparseMatView::eliminateCols( const mfem::Array<int>& cols )
 {
   ensureHostMemory( *this );
@@ -291,6 +297,36 @@ ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_si
   int n_row_starts = HYPRE_AssumedPartitionCheck() ? 3 : num_procs + 1;
   mfem::Array<HYPRE_BigInt> row_starts_array( row_starts, n_row_starts );
   return diagonalMatrix( comm, global_size, row_starts_array, diag_val, ordered_rows, skip_rows );
+}
+
+ParSparseMat ParSparseMat::diagonalMatrix( MPI_Comm comm, HYPRE_BigInt global_size, HYPRE_BigInt* row_starts,
+                                           const mfem::Vector& diag_vals )
+{
+  int num_local_rows = diag_vals.Size();
+
+  mfem::Array<int> rows( num_local_rows + 1 );
+  mfem::Array<int> cols( num_local_rows );
+  rows[0] = 0;
+
+  for ( int i = 0; i < num_local_rows; ++i ) {
+    rows[i + 1] = i + 1;
+    cols[i] = i;
+  }
+
+  // make sure rows, cols, and vals don't clear this data when they go out of scope
+  rows.GetMemory().SetHostPtrOwner( false );
+  cols.GetMemory().SetHostPtrOwner( false );
+
+  mfem::Vector vals = diag_vals;
+  vals.GetMemory().SetHostPtrOwner( false );
+
+  constexpr bool own_ij = false;
+  constexpr bool own_data = false;
+  constexpr bool is_sorted = true;
+  mfem::SparseMatrix diag_sparse( rows.GetData(), cols.GetData(), vals.GetData(), num_local_rows, num_local_rows,
+                                  own_ij, own_data, is_sorted );
+
+  return ParSparseMat( comm, global_size, row_starts, std::move( diag_sparse ) );
 }
 
 #endif  // #ifdef TRIBOL_USE_MPI
