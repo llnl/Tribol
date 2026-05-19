@@ -257,11 +257,6 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
       X = X_free;
       X += X_prescribed;
 
-      if ( step == num_timesteps_ ) {
-        std::cout << "Final X vector:\n";
-        X.Print( std::cout, 5 );
-      }
-
       SLIC_INFO( "Timestep " << step << "/" << num_timesteps_ << " | prescribed disp = " << current_prescribed_disp );
 
       // Save VisIt output
@@ -345,7 +340,6 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
     SLIC_INFO( "L2 error (vector): " << l2_err_vec_ );
     SLIC_INFO( "L2 error (x):      " << l2_err_x_ );
     SLIC_INFO( "L2 error (y):      " << l2_err_y_ );
-    SLIC_INFO( "Max displacement:  " << max_disp_ );
     SLIC_INFO( "Consistency check |err_vec^2 - (err_x^2 + err_y^2)| = "
                << std::abs( l2_err_vec_ * l2_err_vec_ - ( l2_err_x_ * l2_err_x_ + l2_err_y_ * l2_err_y_ ) ) );
   }
