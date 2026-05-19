@@ -208,7 +208,6 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
     // Lagrange multiplier (true-dof) vector persists across timesteps (warm start)
     mfem::HypreParVector lambda( &contact_fes );
     lambda = 0.0;
-    bool formulation_ready = false;  // formulation is created on first tribol::update()
 
     for ( int step = 1; step <= num_timesteps_; ++step ) {
       double current_prescribed_disp = disp_increment * step;
@@ -237,14 +236,13 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         coords += displacement;
 
         tribol::updateMfemParallelDecomposition();
-        if ( formulation_ready ) {
-          // Set lambda for LM assembly prior to calling update().
-          auto& tribol_lambda = tribol::getMfemTDofPressure( cs_id );
-          tribol_lambda = 0.0;
-          tribol_lambda.Add( 1.0, lambda );
-        }
+
+        // Set lambda for LM assembly prior to calling update().
+        auto& tribol_lambda = tribol::getMfemTDofPressure( cs_id );
+        tribol_lambda = 0.0;
+        tribol_lambda.Add( 1.0, lambda );
+
         tribol::update( step, step * dt, dt );
-        formulation_ready = true;
 
         // Contact residual and Jacobian blocks (LM mode)
         auto r_contact_force = tribol::getMfemTDofForce( cs_id );  // G^T * lambda (disp-sized)

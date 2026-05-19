@@ -1028,13 +1028,13 @@ void CouplingScheme::performBinning()
 //------------------------------------------------------------------------------
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
-  if ( m_formulation_impl ) {
+  if ( m_formulation ) {
     if ( m_interface_pairs.size() > 0 ) {
-      m_formulation_impl->setInterfacePairs( std::move( m_interface_pairs ), 0 );
+      m_formulation->setInterfacePairs( std::move( m_interface_pairs ), 0 );
     }
-    m_formulation_impl->updateNodalGaps();
-    m_formulation_impl->updateNodalForces();
-    dt = m_formulation_impl->computeTimeStep();
+    m_formulation->updateNodalGaps();
+    m_formulation->updateNodalForces();
+    dt = m_formulation->computeTimeStep();
     return 0;
   }
 
@@ -1156,29 +1156,18 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 //------------------------------------------------------------------------------
 bool CouplingScheme::init()
 {
-  if ( m_contactMethod == ENERGY_MORTAR ) {
-    // these calls still need to be made to set mesh pointers and allocator id
+  if ( m_formulation ) {
+    // validity checks are done in the constructors of ContactFormulations
+    this->m_isValid = true;
+    // the validity checks also set mesh pointers and allocator id, so these calls are still needed
     if ( !setMeshPointers() || checkExecutionModeData() != 0 ) {
       // TODO: consider design; should these checks be specific to a contact formulation or are they specific to
       // ENERGY_MORTAR?
       return false;
     }
-    // Only create the formulation once. tribol::update() calls init() each cycle; recreating here would reset
-    // formulation state (e.g. LM vector).
-    // TODO: consider design for persistent vs. updated each cycle for implicit vs. explicit methods. Creating only
-    // once may be inconsistent with how host-codes have integrated Tribol methods.
-    if ( !m_formulation_impl ) {
-      m_formulation_impl = createContactFormulation( this );
-    }
-    if ( m_formulation_impl ) {
-      m_formulation_impl->updateMeshes( *m_mesh1, *m_mesh2 );
-    }
-  }
-
-  if ( m_formulation_impl ) {
-    this->m_isValid = true;
+    // pass the new meshes to the formulation
+    m_formulation->updateMeshes( *m_mesh1, *m_mesh2 );
   } else {
-    // check for valid coupling scheme only for non-null-meshes
     this->m_isValid = this->isValidCouplingScheme();
   }
 

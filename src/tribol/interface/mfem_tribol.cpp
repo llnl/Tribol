@@ -14,6 +14,7 @@
 
 #include "tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
+#include "tribol/physics/ContactFormulationFactory.hpp"
 
 namespace tribol {
 
@@ -292,10 +293,9 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
   auto& cs = CouplingSchemeManager::getInstance().at( cs_id );
   cs.setMPIComm( mesh.GetComm() );
 
-  // Set data required for use with Lagrange multiplier enforcement option.
-  // Coupling scheme validity will be checked later, but here some initial
-  // data is created/initialized for use with LMs.
-  if ( enforcement_method == LAGRANGE_MULTIPLIER || contact_method == ENERGY_MORTAR ) {
+  // Initialize methods that require definition of a submesh. Coupling scheme validity will be checked
+  // later, but here some initial data is created/initialized for use with LMs.
+  if ( contact_method == SINGLE_MORTAR || contact_method == ENERGY_MORTAR ) {
     std::unique_ptr<mfem::FiniteElementCollection> pressure_fec = std::make_unique<mfem::H1_FECollection>(
         current_coords.FESpace()->FEColl()->GetOrder(), mesh.SpaceDimension() );
     int pressure_vdim = 0;
@@ -320,18 +320,21 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
     cs.setMfemSubmeshData( std::make_unique<MfemSubmeshData>( mfem_data->GetSubmesh(), mfem_data->GetLORMesh(),
                                                               std::move( pressure_fec ), pressure_vdim,
                                                               isOnDevice( exec_mode ) ) );
-    // set up Jacobian transfer if the coupling scheme requires it
+    // set up matrix transfer if the coupling scheme requires it (note: ENERGY_MORTAR always needs to create matrices,
+    // even when a Jacobian is not needed)
     auto lm_options = cs.getEnforcementOptions().lm_implicit_options;
     if ( ( lm_options.enforcement_option_set &&
            ( lm_options.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ||
              lm_options.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ) ) ||
          contact_method == ENERGY_MORTAR ) {
-      // create matrix transfer operator between redecomp and
-      // parent/parent-linked boundary submesh
+      // create matrix transfer operator between redecomp and parent/parent-linked boundary submesh
       cs.setMfemJacobianData( std::make_unique<MfemJacobianData>( *mfem_data, *cs.getMfemSubmeshData() ) );
     }
   }
   cs.setMfemMeshData( std::move( mfem_data ) );
+  if ( contact_method == ENERGY_MORTAR ) {
+    cs.setContactFormulation( createContactFormulation( &cs ) );
+  }
 }
 
 void setMfemLORFactor( IndexT cs_id, int lor_factor )
@@ -541,19 +544,9 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r )
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
-
-  // For coupling schemes using a ContactFormulation (e.g. ENERGY_MORTAR), the force vector is stored directly by the
-  // formulation.
-  if ( cs->hasContactFormulation() ) {
-    const auto& f = cs->getContactFormulation()->getMfemForce();
-    if ( r.Size() == 0 ) {
-      r.SetSize( f.Size() );
-    }
-    SLIC_ERROR_ROOT_IF( r.Size() != f.Size(), "getMfemResponse(): size mismatch with formulation force vector." );
-    r = f;
-    return;
-  }
-
+  SLIC_ERROR_ROOT_IF(
+      cs->hasContactFormulation(),
+      "Coupling scheme has a contact formulation. Forces are returned using getMfemTDofForce() instead." );
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to return a response vector." );
@@ -567,7 +560,9 @@ mfem::HypreParVector getMfemTDofForce( IndexT cs_id )
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
-  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
+  SLIC_ERROR_ROOT_IF(
+      !cs->hasContactFormulation(),
+      "Coupling scheme does not contain a contact formulation. Forces are returned using getMfemResponse() instead." );
   return cs->getContactFormulation()->getMfemForce();
 }
 
@@ -578,6 +573,10 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
       !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
+
+  SLIC_ERROR_ROOT_IF( cs->getEnforcementMethod() == PENALTY,
+                      "getMfemBlockJacobian() is not supported for coupling schemes with penalty enforcement. "
+                      "Use getMfemJacobian() instead." );
 
   if ( cs->hasContactFormulation() ) {
     auto* formulation = cs->getContactFormulation();
@@ -641,6 +640,26 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
   } else {
     return BuildMfemBlockJacobian( *cs, *cs->getMethodData(), all_info, all_info );
   }
+}
+
+std::unique_ptr<mfem::HypreParMatrix> getMfemJacobian( IndexT cs_id )
+{
+  CouplingScheme* cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+
+  SLIC_ERROR_ROOT_IF( cs->getEnforcementMethod() != PENALTY,
+                      "getMfemJacobian() is only supported for coupling schemes with penalty enforcement. "
+                      "Use getMfemBlockJacobian() instead." );
+
+  if ( cs->hasContactFormulation() ) {
+    return cs->getContactFormulation()->getMfemDfDx();
+  }
+
+  SLIC_ERROR_ROOT( "getMfemJacobian() is only supported for coupling schemes with a ContactFormulation." );
+  return nullptr;
 }
 
 std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx( IndexT cs_id )
