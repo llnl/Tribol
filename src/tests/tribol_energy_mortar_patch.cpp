@@ -219,16 +219,8 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
       auto A_cont_ptr = tribol::getMfemJacobian( cs_id );
       ASSERT_TRUE( A_cont_ptr != nullptr );
       shared::ParSparseMat A_cont( std::move( A_cont_ptr ) );
-      SLIC_INFO( "A_cont NNZ = " << A_cont.get().NNZ() );
-
-      mfem::Vector ones( par_fe_space.GetTrueVSize() );
-      ones = 1.0;
-      mfem::Vector A_ones( par_fe_space.GetTrueVSize() );
-      A_cont.get().Mult(ones, A_ones);
-      SLIC_INFO( "A_cont * 1 norm = " << A_ones.Norml2() );
 
       auto f_contact = tribol::getMfemTDofForce( cs_id );
-      SLIC_INFO( "f_contact norm = " << f_contact.Norml2() );
       f_contact.Neg();
 
       // Inhomogeneous Dirichlet: rhs = f_contact - K * u_prescribed
@@ -275,7 +267,6 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
       X = X_free;
       X += X_prescribed;
       
-      SLIC_INFO( "X norm = " << X.Norml2() );
       if (step == num_timesteps_) {
         std::cout << "Final X vector:\n";
         X.Print(std::cout, 5);

@@ -385,6 +385,10 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
   cs->getMfemMeshData()->ClearAllPenaltyData();
   cs->getMfemMeshData()->SetMesh1KinematicConstantPenalty( mesh1_penalty );
   cs->getMfemMeshData()->SetMesh2KinematicConstantPenalty( mesh2_penalty );
+
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updatePenaltyParameters( true, mesh1_penalty );
+  }
 }
 
 void setMfemViscousDampingCoeff( IndexT cs_id, RealT mesh1_coeff, RealT mesh2_coeff )

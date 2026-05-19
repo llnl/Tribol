@@ -104,6 +104,13 @@ class ContactFormulation {
    */
   virtual void updateMeshes( MeshData& /*mesh1*/, MeshData& /*mesh2*/ ) {}
 
+  /**
+   * @brief Update penalty parameters
+   *
+   * Used to dynamically update penalty stiffness after the formulation has been instantiated.
+   */
+  virtual void updatePenaltyParameters( bool /*use_penalty*/, double /*k*/ ) {}
+
 #ifdef BUILD_REDECOMP
   /**
    * @brief Returns t-dof vector of forces on parent mesh
@@ -161,3 +168,4 @@ class ContactFormulation {
 }  // namespace tribol
 
 #endif /* SRC_TRIBOL_PHYSICS_CONTACTFORMULATION_HPP_ */
+

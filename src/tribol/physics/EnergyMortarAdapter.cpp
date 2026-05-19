@@ -39,6 +39,12 @@ void EnergyMortarAdapter::updateMeshes( MeshData& mesh1, MeshData& mesh2 )
   mesh2_ = &mesh1;
 }
 
+void EnergyMortarAdapter::updatePenaltyParameters( bool use_penalty, double k )
+{
+  use_penalty_ = use_penalty;
+  params_.k = k;
+}
+
 const mfem::HypreParVector& EnergyMortarAdapter::getMfemGap() const
 {
   // Penalty mode uses the normalized gap g = g_tilde / A. LM mode enforces the unnormalized constraint g_tilde = 0,
@@ -471,3 +477,4 @@ std::unique_ptr<mfem::HypreParMatrix> EnergyMortarAdapter::getMfemDfDp() const
 #endif  // TRIBOL_USE_ENZYME
 
 }  // namespace tribol
+
