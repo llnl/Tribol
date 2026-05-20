@@ -111,8 +111,8 @@ TRIBOL_HOST_DEVICE inline void SegmentBasis( const RealT* const x, const RealT p
  *       x[2] is equal to 0.
  *
  */
-inline void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA, const int numNodes,
-                    RealT xi[2] )
+TRIBOL_HOST_DEVICE inline void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA,
+                                       const int numNodes, RealT xi[2] )
 {
   if ( numNodes == 4 ) {
     constexpr int kmax = 15;
@@ -309,7 +309,7 @@ void FwdMapLinQuad( const RealT xi[2], RealT xa[4], RealT ya[4], RealT za[4], Re
  *       of each node are as follows (-1,-1), (1,-1), (0,1).
  *
  */
-inline void LinIsoTriShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi )
+TRIBOL_HOST_DEVICE inline void LinIsoTriShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi )
 {
   switch ( a ) {
     case 0:
@@ -338,7 +338,7 @@ inline void LinIsoTriShapeFunc( const RealT xi, const RealT eta, const int a, Re
  * \param [in] xi array of length 2 holding parent coordinates
  * \param [in,out] phi shape function evaluation (array of length 3)
  */
-inline void LinIsoTriShapeFunc( const RealT* xi, RealT* phi )
+TRIBOL_HOST_DEVICE inline void LinIsoTriShapeFunc( const RealT* xi, RealT* phi )
 {
   phi[0] = 1.0 - xi[0] - xi[1];
   phi[1] = xi[0];
@@ -359,7 +359,7 @@ inline void LinIsoTriShapeFunc( const RealT* xi, RealT* phi )
  *
  *
  */
-inline void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi )
+TRIBOL_HOST_DEVICE inline void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi )
 {
   RealT xi_node, eta_node;
   switch ( a ) {
@@ -419,6 +419,17 @@ void DetJQuad( const RealT xi, const RealT eta, const RealT* x, const int dim, R
 // Implementations
 //-----------------------------------------------------------------------------
 
+/*!
+ *
+ * \brief Returns the number of nodes on a linear contact face or edge for the
+ *        given problem dimension and face order.
+ *
+ * \param [in] dim the dimension of the contact problem
+ * \param [in] order_type the finite element face order/type
+ *
+ * \return number of nodes on the corresponding contact face or edge
+ *
+ */
 TRIBOL_HOST_DEVICE inline int GetNumFaceNodes( int dim, FaceOrderType order_type )
 {
   // SRW consider consolidating this to take a tribol topology and
@@ -435,6 +446,99 @@ TRIBOL_HOST_DEVICE inline int GetNumFaceNodes( int dim, FaceOrderType order_type
       break;
   }
   return numNodes;
+}
+
+//-----------------------------------------------------------------------------
+/*!
+ *
+ * \brief Evaluates a linear basis function directly on a physical edge,
+ *        triangle, or quadrilateral face.
+ *
+ * \param [in] x pointer to stacked physical coordinates of the face vertices
+ * \param [in] pX x-coordinate of the evaluation point
+ * \param [in] pY y-coordinate of the evaluation point
+ * \param [in] pZ z-coordinate of the evaluation point
+ * \param [in] numNodes number of nodes on the face
+ * \param [in] vertexId local node id whose basis function is to be evaluated
+ * \param [in,out] phi evaluated basis function value
+ *
+ * \note For triangles and quadrilaterals this routine inverse-maps the physical
+ *       point to parent space and then evaluates the corresponding linear
+ *       isoparametric basis function.
+ *
+ */
+TRIBOL_HOST_DEVICE inline void EvalBasisOnPhysicalFace( const RealT* const x, const RealT pX, const RealT pY,
+                                                        const RealT pZ, const int numNodes, const int vertexId,
+                                                        RealT& phi )
+{
+  if ( numNodes == 2 ) {
+    SegmentBasis( x, pX, pY, vertexId, phi );
+    return;
+  }
+
+#ifdef TRIBOL_USE_HOST
+  SLIC_ERROR_IF( numNodes != 3 && numNodes != 4,
+                 "EvalBasisOnPhysicalFace(): only linear triangle and quadrilateral faces are supported." );
+#endif
+
+  constexpr int max_nodes_per_face = 4;
+  RealT xA[max_nodes_per_face] = { 0., 0., 0., 0. };
+  RealT yA[max_nodes_per_face] = { 0., 0., 0., 0. };
+  RealT zA[max_nodes_per_face] = { 0., 0., 0., 0. };
+  for ( int i = 0; i < numNodes; ++i ) {
+    xA[i] = x[3 * i];
+    yA[i] = x[3 * i + 1];
+    zA[i] = x[3 * i + 2];
+  }
+
+  RealT xp[3] = { pX, pY, pZ };
+  RealT xi[2] = { 0., 0. };
+  InvIso( xp, xA, yA, zA, numNodes, xi );
+
+  if ( numNodes == 4 ) {
+    LinIsoQuadShapeFunc( xi[0], xi[1], vertexId, phi );
+  } else {
+    LinIsoTriShapeFunc( xi[0], xi[1], vertexId, phi );
+  }
+}
+
+//-----------------------------------------------------------------------------
+/*!
+ *
+ * \brief Evaluates a vector-valued Galerkin approximation directly on a physical
+ *        edge, triangle, or quadrilateral face.
+ *
+ * \param [in] x pointer to stacked physical coordinates of the face vertices
+ * \param [in] pX x-coordinate of the evaluation point
+ * \param [in] pY y-coordinate of the evaluation point
+ * \param [in] pZ z-coordinate of the evaluation point
+ * \param [in] numNodes number of nodes on the face
+ * \param [in] galerkinDim vector dimension of the nodal coefficients
+ * \param [in] nodeVals stacked nodal coefficients for the Galerkin approximation
+ * \param [in,out] galerkinVal evaluated Galerkin approximation
+ *
+ * \note This helper is topology-aware and supports the linear segment,
+ *       triangle, and quadrilateral basis evaluations used by CommonPlane.
+ *
+ */
+TRIBOL_HOST_DEVICE inline void GalerkinEvalOnPhysicalFace( const RealT* const x, const RealT pX, const RealT pY,
+                                                           const RealT pZ, const int numNodes, const int galerkinDim,
+                                                           RealT* nodeVals, RealT* galerkinVal )
+{
+#ifdef TRIBOL_USE_HOST
+  SLIC_ERROR_IF( x == nullptr, "GalerkinEvalOnPhysicalFace(): input pointer, x, is NULL." );
+  SLIC_ERROR_IF( nodeVals == nullptr, "GalerkinEvalOnPhysicalFace(): input pointer, nodeVals, is NULL." );
+  SLIC_ERROR_IF( galerkinVal == nullptr, "GalerkinEvalOnPhysicalFace(): galerkinVal pointer is NULL." );
+  SLIC_ERROR_IF( galerkinDim < 1, "GalerkinEvalOnPhysicalFace(): scalar approximations not yet supported." );
+#endif
+
+  for ( int nd = 0; nd < numNodes; ++nd ) {
+    RealT phi = 0.;
+    EvalBasisOnPhysicalFace( x, pX, pY, pZ, numNodes, nd, phi );
+    for ( int i = 0; i < galerkinDim; ++i ) {
+      galerkinVal[i] += nodeVals[i + nd * galerkinDim] * phi;
+    }
+  }
 }
 
 //-----------------------------------------------------------------------------

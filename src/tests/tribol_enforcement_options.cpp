@@ -162,6 +162,27 @@ TEST_F( EnforcementOptionsTest, penalty_kinematic_constant_error )
   delete mesh;
 }
 
+TEST_F( EnforcementOptionsTest, common_plane_integration_options_are_stored )
+{
+  tribol::TestMesh* mesh = new tribol::TestMesh();
+  SetupTest( mesh );
+
+  RealT penalty = 1.0;
+  tribol::setKinematicConstantPenalty( 0, penalty );
+  tribol::setKinematicConstantPenalty( 1, penalty );
+  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
+  tribol::setCommonPlaneIntegrationOptions( 0, tribol::FULL_TRI_DECOMP, 4 );
+
+  tribol::CouplingSchemeManager& csManager = tribol::CouplingSchemeManager::getInstance();
+  tribol::CouplingScheme* scheme = &csManager.at( 0 );
+
+  EXPECT_EQ( scheme->getEnforcementOptions().penalty_options.common_plane_rule, tribol::FULL_TRI_DECOMP );
+  EXPECT_EQ( scheme->getEnforcementOptions().penalty_options.common_plane_triangle_order, 4 );
+
+  tribol::finalize();
+  delete mesh;
+}
+
 TEST_F( EnforcementOptionsTest, penalty_kinematic_element_error )
 {
   // Setup boiler plate test data etc.

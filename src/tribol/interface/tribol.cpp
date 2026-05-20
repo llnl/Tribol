@@ -97,6 +97,28 @@ void setPenaltyOptions( IndexT cs_id, PenaltyConstraintType pen_enfrc_option,
 }  // end setPenaltyOptions()
 
 //------------------------------------------------------------------------------
+void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int triangle_order )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setCommonPlaneIntegrationOptions(): call tribol::registerCouplingScheme() prior "
+                               << "to calling this routine." );
+
+  auto& penalty_options = cs->getEnforcementOptions().penalty_options;
+
+  if ( !in_range( rule, NUM_INTEG_RULES ) ) {
+    SLIC_WARNING_ROOT( "tribol::setCommonPlaneIntegrationOptions(): polygon integration rule not available." );
+    return;
+  }
+
+  SLIC_ERROR_ROOT_IF( triangle_order < 2 || triangle_order > 4,
+                      "tribol::setCommonPlaneIntegrationOptions(): triangle quadrature order must be in [2,4]." );
+
+  penalty_options.common_plane_rule = rule;
+  penalty_options.common_plane_triangle_order = triangle_order;
+}
+
+//------------------------------------------------------------------------------
 void setKinematicConstantPenalty( IndexT mesh_id, RealT k )
 {
   // note, error checking done in the following registration routine

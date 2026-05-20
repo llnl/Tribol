@@ -174,92 +174,168 @@ int NumTWBPointsPerTri( int order );
 // Implementations
 //-----------------------------------------------------------------------------
 
-template <>
-TRIBOL_HOST_DEVICE inline void EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( SurfaceContactElem const& elem,
-                                                                                 RealT* const integ1,
-                                                                                 RealT* const integ2 )
+TRIBOL_HOST_DEVICE inline void GetCommonPlaneOverlapCentroid( SurfaceContactElem const& elem, RealT cx[3] )
 {
-  // compute the area centroid of the overlap polygon,
-  // or vertex avg. centroid of the overlap segment, which
-  // serves as the single integration point
-  RealT cx[3] = { 0., 0., 0. };
+  cx[0] = 0.;
+  cx[1] = 0.;
+  cx[2] = 0.;
+
   if ( elem.dim == 2 ) {
     VertexAvgCentroid( elem.overlapCoords, elem.dim, elem.numPolyVert, cx[0], cx[1], cx[2] );
   } else {
     PolyAreaCentroid( elem.overlapCoords, elem.dim, elem.numPolyVert, cx[0], cx[1], cx[2] );
   }
+}
 
-  // debug: leave commented out so we don't enter loop
-  {
-    // SLIC_DEBUG("Integration point: " << cx[0] << ", " << cx[1]);
-
-    // SLIC_DEBUG("Overlap area: " << elem.overlapArea);
-    // SLIC_DEBUG("Overlap coords: ");
-    // for (int i=0; i<elem.numPolyVert; ++i)
-    //{
-    //    if (elem.dim==2)
-    //    {
-    //       SLIC_DEBUG(elem.overlapCoords[elem.dim*i] << ", " << elem.overlapCoords[elem.dim*i+1]);
-    //    }
-    //    else
-    //    {
-    //       SLIC_DEBUG(elem.overlapCoords[elem.dim*i] << ", " << elem.overlapCoords[elem.dim*i+1] << ", "
-    //       elem.overlapCoords[elem.dim*i+2]);
-    //    }
-    // }
-  }
-
-  /////////////////////////////////////////////////////////////////////////
-  //                                                                     //
-  // Project each face/edge to the common plane overlap                  //
-  //                                                                     //
-  //   Note: projecting integration point to current configuration faces //
-  //         will have same basis evaluation as projecting faces to      //
-  //         the common plane on which the integration point is          //
-  //         originally defined.                                         //
-  //                                                                     //
-  /////////////////////////////////////////////////////////////////////////
-
-  // allocate max stacked arrays of coordinates. The basis function evaluation
-  // later in this routine requires data in this format
-  constexpr int max_vertex_coords_per_elem = 3 * 4;
-  RealT projX1[max_vertex_coords_per_elem];
-  RealT projX2[max_vertex_coords_per_elem];
-
-  if ( elem.dim == 3 ) {
-    // loop over number of nodes per face (same for each mesh) and project nodes to common plane.
-    // Can use the integration point as the point in the point-normal data.
-    for ( int i = 0; i < elem.m_mesh1->numberOfNodesPerElement(); ++i ) {
-      ProjectPointToPlane( elem.faceCoords1[elem.dim * i], elem.faceCoords1[elem.dim * i + 1],
-                           elem.faceCoords1[elem.dim * i + 2], elem.overlapNormal[0], elem.overlapNormal[1],
-                           elem.overlapNormal[2], cx[0], cx[1], cx[2], projX1[elem.dim * i], projX1[elem.dim * i + 1],
-                           projX1[elem.dim * i + 2] );
-
-      ProjectPointToPlane( elem.faceCoords2[elem.dim * i], elem.faceCoords2[elem.dim * i + 1],
-                           elem.faceCoords2[elem.dim * i + 2], elem.overlapNormal[0], elem.overlapNormal[1],
-                           elem.overlapNormal[2], cx[0], cx[1], cx[2], projX2[elem.dim * i], projX2[elem.dim * i + 1],
-                           projX2[elem.dim * i + 2] );
-    }
-  } else {  // dim == 2
-    // loop over number of nodes per edge (same for each mesh) and project nodes to common plane.
-    // Can use the integration point as the point in the point-normal data.
-    for ( int i = 0; i < elem.m_mesh1->numberOfNodesPerElement(); ++i ) {
-      ProjectPointToSegment( elem.faceCoords1[elem.dim * i], elem.faceCoords1[elem.dim * i + 1], elem.overlapNormal[0],
-                             elem.overlapNormal[1], cx[0], cx[1], projX1[elem.dim * i], projX1[elem.dim * i + 1] );
-
-      ProjectPointToSegment( elem.faceCoords2[elem.dim * i], elem.faceCoords2[elem.dim * i + 1], elem.overlapNormal[0],
-                             elem.overlapNormal[1], cx[0], cx[1], projX2[elem.dim * i], projX2[elem.dim * i + 1] );
-    }
-  }
-
-  // loop over nodes and compute nodal force integral
-  // contributions
+TRIBOL_HOST_DEVICE inline void AccumulateCommonPlaneIntegralAtPoint( SurfaceContactElem const& elem, const RealT x[3],
+                                                                     const RealT wt, RealT* const integ1,
+                                                                     RealT* const integ2 )
+{
   for ( int a = 0; a < elem.numFaceVert; ++a ) {
-    EvalBasis( &projX1[0], cx[0], cx[1], cx[2], elem.numFaceVert, a, integ1[a] );
-    EvalBasis( &projX2[0], cx[0], cx[1], cx[2], elem.numFaceVert, a, integ2[a] );
+    RealT phi1 = 0.;
+    RealT phi2 = 0.;
+    EvalBasisOnPhysicalFace( elem.faceCoords1, x[0], x[1], x[2], elem.numFaceVert, a, phi1 );
+    EvalBasisOnPhysicalFace( elem.faceCoords2, x[0], x[1], x[2], elem.numFaceVert, a, phi2 );
+    integ1[a] += wt * phi1;
+    integ2[a] += wt * phi2;
+  }
+}
+
+TRIBOL_HOST_DEVICE inline int GetCommonPlaneTriangleRule( int order, RealT* wts, RealT* coords )
+{
+  switch ( order ) {
+    case 2:
+      wts[0] = 0.3333333333;
+      wts[1] = 0.3333333333;
+      wts[2] = 0.3333333333;
+
+      coords[0] = 0.1666666667;
+      coords[1] = 0.1666666667;
+      coords[2] = 0.6666666667;
+      coords[3] = 0.1666666667;
+      coords[4] = 0.1666666667;
+      coords[5] = 0.6666666667;
+      return 3;
+    case 3:
+    case 4: {
+      constexpr RealT wt1 = 0.109951743655322;
+      constexpr RealT wt2 = 0.223381589678011;
+      wts[0] = wt1;
+      wts[1] = wt1;
+      wts[2] = wt1;
+      wts[3] = wt2;
+      wts[4] = wt2;
+      wts[5] = wt2;
+
+      constexpr RealT x1 = 0.091576213509771;
+      constexpr RealT x2 = 0.816847572980459;
+      constexpr RealT x3 = 0.108103018168070;
+      constexpr RealT x4 = 0.445948490915965;
+      coords[0] = x1;
+      coords[1] = x1;
+      coords[2] = x2;
+      coords[3] = x1;
+      coords[4] = x1;
+      coords[5] = x2;
+      coords[6] = x3;
+      coords[7] = x4;
+      coords[8] = x4;
+      coords[9] = x3;
+      coords[10] = x4;
+      coords[11] = x4;
+      return 6;
+    }
+    default:
+#ifdef TRIBOL_USE_HOST
+      SLIC_ERROR( "GetCommonPlaneTriangleRule(): only Gauss integration of order 2-4 is implemented." );
+#endif
+      return 0;
+  }
+}
+
+TRIBOL_HOST_DEVICE inline void EvalWeakFormIntegralCommonPlaneFullTri( SurfaceContactElem const& elem,
+                                                                       const int tri_order, RealT* const integ1,
+                                                                       RealT* const integ2 )
+{
+  if ( elem.dim != 3 ) {
+    RealT cx[3] = { 0., 0., 0. };
+    GetCommonPlaneOverlapCentroid( elem, cx );
+    AccumulateCommonPlaneIntegralAtPoint( elem, cx, 1.0, integ1, integ2 );
+    return;
   }
 
-  return;
+  constexpr int max_qpts = 6;
+  RealT rule_wts[max_qpts] = { 0., 0., 0., 0., 0., 0. };
+  RealT rule_coords[2 * max_qpts] = { 0. };
+  const int num_qpts = GetCommonPlaneTriangleRule( tri_order, rule_wts, rule_coords );
+
+  RealT centroid[3];
+  GetCommonPlaneOverlapCentroid( elem, centroid );
+
+  RealT xTri[3];
+  RealT yTri[3];
+  RealT zTri[3];
+
+  for ( int j = 0; j < elem.numPolyVert; ++j ) {
+    const int next = ( j == elem.numPolyVert - 1 ) ? 0 : j + 1;
+    xTri[0] = elem.overlapCoords[elem.dim * j];
+    yTri[0] = elem.overlapCoords[elem.dim * j + 1];
+    zTri[0] = elem.overlapCoords[elem.dim * j + 2];
+    xTri[1] = elem.overlapCoords[elem.dim * next];
+    yTri[1] = elem.overlapCoords[elem.dim * next + 1];
+    zTri[1] = elem.overlapCoords[elem.dim * next + 2];
+    xTri[2] = centroid[0];
+    yTri[2] = centroid[1];
+    zTri[2] = centroid[2];
+
+    const RealT area = Area3DTri( xTri, yTri, zTri );
+    if ( area <= 0. ) {
+      continue;
+    }
+
+    for ( int qp = 0; qp < num_qpts; ++qp ) {
+      const RealT xi = rule_coords[2 * qp];
+      const RealT eta = rule_coords[2 * qp + 1];
+      const RealT n0 = 1. - xi - eta;
+      RealT x[3];
+      x[0] = n0 * xTri[0] + xi * xTri[1] + eta * xTri[2];
+      x[1] = n0 * yTri[0] + xi * yTri[1] + eta * yTri[2];
+      x[2] = n0 * zTri[0] + xi * zTri[1] + eta * zTri[2];
+      AccumulateCommonPlaneIntegralAtPoint( elem, x, area * rule_wts[qp], integ1, integ2 );
+    }
+  }
+}
+
+TRIBOL_HOST_DEVICE inline void EvalWeakFormIntegralCommonPlane( SurfaceContactElem const& elem, const PolyInteg rule,
+                                                                const int tri_order, RealT* const integ1,
+                                                                RealT* const integ2 )
+{
+  switch ( rule ) {
+    case SINGLE_POINT: {
+      RealT cx[3] = { 0., 0., 0. };
+      GetCommonPlaneOverlapCentroid( elem, cx );
+      AccumulateCommonPlaneIntegralAtPoint( elem, cx, 1.0, integ1, integ2 );
+      break;
+    }
+    case FULL_TRI_DECOMP:
+      EvalWeakFormIntegralCommonPlaneFullTri( elem, tri_order, integ1, integ2 );
+      break;
+    default:
+#ifdef TRIBOL_USE_HOST
+      SLIC_ERROR( "EvalWeakFormIntegralCommonPlane(): unsupported polygon integration rule." );
+#endif
+      break;
+  }
+}
+
+template <>
+TRIBOL_HOST_DEVICE inline void EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( SurfaceContactElem const& elem,
+                                                                                 RealT* const integ1,
+                                                                                 RealT* const integ2 )
+{
+  RealT cx[3] = { 0., 0., 0. };
+  GetCommonPlaneOverlapCentroid( elem, cx );
+  AccumulateCommonPlaneIntegralAtPoint( elem, cx, 1.0, integ1, integ2 );
 }
 
 }  // end namespace tribol

@@ -444,6 +444,8 @@ struct PenaltyEnforcementOptions {
   PenaltyConstraintType constraint_type;
   KinematicPenaltyCalculation kinematic_calculation;
   RatePenaltyCalculation rate_calculation;
+  PolyInteg common_plane_rule{ SINGLE_POINT };
+  int common_plane_triangle_order{ 3 };
 
   bool constraint_type_set{ false };
   bool kinematic_calc_set{ false };

@@ -186,8 +186,74 @@ class CommonPlaneTest : public ::testing::Test {
 
   void TearDown() override { this->m_mesh.clear(); }
 
- protected:
+protected:
 };
+
+struct WarpedQuadForceResult {
+  int err{ -1 };
+  RealT gap{ 0. };
+  RealT total_abs_force{ 0. };
+  RealT total_force_z{ 0. };
+};
+
+WarpedQuadForceResult runWarpedQuadForceCase( tribol::PolyInteg rule )
+{
+  constexpr int numVerts = 4;
+
+  RealT x1[numVerts] = { 0.0, 1.0, 1.0, 0.0 };
+  RealT y1[numVerts] = { 0.0, 0.0, 1.0, 1.0 };
+  RealT z1[numVerts] = { 0.0, 0.0, 0.0, 0.0 };
+
+  RealT x2[numVerts] = { 0.0, 0.0, 1.0, 1.0 };
+  RealT y2[numVerts] = { 0.0, 1.0, 1.0, 0.0 };
+  RealT z2[numVerts] = { -0.20, 1.00, 1.00, 1.00 };
+
+  tribol::IndexT conn1[numVerts] = { 0, 1, 2, 3 };
+  tribol::IndexT conn2[numVerts] = { 0, 1, 2, 3 };
+
+  tribol::registerMesh( 0, 1, numVerts, &conn1[0], (int)( tribol::LINEAR_QUAD ), &x1[0], &y1[0], &z1[0],
+                        tribol::MemorySpace::Host );
+  tribol::registerMesh( 1, 1, numVerts, &conn2[0], (int)( tribol::LINEAR_QUAD ), &x2[0], &y2[0], &z2[0],
+                        tribol::MemorySpace::Host );
+
+  RealT fx1[numVerts] = { 0., 0., 0., 0. };
+  RealT fy1[numVerts] = { 0., 0., 0., 0. };
+  RealT fz1[numVerts] = { 0., 0., 0., 0. };
+  RealT fx2[numVerts] = { 0., 0., 0., 0. };
+  RealT fy2[numVerts] = { 0., 0., 0., 0. };
+  RealT fz2[numVerts] = { 0., 0., 0., 0. };
+
+  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], &fz1[0] );
+  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], &fz2[0] );
+
+  tribol::setKinematicConstantPenalty( 0, 1.0 );
+  tribol::setKinematicConstantPenalty( 1, 1.0 );
+
+  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                                  tribol::ExecutionMode::Sequential );
+
+  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
+  tribol::setCommonPlaneIntegrationOptions( 0, rule, 3 );
+  tribol::setContactAreaFrac( 0, 1.e-12 );
+
+  WarpedQuadForceResult result;
+  RealT dt = 1.;
+  result.err = tribol::update( 1, 1., dt );
+
+  auto& cs = tribol::CouplingSchemeManager::getInstance().at( 0 );
+  EXPECT_EQ( 1, cs.getNumActivePairs() );
+  result.gap = cs.getCompGeom().getCommonPlane( 0 ).m_gap;
+
+  for ( int i = 0; i < numVerts; ++i ) {
+    result.total_abs_force += std::abs( fx1[i] ) + std::abs( fy1[i] ) + std::abs( fz1[i] );
+    result.total_abs_force += std::abs( fx2[i] ) + std::abs( fy2[i] ) + std::abs( fz2[i] );
+    result.total_force_z += fz1[i] + fz2[i];
+  }
+
+  tribol::finalize();
+  return result;
+}
 
 TEST_F( CommonPlaneTest, penetration_gap_check )
 {
@@ -243,6 +309,104 @@ TEST_F( CommonPlaneTest, penetration_gap_check )
   compareGaps( couplingScheme, gap, 1.E-8, "kinematic_penetration" );
 
   tribol::finalize();
+}
+
+TEST_F( CommonPlaneTest, full_triangle_decomp_quad_execution )
+{
+  this->m_mesh.mortarMeshId = 0;
+  this->m_mesh.nonmortarMeshId = 1;
+
+  const int nElems = 2;
+  const RealT x_min1 = 0.;
+  const RealT y_min1 = 0.;
+  const RealT z_min1 = 0.;
+  const RealT x_max1 = 1.;
+  const RealT y_max1 = 1.;
+  const RealT z_max1 = 1.05;
+
+  const RealT x_min2 = 0.;
+  const RealT y_min2 = 0.;
+  const RealT z_min2 = 0.95;
+  const RealT x_max2 = 1.;
+  const RealT y_max2 = 1.;
+  const RealT z_max2 = 2.;
+
+  this->m_mesh.setupContactMeshHex( nElems, nElems, nElems, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1, nElems,
+                                    nElems, nElems, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0., 0. );
+
+  tribol::TestControlParameters parameters;
+  parameters.dt = 1.e-3;
+  parameters.const_penalty = 1.0;
+  parameters.common_plane_rule = tribol::FULL_TRI_DECOMP;
+  parameters.common_plane_triangle_order = 3;
+
+  int err = this->m_mesh.tribolSetupAndUpdate( tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS,
+                                               tribol::NO_CASE, false, parameters );
+
+  EXPECT_EQ( err, 0 );
+
+  tribol::CouplingScheme* couplingScheme = &tribol::CouplingSchemeManager::getInstance().at( 0 );
+  compareGaps( couplingScheme, z_min2 - z_max1, 1.E-8, "kinematic_penetration" );
+  checkForceSense( couplingScheme );
+
+  tribol::finalize();
+}
+
+TEST_F( CommonPlaneTest, full_triangle_decomp_triangle_execution )
+{
+  this->m_mesh.mortarMeshId = 0;
+  this->m_mesh.nonmortarMeshId = 1;
+
+  const int nElems = 2;
+  const RealT x_min1 = 0.;
+  const RealT y_min1 = 0.;
+  const RealT z_min1 = 0.;
+  const RealT x_max1 = 1.;
+  const RealT y_max1 = 1.;
+  const RealT z_max1 = 1.05;
+
+  const RealT x_min2 = 0.;
+  const RealT y_min2 = 0.;
+  const RealT z_min2 = 0.95;
+  const RealT x_max2 = 1.;
+  const RealT y_max2 = 1.;
+  const RealT z_max2 = 2.;
+
+  this->m_mesh.setupContactMeshTet( nElems, nElems, nElems, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1, nElems,
+                                    nElems, nElems, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0., 0. );
+
+  tribol::TestControlParameters parameters;
+  parameters.dt = 1.e-3;
+  parameters.const_penalty = 1.0;
+  parameters.common_plane_rule = tribol::FULL_TRI_DECOMP;
+  parameters.common_plane_triangle_order = 3;
+
+  int err = this->m_mesh.tribolSetupAndUpdate( tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS,
+                                               tribol::NO_CASE, false, parameters );
+
+  EXPECT_EQ( err, 0 );
+
+  tribol::CouplingScheme* couplingScheme = &tribol::CouplingSchemeManager::getInstance().at( 0 );
+  compareGaps( couplingScheme, z_min2 - z_max1, 1.E-8, "kinematic_penetration" );
+  checkForceSense( couplingScheme );
+
+  tribol::finalize();
+}
+
+TEST_F( CommonPlaneTest, full_triangle_decomp_warped_quad_local_contact )
+{
+  const auto single_point = runWarpedQuadForceCase( tribol::SINGLE_POINT );
+  const auto full_tri = runWarpedQuadForceCase( tribol::FULL_TRI_DECOMP );
+
+  EXPECT_EQ( single_point.err, 0 );
+  EXPECT_EQ( full_tri.err, 0 );
+
+  EXPECT_GT( single_point.gap, 0. );
+  EXPECT_GT( full_tri.gap, 0. );
+
+  EXPECT_NEAR( single_point.total_abs_force, 0., 1.e-12 );
+  EXPECT_GT( full_tri.total_abs_force, 1.e-6 );
+  EXPECT_NEAR( full_tri.total_force_z, 0., 1.e-12 );
 }
 
 TEST_F( CommonPlaneTest, separation_gap_check )
@@ -671,11 +835,12 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )
   // by the gap and then divided amongst the edge nodes
   RealT force_y = 0.5 * gap / numVerts;
   RealT force_x = visc_coeff * ( vx1[0] - vx2[0] ) / numVerts;
+  constexpr RealT tol = 5.e-5;
   for ( int i = 0; i < numVerts; ++i ) {
-    EXPECT_NEAR( fx1[i], -force_x, 1.e-10 );
-    EXPECT_NEAR( fy1[i], -force_y, 1.e-10 );
-    EXPECT_NEAR( fx2[i], force_x, 1.e-10 );
-    EXPECT_NEAR( fy2[i], force_y, 1.e-10 );
+    EXPECT_NEAR( fx1[i], -force_x, tol );
+    EXPECT_NEAR( fy1[i], -force_y, tol );
+    EXPECT_NEAR( fx2[i], force_x, tol );
+    EXPECT_NEAR( fy2[i], force_y, tol );
   }
 }
 

@@ -1142,6 +1142,7 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
 
     // set penalty options after registering coupling scheme
     setPenaltyOptions( csIndex, constraint_type, pen_calc, rate_calc );
+    setCommonPlaneIntegrationOptions( csIndex, params.common_plane_rule, params.common_plane_triangle_order );
 
   } else if ( ( method == SINGLE_MORTAR || method == ALIGNED_MORTAR ) && enforcement == LAGRANGE_MULTIPLIER ) {
     // note, eval modes and sparse modes not exposed in the interface to this class
