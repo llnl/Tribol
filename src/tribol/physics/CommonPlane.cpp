@@ -41,39 +41,42 @@ TRIBOL_HOST_DEVICE inline RealT ComputeRatePenalty( const MeshData::Viewer& m1, 
   }
 }
 
-TRIBOL_HOST_DEVICE inline void EvalLinearFaceAtPoint( const RealT* face_coords, const int num_nodes,
-                                                      const RealT x_query[3], RealT x_face[3], RealT* phi,
-                                                      const int value_dim = 0, const RealT* nodal_vals = nullptr,
-                                                      RealT* values = nullptr )
+TRIBOL_HOST_DEVICE inline bool Solve3x3( const RealT A[3][3], const RealT b[3], RealT x[3] )
 {
-  RealT xA[max_nodes_per_face] = { 0., 0., 0., 0. };
-  RealT yA[max_nodes_per_face] = { 0., 0., 0., 0. };
-  RealT zA[max_nodes_per_face] = { 0., 0., 0., 0. };
-  for ( int i = 0; i < num_nodes; ++i ) {
-    xA[i] = face_coords[3 * i];
-    yA[i] = face_coords[3 * i + 1];
-    zA[i] = face_coords[3 * i + 2];
+  const RealT detA = A[0][0] * ( A[1][1] * A[2][2] - A[1][2] * A[2][1] ) -
+                     A[0][1] * ( A[1][0] * A[2][2] - A[1][2] * A[2][0] ) +
+                     A[0][2] * ( A[1][0] * A[2][1] - A[1][1] * A[2][0] );
+  constexpr RealT det_tol = 1.e-15;
+  if ( std::abs( detA ) <= det_tol ) {
+    return false;
   }
 
-  RealT xi[2] = { 0., 0. };
-  InvIso( x_query, xA, yA, zA, num_nodes, xi );
+  const RealT inv_detA = 1. / detA;
+  x[0] = inv_detA * ( b[0] * ( A[1][1] * A[2][2] - A[1][2] * A[2][1] ) -
+                      A[0][1] * ( b[1] * A[2][2] - A[1][2] * b[2] ) +
+                      A[0][2] * ( b[1] * A[2][1] - A[1][1] * b[2] ) );
+  x[1] = inv_detA * ( A[0][0] * ( b[1] * A[2][2] - A[1][2] * b[2] ) -
+                      b[0] * ( A[1][0] * A[2][2] - A[1][2] * A[2][0] ) +
+                      A[0][2] * ( A[1][0] * b[2] - b[1] * A[2][0] ) );
+  x[2] = inv_detA * ( A[0][0] * ( A[1][1] * b[2] - b[1] * A[2][1] ) -
+                      A[0][1] * ( A[1][0] * b[2] - b[1] * A[2][0] ) +
+                      b[0] * ( A[1][0] * A[2][1] - A[1][1] * A[2][0] ) );
+  return true;
+}
 
+TRIBOL_HOST_DEVICE inline void AccumulateFaceInterpolation( const RealT* face_coords, const int num_nodes, const RealT* phi,
+                                                            RealT x_face[3], const int value_dim = 0,
+                                                            const RealT* nodal_vals = nullptr, RealT* values = nullptr )
+{
   initRealArray( x_face, max_dim, 0. );
-  initRealArray( phi, num_nodes, 0. );
   if ( values != nullptr ) {
     initRealArray( values, value_dim, 0. );
   }
 
   for ( int a = 0; a < num_nodes; ++a ) {
-    if ( num_nodes == 4 ) {
-      LinIsoQuadShapeFunc( xi[0], xi[1], a, phi[a] );
-    } else {
-      LinIsoTriShapeFunc( xi[0], xi[1], a, phi[a] );
-    }
-
-    x_face[0] += xA[a] * phi[a];
-    x_face[1] += yA[a] * phi[a];
-    x_face[2] += zA[a] * phi[a];
+    x_face[0] += face_coords[3 * a] * phi[a];
+    x_face[1] += face_coords[3 * a + 1] * phi[a];
+    x_face[2] += face_coords[3 * a + 2] * phi[a];
 
     if ( values != nullptr ) {
       for ( int i = 0; i < value_dim; ++i ) {
@@ -81,6 +84,170 @@ TRIBOL_HOST_DEVICE inline void EvalLinearFaceAtPoint( const RealT* face_coords, 
       }
     }
   }
+}
+
+TRIBOL_HOST_DEVICE inline bool EvalLinearFaceAtProjectedPoint( const RealT* face_coords, const int num_nodes,
+                                                               const RealT x_query[3], const RealT projection_dir[3],
+                                                               RealT x_face[3], RealT* phi, const int value_dim = 0,
+                                                               const RealT* nodal_vals = nullptr, RealT* values = nullptr )
+{
+  // CommonPlane quadrature points lie on the overlap polygon. Evaluate the face
+  // fields at the corresponding on-face point found by projecting along the
+  // common-plane normal rather than by an off-surface closest-point inverse map.
+  initRealArray( phi, num_nodes, 0. );
+
+  if ( num_nodes == 3 ) {
+    const RealT x0[3] = { face_coords[0], face_coords[1], face_coords[2] };
+    const RealT e1[3] = { face_coords[3] - x0[0], face_coords[4] - x0[1], face_coords[5] - x0[2] };
+    const RealT e2[3] = { face_coords[6] - x0[0], face_coords[7] - x0[1], face_coords[8] - x0[2] };
+
+    RealT n_face[3];
+    crossProd( e1[0], e1[1], e1[2], e2[0], e2[1], e2[2], n_face[0], n_face[1], n_face[2] );
+
+    const RealT denom = dotProd( n_face[0], n_face[1], n_face[2], projection_dir[0], projection_dir[1], projection_dir[2] );
+    constexpr RealT parallel_tol = 1.e-14;
+    if ( std::abs( denom ) <= parallel_tol ) {
+      return false;
+    }
+
+    const RealT dx0 = x0[0] - x_query[0];
+    const RealT dy0 = x0[1] - x_query[1];
+    const RealT dz0 = x0[2] - x_query[2];
+    const RealT step =
+        dotProd( n_face[0], n_face[1], n_face[2], dx0, dy0, dz0 ) / denom;
+
+    x_face[0] = x_query[0] + step * projection_dir[0];
+    x_face[1] = x_query[1] + step * projection_dir[1];
+    x_face[2] = x_query[2] + step * projection_dir[2];
+
+    const RealT r[3] = { x_face[0] - x0[0], x_face[1] - x0[1], x_face[2] - x0[2] };
+    const RealT gram11 = dotProd( e1[0], e1[1], e1[2], e1[0], e1[1], e1[2] );
+    const RealT gram12 = dotProd( e1[0], e1[1], e1[2], e2[0], e2[1], e2[2] );
+    const RealT gram22 = dotProd( e2[0], e2[1], e2[2], e2[0], e2[1], e2[2] );
+    const RealT rhs1 = dotProd( e1[0], e1[1], e1[2], r[0], r[1], r[2] );
+    const RealT rhs2 = dotProd( e2[0], e2[1], e2[2], r[0], r[1], r[2] );
+
+    const RealT gram_det = gram11 * gram22 - gram12 * gram12;
+    constexpr RealT gram_tol = 1.e-15;
+    if ( std::abs( gram_det ) <= gram_tol ) {
+      return false;
+    }
+
+    const RealT xi = ( gram22 * rhs1 - gram12 * rhs2 ) / gram_det;
+    const RealT eta = ( gram11 * rhs2 - gram12 * rhs1 ) / gram_det;
+    phi[0] = 1. - xi - eta;
+    phi[1] = xi;
+    phi[2] = eta;
+  } else if ( num_nodes == 4 ) {
+    constexpr int max_iter = 25;
+    constexpr RealT step_tol = 1.e-12;
+    constexpr RealT residual_tol = 1.e-12;
+    constexpr RealT xi_tol = 1.e-8;
+
+    RealT xi = 0.;
+    RealT eta = 0.;
+    RealT phi0[max_nodes_per_face] = { 0.25, 0.25, 0.25, 0.25 };
+    RealT x_center[3];
+    AccumulateFaceInterpolation( face_coords, num_nodes, phi0, x_center );
+    RealT s = ( x_center[0] - x_query[0] ) * projection_dir[0] + ( x_center[1] - x_query[1] ) * projection_dir[1] +
+              ( x_center[2] - x_query[2] ) * projection_dir[2];
+    bool converged = false;
+
+    for ( int iter = 0; iter < max_iter; ++iter ) {
+      const RealT xi_node[4] = { 1., -1., -1., 1. };
+      const RealT eta_node[4] = { 1., 1., -1., -1. };
+      RealT dxdxi[3] = { 0., 0., 0. };
+      RealT dxdeta[3] = { 0., 0., 0. };
+      initRealArray( phi, num_nodes, 0. );
+      initRealArray( x_face, max_dim, 0. );
+
+      for ( int a = 0; a < num_nodes; ++a ) {
+        phi[a] = 0.25 * ( 1. + xi_node[a] * xi ) * ( 1. + eta_node[a] * eta );
+        const RealT dphi_dxi = 0.25 * xi_node[a] * ( 1. + eta_node[a] * eta );
+        const RealT dphi_deta = 0.25 * eta_node[a] * ( 1. + xi_node[a] * xi );
+
+        const RealT xa = face_coords[3 * a];
+        const RealT ya = face_coords[3 * a + 1];
+        const RealT za = face_coords[3 * a + 2];
+
+        x_face[0] += xa * phi[a];
+        x_face[1] += ya * phi[a];
+        x_face[2] += za * phi[a];
+
+        dxdxi[0] += xa * dphi_dxi;
+        dxdxi[1] += ya * dphi_dxi;
+        dxdxi[2] += za * dphi_dxi;
+
+        dxdeta[0] += xa * dphi_deta;
+        dxdeta[1] += ya * dphi_deta;
+        dxdeta[2] += za * dphi_deta;
+      }
+
+      RealT residual[3] = { x_face[0] - x_query[0] - s * projection_dir[0], x_face[1] - x_query[1] - s * projection_dir[1],
+                            x_face[2] - x_query[2] - s * projection_dir[2] };
+      const RealT residual_norm = magnitude( residual[0], residual[1], residual[2] );
+      if ( residual_norm <= residual_tol ) {
+        converged = true;
+        break;
+      }
+
+      RealT J[3][3] = { { dxdxi[0], dxdeta[0], -projection_dir[0] },
+                        { dxdxi[1], dxdeta[1], -projection_dir[1] },
+                        { dxdxi[2], dxdeta[2], -projection_dir[2] } };
+      RealT rhs[3] = { -residual[0], -residual[1], -residual[2] };
+      RealT delta[3];
+      if ( !Solve3x3( J, rhs, delta ) ) {
+        return false;
+      }
+
+      xi += delta[0];
+      eta += delta[1];
+      s += delta[2];
+
+      const RealT step_norm = magnitude( delta[0], delta[1], delta[2] );
+      if ( step_norm <= step_tol ) {
+        converged = true;
+        break;
+      }
+    }
+
+    if ( !converged || xi < -1. - xi_tol || xi > 1. + xi_tol || eta < -1. - xi_tol || eta > 1. + xi_tol ) {
+      return false;
+    }
+
+    initRealArray( phi, num_nodes, 0. );
+    phi[0] = 0.25 * ( 1. + xi ) * ( 1. + eta );
+    phi[1] = 0.25 * ( 1. - xi ) * ( 1. + eta );
+    phi[2] = 0.25 * ( 1. - xi ) * ( 1. - eta );
+    phi[3] = 0.25 * ( 1. + xi ) * ( 1. - eta );
+    AccumulateFaceInterpolation( face_coords, num_nodes, phi, x_face );
+
+    const RealT line_residual =
+        magnitude( x_face[0] - x_query[0], x_face[1] - x_query[1], x_face[2] - x_query[2] );
+    const RealT normal_step =
+        ( x_face[0] - x_query[0] ) * projection_dir[0] + ( x_face[1] - x_query[1] ) * projection_dir[1] +
+        ( x_face[2] - x_query[2] ) * projection_dir[2];
+    const RealT projection_residual =
+        magnitude( x_face[0] - x_query[0] - normal_step * projection_dir[0],
+                   x_face[1] - x_query[1] - normal_step * projection_dir[1],
+                   x_face[2] - x_query[2] - normal_step * projection_dir[2] );
+    if ( line_residual > 0. && projection_residual > residual_tol * line_residual ) {
+      return false;
+    }
+  } else {
+    return false;
+  }
+
+  if ( values != nullptr ) {
+    initRealArray( values, value_dim, 0. );
+    for ( int a = 0; a < num_nodes; ++a ) {
+      for ( int i = 0; i < value_dim; ++i ) {
+        values[i] += nodal_vals[i + a * value_dim] * phi[a];
+      }
+    }
+  }
+
+  return true;
 }
 
 TRIBOL_HOST_DEVICE inline void AccumulateContactForce( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
@@ -455,10 +622,17 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
           RealT vel_q1[max_dim] = { 0., 0., 0. };
           RealT vel_q2[max_dim] = { 0., 0., 0. };
 
-          EvalLinearFaceAtPoint( actual_xf1, num_nodes_per_face, x_q, x_qf1, phi_q1, use_rate ? dim : 0,
-                                 use_rate ? &actual_vf1[0] : nullptr, use_rate ? vel_q1 : nullptr );
-          EvalLinearFaceAtPoint( actual_xf2, num_nodes_per_face, x_q, x_qf2, phi_q2, use_rate ? dim : 0,
-                                 use_rate ? &actual_vf2[0] : nullptr, use_rate ? vel_q2 : nullptr );
+          const bool mapped_face1 =
+              EvalLinearFaceAtProjectedPoint( actual_xf1, num_nodes_per_face, x_q, overlapNormal, x_qf1, phi_q1,
+                                              use_rate ? dim : 0, use_rate ? &actual_vf1[0] : nullptr,
+                                              use_rate ? vel_q1 : nullptr );
+          const bool mapped_face2 =
+              EvalLinearFaceAtProjectedPoint( actual_xf2, num_nodes_per_face, x_q, overlapNormal, x_qf2, phi_q2,
+                                              use_rate ? dim : 0, use_rate ? &actual_vf2[0] : nullptr,
+                                              use_rate ? vel_q2 : nullptr );
+          if ( !mapped_face1 || !mapped_face2 ) {
+            continue;
+          }
 
           RealT local_gap = ( x_qf1[0] - x_qf2[0] ) * overlapNormal[0] + ( x_qf1[1] - x_qf2[1] ) * overlapNormal[1] +
                             ( x_qf1[2] - x_qf2[2] ) * overlapNormal[2];
@@ -723,8 +897,15 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
           RealT vel_q1[max_dim];
           RealT vel_q2[max_dim];
 
-          EvalLinearFaceAtPoint( actual_xf1, numNodesPerFace1, x_q, x_qf1, phi_q1, dim, &actual_vf1[0], vel_q1 );
-          EvalLinearFaceAtPoint( actual_xf2, numNodesPerFace2, x_q, x_qf2, phi_q2, dim, &actual_vf2[0], vel_q2 );
+          const bool mapped_face1 =
+              EvalLinearFaceAtProjectedPoint( actual_xf1, numNodesPerFace1, x_q, overlapNormal, x_qf1, phi_q1, dim,
+                                              &actual_vf1[0], vel_q1 );
+          const bool mapped_face2 =
+              EvalLinearFaceAtProjectedPoint( actual_xf2, numNodesPerFace2, x_q, overlapNormal, x_qf2, phi_q2, dim,
+                                              &actual_vf2[0], vel_q2 );
+          if ( !mapped_face1 || !mapped_face2 ) {
+            continue;
+          }
 
           RealT local_gap = ( x_qf1[0] - x_qf2[0] ) * overlapNormal[0] + ( x_qf1[1] - x_qf2[1] ) * overlapNormal[1] +
                             ( x_qf1[2] - x_qf2[2] ) * overlapNormal[2];
