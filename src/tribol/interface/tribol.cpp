@@ -111,8 +111,8 @@ void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int triangl
     return;
   }
 
-  SLIC_ERROR_ROOT_IF( triangle_order < 2 || triangle_order > 4,
-                      "tribol::setCommonPlaneIntegrationOptions(): triangle quadrature order must be in [2,4]." );
+  SLIC_ERROR_ROOT_IF( triangle_order < 2 || triangle_order > 10,
+                      "tribol::setCommonPlaneIntegrationOptions(): triangle quadrature order must be in [2,10]." );
 
   penalty_options.common_plane_rule = rule;
   penalty_options.common_plane_triangle_order = triangle_order;

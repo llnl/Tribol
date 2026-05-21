@@ -18,6 +18,43 @@
 
 using RealT = tribol::RealT;
 
+namespace {
+
+RealT factorial( int n )
+{
+  RealT result = 1.;
+  for ( int i = 2; i <= n; ++i ) {
+    result *= i;
+  }
+  return result;
+}
+
+RealT referenceTriangleMoment( int px, int py )
+{
+  return factorial( px ) * factorial( py ) / factorial( px + py + 2 );
+}
+
+RealT normalizedReferenceTriangleMoment( int px, int py )
+{
+  return 2. * referenceTriangleMoment( px, py );
+}
+
+RealT evalTriangleRuleMoment( bool use_legacy, int order, int px, int py )
+{
+  RealT wts[tribol::max_symmetric_triangle_qpts] = { 0. };
+  RealT coords[2 * tribol::max_symmetric_triangle_qpts] = { 0. };
+  const int num_qpts =
+      use_legacy ? tribol::GetLegacyTriangleRule( order, wts, coords ) : tribol::GetCommonPlaneTriangleRule( order, wts, coords );
+
+  RealT value = 0.;
+  for ( int qp = 0; qp < num_qpts; ++qp ) {
+    value += wts[qp] * std::pow( coords[2 * qp], px ) * std::pow( coords[2 * qp + 1], py );
+  }
+  return value;
+}
+
+}  // namespace
+
 /*!
  * Test fixture class with some setup necessary to use the
  * triangular decomposition of a quadrilateral with integration
@@ -240,6 +277,40 @@ TEST_F( IsoIntegTest, nonaffine )
   bool convrg = integrate( 1.e-5 );
 
   EXPECT_EQ( convrg, true );
+}
+
+TEST( TriangleRuleTest, legacy_and_symmetric_match_on_shared_orders )
+{
+  for ( int order : { 2, 4 } ) {
+    EXPECT_NEAR( evalTriangleRuleMoment( true, order, 0, 0 ), evalTriangleRuleMoment( false, order, 0, 0 ), 2.e-10 );
+    EXPECT_NEAR( evalTriangleRuleMoment( true, order, 2, 0 ), evalTriangleRuleMoment( false, order, 2, 0 ), 2.e-10 );
+    EXPECT_NEAR( evalTriangleRuleMoment( true, order, 1, 1 ), evalTriangleRuleMoment( false, order, 1, 1 ), 2.e-10 );
+  }
+}
+
+TEST( TriangleRuleTest, gauss_poly_int_tri_supports_order_10 )
+{
+  constexpr int dim = 3;
+  constexpr int num_nodes = 3;
+  RealT xyz[dim * num_nodes] = { 0., 0., 0., 1., 0., 0., 0., 1., 0. };
+
+  tribol::SurfaceContactElem elem( dim, xyz, xyz, xyz, num_nodes, num_nodes, nullptr, nullptr, 0, 0 );
+  tribol::IntegPts integ;
+  tribol::GaussPolyIntTri( elem, integ, 10 );
+
+  RealT area = 0.;
+  RealT moment73 = 0.;
+  for ( int ip = 0; ip < integ.numIPs; ++ip ) {
+    const RealT x = integ.xy[dim * ip];
+    const RealT y = integ.xy[dim * ip + 1];
+    area += integ.wts[ip];
+    moment73 += integ.wts[ip] * std::pow( x, 7 ) * std::pow( y, 3 );
+  }
+
+  EXPECT_EQ( integ.numIPs, 75 );
+  EXPECT_NEAR( area, 0.5, 1.e-14 );
+  EXPECT_NEAR( moment73, referenceTriangleMoment( 7, 3 ), 1.e-14 );
+  EXPECT_NEAR( evalTriangleRuleMoment( false, 10, 7, 3 ), normalizedReferenceTriangleMoment( 7, 3 ), 1.e-14 );
 }
 
 int main( int argc, char* argv[] )

@@ -576,8 +576,8 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
         mesh2.getFaceVelocities( index2, actual_vf2 );
       }
 
-      constexpr int max_qpts = 6;
-      RealT rule_wts[max_qpts] = { 0., 0., 0., 0., 0., 0. };
+      constexpr int max_qpts = max_symmetric_triangle_qpts;
+      RealT rule_wts[max_qpts] = { 0. };
       RealT rule_coords[2 * max_qpts] = { 0. };
       const int num_qpts = GetCommonPlaneTriangleRule( pen_enfrc_options.common_plane_triangle_order, rule_wts, rule_coords );
 
@@ -850,8 +850,8 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
       mesh1.getFaceVelocities( index1, actual_vf1 );
       mesh2.getFaceVelocities( index2, actual_vf2 );
 
-      constexpr int max_qpts = 6;
-      RealT rule_wts[max_qpts] = { 0., 0., 0., 0., 0., 0. };
+      constexpr int max_qpts = max_symmetric_triangle_qpts;
+      RealT rule_wts[max_qpts] = { 0. };
       RealT rule_coords[2 * max_qpts] = { 0. };
       const int num_qpts = GetCommonPlaneTriangleRule( pen_enfrc_options.common_plane_triangle_order, rule_wts, rule_coords );
 

@@ -90,6 +90,16 @@ template <ContactMethod M, PolyInteg I>
 TRIBOL_HOST_DEVICE inline void EvalWeakFormIntegral( SurfaceContactElem const& elem, RealT* const integ1,
                                                      RealT* const integ2 );
 
+/// Selector for the triangle quadrature family used by GaussPolyIntTri().
+enum TriangleQuadratureRuleFamily
+{
+  TRI_RULE_LEGACY,
+  TRI_RULE_SYMMETRIC
+};
+
+/// Maximum number of quadrature points in the built-in symmetric triangle rules.
+constexpr int max_symmetric_triangle_qpts = 25;
+
 /*!
  *
  * \brief Populates the integration points and weights on the IntegPts object
@@ -120,13 +130,15 @@ void TWBPolyInt( SurfaceContactElem const& elem, IntegPts& integ, int k );
  * \param [in] elem SurfaceContactElem object containing dimension and overlap vertices
  * \param [in,out] integ IntegPts object holding integration points and weights
  * \param [in] k order of integration
+ * \param [in] family selector for the triangle quadrature family
  *
- * \pre order 2 <= k <= 3
+ * \pre order 2 <= k <= 10
  * \pre integ IntegPts object can be instantiated with no-op constructor. This routine
  *            will allocate and populate necessary data.
  *
  */
-void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, int k );
+void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, int k,
+                      TriangleQuadratureRuleFamily family = TRI_RULE_SYMMETRIC );
 
 /*!
  *
@@ -201,7 +213,18 @@ TRIBOL_HOST_DEVICE inline void AccumulateCommonPlaneIntegralAtPoint( SurfaceCont
   }
 }
 
-TRIBOL_HOST_DEVICE inline int GetCommonPlaneTriangleRule( int order, RealT* wts, RealT* coords )
+/*!
+ * \brief Returns the legacy triangle quadrature rule historically used by
+ *        CommonPlane and GaussPolyIntTri().
+ *
+ * \param [in] order requested rule order
+ * \param [out] wts quadrature weights normalized so they sum to 1 on a triangle
+ * \param [out] coords quadrature coordinates stored as stacked (xi, eta) pairs
+ *
+ * \note This legacy rule is only available for the previously supported
+ *       orders 2 and 3/4 and is kept for regression comparison tests.
+ */
+TRIBOL_HOST_DEVICE inline int GetLegacyTriangleRule( int order, RealT* wts, RealT* coords )
 {
   switch ( order ) {
     case 2:
@@ -247,7 +270,226 @@ TRIBOL_HOST_DEVICE inline int GetCommonPlaneTriangleRule( int order, RealT* wts,
     }
     default:
 #ifdef TRIBOL_USE_HOST
-      SLIC_ERROR( "GetCommonPlaneTriangleRule(): only Gauss integration of order 2-4 is implemented." );
+      SLIC_ERROR( "GetLegacyTriangleRule(): only legacy Gauss integration of order 2-4 is implemented." );
+#endif
+      return 0;
+  }
+}
+
+namespace detail {
+
+/*!
+ * \brief Minimal symmetric triangle quadrature orbit data.
+ *
+ * \note The compact orbit tables below are adapted from the symmetric triangle
+ *       rules distributed in PETSc, which cite
+ *       F.D. Witherden and P.E. Vincent,
+ *       "On the identification of symmetric quadrature rules for finite element methods",
+ *       Computers & Mathematics with Applications 69(10), 2015,
+ *       doi:10.1016/j.camwa.2015.03.017.
+ *
+ *       PETSc stores weights for a reference triangle of area 2. Tribol uses
+ *       weights normalized so the weights sum to 1 and the physical triangle
+ *       area is applied separately, so the imported weights are scaled by 1/2
+ *       during expansion.
+ */
+struct SymmetricTriangleRuleData
+{
+  int num_centroid_orbits;
+  int num_edge_orbits;
+  int num_general_orbits;
+  const RealT* weights;
+  const RealT* orbits;
+};
+
+constexpr RealT symmetric_triangle_weight_scale = 0.5;
+
+constexpr RealT tri_deg2_weights[] = { 6.66666666666666666666666666666666635e-01 };
+constexpr RealT tri_deg2_orbits[] = { 1.66666666666666666666666666666666659e-01, 6.66666666666666666666666666666666635e-01 };
+
+constexpr RealT tri_deg4_weights[] = { 4.46763179356022931390014016866245598e-01, 2.19903487310643735276652649800421061e-01 };
+constexpr RealT tri_deg4_orbits[] = { 4.45948490915964886318329253883051984e-01, 1.08103018168070227363341492233896033e-01,
+                                      9.15762135097707434595714634022014804e-02, 8.16847572980458513080857073195597039e-01 };
+
+constexpr RealT tri_deg5_weights[] = { 4.50000000000000000000000000000000010e-01, 2.51878361089654305191367891000362687e-01,
+                                       2.64788305577012361475298775666303977e-01 };
+constexpr RealT tri_deg5_orbits[] = { 3.33333333333333333333333333333333317e-01, 1.01286507323456338800987361915123836e-01,
+                                      7.97426985353087322398025276169752328e-01, 4.70142064105115089770441209513447613e-01,
+                                      5.97158717897698204591175809731048219e-02 };
+
+constexpr RealT tri_deg6_weights[] = { 1.01689812740413633841873618213737963e-01, 2.33572551452758732050579222771158894e-01,
+                                       1.65702151236747150387106912840884901e-01 };
+constexpr RealT tri_deg6_orbits[] = { 6.30890144915022283403316028708191300e-02, 8.73821971016995543319336794258361644e-01,
+                                      2.49286745170910421291638553107019076e-01, 5.01426509658179157416722893785961848e-01,
+                                      5.31450498448169473532496716313981651e-02, 6.36502499121398647230142594412049640e-01,
+                                      3.10352451033784405416607733956552146e-01 };
+
+constexpr RealT tri_deg7_weights[] = { 3.30901002215842620719558969458348911e-02, 2.55888342460311145565802470369292636e-01,
+                                       1.54173292371972135669643041667482776e-01, 1.11757465806399561679632628842028190e-01 };
+constexpr RealT tri_deg7_orbits[] = { 3.37306485545878487149717263008162317e-02, 9.32538702890824302570056547398367537e-01,
+                                      2.41577382595403558950186769837781999e-01, 5.16845234809192882099626460324436002e-01,
+                                      4.74309692504718234209580735949185780e-01, 5.13806149905635315808385281016284391e-02,
+                                      4.70366446525952333414099753568849895e-02, 7.54280040550053177356239324628119970e-01,
+                                      1.98683314797351589302350700014995040e-01 };
+
+constexpr RealT tri_deg8_weights[] = { 2.88631215355574336502182220978129237e-01, 1.90183268534569249587792208777168633e-01,
+                                       2.06434741069436500563583100584258068e-01, 6.49169952463961606218518566835611904e-02,
+                                       5.44606283488699885296893801478178481e-02 };
+constexpr RealT tri_deg8_orbits[] = { 3.33333333333333333333333333333333317e-01, 4.59292588292723156028815514494169350e-01,
+                                      8.14148234145536879423689710116613481e-02, 1.70569307751760206622293501491464506e-01,
+                                      6.58861384496479586755412997017070988e-01, 5.05472283170309754584235505965989197e-02,
+                                      8.98905543365938049083152898806802161e-01, 8.39477740995760533721383453929445768e-03,
+                                      7.28492392955404281241000379176061966e-01, 2.63112829634638113421785786284643576e-01 };
+
+constexpr RealT tri_deg9_weights[] = { 1.94271592565597667638483965014577269e-01, 1.55655082009548558633478712598807923e-01,
+                                       1.59295477854420506065783548528090548e-01, 6.26694004542781410737096625744186273e-02,
+                                       5.11553513173960625233575971179996460e-02, 8.65670787545787545787545787545787526e-02 };
+constexpr RealT tri_deg9_orbits[] = { 3.33333333333333333333333333333333317e-01, 4.37089591492936637269930364435354971e-01,
+                                      1.25820817014126725460139271129290058e-01, 1.88203535619032730240961280467335542e-01,
+                                      6.23592928761934539518077439065328819e-01, 4.89682519198737627783706924836192818e-01,
+                                      2.06349616025247444325861503276144129e-02, 4.47295133944527098651065899662763588e-02,
+                                      9.10540973211094580269786820067447282e-01, 3.68384120547362836348175987833851049e-02,
+                                      7.41198598784498020690079873523423793e-01, 2.21962989160765695675102527693191078e-01 };
+
+constexpr RealT tri_deg10_weights[] = { 1.63486658292571932856237369968355216e-01, 2.67059376262991325511459567981373070e-02,
+                                        9.19159272094894560275758192650956353e-02, 1.27809812792848090865797467525306648e-01,
+                                        6.83692963259188572573831680826845816e-02, 5.05955154145767687780855813656664345e-02 };
+constexpr RealT tri_deg10_orbits[] = { 3.33333333333333333333333333333333317e-01, 3.20553732169435129309845893364897379e-02,
+                                       9.35889253566112974138030821327020524e-01, 1.42161101056564385092162103190958311e-01,
+                                       7.15677797886871229815675793618083377e-01, 3.21812995288835421225097560986048687e-01,
+                                       5.30054118927344028277095673945694069e-01, 1.48132885783820550497806765068257172e-01,
+                                       2.96198894887297676338362694260427776e-02, 6.01233328683459245454742893458687815e-01,
+                                       3.69146781827810986911420837115269408e-01, 2.83676653399384392504357555781301898e-02,
+                                       8.07930600922879065079949902881744115e-01, 1.63701733737182495669614341540125695e-01 };
+
+TRIBOL_HOST_DEVICE inline bool GetSymmetricTriangleRuleData( int order, SymmetricTriangleRuleData& rule )
+{
+  switch ( order ) {
+    case 2:
+      rule = { 0, 1, 0, tri_deg2_weights, tri_deg2_orbits };
+      return true;
+    case 3:
+    case 4:
+      rule = { 0, 2, 0, tri_deg4_weights, tri_deg4_orbits };
+      return true;
+    case 5:
+      rule = { 1, 2, 0, tri_deg5_weights, tri_deg5_orbits };
+      return true;
+    case 6:
+      rule = { 0, 2, 1, tri_deg6_weights, tri_deg6_orbits };
+      return true;
+    case 7:
+      rule = { 0, 3, 1, tri_deg7_weights, tri_deg7_orbits };
+      return true;
+    case 8:
+      rule = { 1, 3, 1, tri_deg8_weights, tri_deg8_orbits };
+      return true;
+    case 9:
+      rule = { 1, 4, 1, tri_deg9_weights, tri_deg9_orbits };
+      return true;
+    case 10:
+      rule = { 1, 2, 3, tri_deg10_weights, tri_deg10_orbits };
+      return true;
+    default:
+      return false;
+  }
+}
+
+TRIBOL_HOST_DEVICE inline int ExpandSymmetricTriangleRule( const SymmetricTriangleRuleData& rule, RealT* wts, RealT* coords )
+{
+  int w_idx = 0;
+  int c_idx = 0;
+  int q_idx = 0;
+
+  for ( int orbit = 0; orbit < rule.num_centroid_orbits; ++orbit ) {
+    const RealT a = rule.orbits[c_idx++];
+    wts[q_idx] = symmetric_triangle_weight_scale * rule.weights[w_idx++];
+    coords[2 * q_idx] = a;
+    coords[2 * q_idx + 1] = a;
+    ++q_idx;
+  }
+
+  for ( int orbit = 0; orbit < rule.num_edge_orbits; ++orbit ) {
+    const RealT a = rule.orbits[c_idx++];
+    const RealT b = rule.orbits[c_idx++];
+    const RealT w = symmetric_triangle_weight_scale * rule.weights[w_idx++];
+
+    wts[q_idx] = w;
+    coords[2 * q_idx] = a;
+    coords[2 * q_idx + 1] = b;
+    ++q_idx;
+
+    wts[q_idx] = w;
+    coords[2 * q_idx] = b;
+    coords[2 * q_idx + 1] = a;
+    ++q_idx;
+
+    wts[q_idx] = w;
+    coords[2 * q_idx] = a;
+    coords[2 * q_idx + 1] = a;
+    ++q_idx;
+  }
+
+  for ( int orbit = 0; orbit < rule.num_general_orbits; ++orbit ) {
+    const RealT a = rule.orbits[c_idx++];
+    const RealT b = rule.orbits[c_idx++];
+    const RealT c = rule.orbits[c_idx++];
+    const RealT w = symmetric_triangle_weight_scale * rule.weights[w_idx++];
+
+    const RealT xi_eta[6][2] = { { b, c }, { c, b }, { a, c }, { c, a }, { a, b }, { b, a } };
+    for ( int i = 0; i < 6; ++i ) {
+      wts[q_idx] = w;
+      coords[2 * q_idx] = xi_eta[i][0];
+      coords[2 * q_idx + 1] = xi_eta[i][1];
+      ++q_idx;
+    }
+  }
+
+  return q_idx;
+}
+
+}  // namespace detail
+
+/*!
+ * \brief Returns the built-in higher-order symmetric triangle quadrature rule.
+ *
+ * \param [in] order requested rule order
+ * \param [out] wts quadrature weights normalized so they sum to 1 on a triangle
+ * \param [out] coords quadrature coordinates stored as stacked (xi, eta) pairs
+ *
+ * \note Orders 2 through 10 are available. Order 3 uses the same minimal rule
+ *       as order 4, matching the PETSc/Witherden-Vincent data set.
+ */
+TRIBOL_HOST_DEVICE inline int GetCommonPlaneTriangleRule( int order, RealT* wts, RealT* coords )
+{
+  detail::SymmetricTriangleRuleData rule;
+  if ( !detail::GetSymmetricTriangleRuleData( order, rule ) ) {
+#ifdef TRIBOL_USE_HOST
+    SLIC_ERROR( "GetCommonPlaneTriangleRule(): only symmetric triangle integration of order 2-10 is implemented." );
+#endif
+    return 0;
+  }
+  return detail::ExpandSymmetricTriangleRule( rule, wts, coords );
+}
+
+/*!
+ * \brief Returns the requested triangle quadrature rule family.
+ *
+ * \param [in] order requested rule order
+ * \param [in] family selector for legacy versus symmetric rule data
+ * \param [out] wts quadrature weights normalized so they sum to 1 on a triangle
+ * \param [out] coords quadrature coordinates stored as stacked (xi, eta) pairs
+ */
+TRIBOL_HOST_DEVICE inline int GetTriangleRule( int order, TriangleQuadratureRuleFamily family, RealT* wts, RealT* coords )
+{
+  switch ( family ) {
+    case TRI_RULE_LEGACY:
+      return GetLegacyTriangleRule( order, wts, coords );
+    case TRI_RULE_SYMMETRIC:
+      return GetCommonPlaneTriangleRule( order, wts, coords );
+    default:
+#ifdef TRIBOL_USE_HOST
+      SLIC_ERROR( "GetTriangleRule(): unsupported triangle rule family." );
 #endif
       return 0;
   }
@@ -264,8 +506,8 @@ TRIBOL_HOST_DEVICE inline void EvalWeakFormIntegralCommonPlaneFullTri( SurfaceCo
     return;
   }
 
-  constexpr int max_qpts = 6;
-  RealT rule_wts[max_qpts] = { 0., 0., 0., 0., 0., 0. };
+  constexpr int max_qpts = max_symmetric_triangle_qpts;
+  RealT rule_wts[max_qpts] = { 0. };
   RealT rule_coords[2 * max_qpts] = { 0. };
   const int num_qpts = GetCommonPlaneTriangleRule( tri_order, rule_wts, rule_coords );
 
