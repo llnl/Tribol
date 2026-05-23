@@ -23,6 +23,9 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     double delta = 0.1;
     int N = 3;
     bool enzyme_quadrature = true;
+    SmoothingType smoothing_type = SmoothingType::Quadratic;
+    PenaltySmoothing penalty_smoothing = PenaltySmoothing::Smooth;
+    double penalty_smoothing_del = 1.0e-3;
     // ENERGY_MORTAR supports a penalty-style mode driven by the kinematic penalty parameters, even if the coupling
     // scheme is registered with LM enforcement (which is often done to enable submesh/pressure infrastructure).
     const auto& penalty_opts = cs->getEnforcementOptions().penalty_options;
@@ -36,15 +39,21 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
       if ( k_ptr ) {
         k = *k_ptr;
       }
+      auto* em_opts = cs->getMfemMeshData()->GetEnergyMortarOptions();
+      if ( em_opts ) {
+        smoothing_type = em_opts->smoothing_type == 0 ? SmoothingType::Hermite : SmoothingType::Quadratic;
+        penalty_smoothing = em_opts->penalty_smoothing == 0 ? PenaltySmoothing::Hard : PenaltySmoothing::Smooth;
+        penalty_smoothing_del = em_opts->penalty_smoothing_del;
+      }
     }
 
     SLIC_ERROR_ROOT_IF( !cs->hasMfemData(), "ENERGY_MORTAR requires MFEM mesh data." );
     SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "ENERGY_MORTAR requires MFEM submesh data." );
     SLIC_ERROR_ROOT_IF( !cs->hasMfemJacobianData(), "ENERGY_MORTAR requires MFEM Jacobian data." );
 
-    return std::make_unique<EnergyMortarAdapter>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
-                                                  *cs->getMfemJacobianData(), cs->getMesh1(), cs->getMesh2(), k, delta,
-                                                  N, enzyme_quadrature, use_penalty_ );
+    return std::make_unique<EnergyMortarAdapter>(
+        *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), cs->getMesh1(), cs->getMesh2(), k,
+        delta, N, enzyme_quadrature, use_penalty_, smoothing_type, penalty_smoothing, penalty_smoothing_del );
 #else
     SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );
     return nullptr;

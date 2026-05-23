@@ -103,6 +103,17 @@ void setMfemRedecompTriggerDisplacement( IndexT cs_id, RealT val );
 void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT mesh2_penalty );
 
 /**
+ * @brief Set energy mortar smoothing options
+ *
+ * @param cs_id The ID of the coupling scheme
+ * @param smoothing_type 0 = Hermite, 1 = Quadratic (isoparametric bounds smoothing)
+ * @param penalty_smoothing 0 = Hard, 1 = Smooth (penalty gap smoothing)
+ * @param penalty_smoothing_del Smoothing width for smooth penalty transition
+ */
+void setMfemEnergyMortarOptions( IndexT cs_id, int smoothing_type,
+                                  int penalty_smoothing, double penalty_smoothing_del );
+
+/**
  * @brief Clears existing penalty data and sets kinematic element penalty
  *
  * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()

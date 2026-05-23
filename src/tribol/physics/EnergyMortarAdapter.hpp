@@ -53,7 +53,9 @@ class EnergyMortarAdapter : public ContactFormulation {
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
                        MeshData& mesh1, MeshData& mesh2, double k, double delta, int N, bool enzyme_quadrature,
-                       bool use_penalty = true );
+                       bool use_penalty = true, SmoothingType smoothing_type = SmoothingType::Quadratic,
+                       PenaltySmoothing penalty_smoothing = PenaltySmoothing::Smooth,
+                       double penalty_smoothing_del = 1.0e-3 );
 
   /**
    * @brief Default destructor
@@ -190,9 +192,23 @@ class EnergyMortarAdapter : public ContactFormulation {
   bool use_penalty_;
 
   /**
-   * @brief Tolerance used to avoid division by zero for area-weighted quantities
+   * @brief Tolerance used to avoid division by zero for area-weighted quantities.
+   *
+   * Set to zero so that the division is never silently skipped.  Instead, nodes
+   * with non-positive area are identified and their rows are eliminated from
+   * g_tilde, dg_tilde_dx, and all downstream force / Jacobian quantities.
    */
-  double area_tol_{ 1.0e-14 };
+  double area_tol_{ 0.0 };
+
+  /**
+   * @brief Small positive regularization added to the tributary area before
+   * division.
+   *
+   * The penalty Jacobian has 1/A and 1/A^2 terms that blow up as the overlap
+   * area vanishes.  Adding a small constant eps to A caps these at O(1/eps)
+   * without perturbing the solution when A >> eps.
+   */
+  double area_reg_{ 1.0e-10 };
 
   /**
    * @brief If true, treat contact as tied (no opening) for gap filtering logic
@@ -263,9 +279,33 @@ class EnergyMortarAdapter : public ContactFormulation {
   shared::ParVector A_vec_;
 
   /**
-   * @brief Normalized gap vector g = g_tilde / A on the dual (pressure) true-dofs
+   * @brief Regularized area A_reg = A + area_reg_ used for all 1/A operations
+   */
+  shared::ParVector A_reg_vec_;
+
+  /**
+   * @brief Normalized gap vector g = g_tilde / A_reg on the dual (pressure) true-dofs.
+   *        In smooth penalty mode, this is the SMOOTHED gap H(g).
    */
   shared::ParVector gap_vec_;
+
+  /**
+   * @brief Original (unsmoothed) normalized gap g = g_tilde / A_reg.
+   *        Populated only in smooth penalty mode; aliased to gap_vec_ otherwise.
+   */
+  shared::ParVector gap_orig_vec_;
+
+  /**
+   * @brief First derivative H'(g) of the penalty ramp at each node.
+   *        1.0 in full contact, 0.0 in separation, smooth transition in between.
+   */
+  shared::ParVector h_prime_vec_;
+
+  /**
+   * @brief Second derivative H''(g) of the penalty ramp at each node.
+   *        0.0 outside the transition band [-del, 0].
+   */
+  shared::ParVector h_double_prime_vec_;
 
   /**
    * @brief Derivative d(g_tilde)/dx as a (dual rows) x (parent displacement cols) matrix
@@ -310,17 +350,17 @@ class EnergyMortarAdapter : public ContactFormulation {
   /**
    * @brief Assemble the penalty second-derivative df/dx contribution
    *
-   * Assembles the second-derivative penalty contribution:
-   * `p · d²(g_tilde)/dx² - (g_tilde p / A) · d²A/dx²`.
+   * Assembles `coeff_gt[i] · d²(g_tilde)/dx² + coeff_A[i] · d²A/dx²` per node.
    *
-   * @param redecomp_pressure Pressure field on the redecomp mesh
-   * @param redecomp_g_tilde g_tilde on the redecomp mesh
-   * @param redecomp_A Area weighting A on the redecomp mesh
+   * For unsmoothed penalty:  coeff_gt = 2p,  coeff_A = -k·g².
+   * For smooth penalty with ramp H(g): coeff_gt = k·(H+H'g),  coeff_A = -k·H'·g².
+   *
+   * @param redecomp_coeff_gt  Per-node coefficient for d²(g_tilde)/dx² on the redecomp mesh
+   * @param redecomp_coeff_A   Per-node coefficient for d²A/dx² on the redecomp mesh
    * @return Assembled df/dx contribution on parent true-dofs
    */
-  shared::ParSparseMat computeDfDxSecondDerivativesPenalty( const mfem::GridFunction& redecomp_pressure,
-                                                            const mfem::GridFunction& redecomp_g_tilde,
-                                                            const mfem::GridFunction& redecomp_A );
+  shared::ParSparseMat computeDfDxSecondDerivativesPenalty( const mfem::GridFunction& redecomp_coeff_gt,
+                                                            const mfem::GridFunction& redecomp_coeff_A );
 };
 
 #endif  // TRIBOL_USE_ENZYME

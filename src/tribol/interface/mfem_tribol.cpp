@@ -384,6 +384,24 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
   cs->getMfemMeshData()->SetMesh2KinematicConstantPenalty( mesh2_penalty );
 }
 
+void setMfemEnergyMortarOptions( IndexT cs_id, int smoothing_type,
+                                  int penalty_smoothing, double penalty_smoothing_del )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
+                      "Coupling scheme does not contain MFEM data. "
+                      "Create the coupling scheme using registerMfemCouplingScheme() to set energy mortar options." );
+  MfemMeshData::EnergyMortarOptions opts;
+  opts.smoothing_type = smoothing_type;
+  opts.penalty_smoothing = penalty_smoothing;
+  opts.penalty_smoothing_del = penalty_smoothing_del;
+  cs->getMfemMeshData()->SetEnergyMortarOptions( opts );
+}
+
 void setMfemViscousDampingCoeff( IndexT cs_id, RealT mesh1_coeff, RealT mesh2_coeff )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );

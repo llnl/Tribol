@@ -27,7 +27,17 @@ namespace {
 struct KernelParams {
   int N = 3;         // No. of quadrature points
   double del = 0.1;  // Smoothing parameter
+  SmoothingType smoothing_type = SmoothingType::Hermite;
 };
+
+KernelParams make_kernel_params( const ContactParams& p )
+{
+  KernelParams kp;
+  kp.N = p.N;
+  kp.del = p.del;
+  kp.smoothing_type = p.smoothing_type;
+  return kp;
+}
 
 // Compute a unit normal vector for the line segment from coord1 to coord2
 void find_normal( const double* coord1, const double* coord2, double* normal )
@@ -233,8 +243,7 @@ void gtilde_kernel( const double* x, Gparams* gp, double* g_tilde_out, double* A
 
   // Only keep the contribution when the edge normals oppose each other.
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  // double eta = ( dot < 0 ) ? dot : 0.0; //Normal smoothing
-  double eta = dot;
+  double eta = ( dot < 0.0 ) ? dot : 0.0;
 
   double g1 = 0.0, g2 = 0.0;
   double AI_1 = 0.0, AI_2 = 0.0;
@@ -299,8 +308,7 @@ void gtilde_kernel_quad( const double* x, const Gparams* gp, double* g_tilde_out
   find_normal( A0, A1, nA );
   // Only keep the contribution when the edge normals oppose each other.
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  // double eta = ( dot < 0 ) ? dot : 0.0;
-  double eta = dot;
+  double eta = ( dot < 0.0 ) ? dot : 0.0;
 
   double g1 = 0.0, g2 = 0.0;
   double AI_1 = 0.0, AI_2 = 0.0;
@@ -390,39 +398,13 @@ void grad_kernel( const double* x, const Gparams* gp, double* dout_du )
 
 // Wrap the varying-quadrature kernel as a scalar-valued function for Enzyme.
 template <KernelOutput Output>
-static void kernel_out_enzyme( const double* x, double* out )
+static void kernel_out_enzyme( const double* x, const void* kp_void, double* out )
 {
-  KernelParams kp;
-  // x stores the two endpoints of edge A followed by the two endpoints of edge B.
-  double A0[2], A1[2], B0[2], B1[2];
-  A0[0] = x[0];
-  A0[1] = x[1];
-  A1[0] = x[2];
-  A1[1] = x[3];
-  B0[0] = x[4];
-  B0[1] = x[5];
-  B1[0] = x[6];
-  B1[1] = x[7];
-
-  double projs[2] = { 0 };
-  get_projections( A0, A1, B0, B1, projs );
-  std::array<double, 2> projections = { projs[0], projs[1] };
-
-  // Recompute the integration bounds and quadrature from the current geometry.
-  auto bounds = ContactSmoothing::bounds_from_projections( projections, kp.del );
-  auto xi_bounds = ContactSmoothing::smooth_bounds( bounds, kp.del );
-
-  auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, kp.N );
-
-  Gparams gp;
-  for ( std::size_t i = 0; i < qp.qp.size(); ++i ) {
-    gp.qp[i] = qp.qp[i];
-    gp.w[i] = qp.w[i];
-  }
+  const auto* kp = static_cast<const KernelParams*>( kp_void );
 
   double gt[2];
   double A_out[2];
-  gtilde_kernel( x, &gp, gt, A_out );
+  energy_mortar_varying_quadrature_kernel( x, kp->del, kp->N, kp->smoothing_type, gt, A_out );
 
   // Extract the requested scalar output for differentiation.
   if constexpr ( Output == KernelOutput::GTILDE1 )
@@ -437,14 +419,15 @@ static void kernel_out_enzyme( const double* x, double* out )
 
 // Differentiate the selected varying-quadrature scalar kernel with respect to the 8 endpoint coordinates.
 template <KernelOutput Output>
-void grad_kernel_enzyme( const double* x, double* dout_du )
+void grad_kernel_enzyme( const double* x, const KernelParams* kp, double* dout_du )
 {
   double dx[8] = { 0.0 };
   double out = 0.0;
   double dout = 1.0;
 
   // Seed the scalar output with 1.0 so Enzyme accumulates dOutput/dx into dx.
-  __enzyme_autodiff<void>( (void*)kernel_out_enzyme<Output>, enzyme_dup, x, dx, enzyme_dup, &out, &dout );
+  __enzyme_autodiff<void>( (void*)kernel_out_enzyme<Output>, enzyme_dup, x, dx, enzyme_const, (const void*)kp,
+                           enzyme_dup, &out, &dout );
 
   for ( int i = 0; i < 8; ++i ) {
     dout_du[i] = dx[i];
@@ -453,7 +436,7 @@ void grad_kernel_enzyme( const double* x, double* dout_du )
 
 // Compute the Hessian of the selected varying-quadrature scalar kernel.
 template <KernelOutput Output>
-void d2_kernel( const double* x, double* H )
+void d2_kernel( const double* x, const KernelParams* kp, double* H )
 {
   for ( int col = 0; col < 8; ++col ) {
     double dx[8] = { 0.0 };
@@ -463,7 +446,8 @@ void d2_kernel( const double* x, double* H )
     double dgrad[8] = { 0.0 };
 
     // Differentiate the gradient in coordinate direction col to form one Hessian column.
-    __enzyme_fwddiff<void>( (void*)grad_kernel_enzyme<Output>, enzyme_dup, x, dx, enzyme_dup, grad, dgrad );
+    __enzyme_fwddiff<void>( (void*)grad_kernel_enzyme<Output>, enzyme_dup, x, dx, enzyme_const, (const void*)kp,
+                            enzyme_dup, grad, dgrad );
 
     for ( int row = 0; row < 8; ++row ) H[row * 8 + col] = dgrad[row];
   }
@@ -502,7 +486,7 @@ Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, co
   // Build the smoothed integration bounds from the projection of edge B onto edge A.
   auto projs = EnergyMortarCalculator::compute_projection_bounds( pair, mesh1, mesh2 );
   auto bounds = smoother_.bounds_from_projections( projs, p_.del );
-  auto smooth_bounds = smoother_.smooth_bounds( bounds, p_.del );
+  auto smooth_bounds = smoother_.smooth_bounds( bounds, p_.del, p_.smoothing_type );
 
   auto qp = EnergyMortarCalculator::compute_quadrature( smooth_bounds, p_.N );
 
@@ -549,65 +533,112 @@ std::array<double, 2> EnergyMortarCalculator::projections( const InterfacePair& 
   return { projs[0], projs[1] };
 }
 
-// Clamp the projection interval to the local smoothing support around edge A.
+// Clamp the projection interval to the local element support [-0.5, 0.5].
 std::array<double, 2> ContactSmoothing::bounds_from_projections( const std::array<double, 2>& proj, double del )
 {
   double xi_min = std::min( proj[0], proj[1] );
   double xi_max = std::max( proj[0], proj[1] );
+  const double xi_lo = -0.5;
+  const double xi_hi = 0.5;
 
-  // Limit the integration interval to the extended range [-0.5 - del, 0.5 + del].
-  if ( xi_max < -0.5 - del ) {
-    xi_max = -0.5 - del;
+  if ( xi_max < xi_lo ) {
+    xi_max = xi_lo;
   }
-  if ( xi_min > 0.5 + del ) {
-    xi_min = 0.5 + del;
+  if ( xi_min > xi_hi ) {
+    xi_min = xi_hi;
   }
-  if ( xi_min < -0.5 - del ) {
-    xi_min = -0.5 - del;
+  if ( xi_min < xi_lo ) {
+    xi_min = xi_lo;
   }
-  if ( xi_max > 0.5 + del ) {
-    xi_max = 0.5 + del;
+  if ( xi_max > xi_hi ) {
+    xi_max = xi_hi;
   }
 
   return { xi_min, xi_max };
 }
 
-// Smooth the integration bounds using a C1 ramp near the ends of edge A.
-// Specific too the smoothing techniques in EnergyMortar. This smooths the
-// Bounds of intergration by applying a quadratic ramping function near the ends of the paramteric
-// space. The smooth region/length is defined by the input del. The returned 'bounds' is the new bounds
-// of intergation that result after the quadratic ramping has been applied.
-std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 2>& bounds, double del )
+// Smooth the integration bounds using C1 ramps near the ends of edge A.
+// Bounds are restricted to [0, 1] (shifted parametric space) so that shape functions
+// remain non-negative and tributary areas cannot go negative.
+//
+// Hermite (cubic): f(0)=0, f'(0)=0, f(del)=del, f'(del)=1.
+//   Slope varies within ramp (peaks at 4/3), identity in middle.
+//
+// Quadratic: f(0)=0, f'(0)=0, f(del)=del/(2(1-del)), f'(del)=1/(1-del).
+//   Linear section has constant slope 1/(1-del), mapping [0,1] onto [0,1].
+std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 2>& bounds, double del,
+                                                       SmoothingType type )
 {
   std::array<double, 2> smooth_bounds;
   for ( int i = 0; i < 2; ++i ) {
-    double xi = 0.0;
-    double xi_hat = 0.0;
+    // Shift from [-0.5, 0.5] to [0, 1].
+    double xi = bounds[i] + 0.5;
+    xi = std::max( 0.0, std::min( 1.0, xi ) );
 
-    // Shift from the local coordinate interval [-0.5, 0.5] to [0, 1].
-    xi = bounds[i] + 0.5;
-    if ( del == 0.0 ) {
-      xi_hat = xi;
-    } else {
-      // Apply quadratic ramps near the endpoints and leave the interior unchanged.
-      if ( 0.0 - del <= xi && xi <= del ) {
-        xi_hat = ( 1.0 / ( 4 * del ) ) * ( xi * xi ) + 0.5 * xi + del / 4.0;
-      } else if ( ( 1.0 - del ) <= xi && xi <= 1.0 + del ) {
-        double b = -1.0 / ( 4.0 * del );
-        double c = 0.5 + 1.0 / ( 2.0 * del );
-        double d = 1.0 - del + ( 1.0 / ( 4.0 * del ) ) * pow( 1.0 - del, 2 ) - 0.5 * ( 1.0 - del ) -
-                   ( 1.0 - del ) / ( 2.0 * del );
-
-        xi_hat = b * xi * xi + c * xi + d;
-      } else if ( del <= xi && xi <= ( 1.0 - del ) ) {
-        xi_hat = xi;
+    double xi_hat = xi;
+    if ( del > 0.0 && del < 0.5 ) {
+      if ( type == SmoothingType::Hermite ) {
+        if ( xi <= del ) {
+          // Cubic Hermite: f(0)=0, f'(0)=0, f(del)=del, f'(del)=1
+          double t = xi / del;
+          xi_hat = del * t * t * ( 2.0 - t );
+        } else if ( xi >= 1.0 - del ) {
+          // Cubic Hermite: f(1-del)=1-del, f'(1-del)=1, f(1)=1, f'(1)=0
+          double s = ( 1.0 - xi ) / del;
+          xi_hat = 1.0 - del * s * s * ( 2.0 - s );
+        }
+      } else {
+        // Quadratic ramp with adjusted linear slope 1/(1-del).
+        double a = 1.0 / ( 2.0 * del * ( 1.0 - del ) );
+        double m = 1.0 / ( 1.0 - del );
+        if ( xi <= del ) {
+          xi_hat = a * xi * xi;
+        } else if ( xi >= 1.0 - del ) {
+          xi_hat = 1.0 - a * ( 1.0 - xi ) * ( 1.0 - xi );
+        } else {
+          xi_hat = m * xi - del * 0.5 * m;
+        }
       }
     }
-    // Shift the smoothed coordinate back to [-0.5, 0.5].
+
+    if constexpr ( energy_mortar_debug_level >= 1 ) {
+      assert( xi_hat >= 0.0 && "smooth_bounds: xi_hat below 0" );
+      assert( xi_hat <= 1.0 && "smooth_bounds: xi_hat above 1" );
+    }
+
+    // Shift back to [-0.5, 0.5].
     smooth_bounds[i] = xi_hat - 0.5;
   }
 
+  if constexpr ( energy_mortar_debug_level >= 1 ) {
+    assert( smooth_bounds[0] >= -0.5 && smooth_bounds[0] <= 0.5 && "smooth_bounds: output[0] out of range" );
+    assert( smooth_bounds[1] >= -0.5 && smooth_bounds[1] <= 0.5 && "smooth_bounds: output[1] out of range" );
+  }
+
   return smooth_bounds;
+}
+
+PenaltyRamp ContactSmoothing::penalty_ramp( double g, double del, PenaltySmoothing type )
+{
+  if ( type == PenaltySmoothing::Hard ) {
+    return g < 0.0 ? PenaltyRamp{ g, 1.0, 0.0 } : PenaltyRamp{ 0.0, 0.0, 0.0 };
+  }
+
+  // C1 quadratic ramp centered on g=0, support [-del/2, +del/2].
+  // H(g) = -(g - del/2)^2 / (2*del) in the band.
+  // Starts before contact onset, joins H=g tangentially at g=-del/2.
+  const double d2 = 0.5 * del;
+
+  if ( g >= d2 ) {
+    return { 0.0, 0.0, 0.0 };
+  }
+
+  if ( del <= 0.0 || g <= -d2 ) {
+    return { g, 1.0, 0.0 };
+  }
+
+  const double shifted = g - d2;
+  return { -shifted * shifted / ( 2.0 * del ), -shifted / del, -1.0 / del };
 }
 
 // Build a three-point Gauss-Legendre quadrature rule over the local integration bounds.
@@ -681,7 +712,7 @@ NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const Inter
 
   // Build the smoothed integration interval from the projection bounds.
   auto bounds = smoother_.bounds_from_projections( projs, p_.del );
-  auto smooth_bounds = smoother_.smooth_bounds( bounds, p_.del );
+  auto smooth_bounds = smoother_.smooth_bounds( bounds, p_.del, p_.smoothing_type );
 
   auto qp = compute_quadrature( smooth_bounds, p_.N );
 
@@ -696,6 +727,12 @@ NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const Inter
     double N1 = 0.5 - xiA;
     double N2 = 0.5 + xiA;
 
+    if constexpr ( energy_mortar_debug_level >= 1 ) {
+      assert( N1 >= -1e-14 && "shape function N1 negative at quadrature point" );
+      assert( N2 >= -1e-14 && "shape function N2 negative at quadrature point" );
+      assert( xiA >= -0.5 - 1e-14 && xiA <= 0.5 + 1e-14 && "quadrature point outside element" );
+    }
+
     // Evaluate the weighted gap at the current quadrature point on edge A.
     double gn = compute_weighted_normal_gap( pair, mesh1, mesh2, xiA );
     double gn_active = gn;
@@ -708,6 +745,11 @@ NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const Inter
   }
 
   NodalContactData contact_data;
+
+  if constexpr ( energy_mortar_debug_level >= 1 ) {
+    assert( AI_1 >= 0.0 && "compute_nodal_contact_data: negative tributary area node 1" );
+    assert( AI_2 >= 0.0 && "compute_nodal_contact_data: negative tributary area node 2" );
+  }
 
   contact_data.AI = { AI_1, AI_2 };
   contact_data.g_tilde = { g_tilde1, g_tilde2 };
@@ -753,8 +795,9 @@ void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshD
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    grad_kernel_enzyme<KernelOutput::GTILDE1>( x, dg1_du );
-    grad_kernel_enzyme<KernelOutput::GTILDE2>( x, dg2_du );
+    const auto kp = make_kernel_params( p_ );
+    grad_kernel_enzyme<KernelOutput::GTILDE1>( x, &kp, dg1_du );
+    grad_kernel_enzyme<KernelOutput::GTILDE2>( x, &kp, dg2_du );
   }
 
   for ( int i = 0; i < 8; ++i ) {
@@ -785,8 +828,9 @@ void EnergyMortarCalculator::grad_trib_area( const InterfacePair& pair, const Me
     grad_kernel<KernelOutput::A2>( x, &gp, dA2_dx );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    grad_kernel_enzyme<KernelOutput::A1>( x, dA1_dx );
-    grad_kernel_enzyme<KernelOutput::A2>( x, dA2_dx );
+    const auto kp = make_kernel_params( p_ );
+    grad_kernel_enzyme<KernelOutput::A1>( x, &kp, dA1_dx );
+    grad_kernel_enzyme<KernelOutput::A2>( x, &kp, dA2_dx );
   }
 }
 
@@ -816,8 +860,9 @@ void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshDa
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    d2_kernel<KernelOutput::GTILDE1>( x, d2g1_d2u );
-    d2_kernel<KernelOutput::GTILDE2>( x, d2g2_d2u );
+    const auto kp = make_kernel_params( p_ );
+    d2_kernel<KernelOutput::GTILDE1>( x, &kp, d2g1_d2u );
+    d2_kernel<KernelOutput::GTILDE2>( x, &kp, d2g2_d2u );
   }
 
   for ( int i = 0; i < 64; ++i ) {
@@ -852,8 +897,9 @@ void EnergyMortarCalculator::compute_d2A_d2u( const InterfacePair& pair, const M
     d2_kernel_quad<KernelOutput::A2>( x, &gp, d2A2_d2u );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    d2_kernel<KernelOutput::A1>( x, d2A1_d2u );
-    d2_kernel<KernelOutput::A2>( x, d2A2_d2u );
+    const auto kp = make_kernel_params( p_ );
+    d2_kernel<KernelOutput::A1>( x, &kp, d2A1_d2u );
+    d2_kernel<KernelOutput::A2>( x, &kp, d2A2_d2u );
   }
 
   for ( int i = 0; i < 64; ++i ) {

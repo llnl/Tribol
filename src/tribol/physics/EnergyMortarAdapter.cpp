@@ -4,6 +4,7 @@
 // SPDX-License-Identifier: (MIT)
 
 #include "tribol/physics/EnergyMortarAdapter.hpp"
+#include <cmath>
 #include <axom/slic/interface/slic_macros.hpp>
 #include "tribol/mesh/MfemData.hpp"
 
@@ -13,7 +14,10 @@ namespace tribol {
 
 EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
                                           MfemJacobianData& jac_data, MeshData& mesh1, MeshData& mesh2, double k,
-                                          double delta, int N, bool enzyme_quadrature, bool use_penalty )
+                                          double delta, int N, bool enzyme_quadrature, bool use_penalty,
+                                          SmoothingType smoothing_type,
+                                          PenaltySmoothing penalty_smoothing,
+                                          double penalty_smoothing_del )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
     : use_penalty_( use_penalty ),
@@ -32,6 +36,9 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
   params_.del = delta;
   params_.N = N;
   params_.enzyme_quadrature = enzyme_quadrature;
+  params_.smoothing_type = smoothing_type;
+  params_.penalty_smoothing = penalty_smoothing;
+  params_.penalty_smoothing_del = penalty_smoothing_del;
 
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 
@@ -118,6 +125,11 @@ void EnergyMortarAdapter::updateNodalGaps()
 
     evaluator_->compute_gtilde_and_area( flipped_pair, mesh1_view, mesh2_view, g_tilde_elem, A_elem );
 
+    if constexpr ( tribol::energy_mortar_debug_level >= 1 ) {
+      assert( A_elem[0] >= -1e-14 && "per-pair tributary area[0] is negative" );
+      assert( A_elem[1] >= -1e-14 && "per-pair tributary area[1] is negative" );
+    }
+
     if ( A_elem[0] <= 0.0 && A_elem[1] <= 0.0 ) {
       continue;
     }
@@ -170,24 +182,57 @@ void EnergyMortarAdapter::updateNodalGaps()
   g_tilde_vec_.fill( 0.0 );
   P_submesh.MultTranspose( g_tilde_linear_form, g_tilde_vec_.get() );
 
-  mfem::Array<int> rows_to_elim;
-  if ( !tied_contact_ && use_penalty_ ) {
-    rows_to_elim.Reserve( g_tilde_vec_.size() );
-    for ( int i{ 0 }; i < g_tilde_vec_.size(); ++i ) {
-      if ( g_tilde_vec_[i] > 0.0 ) {
-        g_tilde_vec_[i] = 0.0;
-        rows_to_elim.push_back( i );
-      }
-    }
-  }
-
   mfem::ParLinearForm A_linear_form( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
   submesh_data_.GetPressureTransfer().RedecompToSubmesh( redecomp_area, A_linear_form );
   A_vec_ = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
   A_vec_.fill( 0.0 );
   P_submesh.MultTranspose( A_linear_form, A_vec_.get() );
 
-  gap_vec_ = g_tilde_vec_.divide( A_vec_, area_tol_ );
+  // Identify rows to eliminate: nodes with non-positive area have no contact
+  // contribution.  For non-tied penalty contact with Hard penalty smoothing,
+  // also eliminate nodes with positive g_tilde (opening gap).
+  mfem::Array<int> rows_to_elim;
+  rows_to_elim.Reserve( g_tilde_vec_.size() );
+  for ( int i{ 0 }; i < g_tilde_vec_.size(); ++i ) {
+    if ( A_vec_[i] <= 0.0 ) {
+      g_tilde_vec_[i] = 0.0;
+      A_vec_[i] = 0.0;
+      rows_to_elim.push_back( i );
+    } else if ( !tied_contact_ && use_penalty_ && params_.penalty_smoothing == PenaltySmoothing::Hard &&
+                g_tilde_vec_[i] > 0.0 ) {
+      g_tilde_vec_[i] = 0.0;
+      rows_to_elim.push_back( i );
+    }
+  }
+
+  // Regularized area: A_reg = A + eps prevents 1/A blow-up near separation
+  // while leaving the solution unchanged when A >> eps.
+  A_reg_vec_ = shared::ParVector( A_vec_ );
+  for ( int i{ 0 }; i < A_reg_vec_.size(); ++i ) {
+    A_reg_vec_[i] += area_reg_;
+  }
+
+  gap_vec_ = g_tilde_vec_.divide( A_reg_vec_, area_tol_ );
+
+  // Compute the penalty ramp H(g), H'(g), H''(g) per node.
+  gap_orig_vec_ = shared::ParVector( gap_vec_ );
+  h_prime_vec_ = shared::ParVector( gap_vec_ );
+  h_double_prime_vec_ = shared::ParVector( gap_vec_ );
+
+  const bool apply_penalty_ramp = !tied_contact_ && use_penalty_;
+  const double del = params_.penalty_smoothing_del;
+
+  for ( int i{ 0 }; i < gap_vec_.size(); ++i ) {
+    if ( apply_penalty_ramp && params_.penalty_smoothing == PenaltySmoothing::Smooth ) {
+      const auto ramp = ContactSmoothing::penalty_ramp( gap_orig_vec_[i], del, params_.penalty_smoothing );
+      gap_vec_[i] = ramp.value;
+      h_prime_vec_[i] = ramp.first_derivative;
+      h_double_prime_vec_[i] = ramp.second_derivative;
+    } else {
+      h_prime_vec_[i] = 1.0;
+      h_double_prime_vec_[i] = 0.0;
+    }
+  }
 
   // Move gap and area derivatives to (pressure true-dof rows, displacement true-dof cols)
   std::vector<PackedPairJacobianContribs> dg_contribs;
@@ -196,9 +241,7 @@ void EnergyMortarAdapter::updateNodalGaps()
   dg_contribs.push_back( std::move( dg_lm_m ) );
   dg_tilde_dx_ = jac_data_.GetMfemJacobian( &submesh_data_.GetSubmeshFESpace(),
                                             mesh_data_.GetParentCoords().ParFESpace(), dg_contribs );
-  if ( !tied_contact_ && use_penalty_ ) {
-    // technically, we should do this on all the vectors/matrices below, but it looks like the mutliplication operators
-    // below will zero them out anyway
+  if ( rows_to_elim.Size() > 0 ) {
     dg_tilde_dx_.eliminateRows( rows_to_elim );
   }
 
@@ -215,7 +258,7 @@ void EnergyMortarAdapter::updateNodalForces()
   // NOTE: user should have called updateNodalGaps() with updated coords before calling this
 
   if ( use_penalty_ ) {
-    // Penalty mode: p = k * (g_tilde / A)
+    // Penalty mode: p = k * H(g) where g = g_tilde / A_reg, H is the penalty ramp
     pressure_vec_ = params_.k * gap_vec_;
   } else {
     // LM mode: pressure_vec_ is treated as the Lagrange multiplier vector (lambda)
@@ -244,60 +287,103 @@ void EnergyMortarAdapter::updateNodalForces()
   }
 
   // ---------------------------------------------------------------------------
-  // Penalty mode: force and Jacobian include pressure/area coupling terms
+  // Penalty mode with generic penalty ramp H(g).
+  //
+  // Energy:  E = k * H(g) * g_tilde   (per node, g = g_tilde / A_reg)
+  //
+  // Smoothed gap:   h  = H(g)      = gap_vec_
+  // Original gap:   g  = g_orig    = gap_orig_vec_
+  // Ramp deriv:     h' = H'(g)     = h_prime_vec_
+  // Ramp 2nd deriv: h''= H''(g)    = h_double_prime_vec_
+  //
+  // Pressure: p = k * h
+  //
+  // dp/dx = k * h' / A_reg * (Gt - g * A')   [chain rule through H(g)]
+  //
+  // Force: f = p * Gt + g_tilde * dp/dx
+  //          = k*(h + h'*g) * Gt - k*h'*g² * A'
+  //
+  // Jacobian (RAP terms from d(dp/dx diagonal)/dx):
+  //   rap(Gt, diag(k*g*h''/A), Gt)                          [new: zero for Hard]
+  //   - rap(Gt, diag(k*g*(h'+g*h'')/A), A')
+  //   - rap(A', diag(k*g*(h'+g*h'')/A), Gt)
+  //   + rap(A', diag(k*g²*(2h'+g*h'')/A), A')
+  //   + dp_dx^T * Gt + Gt^T * dp_dx
+  //
+  // Second derivatives:
+  //   k*(h + h'*g) * d²g_tilde/dx²  -  k*h'*g² * d²A/dx²
   // ---------------------------------------------------------------------------
-  auto k_over_a = params_.k * A_vec_.inverse( area_tol_ );
-  auto p_over_a = pressure_vec_.divide( A_vec_, area_tol_ );
+  auto A_reg_inv = A_reg_vec_.inverse( area_tol_ );
 
+  // dp/dx = k * h' / A_reg * (Gt - g_orig * A')
   shared::ParSparseMat dp_dx( dg_tilde_dx_.get() );
-  dp_dx->ScaleRows( k_over_a.get() );
-  shared::ParSparseMat dp_dx_temp( dA_dx_.get() );
-  dp_dx_temp->ScaleRows( p_over_a.get() );
-  dp_dx -= dp_dx_temp;
+  shared::ParSparseMat g_dA( dA_dx_.get() );
+  g_dA->ScaleRows( gap_orig_vec_.get() );
+  dp_dx -= g_dA;
+  auto kh_prime_over_a_reg = params_.k * h_prime_vec_.multiply( A_reg_inv );
+  dp_dx->ScaleRows( kh_prime_over_a_reg.get() );
 
   force_vec_ = ( pressure_vec_ * dg_tilde_dx_ ) + ( g_tilde_vec_ * dp_dx );
 
-  // TODO (EBC): Move transfer path-specific logic out of this file
-  mfem::GridFunction redecomp_pressure( submesh_data_.GetRedecompGap() );
-  mfem::ParGridFunction submesh_pressure(
+  // Transfer per-node second-derivative coefficients to redecomp
+  //   coeff_gt = k * (h + h'*g)  =  k * alpha
+  //   coeff_A  = -k * h' * g²
+  auto alpha = gap_vec_ + h_prime_vec_.multiply( gap_orig_vec_ );
+  auto coeff_gt_vec = params_.k * alpha;
+  auto coeff_A_vec = -params_.k * h_prime_vec_.multiply( gap_orig_vec_ ).multiplyInPlace( gap_orig_vec_ );
+
+  mfem::GridFunction redecomp_coeff_gt( submesh_data_.GetRedecompGap() );
+  mfem::ParGridFunction submesh_coeff_gt(
       const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
-  submesh_pressure.SetFromTrueDofs( pressure_vec_.get() );
-  submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_pressure, redecomp_pressure );
+  submesh_coeff_gt.SetFromTrueDofs( coeff_gt_vec.get() );
+  submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_coeff_gt, redecomp_coeff_gt );
 
-  mfem::GridFunction redecomp_g_tilde( submesh_data_.GetRedecompGap() );
-  mfem::ParGridFunction submesh_g_tilde(
+  mfem::GridFunction redecomp_coeff_A( submesh_data_.GetRedecompGap() );
+  mfem::ParGridFunction submesh_coeff_A(
       const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
-  submesh_g_tilde.SetFromTrueDofs( g_tilde_vec_.get() );
-  submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_g_tilde, redecomp_g_tilde );
+  submesh_coeff_A.SetFromTrueDofs( coeff_A_vec.get() );
+  submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_coeff_A, redecomp_coeff_A );
 
-  mfem::GridFunction redecomp_A( submesh_data_.GetRedecompGap() );
-  mfem::ParGridFunction submesh_A( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
-  submesh_A.SetFromTrueDofs( A_vec_.get() );
-  submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_A, redecomp_A );
+  df_dx_ = computeDfDxSecondDerivativesPenalty( redecomp_coeff_gt, redecomp_coeff_A );
 
-  df_dx_ = computeDfDxSecondDerivativesPenalty( redecomp_pressure, redecomp_g_tilde, redecomp_A );
-
-  auto pg2_over_asq = ( 2.0 * pressure_vec_ )
-                          .multiplyInPlace( g_tilde_vec_ )
-                          .divideInPlace( A_vec_, area_tol_ )
-                          .divideInPlace( A_vec_, area_tol_ );
-
+  // RAP Jacobian cross terms
   auto& submesh_fes = submesh_data_.GetSubmeshFESpace();
-  auto p_over_a_diag = shared::ParSparseMat::diagonalMatrix( submesh_fes.GetComm(), submesh_fes.GlobalTrueVSize(),
-                                                             submesh_fes.GetTrueDofOffsets(), p_over_a.get() );
-  auto pg2_over_asq_diag = shared::ParSparseMat::diagonalMatrix( submesh_fes.GetComm(), submesh_fes.GlobalTrueVSize(),
-                                                                 submesh_fes.GetTrueDofOffsets(), pg2_over_asq.get() );
 
-  df_dx_ -= shared::ParSparseMat::rap( dg_tilde_dx_, p_over_a_diag, dA_dx_ );
-  df_dx_ -= shared::ParSparseMat::rap( dA_dx_, p_over_a_diag, dg_tilde_dx_ );
-  df_dx_ += shared::ParSparseMat::rap( dA_dx_, pg2_over_asq_diag, dg_tilde_dx_ );
-  df_dx_ += dp_dx.transpose() * dg_tilde_dx_;
-  df_dx_ += dg_tilde_dx_.transpose() * dp_dx;
+  // d1 = k * g * h'' / A_reg  (for Gt-Gt term, zero in Hard/full-contact)
+  auto d1_vec = params_.k * gap_orig_vec_.multiply( h_double_prime_vec_ ).divideInPlace( A_reg_vec_, area_tol_ );
+  // d2 = k * g * (h' + g*h'') / A_reg  (for Gt-A' cross terms)
+  auto h_prime_plus_g_h_double_prime = h_prime_vec_ + gap_orig_vec_.multiply( h_double_prime_vec_ );
+  auto d2_vec = params_.k * gap_orig_vec_.multiply( h_prime_plus_g_h_double_prime ).divideInPlace( A_reg_vec_, area_tol_ );
+  // d4 = k * g² * (2h' + g*h'') / A_reg  (for A'-A' term)
+  auto two_h_prime_plus_g_h_double_prime = 2.0 * h_prime_vec_ + gap_orig_vec_.multiply( h_double_prime_vec_ );
+  auto g_sq = gap_orig_vec_.multiply( gap_orig_vec_ );
+  auto d4_vec = params_.k * g_sq.multiplyInPlace( two_h_prime_plus_g_h_double_prime )
+                    .divideInPlace( A_reg_vec_, area_tol_ );
+
+  auto d1_diag = shared::ParSparseMat::diagonalMatrix( submesh_fes.GetComm(), submesh_fes.GlobalTrueVSize(),
+                                                        submesh_fes.GetTrueDofOffsets(), d1_vec.get() );
+  auto d2_diag = shared::ParSparseMat::diagonalMatrix( submesh_fes.GetComm(), submesh_fes.GlobalTrueVSize(),
+                                                        submesh_fes.GetTrueDofOffsets(), d2_vec.get() );
+  auto d4_diag = shared::ParSparseMat::diagonalMatrix( submesh_fes.GetComm(), submesh_fes.GlobalTrueVSize(),
+                                                        submesh_fes.GetTrueDofOffsets(), d4_vec.get() );
+
+  auto rap_gg = shared::ParSparseMat::rap( dg_tilde_dx_, d1_diag, dg_tilde_dx_ );
+  auto rap_ga = shared::ParSparseMat::rap( dg_tilde_dx_, d2_diag, dA_dx_ );
+  auto rap_ag = shared::ParSparseMat::rap( dA_dx_, d2_diag, dg_tilde_dx_ );
+  auto rap_aa = shared::ParSparseMat::rap( dA_dx_, d4_diag, dA_dx_ );
+  auto dp_g = dp_dx.transpose() * dg_tilde_dx_;
+  auto g_dp = dg_tilde_dx_.transpose() * dp_dx;
+
+  df_dx_ += rap_gg;
+  df_dx_ -= rap_ga;
+  df_dx_ -= rap_ag;
+  df_dx_ += rap_aa;
+  df_dx_ += dp_g;
+  df_dx_ += g_dp;
 }
 
 RealT EnergyMortarAdapter::computeTimeStep()
 {
-  SLIC_INFO_ROOT( "computeTimestep() not implemented for EnergyMortar" );
   // TODO: implement timestep calculation
   return 1.0;
 }
@@ -349,7 +435,7 @@ shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesLM( const 
       for ( int j{ 0 }; j < 2; ++j ) {
         for ( int k{ 0 }; k < 4; ++k ) {
           for ( int l{ 0 }; l < 4; ++l ) {
-            const auto idx = node_idx[l + i * 4] + node_idx[k + j * 4] * 8;
+            const auto idx = node_idx[l + i * 4] * 8 + node_idx[k + j * 4];
             df_dx_blocks[i][j][l + k * 4] = lambda1 * d2g_dx2_node1[idx] + lambda2 * d2g_dx2_node2[idx];
           }
         }
@@ -373,8 +459,7 @@ shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesLM( const 
 }
 
 shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesPenalty(
-    const mfem::GridFunction& redecomp_pressure, const mfem::GridFunction& redecomp_g_tilde,
-    const mfem::GridFunction& redecomp_A )
+    const mfem::GridFunction& redecomp_coeff_gt, const mfem::GridFunction& redecomp_coeff_A )
 {
   const bool use_lor = ( mesh_data_.GetLORMesh() != nullptr );
   const auto& displacement_surface_fes = use_lor ? *mesh_data_.GetLORMeshFESpace() : mesh_data_.GetSubmeshFESpace();
@@ -409,15 +494,15 @@ shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesPenalty(
     const auto node12 = mesh1_view.getConnectivity()( elem1, 1 );
     const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
 
-    const RealT pressure1 = 2.0 * redecomp_pressure( node11 );
-    const RealT pressure2 = 2.0 * redecomp_pressure( node12 );
+    const RealT cgt1 = redecomp_coeff_gt( node11 );
+    const RealT cgt2 = redecomp_coeff_gt( node12 );
 
-    if ( pressure1 == 0.0 && pressure2 == 0.0 ) {
+    const RealT cA1 = redecomp_coeff_A( node11 );
+    const RealT cA2 = redecomp_coeff_A( node12 );
+
+    if ( cgt1 == 0.0 && cgt2 == 0.0 && cA1 == 0.0 && cA2 == 0.0 ) {
       continue;
     }
-
-    const RealT g_p_ainv1 = -redecomp_g_tilde( node11 ) * redecomp_pressure( node11 ) / redecomp_A( node11 );
-    const RealT g_p_ainv2 = -redecomp_g_tilde( node12 ) * redecomp_pressure( node12 ) / redecomp_A( node12 );
 
     double d2g_dx2_node1[64];
     double d2g_dx2_node2[64];
@@ -432,9 +517,10 @@ shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesPenalty(
       for ( int j{ 0 }; j < 2; ++j ) {
         for ( int k{ 0 }; k < 4; ++k ) {
           for ( int l{ 0 }; l < 4; ++l ) {
-            const auto idx = node_idx[l + i * 4] + node_idx[k + j * 4] * 8;
-            df_dx_blocks[i][j][l + k * 4] = pressure1 * d2g_dx2_node1[idx] + pressure2 * d2g_dx2_node2[idx] +
-                                            g_p_ainv1 * d2A_dx2_node1[idx] + g_p_ainv2 * d2A_dx2_node2[idx];
+            const auto idx = node_idx[l + i * 4] * 8 + node_idx[k + j * 4];
+            const double value = cgt1 * d2g_dx2_node1[idx] + cgt2 * d2g_dx2_node2[idx] +
+                                 cA1 * d2A_dx2_node1[idx] + cA2 * d2A_dx2_node2[idx];
+            df_dx_blocks[i][j][l + k * 4] = value;
           }
         }
       }

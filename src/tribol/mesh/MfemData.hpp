@@ -823,6 +823,19 @@ class MfemMeshData {
    */
   const RealT* GetMesh2KinematicConstantPenalty() const { return kinematic_constant_penalty_2_.get(); }
 
+  struct EnergyMortarOptions {
+    int smoothing_type = 1;           // 0 = Hermite, 1 = Quadratic
+    int penalty_smoothing = 1;        // 0 = Hard, 1 = Smooth
+    double penalty_smoothing_del = 1.0e-3;
+  };
+
+  void SetEnergyMortarOptions( const EnergyMortarOptions& opts )
+  {
+    energy_mortar_opts_ = std::make_unique<EnergyMortarOptions>( opts );
+  }
+
+  const EnergyMortarOptions* GetEnergyMortarOptions() const { return energy_mortar_opts_.get(); }
+
   /**
    * @brief Sets the kinematic penalty scale for the first registered Tribol mesh
    *
@@ -1301,6 +1314,8 @@ class MfemMeshData {
    * @brief Kinematic constant contact penalty for the first Tribol registered mesh
    */
   std::unique_ptr<RealT> kinematic_constant_penalty_1_;
+
+  std::unique_ptr<EnergyMortarOptions> energy_mortar_opts_;
 
   /**
    * @brief Kinematic constant contact penalty for the second Tribol registered mesh
