@@ -97,7 +97,7 @@ void setPenaltyOptions( IndexT cs_id, PenaltyConstraintType pen_enfrc_option,
 }  // end setPenaltyOptions()
 
 //------------------------------------------------------------------------------
-void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int triangle_order )
+void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int quadrature_order )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
 
@@ -111,11 +111,11 @@ void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int triangl
     return;
   }
 
-  SLIC_ERROR_ROOT_IF( triangle_order < 2 || triangle_order > 10,
-                      "tribol::setCommonPlaneIntegrationOptions(): triangle quadrature order must be in [2,10]." );
+  SLIC_ERROR_ROOT_IF( quadrature_order < 2 || quadrature_order > 10,
+                      "tribol::setCommonPlaneIntegrationOptions(): CommonPlane quadrature order must be in [2,10]." );
 
   penalty_options.common_plane_rule = rule;
-  penalty_options.common_plane_triangle_order = triangle_order;
+  penalty_options.common_plane_quadrature_order = quadrature_order;
 }
 
 //------------------------------------------------------------------------------

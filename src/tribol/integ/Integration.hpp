@@ -99,6 +99,8 @@ enum TriangleQuadratureRuleFamily
 
 /// Maximum number of quadrature points in the built-in symmetric triangle rules.
 constexpr int max_symmetric_triangle_qpts = 25;
+/// Maximum number of quadrature points in the built-in Gauss-Legendre segment rules.
+constexpr int max_segment_gauss_legendre_qpts = 10;
 
 /*!
  *
@@ -495,21 +497,178 @@ TRIBOL_HOST_DEVICE inline int GetTriangleRule( int order, TriangleQuadratureRule
   }
 }
 
-TRIBOL_HOST_DEVICE inline void EvalWeakFormIntegralCommonPlaneFullTri( SurfaceContactElem const& elem,
-                                                                       const int tri_order, RealT* const integ1,
-                                                                       RealT* const integ2 )
+/*!
+ * \brief Returns a Gauss-Legendre quadrature rule on the unit segment.
+ *
+ * \param [in] order requested rule order
+ * \param [out] wts quadrature weights normalized so they sum to 1 on [0,1]
+ * \param [out] coords quadrature coordinates on [0,1]
+ */
+TRIBOL_HOST_DEVICE inline int GetCommonPlaneSegmentRule( int order, RealT* wts, RealT* coords )
 {
-  if ( elem.dim != 3 ) {
-    RealT cx[3] = { 0., 0., 0. };
-    GetCommonPlaneOverlapCentroid( elem, cx );
-    AccumulateCommonPlaneIntegralAtPoint( elem, cx, 1.0, integ1, integ2 );
+  switch ( order ) {
+    case 2:
+      wts[0] = 5.00000000000000000000000000000000000e-01;
+      wts[1] = 5.00000000000000000000000000000000000e-01;
+      coords[0] = 2.11324865405187117745425609795414482e-01;
+      coords[1] = 7.88675134594812882254574390204585518e-01;
+      return 2;
+    case 3:
+      wts[0] = 2.77777777777777777777777777777777778e-01;
+      wts[1] = 4.44444444444444444444444444444444444e-01;
+      wts[2] = 2.77777777777777777777777777777777778e-01;
+      coords[0] = 1.12701665379258311482063373571554511e-01;
+      coords[1] = 5.00000000000000000000000000000000000e-01;
+      coords[2] = 8.87298334620741688517936626428445489e-01;
+      return 3;
+    case 4:
+      wts[0] = 1.73927422568726928648300228976864863e-01;
+      wts[1] = 3.26072577431273071351699771023135137e-01;
+      wts[2] = 3.26072577431273071351699771023135137e-01;
+      wts[3] = 1.73927422568726928648300228976864863e-01;
+      coords[0] = 6.94318442029737123880253935661376383e-02;
+      coords[1] = 3.30009478207571867549864872986354601e-01;
+      coords[2] = 6.69990521792428132450135127013645399e-01;
+      coords[3] = 9.30568155797026287611974606433862362e-01;
+      return 4;
+    case 5:
+      wts[0] = 1.18463442528094543757132020373224693e-01;
+      wts[1] = 2.39314335249683234020645713783081311e-01;
+      wts[2] = 2.84444444444444444444444444444444444e-01;
+      wts[3] = 2.39314335249683234020645713783081311e-01;
+      wts[4] = 1.18463442528094543757132020373224693e-01;
+      coords[0] = 4.69100770306680036011865699692305193e-02;
+      coords[1] = 2.30765344947158454446500534703347781e-01;
+      coords[2] = 5.00000000000000000000000000000000000e-01;
+      coords[3] = 7.69234655052841545553499465296652219e-01;
+      coords[4] = 9.53089922969331996398813430030769481e-01;
+      return 5;
+    case 6:
+      wts[0] = 8.56622461895851725230519499689802902e-02;
+      wts[1] = 1.80380786524069303841036681987673464e-01;
+      wts[2] = 2.33956967286345520487813812579846245e-01;
+      wts[3] = 2.33956967286345520487813812579846245e-01;
+      wts[4] = 1.80380786524069303841036681987673464e-01;
+      wts[5] = 8.56622461895851725230519499689802902e-02;
+      coords[0] = 3.37652428984239962556928330124159244e-02;
+      coords[1] = 1.69395306766867745483983092697870979e-01;
+      coords[2] = 3.80690406958401560316832671838599160e-01;
+      coords[3] = 6.19309593041598439683167328161400840e-01;
+      coords[4] = 8.30604693233132254516016907302129021e-01;
+      coords[5] = 9.66234757101576003744307166987584076e-01;
+      return 6;
+    case 7:
+      wts[0] = 6.47424830844348466391116955198397926e-02;
+      wts[1] = 1.39852695744638333950704650054195659e-01;
+      wts[2] = 1.90915025252559472475161990594647293e-01;
+      wts[3] = 2.08979591836734693877551020408163265e-01;
+      wts[4] = 1.90915025252559472475161990594647293e-01;
+      wts[5] = 1.39852695744638333950704650054195659e-01;
+      wts[6] = 6.47424830844348466391116955198397926e-02;
+      coords[0] = 2.54460438286207377369030550090367355e-02;
+      coords[1] = 1.29234424311301331233889510925404835e-01;
+      coords[2] = 2.97483866778698624490873198198455490e-01;
+      coords[3] = 5.00000000000000000000000000000000000e-01;
+      coords[4] = 7.02516133221301375509126801801544510e-01;
+      coords[5] = 8.70765575688698668766110489074595165e-01;
+      coords[6] = 9.74553956171379262263096944990963264e-01;
+      return 7;
+    case 8:
+      wts[0] = 5.06142681451881693180916895511138059e-02;
+      wts[1] = 1.11190517226687235272177997268125811e-01;
+      wts[2] = 1.56853322938943643668981100993387281e-01;
+      wts[3] = 1.81341891689181001927177820586651362e-01;
+      wts[4] = 1.81341891689181001927177820586651362e-01;
+      wts[5] = 1.56853322938943643668981100993387281e-01;
+      wts[6] = 1.11190517226687235272177997268125811e-01;
+      wts[7] = 5.06142681451881693180916895511138059e-02;
+      coords[0] = 1.98550717512318841525047110753824461e-02;
+      coords[1] = 1.01666761293186647733518599687717188e-01;
+      coords[2] = 2.37233795041835507091130475405343431e-01;
+      coords[3] = 4.08282678752175097530261928819908057e-01;
+      coords[4] = 5.91717321247824902469738071180091943e-01;
+      coords[5] = 7.62766204958164492908869524594656569e-01;
+      coords[6] = 8.98333238706813352266481400312282812e-01;
+      coords[7] = 9.80144928248768115847495288924617554e-01;
+      return 8;
+    case 9:
+      wts[0] = 4.06371941807872005172919364720240956e-02;
+      wts[1] = 9.03240803474287173109739194798907182e-02;
+      wts[2] = 1.30305348201467649015160147969872934e-01;
+      wts[3] = 1.56173538520001468666934369973026078e-01;
+      wts[4] = 1.65119677500629881523396871610248955e-01;
+      wts[5] = 1.56173538520001468666934369973026078e-01;
+      wts[6] = 1.30305348201467649015160147969872934e-01;
+      wts[7] = 9.03240803474287173109739194798907182e-02;
+      wts[8] = 4.06371941807872005172919364720240956e-02;
+      coords[0] = 1.59198802461869216995971690127085065e-02;
+      coords[1] = 8.19844463366820870961097794728460945e-02;
+      coords[2] = 1.93314283649704707966974877456187964e-01;
+      coords[3] = 3.37873288298095542617664572568897352e-01;
+      coords[4] = 5.00000000000000000000000000000000000e-01;
+      coords[5] = 6.62126711701904457382335427431102648e-01;
+      coords[6] = 8.06685716350295292033025122543812036e-01;
+      coords[7] = 9.18015553663317912903890220527153906e-01;
+      coords[8] = 9.84080119753813078300402830987291494e-01;
+      return 9;
+    case 10:
+      wts[0] = 3.33356721543440461444643439469389906e-02;
+      wts[1] = 7.47256745752902979112342760845433925e-02;
+      wts[2] = 1.09543181257990906041775930711667835e-01;
+      wts[3] = 1.34633359654998153565044736633326588e-01;
+      wts[4] = 1.47762112357376435165896479362247582e-01;
+      wts[5] = 1.47762112357376435165896479362247582e-01;
+      wts[6] = 1.34633359654998153565044736633326588e-01;
+      wts[7] = 1.09543181257990906041775930711667835e-01;
+      wts[8] = 7.47256745752902979112342760845433925e-02;
+      wts[9] = 3.33356721543440461444643439469389906e-02;
+      coords[0] = 1.30467357414141598997194531116613714e-02;
+      coords[1] = 6.74683166555077431721327998540848508e-02;
+      coords[2] = 1.60295215850487803884800815437504493e-01;
+      coords[3] = 2.83302302935376372885100587561369794e-01;
+      coords[4] = 4.25562830509184389676645012342252051e-01;
+      coords[5] = 5.74437169490815610323354987657747949e-01;
+      coords[6] = 7.16697697064623627114899412438630206e-01;
+      coords[7] = 8.39704784149512196115199184562495507e-01;
+      coords[8] = 9.32531683344492256827867200145915149e-01;
+      coords[9] = 9.86953264258585840100280546888338629e-01;
+      return 10;
+    default:
+#ifdef TRIBOL_USE_HOST
+      SLIC_ERROR( "GetCommonPlaneSegmentRule(): only Gauss-Legendre integration of order 2-10 is implemented." );
+#endif
+      return 0;
+  }
+}
+
+TRIBOL_HOST_DEVICE inline void EvalWeakFormIntegralCommonPlaneMultiPoint( SurfaceContactElem const& elem,
+                                                                          const int quadrature_order,
+                                                                          RealT* const integ1, RealT* const integ2 )
+{
+  if ( elem.dim == 2 ) {
+    RealT rule_wts[max_segment_gauss_legendre_qpts] = { 0. };
+    RealT rule_coords[max_segment_gauss_legendre_qpts] = { 0. };
+    const int num_qpts = GetCommonPlaneSegmentRule( quadrature_order, rule_wts, rule_coords );
+
+    const RealT x0 = elem.overlapCoords[0];
+    const RealT y0 = elem.overlapCoords[1];
+    const RealT x1 = elem.overlapCoords[2];
+    const RealT y1 = elem.overlapCoords[3];
+    const RealT length = magnitude( x1 - x0, y1 - y0 );
+
+    for ( int qp = 0; qp < num_qpts; ++qp ) {
+      const RealT s = rule_coords[qp];
+      const RealT one_minus_s = 1. - s;
+      RealT x[3] = { one_minus_s * x0 + s * x1, one_minus_s * y0 + s * y1, 0. };
+      AccumulateCommonPlaneIntegralAtPoint( elem, x, length * rule_wts[qp], integ1, integ2 );
+    }
     return;
   }
 
   constexpr int max_qpts = max_symmetric_triangle_qpts;
   RealT rule_wts[max_qpts] = { 0. };
   RealT rule_coords[2 * max_qpts] = { 0. };
-  const int num_qpts = GetCommonPlaneTriangleRule( tri_order, rule_wts, rule_coords );
+  const int num_qpts = GetCommonPlaneTriangleRule( quadrature_order, rule_wts, rule_coords );
 
   RealT centroid[3];
   GetCommonPlaneOverlapCentroid( elem, centroid );
@@ -549,7 +708,7 @@ TRIBOL_HOST_DEVICE inline void EvalWeakFormIntegralCommonPlaneFullTri( SurfaceCo
 }
 
 TRIBOL_HOST_DEVICE inline void EvalWeakFormIntegralCommonPlane( SurfaceContactElem const& elem, const PolyInteg rule,
-                                                                const int tri_order, RealT* const integ1,
+                                                                const int quadrature_order, RealT* const integ1,
                                                                 RealT* const integ2 )
 {
   switch ( rule ) {
@@ -559,8 +718,8 @@ TRIBOL_HOST_DEVICE inline void EvalWeakFormIntegralCommonPlane( SurfaceContactEl
       AccumulateCommonPlaneIntegralAtPoint( elem, cx, 1.0, integ1, integ2 );
       break;
     }
-    case FULL_TRI_DECOMP:
-      EvalWeakFormIntegralCommonPlaneFullTri( elem, tri_order, integ1, integ2 );
+    case MULTI_POINT:
+      EvalWeakFormIntegralCommonPlaneMultiPoint( elem, quadrature_order, integ1, integ2 );
       break;
     default:
 #ifdef TRIBOL_USE_HOST

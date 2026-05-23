@@ -70,10 +70,10 @@ void setPenaltyOptions( IndexT cs_id, PenaltyConstraintType pen_enfrc_option,
  *
  * \param [in] cs_id coupling scheme id
  * \param [in] rule polygon integration rule for CommonPlane force integration
- * \param [in] triangle_order order of the triangle quadrature used by FULL_TRI_DECOMP in the range [2,10]
+ * \param [in] quadrature_order order of the CommonPlane quadrature used by MULTI_POINT in the range [2,10]
  * \pre user must register coupling scheme prior to setting CommonPlane integration options
  */
-void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int triangle_order = 3 );
+void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int quadrature_order = 3 );
 
 /*!
  * \brief Sets the constant kinematic penalty stiffness

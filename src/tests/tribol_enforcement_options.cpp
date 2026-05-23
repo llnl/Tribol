@@ -171,13 +171,13 @@ TEST_F( EnforcementOptionsTest, common_plane_integration_options_are_stored )
   tribol::setKinematicConstantPenalty( 0, penalty );
   tribol::setKinematicConstantPenalty( 1, penalty );
   tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
-  tribol::setCommonPlaneIntegrationOptions( 0, tribol::FULL_TRI_DECOMP, 4 );
+  tribol::setCommonPlaneIntegrationOptions( 0, tribol::MULTI_POINT, 4 );
 
   tribol::CouplingSchemeManager& csManager = tribol::CouplingSchemeManager::getInstance();
   tribol::CouplingScheme* scheme = &csManager.at( 0 );
 
-  EXPECT_EQ( scheme->getEnforcementOptions().penalty_options.common_plane_rule, tribol::FULL_TRI_DECOMP );
-  EXPECT_EQ( scheme->getEnforcementOptions().penalty_options.common_plane_triangle_order, 4 );
+  EXPECT_EQ( scheme->getEnforcementOptions().penalty_options.common_plane_rule, tribol::MULTI_POINT );
+  EXPECT_EQ( scheme->getEnforcementOptions().penalty_options.common_plane_quadrature_order, 4 );
 
   tribol::finalize();
   delete mesh;

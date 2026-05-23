@@ -255,6 +255,71 @@ WarpedQuadForceResult runWarpedQuadForceCase( tribol::PolyInteg rule )
   return result;
 }
 
+struct EdgeLocalContactResult {
+  int err{ -1 };
+  tribol::IndexT num_active_pairs{ 0 };
+  RealT gap{ 0. };
+  RealT total_abs_force{ 0. };
+  RealT mesh1_node_force_norm[2] = { 0., 0. };
+};
+
+EdgeLocalContactResult runEdgeLocalContactCase( tribol::PolyInteg rule )
+{
+  constexpr int numVerts = 2;
+
+  RealT x1[numVerts] = { 1.0, 0.0 };
+  RealT y1[numVerts] = { 0.0, 0.0 };
+
+  RealT x2[numVerts] = { 0.0, 1.0 };
+  RealT y2[numVerts] = { -0.2, -0.05 };
+
+  tribol::IndexT conn1[numVerts] = { 0, 1 };
+  tribol::IndexT conn2[numVerts] = { 0, 1 };
+
+  tribol::registerMesh( 0, 1, numVerts, &conn1[0], (int)( tribol::LINEAR_EDGE ), &x1[0], &y1[0], nullptr,
+                        tribol::MemorySpace::Host );
+  tribol::registerMesh( 1, 1, numVerts, &conn2[0], (int)( tribol::LINEAR_EDGE ), &x2[0], &y2[0], nullptr,
+                        tribol::MemorySpace::Host );
+
+  RealT fx1[numVerts] = { 0., 0. };
+  RealT fy1[numVerts] = { 0., 0. };
+  RealT fx2[numVerts] = { 0., 0. };
+  RealT fy2[numVerts] = { 0., 0. };
+
+  tribol::registerNodalResponse( 0, &fx1[0], &fy1[0], nullptr );
+  tribol::registerNodalResponse( 1, &fx2[0], &fy2[0], nullptr );
+
+  tribol::setKinematicConstantPenalty( 0, 1. );
+  tribol::setKinematicConstantPenalty( 1, 1. );
+
+  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                                  tribol::ExecutionMode::Sequential );
+
+  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
+  tribol::setCommonPlaneIntegrationOptions( 0, rule, 4 );
+  tribol::setContactAreaFrac( 0, 1.e-12 );
+
+  EdgeLocalContactResult result;
+  RealT dt = 1.;
+  result.err = tribol::update( 1, 1., dt );
+
+  tribol::CouplingScheme* couplingScheme = &tribol::CouplingSchemeManager::getInstance().at( 0 );
+  result.num_active_pairs = couplingScheme->getNumActivePairs();
+  if ( result.num_active_pairs > 0 ) {
+    result.gap = couplingScheme->getCompGeom().getCommonPlane( 0 ).m_gap;
+  }
+
+  for ( int i = 0; i < numVerts; ++i ) {
+    result.total_abs_force += std::abs( fx1[i] ) + std::abs( fy1[i] ) + std::abs( fx2[i] ) + std::abs( fy2[i] );
+    result.mesh1_node_force_norm[i] = tribol::magnitude( fx1[i], fy1[i] );
+  }
+
+  tribol::finalize();
+
+  return result;
+}
+
 TEST_F( CommonPlaneTest, penetration_gap_check )
 {
   this->m_mesh.mortarMeshId = 0;
@@ -311,7 +376,7 @@ TEST_F( CommonPlaneTest, penetration_gap_check )
   tribol::finalize();
 }
 
-TEST_F( CommonPlaneTest, full_triangle_decomp_quad_execution )
+TEST_F( CommonPlaneTest, multipoint_quad_execution )
 {
   this->m_mesh.mortarMeshId = 0;
   this->m_mesh.nonmortarMeshId = 1;
@@ -337,8 +402,8 @@ TEST_F( CommonPlaneTest, full_triangle_decomp_quad_execution )
   tribol::TestControlParameters parameters;
   parameters.dt = 1.e-3;
   parameters.const_penalty = 1.0;
-  parameters.common_plane_rule = tribol::FULL_TRI_DECOMP;
-  parameters.common_plane_triangle_order = 3;
+  parameters.common_plane_rule = tribol::MULTI_POINT;
+  parameters.common_plane_quadrature_order = 3;
 
   int err = this->m_mesh.tribolSetupAndUpdate( tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS,
                                                tribol::NO_CASE, false, parameters );
@@ -352,7 +417,7 @@ TEST_F( CommonPlaneTest, full_triangle_decomp_quad_execution )
   tribol::finalize();
 }
 
-TEST_F( CommonPlaneTest, full_triangle_decomp_triangle_execution )
+TEST_F( CommonPlaneTest, multipoint_triangle_execution )
 {
   this->m_mesh.mortarMeshId = 0;
   this->m_mesh.nonmortarMeshId = 1;
@@ -378,8 +443,8 @@ TEST_F( CommonPlaneTest, full_triangle_decomp_triangle_execution )
   tribol::TestControlParameters parameters;
   parameters.dt = 1.e-3;
   parameters.const_penalty = 1.0;
-  parameters.common_plane_rule = tribol::FULL_TRI_DECOMP;
-  parameters.common_plane_triangle_order = 3;
+  parameters.common_plane_rule = tribol::MULTI_POINT;
+  parameters.common_plane_quadrature_order = 3;
 
   int err = this->m_mesh.tribolSetupAndUpdate( tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS,
                                                tribol::NO_CASE, false, parameters );
@@ -393,20 +458,46 @@ TEST_F( CommonPlaneTest, full_triangle_decomp_triangle_execution )
   tribol::finalize();
 }
 
-TEST_F( CommonPlaneTest, full_triangle_decomp_warped_quad_local_contact )
+TEST_F( CommonPlaneTest, multipoint_warped_quad_local_contact )
 {
   const auto single_point = runWarpedQuadForceCase( tribol::SINGLE_POINT );
-  const auto full_tri = runWarpedQuadForceCase( tribol::FULL_TRI_DECOMP );
+  const auto multi_point = runWarpedQuadForceCase( tribol::MULTI_POINT );
 
   EXPECT_EQ( single_point.err, 0 );
-  EXPECT_EQ( full_tri.err, 0 );
+  EXPECT_EQ( multi_point.err, 0 );
 
   EXPECT_GT( single_point.gap, 0. );
-  EXPECT_GT( full_tri.gap, 0. );
+  EXPECT_GT( multi_point.gap, 0. );
 
   EXPECT_NEAR( single_point.total_abs_force, 0., 1.e-12 );
-  EXPECT_GT( full_tri.total_abs_force, 1.e-6 );
-  EXPECT_NEAR( full_tri.total_force_z, 0., 1.e-12 );
+  EXPECT_GT( multi_point.total_abs_force, 1.e-6 );
+  EXPECT_NEAR( multi_point.total_force_z, 0., 1.e-12 );
+}
+
+TEST_F( CommonPlaneTest, multipoint_edge_local_contact )
+{
+  const auto single_point = runEdgeLocalContactCase( tribol::SINGLE_POINT );
+  const auto multi_point = runEdgeLocalContactCase( tribol::MULTI_POINT );
+
+  EXPECT_EQ( single_point.err, 0 );
+  EXPECT_EQ( multi_point.err, 0 );
+
+  EXPECT_EQ( single_point.num_active_pairs, 1 );
+  EXPECT_EQ( multi_point.num_active_pairs, 1 );
+
+  EXPECT_LT( single_point.gap, 0. );
+  EXPECT_LT( multi_point.gap, 0. );
+
+  EXPECT_GT( single_point.total_abs_force, 1.e-6 );
+  EXPECT_GT( multi_point.total_abs_force, 1.e-6 );
+
+  const RealT single_point_imbalance =
+      std::abs( single_point.mesh1_node_force_norm[0] - single_point.mesh1_node_force_norm[1] );
+  const RealT multi_point_imbalance =
+      std::abs( multi_point.mesh1_node_force_norm[0] - multi_point.mesh1_node_force_norm[1] );
+
+  EXPECT_LT( single_point_imbalance, 1.e-3 );
+  EXPECT_GT( multi_point_imbalance, single_point_imbalance + 1.e-3 );
 }
 
 TEST_F( CommonPlaneTest, separation_gap_check )

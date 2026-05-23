@@ -217,13 +217,13 @@ TEST_P( MfemCommonPlaneTest, common_plane )
 
 INSTANTIATE_TEST_SUITE_P( tribol, MfemCommonPlaneTest,
                           testing::Values( std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, tribol::SINGLE_POINT ),
-                                           std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, tribol::FULL_TRI_DECOMP ),
+                                           std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, tribol::MULTI_POINT ),
                                            std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, tribol::SINGLE_POINT ),
-                                           std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, tribol::FULL_TRI_DECOMP ),
+                                           std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, tribol::MULTI_POINT ),
                                            std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, tribol::SINGLE_POINT ),
-                                           std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, tribol::FULL_TRI_DECOMP ),
+                                           std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, tribol::MULTI_POINT ),
                                            std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, tribol::SINGLE_POINT ),
-                                           std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, tribol::FULL_TRI_DECOMP ) ) );
+                                           std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, tribol::MULTI_POINT ) ) );
 
 //------------------------------------------------------------------------------
 int main( int argc, char* argv[] )
