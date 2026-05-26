@@ -168,4 +168,3 @@ class ContactFormulation {
 }  // namespace tribol
 
 #endif /* SRC_TRIBOL_PHYSICS_CONTACTFORMULATION_HPP_ */
-

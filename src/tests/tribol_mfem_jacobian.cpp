@@ -1057,13 +1057,13 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
 
   // Build internal MfemData
   tribol::updateMfemParallelDecomposition();
-  
+
   double dt = 1.0;
   tribol::update( 1, 1.0, dt );
 
   // Retrieve Jacobian using the new penalty method
   auto DfDx = tribol::getMfemJacobian( cs_id );
-  
+
   if ( n_ranks == 1 ) {
     EXPECT_NE( DfDx, nullptr );
     if ( DfDx ) {

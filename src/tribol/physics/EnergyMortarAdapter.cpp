@@ -477,4 +477,3 @@ std::unique_ptr<mfem::HypreParMatrix> EnergyMortarAdapter::getMfemDfDp() const
 #endif  // TRIBOL_USE_ENZYME
 
 }  // namespace tribol
-
