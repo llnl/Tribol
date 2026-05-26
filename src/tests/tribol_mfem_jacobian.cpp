@@ -1009,6 +1009,8 @@ INSTANTIATE_TEST_SUITE_P( MfemLorTransfer, MfemLorTransferParamTest,
                                            LorTransferParams{ 3, 4, FieldKind::LagrangeMultiplier } ),
                           ParamsToString );
 
+#ifdef TRIBOL_USE_ENZYME
+
 TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
 {
   int n_ranks;
@@ -1071,6 +1073,8 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
     }
   }
 }
+
+#endif
 
 int main( int argc, char* argv[] )
 {
