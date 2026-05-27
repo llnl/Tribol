@@ -46,6 +46,8 @@ set(tribol_headers
     physics/EnergyMortarTypes.hpp
     physics/EnergyMortar.hpp
     physics/EnergyMortarAdapter.hpp
+    physics/EnergyAreaPenalty.hpp
+    physics/EnergyAreaPenaltyAdapter.hpp
     physics/Physics.hpp
 
     search/InterfacePairFinder.hpp
@@ -83,6 +85,8 @@ set(tribol_sources
     physics/Mortar.cpp
     physics/EnergyMortar.cpp
     physics/EnergyMortarAdapter.cpp
+    physics/EnergyAreaPenalty.cpp
+    physics/EnergyAreaPenaltyAdapter.cpp
     physics/Physics.cpp
      
     search/InterfacePairFinder.cpp

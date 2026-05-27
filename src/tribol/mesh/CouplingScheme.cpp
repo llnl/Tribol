@@ -1156,7 +1156,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 //------------------------------------------------------------------------------
 bool CouplingScheme::init()
 {
-  if ( m_contactMethod == ENERGY_MORTAR ) {
+  if ( m_contactMethod == ENERGY_MORTAR || m_contactMethod == ENERGY_AREA_PENALTY ) {
     // these calls still need to be made to set mesh pointers and allocator id
     if ( !setMeshPointers() || checkExecutionModeData() != 0 ) {
       // TODO: consider design; should these checks be specific to a contact formulation or are they specific to

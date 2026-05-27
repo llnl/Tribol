@@ -295,7 +295,8 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
   // Set data required for use with Lagrange multiplier enforcement option.
   // Coupling scheme validity will be checked later, but here some initial
   // data is created/initialized for use with LMs.
-  if ( enforcement_method == LAGRANGE_MULTIPLIER || contact_method == ENERGY_MORTAR ) {
+  if ( enforcement_method == LAGRANGE_MULTIPLIER || contact_method == ENERGY_MORTAR ||
+       contact_method == ENERGY_AREA_PENALTY ) {
     std::unique_ptr<mfem::FiniteElementCollection> pressure_fec = std::make_unique<mfem::H1_FECollection>(
         current_coords.FESpace()->FEColl()->GetOrder(), mesh.SpaceDimension() );
     int pressure_vdim = 0;
@@ -325,7 +326,7 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
     if ( ( lm_options.enforcement_option_set &&
            ( lm_options.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ||
              lm_options.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ) ) ||
-         contact_method == ENERGY_MORTAR ) {
+         contact_method == ENERGY_MORTAR || contact_method == ENERGY_AREA_PENALTY ) {
       // create matrix transfer operator between redecomp and
       // parent/parent-linked boundary submesh
       cs.setMfemJacobianData( std::make_unique<MfemJacobianData>( *mfem_data, *cs.getMfemSubmeshData() ) );
@@ -803,10 +804,12 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         registerNodalReferenceCoords( mesh_ids[1], xref_ptrs[0], xref_ptrs[1], xref_ptrs[2] );
       }
       // TODO: consider redesign where a specific method isn't checked and just the enforcement method is checked
-      if ( cs.getEnforcementMethod() == LAGRANGE_MULTIPLIER || cs.getContactMethod() == ENERGY_MORTAR ) {
+      if ( cs.getEnforcementMethod() == LAGRANGE_MULTIPLIER || cs.getContactMethod() == ENERGY_MORTAR ||
+           cs.getContactMethod() == ENERGY_AREA_PENALTY ) {
         SLIC_ERROR_ROOT_IF( cs.getContactModel() != FRICTIONLESS, "Only frictionless contact is supported." );
-        SLIC_ERROR_ROOT_IF( cs.getContactMethod() != SINGLE_MORTAR && cs.getContactMethod() != ENERGY_MORTAR,
-                            "Only single mortar or ENERGY_MORTAR contact is supported." );
+        SLIC_ERROR_ROOT_IF( cs.getContactMethod() != SINGLE_MORTAR && cs.getContactMethod() != ENERGY_MORTAR &&
+                                cs.getContactMethod() != ENERGY_AREA_PENALTY,
+                            "Only single mortar, ENERGY_MORTAR, or ENERGY_AREA_PENALTY contact is supported." );
         auto submesh_data = cs.getMfemSubmeshData();
         // updates submesh-native grid functions and transfer operators on
         // the new redecomp mesh
@@ -815,7 +818,9 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         registerMortarGaps( mesh_ids[1], g_ptrs[0] );
         auto p_ptrs = submesh_data->GetRedecompPressurePtrs();
         registerMortarPressures( mesh_ids[1], p_ptrs[0] );
-        if ( ( cs.hasMfemJacobianData() || cs.getContactMethod() == ENERGY_MORTAR ) && new_redecomp ) {
+        if ( ( cs.hasMfemJacobianData() || cs.getContactMethod() == ENERGY_MORTAR ||
+               cs.getContactMethod() == ENERGY_AREA_PENALTY ) &&
+             new_redecomp ) {
           // updates Jacobian transfer operator for new redecomp mesh
           cs.getMfemJacobianData()->UpdateJacobianXfer();
         }

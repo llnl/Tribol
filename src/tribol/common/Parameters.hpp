@@ -117,8 +117,9 @@ enum ContactMethod  // all mortar methods go first
   SINGLE_MORTAR,   ///! Single mortar per Puso 2003
   ALIGNED_MORTAR,  ///! Aligned mortar to be used with ContactCase = NO_SLIDING
   MORTAR_WEIGHTS,  ///! Method that only returns mortar weights per single mortar method
-  ENERGY_MORTAR,   ///! Energy-based mortar method
-  COMMON_PLANE,    ///! Common plane method, currently with single integration point
+  ENERGY_MORTAR,        ///! Energy-based mortar method
+  ENERGY_AREA_PENALTY,  ///! Energy-based area-integrated penalty method
+  COMMON_PLANE,         ///! Common plane method, currently with single integration point
   NUM_CONTACT_METHODS
 };
 

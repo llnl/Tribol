@@ -210,6 +210,7 @@ if( TRIBOL_USE_ENZYME )
       tribol_energy_mortar_patch.cpp
       tribol_energy_mortar_patch_LM.cpp
       tribol_finite_diff_energy_mortar.cpp
+      tribol_finite_diff_energy_area_penalty.cpp
       tribol_energy_mortar_smoothing.cpp
       )
 

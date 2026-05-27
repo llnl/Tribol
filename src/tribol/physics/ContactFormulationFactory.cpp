@@ -5,6 +5,7 @@
 
 #include "tribol/physics/ContactFormulationFactory.hpp"
 #include "tribol/physics/EnergyMortarAdapter.hpp"
+#include "tribol/physics/EnergyAreaPenaltyAdapter.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/common/Parameters.hpp"
 
@@ -47,6 +48,35 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
         opts, use_penalty );
 #else
     SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );
+    return nullptr;
+#endif
+  }
+
+  if ( cs->getContactMethod() == ENERGY_AREA_PENALTY ) {
+    EnergyMortarOptions opts;
+
+#if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
+    if ( cs->hasMfemData() ) {
+      auto* k_ptr = cs->getMfemMeshData()->GetMesh1KinematicConstantPenalty();
+      if ( k_ptr ) {
+        opts.k = *k_ptr;
+      }
+      if ( auto* em_opts = cs->getMfemMeshData()->GetEnergyMortarOptions() ) {
+        opts.smoothing_type = em_opts->smoothing_type;
+        opts.penalty_smoothing = em_opts->penalty_smoothing;
+        opts.penalty_smoothing_del = em_opts->penalty_smoothing_del;
+      }
+    }
+
+    SLIC_ERROR_ROOT_IF( !cs->hasMfemData(), "ENERGY_AREA_PENALTY requires MFEM mesh data." );
+    SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "ENERGY_AREA_PENALTY requires MFEM submesh data." );
+    SLIC_ERROR_ROOT_IF( !cs->hasMfemJacobianData(), "ENERGY_AREA_PENALTY requires MFEM Jacobian data." );
+
+    return std::make_unique<EnergyAreaPenaltyAdapter>(
+        *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), cs->getMesh1(), cs->getMesh2(),
+        opts );
+#else
+    SLIC_ERROR_ROOT( "ENERGY_AREA_PENALTY requires Enzyme and redecomp to be built." );
     return nullptr;
 #endif
   }
