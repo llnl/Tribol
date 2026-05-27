@@ -66,7 +66,14 @@ TRIBOL_HOST_DEVICE inline bool geomFilter( const CouplingScheme::Viewer& cs_view
 
   /// CHECK #3: Check that face normals are opposing up to some tolerance.
   ///           This uses a hard coded normal tolerance for this check.
-  RealT nrmlTol = -0.173648177;  // taken as cos(100) between face pair
+  ///
+  /// Previously cos(100 deg) = -0.1736; relaxed to cos(90 deg) = 0.0 to
+  /// reduce filter-induced active-set toggling during nonlinear iterations
+  /// in extreme-deformation problems where pairs hover near the threshold.
+  /// A pair is kept unless the two face normals point into the same hemisphere
+  /// (nrmlCheck > 0); any opposing component is enough to retain the pair.
+  /// See plan_smooth_contact.md Issue F1.
+  RealT nrmlTol = 0.0;
 
   RealT nrmlCheck = 0.0;
   for ( int d{ 0 }; d < dim; ++d ) {
