@@ -19,7 +19,7 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
   }
 
   if ( cs->getContactMethod() == ENERGY_MORTAR ) {
-    EnergyMortarOptions opts;
+    MfemMeshData::EnergyMortarOptions opts;
     // ENERGY_MORTAR supports a penalty-style mode driven by the kinematic penalty parameters, even if the coupling
     // scheme is registered with LM enforcement (which is often done to enable submesh/pressure infrastructure).
     const auto& penalty_opts = cs->getEnforcementOptions().penalty_options;
@@ -53,7 +53,7 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
   }
 
   if ( cs->getContactMethod() == ENERGY_AREA_PENALTY ) {
-    EnergyMortarOptions opts;
+    MfemMeshData::EnergyMortarOptions opts;
 
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
     if ( cs->hasMfemData() ) {
