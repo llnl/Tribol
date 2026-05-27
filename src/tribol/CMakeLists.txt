@@ -43,6 +43,7 @@ set(tribol_headers
     physics/ContactFormulation.hpp
     physics/ContactFormulationFactory.hpp
     physics/Mortar.hpp
+    physics/EnergyMortarTypes.hpp
     physics/EnergyMortar.hpp
     physics/EnergyMortarAdapter.hpp
     physics/Physics.hpp

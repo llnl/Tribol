@@ -59,11 +59,11 @@ FiniteDiffResult EnergyMortarCalculator::validate_g_tilde( const InterfacePair& 
   auto viewer2 = mesh2.getView();
 
   auto projs0 = projections( pair, viewer1, viewer2 );
-  auto bounds0 = smoother_.bounds_from_projections( projs0, p_.del );
-  auto smooth_bounds0 = smoother_.smooth_bounds( bounds0, p_.del );
+  auto bounds0 = smoother_.bounds_from_projections( projs0, opts_.del );
+  auto smooth_bounds0 = smoother_.smooth_bounds( bounds0, opts_.del );
   QuadPoints qp0;
-  if ( !p_.enzyme_quadrature ) {
-    qp0 = compute_quadrature( smooth_bounds0, p_.N );
+  if ( !opts_.enzyme_quadrature ) {
+    qp0 = compute_quadrature( smooth_bounds0, opts_.N );
   }
 
   auto [g1_base, g2_base] = eval_gtilde( pair, viewer1, viewer2 );
@@ -120,7 +120,7 @@ FiniteDiffResult EnergyMortarCalculator::validate_g_tilde( const InterfacePair& 
   }
 
   auto eval = [&]( const MeshData::Viewer& v1, const MeshData::Viewer& v2 ) -> std::pair<double, double> {
-    return p_.enzyme_quadrature ? eval_gtilde( pair, v1, v2 ) : eval_gtilde_fixed_qp( pair, v1, v2, qp0 );
+    return opts_.enzyme_quadrature ? eval_gtilde( pair, v1, v2 ) : eval_gtilde_fixed_qp( pair, v1, v2, qp0 );
   };
 
   // ===== FINITE DIFFERENCE GRADIENTS =====
@@ -288,11 +288,11 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
 
   // ===== FIXED QUADRATURE FOR enzyme_quadrature = false =====
   QuadPoints qp0;
-  if ( !p_.enzyme_quadrature ) {
+  if ( !opts_.enzyme_quadrature ) {
     auto projs0 = projections( pair, viewer1, viewer2 );
-    auto bounds0 = smoother_.bounds_from_projections( projs0, p_.del );
-    auto smooth_bounds0 = smoother_.smooth_bounds( bounds0, p_.del );
-    qp0 = compute_quadrature( smooth_bounds0, p_.N );
+    auto bounds0 = smoother_.bounds_from_projections( projs0, opts_.del );
+    auto smooth_bounds0 = smoother_.smooth_bounds( bounds0, opts_.del );
+    qp0 = compute_quadrature( smooth_bounds0, opts_.N );
   }
 
   auto eval_from_offsets = [&]( const std::array<double, 8>& du ) -> std::pair<double, double> {
@@ -314,7 +314,7 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
     mesh1.setPosition( x1.data(), y1.data(), nullptr );
     mesh2.setPosition( x2.data(), y2.data(), nullptr );
 
-    if ( p_.enzyme_quadrature ) {
+    if ( opts_.enzyme_quadrature ) {
       return eval_gtilde( pair, mesh1.getView(), mesh2.getView() );
     } else {
       return eval_gtilde_fixed_qp( pair, mesh1.getView(), mesh2.getView(), qp0 );
