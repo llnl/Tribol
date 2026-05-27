@@ -13,11 +13,8 @@ namespace tribol {
 #ifdef TRIBOL_USE_ENZYME
 
 EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
-                                          MfemJacobianData& jac_data, MeshData& mesh1, MeshData& mesh2, double k,
-                                          double delta, int N, bool enzyme_quadrature, bool use_penalty,
-                                          SmoothingType smoothing_type,
-                                          PenaltySmoothing penalty_smoothing,
-                                          double penalty_smoothing_del )
+                                          MfemJacobianData& jac_data, MeshData& mesh1, MeshData& mesh2,
+                                          const EnergyMortarOptions& opts, bool use_penalty )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
     : use_penalty_( use_penalty ),
@@ -32,14 +29,7 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
                         "ENERGY_MORTAR requires 2D meshes." );
   }
 
-  params_.k = k;
-  params_.del = delta;
-  params_.N = N;
-  params_.enzyme_quadrature = enzyme_quadrature;
-  params_.smoothing_type = smoothing_type;
-  params_.penalty_smoothing = penalty_smoothing;
-  params_.penalty_smoothing_del = penalty_smoothing_del;
-
+  params_ = opts;
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 
   // Allocate the (pressure) true-dof vector early so host code can set it via tribol::getMfemTDofPressure() after the

@@ -18,32 +18,23 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
   }
 
   if ( cs->getContactMethod() == ENERGY_MORTAR ) {
-    // Default parameters for now, or extract from CouplingScheme if available
-    double k = 1000.0;
-    double delta = 0.1;
-    int N = 3;
-    bool enzyme_quadrature = true;
-    SmoothingType smoothing_type = SmoothingType::Quadratic;
-    PenaltySmoothing penalty_smoothing = PenaltySmoothing::Smooth;
-    double penalty_smoothing_del = 1.0e-3;
+    EnergyMortarOptions opts;
     // ENERGY_MORTAR supports a penalty-style mode driven by the kinematic penalty parameters, even if the coupling
     // scheme is registered with LM enforcement (which is often done to enable submesh/pressure infrastructure).
     const auto& penalty_opts = cs->getEnforcementOptions().penalty_options;
     // TODO: Figure out how contact formulations interact with coupling scheme duplication (SRW)
-    bool use_penalty_ = penalty_opts.kinematic_calc_set;
+    bool use_penalty = penalty_opts.kinematic_calc_set;
 
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
     if ( cs->hasMfemData() ) {
-      // Attempt to get penalty from MfemMeshData if available
       auto* k_ptr = cs->getMfemMeshData()->GetMesh1KinematicConstantPenalty();
       if ( k_ptr ) {
-        k = *k_ptr;
+        opts.k = *k_ptr;
       }
-      auto* em_opts = cs->getMfemMeshData()->GetEnergyMortarOptions();
-      if ( em_opts ) {
-        smoothing_type = em_opts->smoothing_type == 0 ? SmoothingType::Hermite : SmoothingType::Quadratic;
-        penalty_smoothing = em_opts->penalty_smoothing == 0 ? PenaltySmoothing::Hard : PenaltySmoothing::Smooth;
-        penalty_smoothing_del = em_opts->penalty_smoothing_del;
+      if ( auto* em_opts = cs->getMfemMeshData()->GetEnergyMortarOptions() ) {
+        opts.smoothing_type = em_opts->smoothing_type;
+        opts.penalty_smoothing = em_opts->penalty_smoothing;
+        opts.penalty_smoothing_del = em_opts->penalty_smoothing_del;
       }
     }
 
@@ -52,8 +43,8 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     SLIC_ERROR_ROOT_IF( !cs->hasMfemJacobianData(), "ENERGY_MORTAR requires MFEM Jacobian data." );
 
     return std::make_unique<EnergyMortarAdapter>(
-        *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), cs->getMesh1(), cs->getMesh2(), k,
-        delta, N, enzyme_quadrature, use_penalty_, smoothing_type, penalty_smoothing, penalty_smoothing_del );
+        *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), cs->getMesh1(), cs->getMesh2(),
+        opts, use_penalty );
 #else
     SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );
     return nullptr;

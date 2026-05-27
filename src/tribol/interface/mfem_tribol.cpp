@@ -384,8 +384,8 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
   cs->getMfemMeshData()->SetMesh2KinematicConstantPenalty( mesh2_penalty );
 }
 
-void setMfemEnergyMortarOptions( IndexT cs_id, int smoothing_type,
-                                  int penalty_smoothing, double penalty_smoothing_del )
+void setMfemEnergyMortarOptions( IndexT cs_id, SmoothingType smoothing_type,
+                                  PenaltySmoothing penalty_smoothing, double penalty_smoothing_del )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(

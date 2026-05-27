@@ -7,6 +7,7 @@
 #define SRC_TRIBOL_INTERFACE_MFEM_TRIBOL_HPP_
 
 #include "tribol/config.hpp"
+#include "tribol/physics/EnergyMortarTypes.hpp"
 
 #ifdef BUILD_REDECOMP
 
@@ -106,12 +107,12 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
  * @brief Set energy mortar smoothing options
  *
  * @param cs_id The ID of the coupling scheme
- * @param smoothing_type 0 = Hermite, 1 = Quadratic (isoparametric bounds smoothing)
- * @param penalty_smoothing 0 = Hard, 1 = Smooth (penalty gap smoothing)
+ * @param smoothing_type SmoothingType::Hermite or SmoothingType::Quadratic
+ * @param penalty_smoothing PenaltySmoothing::Hard or PenaltySmoothing::Smooth
  * @param penalty_smoothing_del Smoothing width for smooth penalty transition
  */
-void setMfemEnergyMortarOptions( IndexT cs_id, int smoothing_type,
-                                  int penalty_smoothing, double penalty_smoothing_del );
+void setMfemEnergyMortarOptions( IndexT cs_id, SmoothingType smoothing_type,
+                                  PenaltySmoothing penalty_smoothing, double penalty_smoothing_del );
 
 /**
  * @brief Clears existing penalty data and sets kinematic element penalty

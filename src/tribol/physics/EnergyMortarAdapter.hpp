@@ -40,10 +40,7 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @param jac_data MFEM Jacobian transfer data
    * @param mesh1 First Tribol mesh (see note below)
    * @param mesh2 Second Tribol mesh (see note below)
-   * @param k Penalty stiffness
-   * @param delta Smoothing length
-   * @param N Quadrature order
-   * @param enzyme_quadrature If true, use Enzyme-assisted quadrature
+   * @param opts Energy mortar options (penalty, smoothing, quadrature)
    * @param use_penalty If true, interpret the dual field as pressure; otherwise interpret it as a Lagrange multiplier
    * vector (LM mode)
    *
@@ -52,10 +49,8 @@ class EnergyMortarAdapter : public ContactFormulation {
    * relative to the order of the meshes provided here.
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
-                       MeshData& mesh1, MeshData& mesh2, double k, double delta, int N, bool enzyme_quadrature,
-                       bool use_penalty = true, SmoothingType smoothing_type = SmoothingType::Quadratic,
-                       PenaltySmoothing penalty_smoothing = PenaltySmoothing::Smooth,
-                       double penalty_smoothing_del = 1.0e-3 );
+                       MeshData& mesh1, MeshData& mesh2, const EnergyMortarOptions& opts,
+                       bool use_penalty = true );
 
   /**
    * @brief Default destructor
@@ -252,7 +247,7 @@ class EnergyMortarAdapter : public ContactFormulation {
   /**
    * @brief Contact parameters (penalty, smoothing, quadrature)
    */
-  ContactParams params_;
+  EnergyMortarOptions params_;
 
   /**
    * @brief Evaluator implementing ENERGY_MORTAR element-level computations
@@ -361,6 +356,7 @@ class EnergyMortarAdapter : public ContactFormulation {
    */
   shared::ParSparseMat computeDfDxSecondDerivativesPenalty( const mfem::GridFunction& redecomp_coeff_gt,
                                                             const mfem::GridFunction& redecomp_coeff_A );
+
 };
 
 #endif  // TRIBOL_USE_ENZYME

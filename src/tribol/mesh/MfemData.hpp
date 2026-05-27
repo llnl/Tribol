@@ -8,6 +8,7 @@
 
 // Tribol config include
 #include "tribol/config.hpp"
+#include "tribol/physics/EnergyMortarTypes.hpp"
 
 #ifdef BUILD_REDECOMP
 
@@ -824,8 +825,8 @@ class MfemMeshData {
   const RealT* GetMesh2KinematicConstantPenalty() const { return kinematic_constant_penalty_2_.get(); }
 
   struct EnergyMortarOptions {
-    int smoothing_type = 1;           // 0 = Hermite, 1 = Quadratic
-    int penalty_smoothing = 1;        // 0 = Hard, 1 = Smooth
+    SmoothingType smoothing_type = SmoothingType::Quadratic;
+    PenaltySmoothing penalty_smoothing = PenaltySmoothing::Smooth;
     double penalty_smoothing_del = 1.0e-3;
   };
 
