@@ -204,7 +204,8 @@ double EnergyMortarCalculator::compute_weighted_normal_gap( const InterfacePair&
                                                             const MeshData::Viewer& mesh2, double xiA ) const
 {
   // Kept for diagnostic/FD-test callers only. The residual path now goes through
-  // gap_area_kernel so eta matches the Enzyme Jacobian path.
+  // gap_area_kernel so eta matches the Enzyme Jacobian path (eta = -dot*dot).
+  // This helper uses the same smoothed eta for consistency.
   double A0[2], A1[2], B0[2], B1[2];
 
   endpoints( mesh1, pair.m_element_id1, A0, A1 );
@@ -225,7 +226,7 @@ double EnergyMortarCalculator::compute_weighted_normal_gap( const InterfacePair&
 
   double gn = -( dx * nB[0] + dy * nB[1] );
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  double eta = ( dot < 0.0 ) ? dot : 0.0;
+  double eta = ( dot < 0.0 ) ? -dot * dot : 0.0;
 
   return gn * eta;
 }

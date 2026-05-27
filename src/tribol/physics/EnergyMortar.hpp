@@ -265,7 +265,7 @@ inline void gap_area_kernel( const double* x, const Gparams& gp, double* g_tilde
   double nA[2];
   find_normal( A0, A1, nA );
   const double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  const double eta = ( dot < 0.0 ) ? dot : 0.0;
+  const double eta = ( dot < 0.0 ) ? -dot * dot : 0.0;
 
   double g1 = 0.0;
   double g2 = 0.0;
