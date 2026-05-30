@@ -169,22 +169,27 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     RealT pen_scale2 = mesh2.getElementData().m_penalty_scale;
     RealT stiffness1 = 0.;
     RealT stiffness2 = 0.;
-    RealT t1 = mesh1.getElementData().m_thickness[index1];
-    RealT t2 = mesh2.getElementData().m_thickness[index2];
-
-    ComputeUncoupledStiffness( pen_enfrc_options.kinematic_calculation, t1, pen_enfrc_options.tiny_length, pen_scale1,
-                               mesh1.getElementData().m_mat_mod[index1], mesh1.getElementData().m_penalty_stiffness,
-                               stiffness1 );
-    ComputeUncoupledStiffness( pen_enfrc_options.kinematic_calculation, t2, pen_enfrc_options.tiny_length, pen_scale2,
-                               mesh2.getElementData().m_mat_mod[index2], mesh2.getElementData().m_penalty_stiffness,
-                               stiffness2 );
+    RealT t1 = 0.;
+    RealT t2 = 0.;
+    RealT mat_mod1 = 0.;
+    RealT mat_mod2 = 0.;
 
     if ( pen_enfrc_options.kinematic_calculation == KINEMATIC_ELEMENT ) {
+      t1 = mesh1.getElementData().m_thickness[index1];
+      t2 = mesh2.getElementData().m_thickness[index2];
+      mat_mod1 = mesh1.getElementData().m_mat_mod[index1];
+      mat_mod2 = mesh2.getElementData().m_mat_mod[index2];
       if ( t1 <= 0. || t2 <= 0. ) {
         neg_thickness[0] = true;
         err[0] = 1;
+        return;
       }
     }
+
+    ComputeUncoupledStiffness( pen_enfrc_options.kinematic_calculation, t1, pen_enfrc_options.tiny_length, pen_scale1,
+                               mat_mod1, mesh1.getElementData().m_penalty_stiffness, stiffness1 );
+    ComputeUncoupledStiffness( pen_enfrc_options.kinematic_calculation, t2, pen_enfrc_options.tiny_length, pen_scale2,
+                               mat_mod2, mesh2.getElementData().m_penalty_stiffness, stiffness2 );
 
     penalty_stiff_per_area = ComputePenaltyStiffnessPerArea( stiffness1, stiffness2 );
 

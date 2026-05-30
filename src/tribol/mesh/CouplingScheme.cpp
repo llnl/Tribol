@@ -1357,364 +1357,370 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                              static_cast<IndexT>( false ) },
                            getAllocatorId() );
   ArrayViewT<IndexT> msg = msg_data;
-  forAllExec( getExecutionMode(), getNumActivePairs(),
-              [cs_view, dim, proj_ratio, msg, dt_temp, dt] TRIBOL_HOST_DEVICE( IndexT i ) {
-                auto& cg_view = cs_view.getCompGeomView();
-                auto& plane = cg_view.getCommonPlane( i );
+  forAllExec(
+      getExecutionMode(), getNumActivePairs(),
+      [cs_view, dim, proj_ratio, msg, dt_temp, dt] TRIBOL_HOST_DEVICE( IndexT i ) {
+        auto& cg_view = cs_view.getCompGeomView();
+        auto& plane = cg_view.getCommonPlane( i );
 
-                auto& mesh1 = cs_view.getMesh1View();
-                auto& mesh2 = cs_view.getMesh2View();
+        auto& mesh1 = cs_view.getMesh1View();
+        auto& mesh2 = cs_view.getMesh2View();
 
-                // get pair indices
-                IndexT index1 = plane.getCpElementId1();
-                IndexT index2 = plane.getCpElementId2();
+        // get pair indices
+        IndexT index1 = plane.getCpElementId1();
+        IndexT index2 = plane.getCpElementId2();
 
-                constexpr int max_dim = 3;
-                constexpr int max_nodes_per_elem = 4;
-                StackArrayT<RealT, max_dim * max_nodes_per_elem> x1;
-                StackArrayT<RealT, max_dim * max_nodes_per_elem> v1;
-                mesh1.getFaceCoords( index1, x1 );
-                mesh1.getFaceVelocities( index1, v1 );
+        constexpr int max_dim = 3;
+        constexpr int max_nodes_per_elem = 4;
+        StackArrayT<RealT, max_dim * max_nodes_per_elem> x1;
+        StackArrayT<RealT, max_dim * max_nodes_per_elem> v1;
+        mesh1.getFaceCoords( index1, x1 );
+        mesh1.getFaceVelocities( index1, v1 );
 
-                StackArrayT<RealT, max_dim * max_nodes_per_elem> x2;
-                StackArrayT<RealT, max_dim * max_nodes_per_elem> v2;
-                mesh2.getFaceCoords( index2, x2 );
-                mesh2.getFaceVelocities( index2, v2 );
+        StackArrayT<RealT, max_dim * max_nodes_per_elem> x2;
+        StackArrayT<RealT, max_dim * max_nodes_per_elem> v2;
+        mesh2.getFaceCoords( index2, x2 );
+        mesh2.getFaceVelocities( index2, v2 );
 
-                /////////////////////////////////////////////////////////////
-                // calculate face velocities at projected overlap centroid //
-                /////////////////////////////////////////////////////////////
-                StackArrayT<RealT, max_dim> vel_f1;
-                StackArrayT<RealT, max_dim> vel_f2;
-                initRealArray( vel_f1, dim, 0.0 );
-                initRealArray( vel_f2, dim, 0.0 );
+        /////////////////////////////////////////////////////////////
+        // calculate face velocities at projected overlap centroid //
+        /////////////////////////////////////////////////////////////
+        StackArrayT<RealT, max_dim> vel_f1;
+        StackArrayT<RealT, max_dim> vel_f2;
+        initRealArray( vel_f1, dim, 0.0 );
+        initRealArray( vel_f2, dim, 0.0 );
 
-                // interpolate nodal velocity at overlap centroid as projected
-                // onto face 1
-                RealT cXf1 = plane.m_cXf1;
-                RealT cYf1 = plane.m_cYf1;
-                RealT cZf1 = ( dim == 3 ) ? plane.m_cZf1 : 0.;
-                GalerkinEval( x1, cXf1, cYf1, cZf1, LINEAR, PHYSICAL, dim, dim, v1, vel_f1 );
-                // interpolate nodal velocity at overlap centroid as projected
-                // onto face 2
-                RealT cXf2 = plane.m_cXf2;
-                RealT cYf2 = plane.m_cYf2;
-                RealT cZf2 = ( dim == 3 ) ? plane.m_cZf2 : 0.;
-                GalerkinEval( x2, cXf2, cYf2, cZf2, LINEAR, PHYSICAL, dim, dim, v2, vel_f2 );
+        // interpolate nodal velocity at overlap centroid as projected
+        // onto face 1
+        RealT cXf1 = plane.m_cXf1;
+        RealT cYf1 = plane.m_cYf1;
+        RealT cZf1 = ( dim == 3 ) ? plane.m_cZf1 : 0.;
+        GalerkinEval( x1, cXf1, cYf1, cZf1, LINEAR, PHYSICAL, dim, dim, v1, vel_f1 );
+        // interpolate nodal velocity at overlap centroid as projected
+        // onto face 2
+        RealT cXf2 = plane.m_cXf2;
+        RealT cYf2 = plane.m_cYf2;
+        RealT cZf2 = ( dim == 3 ) ? plane.m_cZf2 : 0.;
+        GalerkinEval( x2, cXf2, cYf2, cZf2, LINEAR, PHYSICAL, dim, dim, v2, vel_f2 );
 
-                ////////////////////////////////////////////////
-                //                                            //
-                // Compute Timestep Vote Based on a Few Cases //
-                //                                            //
-                ////////////////////////////////////////////////
+        ////////////////////////////////////////////////
+        //                                            //
+        // Compute Timestep Vote Based on a Few Cases //
+        //                                            //
+        ////////////////////////////////////////////////
 
-                ///////////////////////////////////////////////
-                // compute data common to all timestep votes //
-                ///////////////////////////////////////////////
+        ///////////////////////////////////////////////
+        // compute data common to all timestep votes //
+        ///////////////////////////////////////////////
 
-                // compute velocity projections:
-                // compute the dot product between the face velocities
-                // at the overlap-centroid-to-face projected centroid and each
-                // face's outward unit normal AND the overlap normal.
-                RealT v1_dot_n, v2_dot_n, v1_dot_n1, v2_dot_n2;
-                RealT overlapNormal[max_dim];
-                overlapNormal[0] = plane.m_nX;
-                overlapNormal[1] = plane.m_nY;
-                if ( dim == 3 ) {
-                  overlapNormal[2] = plane.m_nZ;
-                }
+        // compute velocity projections:
+        // compute the dot product between the face velocities
+        // at the overlap-centroid-to-face projected centroid and each
+        // face's outward unit normal AND the overlap normal.
+        RealT v1_dot_n, v2_dot_n, v1_dot_n1, v2_dot_n2;
+        RealT overlapNormal[max_dim];
+        overlapNormal[0] = plane.m_nX;
+        overlapNormal[1] = plane.m_nY;
+        if ( dim == 3 ) {
+          overlapNormal[2] = plane.m_nZ;
+        }
 
-                // get face normals
-                RealT fn1[max_dim], fn2[max_dim];
-                mesh1.getFaceNormal( index1, fn1 );
-                mesh2.getFaceNormal( index2, fn2 );
+        // get face normals
+        RealT fn1[max_dim], fn2[max_dim];
+        mesh1.getFaceNormal( index1, fn1 );
+        mesh2.getFaceNormal( index2, fn2 );
 
-                // compute projections
-                v1_dot_n = dotProd( vel_f1, overlapNormal, dim );
-                v2_dot_n = dotProd( vel_f2, overlapNormal, dim );
-                v1_dot_n1 = dotProd( vel_f1, fn1, dim );
-                v2_dot_n2 = dotProd( vel_f2, fn2, dim );
+        // compute projections
+        v1_dot_n = dotProd( vel_f1, overlapNormal, dim );
+        v2_dot_n = dotProd( vel_f2, overlapNormal, dim );
+        v1_dot_n1 = dotProd( vel_f1, fn1, dim );
+        v2_dot_n2 = dotProd( vel_f2, fn2, dim );
 
-                // Velocity tolerance for divide-by-zero threshold guarding
-                constexpr RealT tiny = 1.e-12;
+        // Velocity tolerance for divide-by-zero threshold guarding
+        constexpr RealT tiny = 1.e-12;
+        // Large fallback value used when the time-to-threshold is effectively infinite.
+        constexpr RealT fallback_dt = 1.e6;
 
-                // get volume element thicknesses associated with each face in this pair
-                RealT t1 = mesh1.getElementData().m_thickness[index1];
-                RealT t2 = mesh2.getElementData().m_thickness[index2];
+        // get volume element thicknesses associated with each face in this pair
+        RealT t1 = mesh1.getElementData().m_thickness[index1];
+        RealT t2 = mesh2.getElementData().m_thickness[index2];
 
-                // compute the existing gap vector (recall gap is x1-x2 by convention)
-                RealT gapVec[max_dim];
-                gapVec[0] = plane.m_cXf1 - plane.m_cXf2;
-                gapVec[1] = plane.m_cYf1 - plane.m_cYf2;
-                if ( dim == 3 ) {
-                  gapVec[2] = plane.m_cZf1 - plane.m_cZf2;
-                }
+        // compute the existing gap vector (recall gap is x1-x2 by convention)
+        RealT gapVec[max_dim];
+        gapVec[0] = plane.m_cXf1 - plane.m_cXf2;
+        gapVec[1] = plane.m_cYf1 - plane.m_cYf2;
+        if ( dim == 3 ) {
+          gapVec[2] = plane.m_cZf1 - plane.m_cZf2;
+        }
 
-                // compute the dot product between gap vector and the outward unit face normals.
-                RealT gap_f1_n1 = dotProd( gapVec, fn1, dim );
-                RealT gap_f2_n2 = dotProd( gapVec, fn2, dim );
+        // compute the dot product between gap vector and the outward unit face normals.
+        RealT gap_f1_n1 = dotProd( gapVec, fn1, dim );
+        RealT gap_f2_n2 = dotProd( gapVec, fn2, dim );
 
-                RealT dt1 = 1.e6;                          // initialize as large number
-                RealT dt2 = 1.e6;                          // initialize as large number
-                RealT alpha = cs_view.getTimestepScale();  // multiplier on timestep estimate
-                bool dt1_check1 = false;
-                bool dt2_check1 = false;
-                bool dt1_vel_check = false;
-                bool dt2_vel_check = false;
+        RealT dt1 = fallback_dt;
+        RealT dt2 = fallback_dt;
+        RealT alpha = cs_view.getTimestepScale();  // multiplier on timestep estimate
+        bool dt1_check1 = false;
+        bool dt2_check1 = false;
+        bool dt1_vel_check = false;
+        bool dt2_vel_check = false;
 
-                // maximum allowable interpenetration in the normal direction of each element
-                RealT max_delta1 = proj_ratio * t1;
-                RealT max_delta2 = proj_ratio * t2;
+        // maximum allowable interpenetration in the normal direction of each element
+        RealT max_delta1 = proj_ratio * t1;
+        RealT max_delta2 = proj_ratio * t2;
 
-                // Separation or interpenetration trigger for check 1 and 2:
-                // check if there is further interpen or separation based on the
-                // velocity projection in the direction of the common-plane normal,
-                // which is in the direction of face-2 normal.
-                // The two cases are:
-                // if v1*n < 0 there is interpen
-                // if v2*n > 0 there is interpen
-                dt1_vel_check = ( v1_dot_n < 0. ) ? true : false;
-                dt2_vel_check = ( v2_dot_n > 0. ) ? true : false;
+        // Separation or interpenetration trigger for check 1 and 2:
+        // check if there is further interpen or separation based on the
+        // velocity projection in the direction of the common-plane normal,
+        // which is in the direction of face-2 normal.
+        // The two cases are:
+        // if v1*n < 0 there is interpen
+        // if v2*n > 0 there is interpen
+        dt1_vel_check = ( v1_dot_n < 0. ) ? true : false;
+        dt2_vel_check = ( v2_dot_n > 0. ) ? true : false;
 
-                //////////////////////////////////////////////////////////////////////////
-                // Check 1. Current interpenetration gap exceeds max allowable interpen //
-                //////////////////////////////////////////////////////////////////////////
+        //////////////////////////////////////////////////////////////////////////
+        // Check 1. Current interpenetration gap exceeds max allowable interpen //
+        //////////////////////////////////////////////////////////////////////////
 
-                // check if face-pair is in contact (i.e. gap < gap_tol), which is determined
-                // in Common Plane ApplyNormal<>() routine
-                if ( plane.m_inContact ) {
-                  // compute the difference between the 'face-gaps' and the max allowable
-                  // interpen as a function of element thickness. Note, we have to use the
-                  // gap projected onto the outward unit face-normal to check against the
-                  // max allowable gap as a factor of the thickness in the element normal
-                  // direction
-                  RealT delta1 = max_delta1 - gap_f1_n1;  // >0 not exceeding max allowable
-                  RealT delta2 = max_delta2 + gap_f2_n2;  // >0 not exceeding max allowable
+        // check if face-pair is in contact (i.e. gap < gap_tol), which is determined
+        // in Common Plane ApplyNormal<>() routine
+        if ( plane.m_inContact ) {
+          // compute the difference between the 'face-gaps' and the max allowable
+          // interpen as a function of element thickness. Note, we have to use the
+          // gap projected onto the outward unit face-normal to check against the
+          // max allowable gap as a factor of the thickness in the element normal
+          // direction
+          RealT delta1 = max_delta1 - gap_f1_n1;  // >0 not exceeding max allowable
+          RealT delta2 = max_delta2 + gap_f2_n2;  // >0 not exceeding max allowable
 
-                  auto exceed_max_gap1 = ( delta1 < 0. ) ? true : false;
-                  auto exceed_max_gap2 = ( delta2 < 0. ) ? true : false;
+          auto exceed_max_gap1 = ( delta1 < 0. ) ? true : false;
+          auto exceed_max_gap2 = ( delta2 < 0. ) ? true : false;
 
-                  // if velocity projection indicates further interpenetration, and the gaps
-                  // EXCEED max allowable, then compute time step estimates to reduce overlap
-                  dt1_check1 = ( dt1_vel_check ) ? exceed_max_gap1 : false;
-                  dt2_check1 = ( dt2_vel_check ) ? exceed_max_gap2 : false;
+          // if velocity projection indicates further interpenetration, and the gaps
+          // EXCEED max allowable, then compute time step estimates to reduce overlap
+          dt1_check1 = ( dt1_vel_check ) ? exceed_max_gap1 : false;
+          dt2_check1 = ( dt2_vel_check ) ? exceed_max_gap2 : false;
 
 #ifdef TRIBOL_USE_RAJA
-                  RAJA::atomicMax<RAJA::auto_atomic>( &msg[0], static_cast<IndexT>( exceed_max_gap1 ) );
-                  RAJA::atomicMax<RAJA::auto_atomic>( &msg[1], static_cast<IndexT>( exceed_max_gap2 ) );
+          RAJA::atomicMax<RAJA::auto_atomic>( &msg[0], static_cast<IndexT>( exceed_max_gap1 ) );
+          RAJA::atomicMax<RAJA::auto_atomic>( &msg[1], static_cast<IndexT>( exceed_max_gap2 ) );
 #else
-                  msg[0] = exceed_max_gap1;
-                  msg[1] = exceed_max_gap2;
+          msg[0] = exceed_max_gap1;
+          msg[1] = exceed_max_gap2;
 #endif
 
-                  // compute dt for face 1 and 2 based on the velocity and gap projections onto
-                  // the face-normals for faces where currect gap exceeds max allowable gap.
-                  //
-                  // NOTE:
-                  //
-                  // This calculation RESETS the current gap to be g = 0, and computes a timestep
-                  // such that the velocity projection of the overlap-to-face projected overlap
-                  // centroid does not exceed the max allowable gap.
-                  //
-                  // This avoid a timestep crash in the case that the current gap barely exceeds
-                  // the max allowable and also allows a soft contact response with interpen
-                  // in excess of the max allowable gap without causing timestep crashes.
-                  //
-                  // v1_dot_n1 > 0 and v2_dot_n2 > 0 for further interpen
-                  if ( dt1_check1 ) {
-                    // If velocity is effectively zero, the time to exceed gap is infinite; default to 1.e6.
-                    dt1 = ( std::abs( v1_dot_n1 ) > tiny ) ? ( alpha * max_delta1 / v1_dot_n1 ) : 1.e6;
-                  }
-                  if ( dt2_check1 ) {
-                    // If velocity is effectively zero, the time to exceed gap is infinite; default to 1.e6.
-                    dt2 = ( std::abs( v2_dot_n2 ) > tiny ) ? ( alpha * max_delta2 / v2_dot_n2 ) : 1.e6;
-                  }
+          // compute dt for face 1 and 2 based on the velocity and gap projections onto
+          // the face-normals for faces where currect gap exceeds max allowable gap.
+          //
+          // NOTE:
+          //
+          // This calculation RESETS the current gap to be g = 0, and computes a timestep
+          // such that the velocity projection of the overlap-to-face projected overlap
+          // centroid does not exceed the max allowable gap.
+          //
+          // This avoid a timestep crash in the case that the current gap barely exceeds
+          // the max allowable and also allows a soft contact response with interpen
+          // in excess of the max allowable gap without causing timestep crashes.
+          //
+          // v1_dot_n1 > 0 and v2_dot_n2 > 0 for further interpen
+          if ( dt1_check1 ) {
+            // If velocity is effectively zero, the time to exceed gap is effectively infinite.
+            dt1 = ( std::abs( v1_dot_n1 ) > tiny ) ? ( alpha * max_delta1 / v1_dot_n1 ) : fallback_dt;
+          }
+          if ( dt2_check1 ) {
+            // If velocity is effectively zero, the time to exceed gap is effectively infinite.
+            dt2 = ( std::abs( v2_dot_n2 ) > tiny ) ? ( alpha * max_delta2 / v2_dot_n2 ) : fallback_dt;
+          }
 
-                  // update dt_temp1 only for positive dt1 and/or dt2
-                  if ( dt1 > 0. ) {
+          // update dt_temp1 only for positive dt1 and/or dt2
+          if ( dt1 > 0. ) {
 #ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[0], axom::utilities::min( dt1, 1.e6 ) );
+            RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[0], axom::utilities::min( dt1, fallback_dt ) );
 #else
-                    dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(dt1, 1.e6));
+            dt_temp[0] = axom::utilities::min( dt_temp[0], axom::utilities::min( dt1, fallback_dt ) );
 #endif
-                  }
-                  if ( dt2 > 0. ) {
+          }
+          if ( dt2 > 0. ) {
 #ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[0], axom::utilities::min( 1.e6, dt2 ) );
+            RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[0], axom::utilities::min( fallback_dt, dt2 ) );
 #else
-                    dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(1.e6, dt2));
+            dt_temp[0] = axom::utilities::min( dt_temp[0], axom::utilities::min( fallback_dt, dt2 ) );
 #endif
-                  }
+          }
 
-                  if ( dt1 < 0. || dt2 < 0. ) {
+          if ( dt1 < 0. || dt2 < 0. ) {
 #ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMax<RAJA::auto_atomic>( &msg[2], static_cast<IndexT>( true ) );
+            RAJA::atomicMax<RAJA::auto_atomic>( &msg[2], static_cast<IndexT>( true ) );
 #else
-                    msg[2] = true;
+            msg[2] = true;
 #endif
-                  }
-                }  // end case 1
+          }
+        }  // end case 1
 
-                ////////////////////////////////////////////////////////////////////////
-                // 2. Velocity projection exceeds max interpenetration                //
-                //                                                                    //
-                //    Note: This is performed for all contact candidates even if they //
-                //          are not 'in contact' per the common-plane method. Every   //
-                //          contact candidate has a contact plane                     //
-                ////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////
+        // 2. Velocity projection exceeds max interpenetration                //
+        //                                                                    //
+        //    Note: This is performed for all contact candidates even if they //
+        //          are not 'in contact' per the common-plane method. Every   //
+        //          contact candidate has a contact plane                     //
+        ////////////////////////////////////////////////////////////////////////
 
-                {
-                  // compute the delta between the velocity projection of each face-projected
-                  // common plane centroid location
-                  //
-                  // First project each face-projected common plane centroid using linear velocity
-                  // projection as approximation of configuration next cycle
-                  RealT proj_delta_x1 = plane.m_cXf1 + dt * vel_f1[0];
-                  RealT proj_delta_y1 = plane.m_cYf1 + dt * vel_f1[1];
-                  RealT proj_delta_z1 = 0.;
+        {
+          // compute the delta between the velocity projection of each face-projected
+          // common plane centroid location
+          //
+          // First project each face-projected common plane centroid using linear velocity
+          // projection as approximation of configuration next cycle
+          RealT proj_delta_x1 = plane.m_cXf1 + dt * vel_f1[0];
+          RealT proj_delta_y1 = plane.m_cYf1 + dt * vel_f1[1];
+          RealT proj_delta_z1 = 0.;
 
-                  RealT proj_delta_x2 = plane.m_cXf2 + dt * vel_f2[0];
-                  RealT proj_delta_y2 = plane.m_cYf2 + dt * vel_f2[1];
-                  RealT proj_delta_z2 = 0.;
+          RealT proj_delta_x2 = plane.m_cXf2 + dt * vel_f2[0];
+          RealT proj_delta_y2 = plane.m_cYf2 + dt * vel_f2[1];
+          RealT proj_delta_z2 = 0.;
 
-                  // Second compute the amount of interpenetration as the difference between the two
-                  // velocity projected points
-                  RealT proj_delta_x1_fixed = proj_delta_x1;
-                  RealT proj_delta_y1_fixed = proj_delta_y1;
+          // Second compute the amount of interpenetration as the difference between the two
+          // velocity projected points
+          RealT proj_delta_x1_fixed = proj_delta_x1;
+          RealT proj_delta_y1_fixed = proj_delta_y1;
 
-                  proj_delta_x1 -= proj_delta_x2;
-                  proj_delta_y1 -= proj_delta_y2;
+          proj_delta_x1 -= proj_delta_x2;
+          proj_delta_y1 -= proj_delta_y2;
 
-                  proj_delta_x2 -= proj_delta_x1_fixed;
-                  proj_delta_y2 -= proj_delta_y1_fixed;
+          proj_delta_x2 -= proj_delta_x1_fixed;
+          proj_delta_y2 -= proj_delta_y1_fixed;
 
-                  // compute the dot product between each face's delta and the OTHER
-                  // face's outward unit normal. This is the magnitude of interpenetration
-                  // of one face's projected overlap-centroid in the 'thickness-direction'
-                  // of the other face (with whom in may be in contact currently, or in
-                  // a velocity projected sense).
-                  RealT proj_delta_n_1 = proj_delta_x1 * fn2[0] + proj_delta_y1 * fn2[1];
-                  RealT proj_delta_n_2 = proj_delta_x2 * fn1[0] + proj_delta_y2 * fn1[1];
+          // compute the dot product between each face's delta and the OTHER
+          // face's outward unit normal. This is the magnitude of interpenetration
+          // of one face's projected overlap-centroid in the 'thickness-direction'
+          // of the other face (with whom in may be in contact currently, or in
+          // a velocity projected sense).
+          RealT proj_delta_n_1 = proj_delta_x1 * fn2[0] + proj_delta_y1 * fn2[1];
+          RealT proj_delta_n_2 = proj_delta_x2 * fn1[0] + proj_delta_y2 * fn1[1];
 
-                  if ( dim == 3 ) {
-                    // project the z-component
-                    proj_delta_z1 = plane.m_cZf1 + dt * vel_f1[2];
-                    proj_delta_z2 = plane.m_cZf2 + dt * vel_f2[2];
+          if ( dim == 3 ) {
+            // project the z-component
+            proj_delta_z1 = plane.m_cZf1 + dt * vel_f1[2];
+            proj_delta_z2 = plane.m_cZf2 + dt * vel_f2[2];
 
-                    RealT proj_delta_z1_fixed = proj_delta_z1;
+            RealT proj_delta_z1_fixed = proj_delta_z1;
 
-                    // compute difference between each projected point
-                    proj_delta_z1 -= proj_delta_z2;
-                    proj_delta_z2 -= proj_delta_z1_fixed;
+            // compute difference between each projected point
+            proj_delta_z1 -= proj_delta_z2;
+            proj_delta_z2 -= proj_delta_z1_fixed;
 
-                    // add the z-component of the projection onto the face normal
-                    proj_delta_n_1 += proj_delta_z1 * fn2[2];
-                    proj_delta_n_2 += proj_delta_z2 * fn1[2];
-                  }
+            // add the z-component of the projection onto the face normal
+            proj_delta_n_1 += proj_delta_z1 * fn2[2];
+            proj_delta_n_2 += proj_delta_z2 * fn1[2];
+          }
 
-                  // Reset the dt velocity check only for faces with continued interpen that exceeds the
-                  // max allowable gap AND where the current gap did NOT exceed that face's max allowable
-                  // gap per check 1 (would result in same dt calc).
-                  //
-                  // Note:
-                  // If proj_delta_n_i < 0, (i=1,2) there is interpen from the velocity projection.
-                  // Check this interpen against the maximum allowable to determine if a velocity projection
-                  // timestep estimate is still required.
-                  if ( dt1_vel_check && !dt1_check1 )  // continued interpen
-                  {
-                    dt1_vel_check = ( proj_delta_n_1 < 0. )
-                                        ? ( ( std::abs( proj_delta_n_1 ) > max_delta1 ) ? true : false )
-                                        : false;
-                  }
+          // Reset the dt velocity check only for faces with continued interpen that exceeds the
+          // max allowable gap AND where the current gap did NOT exceed that face's max allowable
+          // gap per check 1 (would result in same dt calc).
+          //
+          // Note:
+          // If proj_delta_n_i < 0, (i=1,2) there is interpen from the velocity projection.
+          // Check this interpen against the maximum allowable to determine if a velocity projection
+          // timestep estimate is still required.
+          if ( dt1_vel_check && !dt1_check1 )  // continued interpen
+          {
+            dt1_vel_check =
+                ( proj_delta_n_1 < 0. ) ? ( ( std::abs( proj_delta_n_1 ) > max_delta1 ) ? true : false ) : false;
+          }
 
-                  if ( dt2_vel_check && !dt2_check1 )  // continued interpen
-                  {
-                    dt2_vel_check = ( proj_delta_n_2 < 0. )
-                                        ? ( ( std::abs( proj_delta_n_2 ) > max_delta2 ) ? true : false )
-                                        : false;
-                  }
+          if ( dt2_vel_check && !dt2_check1 )  // continued interpen
+          {
+            dt2_vel_check =
+                ( proj_delta_n_2 < 0. ) ? ( ( std::abs( proj_delta_n_2 ) > max_delta2 ) ? true : false ) : false;
+          }
 
-                  // compute velocity projection based dt (check 2) using a RESET gap (g=0) such that
-                  // the velocity projected gap does not exceed the max allowable gap. This avoid timestep
-                  // crashes for velocity projected gaps slightly in excess of the max allowable and still
-                  // allows for a soft contact response without a timestep crash.
-                  //
-                  // v1_dot_n1 > 0 and v2_dot_n2 > 0 for further interpen
-                  if ( dt1_vel_check ) {
-                    // If velocity is effectively zero, the time to exceed gap is infinite; default to 1.e6.
-                    dt1 = ( std::abs( v1_dot_n1 ) > tiny ) ? ( alpha * max_delta1 / v1_dot_n1 ) : 1.e6;
-                  }
-                  if ( dt2_vel_check ) {
-                    // If velocity is effectively zero, the time to exceed gap is infinite; default to 1.e6.
-                    dt2 = ( std::abs( v2_dot_n2 ) > tiny ) ? ( alpha * max_delta2 / v2_dot_n2 ) : 1.e6;
-                  }
+          // compute velocity projection based dt (check 2) using a RESET gap (g=0) such that
+          // the velocity projected gap does not exceed the max allowable gap. This avoid timestep
+          // crashes for velocity projected gaps slightly in excess of the max allowable and still
+          // allows for a soft contact response without a timestep crash.
+          //
+          // v1_dot_n1 > 0 and v2_dot_n2 > 0 for further interpen
+          if ( dt1_vel_check ) {
+            // If velocity is effectively zero, the time to exceed gap is effectively infinite.
+            dt1 = ( std::abs( v1_dot_n1 ) > tiny ) ? ( alpha * max_delta1 / v1_dot_n1 ) : fallback_dt;
+          }
+          if ( dt2_vel_check ) {
+            // If velocity is effectively zero, the time to exceed gap is effectively infinite.
+            dt2 = ( std::abs( v2_dot_n2 ) > tiny ) ? ( alpha * max_delta2 / v2_dot_n2 ) : fallback_dt;
+          }
 
-                  // update dt_temp2 only for positive dt1 and/or dt2
-                  if ( dt1 > 0. ) {
+          // update dt_temp2 only for positive dt1 and/or dt2
+          if ( dt1 > 0. ) {
 #ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[1], axom::utilities::min( dt1, 1.e6 ) );
+            RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[1], axom::utilities::min( dt1, fallback_dt ) );
 #else
-                    dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(dt1, 1.e6));
+            dt_temp[1] = axom::utilities::min( dt_temp[1], axom::utilities::min( dt1, fallback_dt ) );
 #endif
-                  }
-                  if ( dt2 > 0. ) {
+          }
+          if ( dt2 > 0. ) {
 #ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[1], axom::utilities::min( 1.e6, dt2 ) );
+            RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[1], axom::utilities::min( fallback_dt, dt2 ) );
 #else
-                    dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(1.e6, dt2));
+            dt_temp[1] = axom::utilities::min( dt_temp[1], axom::utilities::min( fallback_dt, dt2 ) );
 #endif
-                  }
-                  if ( dt1 < 0. || dt2 < 0. ) {
+          }
+          if ( dt1 < 0. || dt2 < 0. ) {
 #ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMax<RAJA::auto_atomic>( &msg[3], static_cast<IndexT>( true ) );
+            RAJA::atomicMax<RAJA::auto_atomic>( &msg[3], static_cast<IndexT>( true ) );
 #else
-                    msg[3] = true;
+            msg[3] = true;
 #endif
-                  }
+          }
 
-                }  // end check 2
+        }  // end check 2
 
-                ////////////////////////////////////////////////////////////////////////
-                // 3. Contact Dynamics and Stability Limits                          //
-                //                                                                    //
-                //    These limits constrain the explicit time integration based on   //
-                //    the added stiffness of active contact springs.                  //
-                ////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////////////////////////////////////////////
+        // 3. Contact Dynamics and Stability Limits                          //
+        //                                                                    //
+        //    These limits constrain the explicit time integration based on   //
+        //    the added stiffness of active contact springs.                  //
+        ////////////////////////////////////////////////////////////////////////
 
-                if ( plane.m_inContact && cs_view.enableTimestepStabilityLimits() ) {
-                  RealT stiffness1 = 0.;
-                  RealT stiffness2 = 0.;
-                  auto& enforcement_options = cs_view.getEnforcementOptions();
-                  const PenaltyEnforcementOptions& pen_enfrc_options = enforcement_options.penalty_options;
-                  RealT pen_scale1 = mesh1.getElementData().m_penalty_scale;
-                  RealT pen_scale2 = mesh2.getElementData().m_penalty_scale;
+        if ( plane.m_inContact && cs_view.enableTimestepStabilityLimits() ) {
+          RealT stiffness1 = 0.;
+          RealT stiffness2 = 0.;
+          auto& enforcement_options = cs_view.getEnforcementOptions();
+          const PenaltyEnforcementOptions& pen_enfrc_options = enforcement_options.penalty_options;
+          RealT pen_scale1 = mesh1.getElementData().m_penalty_scale;
+          RealT pen_scale2 = mesh2.getElementData().m_penalty_scale;
+          RealT mat_mod1 = 0.;
+          RealT mat_mod2 = 0.;
 
-                  ComputeUncoupledStiffness( pen_enfrc_options.kinematic_calculation, t1, pen_enfrc_options.tiny_length,
-                                             pen_scale1, mesh1.getElementData().m_mat_mod[index1],
-                                             mesh1.getElementData().m_penalty_stiffness, stiffness1 );
-                  ComputeUncoupledStiffness( pen_enfrc_options.kinematic_calculation, t2, pen_enfrc_options.tiny_length,
-                                             pen_scale2, mesh2.getElementData().m_mat_mod[index2],
-                                             mesh2.getElementData().m_penalty_stiffness, stiffness2 );
+          if ( pen_enfrc_options.kinematic_calculation == KINEMATIC_ELEMENT ) {
+            mat_mod1 = mesh1.getElementData().m_mat_mod[index1];
+            mat_mod2 = mesh2.getElementData().m_mat_mod[index2];
+          }
 
-                  if ( stiffness1 > 0. && stiffness2 > 0. ) {
-                    RealT penalty_stiff_per_area = ComputePenaltyStiffnessPerArea( stiffness1, stiffness2 );
-                    if ( penalty_stiff_per_area > 0. ) {
-                      // Rescale the host timestep by the added interface stiffness.
-                      RealT f_scale1 = 1.0 / std::sqrt( 1.0 + ( penalty_stiff_per_area / stiffness1 ) );
-                      RealT f_scale2 = 1.0 / std::sqrt( 1.0 + ( penalty_stiff_per_area / stiffness2 ) );
-                      RealT dt_crit = alpha * dt * axom::utilities::min( f_scale1, f_scale2 );
+          ComputeUncoupledStiffness( pen_enfrc_options.kinematic_calculation, t1, pen_enfrc_options.tiny_length,
+                                     pen_scale1, mat_mod1, mesh1.getElementData().m_penalty_stiffness, stiffness1 );
+          ComputeUncoupledStiffness( pen_enfrc_options.kinematic_calculation, t2, pen_enfrc_options.tiny_length,
+                                     pen_scale2, mat_mod2, mesh2.getElementData().m_penalty_stiffness, stiffness2 );
 
-                      if ( dt_crit > 0. ) {
+          if ( stiffness1 > 0. && stiffness2 > 0. ) {
+            RealT penalty_stiff_per_area = ComputePenaltyStiffnessPerArea( stiffness1, stiffness2 );
+            if ( penalty_stiff_per_area > 0. ) {
+              // Rescale the host timestep by the added interface stiffness.
+              RealT f_scale1 = 1.0 / std::sqrt( 1.0 + ( penalty_stiff_per_area / stiffness1 ) );
+              RealT f_scale2 = 1.0 / std::sqrt( 1.0 + ( penalty_stiff_per_area / stiffness2 ) );
+              RealT dt_crit = alpha * dt * axom::utilities::min( f_scale1, f_scale2 );
+
+              if ( dt_crit > 0. ) {
 #ifdef TRIBOL_USE_RAJA
-                        RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[2], axom::utilities::min( dt_crit, 1.e6 ) );
+                RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[2], axom::utilities::min( dt_crit, fallback_dt ) );
 #else
-                        dt_temp[2] = axom::utilities::min( dt_temp[2], axom::utilities::min( dt_crit, 1.e6 ) );
+                dt_temp[2] = axom::utilities::min( dt_temp[2], axom::utilities::min( dt_crit, fallback_dt ) );
 #endif
-                      }
-                    }
-                  }
-                }  // end contact dynamics and stability limits
-              } );
+              }
+            }
+          }
+        }  // end contact dynamics and stability limits
+      } );
 
   // print general messages once
   // Can we output this message on root? SRW
