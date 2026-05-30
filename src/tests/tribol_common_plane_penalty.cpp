@@ -185,8 +185,6 @@ class CommonPlaneTest : public ::testing::Test {
   void SetUp() override {}
 
   void TearDown() override { this->m_mesh.clear(); }
-
-protected:
 };
 
 struct WarpedQuadForceResult {

@@ -52,20 +52,17 @@ TRIBOL_HOST_DEVICE inline bool Solve3x3( const RealT A[3][3], const RealT b[3], 
   }
 
   const RealT inv_detA = 1. / detA;
-  x[0] = inv_detA * ( b[0] * ( A[1][1] * A[2][2] - A[1][2] * A[2][1] ) -
-                      A[0][1] * ( b[1] * A[2][2] - A[1][2] * b[2] ) +
+  x[0] = inv_detA * ( b[0] * ( A[1][1] * A[2][2] - A[1][2] * A[2][1] ) - A[0][1] * ( b[1] * A[2][2] - A[1][2] * b[2] ) +
                       A[0][2] * ( b[1] * A[2][1] - A[1][1] * b[2] ) );
-  x[1] = inv_detA * ( A[0][0] * ( b[1] * A[2][2] - A[1][2] * b[2] ) -
-                      b[0] * ( A[1][0] * A[2][2] - A[1][2] * A[2][0] ) +
+  x[1] = inv_detA * ( A[0][0] * ( b[1] * A[2][2] - A[1][2] * b[2] ) - b[0] * ( A[1][0] * A[2][2] - A[1][2] * A[2][0] ) +
                       A[0][2] * ( A[1][0] * b[2] - b[1] * A[2][0] ) );
-  x[2] = inv_detA * ( A[0][0] * ( A[1][1] * b[2] - b[1] * A[2][1] ) -
-                      A[0][1] * ( A[1][0] * b[2] - b[1] * A[2][0] ) +
+  x[2] = inv_detA * ( A[0][0] * ( A[1][1] * b[2] - b[1] * A[2][1] ) - A[0][1] * ( A[1][0] * b[2] - b[1] * A[2][0] ) +
                       b[0] * ( A[1][0] * A[2][1] - A[1][1] * A[2][0] ) );
   return true;
 }
 
-TRIBOL_HOST_DEVICE inline void AccumulateFaceInterpolation( const RealT* face_coords, const int num_nodes, const RealT* phi,
-                                                            RealT x_face[3], const int value_dim = 0,
+TRIBOL_HOST_DEVICE inline void AccumulateFaceInterpolation( const RealT* face_coords, const int num_nodes,
+                                                            const RealT* phi, RealT x_face[3], const int value_dim = 0,
                                                             const RealT* nodal_vals = nullptr, RealT* values = nullptr )
 {
   initRealArray( x_face, max_dim, 0. );
@@ -89,7 +86,8 @@ TRIBOL_HOST_DEVICE inline void AccumulateFaceInterpolation( const RealT* face_co
 TRIBOL_HOST_DEVICE inline bool EvalLinearFaceAtProjectedPoint( const RealT* face_coords, const int num_nodes,
                                                                const RealT x_query[3], const RealT projection_dir[3],
                                                                RealT x_face[3], RealT* phi, const int value_dim = 0,
-                                                               const RealT* nodal_vals = nullptr, RealT* values = nullptr )
+                                                               const RealT* nodal_vals = nullptr,
+                                                               RealT* values = nullptr )
 {
   // CommonPlane quadrature points lie on the overlap polygon. Evaluate the face
   // fields at the corresponding on-face point found by projecting along the
@@ -104,7 +102,8 @@ TRIBOL_HOST_DEVICE inline bool EvalLinearFaceAtProjectedPoint( const RealT* face
     RealT n_face[3];
     crossProd( e1[0], e1[1], e1[2], e2[0], e2[1], e2[2], n_face[0], n_face[1], n_face[2] );
 
-    const RealT denom = dotProd( n_face[0], n_face[1], n_face[2], projection_dir[0], projection_dir[1], projection_dir[2] );
+    const RealT denom =
+        dotProd( n_face[0], n_face[1], n_face[2], projection_dir[0], projection_dir[1], projection_dir[2] );
     constexpr RealT parallel_tol = 1.e-14;
     if ( std::abs( denom ) <= parallel_tol ) {
       return false;
@@ -113,8 +112,7 @@ TRIBOL_HOST_DEVICE inline bool EvalLinearFaceAtProjectedPoint( const RealT* face
     const RealT dx0 = x0[0] - x_query[0];
     const RealT dy0 = x0[1] - x_query[1];
     const RealT dz0 = x0[2] - x_query[2];
-    const RealT step =
-        dotProd( n_face[0], n_face[1], n_face[2], dx0, dy0, dz0 ) / denom;
+    const RealT step = dotProd( n_face[0], n_face[1], n_face[2], dx0, dy0, dz0 ) / denom;
 
     x_face[0] = x_query[0] + step * projection_dir[0];
     x_face[1] = x_query[1] + step * projection_dir[1];
@@ -183,7 +181,8 @@ TRIBOL_HOST_DEVICE inline bool EvalLinearFaceAtProjectedPoint( const RealT* face
         dxdeta[2] += za * dphi_deta;
       }
 
-      RealT residual[3] = { x_face[0] - x_query[0] - s * projection_dir[0], x_face[1] - x_query[1] - s * projection_dir[1],
+      RealT residual[3] = { x_face[0] - x_query[0] - s * projection_dir[0],
+                            x_face[1] - x_query[1] - s * projection_dir[1],
                             x_face[2] - x_query[2] - s * projection_dir[2] };
       const RealT residual_norm = magnitude( residual[0], residual[1], residual[2] );
       if ( residual_norm <= residual_tol ) {
@@ -222,15 +221,13 @@ TRIBOL_HOST_DEVICE inline bool EvalLinearFaceAtProjectedPoint( const RealT* face
     phi[3] = 0.25 * ( 1. + xi ) * ( 1. - eta );
     AccumulateFaceInterpolation( face_coords, num_nodes, phi, x_face );
 
-    const RealT line_residual =
-        magnitude( x_face[0] - x_query[0], x_face[1] - x_query[1], x_face[2] - x_query[2] );
-    const RealT normal_step =
-        ( x_face[0] - x_query[0] ) * projection_dir[0] + ( x_face[1] - x_query[1] ) * projection_dir[1] +
-        ( x_face[2] - x_query[2] ) * projection_dir[2];
-    const RealT projection_residual =
-        magnitude( x_face[0] - x_query[0] - normal_step * projection_dir[0],
-                   x_face[1] - x_query[1] - normal_step * projection_dir[1],
-                   x_face[2] - x_query[2] - normal_step * projection_dir[2] );
+    const RealT line_residual = magnitude( x_face[0] - x_query[0], x_face[1] - x_query[1], x_face[2] - x_query[2] );
+    const RealT normal_step = ( x_face[0] - x_query[0] ) * projection_dir[0] +
+                              ( x_face[1] - x_query[1] ) * projection_dir[1] +
+                              ( x_face[2] - x_query[2] ) * projection_dir[2];
+    const RealT projection_residual = magnitude( x_face[0] - x_query[0] - normal_step * projection_dir[0],
+                                                 x_face[1] - x_query[1] - normal_step * projection_dir[1],
+                                                 x_face[2] - x_query[2] - normal_step * projection_dir[2] );
     if ( line_residual > 0. && projection_residual > residual_tol * line_residual ) {
       return false;
     }
@@ -251,8 +248,9 @@ TRIBOL_HOST_DEVICE inline bool EvalLinearFaceAtProjectedPoint( const RealT* face
 }
 
 TRIBOL_HOST_DEVICE inline bool EvalLinearEdgeAtProjectedPoint( const RealT* edge_coords, const RealT x_query[2],
-                                                               const RealT projection_dir[2], RealT x_edge[3], RealT* phi,
-                                                               const int value_dim = 0, const RealT* nodal_vals = nullptr,
+                                                               const RealT projection_dir[2], RealT x_edge[3],
+                                                               RealT* phi, const int value_dim = 0,
+                                                               const RealT* nodal_vals = nullptr,
                                                                RealT* values = nullptr )
 {
   const RealT ax = edge_coords[0];
@@ -601,7 +599,8 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
 
       const bool use_rate = pen_enfrc_options.constraint_type == KINEMATIC_AND_RATE;
       const RealT rate_penalty =
-          use_rate ? ComputeRatePenalty( mesh1, mesh2, penalty_stiff_per_area, pen_enfrc_options.rate_calculation ) : 0.;
+          use_rate ? ComputeRatePenalty( mesh1, mesh2, penalty_stiff_per_area, pen_enfrc_options.rate_calculation )
+                   : 0.;
 
       StackArrayT<RealT, max_dim * max_nodes_per_face> actual_vf1;
       StackArrayT<RealT, max_dim * max_nodes_per_face> actual_vf2;
@@ -659,21 +658,18 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
             RealT vel_q1[max_dim] = { 0., 0., 0. };
             RealT vel_q2[max_dim] = { 0., 0., 0. };
 
-            const bool mapped_face1 =
-                EvalLinearFaceAtProjectedPoint( actual_xf1, num_nodes_per_face, x_q, overlapNormal, x_qf1, phi_q1,
-                                                use_rate ? dim : 0, use_rate ? &actual_vf1[0] : nullptr,
-                                                use_rate ? vel_q1 : nullptr );
-            const bool mapped_face2 =
-                EvalLinearFaceAtProjectedPoint( actual_xf2, num_nodes_per_face, x_q, overlapNormal, x_qf2, phi_q2,
-                                                use_rate ? dim : 0, use_rate ? &actual_vf2[0] : nullptr,
-                                                use_rate ? vel_q2 : nullptr );
+            const bool mapped_face1 = EvalLinearFaceAtProjectedPoint(
+                actual_xf1, num_nodes_per_face, x_q, overlapNormal, x_qf1, phi_q1, use_rate ? dim : 0,
+                use_rate ? &actual_vf1[0] : nullptr, use_rate ? vel_q1 : nullptr );
+            const bool mapped_face2 = EvalLinearFaceAtProjectedPoint(
+                actual_xf2, num_nodes_per_face, x_q, overlapNormal, x_qf2, phi_q2, use_rate ? dim : 0,
+                use_rate ? &actual_vf2[0] : nullptr, use_rate ? vel_q2 : nullptr );
             if ( !mapped_face1 || !mapped_face2 ) {
               continue;
             }
 
-            RealT local_gap =
-                ( x_qf1[0] - x_qf2[0] ) * overlapNormal[0] + ( x_qf1[1] - x_qf2[1] ) * overlapNormal[1] +
-                ( x_qf1[2] - x_qf2[2] ) * overlapNormal[2];
+            RealT local_gap = ( x_qf1[0] - x_qf2[0] ) * overlapNormal[0] + ( x_qf1[1] - x_qf2[1] ) * overlapNormal[1] +
+                              ( x_qf1[2] - x_qf2[2] ) * overlapNormal[2];
             if ( local_gap > gap_tol ) {
               continue;
             }
@@ -682,9 +678,9 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
 
             RealT local_pressure = local_gap * penalty_stiff_per_area;
             if ( use_rate && rate_penalty > 0. ) {
-              RealT local_vel_gap =
-                  ( vel_q1[0] - vel_q2[0] ) * overlapNormal[0] + ( vel_q1[1] - vel_q2[1] ) * overlapNormal[1] +
-                  ( vel_q1[2] - vel_q2[2] ) * overlapNormal[2];
+              RealT local_vel_gap = ( vel_q1[0] - vel_q2[0] ) * overlapNormal[0] +
+                                    ( vel_q1[1] - vel_q2[1] ) * overlapNormal[1] +
+                                    ( vel_q1[2] - vel_q2[2] ) * overlapNormal[2];
               if ( local_vel_gap <= 0. ) {
                 local_pressure += local_vel_gap * rate_penalty;
               }
@@ -732,8 +728,7 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
             continue;
           }
 
-          RealT local_gap =
-              ( x_qf1[0] - x_qf2[0] ) * overlapNormal[0] + ( x_qf1[1] - x_qf2[1] ) * overlapNormal[1];
+          RealT local_gap = ( x_qf1[0] - x_qf2[0] ) * overlapNormal[0] + ( x_qf1[1] - x_qf2[1] ) * overlapNormal[1];
           if ( local_gap > gap_tol ) {
             continue;
           }
@@ -794,7 +789,8 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
       force_z = overlapNormal[2] * contact_force;
     }
 
-    AccumulateContactForce( mesh1, mesh2, index1, index2, dim, num_nodes_per_face, force_x, force_y, force_z, phi1, phi2 );
+    AccumulateContactForce( mesh1, mesh2, index1, index2, dim, num_nodes_per_face, force_x, force_y, force_z, phi1,
+                            phi2 );
 
     // comment out debug logs; too much output during tests. Keep for easy
     // debugging if needed
@@ -949,8 +945,8 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
       constexpr int max_qpts = max_symmetric_triangle_qpts;
       RealT rule_wts[max_qpts] = { 0. };
       RealT rule_coords[2 * max_qpts] = { 0. };
-      const RealT visc = 0.5 *
-                         ( mesh1.getElementData().m_viscous_damping_coeff + mesh2.getElementData().m_viscous_damping_coeff );
+      const RealT visc =
+          0.5 * ( mesh1.getElementData().m_viscous_damping_coeff + mesh2.getElementData().m_viscous_damping_coeff );
 
       if ( dim == 3 ) {
         const int num_qpts =
@@ -996,19 +992,16 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
             RealT vel_q1[max_dim];
             RealT vel_q2[max_dim];
 
-            const bool mapped_face1 =
-                EvalLinearFaceAtProjectedPoint( actual_xf1, numNodesPerFace1, x_q, overlapNormal, x_qf1, phi_q1, dim,
-                                                &actual_vf1[0], vel_q1 );
-            const bool mapped_face2 =
-                EvalLinearFaceAtProjectedPoint( actual_xf2, numNodesPerFace2, x_q, overlapNormal, x_qf2, phi_q2, dim,
-                                                &actual_vf2[0], vel_q2 );
+            const bool mapped_face1 = EvalLinearFaceAtProjectedPoint( actual_xf1, numNodesPerFace1, x_q, overlapNormal,
+                                                                      x_qf1, phi_q1, dim, &actual_vf1[0], vel_q1 );
+            const bool mapped_face2 = EvalLinearFaceAtProjectedPoint( actual_xf2, numNodesPerFace2, x_q, overlapNormal,
+                                                                      x_qf2, phi_q2, dim, &actual_vf2[0], vel_q2 );
             if ( !mapped_face1 || !mapped_face2 ) {
               continue;
             }
 
-            RealT local_gap =
-                ( x_qf1[0] - x_qf2[0] ) * overlapNormal[0] + ( x_qf1[1] - x_qf2[1] ) * overlapNormal[1] +
-                ( x_qf1[2] - x_qf2[2] ) * overlapNormal[2];
+            RealT local_gap = ( x_qf1[0] - x_qf2[0] ) * overlapNormal[0] + ( x_qf1[1] - x_qf2[1] ) * overlapNormal[1] +
+                              ( x_qf1[2] - x_qf2[2] ) * overlapNormal[2];
             RealT gap_tol = cs_view.getGapTol( index1, index2 );
             if ( local_gap > gap_tol ) {
               continue;
@@ -1058,16 +1051,15 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
           RealT vel_q1[max_dim] = { 0., 0., 0. };
           RealT vel_q2[max_dim] = { 0., 0., 0. };
 
-          const bool mapped_face1 =
-              EvalLinearEdgeAtProjectedPoint( actual_xf1, x_q, overlapNormal, x_qf1, phi_q1, dim, &actual_vf1[0], vel_q1 );
-          const bool mapped_face2 =
-              EvalLinearEdgeAtProjectedPoint( actual_xf2, x_q, overlapNormal, x_qf2, phi_q2, dim, &actual_vf2[0], vel_q2 );
+          const bool mapped_face1 = EvalLinearEdgeAtProjectedPoint( actual_xf1, x_q, overlapNormal, x_qf1, phi_q1, dim,
+                                                                    &actual_vf1[0], vel_q1 );
+          const bool mapped_face2 = EvalLinearEdgeAtProjectedPoint( actual_xf2, x_q, overlapNormal, x_qf2, phi_q2, dim,
+                                                                    &actual_vf2[0], vel_q2 );
           if ( !mapped_face1 || !mapped_face2 ) {
             continue;
           }
 
-          RealT local_gap =
-              ( x_qf1[0] - x_qf2[0] ) * overlapNormal[0] + ( x_qf1[1] - x_qf2[1] ) * overlapNormal[1];
+          RealT local_gap = ( x_qf1[0] - x_qf2[0] ) * overlapNormal[0] + ( x_qf1[1] - x_qf2[1] ) * overlapNormal[1];
           RealT gap_tol = cs_view.getGapTol( index1, index2 );
           if ( local_gap > gap_tol ) {
             continue;
@@ -1118,7 +1110,8 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
       force_z = visc * velGapTan[2];
     }
 
-    AccumulateContactForce( mesh1, mesh2, index1, index2, dim, numNodesPerFace1, force_x, force_y, force_z, phi1, phi2 );
+    AccumulateContactForce( mesh1, mesh2, index1, index2, dim, numNodesPerFace1, force_x, force_y, force_z, phi1,
+                            phi2 );
   } );
 
   return 0;

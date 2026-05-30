@@ -29,22 +29,16 @@ RealT factorial( int n )
   return result;
 }
 
-RealT referenceTriangleMoment( int px, int py )
-{
-  return factorial( px ) * factorial( py ) / factorial( px + py + 2 );
-}
+RealT referenceTriangleMoment( int px, int py ) { return factorial( px ) * factorial( py ) / factorial( px + py + 2 ); }
 
-RealT normalizedReferenceTriangleMoment( int px, int py )
-{
-  return 2. * referenceTriangleMoment( px, py );
-}
+RealT normalizedReferenceTriangleMoment( int px, int py ) { return 2. * referenceTriangleMoment( px, py ); }
 
 RealT evalTriangleRuleMoment( bool use_legacy, int order, int px, int py )
 {
   RealT wts[tribol::max_symmetric_triangle_qpts] = { 0. };
   RealT coords[2 * tribol::max_symmetric_triangle_qpts] = { 0. };
-  const int num_qpts =
-      use_legacy ? tribol::GetLegacyTriangleRule( order, wts, coords ) : tribol::GetCommonPlaneTriangleRule( order, wts, coords );
+  const int num_qpts = use_legacy ? tribol::GetLegacyTriangleRule( order, wts, coords )
+                                  : tribol::GetCommonPlaneTriangleRule( order, wts, coords );
 
   RealT value = 0.;
   for ( int qp = 0; qp < num_qpts; ++qp ) {
