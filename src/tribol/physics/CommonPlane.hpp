@@ -7,8 +7,44 @@
 #define SRC_TRIBOL_PHYSICS_COMMONPLANE_HPP_
 
 #include "Physics.hpp"
+#include "tribol/common/Parameters.hpp"
 
 namespace tribol {
+/*!
+ *
+ * \brief computes the individual (uncoupled) kinematic penalty spring stiffness for a single face
+ *
+ * \details This routine calculates the stiffness of a single contact spring on one side of
+ *          the contact pair (either mortar or non-mortar), completely independent of (uncoupled from)
+ *          the other side. The resulting uncoupled stiffnesses from both sides are later combined
+ *          in series (harmonic mean) via ComputePenaltyStiffnessPerArea() to obtain the coupled
+ *          equivalent interface stiffness per unit area.
+ *
+ * \param [in] kinematic_calc calculation option (constant or element-based)
+ * \param [in] thickness element thickness
+ * \param [in] tiny_length numeric safeguard offset to avoid division by zero
+ * \param [in] pen_scale mesh penalty scale
+ * \param [in] mat_mod material modulus (bulk modulus)
+ * \param [in] const_penalty constant penalty value
+ * \param [out] stiffness computed uncoupled spring stiffness for this face/side
+ *
+ */
+TRIBOL_HOST_DEVICE inline void ComputeUncoupledStiffness( const KinematicPenaltyCalculation kinematic_calc,
+                                                          const RealT thickness, const RealT tiny_length,
+                                                          const RealT pen_scale, const RealT mat_mod,
+                                                          const RealT const_penalty, RealT& stiffness )
+{
+  if ( kinematic_calc == KINEMATIC_CONSTANT ) {
+    stiffness = pen_scale * const_penalty;
+  } else if ( kinematic_calc == KINEMATIC_ELEMENT ) {
+    RealT denom = thickness;
+    if ( denom < tiny_length ) {
+      denom = tiny_length;
+    }
+    stiffness = pen_scale * mat_mod / denom;
+  }
+}
+
 /*!
  *
  * \brief computes penalty stiffness for Common Plane + Penalty

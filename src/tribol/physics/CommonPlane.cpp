@@ -167,37 +167,26 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     const PenaltyEnforcementOptions& pen_enfrc_options = enforcement_options.penalty_options;
     RealT pen_scale1 = mesh1.getElementData().m_penalty_scale;
     RealT pen_scale2 = mesh2.getElementData().m_penalty_scale;
-    switch ( pen_enfrc_options.kinematic_calculation ) {
-      case KINEMATIC_CONSTANT: {
-        // pre-multiply each spring stiffness by each mesh's penalty scale
-        auto stiffness1 = pen_scale1 * mesh1.getElementData().m_penalty_stiffness;
-        auto stiffness2 = pen_scale2 * mesh2.getElementData().m_penalty_stiffness;
-        // compute the equivalent contact penalty spring stiffness per area
-        penalty_stiff_per_area = ComputePenaltyStiffnessPerArea( stiffness1, stiffness2 );
-        break;
-      }
-      case KINEMATIC_ELEMENT: {
-        // add tiny_length to element thickness to avoid division by zero
-        auto t1 = mesh1.getElementData().m_thickness[index1] + pen_enfrc_options.tiny_length;
-        auto t2 = mesh2.getElementData().m_thickness[index2] + pen_enfrc_options.tiny_length;
+    RealT stiffness1 = 0.;
+    RealT stiffness2 = 0.;
+    RealT t1 = mesh1.getElementData().m_thickness[index1];
+    RealT t2 = mesh2.getElementData().m_thickness[index2];
 
-        if ( t1 < 0. || t2 < 0. ) {
-          neg_thickness[0] = true;
-          err[0] = 1;
-        }
+    ComputeUncoupledStiffness( pen_enfrc_options.kinematic_calculation, t1, pen_enfrc_options.tiny_length, pen_scale1,
+                               mesh1.getElementData().m_mat_mod[index1], mesh1.getElementData().m_penalty_stiffness,
+                               stiffness1 );
+    ComputeUncoupledStiffness( pen_enfrc_options.kinematic_calculation, t2, pen_enfrc_options.tiny_length, pen_scale2,
+                               mesh2.getElementData().m_mat_mod[index2], mesh2.getElementData().m_penalty_stiffness,
+                               stiffness2 );
 
-        // compute each element spring stiffness. Pre-multiply the material modulus
-        // (i.e. material stiffness) by each mesh's penalty scale
-        auto stiffness1 = pen_scale1 * mesh1.getElementData().m_mat_mod[index1] / t1;
-        auto stiffness2 = pen_scale2 * mesh2.getElementData().m_mat_mod[index2] / t2;
-        // compute the equivalent contact penalty spring stiffness per area
-        penalty_stiff_per_area = ComputePenaltyStiffnessPerArea( stiffness1, stiffness2 );
-        break;
+    if ( pen_enfrc_options.kinematic_calculation == KINEMATIC_ELEMENT ) {
+      if ( t1 <= 0. || t2 <= 0. ) {
+        neg_thickness[0] = true;
+        err[0] = 1;
       }
-      default:
-        // no-op, quiet compiler
-        break;
-    }  // end switch on kinematic penalty calculation option
+    }
+
+    penalty_stiff_per_area = ComputePenaltyStiffnessPerArea( stiffness1, stiffness2 );
 
     ////////////////////////////////////////////////////
     // Compute contact pressure(s) on current overlap //

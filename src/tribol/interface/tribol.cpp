@@ -187,6 +187,34 @@ void setTimestepScale( IndexT cs_id, RealT scale )
   cs->getParameters().timestep_scale = scale;
 }
 //------------------------------------------------------------------------------
+void setTimestepChatterFactor( IndexT cs_id, RealT factor )
+{
+  if ( factor <= 0. ) {
+    return;
+  }
+
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setTimestepChatterFactor(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  cs->getParameters().timestep_chatter_factor = factor;
+}
+//------------------------------------------------------------------------------
+void setTimestepEnergyFactor( IndexT cs_id, RealT factor )
+{
+  if ( factor <= 0. ) {
+    return;
+  }
+
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setTimestepEnergyFactor(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  cs->getParameters().timestep_energy_factor = factor;
+}
+//------------------------------------------------------------------------------
 void setContactAreaFrac( IndexT cs_id, RealT frac )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -349,6 +377,19 @@ void enableTimestepVote( IndexT cs_id, const bool enable )
   cs->getParameters().enable_timestep_vote = enable;
 
 }  // end enableTimestepVote()
+
+//------------------------------------------------------------------------------
+void enableTimestepStabilityLimits( IndexT cs_id, const bool enable )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  // check to see if coupling scheme exists
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::enableTimestepStabilityLimits(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  cs->getParameters().enable_timestep_stability_limits = enable;
+
+}  // end enableTimestepStabilityLimits()
 
 //------------------------------------------------------------------------------
 void enableEnzyme( IndexT cs_id, [[maybe_unused]] bool use_enzyme )

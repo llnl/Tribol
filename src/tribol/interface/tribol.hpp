@@ -142,6 +142,8 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
  *
  */
 void setTimestepScale( IndexT cs_id, RealT scale );
+void setTimestepChatterFactor( IndexT cs_id, RealT factor );
+void setTimestepEnergyFactor( IndexT cs_id, RealT factor );
 
 /*!
  * \brief Sets the area fraction for inclusion of a contact overlap
@@ -225,6 +227,7 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
  *
  */
 void enableTimestepVote( IndexT cs_id, const bool enable );
+void enableTimestepStabilityLimits( IndexT cs_id, const bool enable );
 
 /**
  * @brief Enable Enzyme AD for Jacobian calculations

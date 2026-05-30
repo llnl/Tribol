@@ -27,6 +27,7 @@
 #include "tribol/common/Parameters.hpp"
 #include "tribol/physics/Physics.hpp"
 #include "tribol/physics/ContactFormulationFactory.hpp"
+#include "tribol/physics/CommonPlane.hpp"
 
 #include "tribol/integ/FE.hpp"
 namespace tribol {
@@ -1349,7 +1350,7 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
   // all candidates, not necessarily ones that are deemed to be in contact per
   // the gap constraint.
   auto cs_view = getView();
-  ArrayT<RealT> dt_temp_data( { dt, dt }, getAllocatorId() );
+  ArrayT<RealT> dt_temp_data( { dt, dt, dt }, getAllocatorId() );
   ArrayViewT<RealT> dt_temp = dt_temp_data;
   // [0]: exceed_max_gap1, [1]: exceed_max_gap2, [2]: neg_dt_gap_msg, [3]: neg_dt_vel_proj_msg
   ArrayT<IndexT> msg_data( { static_cast<IndexT>( false ), static_cast<IndexT>( false ), static_cast<IndexT>( false ),
@@ -1434,38 +1435,8 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                 v1_dot_n1 = dotProd( vel_f1, fn1, dim );
                 v2_dot_n2 = dotProd( vel_f2, fn2, dim );
 
-                // Keep debug print statements. This routine is still in the testing phase
-                // std::cout << "face 1 normal: " << fn1[0] << ", " << fn1[1] << ", " << fn1[2] << std::endl;
-                // std::cout << "face 2 normal: " << fn2[0] << ", " << fn2[1] << ", " << fn2[2] << std::endl;
-                // std::cout << " " << std::endl;
-                // std::cout << "face 1 vel: " << vel_f1[0] << ", " << vel_f1[1] << ", " << vel_f1[2] << std::endl;
-                // std::cout << "face 2 vel: " << vel_f2[0] << ", " << vel_f2[1] << ", " << vel_f2[2] << std::endl;
-                // std::cout << " " << std::endl;
-                // std::cout << "First v1_dot_n1 calc: " << v1_dot_n1 << std::endl;
-                // std::cout << "First v2_dot_n2 calc: " << v2_dot_n2 << std::endl;
-                // std::cout << "First v1_dot_n: " << v1_dot_n << std::endl;
-                // std::cout << "First v2_dot_n: " << v2_dot_n << std::endl;
-
-                // add tiny amount to velocity projections to avoid division by zero.
-                // Note that if these projections are close to zero, there may be
-                // stationary interactions or tangential motion. In this case, any
-                // timestep estimate will be very large, and not control the simulation
-                RealT tiny = 1.e-12;
-                RealT tiny1 = ( v1_dot_n >= 0. ) ? tiny : -1. * tiny;
-                RealT tiny2 = ( v2_dot_n >= 0. ) ? tiny : -1. * tiny;
-                v1_dot_n += tiny1;
-                v2_dot_n += tiny2;
-                // reset tiny velocity based on face normal projections.
-                tiny1 = ( v1_dot_n1 >= 0. ) ? tiny : -1. * tiny;
-                tiny2 = ( v2_dot_n2 >= 0. ) ? tiny : -1. * tiny;
-                v1_dot_n1 += tiny1;
-                v2_dot_n2 += tiny2;
-
-                // Keep debug print statements. This routine is still in the testing phase
-                // std::cout << "Second v1_dot_n1 calc: " << v1_dot_n1 << std::endl;
-                // std::cout << "Second v2_dot_n2 calc: " << v2_dot_n2 << std::endl;
-                // std::cout << "Second v1_dot_n: " << v1_dot_n << std::endl;
-                // std::cout << "Second v2_dot_n: " << v2_dot_n << std::endl;
+                // Velocity tolerance for divide-by-zero threshold guarding
+                constexpr RealT tiny = 1.e-12;
 
                 // get volume element thicknesses associated with each face in this pair
                 RealT t1 = mesh1.getElementData().m_thickness[index1];
@@ -1502,10 +1473,6 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                 // The two cases are:
                 // if v1*n < 0 there is interpen
                 // if v2*n > 0 there is interpen
-                //
-                // Note: we compare strictly to 0. here since a 'tiny' value was
-                // appropriately added to the velocity projections, which is akin
-                // to some tolerancing effect
                 dt1_vel_check = ( v1_dot_n < 0. ) ? true : false;
                 dt2_vel_check = ( v2_dot_n > 0. ) ? true : false;
 
@@ -1554,14 +1521,14 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                   // in excess of the max allowable gap without causing timestep crashes.
                   //
                   // v1_dot_n1 > 0 and v2_dot_n2 > 0 for further interpen
-                  dt1 = ( dt1_check1 ) ? alpha * max_delta1 / v1_dot_n1 : dt1;
-                  dt2 = ( dt2_check1 ) ? alpha * max_delta2 / v2_dot_n2 : dt2;
-
-                  // Keep debug print statements. This routine is still in the testing phase
-                  // std::cout << "dt1_check1, delta1 and v1_dot_n1: " << dt1_check1 << ", " << max_delta1 << ", " <<
-                  // v1_dot_n1 << std::endl; std::cout << "dt2_check1, delta2 and v2_dot_n2: " << dt2_check1 << ", " <<
-                  // max_delta2 << ", " << v2_dot_n2 << std::endl; std::cout << "dt1 and dt2: " << dt1 << ", " << dt2 <<
-                  // std::endl;
+                  if ( dt1_check1 ) {
+                    // If velocity is effectively zero, the time to exceed gap is infinite; default to 1.e6.
+                    dt1 = ( std::abs( v1_dot_n1 ) > tiny ) ? ( alpha * max_delta1 / v1_dot_n1 ) : 1.e6;
+                  }
+                  if ( dt2_check1 ) {
+                    // If velocity is effectively zero, the time to exceed gap is infinite; default to 1.e6.
+                    dt2 = ( std::abs( v2_dot_n2 ) > tiny ) ? ( alpha * max_delta2 / v2_dot_n2 ) : 1.e6;
+                  }
 
                   // update dt_temp1 only for positive dt1 and/or dt2
                   if ( dt1 > 0. ) {
@@ -1673,15 +1640,14 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                   // allows for a soft contact response without a timestep crash.
                   //
                   // v1_dot_n1 > 0 and v2_dot_n2 > 0 for further interpen
-                  dt1 = ( dt1_vel_check ) ? alpha * max_delta1 / v1_dot_n1 : dt1;
-                  dt2 = ( dt2_vel_check ) ? alpha * max_delta2 / v2_dot_n2 : dt2;
-
-                  // Keep debug print statements. This routine is still in the testing phase
-                  // std::cout << "dt1_vel_check, (proj_delta_n_1+max_delta1), v1_dot_n1: " << dt1_vel_check << ", "
-                  //          << proj_delta_n_1+max_delta1 << ", " << v1_dot_n1 << std::endl;
-                  // std::cout << "dt2_vel_check, (proj_delta_n_2+max_delta2), v2_dot_n2: " << dt2_vel_check << ", "
-                  //          << proj_delta_n_2+max_delta2 << ", " << v2_dot_n2 << std::endl;
-                  // std::cout << "dt1 and dt2: " << dt1 << ", " << dt2 << std::endl;
+                  if ( dt1_vel_check ) {
+                    // If velocity is effectively zero, the time to exceed gap is infinite; default to 1.e6.
+                    dt1 = ( std::abs( v1_dot_n1 ) > tiny ) ? ( alpha * max_delta1 / v1_dot_n1 ) : 1.e6;
+                  }
+                  if ( dt2_vel_check ) {
+                    // If velocity is effectively zero, the time to exceed gap is infinite; default to 1.e6.
+                    dt2 = ( std::abs( v2_dot_n2 ) > tiny ) ? ( alpha * max_delta2 / v2_dot_n2 ) : 1.e6;
+                  }
 
                   // update dt_temp2 only for positive dt1 and/or dt2
                   if ( dt1 > 0. ) {
@@ -1707,6 +1673,80 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                   }
 
                 }  // end check 2
+
+                ////////////////////////////////////////////////////////////////////////
+                // 3. Contact Dynamics and Stability Limits                          //
+                //                                                                    //
+                //    These limits constrain the explicit time integration based on   //
+                //    the added stiffness of active contact springs.                  //
+                ////////////////////////////////////////////////////////////////////////
+
+                if ( plane.m_inContact && cs_view.enableTimestepStabilityLimits() ) {
+                  RealT stiffness1 = 0.;
+                  RealT stiffness2 = 0.;
+                  auto& enforcement_options = cs_view.getEnforcementOptions();
+                  const PenaltyEnforcementOptions& pen_enfrc_options = enforcement_options.penalty_options;
+                  RealT pen_scale1 = mesh1.getElementData().m_penalty_scale;
+                  RealT pen_scale2 = mesh2.getElementData().m_penalty_scale;
+
+                  ComputeUncoupledStiffness( pen_enfrc_options.kinematic_calculation, t1, pen_enfrc_options.tiny_length,
+                                             pen_scale1, mesh1.getElementData().m_mat_mod[index1],
+                                             mesh1.getElementData().m_penalty_stiffness, stiffness1 );
+                  ComputeUncoupledStiffness( pen_enfrc_options.kinematic_calculation, t2, pen_enfrc_options.tiny_length,
+                                             pen_scale2, mesh2.getElementData().m_mat_mod[index2],
+                                             mesh2.getElementData().m_penalty_stiffness, stiffness2 );
+
+                  if ( stiffness1 > 0. && stiffness2 > 0. ) {
+                    RealT penalty_stiff_per_area = ComputePenaltyStiffnessPerArea( stiffness1, stiffness2 );
+                    if ( penalty_stiff_per_area > 0. ) {
+                      // A. Courant (CFL) Stability Limit
+                      RealT f_scale1 = 1.0 / std::sqrt( 1.0 + ( penalty_stiff_per_area / stiffness1 ) );
+                      RealT f_scale2 = 1.0 / std::sqrt( 1.0 + ( penalty_stiff_per_area / stiffness2 ) );
+                      RealT dt_CFL = alpha * dt * axom::utilities::min( f_scale1, f_scale2 );
+
+                      // B. Contact Chatter Limit (gamma)
+                      RealT gamma_val = cs_view.getTimestepChatterFactor();
+                      RealT dt_chatter1 =
+                          3.14159265358979323846 * gamma_val * dt * std::sqrt( stiffness1 / penalty_stiff_per_area );
+                      RealT dt_chatter2 =
+                          3.14159265358979323846 * gamma_val * dt * std::sqrt( stiffness2 / penalty_stiff_per_area );
+                      RealT dt_chatter = axom::utilities::min( dt_chatter1, dt_chatter2 );
+
+                      // C. Spurious Energy Generation Limit (beta)
+                      RealT beta_val = cs_view.getTimestepEnergyFactor();
+                      RealT dt_energy1 =
+                          ( std::sqrt( beta_val ) / 2.0 ) * dt * std::sqrt( stiffness1 / penalty_stiff_per_area );
+                      RealT dt_energy2 =
+                          ( std::sqrt( beta_val ) / 2.0 ) * dt * std::sqrt( stiffness2 / penalty_stiff_per_area );
+                      RealT dt_energy = axom::utilities::min( dt_energy1, dt_energy2 );
+
+                      // D. Impact Velocity Jump Limit (eta = 0.1)
+                      RealT dt_impact1 = 1.e6;
+                      RealT dt_impact2 = 1.e6;
+                      RealT v_rel = std::abs( v1_dot_n1 ) + std::abs( v2_dot_n2 );
+                      RealT g_val = std::abs( plane.m_gap ) + 1.e-12;
+                      if ( dt1_vel_check ) {
+                        dt_impact1 = 0.025 * dt * ( ( dt * v_rel ) / g_val ) * ( stiffness1 / penalty_stiff_per_area );
+                      }
+                      if ( dt2_vel_check ) {
+                        dt_impact2 = 0.025 * dt * ( ( dt * v_rel ) / g_val ) * ( stiffness2 / penalty_stiff_per_area );
+                      }
+                      RealT dt_impact = axom::utilities::min( dt_impact1, dt_impact2 );
+
+                      // Combine all contact dynamics stability limits
+                      RealT dt_crit = axom::utilities::min(
+                          dt_CFL, axom::utilities::min( dt_chatter, axom::utilities::min( dt_energy, dt_impact ) ) );
+
+                      if ( dt_crit > 0. ) {
+#ifdef TRIBOL_USE_RAJA
+                        RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[2], axom::utilities::min( dt_crit, 1.e6 ) );
+#else
+                        dt_temp[2] = axom::utilities::min( dt_temp[2], axom::utilities::min( dt_crit, 1.e6 ) );
+#endif
+                      }
+                    }
+                  }
+                }  // end contact dynamics and stability limits
               } );
 
   // print general messages once
@@ -1726,7 +1766,7 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                                   << "velocity projection calculation." );
 
   ArrayT<RealT, 1, MemorySpace::Host> dt_temp_host( dt_temp_data );
-  dt = axom::utilities::min( dt_temp_host[0], dt_temp_host[1] );
+  dt = axom::utilities::min( dt_temp_host[0], axom::utilities::min( dt_temp_host[1], dt_temp_host[2] ) );
 }
 
 //------------------------------------------------------------------------------
