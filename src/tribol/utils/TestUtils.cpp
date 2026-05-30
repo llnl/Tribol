@@ -1112,8 +1112,6 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
   enableTimestepStabilityLimits( csIndex, params.enable_timestep_stability_limits );
   setTimestepPenFrac( csIndex, params.timestep_pen_frac );
   setTimestepScale( csIndex, params.timestep_scale );
-  setTimestepChatterFactor( csIndex, params.timestep_chatter_factor );
-  setTimestepEnergyFactor( csIndex, params.timestep_energy_factor );
 
   // if enforcement is penalty, register penalty parameters
   if ( enforcement == PENALTY ) {

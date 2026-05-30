@@ -142,8 +142,6 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
  *
  */
 void setTimestepScale( IndexT cs_id, RealT scale );
-void setTimestepChatterFactor( IndexT cs_id, RealT factor );
-void setTimestepEnergyFactor( IndexT cs_id, RealT factor );
 
 /*!
  * \brief Sets the area fraction for inclusion of a contact overlap

@@ -1699,43 +1699,10 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                   if ( stiffness1 > 0. && stiffness2 > 0. ) {
                     RealT penalty_stiff_per_area = ComputePenaltyStiffnessPerArea( stiffness1, stiffness2 );
                     if ( penalty_stiff_per_area > 0. ) {
-                      // A. Courant (CFL) Stability Limit
+                      // Rescale the host timestep by the added interface stiffness.
                       RealT f_scale1 = 1.0 / std::sqrt( 1.0 + ( penalty_stiff_per_area / stiffness1 ) );
                       RealT f_scale2 = 1.0 / std::sqrt( 1.0 + ( penalty_stiff_per_area / stiffness2 ) );
-                      RealT dt_CFL = alpha * dt * axom::utilities::min( f_scale1, f_scale2 );
-
-                      // B. Contact Chatter Limit (gamma)
-                      RealT gamma_val = cs_view.getTimestepChatterFactor();
-                      RealT dt_chatter1 =
-                          3.14159265358979323846 * gamma_val * dt * std::sqrt( stiffness1 / penalty_stiff_per_area );
-                      RealT dt_chatter2 =
-                          3.14159265358979323846 * gamma_val * dt * std::sqrt( stiffness2 / penalty_stiff_per_area );
-                      RealT dt_chatter = axom::utilities::min( dt_chatter1, dt_chatter2 );
-
-                      // C. Spurious Energy Generation Limit (beta)
-                      RealT beta_val = cs_view.getTimestepEnergyFactor();
-                      RealT dt_energy1 =
-                          ( std::sqrt( beta_val ) / 2.0 ) * dt * std::sqrt( stiffness1 / penalty_stiff_per_area );
-                      RealT dt_energy2 =
-                          ( std::sqrt( beta_val ) / 2.0 ) * dt * std::sqrt( stiffness2 / penalty_stiff_per_area );
-                      RealT dt_energy = axom::utilities::min( dt_energy1, dt_energy2 );
-
-                      // D. Impact Velocity Jump Limit (eta = 0.1)
-                      RealT dt_impact1 = 1.e6;
-                      RealT dt_impact2 = 1.e6;
-                      RealT v_rel = std::abs( v1_dot_n1 ) + std::abs( v2_dot_n2 );
-                      RealT g_val = std::abs( plane.m_gap ) + 1.e-12;
-                      if ( dt1_vel_check ) {
-                        dt_impact1 = 0.025 * dt * ( ( dt * v_rel ) / g_val ) * ( stiffness1 / penalty_stiff_per_area );
-                      }
-                      if ( dt2_vel_check ) {
-                        dt_impact2 = 0.025 * dt * ( ( dt * v_rel ) / g_val ) * ( stiffness2 / penalty_stiff_per_area );
-                      }
-                      RealT dt_impact = axom::utilities::min( dt_impact1, dt_impact2 );
-
-                      // Combine all contact dynamics stability limits
-                      RealT dt_crit = axom::utilities::min(
-                          dt_CFL, axom::utilities::min( dt_chatter, axom::utilities::min( dt_energy, dt_impact ) ) );
+                      RealT dt_crit = alpha * dt * axom::utilities::min( f_scale1, f_scale2 );
 
                       if ( dt_crit > 0. ) {
 #ifdef TRIBOL_USE_RAJA

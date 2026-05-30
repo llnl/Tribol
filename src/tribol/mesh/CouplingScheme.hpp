@@ -198,20 +198,6 @@ class CouplingScheme {
     }
 
     /**
-     * @brief Get the contact chatter timestep limit factor (gamma)
-     *
-     * @return contact chatter factor
-     */
-    TRIBOL_HOST_DEVICE RealT getTimestepChatterFactor() const { return m_parameters.timestep_chatter_factor; }
-
-    /**
-     * @brief Get the energy preservation timestep limit factor (beta)
-     *
-     * @return energy preservation factor
-     */
-    TRIBOL_HOST_DEVICE RealT getTimestepEnergyFactor() const { return m_parameters.timestep_energy_factor; }
-
-    /**
      * @brief Get the gap tolerance that determines in contact face-pairs
      *
      * @return the gap tolerance for the common plane method

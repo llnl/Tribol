@@ -187,34 +187,6 @@ void setTimestepScale( IndexT cs_id, RealT scale )
   cs->getParameters().timestep_scale = scale;
 }
 //------------------------------------------------------------------------------
-void setTimestepChatterFactor( IndexT cs_id, RealT factor )
-{
-  if ( factor <= 0. ) {
-    return;
-  }
-
-  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-
-  SLIC_ERROR_ROOT_IF( !cs, "tribol::setTimestepChatterFactor(): call tribol::registerCouplingScheme() "
-                               << "prior to calling this routine." );
-
-  cs->getParameters().timestep_chatter_factor = factor;
-}
-//------------------------------------------------------------------------------
-void setTimestepEnergyFactor( IndexT cs_id, RealT factor )
-{
-  if ( factor <= 0. ) {
-    return;
-  }
-
-  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-
-  SLIC_ERROR_ROOT_IF( !cs, "tribol::setTimestepEnergyFactor(): call tribol::registerCouplingScheme() "
-                               << "prior to calling this routine." );
-
-  cs->getParameters().timestep_energy_factor = factor;
-}
-//------------------------------------------------------------------------------
 void setContactAreaFrac( IndexT cs_id, RealT frac )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
