@@ -41,7 +41,11 @@ set(tribol_headers
 
     physics/AlignedMortar.hpp
     physics/CommonPlane.hpp
+    physics/ContactFormulation.hpp
+    physics/ContactFormulationFactory.hpp
     physics/Mortar.hpp
+    physics/EnergyMortar.hpp
+    physics/EnergyMortarAdapter.hpp
     physics/Physics.hpp
 
     search/InterfacePairFinder.hpp
@@ -51,7 +55,8 @@ set(tribol_headers
     utils/DataManager.hpp
     utils/Math.hpp
     utils/TestUtils.hpp
-)
+
+    )
 
 ## list of sources
 set(tribol_sources
@@ -74,7 +79,10 @@ set(tribol_sources
 
     physics/AlignedMortar.cpp
     physics/CommonPlane.cpp
+    physics/ContactFormulationFactory.cpp
     physics/Mortar.cpp
+    physics/EnergyMortar.cpp
+    physics/EnergyMortarAdapter.cpp
     physics/Physics.cpp
      
     search/InterfacePairFinder.cpp
@@ -82,6 +90,7 @@ set(tribol_sources
     utils/ContactPlaneOutput.cpp
     utils/Math.cpp
     utils/TestUtils.cpp
+
     )
 
 if (ENABLE_FORTRAN)
@@ -119,7 +128,7 @@ blt_add_library(
     FOLDER tribol
     )
 
-# Add separable compilation flag
+# Add debug flag
 if(ENABLE_HIP)
     target_compile_options(tribol PRIVATE
         $<$<CONFIG:Debug>:

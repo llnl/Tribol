@@ -273,6 +273,8 @@ void RedecompMesh::BuildRedecomp()
   // Finalize mesh topology
   auto generate_boundary = false;
   FinalizeTopology( generate_boundary );
+  // this is needed so the types of elements in the mesh are populated, even when there are no elements on rank
+  meshgen = parent_.MeshGenerator();
 
   // Fill r2p_elem_offsets_ with element rank offsets
   // r2p = redecomp to parent
