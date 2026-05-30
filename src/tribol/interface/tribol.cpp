@@ -351,6 +351,19 @@ void enableTimestepVote( IndexT cs_id, const bool enable )
 }  // end enableTimestepVote()
 
 //------------------------------------------------------------------------------
+void enableTimestepStabilityLimits( IndexT cs_id, const bool enable )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  // check to see if coupling scheme exists
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::enableTimestepStabilityLimits(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  cs->getParameters().enable_timestep_stability_limits = enable;
+
+}  // end enableTimestepStabilityLimits()
+
+//------------------------------------------------------------------------------
 void enableEnzyme( IndexT cs_id, [[maybe_unused]] bool use_enzyme )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );

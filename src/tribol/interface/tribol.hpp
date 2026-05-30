@@ -225,6 +225,7 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
  *
  */
 void enableTimestepVote( IndexT cs_id, const bool enable );
+void enableTimestepStabilityLimits( IndexT cs_id, const bool enable );
 
 /**
  * @brief Enable Enzyme AD for Jacobian calculations

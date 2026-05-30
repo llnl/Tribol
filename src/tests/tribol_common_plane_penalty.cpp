@@ -173,6 +173,26 @@ void checkForceSense( tribol::CouplingScheme const* cs, bool isTied = false )
   }
 }  // end checkForceSense()
 
+void checkZeroResponses( tribol::CouplingScheme const* cs, const RealT tol = 1.e-14 )
+{
+  const auto mesh1 = const_cast<tribol::CouplingScheme*>( cs )->getMesh1().getView();
+  const auto mesh2 = const_cast<tribol::CouplingScheme*>( cs )->getMesh2().getView();
+
+  for ( int i = 0; i < 2; ++i ) {
+    auto& mesh = ( i == 0 ) ? mesh1 : mesh2;
+    for ( tribol::IndexT kf = 0; kf < mesh.numberOfElements(); ++kf ) {
+      for ( tribol::IndexT a = 0; a < mesh.numberOfNodesPerElement(); ++a ) {
+        int node_id = mesh.getGlobalNodeId( kf, a );
+        EXPECT_NEAR( mesh.getResponse()[0][node_id], 0., tol );
+        EXPECT_NEAR( mesh.getResponse()[1][node_id], 0., tol );
+        if ( mesh.spatialDimension() == 3 ) {
+          EXPECT_NEAR( mesh.getResponse()[2][node_id], 0., tol );
+        }
+      }
+    }
+  }
+}  // end checkZeroResponses()
+
 /*!
  * Test fixture class with some setup necessary to test
  * the COMMON_PLANE + PENALTY implementation
@@ -445,6 +465,76 @@ TEST_F( CommonPlaneTest, element_penalty_check )
                    ( bulk_mod1 / element_thickness1 + bulk_mod2 / element_thickness2 ) * gap;
   checkPressures( couplingScheme, pressure, 1.E-8 );
   checkForceSense( couplingScheme );
+
+  tribol::finalize();
+}
+
+TEST_F( CommonPlaneTest, element_penalty_nonpositive_thickness_returns_error_without_forces )
+{
+  this->m_mesh.mortarMeshId = 0;
+  this->m_mesh.nonmortarMeshId = 1;
+
+  int nMortarElems = 4;
+  int nElemsXM = nMortarElems;
+  int nElemsYM = nMortarElems;
+  int nElemsZM = nMortarElems;
+
+  int nNonmortarElems = 5;
+  int nElemsXS = nNonmortarElems;
+  int nElemsYS = nNonmortarElems;
+  int nElemsZS = nNonmortarElems;
+
+  RealT x_min1 = 0.;
+  RealT y_min1 = 0.;
+  RealT z_min1 = 0.;
+  RealT x_max1 = 1.;
+  RealT y_max1 = 1.;
+  RealT z_max1 = 1.05;
+
+  RealT x_min2 = 0.;
+  RealT y_min2 = 0.;
+  RealT z_min2 = 0.95;
+  RealT x_max2 = 1.;
+  RealT y_max2 = 1.;
+  RealT z_max2 = 2.;
+
+  RealT element_thickness2 = ( z_max2 - z_min2 ) / nElemsZS;
+
+  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+                                    0. );
+
+  RealT bulk_mod1 = 1.0;
+  RealT bulk_mod2 = 1.0;
+  RealT velX1 = 0.;
+  RealT velY1 = 0.;
+  RealT velZ1 = 0.;
+  RealT velX2 = 0.;
+  RealT velY2 = 0.;
+  RealT velZ2 = 0.;
+
+  this->m_mesh.allocateAndSetVelocities( m_mesh.mortarMeshId, velX1, velY1, velZ1 );
+  this->m_mesh.allocateAndSetVelocities( m_mesh.nonmortarMeshId, velX2, velY2, -velZ2 );
+
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.mortarMeshId, 0. );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.mortarMeshId, bulk_mod1 );
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.nonmortarMeshId, element_thickness2 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.nonmortarMeshId, bulk_mod2 );
+
+  tribol::TestControlParameters parameters;
+  parameters.penalty_ratio = true;
+  parameters.const_penalty = 0.75;
+  parameters.dt = 1.e-3;
+
+  int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
+      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters );
+
+  EXPECT_EQ( test_mesh_update_err, 0 );
+
+  tribol::CouplingSchemeManager& couplingSchemeManager = tribol::CouplingSchemeManager::getInstance();
+  tribol::CouplingScheme* couplingScheme = &couplingSchemeManager.at( 0 );
+  EXPECT_FALSE( couplingScheme->init() );
+  checkZeroResponses( couplingScheme );
 
   tribol::finalize();
 }

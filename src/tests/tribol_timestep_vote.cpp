@@ -305,7 +305,7 @@ TEST_F( CommonPlaneTest, numerically_zero_velocity_small_gap )
 
   EXPECT_EQ( test_mesh_update_err, 0 );
 
-  // expect no change in dt
+  // expect no change in dt because velocity is numerically zero and stability limits are disabled by default
   EXPECT_EQ( parameters.dt, dt );
 
   tribol::finalize();
@@ -390,10 +390,7 @@ TEST_F( CommonPlaneTest, zero_velocity_large_gap )
       tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters );
 
   EXPECT_EQ( test_mesh_update_err, 0 );
-  // note that with very small velocity, the dt estimate will be
-  // very large, and won't change the timestep, even if the gap is large. This
-  // allows for a soft contact response in the presence of a small velocity that
-  // won't actually correct too much interpen with a contact dt vote
+  // expect no change in dt because velocity is zero and stability limits are disabled by default
   EXPECT_EQ( parameters.dt, dt );
 
   tribol::finalize();
@@ -652,7 +649,7 @@ TEST_F( CommonPlaneTest, separation_velocity_small_gap )
 
   EXPECT_EQ( test_mesh_update_err, 0 );
 
-  // no change in dt because of separation velocities
+  // expect no change in dt because velocities are separating and stability limits are disabled by default
   EXPECT_EQ( parameters.dt, dt );
 
   tribol::finalize();
@@ -913,6 +910,100 @@ TEST_F( CommonPlaneTest, large_velocity_small_separation_set_alpha )
   RealT dt_vote = parameters.timestep_scale * parameters.timestep_pen_frac * element_thickness1 / velZ1;
   RealT dt_tol = 1.e-8;
   EXPECT_NEAR( parameters.dt, dt_vote, dt_tol );
+
+  tribol::finalize();
+}
+
+TEST_F( CommonPlaneTest, critical_timestep_cfl_limit )
+{
+  // This test isolates and validates the Courant (CFL) stability limit.
+  // By setting a small timestep_scale (alpha = 0.1), we ensure that the CFL limit
+  // becomes the governing minimum timestep limit.
+  this->m_mesh.mortarMeshId = 0;
+  this->m_mesh.nonmortarMeshId = 1;
+
+  constexpr int nMortarElems = 4;
+  constexpr int nElemsXM = nMortarElems;
+  constexpr int nElemsYM = nMortarElems;
+  constexpr int nElemsZM = nMortarElems;
+
+  constexpr int nNonmortarElems = 5;
+  constexpr int nElemsXS = nNonmortarElems;
+  constexpr int nElemsYS = nNonmortarElems;
+  constexpr int nElemsZS = nNonmortarElems;
+
+  constexpr RealT x_min1 = 0.;
+  constexpr RealT y_min1 = 0.;
+  constexpr RealT z_min1 = 0.;
+  constexpr RealT x_max1 = 1.;
+  constexpr RealT y_max1 = 1.;
+  constexpr RealT z_max1 = 1.005;
+
+  constexpr RealT x_min2 = 0.;
+  constexpr RealT y_min2 = 0.;
+  constexpr RealT z_min2 = 0.95;
+  constexpr RealT x_max2 = 1.;
+  constexpr RealT y_max2 = 1.;
+  constexpr RealT z_max2 = 2.;
+
+  constexpr RealT element_thickness1 = ( z_max1 - z_min1 ) / nElemsZM;
+  constexpr RealT element_thickness2 = ( z_max2 - z_min2 ) / nElemsZS;
+
+  this->m_mesh.setupContactMeshHex( nElemsXM, nElemsYM, nElemsZM, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1,
+                                    nElemsXS, nElemsYS, nElemsZS, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0.,
+                                    0. );
+
+  // Stationary contact to bypass impact limit
+  constexpr RealT dt = 1.0;
+  RealT bulk_mod1 = 1.0;
+  RealT bulk_mod2 = 1.0;
+  RealT velX1 = 0.;
+  RealT velY1 = 0.;
+  RealT velZ1 = 0.;
+  RealT velX2 = 0.;
+  RealT velY2 = 0.;
+  RealT velZ2 = 0.;
+
+  this->m_mesh.allocateAndSetVelocities( m_mesh.mortarMeshId, velX1, velY1, velZ1 );
+  this->m_mesh.allocateAndSetVelocities( m_mesh.nonmortarMeshId, velX2, velY2, -velZ2 );
+
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.mortarMeshId, element_thickness1 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.mortarMeshId, bulk_mod1 );
+  this->m_mesh.allocateAndSetElementThickness( m_mesh.nonmortarMeshId, element_thickness2 );
+  this->m_mesh.allocateAndSetBulkModulus( m_mesh.nonmortarMeshId, bulk_mod2 );
+
+  tribol::TestControlParameters parameters;
+  parameters.penalty_ratio = true;
+  parameters.const_penalty = 0.75;
+  parameters.dt = dt;
+  parameters.enable_timestep_vote = true;
+  parameters.enable_timestep_stability_limits = true;
+  parameters.timestep_pen_frac = 0.3;
+  parameters.timestep_scale = 0.1;  // alpha = 0.1
+
+  int test_mesh_update_err = this->m_mesh.tribolSetupAndUpdate(
+      tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS, tribol::NO_CASE, false, parameters );
+
+  EXPECT_EQ( test_mesh_update_err, 0 );
+
+  // Expected CFL value:
+  // Stiffness under KINEMATIC_ELEMENT is computed as: bulk_modulus / thickness
+  // for each contacting face, where bulk_modulus is 1.0.
+  // The contact interface spring is modeled as mesh 1 and mesh 2's springs in series:
+  // penalty_stiff_per_area = (stiffness1 * stiffness2) / (stiffness1 + stiffness2)
+  constexpr RealT stiffness1 = 1.0 / element_thickness1;
+  constexpr RealT stiffness2 = 1.0 / element_thickness2;
+  constexpr RealT penalty_stiff_per_area = ( stiffness1 * stiffness2 ) / ( stiffness1 + stiffness2 );
+
+  // CFL scaling factors based on added interface stiffness:
+  // f_scale = 1 / sqrt( 1 + penalty_stiff_per_area / stiffness )
+  const RealT f_scale1 = 1.0 / std::sqrt( 1.0 + ( penalty_stiff_per_area / stiffness1 ) );
+  const RealT f_scale2 = 1.0 / std::sqrt( 1.0 + ( penalty_stiff_per_area / stiffness2 ) );
+
+  // dt_CFL = alpha * dt * min( f_scale1, f_scale2 )
+  const RealT expected_dt = parameters.timestep_scale * dt * std::min( f_scale1, f_scale2 );
+  RealT dt_tol = 1.e-6;
+  EXPECT_NEAR( parameters.dt, expected_dt, dt_tol );
 
   tribol::finalize();
 }

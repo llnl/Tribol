@@ -1109,6 +1109,7 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
                           model, enforcement, BINNING_GRID, ExecutionMode::Sequential );
 
   enableTimestepVote( csIndex, params.enable_timestep_vote );
+  enableTimestepStabilityLimits( csIndex, params.enable_timestep_stability_limits );
   setTimestepPenFrac( csIndex, params.timestep_pen_frac );
   setTimestepScale( csIndex, params.timestep_scale );
 

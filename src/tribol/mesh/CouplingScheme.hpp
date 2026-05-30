@@ -188,6 +188,16 @@ class CouplingScheme {
     TRIBOL_HOST_DEVICE RealT getTimestepScale() const { return m_parameters.timestep_scale; }
 
     /**
+     * @brief Return whether contact dynamics stability limits are enabled
+     *
+     * @return true if stability limits are enabled, false otherwise
+     */
+    TRIBOL_HOST_DEVICE bool enableTimestepStabilityLimits() const
+    {
+      return m_parameters.enable_timestep_stability_limits;
+    }
+
+    /**
      * @brief Get the gap tolerance that determines in contact face-pairs
      *
      * @return the gap tolerance for the common plane method

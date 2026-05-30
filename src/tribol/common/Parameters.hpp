@@ -483,6 +483,8 @@ struct Parameters {
   int vis_cycle_incr = 100;           ///! Frequency for visualizations dumps
   VisType vis_type = VIS_NONE;        ///! Type of interface physics visualization output
   bool enable_timestep_vote = false;  ///! True if host-code desires the timestep vote to be calculated and returned
+  bool enable_timestep_stability_limits =
+      false;  ///! True if host-code desires dynamic contact stability limits to be included in timestep vote
 
   bool auto_interpen_check = false;  ///! True if the auto-contact interpenetration check is used for full-overlap pairs
 
