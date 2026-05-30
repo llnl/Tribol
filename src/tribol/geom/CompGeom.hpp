@@ -12,6 +12,7 @@
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/common/Parameters.hpp"
+#include "tribol/common/Atomics.hpp"
 
 namespace tribol {
 
@@ -975,12 +976,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePairByMethod(
     SLIC_DEBUG( "face_err: " << face_err );
 #endif
   } else if ( my_plane.m_inContact ) {
-#ifdef TRIBOL_USE_RAJA
-    auto idx = RAJA::atomicInc<RAJA::auto_atomic>( plane_ct );
-#else
-    auto idx = *plane_ct;
-    ++( *plane_ct );
-#endif
+    auto idx = tribol::atomicInc( plane_ct );
     cg.getPlane<T>( idx ) = my_plane;
     isInteracting = true;
   } else {
