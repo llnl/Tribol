@@ -17,6 +17,7 @@
 #include "redecomp/utils/ArrayUtility.hpp"
 
 #include "tribol/common/LoopExec.hpp"
+#include "tribol/common/Atomics.hpp"
 
 namespace tribol {
 
@@ -720,12 +721,11 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
     max_diff.UseDevice( use_device_ );
     max_diff = 0.0;
     RealT* d_max_diff = max_diff.Write( use_device_ );
+    // Note: A true reduction would be more efficient here.
+    // However, it is not currently implemented because forAllExec would need
+    // to know the execution mode at compile time to instantiate the correct reducer.
     forAllExec( exec_mode_, current_coords_gf.Size(), [d_curr, d_last, d_max_diff] TRIBOL_HOST_DEVICE( int i ) {
-#ifdef TRIBOL_USE_RAJA
-      RAJA::atomicMax<RAJA::auto_atomic>( d_max_diff, std::abs( d_curr[i] - d_last[i] ) );
-#else
-      d_max_diff[0] = std::max( d_max_diff[0], std::abs( d_curr[i] - d_last[i] ) );
-#endif
+      tribol::atomicMax( d_max_diff, std::abs( d_curr[i] - d_last[i] ) );
     } );
     RealT* h_max_diff = max_diff.HostReadWrite();
     // Allreduce to get global max
