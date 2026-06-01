@@ -93,6 +93,13 @@ class EnergyMortarAdapter : public ContactFormulation {
   void updateNodalForces() override;
 
   /**
+   * @brief Reports if formulation has a maximum allowable timestep calculation
+   *
+   * @return false
+   */
+  bool hasTimeStepCalculation() override { return false; }
+
+  /**
    * @brief Compute the allowable timestep for this formulation
    *
    * @return Maximum allowable timestep
