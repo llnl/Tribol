@@ -225,6 +225,16 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
  *
  */
 void enableTimestepVote( IndexT cs_id, const bool enable );
+
+/*!
+ * \brief Enable CFL-like contact stiffness limits in the timestep vote
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] enable the contact stiffness limit will be included in the timestep vote if true
+ *
+ * \note default behavior is to not enable the contact stiffness limit
+ *
+ */
 void enableTimestepStabilityLimits( IndexT cs_id, const bool enable );
 
 /**
