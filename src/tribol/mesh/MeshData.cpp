@@ -15,6 +15,7 @@
 
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/common/LoopExec.hpp"
+#include "tribol/common/Atomics.hpp"
 #include "tribol/geom/ElementNormal.hpp"
 #include "tribol/utils/Math.hpp"
 
@@ -68,20 +69,15 @@ bool MeshElemData::isValidKinematicPenalty( PenaltyEnforcementOptions& pen_optio
       Array1DView<const RealT> mod = this->m_mat_mod;
       Array1DView<const RealT> thickness = this->m_thickness;
 
+      // Note: A true reduction would be more efficient here.
+      // However, it is not currently implemented because forAllExec would need
+      // to know the execution mode at compile time to instantiate the correct reducer.
       forAllExec( exec_mode, this->m_num_cells, [mod, thickness, mod_ok, thickness_ok] TRIBOL_HOST_DEVICE( IndexT i ) {
         if ( mod[i] <= 0. ) {
-#ifdef TRIBOL_USE_RAJA
-          RAJA::atomicMin<RAJA::auto_atomic>( mod_ok.data(), static_cast<IndexT>( false ) );
-#else
-          mod_ok[0] = false;
-#endif
+          tribol::atomicMin( mod_ok.data(), static_cast<IndexT>( false ) );
         }
         if ( thickness[i] <= 0. ) {
-#ifdef TRIBOL_USE_RAJA
-          RAJA::atomicMin<RAJA::auto_atomic>( thickness_ok.data(), static_cast<IndexT>( false ) );
-#else
-          thickness_ok[0] = false;
-#endif
+          tribol::atomicMin( thickness_ok.data(), static_cast<IndexT>( false ) );
         }
       } );  // end element loop
 

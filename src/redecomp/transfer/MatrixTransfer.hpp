@@ -87,6 +87,26 @@ class MatrixTransfer {
                                                const axom::Array<mfem::DenseMatrix>& src_elem_mat ) const;
 
   /**
+   * @brief Transfers element RedecompMesh matrices to parent mfem::ParMesh
+   *
+   * @param test_elem_idx List of element IDs on the redecomp test space
+   * @param trial_elem_idx List of element IDs on the redecomp trial space
+   * @param src_elem_mat_data Flattened array of element-level dense matrix data from the redecomp mesh
+   * @param src_elem_mat_offsets Offsets into src_elem_mat_data for each element
+   * @param parallel_assemble Performs parallel assembly (transforms to tdofs)
+   * on the HypreParMatrix if true, returns ldofs otherwise
+   * @return mfem::HypreParMatrix on the parent mesh (ldofs on the rows, global
+   * ldofs on the columns) in rectangular format
+   *
+   * @note This method constructs the parallel matrix directly, bypassing mfem::SparseMatrix.
+   */
+  shared::ParSparseMat TransferToParallel( const axom::Array<int>& test_elem_idx,
+                                           const axom::Array<int>& trial_elem_idx,
+                                           const axom::Array<double>& src_elem_mat_data,
+                                           const axom::Array<int>& src_elem_mat_offsets,
+                                           bool parallel_assemble = true ) const;
+
+  /**
    * @brief Converts SparseMatrix from TransferToParallelSparse to HypreParMatrix
    *
    * @param sparse Finalized mfem::SparseMatrix returned from TransferToParallel
@@ -101,6 +121,70 @@ class MatrixTransfer {
   shared::ParSparseMat ConvertToParSparseMat( mfem::SparseMatrix&& sparse, bool parallel_assemble = true ) const;
 
  private:
+  /**
+   * @brief Precomputed send/receive metadata for redecomp->parent element-matrix transfer
+   *
+   * MatrixTransfer communicates element Jacobian contributions from the ranks that own the redecomp elements
+   * to the ranks that own the corresponding parent mfem::ParMesh elements. CommunicationData stores the per-rank
+   * packing plan (what to send) and the unpacking metadata (how to interpret received buffers) so the transfer
+   * kernels can focus on inserting values into the parent mfem::ParMesh sparse matrix.
+   *
+   * All arrays are indexed by MPI rank unless otherwise noted.
+   */
+  struct CommunicationData {
+    MPIArray<int> send_array_ids;                       ///< Matrix entries to send to each parent rank
+    axom::Array<int> send_num_mat_entries;              ///< Packed value count sent to each rank
+    MPIArray<int, axom::Array<int, 2>> recv_mat_sizes;  ///< Received per-element test/trial vdof counts
+    MPIArray<int> recv_test_elem_offsets;               ///< Received test-element offsets on each rank
+    MPIArray<HYPRE_BigInt> recv_trial_elem_dofs;        ///< Received global trial vdofs on each rank
+  };
+
+  /**
+   * @brief Validate shared element-index inputs for redecomp transfer
+   *
+   * @param test_elem_idx List of element IDs on the redecomp test space
+   * @param trial_elem_idx List of element IDs on the redecomp trial space
+   * @param data_size Number of contribution entries stored alongside the element ids
+   * @param data_name Description of the contribution array used in error messages
+   */
+  void validateTransferInputs( const axom::Array<int>& test_elem_idx, const axom::Array<int>& trial_elem_idx,
+                               int data_size, const char* data_name ) const;
+
+  /**
+   * @brief Validate dense element matrices against redecomp FE-space sizes
+   *
+   * @param test_elem_idx List of element IDs on the redecomp test space
+   * @param trial_elem_idx List of element IDs on the redecomp trial space
+   * @param src_elem_mat Dense element matrices on the redecomp mesh
+   */
+  void validateDenseMatrices( const axom::Array<int>& test_elem_idx, const axom::Array<int>& trial_elem_idx,
+                              const axom::Array<mfem::DenseMatrix>& src_elem_mat ) const;
+
+  /**
+   * @brief Validate flattened element matrices against redecomp FE-space sizes
+   *
+   * @param test_elem_idx List of element IDs on the redecomp test space
+   * @param trial_elem_idx List of element IDs on the redecomp trial space
+   * @param src_elem_mat_data Flattened dense element matrices on the redecomp mesh
+   * @param src_elem_mat_offsets Offsets into the flattened element-matrix buffer
+   */
+  void validateFlatMatrices( const axom::Array<int>& test_elem_idx, const axom::Array<int>& trial_elem_idx,
+                             const axom::Array<double>& src_elem_mat_data,
+                             const axom::Array<int>& src_elem_mat_offsets ) const;
+
+  /**
+   * @brief Build shared send/receive metadata for the redecomp->parent transfer
+   *
+   * @param test_redecomp Redecomp mesh of the test space
+   * @param trial_redecomp Redecomp mesh of the trial space
+   * @param test_elem_idx List of element IDs on the redecomp test space
+   * @param trial_elem_idx List of element IDs on the redecomp trial space
+   * @return CommunicationData Packed communication metadata reused by both transfer paths
+   */
+  CommunicationData buildCommunicationData( const RedecompMesh& test_redecomp, const RedecompMesh& trial_redecomp,
+                                            const axom::Array<int>& test_elem_idx,
+                                            const axom::Array<int>& trial_elem_idx ) const;
+
   /**
    * @brief Returns a map of the corresponding parent rank for a given redecomp index
    *

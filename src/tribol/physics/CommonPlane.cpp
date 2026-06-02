@@ -6,6 +6,7 @@
 #include "CommonPlane.hpp"
 
 #include "tribol/common/LoopExec.hpp"
+#include "tribol/common/Atomics.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/geom/CompGeom.hpp"
@@ -351,32 +352,17 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
       // }
 
       // accumulate contributions in host code's registered nodal force arrays
-#ifdef TRIBOL_USE_RAJA
-      RAJA::atomicAdd<RAJA::auto_atomic>( &mesh1.getResponse()[0][node0], -nodal_force_x1 );
-      RAJA::atomicAdd<RAJA::auto_atomic>( &mesh2.getResponse()[0][node1], nodal_force_x2 );
+      tribol::atomicAdd( &mesh1.getResponse()[0][node0], -nodal_force_x1 );
+      tribol::atomicAdd( &mesh2.getResponse()[0][node1], nodal_force_x2 );
 
-      RAJA::atomicAdd<RAJA::auto_atomic>( &mesh1.getResponse()[1][node0], -nodal_force_y1 );
-      RAJA::atomicAdd<RAJA::auto_atomic>( &mesh2.getResponse()[1][node1], nodal_force_y2 );
+      tribol::atomicAdd( &mesh1.getResponse()[1][node0], -nodal_force_y1 );
+      tribol::atomicAdd( &mesh2.getResponse()[1][node1], nodal_force_y2 );
 
       // there is no z component for 2D
       if ( dim == 3 ) {
-        RAJA::atomicAdd<RAJA::auto_atomic>( &mesh1.getResponse()[2][node0], -nodal_force_z1 );
-        RAJA::atomicAdd<RAJA::auto_atomic>( &mesh2.getResponse()[2][node1], nodal_force_z2 );
+        tribol::atomicAdd( &mesh1.getResponse()[2][node0], -nodal_force_z1 );
+        tribol::atomicAdd( &mesh2.getResponse()[2][node1], nodal_force_z2 );
       }
-#else
-          mesh1.getResponse()[0][node0] -= nodal_force_x1;
-          mesh2.getResponse()[0][node1] += nodal_force_x2;
-
-          mesh1.getResponse()[1][node0] -= nodal_force_y1;
-          mesh2.getResponse()[1][node1] += nodal_force_y2;
-
-          // there is no z component for 2D
-          if (dim == 3)
-          {
-            mesh1.getResponse()[2][node0] -= nodal_force_z1;
-            mesh2.getResponse()[2][node1] += nodal_force_z2;
-          }
-#endif
     }  // end for loop over face nodes
 
     // comment out debug logs; too much output during tests. Keep for easy
@@ -560,32 +546,17 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
       const RealT nodal_force_z2 = force_z * phi2[a];
 
       // accumulate contributions in host code's registered nodal force arrays
-#ifdef TRIBOL_USE_RAJA
-      RAJA::atomicAdd<RAJA::auto_atomic>( &mesh1.getResponse()[0][node0], -nodal_force_x1 );
-      RAJA::atomicAdd<RAJA::auto_atomic>( &mesh2.getResponse()[0][node1], nodal_force_x2 );
+      tribol::atomicAdd( &mesh1.getResponse()[0][node0], -nodal_force_x1 );
+      tribol::atomicAdd( &mesh2.getResponse()[0][node1], nodal_force_x2 );
 
-      RAJA::atomicAdd<RAJA::auto_atomic>( &mesh1.getResponse()[1][node0], -nodal_force_y1 );
-      RAJA::atomicAdd<RAJA::auto_atomic>( &mesh2.getResponse()[1][node1], nodal_force_y2 );
+      tribol::atomicAdd( &mesh1.getResponse()[1][node0], -nodal_force_y1 );
+      tribol::atomicAdd( &mesh2.getResponse()[1][node1], nodal_force_y2 );
 
       // there is no z component for 2D
       if ( dim == 3 ) {
-        RAJA::atomicAdd<RAJA::auto_atomic>( &mesh1.getResponse()[2][node0], -nodal_force_z1 );
-        RAJA::atomicAdd<RAJA::auto_atomic>( &mesh2.getResponse()[2][node1], nodal_force_z2 );
+        tribol::atomicAdd( &mesh1.getResponse()[2][node0], -nodal_force_z1 );
+        tribol::atomicAdd( &mesh2.getResponse()[2][node1], nodal_force_z2 );
       }
-#else
-          mesh1.getResponse()[0][node0] -= nodal_force_x1;
-          mesh2.getResponse()[0][node1] += nodal_force_x2;
-
-          mesh1.getResponse()[1][node0] -= nodal_force_y1;
-          mesh2.getResponse()[1][node1] += nodal_force_y2;
-
-          // there is no z component for 2D
-          if (dim == 3)
-          {
-            mesh1.getResponse()[2][node0] -= nodal_force_z1;
-            mesh2.getResponse()[2][node1] += nodal_force_z2;
-          }
-#endif
     }  // end for loop over face nodes
   } );
 

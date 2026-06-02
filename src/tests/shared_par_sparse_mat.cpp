@@ -38,6 +38,7 @@ class ParSparseMatTest : public ::testing::Test {
       row_starts[i + 1] = row_starts[i] + local_sizes[i];
     }
     if ( HYPRE_AssumedPartitionCheck() ) {
+      // if this is true, row starts should be {starting on-rank dof, last on-rank dof + 1, total dofs}
       auto total_dofs = row_starts[num_procs];
       row_starts.SetSize( 3 );
       row_starts[0] = row_starts[rank];
@@ -46,6 +47,19 @@ class ParSparseMatTest : public ::testing::Test {
     }
 
     return row_starts;
+  }
+
+  std::unique_ptr<mfem::HypreParMatrix> ParMultWithMemoryLocation( const shared::ParSparseMatView& lhs,
+                                                                   const shared::ParSparseMatView& rhs,
+                                                                   HYPRE_MemoryLocation memory_location )
+  {
+    HYPRE_MemoryLocation old_hypre_mem_location;
+    HYPRE_GetMemoryLocation( &old_hypre_mem_location );
+    HYPRE_SetMemoryLocation( memory_location );
+    auto* result = mfem::ParMult( const_cast<mfem::HypreParMatrix*>( &lhs.get() ),
+                                  const_cast<mfem::HypreParMatrix*>( &rhs.get() ), true );
+    HYPRE_SetMemoryLocation( old_hypre_mem_location );
+    return std::unique_ptr<mfem::HypreParMatrix>( result );
   }
 };
 
@@ -66,13 +80,13 @@ TEST_F( ParSparseMatTest, Construction )
   mfem::HypreParMatrix* m1 =
       shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, size, row_starts_array, 1.0 ).release();
   shared::ParSparseMat psm1( m1 );
-  EXPECT_EQ( psm1.Height(), local_size );
+  EXPECT_EQ( psm1.height(), local_size );
 
   // 2. From unique_ptr
   auto m2 = std::unique_ptr<mfem::HypreParMatrix>(
       shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, size, row_starts_array, 2.0 ).release() );
   shared::ParSparseMat psm2( std::move( m2 ) );
-  EXPECT_EQ( psm2.Height(), local_size );
+  EXPECT_EQ( psm2.height(), local_size );
 
   // 3. From SparseMatrix rvalue
   mfem::SparseMatrix diag( local_size );
@@ -80,12 +94,48 @@ TEST_F( ParSparseMatTest, Construction )
   diag.Finalize();
 
   shared::ParSparseMat psm3( MPI_COMM_WORLD, (HYPRE_BigInt)size, row_starts_array.GetData(), std::move( diag ) );
-  EXPECT_EQ( psm3.Height(), local_size );
+  EXPECT_EQ( psm3.height(), local_size );
 
+  // basic, non-exhaustive check to make sure matrix multiplication is working
   mfem::Vector x( local_size ), y( local_size );
   x = 1.0;
   psm3->Mult( x, y );
   EXPECT_NEAR( y.Max(), 3.0, 1e-12 );
+}
+
+TEST_F( ParSparseMatTest, ForwardingConstructor )
+{
+  int rank;
+  MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+  int num_procs;
+  MPI_Comm_size( MPI_COMM_WORLD, &num_procs );
+  constexpr int global_size = 10;
+  const int local_size = global_size / num_procs + ( rank < ( global_size % num_procs ) ? 1 : 0 );
+  if ( rank == 0 ) std::cout << "Testing Forwarding Constructor..." << std::endl;
+
+  auto row_starts = GetRowStarts( MPI_COMM_WORLD, global_size );
+  const int row_starts_idx = HYPRE_AssumedPartitionCheck() ? 0 : rank;
+  const HYPRE_BigInt first_global_row = row_starts[row_starts_idx];
+
+  auto* I = new int[local_size + 1];
+  auto* J = new HYPRE_BigInt[local_size];
+  auto* data = new mfem::real_t[local_size];
+  for ( int i = 0; i < local_size; ++i ) {
+    I[i] = i;
+    J[i] = first_global_row + i;
+    data[i] = 7.0;
+  }
+  I[local_size] = local_size;
+
+  shared::ParSparseMat A( MPI_COMM_WORLD, local_size, static_cast<HYPRE_BigInt>( global_size ),
+                          static_cast<HYPRE_BigInt>( global_size ), I, J, data, row_starts.GetData(),
+                          row_starts.GetData() );
+
+  mfem::Vector x( A.width() ), y( A.height() );
+  x = 1.0;
+  A->Mult( x, y );
+  EXPECT_NEAR( y.Max(), 7.0, 1e-12 );
+  EXPECT_NEAR( y.Min(), 7.0, 1e-12 );
 }
 
 // Test View
@@ -101,14 +151,15 @@ TEST_F( ParSparseMatTest, View )
   // Construct View
   shared::ParSparseMatView view( &A.get() );
 
-  EXPECT_EQ( view.Height(), A.Height() );
+  EXPECT_EQ( view.height(), A.height() );
 
   // Operate on View
   shared::ParSparseMat B = view * 2.0;
+  // creates a shared::ParVector compatible with the dimensions of B and using the same MPI_Comm
   shared::ParVector x( B.get() );
-  x.Fill( 1.0 );
+  x.fill( 1.0 );
   auto y = B * x;
-  EXPECT_NEAR( y.Max(), 4.0, 1e-12 );
+  EXPECT_NEAR( y.max(), 4.0, 1e-12 );
 }
 
 // Test Addition
@@ -124,10 +175,10 @@ TEST_F( ParSparseMatTest, Addition )
 
   // A + B
   shared::ParSparseMat C = A + B;
-  mfem::Vector x( A.Width() ), y( A.Height() );
+  mfem::Vector x( A.width() ), y( A.height() );
   x = 1.0;
   C->Mult( x, y );
-  // Result should be (2+3)*1 = 5
+  // Result should be C*x = (A+B)*x = (2+3)*1 = 5
   EXPECT_NEAR( y.Max(), 5.0, 1e-12 );
   EXPECT_NEAR( y.Min(), 5.0, 1e-12 );
 
@@ -150,7 +201,7 @@ TEST_F( ParSparseMatTest, Subtraction )
 
   // A - B
   shared::ParSparseMat C = A - B;
-  mfem::Vector x( A.Width() ), y( A.Height() );
+  mfem::Vector x( A.width() ), y( A.height() );
   x = 1.0;
   C->Mult( x, y );
   // Result should be (5-2)*1 = 3
@@ -174,7 +225,7 @@ TEST_F( ParSparseMatTest, ScalarMult )
 
   // A * s
   shared::ParSparseMat B = A * 3.0;
-  mfem::Vector x( A.Width() ), y( A.Height() );
+  mfem::Vector x( A.width() ), y( A.height() );
   x = 1.0;
   B->Mult( x, y );
   EXPECT_NEAR( y.Max(), 6.0, 1e-12 );
@@ -198,7 +249,7 @@ TEST_F( ParSparseMatTest, MatrixMult )
 
   // A * B
   shared::ParSparseMat C = A * B;
-  mfem::Vector x( A.Width() ), y( A.Height() );
+  mfem::Vector x( A.width() ), y( A.height() );
   x = 1.0;
   C->Mult( x, y );
   // Result should be (2*3)*1 = 6
@@ -209,6 +260,42 @@ TEST_F( ParSparseMatTest, MatrixMult )
   A->Mult( x, y );
   EXPECT_NEAR( y.Max(), 6.0, 1e-12 );
 }
+
+#if defined( TRIBOL_USE_CUDA ) || defined( TRIBOL_USE_HIP )
+TEST_F( ParSparseMatTest, ExternalMatrixResultIsNormalizedToHost )
+{
+  int rank;
+  MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+  if ( rank == 0 ) std::cout << "Testing External Matrix Host Normalization..." << std::endl;
+
+  auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
+  shared::ParSparseMat A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 2.0 );
+  shared::ParSparseMat B = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 3.0 );
+  shared::ParSparseMat I = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 1.0 );
+
+  auto raw_mult = ParMultWithMemoryLocation( A, B, HYPRE_MEMORY_DEVICE );
+  ASSERT_NE( raw_mult, nullptr );
+
+  shared::ParSparseMat external_result( std::move( raw_mult ) );
+
+  mfem::Vector x( A.width() ), y( A.height() );
+  x = 1.0;
+  external_result->Mult( x, y );
+  EXPECT_NEAR( y.Max(), 6.0, 1e-12 );
+
+  auto sum = external_result + A;
+  sum->Mult( x, y );
+  EXPECT_NEAR( y.Max(), 8.0, 1e-12 );
+
+  auto transposed = external_result.transpose();
+  transposed->Mult( x, y );
+  EXPECT_NEAR( y.Max(), 6.0, 1e-12 );
+
+  auto rap_result = external_result.rap( I );
+  rap_result->Mult( x, y );
+  EXPECT_NEAR( y.Max(), 6.0, 1e-12 );
+}
+#endif
 
 // Test Matrix-Vector Multiplication
 TEST_F( ParSparseMatTest, MatVecMult )
@@ -229,7 +316,7 @@ TEST_F( ParSparseMatTest, MatVecMult )
 
   // y = A * x
   shared::ParVector y = A * x;
-  EXPECT_NEAR( y.Max(), 2.0, 1e-12 );
+  EXPECT_NEAR( y.max(), 2.0, 1e-12 );
 }
 
 // Test Vector-Matrix Multiplication
@@ -242,12 +329,12 @@ TEST_F( ParSparseMatTest, VecMatMult )
   auto row_starts = GetRowStarts( MPI_COMM_WORLD, 10 );
   shared::ParSparseMat A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 3.0 );
   shared::ParVector x( A.get(), 0 );
-  x.Fill( 1.0 );
+  x.fill( 1.0 );
 
   // y = x^T * A
   shared::ParVector y = x * A;
-  EXPECT_NEAR( y.Max(), 3.0, 1e-12 );
-  EXPECT_NEAR( y.Min(), 3.0, 1e-12 );
+  EXPECT_NEAR( y.max(), 3.0, 1e-12 );
+  EXPECT_NEAR( y.min(), 3.0, 1e-12 );
 }
 
 // Test Elimination
@@ -267,12 +354,12 @@ TEST_F( ParSparseMatTest, Elimination )
   if ( row_starts[row_starts_idx] == 0 ) {
     rows_to_elim.Append( 0 );
   }
-  A.EliminateRows( rows_to_elim );
+  A.eliminateRows( rows_to_elim );
 
   // Check if row 0 is identity (or zero with diagonal 1)
   // Diagonal matrix means we can just check multiplication
   shared::ParVector x( A.get(), 1 );
-  x.Fill( 1.0 );
+  x.fill( 1.0 );
   shared::ParVector y = A * x;  // y = A * x
 
   // if rank owns row 0, the result for that row should be 0.0 * x[0] = 0.0 (since diag is 0.0)
@@ -281,11 +368,11 @@ TEST_F( ParSparseMatTest, Elimination )
   // local row 0 on rank 0 is global row 0
   if ( rank == 0 ) {
     EXPECT_NEAR( y[0], 0.0, 1e-12 );
-    for ( int i = 1; i < y.Size(); ++i ) {
+    for ( int i = 1; i < y.size(); ++i ) {
       EXPECT_NEAR( y[i], 3.0, 1e-12 );
     }
   } else {
-    for ( int i = 0; i < y.Size(); ++i ) {
+    for ( int i = 0; i < y.size(); ++i ) {
       EXPECT_NEAR( y[i], 3.0, 1e-12 );
     }
   }
@@ -295,15 +382,15 @@ TEST_F( ParSparseMatTest, Elimination )
   MPI_Comm_size( MPI_COMM_WORLD, &num_procs );
 
   // Eliminate last local col
-  auto last_local_col = A.Width() - 1;
+  auto last_local_col = A.width() - 1;
   mfem::Array<int> cols_to_elim( { last_local_col } );
 
-  shared::ParSparseMat Ae = A.EliminateCols( cols_to_elim );
+  shared::ParSparseMat Ae = A.eliminateCols( cols_to_elim );
 
   // Now check A * e_last = 0
   // Create vector with 1 at last_local_col, 0 elsewhere
   shared::ParVector x_last( A.get(), 1 );
-  x_last.Fill( 0.0 );
+  x_last.fill( 0.0 );
   x_last[last_local_col] = 1.0;
   shared::ParVector y_last = A * x_last;
   EXPECT_NEAR( y_last[last_local_col], 0.0, 1e-12 );
@@ -328,14 +415,14 @@ TEST_F( ParSparseMatTest, TransposeSquare )
   // Transpose (Diagonal matrix is symmetric)
   shared::ParSparseMat At = A.transpose();
   shared::ParVector x( At.get(), 0 );
-  x.Fill( 1.0 );
+  x.fill( 1.0 );
   auto y = At * x;
-  EXPECT_NEAR( y.Max(), 2.0, 1e-12 );
+  EXPECT_NEAR( y.max(), 2.0, 1e-12 );
 
   // Square
   shared::ParSparseMat A2 = A.square();
   y = A2 * x;
-  EXPECT_NEAR( y.Max(), 4.0, 1e-12 );
+  EXPECT_NEAR( y.max(), 4.0, 1e-12 );
 }
 
 // Test RAP
@@ -351,17 +438,22 @@ TEST_F( ParSparseMatTest, RAP )
   shared::ParSparseMat P = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 1.0 );
   shared::ParSparseMat R = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 1.0 );
 
-  // RAP(P)
-  shared::ParSparseMat Res1 = A.RAP( P );
+  // rap(P)
+  shared::ParSparseMat Res1 = A.rap( P );
   shared::ParVector x( A.get(), 0 );
-  x.Fill( 1.0 );
+  x.fill( 1.0 );
   auto y = Res1 * x;
-  EXPECT_NEAR( y.Max(), 5.0, 1e-12 );
+  EXPECT_NEAR( y.max(), 5.0, 1e-12 );
 
-  // RAP(R, A, P)
-  shared::ParSparseMat Res2 = shared::ParSparseMat::RAP( R, A, P );
+  // rap(A, P)
+  shared::ParSparseMat ResMid = shared::ParSparseMat::rap( A, P );
+  y = ResMid * x;
+  EXPECT_NEAR( y.max(), 5.0, 1e-12 );
+
+  // rap(R, A, P)
+  shared::ParSparseMat Res2 = shared::ParSparseMat::rap( R, A, P );
   y = Res2 * x;
-  EXPECT_NEAR( y.Max(), 5.0, 1e-12 );
+  EXPECT_NEAR( y.max(), 5.0, 1e-12 );
 }
 
 // Test Accessors
@@ -379,10 +471,41 @@ TEST_F( ParSparseMatTest, Accessors )
   shared::ParSparseMat A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, size, row_starts, 1.0 );
 
   // get()
-  EXPECT_EQ( A.Height(), local_size );
+  EXPECT_EQ( A.height(), local_size );
 
   // operator->
   EXPECT_EQ( A->Height(), local_size );
+}
+
+// Test Construction from Vector
+TEST_F( ParSparseMatTest, DiagonalFromVector )
+{
+  int rank;
+  MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+  if ( rank == 0 ) std::cout << "Testing Construction from Vector..." << std::endl;
+
+  int num_procs;
+  MPI_Comm_size( MPI_COMM_WORLD, &num_procs );
+  constexpr int size = 10;
+  int local_size = size / num_procs + ( rank < ( size % num_procs ) ? 1 : 0 );
+
+  auto row_starts = GetRowStarts( MPI_COMM_WORLD, size );
+
+  mfem::Vector diag_vals( local_size );
+  for ( int i = 0; i < local_size; ++i ) {
+    diag_vals[i] = static_cast<double>( rank * 100 + i );
+  }
+
+  shared::ParSparseMat A =
+      shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, size, row_starts.GetData(), diag_vals );
+
+  shared::ParVector x( A.get(), 0 );
+  x.fill( 1.0 );
+  auto y = A * x;
+
+  for ( int i = 0; i < local_size; ++i ) {
+    EXPECT_NEAR( y[i], static_cast<double>( rank * 100 + i ), 1e-12 );
+  }
 }
 
 //------------------------------------------------------------------------------
