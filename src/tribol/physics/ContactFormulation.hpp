@@ -79,11 +79,18 @@ class ContactFormulation {
   virtual void updateNodalForces() = 0;
 
   /**
+   * @brief Reports if formulation has a maximum allowable timestep calculation
+   *
+   * @return true if formulation has a timestep calculation available; false otherwise
+   */
+  virtual bool hasTimeStepCalculation() = 0;
+
+  /**
    * @brief Computes the maximum allowable timestep for the formulation
    *
    * @return maximum allowable timestep
    */
-  virtual RealT computeTimeStep() = 0;
+  virtual RealT computeTimeStep() { return 1.0; };
 
   /**
    * @brief Returns the energy stored by the contact constraints (if supported by the method)

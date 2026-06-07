@@ -1035,7 +1035,9 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
     }
     m_formulation->updateNodalGaps();
     m_formulation->updateNodalForces();
-    dt = m_formulation->computeTimeStep();
+    if ( m_formulation->hasTimeStepCalculation() ) {
+      dt = m_formulation->computeTimeStep();
+    }
     return 0;
   }
 
