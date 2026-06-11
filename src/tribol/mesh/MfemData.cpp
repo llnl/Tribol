@@ -398,6 +398,7 @@ SubmeshLORTransfer::SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes
       lor_xfer_{ submesh_fes, *lor_gridfn_->ParFESpace() }
 {
   lor_xfer_.UseEA( use_ea );
+  lor_xfer_.UseConsistentMass( true );
 }
 
 void SubmeshLORTransfer::TransferToLORGridFn( const mfem::ParGridFunction& submesh_src )
