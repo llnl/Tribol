@@ -151,6 +151,7 @@ HoToLorTransferAction::HoToLorTransferAction( const mfem::ParFiniteElementSpace&
   transfer_ = std::make_unique<mfem::L2ProjectionGridTransfer>( const_cast<mfem::ParFiniteElementSpace&>( ho_fes_ ),
                                                                 const_cast<mfem::ParFiniteElementSpace&>( lor_fes_ ) );
   transfer_->UseEA( use_ea );
+  transfer_->UseConsistentMass( true );
 }
 
 void HoToLorTransferAction::Mult( const mfem::Vector& x, mfem::Vector& y ) const
