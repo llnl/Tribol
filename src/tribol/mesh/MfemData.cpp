@@ -33,7 +33,7 @@ std::unique_ptr<shared::ParSparseMat> TryGetMfemTrueRestrictionMatrix(
    public:
     MfemTrueRestrictionAccessor( const mfem::ParFiniteElementSpace& pfes_ho,
                                  const mfem::ParFiniteElementSpace& pfes_lor, bool use_ea )
-        : mfem::L2ProjectionGridTransfer::L2ProjectionH1Space( pfes_ho, pfes_lor, use_ea )
+        : mfem::L2ProjectionGridTransfer::L2ProjectionH1Space( pfes_ho, pfes_lor, use_ea, true )
     {
     }
 
