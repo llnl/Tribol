@@ -918,6 +918,19 @@ void MfemMeshData::SetLORFactor( int lor_factor )
 
 void MfemMeshData::ComputeElementThicknesses()
 {
+  const bool has_reference_coords = reference_coords_ != nullptr;
+  const auto& thickness_coords =
+      has_reference_coords ? reference_coords_->GetParentGridFn() : coords_.GetParentGridFn();
+  if ( !has_reference_coords ) {
+    SLIC_WARNING_ROOT( "tribol::MfemMeshData::ComputeElementThicknesses(): no MFEM reference coordinates "
+                       "registered; calculating element thickness from current coordinates." );
+  }
+
+  auto& parent_mesh = const_cast<mfem::ParMesh&>( parent_mesh_ );
+  mfem::Vector saved_nodes;
+  parent_mesh.GetNodes( saved_nodes );
+  parent_mesh.SetNodes( thickness_coords );
+
   auto submesh_thickness = std::make_unique<mfem::QuadratureFunction>( new mfem::QuadratureSpace( &submesh_, 0 ) );
   submesh_thickness->SetOwnsSpace( true );
   // All the elements in the submesh are on the contact surface. The algorithm
@@ -939,7 +952,7 @@ void MfemMeshData::ComputeElementThicknesses()
 
     // Step 2
     // normal = (dx/dxi x dx/deta) / || dx/dxi x dx/deta || on parent volume boundary element centroid
-    auto& parent_fes = *coords_.GetParentGridFn().ParFESpace();
+    auto& parent_fes = *thickness_coords.ParFESpace();
     mfem::Array<int> be_dofs;
     parent_fes.GetBdrElementDofs( parent_bdr_e, be_dofs );
     mfem::DenseMatrix elem_coords( parent_mesh_.Dimension(), be_dofs.Size() );
@@ -947,7 +960,7 @@ void MfemMeshData::ComputeElementThicknesses()
       mfem::Array<int> be_vdofs( be_dofs );
       parent_fes.DofsToVDofs( d, be_vdofs );
       mfem::Vector elemvect( be_dofs.Size() );
-      coords_.GetParentGridFn().GetSubVector( be_vdofs, elemvect );
+      thickness_coords.GetSubVector( be_vdofs, elemvect );
       elem_coords.SetRow( d, elemvect );
     }
     auto& be = *parent_fes.GetBE( parent_bdr_e );
@@ -968,6 +981,8 @@ void MfemMeshData::ComputeElementThicknesses()
     submesh_thickness->GetValues( submesh_e, quad_val );
     quad_val[0] = h;
   }
+
+  parent_mesh.SetNodes( saved_nodes );
 
   // Step 4
   if ( GetLORMesh() ) {
