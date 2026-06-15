@@ -9,6 +9,8 @@
 
 #ifdef BUILD_REDECOMP
 
+#include <cmath>
+
 #include "axom/slic/interface/slic_macros.hpp"
 
 #include "shared/infrastructure/Profiling.hpp"
@@ -925,11 +927,6 @@ void MfemMeshData::ComputeElementThicknesses()
                         "tribol::MfemMeshData::ComputeElementThicknesses(): no MFEM reference coordinates "
                         "registered; calculating element thickness from current coordinates." );
 
-  auto& parent_mesh = const_cast<mfem::ParMesh&>( parent_mesh_ );
-  mfem::Vector saved_nodes;
-  parent_mesh.GetNodes( saved_nodes );
-  parent_mesh.SetNodes( thickness_coords );
-
   auto submesh_thickness = std::make_unique<mfem::QuadratureFunction>( new mfem::QuadratureSpace( &submesh_, 0 ) );
   submesh_thickness->SetOwnsSpace( true );
   // All the elements in the submesh are on the contact surface. The algorithm
@@ -973,15 +970,37 @@ void MfemMeshData::ComputeElementThicknesses()
     mfem::Mult( elem_coords, dshape, dxdxi_mat );
     mfem::Vector norm( parent_mesh_.Dimension() );
     mfem::CalcOrtho( dxdxi_mat, norm );
-    double h = parent_mesh.GetElementSize( parent_e, norm );
+
+    // This mirrors mfem::Mesh::GetElementSize(i, dir), but builds the element
+    // Jacobian from thickness_coords so it also works when the parent mesh does
+    // not store coordinates in a Nodes GridFunction.
+    mfem::Array<int> elem_dofs;
+    parent_fes.GetElementDofs( parent_e, elem_dofs );
+    mfem::DenseMatrix elem_coords_vol( parent_mesh_.Dimension(), elem_dofs.Size() );
+    for ( int d{ 0 }; d < parent_mesh_.Dimension(); ++d ) {
+      mfem::Array<int> elem_vdofs( elem_dofs );
+      parent_fes.DofsToVDofs( d, elem_vdofs );
+      mfem::Vector elemvect( elem_dofs.Size() );
+      thickness_coords.GetSubVector( elem_vdofs, elemvect );
+      elem_coords_vol.SetRow( d, elemvect );
+    }
+    auto& parent_fe = *parent_fes.GetFE( parent_e );
+    mfem::IntegrationPoint ip_vol;
+    ip_vol.Init( 0 );
+    mfem::DenseMatrix dshape_vol( elem_dofs.Size(), parent_mesh_.Dimension() );
+    parent_fe.CalcDShape( ip_vol, dshape_vol );
+    mfem::DenseMatrix J( parent_mesh_.Dimension(), parent_mesh_.Dimension() );
+    mfem::Mult( elem_coords_vol, dshape_vol, J );
+
+    mfem::Vector d_hat( parent_mesh_.Dimension() );
+    J.MultTranspose( norm, d_hat );
+    double h = std::sqrt( ( d_hat * d_hat ) / ( norm * norm ) );
 
     // Step 3
     mfem::Vector quad_val;
     submesh_thickness->GetValues( submesh_e, quad_val );
     quad_val[0] = h;
   }
-
-  parent_mesh.SetNodes( saved_nodes );
 
   // Step 4
   if ( GetLORMesh() ) {
