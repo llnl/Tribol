@@ -3,6 +3,8 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+#include <array>
+#include <cmath>
 #include <set>
 
 #include <gtest/gtest.h>
@@ -115,6 +117,106 @@ TEST_F( MfemRedecompSkipTest, test_skip_redecomp )
   EXPECT_LT( force_3.Norml2(), 1.0e-10 );
 
   tribol::finalize();
+}
+
+TEST_F( MfemRedecompSkipTest, element_thickness_reference_coords )
+{
+  constexpr tribol::ExecutionMode exec_mode = tribol::ExecutionMode::Sequential;
+  constexpr int z_component = 2;
+  constexpr tribol::RealT top_cube_offset = 1.1;
+  constexpr tribol::RealT current_z_scale = 2.0;
+  constexpr tribol::RealT material_modulus = 1.0;
+  constexpr tribol::RealT tol = 1.0e-12;
+  constexpr int coupling_scheme_id = 0;
+  constexpr int mesh1_id = 0;
+  constexpr int mesh2_id = 1;
+
+  // Check that element thickness is calculated from reference coordinates when they are registered, and from current
+  // coordinates otherwise.
+  const auto get_thickness = []( const char* scenario, bool deform_current_coords, bool use_reference_coords ) {
+    SCOPED_TRACE( scenario );
+
+    // clang-format off
+    mfem::ParMesh mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::Unify( {
+      shared::MeshBuilder::CubeMesh( 1, 1, 1 ),
+      shared::MeshBuilder::CubeMesh( 1, 1, 1 )
+        .translate( { 0.0, 0.0, top_cube_offset } )
+        .updateAttrib( 1, 2 )
+        .updateBdrAttrib( 1, 7 )
+        .updateBdrAttrib( 6, 8 )
+    } ) );
+    // clang-format on
+    // This is a pair of unit cubes separated in z. The top face of the lower cube keeps boundary attribute 6, while the
+    // bottom face of the upper cube is changed to attribute 7 so those two surfaces can be registered as the contact
+    // surfaces. The upper cube volume attribute is changed to 2, and its top boundary is changed to 8, to keep those
+    // attributes distinct from the lower cube.
+
+    auto fe_coll = mfem::H1_FECollection( 1, mesh.SpaceDimension() );
+    auto par_fe_space = mfem::ParFiniteElementSpace( &mesh, &fe_coll, mesh.SpaceDimension() );
+    auto coords = mfem::ParGridFunction( &par_fe_space );
+    mesh.GetNodes( coords );
+    auto ref_coords = mfem::ParGridFunction( coords );
+
+    mfem::VectorFunctionCoefficient original_coords_coeff( mesh.SpaceDimension(),
+                                                           []( const mfem::Vector& x, mfem::Vector& y ) {
+                                                             y.SetSize( x.Size() );
+                                                             y = x;
+                                                           } );
+    EXPECT_NEAR( ref_coords.ComputeL2Error( original_coords_coeff ), 0.0, tol );
+
+    mfem::VectorFunctionCoefficient current_coords_coeff( mesh.SpaceDimension(),
+                                                          []( const mfem::Vector& x, mfem::Vector& y ) {
+                                                            y.SetSize( x.Size() );
+                                                            y = x;
+                                                            y[z_component] = current_z_scale * x[z_component];
+                                                          } );
+    if ( deform_current_coords ) {
+      coords.ProjectCoefficient( current_coords_coeff );
+      EXPECT_NEAR( coords.ComputeL2Error( current_coords_coeff ), 0.0, tol );
+    } else {
+      EXPECT_NEAR( coords.ComputeL2Error( original_coords_coeff ), 0.0, tol );
+    }
+
+    tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, mesh, coords, { 6 }, { 7 },
+                                        tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                        tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_BVH, exec_mode );
+    if ( use_reference_coords ) {
+      tribol::registerMfemReferenceCoords( coupling_scheme_id, ref_coords );
+    }
+
+    mfem::Vector bulk_moduli_by_bdry_attrib( mesh.bdr_attributes.Max() );
+    bulk_moduli_by_bdry_attrib = material_modulus;
+    mfem::PWConstCoefficient mat_coeff( bulk_moduli_by_bdry_attrib );
+    tribol::setMfemKinematicElementPenalty( coupling_scheme_id, mat_coeff );
+    tribol::updateMfemParallelDecomposition( 0, true );
+
+    auto* mfem_data = tribol::CouplingSchemeManager::getInstance().at( coupling_scheme_id ).getMfemMeshData();
+    if ( mfem_data == nullptr ) {
+      ADD_FAILURE() << "MFEM mesh data was not created.";
+      tribol::finalize();
+      return std::array<tribol::RealT, 2>{ 0.0, 0.0 };
+    }
+    EXPECT_GT( mfem_data->GetMesh1NE(), 0 );
+    EXPECT_GT( mfem_data->GetMesh2NE(), 0 );
+    const std::array<tribol::RealT, 2> thickness = { mfem_data->GetRedecompElemThickness1()[0],
+                                                     mfem_data->GetRedecompElemThickness2()[0] };
+
+    tribol::finalize();
+    return thickness;
+  };
+
+  constexpr bool use_original_current_coords = false;
+  constexpr bool use_deformed_current_coords = true;
+  constexpr bool no_reference_coords = false;
+  constexpr bool has_reference_coords = true;
+
+  const auto original = get_thickness( "original", use_original_current_coords, no_reference_coords );
+  const auto current = get_thickness( "current", use_deformed_current_coords, no_reference_coords );
+  const auto reference = get_thickness( "reference", use_deformed_current_coords, has_reference_coords );
+
+  EXPECT_NEAR( reference[0], original[0], tol );
+  EXPECT_NEAR( reference[1], original[1], tol );
+  EXPECT_TRUE( std::abs( current[0] - original[0] ) > tol || std::abs( current[1] - original[1] ) > tol );
 }
 
 int main( int argc, char* argv[] )
