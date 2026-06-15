@@ -971,9 +971,8 @@ void MfemMeshData::ComputeElementThicknesses()
     mfem::Vector norm( parent_mesh_.Dimension() );
     mfem::CalcOrtho( dxdxi_mat, norm );
 
-    // This mirrors mfem::Mesh::GetElementSize(i, dir), but builds the element
-    // Jacobian from thickness_coords so it also works when the parent mesh does
-    // not store coordinates in a Nodes GridFunction.
+    // This mirrors mfem::Mesh::GetElementSize(i, dir), but builds the element Jacobian from thickness_coords so it also
+    // works when the parent mesh does not store coordinates in a Nodes GridFunction.
     mfem::Array<int> elem_dofs;
     parent_fes.GetElementDofs( parent_e, elem_dofs );
     mfem::DenseMatrix elem_coords_vol( parent_mesh_.Dimension(), elem_dofs.Size() );
