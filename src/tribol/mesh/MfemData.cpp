@@ -921,10 +921,9 @@ void MfemMeshData::ComputeElementThicknesses()
   const bool has_reference_coords = reference_coords_ != nullptr;
   const auto& thickness_coords =
       has_reference_coords ? reference_coords_->GetParentGridFn() : coords_.GetParentGridFn();
-  if ( !has_reference_coords ) {
-    SLIC_WARNING_ROOT( "tribol::MfemMeshData::ComputeElementThicknesses(): no MFEM reference coordinates "
-                       "registered; calculating element thickness from current coordinates." );
-  }
+  SLIC_WARNING_ROOT_IF( !has_reference_coords,
+                        "tribol::MfemMeshData::ComputeElementThicknesses(): no MFEM reference coordinates "
+                        "registered; calculating element thickness from current coordinates." );
 
   auto& parent_mesh = const_cast<mfem::ParMesh&>( parent_mesh_ );
   mfem::Vector saved_nodes;
