@@ -3,6 +3,7 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <set>
@@ -196,10 +197,23 @@ TEST_F( MfemRedecompSkipTest, element_thickness_reference_coords )
       tribol::finalize();
       return std::array<tribol::RealT, 2>{ 0.0, 0.0 };
     }
-    EXPECT_GT( mfem_data->GetMesh1NE(), 0 );
-    EXPECT_GT( mfem_data->GetMesh2NE(), 0 );
-    const std::array<tribol::RealT, 2> thickness = { mfem_data->GetRedecompElemThickness1()[0],
-                                                     mfem_data->GetRedecompElemThickness2()[0] };
+    const int local_mesh1_ne = mfem_data->GetMesh1NE();
+    const int local_mesh2_ne = mfem_data->GetMesh2NE();
+    int global_mesh1_ne = local_mesh1_ne;
+    int global_mesh2_ne = local_mesh2_ne;
+    MPI_Allreduce( MPI_IN_PLACE, &global_mesh1_ne, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
+    MPI_Allreduce( MPI_IN_PLACE, &global_mesh2_ne, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
+    EXPECT_GT( global_mesh1_ne, 0 );
+    EXPECT_GT( global_mesh2_ne, 0 );
+
+    std::array<tribol::RealT, 2> thickness = { 0.0, 0.0 };
+    for ( int i{ 0 }; i < local_mesh1_ne; ++i ) {
+      thickness[0] = std::max( thickness[0], mfem_data->GetRedecompElemThickness1()[i] );
+    }
+    for ( int i{ 0 }; i < local_mesh2_ne; ++i ) {
+      thickness[1] = std::max( thickness[1], mfem_data->GetRedecompElemThickness2()[i] );
+    }
+    MPI_Allreduce( MPI_IN_PLACE, thickness.data(), 2, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD );
 
     tribol::finalize();
     return thickness;
