@@ -21,6 +21,7 @@
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/utils/Algorithm.hpp"
 #include "tribol/common/LoopExec.hpp"
+#include "tribol/common/Atomics.hpp"
 
 // Define some namespace aliases to help with axom usage
 namespace primal = axom::primal;
@@ -109,13 +110,12 @@ class CartesianProduct : public SearchBase {
                     toIdx = i - offset;
                   }
                   isProximate[i] = geomFilter( cs_view, fromIdx, toIdx );
-#ifdef TRIBOL_USE_RAJA
-                  RAJA::atomicAdd<RAJA::auto_atomic>( pCount, static_cast<int>( isProximate[i] ) );
-#else
+                  // Note: A true reduction like axom::ReduceSum would be more efficient here.
+                  // However, it is not currently implemented because forAllExec would need
+                  // to know the execution mode at compile time to instantiate the correct reducer.
                   if ( isProximate[i] ) {
-                    ++( *pCount );
+                    tribol::atomicAdd( pCount, 1 );
                   }
-#endif
                 } );
 
     ArrayT<int, 1, MemorySpace::Host> countArray_host( countArray );
@@ -147,13 +147,8 @@ class CartesianProduct : public SearchBase {
             toIdx = i - offset;
           }
 
-      // get unique index for the array
-#ifdef TRIBOL_USE_RAJA
-          auto idx = RAJA::atomicInc<RAJA::auto_atomic>( pCount );
-#else
-          auto idx = *pCount;
-          ++( *pCount );
-#endif
+          // get unique index for the array
+          auto idx = tribol::atomicInc( pCount );
 
           pairs_view[idx] = InterfacePair( fromIdx, toIdx, true );
         } );
@@ -462,11 +457,7 @@ class BvhSearch : public SearchBase {
           auto mesh1_elem = candidates_view[i];
           auto mesh2_elem = algorithm::binarySearch( offsets_view, counts_view, i );
           if ( geomFilter( cs_view, mesh1_elem, mesh2_elem ) ) {
-#ifdef TRIBOL_USE_RAJA
-            RAJA::atomicInc<AtomicPolicy>( filtered_candidates.data() );
-#else
-            ++filtered_candidates[0];
-#endif
+            tribol::atomicInc( filtered_candidates.data() );
           } else {
             candidates_view[i] = -1;
           }
@@ -489,13 +480,8 @@ class BvhSearch : public SearchBase {
           auto mesh1_elem = candidates_view[i];
           auto mesh2_elem = algorithm::binarySearch( offsets_view, counts_view, i );
 
-      // get unique index for the array
-#ifdef TRIBOL_USE_RAJA
-          auto idx = RAJA::atomicInc<AtomicPolicy>( filtered_candidates.data() );
-#else
-          auto idx = filtered_candidates[0];
-          ++filtered_candidates[0];
-#endif
+          // get unique index for the array
+          auto idx = tribol::atomicInc( filtered_candidates.data() );
 
           pairs_view[idx] = InterfacePair( mesh1_elem, mesh2_elem, true );
         } );

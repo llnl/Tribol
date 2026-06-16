@@ -19,6 +19,7 @@
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/physics/Physics.hpp"
+#include "tribol/physics/ContactFormulation.hpp"
 #include "tribol/utils/DataManager.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/geom/CompGeom.hpp"
@@ -732,6 +733,30 @@ class CouplingScheme {
    */
   MethodData* getDnDxMethodData() const { return m_dndxJacobian.get(); }
 
+  /**
+   * @brief Set the ContactFormulation implementation
+   *
+   * @param formulation Unique pointer to the formulation
+   */
+  void setContactFormulation( std::unique_ptr<ContactFormulation> formulation )
+  {
+    m_formulation_impl = std::move( formulation );
+  }
+
+  /**
+   * @brief Check if a ContactFormulation implementation is set
+   *
+   * @return true if set
+   */
+  bool hasContactFormulation() const { return m_formulation_impl != nullptr; }
+
+  /**
+   * @brief Get the ContactFormulation implementation
+   *
+   * @return ContactFormulation*
+   */
+  ContactFormulation* getContactFormulation() const { return m_formulation_impl.get(); }
+
 #ifdef BUILD_REDECOMP
 
   /**
@@ -925,6 +950,8 @@ class CouplingScheme {
   std::unique_ptr<MethodData> m_dfdnJacobian;  ///< Store derivative of force w.r.t. normal on element pairs
   std::unique_ptr<MethodData> m_dndxJacobian;  ///< Store derivative of normal w.r.t. nodal coordinates on element pairs
 
+  std::unique_ptr<ContactFormulation> m_formulation_impl;  ///< Polymorphic contact formulation implementation
+
   ArrayT<InterfacePair> m_interface_pairs;  ///< List of interface pairs
 
   CompGeom m_cg_pairs;  ///< Computational geometry container object
@@ -1036,6 +1063,11 @@ TRIBOL_HOST_DEVICE inline RealT CouplingScheme::Viewer::getGapTol( int fid1, int
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE inline bool CouplingScheme::Viewer::pruneMethodFacePair( const IndexT fid1, const IndexT fid2 ) const
 {
+  if ( m_contact_method == ENERGY_MORTAR ) {
+    // TODO: Clarify why  ENERGY_MORTAR doesn't prune method face pairs
+    return false;
+  }
+
   constexpr int max_dim = 3;
   constexpr int max_nodes_per_face = 4;
 

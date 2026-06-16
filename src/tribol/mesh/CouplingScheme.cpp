@@ -17,6 +17,7 @@
 // Tribol includes
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/common/LoopExec.hpp"
+#include "tribol/common/Atomics.hpp"
 #include "tribol/geom/ElementNormal.hpp"
 #include "tribol/geom/GeomUtilities.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
@@ -26,6 +27,8 @@
 #include "tribol/search/InterfacePairFinder.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/physics/Physics.hpp"
+#include "tribol/physics/ContactFormulationFactory.hpp"
+
 #include "tribol/integ/FE.hpp"
 namespace tribol {
 
@@ -1026,6 +1029,18 @@ void CouplingScheme::performBinning()
 //------------------------------------------------------------------------------
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
+  if ( m_formulation_impl ) {
+    if ( m_interface_pairs.size() > 0 ) {
+      m_formulation_impl->setInterfacePairs( std::move( m_interface_pairs ), 0 );
+    }
+    m_formulation_impl->updateNodalGaps();
+    m_formulation_impl->updateNodalForces();
+    if ( m_formulation_impl->hasTimeStepCalculation() ) {
+      dt = m_formulation_impl->computeTimeStep();
+    }
+    return 0;
+  }
+
   auto& params = m_parameters;
 
   // loop over number of interface pairs
@@ -1053,6 +1068,9 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // array of size one for counting number of planes on device
   ArrayT<IndexT> planes_ct_data( 1, 1, getAllocatorId() );
   auto planes_ct = planes_ct_data.view();
+  // Note: A true reduction would be more efficient here.
+  // However, it is not currently implemented because forAllExec would need
+  // to know the execution mode at compile time to instantiate the correct reducer.
   forAllExec( getExecutionMode(), numPairs,
               [pairs, mesh1, mesh2, params, contact_method, contact_case, cg_view, planes_ct,
                pair_err] TRIBOL_HOST_DEVICE( IndexT i ) mutable {
@@ -1072,11 +1090,7 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
                 // TODO refine how these errors are handled. Here we skip over face-pairs with errors. That is,
                 // they are not registered for contact, but we don't error out.
                 if ( interact_err != NO_FACE_GEOM_EXCEPTION ) {
-#ifdef TRIBOL_USE_RAJA
-                  RAJA::atomicMax<RAJA::auto_atomic>( &pair_err[0], 1 );
-#else
-                  pair_err[0] = 1;
-#endif
+                  tribol::atomicMax( &pair_err[0], 1 );
                   pair.m_is_contact_candidate = false;
                   // TODO consider printing offending face(s) coordinates for debugging
                   // SLIC_DEBUG("Face geometry error, " << static_cast<int>(interact_err) << "for pair, " << kp << ".");
@@ -1144,8 +1158,31 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 //------------------------------------------------------------------------------
 bool CouplingScheme::init()
 {
-  // check for valid coupling scheme only for non-null-meshes
-  this->m_isValid = this->isValidCouplingScheme();
+  if ( m_contactMethod == ENERGY_MORTAR ) {
+    // these calls still need to be made to set mesh pointers and allocator id
+    if ( !setMeshPointers() || checkExecutionModeData() != 0 ) {
+      // TODO: consider design; should these checks be specific to a contact formulation or are they specific to
+      // ENERGY_MORTAR?
+      return false;
+    }
+    // Only create the formulation once. tribol::update() calls init() each cycle; recreating here would reset
+    // formulation state (e.g. LM vector).
+    // TODO: consider design for persistent vs. updated each cycle for implicit vs. explicit methods. Creating only
+    // once may be inconsistent with how host-codes have integrated Tribol methods.
+    if ( !m_formulation_impl ) {
+      m_formulation_impl = createContactFormulation( this );
+    }
+    if ( m_formulation_impl ) {
+      m_formulation_impl->updateMeshes( *m_mesh1, *m_mesh2 );
+    }
+  }
+
+  if ( m_formulation_impl ) {
+    this->m_isValid = true;
+  } else {
+    // check for valid coupling scheme only for non-null-meshes
+    this->m_isValid = this->isValidCouplingScheme();
+  }
 
   if ( this->m_isValid ) {
     // set individual coupling scheme logging level
@@ -1321,6 +1358,9 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                              static_cast<IndexT>( false ) },
                            getAllocatorId() );
   ArrayViewT<IndexT> msg = msg_data;
+  // Note: A true reduction would be more efficient here.
+  // However, it is not currently implemented because forAllExec would need
+  // to know the execution mode at compile time to instantiate the correct reducer.
   forAllExec( getExecutionMode(), getNumActivePairs(),
               [cs_view, dim, proj_ratio, msg, dt_temp, dt] TRIBOL_HOST_DEVICE( IndexT i ) {
                 auto& cg_view = cs_view.getCompGeomView();
@@ -1497,13 +1537,8 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
                   dt1_check1 = ( dt1_vel_check ) ? exceed_max_gap1 : false;
                   dt2_check1 = ( dt2_vel_check ) ? exceed_max_gap2 : false;
 
-#ifdef TRIBOL_USE_RAJA
-                  RAJA::atomicMax<RAJA::auto_atomic>( &msg[0], static_cast<IndexT>( exceed_max_gap1 ) );
-                  RAJA::atomicMax<RAJA::auto_atomic>( &msg[1], static_cast<IndexT>( exceed_max_gap2 ) );
-#else
-                  msg[0] = exceed_max_gap1;
-                  msg[1] = exceed_max_gap2;
-#endif
+                  tribol::atomicMax( &msg[0], static_cast<IndexT>( exceed_max_gap1 ) );
+                  tribol::atomicMax( &msg[1], static_cast<IndexT>( exceed_max_gap2 ) );
 
                   // compute dt for face 1 and 2 based on the velocity and gap projections onto
                   // the face-normals for faces where currect gap exceeds max allowable gap.
@@ -1530,26 +1565,14 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 
                   // update dt_temp1 only for positive dt1 and/or dt2
                   if ( dt1 > 0. ) {
-#ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[0], axom::utilities::min( dt1, 1.e6 ) );
-#else
-                    dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(dt1, 1.e6));
-#endif
+                    tribol::atomicMin( &dt_temp[0], axom::utilities::min( dt1, 1.e6 ) );
                   }
                   if ( dt2 > 0. ) {
-#ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[0], axom::utilities::min( 1.e6, dt2 ) );
-#else
-                    dt_temp[0] = axom::utilities::min(dt_temp[0], axom::utilities::min(1.e6, dt2));
-#endif
+                    tribol::atomicMin( &dt_temp[0], axom::utilities::min( 1.e6, dt2 ) );
                   }
 
                   if ( dt1 < 0. || dt2 < 0. ) {
-#ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMax<RAJA::auto_atomic>( &msg[2], static_cast<IndexT>( true ) );
-#else
-                    msg[2] = true;
-#endif
+                    tribol::atomicMax( &msg[2], static_cast<IndexT>( true ) );
                   }
                 }  // end case 1
 
@@ -1650,25 +1673,13 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 
                   // update dt_temp2 only for positive dt1 and/or dt2
                   if ( dt1 > 0. ) {
-#ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[1], axom::utilities::min( dt1, 1.e6 ) );
-#else
-                    dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(dt1, 1.e6));
-#endif
+                    tribol::atomicMin( &dt_temp[1], axom::utilities::min( dt1, 1.e6 ) );
                   }
                   if ( dt2 > 0. ) {
-#ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMin<RAJA::auto_atomic>( &dt_temp[1], axom::utilities::min( 1.e6, dt2 ) );
-#else
-                    dt_temp[1] = axom::utilities::min(dt_temp[1], axom::utilities::min(1.e6, dt2));
-#endif
+                    tribol::atomicMin( &dt_temp[1], axom::utilities::min( 1.e6, dt2 ) );
                   }
                   if ( dt1 < 0. || dt2 < 0. ) {
-#ifdef TRIBOL_USE_RAJA
-                    RAJA::atomicMax<RAJA::auto_atomic>( &msg[3], static_cast<IndexT>( true ) );
-#else
-                    msg[3] = true;
-#endif
+                    tribol::atomicMax( &msg[3], static_cast<IndexT>( true ) );
                   }
 
                 }  // end check 2

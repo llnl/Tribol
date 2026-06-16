@@ -18,37 +18,39 @@ std::vector<CoordList<NDIMS>> PartitionElements<NDIMS>::EntityCoordinates(
 
   for ( auto par_mesh : par_meshes ) {
     auto n_elems = par_mesh->GetNE();
-    if ( n_elems == 0 ) {
-      elem_centroids.emplace_back( mfem::Vector() );
-      continue;
-    }
 
     auto compute_centroids = [&]( const mfem::ParGridFunction& coords ) {
       mfem::Vector mesh_centroids( n_elems * NDIMS );
-      mesh_centroids.UseDevice( coords.UseDevice() );
-      // Create an IntegrationRule with a single point: the reference center
-      // Assuming a single element type in the mesh
-      mfem::Geometry::Type geom_type = par_mesh->GetElementBaseGeometry( 0 );
-      mfem::IntegrationRule ir;
-      ir.Append( mfem::Geometries.GetCenter( geom_type ) );
+      if ( n_elems > 0 ) {
+        mesh_centroids.UseDevice( coords.UseDevice() );
+        // Create an IntegrationRule with a single point: the reference center
+        // Assuming a single element type in the mesh
+        mfem::Geometry::Type geom_type = par_mesh->GetElementBaseGeometry( 0 );
+        mfem::IntegrationRule ir;
+        ir.Append( mfem::Geometries.GetCenter( geom_type ) );
 
-      // Setup QuadratureInterpolator. We want to evaluate the 'nodes' GridFunction at the integration points (centers).
-      auto fes = coords.FESpace();
-      const mfem::QuadratureInterpolator* qi = fes->GetQuadratureInterpolator( ir );
+        // Setup QuadratureInterpolator. We want to evaluate the 'nodes' GridFunction at the integration points
+        // (centers).
+        auto fes = coords.FESpace();
+        const mfem::QuadratureInterpolator* qi = fes->GetQuadratureInterpolator( ir );
 
-      //    We need the ElementRestriction to convert the global 'nodes' vector to E-vector.
-      //    We use LEXICOGRAPHIC ordering which is required for Tensor product evaluation
-      //    often used on device for quads/hexes.
-      const mfem::Operator* er = fes->GetElementRestriction( mfem::ElementDofOrdering::LEXICOGRAPHIC );
+        //    We need the ElementRestriction to convert the global 'nodes' vector to E-vector.
+        //    We use LEXICOGRAPHIC ordering which is required for Tensor product evaluation
+        //    often used on device for quads/hexes.
+        const mfem::Operator* er = fes->GetElementRestriction( mfem::ElementDofOrdering::LEXICOGRAPHIC );
 
-      mfem::Vector e_vec( er->Height() );
+        mfem::Vector e_vec( er->Height() );
 
-      // Perform the calculation on device.
-      //    a) Global to Element (E-vector)
-      er->Mult( coords, e_vec );
-      //    b) Interpolate to Quadrature points (Q-vector)
-      qi->Values( e_vec, mesh_centroids );
+        // Perform the calculation on device.
+        //    a) Global to Element (E-vector)
+        er->Mult( coords, e_vec );
+        //    b) Interpolate to Quadrature points (Q-vector)
+        qi->Values( e_vec, mesh_centroids );
 
+        // NOTE: mesh_centroids will be fed into the RCB PartitionMethod and CoordList which are host only. make sure
+        // host is updated.
+        mesh_centroids.HostRead();
+      }
       return mesh_centroids;
     };
 
