@@ -66,7 +66,7 @@ TRIBOL_HOST_DEVICE inline bool geomFilter( const CouplingScheme::Viewer& cs_view
 
   /// CHECK #3: Check that face normals are opposing up to some tolerance.
   ///           This uses a hard coded normal tolerance for this check.
-  RealT nrmlTol = -0.173648177;  // taken as cos(100) between face pair
+  RealT nrmlTol = 0.0;  // taken as cos(90) between face pair
 
   RealT nrmlCheck = 0.0;
   for ( int d{ 0 }; d < dim; ++d ) {
