@@ -97,6 +97,34 @@ void setPenaltyOptions( IndexT cs_id, PenaltyConstraintType pen_enfrc_option,
 }  // end setPenaltyOptions()
 
 //------------------------------------------------------------------------------
+void setEnergyMortarNormalMode( IndexT cs_id, EnergyMortarNormalMode normal_mode )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarNormalMode(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  auto& params = cs->getParameters();
+  params.energy_mortar_normal_mode = normal_mode;
+  if ( !params.energy_mortar_projection_smoothing_set ) {
+    params.energy_mortar_projection_smoothing = ( normal_mode == EnergyMortarNormalMode::ELEMENT_NORMAL );
+  }
+}
+
+//------------------------------------------------------------------------------
+void setEnergyMortarProjectionSmoothing( IndexT cs_id, bool enabled )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarProjectionSmoothing(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  auto& params = cs->getParameters();
+  params.energy_mortar_projection_smoothing = enabled;
+  params.energy_mortar_projection_smoothing_set = true;
+}
+
+//------------------------------------------------------------------------------
 void setKinematicConstantPenalty( IndexT mesh_id, RealT k )
 {
   // note, error checking done in the following registration routine

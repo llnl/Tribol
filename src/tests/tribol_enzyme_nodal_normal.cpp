@@ -9,6 +9,7 @@
 //
 //-----------------------------------------------------------------------------
 
+#include <cmath>
 #include <iostream>
 
 #include "tribol/config.hpp"
@@ -116,6 +117,33 @@ TEST_F( EnzymeNodalNormalTest, TwoElementsFlatNormalJacobian )
   auto& mesh_data = MeshManager::getInstance().at( mesh_id );
 
   FDCheck( x, mesh_data );
+}
+
+TEST( ReferenceScaledEdgeAvgNodalNormal2DTest, AngledEdgesAverageAtSharedNode )
+{
+  double x[3] = { 0.0, 1.0, 1.0 };
+  double y[3] = { 0.0, 0.0, 1.0 };
+  double xref[3] = { 0.0, 1.0, 1.0 };
+  double yref[3] = { 0.0, 0.0, 1.0 };
+  IndexT conn[4] = { 0, 1, 1, 2 };
+  constexpr auto mesh_id = 1;
+
+  registerMesh( mesh_id, 2, 3, conn, InterfaceElementType::LINEAR_EDGE, x, y, nullptr );
+  registerNodalReferenceCoords( mesh_id, xref, yref, nullptr );
+  auto& mesh_data = MeshManager::getInstance().at( mesh_id );
+
+  ReferenceScaledEdgeAvgNodalNormal2D normal_method;
+  normal_method.Compute( mesh_data );
+  auto mesh_view = mesh_data.getView();
+
+  EXPECT_NEAR( mesh_view.getNodalNormals()( 0, 0 ), 0.0, 1.0e-14 );
+  EXPECT_NEAR( mesh_view.getNodalNormals()( 1, 0 ), -1.0, 1.0e-14 );
+  EXPECT_NEAR( mesh_view.getNodalNormals()( 0, 2 ), 1.0, 1.0e-14 );
+  EXPECT_NEAR( mesh_view.getNodalNormals()( 1, 2 ), 0.0, 1.0e-14 );
+
+  const double inv_sqrt2 = 1.0 / std::sqrt( 2.0 );
+  EXPECT_NEAR( mesh_view.getNodalNormals()( 0, 1 ), inv_sqrt2, 1.0e-14 );
+  EXPECT_NEAR( mesh_view.getNodalNormals()( 1, 1 ), -inv_sqrt2, 1.0e-14 );
 }
 
 }  // namespace tribol

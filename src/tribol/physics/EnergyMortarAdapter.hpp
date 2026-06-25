@@ -50,7 +50,9 @@ class EnergyMortarAdapter : public ContactFormulation {
    * relative to the order of the meshes provided here.
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k,
-                       double delta, int N, bool enzyme_quadrature, bool use_penalty = true );
+                       double delta, int N, bool enzyme_quadrature, bool use_penalty = true,
+                       EnergyMortarNormalMode normal_mode = EnergyMortarNormalMode::ELEMENT_NORMAL,
+                       bool projection_smoothing = true );
 
   /**
    * @brief Default destructor

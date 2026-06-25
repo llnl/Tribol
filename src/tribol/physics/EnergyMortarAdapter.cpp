@@ -5,15 +5,158 @@
 
 #include "tribol/physics/EnergyMortarAdapter.hpp"
 #include <axom/slic/interface/slic_macros.hpp>
+#include "tribol/geom/NodalNormal.hpp"
 #include "tribol/mesh/MfemData.hpp"
+
+#include <array>
+#include <map>
 
 namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
+namespace {
+
+struct H1DofInfo {
+  int side;
+  int node_index;
+  int elem_id;
+  int local_dof;
+};
+
+int localDofForNodeComponent( const MeshData::Viewer& mesh, int elem_id, int node_id, int component )
+{
+  for ( int i{ 0 }; i < mesh.numberOfNodesPerElement(); ++i ) {
+    if ( mesh.getGlobalNodeId( elem_id, i ) == node_id ) {
+      return component * mesh.numberOfNodesPerElement() + i;
+    }
+  }
+  SLIC_ERROR_ROOT( "ENERGY_MORTAR H1 derivative stencil owner element does not contain the requested node." );
+  return 0;
+}
+
+std::vector<H1DofInfo> buildH1DofInfo( const H1TotalDerivatives& h1, const MeshData::Viewer& mesh1,
+                                       const MeshData::Viewer& mesh2 )
+{
+  std::vector<H1DofInfo> dofs;
+  dofs.reserve( 2 * ( h1.num_mesh1_nodes + h1.num_mesh2_nodes ) );
+  for ( int component{ 0 }; component < 2; ++component ) {
+    for ( int i{ 0 }; i < h1.num_mesh1_nodes; ++i ) {
+      const int node_id = h1.mesh1_nodes[i];
+      const int elem_id = h1.mesh1_owner_elems[i];
+      dofs.push_back( { 0, i, elem_id, localDofForNodeComponent( mesh1, elem_id, node_id, component ) } );
+    }
+  }
+  for ( int component{ 0 }; component < 2; ++component ) {
+    for ( int i{ 0 }; i < h1.num_mesh2_nodes; ++i ) {
+      const int node_id = h1.mesh2_nodes[i];
+      const int elem_id = h1.mesh2_owner_elems[i];
+      dofs.push_back( { 1, i, elem_id, localDofForNodeComponent( mesh2, elem_id, node_id, component ) } );
+    }
+  }
+  return dofs;
+}
+
+void appendH1FirstDerivativeBlocks( const H1TotalDerivatives& h1, const MeshData::Viewer& mesh1,
+                                    const MeshData::Viewer& mesh2, PackedPairJacobianContribs& nm_contribs,
+                                    PackedPairJacobianContribs& m_contribs, int row_elem, bool area_derivative )
+{
+  std::map<int, std::array<double, 8>> nm_blocks;
+  std::map<int, std::array<double, 8>> m_blocks;
+  const auto dofs = buildH1DofInfo( h1, mesh1, mesh2 );
+  const auto& deriv1 = area_derivative ? h1.dA1_dx : h1.dg1_dx;
+  const auto& deriv2 = area_derivative ? h1.dA2_dx : h1.dg2_dx;
+
+  for ( int j{ 0 }; j < static_cast<int>( dofs.size() ); ++j ) {
+    auto& blocks = dofs[j].side == 0 ? nm_blocks : m_blocks;
+    auto it = blocks.find( dofs[j].elem_id );
+    if ( it == blocks.end() ) {
+      it = blocks.emplace( dofs[j].elem_id, std::array<double, 8>{} ).first;
+    }
+    auto& block = it->second;
+    block[dofs[j].local_dof * 2] += deriv1[j];
+    block[dofs[j].local_dof * 2 + 1] += deriv2[j];
+  }
+
+  for ( const auto& [elem_id, block] : nm_blocks ) {
+    nm_contribs.append( row_elem, elem_id, block.data(), static_cast<int>( block.size() ) );
+  }
+  for ( const auto& [elem_id, block] : m_blocks ) {
+    m_contribs.append( row_elem, elem_id, block.data(), static_cast<int>( block.size() ) );
+  }
+}
+
+void addH1HessianBlocks( const H1TotalDerivatives& h1, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+                         double w1, double w2, const std::vector<double>& H1, const std::vector<double>& H2,
+                         std::map<std::pair<int, int>, std::array<double, 16>>& nm_nm_blocks,
+                         std::map<std::pair<int, int>, std::array<double, 16>>& nm_m_blocks,
+                         std::map<std::pair<int, int>, std::array<double, 16>>& m_nm_blocks,
+                         std::map<std::pair<int, int>, std::array<double, 16>>& m_m_blocks )
+{
+  const auto dofs = buildH1DofInfo( h1, mesh1, mesh2 );
+  const int ndof = static_cast<int>( dofs.size() );
+  for ( int row{ 0 }; row < ndof; ++row ) {
+    for ( int col{ 0 }; col < ndof; ++col ) {
+      const double val = w1 * H1[row * ndof + col] + w2 * H2[row * ndof + col];
+      auto key = std::make_pair( dofs[row].elem_id, dofs[col].elem_id );
+      std::array<double, 16>* block = nullptr;
+      if ( dofs[row].side == 0 && dofs[col].side == 0 ) {
+        auto it = nm_nm_blocks.find( key );
+        if ( it == nm_nm_blocks.end() ) {
+          it = nm_nm_blocks.emplace( key, std::array<double, 16>{} ).first;
+        }
+        block = &it->second;
+      } else if ( dofs[row].side == 0 && dofs[col].side == 1 ) {
+        auto it = nm_m_blocks.find( key );
+        if ( it == nm_m_blocks.end() ) {
+          it = nm_m_blocks.emplace( key, std::array<double, 16>{} ).first;
+        }
+        block = &it->second;
+      } else if ( dofs[row].side == 1 && dofs[col].side == 0 ) {
+        auto it = m_nm_blocks.find( key );
+        if ( it == m_nm_blocks.end() ) {
+          it = m_nm_blocks.emplace( key, std::array<double, 16>{} ).first;
+        }
+        block = &it->second;
+      } else {
+        auto it = m_m_blocks.find( key );
+        if ( it == m_m_blocks.end() ) {
+          it = m_m_blocks.emplace( key, std::array<double, 16>{} ).first;
+        }
+        block = &it->second;
+      }
+      ( *block )[dofs[row].local_dof + dofs[col].local_dof * 4] += val;
+    }
+  }
+}
+
+void appendH1HessianBlockMaps( const std::map<std::pair<int, int>, std::array<double, 16>>& nm_nm_blocks,
+                               const std::map<std::pair<int, int>, std::array<double, 16>>& nm_m_blocks,
+                               const std::map<std::pair<int, int>, std::array<double, 16>>& m_nm_blocks,
+                               const std::map<std::pair<int, int>, std::array<double, 16>>& m_m_blocks,
+                               PackedPairJacobianContribs& df_nm_nm, PackedPairJacobianContribs& df_nm_m,
+                               PackedPairJacobianContribs& df_m_nm, PackedPairJacobianContribs& df_m_m )
+{
+  for ( const auto& [key, block] : nm_nm_blocks ) {
+    df_nm_nm.append( key.first, key.second, block.data(), static_cast<int>( block.size() ) );
+  }
+  for ( const auto& [key, block] : nm_m_blocks ) {
+    df_nm_m.append( key.first, key.second, block.data(), static_cast<int>( block.size() ) );
+  }
+  for ( const auto& [key, block] : m_nm_blocks ) {
+    df_m_nm.append( key.first, key.second, block.data(), static_cast<int>( block.size() ) );
+  }
+  for ( const auto& [key, block] : m_m_blocks ) {
+    df_m_m.append( key.first, key.second, block.data(), static_cast<int>( block.size() ) );
+  }
+}
+
+}  // namespace
+
 EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
                                           MfemJacobianData& jac_data, double k, double delta, int N,
-                                          bool enzyme_quadrature, bool use_penalty )
+                                          bool enzyme_quadrature, bool use_penalty,
+                                          EnergyMortarNormalMode normal_mode, bool projection_smoothing )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
     : use_penalty_( use_penalty ), mesh_data_( mesh_data ), submesh_data_( submesh_data ), jac_data_( jac_data )
@@ -22,6 +165,8 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
   params_.del = delta;
   params_.N = N;
   params_.enzyme_quadrature = enzyme_quadrature;
+  params_.normal_mode = normal_mode;
+  params_.projection_smoothing = projection_smoothing;
 
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 
@@ -98,6 +243,11 @@ void EnergyMortarAdapter::updateNodalGaps()
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
   SLIC_ERROR_ROOT_IF( mesh1_ == nullptr || mesh2_ == nullptr, "ENERGY_MORTAR meshes not set." );
+  if ( params_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL ) {
+    ReferenceScaledEdgeAvgNodalNormal2D normal_method;
+    normal_method.Compute( *mesh1_ );
+    normal_method.Compute( *mesh2_ );
+  }
   auto mesh1_view = mesh1_->getView();
   auto mesh2_view = mesh2_->getView();
 
@@ -108,6 +258,23 @@ void EnergyMortarAdapter::updateNodalGaps()
     InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
     const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
     const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
+
+    if ( params_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL ) {
+      auto h1 = evaluator_->compute_h1_total_derivatives( flipped_pair, mesh1_view, mesh2_view, false );
+      if ( h1.area[0] <= 0.0 && h1.area[1] <= 0.0 ) {
+        continue;
+      }
+
+      auto A_conn = mesh1_view.getConnectivity()( elem1 );
+      redecomp_gap( A_conn[0] ) += h1.g_tilde[0];
+      redecomp_gap( A_conn[1] ) += h1.g_tilde[1];
+      redecomp_area( A_conn[0] ) += h1.area[0];
+      redecomp_area( A_conn[1] ) += h1.area[1];
+
+      appendH1FirstDerivativeBlocks( h1, mesh1_view, mesh2_view, dg_lm_nm, dg_lm_m, elem1, false );
+      appendH1FirstDerivativeBlocks( h1, mesh1_view, mesh2_view, dA_lm_nm, dA_lm_m, elem1, true );
+      continue;
+    }
 
     double g_tilde_elem[2];
     double A_elem[2];
@@ -336,6 +503,19 @@ shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesLM( const 
     const RealT lambda1 = redecomp_lambda( node11 );
     const RealT lambda2 = redecomp_lambda( node12 );
 
+    if ( params_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL ) {
+      auto h1 = evaluator_->compute_h1_total_derivatives( flipped_pair, mesh1_view, mesh2_view );
+      std::map<std::pair<int, int>, std::array<double, 16>> nm_nm_blocks;
+      std::map<std::pair<int, int>, std::array<double, 16>> nm_m_blocks;
+      std::map<std::pair<int, int>, std::array<double, 16>> m_nm_blocks;
+      std::map<std::pair<int, int>, std::array<double, 16>> m_m_blocks;
+      addH1HessianBlocks( h1, mesh1_view, mesh2_view, lambda1, lambda2, h1.d2g1_dx2, h1.d2g2_dx2, nm_nm_blocks,
+                          nm_m_blocks, m_nm_blocks, m_m_blocks );
+      appendH1HessianBlockMaps( nm_nm_blocks, nm_m_blocks, m_nm_blocks, m_m_blocks, df_nm_nm, df_nm_m, df_m_nm,
+                                df_m_m );
+      continue;
+    }
+
     double d2g_dx2_node1[64];
     double d2g_dx2_node2[64];
     evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2 );
@@ -414,6 +594,21 @@ shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesPenalty(
 
     const RealT g_p_ainv1 = -redecomp_g_tilde( node11 ) * redecomp_pressure( node11 ) / redecomp_A( node11 );
     const RealT g_p_ainv2 = -redecomp_g_tilde( node12 ) * redecomp_pressure( node12 ) / redecomp_A( node12 );
+
+    if ( params_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL ) {
+      auto h1 = evaluator_->compute_h1_total_derivatives( flipped_pair, mesh1_view, mesh2_view );
+      std::map<std::pair<int, int>, std::array<double, 16>> nm_nm_blocks;
+      std::map<std::pair<int, int>, std::array<double, 16>> nm_m_blocks;
+      std::map<std::pair<int, int>, std::array<double, 16>> m_nm_blocks;
+      std::map<std::pair<int, int>, std::array<double, 16>> m_m_blocks;
+      addH1HessianBlocks( h1, mesh1_view, mesh2_view, pressure1, pressure2, h1.d2g1_dx2, h1.d2g2_dx2, nm_nm_blocks,
+                          nm_m_blocks, m_nm_blocks, m_m_blocks );
+      addH1HessianBlocks( h1, mesh1_view, mesh2_view, g_p_ainv1, g_p_ainv2, h1.d2A1_dx2, h1.d2A2_dx2, nm_nm_blocks,
+                          nm_m_blocks, m_nm_blocks, m_m_blocks );
+      appendH1HessianBlockMaps( nm_nm_blocks, nm_m_blocks, m_nm_blocks, m_m_blocks, df_nm_nm, df_nm_m, df_m_nm,
+                                df_m_m );
+      continue;
+    }
 
     double d2g_dx2_node1[64];
     double d2g_dx2_node2[64];

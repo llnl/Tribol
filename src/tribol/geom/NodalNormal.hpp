@@ -63,6 +63,25 @@ class EdgeAvgNodalNormal : public NodalNormal {
   void Compute( MeshData& mesh, MethodData* jacobian_data = nullptr ) override;
 };
 
+/**
+ * @brief Computes 2D edge nodal pseudo-normals by averaging connected edge normals and scaling by reference normals
+ *
+ * This mirrors the Enzyme mortar normal recovery idea in 2D: current edge normals are divided by the corresponding
+ * reference edge length before nodal accumulation, then the accumulated nodal vector is scaled by the magnitude of the
+ * accumulated reference pseudo-normal. The result is a smooth direction field without differentiating a current
+ * configuration normalization at the recovery stage.
+ */
+class ReferenceScaledEdgeAvgNodalNormal2D : public NodalNormal {
+ public:
+  /**
+   * @brief Computes reference-scaled 2D edge averaged nodal normals
+   *
+   * @param mesh Mesh data
+   * @param jacobian_data Method data for storing Jacobian contributions (currently unsupported)
+   */
+  void Compute( MeshData& mesh, MethodData* jacobian_data = nullptr ) override;
+};
+
 }  // namespace tribol
 
 #endif /* SRC_TRIBOL_GEOM_NODALNORMAL_HPP_ */

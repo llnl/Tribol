@@ -486,4 +486,106 @@ TEST( HessianCheck, GtildeFDvsAD )
   }
 }
 
+TEST( H1TotalDerivativeCheck, GtildeFDvsAD )
+{
+  RealT x1[3] = { 0.0, 1.0, 2.0 };
+  RealT y1[3] = { 0.0, 0.0, 0.1 };
+  RealT x2[3] = { 0.2, 0.9, 1.6 };
+  RealT y2[3] = { 0.55, 0.52, 0.62 };
+
+  IndexT conn1[4] = { 1, 0, 2, 1 };
+  IndexT conn2[4] = { 0, 1, 1, 2 };
+
+  MeshData mesh1( 0, 2, 3, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 2, 3, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  mesh1.setReferencePosition( x1, y1, nullptr );
+  mesh2.setReferencePosition( x2, y2, nullptr );
+
+  InterfacePair pair( 0, 0 );
+
+  ContactParams params_;
+  params_.del = 0.1;
+  params_.k = 1.0;
+  params_.N = 3;
+  params_.enzyme_quadrature = true;
+  params_.normal_mode = EnergyMortarNormalMode::H1_NODAL_NORMAL;
+  params_.projection_smoothing = false;
+
+  EnergyMortarCalculator evaluator_( params_ );
+  auto base = evaluator_.compute_h1_total_derivatives( pair, mesh1.getView(), mesh2.getView() );
+  const int ndof = 2 * ( base.num_mesh1_nodes + base.num_mesh2_nodes );
+
+  std::vector<RealT> x1_orig( x1, x1 + 3 );
+  std::vector<RealT> y1_orig( y1, y1 + 3 );
+  std::vector<RealT> x2_orig( x2, x2 + 3 );
+  std::vector<RealT> y2_orig( y2, y2 + 3 );
+
+  auto eval_from_dofs = [&]( const std::vector<double>& du ) {
+    auto x1_pert = x1_orig;
+    auto y1_pert = y1_orig;
+    auto x2_pert = x2_orig;
+    auto y2_pert = y2_orig;
+    int idx = 0;
+    for ( int i = 0; i < base.num_mesh1_nodes; ++i ) {
+      x1_pert[base.mesh1_nodes[i]] += du[idx++];
+    }
+    for ( int i = 0; i < base.num_mesh1_nodes; ++i ) {
+      y1_pert[base.mesh1_nodes[i]] += du[idx++];
+    }
+    for ( int i = 0; i < base.num_mesh2_nodes; ++i ) {
+      x2_pert[base.mesh2_nodes[i]] += du[idx++];
+    }
+    for ( int i = 0; i < base.num_mesh2_nodes; ++i ) {
+      y2_pert[base.mesh2_nodes[i]] += du[idx++];
+    }
+    mesh1.setPosition( x1_pert.data(), y1_pert.data(), nullptr );
+    mesh2.setPosition( x2_pert.data(), y2_pert.data(), nullptr );
+    return evaluator_.compute_h1_total_derivatives( pair, mesh1.getView(), mesh2.getView(), false );
+  };
+
+  const double eps_grad = 1.0e-7;
+  const double grad_tol = 1.0e-6;
+  for ( int j = 0; j < ndof; ++j ) {
+    std::vector<double> du( ndof, 0.0 );
+    du[j] = eps_grad;
+    auto plus = eval_from_dofs( du );
+    du[j] = -eps_grad;
+    auto minus = eval_from_dofs( du );
+
+    const double fd_g1 = ( plus.g_tilde[0] - minus.g_tilde[0] ) / ( 2.0 * eps_grad );
+    const double fd_g2 = ( plus.g_tilde[1] - minus.g_tilde[1] ) / ( 2.0 * eps_grad );
+    const double fd_A1 = ( plus.area[0] - minus.area[0] ) / ( 2.0 * eps_grad );
+    const double fd_A2 = ( plus.area[1] - minus.area[1] ) / ( 2.0 * eps_grad );
+    EXPECT_NEAR( base.dg1_dx[j], fd_g1, grad_tol ) << "H1 dg1 mismatch at dof " << j;
+    EXPECT_NEAR( base.dg2_dx[j], fd_g2, grad_tol ) << "H1 dg2 mismatch at dof " << j;
+    EXPECT_NEAR( base.dA1_dx[j], fd_A1, grad_tol ) << "H1 dA1 mismatch at dof " << j;
+    EXPECT_NEAR( base.dA2_dx[j], fd_A2, grad_tol ) << "H1 dA2 mismatch at dof " << j;
+  }
+
+  const double eps_hess = 1.0e-6;
+  const double hess_tol = 1.0e-4;
+  for ( int col = 0; col < ndof; ++col ) {
+    std::vector<double> du( ndof, 0.0 );
+    du[col] = eps_hess;
+    auto plus = eval_from_dofs( du );
+    du[col] = -eps_hess;
+    auto minus = eval_from_dofs( du );
+
+    for ( int row = 0; row < ndof; ++row ) {
+      const int idx = row * ndof + col;
+      const double fd_h1 = ( plus.dg1_dx[row] - minus.dg1_dx[row] ) / ( 2.0 * eps_hess );
+      const double fd_h2 = ( plus.dg2_dx[row] - minus.dg2_dx[row] ) / ( 2.0 * eps_hess );
+      const double fd_Ah1 = ( plus.dA1_dx[row] - minus.dA1_dx[row] ) / ( 2.0 * eps_hess );
+      const double fd_Ah2 = ( plus.dA2_dx[row] - minus.dA2_dx[row] ) / ( 2.0 * eps_hess );
+      EXPECT_NEAR( base.d2g1_dx2[idx], fd_h1, hess_tol ) << "H1 d2g1 mismatch at (" << row << ", " << col << ")";
+      EXPECT_NEAR( base.d2g2_dx2[idx], fd_h2, hess_tol ) << "H1 d2g2 mismatch at (" << row << ", " << col << ")";
+      EXPECT_NEAR( base.d2A1_dx2[idx], fd_Ah1, hess_tol ) << "H1 d2A1 mismatch at (" << row << ", " << col << ")";
+      EXPECT_NEAR( base.d2A2_dx2[idx], fd_Ah2, hess_tol ) << "H1 d2A2 mismatch at (" << row << ", " << col << ")";
+    }
+  }
+
+  mesh1.setPosition( x1_orig.data(), y1_orig.data(), nullptr );
+  mesh2.setPosition( x2_orig.data(), y2_orig.data(), nullptr );
+}
+
 }  // namespace tribol

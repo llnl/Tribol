@@ -123,6 +123,15 @@ enum ContactMethod  // all mortar methods go first
 };
 
 /*!
+ * \brief Enumerates normal field options for ENERGY_MORTAR
+ */
+enum class EnergyMortarNormalMode
+{
+  ELEMENT_NORMAL,    ///! Use element normals in the EnergyMortar kernels
+  H1_NODAL_NORMAL,  ///! Use an H1 nodal normal field in the EnergyMortar kernels
+};
+
+/*!
  * \brief Enumerates the available contact model options.
  *
  * The contact model enumerates interface constitutive modeling options.
@@ -495,6 +504,11 @@ struct Parameters {
   // constituent face elements, then we don't consider the face-pair a contact candidate.
   // Note, auto-contact will require registration of element thicknesses.
   bool auto_contact_check = false;  ///! True if auto-contact checks should be enabled
+
+  EnergyMortarNormalMode energy_mortar_normal_mode =
+      EnergyMortarNormalMode::ELEMENT_NORMAL;  ///! Normal field used by ENERGY_MORTAR
+  bool energy_mortar_projection_smoothing = true;       ///! Apply projection-bound smoothing in ENERGY_MORTAR
+  bool energy_mortar_projection_smoothing_set = false;  ///! True if the user explicitly set projection smoothing
 };
 
 }  // namespace tribol

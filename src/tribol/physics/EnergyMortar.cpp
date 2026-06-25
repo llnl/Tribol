@@ -15,6 +15,7 @@
 #include "tribol/mesh/MeshData.hpp"
 #include <set>
 #include <map>
+#include "axom/slic/interface/slic_macros.hpp"
 
 namespace tribol {
 
@@ -39,6 +40,36 @@ void find_normal( const double* coord1, const double* coord2, double* normal )
   dy /= len;
   normal[0] = dy;
   normal[1] = -dx;
+}
+
+double normalize2( double* v )
+{
+  const double mag = std::sqrt( v[0] * v[0] + v[1] * v[1] );
+  if ( mag > 1.0e-14 ) {
+    v[0] /= mag;
+    v[1] /= mag;
+  }
+  return mag;
+}
+
+void interp_normal( const double* n0, const double* n1, double xi, double* n )
+{
+  const double N1 = 0.5 - xi;
+  const double N2 = 0.5 + xi;
+  n[0] = N1 * n0[0] + N2 * n1[0];
+  n[1] = N1 * n0[1] + N2 * n1[1];
+  normalize2( n );
+}
+
+double local_coord_on_segment( const double* A0, const double* A1, const double* p )
+{
+  const double dx = A1[0] - A0[0];
+  const double dy = A1[1] - A0[1];
+  const double len2 = dx * dx + dy * dy;
+  if ( len2 < 1.0e-28 ) {
+    return 0.0;
+  }
+  return ( ( p[0] - A0[0] ) * dx + ( p[1] - A0[1] ) * dy ) / len2 - 0.5;
 }
 
 // Gets the respective gauss-legendre nodes dependant on quadrature order
@@ -127,6 +158,16 @@ inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], 
   P1[1] = P0_P1[3];
 }
 
+inline void endpoint_normals( const MeshData::Viewer& mesh, int elem_id, double N0[2], double N1[2] )
+{
+  SLIC_ERROR_IF( !mesh.hasNodalNormals(), "ENERGY_MORTAR H1 normal mode requires nodal normals." );
+  const auto conn = mesh.getConnectivity()( elem_id );
+  N0[0] = mesh.getNodalNormals()( 0, conn[0] );
+  N0[1] = mesh.getNodalNormals()( 1, conn[0] );
+  N1[0] = mesh.getNodalNormals()( 0, conn[1] );
+  N1[1] = mesh.getNodalNormals()( 1, conn[1] );
+}
+
 // Projects the point p onto the infinite line defined by edge A, using nB as
 // the projection direction.
 //
@@ -208,6 +249,164 @@ void get_projections( const double* A0, const double* A1, const double* B0, cons
 
   projections[0] = xi_min;
   projections[1] = xi_max;
+}
+
+void get_projections_h1( const double* A0, const double* A1, const double* B0, const double* B1, const double* nB0,
+                         const double* nB1, double* projections )
+{
+  const double* B_endpoints[2] = { B0, B1 };
+  const double* B_normals[2] = { nB0, nB1 };
+
+  double xi0 = 0.0, xi1 = 0.0;
+  for ( int i = 0; i < 2; ++i ) {
+    double nB[2] = { B_normals[i][0], B_normals[i][1] };
+    normalize2( nB );
+
+    double q[2] = { 0.0, 0.0 };
+    find_intersection( A0, A1, B_endpoints[i], nB, q );
+    const double xiA = local_coord_on_segment( A0, A1, q );
+
+    if ( i == 0 )
+      xi0 = xiA;
+    else
+      xi1 = xiA;
+  }
+
+  projections[0] = std::min( xi0, xi1 );
+  projections[1] = std::max( xi0, xi1 );
+}
+
+void project_to_edge_h1( const double* B0, const double* B1, const double* nB0, const double* nB1, const double* x1,
+                         double* x2, double* nB )
+{
+  double xiB = local_coord_on_segment( B0, B1, x1 );
+  for ( int iter = 0; iter < 3; ++iter ) {
+    interp_normal( nB0, nB1, xiB, nB );
+    find_intersection( B0, B1, x1, nB, x2 );
+    xiB = local_coord_on_segment( B0, B1, x2 );
+  }
+  interp_normal( nB0, nB1, xiB, nB );
+}
+
+void recover_h1_normals( const double* x, int num_nodes, int num_elems,
+                         const int elem_nodes[h1_max_stencil_elems_per_mesh][2], const double* xref, double* n )
+{
+  double nref[h1_max_stencil_nodes_per_mesh][2];
+  for ( int i = 0; i < h1_max_stencil_nodes_per_mesh; ++i ) {
+    n[2 * i] = 0.0;
+    n[2 * i + 1] = 0.0;
+    nref[i][0] = 0.0;
+    nref[i][1] = 0.0;
+  }
+
+  for ( int e = 0; e < num_elems; ++e ) {
+    const int node0 = elem_nodes[e][0];
+    const int node1 = elem_nodes[e][1];
+    const double x0 = x[node0];
+    const double y0 = x[num_nodes + node0];
+    const double x1 = x[node1];
+    const double y1 = x[num_nodes + node1];
+    const double xr0 = xref[node0];
+    const double yr0 = xref[num_nodes + node0];
+    const double xr1 = xref[node1];
+    const double yr1 = xref[num_nodes + node1];
+    const double dx_ref = xr1 - xr0;
+    const double dy_ref = yr1 - yr0;
+    const double len_ref = std::sqrt( dx_ref * dx_ref + dy_ref * dy_ref );
+    if ( len_ref < 1.0e-14 ) {
+      continue;
+    }
+
+    const double nc[2] = { ( y1 - y0 ) / len_ref, -( x1 - x0 ) / len_ref };
+    const double nr[2] = { dy_ref / len_ref, -dx_ref / len_ref };
+    for ( int i = 0; i < 2; ++i ) {
+      const int node = ( i == 0 ) ? node0 : node1;
+      n[2 * node] += nc[0];
+      n[2 * node + 1] += nc[1];
+      nref[node][0] += nr[0];
+      nref[node][1] += nr[1];
+    }
+  }
+
+  for ( int i = 0; i < num_nodes; ++i ) {
+    const double mag_ref = std::sqrt( nref[i][0] * nref[i][0] + nref[i][1] * nref[i][1] );
+    if ( mag_ref > 1.0e-14 ) {
+      n[2 * i] /= mag_ref;
+      n[2 * i + 1] /= mag_ref;
+    }
+  }
+}
+
+void h1_kernel_eval( const double* x, const H1KernelData* data, double* g_tilde_out, double* A_out )
+{
+  const int n1 = data->num_nodes1;
+  const int n2 = data->num_nodes2;
+  const double* x1_all = x;
+  const double* x2_all = x + 2 * n1;
+
+  double normal1[2 * h1_max_stencil_nodes_per_mesh];
+  double normal2[2 * h1_max_stencil_nodes_per_mesh];
+  recover_h1_normals( x1_all, n1, data->num_elems1, data->elem_nodes1, data->xref1, normal1 );
+  recover_h1_normals( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, normal2 );
+
+  const int A_node0 = data->contact_nodes1[0];
+  const int A_node1 = data->contact_nodes1[1];
+  const int B_node0 = data->contact_nodes2[0];
+  const int B_node1 = data->contact_nodes2[1];
+
+  const double A0[2] = { x1_all[A_node0], x1_all[n1 + A_node0] };
+  const double A1[2] = { x1_all[A_node1], x1_all[n1 + A_node1] };
+  const double B0[2] = { x2_all[B_node0], x2_all[n2 + B_node0] };
+  const double B1[2] = { x2_all[B_node1], x2_all[n2 + B_node1] };
+  const double nA0[2] = { normal1[2 * A_node0], normal1[2 * A_node0 + 1] };
+  const double nA1[2] = { normal1[2 * A_node1], normal1[2 * A_node1 + 1] };
+  const double nB0[2] = { normal2[2 * B_node0], normal2[2 * B_node0 + 1] };
+  const double nB1[2] = { normal2[2 * B_node1], normal2[2 * B_node1 + 1] };
+
+  double projs_raw[2];
+  get_projections_h1( A0, A1, B0, B1, nB0, nB1, projs_raw );
+  auto bounds = ContactSmoothing::bounds_from_projections( { projs_raw[0], projs_raw[1] }, data->del );
+  auto xi_bounds = data->projection_smoothing ? ContactSmoothing::smooth_bounds( bounds, data->del ) : bounds;
+  auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, data->N );
+
+  const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) +
+                              ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+
+  double g1 = 0.0;
+  double g2 = 0.0;
+  double Atrib1 = 0.0;
+  double Atrib2 = 0.0;
+
+  for ( int i = 0; i < data->N; ++i ) {
+    const double xiA = qp.qp[i];
+    const double w = qp.w[i];
+    const double N1 = 0.5 - xiA;
+    const double N2 = 0.5 + xiA;
+
+    double xA[2];
+    iso_map( A0, A1, xiA, xA );
+
+    double nA[2], nB[2], xB[2];
+    interp_normal( nA0, nA1, xiA, nA );
+    project_to_edge_h1( B0, B1, nB0, nB1, xA, xB, nB );
+
+    const double dx = xA[0] - xB[0];
+    const double dy = xA[1] - xB[1];
+    const double gn = -( dx * nB[0] + dy * nB[1] );
+    const double dot = nB[0] * nA[0] + nB[1] * nA[1];
+    const double eta = ( dot < 0.0 ) ? dot : 0.0;
+    const double g = gn * eta;
+
+    g1 += w * N1 * g * J;
+    g2 += w * N2 * g * J;
+    Atrib1 += w * N1 * J;
+    Atrib2 += w * N2 * J;
+  }
+
+  g_tilde_out[0] = g1;
+  g_tilde_out[1] = g2;
+  A_out[0] = Atrib1;
+  A_out[1] = Atrib2;
 }
 
 // Integrate the nodal smoothed gap and tributary area contributions over edge A.
@@ -486,6 +685,60 @@ void d2_kernel_quad( const double* x, const Gparams* gp, double* H )
   }
 }
 
+template <KernelOutput Output>
+static void h1_kernel_out( const double* x, const void* data_void, double* out )
+{
+  const H1KernelData* data = static_cast<const H1KernelData*>( data_void );
+  double gt[2];
+  double A_out[2];
+  h1_kernel_eval( x, data, gt, A_out );
+
+  if constexpr ( Output == KernelOutput::GTILDE1 )
+    *out = gt[0];
+  else if constexpr ( Output == KernelOutput::GTILDE2 )
+    *out = gt[1];
+  else if constexpr ( Output == KernelOutput::A1 )
+    *out = A_out[0];
+  else if constexpr ( Output == KernelOutput::A2 )
+    *out = A_out[1];
+}
+
+template <KernelOutput Output>
+void grad_h1_kernel( const double* x, const H1KernelData* data, double* dout_du )
+{
+  double dx[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
+  double out = 0.0;
+  double dout = 1.0;
+
+  __enzyme_autodiff<void>( (void*)h1_kernel_out<Output>, enzyme_dup, x, dx, enzyme_const, (const void*)data,
+                           enzyme_dup, &out, &dout );
+
+  const int ndof = 2 * ( data->num_nodes1 + data->num_nodes2 );
+  for ( int i = 0; i < ndof; ++i ) {
+    dout_du[i] = dx[i];
+  }
+}
+
+template <KernelOutput Output>
+void d2_h1_kernel( const double* x, const H1KernelData* data, double* H )
+{
+  const int ndof = 2 * ( data->num_nodes1 + data->num_nodes2 );
+  for ( int col = 0; col < ndof; ++col ) {
+    double dx[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
+    dx[col] = 1.0;
+
+    double grad[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
+    double dgrad[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
+
+    __enzyme_fwddiff<void>( (void*)grad_h1_kernel<Output>, enzyme_dup, x, dx, enzyme_const, data, enzyme_dup, grad,
+                            dgrad );
+
+    for ( int row = 0; row < ndof; ++row ) {
+      H[row * ndof + col] = dgrad[row];
+    }
+  }
+}
+
 }  // namespace
 
 // Construct the quadrature data needed to evaluate the smoothed gap kernel.
@@ -496,13 +749,11 @@ Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, co
 
   endpoints( mesh1, pair.m_element_id1, A0, A1 );
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
-  double nB[2] = { 0.0 };
-  find_normal( B0, B1, nB );
 
   // Build the smoothed integration bounds from the projection of edge B onto edge A.
   auto projs = EnergyMortarCalculator::compute_projection_bounds( pair, mesh1, mesh2 );
   auto bounds = smoother_.bounds_from_projections( projs, p_.del );
-  auto smooth_bounds = smoother_.smooth_bounds( bounds, p_.del );
+  auto smooth_bounds = p_.projection_smoothing ? smoother_.smooth_bounds( bounds, p_.del ) : bounds;
 
   auto qp = EnergyMortarCalculator::compute_quadrature( smooth_bounds, p_.N );
 
@@ -514,11 +765,20 @@ Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, co
     double x1[2] = { 0.0 };
     iso_map( A0, A1, qp.qp[i], x1 );
 
-    // Cache the projection of each quadrature point on edge A onto edge B.
-    double x2_i[2] = { 0.0 };
-    find_intersection( B0, B1, x1, nB, x2_i );
-    x2[2 * i] = x2_i[0];
-    x2[2 * i + 1] = x2_i[1];
+    if ( p_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL ) {
+      double nB0[2], nB1[2], nB[2], x2_i[2];
+      endpoint_normals( mesh2, pair.m_element_id2, nB0, nB1 );
+      project_to_edge_h1( B0, B1, nB0, nB1, x1, x2_i, nB );
+      x2[2 * i] = x2_i[0];
+      x2[2 * i + 1] = x2_i[1];
+    } else {
+      double nB[2] = { 0.0 };
+      find_normal( B0, B1, nB );
+      double x2_i[2] = { 0.0 };
+      find_intersection( B0, B1, x1, nB, x2_i );
+      x2[2 * i] = x2_i[0];
+      x2[2 * i + 1] = x2_i[1];
+    }
   }
 
   Gparams gp;
@@ -544,7 +804,13 @@ std::array<double, 2> EnergyMortarCalculator::projections( const InterfacePair& 
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
 
   double projs[2];
-  get_projections( A0, A1, B0, B1, projs );
+  if ( p_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL ) {
+    double nB0[2], nB1[2];
+    endpoint_normals( mesh2, pair.m_element_id2, nB0, nB1 );
+    get_projections_h1( A0, A1, B0, B1, nB0, nB1, projs );
+  } else {
+    get_projections( A0, A1, B0, B1, projs );
+  }
 
   return { projs[0], projs[1] };
 }
@@ -645,15 +911,23 @@ double EnergyMortarCalculator::compute_weighted_normal_gap( const InterfacePair&
 
   double nA[2] = { 0.0 };
   double nB[2] = { 0.0 };
-  find_normal( A0, A1, nA );
-  find_normal( B0, B1, nB );
 
   double x1[2] = { 0.0 };
   iso_map( A0, A1, xiA, x1 );
 
-  // Project the point on edge A onto edge B along B's normal.
   double x2[2] = { 0.0 };
-  find_intersection( B0, B1, x1, nB, x2 );
+  if ( p_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL ) {
+    double nA0[2], nA1[2], nB0[2], nB1[2];
+    endpoint_normals( mesh1, pair.m_element_id1, nA0, nA1 );
+    endpoint_normals( mesh2, pair.m_element_id2, nB0, nB1 );
+    interp_normal( nA0, nA1, xiA, nA );
+    project_to_edge_h1( B0, B1, nB0, nB1, x1, x2, nB );
+  } else {
+    find_normal( A0, A1, nA );
+    find_normal( B0, B1, nB );
+    // Project the point on edge A onto edge B along B's normal.
+    find_intersection( B0, B1, x1, nB, x2 );
+  }
 
   double dx = x1[0] - x2[0];
   double dy = x1[1] - x2[1];
@@ -681,7 +955,7 @@ NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const Inter
 
   // Build the smoothed integration interval from the projection bounds.
   auto bounds = smoother_.bounds_from_projections( projs, p_.del );
-  auto smooth_bounds = smoother_.smooth_bounds( bounds, p_.del );
+  auto smooth_bounds = p_.projection_smoothing ? smoother_.smooth_bounds( bounds, p_.del ) : bounds;
 
   auto qp = compute_quadrature( smooth_bounds, p_.N );
 
@@ -731,6 +1005,8 @@ void EnergyMortarCalculator::compute_gtilde_and_area( const InterfacePair& pair,
 void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                           const MeshData::Viewer& mesh2, double dgt1_dx[8], double dgt2_dx[8] ) const
 {
+  SLIC_ERROR_ROOT_IF( p_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL,
+                      "Use compute_h1_total_derivatives() for H1_NODAL_NORMAL derivatives." );
   double A0[2], A1[2], B0[2], B1[2];
 
   endpoints( mesh1, pair.m_element_id1, A0, A1 );
@@ -767,6 +1043,8 @@ void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshD
 void EnergyMortarCalculator::grad_trib_area( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                              const MeshData::Viewer& mesh2, double dA1_dx[8], double dA2_dx[8] ) const
 {
+  SLIC_ERROR_ROOT_IF( p_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL,
+                      "Use compute_h1_total_derivatives() for H1_NODAL_NORMAL derivatives." );
   double A0[2], A1[2], B0[2], B1[2];
 
   endpoints( mesh1, pair.m_element_id1, A0, A1 );
@@ -794,6 +1072,8 @@ void EnergyMortarCalculator::grad_trib_area( const InterfacePair& pair, const Me
 void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                          const MeshData::Viewer& mesh2, double H1[64], double H2[64] ) const
 {
+  SLIC_ERROR_ROOT_IF( p_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL,
+                      "Use compute_h1_total_derivatives() for H1_NODAL_NORMAL derivatives." );
   double A0[2], A1[2], B0[2], B1[2];
 
   endpoints( mesh1, pair.m_element_id1, A0, A1 );
@@ -830,6 +1110,8 @@ void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshDa
 void EnergyMortarCalculator::compute_d2A_d2u( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                               const MeshData::Viewer& mesh2, double d2A1[64], double d2A2[64] ) const
 {
+  SLIC_ERROR_ROOT_IF( p_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL,
+                      "Use compute_h1_total_derivatives() for H1_NODAL_NORMAL derivatives." );
   double A0[2], A1[2], B0[2], B1[2];
 
   endpoints( mesh1, pair.m_element_id1, A0, A1 );
@@ -860,6 +1142,124 @@ void EnergyMortarCalculator::compute_d2A_d2u( const InterfacePair& pair, const M
     d2A1[i] = d2A1_d2u[i];
     d2A2[i] = d2A2_d2u[i];
   }
+}
+
+H1TotalDerivatives EnergyMortarCalculator::compute_h1_total_derivatives( const InterfacePair& pair,
+                                                                         const MeshData::Viewer& mesh1,
+                                                                         const MeshData::Viewer& mesh2,
+                                                                         bool compute_second_derivatives ) const
+{
+  H1TotalDerivatives result;
+  H1KernelData data;
+  data.N = p_.N;
+  data.del = p_.del;
+  data.projection_smoothing = p_.projection_smoothing;
+
+  auto build_side = []( const MeshData::Viewer& mesh, int contact_elem, int& num_nodes, int& num_elems,
+                        std::array<int, h1_max_stencil_nodes_per_mesh>& node_ids,
+                        std::array<int, h1_max_stencil_nodes_per_mesh>& owner_elems, int contact_nodes[2],
+                        int elem_nodes[h1_max_stencil_elems_per_mesh][2], double* xref ) {
+    std::vector<int> nodes;
+    std::vector<int> owners;
+
+    auto add_node = [&]( int node_id ) {
+      auto it = std::find( nodes.begin(), nodes.end(), node_id );
+      if ( it != nodes.end() ) {
+        return static_cast<int>( std::distance( nodes.begin(), it ) );
+      }
+      SLIC_ERROR_ROOT_IF( static_cast<int>( nodes.size() ) >= h1_max_stencil_nodes_per_mesh,
+                          "ENERGY_MORTAR H1 normal stencil exceeded supported node count." );
+      nodes.push_back( node_id );
+      owners.push_back( -1 );
+      return static_cast<int>( nodes.size() - 1 );
+    };
+
+    const int contact_node0 = mesh.getGlobalNodeId( contact_elem, 0 );
+    const int contact_node1 = mesh.getGlobalNodeId( contact_elem, 1 );
+    contact_nodes[0] = add_node( contact_node0 );
+    contact_nodes[1] = add_node( contact_node1 );
+
+    num_elems = 0;
+    for ( int e = 0; e < mesh.numberOfElements(); ++e ) {
+      const int elem_node0 = mesh.getGlobalNodeId( e, 0 );
+      const int elem_node1 = mesh.getGlobalNodeId( e, 1 );
+      if ( elem_node0 != contact_node0 && elem_node0 != contact_node1 && elem_node1 != contact_node0 &&
+           elem_node1 != contact_node1 ) {
+        continue;
+      }
+      SLIC_ERROR_ROOT_IF( num_elems >= h1_max_stencil_elems_per_mesh,
+                          "ENERGY_MORTAR H1 normal stencil exceeded supported element count." );
+      const int local0 = add_node( elem_node0 );
+      const int local1 = add_node( elem_node1 );
+      elem_nodes[num_elems][0] = local0;
+      elem_nodes[num_elems][1] = local1;
+      if ( owners[local0] < 0 ) {
+        owners[local0] = e;
+      }
+      if ( owners[local1] < 0 ) {
+        owners[local1] = e;
+      }
+      ++num_elems;
+    }
+
+    num_nodes = static_cast<int>( nodes.size() );
+    for ( int i = 0; i < num_nodes; ++i ) {
+      node_ids[i] = nodes[i];
+      owner_elems[i] = owners[i] >= 0 ? owners[i] : contact_elem;
+      xref[i] = mesh.hasReferencePosition() ? mesh.getReferencePosition()[0][nodes[i]] : mesh.getPosition()[0][nodes[i]];
+      xref[num_nodes + i] =
+          mesh.hasReferencePosition() ? mesh.getReferencePosition()[1][nodes[i]] : mesh.getPosition()[1][nodes[i]];
+    }
+  };
+
+  build_side( mesh1, pair.m_element_id1, result.num_mesh1_nodes, data.num_elems1, result.mesh1_nodes,
+              result.mesh1_owner_elems, data.contact_nodes1, data.elem_nodes1, data.xref1 );
+  data.num_nodes1 = result.num_mesh1_nodes;
+  build_side( mesh2, pair.m_element_id2, result.num_mesh2_nodes, data.num_elems2, result.mesh2_nodes,
+              result.mesh2_owner_elems, data.contact_nodes2, data.elem_nodes2, data.xref2 );
+  data.num_nodes2 = result.num_mesh2_nodes;
+
+  const int ndof = 2 * ( data.num_nodes1 + data.num_nodes2 );
+  double x[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
+  for ( int i = 0; i < data.num_nodes1; ++i ) {
+    const int node_id = result.mesh1_nodes[i];
+    x[i] = mesh1.getPosition()[0][node_id];
+    x[data.num_nodes1 + i] = mesh1.getPosition()[1][node_id];
+  }
+  const int side2_offset = 2 * data.num_nodes1;
+  for ( int i = 0; i < data.num_nodes2; ++i ) {
+    const int node_id = result.mesh2_nodes[i];
+    x[side2_offset + i] = mesh2.getPosition()[0][node_id];
+    x[side2_offset + data.num_nodes2 + i] = mesh2.getPosition()[1][node_id];
+  }
+
+  double gt[2];
+  double A[2];
+  h1_kernel_eval( x, &data, gt, A );
+  result.g_tilde = { gt[0], gt[1] };
+  result.area = { A[0], A[1] };
+
+  result.dg1_dx.assign( ndof, 0.0 );
+  result.dg2_dx.assign( ndof, 0.0 );
+  result.dA1_dx.assign( ndof, 0.0 );
+  result.dA2_dx.assign( ndof, 0.0 );
+  grad_h1_kernel<KernelOutput::GTILDE1>( x, &data, result.dg1_dx.data() );
+  grad_h1_kernel<KernelOutput::GTILDE2>( x, &data, result.dg2_dx.data() );
+  grad_h1_kernel<KernelOutput::A1>( x, &data, result.dA1_dx.data() );
+  grad_h1_kernel<KernelOutput::A2>( x, &data, result.dA2_dx.data() );
+
+  if ( compute_second_derivatives ) {
+    result.d2g1_dx2.assign( ndof * ndof, 0.0 );
+    result.d2g2_dx2.assign( ndof * ndof, 0.0 );
+    result.d2A1_dx2.assign( ndof * ndof, 0.0 );
+    result.d2A2_dx2.assign( ndof * ndof, 0.0 );
+    d2_h1_kernel<KernelOutput::GTILDE1>( x, &data, result.d2g1_dx2.data() );
+    d2_h1_kernel<KernelOutput::GTILDE2>( x, &data, result.d2g2_dx2.data() );
+    d2_h1_kernel<KernelOutput::A1>( x, &data, result.d2A1_dx2.data() );
+    d2_h1_kernel<KernelOutput::A2>( x, &data, result.d2A2_dx2.data() );
+  }
+
+  return result;
 }
 
 #endif  // TRIBOL_USE_ENZYME

@@ -18,10 +18,12 @@ struct QuadPoints {
 };
 
 struct ContactParams {
-  double del;              // Smoothing Parameter
-  double k;                // Penalty
-  int N;                   // Quadrature Points
-  bool enzyme_quadrature;  // Determines how enzyming is performed (default = True)
+  double del;                              // Smoothing Parameter
+  double k;                                // Penalty
+  int N;                                   // Quadrature Points
+  bool enzyme_quadrature;                  // Determines how enzyming is performed (default = True)
+  EnergyMortarNormalMode normal_mode{ EnergyMortarNormalMode::ELEMENT_NORMAL };  // Normal field used by EnergyMortar
+  bool projection_smoothing{ true };       // Apply projection-bound smoothing
 };
 
 // Weighted gap and trib area
@@ -65,6 +67,45 @@ struct FiniteDiffResult {
 struct Gparams {
   std::array<double, 3> qp;
   std::array<double, 3> w;
+};
+
+constexpr int h1_max_stencil_nodes_per_mesh = 16;
+constexpr int h1_max_stencil_elems_per_mesh = 16;
+
+/// Stores total derivative data for the H1 nodal-normal EnergyMortar path.
+struct H1TotalDerivatives {
+  int num_mesh1_nodes{ 0 };
+  int num_mesh2_nodes{ 0 };
+  std::array<int, h1_max_stencil_nodes_per_mesh> mesh1_nodes{};
+  std::array<int, h1_max_stencil_nodes_per_mesh> mesh2_nodes{};
+  std::array<int, h1_max_stencil_nodes_per_mesh> mesh1_owner_elems{};
+  std::array<int, h1_max_stencil_nodes_per_mesh> mesh2_owner_elems{};
+  std::array<double, 2> g_tilde{};
+  std::array<double, 2> area{};
+  std::vector<double> dg1_dx;
+  std::vector<double> dg2_dx;
+  std::vector<double> dA1_dx;
+  std::vector<double> dA2_dx;
+  std::vector<double> d2g1_dx2;
+  std::vector<double> d2g2_dx2;
+  std::vector<double> d2A1_dx2;
+  std::vector<double> d2A2_dx2;
+};
+
+struct H1KernelData {
+  int N{ 3 };
+  double del{ 0.1 };
+  bool projection_smoothing{ false };
+  int num_nodes1{ 0 };
+  int num_nodes2{ 0 };
+  int num_elems1{ 0 };
+  int num_elems2{ 0 };
+  int contact_nodes1[2]{ 0, 1 };
+  int contact_nodes2[2]{ 0, 1 };
+  int elem_nodes1[h1_max_stencil_elems_per_mesh][2]{};
+  int elem_nodes2[h1_max_stencil_elems_per_mesh][2]{};
+  double xref1[2 * h1_max_stencil_nodes_per_mesh]{};
+  double xref2[2 * h1_max_stencil_nodes_per_mesh]{};
 };
 
 /// Provides smoothing operations for the Energy Mortar contact formulation.
@@ -168,6 +209,11 @@ class EnergyMortarCalculator {
   /// derivative includes the geometry-dependent quadrature construction.
   void compute_d2A_d2u( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                         double dgt1_dx[64], double dgt2_dx[64] ) const;
+
+  /// Compute values and total coordinate derivatives for the H1 nodal-normal path.
+  H1TotalDerivatives compute_h1_total_derivatives( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                   const MeshData::Viewer& mesh2,
+                                                   bool compute_second_derivatives = true ) const;
 
   /// Evaluate and return the two nodal smoothed gap integrals.
   ///

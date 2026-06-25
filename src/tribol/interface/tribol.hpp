@@ -66,6 +66,25 @@ void setPenaltyOptions( IndexT cs_id, PenaltyConstraintType pen_enfrc_option,
                         RatePenaltyCalculation rate_calc = NO_RATE_PENALTY );
 
 /*!
+ * \brief Sets the normal field used by ENERGY_MORTAR
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] normal_mode normal field option
+ *
+ * If projection smoothing was not explicitly set, this also selects the default
+ * projection smoothing behavior for the normal mode.
+ */
+void setEnergyMortarNormalMode( IndexT cs_id, EnergyMortarNormalMode normal_mode );
+
+/*!
+ * \brief Enables or disables projection-bound smoothing in ENERGY_MORTAR
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] enabled true to apply projection-bound smoothing
+ */
+void setEnergyMortarProjectionSmoothing( IndexT cs_id, bool enabled );
+
+/*!
  * \brief Sets the constant kinematic penalty stiffness
  * \param [in] mesh_id mesh id for penalty stiffness
  * \param [in] k constant kinematic penalty stiffness

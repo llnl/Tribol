@@ -182,6 +182,68 @@ void EdgeAvgNodalNormal::Compute( MeshData& mesh, MethodData* jacobian_data )
   }
 }
 
+void ReferenceScaledEdgeAvgNodalNormal2D::Compute( MeshData& mesh, MethodData* jacobian_data )
+{
+  SLIC_ERROR_IF( jacobian_data != nullptr,
+                 "ReferenceScaledEdgeAvgNodalNormal2D does not support computing Jacobian data yet." );
+  SLIC_ERROR_ROOT_IF( mesh.spatialDimension() != 2, "2D mesh required for reference-scaled edge averaged normal." );
+
+  if ( mesh.numberOfElements() == 0 ) {
+    return;
+  }
+
+  mesh.allocateNodalNormals();
+
+  auto mesh_view = mesh.getView();
+  SLIC_ERROR_ROOT_IF( mesh_view.getElementType() != LINEAR_EDGE,
+                      "ReferenceScaledEdgeAvgNodalNormal2D requires LINEAR_EDGE elements." );
+
+  auto n0 = ArrayT<RealT, 2>( { 2, mesh.numberOfNodes() }, mesh.getAllocatorId() );
+  n0.fill( 0.0 );
+
+  const bool has_reference = mesh_view.hasReferencePosition();
+  for ( int e{ 0 }; e < mesh_view.numberOfElements(); ++e ) {
+    const int node0 = mesh_view.getGlobalNodeId( e, 0 );
+    const int node1 = mesh_view.getGlobalNodeId( e, 1 );
+
+    const RealT x0 = mesh_view.getPosition()[0][node0];
+    const RealT y0 = mesh_view.getPosition()[1][node0];
+    const RealT x1 = mesh_view.getPosition()[0][node1];
+    const RealT y1 = mesh_view.getPosition()[1][node1];
+
+    const RealT xr0 = has_reference ? mesh_view.getReferencePosition()[0][node0] : x0;
+    const RealT yr0 = has_reference ? mesh_view.getReferencePosition()[1][node0] : y0;
+    const RealT xr1 = has_reference ? mesh_view.getReferencePosition()[0][node1] : x1;
+    const RealT yr1 = has_reference ? mesh_view.getReferencePosition()[1][node1] : y1;
+
+    const RealT dx_ref = xr1 - xr0;
+    const RealT dy_ref = yr1 - yr0;
+    const RealT len_ref = std::sqrt( dx_ref * dx_ref + dy_ref * dy_ref );
+    if ( len_ref < 1.0e-15 ) {
+      continue;
+    }
+
+    const RealT n_current[2] = { ( y1 - y0 ) / len_ref, -( x1 - x0 ) / len_ref };
+    const RealT n_ref[2] = { dy_ref / len_ref, -dx_ref / len_ref };
+
+    for ( int i{ 0 }; i < 2; ++i ) {
+      const int node_id = ( i == 0 ) ? node0 : node1;
+      for ( int d{ 0 }; d < 2; ++d ) {
+        mesh_view.getNodalNormals()( d, node_id ) += n_current[d];
+        n0( d, node_id ) += n_ref[d];
+      }
+    }
+  }
+
+  for ( int i{ 0 }; i < mesh_view.numberOfNodes(); ++i ) {
+    const RealT n0_mag = std::sqrt( n0( 0, i ) * n0( 0, i ) + n0( 1, i ) * n0( 1, i ) );
+    if ( n0_mag >= 1.0e-15 ) {
+      mesh_view.getNodalNormals()( 0, i ) /= n0_mag;
+      mesh_view.getNodalNormals()( 1, i ) /= n0_mag;
+    }
+  }
+}
+
 void ElementEdgeAvgNodalNormal( const RealT* x, const RealT* xref, RealT* n, int num_nodes_per_elem )
 {
   for ( int i{ 0 }; i < num_nodes_per_elem; ++i ) {
