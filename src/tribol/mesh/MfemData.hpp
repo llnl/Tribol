@@ -1790,10 +1790,10 @@ struct PackedPairJacobianContribs {
   const Array1D<int>* row_elem_map{ nullptr };
   /// Tribol element-id -> redecomp element-id map for column element ids
   const Array1D<int>* col_elem_map{ nullptr };
-  Array1D<int, MemorySpace::Host> row_elem_ids;          ///< Tribol element IDs for rows
-  Array1D<int, MemorySpace::Host> col_elem_ids;          ///< Tribol element IDs for columns
-  Array1D<double, MemorySpace::Host> jacobian_data;      ///< Flattened Jacobian data
-  Array1D<int, MemorySpace::Host> value_offsets;         ///< Offsets into jacobian_data for each element
+  Array1D<int, MemorySpace::Host> row_elem_ids;      ///< Tribol element IDs for rows
+  Array1D<int, MemorySpace::Host> col_elem_ids;      ///< Tribol element IDs for columns
+  Array1D<double, MemorySpace::Host> jacobian_data;  ///< Flattened Jacobian data
+  Array1D<int, MemorySpace::Host> value_offsets;     ///< Offsets into jacobian_data for each element
 
   PackedPairJacobianContribs() = default;
 
