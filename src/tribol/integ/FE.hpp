@@ -106,9 +106,14 @@ TRIBOL_HOST_DEVICE inline void SegmentBasis( const RealT* const x, const RealT p
  * \param [in,out] xi (xi,eta) coordinates in parent space
  *
  * \pre xA, yA, and zA are pointer to arrays of length, numNodes
+ * \pre x is a point on the physical edge or face being inverse-mapped
  *
  * \note This routine works in 2D or 3D. In 2D, zA is a nullptr and
  *       x[2] is equal to 0.
+ * \note For a quadrilateral, an off-face point is handled by the same least-squares
+ *       Newton solve, effectively mapping the closest point in the face-normal direction
+ *       for near-planar contact faces. Callers should not rely on off-face behavior for
+ *       points that are far from the surface.
  *
  */
 TRIBOL_HOST_DEVICE inline void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA,
@@ -457,7 +462,7 @@ TRIBOL_HOST_DEVICE inline int GetNumFaceNodes( int dim, FaceOrderType order_type
  * \param [in] x pointer to stacked physical coordinates of the face vertices
  * \param [in] pX x-coordinate of the evaluation point
  * \param [in] pY y-coordinate of the evaluation point
- * \param [in] pZ z-coordinate of the evaluation point
+ * \param [in] pZ z-coordinate of the evaluation point; ignored for physical edges
  * \param [in] numNodes number of nodes on the face
  * \param [in] vertexId local node id whose basis function is to be evaluated
  * \param [in,out] phi evaluated basis function value
@@ -465,6 +470,8 @@ TRIBOL_HOST_DEVICE inline int GetNumFaceNodes( int dim, FaceOrderType order_type
  * \note For triangles and quadrilaterals this routine inverse-maps the physical
  *       point to parent space and then evaluates the corresponding linear
  *       isoparametric basis function.
+ * \note The evaluation point is assumed to lie on the physical edge or face. Off-face
+ *       points inherit the implicit projection behavior of InvIso.
  *
  */
 TRIBOL_HOST_DEVICE inline void EvalBasisOnPhysicalFace( const RealT* const x, const RealT pX, const RealT pY,
@@ -511,7 +518,7 @@ TRIBOL_HOST_DEVICE inline void EvalBasisOnPhysicalFace( const RealT* const x, co
  * \param [in] x pointer to stacked physical coordinates of the face vertices
  * \param [in] pX x-coordinate of the evaluation point
  * \param [in] pY y-coordinate of the evaluation point
- * \param [in] pZ z-coordinate of the evaluation point
+ * \param [in] pZ z-coordinate of the evaluation point; ignored for physical edges
  * \param [in] numNodes number of nodes on the face
  * \param [in] galerkinDim vector dimension of the nodal coefficients
  * \param [in] nodeVals stacked nodal coefficients for the Galerkin approximation
@@ -519,6 +526,8 @@ TRIBOL_HOST_DEVICE inline void EvalBasisOnPhysicalFace( const RealT* const x, co
  *
  * \note This helper is topology-aware and supports the linear segment,
  *       triangle, and quadrilateral basis evaluations used by CommonPlane.
+ * \note The evaluation point is assumed to lie on the physical edge or face. Off-face
+ *       points inherit the implicit projection behavior of InvIso.
  *
  */
 TRIBOL_HOST_DEVICE inline void GalerkinEvalOnPhysicalFace( const RealT* const x, const RealT pX, const RealT pY,

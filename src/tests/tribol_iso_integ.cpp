@@ -31,8 +31,11 @@ RealT factorial( int n )
 
 RealT referenceTriangleMoment( int px, int py ) { return factorial( px ) * factorial( py ) / factorial( px + py + 2 ); }
 
+// Moment integral over the unit-area reference triangle used by the symmetric rules.
 RealT normalizedReferenceTriangleMoment( int px, int py ) { return 2. * referenceTriangleMoment( px, py ); }
 
+// Evaluate the x^px y^py moment for either the legacy CommonPlane triangle rule or the
+// newer symmetric triangle rule.
 RealT evalTriangleRuleMoment( bool use_legacy, int order, int px, int py )
 {
   RealT wts[tribol::max_symmetric_triangle_qpts] = { 0. };
@@ -275,6 +278,8 @@ TEST_F( IsoIntegTest, nonaffine )
 
 TEST( TriangleRuleTest, legacy_and_symmetric_match_on_shared_orders )
 {
+  // Orders 2 and 4 are supported by both rule implementations and should integrate the
+  // same low-order reference-triangle moments.
   for ( int order : { 2, 4 } ) {
     EXPECT_NEAR( evalTriangleRuleMoment( true, order, 0, 0 ), evalTriangleRuleMoment( false, order, 0, 0 ), 2.e-10 );
     EXPECT_NEAR( evalTriangleRuleMoment( true, order, 2, 0 ), evalTriangleRuleMoment( false, order, 2, 0 ), 2.e-10 );
@@ -284,6 +289,8 @@ TEST( TriangleRuleTest, legacy_and_symmetric_match_on_shared_orders )
 
 TEST( TriangleRuleTest, gauss_poly_int_tri_supports_order_10 )
 {
+  // CommonPlane triangle-decomposition integration supports the order-10 symmetric rule
+  // on triangular overlap facets in 3D.
   constexpr int dim = 3;
   constexpr int num_nodes = 3;
   RealT xyz[dim * num_nodes] = { 0., 0., 0., 1., 0., 0., 0., 1., 0. };
@@ -303,6 +310,7 @@ TEST( TriangleRuleTest, gauss_poly_int_tri_supports_order_10 )
 
   EXPECT_EQ( integ.numIPs, 75 );
   EXPECT_NEAR( area, 0.5, 1.e-14 );
+  // Integral of x^7 y^3 over the physical unit right triangle.
   EXPECT_NEAR( moment73, referenceTriangleMoment( 7, 3 ), 1.e-14 );
   EXPECT_NEAR( evalTriangleRuleMoment( false, 10, 7, 3 ), normalizedReferenceTriangleMoment( 7, 3 ), 1.e-14 );
 }

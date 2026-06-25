@@ -236,7 +236,7 @@ enum IntNodalFields
 enum PolyInteg
 {
   SINGLE_POINT,  ///! Single point integration at centroid of polygon
-  MULTI_POINT,   ///! Multi-point integration over the overlap
+  MULTI_POINT,   ///! Multi-point integration over a triangle decomposition of the overlap
   NUM_INTEG_RULES
 };
 
@@ -445,6 +445,7 @@ struct PenaltyEnforcementOptions {
   KinematicPenaltyCalculation kinematic_calculation;
   RatePenaltyCalculation rate_calculation;
   PolyInteg common_plane_rule{ SINGLE_POINT };
+  ///! Triangle/segment quadrature order used when common_plane_rule is MULTI_POINT; ignored for SINGLE_POINT
   int common_plane_quadrature_order{ 3 };
 
   bool constraint_type_set{ false };

@@ -38,7 +38,8 @@
  *
  * Both the element penalty and a constant penalty are tested, with the constant penalty tuned to match the element
  * penalty for this case. The contact solve is also exercised with both the legacy single-point CommonPlane integration
- * rule and the new full triangle-decomposition rule.
+ * rule and the new order-3 full triangle-decomposition rule. The contact surfaces are planar, so both rules should
+ * produce the same force and gap response.
  *
  */
 class MfemCommonPlaneTest
