@@ -118,6 +118,11 @@ class ContactFormulation {
    */
   virtual void updatePenaltyParameters( bool /*use_penalty*/, double /*k*/ ) {}
 
+  /**
+   * @brief Update ENERGY_MORTAR normal-mode parameters on formulations that support them
+   */
+  virtual void updateEnergyMortarNormalMode( EnergyMortarNormalMode /*normal_mode*/, bool /*projection_smoothing*/ ) {}
+
 #ifdef BUILD_REDECOMP
   /**
    * @brief Returns t-dof vector of forces on parent mesh
@@ -141,6 +146,13 @@ class ContactFormulation {
    * TODO: specify what mesh object this is define on.
    */
   virtual mfem::HypreParVector& getMfemPressure() = 0;
+
+  /**
+   * @brief Returns a nodal normal visualization field, when supported by the formulation
+   *
+   * @return Pointer to a vector grid function on the parent-linked boundary submesh, or nullptr if unsupported
+   */
+  virtual mfem::ParGridFunction* getMfemNodalNormal() { return nullptr; }
 
   /**
    * @brief Get the derivative of force with respect to displacement

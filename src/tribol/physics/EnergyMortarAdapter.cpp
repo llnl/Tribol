@@ -151,6 +151,21 @@ void appendH1HessianBlockMaps( const std::map<std::pair<int, int>, std::array<do
   }
 }
 
+void copyNodalNormalsToGridFunction( MeshData& mesh, mfem::GridFunction& normal )
+{
+  auto mesh_view = mesh.getView();
+  SLIC_ERROR_ROOT_IF( !mesh_view.hasNodalNormals(), "ENERGY_MORTAR H1 nodal normal field has not been computed." );
+  const int scalar_size = normal.FESpace()->GetVSize() / normal.FESpace()->GetVDim();
+  SLIC_ERROR_ROOT_IF( scalar_size < mesh_view.numberOfNodes(),
+                      "ENERGY_MORTAR nodal normal output field is smaller than the redecomp mesh node count." );
+
+  for ( int i{ 0 }; i < mesh_view.numberOfNodes(); ++i ) {
+    for ( int d{ 0 }; d < mesh_view.spatialDimension(); ++d ) {
+      normal( d * scalar_size + i ) = mesh_view.getNodalNormals()( d, i );
+    }
+  }
+}
+
 }  // namespace
 
 EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
@@ -175,6 +190,9 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
   // Lagrange multiplier vector (lambda).
   pressure_vec_ = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
   pressure_vec_.fill( 0.0 );
+
+  submesh_nodal_normal_.SetSpace( const_cast<mfem::ParFiniteElementSpace*>( &mesh_data_.GetSubmeshFESpace() ) );
+  submesh_nodal_normal_ = 0.0;
 }
 
 void EnergyMortarAdapter::updateMeshes( MeshData& mesh1, MeshData& mesh2 )
@@ -190,11 +208,28 @@ void EnergyMortarAdapter::updatePenaltyParameters( bool use_penalty, double k )
   params_.k = k;
 }
 
+void EnergyMortarAdapter::updateEnergyMortarNormalMode( EnergyMortarNormalMode normal_mode, bool projection_smoothing )
+{
+  params_.normal_mode = normal_mode;
+  params_.projection_smoothing = projection_smoothing;
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+  redecomp_nodal_normal_.reset();
+  submesh_nodal_normal_ = 0.0;
+}
+
 const mfem::HypreParVector& EnergyMortarAdapter::getMfemGap() const
 {
   // Penalty mode uses the normalized gap g = g_tilde / A. LM mode enforces the unnormalized constraint g_tilde = 0,
   // consistent with dg/dx returned by getMfemDgDx().
   return use_penalty_ ? gap_vec_.get() : g_tilde_vec_.get();
+}
+
+mfem::ParGridFunction* EnergyMortarAdapter::getMfemNodalNormal()
+{
+  if ( params_.normal_mode != EnergyMortarNormalMode::H1_NODAL_NORMAL || !redecomp_nodal_normal_ ) {
+    return nullptr;
+  }
+  return &submesh_nodal_normal_;
 }
 
 void EnergyMortarAdapter::setInterfacePairs( ArrayT<InterfacePair>&& pairs, int /*check_level*/ )
@@ -247,6 +282,14 @@ void EnergyMortarAdapter::updateNodalGaps()
     ReferenceScaledEdgeAvgNodalNormal2D normal_method;
     normal_method.Compute( *mesh1_ );
     normal_method.Compute( *mesh2_ );
+
+    redecomp_nodal_normal_ = std::make_unique<mfem::GridFunction>(
+        const_cast<mfem::FiniteElementSpace*>( mesh_data_.GetRedecompResponse().FESpace() ) );
+    redecomp_nodal_normal_->UseDevice( false );
+    ( *redecomp_nodal_normal_ ) = 0.0;
+    copyNodalNormalsToGridFunction( *mesh1_, *redecomp_nodal_normal_ );
+    copyNodalNormalsToGridFunction( *mesh2_, *redecomp_nodal_normal_ );
+    mesh_data_.RedecompToSubmesh( *redecomp_nodal_normal_, submesh_nodal_normal_ );
   }
   auto mesh1_view = mesh1_->getView();
   auto mesh2_view = mesh2_->getView();

@@ -134,6 +134,14 @@ class EnergyMortarAdapter : public ContactFormulation {
    */
   void updatePenaltyParameters( bool use_penalty, double k ) override;
 
+  /**
+   * @brief Update normal-mode parameters and rebuild the element evaluator
+   *
+   * @param normal_mode Normal field used by EnergyMortar
+   * @param projection_smoothing If true, apply projection-bound smoothing
+   */
+  void updateEnergyMortarNormalMode( EnergyMortarNormalMode normal_mode, bool projection_smoothing ) override;
+
 #ifdef BUILD_REDECOMP
   /**
    * @brief Return the parent true-dof force vector
@@ -159,6 +167,13 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @return Reference to the pressure vector (penalty mode) or multiplier vector (LM mode)
    */
   mfem::HypreParVector& getMfemPressure() override { return pressure_vec_.get(); }
+
+  /**
+   * @brief Return the recovered H1 nodal normal field on the contact submesh
+   *
+   * @return Pointer to the submesh normal grid function, or nullptr when H1 normal mode is inactive
+   */
+  mfem::ParGridFunction* getMfemNodalNormal() override;
 
   /**
    * @brief Return df/dx for the assembled contact force
@@ -295,6 +310,16 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @brief Dual true-dof vector (pressure = k * (g_tilde / A) in penalty mode, lambda in LM mode)
    */
   shared::ParVector pressure_vec_;
+
+  /**
+   * @brief Recovered H1 nodal normal field on the redecomp mesh
+   */
+  std::unique_ptr<mfem::GridFunction> redecomp_nodal_normal_;
+
+  /**
+   * @brief Recovered H1 nodal normal field transferred to the parent-linked boundary submesh
+   */
+  mfem::ParGridFunction submesh_nodal_normal_;
 
   /**
    * @brief Contact constraint energy associated with the current state

@@ -773,6 +773,34 @@ mfem::HypreParVector& getMfemTDofPressure( IndexT cs_id )
   return cs->getContactFormulation()->getMfemPressure();
 }
 
+mfem::ParSubMesh& getMfemSubmesh( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
+                      "Coupling scheme does not contain MFEM data. "
+                      "Create the coupling scheme using registerMfemCouplingScheme() to access the SubMesh." );
+  return cs->getMfemMeshData()->GetSubmesh();
+}
+
+mfem::ParGridFunction& getMfemEnergyMortarNodalNormal( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
+  auto* normal = cs->getContactFormulation()->getMfemNodalNormal();
+  SLIC_ERROR_ROOT_IF( normal == nullptr,
+                      "Coupling scheme does not have an ENERGY_MORTAR H1 nodal normal field. "
+                      "Use EnergyMortarNormalMode::H1_NODAL_NORMAL and update contact data before requesting it." );
+  return *normal;
+}
+
 void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
 {
   for ( auto& cs_pair : CouplingSchemeManager::getInstance() ) {

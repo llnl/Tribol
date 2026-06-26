@@ -369,6 +369,27 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id );
 mfem::HypreParVector& getMfemTDofPressure( IndexT cs_id );
 
 /**
+ * @brief Returns the parent-linked boundary SubMesh associated with an MFEM coupling scheme
+ *
+ * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
+ *
+ * @param [in] cs_id The ID of the coupling scheme with the MFEM mesh
+ * @return mfem::ParSubMesh& Contact SubMesh containing both contact surfaces
+ */
+mfem::ParSubMesh& getMfemSubmesh( IndexT cs_id );
+
+/**
+ * @brief Returns the ENERGY_MORTAR recovered H1 nodal normal field on the contact SubMesh
+ *
+ * @pre Coupling scheme cs_id must use ENERGY_MORTAR with EnergyMortarNormalMode::H1_NODAL_NORMAL
+ * @pre Tribol data must be up to date for current geometry by calling update()
+ *
+ * @param [in] cs_id The ID of the coupling scheme with the MFEM mesh
+ * @return mfem::ParGridFunction& Recovered nodal normal field on the contact SubMesh
+ */
+mfem::ParGridFunction& getMfemEnergyMortarNodalNormal( IndexT cs_id );
+
+/**
  * @brief Updates mesh parallel decomposition and related grid functions/Jacobian when coordinates are updated
  *
  * @param n_ranks Number of ranks in the parallel decomposition; automatically determine when set to 0 (default)

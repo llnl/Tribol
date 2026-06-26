@@ -109,6 +109,10 @@ void setEnergyMortarNormalMode( IndexT cs_id, EnergyMortarNormalMode normal_mode
   if ( !params.energy_mortar_projection_smoothing_set ) {
     params.energy_mortar_projection_smoothing = ( normal_mode == EnergyMortarNormalMode::ELEMENT_NORMAL );
   }
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarNormalMode( params.energy_mortar_normal_mode,
+                                                               params.energy_mortar_projection_smoothing );
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -122,6 +126,10 @@ void setEnergyMortarProjectionSmoothing( IndexT cs_id, bool enabled )
   auto& params = cs->getParameters();
   params.energy_mortar_projection_smoothing = enabled;
   params.energy_mortar_projection_smoothing_set = true;
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarNormalMode( params.energy_mortar_normal_mode,
+                                                               params.energy_mortar_projection_smoothing );
+  }
 }
 
 //------------------------------------------------------------------------------

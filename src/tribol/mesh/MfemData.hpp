@@ -296,6 +296,14 @@ class ParentRedecompTransfer {
   void RedecompToParent( const mfem::GridFunction& redecomp_src, mfem::Vector& parent_dst ) const;
 
   /**
+   * @brief Transfer grid function on redecomp mesh to grid function on parent-linked boundary submesh
+   *
+   * @param [in] redecomp_src Grid function on RedecompMesh
+   * @param [out] submesh_dst Grid function on parent-linked boundary submesh
+   */
+  void RedecompToSubmesh( const mfem::GridFunction& redecomp_src, mfem::ParGridFunction& submesh_dst ) const;
+
+  /**
    * @brief Get the parent-linked boundary submesh finite element space
    * associated with this transfer object
    *
@@ -1025,6 +1033,17 @@ class MfemMeshData {
    * @return redecomp::RedecompMesh&
    */
   redecomp::RedecompMesh& GetRedecompMesh() { return GetUpdateData().redecomp_mesh_; }
+
+  /**
+   * @brief Transfer a vector grid function from redecomp mesh to the parent-linked boundary submesh
+   *
+   * @param [in] redecomp_src Grid function on the redecomp mesh
+   * @param [out] submesh_dst Grid function on the parent-linked boundary submesh
+   */
+  void RedecompToSubmesh( const mfem::GridFunction& redecomp_src, mfem::ParGridFunction& submesh_dst ) const
+  {
+    GetUpdateData().vector_xfer_.RedecompToSubmesh( redecomp_src, submesh_dst );
+  }
 
   /**
    * @brief Get the set of boundary attributes on the parent mesh corresponding

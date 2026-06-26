@@ -539,6 +539,13 @@ void ParentRedecompTransfer::RedecompToParent( const mfem::GridFunction& redecom
   parent_dst.SyncMemory( parent_gridfn );
 }
 
+void ParentRedecompTransfer::RedecompToSubmesh( const mfem::GridFunction& redecomp_src,
+                                                mfem::ParGridFunction& submesh_dst ) const
+{
+  submesh_dst = 0.0;
+  submesh_redecomp_xfer_.RedecompToSubmesh( redecomp_src, submesh_dst );
+}
+
 ParentField::ParentField( const mfem::ParGridFunction& parent_gridfn ) : parent_gridfn_{ parent_gridfn } {}
 
 void ParentField::SetParentGridFn( const mfem::ParGridFunction& parent_gridfn )
