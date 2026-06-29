@@ -12,6 +12,12 @@
 // Shared includes
 #include "tribol/common/BasicTypes.hpp"
 
+#if defined( __clang__ )
+#define TRIBOL_ENZYME_INLINE __attribute__( ( always_inline ) ) inline
+#else
+#define TRIBOL_ENZYME_INLINE inline
+#endif
+
 #ifdef TRIBOL_USE_ENZYME
 #ifdef MFEM_USE_ENZYME
 #include "mfem/general/enzyme.hpp"
