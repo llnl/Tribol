@@ -13,9 +13,9 @@
 #include "tribol/common/BasicTypes.hpp"
 
 #if defined( __clang__ )
-#define TRIBOL_ENZYME_INLINE __attribute__( ( always_inline ) ) inline
+#define TRIBOL_ENZYME_INLINE __attribute__( ( always_inline ) )
 #else
-#define TRIBOL_ENZYME_INLINE inline
+#define TRIBOL_ENZYME_INLINE
 #endif
 
 #ifdef TRIBOL_USE_ENZYME
