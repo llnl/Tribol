@@ -1,21 +1,14 @@
-#include "EnergyMortar.hpp"
-#include <cstdio>
-#include <cstdlib>
-#include <iostream>
-#include <vector>
-#include <array>
-#include <cmath>
-#include <algorithm>
-#include <cassert>
-#include <iomanip>
-#include "tribol/common/ArrayTypes.hpp"
-#include "tribol/common/Parameters.hpp"
-#include "tribol/geom/GeomUtilities.hpp"
+#include "tribol/physics/EnergyMortar.hpp"
+
+#include "axom/slic.hpp"
 #include "tribol/common/Enzyme.hpp"
-#include "tribol/mesh/MeshData.hpp"
-#include <set>
-#include <map>
-#include "axom/slic/interface/slic_macros.hpp"
+
+#include <algorithm>
+#include <array>
+#include <cassert>
+#include <cmath>
+#include <iterator>
+#include <vector>
 
 namespace tribol {
 
@@ -31,7 +24,7 @@ struct KernelParams {
 };
 
 // Compute a unit normal vector for the line segment from coord1 to coord2
-void find_normal( const double* coord1, const double* coord2, double* normal )
+TRIBOL_ENZYME_INLINE void find_normal( const double* coord1, const double* coord2, double* normal )
 {
   double dx = coord2[0] - coord1[0];
   double dy = coord2[1] - coord1[1];
@@ -73,7 +66,7 @@ double local_coord_on_segment( const double* A0, const double* A1, const double*
 }
 
 // Gets the respective gauss-legendre nodes dependant on quadrature order
-void determine_legendre_nodes( int N, std::array<double, 3>& x )
+TRIBOL_ENZYME_INLINE void determine_legendre_nodes( int N, std::array<double, 3>& x )
 {
   // x.resize( N );
   if ( N == 1 ) {
@@ -108,7 +101,7 @@ void determine_legendre_nodes( int N, std::array<double, 3>& x )
 }
 
 // Gets the respective gauss-legendre weights dependant on quadrature order
-void determine_legendre_weights( int N, std::array<double, 3>& W )
+TRIBOL_ENZYME_INLINE void determine_legendre_weights( int N, std::array<double, 3>& W )
 {
   // W.resize( N );
   if ( N == 1 ) {
@@ -138,7 +131,7 @@ void determine_legendre_weights( int N, std::array<double, 3>& W )
 
 // Map a point from the 1D parent segment coordinate to physical coordinates.
 // Parametric space: [-0.5, 0.5]
-void iso_map( const double* coord1, const double* coord2, double xi, double* mapped_coord )
+TRIBOL_ENZYME_INLINE void iso_map( const double* coord1, const double* coord2, double xi, double* mapped_coord )
 {
   double N1 = 0.5 - xi;
   double N2 = 0.5 + xi;
@@ -148,7 +141,7 @@ void iso_map( const double* coord1, const double* coord2, double xi, double* map
 
 // returns P0 and P1 which are the edge vertex coordinates associated with the edge with elem_id.
 // coordinates it returns
-inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], double P1[2] )
+TRIBOL_ENZYME_INLINE void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], double P1[2] )
 {
   double P0_P1[4];
   mesh.getFaceCoords( elem_id, P0_P1 );
@@ -186,7 +179,8 @@ inline void endpoint_normals( const MeshData::Viewer& mesh, int elem_id, double 
 // If xiA is outside [0, 1], the intersection lies on the infinite extension of
 // edge A. If nB is degenerate, or if the projection direction is nearly parallel
 // to edge A, the function falls back to returning p.
-void find_intersection( const double* A0, const double* A1, const double* p, const double* nB, double* intersection )
+TRIBOL_ENZYME_INLINE void find_intersection( const double* A0, const double* A1, const double* p, const double* nB,
+                                             double* intersection )
 {
   const double tA[2] = { A1[0] - A0[0], A1[1] - A0[1] };
   const double d[2] = { p[0] - A0[0], p[1] - A0[1] };
@@ -219,7 +213,8 @@ void find_intersection( const double* A0, const double* A1, const double* p, con
 // The variable projections is retuned with the coordinates in the parametric space where
 // the projections of edge B intersect edge A
 // If the projection lies outside of Edge A, the bounds (in the parametric space) are returned
-void get_projections( const double* A0, const double* A1, const double* B0, const double* B1, double* projections )
+TRIBOL_ENZYME_INLINE void get_projections( const double* A0, const double* A1, const double* B0, const double* B1,
+                                           double* projections )
 {
   double nB[2] = { 0.0, 0.0 };
   find_normal( B0, B1, nB );
@@ -369,8 +364,7 @@ void h1_kernel_eval( const double* x, const H1KernelData* data, double* g_tilde_
   auto xi_bounds = data->projection_smoothing ? ContactSmoothing::smooth_bounds( bounds, data->del ) : bounds;
   auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, data->N );
 
-  const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) +
-                              ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+  const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
 
   double g1 = 0.0;
   double g2 = 0.0;
@@ -412,7 +406,7 @@ void h1_kernel_eval( const double* x, const H1KernelData* data, double* g_tilde_
 // Integrate the nodal smoothed gap and tributary area contributions over edge A.
 // The quadrature rule is supplied through gp, allowing this kernel to be reused
 // for both fixed-quadrature and geometry-dependent quadrature paths.
-void gtilde_kernel( const double* x, Gparams* gp, double* g_tilde_out, double* A_out )
+TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, Gparams* gp, double* g_tilde_out, double* A_out )
 {
   // x stores the two endpoints of edge A followed by the two endpoints of edge B.
   const double A0[2] = { x[0], x[1] };
@@ -479,7 +473,7 @@ void gtilde_kernel( const double* x, Gparams* gp, double* g_tilde_out, double* A
 
 // Integrate the nodal smoothed gap and tributary area contributions using fixed quadrature.
 // The quadrature data in gp is treated as constant for Enzyme derivative calculations.
-void gtilde_kernel_quad( const double* x, const Gparams* gp, double* g_tilde_out, double* A_out )
+TRIBOL_ENZYME_INLINE void gtilde_kernel_quad( const double* x, const Gparams* gp, double* g_tilde_out, double* A_out )
 {
   // x stores the two endpoints of edge A followed by the two endpoints of edge B.
   const double A0[2] = { x[0], x[1] };
@@ -710,8 +704,8 @@ void grad_h1_kernel( const double* x, const H1KernelData* data, double* dout_du 
   double out = 0.0;
   double dout = 1.0;
 
-  __enzyme_autodiff<void>( (void*)h1_kernel_out<Output>, enzyme_dup, x, dx, enzyme_const, (const void*)data,
-                           enzyme_dup, &out, &dout );
+  __enzyme_autodiff<void>( (void*)h1_kernel_out<Output>, enzyme_dup, x, dx, enzyme_const, (const void*)data, enzyme_dup,
+                           &out, &dout );
 
   const int ndof = 2 * ( data->num_nodes1 + data->num_nodes2 );
   for ( int i = 0; i < ndof; ++i ) {
@@ -816,7 +810,8 @@ std::array<double, 2> EnergyMortarCalculator::projections( const InterfacePair& 
 }
 
 // Clamp the projection interval to the local smoothing support around edge A.
-std::array<double, 2> ContactSmoothing::bounds_from_projections( const std::array<double, 2>& proj, double del )
+TRIBOL_ENZYME_INLINE std::array<double, 2> ContactSmoothing::bounds_from_projections( const std::array<double, 2>& proj,
+                                                                                      double del )
 {
   double xi_min = std::min( proj[0], proj[1] );
   double xi_max = std::max( proj[0], proj[1] );
@@ -843,7 +838,8 @@ std::array<double, 2> ContactSmoothing::bounds_from_projections( const std::arra
 // Bounds of intergration by applying a quadratic ramping function near the ends of the paramteric
 // space. The smooth region/length is defined by the input del. The returned 'bounds' is the new bounds
 // of intergation that result after the quadratic ramping has been applied.
-std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 2>& bounds, double del )
+TRIBOL_ENZYME_INLINE std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 2>& bounds,
+                                                                            double del )
 {
   std::array<double, 2> smooth_bounds;
   for ( int i = 0; i < 2; ++i ) {
@@ -877,7 +873,8 @@ std::array<double, 2> ContactSmoothing::smooth_bounds( const std::array<double, 
 }
 
 // Build a three-point Gauss-Legendre quadrature rule over the local integration bounds.
-QuadPoints EnergyMortarCalculator::compute_quadrature( const std::array<double, 2>& xi_bounds, int N )
+TRIBOL_ENZYME_INLINE QuadPoints EnergyMortarCalculator::compute_quadrature( const std::array<double, 2>& xi_bounds,
+                                                                            int N )
 {
   QuadPoints out;
 
@@ -1206,7 +1203,8 @@ H1TotalDerivatives EnergyMortarCalculator::compute_h1_total_derivatives( const I
     for ( int i = 0; i < num_nodes; ++i ) {
       node_ids[i] = nodes[i];
       owner_elems[i] = owners[i] >= 0 ? owners[i] : contact_elem;
-      xref[i] = mesh.hasReferencePosition() ? mesh.getReferencePosition()[0][nodes[i]] : mesh.getPosition()[0][nodes[i]];
+      xref[i] =
+          mesh.hasReferencePosition() ? mesh.getReferencePosition()[0][nodes[i]] : mesh.getPosition()[0][nodes[i]];
       xref[num_nodes + i] =
           mesh.hasReferencePosition() ? mesh.getReferencePosition()[1][nodes[i]] : mesh.getPosition()[1][nodes[i]];
     }
