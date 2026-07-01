@@ -87,9 +87,8 @@ TRIBOL_ENZYME_INLINE double local_coord_on_segment( const double* A0, const doub
 }
 
 // Gets the respective gauss-legendre nodes dependant on quadrature order
-TRIBOL_ENZYME_INLINE void determine_legendre_nodes( int N, std::array<double, 3>& x )
+TRIBOL_ENZYME_INLINE void determine_legendre_nodes_raw( int N, double* x )
 {
-  // x.resize( N );
   if ( N == 1 ) {
     x[0] = 0.0;
   } else if ( N == 2 ) {
@@ -121,10 +120,14 @@ TRIBOL_ENZYME_INLINE void determine_legendre_nodes( int N, std::array<double, 3>
   }
 }
 
-// Gets the respective gauss-legendre weights dependant on quadrature order
-TRIBOL_ENZYME_INLINE void determine_legendre_weights( int N, std::array<double, 3>& W )
+TRIBOL_ENZYME_INLINE void determine_legendre_nodes( int N, std::array<double, 3>& x )
 {
-  // W.resize( N );
+  determine_legendre_nodes_raw( N, x.data() );
+}
+
+// Gets the respective gauss-legendre weights dependant on quadrature order
+TRIBOL_ENZYME_INLINE void determine_legendre_weights_raw( int N, double* W )
+{
   if ( N == 1 ) {
     W[0] = 2.0;
   } else if ( N == 2 ) {
@@ -147,6 +150,29 @@ TRIBOL_ENZYME_INLINE void determine_legendre_weights( int N, std::array<double, 
     W[4] = ( 322.0 - 13.0 * std::sqrt( 70.0 ) ) / 900.0;
   } else {
     assert( false && "Unsupported quadrature order" );
+  }
+}
+
+TRIBOL_ENZYME_INLINE void determine_legendre_weights( int N, std::array<double, 3>& W )
+{
+  determine_legendre_weights_raw( N, W.data() );
+}
+
+TRIBOL_ENZYME_INLINE void compute_quadrature_raw( const double* xi_bounds, int N, QuadPoints* out )
+{
+  double qpoints[3] = { 0.0, 0.0, 0.0 };
+  double weights[3] = { 0.0, 0.0, 0.0 };
+
+  determine_legendre_nodes_raw( N, qpoints );
+  determine_legendre_weights_raw( N, weights );
+
+  const double xi_min = xi_bounds[0];
+  const double xi_max = xi_bounds[1];
+  const double J = 0.5 * ( xi_max - xi_min );
+
+  for ( int i = 0; i < N; ++i ) {
+    out->qp[i] = 0.5 * ( xi_max - xi_min ) * qpoints[i] + 0.5 * ( xi_max + xi_min );
+    out->w[i] = weights[i] * J;
   }
 }
 
@@ -537,8 +563,8 @@ TRIBOL_ENZYME_INLINE void h1_kernel_eval( const double* x, const H1KernelData* d
     xi_bounds_raw[0] = bounds_raw[0];
     xi_bounds_raw[1] = bounds_raw[1];
   }
-  const std::array<double, 2> xi_bounds{ xi_bounds_raw[0], xi_bounds_raw[1] };
-  auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, data->N );
+  QuadPoints qp;
+  compute_quadrature_raw( xi_bounds_raw, data->N, &qp );
 
   const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
 
@@ -615,8 +641,8 @@ TRIBOL_ENZYME_INLINE void h1_qp_penalty_kernel_eval( const double* x, const H1Ke
     xi_bounds_raw[0] = bounds_raw[0];
     xi_bounds_raw[1] = bounds_raw[1];
   }
-  const std::array<double, 2> xi_bounds{ xi_bounds_raw[0], xi_bounds_raw[1] };
-  auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, data->N );
+  QuadPoints qp;
+  compute_quadrature_raw( xi_bounds_raw, data->N, &qp );
 
   const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
 
@@ -689,8 +715,8 @@ TRIBOL_ENZYME_INLINE void h1_nodal_energy_kernel_eval( const double* x, const H1
       xi_bounds_raw[0] = bounds_raw[0];
       xi_bounds_raw[1] = bounds_raw[1];
     }
-    const std::array<double, 2> xi_bounds{ xi_bounds_raw[0], xi_bounds_raw[1] };
-    auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, data->N );
+    QuadPoints qp;
+    compute_quadrature_raw( xi_bounds_raw, data->N, &qp );
 
     for ( int i = 0; i < data->N; ++i ) {
       const double xiA = qp.qp[i];
@@ -892,8 +918,7 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval( const double* x, const QPPenal
       xi_bounds_raw[0] = bounds_raw[0];
       xi_bounds_raw[1] = bounds_raw[1];
     }
-    const std::array<double, 2> xi_bounds{ xi_bounds_raw[0], xi_bounds_raw[1] };
-    qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, data->N );
+    compute_quadrature_raw( xi_bounds_raw, data->N, &qp );
   }
 
   const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
@@ -1044,9 +1069,8 @@ TRIBOL_ENZYME_INLINE void kernel_out_enzyme( const double* x, double* out )
   bounds_from_projections_raw( projs, kp.del, bounds_raw );
   double xi_bounds_raw[2];
   smooth_bounds_raw( bounds_raw, kp.del, xi_bounds_raw );
-  const std::array<double, 2> xi_bounds{ xi_bounds_raw[0], xi_bounds_raw[1] };
-
-  auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, kp.N );
+  QuadPoints qp;
+  compute_quadrature_raw( xi_bounds_raw, kp.N, &qp );
 
   Gparams gp;
   for ( std::size_t i = 0; i < qp.qp.size(); ++i ) {
@@ -1410,23 +1434,8 @@ TRIBOL_ENZYME_INLINE QuadPoints EnergyMortarCalculator::compute_quadrature( cons
                                                                             int N )
 {
   QuadPoints out;
-
-  std::array<double, 3> qpoints;
-  std::array<double, 3> weights;
-
-  determine_legendre_nodes( N, qpoints );
-  determine_legendre_weights( N, weights );
-
-  const double xi_min = xi_bounds[0];
-  const double xi_max = xi_bounds[1];
-  // Map the reference quadrature rule to [xi_min, xi_max].
-  const double J = 0.5 * ( xi_max - xi_min );
-
-  for ( int i = 0; i < N; ++i ) {
-    out.qp[i] = 0.5 * ( xi_max - xi_min ) * qpoints[i] + 0.5 * ( xi_max + xi_min );
-    out.w[i] = weights[i] * J;
-  }
-
+  const double xi_bounds_raw[2] = { xi_bounds[0], xi_bounds[1] };
+  compute_quadrature_raw( xi_bounds_raw, N, &out );
   return out;
 }
 
