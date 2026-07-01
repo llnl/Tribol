@@ -486,6 +486,411 @@ TEST( HessianCheck, GtildeFDvsAD )
   }
 }
 
+TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 1, 0 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = { 0.2, 0.8 };
+  RealT y2[2] = { 0.1, 0.1 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  params.penalty_mode = EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;
+
+  EnergyMortarCalculator evaluator( params );
+  auto result = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
+
+  EXPECT_EQ( result.energy, 0.0 );
+  for ( double value : result.force ) {
+    EXPECT_EQ( value, 0.0 );
+  }
+  for ( double value : result.stiffness ) {
+    EXPECT_EQ( value, 0.0 );
+  }
+}
+
+TEST( QuadraturePointPenaltyCheck, ActiveSetSmoothingDoesNotPenalizeOpenGap )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 1, 0 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = { 0.2, 0.8 };
+  RealT y2[2] = { 0.05, 0.05 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  params.penalty_mode = EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;
+  params.h1_active_set_smoothing_gap = 0.1;
+
+  EnergyMortarCalculator evaluator( params );
+  auto result = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
+
+  EXPECT_EQ( result.energy, 0.0 );
+}
+
+TEST( QuadraturePointPenaltyCheck, PenetratingGapInsideActiveSetTransitionIsSmoothed )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 1, 0 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = { 0.2, 0.8 };
+  RealT y2[2] = { -0.05, -0.05 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  params.penalty_mode = EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;
+
+  EnergyMortarCalculator evaluator_without_smoothing( params );
+  const auto unsmoothed =
+      evaluator_without_smoothing.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
+                                                                         mesh2.getView() );
+
+  params.h1_active_set_smoothing_gap = 0.1;
+  EnergyMortarCalculator evaluator_with_smoothing( params );
+  const auto smoothed =
+      evaluator_with_smoothing.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
+                                                                      mesh2.getView() );
+
+  EXPECT_GT( smoothed.energy, 0.0 );
+  EXPECT_LT( smoothed.energy, unsmoothed.energy );
+}
+
+TEST( QuadraturePointPenaltyCheck, ForceAndStiffnessFDvsAD )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 1, 0 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = { 0.2, 0.8 };
+  RealT y2[2] = { -0.1, -0.1 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  params.penalty_mode = EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;
+
+  EnergyMortarCalculator evaluator( params );
+  InterfacePair pair( 0, 0 );
+  const auto base = evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() );
+
+  const std::array<int, 4> side = { 0, 0, 1, 1 };
+  const std::array<int, 4> node = { conn1[0], conn1[1], conn2[0], conn2[1] };
+  const std::vector<RealT> x1_orig( x1, x1 + 2 );
+  const std::vector<RealT> y1_orig( y1, y1 + 2 );
+  const std::vector<RealT> x2_orig( x2, x2 + 2 );
+  const std::vector<RealT> y2_orig( y2, y2 + 2 );
+
+  auto eval = [&]( int dof, double du ) {
+    auto x1_pert = x1_orig;
+    auto y1_pert = y1_orig;
+    auto x2_pert = x2_orig;
+    auto y2_pert = y2_orig;
+    const int endpoint = dof / 2;
+    const int component = dof % 2;
+    auto& x_pert = side[endpoint] == 0 ? x1_pert : x2_pert;
+    auto& y_pert = side[endpoint] == 0 ? y1_pert : y2_pert;
+    if ( component == 0 ) {
+      x_pert[node[endpoint]] += du;
+    } else {
+      y_pert[node[endpoint]] += du;
+    }
+    mesh1.setPosition( x1_pert.data(), y1_pert.data(), nullptr );
+    mesh2.setPosition( x2_pert.data(), y2_pert.data(), nullptr );
+    return evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() );
+  };
+
+  const double grad_eps = 1.0e-7;
+  const double hess_eps = 1.0e-6;
+  const double grad_tol = 1.0e-6;
+  const double hess_tol = 1.0e-5;
+
+  for ( int col = 0; col < 8; ++col ) {
+    const auto plus = eval( col, grad_eps );
+    const auto minus = eval( col, -grad_eps );
+    const double fd_force = ( plus.energy - minus.energy ) / ( 2.0 * grad_eps );
+    EXPECT_NEAR( fd_force, base.force[col], grad_tol ) << "force mismatch at dof " << col;
+  }
+
+  for ( int col = 0; col < 8; ++col ) {
+    const auto plus = eval( col, hess_eps );
+    const auto minus = eval( col, -hess_eps );
+    for ( int row = 0; row < 8; ++row ) {
+      const double fd_stiffness = ( plus.force[row] - minus.force[row] ) / ( 2.0 * hess_eps );
+      EXPECT_NEAR( fd_stiffness, base.stiffness[row * 8 + col], hess_tol )
+          << "stiffness mismatch at row " << row << ", col " << col;
+    }
+  }
+
+  mesh1.setPosition( x1_orig.data(), y1_orig.data(), nullptr );
+  mesh2.setPosition( x2_orig.data(), y2_orig.data(), nullptr );
+}
+
+TEST( H1QuadraturePointPenaltyCheck, ForceAndStiffnessFDvsAD )
+{
+  RealT x1[3] = { 0.0, 1.0, 2.0 };
+  RealT y1[3] = { 0.0, 0.0, 0.08 };
+  RealT x2[3] = { 0.2, 0.9, 1.6 };
+  RealT y2[3] = { -0.18, -0.14, -0.1 };
+
+  IndexT conn1[4] = { 1, 0, 2, 1 };
+  IndexT conn2[4] = { 0, 1, 1, 2 };
+
+  MeshData mesh1( 0, 2, 3, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 2, 3, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  mesh1.setReferencePosition( x1, y1, nullptr );
+  mesh2.setReferencePosition( x2, y2, nullptr );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  params.normal_mode = EnergyMortarNormalMode::H1_NODAL_NORMAL;
+  params.projection_smoothing = false;
+  params.penalty_mode = EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;
+  params.h1_active_set_smoothing_gap = 0.3;
+
+  EnergyMortarCalculator evaluator( params );
+  InterfacePair pair( 0, 0 );
+  const auto base = evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() );
+  const int ndof = 2 * ( base.num_mesh1_nodes + base.num_mesh2_nodes );
+
+  ASSERT_GT( base.energy, 0.0 );
+  ASSERT_EQ( base.h1_force.size(), static_cast<size_t>( ndof ) );
+  ASSERT_EQ( base.h1_stiffness.size(), static_cast<size_t>( ndof * ndof ) );
+
+  const std::vector<RealT> x1_orig( x1, x1 + 3 );
+  const std::vector<RealT> y1_orig( y1, y1 + 3 );
+  const std::vector<RealT> x2_orig( x2, x2 + 3 );
+  const std::vector<RealT> y2_orig( y2, y2 + 3 );
+
+  auto eval_from_dofs = [&]( const std::vector<double>& du ) {
+    auto x1_pert = x1_orig;
+    auto y1_pert = y1_orig;
+    auto x2_pert = x2_orig;
+    auto y2_pert = y2_orig;
+    int idx = 0;
+    for ( int i = 0; i < base.num_mesh1_nodes; ++i ) {
+      x1_pert[base.mesh1_nodes[i]] += du[idx++];
+    }
+    for ( int i = 0; i < base.num_mesh1_nodes; ++i ) {
+      y1_pert[base.mesh1_nodes[i]] += du[idx++];
+    }
+    for ( int i = 0; i < base.num_mesh2_nodes; ++i ) {
+      x2_pert[base.mesh2_nodes[i]] += du[idx++];
+    }
+    for ( int i = 0; i < base.num_mesh2_nodes; ++i ) {
+      y2_pert[base.mesh2_nodes[i]] += du[idx++];
+    }
+    mesh1.setPosition( x1_pert.data(), y1_pert.data(), nullptr );
+    mesh2.setPosition( x2_pert.data(), y2_pert.data(), nullptr );
+    return evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() );
+  };
+
+  const double grad_eps = 1.0e-7;
+  const double hess_eps = 1.0e-6;
+  const double grad_tol = 1.0e-6;
+  const double hess_tol = 1.0e-5;
+
+  for ( int col = 0; col < ndof; ++col ) {
+    std::vector<double> du( ndof, 0.0 );
+    du[col] = grad_eps;
+    const auto plus = eval_from_dofs( du );
+    du[col] = -grad_eps;
+    const auto minus = eval_from_dofs( du );
+    const double fd_force = ( plus.energy - minus.energy ) / ( 2.0 * grad_eps );
+    EXPECT_NEAR( fd_force, base.h1_force[col], grad_tol ) << "H1 force mismatch at dof " << col;
+  }
+
+  for ( int col = 0; col < ndof; ++col ) {
+    std::vector<double> du( ndof, 0.0 );
+    du[col] = hess_eps;
+    const auto plus = eval_from_dofs( du );
+    du[col] = -hess_eps;
+    const auto minus = eval_from_dofs( du );
+    for ( int row = 0; row < ndof; ++row ) {
+      const double fd_stiffness = ( plus.h1_force[row] - minus.h1_force[row] ) / ( 2.0 * hess_eps );
+      EXPECT_NEAR( fd_stiffness, base.h1_stiffness[row * ndof + col], hess_tol )
+          << "H1 stiffness mismatch at row " << row << ", col " << col;
+    }
+  }
+
+  mesh1.setPosition( x1_orig.data(), y1_orig.data(), nullptr );
+  mesh2.setPosition( x2_orig.data(), y2_orig.data(), nullptr );
+}
+
+void checkH1NodalEnergyForceAndStiffness( EnergyMortarNodalEnergyBasis basis )
+{
+  RealT x1[3] = { 0.0, 1.0, 2.0 };
+  RealT y1[3] = { 0.0, 0.0, 0.08 };
+  RealT x2[3] = { 0.2, 0.9, 1.6 };
+  RealT y2[3] = { -0.18, -0.14, -0.1 };
+
+  IndexT conn1[4] = { 1, 0, 2, 1 };
+  IndexT conn2[4] = { 0, 1, 1, 2 };
+
+  MeshData mesh1( 0, 2, 3, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 2, 3, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  mesh1.setReferencePosition( x1, y1, nullptr );
+  mesh2.setReferencePosition( x2, y2, nullptr );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  params.normal_mode = EnergyMortarNormalMode::H1_NODAL_NORMAL;
+  params.projection_smoothing = false;
+  params.penalty_mode = EnergyMortarPenaltyMode::NODAL_ENERGY;
+  params.nodal_energy_basis = basis;
+  params.nodal_energy_angle_smoothing = false;
+  params.h1_active_set_smoothing_gap = 0.3;
+
+  EnergyMortarCalculator evaluator( params );
+  InterfacePair pair( 0, 0 );
+  const auto base = evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() );
+  const int ndof = 2 * ( base.num_mesh1_nodes + base.num_mesh2_nodes );
+
+  ASSERT_GT( base.energy, 0.0 );
+  ASSERT_EQ( base.h1_force.size(), static_cast<size_t>( ndof ) );
+  ASSERT_EQ( base.h1_stiffness.size(), static_cast<size_t>( ndof * ndof ) );
+
+  const std::vector<RealT> x1_orig( x1, x1 + 3 );
+  const std::vector<RealT> y1_orig( y1, y1 + 3 );
+  const std::vector<RealT> x2_orig( x2, x2 + 3 );
+  const std::vector<RealT> y2_orig( y2, y2 + 3 );
+
+  auto eval_from_dofs = [&]( const std::vector<double>& du ) {
+    auto x1_pert = x1_orig;
+    auto y1_pert = y1_orig;
+    auto x2_pert = x2_orig;
+    auto y2_pert = y2_orig;
+    int idx = 0;
+    for ( int i = 0; i < base.num_mesh1_nodes; ++i ) {
+      x1_pert[base.mesh1_nodes[i]] += du[idx++];
+    }
+    for ( int i = 0; i < base.num_mesh1_nodes; ++i ) {
+      y1_pert[base.mesh1_nodes[i]] += du[idx++];
+    }
+    for ( int i = 0; i < base.num_mesh2_nodes; ++i ) {
+      x2_pert[base.mesh2_nodes[i]] += du[idx++];
+    }
+    for ( int i = 0; i < base.num_mesh2_nodes; ++i ) {
+      y2_pert[base.mesh2_nodes[i]] += du[idx++];
+    }
+    mesh1.setPosition( x1_pert.data(), y1_pert.data(), nullptr );
+    mesh2.setPosition( x2_pert.data(), y2_pert.data(), nullptr );
+    return evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() );
+  };
+
+  const double grad_eps = 1.0e-7;
+  const double hess_eps = 1.0e-6;
+  const double grad_tol = 1.0e-6;
+  const double hess_tol = 1.0e-5;
+
+  for ( int col = 0; col < ndof; ++col ) {
+    std::vector<double> du( ndof, 0.0 );
+    du[col] = grad_eps;
+    const auto plus = eval_from_dofs( du );
+    du[col] = -grad_eps;
+    const auto minus = eval_from_dofs( du );
+    const double fd_force = ( plus.energy - minus.energy ) / ( 2.0 * grad_eps );
+    EXPECT_NEAR( fd_force, base.h1_force[col], grad_tol ) << "H1 nodal energy force mismatch at dof " << col;
+  }
+
+  for ( int col = 0; col < ndof; ++col ) {
+    std::vector<double> du( ndof, 0.0 );
+    du[col] = hess_eps;
+    const auto plus = eval_from_dofs( du );
+    du[col] = -hess_eps;
+    const auto minus = eval_from_dofs( du );
+    for ( int row = 0; row < ndof; ++row ) {
+      const double fd_stiffness = ( plus.h1_force[row] - minus.h1_force[row] ) / ( 2.0 * hess_eps );
+      EXPECT_NEAR( fd_stiffness, base.h1_stiffness[row * ndof + col], hess_tol )
+          << "H1 nodal energy stiffness mismatch at row " << row << ", col " << col;
+    }
+  }
+
+  mesh1.setPosition( x1_orig.data(), y1_orig.data(), nullptr );
+  mesh2.setPosition( x2_orig.data(), y2_orig.data(), nullptr );
+}
+
+TEST( H1NodalEnergyPenaltyCheck, FEForceAndStiffnessFDvsAD )
+{
+  checkH1NodalEnergyForceAndStiffness( EnergyMortarNodalEnergyBasis::FE );
+}
+
+TEST( H1NodalEnergyPenaltyCheck, CubicSplineForceAndStiffnessFDvsAD )
+{
+  checkH1NodalEnergyForceAndStiffness( EnergyMortarNodalEnergyBasis::CUBIC_SPLINE );
+}
+
+TEST( H1NodalEnergyPenaltyCheck, AngleSmoothingAtNinetyDegreesIsInactive )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  RealT x2[2] = { 0.2, 0.8 };
+  RealT y2[2] = { -0.1, -0.1 };
+
+  IndexT conn1[2] = { 1, 0 };
+  IndexT conn2[2] = { 1, 0 };
+
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  mesh1.setReferencePosition( x1, y1, nullptr );
+  mesh2.setReferencePosition( x2, y2, nullptr );
+
+  ContactParams params;
+  params.del = 0.0;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  params.normal_mode = EnergyMortarNormalMode::H1_NODAL_NORMAL;
+  params.projection_smoothing = false;
+  params.penalty_mode = EnergyMortarPenaltyMode::NODAL_ENERGY;
+  params.nodal_energy_basis = EnergyMortarNodalEnergyBasis::CUBIC_SPLINE;
+
+  EnergyMortarCalculator evaluator_with_smoothing( params );
+  const auto inactive =
+      evaluator_with_smoothing.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
+                                                                      mesh2.getView() );
+  EXPECT_EQ( inactive.energy, 0.0 );
+
+  params.nodal_energy_angle_smoothing = false;
+  EnergyMortarCalculator evaluator_without_smoothing( params );
+  const auto active =
+      evaluator_without_smoothing.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
+                                                                         mesh2.getView() );
+  EXPECT_GT( active.energy, 0.0 );
+}
+
 TEST( H1TotalDerivativeCheck, GtildeFDvsAD )
 {
   RealT x1[3] = { 0.0, 1.0, 2.0 };

@@ -540,9 +540,8 @@ void ParentRedecompTransfer::RedecompToParent( const mfem::GridFunction& redecom
 }
 
 void ParentRedecompTransfer::RedecompToSubmesh( const mfem::GridFunction& redecomp_src,
-                                                mfem::ParGridFunction& submesh_dst ) const
+                                                mfem::Vector& submesh_dst ) const
 {
-  submesh_dst = 0.0;
   submesh_redecomp_xfer_.RedecompToSubmesh( redecomp_src, submesh_dst );
 }
 

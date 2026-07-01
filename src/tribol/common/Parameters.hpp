@@ -132,6 +132,25 @@ enum class EnergyMortarNormalMode
 };
 
 /*!
+ * \brief Enumerates penalty enforcement options for ENERGY_MORTAR
+ */
+enum class EnergyMortarPenaltyMode
+{
+  NODAL_GAP,             ///! Penalize assembled nodal gaps
+  QUADRATURE_POINT_GAP,  ///! Penalize gaps independently at quadrature points
+  NODAL_ENERGY,          ///! Penalize H1 nodal-normal gaps through nodal energy contributions
+};
+
+/*!
+ * \brief Enumerates nodal energy basis options for ENERGY_MORTAR
+ */
+enum class EnergyMortarNodalEnergyBasis
+{
+  FE,            ///! Use the linear finite element basis
+  CUBIC_SPLINE,  ///! Use a cubic spline basis with zero nodal slopes
+};
+
+/*!
  * \brief Enumerates the available contact model options.
  *
  * The contact model enumerates interface constitutive modeling options.
@@ -509,6 +528,14 @@ struct Parameters {
       EnergyMortarNormalMode::ELEMENT_NORMAL;  ///! Normal field used by ENERGY_MORTAR
   bool energy_mortar_projection_smoothing = true;       ///! Apply projection-bound smoothing in ENERGY_MORTAR
   bool energy_mortar_projection_smoothing_set = false;  ///! True if the user explicitly set projection smoothing
+  RealT energy_mortar_h1_active_set_smoothing_gap =
+      0.0;  ///! Active-set smoothing transition gap; disabled when <= 0
+  EnergyMortarPenaltyMode energy_mortar_penalty_mode =
+      EnergyMortarPenaltyMode::NODAL_GAP;  ///! Penalty enforcement mode used by ENERGY_MORTAR
+  EnergyMortarNodalEnergyBasis energy_mortar_nodal_energy_basis =
+      EnergyMortarNodalEnergyBasis::CUBIC_SPLINE;  ///! Basis used by ENERGY_MORTAR NODAL_ENERGY mode
+  bool energy_mortar_nodal_energy_angle_smoothing =
+      true;  ///! Apply 80-to-90 degree angle smoothing in ENERGY_MORTAR NODAL_ENERGY mode
 };
 
 }  // namespace tribol

@@ -25,12 +25,35 @@ struct ContactParams {
   bool enzyme_quadrature;                  // Determines how enzyming is performed (default = True)
   EnergyMortarNormalMode normal_mode{ EnergyMortarNormalMode::ELEMENT_NORMAL };  // Normal field used by EnergyMortar
   bool projection_smoothing{ true };       // Apply projection-bound smoothing
+  double h1_active_set_smoothing_gap{ 0.0 };  // Active-set smoothing transition gap; disabled when <= 0
+  EnergyMortarPenaltyMode penalty_mode{ EnergyMortarPenaltyMode::NODAL_GAP };  // Penalty enforcement mode
+  EnergyMortarNodalEnergyBasis nodal_energy_basis{
+      EnergyMortarNodalEnergyBasis::CUBIC_SPLINE };  // Basis used by NODAL_ENERGY mode
+  bool nodal_energy_angle_smoothing{ true };          // Apply 80-to-90 degree angle smoothing in NODAL_ENERGY mode
 };
+
+constexpr int h1_max_stencil_nodes_per_mesh = 16;
+constexpr int h1_max_stencil_elems_per_mesh = 16;
 
 // Weighted gap and trib area
 struct NodalContactData {
   std::array<double, 2> AI;       // Trib area
   std::array<double, 2> g_tilde;  // Weighted gap
+};
+
+/// Stores quadrature-point penalty energy derivatives for one interface pair.
+struct QuadraturePointPenaltyData {
+  double energy{ 0.0 };
+  std::array<double, 8> force{};
+  std::array<double, 64> stiffness{};
+  int num_mesh1_nodes{ 0 };
+  int num_mesh2_nodes{ 0 };
+  std::array<int, h1_max_stencil_nodes_per_mesh> mesh1_nodes{};
+  std::array<int, h1_max_stencil_nodes_per_mesh> mesh2_nodes{};
+  std::array<int, h1_max_stencil_nodes_per_mesh> mesh1_owner_elems{};
+  std::array<int, h1_max_stencil_nodes_per_mesh> mesh2_owner_elems{};
+  std::vector<double> h1_force;
+  std::vector<double> h1_stiffness;
 };
 
 /// Stores finite-difference and analytical derivative data for validation tests.
@@ -70,9 +93,6 @@ struct Gparams {
   std::array<double, 3> w;
 };
 
-constexpr int h1_max_stencil_nodes_per_mesh = 16;
-constexpr int h1_max_stencil_elems_per_mesh = 16;
-
 /// Stores total derivative data for the H1 nodal-normal EnergyMortar path.
 struct H1TotalDerivatives {
   int num_mesh1_nodes{ 0 };
@@ -96,7 +116,11 @@ struct H1TotalDerivatives {
 struct H1KernelData {
   int N{ 3 };
   double del{ 0.1 };
+  double k{ 1.0 };
+  double active_set_smoothing_gap{ 0.0 };
   bool projection_smoothing{ false };
+  EnergyMortarNodalEnergyBasis nodal_energy_basis{ EnergyMortarNodalEnergyBasis::CUBIC_SPLINE };
+  bool nodal_energy_angle_smoothing{ true };
   int num_nodes1{ 0 };
   int num_nodes2{ 0 };
   int num_elems1{ 0 };
@@ -248,6 +272,11 @@ class EnergyMortarCalculator {
   /// controlled by `epsilon`.
   FiniteDiffResult validate_hessian( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
                                      double epsilon = 1e-7 ) const;
+
+  /// Compute local energy, force, and stiffness for quadrature-point penalty enforcement.
+  QuadraturePointPenaltyData compute_quadrature_point_penalty_data( const InterfacePair& pair,
+                                                                    const MeshData::Viewer& mesh1,
+                                                                    const MeshData::Viewer& mesh2 ) const;
 
  private:
   /// Contact parameters controlling penalty stiffness, smoothing, and derivative behavior.

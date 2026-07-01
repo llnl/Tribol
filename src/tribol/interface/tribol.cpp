@@ -133,6 +133,66 @@ void setEnergyMortarProjectionSmoothing( IndexT cs_id, bool enabled )
 }
 
 //------------------------------------------------------------------------------
+void setEnergyMortarH1ActiveSetSmoothing( IndexT cs_id, RealT gap_transition )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarH1ActiveSetSmoothing(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  auto& params = cs->getParameters();
+  params.energy_mortar_h1_active_set_smoothing_gap = gap_transition;
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarH1ActiveSetSmoothing( gap_transition );
+  }
+}
+
+//------------------------------------------------------------------------------
+void setEnergyMortarPenaltyMode( IndexT cs_id, EnergyMortarPenaltyMode mode )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarPenaltyMode(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  auto& params = cs->getParameters();
+  params.energy_mortar_penalty_mode = mode;
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarPenaltyMode( mode );
+  }
+}
+
+//------------------------------------------------------------------------------
+void setEnergyMortarNodalEnergyBasis( IndexT cs_id, EnergyMortarNodalEnergyBasis basis )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarNodalEnergyBasis(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  auto& params = cs->getParameters();
+  params.energy_mortar_nodal_energy_basis = basis;
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarNodalEnergyBasis( basis );
+  }
+}
+
+//------------------------------------------------------------------------------
+void setEnergyMortarNodalEnergyAngleSmoothing( IndexT cs_id, bool enabled )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarNodalEnergyAngleSmoothing(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  auto& params = cs->getParameters();
+  params.energy_mortar_nodal_energy_angle_smoothing = enabled;
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarNodalEnergyAngleSmoothing( enabled );
+  }
+}
+
+//------------------------------------------------------------------------------
 void setKinematicConstantPenalty( IndexT mesh_id, RealT k )
 {
   // note, error checking done in the following registration routine

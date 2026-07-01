@@ -85,6 +85,38 @@ void setEnergyMortarNormalMode( IndexT cs_id, EnergyMortarNormalMode normal_mode
 void setEnergyMortarProjectionSmoothing( IndexT cs_id, bool enabled );
 
 /*!
+ * \brief Sets the active-set smoothing transition gap for ENERGY_MORTAR
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] gap_transition positive transition width; disabled when <= 0
+ */
+void setEnergyMortarH1ActiveSetSmoothing( IndexT cs_id, RealT gap_transition );
+
+/*!
+ * \brief Sets the penalty enforcement mode for ENERGY_MORTAR
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] mode penalty mode
+ */
+void setEnergyMortarPenaltyMode( IndexT cs_id, EnergyMortarPenaltyMode mode );
+
+/*!
+ * \brief Sets the nodal-energy basis for ENERGY_MORTAR NODAL_ENERGY mode
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] basis nodal-energy basis
+ */
+void setEnergyMortarNodalEnergyBasis( IndexT cs_id, EnergyMortarNodalEnergyBasis basis );
+
+/*!
+ * \brief Enables or disables nodal-energy angle smoothing for ENERGY_MORTAR
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] enabled true to apply 80-to-90 degree angle smoothing
+ */
+void setEnergyMortarNodalEnergyAngleSmoothing( IndexT cs_id, bool enabled );
+
+/*!
  * \brief Sets the constant kinematic penalty stiffness
  * \param [in] mesh_id mesh id for penalty stiffness
  * \param [in] k constant kinematic penalty stiffness

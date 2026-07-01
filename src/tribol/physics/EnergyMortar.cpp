@@ -35,7 +35,7 @@ TRIBOL_ENZYME_INLINE void find_normal( const double* coord1, const double* coord
   normal[1] = -dx;
 }
 
-double normalize2( double* v )
+TRIBOL_ENZYME_INLINE double normalize2( double* v )
 {
   const double mag = std::sqrt( v[0] * v[0] + v[1] * v[1] );
   if ( mag > 1.0e-14 ) {
@@ -45,7 +45,7 @@ double normalize2( double* v )
   return mag;
 }
 
-void interp_normal( const double* n0, const double* n1, double xi, double* n )
+TRIBOL_ENZYME_INLINE void interp_normal( const double* n0, const double* n1, double xi, double* n )
 {
   const double N1 = 0.5 - xi;
   const double N2 = 0.5 + xi;
@@ -54,7 +54,27 @@ void interp_normal( const double* n0, const double* n1, double xi, double* n )
   normalize2( n );
 }
 
-double local_coord_on_segment( const double* A0, const double* A1, const double* p )
+TRIBOL_ENZYME_INLINE double nodal_energy_basis_value( EnergyMortarNodalEnergyBasis basis, int node, double xi )
+{
+  const double t = xi + 0.5;
+  if ( basis == EnergyMortarNodalEnergyBasis::CUBIC_SPLINE ) {
+    const double h = 3.0 * t * t - 2.0 * t * t * t;
+    return node == 0 ? 1.0 - h : h;
+  }
+  return node == 0 ? 1.0 - t : t;
+}
+
+TRIBOL_ENZYME_INLINE void interp_normal_basis( const double* n0, const double* n1, double xi,
+                                               EnergyMortarNodalEnergyBasis basis, double* n )
+{
+  const double N1 = nodal_energy_basis_value( basis, 0, xi );
+  const double N2 = nodal_energy_basis_value( basis, 1, xi );
+  n[0] = N1 * n0[0] + N2 * n1[0];
+  n[1] = N1 * n0[1] + N2 * n1[1];
+  normalize2( n );
+}
+
+TRIBOL_ENZYME_INLINE double local_coord_on_segment( const double* A0, const double* A1, const double* p )
 {
   const double dx = A1[0] - A0[0];
   const double dy = A1[1] - A0[1];
@@ -151,7 +171,7 @@ TRIBOL_ENZYME_INLINE void endpoints( const MeshData::Viewer& mesh, int elem_id, 
   P1[1] = P0_P1[3];
 }
 
-inline void endpoint_normals( const MeshData::Viewer& mesh, int elem_id, double N0[2], double N1[2] )
+TRIBOL_ENZYME_INLINE void endpoint_normals( const MeshData::Viewer& mesh, int elem_id, double N0[2], double N1[2] )
 {
   SLIC_ERROR_IF( !mesh.hasNodalNormals(), "ENERGY_MORTAR H1 normal mode requires nodal normals." );
   const auto conn = mesh.getConnectivity()( elem_id );
@@ -209,6 +229,82 @@ TRIBOL_ENZYME_INLINE void find_intersection( const double* A0, const double* A1,
   intersection[1] = A0[1] + alpha * tA[1];
 }
 
+TRIBOL_ENZYME_INLINE bool project_to_edge_along_direction( const double* B0, const double* B1, const double* p,
+                                                           const double* direction, double* intersection,
+                                                           double* xiB )
+{
+  const double tB[2] = { B1[0] - B0[0], B1[1] - B0[1] };
+  const double d[2] = { p[0] - B0[0], p[1] - B0[1] };
+
+  const double dir_len = std::sqrt( direction[0] * direction[0] + direction[1] * direction[1] );
+  if ( dir_len < 1.0e-14 ) {
+    return false;
+  }
+  const double n[2] = { direction[0] / dir_len, direction[1] / dir_len };
+
+  const double det = tB[0] * n[1] - tB[1] * n[0];
+  if ( std::abs( det ) < 1.0e-10 ) {
+    return false;
+  }
+
+  const double alpha = ( d[0] * n[1] - d[1] * n[0] ) / det;
+  *xiB = alpha - 0.5;
+  if ( *xiB < -0.5 || *xiB > 0.5 ) {
+    return false;
+  }
+
+  intersection[0] = B0[0] + alpha * tB[0];
+  intersection[1] = B0[1] + alpha * tB[1];
+  return true;
+}
+
+TRIBOL_ENZYME_INLINE double nodal_energy_angle_weight( const double* nA, const double* nB, bool enabled )
+{
+  if ( !enabled ) {
+    return 1.0;
+  }
+
+  double c = -( nA[0] * nB[0] + nA[1] * nB[1] );
+  if ( c > 1.0 ) {
+    c = 1.0;
+  }
+  if ( c < -1.0 ) {
+    c = -1.0;
+  }
+
+  constexpr double pi = 3.14159265358979323846264338327950288;
+  constexpr double theta0 = 80.0 * pi / 180.0;
+  constexpr double theta1 = 0.5 * pi;
+  constexpr double cos_theta1 = 0.0;
+  const double cos_theta0 = std::cos( theta0 );
+
+  if ( c >= cos_theta0 ) {
+    return 1.0;
+  }
+  if ( c <= cos_theta1 ) {
+    return 0.0;
+  }
+
+  const double theta = std::acos( c );
+  const double t = ( theta - theta0 ) / ( theta1 - theta0 );
+  const double smooth = 3.0 * t * t - 2.0 * t * t * t;
+  return 1.0 - smooth;
+}
+
+TRIBOL_ENZYME_INLINE double active_set_smoothing_weight( double gap, double transition_gap )
+{
+  if ( transition_gap <= 0.0 || gap <= -transition_gap ) {
+    return gap < 0.0 ? 1.0 : 0.0;
+  }
+  if ( gap >= 0.0 ) {
+    return 0.0;
+  }
+
+  const double t = ( gap + transition_gap ) / transition_gap;
+  const double smooth = 3.0 * t * t - 2.0 * t * t * t;
+  return 1.0 - smooth;
+}
+
 // Project the verticies of edge B onto edge A and return their local coordinates on A.
 // The variable projections is retuned with the coordinates in the parametric space where
 // the projections of edge B intersect edge A
@@ -246,8 +342,8 @@ TRIBOL_ENZYME_INLINE void get_projections( const double* A0, const double* A1, c
   projections[1] = xi_max;
 }
 
-void get_projections_h1( const double* A0, const double* A1, const double* B0, const double* B1, const double* nB0,
-                         const double* nB1, double* projections )
+TRIBOL_ENZYME_INLINE void get_projections_h1( const double* A0, const double* A1, const double* B0, const double* B1,
+                                              const double* nB0, const double* nB1, double* projections )
 {
   const double* B_endpoints[2] = { B0, B1 };
   const double* B_normals[2] = { nB0, nB1 };
@@ -271,8 +367,40 @@ void get_projections_h1( const double* A0, const double* A1, const double* B0, c
   projections[1] = std::max( xi0, xi1 );
 }
 
-void project_to_edge_h1( const double* B0, const double* B1, const double* nB0, const double* nB1, const double* x1,
-                         double* x2, double* nB )
+TRIBOL_ENZYME_INLINE bool get_projections_along_direction( const double* A0, const double* A1, const double* B0,
+                                                           const double* B1, const double* direction,
+                                                           double* projections )
+{
+  const double dir_len = std::sqrt( direction[0] * direction[0] + direction[1] * direction[1] );
+  if ( dir_len < 1.0e-14 ) {
+    projections[0] = 0.0;
+    projections[1] = 0.0;
+    return false;
+  }
+  const double n[2] = { direction[0] / dir_len, direction[1] / dir_len };
+  const double tA[2] = { A1[0] - A0[0], A1[1] - A0[1] };
+  const double det = tA[0] * n[1] - tA[1] * n[0];
+  if ( std::abs( det ) < 1.0e-10 ) {
+    projections[0] = 0.0;
+    projections[1] = 0.0;
+    return false;
+  }
+
+  const double* B_endpoints[2] = { B0, B1 };
+  double xi[2] = { 0.0, 0.0 };
+  for ( int i = 0; i < 2; ++i ) {
+    double q[2] = { 0.0, 0.0 };
+    find_intersection( A0, A1, B_endpoints[i], n, q );
+    xi[i] = local_coord_on_segment( A0, A1, q );
+  }
+
+  projections[0] = std::min( xi[0], xi[1] );
+  projections[1] = std::max( xi[0], xi[1] );
+  return true;
+}
+
+TRIBOL_ENZYME_INLINE void project_to_edge_h1( const double* B0, const double* B1, const double* nB0,
+                                              const double* nB1, const double* x1, double* x2, double* nB )
 {
   double xiB = local_coord_on_segment( B0, B1, x1 );
   for ( int iter = 0; iter < 3; ++iter ) {
@@ -283,8 +411,9 @@ void project_to_edge_h1( const double* B0, const double* B1, const double* nB0, 
   interp_normal( nB0, nB1, xiB, nB );
 }
 
-void recover_h1_normals( const double* x, int num_nodes, int num_elems,
-                         const int elem_nodes[h1_max_stencil_elems_per_mesh][2], const double* xref, double* n )
+TRIBOL_ENZYME_INLINE void recover_h1_normals( const double* x, int num_nodes, int num_elems,
+                                              const int elem_nodes[h1_max_stencil_elems_per_mesh][2],
+                                              const double* xref, double* n )
 {
   double nref[h1_max_stencil_nodes_per_mesh][2];
   for ( int i = 0; i < h1_max_stencil_nodes_per_mesh; ++i ) {
@@ -332,7 +461,8 @@ void recover_h1_normals( const double* x, int num_nodes, int num_elems,
   }
 }
 
-void h1_kernel_eval( const double* x, const H1KernelData* data, double* g_tilde_out, double* A_out )
+TRIBOL_ENZYME_INLINE void h1_kernel_eval( const double* x, const H1KernelData* data, double* g_tilde_out,
+                                          double* A_out )
 {
   const int n1 = data->num_nodes1;
   const int n2 = data->num_nodes2;
@@ -401,6 +531,140 @@ void h1_kernel_eval( const double* x, const H1KernelData* data, double* g_tilde_
   g_tilde_out[1] = g2;
   A_out[0] = Atrib1;
   A_out[1] = Atrib2;
+}
+
+TRIBOL_ENZYME_INLINE void h1_qp_penalty_kernel_eval( const double* x, const H1KernelData* data, double* energy_out )
+{
+  const int n1 = data->num_nodes1;
+  const int n2 = data->num_nodes2;
+  const double* x1_all = x;
+  const double* x2_all = x + 2 * n1;
+
+  double normal1[2 * h1_max_stencil_nodes_per_mesh];
+  double normal2[2 * h1_max_stencil_nodes_per_mesh];
+  recover_h1_normals( x1_all, n1, data->num_elems1, data->elem_nodes1, data->xref1, normal1 );
+  recover_h1_normals( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, normal2 );
+
+  const int A_node0 = data->contact_nodes1[0];
+  const int A_node1 = data->contact_nodes1[1];
+  const int B_node0 = data->contact_nodes2[0];
+  const int B_node1 = data->contact_nodes2[1];
+
+  const double A0[2] = { x1_all[A_node0], x1_all[n1 + A_node0] };
+  const double A1[2] = { x1_all[A_node1], x1_all[n1 + A_node1] };
+  const double B0[2] = { x2_all[B_node0], x2_all[n2 + B_node0] };
+  const double B1[2] = { x2_all[B_node1], x2_all[n2 + B_node1] };
+  const double nA0[2] = { normal1[2 * A_node0], normal1[2 * A_node0 + 1] };
+  const double nA1[2] = { normal1[2 * A_node1], normal1[2 * A_node1 + 1] };
+  const double nB0[2] = { normal2[2 * B_node0], normal2[2 * B_node0 + 1] };
+  const double nB1[2] = { normal2[2 * B_node1], normal2[2 * B_node1 + 1] };
+
+  double projs_raw[2];
+  get_projections_h1( A0, A1, B0, B1, nB0, nB1, projs_raw );
+  auto bounds = ContactSmoothing::bounds_from_projections( { projs_raw[0], projs_raw[1] }, data->del );
+  auto xi_bounds = data->projection_smoothing ? ContactSmoothing::smooth_bounds( bounds, data->del ) : bounds;
+  auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, data->N );
+
+  const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+
+  double energy = 0.0;
+  for ( int i = 0; i < data->N; ++i ) {
+    double xA[2];
+    iso_map( A0, A1, qp.qp[i], xA );
+
+    double nA[2], nB[2], xB[2];
+    interp_normal( nA0, nA1, qp.qp[i], nA );
+    project_to_edge_h1( B0, B1, nB0, nB1, xA, xB, nB );
+
+    const double dx = xA[0] - xB[0];
+    const double dy = xA[1] - xB[1];
+    const double gn = -( dx * nB[0] + dy * nB[1] );
+    const double dot = nB[0] * nA[0] + nB[1] * nA[1];
+    const double eta = ( dot < 0.0 ) ? dot : 0.0;
+    const double gap = gn * eta;
+
+    const double active_weight = active_set_smoothing_weight( gap, data->active_set_smoothing_gap );
+    if ( active_weight > 0.0 ) {
+      energy += data->k * qp.w[i] * J * active_weight * gap * gap;
+    }
+  }
+
+  *energy_out = energy;
+}
+
+TRIBOL_ENZYME_INLINE void h1_nodal_energy_kernel_eval( const double* x, const H1KernelData* data, double* energy_out )
+{
+  const int n1 = data->num_nodes1;
+  const int n2 = data->num_nodes2;
+  const double* x1_all = x;
+  const double* x2_all = x + 2 * n1;
+
+  double normal1[2 * h1_max_stencil_nodes_per_mesh];
+  double normal2[2 * h1_max_stencil_nodes_per_mesh];
+  recover_h1_normals( x1_all, n1, data->num_elems1, data->elem_nodes1, data->xref1, normal1 );
+  recover_h1_normals( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, normal2 );
+
+  const int A_node0 = data->contact_nodes1[0];
+  const int A_node1 = data->contact_nodes1[1];
+  const int B_node0 = data->contact_nodes2[0];
+  const int B_node1 = data->contact_nodes2[1];
+
+  const double A0[2] = { x1_all[A_node0], x1_all[n1 + A_node0] };
+  const double A1[2] = { x1_all[A_node1], x1_all[n1 + A_node1] };
+  const double B0[2] = { x2_all[B_node0], x2_all[n2 + B_node0] };
+  const double B1[2] = { x2_all[B_node1], x2_all[n2 + B_node1] };
+  double nA_nodes[2][2] = { { normal1[2 * A_node0], normal1[2 * A_node0 + 1] },
+                            { normal1[2 * A_node1], normal1[2 * A_node1 + 1] } };
+  const double nB0[2] = { normal2[2 * B_node0], normal2[2 * B_node0 + 1] };
+  const double nB1[2] = { normal2[2 * B_node1], normal2[2 * B_node1 + 1] };
+  normalize2( nA_nodes[0] );
+  normalize2( nA_nodes[1] );
+
+  const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+
+  double energy = 0.0;
+  for ( int node = 0; node < 2; ++node ) {
+    double projs_raw[2];
+    const bool valid_bounds = get_projections_along_direction( A0, A1, B0, B1, nA_nodes[node], projs_raw );
+    if ( !valid_bounds ) {
+      continue;
+    }
+    auto bounds = ContactSmoothing::bounds_from_projections( { projs_raw[0], projs_raw[1] }, data->del );
+    auto xi_bounds = data->projection_smoothing ? ContactSmoothing::smooth_bounds( bounds, data->del ) : bounds;
+    auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, data->N );
+
+    for ( int i = 0; i < data->N; ++i ) {
+      const double xiA = qp.qp[i];
+      const double phi = nodal_energy_basis_value( data->nodal_energy_basis, node, xiA );
+      double xA[2];
+      iso_map( A0, A1, xiA, xA );
+
+      double xB[2] = { 0.0, 0.0 };
+      double xiB = 0.0;
+      const bool valid_projection = project_to_edge_along_direction( B0, B1, xA, nA_nodes[node], xB, &xiB );
+      if ( !valid_projection ) {
+        continue;
+      }
+
+      double nB[2];
+      interp_normal_basis( nB0, nB1, xiB, data->nodal_energy_basis, nB );
+      const double angle_weight =
+          nodal_energy_angle_weight( nA_nodes[node], nB, data->nodal_energy_angle_smoothing );
+      if ( angle_weight <= 0.0 ) {
+        continue;
+      }
+
+      const double dx = xA[0] - xB[0];
+      const double dy = xA[1] - xB[1];
+      const double gap = -( dx * nA_nodes[node][0] + dy * nA_nodes[node][1] );
+      const double active_weight = active_set_smoothing_weight( gap, data->active_set_smoothing_gap );
+      if ( active_weight > 0.0 ) {
+        energy += data->k * qp.w[i] * J * phi * angle_weight * active_weight * gap * gap;
+      }
+    }
+  }
+
+  *energy_out = energy;
 }
 
 // Integrate the nodal smoothed gap and tributary area contributions over edge A.
@@ -534,6 +798,113 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel_quad( const double* x, const Gparams* gp
   A_out[1] = AI_2;
 }
 
+struct QPPenaltyKernelData {
+  int N{ 3 };
+  double del{ 0.1 };
+  double k{ 1.0 };
+  double active_set_smoothing_gap{ 0.0 };
+  bool projection_smoothing{ true };
+  bool fixed_quadrature{ false };
+  Gparams qp{};
+};
+
+TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval( const double* x, const QPPenaltyKernelData* data,
+                                                  double* energy_out )
+{
+  const double A0[2] = { x[0], x[1] };
+  const double A1[2] = { x[2], x[3] };
+  const double B0[2] = { x[4], x[5] };
+  const double B1[2] = { x[6], x[7] };
+
+  QuadPoints qp;
+  if ( data->fixed_quadrature ) {
+    qp.qp = data->qp.qp;
+    qp.w = data->qp.w;
+  } else {
+    double projs_raw[2];
+    get_projections( A0, A1, B0, B1, projs_raw );
+    auto bounds = ContactSmoothing::bounds_from_projections( { projs_raw[0], projs_raw[1] }, data->del );
+    auto xi_bounds = data->projection_smoothing ? ContactSmoothing::smooth_bounds( bounds, data->del ) : bounds;
+    qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, data->N );
+  }
+
+  const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+
+  double nB[2];
+  find_normal( B0, B1, nB );
+
+  double nA[2];
+  find_normal( A0, A1, nA );
+
+  const double dot = nB[0] * nA[0] + nB[1] * nA[1];
+  const double eta = ( dot < 0.0 ) ? dot : 0.0;
+
+  double energy = 0.0;
+  for ( int i = 0; i < data->N; ++i ) {
+    double x1[2];
+    iso_map( A0, A1, qp.qp[i], x1 );
+
+    double x2[2];
+    find_intersection( B0, B1, x1, nB, x2 );
+
+    const double dx = x1[0] - x2[0];
+    const double dy = x1[1] - x2[1];
+    const double gn = -( dx * nB[0] + dy * nB[1] );
+    const double gap = gn * eta;
+
+    const double active_weight = active_set_smoothing_weight( gap, data->active_set_smoothing_gap );
+    if ( active_weight > 0.0 ) {
+      energy += data->k * qp.w[i] * J * active_weight * gap * gap;
+    }
+  }
+
+  *energy_out = energy;
+}
+
+TRIBOL_ENZYME_INLINE void qp_penalty_kernel_out( const double* x, const void* data_void, double* out )
+{
+  const QPPenaltyKernelData* data = static_cast<const QPPenaltyKernelData*>( data_void );
+  qp_penalty_kernel_eval( x, data, out );
+}
+
+TRIBOL_ENZYME_INLINE void grad_qp_penalty_kernel_void( const double* x, const void* data_void, double* dout_du )
+{
+  const QPPenaltyKernelData* data = static_cast<const QPPenaltyKernelData*>( data_void );
+  double dx[8] = { 0.0 };
+  double out = 0.0;
+  double dout = 1.0;
+
+  __enzyme_autodiff<void>( (void*)qp_penalty_kernel_out, enzyme_dup, x, dx, enzyme_const, (const void*)data, enzyme_dup,
+                           &out, &dout );
+
+  for ( int i = 0; i < 8; ++i ) {
+    dout_du[i] = dx[i];
+  }
+}
+
+void grad_qp_penalty_kernel( const double* x, const QPPenaltyKernelData* data, double* dout_du )
+{
+  grad_qp_penalty_kernel_void( x, static_cast<const void*>( data ), dout_du );
+}
+
+void d2_qp_penalty_kernel( const double* x, const QPPenaltyKernelData* data, double* H )
+{
+  for ( int col = 0; col < 8; ++col ) {
+    double dx[8] = { 0.0 };
+    dx[col] = 1.0;
+
+    double grad[8] = { 0.0 };
+    double dgrad[8] = { 0.0 };
+
+    __enzyme_fwddiff<void>( (void*)grad_qp_penalty_kernel_void, enzyme_dup, x, dx, enzyme_const, (const void*)data,
+                            enzyme_dup, grad, dgrad );
+
+    for ( int row = 0; row < 8; ++row ) {
+      H[row * 8 + col] = dgrad[row];
+    }
+  }
+}
+
 // Select which scalar quantity is extracted from the gap/area kernel for Enzyme differentiation.
 enum class KernelOutput
 {
@@ -545,7 +916,7 @@ enum class KernelOutput
 
 // Wrap the fixed-quadrature kernel as a scalar-valued function for Enzyme.
 template <KernelOutput Output>
-static void kernel_out( const double* x, const void* gp_void, double* out )
+TRIBOL_ENZYME_INLINE void kernel_out( const double* x, const void* gp_void, double* out )
 {
   const Gparams* gp = static_cast<const Gparams*>( gp_void );
   double gt[2];
@@ -565,7 +936,7 @@ static void kernel_out( const double* x, const void* gp_void, double* out )
 
 // Differentiate the selected fixed-quadrature scalar kernel with respect to the 8 endpoint coordinates.
 template <KernelOutput Output>
-void grad_kernel( const double* x, const Gparams* gp, double* dout_du )
+TRIBOL_ENZYME_INLINE void grad_kernel( const double* x, const Gparams* gp, double* dout_du )
 {
   double dx[8] = { 0.0 };
   double out = 0.0;
@@ -583,7 +954,7 @@ void grad_kernel( const double* x, const Gparams* gp, double* dout_du )
 
 // Wrap the varying-quadrature kernel as a scalar-valued function for Enzyme.
 template <KernelOutput Output>
-static void kernel_out_enzyme( const double* x, double* out )
+TRIBOL_ENZYME_INLINE void kernel_out_enzyme( const double* x, double* out )
 {
   KernelParams kp;
   // x stores the two endpoints of edge A followed by the two endpoints of edge B.
@@ -630,7 +1001,7 @@ static void kernel_out_enzyme( const double* x, double* out )
 
 // Differentiate the selected varying-quadrature scalar kernel with respect to the 8 endpoint coordinates.
 template <KernelOutput Output>
-void grad_kernel_enzyme( const double* x, double* dout_du )
+TRIBOL_ENZYME_INLINE void grad_kernel_enzyme( const double* x, double* dout_du )
 {
   double dx[8] = { 0.0 };
   double out = 0.0;
@@ -680,7 +1051,7 @@ void d2_kernel_quad( const double* x, const Gparams* gp, double* H )
 }
 
 template <KernelOutput Output>
-static void h1_kernel_out( const double* x, const void* data_void, double* out )
+TRIBOL_ENZYME_INLINE void h1_kernel_out( const double* x, const void* data_void, double* out )
 {
   const H1KernelData* data = static_cast<const H1KernelData*>( data_void );
   double gt[2];
@@ -698,7 +1069,7 @@ static void h1_kernel_out( const double* x, const void* data_void, double* out )
 }
 
 template <KernelOutput Output>
-void grad_h1_kernel( const double* x, const H1KernelData* data, double* dout_du )
+TRIBOL_ENZYME_INLINE void grad_h1_kernel( const double* x, const H1KernelData* data, double* dout_du )
 {
   double dx[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
   double out = 0.0;
@@ -726,6 +1097,98 @@ void d2_h1_kernel( const double* x, const H1KernelData* data, double* H )
 
     __enzyme_fwddiff<void>( (void*)grad_h1_kernel<Output>, enzyme_dup, x, dx, enzyme_const, data, enzyme_dup, grad,
                             dgrad );
+
+    for ( int row = 0; row < ndof; ++row ) {
+      H[row * ndof + col] = dgrad[row];
+    }
+  }
+}
+
+TRIBOL_ENZYME_INLINE void h1_qp_penalty_kernel_out( const double* x, const void* data_void, double* out )
+{
+  const H1KernelData* data = static_cast<const H1KernelData*>( data_void );
+  h1_qp_penalty_kernel_eval( x, data, out );
+}
+
+TRIBOL_ENZYME_INLINE void grad_h1_qp_penalty_kernel_void( const double* x, const void* data_void, double* dout_du )
+{
+  const H1KernelData* data = static_cast<const H1KernelData*>( data_void );
+  double dx[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
+  double out = 0.0;
+  double dout = 1.0;
+
+  __enzyme_autodiff<void>( (void*)h1_qp_penalty_kernel_out, enzyme_dup, x, dx, enzyme_const,
+                           (const void*)data, enzyme_dup, &out, &dout );
+
+  const int ndof = 2 * ( data->num_nodes1 + data->num_nodes2 );
+  for ( int i = 0; i < ndof; ++i ) {
+    dout_du[i] = dx[i];
+  }
+}
+
+void grad_h1_qp_penalty_kernel( const double* x, const H1KernelData* data, double* dout_du )
+{
+  grad_h1_qp_penalty_kernel_void( x, static_cast<const void*>( data ), dout_du );
+}
+
+void d2_h1_qp_penalty_kernel( const double* x, const H1KernelData* data, double* H )
+{
+  const int ndof = 2 * ( data->num_nodes1 + data->num_nodes2 );
+  for ( int col = 0; col < ndof; ++col ) {
+    double dx[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
+    dx[col] = 1.0;
+
+    double grad[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
+    double dgrad[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
+
+    __enzyme_fwddiff<void>( (void*)grad_h1_qp_penalty_kernel_void, enzyme_dup, x, dx, enzyme_const,
+                            (const void*)data, enzyme_dup, grad, dgrad );
+
+    for ( int row = 0; row < ndof; ++row ) {
+      H[row * ndof + col] = dgrad[row];
+    }
+  }
+}
+
+TRIBOL_ENZYME_INLINE void h1_nodal_energy_kernel_out( const double* x, const void* data_void, double* out )
+{
+  const H1KernelData* data = static_cast<const H1KernelData*>( data_void );
+  h1_nodal_energy_kernel_eval( x, data, out );
+}
+
+TRIBOL_ENZYME_INLINE void grad_h1_nodal_energy_kernel_void( const double* x, const void* data_void, double* dout_du )
+{
+  const H1KernelData* data = static_cast<const H1KernelData*>( data_void );
+  double dx[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
+  double out = 0.0;
+  double dout = 1.0;
+
+  __enzyme_autodiff<void>( (void*)h1_nodal_energy_kernel_out, enzyme_dup, x, dx, enzyme_const,
+                           (const void*)data, enzyme_dup, &out, &dout );
+
+  const int ndof = 2 * ( data->num_nodes1 + data->num_nodes2 );
+  for ( int i = 0; i < ndof; ++i ) {
+    dout_du[i] = dx[i];
+  }
+}
+
+void grad_h1_nodal_energy_kernel( const double* x, const H1KernelData* data, double* dout_du )
+{
+  grad_h1_nodal_energy_kernel_void( x, static_cast<const void*>( data ), dout_du );
+}
+
+void d2_h1_nodal_energy_kernel( const double* x, const H1KernelData* data, double* H )
+{
+  const int ndof = 2 * ( data->num_nodes1 + data->num_nodes2 );
+  for ( int col = 0; col < ndof; ++col ) {
+    double dx[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
+    dx[col] = 1.0;
+
+    double grad[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
+    double dgrad[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
+
+    __enzyme_fwddiff<void>( (void*)grad_h1_nodal_energy_kernel_void, enzyme_dup, x, dx, enzyme_const,
+                            (const void*)data, enzyme_dup, grad, dgrad );
 
     for ( int row = 0; row < ndof; ++row ) {
       H[row * ndof + col] = dgrad[row];
@@ -810,8 +1273,8 @@ std::array<double, 2> EnergyMortarCalculator::projections( const InterfacePair& 
 }
 
 // Clamp the projection interval to the local smoothing support around edge A.
-TRIBOL_ENZYME_INLINE std::array<double, 2> ContactSmoothing::bounds_from_projections( const std::array<double, 2>& proj,
-                                                                                      double del )
+TRIBOL_ENZYME_INLINE std::array<double, 2> ContactSmoothing::bounds_from_projections(
+    const std::array<double, 2>& proj, double del )
 {
   double xi_min = std::min( proj[0], proj[1] );
   double xi_max = std::max( proj[0], proj[1] );
@@ -1139,6 +1602,140 @@ void EnergyMortarCalculator::compute_d2A_d2u( const InterfacePair& pair, const M
     d2A1[i] = d2A1_d2u[i];
     d2A2[i] = d2A2_d2u[i];
   }
+}
+
+QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_penalty_data(
+    const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) const
+{
+  SLIC_ERROR_ROOT_IF( p_.penalty_mode == EnergyMortarPenaltyMode::NODAL_ENERGY &&
+                          p_.normal_mode != EnergyMortarNormalMode::H1_NODAL_NORMAL,
+                      "ENERGY_MORTAR NODAL_ENERGY penalty mode requires H1_NODAL_NORMAL." );
+
+  if ( p_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL ) {
+    QuadraturePointPenaltyData result;
+    H1KernelData data;
+    data.N = p_.N;
+    data.del = p_.del;
+    data.k = p_.k;
+    data.active_set_smoothing_gap = p_.h1_active_set_smoothing_gap;
+    data.projection_smoothing = p_.projection_smoothing;
+    data.nodal_energy_basis = p_.nodal_energy_basis;
+    data.nodal_energy_angle_smoothing = p_.nodal_energy_angle_smoothing;
+
+    auto build_side = []( const MeshData::Viewer& mesh, int contact_elem, int& num_nodes, int& num_elems,
+                          std::array<int, h1_max_stencil_nodes_per_mesh>& node_ids,
+                          std::array<int, h1_max_stencil_nodes_per_mesh>& owner_elems, int contact_nodes[2],
+                          int elem_nodes[h1_max_stencil_elems_per_mesh][2], double* xref ) {
+      std::vector<int> nodes;
+      std::vector<int> owners;
+
+      auto add_node = [&]( int node_id ) {
+        auto it = std::find( nodes.begin(), nodes.end(), node_id );
+        if ( it != nodes.end() ) {
+          return static_cast<int>( std::distance( nodes.begin(), it ) );
+        }
+        SLIC_ERROR_ROOT_IF( static_cast<int>( nodes.size() ) >= h1_max_stencil_nodes_per_mesh,
+                            "ENERGY_MORTAR H1 normal stencil exceeded supported node count." );
+        nodes.push_back( node_id );
+        owners.push_back( -1 );
+        return static_cast<int>( nodes.size() - 1 );
+      };
+
+      const int contact_node0 = mesh.getGlobalNodeId( contact_elem, 0 );
+      const int contact_node1 = mesh.getGlobalNodeId( contact_elem, 1 );
+      contact_nodes[0] = add_node( contact_node0 );
+      contact_nodes[1] = add_node( contact_node1 );
+
+      num_elems = 0;
+      for ( int e = 0; e < mesh.numberOfElements(); ++e ) {
+        const int elem_node0 = mesh.getGlobalNodeId( e, 0 );
+        const int elem_node1 = mesh.getGlobalNodeId( e, 1 );
+        if ( elem_node0 != contact_node0 && elem_node0 != contact_node1 && elem_node1 != contact_node0 &&
+             elem_node1 != contact_node1 ) {
+          continue;
+        }
+        SLIC_ERROR_ROOT_IF( num_elems >= h1_max_stencil_elems_per_mesh,
+                            "ENERGY_MORTAR H1 normal stencil exceeded supported element count." );
+        const int local0 = add_node( elem_node0 );
+        const int local1 = add_node( elem_node1 );
+        elem_nodes[num_elems][0] = local0;
+        elem_nodes[num_elems][1] = local1;
+        if ( owners[local0] < 0 ) {
+          owners[local0] = e;
+        }
+        if ( owners[local1] < 0 ) {
+          owners[local1] = e;
+        }
+        ++num_elems;
+      }
+
+      num_nodes = static_cast<int>( nodes.size() );
+      for ( int i = 0; i < num_nodes; ++i ) {
+        node_ids[i] = nodes[i];
+        owner_elems[i] = owners[i] >= 0 ? owners[i] : contact_elem;
+        xref[i] =
+            mesh.hasReferencePosition() ? mesh.getReferencePosition()[0][nodes[i]] : mesh.getPosition()[0][nodes[i]];
+        xref[num_nodes + i] =
+            mesh.hasReferencePosition() ? mesh.getReferencePosition()[1][nodes[i]] : mesh.getPosition()[1][nodes[i]];
+      }
+    };
+
+    build_side( mesh1, pair.m_element_id1, result.num_mesh1_nodes, data.num_elems1, result.mesh1_nodes,
+                result.mesh1_owner_elems, data.contact_nodes1, data.elem_nodes1, data.xref1 );
+    data.num_nodes1 = result.num_mesh1_nodes;
+    build_side( mesh2, pair.m_element_id2, result.num_mesh2_nodes, data.num_elems2, result.mesh2_nodes,
+                result.mesh2_owner_elems, data.contact_nodes2, data.elem_nodes2, data.xref2 );
+    data.num_nodes2 = result.num_mesh2_nodes;
+
+    const int ndof = 2 * ( data.num_nodes1 + data.num_nodes2 );
+    double x[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
+    for ( int i = 0; i < data.num_nodes1; ++i ) {
+      const int node_id = result.mesh1_nodes[i];
+      x[i] = mesh1.getPosition()[0][node_id];
+      x[data.num_nodes1 + i] = mesh1.getPosition()[1][node_id];
+    }
+    const int side2_offset = 2 * data.num_nodes1;
+    for ( int i = 0; i < data.num_nodes2; ++i ) {
+      const int node_id = result.mesh2_nodes[i];
+      x[side2_offset + i] = mesh2.getPosition()[0][node_id];
+      x[side2_offset + data.num_nodes2 + i] = mesh2.getPosition()[1][node_id];
+    }
+
+    result.h1_force.assign( ndof, 0.0 );
+    result.h1_stiffness.assign( ndof * ndof, 0.0 );
+    if ( p_.penalty_mode == EnergyMortarPenaltyMode::NODAL_ENERGY ) {
+      h1_nodal_energy_kernel_eval( x, &data, &result.energy );
+      grad_h1_nodal_energy_kernel( x, &data, result.h1_force.data() );
+      d2_h1_nodal_energy_kernel( x, &data, result.h1_stiffness.data() );
+    } else {
+      h1_qp_penalty_kernel_eval( x, &data, &result.energy );
+      grad_h1_qp_penalty_kernel( x, &data, result.h1_force.data() );
+      d2_h1_qp_penalty_kernel( x, &data, result.h1_stiffness.data() );
+    }
+    return result;
+  }
+
+  double A0[2], A1[2], B0[2], B1[2];
+  endpoints( mesh1, pair.m_element_id1, A0, A1 );
+  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
+
+  QPPenaltyKernelData data;
+  data.N = p_.N;
+  data.del = p_.del;
+  data.k = p_.k;
+  data.active_set_smoothing_gap = p_.h1_active_set_smoothing_gap;
+  data.projection_smoothing = p_.projection_smoothing;
+  data.fixed_quadrature = !p_.enzyme_quadrature;
+  if ( data.fixed_quadrature ) {
+    data.qp = construct_gparams( pair, mesh1, mesh2 );
+  }
+
+  QuadraturePointPenaltyData result;
+  qp_penalty_kernel_eval( x, &data, &result.energy );
+  grad_qp_penalty_kernel( x, &data, result.force.data() );
+  d2_qp_penalty_kernel( x, &data, result.stiffness.data() );
+  return result;
 }
 
 H1TotalDerivatives EnergyMortarCalculator::compute_h1_total_derivatives( const InterfacePair& pair,

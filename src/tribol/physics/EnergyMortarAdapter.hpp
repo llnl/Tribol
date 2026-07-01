@@ -49,10 +49,14 @@ class EnergyMortarAdapter : public ContactFormulation {
    * mapping to a mortar side. To maintain that convention within Tribol, the adapter may internally flip mesh roles
    * relative to the order of the meshes provided here.
    */
-  EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k,
-                       double delta, int N, bool enzyme_quadrature, bool use_penalty = true,
-                       EnergyMortarNormalMode normal_mode = EnergyMortarNormalMode::ELEMENT_NORMAL,
-                       bool projection_smoothing = true );
+  EnergyMortarAdapter(
+      MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k, double delta, int N,
+      bool enzyme_quadrature, bool use_penalty = true,
+      EnergyMortarNormalMode normal_mode = EnergyMortarNormalMode::ELEMENT_NORMAL, bool projection_smoothing = true,
+      double h1_active_set_smoothing_gap = 0.0,
+      EnergyMortarPenaltyMode penalty_mode = EnergyMortarPenaltyMode::NODAL_GAP,
+      EnergyMortarNodalEnergyBasis nodal_energy_basis = EnergyMortarNodalEnergyBasis::CUBIC_SPLINE,
+      bool nodal_energy_angle_smoothing = true );
 
   /**
    * @brief Default destructor
@@ -142,6 +146,34 @@ class EnergyMortarAdapter : public ContactFormulation {
    */
   void updateEnergyMortarNormalMode( EnergyMortarNormalMode normal_mode, bool projection_smoothing ) override;
 
+  /**
+   * @brief Update active-set smoothing transition gap
+   *
+   * @param gap_transition Positive gap transition width; disabled when <= 0
+   */
+  void updateEnergyMortarH1ActiveSetSmoothing( RealT gap_transition ) override;
+
+  /**
+   * @brief Update penalty enforcement mode
+   *
+   * @param mode Penalty mode
+   */
+  void updateEnergyMortarPenaltyMode( EnergyMortarPenaltyMode mode ) override;
+
+  /**
+   * @brief Update nodal-energy basis
+   *
+   * @param basis Basis used by NODAL_ENERGY mode
+   */
+  void updateEnergyMortarNodalEnergyBasis( EnergyMortarNodalEnergyBasis basis ) override;
+
+  /**
+   * @brief Update nodal-energy angle smoothing
+   *
+   * @param enabled True to apply 80-to-90 degree angle smoothing
+   */
+  void updateEnergyMortarNodalEnergyAngleSmoothing( bool enabled ) override;
+
 #ifdef BUILD_REDECOMP
   /**
    * @brief Return the parent true-dof force vector
@@ -210,6 +242,11 @@ class EnergyMortarAdapter : public ContactFormulation {
 #endif
 
  private:
+  /**
+   * @brief Assemble force and Jacobian for quadrature-point penalty enforcement
+   */
+  void updateQuadraturePointPenaltyForces();
+
   /**
    * @brief Controls penalty vs. Lagrange multiplier (LM) mode
    *

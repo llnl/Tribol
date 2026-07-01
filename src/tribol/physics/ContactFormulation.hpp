@@ -123,6 +123,26 @@ class ContactFormulation {
    */
   virtual void updateEnergyMortarNormalMode( EnergyMortarNormalMode /*normal_mode*/, bool /*projection_smoothing*/ ) {}
 
+  /**
+   * @brief Update ENERGY_MORTAR active-set smoothing gap on formulations that support it
+   */
+  virtual void updateEnergyMortarH1ActiveSetSmoothing( RealT /*gap_transition*/ ) {}
+
+  /**
+   * @brief Update ENERGY_MORTAR penalty mode on formulations that support it
+   */
+  virtual void updateEnergyMortarPenaltyMode( EnergyMortarPenaltyMode /*mode*/ ) {}
+
+  /**
+   * @brief Update ENERGY_MORTAR nodal-energy basis on formulations that support it
+   */
+  virtual void updateEnergyMortarNodalEnergyBasis( EnergyMortarNodalEnergyBasis /*basis*/ ) {}
+
+  /**
+   * @brief Update ENERGY_MORTAR nodal-energy angle smoothing on formulations that support it
+   */
+  virtual void updateEnergyMortarNodalEnergyAngleSmoothing( bool /*enabled*/ ) {}
+
 #ifdef BUILD_REDECOMP
   /**
    * @brief Returns t-dof vector of forces on parent mesh
