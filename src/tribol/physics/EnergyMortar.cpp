@@ -345,26 +345,20 @@ TRIBOL_ENZYME_INLINE void get_projections( const double* A0, const double* A1, c
 TRIBOL_ENZYME_INLINE void get_projections_h1( const double* A0, const double* A1, const double* B0, const double* B1,
                                               const double* nB0, const double* nB1, double* projections )
 {
-  const double* B_endpoints[2] = { B0, B1 };
-  const double* B_normals[2] = { nB0, nB1 };
+  double nB0_unit[2] = { nB0[0], nB0[1] };
+  normalize2( nB0_unit );
+  double q0[2] = { 0.0, 0.0 };
+  find_intersection( A0, A1, B0, nB0_unit, q0 );
+  const double xi0 = local_coord_on_segment( A0, A1, q0 );
 
-  double xi0 = 0.0, xi1 = 0.0;
-  for ( int i = 0; i < 2; ++i ) {
-    double nB[2] = { B_normals[i][0], B_normals[i][1] };
-    normalize2( nB );
+  double nB1_unit[2] = { nB1[0], nB1[1] };
+  normalize2( nB1_unit );
+  double q1[2] = { 0.0, 0.0 };
+  find_intersection( A0, A1, B1, nB1_unit, q1 );
+  const double xi1 = local_coord_on_segment( A0, A1, q1 );
 
-    double q[2] = { 0.0, 0.0 };
-    find_intersection( A0, A1, B_endpoints[i], nB, q );
-    const double xiA = local_coord_on_segment( A0, A1, q );
-
-    if ( i == 0 )
-      xi0 = xiA;
-    else
-      xi1 = xiA;
-  }
-
-  projections[0] = std::min( xi0, xi1 );
-  projections[1] = std::max( xi0, xi1 );
+  projections[0] = ( xi0 < xi1 ) ? xi0 : xi1;
+  projections[1] = ( xi0 > xi1 ) ? xi0 : xi1;
 }
 
 TRIBOL_ENZYME_INLINE bool get_projections_along_direction( const double* A0, const double* A1, const double* B0,
@@ -411,21 +405,73 @@ TRIBOL_ENZYME_INLINE void project_to_edge_h1( const double* B0, const double* B1
   interp_normal( nB0, nB1, xiB, nB );
 }
 
-TRIBOL_ENZYME_INLINE void recover_h1_normals( const double* x, int num_nodes, int num_elems,
-                                              const int elem_nodes[h1_max_stencil_elems_per_mesh][2],
-                                              const double* xref, double* n )
+TRIBOL_ENZYME_INLINE void bounds_from_projections_raw( const double* proj, double del, double* bounds )
 {
-  double nref[h1_max_stencil_nodes_per_mesh][2];
-  for ( int i = 0; i < h1_max_stencil_nodes_per_mesh; ++i ) {
-    n[2 * i] = 0.0;
-    n[2 * i + 1] = 0.0;
-    nref[i][0] = 0.0;
-    nref[i][1] = 0.0;
+  double xi_min = ( proj[0] < proj[1] ) ? proj[0] : proj[1];
+  double xi_max = ( proj[0] > proj[1] ) ? proj[0] : proj[1];
+
+  if ( xi_max < -0.5 - del ) {
+    xi_max = -0.5 - del;
   }
+  if ( xi_min > 0.5 + del ) {
+    xi_min = 0.5 + del;
+  }
+  if ( xi_min < -0.5 - del ) {
+    xi_min = -0.5 - del;
+  }
+  if ( xi_max > 0.5 + del ) {
+    xi_max = 0.5 + del;
+  }
+
+  bounds[0] = xi_min;
+  bounds[1] = xi_max;
+}
+
+TRIBOL_ENZYME_INLINE double smooth_bound_value_raw( double bound, double del )
+{
+  const double xi = bound + 0.5;
+  double xi_hat = 0.0;
+
+  if ( del == 0.0 ) {
+    xi_hat = xi;
+  } else if ( 0.0 - del <= xi && xi <= del ) {
+    xi_hat = ( 1.0 / ( 4.0 * del ) ) * ( xi * xi ) + 0.5 * xi + del / 4.0;
+  } else if ( ( 1.0 - del ) <= xi && xi <= 1.0 + del ) {
+    const double b = -1.0 / ( 4.0 * del );
+    const double c = 0.5 + 1.0 / ( 2.0 * del );
+    const double one_minus_del = 1.0 - del;
+    const double d = 1.0 - del + ( 1.0 / ( 4.0 * del ) ) * one_minus_del * one_minus_del -
+                     0.5 * one_minus_del - one_minus_del / ( 2.0 * del );
+    xi_hat = b * xi * xi + c * xi + d;
+  } else if ( del <= xi && xi <= ( 1.0 - del ) ) {
+    xi_hat = xi;
+  }
+
+  return xi_hat - 0.5;
+}
+
+TRIBOL_ENZYME_INLINE void smooth_bounds_raw( const double* bounds, double del, double* smooth_bounds )
+{
+  smooth_bounds[0] = smooth_bound_value_raw( bounds[0], del );
+  smooth_bounds[1] = smooth_bound_value_raw( bounds[1], del );
+}
+
+TRIBOL_ENZYME_INLINE void recover_h1_normal_at_node( const double* x, int num_nodes, int num_elems,
+                                                     const int elem_nodes[h1_max_stencil_elems_per_mesh][2],
+                                                     const double* xref, int query_node, double* n )
+{
+  double n_x = 0.0;
+  double n_y = 0.0;
+  double nref_x = 0.0;
+  double nref_y = 0.0;
 
   for ( int e = 0; e < num_elems; ++e ) {
     const int node0 = elem_nodes[e][0];
     const int node1 = elem_nodes[e][1];
+    if ( query_node != node0 && query_node != node1 ) {
+      continue;
+    }
+
     const double x0 = x[node0];
     const double y0 = x[num_nodes + node0];
     const double x1 = x[node1];
@@ -441,24 +487,21 @@ TRIBOL_ENZYME_INLINE void recover_h1_normals( const double* x, int num_nodes, in
       continue;
     }
 
-    const double nc[2] = { ( y1 - y0 ) / len_ref, -( x1 - x0 ) / len_ref };
-    const double nr[2] = { dy_ref / len_ref, -dx_ref / len_ref };
-    for ( int i = 0; i < 2; ++i ) {
-      const int node = ( i == 0 ) ? node0 : node1;
-      n[2 * node] += nc[0];
-      n[2 * node + 1] += nc[1];
-      nref[node][0] += nr[0];
-      nref[node][1] += nr[1];
-    }
+    const double nc_x = ( y1 - y0 ) / len_ref;
+    const double nc_y = -( x1 - x0 ) / len_ref;
+    n_x += nc_x;
+    n_y += nc_y;
+    nref_x += dy_ref / len_ref;
+    nref_y += -dx_ref / len_ref;
   }
 
-  for ( int i = 0; i < num_nodes; ++i ) {
-    const double mag_ref = std::sqrt( nref[i][0] * nref[i][0] + nref[i][1] * nref[i][1] );
-    if ( mag_ref > 1.0e-14 ) {
-      n[2 * i] /= mag_ref;
-      n[2 * i + 1] /= mag_ref;
-    }
+  const double mag_ref = std::sqrt( nref_x * nref_x + nref_y * nref_y );
+  if ( mag_ref > 1.0e-14 ) {
+    n_x /= mag_ref;
+    n_y /= mag_ref;
   }
+  n[0] = n_x;
+  n[1] = n_y;
 }
 
 TRIBOL_ENZYME_INLINE void h1_kernel_eval( const double* x, const H1KernelData* data, double* g_tilde_out,
@@ -469,11 +512,6 @@ TRIBOL_ENZYME_INLINE void h1_kernel_eval( const double* x, const H1KernelData* d
   const double* x1_all = x;
   const double* x2_all = x + 2 * n1;
 
-  double normal1[2 * h1_max_stencil_nodes_per_mesh];
-  double normal2[2 * h1_max_stencil_nodes_per_mesh];
-  recover_h1_normals( x1_all, n1, data->num_elems1, data->elem_nodes1, data->xref1, normal1 );
-  recover_h1_normals( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, normal2 );
-
   const int A_node0 = data->contact_nodes1[0];
   const int A_node1 = data->contact_nodes1[1];
   const int B_node0 = data->contact_nodes2[0];
@@ -483,15 +521,27 @@ TRIBOL_ENZYME_INLINE void h1_kernel_eval( const double* x, const H1KernelData* d
   const double A1[2] = { x1_all[A_node1], x1_all[n1 + A_node1] };
   const double B0[2] = { x2_all[B_node0], x2_all[n2 + B_node0] };
   const double B1[2] = { x2_all[B_node1], x2_all[n2 + B_node1] };
-  const double nA0[2] = { normal1[2 * A_node0], normal1[2 * A_node0 + 1] };
-  const double nA1[2] = { normal1[2 * A_node1], normal1[2 * A_node1 + 1] };
-  const double nB0[2] = { normal2[2 * B_node0], normal2[2 * B_node0 + 1] };
-  const double nB1[2] = { normal2[2 * B_node1], normal2[2 * B_node1 + 1] };
+  double nA0[2];
+  double nA1[2];
+  double nB0[2];
+  double nB1[2];
+  recover_h1_normal_at_node( x1_all, n1, data->num_elems1, data->elem_nodes1, data->xref1, A_node0, nA0 );
+  recover_h1_normal_at_node( x1_all, n1, data->num_elems1, data->elem_nodes1, data->xref1, A_node1, nA1 );
+  recover_h1_normal_at_node( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, B_node0, nB0 );
+  recover_h1_normal_at_node( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, B_node1, nB1 );
 
   double projs_raw[2];
   get_projections_h1( A0, A1, B0, B1, nB0, nB1, projs_raw );
-  auto bounds = ContactSmoothing::bounds_from_projections( { projs_raw[0], projs_raw[1] }, data->del );
-  auto xi_bounds = data->projection_smoothing ? ContactSmoothing::smooth_bounds( bounds, data->del ) : bounds;
+  double bounds_raw[2];
+  bounds_from_projections_raw( projs_raw, data->del, bounds_raw );
+  double xi_bounds_raw[2];
+  if ( data->projection_smoothing ) {
+    smooth_bounds_raw( bounds_raw, data->del, xi_bounds_raw );
+  } else {
+    xi_bounds_raw[0] = bounds_raw[0];
+    xi_bounds_raw[1] = bounds_raw[1];
+  }
+  const std::array<double, 2> xi_bounds{ xi_bounds_raw[0], xi_bounds_raw[1] };
   auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, data->N );
 
   const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
@@ -540,11 +590,6 @@ TRIBOL_ENZYME_INLINE void h1_qp_penalty_kernel_eval( const double* x, const H1Ke
   const double* x1_all = x;
   const double* x2_all = x + 2 * n1;
 
-  double normal1[2 * h1_max_stencil_nodes_per_mesh];
-  double normal2[2 * h1_max_stencil_nodes_per_mesh];
-  recover_h1_normals( x1_all, n1, data->num_elems1, data->elem_nodes1, data->xref1, normal1 );
-  recover_h1_normals( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, normal2 );
-
   const int A_node0 = data->contact_nodes1[0];
   const int A_node1 = data->contact_nodes1[1];
   const int B_node0 = data->contact_nodes2[0];
@@ -554,15 +599,27 @@ TRIBOL_ENZYME_INLINE void h1_qp_penalty_kernel_eval( const double* x, const H1Ke
   const double A1[2] = { x1_all[A_node1], x1_all[n1 + A_node1] };
   const double B0[2] = { x2_all[B_node0], x2_all[n2 + B_node0] };
   const double B1[2] = { x2_all[B_node1], x2_all[n2 + B_node1] };
-  const double nA0[2] = { normal1[2 * A_node0], normal1[2 * A_node0 + 1] };
-  const double nA1[2] = { normal1[2 * A_node1], normal1[2 * A_node1 + 1] };
-  const double nB0[2] = { normal2[2 * B_node0], normal2[2 * B_node0 + 1] };
-  const double nB1[2] = { normal2[2 * B_node1], normal2[2 * B_node1 + 1] };
+  double nA0[2];
+  double nA1[2];
+  double nB0[2];
+  double nB1[2];
+  recover_h1_normal_at_node( x1_all, n1, data->num_elems1, data->elem_nodes1, data->xref1, A_node0, nA0 );
+  recover_h1_normal_at_node( x1_all, n1, data->num_elems1, data->elem_nodes1, data->xref1, A_node1, nA1 );
+  recover_h1_normal_at_node( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, B_node0, nB0 );
+  recover_h1_normal_at_node( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, B_node1, nB1 );
 
   double projs_raw[2];
   get_projections_h1( A0, A1, B0, B1, nB0, nB1, projs_raw );
-  auto bounds = ContactSmoothing::bounds_from_projections( { projs_raw[0], projs_raw[1] }, data->del );
-  auto xi_bounds = data->projection_smoothing ? ContactSmoothing::smooth_bounds( bounds, data->del ) : bounds;
+  double bounds_raw[2];
+  bounds_from_projections_raw( projs_raw, data->del, bounds_raw );
+  double xi_bounds_raw[2];
+  if ( data->projection_smoothing ) {
+    smooth_bounds_raw( bounds_raw, data->del, xi_bounds_raw );
+  } else {
+    xi_bounds_raw[0] = bounds_raw[0];
+    xi_bounds_raw[1] = bounds_raw[1];
+  }
+  const std::array<double, 2> xi_bounds{ xi_bounds_raw[0], xi_bounds_raw[1] };
   auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, data->N );
 
   const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
@@ -599,11 +656,6 @@ TRIBOL_ENZYME_INLINE void h1_nodal_energy_kernel_eval( const double* x, const H1
   const double* x1_all = x;
   const double* x2_all = x + 2 * n1;
 
-  double normal1[2 * h1_max_stencil_nodes_per_mesh];
-  double normal2[2 * h1_max_stencil_nodes_per_mesh];
-  recover_h1_normals( x1_all, n1, data->num_elems1, data->elem_nodes1, data->xref1, normal1 );
-  recover_h1_normals( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, normal2 );
-
   const int A_node0 = data->contact_nodes1[0];
   const int A_node1 = data->contact_nodes1[1];
   const int B_node0 = data->contact_nodes2[0];
@@ -613,10 +665,13 @@ TRIBOL_ENZYME_INLINE void h1_nodal_energy_kernel_eval( const double* x, const H1
   const double A1[2] = { x1_all[A_node1], x1_all[n1 + A_node1] };
   const double B0[2] = { x2_all[B_node0], x2_all[n2 + B_node0] };
   const double B1[2] = { x2_all[B_node1], x2_all[n2 + B_node1] };
-  double nA_nodes[2][2] = { { normal1[2 * A_node0], normal1[2 * A_node0 + 1] },
-                            { normal1[2 * A_node1], normal1[2 * A_node1 + 1] } };
-  const double nB0[2] = { normal2[2 * B_node0], normal2[2 * B_node0 + 1] };
-  const double nB1[2] = { normal2[2 * B_node1], normal2[2 * B_node1 + 1] };
+  double nA_nodes[2][2];
+  double nB0[2];
+  double nB1[2];
+  recover_h1_normal_at_node( x1_all, n1, data->num_elems1, data->elem_nodes1, data->xref1, A_node0, nA_nodes[0] );
+  recover_h1_normal_at_node( x1_all, n1, data->num_elems1, data->elem_nodes1, data->xref1, A_node1, nA_nodes[1] );
+  recover_h1_normal_at_node( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, B_node0, nB0 );
+  recover_h1_normal_at_node( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, B_node1, nB1 );
   normalize2( nA_nodes[0] );
   normalize2( nA_nodes[1] );
 
@@ -629,8 +684,16 @@ TRIBOL_ENZYME_INLINE void h1_nodal_energy_kernel_eval( const double* x, const H1
     if ( !valid_bounds ) {
       continue;
     }
-    auto bounds = ContactSmoothing::bounds_from_projections( { projs_raw[0], projs_raw[1] }, data->del );
-    auto xi_bounds = data->projection_smoothing ? ContactSmoothing::smooth_bounds( bounds, data->del ) : bounds;
+    double bounds_raw[2];
+    bounds_from_projections_raw( projs_raw, data->del, bounds_raw );
+    double xi_bounds_raw[2];
+    if ( data->projection_smoothing ) {
+      smooth_bounds_raw( bounds_raw, data->del, xi_bounds_raw );
+    } else {
+      xi_bounds_raw[0] = bounds_raw[0];
+      xi_bounds_raw[1] = bounds_raw[1];
+    }
+    const std::array<double, 2> xi_bounds{ xi_bounds_raw[0], xi_bounds_raw[1] };
     auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, data->N );
 
     for ( int i = 0; i < data->N; ++i ) {
@@ -823,8 +886,16 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval( const double* x, const QPPenal
   } else {
     double projs_raw[2];
     get_projections( A0, A1, B0, B1, projs_raw );
-    auto bounds = ContactSmoothing::bounds_from_projections( { projs_raw[0], projs_raw[1] }, data->del );
-    auto xi_bounds = data->projection_smoothing ? ContactSmoothing::smooth_bounds( bounds, data->del ) : bounds;
+    double bounds_raw[2];
+    bounds_from_projections_raw( projs_raw, data->del, bounds_raw );
+    double xi_bounds_raw[2];
+    if ( data->projection_smoothing ) {
+      smooth_bounds_raw( bounds_raw, data->del, xi_bounds_raw );
+    } else {
+      xi_bounds_raw[0] = bounds_raw[0];
+      xi_bounds_raw[1] = bounds_raw[1];
+    }
+    const std::array<double, 2> xi_bounds{ xi_bounds_raw[0], xi_bounds_raw[1] };
     qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, data->N );
   }
 
@@ -970,11 +1041,13 @@ TRIBOL_ENZYME_INLINE void kernel_out_enzyme( const double* x, double* out )
 
   double projs[2] = { 0 };
   get_projections( A0, A1, B0, B1, projs );
-  std::array<double, 2> projections = { projs[0], projs[1] };
 
   // Recompute the integration bounds and quadrature from the current geometry.
-  auto bounds = ContactSmoothing::bounds_from_projections( projections, kp.del );
-  auto xi_bounds = ContactSmoothing::smooth_bounds( bounds, kp.del );
+  double bounds_raw[2];
+  bounds_from_projections_raw( projs, kp.del, bounds_raw );
+  double xi_bounds_raw[2];
+  smooth_bounds_raw( bounds_raw, kp.del, xi_bounds_raw );
+  const std::array<double, 2> xi_bounds{ xi_bounds_raw[0], xi_bounds_raw[1] };
 
   auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, kp.N );
 
@@ -1071,16 +1144,16 @@ TRIBOL_ENZYME_INLINE void h1_kernel_out( const double* x, const void* data_void,
 template <KernelOutput Output>
 TRIBOL_ENZYME_INLINE void grad_h1_kernel( const double* x, const H1KernelData* data, double* dout_du )
 {
-  double dx[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
-  double out = 0.0;
-  double dout = 1.0;
-
-  __enzyme_autodiff<void>( (void*)h1_kernel_out<Output>, enzyme_dup, x, dx, enzyme_const, (const void*)data, enzyme_dup,
-                           &out, &dout );
-
   const int ndof = 2 * ( data->num_nodes1 + data->num_nodes2 );
+  double dx[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
   for ( int i = 0; i < ndof; ++i ) {
-    dout_du[i] = dx[i];
+    double out = 0.0;
+    double dout = 0.0;
+    dx[i] = 1.0;
+    __enzyme_fwddiff<void>( (void*)h1_kernel_out<Output>, enzyme_dup, x, dx, enzyme_const, (const void*)data,
+                            enzyme_dup, &out, &dout );
+    dout_du[i] = dout;
+    dx[i] = 0.0;
   }
 }
 
@@ -1113,16 +1186,16 @@ TRIBOL_ENZYME_INLINE void h1_qp_penalty_kernel_out( const double* x, const void*
 TRIBOL_ENZYME_INLINE void grad_h1_qp_penalty_kernel_void( const double* x, const void* data_void, double* dout_du )
 {
   const H1KernelData* data = static_cast<const H1KernelData*>( data_void );
-  double dx[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
-  double out = 0.0;
-  double dout = 1.0;
-
-  __enzyme_autodiff<void>( (void*)h1_qp_penalty_kernel_out, enzyme_dup, x, dx, enzyme_const,
-                           (const void*)data, enzyme_dup, &out, &dout );
-
   const int ndof = 2 * ( data->num_nodes1 + data->num_nodes2 );
+  double dx[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
   for ( int i = 0; i < ndof; ++i ) {
-    dout_du[i] = dx[i];
+    double out = 0.0;
+    double dout = 0.0;
+    dx[i] = 1.0;
+    __enzyme_fwddiff<void>( (void*)h1_qp_penalty_kernel_out, enzyme_dup, x, dx, enzyme_const, (const void*)data,
+                            enzyme_dup, &out, &dout );
+    dout_du[i] = dout;
+    dx[i] = 0.0;
   }
 }
 
@@ -1159,16 +1232,16 @@ TRIBOL_ENZYME_INLINE void h1_nodal_energy_kernel_out( const double* x, const voi
 TRIBOL_ENZYME_INLINE void grad_h1_nodal_energy_kernel_void( const double* x, const void* data_void, double* dout_du )
 {
   const H1KernelData* data = static_cast<const H1KernelData*>( data_void );
-  double dx[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
-  double out = 0.0;
-  double dout = 1.0;
-
-  __enzyme_autodiff<void>( (void*)h1_nodal_energy_kernel_out, enzyme_dup, x, dx, enzyme_const,
-                           (const void*)data, enzyme_dup, &out, &dout );
-
   const int ndof = 2 * ( data->num_nodes1 + data->num_nodes2 );
+  double dx[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
   for ( int i = 0; i < ndof; ++i ) {
-    dout_du[i] = dx[i];
+    double out = 0.0;
+    double dout = 0.0;
+    dx[i] = 1.0;
+    __enzyme_fwddiff<void>( (void*)h1_nodal_energy_kernel_out, enzyme_dup, x, dx, enzyme_const, (const void*)data,
+                            enzyme_dup, &out, &dout );
+    dout_du[i] = dout;
+    dx[i] = 0.0;
   }
 }
 

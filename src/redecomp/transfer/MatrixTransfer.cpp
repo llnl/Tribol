@@ -302,9 +302,9 @@ shared::ParSparseMat MatrixTransfer::TransferToParallel( const axom::Array<int>&
   }
 
   auto num_rows = parent_test_fes_.GetVSize();
-  int* I_ptr = new int[num_rows + 1];
-  HYPRE_BigInt* J_ptr = new HYPRE_BigInt[num_unique_nonzeros];
-  double* data_ptr = new double[num_unique_nonzeros];
+  std::vector<int> I_ptr( num_rows + 1, 0 );
+  std::vector<HYPRE_BigInt> J_ptr( num_unique_nonzeros );
+  std::vector<double> data_ptr( num_unique_nonzeros );
 
   // Initialize I_ptr with zeros
   for ( int i = 0; i <= num_rows; ++i ) {
@@ -337,7 +337,7 @@ shared::ParSparseMat MatrixTransfer::TransferToParallel( const axom::Array<int>&
 
   // Construct rectangular HypreParMatrix
   shared::ParSparseMat J_full( getMPIUtility().MPIComm(), num_rows, parent_test_fes_.GlobalVSize(),
-                               parent_trial_fes_.GlobalVSize(), I_ptr, J_ptr, data_ptr,
+                               parent_trial_fes_.GlobalVSize(), I_ptr.data(), J_ptr.data(), data_ptr.data(),
                                parent_test_fes_.GetDofOffsets(), parent_trial_fes_.GetDofOffsets() );
 
   if ( !parallel_assemble ) {
