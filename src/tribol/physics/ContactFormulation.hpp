@@ -54,6 +54,16 @@ class ContactFormulation {
   virtual void setInterfacePairs( ArrayT<InterfacePair>&& pairs, int check_level ) = 0;
 
   /**
+   * @brief Returns formulation-owned interface pairs when the formulation stores them
+   *
+   * Some formulations take ownership of the candidate pairs from the coupling scheme. Diagnostics can use this accessor
+   * to report the pair set currently used by the formulation.
+   *
+   * @return Pointer to stored interface pairs, or nullptr if the formulation does not store them
+   */
+  virtual const ArrayT<InterfacePair>* getStoredInterfacePairs() const { return nullptr; }
+
+  /**
    * @brief Updates the integration rule
    *
    * Determines overlapping contact pairs and computes necessary integration data (e.g. quadrature points, weights).

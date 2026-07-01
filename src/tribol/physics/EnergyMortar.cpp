@@ -320,21 +320,16 @@ TRIBOL_ENZYME_INLINE void get_projections( const double* A0, const double* A1, c
   const double dyA = A1[1] - A0[1];
   const double len2A = dxA * dxA + dyA * dyA;
 
-  const double* B_endpoints[2] = { B0, B1 };
+  double q0[2] = { 0.0, 0.0 };
+  find_intersection( A0, A1, B0, nB, q0 );
+  // Convert the physical projection point on A to the local coordinate xi in [-0.5, 0.5].
+  const double alphaA0 = ( ( q0[0] - A0[0] ) * dxA + ( q0[1] - A0[1] ) * dyA ) / len2A;
+  const double xi0 = alphaA0 - 0.5;
 
-  double xi0 = 0.0, xi1 = 0.0;
-  for ( int i = 0; i < 2; ++i ) {
-    double q[2] = { 0.0, 0.0 };
-    find_intersection( A0, A1, B_endpoints[i], nB, q );
-    // Convert the physical projection point on A to the local coordinate xi in [-0.5, 0.5].
-    const double alphaA = ( ( q[0] - A0[0] ) * dxA + ( q[1] - A0[1] ) * dyA ) / len2A;
-    const double xiA = alphaA - 0.5;
-
-    if ( i == 0 )
-      xi0 = xiA;
-    else
-      xi1 = xiA;
-  }
+  double q1[2] = { 0.0, 0.0 };
+  find_intersection( A0, A1, B1, nB, q1 );
+  const double alphaA1 = ( ( q1[0] - A0[0] ) * dxA + ( q1[1] - A0[1] ) * dyA ) / len2A;
+  const double xi1 = alphaA1 - 0.5;
 
   double xi_min = std::min( xi0, xi1 );
   double xi_max = std::max( xi0, xi1 );
@@ -381,16 +376,16 @@ TRIBOL_ENZYME_INLINE bool get_projections_along_direction( const double* A0, con
     return false;
   }
 
-  const double* B_endpoints[2] = { B0, B1 };
-  double xi[2] = { 0.0, 0.0 };
-  for ( int i = 0; i < 2; ++i ) {
-    double q[2] = { 0.0, 0.0 };
-    find_intersection( A0, A1, B_endpoints[i], n, q );
-    xi[i] = local_coord_on_segment( A0, A1, q );
-  }
+  double q0[2] = { 0.0, 0.0 };
+  find_intersection( A0, A1, B0, n, q0 );
+  const double xi0 = local_coord_on_segment( A0, A1, q0 );
 
-  projections[0] = std::min( xi[0], xi[1] );
-  projections[1] = std::max( xi[0], xi[1] );
+  double q1[2] = { 0.0, 0.0 };
+  find_intersection( A0, A1, B1, n, q1 );
+  const double xi1 = local_coord_on_segment( A0, A1, q1 );
+
+  projections[0] = std::min( xi0, xi1 );
+  projections[1] = std::max( xi0, xi1 );
   return true;
 }
 

@@ -72,6 +72,11 @@ class EnergyMortarAdapter : public ContactFormulation {
   void setInterfacePairs( ArrayT<InterfacePair>&& pairs, int check_level ) override;
 
   /**
+   * @brief Return the interface pairs currently owned by the formulation
+   */
+  const ArrayT<InterfacePair>* getStoredInterfacePairs() const override { return &pairs_; }
+
+  /**
    * @brief Update internal integration rule data
    *
    * @note This is currently a no-op. ENERGY_MORTAR directly assembles gap/force quantities over the stored interface
