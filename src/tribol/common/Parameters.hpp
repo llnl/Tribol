@@ -127,7 +127,7 @@ enum ContactMethod  // all mortar methods go first
  */
 enum class EnergyMortarNormalMode
 {
-  ELEMENT_NORMAL,    ///! Use element normals in the EnergyMortar kernels
+  ELEMENT_NORMAL,   ///! Use element normals in the EnergyMortar kernels
   H1_NODAL_NORMAL,  ///! Use an H1 nodal normal field in the EnergyMortar kernels
 };
 
@@ -525,17 +525,17 @@ struct Parameters {
   bool auto_contact_check = false;  ///! True if auto-contact checks should be enabled
 
   EnergyMortarNormalMode energy_mortar_normal_mode =
-      EnergyMortarNormalMode::ELEMENT_NORMAL;  ///! Normal field used by ENERGY_MORTAR
-  bool energy_mortar_projection_smoothing = true;       ///! Apply projection-bound smoothing in ENERGY_MORTAR
-  bool energy_mortar_projection_smoothing_set = false;  ///! True if the user explicitly set projection smoothing
-  RealT energy_mortar_h1_active_set_smoothing_gap =
-      0.0;  ///! Active-set smoothing transition gap; disabled when <= 0
+      EnergyMortarNormalMode::ELEMENT_NORMAL;             ///! Normal field used by ENERGY_MORTAR
+  bool energy_mortar_projection_smoothing = true;         ///! Apply projection-bound smoothing in ENERGY_MORTAR
+  bool energy_mortar_projection_smoothing_set = false;    ///! True if the user explicitly set projection smoothing
+  RealT energy_mortar_h1_active_set_smoothing_gap = 0.0;  ///! Active-set smoothing transition gap; disabled when <= 0
   EnergyMortarPenaltyMode energy_mortar_penalty_mode =
       EnergyMortarPenaltyMode::NODAL_GAP;  ///! Penalty enforcement mode used by ENERGY_MORTAR
   EnergyMortarNodalEnergyBasis energy_mortar_nodal_energy_basis =
       EnergyMortarNodalEnergyBasis::CUBIC_SPLINE;  ///! Basis used by ENERGY_MORTAR NODAL_ENERGY mode
   bool energy_mortar_nodal_energy_angle_smoothing =
-      true;  ///! Apply 80-to-90 degree angle smoothing in ENERGY_MORTAR NODAL_ENERGY mode
+      true;                  ///! Apply 80-to-90 degree angle smoothing in ENERGY_MORTAR NODAL_ENERGY mode
+  RealT residual_gap = 0.0;  ///! User defined residual gap constraint
 };
 
 }  // namespace tribol

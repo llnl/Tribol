@@ -34,6 +34,7 @@ TRIBOL_HOST_DEVICE inline bool geomFilter( const CouplingScheme::Viewer& cs_view
   // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
   auto element_radius_multiplier = cs_view.getEffectiveBinningProximityScale();
   auto mode = cs_view.getContactMode();
+  RealT residual_gap = cs_view.getParameters().residual_gap;
 
   /// CHECK #1: Check to make sure the two face ids are not the same
   ///           and the two mesh ids are not the same.
@@ -91,14 +92,14 @@ TRIBOL_HOST_DEVICE inline bool geomFilter( const CouplingScheme::Viewer& cs_view
     RealT r2 = mesh2.getFaceRadius()[element_id2];
 
     // set maximum offset of face centroids for inclusion
-    RealT distMax = element_radius_multiplier * ( r1 + r2 );  // default is sum of face radii
+    RealT distMax = element_radius_multiplier * ( r1 + r2 ) + residual_gap;  // default is sum of face radii
 
     // check if the contact mode is conforming, in which case the
     // faces are supposed to be aligned
     if ( mode == SURFACE_TO_SURFACE_CONFORMING ) {
       // use 5% of max face radius for conforming case as
       // tolerance on face offsets
-      distMax *= offset_tol;
+      distMax = offset_tol * element_radius_multiplier * ( r1 + r2 ) + residual_gap;
     }
 
     // compute the distance between the two face centroids
@@ -117,14 +118,14 @@ TRIBOL_HOST_DEVICE inline bool geomFilter( const CouplingScheme::Viewer& cs_view
     RealT e1 = 0.5 * mesh1.getElementAreas()[element_id1];
     RealT e2 = 0.5 * mesh2.getElementAreas()[element_id2];
 
-    RealT distMax = element_radius_multiplier * ( e1 + e2 );
+    RealT distMax = element_radius_multiplier * ( e1 + e2 ) + residual_gap;
 
     // check if the contact mode is conforming, in which case the
     // edges are supposed to be aligned
     if ( mode == SURFACE_TO_SURFACE_CONFORMING ) {
       // use 5% of max face radius for conforming case as
       // tolerance on face offsets
-      distMax *= offset_tol;
+      distMax = offset_tol * element_radius_multiplier * ( e1 + e2 ) + residual_gap;
     }
 
     // compute the distance between the two edge centroids

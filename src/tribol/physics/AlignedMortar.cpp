@@ -70,7 +70,7 @@ void ComputeAlignedMortarWeights( SurfaceContactElem& elem )
 
 //------------------------------------------------------------------------------
 template <>
-void ComputeNodalGap<ALIGNED_MORTAR>( SurfaceContactElem& elem )
+void ComputeNodalGap<ALIGNED_MORTAR>( SurfaceContactElem& elem, RealT residual_gap )
 {
   // get pointer to mesh view to store gaps on mesh data object
   auto& nonmortarMesh = *elem.m_mesh2;
@@ -135,7 +135,7 @@ void ComputeNodalGap<ALIGNED_MORTAR>( SurfaceContactElem& elem )
     v[1] = elem.faceCoords1[elem.dim * mortarNodeId + 1] - elem.faceCoords2[elem.dim * a + 1];
     v[2] = elem.faceCoords1[elem.dim * mortarNodeId + 2] - elem.faceCoords2[elem.dim * a + 2];
 
-    nonmortarMesh.getNodalFields().m_node_gap[glbId] += dotProd( &v[0], &nrml_a[0], elem.dim );
+    nonmortarMesh.getNodalFields().m_node_gap[glbId] += dotProd( &v[0], &nrml_a[0], elem.dim ) - residual_gap;
   }
 
 }  // end of ComputeNodalGap<>()
@@ -167,6 +167,8 @@ void ComputeAlignedMortarGaps( CouplingScheme* cs )
   // arrays to store face coords
   Array2D<RealT> mortarX( numNodesPerFace, dim );
   Array2D<RealT> nonmortarX( numNodesPerFace, dim );
+
+  RealT residual_gap = cs->getParameters().residual_gap;
 
   ////////////////////////////
   // compute nonmortar gaps //
@@ -209,7 +211,7 @@ void ComputeAlignedMortarGaps( CouplingScheme* cs )
     /////////////////////////
     // compute mortar gaps //
     /////////////////////////
-    ComputeNodalGap<ALIGNED_MORTAR>( elem_for_gap );
+    ComputeNodalGap<ALIGNED_MORTAR>( elem_for_gap, residual_gap );
 
     // HAVE TO set the number of active constraints. For now set to
     // all nonmortar face nodes.

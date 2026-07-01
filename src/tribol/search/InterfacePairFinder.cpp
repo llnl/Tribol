@@ -88,7 +88,6 @@ class CartesianProduct : public SearchBase {
     if ( is_symm ) {
       // account for symmetry: the max number of pairs when the meshes are the
       // same is the upper triangular portion of the cartesian product pair
-      // matrix
       maxNumPairs = mesh1NumElems * ( mesh1NumElems + 1 ) / 2;
     }
     ArrayT<bool> proximityArray( maxNumPairs, maxNumPairs, m_coupling_scheme->getAllocatorId() );
@@ -233,9 +232,10 @@ class GridSearch : public SearchBase {
     // * Find the average extents (range) of the boxes Assumption is that elements are roughly the same size
     // * Grid resolution for each dimension is overall box width divided by half the average element width
     SpaceVec ranges;
+    RealT residual_gap = m_coupling_scheme->getParameters().residual_gap;
     for ( int i = 0; i < m_mesh1.numberOfElements(); ++i ) {
       auto& bbox = m_meshBBoxes1[i];
-      inflateBBox( bbox, e_binning_proximity_scale );
+      inflateBBox( bbox, e_binning_proximity_scale, residual_gap );
 
       ranges += bbox.range();
 
@@ -296,9 +296,10 @@ class GridSearch : public SearchBase {
     // Find matches in first mesh (with index 'fromIdx')
     // with candidate elements in second mesh (with index 'toIdx')
     // int k = 0;  // Debug only
+    RealT residual_gap = m_coupling_scheme->getParameters().residual_gap;
     for ( int toIdx = 0; toIdx < m_mesh2.numberOfElements(); ++toIdx ) {
       SpatialBoundingBox bbox = elementBoundingBox( m_mesh2, toIdx );
-      inflateBBox( bbox, e_binning_proximity_scale );
+      inflateBBox( bbox, e_binning_proximity_scale, residual_gap );
 
       // Query the mesh
       auto candidateBits = m_grid.getCandidates( bbox );
@@ -349,12 +350,12 @@ class GridSearch : public SearchBase {
     return box;
   }
   /*!
-   * Expands bounding box by range_multiplier * the longest dimension's range
+   * Expands bounding box by range_multiplier * the longest dimension's range + residual gap
    */
-  void inflateBBox( SpatialBoundingBox& bbox, RealT range_multiplier )
+  void inflateBBox( SpatialBoundingBox& bbox, RealT range_multiplier, RealT residual_gap = 0.0 )
   {
     int d = bbox.getLongestDimension();
-    const RealT expansionFac = range_multiplier * bbox.range()[d];
+    const RealT expansionFac = range_multiplier * bbox.range()[d] + residual_gap;
     bbox.expand( expansionFac );
   }
 
@@ -418,11 +419,11 @@ class BvhSearch : public SearchBase {
   void initialize() override
   {
     // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
-    buildMeshBBoxes( m_boxes1, m_coupling_scheme->getMesh1().getView(),
-                     m_coupling_scheme->getEffectiveBinningProximityScale() );
+    auto e_binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
+    auto residual_gap = m_coupling_scheme->getParameters().residual_gap;
+    buildMeshBBoxes( m_boxes1, m_coupling_scheme->getMesh1().getView(), e_binning_proximity_scale, residual_gap );
     // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
-    buildMeshBBoxes( m_boxes2, m_coupling_scheme->getMesh2().getView(),
-                     m_coupling_scheme->getEffectiveBinningProximityScale() );
+    buildMeshBBoxes( m_boxes2, m_coupling_scheme->getMesh2().getView(), e_binning_proximity_scale, residual_gap );
   }  // end initialize()
 
   /*!
@@ -486,11 +487,11 @@ class BvhSearch : public SearchBase {
         } );
   }  // end findInterfacePairs()
 
-  void buildMeshBBoxes( ArrayT<BoxT>& boxes, const MeshData::Viewer& mesh, RealT binning_proximity )
+  void buildMeshBBoxes( ArrayT<BoxT>& boxes, const MeshData::Viewer& mesh, RealT binning_proximity, RealT residual_gap )
   {
     auto boxes_view = boxes.view();
     forAllExec( m_coupling_scheme->getExecutionMode(), mesh.numberOfElements(),
-                [this, mesh, boxes_view, binning_proximity] TRIBOL_HOST_DEVICE( IndexT i ) {
+                [this, mesh, boxes_view, binning_proximity, residual_gap] TRIBOL_HOST_DEVICE( IndexT i ) {
                   BoxT box;
                   auto num_nodes_per_elem = mesh.numberOfNodesPerElement();
                   for ( IndexT j{ 0 }; j < num_nodes_per_elem; ++j ) {
@@ -506,7 +507,7 @@ class BvhSearch : public SearchBase {
                   mesh.getFaceNormal( i, vnorm );
                   VectorT faceNormal( vnorm );
                   RealT faceRadius = mesh.getFaceRadius()[i];
-                  expandBBoxNormal( box, faceNormal, binning_proximity * faceRadius );
+                  expandBBoxNormal( box, faceNormal, binning_proximity * faceRadius + residual_gap );
                   boxes_view[i] = std::move( box );
                 } );
   }

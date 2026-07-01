@@ -818,9 +818,11 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
       if ( mfem_data->GetLORFactor() > 1 ) {
         effective_binning_proximity *= static_cast<RealT>( mfem_data->GetLORFactor() );
       }
+      auto residual_gap = cs.getParameters().residual_gap;
       // creates a new redecomp mesh based on updated coordinates (if criteria is met) and updates transfer operators
       // and displacement, velocity, and response grid functions based on new redecomp mesh
-      auto new_redecomp = mfem_data->UpdateMfemMeshData( effective_binning_proximity, n_ranks, force_new_redecomp );
+      auto new_redecomp =
+          mfem_data->UpdateMfemMeshData( effective_binning_proximity, n_ranks, force_new_redecomp, residual_gap );
       auto coord_ptrs = mfem_data->GetRedecompCoordsPtrs();
 
       registerMesh( mesh_ids[0], mfem_data->GetMesh1NE(), mfem_data->GetNV(), mfem_data->GetMesh1Conn(),

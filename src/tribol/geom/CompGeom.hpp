@@ -1035,7 +1035,7 @@ TRIBOL_HOST_DEVICE inline bool CommonPlanePair::exceedsMaxAutoInterpen( const Me
     RealT max_interpen = -1. * params.auto_contact_pen_frac *
                          axom::utilities::min( mesh1.getElementData().m_thickness[faceId1],
                                                mesh2.getElementData().m_thickness[faceId2] );
-    if ( gap < max_interpen ) {
+    if ( ( gap - params.residual_gap ) < max_interpen ) {
       return true;
     }
   }
