@@ -517,6 +517,77 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
   }
 }
 
+TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 1, 0 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = { 0.2, 0.8 };
+  RealT y2[2] = { 0.1, 0.1 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  params.penalty_mode = EnergyMortarPenaltyMode::NODAL_GAP;
+
+  double g0[2] = { 0.0, 0.0 };
+  double area0[2] = { 0.0, 0.0 };
+  EnergyMortarCalculator evaluator_without_residual( params );
+  evaluator_without_residual.compute_gtilde_and_area( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(), g0,
+                                                      area0 );
+
+  params.residual_gap = 0.15;
+  double g_residual[2] = { 0.0, 0.0 };
+  double area_residual[2] = { 0.0, 0.0 };
+  EnergyMortarCalculator evaluator_with_residual( params );
+  evaluator_with_residual.compute_gtilde_and_area( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(), g_residual,
+                                                   area_residual );
+
+  for ( int i = 0; i < 2; ++i ) {
+    EXPECT_NEAR( area_residual[i], area0[i], 1.0e-14 );
+    EXPECT_NEAR( g_residual[i], g0[i] - params.residual_gap * area0[i], 1.0e-14 );
+  }
+}
+
+TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 1, 0 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = { 0.2, 0.8 };
+  RealT y2[2] = { 0.1, 0.1 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  params.penalty_mode = EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;
+
+  EnergyMortarCalculator evaluator_without_residual( params );
+  const auto inactive =
+      evaluator_without_residual.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
+                                                                        mesh2.getView() );
+  EXPECT_EQ( inactive.energy, 0.0 );
+
+  params.residual_gap = 0.15;
+  EnergyMortarCalculator evaluator_with_residual( params );
+  const auto active =
+      evaluator_with_residual.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
+                                                                     mesh2.getView() );
+  EXPECT_GT( active.energy, 0.0 );
+}
+
 TEST( QuadraturePointPenaltyCheck, ActiveSetSmoothingDoesNotPenalizeOpenGap )
 {
   RealT x1[2] = { 0.0, 1.0 };

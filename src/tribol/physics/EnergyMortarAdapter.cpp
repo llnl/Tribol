@@ -562,7 +562,7 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
                                           double h1_active_set_smoothing_gap,
                                           EnergyMortarPenaltyMode penalty_mode,
                                           EnergyMortarNodalEnergyBasis nodal_energy_basis,
-                                          bool nodal_energy_angle_smoothing )
+                                          bool nodal_energy_angle_smoothing, RealT residual_gap )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
     : use_penalty_( use_penalty ), mesh_data_( mesh_data ), submesh_data_( submesh_data ), jac_data_( jac_data )
@@ -577,6 +577,7 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
   params_.penalty_mode = penalty_mode;
   params_.nodal_energy_basis = nodal_energy_basis;
   params_.nodal_energy_angle_smoothing = nodal_energy_angle_smoothing;
+  params_.residual_gap = residual_gap;
 
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 
@@ -632,6 +633,12 @@ void EnergyMortarAdapter::updateEnergyMortarNodalEnergyBasis( EnergyMortarNodalE
 void EnergyMortarAdapter::updateEnergyMortarNodalEnergyAngleSmoothing( bool enabled )
 {
   params_.nodal_energy_angle_smoothing = enabled;
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+}
+
+void EnergyMortarAdapter::updateResidualGap( RealT residual_gap )
+{
+  params_.residual_gap = residual_gap;
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 }
 

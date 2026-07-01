@@ -443,6 +443,9 @@ void setResidualGap( IndexT cs_id, RealT residual_gap )
       !cs, "tribol::setResidualGap(): call tribol::registerCouplingScheme() " << "prior to calling this routine." );
 
   cs->getParameters().residual_gap = residual_gap;
+  if ( cs->getContactFormulation() ) {
+    cs->getContactFormulation()->updateResidualGap( residual_gap );
+  }
 
 }  // end setResidualGap()
 

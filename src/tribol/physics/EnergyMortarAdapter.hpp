@@ -56,7 +56,7 @@ class EnergyMortarAdapter : public ContactFormulation {
       double h1_active_set_smoothing_gap = 0.0,
       EnergyMortarPenaltyMode penalty_mode = EnergyMortarPenaltyMode::NODAL_GAP,
       EnergyMortarNodalEnergyBasis nodal_energy_basis = EnergyMortarNodalEnergyBasis::CUBIC_SPLINE,
-      bool nodal_energy_angle_smoothing = true );
+      bool nodal_energy_angle_smoothing = true, RealT residual_gap = 0.0 );
 
   /**
    * @brief Default destructor
@@ -173,6 +173,13 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @param enabled True to apply 80-to-90 degree angle smoothing
    */
   void updateEnergyMortarNodalEnergyAngleSmoothing( bool enabled ) override;
+
+  /**
+   * @brief Update residual-gap offset
+   *
+   * @param residual_gap User-defined residual gap offset
+   */
+  void updateResidualGap( RealT residual_gap ) override;
 
 #ifdef BUILD_REDECOMP
   /**

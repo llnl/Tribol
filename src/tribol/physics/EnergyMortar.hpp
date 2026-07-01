@@ -30,6 +30,7 @@ struct ContactParams {
   EnergyMortarNodalEnergyBasis nodal_energy_basis{
       EnergyMortarNodalEnergyBasis::CUBIC_SPLINE };  // Basis used by NODAL_ENERGY mode
   bool nodal_energy_angle_smoothing{ true };          // Apply 80-to-90 degree angle smoothing in NODAL_ENERGY mode
+  double residual_gap{ 0.0 };                         // User-defined gap offset
 };
 
 constexpr int h1_max_stencil_nodes_per_mesh = 16;
@@ -117,6 +118,7 @@ struct H1KernelData {
   int N{ 3 };
   double del{ 0.1 };
   double k{ 1.0 };
+  double residual_gap{ 0.0 };
   double active_set_smoothing_gap{ 0.0 };
   bool projection_smoothing{ false };
   EnergyMortarNodalEnergyBasis nodal_energy_basis{ EnergyMortarNodalEnergyBasis::CUBIC_SPLINE };

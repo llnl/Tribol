@@ -19,8 +19,9 @@ namespace {
 // This MUST match what the ContactParams struct has in EnergyMortarAdapter
 // Theese had to be saved locally in order for enzyme to work correctly
 struct KernelParams {
-  int N = 3;         // No. of quadrature points
-  double del = 0.1;  // Smoothing parameter
+  int N = 3;                  // No. of quadrature points
+  double del = 0.1;           // Smoothing parameter
+  double residual_gap = 0.0;  // User-defined gap offset
 };
 
 // Compute a unit normal vector for the line segment from coord1 to coord2
@@ -569,7 +570,7 @@ TRIBOL_ENZYME_INLINE void h1_kernel_eval( const double* x, const H1KernelData* d
     const double gn = -( dx * nB[0] + dy * nB[1] );
     const double dot = nB[0] * nA[0] + nB[1] * nA[1];
     const double eta = ( dot < 0.0 ) ? dot : 0.0;
-    const double g = gn * eta;
+    const double g = gn * eta - data->residual_gap;
 
     g1 += w * N1 * g * J;
     g2 += w * N2 * g * J;
@@ -638,7 +639,7 @@ TRIBOL_ENZYME_INLINE void h1_qp_penalty_kernel_eval( const double* x, const H1Ke
     const double gn = -( dx * nB[0] + dy * nB[1] );
     const double dot = nB[0] * nA[0] + nB[1] * nA[1];
     const double eta = ( dot < 0.0 ) ? dot : 0.0;
-    const double gap = gn * eta;
+    const double gap = gn * eta - data->residual_gap;
 
     const double active_weight = active_set_smoothing_weight( gap, data->active_set_smoothing_gap );
     if ( active_weight > 0.0 ) {
@@ -719,7 +720,7 @@ TRIBOL_ENZYME_INLINE void h1_nodal_energy_kernel_eval( const double* x, const H1
 
       const double dx = xA[0] - xB[0];
       const double dy = xA[1] - xB[1];
-      const double gap = -( dx * nA_nodes[node][0] + dy * nA_nodes[node][1] );
+      const double gap = -( dx * nA_nodes[node][0] + dy * nA_nodes[node][1] ) - data->residual_gap;
       const double active_weight = active_set_smoothing_weight( gap, data->active_set_smoothing_gap );
       if ( active_weight > 0.0 ) {
         energy += data->k * qp.w[i] * J * phi * angle_weight * active_weight * gap * gap;
@@ -865,6 +866,7 @@ struct QPPenaltyKernelData {
   int N{ 3 };
   double del{ 0.1 };
   double k{ 1.0 };
+  double residual_gap{ 0.0 };
   double active_set_smoothing_gap{ 0.0 };
   bool projection_smoothing{ true };
   bool fixed_quadrature{ false };
@@ -921,7 +923,7 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval( const double* x, const QPPenal
     const double dx = x1[0] - x2[0];
     const double dy = x1[1] - x2[1];
     const double gn = -( dx * nB[0] + dy * nB[1] );
-    const double gap = gn * eta;
+    const double gap = gn * eta - data->residual_gap;
 
     const double active_weight = active_set_smoothing_weight( gap, data->active_set_smoothing_gap );
     if ( active_weight > 0.0 ) {
@@ -1517,7 +1519,7 @@ NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const Inter
   NodalContactData contact_data;
 
   contact_data.AI = { AI_1, AI_2 };
-  contact_data.g_tilde = { g_tilde1, g_tilde2 };
+  contact_data.g_tilde = { g_tilde1 - p_.residual_gap * AI_1, g_tilde2 - p_.residual_gap * AI_2 };
 
   return contact_data;
 }
@@ -1569,6 +1571,15 @@ void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshD
   for ( int i = 0; i < 8; ++i ) {
     dgt1_dx[i] = dg1_du[i];
     dgt2_dx[i] = dg2_du[i];
+  }
+  if ( p_.residual_gap != 0.0 ) {
+    double dA1_dx[8] = { 0.0 };
+    double dA2_dx[8] = { 0.0 };
+    grad_trib_area( pair, mesh1, mesh2, dA1_dx, dA2_dx );
+    for ( int i = 0; i < 8; ++i ) {
+      dgt1_dx[i] -= p_.residual_gap * dA1_dx[i];
+      dgt2_dx[i] -= p_.residual_gap * dA2_dx[i];
+    }
   }
 }
 
@@ -1637,6 +1648,15 @@ void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshDa
     H1[i] = d2g1_d2u[i];
     H2[i] = d2g2_d2u[i];
   }
+  if ( p_.residual_gap != 0.0 ) {
+    double d2A1[64] = { 0.0 };
+    double d2A2[64] = { 0.0 };
+    compute_d2A_d2u( pair, mesh1, mesh2, d2A1, d2A2 );
+    for ( int i = 0; i < 64; ++i ) {
+      H1[i] -= p_.residual_gap * d2A1[i];
+      H2[i] -= p_.residual_gap * d2A2[i];
+    }
+  }
 }
 
 // Compute the Hessians of the two nodal tributary areas with respect to the endpoint coordinates.
@@ -1690,6 +1710,7 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
     data.N = p_.N;
     data.del = p_.del;
     data.k = p_.k;
+    data.residual_gap = p_.residual_gap;
     data.active_set_smoothing_gap = p_.h1_active_set_smoothing_gap;
     data.projection_smoothing = p_.projection_smoothing;
     data.nodal_energy_basis = p_.nodal_energy_basis;
@@ -1797,6 +1818,7 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
   data.N = p_.N;
   data.del = p_.del;
   data.k = p_.k;
+  data.residual_gap = p_.residual_gap;
   data.active_set_smoothing_gap = p_.h1_active_set_smoothing_gap;
   data.projection_smoothing = p_.projection_smoothing;
   data.fixed_quadrature = !p_.enzyme_quadrature;
@@ -1820,6 +1842,7 @@ H1TotalDerivatives EnergyMortarCalculator::compute_h1_total_derivatives( const I
   H1KernelData data;
   data.N = p_.N;
   data.del = p_.del;
+  data.residual_gap = p_.residual_gap;
   data.projection_smoothing = p_.projection_smoothing;
 
   auto build_side = []( const MeshData::Viewer& mesh, int contact_elem, int& num_nodes, int& num_elems,

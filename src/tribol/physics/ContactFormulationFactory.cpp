@@ -49,7 +49,8 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
                                                   cs->getParameters().energy_mortar_h1_active_set_smoothing_gap,
                                                   cs->getParameters().energy_mortar_penalty_mode,
                                                   cs->getParameters().energy_mortar_nodal_energy_basis,
-                                                  cs->getParameters().energy_mortar_nodal_energy_angle_smoothing );
+                                                  cs->getParameters().energy_mortar_nodal_energy_angle_smoothing,
+                                                  cs->getParameters().residual_gap );
 #else
     SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );
     return nullptr;

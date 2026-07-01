@@ -143,6 +143,11 @@ class ContactFormulation {
    */
   virtual void updateEnergyMortarNodalEnergyAngleSmoothing( bool /*enabled*/ ) {}
 
+  /**
+   * @brief Update residual-gap offset on formulations that cache contact parameters
+   */
+  virtual void updateResidualGap( RealT /*residual_gap*/ ) {}
+
 #ifdef BUILD_REDECOMP
   /**
    * @brief Returns t-dof vector of forces on parent mesh
