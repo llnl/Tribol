@@ -900,6 +900,39 @@ struct QPPenaltyKernelData {
   Gparams qp{};
 };
 
+TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double xiA, double w, const double* A0, const double* A1,
+                                                         const double* B0, const double* B1, const double* nB,
+                                                         double eta, double residual_gap, double active_gap,
+                                                         double penalty, double J )
+{
+  const double N1 = 0.5 - xiA;
+  const double N2 = 0.5 + xiA;
+  const double x1x = N1 * A0[0] + N2 * A1[0];
+  const double x1y = N1 * A0[1] + N2 * A1[1];
+
+  const double tBx = B1[0] - B0[0];
+  const double tBy = B1[1] - B0[1];
+  const double dxB = x1x - B0[0];
+  const double dyB = x1y - B0[1];
+  const double det = tBx * nB[1] - tBy * nB[0];
+
+  double x2x = x1x;
+  double x2y = x1y;
+  if ( std::abs( det ) >= 1e-12 ) {
+    const double alpha = ( dxB * nB[1] - dyB * nB[0] ) / det;
+    x2x = B0[0] + alpha * tBx;
+    x2y = B0[1] + alpha * tBy;
+  }
+
+  const double dx = x1x - x2x;
+  const double dy = x1y - x2y;
+  const double gn = -( dx * nB[0] + dy * nB[1] );
+  const double gap = gn * eta - residual_gap;
+
+  const double active_weight = active_set_smoothing_weight( gap, active_gap );
+  return active_weight > 0.0 ? penalty * w * J * active_weight * gap * gap : 0.0;
+}
+
 TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval( const double* x, const QPPenaltyKernelData* data,
                                                   double* energy_out )
 {
@@ -939,23 +972,12 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval( const double* x, const QPPenal
   const double eta = ( dot < 0.0 ) ? dot : 0.0;
 
   double energy = 0.0;
-  for ( int i = 0; i < data->N; ++i ) {
-    double x1[2];
-    iso_map( A0, A1, qp.qp[i], x1 );
-
-    double x2[2];
-    find_intersection( B0, B1, x1, nB, x2 );
-
-    const double dx = x1[0] - x2[0];
-    const double dy = x1[1] - x2[1];
-    const double gn = -( dx * nB[0] + dy * nB[1] );
-    const double gap = gn * eta - data->residual_gap;
-
-    const double active_weight = active_set_smoothing_weight( gap, data->active_set_smoothing_gap );
-    if ( active_weight > 0.0 ) {
-      energy += data->k * qp.w[i] * J * active_weight * gap * gap;
-    }
-  }
+  energy += qp_penalty_kernel_qp_energy( qp.qp[0], qp.w[0], A0, A1, B0, B1, nB, eta, data->residual_gap,
+                                         data->active_set_smoothing_gap, data->k, J );
+  energy += qp_penalty_kernel_qp_energy( qp.qp[1], qp.w[1], A0, A1, B0, B1, nB, eta, data->residual_gap,
+                                         data->active_set_smoothing_gap, data->k, J );
+  energy += qp_penalty_kernel_qp_energy( qp.qp[2], qp.w[2], A0, A1, B0, B1, nB, eta, data->residual_gap,
+                                         data->active_set_smoothing_gap, data->k, J );
 
   *energy_out = energy;
 }
