@@ -526,6 +526,8 @@ struct Parameters {
 
   EnergyMortarNormalMode energy_mortar_normal_mode =
       EnergyMortarNormalMode::ELEMENT_NORMAL;             ///! Normal field used by ENERGY_MORTAR
+  bool energy_mortar_enzyme_quadrature = true;            ///! Differentiate geometry-dependent quadrature construction
+  bool energy_mortar_fixed_integration_jacobian = false;  ///! Hold integration measure fixed in EnergyMortar derivatives
   bool energy_mortar_projection_smoothing = true;         ///! Apply projection-bound smoothing in ENERGY_MORTAR
   bool energy_mortar_projection_smoothing_set = false;    ///! True if the user explicitly set projection smoothing
   RealT energy_mortar_h1_active_set_smoothing_gap = 0.0;  ///! Active-set smoothing transition gap; disabled when <= 0

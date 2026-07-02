@@ -557,7 +557,8 @@ void applyH1ActiveSetSmoothing( H1TotalDerivatives& h1, double transition_gap, d
 
 EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
                                           MfemJacobianData& jac_data, double k, double delta, int N,
-                                          bool enzyme_quadrature, bool use_penalty, EnergyMortarNormalMode normal_mode,
+                                          bool enzyme_quadrature, bool fixed_integration_jacobian, bool use_penalty,
+                                          EnergyMortarNormalMode normal_mode,
                                           bool projection_smoothing,
                                           double h1_active_set_smoothing_gap,
                                           EnergyMortarPenaltyMode penalty_mode,
@@ -571,6 +572,7 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
   params_.del = delta;
   params_.N = N;
   params_.enzyme_quadrature = enzyme_quadrature;
+  params_.fixed_integration_jacobian = fixed_integration_jacobian;
   params_.normal_mode = normal_mode;
   params_.projection_smoothing = projection_smoothing;
   params_.h1_active_set_smoothing_gap = h1_active_set_smoothing_gap;
@@ -611,6 +613,18 @@ void EnergyMortarAdapter::updateEnergyMortarNormalMode( EnergyMortarNormalMode n
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
   redecomp_nodal_normal_.reset();
   submesh_nodal_normal_ = 0.0;
+}
+
+void EnergyMortarAdapter::updateEnergyMortarEnzymeQuadrature( bool enabled )
+{
+  params_.enzyme_quadrature = enabled;
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+}
+
+void EnergyMortarAdapter::updateEnergyMortarFixedIntegrationJacobian( bool enabled )
+{
+  params_.fixed_integration_jacobian = enabled;
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 }
 
 void EnergyMortarAdapter::updateEnergyMortarH1ActiveSetSmoothing( RealT gap_transition )

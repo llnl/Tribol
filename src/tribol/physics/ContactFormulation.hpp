@@ -134,6 +134,16 @@ class ContactFormulation {
   virtual void updateEnergyMortarNormalMode( EnergyMortarNormalMode /*normal_mode*/, bool /*projection_smoothing*/ ) {}
 
   /**
+   * @brief Update ENERGY_MORTAR quadrature differentiation mode on formulations that support it
+   */
+  virtual void updateEnergyMortarEnzymeQuadrature( bool /*enabled*/ ) {}
+
+  /**
+   * @brief Update ENERGY_MORTAR integration-measure differentiation mode on formulations that support it
+   */
+  virtual void updateEnergyMortarFixedIntegrationJacobian( bool /*enabled*/ ) {}
+
+  /**
    * @brief Update ENERGY_MORTAR active-set smoothing gap on formulations that support it
    */
   virtual void updateEnergyMortarH1ActiveSetSmoothing( RealT /*gap_transition*/ ) {}

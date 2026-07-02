@@ -22,7 +22,6 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     double k = 1000.0;
     double delta = 0.1;
     int N = 3;
-    bool enzyme_quadrature = true;
     // ENERGY_MORTAR supports a penalty-style mode driven by the kinematic penalty parameters, even if the coupling
     // scheme is registered with LM enforcement (which is often done to enable submesh/pressure infrastructure).
     const auto& penalty_opts = cs->getEnforcementOptions().penalty_options;
@@ -43,7 +42,9 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     SLIC_ERROR_ROOT_IF( !cs->hasMfemJacobianData(), "ENERGY_MORTAR requires MFEM Jacobian data." );
 
     return std::make_unique<EnergyMortarAdapter>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
-                                                  *cs->getMfemJacobianData(), k, delta, N, enzyme_quadrature,
+                                                  *cs->getMfemJacobianData(), k, delta, N,
+                                                  cs->getParameters().energy_mortar_enzyme_quadrature,
+                                                  cs->getParameters().energy_mortar_fixed_integration_jacobian,
                                                   use_penalty_, cs->getParameters().energy_mortar_normal_mode,
                                                   cs->getParameters().energy_mortar_projection_smoothing,
                                                   cs->getParameters().energy_mortar_h1_active_set_smoothing_gap,

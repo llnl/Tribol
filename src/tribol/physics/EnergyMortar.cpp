@@ -19,7 +19,7 @@ namespace {
 // This MUST match what the ContactParams struct has in EnergyMortarAdapter
 // Theese had to be saved locally in order for enzyme to work correctly
 struct KernelParams {
-  int N = 3;                  // No. of quadrature points
+  int N = energy_mortar_num_quad_points;  // No. of quadrature points
   double del = 0.1;           // Smoothing parameter
   double residual_gap = 0.0;  // User-defined gap offset
 };
@@ -34,6 +34,19 @@ TRIBOL_ENZYME_INLINE void find_normal( const double* coord1, const double* coord
   dy /= len;
   normal[0] = dy;
   normal[1] = -dx;
+}
+
+TRIBOL_ENZYME_INLINE double line_jacobian( const double* coord1, const double* coord2 )
+{
+  const double dx = coord2[0] - coord1[0];
+  const double dy = coord2[1] - coord1[1];
+  return std::sqrt( dx * dx + dy * dy );
+}
+
+TRIBOL_ENZYME_INLINE double integration_jacobian( const double* coord1, const double* coord2, bool fixed,
+                                                  double fixed_value )
+{
+  return fixed ? fixed_value : line_jacobian( coord1, coord2 );
 }
 
 TRIBOL_ENZYME_INLINE double normalize2( double* v )
@@ -89,38 +102,16 @@ TRIBOL_ENZYME_INLINE double local_coord_on_segment( const double* A0, const doub
 // Gets the respective gauss-legendre nodes dependant on quadrature order
 TRIBOL_ENZYME_INLINE void determine_legendre_nodes_raw( int N, double* x )
 {
-  if ( N == 1 ) {
-    x[0] = 0.0;
-  } else if ( N == 2 ) {
-    const double a = 1.0 / std::sqrt( 3.0 );
-    x[0] = -a;
-    x[1] = a;
-  } else if ( N == 3 ) {
-    const double a = std::sqrt( 3.0 / 5.0 );
-    x[0] = -a;
-    x[1] = 0.0;
-    x[2] = a;
-  } else if ( N == 4 ) {
-    const double a = std::sqrt( ( 3.0 - 2.0 * std::sqrt( 6.0 / 5.0 ) ) / 7.0 );
-    const double b = std::sqrt( ( 3.0 + 2.0 * std::sqrt( 6.0 / 5.0 ) ) / 7.0 );
-    x[0] = -b;
-    x[1] = -a;
-    x[2] = a;
-    x[3] = b;
-  } else if ( N == 5 ) {
-    const double a = std::sqrt( 5.0 - 2.0 * std::sqrt( 10.0 / 7.0 ) ) / 3.0;
-    const double b = std::sqrt( 5.0 + 2.0 * std::sqrt( 10.0 / 7.0 ) ) / 3.0;
-    x[0] = -b;
-    x[1] = -a;
-    x[2] = 0.0;
-    x[3] = a;
-    x[4] = b;
-  } else {
-    assert( false && "Unsupported quadrature order" );
-  }
+  assert( N == energy_mortar_num_quad_points && "EnergyMortar supports only the fixed 3-point quadrature rule" );
+  (void)N;
+  const double a = std::sqrt( 3.0 / 5.0 );
+  x[0] = -a;
+  x[1] = 0.0;
+  x[2] = a;
 }
 
-TRIBOL_ENZYME_INLINE void determine_legendre_nodes( int N, std::array<double, 3>& x )
+TRIBOL_ENZYME_INLINE void determine_legendre_nodes(
+    int N, std::array<double, energy_mortar_num_quad_points>& x )
 {
   determine_legendre_nodes_raw( N, x.data() );
 }
@@ -128,52 +119,38 @@ TRIBOL_ENZYME_INLINE void determine_legendre_nodes( int N, std::array<double, 3>
 // Gets the respective gauss-legendre weights dependant on quadrature order
 TRIBOL_ENZYME_INLINE void determine_legendre_weights_raw( int N, double* W )
 {
-  if ( N == 1 ) {
-    W[0] = 2.0;
-  } else if ( N == 2 ) {
-    W[0] = 1.0;
-    W[1] = 1.0;
-  } else if ( N == 3 ) {
-    W[0] = 5.0 / 9.0;
-    W[1] = 8.0 / 9.0;
-    W[2] = 5.0 / 9.0;
-  } else if ( N == 4 ) {
-    W[0] = ( 18 - std::sqrt( 30 ) ) / 36.0;
-    W[1] = ( 18 + std::sqrt( 30 ) ) / 36.0;
-    W[2] = ( 18 + std::sqrt( 30 ) ) / 36.0;
-    W[3] = ( 18 - std::sqrt( 30 ) ) / 36.0;
-  } else if ( N == 5 ) {
-    W[0] = ( 322.0 - 13.0 * std::sqrt( 70.0 ) ) / 900.0;
-    W[1] = ( 322.0 + 13.0 * std::sqrt( 70.0 ) ) / 900.0;
-    W[2] = 128.0 / 225.0;
-    W[3] = ( 322.0 + 13.0 * std::sqrt( 70.0 ) ) / 900.0;
-    W[4] = ( 322.0 - 13.0 * std::sqrt( 70.0 ) ) / 900.0;
-  } else {
-    assert( false && "Unsupported quadrature order" );
-  }
+  assert( N == energy_mortar_num_quad_points && "EnergyMortar supports only the fixed 3-point quadrature rule" );
+  (void)N;
+  W[0] = 5.0 / 9.0;
+  W[1] = 8.0 / 9.0;
+  W[2] = 5.0 / 9.0;
 }
 
-TRIBOL_ENZYME_INLINE void determine_legendre_weights( int N, std::array<double, 3>& W )
+TRIBOL_ENZYME_INLINE void determine_legendre_weights(
+    int N, std::array<double, energy_mortar_num_quad_points>& W )
 {
   determine_legendre_weights_raw( N, W.data() );
 }
 
 TRIBOL_ENZYME_INLINE void compute_quadrature_raw( const double* xi_bounds, int N, QuadPoints* out )
 {
-  double qpoints[3] = { 0.0, 0.0, 0.0 };
-  double weights[3] = { 0.0, 0.0, 0.0 };
-
-  determine_legendre_nodes_raw( N, qpoints );
-  determine_legendre_weights_raw( N, weights );
+  assert( N == energy_mortar_num_quad_points && "EnergyMortar supports only the fixed 3-point quadrature rule" );
+  (void)N;
 
   const double xi_min = xi_bounds[0];
   const double xi_max = xi_bounds[1];
   const double J = 0.5 * ( xi_max - xi_min );
+  const double xi_mid = 0.5 * ( xi_max + xi_min );
+  const double xi_half_width = 0.5 * ( xi_max - xi_min );
+  const double a = std::sqrt( 3.0 / 5.0 );
 
-  for ( int i = 0; i < N; ++i ) {
-    out->qp[i] = 0.5 * ( xi_max - xi_min ) * qpoints[i] + 0.5 * ( xi_max + xi_min );
-    out->w[i] = weights[i] * J;
-  }
+  out->qp[0] = xi_mid - xi_half_width * a;
+  out->qp[1] = xi_mid;
+  out->qp[2] = xi_mid + xi_half_width * a;
+
+  out->w[0] = ( 5.0 / 9.0 ) * J;
+  out->w[1] = ( 8.0 / 9.0 ) * J;
+  out->w[2] = ( 5.0 / 9.0 ) * J;
 }
 
 // Map a point from the 1D parent segment coordinate to physical coordinates.
@@ -526,6 +503,55 @@ TRIBOL_ENZYME_INLINE void recover_h1_normal_at_node( const double* x, int num_no
   n[1] = n_y;
 }
 
+TRIBOL_ENZYME_INLINE void compute_h1_quadrature_from_geometry( const double* x, const H1KernelData* data,
+                                                               QuadPoints* qp )
+{
+  const int n1 = data->num_nodes1;
+  const int n2 = data->num_nodes2;
+  const double* x1_all = x;
+  const double* x2_all = x + 2 * n1;
+
+  const int A_node0 = data->contact_nodes1[0];
+  const int A_node1 = data->contact_nodes1[1];
+  const int B_node0 = data->contact_nodes2[0];
+  const int B_node1 = data->contact_nodes2[1];
+
+  const double A0[2] = { x1_all[A_node0], x1_all[n1 + A_node0] };
+  const double A1[2] = { x1_all[A_node1], x1_all[n1 + A_node1] };
+  const double B0[2] = { x2_all[B_node0], x2_all[n2 + B_node0] };
+  const double B1[2] = { x2_all[B_node1], x2_all[n2 + B_node1] };
+
+  double nB0[2];
+  double nB1[2];
+  recover_h1_normal_at_node( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, B_node0, nB0 );
+  recover_h1_normal_at_node( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, B_node1, nB1 );
+
+  double projs_raw[2];
+  get_projections_h1( A0, A1, B0, B1, nB0, nB1, projs_raw );
+  double bounds_raw[2];
+  bounds_from_projections_raw( projs_raw, data->del, bounds_raw );
+  double xi_bounds_raw[2];
+  if ( data->projection_smoothing ) {
+    smooth_bounds_raw( bounds_raw, data->del, xi_bounds_raw );
+  } else {
+    xi_bounds_raw[0] = bounds_raw[0];
+    xi_bounds_raw[1] = bounds_raw[1];
+  }
+  compute_quadrature_raw( xi_bounds_raw, data->N, qp );
+}
+
+TRIBOL_ENZYME_INLINE void get_h1_quadrature( const double* x, const H1KernelData* data, QuadPoints* qp )
+{
+  if ( data->fixed_quadrature ) {
+    for ( int i = 0; i < energy_mortar_num_quad_points; ++i ) {
+      qp->qp[i] = data->qp.qp[i];
+      qp->w[i] = data->qp.w[i];
+    }
+  } else {
+    compute_h1_quadrature_from_geometry( x, data, qp );
+  }
+}
+
 TRIBOL_ENZYME_INLINE void h1_kernel_eval( const double* x, const H1KernelData* data, double* g_tilde_out,
                                           double* A_out )
 {
@@ -552,21 +578,10 @@ TRIBOL_ENZYME_INLINE void h1_kernel_eval( const double* x, const H1KernelData* d
   recover_h1_normal_at_node( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, B_node0, nB0 );
   recover_h1_normal_at_node( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, B_node1, nB1 );
 
-  double projs_raw[2];
-  get_projections_h1( A0, A1, B0, B1, nB0, nB1, projs_raw );
-  double bounds_raw[2];
-  bounds_from_projections_raw( projs_raw, data->del, bounds_raw );
-  double xi_bounds_raw[2];
-  if ( data->projection_smoothing ) {
-    smooth_bounds_raw( bounds_raw, data->del, xi_bounds_raw );
-  } else {
-    xi_bounds_raw[0] = bounds_raw[0];
-    xi_bounds_raw[1] = bounds_raw[1];
-  }
   QuadPoints qp;
-  compute_quadrature_raw( xi_bounds_raw, data->N, &qp );
+  get_h1_quadrature( x, data, &qp );
 
-  const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+  const double J = integration_jacobian( A0, A1, data->fixed_integration_jacobian, data->integration_jacobian );
 
   double g1 = 0.0;
   double g2 = 0.0;
@@ -630,21 +645,10 @@ TRIBOL_ENZYME_INLINE void h1_qp_penalty_kernel_eval( const double* x, const H1Ke
   recover_h1_normal_at_node( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, B_node0, nB0 );
   recover_h1_normal_at_node( x2_all, n2, data->num_elems2, data->elem_nodes2, data->xref2, B_node1, nB1 );
 
-  double projs_raw[2];
-  get_projections_h1( A0, A1, B0, B1, nB0, nB1, projs_raw );
-  double bounds_raw[2];
-  bounds_from_projections_raw( projs_raw, data->del, bounds_raw );
-  double xi_bounds_raw[2];
-  if ( data->projection_smoothing ) {
-    smooth_bounds_raw( bounds_raw, data->del, xi_bounds_raw );
-  } else {
-    xi_bounds_raw[0] = bounds_raw[0];
-    xi_bounds_raw[1] = bounds_raw[1];
-  }
   QuadPoints qp;
-  compute_quadrature_raw( xi_bounds_raw, data->N, &qp );
+  get_h1_quadrature( x, data, &qp );
 
-  const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+  const double J = integration_jacobian( A0, A1, data->fixed_integration_jacobian, data->integration_jacobian );
 
   double energy = 0.0;
   for ( int i = 0; i < data->N; ++i ) {
@@ -697,7 +701,7 @@ TRIBOL_ENZYME_INLINE void h1_nodal_energy_kernel_eval( const double* x, const H1
   normalize2( nA_nodes[0] );
   normalize2( nA_nodes[1] );
 
-  const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+  const double J = integration_jacobian( A0, A1, data->fixed_integration_jacobian, data->integration_jacobian );
 
   double energy = 0.0;
   for ( int node = 0; node < 2; ++node ) {
@@ -763,9 +767,9 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, Gparams* gp, double* g
   const double B0[2] = { x[4], x[5] };
   const double B1[2] = { x[6], x[7] };
 
-  const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+  const double J = integration_jacobian( A0, A1, gp->fixed_integration_jacobian, gp->integration_jacobian );
 
-  const double J_ref = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+  const double J_ref = integration_jacobian( A0, A1, gp->fixed_integration_jacobian, gp->integration_jacobian );
 
   double nB[2];
   find_normal( B0, B1, nB );
@@ -830,9 +834,9 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel_quad( const double* x, const Gparams* gp
   const double B0[2] = { x[4], x[5] };
   const double B1[2] = { x[6], x[7] };
 
-  const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+  const double J = integration_jacobian( A0, A1, gp->fixed_integration_jacobian, gp->integration_jacobian );
 
-  const double J_ref = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+  const double J_ref = integration_jacobian( A0, A1, gp->fixed_integration_jacobian, gp->integration_jacobian );
 
   double nB[2];
   find_normal( B0, B1, nB );
@@ -891,6 +895,8 @@ struct QPPenaltyKernelData {
   double active_set_smoothing_gap{ 0.0 };
   bool projection_smoothing{ true };
   bool fixed_quadrature{ false };
+  bool fixed_integration_jacobian{ false };
+  double integration_jacobian{ 0.0 };
   Gparams qp{};
 };
 
@@ -921,7 +927,7 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval( const double* x, const QPPenal
     compute_quadrature_raw( xi_bounds_raw, data->N, &qp );
   }
 
-  const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+  const double J = integration_jacobian( A0, A1, data->fixed_integration_jacobian, data->integration_jacobian );
 
   double nB[2];
   find_normal( B0, B1, nB );
@@ -1047,8 +1053,9 @@ TRIBOL_ENZYME_INLINE void grad_kernel( const double* x, const Gparams* gp, doubl
 
 // Wrap the varying-quadrature kernel as a scalar-valued function for Enzyme.
 template <KernelOutput Output>
-TRIBOL_ENZYME_INLINE void kernel_out_enzyme( const double* x, double* out )
+TRIBOL_ENZYME_INLINE void kernel_out_enzyme( const double* x, const void* gp_void, double* out )
 {
+  const Gparams* gp_data = static_cast<const Gparams*>( gp_void );
   KernelParams kp;
   // x stores the two endpoints of edge A followed by the two endpoints of edge B.
   double A0[2], A1[2], B0[2], B1[2];
@@ -1077,6 +1084,8 @@ TRIBOL_ENZYME_INLINE void kernel_out_enzyme( const double* x, double* out )
     gp.qp[i] = qp.qp[i];
     gp.w[i] = qp.w[i];
   }
+  gp.fixed_integration_jacobian = gp_data->fixed_integration_jacobian;
+  gp.integration_jacobian = gp_data->integration_jacobian;
 
   double gt[2];
   double A_out[2];
@@ -1095,14 +1104,15 @@ TRIBOL_ENZYME_INLINE void kernel_out_enzyme( const double* x, double* out )
 
 // Differentiate the selected varying-quadrature scalar kernel with respect to the 8 endpoint coordinates.
 template <KernelOutput Output>
-TRIBOL_ENZYME_INLINE void grad_kernel_enzyme( const double* x, double* dout_du )
+TRIBOL_ENZYME_INLINE void grad_kernel_enzyme( const double* x, const Gparams* gp, double* dout_du )
 {
   double dx[8] = { 0.0 };
   double out = 0.0;
   double dout = 1.0;
 
   // Seed the scalar output with 1.0 so Enzyme accumulates dOutput/dx into dx.
-  __enzyme_autodiff<void>( (void*)kernel_out_enzyme<Output>, enzyme_dup, x, dx, enzyme_dup, &out, &dout );
+  __enzyme_autodiff<void>( (void*)kernel_out_enzyme<Output>, enzyme_dup, x, dx, enzyme_const, (const void*)gp,
+                           enzyme_dup, &out, &dout );
 
   for ( int i = 0; i < 8; ++i ) {
     dout_du[i] = dx[i];
@@ -1111,7 +1121,7 @@ TRIBOL_ENZYME_INLINE void grad_kernel_enzyme( const double* x, double* dout_du )
 
 // Compute the Hessian of the selected varying-quadrature scalar kernel.
 template <KernelOutput Output>
-void d2_kernel( const double* x, double* H )
+void d2_kernel( const double* x, const Gparams* gp, double* H )
 {
   for ( int col = 0; col < 8; ++col ) {
     double dx[8] = { 0.0 };
@@ -1121,7 +1131,8 @@ void d2_kernel( const double* x, double* H )
     double dgrad[8] = { 0.0 };
 
     // Differentiate the gradient in coordinate direction col to form one Hessian column.
-    __enzyme_fwddiff<void>( (void*)grad_kernel_enzyme<Output>, enzyme_dup, x, dx, enzyme_dup, grad, dgrad );
+    __enzyme_fwddiff<void>( (void*)grad_kernel_enzyme<Output>, enzyme_dup, x, dx, enzyme_const, (const void*)gp,
+                            enzyme_dup, grad, dgrad );
 
     for ( int row = 0; row < 8; ++row ) H[row * 8 + col] = dgrad[row];
   }
@@ -1292,6 +1303,13 @@ void d2_h1_nodal_energy_kernel( const double* x, const H1KernelData* data, doubl
 
 }  // namespace
 
+EnergyMortarCalculator::EnergyMortarCalculator( const ContactParams& p )
+    : p_( p ), smoother_()
+{
+  SLIC_ERROR_ROOT_IF( p_.N != energy_mortar_num_quad_points,
+                      "EnergyMortar supports only the fixed 3-point Gauss-Legendre quadrature rule." );
+}
+
 // Construct the quadrature data needed to evaluate the smoothed gap kernel.
 Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                    const MeshData::Viewer& mesh2 ) const
@@ -1339,6 +1357,8 @@ Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, co
     gp.qp[i] = qp.qp[i];
     gp.w[i] = qp.w[i];
   }
+  gp.fixed_integration_jacobian = p_.fixed_integration_jacobian;
+  gp.integration_jacobian = line_jacobian( A0, A1 );
 
   return gp;
 }
@@ -1433,6 +1453,8 @@ TRIBOL_ENZYME_INLINE std::array<double, 2> ContactSmoothing::smooth_bounds( cons
 TRIBOL_ENZYME_INLINE QuadPoints EnergyMortarCalculator::compute_quadrature( const std::array<double, 2>& xi_bounds,
                                                                             int N )
 {
+  SLIC_ERROR_ROOT_IF( N != energy_mortar_num_quad_points,
+                      "EnergyMortar supports only the fixed 3-point Gauss-Legendre quadrature rule." );
   QuadPoints out;
   const double xi_bounds_raw[2] = { xi_bounds[0], xi_bounds[1] };
   compute_quadrature_raw( xi_bounds_raw, N, &out );
@@ -1568,8 +1590,9 @@ void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshD
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    grad_kernel_enzyme<KernelOutput::GTILDE1>( x, dg1_du );
-    grad_kernel_enzyme<KernelOutput::GTILDE2>( x, dg2_du );
+    Gparams gp = construct_gparams( pair, mesh1, mesh2 );
+    grad_kernel_enzyme<KernelOutput::GTILDE1>( x, &gp, dg1_du );
+    grad_kernel_enzyme<KernelOutput::GTILDE2>( x, &gp, dg2_du );
   }
 
   for ( int i = 0; i < 8; ++i ) {
@@ -1611,8 +1634,9 @@ void EnergyMortarCalculator::grad_trib_area( const InterfacePair& pair, const Me
     grad_kernel<KernelOutput::A2>( x, &gp, dA2_dx );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    grad_kernel_enzyme<KernelOutput::A1>( x, dA1_dx );
-    grad_kernel_enzyme<KernelOutput::A2>( x, dA2_dx );
+    Gparams gp = construct_gparams( pair, mesh1, mesh2 );
+    grad_kernel_enzyme<KernelOutput::A1>( x, &gp, dA1_dx );
+    grad_kernel_enzyme<KernelOutput::A2>( x, &gp, dA2_dx );
   }
 }
 
@@ -1644,8 +1668,9 @@ void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshDa
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    d2_kernel<KernelOutput::GTILDE1>( x, d2g1_d2u );
-    d2_kernel<KernelOutput::GTILDE2>( x, d2g2_d2u );
+    Gparams gp = construct_gparams( pair, mesh1, mesh2 );
+    d2_kernel<KernelOutput::GTILDE1>( x, &gp, d2g1_d2u );
+    d2_kernel<KernelOutput::GTILDE2>( x, &gp, d2g2_d2u );
   }
 
   for ( int i = 0; i < 64; ++i ) {
@@ -1691,8 +1716,9 @@ void EnergyMortarCalculator::compute_d2A_d2u( const InterfacePair& pair, const M
     d2_kernel_quad<KernelOutput::A2>( x, &gp, d2A2_d2u );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    d2_kernel<KernelOutput::A1>( x, d2A1_d2u );
-    d2_kernel<KernelOutput::A2>( x, d2A2_d2u );
+    Gparams gp = construct_gparams( pair, mesh1, mesh2 );
+    d2_kernel<KernelOutput::A1>( x, &gp, d2A1_d2u );
+    d2_kernel<KernelOutput::A2>( x, &gp, d2A2_d2u );
   }
 
   for ( int i = 0; i < 64; ++i ) {
@@ -1717,6 +1743,9 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
     data.residual_gap = p_.residual_gap;
     data.active_set_smoothing_gap = p_.h1_active_set_smoothing_gap;
     data.projection_smoothing = p_.projection_smoothing;
+    data.fixed_integration_jacobian = p_.fixed_integration_jacobian;
+    data.fixed_quadrature =
+        !p_.enzyme_quadrature && p_.penalty_mode == EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;
     data.nodal_energy_basis = p_.nodal_energy_basis;
     data.nodal_energy_angle_smoothing = p_.nodal_energy_angle_smoothing;
 
@@ -1798,9 +1827,18 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
       x[side2_offset + i] = mesh2.getPosition()[0][node_id];
       x[side2_offset + data.num_nodes2 + i] = mesh2.getPosition()[1][node_id];
     }
+    const double A0_local[2] = { x[data.contact_nodes1[0]], x[data.num_nodes1 + data.contact_nodes1[0]] };
+    const double A1_local[2] = { x[data.contact_nodes1[1]], x[data.num_nodes1 + data.contact_nodes1[1]] };
+    data.integration_jacobian = line_jacobian( A0_local, A1_local );
 
     result.h1_force.assign( ndof, 0.0 );
     result.h1_stiffness.assign( ndof * ndof, 0.0 );
+    if ( data.fixed_quadrature ) {
+      QuadPoints qp;
+      compute_h1_quadrature_from_geometry( x, &data, &qp );
+      data.qp.qp = qp.qp;
+      data.qp.w = qp.w;
+    }
     if ( p_.penalty_mode == EnergyMortarPenaltyMode::NODAL_ENERGY ) {
       h1_nodal_energy_kernel_eval( x, &data, &result.energy );
       grad_h1_nodal_energy_kernel( x, &data, result.h1_force.data() );
@@ -1826,6 +1864,8 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
   data.active_set_smoothing_gap = p_.h1_active_set_smoothing_gap;
   data.projection_smoothing = p_.projection_smoothing;
   data.fixed_quadrature = !p_.enzyme_quadrature;
+  data.fixed_integration_jacobian = p_.fixed_integration_jacobian;
+  data.integration_jacobian = line_jacobian( A0, A1 );
   if ( data.fixed_quadrature ) {
     data.qp = construct_gparams( pair, mesh1, mesh2 );
   }
@@ -1848,6 +1888,8 @@ H1TotalDerivatives EnergyMortarCalculator::compute_h1_total_derivatives( const I
   data.del = p_.del;
   data.residual_gap = p_.residual_gap;
   data.projection_smoothing = p_.projection_smoothing;
+  data.fixed_quadrature = !p_.enzyme_quadrature;
+  data.fixed_integration_jacobian = p_.fixed_integration_jacobian;
 
   auto build_side = []( const MeshData::Viewer& mesh, int contact_elem, int& num_nodes, int& num_elems,
                         std::array<int, h1_max_stencil_nodes_per_mesh>& node_ids,
@@ -1926,6 +1968,15 @@ H1TotalDerivatives EnergyMortarCalculator::compute_h1_total_derivatives( const I
     const int node_id = result.mesh2_nodes[i];
     x[side2_offset + i] = mesh2.getPosition()[0][node_id];
     x[side2_offset + data.num_nodes2 + i] = mesh2.getPosition()[1][node_id];
+  }
+  const double A0_local[2] = { x[data.contact_nodes1[0]], x[data.num_nodes1 + data.contact_nodes1[0]] };
+  const double A1_local[2] = { x[data.contact_nodes1[1]], x[data.num_nodes1 + data.contact_nodes1[1]] };
+  data.integration_jacobian = line_jacobian( A0_local, A1_local );
+  if ( data.fixed_quadrature ) {
+    QuadPoints qp;
+    compute_h1_quadrature_from_geometry( x, &data, &qp );
+    data.qp.qp = qp.qp;
+    data.qp.w = qp.w;
   }
 
   double gt[2];

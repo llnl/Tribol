@@ -77,6 +77,22 @@ void setPenaltyOptions( IndexT cs_id, PenaltyConstraintType pen_enfrc_option,
 void setEnergyMortarNormalMode( IndexT cs_id, EnergyMortarNormalMode normal_mode );
 
 /*!
+ * \brief Enables or disables differentiating ENERGY_MORTAR quadrature construction
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] enabled true to include geometry-dependent quadrature construction in derivatives
+ */
+void setEnergyMortarEnzymeQuadrature( IndexT cs_id, bool enabled );
+
+/*!
+ * \brief Enables or disables differentiating the ENERGY_MORTAR physical integration measure
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] enabled true to hold the physical integration Jacobian fixed during differentiation
+ */
+void setEnergyMortarFixedIntegrationJacobian( IndexT cs_id, bool enabled );
+
+/*!
  * \brief Enables or disables projection-bound smoothing in ENERGY_MORTAR
  *
  * \param [in] cs_id coupling scheme id

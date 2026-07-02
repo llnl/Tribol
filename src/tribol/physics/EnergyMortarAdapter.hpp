@@ -41,7 +41,8 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @param k Penalty stiffness
    * @param delta Smoothing length
    * @param N Quadrature order
-   * @param enzyme_quadrature If true, use Enzyme-assisted quadrature
+   * @param enzyme_quadrature If true, differentiate geometry-dependent quadrature construction
+   * @param fixed_integration_jacobian If true, hold the physical integration measure fixed during differentiation
    * @param use_penalty If true, interpret the dual field as pressure; otherwise interpret it as a Lagrange multiplier
    * vector (LM mode)
    *
@@ -51,7 +52,7 @@ class EnergyMortarAdapter : public ContactFormulation {
    */
   EnergyMortarAdapter(
       MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k, double delta, int N,
-      bool enzyme_quadrature, bool use_penalty = true,
+      bool enzyme_quadrature, bool fixed_integration_jacobian, bool use_penalty = true,
       EnergyMortarNormalMode normal_mode = EnergyMortarNormalMode::ELEMENT_NORMAL, bool projection_smoothing = true,
       double h1_active_set_smoothing_gap = 0.0,
       EnergyMortarPenaltyMode penalty_mode = EnergyMortarPenaltyMode::NODAL_GAP,
@@ -150,6 +151,20 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @param projection_smoothing If true, apply projection-bound smoothing
    */
   void updateEnergyMortarNormalMode( EnergyMortarNormalMode normal_mode, bool projection_smoothing ) override;
+
+  /**
+   * @brief Update whether geometry-dependent quadrature construction is differentiated
+   *
+   * @param enabled True to include quadrature construction in derivatives
+   */
+  void updateEnergyMortarEnzymeQuadrature( bool enabled ) override;
+
+  /**
+   * @brief Update whether the physical integration measure is differentiated
+   *
+   * @param enabled True to hold the measure fixed during differentiation
+   */
+  void updateEnergyMortarFixedIntegrationJacobian( bool enabled ) override;
 
   /**
    * @brief Update active-set smoothing transition gap

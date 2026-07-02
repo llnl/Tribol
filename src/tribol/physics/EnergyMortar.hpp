@@ -12,17 +12,20 @@ namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
-// EnergyMortar uses a 3-point Gauss-Legendre quad rule
+constexpr int energy_mortar_num_quad_points = 3;
+
+// EnergyMortar uses a fixed 3-point Gauss-Legendre quad rule
 struct QuadPoints {
-  std::array<double, 3> qp;  // qp locations
-  std::array<double, 3> w;   // weights
+  std::array<double, energy_mortar_num_quad_points> qp;  // qp locations
+  std::array<double, energy_mortar_num_quad_points> w;   // weights
 };
 
 struct ContactParams {
   double del;                              // Smoothing Parameter
   double k;                                // Penalty
-  int N;                                   // Quadrature Points
-  bool enzyme_quadrature;                  // Determines how enzyming is performed (default = True)
+  int N{ energy_mortar_num_quad_points };  // Quadrature Points
+  bool enzyme_quadrature{ true };          // Determines how enzyming is performed (default = True)
+  bool fixed_integration_jacobian{ false };  // Hold physical integration measure fixed during differentiation
   EnergyMortarNormalMode normal_mode{ EnergyMortarNormalMode::ELEMENT_NORMAL };  // Normal field used by EnergyMortar
   bool projection_smoothing{ true };       // Apply projection-bound smoothing
   double h1_active_set_smoothing_gap{ 0.0 };  // Active-set smoothing transition gap; disabled when <= 0
@@ -90,8 +93,10 @@ struct FiniteDiffResult {
 };
 
 struct Gparams {
-  std::array<double, 3> qp;
-  std::array<double, 3> w;
+  std::array<double, energy_mortar_num_quad_points> qp;
+  std::array<double, energy_mortar_num_quad_points> w;
+  bool fixed_integration_jacobian{ false };
+  double integration_jacobian{ 0.0 };
 };
 
 /// Stores total derivative data for the H1 nodal-normal EnergyMortar path.
@@ -121,6 +126,10 @@ struct H1KernelData {
   double residual_gap{ 0.0 };
   double active_set_smoothing_gap{ 0.0 };
   bool projection_smoothing{ false };
+  bool fixed_quadrature{ false };
+  bool fixed_integration_jacobian{ false };
+  double integration_jacobian{ 0.0 };
+  Gparams qp{};
   EnergyMortarNodalEnergyBasis nodal_energy_basis{ EnergyMortarNodalEnergyBasis::CUBIC_SPLINE };
   bool nodal_energy_angle_smoothing{ true };
   int num_nodes1{ 0 };
@@ -169,8 +178,7 @@ class EnergyMortarCalculator {
   ///
   /// The parameters define the penalty stiffness, smoothing length, and
   /// derivative path used by the evaluator.
-  explicit EnergyMortarCalculator( const ContactParams& p )
-      : p_( p ), smoother_() {}  // constructor - copies params into the object
+  explicit EnergyMortarCalculator( const ContactParams& p );
 
   int get_N() const { return p_.N; }
 

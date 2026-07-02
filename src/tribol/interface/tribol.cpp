@@ -116,6 +116,36 @@ void setEnergyMortarNormalMode( IndexT cs_id, EnergyMortarNormalMode normal_mode
 }
 
 //------------------------------------------------------------------------------
+void setEnergyMortarEnzymeQuadrature( IndexT cs_id, bool enabled )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarEnzymeQuadrature(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  auto& params = cs->getParameters();
+  params.energy_mortar_enzyme_quadrature = enabled;
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarEnzymeQuadrature( enabled );
+  }
+}
+
+//------------------------------------------------------------------------------
+void setEnergyMortarFixedIntegrationJacobian( IndexT cs_id, bool enabled )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarFixedIntegrationJacobian(): call "
+                               << "tribol::registerCouplingScheme() prior to calling this routine." );
+
+  auto& params = cs->getParameters();
+  params.energy_mortar_fixed_integration_jacobian = enabled;
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarFixedIntegrationJacobian( enabled );
+  }
+}
+
+//------------------------------------------------------------------------------
 void setEnergyMortarProjectionSmoothing( IndexT cs_id, bool enabled )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
