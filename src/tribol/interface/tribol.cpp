@@ -178,6 +178,39 @@ void setEnergyMortarH1ActiveSetSmoothing( IndexT cs_id, RealT gap_transition )
 }
 
 //------------------------------------------------------------------------------
+void setEnergyMortarQpDerivativeBlendGap( IndexT cs_id, RealT gap_transition )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarQpDerivativeBlendGap(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  auto& params = cs->getParameters();
+  params.energy_mortar_qp_derivative_blend_gap = gap_transition;
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarQpDerivativeBlendGap( gap_transition );
+  }
+}
+
+//------------------------------------------------------------------------------
+void setEnergyMortarQpDerivativeBlendWeight( IndexT cs_id, RealT weight )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarQpDerivativeBlendWeight(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  auto& params = cs->getParameters();
+  if ( weight > 1.0 ) {
+    weight = 1.0;
+  }
+  params.energy_mortar_qp_derivative_blend_weight = weight;
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarQpDerivativeBlendWeight( weight );
+  }
+}
+
+//------------------------------------------------------------------------------
 void setEnergyMortarPenaltyMode( IndexT cs_id, EnergyMortarPenaltyMode mode )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );

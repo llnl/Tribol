@@ -506,7 +506,8 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
   params.penalty_mode = EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;
 
   EnergyMortarCalculator evaluator( params );
-  auto result = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
+  auto result =
+      evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
 
   EXPECT_EQ( result.energy, 0.0 );
   for ( double value : result.force ) {
@@ -575,16 +576,14 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
   params.penalty_mode = EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;
 
   EnergyMortarCalculator evaluator_without_residual( params );
-  const auto inactive =
-      evaluator_without_residual.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
-                                                                        mesh2.getView() );
+  const auto inactive = evaluator_without_residual.compute_quadrature_point_penalty_data(
+      InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
   EXPECT_EQ( inactive.energy, 0.0 );
 
   params.residual_gap = 0.15;
   EnergyMortarCalculator evaluator_with_residual( params );
-  const auto active =
-      evaluator_with_residual.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
-                                                                     mesh2.getView() );
+  const auto active = evaluator_with_residual.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ),
+                                                                                     mesh1.getView(), mesh2.getView() );
   EXPECT_GT( active.energy, 0.0 );
 }
 
@@ -609,7 +608,8 @@ TEST( QuadraturePointPenaltyCheck, ActiveSetSmoothingDoesNotPenalizeOpenGap )
   params.h1_active_set_smoothing_gap = 0.1;
 
   EnergyMortarCalculator evaluator( params );
-  auto result = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
+  auto result =
+      evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
 
   EXPECT_EQ( result.energy, 0.0 );
 }
@@ -634,15 +634,13 @@ TEST( QuadraturePointPenaltyCheck, PenetratingGapInsideActiveSetTransitionIsSmoo
   params.penalty_mode = EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;
 
   EnergyMortarCalculator evaluator_without_smoothing( params );
-  const auto unsmoothed =
-      evaluator_without_smoothing.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
-                                                                         mesh2.getView() );
+  const auto unsmoothed = evaluator_without_smoothing.compute_quadrature_point_penalty_data(
+      InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
 
   params.h1_active_set_smoothing_gap = 0.1;
   EnergyMortarCalculator evaluator_with_smoothing( params );
-  const auto smoothed =
-      evaluator_with_smoothing.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
-                                                                      mesh2.getView() );
+  const auto smoothed = evaluator_with_smoothing.compute_quadrature_point_penalty_data(
+      InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
 
   EXPECT_GT( smoothed.energy, 0.0 );
   EXPECT_LT( smoothed.energy, unsmoothed.energy );
@@ -672,7 +670,7 @@ TEST( QuadraturePointPenaltyCheck, ForceAndStiffnessFDvsAD )
   const auto base = evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() );
 
   const std::array<int, 4> side = { 0, 0, 1, 1 };
-  const std::array<int, 4> node = { conn1[0], conn1[1], conn2[0], conn2[1] };
+  const std::array<IndexT, 4> node = { conn1[0], conn1[1], conn2[0], conn2[1] };
   const std::vector<RealT> x1_orig( x1, x1 + 2 );
   const std::vector<RealT> y1_orig( y1, y1 + 2 );
   const std::vector<RealT> x2_orig( x2, x2 + 2 );
@@ -949,16 +947,14 @@ TEST( H1NodalEnergyPenaltyCheck, AngleSmoothingAtNinetyDegreesIsInactive )
   params.nodal_energy_basis = EnergyMortarNodalEnergyBasis::CUBIC_SPLINE;
 
   EnergyMortarCalculator evaluator_with_smoothing( params );
-  const auto inactive =
-      evaluator_with_smoothing.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
-                                                                      mesh2.getView() );
+  const auto inactive = evaluator_with_smoothing.compute_quadrature_point_penalty_data(
+      InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
   EXPECT_EQ( inactive.energy, 0.0 );
 
   params.nodal_energy_angle_smoothing = false;
   EnergyMortarCalculator evaluator_without_smoothing( params );
-  const auto active =
-      evaluator_without_smoothing.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
-                                                                         mesh2.getView() );
+  const auto active = evaluator_without_smoothing.compute_quadrature_point_penalty_data(
+      InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
   EXPECT_GT( active.energy, 0.0 );
 }
 

@@ -50,14 +50,15 @@ class EnergyMortarAdapter : public ContactFormulation {
    * mapping to a mortar side. To maintain that convention within Tribol, the adapter may internally flip mesh roles
    * relative to the order of the meshes provided here.
    */
-  EnergyMortarAdapter(
-      MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k, double delta, int N,
-      bool enzyme_quadrature, bool fixed_integration_jacobian, bool use_penalty = true,
-      EnergyMortarNormalMode normal_mode = EnergyMortarNormalMode::ELEMENT_NORMAL, bool projection_smoothing = true,
-      double h1_active_set_smoothing_gap = 0.0,
-      EnergyMortarPenaltyMode penalty_mode = EnergyMortarPenaltyMode::NODAL_GAP,
-      EnergyMortarNodalEnergyBasis nodal_energy_basis = EnergyMortarNodalEnergyBasis::CUBIC_SPLINE,
-      bool nodal_energy_angle_smoothing = true, RealT residual_gap = 0.0 );
+  EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k,
+                       double delta, int N, bool enzyme_quadrature, bool fixed_integration_jacobian,
+                       bool use_penalty = true,
+                       EnergyMortarNormalMode normal_mode = EnergyMortarNormalMode::ELEMENT_NORMAL,
+                       bool projection_smoothing = true, double h1_active_set_smoothing_gap = 0.0,
+                       double qp_derivative_blend_gap = 0.0, double qp_derivative_blend_weight = -1.0,
+                       EnergyMortarPenaltyMode penalty_mode = EnergyMortarPenaltyMode::NODAL_GAP,
+                       EnergyMortarNodalEnergyBasis nodal_energy_basis = EnergyMortarNodalEnergyBasis::CUBIC_SPLINE,
+                       bool nodal_energy_angle_smoothing = true, RealT residual_gap = 0.0 );
 
   /**
    * @brief Default destructor
@@ -172,6 +173,20 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @param gap_transition Positive gap transition width; disabled when <= 0
    */
   void updateEnergyMortarH1ActiveSetSmoothing( RealT gap_transition ) override;
+
+  /**
+   * @brief Update QP penalty full/simplified derivative blend transition gap
+   *
+   * @param gap_transition Positive residual-gap transition width; disabled when <= 0
+   */
+  void updateEnergyMortarQpDerivativeBlendGap( RealT gap_transition ) override;
+
+  /**
+   * @brief Update fixed full-path QP penalty derivative blend weight
+   *
+   * @param weight Full-path weight clamped to [0, 1]; disabled when negative
+   */
+  void updateEnergyMortarQpDerivativeBlendWeight( RealT weight ) override;
 
   /**
    * @brief Update penalty enforcement mode

@@ -149,6 +149,16 @@ class ContactFormulation {
   virtual void updateEnergyMortarH1ActiveSetSmoothing( RealT /*gap_transition*/ ) {}
 
   /**
+   * @brief Update ENERGY_MORTAR QP penalty derivative-blending transition gap on formulations that support it
+   */
+  virtual void updateEnergyMortarQpDerivativeBlendGap( RealT /*gap_transition*/ ) {}
+
+  /**
+   * @brief Update ENERGY_MORTAR fixed full-path QP derivative-blending weight on formulations that support it
+   */
+  virtual void updateEnergyMortarQpDerivativeBlendWeight( RealT /*weight*/ ) {}
+
+  /**
    * @brief Update ENERGY_MORTAR penalty mode on formulations that support it
    */
   virtual void updateEnergyMortarPenaltyMode( EnergyMortarPenaltyMode /*mode*/ ) {}

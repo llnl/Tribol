@@ -158,12 +158,12 @@ void addH1HessianBlocks( const H1TotalDerivatives& h1, const MeshData::Viewer& m
   }
 }
 
-void addH1QuadraturePointPenaltyHessianBlocks(
-    const QuadraturePointPenaltyData& h1, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-    std::map<std::pair<int, int>, std::array<double, 16>>& nm_nm_blocks,
-    std::map<std::pair<int, int>, std::array<double, 16>>& nm_m_blocks,
-    std::map<std::pair<int, int>, std::array<double, 16>>& m_nm_blocks,
-    std::map<std::pair<int, int>, std::array<double, 16>>& m_m_blocks )
+void addH1QuadraturePointPenaltyHessianBlocks( const QuadraturePointPenaltyData& h1, const MeshData::Viewer& mesh1,
+                                               const MeshData::Viewer& mesh2,
+                                               std::map<std::pair<int, int>, std::array<double, 16>>& nm_nm_blocks,
+                                               std::map<std::pair<int, int>, std::array<double, 16>>& nm_m_blocks,
+                                               std::map<std::pair<int, int>, std::array<double, 16>>& m_nm_blocks,
+                                               std::map<std::pair<int, int>, std::array<double, 16>>& m_m_blocks )
 {
   const auto dofs = buildH1DofInfo( h1, mesh1, mesh2 );
   const int ndof = static_cast<int>( dofs.size() );
@@ -429,15 +429,14 @@ void flushH1DebugPairs( int call, const H1DebugConfig& config, std::vector<H1Deb
     stream << call << "," << debug.original_pair.m_element_id1 << "," << debug.original_pair.m_element_id2 << ","
            << debug.flipped_pair.m_element_id1 << "," << debug.flipped_pair.m_element_id2 << "," << i << ","
            << debug.score << "," << debug.h1_proj[0] << "," << debug.h1_proj[1] << "," << debug.elem_proj[0] << ","
-           << debug.elem_proj[1] << "," << debug.h1_smooth[0]
-           << "," << debug.h1_smooth[1] << "," << debug.elem_smooth[0] << "," << debug.elem_smooth[1] << ","
-           << debug.h1_smooth[1] - debug.h1_smooth[0] << "," << debug.elem_smooth[1] - debug.elem_smooth[0] << ","
-           << debug.h1_g[0] << "," << debug.h1_g[1] << "," << debug.h1_A[0] << "," << debug.h1_A[1] << ","
-           << debug.h1_gap[0] << "," << debug.h1_gap[1] << "," << debug.elem_g[0] << "," << debug.elem_g[1] << ","
-           << debug.elem_A[0] << "," << debug.elem_A[1] << "," << debug.elem_gap[0] << "," << debug.elem_gap[1] << ","
-           << debug.max_abs_dg << "," << debug.max_abs_dA << "," << debug.A_elem_dot_B_elem << ","
-           << debug.A_node_dot_elem_min << "," << debug.B_node_dot_elem_min << "," << debug.A_node_spread << ","
-           << debug.B_node_spread << "\n";
+           << debug.elem_proj[1] << "," << debug.h1_smooth[0] << "," << debug.h1_smooth[1] << ","
+           << debug.elem_smooth[0] << "," << debug.elem_smooth[1] << "," << debug.h1_smooth[1] - debug.h1_smooth[0]
+           << "," << debug.elem_smooth[1] - debug.elem_smooth[0] << "," << debug.h1_g[0] << "," << debug.h1_g[1] << ","
+           << debug.h1_A[0] << "," << debug.h1_A[1] << "," << debug.h1_gap[0] << "," << debug.h1_gap[1] << ","
+           << debug.elem_g[0] << "," << debug.elem_g[1] << "," << debug.elem_A[0] << "," << debug.elem_A[1] << ","
+           << debug.elem_gap[0] << "," << debug.elem_gap[1] << "," << debug.max_abs_dg << "," << debug.max_abs_dA << ","
+           << debug.A_elem_dot_B_elem << "," << debug.A_node_dot_elem_min << "," << debug.B_node_dot_elem_min << ","
+           << debug.A_node_spread << "," << debug.B_node_spread << "\n";
   }
   stream.flush();
 }
@@ -558,9 +557,9 @@ void applyH1ActiveSetSmoothing( H1TotalDerivatives& h1, double transition_gap, d
 EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
                                           MfemJacobianData& jac_data, double k, double delta, int N,
                                           bool enzyme_quadrature, bool fixed_integration_jacobian, bool use_penalty,
-                                          EnergyMortarNormalMode normal_mode,
-                                          bool projection_smoothing,
-                                          double h1_active_set_smoothing_gap,
+                                          EnergyMortarNormalMode normal_mode, bool projection_smoothing,
+                                          double h1_active_set_smoothing_gap, double qp_derivative_blend_gap,
+                                          double qp_derivative_blend_weight,
                                           EnergyMortarPenaltyMode penalty_mode,
                                           EnergyMortarNodalEnergyBasis nodal_energy_basis,
                                           bool nodal_energy_angle_smoothing, RealT residual_gap )
@@ -576,6 +575,11 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
   params_.normal_mode = normal_mode;
   params_.projection_smoothing = projection_smoothing;
   params_.h1_active_set_smoothing_gap = h1_active_set_smoothing_gap;
+  params_.qp_derivative_blend_gap = qp_derivative_blend_gap;
+  if ( qp_derivative_blend_weight > 1.0 ) {
+    qp_derivative_blend_weight = 1.0;
+  }
+  params_.qp_derivative_blend_weight = qp_derivative_blend_weight;
   params_.penalty_mode = penalty_mode;
   params_.nodal_energy_basis = nodal_energy_basis;
   params_.nodal_energy_angle_smoothing = nodal_energy_angle_smoothing;
@@ -630,6 +634,22 @@ void EnergyMortarAdapter::updateEnergyMortarFixedIntegrationJacobian( bool enabl
 void EnergyMortarAdapter::updateEnergyMortarH1ActiveSetSmoothing( RealT gap_transition )
 {
   params_.h1_active_set_smoothing_gap = gap_transition;
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+}
+
+void EnergyMortarAdapter::updateEnergyMortarQpDerivativeBlendGap( RealT gap_transition )
+{
+  params_.qp_derivative_blend_gap = gap_transition;
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+}
+
+void EnergyMortarAdapter::updateEnergyMortarQpDerivativeBlendWeight( RealT weight )
+{
+  if ( weight > 1.0 ) {
+    weight = 1.0;
+  }
+  params_.qp_derivative_blend_weight = weight;
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 }
 
 void EnergyMortarAdapter::updateEnergyMortarPenaltyMode( EnergyMortarPenaltyMode mode )
@@ -891,7 +911,8 @@ void EnergyMortarAdapter::updateQuadraturePointPenaltyForces()
   df_m_nm.reserve( pairs_.size(), 16 );
   df_m_m.reserve( pairs_.size(), 16 );
 
-  mfem::GridFunction redecomp_force( const_cast<mfem::FiniteElementSpace*>( mesh_data_.GetRedecompResponse().FESpace() ) );
+  mfem::GridFunction redecomp_force(
+      const_cast<mfem::FiniteElementSpace*>( mesh_data_.GetRedecompResponse().FESpace() ) );
   redecomp_force = 0.0;
   const int scalar_size = redecomp_force.FESpace()->GetVSize() / redecomp_force.FESpace()->GetVDim();
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
@@ -964,7 +985,8 @@ void EnergyMortarAdapter::updateQuadraturePointPenaltyForces()
     df_m_m.append( elem2, elem2, df_dx_blocks[1][1], 16 );
   }
 
-  MPI_Allreduce( &local_energy, &energy_, 1, MPI_DOUBLE, MPI_SUM, mesh_data_.GetParentCoords().ParFESpace()->GetComm() );
+  MPI_Allreduce( &local_energy, &energy_, 1, MPI_DOUBLE, MPI_SUM,
+                 mesh_data_.GetParentCoords().ParFESpace()->GetComm() );
 
   mfem::Vector parent_force_dof( mesh_data_.GetParentCoords().ParFESpace()->GetVSize() );
   parent_force_dof = 0.0;

@@ -41,17 +41,17 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "ENERGY_MORTAR requires MFEM submesh data." );
     SLIC_ERROR_ROOT_IF( !cs->hasMfemJacobianData(), "ENERGY_MORTAR requires MFEM Jacobian data." );
 
-    return std::make_unique<EnergyMortarAdapter>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
-                                                  *cs->getMfemJacobianData(), k, delta, N,
-                                                  cs->getParameters().energy_mortar_enzyme_quadrature,
-                                                  cs->getParameters().energy_mortar_fixed_integration_jacobian,
-                                                  use_penalty_, cs->getParameters().energy_mortar_normal_mode,
-                                                  cs->getParameters().energy_mortar_projection_smoothing,
-                                                  cs->getParameters().energy_mortar_h1_active_set_smoothing_gap,
-                                                  cs->getParameters().energy_mortar_penalty_mode,
-                                                  cs->getParameters().energy_mortar_nodal_energy_basis,
-                                                  cs->getParameters().energy_mortar_nodal_energy_angle_smoothing,
-                                                  cs->getParameters().residual_gap );
+    return std::make_unique<EnergyMortarAdapter>(
+        *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), k, delta, N,
+        cs->getParameters().energy_mortar_enzyme_quadrature,
+        cs->getParameters().energy_mortar_fixed_integration_jacobian, use_penalty_,
+        cs->getParameters().energy_mortar_normal_mode, cs->getParameters().energy_mortar_projection_smoothing,
+        cs->getParameters().energy_mortar_h1_active_set_smoothing_gap,
+        cs->getParameters().energy_mortar_qp_derivative_blend_gap,
+        cs->getParameters().energy_mortar_qp_derivative_blend_weight,
+        cs->getParameters().energy_mortar_penalty_mode,
+        cs->getParameters().energy_mortar_nodal_energy_basis,
+        cs->getParameters().energy_mortar_nodal_energy_angle_smoothing, cs->getParameters().residual_gap );
 #else
     SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );
     return nullptr;

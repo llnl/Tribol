@@ -109,6 +109,26 @@ void setEnergyMortarProjectionSmoothing( IndexT cs_id, bool enabled );
 void setEnergyMortarH1ActiveSetSmoothing( IndexT cs_id, RealT gap_transition );
 
 /*!
+ * \brief Sets the residual-gap transition width for ENERGY_MORTAR QP derivative blending
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] gap_transition positive residual-gap transition width; disabled when <= 0
+ */
+void setEnergyMortarQpDerivativeBlendGap( IndexT cs_id, RealT gap_transition );
+
+/*!
+ * \brief Sets a fixed full-path weight for ENERGY_MORTAR QP derivative blending
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] weight full-path weight clamped to [0, 1]; disabled when negative
+ *
+ * This option is intended for externally managed continuation. For example, a
+ * nonlinear solver can compute a force-residual-based weight once per Newton
+ * iteration and pass it here before assembling the residual/Jacobian.
+ */
+void setEnergyMortarQpDerivativeBlendWeight( IndexT cs_id, RealT weight );
+
+/*!
  * \brief Sets the penalty enforcement mode for ENERGY_MORTAR
  *
  * \param [in] cs_id coupling scheme id

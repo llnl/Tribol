@@ -525,12 +525,17 @@ struct Parameters {
   bool auto_contact_check = false;  ///! True if auto-contact checks should be enabled
 
   EnergyMortarNormalMode energy_mortar_normal_mode =
-      EnergyMortarNormalMode::ELEMENT_NORMAL;             ///! Normal field used by ENERGY_MORTAR
-  bool energy_mortar_enzyme_quadrature = true;            ///! Differentiate geometry-dependent quadrature construction
-  bool energy_mortar_fixed_integration_jacobian = false;  ///! Hold integration measure fixed in EnergyMortar derivatives
-  bool energy_mortar_projection_smoothing = true;         ///! Apply projection-bound smoothing in ENERGY_MORTAR
-  bool energy_mortar_projection_smoothing_set = false;    ///! True if the user explicitly set projection smoothing
+      EnergyMortarNormalMode::ELEMENT_NORMAL;   ///! Normal field used by ENERGY_MORTAR
+  bool energy_mortar_enzyme_quadrature = true;  ///! Differentiate geometry-dependent quadrature construction
+  bool energy_mortar_fixed_integration_jacobian =
+      false;                                            ///! Hold integration measure fixed in EnergyMortar derivatives
+  bool energy_mortar_projection_smoothing = true;       ///! Apply projection-bound smoothing in ENERGY_MORTAR
+  bool energy_mortar_projection_smoothing_set = false;  ///! True if the user explicitly set projection smoothing
   RealT energy_mortar_h1_active_set_smoothing_gap = 0.0;  ///! Active-set smoothing transition gap; disabled when <= 0
+  RealT energy_mortar_qp_derivative_blend_gap =
+      0.0;  ///! Residual-gap transition width for QP penalty derivative blending; disabled when <= 0
+  RealT energy_mortar_qp_derivative_blend_weight =
+      -1.0;  ///! Fixed full-path QP derivative blend weight; disabled when negative
   EnergyMortarPenaltyMode energy_mortar_penalty_mode =
       EnergyMortarPenaltyMode::NODAL_GAP;  ///! Penalty enforcement mode used by ENERGY_MORTAR
   EnergyMortarNodalEnergyBasis energy_mortar_nodal_energy_basis =

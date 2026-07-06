@@ -20,8 +20,8 @@ namespace {
 // Theese had to be saved locally in order for enzyme to work correctly
 struct KernelParams {
   int N = energy_mortar_num_quad_points;  // No. of quadrature points
-  double del = 0.1;           // Smoothing parameter
-  double residual_gap = 0.0;  // User-defined gap offset
+  double del = 0.1;                       // Smoothing parameter
+  double residual_gap = 0.0;              // User-defined gap offset
 };
 
 // Compute a unit normal vector for the line segment from coord1 to coord2
@@ -110,8 +110,7 @@ TRIBOL_ENZYME_INLINE void determine_legendre_nodes_raw( int N, double* x )
   x[2] = a;
 }
 
-TRIBOL_ENZYME_INLINE void determine_legendre_nodes(
-    int N, std::array<double, energy_mortar_num_quad_points>& x )
+TRIBOL_ENZYME_INLINE void determine_legendre_nodes( int N, std::array<double, energy_mortar_num_quad_points>& x )
 {
   determine_legendre_nodes_raw( N, x.data() );
 }
@@ -126,8 +125,7 @@ TRIBOL_ENZYME_INLINE void determine_legendre_weights_raw( int N, double* W )
   W[2] = 5.0 / 9.0;
 }
 
-TRIBOL_ENZYME_INLINE void determine_legendre_weights(
-    int N, std::array<double, energy_mortar_num_quad_points>& W )
+TRIBOL_ENZYME_INLINE void determine_legendre_weights( int N, std::array<double, energy_mortar_num_quad_points>& W )
 {
   determine_legendre_weights_raw( N, W.data() );
 }
@@ -234,8 +232,7 @@ TRIBOL_ENZYME_INLINE void find_intersection( const double* A0, const double* A1,
 }
 
 TRIBOL_ENZYME_INLINE bool project_to_edge_along_direction( const double* B0, const double* B1, const double* p,
-                                                           const double* direction, double* intersection,
-                                                           double* xiB )
+                                                           const double* direction, double* intersection, double* xiB )
 {
   const double tB[2] = { B1[0] - B0[0], B1[1] - B0[1] };
   const double d[2] = { p[0] - B0[0], p[1] - B0[1] };
@@ -308,6 +305,8 @@ TRIBOL_ENZYME_INLINE double active_set_smoothing_weight( double gap, double tran
   const double smooth = 3.0 * t * t - 2.0 * t * t * t;
   return 1.0 - smooth;
 }
+
+TRIBOL_ENZYME_INLINE double cubic_smoothstep( double t ) { return 3.0 * t * t - 2.0 * t * t * t; }
 
 // Project the verticies of edge B onto edge A and return their local coordinates on A.
 // The variable projections is retuned with the coordinates in the parametric space where
@@ -392,8 +391,8 @@ TRIBOL_ENZYME_INLINE bool get_projections_along_direction( const double* A0, con
   return true;
 }
 
-TRIBOL_ENZYME_INLINE void project_to_edge_h1( const double* B0, const double* B1, const double* nB0,
-                                              const double* nB1, const double* x1, double* x2, double* nB )
+TRIBOL_ENZYME_INLINE void project_to_edge_h1( const double* B0, const double* B1, const double* nB0, const double* nB1,
+                                              const double* x1, double* x2, double* nB )
 {
   double xiB = local_coord_on_segment( B0, B1, x1 );
   for ( int iter = 0; iter < 3; ++iter ) {
@@ -439,8 +438,8 @@ TRIBOL_ENZYME_INLINE double smooth_bound_value_raw( double bound, double del )
     const double b = -1.0 / ( 4.0 * del );
     const double c = 0.5 + 1.0 / ( 2.0 * del );
     const double one_minus_del = 1.0 - del;
-    const double d = 1.0 - del + ( 1.0 / ( 4.0 * del ) ) * one_minus_del * one_minus_del -
-                     0.5 * one_minus_del - one_minus_del / ( 2.0 * del );
+    const double d = 1.0 - del + ( 1.0 / ( 4.0 * del ) ) * one_minus_del * one_minus_del - 0.5 * one_minus_del -
+                     one_minus_del / ( 2.0 * del );
     xi_hat = b * xi * xi + c * xi + d;
   } else if ( del <= xi && xi <= ( 1.0 - del ) ) {
     xi_hat = xi;
@@ -737,8 +736,7 @@ TRIBOL_ENZYME_INLINE void h1_nodal_energy_kernel_eval( const double* x, const H1
 
       double nB[2];
       interp_normal_basis( nB0, nB1, xiB, data->nodal_energy_basis, nB );
-      const double angle_weight =
-          nodal_energy_angle_weight( nA_nodes[node], nB, data->nodal_energy_angle_smoothing );
+      const double angle_weight = nodal_energy_angle_weight( nA_nodes[node], nB, data->nodal_energy_angle_smoothing );
       if ( angle_weight <= 0.0 ) {
         continue;
       }
@@ -896,6 +894,8 @@ struct QPPenaltyKernelData {
   bool projection_smoothing{ true };
   bool fixed_quadrature{ false };
   bool fixed_integration_jacobian{ false };
+  double derivative_blend_gap{ 0.0 };
+  double derivative_blend_weight{ -1.0 };
   double integration_jacobian{ 0.0 };
   Gparams qp{};
 };
@@ -933,8 +933,9 @@ TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double xiA, double w, c
   return active_weight > 0.0 ? penalty * w * J * active_weight * gap * gap : 0.0;
 }
 
-TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval( const double* x, const QPPenaltyKernelData* data,
-                                                  double* energy_out )
+TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval_mode( const double* x, const QPPenaltyKernelData* data,
+                                                       bool fixed_quadrature, bool fixed_integration_jacobian,
+                                                       double* energy_out, double* residual2_out )
 {
   const double A0[2] = { x[0], x[1] };
   const double A1[2] = { x[2], x[3] };
@@ -942,7 +943,7 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval( const double* x, const QPPenal
   const double B1[2] = { x[6], x[7] };
 
   QuadPoints qp;
-  if ( data->fixed_quadrature ) {
+  if ( fixed_quadrature ) {
     qp.qp = data->qp.qp;
     qp.w = data->qp.w;
   } else {
@@ -960,7 +961,7 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval( const double* x, const QPPenal
     compute_quadrature_raw( xi_bounds_raw, data->N, &qp );
   }
 
-  const double J = integration_jacobian( A0, A1, data->fixed_integration_jacobian, data->integration_jacobian );
+  const double J = integration_jacobian( A0, A1, fixed_integration_jacobian, data->integration_jacobian );
 
   double nB[2];
   find_normal( B0, B1, nB );
@@ -972,6 +973,8 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval( const double* x, const QPPenal
   const double eta = ( dot < 0.0 ) ? dot : 0.0;
 
   double energy = 0.0;
+  double residual2 = 0.0;
+  double residual_weight = 0.0;
   energy += qp_penalty_kernel_qp_energy( qp.qp[0], qp.w[0], A0, A1, B0, B1, nB, eta, data->residual_gap,
                                          data->active_set_smoothing_gap, data->k, J );
   energy += qp_penalty_kernel_qp_energy( qp.qp[1], qp.w[1], A0, A1, B0, B1, nB, eta, data->residual_gap,
@@ -979,7 +982,127 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval( const double* x, const QPPenal
   energy += qp_penalty_kernel_qp_energy( qp.qp[2], qp.w[2], A0, A1, B0, B1, nB, eta, data->residual_gap,
                                          data->active_set_smoothing_gap, data->k, J );
 
+  for ( int i = 0; i < data->N; ++i ) {
+    const double N1 = 0.5 - qp.qp[i];
+    const double N2 = 0.5 + qp.qp[i];
+    const double x1x = N1 * A0[0] + N2 * A1[0];
+    const double x1y = N1 * A0[1] + N2 * A1[1];
+
+    const double tBx = B1[0] - B0[0];
+    const double tBy = B1[1] - B0[1];
+    const double dxB = x1x - B0[0];
+    const double dyB = x1y - B0[1];
+    const double det = tBx * nB[1] - tBy * nB[0];
+
+    double x2x = x1x;
+    double x2y = x1y;
+    if ( std::abs( det ) >= 1e-12 ) {
+      const double alpha = ( dxB * nB[1] - dyB * nB[0] ) / det;
+      x2x = B0[0] + alpha * tBx;
+      x2y = B0[1] + alpha * tBy;
+    }
+
+    const double dx = x1x - x2x;
+    const double dy = x1y - x2y;
+    const double gn = -( dx * nB[0] + dy * nB[1] );
+    const double gap = gn * eta - data->residual_gap;
+    residual2 += qp.w[i] * gap * gap;
+    residual_weight += qp.w[i];
+  }
+
   *energy_out = energy;
+  *residual2_out = residual_weight > 0.0 ? residual2 / residual_weight : 0.0;
+}
+
+TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval( const double* x, const QPPenaltyKernelData* data, double* energy_out )
+{
+  if ( data->derivative_blend_weight >= 0.0 ) {
+    const double A0[2] = { x[0], x[1] };
+    const double A1[2] = { x[2], x[3] };
+    const double B0[2] = { x[4], x[5] };
+    const double B1[2] = { x[6], x[7] };
+    double projs_raw[2];
+    get_projections( A0, A1, B0, B1, projs_raw );
+    double bounds_raw[2];
+    bounds_from_projections_raw( projs_raw, data->del, bounds_raw );
+    double xi_bounds_raw[2];
+    if ( data->projection_smoothing ) {
+      smooth_bounds_raw( bounds_raw, data->del, xi_bounds_raw );
+    } else {
+      xi_bounds_raw[0] = bounds_raw[0];
+      xi_bounds_raw[1] = bounds_raw[1];
+    }
+    if ( std::abs( xi_bounds_raw[1] - xi_bounds_raw[0] ) <= 1.0e-14 ) {
+      *energy_out = 0.0;
+      return;
+    }
+
+    double full_energy = 0.0;
+    double full_residual2 = 0.0;
+    qp_penalty_kernel_eval_mode( x, data, false, false, &full_energy, &full_residual2 );
+
+    double simplified_energy = 0.0;
+    double simplified_residual2 = 0.0;
+    qp_penalty_kernel_eval_mode( x, data, true, true, &simplified_energy, &simplified_residual2 );
+
+    double full_weight = data->derivative_blend_weight;
+    if ( full_weight > 1.0 ) {
+      full_weight = 1.0;
+    }
+    *energy_out = ( 1.0 - full_weight ) * simplified_energy + full_weight * full_energy;
+    return;
+  }
+
+  if ( data->derivative_blend_gap > 0.0 ) {
+    const double A0[2] = { x[0], x[1] };
+    const double A1[2] = { x[2], x[3] };
+    const double B0[2] = { x[4], x[5] };
+    const double B1[2] = { x[6], x[7] };
+    double projs_raw[2];
+    get_projections( A0, A1, B0, B1, projs_raw );
+    double bounds_raw[2];
+    bounds_from_projections_raw( projs_raw, data->del, bounds_raw );
+    double xi_bounds_raw[2];
+    if ( data->projection_smoothing ) {
+      smooth_bounds_raw( bounds_raw, data->del, xi_bounds_raw );
+    } else {
+      xi_bounds_raw[0] = bounds_raw[0];
+      xi_bounds_raw[1] = bounds_raw[1];
+    }
+    if ( std::abs( xi_bounds_raw[1] - xi_bounds_raw[0] ) <= 1.0e-14 ) {
+      *energy_out = 0.0;
+      return;
+    }
+
+    double full_energy = 0.0;
+    double full_residual2 = 0.0;
+    qp_penalty_kernel_eval_mode( x, data, false, false, &full_energy, &full_residual2 );
+
+    double simplified_energy = 0.0;
+    double simplified_residual2 = 0.0;
+    qp_penalty_kernel_eval_mode( x, data, true, true, &simplified_energy, &simplified_residual2 );
+
+    if ( full_energy <= 0.0 && simplified_energy <= 0.0 ) {
+      *energy_out = 0.0;
+      return;
+    }
+
+    const double transition2 = data->derivative_blend_gap * data->derivative_blend_gap;
+    double t = full_residual2 / transition2;
+    if ( t <= 0.0 ) {
+      t = 0.0;
+    } else if ( t >= 1.0 ) {
+      t = 1.0;
+    }
+    const double simplified_weight = cubic_smoothstep( t );
+    const double full_weight = 1.0 - simplified_weight;
+    *energy_out = simplified_weight * simplified_energy + full_weight * full_energy;
+    return;
+  }
+
+  double residual2 = 0.0;
+  qp_penalty_kernel_eval_mode( x, data, data->fixed_quadrature, data->fixed_integration_jacobian, energy_out,
+                               &residual2 );
 }
 
 TRIBOL_ENZYME_INLINE void qp_penalty_kernel_out( const double* x, const void* data_void, double* out )
@@ -1268,8 +1391,8 @@ void d2_h1_qp_penalty_kernel( const double* x, const H1KernelData* data, double*
     double grad[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
     double dgrad[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
 
-    __enzyme_fwddiff<void>( (void*)grad_h1_qp_penalty_kernel_void, enzyme_dup, x, dx, enzyme_const,
-                            (const void*)data, enzyme_dup, grad, dgrad );
+    __enzyme_fwddiff<void>( (void*)grad_h1_qp_penalty_kernel_void, enzyme_dup, x, dx, enzyme_const, (const void*)data,
+                            enzyme_dup, grad, dgrad );
 
     for ( int row = 0; row < ndof; ++row ) {
       H[row * ndof + col] = dgrad[row];
@@ -1314,8 +1437,8 @@ void d2_h1_nodal_energy_kernel( const double* x, const H1KernelData* data, doubl
     double grad[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
     double dgrad[2 * 2 * h1_max_stencil_nodes_per_mesh] = { 0.0 };
 
-    __enzyme_fwddiff<void>( (void*)grad_h1_nodal_energy_kernel_void, enzyme_dup, x, dx, enzyme_const,
-                            (const void*)data, enzyme_dup, grad, dgrad );
+    __enzyme_fwddiff<void>( (void*)grad_h1_nodal_energy_kernel_void, enzyme_dup, x, dx, enzyme_const, (const void*)data,
+                            enzyme_dup, grad, dgrad );
 
     for ( int row = 0; row < ndof; ++row ) {
       H[row * ndof + col] = dgrad[row];
@@ -1325,8 +1448,7 @@ void d2_h1_nodal_energy_kernel( const double* x, const H1KernelData* data, doubl
 
 }  // namespace
 
-EnergyMortarCalculator::EnergyMortarCalculator( const ContactParams& p )
-    : p_( p ), smoother_()
+EnergyMortarCalculator::EnergyMortarCalculator( const ContactParams& p ) : p_( p ), smoother_()
 {
   SLIC_ERROR_ROOT_IF( p_.N != energy_mortar_num_quad_points,
                       "EnergyMortar supports only the fixed 3-point Gauss-Legendre quadrature rule." );
@@ -1409,8 +1531,8 @@ std::array<double, 2> EnergyMortarCalculator::projections( const InterfacePair& 
 }
 
 // Clamp the projection interval to the local smoothing support around edge A.
-TRIBOL_ENZYME_INLINE std::array<double, 2> ContactSmoothing::bounds_from_projections(
-    const std::array<double, 2>& proj, double del )
+TRIBOL_ENZYME_INLINE std::array<double, 2> ContactSmoothing::bounds_from_projections( const std::array<double, 2>& proj,
+                                                                                      double del )
 {
   double xi_min = std::min( proj[0], proj[1] );
   double xi_max = std::max( proj[0], proj[1] );
@@ -1766,8 +1888,7 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
     data.active_set_smoothing_gap = p_.h1_active_set_smoothing_gap;
     data.projection_smoothing = p_.projection_smoothing;
     data.fixed_integration_jacobian = p_.fixed_integration_jacobian;
-    data.fixed_quadrature =
-        !p_.enzyme_quadrature && p_.penalty_mode == EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;
+    data.fixed_quadrature = !p_.enzyme_quadrature && p_.penalty_mode == EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;
     data.nodal_energy_basis = p_.nodal_energy_basis;
     data.nodal_energy_angle_smoothing = p_.nodal_energy_angle_smoothing;
 
@@ -1887,8 +2008,10 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
   data.projection_smoothing = p_.projection_smoothing;
   data.fixed_quadrature = !p_.enzyme_quadrature;
   data.fixed_integration_jacobian = p_.fixed_integration_jacobian;
+  data.derivative_blend_gap = p_.qp_derivative_blend_gap;
+  data.derivative_blend_weight = p_.qp_derivative_blend_weight;
   data.integration_jacobian = line_jacobian( A0, A1 );
-  if ( data.fixed_quadrature ) {
+  if ( data.fixed_quadrature || data.derivative_blend_gap > 0.0 || data.derivative_blend_weight >= 0.0 ) {
     data.qp = construct_gparams( pair, mesh1, mesh2 );
   }
 

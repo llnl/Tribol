@@ -21,19 +21,21 @@ struct QuadPoints {
 };
 
 struct ContactParams {
-  double del;                              // Smoothing Parameter
-  double k;                                // Penalty
-  int N{ energy_mortar_num_quad_points };  // Quadrature Points
-  bool enzyme_quadrature{ true };          // Determines how enzyming is performed (default = True)
+  double del;                                // Smoothing Parameter
+  double k;                                  // Penalty
+  int N{ energy_mortar_num_quad_points };    // Quadrature Points
+  bool enzyme_quadrature{ true };            // Determines how enzyming is performed (default = True)
   bool fixed_integration_jacobian{ false };  // Hold physical integration measure fixed during differentiation
   EnergyMortarNormalMode normal_mode{ EnergyMortarNormalMode::ELEMENT_NORMAL };  // Normal field used by EnergyMortar
-  bool projection_smoothing{ true };       // Apply projection-bound smoothing
+  bool projection_smoothing{ true };                                             // Apply projection-bound smoothing
   double h1_active_set_smoothing_gap{ 0.0 };  // Active-set smoothing transition gap; disabled when <= 0
+  double qp_derivative_blend_gap{ 0.0 };      // Residual-gap transition for QP full/simplified derivative blend
+  double qp_derivative_blend_weight{ -1.0 };  // Fixed full-path blend weight; disabled when negative
   EnergyMortarPenaltyMode penalty_mode{ EnergyMortarPenaltyMode::NODAL_GAP };  // Penalty enforcement mode
   EnergyMortarNodalEnergyBasis nodal_energy_basis{
       EnergyMortarNodalEnergyBasis::CUBIC_SPLINE };  // Basis used by NODAL_ENERGY mode
-  bool nodal_energy_angle_smoothing{ true };          // Apply 80-to-90 degree angle smoothing in NODAL_ENERGY mode
-  double residual_gap{ 0.0 };                         // User-defined gap offset
+  bool nodal_energy_angle_smoothing{ true };         // Apply 80-to-90 degree angle smoothing in NODAL_ENERGY mode
+  double residual_gap{ 0.0 };                        // User-defined gap offset
 };
 
 constexpr int h1_max_stencil_nodes_per_mesh = 16;

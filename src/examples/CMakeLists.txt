@@ -95,6 +95,30 @@ if ( BUILD_REDECOMP )
   
 endif()
 
+## EnergyMortar diagnostic examples
+if ( TRIBOL_USE_ENZYME )
+
+  blt_add_executable(
+      NAME       energy_mortar_sweep_ex
+      SOURCES    energy_mortar_sweep.cpp
+      OUTPUT_DIR ${EXAMPLE_OUTPUT_DIRECTORY}
+      DEPENDS_ON tribol ${tribol_device_depends}
+      )
+
+  if (ENABLE_CUDA)
+    set_target_properties(energy_mortar_sweep_ex PROPERTIES CUDA_SEPARABLE_COMPILATION On)
+  endif()
+
+  if (ENABLE_HIP)
+    target_compile_options(energy_mortar_sweep_ex PRIVATE
+        $<$<CONFIG:Debug>:
+            -ggdb
+        >
+    )
+  endif()
+
+endif()
+
 ## Tribol + redecomp examples
 if ( BUILD_REDECOMP )
 
