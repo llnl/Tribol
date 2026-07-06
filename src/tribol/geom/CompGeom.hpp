@@ -190,7 +190,6 @@ class ContactPlanePair : public CompGeomPair {
   TRIBOL_HOST_DEVICE inline void getFace1Coords( RealT* x1, int num_coords ) const;
 
   TRIBOL_HOST_DEVICE inline void getFace2Coords( RealT* x2, int num_coords ) const;
-  ;
 
   TRIBOL_HOST_DEVICE inline void getFace1ProjectedCoords( RealT* x1_proj, int num_coords ) const;
 
@@ -297,14 +296,14 @@ class ContactPlanePair : public CompGeomPair {
    *
    * \return Face id
    */
-  TRIBOL_HOST_DEVICE inline int getCpElementId1() const { return m_pair->m_element_id1; }
+  TRIBOL_HOST_DEVICE inline IndexT getCpElementId1() const { return m_pair->m_element_id1; }
 
   /*!
    * \brief Get the id of the second element that forms the contact plane
    *
    * \return Face id
    */
-  TRIBOL_HOST_DEVICE inline int getCpElementId2() const { return m_pair->m_element_id2; }
+  TRIBOL_HOST_DEVICE inline IndexT getCpElementId2() const { return m_pair->m_element_id2; }
 
   /*!
    * \brief Set the first contact plane element id
@@ -512,8 +511,8 @@ class CommonPlanePair : public ContactPlanePair {
    *
    */
   TRIBOL_HOST_DEVICE inline bool exceedsMaxAutoInterpen( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                                                         const int faceId1, const int faceId2, const Parameters& params,
-                                                         const RealT gap );
+                                                         const IndexT faceId1, const IndexT faceId2,
+                                                         const Parameters& params, const RealT gap );
 
 };  // end class CommonPlanePair
 
@@ -740,27 +739,27 @@ class CompGeom {
      *
      * @return common plane object
      */
-    TRIBOL_HOST_DEVICE inline CommonPlanePair& getCommonPlane( int id ) const { return m_common_plane_pairs[id]; }
+    TRIBOL_HOST_DEVICE inline CommonPlanePair& getCommonPlane( IndexT id ) const { return m_common_plane_pairs[id]; }
 
     /**
      * @brief Get a single mortar plane from the array view
      *
      * @return mortar plane object
      */
-    TRIBOL_HOST_DEVICE inline MortarPlanePair& getMortarPlane( int id ) const { return m_mortar_plane_pairs[id]; }
+    TRIBOL_HOST_DEVICE inline MortarPlanePair& getMortarPlane( IndexT id ) const { return m_mortar_plane_pairs[id]; }
 
     /**
      * @brief Get a single aligned mortar plane from the array view
      *
      * @return algined mortar plane object
      */
-    TRIBOL_HOST_DEVICE inline AlignedMortarPlanePair& getAlignedMortarPlane( int id ) const
+    TRIBOL_HOST_DEVICE inline AlignedMortarPlanePair& getAlignedMortarPlane( IndexT id ) const
     {
       return m_aligned_mortar_plane_pairs[id];
     }
 
     template <typename T>
-    TRIBOL_HOST_DEVICE inline T& getPlane( int id );
+    TRIBOL_HOST_DEVICE inline T& getPlane( IndexT id );
 
    private:
     ArrayViewT<CommonPlanePair> m_common_plane_pairs;
@@ -807,7 +806,7 @@ class CompGeom {
    *
    * @return common plane object
    */
-  const CommonPlanePair& getCommonPlane( int id ) const { return m_common_plane_pairs[id]; }
+  const CommonPlanePair& getCommonPlane( IndexT id ) const { return m_common_plane_pairs[id]; }
 
   /**
    * @brief Get the list of mortar plane pairs
@@ -821,7 +820,7 @@ class CompGeom {
    *
    * @return mortar plane object
    */
-  const MortarPlanePair& getMortarPlane( int id ) const { return m_mortar_plane_pairs[id]; }
+  const MortarPlanePair& getMortarPlane( IndexT id ) const { return m_mortar_plane_pairs[id]; }
 
   /**
    * @brief Get the list of aligned mortar plane pairs
@@ -835,7 +834,7 @@ class CompGeom {
    *
    * @return aligned mortar plane object
    */
-  const AlignedMortarPlanePair& getAlignedMortarPlane( int id ) const { return m_aligned_mortar_plane_pairs[id]; }
+  const AlignedMortarPlanePair& getAlignedMortarPlane( IndexT id ) const { return m_aligned_mortar_plane_pairs[id]; }
 
   /**
    * @brief Allocate contact plane pairs arrays based on contact method
@@ -865,7 +864,7 @@ class CompGeom {
     }  // end switch
   }
 
-  int getNumActivePairs( const ContactMethod method ) const
+  IndexT getNumActivePairs( const ContactMethod method ) const
   {
     switch ( method ) {
       case COMMON_PLANE: {
@@ -961,7 +960,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePairByMethod(
     InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, const Parameters& params,
     ContactCase TRIBOL_UNUSED_PARAM( cCase ), bool& isInteracting, CompGeom::Viewer& cg, IndexT* plane_ct )
 {
-  auto dim = mesh1.spatialDimension();
+  auto dim = static_cast<int>( mesh1.spatialDimension() );
   T my_plane( &pair, params, dim );
   FaceGeomException face_err = NO_FACE_GEOM_EXCEPTION;
   if ( dim == 3 ) {
@@ -1028,7 +1027,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePair( InterfacePair& p
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE inline bool CommonPlanePair::exceedsMaxAutoInterpen( const MeshData::Viewer& mesh1,
                                                                         const MeshData::Viewer& mesh2,
-                                                                        const int faceId1, const int faceId2,
+                                                                        const IndexT faceId1, const IndexT faceId2,
                                                                         const Parameters& params, const RealT gap )
 {
   if ( params.auto_contact_check ) {
@@ -1152,17 +1151,19 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::checkFacePair( cons
 
   // mark the convexity of each face
   constexpr int max_nodes = 4;
+  const int num_nodes_1 = static_cast<int>( mesh1.numberOfNodesPerElement() );
+  const int num_nodes_2 = static_cast<int>( mesh2.numberOfNodesPerElement() );
   RealT x1_loc[max_nodes];
   RealT y1_loc[max_nodes];
   RealT x2_loc[max_nodes];
   RealT y2_loc[max_nodes];
   GlobalTo2DLocalCoords( &m_x1_prime[0], &m_y1_prime[0], &m_z1_prime[0], m_e1X, m_e1Y, m_e1Z, m_e2X, m_e2Y, m_e2Z, m_cX,
-                         m_cY, m_cZ, &x1_loc[0], &y1_loc[0], mesh1.numberOfNodesPerElement() );
+                         m_cY, m_cZ, &x1_loc[0], &y1_loc[0], num_nodes_1 );
   GlobalTo2DLocalCoords( &m_x2_prime[0], &m_y2_prime[0], &m_z2_prime[0], m_e1X, m_e1Y, m_e1Z, m_e2X, m_e2Y, m_e2Z, m_cX,
-                         m_cY, m_cZ, &x2_loc[0], &y2_loc[0], mesh2.numberOfNodesPerElement() );
+                         m_cY, m_cZ, &x2_loc[0], &y2_loc[0], num_nodes_2 );
 
-  m_face1_convex = IsConvex( x1_loc, y1_loc, mesh1.numberOfNodesPerElement() );
-  m_face2_convex = IsConvex( x2_loc, y2_loc, mesh2.numberOfNodesPerElement() );
+  m_face1_convex = IsConvex( x1_loc, y1_loc, num_nodes_1 );
+  m_face2_convex = IsConvex( x2_loc, y2_loc, num_nodes_2 );
 
   // explicitly call compute overlap routine for common plane so CUDA can determine stack size
   FaceGeomException interpen_err = CommonPlanePair::computeOverlap3D(
@@ -1190,13 +1191,13 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::checkEdgePair( cons
   // set face "prime" coordinates to current configuration coordinates so we can pull these
   // off the plane object later
   for ( int i = 0; i < mesh1.numberOfNodesPerElement(); ++i ) {
-    const int nodeId = mesh1.getGlobalNodeId( element_id1, i );
+    const IndexT nodeId = mesh1.getGlobalNodeId( element_id1, i );
     m_x1_prime[i] = mesh1.getPosition()[0][nodeId];
     m_y1_prime[i] = mesh1.getPosition()[1][nodeId];
   }
 
   for ( int i = 0; i < mesh2.numberOfNodesPerElement(); ++i ) {
-    const int nodeId = mesh2.getGlobalNodeId( element_id2, i );
+    const IndexT nodeId = mesh2.getGlobalNodeId( element_id2, i );
     m_x2_prime[i] = mesh2.getPosition()[0][nodeId];
     m_y2_prime[i] = mesh2.getPosition()[1][nodeId];
   }
@@ -1247,14 +1248,14 @@ TRIBOL_HOST_DEVICE inline FaceGeomException MortarPlanePair::checkFacePair( cons
 
   // set face "prime" coordinates to current configuration coordinates for full overlap methods
   for ( int i = 0; i < mesh1.numberOfNodesPerElement(); ++i ) {
-    const int nodeId = mesh1.getGlobalNodeId( element_id1, i );
+    const IndexT nodeId = mesh1.getGlobalNodeId( element_id1, i );
     m_x1_prime[i] = mesh1.getPosition()[0][nodeId];
     m_y1_prime[i] = mesh1.getPosition()[1][nodeId];
     m_z1_prime[i] = mesh1.getPosition()[2][nodeId];
   }
 
   for ( int i = 0; i < mesh2.numberOfNodesPerElement(); ++i ) {
-    const int nodeId = mesh2.getGlobalNodeId( element_id2, i );
+    const IndexT nodeId = mesh2.getGlobalNodeId( element_id2, i );
     m_x2_prime[i] = mesh2.getPosition()[0][nodeId];
     m_y2_prime[i] = mesh2.getPosition()[1][nodeId];
     m_z2_prime[i] = mesh2.getPosition()[2][nodeId];
@@ -1288,11 +1289,14 @@ TRIBOL_HOST_DEVICE inline FaceGeomException MortarPlanePair::computeOverlap3D( c
                                                                                const MeshData::Viewer& m1,
                                                                                const MeshData::Viewer& m2 )
 {
+  const int num_nodes_1 = static_cast<int>( m1.numberOfNodesPerElement() );
+  const int num_nodes_2 = static_cast<int>( m2.numberOfNodesPerElement() );
+
   // project face vertex coordinates to contact plane
   ProjectPointsToPlane( x1, y1, z1, this->m_nX, this->m_nY, this->m_nZ, this->m_cX, this->m_cY, this->m_cZ,
-                        &m_x1_bar[0], &m_y1_bar[0], &m_z1_bar[0], m1.numberOfNodesPerElement() );
+                        &m_x1_bar[0], &m_y1_bar[0], &m_z1_bar[0], num_nodes_1 );
   ProjectPointsToPlane( x2, y2, z2, this->m_nX, this->m_nY, this->m_nZ, this->m_cX, this->m_cY, this->m_cZ,
-                        &m_x2_bar[0], &m_y2_bar[0], &m_z2_bar[0], m2.numberOfNodesPerElement() );
+                        &m_x2_bar[0], &m_y2_bar[0], &m_z2_bar[0], num_nodes_2 );
 
   // project the projected global nodal coordinates onto local
   // contact plane 2D coordinate system.
@@ -1303,9 +1307,9 @@ TRIBOL_HOST_DEVICE inline FaceGeomException MortarPlanePair::computeOverlap3D( c
   RealT y2_bar_local[max_nodes_per_elem];
 
   this->globalTo2DLocalCoords( &m_x1_bar[0], &m_y1_bar[0], &m_z1_bar[0], &x1_bar_local[0], &y1_bar_local[0],
-                               m1.numberOfNodesPerElement() );
+                               num_nodes_1 );
   this->globalTo2DLocalCoords( &m_x2_bar[0], &m_y2_bar[0], &m_z2_bar[0], &x2_bar_local[0], &y2_bar_local[0],
-                               m2.numberOfNodesPerElement() );
+                               num_nodes_2 );
 
   // compute the full intersection polygon vertex coordinates
   RealT* X1 = &x1_bar_local[0];
@@ -1316,13 +1320,13 @@ TRIBOL_HOST_DEVICE inline FaceGeomException MortarPlanePair::computeOverlap3D( c
   // assuming each face's vertices are ordered WRT that face's outward unit normal,
   // reorder face 2 vertices to be consistent with face 1. DO NOT CALL POLYREORDER()
   // to do this.
-  ElemReverse( X2, Y2, m2.numberOfNodesPerElement() );
+  ElemReverse( X2, Y2, num_nodes_2 );
 
   // compute intersection polygon and area.
   RealT length_tol_ratio = this->m_params.len_collapse_ratio;
-  FaceGeomException inter_err = Intersection2DPolygon( X1, Y1, m1.numberOfNodesPerElement(), X2, Y2,
-                                                       m2.numberOfNodesPerElement(), length_tol_ratio, this->m_polyLocX,
-                                                       this->m_polyLocY, this->m_numPolyVert, this->m_area, false );
+  FaceGeomException inter_err =
+      Intersection2DPolygon( X1, Y1, num_nodes_1, X2, Y2, num_nodes_2, length_tol_ratio, this->m_polyLocX,
+                             this->m_polyLocY, this->m_numPolyVert, this->m_area, false );
 
   if ( inter_err != NO_FACE_GEOM_EXCEPTION ) {
     return inter_err;
@@ -1404,14 +1408,14 @@ TRIBOL_HOST_DEVICE inline FaceGeomException AlignedMortarPlanePair::checkFacePai
 
   // set face "prime" coordinates to current configuration coordinates for full overlap methods
   for ( int i = 0; i < mesh1.numberOfNodesPerElement(); ++i ) {
-    const int nodeId = mesh1.getGlobalNodeId( element_id1, i );
+    const IndexT nodeId = mesh1.getGlobalNodeId( element_id1, i );
     m_x1_prime[i] = mesh1.getPosition()[0][nodeId];
     m_y1_prime[i] = mesh1.getPosition()[1][nodeId];
     m_z1_prime[i] = mesh1.getPosition()[2][nodeId];
   }
 
   for ( int i = 0; i < mesh2.numberOfNodesPerElement(); ++i ) {
-    const int nodeId = mesh2.getGlobalNodeId( element_id2, i );
+    const IndexT nodeId = mesh2.getGlobalNodeId( element_id2, i );
     m_x2_prime[i] = mesh2.getPosition()[0][nodeId];
     m_y2_prime[i] = mesh2.getPosition()[1][nodeId];
     m_z2_prime[i] = mesh2.getPosition()[2][nodeId];
@@ -1450,18 +1454,20 @@ TRIBOL_HOST_DEVICE inline FaceGeomException AlignedMortarPlanePair::computeOverl
                                                                                       const MeshData::Viewer& m2 )
 {
   IndexT element_id2 = this->getCpElementId2();
+  const int num_nodes_1 = static_cast<int>( m1.numberOfNodesPerElement() );
+  const int num_nodes_2 = static_cast<int>( m2.numberOfNodesPerElement() );
 
   // project face vertex coordinates to contact plane
   ProjectPointsToPlane( x1, y1, z1, this->m_nX, this->m_nY, this->m_nZ, this->m_cX, this->m_cY, this->m_cZ,
-                        &m_x1_bar[0], &m_y1_bar[0], &m_z1_bar[0], m1.numberOfNodesPerElement() );
+                        &m_x1_bar[0], &m_y1_bar[0], &m_z1_bar[0], num_nodes_1 );
   ProjectPointsToPlane( x2, y2, z2, this->m_nX, this->m_nY, this->m_nZ, this->m_cX, this->m_cY, this->m_cZ,
-                        &m_x2_bar[0], &m_y2_bar[0], &m_z2_bar[0], m2.numberOfNodesPerElement() );
+                        &m_x2_bar[0], &m_y2_bar[0], &m_z2_bar[0], num_nodes_2 );
 
   // Compute face centroids using projected coordinates passed in
   RealT cx1, cy1, cz1;
   RealT cx2, cy2, cz2;
-  VertexAvgCentroid( x1, y1, z1, m1.numberOfNodesPerElement(), cx1, cy1, cz1 );
-  VertexAvgCentroid( x2, y2, z2, m2.numberOfNodesPerElement(), cx2, cy2, cz2 );
+  VertexAvgCentroid( x1, y1, z1, num_nodes_1, cx1, cy1, cz1 );
+  VertexAvgCentroid( x2, y2, z2, num_nodes_2, cx2, cy2, cz2 );
 
   // compute the gap vector between face centroids. Then, project the gap vector
   // on the contact plane unit normal. The magnitude of the gap vector should be very
@@ -1481,8 +1487,8 @@ TRIBOL_HOST_DEVICE inline FaceGeomException AlignedMortarPlanePair::computeOverl
   // if we are here we have contact between two aligned faces; per mortar method take
   // the non-mortar (mesh2) face as the contact plane. For Aligned mortar we can use
   // face 2 as the overlap plane and overlap
-  this->m_numPolyVert = m2.numberOfNodesPerElement();
-  for ( int a = 0; a < m2.numberOfNodesPerElement(); ++a ) {
+  this->m_numPolyVert = num_nodes_2;
+  for ( int a = 0; a < num_nodes_2; ++a ) {
     this->m_polyX[a] = x2[a];
     this->m_polyY[a] = y2[a];
     this->m_polyZ[a] = z2[a];
@@ -2002,6 +2008,8 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
   // set up vertex id arrays to indicate which face vertices pass through
   // contact plane (i.e. lie on the other side)
   StackArrayT<const MeshData::Viewer*, 2> mesh( { &m1, &m2 } );
+  StackArrayT<int, 2> num_nodes_per_elem(
+      { static_cast<int>( m1.numberOfNodesPerElement() ), static_cast<int>( m2.numberOfNodesPerElement() ) } );
   int interpenVertex1[max_nodes_per_elem];
   int interpenVertex2[max_nodes_per_elem];
 
@@ -2011,9 +2019,9 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
   }
 
   StackArrayT<IndexT, 2> element_id( { getCpElementId1(), getCpElementId2() } );
-  StackArrayT<IndexT, 2> num_intersections( { 0, 0 } );
-  StackArrayT<IndexT, 2> num_intersections_inside( { 0, 0 } );
-  StackArrayT<IndexT, 2> num_nodes_otherside( { 0, 0 } );
+  StackArrayT<int, 2> num_intersections( { 0, 0 } );
+  StackArrayT<int, 2> num_intersections_inside( { 0, 0 } );
+  StackArrayT<int, 2> num_nodes_otherside( { 0, 0 } );
 
   // compute interpen data for convex face-pairs only
   if ( m_face1_convex && m_face2_convex ) {
@@ -2045,27 +2053,27 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
 
       // get the other face normal and centroid for line-face-plane intersections
       RealT fn[max_dim], cx[max_dim];
-      RealT num_nodes_other;
+      int num_nodes_other;
       if ( i == 0 ) {
         mesh[1]->getFaceNormal( element_id[1], fn );
         mesh[1]->getFaceCentroid( element_id[1], cx );
-        num_nodes_other = mesh[1]->numberOfNodesPerElement();
+        num_nodes_other = static_cast<int>( mesh[1]->numberOfNodesPerElement() );
       } else {
         mesh[0]->getFaceNormal( element_id[0], fn );
         mesh[0]->getFaceCentroid( element_id[0], cx );
-        num_nodes_other = mesh[0]->numberOfNodesPerElement();
+        num_nodes_other = static_cast<int>( mesh[0]->numberOfNodesPerElement() );
       }
 
       int k = 0;
       int k_inside = 0;
       int k_otherside = 0;
-      for ( int j = 0; j < mesh[i]->numberOfNodesPerElement(); ++j )  // loop over face segments
+      for ( int j = 0; j < num_nodes_per_elem[i]; ++j )  // loop over face segments
       {
         bool intersection_is_node = false;
 
         // determine local segment vertex ids
         int ja = j;
-        int jb = ( j == ( mesh[i]->numberOfNodesPerElement() - 1 ) ) ? 0 : ( j + 1 );
+        int jb = ( j == ( num_nodes_per_elem[i] - 1 ) ) ? 0 : ( j + 1 );
 
         // initialize current entry in the vertex id list
         interpenVertex[ja] = -1;
@@ -2087,12 +2095,12 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
           // Debug print faces to screen to catch unforeseen degenerate face configurations etc.
           SLIC_WARNING( "Degenerate face configuration detected with number of line-plane intersections > 2." );
           SLIC_INFO( "Planar coordinates for face 1 in CommonPlanePair::computeOverlap3D(): " );
-          for ( int a = 0; a < mesh[0]->numberOfNodesPerElement(); ++a ) {
+          for ( int a = 0; a < num_nodes_per_elem[0]; ++a ) {
             std::cout << x1[a] << ", " << y1[a] << ", " << z1[a] << std::endl;
           }
 
           SLIC_INFO( "Planar coordinates for face 2 in CommonPlanePair::computeOverlap3D(): " );
-          for ( int b = 0; b < mesh[1]->numberOfNodesPerElement(); ++b ) {
+          for ( int b = 0; b < num_nodes_per_elem[1]; ++b ) {
             std::cout << x2[b] << ", " << y2[b] << ", " << z2[b] << std::endl;
           }
 
@@ -2140,7 +2148,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
             // get the local coordinates of the current intersection point
             RealT xInter_local, yInter_local;
             Points3DTo2D( &xInter[2 * i + k], &yInter[2 * i + k], &zInter[2 * i + k], fn[0], fn[1], fn[2], cx[0], cx[1],
-                          cx[2], 1.0, &xInter_local, &yInter_local );
+                          cx[2], 1, &xInter_local, &yInter_local );
 
             // get the local coordinates of the other face's centroid
             RealT cx_other_local, cy_other_local;
@@ -2189,7 +2197,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
       // count the number of vertices (intersection points and interpen points) for the clipped
       // portion of the i^th face that interpenetrates the opposing face.
       numV[i] = k;  // could be zero intersection points
-      for ( int vid = 0; vid < mesh[i]->numberOfNodesPerElement(); ++vid ) {
+      for ( int vid = 0; vid < num_nodes_per_elem[i]; ++vid ) {
         // increment total vertex counter if ids match
         if ( interpenVertex[vid] == vid ) ++numV[i];
 
@@ -2276,7 +2284,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
 
     // populate the face 1 vertices that cross the contact plane
     int k = num_intersections[0];
-    for ( int m = 0; m < mesh[0]->numberOfNodesPerElement(); ++m ) {
+    for ( int m = 0; m < num_nodes_per_elem[0]; ++m ) {
       if ( interpenVertex1[m] != -1 ) {
         // set nodal coordinates to the "prime" coords sent into this routine
         // associated with the average face plane
@@ -2289,7 +2297,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
 
     // populate the face 2 vertices that cross the contact plane
     k = num_intersections[1];
-    for ( int n = 0; n < mesh[1]->numberOfNodesPerElement(); ++n ) {
+    for ( int n = 0; n < num_nodes_per_elem[1]; ++n ) {
       if ( interpenVertex2[n] != -1 ) {
         // set nodal coordinates to the "prime" coords sent into this routine
         // associated with the average face plane
@@ -2320,10 +2328,10 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
   }  // end if (!m_fullOverlap)
 
   if ( m_fullOverlap ) {  // populate the face vertex array with the face coordinates themselves
-    numV[0] = mesh[0]->numberOfNodesPerElement();
-    numV[1] = mesh[1]->numberOfNodesPerElement();
+    numV[0] = num_nodes_per_elem[0];
+    numV[1] = num_nodes_per_elem[1];
     // face 1
-    for ( int m = 0; m < mesh[0]->numberOfNodesPerElement(); ++m ) {
+    for ( int m = 0; m < num_nodes_per_elem[0]; ++m ) {
       // use face averaged "prime" coordinates for consistency
       cfx1[m] = x1[m];
       cfy1[m] = y1[m];
@@ -2331,7 +2339,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
     }
 
     // face 2
-    for ( int n = 0; n < mesh[1]->numberOfNodesPerElement(); ++n ) {
+    for ( int n = 0; n < num_nodes_per_elem[1]; ++n ) {
       // use face averaged "prime" coordinates for consistency
       cfx2[n] = x2[n];
       cfy2[n] = y2[n];
@@ -2409,12 +2417,12 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
   }
 
   // Project averaged face coordinates sent into this routine to the common plane and store
-  for ( int i = 0; i < mesh[0]->numberOfNodesPerElement(); ++i ) {
+  for ( int i = 0; i < num_nodes_per_elem[0]; ++i ) {
     ProjectPointToPlane( x1[i], y1[i], z1[i], m_nX, m_nY, m_nZ, m_cX, m_cY, m_cZ, m_x1_bar[i], m_y1_bar[i],
                          m_z1_bar[i] );
   }
 
-  for ( int i = 0; i < mesh[1]->numberOfNodesPerElement(); ++i ) {
+  for ( int i = 0; i < num_nodes_per_elem[1]; ++i ) {
     ProjectPointToPlane( x2[i], y2[i], z2[i], m_nX, m_nY, m_nZ, m_cX, m_cY, m_cZ, m_x2_bar[i], m_y2_bar[i],
                          m_z2_bar[i] );
   }
@@ -2451,7 +2459,8 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::projectPointsAndCom
   // sanity check
 #ifdef TRIBOL_USE_HOST
   if ( m_fullOverlap ) {
-    if ( num_vert_1 != m1.numberOfNodesPerElement() || num_vert_2 != m2.numberOfNodesPerElement() ) {
+    if ( num_vert_1 != static_cast<int>( m1.numberOfNodesPerElement() ) ||
+         num_vert_2 != static_cast<int>( m2.numberOfNodesPerElement() ) ) {
       SLIC_ERROR( "CommonPlanePair::projectPointsAndComputeOverlap(): full overlap requires "
                   << "input number of vertices to match number of nodes per element." );
     }
@@ -2539,8 +2548,10 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap2D( c
 {
   // all edge-edge interactions suitable for an interpenetration overlap
   // calculation are edges that intersect at a single point
-  int edgeId1 = getCpElementId1();
-  int edgeId2 = getCpElementId2();
+  IndexT edgeId1 = getCpElementId1();
+  IndexT edgeId2 = getCpElementId2();
+  const int num_nodes_1 = static_cast<int>( m1.numberOfNodesPerElement() );
+  const int num_nodes_2 = static_cast<int>( m2.numberOfNodesPerElement() );
 
   constexpr int max_dim = 2;
   RealT cx1[max_dim], cx2[max_dim];
@@ -2590,9 +2601,9 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap2D( c
     int interId2 = -1;
     int k1 = 0;
     int k2 = 0;
-    for ( int i = 0; i < m1.numberOfNodesPerElement(); ++i ) {
-      int nodeId1 = m1.getGlobalNodeId( edgeId1, i );
-      int nodeId2 = m2.getGlobalNodeId( edgeId2, i );
+    for ( int i = 0; i < num_nodes_1; ++i ) {
+      IndexT nodeId1 = m1.getGlobalNodeId( edgeId1, i );
+      IndexT nodeId2 = m2.getGlobalNodeId( edgeId2, i );
       RealT lvx1 = m1.getPosition()[0][nodeId1] - cx2[0];
       RealT lvy1 = m1.getPosition()[1][nodeId1] - cx2[1];
       RealT lvx2 = m2.getPosition()[0][nodeId2] - cx1[0];
@@ -2634,13 +2645,13 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap2D( c
 
     // populate arrays holding the interpenetrating edge portions to be
     // used in computing the overlap
-    int nodeInter1 = m1.getGlobalNodeId( edgeId1, interId1 );
+    IndexT nodeInter1 = m1.getGlobalNodeId( edgeId1, interId1 );
     x1_to_project[0] = m1.getPosition()[0][nodeInter1];
     x1_to_project[1] = xInter;
     y1_to_project[0] = m1.getPosition()[1][nodeInter1];
     y1_to_project[1] = yInter;
 
-    int nodeInter2 = m2.getGlobalNodeId( edgeId2, interId2 );
+    IndexT nodeInter2 = m2.getGlobalNodeId( edgeId2, interId2 );
     x2_to_project[0] = m2.getPosition()[0][nodeInter2];
     x2_to_project[1] = xInter;
     y2_to_project[0] = m2.getPosition()[1][nodeInter2];
@@ -2718,8 +2729,8 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap2D( c
     ProjectEdgeNodesToSegment( m1, edgeId1, this->m_nX, this->m_nY, this->m_cX, this->m_cY, &projX1[0], &projY1[0] );
     ProjectEdgeNodesToSegment( m2, edgeId2, this->m_nX, this->m_nY, this->m_cX, this->m_cY, &projX2[0], &projY2[0] );
     FaceGeomException segError =
-        CheckSegOverlap( &projX1[0], &projY1[0], &projX2[0], &projY2[0], m1.numberOfNodesPerElement(),
-                         m2.numberOfNodesPerElement(), &m_polyX[0], &m_polyY[0], m_area );
+        CheckSegOverlap( &projX1[0], &projY1[0], &projX2[0], &projY2[0], num_nodes_1, num_nodes_2, &m_polyX[0],
+                         &m_polyY[0], m_area );
 
     if ( segError != NO_FACE_GEOM_EXCEPTION ) {
       return segError;
@@ -2762,11 +2773,11 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap2D( c
   }  // end if (m_fullOverlap)
 
   // Project edge coordinates to the common plane and store
-  for ( int i = 0; i < m1.numberOfNodesPerElement(); ++i ) {
+  for ( int i = 0; i < num_nodes_1; ++i ) {
     ProjectPointToSegment( m_x1_prime[i], m_y1_prime[i], m_nX, m_nY, m_cX, m_cY, m_x1_bar[i], m_y1_bar[i] );
   }
 
-  for ( int i = 0; i < m2.numberOfNodesPerElement(); ++i ) {
+  for ( int i = 0; i < num_nodes_2; ++i ) {
     ProjectPointToSegment( m_x2_prime[i], m_y2_prime[i], m_nX, m_nY, m_cX, m_cY, m_x2_bar[i], m_y2_bar[i] );
   }
 
@@ -2776,19 +2787,19 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap2D( c
 
 //------------------------------------------------------------------------------
 template <>
-TRIBOL_HOST_DEVICE inline CommonPlanePair& CompGeom::Viewer::getPlane<CommonPlanePair>( int id )
+TRIBOL_HOST_DEVICE inline CommonPlanePair& CompGeom::Viewer::getPlane<CommonPlanePair>( IndexT id )
 {
   return m_common_plane_pairs[id];
 };
 
 template <>
-TRIBOL_HOST_DEVICE inline MortarPlanePair& CompGeom::Viewer::getPlane<MortarPlanePair>( int id )
+TRIBOL_HOST_DEVICE inline MortarPlanePair& CompGeom::Viewer::getPlane<MortarPlanePair>( IndexT id )
 {
   return m_mortar_plane_pairs[id];
 };
 
 template <>
-TRIBOL_HOST_DEVICE inline AlignedMortarPlanePair& CompGeom::Viewer::getPlane<AlignedMortarPlanePair>( int id )
+TRIBOL_HOST_DEVICE inline AlignedMortarPlanePair& CompGeom::Viewer::getPlane<AlignedMortarPlanePair>( IndexT id )
 {
   return m_aligned_mortar_plane_pairs[id];
 };
