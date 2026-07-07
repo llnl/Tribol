@@ -187,8 +187,8 @@ foreach(_target ${_imported_targets})
 endforeach()
 
 set(_mfem_targets
-        mfem
-        axom::mfem)
+    mfem
+    axom::mfem)
 
 # Prevent unhelpful warnings by removing duplicate rpaths set in MFEM's config.mk MFEM_EXT_LIBS
 if(APPLE)
