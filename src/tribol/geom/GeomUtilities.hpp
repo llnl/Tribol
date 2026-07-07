@@ -8,6 +8,7 @@
 
 #include <float.h>
 #include <cmath>
+#include <limits>
 
 #include "axom/slic.hpp"
 
@@ -1894,17 +1895,20 @@ TRIBOL_HOST_DEVICE inline void PolyInterYCentroid( const int namax, const RealT*
   RealT vol;
 
   // calculate origin shift to avoid roundoff errors
-  constexpr RealT max_real = DBL_MAX;
-  RealT xorg = max_real;
-  RealT yorg = max_real;
-  RealT xa_min = max_real;
-  RealT xa_max = -max_real;
-  RealT ya_min = max_real;
-  RealT ya_max = -max_real;
-  RealT xb_min = max_real;
-  RealT xb_max = -max_real;
-  RealT yb_min = max_real;
-  RealT yb_max = -max_real;
+  RealT realt_max = std::numeric_limits<RealT>::max();
+
+  // clang-format off
+  RealT xorg =    realt_max;
+  RealT yorg =    realt_max;
+  RealT xa_min =  realt_max;
+  RealT xa_max = -realt_max;
+  RealT ya_min =  realt_max;
+  RealT ya_max = -realt_max;
+  RealT xb_min =  realt_max;
+  RealT xb_max = -realt_max;
+  RealT yb_min =  realt_max;
+  RealT yb_max = -realt_max;
+  // clang-format on
 
   RealT qy = 0.0;
 
