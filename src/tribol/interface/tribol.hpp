@@ -101,6 +101,14 @@ void setEnergyMortarFixedIntegrationJacobian( IndexT cs_id, bool enabled );
 void setEnergyMortarProjectionSmoothing( IndexT cs_id, bool enabled );
 
 /*!
+ * \brief Selects the projection-bound smoothing curve in ENERGY_MORTAR
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] curve projection smoothing curve to use when projection smoothing is enabled
+ */
+void setEnergyMortarProjectionSmoothingCurve( IndexT cs_id, EnergyMortarProjectionSmoothingCurve curve );
+
+/*!
  * \brief Sets the active-set smoothing transition gap for ENERGY_MORTAR
  *
  * \param [in] cs_id coupling scheme id
@@ -112,9 +120,19 @@ void setEnergyMortarH1ActiveSetSmoothing( IndexT cs_id, RealT gap_transition );
  * \brief Sets the residual-gap transition width for ENERGY_MORTAR QP derivative blending
  *
  * \param [in] cs_id coupling scheme id
- * \param [in] gap_transition positive residual-gap transition width; disabled when <= 0
+ * \param [in] gap_transition positive residual-gap transition width; disabled when <= 0.
+ * Equivalent to setEnergyMortarQpDerivativeBlendGapRange(cs_id, 0, gap_transition).
  */
 void setEnergyMortarQpDerivativeBlendGap( IndexT cs_id, RealT gap_transition );
+
+/*!
+ * \brief Sets the residual-gap transition range for ENERGY_MORTAR QP derivative blending
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] min_gap residual gap below which the full derivative is used
+ * \param [in] max_gap residual gap above which the simplified derivative is used; disabled when max_gap <= min_gap
+ */
+void setEnergyMortarQpDerivativeBlendGapRange( IndexT cs_id, RealT min_gap, RealT max_gap );
 
 /*!
  * \brief Sets a fixed full-path weight for ENERGY_MORTAR QP derivative blending
@@ -127,6 +145,32 @@ void setEnergyMortarQpDerivativeBlendGap( IndexT cs_id, RealT gap_transition );
  * iteration and pass it here before assembling the residual/Jacobian.
  */
 void setEnergyMortarQpDerivativeBlendWeight( IndexT cs_id, RealT weight );
+
+/*!
+ * \brief Sets whether gap-based ENERGY_MORTAR QP derivative blend weights are differentiated with Enzyme
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] enabled true to compute the gap-based blend weight inside the Enzyme kernel; false to hold it fixed
+ */
+void setEnergyMortarQpDerivativeBlendEnzymeGapWeight( IndexT cs_id, bool enabled );
+
+/*!
+ * \brief Enables cached integration data for the simplified side of ENERGY_MORTAR QP derivative blending
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] enabled true to use cached quadrature points, weights, and integration Jacobian when available
+ */
+void setEnergyMortarQpFrozenIntegration( IndexT cs_id, bool enabled );
+
+/*!
+ * \brief Refreshes cached integration data for ENERGY_MORTAR QP derivative blending
+ *
+ * The cache is built from the current active interface pairs and coordinates. For timestep-lagged integration,
+ * call this only at accepted or converged states.
+ *
+ * \param [in] cs_id coupling scheme id
+ */
+void updateEnergyMortarQpFrozenIntegrationData( IndexT cs_id );
 
 /*!
  * \brief Sets the penalty enforcement mode for ENERGY_MORTAR

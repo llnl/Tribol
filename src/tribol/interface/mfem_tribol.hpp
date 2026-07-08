@@ -344,6 +344,28 @@ void getMfemGap( IndexT cs_id, mfem::Vector& g );
 mfem::HypreParVector getMfemTDofGap( IndexT cs_id );
 
 /**
+ * @brief Returns the average QP penalty residual gap from the last force update
+ *
+ * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
+ * @pre Tribol data must be up to date for current geometry by calling update()
+ *
+ * @param [in] cs_id The ID of the coupling scheme with the MFEM mesh
+ * @return Average QP residual gap over active quadrature-point penalty face pairs
+ */
+RealT getMfemEnergyMortarQpResidualGapAverage( IndexT cs_id );
+
+/**
+ * @brief Returns QP penalty diagnostics from the last force update
+ *
+ * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
+ * @pre Tribol data must be up to date for current geometry by calling update()
+ *
+ * @param [in] cs_id The ID of the coupling scheme with the MFEM mesh
+ * @return QP penalty diagnostics over active quadrature-point penalty face pairs
+ */
+EnergyMortarQpDiagnostics getMfemEnergyMortarQpDiagnostics( IndexT cs_id );
+
+/**
  * @brief Returns reference to nodal pressure vector on the submesh surface
  *
  * @pre Coupling scheme cs_id must be registered using

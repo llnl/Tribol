@@ -28,9 +28,14 @@ struct ContactParams {
   bool fixed_integration_jacobian{ false };  // Hold physical integration measure fixed during differentiation
   EnergyMortarNormalMode normal_mode{ EnergyMortarNormalMode::ELEMENT_NORMAL };  // Normal field used by EnergyMortar
   bool projection_smoothing{ true };                                             // Apply projection-bound smoothing
+  EnergyMortarProjectionSmoothingCurve projection_smoothing_curve{
+      EnergyMortarProjectionSmoothingCurve::QUINTIC };  // Projection-bound smoothing curve
   double h1_active_set_smoothing_gap{ 0.0 };  // Active-set smoothing transition gap; disabled when <= 0
-  double qp_derivative_blend_gap{ 0.0 };      // Residual-gap transition for QP full/simplified derivative blend
+  double qp_derivative_blend_min_gap{ 0.0 };  // Residual gap where QP full/simplified derivative blending starts
+  double qp_derivative_blend_max_gap{ 0.0 };  // Residual gap where QP derivative blending is fully simplified
   double qp_derivative_blend_weight{ -1.0 };  // Fixed full-path blend weight; disabled when negative
+  bool qp_derivative_blend_enzyme_gap_weight{ true };  // Differentiate gap-based QP blend weight with Enzyme
+  bool qp_frozen_integration{ false };         // Use cached integration data for the simplified QP blend path
   EnergyMortarPenaltyMode penalty_mode{ EnergyMortarPenaltyMode::NODAL_GAP };  // Penalty enforcement mode
   EnergyMortarNodalEnergyBasis nodal_energy_basis{
       EnergyMortarNodalEnergyBasis::CUBIC_SPLINE };  // Basis used by NODAL_ENERGY mode
@@ -50,6 +55,11 @@ struct NodalContactData {
 /// Stores quadrature-point penalty energy derivatives for one interface pair.
 struct QuadraturePointPenaltyData {
   double energy{ 0.0 };
+  double qp_residual_gap{ 0.0 };
+  double qp_derivative_blend_full_weight{ 1.0 };
+  double full_energy{ 0.0 };
+  double simplified_energy{ 0.0 };
+  bool simplified_path_enabled{ true };
   std::array<double, 8> force{};
   std::array<double, 64> stiffness{};
   int num_mesh1_nodes{ 0 };
@@ -128,6 +138,7 @@ struct H1KernelData {
   double residual_gap{ 0.0 };
   double active_set_smoothing_gap{ 0.0 };
   bool projection_smoothing{ false };
+  EnergyMortarProjectionSmoothingCurve projection_smoothing_curve{ EnergyMortarProjectionSmoothingCurve::QUINTIC };
   bool fixed_quadrature{ false };
   bool fixed_integration_jacobian{ false };
   double integration_jacobian{ 0.0 };
@@ -164,7 +175,9 @@ class ContactSmoothing {
   /// The returned bounds are obtained by applying the endpoint smoothing map to
   /// the clamped integration interval. When `del = 0`, the bounds are returned
   /// without smoothing.
-  static std::array<double, 2> smooth_bounds( const std::array<double, 2>& bounds, double del );
+  static std::array<double, 2> smooth_bounds(
+      const std::array<double, 2>& bounds, double del,
+      EnergyMortarProjectionSmoothingCurve curve = EnergyMortarProjectionSmoothingCurve::QUINTIC );
 };
 
 /// Evaluates Energy Mortar contact quantities for a single interface pair.
@@ -288,21 +301,19 @@ class EnergyMortarCalculator {
   /// Compute local energy, force, and stiffness for quadrature-point penalty enforcement.
   QuadraturePointPenaltyData compute_quadrature_point_penalty_data( const InterfacePair& pair,
                                                                     const MeshData::Viewer& mesh1,
-                                                                    const MeshData::Viewer& mesh2 ) const;
+                                                                    const MeshData::Viewer& mesh2,
+                                                                    const Gparams* frozen_integration = nullptr,
+                                                                    bool require_frozen_integration = false ) const;
+
+  /// Construct the quadrature-point integration data for the current interface pair.
+  Gparams compute_quadrature_point_integration_data( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                     const MeshData::Viewer& mesh2 ) const;
 
  private:
   /// Contact parameters controlling penalty stiffness, smoothing, and derivative behavior.
   ContactParams p_;
   /// Helper used to construct smoothed integration bounds
   ContactSmoothing smoother_;
-
-  /// Construct the gap-kernel parameter bundle for the current interface pair.
-  ///
-  /// This builds the smoothed integration bounds, quadrature points, quadrature
-  /// weights, and projected quadrature-point coordinates needed by the lower-level
-  /// gap kernel.
-  Gparams construct_gparams( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                             const MeshData::Viewer& mesh2 ) const;
 
   /// Compute the local projection bounds of edge B onto edge A.
   ///

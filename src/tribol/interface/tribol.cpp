@@ -163,6 +163,21 @@ void setEnergyMortarProjectionSmoothing( IndexT cs_id, bool enabled )
 }
 
 //------------------------------------------------------------------------------
+void setEnergyMortarProjectionSmoothingCurve( IndexT cs_id, EnergyMortarProjectionSmoothingCurve curve )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarProjectionSmoothingCurve(): call "
+                               << "tribol::registerCouplingScheme() prior to calling this routine." );
+
+  auto& params = cs->getParameters();
+  params.energy_mortar_projection_smoothing_curve = curve;
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarProjectionSmoothingCurve( curve );
+  }
+}
+
+//------------------------------------------------------------------------------
 void setEnergyMortarH1ActiveSetSmoothing( IndexT cs_id, RealT gap_transition )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -180,15 +195,22 @@ void setEnergyMortarH1ActiveSetSmoothing( IndexT cs_id, RealT gap_transition )
 //------------------------------------------------------------------------------
 void setEnergyMortarQpDerivativeBlendGap( IndexT cs_id, RealT gap_transition )
 {
+  setEnergyMortarQpDerivativeBlendGapRange( cs_id, 0.0, gap_transition );
+}
+
+//------------------------------------------------------------------------------
+void setEnergyMortarQpDerivativeBlendGapRange( IndexT cs_id, RealT min_gap, RealT max_gap )
+{
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
 
-  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarQpDerivativeBlendGap(): call tribol::registerCouplingScheme() "
-                               << "prior to calling this routine." );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarQpDerivativeBlendGapRange(): call "
+                               << "tribol::registerCouplingScheme() prior to calling this routine." );
 
   auto& params = cs->getParameters();
-  params.energy_mortar_qp_derivative_blend_gap = gap_transition;
+  params.energy_mortar_qp_derivative_blend_min_gap = min_gap;
+  params.energy_mortar_qp_derivative_blend_max_gap = max_gap;
   if ( cs->hasContactFormulation() ) {
-    cs->getContactFormulation()->updateEnergyMortarQpDerivativeBlendGap( gap_transition );
+    cs->getContactFormulation()->updateEnergyMortarQpDerivativeBlendGapRange( min_gap, max_gap );
   }
 }
 
@@ -207,6 +229,49 @@ void setEnergyMortarQpDerivativeBlendWeight( IndexT cs_id, RealT weight )
   params.energy_mortar_qp_derivative_blend_weight = weight;
   if ( cs->hasContactFormulation() ) {
     cs->getContactFormulation()->updateEnergyMortarQpDerivativeBlendWeight( weight );
+  }
+}
+
+//------------------------------------------------------------------------------
+void setEnergyMortarQpDerivativeBlendEnzymeGapWeight( IndexT cs_id, bool enabled )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarQpDerivativeBlendEnzymeGapWeight(): call "
+                               << "tribol::registerCouplingScheme() prior to calling this routine." );
+
+  auto& params = cs->getParameters();
+  params.energy_mortar_qp_derivative_blend_enzyme_gap_weight = enabled;
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarQpDerivativeBlendEnzymeGapWeight( enabled );
+  }
+}
+
+//------------------------------------------------------------------------------
+void setEnergyMortarQpFrozenIntegration( IndexT cs_id, bool enabled )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarQpFrozenIntegration(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  auto& params = cs->getParameters();
+  params.energy_mortar_qp_frozen_integration = enabled;
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarQpFrozenIntegration( enabled );
+  }
+}
+
+//------------------------------------------------------------------------------
+void updateEnergyMortarQpFrozenIntegrationData( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::updateEnergyMortarQpFrozenIntegrationData(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarQpFrozenIntegrationData();
   }
 }
 

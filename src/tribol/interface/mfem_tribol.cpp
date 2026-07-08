@@ -746,6 +746,28 @@ mfem::HypreParVector getMfemTDofGap( IndexT cs_id )
   return cs->getContactFormulation()->getMfemGap();
 }
 
+RealT getMfemEnergyMortarQpResidualGapAverage( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
+  return cs->getContactFormulation()->getEnergyMortarQpResidualGapAverage();
+}
+
+EnergyMortarQpDiagnostics getMfemEnergyMortarQpDiagnostics( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
+  return cs->getContactFormulation()->getEnergyMortarQpDiagnostics();
+}
+
 mfem::ParGridFunction& getMfemPressure( IndexT cs_id )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );

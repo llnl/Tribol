@@ -14,7 +14,9 @@
 
 #include "mfem.hpp"
 
+#include <map>
 #include <memory>
+#include <utility>
 
 namespace tribol {
 
@@ -54,8 +56,13 @@ class EnergyMortarAdapter : public ContactFormulation {
                        double delta, int N, bool enzyme_quadrature, bool fixed_integration_jacobian,
                        bool use_penalty = true,
                        EnergyMortarNormalMode normal_mode = EnergyMortarNormalMode::ELEMENT_NORMAL,
-                       bool projection_smoothing = true, double h1_active_set_smoothing_gap = 0.0,
-                       double qp_derivative_blend_gap = 0.0, double qp_derivative_blend_weight = -1.0,
+                       bool projection_smoothing = true,
+                       EnergyMortarProjectionSmoothingCurve projection_smoothing_curve =
+                           EnergyMortarProjectionSmoothingCurve::QUINTIC,
+                       double h1_active_set_smoothing_gap = 0.0,
+                       double qp_derivative_blend_min_gap = 0.0, double qp_derivative_blend_max_gap = 0.0,
+                       double qp_derivative_blend_weight = -1.0,
+                       bool qp_derivative_blend_enzyme_gap_weight = true, bool qp_frozen_integration = false,
                        EnergyMortarPenaltyMode penalty_mode = EnergyMortarPenaltyMode::NODAL_GAP,
                        EnergyMortarNodalEnergyBasis nodal_energy_basis = EnergyMortarNodalEnergyBasis::CUBIC_SPLINE,
                        bool nodal_energy_angle_smoothing = true, RealT residual_gap = 0.0 );
@@ -154,6 +161,13 @@ class EnergyMortarAdapter : public ContactFormulation {
   void updateEnergyMortarNormalMode( EnergyMortarNormalMode normal_mode, bool projection_smoothing ) override;
 
   /**
+   * @brief Update projection-bound smoothing curve
+   *
+   * @param curve Projection smoothing curve used when projection smoothing is enabled
+   */
+  void updateEnergyMortarProjectionSmoothingCurve( EnergyMortarProjectionSmoothingCurve curve ) override;
+
+  /**
    * @brief Update whether geometry-dependent quadrature construction is differentiated
    *
    * @param enabled True to include quadrature construction in derivatives
@@ -182,11 +196,38 @@ class EnergyMortarAdapter : public ContactFormulation {
   void updateEnergyMortarQpDerivativeBlendGap( RealT gap_transition ) override;
 
   /**
+   * @brief Update QP penalty full/simplified derivative blend transition range
+   *
+   * @param min_gap Residual gap below which the full derivative is used
+   * @param max_gap Residual gap above which the simplified derivative is used; disabled when max_gap <= min_gap
+   */
+  void updateEnergyMortarQpDerivativeBlendGapRange( RealT min_gap, RealT max_gap ) override;
+
+  /**
    * @brief Update fixed full-path QP penalty derivative blend weight
    *
    * @param weight Full-path weight clamped to [0, 1]; disabled when negative
    */
   void updateEnergyMortarQpDerivativeBlendWeight( RealT weight ) override;
+
+  /**
+   * @brief Update whether gap-based QP penalty derivative blend weights are differentiated with Enzyme
+   *
+   * @param enabled True to differentiate the gap-based blend weight
+   */
+  void updateEnergyMortarQpDerivativeBlendEnzymeGapWeight( bool enabled ) override;
+
+  /**
+   * @brief Update whether QP derivative blending uses cached simplified-path integration data
+   *
+   * @param enabled True to use cached quadrature points, weights, and integration Jacobian
+   */
+  void updateEnergyMortarQpFrozenIntegration( bool enabled ) override;
+
+  /**
+   * @brief Cache QP integration data for the current active pairs and coordinates
+   */
+  void updateEnergyMortarQpFrozenIntegrationData() override;
 
   /**
    * @brief Update penalty enforcement mode
@@ -248,6 +289,20 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @return Pointer to the submesh normal grid function, or nullptr when H1 normal mode is inactive
    */
   mfem::ParGridFunction* getMfemNodalNormal() override;
+
+  /**
+   * @brief Return the average QP penalty residual gap from the last force update
+   *
+   * @return Average QP residual gap over active quadrature-point penalty face pairs
+   */
+  RealT getEnergyMortarQpResidualGapAverage() const override { return qp_residual_gap_average_; }
+
+  /**
+   * @brief Return QP penalty diagnostics from the last force update
+   *
+   * @return Diagnostics over active quadrature-point penalty face pairs
+   */
+  EnergyMortarQpDiagnostics getEnergyMortarQpDiagnostics() const override { return qp_diagnostics_; }
 
   /**
    * @brief Return df/dx for the assembled contact force
@@ -345,6 +400,21 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @brief Contact parameters (penalty, smoothing, quadrature)
    */
   ContactParams params_;
+
+  /**
+   * @brief Average QP penalty residual gap over active pairs from the last force update
+   */
+  RealT qp_residual_gap_average_{ 0.0 };
+
+  /**
+   * @brief QP penalty diagnostics over active pairs from the last force update
+   */
+  EnergyMortarQpDiagnostics qp_diagnostics_;
+
+  /**
+   * @brief Cached QP integration data used by the simplified QP penalty blend path
+   */
+  std::map<std::pair<IndexT, IndexT>, Gparams> qp_frozen_integration_data_;
 
   /**
    * @brief Evaluator implementing ENERGY_MORTAR element-level computations

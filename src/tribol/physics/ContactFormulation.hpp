@@ -134,6 +134,11 @@ class ContactFormulation {
   virtual void updateEnergyMortarNormalMode( EnergyMortarNormalMode /*normal_mode*/, bool /*projection_smoothing*/ ) {}
 
   /**
+   * @brief Update ENERGY_MORTAR projection smoothing curve on formulations that support it
+   */
+  virtual void updateEnergyMortarProjectionSmoothingCurve( EnergyMortarProjectionSmoothingCurve /*curve*/ ) {}
+
+  /**
    * @brief Update ENERGY_MORTAR quadrature differentiation mode on formulations that support it
    */
   virtual void updateEnergyMortarEnzymeQuadrature( bool /*enabled*/ ) {}
@@ -151,12 +156,35 @@ class ContactFormulation {
   /**
    * @brief Update ENERGY_MORTAR QP penalty derivative-blending transition gap on formulations that support it
    */
-  virtual void updateEnergyMortarQpDerivativeBlendGap( RealT /*gap_transition*/ ) {}
+  virtual void updateEnergyMortarQpDerivativeBlendGap( RealT gap_transition )
+  {
+    updateEnergyMortarQpDerivativeBlendGapRange( 0.0, gap_transition );
+  }
+
+  /**
+   * @brief Update ENERGY_MORTAR QP penalty derivative-blending transition range on formulations that support it
+   */
+  virtual void updateEnergyMortarQpDerivativeBlendGapRange( RealT /*min_gap*/, RealT /*max_gap*/ ) {}
 
   /**
    * @brief Update ENERGY_MORTAR fixed full-path QP derivative-blending weight on formulations that support it
    */
   virtual void updateEnergyMortarQpDerivativeBlendWeight( RealT /*weight*/ ) {}
+
+  /**
+   * @brief Update whether gap-based QP derivative-blending weight is differentiated with Enzyme
+   */
+  virtual void updateEnergyMortarQpDerivativeBlendEnzymeGapWeight( bool /*enabled*/ ) {}
+
+  /**
+   * @brief Update whether ENERGY_MORTAR QP derivative blending uses cached simplified-path integration data
+   */
+  virtual void updateEnergyMortarQpFrozenIntegration( bool /*enabled*/ ) {}
+
+  /**
+   * @brief Cache ENERGY_MORTAR QP integration data for the current interface pairs and coordinates
+   */
+  virtual void updateEnergyMortarQpFrozenIntegrationData() {}
 
   /**
    * @brief Update ENERGY_MORTAR penalty mode on formulations that support it
@@ -208,6 +236,20 @@ class ContactFormulation {
    * @return Pointer to a vector grid function on the parent-linked boundary submesh, or nullptr if unsupported
    */
   virtual mfem::ParGridFunction* getMfemNodalNormal() { return nullptr; }
+
+  /**
+   * @brief Returns the average QP penalty residual gap, when supported by the formulation
+   *
+   * @return Average over active quadrature-point penalty face pairs from the last force update
+   */
+  virtual RealT getEnergyMortarQpResidualGapAverage() const { return 0.0; }
+
+  /**
+   * @brief Returns QP penalty diagnostics, when supported by the formulation
+   *
+   * @return Diagnostics collected during the last force update
+   */
+  virtual EnergyMortarQpDiagnostics getEnergyMortarQpDiagnostics() const { return {}; }
 
   /**
    * @brief Get the derivative of force with respect to displacement

@@ -132,6 +132,15 @@ enum class EnergyMortarNormalMode
 };
 
 /*!
+ * \brief Enumerates projection-bound smoothing curves for ENERGY_MORTAR
+ */
+enum class EnergyMortarProjectionSmoothingCurve
+{
+  QUADRATIC,  ///! Use the original C1 quadratic projection smoothing map
+  QUINTIC,    ///! Use a C2 quintic-smoothstep projection smoothing map
+};
+
+/*!
  * \brief Enumerates penalty enforcement options for ENERGY_MORTAR
  */
 enum class EnergyMortarPenaltyMode
@@ -148,6 +157,24 @@ enum class EnergyMortarNodalEnergyBasis
 {
   FE,            ///! Use the linear finite element basis
   CUBIC_SPLINE,  ///! Use a cubic spline basis with zero nodal slopes
+};
+
+struct EnergyMortarQpDiagnostics {
+  double energy{ 0.0 };
+  double residual_gap_average{ 0.0 };
+  double residual_gap_min{ 0.0 };
+  double residual_gap_max{ 0.0 };
+  double blend_weight_average{ 0.0 };
+  double blend_weight_min{ 0.0 };
+  double blend_weight_max{ 0.0 };
+  double full_simplified_energy_difference_average{ 0.0 };
+  double full_simplified_energy_difference_max{ 0.0 };
+  int active_pair_count{ 0 };
+  int contributing_pair_count{ 0 };
+  int full_weight_pair_count{ 0 };
+  int blended_pair_count{ 0 };
+  int simplified_pair_count{ 0 };
+  int missing_frozen_integration_pair_count{ 0 };
 };
 
 /*!
@@ -531,11 +558,19 @@ struct Parameters {
       false;                                            ///! Hold integration measure fixed in EnergyMortar derivatives
   bool energy_mortar_projection_smoothing = true;       ///! Apply projection-bound smoothing in ENERGY_MORTAR
   bool energy_mortar_projection_smoothing_set = false;  ///! True if the user explicitly set projection smoothing
+  EnergyMortarProjectionSmoothingCurve energy_mortar_projection_smoothing_curve =
+      EnergyMortarProjectionSmoothingCurve::QUINTIC;      ///! Projection-bound smoothing curve
   RealT energy_mortar_h1_active_set_smoothing_gap = 0.0;  ///! Active-set smoothing transition gap; disabled when <= 0
-  RealT energy_mortar_qp_derivative_blend_gap =
-      0.0;  ///! Residual-gap transition width for QP penalty derivative blending; disabled when <= 0
+  RealT energy_mortar_qp_derivative_blend_min_gap =
+      0.0;  ///! Residual gap where QP penalty derivative blending starts; disabled unless max > min
+  RealT energy_mortar_qp_derivative_blend_max_gap =
+      0.0;  ///! Residual gap where QP penalty derivative blending is fully simplified; disabled unless max > min
   RealT energy_mortar_qp_derivative_blend_weight =
       -1.0;  ///! Fixed full-path QP derivative blend weight; disabled when negative
+  bool energy_mortar_qp_derivative_blend_enzyme_gap_weight =
+      true;  ///! Differentiate gap-based QP derivative blend weight with Enzyme
+  bool energy_mortar_qp_frozen_integration =
+      false;  ///! Use cached quadrature points, weights, and integration Jacobian for simplified QP penalty blend
   EnergyMortarPenaltyMode energy_mortar_penalty_mode =
       EnergyMortarPenaltyMode::NODAL_GAP;  ///! Penalty enforcement mode used by ENERGY_MORTAR
   EnergyMortarNodalEnergyBasis energy_mortar_nodal_energy_basis =

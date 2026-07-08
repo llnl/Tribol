@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <fstream>
 #include <iomanip>
+#include <limits>
 #include <map>
 #include <string>
 
@@ -373,9 +374,13 @@ void recordH1DebugPair( std::vector<H1DebugPair>& debug_pairs, const InterfacePa
   debug.elem_proj = elem_evaluator.compute_projection_bounds( flipped_pair, mesh1_view, mesh2_view );
   const auto h1_bounds = ContactSmoothing::bounds_from_projections( debug.h1_proj, params.del );
   const auto elem_bounds = ContactSmoothing::bounds_from_projections( debug.elem_proj, params.del );
-  debug.h1_smooth = params.projection_smoothing ? ContactSmoothing::smooth_bounds( h1_bounds, params.del ) : h1_bounds;
+  debug.h1_smooth = params.projection_smoothing
+                        ? ContactSmoothing::smooth_bounds( h1_bounds, params.del, params.projection_smoothing_curve )
+                        : h1_bounds;
   debug.elem_smooth =
-      params.projection_smoothing ? ContactSmoothing::smooth_bounds( elem_bounds, params.del ) : elem_bounds;
+      params.projection_smoothing
+          ? ContactSmoothing::smooth_bounds( elem_bounds, params.del, params.projection_smoothing_curve )
+          : elem_bounds;
 
   debug.h1_g = h1.g_tilde;
   debug.h1_A = h1.area;
@@ -558,8 +563,10 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
                                           MfemJacobianData& jac_data, double k, double delta, int N,
                                           bool enzyme_quadrature, bool fixed_integration_jacobian, bool use_penalty,
                                           EnergyMortarNormalMode normal_mode, bool projection_smoothing,
-                                          double h1_active_set_smoothing_gap, double qp_derivative_blend_gap,
-                                          double qp_derivative_blend_weight,
+                                          EnergyMortarProjectionSmoothingCurve projection_smoothing_curve,
+                                          double h1_active_set_smoothing_gap, double qp_derivative_blend_min_gap,
+                                          double qp_derivative_blend_max_gap, double qp_derivative_blend_weight,
+                                          bool qp_derivative_blend_enzyme_gap_weight, bool qp_frozen_integration,
                                           EnergyMortarPenaltyMode penalty_mode,
                                           EnergyMortarNodalEnergyBasis nodal_energy_basis,
                                           bool nodal_energy_angle_smoothing, RealT residual_gap )
@@ -574,12 +581,16 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
   params_.fixed_integration_jacobian = fixed_integration_jacobian;
   params_.normal_mode = normal_mode;
   params_.projection_smoothing = projection_smoothing;
+  params_.projection_smoothing_curve = projection_smoothing_curve;
   params_.h1_active_set_smoothing_gap = h1_active_set_smoothing_gap;
-  params_.qp_derivative_blend_gap = qp_derivative_blend_gap;
+  params_.qp_derivative_blend_min_gap = qp_derivative_blend_min_gap;
+  params_.qp_derivative_blend_max_gap = qp_derivative_blend_max_gap;
   if ( qp_derivative_blend_weight > 1.0 ) {
     qp_derivative_blend_weight = 1.0;
   }
   params_.qp_derivative_blend_weight = qp_derivative_blend_weight;
+  params_.qp_derivative_blend_enzyme_gap_weight = qp_derivative_blend_enzyme_gap_weight;
+  params_.qp_frozen_integration = qp_frozen_integration;
   params_.penalty_mode = penalty_mode;
   params_.nodal_energy_basis = nodal_energy_basis;
   params_.nodal_energy_angle_smoothing = nodal_energy_angle_smoothing;
@@ -619,6 +630,12 @@ void EnergyMortarAdapter::updateEnergyMortarNormalMode( EnergyMortarNormalMode n
   submesh_nodal_normal_ = 0.0;
 }
 
+void EnergyMortarAdapter::updateEnergyMortarProjectionSmoothingCurve( EnergyMortarProjectionSmoothingCurve curve )
+{
+  params_.projection_smoothing_curve = curve;
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+}
+
 void EnergyMortarAdapter::updateEnergyMortarEnzymeQuadrature( bool enabled )
 {
   params_.enzyme_quadrature = enabled;
@@ -639,7 +656,13 @@ void EnergyMortarAdapter::updateEnergyMortarH1ActiveSetSmoothing( RealT gap_tran
 
 void EnergyMortarAdapter::updateEnergyMortarQpDerivativeBlendGap( RealT gap_transition )
 {
-  params_.qp_derivative_blend_gap = gap_transition;
+  updateEnergyMortarQpDerivativeBlendGapRange( 0.0, gap_transition );
+}
+
+void EnergyMortarAdapter::updateEnergyMortarQpDerivativeBlendGapRange( RealT min_gap, RealT max_gap )
+{
+  params_.qp_derivative_blend_min_gap = min_gap;
+  params_.qp_derivative_blend_max_gap = max_gap;
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 }
 
@@ -650,6 +673,42 @@ void EnergyMortarAdapter::updateEnergyMortarQpDerivativeBlendWeight( RealT weigh
   }
   params_.qp_derivative_blend_weight = weight;
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+}
+
+void EnergyMortarAdapter::updateEnergyMortarQpDerivativeBlendEnzymeGapWeight( bool enabled )
+{
+  params_.qp_derivative_blend_enzyme_gap_weight = enabled;
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+}
+
+void EnergyMortarAdapter::updateEnergyMortarQpFrozenIntegration( bool enabled )
+{
+  params_.qp_frozen_integration = enabled;
+  if ( !enabled ) {
+    qp_frozen_integration_data_.clear();
+  }
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+}
+
+void EnergyMortarAdapter::updateEnergyMortarQpFrozenIntegrationData()
+{
+  qp_frozen_integration_data_.clear();
+  if ( !params_.qp_frozen_integration || mesh1_ == nullptr || mesh2_ == nullptr ||
+       params_.penalty_mode != EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP ||
+       params_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL ) {
+    return;
+  }
+
+  auto mesh1_view = mesh1_->getView();
+  auto mesh2_view = mesh2_->getView();
+  for ( IndexT elem1{ 0 }; elem1 < mesh1_view.numberOfElements(); ++elem1 ) {
+    for ( IndexT elem2{ 0 }; elem2 < mesh2_view.numberOfElements(); ++elem2 ) {
+      InterfacePair pair( elem1, elem2 );
+      auto integration = evaluator_->compute_quadrature_point_integration_data( pair, mesh1_view, mesh2_view );
+      const auto key = std::make_pair( pair.m_element_id1, pair.m_element_id2 );
+      qp_frozen_integration_data_[key] = integration;
+    }
+  }
 }
 
 void EnergyMortarAdapter::updateEnergyMortarPenaltyMode( EnergyMortarPenaltyMode mode )
@@ -921,15 +980,69 @@ void EnergyMortarAdapter::updateQuadraturePointPenaltyForces()
   auto mesh2_view = mesh2_->getView();
 
   double local_energy = 0.0;
+  double local_qp_residual_gap_sum = 0.0;
+  double local_qp_residual_gap_min = std::numeric_limits<double>::max();
+  double local_qp_residual_gap_max = -std::numeric_limits<double>::max();
+  double local_qp_residual_gap_count = 0.0;
+  double local_qp_blend_weight_sum = 0.0;
+  double local_qp_blend_weight_min = std::numeric_limits<double>::max();
+  double local_qp_blend_weight_max = -std::numeric_limits<double>::max();
+  double local_qp_energy_difference_sum = 0.0;
+  double local_qp_energy_difference_max = 0.0;
+  int local_active_pair_count = 0;
+  int local_contributing_pair_count = 0;
+  int local_full_weight_pair_count = 0;
+  int local_blended_pair_count = 0;
+  int local_simplified_pair_count = 0;
+  int local_missing_frozen_integration_pair_count = 0;
   for ( const auto& pair : pairs_ ) {
+    ++local_active_pair_count;
     InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
     const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
     const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
 
-    const auto qp_penalty = evaluator_->compute_quadrature_point_penalty_data( flipped_pair, mesh1_view, mesh2_view );
+    const Gparams* frozen_integration = nullptr;
+    const bool qp_blend_active =
+        params_.qp_derivative_blend_weight >= 0.0 ||
+        ( params_.qp_derivative_blend_max_gap > params_.qp_derivative_blend_min_gap &&
+          params_.qp_derivative_blend_max_gap > 0.0 );
+    const bool require_frozen_integration = params_.qp_frozen_integration && qp_blend_active;
+    if ( require_frozen_integration ) {
+      const auto key = std::make_pair( flipped_pair.m_element_id1, flipped_pair.m_element_id2 );
+      auto it = qp_frozen_integration_data_.find( key );
+      if ( it != qp_frozen_integration_data_.end() ) {
+        frozen_integration = &it->second;
+      } else {
+        ++local_missing_frozen_integration_pair_count;
+      }
+    }
+
+    const auto qp_penalty =
+        evaluator_->compute_quadrature_point_penalty_data( flipped_pair, mesh1_view, mesh2_view, frozen_integration,
+                                                           require_frozen_integration );
+    local_qp_residual_gap_sum += qp_penalty.qp_residual_gap;
+    local_qp_residual_gap_min = std::min( local_qp_residual_gap_min, qp_penalty.qp_residual_gap );
+    local_qp_residual_gap_max = std::max( local_qp_residual_gap_max, qp_penalty.qp_residual_gap );
+    local_qp_residual_gap_count += 1.0;
+    local_qp_blend_weight_sum += qp_penalty.qp_derivative_blend_full_weight;
+    local_qp_blend_weight_min = std::min( local_qp_blend_weight_min, qp_penalty.qp_derivative_blend_full_weight );
+    local_qp_blend_weight_max = std::max( local_qp_blend_weight_max, qp_penalty.qp_derivative_blend_full_weight );
+    if ( qp_penalty.qp_derivative_blend_full_weight >= 1.0 - 1.0e-12 ) {
+      ++local_full_weight_pair_count;
+    } else if ( qp_penalty.qp_derivative_blend_full_weight <= 1.0e-12 ) {
+      ++local_simplified_pair_count;
+    } else {
+      ++local_blended_pair_count;
+    }
+    if ( qp_penalty.simplified_path_enabled ) {
+      const double energy_difference = std::abs( qp_penalty.full_energy - qp_penalty.simplified_energy );
+      local_qp_energy_difference_sum += energy_difference;
+      local_qp_energy_difference_max = std::max( local_qp_energy_difference_max, energy_difference );
+    }
     if ( qp_penalty.energy == 0.0 ) {
       continue;
     }
+    ++local_contributing_pair_count;
     local_energy += qp_penalty.energy;
 
     if ( params_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL ) {
@@ -987,6 +1100,60 @@ void EnergyMortarAdapter::updateQuadraturePointPenaltyForces()
 
   MPI_Allreduce( &local_energy, &energy_, 1, MPI_DOUBLE, MPI_SUM,
                  mesh_data_.GetParentCoords().ParFESpace()->GetComm() );
+  double global_qp_residual_gap_sum = 0.0;
+  double global_qp_residual_gap_min = 0.0;
+  double global_qp_residual_gap_max = 0.0;
+  double global_qp_residual_gap_count = 0.0;
+  double global_qp_blend_weight_sum = 0.0;
+  double global_qp_blend_weight_min = 0.0;
+  double global_qp_blend_weight_max = 0.0;
+  double global_qp_energy_difference_sum = 0.0;
+  double global_qp_energy_difference_max = 0.0;
+  int global_active_pair_count = 0;
+  int global_contributing_pair_count = 0;
+  int global_full_weight_pair_count = 0;
+  int global_blended_pair_count = 0;
+  int global_simplified_pair_count = 0;
+  int global_missing_frozen_integration_pair_count = 0;
+  auto comm = mesh_data_.GetParentCoords().ParFESpace()->GetComm();
+  MPI_Allreduce( &local_qp_residual_gap_sum, &global_qp_residual_gap_sum, 1, MPI_DOUBLE, MPI_SUM,
+                 comm );
+  MPI_Allreduce( &local_qp_residual_gap_min, &global_qp_residual_gap_min, 1, MPI_DOUBLE, MPI_MIN, comm );
+  MPI_Allreduce( &local_qp_residual_gap_max, &global_qp_residual_gap_max, 1, MPI_DOUBLE, MPI_MAX, comm );
+  MPI_Allreduce( &local_qp_residual_gap_count, &global_qp_residual_gap_count, 1, MPI_DOUBLE, MPI_SUM,
+                 comm );
+  MPI_Allreduce( &local_qp_blend_weight_sum, &global_qp_blend_weight_sum, 1, MPI_DOUBLE, MPI_SUM, comm );
+  MPI_Allreduce( &local_qp_blend_weight_min, &global_qp_blend_weight_min, 1, MPI_DOUBLE, MPI_MIN, comm );
+  MPI_Allreduce( &local_qp_blend_weight_max, &global_qp_blend_weight_max, 1, MPI_DOUBLE, MPI_MAX, comm );
+  MPI_Allreduce( &local_qp_energy_difference_sum, &global_qp_energy_difference_sum, 1, MPI_DOUBLE, MPI_SUM, comm );
+  MPI_Allreduce( &local_qp_energy_difference_max, &global_qp_energy_difference_max, 1, MPI_DOUBLE, MPI_MAX, comm );
+  MPI_Allreduce( &local_active_pair_count, &global_active_pair_count, 1, MPI_INT, MPI_SUM, comm );
+  MPI_Allreduce( &local_contributing_pair_count, &global_contributing_pair_count, 1, MPI_INT, MPI_SUM, comm );
+  MPI_Allreduce( &local_full_weight_pair_count, &global_full_weight_pair_count, 1, MPI_INT, MPI_SUM, comm );
+  MPI_Allreduce( &local_blended_pair_count, &global_blended_pair_count, 1, MPI_INT, MPI_SUM, comm );
+  MPI_Allreduce( &local_simplified_pair_count, &global_simplified_pair_count, 1, MPI_INT, MPI_SUM, comm );
+  MPI_Allreduce( &local_missing_frozen_integration_pair_count, &global_missing_frozen_integration_pair_count, 1,
+                 MPI_INT, MPI_SUM, comm );
+  qp_residual_gap_average_ =
+      global_qp_residual_gap_count > 0.0 ? global_qp_residual_gap_sum / global_qp_residual_gap_count : 0.0;
+  qp_diagnostics_ = {};
+  qp_diagnostics_.energy = energy_;
+  qp_diagnostics_.residual_gap_average = qp_residual_gap_average_;
+  qp_diagnostics_.residual_gap_min = global_qp_residual_gap_count > 0.0 ? global_qp_residual_gap_min : 0.0;
+  qp_diagnostics_.residual_gap_max = global_qp_residual_gap_count > 0.0 ? global_qp_residual_gap_max : 0.0;
+  qp_diagnostics_.blend_weight_average =
+      global_qp_residual_gap_count > 0.0 ? global_qp_blend_weight_sum / global_qp_residual_gap_count : 0.0;
+  qp_diagnostics_.blend_weight_min = global_qp_residual_gap_count > 0.0 ? global_qp_blend_weight_min : 0.0;
+  qp_diagnostics_.blend_weight_max = global_qp_residual_gap_count > 0.0 ? global_qp_blend_weight_max : 0.0;
+  qp_diagnostics_.full_simplified_energy_difference_average =
+      global_qp_residual_gap_count > 0.0 ? global_qp_energy_difference_sum / global_qp_residual_gap_count : 0.0;
+  qp_diagnostics_.full_simplified_energy_difference_max = global_qp_energy_difference_max;
+  qp_diagnostics_.active_pair_count = global_active_pair_count;
+  qp_diagnostics_.contributing_pair_count = global_contributing_pair_count;
+  qp_diagnostics_.full_weight_pair_count = global_full_weight_pair_count;
+  qp_diagnostics_.blended_pair_count = global_blended_pair_count;
+  qp_diagnostics_.simplified_pair_count = global_simplified_pair_count;
+  qp_diagnostics_.missing_frozen_integration_pair_count = global_missing_frozen_integration_pair_count;
 
   mfem::Vector parent_force_dof( mesh_data_.GetParentCoords().ParFESpace()->GetVSize() );
   parent_force_dof = 0.0;
@@ -1010,6 +1177,8 @@ void EnergyMortarAdapter::updateQuadraturePointPenaltyForces()
 void EnergyMortarAdapter::updateNodalForces()
 {
   // NOTE: user should have called updateNodalGaps() with updated coords before calling this
+  qp_residual_gap_average_ = 0.0;
+  qp_diagnostics_ = {};
 
   if ( use_penalty_ ) {
     // Penalty mode: p = k * (g_tilde / A)
