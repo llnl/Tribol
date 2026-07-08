@@ -18,6 +18,9 @@ import csv
 import html
 import json
 import math
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Iterable
 
@@ -27,6 +30,8 @@ GEOM_ALIASES = {
     "a0y": ("A0_y", "a0_y", "a0y", "yA0", "ay0"),
     "a1x": ("A1_x", "a1_x", "a1x", "xA1", "ax1"),
     "a1y": ("A1_y", "a1_y", "a1y", "yA1", "ay1"),
+    "a2x": ("A2_x", "a2_x", "a2x", "xA2", "ax2"),
+    "a2y": ("A2_y", "a2_y", "a2y", "yA2", "ay2"),
     "b0x": ("B0_x", "b0_x", "b0x", "xB0", "bx0"),
     "b0y": ("B0_y", "b0_y", "b0y", "yB0", "by0"),
     "b1x": ("B1_x", "b1_x", "b1x", "xB1", "bx1"),
@@ -36,11 +41,13 @@ GEOM_ALIASES = {
 FORCE_ALIASES = [
     (("fA0_x", "fa0x", "fx0"), ("fA0_y", "fa0y", "fy0")),
     (("fA1_x", "fa1x", "fx1"), ("fA1_y", "fa1y", "fy1")),
+    (("fA2_x", "fa2x"), ("fA2_y", "fa2y")),
     (("fB0_x", "fb0x", "fx2"), ("fB0_y", "fb0y", "fy2")),
     (("fB1_x", "fb1x", "fx3"), ("fB1_y", "fb1y", "fy3")),
 ]
 
-FORCE_COMPONENT_NAMES = ("A0x", "A0y", "A1x", "A1y", "B0x", "B0y", "B1x", "B1y")
+FORCE_COMPONENT_NAMES = ("A0x", "A0y", "A1x", "A1y", "A2x", "A2y", "B0x", "B0y", "B1x", "B1y")
+FORCE_COMPONENT_NAMES_SINGLE_A_EDGE = ("A0x", "A0y", "A1x", "A1y", "B0x", "B0y", "B1x", "B1y")
 
 DEFAULT_METRICS = (
     "energy",
@@ -96,15 +103,28 @@ def load_frames(csv_path: Path, case: str | None, requested_metrics: str | None)
         for index, row in enumerate(reader):
             if case is not None and row.get("case") != case:
                 continue
-            points = [
+            a_points = [
                 [require_float(row, "a0x"), require_float(row, "a0y")],
                 [require_float(row, "a1x"), require_float(row, "a1y")],
+            ]
+            a2x = first_float(row, GEOM_ALIASES["a2x"], None)
+            a2y = first_float(row, GEOM_ALIASES["a2y"], None)
+            if a2x is not None and a2y is not None:
+                a_points.append([a2x, a2y])
+            b_points = [
                 [require_float(row, "b0x"), require_float(row, "b0y")],
                 [require_float(row, "b1x"), require_float(row, "b1y")],
             ]
+            points = a_points + b_points
+            force_aliases = FORCE_ALIASES if len(a_points) > 2 else [
+                FORCE_ALIASES[0],
+                FORCE_ALIASES[1],
+                FORCE_ALIASES[3],
+                FORCE_ALIASES[4],
+            ]
             forces = []
             has_force = False
-            for xnames, ynames in FORCE_ALIASES:
+            for xnames, ynames in force_aliases:
                 fx = first_float(row, xnames, 0.0)
                 fy = first_float(row, ynames, 0.0)
                 has_force = has_force or abs(fx or 0.0) > 0.0 or abs(fy or 0.0) > 0.0
@@ -120,6 +140,8 @@ def load_frames(csv_path: Path, case: str | None, requested_metrics: str | None)
                     "s": first_float(row, ("s", "time", "disp", "displacement"), float(index)),
                     "case": row.get("case", ""),
                     "points": points,
+                    "aPoints": a_points,
+                    "bPoints": b_points,
                     "forces": forces if has_force else [],
                     "metrics": frame_metrics,
                 }
@@ -159,18 +181,81 @@ def metric_ranges(frames: list[dict], metrics: list[str]) -> dict[str, list[floa
 
 
 def write_html(frames: list[dict], metrics: list[str], title: str, output: Path, fps: float) -> None:
+    force_component_names = (
+        FORCE_COMPONENT_NAMES
+        if any(len(frame.get("aPoints", [])) > 2 for frame in frames)
+        else FORCE_COMPONENT_NAMES_SINGLE_A_EDGE
+    )
     payload = {
         "title": title,
         "fps": fps,
         "bounds": data_bounds(frames),
         "metrics": [name for name in metrics if any(name in frame["metrics"] for frame in frames)],
         "metricRanges": metric_ranges(frames, metrics),
-        "forceComponentNames": FORCE_COMPONENT_NAMES,
+        "forceComponentNames": force_component_names,
         "frames": frames,
     }
     rendered = HTML_TEMPLATE.replace("__PAYLOAD_TITLE__", html.escape(title))
     rendered = rendered.replace("__PAYLOAD__", json.dumps(payload))
     output.write_text(rendered, encoding="utf-8")
+
+
+def export_mp4(html_path: Path, frame_count: int, output: Path, fps: float, width: int, height: int) -> None:
+    missing = []
+    if shutil.which("ffmpeg") is None:
+        missing.append("ffmpeg")
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:
+        missing.append("playwright")
+        sync_playwright = None
+        playwright_import_error = exc
+    else:
+        playwright_import_error = None
+
+    if missing:
+        details = []
+        if "playwright" in missing:
+            details.append("install Playwright with: python3 -m pip install playwright")
+            details.append("install Chromium with: python3 -m playwright install chromium")
+        if "ffmpeg" in missing:
+            details.append("install ffmpeg and ensure it is on PATH")
+        raise RuntimeError("Cannot export MP4; missing " + ", ".join(missing) + ". " + "; ".join(details)) from (
+            playwright_import_error if "playwright" in missing else None
+        )
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="energy_mortar_mp4_") as tmp:
+        frame_dir = Path(tmp)
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch()
+            try:
+                page = browser.new_page(viewport={"width": width, "height": height}, device_scale_factor=1)
+                page.goto(html_path.resolve().as_uri())
+                page.wait_for_load_state("networkidle")
+                page.evaluate("pauseAnimation()")
+                for index in range(frame_count):
+                    page.evaluate("(index) => render(index)", index)
+                    page.screenshot(path=frame_dir / f"frame_{index:04d}.png")
+            finally:
+                browser.close()
+
+        command = [
+            "ffmpeg",
+            "-y",
+            "-framerate",
+            str(fps),
+            "-i",
+            str(frame_dir / "frame_%04d.png"),
+            "-vf",
+            "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(output),
+        ]
+        subprocess.run(command, check=True)
 
 
 def write_example(csv_path: Path) -> None:
@@ -416,6 +501,20 @@ function metricX(i) {
   return 64 + i / Math.max(frames.length - 1, 1) * 430;
 }
 
+function linspace(min, max, count) {
+  if (count <= 1) return [min];
+  const values = [];
+  for (let i = 0; i < count; ++i) values.push(min + (max - min) * i / (count - 1));
+  return values;
+}
+
+function plotTickIndices(count = 5) {
+  if (frames.length <= 1) return [0];
+  const last = frames.length - 1;
+  const indices = linspace(0, last, Math.min(count, frames.length)).map(v => Math.round(v));
+  return [...new Set(indices)];
+}
+
 function paddedRange(values, fallback = [0, 1]) {
   if (!values.length) return fallback;
   let lo = Math.min(...values);
@@ -451,10 +550,22 @@ function forceValues() {
   return values;
 }
 
+function maxForceMagnitude() {
+  let maxMag = 0;
+  frames.forEach(frame => {
+    if (!frame.forces || !frame.forces.length) return;
+    frame.forces.forEach(f => {
+      maxMag = Math.max(maxMag, Math.hypot(f[0], f[1]));
+    });
+  });
+  return Math.max(maxMag, 1e-12);
+}
+
 function forceComponent(frame, component) {
   if (!frame.forces || frame.forces.length < 4) return null;
   const node = Math.floor(component / 2);
   const dim = component % 2;
+  if (node >= frame.forces.length) return null;
   return frame.forces[node][dim];
 }
 
@@ -466,16 +577,67 @@ function formatNumber(value) {
   return value.toPrecision(3);
 }
 
+function formatAxisNumber(value) {
+  if (!Number.isFinite(value)) return "";
+  if (Math.abs(value) >= 1000 || (Math.abs(value) > 0 && Math.abs(value) < 0.01)) {
+    return value.toExponential(1);
+  }
+  return Number(value.toPrecision(3)).toString();
+}
+
 function drawAxis(top, height, title, range) {
   el("line", {x1: 64, y1: top + height, x2: 494, y2: top + height, stroke: "#9aa6b2", "stroke-width": 1.2}, plotSvg);
   el("line", {x1: 64, y1: top, x2: 64, y2: top + height, stroke: "#9aa6b2", "stroke-width": 1.2}, plotSvg);
   el("text", {x: 64, y: top - 12, fill: "#1f2933", "font-size": 16, "font-weight": 700}, plotSvg).textContent = title;
   el("text", {x: 504, y: top + 5, fill: "#667085", "font-size": 12}, plotSvg).textContent = formatNumber(range[1]);
   el("text", {x: 504, y: top + height, fill: "#667085", "font-size": 12}, plotSvg).textContent = formatNumber(range[0]);
+  for (const index of plotTickIndices()) {
+    const x = metricX(index);
+    const s = frames[index] ? Number(frames[index].s) : index;
+    el("line", {x1: x, y1: top + height, x2: x, y2: top + height + 6, stroke: "#9aa6b2", "stroke-width": 1.1}, plotSvg);
+    el("line", {x1: x, y1: top, x2: x, y2: top + height, stroke: "#d9dee7", "stroke-width": 0.8}, plotSvg);
+    el("text", {
+      x,
+      y: top + height + 20,
+      fill: "#667085",
+      "font-size": 11,
+      "text-anchor": "middle"
+    }, plotSvg).textContent = formatAxisNumber(s);
+  }
   if (range[0] < 0 && range[1] > 0) {
     const y0 = rangeY(range, 0, top, height);
     el("line", {x1: 64, y1: y0, x2: 494, y2: y0, stroke: "#c8d0da", "stroke-width": 1, "stroke-dasharray": "4 4"}, plotSvg);
   }
+}
+
+function drawGeomAxes() {
+  const b = payload.bounds;
+  const xTicks = linspace(b.xmin, b.xmax, 5);
+  const yTicks = linspace(b.ymin, b.ymax, 5);
+  for (const value of xTicks) {
+    const x = sx(value);
+    el("line", {x1: x, y1: 440, x2: x, y2: 446, stroke: "#98a2b3", "stroke-width": 1.1}, geomSvg);
+    el("text", {
+      x,
+      y: 463,
+      fill: "#667085",
+      "font-size": 12,
+      "text-anchor": "middle"
+    }, geomSvg).textContent = formatAxisNumber(value);
+  }
+  for (const value of yTicks) {
+    const y = sy(value);
+    el("line", {x1: 54, y1: y, x2: 60, y2: y, stroke: "#98a2b3", "stroke-width": 1.1}, geomSvg);
+    el("text", {
+      x: 48,
+      y: y + 4,
+      fill: "#667085",
+      "font-size": 12,
+      "text-anchor": "end"
+    }, geomSvg).textContent = formatAxisNumber(value);
+  }
+  el("line", {x1: 60, y1: 440, x2: 660, y2: 440, stroke: "#98a2b3", "stroke-width": 1.2}, geomSvg);
+  el("line", {x1: 60, y1: 60, x2: 60, y2: 440, stroke: "#98a2b3", "stroke-width": 1.2}, geomSvg);
 }
 
 function drawGeom(frame) {
@@ -489,26 +651,38 @@ function drawGeom(frame) {
     const y = 60 + i * 95;
     el("line", {x1: 60, y1: y, x2: 660, y2: y, stroke: "#d9dee7", "stroke-width": 1}, geomSvg);
   }
+  drawGeomAxes();
 
-  const p = frame.points;
-  const a0 = [sx(p[0][0]), sy(p[0][1])], a1 = [sx(p[1][0]), sy(p[1][1])];
-  const b0 = [sx(p[2][0]), sy(p[2][1])], b1 = [sx(p[3][0]), sy(p[3][1])];
+  const aPts = (frame.aPoints || frame.points.slice(0, 2)).map(p => [sx(p[0]), sy(p[1])]);
+  const bPts = (frame.bPoints || frame.points.slice(2, 4)).map(p => [sx(p[0]), sy(p[1])]);
+  const a0 = aPts[0], a1 = aPts[1];
+  const b0 = bPts[0], b1 = bPts[1];
 
-  el("line", {x1: a0[0], y1: a0[1], x2: a1[0], y2: a1[1], stroke: "#1b75bb", "stroke-width": 8, "stroke-linecap": "round"}, geomSvg);
+  for (let i = 0; i + 1 < aPts.length; ++i) {
+    el("line", {
+      x1: aPts[i][0],
+      y1: aPts[i][1],
+      x2: aPts[i + 1][0],
+      y2: aPts[i + 1][1],
+      stroke: "#1b75bb",
+      "stroke-width": 8,
+      "stroke-linecap": "round"
+    }, geomSvg);
+  }
   el("line", {x1: b0[0], y1: b0[1], x2: b1[0], y2: b1[1], stroke: "#c2410c", "stroke-width": 8, "stroke-linecap": "round"}, geomSvg);
-  for (const pt of [a0, a1]) el("circle", {cx: pt[0], cy: pt[1], r: 7, fill: "#ffffff", stroke: "#1b75bb", "stroke-width": 3}, geomSvg);
-  for (const pt of [b0, b1]) el("circle", {cx: pt[0], cy: pt[1], r: 7, fill: "#ffffff", stroke: "#c2410c", "stroke-width": 3}, geomSvg);
+  for (const pt of aPts) el("circle", {cx: pt[0], cy: pt[1], r: 7, fill: "#ffffff", stroke: "#1b75bb", "stroke-width": 3}, geomSvg);
+  for (const pt of bPts) el("circle", {cx: pt[0], cy: pt[1], r: 7, fill: "#ffffff", stroke: "#c2410c", "stroke-width": 3}, geomSvg);
 
   if (frame.forces && frame.forces.length) {
-    const points = [a0, a1, b0, b1];
-    const maxMag = Math.max(...frame.forces.map(f => Math.hypot(f[0], f[1])), 1e-12);
-    for (let i = 0; i < frame.forces.length; ++i) {
+    const points = aPts.concat(bPts);
+    const maxMag = maxForceMagnitude();
+    for (let i = 0; i < Math.min(frame.forces.length, points.length); ++i) {
       const f = frame.forces[i];
       const mag = Math.hypot(f[0], f[1]);
       if (mag <= 0) continue;
       const scale = 58 / maxMag;
       const x1 = points[i][0], y1 = points[i][1];
-      const x2 = x1 + f[0] * scale, y2 = y1 - f[1] * scale;
+      const x2 = x1 - f[0] * scale, y2 = y1 + f[1] * scale;
       el("line", {x1, y1, x2, y2, stroke: "#2f7d32", "stroke-width": 3, "marker-end": "url(#arrow)"}, geomSvg);
     }
   }
@@ -528,7 +702,7 @@ function drawPlots() {
   const energyHeight = 125;
   const forceTop = 245;
   const forceHeight = 175;
-  const colors = ["#1b75bb", "#73a7d5", "#c2410c", "#e19a72", "#2f7d32", "#84b982", "#7c3aed", "#b197fc"];
+  const colors = ["#1b75bb", "#73a7d5", "#0f766e", "#5eead4", "#c2410c", "#e19a72", "#2f7d32", "#84b982", "#7c3aed", "#b197fc"];
 
   drawAxis(energyTop, energyHeight, "Energy", energyRange);
   const hasEnergy = energyValues().length > 0;
@@ -548,7 +722,7 @@ function drawPlots() {
   drawAxis(forceTop, forceHeight, "Nodal Force Components", forceRange);
   const hasForces = forceValues().length > 0;
   if (hasForces) {
-    for (let component = 0; component < 8; ++component) {
+    for (let component = 0; component < payload.forceComponentNames.length; ++component) {
       let d = "";
       frames.forEach((frame, i) => {
         const value = forceComponent(frame, component);
@@ -571,7 +745,7 @@ function drawPlots() {
 
   const legendX = 516;
   const legendY = forceTop + 12;
-  for (let component = 0; component < 8; ++component) {
+  for (let component = 0; component < payload.forceComponentNames.length; ++component) {
     const y = legendY + component * 18;
     el("line", {x1: legendX, y1: y - 4, x2: legendX + 20, y2: y - 4, stroke: colors[component], "stroke-width": 2.4}, plotSvg);
     el("text", {x: legendX + 26, y, fill: "#344054", "font-size": 12}, plotSvg).textContent =
@@ -592,7 +766,7 @@ function drawMarker(frameIndex) {
   }
 
   const forceRange = paddedRange(forceValues());
-  for (let component = 0; component < 8; ++component) {
+  for (let component = 0; component < payload.forceComponentNames.length; ++component) {
     const value = forceComponent(frame, component);
     if (!Number.isFinite(value)) continue;
     const y = rangeY(forceRange, value, 245, 175);
@@ -609,13 +783,17 @@ function render(index) {
   drawMarker(current);
 }
 
+function pauseAnimation() {
+  playing = false;
+  playButton.textContent = "Play";
+}
+
 playButton.addEventListener("click", () => {
   playing = !playing;
   playButton.textContent = playing ? "Pause" : "Play";
 });
 scrub.addEventListener("input", () => {
-  playing = false;
-  playButton.textContent = "Play";
+  pauseAnimation();
   render(Number(scrub.value));
 });
 
@@ -643,6 +821,9 @@ def main() -> int:
     parser.add_argument("--metrics", help="comma-separated metric columns to plot")
     parser.add_argument("--title", default="EnergyMortar Single Element Pair")
     parser.add_argument("--fps", type=float, default=18.0)
+    parser.add_argument("--export-mp4", type=Path, help="render the animation to an MP4 file")
+    parser.add_argument("--export-width", type=int, default=1280, help="MP4 capture viewport width in pixels")
+    parser.add_argument("--export-height", type=int, default=720, help="MP4 capture viewport height in pixels")
     parser.add_argument("--write-example", type=Path, help="write an example CSV and exit")
     args = parser.parse_args()
 
@@ -656,6 +837,12 @@ def main() -> int:
     frames, metrics = load_frames(args.csv, args.case, args.metrics)
     write_html(frames, metrics, args.title, args.output, args.fps)
     print(f"wrote {args.output} with {len(frames)} frames")
+    if args.export_mp4:
+        try:
+            export_mp4(args.output, len(frames), args.export_mp4, args.fps, args.export_width, args.export_height)
+        except RuntimeError as exc:
+            parser.error(str(exc))
+        print(f"wrote {args.export_mp4} with {len(frames)} frames at {args.fps} fps")
     return 0
 
 
