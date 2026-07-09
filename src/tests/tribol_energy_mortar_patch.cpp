@@ -175,7 +175,6 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
     tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
                                         tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
                                         tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID );
-    tribol::setLagrangeMultiplierOptions( cs_id, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN );
     tribol::setMfemKinematicConstantPenalty( cs_id, 10000.0, 10000.0 );
 
     mfem::Vector X( par_fe_space.GetTrueVSize() );
@@ -206,11 +205,11 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
       tribol::updateMfemParallelDecomposition();
       tribol::update( step, step * dt, dt );
 
-      auto A_cont_ptr = tribol::getMfemJacobian( cs_id );
+      auto A_cont_ptr = tribol::getMfemDfDx( cs_id );
       ASSERT_TRUE( A_cont_ptr != nullptr );
       shared::ParSparseMat A_cont( std::move( A_cont_ptr ) );
 
-      auto f_contact = tribol::getMfemTDofForce( cs_id );
+      auto f_contact = tribol::getMfemContactForce( cs_id );
       f_contact.Neg();
 
       // Inhomogeneous Dirichlet: rhs = f_contact - K * u_prescribed
