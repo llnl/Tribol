@@ -1,5 +1,7 @@
 #include "MeshBuilder.hpp"
 
+#include <cmath>
+
 #include "axom/slic.hpp"
 #include "axom/primal.hpp"
 
@@ -20,6 +22,50 @@ MeshBuilder MeshBuilder::Unify( std::initializer_list<MeshBuilder> meshes )
 MeshBuilder MeshBuilder::SquareMesh( int n_x_els, int n_y_els )
 {
   return mfem::Mesh::MakeCartesian2D( n_x_els, n_y_els, mfem::Element::QUADRILATERAL );
+}
+
+MeshBuilder MeshBuilder::Cylinder2D( int n_radial_els, int n_hoop_els, double inner_radius, double outer_radius )
+{
+  mfem::Mesh mesh = mfem::Mesh::MakeCartesian2D( n_radial_els, n_hoop_els, mfem::Element::QUADRILATERAL );
+  mesh.EnsureNodes();
+  mfem::GridFunction& nodes = *mesh.GetNodes();
+  const double pi = std::acos( -1.0 );
+  for ( int i = 0; i < mesh.GetNV(); ++i ) {
+    int vdof_x = nodes.FESpace()->DofToVDof( i, 0 );
+    int vdof_y = nodes.FESpace()->DofToVDof( i, 1 );
+
+    double x = nodes( vdof_x );
+    double y = nodes( vdof_y );
+
+    double r = inner_radius + x * ( outer_radius - inner_radius );
+    double theta = y * 2.0 * pi;
+
+    nodes( vdof_x ) = r * std::cos( theta );
+    nodes( vdof_y ) = r * std::sin( theta );
+  }
+  return mesh;
+}
+
+MeshBuilder MeshBuilder::HalfCylinder2D( int n_radial_els, int n_hoop_els, double inner_radius, double outer_radius )
+{
+  mfem::Mesh mesh = mfem::Mesh::MakeCartesian2D( n_radial_els, n_hoop_els, mfem::Element::QUADRILATERAL );
+  mesh.EnsureNodes();
+  mfem::GridFunction& nodes = *mesh.GetNodes();
+  const double pi = std::acos( -1.0 );
+  for ( int i = 0; i < mesh.GetNV(); ++i ) {
+    int vdof_x = nodes.FESpace()->DofToVDof( i, 0 );
+    int vdof_y = nodes.FESpace()->DofToVDof( i, 1 );
+
+    double x = nodes( vdof_x );
+    double y = nodes( vdof_y );
+
+    double r = inner_radius + x * ( outer_radius - inner_radius );
+    double theta = pi + y * pi;
+
+    nodes( vdof_x ) = r * std::cos( theta );
+    nodes( vdof_y ) = r * std::sin( theta );
+  }
+  return mesh;
 }
 
 MeshBuilder MeshBuilder::CubeMesh( int n_x_els, int n_y_els, int n_z_els, mfem::Element::Type elem_type )

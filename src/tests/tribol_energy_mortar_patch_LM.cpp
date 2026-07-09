@@ -208,7 +208,6 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
     // Lagrange multiplier (true-dof) vector persists across timesteps (warm start)
     mfem::HypreParVector lambda( &contact_fes );
     lambda = 0.0;
-    bool formulation_ready = false;  // formulation is created on first tribol::update()
 
     for ( int step = 1; step <= num_timesteps_; ++step ) {
       double current_prescribed_disp = disp_increment * step;
@@ -237,20 +236,19 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         coords += displacement;
 
         tribol::updateMfemParallelDecomposition();
-        if ( formulation_ready ) {
-          // Set lambda for LM assembly prior to calling update().
-          auto& tribol_lambda = tribol::getMfemTDofPressure( cs_id );
-          tribol_lambda = 0.0;
-          tribol_lambda.Add( 1.0, lambda );
-        }
+
+        // Set lambda for LM assembly prior to calling update().
+        auto& tribol_lambda = tribol::getMfemContactPressure( cs_id );
+        tribol_lambda = 0.0;
+        tribol_lambda.Add( 1.0, lambda );
+
         tribol::update( step, step * dt, dt );
-        formulation_ready = true;
 
         // Contact residual and Jacobian blocks (LM mode)
-        auto r_contact_force = tribol::getMfemTDofForce( cs_id );  // G^T * lambda (disp-sized)
-        auto r_gap = tribol::getMfemTDofGap( cs_id );              // g_tilde (contact-sized)
-        auto H_ptr = tribol::getMfemDfDx( cs_id );                 // lambda * d2g/du2 (disp x disp)
-        auto G_T_ptr = tribol::getMfemDfDp( cs_id );               // G^T (disp x contact)
+        auto r_contact_force = tribol::getMfemContactForce( cs_id );  // G^T * lambda (disp-sized)
+        auto r_gap = tribol::getMfemContactGap( cs_id );              // g_tilde (contact-sized)
+        auto H_ptr = tribol::getMfemDfDx( cs_id );                    // lambda * d2g/du2 (disp x disp)
+        auto G_T_ptr = tribol::getMfemDfDp( cs_id );                  // G^T (disp x contact)
         ASSERT_TRUE( G_T_ptr != nullptr );
 
         mfem::Vector R_u( disp_size );

@@ -172,6 +172,11 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
     tribol::RealT dt = 1.0 / num_timesteps_;
     int cs_id = 0, mesh1_id = 0, mesh2_id = 1;
 
+    tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
+                                        tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
+                                        tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID );
+    tribol::setMfemKinematicConstantPenalty( cs_id, 10000.0, 10000.0 );
+
     mfem::Vector X( par_fe_space.GetTrueVSize() );
     X = 0.0;
 
@@ -197,15 +202,6 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
       coords = ref_coords;
       coords += displacement;
 
-      // Re-register tribol each step (internal arrays need fresh allocation
-      // when contact pairs change between steps)
-      coords.ReadWrite();
-      tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
-                                          tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
-                                          tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID );
-      tribol::setLagrangeMultiplierOptions( cs_id, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN );
-      tribol::setMfemKinematicConstantPenalty( cs_id, 10000.0, 10000.0 );
-
       tribol::updateMfemParallelDecomposition();
       tribol::update( step, step * dt, dt );
 
@@ -213,9 +209,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
       ASSERT_TRUE( A_cont_ptr != nullptr );
       shared::ParSparseMat A_cont( std::move( A_cont_ptr ) );
 
-      mfem::Vector f_contact( par_fe_space.GetTrueVSize() );
-      f_contact = 0.0;
-      tribol::getMfemResponse( cs_id, f_contact );
+      auto f_contact = tribol::getMfemContactForce( cs_id );
       f_contact.Neg();
 
       // Inhomogeneous Dirichlet: rhs = f_contact - K * u_prescribed
@@ -283,7 +277,13 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
     auto local_max = displacement.Max();
     max_disp_ = 0.0;
     MPI_Allreduce( &local_max, &max_disp_, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD );
+
+    auto local_min = displacement.Min();
+    double min_disp = 0.0;
+    MPI_Allreduce( &local_min, &min_disp, 1, MPI_DOUBLE, MPI_MIN, MPI_COMM_WORLD );
+
     SLIC_INFO( "Max displacement: " << max_disp_ );
+    SLIC_INFO( "Min displacement: " << min_disp );
 
     // -----------------------------------------------------------------
     // Analytical solution comparison
