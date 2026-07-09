@@ -197,6 +197,21 @@ class ContactFormulation {
   virtual void updateEnergyMortarNodalEnergyBasis( EnergyMortarNodalEnergyBasis /*basis*/ ) {}
 
   /**
+   * @brief Update ENERGY_MORTAR eta gap scaling on formulations that support it
+   */
+  virtual void updateEnergyMortarEtaGapScaling( bool /*enabled*/ ) {}
+
+  /**
+   * @brief Update ENERGY_MORTAR eta angle smoothing on formulations that support it
+   */
+  virtual void updateEnergyMortarEtaAngleSmoothing( bool /*enabled*/ ) {}
+
+  /**
+   * @brief Update ENERGY_MORTAR eta angle-smoothing start angle on formulations that support it
+   */
+  virtual void updateEnergyMortarEtaAngleSmoothingStart( RealT /*start_angle*/ ) {}
+
+  /**
    * @brief Update ENERGY_MORTAR nodal-energy angle smoothing on formulations that support it
    */
   virtual void updateEnergyMortarNodalEnergyAngleSmoothing( bool /*enabled*/ ) {}

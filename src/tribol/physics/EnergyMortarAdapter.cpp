@@ -569,7 +569,9 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
                                           bool qp_derivative_blend_enzyme_gap_weight, bool qp_frozen_integration,
                                           EnergyMortarPenaltyMode penalty_mode,
                                           EnergyMortarNodalEnergyBasis nodal_energy_basis,
-                                          bool nodal_energy_angle_smoothing, RealT residual_gap )
+                                          bool eta_gap_scaling, bool eta_angle_smoothing,
+                                          RealT eta_angle_smoothing_start, bool nodal_energy_angle_smoothing,
+                                          RealT residual_gap )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
     : use_penalty_( use_penalty ), mesh_data_( mesh_data ), submesh_data_( submesh_data ), jac_data_( jac_data )
@@ -593,6 +595,9 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
   params_.qp_frozen_integration = qp_frozen_integration;
   params_.penalty_mode = penalty_mode;
   params_.nodal_energy_basis = nodal_energy_basis;
+  params_.eta_gap_scaling = eta_gap_scaling;
+  params_.eta_angle_smoothing = eta_angle_smoothing;
+  params_.eta_angle_smoothing_start = eta_angle_smoothing_start;
   params_.nodal_energy_angle_smoothing = nodal_energy_angle_smoothing;
   params_.residual_gap = residual_gap;
 
@@ -720,6 +725,24 @@ void EnergyMortarAdapter::updateEnergyMortarPenaltyMode( EnergyMortarPenaltyMode
 void EnergyMortarAdapter::updateEnergyMortarNodalEnergyBasis( EnergyMortarNodalEnergyBasis basis )
 {
   params_.nodal_energy_basis = basis;
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+}
+
+void EnergyMortarAdapter::updateEnergyMortarEtaGapScaling( bool enabled )
+{
+  params_.eta_gap_scaling = enabled;
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+}
+
+void EnergyMortarAdapter::updateEnergyMortarEtaAngleSmoothing( bool enabled )
+{
+  params_.eta_angle_smoothing = enabled;
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+}
+
+void EnergyMortarAdapter::updateEnergyMortarEtaAngleSmoothingStart( RealT start_angle )
+{
+  params_.eta_angle_smoothing_start = start_angle;
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 }
 

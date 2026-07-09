@@ -306,6 +306,51 @@ void setEnergyMortarNodalEnergyBasis( IndexT cs_id, EnergyMortarNodalEnergyBasis
 }
 
 //------------------------------------------------------------------------------
+void setEnergyMortarEtaGapScaling( IndexT cs_id, bool enabled )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarEtaGapScaling(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  auto& params = cs->getParameters();
+  params.energy_mortar_eta_gap_scaling = enabled;
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarEtaGapScaling( enabled );
+  }
+}
+
+//------------------------------------------------------------------------------
+void setEnergyMortarEtaAngleSmoothing( IndexT cs_id, bool enabled )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarEtaAngleSmoothing(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  auto& params = cs->getParameters();
+  params.energy_mortar_eta_angle_smoothing = enabled;
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarEtaAngleSmoothing( enabled );
+  }
+}
+
+//------------------------------------------------------------------------------
+void setEnergyMortarEtaAngleSmoothingStart( IndexT cs_id, RealT start_angle )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarEtaAngleSmoothingStart(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  auto& params = cs->getParameters();
+  params.energy_mortar_eta_angle_smoothing_start = start_angle;
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarEtaAngleSmoothingStart( start_angle );
+  }
+}
+
+//------------------------------------------------------------------------------
 void setEnergyMortarNodalEnergyAngleSmoothing( IndexT cs_id, bool enabled )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );

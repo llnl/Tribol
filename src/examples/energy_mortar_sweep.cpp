@@ -52,6 +52,10 @@ struct Options {
   bool enzyme_quadrature{ true };
   bool fixed_integration_jacobian{ false };
   bool projection_smoothing{ true };
+  bool swap_mortar_nonmortar{ false };
+  bool eta_gap_scaling{ true };
+  bool eta_angle_smoothing{ false };
+  double eta_angle_smoothing_start_angle{ 80.0 };
   std::string projection_smoothing_curve{ "quintic" };
   bool nodal_energy_angle_smoothing{ true };
   double fd_step{ 1.0e-5 };
@@ -88,7 +92,7 @@ void printUsage( const char* prog )
             << "Writes a CSV for animating one EnergyMortar element pair.\n\n"
             << "Options:\n"
             << "  --output FILE                  CSV path (default: energy_mortar_sweep.csv)\n"
-            << "  --motion slide|slide_kink|approach|skew\n"
+            << "  --motion slide|slide_kink|slide_flat|slide_corner_down|rotate_perpendicular|approach|skew\n"
             << "                                 Motion path (default: slide)\n"
             << "  --steps N                      Number of frames (default: 121)\n"
             << "  --normal-mode element|h1       Normal mode (default: element)\n"
@@ -110,6 +114,12 @@ void printUsage( const char* prog )
             << "  --enzyme-quadrature 0|1        Differentiate quadrature construction (default: 1)\n"
             << "  --fixed-jacobian 0|1           Hold integration Jacobian fixed (default: 0)\n"
             << "  --projection-smoothing 0|1     Smooth projection bounds (default: 1)\n"
+            << "  --swap-mortar-nonmortar 0|1    Swap edge A and edge B in the EnergyMortar evaluation (default: 0)\n"
+            << "  --eta-gap-scaling 0|1          Scale the normal gap by eta, the surface-normal dot product (default: 1)\n"
+            << "  --eta-angle-smoothing 0|1      Smooth eta to zero near 90 degrees when eta gap scaling is off "
+               "(default: 0)\n"
+            << "  --eta-angle-smoothing-start-angle VALUE\n"
+            << "                                 Eta smoothing start angle in degrees; smoothing ends at 90 (default: 80)\n"
             << "  --projection-smoothing-curve quadratic|quintic\n"
             << "                                 Projection-bound smoothing curve (default: quintic)\n"
             << "  --angle-smoothing 0|1          NODAL_ENERGY angle smoothing (default: 1)\n"
@@ -180,6 +190,14 @@ Options parseArgs( int argc, char** argv )
       opts.fixed_integration_jacobian = parseBool( needValue( arg ) );
     } else if ( arg == "--projection-smoothing" ) {
       opts.projection_smoothing = parseBool( needValue( arg ) );
+    } else if ( arg == "--swap-mortar-nonmortar" ) {
+      opts.swap_mortar_nonmortar = parseBool( needValue( arg ) );
+    } else if ( arg == "--eta-gap-scaling" ) {
+      opts.eta_gap_scaling = parseBool( needValue( arg ) );
+    } else if ( arg == "--eta-angle-smoothing" ) {
+      opts.eta_angle_smoothing = parseBool( needValue( arg ) );
+    } else if ( arg == "--eta-angle-smoothing-start-angle" ) {
+      opts.eta_angle_smoothing_start_angle = std::stod( needValue( arg ) );
     } else if ( arg == "--projection-smoothing-curve" ) {
       opts.projection_smoothing_curve = needValue( arg );
     } else if ( arg == "--angle-smoothing" ) {
@@ -199,6 +217,9 @@ Options parseArgs( int argc, char** argv )
   }
   if ( opts.fd_step <= 0.0 ) {
     throw std::runtime_error( "--fd-step must be positive." );
+  }
+  if ( opts.eta_angle_smoothing_start_angle < 0.0 || opts.eta_angle_smoothing_start_angle >= 90.0 ) {
+    throw std::runtime_error( "--eta-angle-smoothing-start-angle must be in [0, 90)." );
   }
   return opts;
 }
@@ -301,6 +322,10 @@ tribol::ContactParams makeParams( const Options& opts )
   params.qp_derivative_blend_enzyme_gap_weight = opts.qp_derivative_blend_enzyme_gap_weight;
   params.penalty_mode = parsePenaltyMode( opts.penalty_mode );
   params.nodal_energy_basis = parseBasis( opts.nodal_energy_basis );
+  params.eta_gap_scaling = opts.eta_gap_scaling;
+  params.eta_angle_smoothing = opts.eta_angle_smoothing;
+  constexpr double pi = 3.14159265358979323846264338327950288;
+  params.eta_angle_smoothing_start = opts.eta_angle_smoothing_start_angle * pi / 180.0;
   params.nodal_energy_angle_smoothing = opts.nodal_energy_angle_smoothing;
   params.residual_gap = opts.residual_gap;
 
@@ -324,6 +349,15 @@ double pathCoordinate( const Options& opts, int step )
     constexpr double cos30 = 0.86602540378443864676;
     return -0.8 + ( 1.6 + cos30 ) * t;
   }
+  if ( opts.motion == "slide_flat" ) {
+    return 2.0 * t;
+  }
+  if ( opts.motion == "slide_corner_down" ) {
+    return t;
+  }
+  if ( opts.motion == "rotate_perpendicular" ) {
+    return t;
+  }
   if ( opts.motion == "skew" ) {
     return -0.75 + 1.5 * t;
   }
@@ -340,24 +374,57 @@ Geometry geometryAt( const Options& opts, const tribol::ContactParams& params, d
   if ( h1 ) {
     constexpr double cos30 = 0.86602540378443864676;
     geom.x1 = { 0.0, 1.0, 2.0 };
-    geom.y1 = opts.motion == "slide_kink" ? std::vector<RealT>{ 0.0, 0.0, 0.5 }
-                                           : std::vector<RealT>{ 0.0, 0.0, 0.08 };
+    geom.y1 = ( opts.motion == "slide_kink" ) ? std::vector<RealT>{ 0.0, 0.0, 0.5 }
+                                               : std::vector<RealT>{ 0.0, 0.0, 0.08 };
+    if ( opts.motion == "slide_flat" ) {
+      geom.y1 = { 0.0, 0.0, 0.0 };
+    }
+    if ( opts.motion == "slide_corner_down" ) {
+      geom.x1 = { 0.0, 1.0, 1.0 };
+      geom.y1 = { 0.0, 0.0, -1.0 };
+    }
+    if ( opts.motion == "rotate_perpendicular" ) {
+      geom.x1 = { 0.0, 1.0, 2.0 };
+      geom.y1 = { 0.0, 0.0, 0.0 };
+    }
     if ( opts.motion == "slide_kink" ) {
       geom.x1[2] = 1.0 + cos30;
     }
-    geom.x2 = { 0.2, 0.9, 1.6 };
-    geom.y2 = { -0.14, -0.14, -0.14 };
-  } else if ( opts.motion == "slide_kink" ) {
+    geom.x2 = ( opts.motion == "slide_flat" || opts.motion == "slide_corner_down" )
+                  ? std::vector<RealT>{ 0.2, 0.8 }
+              : ( opts.motion == "rotate_perpendicular" ) ? std::vector<RealT>{ 0.2, 0.5, 0.8 }
+                                                           : std::vector<RealT>{ 0.2, 0.9, 1.6 };
+    geom.y2 = ( opts.motion == "slide_flat" || opts.motion == "slide_corner_down" ||
+                opts.motion == "rotate_perpendicular" )
+                  ? std::vector<RealT>{ -0.2, -0.2 }
+                  : std::vector<RealT>{ -0.14, -0.14, -0.14 };
+    if ( opts.motion == "rotate_perpendicular" ) {
+      geom.y2 = { -0.2, -0.2, -0.2 };
+    }
+  } else if ( opts.motion == "slide_kink" || opts.motion == "slide_flat" || opts.motion == "slide_corner_down" ) {
     constexpr double cos30 = 0.86602540378443864676;
-    geom.x1 = { 0.0, 1.0, 1.0 + cos30 };
-    geom.y1 = { 0.0, 0.0, 0.5 };
+    if ( opts.motion == "slide_kink" ) {
+      geom.x1 = { 0.0, 1.0, 1.0 + cos30 };
+      geom.y1 = { 0.0, 0.0, 0.5 };
+    } else if ( opts.motion == "slide_corner_down" ) {
+      geom.x1 = { 0.0, 1.0, 1.0 };
+      geom.y1 = { 0.0, 0.0, -1.0 };
+    } else {
+      geom.x1 = { 0.0, 1.0, 2.0 };
+      geom.y1 = { 0.0, 0.0, 0.0 };
+    }
     geom.x2 = { 0.2, 0.8 };
-    geom.y2 = { -0.1, -0.1 };
+    geom.y2 = ( opts.motion == "slide_flat" || opts.motion == "slide_corner_down" )
+                  ? std::vector<RealT>{ -0.2, -0.2 }
+                  : std::vector<RealT>{ -0.1, -0.1 };
   } else {
     geom.x1 = { 0.0, 1.0 };
     geom.y1 = { 0.0, 0.0 };
     geom.x2 = { 0.2, 0.8 };
     geom.y2 = { -0.1, -0.1 };
+    if ( opts.motion == "rotate_perpendicular" ) {
+      geom.y2 = { -0.2, -0.2 };
+    }
   }
 
   if ( opts.motion == "approach" ) {
@@ -367,9 +434,23 @@ Geometry geometryAt( const Options& opts, const tribol::ContactParams& params, d
     } else {
       geom.y2 = { gap, gap };
     }
-  } else if ( opts.motion == "slide" || opts.motion == "slide_kink" ) {
+  } else if ( opts.motion == "slide" || opts.motion == "slide_kink" || opts.motion == "slide_flat" ||
+              opts.motion == "slide_corner_down" ) {
     for ( double& x : geom.x2 ) {
       x += s;
+    }
+  } else if ( opts.motion == "rotate_perpendicular" ) {
+    constexpr double max_angle = 110.0 * M_PI / 180.0;
+    const double angle = max_angle * s;
+    const double cx = 0.5;
+    const double cy = -0.2;
+    const double c = std::cos( angle );
+    const double sn = std::sin( angle );
+    for ( std::size_t i = 0; i < geom.x2.size(); ++i ) {
+      const double dx = geom.x2[i] - cx;
+      const double dy = geom.y2[i] - cy;
+      geom.x2[i] = cx + c * dx - sn * dy;
+      geom.y2[i] = cy + sn * dx + c * dy;
     }
   } else if ( opts.motion == "skew" ) {
     for ( double& x : geom.x2 ) {
@@ -393,11 +474,14 @@ Geometry geometryAt( const Options& opts, const tribol::ContactParams& params, d
   return geom;
 }
 
-bool hasKinkedSlideAEdge( const Options& opts ) { return opts.motion == "slide_kink"; }
+bool hasTwoElementAEdge( const Options& opts )
+{
+  return opts.motion == "slide_kink" || opts.motion == "slide_flat" || opts.motion == "slide_corner_down";
+}
 
 int activeAElement( const Options& opts, const Geometry& geom )
 {
-  if ( !hasKinkedSlideAEdge( opts ) ) {
+  if ( !hasTwoElementAEdge( opts ) ) {
     return 0;
   }
   const double b_center = 0.5 * ( geom.x2[0] + geom.x2[1] );
@@ -428,10 +512,21 @@ double normalForceProxy( const std::array<double, 8>& coord, const std::array<do
   return ( force[1] + force[3] ) * ny + ( force[0] + force[2] ) * nx;
 }
 
-double forceDotPathProxy( const Options& opts, const std::array<double, 8>& force )
+double forceDotPathProxy( const Options& opts, const Geometry& geom, const std::array<double, 8>& force )
 {
-  if ( opts.motion == "slide" || opts.motion == "slide_kink" || opts.motion == "skew" ) {
+  if ( opts.motion == "slide" || opts.motion == "slide_kink" || opts.motion == "slide_flat" ||
+       opts.motion == "slide_corner_down" || opts.motion == "skew" ) {
     return force[4] + force[6];
+  }
+  if ( opts.motion == "rotate_perpendicular" ) {
+    constexpr double omega = 110.0 * M_PI / 180.0;
+    constexpr double cx = 0.5;
+    constexpr double cy = -0.2;
+    const double vx0 = -omega * ( geom.y2[0] - cy );
+    const double vy0 = omega * ( geom.x2[0] - cx );
+    const double vx1 = -omega * ( geom.y2[1] - cy );
+    const double vy1 = omega * ( geom.x2[1] - cx );
+    return force[4] * vx0 + force[5] * vy0 + force[6] * vx1 + force[7] * vy1;
   }
   if ( opts.motion == "approach" ) {
     return force[5] + force[7];
@@ -470,19 +565,44 @@ double addNodalGapPenaltyContribution( double k, double g_tilde, double area, co
   return energy;
 }
 
+void addGlobalForce( std::array<double, 10>& global_force, bool side_is_a, int node_id, double fx, double fy )
+{
+  const int offset = side_is_a ? 0 : 6;
+  const int index = offset + 2 * node_id;
+  if ( index >= 0 && index + 1 < static_cast<int>( global_force.size() ) ) {
+    global_force[index] += fx;
+    global_force[index + 1] += fy;
+  }
+}
+
+template <typename NodeList1, typename NodeList2>
+void addH1ForceToGlobal( std::array<double, 10>& global_force, const std::vector<double>& force,
+                         const NodeList1& side1_nodes, int num_side1_nodes, const NodeList2& side2_nodes,
+                         int num_side2_nodes, bool side1_is_a )
+{
+  for ( int i = 0; i < num_side1_nodes; ++i ) {
+    addGlobalForce( global_force, side1_is_a, side1_nodes[i], force[i], force[num_side1_nodes + i] );
+  }
+  const int side2_offset = 2 * num_side1_nodes;
+  for ( int i = 0; i < num_side2_nodes; ++i ) {
+    addGlobalForce( global_force, !side1_is_a, side2_nodes[i], force[side2_offset + i],
+                    force[side2_offset + num_side2_nodes + i] );
+  }
+}
+
 EvalResult evaluate( const Options& opts, const tribol::ContactParams& params, double s )
 {
   const Geometry geom = geometryAt( opts, params, s );
   const bool h1 = params.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL;
-  const bool kinked_slide = hasKinkedSlideAEdge( opts );
+  const bool two_element_a_edge = hasTwoElementAEdge( opts );
 
   IndexT conn1_single[2] = { 1, 0 };
   IndexT conn2_single[2] = { 0, 1 };
   IndexT conn1_h1[4] = { 1, 0, 2, 1 };
   IndexT conn2_h1[4] = { 0, 1, 1, 2 };
 
-  const int num_elems1 = ( h1 || kinked_slide ) ? 2 : 1;
-  const int num_elems2 = ( h1 && !kinked_slide ) ? 2 : 1;
+  const int num_elems1 = ( h1 || two_element_a_edge ) ? 2 : 1;
+  const int num_elems2 = ( h1 && !two_element_a_edge ) ? 2 : 1;
   MeshData mesh1( 0, num_elems1, static_cast<int>( geom.x1.size() ), num_elems1 == 2 ? conn1_h1 : conn1_single,
                   LINEAR_EDGE,
                   const_cast<RealT*>( geom.x1.data() ), const_cast<RealT*>( geom.y1.data() ), nullptr,
@@ -494,12 +614,18 @@ EvalResult evaluate( const Options& opts, const tribol::ContactParams& params, d
   mesh1.setReferencePosition( geom.x1.data(), geom.y1.data(), nullptr );
   mesh2.setReferencePosition( geom.x2.data(), geom.y2.data(), nullptr );
 
+  MeshData& eval_mesh1 = opts.swap_mortar_nonmortar ? mesh2 : mesh1;
+  MeshData& eval_mesh2 = opts.swap_mortar_nonmortar ? mesh1 : mesh2;
+  const bool eval_side1_is_a = !opts.swap_mortar_nonmortar;
+
   EnergyMortarCalculator evaluator( params );
 
   EvalResult result;
-  const int num_pairs = kinked_slide ? 2 : 1;
+  const int num_pairs = two_element_a_edge ? 2 : 1;
   for ( int elem1 = 0; elem1 < num_pairs; ++elem1 ) {
-    const InterfacePair pair( kinked_slide ? elem1 : activeAElement( opts, geom ), 0 );
+    const int active_a_elem = two_element_a_edge ? elem1 : activeAElement( opts, geom );
+    const InterfacePair pair( opts.swap_mortar_nonmortar ? 0 : active_a_elem,
+                              opts.swap_mortar_nonmortar ? active_a_elem : 0 );
     std::array<double, 8> pair_force{};
     bool pair_has_energy = false;
     bool pair_has_force = false;
@@ -508,12 +634,14 @@ EvalResult evaluate( const Options& opts, const tribol::ContactParams& params, d
     auto diagnostic_params = params;
     diagnostic_params.normal_mode = EnergyMortarNormalMode::ELEMENT_NORMAL;
     EnergyMortarCalculator diagnostic_evaluator( diagnostic_params );
-    const auto pair_proj = diagnostic_evaluator.compute_projection_bounds( pair, mesh1.getView(), mesh2.getView() );
-    const auto pair_bounds = tribol::ContactSmoothing::bounds_from_projections( pair_proj, params.del );
+    const auto pair_proj =
+        diagnostic_evaluator.compute_projection_bounds( pair, eval_mesh1.getView(), eval_mesh2.getView() );
+    const double projection_bound_delta = params.projection_smoothing ? params.del : 0.0;
+    const auto pair_bounds = tribol::ContactSmoothing::bounds_from_projections( pair_proj, projection_bound_delta );
     const auto pair_smooth_bounds =
-        params.projection_smoothing
-            ? tribol::ContactSmoothing::smooth_bounds( pair_bounds, params.del, params.projection_smoothing_curve )
-            : pair_bounds;
+        params.projection_smoothing ? tribol::ContactSmoothing::smooth_bounds( pair_bounds, projection_bound_delta,
+                                                                               params.projection_smoothing_curve )
+                                    : pair_bounds;
     const auto pair_qp = EnergyMortarCalculator::compute_quadrature( pair_smooth_bounds, params.N );
 
     if ( elem1 == 0 ) {
@@ -533,7 +661,8 @@ EvalResult evaluate( const Options& opts, const tribol::ContactParams& params, d
     std::array<double, 2> pair_gtilde{};
     std::array<double, 2> pair_area{};
     if ( h1 ) {
-      const auto h1_data = evaluator.compute_h1_total_derivatives( pair, mesh1.getView(), mesh2.getView(), false );
+      const auto h1_data =
+          evaluator.compute_h1_total_derivatives( pair, eval_mesh1.getView(), eval_mesh2.getView(), false );
       pair_gtilde = h1_data.g_tilde;
       pair_area = h1_data.area;
       if ( params.penalty_mode == EnergyMortarPenaltyMode::NODAL_GAP ) {
@@ -545,24 +674,15 @@ EvalResult evaluate( const Options& opts, const tribol::ContactParams& params, d
         pair_energy += addNodalGapPenaltyContribution( params.k, pair_gtilde[1], pair_area[1],
                                                        h1_data.dg2_dx.data(), h1_data.dA2_dx.data(), ndof,
                                                        h1_force.data() );
-        for ( int i = 0; i < h1_data.num_mesh1_nodes; ++i ) {
-          const int node_id = h1_data.mesh1_nodes[i];
-          result.global_force[2 * node_id] += h1_force[i];
-          result.global_force[2 * node_id + 1] += h1_force[h1_data.num_mesh1_nodes + i];
-        }
-        const int side2_offset = 2 * h1_data.num_mesh1_nodes;
-        for ( int i = 0; i < h1_data.num_mesh2_nodes; ++i ) {
-          const int node_id = h1_data.mesh2_nodes[i];
-          result.global_force[6 + 2 * node_id] += h1_force[side2_offset + i];
-          result.global_force[6 + 2 * node_id + 1] += h1_force[side2_offset + h1_data.num_mesh2_nodes + i];
-        }
+        addH1ForceToGlobal( result.global_force, h1_force, h1_data.mesh1_nodes, h1_data.num_mesh1_nodes,
+                            h1_data.mesh2_nodes, h1_data.num_mesh2_nodes, eval_side1_is_a );
         pair_has_energy = true;
         pair_has_force = true;
       }
     } else {
       double gtilde[2] = { 0.0, 0.0 };
       double area[2] = { 0.0, 0.0 };
-      evaluator.compute_gtilde_and_area( pair, mesh1.getView(), mesh2.getView(), gtilde, area );
+      evaluator.compute_gtilde_and_area( pair, eval_mesh1.getView(), eval_mesh2.getView(), gtilde, area );
       pair_gtilde = { gtilde[0], gtilde[1] };
       pair_area = { area[0], area[1] };
       if ( params.penalty_mode == EnergyMortarPenaltyMode::NODAL_GAP ) {
@@ -570,8 +690,8 @@ EvalResult evaluate( const Options& opts, const tribol::ContactParams& params, d
         double dg2_dx[8] = { 0.0 };
         double dA1_dx[8] = { 0.0 };
         double dA2_dx[8] = { 0.0 };
-        evaluator.grad_gtilde( pair, mesh1.getView(), mesh2.getView(), dg1_dx, dg2_dx );
-        evaluator.grad_trib_area( pair, mesh1.getView(), mesh2.getView(), dA1_dx, dA2_dx );
+        evaluator.grad_gtilde( pair, eval_mesh1.getView(), eval_mesh2.getView(), dg1_dx, dg2_dx );
+        evaluator.grad_trib_area( pair, eval_mesh1.getView(), eval_mesh2.getView(), dA1_dx, dA2_dx );
         pair_energy += addNodalGapPenaltyContribution( params.k, pair_gtilde[0], pair_area[0], dg1_dx, dA1_dx, 8,
                                                        pair_force.data() );
         pair_energy += addNodalGapPenaltyContribution( params.k, pair_gtilde[1], pair_area[1], dg2_dx, dA2_dx, 8,
@@ -582,21 +702,13 @@ EvalResult evaluate( const Options& opts, const tribol::ContactParams& params, d
     }
 
     if ( params.penalty_mode != EnergyMortarPenaltyMode::NODAL_GAP ) {
-      const auto penalty = evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() );
+      const auto penalty =
+          evaluator.compute_quadrature_point_penalty_data( pair, eval_mesh1.getView(), eval_mesh2.getView() );
       pair_energy = penalty.energy;
       pair_has_energy = true;
       if ( h1 ) {
-        for ( int i = 0; i < penalty.num_mesh1_nodes; ++i ) {
-          const int node_id = penalty.mesh1_nodes[i];
-          result.global_force[2 * node_id] += penalty.h1_force[i];
-          result.global_force[2 * node_id + 1] += penalty.h1_force[penalty.num_mesh1_nodes + i];
-        }
-        const int side2_offset = 2 * penalty.num_mesh1_nodes;
-        for ( int i = 0; i < penalty.num_mesh2_nodes; ++i ) {
-          const int node_id = penalty.mesh2_nodes[i];
-          result.global_force[6 + 2 * node_id] += penalty.h1_force[side2_offset + i];
-          result.global_force[6 + 2 * node_id + 1] += penalty.h1_force[side2_offset + penalty.num_mesh2_nodes + i];
-        }
+        addH1ForceToGlobal( result.global_force, penalty.h1_force, penalty.mesh1_nodes, penalty.num_mesh1_nodes,
+                            penalty.mesh2_nodes, penalty.num_mesh2_nodes, eval_side1_is_a );
       } else {
         pair_force = penalty.force;
       }
@@ -612,16 +724,16 @@ EvalResult evaluate( const Options& opts, const tribol::ContactParams& params, d
     result.area[1] += pair_area[1];
 
     if ( !h1 ) {
-      const auto conn1 = mesh1.getView().getConnectivity()( pair.m_element_id1 );
+      const auto conn1 = eval_mesh1.getView().getConnectivity()( pair.m_element_id1 );
+      const auto conn2 = eval_mesh2.getView().getConnectivity()( pair.m_element_id2 );
       for ( int node = 0; node < 2; ++node ) {
-        const int global_node = conn1[node];
-        result.global_force[2 * global_node] += pair_force[2 * node];
-        result.global_force[2 * global_node + 1] += pair_force[2 * node + 1];
+        addGlobalForce( result.global_force, eval_side1_is_a, conn1[node], pair_force[2 * node],
+                        pair_force[2 * node + 1] );
       }
-      result.global_force[6] += pair_force[4];
-      result.global_force[7] += pair_force[5];
-      result.global_force[8] += pair_force[6];
-      result.global_force[9] += pair_force[7];
+      for ( int node = 0; node < 2; ++node ) {
+        addGlobalForce( result.global_force, !eval_side1_is_a, conn2[node], pair_force[4 + 2 * node],
+                        pair_force[4 + 2 * node + 1] );
+      }
     }
   }
 
@@ -649,7 +761,10 @@ int run( const Options& opts )
   out << std::setprecision( 16 );
 
   out << "case,step,s,normal_mode,penalty_mode,basis,enzyme_quadrature,fixed_jacobian,projection_smoothing,"
-         "projection_smoothing_curve,active_smoothing_gap,qp_blend_min_gap,qp_blend_max_gap,qp_blend_weight,"
+         "swap_mortar_nonmortar,eta_gap_scaling,eta_angle_smoothing,projection_smoothing_curve,"
+         "eta_angle_smoothing_start_angle,"
+         "active_smoothing_gap,qp_blend_min_gap,qp_blend_max_gap,"
+         "qp_blend_weight,"
          "qp_blend_enzyme_gap_weight,"
          "residual_gap,k,del,A0_x,A0_y,A1_x,"
          "A1_y,A2_x,A2_y,B0_x,B0_y,B1_x,B1_y,energy,"
@@ -662,13 +777,13 @@ int run( const Options& opts )
     const auto result = evaluate( opts, params, s );
     const Geometry geom = geometryAt( opts, params, s );
     const bool h1 = params.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL;
-    const bool kinked_slide = hasKinkedSlideAEdge( opts );
+    const bool two_element_a_edge = hasTwoElementAEdge( opts );
     IndexT conn1_single[2] = { 1, 0 };
     IndexT conn2_single[2] = { 0, 1 };
     IndexT conn1_h1[4] = { 1, 0, 2, 1 };
     IndexT conn2_h1[4] = { 0, 1, 1, 2 };
-    const int num_elems1 = ( h1 || kinked_slide ) ? 2 : 1;
-    const int num_elems2 = ( h1 && !kinked_slide ) ? 2 : 1;
+    const int num_elems1 = ( h1 || two_element_a_edge ) ? 2 : 1;
+    const int num_elems2 = ( h1 && !two_element_a_edge ) ? 2 : 1;
     MeshData mesh1( 0, num_elems1, static_cast<int>( geom.x1.size() ), num_elems1 == 2 ? conn1_h1 : conn1_single,
                     LINEAR_EDGE,
                     const_cast<RealT*>( geom.x1.data() ), const_cast<RealT*>( geom.y1.data() ), nullptr,
@@ -691,7 +806,7 @@ int run( const Options& opts )
       }
     }
 
-    const double force_dot_path = result.has_pair_force ? forceDotPathProxy( opts, result.force ) : 0.0;
+    const double force_dot_path = result.has_pair_force ? forceDotPathProxy( opts, geom, result.force ) : 0.0;
     const double force_error = has_fd ? force_dot_path - fd_dE_ds : 0.0;
     const double gap = 0.5 * ( result.gtilde[0] / std::max( result.area[0], 1.0e-30 ) +
                                result.gtilde[1] / std::max( result.area[1], 1.0e-30 ) );
@@ -700,7 +815,11 @@ int run( const Options& opts )
         << penaltyModeName( params.penalty_mode ) << ',' << basisName( params.nodal_energy_basis ) << ','
         << ( params.enzyme_quadrature ? 1 : 0 ) << ',' << ( params.fixed_integration_jacobian ? 1 : 0 ) << ','
         << ( params.projection_smoothing ? 1 : 0 ) << ','
+        << ( opts.swap_mortar_nonmortar ? 1 : 0 ) << ','
+        << ( params.eta_gap_scaling ? 1 : 0 ) << ','
+        << ( params.eta_angle_smoothing ? 1 : 0 ) << ','
         << projectionSmoothingCurveName( params.projection_smoothing_curve ) << ','
+        << opts.eta_angle_smoothing_start_angle << ','
         << params.h1_active_set_smoothing_gap << ','
         << params.qp_derivative_blend_min_gap << ',' << params.qp_derivative_blend_max_gap << ','
         << params.qp_derivative_blend_weight << ',' << ( params.qp_derivative_blend_enzyme_gap_weight ? 1 : 0 )
@@ -713,7 +832,8 @@ int run( const Options& opts )
     writeMaybe( out, result.has_energy, result.energy );
     out << ',';
     writeMaybe( out, result.has_pair_force,
-                kinked_slide ? normalForceProxyFromB( geom, result.global_force ) : normalForceProxy( coord, result.force ) );
+                two_element_a_edge ? normalForceProxyFromB( geom, result.global_force )
+                                   : normalForceProxy( coord, result.force ) );
     out << ',';
     writeMaybe( out, result.has_pair_force, force_dot_path );
     out << ',';

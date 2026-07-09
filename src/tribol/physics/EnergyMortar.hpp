@@ -39,6 +39,9 @@ struct ContactParams {
   EnergyMortarPenaltyMode penalty_mode{ EnergyMortarPenaltyMode::NODAL_GAP };  // Penalty enforcement mode
   EnergyMortarNodalEnergyBasis nodal_energy_basis{
       EnergyMortarNodalEnergyBasis::CUBIC_SPLINE };  // Basis used by NODAL_ENERGY mode
+  bool eta_gap_scaling{ true };                       // Scale normal gap by eta, the surface-normal dot product
+  bool eta_angle_smoothing{ false };                  // Smooth eta to zero near 90 degrees when eta scaling is disabled
+  double eta_angle_smoothing_start{ 1.3962634015954636 };  // Eta smoothing start angle in radians
   bool nodal_energy_angle_smoothing{ true };         // Apply 80-to-90 degree angle smoothing in NODAL_ENERGY mode
   double residual_gap{ 0.0 };                        // User-defined gap offset
 };
@@ -109,6 +112,10 @@ struct Gparams {
   std::array<double, energy_mortar_num_quad_points> w;
   bool fixed_integration_jacobian{ false };
   double integration_jacobian{ 0.0 };
+  double residual_gap{ 0.0 };
+  bool eta_gap_scaling{ true };
+  bool eta_angle_smoothing{ false };
+  double eta_angle_smoothing_start{ 1.3962634015954636 };
 };
 
 /// Stores total derivative data for the H1 nodal-normal EnergyMortar path.
@@ -144,6 +151,9 @@ struct H1KernelData {
   double integration_jacobian{ 0.0 };
   Gparams qp{};
   EnergyMortarNodalEnergyBasis nodal_energy_basis{ EnergyMortarNodalEnergyBasis::CUBIC_SPLINE };
+  bool eta_gap_scaling{ true };
+  bool eta_angle_smoothing{ false };
+  double eta_angle_smoothing_start{ 1.3962634015954636 };
   bool nodal_energy_angle_smoothing{ true };
   int num_nodes1{ 0 };
   int num_nodes2{ 0 };
@@ -163,11 +173,11 @@ struct H1KernelData {
 /// constructing smoothed integration bounds from projected overlap intervals.
 class ContactSmoothing {
  public:
-  /// Clamp the projected overlap interval to the extended smoothing support.
+  /// Clamp the projected overlap interval to the local support around edge A.
   ///
   /// The input `proj` contains the local projection bounds of edge B onto edge A.
-  /// The returned interval is restricted to the extended local range
-  /// `[-0.5 - del, 0.5 + del]`.
+  /// The returned interval is restricted to `[-0.5 - del, 0.5 + del]`.
+  /// Pass `del = 0` when projection smoothing is disabled.
   static std::array<double, 2> bounds_from_projections( const std::array<double, 2>& proj, double del );
 
   /// Smooth the integration bounds using the smoothing length `del`.

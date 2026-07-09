@@ -189,6 +189,30 @@ void setEnergyMortarPenaltyMode( IndexT cs_id, EnergyMortarPenaltyMode mode );
 void setEnergyMortarNodalEnergyBasis( IndexT cs_id, EnergyMortarNodalEnergyBasis basis );
 
 /*!
+ * \brief Enables or disables eta gap scaling for ENERGY_MORTAR
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] enabled true to scale the normal gap by eta, the surface-normal dot product
+ */
+void setEnergyMortarEtaGapScaling( IndexT cs_id, bool enabled );
+
+/*!
+ * \brief Enables or disables eta angle smoothing for ENERGY_MORTAR
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] enabled true to smooth eta to zero near 90 degrees when eta gap scaling is disabled
+ */
+void setEnergyMortarEtaAngleSmoothing( IndexT cs_id, bool enabled );
+
+/*!
+ * \brief Sets the eta angle-smoothing start angle for ENERGY_MORTAR
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] start_angle angle in radians where eta starts smoothing toward zero at 90 degrees
+ */
+void setEnergyMortarEtaAngleSmoothingStart( IndexT cs_id, RealT start_angle );
+
+/*!
  * \brief Enables or disables nodal-energy angle smoothing for ENERGY_MORTAR
  *
  * \param [in] cs_id coupling scheme id

@@ -25,6 +25,58 @@ struct KernelParams {
   EnergyMortarProjectionSmoothingCurve projection_smoothing_curve{ EnergyMortarProjectionSmoothingCurve::QUINTIC };
 };
 
+TRIBOL_ENZYME_INLINE double projection_bound_delta( double del, bool projection_smoothing )
+{
+  return projection_smoothing ? del : 0.0;
+}
+
+TRIBOL_ENZYME_INLINE double angle_smoothing_weight( double normal_dot, bool enabled, double start_angle )
+{
+  if ( normal_dot >= 0.0 ) {
+    return 0.0;
+  }
+  if ( !enabled ) {
+    return 1.0;
+  }
+
+  double c = -normal_dot;
+  if ( c > 1.0 ) {
+    c = 1.0;
+  }
+  if ( c < -1.0 ) {
+    c = -1.0;
+  }
+
+  constexpr double pi = 3.14159265358979323846264338327950288;
+  constexpr double theta1 = 0.5 * pi;
+  constexpr double eps = 1.0e-12;
+  const double theta0 = std::max( 0.0, std::min( start_angle, theta1 - eps ) );
+  constexpr double cos_theta1 = 0.0;
+  const double cos_theta0 = std::cos( theta0 );
+
+  if ( c >= cos_theta0 ) {
+    return 1.0;
+  }
+  if ( c <= cos_theta1 ) {
+    return 0.0;
+  }
+
+  const double theta = std::acos( c );
+  const double t = ( theta - theta0 ) / ( theta1 - theta0 );
+  const double smooth = 3.0 * t * t - 2.0 * t * t * t;
+  return 1.0 - smooth;
+}
+
+TRIBOL_ENZYME_INLINE double normal_gap_eta( double normal_dot, bool eta_gap_scaling, bool eta_angle_smoothing,
+                                            double eta_angle_smoothing_start )
+{
+  if ( normal_dot >= 0.0 ) {
+    return 0.0;
+  }
+  return eta_gap_scaling ? normal_dot
+                         : -angle_smoothing_weight( normal_dot, eta_angle_smoothing, eta_angle_smoothing_start );
+}
+
 // Compute a unit normal vector for the line segment from coord1 to coord2
 TRIBOL_ENZYME_INLINE void find_normal( const double* coord1, const double* coord2, double* normal )
 {
@@ -262,35 +314,9 @@ TRIBOL_ENZYME_INLINE bool project_to_edge_along_direction( const double* B0, con
 
 TRIBOL_ENZYME_INLINE double nodal_energy_angle_weight( const double* nA, const double* nB, bool enabled )
 {
-  if ( !enabled ) {
-    return 1.0;
-  }
-
-  double c = -( nA[0] * nB[0] + nA[1] * nB[1] );
-  if ( c > 1.0 ) {
-    c = 1.0;
-  }
-  if ( c < -1.0 ) {
-    c = -1.0;
-  }
-
-  constexpr double pi = 3.14159265358979323846264338327950288;
-  constexpr double theta0 = 80.0 * pi / 180.0;
-  constexpr double theta1 = 0.5 * pi;
-  constexpr double cos_theta1 = 0.0;
-  const double cos_theta0 = std::cos( theta0 );
-
-  if ( c >= cos_theta0 ) {
-    return 1.0;
-  }
-  if ( c <= cos_theta1 ) {
-    return 0.0;
-  }
-
-  const double theta = std::acos( c );
-  const double t = ( theta - theta0 ) / ( theta1 - theta0 );
-  const double smooth = 3.0 * t * t - 2.0 * t * t * t;
-  return 1.0 - smooth;
+  const double normal_dot = nA[0] * nB[0] + nA[1] * nB[1];
+  constexpr double legacy_start_angle = 80.0 * 3.14159265358979323846264338327950288 / 180.0;
+  return angle_smoothing_weight( normal_dot, enabled, legacy_start_angle );
 }
 
 TRIBOL_ENZYME_INLINE double active_set_penalty_potential( double gap, double eps )
@@ -574,11 +600,12 @@ TRIBOL_ENZYME_INLINE void compute_h1_quadrature_from_geometry( const double* x, 
 
   double projs_raw[2];
   get_projections_h1( A0, A1, B0, B1, nB0, nB1, projs_raw );
+  const double bound_del = projection_bound_delta( data->del, data->projection_smoothing );
   double bounds_raw[2];
-  bounds_from_projections_raw( projs_raw, data->del, bounds_raw );
+  bounds_from_projections_raw( projs_raw, bound_del, bounds_raw );
   double xi_bounds_raw[2];
   if ( data->projection_smoothing ) {
-    smooth_bounds_raw( bounds_raw, data->del, xi_bounds_raw, data->projection_smoothing_curve );
+    smooth_bounds_raw( bounds_raw, bound_del, xi_bounds_raw, data->projection_smoothing_curve );
   } else {
     xi_bounds_raw[0] = bounds_raw[0];
     xi_bounds_raw[1] = bounds_raw[1];
@@ -651,8 +678,9 @@ TRIBOL_ENZYME_INLINE void h1_kernel_eval( const double* x, const H1KernelData* d
     const double dy = xA[1] - xB[1];
     const double gn = -( dx * nB[0] + dy * nB[1] );
     const double dot = nB[0] * nA[0] + nB[1] * nA[1];
-    const double eta = ( dot < 0.0 ) ? dot : 0.0;
-    const double g = gn * eta - data->residual_gap;
+    const double eta =
+        normal_gap_eta( dot, data->eta_gap_scaling, data->eta_angle_smoothing, data->eta_angle_smoothing_start );
+    const double g = eta * ( gn - data->residual_gap );
 
     g1 += w * N1 * g * J;
     g2 += w * N2 * g * J;
@@ -709,8 +737,9 @@ TRIBOL_ENZYME_INLINE void h1_qp_penalty_kernel_eval( const double* x, const H1Ke
     const double dy = xA[1] - xB[1];
     const double gn = -( dx * nB[0] + dy * nB[1] );
     const double dot = nB[0] * nA[0] + nB[1] * nA[1];
-    const double eta = ( dot < 0.0 ) ? dot : 0.0;
-    const double gap = gn * eta - data->residual_gap;
+    const double eta =
+        normal_gap_eta( dot, data->eta_gap_scaling, data->eta_angle_smoothing, data->eta_angle_smoothing_start );
+    const double gap = eta * ( gn - data->residual_gap );
 
     const double potential = active_set_penalty_potential( gap, data->active_set_smoothing_gap );
     if ( potential > 0.0 ) {
@@ -756,11 +785,12 @@ TRIBOL_ENZYME_INLINE void h1_nodal_energy_kernel_eval( const double* x, const H1
     if ( !valid_bounds ) {
       continue;
     }
+    const double bound_del = projection_bound_delta( data->del, data->projection_smoothing );
     double bounds_raw[2];
-    bounds_from_projections_raw( projs_raw, data->del, bounds_raw );
+    bounds_from_projections_raw( projs_raw, bound_del, bounds_raw );
     double xi_bounds_raw[2];
     if ( data->projection_smoothing ) {
-      smooth_bounds_raw( bounds_raw, data->del, xi_bounds_raw, data->projection_smoothing_curve );
+      smooth_bounds_raw( bounds_raw, bound_del, xi_bounds_raw, data->projection_smoothing_curve );
     } else {
       xi_bounds_raw[0] = bounds_raw[0];
       xi_bounds_raw[1] = bounds_raw[1];
@@ -824,8 +854,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, Gparams* gp, double* g
 
   // Only keep the contribution when the edge normals oppose each other.
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  // double eta = ( dot < 0 ) ? dot : 0.0; //Normal smoothing
-  double eta = dot;
+  double eta = normal_gap_eta( dot, gp->eta_gap_scaling, gp->eta_angle_smoothing, gp->eta_angle_smoothing_start );
 
   double g1 = 0.0, g2 = 0.0;
   double AI_1 = 0.0, AI_2 = 0.0;
@@ -850,7 +879,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, Gparams* gp, double* g
 
     // lagged normal on B
     const double gn = -( dx * nB[0] + dy * nB[1] );
-    const double g = gn * eta;
+    const double g = eta * ( gn - gp->residual_gap );
 
     g1 += w * N1 * g * J;
     g2 += w * N2 * g * J;
@@ -890,8 +919,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel_quad( const double* x, const Gparams* gp
   find_normal( A0, A1, nA );
   // Only keep the contribution when the edge normals oppose each other.
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  // double eta = ( dot < 0 ) ? dot : 0.0;
-  double eta = dot;
+  double eta = normal_gap_eta( dot, gp->eta_gap_scaling, gp->eta_angle_smoothing, gp->eta_angle_smoothing_start );
 
   double g1 = 0.0, g2 = 0.0;
   double AI_1 = 0.0, AI_2 = 0.0;
@@ -916,7 +944,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel_quad( const double* x, const Gparams* gp
 
     // lagged normal on B
     const double gn = -( dx * nB[0] + dy * nB[1] );
-    const double g = gn * eta;
+    const double g = eta * ( gn - gp->residual_gap );
 
     g1 += w * N1 * g * J;
     g2 += w * N2 * g * J;
@@ -950,6 +978,9 @@ struct QPPenaltyKernelData {
   bool simplified_path_enabled{ true };
   double integration_jacobian{ 0.0 };
   Gparams qp{};
+  bool eta_gap_scaling{ true };
+  bool eta_angle_smoothing{ false };
+  double eta_angle_smoothing_start{ 1.3962634015954636 };
 };
 
 TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double xiA, double w, const double* A0, const double* A1,
@@ -979,7 +1010,7 @@ TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double xiA, double w, c
   const double dx = x1x - x2x;
   const double dy = x1y - x2y;
   const double gn = -( dx * nB[0] + dy * nB[1] );
-  const double gap = gn * eta - residual_gap;
+  const double gap = eta * ( gn - residual_gap );
 
   const double potential = active_set_penalty_potential( gap, active_gap );
   return potential > 0.0 ? penalty * w * J * potential : 0.0;
@@ -1001,11 +1032,12 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval_mode( const double* x, const QP
   } else {
     double projs_raw[2];
     get_projections( A0, A1, B0, B1, projs_raw );
+    const double bound_del = projection_bound_delta( data->del, data->projection_smoothing );
     double bounds_raw[2];
-    bounds_from_projections_raw( projs_raw, data->del, bounds_raw );
+    bounds_from_projections_raw( projs_raw, bound_del, bounds_raw );
     double xi_bounds_raw[2];
     if ( data->projection_smoothing ) {
-      smooth_bounds_raw( bounds_raw, data->del, xi_bounds_raw, data->projection_smoothing_curve );
+      smooth_bounds_raw( bounds_raw, bound_del, xi_bounds_raw, data->projection_smoothing_curve );
     } else {
       xi_bounds_raw[0] = bounds_raw[0];
       xi_bounds_raw[1] = bounds_raw[1];
@@ -1022,7 +1054,8 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval_mode( const double* x, const QP
   find_normal( A0, A1, nA );
 
   const double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  const double eta = ( dot < 0.0 ) ? dot : 0.0;
+  const double eta =
+      normal_gap_eta( dot, data->eta_gap_scaling, data->eta_angle_smoothing, data->eta_angle_smoothing_start );
 
   double energy = 0.0;
   double residual2 = 0.0;
@@ -1057,7 +1090,7 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval_mode( const double* x, const QP
     const double dx = x1x - x2x;
     const double dy = x1y - x2y;
     const double gn = -( dx * nB[0] + dy * nB[1] );
-    const double gap = gn * eta - data->residual_gap;
+    const double gap = eta * ( gn - data->residual_gap );
     residual2 += qp.w[i] * gap * gap;
     residual_weight += qp.w[i];
   }
@@ -1078,11 +1111,12 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel_eval( const double* x, const QPPenal
     const double B1[2] = { x[6], x[7] };
     double projs_raw[2];
     get_projections( A0, A1, B0, B1, projs_raw );
+    const double bound_del = projection_bound_delta( data->del, data->projection_smoothing );
     double bounds_raw[2];
-    bounds_from_projections_raw( projs_raw, data->del, bounds_raw );
+    bounds_from_projections_raw( projs_raw, bound_del, bounds_raw );
     double xi_bounds_raw[2];
     if ( data->projection_smoothing ) {
-      smooth_bounds_raw( bounds_raw, data->del, xi_bounds_raw, data->projection_smoothing_curve );
+      smooth_bounds_raw( bounds_raw, bound_del, xi_bounds_raw, data->projection_smoothing_curve );
     } else {
       xi_bounds_raw[0] = bounds_raw[0];
       xi_bounds_raw[1] = bounds_raw[1];
@@ -1251,6 +1285,10 @@ TRIBOL_ENZYME_INLINE void kernel_out_enzyme( const double* x, const void* gp_voi
   }
   gp.fixed_integration_jacobian = gp_data->fixed_integration_jacobian;
   gp.integration_jacobian = gp_data->integration_jacobian;
+  gp.residual_gap = gp_data->residual_gap;
+  gp.eta_gap_scaling = gp_data->eta_gap_scaling;
+  gp.eta_angle_smoothing = gp_data->eta_angle_smoothing;
+  gp.eta_angle_smoothing_start = gp_data->eta_angle_smoothing_start;
 
   double gt[2];
   double A_out[2];
@@ -1486,9 +1524,10 @@ Gparams EnergyMortarCalculator::compute_quadrature_point_integration_data( const
 
   // Build the smoothed integration bounds from the projection of edge B onto edge A.
   auto projs = EnergyMortarCalculator::compute_projection_bounds( pair, mesh1, mesh2 );
-  auto bounds = smoother_.bounds_from_projections( projs, p_.del );
+  const double bound_del = projection_bound_delta( p_.del, p_.projection_smoothing );
+  auto bounds = smoother_.bounds_from_projections( projs, bound_del );
   auto smooth_bounds = p_.projection_smoothing
-                           ? smoother_.smooth_bounds( bounds, p_.del, p_.projection_smoothing_curve )
+                           ? smoother_.smooth_bounds( bounds, bound_del, p_.projection_smoothing_curve )
                            : bounds;
 
   auto qp = EnergyMortarCalculator::compute_quadrature( smooth_bounds, p_.N );
@@ -1526,6 +1565,10 @@ Gparams EnergyMortarCalculator::compute_quadrature_point_integration_data( const
   }
   gp.fixed_integration_jacobian = p_.fixed_integration_jacobian;
   gp.integration_jacobian = line_jacobian( A0, A1 );
+  gp.residual_gap = p_.residual_gap;
+  gp.eta_gap_scaling = p_.eta_gap_scaling;
+  gp.eta_angle_smoothing = p_.eta_angle_smoothing;
+  gp.eta_angle_smoothing_start = p_.eta_angle_smoothing_start;
 
   return gp;
 }
@@ -1639,9 +1682,9 @@ double EnergyMortarCalculator::compute_weighted_normal_gap( const InterfacePair&
 
   double gn = -( dx * nB[0] + dy * nB[1] );  // signed normal gap
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  double eta = ( dot < 0 ) ? dot : 0.0;
+  double eta = normal_gap_eta( dot, p_.eta_gap_scaling, p_.eta_angle_smoothing, p_.eta_angle_smoothing_start );
 
-  return gn * eta;
+  return eta * ( gn - p_.residual_gap );
 }
 
 // Assemble nodal gap and tributary area data for the current interface pair.
@@ -1659,9 +1702,10 @@ NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const Inter
   auto projs = projections( pair, mesh1, mesh2 );
 
   // Build the smoothed integration interval from the projection bounds.
-  auto bounds = smoother_.bounds_from_projections( projs, p_.del );
+  const double bound_del = projection_bound_delta( p_.del, p_.projection_smoothing );
+  auto bounds = smoother_.bounds_from_projections( projs, bound_del );
   auto smooth_bounds = p_.projection_smoothing
-                           ? smoother_.smooth_bounds( bounds, p_.del, p_.projection_smoothing_curve )
+                           ? smoother_.smooth_bounds( bounds, bound_del, p_.projection_smoothing_curve )
                            : bounds;
 
   auto qp = compute_quadrature( smooth_bounds, p_.N );
@@ -1691,7 +1735,7 @@ NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const Inter
   NodalContactData contact_data;
 
   contact_data.AI = { AI_1, AI_2 };
-  contact_data.g_tilde = { g_tilde1 - p_.residual_gap * AI_1, g_tilde2 - p_.residual_gap * AI_2 };
+  contact_data.g_tilde = { g_tilde1, g_tilde2 };
 
   return contact_data;
 }
@@ -1744,15 +1788,6 @@ void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshD
   for ( int i = 0; i < 8; ++i ) {
     dgt1_dx[i] = dg1_du[i];
     dgt2_dx[i] = dg2_du[i];
-  }
-  if ( p_.residual_gap != 0.0 ) {
-    double dA1_dx[8] = { 0.0 };
-    double dA2_dx[8] = { 0.0 };
-    grad_trib_area( pair, mesh1, mesh2, dA1_dx, dA2_dx );
-    for ( int i = 0; i < 8; ++i ) {
-      dgt1_dx[i] -= p_.residual_gap * dA1_dx[i];
-      dgt2_dx[i] -= p_.residual_gap * dA2_dx[i];
-    }
   }
 }
 
@@ -1823,15 +1858,6 @@ void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshDa
     H1[i] = d2g1_d2u[i];
     H2[i] = d2g2_d2u[i];
   }
-  if ( p_.residual_gap != 0.0 ) {
-    double d2A1[64] = { 0.0 };
-    double d2A2[64] = { 0.0 };
-    compute_d2A_d2u( pair, mesh1, mesh2, d2A1, d2A2 );
-    for ( int i = 0; i < 64; ++i ) {
-      H1[i] -= p_.residual_gap * d2A1[i];
-      H2[i] -= p_.residual_gap * d2A2[i];
-    }
-  }
 }
 
 // Compute the Hessians of the two nodal tributary areas with respect to the endpoint coordinates.
@@ -1894,6 +1920,9 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
     data.fixed_integration_jacobian = p_.fixed_integration_jacobian;
     data.fixed_quadrature = !p_.enzyme_quadrature && p_.penalty_mode == EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;
     data.nodal_energy_basis = p_.nodal_energy_basis;
+    data.eta_gap_scaling = p_.eta_gap_scaling;
+    data.eta_angle_smoothing = p_.eta_angle_smoothing;
+    data.eta_angle_smoothing_start = p_.eta_angle_smoothing_start;
     data.nodal_energy_angle_smoothing = p_.nodal_energy_angle_smoothing;
 
     auto build_side = []( const MeshData::Viewer& mesh, int contact_elem, int& num_nodes, int& num_elems,
@@ -2017,6 +2046,9 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
   data.derivative_blend_max_gap = p_.qp_derivative_blend_max_gap;
   data.derivative_blend_weight = p_.qp_derivative_blend_weight;
   data.derivative_blend_enzyme_gap_weight = p_.qp_derivative_blend_enzyme_gap_weight;
+  data.eta_gap_scaling = p_.eta_gap_scaling;
+  data.eta_angle_smoothing = p_.eta_angle_smoothing;
+  data.eta_angle_smoothing_start = p_.eta_angle_smoothing_start;
   data.integration_jacobian = line_jacobian( A0, A1 );
   if ( frozen_integration != nullptr ) {
     data.qp = *frozen_integration;
@@ -2084,6 +2116,9 @@ H1TotalDerivatives EnergyMortarCalculator::compute_h1_total_derivatives( const I
   data.projection_smoothing_curve = p_.projection_smoothing_curve;
   data.fixed_quadrature = !p_.enzyme_quadrature;
   data.fixed_integration_jacobian = p_.fixed_integration_jacobian;
+  data.eta_gap_scaling = p_.eta_gap_scaling;
+  data.eta_angle_smoothing = p_.eta_angle_smoothing;
+  data.eta_angle_smoothing_start = p_.eta_angle_smoothing_start;
 
   auto build_side = []( const MeshData::Viewer& mesh, int contact_elem, int& num_nodes, int& num_elems,
                         std::array<int, h1_max_stencil_nodes_per_mesh>& node_ids,

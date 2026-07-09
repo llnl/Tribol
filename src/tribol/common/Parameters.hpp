@@ -575,6 +575,12 @@ struct Parameters {
       EnergyMortarPenaltyMode::NODAL_GAP;  ///! Penalty enforcement mode used by ENERGY_MORTAR
   EnergyMortarNodalEnergyBasis energy_mortar_nodal_energy_basis =
       EnergyMortarNodalEnergyBasis::CUBIC_SPLINE;  ///! Basis used by ENERGY_MORTAR NODAL_ENERGY mode
+  bool energy_mortar_eta_gap_scaling =
+      true;  ///! Scale ENERGY_MORTAR normal gap by eta, the surface-normal dot product
+  bool energy_mortar_eta_angle_smoothing =
+      false;  ///! Smooth ENERGY_MORTAR eta to zero near 90 degrees when eta gap scaling is disabled
+  RealT energy_mortar_eta_angle_smoothing_start =
+      1.3962634015954636;  ///! Eta angle-smoothing start angle in radians
   bool energy_mortar_nodal_energy_angle_smoothing =
       true;                  ///! Apply 80-to-90 degree angle smoothing in ENERGY_MORTAR NODAL_ENERGY mode
   RealT residual_gap = 0.0;  ///! User defined residual gap constraint

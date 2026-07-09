@@ -65,6 +65,8 @@ class EnergyMortarAdapter : public ContactFormulation {
                        bool qp_derivative_blend_enzyme_gap_weight = true, bool qp_frozen_integration = false,
                        EnergyMortarPenaltyMode penalty_mode = EnergyMortarPenaltyMode::NODAL_GAP,
                        EnergyMortarNodalEnergyBasis nodal_energy_basis = EnergyMortarNodalEnergyBasis::CUBIC_SPLINE,
+                       bool eta_gap_scaling = true, bool eta_angle_smoothing = false,
+                       RealT eta_angle_smoothing_start = 1.3962634015954636,
                        bool nodal_energy_angle_smoothing = true, RealT residual_gap = 0.0 );
 
   /**
@@ -242,6 +244,27 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @param basis Basis used by NODAL_ENERGY mode
    */
   void updateEnergyMortarNodalEnergyBasis( EnergyMortarNodalEnergyBasis basis ) override;
+
+  /**
+   * @brief Update eta gap scaling
+   *
+   * @param enabled True to scale the normal gap by eta, the surface-normal dot product
+   */
+  void updateEnergyMortarEtaGapScaling( bool enabled ) override;
+
+  /**
+   * @brief Update eta angle smoothing
+   *
+   * @param enabled True to smooth eta to zero near 90 degrees when eta gap scaling is disabled
+   */
+  void updateEnergyMortarEtaAngleSmoothing( bool enabled ) override;
+
+  /**
+   * @brief Update eta angle-smoothing start angle
+   *
+   * @param start_angle Angle in radians where eta starts smoothing toward zero at 90 degrees
+   */
+  void updateEnergyMortarEtaAngleSmoothingStart( RealT start_angle ) override;
 
   /**
    * @brief Update nodal-energy angle smoothing
