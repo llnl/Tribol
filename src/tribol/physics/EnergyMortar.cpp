@@ -36,9 +36,8 @@ TRIBOL_ENZYME_INLINE void find_normal( const double* coord1, const double* coord
 }
 
 // Gets the respective gauss-legendre nodes dependant on quadrature order
-TRIBOL_ENZYME_INLINE void determine_legendre_nodes( int N, std::array<double, 3>& x )
+TRIBOL_ENZYME_INLINE void determine_legendre_nodes_raw( int N, double* x )
 {
-  // x.resize( N );
   if ( N == 1 ) {
     x[0] = 0.0;
   } else if ( N == 2 ) {
@@ -71,9 +70,8 @@ TRIBOL_ENZYME_INLINE void determine_legendre_nodes( int N, std::array<double, 3>
 }
 
 // Gets the respective gauss-legendre weights dependant on quadrature order
-TRIBOL_ENZYME_INLINE void determine_legendre_weights( int N, std::array<double, 3>& W )
+TRIBOL_ENZYME_INLINE void determine_legendre_weights_raw( int N, double* W )
 {
-  // W.resize( N );
   if ( N == 1 ) {
     W[0] = 2.0;
   } else if ( N == 2 ) {
@@ -96,6 +94,24 @@ TRIBOL_ENZYME_INLINE void determine_legendre_weights( int N, std::array<double, 
     W[4] = ( 322.0 - 13.0 * std::sqrt( 70.0 ) ) / 900.0;
   } else {
     assert( false && "Unsupported quadrature order" );
+  }
+}
+
+TRIBOL_ENZYME_INLINE void compute_quadrature_raw( const double* xi_bounds, int N, QuadPoints* out )
+{
+  double qpoints[3] = { 0.0, 0.0, 0.0 };
+  double weights[3] = { 0.0, 0.0, 0.0 };
+
+  determine_legendre_nodes_raw( N, qpoints );
+  determine_legendre_weights_raw( N, weights );
+
+  const double xi_min = xi_bounds[0];
+  const double xi_max = xi_bounds[1];
+  const double J = 0.5 * ( xi_max - xi_min );
+
+  for ( int i = 0; i < N; ++i ) {
+    out->qp[i] = 0.5 * ( xi_max - xi_min ) * qpoints[i] + 0.5 * ( xi_max + xi_min );
+    out->w[i] = weights[i] * J;
   }
 }
 
@@ -183,21 +199,16 @@ TRIBOL_ENZYME_INLINE void get_projections( const double* A0, const double* A1, c
   const double dyA = A1[1] - A0[1];
   const double len2A = dxA * dxA + dyA * dyA;
 
-  const double* B_endpoints[2] = { B0, B1 };
+  double q0[2] = { 0.0, 0.0 };
+  find_intersection( A0, A1, B0, nB, q0 );
+  // Convert the physical projection point on A to the local coordinate xi in [-0.5, 0.5].
+  const double alphaA0 = ( ( q0[0] - A0[0] ) * dxA + ( q0[1] - A0[1] ) * dyA ) / len2A;
+  const double xi0 = alphaA0 - 0.5;
 
-  double xi0 = 0.0, xi1 = 0.0;
-  for ( int i = 0; i < 2; ++i ) {
-    double q[2] = { 0.0, 0.0 };
-    find_intersection( A0, A1, B_endpoints[i], nB, q );
-    // Convert the physical projection point on A to the local coordinate xi in [-0.5, 0.5].
-    const double alphaA = ( ( q[0] - A0[0] ) * dxA + ( q[1] - A0[1] ) * dyA ) / len2A;
-    const double xiA = alphaA - 0.5;
-
-    if ( i == 0 )
-      xi0 = xiA;
-    else
-      xi1 = xiA;
-  }
+  double q1[2] = { 0.0, 0.0 };
+  find_intersection( A0, A1, B1, nB, q1 );
+  const double alphaA1 = ( ( q1[0] - A0[0] ) * dxA + ( q1[1] - A0[1] ) * dyA ) / len2A;
+  const double xi1 = alphaA1 - 0.5;
 
   double xi_min = std::min( xi0, xi1 );
   double xi_max = std::max( xi0, xi1 );
@@ -269,6 +280,57 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, Gparams* gp, double* g
 
   A_out[0] = AI_1;
   A_out[1] = AI_2;
+}
+
+TRIBOL_ENZYME_INLINE void bounds_from_projections_raw( const double* proj, double del, double* bounds )
+{
+  double xi_min = ( proj[0] < proj[1] ) ? proj[0] : proj[1];
+  double xi_max = ( proj[0] > proj[1] ) ? proj[0] : proj[1];
+
+  if ( xi_max < -0.5 - del ) {
+    xi_max = -0.5 - del;
+  }
+  if ( xi_min > 0.5 + del ) {
+    xi_min = 0.5 + del;
+  }
+  if ( xi_min < -0.5 - del ) {
+    xi_min = -0.5 - del;
+  }
+  if ( xi_max > 0.5 + del ) {
+    xi_max = 0.5 + del;
+  }
+
+  bounds[0] = xi_min;
+  bounds[1] = xi_max;
+}
+
+TRIBOL_ENZYME_INLINE double smooth_bound_value_raw( double bound, double del )
+{
+  const double xi = bound + 0.5;
+  double xi_hat = 0.0;
+
+  if ( del == 0.0 ) {
+    xi_hat = xi;
+  } else if ( 0.0 - del <= xi && xi <= del ) {
+    xi_hat = ( 1.0 / ( 4.0 * del ) ) * ( xi * xi ) + 0.5 * xi + del / 4.0;
+  } else if ( ( 1.0 - del ) <= xi && xi <= 1.0 + del ) {
+    const double b = -1.0 / ( 4.0 * del );
+    const double c = 0.5 + 1.0 / ( 2.0 * del );
+    const double one_minus_del = 1.0 - del;
+    const double d = 1.0 - del + ( 1.0 / ( 4.0 * del ) ) * one_minus_del * one_minus_del -
+                     0.5 * one_minus_del - one_minus_del / ( 2.0 * del );
+    xi_hat = b * xi * xi + c * xi + d;
+  } else if ( del <= xi && xi <= ( 1.0 - del ) ) {
+    xi_hat = xi;
+  }
+
+  return xi_hat - 0.5;
+}
+
+TRIBOL_ENZYME_INLINE void smooth_bounds_raw( const double* bounds, double del, double* smooth_bounds )
+{
+  smooth_bounds[0] = smooth_bound_value_raw( bounds[0], del );
+  smooth_bounds[1] = smooth_bound_value_raw( bounds[1], del );
 }
 
 //**************************************** */
@@ -402,13 +464,15 @@ static void kernel_out_enzyme( const double* x, double* out )
 
   double projs[2] = { 0 };
   get_projections( A0, A1, B0, B1, projs );
-  std::array<double, 2> projections = { projs[0], projs[1] };
 
   // Recompute the integration bounds and quadrature from the current geometry.
-  auto bounds = ContactSmoothing::bounds_from_projections( projections, kp.del );
-  auto xi_bounds = ContactSmoothing::smooth_bounds( bounds, kp.del );
+  double bounds_raw[2];
+  bounds_from_projections_raw( projs, kp.del, bounds_raw );
+  double xi_bounds_raw[2];
+  smooth_bounds_raw( bounds_raw, kp.del, xi_bounds_raw );
 
-  auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, kp.N );
+  QuadPoints qp;
+  compute_quadrature_raw( xi_bounds_raw, kp.N, &qp );
 
   Gparams gp;
   for ( std::size_t i = 0; i < qp.qp.size(); ++i ) {
@@ -549,24 +613,10 @@ std::array<double, 2> EnergyMortarCalculator::projections( const InterfacePair& 
 TRIBOL_ENZYME_INLINE std::array<double, 2> ContactSmoothing::bounds_from_projections( const std::array<double, 2>& proj,
                                                                                       double del )
 {
-  double xi_min = std::min( proj[0], proj[1] );
-  double xi_max = std::max( proj[0], proj[1] );
-
-  // Limit the integration interval to the extended range [-0.5 - del, 0.5 + del].
-  if ( xi_max < -0.5 - del ) {
-    xi_max = -0.5 - del;
-  }
-  if ( xi_min > 0.5 + del ) {
-    xi_min = 0.5 + del;
-  }
-  if ( xi_min < -0.5 - del ) {
-    xi_min = -0.5 - del;
-  }
-  if ( xi_max > 0.5 + del ) {
-    xi_max = 0.5 + del;
-  }
-
-  return { xi_min, xi_max };
+  const double proj_raw[2] = { proj[0], proj[1] };
+  double bounds[2];
+  bounds_from_projections_raw( proj_raw, del, bounds );
+  return { bounds[0], bounds[1] };
 }
 
 // Smooth the integration bounds using a C1 ramp near the ends of edge A.
@@ -578,32 +628,8 @@ TRIBOL_ENZYME_INLINE std::array<double, 2> ContactSmoothing::smooth_bounds( cons
                                                                             double del )
 {
   std::array<double, 2> smooth_bounds;
-  for ( int i = 0; i < 2; ++i ) {
-    double xi = 0.0;
-    double xi_hat = 0.0;
-
-    // Shift from the local coordinate interval [-0.5, 0.5] to [0, 1].
-    xi = bounds[i] + 0.5;
-    if ( del == 0.0 ) {
-      xi_hat = xi;
-    } else {
-      // Apply quadratic ramps near the endpoints and leave the interior unchanged.
-      if ( 0.0 - del <= xi && xi <= del ) {
-        xi_hat = ( 1.0 / ( 4 * del ) ) * ( xi * xi ) + 0.5 * xi + del / 4.0;
-      } else if ( ( 1.0 - del ) <= xi && xi <= 1.0 + del ) {
-        double b = -1.0 / ( 4.0 * del );
-        double c = 0.5 + 1.0 / ( 2.0 * del );
-        double d = 1.0 - del + ( 1.0 / ( 4.0 * del ) ) * pow( 1.0 - del, 2 ) - 0.5 * ( 1.0 - del ) -
-                   ( 1.0 - del ) / ( 2.0 * del );
-
-        xi_hat = b * xi * xi + c * xi + d;
-      } else if ( del <= xi && xi <= ( 1.0 - del ) ) {
-        xi_hat = xi;
-      }
-    }
-    // Shift the smoothed coordinate back to [-0.5, 0.5].
-    smooth_bounds[i] = xi_hat - 0.5;
-  }
+  const double bounds_raw[2] = { bounds[0], bounds[1] };
+  smooth_bounds_raw( bounds_raw, del, smooth_bounds.data() );
 
   return smooth_bounds;
 }
@@ -613,23 +639,8 @@ TRIBOL_ENZYME_INLINE QuadPoints EnergyMortarCalculator::compute_quadrature( cons
                                                                             int N )
 {
   QuadPoints out;
-
-  std::array<double, 3> qpoints;
-  std::array<double, 3> weights;
-
-  determine_legendre_nodes( N, qpoints );
-  determine_legendre_weights( N, weights );
-
-  const double xi_min = xi_bounds[0];
-  const double xi_max = xi_bounds[1];
-  // Map the reference quadrature rule to [xi_min, xi_max].
-  const double J = 0.5 * ( xi_max - xi_min );
-
-  for ( int i = 0; i < N; ++i ) {
-    out.qp[i] = 0.5 * ( xi_max - xi_min ) * qpoints[i] + 0.5 * ( xi_max + xi_min );
-    out.w[i] = weights[i] * J;
-  }
-
+  const double xi_bounds_raw[2] = { xi_bounds[0], xi_bounds[1] };
+  compute_quadrature_raw( xi_bounds_raw, N, &out );
   return out;
 }
 
