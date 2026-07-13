@@ -1009,6 +1009,72 @@ INSTANTIATE_TEST_SUITE_P( MfemLorTransfer, MfemLorTransferParamTest,
                                            LorTransferParams{ 3, 4, FieldKind::LagrangeMultiplier } ),
                           ParamsToString );
 
+#ifdef TRIBOL_USE_ENZYME
+
+TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
+{
+  int n_ranks;
+  MPI_Comm_size( MPI_COMM_WORLD, &n_ranks );
+
+  // Register a simple Energy Mortar penalty problem, update contact, and retrieve the assembled DfDx matrix.
+  int ref_levels = 0;
+  int nel_per_dir = std::pow( 2, ref_levels );
+
+  auto mortar_attrs = std::set<int>( { 4 } );
+  auto nonmortar_attrs = std::set<int>( { 5 } );
+
+  // clang-format off
+  mfem::ParMesh mesh = shared::ParMeshBuilder(MPI_COMM_WORLD, shared::MeshBuilder::Unify({
+    shared::MeshBuilder::SquareMesh(nel_per_dir, nel_per_dir)
+      .updateBdrAttrib(1, 7)
+      .updateBdrAttrib(2, 3)
+      .updateBdrAttrib(3, 4) // Mortar
+      .updateBdrAttrib(4, 1),
+    shared::MeshBuilder::SquareMesh(nel_per_dir, nel_per_dir)
+      .translate({0.0, 0.99}) // Slight overlap
+      .updateBdrAttrib(1, 5) // Nonmortar
+      .updateBdrAttrib(2, 3)
+      .updateBdrAttrib(3, 7)
+      .updateBdrAttrib(4, 1)
+  }));
+  // clang-format on
+
+  int dim = mesh.SpaceDimension();
+  int order = 1;
+  mfem::H1_FECollection fe_coll( order, dim );
+  mfem::ParFiniteElementSpace par_fe_space( &mesh, &fe_coll, dim );
+  mfem::ParGridFunction coords( &par_fe_space );
+  mesh.GetNodes( coords );
+
+  // Register coupling scheme with PENALTY
+  int cs_id = 100;
+  int mesh1_id = 100;
+  int mesh2_id = 101;
+  tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
+                                      tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::ENERGY_MORTAR,
+                                      tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID );
+
+  tribol::setPenaltyOptions( cs_id, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
+  tribol::setMfemKinematicConstantPenalty( cs_id, 1.0, 1.0 );
+
+  // Build internal MfemData
+  tribol::updateMfemParallelDecomposition();
+
+  double dt = 1.0;
+  tribol::update( 1, 1.0, dt );
+
+  auto DfDx = tribol::getMfemDfDx( cs_id );
+
+  if ( n_ranks == 1 ) {
+    EXPECT_NE( DfDx, nullptr );
+    if ( DfDx ) {
+      EXPECT_GT( DfDx->NNZ(), 0 );
+    }
+  }
+}
+
+#endif
+
 int main( int argc, char* argv[] )
 {
   // GTest + MFEM/Tribol integration test entrypoint. Explicit MPI init/finalize is required because the test suite

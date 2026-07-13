@@ -38,8 +38,6 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @param mesh_data MFEM mesh data for the parent/primary variables
    * @param submesh_data MFEM submesh data for the dual variables (pressure/gap/LM)
    * @param jac_data MFEM Jacobian transfer data
-   * @param mesh1 First Tribol mesh (see note below)
-   * @param mesh2 Second Tribol mesh (see note below)
    * @param k Penalty stiffness
    * @param delta Smoothing length
    * @param N Quadrature order
@@ -51,9 +49,8 @@ class EnergyMortarAdapter : public ContactFormulation {
    * mapping to a mortar side. To maintain that convention within Tribol, the adapter may internally flip mesh roles
    * relative to the order of the meshes provided here.
    */
-  EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
-                       MeshData& mesh1, MeshData& mesh2, double k, double delta, int N, bool enzyme_quadrature,
-                       bool use_penalty = true );
+  EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k,
+                       double delta, int N, bool enzyme_quadrature, bool use_penalty = true );
 
   /**
    * @brief Default destructor
@@ -126,6 +123,14 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @param mesh2 Second Tribol mesh for the coupling scheme
    */
   void updateMeshes( MeshData& mesh1, MeshData& mesh2 ) override;
+
+  /**
+   * @brief Update constant penalty stiffness
+   *
+   * @param mesh1_penalty Penalty stiffness for mesh 1.
+   * @param mesh2_penalty Penalty stiffness for mesh 2.
+   */
+  void updateConstantPenaltyStiffness( double mesh1_penalty, double mesh2_penalty ) override;
 
 #ifdef BUILD_REDECOMP
   /**

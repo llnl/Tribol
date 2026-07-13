@@ -12,22 +12,12 @@ namespace tribol {
 #ifdef TRIBOL_USE_ENZYME
 
 EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
-                                          MfemJacobianData& jac_data, MeshData& mesh1, MeshData& mesh2, double k,
-                                          double delta, int N, bool enzyme_quadrature, bool use_penalty )
+                                          MfemJacobianData& jac_data, double k, double delta, int N,
+                                          bool enzyme_quadrature, bool use_penalty )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
-    : use_penalty_( use_penalty ),
-      mesh_data_( mesh_data ),
-      submesh_data_( submesh_data ),
-      jac_data_( jac_data ),
-      mesh1_( &mesh2 ),
-      mesh2_( &mesh1 )
+    : use_penalty_( use_penalty ), mesh_data_( mesh_data ), submesh_data_( submesh_data ), jac_data_( jac_data )
 {
-  if ( mesh1.numberOfNodes() > 0 && mesh2.numberOfNodes() > 0 ) {
-    SLIC_ERROR_ROOT_IF( mesh1.spatialDimension() != 2 || mesh2.spatialDimension() != 2,
-                        "ENERGY_MORTAR requires 2D meshes." );
-  }
-
   params_.k = k;
   params_.del = delta;
   params_.N = N;
@@ -35,9 +25,9 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
 
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 
-  // Allocate the (pressure) true-dof vector early so host code can set it via tribol::getMfemTDofPressure() after the
-  // formulation is created. In penalty mode this is overwritten in updateNodalForces(); in LM mode it is treated as the
-  // Lagrange multiplier vector (lambda).
+  // Allocate the (pressure) true-dof vector early so host code can set it via tribol::getMfemContactPressure() after
+  // the formulation is created. In penalty mode this is overwritten in updateNodalForces(); in LM mode it is treated as
+  // the Lagrange multiplier vector (lambda).
   pressure_vec_ = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
   pressure_vec_.fill( 0.0 );
 }
@@ -47,6 +37,12 @@ void EnergyMortarAdapter::updateMeshes( MeshData& mesh1, MeshData& mesh2 )
   // Maintain the same "flipped" convention as the constructor.
   mesh1_ = &mesh2;
   mesh2_ = &mesh1;
+}
+
+void EnergyMortarAdapter::updateConstantPenaltyStiffness( double mesh1_penalty, double mesh2_penalty )
+{
+  use_penalty_ = true;
+  params_.k = 0.5 * ( mesh1_penalty + mesh2_penalty );
 }
 
 const mfem::HypreParVector& EnergyMortarAdapter::getMfemGap() const
@@ -219,7 +215,7 @@ void EnergyMortarAdapter::updateNodalForces()
     pressure_vec_ = params_.k * gap_vec_;
   } else {
     // LM mode: pressure_vec_ is treated as the Lagrange multiplier vector (lambda)
-    SLIC_ERROR_ROOT_IF( pressure_vec_.size() == 0,
+    SLIC_ERROR_ROOT_IF( submesh_data_.GetSubmeshFESpace().GetTrueVSize() != pressure_vec_.size(),
                         "LM vector is not initialized. Call tribol::update() once to initialize the formulation." );
     SLIC_ERROR_ROOT_IF( pressure_vec_.size() != g_tilde_vec_.size(),
                         "LM vector size mismatch with contact dofs (g_tilde)." );
