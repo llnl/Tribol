@@ -84,7 +84,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
 
     // FE space and grid functions
     auto fe_coll = mfem::H1_FECollection( order, mesh.SpaceDimension() );
-    auto par_fe_space = mfem::ParFiniteElementSpace( &mesh, &fe_coll, mesh.SpaceDimension() );
+    auto par_fe_space = mfem::ParFiniteElementSpace( &mesh, &fe_coll, mesh.SpaceDimension(), mfem::Ordering::byVDIM );
     auto coords = mfem::ParGridFunction( &par_fe_space );
     if ( order > 1 ) {
       mesh.SetNodalGridFunction( &coords, false );
@@ -322,10 +322,12 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
     mfem::ParGridFunction uy_exact( &scalar_fes ), uy_num( &scalar_fes );
 
     for ( int i = 0; i < n; ++i ) {
-      ux_exact( i ) = exact_disp( i );
-      ux_num( i ) = displacement( i );
-      uy_exact( i ) = exact_disp( n + i );
-      uy_num( i ) = displacement( n + i );
+      const int ux_vdof = par_fe_space.DofToVDof( i, 0 );
+      const int uy_vdof = par_fe_space.DofToVDof( i, 1 );
+      ux_exact( i ) = exact_disp( ux_vdof );
+      ux_num( i ) = displacement( ux_vdof );
+      uy_exact( i ) = exact_disp( uy_vdof );
+      uy_num( i ) = displacement( uy_vdof );
     }
 
     mfem::ParGridFunction ux_err( ux_exact );
