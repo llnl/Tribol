@@ -31,9 +31,10 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
     if ( cs->hasMfemData() ) {
       // Attempt to get penalty from MfemMeshData if available
-      auto* k_ptr = cs->getMfemMeshData()->GetMesh1KinematicConstantPenalty();
-      if ( k_ptr ) {
-        k = *k_ptr;
+      auto* k1_ptr = cs->getMfemMeshData()->GetMesh1KinematicConstantPenalty();
+      auto* k2_ptr = cs->getMfemMeshData()->GetMesh2KinematicConstantPenalty();
+      if ( k1_ptr && k2_ptr ) {
+        k = 0.5 * ( *k1_ptr + *k2_ptr );
       }
     }
 

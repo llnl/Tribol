@@ -292,6 +292,11 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
                           enforcement_method, binning_method, exec_mode );
   auto& cs = CouplingSchemeManager::getInstance().at( cs_id );
   cs.setMPIComm( mesh.GetComm() );
+  if ( contact_method == ENERGY_MORTAR && enforcement_method == LAGRANGE_MULTIPLIER ) {
+    SLIC_WARNING_ROOT(
+        "ENERGY_MORTAR with Lagrange multiplier enforcement is experimental, has no testing, and has "
+        "no support from Tribol developers." );
+  }
 
   // Initialize methods that require definition of a submesh. Coupling scheme validity will be checked
   // later, but here some initial data is created/initialized for use with LMs.
@@ -387,7 +392,7 @@ void setMfemKinematicConstantPenalty( IndexT cs_id, RealT mesh1_penalty, RealT m
   cs->getMfemMeshData()->SetMesh2KinematicConstantPenalty( mesh2_penalty );
 
   if ( cs->hasContactFormulation() ) {
-    cs->getContactFormulation()->updatePenaltyParameters( true, mesh1_penalty );
+    cs->getContactFormulation()->updateConstantPenaltyStiffness( mesh1_penalty, mesh2_penalty );
   }
 }
 
@@ -550,14 +555,14 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r )
                               cs_id ) );
   SLIC_ERROR_ROOT_IF(
       cs->hasContactFormulation(),
-      "Coupling scheme has a contact formulation. Forces are returned using getMfemTDofForce() instead." );
+      "Coupling scheme has a contact formulation. Forces are returned using getMfemContactForce() instead." );
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to return a response vector." );
   cs->getMfemMeshData()->GetParentResponse( r );
 }
 
-mfem::HypreParVector getMfemTDofForce( IndexT cs_id )
+mfem::HypreParVector getMfemContactForce( IndexT cs_id )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(
@@ -580,7 +585,7 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
 
   SLIC_ERROR_ROOT_IF( cs->getEnforcementMethod() == PENALTY,
                       "getMfemBlockJacobian() is not supported for coupling schemes with penalty enforcement. "
-                      "Use getMfemJacobian() instead." );
+                      "Use getMfemDfDx() instead." );
 
   if ( cs->hasContactFormulation() ) {
     auto* formulation = cs->getContactFormulation();
@@ -654,26 +659,6 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
   }
 }
 
-std::unique_ptr<mfem::HypreParMatrix> getMfemJacobian( IndexT cs_id )
-{
-  CouplingScheme* cs = CouplingSchemeManager::getInstance().findData( cs_id );
-  SLIC_ERROR_ROOT_IF(
-      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                              "to create a coupling scheme with this cs_id.",
-                              cs_id ) );
-
-  SLIC_ERROR_ROOT_IF( cs->getEnforcementMethod() != PENALTY,
-                      "getMfemJacobian() is only supported for coupling schemes with penalty enforcement. "
-                      "Use getMfemBlockJacobian() instead." );
-
-  if ( cs->hasContactFormulation() ) {
-    return cs->getContactFormulation()->getMfemDfDx();
-  }
-
-  SLIC_ERROR_ROOT( "getMfemJacobian() is only supported for coupling schemes with a ContactFormulation." );
-  return nullptr;
-}
-
 std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx( IndexT cs_id )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -735,7 +720,7 @@ void getMfemGap( IndexT cs_id, mfem::Vector& g )
   cs->getMfemSubmeshData()->GetSubmeshGap( g );
 }
 
-mfem::HypreParVector getMfemTDofGap( IndexT cs_id )
+mfem::HypreParVector getMfemContactGap( IndexT cs_id )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(
@@ -784,7 +769,7 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id )
   return cs->getMfemSubmeshData()->GetSubmeshPressure();
 }
 
-mfem::HypreParVector& getMfemTDofPressure( IndexT cs_id )
+mfem::HypreParVector& getMfemContactPressure( IndexT cs_id )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF(

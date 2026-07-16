@@ -122,11 +122,11 @@ class ContactFormulation {
   virtual void updateMeshes( MeshData& /*mesh1*/, MeshData& /*mesh2*/ ) {}
 
   /**
-   * @brief Update penalty parameters
+   * @brief Update constant penalty stiffness
    *
-   * Used to dynamically update penalty stiffness after the formulation has been instantiated.
+   * Used to dynamically update the constant penalty stiffness after the formulation has been instantiated.
    */
-  virtual void updatePenaltyParameters( bool /*use_penalty*/, double /*k*/ ) {}
+  virtual void updateConstantPenaltyStiffness( double /*mesh1_penalty*/, double /*mesh2_penalty*/ ) {}
 
   /**
    * @brief Update ENERGY_MORTAR normal-mode parameters on formulations that support them

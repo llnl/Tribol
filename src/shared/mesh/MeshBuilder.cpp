@@ -24,7 +24,7 @@ MeshBuilder MeshBuilder::SquareMesh( int n_x_els, int n_y_els )
   return mfem::Mesh::MakeCartesian2D( n_x_els, n_y_els, mfem::Element::QUADRILATERAL );
 }
 
-MeshBuilder MeshBuilder::CircularShell( int n_radial_els, int n_hoop_els, double inner_radius, double outer_radius )
+MeshBuilder MeshBuilder::Cylinder2D( int n_radial_els, int n_hoop_els, double inner_radius, double outer_radius )
 {
   mfem::Mesh mesh = mfem::Mesh::MakeCartesian2D( n_radial_els, n_hoop_els, mfem::Element::QUADRILATERAL );
   mesh.EnsureNodes();
@@ -46,7 +46,7 @@ MeshBuilder MeshBuilder::CircularShell( int n_radial_els, int n_hoop_els, double
   return mesh;
 }
 
-MeshBuilder MeshBuilder::SemiCircularShell( int n_radial_els, int n_hoop_els, double inner_radius, double outer_radius )
+MeshBuilder MeshBuilder::HalfCylinder2D( int n_radial_els, int n_hoop_els, double inner_radius, double outer_radius )
 {
   mfem::Mesh mesh = mfem::Mesh::MakeCartesian2D( n_radial_els, n_hoop_els, mfem::Element::QUADRILATERAL );
   mesh.EnsureNodes();

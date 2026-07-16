@@ -1,0 +1,2 @@
+These host-configs are used for internal team builds and testing.
+The libraries they reference are guarded by linux group permissions.
