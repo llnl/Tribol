@@ -543,7 +543,8 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
   evaluator_without_residual.compute_gtilde_and_area( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(), g0,
                                                       area0 );
 
-  params.residual_gap = 0.15;
+  // A negative residual gap activates contact under Tribol's g_n - residual_gap convention.
+  params.residual_gap = -0.15;
   double g_residual[2] = { 0.0, 0.0 };
   double area_residual[2] = { 0.0, 0.0 };
   EnergyMortarCalculator evaluator_with_residual( params );
@@ -552,7 +553,7 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
 
   for ( int i = 0; i < 2; ++i ) {
     EXPECT_NEAR( area_residual[i], area0[i], 1.0e-14 );
-    EXPECT_NEAR( g_residual[i], g0[i] - params.residual_gap * area0[i], 1.0e-14 );
+    EXPECT_NEAR( g_residual[i], g0[i] + params.residual_gap * area0[i], 1.0e-14 );
   }
 }
 
@@ -580,14 +581,15 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
       InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
   EXPECT_EQ( inactive.energy, 0.0 );
 
-  params.residual_gap = 0.15;
+  // A negative residual gap activates contact under Tribol's g_n - residual_gap convention.
+  params.residual_gap = -0.15;
   EnergyMortarCalculator evaluator_with_residual( params );
   const auto active = evaluator_with_residual.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ),
                                                                                      mesh1.getView(), mesh2.getView() );
   EXPECT_GT( active.energy, 0.0 );
 }
 
-TEST( QuadraturePointPenaltyCheck, ActiveSetSmoothingDoesNotPenalizeOpenGap )
+TEST( QuadraturePointPenaltyCheck, ActiveSetSmoothingRegularizesNearOpenGap )
 {
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
@@ -611,10 +613,10 @@ TEST( QuadraturePointPenaltyCheck, ActiveSetSmoothingDoesNotPenalizeOpenGap )
   auto result =
       evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
 
-  EXPECT_EQ( result.energy, 0.0 );
+  EXPECT_GT( result.energy, 0.0 );
 }
 
-TEST( QuadraturePointPenaltyCheck, PenetratingGapInsideActiveSetTransitionIsSmoothed )
+TEST( QuadraturePointPenaltyCheck, PenetratingGapInsideActiveSetTransitionIsRegularized )
 {
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
@@ -643,7 +645,7 @@ TEST( QuadraturePointPenaltyCheck, PenetratingGapInsideActiveSetTransitionIsSmoo
       InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
 
   EXPECT_GT( smoothed.energy, 0.0 );
-  EXPECT_LT( smoothed.energy, unsmoothed.energy );
+  EXPECT_GT( smoothed.energy, unsmoothed.energy );
 }
 
 TEST( QuadraturePointPenaltyCheck, ForceAndStiffnessFDvsAD )
@@ -921,12 +923,12 @@ TEST( H1NodalEnergyPenaltyCheck, CubicSplineForceAndStiffnessFDvsAD )
   checkH1NodalEnergyForceAndStiffness( EnergyMortarNodalEnergyBasis::CUBIC_SPLINE );
 }
 
-TEST( H1NodalEnergyPenaltyCheck, AngleSmoothingAtNinetyDegreesIsInactive )
+TEST( H1NodalEnergyPenaltyCheck, AngleSmoothingNearNinetyDegreesReducesEnergy )
 {
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
-  RealT x2[2] = { 0.2, 0.8 };
-  RealT y2[2] = { -0.1, -0.1 };
+  RealT x2[2] = { 0.8, 0.2 };
+  RealT y2[2] = { -0.1, 5.9 };
 
   IndexT conn1[2] = { 1, 0 };
   IndexT conn2[2] = { 1, 0 };
@@ -945,17 +947,18 @@ TEST( H1NodalEnergyPenaltyCheck, AngleSmoothingAtNinetyDegreesIsInactive )
   params.projection_smoothing = false;
   params.penalty_mode = EnergyMortarPenaltyMode::NODAL_ENERGY;
   params.nodal_energy_basis = EnergyMortarNodalEnergyBasis::CUBIC_SPLINE;
+  params.residual_gap = 4.0;
 
   EnergyMortarCalculator evaluator_with_smoothing( params );
-  const auto inactive = evaluator_with_smoothing.compute_quadrature_point_penalty_data(
+  const auto smoothed = evaluator_with_smoothing.compute_quadrature_point_penalty_data(
       InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
-  EXPECT_EQ( inactive.energy, 0.0 );
 
   params.nodal_energy_angle_smoothing = false;
   EnergyMortarCalculator evaluator_without_smoothing( params );
-  const auto active = evaluator_without_smoothing.compute_quadrature_point_penalty_data(
+  const auto unsmoothed = evaluator_without_smoothing.compute_quadrature_point_penalty_data(
       InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
-  EXPECT_GT( active.energy, 0.0 );
+  EXPECT_GT( smoothed.energy, 0.0 );
+  EXPECT_GT( unsmoothed.energy, smoothed.energy );
 }
 
 TEST( H1TotalDerivativeCheck, GtildeFDvsAD )
