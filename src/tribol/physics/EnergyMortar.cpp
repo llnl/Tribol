@@ -226,6 +226,29 @@ TRIBOL_ENZYME_INLINE void endpoints( const MeshData::Viewer& mesh, int elem_id, 
   P1[1] = P0_P1[3];
 }
 
+TRIBOL_ENZYME_INLINE void reference_endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], double P1[2] )
+{
+  SLIC_ERROR_ROOT_IF( !mesh.hasReferencePosition(),
+                      "ENERGY_MORTAR reference-geometry mode requires registered reference coordinates." );
+  const auto conn = mesh.getConnectivity()( elem_id );
+  const auto& x_ref = mesh.getReferencePosition();
+  P0[0] = x_ref[0][conn[0]];
+  P0[1] = x_ref[1][conn[0]];
+  P1[0] = x_ref[0][conn[1]];
+  P1[1] = x_ref[1][conn[1]];
+}
+
+TRIBOL_ENZYME_INLINE double inverse_iso_map_segment( const double* P0, const double* P1, const double* P )
+{
+  const double dx = P1[0] - P0[0];
+  const double dy = P1[1] - P0[1];
+  const double len2 = dx * dx + dy * dy;
+  SLIC_ERROR_ROOT_IF( len2 <= 0.0, "ENERGY_MORTAR reference-geometry mode found a degenerate segment." );
+  const double mid_x = 0.5 * ( P0[0] + P1[0] );
+  const double mid_y = 0.5 * ( P0[1] + P1[1] );
+  return ( ( P[0] - mid_x ) * dx + ( P[1] - mid_y ) * dy ) / len2;
+}
+
 TRIBOL_ENZYME_INLINE void endpoint_normals( const MeshData::Viewer& mesh, int elem_id, double N0[2], double N1[2] )
 {
   SLIC_ERROR_IF( !mesh.hasNodalNormals(), "ENERGY_MORTAR H1 normal mode requires nodal normals." );
@@ -504,6 +527,23 @@ TRIBOL_ENZYME_INLINE double quintic_smooth_bound_value_raw( double xi, double de
   return xi_hat;
 }
 
+TRIBOL_ENZYME_INLINE double cubic_in_bounds_smooth_bound_value_raw( double xi, double del )
+{
+  double xi_hat = xi;
+  if ( xi <= 0.0 ) {
+    xi_hat = 0.0;
+  } else if ( xi < del ) {
+    const double s = xi / del;
+    xi_hat = del * ( 2.0 * s * s - s * s * s );
+  } else if ( xi >= 1.0 ) {
+    xi_hat = 1.0;
+  } else if ( xi > 1.0 - del ) {
+    const double s = ( 1.0 - xi ) / del;
+    xi_hat = 1.0 - del * ( 2.0 * s * s - s * s * s );
+  }
+  return xi_hat;
+}
+
 TRIBOL_ENZYME_INLINE double smooth_bound_value_raw( double bound, double del,
                                                     EnergyMortarProjectionSmoothingCurve curve )
 {
@@ -513,9 +553,18 @@ TRIBOL_ENZYME_INLINE double smooth_bound_value_raw( double bound, double del,
     return bound;
   }
 
-  const double xi_hat = curve == EnergyMortarProjectionSmoothingCurve::QUADRATIC
-                            ? quadratic_smooth_bound_value_raw( xi, del )
-                            : quintic_smooth_bound_value_raw( xi, del );
+  double xi_hat = xi;
+  switch ( curve ) {
+    case EnergyMortarProjectionSmoothingCurve::QUADRATIC:
+      xi_hat = quadratic_smooth_bound_value_raw( xi, del );
+      break;
+    case EnergyMortarProjectionSmoothingCurve::CUBIC_IN_BOUNDS:
+      xi_hat = cubic_in_bounds_smooth_bound_value_raw( xi, del );
+      break;
+    case EnergyMortarProjectionSmoothingCurve::QUINTIC:
+      xi_hat = quintic_smooth_bound_value_raw( xi, del );
+      break;
+  }
 
   return xi_hat - 0.5;
 }
@@ -980,7 +1029,7 @@ struct QPPenaltyKernelData {
   Gparams qp{};
   bool eta_gap_scaling{ true };
   bool eta_angle_smoothing{ false };
-  double eta_angle_smoothing_start{ 1.3962634015954636 };
+  double eta_angle_smoothing_start{ 0.7853981633974483 };
 };
 
 TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double xiA, double w, const double* A0, const double* A1,
@@ -1752,6 +1801,69 @@ void EnergyMortarCalculator::compute_gtilde_and_area( const InterfacePair& pair,
   area[1] = ncd.AI[1];
 }
 
+void EnergyMortarCalculator::compute_reference_gtilde_and_area( const InterfacePair& pair,
+                                                                const MeshData::Viewer& mesh1,
+                                                                const MeshData::Viewer& mesh2, double gtilde[2],
+                                                                double area[2] ) const
+{
+  SLIC_ERROR_ROOT_IF( p_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL,
+                      "ENERGY_MORTAR reference-geometry mode is implemented only for element normals." );
+
+  double A0_ref[2], A1_ref[2], B0_ref[2], B1_ref[2];
+  reference_endpoints( mesh1, pair.m_element_id1, A0_ref, A1_ref );
+  reference_endpoints( mesh2, pair.m_element_id2, B0_ref, B1_ref );
+
+  double A0[2], A1[2], B0[2], B1[2];
+  endpoints( mesh1, pair.m_element_id1, A0, A1 );
+  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+
+  double nA_ref[2], nB_ref[2];
+  find_normal( A0_ref, A1_ref, nA_ref );
+  find_normal( B0_ref, B1_ref, nB_ref );
+  const double dot = nB_ref[0] * nA_ref[0] + nB_ref[1] * nA_ref[1];
+  const double eta = normal_gap_eta( dot, p_.eta_gap_scaling, p_.eta_angle_smoothing, p_.eta_angle_smoothing_start );
+  const double J_ref = line_jacobian( A0_ref, A1_ref );
+
+  double projs_raw[2];
+  get_projections( A0_ref, A1_ref, B0_ref, B1_ref, projs_raw );
+  const std::array<double, 2> projs{ projs_raw[0], projs_raw[1] };
+  const double bound_del = projection_bound_delta( p_.del, p_.projection_smoothing );
+  auto bounds = smoother_.bounds_from_projections( projs, bound_del );
+  auto smooth_bounds = p_.projection_smoothing
+                           ? smoother_.smooth_bounds( bounds, bound_del, p_.projection_smoothing_curve )
+                           : bounds;
+  auto qp = compute_quadrature( smooth_bounds, p_.N );
+
+  gtilde[0] = 0.0;
+  gtilde[1] = 0.0;
+  area[0] = 0.0;
+  area[1] = 0.0;
+
+  for ( size_t i = 0; i < qp.qp.size(); ++i ) {
+    const double xiA = qp.qp[i];
+    const double w = qp.w[i];
+    const double N1 = 0.5 - xiA;
+    const double N2 = 0.5 + xiA;
+
+    double xA_ref[2], xB_ref[2], xA[2], xB[2];
+    iso_map( A0_ref, A1_ref, xiA, xA_ref );
+    find_intersection( B0_ref, B1_ref, xA_ref, nB_ref, xB_ref );
+    const double xiB = inverse_iso_map_segment( B0_ref, B1_ref, xB_ref );
+    iso_map( A0, A1, xiA, xA );
+    iso_map( B0, B1, xiB, xB );
+
+    const double dx = xA[0] - xB[0];
+    const double dy = xA[1] - xB[1];
+    const double gn = -( dx * nB_ref[0] + dy * nB_ref[1] );
+    const double gap = eta * ( gn - p_.residual_gap );
+
+    gtilde[0] += w * N1 * gap * J_ref;
+    gtilde[1] += w * N2 * gap * J_ref;
+    area[0] += w * N1 * J_ref;
+    area[1] += w * N2 * J_ref;
+  }
+}
+
 // Compute derivatives of the two nodal smoothed gaps with respect to the endpoint coordinates.
 void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                           const MeshData::Viewer& mesh2, double dgt1_dx[8], double dgt2_dx[8] ) const
@@ -1788,6 +1900,64 @@ void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshD
   for ( int i = 0; i < 8; ++i ) {
     dgt1_dx[i] = dg1_du[i];
     dgt2_dx[i] = dg2_du[i];
+  }
+}
+
+void EnergyMortarCalculator::grad_reference_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                    const MeshData::Viewer& mesh2, double dgt1_dx[8],
+                                                    double dgt2_dx[8] ) const
+{
+  SLIC_ERROR_ROOT_IF( p_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL,
+                      "ENERGY_MORTAR reference-geometry mode is implemented only for element normals." );
+
+  for ( int i = 0; i < 8; ++i ) {
+    dgt1_dx[i] = 0.0;
+    dgt2_dx[i] = 0.0;
+  }
+
+  double A0_ref[2], A1_ref[2], B0_ref[2], B1_ref[2];
+  reference_endpoints( mesh1, pair.m_element_id1, A0_ref, A1_ref );
+  reference_endpoints( mesh2, pair.m_element_id2, B0_ref, B1_ref );
+
+  double nA_ref[2], nB_ref[2];
+  find_normal( A0_ref, A1_ref, nA_ref );
+  find_normal( B0_ref, B1_ref, nB_ref );
+  const double dot = nB_ref[0] * nA_ref[0] + nB_ref[1] * nA_ref[1];
+  const double eta = normal_gap_eta( dot, p_.eta_gap_scaling, p_.eta_angle_smoothing, p_.eta_angle_smoothing_start );
+  const double J_ref = line_jacobian( A0_ref, A1_ref );
+
+  double projs_raw[2];
+  get_projections( A0_ref, A1_ref, B0_ref, B1_ref, projs_raw );
+  const std::array<double, 2> projs{ projs_raw[0], projs_raw[1] };
+  const double bound_del = projection_bound_delta( p_.del, p_.projection_smoothing );
+  auto bounds = smoother_.bounds_from_projections( projs, bound_del );
+  auto smooth_bounds = p_.projection_smoothing
+                           ? smoother_.smooth_bounds( bounds, bound_del, p_.projection_smoothing_curve )
+                           : bounds;
+  auto qp = compute_quadrature( smooth_bounds, p_.N );
+
+  for ( size_t i = 0; i < qp.qp.size(); ++i ) {
+    const double xiA = qp.qp[i];
+    const double w = qp.w[i];
+    const double NA[2] = { 0.5 - xiA, 0.5 + xiA };
+    double xA_ref[2], xB_ref[2];
+    iso_map( A0_ref, A1_ref, xiA, xA_ref );
+    find_intersection( B0_ref, B1_ref, xA_ref, nB_ref, xB_ref );
+    const double xiB = inverse_iso_map_segment( B0_ref, B1_ref, xB_ref );
+    const double NB[2] = { 0.5 - xiB, 0.5 + xiB };
+
+    for ( int node = 0; node < 2; ++node ) {
+      double* dgt = node == 0 ? dgt1_dx : dgt2_dx;
+      const double weight = w * NA[node] * eta * J_ref;
+      dgt[0] += -weight * NA[0] * nB_ref[0];
+      dgt[1] += -weight * NA[0] * nB_ref[1];
+      dgt[2] += -weight * NA[1] * nB_ref[0];
+      dgt[3] += -weight * NA[1] * nB_ref[1];
+      dgt[4] += weight * NB[0] * nB_ref[0];
+      dgt[5] += weight * NB[0] * nB_ref[1];
+      dgt[6] += weight * NB[1] * nB_ref[0];
+      dgt[7] += weight * NB[1] * nB_ref[1];
+    }
   }
 }
 

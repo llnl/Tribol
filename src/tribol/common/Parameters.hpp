@@ -136,8 +136,9 @@ enum class EnergyMortarNormalMode
  */
 enum class EnergyMortarProjectionSmoothingCurve
 {
-  QUADRATIC,  ///! Use the original C1 quadratic projection smoothing map
-  QUINTIC,    ///! Use a C2 quintic-smoothstep projection smoothing map
+  QUADRATIC,        ///! Use the original C1 quadratic projection smoothing map
+  QUINTIC,          ///! Use a C2 quintic-smoothstep projection smoothing map
+  CUBIC_IN_BOUNDS,  ///! Use C1 cubic endpoint smoothing that maps bounds into the element
 };
 
 /*!
@@ -571,6 +572,8 @@ struct Parameters {
       true;  ///! Differentiate gap-based QP derivative blend weight with Enzyme
   bool energy_mortar_qp_frozen_integration =
       false;  ///! Use cached quadrature points, weights, and integration Jacobian for simplified QP penalty blend
+  bool energy_mortar_reference_geometry =
+      false;  ///! Use reference geometry for ENERGY_MORTAR Lagrange multiplier operators
   EnergyMortarPenaltyMode energy_mortar_penalty_mode =
       EnergyMortarPenaltyMode::NODAL_GAP;  ///! Penalty enforcement mode used by ENERGY_MORTAR
   EnergyMortarNodalEnergyBasis energy_mortar_nodal_energy_basis =
@@ -580,7 +583,7 @@ struct Parameters {
   bool energy_mortar_eta_angle_smoothing =
       false;  ///! Smooth ENERGY_MORTAR eta to zero near 90 degrees when eta gap scaling is disabled
   RealT energy_mortar_eta_angle_smoothing_start =
-      1.3962634015954636;  ///! Eta angle-smoothing start angle in radians
+      0.7853981633974483;  ///! Eta angle-smoothing start angle in radians
   bool energy_mortar_nodal_energy_angle_smoothing =
       true;                  ///! Apply 80-to-90 degree angle smoothing in ENERGY_MORTAR NODAL_ENERGY mode
   RealT residual_gap = 0.0;  ///! User defined residual gap constraint

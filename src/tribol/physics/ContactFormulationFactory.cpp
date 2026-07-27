@@ -54,6 +54,7 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
         cs->getParameters().energy_mortar_qp_derivative_blend_weight,
         cs->getParameters().energy_mortar_qp_derivative_blend_enzyme_gap_weight,
         cs->getParameters().energy_mortar_qp_frozen_integration,
+        cs->getParameters().energy_mortar_reference_geometry,
         cs->getParameters().energy_mortar_penalty_mode,
         cs->getParameters().energy_mortar_nodal_energy_basis,
         cs->getParameters().energy_mortar_eta_gap_scaling,

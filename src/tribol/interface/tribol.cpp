@@ -263,6 +263,21 @@ void setEnergyMortarQpFrozenIntegration( IndexT cs_id, bool enabled )
 }
 
 //------------------------------------------------------------------------------
+void setEnergyMortarReferenceGeometry( IndexT cs_id, bool enabled )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarReferenceGeometry(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  auto& params = cs->getParameters();
+  params.energy_mortar_reference_geometry = enabled;
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarReferenceGeometry( enabled );
+  }
+}
+
+//------------------------------------------------------------------------------
 void updateEnergyMortarQpFrozenIntegrationData( IndexT cs_id )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );

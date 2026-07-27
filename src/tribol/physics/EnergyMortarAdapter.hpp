@@ -63,10 +63,11 @@ class EnergyMortarAdapter : public ContactFormulation {
                        double qp_derivative_blend_min_gap = 0.0, double qp_derivative_blend_max_gap = 0.0,
                        double qp_derivative_blend_weight = -1.0,
                        bool qp_derivative_blend_enzyme_gap_weight = true, bool qp_frozen_integration = false,
+                       bool reference_geometry = false,
                        EnergyMortarPenaltyMode penalty_mode = EnergyMortarPenaltyMode::NODAL_GAP,
                        EnergyMortarNodalEnergyBasis nodal_energy_basis = EnergyMortarNodalEnergyBasis::CUBIC_SPLINE,
                        bool eta_gap_scaling = true, bool eta_angle_smoothing = false,
-                       RealT eta_angle_smoothing_start = 1.3962634015954636,
+                       RealT eta_angle_smoothing_start = 0.7853981633974483,
                        bool nodal_energy_angle_smoothing = true, RealT residual_gap = 0.0 );
 
   /**
@@ -225,6 +226,7 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @param enabled True to use cached quadrature points, weights, and integration Jacobian
    */
   void updateEnergyMortarQpFrozenIntegration( bool enabled ) override;
+  void updateEnergyMortarReferenceGeometry( bool enabled ) override;
 
   /**
    * @brief Cache QP integration data for the current active pairs and coordinates

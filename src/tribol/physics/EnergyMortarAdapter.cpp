@@ -567,6 +567,7 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
                                           double h1_active_set_smoothing_gap, double qp_derivative_blend_min_gap,
                                           double qp_derivative_blend_max_gap, double qp_derivative_blend_weight,
                                           bool qp_derivative_blend_enzyme_gap_weight, bool qp_frozen_integration,
+                                          bool reference_geometry,
                                           EnergyMortarPenaltyMode penalty_mode,
                                           EnergyMortarNodalEnergyBasis nodal_energy_basis,
                                           bool eta_gap_scaling, bool eta_angle_smoothing,
@@ -593,6 +594,7 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
   params_.qp_derivative_blend_weight = qp_derivative_blend_weight;
   params_.qp_derivative_blend_enzyme_gap_weight = qp_derivative_blend_enzyme_gap_weight;
   params_.qp_frozen_integration = qp_frozen_integration;
+  params_.reference_geometry = reference_geometry;
   params_.penalty_mode = penalty_mode;
   params_.nodal_energy_basis = nodal_energy_basis;
   params_.eta_gap_scaling = eta_gap_scaling;
@@ -692,6 +694,12 @@ void EnergyMortarAdapter::updateEnergyMortarQpFrozenIntegration( bool enabled )
   if ( !enabled ) {
     qp_frozen_integration_data_.clear();
   }
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+}
+
+void EnergyMortarAdapter::updateEnergyMortarReferenceGeometry( bool enabled )
+{
+  params_.reference_geometry = enabled;
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 }
 
@@ -819,6 +827,10 @@ void EnergyMortarAdapter::updateNodalGaps()
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
   SLIC_ERROR_ROOT_IF( mesh1_ == nullptr || mesh2_ == nullptr, "ENERGY_MORTAR meshes not set." );
+  SLIC_ERROR_ROOT_IF( params_.reference_geometry && use_penalty_,
+                      "ENERGY_MORTAR reference-geometry mode is supported only for Lagrange multiplier enforcement." );
+  SLIC_ERROR_ROOT_IF( params_.reference_geometry && params_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL,
+                      "ENERGY_MORTAR reference-geometry mode is supported only for element normals." );
   if ( params_.normal_mode == EnergyMortarNormalMode::H1_NODAL_NORMAL ) {
     ReferenceScaledEdgeAvgNodalNormal2D normal_method;
     normal_method.Compute( *mesh1_ );
@@ -874,7 +886,11 @@ void EnergyMortarAdapter::updateNodalGaps()
     double g_tilde_elem[2];
     double A_elem[2];
 
-    evaluator_->compute_gtilde_and_area( flipped_pair, mesh1_view, mesh2_view, g_tilde_elem, A_elem );
+    if ( params_.reference_geometry ) {
+      evaluator_->compute_reference_gtilde_and_area( flipped_pair, mesh1_view, mesh2_view, g_tilde_elem, A_elem );
+    } else {
+      evaluator_->compute_gtilde_and_area( flipped_pair, mesh1_view, mesh2_view, g_tilde_elem, A_elem );
+    }
 
     if ( A_elem[0] <= 0.0 && A_elem[1] <= 0.0 ) {
       continue;
@@ -893,7 +909,11 @@ void EnergyMortarAdapter::updateNodalGaps()
     double dg_dx_node1[8];
     double dg_dx_node2[8];
     // TODO: make grad_gtilde return directly in dg_tilde_dx_blocks format
-    evaluator_->grad_gtilde( flipped_pair, mesh1_view, mesh2_view, dg_dx_node1, dg_dx_node2 );
+    if ( params_.reference_geometry ) {
+      evaluator_->grad_reference_gtilde( flipped_pair, mesh1_view, mesh2_view, dg_dx_node1, dg_dx_node2 );
+    } else {
+      evaluator_->grad_gtilde( flipped_pair, mesh1_view, mesh2_view, dg_dx_node1, dg_dx_node2 );
+    }
     double dg_tilde_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
       dg_tilde_dx_blocks[0][i * 2] = dg_dx_node1[node_idx[i]];
@@ -904,10 +924,12 @@ void EnergyMortarAdapter::updateNodalGaps()
     dg_lm_nm.append( elem1, elem1, dg_tilde_dx_blocks[0], 8 );
     dg_lm_m.append( elem1, elem2, dg_tilde_dx_blocks[1], 8 );
 
-    double dA_dx_node1[8];
-    double dA_dx_node2[8];
+    double dA_dx_node1[8]{};
+    double dA_dx_node2[8]{};
     // TODO: make grad_trib_area return directly in dA_dx_blocks format
-    evaluator_->grad_trib_area( flipped_pair, mesh1_view, mesh2_view, dA_dx_node1, dA_dx_node2 );
+    if ( !params_.reference_geometry ) {
+      evaluator_->grad_trib_area( flipped_pair, mesh1_view, mesh2_view, dA_dx_node1, dA_dx_node2 );
+    }
     double dA_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
       dA_dx_blocks[0][i * 2] = dA_dx_node1[node_idx[i]];
@@ -1326,6 +1348,10 @@ shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesLM( const 
   auto mesh2_view = mesh2_->getView();
 
   for ( auto& pair : pairs_ ) {
+    if ( params_.reference_geometry ) {
+      continue;
+    }
+
     InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
     const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
     const auto node11 = mesh1_view.getConnectivity()( elem1, 0 );

@@ -36,12 +36,13 @@ struct ContactParams {
   double qp_derivative_blend_weight{ -1.0 };  // Fixed full-path blend weight; disabled when negative
   bool qp_derivative_blend_enzyme_gap_weight{ true };  // Differentiate gap-based QP blend weight with Enzyme
   bool qp_frozen_integration{ false };         // Use cached integration data for the simplified QP blend path
+  bool reference_geometry{ false };            // Use reference geometry for LM gap/projection operators
   EnergyMortarPenaltyMode penalty_mode{ EnergyMortarPenaltyMode::NODAL_GAP };  // Penalty enforcement mode
   EnergyMortarNodalEnergyBasis nodal_energy_basis{
       EnergyMortarNodalEnergyBasis::CUBIC_SPLINE };  // Basis used by NODAL_ENERGY mode
   bool eta_gap_scaling{ true };                       // Scale normal gap by eta, the surface-normal dot product
   bool eta_angle_smoothing{ false };                  // Smooth eta to zero near 90 degrees when eta scaling is disabled
-  double eta_angle_smoothing_start{ 1.3962634015954636 };  // Eta smoothing start angle in radians
+  double eta_angle_smoothing_start{ 0.7853981633974483 };  // Eta smoothing start angle in radians
   bool nodal_energy_angle_smoothing{ true };         // Apply 80-to-90 degree angle smoothing in NODAL_ENERGY mode
   double residual_gap{ 0.0 };                        // User-defined gap offset
 };
@@ -115,7 +116,7 @@ struct Gparams {
   double residual_gap{ 0.0 };
   bool eta_gap_scaling{ true };
   bool eta_angle_smoothing{ false };
-  double eta_angle_smoothing_start{ 1.3962634015954636 };
+  double eta_angle_smoothing_start{ 0.7853981633974483 };
 };
 
 /// Stores total derivative data for the H1 nodal-normal EnergyMortar path.
@@ -153,7 +154,7 @@ struct H1KernelData {
   EnergyMortarNodalEnergyBasis nodal_energy_basis{ EnergyMortarNodalEnergyBasis::CUBIC_SPLINE };
   bool eta_gap_scaling{ true };
   bool eta_angle_smoothing{ false };
-  double eta_angle_smoothing_start{ 1.3962634015954636 };
+  double eta_angle_smoothing_start{ 0.7853981633974483 };
   bool nodal_energy_angle_smoothing{ true };
   int num_nodes1{ 0 };
   int num_nodes2{ 0 };
@@ -229,6 +230,9 @@ class EnergyMortarCalculator {
   void compute_gtilde_and_area( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                                 double gtilde[2], double area[2] ) const;
 
+  void compute_reference_gtilde_and_area( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                          const MeshData::Viewer& mesh2, double gtilde[2], double area[2] ) const;
+
   /// Compute first derivatives of the nodal smoothed gap integrals.
   ///
   /// `dgt1_dx` and `dgt2_dx` each have length 8 and store derivatives of the
@@ -238,6 +242,9 @@ class EnergyMortarCalculator {
   /// derivative includes the geometry-dependent quadrature construction.
   void grad_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                     double dgt1_dx[8], double dgt2_dx[8] ) const;
+
+  void grad_reference_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+                              double dgt1_dx[8], double dgt2_dx[8] ) const;
 
   /// Compute first derivatives of the nodal tributary areas.
   ///

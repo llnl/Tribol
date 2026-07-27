@@ -55,7 +55,7 @@ struct Options {
   bool swap_mortar_nonmortar{ false };
   bool eta_gap_scaling{ true };
   bool eta_angle_smoothing{ false };
-  double eta_angle_smoothing_start_angle{ 80.0 };
+  double eta_angle_smoothing_start_angle{ 45.0 };
   std::string projection_smoothing_curve{ "quintic" };
   bool nodal_energy_angle_smoothing{ true };
   double fd_step{ 1.0e-5 };
@@ -119,7 +119,7 @@ void printUsage( const char* prog )
             << "  --eta-angle-smoothing 0|1      Smooth eta to zero near 90 degrees when eta gap scaling is off "
                "(default: 0)\n"
             << "  --eta-angle-smoothing-start-angle VALUE\n"
-            << "                                 Eta smoothing start angle in degrees; smoothing ends at 90 (default: 80)\n"
+            << "                                 Eta smoothing start angle in degrees; smoothing ends at 90 (default: 45)\n"
             << "  --projection-smoothing-curve quadratic|quintic\n"
             << "                                 Projection-bound smoothing curve (default: quintic)\n"
             << "  --angle-smoothing 0|1          NODAL_ENERGY angle smoothing (default: 1)\n"

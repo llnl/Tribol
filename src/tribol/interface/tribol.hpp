@@ -163,6 +163,17 @@ void setEnergyMortarQpDerivativeBlendEnzymeGapWeight( IndexT cs_id, bool enabled
 void setEnergyMortarQpFrozenIntegration( IndexT cs_id, bool enabled );
 
 /*!
+ * \brief Sets whether ENERGY_MORTAR uses reference geometry for LM operators
+ *
+ * This mode is intended for small-deformation Lagrange multiplier contact. Reference coordinates are used for
+ * projection bounds, normals, quadrature, and area weights; current coordinates are used only in the normal gap value.
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] enabled true to use reference geometry
+ */
+void setEnergyMortarReferenceGeometry( IndexT cs_id, bool enabled );
+
+/*!
  * \brief Refreshes cached integration data for ENERGY_MORTAR QP derivative blending
  *
  * The cache is built from the current active interface pairs and coordinates. For timestep-lagged integration,

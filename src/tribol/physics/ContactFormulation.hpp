@@ -180,6 +180,7 @@ class ContactFormulation {
    * @brief Update whether ENERGY_MORTAR QP derivative blending uses cached simplified-path integration data
    */
   virtual void updateEnergyMortarQpFrozenIntegration( bool /*enabled*/ ) {}
+  virtual void updateEnergyMortarReferenceGeometry( bool /*enabled*/ ) {}
 
   /**
    * @brief Cache ENERGY_MORTAR QP integration data for the current interface pairs and coordinates
