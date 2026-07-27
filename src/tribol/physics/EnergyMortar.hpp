@@ -23,6 +23,14 @@ struct ContactParams {
   double k;                // Penalty
   int N;                   // Quadrature Points
   bool enzyme_quadrature;  // Determines how enzyming is performed (default = True)
+  EnergyMortarPenaltyMode penalty_mode{ EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP };  // Penalty enforcement mode
+};
+
+/// Stores quadrature-point penalty energy derivatives for one interface pair.
+struct QuadraturePointPenaltyData {
+  double energy{ 0.0 };
+  std::array<double, 8> force{};
+  std::array<double, 64> stiffness{};
 };
 
 // Weighted gap and trib area
@@ -169,6 +177,15 @@ class EnergyMortarCalculator {
   /// derivative includes the geometry-dependent quadrature construction.
   void compute_d2A_d2u( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                         double dgt1_dx[64], double dgt2_dx[64] ) const;
+
+  /// Compute local energy, force, and stiffness for quadrature-point penalty enforcement.
+  QuadraturePointPenaltyData compute_quadrature_point_penalty_data( const InterfacePair& pair,
+                                                                    const MeshData::Viewer& mesh1,
+                                                                    const MeshData::Viewer& mesh2 ) const;
+
+  /// Evaluate only the local quadrature-point penalty energy.
+  double compute_quadrature_point_penalty_energy( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                  const MeshData::Viewer& mesh2 ) const;
 
   /// Evaluate and return the two nodal smoothed gap integrals.
   ///

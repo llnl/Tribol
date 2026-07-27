@@ -50,7 +50,8 @@ class EnergyMortarAdapter : public ContactFormulation {
    * relative to the order of the meshes provided here.
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k,
-                       double delta, int N, bool enzyme_quadrature, bool use_penalty = true );
+                       double delta, int N, bool enzyme_quadrature, bool use_penalty = true,
+                       EnergyMortarPenaltyMode penalty_mode = EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP );
 
   /**
    * @brief Default destructor
@@ -131,6 +132,13 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @param mesh2_penalty Penalty stiffness for mesh 2.
    */
   void updateConstantPenaltyStiffness( double mesh1_penalty, double mesh2_penalty ) override;
+
+  /**
+   * @brief Update the EnergyMortar penalty mode
+   *
+   * @param mode Penalty mode
+   */
+  void updateEnergyMortarPenaltyMode( EnergyMortarPenaltyMode mode ) override;
 
 #ifdef BUILD_REDECOMP
   /**
@@ -333,6 +341,11 @@ class EnergyMortarAdapter : public ContactFormulation {
   shared::ParSparseMat computeDfDxSecondDerivativesPenalty( const mfem::GridFunction& redecomp_pressure,
                                                             const mfem::GridFunction& redecomp_g_tilde,
                                                             const mfem::GridFunction& redecomp_A );
+
+  /**
+   * @brief Assemble QP-gap penalty force and Jacobian contributions
+   */
+  void updateQuadraturePointPenaltyForces();
 };
 
 #endif  // TRIBOL_USE_ENZYME

@@ -13,7 +13,8 @@ namespace tribol {
 
 EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
                                           MfemJacobianData& jac_data, double k, double delta, int N,
-                                          bool enzyme_quadrature, bool use_penalty )
+                                          bool enzyme_quadrature, bool use_penalty,
+                                          EnergyMortarPenaltyMode penalty_mode )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
     : use_penalty_( use_penalty ), mesh_data_( mesh_data ), submesh_data_( submesh_data ), jac_data_( jac_data )
@@ -22,6 +23,7 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
   params_.del = delta;
   params_.N = N;
   params_.enzyme_quadrature = enzyme_quadrature;
+  params_.penalty_mode = penalty_mode;
 
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 
@@ -43,6 +45,13 @@ void EnergyMortarAdapter::updateConstantPenaltyStiffness( double mesh1_penalty, 
 {
   use_penalty_ = true;
   params_.k = 0.5 * ( mesh1_penalty + mesh2_penalty );
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+}
+
+void EnergyMortarAdapter::updateEnergyMortarPenaltyMode( EnergyMortarPenaltyMode mode )
+{
+  params_.penalty_mode = mode;
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 }
 
 const mfem::HypreParVector& EnergyMortarAdapter::getMfemGap() const
@@ -211,6 +220,11 @@ void EnergyMortarAdapter::updateNodalForces()
   // NOTE: user should have called updateNodalGaps() with updated coords before calling this
 
   if ( use_penalty_ ) {
+    if ( params_.penalty_mode == EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP ) {
+      updateQuadraturePointPenaltyForces();
+      return;
+    }
+
     // Penalty mode: p = k * (g_tilde / A)
     pressure_vec_ = params_.k * gap_vec_;
   } else {
@@ -450,6 +464,97 @@ shared::ParSparseMat EnergyMortarAdapter::computeDfDxSecondDerivativesPenalty(
   df_contribs.push_back( std::move( df_m_m ) );
   return jac_data_.GetMfemJacobian( mesh_data_.GetParentCoords().ParFESpace(),
                                     mesh_data_.GetParentCoords().ParFESpace(), df_contribs );
+}
+
+void EnergyMortarAdapter::updateQuadraturePointPenaltyForces()
+{
+  const bool use_lor = ( mesh_data_.GetLORMesh() != nullptr );
+  const auto& displacement_surface_fes = use_lor ? *mesh_data_.GetLORMeshFESpace() : mesh_data_.GetSubmeshFESpace();
+  const auto& displacement_redecomp_fes = *mesh_data_.GetRedecompResponse().FESpace();
+  const auto& mortar_elem_map = mesh_data_.GetElemMap1();
+  const auto& nonmortar_elem_map = mesh_data_.GetElemMap2();
+
+  PackedPairJacobianContribs df_nm_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                       displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
+  PackedPairJacobianContribs df_nm_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                      displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
+  PackedPairJacobianContribs df_m_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                      displacement_redecomp_fes, mortar_elem_map, nonmortar_elem_map );
+  PackedPairJacobianContribs df_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                     displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
+
+  df_nm_nm.reserve( pairs_.size(), 16 );
+  df_nm_m.reserve( pairs_.size(), 16 );
+  df_m_nm.reserve( pairs_.size(), 16 );
+  df_m_m.reserve( pairs_.size(), 16 );
+
+  mfem::GridFunction redecomp_force( const_cast<mfem::FiniteElementSpace*>( &displacement_redecomp_fes ) );
+  redecomp_force = 0.0;
+  const int scalar_size = redecomp_force.FESpace()->GetVSize() / redecomp_force.FESpace()->GetVDim();
+  energy_ = 0.0;
+
+  const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
+
+  SLIC_ERROR_ROOT_IF( mesh1_ == nullptr || mesh2_ == nullptr, "ENERGY_MORTAR meshes not set." );
+  auto mesh1_view = mesh1_->getView();
+  auto mesh2_view = mesh2_->getView();
+
+  for ( const auto& pair : pairs_ ) {
+    InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
+    const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
+    const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
+    const auto qp_data = evaluator_->compute_quadrature_point_penalty_data( flipped_pair, mesh1_view, mesh2_view );
+
+    if ( qp_data.energy == 0.0 ) {
+      continue;
+    }
+
+    energy_ += qp_data.energy;
+
+    auto A_conn = mesh1_view.getConnectivity()( elem1 );
+    auto B_conn = mesh2_view.getConnectivity()( elem2 );
+    redecomp_force( A_conn[0] ) += qp_data.force[0];
+    redecomp_force( scalar_size + A_conn[0] ) += qp_data.force[1];
+    redecomp_force( A_conn[1] ) += qp_data.force[2];
+    redecomp_force( scalar_size + A_conn[1] ) += qp_data.force[3];
+    redecomp_force( B_conn[0] ) += qp_data.force[4];
+    redecomp_force( scalar_size + B_conn[0] ) += qp_data.force[5];
+    redecomp_force( B_conn[1] ) += qp_data.force[6];
+    redecomp_force( scalar_size + B_conn[1] ) += qp_data.force[7];
+
+    double df_dx_blocks[2][2][16];
+    for ( int i{ 0 }; i < 2; ++i ) {
+      for ( int j{ 0 }; j < 2; ++j ) {
+        for ( int k{ 0 }; k < 4; ++k ) {
+          for ( int l{ 0 }; l < 4; ++l ) {
+            const auto idx = node_idx[l + i * 4] + node_idx[k + j * 4] * 8;
+            df_dx_blocks[i][j][l + k * 4] = qp_data.stiffness[idx];
+          }
+        }
+      }
+    }
+
+    df_nm_nm.append( elem1, elem1, df_dx_blocks[0][0], 16 );
+    df_nm_m.append( elem1, elem2, df_dx_blocks[0][1], 16 );
+    df_m_nm.append( elem2, elem1, df_dx_blocks[1][0], 16 );
+    df_m_m.append( elem2, elem2, df_dx_blocks[1][1], 16 );
+  }
+
+  auto* parent_fes = mesh_data_.GetParentCoords().ParFESpace();
+  force_vec_ = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( parent_fes ) );
+  force_vec_.fill( 0.0 );
+  mfem::Vector parent_force( parent_fes->GetVSize() );
+  parent_force = 0.0;
+  mesh_data_.GetParentRedecompTransfer().RedecompToParent( redecomp_force, parent_force );
+  parent_fes->GetProlongationMatrix()->MultTranspose( parent_force, force_vec_.get() );
+
+  std::vector<PackedPairJacobianContribs> df_contribs;
+  df_contribs.reserve( 4 );
+  df_contribs.push_back( std::move( df_nm_nm ) );
+  df_contribs.push_back( std::move( df_nm_m ) );
+  df_contribs.push_back( std::move( df_m_nm ) );
+  df_contribs.push_back( std::move( df_m_m ) );
+  df_dx_ = jac_data_.GetMfemJacobian( parent_fes, parent_fes, df_contribs );
 }
 
 std::unique_ptr<mfem::HypreParMatrix> EnergyMortarAdapter::getMfemDfDx() const

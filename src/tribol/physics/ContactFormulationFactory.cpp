@@ -45,7 +45,7 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
 
     return std::make_unique<EnergyMortarAdapter>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
                                                   *cs->getMfemJacobianData(), k, delta, N, enzyme_quadrature,
-                                                  use_penalty_ );
+                                                  use_penalty_, cs->getParameters().energy_mortar_penalty_mode );
 #else
     SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );
     return nullptr;

@@ -132,6 +132,14 @@ void setAutoContactPenScale( IndexT cs_id, RealT scale );
 void setTimestepPenFrac( IndexT cs_id, RealT frac );
 
 /*!
+ * \brief Sets the penalty enforcement mode for ENERGY_MORTAR
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] mode penalty mode
+ */
+void setEnergyMortarPenaltyMode( IndexT cs_id, EnergyMortarPenaltyMode mode );
+
+/*!
  *
  * \brief sets the timestep scale factor applied to the timestep vote
  *

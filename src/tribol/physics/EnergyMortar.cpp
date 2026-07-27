@@ -19,9 +19,15 @@ namespace {
 // This MUST match what the ContactParams struct has in EnergyMortarAdapter
 // Theese had to be saved locally in order for enzyme to work correctly
 struct KernelParams {
-  int N = 3;         // No. of quadrature points
-  double del = 0.1;  // Smoothing parameter
+  int N{ 3 };         // No. of quadrature points
+  double del{ 0.1 };  // Smoothing parameter
+  double k{ 1.0 };    // Penalty stiffness
 };
+
+TRIBOL_ENZYME_INLINE double line_jacobian( const double* A0, const double* A1 )
+{
+  return std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
+}
 
 // Compute a unit normal vector for the line segment from coord1 to coord2
 TRIBOL_ENZYME_INLINE void find_normal( const double* coord1, const double* coord2, double* normal )
@@ -386,9 +392,9 @@ void grad_kernel( const double* x, const Gparams* gp, double* dout_du )
 
 // Wrap the varying-quadrature kernel as a scalar-valued function for Enzyme.
 template <KernelOutput Output>
-static void kernel_out_enzyme( const double* x, double* out )
+static void kernel_out_enzyme( const double* x, const void* kp_void, double* out )
 {
-  KernelParams kp;
+  const KernelParams* kp = static_cast<const KernelParams*>( kp_void );
   // x stores the two endpoints of edge A followed by the two endpoints of edge B.
   double A0[2], A1[2], B0[2], B1[2];
   A0[0] = x[0];
@@ -405,10 +411,10 @@ static void kernel_out_enzyme( const double* x, double* out )
   std::array<double, 2> projections = { projs[0], projs[1] };
 
   // Recompute the integration bounds and quadrature from the current geometry.
-  auto bounds = ContactSmoothing::bounds_from_projections( projections, kp.del );
-  auto xi_bounds = ContactSmoothing::smooth_bounds( bounds, kp.del );
+  auto bounds = ContactSmoothing::bounds_from_projections( projections, kp->del );
+  auto xi_bounds = ContactSmoothing::smooth_bounds( bounds, kp->del );
 
-  auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, kp.N );
+  auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, kp->N );
 
   Gparams gp;
   for ( std::size_t i = 0; i < qp.qp.size(); ++i ) {
@@ -433,14 +439,15 @@ static void kernel_out_enzyme( const double* x, double* out )
 
 // Differentiate the selected varying-quadrature scalar kernel with respect to the 8 endpoint coordinates.
 template <KernelOutput Output>
-void grad_kernel_enzyme( const double* x, double* dout_du )
+void grad_kernel_enzyme( const double* x, const KernelParams* kp, double* dout_du )
 {
   double dx[8] = { 0.0 };
   double out = 0.0;
   double dout = 1.0;
 
   // Seed the scalar output with 1.0 so Enzyme accumulates dOutput/dx into dx.
-  __enzyme_autodiff<void>( (void*)kernel_out_enzyme<Output>, enzyme_dup, x, dx, enzyme_dup, &out, &dout );
+  __enzyme_autodiff<void>( (void*)kernel_out_enzyme<Output>, enzyme_dup, x, dx, enzyme_const, (const void*)kp,
+                           enzyme_dup, &out, &dout );
 
   for ( int i = 0; i < 8; ++i ) {
     dout_du[i] = dx[i];
@@ -449,7 +456,7 @@ void grad_kernel_enzyme( const double* x, double* dout_du )
 
 // Compute the Hessian of the selected varying-quadrature scalar kernel.
 template <KernelOutput Output>
-void d2_kernel( const double* x, double* H )
+void d2_kernel( const double* x, const KernelParams* kp, double* H )
 {
   for ( int col = 0; col < 8; ++col ) {
     double dx[8] = { 0.0 };
@@ -459,9 +466,79 @@ void d2_kernel( const double* x, double* H )
     double dgrad[8] = { 0.0 };
 
     // Differentiate the gradient in coordinate direction col to form one Hessian column.
-    __enzyme_fwddiff<void>( (void*)grad_kernel_enzyme<Output>, enzyme_dup, x, dx, enzyme_dup, grad, dgrad );
+    __enzyme_fwddiff<void>( (void*)grad_kernel_enzyme<Output>, enzyme_dup, x, dx, enzyme_const, (const void*)kp,
+                            enzyme_dup, grad, dgrad );
 
     for ( int row = 0; row < 8; ++row ) H[row * 8 + col] = dgrad[row];
+  }
+}
+
+TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams* kp, double* energy )
+{
+  double A0[2] = { x[0], x[1] };
+  double A1[2] = { x[2], x[3] };
+  double B0[2] = { x[4], x[5] };
+  double B1[2] = { x[6], x[7] };
+
+  double projs[2] = { 0.0, 0.0 };
+  get_projections( A0, A1, B0, B1, projs );
+  const std::array<double, 2> projections{ projs[0], projs[1] };
+  const auto bounds = ContactSmoothing::bounds_from_projections( projections, kp->del );
+  const auto xi_bounds = ContactSmoothing::smooth_bounds( bounds, kp->del );
+  const auto qp = EnergyMortarCalculator::compute_quadrature( xi_bounds, kp->N );
+
+  double nB[2];
+  find_normal( B0, B1, nB );
+  double nA[2];
+  find_normal( A0, A1, nA );
+  const double eta = nA[0] * nB[0] + nA[1] * nB[1];
+  const double J = line_jacobian( A0, A1 );
+
+  double value = 0.0;
+  for ( int i = 0; i < kp->N; ++i ) {
+    double x1[2];
+    iso_map( A0, A1, qp.qp[i], x1 );
+
+    double x2[2];
+    find_intersection( B0, B1, x1, nB, x2 );
+
+    const double dx = x1[0] - x2[0];
+    const double dy = x1[1] - x2[1];
+    const double gn = -( dx * nB[0] + dy * nB[1] );
+    const double gap = gn * eta;
+    if ( gap < 0.0 ) {
+      value += 0.5 * kp->k * gap * gap * qp.w[i] * J;
+    }
+  }
+
+  *energy = value;
+}
+
+void grad_qp_penalty_kernel( const double* x, const KernelParams* kp, double* dout_du )
+{
+  double dx[8] = { 0.0 };
+  double out = 0.0;
+  double dout = 1.0;
+  __enzyme_autodiff<void>( (void*)qp_penalty_kernel, enzyme_dup, x, dx, enzyme_const, (const void*)kp, enzyme_dup,
+                           &out, &dout );
+
+  for ( int i = 0; i < 8; ++i ) {
+    dout_du[i] = dx[i];
+  }
+}
+
+void d2_qp_penalty_kernel( const double* x, const KernelParams* kp, double* H )
+{
+  for ( int col = 0; col < 8; ++col ) {
+    double dx[8] = { 0.0 };
+    dx[col] = 1.0;
+    double grad[8] = { 0.0 };
+    double dgrad[8] = { 0.0 };
+    __enzyme_fwddiff<void>( (void*)grad_qp_penalty_kernel, enzyme_dup, x, dx, enzyme_const, (const void*)kp,
+                            enzyme_dup, grad, dgrad );
+    for ( int row = 0; row < 8; ++row ) {
+      H[row * 8 + col] = dgrad[row];
+    }
   }
 }
 
@@ -752,8 +829,9 @@ void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshD
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    grad_kernel_enzyme<KernelOutput::GTILDE1>( x, dg1_du );
-    grad_kernel_enzyme<KernelOutput::GTILDE2>( x, dg2_du );
+    const KernelParams kp{ p_.N, p_.del, p_.k };
+    grad_kernel_enzyme<KernelOutput::GTILDE1>( x, &kp, dg1_du );
+    grad_kernel_enzyme<KernelOutput::GTILDE2>( x, &kp, dg2_du );
   }
 
   for ( int i = 0; i < 8; ++i ) {
@@ -784,8 +862,9 @@ void EnergyMortarCalculator::grad_trib_area( const InterfacePair& pair, const Me
     grad_kernel<KernelOutput::A2>( x, &gp, dA2_dx );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    grad_kernel_enzyme<KernelOutput::A1>( x, dA1_dx );
-    grad_kernel_enzyme<KernelOutput::A2>( x, dA2_dx );
+    const KernelParams kp{ p_.N, p_.del, p_.k };
+    grad_kernel_enzyme<KernelOutput::A1>( x, &kp, dA1_dx );
+    grad_kernel_enzyme<KernelOutput::A2>( x, &kp, dA2_dx );
   }
 }
 
@@ -815,8 +894,9 @@ void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshDa
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    d2_kernel<KernelOutput::GTILDE1>( x, d2g1_d2u );
-    d2_kernel<KernelOutput::GTILDE2>( x, d2g2_d2u );
+    const KernelParams kp{ p_.N, p_.del, p_.k };
+    d2_kernel<KernelOutput::GTILDE1>( x, &kp, d2g1_d2u );
+    d2_kernel<KernelOutput::GTILDE2>( x, &kp, d2g2_d2u );
   }
 
   for ( int i = 0; i < 64; ++i ) {
@@ -851,14 +931,49 @@ void EnergyMortarCalculator::compute_d2A_d2u( const InterfacePair& pair, const M
     d2_kernel_quad<KernelOutput::A2>( x, &gp, d2A2_d2u );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    d2_kernel<KernelOutput::A1>( x, d2A1_d2u );
-    d2_kernel<KernelOutput::A2>( x, d2A2_d2u );
+    const KernelParams kp{ p_.N, p_.del, p_.k };
+    d2_kernel<KernelOutput::A1>( x, &kp, d2A1_d2u );
+    d2_kernel<KernelOutput::A2>( x, &kp, d2A2_d2u );
   }
 
   for ( int i = 0; i < 64; ++i ) {
     d2A1[i] = d2A1_d2u[i];
     d2A2[i] = d2A2_d2u[i];
   }
+}
+
+double EnergyMortarCalculator::compute_quadrature_point_penalty_energy( const InterfacePair& pair,
+                                                                        const MeshData::Viewer& mesh1,
+                                                                        const MeshData::Viewer& mesh2 ) const
+{
+  double A0[2], A1[2], B0[2], B1[2];
+
+  endpoints( mesh1, pair.m_element_id1, A0, A1 );
+  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+
+  const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
+  const KernelParams kp{ p_.N, p_.del, p_.k };
+  double energy = 0.0;
+  qp_penalty_kernel( x, &kp, &energy );
+  return energy;
+}
+
+QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_penalty_data(
+    const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) const
+{
+  double A0[2], A1[2], B0[2], B1[2];
+
+  endpoints( mesh1, pair.m_element_id1, A0, A1 );
+  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+
+  const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
+  const KernelParams kp{ p_.N, p_.del, p_.k };
+
+  QuadraturePointPenaltyData result;
+  qp_penalty_kernel( x, &kp, &result.energy );
+  grad_qp_penalty_kernel( x, &kp, result.force.data() );
+  d2_qp_penalty_kernel( x, &kp, result.stiffness.data() );
+  return result;
 }
 
 #endif  // TRIBOL_USE_ENZYME

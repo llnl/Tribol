@@ -171,6 +171,20 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac )
 }  // end setTimestepPenFrac()
 
 //------------------------------------------------------------------------------
+void setEnergyMortarPenaltyMode( IndexT cs_id, EnergyMortarPenaltyMode mode )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarPenaltyMode(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  cs->getParameters().energy_mortar_penalty_mode = mode;
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnergyMortarPenaltyMode( mode );
+  }
+}
+
+//------------------------------------------------------------------------------
 void setTimestepScale( IndexT cs_id, RealT scale )
 {
   if ( scale <= 0. ) {

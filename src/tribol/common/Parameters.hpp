@@ -123,6 +123,15 @@ enum ContactMethod  // all mortar methods go first
 };
 
 /*!
+ * \brief Enumerates penalty enforcement options for ENERGY_MORTAR
+ */
+enum class EnergyMortarPenaltyMode
+{
+  QUADRATURE_POINT_GAP,  ///! Penalize gaps independently at quadrature points
+  NODAL_GAP              ///! Penalize assembled nodal gaps
+};
+
+/*!
  * \brief Enumerates the available contact model options.
  *
  * The contact model enumerates interface constitutive modeling options.
@@ -495,6 +504,9 @@ struct Parameters {
   // constituent face elements, then we don't consider the face-pair a contact candidate.
   // Note, auto-contact will require registration of element thicknesses.
   bool auto_contact_check = false;  ///! True if auto-contact checks should be enabled
+
+  EnergyMortarPenaltyMode energy_mortar_penalty_mode =
+      EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;  ///! Penalty enforcement mode used by ENERGY_MORTAR
 };
 
 }  // namespace tribol
