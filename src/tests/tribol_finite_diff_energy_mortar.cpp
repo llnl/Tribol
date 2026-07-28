@@ -372,6 +372,121 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
   return result;
 }
 
+
+TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 1, 0 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = { 0.2, 0.8 };
+  RealT y2[2] = { 0.1, 0.1 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  params.penalty_mode = EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;
+
+  EnergyMortarCalculator evaluator( params );
+  const auto result = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
+                                                                       mesh2.getView() );
+  EXPECT_EQ( result.energy, 0.0 );
+}
+
+TEST( QuadraturePointPenaltyCheck, DerivativesMatchFiniteDifference )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 1, 0 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = { 0.2, 0.8 };
+  RealT y2[2] = { -0.1, -0.1 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  params.penalty_mode = EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;
+
+  EnergyMortarCalculator evaluator( params );
+  const InterfacePair pair( 0, 0 );
+  const auto analytical = evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() );
+  ASSERT_GT( analytical.energy, 0.0 );
+
+  const std::array<RealT, 2> x1_orig{ x1[0], x1[1] };
+  const std::array<RealT, 2> y1_orig{ y1[0], y1[1] };
+  const std::array<RealT, 2> x2_orig{ x2[0], x2[1] };
+  const std::array<RealT, 2> y2_orig{ y2[0], y2[1] };
+
+  auto restore = [&]() {
+    x1[0] = x1_orig[0];
+    x1[1] = x1_orig[1];
+    y1[0] = y1_orig[0];
+    y1[1] = y1_orig[1];
+    x2[0] = x2_orig[0];
+    x2[1] = x2_orig[1];
+    y2[0] = y2_orig[0];
+    y2[1] = y2_orig[1];
+    mesh1.setPosition( x1, y1, nullptr );
+    mesh2.setPosition( x2, y2, nullptr );
+  };
+
+  auto perturb = [&]( int dof, double delta ) {
+    if ( dof < 4 ) {
+      const int endpoint = dof / 2;
+      const int component = dof % 2;
+      const int node = conn1[endpoint];
+      ( component == 0 ? x1[node] : y1[node] ) += delta;
+      mesh1.setPosition( x1, y1, nullptr );
+    } else {
+      const int endpoint = ( dof - 4 ) / 2;
+      const int component = ( dof - 4 ) % 2;
+      const int node = conn2[endpoint];
+      ( component == 0 ? x2[node] : y2[node] ) += delta;
+      mesh2.setPosition( x2, y2, nullptr );
+    }
+  };
+
+  const double gradient_eps = 1.0e-7;
+  const double gradient_tol = 1.0e-6;
+  for ( int dof = 0; dof < 8; ++dof ) {
+    restore();
+    perturb( dof, gradient_eps );
+    const double energy_plus = evaluator.compute_quadrature_point_penalty_energy( pair, mesh1.getView(), mesh2.getView() );
+    restore();
+    perturb( dof, -gradient_eps );
+    const double energy_minus = evaluator.compute_quadrature_point_penalty_energy( pair, mesh1.getView(), mesh2.getView() );
+    const double fd_force = ( energy_plus - energy_minus ) / ( 2.0 * gradient_eps );
+    EXPECT_NEAR( fd_force, analytical.force[dof], gradient_tol ) << "force mismatch at dof " << dof;
+  }
+
+  const double hessian_eps = 1.0e-6;
+  const double hessian_tol = 1.0e-4;
+  for ( int col = 0; col < 8; ++col ) {
+    restore();
+    perturb( col, hessian_eps );
+    const auto force_plus = evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() ).force;
+    restore();
+    perturb( col, -hessian_eps );
+    const auto force_minus = evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() ).force;
+    for ( int row = 0; row < 8; ++row ) {
+      const double fd_stiffness = ( force_plus[row] - force_minus[row] ) / ( 2.0 * hessian_eps );
+      EXPECT_NEAR( fd_stiffness, analytical.stiffness[row * 8 + col], hessian_tol )
+          << "stiffness mismatch at row " << row << ", col " << col;
+    }
+  }
+  restore();
+}
+
 TEST( GradientCheck, GtildeFDvsAD )
 {
   // ── Geometry: two facing LINEAR_EDGE segments ────────────────────────────
