@@ -934,7 +934,6 @@ void TestMesh::allocateAndSetElementThickness( IndexT mesh_id, RealT t )
                                  << "an element thickness array has been deleted and reallocated." );
 #endif
 
-
 }  // end TestMesh::allocateAndSetElementThickness()
 
 //------------------------------------------------------------------------------
