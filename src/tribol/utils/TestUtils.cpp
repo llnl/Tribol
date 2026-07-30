@@ -792,7 +792,7 @@ void TestMesh::allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY,
                  "TestMesh::allocateAndSetVelocities(): please set unique "
                      << "mortarMeshId and nonmortarMeshId prior to calling this routine." );
 
-// check to see if pointers have been set
+  // check to see if pointers have been set
   bool deleteVels = false;
   if ( mesh_id == this->mortarMeshId ) {
     if ( this->vx1 != nullptr ) {
