@@ -850,8 +850,10 @@ void TestMesh::allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY,
     SLIC_ERROR( "TestMesh::allocateAndSetVelocities(): " << "not a valid mesh id." );
   }
 
+#ifdef TRIBOL_DEBUG
   SLIC_DEBUG_IF( deleteVels,
                  "TestMesh::allocateAndSetVelocities(): " << "a velocity array has been deleted and reallocated." );
+#endif
 
 }  // end TestMesh::allocateAndSetVelocities()
 
@@ -891,8 +893,10 @@ void TestMesh::allocateAndSetBulkModulus( IndexT mesh_id, RealT val )
     SLIC_ERROR( "TestMesh::allocateAndSetBulkModulus(): " << "not a valid mesh id." );
   }
 
+#ifdef TRIBOL_DEBUG
   SLIC_DEBUG_IF( deleteData, "TestMesh::allocateAndSetBulkModulus(): "
                                  << "a bulk modulus array has been deleted and reallocated." );
+#endif
 
 }  // end TestMesh::allocateAndSetBulkModulus()
 
@@ -925,8 +929,11 @@ void TestMesh::allocateAndSetElementThickness( IndexT mesh_id, RealT t )
     SLIC_ERROR( "TestMesh::allocateAndSetElementThickness(): " << "not a valid mesh id." );
   }
 
+#ifdef TRIBOL_DEBUG
   SLIC_DEBUG_IF( deleteData, "TestMesh::allocateAndSetElementThickness(): "
                                  << "an element thickness array has been deleted and reallocated." );
+#endif
+
 
 }  // end TestMesh::allocateAndSetElementThickness()
 
