@@ -25,9 +25,9 @@ EnergyMortarAdapter::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshDa
 
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 
-  // Allocate the (pressure) true-dof vector early so host code can set it via tribol::getMfemTDofPressure() after the
-  // formulation is created. In penalty mode this is overwritten in updateNodalForces(); in LM mode it is treated as the
-  // Lagrange multiplier vector (lambda).
+  // Allocate the (pressure) true-dof vector early so host code can set it via tribol::getMfemContactPressure() after
+  // the formulation is created. In penalty mode this is overwritten in updateNodalForces(); in LM mode it is treated as
+  // the Lagrange multiplier vector (lambda).
   pressure_vec_ = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( &submesh_data_.GetSubmeshFESpace() ) );
   pressure_vec_.fill( 0.0 );
 }
@@ -39,10 +39,10 @@ void EnergyMortarAdapter::updateMeshes( MeshData& mesh1, MeshData& mesh2 )
   mesh2_ = &mesh1;
 }
 
-void EnergyMortarAdapter::updatePenaltyParameters( bool use_penalty, double k )
+void EnergyMortarAdapter::updateConstantPenaltyStiffness( double mesh1_penalty, double mesh2_penalty )
 {
-  use_penalty_ = use_penalty;
-  params_.k = k;
+  use_penalty_ = true;
+  params_.k = 0.5 * ( mesh1_penalty + mesh2_penalty );
 }
 
 const mfem::HypreParVector& EnergyMortarAdapter::getMfemGap() const

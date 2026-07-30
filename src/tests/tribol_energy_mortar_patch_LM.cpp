@@ -93,7 +93,7 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
 
     // FE space and grid functions
     auto fe_coll = mfem::H1_FECollection( order, mesh.SpaceDimension() );
-    auto par_fe_space = mfem::ParFiniteElementSpace( &mesh, &fe_coll, mesh.SpaceDimension() );
+    auto par_fe_space = mfem::ParFiniteElementSpace( &mesh, &fe_coll, mesh.SpaceDimension(), mfem::Ordering::byVDIM );
     auto coords = mfem::ParGridFunction( &par_fe_space );
     if ( order > 1 ) {
       mesh.SetNodalGridFunction( &coords, false );
@@ -238,17 +238,17 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         tribol::updateMfemParallelDecomposition();
 
         // Set lambda for LM assembly prior to calling update().
-        auto& tribol_lambda = tribol::getMfemTDofPressure( cs_id );
+        auto& tribol_lambda = tribol::getMfemContactPressure( cs_id );
         tribol_lambda = 0.0;
         tribol_lambda.Add( 1.0, lambda );
 
         tribol::update( step, step * dt, dt );
 
         // Contact residual and Jacobian blocks (LM mode)
-        auto r_contact_force = tribol::getMfemTDofForce( cs_id );  // G^T * lambda (disp-sized)
-        auto r_gap = tribol::getMfemTDofGap( cs_id );              // g_tilde (contact-sized)
-        auto H_ptr = tribol::getMfemDfDx( cs_id );                 // lambda * d2g/du2 (disp x disp)
-        auto G_T_ptr = tribol::getMfemDfDp( cs_id );               // G^T (disp x contact)
+        auto r_contact_force = tribol::getMfemContactForce( cs_id );  // G^T * lambda (disp-sized)
+        auto r_gap = tribol::getMfemContactGap( cs_id );              // g_tilde (contact-sized)
+        auto H_ptr = tribol::getMfemDfDx( cs_id );                    // lambda * d2g/du2 (disp x disp)
+        auto G_T_ptr = tribol::getMfemDfDp( cs_id );                  // G^T (disp x contact)
         ASSERT_TRUE( G_T_ptr != nullptr );
 
         mfem::Vector R_u( disp_size );
@@ -404,10 +404,12 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
     mfem::ParGridFunction uy_exact( &scalar_fes ), uy_num( &scalar_fes );
 
     for ( int i = 0; i < n; ++i ) {
-      ux_exact( i ) = exact_disp( i );
-      ux_num( i ) = displacement( i );
-      uy_exact( i ) = exact_disp( n + i );
-      uy_num( i ) = displacement( n + i );
+      const int ux_vdof = par_fe_space.DofToVDof( i, 0 );
+      const int uy_vdof = par_fe_space.DofToVDof( i, 1 );
+      ux_exact( i ) = exact_disp( ux_vdof );
+      ux_num( i ) = displacement( ux_vdof );
+      uy_exact( i ) = exact_disp( uy_vdof );
+      uy_num( i ) = displacement( uy_vdof );
     }
 
     mfem::ParGridFunction ux_err( ux_exact );

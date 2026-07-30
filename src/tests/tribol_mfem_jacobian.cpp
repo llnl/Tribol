@@ -1016,7 +1016,7 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
   int n_ranks;
   MPI_Comm_size( MPI_COMM_WORLD, &n_ranks );
 
-  // Setup simple two-quad mesh
+  // Register a simple Energy Mortar penalty problem, update contact, and retrieve the assembled DfDx matrix.
   int ref_levels = 0;
   int nel_per_dir = std::pow( 2, ref_levels );
 
@@ -1063,8 +1063,7 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
   double dt = 1.0;
   tribol::update( 1, 1.0, dt );
 
-  // Retrieve Jacobian using the new penalty method
-  auto DfDx = tribol::getMfemJacobian( cs_id );
+  auto DfDx = tribol::getMfemDfDx( cs_id );
 
   if ( n_ranks == 1 ) {
     EXPECT_NE( DfDx, nullptr );

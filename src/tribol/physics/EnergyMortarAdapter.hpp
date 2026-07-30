@@ -125,12 +125,12 @@ class EnergyMortarAdapter : public ContactFormulation {
   void updateMeshes( MeshData& mesh1, MeshData& mesh2 ) override;
 
   /**
-   * @brief Update penalty parameters
+   * @brief Update constant penalty stiffness
    *
-   * @param use_penalty If true, the formulation is configured for penalty mode.
-   * @param k Penalty stiffness.
+   * @param mesh1_penalty Penalty stiffness for mesh 1.
+   * @param mesh2_penalty Penalty stiffness for mesh 2.
    */
-  void updatePenaltyParameters( bool use_penalty, double k ) override;
+  void updateConstantPenaltyStiffness( double mesh1_penalty, double mesh2_penalty ) override;
 
 #ifdef BUILD_REDECOMP
   /**
