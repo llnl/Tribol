@@ -327,6 +327,11 @@ class ParentRedecompTransfer {
    * submesh level from/to the redecomp level
    */
   SubmeshRedecompTransfer submesh_redecomp_xfer_;
+
+  /**
+   * @brief Map from submesh vector DOFs to parent vector DOFs
+   */
+  mfem::Array<int> submesh_to_parent_vdof_map_;
 };
 
 /**

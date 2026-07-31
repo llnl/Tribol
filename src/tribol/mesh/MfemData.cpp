@@ -519,6 +519,10 @@ ParentRedecompTransfer::ParentRedecompTransfer( const mfem::ParFiniteElementSpac
   // );
   SLIC_ERROR_ROOT_IF( submesh_redecomp_xfer_.GetSubmesh().GetParent() != parent_fes_.GetParMesh(),
                       "submesh_gridfn's parent mesh must match the parent_fes ParMesh." );
+
+  const auto& submesh = submesh_redecomp_xfer_.GetSubmesh();
+  mfem::SubMeshUtils::BuildVdofToVdofMap( *submesh_gridfn_.ParFESpace(), parent_fes_, submesh.GetFrom(),
+                                          submesh.GetParentElementIDMap(), submesh_to_parent_vdof_map_ );
 }
 
 void ParentRedecompTransfer::ParentToRedecomp( const mfem::ParGridFunction& parent_src,
@@ -533,10 +537,16 @@ void ParentRedecompTransfer::RedecompToParent( const mfem::GridFunction& redecom
 {
   submesh_gridfn_ = 0.0;
   submesh_redecomp_xfer_.RedecompToSubmesh( redecomp_src, submesh_gridfn_ );
-  // submesh transfer requires a grid function.  create one using parent_dst's data
-  mfem::ParGridFunction parent_gridfn( &parent_fes_, parent_dst );
-  submesh_redecomp_xfer_.GetSubmesh().Transfer( submesh_gridfn_, parent_gridfn );
-  parent_dst.SyncMemory( parent_gridfn );
+
+  // Response is a dual field; scatter local submesh contributions directly instead of using ParSubMesh::Transfer,
+  // which communicates/averages shared DOFs as a primal grid function.
+  submesh_gridfn_.HostRead();
+  parent_dst.HostReadWrite();
+  for ( int i{ 0 }; i < submesh_to_parent_vdof_map_.Size(); ++i ) {
+    mfem::real_t sign = 1.0;
+    const int parent_vdof = mfem::FiniteElementSpace::DecodeDof( submesh_to_parent_vdof_map_[i], sign );
+    parent_dst( parent_vdof ) += sign * submesh_gridfn_( i );
+  }
 }
 
 ParentField::ParentField( const mfem::ParGridFunction& parent_gridfn ) : parent_gridfn_{ parent_gridfn } {}
