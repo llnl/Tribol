@@ -1179,8 +1179,8 @@ enum class OverlapVertexType
  *
  */
 TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
-    const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB, const RealT* yB, int numVertexB,
-    RealT lengthTol, RealT* polyX, RealT* polyY, int& numPolyVert, RealT& area, bool orientCheck = true,
+    const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB, const RealT* yB, int numVertexB, RealT lengthTol,
+    RealT* polyX, RealT* polyY, int& numPolyVert, RealT& area, bool orientCheck = true,
     OverlapVertexType* vertType = nullptr, int* edgeA = nullptr, int* edgeB = nullptr )
 {
   // for tribol, if you have called this routine it is because a positive area of
@@ -1476,6 +1476,30 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
       edgeATemp[k] = -1;
       edgeBTemp[k] = i;
       ++k;
+    }
+  }
+  numPolyVert = k;
+
+  // Collapse near-duplicate candidate vertices before reordering.  PolyReorderConvex() depends on the unordered point
+  // cloud being well-conditioned, so removing tolerance-scale duplicates before computing the ordering avoids ambiguous
+  // centroid/angle calculations.  Preserve the first occurrence and its metadata.
+  for ( int i = 0; i < numPolyVert; ++i ) {
+    int j = i + 1;
+    while ( j < numPolyVert ) {
+      const RealT distX = polyXTemp[i] - polyXTemp[j];
+      const RealT distY = polyYTemp[i] - polyYTemp[j];
+      if ( magnitude( distX, distY ) < physicalLengthTol ) {
+        for ( int l = j; l < numPolyVert - 1; ++l ) {
+          polyXTemp[l] = polyXTemp[l + 1];
+          polyYTemp[l] = polyYTemp[l + 1];
+          vertTypeTemp[l] = vertTypeTemp[l + 1];
+          edgeATemp[l] = edgeATemp[l + 1];
+          edgeBTemp[l] = edgeBTemp[l + 1];
+        }
+        --numPolyVert;
+      } else {
+        ++j;
+      }
     }
   }
 
