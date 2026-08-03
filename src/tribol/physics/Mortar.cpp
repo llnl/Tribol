@@ -841,7 +841,7 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
   RealT xti_2d[8];
   RealT yti_2d[8];
   int overlap_poly_size = 0;
-  Intersection2DPolygonEnzyme( x1t_2d, y1t_2d, size1, x2t_2d_rev, y2t_2d_rev, size2, 1.0e-8, 1.0e-8, xti_2d, yti_2d,
+  Intersection2DPolygonEnzyme( x1t_2d, y1t_2d, size1, x2t_2d_rev, y2t_2d_rev, size2, 1.0e-8, xti_2d, yti_2d,
                                &overlap_poly_size );
   RealT overlap_poly_area = Area2DPolygon( xti_2d, yti_2d, overlap_poly_size );
   if ( overlap_poly_area <= 0.0 ) {

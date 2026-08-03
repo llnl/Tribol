@@ -647,6 +647,29 @@ TRIBOL_HOST_DEVICE inline RealT Area2DPolygon( const RealT* const x, const RealT
 
 /*!
  *
+ * \brief Computes a characteristic length scale for a 2D polygon.
+ *
+ * \param [in] x array of local x coordinates of polygon vertices
+ * \param [in] y array of local y coordinates of polygon vertices
+ * \param [in] numPolyVert number of polygon vertices
+ *
+ * \return maximum polygon edge length
+ */
+TRIBOL_HOST_DEVICE inline RealT Polygon2DLengthScale( const RealT* const x, const RealT* const y,
+                                                      const int numPolyVert )
+{
+  RealT lengthScale = 0.0;
+  for ( int i = 0; i < numPolyVert; ++i ) {
+    const int ia = i;
+    const int ib = ( i == ( numPolyVert - 1 ) ) ? 0 : ( i + 1 );
+    const RealT edgeLength = magnitude( x[ib] - x[ia], y[ib] - y[ia] );
+    lengthScale = ( edgeLength > lengthScale ) ? edgeLength : lengthScale;
+  }
+  return lengthScale;
+}
+
+/*!
+ *
  * \brief computes a segment-segment intersection in a way specific to the tribol
  *  polygon-polygon intersection calculation
  *
@@ -664,7 +687,7 @@ TRIBOL_HOST_DEVICE inline RealT Area2DPolygon( const RealT* const x, const RealT
  * \param [out] y local coordinate of the intersection point
  * \param [out] duplicate true if intersection point is computed as duplicate polygon
  *                 intersection point
- * \param [in] tol length tolerance for collapsing intersection points to interior points
+ * \param [in] lengthTol length tolerance for collapsing intersection points to interior points
  *
  * \return true if the segments intersect at a non-duplicate point, false otherwise
  *
@@ -675,15 +698,15 @@ TRIBOL_HOST_DEVICE inline RealT Area2DPolygon( const RealT* const x, const RealT
  *  to one of the polygons that is the solution to the intersection problem. The solution
  *  may arise due to the the segments intersecting at a vertex tagged as interior to one
  *  of the polygons, or due to collapsing the true intersection point to an interior
- *  vertex based on the position tolerance input argument. For intersection points that
- *  are within the position tolerance to a non-interior segment vertex, nothing is done
+ *  vertex based on the length tolerance input argument. For intersection points that
+ *  are within the length tolerance to a non-interior segment vertex, nothing is done
  *  because we want to retain this intersection point. Collapsing intersection points to
  *  vertices tagged as interior to one of the polygons may render a degenerate overlap
  *  polygon and must be checked.
  */
 TRIBOL_HOST_DEVICE inline bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, RealT yB1, RealT xA2, RealT yA2,
                                                       RealT xB2, RealT yB2, const bool* interior, RealT& x, RealT& y,
-                                                      bool& duplicate, RealT tol )
+                                                      bool& duplicate, RealT lengthTol )
 {
   // note 1: this routine computes a unique segment-segment intersection, where two
   // segments are assumed to intersect at a single point. A segment-segment overlap
@@ -706,9 +729,6 @@ TRIBOL_HOST_DEVICE inline bool SegmentIntersection2D( RealT xA1, RealT yA1, Real
 
   RealT lambdaX2 = xB2 - xA2;
   RealT lambdaY2 = yB2 - yA2;
-
-  RealT seg1Mag = magnitude( lambdaX1, lambdaY1 );
-  RealT seg2Mag = magnitude( lambdaX2, lambdaY2 );
 
   // compute determinant of the lambda matrix, [ -lx1 -ly1, lx2 ly2 ]
   RealT det = -lambdaX1 * lambdaY2 + lambdaX2 * lambdaY1;
@@ -808,16 +828,11 @@ TRIBOL_HOST_DEVICE inline bool SegmentIntersection2D( RealT xA1, RealT yA1, Real
     }
   }
 
-  // check to see if the minimum distance is less than the position tolerance for
-  // the segments
-  RealT distRatio = ( idMin == 0 || idMin == 1 ) ? ( distMin / seg1Mag ) : ( distMin / seg2Mag );
-
-  // if the distRatio is less than the tolerance, or percentage cutoff of the original
-  // segment that we would like to keep, then check to see if the segment vertex closest
+  // if the minimum distance is less than the length tolerance, check to see if the segment vertex closest
   // to the computed intersection point is an interior point. If this is true, then collapse
   // the computed intersection point to the interior point and mark the duplicate boolean.
   // Also do this for the argument, interior, set to nullptr
-  if ( distRatio < tol ) {
+  if ( distMin < lengthTol ) {
     if ( interior == nullptr ) {
       x = xMinVert;
       y = yMinVert;
@@ -1139,8 +1154,9 @@ enum class OverlapVertexType
  * \param [in] xB array of local x coordinates of polygon B
  * \param [in] yB array of local y coordinates of polygon B
  * \param [in] numVertexB number of vertices in polygon B
- * \param [in] posTol position tolerance to collapse segment-segment intersection points
- * \param [in] lenTol length tolerance to collapse short intersection edges
+ * \param [in] lengthTol nondimensional length tolerance used directly for point-in-face barycentric checks and
+ * scaled by the face length scale for segment endpoint snapping, duplicate interior vertex removal, and short
+ * intersection-edge collapse
  * \param [out] polyX array of x coordinates of intersection polygon
  * \param [out] polyY array of y coordinates of intersection polygon
  * \param [out] numPolyVert number of vertices in intersection polygon
@@ -1163,8 +1179,8 @@ enum class OverlapVertexType
  *
  */
 TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
-    const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB, const RealT* yB, int numVertexB, RealT posTol,
-    RealT lenTol, RealT* polyX, RealT* polyY, int& numPolyVert, RealT& area, bool orientCheck = true,
+    const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB, const RealT* yB, int numVertexB,
+    RealT lengthTol, RealT* polyX, RealT* polyY, int& numPolyVert, RealT& area, bool orientCheck = true,
     OverlapVertexType* vertType = nullptr, int* edgeA = nullptr, int* edgeB = nullptr )
 {
   // for tribol, if you have called this routine it is because a positive area of
@@ -1219,6 +1235,11 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
   VertexAvgCentroid( xA, yA, nullptr, numVertexA, xCA, yCA, zC );
   VertexAvgCentroid( xB, yB, nullptr, numVertexB, xCB, yCB, zC );
 
+  const RealT lengthScaleA = Polygon2DLengthScale( xA, yA, numVertexA );
+  const RealT lengthScaleB = Polygon2DLengthScale( xB, yB, numVertexB );
+  const RealT faceLengthScale = ( lengthScaleA > lengthScaleB ) ? lengthScaleA : lengthScaleB;
+  const RealT physicalLengthTol = lengthTol * faceLengthScale;
+
   // check to see if any of polygon A's vertices are in polygon B, and vice-versa. Track
   // which vertices are interior to the other polygon. Keep in mind that vertex
   // coordinates are local 2D coordinates.
@@ -1227,7 +1248,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
 
   // check A in B
   for ( int i = 0; i < numVertexA; ++i ) {
-    if ( Point2DInFace( xA[i], yA[i], xB, yB, xCB, yCB, numVertexB ) ) {
+    if ( Point2DInFace( xA[i], yA[i], xB, yB, xCB, yCB, numVertexB, lengthTol ) ) {
       // interior A in B
       interiorVAId[i] = i;
       ++numVAI;
@@ -1258,7 +1279,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
 
   // check B in A
   for ( int i = 0; i < numVertexB; ++i ) {
-    if ( Point2DInFace( xB[i], yB[i], xA, yA, xCA, yCA, numVertexA ) ) {
+    if ( Point2DInFace( xB[i], yB[i], xA, yA, xCA, yCA, numVertexA, lengthTol ) ) {
       // interior B in A
       interiorVBId[i] = i;
       ++numVBI;
@@ -1299,7 +1320,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
           RealT distX = xA[i] - xB[j];
           RealT distY = yA[i] - yB[j];
           RealT distMag = magnitude( distX, distY );
-          if ( distMag < 1.E-15 ) {
+          if ( distMag < physicalLengthTol ) {
             // remove the interior designation for the vertex in polygon B
             //                 SLIC_DEBUG( "Removing duplicate interior vertex id: " << j << ".\n" );
             interiorVBId[j] = -1;
@@ -1371,7 +1392,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
 
         intersect[interId] =
             SegmentIntersection2D( xA[vAID1], yA[vAID1], xA[vAID2], yA[vAID2], xB[vBID1], yB[vBID1], xB[vBID2],
-                                   yB[vBID2], interior, interX[interId], interY[interId], dupl, posTol );
+                                   yB[vBID2], interior, interX[interId], interY[interId], dupl, physicalLengthTol );
         if ( intersect[interId] ) {
           edgeATemp[interId] = ia;
           edgeBTemp[interId] = jb;
@@ -1481,7 +1502,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
     int numFinalVert = 0;
 
     FaceGeomException segErr =
-        CheckPolySegs( polyXTemp, polyYTemp, numPolyVert, lenTol, polyX, polyY, vertIdx, numFinalVert );
+        CheckPolySegs( polyXTemp, polyYTemp, numPolyVert, physicalLengthTol, polyX, polyY, vertIdx, numFinalVert );
     for ( int i = 0; i < numFinalVert; ++i ) {
       if ( vertType ) {
         vertType[i] = vertTypeTemp2[vertIdx[i]];
@@ -1531,8 +1552,9 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
  * \param [in] xB array of local x coordinates of polygon B
  * \param [in] yB array of local y coordinates of polygon B
  * \param [in] numVertexB number of vertices in polygon B
- * \param [in] posTol position tolerance to collapse segment-segment intersection points
- * \param [in] lenTol length tolerance to collapse short intersection edges
+ * \param [in] lengthTol nondimensional length tolerance used directly for point-in-face barycentric checks and
+ * scaled by the face length scale for segment endpoint snapping, duplicate interior vertex removal, and short
+ * intersection-edge collapse
  * \param [out] polyX array of x coordinates of intersection polygon
  * \param [out] polyY array of y coordinates of intersection polygon
  * \param [out] numPolyVert number of vertices in intersection polygon
@@ -1547,13 +1569,13 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
  *
  */
 inline FaceGeomException Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB,
-                                                      const RealT* yB, int numVertexB, RealT posTol, RealT lenTol,
-                                                      RealT* polyX, RealT* polyY, int* numPolyVert )
+                                                      const RealT* yB, int numVertexB, RealT lengthTol, RealT* polyX,
+                                                      RealT* polyY, int* numPolyVert )
 {
   double area = 0.0;
   constexpr bool orientCheck = true;
-  return Intersection2DPolygon( xA, yA, numVertexA, xB, yB, numVertexB, posTol, lenTol, polyX, polyY, *numPolyVert,
-                                area, orientCheck );
+  return Intersection2DPolygon( xA, yA, numVertexA, xB, yB, numVertexB, lengthTol, polyX, polyY, *numPolyVert, area,
+                                orientCheck );
 }
 
 #endif
