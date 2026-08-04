@@ -308,11 +308,13 @@ TEST_F( EnzymePolyIntersectTest, PerfectOverlap )
   CheckIntersectionJacobian( x1, x2, stencil_dir, delta_, length_tol );
 }
 
-TEST_F( EnzymePolyIntersectTest, Mesh2VertexMovedInByPosTol )
+TEST_F( EnzymePolyIntersectTest, Mesh2VertexMovedPastLengthTol )
 {
   constexpr auto length_tol = 10.0 * delta_;
   RealT x1[8] = { 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
-  RealT x2[8] = { 0.0 + length_tol, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
+  // Move the vertex past the tolerance boundary.  Placing it exactly at length_tol makes the finite-difference stencil
+  // cross a topology branch, so the derivative is not well-defined.
+  RealT x2[8] = { 0.0 + 2.0 * length_tol, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
   int stencil_dir[4] = { 1, 1, 1, 1 };
   CheckIntersectionJacobian( x1, x2, stencil_dir, delta_, length_tol );
 }
