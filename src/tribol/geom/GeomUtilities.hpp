@@ -886,146 +886,36 @@ TRIBOL_HOST_DEVICE inline bool PolyReorderConvex( RealT* x, RealT* y, int* newID
                                                         << "expected per overlap (" << max_nodes_per_overlap << ")." );
 #endif
 
-  constexpr int max_proj_nodes = max_nodes_per_overlap - 2;
-  RealT proj[max_proj_nodes];
-
   int local_newIDs[max_nodes_per_overlap];
   if ( !newIDs ) {
     newIDs = local_newIDs;
   }
 
-  // initialize newIDs array to local ordering, 0,1,2,...,numPoints-1
   for ( int i = 0; i < numPoints; ++i ) {
     newIDs[i] = i;
   }
 
-  // compute vertex averaged centroid of input overlap vertices (local coordinates with dummy z args)
+  // Sort points by polar angle around the vertex-averaged centroid.  This is robust for convex and some star-convex
+  // point clouds.
   VertexAvgCentroid( x, y, z, numPoints, xC, yC, zC );
+  for ( int i = 1; i < numPoints; ++i ) {
+    const int id = newIDs[i];
+    const RealT angle = std::atan2( y[id] - yC, x[id] - xC );
+    const RealT radius2 = ( x[id] - xC ) * ( x[id] - xC ) + ( y[id] - yC ) * ( y[id] - yC );
 
-  // using the FIRST index into the x,y vertex coordinate arrays as
-  // the first vertex of the soon-to-be ordered list of vertices, determine
-  // the NEXT vertex that will comprise the only the FIRST segment in a counter
-  // clockwise ordering of vertices
-  newIDs[0] = 0;
-  for ( int j = newIDs[1]; j < numPoints; ++j ) {
-    // determine current segment vector and normal
-    RealT lambdaX = x[j] - x[newIDs[0]];
-    RealT lambdaY = y[j] - y[newIDs[0]];
-    RealT nrmlx = -lambdaY;
-    RealT nrmly = lambdaX;
-
-    // project all segment vectors between all OTHER vertices and newIDs[0] onto the current
-    // segment vector's normal. There will always be numPoints-2 projections
-    int pk = 0;                              // projection counter
-    for ( int k = 0; k < numPoints; ++k ) {  // loop over all segments
-      if ( k != newIDs[0] && k != j ) {      // pick off segments that are NOT the current segment
-        proj[pk] = ( x[k] - x[newIDs[0]] ) * nrmlx + ( y[k] - y[newIDs[0]] ) * nrmly;
-        ++pk;
-      }
-    }
-
-    // check if all points are on one side of line defined by segment
-    // (pk at this point should be equal to numPoints - 2)
-    bool neg = false;
-    bool pos = false;
-    for ( int ip = 0; ip < pk; ++ip ) {
-      if ( neg ) {  // if neg is previously set to true, keep it true
-        neg = true;
-      } else if ( !neg ) {
-        neg = ( proj[ip] < 0. ) ? true : false;
-      }
-
-      if ( pos ) {  // if pos is previously set to true, keep it true
-        pos = true;
-      } else if ( !pos ) {
-        pos = ( proj[ip] > 0. ) ? true : false;
-      }
-
-      // if at least one projection is negative and one positive then the
-      // current vertex of the current segment vector is not the properly
-      // ordered next vertex
-      if ( neg && pos ) {
+    int j = i - 1;
+    while ( j >= 0 ) {
+      const int otherId = newIDs[j];
+      const RealT otherAngle = std::atan2( y[otherId] - yC, x[otherId] - xC );
+      const RealT otherRadius2 = ( x[otherId] - xC ) * ( x[otherId] - xC ) + ( y[otherId] - yC ) * ( y[otherId] - yC );
+      if ( otherAngle < angle || ( otherAngle == angle && otherRadius2 <= radius2 ) ) {
         break;
       }
+      newIDs[j + 1] = newIDs[j];
+      --j;
     }
-
-    // if one of the booleans is false then all points are on one side
-    // of line defined by i-j segment.
-    if ( !neg || !pos ) {
-      // check the orientation of the nodes to make sure we have the correct
-      // one of two segments that will pass the previous test.
-      // Check the dot product between the current segment normal and the vector
-      // between the centroid and first (0th) vertex
-      RealT vx = xC - x[newIDs[0]];
-      RealT vy = yC - y[newIDs[0]];
-
-      RealT prod = nrmlx * vx + nrmly * vy;
-
-      // check if the two vertices are a segment on the convex hull and oriented CCW.
-      // CCW orientation has prod > 0
-      if ( prod > 0 ) {
-        // set newIDs[1] to the current vertex where newIDs[1] and newIDs[0] form the
-        // first segment vector on the convex hull; then, swap ids
-        int oldID1 = newIDs[1];
-        newIDs[1] = j;
-        newIDs[j] = oldID1;
-        break;
-      }
-    }
-
-  }  // end loop over j
-
-  // given the first segment vector on the convex hull, determine the rest of the vertex ordering
-  //
-  // compute the current reference segment vector between currently ordered vertices. At first, this is simply
-  // taken as the first segment vector determined above. Then, loop over remaining unorderd vertices and compute
-  // the link vector between that unordered vertex and the first vertex in the reference segment vector. These
-  // two vectors share that vertex as a common origin. Then, compute the angle between the link vector and the
-  // current reference vector. The link vector with the smallest angle gives us the next vertex in the ordered set
-  //
-  // Note: increment to (numPoints - 3) as as the (number_of_remaining_vertices-1) where the last vertex
-  // will automatically
-  for ( int i = 0; i < ( numPoints - 3 ); ++i ) {
-    RealT refMag, linkMag;
-
-    // compute current ordered reference vector;
-    RealT refx, refy;
-    refx = x[newIDs[i + 1]] - x[newIDs[i]];
-    refy = y[newIDs[i + 1]] - y[newIDs[i]];
-    refMag = magnitude( refx, refy );
-
-    //      SLIC_ERROR_IF(refMag < 1.E-12, "PolyReorderConvex: reference segment for link vector check is nearly zero
-    //      length");
-
-    // loop over link vectors of unassigned vertices
-    int jID = -1;
-    RealT cosThetaMax = -1.;  // this handles angles up to 180 degrees. Any greater and the polygon is not convex
-    RealT cosTheta;
-    int nextVertexID = 2 + i;
-    for ( int j = nextVertexID; j < numPoints; ++j ) {
-      RealT lx, ly;
-
-      lx = x[newIDs[j]] - x[newIDs[i]];
-      ly = y[newIDs[j]] - y[newIDs[i]];
-      linkMag = magnitude( lx, ly );
-
-      cosTheta = ( lx * refx + ly * refy ) / ( refMag * linkMag );
-      if ( cosTheta > cosThetaMax ) {
-        cosThetaMax = cosTheta;
-        jID = j;
-      }
-
-    }  // end loop over j
-
-    // we have found the minimum angle between remaining segment vectors and the corresponding local vertex id.
-    // swap ids
-    if ( jID > -1 ) {
-      int swapID = newIDs[nextVertexID];
-      newIDs[nextVertexID] = newIDs[jID];
-      newIDs[jID] = swapID;
-    }
-
-  }  // end loop over i
+    newIDs[j + 1] = id;
+  }
 
   // reorder x and y coordinate arrays based on newIDs id-array
   RealT xtemp[max_nodes_per_overlap];
