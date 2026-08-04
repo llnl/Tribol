@@ -705,8 +705,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
       }
     } else if ( lm_opts.eval_mode == ImplicitEvalMode::MORTAR_GAP ||
                 lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL ) {
-      ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, size1, x2, f2, size2,
-                                cs->getParameters().len_collapse_ratio );
+      ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, size1, x2, f2, size2, cs->getParameters().len_collapse_ratio );
     }
     for ( int i{ 0 }; i < size1; ++i ) {
       int node_id = mesh1.getGlobalNodeId( elem1, i );

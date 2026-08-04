@@ -82,8 +82,8 @@ class EnzymePolyIntersectTest : public testing::Test {
 
     // compute the overlap polygon
     Intersection2DPolygon( x1, x1 + num_elem_coords, num_elem_coords, x2, x2 + num_elem_coords, num_elem_coords,
-                           length_tol, xi, xi + max_overlap_vert, num_poly_verts, area, check_orientation, type,
-                           edge1, edge2 );
+                           length_tol, xi, xi + max_overlap_vert, num_poly_verts, area, check_orientation, type, edge1,
+                           edge2 );
     // print some info about the overlap
     std::cout << std::setprecision( 15 ) << "Element 1 coords" << std::endl;
     for ( int i{ 0 }; i < num_elem_coords; ++i ) {
@@ -376,8 +376,8 @@ TEST( PolyIntersect, NearlyCoincidentTriangleOverlapUsesLengthTol )
   RealT area = 0.0;
   constexpr bool check_orientation = true;
 
-  const auto err = Intersection2DPolygon( xA, yA, 3, xB, yB, 3, length_tol, polyX, polyY, num_poly_vert, area,
-                                          check_orientation );
+  const auto err =
+      Intersection2DPolygon( xA, yA, 3, xB, yB, 3, length_tol, polyX, polyY, num_poly_vert, area, check_orientation );
 
   EXPECT_EQ( err, NO_FACE_GEOM_EXCEPTION );
   EXPECT_EQ( num_poly_vert, 3 );
