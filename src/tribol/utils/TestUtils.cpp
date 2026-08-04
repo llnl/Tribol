@@ -793,19 +793,27 @@ void TestMesh::allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY,
                      << "mortarMeshId and nonmortarMeshId prior to calling this routine." );
 
   // check to see if pointers have been set
+#ifdef TRIBOL_DEBUG
   bool deleteVels = false;
+#endif
   if ( mesh_id == this->mortarMeshId ) {
     if ( this->vx1 != nullptr ) {
       delete[] this->vx1;
+#ifdef TRIBOL_DEBUG
       deleteVels = true;
+#endif
     }
     if ( this->vy1 != nullptr ) {
       delete[] this->vy1;
+#ifdef TRIBOL_DEBUG
       deleteVels = true;
+#endif
     }
     if ( this->vz1 != nullptr ) {
       delete[] this->vz1;
+#ifdef TRIBOL_DEBUG
       deleteVels = true;
+#endif
     }
 
     allocRealArray( &this->vx1, this->numTotalNodes, valX );
@@ -816,15 +824,21 @@ void TestMesh::allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY,
   } else if ( mesh_id == this->nonmortarMeshId ) {
     if ( this->vx2 != nullptr ) {
       delete[] this->vx2;
+#ifdef TRIBOL_DEBUG
       deleteVels = true;
+#endif
     }
     if ( this->vy2 != nullptr ) {
       delete[] this->vy2;
+#ifdef TRIBOL_DEBUG
       deleteVels = true;
+#endif
     }
     if ( this->vz2 != nullptr ) {
       delete[] this->vz2;
+#ifdef TRIBOL_DEBUG
       deleteVels = true;
+#endif
     }
 
     allocRealArray( &this->vx2, this->numTotalNodes, valX );
@@ -836,8 +850,10 @@ void TestMesh::allocateAndSetVelocities( IndexT mesh_id, RealT valX, RealT valY,
     SLIC_ERROR( "TestMesh::allocateAndSetVelocities(): " << "not a valid mesh id." );
   }
 
+#ifdef TRIBOL_DEBUG
   SLIC_DEBUG_IF( deleteVels,
                  "TestMesh::allocateAndSetVelocities(): " << "a velocity array has been deleted and reallocated." );
+#endif
 
 }  // end TestMesh::allocateAndSetVelocities()
 
@@ -852,18 +868,24 @@ void TestMesh::allocateAndSetBulkModulus( IndexT mesh_id, RealT val )
                      << "mortarMeshId and nonmortarMeshId prior to calling this routine." );
 
   // check to see if pointers have been set
+#ifdef TRIBOL_DEBUG
   bool deleteData = false;
+#endif
   if ( mesh_id == this->mortarMeshId ) {
     if ( this->mortar_bulk_mod != nullptr ) {
       delete[] this->mortar_bulk_mod;
+#ifdef TRIBOL_DEBUG
       deleteData = true;
+#endif
     }
 
     allocRealArray( &this->mortar_bulk_mod, this->numMortarFaces, val );
   } else if ( mesh_id == this->nonmortarMeshId ) {
     if ( this->nonmortar_bulk_mod != nullptr ) {
       delete[] this->nonmortar_bulk_mod;
+#ifdef TRIBOL_DEBUG
       deleteData = true;
+#endif
     }
 
     allocRealArray( &this->nonmortar_bulk_mod, this->numNonmortarFaces, val );
@@ -871,8 +893,10 @@ void TestMesh::allocateAndSetBulkModulus( IndexT mesh_id, RealT val )
     SLIC_ERROR( "TestMesh::allocateAndSetBulkModulus(): " << "not a valid mesh id." );
   }
 
+#ifdef TRIBOL_DEBUG
   SLIC_DEBUG_IF( deleteData, "TestMesh::allocateAndSetBulkModulus(): "
                                  << "a bulk modulus array has been deleted and reallocated." );
+#endif
 
 }  // end TestMesh::allocateAndSetBulkModulus()
 
@@ -880,18 +904,24 @@ void TestMesh::allocateAndSetBulkModulus( IndexT mesh_id, RealT val )
 void TestMesh::allocateAndSetElementThickness( IndexT mesh_id, RealT t )
 {
   // check to see if pointers have been set
+#ifdef TRIBOL_DEBUG
   bool deleteData = false;
+#endif
   if ( mesh_id == this->mortarMeshId ) {
     if ( this->mortar_element_thickness != nullptr ) {
       delete[] this->mortar_element_thickness;
+#ifdef TRIBOL_DEBUG
       deleteData = true;
+#endif
     }
 
     allocRealArray( &this->mortar_element_thickness, this->numMortarFaces, t );
   } else if ( mesh_id == this->nonmortarMeshId ) {
     if ( this->nonmortar_element_thickness != nullptr ) {
       delete[] this->nonmortar_element_thickness;
+#ifdef TRIBOL_DEBUG
       deleteData = true;
+#endif
     }
 
     allocRealArray( &this->nonmortar_element_thickness, this->numNonmortarFaces, t );
@@ -899,8 +929,10 @@ void TestMesh::allocateAndSetElementThickness( IndexT mesh_id, RealT t )
     SLIC_ERROR( "TestMesh::allocateAndSetElementThickness(): " << "not a valid mesh id." );
   }
 
+#ifdef TRIBOL_DEBUG
   SLIC_DEBUG_IF( deleteData, "TestMesh::allocateAndSetElementThickness(): "
                                  << "an element thickness array has been deleted and reallocated." );
+#endif
 
 }  // end TestMesh::allocateAndSetElementThickness()
 
