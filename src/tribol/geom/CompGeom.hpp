@@ -1319,10 +1319,11 @@ TRIBOL_HOST_DEVICE inline FaceGeomException MortarPlanePair::computeOverlap3D( c
   ElemReverse( X2, Y2, m2.numberOfNodesPerElement() );
 
   // compute intersection polygon and area.
-  RealT length_tol = this->m_params.len_collapse_ratio;
+  RealT length_tol_ratio = this->m_params.len_collapse_ratio;
   FaceGeomException inter_err =
-      Intersection2DPolygon( X1, Y1, m1.numberOfNodesPerElement(), X2, Y2, m2.numberOfNodesPerElement(), length_tol,
-                             this->m_polyLocX, this->m_polyLocY, this->m_numPolyVert, this->m_area, false );
+      Intersection2DPolygon( X1, Y1, m1.numberOfNodesPerElement(), X2, Y2, m2.numberOfNodesPerElement(),
+                             length_tol_ratio, this->m_polyLocX, this->m_polyLocY, this->m_numPolyVert, this->m_area,
+                             false );
 
   if ( inter_err != NO_FACE_GEOM_EXCEPTION ) {
     return inter_err;
@@ -2503,10 +2504,10 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::projectPointsAndCom
   }
 
   // call intersection routine to get intersecting polygon
-  RealT length_tol = this->m_params.len_collapse_ratio;
-  FaceGeomException inter_err =
-      Intersection2DPolygon( cfx1_loc, cfy1_loc, num_vert_1, cfx2_loc, cfy2_loc, num_vert_2, length_tol, m_polyLocX,
-                             m_polyLocY, m_numPolyVert, m_area, false );
+  RealT length_tol_ratio = this->m_params.len_collapse_ratio;
+  FaceGeomException inter_err = Intersection2DPolygon( cfx1_loc, cfy1_loc, num_vert_1, cfx2_loc, cfy2_loc, num_vert_2,
+                                                       length_tol_ratio, m_polyLocX, m_polyLocY, m_numPolyVert, m_area,
+                                                       false );
 
   if ( inter_err != NO_FACE_GEOM_EXCEPTION ) {
     return inter_err;

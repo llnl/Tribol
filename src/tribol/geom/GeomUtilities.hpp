@@ -1154,9 +1154,8 @@ enum class OverlapVertexType
  * \param [in] xB array of local x coordinates of polygon B
  * \param [in] yB array of local y coordinates of polygon B
  * \param [in] numVertexB number of vertices in polygon B
- * \param [in] lengthTol nondimensional length tolerance used directly for point-in-face barycentric checks and
- * scaled by the face length scale for segment endpoint snapping, duplicate interior vertex removal, and short
- * intersection-edge collapse
+ * \param [in] lengthTolRatio nondimensional length tolerance ratio. Physical-distance checks scale it by an input
+ * polygon length scale.
  * \param [out] polyX array of x coordinates of intersection polygon
  * \param [out] polyY array of y coordinates of intersection polygon
  * \param [out] numPolyVert number of vertices in intersection polygon
@@ -1179,8 +1178,8 @@ enum class OverlapVertexType
  *
  */
 TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
-    const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB, const RealT* yB, int numVertexB, RealT lengthTol,
-    RealT* polyX, RealT* polyY, int& numPolyVert, RealT& area, bool orientCheck = true,
+    const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB, const RealT* yB, int numVertexB,
+    RealT lengthTolRatio, RealT* polyX, RealT* polyY, int& numPolyVert, RealT& area, bool orientCheck = true,
     OverlapVertexType* vertType = nullptr, int* edgeA = nullptr, int* edgeB = nullptr )
 {
   // for tribol, if you have called this routine it is because a positive area of
@@ -1238,7 +1237,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
   const RealT lengthScaleA = Polygon2DLengthScale( xA, yA, numVertexA );
   const RealT lengthScaleB = Polygon2DLengthScale( xB, yB, numVertexB );
   const RealT faceLengthScale = ( lengthScaleA > lengthScaleB ) ? lengthScaleA : lengthScaleB;
-  const RealT physicalLengthTol = lengthTol * faceLengthScale;
+  const RealT physicalLengthTol = lengthTolRatio * faceLengthScale;
 
   // check to see if any of polygon A's vertices are in polygon B, and vice-versa. Track
   // which vertices are interior to the other polygon. Keep in mind that vertex
@@ -1248,7 +1247,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
 
   // check A in B
   for ( int i = 0; i < numVertexA; ++i ) {
-    if ( Point2DInFace( xA[i], yA[i], xB, yB, xCB, yCB, numVertexB, lengthTol ) ) {
+    if ( Point2DInFace( xA[i], yA[i], xB, yB, xCB, yCB, numVertexB, lengthTolRatio ) ) {
       // interior A in B
       interiorVAId[i] = i;
       ++numVAI;
@@ -1279,7 +1278,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
 
   // check B in A
   for ( int i = 0; i < numVertexB; ++i ) {
-    if ( Point2DInFace( xB[i], yB[i], xA, yA, xCA, yCA, numVertexA, lengthTol ) ) {
+    if ( Point2DInFace( xB[i], yB[i], xA, yA, xCA, yCA, numVertexA, lengthTolRatio ) ) {
       // interior B in A
       interiorVBId[i] = i;
       ++numVBI;
@@ -1576,9 +1575,8 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
  * \param [in] xB array of local x coordinates of polygon B
  * \param [in] yB array of local y coordinates of polygon B
  * \param [in] numVertexB number of vertices in polygon B
- * \param [in] lengthTol nondimensional length tolerance used directly for point-in-face barycentric checks and
- * scaled by the face length scale for segment endpoint snapping, duplicate interior vertex removal, and short
- * intersection-edge collapse
+ * \param [in] lengthTolRatio nondimensional length tolerance ratio. Physical-distance checks scale it by a polygon
+ * length scale.
  * \param [out] polyX array of x coordinates of intersection polygon
  * \param [out] polyY array of y coordinates of intersection polygon
  * \param [out] numPolyVert number of vertices in intersection polygon
@@ -1593,13 +1591,13 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
  *
  */
 inline FaceGeomException Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB,
-                                                      const RealT* yB, int numVertexB, RealT lengthTol, RealT* polyX,
-                                                      RealT* polyY, int* numPolyVert )
+                                                      const RealT* yB, int numVertexB, RealT lengthTolRatio,
+                                                      RealT* polyX, RealT* polyY, int* numPolyVert )
 {
   double area = 0.0;
   constexpr bool orientCheck = true;
-  return Intersection2DPolygon( xA, yA, numVertexA, xB, yB, numVertexB, lengthTol, polyX, polyY, *numPolyVert, area,
-                                orientCheck );
+  return Intersection2DPolygon( xA, yA, numVertexA, xB, yB, numVertexB, lengthTolRatio, polyX, polyY, *numPolyVert,
+                                area, orientCheck );
 }
 
 #endif

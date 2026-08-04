@@ -968,7 +968,10 @@ TEST_F( EnzymeElementMortarTest, NoOverlap )
                              1.0,  1.0,  1.0,  1.0 };
   // clang-format on
 
-  FDCheck( x1, x2, n1, p1, x1_stencil, x2_stencil, 4, 1.0, 1.0e-7 );
+  constexpr int num_nodes = 4;
+  constexpr double check_scale = 1.0;
+  constexpr double len_collapse_ratio = 1.0e-7;
+  FDCheck( x1, x2, n1, p1, x1_stencil, x2_stencil, num_nodes, check_scale, len_collapse_ratio );
 }
 
 }  // namespace tribol
