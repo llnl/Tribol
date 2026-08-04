@@ -535,18 +535,22 @@ void ParentRedecompTransfer::ParentToRedecomp( const mfem::ParGridFunction& pare
 
 void ParentRedecompTransfer::RedecompToParent( const mfem::GridFunction& redecomp_src, mfem::Vector& parent_dst ) const
 {
+  const bool use_device = parent_dst.UseDevice();
+  submesh_gridfn_.UseDevice( use_device );
   submesh_gridfn_ = 0.0;
   submesh_redecomp_xfer_.RedecompToSubmesh( redecomp_src, submesh_gridfn_ );
 
   // Response is a dual field; scatter local submesh contributions directly instead of using ParSubMesh::Transfer,
   // which communicates/averages shared DOFs as a primal grid function.
-  submesh_gridfn_.HostRead();
-  parent_dst.HostReadWrite();
-  for ( int i{ 0 }; i < submesh_to_parent_vdof_map_.Size(); ++i ) {
-    mfem::real_t sign = 1.0;
-    const int parent_vdof = mfem::FiniteElementSpace::DecodeDof( submesh_to_parent_vdof_map_[i], sign );
-    parent_dst( parent_vdof ) += sign * submesh_gridfn_( i );
-  }
+  const auto submesh_data = submesh_gridfn_.Read( use_device );
+  const auto submesh_to_parent_vdof_map = submesh_to_parent_vdof_map_.Read( use_device );
+  auto parent_data = parent_dst.ReadWrite( use_device );
+  mfem::forall_switch( use_device, submesh_to_parent_vdof_map_.Size(), [=] MFEM_HOST_DEVICE( int i ) {
+    const int encoded_parent_vdof = submesh_to_parent_vdof_map[i];
+    const mfem::real_t sign = encoded_parent_vdof >= 0 ? 1.0 : -1.0;
+    const int parent_vdof = encoded_parent_vdof >= 0 ? encoded_parent_vdof : -1 - encoded_parent_vdof;
+    parent_data[parent_vdof] += sign * submesh_data[i];
+  } );
 }
 
 ParentField::ParentField( const mfem::ParGridFunction& parent_gridfn ) : parent_gridfn_{ parent_gridfn } {}
