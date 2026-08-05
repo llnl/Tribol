@@ -139,16 +139,7 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
  */
 void setEnergyMortarEnforcementOption( IndexT cs_id, EnergyMortarEnforcementOption mode );
 
-/*!
- * \brief Rebuilds the contact formulation for a coupling scheme.
- *
- * This function can be called after modifying coupling scheme settings
- * (e.g. setEnergyMortarEnforcementOption) to recreate the underlying formulation
- * instance with the new settings.
- *
- * \param [in] cs_id coupling scheme id
- */
-void rebuildContactFormulation( IndexT cs_id );
+
 
 /*!
  *

@@ -175,7 +175,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
     tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
                                         tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
                                         tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID );
-    tribol::setEnergyMortarEnforcementOption( cs_id, tribol::EnergyMortarEnforcementOption::QUADRATURE_POINT_GAP );
+    tribol::setEnergyMortarEnforcementOption( cs_id, tribol::EnergyMortarEnforcementOption::QuadraturePointGap );
     tribol::setMfemKinematicConstantPenalty( cs_id, 100.0, 100.0 );
 
     mfem::Vector X( par_fe_space.GetTrueVSize() );

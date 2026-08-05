@@ -1156,6 +1156,16 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 }  // end CouplingScheme::apply()
 
 //------------------------------------------------------------------------------
+void CouplingScheme::updateContactFormulation()
+{
+  if ( m_contactMethod == ENERGY_MORTAR ) {
+    this->setContactFormulation( createContactFormulation( this ) );
+  } else {
+    SLIC_WARNING_ROOT( "tribol::CouplingScheme::updateContactFormulation(): rebuilding is only supported for ENERGY_MORTAR at this time." );
+  }
+}
+
+//------------------------------------------------------------------------------
 bool CouplingScheme::init()
 {
   if ( m_formulation ) {

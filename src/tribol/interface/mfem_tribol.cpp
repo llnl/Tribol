@@ -14,7 +14,7 @@
 
 #include "tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/physics/ContactFormulationFactory.hpp"
+#include "tribol/utils/Math.hpp"
 
 namespace tribol {
 
@@ -338,7 +338,7 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
   }
   cs.setMfemMeshData( std::move( mfem_data ) );
   if ( contact_method == ENERGY_MORTAR ) {
-    cs.setContactFormulation( createContactFormulation( &cs ) );
+    cs.updateContactFormulation();
   }
 }
 

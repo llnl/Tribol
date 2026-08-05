@@ -43,7 +43,7 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "ENERGY_MORTAR requires MFEM submesh data." );
     SLIC_ERROR_ROOT_IF( !cs->hasMfemJacobianData(), "ENERGY_MORTAR requires MFEM Jacobian data." );
 
-    if ( cs->getParameters().energy_mortar_enforcement_option == EnergyMortarEnforcementOption::QUADRATURE_POINT_GAP ) {
+    if ( cs->getParameters().energy_mortar_enforcement_option == EnergyMortarEnforcementOption::QuadraturePointGap ) {
       return std::make_unique<EnergyMortarAdapter<QuadraturePointEnforcement>>(
           *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), k, delta, N, enzyme_quadrature,
           use_penalty_ );

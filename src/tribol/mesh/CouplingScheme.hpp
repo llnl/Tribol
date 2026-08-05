@@ -744,6 +744,11 @@ class CouplingScheme {
   }
 
   /**
+   * @brief Rebuilds the contact formulation based on the current scheme parameters
+   */
+  void updateContactFormulation();
+
+  /**
    * @brief Check if a ContactFormulation implementation is set
    *
    * @return true if set

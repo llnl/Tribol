@@ -29,7 +29,6 @@
 #include <iostream>
 #include <iomanip>
 
-#include "tribol/physics/ContactFormulationFactory.hpp"
 #include <string>
 #include <unordered_map>
 #include <fstream>
@@ -185,25 +184,7 @@ void setEnergyMortarEnforcementOption( IndexT cs_id, EnergyMortarEnforcementOpti
   cs->getParameters().energy_mortar_enforcement_option = mode;
 
   // Automatically rebuild the formulation to reflect the new setting
-  if ( cs->getContactMethod() == ENERGY_MORTAR ) {
-    rebuildContactFormulation( cs_id );
-  }
-}
-
-//------------------------------------------------------------------------------
-void rebuildContactFormulation( IndexT cs_id )
-{
-  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-
-  SLIC_ERROR_ROOT_IF( !cs, "tribol::rebuildContactFormulation(): call tribol::registerCouplingScheme() "
-                               << "prior to calling this routine." );
-
-  if ( cs->getContactMethod() == ENERGY_MORTAR ) {
-    cs->setContactFormulation( createContactFormulation( cs ) );
-  } else {
-    SLIC_WARNING_ROOT(
-        "tribol::rebuildContactFormulation(): rebuilding is only supported for ENERGY_MORTAR at this time." );
-  }
+  cs->updateContactFormulation();
 }
 
 //------------------------------------------------------------------------------
