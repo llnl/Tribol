@@ -49,7 +49,8 @@ class EnzymeElementMortarTest : public testing::Test {
    * @param x2_stencil Stencil coordinate directions of the second face
    */
   void FDCheck( double* x1, double* x2, double* n1, double* p1, const double* x1_stencil = nullptr,
-                const double* x2_stencil = nullptr, int num_nodes = 4, double check_scale = 1.0 )
+                const double* x2_stencil = nullptr, int num_nodes = 4, double check_scale = 1.0,
+                double len_collapse_ratio = 1.0e-8 )
   {
     constexpr int max_num_disp_dofs = 12;
     constexpr int max_num_pres_dofs = 4;
@@ -85,7 +86,8 @@ class EnzymeElementMortarTest : public testing::Test {
     double df2dp1[max_num_disp_dofs * max_num_pres_dofs] = { 0.0 };
 
     tribol::ComputeMortarJacobianEnzyme( x1, n1, p1, f1, df1dx1, df1dx2, df1dn1, df1dp1, g1, dg1dx1, dg1dx2, dg1dn1,
-                                         num_nodes, x2, f2, df2dx1, df2dx2, df2dn1, df2dp1, num_nodes );
+                                         num_nodes, x2, f2, df2dx1, df2dx2, df2dn1, df2dp1, num_nodes,
+                                         len_collapse_ratio );
 
     // Finite difference derivative of the force on the first face w.r.t. the coordinates of the first face
     double df1dx1_fd[max_num_disp_dofs * max_num_disp_dofs] = { 0.0 };
@@ -150,7 +152,7 @@ class EnzymeElementMortarTest : public testing::Test {
       for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
         g1[i] = 0.0;
       }
-      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, num_nodes, x2, f2, num_nodes );
+      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, num_nodes, x2, f2, num_nodes, len_collapse_ratio );
       for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
         df1dx1_fd[j * num_disp_dofs + i] += f1[i];
         df1dx1_fd[j * num_disp_dofs + i] /= shift1;
@@ -177,7 +179,7 @@ class EnzymeElementMortarTest : public testing::Test {
       for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
         g1[i] = 0.0;
       }
-      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, num_nodes, x2, f2, num_nodes );
+      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, num_nodes, x2, f2, num_nodes, len_collapse_ratio );
       for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
         df1dx2_fd[j * num_disp_dofs + i] += f1[i];
         df1dx2_fd[j * num_disp_dofs + i] /= shift2;
@@ -201,7 +203,7 @@ class EnzymeElementMortarTest : public testing::Test {
       for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
         g1[i] = 0.0;
       }
-      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, num_nodes, x2, f2, num_nodes );
+      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, num_nodes, x2, f2, num_nodes, len_collapse_ratio );
       for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
         df1dn1_fd[j * num_disp_dofs + i] += f1[i];
         df1dn1_fd[j * num_disp_dofs + i] /= shift;
@@ -225,7 +227,7 @@ class EnzymeElementMortarTest : public testing::Test {
       for ( int i{ 0 }; i < num_pres_dofs; ++i ) {
         g1[i] = 0.0;
       }
-      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, num_nodes, x2, f2, num_nodes );
+      tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, num_nodes, x2, f2, num_nodes, len_collapse_ratio );
       for ( int i{ 0 }; i < num_disp_dofs; ++i ) {
         df1dp1_fd[j * num_disp_dofs + i] += f1[i];
         df1dp1_fd[j * num_disp_dofs + i] /= shift;
@@ -966,7 +968,10 @@ TEST_F( EnzymeElementMortarTest, NoOverlap )
                              1.0,  1.0,  1.0,  1.0 };
   // clang-format on
 
-  FDCheck( x1, x2, n1, p1, x1_stencil, x2_stencil );
+  constexpr int num_nodes = 4;
+  constexpr double check_scale = 1.0;
+  constexpr double len_collapse_ratio = 1.0e-7;
+  FDCheck( x1, x2, n1, p1, x1_stencil, x2_stencil, num_nodes, check_scale, len_collapse_ratio );
 }
 
 }  // namespace tribol
