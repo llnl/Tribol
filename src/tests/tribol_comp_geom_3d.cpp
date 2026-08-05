@@ -2494,6 +2494,52 @@ TEST_F( CompGeomTest, poly_reorder_convex_1 )
   EXPECT_EQ( y[4], 0.5 );
 }
 
+TEST_F( CompGeomTest, poly_reorder_convex_simple_geometries )
+{
+  auto check_reorder = []( RealT* x, RealT* y, int* new_ids, const RealT* expected_x, const RealT* expected_y,
+                           const int* expected_ids, int num_points ) {
+    EXPECT_TRUE( tribol::PolyReorderConvex( x, y, new_ids, num_points ) );
+    for ( int i{ 0 }; i < num_points; ++i ) {
+      EXPECT_EQ( x[i], expected_x[i] );
+      EXPECT_EQ( y[i], expected_y[i] );
+      EXPECT_EQ( new_ids[i], expected_ids[i] );
+    }
+  };
+
+  {
+    constexpr int num_points = 3;
+    RealT x[num_points] = { 1.0, 0.0, 0.0 };
+    RealT y[num_points] = { 0.0, 1.0, 0.0 };
+    int new_ids[num_points];
+    const RealT expected_x[num_points] = { 0.0, 1.0, 0.0 };
+    const RealT expected_y[num_points] = { 0.0, 0.0, 1.0 };
+    const int expected_ids[num_points] = { 2, 0, 1 };
+    check_reorder( x, y, new_ids, expected_x, expected_y, expected_ids, num_points );
+  }
+
+  {
+    constexpr int num_points = 4;
+    RealT x[num_points] = { 1.0, 0.0, 1.0, 0.0 };
+    RealT y[num_points] = { 1.0, 0.0, 0.0, 1.0 };
+    int new_ids[num_points];
+    const RealT expected_x[num_points] = { 0.0, 1.0, 1.0, 0.0 };
+    const RealT expected_y[num_points] = { 0.0, 0.0, 1.0, 1.0 };
+    const int expected_ids[num_points] = { 1, 2, 0, 3 };
+    check_reorder( x, y, new_ids, expected_x, expected_y, expected_ids, num_points );
+  }
+
+  {
+    constexpr int num_points = 6;
+    RealT x[num_points] = { 2.0, 0.5, 2.0, 0.0, 0.0, 1.5 };
+    RealT y[num_points] = { 0.0, 0.8, 2.0, 2.0, 0.0, 0.8 };
+    int new_ids[num_points];
+    const RealT expected_x[num_points] = { 0.5, 0.0, 2.0, 1.5, 2.0, 0.0 };
+    const RealT expected_y[num_points] = { 0.8, 0.0, 0.0, 0.8, 2.0, 2.0 };
+    const int expected_ids[num_points] = { 1, 4, 0, 5, 2, 3 };
+    check_reorder( x, y, new_ids, expected_x, expected_y, expected_ids, num_points );
+  }
+}
+
 TEST_F( CompGeomTest, project_point_to_plane )
 {
   // Test the point projection onto a plane with normal <1,1,1> that passes
