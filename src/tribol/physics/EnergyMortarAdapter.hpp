@@ -69,7 +69,7 @@ class NodalGapEnforcement : public ContactFormulation {
 };
 
 template <typename Adapter>
-class QuadraturePointEnforcement : public ContactFormulation {
+class QuadraturePointGapEnforcement : public ContactFormulation {
  protected:
   void init( Adapter* /*adapter*/ ) {}
   static void updateNodalGaps( Adapter* /*adapter*/ ) {}

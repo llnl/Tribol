@@ -474,7 +474,7 @@ shared::ParSparseMat NodalGapEnforcement<Adapter>::computeDfDxSecondDerivativesP
 }
 
 template <typename Adapter>
-void QuadraturePointEnforcement<Adapter>::updateNodalForces( Adapter* adapter )
+void QuadraturePointGapEnforcement<Adapter>::updateNodalForces( Adapter* adapter )
 {
   const bool use_lor = ( adapter->mesh_data_.GetLORMesh() != nullptr );
   const auto& displacement_surface_fes =
@@ -585,7 +585,7 @@ std::unique_ptr<mfem::HypreParMatrix> NodalGapEnforcement<Adapter>::getMfemDfDp(
 }
 
 template class EnergyMortarAdapter<NodalGapEnforcement>;
-template class EnergyMortarAdapter<QuadraturePointEnforcement>;
+template class EnergyMortarAdapter<QuadraturePointGapEnforcement>;
 
 #endif  // TRIBOL_USE_ENZYME
 
