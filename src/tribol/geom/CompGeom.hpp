@@ -1288,9 +1288,6 @@ TRIBOL_HOST_DEVICE inline FaceGeomException MortarPlanePair::computeOverlap3D( c
                                                                                const MeshData::Viewer& m1,
                                                                                const MeshData::Viewer& m2 )
 {
-  IndexT element_id1 = this->getCpElementId1();
-  IndexT element_id2 = this->getCpElementId2();
-
   // project face vertex coordinates to contact plane
   ProjectPointsToPlane( x1, y1, z1, this->m_nX, this->m_nY, this->m_nZ, this->m_cX, this->m_cY, this->m_cZ,
                         &m_x1_bar[0], &m_y1_bar[0], &m_z1_bar[0], m1.numberOfNodesPerElement() );
@@ -1322,12 +1319,10 @@ TRIBOL_HOST_DEVICE inline FaceGeomException MortarPlanePair::computeOverlap3D( c
   ElemReverse( X2, Y2, m2.numberOfNodesPerElement() );
 
   // compute intersection polygon and area.
-  RealT pos_tol = this->m_params.len_collapse_ratio *
-                  axom::utilities::max( m1.getFaceRadius()[element_id1], m2.getFaceRadius()[element_id2] );
-  RealT len_tol = pos_tol;
-  FaceGeomException inter_err =
-      Intersection2DPolygon( X1, Y1, m1.numberOfNodesPerElement(), X2, Y2, m2.numberOfNodesPerElement(), pos_tol,
-                             len_tol, this->m_polyLocX, this->m_polyLocY, this->m_numPolyVert, this->m_area, false );
+  RealT length_tol_ratio = this->m_params.len_collapse_ratio;
+  FaceGeomException inter_err = Intersection2DPolygon( X1, Y1, m1.numberOfNodesPerElement(), X2, Y2,
+                                                       m2.numberOfNodesPerElement(), length_tol_ratio, this->m_polyLocX,
+                                                       this->m_polyLocY, this->m_numPolyVert, this->m_area, false );
 
   if ( inter_err != NO_FACE_GEOM_EXCEPTION ) {
     return inter_err;
@@ -1340,8 +1335,8 @@ TRIBOL_HOST_DEVICE inline FaceGeomException MortarPlanePair::computeOverlap3D( c
 
   // handle the case where the actual polygon with connectivity
   // and computed vertex coordinates becomes degenerate due to
-  // either position tolerances (segment-segment intersections)
-  // or length tolerances (intersecting polygon segment lengths)
+  // the length tolerance used for segment-segment intersections
+  // or intersecting polygon segment lengths
   if ( this->m_numPolyVert < 3 ) {
 #ifdef TRIBOL_USE_HOST
     SLIC_DEBUG( "degenerate polygon intersection detected.\n" );
@@ -2356,8 +2351,8 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
 
   // handle the case where the actual polygon with connectivity
   // and computed vertex coordinates becomes degenerate due to
-  // either position tolerances (segment-segment intersections)
-  // or length tolerances (intersecting polygon segment lengths)
+  // the length tolerance used for segment-segment intersections
+  // or intersecting polygon segment lengths
   if ( m_numPolyVert < 3 ) {
 #ifdef TRIBOL_USE_HOST
     SLIC_DEBUG( "degenerate polygon intersection detected.\n" );
@@ -2463,9 +2458,6 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::projectPointsAndCom
   }
 #endif
 
-  IndexT element_id1 = this->getCpElementId1();
-  IndexT element_id2 = this->getCpElementId2();
-
   constexpr int max_nodes_per_clipped_face = 5;
   RealT cfx1_proj[max_nodes_per_clipped_face];
   RealT cfy1_proj[max_nodes_per_clipped_face];
@@ -2511,11 +2503,9 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::projectPointsAndCom
   }
 
   // call intersection routine to get intersecting polygon
-  RealT pos_tol = this->m_params.len_collapse_ratio *
-                  axom::utilities::max( m1.getFaceRadius()[element_id1], m2.getFaceRadius()[element_id2] );
-  RealT len_tol = pos_tol;
+  RealT length_tol_ratio = this->m_params.len_collapse_ratio;
   FaceGeomException inter_err =
-      Intersection2DPolygon( cfx1_loc, cfy1_loc, num_vert_1, cfx2_loc, cfy2_loc, num_vert_2, pos_tol, len_tol,
+      Intersection2DPolygon( cfx1_loc, cfy1_loc, num_vert_1, cfx2_loc, cfy2_loc, num_vert_2, length_tol_ratio,
                              m_polyLocX, m_polyLocY, m_numPolyVert, m_area, false );
 
   if ( inter_err != NO_FACE_GEOM_EXCEPTION ) {
