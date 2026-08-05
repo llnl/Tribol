@@ -372,7 +372,6 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
   return result;
 }
 
-
 TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -390,11 +389,10 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
   params.k = 3.0;
   params.N = 3;
   params.enzyme_quadrature = true;
-  params.penalty_mode = EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;
 
   EnergyMortarCalculator evaluator( params );
-  const auto result = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
-                                                                       mesh2.getView() );
+  const auto result =
+      evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
   EXPECT_EQ( result.energy, 0.0 );
 }
 
@@ -415,7 +413,6 @@ TEST( QuadraturePointPenaltyCheck, DerivativesMatchFiniteDifference )
   params.k = 3.0;
   params.N = 3;
   params.enzyme_quadrature = true;
-  params.penalty_mode = EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;
 
   EnergyMortarCalculator evaluator( params );
   const InterfacePair pair( 0, 0 );
@@ -461,10 +458,12 @@ TEST( QuadraturePointPenaltyCheck, DerivativesMatchFiniteDifference )
   for ( int dof = 0; dof < 8; ++dof ) {
     restore();
     perturb( dof, gradient_eps );
-    const double energy_plus = evaluator.compute_quadrature_point_penalty_energy( pair, mesh1.getView(), mesh2.getView() );
+    const double energy_plus =
+        evaluator.compute_quadrature_point_penalty_energy( pair, mesh1.getView(), mesh2.getView() );
     restore();
     perturb( dof, -gradient_eps );
-    const double energy_minus = evaluator.compute_quadrature_point_penalty_energy( pair, mesh1.getView(), mesh2.getView() );
+    const double energy_minus =
+        evaluator.compute_quadrature_point_penalty_energy( pair, mesh1.getView(), mesh2.getView() );
     const double fd_force = ( energy_plus - energy_minus ) / ( 2.0 * gradient_eps );
     EXPECT_NEAR( fd_force, analytical.force[dof], gradient_tol ) << "force mismatch at dof " << dof;
   }
@@ -474,10 +473,12 @@ TEST( QuadraturePointPenaltyCheck, DerivativesMatchFiniteDifference )
   for ( int col = 0; col < 8; ++col ) {
     restore();
     perturb( col, hessian_eps );
-    const auto force_plus = evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() ).force;
+    const auto force_plus =
+        evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() ).force;
     restore();
     perturb( col, -hessian_eps );
-    const auto force_minus = evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() ).force;
+    const auto force_minus =
+        evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() ).force;
     for ( int row = 0; row < 8; ++row ) {
       const double fd_stiffness = ( force_plus[row] - force_minus[row] ) / ( 2.0 * hessian_eps );
       EXPECT_NEAR( fd_stiffness, analytical.stiffness[row * 8 + col], hessian_tol )

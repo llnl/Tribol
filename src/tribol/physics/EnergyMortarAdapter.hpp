@@ -30,6 +30,27 @@ namespace tribol {
  * the dual field is interpreted as the multiplier vector `lambda` and the formulation computes `f = G^T * lambda` where
  * `G = d(g_tilde)/dx`.
  */
+
+template <typename EnforcementPolicy>
+class EnergyMortarAdapter;
+
+struct NodalGapEnforcement {
+  static void updateNodalGaps(EnergyMortarAdapter<NodalGapEnforcement>* adapter);
+  static void updateNodalForces(EnergyMortarAdapter<NodalGapEnforcement>* adapter);
+
+  static shared::ParSparseMat computeDfDxSecondDerivativesLM(EnergyMortarAdapter<NodalGapEnforcement>* adapter, const mfem::GridFunction& redecomp_lambda);
+  static shared::ParSparseMat computeDfDxSecondDerivativesPenalty(EnergyMortarAdapter<NodalGapEnforcement>* adapter,
+                                                            const mfem::GridFunction& redecomp_pressure,
+                                                            const mfem::GridFunction& redecomp_g_tilde,
+                                                            const mfem::GridFunction& redecomp_A);
+};
+
+struct QuadraturePointEnforcement {
+  static void updateNodalGaps(EnergyMortarAdapter<QuadraturePointEnforcement>* /*adapter*/) {}
+  static void updateNodalForces(EnergyMortarAdapter<QuadraturePointEnforcement>* adapter);
+};
+
+template <typename EnforcementPolicy>
 class EnergyMortarAdapter : public ContactFormulation {
  public:
   /**
@@ -50,8 +71,7 @@ class EnergyMortarAdapter : public ContactFormulation {
    * relative to the order of the meshes provided here.
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k,
-                       double delta, int N, bool enzyme_quadrature, bool use_penalty = true,
-                       EnergyMortarPenaltyMode penalty_mode = EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP );
+                       double delta, int N, bool enzyme_quadrature, bool use_penalty = true );
 
   /**
    * @brief Default destructor
@@ -80,7 +100,7 @@ class EnergyMortarAdapter : public ContactFormulation {
    * In penalty mode this assembles both `g_tilde` and `g = g_tilde / A`. In LM mode the constraint is `g_tilde = 0` and
    * derivatives are taken with respect to `g_tilde`.
    */
-  void updateNodalGaps() override;
+  void updateNodalGaps() override { EnforcementPolicy::updateNodalGaps( this ); }
 
   /**
    * @brief Assemble nodal forces/residual and Jacobian contributions
@@ -88,7 +108,7 @@ class EnergyMortarAdapter : public ContactFormulation {
    * In penalty mode this computes pressure from the current gap and penalty stiffness. In LM mode this interprets the
    * stored pressure vector as the Lagrange multiplier vector `lambda`.
    */
-  void updateNodalForces() override;
+  void updateNodalForces() override { EnforcementPolicy::updateNodalForces( this ); }
 
   /**
    * @brief Reports if formulation has a maximum allowable timestep calculation
@@ -132,13 +152,6 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @param mesh2_penalty Penalty stiffness for mesh 2.
    */
   void updateConstantPenaltyStiffness( double mesh1_penalty, double mesh2_penalty ) override;
-
-  /**
-   * @brief Update the EnergyMortar penalty mode
-   *
-   * @param mode Penalty mode
-   */
-  void updateEnergyMortarPenaltyMode( EnergyMortarPenaltyMode mode ) override;
 
 #ifdef BUILD_REDECOMP
   /**
@@ -201,6 +214,8 @@ class EnergyMortarAdapter : public ContactFormulation {
 #endif
 
  private:
+  friend EnforcementPolicy;
+  
   /**
    * @brief Controls penalty vs. Lagrange multiplier (LM) mode
    *
@@ -316,36 +331,6 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @brief Derivative df/dx assembled on parent displacement true-dofs
    */
   mutable shared::ParSparseMat df_dx_;
-
-  /**
-   * @brief Assemble the LM second-derivative df/dx contribution
-   *
-   * Assembles `df/dx = lambda · d²(g_tilde)/dx²`.
-   *
-   * @param redecomp_lambda Lagrange multiplier on the redecomp mesh
-   * @return Assembled df/dx contribution on parent true-dofs
-   */
-  shared::ParSparseMat computeDfDxSecondDerivativesLM( const mfem::GridFunction& redecomp_lambda );
-
-  /**
-   * @brief Assemble the penalty second-derivative df/dx contribution
-   *
-   * Assembles the second-derivative penalty contribution:
-   * `p · d²(g_tilde)/dx² - (g_tilde p / A) · d²A/dx²`.
-   *
-   * @param redecomp_pressure Pressure field on the redecomp mesh
-   * @param redecomp_g_tilde g_tilde on the redecomp mesh
-   * @param redecomp_A Area weighting A on the redecomp mesh
-   * @return Assembled df/dx contribution on parent true-dofs
-   */
-  shared::ParSparseMat computeDfDxSecondDerivativesPenalty( const mfem::GridFunction& redecomp_pressure,
-                                                            const mfem::GridFunction& redecomp_g_tilde,
-                                                            const mfem::GridFunction& redecomp_A );
-
-  /**
-   * @brief Assemble QP-gap penalty force and Jacobian contributions
-   */
-  void updateQuadraturePointPenaltyForces();
 };
 
 #endif  // TRIBOL_USE_ENZYME

@@ -118,11 +118,6 @@ class ContactFormulation {
    */
   virtual void updateConstantPenaltyStiffness( double /*mesh1_penalty*/, double /*mesh2_penalty*/ ) {}
 
-  /**
-   * @brief Update ENERGY_MORTAR penalty mode on formulations that support it
-   */
-  virtual void updateEnergyMortarPenaltyMode( EnergyMortarPenaltyMode /*mode*/ ) {}
-
 #ifdef BUILD_REDECOMP
   /**
    * @brief Returns t-dof vector of forces on parent mesh

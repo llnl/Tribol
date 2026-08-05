@@ -125,10 +125,10 @@ enum ContactMethod  // all mortar methods go first
 /*!
  * \brief Enumerates penalty enforcement options for ENERGY_MORTAR
  */
-enum class EnergyMortarPenaltyMode
+enum class EnergyMortarEnforcementOption
 {
-  QUADRATURE_POINT_GAP,  ///! Penalize gaps independently at quadrature points
-  NODAL_GAP              ///! Penalize assembled nodal gaps
+  NODAL_GAP = 0,            ///! Penalize assembled nodal gaps
+  QUADRATURE_POINT_GAP = 1  ///! Penalize gaps independently at quadrature points
 };
 
 /*!
@@ -505,8 +505,8 @@ struct Parameters {
   // Note, auto-contact will require registration of element thicknesses.
   bool auto_contact_check = false;  ///! True if auto-contact checks should be enabled
 
-  EnergyMortarPenaltyMode energy_mortar_penalty_mode =
-      EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP;  ///! Penalty enforcement mode used by ENERGY_MORTAR
+  EnergyMortarEnforcementOption energy_mortar_enforcement_option =
+      EnergyMortarEnforcementOption::QUADRATURE_POINT_GAP;  ///! Enforcement mode used by ENERGY_MORTAR
 };
 
 }  // namespace tribol

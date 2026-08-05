@@ -23,7 +23,6 @@ struct ContactParams {
   double k;                // Penalty
   int N;                   // Quadrature Points
   bool enzyme_quadrature;  // Determines how enzyming is performed (default = True)
-  EnergyMortarPenaltyMode penalty_mode{ EnergyMortarPenaltyMode::QUADRATURE_POINT_GAP };  // Penalty enforcement mode
 };
 
 /// Stores quadrature-point penalty energy derivatives for one interface pair.

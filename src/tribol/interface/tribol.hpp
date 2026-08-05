@@ -132,12 +132,23 @@ void setAutoContactPenScale( IndexT cs_id, RealT scale );
 void setTimestepPenFrac( IndexT cs_id, RealT frac );
 
 /*!
- * \brief Sets the penalty enforcement mode for ENERGY_MORTAR
+ * \brief Sets the enforcement mode for ENERGY_MORTAR
  *
  * \param [in] cs_id coupling scheme id
- * \param [in] mode penalty mode
+ * \param [in] mode enforcement option
  */
-void setEnergyMortarPenaltyMode( IndexT cs_id, EnergyMortarPenaltyMode mode );
+void setEnergyMortarEnforcementOption( IndexT cs_id, EnergyMortarEnforcementOption mode );
+
+/*!
+ * \brief Rebuilds the contact formulation for a coupling scheme.
+ *
+ * This function can be called after modifying coupling scheme settings
+ * (e.g. setEnergyMortarEnforcementOption) to recreate the underlying formulation
+ * instance with the new settings.
+ *
+ * \param [in] cs_id coupling scheme id
+ */
+void rebuildContactFormulation( IndexT cs_id );
 
 /*!
  *

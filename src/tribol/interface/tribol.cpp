@@ -26,6 +26,10 @@
 #include "axom/slic.hpp"
 
 // C/C++ includes
+#include <iostream>
+#include <iomanip>
+
+#include "tribol/physics/ContactFormulationFactory.hpp"
 #include <string>
 #include <unordered_map>
 #include <fstream>
@@ -171,16 +175,34 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac )
 }  // end setTimestepPenFrac()
 
 //------------------------------------------------------------------------------
-void setEnergyMortarPenaltyMode( IndexT cs_id, EnergyMortarPenaltyMode mode )
+void setEnergyMortarEnforcementOption( IndexT cs_id, EnergyMortarEnforcementOption mode )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
 
-  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarPenaltyMode(): call tribol::registerCouplingScheme() "
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarEnforcementOption(): call tribol::registerCouplingScheme() "
                                << "prior to calling this routine." );
 
-  cs->getParameters().energy_mortar_penalty_mode = mode;
-  if ( cs->hasContactFormulation() ) {
-    cs->getContactFormulation()->updateEnergyMortarPenaltyMode( mode );
+  cs->getParameters().energy_mortar_enforcement_option = mode;
+
+  // Automatically rebuild the formulation to reflect the new setting
+  if ( cs->getContactMethod() == ENERGY_MORTAR ) {
+    rebuildContactFormulation( cs_id );
+  }
+}
+
+//------------------------------------------------------------------------------
+void rebuildContactFormulation( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::rebuildContactFormulation(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  if ( cs->getContactMethod() == ENERGY_MORTAR ) {
+    cs->setContactFormulation( createContactFormulation( cs ) );
+  } else {
+    SLIC_WARNING_ROOT(
+        "tribol::rebuildContactFormulation(): rebuilding is only supported for ENERGY_MORTAR at this time." );
   }
 }
 
