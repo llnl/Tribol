@@ -7,6 +7,7 @@
 #define SRC_TRIBOL_PHYSICS_CONTACTFORMULATION_HPP_
 
 #include "tribol/config.hpp"
+#include <stdexcept>
 
 #include "tribol/common/Parameters.hpp"
 #include "tribol/common/ArrayTypes.hpp"
@@ -124,23 +125,33 @@ class ContactFormulation {
    *
    * @note Requires updateNodalForces() to be called first.
    */
-  virtual const mfem::HypreParVector& getMfemForce() const = 0;
+  virtual const mfem::HypreParVector& getMfemForce() const
+  {
+    SLIC_ERROR_ROOT( "getMfemForce() is not supported by this formulation." );
+    throw std::runtime_error( "Not supported" );
+  }
 
   /**
    * @brief Returns t-dof vector of gaps on submesh
    *
    * @note Requires updateNodalGaps() to be called first.
    */
-  virtual const mfem::HypreParVector& getMfemGap() const = 0;
+  virtual const mfem::HypreParVector& getMfemGap() const
+  {
+    SLIC_ERROR_ROOT( "getMfemGap() is not supported by this formulation." );
+    throw std::runtime_error( "Not supported" );
+  }
 
   /**
    * @brief Returns a reference to the MFEM dual t-dof vector
    *
    * @return Reference to the dual t-dof vector (e.g. pressure in penalty mode, or Lagrange multiplier in LM mode)
-   *
-   * TODO: specify what mesh object this is define on.
    */
-  virtual mfem::HypreParVector& getMfemPressure() = 0;
+  virtual mfem::HypreParVector& getMfemPressure()
+  {
+    SLIC_ERROR_ROOT( "getMfemPressure() is not supported by this formulation." );
+    throw std::runtime_error( "Not supported" );
+  }
 
   /**
    * @brief Get the derivative of force with respect to displacement
@@ -149,7 +160,11 @@ class ContactFormulation {
    *
    * @note Requires updateNodalForces() to be called first.
    */
-  virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx() const = 0;
+  virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx() const
+  {
+    SLIC_ERROR_ROOT( "getMfemDfDx() is not supported by this formulation." );
+    return nullptr;
+  }
 
   /**
    * @brief Get the derivative of the gap constraint with respect to displacement
@@ -158,7 +173,11 @@ class ContactFormulation {
    *
    * @note Requires updateNodalGaps() to be called first.
    */
-  virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx() const = 0;
+  virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx() const
+  {
+    SLIC_ERROR_ROOT( "getMfemDgDx() is not supported by this formulation." );
+    return nullptr;
+  }
 
   /**
    * @brief Get the derivative of force with respect to the dual variable
@@ -167,7 +186,11 @@ class ContactFormulation {
    *
    * @note Requires updateNodalForces() to be called first.
    */
-  virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const = 0;
+  virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const
+  {
+    SLIC_ERROR_ROOT( "getMfemDfDp() is not supported by this formulation." );
+    return nullptr;
+  }
 
 #endif
 };

@@ -31,27 +31,53 @@ namespace tribol {
  * `G = d(g_tilde)/dx`.
  */
 
-template <typename EnforcementPolicy>
+template <template <typename> class EnforcementPolicy>
 class EnergyMortarAdapter;
 
-struct NodalGapEnforcement {
-  static void updateNodalGaps(EnergyMortarAdapter<NodalGapEnforcement>* adapter);
-  static void updateNodalForces(EnergyMortarAdapter<NodalGapEnforcement>* adapter);
+template <typename Adapter>
+class NodalGapEnforcement : public ContactFormulation {
+ protected:
+  shared::ParVector g_tilde_vec_;
+  shared::ParVector A_vec_;
+  shared::ParVector gap_vec_;
+  mutable shared::ParSparseMat dg_tilde_dx_;
+  shared::ParSparseMat dA_dx_;
+  shared::ParVector pressure_vec_;
 
-  static shared::ParSparseMat computeDfDxSecondDerivativesLM(EnergyMortarAdapter<NodalGapEnforcement>* adapter, const mfem::GridFunction& redecomp_lambda);
-  static shared::ParSparseMat computeDfDxSecondDerivativesPenalty(EnergyMortarAdapter<NodalGapEnforcement>* adapter,
-                                                            const mfem::GridFunction& redecomp_pressure,
-                                                            const mfem::GridFunction& redecomp_g_tilde,
-                                                            const mfem::GridFunction& redecomp_A);
+  void init( Adapter* adapter );
+  static void updateNodalGaps( Adapter* adapter );
+  static void updateNodalForces( Adapter* adapter );
+
+  static shared::ParSparseMat computeDfDxSecondDerivativesLM( Adapter* adapter,
+                                                              const mfem::GridFunction& redecomp_lambda );
+  static shared::ParSparseMat computeDfDxSecondDerivativesPenalty( Adapter* adapter,
+                                                                   const mfem::GridFunction& redecomp_pressure,
+                                                                   const mfem::GridFunction& redecomp_g_tilde,
+                                                                   const mfem::GridFunction& redecomp_A );
+
+ public:
+  const mfem::HypreParVector& getMfemGap() const override
+  {
+    return static_cast<const Adapter*>( this )->use_penalty_ ? gap_vec_.get() : g_tilde_vec_.get();
+  }
+  mfem::HypreParVector& getMfemPressure() override { return pressure_vec_.get(); }
+  std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx() const override
+  {
+    return std::unique_ptr<mfem::HypreParMatrix>( dg_tilde_dx_.release() );
+  }
+  std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const override;
 };
 
-struct QuadraturePointEnforcement {
-  static void updateNodalGaps(EnergyMortarAdapter<QuadraturePointEnforcement>* /*adapter*/) {}
-  static void updateNodalForces(EnergyMortarAdapter<QuadraturePointEnforcement>* adapter);
+template <typename Adapter>
+class QuadraturePointEnforcement : public ContactFormulation {
+ protected:
+  void init( Adapter* /*adapter*/ ) {}
+  static void updateNodalGaps( Adapter* /*adapter*/ ) {}
+  static void updateNodalForces( Adapter* adapter );
 };
 
-template <typename EnforcementPolicy>
-class EnergyMortarAdapter : public ContactFormulation {
+template <template <typename> class EnforcementPolicy>
+class EnergyMortarAdapter : public EnforcementPolicy<EnergyMortarAdapter<EnforcementPolicy>> {
  public:
   /**
    * @brief Construct a new EnergyMortarAdapter
@@ -100,7 +126,7 @@ class EnergyMortarAdapter : public ContactFormulation {
    * In penalty mode this assembles both `g_tilde` and `g = g_tilde / A`. In LM mode the constraint is `g_tilde = 0` and
    * derivatives are taken with respect to `g_tilde`.
    */
-  void updateNodalGaps() override { EnforcementPolicy::updateNodalGaps( this ); }
+  void updateNodalGaps() override { EnforcementPolicy<EnergyMortarAdapter>::updateNodalGaps( this ); }
 
   /**
    * @brief Assemble nodal forces/residual and Jacobian contributions
@@ -108,7 +134,7 @@ class EnergyMortarAdapter : public ContactFormulation {
    * In penalty mode this computes pressure from the current gap and penalty stiffness. In LM mode this interprets the
    * stored pressure vector as the Lagrange multiplier vector `lambda`.
    */
-  void updateNodalForces() override { EnforcementPolicy::updateNodalForces( this ); }
+  void updateNodalForces() override { EnforcementPolicy<EnergyMortarAdapter>::updateNodalForces( this ); }
 
   /**
    * @brief Reports if formulation has a maximum allowable timestep calculation
@@ -164,22 +190,6 @@ class EnergyMortarAdapter : public ContactFormulation {
   const mfem::HypreParVector& getMfemForce() const override { return force_vec_.get(); }
 
   /**
-   * @brief Return the submesh true-dof gap vector
-   *
-   * @return Reference to the gap vector on the submesh true-dofs
-   *
-   * @note Requires updateNodalGaps() to be called first.
-   */
-  const mfem::HypreParVector& getMfemGap() const override;
-
-  /**
-   * @brief Return a reference to the dual (pressure/LM) true-dof vector
-   *
-   * @return Reference to the pressure vector (penalty mode) or multiplier vector (LM mode)
-   */
-  mfem::HypreParVector& getMfemPressure() override { return pressure_vec_.get(); }
-
-  /**
    * @brief Return df/dx for the assembled contact force
    *
    * @return Unique pointer to `mfem::HypreParMatrix` holding df/dx
@@ -190,32 +200,10 @@ class EnergyMortarAdapter : public ContactFormulation {
    */
   std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx() const override;
 
-  /**
-   * @brief Return d(g_tilde)/dx for the assembled gap
-   *
-   * @return Unique pointer to `mfem::HypreParMatrix` holding d(g_tilde)/dx
-   *
-   * @note Requires updateNodalGaps() to be called first.
-   * @note Ownership of the internally stored matrix is transferred; repeated calls without recomputing will return
-   * null/empty data.
-   */
-  std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx() const override;
-
-  /**
-   * @brief Return df/dp (penalty) or df/dlambda (LM)
-   *
-   * @return Unique pointer to `mfem::HypreParMatrix` holding df/dp or df/dlambda
-   *
-   * @note Requires updateNodalForces() to be called first.
-   * @note In penalty mode this returns nullptr.
-   */
-  std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const override;
-
 #endif
 
- private:
-  friend EnforcementPolicy;
-  
+  friend EnforcementPolicy<EnergyMortarAdapter>;
+
   /**
    * @brief Controls penalty vs. Lagrange multiplier (LM) mode
    *
@@ -284,38 +272,6 @@ class EnergyMortarAdapter : public ContactFormulation {
    * @brief Interface pairs used for the current update
    */
   ArrayT<InterfacePair> pairs_;
-
-  // These store the assembled nodal values
-
-  /**
-   * @brief Unnormalized gap vector g_tilde on the dual (pressure) true-dofs
-   */
-  shared::ParVector g_tilde_vec_;
-
-  /**
-   * @brief Tributary area vector A on the dual (pressure) true-dofs
-   */
-  shared::ParVector A_vec_;
-
-  /**
-   * @brief Normalized gap vector g = g_tilde / A on the dual (pressure) true-dofs
-   */
-  shared::ParVector gap_vec_;
-
-  /**
-   * @brief Derivative d(g_tilde)/dx as a (dual rows) x (parent displacement cols) matrix
-   */
-  mutable shared::ParSparseMat dg_tilde_dx_;
-
-  /**
-   * @brief Derivative dA/dx as a (dual rows) x (parent displacement cols) matrix
-   */
-  shared::ParSparseMat dA_dx_;
-
-  /**
-   * @brief Dual true-dof vector (pressure = k * (g_tilde / A) in penalty mode, lambda in LM mode)
-   */
-  shared::ParVector pressure_vec_;
 
   /**
    * @brief Contact constraint energy associated with the current state
