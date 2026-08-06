@@ -127,8 +127,8 @@ enum ContactMethod  // all mortar methods go first
  */
 enum class EnergyMortarEnforcementOption
 {
-  NodalGap,            ///! Penalize assembled nodal gaps
-  QuadraturePointGap   ///! Penalize gaps independently at quadrature points
+  NodalGap,           ///! Penalize assembled nodal gaps
+  QuadraturePointGap  ///! Penalize gaps independently at quadrature points
 };
 
 /*!

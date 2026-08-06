@@ -39,7 +39,8 @@
  *   u_y(x,y) = eps_yy * y
  *   u_x(x,y) = eps_xx * x
  */
-class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int, tribol::EnergyMortarEnforcementOption>> {
+class MfemMortarEnergyPatchTest
+    : public testing::TestWithParam<std::tuple<int, tribol::EnergyMortarEnforcementOption>> {
  protected:
   tribol::RealT max_disp_;
   double l2_err_vec_;
@@ -358,10 +359,11 @@ TEST_P( MfemMortarEnergyPatchTest, check_patch_test )
   MPI_Barrier( MPI_COMM_WORLD );
 }
 
-INSTANTIATE_TEST_SUITE_P( tribol, MfemMortarEnergyPatchTest,
-                          testing::Combine( testing::Values( 2 ),
-                                            testing::Values( tribol::EnergyMortarEnforcementOption::NodalGap,
-                                                             tribol::EnergyMortarEnforcementOption::QuadraturePointGap ) ) );
+INSTANTIATE_TEST_SUITE_P(
+    tribol, MfemMortarEnergyPatchTest,
+    testing::Combine( testing::Values( 2 ),
+                      testing::Values( tribol::EnergyMortarEnforcementOption::NodalGap,
+                                       tribol::EnergyMortarEnforcementOption::QuadraturePointGap ) ) );
 
 //------------------------------------------------------------------------------
 #include "axom/slic/core/SimpleLogger.hpp"
