@@ -26,8 +26,6 @@
 #include "axom/slic.hpp"
 
 // C/C++ includes
-#include <iostream>
-#include <iomanip>
 
 #include <string>
 #include <unordered_map>

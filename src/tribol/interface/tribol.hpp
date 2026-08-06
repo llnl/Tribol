@@ -139,8 +139,6 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
  */
 void setEnergyMortarEnforcementOption( IndexT cs_id, EnergyMortarEnforcementOption mode );
 
-
-
 /*!
  *
  * \brief sets the timestep scale factor applied to the timestep vote

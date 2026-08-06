@@ -14,7 +14,6 @@
 
 #include "tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/utils/Math.hpp"
 
 namespace tribol {
 
