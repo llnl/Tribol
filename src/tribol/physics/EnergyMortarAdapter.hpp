@@ -204,6 +204,7 @@ class EnergyMortarAdapter : public EnforcementPolicy<EnergyMortarAdapter<Enforce
 
   friend EnforcementPolicy<EnergyMortarAdapter>;
 
+ private:
   /**
    * @brief Controls penalty vs. Lagrange multiplier (LM) mode
    *
