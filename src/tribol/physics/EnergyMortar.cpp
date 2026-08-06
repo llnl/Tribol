@@ -234,9 +234,10 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, Gparams* gp, double* g
   find_normal( A0, A1, nA );
 
   // Only keep the contribution when the edge normals oppose each other.
+  // NOTE: geomFilter already rejects pairs with co-oriented normals (dot > 0),
+  // but the clamp is retained for defensive correctness in tests and direct calls.
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  // double eta = ( dot < 0 ) ? dot : 0.0; //Normal smoothing
-  double eta = dot;
+  double eta = ( dot < 0 ) ? dot : 0.0;
 
   double g1 = 0.0, g2 = 0.0;
   double AI_1 = 0.0, AI_2 = 0.0;
@@ -300,9 +301,10 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel_quad( const double* x, const Gparams* gp
   double nA[2];
   find_normal( A0, A1, nA );
   // Only keep the contribution when the edge normals oppose each other.
+  // NOTE: geomFilter already rejects pairs with co-oriented normals (dot > 0),
+  // but the clamp is retained for defensive correctness in tests and direct calls.
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  // double eta = ( dot < 0 ) ? dot : 0.0;
-  double eta = dot;
+  double eta = ( dot < 0 ) ? dot : 0.0;
 
   double g1 = 0.0, g2 = 0.0;
   double AI_1 = 0.0, AI_2 = 0.0;
@@ -491,7 +493,11 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   find_normal( B0, B1, nB );
   double nA[2];
   find_normal( A0, A1, nA );
-  const double eta = nA[0] * nB[0] + nA[1] * nB[1];
+  // Only keep the contribution when the edge normals oppose each other.
+  // NOTE: geomFilter already rejects pairs with co-oriented normals (dot > 0),
+  // but the clamp is retained for defensive correctness in tests and direct calls.
+  const double dot = nA[0] * nB[0] + nA[1] * nB[1];
+  const double eta = ( dot < 0 ) ? dot : 0.0;
   const double J = line_jacobian( A0, A1 );
 
   double value = 0.0;
@@ -519,8 +525,8 @@ void grad_qp_penalty_kernel( const double* x, const KernelParams* kp, double* do
   double dx[8] = { 0.0 };
   double out = 0.0;
   double dout = 1.0;
-  __enzyme_autodiff<void>( (void*)qp_penalty_kernel, enzyme_dup, x, dx, enzyme_const, (const void*)kp, enzyme_dup,
-                           &out, &dout );
+  __enzyme_autodiff<void>( (void*)qp_penalty_kernel, enzyme_dup, x, dx, enzyme_const, (const void*)kp, enzyme_dup, &out,
+                           &dout );
 
   for ( int i = 0; i < 8; ++i ) {
     dout_du[i] = dx[i];
@@ -534,8 +540,8 @@ void d2_qp_penalty_kernel( const double* x, const KernelParams* kp, double* H )
     dx[col] = 1.0;
     double grad[8] = { 0.0 };
     double dgrad[8] = { 0.0 };
-    __enzyme_fwddiff<void>( (void*)grad_qp_penalty_kernel, enzyme_dup, x, dx, enzyme_const, (const void*)kp,
-                            enzyme_dup, grad, dgrad );
+    __enzyme_fwddiff<void>( (void*)grad_qp_penalty_kernel, enzyme_dup, x, dx, enzyme_const, (const void*)kp, enzyme_dup,
+                            grad, dgrad );
     for ( int row = 0; row < 8; ++row ) {
       H[row * 8 + col] = dgrad[row];
     }
