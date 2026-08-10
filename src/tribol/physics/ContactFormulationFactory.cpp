@@ -18,11 +18,6 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
   }
 
   if ( cs->getContactMethod() == ENERGY_MORTAR ) {
-    // Default parameters for now, or extract from CouplingScheme if available
-    double k = 1000.0;
-    double delta = 0.1;
-    int N = 3;
-    bool enzyme_quadrature = true;
     // ENERGY_MORTAR supports a penalty-style mode driven by the kinematic penalty parameters, even if the coupling
     // scheme is registered with LM enforcement (which is often done to enable submesh/pressure infrastructure).
     const auto& penalty_opts = cs->getEnforcementOptions().penalty_options;
@@ -30,6 +25,12 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     bool use_penalty_ = penalty_opts.kinematic_calc_set;
 
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
+    // Default parameters for now, or extract from CouplingScheme if available
+    double k = 1000.0;
+    double delta = 0.1;
+    int N = 3;
+    bool enzyme_quadrature = true;
+
     if ( cs->hasMfemData() ) {
       // Attempt to get penalty from MfemMeshData if available
       auto* k1_ptr = cs->getMfemMeshData()->GetMesh1KinematicConstantPenalty();
