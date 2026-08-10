@@ -960,7 +960,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePairByMethod(
     InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, const Parameters& params,
     ContactCase TRIBOL_UNUSED_PARAM( cCase ), bool& isInteracting, CompGeom::Viewer& cg, IndexT* plane_ct )
 {
-  auto dim = static_cast<int>( mesh1.spatialDimension() );
+  auto dim = mesh1.spatialDimension();
   T my_plane( &pair, params, dim );
   FaceGeomException face_err = NO_FACE_GEOM_EXCEPTION;
   if ( dim == 3 ) {

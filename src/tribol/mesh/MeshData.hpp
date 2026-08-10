@@ -159,7 +159,7 @@ class MeshData {
      *
      * @return spatial dimension
      */
-    TRIBOL_HOST_DEVICE IndexT spatialDimension() const { return m_position.size(); }
+    TRIBOL_HOST_DEVICE int spatialDimension() const { return static_cast<int>( m_position.size() ); }
 
     /**
      * @brief Number of nodes in the mesh
