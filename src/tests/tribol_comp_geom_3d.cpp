@@ -88,14 +88,14 @@ class CompGeomTest : public ::testing::Test {
 
     tribol::setKinematicConstantPenalty( meshId, 1.0 );
 
-    return tribol::update( 1, 1., dt );
-
     delete[] fx;
     delete[] fy;
     delete[] fz;
     delete[] vx;
     delete[] vy;
     delete[] vz;
+
+    return tribol::update( 1, 1., dt );
   }
 
  protected:
