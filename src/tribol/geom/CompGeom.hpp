@@ -2151,7 +2151,8 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
                           cx[2], 1, &xInter_local, &yInter_local );
 
             // get the local coordinates of the other face's centroid
-            RealT cx_other_local, cy_other_local;
+            RealT cx_other_local = 0;
+            RealT cy_other_local = 0;
             RealT cz = 0.;  // dummy arg.
             VertexAvgCentroid( &x_other_local[0], &y_other_local[0], nullptr, num_nodes_other, cx_other_local,
                                cy_other_local, cz );
