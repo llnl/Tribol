@@ -88,6 +88,8 @@ class CompGeomTest : public ::testing::Test {
 
     tribol::setKinematicConstantPenalty( meshId, 1.0 );
 
+    const int update_err = tribol::update( 1, 1., dt );
+
     delete[] fx;
     delete[] fy;
     delete[] fz;
@@ -95,7 +97,7 @@ class CompGeomTest : public ::testing::Test {
     delete[] vy;
     delete[] vz;
 
-    return tribol::update( 1, 1., dt );
+    return update_err;
   }
 
  protected:
