@@ -10,12 +10,6 @@ if(TRIBOL_ENABLE_ASAN)
     endforeach()
 endif()
 
-if(TRIBOL_ENABLE_WARNINGS_AS_ERRORS AND NOT ENABLE_WARNINGS_AS_ERRORS)
-    message(STATUS "Treating compiler warnings as errors in Tribol (TRIBOL_ENABLE_WARNINGS_AS_ERRORS)")
-    string(APPEND CMAKE_C_FLAGS " ${BLT_WARNINGS_AS_ERRORS_C_FLAG}")
-    string(APPEND CMAKE_CXX_FLAGS " ${BLT_WARNINGS_AS_ERRORS_CXX_FLAG}")
-endif()
-
 # Need to add symbols to dynamic symtab in order to be visible from stacktraces
 string(APPEND CMAKE_EXE_LINKER_FLAGS " -rdynamic")
 

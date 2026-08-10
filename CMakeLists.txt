@@ -79,6 +79,9 @@ if ("${PROJECT_SOURCE_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
     set(BLT_REQUIRED_CLANGFORMAT_VERSION  "19" CACHE STRING "")
 endif()
 
+set(ENABLE_ALL_WARNINGS ON CACHE BOOL "")
+set(ENABLE_WARNINGS_AS_ERRORS ON CACHE BOOL "")
+
 include(${BLT_SOURCE_DIR}/SetupBLT.cmake)
 
 #------------------------------------------------------------------------------

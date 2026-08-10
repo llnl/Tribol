@@ -19,7 +19,6 @@ endif()
 
 option(TRIBOL_USE_SINGLE_PRECISION "Use single-precision floating point" OFF)
 option(TRIBOL_USE_64BIT_INDEXTYPE "Use 64-bit index type" OFF)
-option(TRIBOL_ENABLE_WARNINGS_AS_ERRORS "Treat compiler warnings as errors in Tribol" ON)
 
 option(TRIBOL_ENABLE_ASAN "Enable AddressSanitizer for memory checking (Clang or GCC only)" OFF)
 if(TRIBOL_ENABLE_ASAN)
