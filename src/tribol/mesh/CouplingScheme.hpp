@@ -1111,7 +1111,8 @@ TRIBOL_HOST_DEVICE inline bool CouplingScheme::Viewer::pruneMethodFacePair( cons
     }
   }
 
-  RealT nrml[max_dim], cx[max_dim];
+  RealT nrml[max_dim]{};
+  RealT cx[max_dim]{};
 
   switch ( m_contact_method ) {
     case ALIGNED_MORTAR:
