@@ -56,7 +56,9 @@ void ComputeMortarWeights( SurfaceContactElem& elem )
   // also initializes the array
   elem.allocateMortarWts();
 
-  RealT phiNonmortarA, phiNonmortarB, phiMortarA;
+  RealT phiNonmortarA = 0.;
+  RealT phiNonmortarB = 0.;
+  RealT phiMortarA = 0.;
 
   // loop over number of nodes on the nonmortar or mortar depending on whether forming
   // nonmortar/nonmortar or mortar/nonmortar weights
