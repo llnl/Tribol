@@ -130,8 +130,7 @@ void ComputeNodalGap<ALIGNED_MORTAR>( SurfaceContactElem& elem )
       }
     }
 
-    SLIC_ERROR_IF( mortarNodeId < 0,
-                   "ComputeNodalGap< ALIGNED_MORTAR >: unable to find an aligned mortar node." );
+    SLIC_ERROR_IF( mortarNodeId < 0, "ComputeNodalGap< ALIGNED_MORTAR >: unable to find an aligned mortar node." );
     if ( mortarNodeId < 0 ) {
       continue;
     }
