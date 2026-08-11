@@ -142,24 +142,17 @@ else()
         TREAT_INCLUDES_AS_SYSTEM ON
         EXPORTABLE    ON)
 
-    # Tribol edit
-    if(_mfem_uses_mpi)
-        if(NOT TARGET blt::mpi)
-            message(FATAL_ERROR "MFEM was built with MPI support, but MPI is not enabled in BLT. Configure with ENABLE_MPI=ON.")
-        endif()
+endif()
+
+if(_mfem_uses_mpi)
+    if(NOT TARGET blt::mpi)
+        message(FATAL_ERROR "MFEM was built with MPI support, but MPI is not enabled in BLT. Configure with ENABLE_MPI=ON.")
+    endif()
+    if(NOT MFEM_BUILT_WITH_CMAKE)
         # Note: -lmpifort is being added to MFEM's link line w/o a -L<mpi lib dir>
         list(GET MPI_C_LIBRARIES 0 _first_mpi_lib)
         get_filename_component(_mpi_lib_dir ${_first_mpi_lib} DIRECTORY)
         target_link_directories(mfem INTERFACE ${_mpi_lib_dir})
-        target_link_libraries(mfem INTERFACE blt::mpi)
-    endif()
-    # End Tribol edit
-
-endif()
-
-if(MFEM_BUILT_WITH_CMAKE AND _mfem_uses_mpi)
-    if(NOT TARGET blt::mpi)
-        message(FATAL_ERROR "MFEM was built with MPI support, but MPI is not enabled in BLT. Configure with ENABLE_MPI=ON.")
     endif()
     target_link_libraries(mfem INTERFACE blt::mpi)
 endif()
