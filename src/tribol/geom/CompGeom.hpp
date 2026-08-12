@@ -2728,9 +2728,8 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap2D( c
 
     ProjectEdgeNodesToSegment( m1, edgeId1, this->m_nX, this->m_nY, this->m_cX, this->m_cY, &projX1[0], &projY1[0] );
     ProjectEdgeNodesToSegment( m2, edgeId2, this->m_nX, this->m_nY, this->m_cX, this->m_cY, &projX2[0], &projY2[0] );
-    FaceGeomException segError =
-        CheckSegOverlap( &projX1[0], &projY1[0], &projX2[0], &projY2[0], num_nodes_1, num_nodes_2, &m_polyX[0],
-                         &m_polyY[0], m_area );
+    FaceGeomException segError = CheckSegOverlap( &projX1[0], &projY1[0], &projX2[0], &projY2[0], num_nodes_1,
+                                                  num_nodes_2, &m_polyX[0], &m_polyY[0], m_area );
 
     if ( segError != NO_FACE_GEOM_EXCEPTION ) {
       return segError;
