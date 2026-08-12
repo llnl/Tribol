@@ -2466,6 +2466,9 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::projectPointsAndCom
                   << "input number of vertices to match number of nodes per element." );
     }
   }
+#else
+  TRIBOL_UNUSED_VAR( m1 );
+  TRIBOL_UNUSED_VAR( m2 );
 #endif
 
   constexpr int max_nodes_per_clipped_face = 5;
