@@ -4,6 +4,7 @@
 
 #include "tribol/config.hpp"
 
+#include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/mesh/MeshData.hpp"
 

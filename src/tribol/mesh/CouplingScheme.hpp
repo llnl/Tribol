@@ -740,7 +740,7 @@ class CouplingScheme {
    */
   void setContactFormulation( std::unique_ptr<ContactFormulation> formulation )
   {
-    m_formulation_impl = std::move( formulation );
+    m_formulation = std::move( formulation );
   }
 
   /**
@@ -748,14 +748,14 @@ class CouplingScheme {
    *
    * @return true if set
    */
-  bool hasContactFormulation() const { return m_formulation_impl != nullptr; }
+  bool hasContactFormulation() const { return m_formulation != nullptr; }
 
   /**
    * @brief Get the ContactFormulation implementation
    *
    * @return ContactFormulation*
    */
-  ContactFormulation* getContactFormulation() const { return m_formulation_impl.get(); }
+  ContactFormulation* getContactFormulation() const { return m_formulation.get(); }
 
 #ifdef BUILD_REDECOMP
 
@@ -950,7 +950,7 @@ class CouplingScheme {
   std::unique_ptr<MethodData> m_dfdnJacobian;  ///< Store derivative of force w.r.t. normal on element pairs
   std::unique_ptr<MethodData> m_dndxJacobian;  ///< Store derivative of normal w.r.t. nodal coordinates on element pairs
 
-  std::unique_ptr<ContactFormulation> m_formulation_impl;  ///< Polymorphic contact formulation implementation
+  std::unique_ptr<ContactFormulation> m_formulation;  ///< Polymorphic contact formulation
 
   ArrayT<InterfacePair> m_interface_pairs;  ///< List of interface pairs
 

@@ -25,6 +25,20 @@
 
 namespace tribol {
 
+namespace {
+
+RealT SignedArea2DPolygon( const RealT* x, const RealT* y, int num_vert )
+{
+  RealT area = 0.0;
+  for ( int i{ 0 }; i < num_vert; ++i ) {
+    const int j = ( i + 1 ) % num_vert;
+    area += x[i] * y[j] - y[i] * x[j];
+  }
+  return 0.5 * area;
+}
+
+}  // namespace
+
 /**
  * @brief Test fixture for the Enzyme-based derivatives of intersection polygon calculations.
  *
@@ -36,8 +50,8 @@ class EnzymePolyIntersectTest : public testing::Test {
   static constexpr double delta_{ 1.0e-8 };
   void SetUp() override {}
 
-  void CheckIntersectionJacobian( RealT* x1, RealT* x2, int* stencil_dir, RealT fd_tol = delta_, RealT pos_tol = 1.0e-8,
-                                  RealT len_tol = 1.0e-8 )
+  void CheckIntersectionJacobian( RealT* x1, RealT* x2, int* stencil_dir, RealT fd_tol = delta_,
+                                  RealT length_tol = 1.0e-8 )
   {
     constexpr int max_overlap_vert = 8;
     constexpr int dim = 2;
@@ -61,16 +75,15 @@ class EnzymePolyIntersectTest : public testing::Test {
     }
     auto num_poly_verts = 0;
     auto d_num_poly_verts = 0;
-    auto d_pos_tol = 0.0;
-    auto d_len_tol = 0.0;
+    auto d_length_tol = 0.0;
     RealT area = 0.0;
     constexpr int num_elem_coords = 4;
     constexpr bool check_orientation = true;
 
     // compute the overlap polygon
     Intersection2DPolygon( x1, x1 + num_elem_coords, num_elem_coords, x2, x2 + num_elem_coords, num_elem_coords,
-                           pos_tol, len_tol, xi, xi + max_overlap_vert, num_poly_verts, area, check_orientation, type,
-                           edge1, edge2 );
+                           length_tol, xi, xi + max_overlap_vert, num_poly_verts, area, check_orientation, type, edge1,
+                           edge2 );
     // print some info about the overlap
     std::cout << std::setprecision( 15 ) << "Element 1 coords" << std::endl;
     for ( int i{ 0 }; i < num_elem_coords; ++i ) {
@@ -126,8 +139,7 @@ class EnzymePolyIntersectTest : public testing::Test {
         x2, zeros,
         x2 + num_elem_coords, zeros,
         num_elem_coords,
-        pos_tol, d_pos_tol,
-        len_tol, d_len_tol,
+        length_tol, d_length_tol,
         xi, dxidx1 + rows * i,
         xi + max_overlap_vert, dxidx1 + rows * i + max_overlap_vert,
         &num_poly_verts, &d_num_poly_verts );
@@ -139,8 +151,7 @@ class EnzymePolyIntersectTest : public testing::Test {
         x2, zeros,
         x2 + num_elem_coords, zeros,
         num_elem_coords,
-        pos_tol, d_pos_tol,
-        len_tol, d_len_tol,
+        length_tol, d_length_tol,
         xi, dxidx1 + rows * ( num_elem_coords + i ),
         xi + max_overlap_vert, dxidx1 + rows * ( num_elem_coords + i ) + max_overlap_vert,
         &num_poly_verts, &d_num_poly_verts );
@@ -152,8 +163,7 @@ class EnzymePolyIntersectTest : public testing::Test {
         x2, x_dot,
         x2 + num_elem_coords, zeros,
         num_elem_coords,
-        pos_tol, d_pos_tol,
-        len_tol, d_len_tol,
+        length_tol, d_length_tol,
         xi, dxidx2 + rows * i,
         xi + max_overlap_vert, dxidx2 + rows * i + max_overlap_vert,
         &num_poly_verts, &d_num_poly_verts );
@@ -165,8 +175,7 @@ class EnzymePolyIntersectTest : public testing::Test {
         x2, zeros,
         x2 + num_elem_coords, x_dot,
         num_elem_coords,
-        pos_tol, d_pos_tol,
-        len_tol, d_len_tol,
+        length_tol, d_length_tol,
         xi, dxidx2 + rows * ( num_elem_coords + i ),
         xi + max_overlap_vert, dxidx2 + rows * ( num_elem_coords + i ) + max_overlap_vert,
         &num_poly_verts, &d_num_poly_verts );
@@ -216,7 +225,7 @@ class EnzymePolyIntersectTest : public testing::Test {
         xi[i] = 0.0;
       }
       Intersection2DPolygon( x1, x1 + num_elem_coords, num_elem_coords, x2, x2 + num_elem_coords, num_elem_coords,
-                             pos_tol, len_tol, xi, xi + max_overlap_vert, num_poly_verts, area, check_orientation, type,
+                             length_tol, xi, xi + max_overlap_vert, num_poly_verts, area, check_orientation, type,
                              edge1, edge2 );
       for ( int i{ 0 }; i < rows; ++i ) {
         dxidx1_fd[rows * j + i] = x_sgn1[num_elem_coords * stencil_dir[j] + j] * ( xi[i] - xi_base[i] ) / delta_;
@@ -228,7 +237,7 @@ class EnzymePolyIntersectTest : public testing::Test {
         xi[i] = 0.0;
       }
       Intersection2DPolygon( x1, x1 + num_elem_coords, num_elem_coords, x2, x2 + num_elem_coords, num_elem_coords,
-                             pos_tol, len_tol, xi, xi + max_overlap_vert, num_poly_verts, area, check_orientation, type,
+                             length_tol, xi, xi + max_overlap_vert, num_poly_verts, area, check_orientation, type,
                              edge1, edge2 );
       for ( int i{ 0 }; i < rows; ++i ) {
         dxidx1_fd[rows * ( num_elem_coords + j ) + i] =
@@ -241,7 +250,7 @@ class EnzymePolyIntersectTest : public testing::Test {
         xi[i] = 0.0;
       }
       Intersection2DPolygon( x1, x1 + num_elem_coords, num_elem_coords, x2, x2 + num_elem_coords, num_elem_coords,
-                             pos_tol, len_tol, xi, xi + max_overlap_vert, num_poly_verts, area, check_orientation, type,
+                             length_tol, xi, xi + max_overlap_vert, num_poly_verts, area, check_orientation, type,
                              edge1, edge2 );
       for ( int i{ 0 }; i < rows; ++i ) {
         dxidx2_fd[rows * j + i] = x_sgn2[num_elem_coords * stencil_dir[j] + j] * ( xi[i] - xi_base[i] ) / delta_;
@@ -253,7 +262,7 @@ class EnzymePolyIntersectTest : public testing::Test {
         xi[i] = 0.0;
       }
       Intersection2DPolygon( x1, x1 + num_elem_coords, num_elem_coords, x2, x2 + num_elem_coords, num_elem_coords,
-                             pos_tol, len_tol, xi, xi + max_overlap_vert, num_poly_verts, area, check_orientation, type,
+                             length_tol, xi, xi + max_overlap_vert, num_poly_verts, area, check_orientation, type,
                              edge1, edge2 );
       for ( int i{ 0 }; i < rows; ++i ) {
         dxidx2_fd[rows * ( num_elem_coords + j ) + i] =
@@ -292,22 +301,22 @@ class EnzymePolyIntersectTest : public testing::Test {
 
 TEST_F( EnzymePolyIntersectTest, PerfectOverlap )
 {
-  constexpr auto pos_tol = 10.0 * delta_;
-  constexpr auto len_tol = 10.0 * delta_;
+  constexpr auto length_tol = 10.0 * delta_;
   RealT x1[8] = { 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
   RealT x2[8] = { 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
   int stencil_dir[4] = { 0, 0, 0, 0 };
-  CheckIntersectionJacobian( x1, x2, stencil_dir, delta_, pos_tol, len_tol );
+  CheckIntersectionJacobian( x1, x2, stencil_dir, delta_, length_tol );
 }
 
-TEST_F( EnzymePolyIntersectTest, Mesh2VertexMovedInByPosTol )
+TEST_F( EnzymePolyIntersectTest, Mesh2VertexMovedPastLengthTol )
 {
-  constexpr auto pos_tol = 10.0 * delta_;
-  constexpr auto len_tol = 10.0 * delta_;
+  constexpr auto length_tol = 10.0 * delta_;
   RealT x1[8] = { 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
-  RealT x2[8] = { 0.0 + pos_tol, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
+  // Move the vertex past the tolerance boundary.  Placing it exactly at length_tol makes the finite-difference stencil
+  // cross a topology branch, so the derivative is not well-defined.
+  RealT x2[8] = { 0.0 + 2.0 * length_tol, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
   int stencil_dir[4] = { 1, 1, 1, 1 };
-  CheckIntersectionJacobian( x1, x2, stencil_dir, delta_, pos_tol, len_tol );
+  CheckIntersectionJacobian( x1, x2, stencil_dir, delta_, length_tol );
 }
 
 // NOTE: edges are too nearly parallel which makes the derivative explode for some terms.  this makes the FD inaccurate.
@@ -315,48 +324,67 @@ TEST_F( EnzymePolyIntersectTest, Mesh2VertexMovedInByPosTol )
 // change in the overlap coordinate.
 TEST_F( EnzymePolyIntersectTest, NearlyParallelEdges )
 {
-  constexpr auto pos_tol = 10.0 * delta_;
-  constexpr auto len_tol = 10.0 * delta_;
+  constexpr auto length_tol = 10.0 * delta_;
   RealT x1[8] = { 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
-  RealT x2[8] = { 0.0, 1.0, 1.0, 0.0, 0.0 - 2 * pos_tol, 0.0 + 2 * pos_tol, 1.0, 1.0 };
+  RealT x2[8] = { 0.0, 1.0, 1.0, 0.0, 0.0 - 2 * length_tol, 0.0 + 2 * length_tol, 1.0, 1.0 };
   int stencil_dir[4] = { 0, 1, 0, 0 };
-  CheckIntersectionJacobian( x1, x2, stencil_dir, 31000.0, pos_tol, len_tol );
+  CheckIntersectionJacobian( x1, x2, stencil_dir, 31000.0, length_tol );
 }
 
 TEST_F( EnzymePolyIntersectTest, LessNearlyParallelEdges )
 {
-  constexpr auto pos_tol = 10.0 * delta_;
-  constexpr auto len_tol = 10.0 * delta_;
+  constexpr auto length_tol = 10.0 * delta_;
   constexpr auto offset = 0.2;
   // shift node 3 in a little to prevent edge class change with FD
-  RealT x1[8] = { 0.0, 1.0, 1.0 - pos_tol, 0.0, 0.0, 0.0, 1.0 - pos_tol, 1.0 };
+  RealT x1[8] = { 0.0, 1.0, 1.0 - length_tol, 0.0, 0.0, 0.0, 1.0 - length_tol, 1.0 };
   RealT x2[8] = { 0.0, 1.0, 1.0, 0.0, 0.0 - offset, 0.0 + offset, 1.0, 1.0 };
   int stencil_dir[4] = { 0, 1, 1, 0 };
-  CheckIntersectionJacobian( x1, x2, stencil_dir, 4.0 * delta_, pos_tol, len_tol );
+  CheckIntersectionJacobian( x1, x2, stencil_dir, 4.0 * delta_, length_tol );
 }
 
 TEST_F( EnzymePolyIntersectTest, OffsetElements )
 {
-  constexpr auto pos_tol = 10.0 * delta_;
-  constexpr auto len_tol = 10.0 * delta_;
+  constexpr auto length_tol = 10.0 * delta_;
   constexpr auto offset = 0.2;
   RealT x1[8] = { 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
   RealT x2[8] = { 0.0 + offset, 1.0 + offset, 1.0 + offset, 0.0 + offset,
                   0.0 + offset, 0.0 + offset, 1.0 + offset, 1.0 + offset };
   int stencil_dir[4] = { 1, 0, 0, 0 };
-  CheckIntersectionJacobian( x1, x2, stencil_dir, 2.0 * delta_, pos_tol, len_tol );
+  CheckIntersectionJacobian( x1, x2, stencil_dir, 2.0 * delta_, length_tol );
 }
 
 TEST_F( EnzymePolyIntersectTest, EightOverlapVertices )
 {
-  constexpr auto pos_tol = 10.0 * delta_;
-  constexpr auto len_tol = 10.0 * delta_;
+  constexpr auto length_tol = 10.0 * delta_;
   auto xmin = -1.0 / std::sqrt( 2.0 ) + 0.5;
   auto xmax = 1.0 / std::sqrt( 2.0 ) + 0.5;
   RealT x1[8] = { 0.0, 1.0, 1.0, 0.0, 0.0, 0.0, 1.0, 1.0 };
   RealT x2[8] = { 0.5, xmax, 0.5, xmin, xmin, 0.5, xmax, 0.5 };
   int stencil_dir[4] = { 0, 0, 0, 0 };
-  CheckIntersectionJacobian( x1, x2, stencil_dir, 2.0 * delta_, pos_tol, len_tol );
+  CheckIntersectionJacobian( x1, x2, stencil_dir, 2.0 * delta_, length_tol );
+}
+
+TEST( PolyIntersect, NearlyCoincidentTriangleOverlapUsesLengthTol )
+{
+  constexpr RealT length_tol = 1.0e-8;
+  const RealT xA[3] = { -1.7720926303008128e-01, 1.7720926303008130e-01, 7.6327832942979648e-17 };
+  const RealT yA[3] = { -5.9069754343360363e-02, -5.9069754343360349e-02, 1.1813950868672080e-01 };
+  const RealT xB[3] = { 1.7720926303008075e-01, -8.3266726846886605e-17, -1.7720926303008128e-01 };
+  const RealT yB[3] = { -5.9069754343361050e-02, 1.1813950868672063e-01, -5.9069754343360363e-02 };
+
+  RealT polyX[6] = { 0.0 };
+  RealT polyY[6] = { 0.0 };
+  int num_poly_vert = 0;
+  RealT area = 0.0;
+  constexpr bool check_orientation = true;
+
+  const auto err =
+      Intersection2DPolygon( xA, yA, 3, xB, yB, 3, length_tol, polyX, polyY, num_poly_vert, area, check_orientation );
+
+  EXPECT_EQ( err, NO_FACE_GEOM_EXCEPTION );
+  EXPECT_EQ( num_poly_vert, 3 );
+  EXPECT_NEAR( area, 3.1403122903664482e-02, 1.0e-14 );
+  EXPECT_GT( SignedArea2DPolygon( polyX, polyY, num_poly_vert ), 0.0 );
 }
 
 }  // namespace tribol

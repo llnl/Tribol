@@ -647,6 +647,29 @@ TRIBOL_HOST_DEVICE inline RealT Area2DPolygon( const RealT* const x, const RealT
 
 /*!
  *
+ * \brief Computes a characteristic length scale for a 2D polygon.
+ *
+ * \param [in] x array of local x coordinates of polygon vertices
+ * \param [in] y array of local y coordinates of polygon vertices
+ * \param [in] numPolyVert number of polygon vertices
+ *
+ * \return maximum polygon edge length
+ */
+TRIBOL_HOST_DEVICE inline RealT Polygon2DLengthScale( const RealT* const x, const RealT* const y,
+                                                      const int numPolyVert )
+{
+  RealT lengthScale = 0.0;
+  for ( int i = 0; i < numPolyVert; ++i ) {
+    const int ia = i;
+    const int ib = ( i == ( numPolyVert - 1 ) ) ? 0 : ( i + 1 );
+    const RealT edgeLength = magnitude( x[ib] - x[ia], y[ib] - y[ia] );
+    lengthScale = ( edgeLength > lengthScale ) ? edgeLength : lengthScale;
+  }
+  return lengthScale;
+}
+
+/*!
+ *
  * \brief computes a segment-segment intersection in a way specific to the tribol
  *  polygon-polygon intersection calculation
  *
@@ -664,7 +687,7 @@ TRIBOL_HOST_DEVICE inline RealT Area2DPolygon( const RealT* const x, const RealT
  * \param [out] y local coordinate of the intersection point
  * \param [out] duplicate true if intersection point is computed as duplicate polygon
  *                 intersection point
- * \param [in] tol length tolerance for collapsing intersection points to interior points
+ * \param [in] lengthTol length tolerance for collapsing intersection points to interior points
  *
  * \return true if the segments intersect at a non-duplicate point, false otherwise
  *
@@ -675,15 +698,15 @@ TRIBOL_HOST_DEVICE inline RealT Area2DPolygon( const RealT* const x, const RealT
  *  to one of the polygons that is the solution to the intersection problem. The solution
  *  may arise due to the the segments intersecting at a vertex tagged as interior to one
  *  of the polygons, or due to collapsing the true intersection point to an interior
- *  vertex based on the position tolerance input argument. For intersection points that
- *  are within the position tolerance to a non-interior segment vertex, nothing is done
+ *  vertex based on the length tolerance input argument. For intersection points that
+ *  are within the length tolerance to a non-interior segment vertex, nothing is done
  *  because we want to retain this intersection point. Collapsing intersection points to
  *  vertices tagged as interior to one of the polygons may render a degenerate overlap
  *  polygon and must be checked.
  */
 TRIBOL_HOST_DEVICE inline bool SegmentIntersection2D( RealT xA1, RealT yA1, RealT xB1, RealT yB1, RealT xA2, RealT yA2,
                                                       RealT xB2, RealT yB2, const bool* interior, RealT& x, RealT& y,
-                                                      bool& duplicate, RealT tol )
+                                                      bool& duplicate, RealT lengthTol )
 {
   // note 1: this routine computes a unique segment-segment intersection, where two
   // segments are assumed to intersect at a single point. A segment-segment overlap
@@ -706,9 +729,6 @@ TRIBOL_HOST_DEVICE inline bool SegmentIntersection2D( RealT xA1, RealT yA1, Real
 
   RealT lambdaX2 = xB2 - xA2;
   RealT lambdaY2 = yB2 - yA2;
-
-  RealT seg1Mag = magnitude( lambdaX1, lambdaY1 );
-  RealT seg2Mag = magnitude( lambdaX2, lambdaY2 );
 
   // compute determinant of the lambda matrix, [ -lx1 -ly1, lx2 ly2 ]
   RealT det = -lambdaX1 * lambdaY2 + lambdaX2 * lambdaY1;
@@ -808,16 +828,11 @@ TRIBOL_HOST_DEVICE inline bool SegmentIntersection2D( RealT xA1, RealT yA1, Real
     }
   }
 
-  // check to see if the minimum distance is less than the position tolerance for
-  // the segments
-  RealT distRatio = ( idMin == 0 || idMin == 1 ) ? ( distMin / seg1Mag ) : ( distMin / seg2Mag );
-
-  // if the distRatio is less than the tolerance, or percentage cutoff of the original
-  // segment that we would like to keep, then check to see if the segment vertex closest
+  // if the minimum distance is less than the length tolerance, check to see if the segment vertex closest
   // to the computed intersection point is an interior point. If this is true, then collapse
   // the computed intersection point to the interior point and mark the duplicate boolean.
   // Also do this for the argument, interior, set to nullptr
-  if ( distRatio < tol ) {
+  if ( distMin < lengthTol ) {
     if ( interior == nullptr ) {
       x = xMinVert;
       y = yMinVert;
@@ -871,146 +886,36 @@ TRIBOL_HOST_DEVICE inline bool PolyReorderConvex( RealT* x, RealT* y, int* newID
                                                         << "expected per overlap (" << max_nodes_per_overlap << ")." );
 #endif
 
-  constexpr int max_proj_nodes = max_nodes_per_overlap - 2;
-  RealT proj[max_proj_nodes];
-
   int local_newIDs[max_nodes_per_overlap];
   if ( !newIDs ) {
     newIDs = local_newIDs;
   }
 
-  // initialize newIDs array to local ordering, 0,1,2,...,numPoints-1
   for ( int i = 0; i < numPoints; ++i ) {
     newIDs[i] = i;
   }
 
-  // compute vertex averaged centroid of input overlap vertices (local coordinates with dummy z args)
+  // Sort points by polar angle around the vertex-averaged centroid.  This is robust for convex and some star-convex
+  // point clouds.
   VertexAvgCentroid( x, y, z, numPoints, xC, yC, zC );
+  for ( int i = 1; i < numPoints; ++i ) {
+    const int id = newIDs[i];
+    const RealT angle = std::atan2( y[id] - yC, x[id] - xC );
+    const RealT radius2 = ( x[id] - xC ) * ( x[id] - xC ) + ( y[id] - yC ) * ( y[id] - yC );
 
-  // using the FIRST index into the x,y vertex coordinate arrays as
-  // the first vertex of the soon-to-be ordered list of vertices, determine
-  // the NEXT vertex that will comprise the only the FIRST segment in a counter
-  // clockwise ordering of vertices
-  newIDs[0] = 0;
-  for ( int j = newIDs[1]; j < numPoints; ++j ) {
-    // determine current segment vector and normal
-    RealT lambdaX = x[j] - x[newIDs[0]];
-    RealT lambdaY = y[j] - y[newIDs[0]];
-    RealT nrmlx = -lambdaY;
-    RealT nrmly = lambdaX;
-
-    // project all segment vectors between all OTHER vertices and newIDs[0] onto the current
-    // segment vector's normal. There will always be numPoints-2 projections
-    int pk = 0;                              // projection counter
-    for ( int k = 0; k < numPoints; ++k ) {  // loop over all segments
-      if ( k != newIDs[0] && k != j ) {      // pick off segments that are NOT the current segment
-        proj[pk] = ( x[k] - x[newIDs[0]] ) * nrmlx + ( y[k] - y[newIDs[0]] ) * nrmly;
-        ++pk;
-      }
-    }
-
-    // check if all points are on one side of line defined by segment
-    // (pk at this point should be equal to numPoints - 2)
-    bool neg = false;
-    bool pos = false;
-    for ( int ip = 0; ip < pk; ++ip ) {
-      if ( neg ) {  // if neg is previously set to true, keep it true
-        neg = true;
-      } else if ( !neg ) {
-        neg = ( proj[ip] < 0. ) ? true : false;
-      }
-
-      if ( pos ) {  // if pos is previously set to true, keep it true
-        pos = true;
-      } else if ( !pos ) {
-        pos = ( proj[ip] > 0. ) ? true : false;
-      }
-
-      // if at least one projection is negative and one positive then the
-      // current vertex of the current segment vector is not the properly
-      // ordered next vertex
-      if ( neg && pos ) {
+    int j = i - 1;
+    while ( j >= 0 ) {
+      const int otherId = newIDs[j];
+      const RealT otherAngle = std::atan2( y[otherId] - yC, x[otherId] - xC );
+      const RealT otherRadius2 = ( x[otherId] - xC ) * ( x[otherId] - xC ) + ( y[otherId] - yC ) * ( y[otherId] - yC );
+      if ( otherAngle < angle || ( otherAngle == angle && otherRadius2 <= radius2 ) ) {
         break;
       }
+      newIDs[j + 1] = newIDs[j];
+      --j;
     }
-
-    // if one of the booleans is false then all points are on one side
-    // of line defined by i-j segment.
-    if ( !neg || !pos ) {
-      // check the orientation of the nodes to make sure we have the correct
-      // one of two segments that will pass the previous test.
-      // Check the dot product between the current segment normal and the vector
-      // between the centroid and first (0th) vertex
-      RealT vx = xC - x[newIDs[0]];
-      RealT vy = yC - y[newIDs[0]];
-
-      RealT prod = nrmlx * vx + nrmly * vy;
-
-      // check if the two vertices are a segment on the convex hull and oriented CCW.
-      // CCW orientation has prod > 0
-      if ( prod > 0 ) {
-        // set newIDs[1] to the current vertex where newIDs[1] and newIDs[0] form the
-        // first segment vector on the convex hull; then, swap ids
-        int oldID1 = newIDs[1];
-        newIDs[1] = j;
-        newIDs[j] = oldID1;
-        break;
-      }
-    }
-
-  }  // end loop over j
-
-  // given the first segment vector on the convex hull, determine the rest of the vertex ordering
-  //
-  // compute the current reference segment vector between currently ordered vertices. At first, this is simply
-  // taken as the first segment vector determined above. Then, loop over remaining unorderd vertices and compute
-  // the link vector between that unordered vertex and the first vertex in the reference segment vector. These
-  // two vectors share that vertex as a common origin. Then, compute the angle between the link vector and the
-  // current reference vector. The link vector with the smallest angle gives us the next vertex in the ordered set
-  //
-  // Note: increment to (numPoints - 3) as as the (number_of_remaining_vertices-1) where the last vertex
-  // will automatically
-  for ( int i = 0; i < ( numPoints - 3 ); ++i ) {
-    RealT refMag, linkMag;
-
-    // compute current ordered reference vector;
-    RealT refx, refy;
-    refx = x[newIDs[i + 1]] - x[newIDs[i]];
-    refy = y[newIDs[i + 1]] - y[newIDs[i]];
-    refMag = magnitude( refx, refy );
-
-    //      SLIC_ERROR_IF(refMag < 1.E-12, "PolyReorderConvex: reference segment for link vector check is nearly zero
-    //      length");
-
-    // loop over link vectors of unassigned vertices
-    int jID = -1;
-    RealT cosThetaMax = -1.;  // this handles angles up to 180 degrees. Any greater and the polygon is not convex
-    RealT cosTheta;
-    int nextVertexID = 2 + i;
-    for ( int j = nextVertexID; j < numPoints; ++j ) {
-      RealT lx, ly;
-
-      lx = x[newIDs[j]] - x[newIDs[i]];
-      ly = y[newIDs[j]] - y[newIDs[i]];
-      linkMag = magnitude( lx, ly );
-
-      cosTheta = ( lx * refx + ly * refy ) / ( refMag * linkMag );
-      if ( cosTheta > cosThetaMax ) {
-        cosThetaMax = cosTheta;
-        jID = j;
-      }
-
-    }  // end loop over j
-
-    // we have found the minimum angle between remaining segment vectors and the corresponding local vertex id.
-    // swap ids
-    if ( jID > -1 ) {
-      int swapID = newIDs[nextVertexID];
-      newIDs[nextVertexID] = newIDs[jID];
-      newIDs[jID] = swapID;
-    }
-
-  }  // end loop over i
+    newIDs[j + 1] = id;
+  }
 
   // reorder x and y coordinate arrays based on newIDs id-array
   RealT xtemp[max_nodes_per_overlap];
@@ -1139,8 +1044,8 @@ enum class OverlapVertexType
  * \param [in] xB array of local x coordinates of polygon B
  * \param [in] yB array of local y coordinates of polygon B
  * \param [in] numVertexB number of vertices in polygon B
- * \param [in] posTol position tolerance to collapse segment-segment intersection points
- * \param [in] lenTol length tolerance to collapse short intersection edges
+ * \param [in] lengthTolRatio nondimensional length tolerance ratio. Physical-distance checks scale it by an input
+ * polygon length scale.
  * \param [out] polyX array of x coordinates of intersection polygon
  * \param [out] polyY array of y coordinates of intersection polygon
  * \param [out] numPolyVert number of vertices in intersection polygon
@@ -1163,8 +1068,8 @@ enum class OverlapVertexType
  *
  */
 TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
-    const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB, const RealT* yB, int numVertexB, RealT posTol,
-    RealT lenTol, RealT* polyX, RealT* polyY, int& numPolyVert, RealT& area, bool orientCheck = true,
+    const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB, const RealT* yB, int numVertexB,
+    RealT lengthTolRatio, RealT* polyX, RealT* polyY, int& numPolyVert, RealT& area, bool orientCheck = true,
     OverlapVertexType* vertType = nullptr, int* edgeA = nullptr, int* edgeB = nullptr )
 {
   // for tribol, if you have called this routine it is because a positive area of
@@ -1219,6 +1124,11 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
   VertexAvgCentroid( xA, yA, nullptr, numVertexA, xCA, yCA, zC );
   VertexAvgCentroid( xB, yB, nullptr, numVertexB, xCB, yCB, zC );
 
+  const RealT lengthScaleA = Polygon2DLengthScale( xA, yA, numVertexA );
+  const RealT lengthScaleB = Polygon2DLengthScale( xB, yB, numVertexB );
+  const RealT faceLengthScale = ( lengthScaleA > lengthScaleB ) ? lengthScaleA : lengthScaleB;
+  const RealT physicalLengthTol = lengthTolRatio * faceLengthScale;
+
   // check to see if any of polygon A's vertices are in polygon B, and vice-versa. Track
   // which vertices are interior to the other polygon. Keep in mind that vertex
   // coordinates are local 2D coordinates.
@@ -1227,7 +1137,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
 
   // check A in B
   for ( int i = 0; i < numVertexA; ++i ) {
-    if ( Point2DInFace( xA[i], yA[i], xB, yB, xCB, yCB, numVertexB ) ) {
+    if ( Point2DInFace( xA[i], yA[i], xB, yB, xCB, yCB, numVertexB, lengthTolRatio ) ) {
       // interior A in B
       interiorVAId[i] = i;
       ++numVAI;
@@ -1258,7 +1168,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
 
   // check B in A
   for ( int i = 0; i < numVertexB; ++i ) {
-    if ( Point2DInFace( xB[i], yB[i], xA, yA, xCA, yCA, numVertexA ) ) {
+    if ( Point2DInFace( xB[i], yB[i], xA, yA, xCA, yCA, numVertexA, lengthTolRatio ) ) {
       // interior B in A
       interiorVBId[i] = i;
       ++numVBI;
@@ -1299,7 +1209,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
           RealT distX = xA[i] - xB[j];
           RealT distY = yA[i] - yB[j];
           RealT distMag = magnitude( distX, distY );
-          if ( distMag < 1.E-15 ) {
+          if ( distMag < physicalLengthTol ) {
             // remove the interior designation for the vertex in polygon B
             //                 SLIC_DEBUG( "Removing duplicate interior vertex id: " << j << ".\n" );
             interiorVBId[j] = -1;
@@ -1371,7 +1281,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
 
         intersect[interId] =
             SegmentIntersection2D( xA[vAID1], yA[vAID1], xA[vAID2], yA[vAID2], xB[vBID1], yB[vBID1], xB[vBID2],
-                                   yB[vBID2], interior, interX[interId], interY[interId], dupl, posTol );
+                                   yB[vBID2], interior, interX[interId], interY[interId], dupl, physicalLengthTol );
         if ( intersect[interId] ) {
           edgeATemp[interId] = ia;
           edgeBTemp[interId] = jb;
@@ -1457,6 +1367,30 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
       ++k;
     }
   }
+  numPolyVert = k;
+
+  // Collapse near-duplicate candidate vertices before reordering.  PolyReorderConvex() depends on the unordered point
+  // cloud being well-conditioned, so removing tolerance-scale duplicates before computing the ordering avoids ambiguous
+  // centroid/angle calculations.  Preserve the first occurrence and its metadata.
+  for ( int i = 0; i < numPolyVert; ++i ) {
+    int j = i + 1;
+    while ( j < numPolyVert ) {
+      const RealT distX = polyXTemp[i] - polyXTemp[j];
+      const RealT distY = polyYTemp[i] - polyYTemp[j];
+      if ( magnitude( distX, distY ) < physicalLengthTol ) {
+        for ( int l = j; l < numPolyVert - 1; ++l ) {
+          polyXTemp[l] = polyXTemp[l + 1];
+          polyYTemp[l] = polyYTemp[l + 1];
+          vertTypeTemp[l] = vertTypeTemp[l + 1];
+          edgeATemp[l] = edgeATemp[l + 1];
+          edgeBTemp[l] = edgeBTemp[l + 1];
+        }
+        --numPolyVert;
+      } else {
+        ++j;
+      }
+    }
+  }
 
   // reorder the unordered vertices and check segment length against tolerance for edge collapse.
   // Only do this for overlaps with 3 or more vertices. We skip any overlap that degenerates to <3 vertices
@@ -1481,7 +1415,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
     int numFinalVert = 0;
 
     FaceGeomException segErr =
-        CheckPolySegs( polyXTemp, polyYTemp, numPolyVert, lenTol, polyX, polyY, vertIdx, numFinalVert );
+        CheckPolySegs( polyXTemp, polyYTemp, numPolyVert, physicalLengthTol, polyX, polyY, vertIdx, numFinalVert );
     for ( int i = 0; i < numFinalVert; ++i ) {
       if ( vertType ) {
         vertType[i] = vertTypeTemp2[vertIdx[i]];
@@ -1531,8 +1465,8 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
  * \param [in] xB array of local x coordinates of polygon B
  * \param [in] yB array of local y coordinates of polygon B
  * \param [in] numVertexB number of vertices in polygon B
- * \param [in] posTol position tolerance to collapse segment-segment intersection points
- * \param [in] lenTol length tolerance to collapse short intersection edges
+ * \param [in] lengthTolRatio nondimensional length tolerance ratio. Physical-distance checks scale it by a polygon
+ * length scale.
  * \param [out] polyX array of x coordinates of intersection polygon
  * \param [out] polyY array of y coordinates of intersection polygon
  * \param [out] numPolyVert number of vertices in intersection polygon
@@ -1547,12 +1481,12 @@ TRIBOL_HOST_DEVICE inline FaceGeomException Intersection2DPolygon(
  *
  */
 inline FaceGeomException Intersection2DPolygonEnzyme( const RealT* xA, const RealT* yA, int numVertexA, const RealT* xB,
-                                                      const RealT* yB, int numVertexB, RealT posTol, RealT lenTol,
+                                                      const RealT* yB, int numVertexB, RealT lengthTolRatio,
                                                       RealT* polyX, RealT* polyY, int* numPolyVert )
 {
   double area = 0.0;
   constexpr bool orientCheck = true;
-  return Intersection2DPolygon( xA, yA, numVertexA, xB, yB, numVertexB, posTol, lenTol, polyX, polyY, *numPolyVert,
+  return Intersection2DPolygon( xA, yA, numVertexA, xB, yB, numVertexB, lengthTolRatio, polyX, polyY, *numPolyVert,
                                 area, orientCheck );
 }
 

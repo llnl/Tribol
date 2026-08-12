@@ -185,9 +185,10 @@ int ApplyNormalEnzyme( CouplingScheme* cs );
  *                z3])
  * @param [out] f2 Nodal forces for element 2 (stored by node, e.g. [x0, x1, x2, x3, y0, y1, y2, y3, z0, z1, z2, z3])
  * @param [in] size2 Number of nodes on element 2
+ * @param [in] lenCollapseRatio Nondimensional topology collapse tolerance
  */
 void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* g1, int size1,
-                               const RealT* x2, RealT* f2, int size2 );
+                               const RealT* x2, RealT* f2, int size2, RealT lenCollapseRatio = 1.0e-8 );
 
 /**
  * @brief Computes the frictionless mortar forces and Jacobian for a 3D quad element (following Puso and Laursen (2004))
@@ -226,11 +227,12 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
  * @param [out] df2dp1 Derivative of element 2 nodal forces with respect to element 1 nodal pressures (size =
  *                     num_nodes_per_elem^2 x spatial dim)
  * @param [in] size2 Number of nodes on element 2
+ * @param [in] lenCollapseRatio Nondimensional topology collapse tolerance
  */
 void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* df1dx1,
                                   RealT* df1dx2, RealT* df1dn1, RealT* df1dp1, RealT* g1, RealT* dg1dx1, RealT* dg1dx2,
                                   RealT* dg1dn1, int size1, const RealT* x2, RealT* f2, RealT* df2dx1, RealT* df2dx2,
-                                  RealT* df2dn1, RealT* df2dp1, int size2 );
+                                  RealT* df2dn1, RealT* df2dp1, int size2, RealT lenCollapseRatio = 1.0e-8 );
 #endif
 
 /*!

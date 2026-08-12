@@ -51,6 +51,26 @@ class MeshBuilder {
   static MeshBuilder SquareMesh( int n_x_els, int n_y_els );
 
   /**
+   * @brief Creates a 2D cylinder mesh.
+   * @param n_radial_els Number of elements in the radial direction (>0).
+   * @param n_hoop_els Number of elements in the hoop direction (>0).
+   * @param inner_radius Inner radius of the shell.
+   * @param outer_radius Outer radius of the shell.
+   * @return A new MeshBuilder object representing the 2D cylinder mesh.
+   */
+  static MeshBuilder Cylinder2D( int n_radial_els, int n_hoop_els, double inner_radius, double outer_radius );
+
+  /**
+   * @brief Creates a half-cylinder 2D mesh (bottom half).
+   * @param n_radial_els Number of elements in the radial direction (>0).
+   * @param n_hoop_els Number of elements in the hoop direction (>0).
+   * @param inner_radius Inner radius of the shell.
+   * @param outer_radius Outer radius of the shell.
+   * @return A new MeshBuilder object representing the half-cylinder 2D mesh.
+   */
+  static MeshBuilder HalfCylinder2D( int n_radial_els, int n_hoop_els, double inner_radius, double outer_radius );
+
+  /**
    * @brief Creates a cube mesh occupying the unit cube, [0, 1]^3.
    * @param n_x_els Number of elements in the x direction (>0).
    * @param n_y_els Number of elements in the y direction (>0).
