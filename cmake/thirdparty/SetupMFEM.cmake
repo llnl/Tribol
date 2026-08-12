@@ -164,20 +164,6 @@ if(_mfem_uses_openmp)
     target_link_libraries(mfem INTERFACE blt::openmp)
 endif()
 
-if(MFEM_BUILT_WITH_CMAKE AND _mfem_uses_mpi)
-    if(NOT TARGET blt::mpi)
-        message(FATAL_ERROR "MFEM was built with MPI support, but MPI is not enabled in BLT. Configure with ENABLE_MPI=ON.")
-    endif()
-    target_link_libraries(mfem INTERFACE blt::mpi)
-endif()
-
-if(_mfem_uses_openmp)
-    if(NOT TARGET blt::openmp)
-        message(FATAL_ERROR "MFEM was built with OpenMP support, but OpenMP is not enabled in BLT. Configure with ENABLE_OPENMP=ON.")
-    endif()
-    target_link_libraries(mfem INTERFACE blt::openmp)
-endif()
-
 include(FindPackageHandleStandardArgs)
 # handle the QUIETLY and REQUIRED arguments and set MFEM_FOUND to TRUE
 # if all listed variables are TRUE
