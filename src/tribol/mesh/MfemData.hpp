@@ -784,6 +784,12 @@ class MfemMeshData {
    */
   std::vector<const RealT*> GetRedecompVelocityPtrs() const { return velocity_->GetRedecompFieldPtrs(); }
 
+  void SetParentInverseMass( const mfem::ParGridFunction& inverse_mass );
+
+  bool HasInverseMass() const { return inverse_mass_ != nullptr; }
+
+  std::vector<const RealT*> GetRedecompInverseMassPtrs() const { return inverse_mass_->GetRedecompFieldPtrs(); }
+
   /**
    * @brief Clears all kinematic and rate penalty data
    */
@@ -1301,6 +1307,8 @@ class MfemMeshData {
    * nullptr otherwise
    */
   std::unique_ptr<ParentField> velocity_;
+
+  std::unique_ptr<ParentField> inverse_mass_;
 
   /**
    * @brief Kinematic constant contact penalty for the first Tribol registered mesh

@@ -802,6 +802,9 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
   if ( velocity_ ) {
     velocity_->UpdateField( update_data_->vector_xfer_, use_device_ );
   }
+  if ( inverse_mass_ ) {
+    inverse_mass_->UpdateField( update_data_->vector_xfer_, use_device_ );
+  }
   TRIBOL_MARK_END( "Copy fields to Redecomp mesh" );
 
   if ( rebuilt && elem_thickness_ ) {
@@ -881,6 +884,15 @@ void MfemMeshData::SetParentVelocity( const mfem::ParGridFunction& velocity )
     velocity_->SetParentGridFn( velocity );
   } else {
     velocity_ = std::make_unique<ParentField>( velocity );
+  }
+}
+
+void MfemMeshData::SetParentInverseMass( const mfem::ParGridFunction& inverse_mass )
+{
+  if ( inverse_mass_ ) {
+    inverse_mass_->SetParentGridFn( inverse_mass );
+  } else {
+    inverse_mass_ = std::make_unique<ParentField>( inverse_mass );
   }
 }
 

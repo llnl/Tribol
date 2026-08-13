@@ -1027,8 +1027,19 @@ void CouplingScheme::performBinning()
 }
 
 //------------------------------------------------------------------------------
-int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
+int CouplingScheme::apply( int cycle, RealT t, RealT& dt ) { return apply( cycle, t, dt, dt ); }
+
+int CouplingScheme::apply( int cycle, RealT t, RealT stage_dt, RealT& dt )
 {
+  m_current_dt = stage_dt;
+  m_penalty_stability_dt = std::numeric_limits<RealT>::infinity();
+  m_predictor_coupling_bound = 1.;
+  m_predictor_relaxation = 1.;
+  m_num_predictor_active_qpts = 0;
+  m_num_predictor_dominant_qpts = 0;
+  m_integrated_penalty_candidate_force = 0.;
+  m_integrated_predictor_candidate_force = 0.;
+  m_integrated_applied_force = 0.;
   if ( m_formulation ) {
     if ( m_interface_pairs.size() > 0 || !hasFixedBinning() ) {
       m_formulation->setInterfacePairs( std::move( m_interface_pairs ), 0 );
@@ -1295,6 +1306,7 @@ void CouplingScheme::computeTimeStep( RealT& dt )
     case COMMON_PLANE:
       if ( m_enforcementMethod == PENALTY ) {
         if ( m_parameters.enable_timestep_vote ) {
+          dt = std::min( dt, m_penalty_stability_dt );
           this->computeCommonPlaneTimeStep( dt );
         }
       }

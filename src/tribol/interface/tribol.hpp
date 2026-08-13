@@ -76,6 +76,34 @@ void setPenaltyOptions( IndexT cs_id, PenaltyConstraintType pen_enfrc_option,
 void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int quadrature_order = 3 );
 
 /*!
+ * \brief Sets the dissipative predictor and penalty stability controls.
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] penetration_fraction fraction of existing penetration targeted for removal per stage, in [0,1]
+ * \param [in] relaxation_scale safety scale for the normalized diagonal predictor, in (0,1]
+ * \param [in] stability_scale positive safety scale for the penalty stiffness/mass timestep
+ */
+void setDissipativePenaltyOptions( IndexT cs_id, RealT penetration_fraction, RealT relaxation_scale,
+                                   RealT stability_scale );
+
+/// Returns the most recently computed penalty stiffness/mass timestep bound.
+RealT getPenaltyStabilityTimestep( IndexT cs_id );
+/// Returns the most recently computed normalized predictor coupling bound.
+RealT getPredictorCouplingBound( IndexT cs_id );
+/// Returns the most recently applied diagonal predictor relaxation.
+RealT getPredictorRelaxation( IndexT cs_id );
+/// Returns the number of predictor-active quadrature points in the most recent update.
+IndexT getNumPredictorActiveQuadraturePoints( IndexT cs_id );
+/// Returns the number of quadrature points where the predictor controlled the applied force.
+IndexT getNumPredictorDominantQuadraturePoints( IndexT cs_id );
+/// Returns the integrated compressive magnitude of the penalty candidate force.
+RealT getIntegratedPenaltyCandidateForce( IndexT cs_id );
+/// Returns the integrated compressive magnitude of the predictor candidate force.
+RealT getIntegratedPredictorCandidateForce( IndexT cs_id );
+/// Returns the integrated compressive magnitude of the applied contact force.
+RealT getIntegratedAppliedForce( IndexT cs_id );
+
+/*!
  * \brief Sets the constant kinematic penalty stiffness
  * \param [in] mesh_id mesh id for penalty stiffness
  * \param [in] k constant kinematic penalty stiffness
@@ -310,6 +338,19 @@ void registerNodalDisplacements( IndexT mesh_id, const RealT* dx, const RealT* d
 void registerNodalVelocities( IndexT mesh_id, const RealT* vx, const RealT* vy, const RealT* vz = nullptr );
 
 /*!
+ * \brief Registers component-wise inverse lumped nodal masses on a contact mesh.
+ *
+ * A zero component represents an essential velocity degree of freedom with infinite effective mass.
+ *
+ * \param [in] mesh_id the ID of the contact mesh
+ * \param [in] inv_mass_x inverse mass for x velocity degrees of freedom
+ * \param [in] inv_mass_y inverse mass for y velocity degrees of freedom
+ * \param [in] inv_mass_z inverse mass for z velocity degrees of freedom (3D only)
+ */
+void registerNodalInverseMass( IndexT mesh_id, const RealT* inv_mass_x, const RealT* inv_mass_y,
+                               const RealT* inv_mass_z = nullptr );
+
+/*!
  * \brief Registers nodal reference coords on the contact surface. Reference coordinates refer to the original mesh
  * coordinates, i.e. at time = 0.
  *
@@ -517,6 +558,16 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* mesh_id1, I
  * \return rc return code, a non-zero return code indicates an error.
  */
 int update( int cycle, RealT t, RealT& dt );
+
+/*!
+ * \brief Updates contact using separate force-stage and timestep-vote intervals.
+ *
+ * \param [in] cycle simulation cycle
+ * \param [in] t simulation time
+ * \param [in] stage_dt explicit integration stage interval used by force predictors
+ * \param [in,out] dt attempted full-step interval, reduced by an active timestep vote
+ */
+int update( int cycle, RealT t, RealT stage_dt, RealT& dt );
 
 /// \name Contact Library finalization methods
 /// @{

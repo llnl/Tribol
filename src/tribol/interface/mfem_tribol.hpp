@@ -212,6 +212,13 @@ void updateMfemMaterialModulus( IndexT cs_id, mfem::Coefficient& modulus_coeffic
 void registerMfemVelocity( IndexT cs_id, const mfem::ParGridFunction& v );
 
 /**
+ * @brief Registers component-wise inverse lumped velocity mass on an MFEM coupling scheme
+ *
+ * Zero entries represent essential velocity degrees of freedom.
+ */
+void registerMfemInverseMass( IndexT cs_id, const mfem::ParGridFunction& inverse_mass );
+
+/**
  * @brief Registers a reference coord field on a MFEM mesh-defined coupling scheme
  *
  * @pre Coupling scheme cs_id must be registered using

@@ -865,6 +865,85 @@ TEST_F( CommonPlaneTest, common_plane_2d_interpen_check )
   compareGaps( couplingScheme, gap, 1.E-8, "kinematic_penetration" );
 }
 
+TEST_F( CommonPlaneTest, common_plane_2d_dissipative_predictor )
+{
+  constexpr int numVerts = 2;
+  RealT x1[numVerts] = { 1., 0. };
+  RealT y1[numVerts] = { 0., 0. };
+  RealT x2[numVerts] = { 0., 1. };
+  RealT y2[numVerts] = { -0.02, -0.02 };
+  tribol::IndexT conn[numVerts] = { 0, 1 };
+
+  tribol::registerMesh( 0, 1, numVerts, conn, tribol::LINEAR_EDGE, x1, y1, nullptr,
+                        tribol::MemorySpace::Host );
+  tribol::registerMesh( 1, 1, numVerts, conn, tribol::LINEAR_EDGE, x2, y2, nullptr,
+                        tribol::MemorySpace::Host );
+
+  RealT fx1[numVerts] = { 0., 0. };
+  RealT fy1[numVerts] = { 0., 0. };
+  RealT fx2[numVerts] = { 0., 0. };
+  RealT fy2[numVerts] = { 0., 0. };
+  RealT vx[numVerts] = { 0., 0. };
+  RealT vy1[numVerts] = { -1., -1. };
+  RealT vy2[numVerts] = { 1., 1. };
+  RealT inverse_mass_x[numVerts] = { 0., 0. };
+  RealT inverse_mass_y[numVerts] = { 1., 1. };
+  tribol::registerNodalResponse( 0, fx1, fy1 );
+  tribol::registerNodalResponse( 1, fx2, fy2 );
+  tribol::registerNodalVelocities( 0, vx, vy1 );
+  tribol::registerNodalVelocities( 1, vx, vy2 );
+  tribol::registerNodalInverseMass( 0, inverse_mass_x, inverse_mass_y );
+  tribol::registerNodalInverseMass( 1, inverse_mass_x, inverse_mass_y );
+  tribol::setKinematicConstantPenalty( 0, 1. );
+  tribol::setKinematicConstantPenalty( 1, 1. );
+
+  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                                  tribol::ExecutionMode::Sequential );
+  tribol::setPenaltyOptions( 0, tribol::KINEMATIC_AND_DISSIPATIVE, tribol::KINEMATIC_CONSTANT );
+  tribol::setCommonPlaneIntegrationOptions( 0, tribol::MULTI_POINT, 3 );
+  tribol::setDissipativePenaltyOptions( 0, 0.2, 1.0, 0.8 );
+  tribol::setContactAreaFrac( 0, 1.e-12 );
+  tribol::enableTimestepVote( 0, true );
+
+  RealT stage_dt = 0.05;
+  RealT vote_dt = 0.1;
+  EXPECT_EQ( tribol::update( 1, 0., stage_dt, vote_dt ), 0 );
+
+  auto& coupling_scheme = tribol::CouplingSchemeManager::getInstance().at( 0 );
+  EXPECT_DOUBLE_EQ( coupling_scheme.getCurrentTimeStep(), stage_dt );
+  EXPECT_DOUBLE_EQ( vote_dt, 0.1 );
+  EXPECT_GE( coupling_scheme.getPredictorCouplingBound(), 1. );
+  EXPECT_GT( coupling_scheme.getPredictorRelaxation(), 0. );
+  EXPECT_LE( coupling_scheme.getPredictorRelaxation(), 1. );
+  EXPECT_TRUE( std::isfinite( coupling_scheme.getPenaltyStabilityTimeStep() ) );
+  EXPECT_GT( coupling_scheme.getNumPredictorActiveQuadraturePoints(), 0 );
+  EXPECT_GT( coupling_scheme.getNumPredictorDominantQuadraturePoints(), 0 );
+  EXPECT_LE( coupling_scheme.getNumPredictorDominantQuadraturePoints(),
+             coupling_scheme.getNumPredictorActiveQuadraturePoints() );
+  EXPECT_GT( coupling_scheme.getIntegratedPenaltyCandidateForce(), 0. );
+  EXPECT_GT( coupling_scheme.getIntegratedPredictorCandidateForce(), 0. );
+  EXPECT_GE( coupling_scheme.getIntegratedAppliedForce(),
+             coupling_scheme.getIntegratedPenaltyCandidateForce() );
+  EXPECT_GE( coupling_scheme.getIntegratedAppliedForce(),
+             coupling_scheme.getIntegratedPredictorCandidateForce() );
+  EXPECT_EQ( tribol::getNumPredictorActiveQuadraturePoints( 0 ),
+             coupling_scheme.getNumPredictorActiveQuadraturePoints() );
+  EXPECT_EQ( tribol::getNumPredictorDominantQuadraturePoints( 0 ),
+             coupling_scheme.getNumPredictorDominantQuadraturePoints() );
+  EXPECT_DOUBLE_EQ( tribol::getIntegratedPenaltyCandidateForce( 0 ),
+                    coupling_scheme.getIntegratedPenaltyCandidateForce() );
+  EXPECT_DOUBLE_EQ( tribol::getIntegratedPredictorCandidateForce( 0 ),
+                    coupling_scheme.getIntegratedPredictorCandidateForce() );
+  EXPECT_DOUBLE_EQ( tribol::getIntegratedAppliedForce( 0 ), coupling_scheme.getIntegratedAppliedForce() );
+
+  RealT force_norm = 0.;
+  for ( int i = 0; i < numVerts; ++i ) {
+    force_norm += std::abs( fy1[i] ) + std::abs( fy2[i] );
+  }
+  EXPECT_GT( force_norm, 0. );
+}
+
 TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )
 {
   // This test has two edges with initial full interpen and tangential velocity,

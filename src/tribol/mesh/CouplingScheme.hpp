@@ -5,6 +5,8 @@
 #ifndef SRC_TRIBOL_MESH_COUPLINGSCHEME_HPP_
 #define SRC_TRIBOL_MESH_COUPLINGSCHEME_HPP_
 
+#include <limits>
+
 // Tribol config include
 #include "tribol/config.hpp"
 
@@ -278,6 +280,34 @@ class CouplingScheme {
    * @return problem mpi communicator
    */
   CommT getProblemComm() { return m_problem_comm; }
+
+  RealT getCurrentTimeStep() const { return m_current_dt; }
+
+  void setPenaltyStabilityTimeStep( RealT dt ) { m_penalty_stability_dt = dt; }
+  RealT getPenaltyStabilityTimeStep() const { return m_penalty_stability_dt; }
+
+  void setPredictorDiagnostics( RealT coupling_bound, RealT relaxation )
+  {
+    m_predictor_coupling_bound = coupling_bound;
+    m_predictor_relaxation = relaxation;
+  }
+  RealT getPredictorCouplingBound() const { return m_predictor_coupling_bound; }
+  RealT getPredictorRelaxation() const { return m_predictor_relaxation; }
+
+  void setPredictorForceDiagnostics( IndexT active_qpts, IndexT dominant_qpts, RealT penalty_force,
+                                     RealT predictor_force, RealT applied_force )
+  {
+    m_num_predictor_active_qpts = active_qpts;
+    m_num_predictor_dominant_qpts = dominant_qpts;
+    m_integrated_penalty_candidate_force = penalty_force;
+    m_integrated_predictor_candidate_force = predictor_force;
+    m_integrated_applied_force = applied_force;
+  }
+  IndexT getNumPredictorActiveQuadraturePoints() const { return m_num_predictor_active_qpts; }
+  IndexT getNumPredictorDominantQuadraturePoints() const { return m_num_predictor_dominant_qpts; }
+  RealT getIntegratedPenaltyCandidateForce() const { return m_integrated_penalty_candidate_force; }
+  RealT getIntegratedPredictorCandidateForce() const { return m_integrated_predictor_candidate_force; }
+  RealT getIntegratedAppliedForce() const { return m_integrated_applied_force; }
 
   /**
    * @brief Get the ID of the coupling scheme
@@ -628,6 +658,7 @@ class CouplingScheme {
    * @return 0 if successful apply
    */
   int apply( int cycle, RealT t, RealT& dt );
+  int apply( int cycle, RealT t, RealT stage_dt, RealT& dt );
 
   /**
    * @brief Wrapper around method specific calculation of the Tribol timestep vote
@@ -926,6 +957,15 @@ class CouplingScheme {
   int m_allocator_id;         ///< Allocator for arrays used in kernels (set when init() is called)
 
   Parameters m_parameters;              ///< Struct holding coupling scheme parameters
+  RealT m_current_dt{ 0. };
+  RealT m_penalty_stability_dt{ std::numeric_limits<RealT>::infinity() };
+  RealT m_predictor_coupling_bound{ 1. };
+  RealT m_predictor_relaxation{ 1. };
+  IndexT m_num_predictor_active_qpts{ 0 };
+  IndexT m_num_predictor_dominant_qpts{ 0 };
+  RealT m_integrated_penalty_candidate_force{ 0. };
+  RealT m_integrated_predictor_candidate_force{ 0. };
+  RealT m_integrated_applied_force{ 0. };
   std::string m_output_directory = "";  ///< Output directory for visualization dumps
 
   bool m_nullMeshes{ false };  ///< True if one or both meshes are zero-element (null) meshes

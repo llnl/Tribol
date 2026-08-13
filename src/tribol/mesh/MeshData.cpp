@@ -234,6 +234,11 @@ void MeshData::setVelocity( const RealT* vx, const RealT* vy, const RealT* vz )
   m_vel = createNodalVector( vx, vy, vz );
 }
 
+void MeshData::setInverseMass( const RealT* inv_mass_x, const RealT* inv_mass_y, const RealT* inv_mass_z )
+{
+  m_inv_mass = createNodalVector( inv_mass_x, inv_mass_y, inv_mass_z );
+}
+
 //------------------------------------------------------------------------------
 void MeshData::setResponse( RealT* rx, RealT* ry, RealT* rz ) { m_response = createNodalVector( rx, ry, rz ); }
 
@@ -518,6 +523,22 @@ int MeshData::checkPenaltyData( PenaltyEnforcementOptions& p_enfrc_options, Exec
         }
         break;
       }  // end case KINEMATIC_AND_RATE
+      case KINEMATIC_AND_DISSIPATIVE: {
+        if ( !m_element_data.isValidKinematicPenalty( p_enfrc_options, exec_mode, this->m_allocator_id ) ) {
+          err = 1;
+        }
+        if ( !m_nodal_fields.m_is_velocity_set ) {
+          SLIC_WARNING( "Nodal velocities not set or null pointers; please set for "
+                        << "use with dissipative penalty enforcement." );
+          err = 1;
+        }
+        if ( !hasInverseMass() ) {
+          SLIC_WARNING( "Inverse nodal masses not set; please set for use with "
+                        << "dissipative penalty enforcement." );
+          err = 1;
+        }
+        break;
+      }
       default:
         // no-op, quiet compiler
         break;
@@ -604,6 +625,7 @@ MeshData::Viewer::Viewer( MeshData& mesh )
       m_ref_position( mesh.m_ref_position ),
       m_disp( mesh.m_disp ),
       m_vel( mesh.m_vel ),
+      m_inv_mass( mesh.m_inv_mass ),
       m_response( mesh.m_response ),
       m_node_n( mesh.m_node_n ),
       m_connectivity( mesh.m_connectivity ),

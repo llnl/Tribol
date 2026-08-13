@@ -118,6 +118,80 @@ void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int quadrat
   penalty_options.common_plane_quadrature_order = quadrature_order;
 }
 
+void setDissipativePenaltyOptions( IndexT cs_id, RealT penetration_fraction, RealT relaxation_scale,
+                                   RealT stability_scale )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setDissipativePenaltyOptions(): register the coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( penetration_fraction < 0. || penetration_fraction > 1.,
+                      "tribol::setDissipativePenaltyOptions(): penetration fraction must be in [0,1]." );
+  SLIC_ERROR_ROOT_IF( relaxation_scale <= 0. || relaxation_scale > 1.,
+                      "tribol::setDissipativePenaltyOptions(): relaxation scale must be in (0,1]." );
+  SLIC_ERROR_ROOT_IF( stability_scale <= 0.,
+                      "tribol::setDissipativePenaltyOptions(): stability scale must be positive." );
+
+  auto& options = cs->getEnforcementOptions().penalty_options;
+  options.dissipative_penetration_fraction = penetration_fraction;
+  options.predictor_relaxation_scale = relaxation_scale;
+  options.penalty_stability_scale = stability_scale;
+}
+
+RealT getPenaltyStabilityTimestep( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getPenaltyStabilityTimestep(): coupling scheme does not exist." );
+  return cs->getPenaltyStabilityTimeStep();
+}
+
+RealT getPredictorCouplingBound( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getPredictorCouplingBound(): coupling scheme does not exist." );
+  return cs->getPredictorCouplingBound();
+}
+
+RealT getPredictorRelaxation( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getPredictorRelaxation(): coupling scheme does not exist." );
+  return cs->getPredictorRelaxation();
+}
+
+IndexT getNumPredictorActiveQuadraturePoints( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getNumPredictorActiveQuadraturePoints(): coupling scheme does not exist." );
+  return cs->getNumPredictorActiveQuadraturePoints();
+}
+
+IndexT getNumPredictorDominantQuadraturePoints( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getNumPredictorDominantQuadraturePoints(): coupling scheme does not exist." );
+  return cs->getNumPredictorDominantQuadraturePoints();
+}
+
+RealT getIntegratedPenaltyCandidateForce( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getIntegratedPenaltyCandidateForce(): coupling scheme does not exist." );
+  return cs->getIntegratedPenaltyCandidateForce();
+}
+
+RealT getIntegratedPredictorCandidateForce( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getIntegratedPredictorCandidateForce(): coupling scheme does not exist." );
+  return cs->getIntegratedPredictorCandidateForce();
+}
+
+RealT getIntegratedAppliedForce( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getIntegratedAppliedForce(): coupling scheme does not exist." );
+  return cs->getIntegratedAppliedForce();
+}
+
 //------------------------------------------------------------------------------
 void setKinematicConstantPenalty( IndexT mesh_id, RealT k )
 {
@@ -832,6 +906,11 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
 //------------------------------------------------------------------------------
 int update( int cycle, RealT t, RealT& dt )
 {
+  return update( cycle, t, dt, dt );
+}
+
+int update( int cycle, RealT t, RealT stage_dt, RealT& dt )
+{
   bool err_cs = false;
 
   /////////////////////////////////////////////////////////////////////////
@@ -860,7 +939,7 @@ int update( int cycle, RealT t, RealT& dt )
 
     // apply the coupling scheme. Note, there are appropriate guards against zero
     // element meshes, or null-mesh coupling schemes
-    err_cs = cs.apply( cycle, t, dt );
+    err_cs = cs.apply( cycle, t, stage_dt, dt );
 
     if ( err_cs != 0 ) {
       SLIC_WARNING( "tribol::update(): coupling scheme " << cs_pair.first << " returned with an error." );
@@ -877,6 +956,18 @@ void finalize()
 {
   CouplingSchemeManager::getInstance().clear();
   MeshManager::getInstance().clear();
+}
+
+void registerNodalInverseMass( IndexT mesh_id, const RealT* inv_mass_x, const RealT* inv_mass_y,
+                               const RealT* inv_mass_z )
+{
+  auto mesh = MeshManager::getInstance().findData( mesh_id );
+  SLIC_ERROR_ROOT_IF( !mesh, "tribol::registerNodalInverseMass(): no mesh with id " << mesh_id << " exists." );
+  SLIC_ERROR_ROOT_IF( mesh->numberOfNodes() > 0 && ( inv_mass_x == nullptr || inv_mass_y == nullptr ),
+                      "tribol::registerNodalInverseMass(): x/y inverse mass pointer is null." );
+  SLIC_ERROR_ROOT_IF( mesh->numberOfNodes() > 0 && mesh->spatialDimension() == 3 && inv_mass_z == nullptr,
+                      "tribol::registerNodalInverseMass(): z inverse mass pointer is null for a 3D mesh." );
+  mesh->setInverseMass( inv_mass_x, inv_mass_y, inv_mass_z );
 }
 
 //------------------------------------------------------------------------------

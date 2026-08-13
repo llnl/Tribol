@@ -532,6 +532,17 @@ void registerMfemVelocity( IndexT cs_id, const mfem::ParGridFunction& v )
   cs->getMfemMeshData()->SetParentVelocity( v );
 }
 
+void registerMfemInverseMass( IndexT cs_id, const mfem::ParGridFunction& inverse_mass )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::registerMfemInverseMass(): register the MFEM coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
+                      "tribol::registerMfemInverseMass(): coupling scheme does not contain MFEM data." );
+  SLIC_ERROR_ROOT_IF( inverse_mass.VectorDim() != inverse_mass.ParFESpace()->GetMesh()->Dimension(),
+                      "tribol::registerMfemInverseMass(): inverse mass must use the vector coordinate space." );
+  cs->getMfemMeshData()->SetParentInverseMass( inverse_mass );
+}
+
 void registerMfemReferenceCoords( IndexT cs_id, const mfem::ParGridFunction& reference_coords )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -794,6 +805,11 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         auto v_ptrs = mfem_data->GetRedecompVelocityPtrs();
         registerNodalVelocities( mesh_ids[0], v_ptrs[0], v_ptrs[1], v_ptrs[2] );
         registerNodalVelocities( mesh_ids[1], v_ptrs[0], v_ptrs[1], v_ptrs[2] );
+      }
+      if ( mfem_data->HasInverseMass() ) {
+        const auto inv_mass = mfem_data->GetRedecompInverseMassPtrs();
+        registerNodalInverseMass( mesh_ids[0], inv_mass[0], inv_mass[1], inv_mass[2] );
+        registerNodalInverseMass( mesh_ids[1], inv_mass[0], inv_mass[1], inv_mass[2] );
       }
       if ( mfem_data->HasReferenceCoords() ) {
         auto xref_ptrs = mfem_data->GetRedecompReferenceCoordsPtrs();

@@ -174,6 +174,7 @@ enum PenaltyConstraintType
 {
   KINEMATIC,
   KINEMATIC_AND_RATE,
+  KINEMATIC_AND_DISSIPATIVE,
   NUM_PENALTY_OPTIONS
 };
 
@@ -447,6 +448,9 @@ struct PenaltyEnforcementOptions {
   PolyInteg common_plane_rule{ SINGLE_POINT };
   ///! Triangle/segment quadrature order used when common_plane_rule is MULTI_POINT; ignored for SINGLE_POINT
   int common_plane_quadrature_order{ 3 };
+  RealT dissipative_penetration_fraction{ 0.2 };
+  RealT predictor_relaxation_scale{ 1.0 };
+  RealT penalty_stability_scale{ 0.8 };
 
   bool constraint_type_set{ false };
   bool kinematic_calc_set{ false };

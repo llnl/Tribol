@@ -243,6 +243,13 @@ class MeshData {
      */
     TRIBOL_HOST_DEVICE const MultiViewArrayView<const RealT>& getVelocity() const { return m_vel; }
 
+    TRIBOL_HOST_DEVICE bool hasInverseMass() const { return !m_inv_mass.empty(); }
+
+    TRIBOL_HOST_DEVICE RealT getInverseMass( IndexT node_id, int component ) const
+    {
+      return m_inv_mass[component][node_id];
+    }
+
     /**
      * @brief Is the nodal response vector populated?
      *
@@ -404,6 +411,8 @@ class MeshData {
 
     /// Array of views of nodal velocity data
     const MultiViewArrayView<const RealT> m_vel;
+
+    const MultiViewArrayView<const RealT> m_inv_mass;
 
     /// Array of views of nodal response data
     const MultiViewArrayView<RealT> m_response;
@@ -603,6 +612,8 @@ class MeshData {
    */
   void setVelocity( const RealT* vx, const RealT* vy, const RealT* vz );
 
+  void setInverseMass( const RealT* inv_mass_x, const RealT* inv_mass_y, const RealT* inv_mass_z );
+
   /**
    * @brief Is the velocity vector populated?
    *
@@ -610,6 +621,8 @@ class MeshData {
    * @return false vector is empty
    */
   bool hasVelocity() const { return !m_vel.empty(); }
+
+  bool hasInverseMass() const { return !m_inv_mass.empty(); }
 
   /**
    * @brief Set the pointers to the nodal response data
@@ -678,6 +691,7 @@ class MeshData {
   MultiArrayView<const RealT> m_ref_position;  ///< Reference coordinates of nodes in mesh
   MultiArrayView<const RealT> m_disp;          ///< Nodal displacements
   MultiArrayView<const RealT> m_vel;           ///< Nodal velocity
+  MultiArrayView<const RealT> m_inv_mass;      ///< Component-wise inverse lumped nodal mass
   MultiArrayView<RealT> m_response;            ///< Nodal responses (forces)
 
   ArrayT<RealT, 2> m_node_n;  ///< Outward unit node normals

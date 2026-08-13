@@ -329,6 +329,120 @@ TRIBOL_HOST_DEVICE inline void AccumulateContactForce( const MeshData::Viewer& m
   }  // end switch on rate_calc
 }
 
+TRIBOL_HOST_DEVICE inline RealT ComputeInverseEffectiveMass( const MeshData::Viewer& mesh1,
+                                                             const MeshData::Viewer& mesh2, IndexT index1,
+                                                             IndexT index2, int dim, int num_nodes_per_face,
+                                                             const RealT* normal,
+                                                             const RealT* phi1, const RealT* phi2 )
+{
+  RealT inverse_effective_mass = 0.;
+  for ( int a = 0; a < num_nodes_per_face; ++a ) {
+    const IndexT node1 = mesh1.getGlobalNodeId( index1, a );
+    const IndexT node2 = mesh2.getGlobalNodeId( index2, a );
+    for ( int d = 0; d < dim; ++d ) {
+      const RealT constraint1 = phi1[a] * normal[d];
+      const RealT constraint2 = phi2[a] * normal[d];
+      inverse_effective_mass += constraint1 * constraint1 * mesh1.getInverseMass( node1, d );
+      inverse_effective_mass += constraint2 * constraint2 * mesh2.getInverseMass( node2, d );
+    }
+  }
+  return inverse_effective_mass;
+}
+
+TRIBOL_HOST_DEVICE inline RealT ComputePredictorPressure( const MeshData::Viewer& mesh1,
+                                                          const MeshData::Viewer& mesh2, IndexT index1,
+                                                          IndexT index2, int dim, int num_nodes_per_face,
+                                                          const RealT* normal, const RealT* phi1, const RealT* phi2,
+                                                          RealT gap, RealT velocity_gap,
+                                                          RealT quadrature_measure, RealT dt,
+                                                          RealT penetration_fraction, RealT relaxation )
+{
+  if ( dt <= 0. || quadrature_measure <= 0. ) {
+    return 0.;
+  }
+  const RealT inverse_effective_mass =
+      ComputeInverseEffectiveMass( mesh1, mesh2, index1, index2, dim, num_nodes_per_face, normal, phi1, phi2 );
+  if ( inverse_effective_mass <= 0. ) {
+    return 0.;
+  }
+
+  const RealT target_velocity = gap < 0. ? -penetration_fraction * gap / dt : -gap / dt;
+  if ( velocity_gap >= target_velocity ) {
+    return 0.;
+  }
+
+  const RealT impulse = relaxation * ( target_velocity - velocity_gap ) / inverse_effective_mass;
+  return -impulse / ( quadrature_measure * dt );
+}
+
+TRIBOL_HOST_DEVICE inline void AccumulateConstraintRowBounds(
+    const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, IndexT index1, IndexT index2, int dim,
+    int num_nodes_per_face, const RealT* normal, const RealT* phi1, const RealT* phi2, RealT quadrature_measure,
+    RealT penalty_stiffness, bool include_predictor, ArrayViewT<RealT> predictor_rows1,
+    ArrayViewT<RealT> predictor_rows2, ArrayViewT<RealT> stiffness_rows1, ArrayViewT<RealT> stiffness_rows2 )
+{
+  const RealT inverse_effective_mass =
+      ComputeInverseEffectiveMass( mesh1, mesh2, index1, index2, dim, num_nodes_per_face, normal, phi1, phi2 );
+  if ( inverse_effective_mass <= 0. ) {
+    return;
+  }
+
+  const RealT inv_sqrt_effective = 1. / sqrt( inverse_effective_mass );
+  RealT predictor_l1 = 0.;
+  RealT stiffness_l1 = 0.;
+  for ( int a = 0; a < num_nodes_per_face; ++a ) {
+    const IndexT node1 = mesh1.getGlobalNodeId( index1, a );
+    const IndexT node2 = mesh2.getGlobalNodeId( index2, a );
+    for ( int d = 0; d < dim; ++d ) {
+      const RealT sqrt_inv_mass1 = sqrt( mesh1.getInverseMass( node1, d ) );
+      const RealT sqrt_inv_mass2 = sqrt( mesh2.getInverseMass( node2, d ) );
+      predictor_l1 += std::abs( phi1[a] * normal[d] * sqrt_inv_mass1 * inv_sqrt_effective );
+      predictor_l1 += std::abs( phi2[a] * normal[d] * sqrt_inv_mass2 * inv_sqrt_effective );
+      stiffness_l1 += std::abs( phi1[a] * normal[d] * sqrt_inv_mass1 );
+      stiffness_l1 += std::abs( phi2[a] * normal[d] * sqrt_inv_mass2 );
+    }
+  }
+
+  const RealT stiffness_scale = penalty_stiffness * quadrature_measure;
+  for ( int a = 0; a < num_nodes_per_face; ++a ) {
+    const IndexT node1 = mesh1.getGlobalNodeId( index1, a );
+    const IndexT node2 = mesh2.getGlobalNodeId( index2, a );
+    for ( int d = 0; d < dim; ++d ) {
+      const RealT sqrt_inv_mass1 = sqrt( mesh1.getInverseMass( node1, d ) );
+      const RealT sqrt_inv_mass2 = sqrt( mesh2.getInverseMass( node2, d ) );
+      const RealT predictor_h1 = std::abs( phi1[a] * normal[d] * sqrt_inv_mass1 * inv_sqrt_effective );
+      const RealT predictor_h2 = std::abs( phi2[a] * normal[d] * sqrt_inv_mass2 * inv_sqrt_effective );
+      const RealT stiffness_h1 = std::abs( phi1[a] * normal[d] * sqrt_inv_mass1 );
+      const RealT stiffness_h2 = std::abs( phi2[a] * normal[d] * sqrt_inv_mass2 );
+      if ( include_predictor ) {
+        tribol::atomicAdd( &predictor_rows1[node1 * dim + d], predictor_h1 * predictor_l1 );
+        tribol::atomicAdd( &predictor_rows2[node2 * dim + d], predictor_h2 * predictor_l1 );
+      }
+      tribol::atomicAdd( &stiffness_rows1[node1 * dim + d], stiffness_scale * stiffness_h1 * stiffness_l1 );
+      tribol::atomicAdd( &stiffness_rows2[node2 * dim + d], stiffness_scale * stiffness_h2 * stiffness_l1 );
+    }
+  }
+}
+
+TRIBOL_HOST_DEVICE inline void AccumulateForceDiagnostics(
+    bool predictor_active, RealT quadrature_measure, RealT penalty_pressure, RealT predictor_pressure,
+    RealT applied_pressure, ArrayViewT<int> predictor_counts, ArrayViewT<RealT> integrated_forces )
+{
+  if ( predictor_active ) {
+    tribol::atomicInc( &predictor_counts[0] );
+    if ( predictor_pressure < penalty_pressure ) {
+      tribol::atomicInc( &predictor_counts[1] );
+    }
+  }
+
+  const RealT penalty_force = penalty_pressure < 0. ? -quadrature_measure * penalty_pressure : 0.;
+  const RealT predictor_force = predictor_pressure < 0. ? -quadrature_measure * predictor_pressure : 0.;
+  const RealT applied_force = applied_pressure < 0. ? -quadrature_measure * applied_pressure : 0.;
+  tribol::atomicAdd( &integrated_forces[0], penalty_force );
+  tribol::atomicAdd( &integrated_forces[1], predictor_force );
+  tribol::atomicAdd( &integrated_forces[2], applied_force );
+}
+
 }  // namespace
 
 TRIBOL_HOST_DEVICE RealT ComputeGapRatePressure( CommonPlanePair& plane, const MeshData::Viewer& m1,
@@ -425,7 +539,250 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
   ArrayViewT<bool> neg_thickness = neg_thickness_data;
   auto cs_view = cs->getView();
   const auto num_pairs = cs->getNumActivePairs();
-  forAllExec( cs->getExecutionMode(), num_pairs, [cs_view, err, neg_thickness] TRIBOL_HOST_DEVICE( IndexT i ) {
+  const auto& penalty_options = cs->getEnforcementOptions().penalty_options;
+  const bool dissipative = penalty_options.constraint_type == KINEMATIC_AND_DISSIPATIVE;
+  const bool multipoint = penalty_options.common_plane_rule == MULTI_POINT;
+
+  if ( dissipative ) {
+    SLIC_ERROR_ROOT_IF( !multipoint,
+                        "Dissipative common-plane enforcement requires MULTI_POINT integration." );
+    SLIC_ERROR_ROOT_IF( !cs->getMesh1().hasInverseMass() || !cs->getMesh2().hasInverseMass(),
+                        "Dissipative common-plane enforcement requires registered inverse nodal masses." );
+  }
+
+  RealT predictor_relaxation = 1.;
+  if ( cs->getMesh1().hasInverseMass() && cs->getMesh2().hasInverseMass() ) {
+    const int dim = cs->spatialDimension();
+    ArrayT<RealT> predictor_rows1( cs->getMesh1().numberOfNodes() * dim, cs->getMesh1().numberOfNodes() * dim,
+                                   cs->getAllocatorId() );
+    ArrayT<RealT> predictor_rows2( cs->getMesh2().numberOfNodes() * dim, cs->getMesh2().numberOfNodes() * dim,
+                                   cs->getAllocatorId() );
+    ArrayT<RealT> stiffness_rows1( cs->getMesh1().numberOfNodes() * dim, cs->getMesh1().numberOfNodes() * dim,
+                                   cs->getAllocatorId() );
+    ArrayT<RealT> stiffness_rows2( cs->getMesh2().numberOfNodes() * dim, cs->getMesh2().numberOfNodes() * dim,
+                                   cs->getAllocatorId() );
+    predictor_rows1.fill( 0. );
+    predictor_rows2.fill( 0. );
+    stiffness_rows1.fill( 0. );
+    stiffness_rows2.fill( 0. );
+    auto predictor_view1 = predictor_rows1.view();
+    auto predictor_view2 = predictor_rows2.view();
+    auto stiffness_view1 = stiffness_rows1.view();
+    auto stiffness_view2 = stiffness_rows2.view();
+    const RealT stage_dt = cs->getCurrentTimeStep();
+
+    forAllExec( cs->getExecutionMode(), num_pairs,
+                [cs_view, predictor_view1, predictor_view2, stiffness_view1, stiffness_view2, dissipative,
+                 stage_dt] TRIBOL_HOST_DEVICE( IndexT i ) {
+                  auto& plane = cs_view.getCompGeomView().getCommonPlane( i );
+                  const auto& mesh1 = cs_view.getMesh1View();
+                  const auto& mesh2 = cs_view.getMesh2View();
+                  const IndexT index1 = plane.getCpElementId1();
+                  const IndexT index2 = plane.getCpElementId2();
+                  const int local_dim = cs_view.spatialDimension();
+                  const int num_nodes_per_face = mesh1.numberOfNodesPerElement();
+                  const auto& options = cs_view.getEnforcementOptions().penalty_options;
+
+                  RealT penalty_stiffness = 0.;
+                  const RealT scale1 = mesh1.getElementData().m_penalty_scale;
+                  const RealT scale2 = mesh2.getElementData().m_penalty_scale;
+                  if ( options.kinematic_calculation == KINEMATIC_CONSTANT ) {
+                    penalty_stiffness = ComputePenaltyStiffnessPerArea(
+                        scale1 * mesh1.getElementData().m_penalty_stiffness,
+                        scale2 * mesh2.getElementData().m_penalty_stiffness );
+                  } else if ( options.kinematic_calculation == KINEMATIC_ELEMENT ) {
+                    const RealT thickness1 = mesh1.getElementData().m_thickness[index1] + options.tiny_length;
+                    const RealT thickness2 = mesh2.getElementData().m_thickness[index2] + options.tiny_length;
+                    if ( thickness1 <= 0. || thickness2 <= 0. ) {
+                      return;
+                    }
+                    penalty_stiffness = ComputePenaltyStiffnessPerArea(
+                        scale1 * mesh1.getElementData().m_mat_mod[index1] / thickness1,
+                        scale2 * mesh2.getElementData().m_mat_mod[index2] / thickness2 );
+                  }
+
+                  StackArrayT<RealT, max_dim * max_nodes_per_face> face1;
+                  StackArrayT<RealT, max_dim * max_nodes_per_face> face2;
+                  StackArrayT<RealT, max_dim * max_nodes_per_face> velocity1;
+                  StackArrayT<RealT, max_dim * max_nodes_per_face> velocity2;
+                  mesh1.getFaceCoords( index1, face1 );
+                  mesh2.getFaceCoords( index2, face2 );
+                  if ( dissipative ) {
+                    mesh1.getFaceVelocities( index1, velocity1 );
+                    mesh2.getFaceVelocities( index2, velocity2 );
+                  }
+
+                  RealT normal[max_dim] = { plane.m_nX, plane.m_nY, plane.m_nZ };
+                  RealT overlap_vertices[max_dim * max_nodes_per_overlap] = { 0. };
+                  plane.getOverlapVertices( overlap_vertices );
+                  const RealT gap_tolerance = cs_view.getGapTol( index1, index2 );
+
+                  if ( options.common_plane_rule != MULTI_POINT ) {
+                    RealT projected_face1[max_dim * max_nodes_per_face] = { 0. };
+                    RealT projected_face2[max_dim * max_nodes_per_face] = { 0. };
+                    plane.getFace1Coords( projected_face1, num_nodes_per_face );
+                    plane.getFace2Coords( projected_face2, num_nodes_per_face );
+                    const int num_vertices = local_dim == 3 ? plane.m_numPolyVert : 2;
+                    SurfaceContactElem contact_element( local_dim, projected_face1, projected_face2, overlap_vertices,
+                                                        num_nodes_per_face, num_vertices, &mesh1, &mesh2, index1, index2 );
+                    RealT phi1[max_nodes_per_face] = { 0. };
+                    RealT phi2[max_nodes_per_face] = { 0. };
+                    EvalWeakFormIntegralCommonPlane( contact_element, options.common_plane_rule,
+                                                     options.common_plane_quadrature_order, phi1, phi2 );
+                    if ( plane.m_gap <= gap_tolerance ) {
+                      AccumulateConstraintRowBounds(
+                          mesh1, mesh2, index1, index2, local_dim, num_nodes_per_face, normal, phi1, phi2, plane.m_area,
+                          penalty_stiffness, false, predictor_view1, predictor_view2, stiffness_view1, stiffness_view2 );
+                    }
+                    return;
+                  }
+
+                  if ( local_dim == 3 ) {
+                    RealT rule_weights[max_symmetric_triangle_qpts] = { 0. };
+                    RealT rule_coordinates[2 * max_symmetric_triangle_qpts] = { 0. };
+                    const int num_qpts =
+                        GetCommonPlaneTriangleRule( options.common_plane_quadrature_order, rule_weights, rule_coordinates );
+                    RealT face_coords1[max_dim * max_nodes_per_face] = { 0. };
+                    RealT face_coords2[max_dim * max_nodes_per_face] = { 0. };
+                    plane.getFace1Coords( face_coords1, num_nodes_per_face );
+                    plane.getFace2Coords( face_coords2, num_nodes_per_face );
+                    const int num_vertices = plane.m_numPolyVert;
+                    SurfaceContactElem contact_element( local_dim, face_coords1, face_coords2, overlap_vertices,
+                                                        num_nodes_per_face, num_vertices, &mesh1, &mesh2, index1, index2 );
+                    RealT centroid[3];
+                    GetCommonPlaneOverlapCentroid( contact_element, centroid );
+                    for ( int vertex = 0; vertex < num_vertices; ++vertex ) {
+                      const int next = vertex == num_vertices - 1 ? 0 : vertex + 1;
+                      RealT triangle_x[3] = { overlap_vertices[3 * vertex], overlap_vertices[3 * next], centroid[0] };
+                      RealT triangle_y[3] = { overlap_vertices[3 * vertex + 1], overlap_vertices[3 * next + 1],
+                                              centroid[1] };
+                      RealT triangle_z[3] = { overlap_vertices[3 * vertex + 2], overlap_vertices[3 * next + 2],
+                                              centroid[2] };
+                      const RealT area = Area3DTri( triangle_x, triangle_y, triangle_z );
+                      if ( area <= 0. ) {
+                        continue;
+                      }
+                      for ( int qp = 0; qp < num_qpts; ++qp ) {
+                        const RealT xi = rule_coordinates[2 * qp];
+                        const RealT eta = rule_coordinates[2 * qp + 1];
+                        const RealT n0 = 1. - xi - eta;
+                        RealT x_q[3] = { n0 * triangle_x[0] + xi * triangle_x[1] + eta * triangle_x[2],
+                                         n0 * triangle_y[0] + xi * triangle_y[1] + eta * triangle_y[2],
+                                         n0 * triangle_z[0] + xi * triangle_z[1] + eta * triangle_z[2] };
+                        RealT phi1[max_nodes_per_face] = { 0. };
+                        RealT phi2[max_nodes_per_face] = { 0. };
+                        RealT x_face1[max_dim], x_face2[max_dim];
+                        RealT vel1[max_dim] = { 0. }, vel2[max_dim] = { 0. };
+                        if ( !EvalLinearFaceAtProjectedPoint(
+                                 face1, num_nodes_per_face, x_q, normal, x_face1, phi1,
+                                 dissipative ? local_dim : 0, dissipative ? &velocity1[0] : nullptr,
+                                 dissipative ? vel1 : nullptr ) ||
+                             !EvalLinearFaceAtProjectedPoint(
+                                 face2, num_nodes_per_face, x_q, normal, x_face2, phi2,
+                                 dissipative ? local_dim : 0, dissipative ? &velocity2[0] : nullptr,
+                                 dissipative ? vel2 : nullptr ) ) {
+                          continue;
+                        }
+                        const RealT gap = ( x_face1[0] - x_face2[0] ) * normal[0] +
+                                          ( x_face1[1] - x_face2[1] ) * normal[1] +
+                                          ( x_face1[2] - x_face2[2] ) * normal[2];
+                        const RealT velocity_gap = ( vel1[0] - vel2[0] ) * normal[0] +
+                                                   ( vel1[1] - vel2[1] ) * normal[1] +
+                                                   ( vel1[2] - vel2[2] ) * normal[2];
+                        const RealT target_velocity = stage_dt > 0.
+                            ? ( gap < 0. ? -options.dissipative_penetration_fraction * gap / stage_dt : -gap / stage_dt )
+                            : 0.;
+                        const bool predictor_active =
+                            dissipative && stage_dt > 0. && velocity_gap < target_velocity;
+                        if ( gap <= gap_tolerance || predictor_active ) {
+                          AccumulateConstraintRowBounds(
+                              mesh1, mesh2, index1, index2, local_dim, num_nodes_per_face, normal, phi1, phi2,
+                              area * rule_weights[qp], penalty_stiffness, predictor_active, predictor_view1,
+                              predictor_view2, stiffness_view1, stiffness_view2 );
+                        }
+                      }
+                    }
+                  } else {
+                    RealT rule_weights[max_segment_gauss_legendre_qpts] = { 0. };
+                    RealT rule_coordinates[max_segment_gauss_legendre_qpts] = { 0. };
+                    const int num_qpts =
+                        GetCommonPlaneSegmentRule( options.common_plane_quadrature_order, rule_weights, rule_coordinates );
+                    const RealT x0 = overlap_vertices[0];
+                    const RealT y0 = overlap_vertices[1];
+                    const RealT x1 = overlap_vertices[2];
+                    const RealT y1 = overlap_vertices[3];
+                    const RealT length = magnitude( x1 - x0, y1 - y0 );
+                    for ( int qp = 0; qp < num_qpts; ++qp ) {
+                      const RealT s = rule_coordinates[qp];
+                      RealT x_q[2] = { ( 1. - s ) * x0 + s * x1, ( 1. - s ) * y0 + s * y1 };
+                      RealT phi1[max_nodes_per_face] = { 0. };
+                      RealT phi2[max_nodes_per_face] = { 0. };
+                      RealT x_face1[max_dim], x_face2[max_dim];
+                      RealT vel1[max_dim] = { 0. }, vel2[max_dim] = { 0. };
+                      if ( !EvalLinearEdgeAtProjectedPoint(
+                               face1, x_q, normal, x_face1, phi1, dissipative ? local_dim : 0,
+                               dissipative ? &velocity1[0] : nullptr, dissipative ? vel1 : nullptr ) ||
+                           !EvalLinearEdgeAtProjectedPoint(
+                               face2, x_q, normal, x_face2, phi2, dissipative ? local_dim : 0,
+                               dissipative ? &velocity2[0] : nullptr, dissipative ? vel2 : nullptr ) ) {
+                        continue;
+                      }
+                      const RealT gap =
+                          ( x_face1[0] - x_face2[0] ) * normal[0] + ( x_face1[1] - x_face2[1] ) * normal[1];
+                      const RealT velocity_gap =
+                          ( vel1[0] - vel2[0] ) * normal[0] + ( vel1[1] - vel2[1] ) * normal[1];
+                      const RealT target_velocity = stage_dt > 0.
+                          ? ( gap < 0. ? -options.dissipative_penetration_fraction * gap / stage_dt : -gap / stage_dt )
+                          : 0.;
+                      const bool predictor_active = dissipative && stage_dt > 0. && velocity_gap < target_velocity;
+                      if ( gap <= gap_tolerance || predictor_active ) {
+                        AccumulateConstraintRowBounds(
+                            mesh1, mesh2, index1, index2, local_dim, num_nodes_per_face, normal, phi1, phi2,
+                            length * rule_weights[qp], penalty_stiffness, predictor_active, predictor_view1,
+                            predictor_view2, stiffness_view1, stiffness_view2 );
+                      }
+                    }
+                  }
+                } );
+
+    ArrayT<RealT> maxima_data( { 0., 0. }, cs->getAllocatorId() );
+    auto maxima = maxima_data.view();
+    forAllExec( cs->getExecutionMode(), predictor_rows1.size(),
+                [predictor_view1, stiffness_view1, maxima] TRIBOL_HOST_DEVICE( IndexT i ) {
+                  tribol::atomicMax( &maxima[0], predictor_view1[i] );
+                  tribol::atomicMax( &maxima[1], stiffness_view1[i] );
+                } );
+    forAllExec( cs->getExecutionMode(), predictor_rows2.size(),
+                [predictor_view2, stiffness_view2, maxima] TRIBOL_HOST_DEVICE( IndexT i ) {
+                  tribol::atomicMax( &maxima[0], predictor_view2[i] );
+                  tribol::atomicMax( &maxima[1], stiffness_view2[i] );
+                } );
+    ArrayT<RealT, 1, MemorySpace::Host> maxima_host( maxima_data );
+#ifdef TRIBOL_USE_MPI
+    int mpi_initialized = 0;
+    MPI_Initialized( &mpi_initialized );
+    if ( mpi_initialized ) {
+      MPI_Allreduce( MPI_IN_PLACE, maxima_host.data(), 2, MPI_DOUBLE, MPI_SUM, cs->getProblemComm() );
+    }
+#endif
+    const RealT predictor_bound = maxima_host[0] > 0. ? maxima_host[0] : 1.;
+    predictor_relaxation = std::min( 1., penalty_options.predictor_relaxation_scale / predictor_bound );
+    const RealT stiffness_bound = maxima_host[1];
+    const RealT stability_dt = stiffness_bound > 0.
+        ? 2. * penalty_options.penalty_stability_scale / sqrt( stiffness_bound )
+        : std::numeric_limits<RealT>::infinity();
+    cs->setPredictorDiagnostics( predictor_bound, predictor_relaxation );
+    cs->setPenaltyStabilityTimeStep( stability_dt );
+  }
+
+  const RealT stage_dt = cs->getCurrentTimeStep();
+  ArrayT<int> predictor_counts_data( { 0, 0 }, cs->getAllocatorId() );
+  ArrayT<RealT> integrated_forces_data( { 0., 0., 0. }, cs->getAllocatorId() );
+  auto predictor_counts = predictor_counts_data.view();
+  auto integrated_forces = integrated_forces_data.view();
+  forAllExec( cs->getExecutionMode(), num_pairs,
+              [cs_view, err, neg_thickness, predictor_relaxation, stage_dt, predictor_counts,
+               integrated_forces] TRIBOL_HOST_DEVICE( IndexT i ) {
     auto& cg_view = cs_view.getCompGeomView();
     auto& plane = cg_view.getCommonPlane( i );
 
@@ -512,6 +869,7 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
         break;
       }
       case KINEMATIC:
+      case KINEMATIC_AND_DISSIPATIVE:
         // kinematic gap pressure contribution  only
         totalPressure += plane.m_pressure;
         break;
@@ -588,13 +946,15 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
       mesh2.getFaceCoords( index2, actual_xf2 );
 
       const bool use_rate = pen_enfrc_options.constraint_type == KINEMATIC_AND_RATE;
+      const bool use_dissipative = pen_enfrc_options.constraint_type == KINEMATIC_AND_DISSIPATIVE;
+      const bool use_velocity = use_rate || use_dissipative;
       const RealT rate_penalty =
           use_rate ? ComputeRatePenalty( mesh1, mesh2, penalty_stiff_per_area, pen_enfrc_options.rate_calculation )
                    : 0.;
 
       StackArrayT<RealT, max_dim * max_nodes_per_face> actual_vf1;
       StackArrayT<RealT, max_dim * max_nodes_per_face> actual_vf2;
-      if ( use_rate ) {
+      if ( use_velocity ) {
         mesh1.getFaceVelocities( index1, actual_vf1 );
         mesh2.getFaceVelocities( index2, actual_vf2 );
       }
@@ -649,34 +1009,55 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
             RealT vel_q2[max_dim] = { 0., 0., 0. };
 
             const bool mapped_face1 = EvalLinearFaceAtProjectedPoint(
-                actual_xf1, num_nodes_per_face, x_q, overlapNormal, x_qf1, phi_q1, use_rate ? dim : 0,
-                use_rate ? &actual_vf1[0] : nullptr, use_rate ? vel_q1 : nullptr );
+                actual_xf1, num_nodes_per_face, x_q, overlapNormal, x_qf1, phi_q1, use_velocity ? dim : 0,
+                use_velocity ? &actual_vf1[0] : nullptr, use_velocity ? vel_q1 : nullptr );
             const bool mapped_face2 = EvalLinearFaceAtProjectedPoint(
-                actual_xf2, num_nodes_per_face, x_q, overlapNormal, x_qf2, phi_q2, use_rate ? dim : 0,
-                use_rate ? &actual_vf2[0] : nullptr, use_rate ? vel_q2 : nullptr );
+                actual_xf2, num_nodes_per_face, x_q, overlapNormal, x_qf2, phi_q2, use_velocity ? dim : 0,
+                use_velocity ? &actual_vf2[0] : nullptr, use_velocity ? vel_q2 : nullptr );
             if ( !mapped_face1 || !mapped_face2 ) {
               continue;
             }
 
             RealT local_gap = ( x_qf1[0] - x_qf2[0] ) * overlapNormal[0] + ( x_qf1[1] - x_qf2[1] ) * overlapNormal[1] +
                               ( x_qf1[2] - x_qf2[2] ) * overlapNormal[2];
-            if ( local_gap > gap_tol ) {
+            RealT local_vel_gap = 0.;
+            if ( use_velocity ) {
+              local_vel_gap = ( vel_q1[0] - vel_q2[0] ) * overlapNormal[0] +
+                              ( vel_q1[1] - vel_q2[1] ) * overlapNormal[1] +
+                              ( vel_q1[2] - vel_q2[2] ) * overlapNormal[2];
+            }
+            const RealT target_velocity = stage_dt > 0.
+                ? ( local_gap < 0. ? -pen_enfrc_options.dissipative_penetration_fraction * local_gap / stage_dt
+                                   : -local_gap / stage_dt )
+                : 0.;
+            const bool predictor_active = use_dissipative && stage_dt > 0. && local_vel_gap < target_velocity;
+            if ( local_gap > gap_tol && !predictor_active ) {
               continue;
             }
 
             has_contact = true;
 
-            RealT local_pressure = local_gap * penalty_stiff_per_area;
+            const RealT penalty_pressure = local_gap <= gap_tol ? local_gap * penalty_stiff_per_area : 0.;
+            RealT local_pressure = penalty_pressure;
             if ( use_rate && rate_penalty > 0. ) {
-              RealT local_vel_gap = ( vel_q1[0] - vel_q2[0] ) * overlapNormal[0] +
-                                    ( vel_q1[1] - vel_q2[1] ) * overlapNormal[1] +
-                                    ( vel_q1[2] - vel_q2[2] ) * overlapNormal[2];
               if ( local_vel_gap <= 0. ) {
                 local_pressure += local_vel_gap * rate_penalty;
               }
             }
 
-            const RealT weighted_force = area * rule_wts[qp] * local_pressure;
+            const RealT quadrature_measure = area * rule_wts[qp];
+            RealT predictor_pressure = 0.;
+            if ( use_dissipative ) {
+              predictor_pressure = ComputePredictorPressure(
+                  mesh1, mesh2, index1, index2, dim, num_nodes_per_face, overlapNormal, phi_q1, phi_q2, local_gap,
+                  local_vel_gap, quadrature_measure, stage_dt, pen_enfrc_options.dissipative_penetration_fraction,
+                  predictor_relaxation );
+              local_pressure = std::min( local_pressure, predictor_pressure );
+            }
+            AccumulateForceDiagnostics( predictor_active, quadrature_measure, penalty_pressure, predictor_pressure,
+                                        local_pressure, predictor_counts, integrated_forces );
+
+            const RealT weighted_force = quadrature_measure * local_pressure;
             const RealT force_x = overlapNormal[0] * weighted_force;
             const RealT force_y = overlapNormal[1] * weighted_force;
             const RealT force_z = overlapNormal[2] * weighted_force;
@@ -709,32 +1090,53 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
           RealT vel_q2[max_dim] = { 0., 0., 0. };
 
           const bool mapped_face1 =
-              EvalLinearEdgeAtProjectedPoint( actual_xf1, x_q, overlapNormal, x_qf1, phi_q1, use_rate ? dim : 0,
-                                              use_rate ? &actual_vf1[0] : nullptr, use_rate ? vel_q1 : nullptr );
+              EvalLinearEdgeAtProjectedPoint( actual_xf1, x_q, overlapNormal, x_qf1, phi_q1, use_velocity ? dim : 0,
+                                              use_velocity ? &actual_vf1[0] : nullptr, use_velocity ? vel_q1 : nullptr );
           const bool mapped_face2 =
-              EvalLinearEdgeAtProjectedPoint( actual_xf2, x_q, overlapNormal, x_qf2, phi_q2, use_rate ? dim : 0,
-                                              use_rate ? &actual_vf2[0] : nullptr, use_rate ? vel_q2 : nullptr );
+              EvalLinearEdgeAtProjectedPoint( actual_xf2, x_q, overlapNormal, x_qf2, phi_q2, use_velocity ? dim : 0,
+                                              use_velocity ? &actual_vf2[0] : nullptr, use_velocity ? vel_q2 : nullptr );
           if ( !mapped_face1 || !mapped_face2 ) {
             continue;
           }
 
           RealT local_gap = ( x_qf1[0] - x_qf2[0] ) * overlapNormal[0] + ( x_qf1[1] - x_qf2[1] ) * overlapNormal[1];
-          if ( local_gap > gap_tol ) {
+          RealT local_vel_gap = 0.;
+          if ( use_velocity ) {
+            local_vel_gap =
+                ( vel_q1[0] - vel_q2[0] ) * overlapNormal[0] + ( vel_q1[1] - vel_q2[1] ) * overlapNormal[1];
+          }
+          const RealT target_velocity = stage_dt > 0.
+              ? ( local_gap < 0. ? -pen_enfrc_options.dissipative_penetration_fraction * local_gap / stage_dt
+                                 : -local_gap / stage_dt )
+              : 0.;
+          const bool predictor_active = use_dissipative && stage_dt > 0. && local_vel_gap < target_velocity;
+          if ( local_gap > gap_tol && !predictor_active ) {
             continue;
           }
 
           has_contact = true;
 
-          RealT local_pressure = local_gap * penalty_stiff_per_area;
+          const RealT penalty_pressure = local_gap <= gap_tol ? local_gap * penalty_stiff_per_area : 0.;
+          RealT local_pressure = penalty_pressure;
           if ( use_rate && rate_penalty > 0. ) {
-            RealT local_vel_gap =
-                ( vel_q1[0] - vel_q2[0] ) * overlapNormal[0] + ( vel_q1[1] - vel_q2[1] ) * overlapNormal[1];
             if ( local_vel_gap <= 0. ) {
               local_pressure += local_vel_gap * rate_penalty;
             }
           }
 
-          const RealT weighted_force = length * segment_rule_wts[qp] * local_pressure;
+          const RealT quadrature_measure = length * segment_rule_wts[qp];
+          RealT predictor_pressure = 0.;
+          if ( use_dissipative ) {
+            predictor_pressure = ComputePredictorPressure(
+                mesh1, mesh2, index1, index2, dim, num_nodes_per_face, overlapNormal, phi_q1, phi_q2, local_gap,
+                local_vel_gap, quadrature_measure, stage_dt, pen_enfrc_options.dissipative_penetration_fraction,
+                predictor_relaxation );
+            local_pressure = std::min( local_pressure, predictor_pressure );
+          }
+          AccumulateForceDiagnostics( predictor_active, quadrature_measure, penalty_pressure, predictor_pressure,
+                                      local_pressure, predictor_counts, integrated_forces );
+
+          const RealT weighted_force = quadrature_measure * local_pressure;
           const RealT force_x = overlapNormal[0] * weighted_force;
           const RealT force_y = overlapNormal[1] * weighted_force;
 
@@ -770,6 +1172,7 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     // RealT phi_sum_2 = 0.;
 
     // compute contact force (spring force)
+    AccumulateForceDiagnostics( false, A, plane.m_pressure, 0., totalPressure, predictor_counts, integrated_forces );
     RealT contact_force = totalPressure * A;
 
     RealT force_x = overlapNormal[0] * contact_force;
@@ -789,6 +1192,19 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     // SLIC_DEBUG("phi 1 sum: " << phi_sum_1 );
     // SLIC_DEBUG("phi 2 sum: " << phi_sum_2 );
   } );
+
+  ArrayT<int, 1, MemorySpace::Host> predictor_counts_host( predictor_counts_data );
+  ArrayT<RealT, 1, MemorySpace::Host> integrated_forces_host( integrated_forces_data );
+#ifdef TRIBOL_USE_MPI
+  int mpi_initialized = 0;
+  MPI_Initialized( &mpi_initialized );
+  if ( mpi_initialized ) {
+    MPI_Allreduce( MPI_IN_PLACE, predictor_counts_host.data(), 2, MPI_INT, MPI_SUM, cs->getProblemComm() );
+    MPI_Allreduce( MPI_IN_PLACE, integrated_forces_host.data(), 3, MPI_DOUBLE, MPI_SUM, cs->getProblemComm() );
+  }
+#endif
+  cs->setPredictorForceDiagnostics( predictor_counts_host[0], predictor_counts_host[1], integrated_forces_host[0],
+                                    integrated_forces_host[1], integrated_forces_host[2] );
 
   ArrayT<bool, 1, MemorySpace::Host> neg_thickness_host( neg_thickness_data );
   SLIC_DEBUG_IF( neg_thickness_host[0],
