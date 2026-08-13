@@ -490,7 +490,7 @@ class BvhSearch : public SearchBase {
   {
     auto boxes_view = boxes.view();
     forAllExec( m_coupling_scheme->getExecutionMode(), mesh.numberOfElements(),
-                [this, mesh, boxes_view, binning_proximity] TRIBOL_HOST_DEVICE( IndexT i ) {
+                [mesh, boxes_view, binning_proximity] TRIBOL_HOST_DEVICE( IndexT i ) {
                   BoxT box;
                   auto num_nodes_per_elem = mesh.numberOfNodesPerElement();
                   for ( IndexT j{ 0 }; j < num_nodes_per_elem; ++j ) {
@@ -516,7 +516,7 @@ class BvhSearch : public SearchBase {
    * Expands bounding box by projecting the face normal by a distance
    * equal to the effective face radius
    */
-  TRIBOL_HOST_DEVICE void expandBBoxNormal( BoxT& bbox, const VectorT& faceNormal, const RealT faceRadius )
+  TRIBOL_HOST_DEVICE static void expandBBoxNormal( BoxT& bbox, const VectorT& faceNormal, const RealT faceRadius )
   {
     PointT p0 = bbox.getCentroid();
     RayT outwardRay( p0, faceNormal );

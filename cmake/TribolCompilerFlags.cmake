@@ -19,4 +19,3 @@ string(APPEND CMAKE_EXE_LINKER_FLAGS " -rdynamic")
 if(APPLE)
     string(APPEND CMAKE_EXE_LINKER_FLAGS " -Wl,-no_warn_duplicate_libraries")
 endif()
-

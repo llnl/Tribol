@@ -677,16 +677,16 @@ class MfemMeshData {
   /**
    * @brief Get the number of elements in the first Tribol registered mesh
    *
-   * @return int
+   * @return IndexT
    */
-  int GetMesh1NE() const { return GetUpdateData().conn_1_.size() / GetUpdateData().num_verts_per_elem_; }
+  IndexT GetMesh1NE() const { return GetUpdateData().conn_1_.size() / GetUpdateData().num_verts_per_elem_; }
 
   /**
    * @brief Get the number of elements in the second Tribol registered mesh
    *
-   * @return int
+   * @return IndexT
    */
-  int GetMesh2NE() const { return GetUpdateData().conn_2_.size() / GetUpdateData().num_verts_per_elem_; }
+  IndexT GetMesh2NE() const { return GetUpdateData().conn_2_.size() / GetUpdateData().num_verts_per_elem_; }
 
   /**
    * @brief Get the total number of vertices in both Tribol registered meshes
@@ -1795,10 +1795,10 @@ struct PackedPairJacobianContribs {
   const Array1D<int>* row_elem_map{ nullptr };
   /// Tribol element-id -> redecomp element-id map for column element ids
   const Array1D<int>* col_elem_map{ nullptr };
-  Array1D<int, MemorySpace::Host> row_elem_ids;      ///< Tribol element IDs for rows
-  Array1D<int, MemorySpace::Host> col_elem_ids;      ///< Tribol element IDs for columns
+  Array1D<IndexT, MemorySpace::Host> row_elem_ids;   ///< Tribol element IDs for rows
+  Array1D<IndexT, MemorySpace::Host> col_elem_ids;   ///< Tribol element IDs for columns
   Array1D<double, MemorySpace::Host> jacobian_data;  ///< Flattened Jacobian data
-  Array1D<int, MemorySpace::Host> value_offsets;     ///< Offsets into jacobian_data for each element
+  Array1D<IndexT, MemorySpace::Host> value_offsets;  ///< Offsets into jacobian_data for each element
 
   PackedPairJacobianContribs() = default;
 
@@ -1822,7 +1822,7 @@ struct PackedPairJacobianContribs {
    * @param n_jacobian_scalar_values Total number of scalar Jacobian values that will be appended across all pairs.
    * This is used to reserve capacity in @ref jacobian_data.
    */
-  void reserve( int n_pairs, int n_jacobian_scalar_values )
+  void reserve( IndexT n_pairs, IndexT n_jacobian_scalar_values )
   {
     row_elem_ids.reserve( n_pairs );
     col_elem_ids.reserve( n_pairs );
@@ -1838,7 +1838,7 @@ struct PackedPairJacobianContribs {
    * @param data Pointer to a contiguous, column-major dense block of Jacobian values.
    * @param size Number of scalar entries in @p data (typically `n_row_dofs * n_col_dofs`).
    */
-  void append( int row_elem_id, int col_elem_id, const double* data, int size )
+  void append( int row_elem_id, int col_elem_id, const double* data, IndexT size )
   {
     row_elem_ids.push_back( row_elem_id );
     col_elem_ids.push_back( col_elem_id );
@@ -1851,7 +1851,7 @@ struct PackedPairJacobianContribs {
   /**
    * @brief Number of element contributions stored in this packed block
    */
-  int numEntries() const { return row_elem_ids.size(); }
+  IndexT numEntries() const { return row_elem_ids.size(); }
 };
 
 /**
