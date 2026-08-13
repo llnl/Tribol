@@ -18,18 +18,18 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
   }
 
   if ( cs->getContactMethod() == ENERGY_MORTAR ) {
+#if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
     // Default parameters for now, or extract from CouplingScheme if available
     double k = 1000.0;
     double delta = 0.1;
     int N = 3;
     bool enzyme_quadrature = true;
+
     // ENERGY_MORTAR supports a penalty-style mode driven by the kinematic penalty parameters, even if the coupling
     // scheme is registered with LM enforcement (which is often done to enable submesh/pressure infrastructure).
     const auto& penalty_opts = cs->getEnforcementOptions().penalty_options;
-    // TODO: Figure out how contact formulations interact with coupling scheme duplication (SRW)
-    bool use_penalty_ = penalty_opts.kinematic_calc_set;
+    bool use_penalty = penalty_opts.kinematic_calc_set;
 
-#if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
     if ( cs->hasMfemData() ) {
       // Attempt to get penalty from MfemMeshData if available
       auto* k1_ptr = cs->getMfemMeshData()->GetMesh1KinematicConstantPenalty();
@@ -45,7 +45,7 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
 
     return std::make_unique<EnergyMortarAdapter>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
                                                   *cs->getMfemJacobianData(), k, delta, N, enzyme_quadrature,
-                                                  use_penalty_ );
+                                                  use_penalty );
 #else
     SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );
     return nullptr;

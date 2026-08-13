@@ -231,7 +231,7 @@ class MethodData {
    *
    * See @ref getElementBlockJacobians for a definition of the blocks.
    */
-  int getNSpaces() const { return m_blockJSpaces.size(); }
+  IndexT getNSpaces() const { return m_blockJSpaces.size(); }
 
   /*!
    * \brief Get the element ids for each entry of the getBlockJ 2D ArrayT

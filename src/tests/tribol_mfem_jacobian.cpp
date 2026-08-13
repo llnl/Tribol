@@ -695,7 +695,7 @@ TEST_F( MfemJacobianTest, jacobian_primary_dual_assembles_in_ho_and_lor )
       EXPECT_EQ( mat->Height(), ctx.mesh_data->GetParentCoords().ParFESpace()->GetTrueVSize() );
       EXPECT_EQ( mat->Width(), ctx.submesh_data->GetSubmeshFESpace().GetTrueVSize() );
 
-      const int local_pairs = contributions[0].row_elem_ids.size();
+      int local_pairs = contributions[0].row_elem_ids.size();
       int global_pairs = 0;
       MPI_Allreduce( &local_pairs, &global_pairs, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
       if ( global_pairs > 0 ) {
@@ -724,7 +724,7 @@ TEST_F( MfemJacobianTest, jacobian_dual_primary_assembles_in_ho_and_lor )
       EXPECT_EQ( mat->Height(), ctx.submesh_data->GetSubmeshFESpace().GetTrueVSize() );
       EXPECT_EQ( mat->Width(), ctx.mesh_data->GetParentCoords().ParFESpace()->GetTrueVSize() );
 
-      const int local_pairs = contributions[0].row_elem_ids.size();
+      int local_pairs = contributions[0].row_elem_ids.size();
       int global_pairs = 0;
       MPI_Allreduce( &local_pairs, &global_pairs, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
       if ( global_pairs > 0 ) {
@@ -795,7 +795,7 @@ TEST_F( MfemJacobianTest, jacobian_primary_primary_aggregates_mortar_and_nonmort
       expected += AssembleSolverBlockJacobian( ctx, { nm }, SolverBlock::Primary, SolverBlock::Primary );
       expected += AssembleSolverBlockJacobian( ctx, { nn }, SolverBlock::Primary, SolverBlock::Primary );
 
-      const int local_pairs =
+      int local_pairs =
           mm.row_elem_ids.size() + mn.row_elem_ids.size() + nm.row_elem_ids.size() + nn.row_elem_ids.size();
       int global_pairs = 0;
       MPI_Allreduce( &local_pairs, &global_pairs, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );

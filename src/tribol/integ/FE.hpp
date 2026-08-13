@@ -472,6 +472,7 @@ TRIBOL_HOST_DEVICE inline void GalerkinEval( const RealT* const x, const RealT p
 TRIBOL_HOST_DEVICE inline void EvalBasis( const RealT* const x, const RealT pX, const RealT pY, const RealT pZ,
                                           const int numPoints, const int vertexId, RealT& phi )
 {
+  phi = 0.;
   if ( numPoints > 2 ) {
     WachspressBasis( x, pX, pY, pZ, numPoints, vertexId, phi );
   } else if ( numPoints == 2 ) {
@@ -524,14 +525,16 @@ TRIBOL_HOST_DEVICE inline void SegmentBasis( const RealT* const x, const RealT p
 TRIBOL_HOST_DEVICE inline void WachspressBasis( const RealT* const x, const RealT pX, const RealT pY, const RealT pZ,
                                                 const int numPoints, const int vertexId, RealT& phi )
 {
+  constexpr int max_nodes_per_elem = 4;
 #ifdef TRIBOL_USE_HOST
   SLIC_ERROR_IF( numPoints < 3, "WachspressBasis: numPoints < 3." );
+  SLIC_ERROR_IF( numPoints > max_nodes_per_elem, "WachspressBasis: numPoints > 4." );
+  SLIC_ERROR_IF( vertexId < 0 || vertexId >= numPoints, "WachspressBasis: vertexId is out of bounds." );
 #endif
 
   // first compute the areas of all the triangles formed by the i-1,i,i+1 vertices.
   // These consist of all the numerators in the Wachspress formulation
   // NOTE: this limits the routine to 4 noded quadrilaterals
-  constexpr int max_nodes_per_elem = 4;
   RealT triVertArea[max_nodes_per_elem];
   for ( int i = 0; i < numPoints; ++i ) {
     // determine the i-1, i, i+1 vertices
@@ -585,7 +588,7 @@ TRIBOL_HOST_DEVICE inline void WachspressBasis( const RealT* const x, const Real
 
   // third, compute all of the weights per Wachspress formulation
   RealT weight[max_nodes_per_elem];
-  RealT myWeight;
+  RealT myWeight = 0.;
   RealT weightSum = 0.;
   for ( int i = 0; i < numPoints; ++i ) {
     int vId = i;
