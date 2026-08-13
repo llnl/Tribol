@@ -5,10 +5,15 @@
 
 #include "CommonPlane.hpp"
 
+#include "axom/fmt.hpp"
+
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/Atomics.hpp"
 #include "tribol/mesh/MethodCouplingData.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
+#ifdef BUILD_REDECOMP
+#include "tribol/mesh/MfemData.hpp"
+#endif
 #include "tribol/geom/CompGeom.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/integ/Integration.hpp"
@@ -22,6 +27,7 @@ namespace {
 constexpr int max_dim = 3;
 constexpr int max_nodes_per_face = 4;
 constexpr int max_nodes_per_overlap = 10;
+constexpr int parent_q2_num_nodes = 3;
 
 TRIBOL_HOST_DEVICE inline RealT ComputeRatePenalty( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
                                                     RealT element_penalty, RatePenaltyCalculation rate_calc )
@@ -252,7 +258,8 @@ TRIBOL_HOST_DEVICE inline bool EvalLinearEdgeAtProjectedPoint( const RealT* edge
                                                                const RealT projection_dir[2], RealT x_edge[3],
                                                                RealT* phi, const int value_dim = 0,
                                                                const RealT* nodal_vals = nullptr,
-                                                               RealT* values = nullptr )
+                                                               RealT* values = nullptr,
+                                                               RealT* edge_parameter = nullptr )
 {
   const RealT ax = edge_coords[0];
   const RealT ay = edge_coords[1];
@@ -276,6 +283,9 @@ TRIBOL_HOST_DEVICE inline bool EvalLinearEdgeAtProjectedPoint( const RealT* edge
     return false;
   }
   edge_param = std::max( 0., std::min( 1., edge_param ) );
+  if ( edge_parameter != nullptr ) {
+    *edge_parameter = edge_param;
+  }
 
   phi[0] = 1. - edge_param;
   phi[1] = edge_param;
@@ -294,6 +304,90 @@ TRIBOL_HOST_DEVICE inline bool EvalLinearEdgeAtProjectedPoint( const RealT* edge
   }
 
   return true;
+}
+
+TRIBOL_HOST_DEVICE inline void EvalParentQ2Basis( RealT xi, RealT* phi, RealT* dphi )
+{
+  phi[0] = 2. * ( xi - 0.5 ) * ( xi - 1. );
+  phi[1] = 2. * xi * ( xi - 0.5 );
+  phi[2] = 4. * xi * ( 1. - xi );
+  dphi[0] = 4. * xi - 3.;
+  dphi[1] = 4. * xi - 1.;
+  dphi[2] = 4. - 8. * xi;
+}
+
+TRIBOL_HOST_DEVICE inline bool EvalParentQ2Edge( const MeshData::Viewer& mesh, IndexT element_id, RealT child_parameter,
+                                                 bool use_velocity, RealT* phi, RealT* position, RealT* velocity,
+                                                 RealT* outward_normal )
+{
+  const RealT xi0 = mesh.getParentReferenceCoordinate( element_id, 0 );
+  const RealT xi1 = mesh.getParentReferenceCoordinate( element_id, 1 );
+  const RealT xi = ( 1. - child_parameter ) * xi0 + child_parameter * xi1;
+  RealT dphi[parent_q2_num_nodes];
+  EvalParentQ2Basis( xi, phi, dphi );
+
+  position[0] = 0.;
+  position[1] = 0.;
+  velocity[0] = 0.;
+  velocity[1] = 0.;
+  RealT tangent[2] = { 0., 0. };
+  for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+    for ( int d = 0; d < 2; ++d ) {
+      const RealT coordinate = mesh.getParentPosition( element_id, a, d );
+      position[d] += phi[a] * coordinate;
+      tangent[d] += dphi[a] * coordinate;
+      if ( use_velocity ) {
+        velocity[d] += phi[a] * mesh.getParentVelocity( element_id, a, d );
+      }
+    }
+  }
+
+  const RealT tangent_norm = magnitude( tangent[0], tangent[1] );
+  constexpr RealT tangent_tol = 1.e-14;
+  if ( tangent_norm <= tangent_tol ) {
+    return false;
+  }
+  outward_normal[0] = tangent[1] / tangent_norm;
+  outward_normal[1] = -tangent[0] / tangent_norm;
+  RealT chord_normal[2];
+  mesh.getFaceNormal( element_id, chord_normal );
+  if ( outward_normal[0] * chord_normal[0] + outward_normal[1] * chord_normal[1] < 0. ) {
+    outward_normal[0] = -outward_normal[0];
+    outward_normal[1] = -outward_normal[1];
+  }
+  return true;
+}
+
+TRIBOL_HOST_DEVICE inline bool EvalParentQ2Pair( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+                                                 IndexT index1, IndexT index2, RealT child_parameter1,
+                                                 RealT child_parameter2, bool use_velocity,
+                                                 const RealT* fallback_normal, RealT* phi1, RealT* phi2,
+                                                 RealT* position1, RealT* position2, RealT* velocity1, RealT* velocity2,
+                                                 RealT* common_normal )
+{
+  RealT normal1[2];
+  RealT normal2[2];
+  const bool valid1 =
+      EvalParentQ2Edge( mesh1, index1, child_parameter1, use_velocity, phi1, position1, velocity1, normal1 );
+  const bool valid2 =
+      EvalParentQ2Edge( mesh2, index2, child_parameter2, use_velocity, phi2, position2, velocity2, normal2 );
+  const RealT average_x = valid1 && valid2 ? normal2[0] - normal1[0] : 0.;
+  const RealT average_y = valid1 && valid2 ? normal2[1] - normal1[1] : 0.;
+  const RealT average_norm = magnitude( average_x, average_y );
+  constexpr RealT normal_tol = 1.e-14;
+  const bool used_parent_normal = average_norm > normal_tol;
+  if ( used_parent_normal ) {
+    common_normal[0] = average_x / average_norm;
+    common_normal[1] = average_y / average_norm;
+    if ( common_normal[0] * fallback_normal[0] + common_normal[1] * fallback_normal[1] < 0. ) {
+      common_normal[0] = -common_normal[0];
+      common_normal[1] = -common_normal[1];
+    }
+  } else {
+    common_normal[0] = fallback_normal[0];
+    common_normal[1] = fallback_normal[1];
+  }
+  return used_parent_normal;
 }
 
 TRIBOL_HOST_DEVICE inline void AccumulateContactForce( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
@@ -329,6 +423,19 @@ TRIBOL_HOST_DEVICE inline void AccumulateContactForce( const MeshData::Viewer& m
   }  // end switch on rate_calc
 }
 
+TRIBOL_HOST_DEVICE inline void AccumulateParentContactForce( const MeshData::Viewer& mesh1,
+                                                             const MeshData::Viewer& mesh2, IndexT index1,
+                                                             IndexT index2, int dim, const RealT* force,
+                                                             const RealT* phi1, const RealT* phi2 )
+{
+  for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+    for ( int d = 0; d < dim; ++d ) {
+      tribol::atomicAdd( &mesh1.getParentResponse( index1, a, d ), -force[d] * phi1[a] );
+      tribol::atomicAdd( &mesh2.getParentResponse( index2, a, d ), force[d] * phi2[a] );
+    }
+  }
+}
+
 TRIBOL_HOST_DEVICE inline RealT ComputeInverseEffectiveMass( const MeshData::Viewer& mesh1,
                                                              const MeshData::Viewer& mesh2, IndexT index1,
                                                              IndexT index2, int dim, int num_nodes_per_face,
@@ -344,6 +451,23 @@ TRIBOL_HOST_DEVICE inline RealT ComputeInverseEffectiveMass( const MeshData::Vie
       const RealT constraint2 = phi2[a] * normal[d];
       inverse_effective_mass += constraint1 * constraint1 * mesh1.getInverseMass( node1, d );
       inverse_effective_mass += constraint2 * constraint2 * mesh2.getInverseMass( node2, d );
+    }
+  }
+  return inverse_effective_mass;
+}
+
+TRIBOL_HOST_DEVICE inline RealT ComputeParentInverseEffectiveMass( const MeshData::Viewer& mesh1,
+                                                                   const MeshData::Viewer& mesh2, IndexT index1,
+                                                                   IndexT index2, int dim, const RealT* normal,
+                                                                   const RealT* phi1, const RealT* phi2 )
+{
+  RealT inverse_effective_mass = 0.;
+  for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+    for ( int d = 0; d < dim; ++d ) {
+      const RealT constraint1 = phi1[a] * normal[d];
+      const RealT constraint2 = phi2[a] * normal[d];
+      inverse_effective_mass += constraint1 * constraint1 * mesh1.getParentInverseMass( index1, a, d );
+      inverse_effective_mass += constraint2 * constraint2 * mesh2.getParentInverseMass( index2, a, d );
     }
   }
   return inverse_effective_mass;
@@ -376,6 +500,29 @@ TRIBOL_HOST_DEVICE inline RealT ComputePredictorPressure( const MeshData::Viewer
     return 0.;
   }
 
+  const RealT impulse = relaxation * ( target_velocity - velocity_gap ) / inverse_effective_mass;
+  return -impulse / ( quadrature_measure * dt );
+}
+
+TRIBOL_HOST_DEVICE inline RealT ComputeParentPredictorPressure( const MeshData::Viewer& mesh1,
+                                                                const MeshData::Viewer& mesh2, IndexT index1,
+                                                                IndexT index2, int dim, const RealT* normal,
+                                                                const RealT* phi1, const RealT* phi2, RealT gap,
+                                                                RealT velocity_gap, RealT quadrature_measure, RealT dt,
+                                                                RealT relaxation )
+{
+  if ( dt <= 0. || quadrature_measure <= 0. ) {
+    return 0.;
+  }
+  const RealT inverse_effective_mass =
+      ComputeParentInverseEffectiveMass( mesh1, mesh2, index1, index2, dim, normal, phi1, phi2 );
+  if ( inverse_effective_mass <= 0. ) {
+    return 0.;
+  }
+  const RealT target_velocity = ComputePredictorTargetVelocity( gap, dt );
+  if ( velocity_gap >= target_velocity ) {
+    return 0.;
+  }
   const RealT impulse = relaxation * ( target_velocity - velocity_gap ) / inverse_effective_mass;
   return -impulse / ( quadrature_measure * dt );
 }
@@ -425,6 +572,53 @@ TRIBOL_HOST_DEVICE inline void AccumulateConstraintRowBounds(
       }
       tribol::atomicAdd( &stiffness_rows1[node1 * dim + d], stiffness_scale * stiffness_h1 * stiffness_l1 );
       tribol::atomicAdd( &stiffness_rows2[node2 * dim + d], stiffness_scale * stiffness_h2 * stiffness_l1 );
+    }
+  }
+}
+
+TRIBOL_HOST_DEVICE inline void AccumulateParentConstraintRowBounds(
+    const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, IndexT index1, IndexT index2, int dim,
+    const RealT* normal, const RealT* phi1, const RealT* phi2, RealT quadrature_measure, RealT penalty_stiffness,
+    bool include_predictor, ArrayViewT<RealT> predictor_rows1, ArrayViewT<RealT> predictor_rows2,
+    ArrayViewT<RealT> stiffness_rows1, ArrayViewT<RealT> stiffness_rows2 )
+{
+  const RealT inverse_effective_mass =
+      ComputeParentInverseEffectiveMass( mesh1, mesh2, index1, index2, dim, normal, phi1, phi2 );
+  if ( inverse_effective_mass <= 0. ) {
+    return;
+  }
+
+  const RealT inv_sqrt_effective = 1. / sqrt( inverse_effective_mass );
+  RealT predictor_l1 = 0.;
+  RealT stiffness_l1 = 0.;
+  for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+    for ( int d = 0; d < dim; ++d ) {
+      const RealT sqrt_inv_mass1 = sqrt( mesh1.getParentInverseMass( index1, a, d ) );
+      const RealT sqrt_inv_mass2 = sqrt( mesh2.getParentInverseMass( index2, a, d ) );
+      predictor_l1 += std::abs( phi1[a] * normal[d] * sqrt_inv_mass1 * inv_sqrt_effective );
+      predictor_l1 += std::abs( phi2[a] * normal[d] * sqrt_inv_mass2 * inv_sqrt_effective );
+      stiffness_l1 += std::abs( phi1[a] * normal[d] * sqrt_inv_mass1 );
+      stiffness_l1 += std::abs( phi2[a] * normal[d] * sqrt_inv_mass2 );
+    }
+  }
+
+  const RealT stiffness_scale = penalty_stiffness * quadrature_measure;
+  for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+    for ( int d = 0; d < dim; ++d ) {
+      const RealT sqrt_inv_mass1 = sqrt( mesh1.getParentInverseMass( index1, a, d ) );
+      const RealT sqrt_inv_mass2 = sqrt( mesh2.getParentInverseMass( index2, a, d ) );
+      const RealT predictor_h1 = std::abs( phi1[a] * normal[d] * sqrt_inv_mass1 * inv_sqrt_effective );
+      const RealT predictor_h2 = std::abs( phi2[a] * normal[d] * sqrt_inv_mass2 * inv_sqrt_effective );
+      const RealT stiffness_h1 = std::abs( phi1[a] * normal[d] * sqrt_inv_mass1 );
+      const RealT stiffness_h2 = std::abs( phi2[a] * normal[d] * sqrt_inv_mass2 );
+      const IndexT row1 = ( index1 * parent_q2_num_nodes + a ) * dim + d;
+      const IndexT row2 = ( index2 * parent_q2_num_nodes + a ) * dim + d;
+      if ( include_predictor ) {
+        tribol::atomicAdd( &predictor_rows1[row1], predictor_h1 * predictor_l1 );
+        tribol::atomicAdd( &predictor_rows2[row2], predictor_h2 * predictor_l1 );
+      }
+      tribol::atomicAdd( &stiffness_rows1[row1], stiffness_scale * stiffness_h1 * stiffness_l1 );
+      tribol::atomicAdd( &stiffness_rows2[row2], stiffness_scale * stiffness_h2 * stiffness_l1 );
     }
   }
 }
@@ -558,14 +752,15 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
   RealT predictor_relaxation = 1.;
   if ( cs->getMesh1().hasInverseMass() && cs->getMesh2().hasInverseMass() ) {
     const int dim = cs->spatialDimension();
-    ArrayT<RealT> predictor_rows1( cs->getMesh1().numberOfNodes() * dim, cs->getMesh1().numberOfNodes() * dim,
-                                   cs->getAllocatorId() );
-    ArrayT<RealT> predictor_rows2( cs->getMesh2().numberOfNodes() * dim, cs->getMesh2().numberOfNodes() * dim,
-                                   cs->getAllocatorId() );
-    ArrayT<RealT> stiffness_rows1( cs->getMesh1().numberOfNodes() * dim, cs->getMesh1().numberOfNodes() * dim,
-                                   cs->getAllocatorId() );
-    ArrayT<RealT> stiffness_rows2( cs->getMesh2().numberOfNodes() * dim, cs->getMesh2().numberOfNodes() * dim,
-                                   cs->getAllocatorId() );
+    const bool parent_basis = cs->getMesh1().hasParentElementData();
+    const IndexT row_count1 = parent_basis ? cs->getMesh1().numberOfElements() * parent_q2_num_nodes * dim
+                                           : cs->getMesh1().numberOfNodes() * dim;
+    const IndexT row_count2 = parent_basis ? cs->getMesh2().numberOfElements() * parent_q2_num_nodes * dim
+                                           : cs->getMesh2().numberOfNodes() * dim;
+    ArrayT<RealT> predictor_rows1( row_count1, std::max<IndexT>( row_count1, 1 ), cs->getAllocatorId() );
+    ArrayT<RealT> predictor_rows2( row_count2, std::max<IndexT>( row_count2, 1 ), cs->getAllocatorId() );
+    ArrayT<RealT> stiffness_rows1( row_count1, std::max<IndexT>( row_count1, 1 ), cs->getAllocatorId() );
+    ArrayT<RealT> stiffness_rows2( row_count2, std::max<IndexT>( row_count2, 1 ), cs->getAllocatorId() );
     predictor_rows1.fill( 0. );
     predictor_rows2.fill( 0. );
     stiffness_rows1.fill( 0. );
@@ -623,6 +818,9 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
                   const RealT gap_tolerance = cs_view.getGapTol( index1, index2 );
 
                   if ( options.common_plane_rule != MULTI_POINT ) {
+                    if ( mesh1.hasParentElementData() ) {
+                      return;
+                    }
                     RealT projected_face1[max_dim * max_nodes_per_face] = { 0. };
                     RealT projected_face2[max_dim * max_nodes_per_face] = { 0. };
                     plane.getFace1Coords( projected_face1, num_nodes_per_face );
@@ -722,53 +920,90 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
                       RealT phi2[max_nodes_per_face] = { 0. };
                       RealT x_face1[max_dim], x_face2[max_dim];
                       RealT vel1[max_dim] = { 0. }, vel2[max_dim] = { 0. };
-                      if ( !EvalLinearEdgeAtProjectedPoint(
-                               face1, x_q, normal, x_face1, phi1, dissipative ? local_dim : 0,
-                               dissipative ? &velocity1[0] : nullptr, dissipative ? vel1 : nullptr ) ||
-                           !EvalLinearEdgeAtProjectedPoint(
-                               face2, x_q, normal, x_face2, phi2, dissipative ? local_dim : 0,
-                               dissipative ? &velocity2[0] : nullptr, dissipative ? vel2 : nullptr ) ) {
+                      RealT constraint_normal[2] = { normal[0], normal[1] };
+                      if ( mesh1.hasParentElementData() ) {
+                        RealT linear_phi1[2];
+                        RealT linear_phi2[2];
+                        RealT child_parameter1 = 0.;
+                        RealT child_parameter2 = 0.;
+                        if ( !EvalLinearEdgeAtProjectedPoint( face1, x_q, normal, x_face1, linear_phi1, 0, nullptr,
+                                                              nullptr, &child_parameter1 ) ||
+                             !EvalLinearEdgeAtProjectedPoint( face2, x_q, normal, x_face2, linear_phi2, 0, nullptr,
+                                                              nullptr, &child_parameter2 ) ) {
+                          continue;
+                        }
+                        EvalParentQ2Pair( mesh1, mesh2, index1, index2, child_parameter1, child_parameter2,
+                                          dissipative, normal, phi1, phi2, x_face1, x_face2, vel1, vel2,
+                                          constraint_normal );
+                      } else if ( !EvalLinearEdgeAtProjectedPoint(
+                                      face1, x_q, normal, x_face1, phi1, dissipative ? local_dim : 0,
+                                      dissipative ? &velocity1[0] : nullptr, dissipative ? vel1 : nullptr ) ||
+                                  !EvalLinearEdgeAtProjectedPoint(
+                                      face2, x_q, normal, x_face2, phi2, dissipative ? local_dim : 0,
+                                      dissipative ? &velocity2[0] : nullptr, dissipative ? vel2 : nullptr ) ) {
                         continue;
                       }
-                      const RealT gap =
-                          ( x_face1[0] - x_face2[0] ) * normal[0] + ( x_face1[1] - x_face2[1] ) * normal[1];
-                      const RealT velocity_gap =
-                          ( vel1[0] - vel2[0] ) * normal[0] + ( vel1[1] - vel2[1] ) * normal[1];
+                      const RealT gap = ( x_face1[0] - x_face2[0] ) * constraint_normal[0] +
+                                        ( x_face1[1] - x_face2[1] ) * constraint_normal[1];
+                      const RealT velocity_gap = ( vel1[0] - vel2[0] ) * constraint_normal[0] +
+                                                 ( vel1[1] - vel2[1] ) * constraint_normal[1];
                       const RealT target_velocity = ComputePredictorTargetVelocity( gap, stage_dt );
                       const bool predictor_active = dissipative && stage_dt > 0. && velocity_gap < target_velocity;
                       if ( gap <= gap_tolerance || predictor_active ) {
-                        AccumulateConstraintRowBounds(
-                            mesh1, mesh2, index1, index2, local_dim, num_nodes_per_face, normal, phi1, phi2,
-                            length * rule_weights[qp], penalty_stiffness, predictor_active, predictor_view1,
-                            predictor_view2, stiffness_view1, stiffness_view2 );
+                        if ( mesh1.hasParentElementData() ) {
+                          AccumulateParentConstraintRowBounds(
+                              mesh1, mesh2, index1, index2, local_dim, constraint_normal, phi1, phi2,
+                              length * rule_weights[qp], penalty_stiffness, predictor_active, predictor_view1,
+                              predictor_view2, stiffness_view1, stiffness_view2 );
+                        } else {
+                          AccumulateConstraintRowBounds(
+                              mesh1, mesh2, index1, index2, local_dim, num_nodes_per_face, constraint_normal, phi1, phi2,
+                              length * rule_weights[qp], penalty_stiffness, predictor_active, predictor_view1,
+                              predictor_view2, stiffness_view1, stiffness_view2 );
+                        }
                       }
                     }
                   }
                 } );
 
-    ArrayT<RealT> maxima_data( { 0., 0. }, cs->getAllocatorId() );
-    auto maxima = maxima_data.view();
-    forAllExec( cs->getExecutionMode(), predictor_rows1.size(),
-                [predictor_view1, stiffness_view1, maxima] TRIBOL_HOST_DEVICE( IndexT i ) {
-                  tribol::atomicMax( &maxima[0], predictor_view1[i] );
-                  tribol::atomicMax( &maxima[1], stiffness_view1[i] );
-                } );
-    forAllExec( cs->getExecutionMode(), predictor_rows2.size(),
-                [predictor_view2, stiffness_view2, maxima] TRIBOL_HOST_DEVICE( IndexT i ) {
-                  tribol::atomicMax( &maxima[0], predictor_view2[i] );
-                  tribol::atomicMax( &maxima[1], stiffness_view2[i] );
-                } );
-    ArrayT<RealT, 1, MemorySpace::Host> maxima_host( maxima_data );
-#ifdef TRIBOL_USE_MPI
-    int mpi_initialized = 0;
-    MPI_Initialized( &mpi_initialized );
-    if ( mpi_initialized ) {
-      MPI_Allreduce( MPI_IN_PLACE, maxima_host.data(), 2, MPI_DOUBLE, MPI_SUM, cs->getProblemComm() );
-    }
+    RealT predictor_max = 0.;
+    RealT stiffness_max = 0.;
+    if ( parent_basis ) {
+#ifdef BUILD_REDECOMP
+      const auto maxima = cs->getMfemMeshData()->AssembleParentQ2RowMaxima(
+          predictor_rows1.data(), predictor_rows2.data(), stiffness_rows1.data(), stiffness_rows2.data() );
+      predictor_max = maxima.first;
+      stiffness_max = maxima.second;
+#else
+      SLIC_ERROR_ROOT( "Parent surface-basis contact requires BUILD_REDECOMP." );
 #endif
-    const RealT predictor_bound = maxima_host[0] > 0. ? maxima_host[0] : 1.;
+    } else {
+      ArrayT<RealT> maxima_data( { 0., 0. }, cs->getAllocatorId() );
+      auto maxima = maxima_data.view();
+      forAllExec( cs->getExecutionMode(), predictor_rows1.size(),
+                  [predictor_view1, stiffness_view1, maxima] TRIBOL_HOST_DEVICE( IndexT i ) {
+                    tribol::atomicMax( &maxima[0], predictor_view1[i] );
+                    tribol::atomicMax( &maxima[1], stiffness_view1[i] );
+                  } );
+      forAllExec( cs->getExecutionMode(), predictor_rows2.size(),
+                  [predictor_view2, stiffness_view2, maxima] TRIBOL_HOST_DEVICE( IndexT i ) {
+                    tribol::atomicMax( &maxima[0], predictor_view2[i] );
+                    tribol::atomicMax( &maxima[1], stiffness_view2[i] );
+                  } );
+      ArrayT<RealT, 1, MemorySpace::Host> maxima_host( maxima_data );
+#ifdef TRIBOL_USE_MPI
+      int mpi_initialized = 0;
+      MPI_Initialized( &mpi_initialized );
+      if ( mpi_initialized ) {
+        MPI_Allreduce( MPI_IN_PLACE, maxima_host.data(), 2, MPI_DOUBLE, MPI_SUM, cs->getProblemComm() );
+      }
+#endif
+      predictor_max = maxima_host[0];
+      stiffness_max = maxima_host[1];
+    }
+    const RealT predictor_bound = predictor_max > 0. ? predictor_max : 1.;
     predictor_relaxation = std::min( 1., penalty_options.predictor_relaxation_scale / predictor_bound );
-    const RealT stiffness_bound = maxima_host[1];
+    const RealT stiffness_bound = stiffness_max;
     const RealT stability_dt = stiffness_bound > 0.
         ? 2. * penalty_options.penalty_stability_scale / sqrt( stiffness_bound )
         : std::numeric_limits<RealT>::infinity();
@@ -779,11 +1014,13 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
   const RealT stage_dt = cs->getCurrentTimeStep();
   ArrayT<int> predictor_counts_data( { 0, 0 }, cs->getAllocatorId() );
   ArrayT<RealT> integrated_forces_data( { 0., 0., 0. }, cs->getAllocatorId() );
+  ArrayT<int> parent_normal_fallback_data( { 0 }, cs->getAllocatorId() );
   auto predictor_counts = predictor_counts_data.view();
   auto integrated_forces = integrated_forces_data.view();
+  auto parent_normal_fallbacks = parent_normal_fallback_data.view();
   forAllExec( cs->getExecutionMode(), num_pairs,
               [cs_view, err, neg_thickness, predictor_relaxation, stage_dt, predictor_counts,
-               integrated_forces] TRIBOL_HOST_DEVICE( IndexT i ) {
+               integrated_forces, parent_normal_fallbacks] TRIBOL_HOST_DEVICE( IndexT i ) {
     auto& cg_view = cs_view.getCompGeomView();
     auto& plane = cg_view.getCommonPlane( i );
 
@@ -1085,22 +1322,42 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
           RealT x_qf2[max_dim];
           RealT vel_q1[max_dim] = { 0., 0., 0. };
           RealT vel_q2[max_dim] = { 0., 0., 0. };
-
-          const bool mapped_face1 =
-              EvalLinearEdgeAtProjectedPoint( actual_xf1, x_q, overlapNormal, x_qf1, phi_q1, use_velocity ? dim : 0,
-                                              use_velocity ? &actual_vf1[0] : nullptr, use_velocity ? vel_q1 : nullptr );
-          const bool mapped_face2 =
-              EvalLinearEdgeAtProjectedPoint( actual_xf2, x_q, overlapNormal, x_qf2, phi_q2, use_velocity ? dim : 0,
-                                              use_velocity ? &actual_vf2[0] : nullptr, use_velocity ? vel_q2 : nullptr );
-          if ( !mapped_face1 || !mapped_face2 ) {
-            continue;
+          RealT constraint_normal[2] = { overlapNormal[0], overlapNormal[1] };
+          if ( mesh1.hasParentElementData() ) {
+            RealT linear_phi1[2];
+            RealT linear_phi2[2];
+            RealT child_parameter1 = 0.;
+            RealT child_parameter2 = 0.;
+            if ( !EvalLinearEdgeAtProjectedPoint( actual_xf1, x_q, overlapNormal, x_qf1, linear_phi1, 0, nullptr,
+                                                  nullptr, &child_parameter1 ) ||
+                 !EvalLinearEdgeAtProjectedPoint( actual_xf2, x_q, overlapNormal, x_qf2, linear_phi2, 0, nullptr,
+                                                  nullptr, &child_parameter2 ) ) {
+              continue;
+            }
+            const bool used_parent_normal = EvalParentQ2Pair(
+                mesh1, mesh2, index1, index2, child_parameter1, child_parameter2, use_velocity, overlapNormal, phi_q1,
+                phi_q2, x_qf1, x_qf2, vel_q1, vel_q2, constraint_normal );
+            if ( !used_parent_normal ) {
+              tribol::atomicInc( &parent_normal_fallbacks[0] );
+            }
+          } else {
+            const bool mapped_face1 = EvalLinearEdgeAtProjectedPoint(
+                actual_xf1, x_q, overlapNormal, x_qf1, phi_q1, use_velocity ? dim : 0,
+                use_velocity ? &actual_vf1[0] : nullptr, use_velocity ? vel_q1 : nullptr );
+            const bool mapped_face2 = EvalLinearEdgeAtProjectedPoint(
+                actual_xf2, x_q, overlapNormal, x_qf2, phi_q2, use_velocity ? dim : 0,
+                use_velocity ? &actual_vf2[0] : nullptr, use_velocity ? vel_q2 : nullptr );
+            if ( !mapped_face1 || !mapped_face2 ) {
+              continue;
+            }
           }
 
-          RealT local_gap = ( x_qf1[0] - x_qf2[0] ) * overlapNormal[0] + ( x_qf1[1] - x_qf2[1] ) * overlapNormal[1];
+          RealT local_gap = ( x_qf1[0] - x_qf2[0] ) * constraint_normal[0] +
+                            ( x_qf1[1] - x_qf2[1] ) * constraint_normal[1];
           RealT local_vel_gap = 0.;
           if ( use_velocity ) {
-            local_vel_gap =
-                ( vel_q1[0] - vel_q2[0] ) * overlapNormal[0] + ( vel_q1[1] - vel_q2[1] ) * overlapNormal[1];
+            local_vel_gap = ( vel_q1[0] - vel_q2[0] ) * constraint_normal[0] +
+                            ( vel_q1[1] - vel_q2[1] ) * constraint_normal[1];
           }
           const RealT target_velocity = ComputePredictorTargetVelocity( local_gap, stage_dt );
           const bool predictor_active = use_dissipative && stage_dt > 0. && local_vel_gap < target_velocity;
@@ -1121,20 +1378,27 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
           const RealT quadrature_measure = length * segment_rule_wts[qp];
           RealT predictor_pressure = 0.;
           if ( use_dissipative ) {
-            predictor_pressure = ComputePredictorPressure(
-                mesh1, mesh2, index1, index2, dim, num_nodes_per_face, overlapNormal, phi_q1, phi_q2, local_gap,
-                local_vel_gap, quadrature_measure, stage_dt, predictor_relaxation );
+            predictor_pressure = mesh1.hasParentElementData()
+                ? ComputeParentPredictorPressure( mesh1, mesh2, index1, index2, dim, constraint_normal, phi_q1, phi_q2,
+                                                  local_gap, local_vel_gap, quadrature_measure, stage_dt,
+                                                  predictor_relaxation )
+                : ComputePredictorPressure( mesh1, mesh2, index1, index2, dim, num_nodes_per_face, constraint_normal,
+                                            phi_q1, phi_q2, local_gap, local_vel_gap, quadrature_measure, stage_dt,
+                                            predictor_relaxation );
             local_pressure = std::min( local_pressure, predictor_pressure );
           }
           AccumulateForceDiagnostics( predictor_active, quadrature_measure, penalty_pressure, predictor_pressure,
                                       local_pressure, predictor_counts, integrated_forces );
 
           const RealT weighted_force = quadrature_measure * local_pressure;
-          const RealT force_x = overlapNormal[0] * weighted_force;
-          const RealT force_y = overlapNormal[1] * weighted_force;
-
-          AccumulateContactForce( mesh1, mesh2, index1, index2, dim, num_nodes_per_face, force_x, force_y, 0., phi_q1,
-                                  phi_q2 );
+          const RealT force[2] = { constraint_normal[0] * weighted_force,
+                                   constraint_normal[1] * weighted_force };
+          if ( mesh1.hasParentElementData() ) {
+            AccumulateParentContactForce( mesh1, mesh2, index1, index2, dim, force, phi_q1, phi_q2 );
+          } else {
+            AccumulateContactForce( mesh1, mesh2, index1, index2, dim, num_nodes_per_face, force[0], force[1], 0.,
+                                    phi_q1, phi_q2 );
+          }
         }
       }
 
@@ -1188,16 +1452,21 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
 
   ArrayT<int, 1, MemorySpace::Host> predictor_counts_host( predictor_counts_data );
   ArrayT<RealT, 1, MemorySpace::Host> integrated_forces_host( integrated_forces_data );
+  ArrayT<int, 1, MemorySpace::Host> parent_normal_fallback_host( parent_normal_fallback_data );
 #ifdef TRIBOL_USE_MPI
   int mpi_initialized = 0;
   MPI_Initialized( &mpi_initialized );
   if ( mpi_initialized ) {
     MPI_Allreduce( MPI_IN_PLACE, predictor_counts_host.data(), 2, MPI_INT, MPI_SUM, cs->getProblemComm() );
     MPI_Allreduce( MPI_IN_PLACE, integrated_forces_host.data(), 3, MPI_DOUBLE, MPI_SUM, cs->getProblemComm() );
+    MPI_Allreduce( MPI_IN_PLACE, parent_normal_fallback_host.data(), 1, MPI_INT, MPI_SUM, cs->getProblemComm() );
   }
 #endif
   cs->setPredictorForceDiagnostics( predictor_counts_host[0], predictor_counts_host[1], integrated_forces_host[0],
                                     integrated_forces_host[1], integrated_forces_host[2] );
+  SLIC_DEBUG_IF( parent_normal_fallback_host[0] > 0,
+                 axom::fmt::format( "Parent Q2 common-plane normal fallbacks: {0}",
+                                    parent_normal_fallback_host[0] ) );
 
   ArrayT<bool, 1, MemorySpace::Host> neg_thickness_host( neg_thickness_data );
   SLIC_DEBUG_IF( neg_thickness_host[0],

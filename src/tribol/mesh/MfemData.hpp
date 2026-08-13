@@ -296,6 +296,14 @@ class ParentRedecompTransfer {
   void RedecompToParent( const mfem::GridFunction& redecomp_src, mfem::Vector& parent_dst ) const;
 
   /**
+   * @brief Add an assembled dual vector on the boundary submesh to a parent-mesh vector.
+   *
+   * @param [in] submesh_src Boundary-submesh dual vector
+   * @param [in,out] parent_dst Parent-mesh vector receiving the contribution
+   */
+  void AddSubmeshToParent( const mfem::Vector& submesh_src, mfem::Vector& parent_dst ) const;
+
+  /**
    * @brief Get the parent-linked boundary submesh finite element space
    * associated with this transfer object
    *
@@ -591,6 +599,15 @@ class PressureField {
  */
 class MfemMeshData {
  public:
+  struct ParentElementFieldPointers {
+    IndexT num_parent_nodes_per_element;
+    const RealT* position;
+    const RealT* velocity;
+    const RealT* inverse_mass;
+    RealT* response;
+    const RealT* reference_interval;
+  };
+
   /**
    * @brief Construct a new MfemMeshData object
    *
@@ -659,6 +676,26 @@ class MfemMeshData {
    * @note This method should be called after the coordinate grid function is updated.
    */
   bool UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks, bool force_new_redecomp = false );
+
+  /**
+   * @brief Select the basis used for evaluating MFEM contact fields.
+   */
+  void SetSurfaceBasis( MfemSurfaceBasis basis );
+
+  MfemSurfaceBasis GetSurfaceBasis() const { return surface_basis_; }
+
+  ExecutionMode GetExecutionMode() const { return exec_mode_; }
+
+  ParentElementFieldPointers GetMesh1ParentElementFields();
+
+  ParentElementFieldPointers GetMesh2ParentElementFields();
+
+  /**
+   * @brief Assemble parent-Q2 predictor and stiffness rows and return their global maxima.
+   */
+  std::pair<RealT, RealT> AssembleParentQ2RowMaxima( const RealT* predictor_rows_1, const RealT* predictor_rows_2,
+                                                     const RealT* stiffness_rows_1,
+                                                     const RealT* stiffness_rows_2 ) const;
 
   /**
    * @brief Get the integer identifier for the first Tribol registered mesh
@@ -1240,6 +1277,29 @@ class MfemMeshData {
   static mfem::ParSubMesh CreateSubmesh( const mfem::ParMesh& parent_mesh, const std::set<int>& attributes_1,
                                          const std::set<int>& attributes_2 );
 
+  struct ParentQ2Fields {
+    mfem::Vector position;
+    mfem::Vector velocity;
+    mfem::Vector inverse_mass;
+    mfem::Vector response;
+    mfem::Vector reference_interval;
+  };
+
+  void InitializeParentQ2RecordSpace();
+
+  void BuildParentQ2Data();
+
+  void PopulateParentQ2RecordField( const mfem::ParGridFunction& parent_field, int record_offset );
+
+  void CopyRedecompParentQ2Records( const Array1D<int>& elem_map, ParentQ2Fields& fields );
+
+  RealT AssembleParentQ2RowMaximum( const RealT* rows_1, const RealT* rows_2 ) const;
+
+  void TransferParentQ2ElementDataToSubmesh( const RealT* values_1, const RealT* values_2,
+                                             mfem::Vector& submesh_values ) const;
+
+  void AssembleSubmeshDualToOwnedDofs( const mfem::Vector& local_values, mfem::Vector& owned_values ) const;
+
   /**
    * @brief First mesh identifier
    */
@@ -1301,6 +1361,14 @@ class MfemMeshData {
    * used; nullptr otherwise
    */
   std::unique_ptr<SubmeshLORTransfer> submesh_lor_xfer_;
+
+  MfemSurfaceBasis surface_basis_{ MfemSurfaceBasis::LOR };
+
+  std::unique_ptr<mfem::L2_FECollection> parent_q2_record_fec_;
+  std::unique_ptr<mfem::ParFiniteElementSpace> lor_parent_q2_record_fes_;
+  std::unique_ptr<mfem::ParGridFunction> lor_parent_q2_records_;
+  ParentQ2Fields parent_q2_fields_1_;
+  ParentQ2Fields parent_q2_fields_2_;
 
   /**
    * @brief Contains velocity grid function and transfer operators if set;
@@ -1408,6 +1476,9 @@ class MfemMeshData {
    * @brief UpdateData object created upon call to UpdateMeshData()
    */
   std::unique_ptr<UpdateData> update_data_;
+
+  std::unique_ptr<mfem::FiniteElementSpace> redecomp_parent_q2_record_fes_;
+  std::unique_ptr<mfem::GridFunction> redecomp_parent_q2_records_;
 
   /**
    * @brief Nodal response grid function on the redecomp mesh

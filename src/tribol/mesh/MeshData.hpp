@@ -250,6 +250,35 @@ class MeshData {
       return m_inv_mass[component][node_id];
     }
 
+    TRIBOL_HOST_DEVICE bool hasParentElementData() const { return m_num_parent_nodes_per_element > 0; }
+
+    TRIBOL_HOST_DEVICE IndexT numberOfParentNodesPerElement() const { return m_num_parent_nodes_per_element; }
+
+    TRIBOL_HOST_DEVICE RealT getParentPosition( IndexT element_id, IndexT local_node_id, int component ) const
+    {
+      return m_parent_position( element_id, local_node_id * spatialDimension() + component );
+    }
+
+    TRIBOL_HOST_DEVICE RealT getParentVelocity( IndexT element_id, IndexT local_node_id, int component ) const
+    {
+      return m_parent_velocity( element_id, local_node_id * spatialDimension() + component );
+    }
+
+    TRIBOL_HOST_DEVICE RealT getParentInverseMass( IndexT element_id, IndexT local_node_id, int component ) const
+    {
+      return m_parent_inv_mass( element_id, local_node_id * spatialDimension() + component );
+    }
+
+    TRIBOL_HOST_DEVICE RealT& getParentResponse( IndexT element_id, IndexT local_node_id, int component ) const
+    {
+      return m_parent_response( element_id, local_node_id * spatialDimension() + component );
+    }
+
+    TRIBOL_HOST_DEVICE RealT getParentReferenceCoordinate( IndexT element_id, int endpoint ) const
+    {
+      return m_parent_reference_interval( element_id, endpoint );
+    }
+
     /**
      * @brief Is the nodal response vector populated?
      *
@@ -416,6 +445,13 @@ class MeshData {
 
     /// Array of views of nodal response data
     const MultiViewArrayView<RealT> m_response;
+
+    const IndexT m_num_parent_nodes_per_element;
+    const Array2DView<const RealT> m_parent_position;
+    const Array2DView<const RealT> m_parent_velocity;
+    const Array2DView<const RealT> m_parent_inv_mass;
+    const Array2DView<RealT> m_parent_response;
+    const Array2DView<const RealT> m_parent_reference_interval;
 
     /// Array view of 2D nodal normal data
     Array2DView<RealT> m_node_n;
@@ -615,6 +651,15 @@ class MeshData {
   void setInverseMass( const RealT* inv_mass_x, const RealT* inv_mass_y, const RealT* inv_mass_z );
 
   /**
+   * @brief Register element-local parent-basis data while retaining low-order geometry connectivity.
+   *
+   * Field arrays use row-major [element][local parent node][component] ordering.
+   * Reference intervals use row-major [element][endpoint] ordering.
+   */
+  void setParentElementData( IndexT num_parent_nodes_per_element, const RealT* position, const RealT* velocity,
+                             const RealT* inverse_mass, RealT* response, const RealT* reference_interval );
+
+  /**
    * @brief Is the velocity vector populated?
    *
    * @return true vector is non-empty
@@ -623,6 +668,8 @@ class MeshData {
   bool hasVelocity() const { return !m_vel.empty(); }
 
   bool hasInverseMass() const { return !m_inv_mass.empty(); }
+
+  bool hasParentElementData() const { return m_num_parent_nodes_per_element > 0; }
 
   /**
    * @brief Set the pointers to the nodal response data
@@ -693,6 +740,13 @@ class MeshData {
   MultiArrayView<const RealT> m_vel;           ///< Nodal velocity
   MultiArrayView<const RealT> m_inv_mass;      ///< Component-wise inverse lumped nodal mass
   MultiArrayView<RealT> m_response;            ///< Nodal responses (forces)
+
+  IndexT m_num_parent_nodes_per_element{ 0 };
+  Array2DView<const RealT> m_parent_position;
+  Array2DView<const RealT> m_parent_velocity;
+  Array2DView<const RealT> m_parent_inv_mass;
+  Array2DView<RealT> m_parent_response;
+  Array2DView<const RealT> m_parent_reference_interval;
 
   ArrayT<RealT, 2> m_node_n;  ///< Outward unit node normals
 

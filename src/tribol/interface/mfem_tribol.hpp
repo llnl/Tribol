@@ -82,6 +82,21 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
 void setMfemLORFactor( IndexT cs_id, int lor_factor );
 
 /**
+ * @brief Sets the basis used to evaluate fields in MFEM common-plane contact.
+ *
+ * MfemSurfaceBasis::LOR evaluates geometry and fields on the low-order refined
+ * mesh. MfemSurfaceBasis::PARENT keeps the LOR mesh for search, clipping, and
+ * integration segmentation, but evaluates coordinates and contact fields with
+ * the parent surface basis.
+ *
+ * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
+ *
+ * @param [in] cs_id The ID of the coupling scheme
+ * @param [in] basis Surface basis selection
+ */
+void setMfemSurfaceBasis( IndexT cs_id, MfemSurfaceBasis basis );
+
+/**
  * @brief Sets the displacement threshold for triggering a new parallel decomposition
  *
  * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()

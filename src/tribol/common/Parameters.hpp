@@ -122,6 +122,19 @@ enum ContactMethod  // all mortar methods go first
   NUM_CONTACT_METHODS
 };
 
+/**
+ * @brief Selects the finite element basis used to evaluate MFEM common-plane contact fields.
+ *
+ * LOR uses the nodal basis on the low-order refined contact mesh. PARENT keeps
+ * the LOR mesh for contact geometry while evaluating fields with the parent
+ * high-order surface basis.
+ */
+enum class MfemSurfaceBasis
+{
+  LOR,
+  PARENT
+};
+
 /*!
  * \brief Enumerates the available contact model options.
  *

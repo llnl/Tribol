@@ -362,6 +362,38 @@ void setMfemLORFactor( IndexT cs_id, int lor_factor )
   }
 }
 
+void setMfemSurfaceBasis( IndexT cs_id, MfemSurfaceBasis basis )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                              "to create a coupling scheme with this cs_id.",
+                              cs_id ) );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
+                      "Coupling scheme does not contain MFEM data. "
+                      "Create the coupling scheme using registerMfemCouplingScheme() to set the surface basis." );
+
+  if ( basis == MfemSurfaceBasis::PARENT ) {
+    auto* mfem_data = cs->getMfemMeshData();
+    const auto& coords = mfem_data->GetParentCoords();
+    const auto* h1_fec = dynamic_cast<const mfem::H1_FECollection*>( coords.FESpace()->FEColl() );
+    SLIC_ERROR_ROOT_IF( coords.VectorDim() != 2 || coords.ParFESpace()->GetParMesh()->Dimension() != 2,
+                        "Parent surface-basis contact currently supports only two-dimensional meshes." );
+    SLIC_ERROR_ROOT_IF( h1_fec == nullptr || h1_fec->GetOrder() != 2,
+                        "Parent surface-basis contact currently requires a Q2 H1 coordinate field." );
+    SLIC_ERROR_ROOT_IF( isOnDevice( mfem_data->GetExecutionMode() ),
+                        "Parent surface-basis contact currently supports CPU execution only." );
+    SLIC_ERROR_ROOT_IF( cs->getContactMethod() != COMMON_PLANE,
+                        "Parent surface-basis contact currently supports only COMMON_PLANE." );
+    SLIC_ERROR_ROOT_IF( cs->getContactModel() != FRICTIONLESS,
+                        "Parent surface-basis contact currently supports only frictionless contact." );
+    SLIC_ERROR_ROOT_IF( cs->getEnforcementMethod() != PENALTY,
+                        "Parent surface-basis contact currently supports only penalty enforcement." );
+  }
+
+  cs->getMfemMeshData()->SetSurfaceBasis( basis );
+}
+
 void setMfemRedecompTriggerDisplacement( IndexT cs_id, RealT val )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -777,6 +809,13 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
     // update redecomp meshes if supplied mfem data
     if ( cs.hasMfemData() ) {
       auto mfem_data = cs.getMfemMeshData();
+      if ( mfem_data->GetSurfaceBasis() == MfemSurfaceBasis::PARENT ) {
+        SLIC_ERROR_ROOT_IF( cs.getContactMethod() != COMMON_PLANE || cs.getContactModel() != FRICTIONLESS ||
+                                cs.getEnforcementMethod() != PENALTY,
+                            "Parent surface-basis contact requires frictionless COMMON_PLANE penalty contact." );
+        SLIC_ERROR_ROOT_IF( cs.getEnforcementOptions().penalty_options.common_plane_rule != MULTI_POINT,
+                            "Parent surface-basis common-plane contact requires MULTI_POINT integration." );
+      }
       ArrayT<int> mesh_ids{ 2, 2 };
       mesh_ids[0] = mfem_data->GetMesh1ID();
       mesh_ids[1] = mfem_data->GetMesh2ID();
@@ -797,6 +836,20 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
       registerMesh( mesh_ids[1], mfem_data->GetMesh2NE(), mfem_data->GetNV(), mfem_data->GetMesh2Conn(),
                     mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2],
                     mfem_data->GetMemorySpace() );
+
+      if ( mfem_data->GetSurfaceBasis() == MfemSurfaceBasis::PARENT ) {
+        auto parent_fields_1 = mfem_data->GetMesh1ParentElementFields();
+        auto parent_fields_2 = mfem_data->GetMesh2ParentElementFields();
+        auto mesh_1 = MeshManager::getInstance().findData( mesh_ids[0] );
+        auto mesh_2 = MeshManager::getInstance().findData( mesh_ids[1] );
+        SLIC_ERROR_ROOT_IF( !mesh_1 || !mesh_2, "Failed to find newly registered MFEM contact meshes." );
+        mesh_1->setParentElementData( parent_fields_1.num_parent_nodes_per_element, parent_fields_1.position,
+                                      parent_fields_1.velocity, parent_fields_1.inverse_mass, parent_fields_1.response,
+                                      parent_fields_1.reference_interval );
+        mesh_2->setParentElementData( parent_fields_2.num_parent_nodes_per_element, parent_fields_2.position,
+                                      parent_fields_2.velocity, parent_fields_2.inverse_mass, parent_fields_2.response,
+                                      parent_fields_2.reference_interval );
+      }
 
       auto f_ptrs = mfem_data->GetRedecompResponsePtrs();
       registerNodalResponse( mesh_ids[0], f_ptrs[0], f_ptrs[1], f_ptrs[2] );
