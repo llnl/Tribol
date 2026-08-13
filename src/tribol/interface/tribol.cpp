@@ -118,20 +118,16 @@ void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int quadrat
   penalty_options.common_plane_quadrature_order = quadrature_order;
 }
 
-void setDissipativePenaltyOptions( IndexT cs_id, RealT penetration_fraction, RealT relaxation_scale,
-                                   RealT stability_scale )
+void setDissipativePenaltyOptions( IndexT cs_id, RealT relaxation_scale, RealT stability_scale )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setDissipativePenaltyOptions(): register the coupling scheme first." );
-  SLIC_ERROR_ROOT_IF( penetration_fraction < 0. || penetration_fraction > 1.,
-                      "tribol::setDissipativePenaltyOptions(): penetration fraction must be in [0,1]." );
   SLIC_ERROR_ROOT_IF( relaxation_scale <= 0. || relaxation_scale > 1.,
                       "tribol::setDissipativePenaltyOptions(): relaxation scale must be in (0,1]." );
   SLIC_ERROR_ROOT_IF( stability_scale <= 0.,
                       "tribol::setDissipativePenaltyOptions(): stability scale must be positive." );
 
   auto& options = cs->getEnforcementOptions().penalty_options;
-  options.dissipative_penetration_fraction = penetration_fraction;
   options.predictor_relaxation_scale = relaxation_scale;
   options.penalty_stability_scale = stability_scale;
 }

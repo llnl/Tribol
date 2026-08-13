@@ -902,7 +902,7 @@ TEST_F( CommonPlaneTest, common_plane_2d_dissipative_predictor )
                                   tribol::ExecutionMode::Sequential );
   tribol::setPenaltyOptions( 0, tribol::KINEMATIC_AND_DISSIPATIVE, tribol::KINEMATIC_CONSTANT );
   tribol::setCommonPlaneIntegrationOptions( 0, tribol::MULTI_POINT, 3 );
-  tribol::setDissipativePenaltyOptions( 0, 0.2, 1.0, 0.8 );
+  tribol::setDissipativePenaltyOptions( 0, 1.0, 0.8 );
   tribol::setContactAreaFrac( 0, 1.e-12 );
   tribol::enableTimestepVote( 0, true );
 
@@ -942,6 +942,19 @@ TEST_F( CommonPlaneTest, common_plane_2d_dissipative_predictor )
     force_norm += std::abs( fy1[i] ) + std::abs( fy2[i] );
   }
   EXPECT_GT( force_norm, 0. );
+
+  for ( int i = 0; i < numVerts; ++i ) {
+    vy1[i] = 0.;
+    vy2[i] = 0.;
+  }
+  stage_dt = 1.e-6;
+  vote_dt = 0.1;
+  EXPECT_EQ( tribol::update( 2, stage_dt, stage_dt, vote_dt ), 0 );
+  EXPECT_EQ( coupling_scheme.getNumPredictorActiveQuadraturePoints(), 0 );
+  EXPECT_EQ( coupling_scheme.getNumPredictorDominantQuadraturePoints(), 0 );
+  EXPECT_DOUBLE_EQ( coupling_scheme.getIntegratedPredictorCandidateForce(), 0. );
+  EXPECT_DOUBLE_EQ( coupling_scheme.getIntegratedAppliedForce(),
+                    coupling_scheme.getIntegratedPenaltyCandidateForce() );
 }
 
 TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )

@@ -79,12 +79,10 @@ void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int quadrat
  * \brief Sets the dissipative predictor and penalty stability controls.
  *
  * \param [in] cs_id coupling scheme id
- * \param [in] penetration_fraction fraction of existing penetration targeted for removal per stage, in [0,1]
  * \param [in] relaxation_scale safety scale for the normalized diagonal predictor, in (0,1]
  * \param [in] stability_scale positive safety scale for the penalty stiffness/mass timestep
  */
-void setDissipativePenaltyOptions( IndexT cs_id, RealT penetration_fraction, RealT relaxation_scale,
-                                   RealT stability_scale );
+void setDissipativePenaltyOptions( IndexT cs_id, RealT relaxation_scale, RealT stability_scale );
 
 /// Returns the most recently computed penalty stiffness/mass timestep bound.
 RealT getPenaltyStabilityTimestep( IndexT cs_id );

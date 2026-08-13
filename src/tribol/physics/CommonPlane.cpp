@@ -349,13 +349,18 @@ TRIBOL_HOST_DEVICE inline RealT ComputeInverseEffectiveMass( const MeshData::Vie
   return inverse_effective_mass;
 }
 
+TRIBOL_HOST_DEVICE inline RealT ComputePredictorTargetVelocity( RealT gap, RealT dt )
+{
+  return dt > 0. && gap > 0. ? -gap / dt : 0.;
+}
+
 TRIBOL_HOST_DEVICE inline RealT ComputePredictorPressure( const MeshData::Viewer& mesh1,
                                                           const MeshData::Viewer& mesh2, IndexT index1,
                                                           IndexT index2, int dim, int num_nodes_per_face,
                                                           const RealT* normal, const RealT* phi1, const RealT* phi2,
                                                           RealT gap, RealT velocity_gap,
                                                           RealT quadrature_measure, RealT dt,
-                                                          RealT penetration_fraction, RealT relaxation )
+                                                          RealT relaxation )
 {
   if ( dt <= 0. || quadrature_measure <= 0. ) {
     return 0.;
@@ -366,7 +371,7 @@ TRIBOL_HOST_DEVICE inline RealT ComputePredictorPressure( const MeshData::Viewer
     return 0.;
   }
 
-  const RealT target_velocity = gap < 0. ? -penetration_fraction * gap / dt : -gap / dt;
+  const RealT target_velocity = ComputePredictorTargetVelocity( gap, dt );
   if ( velocity_gap >= target_velocity ) {
     return 0.;
   }
@@ -689,9 +694,7 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
                         const RealT velocity_gap = ( vel1[0] - vel2[0] ) * normal[0] +
                                                    ( vel1[1] - vel2[1] ) * normal[1] +
                                                    ( vel1[2] - vel2[2] ) * normal[2];
-                        const RealT target_velocity = stage_dt > 0.
-                            ? ( gap < 0. ? -options.dissipative_penetration_fraction * gap / stage_dt : -gap / stage_dt )
-                            : 0.;
+                        const RealT target_velocity = ComputePredictorTargetVelocity( gap, stage_dt );
                         const bool predictor_active =
                             dissipative && stage_dt > 0. && velocity_gap < target_velocity;
                         if ( gap <= gap_tolerance || predictor_active ) {
@@ -731,9 +734,7 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
                           ( x_face1[0] - x_face2[0] ) * normal[0] + ( x_face1[1] - x_face2[1] ) * normal[1];
                       const RealT velocity_gap =
                           ( vel1[0] - vel2[0] ) * normal[0] + ( vel1[1] - vel2[1] ) * normal[1];
-                      const RealT target_velocity = stage_dt > 0.
-                          ? ( gap < 0. ? -options.dissipative_penetration_fraction * gap / stage_dt : -gap / stage_dt )
-                          : 0.;
+                      const RealT target_velocity = ComputePredictorTargetVelocity( gap, stage_dt );
                       const bool predictor_active = dissipative && stage_dt > 0. && velocity_gap < target_velocity;
                       if ( gap <= gap_tolerance || predictor_active ) {
                         AccumulateConstraintRowBounds(
@@ -1026,10 +1027,7 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
                               ( vel_q1[1] - vel_q2[1] ) * overlapNormal[1] +
                               ( vel_q1[2] - vel_q2[2] ) * overlapNormal[2];
             }
-            const RealT target_velocity = stage_dt > 0.
-                ? ( local_gap < 0. ? -pen_enfrc_options.dissipative_penetration_fraction * local_gap / stage_dt
-                                   : -local_gap / stage_dt )
-                : 0.;
+            const RealT target_velocity = ComputePredictorTargetVelocity( local_gap, stage_dt );
             const bool predictor_active = use_dissipative && stage_dt > 0. && local_vel_gap < target_velocity;
             if ( local_gap > gap_tol && !predictor_active ) {
               continue;
@@ -1050,8 +1048,7 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
             if ( use_dissipative ) {
               predictor_pressure = ComputePredictorPressure(
                   mesh1, mesh2, index1, index2, dim, num_nodes_per_face, overlapNormal, phi_q1, phi_q2, local_gap,
-                  local_vel_gap, quadrature_measure, stage_dt, pen_enfrc_options.dissipative_penetration_fraction,
-                  predictor_relaxation );
+                  local_vel_gap, quadrature_measure, stage_dt, predictor_relaxation );
               local_pressure = std::min( local_pressure, predictor_pressure );
             }
             AccumulateForceDiagnostics( predictor_active, quadrature_measure, penalty_pressure, predictor_pressure,
@@ -1105,10 +1102,7 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
             local_vel_gap =
                 ( vel_q1[0] - vel_q2[0] ) * overlapNormal[0] + ( vel_q1[1] - vel_q2[1] ) * overlapNormal[1];
           }
-          const RealT target_velocity = stage_dt > 0.
-              ? ( local_gap < 0. ? -pen_enfrc_options.dissipative_penetration_fraction * local_gap / stage_dt
-                                 : -local_gap / stage_dt )
-              : 0.;
+          const RealT target_velocity = ComputePredictorTargetVelocity( local_gap, stage_dt );
           const bool predictor_active = use_dissipative && stage_dt > 0. && local_vel_gap < target_velocity;
           if ( local_gap > gap_tol && !predictor_active ) {
             continue;
@@ -1129,8 +1123,7 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
           if ( use_dissipative ) {
             predictor_pressure = ComputePredictorPressure(
                 mesh1, mesh2, index1, index2, dim, num_nodes_per_face, overlapNormal, phi_q1, phi_q2, local_gap,
-                local_vel_gap, quadrature_measure, stage_dt, pen_enfrc_options.dissipative_penetration_fraction,
-                predictor_relaxation );
+                local_vel_gap, quadrature_measure, stage_dt, predictor_relaxation );
             local_pressure = std::min( local_pressure, predictor_pressure );
           }
           AccumulateForceDiagnostics( predictor_active, quadrature_measure, penalty_pressure, predictor_pressure,
