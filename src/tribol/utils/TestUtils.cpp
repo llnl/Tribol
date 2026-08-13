@@ -1768,7 +1768,7 @@ void TestMesh::testMeshToVtk( const std::string& dir, int cycle, RealT time )
   // specify integer id for each cell type.
   mesh << "CELL_TYPES " << this->numTotalElements << std::endl;
 
-  int element_id;
+  int element_id = -1;
   switch ( this->numNodesPerElement ) {
     case 8:
       element_id = 12;  // vtk 8-node hexahedron

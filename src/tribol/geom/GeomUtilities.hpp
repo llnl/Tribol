@@ -9,6 +9,7 @@
 #include <float.h>
 #include <cmath>
 
+#include "axom/core/NumericLimits.hpp"
 #include "axom/slic.hpp"
 
 #include "tribol/common/Parameters.hpp"
@@ -54,7 +55,7 @@ TRIBOL_HOST_DEVICE inline void ComputeLocalBasis( RealT nx, RealT ny, RealT nz, 
  *
  * \pre length(pX), length(pY), length(pZ) >= number of nodes on face
  */
-TRIBOL_HOST_DEVICE inline void ProjectFaceNodesToPlane( const MeshData::Viewer& mesh, int faceId, RealT nrmlX,
+TRIBOL_HOST_DEVICE inline void ProjectFaceNodesToPlane( const MeshData::Viewer& mesh, IndexT faceId, RealT nrmlX,
                                                         RealT nrmlY, RealT nrmlZ, RealT cX, RealT cY, RealT cZ,
                                                         RealT* pX, RealT* pY, RealT* pZ );
 
@@ -72,7 +73,7 @@ TRIBOL_HOST_DEVICE inline void ProjectFaceNodesToPlane( const MeshData::Viewer& 
  * \param [out] pY pointer to array of projected nodal y-coordinates
  *
  */
-TRIBOL_HOST_DEVICE inline void ProjectEdgeNodesToSegment( const MeshData::Viewer& mesh, int edgeId, RealT nrmlX,
+TRIBOL_HOST_DEVICE inline void ProjectEdgeNodesToSegment( const MeshData::Viewer& mesh, IndexT edgeId, RealT nrmlX,
                                                           RealT nrmlY, RealT cX, RealT cY, RealT* pX, RealT* pY );
 
 /*!
@@ -1803,14 +1804,14 @@ TRIBOL_HOST_DEVICE inline void ComputeLocalBasis( RealT nx, RealT ny, RealT nz, 
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE inline void ProjectFaceNodesToPlane( const MeshData::Viewer& mesh, int faceId, RealT nrmlX,
+TRIBOL_HOST_DEVICE inline void ProjectFaceNodesToPlane( const MeshData::Viewer& mesh, IndexT faceId, RealT nrmlX,
                                                         RealT nrmlY, RealT nrmlZ, RealT cX, RealT cY, RealT cZ,
                                                         RealT* pX, RealT* pY, RealT* pZ )
 {
   // loop over nodes and project onto the plane defined by the point-normal
   // input arguments
   for ( int i = 0; i < mesh.numberOfNodesPerElement(); ++i ) {
-    const int nodeId = mesh.getGlobalNodeId( faceId, i );
+    const IndexT nodeId = mesh.getGlobalNodeId( faceId, i );
     ProjectPointToPlane( mesh.getPosition()[0][nodeId], mesh.getPosition()[1][nodeId], mesh.getPosition()[2][nodeId],
                          nrmlX, nrmlY, nrmlZ, cX, cY, cZ, pX[i], pY[i], pZ[i] );
   }
@@ -1820,11 +1821,11 @@ TRIBOL_HOST_DEVICE inline void ProjectFaceNodesToPlane( const MeshData::Viewer& 
 }  // end ProjectFaceNodesToPlane()
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE inline void ProjectEdgeNodesToSegment( const MeshData::Viewer& mesh, int edgeId, RealT nrmlX,
+TRIBOL_HOST_DEVICE inline void ProjectEdgeNodesToSegment( const MeshData::Viewer& mesh, IndexT edgeId, RealT nrmlX,
                                                           RealT nrmlY, RealT cX, RealT cY, RealT* pX, RealT* pY )
 {
   for ( int i = 0; i < mesh.numberOfNodesPerElement(); ++i ) {
-    const int nodeId = mesh.getGlobalNodeId( edgeId, i );
+    const IndexT nodeId = mesh.getGlobalNodeId( edgeId, i );
     ProjectPointToSegment( mesh.getPosition()[0][nodeId], mesh.getPosition()[1][nodeId], nrmlX, nrmlY, cX, cY, pX[i],
                            pY[i] );
   }
@@ -1894,17 +1895,20 @@ TRIBOL_HOST_DEVICE inline void PolyInterYCentroid( const int namax, const RealT*
   RealT vol;
 
   // calculate origin shift to avoid roundoff errors
-  // TODO figure out numeric limits associated with RealT that also works on device
-  RealT xorg = FLT_MAX;
-  RealT yorg = FLT_MAX;
-  RealT xa_min = FLT_MAX;
-  RealT xa_max = -FLT_MAX;
-  RealT ya_min = FLT_MAX;
-  RealT ya_max = -FLT_MAX;
-  RealT xb_min = FLT_MAX;
-  RealT xb_max = -FLT_MAX;
-  RealT yb_min = FLT_MAX;
-  RealT yb_max = -FLT_MAX;
+  RealT realt_max = axom::numeric_limits<RealT>::max();
+
+  // clang-format off
+  RealT xorg =    realt_max;
+  RealT yorg =    realt_max;
+  RealT xa_min =  realt_max;
+  RealT xa_max = -realt_max;
+  RealT ya_min =  realt_max;
+  RealT ya_max = -realt_max;
+  RealT xb_min =  realt_max;
+  RealT xb_max = -realt_max;
+  RealT yb_min =  realt_max;
+  RealT yb_max = -realt_max;
+  // clang-format on
 
   RealT qy = 0.0;
 

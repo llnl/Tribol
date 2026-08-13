@@ -34,7 +34,9 @@ void ComputeAlignedMortarWeights( SurfaceContactElem& elem )
   // also initializes the array
   elem.allocateMortarWts();
 
-  RealT phiNonmortarA, phiNonmortarB, phiMortarA;
+  RealT phiNonmortarA = 0.;
+  RealT phiNonmortarB = 0.;
+  RealT phiMortarA = 0.;
 
   // loop over nodes "a", where node "a" can be a nonmortar node or a mortar node
   for ( int a = 0; a < elem.numFaceVert; ++a ) {
@@ -84,8 +86,7 @@ void ComputeNodalGap<ALIGNED_MORTAR>( SurfaceContactElem& elem )
 
   // set the distance magnitude tolerance as the longest edge of
   // the mortar face
-  RealT magTol;
-  RealT magTest = 0.;
+  RealT magTol = 0.;
   for ( int k = 0; k < elem.numFaceVert; ++k ) {
     int idPlus = ( k == ( elem.numFaceVert - 1 ) ) ? 0 : k + 1;
     RealT dx = elem.faceCoords1[elem.dim * idPlus] - elem.faceCoords1[elem.dim * k];
@@ -94,8 +95,7 @@ void ComputeNodalGap<ALIGNED_MORTAR>( SurfaceContactElem& elem )
 
     RealT mag = magnitude( dx, dy, dz );
 
-    magTol = ( mag > magTest ) ? mag : magTest;
-    magTest = mag;
+    magTol = ( mag > magTol ) ? mag : magTol;
   }
 
   // loop over nodes on nonmortar side
@@ -113,7 +113,7 @@ void ComputeNodalGap<ALIGNED_MORTAR>( SurfaceContactElem& elem )
     // determine which mortar node is aligned with
     // nonmortar node "a"
     //////////////////////////////////////////////
-    int mortarNodeId;
+    int mortarNodeId = -1;
     RealT v[3] = { 0., 0., 0. };
     RealT magTest = magTol;
     // loop over nodes on the mortar side
@@ -128,6 +128,11 @@ void ComputeNodalGap<ALIGNED_MORTAR>( SurfaceContactElem& elem )
         mortarNodeId = b;
         magTest = magV;
       }
+    }
+
+    SLIC_ERROR_IF( mortarNodeId < 0, "ComputeNodalGap< ALIGNED_MORTAR >: unable to find an aligned mortar node." );
+    if ( mortarNodeId < 0 ) {
+      continue;
     }
 
     // store local gap
