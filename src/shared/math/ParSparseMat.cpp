@@ -97,10 +97,11 @@ void ParSparseMatView::eliminateRows( const mfem::Array<int>& rows )
   invokeHypreMethod<MemorySpace::Host>( [&]() { mat_->EliminateRows( rows ); } );
 }
 
-void ParSparseMatView::eliminateRowsCols( const mfem::Array<int>& rows_cols )
+ParSparseMat ParSparseMatView::eliminateRowsCols( const mfem::Array<int>& rows_cols )
 {
   ensureHostMemory( *this );
-  invokeHypreMethod<MemorySpace::Host>( [&]() { mat_->EliminateRowsCols( rows_cols ); } );
+  return ParSparseMat(
+      createHypreParMatrix<MemorySpace::Host>( [&]() { return mat_->EliminateRowsCols( rows_cols ); } ) );
 }
 
 ParSparseMat ParSparseMatView::eliminateCols( const mfem::Array<int>& cols )

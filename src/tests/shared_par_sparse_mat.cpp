@@ -378,6 +378,15 @@ TEST_F( ParSparseMatTest, Elimination )
   }
 
   A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 3.0 );
+  shared::ParSparseMat Ae = A.eliminateRowsCols( rows_to_elim );
+  x.fill( 1.0 );
+  y = A * x;
+  shared::ParVector ye = Ae * x;
+  for ( int i = 0; i < y.size(); ++i ) {
+    EXPECT_NEAR( y[i] + ye[i], 3.0, 1e-12 );
+  }
+
+  A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 3.0 );
   int num_procs;
   MPI_Comm_size( MPI_COMM_WORLD, &num_procs );
 
@@ -385,7 +394,7 @@ TEST_F( ParSparseMatTest, Elimination )
   auto last_local_col = A.width() - 1;
   mfem::Array<int> cols_to_elim( { last_local_col } );
 
-  shared::ParSparseMat Ae = A.eliminateCols( cols_to_elim );
+  Ae = A.eliminateCols( cols_to_elim );
 
   // Now check A * e_last = 0
   // Create vector with 1 at last_local_col, 0 elsewhere
@@ -396,7 +405,7 @@ TEST_F( ParSparseMatTest, Elimination )
   EXPECT_NEAR( y_last[last_local_col], 0.0, 1e-12 );
 
   // Check Ae * e_last = original value
-  shared::ParVector ye = Ae * x_last;
+  ye = Ae * x_last;
   double expected_val = 3.0;
 
   EXPECT_NEAR( ye[last_local_col], expected_val, 1e-12 );
