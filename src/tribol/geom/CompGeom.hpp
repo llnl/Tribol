@@ -844,6 +844,7 @@ class CompGeom {
   {
     // clear and allocate the appropriate computational geometry pairs
     switch ( method ) {
+      case PARENT_TRACE_MORTAR:
       case COMMON_PLANE: {
         m_common_plane_pairs = ArrayT<CommonPlanePair>( num_pairs, num_pairs, allocator_id );
         break;
@@ -867,6 +868,7 @@ class CompGeom {
   IndexT getNumActivePairs( const ContactMethod method ) const
   {
     switch ( method ) {
+      case PARENT_TRACE_MORTAR:
       case COMMON_PLANE: {
         return m_common_plane_pairs.size();
         break;
@@ -895,6 +897,7 @@ class CompGeom {
   void resizeActivePairs( ContactMethod method, int size )
   {
     switch ( method ) {
+      case PARENT_TRACE_MORTAR:
       case COMMON_PLANE: {
         m_common_plane_pairs.resize( size );
         break;
@@ -1004,6 +1007,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CheckInterfacePair( InterfacePair& p
           CheckInterfacePairByMethod<MortarPlanePair>( pair, mesh1, mesh2, params, cCase, isInteracting, cg, plane_ct );
       break;
     }
+    case PARENT_TRACE_MORTAR:
     case COMMON_PLANE: {
       face_err =
           CheckInterfacePairByMethod<CommonPlanePair>( pair, mesh1, mesh2, params, cCase, isInteracting, cg, plane_ct );

@@ -356,6 +356,7 @@ CouplingScheme::CouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, 
 const ContactPlanePair& CouplingScheme::getContactPlanePair( IndexT id ) const
 {
   switch ( this->m_contactMethod ) {
+    case PARENT_TRACE_MORTAR:
     case COMMON_PLANE: {
       return m_cg_pairs.getCommonPlane( id );
       break;
@@ -519,7 +520,7 @@ bool CouplingScheme::isValidCase()
     this->m_contactCase = NO_CASE;
   }
 
-  if ( this->m_contactMethod == COMMON_PLANE ) {
+  if ( this->m_contactMethod == COMMON_PLANE || this->m_contactMethod == PARENT_TRACE_MORTAR ) {
     switch ( this->m_contactCase ) {
       case AUTO: {
         // enable auto-contact specific checks through boolean, and check to
@@ -595,7 +596,7 @@ bool CouplingScheme::isValidMethod()
         this->m_couplingSchemeErrors.cs_method_error = INVALID_DIM;
         return false;
       }
-    } else if ( this->m_contactMethod == COMMON_PLANE ) {
+    } else if ( this->m_contactMethod == COMMON_PLANE || this->m_contactMethod == PARENT_TRACE_MORTAR ) {
       // check for different face types. This is not yet supported
       if ( this->m_mesh1->numberOfNodesPerElement() != this->m_mesh2->numberOfNodesPerElement() ) {
         this->m_couplingSchemeErrors.cs_method_error = DIFFERENT_FACE_TYPES;
@@ -610,7 +611,7 @@ bool CouplingScheme::isValidMethod()
     }
 
     if ( this->m_contactMethod == ALIGNED_MORTAR || this->m_contactMethod == SINGLE_MORTAR ||
-         this->m_contactMethod == COMMON_PLANE ) {
+         this->m_contactMethod == COMMON_PLANE || this->m_contactMethod == PARENT_TRACE_MORTAR ) {
       if ( this->m_mesh1->numberOfElements() > 0 && !this->m_mesh1->getNodalFields().m_is_nodal_response_set ) {
         this->m_couplingSchemeErrors.cs_method_error = NULL_NODAL_RESPONSE;
         return false;
@@ -656,6 +657,14 @@ bool CouplingScheme::isValidModel()
     case ALIGNED_MORTAR:
     case MORTAR_WEIGHTS: {
       if ( this->m_contactModel != FRICTIONLESS && this->m_contactModel != NULL_MODEL ) {
+        this->m_couplingSchemeErrors.cs_model_error = NO_MODEL_IMPLEMENTATION_FOR_REGISTERED_METHOD;
+        return false;
+      }
+      break;
+    }
+
+    case PARENT_TRACE_MORTAR: {
+      if ( this->m_contactModel != FRICTIONLESS ) {
         this->m_couplingSchemeErrors.cs_model_error = NO_MODEL_IMPLEMENTATION_FOR_REGISTERED_METHOD;
         return false;
       }
@@ -749,13 +758,33 @@ bool CouplingScheme::isValidEnforcement()
       break;
     }  // end case SINGLE_MORTAR
 
-    case COMMON_PLANE: {
-      // check if PENALTY is not chosen. This is the only possible (and foreseeable)
-      // choice for COMMON_PLANE
-      if ( this->m_enforcementMethod != PENALTY ) {
+    case PARENT_TRACE_MORTAR: {
+      if ( this->m_enforcementMethod != IMPULSE_PROJECTION ) {
         this->m_couplingSchemeErrors.cs_enforcement_error = INVALID_ENFORCEMENT_FOR_REGISTERED_METHOD;
         return false;
-      } else if ( !this->m_enforcementOptions.penalty_options.constraint_type_set ) {
+      }
+      if ( !this->m_enforcementOptions.projection_options.options_set ) {
+        this->m_couplingSchemeErrors.cs_enforcement_error = OPTIONS_NOT_SET;
+        return false;
+      }
+      if ( this->m_enforcementOptions.projection_options.contact_response == PROJECTION_RESPONSE_COMPLIANT &&
+           !this->m_enforcementOptions.penalty_options.constraint_type_set ) {
+        this->m_couplingSchemeErrors.cs_enforcement_error = OPTIONS_NOT_SET;
+        return false;
+      }
+      break;
+    }
+
+    case COMMON_PLANE: {
+      if ( this->m_enforcementMethod != PENALTY && this->m_enforcementMethod != IMPULSE_PROJECTION ) {
+        this->m_couplingSchemeErrors.cs_enforcement_error = INVALID_ENFORCEMENT_FOR_REGISTERED_METHOD;
+        return false;
+      } else if ( this->m_enforcementMethod == PENALTY &&
+                  !this->m_enforcementOptions.penalty_options.constraint_type_set ) {
+        this->m_couplingSchemeErrors.cs_enforcement_error = OPTIONS_NOT_SET;
+        return false;
+      } else if ( this->m_enforcementMethod == IMPULSE_PROJECTION &&
+                  !this->m_enforcementOptions.projection_options.options_set ) {
         this->m_couplingSchemeErrors.cs_enforcement_error = OPTIONS_NOT_SET;
         return false;
       }
@@ -802,6 +831,7 @@ int CouplingScheme::checkEnforcementData()
       }  // end switch over enforcement method
       break;
     }  // end case SINGLE_MORTAR
+    case PARENT_TRACE_MORTAR:
     case COMMON_PLANE: {
       switch ( this->m_enforcementMethod ) {
         case PENALTY: {
@@ -814,6 +844,18 @@ int CouplingScheme::checkEnforcementData()
           }
           break;
         }  // end case PENALTY
+        case IMPULSE_PROJECTION: {
+          if ( this->m_contactMethod == PARENT_TRACE_MORTAR &&
+               this->m_enforcementOptions.projection_options.contact_response == PROJECTION_RESPONSE_COMPLIANT ) {
+            PenaltyEnforcementOptions& pen_enfrc_options = this->m_enforcementOptions.penalty_options;
+            if ( this->m_mesh1->checkPenaltyData( pen_enfrc_options, this->m_exec_mode ) != 0 ||
+                 this->m_mesh2->checkPenaltyData( pen_enfrc_options, this->m_exec_mode ) != 0 ) {
+              this->m_couplingSchemeErrors.cs_enforcement_data_error = ERROR_IN_REGISTERED_ENFORCEMENT_DATA;
+              err = 1;
+            }
+          }
+          break;
+        }
         default:
           // no-op
           break;
@@ -990,9 +1032,11 @@ int CouplingScheme::checkExecutionModeData()
   }
   this->m_allocator_id = this->m_mesh1->getAllocatorId();
 
-  if ( m_contactMethod != COMMON_PLANE ) {
+  if ( m_contactMethod != COMMON_PLANE && m_contactMethod != PARENT_TRACE_MORTAR ) {
     if ( m_exec_mode != ExecutionMode::Sequential ) {
-      SLIC_WARNING_ROOT( "Only sequential execution on host supported for contact methods other than COMMON_PLANE." );
+      SLIC_WARNING_ROOT(
+          "Only sequential execution on host supported for contact methods other than COMMON_PLANE and "
+          "PARENT_TRACE_MORTAR." );
       this->m_couplingSchemeErrors.cs_execution_mode_error = ExecutionModeError::INCOMPATIBLE_METHOD;
       err = 1;
     }
@@ -1040,6 +1084,34 @@ int CouplingScheme::apply( int cycle, RealT t, RealT stage_dt, RealT& dt )
   m_integrated_penalty_candidate_force = 0.;
   m_integrated_predictor_candidate_force = 0.;
   m_integrated_applied_force = 0.;
+  m_num_contact_qpts = 0;
+  m_max_applied_force = 0.;
+  m_gap_violation_sum = 0.;
+  m_max_gap_violation = 0.;
+  m_closing_gap_rate_sum = 0.;
+  m_max_closing_gap_rate = 0.;
+  m_num_projection_constraints = 0;
+  m_num_projection_active_multipliers = 0;
+  m_projection_iterations = 0;
+  m_projection_converged = false;
+  m_projection_complementarity_converged = false;
+  m_projection_initial_residual = 0.;
+  m_projection_final_residual = 0.;
+  m_projection_final_primal_residual = 0.;
+  m_projection_primal_tolerance = 0.;
+  m_projection_coupling_bound = 1.;
+  m_projection_relaxation = 1.;
+  m_projection_total_impulse = 0.;
+  m_projection_equivalent_force = 0.;
+  m_projection_max_endpoint_violation = 0.;
+  m_projection_energy_change = 0.;
+  m_projection_operator_velocity_dofs = 0;
+  m_projection_operator_rank = 0;
+  m_projection_operator_minimum_eigenvalue = 0.;
+  m_projection_operator_maximum_eigenvalue = 0.;
+  m_projection_operator_condition_estimate = 0.;
+  m_projection_operator_jacobi_contraction = 0.;
+  m_projection_operator_diagnostics_available = false;
   if ( m_formulation ) {
     if ( m_interface_pairs.size() > 0 || !hasFixedBinning() ) {
       m_formulation->setInterfacePairs( std::move( m_interface_pairs ), 0 );
@@ -1303,10 +1375,13 @@ void CouplingScheme::computeTimeStep( RealT& dt )
     case MORTAR_WEIGHTS:
       // no-op
       break;
+    case PARENT_TRACE_MORTAR:
     case COMMON_PLANE:
-      if ( m_enforcementMethod == PENALTY ) {
+      if ( m_enforcementMethod == PENALTY || m_enforcementMethod == IMPULSE_PROJECTION ) {
         if ( m_parameters.enable_timestep_vote ) {
-          dt = std::min( dt, m_penalty_stability_dt );
+          if ( m_enforcementMethod == PENALTY ) {
+            dt = std::min( dt, m_penalty_stability_dt );
+          }
           this->computeCommonPlaneTimeStep( dt );
         }
       }
@@ -1716,6 +1791,7 @@ void CouplingScheme::writeInterfaceOutput( const std::string& dir, const VisType
       case SINGLE_MORTAR:
       case ALIGNED_MORTAR:
       case MORTAR_WEIGHTS:
+      case PARENT_TRACE_MORTAR:
       case COMMON_PLANE:
         WriteContactPlaneMeshToVtk( dir, v_type, m_id, m_mesh_id1, m_mesh_id2, dim, cycle, t );
         break;

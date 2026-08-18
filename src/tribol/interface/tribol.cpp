@@ -5,6 +5,8 @@
 
 #include "tribol.hpp"
 
+#include <cmath>
+
 // Tribol includes
 #include "tribol/common/Parameters.hpp"
 
@@ -118,6 +120,64 @@ void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int quadrat
   penalty_options.common_plane_quadrature_order = quadrature_order;
 }
 
+void setImpulseProjectionOptions( IndexT cs_id, int max_iterations, RealT relative_tolerance,
+                                  RealT absolute_tolerance, RealT relaxation_scale,
+                                  RealT primal_relative_tolerance )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setImpulseProjectionOptions(): register the coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( max_iterations <= 0,
+                      "tribol::setImpulseProjectionOptions(): maximum iterations must be positive." );
+  SLIC_ERROR_ROOT_IF( relative_tolerance < 0. || primal_relative_tolerance < 0. || absolute_tolerance < 0.,
+                      "tribol::setImpulseProjectionOptions(): tolerances must be nonnegative." );
+  SLIC_ERROR_ROOT_IF( primal_relative_tolerance > 1.,
+                      "tribol::setImpulseProjectionOptions(): primal relative tolerance must not exceed one." );
+  SLIC_ERROR_ROOT_IF( ( relative_tolerance == 0. || primal_relative_tolerance == 0. ) &&
+                          absolute_tolerance == 0.,
+                      "tribol::setImpulseProjectionOptions(): at least one tolerance must be positive." );
+  SLIC_ERROR_ROOT_IF( relaxation_scale <= 0. || relaxation_scale > 1.,
+                      "tribol::setImpulseProjectionOptions(): relaxation scale must be in (0,1]." );
+
+  auto& options = cs->getEnforcementOptions().projection_options;
+  options.max_iterations = max_iterations;
+  options.relative_tolerance = relative_tolerance;
+  options.primal_relative_tolerance = primal_relative_tolerance;
+  options.absolute_tolerance = absolute_tolerance;
+  options.relaxation_scale = relaxation_scale;
+  options.options_set = true;
+}
+
+void setImpulseProjectionKinematics( IndexT cs_id, RealT position_velocity_scale )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setImpulseProjectionKinematics(): register the coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( position_velocity_scale ) || position_velocity_scale <= 0. ||
+                          position_velocity_scale > 1.,
+                      "tribol::setImpulseProjectionKinematics(): position velocity scale must be in (0,1]." );
+  cs->getEnforcementOptions().projection_options.position_velocity_scale = position_velocity_scale;
+}
+
+void setParentTraceMortarOptions( IndexT cs_id, RealT normal_patch_angle_degrees,
+                                  ImpulseProjectionContactResponse contact_response, RealT damping_ratio,
+                                  RealT max_penetration_fraction )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setParentTraceMortarOptions(): register the coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( normal_patch_angle_degrees <= 0. || normal_patch_angle_degrees > 180.,
+                      "tribol::setParentTraceMortarOptions(): normal patch angle must be in (0,180]." );
+  SLIC_ERROR_ROOT_IF( !in_range( contact_response, NUM_IMPULSE_PROJECTION_CONTACT_RESPONSES ),
+                      "tribol::setParentTraceMortarOptions(): invalid contact response." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( damping_ratio ) || damping_ratio <= 0.,
+                      "tribol::setParentTraceMortarOptions(): damping ratio must be positive." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( max_penetration_fraction ) || max_penetration_fraction <= 0.,
+                      "tribol::setParentTraceMortarOptions(): maximum penetration fraction must be positive." );
+  auto& options = cs->getEnforcementOptions().projection_options;
+  options.normal_patch_angle_degrees = normal_patch_angle_degrees;
+  options.contact_response = contact_response;
+  options.damping_ratio = damping_ratio;
+  options.max_penetration_fraction = max_penetration_fraction;
+}
+
 void setDissipativePenaltyOptions( IndexT cs_id, RealT relaxation_scale, RealT stability_scale )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -186,6 +246,245 @@ RealT getIntegratedAppliedForce( IndexT cs_id )
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF( !cs, "tribol::getIntegratedAppliedForce(): coupling scheme does not exist." );
   return cs->getIntegratedAppliedForce();
+}
+
+IndexT getNumContactQuadraturePoints( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getNumContactQuadraturePoints(): coupling scheme does not exist." );
+  return cs->getNumContactQuadraturePoints();
+}
+
+RealT getAverageAppliedForce( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getAverageAppliedForce(): coupling scheme does not exist." );
+  return cs->getAverageAppliedForce();
+}
+
+RealT getMaxAppliedForce( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getMaxAppliedForce(): coupling scheme does not exist." );
+  return cs->getMaxAppliedForce();
+}
+
+RealT getAverageGapViolation( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getAverageGapViolation(): coupling scheme does not exist." );
+  return cs->getAverageGapViolation();
+}
+
+RealT getMaxGapViolation( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getMaxGapViolation(): coupling scheme does not exist." );
+  return cs->getMaxGapViolation();
+}
+
+RealT getAverageClosingGapRate( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getAverageClosingGapRate(): coupling scheme does not exist." );
+  return cs->getAverageClosingGapRate();
+}
+
+RealT getMaxClosingGapRate( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getMaxClosingGapRate(): coupling scheme does not exist." );
+  return cs->getMaxClosingGapRate();
+}
+
+IndexT getNumProjectionConstraints( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getNumProjectionConstraints(): coupling scheme does not exist." );
+  return cs->getNumProjectionConstraints();
+}
+
+IndexT getNumProjectionActiveMultipliers( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getNumProjectionActiveMultipliers(): coupling scheme does not exist." );
+  return cs->getNumProjectionActiveMultipliers();
+}
+
+int getProjectionIterations( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionIterations(): coupling scheme does not exist." );
+  return cs->getProjectionIterations();
+}
+
+bool getProjectionConverged( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionConverged(): coupling scheme does not exist." );
+  return cs->getProjectionConverged();
+}
+
+bool getProjectionComplementarityConverged( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionComplementarityConverged(): coupling scheme does not exist." );
+  return cs->getProjectionComplementarityConverged();
+}
+
+RealT getProjectionInitialResidual( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionInitialResidual(): coupling scheme does not exist." );
+  return cs->getProjectionInitialResidual();
+}
+
+RealT getProjectionFinalResidual( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionFinalResidual(): coupling scheme does not exist." );
+  return cs->getProjectionFinalResidual();
+}
+
+RealT getProjectionFinalPrimalResidual( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionFinalPrimalResidual(): coupling scheme does not exist." );
+  return cs->getProjectionFinalPrimalResidual();
+}
+
+RealT getProjectionPrimalTolerance( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionPrimalTolerance(): coupling scheme does not exist." );
+  return cs->getProjectionPrimalTolerance();
+}
+
+RealT getProjectionCouplingBound( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionCouplingBound(): coupling scheme does not exist." );
+  return cs->getProjectionCouplingBound();
+}
+
+RealT getProjectionRelaxation( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionRelaxation(): coupling scheme does not exist." );
+  return cs->getProjectionRelaxation();
+}
+
+RealT getProjectionTotalImpulse( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionTotalImpulse(): coupling scheme does not exist." );
+  return cs->getProjectionTotalImpulse();
+}
+
+RealT getProjectionEquivalentForce( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionEquivalentForce(): coupling scheme does not exist." );
+  return cs->getProjectionEquivalentForce();
+}
+
+RealT getProjectionMaxEndpointViolation( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionMaxEndpointViolation(): coupling scheme does not exist." );
+  return cs->getProjectionMaxEndpointViolation();
+}
+
+RealT getProjectionEnergyChange( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionEnergyChange(): coupling scheme does not exist." );
+  return cs->getProjectionEnergyChange();
+}
+
+RealT getCompliantProjectionSpringForce( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getCompliantProjectionSpringForce(): coupling scheme does not exist." );
+  return cs->getCompliantProjectionSpringForce();
+}
+
+RealT getCompliantProjectionDampingForce( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getCompliantProjectionDampingForce(): coupling scheme does not exist." );
+  return cs->getCompliantProjectionDampingForce();
+}
+
+RealT getCompliantProjectionGuardForce( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getCompliantProjectionGuardForce(): coupling scheme does not exist." );
+  return cs->getCompliantProjectionGuardForce();
+}
+
+IndexT getCompliantProjectionGuardConstraints( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getCompliantProjectionGuardConstraints(): coupling scheme does not exist." );
+  return cs->getCompliantProjectionGuardConstraints();
+}
+
+RealT getCompliantProjectionStoredEnergy( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getCompliantProjectionStoredEnergy(): coupling scheme does not exist." );
+  return cs->getCompliantProjectionStoredEnergy();
+}
+
+RealT getCompliantProjectionMaxPenetrationFraction( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::getCompliantProjectionMaxPenetrationFraction(): coupling scheme does not exist." );
+  return cs->getCompliantProjectionMaxPenetrationFraction();
+}
+
+IndexT getProjectionOperatorVelocityDofs( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionOperatorVelocityDofs(): coupling scheme does not exist." );
+  return cs->getProjectionOperatorVelocityDofs();
+}
+
+IndexT getProjectionOperatorRank( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionOperatorRank(): coupling scheme does not exist." );
+  return cs->getProjectionOperatorRank();
+}
+
+RealT getProjectionOperatorMinimumEigenvalue( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionOperatorMinimumEigenvalue(): coupling scheme does not exist." );
+  return cs->getProjectionOperatorMinimumEigenvalue();
+}
+
+RealT getProjectionOperatorMaximumEigenvalue( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionOperatorMaximumEigenvalue(): coupling scheme does not exist." );
+  return cs->getProjectionOperatorMaximumEigenvalue();
+}
+
+RealT getProjectionOperatorConditionEstimate( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionOperatorConditionEstimate(): coupling scheme does not exist." );
+  return cs->getProjectionOperatorConditionEstimate();
+}
+
+RealT getProjectionOperatorJacobiContraction( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionOperatorJacobiContraction(): coupling scheme does not exist." );
+  return cs->getProjectionOperatorJacobiContraction();
 }
 
 //------------------------------------------------------------------------------

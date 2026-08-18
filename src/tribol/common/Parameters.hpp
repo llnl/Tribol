@@ -118,6 +118,7 @@ enum ContactMethod  // all mortar methods go first
   ALIGNED_MORTAR,  ///! Aligned mortar to be used with ContactCase = NO_SLIDING
   MORTAR_WEIGHTS,  ///! Method that only returns mortar weights per single mortar method
   ENERGY_MORTAR,   ///! Energy-based mortar method
+  PARENT_TRACE_MORTAR,  ///! Parent-trace mortar method for explicit impulse projection
   COMMON_PLANE,    ///! Common plane method, currently with single integration point
   NUM_CONTACT_METHODS
 };
@@ -165,7 +166,18 @@ enum EnforcementMethod
   PENALTY,              ///! Penalty enforcement method for gap only
   LAGRANGE_MULTIPLIER,  ///! Lagrange multiplier with system output
   NULL_ENFORCEMENT,     ///! Null enforcement, for use with ContactMethod = MORTAR_WEIGHTS
+  IMPULSE_PROJECTION,   ///! Explicit mass-metric impulse projection
   NUM_ENFORCEMENT_METHODS
+};
+
+/*!
+ * \brief Enumerates the available parent-trace impulse-projection responses.
+ */
+enum ImpulseProjectionContactResponse
+{
+  PROJECTION_RESPONSE_EXACT,
+  PROJECTION_RESPONSE_COMPLIANT,
+  NUM_IMPULSE_PROJECTION_CONTACT_RESPONSES
 };
 
 /*!
@@ -473,12 +485,31 @@ struct PenaltyEnforcementOptions {
 };
 
 /*!
+ * \brief Options for explicit mass-metric impulse projection.
+ */
+struct ImpulseProjectionOptions {
+ public:
+  int max_iterations{ 250 };
+  RealT relative_tolerance{ 1.e-8 };
+  RealT primal_relative_tolerance{ 1.e-6 };
+  RealT absolute_tolerance{ 1.e-12 };
+  RealT relaxation_scale{ 1. };
+  RealT normal_patch_angle_degrees{ 30. };
+  RealT position_velocity_scale{ 1. };
+  ImpulseProjectionContactResponse contact_response{ PROJECTION_RESPONSE_COMPLIANT };
+  RealT damping_ratio{ 1.2 };
+  RealT max_penetration_fraction{ 0.02 };
+  bool options_set{ false };
+};
+
+/*!
  * \brief Struct wrapping constraint enforcement options
  */
 struct EnforcementOptions {
  public:
   PenaltyEnforcementOptions penalty_options;
   LagrangeMultiplierImplicitOptions lm_implicit_options;
+  ImpulseProjectionOptions projection_options;
 };
 
 /*!

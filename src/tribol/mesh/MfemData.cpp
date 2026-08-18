@@ -30,9 +30,11 @@ constexpr int parent_q2_dim = 2;
 constexpr int parent_q2_field_width = parent_q2_num_nodes * parent_q2_dim;
 constexpr int parent_q2_position_offset = 0;
 constexpr int parent_q2_velocity_offset = parent_q2_position_offset + parent_q2_field_width;
-constexpr int parent_q2_inverse_mass_offset = parent_q2_velocity_offset + parent_q2_field_width;
+constexpr int parent_q2_projection_base_velocity_offset = parent_q2_velocity_offset + parent_q2_field_width;
+constexpr int parent_q2_inverse_mass_offset = parent_q2_projection_base_velocity_offset + parent_q2_field_width;
 constexpr int parent_q2_reference_offset = parent_q2_inverse_mass_offset + parent_q2_field_width;
-constexpr int parent_q2_record_components = parent_q2_reference_offset + 2;
+constexpr int parent_q2_dof_id_offset = parent_q2_reference_offset + 2;
+constexpr int parent_q2_record_components = parent_q2_dof_id_offset + parent_q2_num_nodes;
 
 int DecodeDof( int encoded_dof, RealT& sign )
 {
@@ -818,15 +820,20 @@ void MfemMeshData::CopyRedecompParentQ2Records( const Array1D<int>& elem_map, Pa
   fields.position.SetSize( num_elements * parent_q2_field_width );
   fields.response.SetSize( num_elements * parent_q2_field_width );
   fields.reference_interval.SetSize( num_elements * 2 );
+  fields.parent_dof_ids.SetSize( num_elements * parent_q2_num_nodes );
   fields.velocity.SetSize( HasVelocity() ? num_elements * parent_q2_field_width : 0 );
+  fields.projection_base_velocity.SetSize( HasProjectionBaseVelocity() ? num_elements * parent_q2_field_width : 0 );
   fields.inverse_mass.SetSize( HasInverseMass() ? num_elements * parent_q2_field_width : 0 );
   fields.response = 0.;
 
   const RealT* record_values = redecomp_parent_q2_records_->HostRead();
   RealT* positions = fields.position.HostWrite();
   RealT* velocities = HasVelocity() ? fields.velocity.HostWrite() : nullptr;
+  RealT* projection_base_velocities =
+      HasProjectionBaseVelocity() ? fields.projection_base_velocity.HostWrite() : nullptr;
   RealT* inverse_masses = HasInverseMass() ? fields.inverse_mass.HostWrite() : nullptr;
   RealT* intervals = fields.reference_interval.HostWrite();
+  IndexT* parent_dof_ids = fields.parent_dof_ids.HostWrite();
   const int* element_map = elem_map.data();
 
   mfem::Array<int> record_dofs;
@@ -841,6 +848,11 @@ void MfemMeshData::CopyRedecompParentQ2Records( const Array1D<int>& elem_map, Pa
         velocities[i * parent_q2_field_width + c] =
             record_values[redecomp_parent_q2_record_fes_->DofToVDof( record_dofs[0], parent_q2_velocity_offset + c )];
       }
+      if ( projection_base_velocities != nullptr ) {
+        projection_base_velocities[i * parent_q2_field_width + c] = record_values[
+            redecomp_parent_q2_record_fes_->DofToVDof( record_dofs[0],
+                                                       parent_q2_projection_base_velocity_offset + c )];
+      }
       if ( inverse_masses != nullptr ) {
         inverse_masses[i * parent_q2_field_width + c] = record_values[redecomp_parent_q2_record_fes_->DofToVDof(
             record_dofs[0], parent_q2_inverse_mass_offset + c )];
@@ -849,6 +861,10 @@ void MfemMeshData::CopyRedecompParentQ2Records( const Array1D<int>& elem_map, Pa
     for ( int endpoint = 0; endpoint < 2; ++endpoint ) {
       intervals[i * 2 + endpoint] = record_values[redecomp_parent_q2_record_fes_->DofToVDof(
           record_dofs[0], parent_q2_reference_offset + endpoint )];
+    }
+    for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+      parent_dof_ids[i * parent_q2_num_nodes + a] = static_cast<IndexT>( record_values[
+          redecomp_parent_q2_record_fes_->DofToVDof( record_dofs[0], parent_q2_dof_id_offset + a )] );
     }
   }
 }
@@ -863,12 +879,18 @@ void MfemMeshData::BuildParentQ2Data()
   if ( velocity_ ) {
     PopulateParentQ2RecordField( velocity_->GetParentGridFn(), parent_q2_velocity_offset );
   }
+  if ( projection_base_velocity_ ) {
+    PopulateParentQ2RecordField( projection_base_velocity_->GetParentGridFn(),
+                                 parent_q2_projection_base_velocity_offset );
+  }
   if ( inverse_mass_ ) {
     PopulateParentQ2RecordField( inverse_mass_->GetParentGridFn(), parent_q2_inverse_mass_offset );
   }
 
   RealT* record_values = lor_parent_q2_records_->HostReadWrite();
   const auto& transforms = lor_mesh_->GetRefinementTransforms();
+  const auto* submesh_fes = submesh_xfer_gridfn_.ParFESpace();
+  mfem::Array<int> parent_dofs;
   mfem::Array<int> record_dofs;
   for ( int lor_e = 0; lor_e < lor_mesh_->GetNE(); ++lor_e ) {
     const auto& embedding = transforms.embeddings[lor_e];
@@ -876,10 +898,20 @@ void MfemMeshData::BuildParentQ2Data()
     SLIC_ERROR_ROOT_IF( point_matrix.Height() != 1 || point_matrix.Width() != 2,
                         "Unexpected segment refinement point matrix for parent Q2 records." );
     lor_parent_q2_record_fes_->GetElementDofs( lor_e, record_dofs );
+    submesh_fes->GetElementDofs( embedding.parent, parent_dofs );
+    SLIC_ERROR_ROOT_IF( parent_dofs.Size() != parent_q2_num_nodes,
+                        "Unexpected parent trace layout for parent Q2 records." );
     for ( int endpoint = 0; endpoint < 2; ++endpoint ) {
       const int record_vdof =
           lor_parent_q2_record_fes_->DofToVDof( record_dofs[0], parent_q2_reference_offset + endpoint );
       record_values[record_vdof] = point_matrix( 0, endpoint );
+    }
+    for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+      RealT dof_sign = 1.;
+      const int parent_dof = DecodeDof( parent_dofs[a], dof_sign );
+      const int record_vdof =
+          lor_parent_q2_record_fes_->DofToVDof( record_dofs[0], parent_q2_dof_id_offset + a );
+      record_values[record_vdof] = static_cast<RealT>( parent_dof );
     }
   }
 
@@ -987,11 +1019,6 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
   TRIBOL_MARK_END( "Copy fields to Redecomp mesh" );
 
   if ( rebuilt && elem_thickness_ ) {
-    if ( !material_modulus_ ) {
-      SLIC_ERROR_ROOT(
-          "Kinematic element penalty requires material modulus information. "
-          "Call registerMfemMaterialModulus() to set this." );
-    }
     TRIBOL_MARK_BEGIN( "Copy element thickness to Redecomp mesh" );
     redecomp::RedecompTransfer redecomp_xfer;
     // set element thickness on redecomp mesh
@@ -1021,6 +1048,12 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
                 [tribol_t2_view, redecomp_t_view, elem_map2_view] TRIBOL_HOST_DEVICE( int i ) {
                   tribol_t2_view[i] = redecomp_t_view[elem_map2_view[i]];
                 } );
+    TRIBOL_MARK_END( "Copy element thickness to Redecomp mesh" );
+  }
+
+  if ( rebuilt && material_modulus_ ) {
+    TRIBOL_MARK_BEGIN( "Copy material modulus to Redecomp mesh" );
+    redecomp::RedecompTransfer redecomp_xfer;
     // set material modulus on redecomp mesh
     redecomp_material_modulus_ =
         std::make_unique<mfem::QuadratureFunction>( new mfem::QuadratureSpace( &GetRedecompMesh(), 0 ) );
@@ -1029,6 +1062,8 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
     *redecomp_material_modulus_ = 0.0;
     redecomp_xfer.TransferToSerial( *material_modulus_, *redecomp_material_modulus_ );
     // set material modulus on tribol mesh
+    ArrayViewT<const int> elem_map1_view( GetElemMap1() );
+    ArrayViewT<const int> elem_map2_view( GetElemMap2() );
     tribol_material_modulus_1_ = std::make_unique<ArrayT<RealT>>(
         GetElemMap1().size(), GetElemMap1().empty() ? 1 : GetElemMap1().size(), allocator_id_ );
     auto redecomp_m_view = redecomp_material_modulus_->Read( use_device_ );
@@ -1046,7 +1081,7 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
                 [tribol_m2_view, redecomp_m_view, elem_map2_view] TRIBOL_HOST_DEVICE( int i ) {
                   tribol_m2_view[i] = redecomp_m_view[elem_map2_view[i]];
                 } );
-    TRIBOL_MARK_END( "Copy element thickness to Redecomp mesh" );
+    TRIBOL_MARK_END( "Copy material modulus to Redecomp mesh" );
   }
 
   return rebuilt;
@@ -1066,12 +1101,151 @@ void MfemMeshData::GetParentResponse( mfem::Vector& r ) const
   }
 }
 
+void MfemMeshData::BeginParentQ2Projection()
+{
+  SLIC_ERROR_ROOT_IF( surface_basis_ != MfemSurfaceBasis::PARENT,
+                      "Impulse projection requires the parent surface basis." );
+  SLIC_ERROR_ROOT_IF( !velocity_ || !inverse_mass_,
+                      "Impulse projection requires registered velocity and inverse lumped mass fields." );
+  parent_q2_projection_velocity_correction_.SetSize( submesh_xfer_gridfn_.Size() );
+  parent_q2_projection_velocity_correction_ = 0.;
+  ClearParentQ2Response();
+}
+
+bool MfemMeshData::ApplyParentQ2ProjectionImpulse()
+{
+  mfem::Vector local_impulse;
+  TransferParentQ2ElementDataToSubmesh( parent_q2_fields_1_.response.HostRead(),
+                                        parent_q2_fields_2_.response.HostRead(), local_impulse );
+  mfem::Vector assembled_impulse;
+  AssembleSubmeshDualToOwnedDofs( local_impulse, assembled_impulse );
+
+  submesh_xfer_gridfn_ = 0.;
+  submesh_.Transfer( inverse_mass_->GetParentGridFn(), submesh_xfer_gridfn_ );
+  const RealT* impulse = assembled_impulse.HostRead();
+  const RealT* inverse_mass = submesh_xfer_gridfn_.HostRead();
+  mfem::Vector velocity_increment( assembled_impulse.Size() );
+  RealT* increment = velocity_increment.HostWrite();
+  bool valid = true;
+  for ( int i = 0; i < assembled_impulse.Size(); ++i ) {
+    if ( !std::isfinite( impulse[i] ) || !std::isfinite( inverse_mass[i] ) || inverse_mass[i] < 0. ) {
+      valid = false;
+      increment[i] = 0.;
+    } else {
+      increment[i] = inverse_mass[i] * impulse[i];
+      valid = valid && std::isfinite( increment[i] );
+    }
+  }
+  if ( !valid ) {
+    return false;
+  }
+
+  parent_q2_projection_velocity_correction_ += velocity_increment;
+  AddSubmeshVelocityToParentQ2Fields( velocity_increment );
+  ClearParentQ2Response();
+  return true;
+}
+
+bool MfemMeshData::AssembleParentQ2MassScaledConstraintRows( IndexT num_constraints, const IndexT* elements1,
+                                                              const IndexT* elements2, const RealT* normals,
+                                                              const RealT* phi1, const RealT* phi2,
+                                                              mfem::DenseMatrix& rows )
+{
+  submesh_xfer_gridfn_ = 0.;
+  submesh_.Transfer( inverse_mass_->GetParentGridFn(), submesh_xfer_gridfn_ );
+  const RealT* inverse_mass = submesh_xfer_gridfn_.HostRead();
+  const int num_velocity_dofs = submesh_xfer_gridfn_.Size();
+  rows.SetSize( num_velocity_dofs, num_constraints );
+  rows = 0.;
+
+  for ( IndexT i = 0; i < num_constraints; ++i ) {
+    ClearParentQ2Response();
+    RealT* response1 = parent_q2_fields_1_.response.HostReadWrite();
+    RealT* response2 = parent_q2_fields_2_.response.HostReadWrite();
+    for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+      for ( int d = 0; d < parent_q2_dim; ++d ) {
+        const RealT impulse = normals[i * parent_q2_dim + d];
+        response1[elements1[i] * parent_q2_field_width + a * parent_q2_dim + d] +=
+            phi1[i * parent_q2_num_nodes + a] * impulse;
+        response2[elements2[i] * parent_q2_field_width + a * parent_q2_dim + d] -=
+            phi2[i * parent_q2_num_nodes + a] * impulse;
+      }
+    }
+
+    mfem::Vector local_impulse;
+    TransferParentQ2ElementDataToSubmesh( parent_q2_fields_1_.response.HostRead(),
+                                          parent_q2_fields_2_.response.HostRead(), local_impulse );
+    mfem::Vector assembled_impulse;
+    AssembleSubmeshDualToOwnedDofs( local_impulse, assembled_impulse );
+    const RealT* impulse = assembled_impulse.HostRead();
+    for ( int d = 0; d < num_velocity_dofs; ++d ) {
+      if ( !std::isfinite( impulse[d] ) || !std::isfinite( inverse_mass[d] ) || inverse_mass[d] < 0. ) {
+        ClearParentQ2Response();
+        rows.SetSize( 0, 0 );
+        return false;
+      }
+      rows( d, i ) = impulse[d] * std::sqrt( inverse_mass[d] );
+    }
+  }
+  ClearParentQ2Response();
+  return true;
+}
+
+bool MfemMeshData::AssembleParentQ2MassScaledResponseRow( mfem::Vector& row )
+{
+  submesh_xfer_gridfn_ = 0.;
+  submesh_.Transfer( inverse_mass_->GetParentGridFn(), submesh_xfer_gridfn_ );
+  const RealT* inverse_mass = submesh_xfer_gridfn_.HostRead();
+
+  mfem::Vector local_impulse;
+  TransferParentQ2ElementDataToSubmesh( parent_q2_fields_1_.response.HostRead(),
+                                        parent_q2_fields_2_.response.HostRead(), local_impulse );
+  mfem::Vector assembled_impulse;
+  AssembleSubmeshDualToOwnedDofs( local_impulse, assembled_impulse );
+  row.SetSize( assembled_impulse.Size() );
+  const RealT* impulse = assembled_impulse.HostRead();
+  RealT* row_data = row.HostWrite();
+  for ( int d = 0; d < row.Size(); ++d ) {
+    if ( !std::isfinite( impulse[d] ) || !std::isfinite( inverse_mass[d] ) || inverse_mass[d] < 0. ) {
+      ClearParentQ2Response();
+      row.SetSize( 0 );
+      return false;
+    }
+    row_data[d] = impulse[d] * std::sqrt( inverse_mass[d] );
+  }
+  ClearParentQ2Response();
+  return true;
+}
+
+void MfemMeshData::ResetParentQ2Projection()
+{
+  parent_q2_projection_velocity_correction_.SetSize( submesh_xfer_gridfn_.Size() );
+  parent_q2_projection_velocity_correction_ = 0.;
+  ClearParentQ2Response();
+}
+
+void MfemMeshData::GetParentVelocityCorrection( mfem::Vector& correction ) const
+{
+  SLIC_ERROR_ROOT_IF( parent_q2_projection_velocity_correction_.Size() != submesh_xfer_gridfn_.Size(),
+                      "No parent-Q2 projection velocity correction is available." );
+  GetParentRedecompTransfer().AddSubmeshToParent( parent_q2_projection_velocity_correction_, correction );
+}
+
 void MfemMeshData::SetParentVelocity( const mfem::ParGridFunction& velocity )
 {
   if ( velocity_ ) {
     velocity_->SetParentGridFn( velocity );
   } else {
     velocity_ = std::make_unique<ParentField>( velocity );
+  }
+}
+
+void MfemMeshData::SetParentProjectionBaseVelocity( const mfem::ParGridFunction& velocity )
+{
+  if ( projection_base_velocity_ ) {
+    projection_base_velocity_->SetParentGridFn( velocity );
+  } else {
+    projection_base_velocity_ = std::make_unique<ParentField>( velocity );
   }
 }
 
@@ -1089,9 +1263,13 @@ MfemMeshData::ParentElementFieldPointers MfemMeshData::GetMesh1ParentElementFiel
   return { parent_q2_num_nodes,
            parent_q2_fields_1_.position.HostRead(),
            parent_q2_fields_1_.velocity.Size() > 0 ? parent_q2_fields_1_.velocity.HostRead() : nullptr,
+           parent_q2_fields_1_.projection_base_velocity.Size() > 0
+               ? parent_q2_fields_1_.projection_base_velocity.HostRead()
+               : nullptr,
            parent_q2_fields_1_.inverse_mass.Size() > 0 ? parent_q2_fields_1_.inverse_mass.HostRead() : nullptr,
            parent_q2_fields_1_.response.HostReadWrite(),
-           parent_q2_fields_1_.reference_interval.HostRead() };
+           parent_q2_fields_1_.reference_interval.HostRead(),
+           parent_q2_fields_1_.parent_dof_ids.HostRead() };
 }
 
 MfemMeshData::ParentElementFieldPointers MfemMeshData::GetMesh2ParentElementFields()
@@ -1099,9 +1277,13 @@ MfemMeshData::ParentElementFieldPointers MfemMeshData::GetMesh2ParentElementFiel
   return { parent_q2_num_nodes,
            parent_q2_fields_2_.position.HostRead(),
            parent_q2_fields_2_.velocity.Size() > 0 ? parent_q2_fields_2_.velocity.HostRead() : nullptr,
+           parent_q2_fields_2_.projection_base_velocity.Size() > 0
+               ? parent_q2_fields_2_.projection_base_velocity.HostRead()
+               : nullptr,
            parent_q2_fields_2_.inverse_mass.Size() > 0 ? parent_q2_fields_2_.inverse_mass.HostRead() : nullptr,
            parent_q2_fields_2_.response.HostReadWrite(),
-           parent_q2_fields_2_.reference_interval.HostRead() };
+           parent_q2_fields_2_.reference_interval.HostRead(),
+           parent_q2_fields_2_.parent_dof_ids.HostRead() };
 }
 
 void MfemMeshData::TransferParentQ2ElementDataToSubmesh( const RealT* values_1, const RealT* values_2,
@@ -1178,6 +1360,60 @@ void MfemMeshData::AssembleSubmeshDualToOwnedDofs( const mfem::Vector& local_val
       owned_data[i] = 0.;
     }
   }
+}
+
+void MfemMeshData::AddSubmeshVelocityToParentQ2Fields( const mfem::Vector& velocity_increment )
+{
+  SLIC_ERROR_ROOT_IF( velocity_increment.Size() != submesh_xfer_gridfn_.Size(),
+                      "Parent-Q2 velocity increment has an unexpected size." );
+  *lor_parent_q2_records_ = 0.;
+  const RealT* submesh_values = velocity_increment.HostRead();
+  RealT* record_values = lor_parent_q2_records_->HostReadWrite();
+  const auto* submesh_fes = submesh_xfer_gridfn_.ParFESpace();
+  const auto& transforms = lor_mesh_->GetRefinementTransforms();
+  mfem::Array<int> parent_dofs;
+  mfem::Array<int> record_dofs;
+  for ( int lor_e = 0; lor_e < lor_mesh_->GetNE(); ++lor_e ) {
+    const int parent_e = transforms.embeddings[lor_e].parent;
+    submesh_fes->GetElementDofs( parent_e, parent_dofs );
+    lor_parent_q2_record_fes_->GetElementDofs( lor_e, record_dofs );
+    SLIC_ERROR_ROOT_IF( parent_dofs.Size() != parent_q2_num_nodes || record_dofs.Size() != 1,
+                        "Unexpected finite element layout for parent-Q2 projection records." );
+    for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+      RealT dof_sign = 1.;
+      const int parent_dof = DecodeDof( parent_dofs[a], dof_sign );
+      for ( int d = 0; d < parent_q2_dim; ++d ) {
+        const int source_vdof = submesh_fes->DofToVDof( parent_dof, d );
+        const int component = parent_q2_velocity_offset + a * parent_q2_dim + d;
+        const int record_vdof = lor_parent_q2_record_fes_->DofToVDof( record_dofs[0], component );
+        record_values[record_vdof] = dof_sign * submesh_values[source_vdof];
+      }
+    }
+  }
+
+  *redecomp_parent_q2_records_ = 0.;
+  redecomp::RedecompTransfer record_transfer;
+  record_transfer.TransferToSerial( *lor_parent_q2_records_, *redecomp_parent_q2_records_ );
+  const RealT* redecomp_values = redecomp_parent_q2_records_->HostRead();
+  auto add_values = [&]( const Array1D<int>& elem_map, ParentQ2Fields& fields ) {
+    RealT* velocities = fields.velocity.HostReadWrite();
+    mfem::Array<int> dofs;
+    for ( int i = 0; i < static_cast<int>( elem_map.size() ); ++i ) {
+      redecomp_parent_q2_record_fes_->GetElementDofs( elem_map[i], dofs );
+      for ( int c = 0; c < parent_q2_field_width; ++c ) {
+        const int record_vdof = redecomp_parent_q2_record_fes_->DofToVDof( dofs[0], parent_q2_velocity_offset + c );
+        velocities[i * parent_q2_field_width + c] += redecomp_values[record_vdof];
+      }
+    }
+  };
+  add_values( GetElemMap1(), parent_q2_fields_1_ );
+  add_values( GetElemMap2(), parent_q2_fields_2_ );
+}
+
+void MfemMeshData::ClearParentQ2Response()
+{
+  parent_q2_fields_1_.response = 0.;
+  parent_q2_fields_2_.response = 0.;
 }
 
 RealT MfemMeshData::AssembleParentQ2RowMaximum( const RealT* rows_1, const RealT* rows_2 ) const

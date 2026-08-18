@@ -190,10 +190,8 @@ void setMfemViscousDampingCoeff( IndexT cs_id, RealT mesh1_coeff, RealT mesh2_co
  * normal at the center of the associated isoparametric surface element.
  *
  * @pre Coupling scheme cs_id must be registered using registerMfemCouplingScheme()
- * @pre Kinematic element penalty must be initialized through setMfemKinematicElementPenalty()
- *
- * @note Element thickness is automatically set when setMfemKinematicElementPenalty() is called. Call this method to
- * update element thicknesses.
+ * @note Element thickness is automatically set when setMfemKinematicElementPenalty() is called. This method may also
+ * be called independently when element thickness is needed for geometric contact calculations without a penalty.
  *
  * @param cs_id The ID of the coupling scheme with the MFEM mesh
  */
@@ -227,6 +225,14 @@ void updateMfemMaterialModulus( IndexT cs_id, mfem::Coefficient& modulus_coeffic
 void registerMfemVelocity( IndexT cs_id, const mfem::ParGridFunction& v );
 
 /**
+ * @brief Registers the base velocity used by the position update for impulse projection
+ *
+ * The position velocity is interpolated between this field and the registered
+ * trial end velocity using setImpulseProjectionKinematics().
+ */
+void registerMfemProjectionBaseVelocity( IndexT cs_id, const mfem::ParGridFunction& v );
+
+/**
  * @brief Registers component-wise inverse lumped velocity mass on an MFEM coupling scheme
  *
  * Zero entries represent essential velocity degrees of freedom.
@@ -257,6 +263,9 @@ void registerMfemReferenceCoords( IndexT cs_id, const mfem::ParGridFunction& ref
  * @param [out] r mfem::Vector of the response (RHS) vector (properly sized, pre-allocated, and initialized)
  */
 void getMfemResponse( IndexT cs_id, mfem::Vector& r );
+
+/** Add the velocity correction from the latest impulse projection to a parent-mesh vector. */
+void getMfemVelocityCorrection( IndexT cs_id, mfem::Vector& correction );
 
 /**
  * @brief Returns the true-dof contact force vector

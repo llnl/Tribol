@@ -309,6 +309,110 @@ class CouplingScheme {
   RealT getIntegratedPredictorCandidateForce() const { return m_integrated_predictor_candidate_force; }
   RealT getIntegratedAppliedForce() const { return m_integrated_applied_force; }
 
+  void setContactPointDiagnostics( IndexT num_qpts, RealT max_force, RealT gap_violation_sum, RealT max_gap_violation,
+                                   RealT closing_gap_rate_sum, RealT max_closing_gap_rate )
+  {
+    m_num_contact_qpts = num_qpts;
+    m_max_applied_force = max_force;
+    m_gap_violation_sum = gap_violation_sum;
+    m_max_gap_violation = max_gap_violation;
+    m_closing_gap_rate_sum = closing_gap_rate_sum;
+    m_max_closing_gap_rate = max_closing_gap_rate;
+  }
+  IndexT getNumContactQuadraturePoints() const { return m_num_contact_qpts; }
+  RealT getAverageAppliedForce() const
+  {
+    return m_num_contact_qpts > 0 ? m_integrated_applied_force / m_num_contact_qpts : 0.;
+  }
+  RealT getMaxAppliedForce() const { return m_max_applied_force; }
+  RealT getAverageGapViolation() const
+  {
+    return m_num_contact_qpts > 0 ? m_gap_violation_sum / m_num_contact_qpts : 0.;
+  }
+  RealT getMaxGapViolation() const { return m_max_gap_violation; }
+  RealT getAverageClosingGapRate() const
+  {
+    return m_num_contact_qpts > 0 ? m_closing_gap_rate_sum / m_num_contact_qpts : 0.;
+  }
+  RealT getMaxClosingGapRate() const { return m_max_closing_gap_rate; }
+
+  void setProjectionDiagnostics( IndexT constraints, IndexT active_multipliers, int iterations, bool accepted,
+                                 bool complementarity_converged, RealT initial_residual, RealT final_residual,
+                                 RealT final_primal_residual, RealT primal_tolerance, RealT coupling_bound,
+                                 RealT relaxation, RealT total_impulse, RealT equivalent_force,
+                                 RealT max_endpoint_violation, RealT energy_change )
+  {
+    m_num_projection_constraints = constraints;
+    m_num_projection_active_multipliers = active_multipliers;
+    m_projection_iterations = iterations;
+    m_projection_converged = accepted;
+    m_projection_complementarity_converged = complementarity_converged;
+    m_projection_initial_residual = initial_residual;
+    m_projection_final_residual = final_residual;
+    m_projection_final_primal_residual = final_primal_residual;
+    m_projection_primal_tolerance = primal_tolerance;
+    m_projection_coupling_bound = coupling_bound;
+    m_projection_relaxation = relaxation;
+    m_projection_total_impulse = total_impulse;
+    m_projection_equivalent_force = equivalent_force;
+    m_projection_max_endpoint_violation = max_endpoint_violation;
+    m_projection_energy_change = energy_change;
+  }
+  IndexT getNumProjectionConstraints() const { return m_num_projection_constraints; }
+  IndexT getNumProjectionActiveMultipliers() const { return m_num_projection_active_multipliers; }
+  int getProjectionIterations() const { return m_projection_iterations; }
+  bool getProjectionConverged() const { return m_projection_converged; }
+  bool getProjectionComplementarityConverged() const { return m_projection_complementarity_converged; }
+  RealT getProjectionInitialResidual() const { return m_projection_initial_residual; }
+  RealT getProjectionFinalResidual() const { return m_projection_final_residual; }
+  RealT getProjectionFinalPrimalResidual() const { return m_projection_final_primal_residual; }
+  RealT getProjectionPrimalTolerance() const { return m_projection_primal_tolerance; }
+  RealT getProjectionCouplingBound() const { return m_projection_coupling_bound; }
+  RealT getProjectionRelaxation() const { return m_projection_relaxation; }
+  RealT getProjectionTotalImpulse() const { return m_projection_total_impulse; }
+  RealT getProjectionEquivalentForce() const { return m_projection_equivalent_force; }
+  RealT getProjectionMaxEndpointViolation() const { return m_projection_max_endpoint_violation; }
+  RealT getProjectionEnergyChange() const { return m_projection_energy_change; }
+  void setCompliantProjectionDiagnostics( RealT spring_force, RealT damping_force, RealT guard_force,
+                                          IndexT guard_constraints, RealT stored_energy,
+                                          RealT max_penetration_fraction )
+  {
+    m_compliant_projection_spring_force = spring_force;
+    m_compliant_projection_damping_force = damping_force;
+    m_compliant_projection_guard_force = guard_force;
+    m_compliant_projection_guard_constraints = guard_constraints;
+    m_compliant_projection_stored_energy = stored_energy;
+    m_compliant_projection_max_penetration_fraction = max_penetration_fraction;
+  }
+  RealT getCompliantProjectionSpringForce() const { return m_compliant_projection_spring_force; }
+  RealT getCompliantProjectionDampingForce() const { return m_compliant_projection_damping_force; }
+  RealT getCompliantProjectionGuardForce() const { return m_compliant_projection_guard_force; }
+  IndexT getCompliantProjectionGuardConstraints() const { return m_compliant_projection_guard_constraints; }
+  RealT getCompliantProjectionStoredEnergy() const { return m_compliant_projection_stored_energy; }
+  RealT getCompliantProjectionMaxPenetrationFraction() const
+  {
+    return m_compliant_projection_max_penetration_fraction;
+  }
+  void setProjectionOperatorDiagnostics( IndexT velocity_dofs, IndexT rank, RealT minimum_eigenvalue,
+                                         RealT maximum_eigenvalue, RealT condition_estimate,
+                                         RealT jacobi_contraction )
+  {
+    m_projection_operator_velocity_dofs = velocity_dofs;
+    m_projection_operator_rank = rank;
+    m_projection_operator_minimum_eigenvalue = minimum_eigenvalue;
+    m_projection_operator_maximum_eigenvalue = maximum_eigenvalue;
+    m_projection_operator_condition_estimate = condition_estimate;
+    m_projection_operator_jacobi_contraction = jacobi_contraction;
+    m_projection_operator_diagnostics_available = true;
+  }
+  bool hasProjectionOperatorDiagnostics() const { return m_projection_operator_diagnostics_available; }
+  IndexT getProjectionOperatorVelocityDofs() const { return m_projection_operator_velocity_dofs; }
+  IndexT getProjectionOperatorRank() const { return m_projection_operator_rank; }
+  RealT getProjectionOperatorMinimumEigenvalue() const { return m_projection_operator_minimum_eigenvalue; }
+  RealT getProjectionOperatorMaximumEigenvalue() const { return m_projection_operator_maximum_eigenvalue; }
+  RealT getProjectionOperatorConditionEstimate() const { return m_projection_operator_condition_estimate; }
+  RealT getProjectionOperatorJacobiContraction() const { return m_projection_operator_jacobi_contraction; }
+
   /**
    * @brief Get the ID of the coupling scheme
    *
@@ -966,6 +1070,40 @@ class CouplingScheme {
   RealT m_integrated_penalty_candidate_force{ 0. };
   RealT m_integrated_predictor_candidate_force{ 0. };
   RealT m_integrated_applied_force{ 0. };
+  IndexT m_num_contact_qpts{ 0 };
+  RealT m_max_applied_force{ 0. };
+  RealT m_gap_violation_sum{ 0. };
+  RealT m_max_gap_violation{ 0. };
+  RealT m_closing_gap_rate_sum{ 0. };
+  RealT m_max_closing_gap_rate{ 0. };
+  IndexT m_num_projection_constraints{ 0 };
+  IndexT m_num_projection_active_multipliers{ 0 };
+  int m_projection_iterations{ 0 };
+  bool m_projection_converged{ false };
+  bool m_projection_complementarity_converged{ false };
+  RealT m_projection_initial_residual{ 0. };
+  RealT m_projection_final_residual{ 0. };
+  RealT m_projection_final_primal_residual{ 0. };
+  RealT m_projection_primal_tolerance{ 0. };
+  RealT m_projection_coupling_bound{ 1. };
+  RealT m_projection_relaxation{ 1. };
+  RealT m_projection_total_impulse{ 0. };
+  RealT m_projection_equivalent_force{ 0. };
+  RealT m_projection_max_endpoint_violation{ 0. };
+  RealT m_projection_energy_change{ 0. };
+  RealT m_compliant_projection_spring_force{ 0. };
+  RealT m_compliant_projection_damping_force{ 0. };
+  RealT m_compliant_projection_guard_force{ 0. };
+  IndexT m_compliant_projection_guard_constraints{ 0 };
+  RealT m_compliant_projection_stored_energy{ 0. };
+  RealT m_compliant_projection_max_penetration_fraction{ 0. };
+  IndexT m_projection_operator_velocity_dofs{ 0 };
+  IndexT m_projection_operator_rank{ 0 };
+  RealT m_projection_operator_minimum_eigenvalue{ 0. };
+  RealT m_projection_operator_maximum_eigenvalue{ 0. };
+  RealT m_projection_operator_condition_estimate{ 0. };
+  RealT m_projection_operator_jacobi_contraction{ 0. };
+  bool m_projection_operator_diagnostics_available{ false };
   std::string m_output_directory = "";  ///< Output directory for visualization dumps
 
   bool m_nullMeshes{ false };  ///< True if one or both meshes are zero-element (null) meshes
@@ -1027,6 +1165,7 @@ using CouplingSchemeManager = DataManager<CouplingScheme>;
 TRIBOL_HOST_DEVICE inline ContactPlanePair& CouplingScheme::Viewer::getContactPlanePair( IndexT id ) const
 {
   switch ( m_contact_method ) {
+    case PARENT_TRACE_MORTAR:
     case COMMON_PLANE: {
       return m_cg_pairs.getCommonPlane( id );
       break;
@@ -1076,6 +1215,7 @@ TRIBOL_HOST_DEVICE inline RealT CouplingScheme::Viewer::getGapTol( IndexT fid1, 
 #endif
       break;
 
+    case PARENT_TRACE_MORTAR:
     case COMMON_PLANE:
 
       switch ( m_contact_case ) {
@@ -1172,6 +1312,7 @@ TRIBOL_HOST_DEVICE inline bool CouplingScheme::Viewer::pruneMethodFacePair( cons
 
       break;
     }
+    case PARENT_TRACE_MORTAR:
     case COMMON_PLANE: {
       // define the common plane
       for ( int i = 0; i < dim; ++i ) {

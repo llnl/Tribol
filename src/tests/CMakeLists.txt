@@ -155,6 +155,18 @@ endif()
 #------------------------------------------------------------------------------
 if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 
+  blt_add_executable(
+    NAME tribol_mfem_impulse_projection_test
+    SOURCES tribol_mfem_impulse_projection.cpp
+    OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+    DEPENDS_ON tribol gtest ${tribol_device_depends}
+    FOLDER tribol/tests )
+
+  blt_add_test(
+    NAME tribol_mfem_impulse_projection_1rank
+    COMMAND tribol_mfem_impulse_projection_test
+    NUM_MPI_TASKS 1 )
+
   set( combined_tests
       tribol_mfem_common_plane.cpp
       tribol_mfem_parent_basis.cpp

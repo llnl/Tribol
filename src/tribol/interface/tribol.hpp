@@ -75,6 +75,19 @@ void setPenaltyOptions( IndexT cs_id, PenaltyConstraintType pen_enfrc_option,
  */
 void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int quadrature_order = 3 );
 
+/*! \brief Sets iterative impulse projection solver options. */
+void setImpulseProjectionOptions( IndexT cs_id, int max_iterations, RealT relative_tolerance,
+                                  RealT absolute_tolerance, RealT relaxation_scale = 1.,
+                                  RealT primal_relative_tolerance = 1.e-6 );
+
+/*! \brief Sets the fraction of the projected end-velocity correction used to advance position. */
+void setImpulseProjectionKinematics( IndexT cs_id, RealT position_velocity_scale );
+
+/*! \brief Sets parent-trace mortar construction and contact-response options. */
+void setParentTraceMortarOptions( IndexT cs_id, RealT normal_patch_angle_degrees,
+                                  ImpulseProjectionContactResponse contact_response = PROJECTION_RESPONSE_COMPLIANT,
+                                  RealT damping_ratio = 1.2, RealT max_penetration_fraction = 0.02 );
+
 /*!
  * \brief Sets the dissipative predictor and penalty stability controls.
  *
@@ -100,6 +113,56 @@ RealT getIntegratedPenaltyCandidateForce( IndexT cs_id );
 RealT getIntegratedPredictorCandidateForce( IndexT cs_id );
 /// Returns the integrated compressive magnitude of the applied contact force.
 RealT getIntegratedAppliedForce( IndexT cs_id );
+/// Returns the number of contact quadrature points in the most recent update.
+IndexT getNumContactQuadraturePoints( IndexT cs_id );
+/// Returns the average compressive applied force contribution per contact quadrature point.
+RealT getAverageAppliedForce( IndexT cs_id );
+/// Returns the maximum compressive applied force contribution from a contact quadrature point.
+RealT getMaxAppliedForce( IndexT cs_id );
+/// Returns the average positive gap violation over contact quadrature points.
+RealT getAverageGapViolation( IndexT cs_id );
+/// Returns the maximum positive gap violation over contact quadrature points.
+RealT getMaxGapViolation( IndexT cs_id );
+/// Returns the average positive closing gap rate over contact quadrature points.
+RealT getAverageClosingGapRate( IndexT cs_id );
+/// Returns the maximum positive closing gap rate over contact quadrature points.
+RealT getMaxClosingGapRate( IndexT cs_id );
+/// Returns the number of constraints in the latest impulse projection.
+IndexT getNumProjectionConstraints( IndexT cs_id );
+/// Returns the number of positive multipliers in the latest impulse projection.
+IndexT getNumProjectionActiveMultipliers( IndexT cs_id );
+/// Returns the number of projected-Jacobi iterations in the latest impulse projection.
+int getProjectionIterations( IndexT cs_id );
+/// Returns whether the latest impulse projection passed primal and energy validation.
+bool getProjectionConverged( IndexT cs_id );
+/// Returns whether the projected complementarity residual met its strict tolerance.
+bool getProjectionComplementarityConverged( IndexT cs_id );
+/// Returns the initial projected complementarity residual.
+RealT getProjectionInitialResidual( IndexT cs_id );
+/// Returns the final projected complementarity residual.
+RealT getProjectionFinalResidual( IndexT cs_id );
+/// Returns the final maximum normal-velocity constraint violation.
+RealT getProjectionFinalPrimalResidual( IndexT cs_id );
+/// Returns the normal-velocity tolerance used for primal acceptance.
+RealT getProjectionPrimalTolerance( IndexT cs_id );
+RealT getProjectionCouplingBound( IndexT cs_id );
+RealT getProjectionRelaxation( IndexT cs_id );
+RealT getProjectionTotalImpulse( IndexT cs_id );
+RealT getProjectionEquivalentForce( IndexT cs_id );
+RealT getProjectionMaxEndpointViolation( IndexT cs_id );
+RealT getProjectionEnergyChange( IndexT cs_id );
+RealT getCompliantProjectionSpringForce( IndexT cs_id );
+RealT getCompliantProjectionDampingForce( IndexT cs_id );
+RealT getCompliantProjectionGuardForce( IndexT cs_id );
+IndexT getCompliantProjectionGuardConstraints( IndexT cs_id );
+RealT getCompliantProjectionStoredEnergy( IndexT cs_id );
+RealT getCompliantProjectionMaxPenetrationFraction( IndexT cs_id );
+IndexT getProjectionOperatorVelocityDofs( IndexT cs_id );
+IndexT getProjectionOperatorRank( IndexT cs_id );
+RealT getProjectionOperatorMinimumEigenvalue( IndexT cs_id );
+RealT getProjectionOperatorMaximumEigenvalue( IndexT cs_id );
+RealT getProjectionOperatorConditionEstimate( IndexT cs_id );
+RealT getProjectionOperatorJacobiContraction( IndexT cs_id );
 
 /*!
  * \brief Sets the constant kinematic penalty stiffness

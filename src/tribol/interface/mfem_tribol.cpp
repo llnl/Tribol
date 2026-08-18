@@ -383,12 +383,15 @@ void setMfemSurfaceBasis( IndexT cs_id, MfemSurfaceBasis basis )
                         "Parent surface-basis contact currently requires a Q2 H1 coordinate field." );
     SLIC_ERROR_ROOT_IF( isOnDevice( mfem_data->GetExecutionMode() ),
                         "Parent surface-basis contact currently supports CPU execution only." );
-    SLIC_ERROR_ROOT_IF( cs->getContactMethod() != COMMON_PLANE,
-                        "Parent surface-basis contact currently supports only COMMON_PLANE." );
+    SLIC_ERROR_ROOT_IF( cs->getContactMethod() != COMMON_PLANE &&
+                            cs->getContactMethod() != PARENT_TRACE_MORTAR,
+                        "Parent surface-basis contact currently supports COMMON_PLANE and PARENT_TRACE_MORTAR." );
     SLIC_ERROR_ROOT_IF( cs->getContactModel() != FRICTIONLESS,
                         "Parent surface-basis contact currently supports only frictionless contact." );
-    SLIC_ERROR_ROOT_IF( cs->getEnforcementMethod() != PENALTY,
-                        "Parent surface-basis contact currently supports only penalty enforcement." );
+    SLIC_ERROR_ROOT_IF( cs->getEnforcementMethod() != PENALTY &&
+                            cs->getEnforcementMethod() != IMPULSE_PROJECTION,
+                        "Parent surface-basis contact currently supports only penalty or impulse projection "
+                        "enforcement." );
   }
 
   cs->getMfemMeshData()->SetSurfaceBasis( basis );
@@ -526,11 +529,7 @@ void updateMfemElemThickness( IndexT cs_id )
                               cs_id ) );
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
-                      "Create the coupling scheme using registerMfemCouplingScheme() to set the penalty." );
-  auto penalty_opts = cs->getEnforcementOptions().penalty_options;
-  SLIC_ERROR_ROOT_IF(
-      !penalty_opts.kinematic_calc_set && penalty_opts.kinematic_calculation != KINEMATIC_ELEMENT,
-      "Thickness can only be updated when kinematic penalty has been set using setMfemKinematicElementPenalty()." );
+                      "Create the coupling scheme using registerMfemCouplingScheme() to compute element thickness." );
   cs->getMfemMeshData()->ComputeElementThicknesses();
 }
 
@@ -562,6 +561,18 @@ void registerMfemVelocity( IndexT cs_id, const mfem::ParGridFunction& v )
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to register a velocity." );
   cs->getMfemMeshData()->SetParentVelocity( v );
+}
+
+void registerMfemProjectionBaseVelocity( IndexT cs_id, const mfem::ParGridFunction& v )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::registerMfemProjectionBaseVelocity(): register the MFEM coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
+                      "tribol::registerMfemProjectionBaseVelocity(): coupling scheme does not contain MFEM data." );
+  SLIC_ERROR_ROOT_IF( v.VectorDim() != v.ParFESpace()->GetMesh()->Dimension(),
+                      "tribol::registerMfemProjectionBaseVelocity(): velocity must use the vector coordinate space." );
+  cs->getMfemMeshData()->SetParentProjectionBaseVelocity( v );
 }
 
 void registerMfemInverseMass( IndexT cs_id, const mfem::ParGridFunction& inverse_mass )
@@ -605,6 +616,17 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r )
   cs->getMfemMeshData()->GetParentResponse( r );
 }
 
+void getMfemVelocityCorrection( IndexT cs_id, mfem::Vector& correction )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getMfemVelocityCorrection(): coupling scheme does not exist." );
+  SLIC_ERROR_ROOT_IF( cs->getEnforcementMethod() != IMPULSE_PROJECTION,
+                      "tribol::getMfemVelocityCorrection(): coupling scheme does not use impulse projection." );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
+                      "tribol::getMfemVelocityCorrection(): coupling scheme does not contain MFEM data." );
+  cs->getMfemMeshData()->GetParentVelocityCorrection( correction );
+}
+
 mfem::HypreParVector getMfemContactForce( IndexT cs_id )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -626,8 +648,9 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
 
-  SLIC_ERROR_ROOT_IF( cs->getEnforcementMethod() == PENALTY,
-                      "getMfemBlockJacobian() is not supported for coupling schemes with penalty enforcement. "
+  SLIC_ERROR_ROOT_IF( cs->getEnforcementMethod() == PENALTY ||
+                          cs->getEnforcementMethod() == IMPULSE_PROJECTION,
+                      "getMfemBlockJacobian() is not supported for coupling schemes with explicit enforcement. "
                       "Use getMfemDfDx() instead." );
 
   if ( cs->hasContactFormulation() ) {
@@ -810,9 +833,13 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
     if ( cs.hasMfemData() ) {
       auto mfem_data = cs.getMfemMeshData();
       if ( mfem_data->GetSurfaceBasis() == MfemSurfaceBasis::PARENT ) {
-        SLIC_ERROR_ROOT_IF( cs.getContactMethod() != COMMON_PLANE || cs.getContactModel() != FRICTIONLESS ||
-                                cs.getEnforcementMethod() != PENALTY,
-                            "Parent surface-basis contact requires frictionless COMMON_PLANE penalty contact." );
+        SLIC_ERROR_ROOT_IF( ( cs.getContactMethod() != COMMON_PLANE &&
+                              cs.getContactMethod() != PARENT_TRACE_MORTAR ) ||
+                                cs.getContactModel() != FRICTIONLESS ||
+                                ( cs.getEnforcementMethod() != PENALTY &&
+                                  cs.getEnforcementMethod() != IMPULSE_PROJECTION ),
+                            "Parent surface-basis contact requires frictionless COMMON_PLANE or PARENT_TRACE_MORTAR "
+                            "penalty or impulse projection contact." );
         SLIC_ERROR_ROOT_IF( cs.getEnforcementOptions().penalty_options.common_plane_rule != MULTI_POINT,
                             "Parent surface-basis common-plane contact requires MULTI_POINT integration." );
       }
@@ -844,11 +871,13 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         auto mesh_2 = MeshManager::getInstance().findData( mesh_ids[1] );
         SLIC_ERROR_ROOT_IF( !mesh_1 || !mesh_2, "Failed to find newly registered MFEM contact meshes." );
         mesh_1->setParentElementData( parent_fields_1.num_parent_nodes_per_element, parent_fields_1.position,
-                                      parent_fields_1.velocity, parent_fields_1.inverse_mass, parent_fields_1.response,
-                                      parent_fields_1.reference_interval );
+                                      parent_fields_1.velocity, parent_fields_1.projection_base_velocity,
+                                      parent_fields_1.inverse_mass, parent_fields_1.response,
+                                      parent_fields_1.reference_interval, parent_fields_1.parent_dof_ids );
         mesh_2->setParentElementData( parent_fields_2.num_parent_nodes_per_element, parent_fields_2.position,
-                                      parent_fields_2.velocity, parent_fields_2.inverse_mass, parent_fields_2.response,
-                                      parent_fields_2.reference_interval );
+                                      parent_fields_2.velocity, parent_fields_2.projection_base_velocity,
+                                      parent_fields_2.inverse_mass, parent_fields_2.response,
+                                      parent_fields_2.reference_interval, parent_fields_2.parent_dof_ids );
       }
 
       auto f_ptrs = mfem_data->GetRedecompResponsePtrs();
@@ -868,6 +897,10 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         auto xref_ptrs = mfem_data->GetRedecompReferenceCoordsPtrs();
         registerNodalReferenceCoords( mesh_ids[0], xref_ptrs[0], xref_ptrs[1], xref_ptrs[2] );
         registerNodalReferenceCoords( mesh_ids[1], xref_ptrs[0], xref_ptrs[1], xref_ptrs[2] );
+      }
+      if ( mfem_data->GetRedecompElemThickness1() && mfem_data->GetRedecompElemThickness2() ) {
+        registerRealElementField( mesh_ids[0], ELEMENT_THICKNESS, mfem_data->GetRedecompElemThickness1() );
+        registerRealElementField( mesh_ids[1], ELEMENT_THICKNESS, mfem_data->GetRedecompElemThickness2() );
       }
       // TODO: consider redesign where a specific method isn't checked and just the enforcement method is checked
       if ( cs.getEnforcementMethod() == LAGRANGE_MULTIPLIER || cs.getContactMethod() == ENERGY_MORTAR ) {

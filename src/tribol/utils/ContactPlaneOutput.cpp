@@ -316,7 +316,8 @@ void WriteContactPlaneMeshToVtk( const std::string& dir, const VisType v_type, c
 
       // print the contact plane pressure scalar data for common plane overlaps
       {
-        if ( couplingScheme->getContactMethod() == COMMON_PLANE ) {
+        if ( couplingScheme->getContactMethod() == COMMON_PLANE ||
+             couplingScheme->getContactMethod() == PARENT_TRACE_MORTAR ) {
           axom::fmt::print( overlap, "SCALARS {} {}\n", "overlap_pressure", "float" );
           axom::fmt::print( overlap, "LOOKUP_TABLE default\n" );
           for ( int i = 0; i < cpSize; ++i ) {

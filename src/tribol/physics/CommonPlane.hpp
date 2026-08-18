@@ -55,6 +55,12 @@ TRIBOL_HOST_DEVICE inline RealT ComputePenaltyStiffnessPerArea( const RealT K1_o
 template <>
 int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs );
 
+template <>
+int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs );
+
+template <>
+int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs );
+
 /*!
  *
  * \brief routine to apply interface physics in the direction tangential to the interface

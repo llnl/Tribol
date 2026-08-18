@@ -603,9 +603,11 @@ class MfemMeshData {
     IndexT num_parent_nodes_per_element;
     const RealT* position;
     const RealT* velocity;
+    const RealT* projection_base_velocity;
     const RealT* inverse_mass;
     RealT* response;
     const RealT* reference_interval;
+    const IndexT* parent_dof_ids;
   };
 
   /**
@@ -790,6 +792,31 @@ class MfemMeshData {
    */
   void GetParentResponse( mfem::Vector& r ) const;
 
+  /** Begin a parent-Q2 impulse projection and clear its accumulated velocity correction. */
+  void BeginParentQ2Projection();
+
+  /**
+   * Assemble the parent-Q2 impulse stored in the response arrays, apply lumped inverse mass, and update the
+   * iteration velocity.
+   *
+   * @return true if all inverse masses and corrections are finite and nonnegative
+   */
+  bool ApplyParentQ2ProjectionImpulse();
+
+  /** Assemble mass-scaled parent-Q2 constraint rows for projection diagnostics. */
+  bool AssembleParentQ2MassScaledConstraintRows( IndexT num_constraints, const IndexT* elements1,
+                                                 const IndexT* elements2, const RealT* normals,
+                                                 const RealT* phi1, const RealT* phi2,
+                                                 mfem::DenseMatrix& rows );
+
+  bool AssembleParentQ2MassScaledResponseRow( mfem::Vector& row );
+
+  /** Restore the registered trial velocity and discard the accumulated projection correction. */
+  void ResetParentQ2Projection();
+
+  /** Add the accumulated projection velocity correction to a parent-mesh vector. */
+  void GetParentVelocityCorrection( mfem::Vector& correction ) const;
+
   /**
    * @brief Get the parent to redecomp grid function transfer object
    *
@@ -804,6 +831,9 @@ class MfemMeshData {
    */
   void SetParentVelocity( const mfem::ParGridFunction& velocity );
 
+  /** Add/replace the base velocity used by the impulse-projection position update. */
+  void SetParentProjectionBaseVelocity( const mfem::ParGridFunction& velocity );
+
   /**
    * @brief Determine if a velocity grid function has been set
    *
@@ -811,6 +841,8 @@ class MfemMeshData {
    * @return false: Velocity grid function has not been set
    */
   bool HasVelocity() const { return velocity_ != nullptr; }
+
+  bool HasProjectionBaseVelocity() const { return projection_base_velocity_ != nullptr; }
 
   /**
    * @brief Get pointers to component arrays of the velocity on the RedecompMesh
@@ -991,7 +1023,10 @@ class MfemMeshData {
    *
    * @return const RealT*
    */
-  const RealT* GetRedecompElemThickness1() const { return tribol_elem_thickness_1_->data(); }
+  const RealT* GetRedecompElemThickness1() const
+  {
+    return tribol_elem_thickness_1_ ? tribol_elem_thickness_1_->data() : nullptr;
+  }
 
   /**
    * @brief Get a pointer to the element thickness array for the second Tribol
@@ -999,7 +1034,10 @@ class MfemMeshData {
    *
    * @return const RealT*
    */
-  const RealT* GetRedecompElemThickness2() const { return tribol_elem_thickness_2_->data(); }
+  const RealT* GetRedecompElemThickness2() const
+  {
+    return tribol_elem_thickness_2_ ? tribol_elem_thickness_2_->data() : nullptr;
+  }
 
   /**
    * @brief Get a pointer to the material modulus array for the first Tribol
@@ -1007,7 +1045,10 @@ class MfemMeshData {
    *
    * @return const RealT*
    */
-  const RealT* GetRedecompMaterialModulus1() const { return tribol_material_modulus_1_->data(); }
+  const RealT* GetRedecompMaterialModulus1() const
+  {
+    return tribol_material_modulus_1_ ? tribol_material_modulus_1_->data() : nullptr;
+  }
 
   /**
    * @brief Get a pointer to the material modulus array for the second Tribol
@@ -1015,7 +1056,10 @@ class MfemMeshData {
    *
    * @return const RealT*
    */
-  const RealT* GetRedecompMaterialModulus2() const { return tribol_material_modulus_2_->data(); }
+  const RealT* GetRedecompMaterialModulus2() const
+  {
+    return tribol_material_modulus_2_ ? tribol_material_modulus_2_->data() : nullptr;
+  }
 
   /**
    * @brief Get the map from Tribol registered mesh 1 element indices to
@@ -1280,9 +1324,11 @@ class MfemMeshData {
   struct ParentQ2Fields {
     mfem::Vector position;
     mfem::Vector velocity;
+    mfem::Vector projection_base_velocity;
     mfem::Vector inverse_mass;
     mfem::Vector response;
     mfem::Vector reference_interval;
+    mfem::Array<IndexT> parent_dof_ids;
   };
 
   void InitializeParentQ2RecordSpace();
@@ -1299,6 +1345,10 @@ class MfemMeshData {
                                              mfem::Vector& submesh_values ) const;
 
   void AssembleSubmeshDualToOwnedDofs( const mfem::Vector& local_values, mfem::Vector& owned_values ) const;
+
+  void AddSubmeshVelocityToParentQ2Fields( const mfem::Vector& velocity_increment );
+
+  void ClearParentQ2Response();
 
   /**
    * @brief First mesh identifier
@@ -1369,12 +1419,15 @@ class MfemMeshData {
   std::unique_ptr<mfem::ParGridFunction> lor_parent_q2_records_;
   ParentQ2Fields parent_q2_fields_1_;
   ParentQ2Fields parent_q2_fields_2_;
+  mfem::Vector parent_q2_projection_velocity_correction_;
 
   /**
    * @brief Contains velocity grid function and transfer operators if set;
    * nullptr otherwise
    */
   std::unique_ptr<ParentField> velocity_;
+
+  std::unique_ptr<ParentField> projection_base_velocity_;
 
   std::unique_ptr<ParentField> inverse_mass_;
 

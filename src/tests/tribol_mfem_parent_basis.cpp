@@ -72,7 +72,8 @@ ParentBasisResult RunParentBasisCase( int lor_factor )
   int num_ranks = 1;
   MPI_Comm_size( MPI_COMM_WORLD, &num_ranks );
   tribol::updateMfemParallelDecomposition( num_ranks, true );
-  tribol::update( 0, 0., 1.e-3 );
+  double dt = 1.e-3;
+  tribol::update( 0, 0., dt );
 
   mfem::Vector response( coords.Size() );
   response = 0.;

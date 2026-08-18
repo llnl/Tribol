@@ -936,10 +936,26 @@ TEST_F( CommonPlaneTest, common_plane_2d_dissipative_predictor )
   EXPECT_DOUBLE_EQ( tribol::getIntegratedPredictorCandidateForce( 0 ),
                     coupling_scheme.getIntegratedPredictorCandidateForce() );
   EXPECT_DOUBLE_EQ( tribol::getIntegratedAppliedForce( 0 ), coupling_scheme.getIntegratedAppliedForce() );
+  EXPECT_GT( coupling_scheme.getNumContactQuadraturePoints(), 0 );
+  EXPECT_GT( coupling_scheme.getAverageAppliedForce(), 0. );
+  EXPECT_GE( coupling_scheme.getMaxAppliedForce(), coupling_scheme.getAverageAppliedForce() );
+  EXPECT_DOUBLE_EQ( coupling_scheme.getAverageGapViolation(), 0. );
+  EXPECT_DOUBLE_EQ( coupling_scheme.getMaxGapViolation(), 0. );
+  EXPECT_GT( coupling_scheme.getAverageClosingGapRate(), 0. );
+  EXPECT_GE( coupling_scheme.getMaxClosingGapRate(), coupling_scheme.getAverageClosingGapRate() );
+  EXPECT_EQ( tribol::getNumContactQuadraturePoints( 0 ), coupling_scheme.getNumContactQuadraturePoints() );
+  EXPECT_DOUBLE_EQ( tribol::getAverageAppliedForce( 0 ), coupling_scheme.getAverageAppliedForce() );
+  EXPECT_DOUBLE_EQ( tribol::getMaxAppliedForce( 0 ), coupling_scheme.getMaxAppliedForce() );
+  EXPECT_DOUBLE_EQ( tribol::getAverageGapViolation( 0 ), coupling_scheme.getAverageGapViolation() );
+  EXPECT_DOUBLE_EQ( tribol::getMaxGapViolation( 0 ), coupling_scheme.getMaxGapViolation() );
+  EXPECT_DOUBLE_EQ( tribol::getAverageClosingGapRate( 0 ), coupling_scheme.getAverageClosingGapRate() );
+  EXPECT_DOUBLE_EQ( tribol::getMaxClosingGapRate( 0 ), coupling_scheme.getMaxClosingGapRate() );
 
   RealT force_norm = 0.;
   for ( int i = 0; i < numVerts; ++i ) {
     force_norm += std::abs( fy1[i] ) + std::abs( fy2[i] );
+    EXPECT_GT( fy1[i], 0. );
+    EXPECT_LT( fy2[i], 0. );
   }
   EXPECT_GT( force_norm, 0. );
 
@@ -955,6 +971,13 @@ TEST_F( CommonPlaneTest, common_plane_2d_dissipative_predictor )
   EXPECT_DOUBLE_EQ( coupling_scheme.getIntegratedPredictorCandidateForce(), 0. );
   EXPECT_DOUBLE_EQ( coupling_scheme.getIntegratedAppliedForce(),
                     coupling_scheme.getIntegratedPenaltyCandidateForce() );
+  EXPECT_EQ( coupling_scheme.getNumContactQuadraturePoints(), 0 );
+  EXPECT_DOUBLE_EQ( coupling_scheme.getAverageAppliedForce(), 0. );
+  EXPECT_DOUBLE_EQ( coupling_scheme.getMaxAppliedForce(), 0. );
+  EXPECT_DOUBLE_EQ( coupling_scheme.getAverageGapViolation(), 0. );
+  EXPECT_DOUBLE_EQ( coupling_scheme.getMaxGapViolation(), 0. );
+  EXPECT_DOUBLE_EQ( coupling_scheme.getAverageClosingGapRate(), 0. );
+  EXPECT_DOUBLE_EQ( coupling_scheme.getMaxClosingGapRate(), 0. );
 }
 
 TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )

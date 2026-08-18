@@ -30,6 +30,10 @@ int ApplyInterfacePhysics( CouplingScheme* cs, int TRIBOL_UNUSED_PARAM( cycle ),
 
   // switch over numerical method
   switch ( cs->getContactMethod() ) {
+    case PARENT_TRACE_MORTAR:
+      err_nrml = ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( cs );
+      break;
+
     case COMMON_PLANE:
       // switch over enforcement method for normal (i.e. normal direction) enforcement
       switch ( cs->getEnforcementMethod() ) {
@@ -51,6 +55,9 @@ int ApplyInterfacePhysics( CouplingScheme* cs, int TRIBOL_UNUSED_PARAM( cycle ),
               break;
             }
           }  // end switch on contact model
+          break;
+        case IMPULSE_PROJECTION:
+          err_nrml = ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( cs );
           break;
         default:
           break;

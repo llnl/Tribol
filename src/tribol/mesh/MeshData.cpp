@@ -240,15 +240,24 @@ void MeshData::setInverseMass( const RealT* inv_mass_x, const RealT* inv_mass_y,
 }
 
 void MeshData::setParentElementData( IndexT num_parent_nodes_per_element, const RealT* position, const RealT* velocity,
-                                     const RealT* inverse_mass, RealT* response, const RealT* reference_interval )
+                                     const RealT* projection_base_velocity, const RealT* inverse_mass, RealT* response,
+                                     const RealT* reference_interval, const IndexT* parent_dof_ids )
 {
   m_num_parent_nodes_per_element = num_parent_nodes_per_element;
   const IndexT field_width = num_parent_nodes_per_element * m_dim;
   m_parent_position = Array2DView<const RealT>( position, { numberOfElements(), field_width } );
   m_parent_response = Array2DView<RealT>( response, { numberOfElements(), field_width } );
   m_parent_reference_interval = Array2DView<const RealT>( reference_interval, { numberOfElements(), 2 } );
+  m_parent_dof_ids =
+      parent_dof_ids != nullptr
+          ? Array2DView<const IndexT>( parent_dof_ids, { numberOfElements(), num_parent_nodes_per_element } )
+          : Array2DView<const IndexT>();
   m_parent_velocity = velocity != nullptr ? Array2DView<const RealT>( velocity, { numberOfElements(), field_width } )
                                           : Array2DView<const RealT>();
+  m_parent_projection_base_velocity =
+      projection_base_velocity != nullptr
+          ? Array2DView<const RealT>( projection_base_velocity, { numberOfElements(), field_width } )
+          : Array2DView<const RealT>();
   m_parent_inv_mass = inverse_mass != nullptr
                           ? Array2DView<const RealT>( inverse_mass, { numberOfElements(), field_width } )
                           : Array2DView<const RealT>();
@@ -645,9 +654,11 @@ MeshData::Viewer::Viewer( MeshData& mesh )
       m_num_parent_nodes_per_element( mesh.m_num_parent_nodes_per_element ),
       m_parent_position( mesh.m_parent_position ),
       m_parent_velocity( mesh.m_parent_velocity ),
+      m_parent_projection_base_velocity( mesh.m_parent_projection_base_velocity ),
       m_parent_inv_mass( mesh.m_parent_inv_mass ),
       m_parent_response( mesh.m_parent_response ),
       m_parent_reference_interval( mesh.m_parent_reference_interval ),
+      m_parent_dof_ids( mesh.m_parent_dof_ids ),
       m_node_n( mesh.m_node_n ),
       m_connectivity( mesh.m_connectivity ),
       m_c( mesh.m_c ),
