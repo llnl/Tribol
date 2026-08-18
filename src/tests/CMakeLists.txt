@@ -251,8 +251,6 @@ endif()
 if( MFEM_FOUND )
 
   set(mfem_smoke_depends mfem gtest)
-  # MFEM's openmp dependency isn't being picked up by FindMFEM.cmake. Force it to be added for now.
-  blt_list_append(TO mfem_smoke_depends ELEMENTS blt::openmp IF ENABLE_OPENMP )
   blt_add_executable(
     NAME mfem_smoke_test
     SOURCES mfem_smoke.cpp

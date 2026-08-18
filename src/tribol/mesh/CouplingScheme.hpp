@@ -192,7 +192,7 @@ class CouplingScheme {
      *
      * @return the gap tolerance for the common plane method
      */
-    TRIBOL_HOST_DEVICE inline RealT getGapTol( int fid1, int fid2 ) const;
+    TRIBOL_HOST_DEVICE inline RealT getGapTol( IndexT fid1, IndexT fid2 ) const;
 
     /**
      * @brief Get a view of the computational geometry container
@@ -284,21 +284,21 @@ class CouplingScheme {
    *
    * @return unique coupling scheme ID
    */
-  int getId() const { return m_id; }
+  IndexT getId() const { return m_id; }
 
   /**
    * @brief Get the integer ID of the first mesh
    *
    * @return unique ID of the first mesh
    */
-  int getMeshId1() const { return m_mesh_id1; }
+  IndexT getMeshId1() const { return m_mesh_id1; }
 
   /**
    * @brief Get the integer ID of the second mesh
    *
    * @return unique ID of the second mesh
    */
-  int getMeshId2() const { return m_mesh_id2; }
+  IndexT getMeshId2() const { return m_mesh_id2; }
 
   /**
    * @brief Get the Parameters struct
@@ -513,7 +513,7 @@ class CouplingScheme {
    *
    * @return number of active interface pairs
    */
-  int getNumActivePairs() const { return m_cg_pairs.getNumActivePairs( getContactMethod() ); }
+  IndexT getNumActivePairs() const { return m_cg_pairs.getNumActivePairs( getContactMethod() ); }
 
   /**
    * @brief Return the contact plane given by id
@@ -1014,7 +1014,7 @@ TRIBOL_HOST_DEVICE inline ContactPlanePair& CouplingScheme::Viewer::getContactPl
 }
 
 //------------------------------------------------------------------------------
-TRIBOL_HOST_DEVICE inline RealT CouplingScheme::Viewer::getGapTol( int fid1, int fid2 ) const
+TRIBOL_HOST_DEVICE inline RealT CouplingScheme::Viewer::getGapTol( IndexT fid1, IndexT fid2 ) const
 {
   RealT gap_tol = 0.;
   // add debug warning if this routine is called for interface methods
@@ -1078,8 +1078,8 @@ TRIBOL_HOST_DEVICE inline bool CouplingScheme::Viewer::pruneMethodFacePair( cons
   auto& mesh1 = this->getMesh1View();
   auto& mesh2 = this->getMesh2View();
   int dim = mesh1.spatialDimension();
-  int num_nodes_face_1 = mesh1.numberOfNodesPerElement();
-  int num_nodes_face_2 = mesh2.numberOfNodesPerElement();
+  int num_nodes_face_1 = static_cast<int>( mesh1.numberOfNodesPerElement() );
+  int num_nodes_face_2 = static_cast<int>( mesh2.numberOfNodesPerElement() );
 
   RealT fn1[max_dim], cx1[max_dim];
   mesh1.getFaceNormal( fid1, fn1 );
@@ -1099,7 +1099,7 @@ TRIBOL_HOST_DEVICE inline bool CouplingScheme::Viewer::pruneMethodFacePair( cons
   RealT z2[max_nodes_per_face];
 
   for ( int i = 0; i < mesh1.numberOfNodesPerElement(); ++i ) {
-    const int nodeId_1 = mesh1.getGlobalNodeId( fid1, i );
+    const IndexT nodeId_1 = mesh1.getGlobalNodeId( fid1, i );
     x1[i] = mesh1.getPosition()[0][nodeId_1];
     y1[i] = mesh1.getPosition()[1][nodeId_1];
     if ( dim == 3 ) {
@@ -1108,7 +1108,7 @@ TRIBOL_HOST_DEVICE inline bool CouplingScheme::Viewer::pruneMethodFacePair( cons
   }
 
   for ( int i = 0; i < mesh2.numberOfNodesPerElement(); ++i ) {
-    const int nodeId_2 = mesh2.getGlobalNodeId( fid2, i );
+    const IndexT nodeId_2 = mesh2.getGlobalNodeId( fid2, i );
     x2[i] = mesh2.getPosition()[0][nodeId_2];
     y2[i] = mesh2.getPosition()[1][nodeId_2];
     if ( dim == 3 ) {
@@ -1116,7 +1116,8 @@ TRIBOL_HOST_DEVICE inline bool CouplingScheme::Viewer::pruneMethodFacePair( cons
     }
   }
 
-  RealT nrml[max_dim], cx[max_dim];
+  RealT nrml[max_dim]{};
+  RealT cx[max_dim]{};
 
   switch ( m_contact_method ) {
     case ALIGNED_MORTAR:
