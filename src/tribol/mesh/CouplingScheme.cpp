@@ -1214,13 +1214,24 @@ int CouplingScheme::apply( int cycle, RealT t, RealT stage_dt, RealT& dt )
   // appropriate physics in the normal and tangential directions.
   int err = ApplyInterfacePhysics( this, cycle, t );
 
-  SLIC_WARNING_IF( err != 0, "CouplingScheme::apply(): error in ApplyInterfacePhysics for " << "coupling scheme, "
-                                                                                            << this->m_id << "." );
-
   // compute Tribol timestep vote on the coupling scheme
   if ( err == 0 && getNumActivePairs() > 0 ) {
     computeTimeStep( dt );
   }
+
+#ifdef TRIBOL_USE_MPI
+  int mpi_initialized = 0;
+  MPI_Initialized( &mpi_initialized );
+  if ( mpi_initialized ) {
+    MPI_Allreduce( MPI_IN_PLACE, &err, 1, MPI_INT, MPI_MAX, getProblemComm() );
+    if ( m_parameters.enable_timestep_vote ) {
+      MPI_Allreduce( MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, getProblemComm() );
+    }
+  }
+#endif
+
+  SLIC_WARNING_IF( err != 0, "CouplingScheme::apply(): error in ApplyInterfacePhysics for " << "coupling scheme, "
+                                                                                            << this->m_id << "." );
 
   // write contact plane output if it is on host
   if ( !isOnDevice( this->m_exec_mode ) ) {

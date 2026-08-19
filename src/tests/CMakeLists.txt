@@ -70,6 +70,27 @@ endforeach()
 #------------------------------------------------------------------------------
 if ( TRIBOL_USE_MPI )
 
+  set( mpi_tests
+       tribol_timestep_vote_mpi.cpp
+     )
+
+  foreach( test ${mpi_tests} )
+
+    get_filename_component( test_name ${test} NAME_WE )
+
+    blt_add_executable(
+      NAME ${test_name}_test
+      SOURCES ${test}
+      OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+      DEPENDS_ON tribol gtest ${tribol_device_depends}
+      FOLDER tribol/tests )
+
+    blt_add_test( NAME ${test_name}
+                  COMMAND ${test_name}_test
+                  NUM_MPI_TASKS 2 )
+
+  endforeach()
+
   set( shared_tests
        shared_par_sparse_mat.cpp
        shared_par_vector.cpp
