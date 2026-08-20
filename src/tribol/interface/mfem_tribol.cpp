@@ -14,7 +14,6 @@
 
 #include "tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/physics/ContactFormulationFactory.hpp"
 
 namespace tribol {
 
@@ -293,6 +292,7 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
   auto& cs = CouplingSchemeManager::getInstance().at( cs_id );
   cs.setMPIComm( mesh.GetComm() );
   if ( contact_method == ENERGY_MORTAR && enforcement_method == LAGRANGE_MULTIPLIER ) {
+    cs.getParameters().enforcement_location = EnforcementLocation::Nodal;
     SLIC_WARNING_ROOT(
         "ENERGY_MORTAR with Lagrange multiplier enforcement is experimental, has no testing, and has "
         "no support from Tribol developers." );
@@ -338,7 +338,7 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
   }
   cs.setMfemMeshData( std::move( mfem_data ) );
   if ( contact_method == ENERGY_MORTAR ) {
-    cs.setContactFormulation( createContactFormulation( &cs ) );
+    cs.updateContactFormulation();
   }
 }
 

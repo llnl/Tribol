@@ -26,6 +26,7 @@
 #include "axom/slic.hpp"
 
 // C/C++ includes
+
 #include <string>
 #include <unordered_map>
 #include <fstream>
@@ -169,6 +170,20 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac )
   cs->getParameters().timestep_pen_frac = frac;
 
 }  // end setTimestepPenFrac()
+
+//------------------------------------------------------------------------------
+void setEnforcementLocation( IndexT cs_id, EnforcementLocation location )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnforcementLocation(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  cs->getParameters().enforcement_location = location;
+
+  // Automatically rebuild the formulation to reflect the new setting
+  cs->updateContactFormulation();
+}
 
 //------------------------------------------------------------------------------
 void setTimestepScale( IndexT cs_id, RealT scale )
