@@ -292,6 +292,7 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
   auto& cs = CouplingSchemeManager::getInstance().at( cs_id );
   cs.setMPIComm( mesh.GetComm() );
   if ( contact_method == ENERGY_MORTAR && enforcement_method == LAGRANGE_MULTIPLIER ) {
+    cs.getParameters().enforcement_location = EnforcementLocation::Nodal;
     SLIC_WARNING_ROOT(
         "ENERGY_MORTAR with Lagrange multiplier enforcement is experimental, has no testing, and has "
         "no support from Tribol developers." );

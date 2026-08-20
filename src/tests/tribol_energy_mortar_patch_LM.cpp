@@ -195,7 +195,6 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
                                         tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
                                         tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID );
     tribol::setLagrangeMultiplierOptions( cs_id, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN );
-    tribol::setEnergyMortarEnforcementOption( cs_id, tribol::EnergyMortarEnforcementOption::NodalGap );
 
     auto& pressure = tribol::getMfemPressure( cs_id );
     auto& contact_fes = *pressure.ParFESpace();

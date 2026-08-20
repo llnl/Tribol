@@ -172,14 +172,14 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac )
 }  // end setTimestepPenFrac()
 
 //------------------------------------------------------------------------------
-void setEnergyMortarEnforcementOption( IndexT cs_id, EnergyMortarEnforcementOption mode )
+void setEnforcementLocation( IndexT cs_id, EnforcementLocation location )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
 
-  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarEnforcementOption(): call tribol::registerCouplingScheme() "
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnforcementLocation(): call tribol::registerCouplingScheme() "
                                << "prior to calling this routine." );
 
-  cs->getParameters().energy_mortar_enforcement_option = mode;
+  cs->getParameters().enforcement_location = location;
 
   // Automatically rebuild the formulation to reflect the new setting
   cs->updateContactFormulation();

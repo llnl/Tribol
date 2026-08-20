@@ -123,15 +123,6 @@ enum ContactMethod  // all mortar methods go first
 };
 
 /*!
- * \brief Enumerates penalty enforcement options for ENERGY_MORTAR
- */
-enum class EnergyMortarEnforcementOption
-{
-  NodalGap,           ///! Penalize assembled nodal gaps
-  QuadraturePointGap  ///! Penalize gaps independently at quadrature points
-};
-
-/*!
  * \brief Enumerates the available contact model options.
  *
  * The contact model enumerates interface constitutive modeling options.
@@ -162,6 +153,15 @@ enum EnforcementMethod
   LAGRANGE_MULTIPLIER,  ///! Lagrange multiplier with system output
   NULL_ENFORCEMENT,     ///! Null enforcement, for use with ContactMethod = MORTAR_WEIGHTS
   NUM_ENFORCEMENT_METHODS
+};
+
+/*!
+ * \brief Enumerates where contact constraints are enforced
+ */
+enum class EnforcementLocation
+{
+  Nodal,           ///! Enforce contact using assembled nodal gaps
+  QuadraturePoint  ///! Enforce contact independently at quadrature points
 };
 
 /*!
@@ -505,8 +505,8 @@ struct Parameters {
   // Note, auto-contact will require registration of element thicknesses.
   bool auto_contact_check = false;  ///! True if auto-contact checks should be enabled
 
-  EnergyMortarEnforcementOption energy_mortar_enforcement_option =
-      EnergyMortarEnforcementOption::QuadraturePointGap;  ///! Enforcement mode used by ENERGY_MORTAR
+  EnforcementLocation enforcement_location =
+      EnforcementLocation::QuadraturePoint;  ///! Defaults to quadrature-point enforcement
 };
 
 }  // namespace tribol

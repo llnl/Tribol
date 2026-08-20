@@ -17,13 +17,15 @@ namespace tribol {
 namespace {
 
 // This MUST match what the ContactParams struct has in EnergyMortarAdapter
-// Theese had to be saved locally in order for enzyme to work correctly
+// These had to be saved locally in order for enzyme to work correctly
 struct KernelParams {
   int N{ 3 };         // No. of quadrature points
   double del{ 0.1 };  // Smoothing parameter
   double k{ 1.0 };    // Penalty stiffness
 };
 
+// Return the line-element mapping Jacobian. Local edge coordinates span [-0.5, 0.5], so the Jacobian is the physical
+// length of the segment from A0 to A1.
 TRIBOL_ENZYME_INLINE double line_jacobian( const double* A0, const double* A1 )
 {
   return std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );

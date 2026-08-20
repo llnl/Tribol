@@ -349,12 +349,12 @@ TEST_F( ParSparseMatTest, Elimination )
 
   // Eliminate row 0 (globally)
   // Determine if I own row 0
-  mfem::Array<int> rows_to_elim;
+  mfem::Array<int> indices_to_elim;
   int row_starts_idx = HYPRE_AssumedPartitionCheck() ? 0 : rank;
   if ( row_starts[row_starts_idx] == 0 ) {
-    rows_to_elim.Append( 0 );
+    indices_to_elim.Append( 0 );
   }
-  A.eliminateRows( rows_to_elim );
+  A.eliminateRows( indices_to_elim );
 
   // Check if row 0 is identity (or zero with diagonal 1)
   // Diagonal matrix means we can just check multiplication
@@ -378,7 +378,7 @@ TEST_F( ParSparseMatTest, Elimination )
   }
 
   A = shared::ParSparseMat::diagonalMatrix( MPI_COMM_WORLD, 10, row_starts, 3.0 );
-  shared::ParSparseMat Ae = A.eliminateRowsCols( rows_to_elim );
+  shared::ParSparseMat Ae = A.eliminateRowsCols( indices_to_elim );
   x.fill( 1.0 );
   y = A * x;
   shared::ParVector ye = Ae * x;

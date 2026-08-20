@@ -31,31 +31,23 @@ namespace tribol {
  * `G = d(g_tilde)/dx`.
  */
 
-template <template <typename> class EnforcementPolicy>
+template <template <typename> class EnforcementLocation>
 class EnergyMortarAdapter;
 
+/**
+ * @brief ENERGY_MORTAR location policy that assembles constraints at submesh nodes
+ *
+ * @tparam Adapter EnergyMortarAdapter specialization using this location
+ */
 template <typename Adapter>
-class NodalGapEnforcement : public ContactFormulation {
- protected:
-  shared::ParVector g_tilde_vec_;
-  shared::ParVector A_vec_;
-  shared::ParVector gap_vec_;
-  mutable shared::ParSparseMat dg_tilde_dx_;
-  shared::ParSparseMat dA_dx_;
-  shared::ParVector pressure_vec_;
-
-  void init( Adapter* adapter );
-  static void updateNodalGaps( Adapter* adapter );
-  static void updateNodalForces( Adapter* adapter );
-
-  static shared::ParSparseMat computeDfDxSecondDerivativesLM( Adapter* adapter,
-                                                              const mfem::GridFunction& redecomp_lambda );
-  static shared::ParSparseMat computeDfDxSecondDerivativesPenalty( Adapter* adapter,
-                                                                   const mfem::GridFunction& redecomp_pressure,
-                                                                   const mfem::GridFunction& redecomp_g_tilde,
-                                                                   const mfem::GridFunction& redecomp_A );
-
+class Nodal : public ContactFormulation {
  public:
+  /** @brief Assemble nodal gaps, tributary areas, and their derivatives. */
+  void updateNodalGaps() override;
+
+  /** @brief Assemble nodal contact forces and their derivatives. */
+  void updateNodalForces() override;
+
   const mfem::HypreParVector& getMfemGap() const override
   {
     return static_cast<const Adapter*>( this )->use_penalty_ ? gap_vec_.get() : g_tilde_vec_.get();
@@ -66,18 +58,73 @@ class NodalGapEnforcement : public ContactFormulation {
     return std::unique_ptr<mfem::HypreParMatrix>( dg_tilde_dx_.release() );
   }
   std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const override;
+
+ protected:
+  shared::ParVector g_tilde_vec_;             ///< Weighted nodal gap on the dual submesh.
+  shared::ParVector A_vec_;                   ///< Nodal tributary area on the dual submesh.
+  shared::ParVector gap_vec_;                 ///< Area-normalized nodal gap on the dual submesh.
+  mutable shared::ParSparseMat dg_tilde_dx_;  ///< Derivative of weighted gap with respect to parent coordinates.
+  shared::ParSparseMat dA_dx_;                ///< Derivative of tributary area with respect to parent coordinates.
+  shared::ParVector pressure_vec_;            ///< Penalty pressure or Lagrange multiplier on the dual submesh.
+
+  /**
+   * @brief Allocate and zero the dual submesh field used for penalty pressure or the Lagrange multiplier
+   *
+   * @param adapter ENERGY_MORTAR adapter providing the submesh finite element space
+   */
+  void init( Adapter* adapter );
+
+  /**
+   * @brief Assemble the LM force Jacobian terms involving second derivatives of the weighted gap
+   *
+   * The weighted-gap Hessians are scaled by the redecomposed Lagrange multiplier field and assembled on the parent
+   * displacement true-dofs.
+   *
+   * @param adapter ENERGY_MORTAR adapter containing the interface pairs and derivative evaluator
+   * @param redecomp_lambda Lagrange multiplier field on the redecomposed contact mesh
+   * @return Assembled parent displacement true-dof matrix
+   */
+  static shared::ParSparseMat computeDfDxSecondDerivativesLM( Adapter* adapter,
+                                                              const mfem::GridFunction& redecomp_lambda );
+
+  /**
+   * @brief Assemble the penalty force Jacobian terms involving second derivatives of gap and area
+   *
+   * The weighted-gap and tributary-area Hessians are scaled by the redecomposed pressure, weighted gap, and area fields
+   * and assembled on the parent displacement true-dofs.
+   *
+   * @param adapter ENERGY_MORTAR adapter containing the interface pairs and derivative evaluator
+   * @param redecomp_pressure Penalty pressure field on the redecomposed contact mesh
+   * @param redecomp_g_tilde Weighted-gap field on the redecomposed contact mesh
+   * @param redecomp_A Tributary-area field on the redecomposed contact mesh
+   * @return Assembled parent displacement true-dof matrix
+   */
+  static shared::ParSparseMat computeDfDxSecondDerivativesPenalty( Adapter* adapter,
+                                                                   const mfem::GridFunction& redecomp_pressure,
+                                                                   const mfem::GridFunction& redecomp_g_tilde,
+                                                                   const mfem::GridFunction& redecomp_A );
 };
 
+/**
+ * @brief ENERGY_MORTAR location policy that evaluates penalty response independently at quadrature points
+ *
+ * @tparam Adapter EnergyMortarAdapter specialization using this location
+ */
 template <typename Adapter>
-class QuadraturePointGapEnforcement : public ContactFormulation {
+class QuadraturePoint : public ContactFormulation {
+ public:
+  /** @brief No-op because this location does not assemble nodal gaps. */
+  void updateNodalGaps() override {}
+
+  /** @brief Assemble penalty force and stiffness directly at quadrature points. */
+  void updateNodalForces() override;
+
  protected:
   void init( Adapter* /*adapter*/ ) {}
-  static void updateNodalGaps( Adapter* /*adapter*/ ) {}
-  static void updateNodalForces( Adapter* adapter );
 };
 
-template <template <typename> class EnforcementPolicy>
-class EnergyMortarAdapter : public EnforcementPolicy<EnergyMortarAdapter<EnforcementPolicy>> {
+template <template <typename> class EnforcementLocation>
+class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<EnforcementLocation>> {
  public:
   /**
    * @brief Construct a new EnergyMortarAdapter
@@ -119,22 +166,6 @@ class EnergyMortarAdapter : public EnforcementPolicy<EnergyMortarAdapter<Enforce
    * pairs in updateNodalGaps() and updateNodalForces().
    */
   void updateIntegrationRule() override;
-
-  /**
-   * @brief Assemble nodal gaps and their derivatives
-   *
-   * In penalty mode this assembles both `g_tilde` and `g = g_tilde / A`. In LM mode the constraint is `g_tilde = 0` and
-   * derivatives are taken with respect to `g_tilde`.
-   */
-  void updateNodalGaps() override { EnforcementPolicy<EnergyMortarAdapter>::updateNodalGaps( this ); }
-
-  /**
-   * @brief Assemble nodal forces/residual and Jacobian contributions
-   *
-   * In penalty mode this computes pressure from the current gap and penalty stiffness. In LM mode this interprets the
-   * stored pressure vector as the Lagrange multiplier vector `lambda`.
-   */
-  void updateNodalForces() override { EnforcementPolicy<EnergyMortarAdapter>::updateNodalForces( this ); }
 
   /**
    * @brief Reports if formulation has a maximum allowable timestep calculation
@@ -202,7 +233,7 @@ class EnergyMortarAdapter : public EnforcementPolicy<EnergyMortarAdapter<Enforce
 
 #endif
 
-  friend EnforcementPolicy<EnergyMortarAdapter>;
+  friend EnforcementLocation<EnergyMortarAdapter>;
 
  private:
   /**

@@ -132,12 +132,14 @@ void setAutoContactPenScale( IndexT cs_id, RealT scale );
 void setTimestepPenFrac( IndexT cs_id, RealT frac );
 
 /*!
- * \brief Sets the enforcement mode for ENERGY_MORTAR
+ * \brief Sets where contact constraints are enforced
  *
  * \param [in] cs_id coupling scheme id
- * \param [in] mode enforcement option
+ * \param [in] location contact enforcement location
+ *
+ * \note Quadrature-point computation is only supported with penalty enforcement.
  */
-void setEnergyMortarEnforcementOption( IndexT cs_id, EnergyMortarEnforcementOption mode );
+void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
 
 /*!
  *

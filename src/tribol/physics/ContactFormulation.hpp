@@ -143,7 +143,7 @@ class ContactFormulation {
   }
 
   /**
-   * @brief Returns a reference to the MFEM dual t-dof vector
+   * @brief Returns a reference to the MFEM dual t-dof vector on the submesh
    *
    * @return Reference to the dual t-dof vector (e.g. pressure in penalty mode, or Lagrange multiplier in LM mode)
    */

@@ -11,10 +11,10 @@ namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
-template <template <typename> class EnforcementPolicy>
-EnergyMortarAdapter<EnforcementPolicy>::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
-                                                             MfemJacobianData& jac_data, double k, double delta, int N,
-                                                             bool enzyme_quadrature, bool use_penalty )
+template <template <typename> class EnforcementLocation>
+EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
+                                                               MfemJacobianData& jac_data, double k, double delta,
+                                                               int N, bool enzyme_quadrature, bool use_penalty )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
     : use_penalty_( use_penalty ), mesh_data_( mesh_data ), submesh_data_( submesh_data ), jac_data_( jac_data )
@@ -30,7 +30,7 @@ EnergyMortarAdapter<EnforcementPolicy>::EnergyMortarAdapter( MfemMeshData& mesh_
 }
 
 template <typename Adapter>
-void NodalGapEnforcement<Adapter>::init( Adapter* adapter )
+void Nodal<Adapter>::init( Adapter* adapter )
 {
   // Allocate the (pressure) true-dof vector early so host code can set it via tribol::getMfemContactPressure() after
   // the formulation is created. In penalty mode this is overwritten in updateNodalForces(); in LM mode it is treated as
@@ -40,40 +40,42 @@ void NodalGapEnforcement<Adapter>::init( Adapter* adapter )
   pressure_vec_.fill( 0.0 );
 }
 
-template <template <typename> class EnforcementPolicy>
-void EnergyMortarAdapter<EnforcementPolicy>::updateMeshes( MeshData& mesh1, MeshData& mesh2 )
+template <template <typename> class EnforcementLocation>
+void EnergyMortarAdapter<EnforcementLocation>::updateMeshes( MeshData& mesh1, MeshData& mesh2 )
 {
   // Maintain the same "flipped" convention as the constructor.
   mesh1_ = &mesh2;
   mesh2_ = &mesh1;
 }
 
-template <template <typename> class EnforcementPolicy>
-void EnergyMortarAdapter<EnforcementPolicy>::updateConstantPenaltyStiffness( double mesh1_penalty,
-                                                                             double mesh2_penalty )
+template <template <typename> class EnforcementLocation>
+void EnergyMortarAdapter<EnforcementLocation>::updateConstantPenaltyStiffness( double mesh1_penalty,
+                                                                               double mesh2_penalty )
 {
   use_penalty_ = true;
   params_.k = 0.5 * ( mesh1_penalty + mesh2_penalty );
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 }
 
-template <template <typename> class EnforcementPolicy>
-void EnergyMortarAdapter<EnforcementPolicy>::setInterfacePairs( ArrayT<InterfacePair>&& pairs, int /*check_level*/ )
+template <template <typename> class EnforcementLocation>
+void EnergyMortarAdapter<EnforcementLocation>::setInterfacePairs( ArrayT<InterfacePair>&& pairs, int /*check_level*/ )
 {
   // TODO: Consider design and how this interacts with binning and CG
   pairs_ = std::move( pairs );
 }
 
-template <template <typename> class EnforcementPolicy>
-void EnergyMortarAdapter<EnforcementPolicy>::updateIntegrationRule()
+template <template <typename> class EnforcementLocation>
+void EnergyMortarAdapter<EnforcementLocation>::updateIntegrationRule()
 {
   SLIC_WARNING_ROOT( "Update integration rule not implemmented for any method" );
   // TODO: break out integration rule as a separate method
 }
 
 template <typename Adapter>
-void NodalGapEnforcement<Adapter>::updateNodalGaps( Adapter* adapter )
+void Nodal<Adapter>::updateNodalGaps()
 {
+  auto* adapter = static_cast<Adapter*>( this );
+
   // NOTE: user should have called updateMfemParallelDecomposition() with updated coords before calling this
 
   // Tribol level data structures for storing gap, area, and derivatives
@@ -220,8 +222,10 @@ void NodalGapEnforcement<Adapter>::updateNodalGaps( Adapter* adapter )
 }
 
 template <typename Adapter>
-void NodalGapEnforcement<Adapter>::updateNodalForces( Adapter* adapter )
+void Nodal<Adapter>::updateNodalForces()
 {
+  auto* adapter = static_cast<Adapter*>( this );
+
   // NOTE: user should have called updateNodalGaps() with updated coords before calling this
 
   if ( adapter->use_penalty_ ) {
@@ -306,8 +310,8 @@ void NodalGapEnforcement<Adapter>::updateNodalForces( Adapter* adapter )
   adapter->df_dx_ += adapter->dg_tilde_dx_.transpose() * dp_dx;
 }
 
-template <template <typename> class EnforcementPolicy>
-RealT EnergyMortarAdapter<EnforcementPolicy>::computeTimeStep()
+template <template <typename> class EnforcementLocation>
+RealT EnergyMortarAdapter<EnforcementLocation>::computeTimeStep()
 {
   SLIC_INFO_ROOT( "computeTimestep() not implemented for EnergyMortar" );
   // TODO: implement timestep calculation
@@ -315,8 +319,8 @@ RealT EnergyMortarAdapter<EnforcementPolicy>::computeTimeStep()
 }
 
 template <typename Adapter>
-shared::ParSparseMat NodalGapEnforcement<Adapter>::computeDfDxSecondDerivativesLM(
-    Adapter* adapter, const mfem::GridFunction& redecomp_lambda )
+shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* adapter,
+                                                                     const mfem::GridFunction& redecomp_lambda )
 {
   const bool use_lor = ( adapter->mesh_data_.GetLORMesh() != nullptr );
   const auto& displacement_surface_fes =
@@ -388,9 +392,10 @@ shared::ParSparseMat NodalGapEnforcement<Adapter>::computeDfDxSecondDerivativesL
 }
 
 template <typename Adapter>
-shared::ParSparseMat NodalGapEnforcement<Adapter>::computeDfDxSecondDerivativesPenalty(
-    Adapter* adapter, const mfem::GridFunction& redecomp_pressure, const mfem::GridFunction& redecomp_g_tilde,
-    const mfem::GridFunction& redecomp_A )
+shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapter* adapter,
+                                                                          const mfem::GridFunction& redecomp_pressure,
+                                                                          const mfem::GridFunction& redecomp_g_tilde,
+                                                                          const mfem::GridFunction& redecomp_A )
 {
   const bool use_lor = ( adapter->mesh_data_.GetLORMesh() != nullptr );
   const auto& displacement_surface_fes =
@@ -474,8 +479,13 @@ shared::ParSparseMat NodalGapEnforcement<Adapter>::computeDfDxSecondDerivativesP
 }
 
 template <typename Adapter>
-void QuadraturePointGapEnforcement<Adapter>::updateNodalForces( Adapter* adapter )
+void QuadraturePoint<Adapter>::updateNodalForces()
 {
+  auto* adapter = static_cast<Adapter*>( this );
+
+  SLIC_ERROR_ROOT_IF( !adapter->use_penalty_,
+                      "ENERGY_MORTAR quadrature-point enforcement requires penalty enforcement." );
+
   const bool use_lor = ( adapter->mesh_data_.GetLORMesh() != nullptr );
   const auto& displacement_surface_fes =
       use_lor ? *adapter->mesh_data_.GetLORMeshFESpace() : adapter->mesh_data_.GetSubmeshFESpace();
@@ -567,14 +577,14 @@ void QuadraturePointGapEnforcement<Adapter>::updateNodalForces( Adapter* adapter
   adapter->df_dx_ = adapter->jac_data_.GetMfemJacobian( parent_fes, parent_fes, df_contribs );
 }
 
-template <template <typename> class EnforcementPolicy>
-std::unique_ptr<mfem::HypreParMatrix> EnergyMortarAdapter<EnforcementPolicy>::getMfemDfDx() const
+template <template <typename> class EnforcementLocation>
+std::unique_ptr<mfem::HypreParMatrix> EnergyMortarAdapter<EnforcementLocation>::getMfemDfDx() const
 {
   return std::unique_ptr<mfem::HypreParMatrix>( df_dx_.release() );
 }
 
 template <typename Adapter>
-std::unique_ptr<mfem::HypreParMatrix> NodalGapEnforcement<Adapter>::getMfemDfDp() const
+std::unique_ptr<mfem::HypreParMatrix> Nodal<Adapter>::getMfemDfDp() const
 {
   if ( static_cast<const Adapter*>( this )->use_penalty_ ) {
     return nullptr;
@@ -584,8 +594,8 @@ std::unique_ptr<mfem::HypreParMatrix> NodalGapEnforcement<Adapter>::getMfemDfDp(
   return std::unique_ptr<mfem::HypreParMatrix>( df_dlambda.release() );
 }
 
-template class EnergyMortarAdapter<NodalGapEnforcement>;
-template class EnergyMortarAdapter<QuadraturePointGapEnforcement>;
+template class EnergyMortarAdapter<Nodal>;
+template class EnergyMortarAdapter<QuadraturePoint>;
 
 #endif  // TRIBOL_USE_ENZYME
 

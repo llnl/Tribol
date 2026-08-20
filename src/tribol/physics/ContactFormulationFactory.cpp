@@ -43,14 +43,15 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "ENERGY_MORTAR requires MFEM submesh data." );
     SLIC_ERROR_ROOT_IF( !cs->hasMfemJacobianData(), "ENERGY_MORTAR requires MFEM Jacobian data." );
 
-    if ( cs->getParameters().energy_mortar_enforcement_option == EnergyMortarEnforcementOption::QuadraturePointGap ) {
-      return std::make_unique<EnergyMortarAdapter<QuadraturePointGapEnforcement>>(
-          *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), k, delta, N, enzyme_quadrature,
-          use_penalty );
+    const auto enforcement_location = cs->getParameters().enforcement_location;
+    if ( enforcement_location == EnforcementLocation::QuadraturePoint ) {
+      return std::make_unique<EnergyMortarAdapter<QuadraturePoint>>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
+                                                                     *cs->getMfemJacobianData(), k, delta, N,
+                                                                     enzyme_quadrature, use_penalty );
     } else {
-      return std::make_unique<EnergyMortarAdapter<NodalGapEnforcement>>(
-          *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), k, delta, N, enzyme_quadrature,
-          use_penalty );
+      return std::make_unique<EnergyMortarAdapter<Nodal>>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
+                                                           *cs->getMfemJacobianData(), k, delta, N, enzyme_quadrature,
+                                                           use_penalty );
     }
 #else
     SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );

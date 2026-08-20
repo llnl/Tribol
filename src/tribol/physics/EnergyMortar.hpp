@@ -12,30 +12,37 @@ namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
-// EnergyMortar uses a 3-point Gauss-Legendre quad rule
+/// Stores quadrature-point locations and weights for the supported Gauss-Legendre rule.
 struct QuadPoints {
-  std::array<double, 3> qp;  // qp locations
-  std::array<double, 3> w;   // weights
+  std::array<double, 3> qp;  ///< Quadrature-point locations in the local coordinate of the integration edge.
+  std::array<double, 3> w;   ///< Quadrature weights mapped to the local integration interval.
 };
 
+/// Parameters controlling ENERGY_MORTAR contact evaluation.
 struct ContactParams {
-  double del;              // Smoothing Parameter
-  double k;                // Penalty
-  int N;                   // Quadrature Points
-  bool enzyme_quadrature;  // Determines how enzyming is performed (default = True)
+  double del;              ///< Smoothing length used for integration bounds.
+  double k;                ///< Penalty stiffness.
+  int N;                   ///< Number of quadrature points.
+  bool enzyme_quadrature;  ///< Whether Enzyme differentiates the quadrature construction.
 };
 
 /// Stores quadrature-point penalty energy derivatives for one interface pair.
 struct QuadraturePointPenaltyData {
-  double energy{ 0.0 };
-  std::array<double, 8> force{};
-  std::array<double, 64> stiffness{};
+  static constexpr int dim = 2;                 ///< Spatial dimension.
+  static constexpr int max_nodes_per_elem = 2;  ///< Maximum nodes on each line element.
+  static constexpr int pair_size = 2;           ///< Number of elements in an interface pair.
+  static constexpr int num_force_dofs = dim * max_nodes_per_elem * pair_size;  ///< Pair coordinate degrees of freedom.
+  static constexpr int num_stiffness_entries = num_force_dofs * num_force_dofs;  ///< Flattened stiffness size.
+
+  double energy{ 0.0 };                                   ///< Penalty energy for the interface pair.
+  std::array<double, num_force_dofs> force{};             ///< Derivative with respect to pair coordinates.
+  std::array<double, num_stiffness_entries> stiffness{};  ///< Flattened force derivative matrix.
 };
 
-// Weighted gap and trib area
+/// Stores weighted nodal gaps and tributary areas for one interface pair.
 struct NodalContactData {
-  std::array<double, 2> AI;       // Trib area
-  std::array<double, 2> g_tilde;  // Weighted gap
+  std::array<double, 2> AI;       ///< Tributary areas for the two integration-edge nodes.
+  std::array<double, 2> g_tilde;  ///< Weighted gaps for the two integration-edge nodes.
 };
 
 /// Stores finite-difference and analytical derivative data for validation tests.
@@ -70,9 +77,10 @@ struct FiniteDiffResult {
   double g_tilde2_baseline{ 0.0 };
 };
 
+/// Stores fixed quadrature data passed to differentiated kernels.
 struct Gparams {
-  std::array<double, 3> qp;
-  std::array<double, 3> w;
+  std::array<double, 3> qp;  ///< Quadrature-point locations in the integration-edge local coordinate.
+  std::array<double, 3> w;   ///< Quadrature weights mapped to the local integration interval.
 };
 
 /// Provides smoothing operations for the Energy Mortar contact formulation.
