@@ -540,6 +540,37 @@ void d2_kernel( const double* x, const KernelParams* kp, double* H )
   }
 }
 
+TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double xiA, double w, const double* A0,
+                                                         const double* A1, const double* B0, const double* B1,
+                                                         const double* nB, double eta, double penalty, double J )
+{
+  const double N1 = 0.5 - xiA;
+  const double N2 = 0.5 + xiA;
+  const double x1x = N1 * A0[0] + N2 * A1[0];
+  const double x1y = N1 * A0[1] + N2 * A1[1];
+
+  const double tBx = B1[0] - B0[0];
+  const double tBy = B1[1] - B0[1];
+  const double dxB = x1x - B0[0];
+  const double dyB = x1y - B0[1];
+  const double det = tBx * nB[1] - tBy * nB[0];
+
+  double x2x = x1x;
+  double x2y = x1y;
+  if ( std::abs( det ) >= 1e-12 ) {
+    const double alpha = ( dxB * nB[1] - dyB * nB[0] ) / det;
+    x2x = B0[0] + alpha * tBx;
+    x2y = B0[1] + alpha * tBy;
+  }
+
+  const double dx = x1x - x2x;
+  const double dy = x1y - x2y;
+  const double gn = -( dx * nB[0] + dy * nB[1] );
+  const double gap = gn * eta;
+
+  return gap < 0.0 ? 0.5 * penalty * gap * gap * w * J : 0.0;
+}
+
 TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams* kp, double* energy )
 {
   double A0[2] = { x[0], x[1] };
@@ -568,21 +599,9 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   const double J = line_jacobian( A0, A1 );
 
   double value = 0.0;
-  for ( int i = 0; i < kp->N; ++i ) {
-    double x1[2];
-    iso_map( A0, A1, qp.qp[i], x1 );
-
-    double x2[2];
-    find_intersection( B0, B1, x1, nB, x2 );
-
-    const double dx = x1[0] - x2[0];
-    const double dy = x1[1] - x2[1];
-    const double gn = -( dx * nB[0] + dy * nB[1] );
-    const double gap = gn * eta;
-    if ( gap < 0.0 ) {
-      value += 0.5 * kp->k * gap * gap * qp.w[i] * J;
-    }
-  }
+  value += qp_penalty_kernel_qp_energy( qp.qp[0], qp.w[0], A0, A1, B0, B1, nB, eta, kp->k, J );
+  value += qp_penalty_kernel_qp_energy( qp.qp[1], qp.w[1], A0, A1, B0, B1, nB, eta, kp->k, J );
+  value += qp_penalty_kernel_qp_energy( qp.qp[2], qp.w[2], A0, A1, B0, B1, nB, eta, kp->k, J );
 
   *energy = value;
 }
