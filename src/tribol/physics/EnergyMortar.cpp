@@ -540,9 +540,9 @@ void d2_kernel( const double* x, const KernelParams* kp, double* H )
   }
 }
 
-TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double xiA, double w, const double* A0,
-                                                         const double* A1, const double* B0, const double* B1,
-                                                         const double* nB, double eta, double penalty, double J )
+TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double xiA, double w, const double* A0, const double* A1,
+                                                         const double* B0, const double* B1, const double* nB,
+                                                         double eta, double penalty, double J )
 {
   const double N1 = 0.5 - xiA;
   const double N2 = 0.5 + xiA;
