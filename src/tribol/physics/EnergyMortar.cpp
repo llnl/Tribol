@@ -44,7 +44,7 @@ TRIBOL_ENZYME_INLINE void find_normal( const double* coord1, const double* coord
 }
 
 // Gets the respective gauss-legendre nodes dependant on quadrature order
-TRIBOL_ENZYME_INLINE void determine_legendre_nodes_raw( int N, double* x )
+TRIBOL_ENZYME_INLINE void determine_legendre_nodes( int N, double* x )
 {
   if ( N == 1 ) {
     x[0] = 0.0;
@@ -78,7 +78,7 @@ TRIBOL_ENZYME_INLINE void determine_legendre_nodes_raw( int N, double* x )
 }
 
 // Gets the respective gauss-legendre weights dependant on quadrature order
-TRIBOL_ENZYME_INLINE void determine_legendre_weights_raw( int N, double* W )
+TRIBOL_ENZYME_INLINE void determine_legendre_weights( int N, double* W )
 {
   if ( N == 1 ) {
     W[0] = 2.0;
@@ -105,13 +105,13 @@ TRIBOL_ENZYME_INLINE void determine_legendre_weights_raw( int N, double* W )
   }
 }
 
-TRIBOL_ENZYME_INLINE void compute_quadrature_raw( const double* xi_bounds, int N, QuadPoints* out )
+TRIBOL_ENZYME_INLINE void compute_quadrature( const double* xi_bounds, int N, QuadPoints* out )
 {
   double qpoints[3] = { 0.0, 0.0, 0.0 };
   double weights[3] = { 0.0, 0.0, 0.0 };
 
-  determine_legendre_nodes_raw( N, qpoints );
-  determine_legendre_weights_raw( N, weights );
+  determine_legendre_nodes( N, qpoints );
+  determine_legendre_weights( N, weights );
 
   const double xi_min = xi_bounds[0];
   const double xi_max = xi_bounds[1];
@@ -225,7 +225,7 @@ TRIBOL_ENZYME_INLINE void get_projections( const double* A0, const double* A1, c
   projections[1] = xi_max;
 }
 
-TRIBOL_ENZYME_INLINE void bounds_from_projections_raw( const double* projections, double del, double* bounds )
+TRIBOL_ENZYME_INLINE void bounds_from_projections( const double* projections, double del, double* bounds )
 {
   double xi_min = ( projections[0] < projections[1] ) ? projections[0] : projections[1];
   double xi_max = ( projections[0] > projections[1] ) ? projections[0] : projections[1];
@@ -247,7 +247,7 @@ TRIBOL_ENZYME_INLINE void bounds_from_projections_raw( const double* projections
   bounds[1] = xi_max;
 }
 
-TRIBOL_ENZYME_INLINE double smooth_bound_value_raw( double bound, double del )
+TRIBOL_ENZYME_INLINE double smooth_bound( double bound, double del )
 {
   const double xi = bound + 0.5;
   double xi_hat = 0.0;
@@ -270,10 +270,10 @@ TRIBOL_ENZYME_INLINE double smooth_bound_value_raw( double bound, double del )
   return xi_hat - 0.5;
 }
 
-TRIBOL_ENZYME_INLINE void smooth_bounds_raw( const double* bounds, double del, double* smooth_bounds )
+TRIBOL_ENZYME_INLINE void smooth_bounds( const double* bounds, double del, double* smooth_bounds )
 {
-  smooth_bounds[0] = smooth_bound_value_raw( bounds[0], del );
-  smooth_bounds[1] = smooth_bound_value_raw( bounds[1], del );
+  smooth_bounds[0] = smooth_bound( bounds[0], del );
+  smooth_bounds[1] = smooth_bound( bounds[1], del );
 }
 
 // Integrate the nodal smoothed gap and tributary area contributions over edge A.
@@ -477,11 +477,11 @@ static void kernel_out_enzyme( const double* x, const void* kp_void, double* out
 
   // Recompute the integration bounds and quadrature from the current geometry.
   double bounds[2];
-  bounds_from_projections_raw( projs, kp->del, bounds );
+  bounds_from_projections( projs, kp->del, bounds );
   double xi_bounds[2];
-  smooth_bounds_raw( bounds, kp->del, xi_bounds );
+  smooth_bounds( bounds, kp->del, xi_bounds );
   QuadPoints qp;
-  compute_quadrature_raw( xi_bounds, kp->N, &qp );
+  compute_quadrature( xi_bounds, kp->N, &qp );
 
   Gparams gp;
   for ( std::size_t i = 0; i < qp.qp.size(); ++i ) {
@@ -540,31 +540,19 @@ void d2_kernel( const double* x, const KernelParams* kp, double* H )
   }
 }
 
+// Isolate loop-local arrays to avoid a leak in Enzyme's reverse-mode tape.
 TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double xiA, double w, const double* A0, const double* A1,
                                                          const double* B0, const double* B1, const double* nB,
                                                          double eta, double penalty, double J )
 {
-  const double N1 = 0.5 - xiA;
-  const double N2 = 0.5 + xiA;
-  const double x1x = N1 * A0[0] + N2 * A1[0];
-  const double x1y = N1 * A0[1] + N2 * A1[1];
+  double x1[2];
+  iso_map( A0, A1, xiA, x1 );
 
-  const double tBx = B1[0] - B0[0];
-  const double tBy = B1[1] - B0[1];
-  const double dxB = x1x - B0[0];
-  const double dyB = x1y - B0[1];
-  const double det = tBx * nB[1] - tBy * nB[0];
+  double x2[2];
+  find_intersection( B0, B1, x1, nB, x2 );
 
-  double x2x = x1x;
-  double x2y = x1y;
-  if ( std::abs( det ) >= 1e-12 ) {
-    const double alpha = ( dxB * nB[1] - dyB * nB[0] ) / det;
-    x2x = B0[0] + alpha * tBx;
-    x2y = B0[1] + alpha * tBy;
-  }
-
-  const double dx = x1x - x2x;
-  const double dy = x1y - x2y;
+  const double dx = x1[0] - x2[0];
+  const double dy = x1[1] - x2[1];
   const double gn = -( dx * nB[0] + dy * nB[1] );
   const double gap = gn * eta;
 
@@ -581,11 +569,11 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   double projs[2] = { 0.0, 0.0 };
   get_projections( A0, A1, B0, B1, projs );
   double bounds[2];
-  bounds_from_projections_raw( projs, kp->del, bounds );
+  bounds_from_projections( projs, kp->del, bounds );
   double xi_bounds[2];
-  smooth_bounds_raw( bounds, kp->del, xi_bounds );
+  smooth_bounds( bounds, kp->del, xi_bounds );
   QuadPoints qp;
-  compute_quadrature_raw( xi_bounds, kp->N, &qp );
+  compute_quadrature( xi_bounds, kp->N, &qp );
 
   double nB[2];
   find_normal( B0, B1, nB );
@@ -599,9 +587,9 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   const double J = line_jacobian( A0, A1 );
 
   double value = 0.0;
-  value += qp_penalty_kernel_qp_energy( qp.qp[0], qp.w[0], A0, A1, B0, B1, nB, eta, kp->k, J );
-  value += qp_penalty_kernel_qp_energy( qp.qp[1], qp.w[1], A0, A1, B0, B1, nB, eta, kp->k, J );
-  value += qp_penalty_kernel_qp_energy( qp.qp[2], qp.w[2], A0, A1, B0, B1, nB, eta, kp->k, J );
+  for ( int i = 0; i < kp->N; ++i ) {
+    value += qp_penalty_kernel_qp_energy( qp.qp[i], qp.w[i], A0, A1, B0, B1, nB, eta, kp->k, J );
+  }
 
   *energy = value;
 }
@@ -718,10 +706,24 @@ std::array<double, 2> EnergyMortarCalculator::projections( const InterfacePair& 
 TRIBOL_ENZYME_INLINE std::array<double, 2> ContactSmoothing::bounds_from_projections( const std::array<double, 2>& proj,
                                                                                       double del )
 {
-  const double projections[2] = { proj[0], proj[1] };
-  double bounds[2];
-  bounds_from_projections_raw( projections, del, bounds );
-  return { bounds[0], bounds[1] };
+  double xi_min = std::min( proj[0], proj[1] );
+  double xi_max = std::max( proj[0], proj[1] );
+
+  // Limit the integration interval to the extended range [-0.5 - del, 0.5 + del].
+  if ( xi_max < -0.5 - del ) {
+    xi_max = -0.5 - del;
+  }
+  if ( xi_min > 0.5 + del ) {
+    xi_min = 0.5 + del;
+  }
+  if ( xi_min < -0.5 - del ) {
+    xi_min = -0.5 - del;
+  }
+  if ( xi_max > 0.5 + del ) {
+    xi_max = 0.5 + del;
+  }
+
+  return { xi_min, xi_max };
 }
 
 // Smooth the integration bounds using a C1 ramp near the ends of edge A.
@@ -733,8 +735,32 @@ TRIBOL_ENZYME_INLINE std::array<double, 2> ContactSmoothing::smooth_bounds( cons
                                                                             double del )
 {
   std::array<double, 2> smooth_bounds;
-  const double bounds_raw[2] = { bounds[0], bounds[1] };
-  smooth_bounds_raw( bounds_raw, del, smooth_bounds.data() );
+  for ( int i = 0; i < 2; ++i ) {
+    double xi = 0.0;
+    double xi_hat = 0.0;
+
+    // Shift from the local coordinate interval [-0.5, 0.5] to [0, 1].
+    xi = bounds[i] + 0.5;
+    if ( del == 0.0 ) {
+      xi_hat = xi;
+    } else {
+      // Apply quadratic ramps near the endpoints and leave the interior unchanged.
+      if ( 0.0 - del <= xi && xi <= del ) {
+        xi_hat = ( 1.0 / ( 4 * del ) ) * ( xi * xi ) + 0.5 * xi + del / 4.0;
+      } else if ( ( 1.0 - del ) <= xi && xi <= 1.0 + del ) {
+        double b = -1.0 / ( 4.0 * del );
+        double c = 0.5 + 1.0 / ( 2.0 * del );
+        double d = 1.0 - del + ( 1.0 / ( 4.0 * del ) ) * pow( 1.0 - del, 2 ) - 0.5 * ( 1.0 - del ) -
+                   ( 1.0 - del ) / ( 2.0 * del );
+
+        xi_hat = b * xi * xi + c * xi + d;
+      } else if ( del <= xi && xi <= ( 1.0 - del ) ) {
+        xi_hat = xi;
+      }
+    }
+    // Shift the smoothed coordinate back to [-0.5, 0.5].
+    smooth_bounds[i] = xi_hat - 0.5;
+  }
 
   return smooth_bounds;
 }
@@ -744,8 +770,23 @@ TRIBOL_ENZYME_INLINE QuadPoints EnergyMortarCalculator::compute_quadrature( cons
                                                                             int N )
 {
   QuadPoints out;
-  const double bounds[2] = { xi_bounds[0], xi_bounds[1] };
-  compute_quadrature_raw( bounds, N, &out );
+
+  std::array<double, 3> qpoints;
+  std::array<double, 3> weights;
+
+  determine_legendre_nodes( N, qpoints.data() );
+  determine_legendre_weights( N, weights.data() );
+
+  const double xi_min = xi_bounds[0];
+  const double xi_max = xi_bounds[1];
+  // Map the reference quadrature rule to [xi_min, xi_max].
+  const double J = 0.5 * ( xi_max - xi_min );
+
+  for ( int i = 0; i < N; ++i ) {
+    out.qp[i] = 0.5 * ( xi_max - xi_min ) * qpoints[i] + 0.5 * ( xi_max + xi_min );
+    out.w[i] = weights[i] * J;
+  }
+
   return out;
 }
 
