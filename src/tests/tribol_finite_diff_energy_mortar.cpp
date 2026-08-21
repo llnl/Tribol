@@ -59,11 +59,13 @@ FiniteDiffResult EnergyMortarCalculator::validate_g_tilde( const InterfacePair& 
   auto viewer2 = mesh2.getView();
 
   auto projs0 = projections( pair, viewer1, viewer2 );
-  auto bounds0 = smoother_.bounds_from_projections( projs0, p_.del );
-  auto smooth_bounds0 = smoother_.smooth_bounds( bounds0, p_.del );
+  double bounds0[2];
+  smoother_.bounds_from_projections( projs0.data(), p_.del, bounds0 );
+  double smooth_bounds0[2];
+  smoother_.smooth_bounds( bounds0, p_.del, smooth_bounds0 );
   QuadPoints qp0;
   if ( !p_.enzyme_quadrature ) {
-    qp0 = compute_quadrature( smooth_bounds0, p_.N );
+    compute_quadrature( smooth_bounds0, p_.N, &qp0 );
   }
 
   auto [g1_base, g2_base] = eval_gtilde( pair, viewer1, viewer2 );
@@ -290,9 +292,11 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
   QuadPoints qp0;
   if ( !p_.enzyme_quadrature ) {
     auto projs0 = projections( pair, viewer1, viewer2 );
-    auto bounds0 = smoother_.bounds_from_projections( projs0, p_.del );
-    auto smooth_bounds0 = smoother_.smooth_bounds( bounds0, p_.del );
-    qp0 = compute_quadrature( smooth_bounds0, p_.N );
+    double bounds0[2];
+    smoother_.bounds_from_projections( projs0.data(), p_.del, bounds0 );
+    double smooth_bounds0[2];
+    smoother_.smooth_bounds( bounds0, p_.del, smooth_bounds0 );
+    compute_quadrature( smooth_bounds0, p_.N, &qp0 );
   }
 
   auto eval_from_offsets = [&]( const std::array<double, 8>& du ) -> std::pair<double, double> {
