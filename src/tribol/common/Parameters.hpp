@@ -156,6 +156,15 @@ enum EnforcementMethod
 };
 
 /*!
+ * \brief Enumerates where contact constraints are enforced
+ */
+enum class EnforcementLocation
+{
+  Nodal,           ///! Enforce contact using assembled nodal gaps
+  QuadraturePoint  ///! Enforce contact independently at quadrature points
+};
+
+/*!
  * \brief Enumerates the available spatial binning methods
  */
 enum BinningMethod
@@ -495,6 +504,9 @@ struct Parameters {
   // constituent face elements, then we don't consider the face-pair a contact candidate.
   // Note, auto-contact will require registration of element thicknesses.
   bool auto_contact_check = false;  ///! True if auto-contact checks should be enabled
+
+  EnforcementLocation enforcement_location =
+      EnforcementLocation::QuadraturePoint;  ///! Defaults to quadrature-point enforcement
 };
 
 }  // namespace tribol

@@ -132,6 +132,16 @@ void setAutoContactPenScale( IndexT cs_id, RealT scale );
 void setTimestepPenFrac( IndexT cs_id, RealT frac );
 
 /*!
+ * \brief Sets where contact constraints are enforced
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] location contact enforcement location
+ *
+ * \note Quadrature-point computation is only supported with penalty enforcement.
+ */
+void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
+
+/*!
  *
  * \brief sets the timestep scale factor applied to the timestep vote
  *

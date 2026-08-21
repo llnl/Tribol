@@ -39,7 +39,7 @@
  *   u_y(x,y) = eps_yy * y
  *   u_x(x,y) = eps_xx * x
  */
-class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>> {
+class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int, tribol::EnforcementLocation>> {
  protected:
   tribol::RealT max_disp_;
   double l2_err_vec_;
@@ -56,6 +56,7 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
   void SetUp() override
   {
     int ref_levels = std::get<0>( GetParam() );
+    tribol::EnforcementLocation enforcement_location = std::get<1>( GetParam() );
     int order = 1;
 
     auto mortar_attrs = std::set<int>( { 5 } );
@@ -175,7 +176,8 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int>>
     tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
                                         tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
                                         tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID );
-    tribol::setMfemKinematicConstantPenalty( cs_id, 10000.0, 10000.0 );
+    tribol::setEnforcementLocation( cs_id, enforcement_location );
+    tribol::setMfemKinematicConstantPenalty( cs_id, 100.0, 100.0 );
 
     mfem::Vector X( par_fe_space.GetTrueVSize() );
     X = 0.0;
@@ -356,7 +358,10 @@ TEST_P( MfemMortarEnergyPatchTest, check_patch_test )
   MPI_Barrier( MPI_COMM_WORLD );
 }
 
-INSTANTIATE_TEST_SUITE_P( tribol, MfemMortarEnergyPatchTest, testing::Values( std::make_tuple( 2 ) ) );
+INSTANTIATE_TEST_SUITE_P( tribol, MfemMortarEnergyPatchTest,
+                          testing::Combine( testing::Values( 2 ),
+                                            testing::Values( tribol::EnforcementLocation::Nodal,
+                                                             tribol::EnforcementLocation::QuadraturePoint ) ) );
 
 //------------------------------------------------------------------------------
 #include "axom/slic/core/SimpleLogger.hpp"

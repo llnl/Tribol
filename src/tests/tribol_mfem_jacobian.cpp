@@ -1053,6 +1053,7 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
   tribol::registerMfemCouplingScheme( cs_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs, nonmortar_attrs,
                                       tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::ENERGY_MORTAR,
                                       tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID );
+  tribol::setEnforcementLocation( cs_id, tribol::EnforcementLocation::QuadraturePoint );
 
   tribol::setPenaltyOptions( cs_id, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
   tribol::setMfemKinematicConstantPenalty( cs_id, 1.0, 1.0 );
