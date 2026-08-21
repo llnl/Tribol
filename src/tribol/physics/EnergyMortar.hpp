@@ -91,17 +91,15 @@ class ContactSmoothing {
  public:
   /// Clamp the projected overlap interval to the extended smoothing support.
   ///
-  /// The input `proj` contains the local projection bounds of edge B onto edge A.
-  /// The returned interval is restricted to the extended local range
-  /// `[-0.5 - del, 0.5 + del]`.
-  static std::array<double, 2> bounds_from_projections( const std::array<double, 2>& proj, double del );
+  /// The input `projections` contains the local projection bounds of edge B onto edge A.
+  /// The output `bounds` is restricted to the extended local range `[-0.5 - del, 0.5 + del]`.
+  static void bounds_from_projections( const double* projections, double del, double* bounds );
 
   /// Smooth the integration bounds using the smoothing length `del`.
   ///
-  /// The returned bounds are obtained by applying the endpoint smoothing map to
-  /// the clamped integration interval. When `del = 0`, the bounds are returned
-  /// without smoothing.
-  static std::array<double, 2> smooth_bounds( const std::array<double, 2>& bounds, double del );
+  /// The output `smooth_bounds` is obtained by applying the endpoint smoothing map to
+  /// the clamped integration interval. When `del = 0`, the bounds are unchanged.
+  static void smooth_bounds( const double* bounds, double del, double* smooth_bounds );
 };
 
 /// Evaluates Energy Mortar contact quantities for a single interface pair.
@@ -132,8 +130,8 @@ class EnergyMortarCalculator {
   ///
   /// The input bounds are local coordinates on edge A. The returned quadrature
   /// points and weights are mapped from the reference interval to
-  /// `[xi_bounds[0], xi_bounds[1]]`
-  static QuadPoints compute_quadrature( const std::array<double, 2>& xi_bounds, int N );
+  /// `[xi_bounds[0], xi_bounds[1]]` and written to `quadrature`.
+  static void compute_quadrature( const double* xi_bounds, int N, QuadPoints* quadrature );
 
   /// Compute the nodal smoothed gap integrals and tributary areas.
   ///
