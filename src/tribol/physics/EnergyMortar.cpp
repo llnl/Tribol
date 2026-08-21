@@ -207,6 +207,35 @@ TRIBOL_ENZYME_INLINE void get_projections( const double* A0, const double* A1, c
   projections[1] = xi_max;
 }
 
+// Isolate each endpoint to avoid incorrect loop-local tape reuse in Enzyme reverse mode.
+TRIBOL_ENZYME_INLINE double smooth_bound( double bound, double del )
+{
+  double xi = 0.0;
+  double xi_hat = 0.0;
+
+  // Shift from the local coordinate interval [-0.5, 0.5] to [0, 1].
+  xi = bound + 0.5;
+  if ( del == 0.0 ) {
+    xi_hat = xi;
+  } else {
+    // Apply quadratic ramps near the endpoints and leave the interior unchanged.
+    if ( 0.0 - del <= xi && xi <= del ) {
+      xi_hat = ( 1.0 / ( 4 * del ) ) * ( xi * xi ) + 0.5 * xi + del / 4.0;
+    } else if ( ( 1.0 - del ) <= xi && xi <= 1.0 + del ) {
+      double b = -1.0 / ( 4.0 * del );
+      double c = 0.5 + 1.0 / ( 2.0 * del );
+      double d = 1.0 - del + ( 1.0 / ( 4.0 * del ) ) * pow( 1.0 - del, 2 ) - 0.5 * ( 1.0 - del ) -
+                 ( 1.0 - del ) / ( 2.0 * del );
+
+      xi_hat = b * xi * xi + c * xi + d;
+    } else if ( del <= xi && xi <= ( 1.0 - del ) ) {
+      xi_hat = xi;
+    }
+  }
+  // Shift the smoothed coordinate back to [-0.5, 0.5].
+  return xi_hat - 0.5;
+}
+
 // Integrate the nodal smoothed gap and tributary area contributions over edge A.
 // The quadrature rule is supplied through gp, allowing this kernel to be reused
 // for both fixed-quadrature and geometry-dependent quadrature paths.
@@ -668,32 +697,8 @@ TRIBOL_ENZYME_INLINE void ContactSmoothing::bounds_from_projections( const doubl
 // of intergation that result after the quadratic ramping has been applied.
 TRIBOL_ENZYME_INLINE void ContactSmoothing::smooth_bounds( const double* bounds, double del, double* smooth_bounds )
 {
-  for ( int i = 0; i < 2; ++i ) {
-    double xi = 0.0;
-    double xi_hat = 0.0;
-
-    // Shift from the local coordinate interval [-0.5, 0.5] to [0, 1].
-    xi = bounds[i] + 0.5;
-    if ( del == 0.0 ) {
-      xi_hat = xi;
-    } else {
-      // Apply quadratic ramps near the endpoints and leave the interior unchanged.
-      if ( 0.0 - del <= xi && xi <= del ) {
-        xi_hat = ( 1.0 / ( 4 * del ) ) * ( xi * xi ) + 0.5 * xi + del / 4.0;
-      } else if ( ( 1.0 - del ) <= xi && xi <= 1.0 + del ) {
-        double b = -1.0 / ( 4.0 * del );
-        double c = 0.5 + 1.0 / ( 2.0 * del );
-        double d = 1.0 - del + ( 1.0 / ( 4.0 * del ) ) * pow( 1.0 - del, 2 ) - 0.5 * ( 1.0 - del ) -
-                   ( 1.0 - del ) / ( 2.0 * del );
-
-        xi_hat = b * xi * xi + c * xi + d;
-      } else if ( del <= xi && xi <= ( 1.0 - del ) ) {
-        xi_hat = xi;
-      }
-    }
-    // Shift the smoothed coordinate back to [-0.5, 0.5].
-    smooth_bounds[i] = xi_hat - 0.5;
-  }
+  smooth_bounds[0] = smooth_bound( bounds[0], del );
+  smooth_bounds[1] = smooth_bound( bounds[1], del );
 }
 
 // Build a three-point Gauss-Legendre quadrature rule over the local integration bounds.
