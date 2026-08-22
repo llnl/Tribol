@@ -10,6 +10,8 @@
 #include "tribol/physics/ContactFormulation.hpp"
 #include "tribol/physics/EnergyMortar.hpp"
 #include "tribol/mesh/MfemData.hpp"
+#include "tribol/mesh/CouplingScheme.hpp"
+#include "tribol/search/InterfacePairFinder.hpp"
 #include "tribol/common/Parameters.hpp"
 
 #include "mfem.hpp"
@@ -113,9 +115,6 @@ class Nodal : public ContactFormulation {
 template <typename Adapter>
 class QuadraturePoint : public ContactFormulation {
  public:
-  /** @brief No-op because this location does not assemble nodal gaps. */
-  void updateNodalGaps() override {}
-
   /** @brief Assemble penalty force and stiffness directly at quadrature points. */
   void updateNodalForces() override;
 
@@ -143,8 +142,9 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * mapping to a mortar side. To maintain that convention within Tribol, the adapter may internally flip mesh roles
    * relative to the order of the meshes provided here.
    */
-  EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k,
-                       double delta, int N, bool enzyme_quadrature, bool use_penalty = true );
+  EnergyMortarAdapter( CouplingScheme& coupling_scheme, MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
+                       MfemJacobianData& jac_data, double k, double delta, int N, bool enzyme_quadrature,
+                       bool use_penalty = true );
 
   /**
    * @brief Default destructor
@@ -159,20 +159,15 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    */
   void setInterfacePairs( ArrayT<InterfacePair>&& pairs, int check_level ) override;
 
+  /** @brief Update coarse-search pairs used by ENERGY_MORTAR. */
+  void updateSearch() override;
+
   /**
    * @brief Update internal integration rule data
    *
-   * @note This is currently a no-op. ENERGY_MORTAR directly assembles gap/force quantities over the stored interface
-   * pairs in updateNodalGaps() and updateNodalForces().
+   * Filters coarse-search pairs into the active pair list for the current update.
    */
   void updateIntegrationRule() override;
-
-  /**
-   * @brief Reports if formulation has a maximum allowable timestep calculation
-   *
-   * @return false
-   */
-  bool hasTimeStepCalculation() override { return false; }
 
   /**
    * @brief Compute the allowable timestep for this formulation
@@ -236,6 +231,18 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   friend EnforcementLocation<EnergyMortarAdapter>;
 
  private:
+  template <typename Func>
+  void forEachHostPair( Func&& func )
+  {
+    for ( const auto& pair : active_pairs_ ) {
+      func( pair );
+    }
+  }
+
+  IndexT pairCapacity() const { return active_pairs_.size(); }
+
+  CouplingScheme& coupling_scheme_;
+
   /**
    * @brief Controls penalty vs. Lagrange multiplier (LM) mode
    *
@@ -298,12 +305,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    */
   std::unique_ptr<EnergyMortarCalculator> evaluator_;
 
-  // Stored InterfacePairs
-
-  /**
-   * @brief Interface pairs used for the current update
-   */
-  ArrayT<InterfacePair> pairs_;
+  ContactPairRange coarse_pairs_;
+  ArrayT<ElementPair> active_pairs_;
 
   /**
    * @brief Contact constraint energy associated with the current state

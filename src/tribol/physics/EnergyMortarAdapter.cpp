@@ -5,19 +5,27 @@
 
 #include "tribol/physics/EnergyMortarAdapter.hpp"
 #include <axom/slic/interface/slic_macros.hpp>
+#include "tribol/common/LoopExec.hpp"
 #include "tribol/mesh/MfemData.hpp"
+#include "tribol/physics/SurfacePairFilter.hpp"
+#include "tribol/search/ContactPairAlgorithms.hpp"
 
 namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
 template <template <typename> class EnforcementLocation>
-EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
+EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( CouplingScheme& coupling_scheme, MfemMeshData& mesh_data,
+                                                               MfemSubmeshData& submesh_data,
                                                                MfemJacobianData& jac_data, double k, double delta,
                                                                int N, bool enzyme_quadrature, bool use_penalty )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
-    : use_penalty_( use_penalty ), mesh_data_( mesh_data ), submesh_data_( submesh_data ), jac_data_( jac_data )
+    : coupling_scheme_( coupling_scheme ),
+      use_penalty_( use_penalty ),
+      mesh_data_( mesh_data ),
+      submesh_data_( submesh_data ),
+      jac_data_( jac_data )
 {
   params_.k = k;
   params_.del = delta;
@@ -60,15 +68,66 @@ void EnergyMortarAdapter<EnforcementLocation>::updateConstantPenaltyStiffness( d
 template <template <typename> class EnforcementLocation>
 void EnergyMortarAdapter<EnforcementLocation>::setInterfacePairs( ArrayT<InterfacePair>&& pairs, int /*check_level*/ )
 {
-  // TODO: Consider design and how this interacts with binning and CG
-  pairs_ = std::move( pairs );
+  ArrayT<ElementPair> explicit_pairs( pairs.size(), pairs.size(), coupling_scheme_.getAllocatorId() );
+  auto input = pairs.view();
+  auto output = explicit_pairs.view();
+  forAllExec( coupling_scheme_.getExecutionMode(), pairs.size(), [input, output] TRIBOL_HOST_DEVICE( IndexT i ) {
+    output[i] = ElementPair( input[i].m_element_id1, input[i].m_element_id2 );
+  } );
+  coarse_pairs_ = std::move( explicit_pairs );
+  active_pairs_.clear();
+}
+
+template <template <typename> class EnforcementLocation>
+void EnergyMortarAdapter<EnforcementLocation>::updateSearch()
+{
+  auto& explicit_pairs = coupling_scheme_.getInterfacePairs();
+  if ( explicit_pairs.size() > 0 ) {
+    setInterfacePairs( std::move( explicit_pairs ), 0 );
+    return;
+  }
+  if ( coupling_scheme_.hasFixedBinning() ) {
+    return;
+  }
+
+  InterfacePairFinder pair_finder( coupling_scheme_.getBinningMethod(), coupling_scheme_.getExecutionMode(),
+                                   coupling_scheme_.getAllocatorId(),
+                                   coupling_scheme_.getEffectiveBinningProximityScale() );
+  coupling_scheme_.setBinningMethod( pair_finder.getBinningMethod() );
+  coarse_pairs_ = pair_finder.findInterfacePairs( coupling_scheme_.getMesh1(), coupling_scheme_.getMesh2() );
+  coupling_scheme_.setBinned( true );
+
+  if ( coupling_scheme_.getBinningMethod() == BINNING_CARTESIAN_PRODUCT ) {
+    // The coarse Cartesian range is static; updateIntegrationRule() still re-filters it every cycle.
+    coupling_scheme_.setFixedBinning( true );
+  }
+  coupling_scheme_.setFixedBinningPerCase();
 }
 
 template <template <typename> class EnforcementLocation>
 void EnergyMortarAdapter<EnforcementLocation>::updateIntegrationRule()
 {
-  SLIC_WARNING_ROOT( "Update integration rule not implemmented for any method" );
-  // TODO: break out integration rule as a separate method
+  const auto cs_view = coupling_scheme_.getView();
+  const auto accept_pair = [cs_view] TRIBOL_HOST_DEVICE( ElementPair pair ) {
+    const auto& mesh1 = cs_view.getMesh1View();
+    const auto& mesh2 = cs_view.getMesh2View();
+    if ( !SurfacePairFilter::areDistinctElements( mesh1, mesh2, pair.element_id1, pair.element_id2 ) ) {
+      return false;
+    }
+    if ( cs_view.getParameters().auto_contact_check &&
+         !SurfacePairFilter::haveNoSharedNodes( mesh1, mesh2, pair.element_id1, pair.element_id2 ) ) {
+      return false;
+    }
+    return SurfacePairFilter::haveOpposingNormals( mesh1, mesh2, pair.element_id1, pair.element_id2 ) &&
+           SurfacePairFilter::areWithinCentroidProximity( mesh1, mesh2, pair.element_id1, pair.element_id2,
+                                                          cs_view.getEffectiveBinningProximityScale(),
+                                                          cs_view.getContactMode() );
+  };
+
+  visitContactPairs( coarse_pairs_, [&]( auto coarse_pairs ) {
+    compactContactPairs( coarse_pairs, accept_pair, coupling_scheme_.getExecutionMode(),
+                         coupling_scheme_.getAllocatorId(), active_pairs_ );
+  } );
 }
 
 template <typename Adapter>
@@ -102,10 +161,10 @@ void Nodal<Adapter>::updateNodalGaps()
   PackedPairJacobianContribs dA_lm_m( pressure_surface_fes, displacement_surface_fes, pressure_redecomp_fes,
                                       displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
 
-  dg_lm_nm.reserve( adapter->pairs_.size(), 8 );
-  dg_lm_m.reserve( adapter->pairs_.size(), 8 );
-  dA_lm_nm.reserve( adapter->pairs_.size(), 8 );
-  dA_lm_m.reserve( adapter->pairs_.size(), 8 );
+  dg_lm_nm.reserve( adapter->pairCapacity(), 8 );
+  dg_lm_m.reserve( adapter->pairCapacity(), 8 );
+  dA_lm_nm.reserve( adapter->pairCapacity(), 8 );
+  dA_lm_m.reserve( adapter->pairCapacity(), 8 );
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
@@ -114,12 +173,12 @@ void Nodal<Adapter>::updateNodalGaps()
   auto mesh2_view = adapter->mesh2_->getView();
 
   // Compute local contributions
-  for ( const auto& pair : adapter->pairs_ ) {
+  adapter->forEachHostPair( [&]( const ElementPair& pair ) {
     // These need to be flipped, since the pairs are determined with element 1 associated with mesh 1, and we flipped
     // the mesh numbers to be consistent with the literature and since the underlying method integrates on element 1
-    InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
-    const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
-    const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
+    ElementPair flipped_pair( pair.element_id2, pair.element_id1 );
+    const auto elem1 = static_cast<int>( flipped_pair.element_id1 );
+    const auto elem2 = static_cast<int>( flipped_pair.element_id2 );
 
     double g_tilde_elem[2];
     double A_elem[2];
@@ -127,7 +186,7 @@ void Nodal<Adapter>::updateNodalGaps()
     adapter->evaluator_->compute_gtilde_and_area( flipped_pair, mesh1_view, mesh2_view, g_tilde_elem, A_elem );
 
     if ( A_elem[0] <= 0.0 && A_elem[1] <= 0.0 ) {
-      continue;
+      return;
     }
 
     auto A_conn = mesh1_view.getConnectivity()( elem1 );
@@ -167,7 +226,7 @@ void Nodal<Adapter>::updateNodalGaps()
     }
     dA_lm_nm.append( elem1, elem1, dA_dx_blocks[0], 8 );
     dA_lm_m.append( elem1, elem2, dA_dx_blocks[1], 8 );
-  }
+  } );
 
   // Move gap and area to submesh level vectors
   mfem::ParLinearForm g_tilde_linear_form(
@@ -338,10 +397,10 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* ad
   PackedPairJacobianContribs df_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
                                      displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
 
-  df_nm_nm.reserve( adapter->pairs_.size(), 16 );
-  df_nm_m.reserve( adapter->pairs_.size(), 16 );
-  df_m_nm.reserve( adapter->pairs_.size(), 16 );
-  df_m_m.reserve( adapter->pairs_.size(), 16 );
+  df_nm_nm.reserve( adapter->pairCapacity(), 16 );
+  df_nm_m.reserve( adapter->pairCapacity(), 16 );
+  df_m_nm.reserve( adapter->pairCapacity(), 16 );
+  df_m_m.reserve( adapter->pairCapacity(), 16 );
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
@@ -349,12 +408,12 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* ad
   auto mesh1_view = adapter->mesh1_->getView();
   auto mesh2_view = adapter->mesh2_->getView();
 
-  for ( auto& pair : adapter->pairs_ ) {
-    InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
-    const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
+  adapter->forEachHostPair( [&]( const ElementPair& pair ) {
+    ElementPair flipped_pair( pair.element_id2, pair.element_id1 );
+    const auto elem1 = static_cast<int>( flipped_pair.element_id1 );
     const auto node11 = mesh1_view.getConnectivity()( elem1, 0 );
     const auto node12 = mesh1_view.getConnectivity()( elem1, 1 );
-    const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
+    const auto elem2 = static_cast<int>( flipped_pair.element_id2 );
 
     const RealT lambda1 = redecomp_lambda( node11 );
     const RealT lambda2 = redecomp_lambda( node12 );
@@ -379,7 +438,7 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* ad
     df_nm_m.append( elem1, elem2, df_dx_blocks[0][1], 16 );
     df_m_nm.append( elem2, elem1, df_dx_blocks[1][0], 16 );
     df_m_m.append( elem2, elem2, df_dx_blocks[1][1], 16 );
-  }
+  } );
 
   std::vector<PackedPairJacobianContribs> df_contribs;
   df_contribs.reserve( 4 );
@@ -413,10 +472,10 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
   PackedPairJacobianContribs df_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
                                      displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
 
-  df_nm_nm.reserve( adapter->pairs_.size(), 16 );
-  df_nm_m.reserve( adapter->pairs_.size(), 16 );
-  df_m_nm.reserve( adapter->pairs_.size(), 16 );
-  df_m_m.reserve( adapter->pairs_.size(), 16 );
+  df_nm_nm.reserve( adapter->pairCapacity(), 16 );
+  df_nm_m.reserve( adapter->pairCapacity(), 16 );
+  df_m_nm.reserve( adapter->pairCapacity(), 16 );
+  df_m_m.reserve( adapter->pairCapacity(), 16 );
 
   const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
 
@@ -424,18 +483,18 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
   auto mesh1_view = adapter->mesh1_->getView();
   auto mesh2_view = adapter->mesh2_->getView();
 
-  for ( auto& pair : adapter->pairs_ ) {
-    InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
-    const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
+  adapter->forEachHostPair( [&]( const ElementPair& pair ) {
+    ElementPair flipped_pair( pair.element_id2, pair.element_id1 );
+    const auto elem1 = static_cast<int>( flipped_pair.element_id1 );
     const auto node11 = mesh1_view.getConnectivity()( elem1, 0 );
     const auto node12 = mesh1_view.getConnectivity()( elem1, 1 );
-    const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
+    const auto elem2 = static_cast<int>( flipped_pair.element_id2 );
 
     const RealT pressure1 = 2.0 * redecomp_pressure( node11 );
     const RealT pressure2 = 2.0 * redecomp_pressure( node12 );
 
     if ( pressure1 == 0.0 && pressure2 == 0.0 ) {
-      continue;
+      return;
     }
 
     const RealT g_p_ainv1 = -redecomp_g_tilde( node11 ) * redecomp_pressure( node11 ) / redecomp_A( node11 );
@@ -466,7 +525,7 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
     df_nm_m.append( elem1, elem2, df_dx_blocks[0][1], 16 );
     df_m_nm.append( elem2, elem1, df_dx_blocks[1][0], 16 );
     df_m_m.append( elem2, elem2, df_dx_blocks[1][1], 16 );
-  }
+  } );
 
   std::vector<PackedPairJacobianContribs> df_contribs;
   df_contribs.reserve( 4 );
@@ -502,10 +561,10 @@ void QuadraturePoint<Adapter>::updateNodalForces()
   PackedPairJacobianContribs df_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
                                      displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
 
-  df_nm_nm.reserve( adapter->pairs_.size(), 16 );
-  df_nm_m.reserve( adapter->pairs_.size(), 16 );
-  df_m_nm.reserve( adapter->pairs_.size(), 16 );
-  df_m_m.reserve( adapter->pairs_.size(), 16 );
+  df_nm_nm.reserve( adapter->pairCapacity(), 16 );
+  df_nm_m.reserve( adapter->pairCapacity(), 16 );
+  df_m_nm.reserve( adapter->pairCapacity(), 16 );
+  df_m_m.reserve( adapter->pairCapacity(), 16 );
 
   mfem::GridFunction redecomp_force( const_cast<mfem::FiniteElementSpace*>( &displacement_redecomp_fes ) );
   redecomp_force = 0.0;
@@ -518,15 +577,15 @@ void QuadraturePoint<Adapter>::updateNodalForces()
   auto mesh1_view = adapter->mesh1_->getView();
   auto mesh2_view = adapter->mesh2_->getView();
 
-  for ( const auto& pair : adapter->pairs_ ) {
-    InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
-    const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
-    const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
+  adapter->forEachHostPair( [&]( const ElementPair& pair ) {
+    ElementPair flipped_pair( pair.element_id2, pair.element_id1 );
+    const auto elem1 = static_cast<int>( flipped_pair.element_id1 );
+    const auto elem2 = static_cast<int>( flipped_pair.element_id2 );
     const auto qp_data =
         adapter->evaluator_->compute_quadrature_point_penalty_data( flipped_pair, mesh1_view, mesh2_view );
 
     if ( qp_data.energy == 0.0 ) {
-      continue;
+      return;
     }
 
     adapter->energy_ += qp_data.energy;
@@ -558,7 +617,7 @@ void QuadraturePoint<Adapter>::updateNodalForces()
     df_nm_m.append( elem1, elem2, df_dx_blocks[0][1], 16 );
     df_m_nm.append( elem2, elem1, df_dx_blocks[1][0], 16 );
     df_m_m.append( elem2, elem2, df_dx_blocks[1][1], 16 );
-  }
+  } );
 
   auto* parent_fes = adapter->mesh_data_.GetParentCoords().ParFESpace();
   adapter->force_vec_ = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( parent_fes ) );

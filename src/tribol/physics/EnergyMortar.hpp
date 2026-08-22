@@ -120,7 +120,7 @@ class EnergyMortarCalculator {
 
   int get_N() const { return p_.N; }
 
-  std::array<double, 2> compute_projection_bounds( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+  std::array<double, 2> compute_projection_bounds( const ElementPair& pair, const MeshData::Viewer& mesh1,
                                                    const MeshData::Viewer& mesh2 ) const
   {
     return projections( pair, mesh1, mesh2 );
@@ -139,7 +139,7 @@ class EnergyMortarCalculator {
   /// two nodes of edge A. `gtilde` stores the integrated smoothed gap
   /// contributions, while `area` stores the corresponding tributary area
   /// contributions.
-  void compute_gtilde_and_area( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+  void compute_gtilde_and_area( const ElementPair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                                 double gtilde[2], double area[2] ) const;
 
   /// Compute first derivatives of the nodal smoothed gap integrals.
@@ -149,7 +149,7 @@ class EnergyMortarCalculator {
   /// described in the class documentation. If `enzyme_quadrature` is false,
   /// the quadrature rule is held fixed during differentiation. If true, the
   /// derivative includes the geometry-dependent quadrature construction.
-  void grad_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+  void grad_gtilde( const ElementPair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                     double dgt1_dx[8], double dgt2_dx[8] ) const;
 
   /// Compute first derivatives of the nodal tributary areas.
@@ -160,7 +160,7 @@ class EnergyMortarCalculator {
   /// `enzyme_quadrature` is false, the quadrature rule is held fixed during
   /// differentiation. If true, the derivative includes the geometry-dependent
   /// quadrature construction.
-  void grad_trib_area( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+  void grad_trib_area( const ElementPair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                        double dA1_dx[8], double dA2_dx[8] ) const;
 
   /// Compute second derivatives of the nodal smoothed gap integrals.
@@ -170,7 +170,7 @@ class EnergyMortarCalculator {
   /// `H[row * 8 + col]`. If `enzyme_quadrature` is false, the quadrature rule
   /// is held fixed during differentiation. If true, the derivative includes the
   /// geometry-dependent quadrature construction.
-  void d2_g2tilde( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+  void d2_g2tilde( const ElementPair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                    double dgt1_dx[64], double dgt2_dx[64] ) const;
 
   /// Compute second derivatives of the nodal tributary areas.
@@ -180,16 +180,16 @@ class EnergyMortarCalculator {
   /// row-major indexing: `H[row * 8 + col]`. If `enzyme_quadrature` is false,
   /// the quadrature rule is held fixed during differentiation. If true, the
   /// derivative includes the geometry-dependent quadrature construction.
-  void compute_d2A_d2u( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+  void compute_d2A_d2u( const ElementPair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                         double dgt1_dx[64], double dgt2_dx[64] ) const;
 
   /// Compute local energy, force, and stiffness for quadrature-point penalty enforcement.
-  QuadraturePointPenaltyData compute_quadrature_point_penalty_data( const InterfacePair& pair,
+  QuadraturePointPenaltyData compute_quadrature_point_penalty_data( const ElementPair& pair,
                                                                     const MeshData::Viewer& mesh1,
                                                                     const MeshData::Viewer& mesh2 ) const;
 
   /// Evaluate only the local quadrature-point penalty energy.
-  double compute_quadrature_point_penalty_energy( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+  double compute_quadrature_point_penalty_energy( const ElementPair& pair, const MeshData::Viewer& mesh1,
                                                   const MeshData::Viewer& mesh2 ) const;
 
   /// Evaluate and return the two nodal smoothed gap integrals.
@@ -197,7 +197,7 @@ class EnergyMortarCalculator {
   /// This is a convenience wrapper for obtaining only the gap integral
   /// quantities without also returning the tributary areas for the Finite
   /// difference test.
-  std::pair<double, double> eval_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+  std::pair<double, double> eval_gtilde( const ElementPair& pair, const MeshData::Viewer& mesh1,
                                          const MeshData::Viewer& mesh2 ) const;
 
   /// Validate first derivatives of the smoothed gap integrals using finite differences.
@@ -205,7 +205,7 @@ class EnergyMortarCalculator {
   /// This routine perturbs the endpoint coordinates of the interface pair and
   /// compares finite-difference approximations against the Enzyme-computed
   /// gradients. The perturbation size is controlled by `epsilon`.
-  FiniteDiffResult validate_g_tilde( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
+  FiniteDiffResult validate_g_tilde( const ElementPair& pair, MeshData& mesh1, MeshData& mesh2,
                                      double epsilon = 1e-7 ) const;
 
   /// Evaluate the two nodal smoothed gap integrals using a fixed quadrature rule.
@@ -214,7 +214,7 @@ class EnergyMortarCalculator {
   /// weights should remain fixed under coordinate perturbations. Holding the
   /// quadrature fixed isolates derivatives of the gap kernel from derivatives
   /// of the geometry-dependent quadrature construction.
-  std::pair<double, double> eval_gtilde_fixed_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+  std::pair<double, double> eval_gtilde_fixed_qp( const ElementPair& pair, const MeshData::Viewer& mesh1,
                                                   const MeshData::Viewer& mesh2, const QuadPoints& qp_fixed ) const;
 
   /// Validate second derivatives of the smoothed gap integrals using finite differences.
@@ -222,7 +222,7 @@ class EnergyMortarCalculator {
   /// This routine compares Enzyme-computed Hessians against finite-difference
   /// approximations of the first derivatives. The perturbation size is
   /// controlled by `epsilon`.
-  FiniteDiffResult validate_hessian( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
+  FiniteDiffResult validate_hessian( const ElementPair& pair, MeshData& mesh1, MeshData& mesh2,
                                      double epsilon = 1e-7 ) const;
 
  private:
@@ -236,28 +236,28 @@ class EnergyMortarCalculator {
   /// This builds the smoothed integration bounds, quadrature points, quadrature
   /// weights, and projected quadrature-point coordinates needed by the lower-level
   /// gap kernel.
-  Gparams construct_gparams( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+  Gparams construct_gparams( const ElementPair& pair, const MeshData::Viewer& mesh1,
                              const MeshData::Viewer& mesh2 ) const;
 
   /// Compute the local projection bounds of edge B onto edge A.
   ///
   /// The returned values are local coordinates on edge A and define the interval
   /// used to construct the smoothed integration bounds.
-  std::array<double, 2> projections( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+  std::array<double, 2> projections( const ElementPair& pair, const MeshData::Viewer& mesh1,
                                      const MeshData::Viewer& mesh2 ) const;
 
   /// Compute smoothed gap gradients while holding the quadrature rule fixed.
   ///
   /// This is used by finite-difference verification routines to isolate
   /// derivatives of the gap kernel from derivatives of the quadrature rule.
-  void grad_gtilde_with_qp( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+  void grad_gtilde_with_qp( const ElementPair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                             const QuadPoints& qp_fixed, double dgt1_dx[8], double dgt2_dx[8] ) const;
 
   /// Evaluate the signed normal gap at a local coordinate on edge A.
   ///
   /// The point on edge A is projected onto edge B, and the gap is evaluated
   /// using the normal from edge B together with the normal-alignment factor.
-  double compute_weighted_normal_gap( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+  double compute_weighted_normal_gap( const ElementPair& pair, const MeshData::Viewer& mesh1,
                                       const MeshData::Viewer& mesh2, double xiA ) const;
 
   /// Assemble nodal gap and tributary area data for one interface pair.
@@ -265,7 +265,7 @@ class EnergyMortarCalculator {
   /// This computes the two smoothed nodal gap integrals and the two corresponding
   /// tributary area contributions used to evaluate pressures, forces, energy,
   /// and stiffness terms.
-  NodalContactData compute_nodal_contact_data( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+  NodalContactData compute_nodal_contact_data( const ElementPair& pair, const MeshData::Viewer& mesh1,
                                                const MeshData::Viewer& mesh2 ) const;
 };
 

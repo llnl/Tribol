@@ -7,175 +7,67 @@
 #define SRC_TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_
 
 #include "tribol/common/Parameters.hpp"
+#include "tribol/common/ExecModel.hpp"
 #include "tribol/mesh/MeshData.hpp"
-#include "tribol/mesh/CouplingScheme.hpp"
+#include "tribol/mesh/InterfacePairs.hpp"
 
 namespace tribol {
 
-// Forward Declarations
-class SearchBase;
-
-/// Free functions
-
-/*!
- * \brief Basic geometry/proximity checks for face pairs
+/**
+ * @brief Configures and runs coarse contact-pair searches between two meshes
  *
- * \param [in] cs_view View of the coupling scheme
- * \param [in] element_id1 id of 1st element in pair
- * \param [in] element_id2 id of 2nd element in pair
- *
- */
-TRIBOL_HOST_DEVICE inline bool geomFilter( const CouplingScheme::Viewer& cs_view, IndexT element_id1,
-                                           IndexT element_id2 )
-{
-  auto& mesh1 = cs_view.getMesh1View();
-  auto& mesh2 = cs_view.getMesh2View();
-  bool auto_contact_check = cs_view.getParameters().auto_contact_check;
-  // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
-  auto element_radius_multiplier = cs_view.getEffectiveBinningProximityScale();
-  auto mode = cs_view.getContactMode();
-
-  /// CHECK #1: Check to make sure the two face ids are not the same
-  ///           and the two mesh ids are not the same.
-  if ( ( mesh1.meshId() == mesh2.meshId() ) && ( element_id1 == element_id2 ) ) {
-    return false;
-  }
-
-  int dim = mesh1.spatialDimension();
-
-  /// CHECK #2: Auto-contact precludes faces that share a common
-  ///           node(s). We want to preclude two adjacent faces from interacting
-  ///           due to problematic configurations, such as corners where the
-  ///           configuration and opposing normals appear to be in contact, but
-  ///           are not.
-  ///
-  ///           Note: non-auto-contact coupling schemes should typically be amongst
-  ///                 topologically disconnected surfaces unless it is known apriori that
-  ///                 face-pairs with shared nodes can in fact contact.
-  if ( auto_contact_check ) {
-    for ( IndexT i{ 0 }; i < mesh1.numberOfNodesPerElement(); ++i ) {
-      int node1 = mesh1.getGlobalNodeId( element_id1, i );
-      for ( IndexT j{ 0 }; j < mesh2.numberOfNodesPerElement(); ++j ) {
-        int node2 = mesh2.getGlobalNodeId( element_id2, j );
-        if ( node1 == node2 ) {
-          return false;
-        }
-      }
-    }
-  }
-
-  /// CHECK #3: Check that face normals are opposing up to some tolerance.
-  ///           This uses a hard coded normal tolerance for this check.
-  RealT nrmlTol = 0.0;  // taken as cos(90) between face pair
-
-  RealT nrmlCheck = 0.0;
-  for ( int d{ 0 }; d < dim; ++d ) {
-    nrmlCheck += mesh1.getElementNormals()[d][element_id1] * mesh2.getElementNormals()[d][element_id2];
-  }
-
-  // check normal projection against tolerance
-  if ( nrmlCheck > nrmlTol ) {
-    return false;
-  }
-
-  /// CHECK #4: Perform radius check, which involves seeing if
-  ///           the distance between the two face vertex averaged
-  ///           centroid is less than the sum of the two face radii
-  ///           premultiplied by a binning scale factor.
-  ///           The face radii are taken to be the magnitude of the
-  ///           longest vector from that face's vertex averaged
-  ///           centroid to one its nodes.
-  RealT offset_tol = 0.05;
-  if ( dim == 3 ) {
-    RealT r1 = mesh1.getFaceRadius()[element_id1];
-    RealT r2 = mesh2.getFaceRadius()[element_id2];
-
-    // set maximum offset of face centroids for inclusion
-    RealT distMax = element_radius_multiplier * ( r1 + r2 );  // default is sum of face radii
-
-    // check if the contact mode is conforming, in which case the
-    // faces are supposed to be aligned
-    if ( mode == SURFACE_TO_SURFACE_CONFORMING ) {
-      // use 5% of max face radius for conforming case as
-      // tolerance on face offsets
-      distMax *= offset_tol;
-    }
-
-    // compute the distance between the two face centroids
-    RealT distX = mesh2.getElementCentroids()[0][element_id2] - mesh1.getElementCentroids()[0][element_id1];
-    RealT distY = mesh2.getElementCentroids()[1][element_id2] - mesh1.getElementCentroids()[1][element_id1];
-    RealT distZ = mesh2.getElementCentroids()[2][element_id2] - mesh1.getElementCentroids()[2][element_id1];
-
-    RealT distMag = magnitude( distX, distY, distZ );
-
-    if ( distMag > ( distMax ) ) {
-      return false;
-    }
-  }  // end of dim == 3
-  else if ( dim == 2 ) {
-    // get 1/2 edge length off the mesh data
-    RealT e1 = 0.5 * mesh1.getElementAreas()[element_id1];
-    RealT e2 = 0.5 * mesh2.getElementAreas()[element_id2];
-
-    RealT distMax = element_radius_multiplier * ( e1 + e2 );
-
-    // check if the contact mode is conforming, in which case the
-    // edges are supposed to be aligned
-    if ( mode == SURFACE_TO_SURFACE_CONFORMING ) {
-      // use 5% of max face radius for conforming case as
-      // tolerance on face offsets
-      distMax *= offset_tol;
-    }
-
-    // compute the distance between the two edge centroids
-    RealT distX = mesh2.getElementCentroids()[0][element_id2] - mesh1.getElementCentroids()[0][element_id1];
-    RealT distY = mesh2.getElementCentroids()[1][element_id2] - mesh1.getElementCentroids()[1][element_id1];
-
-    RealT distMag = magnitude( distX, distY );
-
-    // include faces where separation equals distMax
-    if ( distMag > ( distMax ) ) {
-      return false;
-    }
-  }  // end of dim == 2
-
-  /// Check #5: Check to see if there is a positive area of overlap when both faces/edges
-  ///           are projected onto an intermediate plane
-  if ( cs_view.pruneMethodFacePair( element_id1, element_id2 ) ) {
-    return false;
-  }
-
-  // if we made it here we passed all checks
-  return true;
-
-}  // end geomFilter()
-
-/*!
- * \class InterfacePairFinder
- *
- * \brief This class finds pairs of interfering elements in the meshes
- * referred to by the CouplingScheme
+ * This class stores only the search configuration. It does not own or retain the meshes supplied to
+ * findInterfacePairs(). Each search constructs and initializes the selected search implementation for the duration of
+ * that call.
  */
 class InterfacePairFinder {
  public:
-  InterfacePairFinder( CouplingScheme* cs );
-
-  ~InterfacePairFinder();
-
-  /*!
-   * Initializes structures for the candidate search
+  /**
+   * @brief Construct a coarse contact-pair finder
+   *
+   * @param [in] binning_method Search strategy used to generate candidate pairs.
+   * @param [in] execution_mode Execution mode used by the search strategy.
+   * @param [in] allocator_id Allocator used for search work arrays and explicitly stored result pairs.
+   * @param [in] proximity_scale Element-size multiplier used to inflate search bounds.
+   *
+   * @note Device execution with @c BINNING_GRID is normalized to @c BINNING_BVH because grid search is not supported on
+   * devices.
    */
-  void initialize();
+  InterfacePairFinder( BinningMethod binning_method, ExecutionMode execution_mode, int allocator_id,
+                       RealT proximity_scale );
 
-  /*!
-   * Computes the interacting interface pairs between the meshes
-   * specified in \a m_coupling_scheme
+  /**
+   * @brief Find coarse candidate pairs between the provided meshes
+   *
+   * The meshes are used only for this search and are not retained. Grid and BVH searches return owning explicit pair
+   * storage allocated with the configured allocator. Cartesian-product search returns a lazy view and does not
+   * explicitly store the generated pairs.
+   *
+   * @param [in] mesh1 First contact mesh. Spatial searches index its elements.
+   * @param [in] mesh2 Second contact mesh. Spatial searches query its elements against the first mesh.
+   * @return Owning explicit pair storage or a lazy Cartesian-product pair view.
    */
-  void findInterfacePairs();
+  ContactPairRange findInterfacePairs( MeshData& mesh1, MeshData& mesh2 ) const;
+
+  /**
+   * @brief Get the effective coarse-search strategy
+   *
+   * @return Configured binning method after any device compatibility normalization performed by the constructor.
+   */
+  BinningMethod getBinningMethod() const { return binning_method_; }
 
  private:
-  CouplingScheme* m_coupling_scheme;
-  SearchBase* m_search;  // The search strategy
+  /** Coarse-search strategy used to generate candidate pairs. */
+  BinningMethod binning_method_;
+
+  /** Execution mode used by the selected search strategy. */
+  ExecutionMode execution_mode_;
+
+  /** Allocator for search work arrays and explicitly stored result pairs. */
+  int allocator_id_;
+
+  /** Element-size multiplier used to inflate coarse-search bounds. */
+  RealT proximity_scale_;
 };
 
 }  // end namespace tribol

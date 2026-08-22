@@ -45,11 +45,11 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
 
     const auto enforcement_location = cs->getParameters().enforcement_location;
     if ( enforcement_location == EnforcementLocation::QuadraturePoint ) {
-      return std::make_unique<EnergyMortarAdapter<QuadraturePoint>>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
-                                                                     *cs->getMfemJacobianData(), k, delta, N,
-                                                                     enzyme_quadrature, use_penalty );
+      return std::make_unique<EnergyMortarAdapter<QuadraturePoint>>(
+          *cs, *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), k, delta, N,
+          enzyme_quadrature, use_penalty );
     } else {
-      return std::make_unique<EnergyMortarAdapter<Nodal>>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
+      return std::make_unique<EnergyMortarAdapter<Nodal>>( *cs, *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
                                                            *cs->getMfemJacobianData(), k, delta, N, enzyme_quadrature,
                                                            use_penalty );
     }

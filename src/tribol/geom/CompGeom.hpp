@@ -1107,7 +1107,7 @@ TRIBOL_HOST_DEVICE inline CommonPlanePair::CommonPlanePair( InterfacePair* pair,
 TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::checkFacePair( const MeshData::Viewer& mesh1,
                                                                             const MeshData::Viewer& mesh2 )
 {
-  // Note: Checks #1-#5 are done in the binning; see geomFilter()
+  // Note: Preliminary surface-pair checks are performed before this routine.
 
   // alias variables off the InterfacePair
   IndexT element_id1 = this->getCpElementId1();
@@ -2314,7 +2314,7 @@ TRIBOL_HOST_DEVICE inline FaceGeomException CommonPlanePair::computeOverlap3D( c
         &cfx1[0], &cfy1[0], &cfz1[0], &cfx2[0], &cfy2[0], &cfz2[0], numV[0], numV[1], m1, m2 );
     overlap_error = interpen_error;
 
-    // geomFilter() checks to see if at least one vertex of one face lies in the other as a proxy
+    // Method-specific pair pruning checks whether at least one vertex of one face lies in the other as a proxy
     // for a positive area of overlap. If the interpen overlap calculation returns no overlap then
     // it could be that the interpenetrating portion of one face lies nearly outside the other face
     // resulting in an overlap area less than the min. In this case, we could miss the full overlap

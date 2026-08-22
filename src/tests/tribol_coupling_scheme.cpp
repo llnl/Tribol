@@ -9,6 +9,10 @@
 #include "tribol/utils/Math.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
+#include "tribol/mesh/InterfacePairs.hpp"
+#include "tribol/search/ContactPairAlgorithms.hpp"
+
+#include <type_traits>
 
 #ifdef TRIBOL_USE_UMPIRE
 // Umpire includes
@@ -19,6 +23,129 @@
 #include "gtest/gtest.h"
 
 using RealT = tribol::RealT;
+
+namespace {
+
+class MinimalContactFormulation : public tribol::ContactFormulation {};
+
+static_assert( std::is_abstract<tribol::ContactFormulation>::value,
+               "ContactFormulation must remain an abstract interface" );
+static_assert( !std::is_abstract<MinimalContactFormulation>::value,
+               "Lifecycle hooks should be optional for derived formulations" );
+
+}  // namespace
+
+TEST( ContactFormulationTest, Defaults )
+{
+  MinimalContactFormulation formulation;
+  formulation.updateSearch();
+  formulation.updateIntegrationRule();
+  formulation.updateNodalGaps();
+  formulation.updateNodalForces();
+  EXPECT_FALSE( formulation.hasTimeStepCalculation() );
+}
+
+TEST( ContactPairViewTest, CartesianProduct )
+{
+  static_assert( std::is_trivially_copyable<tribol::ElementPair>::value, "ElementPair must be device-copyable" );
+  static_assert( sizeof( tribol::ElementPair ) == 2 * sizeof( tribol::IndexT ), "ElementPair must remain compact" );
+  static_assert( std::is_trivially_copyable<tribol::PairListView>::value, "PairListView must be device-copyable" );
+  static_assert( std::is_trivially_copyable<tribol::CartesianPairView>::value,
+                 "CartesianPairView must be device-copyable" );
+
+  tribol::CartesianPairView pairs( 2, 3, false );
+  ASSERT_EQ( pairs.size(), 6 );
+  EXPECT_EQ( pairs[0].element_id1, 0 );
+  EXPECT_EQ( pairs[0].element_id2, 0 );
+  EXPECT_EQ( pairs[4].element_id1, 1 );
+  EXPECT_EQ( pairs[4].element_id2, 1 );
+
+  tribol::CartesianPairView symmetric_pairs( 4, 4, true );
+  ASSERT_EQ( symmetric_pairs.size(), 6 );
+  EXPECT_EQ( symmetric_pairs[0].element_id1, 1 );
+  EXPECT_EQ( symmetric_pairs[0].element_id2, 0 );
+  EXPECT_EQ( symmetric_pairs[5].element_id1, 3 );
+  EXPECT_EQ( symmetric_pairs[5].element_id2, 2 );
+}
+
+TEST( ContactPairViewTest, PairList )
+{
+  tribol::ArrayT<tribol::ElementPair> pair_data( 2, 2 );
+  pair_data[0] = tribol::ElementPair( 2, 5 );
+  pair_data[1] = tribol::ElementPair( 7, 11 );
+  tribol::PairListView pairs( pair_data.view() );
+
+  ASSERT_EQ( pairs.size(), 2 );
+  EXPECT_EQ( pairs[0].element_id1, 2 );
+  EXPECT_EQ( pairs[0].element_id2, 5 );
+  EXPECT_EQ( pairs[1].element_id1, 7 );
+  EXPECT_EQ( pairs[1].element_id2, 11 );
+}
+
+TEST( ContactPairViewTest, CompactPairs )
+{
+  tribol::CartesianPairView candidates( 3, 2, false );
+  tribol::ArrayT<tribol::ElementPair> accepted;
+  const auto accept_even_sum = [] TRIBOL_HOST_DEVICE( tribol::ElementPair pair ) {
+    return ( pair.element_id1 + pair.element_id2 ) % 2 == 0;
+  };
+
+  tribol::compactContactPairs( candidates, accept_even_sum, tribol::ExecutionMode::Sequential,
+                               accepted.getAllocatorID(), accepted );
+
+  ASSERT_EQ( accepted.size(), 3 );
+  EXPECT_EQ( accepted[0].element_id1, 0 );
+  EXPECT_EQ( accepted[0].element_id2, 0 );
+  EXPECT_EQ( accepted[1].element_id1, 1 );
+  EXPECT_EQ( accepted[1].element_id2, 1 );
+  EXPECT_EQ( accepted[2].element_id1, 2 );
+  EXPECT_EQ( accepted[2].element_id2, 0 );
+}
+
+TEST( ContactPairViewTest, CartesianPairsAreRematerialized )
+{
+  constexpr tribol::IndexT mesh_id1 = 0;
+  constexpr tribol::IndexT mesh_id2 = 1;
+  constexpr tribol::IndexT coupling_scheme_id = 0;
+  tribol::IndexT connectivity1[] = { 0, 1 };
+  tribol::IndexT connectivity2[] = { 0, 1 };
+  RealT x1[] = { 0.0, 1.0 };
+  RealT y1[] = { 0.0, 0.0 };
+  RealT x2[] = { 1.0, 0.0 };
+  RealT y2[] = { 0.1, 0.1 };
+  RealT response1[] = { 0.0, 0.0 };
+  RealT response2[] = { 0.0, 0.0 };
+
+  tribol::registerMesh( mesh_id1, 1, 2, connectivity1, tribol::LINEAR_EDGE, x1, y1, nullptr,
+                        tribol::MemorySpace::Host );
+  tribol::registerMesh( mesh_id2, 1, 2, connectivity2, tribol::LINEAR_EDGE, x2, y2, nullptr,
+                        tribol::MemorySpace::Host );
+  tribol::registerNodalResponse( mesh_id1, response1, response1, nullptr );
+  tribol::registerNodalResponse( mesh_id2, response2, response2, nullptr );
+  tribol::setKinematicConstantPenalty( mesh_id1, 1.0 );
+  tribol::setKinematicConstantPenalty( mesh_id2, 1.0 );
+  tribol::registerCouplingScheme( coupling_scheme_id, mesh_id1, mesh_id2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE,
+                                  tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY,
+                                  tribol::BINNING_CARTESIAN_PRODUCT, tribol::ExecutionMode::Sequential );
+  tribol::setPenaltyOptions( coupling_scheme_id, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
+
+  auto& scheme = tribol::CouplingSchemeManager::getInstance().at( coupling_scheme_id );
+  if ( !scheme.init() ) {
+    tribol::finalize();
+    FAIL() << "Failed to initialize Cartesian coupling scheme.";
+  }
+  scheme.performBinning();
+  EXPECT_EQ( scheme.getInterfacePairs().size(), 1 );
+  EXPECT_FALSE( scheme.hasFixedBinning() );
+
+  y2[0] = 10.0;
+  y2[1] = 10.0;
+  EXPECT_TRUE( scheme.init() );
+  scheme.performBinning();
+  EXPECT_EQ( scheme.getInterfacePairs().size(), 0 );
+
+  tribol::finalize();
+}
 
 /*!
  * Test fixture class to test valid coupling schemes.

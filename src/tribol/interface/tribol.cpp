@@ -805,6 +805,7 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
   auto& pairs = cs->getInterfacePairs();
   pairs.clear();
   pairs.reserve( numPairs );
+  const auto cs_view = cs->getView();
 
   // copy the interaction pairs
   for ( int i = 0; i < numPairs; ++i ) {
@@ -812,7 +813,7 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
     // to interface pair manager. Note, further computational geometry
     // filtering will be performed on each face-pair indendifying
     // contact candidates.
-    if ( geomFilter( cs->getView(), pairIndex1[i], pairIndex2[i] ) ) {
+    if ( !cs_view.pruneMethodFacePair( pairIndex1[i], pairIndex2[i] ) ) {
       pairs.emplace_back( pairIndex1[i], pairIndex2[i], true );
     }
   }
@@ -847,9 +848,11 @@ int update( int cycle, RealT t, RealT& dt )
       continue;
     }
 
-    // perform binning between meshes on the coupling scheme
-    // Note, this routine is guarded against null meshes
-    cs.performBinning();
+    // ContactFormulations own their search lifecycle. Legacy methods continue
+    // to use the CouplingScheme binning path.
+    if ( !cs.hasContactFormulation() ) {
+      cs.performBinning();
+    }
 
     // apply the coupling scheme. Note, there are appropriate guards against zero
     // element meshes, or null-mesh coupling schemes

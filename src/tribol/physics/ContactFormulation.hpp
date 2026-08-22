@@ -34,35 +34,46 @@ class MeshData;
  * This class provides a polymorphic interface for contact algorithms, allowing for modular implementation of new
  * physics and formulations.
  *
- * NOTE (EBC): This class is still a work-in-progress. It's eventual design should incorporate specific choices for
- * coarse binning and take in the relevant input data in the constructor directly (i.e. Tribol mesh data, mfem meshes,
- * etc.)
+ * Formulations own their search lifecycle. Current adapters may still use a CouplingScheme as a compatibility context,
+ * but search implementations accept mesh and execution data directly.
  */
 class ContactFormulation {
  public:
   /**
    * @brief Virtual destructor
    */
-  virtual ~ContactFormulation() = default;
+  virtual ~ContactFormulation() = 0;
 
   /**
-   * @brief Sets the initial set of candidate interface pairs
+   * @brief Optionally sets externally supplied interface pairs
    *
-   * @param pairs View of the coarse-binned interface pairs
+   * Surface formulations may override this compatibility hook. Formulations
+   * using another contact representation do not need to implement it.
+   *
+   * @param pairs Coarse candidate interface pairs
    * @param check_level In general, higher values mean more checks and 0 means don't do checks. See specific methods for
    * details.
    */
-  virtual void setInterfacePairs( ArrayT<InterfacePair>&& pairs, int check_level ) = 0;
+  virtual void setInterfacePairs( ArrayT<InterfacePair>&& /*pairs*/, int /*check_level*/ )
+  {
+    SLIC_ERROR_ROOT( "setInterfacePairs() is not supported by this formulation." );
+  }
+
+  /**
+   * @brief Updates the formulation-specific contact search
+   *
+   * Formulations without a search may use the default no-op implementation.
+   */
+  virtual void updateSearch() {}
 
   /**
    * @brief Updates the integration rule
    *
    * Determines overlapping contact pairs and computes necessary integration data (e.g. quadrature points, weights).
    *
-   * @note Many formulations require setInterfacePairs() to be called first.
-   * Some formulations may treat this as a no-op.
+   * @note Formulations are responsible for updating their search state first.
    */
-  virtual void updateIntegrationRule() = 0;
+  virtual void updateIntegrationRule() {}
 
   /**
    * @brief Updates nodal gaps
@@ -70,21 +81,21 @@ class ContactFormulation {
    * @note Many formulations require updateIntegrationRule() to be called first.
    * Some formulations assemble gaps directly from the stored interface pairs.
    */
-  virtual void updateNodalGaps() = 0;
+  virtual void updateNodalGaps() {}
 
   /**
    * @brief Updates nodal forces/residual
    *
    * @note Many formulations require updateNodalGaps() to be called first.
    */
-  virtual void updateNodalForces() = 0;
+  virtual void updateNodalForces() {}
 
   /**
    * @brief Reports if formulation has a maximum allowable timestep calculation
    *
    * @return true if formulation has a timestep calculation available; false otherwise
    */
-  virtual bool hasTimeStepCalculation() = 0;
+  virtual bool hasTimeStepCalculation() { return false; }
 
   /**
    * @brief Computes the maximum allowable timestep for the formulation
@@ -100,7 +111,11 @@ class ContactFormulation {
    *
    * @return contact energy
    */
-  virtual RealT getEnergy() const = 0;
+  virtual RealT getEnergy() const
+  {
+    SLIC_ERROR_ROOT( "getEnergy() is not implemented by this formulation." );
+    throw std::runtime_error( "Not supported" );
+  }
 
   /**
    * @brief Update mesh references used by the formulation (optional)
@@ -194,6 +209,8 @@ class ContactFormulation {
 
 #endif
 };
+
+inline ContactFormulation::~ContactFormulation() = default;
 
 }  // namespace tribol
 

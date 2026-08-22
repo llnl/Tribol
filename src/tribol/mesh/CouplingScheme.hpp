@@ -20,6 +20,7 @@
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/physics/Physics.hpp"
 #include "tribol/physics/ContactFormulation.hpp"
+#include "tribol/physics/SurfacePairFilter.hpp"
 #include "tribol/utils/DataManager.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/geom/CompGeom.hpp"
@@ -202,7 +203,7 @@ class CouplingScheme {
     TRIBOL_HOST_DEVICE const CompGeom::Viewer& getCompGeomView() const { return m_cg_pairs; }
 
     /**
-     * @brief Perform interface pair pruning based on the contact method
+     * @brief Perform the surface-pair checks selected by this coupling scheme
      *
      * \param [in] fid1 id of the first face
      * \param [in] fid2 id of the second face
@@ -1067,129 +1068,35 @@ TRIBOL_HOST_DEVICE inline RealT CouplingScheme::Viewer::getGapTol( IndexT fid1, 
 //------------------------------------------------------------------------------
 TRIBOL_HOST_DEVICE inline bool CouplingScheme::Viewer::pruneMethodFacePair( const IndexT fid1, const IndexT fid2 ) const
 {
-  if ( m_contact_method == ENERGY_MORTAR ) {
-    // TODO: Clarify why  ENERGY_MORTAR doesn't prune method face pairs
-    return false;
-  }
-
-  constexpr int max_dim = 3;
-  constexpr int max_nodes_per_face = 4;
-
   auto& mesh1 = this->getMesh1View();
   auto& mesh2 = this->getMesh2View();
-  int dim = mesh1.spatialDimension();
-  int num_nodes_face_1 = static_cast<int>( mesh1.numberOfNodesPerElement() );
-  int num_nodes_face_2 = static_cast<int>( mesh2.numberOfNodesPerElement() );
 
-  RealT fn1[max_dim], cx1[max_dim];
-  mesh1.getFaceNormal( fid1, fn1 );
-  mesh1.getFaceCentroid( fid1, cx1 );
-
-  RealT fn2[max_dim], cx2[max_dim];
-  mesh2.getFaceNormal( fid2, fn2 );
-  mesh2.getFaceCentroid( fid2, cx2 );
-
-  // get each face's nodal coordinates
-  RealT x1[max_nodes_per_face];
-  RealT y1[max_nodes_per_face];
-  RealT z1[max_nodes_per_face];
-
-  RealT x2[max_nodes_per_face];
-  RealT y2[max_nodes_per_face];
-  RealT z2[max_nodes_per_face];
-
-  for ( int i = 0; i < mesh1.numberOfNodesPerElement(); ++i ) {
-    const IndexT nodeId_1 = mesh1.getGlobalNodeId( fid1, i );
-    x1[i] = mesh1.getPosition()[0][nodeId_1];
-    y1[i] = mesh1.getPosition()[1][nodeId_1];
-    if ( dim == 3 ) {
-      z1[i] = mesh1.getPosition()[2][nodeId_1];
-    }
+  if ( !SurfacePairFilter::areDistinctElements( mesh1, mesh2, fid1, fid2 ) ) {
+    return true;
   }
-
-  for ( int i = 0; i < mesh2.numberOfNodesPerElement(); ++i ) {
-    const IndexT nodeId_2 = mesh2.getGlobalNodeId( fid2, i );
-    x2[i] = mesh2.getPosition()[0][nodeId_2];
-    y2[i] = mesh2.getPosition()[1][nodeId_2];
-    if ( dim == 3 ) {
-      z2[i] = mesh2.getPosition()[2][nodeId_2];
-    }
+  if ( m_parameters.auto_contact_check && !SurfacePairFilter::haveNoSharedNodes( mesh1, mesh2, fid1, fid2 ) ) {
+    return true;
   }
-
-  RealT nrml[max_dim]{};
-  RealT cx[max_dim]{};
+  if ( !SurfacePairFilter::haveOpposingNormals( mesh1, mesh2, fid1, fid2 ) ) {
+    return true;
+  }
+  if ( !SurfacePairFilter::areWithinCentroidProximity( mesh1, mesh2, fid1, fid2, m_effective_binning_proximity_scale,
+                                                       m_contact_mode ) ) {
+    return true;
+  }
 
   switch ( m_contact_method ) {
     case ALIGNED_MORTAR:
     case MORTAR_WEIGHTS:
-    case SINGLE_MORTAR: {
-      // specify the point-normal data used for mortar contact plane methods
-      // This is taken as the face 2 (nonmortar) normal and centroid
-      for ( int i = 0; i < dim; ++i ) {
-        nrml[i] = fn2[i];
-        cx[i] = cx2[i];
-      }
-
-      if ( !IsOverlappingOnPlane( &x1[0], &y1[0], &z1[0], &x2[0], &y2[0], &z2[0], &nrml[0], &cx[0], num_nodes_face_1,
-                                  num_nodes_face_2, dim ) ) {
-        return true;
-      }
-
-      break;
-    }
-    case COMMON_PLANE: {
-      // define the common plane
-      for ( int i = 0; i < dim; ++i ) {
-        nrml[i] = 0.5 * ( fn2[i] - fn1[i] );
-        cx[i] = 0.5 * ( cx1[i] + cx2[i] );
-      }
-
-      // normalize the intermediate plane normal
-      RealT mag;
-      if ( dim == 3 ) {
-        mag = magnitude( nrml[0], nrml[1], nrml[2] );
-      } else {
-        mag = magnitude( nrml[0], nrml[1], 0. );
-      }
-      RealT invMag = 1.0 / mag;
-
-      for ( int i = 0; i < dim; ++i ) {
-        nrml[i] *= invMag;
-      }
-
-      RealT x1_prime[max_nodes_per_face];
-      RealT y1_prime[max_nodes_per_face];
-      RealT z1_prime[max_nodes_per_face];
-      RealT x2_prime[max_nodes_per_face];
-      RealT y2_prime[max_nodes_per_face];
-      RealT z2_prime[max_nodes_per_face];
-
-      // project faces to average face planes
-      if ( dim == 3 ) {
-        ProjectFaceNodesToPlane( mesh1, fid1, fn1[0], fn1[1], fn1[2], cx1[0], cx1[1], cx1[2], &x1_prime[0],
-                                 &y1_prime[0], &z1_prime[0] );
-        ProjectFaceNodesToPlane( mesh2, fid2, fn2[0], fn2[1], fn2[2], cx2[0], cx2[1], cx2[2], &x2_prime[0],
-                                 &y2_prime[0], &z2_prime[0] );
-      } else {
-        for ( int i = 0; i < num_nodes_face_1; ++i ) {
-          x1_prime[i] = x1[i];
-          y1_prime[i] = y1[i];
-        }
-        for ( int i = 0; i < num_nodes_face_2; ++i ) {
-          x2_prime[i] = x2[i];
-          y2_prime[i] = y2[i];
-        }
-      }
-
-      if ( !IsOverlappingOnPlane( &x1_prime[0], &y1_prime[0], &z1_prime[0], &x2_prime[0], &y2_prime[0], &z2_prime[0],
-                                  &nrml[0], &cx[0], num_nodes_face_1, num_nodes_face_2, dim ) ) {
-        return true;
-      }
-      break;
-    }
+    case SINGLE_MORTAR:
+      return !SurfacePairFilter::haveProjectedOverlapOnSecondElementPlane( mesh1, mesh2, fid1, fid2 );
+    case COMMON_PLANE:
+      return !SurfacePairFilter::haveProjectedOverlapOnIntermediatePlane( mesh1, mesh2, fid1, fid2 );
+    case ENERGY_MORTAR:
+      return false;
     default: {
 #ifdef TRIBOL_USE_HOST
-      SLIC_ERROR( "CouplingScheme::performMethodPruning(): your contact method does not have a pruning routine." );
+      SLIC_ERROR( "CouplingScheme::pruneMethodFacePair(): contact method does not have a pruning routine." );
 #endif
       break;
     }

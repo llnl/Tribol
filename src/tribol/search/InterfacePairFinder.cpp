@@ -10,172 +10,60 @@
 #include "axom/primal.hpp"
 #include "axom/spin.hpp"
 
-// Shared includes
+// Tribol includes
 #include "tribol/common/ExecModel.hpp"
 #include "tribol/common/LoopExec.hpp"
-
-// Tribol includes
 #include "tribol/common/Parameters.hpp"
-#include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/utils/Algorithm.hpp"
-#include "tribol/common/LoopExec.hpp"
-#include "tribol/common/Atomics.hpp"
 
-// Define some namespace aliases to help with axom usage
+#include <cmath>
+#include <memory>
+#include <utility>
+
+// Short aliases for frequently used Axom namespaces
 namespace primal = axom::primal;
 namespace spin = axom::spin;
 
 namespace tribol {
 
-/*!
- * \brief Base class to compute the candidate pairs for a coupling scheme
+/**
+ * @brief Runtime-polymorphic interface for explicit coarse-search strategies
  *
- * \a initialize() must be called prior to \a findInterfacePairs()
- *
+ * Grid and BVH searches derive from this interface so the public dispatcher can select an implementation from runtime
+ * configuration. Lazy Cartesian products bypass this interface because they do not allocate explicit pairs.
  */
 class SearchBase {
  public:
-  SearchBase() {};
-  virtual ~SearchBase() {};
-  /*!
-   * Prepares the object for spatial searches
-   */
-  virtual void initialize() = 0;
+  /** @brief Construct a coarse-search implementation. */
+  SearchBase() = default;
 
-  /*!
-   * Find candidates in first mesh for each element in second mesh of coupling scheme.
+  /** @brief Destroy a coarse-search implementation through the base class. */
+  virtual ~SearchBase() = default;
+
+  /**
+   * @brief Find candidates from the first mesh for each second-mesh element
+   *
+   * @param [in] mesh1 Mesh whose elements provide candidate IDs.
+   * @param [in] mesh2 Mesh whose elements are matched against @p mesh1.
+   * @return Explicitly stored candidate element pairs.
    */
-  virtual void findInterfacePairs() = 0;
+  virtual ArrayT<ElementPair> findInterfacePairs( const MeshData::Viewer& mesh1,
+                                                  const MeshData::Viewer& mesh2 ) const = 0;
 };
 
 ///////////////////////////////////////////////////////////////////////////////
 
-/*!
- * \brief Helper class to compute the candidate pairs for a coupling scheme
+/**
+ * @brief Finds coarse candidate pairs with an Axom implicit grid
  *
- * A CartesianProduct search combines each element from the first mesh of
- * the coupling scheme with each element in the second mesh. A geometry filter
- * is then applied to each resulting element pair.  This is the slowest of all
- * pair-finding methods since ALL possible element pairs are considered, i.e.,
- * this is an exhaustive search.
+ * The search inserts inflated bounding boxes for the first mesh into a spatial index. It then queries the index with
+ * each inflated second-mesh element box and stores every returned candidate pair.
  *
- * \tparam D The spatial dimension of the coupling scheme mesh vertices.
- */
-template <int D>
-class CartesianProduct : public SearchBase {
- public:
-  /*!
-   * Constructs a CartesianProduct instance over CouplingScheme \a couplingScheme
-   * \pre couplingScheme is not null
-   */
-  CartesianProduct( CouplingScheme* couplingScheme ) : m_coupling_scheme( couplingScheme ) {}
-
-  void initialize() override {}
-
-  void findInterfacePairs() override
-  {
-    const auto mesh1 = m_coupling_scheme->getMesh1().getView();
-    IndexT mesh1NumElems = mesh1.numberOfElements();
-
-    const auto mesh2 = m_coupling_scheme->getMesh2().getView();
-    IndexT mesh2NumElems = mesh2.numberOfElements();
-
-    // Reserve memory for boolean array indicating which pairs are proximate
-    IndexT maxNumPairs = mesh1NumElems * mesh2NumElems;
-    bool is_symm = m_coupling_scheme->getMeshId1() == m_coupling_scheme->getMeshId2();
-    if ( is_symm ) {
-      // account for symmetry: the max number of pairs when the meshes are the
-      // same is the upper triangular portion of the cartesian product pair
-      // matrix
-      maxNumPairs = mesh1NumElems * ( mesh1NumElems + 1 ) / 2;
-    }
-    ArrayT<bool> proximityArray( maxNumPairs, maxNumPairs, m_coupling_scheme->getAllocatorId() );
-    bool* isProximate = proximityArray.data();
-
-    // Allocate memory for a counter
-    ArrayT<int> countArray( 1, 1, m_coupling_scheme->getAllocatorId() );
-    int* pCount = countArray.data();
-
-    const auto cs_view = m_coupling_scheme->getView();
-    // count how many pairs are proximate
-    forAllExec( m_coupling_scheme->getExecutionMode(), maxNumPairs,
-                [cs_view, mesh1NumElems, mesh2NumElems, is_symm, isProximate, pCount] TRIBOL_HOST_DEVICE( IndexT i ) {
-                  IndexT fromIdx = i / mesh2NumElems;
-                  IndexT toIdx = i % mesh2NumElems;
-                  if ( is_symm ) {
-                    IndexT row = algorithm::symmMatrixRow( i, mesh1NumElems );
-                    IndexT offset = row * ( row + 1 ) / 2;
-                    fromIdx = row;
-                    toIdx = i - offset;
-                  }
-                  isProximate[i] = geomFilter( cs_view, fromIdx, toIdx );
-                  // Note: A true reduction like axom::ReduceSum would be more efficient here.
-                  // However, it is not currently implemented because forAllExec would need
-                  // to know the execution mode at compile time to instantiate the correct reducer.
-                  if ( isProximate[i] ) {
-                    tribol::atomicAdd( pCount, 1 );
-                  }
-                } );
-
-    ArrayT<int, 1, MemorySpace::Host> countArray_host( countArray );
-    SLIC_INFO( "Found " << countArray_host[0] << " proximate pairs" );
-
-    // allocate proximate pairs array
-    auto& contactPairs = m_coupling_scheme->getInterfacePairs();
-    contactPairs.resize( countArray_host[0] );
-
-    int zero = 0;
-    // Workaround for axom::Array::fill() issue for optimized CUDA code, see Axom #1833.
-    axom::copy( countArray.data(), &zero, sizeof( int ) );
-    auto pairs_view = m_coupling_scheme->getInterfacePairs().view();
-    // fill proximate pairs array
-    forAllExec(
-        m_coupling_scheme->getExecutionMode(), maxNumPairs,
-        [isProximate, pCount, pairs_view, mesh1NumElems, mesh2NumElems, is_symm] TRIBOL_HOST_DEVICE( IndexT i ) {
-          // Filtering removed this case
-          if ( !isProximate[i] ) {
-            return;
-          }
-
-          IndexT fromIdx = i / mesh2NumElems;
-          IndexT toIdx = i % mesh2NumElems;
-          if ( is_symm ) {
-            IndexT row = algorithm::symmMatrixRow( i, mesh1NumElems );
-            IndexT offset = row * ( row + 1 ) / 2;
-            fromIdx = row;
-            toIdx = i - offset;
-          }
-
-          // get unique index for the array
-          auto idx = tribol::atomicInc( pCount );
-
-          pairs_view[idx] = InterfacePair( fromIdx, toIdx, true );
-        } );
-
-    SLIC_INFO( "Coupling scheme has " << contactPairs.size() << " pairs out of a maximum possible of " << maxNumPairs
-                                      << "." );
-  }
-
- private:
-  CouplingScheme* m_coupling_scheme;
-};  // End of CartesianProduct definition
-
-///////////////////////////////////////////////////////////////////////////////
-
-/*!
- * \brief Implicit Grid helper class to compute the candidate pairs for a coupling scheme
+ * The spatial index is constructed and queried by findInterfacePairs(). Grid search currently executes sequentially.
  *
- * A GridSearch indexes the elements from the first mesh of the coupling scheme
- * in a spatial index that requires element bounding boxes. Then, for each of
- * the elements in the second mesh, we find proximate faces and add them to the
- * coupling scheme's list of candidate pairs.
- *
- * The spatial index is generated in \a initialize()
- * and the search is performed in \a findInterfacePairs()
- *
- * \tparam D The spatial dimension of the coupling scheme mesh vertices.
+ * @tparam D Spatial dimension of the mesh coordinates.
  */
 template <int D>
 class GridSearch : public SearchBase {
@@ -184,154 +72,133 @@ class GridSearch : public SearchBase {
   using PointT = primal::Point<RealT, D>;
 
   using ImplicitGridType = spin::ImplicitGrid<D, axom::SEQ_EXEC, int>;
-  using SpacePoint = typename ImplicitGridType::SpacePoint;
   using SpaceVec = typename ImplicitGridType::SpaceVec;
   using SpatialBoundingBox = typename ImplicitGridType::SpatialBoundingBox;
 
-  /*!
-   * Constructs a GridSearch instance over CouplingScheme \a couplingScheme
-   * \pre couplingScheme is not null
+  /**
+   * @brief Construct a grid-search strategy
+   *
+   * @param [in] proximity_scale Element-size multiplier used to inflate each element box.
+   * @param [in] allocator_id Allocator used for explicitly stored result pairs.
    */
-  GridSearch( CouplingScheme* couplingScheme )
-      : m_coupling_scheme( couplingScheme ),
-        m_mesh1( m_coupling_scheme->getMesh1().getView() ),
-        m_mesh2( m_coupling_scheme->getMesh2().getView() )
+  GridSearch( RealT proximity_scale, int allocator_id )
+      : proximity_scale_( proximity_scale ), allocator_id_( allocator_id )
   {
   }
 
-  /*!
-   * Constructs spatial index over elements of coupling scheme's first mesh
+ private:
+  /**
+   * @brief Build and query an implicit grid for two meshes
+   *
+   * Empty input meshes leave the grid uninitialized because no query can produce a pair.
+   *
+   * @param [in] mesh1 Mesh whose element boxes are inserted into the grid.
+   * @param [in] mesh2 Mesh whose element boxes query the grid.
+   * @return Candidate pairs stored with the configured allocator.
    */
-  void initialize() override
+  ArrayT<ElementPair> findInterfacePairs( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) const override
   {
-    // TODO does this tolerance need to scale with the mesh?
+    ArrayT<ElementPair> pairs( 0, 0, allocator_id_ );
+
+    if ( mesh1.numberOfElements() == 0 || mesh2.numberOfElements() == 0 ) {
+      return pairs;
+    }
+
+    // TODO: Determine whether this tolerance should scale with the mesh.
     const RealT bboxTolerance = 1e-6;
 
-    m_coupling_scheme->getInterfacePairs().clear();
-    // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
-    auto e_binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
+    // The caller supplies the effective scale, including any upstream LOR adjustment.
+    auto e_binning_proximity_scale = proximity_scale_;
 
-    // if either mesh is empty, don't initialize because...
-    // 1) there won't be any pairs
-    // 2) there is some division by the number of elements below
-    if ( m_mesh1.numberOfElements() == 0 || m_mesh2.numberOfElements() == 0 ) {
-      return;
+    // Cache first-mesh element boxes for grid construction and insertion.
+    ArrayT<SpatialBoundingBox> mesh_bboxes1;
+    mesh_bboxes1.reserve( mesh1.numberOfElements() );
+    for ( int i = 0; i < mesh1.numberOfElements(); ++i ) {
+      mesh_bboxes1.emplace_back( elementBoundingBox( mesh1, i ) );
     }
 
-    // Find the bounding boxes of the elements in the first mesh
-    // Store them in an array for efficient reuse
-    m_gridBBox.clear();
-    m_meshBBoxes1.reserve( m_mesh1.numberOfElements() );
-    for ( int i = 0; i < m_mesh1.numberOfElements(); ++i ) {
-      m_meshBBoxes1.emplace_back( elementBoundingBox( m_mesh1, i ) );
-    }
-
-    // Find an appropriate resolution for the spatial index grid
-    //
-    // (Note KW) This implementation is a bit ad-hoc
-    // * Inflate bounding boxes by proximity scale * longest dimension to avoid zero-width dimensions
-    // * Find the average extents (range) of the boxes Assumption is that elements are roughly the same size
-    // * Grid resolution for each dimension is overall box width divided by half the average element width
+    // Estimate a grid resolution from the average inflated element-box extent:
+    // 1. Inflate each box isotropically using its longest dimension.
+    // 2. Average the box extents, assuming elements have comparable sizes.
+    // 3. Choose approximately one cell per two average box widths.
     SpaceVec ranges;
-    for ( int i = 0; i < m_mesh1.numberOfElements(); ++i ) {
-      auto& bbox = m_meshBBoxes1[i];
+    SpatialBoundingBox grid_bbox;
+    for ( int i = 0; i < mesh1.numberOfElements(); ++i ) {
+      auto& bbox = mesh_bboxes1[i];
       inflateBBox( bbox, e_binning_proximity_scale );
 
       ranges += bbox.range();
 
-      // build up overall bounding box along the way
-      m_gridBBox.addBox( bbox );
+      // Accumulate the bounds of every indexed element.
+      grid_bbox.addBox( bbox );
     }
 
-    // inflate grid box slightly so elem bounding boxes are not on grid bdry
-    m_gridBBox.scale( 1 + bboxTolerance );
+    // Keep inserted boxes away from the grid boundary despite roundoff.
+    grid_bbox.scale( 1 + bboxTolerance );
 
-    ranges /= static_cast<double>( m_mesh1.numberOfElements() );
+    ranges /= static_cast<double>( mesh1.numberOfElements() );
 
-    // Compute grid resolution from average bbox size
+    // Compute each grid dimension from the corresponding average box extent.
     typename ImplicitGridType::GridCell resolution;
-    SpaceVec bboxRange = m_gridBBox.range();
-    const RealT scaleFac = 0.5;  // TODO is this mesh dependent?
+    SpaceVec bboxRange = grid_bbox.range();
+    const RealT scaleFac = 0.5;  // TODO: Determine whether this factor should be mesh-dependent.
     for ( int i = 0; i < D; ++i ) {
       resolution[i] = static_cast<IndexT>( std::ceil( scaleFac * bboxRange[i] / ranges[i] ) );
     }
 
-    // Next, initialize the ImplicitGrid
-    m_grid.initialize( m_gridBBox, &resolution, m_mesh1.numberOfElements() );
-
-    // Finally, insert the elements
-    for ( int i = 0; i < m_mesh1.numberOfElements(); ++i ) {
-      m_grid.insert( m_meshBBoxes1[i], i );
+    // Initialize the spatial index and insert each first-mesh element box.
+    ImplicitGridType grid;
+    grid.initialize( grid_bbox, &resolution, mesh1.numberOfElements() );
+    for ( int i = 0; i < mesh1.numberOfElements(); ++i ) {
+      grid.insert( mesh_bboxes1[i], i );
     }
 
-    // Output some info for debugging
-    if ( true ) {
-      SLIC_DEBUG( "Implicit Grid info: " << "\n Mesh 1 bounding box (inflated): " << m_gridBBox
-                                         << "\n Avg range: " << ranges << "\n Computed resolution: " << resolution );
+    // Report search-domain information when debug logging is enabled.
+    SLIC_DEBUG( "Implicit Grid info: " << "\n Mesh 1 bounding box (inflated): " << grid_bbox
+                                       << "\n Avg range: " << ranges << "\n Computed resolution: " << resolution );
 
-      SpatialBoundingBox bbox2;
-      for ( int i = 0; i < m_mesh2.numberOfElements(); ++i ) {
-        bbox2.addBox( elementBoundingBox( m_mesh2, i ) );
-      }
-
-      SLIC_DEBUG( "Mesh 2 bounding box is: " << bbox2 );
+    SpatialBoundingBox bbox2;
+    for ( int i = 0; i < mesh2.numberOfElements(); ++i ) {
+      bbox2.addBox( elementBoundingBox( mesh2, i ) );
     }
-  };  // end initialize()
 
-  /*!
-   * Use the spatial index to find candidates in first mesh for each
-   * element in second mesh of coupling scheme.
-   */
-  void findInterfacePairs() override
-  {
+    SLIC_DEBUG( "Mesh 2 bounding box is: " << bbox2 );
+
+    // Query first-mesh candidates for each second-mesh element.
     using BitsetType = typename ImplicitGridType::BitsetType;
-
-    // Extract some mesh metadata from coupling scheme
-    const auto mesh1 = m_coupling_scheme->getMesh1().getView();
-    const auto mesh2 = m_coupling_scheme->getMesh2().getView();
-    auto& contactPairs = m_coupling_scheme->getInterfacePairs();
-    // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
-    auto e_binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
-
-    // Find matches in first mesh (with index 'fromIdx')
-    // with candidate elements in second mesh (with index 'toIdx')
-    // int k = 0;  // Debug only
-    for ( int toIdx = 0; toIdx < m_mesh2.numberOfElements(); ++toIdx ) {
-      SpatialBoundingBox bbox = elementBoundingBox( m_mesh2, toIdx );
+    for ( int toIdx = 0; toIdx < mesh2.numberOfElements(); ++toIdx ) {
+      SpatialBoundingBox bbox = elementBoundingBox( mesh2, toIdx );
       inflateBBox( bbox, e_binning_proximity_scale );
 
-      // Query the mesh
-      auto candidateBits = m_grid.getCandidates( bbox );
+      auto candidateBits = grid.getCandidates( bbox );
 
-      // Add candidates
       for ( IndexT fromIdx = candidateBits.find_first(); fromIdx != BitsetType::npos;
             fromIdx = candidateBits.find_next( fromIdx ) ) {
-        // if meshId1 = meshId2, then check to make sure fromIdx < toIdx
-        // so we don't double count
+        // Retain only one ordering of same-mesh element pairs.
         if ( ( mesh1.meshId() == mesh2.meshId() ) && ( fromIdx < toIdx ) ) {
           continue;
         }
 
-        // TODO: Add extra filter by bbox
+        // TODO: Reject candidates whose boxes share grid cells but do not overlap.
 
-        // Preliminary geometry/proximity checks, SRW
-        bool contact = geomFilter( m_coupling_scheme->getView(), fromIdx, toIdx );
-
-        if ( contact ) {
-          contactPairs.emplace_back( fromIdx, toIdx, true );
-          // SLIC_INFO("Interface pair " << k << " = " << toIdx << ", " << fromIdx);  // Debug only
-          // ++k;  // Debug only
-        }
+        pairs.emplace_back( fromIdx, toIdx );
       }
-    }  // end of loop over candidates in second mesh
+    }
 
-  }  // end findInterfacePairs()
+    return pairs;
+  }
 
- private:
-  BBox elementBoundingBox( const MeshData::Viewer& mesh, IndexT eId )
+  /**
+   * @brief Compute the axis-aligned bounding box of one mesh element
+   *
+   * @param [in] mesh Mesh containing the element.
+   * @param [in] eId Element index in @p mesh.
+   * @return Minimal axis-aligned box containing the element nodes.
+   */
+  static BBox elementBoundingBox( const MeshData::Viewer& mesh, IndexT eId )
   {
-    // NOTE: namespace for NumericArray changed in axom 0.10.0. The using directives below allow Tribol to work with
-    // older and newer versions of axom.
+    // These using directives support Axom releases before and after NumericArray moved into the axom::primal namespace
+    // in Axom 0.10.0.
     using namespace axom;
     using namespace axom::primal;
 
@@ -348,39 +215,40 @@ class GridSearch : public SearchBase {
 
     return box;
   }
-  /*!
-   * Expands bounding box by range_multiplier * the longest dimension's range
+
+  /**
+   * @brief Expand a box isotropically based on its longest dimension
+   *
+   * @param [in,out] bbox Box to expand.
+   * @param [in] range_multiplier Multiplier applied to the box's longest
+   * extent to obtain the expansion distance.
    */
-  void inflateBBox( SpatialBoundingBox& bbox, RealT range_multiplier )
+  static void inflateBBox( SpatialBoundingBox& bbox, RealT range_multiplier )
   {
     int d = bbox.getLongestDimension();
     const RealT expansionFac = range_multiplier * bbox.range()[d];
     bbox.expand( expansionFac );
   }
 
-  CouplingScheme* m_coupling_scheme;
-  const MeshData::Viewer m_mesh1;
-  const MeshData::Viewer m_mesh2;
+  /** Element-size multiplier used to inflate element boxes. */
+  RealT proximity_scale_;
 
-  ImplicitGridType m_grid;
-  SpatialBoundingBox m_gridBBox;
-  ArrayT<SpatialBoundingBox> m_meshBBoxes1;
-
-};  // End of GridSearch class definition
+  /** Allocator used for explicitly stored result pairs. */
+  int allocator_id_;
+};
 
 ///////////////////////////////////////////////////////////////////////////////
 
-/*!
- * \brief BVH helper class to compute the candidate pairs for a coupling scheme
+/**
+ * @brief Finds coarse candidate pairs with an Axom bounding-volume hierarchy
  *
- * A BvhSearch constructs a BVH tree from the elements of the first mesh using
- * element bounding boxes. Then, for each of the elements in the second mesh, we
- * traverse the BVH tree, find proximate faces, and add them to the coupling
- * scheme's list of candidate pairs.
+ * The search builds a BVH over expanded first-mesh element boxes and queries it
+ * with expanded second-mesh element boxes. The BVH returns first-mesh element
+ * indices grouped by second-mesh query element; findInterfacePairs() converts
+ * that representation into explicit ElementPair values.
  *
- * The search is performed in \a findInterfacePairs()
- *
- * \tparam D The spatial dimension of the coupling scheme mesh vertices.
+ * @tparam D Spatial dimension of the mesh coordinates.
+ * @tparam ExecSpace Axom execution space used to build and query the BVH.
  */
 template <int D, class ExecSpace>
 class BvhSearch : public SearchBase {
@@ -390,138 +258,126 @@ class BvhSearch : public SearchBase {
   using PointT = primal::Point<RealT, D>;
   using RayT = primal::Ray<RealT, D>;
   using VectorT = primal::Vector<RealT, D>;
-  using AtomicPolicy = typename axom::execution_space<ExecSpace>::atomic_policy;
 
-  /*!
-   * Constructs a BvhSearch instance over CouplingScheme \a couplingScheme
-   * \pre couplingScheme is not null
+  /**
+   * @brief Construct a BVH-search strategy
+   *
+   * @param [in] execution_mode Runtime execution mode corresponding to
+   * @p ExecSpace.
+   * @param [in] allocator_id Allocator used for search work arrays and result
+   * pairs.
+   * @param [in] proximity_scale Element-size multiplier used to expand element
+   * boxes along their face normals.
    */
-  BvhSearch( CouplingScheme* coupling_scheme )
-      : m_coupling_scheme( coupling_scheme ),
-        m_mesh1( m_coupling_scheme->getMesh1().getView() ),
-        m_mesh2( m_coupling_scheme->getMesh2().getView() ),
-        m_boxes1( axom::ArrayOptions::Uninitialized{}, m_mesh1.numberOfElements(), m_mesh1.numberOfElements(),
-                  m_coupling_scheme->getAllocatorId() ),
-        m_boxes2( axom::ArrayOptions::Uninitialized{}, m_mesh2.numberOfElements(), m_mesh2.numberOfElements(),
-                  m_coupling_scheme->getAllocatorId() ),
-        m_candidates( axom::ArrayOptions::Uninitialized{}, 0, 0, m_coupling_scheme->getAllocatorId() ),
-        m_offsets( axom::ArrayOptions::Uninitialized{}, m_mesh2.numberOfElements(), m_mesh2.numberOfElements(),
-                   m_coupling_scheme->getAllocatorId() ),
-        m_counts( axom::ArrayOptions::Uninitialized{}, m_mesh2.numberOfElements(), m_mesh2.numberOfElements(),
-                  m_coupling_scheme->getAllocatorId() )
+  BvhSearch( ExecutionMode execution_mode, int allocator_id, RealT proximity_scale )
+      : execution_mode_( execution_mode ), allocator_id_( allocator_id ), proximity_scale_( proximity_scale )
   {
-  }
-
-  /*!
-   * Allocate and fill bounding box arrays for each of the two meshes
-   */
-  void initialize() override
-  {
-    // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
-    buildMeshBBoxes( m_boxes1, m_coupling_scheme->getMesh1().getView(),
-                     m_coupling_scheme->getEffectiveBinningProximityScale() );
-    // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
-    buildMeshBBoxes( m_boxes2, m_coupling_scheme->getMesh2().getView(),
-                     m_coupling_scheme->getEffectiveBinningProximityScale() );
-  }  // end initialize()
-
-  /*!
-   * Use the BVH to find candidates in first mesh for each
-   * element in second mesh of coupling scheme.
-   */
-  void findInterfacePairs() override
-  {
-    // Build the BVH
-    BVHT bvh;
-    bvh.setAllocatorID( m_coupling_scheme->getAllocatorId() );
-    bvh.initialize( m_boxes1.view(), m_boxes1.size() );
-
-    // Search for intersecting bounding boxes
-    auto counts_view = m_counts.view();
-    auto offsets_view = m_offsets.view();
-    bvh.findBoundingBoxes( offsets_view, counts_view, m_candidates, m_mesh2.numberOfElements(), m_boxes2.view() );
-
-    // Apply geom filter to check if intersecting bounding boxes are proximate
-    // Change candidate value to -1 if geom filter checks are failed
-    auto candidates_view = m_candidates.view();
-    // array of size 1 to track the number of candidates in a way compatible
-    // with device kernels
-    ArrayT<IndexT> filtered_candidates_data( 1, 1, m_coupling_scheme->getAllocatorId() );
-    auto filtered_candidates = filtered_candidates_data.view();
-    const auto cs_view = m_coupling_scheme->getView();
-    // count the number of filtered proximate pairs
-    forAllExec(
-        m_coupling_scheme->getExecutionMode(), m_candidates.size(),
-        [cs_view, offsets_view, counts_view, candidates_view, filtered_candidates] TRIBOL_HOST_DEVICE( IndexT i ) {
-          auto mesh1_elem = candidates_view[i];
-          auto mesh2_elem = algorithm::binarySearch( offsets_view, counts_view, i );
-          if ( geomFilter( cs_view, mesh1_elem, mesh2_elem ) ) {
-            tribol::atomicInc( filtered_candidates.data() );
-          } else {
-            candidates_view[i] = -1;
-          }
-        } );
-
-    ArrayT<IndexT, 1, MemorySpace::Host> filtered_candidates_host( filtered_candidates_data );
-    m_coupling_scheme->getInterfacePairs().resize( filtered_candidates_host[0] );
-    filtered_candidates_data.fill( 0 );
-
-    auto pairs_view = m_coupling_scheme->getInterfacePairs().view();
-    // add filtered pairs to interface pairs array
-    forAllExec(
-        m_coupling_scheme->getExecutionMode(), m_candidates.size(),
-        [candidates_view, offsets_view, counts_view, filtered_candidates, pairs_view] TRIBOL_HOST_DEVICE( IndexT i ) {
-          // Filtering removed this case
-          if ( candidates_view[i] == -1 ) {
-            return;
-          }
-
-          auto mesh1_elem = candidates_view[i];
-          auto mesh2_elem = algorithm::binarySearch( offsets_view, counts_view, i );
-
-          // get unique index for the array
-          auto idx = tribol::atomicInc( filtered_candidates.data() );
-
-          pairs_view[idx] = InterfacePair( mesh1_elem, mesh2_elem, true );
-        } );
-  }  // end findInterfacePairs()
-
-  void buildMeshBBoxes( ArrayT<BoxT>& boxes, const MeshData::Viewer& mesh, RealT binning_proximity )
-  {
-    auto boxes_view = boxes.view();
-    forAllExec( m_coupling_scheme->getExecutionMode(), mesh.numberOfElements(),
-                [mesh, boxes_view, binning_proximity] TRIBOL_HOST_DEVICE( IndexT i ) {
-                  BoxT box;
-                  auto num_nodes_per_elem = mesh.numberOfNodesPerElement();
-                  for ( IndexT j{ 0 }; j < num_nodes_per_elem; ++j ) {
-                    IndexT node_id = mesh.getGlobalNodeId( i, j );
-                    PointT pos;
-                    for ( int d{ 0 }; d < D; ++d ) {
-                      pos[d] = mesh.getPosition()[d][node_id];
-                    }
-                    box.addPoint( pos );
-                  }
-                  // Expand the bounding box in the face normal direction
-                  RealT vnorm[3];
-                  mesh.getFaceNormal( i, vnorm );
-                  VectorT faceNormal( vnorm );
-                  RealT faceRadius = mesh.getFaceRadius()[i];
-                  expandBBoxNormal( box, faceNormal, binning_proximity * faceRadius );
-                  boxes_view[i] = std::move( box );
-                } );
   }
 
  private:
-  /*!
-   * Expands bounding box by projecting the face normal by a distance
-   * equal to the effective face radius
+  /**
+   * @brief Build and query a BVH for two meshes
+   *
+   * @param [in] mesh1 Mesh whose element boxes populate the BVH.
+   * @param [in] mesh2 Mesh whose element boxes query the BVH.
+   * @return Candidate pairs stored with the configured allocator.
+   */
+  ArrayT<ElementPair> findInterfacePairs( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) const override
+  {
+    if ( mesh1.numberOfElements() == 0 || mesh2.numberOfElements() == 0 ) {
+      return ArrayT<ElementPair>( 0, 0, allocator_id_ );
+    }
+
+    ArrayT<BoxT> boxes1( axom::ArrayOptions::Uninitialized{}, mesh1.numberOfElements(), mesh1.numberOfElements(),
+                         allocator_id_ );
+    ArrayT<BoxT> boxes2( axom::ArrayOptions::Uninitialized{}, mesh2.numberOfElements(), mesh2.numberOfElements(),
+                         allocator_id_ );
+
+    // The caller supplies the effective scale, including any upstream LOR adjustment.
+    buildMeshBBoxes( boxes1, mesh1, proximity_scale_ );
+    buildMeshBBoxes( boxes2, mesh2, proximity_scale_ );
+
+    // Build the index over first-mesh element boxes.
+    BVHT bvh;
+    bvh.setAllocatorID( allocator_id_ );
+    bvh.initialize( boxes1.view(), boxes1.size() );
+
+    // Query all second-mesh boxes. Candidates contains flattened first-mesh
+    // element IDs; offsets and counts map each query element to its candidates.
+    ArrayT<IndexT> candidates( axom::ArrayOptions::Uninitialized{}, 0, 0, allocator_id_ );
+    ArrayT<IndexT> offsets( axom::ArrayOptions::Uninitialized{}, mesh2.numberOfElements(), mesh2.numberOfElements(),
+                            allocator_id_ );
+    ArrayT<IndexT> counts( axom::ArrayOptions::Uninitialized{}, mesh2.numberOfElements(), mesh2.numberOfElements(),
+                           allocator_id_ );
+    auto counts_view = counts.view();
+    auto offsets_view = offsets.view();
+    bvh.findBoundingBoxes( offsets_view, counts_view, candidates, mesh2.numberOfElements(), boxes2.view() );
+
+    // Convert the flattened BVH output into explicit element pairs in the
+    // configured execution space.
+    auto candidates_view = candidates.view();
+    ArrayT<ElementPair> pairs( candidates.size(), candidates.size(), allocator_id_ );
+    auto pairs_view = pairs.view();
+    forAllExec<false>( execution_mode_, candidates.size(),
+                       [candidates_view, offsets_view, counts_view, pairs_view] TRIBOL_HOST_DEVICE( IndexT i ) {
+                         auto mesh1_elem = candidates_view[i];
+                         auto mesh2_elem = algorithm::binarySearch( offsets_view, counts_view, i );
+                         pairs_view[i] = ElementPair( mesh1_elem, mesh2_elem );
+                       } );
+    return pairs;
+  }
+
+  /**
+   * @brief Build proximity-expanded element boxes for one mesh
+   *
+   * The unexpanded box contains the element nodes. The final box also contains
+   * points offset from its centroid in both face-normal directions by the
+   * scaled face radius.
+   *
+   * @param [out] boxes Preallocated output array with one box per element.
+   * @param [in] mesh Mesh whose element boxes are built.
+   * @param [in] binning_proximity Multiplier applied to each element's face
+   * radius to obtain the normal expansion distance.
+   */
+  void buildMeshBBoxes( ArrayT<BoxT>& boxes, const MeshData::Viewer& mesh, RealT binning_proximity ) const
+  {
+    auto boxes_view = boxes.view();
+    forAllExec<false>( execution_mode_, mesh.numberOfElements(),
+                       [mesh, boxes_view, binning_proximity] TRIBOL_HOST_DEVICE( IndexT i ) {
+                         BoxT box;
+                         auto num_nodes_per_elem = mesh.numberOfNodesPerElement();
+                         for ( IndexT j{ 0 }; j < num_nodes_per_elem; ++j ) {
+                           IndexT node_id = mesh.getGlobalNodeId( i, j );
+                           PointT pos;
+                           for ( int d{ 0 }; d < D; ++d ) {
+                             pos[d] = mesh.getPosition()[d][node_id];
+                           }
+                           box.addPoint( pos );
+                         }
+
+                         // Include proximity in both directions normal to the face.
+                         RealT vnorm[3];
+                         mesh.getFaceNormal( i, vnorm );
+                         VectorT faceNormal( vnorm );
+                         RealT faceRadius = mesh.getFaceRadius()[i];
+                         expandBBoxNormal( box, faceNormal, binning_proximity * faceRadius );
+                         boxes_view[i] = std::move( box );
+                       } );
+  }
+
+  /**
+   * @brief Expand a box in both directions along a face normal
+   *
+   * @param [in,out] bbox Box to expand.
+   * @param [in] faceNormal Unit face normal defining the expansion direction.
+   * @param [in] faceRadius Distance added in each normal direction.
    */
   TRIBOL_HOST_DEVICE static void expandBBoxNormal( BoxT& bbox, const VectorT& faceNormal, const RealT faceRadius )
   {
     PointT p0 = bbox.getCentroid();
     RayT outwardRay( p0, faceNormal );
     VectorT inwardNormal( faceNormal );
-    inwardNormal *= -1.0;  // this operation is available on device
+    inwardNormal *= -1.0;
     RayT inwardRay( p0, inwardNormal );
     PointT pout = outwardRay.at( faceRadius );
     PointT pin = inwardRay.at( faceRadius );
@@ -529,146 +385,140 @@ class BvhSearch : public SearchBase {
     bbox.addPoint( pin );
   }
 
-  /*!
-   * Isotropically expands bounding box by the effective face radius.
-   */
-  TRIBOL_HOST_DEVICE void inflateBBox( BoxT& bbox, const RealT faceRadius ) { bbox.expand( faceRadius ); }
+  /** Runtime execution mode corresponding to @p ExecSpace. */
+  ExecutionMode execution_mode_;
 
-  CouplingScheme* m_coupling_scheme;
-  const MeshData::Viewer m_mesh1;
-  const MeshData::Viewer m_mesh2;
-  ArrayT<BoxT> m_boxes1;
-  ArrayT<BoxT> m_boxes2;
-  ArrayT<IndexT> m_candidates;
-  ArrayT<IndexT> m_offsets;
-  ArrayT<IndexT> m_counts;
-};  // End of BvhSearch class definition
+  /** Allocator for search work arrays and explicitly stored result pairs. */
+  int allocator_id_;
+
+  /** Element-size multiplier used for face-normal box expansion. */
+  RealT proximity_scale_;
+};
 
 ///////////////////////////////////////////////////////////////////////////////
 
-InterfacePairFinder::InterfacePairFinder( CouplingScheme* cs ) : m_coupling_scheme( cs )
+InterfacePairFinder::InterfacePairFinder( BinningMethod binning_method, ExecutionMode execution_mode, int allocator_id,
+                                          RealT proximity_scale )
+    : binning_method_( binning_method ),
+      execution_mode_( execution_mode ),
+      allocator_id_( allocator_id ),
+      proximity_scale_( proximity_scale )
 {
-  SLIC_ASSERT_MSG( cs != nullptr, "Coupling scheme was invalid (null pointer)" );
-  const int dim = m_coupling_scheme->spatialDimension();
-  m_search = nullptr;
-
-  if ( isOnDevice( cs->getExecutionMode() ) && cs->getBinningMethod() == BINNING_GRID ) {
+  if ( isOnDevice( execution_mode_ ) && binning_method_ == BINNING_GRID ) {
     SLIC_WARNING_ROOT( "BINNING_GRID is not supported on GPU. Switching to BINNING_BVH." );
-    cs->setBinningMethod( BINNING_BVH );
-  }
-
-  switch ( cs->getBinningMethod() ) {
-    case BINNING_CARTESIAN_PRODUCT:
-      switch ( dim ) {
-        case 2:
-          m_search = new CartesianProduct<2>( m_coupling_scheme );
-          break;
-        case 3:
-          m_search = new CartesianProduct<3>( m_coupling_scheme );
-          break;
-        default:
-          SLIC_ERROR_ROOT( "Invalid dimension: " << dim );
-          break;
-      }  // end of BINNING_CARTESIAN_PRODUCT dimension switch
-      break;
-    case BINNING_GRID:
-      // The spatial grid is templated on the dimension
-      switch ( dim ) {
-        case 2:
-          m_search = new GridSearch<2>( m_coupling_scheme );
-          break;
-        case 3:
-          m_search = new GridSearch<3>( m_coupling_scheme );
-          break;
-        default:
-          SLIC_ERROR_ROOT( "Invalid dimension: " << dim );
-          break;
-      }  // end of BINNING_GRID dimension switch
-      break;
-    case BINNING_BVH:
-      // The BVH is templated on the dimension and execution space
-      switch ( dim ) {
-        case 2:
-          switch ( cs->getExecutionMode() ) {
-            case ( ExecutionMode::Sequential ):
-              m_search = new BvhSearch<2, axom::SEQ_EXEC>( m_coupling_scheme );
-              break;
-#ifdef TRIBOL_USE_OPENMP
-            case ( ExecutionMode::OpenMP ):  // This causes compiler to hang (EBC: Check if this is still true)
-              m_search = new BvhSearch<2, axom::OMP_EXEC>( m_coupling_scheme );
-              break;
-#endif
-#ifdef TRIBOL_USE_CUDA
-            case ( ExecutionMode::Cuda ):
-              m_search = new BvhSearch<2, axom::CUDA_EXEC<TRIBOL_BLOCK_SIZE>>( m_coupling_scheme );
-              break;
-#endif
-#ifdef TRIBOL_USE_HIP
-            case ( ExecutionMode::Hip ):
-              m_search = new BvhSearch<2, axom::HIP_EXEC<TRIBOL_BLOCK_SIZE>>( m_coupling_scheme );
-              break;
-#endif
-            default:
-              SLIC_ERROR_ROOT( "Invalid execution mode." );
-              break;
-          }
-          break;
-        case 3:
-          switch ( cs->getExecutionMode() ) {
-            case ( ExecutionMode::Sequential ):
-              m_search = new BvhSearch<3, axom::SEQ_EXEC>( m_coupling_scheme );
-              break;
-#ifdef TRIBOL_USE_OPENMP
-            case ( ExecutionMode::OpenMP ):  // This causes compiler to hang (EBC: Check if this is still true)
-              m_search = new BvhSearch<3, axom::OMP_EXEC>( m_coupling_scheme );
-              break;
-#endif
-#ifdef TRIBOL_USE_CUDA
-            case ( ExecutionMode::Cuda ):
-              m_search = new BvhSearch<3, axom::CUDA_EXEC<TRIBOL_BLOCK_SIZE>>( m_coupling_scheme );
-              break;
-#endif
-#ifdef TRIBOL_USE_HIP
-            case ( ExecutionMode::Hip ):
-              m_search = new BvhSearch<3, axom::HIP_EXEC<TRIBOL_BLOCK_SIZE>>( m_coupling_scheme );
-              break;
-#endif
-            default:
-              SLIC_ERROR_ROOT( "Invalid execution mode." );
-              break;
-          }
-          break;
-        default:
-          SLIC_ERROR_ROOT( "Invalid dimension: " << dim );
-          break;
-      }  // end of BINNING_BVH dimension switch
-      break;
-    default:
-      SLIC_ERROR_ROOT( "Invalid binning method: " << cs->getBinningMethod() );
-      break;
-  }  // end of binning method switch
-}
-
-InterfacePairFinder::~InterfacePairFinder()
-{
-  if ( m_search != nullptr ) {
-    delete m_search;
+    binning_method_ = BINNING_BVH;
   }
 }
 
-void InterfacePairFinder::initialize()
-{
-  SLIC_ASSERT( m_search != nullptr );
-  m_search->initialize();
-}
-
-void InterfacePairFinder::findInterfacePairs()
+ContactPairRange InterfacePairFinder::findInterfacePairs( MeshData& mesh1, MeshData& mesh2 ) const
 {
   SLIC_DEBUG( "Searching for interface pairs" );
-  m_search->findInterfacePairs();
-  // set boolean on coupling scheme object indicating
-  // that binning has occurred
-  m_coupling_scheme->setBinned( true );
+  const auto mesh1_view = mesh1.getView();
+  const auto mesh2_view = mesh2.getView();
+  const int dim = mesh1_view.spatialDimension();
+
+  // Preserve the Cartesian product as a lazy range instead of allocating all
+  // possible pairs.
+  if ( binning_method_ == BINNING_CARTESIAN_PRODUCT ) {
+    return CartesianPairView( mesh1_view.numberOfElements(), mesh2_view.numberOfElements(),
+                              mesh1_view.meshId() == mesh2_view.meshId() );
+  }
+
+  std::unique_ptr<SearchBase> search;
+  switch ( binning_method_ ) {
+    case BINNING_CARTESIAN_PRODUCT:
+      // Handled above to preserve the lazy representation.
+      break;
+    case BINNING_GRID:
+      // Instantiate the grid implementation for the mesh dimension.
+      switch ( dim ) {
+        case 2:
+          search = std::make_unique<GridSearch<2>>( proximity_scale_, allocator_id_ );
+          break;
+        case 3:
+          search = std::make_unique<GridSearch<3>>( proximity_scale_, allocator_id_ );
+          break;
+        default:
+          SLIC_ERROR_ROOT( "Invalid dimension: " << dim );
+          break;
+      }
+      break;
+    case BINNING_BVH:
+      // Instantiate the BVH for both the mesh dimension and execution space.
+      switch ( dim ) {
+        case 2:
+          switch ( execution_mode_ ) {
+            case ( ExecutionMode::Sequential ):
+              search =
+                  std::make_unique<BvhSearch<2, axom::SEQ_EXEC>>( execution_mode_, allocator_id_, proximity_scale_ );
+              break;
+#ifdef TRIBOL_USE_OPENMP
+            // TODO: Verify whether this instantiation still causes compiler hangs.
+            case ( ExecutionMode::OpenMP ):
+              search =
+                  std::make_unique<BvhSearch<2, axom::OMP_EXEC>>( execution_mode_, allocator_id_, proximity_scale_ );
+              break;
+#endif
+#ifdef TRIBOL_USE_CUDA
+            case ( ExecutionMode::Cuda ):
+              search = std::make_unique<BvhSearch<2, axom::CUDA_EXEC<TRIBOL_BLOCK_SIZE>>>(
+                  execution_mode_, allocator_id_, proximity_scale_ );
+              break;
+#endif
+#ifdef TRIBOL_USE_HIP
+            case ( ExecutionMode::Hip ):
+              search = std::make_unique<BvhSearch<2, axom::HIP_EXEC<TRIBOL_BLOCK_SIZE>>>(
+                  execution_mode_, allocator_id_, proximity_scale_ );
+              break;
+#endif
+            default:
+              SLIC_ERROR_ROOT( "Invalid execution mode." );
+              break;
+          }
+          break;
+        case 3:
+          switch ( execution_mode_ ) {
+            case ( ExecutionMode::Sequential ):
+              search =
+                  std::make_unique<BvhSearch<3, axom::SEQ_EXEC>>( execution_mode_, allocator_id_, proximity_scale_ );
+              break;
+#ifdef TRIBOL_USE_OPENMP
+            // TODO: Verify whether this instantiation still causes compiler hangs.
+            case ( ExecutionMode::OpenMP ):
+              search =
+                  std::make_unique<BvhSearch<3, axom::OMP_EXEC>>( execution_mode_, allocator_id_, proximity_scale_ );
+              break;
+#endif
+#ifdef TRIBOL_USE_CUDA
+            case ( ExecutionMode::Cuda ):
+              search = std::make_unique<BvhSearch<3, axom::CUDA_EXEC<TRIBOL_BLOCK_SIZE>>>(
+                  execution_mode_, allocator_id_, proximity_scale_ );
+              break;
+#endif
+#ifdef TRIBOL_USE_HIP
+            case ( ExecutionMode::Hip ):
+              search = std::make_unique<BvhSearch<3, axom::HIP_EXEC<TRIBOL_BLOCK_SIZE>>>(
+                  execution_mode_, allocator_id_, proximity_scale_ );
+              break;
+#endif
+            default:
+              SLIC_ERROR_ROOT( "Invalid execution mode." );
+              break;
+          }
+          break;
+        default:
+          SLIC_ERROR_ROOT( "Invalid dimension: " << dim );
+          break;
+      }
+      break;
+    default:
+      SLIC_ERROR_ROOT( "Invalid binning method: " << binning_method_ );
+      break;
+  }
+  if ( search != nullptr ) {
+    return search->findInterfacePairs( mesh1_view, mesh2_view );
+  }
+  return ArrayT<ElementPair>( 0, 0, allocator_id_ );
 }
 
 }  // end namespace tribol

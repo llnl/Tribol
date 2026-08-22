@@ -258,7 +258,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, Gparams* gp, double* g
   find_normal( A0, A1, nA );
 
   // Only keep the contribution when the edge normals oppose each other.
-  // NOTE: geomFilter already rejects pairs with co-oriented normals (dot > 0),
+  // NOTE: ENERGY_MORTAR selects SurfacePairFilter::haveOpposingNormals() before this kernel,
   // but the clamp is retained for defensive correctness in tests and direct calls.
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
   double eta = ( dot < 0 ) ? dot : 0.0;
@@ -325,7 +325,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel_quad( const double* x, const Gparams* gp
   double nA[2];
   find_normal( A0, A1, nA );
   // Only keep the contribution when the edge normals oppose each other.
-  // NOTE: geomFilter already rejects pairs with co-oriented normals (dot > 0),
+  // NOTE: ENERGY_MORTAR selects SurfacePairFilter::haveOpposingNormals() before this kernel,
   // but the clamp is retained for defensive correctness in tests and direct calls.
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
   double eta = ( dot < 0 ) ? dot : 0.0;
@@ -540,7 +540,7 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   double nA[2];
   find_normal( A0, A1, nA );
   // Only keep the contribution when the edge normals oppose each other.
-  // NOTE: geomFilter already rejects pairs with co-oriented normals (dot > 0),
+  // NOTE: ENERGY_MORTAR selects SurfacePairFilter::haveOpposingNormals() before this kernel,
   // but the clamp is retained for defensive correctness in tests and direct calls.
   const double dot = nA[0] * nB[0] + nA[1] * nB[1];
   const double eta = ( dot < 0 ) ? dot : 0.0;
@@ -602,13 +602,13 @@ void d2_kernel_quad( const double* x, const Gparams* gp, double* H )
 }  // namespace
 
 // Construct the quadrature data needed to evaluate the smoothed gap kernel.
-Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+Gparams EnergyMortarCalculator::construct_gparams( const ElementPair& pair, const MeshData::Viewer& mesh1,
                                                    const MeshData::Viewer& mesh2 ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1, A0, A1 );
+  endpoints( mesh2, pair.element_id2, B0, B1 );
   double nB[2] = { 0.0 };
   find_normal( B0, B1, nB );
 
@@ -649,15 +649,15 @@ Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, co
 }
 
 // Return the local projection bounds of edge B onto edge A for this interface pair.
-std::array<double, 2> EnergyMortarCalculator::projections( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+std::array<double, 2> EnergyMortarCalculator::projections( const ElementPair& pair, const MeshData::Viewer& mesh1,
                                                            const MeshData::Viewer& mesh2 ) const
 {
   double A0[2];
   double A1[2];
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
+  endpoints( mesh1, pair.element_id1, A0, A1 );
   double B0[2];
   double B1[2];
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh2, pair.element_id2, B0, B1 );
 
   double projs[2];
   get_projections( A0, A1, B0, B1, projs );
@@ -723,13 +723,13 @@ TRIBOL_ENZYME_INLINE void EnergyMortarCalculator::compute_quadrature( const doub
 }
 
 // Evaluate the weighted normal gap at local coordinate xiA on edge A.
-double EnergyMortarCalculator::compute_weighted_normal_gap( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+double EnergyMortarCalculator::compute_weighted_normal_gap( const ElementPair& pair, const MeshData::Viewer& mesh1,
                                                             const MeshData::Viewer& mesh2, double xiA ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1, A0, A1 );
+  endpoints( mesh2, pair.element_id2, B0, B1 );
 
   double nA[2] = { 0.0 };
   double nB[2] = { 0.0 };
@@ -754,13 +754,13 @@ double EnergyMortarCalculator::compute_weighted_normal_gap( const InterfacePair&
 }
 
 // Assemble nodal gap and tributary area data for the current interface pair.
-NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const InterfacePair& pair,
+NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const ElementPair& pair,
                                                                      const MeshData::Viewer& mesh1,
                                                                      const MeshData::Viewer& mesh2 ) const
 {
   double A0[2];
   double A1[2];
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
+  endpoints( mesh1, pair.element_id1, A0, A1 );
 
   double J = std::sqrt( ( std::pow( ( A1[0] - A0[0] ), 2 ) + std::pow( ( A1[1] - A0[1] ), 2 ) ) );
   double J_ref = std::sqrt( std::pow( A1[0] - A0[0], 2 ) + std::pow( A1[1] - A0[1], 2 ) );
@@ -807,7 +807,7 @@ NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const Inter
 }
 
 // Return the nodal smoothed gaps and tributary areas for the interface pair.
-void EnergyMortarCalculator::compute_gtilde_and_area( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+void EnergyMortarCalculator::compute_gtilde_and_area( const ElementPair& pair, const MeshData::Viewer& mesh1,
                                                       const MeshData::Viewer& mesh2, double gtilde[2],
                                                       double area[2] ) const
 {
@@ -819,13 +819,13 @@ void EnergyMortarCalculator::compute_gtilde_and_area( const InterfacePair& pair,
 }
 
 // Compute derivatives of the two nodal smoothed gaps with respect to the endpoint coordinates.
-void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+void EnergyMortarCalculator::grad_gtilde( const ElementPair& pair, const MeshData::Viewer& mesh1,
                                           const MeshData::Viewer& mesh2, double dgt1_dx[8], double dgt2_dx[8] ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1, A0, A1 );
+  endpoints( mesh2, pair.element_id2, B0, B1 );
 
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
 
@@ -856,13 +856,13 @@ void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshD
 }
 
 // Compute derivatives of the two nodal tributary areas with respect to the endpoint coordinates
-void EnergyMortarCalculator::grad_trib_area( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+void EnergyMortarCalculator::grad_trib_area( const ElementPair& pair, const MeshData::Viewer& mesh1,
                                              const MeshData::Viewer& mesh2, double dA1_dx[8], double dA2_dx[8] ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1, A0, A1 );
+  endpoints( mesh2, pair.element_id2, B0, B1 );
 
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
 
@@ -884,13 +884,13 @@ void EnergyMortarCalculator::grad_trib_area( const InterfacePair& pair, const Me
 }
 
 // Compute the Hessians of the two nodal smoothed gaps with respect to the endpoint coordinates.
-void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+void EnergyMortarCalculator::d2_g2tilde( const ElementPair& pair, const MeshData::Viewer& mesh1,
                                          const MeshData::Viewer& mesh2, double H1[64], double H2[64] ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1, A0, A1 );
+  endpoints( mesh2, pair.element_id2, B0, B1 );
 
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
 
@@ -921,13 +921,13 @@ void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshDa
 }
 
 // Compute the Hessians of the two nodal tributary areas with respect to the endpoint coordinates.
-void EnergyMortarCalculator::compute_d2A_d2u( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+void EnergyMortarCalculator::compute_d2A_d2u( const ElementPair& pair, const MeshData::Viewer& mesh1,
                                               const MeshData::Viewer& mesh2, double d2A1[64], double d2A2[64] ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1, A0, A1 );
+  endpoints( mesh2, pair.element_id2, B0, B1 );
 
   double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
 
@@ -957,14 +957,14 @@ void EnergyMortarCalculator::compute_d2A_d2u( const InterfacePair& pair, const M
   }
 }
 
-double EnergyMortarCalculator::compute_quadrature_point_penalty_energy( const InterfacePair& pair,
+double EnergyMortarCalculator::compute_quadrature_point_penalty_energy( const ElementPair& pair,
                                                                         const MeshData::Viewer& mesh1,
                                                                         const MeshData::Viewer& mesh2 ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1, A0, A1 );
+  endpoints( mesh2, pair.element_id2, B0, B1 );
 
   const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
   const KernelParams kp{ p_.N, p_.del, p_.k };
@@ -974,12 +974,12 @@ double EnergyMortarCalculator::compute_quadrature_point_penalty_energy( const In
 }
 
 QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_penalty_data(
-    const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) const
+    const ElementPair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  endpoints( mesh1, pair.element_id1, A0, A1 );
+  endpoints( mesh2, pair.element_id2, B0, B1 );
 
   const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
   const KernelParams kp{ p_.N, p_.del, p_.k };

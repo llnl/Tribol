@@ -42,12 +42,14 @@ set(tribol_headers
     physics/AlignedMortar.hpp
     physics/CommonPlane.hpp
     physics/ContactFormulation.hpp
+    physics/SurfacePairFilter.hpp
     physics/ContactFormulationFactory.hpp
     physics/Mortar.hpp
     physics/EnergyMortar.hpp
     physics/EnergyMortarAdapter.hpp
     physics/Physics.hpp
 
+    search/ContactPairAlgorithms.hpp
     search/InterfacePairFinder.hpp
 
     utils/Algorithm.hpp

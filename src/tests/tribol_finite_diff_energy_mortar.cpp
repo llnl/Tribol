@@ -38,7 +38,7 @@ inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], 
   P1[1] = P0_P1[3];
 }
 
-std::pair<double, double> EnergyMortarCalculator::eval_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+std::pair<double, double> EnergyMortarCalculator::eval_gtilde( const ElementPair& pair, const MeshData::Viewer& mesh1,
                                                                const MeshData::Viewer& mesh2 ) const
 {
   NodalContactData ncd = compute_nodal_contact_data( pair, mesh1, mesh2 );
@@ -50,7 +50,7 @@ std::pair<double, double> EnergyMortarCalculator::eval_gtilde( const InterfacePa
   return { A1, A2 };
 }
 
-FiniteDiffResult EnergyMortarCalculator::validate_g_tilde( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
+FiniteDiffResult EnergyMortarCalculator::validate_g_tilde( const ElementPair& pair, MeshData& mesh1, MeshData& mesh2,
                                                            double epsilon ) const
 {
   FiniteDiffResult result;
@@ -73,8 +73,8 @@ FiniteDiffResult EnergyMortarCalculator::validate_g_tilde( const InterfacePair& 
   result.g_tilde1_baseline = g1_base;
   result.g_tilde2_baseline = g2_base;
 
-  auto A_conn = viewer1.getConnectivity()( static_cast<std::size_t>( pair.m_element_id1 ) );
-  auto B_conn = viewer2.getConnectivity()( static_cast<std::size_t>( pair.m_element_id2 ) );
+  auto A_conn = viewer1.getConnectivity()( static_cast<std::size_t>( pair.element_id1 ) );
+  auto B_conn = viewer2.getConnectivity()( static_cast<std::size_t>( pair.element_id2 ) );
 
   result.node_ids = { static_cast<int>( A_conn[0] ), static_cast<int>( A_conn[1] ), static_cast<int>( B_conn[0] ),
                       static_cast<int>( B_conn[1] ) };
@@ -209,13 +209,13 @@ FiniteDiffResult EnergyMortarCalculator::validate_g_tilde( const InterfacePair& 
   return result;
 }
 
-std::pair<double, double> EnergyMortarCalculator::eval_gtilde_fixed_qp( const InterfacePair& pair,
+std::pair<double, double> EnergyMortarCalculator::eval_gtilde_fixed_qp( const ElementPair& pair,
                                                                         const MeshData::Viewer& mesh1,
                                                                         const MeshData::Viewer& mesh2,
                                                                         const QuadPoints& qp_fixed ) const
 {
   double A0[2], A1[2];
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
+  endpoints( mesh1, pair.element_id1, A0, A1 );
 
   const double J = std::sqrt( ( A1[0] - A0[0] ) * ( A1[0] - A0[0] ) + ( A1[1] - A0[1] ) * ( A1[1] - A0[1] ) );
 
@@ -237,7 +237,7 @@ std::pair<double, double> EnergyMortarCalculator::eval_gtilde_fixed_qp( const In
   return { gt1, gt2 };
 }
 
-FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
+FiniteDiffResult EnergyMortarCalculator::validate_hessian( const ElementPair& pair, MeshData& mesh1, MeshData& mesh2,
                                                            double epsilon ) const
 {
   FiniteDiffResult result;
@@ -252,8 +252,8 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
   result.fd_gradient_g1.assign( ndof * ndof, 0.0 );
   result.fd_gradient_g2.assign( ndof * ndof, 0.0 );
 
-  auto A_conn = viewer1.getConnectivity()( static_cast<std::size_t>( pair.m_element_id1 ) );
-  auto B_conn = viewer2.getConnectivity()( static_cast<std::size_t>( pair.m_element_id2 ) );
+  auto A_conn = viewer1.getConnectivity()( static_cast<std::size_t>( pair.element_id1 ) );
+  auto B_conn = viewer2.getConnectivity()( static_cast<std::size_t>( pair.element_id2 ) );
 
   result.node_ids = { static_cast<int>( A_conn[0] ), static_cast<int>( A_conn[1] ), static_cast<int>( B_conn[0] ),
                       static_cast<int>( B_conn[1] ) };
@@ -396,7 +396,7 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
 
   EnergyMortarCalculator evaluator( params );
   const auto result =
-      evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
+      evaluator.compute_quadrature_point_penalty_data( ElementPair( 0, 0 ), mesh1.getView(), mesh2.getView() );
   EXPECT_EQ( result.energy, 0.0 );
 }
 
@@ -419,7 +419,7 @@ TEST( QuadraturePointPenaltyCheck, DerivativesMatchFiniteDifference )
   params.enzyme_quadrature = true;
 
   EnergyMortarCalculator evaluator( params );
-  const InterfacePair pair( 0, 0 );
+  const ElementPair pair( 0, 0 );
   const auto analytical = evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView() );
   ASSERT_GT( analytical.energy, 0.0 );
 
@@ -508,7 +508,7 @@ TEST( GradientCheck, GtildeFDvsAD )
   IndexT conn2[2] = { 0, 1 };
   MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
 
-  InterfacePair pair( 0, 0 );
+  ElementPair pair( 0, 0 );
 
   // ── Evaluator setup ──────────────────────────────────────────────────────
   ContactParams params_;
@@ -567,7 +567,7 @@ TEST( HessianCheck, GtildeFDvsAD )
   MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
   MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
 
-  InterfacePair pair( 0, 0 );
+  ElementPair pair( 0, 0 );
 
   // ── Evaluator setup ──────────────────────────────────────────────────────
   ContactParams params_;
