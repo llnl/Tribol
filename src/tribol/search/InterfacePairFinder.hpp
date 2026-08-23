@@ -16,9 +16,11 @@ namespace tribol {
 /**
  * @brief Configures and runs coarse contact-pair searches between two meshes
  *
- * This class stores only the search configuration. It does not own or retain the meshes supplied to
- * findInterfacePairs(). Each search constructs and initializes the selected search implementation for the duration of
- * that call.
+ * This compatibility adapter maps the legacy BinningMethod enum to a public coarse-search policy. New contact
+ * formulations may compose directly with CartesianProductSearch, GridSearch, BvhSearch, or another compatible search
+ * type to retain its concrete pair-range type.
+ *
+ * This class stores only search configuration. It does not own or retain the meshes supplied to findInterfacePairs().
  */
 class InterfacePairFinder {
  public:

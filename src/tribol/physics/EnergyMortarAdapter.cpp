@@ -9,6 +9,7 @@
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/physics/SurfacePairFilter.hpp"
 #include "tribol/search/ContactPairAlgorithms.hpp"
+#include "tribol/search/InterfacePairFinder.hpp"
 
 namespace tribol {
 

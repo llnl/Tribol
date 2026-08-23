@@ -64,6 +64,9 @@ class CartesianPairView {
     return symmetric_ ? num_elements1_ * ( num_elements1_ - 1 ) / 2 : num_elements1_ * num_elements2_;
   }
 
+  /** @brief Return this device-copyable view for generic pair-range consumers. */
+  TRIBOL_HOST_DEVICE CartesianPairView view() const { return *this; }
+
   TRIBOL_HOST_DEVICE ElementPair operator[]( IndexT index ) const
   {
     if ( !symmetric_ ) {

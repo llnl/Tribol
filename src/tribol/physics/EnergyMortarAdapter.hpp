@@ -11,7 +11,6 @@
 #include "tribol/physics/EnergyMortar.hpp"
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/search/InterfacePairFinder.hpp"
 #include "tribol/common/Parameters.hpp"
 
 #include "mfem.hpp"

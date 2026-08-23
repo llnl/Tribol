@@ -49,7 +49,10 @@ set(tribol_headers
     physics/EnergyMortarAdapter.hpp
     physics/Physics.hpp
 
+    search/BvhSearch.hpp
+    search/CartesianProductSearch.hpp
     search/ContactPairAlgorithms.hpp
+    search/GridSearch.hpp
     search/InterfacePairFinder.hpp
 
     utils/Algorithm.hpp

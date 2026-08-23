@@ -34,8 +34,9 @@ class MeshData;
  * This class provides a polymorphic interface for contact algorithms, allowing for modular implementation of new
  * physics and formulations.
  *
- * Formulations own their search lifecycle. Current adapters may still use a CouplingScheme as a compatibility context,
- * but search implementations accept mesh and execution data directly.
+ * Formulations own their search lifecycle. Surface formulations may compose directly with a public coarse-search
+ * policy and retain its concrete pair-range type; this base class intentionally imposes no common search interface.
+ * Current adapters may still use a CouplingScheme as a compatibility context.
  */
 class ContactFormulation {
  public:

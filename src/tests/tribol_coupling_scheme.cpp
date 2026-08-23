@@ -10,7 +10,10 @@
 #include "tribol/common/Parameters.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
+#include "tribol/search/BvhSearch.hpp"
+#include "tribol/search/CartesianProductSearch.hpp"
 #include "tribol/search/ContactPairAlgorithms.hpp"
+#include "tribol/search/GridSearch.hpp"
 
 #include <type_traits>
 
@@ -32,6 +35,19 @@ static_assert( std::is_abstract<tribol::ContactFormulation>::value,
                "ContactFormulation must remain an abstract interface" );
 static_assert( !std::is_abstract<MinimalContactFormulation>::value,
                "Lifecycle hooks should be optional for derived formulations" );
+static_assert( std::is_same<tribol::CartesianProductSearch::PairRange, tribol::CartesianPairView>::value,
+               "Cartesian search should preserve its lazy pair range" );
+static_assert( std::is_same<tribol::GridSearch<2>::PairRange, tribol::ArrayT<tribol::ElementPair>>::value,
+               "Grid search should return explicit pair storage" );
+static_assert(
+    std::is_same<tribol::BvhSearch<2, axom::SEQ_EXEC>::PairRange, tribol::ArrayT<tribol::ElementPair>>::value,
+    "BVH search should return explicit pair storage" );
+static_assert( !std::is_polymorphic<tribol::CartesianProductSearch>::value,
+               "Coarse-search policies should use static composition" );
+static_assert( !std::is_polymorphic<tribol::GridSearch<2>>::value,
+               "Coarse-search policies should use static composition" );
+static_assert( !std::is_polymorphic<tribol::BvhSearch<2, axom::SEQ_EXEC>>::value,
+               "Coarse-search policies should use static composition" );
 
 }  // namespace
 
