@@ -17,6 +17,320 @@
 
 namespace tribol {
 
+namespace {
+
+constexpr int max_dim = 3;
+constexpr int max_nodes_per_face = 4;
+constexpr int max_nodes_per_overlap = 10;
+
+TRIBOL_HOST_DEVICE inline RealT ComputeRatePenalty( const MeshData::Viewer& m1, const MeshData::Viewer& m2,
+                                                    RealT element_penalty, RatePenaltyCalculation rate_calc )
+{
+  switch ( rate_calc ) {
+    case NO_RATE_PENALTY: {
+      return 0.;
+    }
+    case RATE_CONSTANT: {
+      return 0.5 * ( m1.getElementData().m_rate_penalty_stiffness + m2.getElementData().m_rate_penalty_stiffness );
+    }
+    case RATE_PERCENT: {
+      return element_penalty * 0.5 *
+             ( m1.getElementData().m_rate_percent_stiffness + m2.getElementData().m_rate_percent_stiffness );
+    }
+    default:
+      return 0.;
+  }
+}
+
+TRIBOL_HOST_DEVICE inline bool Solve3x3( const RealT A[3][3], const RealT b[3], RealT x[3] )
+{
+  const RealT detA = A[0][0] * ( A[1][1] * A[2][2] - A[1][2] * A[2][1] ) -
+                     A[0][1] * ( A[1][0] * A[2][2] - A[1][2] * A[2][0] ) +
+                     A[0][2] * ( A[1][0] * A[2][1] - A[1][1] * A[2][0] );
+  constexpr RealT det_tol = 1.e-15;
+  if ( std::abs( detA ) <= det_tol ) {
+    return false;
+  }
+
+  const RealT inv_detA = 1. / detA;
+  x[0] = inv_detA * ( b[0] * ( A[1][1] * A[2][2] - A[1][2] * A[2][1] ) - A[0][1] * ( b[1] * A[2][2] - A[1][2] * b[2] ) +
+                      A[0][2] * ( b[1] * A[2][1] - A[1][1] * b[2] ) );
+  x[1] = inv_detA * ( A[0][0] * ( b[1] * A[2][2] - A[1][2] * b[2] ) - b[0] * ( A[1][0] * A[2][2] - A[1][2] * A[2][0] ) +
+                      A[0][2] * ( A[1][0] * b[2] - b[1] * A[2][0] ) );
+  x[2] = inv_detA * ( A[0][0] * ( A[1][1] * b[2] - b[1] * A[2][1] ) - A[0][1] * ( A[1][0] * b[2] - b[1] * A[2][0] ) +
+                      b[0] * ( A[1][0] * A[2][1] - A[1][1] * A[2][0] ) );
+  return true;
+}
+
+TRIBOL_HOST_DEVICE inline void AccumulateFaceInterpolation( const RealT* face_coords, const int num_nodes,
+                                                            const RealT* phi, RealT x_face[3], const int value_dim = 0,
+                                                            const RealT* nodal_vals = nullptr, RealT* values = nullptr )
+{
+  initRealArray( x_face, max_dim, 0. );
+  if ( values != nullptr ) {
+    initRealArray( values, value_dim, 0. );
+  }
+
+  for ( int a = 0; a < num_nodes; ++a ) {
+    x_face[0] += face_coords[3 * a] * phi[a];
+    x_face[1] += face_coords[3 * a + 1] * phi[a];
+    x_face[2] += face_coords[3 * a + 2] * phi[a];
+
+    if ( values != nullptr ) {
+      for ( int i = 0; i < value_dim; ++i ) {
+        values[i] += nodal_vals[i + a * value_dim] * phi[a];
+      }
+    }
+  }
+}
+
+TRIBOL_HOST_DEVICE inline bool EvalLinearFaceAtProjectedPoint( const RealT* face_coords, const int num_nodes,
+                                                               const RealT x_query[3], const RealT projection_dir[3],
+                                                               RealT x_face[3], RealT* phi, const int value_dim = 0,
+                                                               const RealT* nodal_vals = nullptr,
+                                                               RealT* values = nullptr )
+{
+  // CommonPlane quadrature points lie on the overlap polygon. Evaluate the face
+  // fields at the corresponding on-face point found by projecting along the
+  // common-plane normal rather than by an off-surface closest-point inverse map.
+  initRealArray( phi, num_nodes, 0. );
+
+  if ( num_nodes == 3 ) {
+    const RealT x0[3] = { face_coords[0], face_coords[1], face_coords[2] };
+    const RealT e1[3] = { face_coords[3] - x0[0], face_coords[4] - x0[1], face_coords[5] - x0[2] };
+    const RealT e2[3] = { face_coords[6] - x0[0], face_coords[7] - x0[1], face_coords[8] - x0[2] };
+
+    RealT n_face[3];
+    crossProd( e1[0], e1[1], e1[2], e2[0], e2[1], e2[2], n_face[0], n_face[1], n_face[2] );
+
+    const RealT denom =
+        dotProd( n_face[0], n_face[1], n_face[2], projection_dir[0], projection_dir[1], projection_dir[2] );
+    constexpr RealT parallel_tol = 1.e-14;
+    if ( std::abs( denom ) <= parallel_tol ) {
+      return false;
+    }
+
+    const RealT dx0 = x0[0] - x_query[0];
+    const RealT dy0 = x0[1] - x_query[1];
+    const RealT dz0 = x0[2] - x_query[2];
+    const RealT step = dotProd( n_face[0], n_face[1], n_face[2], dx0, dy0, dz0 ) / denom;
+
+    x_face[0] = x_query[0] + step * projection_dir[0];
+    x_face[1] = x_query[1] + step * projection_dir[1];
+    x_face[2] = x_query[2] + step * projection_dir[2];
+
+    const RealT r[3] = { x_face[0] - x0[0], x_face[1] - x0[1], x_face[2] - x0[2] };
+    const RealT gram11 = dotProd( e1[0], e1[1], e1[2], e1[0], e1[1], e1[2] );
+    const RealT gram12 = dotProd( e1[0], e1[1], e1[2], e2[0], e2[1], e2[2] );
+    const RealT gram22 = dotProd( e2[0], e2[1], e2[2], e2[0], e2[1], e2[2] );
+    const RealT rhs1 = dotProd( e1[0], e1[1], e1[2], r[0], r[1], r[2] );
+    const RealT rhs2 = dotProd( e2[0], e2[1], e2[2], r[0], r[1], r[2] );
+
+    const RealT gram_det = gram11 * gram22 - gram12 * gram12;
+    constexpr RealT gram_tol = 1.e-15;
+    if ( std::abs( gram_det ) <= gram_tol ) {
+      return false;
+    }
+
+    const RealT xi = ( gram22 * rhs1 - gram12 * rhs2 ) / gram_det;
+    const RealT eta = ( gram11 * rhs2 - gram12 * rhs1 ) / gram_det;
+    phi[0] = 1. - xi - eta;
+    phi[1] = xi;
+    phi[2] = eta;
+  } else if ( num_nodes == 4 ) {
+    constexpr int max_iter = 25;
+    constexpr RealT step_tol = 1.e-12;
+    constexpr RealT residual_tol = 1.e-12;
+    constexpr RealT xi_tol = 1.e-8;
+
+    RealT xi = 0.;
+    RealT eta = 0.;
+    RealT phi0[max_nodes_per_face] = { 0.25, 0.25, 0.25, 0.25 };
+    RealT x_center[3];
+    AccumulateFaceInterpolation( face_coords, num_nodes, phi0, x_center );
+    RealT s = ( x_center[0] - x_query[0] ) * projection_dir[0] + ( x_center[1] - x_query[1] ) * projection_dir[1] +
+              ( x_center[2] - x_query[2] ) * projection_dir[2];
+    bool converged = false;
+
+    for ( int iter = 0; iter < max_iter; ++iter ) {
+      const RealT xi_node[4] = { 1., -1., -1., 1. };
+      const RealT eta_node[4] = { 1., 1., -1., -1. };
+      RealT dxdxi[3] = { 0., 0., 0. };
+      RealT dxdeta[3] = { 0., 0., 0. };
+      initRealArray( phi, num_nodes, 0. );
+      initRealArray( x_face, max_dim, 0. );
+
+      for ( int a = 0; a < num_nodes; ++a ) {
+        phi[a] = 0.25 * ( 1. + xi_node[a] * xi ) * ( 1. + eta_node[a] * eta );
+        const RealT dphi_dxi = 0.25 * xi_node[a] * ( 1. + eta_node[a] * eta );
+        const RealT dphi_deta = 0.25 * eta_node[a] * ( 1. + xi_node[a] * xi );
+
+        const RealT xa = face_coords[3 * a];
+        const RealT ya = face_coords[3 * a + 1];
+        const RealT za = face_coords[3 * a + 2];
+
+        x_face[0] += xa * phi[a];
+        x_face[1] += ya * phi[a];
+        x_face[2] += za * phi[a];
+
+        dxdxi[0] += xa * dphi_dxi;
+        dxdxi[1] += ya * dphi_dxi;
+        dxdxi[2] += za * dphi_dxi;
+
+        dxdeta[0] += xa * dphi_deta;
+        dxdeta[1] += ya * dphi_deta;
+        dxdeta[2] += za * dphi_deta;
+      }
+
+      RealT residual[3] = { x_face[0] - x_query[0] - s * projection_dir[0],
+                            x_face[1] - x_query[1] - s * projection_dir[1],
+                            x_face[2] - x_query[2] - s * projection_dir[2] };
+      const RealT residual_norm = magnitude( residual[0], residual[1], residual[2] );
+      if ( residual_norm <= residual_tol ) {
+        converged = true;
+        break;
+      }
+
+      RealT J[3][3] = { { dxdxi[0], dxdeta[0], -projection_dir[0] },
+                        { dxdxi[1], dxdeta[1], -projection_dir[1] },
+                        { dxdxi[2], dxdeta[2], -projection_dir[2] } };
+      RealT rhs[3] = { -residual[0], -residual[1], -residual[2] };
+      RealT delta[3];
+      if ( !Solve3x3( J, rhs, delta ) ) {
+        return false;
+      }
+
+      xi += delta[0];
+      eta += delta[1];
+      s += delta[2];
+
+      const RealT step_norm = magnitude( delta[0], delta[1], delta[2] );
+      if ( step_norm <= step_tol ) {
+        converged = true;
+        break;
+      }
+    }
+
+    if ( !converged || xi < -1. - xi_tol || xi > 1. + xi_tol || eta < -1. - xi_tol || eta > 1. + xi_tol ) {
+      return false;
+    }
+
+    initRealArray( phi, num_nodes, 0. );
+    phi[0] = 0.25 * ( 1. + xi ) * ( 1. + eta );
+    phi[1] = 0.25 * ( 1. - xi ) * ( 1. + eta );
+    phi[2] = 0.25 * ( 1. - xi ) * ( 1. - eta );
+    phi[3] = 0.25 * ( 1. + xi ) * ( 1. - eta );
+    AccumulateFaceInterpolation( face_coords, num_nodes, phi, x_face );
+
+    const RealT line_residual = magnitude( x_face[0] - x_query[0], x_face[1] - x_query[1], x_face[2] - x_query[2] );
+    const RealT normal_step = ( x_face[0] - x_query[0] ) * projection_dir[0] +
+                              ( x_face[1] - x_query[1] ) * projection_dir[1] +
+                              ( x_face[2] - x_query[2] ) * projection_dir[2];
+    const RealT projection_residual = magnitude( x_face[0] - x_query[0] - normal_step * projection_dir[0],
+                                                 x_face[1] - x_query[1] - normal_step * projection_dir[1],
+                                                 x_face[2] - x_query[2] - normal_step * projection_dir[2] );
+    if ( line_residual > 0. && projection_residual > residual_tol * line_residual ) {
+      return false;
+    }
+  } else {
+    return false;
+  }
+
+  if ( values != nullptr ) {
+    initRealArray( values, value_dim, 0. );
+    for ( int a = 0; a < num_nodes; ++a ) {
+      for ( int i = 0; i < value_dim; ++i ) {
+        values[i] += nodal_vals[i + a * value_dim] * phi[a];
+      }
+    }
+  }
+
+  return true;
+}
+
+TRIBOL_HOST_DEVICE inline bool EvalLinearEdgeAtProjectedPoint( const RealT* edge_coords, const RealT x_query[2],
+                                                               const RealT projection_dir[2], RealT x_edge[3],
+                                                               RealT* phi, const int value_dim = 0,
+                                                               const RealT* nodal_vals = nullptr,
+                                                               RealT* values = nullptr )
+{
+  const RealT ax = edge_coords[0];
+  const RealT ay = edge_coords[1];
+  const RealT bx = edge_coords[2];
+  const RealT by = edge_coords[3];
+  const RealT ex = bx - ax;
+  const RealT ey = by - ay;
+
+  const RealT det = projection_dir[0] * ey - ex * projection_dir[1];
+  constexpr RealT det_tol = 1.e-14;
+  if ( std::abs( det ) <= det_tol ) {
+    return false;
+  }
+
+  const RealT rhs_x = x_query[0] - ax;
+  const RealT rhs_y = x_query[1] - ay;
+  RealT edge_param = ( projection_dir[0] * rhs_y - projection_dir[1] * rhs_x ) / det;
+
+  constexpr RealT edge_tol = 1.e-8;
+  if ( edge_param < -edge_tol || edge_param > 1. + edge_tol ) {
+    return false;
+  }
+  edge_param = std::max( 0., std::min( 1., edge_param ) );
+
+  phi[0] = 1. - edge_param;
+  phi[1] = edge_param;
+
+  x_edge[0] = ax + edge_param * ex;
+  x_edge[1] = ay + edge_param * ey;
+  x_edge[2] = 0.;
+
+  if ( values != nullptr ) {
+    initRealArray( values, value_dim, 0. );
+    for ( int a = 0; a < 2; ++a ) {
+      for ( int i = 0; i < value_dim; ++i ) {
+        values[i] += nodal_vals[i + a * value_dim] * phi[a];
+      }
+    }
+  }
+
+  return true;
+}
+
+TRIBOL_HOST_DEVICE inline void AccumulateContactForce( const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+                                                       const IndexT index1, const IndexT index2, const int dim,
+                                                       const int num_nodes_per_face, const RealT force_x,
+                                                       const RealT force_y, const RealT force_z, const RealT* phi1,
+                                                       const RealT* phi2 )
+{
+  for ( IndexT a = 0; a < num_nodes_per_face; ++a ) {
+    IndexT node0 = mesh1.getGlobalNodeId( index1, a );
+    IndexT node1 = mesh2.getGlobalNodeId( index2, a );
+
+    const RealT nodal_force_x1 = force_x * phi1[a];
+    const RealT nodal_force_y1 = force_y * phi1[a];
+    const RealT nodal_force_z1 = force_z * phi1[a];
+
+    const RealT nodal_force_x2 = force_x * phi2[a];
+    const RealT nodal_force_y2 = force_y * phi2[a];
+    const RealT nodal_force_z2 = force_z * phi2[a];
+
+    // accumulate contributions in host code's registered nodal force arrays
+    tribol::atomicAdd( &mesh1.getResponse()[0][node0], -nodal_force_x1 );
+    tribol::atomicAdd( &mesh2.getResponse()[0][node1], nodal_force_x2 );
+
+    tribol::atomicAdd( &mesh1.getResponse()[1][node0], -nodal_force_y1 );
+    tribol::atomicAdd( &mesh2.getResponse()[1][node1], nodal_force_y2 );
+
+    // there is no z component for 2D
+    if ( dim == 3 ) {
+      tribol::atomicAdd( &mesh1.getResponse()[2][node0], -nodal_force_z1 );
+      tribol::atomicAdd( &mesh2.getResponse()[2][node1], nodal_force_z2 );
+    }
+  }  // end switch on rate_calc
+}
+
+}  // namespace
+
 TRIBOL_HOST_DEVICE RealT ComputeGapRatePressure( CommonPlanePair& plane, const MeshData::Viewer& m1,
                                                  const MeshData::Viewer& m2, RealT element_penalty,
                                                  RatePenaltyCalculation rate_calc )
@@ -25,40 +339,20 @@ TRIBOL_HOST_DEVICE RealT ComputeGapRatePressure( CommonPlanePair& plane, const M
   auto fId2 = plane.getCpElementId2();
 
   const auto dim = plane.m_dim;
-
-  // compute the correct rate_penalty
-  RealT rate_penalty = 0.;
-  switch ( rate_calc ) {
-    case NO_RATE_PENALTY: {
-      return 0.;
-    }
-    case RATE_CONSTANT: {
-      rate_penalty =
-          0.5 * ( m1.getElementData().m_rate_penalty_stiffness + m2.getElementData().m_rate_penalty_stiffness );
-      break;
-    }
-    case RATE_PERCENT: {
-      rate_penalty = element_penalty * 0.5 *
-                     ( m1.getElementData().m_rate_percent_stiffness + m2.getElementData().m_rate_percent_stiffness );
-      break;
-    }
-    default:
-      // no-op, quiet compiler
-      break;
-  }  // end switch on rate_calc
+  const RealT rate_penalty = ComputeRatePenalty( m1, m2, element_penalty, rate_calc );
+  if ( rate_penalty == 0. ) {
+    return 0.;
+  }
 
   // compute the velocity gap and pressure contribution
-  constexpr int max_dim = 3;
-  constexpr int max_nodes_per_elem = 4;
-
-  StackArrayT<RealT, max_dim * max_nodes_per_elem> x1;
-  StackArrayT<RealT, max_dim * max_nodes_per_elem> v1;
+  StackArrayT<RealT, max_dim * max_nodes_per_face> x1;
+  StackArrayT<RealT, max_dim * max_nodes_per_face> v1;
   auto numNodesPerFace1 = m1.numberOfNodesPerElement();
   plane.getFace1Coords( x1, numNodesPerFace1 );  // get avg face coords off the contact plane
   m1.getFaceVelocities( fId1, v1 );
 
-  StackArrayT<RealT, max_dim * max_nodes_per_elem> x2;
-  StackArrayT<RealT, max_dim * max_nodes_per_elem> v2;
+  StackArrayT<RealT, max_dim * max_nodes_per_face> x2;
+  StackArrayT<RealT, max_dim * max_nodes_per_face> v2;
   auto numNodesPerFace2 = m2.numberOfNodesPerElement();
   plane.getFace2Coords( x2, numNodesPerFace2 );  // get avg face coords off the contact plane
   m2.getFaceVelocities( fId2, v2 );
@@ -77,14 +371,14 @@ TRIBOL_HOST_DEVICE RealT ComputeGapRatePressure( CommonPlanePair& plane, const M
   RealT cXf1 = plane.m_cXf1;
   RealT cYf1 = plane.m_cYf1;
   RealT cZf1 = ( dim == 3 ) ? plane.m_cZf1 : 0.;
-  GalerkinEval( x1, cXf1, cYf1, cZf1, LINEAR, PHYSICAL, dim, dim, v1, vel_f1 );
+  GalerkinEvalOnPhysicalFace( x1, cXf1, cYf1, cZf1, numNodesPerFace1, dim, v1, vel_f1 );
 
   // interpolate nodal velocity at overlap centroid as projected
   // onto face 2
   RealT cXf2 = plane.m_cXf2;
   RealT cYf2 = plane.m_cYf2;
   RealT cZf2 = ( dim == 3 ) ? plane.m_cZf2 : 0.;
-  GalerkinEval( x2, cXf2, cYf2, cZf2, LINEAR, PHYSICAL, dim, dim, v2, vel_f2 );
+  GalerkinEvalOnPhysicalFace( x2, cXf2, cYf2, cZf2, numNodesPerFace2, dim, v2, vel_f2 );
 
   // compute velocity gap vector
   RealT velGap[max_dim];
@@ -149,14 +443,6 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     //  allows for numerically zero interpenetration.
     RealT gap_tol = cs_view.getGapTol( index1, index2 );
 
-    if ( gap > gap_tol ) {
-      // We are here if we have a pair that passes ALL geometric
-      // filter checks, BUT does not actually violate this method's
-      // gap constraint.
-      plane.m_inContact = false;
-      return;
-    }
-
     // debug force sums
     // RealT dbg_sum_force1 {0.};
     // RealT dbg_sum_force2 {0.};
@@ -166,6 +452,15 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     RealT penalty_stiff_per_area{ 0. };
     auto& enforcement_options = cs_view.getEnforcementOptions();
     const PenaltyEnforcementOptions& pen_enfrc_options = enforcement_options.penalty_options;
+    const bool use_multi_point = pen_enfrc_options.common_plane_rule == MULTI_POINT;
+    if ( !use_multi_point && gap > gap_tol ) {
+      // We are here if we have a pair that passes ALL geometric
+      // filter checks, BUT does not actually violate this method's
+      // gap constraint.
+      plane.m_inContact = false;
+      return;
+    }
+
     RealT pen_scale1 = mesh1.getElementData().m_penalty_scale;
     RealT pen_scale2 = mesh2.getElementData().m_penalty_scale;
     switch ( pen_enfrc_options.kinematic_calculation ) {
@@ -237,9 +532,6 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     ///////////////////////////////////////////
 
     // construct array of nodal coordinates
-    constexpr int max_dim = 3;
-    constexpr int max_nodes_per_face = 4;
-    constexpr int max_nodes_per_overlap = 10;
     RealT xf1[max_dim * max_nodes_per_face];
     RealT xf2[max_dim * max_nodes_per_face];
     RealT xVert[max_dim * max_nodes_per_overlap];
@@ -289,6 +581,172 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     cntctElem.overlapNormal = overlapNormal;
     cntctElem.overlapArea = plane.m_area;
 
+    if ( use_multi_point ) {
+      StackArrayT<RealT, max_dim * max_nodes_per_face> actual_xf1;
+      StackArrayT<RealT, max_dim * max_nodes_per_face> actual_xf2;
+      mesh1.getFaceCoords( index1, actual_xf1 );
+      mesh2.getFaceCoords( index2, actual_xf2 );
+
+      const bool use_rate = pen_enfrc_options.constraint_type == KINEMATIC_AND_RATE;
+      const RealT rate_penalty =
+          use_rate ? ComputeRatePenalty( mesh1, mesh2, penalty_stiff_per_area, pen_enfrc_options.rate_calculation )
+                   : 0.;
+
+      StackArrayT<RealT, max_dim * max_nodes_per_face> actual_vf1;
+      StackArrayT<RealT, max_dim * max_nodes_per_face> actual_vf2;
+      if ( use_rate ) {
+        mesh1.getFaceVelocities( index1, actual_vf1 );
+        mesh2.getFaceVelocities( index2, actual_vf2 );
+      }
+
+      constexpr int max_qpts = max_symmetric_triangle_qpts;
+      RealT rule_wts[max_qpts] = { 0. };
+      RealT rule_coords[2 * max_qpts] = { 0. };
+      bool has_contact = false;
+
+      if ( dim == 3 ) {
+        const int num_qpts =
+            GetCommonPlaneTriangleRule( pen_enfrc_options.common_plane_quadrature_order, rule_wts, rule_coords );
+
+        RealT centroid[3];
+        GetCommonPlaneOverlapCentroid( cntctElem, centroid );
+
+        RealT xTri[3];
+        RealT yTri[3];
+        RealT zTri[3];
+
+        for ( int j = 0; j < numPolyVert; ++j ) {
+          const int next = ( j == numPolyVert - 1 ) ? 0 : j + 1;
+          xTri[0] = xVert[dim * j];
+          yTri[0] = xVert[dim * j + 1];
+          zTri[0] = xVert[dim * j + 2];
+          xTri[1] = xVert[dim * next];
+          yTri[1] = xVert[dim * next + 1];
+          zTri[1] = xVert[dim * next + 2];
+          xTri[2] = centroid[0];
+          yTri[2] = centroid[1];
+          zTri[2] = centroid[2];
+
+          const RealT area = Area3DTri( xTri, yTri, zTri );
+          if ( area <= 0. ) {
+            continue;
+          }
+
+          for ( int qp = 0; qp < num_qpts; ++qp ) {
+            const RealT xi = rule_coords[2 * qp];
+            const RealT eta = rule_coords[2 * qp + 1];
+            const RealT n0 = 1. - xi - eta;
+            RealT x_q[3];
+            x_q[0] = n0 * xTri[0] + xi * xTri[1] + eta * xTri[2];
+            x_q[1] = n0 * yTri[0] + xi * yTri[1] + eta * yTri[2];
+            x_q[2] = n0 * zTri[0] + xi * zTri[1] + eta * zTri[2];
+
+            RealT phi_q1[max_nodes_per_face] = { 0., 0., 0., 0. };
+            RealT phi_q2[max_nodes_per_face] = { 0., 0., 0., 0. };
+            RealT x_qf1[max_dim];
+            RealT x_qf2[max_dim];
+            RealT vel_q1[max_dim] = { 0., 0., 0. };
+            RealT vel_q2[max_dim] = { 0., 0., 0. };
+
+            const bool mapped_face1 = EvalLinearFaceAtProjectedPoint(
+                actual_xf1, num_nodes_per_face, x_q, overlapNormal, x_qf1, phi_q1, use_rate ? dim : 0,
+                use_rate ? &actual_vf1[0] : nullptr, use_rate ? vel_q1 : nullptr );
+            const bool mapped_face2 = EvalLinearFaceAtProjectedPoint(
+                actual_xf2, num_nodes_per_face, x_q, overlapNormal, x_qf2, phi_q2, use_rate ? dim : 0,
+                use_rate ? &actual_vf2[0] : nullptr, use_rate ? vel_q2 : nullptr );
+            if ( !mapped_face1 || !mapped_face2 ) {
+              continue;
+            }
+
+            RealT local_gap = ( x_qf1[0] - x_qf2[0] ) * overlapNormal[0] + ( x_qf1[1] - x_qf2[1] ) * overlapNormal[1] +
+                              ( x_qf1[2] - x_qf2[2] ) * overlapNormal[2];
+            if ( local_gap > gap_tol ) {
+              continue;
+            }
+
+            has_contact = true;
+
+            RealT local_pressure = local_gap * penalty_stiff_per_area;
+            if ( use_rate && rate_penalty > 0. ) {
+              RealT local_vel_gap = ( vel_q1[0] - vel_q2[0] ) * overlapNormal[0] +
+                                    ( vel_q1[1] - vel_q2[1] ) * overlapNormal[1] +
+                                    ( vel_q1[2] - vel_q2[2] ) * overlapNormal[2];
+              if ( local_vel_gap <= 0. ) {
+                local_pressure += local_vel_gap * rate_penalty;
+              }
+            }
+
+            const RealT weighted_force = area * rule_wts[qp] * local_pressure;
+            const RealT force_x = overlapNormal[0] * weighted_force;
+            const RealT force_y = overlapNormal[1] * weighted_force;
+            const RealT force_z = overlapNormal[2] * weighted_force;
+
+            AccumulateContactForce( mesh1, mesh2, index1, index2, dim, num_nodes_per_face, force_x, force_y, force_z,
+                                    phi_q1, phi_q2 );
+          }
+        }
+      } else {
+        RealT segment_rule_wts[max_segment_gauss_legendre_qpts] = { 0. };
+        RealT segment_rule_coords[max_segment_gauss_legendre_qpts] = { 0. };
+        const int num_qpts = GetCommonPlaneSegmentRule( pen_enfrc_options.common_plane_quadrature_order,
+                                                        segment_rule_wts, segment_rule_coords );
+        const RealT x0 = xVert[0];
+        const RealT y0 = xVert[1];
+        const RealT x1 = xVert[2];
+        const RealT y1 = xVert[3];
+        const RealT length = magnitude( x1 - x0, y1 - y0 );
+
+        for ( int qp = 0; qp < num_qpts; ++qp ) {
+          const RealT s = segment_rule_coords[qp];
+          const RealT one_minus_s = 1. - s;
+          RealT x_q[2] = { one_minus_s * x0 + s * x1, one_minus_s * y0 + s * y1 };
+
+          RealT phi_q1[max_nodes_per_face] = { 0., 0., 0., 0. };
+          RealT phi_q2[max_nodes_per_face] = { 0., 0., 0., 0. };
+          RealT x_qf1[max_dim];
+          RealT x_qf2[max_dim];
+          RealT vel_q1[max_dim] = { 0., 0., 0. };
+          RealT vel_q2[max_dim] = { 0., 0., 0. };
+
+          const bool mapped_face1 =
+              EvalLinearEdgeAtProjectedPoint( actual_xf1, x_q, overlapNormal, x_qf1, phi_q1, use_rate ? dim : 0,
+                                              use_rate ? &actual_vf1[0] : nullptr, use_rate ? vel_q1 : nullptr );
+          const bool mapped_face2 =
+              EvalLinearEdgeAtProjectedPoint( actual_xf2, x_q, overlapNormal, x_qf2, phi_q2, use_rate ? dim : 0,
+                                              use_rate ? &actual_vf2[0] : nullptr, use_rate ? vel_q2 : nullptr );
+          if ( !mapped_face1 || !mapped_face2 ) {
+            continue;
+          }
+
+          RealT local_gap = ( x_qf1[0] - x_qf2[0] ) * overlapNormal[0] + ( x_qf1[1] - x_qf2[1] ) * overlapNormal[1];
+          if ( local_gap > gap_tol ) {
+            continue;
+          }
+
+          has_contact = true;
+
+          RealT local_pressure = local_gap * penalty_stiff_per_area;
+          if ( use_rate && rate_penalty > 0. ) {
+            RealT local_vel_gap =
+                ( vel_q1[0] - vel_q2[0] ) * overlapNormal[0] + ( vel_q1[1] - vel_q2[1] ) * overlapNormal[1];
+            if ( local_vel_gap <= 0. ) {
+              local_pressure += local_vel_gap * rate_penalty;
+            }
+          }
+
+          const RealT weighted_force = length * segment_rule_wts[qp] * local_pressure;
+          const RealT force_x = overlapNormal[0] * weighted_force;
+          const RealT force_y = overlapNormal[1] * weighted_force;
+
+          AccumulateContactForce( mesh1, mesh2, index1, index2, dim, num_nodes_per_face, force_x, force_y, 0., phi_q1,
+                                  phi_q2 );
+        }
+      }
+
+      plane.m_inContact = has_contact;
+      return;
+    }
+
     // create arrays to hold nodal residual weak form integral evaluations
     RealT phi1[max_nodes_per_face];
     RealT phi2[max_nodes_per_face];
@@ -299,7 +757,8 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     // Integration of contact integrals: integral of shape functions over //
     // contact overlap patch                                              //
     ////////////////////////////////////////////////////////////////////////
-    EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( cntctElem, phi1, phi2 );
+    EvalWeakFormIntegralCommonPlane( cntctElem, pen_enfrc_options.common_plane_rule,
+                                     pen_enfrc_options.common_plane_quadrature_order, phi1, phi2 );
 
     ///////////////////////////////////////////////////////////////////////
     // Computation of full contact nodal force contributions             //
@@ -320,50 +779,8 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
       force_z = overlapNormal[2] * contact_force;
     }
 
-    //////////////////////////////////////////////////////
-    // loop over nodes and compute contact nodal forces //
-    //////////////////////////////////////////////////////
-    for ( IndexT a = 0; a < num_nodes_per_face; ++a ) {
-      IndexT node0 = mesh1.getGlobalNodeId( index1, a );
-      IndexT node1 = mesh2.getGlobalNodeId( index2, a );
-
-      // if (logLevel == TRIBOL_DEBUG)
-      // {
-      //   phi_sum_1 += phi1[a];
-      //   phi_sum_2 += phi2[a];
-      // }
-
-      const RealT nodal_force_x1 = force_x * phi1[a];
-      const RealT nodal_force_y1 = force_y * phi1[a];
-      const RealT nodal_force_z1 = force_z * phi1[a];
-
-      const RealT nodal_force_x2 = force_x * phi2[a];
-      const RealT nodal_force_y2 = force_y * phi2[a];
-      const RealT nodal_force_z2 = force_z * phi2[a];
-
-      // if (logLevel == TRIBOL_DEBUG)
-      // {
-      //   dbg_sum_force1 += magnitude( nodal_force_x1,
-      //                                 nodal_force_y1,
-      //                                 nodal_force_z1 );
-      //   dbg_sum_force2 += magnitude( nodal_force_x2,
-      //                                 nodal_force_y2,
-      //                                 nodal_force_z2 );
-      // }
-
-      // accumulate contributions in host code's registered nodal force arrays
-      tribol::atomicAdd( &mesh1.getResponse()[0][node0], -nodal_force_x1 );
-      tribol::atomicAdd( &mesh2.getResponse()[0][node1], nodal_force_x2 );
-
-      tribol::atomicAdd( &mesh1.getResponse()[1][node0], -nodal_force_y1 );
-      tribol::atomicAdd( &mesh2.getResponse()[1][node1], nodal_force_y2 );
-
-      // there is no z component for 2D
-      if ( dim == 3 ) {
-        tribol::atomicAdd( &mesh1.getResponse()[2][node0], -nodal_force_z1 );
-        tribol::atomicAdd( &mesh2.getResponse()[2][node1], nodal_force_z2 );
-      }
-    }  // end for loop over face nodes
+    AccumulateContactForce( mesh1, mesh2, index1, index2, dim, num_nodes_per_face, force_x, force_y, force_z, phi1,
+                            phi2 );
 
     // comment out debug logs; too much output during tests. Keep for easy
     // debugging if needed
@@ -402,24 +819,23 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
     const auto dim = plane.m_dim;
     auto& mesh1 = cs_view.getMesh1View();
     auto& mesh2 = cs_view.getMesh2View();
+    const PenaltyEnforcementOptions& pen_enfrc_options = cs_view.getEnforcementOptions().penalty_options;
 
     // get pair indices
     IndexT index1 = plane.getCpElementId1();
     IndexT index2 = plane.getCpElementId2();
 
-    // compute the velocity gap and pressure contribution
-    constexpr int max_dim = 3;
-    constexpr int max_nodes_per_elem = 4;
-    constexpr int max_nodes_per_overlap = 10;
+    const bool use_multi_point = pen_enfrc_options.common_plane_rule == MULTI_POINT;
 
-    StackArrayT<RealT, max_dim * max_nodes_per_elem> x1;
-    StackArrayT<RealT, max_dim * max_nodes_per_elem> v1;
+    // compute the velocity gap and pressure contribution
+    StackArrayT<RealT, max_dim * max_nodes_per_face> x1;
+    StackArrayT<RealT, max_dim * max_nodes_per_face> v1;
     auto numNodesPerFace1 = mesh1.numberOfNodesPerElement();
     plane.getFace1Coords( x1, numNodesPerFace1 );  // get avg face coords off the contact plane
     mesh1.getFaceVelocities( index1, v1 );
 
-    StackArrayT<RealT, max_dim * max_nodes_per_elem> x2;
-    StackArrayT<RealT, max_dim * max_nodes_per_elem> v2;
+    StackArrayT<RealT, max_dim * max_nodes_per_face> x2;
+    StackArrayT<RealT, max_dim * max_nodes_per_face> v2;
     auto numNodesPerFace2 = mesh2.numberOfNodesPerElement();
     plane.getFace2Coords( x2, numNodesPerFace2 );  // get avg face coords off the contact plane
     mesh2.getFaceVelocities( index2, v2 );
@@ -438,14 +854,14 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
     RealT cXf1 = plane.m_cXf1;
     RealT cYf1 = plane.m_cYf1;
     RealT cZf1 = ( dim == 3 ) ? plane.m_cZf1 : 0.;
-    GalerkinEval( x1, cXf1, cYf1, cZf1, LINEAR, PHYSICAL, dim, dim, v1, vel_f1 );
+    GalerkinEvalOnPhysicalFace( x1, cXf1, cYf1, cZf1, numNodesPerFace1, dim, v1, vel_f1 );
 
     // interpolate nodal velocity at overlap centroid as projected
     // onto face 2
     RealT cXf2 = plane.m_cXf2;
     RealT cYf2 = plane.m_cYf2;
     RealT cZf2 = ( dim == 3 ) ? plane.m_cZf2 : 0.;
-    GalerkinEval( x2, cXf2, cYf2, cZf2, LINEAR, PHYSICAL, dim, dim, v2, vel_f2 );
+    GalerkinEvalOnPhysicalFace( x2, cXf2, cYf2, cZf2, numNodesPerFace2, dim, v2, vel_f2 );
 
     // compute velocity gap vector
     RealT velGap[max_dim];
@@ -506,9 +922,162 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
     cntctElem.overlapNormal = overlapNormal;
     cntctElem.overlapArea = plane.m_area;
 
+    if ( use_multi_point ) {
+      StackArrayT<RealT, max_dim * max_nodes_per_face> actual_xf1;
+      StackArrayT<RealT, max_dim * max_nodes_per_face> actual_xf2;
+      StackArrayT<RealT, max_dim * max_nodes_per_face> actual_vf1;
+      StackArrayT<RealT, max_dim * max_nodes_per_face> actual_vf2;
+      mesh1.getFaceCoords( index1, actual_xf1 );
+      mesh2.getFaceCoords( index2, actual_xf2 );
+      mesh1.getFaceVelocities( index1, actual_vf1 );
+      mesh2.getFaceVelocities( index2, actual_vf2 );
+
+      constexpr int max_qpts = max_symmetric_triangle_qpts;
+      RealT rule_wts[max_qpts] = { 0. };
+      RealT rule_coords[2 * max_qpts] = { 0. };
+      const RealT visc =
+          0.5 * ( mesh1.getElementData().m_viscous_damping_coeff + mesh2.getElementData().m_viscous_damping_coeff );
+
+      if ( dim == 3 ) {
+        const int num_qpts =
+            GetCommonPlaneTriangleRule( pen_enfrc_options.common_plane_quadrature_order, rule_wts, rule_coords );
+
+        RealT centroid[3];
+        GetCommonPlaneOverlapCentroid( cntctElem, centroid );
+
+        RealT xTri[3];
+        RealT yTri[3];
+        RealT zTri[3];
+
+        for ( int j = 0; j < numPolyVert; ++j ) {
+          const int next = ( j == numPolyVert - 1 ) ? 0 : j + 1;
+          xTri[0] = xVert[dim * j];
+          yTri[0] = xVert[dim * j + 1];
+          zTri[0] = xVert[dim * j + 2];
+          xTri[1] = xVert[dim * next];
+          yTri[1] = xVert[dim * next + 1];
+          zTri[1] = xVert[dim * next + 2];
+          xTri[2] = centroid[0];
+          yTri[2] = centroid[1];
+          zTri[2] = centroid[2];
+
+          const RealT area = Area3DTri( xTri, yTri, zTri );
+          if ( area <= 0. ) {
+            continue;
+          }
+
+          for ( int qp = 0; qp < num_qpts; ++qp ) {
+            const RealT xi = rule_coords[2 * qp];
+            const RealT eta = rule_coords[2 * qp + 1];
+            const RealT n0 = 1. - xi - eta;
+            RealT x_q[3];
+            x_q[0] = n0 * xTri[0] + xi * xTri[1] + eta * xTri[2];
+            x_q[1] = n0 * yTri[0] + xi * yTri[1] + eta * yTri[2];
+            x_q[2] = n0 * zTri[0] + xi * zTri[1] + eta * zTri[2];
+
+            RealT phi_q1[max_nodes_per_face] = { 0., 0., 0., 0. };
+            RealT phi_q2[max_nodes_per_face] = { 0., 0., 0., 0. };
+            RealT x_qf1[max_dim];
+            RealT x_qf2[max_dim];
+            RealT vel_q1[max_dim];
+            RealT vel_q2[max_dim];
+
+            const bool mapped_face1 = EvalLinearFaceAtProjectedPoint( actual_xf1, numNodesPerFace1, x_q, overlapNormal,
+                                                                      x_qf1, phi_q1, dim, &actual_vf1[0], vel_q1 );
+            const bool mapped_face2 = EvalLinearFaceAtProjectedPoint( actual_xf2, numNodesPerFace2, x_q, overlapNormal,
+                                                                      x_qf2, phi_q2, dim, &actual_vf2[0], vel_q2 );
+            if ( !mapped_face1 || !mapped_face2 ) {
+              continue;
+            }
+
+            RealT local_gap = ( x_qf1[0] - x_qf2[0] ) * overlapNormal[0] + ( x_qf1[1] - x_qf2[1] ) * overlapNormal[1] +
+                              ( x_qf1[2] - x_qf2[2] ) * overlapNormal[2];
+            RealT gap_tol = cs_view.getGapTol( index1, index2 );
+            if ( local_gap > gap_tol ) {
+              continue;
+            }
+
+            RealT velGap_q[max_dim];
+            velGap_q[0] = vel_q1[0] - vel_q2[0];
+            velGap_q[1] = vel_q1[1] - vel_q2[1];
+            velGap_q[2] = vel_q1[2] - vel_q2[2];
+
+            RealT velGap_dot_n =
+                velGap_q[0] * overlapNormal[0] + velGap_q[1] * overlapNormal[1] + velGap_q[2] * overlapNormal[2];
+            RealT velGapTan[max_dim];
+            velGapTan[0] = velGap_q[0] - velGap_dot_n * overlapNormal[0];
+            velGapTan[1] = velGap_q[1] - velGap_dot_n * overlapNormal[1];
+            velGapTan[2] = velGap_q[2] - velGap_dot_n * overlapNormal[2];
+
+            const RealT weighted_force = area * rule_wts[qp] * visc;
+            const RealT force_x = weighted_force * velGapTan[0];
+            const RealT force_y = weighted_force * velGapTan[1];
+            const RealT force_z = weighted_force * velGapTan[2];
+
+            AccumulateContactForce( mesh1, mesh2, index1, index2, dim, numNodesPerFace1, force_x, force_y, force_z,
+                                    phi_q1, phi_q2 );
+          }
+        }
+      } else {
+        RealT segment_rule_wts[max_segment_gauss_legendre_qpts] = { 0. };
+        RealT segment_rule_coords[max_segment_gauss_legendre_qpts] = { 0. };
+        const int num_qpts = GetCommonPlaneSegmentRule( pen_enfrc_options.common_plane_quadrature_order,
+                                                        segment_rule_wts, segment_rule_coords );
+        const RealT x0 = xVert[0];
+        const RealT y0 = xVert[1];
+        const RealT x1_seg = xVert[2];
+        const RealT y1_seg = xVert[3];
+        const RealT length = magnitude( x1_seg - x0, y1_seg - y0 );
+
+        for ( int qp = 0; qp < num_qpts; ++qp ) {
+          const RealT s = segment_rule_coords[qp];
+          const RealT one_minus_s = 1. - s;
+          RealT x_q[2] = { one_minus_s * x0 + s * x1_seg, one_minus_s * y0 + s * y1_seg };
+
+          RealT phi_q1[max_nodes_per_face] = { 0., 0., 0., 0. };
+          RealT phi_q2[max_nodes_per_face] = { 0., 0., 0., 0. };
+          RealT x_qf1[max_dim];
+          RealT x_qf2[max_dim];
+          RealT vel_q1[max_dim] = { 0., 0., 0. };
+          RealT vel_q2[max_dim] = { 0., 0., 0. };
+
+          const bool mapped_face1 = EvalLinearEdgeAtProjectedPoint( actual_xf1, x_q, overlapNormal, x_qf1, phi_q1, dim,
+                                                                    &actual_vf1[0], vel_q1 );
+          const bool mapped_face2 = EvalLinearEdgeAtProjectedPoint( actual_xf2, x_q, overlapNormal, x_qf2, phi_q2, dim,
+                                                                    &actual_vf2[0], vel_q2 );
+          if ( !mapped_face1 || !mapped_face2 ) {
+            continue;
+          }
+
+          RealT local_gap = ( x_qf1[0] - x_qf2[0] ) * overlapNormal[0] + ( x_qf1[1] - x_qf2[1] ) * overlapNormal[1];
+          RealT gap_tol = cs_view.getGapTol( index1, index2 );
+          if ( local_gap > gap_tol ) {
+            continue;
+          }
+
+          RealT velGap_q[max_dim];
+          velGap_q[0] = vel_q1[0] - vel_q2[0];
+          velGap_q[1] = vel_q1[1] - vel_q2[1];
+
+          RealT velGap_dot_n = velGap_q[0] * overlapNormal[0] + velGap_q[1] * overlapNormal[1];
+          RealT velGapTan_q[max_dim] = { velGap_q[0] - velGap_dot_n * overlapNormal[0],
+                                         velGap_q[1] - velGap_dot_n * overlapNormal[1], 0. };
+
+          const RealT weighted_force = length * segment_rule_wts[qp] * visc;
+          const RealT force_x = weighted_force * velGapTan_q[0];
+          const RealT force_y = weighted_force * velGapTan_q[1];
+
+          AccumulateContactForce( mesh1, mesh2, index1, index2, dim, numNodesPerFace1, force_x, force_y, 0., phi_q1,
+                                  phi_q2 );
+        }
+      }
+
+      return;
+    }
+
     // create arrays to hold nodal residual weak form integral evaluations
-    RealT phi1[max_nodes_per_elem];
-    RealT phi2[max_nodes_per_elem];
+    RealT phi1[max_nodes_per_face];
+    RealT phi2[max_nodes_per_face];
     initRealArray( phi1, numNodesPerFace1, 0. );
     initRealArray( phi2, numNodesPerFace2, 0. );
 
@@ -516,7 +1085,8 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
     // Integration of contact integrals: integral of shape functions over //
     // contact overlap patch                                              //
     ////////////////////////////////////////////////////////////////////////
-    EvalWeakFormIntegral<COMMON_PLANE, SINGLE_POINT>( cntctElem, phi1, phi2 );
+    EvalWeakFormIntegralCommonPlane( cntctElem, pen_enfrc_options.common_plane_rule,
+                                     pen_enfrc_options.common_plane_quadrature_order, phi1, phi2 );
 
     /////////////////////////////////////////////////////
     // Computation of tangential viscous damping force //
@@ -530,34 +1100,8 @@ int ApplyTangential<COMMON_PLANE, PENALTY, VISCOUS_TANGENTIAL>( CouplingScheme* 
       force_z = visc * velGapTan[2];
     }
 
-    //////////////////////////////////////////////////////
-    // loop over nodes and compute contact nodal forces //
-    //////////////////////////////////////////////////////
-    for ( IndexT a = 0; a < numNodesPerFace1; ++a ) {
-      IndexT node0 = mesh1.getGlobalNodeId( index1, a );
-      IndexT node1 = mesh2.getGlobalNodeId( index2, a );
-
-      const RealT nodal_force_x1 = force_x * phi1[a];
-      const RealT nodal_force_y1 = force_y * phi1[a];
-      const RealT nodal_force_z1 = force_z * phi1[a];
-
-      const RealT nodal_force_x2 = force_x * phi2[a];
-      const RealT nodal_force_y2 = force_y * phi2[a];
-      const RealT nodal_force_z2 = force_z * phi2[a];
-
-      // accumulate contributions in host code's registered nodal force arrays
-      tribol::atomicAdd( &mesh1.getResponse()[0][node0], -nodal_force_x1 );
-      tribol::atomicAdd( &mesh2.getResponse()[0][node1], nodal_force_x2 );
-
-      tribol::atomicAdd( &mesh1.getResponse()[1][node0], -nodal_force_y1 );
-      tribol::atomicAdd( &mesh2.getResponse()[1][node1], nodal_force_y2 );
-
-      // there is no z component for 2D
-      if ( dim == 3 ) {
-        tribol::atomicAdd( &mesh1.getResponse()[2][node0], -nodal_force_z1 );
-        tribol::atomicAdd( &mesh2.getResponse()[2][node1], nodal_force_z2 );
-      }
-    }  // end for loop over face nodes
+    AccumulateContactForce( mesh1, mesh2, index1, index2, dim, numNodesPerFace1, force_x, force_y, force_z, phi1,
+                            phi2 );
   } );
 
   return 0;

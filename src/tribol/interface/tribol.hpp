@@ -66,6 +66,16 @@ void setPenaltyOptions( IndexT cs_id, PenaltyConstraintType pen_enfrc_option,
                         RatePenaltyCalculation rate_calc = NO_RATE_PENALTY );
 
 /*!
+ * \brief Sets CommonPlane overlap integration options
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] rule polygon integration rule for CommonPlane force integration
+ * \param [in] quadrature_order order of the CommonPlane quadrature used by MULTI_POINT in the range [2,10]
+ * \pre user must register coupling scheme prior to setting CommonPlane integration options
+ */
+void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int quadrature_order = 3 );
+
+/*!
  * \brief Sets the constant kinematic penalty stiffness
  * \param [in] mesh_id mesh id for penalty stiffness
  * \param [in] k constant kinematic penalty stiffness

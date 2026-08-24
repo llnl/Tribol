@@ -162,6 +162,31 @@ TEST_F( EnforcementOptionsTest, penalty_kinematic_constant_error )
   delete mesh;
 }
 
+TEST_F( EnforcementOptionsTest, common_plane_integration_options_are_stored )
+{
+  // Verify that user-provided CommonPlane polygon integration options are stored on the
+  // coupling scheme and are available during penalty enforcement.
+  tribol::TestMesh* mesh = new tribol::TestMesh();
+  SetupTest( mesh );
+
+  constexpr tribol::IndexT couplingSchemeId = 0;
+  constexpr int quadratureOrder = 4;
+  RealT penalty = 1.0;
+  tribol::setKinematicConstantPenalty( 0, penalty );
+  tribol::setKinematicConstantPenalty( 1, penalty );
+  tribol::setPenaltyOptions( couplingSchemeId, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
+  tribol::setCommonPlaneIntegrationOptions( couplingSchemeId, tribol::MULTI_POINT, quadratureOrder );
+
+  tribol::CouplingSchemeManager& csManager = tribol::CouplingSchemeManager::getInstance();
+  tribol::CouplingScheme* scheme = &csManager.at( couplingSchemeId );
+
+  EXPECT_EQ( scheme->getEnforcementOptions().penalty_options.common_plane_rule, tribol::MULTI_POINT );
+  EXPECT_EQ( scheme->getEnforcementOptions().penalty_options.common_plane_quadrature_order, quadratureOrder );
+
+  tribol::finalize();
+  delete mesh;
+}
+
 TEST_F( EnforcementOptionsTest, penalty_kinematic_element_error )
 {
   // Setup boiler plate test data etc.
