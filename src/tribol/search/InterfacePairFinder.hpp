@@ -13,6 +13,8 @@
 
 namespace tribol {
 
+class CouplingScheme;
+
 /**
  * @brief Configures and runs coarse contact-pair searches between two meshes
  *
@@ -20,10 +22,30 @@ namespace tribol {
  * formulations may compose directly with CartesianProductSearch, GridSearch, BvhSearch, or another compatible search
  * type to retain its concrete pair-range type.
  *
- * This class stores only search configuration. It does not own or retain the meshes supplied to findInterfacePairs().
+ * The configuration-only interface does not own or retain the meshes supplied to findInterfacePairs(). The legacy
+ * CouplingScheme interface retains a non-owning pointer for the lifetime of the finder.
  */
 class InterfacePairFinder {
  public:
+  /**
+   * @brief Construct a finder for the legacy CouplingScheme binning path
+   *
+   * @param [in] coupling_scheme Coupling scheme that supplies search configuration and receives materialized pairs.
+   */
+  explicit InterfacePairFinder( CouplingScheme* coupling_scheme );
+
+  /**
+   * @brief Initialize the legacy finder interface
+   *
+   * Concrete searches initialize their data during findInterfacePairs(), so this compatibility hook is a no-op.
+   */
+  void initialize();
+
+  /**
+   * @brief Find, filter, and materialize interface pairs for the legacy CouplingScheme path
+   */
+  void findInterfacePairs();
+
   /**
    * @brief Construct a coarse contact-pair finder
    *
@@ -70,6 +92,9 @@ class InterfacePairFinder {
 
   /** Element-size multiplier used to inflate coarse-search bounds. */
   RealT proximity_scale_;
+
+  /** Non-owning coupling scheme used only by the legacy compatibility interface. */
+  CouplingScheme* coupling_scheme_{ nullptr };
 };
 
 }  // end namespace tribol

@@ -27,7 +27,6 @@
 #include "tribol/common/Parameters.hpp"
 #include "tribol/physics/Physics.hpp"
 #include "tribol/physics/ContactFormulationFactory.hpp"
-#include "tribol/search/ContactPairAlgorithms.hpp"
 
 #include "tribol/integ/FE.hpp"
 namespace tribol {
@@ -42,17 +41,6 @@ inline bool validMeshID( IndexT mesh_id )
 {
   MeshManager& meshManager = MeshManager::getInstance();
   return ( mesh_id == ANY_MESH ) || meshManager.findData( mesh_id );
-}
-
-template <typename PairView>
-void materializeInterfacePairs( CouplingScheme& coupling_scheme, PairView coarse_pairs )
-{
-  const auto cs_view = coupling_scheme.getView();
-  const auto accept_pair = [cs_view] TRIBOL_HOST_DEVICE( ElementPair pair ) {
-    return !cs_view.pruneMethodFacePair( pair.element_id1, pair.element_id2 );
-  };
-  compactContactPairs( coarse_pairs, accept_pair, coupling_scheme.getExecutionMode(), coupling_scheme.getAllocatorId(),
-                       coupling_scheme.getInterfacePairs() );
 }
 
 } /* end anonymous namespace */
@@ -1021,13 +1009,9 @@ void CouplingScheme::performBinning()
     // create interface pairs based on allocator id
     m_interface_pairs = ArrayT<InterfacePair>( 0, 0, m_allocator_id );
 
-    InterfacePairFinder finder( getBinningMethod(), getExecutionMode(), getAllocatorId(),
-                                getEffectiveBinningProximityScale() );
-    // Record any compatibility fallback selected by the finder, such as replacing grid search with BVH on a device.
-    setBinningMethod( finder.getBinningMethod() );
-    auto coarse_pairs = finder.findInterfacePairs( getMesh1(), getMesh2() );
-    setBinned( true );
-    visitContactPairs( coarse_pairs, [this]( auto pairs ) { materializeInterfacePairs( *this, pairs ); } );
+    InterfacePairFinder finder( this );
+    finder.initialize();
+    finder.findInterfacePairs();
 
     // set fixed binning depending on contact case,
     // e.g. NO_SLIDING

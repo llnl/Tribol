@@ -7,13 +7,25 @@
 
 #include "axom/slic.hpp"
 
-#include "tribol/common/LoopExec.hpp"
+#include "tribol/mesh/CouplingScheme.hpp"
 #include "tribol/search/BvhSearch.hpp"
 #include "tribol/search/CartesianProductSearch.hpp"
+#include "tribol/search/ContactPairAlgorithms.hpp"
 #include "tribol/search/GridSearch.hpp"
 
 namespace tribol {
 namespace {
+
+template <typename PairView>
+void materializeInterfacePairs( CouplingScheme& coupling_scheme, PairView coarse_pairs )
+{
+  const auto cs_view = coupling_scheme.getView();
+  const auto accept_pair = [cs_view] TRIBOL_HOST_DEVICE( ElementPair pair ) {
+    return !cs_view.pruneMethodFacePair( pair.element_id1, pair.element_id2 );
+  };
+  compactContactPairs( coarse_pairs, accept_pair, coupling_scheme.getExecutionMode(), coupling_scheme.getAllocatorId(),
+                       coupling_scheme.getInterfacePairs() );
+}
 
 // Dispatch a BVH search to the execution space selected by the legacy API.
 template <int Dimension>
@@ -44,6 +56,50 @@ ArrayT<ElementPair> findBvhPairs( ExecutionMode execution_mode, int allocator_id
 }
 
 }  // namespace
+
+InterfacePairFinder::InterfacePairFinder( CouplingScheme* coupling_scheme )
+    : binning_method_( BINNING_BVH ),
+      execution_mode_( ExecutionMode::Sequential ),
+      allocator_id_( 0 ),
+      proximity_scale_( 1.0 ),
+      coupling_scheme_( coupling_scheme )
+{
+  SLIC_ASSERT_MSG( coupling_scheme_ != nullptr, "Coupling scheme was invalid (null pointer)" );
+  if ( coupling_scheme_ == nullptr ) {
+    return;
+  }
+
+  binning_method_ = coupling_scheme_->getBinningMethod();
+  execution_mode_ = coupling_scheme_->getExecutionMode();
+  allocator_id_ = coupling_scheme_->getAllocatorId();
+  proximity_scale_ = coupling_scheme_->getEffectiveBinningProximityScale();
+
+  if ( isOnDevice( execution_mode_ ) && binning_method_ == BINNING_GRID ) {
+    SLIC_WARNING_ROOT( "BINNING_GRID is not supported on GPU. Switching to BINNING_BVH." );
+    binning_method_ = BINNING_BVH;
+  }
+
+  // Record any compatibility fallback selected by the finder, such as replacing grid search with BVH on a device.
+  coupling_scheme_->setBinningMethod( binning_method_ );
+}
+
+void InterfacePairFinder::initialize()
+{
+  SLIC_ASSERT_MSG( coupling_scheme_ != nullptr, "Legacy finder interface requires a coupling scheme." );
+}
+
+void InterfacePairFinder::findInterfacePairs()
+{
+  SLIC_ASSERT_MSG( coupling_scheme_ != nullptr, "Legacy finder interface requires a coupling scheme." );
+  if ( coupling_scheme_ == nullptr ) {
+    return;
+  }
+
+  auto coarse_pairs = findInterfacePairs( coupling_scheme_->getMesh1(), coupling_scheme_->getMesh2() );
+  visitContactPairs( coarse_pairs,
+                     [this]( auto pairs ) { materializeInterfacePairs( *coupling_scheme_, pairs ); } );
+  coupling_scheme_->setBinned( true );
+}
 
 InterfacePairFinder::InterfacePairFinder( BinningMethod binning_method, ExecutionMode execution_mode, int allocator_id,
                                           RealT proximity_scale )
