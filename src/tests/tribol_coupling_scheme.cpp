@@ -29,12 +29,19 @@ using RealT = tribol::RealT;
 
 namespace {
 
+// Minimal concrete formulation used to test the default ContactFormulation lifecycle without introducing any
+// method-specific behavior.
 class MinimalContactFormulation : public tribol::ContactFormulation {};
 
+// Verify that ContactFormulation remains abstract while its optional lifecycle hooks allow a derived formulation to be
+// concrete without overriding them.
 static_assert( std::is_abstract<tribol::ContactFormulation>::value,
                "ContactFormulation must remain an abstract interface" );
 static_assert( !std::is_abstract<MinimalContactFormulation>::value,
                "Lifecycle hooks should be optional for derived formulations" );
+
+// Verify that each public coarse-search policy preserves its natural pair type and uses static composition rather than
+// runtime polymorphism.
 static_assert( std::is_same<tribol::CartesianProductSearch::PairRange, tribol::CartesianPairView>::value,
                "Cartesian search should preserve its lazy pair range" );
 static_assert( std::is_same<tribol::GridSearch<2>::PairRange, tribol::ArrayT<tribol::ElementPair>>::value,
@@ -51,6 +58,8 @@ static_assert( !std::is_polymorphic<tribol::BvhSearch<2, axom::SEQ_EXEC>>::value
 
 }  // namespace
 
+// Verify that the default lifecycle hooks are no-ops and formulations do not advertise a time-step calculation unless
+// they override the default.
 TEST( ContactFormulationTest, Defaults )
 {
   MinimalContactFormulation formulation;
@@ -61,6 +70,8 @@ TEST( ContactFormulationTest, Defaults )
   EXPECT_FALSE( formulation.hasTimeStepCalculation() );
 }
 
+// Verify that pair types are device-copyable and Cartesian pair views map linear indices correctly for both distinct-
+// and same-mesh searches.
 TEST( ContactPairViewTest, CartesianProduct )
 {
   static_assert( std::is_trivially_copyable<tribol::ElementPair>::value, "ElementPair must be device-copyable" );
@@ -84,6 +95,7 @@ TEST( ContactPairViewTest, CartesianProduct )
   EXPECT_EQ( symmetric_pairs[5].element_id2, 2 );
 }
 
+// Verify that PairListView provides random access to explicitly stored element pairs without changing their indices.
 TEST( ContactPairViewTest, PairList )
 {
   tribol::ArrayT<tribol::ElementPair> pair_data( 2, 2 );
@@ -98,6 +110,8 @@ TEST( ContactPairViewTest, PairList )
   EXPECT_EQ( pairs[1].element_id2, 11 );
 }
 
+// Verify that compactContactPairs filters a lazy candidate range into dense explicit storage containing only pairs
+// accepted by the predicate.
 TEST( ContactPairViewTest, CompactPairs )
 {
   tribol::CartesianPairView candidates( 3, 2, false );
@@ -118,6 +132,8 @@ TEST( ContactPairViewTest, CompactPairs )
   EXPECT_EQ( accepted[2].element_id2, 0 );
 }
 
+// Verify that Cartesian candidates are filtered again after mesh motion rather than treating the previously
+// materialized interface pairs as fixed.
 TEST( ContactPairViewTest, CartesianPairsAreRematerialized )
 {
   constexpr tribol::IndexT mesh_id1 = 0;
