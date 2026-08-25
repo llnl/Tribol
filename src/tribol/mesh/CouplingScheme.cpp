@@ -1023,6 +1023,7 @@ void CouplingScheme::performBinning()
 
     InterfacePairFinder finder( getBinningMethod(), getExecutionMode(), getAllocatorId(),
                                 getEffectiveBinningProximityScale() );
+    // Record any compatibility fallback selected by the finder, such as replacing grid search with BVH on a device.
     setBinningMethod( finder.getBinningMethod() );
     auto coarse_pairs = finder.findInterfacePairs( getMesh1(), getMesh2() );
     setBinned( true );

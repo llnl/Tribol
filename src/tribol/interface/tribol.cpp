@@ -848,8 +848,8 @@ int update( int cycle, RealT t, RealT& dt )
       continue;
     }
 
-    // ContactFormulations own their search lifecycle. Legacy methods continue
-    // to use the CouplingScheme binning path.
+    // ContactFormulations own their search lifecycle. Pre-ContactFormulation methods continue to use the CouplingScheme
+    // binning path.
     if ( !cs.hasContactFormulation() ) {
       cs.performBinning();
     }

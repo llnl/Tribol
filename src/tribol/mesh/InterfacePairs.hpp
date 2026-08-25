@@ -87,8 +87,8 @@ class CartesianPairView {
 /**
  * @brief Host-side owning storage for a contact-pair range
  *
- * Explicit pairs may reside in device memory. Visit this range on the host to
- * obtain a device-copyable PairListView or CartesianPairView for a kernel.
+ * Explicit pairs may reside in device memory. Visit this range on the host to obtain a device-copyable PairListView or
+ * CartesianPairView for a kernel.
  */
 using ContactPairRange = std::variant<ArrayT<ElementPair>, CartesianPairView>;
 
