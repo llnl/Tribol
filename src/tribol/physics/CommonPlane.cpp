@@ -81,9 +81,12 @@ struct TraceProjectionContribution {
 struct TraceProjectionConstraint {
   IndexT parent_dof;
   IndexT patch;
+  RealT coordinate[2]{ 0., 0. };
+  RealT normal[2]{ 0., 0. };
   std::vector<TraceProjectionContribution> contributions;
   RealT gap{ 0. };
   RealT target_velocity{ 0. };
+  RealT endpoint_target_velocity{ 0. };
   RealT diagonal{ 0. };
   RealT trial_velocity{ 0. };
   RealT position_trial_velocity{ 0. };
@@ -105,6 +108,29 @@ struct TraceProjectionSolveResult {
   RealT final_residual{ 0. };
   RealT final_primal_residual{ 0. };
   RealT primal_tolerance{ 0. };
+};
+
+struct AugmentedLagrangianSolveResult {
+  TraceProjectionSolveResult physical_result;
+  int outer_iterations{ 0 };
+  int subproblem_iterations{ 0 };
+  int incomplete_subproblems{ 0 };
+  RealT multiplier_update_norm{ 0. };
+};
+
+struct PenaltyAugmentedLagrangianSolveResult {
+  TraceProjectionSolveResult physical_result;
+  std::vector<RealT> updated_multipliers;
+  int outer_iterations{ 0 };
+  int subproblem_iterations{ 0 };
+  int incomplete_subproblems{ 0 };
+  RealT multiplier_update_norm{ 0. };
+};
+
+struct ProjectionNodalCapture {
+  ProjectionNodalDofData data;
+  IndexT representative_element{ -1 };
+  int representative_local_dof{ -1 };
 };
 
 struct ParentTraceFaceKey {
@@ -642,27 +668,44 @@ bool PolishProjectionActiveSet( const mfem::DenseMatrix& projection_operator,
   return true;
 }
 
+ProjectionResiduals ComputeTraceProjectionResiduals(
+    const mfem::DenseMatrix& projection_operator,
+    const std::vector<TraceProjectionConstraint>& constraints )
+{
+  ProjectionResiduals residuals;
+  const int num_constraints = static_cast<int>( constraints.size() );
+  for ( int i = 0; i < num_constraints; ++i ) {
+    RealT projected_gap_rate = constraints[i].trial_velocity - constraints[i].target_velocity;
+    for ( int j = 0; j < num_constraints; ++j ) {
+      projected_gap_rate += projection_operator( i, j ) * constraints[j].multiplier;
+    }
+    residuals.complementarity =
+        std::max( residuals.complementarity,
+                  std::abs( std::min( constraints[i].diagonal * constraints[i].multiplier,
+                                      projected_gap_rate ) ) );
+    residuals.primal = std::max( residuals.primal, -projected_gap_rate );
+  }
+  residuals.primal = std::max( 0., residuals.primal );
+  return residuals;
+}
+
+RealT ComputeTraceProjectionPrimalScale( const std::vector<TraceProjectionConstraint>& constraints )
+{
+  RealT primal_scale = 0.;
+  for ( const auto& constraint : constraints ) {
+    primal_scale =
+        std::max( primal_scale, std::abs( constraint.trial_velocity - constraint.target_velocity ) );
+  }
+  return primal_scale;
+}
+
 TraceProjectionSolveResult SolveTraceProjectionSystem( const mfem::DenseMatrix& projection_operator,
                                                         std::vector<TraceProjectionConstraint>& constraints,
                                                         const ImpulseProjectionOptions& projection_options )
 {
   TraceProjectionSolveResult result;
   const int num_constraints = static_cast<int>( constraints.size() );
-  auto compute_residual = [&]() {
-    ProjectionResiduals residuals;
-    for ( int i = 0; i < num_constraints; ++i ) {
-      RealT projected_gap_rate = constraints[i].trial_velocity - constraints[i].target_velocity;
-      for ( int j = 0; j < num_constraints; ++j ) {
-        projected_gap_rate += projection_operator( i, j ) * constraints[j].multiplier;
-      }
-      residuals.complementarity =
-          std::max( residuals.complementarity,
-                    std::abs( std::min( constraints[i].diagonal * constraints[i].multiplier, projected_gap_rate ) ) );
-      residuals.primal = std::max( residuals.primal, -projected_gap_rate );
-    }
-    residuals.primal = std::max( 0., residuals.primal );
-    return residuals;
-  };
+  auto compute_residual = [&]() { return ComputeTraceProjectionResiduals( projection_operator, constraints ); };
 
   const ProjectionResiduals initial_residuals = compute_residual();
   result.initial_residual = initial_residuals.complementarity;
@@ -670,8 +713,10 @@ TraceProjectionSolveResult SolveTraceProjectionSystem( const mfem::DenseMatrix& 
   result.final_primal_residual = initial_residuals.primal;
   const RealT convergence_tolerance = projection_options.absolute_tolerance +
                                       projection_options.relative_tolerance * result.initial_residual;
+  const RealT primal_scale =
+      std::max( initial_residuals.primal, ComputeTraceProjectionPrimalScale( constraints ) );
   result.primal_tolerance = projection_options.absolute_tolerance +
-                            projection_options.primal_relative_tolerance * initial_residuals.primal;
+                            projection_options.primal_relative_tolerance * primal_scale;
   result.complementarity_converged = result.final_residual <= convergence_tolerance;
   constexpr int projected_gauss_seidel_warmup_iterations = 3;
   const int warmup_iterations = std::min( projection_options.max_iterations,
@@ -711,6 +756,188 @@ TraceProjectionSolveResult SolveTraceProjectionSystem( const mfem::DenseMatrix& 
                    std::isfinite( result.final_primal_residual );
     result.complementarity_converged = result.valid && result.final_residual <= convergence_tolerance;
   }
+  return result;
+}
+
+AugmentedLagrangianSolveResult SolveTraceAugmentedLagrangianSystem(
+    const mfem::DenseMatrix& physical_operator, std::vector<TraceProjectionConstraint>& constraints,
+    const ImpulseProjectionOptions& projection_options, RealT stage_dt )
+{
+  AugmentedLagrangianSolveResult result;
+  const int num_constraints = static_cast<int>( constraints.size() );
+  const ProjectionResiduals initial_residuals =
+      ComputeTraceProjectionResiduals( physical_operator, constraints );
+  result.physical_result.initial_residual = initial_residuals.complementarity;
+  result.physical_result.final_residual = initial_residuals.complementarity;
+  result.physical_result.final_primal_residual = initial_residuals.primal;
+  const RealT primal_scale =
+      std::max( initial_residuals.primal, ComputeTraceProjectionPrimalScale( constraints ) );
+  result.physical_result.primal_tolerance =
+      projection_options.absolute_tolerance +
+      projection_options.primal_relative_tolerance * primal_scale;
+  const RealT convergence_tolerance =
+      projection_options.absolute_tolerance +
+      projection_options.relative_tolerance * initial_residuals.complementarity;
+  result.physical_result.complementarity_converged =
+      initial_residuals.complementarity <= convergence_tolerance;
+
+  const int iteration_limit = projection_options.al_fixed_iterations > 0
+                                  ? projection_options.al_fixed_iterations
+                                  : projection_options.al_max_iterations;
+  std::vector<RealT> physical_targets( constraints.size() );
+  std::vector<RealT> previous_multipliers( constraints.size() );
+  for ( int i = 0; i < num_constraints; ++i ) {
+    physical_targets[i] = constraints[i].target_velocity;
+  }
+
+  auto physical_residuals_converged = [&]() {
+    return result.physical_result.complementarity_converged &&
+           result.physical_result.final_primal_residual <= result.physical_result.primal_tolerance;
+  };
+  while ( result.physical_result.valid && result.outer_iterations < iteration_limit &&
+          ( projection_options.al_fixed_iterations > 0 || !physical_residuals_converged() ) ) {
+    mfem::DenseMatrix augmented_operator( physical_operator );
+    for ( int i = 0; i < num_constraints; ++i ) {
+      previous_multipliers[i] = constraints[i].multiplier;
+      const RealT proximal_diagonal =
+          physical_operator( i, i ) / projection_options.al_augmentation_scale;
+      augmented_operator( i, i ) += proximal_diagonal;
+      constraints[i].target_velocity = physical_targets[i] +
+                                       proximal_diagonal * previous_multipliers[i];
+      constraints[i].diagonal = augmented_operator( i, i );
+    }
+
+    TraceProjectionSolveResult subproblem_result =
+        SolveTraceProjectionSystem( augmented_operator, constraints, projection_options );
+    ++result.outer_iterations;
+    result.subproblem_iterations += subproblem_result.iterations;
+    result.incomplete_subproblems += subproblem_result.complementarity_converged ? 0 : 1;
+    result.physical_result.valid = result.physical_result.valid && subproblem_result.valid;
+    for ( int i = 0; i < num_constraints; ++i ) {
+      result.multiplier_update_norm =
+          std::max( result.multiplier_update_norm,
+                    std::abs( constraints[i].multiplier - previous_multipliers[i] ) / stage_dt );
+      constraints[i].target_velocity = physical_targets[i];
+      constraints[i].diagonal = physical_operator( i, i );
+    }
+
+    const ProjectionResiduals physical_residuals =
+        ComputeTraceProjectionResiduals( physical_operator, constraints );
+    result.physical_result.final_residual = physical_residuals.complementarity;
+    result.physical_result.final_primal_residual = physical_residuals.primal;
+    result.physical_result.valid = result.physical_result.valid &&
+                                   std::isfinite( physical_residuals.complementarity ) &&
+                                   std::isfinite( physical_residuals.primal );
+    result.physical_result.complementarity_converged =
+        result.physical_result.valid && physical_residuals.complementarity <= convergence_tolerance;
+  }
+  result.physical_result.iterations = result.subproblem_iterations;
+  return result;
+}
+
+PenaltyAugmentedLagrangianSolveResult SolveTracePenaltyAugmentedLagrangianSystem(
+    const mfem::DenseMatrix& compliance_operator, const mfem::DenseMatrix& augmented_operator,
+    std::vector<TraceProjectionConstraint>& constraints, const PenaltyEnforcementOptions& penalty_options )
+{
+  PenaltyAugmentedLagrangianSolveResult result;
+  const int num_constraints = static_cast<int>( constraints.size() );
+  std::vector<RealT> multiplier( num_constraints );
+  std::vector<RealT> force( num_constraints );
+  std::vector<RealT> free_gap( num_constraints );
+  for ( int i = 0; i < num_constraints; ++i ) {
+    multiplier[i] = constraints[i].multiplier;
+    force[i] = multiplier[i];
+    free_gap[i] = constraints[i].trial_velocity;
+  }
+
+  auto compute_physical_residuals = [&]() {
+    ProjectionResiduals residuals;
+    for ( int i = 0; i < num_constraints; ++i ) {
+      RealT endpoint_gap = free_gap[i];
+      for ( int j = 0; j < num_constraints; ++j ) {
+        endpoint_gap += compliance_operator( i, j ) * force[j];
+      }
+      residuals.complementarity =
+          std::max( residuals.complementarity,
+                    std::abs( std::min( augmented_operator( i, i ) * force[i], endpoint_gap ) ) );
+      residuals.primal = std::max( residuals.primal, -endpoint_gap );
+    }
+    residuals.primal = std::max( 0., residuals.primal );
+    return residuals;
+  };
+
+  const ProjectionResiduals initial_residuals = compute_physical_residuals();
+  result.physical_result.initial_residual = initial_residuals.complementarity;
+  result.physical_result.final_residual = initial_residuals.complementarity;
+  result.physical_result.final_primal_residual = initial_residuals.primal;
+  const RealT convergence_tolerance =
+      penalty_options.al_absolute_tolerance +
+      penalty_options.al_relative_tolerance * initial_residuals.complementarity;
+  result.physical_result.primal_tolerance = convergence_tolerance;
+  result.physical_result.complementarity_converged =
+      initial_residuals.complementarity <= convergence_tolerance &&
+      initial_residuals.primal <= convergence_tolerance;
+
+  ImpulseProjectionOptions subproblem_options;
+  subproblem_options.max_iterations = std::max( 250, 2 * num_constraints + 3 );
+  subproblem_options.relative_tolerance = penalty_options.al_relative_tolerance;
+  subproblem_options.primal_relative_tolerance = penalty_options.al_relative_tolerance;
+  subproblem_options.absolute_tolerance = penalty_options.al_absolute_tolerance;
+  subproblem_options.relaxation_scale = 1.;
+  const int iteration_limit = penalty_options.al_fixed_iterations > 0
+                                  ? penalty_options.al_fixed_iterations
+                                  : penalty_options.al_max_iterations;
+  while ( result.physical_result.valid && result.outer_iterations < iteration_limit &&
+          ( penalty_options.al_fixed_iterations > 0 ||
+            !result.physical_result.complementarity_converged ) ) {
+    for ( int i = 0; i < num_constraints; ++i ) {
+      const RealT stiffness = constraints[i].weighted_penalty_stiffness;
+      constraints[i].trial_velocity = free_gap[i];
+      constraints[i].target_velocity = multiplier[i] / stiffness;
+      constraints[i].diagonal = augmented_operator( i, i );
+      constraints[i].multiplier = multiplier[i];
+    }
+
+    const TraceProjectionSolveResult subproblem_result =
+        SolveTraceProjectionSystem( augmented_operator, constraints, subproblem_options );
+    ++result.outer_iterations;
+    result.subproblem_iterations += subproblem_result.iterations;
+    result.incomplete_subproblems += subproblem_result.complementarity_converged ? 0 : 1;
+    result.physical_result.valid = result.physical_result.valid && subproblem_result.valid;
+    for ( int i = 0; i < num_constraints; ++i ) {
+      force[i] = constraints[i].multiplier;
+    }
+
+    const ProjectionResiduals physical_residuals = compute_physical_residuals();
+    result.physical_result.final_residual = physical_residuals.complementarity;
+    result.physical_result.final_primal_residual = physical_residuals.primal;
+    result.physical_result.valid = result.physical_result.valid &&
+                                   std::isfinite( physical_residuals.complementarity ) &&
+                                   std::isfinite( physical_residuals.primal );
+    result.physical_result.complementarity_converged =
+        result.physical_result.valid &&
+        physical_residuals.complementarity <= convergence_tolerance &&
+        physical_residuals.primal <= convergence_tolerance;
+
+    for ( int i = 0; i < num_constraints; ++i ) {
+      const RealT updated_multiplier =
+          std::max( 0., multiplier[i] +
+                            penalty_options.al_relaxation * ( force[i] - multiplier[i] ) );
+      result.multiplier_update_norm =
+          std::max( result.multiplier_update_norm,
+                    std::abs( updated_multiplier - multiplier[i] ) );
+      multiplier[i] = updated_multiplier;
+    }
+  }
+
+  for ( int i = 0; i < num_constraints; ++i ) {
+    constraints[i].trial_velocity = free_gap[i];
+    constraints[i].target_velocity = 0.;
+    constraints[i].diagonal = augmented_operator( i, i );
+    constraints[i].multiplier = force[i];
+  }
+  result.updated_multipliers = std::move( multiplier );
+  result.physical_result.iterations = result.subproblem_iterations;
   return result;
 }
 #endif
@@ -1374,6 +1601,337 @@ TRIBOL_HOST_DEVICE inline void AccumulateForceDiagnostics(
   tribol::atomicMax( &contact_maxima[1], gap_violation );
   tribol::atomicMax( &contact_maxima[2], closing_gap_rate );
 }
+
+bool AssembleParentTraceConstraints( CouplingScheme* cs, RealT normal_patch_angle_degrees,
+                                     bool include_penalty_data,
+                                     std::vector<TraceProjectionConstraint>& constraints )
+{
+  constraints.clear();
+  auto cs_view = cs->getView();
+  auto mesh1 = cs_view.getMesh1View();
+  auto mesh2 = cs_view.getMesh2View();
+  const auto& integration_options = cs->getEnforcementOptions().penalty_options;
+
+  std::map<ParentTraceFaceKey, IndexT> face_indices;
+  std::vector<ParentTraceFace> faces;
+  std::map<IndexT, std::vector<std::pair<IndexT, IndexT>>> dof_incidence;
+  for ( IndexT element = 0; element < mesh2.numberOfElements(); ++element ) {
+    const ParentTraceFaceKey key = GetParentTraceFaceKey( mesh2, element );
+    auto found = face_indices.find( key );
+    if ( found != face_indices.end() ) {
+      continue;
+    }
+    ParentTraceFace face;
+    if ( !BuildParentTraceFace( mesh2, element, face ) ) {
+      return false;
+    }
+    const IndexT face_index = static_cast<IndexT>( faces.size() );
+    face_indices.emplace( key, face_index );
+    faces.push_back( face );
+    for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+      dof_incidence[face.local_dofs[a]].push_back( { face_index, a } );
+    }
+  }
+
+  std::vector<IndexT> row_face_counts;
+  const RealT patch_cosine =
+      std::cos( normal_patch_angle_degrees * std::acos( -1. ) / 180. );
+  for ( const auto& dof_entry : dof_incidence ) {
+    struct Patch {
+      IndexT representative_face;
+      std::vector<std::pair<IndexT, IndexT>> incidence;
+    };
+    std::vector<Patch> patches;
+    for ( const auto& incidence : dof_entry.second ) {
+      const auto& face = faces[incidence.first];
+      IndexT patch_index = -1;
+      for ( IndexT candidate = 0; candidate < static_cast<IndexT>( patches.size() ); ++candidate ) {
+        const auto& representative = faces[patches[candidate].representative_face];
+        const RealT normal_dot = face.normal[0] * representative.normal[0] +
+                                 face.normal[1] * representative.normal[1];
+        if ( normal_dot >= patch_cosine ) {
+          patch_index = candidate;
+          break;
+        }
+      }
+      if ( patch_index < 0 ) {
+        patches.push_back( { incidence.first, {} } );
+        patch_index = static_cast<IndexT>( patches.size() - 1 );
+      }
+      patches[patch_index].incidence.push_back( incidence );
+    }
+
+    for ( IndexT patch = 0; patch < static_cast<IndexT>( patches.size() ); ++patch ) {
+      const IndexT row = static_cast<IndexT>( constraints.size() );
+      TraceProjectionConstraint constraint;
+      constraint.parent_dof = dof_entry.first;
+      constraint.patch = patch;
+      const auto& first_incidence = patches[patch].incidence.front();
+      const auto& first_face = faces[first_incidence.first];
+      constraint.coordinate[0] =
+          mesh2.getParentPosition( first_face.representative_element, first_incidence.second, 0 );
+      constraint.coordinate[1] =
+          mesh2.getParentPosition( first_face.representative_element, first_incidence.second, 1 );
+      for ( const auto& incidence : patches[patch].incidence ) {
+        constraint.normal[0] += faces[incidence.first].normal[0];
+        constraint.normal[1] += faces[incidence.first].normal[1];
+      }
+      const RealT normal_magnitude = magnitude( constraint.normal[0], constraint.normal[1] );
+      if ( normal_magnitude > 0. ) {
+        constraint.normal[0] /= normal_magnitude;
+        constraint.normal[1] /= normal_magnitude;
+      }
+      constraints.push_back( std::move( constraint ) );
+      row_face_counts.push_back( static_cast<IndexT>( patches[patch].incidence.size() ) );
+      for ( const auto& incidence : patches[patch].incidence ) {
+        faces[incidence.first].rows[incidence.second] = row;
+      }
+    }
+  }
+
+  RealT rule_weights[max_segment_gauss_legendre_qpts] = { 0. };
+  RealT rule_coordinates[max_segment_gauss_legendre_qpts] = { 0. };
+  const int num_rule_points = GetCommonPlaneSegmentRule( integration_options.common_plane_quadrature_order,
+                                                         rule_weights, rule_coordinates );
+  for ( IndexT i = 0; i < cs->getNumActivePairs(); ++i ) {
+    auto& plane = cs_view.getCompGeomView().getCommonPlane( i );
+    plane.m_inContact = false;
+    plane.m_pressure = 0.;
+    const IndexT element1 = plane.getCpElementId1();
+    const IndexT element2 = plane.getCpElementId2();
+    const auto face_found = face_indices.find( GetParentTraceFaceKey( mesh2, element2 ) );
+    if ( face_found == face_indices.end() ) {
+      continue;
+    }
+    const auto& mortar_face = faces[face_found->second];
+    StackArrayT<RealT, max_dim * max_nodes_per_face> face1;
+    StackArrayT<RealT, max_dim * max_nodes_per_face> face2;
+    mesh1.getFaceCoords( element1, face1 );
+    mesh2.getFaceCoords( element2, face2 );
+    RealT overlap_vertices[max_dim * max_nodes_per_overlap] = { 0. };
+    plane.getOverlapVertices( overlap_vertices );
+    const RealT x0 = overlap_vertices[0];
+    const RealT y0 = overlap_vertices[1];
+    const RealT x1 = overlap_vertices[2];
+    const RealT y1 = overlap_vertices[3];
+    const RealT length = magnitude( x1 - x0, y1 - y0 );
+    if ( !std::isfinite( length ) || length <= 0. ) {
+      continue;
+    }
+    const RealT overlap_normal[2] = { plane.m_nX, plane.m_nY };
+
+    for ( int qp = 0; qp < num_rule_points; ++qp ) {
+      const RealT coordinate = rule_coordinates[qp];
+      const RealT x_q[2] = { ( 1. - coordinate ) * x0 + coordinate * x1,
+                             ( 1. - coordinate ) * y0 + coordinate * y1 };
+      RealT x_face1[max_dim];
+      RealT x_face2[max_dim];
+      RealT linear_phi1[2];
+      RealT linear_phi2[2];
+      RealT child_parameter1 = 0.;
+      RealT child_parameter2 = 0.;
+      if ( !EvalLinearEdgeAtProjectedPoint( face1, x_q, overlap_normal, x_face1, linear_phi1, 0, nullptr, nullptr,
+                                            &child_parameter1 ) ||
+           !EvalLinearEdgeAtProjectedPoint( face2, x_q, overlap_normal, x_face2, linear_phi2, 0, nullptr, nullptr,
+                                            &child_parameter2 ) ) {
+        continue;
+      }
+
+      RealT phi1[parent_q2_num_nodes];
+      RealT phi2[parent_q2_num_nodes];
+      RealT velocity1[max_dim] = { 0., 0., 0. };
+      RealT velocity2[max_dim] = { 0., 0., 0. };
+      RealT common_normal[2];
+      const bool use_velocity = mesh1.hasVelocity() && mesh2.hasVelocity();
+      EvalParentQ2Pair( mesh1, mesh2, element1, element2, child_parameter1, child_parameter2, use_velocity,
+                        overlap_normal, phi1, phi2, x_face1, x_face2, velocity1, velocity2, common_normal );
+      const RealT gap = ( x_face1[0] - x_face2[0] ) * common_normal[0] +
+                        ( x_face1[1] - x_face2[1] ) * common_normal[1];
+      const RealT quadrature_measure = length * rule_weights[qp];
+      const RealT parent_xi0 = mesh2.getParentReferenceCoordinate( element2, 0 );
+      const RealT parent_xi1 = mesh2.getParentReferenceCoordinate( element2, 1 );
+      const RealT parent_xi = ( 1. - child_parameter2 ) * parent_xi0 + child_parameter2 * parent_xi1;
+      RealT lor_phi[parent_q2_num_nodes];
+      EvalParentLORBasis( parent_xi, lor_phi );
+      const RealT penalty_stiffness = include_penalty_data
+                                          ? ComputeProjectionPenaltyStiffnessPerArea(
+                                                mesh1, mesh2, element1, element2, integration_options )
+                                          : 0.;
+      const RealT local_thickness =
+          include_penalty_data
+              ? std::min( mesh1.getElementData().m_thickness[element1],
+                          mesh2.getElementData().m_thickness[element2] )
+              : 0.;
+
+      for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+        const IndexT row = mortar_face.rows[a];
+        if ( row < 0 ) {
+          continue;
+        }
+        RealT dual_value = 0.;
+        for ( int b = 0; b < parent_q2_num_nodes; ++b ) {
+          dual_value += mortar_face.inverse_mass[a][b] * phi2[b];
+        }
+        dual_value /= static_cast<RealT>( row_face_counts[row] );
+        const RealT coefficient = quadrature_measure * dual_value;
+        if ( coefficient == 0. ) {
+          continue;
+        }
+        TraceProjectionContribution contribution{};
+        contribution.plane_index = i;
+        contribution.element1 = element1;
+        contribution.element2 = element2;
+        contribution.normal[0] = common_normal[0];
+        contribution.normal[1] = common_normal[1];
+        contribution.plane_weight = coefficient;
+        for ( int b = 0; b < parent_q2_num_nodes; ++b ) {
+          contribution.phi1[b] = coefficient * phi1[b];
+          contribution.phi2[b] = coefficient * phi2[b];
+        }
+        constraints[row].contributions.push_back( contribution );
+        constraints[row].gap += coefficient * gap;
+        const RealT tributary_measure = quadrature_measure * std::max( 0., lor_phi[a] );
+        constraints[row].tributary_area += tributary_measure;
+        constraints[row].weighted_penalty_stiffness += tributary_measure * penalty_stiffness;
+        if ( tributary_measure > 0. ) {
+          constraints[row].minimum_thickness =
+              std::min( constraints[row].minimum_thickness, local_thickness );
+        }
+        plane.m_inContact = true;
+      }
+    }
+  }
+
+  constraints.erase( std::remove_if( constraints.begin(), constraints.end(), []( const auto& constraint ) {
+                       return constraint.contributions.empty();
+                     } ),
+                     constraints.end() );
+  return true;
+}
+
+#ifdef BUILD_REDECOMP
+bool AssembleParentTraceMassScaledRows( MfemMeshData& mfem_data,
+                                        const std::vector<TraceProjectionConstraint>& constraints,
+                                        const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+                                        mfem::DenseMatrix& rows )
+{
+  const int num_constraints = static_cast<int>( constraints.size() );
+  for ( int i = 0; i < num_constraints; ++i ) {
+    AccumulateProjectionImpulse( constraints[i], 1., mesh1, mesh2 );
+    mfem::Vector row;
+    if ( !mfem_data.AssembleParentQ2MassScaledResponseRow( row ) ) {
+      return false;
+    }
+    if ( i == 0 ) {
+      rows.SetSize( row.Size(), num_constraints );
+      rows = 0.;
+    }
+    for ( int d = 0; d < row.Size(); ++d ) {
+      rows( d, i ) = row[d];
+    }
+  }
+  return true;
+}
+
+bool ComputeParentTracePenaltyStiffnessBound(
+    CouplingScheme* cs, const std::vector<TraceProjectionConstraint>& constraints,
+    const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, RealT stage_dt,
+    RealT& stiffness_bound, IndexT& active_rows, IndexT& predicted_rows,
+    RealT& minimum_impact_time )
+{
+  constexpr int dim = 2;
+  if ( !std::isfinite( stage_dt ) || stage_dt < 0. ) {
+    return false;
+  }
+  active_rows = 0;
+  predicted_rows = 0;
+  minimum_impact_time = std::numeric_limits<RealT>::infinity();
+  const IndexT row_count1 = mesh1.numberOfElements() * parent_q2_num_nodes * dim;
+  const IndexT row_count2 = mesh2.numberOfElements() * parent_q2_num_nodes * dim;
+  ArrayT<RealT> zero_rows1( row_count1, std::max<IndexT>( row_count1, 1 ), cs->getAllocatorId() );
+  ArrayT<RealT> zero_rows2( row_count2, std::max<IndexT>( row_count2, 1 ), cs->getAllocatorId() );
+  ArrayT<RealT> stiffness_rows1( row_count1, std::max<IndexT>( row_count1, 1 ), cs->getAllocatorId() );
+  ArrayT<RealT> stiffness_rows2( row_count2, std::max<IndexT>( row_count2, 1 ), cs->getAllocatorId() );
+  zero_rows1.fill( 0. );
+  zero_rows2.fill( 0. );
+  stiffness_rows1.fill( 0. );
+  stiffness_rows2.fill( 0. );
+  auto stiffness_view1 = stiffness_rows1.view();
+  auto stiffness_view2 = stiffness_rows2.view();
+  const bool has_velocity = mesh1.hasVelocity() && mesh2.hasVelocity();
+
+  for ( const auto& constraint : constraints ) {
+    if ( constraint.weighted_penalty_stiffness == 0. ) {
+      continue;
+    }
+    const bool active = constraint.gap < 0.;
+    bool predicted_active = false;
+    if ( active ) {
+      ++active_rows;
+      minimum_impact_time = 0.;
+    } else if ( has_velocity ) {
+      const RealT gap_rate = EvaluateProjectionVelocity( constraint, mesh1, mesh2 );
+      if ( !std::isfinite( gap_rate ) ) {
+        return false;
+      }
+      if ( gap_rate < 0. ) {
+        const RealT impact_time = constraint.gap / -gap_rate;
+        if ( !std::isfinite( impact_time ) || impact_time < 0. ) {
+          return false;
+        }
+        minimum_impact_time = std::min( minimum_impact_time, impact_time );
+        predicted_active = impact_time <= stage_dt;
+        if ( predicted_active ) {
+          ++predicted_rows;
+        }
+      }
+    }
+    if ( !active && !predicted_active ) {
+      continue;
+    }
+    std::map<IndexT, RealT> coefficients1;
+    std::map<IndexT, RealT> coefficients2;
+    for ( const auto& contribution : constraint.contributions ) {
+      for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+        for ( int d = 0; d < dim; ++d ) {
+          const RealT inverse_mass1 = mesh1.getParentInverseMass( contribution.element1, a, d );
+          const RealT inverse_mass2 = mesh2.getParentInverseMass( contribution.element2, a, d );
+          if ( !std::isfinite( inverse_mass1 ) || !std::isfinite( inverse_mass2 ) ||
+               inverse_mass1 < 0. || inverse_mass2 < 0. ) {
+            return false;
+          }
+          const IndexT row1 = ( contribution.element1 * parent_q2_num_nodes + a ) * dim + d;
+          const IndexT row2 = ( contribution.element2 * parent_q2_num_nodes + a ) * dim + d;
+          coefficients1[row1] += contribution.phi1[a] * contribution.normal[d] * std::sqrt( inverse_mass1 );
+          coefficients2[row2] -= contribution.phi2[a] * contribution.normal[d] * std::sqrt( inverse_mass2 );
+        }
+      }
+    }
+
+    RealT row_l1_norm = 0.;
+    for ( const auto& coefficient : coefficients1 ) {
+      row_l1_norm += std::abs( coefficient.second );
+    }
+    for ( const auto& coefficient : coefficients2 ) {
+      row_l1_norm += std::abs( coefficient.second );
+    }
+    for ( const auto& coefficient : coefficients1 ) {
+      stiffness_view1[coefficient.first] += constraint.weighted_penalty_stiffness *
+                                            std::abs( coefficient.second ) * row_l1_norm;
+    }
+    for ( const auto& coefficient : coefficients2 ) {
+      stiffness_view2[coefficient.first] += constraint.weighted_penalty_stiffness *
+                                            std::abs( coefficient.second ) * row_l1_norm;
+    }
+  }
+
+  stiffness_bound = cs->getMfemMeshData()
+                        ->AssembleParentQ2RowMaxima( zero_rows1.data(), zero_rows2.data(),
+                                                     stiffness_rows1.data(), stiffness_rows2.data() )
+                        .second;
+  return std::isfinite( stiffness_bound ) && stiffness_bound >= 0.;
+}
+#endif
 
 }  // namespace
 
@@ -2510,6 +3068,250 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
 
 //------------------------------------------------------------------------------
 template <>
+int ApplyNormal<PARENT_TRACE_MORTAR, PENALTY>( CouplingScheme* cs )
+{
+#ifndef BUILD_REDECOMP
+  SLIC_ERROR_ROOT( "Parent-trace mortar penalty enforcement requires BUILD_REDECOMP." );
+  return 1;
+#else
+  SLIC_ERROR_ROOT_IF( cs->spatialDimension() != 2,
+                      "Parent-trace mortar penalty enforcement currently supports only two-dimensional contact." );
+  SLIC_ERROR_ROOT_IF( cs->getExecutionMode() != ExecutionMode::Sequential,
+                      "Parent-trace mortar penalty enforcement currently supports sequential execution only." );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(), "Parent-trace mortar penalty enforcement requires MFEM mesh data." );
+  SLIC_ERROR_ROOT_IF( cs->getMfemMeshData()->GetSurfaceBasis() != MfemSurfaceBasis::PARENT,
+                      "Parent-trace mortar penalty enforcement requires the parent surface basis." );
+  SLIC_ERROR_ROOT_IF( cs->getEnforcementOptions().penalty_options.common_plane_rule != MULTI_POINT,
+                      "Parent-trace mortar penalty enforcement requires MULTI_POINT integration." );
+  SLIC_ERROR_ROOT_IF( cs->getEnforcementOptions().penalty_options.constraint_type != KINEMATIC,
+                      "Parent-trace mortar penalty enforcement currently supports only KINEMATIC constraints." );
+  SLIC_ERROR_ROOT_IF( !cs->getMesh1().hasParentElementData() || !cs->getMesh2().hasParentElementData(),
+                      "Parent-trace mortar penalty enforcement requires parent element data." );
+
+#ifdef TRIBOL_USE_MPI
+  int comm_size = 1;
+  MPI_Comm_size( cs->getProblemComm(), &comm_size );
+  SLIC_ERROR_ROOT_IF( comm_size != 1,
+                      "Parent-trace mortar penalty enforcement currently supports one MPI rank." );
+#endif
+
+  auto* mfem_data = cs->getMfemMeshData();
+  auto cs_view = cs->getView();
+  auto mesh1 = cs_view.getMesh1View();
+  auto mesh2 = cs_view.getMesh2View();
+  SLIC_ERROR_ROOT_IF( !mesh1.hasParentDofIds() || !mesh2.hasParentDofIds(),
+                      "Parent-trace mortar penalty enforcement requires parent trace DOF identifiers." );
+
+  std::vector<TraceProjectionConstraint> constraints;
+  if ( !AssembleParentTraceConstraints(
+           cs, cs->getEnforcementOptions().projection_options.normal_patch_angle_degrees, true, constraints ) ) {
+    mfem_data->ResetParentQ2Projection();
+    return 1;
+  }
+
+  const auto& penalty_options = cs->getEnforcementOptions().penalty_options;
+  const bool use_augmented_lagrangian = penalty_options.augmented_lagrangian;
+  const RealT stage_dt = cs->getCurrentTimeStep();
+  SLIC_ERROR_ROOT_IF( use_augmented_lagrangian &&
+                          ( !std::isfinite( stage_dt ) || stage_dt <= 0. ),
+                      "Parent-trace penalty augmented-Lagrangian enforcement requires a positive timestep." );
+  SLIC_ERROR_ROOT_IF( use_augmented_lagrangian &&
+                          ( !mesh1.hasInverseMass() || !mesh2.hasInverseMass() ),
+                      "Parent-trace penalty augmented-Lagrangian enforcement requires inverse mass data." );
+  SLIC_ERROR_ROOT_IF( use_augmented_lagrangian &&
+                          ( !mesh1.hasVelocity() || !mesh2.hasVelocity() ),
+                      "Parent-trace penalty augmented-Lagrangian enforcement requires velocity data." );
+  cs->setPredictorDiagnostics( 1., 1. );
+  cs->setPenaltyStabilityTimeStep( std::numeric_limits<RealT>::infinity() );
+  cs->setPenaltyStabilityDiagnostics( 0, 0, std::numeric_limits<RealT>::infinity() );
+  mfem_data->ResetParentQ2Projection();
+  for ( const auto& constraint : constraints ) {
+    if ( !std::isfinite( constraint.gap ) ||
+         !std::isfinite( constraint.weighted_penalty_stiffness ) ||
+         constraint.weighted_penalty_stiffness < 0. ||
+         ( use_augmented_lagrangian && constraint.weighted_penalty_stiffness <= 0. ) ) {
+      return 1;
+    }
+  }
+
+  if ( !constraints.empty() && mesh1.hasInverseMass() && mesh2.hasInverseMass() ) {
+    RealT stiffness_bound = 0.;
+    IndexT active_rows = 0;
+    IndexT predicted_rows = 0;
+    RealT minimum_impact_time = std::numeric_limits<RealT>::infinity();
+    if ( !ComputeParentTracePenaltyStiffnessBound(
+             cs, constraints, mesh1, mesh2, cs->getCurrentTimeStep(), stiffness_bound,
+             active_rows, predicted_rows, minimum_impact_time ) ) {
+      return 1;
+    }
+    cs->setPenaltyStabilityDiagnostics( active_rows, predicted_rows, minimum_impact_time );
+    if ( use_augmented_lagrangian ) {
+      const int iteration_bound = penalty_options.al_fixed_iterations > 0
+                                      ? penalty_options.al_fixed_iterations
+                                      : penalty_options.al_max_iterations;
+      stiffness_bound *= static_cast<RealT>( iteration_bound );
+    }
+    const RealT stability_dt = stiffness_bound > 0.
+        ? 2. * penalty_options.penalty_stability_scale / std::sqrt( stiffness_bound )
+        : std::numeric_limits<RealT>::infinity();
+    cs->setPenaltyStabilityTimeStep( stability_dt );
+  }
+
+  std::vector<RealT> plane_forces( cs->getNumActivePairs(), 0. );
+  std::vector<bool> plane_active( cs->getNumActivePairs(), false );
+  std::vector<RealT> forces( constraints.size(), 0. );
+  PenaltyAugmentedLagrangianSolveResult al_result;
+  IndexT al_warm_start_rows = 0;
+  RealT al_history_force_norm_squared = 0.;
+  RealT maximum_endpoint_violation = 0.;
+  RealT coupling_bound = 1.;
+  RealT maximum_penalty_stiffness = 0.;
+  if ( use_augmented_lagrangian ) {
+    if ( constraints.empty() ) {
+      cs->setParentTraceMultiplierStage( {} );
+    } else {
+      mfem::DenseMatrix mass_scaled_rows;
+      if ( !AssembleParentTraceMassScaledRows( *mfem_data, constraints, mesh1, mesh2,
+                                               mass_scaled_rows ) ) {
+        mfem_data->ResetParentQ2Projection();
+        return 1;
+      }
+      const int num_constraints = static_cast<int>( constraints.size() );
+      mfem::DenseMatrix compliance_operator( num_constraints );
+      mfem::MultAtB( mass_scaled_rows, mass_scaled_rows, compliance_operator );
+      compliance_operator *= stage_dt * stage_dt;
+      mfem::DenseMatrix augmented_operator( compliance_operator );
+      for ( int i = 0; i < num_constraints; ++i ) {
+        const RealT stiffness = constraints[i].weighted_penalty_stiffness;
+        augmented_operator( i, i ) += 1. / stiffness;
+        constraints[i].trial_velocity =
+            constraints[i].gap + stage_dt * EvaluateProjectionVelocity( constraints[i], mesh1, mesh2 );
+        constraints[i].target_velocity = 0.;
+        constraints[i].diagonal = augmented_operator( i, i );
+        maximum_penalty_stiffness = std::max( maximum_penalty_stiffness, stiffness );
+        RealT row_sum = 0.;
+        for ( int j = 0; j < num_constraints; ++j ) {
+          row_sum += std::abs( augmented_operator( i, j ) );
+        }
+        coupling_bound = std::max( coupling_bound, row_sum / augmented_operator( i, i ) );
+      }
+
+      const RealT minimum_normal_dot =
+          std::cos( cs->getEnforcementOptions().projection_options.normal_patch_angle_degrees *
+                    std::acos( -1. ) / 180. );
+      const auto& history = cs->getParentTraceMultiplierWarmStart();
+      for ( auto& constraint : constraints ) {
+        for ( const auto& state : history ) {
+          if ( state.parent_dof != constraint.parent_dof || state.patch != constraint.patch ) {
+            continue;
+          }
+          const RealT normal_dot = state.normal_x * constraint.normal[0] +
+                                   state.normal_y * constraint.normal[1];
+          if ( normal_dot >= minimum_normal_dot && std::isfinite( state.force ) && state.force > 0. ) {
+            constraint.multiplier = state.force;
+            ++al_warm_start_rows;
+            al_history_force_norm_squared += state.force * state.force;
+          }
+          break;
+        }
+      }
+
+      al_result = SolveTracePenaltyAugmentedLagrangianSystem(
+          compliance_operator, augmented_operator, constraints, penalty_options );
+      if ( !al_result.physical_result.valid ) {
+        mfem_data->ResetParentQ2Projection();
+        return 1;
+      }
+      std::vector<ParentTraceMultiplierState> multiplier_state;
+      multiplier_state.reserve( constraints.size() );
+      for ( int i = 0; i < num_constraints; ++i ) {
+        forces[i] = constraints[i].multiplier;
+        const RealT multiplier = al_result.updated_multipliers[i];
+        if ( multiplier > 0. && std::isfinite( multiplier ) ) {
+          multiplier_state.push_back( { constraints[i].parent_dof, constraints[i].patch,
+                                        constraints[i].normal[0], constraints[i].normal[1],
+                                        multiplier } );
+        }
+        RealT endpoint_gap = constraints[i].trial_velocity;
+        for ( int j = 0; j < num_constraints; ++j ) {
+          endpoint_gap += compliance_operator( i, j ) * forces[j];
+        }
+        maximum_endpoint_violation = std::max( maximum_endpoint_violation, std::max( 0., -endpoint_gap ) );
+      }
+      cs->setParentTraceMultiplierStage( std::move( multiplier_state ) );
+    }
+    cs->setAugmentedLagrangianDiagnostics(
+        al_result.outer_iterations, al_result.subproblem_iterations,
+        al_result.incomplete_subproblems, al_warm_start_rows,
+        std::sqrt( al_history_force_norm_squared ), al_result.multiplier_update_norm,
+        maximum_penalty_stiffness );
+  } else {
+    for ( int i = 0; i < static_cast<int>( constraints.size() ); ++i ) {
+      forces[i] = constraints[i].weighted_penalty_stiffness *
+                  std::max( 0., -constraints[i].gap );
+    }
+    cs->setAugmentedLagrangianDiagnostics( 0, 0, 0, 0, 0., 0., 0. );
+  }
+
+  RealT total_force = 0.;
+  RealT maximum_force = 0.;
+  RealT gap_violation_sum = 0.;
+  RealT maximum_gap_violation = 0.;
+  RealT closing_rate_sum = 0.;
+  RealT maximum_closing_rate = 0.;
+  const bool has_velocity = mesh1.hasVelocity() && mesh2.hasVelocity();
+  IndexT active_forces = 0;
+  for ( int i = 0; i < static_cast<int>( constraints.size() ); ++i ) {
+    const auto& constraint = constraints[i];
+    const RealT gap_violation = std::max( 0., -constraint.gap );
+    const RealT force = forces[i];
+    if ( force > 0. ) {
+      AccumulateProjectionImpulse( constraint, force, mesh1, mesh2 );
+      ++active_forces;
+    }
+    const RealT closing_rate =
+        has_velocity ? std::max( 0., -EvaluateProjectionVelocity( constraint, mesh1, mesh2 ) ) : 0.;
+    total_force += force;
+    maximum_force = std::max( maximum_force, force );
+    gap_violation_sum += gap_violation;
+    maximum_gap_violation = std::max( maximum_gap_violation, gap_violation );
+    closing_rate_sum += closing_rate;
+    maximum_closing_rate = std::max( maximum_closing_rate, closing_rate );
+    for ( const auto& contribution : constraint.contributions ) {
+      plane_forces[contribution.plane_index] += force * contribution.plane_weight;
+      plane_active[contribution.plane_index] = plane_active[contribution.plane_index] || force > 0.;
+    }
+  }
+
+  for ( IndexT i = 0; i < cs->getNumActivePairs(); ++i ) {
+    auto& plane = cs_view.getCompGeomView().getCommonPlane( i );
+    const RealT plane_force = plane_forces[i];
+    plane.m_pressure = plane.m_area > 0. ? -plane_force / plane.m_area : 0.;
+    plane.m_inContact = plane_active[i];
+  }
+
+  cs->setPredictorForceDiagnostics( 0, 0, total_force, 0., total_force );
+  cs->setContactPointDiagnostics( static_cast<IndexT>( constraints.size() ), maximum_force,
+                                  gap_violation_sum, maximum_gap_violation, closing_rate_sum,
+                                  maximum_closing_rate );
+  if ( use_augmented_lagrangian ) {
+    cs->setProjectionDiagnostics(
+        static_cast<IndexT>( constraints.size() ), active_forces,
+        al_result.physical_result.iterations, true,
+        al_result.physical_result.complementarity_converged,
+        al_result.physical_result.initial_residual,
+        al_result.physical_result.final_residual,
+        al_result.physical_result.final_primal_residual,
+        al_result.physical_result.primal_tolerance, coupling_bound,
+        penalty_options.al_relaxation, total_force * stage_dt, total_force,
+        maximum_endpoint_violation, 0. );
+  }
+  return 0;
+#endif
+}
+
+//------------------------------------------------------------------------------
+template <>
 int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
 {
 #ifndef BUILD_REDECOMP
@@ -2543,11 +3345,14 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
   auto cs_view = cs->getView();
   auto mesh1 = cs_view.getMesh1View();
   auto mesh2 = cs_view.getMesh2View();
-  SLIC_ERROR_ROOT_IF( !mesh2.hasParentDofIds(),
+  SLIC_ERROR_ROOT_IF( !mesh1.hasParentDofIds() || !mesh2.hasParentDofIds(),
                       "Parent-trace mortar impulse projection requires parent trace DOF identifiers." );
   const RealT stage_dt = cs->getCurrentTimeStep();
-  const auto& integration_options = cs->getEnforcementOptions().penalty_options;
   const auto& projection_options = cs->getEnforcementOptions().projection_options;
+  const bool use_augmented_lagrangian =
+      projection_options.contact_response == PROJECTION_RESPONSE_AUGMENTED_LAGRANGIAN;
+  const bool use_compliant_response =
+      projection_options.contact_response != PROJECTION_RESPONSE_EXACT;
   const RealT position_velocity_scale = projection_options.position_velocity_scale;
   SLIC_ERROR_ROOT_IF( position_velocity_scale < 1. &&
                           ( !mesh1.hasParentProjectionBaseVelocity() ||
@@ -2555,189 +3360,18 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
                       "Parent-trace mortar impulse projection requires a base velocity when the position velocity "
                       "scale is less than one." );
 
-  std::map<ParentTraceFaceKey, IndexT> face_indices;
-  std::vector<ParentTraceFace> faces;
-  std::map<IndexT, std::vector<std::pair<IndexT, IndexT>>> dof_incidence;
-  for ( IndexT element = 0; element < mesh2.numberOfElements(); ++element ) {
-    const ParentTraceFaceKey key = GetParentTraceFaceKey( mesh2, element );
-    auto found = face_indices.find( key );
-    if ( found != face_indices.end() ) {
-      continue;
-    }
-    ParentTraceFace face;
-    if ( !BuildParentTraceFace( mesh2, element, face ) ) {
-      mfem_data->ResetParentQ2Projection();
-      return 1;
-    }
-    const IndexT face_index = static_cast<IndexT>( faces.size() );
-    face_indices.emplace( key, face_index );
-    faces.push_back( face );
-    for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
-      dof_incidence[face.local_dofs[a]].push_back( { face_index, a } );
-    }
-  }
-
   std::vector<TraceProjectionConstraint> constraints;
-  std::vector<IndexT> row_face_counts;
-  const RealT patch_angle = projection_options.normal_patch_angle_degrees;
-  const RealT patch_cosine = std::cos( patch_angle * std::acos( -1. ) / 180. );
-  for ( const auto& dof_entry : dof_incidence ) {
-    struct Patch {
-      IndexT representative_face;
-      std::vector<std::pair<IndexT, IndexT>> incidence;
-    };
-    std::vector<Patch> patches;
-    for ( const auto& incidence : dof_entry.second ) {
-      const auto& face = faces[incidence.first];
-      IndexT patch_index = -1;
-      for ( IndexT candidate = 0; candidate < static_cast<IndexT>( patches.size() ); ++candidate ) {
-        const auto& representative = faces[patches[candidate].representative_face];
-        const RealT normal_dot = face.normal[0] * representative.normal[0] +
-                                 face.normal[1] * representative.normal[1];
-        if ( normal_dot >= patch_cosine ) {
-          patch_index = candidate;
-          break;
-        }
-      }
-      if ( patch_index < 0 ) {
-        patches.push_back( { incidence.first, {} } );
-        patch_index = static_cast<IndexT>( patches.size() - 1 );
-      }
-      patches[patch_index].incidence.push_back( incidence );
-    }
-
-    for ( IndexT patch = 0; patch < static_cast<IndexT>( patches.size() ); ++patch ) {
-      const IndexT row = static_cast<IndexT>( constraints.size() );
-      TraceProjectionConstraint constraint;
-      constraint.parent_dof = dof_entry.first;
-      constraint.patch = patch;
-      constraints.push_back( std::move( constraint ) );
-      row_face_counts.push_back( static_cast<IndexT>( patches[patch].incidence.size() ) );
-      for ( const auto& incidence : patches[patch].incidence ) {
-        faces[incidence.first].rows[incidence.second] = row;
-      }
-    }
+  if ( !AssembleParentTraceConstraints( cs, projection_options.normal_patch_angle_degrees,
+                                        use_compliant_response, constraints ) ) {
+    mfem_data->ResetParentQ2Projection();
+    return 1;
   }
-
-  RealT rule_weights[max_segment_gauss_legendre_qpts] = { 0. };
-  RealT rule_coordinates[max_segment_gauss_legendre_qpts] = { 0. };
-  const int num_rule_points = GetCommonPlaneSegmentRule( integration_options.common_plane_quadrature_order,
-                                                         rule_weights, rule_coordinates );
-  for ( IndexT i = 0; i < cs->getNumActivePairs(); ++i ) {
-    auto& plane = cs_view.getCompGeomView().getCommonPlane( i );
-    plane.m_inContact = false;
-    plane.m_pressure = 0.;
-    const IndexT element1 = plane.getCpElementId1();
-    const IndexT element2 = plane.getCpElementId2();
-    const auto face_found = face_indices.find( GetParentTraceFaceKey( mesh2, element2 ) );
-    if ( face_found == face_indices.end() ) {
-      continue;
-    }
-    const auto& mortar_face = faces[face_found->second];
-    StackArrayT<RealT, max_dim * max_nodes_per_face> face1;
-    StackArrayT<RealT, max_dim * max_nodes_per_face> face2;
-    mesh1.getFaceCoords( element1, face1 );
-    mesh2.getFaceCoords( element2, face2 );
-    RealT overlap_vertices[max_dim * max_nodes_per_overlap] = { 0. };
-    plane.getOverlapVertices( overlap_vertices );
-    const RealT x0 = overlap_vertices[0];
-    const RealT y0 = overlap_vertices[1];
-    const RealT x1 = overlap_vertices[2];
-    const RealT y1 = overlap_vertices[3];
-    const RealT length = magnitude( x1 - x0, y1 - y0 );
-    if ( !std::isfinite( length ) || length <= 0. ) {
-      continue;
-    }
-    const RealT overlap_normal[2] = { plane.m_nX, plane.m_nY };
-
-    for ( int qp = 0; qp < num_rule_points; ++qp ) {
-      const RealT coordinate = rule_coordinates[qp];
-      const RealT x_q[2] = { ( 1. - coordinate ) * x0 + coordinate * x1,
-                             ( 1. - coordinate ) * y0 + coordinate * y1 };
-      RealT x_face1[max_dim];
-      RealT x_face2[max_dim];
-      RealT linear_phi1[2];
-      RealT linear_phi2[2];
-      RealT child_parameter1 = 0.;
-      RealT child_parameter2 = 0.;
-      if ( !EvalLinearEdgeAtProjectedPoint( face1, x_q, overlap_normal, x_face1, linear_phi1, 0, nullptr, nullptr,
-                                            &child_parameter1 ) ||
-           !EvalLinearEdgeAtProjectedPoint( face2, x_q, overlap_normal, x_face2, linear_phi2, 0, nullptr, nullptr,
-                                            &child_parameter2 ) ) {
-        continue;
-      }
-
-      RealT phi1[parent_q2_num_nodes];
-      RealT phi2[parent_q2_num_nodes];
-      RealT velocity1[max_dim] = { 0., 0., 0. };
-      RealT velocity2[max_dim] = { 0., 0., 0. };
-      RealT common_normal[2];
-      EvalParentQ2Pair( mesh1, mesh2, element1, element2, child_parameter1, child_parameter2, true, overlap_normal,
-                        phi1, phi2, x_face1, x_face2, velocity1, velocity2, common_normal );
-      const RealT gap = ( x_face1[0] - x_face2[0] ) * common_normal[0] +
-                        ( x_face1[1] - x_face2[1] ) * common_normal[1];
-      const RealT quadrature_measure = length * rule_weights[qp];
-      const RealT parent_xi0 = mesh2.getParentReferenceCoordinate( element2, 0 );
-      const RealT parent_xi1 = mesh2.getParentReferenceCoordinate( element2, 1 );
-      const RealT parent_xi = ( 1. - child_parameter2 ) * parent_xi0 + child_parameter2 * parent_xi1;
-      RealT lor_phi[parent_q2_num_nodes];
-      EvalParentLORBasis( parent_xi, lor_phi );
-      const bool use_compliant_response =
-          projection_options.contact_response == PROJECTION_RESPONSE_COMPLIANT;
-      const RealT penalty_stiffness = use_compliant_response
-                                          ? ComputeProjectionPenaltyStiffnessPerArea(
-                                                mesh1, mesh2, element1, element2, integration_options )
-                                          : 0.;
-      const RealT local_thickness =
-          use_compliant_response
-              ? std::min( mesh1.getElementData().m_thickness[element1],
-                          mesh2.getElementData().m_thickness[element2] )
-              : 0.;
-
-      for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
-        const IndexT row = mortar_face.rows[a];
-        if ( row < 0 ) {
-          continue;
-        }
-        RealT dual_value = 0.;
-        for ( int b = 0; b < parent_q2_num_nodes; ++b ) {
-          dual_value += mortar_face.inverse_mass[a][b] * phi2[b];
-        }
-        dual_value /= static_cast<RealT>( row_face_counts[row] );
-        const RealT coefficient = quadrature_measure * dual_value;
-        if ( coefficient == 0. ) {
-          continue;
-        }
-        TraceProjectionContribution contribution{};
-        contribution.plane_index = i;
-        contribution.element1 = element1;
-        contribution.element2 = element2;
-        contribution.normal[0] = common_normal[0];
-        contribution.normal[1] = common_normal[1];
-        contribution.plane_weight = coefficient;
-        for ( int b = 0; b < parent_q2_num_nodes; ++b ) {
-          contribution.phi1[b] = coefficient * phi1[b];
-          contribution.phi2[b] = coefficient * phi2[b];
-        }
-        constraints[row].contributions.push_back( contribution );
-        constraints[row].gap += coefficient * gap;
-        const RealT tributary_measure = quadrature_measure * std::max( 0., lor_phi[a] );
-        constraints[row].tributary_area += tributary_measure;
-        constraints[row].weighted_penalty_stiffness += tributary_measure * penalty_stiffness;
-        if ( tributary_measure > 0. ) {
-          constraints[row].minimum_thickness =
-              std::min( constraints[row].minimum_thickness, local_thickness );
-        }
-        plane.m_inContact = true;
-      }
-    }
-  }
-
-  constraints.erase( std::remove_if( constraints.begin(), constraints.end(), []( const auto& constraint ) {
-                       return constraint.contributions.empty();
-                     } ),
-                     constraints.end() );
   if ( constraints.empty() ) {
+    if ( use_augmented_lagrangian ) {
+      cs->setParentTraceMultiplierStage( {} );
+      cs->setAugmentedLagrangianDiagnostics( 0, 0, 0, 0, 0., 0.,
+                                             projection_options.al_augmentation_scale );
+    }
     cs->setProjectionDiagnostics( 0, 0, 0, true, true, 0., 0., 0., 0., 1., 1., 0., 0., 0., 0. );
     cs->setCompliantProjectionDiagnostics( 0., 0., 0., 0, 0., 0. );
     cs->setPredictorForceDiagnostics( 0, 0, 0., 0., 0. );
@@ -2746,7 +3380,36 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
   }
 
   const int num_constraints = static_cast<int>( constraints.size() );
-  mfem::DenseMatrix mass_scaled_rows;
+  std::array<std::map<IndexT, ProjectionNodalCapture>, 2> nodal_captures;
+  auto capture_nodal_dof = [&]( IndexT surface, const auto& mesh, IndexT element, int local_dof,
+                                RealT contact_normal_x, RealT contact_normal_y, RealT weight ) {
+    const IndexT parent_dof = mesh.getParentDofId( element, local_dof );
+    auto [capture_it, inserted] = nodal_captures[surface - 1].try_emplace( parent_dof );
+    if ( inserted ) {
+      capture_it->second.data.surface = surface;
+      capture_it->second.data.parent_dof = parent_dof;
+      capture_it->second.data.coordinate_x = mesh.getParentPosition( element, local_dof, 0 );
+      capture_it->second.data.coordinate_y = mesh.getParentPosition( element, local_dof, 1 );
+      capture_it->second.data.inverse_mass_x = mesh.getParentInverseMass( element, local_dof, 0 );
+      capture_it->second.data.inverse_mass_y = mesh.getParentInverseMass( element, local_dof, 1 );
+      capture_it->second.data.trial_velocity_x = mesh.getParentVelocity( element, local_dof, 0 );
+      capture_it->second.data.trial_velocity_y = mesh.getParentVelocity( element, local_dof, 1 );
+      capture_it->second.representative_element = element;
+      capture_it->second.representative_local_dof = local_dof;
+    }
+    capture_it->second.data.contact_normal_x += weight * contact_normal_x;
+    capture_it->second.data.contact_normal_y += weight * contact_normal_y;
+  };
+  for ( const auto& constraint : constraints ) {
+    for ( const auto& contribution : constraint.contributions ) {
+      for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+        capture_nodal_dof( 1, mesh1, contribution.element1, a, contribution.normal[0], contribution.normal[1],
+                           std::abs( contribution.phi1[a] ) );
+        capture_nodal_dof( 2, mesh2, contribution.element2, a, -contribution.normal[0], -contribution.normal[1],
+                           std::abs( contribution.phi2[a] ) );
+      }
+    }
+  }
   for ( int i = 0; i < num_constraints; ++i ) {
     auto& constraint = constraints[i];
     constraint.trial_velocity = EvaluateProjectionVelocity( constraint, mesh1, mesh2 );
@@ -2756,29 +3419,23 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
     constraint.position_trial_velocity = ( 1. - position_velocity_scale ) * base_velocity +
                                          position_velocity_scale * constraint.trial_velocity;
     const RealT target_position_velocity = constraint.gap > 0. ? -constraint.gap / stage_dt : 0.;
-    constraint.target_velocity =
+    constraint.endpoint_target_velocity =
         constraint.trial_velocity +
         ( target_position_velocity - constraint.position_trial_velocity ) / position_velocity_scale;
-    AccumulateProjectionImpulse( constraint, 1., mesh1, mesh2 );
-    mfem::Vector row;
-    if ( !mfem_data->AssembleParentQ2MassScaledResponseRow( row ) ) {
-      mfem_data->ResetParentQ2Projection();
-      return 1;
-    }
-    if ( i == 0 ) {
-      mass_scaled_rows.SetSize( row.Size(), num_constraints );
-      mass_scaled_rows = 0.;
-    }
-    for ( int d = 0; d < row.Size(); ++d ) {
-      mass_scaled_rows( d, i ) = row[d];
-    }
+    constraint.target_velocity = projection_options.diagnostic_zero_gap_rate_target
+                                     ? 0.
+                                     : constraint.endpoint_target_velocity;
+  }
+  mfem::DenseMatrix mass_scaled_rows;
+  if ( !AssembleParentTraceMassScaledRows( *mfem_data, constraints, mesh1, mesh2,
+                                           mass_scaled_rows ) ) {
+    mfem_data->ResetParentQ2Projection();
+    return 1;
   }
 
   mfem::DenseMatrix projection_operator( num_constraints );
   mfem::MultAtB( mass_scaled_rows, mass_scaled_rows, projection_operator );
   mfem::DenseMatrix solve_operator( projection_operator );
-  const bool use_compliant_response =
-      projection_options.contact_response == PROJECTION_RESPONSE_COMPLIANT;
   bool valid = true;
   for ( int i = 0; i < num_constraints; ++i ) {
     auto& constraint = constraints[i];
@@ -2823,6 +3480,29 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
     valid = valid && std::isfinite( constraint.diagonal ) && constraint.diagonal > 0.;
   }
 
+  IndexT al_warm_start_rows = 0;
+  RealT al_history_force_norm_squared = 0.;
+  if ( use_augmented_lagrangian ) {
+    const RealT minimum_normal_dot =
+        std::cos( projection_options.normal_patch_angle_degrees * std::acos( -1. ) / 180. );
+    const auto& history = cs->getParentTraceMultiplierWarmStart();
+    for ( auto& constraint : constraints ) {
+      for ( const auto& state : history ) {
+        if ( state.parent_dof != constraint.parent_dof || state.patch != constraint.patch ) {
+          continue;
+        }
+        const RealT normal_dot = state.normal_x * constraint.normal[0] +
+                                 state.normal_y * constraint.normal[1];
+        if ( normal_dot >= minimum_normal_dot && std::isfinite( state.force ) && state.force > 0. ) {
+          constraint.multiplier = stage_dt * state.force;
+          ++al_warm_start_rows;
+          al_history_force_norm_squared += state.force * state.force;
+        }
+        break;
+      }
+    }
+  }
+
   RealT coupling_bound = 1.;
   for ( int i = 0; i < num_constraints; ++i ) {
     RealT row_sum = 0.;
@@ -2838,13 +3518,27 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
   const RealT relaxation = projection_options.relaxation_scale;
   valid = valid && std::isfinite( relaxation ) && relaxation > 0.;
   TraceProjectionSolveResult compliant_result;
+  AugmentedLagrangianSolveResult al_result;
   if ( valid ) {
-    compliant_result = SolveTraceProjectionSystem( solve_operator, constraints, projection_options );
+    if ( use_augmented_lagrangian ) {
+      al_result = SolveTraceAugmentedLagrangianSystem( solve_operator, constraints, projection_options, stage_dt );
+      compliant_result = al_result.physical_result;
+    } else {
+      compliant_result = SolveTraceProjectionSystem( solve_operator, constraints, projection_options );
+    }
     valid = valid && compliant_result.valid;
   } else {
     compliant_result.valid = false;
     compliant_result.complementarity_converged = false;
   }
+  cs->setAugmentedLagrangianDiagnostics(
+      use_augmented_lagrangian ? al_result.outer_iterations : 0,
+      use_augmented_lagrangian ? al_result.subproblem_iterations : 0,
+      use_augmented_lagrangian ? al_result.incomplete_subproblems : 0,
+      use_augmented_lagrangian ? al_warm_start_rows : 0,
+      use_augmented_lagrangian ? std::sqrt( al_history_force_norm_squared ) : 0.,
+      use_augmented_lagrangian ? al_result.multiplier_update_norm : 0.,
+      use_augmented_lagrangian ? projection_options.al_augmentation_scale : 0. );
 
   std::vector<RealT> original_trial_velocity( constraints.size() );
   std::vector<RealT> original_position_trial_velocity( constraints.size() );
@@ -2932,12 +3626,14 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
   RealT spring_energy_change = 0.;
   RealT energy_scale = 0.;
   std::vector<RealT> plane_impulses( static_cast<std::size_t>( cs->getNumActivePairs() ), 0. );
+  std::vector<RealT> expected_final_velocities( constraints.size(), 0. );
   for ( int i = 0; i < num_constraints; ++i ) {
     const auto& constraint = constraints[i];
     RealT final_velocity = constraint.trial_velocity;
     for ( int j = 0; j < num_constraints; ++j ) {
       final_velocity += projection_operator( i, j ) * constraints[j].multiplier;
     }
+    expected_final_velocities[i] = final_velocity;
     const RealT position_final_velocity =
         constraint.position_trial_velocity +
         position_velocity_scale * ( final_velocity - constraint.trial_velocity );
@@ -2986,8 +3682,13 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
   const RealT energy_tolerance = 100. * std::numeric_limits<RealT>::epsilon() * std::max( 1., energy_scale );
   const bool primal_converged = final_primal_residual <= primal_tolerance;
   const RealT validated_energy_change = energy_change + spring_energy_change;
+  const bool energy_accepted =
+      validated_energy_change <= energy_tolerance || projection_options.diagnostic_bypass_energy_check;
+  const bool al_iteration_accepted =
+      !use_augmented_lagrangian ||
+      projection_options.al_failure_policy == AL_ACCEPT_FEASIBLE || complementarity_converged;
   const bool accepted = valid && primal_converged && std::isfinite( validated_energy_change ) &&
-                        validated_energy_change <= energy_tolerance;
+                        energy_accepted && al_iteration_accepted;
 
   if ( operator_valid ) {
     const ProjectionOperatorDiagnostics operator_diagnostics =
@@ -3015,6 +3716,52 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
   }
 
   const bool final_accepted = accepted && valid;
+  if ( final_accepted && use_augmented_lagrangian ) {
+    std::vector<ParentTraceMultiplierState> multiplier_state;
+    multiplier_state.reserve( constraints.size() );
+    for ( const auto& constraint : constraints ) {
+      const RealT force = constraint.compliant_multiplier / stage_dt;
+      const RealT velocity_scale =
+          std::max( std::abs( constraint.trial_velocity - constraint.target_velocity ),
+                    std::abs( constraint.diagonal * constraint.compliant_multiplier ) );
+      const RealT multiplier_velocity_tolerance =
+          projection_options.absolute_tolerance + projection_options.relative_tolerance * velocity_scale;
+      const RealT force_tolerance = multiplier_velocity_tolerance / ( constraint.diagonal * stage_dt );
+      if ( force > force_tolerance && std::isfinite( force ) ) {
+        multiplier_state.push_back( { constraint.parent_dof, constraint.patch, constraint.normal[0],
+                                      constraint.normal[1], force } );
+      }
+    }
+    cs->setParentTraceMultiplierStage( std::move( multiplier_state ) );
+  }
+  RealT applied_complementarity_residual = 0.;
+  RealT applied_primal_residual = 0.;
+  RealT maximum_velocity_update_error = 0.;
+  RealT applied_kinetic_energy_change = 0.;
+  RealT maximum_absolute_gap = 0.;
+  RealT maximum_absolute_target_velocity = 0.;
+  for ( const auto& constraint : constraints ) {
+    maximum_absolute_gap = std::max( maximum_absolute_gap, std::abs( constraint.gap ) );
+    maximum_absolute_target_velocity =
+        std::max( maximum_absolute_target_velocity, std::abs( constraint.target_velocity ) );
+  }
+  if ( final_accepted ) {
+    for ( int i = 0; i < num_constraints; ++i ) {
+      const auto& constraint = constraints[i];
+      const RealT applied_velocity = EvaluateProjectionVelocity( constraint, mesh1, mesh2 );
+      const RealT applied_gap_rate = applied_velocity - constraint.target_velocity;
+      applied_complementarity_residual =
+          std::max( applied_complementarity_residual,
+                    std::abs( std::min( constraint.diagonal * constraint.multiplier, applied_gap_rate ) ) );
+      applied_primal_residual = std::max( applied_primal_residual, -applied_gap_rate );
+      maximum_velocity_update_error =
+          std::max( maximum_velocity_update_error,
+                    std::abs( applied_velocity - expected_final_velocities[i] ) );
+      applied_kinetic_energy_change +=
+          0.5 * constraint.multiplier * ( constraint.trial_velocity + applied_velocity );
+    }
+    applied_primal_residual = std::max( 0., applied_primal_residual );
+  }
   for ( IndexT i = 0; i < cs->getNumActivePairs(); ++i ) {
     auto& plane = cs_view.getCompGeomView().getCommonPlane( i );
     const RealT impulse = final_accepted ? std::max( 0., plane_impulses[i] ) : 0.;
@@ -3022,11 +3769,62 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
     plane.m_inContact = impulse > 0.;
   }
 
+  std::vector<ProjectionTraceDofData> trace_dof_data;
+  trace_dof_data.reserve( constraints.size() );
+  for ( const auto& constraint : constraints ) {
+    ProjectionTraceDofData data;
+    data.parent_dof = constraint.parent_dof;
+    data.patch = constraint.patch;
+    data.coordinate_x = constraint.coordinate[0];
+    data.coordinate_y = constraint.coordinate[1];
+    data.normal_x = constraint.normal[0];
+    data.normal_y = constraint.normal[1];
+    data.signed_gap = constraint.gap;
+    data.trial_normal_velocity = constraint.trial_velocity;
+    data.position_trial_normal_velocity = constraint.position_trial_velocity;
+    data.endpoint_target_normal_velocity = constraint.endpoint_target_velocity;
+    data.selected_target_normal_velocity = constraint.target_velocity;
+    data.impulse = constraint.multiplier;
+    data.applied_normal_velocity_correction =
+        final_accepted ? EvaluateProjectionVelocity( constraint, mesh1, mesh2 ) - constraint.trial_velocity : 0.;
+    data.tributary_area = constraint.tributary_area;
+    trace_dof_data.push_back( data );
+  }
+  cs->setProjectionTraceDofData( std::move( trace_dof_data ) );
+
+  std::vector<ProjectionNodalDofData> nodal_dof_data;
+  nodal_dof_data.reserve( nodal_captures[0].size() + nodal_captures[1].size() );
+  for ( auto& surface_captures : nodal_captures ) {
+    for ( auto& capture_entry : surface_captures ) {
+      auto& capture = capture_entry.second;
+      auto& data = capture.data;
+      const auto& mesh = data.surface == 1 ? mesh1 : mesh2;
+      const RealT normal_magnitude = magnitude( data.contact_normal_x, data.contact_normal_y );
+      if ( normal_magnitude > 0. ) {
+        data.contact_normal_x /= normal_magnitude;
+        data.contact_normal_y /= normal_magnitude;
+      }
+      const RealT final_velocity_x =
+          mesh.getParentVelocity( capture.representative_element, capture.representative_local_dof, 0 );
+      const RealT final_velocity_y =
+          mesh.getParentVelocity( capture.representative_element, capture.representative_local_dof, 1 );
+      data.velocity_correction_x = final_velocity_x - data.trial_velocity_x;
+      data.velocity_correction_y = final_velocity_y - data.trial_velocity_y;
+      data.impulse_x = data.inverse_mass_x > 0. ? data.velocity_correction_x / data.inverse_mass_x : 0.;
+      data.impulse_y = data.inverse_mass_y > 0. ? data.velocity_correction_y / data.inverse_mass_y : 0.;
+      nodal_dof_data.push_back( data );
+    }
+  }
+  cs->setProjectionNodalDofData( std::move( nodal_dof_data ) );
+
   const RealT equivalent_force = total_impulse / stage_dt;
   cs->setProjectionDiagnostics( static_cast<IndexT>( constraints.size() ), active_multipliers, iterations,
                                 final_accepted, complementarity_converged, initial_residual, final_residual,
                                 final_primal_residual, primal_tolerance, coupling_bound, relaxation, total_impulse,
                                 equivalent_force, maximum_endpoint_violation, validated_energy_change );
+  cs->setProjectionApplicationDiagnostics( applied_complementarity_residual, applied_primal_residual,
+                                           maximum_velocity_update_error, applied_kinetic_energy_change,
+                                           maximum_absolute_gap, maximum_absolute_target_velocity );
   cs->setCompliantProjectionDiagnostics(
       final_accepted && use_compliant_response ? spring_force : 0.,
       final_accepted && use_compliant_response ? damping_force : 0.,

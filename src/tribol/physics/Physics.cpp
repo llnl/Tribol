@@ -31,7 +31,16 @@ int ApplyInterfacePhysics( CouplingScheme* cs, int TRIBOL_UNUSED_PARAM( cycle ),
   // switch over numerical method
   switch ( cs->getContactMethod() ) {
     case PARENT_TRACE_MORTAR:
-      err_nrml = ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( cs );
+      switch ( cs->getEnforcementMethod() ) {
+        case PENALTY:
+          err_nrml = ApplyNormal<PARENT_TRACE_MORTAR, PENALTY>( cs );
+          break;
+        case IMPULSE_PROJECTION:
+          err_nrml = ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( cs );
+          break;
+        default:
+          break;
+      }
       break;
 
     case COMMON_PLANE:

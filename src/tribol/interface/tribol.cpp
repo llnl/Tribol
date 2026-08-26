@@ -28,6 +28,7 @@
 #include "axom/slic.hpp"
 
 // C/C++ includes
+#include <array>
 #include <string>
 #include <unordered_map>
 #include <fstream>
@@ -157,6 +158,24 @@ void setImpulseProjectionKinematics( IndexT cs_id, RealT position_velocity_scale
   cs->getEnforcementOptions().projection_options.position_velocity_scale = position_velocity_scale;
 }
 
+void setImpulseProjectionDiagnosticZeroGapRateTarget( IndexT cs_id, bool enabled )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::setImpulseProjectionDiagnosticZeroGapRateTarget(): register the coupling scheme "
+                      "first." );
+  cs->getEnforcementOptions().projection_options.diagnostic_zero_gap_rate_target = enabled;
+}
+
+void setImpulseProjectionDiagnosticBypassEnergyCheck( IndexT cs_id, bool enabled )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::setImpulseProjectionDiagnosticBypassEnergyCheck(): register the coupling scheme "
+                      "first." );
+  cs->getEnforcementOptions().projection_options.diagnostic_bypass_energy_check = enabled;
+}
+
 void setParentTraceMortarOptions( IndexT cs_id, RealT normal_patch_angle_degrees,
                                   ImpulseProjectionContactResponse contact_response, RealT damping_ratio,
                                   RealT max_penetration_fraction )
@@ -178,6 +197,78 @@ void setParentTraceMortarOptions( IndexT cs_id, RealT normal_patch_angle_degrees
   options.max_penetration_fraction = max_penetration_fraction;
 }
 
+void setAugmentedLagrangianOptions( IndexT cs_id, RealT augmentation_scale, int max_iterations,
+                                    int fixed_iterations, AugmentedLagrangianFailurePolicy failure_policy )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setAugmentedLagrangianOptions(): register the coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( augmentation_scale ) || augmentation_scale <= 0.,
+                      "tribol::setAugmentedLagrangianOptions(): augmentation scale must be positive." );
+  SLIC_ERROR_ROOT_IF( max_iterations <= 0,
+                      "tribol::setAugmentedLagrangianOptions(): maximum iterations must be positive." );
+  SLIC_ERROR_ROOT_IF( fixed_iterations < 0 || fixed_iterations > max_iterations,
+                      "tribol::setAugmentedLagrangianOptions(): fixed iterations must be in [0,max]." );
+  SLIC_ERROR_ROOT_IF( !in_range( failure_policy, NUM_AUGMENTED_LAGRANGIAN_FAILURE_POLICIES ),
+                      "tribol::setAugmentedLagrangianOptions(): invalid failure policy." );
+  auto& options = cs->getEnforcementOptions().projection_options;
+  options.al_augmentation_scale = augmentation_scale;
+  options.al_max_iterations = max_iterations;
+  options.al_fixed_iterations = fixed_iterations;
+  options.al_failure_policy = failure_policy;
+}
+
+void setPenaltyAugmentedLagrangianOptions( IndexT cs_id, int max_iterations, int fixed_iterations,
+                                           RealT relative_tolerance, RealT absolute_tolerance,
+                                           RealT relaxation )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::setPenaltyAugmentedLagrangianOptions(): register the coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( cs->getContactMethod() != PARENT_TRACE_MORTAR ||
+                          cs->getEnforcementMethod() != PENALTY,
+                      "tribol::setPenaltyAugmentedLagrangianOptions(): requires parent-trace mortar penalty "
+                      "enforcement." );
+  SLIC_ERROR_ROOT_IF( max_iterations <= 0,
+                      "tribol::setPenaltyAugmentedLagrangianOptions(): maximum iterations must be positive." );
+  SLIC_ERROR_ROOT_IF( fixed_iterations < 0 || fixed_iterations > max_iterations,
+                      "tribol::setPenaltyAugmentedLagrangianOptions(): fixed iterations must be in [0,max]." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( relative_tolerance ) ||
+                          !std::isfinite( absolute_tolerance ) ||
+                          relative_tolerance < 0. || absolute_tolerance < 0. ||
+                          ( relative_tolerance == 0. && absolute_tolerance == 0. ),
+                      "tribol::setPenaltyAugmentedLagrangianOptions(): at least one tolerance must be positive." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( relaxation ) || relaxation <= 0. || relaxation > 1.,
+                      "tribol::setPenaltyAugmentedLagrangianOptions(): relaxation must be in (0,1]." );
+  auto& options = cs->getEnforcementOptions().penalty_options;
+  options.augmented_lagrangian = true;
+  options.al_max_iterations = max_iterations;
+  options.al_fixed_iterations = fixed_iterations;
+  options.al_relative_tolerance = relative_tolerance;
+  options.al_absolute_tolerance = absolute_tolerance;
+  options.al_relaxation = relaxation;
+}
+
+void beginAugmentedLagrangianStep( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::beginAugmentedLagrangianStep(): coupling scheme does not exist." );
+  cs->beginAugmentedLagrangianStep();
+}
+
+void commitAugmentedLagrangianStep( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::commitAugmentedLagrangianStep(): coupling scheme does not exist." );
+  cs->commitAugmentedLagrangianStep();
+}
+
+void rollbackAugmentedLagrangianStep( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::rollbackAugmentedLagrangianStep(): coupling scheme does not exist." );
+  cs->rollbackAugmentedLagrangianStep();
+}
+
 void setDissipativePenaltyOptions( IndexT cs_id, RealT relaxation_scale, RealT stability_scale )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -197,6 +288,27 @@ RealT getPenaltyStabilityTimestep( IndexT cs_id )
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF( !cs, "tribol::getPenaltyStabilityTimestep(): coupling scheme does not exist." );
   return cs->getPenaltyStabilityTimeStep();
+}
+
+IndexT getNumPenaltyStabilityActiveRows( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getNumPenaltyStabilityActiveRows(): coupling scheme does not exist." );
+  return cs->getNumPenaltyStabilityActiveRows();
+}
+
+IndexT getNumPenaltyStabilityPredictedRows( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getNumPenaltyStabilityPredictedRows(): coupling scheme does not exist." );
+  return cs->getNumPenaltyStabilityPredictedRows();
+}
+
+RealT getPenaltyStabilityMinimumImpactTime( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getPenaltyStabilityMinimumImpactTime(): coupling scheme does not exist." );
+  return cs->getPenaltyStabilityMinimumImpactTime();
 }
 
 RealT getPredictorCouplingBound( IndexT cs_id )
@@ -402,6 +514,51 @@ RealT getProjectionEnergyChange( IndexT cs_id )
   return cs->getProjectionEnergyChange();
 }
 
+RealT getProjectionAppliedComplementarityResidual( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::getProjectionAppliedComplementarityResidual(): coupling scheme does not exist." );
+  return cs->getProjectionAppliedComplementarityResidual();
+}
+
+RealT getProjectionAppliedPrimalResidual( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionAppliedPrimalResidual(): coupling scheme does not exist." );
+  return cs->getProjectionAppliedPrimalResidual();
+}
+
+RealT getProjectionMaxVelocityUpdateError( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionMaxVelocityUpdateError(): coupling scheme does not exist." );
+  return cs->getProjectionMaxVelocityUpdateError();
+}
+
+RealT getProjectionAppliedKineticEnergyChange( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::getProjectionAppliedKineticEnergyChange(): coupling scheme does not exist." );
+  return cs->getProjectionAppliedKineticEnergyChange();
+}
+
+RealT getProjectionMaxAbsoluteGap( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionMaxAbsoluteGap(): coupling scheme does not exist." );
+  return cs->getProjectionMaxAbsoluteGap();
+}
+
+RealT getProjectionMaxAbsoluteTargetVelocity( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::getProjectionMaxAbsoluteTargetVelocity(): coupling scheme does not exist." );
+  return cs->getProjectionMaxAbsoluteTargetVelocity();
+}
+
 RealT getCompliantProjectionSpringForce( IndexT cs_id )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -445,6 +602,58 @@ RealT getCompliantProjectionMaxPenetrationFraction( IndexT cs_id )
   return cs->getCompliantProjectionMaxPenetrationFraction();
 }
 
+int getAugmentedLagrangianOuterIterations( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getAugmentedLagrangianOuterIterations(): coupling scheme does not exist." );
+  return cs->getAugmentedLagrangianOuterIterations();
+}
+
+int getAugmentedLagrangianSubproblemIterations( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::getAugmentedLagrangianSubproblemIterations(): coupling scheme does not exist." );
+  return cs->getAugmentedLagrangianSubproblemIterations();
+}
+
+int getAugmentedLagrangianIncompleteSubproblems( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::getAugmentedLagrangianIncompleteSubproblems(): coupling scheme does not exist." );
+  return cs->getAugmentedLagrangianIncompleteSubproblems();
+}
+
+IndexT getAugmentedLagrangianWarmStartRows( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getAugmentedLagrangianWarmStartRows(): coupling scheme does not exist." );
+  return cs->getAugmentedLagrangianWarmStartRows();
+}
+
+RealT getAugmentedLagrangianHistoryForceNorm( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getAugmentedLagrangianHistoryForceNorm(): coupling scheme does not exist." );
+  return cs->getAugmentedLagrangianHistoryForceNorm();
+}
+
+RealT getAugmentedLagrangianMultiplierUpdateNorm( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::getAugmentedLagrangianMultiplierUpdateNorm(): coupling scheme does not exist." );
+  return cs->getAugmentedLagrangianMultiplierUpdateNorm();
+}
+
+RealT getAugmentedLagrangianScale( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getAugmentedLagrangianScale(): coupling scheme does not exist." );
+  return cs->getAugmentedLagrangianScale();
+}
+
 IndexT getProjectionOperatorVelocityDofs( IndexT cs_id )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -485,6 +694,20 @@ RealT getProjectionOperatorJacobiContraction( IndexT cs_id )
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionOperatorJacobiContraction(): coupling scheme does not exist." );
   return cs->getProjectionOperatorJacobiContraction();
+}
+
+const std::vector<ProjectionTraceDofData>& getProjectionTraceDofData( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionTraceDofData(): coupling scheme does not exist." );
+  return cs->getProjectionTraceDofData();
+}
+
+const std::vector<ProjectionNodalDofData>& getProjectionNodalDofData( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getProjectionNodalDofData(): coupling scheme does not exist." );
+  return cs->getProjectionNodalDofData();
 }
 
 //------------------------------------------------------------------------------
@@ -1169,6 +1392,32 @@ void registerCouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, int
   CouplingSchemeManager::getInstance().addData( cs_id, std::move( scheme ) );
 
 }  // end registerCouplingScheme()
+
+//------------------------------------------------------------------------------
+void deregisterCouplingScheme( IndexT cs_id )
+{
+  auto& coupling_schemes = CouplingSchemeManager::getInstance();
+  auto cs = coupling_schemes.findData( cs_id );
+  if ( !cs ) {
+    return;
+  }
+
+  const std::array<IndexT, 2> mesh_ids{ cs->getMeshId1(), cs->getMeshId2() };
+  coupling_schemes.erase( cs_id );
+
+  auto& meshes = MeshManager::getInstance();
+  for ( const auto mesh_id : mesh_ids ) {
+    bool mesh_is_referenced = false;
+    for ( const auto& cs_pair : coupling_schemes ) {
+      const auto& remaining_cs = cs_pair.second;
+      mesh_is_referenced =
+          mesh_is_referenced || remaining_cs.getMeshId1() == mesh_id || remaining_cs.getMeshId2() == mesh_id;
+    }
+    if ( !mesh_is_referenced ) {
+      meshes.erase( mesh_id );
+    }
+  }
+}
 
 //------------------------------------------------------------------------------
 void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairIndex1, IndexT const* const pairIndex2 )

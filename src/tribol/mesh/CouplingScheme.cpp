@@ -759,15 +759,27 @@ bool CouplingScheme::isValidEnforcement()
     }  // end case SINGLE_MORTAR
 
     case PARENT_TRACE_MORTAR: {
-      if ( this->m_enforcementMethod != IMPULSE_PROJECTION ) {
+      if ( this->m_enforcementMethod != PENALTY && this->m_enforcementMethod != IMPULSE_PROJECTION ) {
         this->m_couplingSchemeErrors.cs_enforcement_error = INVALID_ENFORCEMENT_FOR_REGISTERED_METHOD;
         return false;
       }
-      if ( !this->m_enforcementOptions.projection_options.options_set ) {
+      if ( this->m_enforcementMethod == PENALTY &&
+           !this->m_enforcementOptions.penalty_options.constraint_type_set ) {
         this->m_couplingSchemeErrors.cs_enforcement_error = OPTIONS_NOT_SET;
         return false;
       }
-      if ( this->m_enforcementOptions.projection_options.contact_response == PROJECTION_RESPONSE_COMPLIANT &&
+      if ( this->m_enforcementMethod == PENALTY &&
+           this->m_enforcementOptions.penalty_options.constraint_type != KINEMATIC ) {
+        this->m_couplingSchemeErrors.cs_enforcement_error = NO_ENFORCEMENT_IMPLEMENTATION_FOR_REGISTERED_OPTION;
+        return false;
+      }
+      if ( this->m_enforcementMethod == IMPULSE_PROJECTION &&
+           !this->m_enforcementOptions.projection_options.options_set ) {
+        this->m_couplingSchemeErrors.cs_enforcement_error = OPTIONS_NOT_SET;
+        return false;
+      }
+      if ( this->m_enforcementMethod == IMPULSE_PROJECTION &&
+           this->m_enforcementOptions.projection_options.contact_response != PROJECTION_RESPONSE_EXACT &&
            !this->m_enforcementOptions.penalty_options.constraint_type_set ) {
         this->m_couplingSchemeErrors.cs_enforcement_error = OPTIONS_NOT_SET;
         return false;
@@ -846,7 +858,7 @@ int CouplingScheme::checkEnforcementData()
         }  // end case PENALTY
         case IMPULSE_PROJECTION: {
           if ( this->m_contactMethod == PARENT_TRACE_MORTAR &&
-               this->m_enforcementOptions.projection_options.contact_response == PROJECTION_RESPONSE_COMPLIANT ) {
+               this->m_enforcementOptions.projection_options.contact_response != PROJECTION_RESPONSE_EXACT ) {
             PenaltyEnforcementOptions& pen_enfrc_options = this->m_enforcementOptions.penalty_options;
             if ( this->m_mesh1->checkPenaltyData( pen_enfrc_options, this->m_exec_mode ) != 0 ||
                  this->m_mesh2->checkPenaltyData( pen_enfrc_options, this->m_exec_mode ) != 0 ) {
@@ -1077,6 +1089,9 @@ int CouplingScheme::apply( int cycle, RealT t, RealT stage_dt, RealT& dt )
 {
   m_current_dt = stage_dt;
   m_penalty_stability_dt = std::numeric_limits<RealT>::infinity();
+  m_num_penalty_stability_active_rows = 0;
+  m_num_penalty_stability_predicted_rows = 0;
+  m_penalty_stability_minimum_impact_time = std::numeric_limits<RealT>::infinity();
   m_predictor_coupling_bound = 1.;
   m_predictor_relaxation = 1.;
   m_num_predictor_active_qpts = 0;
@@ -1105,6 +1120,19 @@ int CouplingScheme::apply( int cycle, RealT t, RealT stage_dt, RealT& dt )
   m_projection_equivalent_force = 0.;
   m_projection_max_endpoint_violation = 0.;
   m_projection_energy_change = 0.;
+  m_projection_applied_complementarity_residual = 0.;
+  m_projection_applied_primal_residual = 0.;
+  m_projection_max_velocity_update_error = 0.;
+  m_projection_applied_kinetic_energy_change = 0.;
+  m_projection_max_absolute_gap = 0.;
+  m_projection_max_absolute_target_velocity = 0.;
+  m_al_outer_iterations = 0;
+  m_al_subproblem_iterations = 0;
+  m_al_incomplete_subproblems = 0;
+  m_al_warm_start_rows = 0;
+  m_al_history_force_norm = 0.;
+  m_al_multiplier_update_norm = 0.;
+  m_al_augmentation_scale = 0.;
   m_projection_operator_velocity_dofs = 0;
   m_projection_operator_rank = 0;
   m_projection_operator_minimum_eigenvalue = 0.;
@@ -1112,6 +1140,8 @@ int CouplingScheme::apply( int cycle, RealT t, RealT stage_dt, RealT& dt )
   m_projection_operator_condition_estimate = 0.;
   m_projection_operator_jacobi_contraction = 0.;
   m_projection_operator_diagnostics_available = false;
+  m_projection_trace_dof_data.clear();
+  m_projection_nodal_dof_data.clear();
   if ( m_formulation ) {
     if ( m_interface_pairs.size() > 0 || !hasFixedBinning() ) {
       m_formulation->setInterfacePairs( std::move( m_interface_pairs ), 0 );

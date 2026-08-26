@@ -6,6 +6,8 @@
 #define SRC_TRIBOL_MESH_COUPLINGSCHEME_HPP_
 
 #include <limits>
+#include <utility>
+#include <vector>
 
 // Tribol config include
 #include "tribol/config.hpp"
@@ -286,6 +288,20 @@ class CouplingScheme {
   void setPenaltyStabilityTimeStep( RealT dt ) { m_penalty_stability_dt = dt; }
   RealT getPenaltyStabilityTimeStep() const { return m_penalty_stability_dt; }
 
+  void setPenaltyStabilityDiagnostics( IndexT active_rows, IndexT predicted_rows,
+                                       RealT minimum_impact_time )
+  {
+    m_num_penalty_stability_active_rows = active_rows;
+    m_num_penalty_stability_predicted_rows = predicted_rows;
+    m_penalty_stability_minimum_impact_time = minimum_impact_time;
+  }
+  IndexT getNumPenaltyStabilityActiveRows() const { return m_num_penalty_stability_active_rows; }
+  IndexT getNumPenaltyStabilityPredictedRows() const { return m_num_penalty_stability_predicted_rows; }
+  RealT getPenaltyStabilityMinimumImpactTime() const
+  {
+    return m_penalty_stability_minimum_impact_time;
+  }
+
   void setPredictorDiagnostics( RealT coupling_bound, RealT relaxation )
   {
     m_predictor_coupling_bound = coupling_bound;
@@ -373,6 +389,32 @@ class CouplingScheme {
   RealT getProjectionEquivalentForce() const { return m_projection_equivalent_force; }
   RealT getProjectionMaxEndpointViolation() const { return m_projection_max_endpoint_violation; }
   RealT getProjectionEnergyChange() const { return m_projection_energy_change; }
+  void setProjectionApplicationDiagnostics( RealT complementarity_residual, RealT primal_residual,
+                                            RealT max_velocity_error, RealT kinetic_energy_change,
+                                            RealT max_absolute_gap, RealT max_absolute_target_velocity )
+  {
+    m_projection_applied_complementarity_residual = complementarity_residual;
+    m_projection_applied_primal_residual = primal_residual;
+    m_projection_max_velocity_update_error = max_velocity_error;
+    m_projection_applied_kinetic_energy_change = kinetic_energy_change;
+    m_projection_max_absolute_gap = max_absolute_gap;
+    m_projection_max_absolute_target_velocity = max_absolute_target_velocity;
+  }
+  RealT getProjectionAppliedComplementarityResidual() const
+  {
+    return m_projection_applied_complementarity_residual;
+  }
+  RealT getProjectionAppliedPrimalResidual() const { return m_projection_applied_primal_residual; }
+  RealT getProjectionMaxVelocityUpdateError() const { return m_projection_max_velocity_update_error; }
+  RealT getProjectionAppliedKineticEnergyChange() const
+  {
+    return m_projection_applied_kinetic_energy_change;
+  }
+  RealT getProjectionMaxAbsoluteGap() const { return m_projection_max_absolute_gap; }
+  RealT getProjectionMaxAbsoluteTargetVelocity() const
+  {
+    return m_projection_max_absolute_target_velocity;
+  }
   void setCompliantProjectionDiagnostics( RealT spring_force, RealT damping_force, RealT guard_force,
                                           IndexT guard_constraints, RealT stored_energy,
                                           RealT max_penetration_fraction )
@@ -393,6 +435,58 @@ class CouplingScheme {
   {
     return m_compliant_projection_max_penetration_fraction;
   }
+  void beginAugmentedLagrangianStep()
+  {
+    m_parent_trace_multiplier_snapshot = m_parent_trace_multiplier_history;
+    m_parent_trace_multiplier_stage = m_parent_trace_multiplier_history;
+    m_augmented_lagrangian_step_open = true;
+  }
+  void commitAugmentedLagrangianStep()
+  {
+    if ( m_augmented_lagrangian_step_open ) {
+      m_parent_trace_multiplier_history = m_parent_trace_multiplier_stage;
+    }
+  }
+  void rollbackAugmentedLagrangianStep()
+  {
+    if ( m_augmented_lagrangian_step_open ) {
+      m_parent_trace_multiplier_history = m_parent_trace_multiplier_snapshot;
+      m_parent_trace_multiplier_stage = m_parent_trace_multiplier_snapshot;
+      m_augmented_lagrangian_step_open = false;
+    }
+  }
+  const std::vector<ParentTraceMultiplierState>& getParentTraceMultiplierWarmStart() const
+  {
+    return m_augmented_lagrangian_step_open ? m_parent_trace_multiplier_stage
+                                            : m_parent_trace_multiplier_history;
+  }
+  void setParentTraceMultiplierStage( std::vector<ParentTraceMultiplierState> state )
+  {
+    m_parent_trace_multiplier_stage = std::move( state );
+    if ( !m_augmented_lagrangian_step_open ) {
+      m_parent_trace_multiplier_history = m_parent_trace_multiplier_stage;
+    }
+  }
+  void setAugmentedLagrangianDiagnostics( int outer_iterations, int subproblem_iterations,
+                                         int incomplete_subproblems, IndexT warm_start_rows,
+                                         RealT history_force_norm, RealT multiplier_update_norm,
+                                         RealT augmentation_scale )
+  {
+    m_al_outer_iterations = outer_iterations;
+    m_al_subproblem_iterations = subproblem_iterations;
+    m_al_incomplete_subproblems = incomplete_subproblems;
+    m_al_warm_start_rows = warm_start_rows;
+    m_al_history_force_norm = history_force_norm;
+    m_al_multiplier_update_norm = multiplier_update_norm;
+    m_al_augmentation_scale = augmentation_scale;
+  }
+  int getAugmentedLagrangianOuterIterations() const { return m_al_outer_iterations; }
+  int getAugmentedLagrangianSubproblemIterations() const { return m_al_subproblem_iterations; }
+  int getAugmentedLagrangianIncompleteSubproblems() const { return m_al_incomplete_subproblems; }
+  IndexT getAugmentedLagrangianWarmStartRows() const { return m_al_warm_start_rows; }
+  RealT getAugmentedLagrangianHistoryForceNorm() const { return m_al_history_force_norm; }
+  RealT getAugmentedLagrangianMultiplierUpdateNorm() const { return m_al_multiplier_update_norm; }
+  RealT getAugmentedLagrangianScale() const { return m_al_augmentation_scale; }
   void setProjectionOperatorDiagnostics( IndexT velocity_dofs, IndexT rank, RealT minimum_eigenvalue,
                                          RealT maximum_eigenvalue, RealT condition_estimate,
                                          RealT jacobi_contraction )
@@ -412,6 +506,22 @@ class CouplingScheme {
   RealT getProjectionOperatorMaximumEigenvalue() const { return m_projection_operator_maximum_eigenvalue; }
   RealT getProjectionOperatorConditionEstimate() const { return m_projection_operator_condition_estimate; }
   RealT getProjectionOperatorJacobiContraction() const { return m_projection_operator_jacobi_contraction; }
+  void setProjectionTraceDofData( std::vector<ProjectionTraceDofData> data )
+  {
+    m_projection_trace_dof_data = std::move( data );
+  }
+  const std::vector<ProjectionTraceDofData>& getProjectionTraceDofData() const
+  {
+    return m_projection_trace_dof_data;
+  }
+  void setProjectionNodalDofData( std::vector<ProjectionNodalDofData> data )
+  {
+    m_projection_nodal_dof_data = std::move( data );
+  }
+  const std::vector<ProjectionNodalDofData>& getProjectionNodalDofData() const
+  {
+    return m_projection_nodal_dof_data;
+  }
 
   /**
    * @brief Get the ID of the coupling scheme
@@ -1063,6 +1173,9 @@ class CouplingScheme {
   Parameters m_parameters;              ///< Struct holding coupling scheme parameters
   RealT m_current_dt{ 0. };
   RealT m_penalty_stability_dt{ std::numeric_limits<RealT>::infinity() };
+  IndexT m_num_penalty_stability_active_rows{ 0 };
+  IndexT m_num_penalty_stability_predicted_rows{ 0 };
+  RealT m_penalty_stability_minimum_impact_time{ std::numeric_limits<RealT>::infinity() };
   RealT m_predictor_coupling_bound{ 1. };
   RealT m_predictor_relaxation{ 1. };
   IndexT m_num_predictor_active_qpts{ 0 };
@@ -1091,12 +1204,29 @@ class CouplingScheme {
   RealT m_projection_equivalent_force{ 0. };
   RealT m_projection_max_endpoint_violation{ 0. };
   RealT m_projection_energy_change{ 0. };
+  RealT m_projection_applied_complementarity_residual{ 0. };
+  RealT m_projection_applied_primal_residual{ 0. };
+  RealT m_projection_max_velocity_update_error{ 0. };
+  RealT m_projection_applied_kinetic_energy_change{ 0. };
+  RealT m_projection_max_absolute_gap{ 0. };
+  RealT m_projection_max_absolute_target_velocity{ 0. };
   RealT m_compliant_projection_spring_force{ 0. };
   RealT m_compliant_projection_damping_force{ 0. };
   RealT m_compliant_projection_guard_force{ 0. };
   IndexT m_compliant_projection_guard_constraints{ 0 };
   RealT m_compliant_projection_stored_energy{ 0. };
   RealT m_compliant_projection_max_penetration_fraction{ 0. };
+  std::vector<ParentTraceMultiplierState> m_parent_trace_multiplier_history;
+  std::vector<ParentTraceMultiplierState> m_parent_trace_multiplier_stage;
+  std::vector<ParentTraceMultiplierState> m_parent_trace_multiplier_snapshot;
+  bool m_augmented_lagrangian_step_open{ false };
+  int m_al_outer_iterations{ 0 };
+  int m_al_subproblem_iterations{ 0 };
+  int m_al_incomplete_subproblems{ 0 };
+  IndexT m_al_warm_start_rows{ 0 };
+  RealT m_al_history_force_norm{ 0. };
+  RealT m_al_multiplier_update_norm{ 0. };
+  RealT m_al_augmentation_scale{ 0. };
   IndexT m_projection_operator_velocity_dofs{ 0 };
   IndexT m_projection_operator_rank{ 0 };
   RealT m_projection_operator_minimum_eigenvalue{ 0. };
@@ -1104,6 +1234,8 @@ class CouplingScheme {
   RealT m_projection_operator_condition_estimate{ 0. };
   RealT m_projection_operator_jacobi_contraction{ 0. };
   bool m_projection_operator_diagnostics_available{ false };
+  std::vector<ProjectionTraceDofData> m_projection_trace_dof_data;
+  std::vector<ProjectionNodalDofData> m_projection_nodal_dof_data;
   std::string m_output_directory = "";  ///< Output directory for visualization dumps
 
   bool m_nullMeshes{ false };  ///< True if one or both meshes are zero-element (null) meshes

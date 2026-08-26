@@ -133,6 +133,10 @@ else()
         list(APPEND MFEM_LIBRARIES ${CUDA_LIBRARIES})
         list(APPEND MFEM_LIBRARIES ${CUDA_CUBLAS_LIBRARIES})
         list(APPEND MFEM_LIBRARIES ${CUDA_cusolver_LIBRARY})
+
+        find_package(CUDAToolkit REQUIRED)
+        list(APPEND MFEM_INCLUDE_DIRS ${CUDAToolkit_TARGET_DIR}/include)
+        list(APPEND MFEM_LIBRARIES CUDA::cupti)
     endif()
 
     blt_import_library(

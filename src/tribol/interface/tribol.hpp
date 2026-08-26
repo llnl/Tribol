@@ -8,6 +8,7 @@
 
 // C++ includes
 #include <string>
+#include <vector>
 
 // MFEM includes
 #include "mfem.hpp"
@@ -83,10 +84,35 @@ void setImpulseProjectionOptions( IndexT cs_id, int max_iterations, RealT relati
 /*! \brief Sets the fraction of the projected end-velocity correction used to advance position. */
 void setImpulseProjectionKinematics( IndexT cs_id, RealT position_velocity_scale );
 
+/*! \brief Selects a pure zero-gap-rate target for frozen-state projection diagnostics. */
+void setImpulseProjectionDiagnosticZeroGapRateTarget( IndexT cs_id, bool enabled );
+
+/*! \brief Allows a frozen-state diagnostic to capture an energy-increasing projection candidate. */
+void setImpulseProjectionDiagnosticBypassEnergyCheck( IndexT cs_id, bool enabled );
+
 /*! \brief Sets parent-trace mortar construction and contact-response options. */
 void setParentTraceMortarOptions( IndexT cs_id, RealT normal_patch_angle_degrees,
                                   ImpulseProjectionContactResponse contact_response = PROJECTION_RESPONSE_COMPLIANT,
                                   RealT damping_ratio = 1.2, RealT max_penetration_fraction = 0.02 );
+
+/*! \brief Sets parent-trace augmented-Lagrangian iteration options. */
+void setAugmentedLagrangianOptions( IndexT cs_id, RealT augmentation_scale, int max_iterations,
+                                    int fixed_iterations = 0,
+                                    AugmentedLagrangianFailurePolicy failure_policy = AL_ACCEPT_FEASIBLE );
+
+/*! \brief Enables surface-compliance augmented Lagrangian for parent-trace penalty contact. */
+void setPenaltyAugmentedLagrangianOptions( IndexT cs_id, int max_iterations, int fixed_iterations,
+                                           RealT relative_tolerance, RealT absolute_tolerance,
+                                           RealT relaxation = 1. );
+
+/*! \brief Starts a rollback-safe augmented-Lagrangian physical step. */
+void beginAugmentedLagrangianStep( IndexT cs_id );
+
+/*! \brief Commits the latest augmented-Lagrangian stage multiplier state. */
+void commitAugmentedLagrangianStep( IndexT cs_id );
+
+/*! \brief Restores augmented-Lagrangian multipliers after a repeated step. */
+void rollbackAugmentedLagrangianStep( IndexT cs_id );
 
 /*!
  * \brief Sets the dissipative predictor and penalty stability controls.
@@ -99,6 +125,12 @@ void setDissipativePenaltyOptions( IndexT cs_id, RealT relaxation_scale, RealT s
 
 /// Returns the most recently computed penalty stiffness/mass timestep bound.
 RealT getPenaltyStabilityTimestep( IndexT cs_id );
+/// Returns the number of currently penetrated rows included in the penalty stability bound.
+IndexT getNumPenaltyStabilityActiveRows( IndexT cs_id );
+/// Returns the number of separated rows predicted to activate during the current stage.
+IndexT getNumPenaltyStabilityPredictedRows( IndexT cs_id );
+/// Returns zero for active penalty rows or the minimum linearized impact time among closing rows.
+RealT getPenaltyStabilityMinimumImpactTime( IndexT cs_id );
 /// Returns the most recently computed normalized predictor coupling bound.
 RealT getPredictorCouplingBound( IndexT cs_id );
 /// Returns the most recently applied diagonal predictor relaxation.
@@ -151,18 +183,33 @@ RealT getProjectionTotalImpulse( IndexT cs_id );
 RealT getProjectionEquivalentForce( IndexT cs_id );
 RealT getProjectionMaxEndpointViolation( IndexT cs_id );
 RealT getProjectionEnergyChange( IndexT cs_id );
+RealT getProjectionAppliedComplementarityResidual( IndexT cs_id );
+RealT getProjectionAppliedPrimalResidual( IndexT cs_id );
+RealT getProjectionMaxVelocityUpdateError( IndexT cs_id );
+RealT getProjectionAppliedKineticEnergyChange( IndexT cs_id );
+RealT getProjectionMaxAbsoluteGap( IndexT cs_id );
+RealT getProjectionMaxAbsoluteTargetVelocity( IndexT cs_id );
 RealT getCompliantProjectionSpringForce( IndexT cs_id );
 RealT getCompliantProjectionDampingForce( IndexT cs_id );
 RealT getCompliantProjectionGuardForce( IndexT cs_id );
 IndexT getCompliantProjectionGuardConstraints( IndexT cs_id );
 RealT getCompliantProjectionStoredEnergy( IndexT cs_id );
 RealT getCompliantProjectionMaxPenetrationFraction( IndexT cs_id );
+int getAugmentedLagrangianOuterIterations( IndexT cs_id );
+int getAugmentedLagrangianSubproblemIterations( IndexT cs_id );
+int getAugmentedLagrangianIncompleteSubproblems( IndexT cs_id );
+IndexT getAugmentedLagrangianWarmStartRows( IndexT cs_id );
+RealT getAugmentedLagrangianHistoryForceNorm( IndexT cs_id );
+RealT getAugmentedLagrangianMultiplierUpdateNorm( IndexT cs_id );
+RealT getAugmentedLagrangianScale( IndexT cs_id );
 IndexT getProjectionOperatorVelocityDofs( IndexT cs_id );
 IndexT getProjectionOperatorRank( IndexT cs_id );
 RealT getProjectionOperatorMinimumEigenvalue( IndexT cs_id );
 RealT getProjectionOperatorMaximumEigenvalue( IndexT cs_id );
 RealT getProjectionOperatorConditionEstimate( IndexT cs_id );
 RealT getProjectionOperatorJacobiContraction( IndexT cs_id );
+const std::vector<ProjectionTraceDofData>& getProjectionTraceDofData( IndexT cs_id );
+const std::vector<ProjectionNodalDofData>& getProjectionNodalDofData( IndexT cs_id );
 
 /*!
  * \brief Sets the constant kinematic penalty stiffness
@@ -590,6 +637,9 @@ void registerCouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, int
                              int contact_method, int contact_model, int enforcement_method,
                              int binning_method = DEFAULT_BINNING_METHOD,
                              ExecutionMode exec_mode = ExecutionMode::Dynamic );
+
+/*! \brief Removes a coupling scheme and any contact meshes not used by another scheme. */
+void deregisterCouplingScheme( IndexT cs_id );
 /// @}
 
 /*!

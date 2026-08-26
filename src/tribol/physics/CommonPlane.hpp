@@ -59,6 +59,9 @@ template <>
 int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs );
 
 template <>
+int ApplyNormal<PARENT_TRACE_MORTAR, PENALTY>( CouplingScheme* cs );
+
+template <>
 int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs );
 
 /*!

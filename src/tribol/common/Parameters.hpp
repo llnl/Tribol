@@ -177,7 +177,16 @@ enum ImpulseProjectionContactResponse
 {
   PROJECTION_RESPONSE_EXACT,
   PROJECTION_RESPONSE_COMPLIANT,
+  PROJECTION_RESPONSE_AUGMENTED_LAGRANGIAN,
   NUM_IMPULSE_PROJECTION_CONTACT_RESPONSES
+};
+
+/*! \brief Enumerates augmented-Lagrangian iteration-cap handling. */
+enum AugmentedLagrangianFailurePolicy
+{
+  AL_ACCEPT_FEASIBLE,
+  AL_REPEAT_ON_NONCONVERGENCE,
+  NUM_AUGMENTED_LAGRANGIAN_FAILURE_POLICIES
 };
 
 /*!
@@ -475,6 +484,12 @@ struct PenaltyEnforcementOptions {
   int common_plane_quadrature_order{ 3 };
   RealT predictor_relaxation_scale{ 1.0 };
   RealT penalty_stability_scale{ 0.8 };
+  bool augmented_lagrangian{ false };
+  int al_max_iterations{ 2 };
+  int al_fixed_iterations{ 2 };
+  RealT al_relative_tolerance{ 1.e-6 };
+  RealT al_absolute_tolerance{ 1.e-12 };
+  RealT al_relaxation{ 1. };
 
   bool constraint_type_set{ false };
   bool kinematic_calc_set{ false };
@@ -496,10 +511,61 @@ struct ImpulseProjectionOptions {
   RealT relaxation_scale{ 1. };
   RealT normal_patch_angle_degrees{ 30. };
   RealT position_velocity_scale{ 1. };
+  bool diagnostic_zero_gap_rate_target{ false };
+  bool diagnostic_bypass_energy_check{ false };
   ImpulseProjectionContactResponse contact_response{ PROJECTION_RESPONSE_COMPLIANT };
   RealT damping_ratio{ 1.2 };
   RealT max_penetration_fraction{ 0.02 };
+  RealT al_augmentation_scale{ 100. };
+  int al_max_iterations{ 8 };
+  int al_fixed_iterations{ 0 };
+  AugmentedLagrangianFailurePolicy al_failure_policy{ AL_ACCEPT_FEASIBLE };
   bool options_set{ false };
+};
+
+/*! \brief Persistent force multiplier for one parent-trace normal patch. */
+struct ParentTraceMultiplierState {
+  IndexT parent_dof{ -1 };
+  IndexT patch{ -1 };
+  RealT normal_x{ 0. };
+  RealT normal_y{ 0. };
+  RealT force{ 0. };
+};
+
+/*! \brief Per-parent-trace-row data retained for projection diagnostics. */
+struct ProjectionTraceDofData {
+  IndexT parent_dof{ -1 };
+  IndexT patch{ -1 };
+  RealT coordinate_x{ 0. };
+  RealT coordinate_y{ 0. };
+  RealT normal_x{ 0. };
+  RealT normal_y{ 0. };
+  RealT signed_gap{ 0. };
+  RealT trial_normal_velocity{ 0. };
+  RealT position_trial_normal_velocity{ 0. };
+  RealT endpoint_target_normal_velocity{ 0. };
+  RealT selected_target_normal_velocity{ 0. };
+  RealT impulse{ 0. };
+  RealT applied_normal_velocity_correction{ 0. };
+  RealT tributary_area{ 0. };
+};
+
+/*! \brief Per-parent displacement DOF data retained for projection diagnostics. */
+struct ProjectionNodalDofData {
+  IndexT surface{ 0 };
+  IndexT parent_dof{ -1 };
+  RealT coordinate_x{ 0. };
+  RealT coordinate_y{ 0. };
+  RealT contact_normal_x{ 0. };
+  RealT contact_normal_y{ 0. };
+  RealT inverse_mass_x{ 0. };
+  RealT inverse_mass_y{ 0. };
+  RealT trial_velocity_x{ 0. };
+  RealT trial_velocity_y{ 0. };
+  RealT velocity_correction_x{ 0. };
+  RealT velocity_correction_y{ 0. };
+  RealT impulse_x{ 0. };
+  RealT impulse_y{ 0. };
 };
 
 /*!
