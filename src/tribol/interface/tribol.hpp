@@ -8,6 +8,7 @@
 
 // C++ includes
 #include <string>
+#include <vector>
 
 // MFEM includes
 #include "mfem.hpp"
@@ -18,6 +19,7 @@
 // Tribol includes
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/common/Parameters.hpp"
+#include "tribol/physics/EnergyMortarData.hpp"
 
 namespace tribol {
 
@@ -495,17 +497,11 @@ void registerCouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, int
  *
  * \param [in] cs_id      coupling scheme id
  * \param [in] numPairs   number of cell-pairs to be registered
- * \param [in] mesh_id1   mesh id of the first cell in the pair list
- * \param [in] pairType1  cell type of the first cell in the pair list
  * \param [in] pairIndex1 index of the first cell in the pair list
- * \param [in] mesh_id2    mesh id of the second cell in the pair list
- * \param [in] pairType2  cell type of the second cell in the pair list
  * \param [in] pairIndex2 index of the second cell in the pair list
  *
  */
-void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* mesh_id1, IndexT const* pairType1,
-                        IndexT const* pairIndex1, IndexT const* mesh_id2, IndexT const* pairType2,
-                        IndexT const* pairIndex2 );
+void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* pairIndex1, IndexT const* pairIndex2 );
 
 /*!
  * \brief Computes the contact response at the given cycle.
@@ -517,6 +513,39 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* mesh_id1, I
  * \return rc return code, a non-zero return code indicates an error.
  */
 int update( int cycle, RealT t, RealT& dt );
+
+/// \name Owning ENERGY_MORTAR evaluation
+///
+/// The overloads without an IntegrationRule synchronize registered fields, run
+/// contact search, and build a new rule. Overloads accepting a rule reuse its
+/// geometry snapshot and do not synchronize fields or repeat search.
+/// @{
+
+/// Build and return an owning integration rule for a native ENERGY_MORTAR scheme.
+IntegrationRule computeIntegrationRule( IndexT cs_id );
+
+/// Compute nodal gaps after preparing a new integration rule.
+TribolGapData computeNodalGaps( IndexT cs_id );
+
+/// Compute nodal gaps from an existing rule without synchronization or search.
+TribolGapData computeNodalGaps( IndexT cs_id, const IntegrationRule& rule );
+
+/// Compute nodal forces after preparing all required dependencies.
+TribolForceData computeNodalForces( IndexT cs_id );
+
+/// Compute nodal forces from a rule, computing nodal gaps when required.
+TribolForceData computeNodalForces( IndexT cs_id, const IntegrationRule& rule );
+
+/// Compute only nodal forces from a matching rule and nodal-gap result.
+TribolForceData computeNodalForces( IndexT cs_id, const IntegrationRule& rule, const TribolGapData& gaps );
+
+/// Compute a rule, optional nodal gaps, forces, energy, and derivatives in one pass.
+TribolContactData computeContactData( IndexT cs_id );
+
+/// Copy a native pressure or Lagrange-multiplier vector into the scheme FieldData.
+void setContactPressure( IndexT cs_id, const std::vector<RealT>& pressure );
+
+/// @}
 
 /// \name Contact Library finalization methods
 /// @{

@@ -83,6 +83,8 @@ struct Gparams {
   std::array<double, 3> w;   ///< Quadrature weights mapped to the local integration interval.
 };
 
+using EnergyMortarPairGeometry = std::array<double, 8>;
+
 /// Provides smoothing operations for the Energy Mortar contact formulation.
 ///
 /// This class stores the contact parameters and provides helper routines for
@@ -126,6 +128,13 @@ class EnergyMortarCalculator {
     return projections( pair, mesh1, mesh2 );
   }
 
+  std::array<double, 2> compute_projection_bounds( const EnergyMortarPairGeometry& geometry ) const;
+
+  Gparams compute_integration_parameters( const EnergyMortarPairGeometry& geometry ) const;
+
+  double compute_mortar_parametric_point( const EnergyMortarPairGeometry& geometry,
+                                           double nonmortar_parametric_point ) const;
+
   /// Construct a three-point Gauss-Legendre quadrature rule over local bounds.
   ///
   /// The input bounds are local coordinates on edge A. The returned quadrature
@@ -142,6 +151,9 @@ class EnergyMortarCalculator {
   void compute_gtilde_and_area( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                                 double gtilde[2], double area[2] ) const;
 
+  void compute_gtilde_and_area( const EnergyMortarPairGeometry& geometry, const Gparams& integration_parameters,
+                                double gtilde[2], double area[2] ) const;
+
   /// Compute first derivatives of the nodal smoothed gap integrals.
   ///
   /// `dgt1_dx` and `dgt2_dx` each have length 8 and store derivatives of the
@@ -150,6 +162,9 @@ class EnergyMortarCalculator {
   /// the quadrature rule is held fixed during differentiation. If true, the
   /// derivative includes the geometry-dependent quadrature construction.
   void grad_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+                    double dgt1_dx[8], double dgt2_dx[8] ) const;
+
+  void grad_gtilde( const EnergyMortarPairGeometry& geometry, const Gparams& integration_parameters,
                     double dgt1_dx[8], double dgt2_dx[8] ) const;
 
   /// Compute first derivatives of the nodal tributary areas.
@@ -163,6 +178,9 @@ class EnergyMortarCalculator {
   void grad_trib_area( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                        double dA1_dx[8], double dA2_dx[8] ) const;
 
+  void grad_trib_area( const EnergyMortarPairGeometry& geometry, const Gparams& integration_parameters,
+                       double dA1_dx[8], double dA2_dx[8] ) const;
+
   /// Compute second derivatives of the nodal smoothed gap integrals.
   ///
   /// `H1` and `H2` each have length 64 and store flattened 8 by 8 Hessian
@@ -171,6 +189,9 @@ class EnergyMortarCalculator {
   /// is held fixed during differentiation. If true, the derivative includes the
   /// geometry-dependent quadrature construction.
   void d2_g2tilde( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+                   double dgt1_dx[64], double dgt2_dx[64] ) const;
+
+  void d2_g2tilde( const EnergyMortarPairGeometry& geometry, const Gparams& integration_parameters,
                    double dgt1_dx[64], double dgt2_dx[64] ) const;
 
   /// Compute second derivatives of the nodal tributary areas.
@@ -183,14 +204,22 @@ class EnergyMortarCalculator {
   void compute_d2A_d2u( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                         double dgt1_dx[64], double dgt2_dx[64] ) const;
 
+  void compute_d2A_d2u( const EnergyMortarPairGeometry& geometry, const Gparams& integration_parameters,
+                        double dgt1_dx[64], double dgt2_dx[64] ) const;
+
   /// Compute local energy, force, and stiffness for quadrature-point penalty enforcement.
   QuadraturePointPenaltyData compute_quadrature_point_penalty_data( const InterfacePair& pair,
                                                                     const MeshData::Viewer& mesh1,
                                                                     const MeshData::Viewer& mesh2 ) const;
 
+  QuadraturePointPenaltyData compute_quadrature_point_penalty_data(
+      const EnergyMortarPairGeometry& geometry ) const;
+
   /// Evaluate only the local quadrature-point penalty energy.
   double compute_quadrature_point_penalty_energy( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                   const MeshData::Viewer& mesh2 ) const;
+
+  double compute_quadrature_point_penalty_energy( const EnergyMortarPairGeometry& geometry ) const;
 
   /// Evaluate and return the two nodal smoothed gap integrals.
   ///

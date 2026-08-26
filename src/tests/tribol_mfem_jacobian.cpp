@@ -1058,13 +1058,8 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
   tribol::setPenaltyOptions( cs_id, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
   tribol::setMfemKinematicConstantPenalty( cs_id, 1.0, 1.0 );
 
-  // Build internal MfemData
-  tribol::updateMfemParallelDecomposition();
-
-  double dt = 1.0;
-  tribol::update( 1, 1.0, dt );
-
-  auto DfDx = tribol::getMfemDfDx( cs_id );
+  auto contact_data = tribol::computeMfemContactData( cs_id );
+  auto DfDx = std::move( contact_data.forces.df_dx );
 
   if ( n_ranks == 1 ) {
     EXPECT_NE( DfDx, nullptr );

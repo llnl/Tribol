@@ -36,6 +36,35 @@
 //------------------------------------------------------------------------------
 namespace tribol {
 
+namespace {
+
+CouplingScheme& getEnergyMortarScheme( IndexT cs_id, FieldDataBackend backend )
+{
+  auto* coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( coupling_scheme == nullptr, "ENERGY_MORTAR coupling scheme is not registered." );
+  SLIC_ERROR_ROOT_IF( coupling_scheme->getContactMethod() != ENERGY_MORTAR,
+                      "Owning contact compute APIs require an ENERGY_MORTAR coupling scheme." );
+  SLIC_ERROR_ROOT_IF( !coupling_scheme->hasFieldData() || coupling_scheme->getFieldData()->backend() != backend,
+                      "The requested compute API does not match the coupling scheme FieldData backend." );
+  if ( !coupling_scheme->hasContactFormulation() ) {
+    coupling_scheme->updateContactFormulation();
+  }
+  return *coupling_scheme;
+}
+
+IntegrationRule prepareTribolEnergyMortar( CouplingScheme& coupling_scheme )
+{
+  auto* field_data = dynamic_cast<TribolFieldData*>( coupling_scheme.getFieldData() );
+  SLIC_ERROR_ROOT_IF( field_data == nullptr, "Native ENERGY_MORTAR requires TribolFieldData." );
+  field_data->update();
+  SLIC_ERROR_ROOT_IF( !coupling_scheme.init(), "ENERGY_MORTAR coupling scheme initialization failed." );
+  coupling_scheme.performBinning();
+  coupling_scheme.getContactFormulation()->setInterfacePairs( coupling_scheme.getInterfacePairs(), 0 );
+  return coupling_scheme.getContactFormulation()->computeTribolIntegrationRule();
+}
+
+}  // namespace
+
 //------------------------------------------------------------------------------
 void initialize( int, CommT )
 {
@@ -181,8 +210,9 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location )
 
   cs->getParameters().enforcement_location = location;
 
-  // Automatically rebuild the formulation to reflect the new setting
-  cs->updateContactFormulation();
+  if ( cs->hasContactFormulation() ) {
+    cs->getContactFormulation()->updateEnforcementLocation( location );
+  }
 }
 
 //------------------------------------------------------------------------------
@@ -792,6 +822,15 @@ void registerCouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, int
   // tribol::update() when each coupling scheme is initialized.
   CouplingSchemeManager::getInstance().addData( cs_id, std::move( scheme ) );
 
+  if ( contact_method == ENERGY_MORTAR ) {
+#ifdef TRIBOL_USE_ENZYME
+    auto& coupling_scheme = CouplingSchemeManager::getInstance().at( cs_id );
+    coupling_scheme.setFieldData( std::make_unique<TribolFieldData>( mesh_id1, mesh_id2 ) );
+#else
+    SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme support." );
+#endif
+  }
+
 }  // end registerCouplingScheme()
 
 //------------------------------------------------------------------------------
@@ -839,6 +878,12 @@ int update( int cycle, RealT t, RealT& dt )
   for ( auto& cs_pair : CouplingSchemeManager::getInstance() ) {
     auto& cs = cs_pair.second;
 
+    if ( cs.getContactMethod() == ENERGY_MORTAR ) {
+      SLIC_WARNING_ROOT( "tribol::update() skips ENERGY_MORTAR; use computeContactData() or the other owning compute "
+                         "APIs." );
+      continue;
+    }
+
     // initialize and check for valid coupling scheme. If not valid, the coupling
     // scheme will not be valid across all ranks and we will skip this coupling scheme
     if ( !cs.init() ) {
@@ -864,6 +909,57 @@ int update( int cycle, RealT t, RealT& dt )
   return err_cs;
 
 }  // end update()
+
+IntegrationRule computeIntegrationRule( IndexT cs_id )
+{
+  auto& coupling_scheme = getEnergyMortarScheme( cs_id, FieldDataBackend::Tribol );
+  return prepareTribolEnergyMortar( coupling_scheme );
+}
+
+TribolGapData computeNodalGaps( IndexT cs_id )
+{
+  auto rule = computeIntegrationRule( cs_id );
+  return computeNodalGaps( cs_id, rule );
+}
+
+TribolGapData computeNodalGaps( IndexT cs_id, const IntegrationRule& rule )
+{
+  auto& coupling_scheme = getEnergyMortarScheme( cs_id, FieldDataBackend::Tribol );
+  return coupling_scheme.getContactFormulation()->computeTribolNodalGaps( rule );
+}
+
+TribolForceData computeNodalForces( IndexT cs_id )
+{
+  auto rule = computeIntegrationRule( cs_id );
+  return computeNodalForces( cs_id, rule );
+}
+
+TribolForceData computeNodalForces( IndexT cs_id, const IntegrationRule& rule )
+{
+  auto& coupling_scheme = getEnergyMortarScheme( cs_id, FieldDataBackend::Tribol );
+  return coupling_scheme.getContactFormulation()->computeTribolNodalForces( rule );
+}
+
+TribolForceData computeNodalForces( IndexT cs_id, const IntegrationRule& rule, const TribolGapData& gaps )
+{
+  auto& coupling_scheme = getEnergyMortarScheme( cs_id, FieldDataBackend::Tribol );
+  return coupling_scheme.getContactFormulation()->computeTribolNodalForces( rule, gaps );
+}
+
+TribolContactData computeContactData( IndexT cs_id )
+{
+  auto& coupling_scheme = getEnergyMortarScheme( cs_id, FieldDataBackend::Tribol );
+  auto rule = prepareTribolEnergyMortar( coupling_scheme );
+  return coupling_scheme.getContactFormulation()->computeTribolContactData( rule );
+}
+
+void setContactPressure( IndexT cs_id, const std::vector<RealT>& pressure )
+{
+  auto& coupling_scheme = getEnergyMortarScheme( cs_id, FieldDataBackend::Tribol );
+  auto* field_data = dynamic_cast<TribolFieldData*>( coupling_scheme.getFieldData() );
+  SLIC_ERROR_ROOT_IF( field_data == nullptr, "Native ENERGY_MORTAR requires TribolFieldData." );
+  field_data->setContactPressure( pressure );
+}
 
 //------------------------------------------------------------------------------
 void finalize()

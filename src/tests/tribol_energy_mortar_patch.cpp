@@ -204,14 +204,12 @@ class MfemMortarEnergyPatchTest : public testing::TestWithParam<std::tuple<int, 
       coords = ref_coords;
       coords += displacement;
 
-      tribol::updateMfemParallelDecomposition();
-      tribol::update( step, step * dt, dt );
-
-      auto A_cont_ptr = tribol::getMfemDfDx( cs_id );
+      auto contact_data = tribol::computeMfemContactData( cs_id );
+      auto A_cont_ptr = std::move( contact_data.forces.df_dx );
       ASSERT_TRUE( A_cont_ptr != nullptr );
       shared::ParSparseMat A_cont( std::move( A_cont_ptr ) );
 
-      auto f_contact = tribol::getMfemContactForce( cs_id );
+      auto f_contact = std::move( contact_data.forces.force );
       f_contact.Neg();
 
       // Inhomogeneous Dirichlet: rhs = f_contact - K * u_prescribed

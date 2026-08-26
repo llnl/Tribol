@@ -20,6 +20,7 @@
 #include "tribol/mesh/MfemData.hpp"
 #include "tribol/physics/Physics.hpp"
 #include "tribol/physics/ContactFormulation.hpp"
+#include "tribol/physics/EnergyMortarFieldData.hpp"
 #include "tribol/utils/DataManager.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
 #include "tribol/geom/CompGeom.hpp"
@@ -762,6 +763,16 @@ class CouplingScheme {
    */
   ContactFormulation* getContactFormulation() const { return m_formulation.get(); }
 
+  void setFieldData( std::unique_ptr<FieldDataBase> field_data )
+  {
+    m_formulation.reset();
+    m_fieldData = std::move( field_data );
+  }
+
+  FieldDataBase* getFieldData() { return m_fieldData.get(); }
+  const FieldDataBase* getFieldData() const { return m_fieldData.get(); }
+  bool hasFieldData() const { return m_fieldData != nullptr; }
+
 #ifdef BUILD_REDECOMP
 
   /**
@@ -774,7 +785,10 @@ class CouplingScheme {
    * @return true: MFEM mesh data exists
    * @return false: MFEM mesh data does not exist
    */
-  bool hasMfemData() const { return m_mfemMeshData != nullptr; }
+  bool hasMfemData() const
+  {
+    return m_mfemMeshData != nullptr || dynamic_cast<const MfemFieldData*>( m_fieldData.get() ) != nullptr;
+  }
 
   /**
    * @brief Get the MFEM mesh data object
@@ -785,7 +799,11 @@ class CouplingScheme {
    *
    * @return MfemMeshData*
    */
-  MfemMeshData* getMfemMeshData() { return m_mfemMeshData.get(); }
+  MfemMeshData* getMfemMeshData()
+  {
+    auto* field_data = dynamic_cast<MfemFieldData*>( m_fieldData.get() );
+    return field_data ? &field_data->meshData() : m_mfemMeshData.get();
+  }
 
   /**
    * @brief Get the MFEM mesh data object (const overload)
@@ -796,7 +814,11 @@ class CouplingScheme {
    *
    * @return const MfemMeshData*
    */
-  const MfemMeshData* getMfemMeshData() const { return m_mfemMeshData.get(); }
+  const MfemMeshData* getMfemMeshData() const
+  {
+    auto* field_data = dynamic_cast<const MfemFieldData*>( m_fieldData.get() );
+    return field_data ? &field_data->meshData() : m_mfemMeshData.get();
+  }
 
   /**
    * @brief Sets the MFEM mesh data object
@@ -819,7 +841,10 @@ class CouplingScheme {
    * @return true: MFEM submesh field data exists
    * @return false: MFEM submesh field data does not exist
    */
-  bool hasMfemSubmeshData() const { return m_mfemSubmeshData != nullptr; }
+  bool hasMfemSubmeshData() const
+  {
+    return m_mfemSubmeshData != nullptr || dynamic_cast<const MfemFieldData*>( m_fieldData.get() ) != nullptr;
+  }
 
   /**
    * @brief Get the MFEM submesh field data object
@@ -830,7 +855,11 @@ class CouplingScheme {
    *
    * @return MfemSubmeshData*
    */
-  MfemSubmeshData* getMfemSubmeshData() { return m_mfemSubmeshData.get(); }
+  MfemSubmeshData* getMfemSubmeshData()
+  {
+    auto* field_data = dynamic_cast<MfemFieldData*>( m_fieldData.get() );
+    return field_data ? &field_data->submeshData() : m_mfemSubmeshData.get();
+  }
 
   /**
    * @brief Get the MFEM submesh field data object (const overload)
@@ -841,7 +870,11 @@ class CouplingScheme {
    *
    * @return const MfemSubmeshData*
    */
-  const MfemSubmeshData* getMfemSubmeshData() const { return m_mfemSubmeshData.get(); }
+  const MfemSubmeshData* getMfemSubmeshData() const
+  {
+    auto* field_data = dynamic_cast<const MfemFieldData*>( m_fieldData.get() );
+    return field_data ? &field_data->submeshData() : m_mfemSubmeshData.get();
+  }
 
   /**
    * @brief Sets the MFEM submesh field data object
@@ -867,7 +900,10 @@ class CouplingScheme {
    * @return true: MFEM Jacobian data exists
    * @return false: MFEM Jacobian data does not exist
    */
-  bool hasMfemJacobianData() const { return m_mfemJacobianData != nullptr; }
+  bool hasMfemJacobianData() const
+  {
+    return m_mfemJacobianData != nullptr || dynamic_cast<const MfemFieldData*>( m_fieldData.get() ) != nullptr;
+  }
 
   /**
    * @brief Get the MFEM Jacobian data object
@@ -878,7 +914,11 @@ class CouplingScheme {
    *
    * @return MfemJacobianData*
    */
-  MfemJacobianData* getMfemJacobianData() { return m_mfemJacobianData.get(); }
+  MfemJacobianData* getMfemJacobianData()
+  {
+    auto* field_data = dynamic_cast<MfemFieldData*>( m_fieldData.get() );
+    return field_data ? &field_data->jacobianData() : m_mfemJacobianData.get();
+  }
 
   /**
    * @brief Get the MFEM jacobian data object (const overload)
@@ -889,7 +929,11 @@ class CouplingScheme {
    *
    * @return MfemJacobianData*
    */
-  const MfemJacobianData* getMfemJacobianData() const { return m_mfemJacobianData.get(); }
+  const MfemJacobianData* getMfemJacobianData() const
+  {
+    auto* field_data = dynamic_cast<const MfemFieldData*>( m_fieldData.get() );
+    return field_data ? &field_data->jacobianData() : m_mfemJacobianData.get();
+  }
 
   /**
    * @brief Sets the MFEM jacobian data object
@@ -902,7 +946,11 @@ class CouplingScheme {
    */
   void setMfemJacobianData( std::unique_ptr<MfemJacobianData> mfemJacobianData )
   {
-    m_mfemJacobianData = std::move( mfemJacobianData );
+    if ( auto* field_data = dynamic_cast<MfemFieldData*>( m_fieldData.get() ) ) {
+      field_data->rebuildJacobianData();
+    } else {
+      m_mfemJacobianData = std::move( mfemJacobianData );
+    }
   }
 
 #endif /* BUILD_REDECOMP */
@@ -955,7 +1003,8 @@ class CouplingScheme {
   std::unique_ptr<MethodData> m_dfdnJacobian;  ///< Store derivative of force w.r.t. normal on element pairs
   std::unique_ptr<MethodData> m_dndxJacobian;  ///< Store derivative of normal w.r.t. nodal coordinates on element pairs
 
-  std::unique_ptr<ContactFormulation> m_formulation;  ///< Polymorphic contact formulation
+  std::unique_ptr<FieldDataBase> m_fieldData;          ///< ENERGY_MORTAR field and transfer data
+  std::unique_ptr<ContactFormulation> m_formulation;   ///< Polymorphic contact formulation
 
   ArrayT<InterfacePair> m_interface_pairs;  ///< List of interface pairs
 

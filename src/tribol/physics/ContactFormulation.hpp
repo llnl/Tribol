@@ -7,25 +7,14 @@
 #define SRC_TRIBOL_PHYSICS_CONTACTFORMULATION_HPP_
 
 #include "tribol/config.hpp"
-#include <stdexcept>
-
 #include "tribol/common/Parameters.hpp"
 #include "tribol/common/ArrayTypes.hpp"
 #include "tribol/mesh/InterfacePairs.hpp"
-
-#include <memory>
-
-// Forward declarations for MFEM types
-namespace mfem {
-class Vector;
-class HypreParMatrix;
-class ParGridFunction;
-}  // namespace mfem
+#include "tribol/physics/EnergyMortarData.hpp"
 
 namespace tribol {
 
 // Forward declaration
-class MethodData;
 class MeshData;
 
 /*!
@@ -52,7 +41,7 @@ class ContactFormulation {
    * @param check_level In general, higher values mean more checks and 0 means don't do checks. See specific methods for
    * details.
    */
-  virtual void setInterfacePairs( ArrayT<InterfacePair>&& pairs, int check_level ) = 0;
+  virtual void setInterfacePairs( const ArrayT<InterfacePair>& pairs, int check_level ) = 0;
 
   /**
    * @brief Updates the integration rule
@@ -119,77 +108,67 @@ class ContactFormulation {
    */
   virtual void updateConstantPenaltyStiffness( double /*mesh1_penalty*/, double /*mesh2_penalty*/ ) {}
 
+  virtual void updateEnforcementLocation( EnforcementLocation /*location*/ ) {}
+
+  virtual IntegrationRule computeTribolIntegrationRule() const
+  {
+    SLIC_ERROR_ROOT( "Native integration rules are not supported by this formulation." );
+    return {};
+  }
+
+  virtual TribolGapData computeTribolNodalGaps( const IntegrationRule& ) const
+  {
+    SLIC_ERROR_ROOT( "Native nodal gaps are not supported by this formulation." );
+    return {};
+  }
+
+  virtual TribolForceData computeTribolNodalForces( const IntegrationRule& ) const
+  {
+    SLIC_ERROR_ROOT( "Native nodal forces are not supported by this formulation." );
+    return {};
+  }
+
+  virtual TribolForceData computeTribolNodalForces( const IntegrationRule&, const TribolGapData& ) const
+  {
+    SLIC_ERROR_ROOT( "Native nodal forces are not supported by this formulation." );
+    return {};
+  }
+
+  virtual TribolContactData computeTribolContactData( const IntegrationRule& ) const
+  {
+    SLIC_ERROR_ROOT( "Native contact data is not supported by this formulation." );
+    return {};
+  }
+
 #ifdef BUILD_REDECOMP
-  /**
-   * @brief Returns t-dof vector of forces on parent mesh
-   *
-   * @note Requires updateNodalForces() to be called first.
-   */
-  virtual const mfem::HypreParVector& getMfemForce() const
+  virtual IntegrationRule computeMfemIntegrationRule() const
   {
-    SLIC_ERROR_ROOT( "getMfemForce() is not supported by this formulation." );
-    throw std::runtime_error( "Not supported" );
+    SLIC_ERROR_ROOT( "MFEM integration rules are not supported by this formulation." );
+    return {};
   }
 
-  /**
-   * @brief Returns t-dof vector of gaps on submesh
-   *
-   * @note Requires updateNodalGaps() to be called first.
-   */
-  virtual const mfem::HypreParVector& getMfemGap() const
+  virtual MfemGapData computeMfemNodalGaps( const IntegrationRule& ) const
   {
-    SLIC_ERROR_ROOT( "getMfemGap() is not supported by this formulation." );
-    throw std::runtime_error( "Not supported" );
+    SLIC_ERROR_ROOT( "MFEM nodal gaps are not supported by this formulation." );
+    return {};
   }
 
-  /**
-   * @brief Returns a reference to the MFEM dual t-dof vector on the submesh
-   *
-   * @return Reference to the dual t-dof vector (e.g. pressure in penalty mode, or Lagrange multiplier in LM mode)
-   */
-  virtual mfem::HypreParVector& getMfemPressure()
+  virtual MfemForceData computeMfemNodalForces( const IntegrationRule& ) const
   {
-    SLIC_ERROR_ROOT( "getMfemPressure() is not supported by this formulation." );
-    throw std::runtime_error( "Not supported" );
+    SLIC_ERROR_ROOT( "MFEM nodal forces are not supported by this formulation." );
+    return {};
   }
 
-  /**
-   * @brief Get the derivative of force with respect to displacement
-   *
-   * @return Unique pointer to MFEM HypreParMatrix
-   *
-   * @note Requires updateNodalForces() to be called first.
-   */
-  virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx() const
+  virtual MfemForceData computeMfemNodalForces( const IntegrationRule&, const MfemGapData& ) const
   {
-    SLIC_ERROR_ROOT( "getMfemDfDx() is not supported by this formulation." );
-    return nullptr;
+    SLIC_ERROR_ROOT( "MFEM nodal forces are not supported by this formulation." );
+    return {};
   }
 
-  /**
-   * @brief Get the derivative of the gap constraint with respect to displacement
-   *
-   * @return Unique pointer to MFEM HypreParMatrix
-   *
-   * @note Requires updateNodalGaps() to be called first.
-   */
-  virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx() const
+  virtual MfemContactData computeMfemContactData( const IntegrationRule& ) const
   {
-    SLIC_ERROR_ROOT( "getMfemDgDx() is not supported by this formulation." );
-    return nullptr;
-  }
-
-  /**
-   * @brief Get the derivative of force with respect to the dual variable
-   *
-   * @return Unique pointer to mfem::HypreParMatrix
-   *
-   * @note Requires updateNodalForces() to be called first.
-   */
-  virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const
-  {
-    SLIC_ERROR_ROOT( "getMfemDfDp() is not supported by this formulation." );
-    return nullptr;
+    SLIC_ERROR_ROOT( "MFEM contact data is not supported by this formulation." );
+    return {};
   }
 
 #endif

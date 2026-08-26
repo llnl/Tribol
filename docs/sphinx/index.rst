@@ -13,4 +13,5 @@ Tribol Documentation
 .. toctree::
    :maxdepth: 2
 
+   energy_mortar
    dev_guide/index.rst

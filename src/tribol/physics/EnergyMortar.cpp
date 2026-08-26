@@ -601,19 +601,29 @@ void d2_kernel_quad( const double* x, const Gparams* gp, double* H )
 
 }  // namespace
 
+namespace {
+
+EnergyMortarPairGeometry pair_geometry( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                        const MeshData::Viewer& mesh2 )
+{
+  double A0[2], A1[2], B0[2], B1[2];
+  endpoints( mesh1, pair.m_element_id1, A0, A1 );
+  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  return { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
+}
+
+}  // namespace
+
 // Construct the quadrature data needed to evaluate the smoothed gap kernel.
 Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                    const MeshData::Viewer& mesh2 ) const
 {
-  double A0[2], A1[2], B0[2], B1[2];
+  return compute_integration_parameters( pair_geometry( pair, mesh1, mesh2 ) );
+}
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
-  double nB[2] = { 0.0 };
-  find_normal( B0, B1, nB );
-
-  // Build the smoothed integration bounds from the projection of edge B onto edge A.
-  auto projs = EnergyMortarCalculator::compute_projection_bounds( pair, mesh1, mesh2 );
+Gparams EnergyMortarCalculator::compute_integration_parameters( const EnergyMortarPairGeometry& geometry ) const
+{
+  auto projs = compute_projection_bounds( geometry );
   double bounds[2];
   smoother_.bounds_from_projections( projs.data(), p_.del, bounds );
   double smooth_bounds[2];
@@ -622,30 +632,44 @@ Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, co
   QuadPoints qp;
   EnergyMortarCalculator::compute_quadrature( smooth_bounds, p_.N, &qp );
 
-  const int N = static_cast<int>( qp.qp.size() );
-
-  std::vector<double> x2( 2 * N );
-
-  for ( int i = 0; i < N; ++i ) {
-    double x1[2] = { 0.0 };
-    iso_map( A0, A1, qp.qp[i], x1 );
-
-    // Cache the projection of each quadrature point on edge A onto edge B.
-    double x2_i[2] = { 0.0 };
-    find_intersection( B0, B1, x1, nB, x2_i );
-    x2[2 * i] = x2_i[0];
-    x2[2 * i + 1] = x2_i[1];
-  }
-
   Gparams gp;
-  // int N = eval.get_N();
-
-  for ( std::size_t i = 0; i < qp.qp.size(); ++i ) {
+  for ( int i = 0; i < p_.N; ++i ) {
     gp.qp[i] = qp.qp[i];
     gp.w[i] = qp.w[i];
   }
 
   return gp;
+}
+
+std::array<double, 2> EnergyMortarCalculator::compute_projection_bounds(
+    const EnergyMortarPairGeometry& geometry ) const
+{
+  const double A0[2] = { geometry[0], geometry[1] };
+  const double A1[2] = { geometry[2], geometry[3] };
+  const double B0[2] = { geometry[4], geometry[5] };
+  const double B1[2] = { geometry[6], geometry[7] };
+  double projection_bounds[2];
+  get_projections( A0, A1, B0, B1, projection_bounds );
+  return { projection_bounds[0], projection_bounds[1] };
+}
+
+double EnergyMortarCalculator::compute_mortar_parametric_point( const EnergyMortarPairGeometry& geometry,
+                                                                 double nonmortar_parametric_point ) const
+{
+  const double A0[2] = { geometry[0], geometry[1] };
+  const double A1[2] = { geometry[2], geometry[3] };
+  const double B0[2] = { geometry[4], geometry[5] };
+  const double B1[2] = { geometry[6], geometry[7] };
+  double nB[2];
+  find_normal( B0, B1, nB );
+  double xA[2];
+  iso_map( A0, A1, nonmortar_parametric_point, xA );
+  double xB[2];
+  find_intersection( B0, B1, xA, nB, xB );
+  const double tangent[2] = { B1[0] - B0[0], B1[1] - B0[1] };
+  const double midpoint[2] = { 0.5 * ( B0[0] + B1[0] ), 0.5 * ( B0[1] + B1[1] ) };
+  const double length_squared = tangent[0] * tangent[0] + tangent[1] * tangent[1];
+  return ( ( xB[0] - midpoint[0] ) * tangent[0] + ( xB[1] - midpoint[1] ) * tangent[1] ) / length_squared;
 }
 
 // Return the local projection bounds of edge B onto edge A for this interface pair.
@@ -818,35 +842,40 @@ void EnergyMortarCalculator::compute_gtilde_and_area( const InterfacePair& pair,
   area[1] = ncd.AI[1];
 }
 
+void EnergyMortarCalculator::compute_gtilde_and_area( const EnergyMortarPairGeometry& geometry,
+                                                      const Gparams& integration_parameters, double gtilde[2],
+                                                      double area[2] ) const
+{
+  auto parameters = integration_parameters;
+  gtilde_kernel( geometry.data(), &parameters, gtilde, area );
+}
+
 // Compute derivatives of the two nodal smoothed gaps with respect to the endpoint coordinates.
 void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                           const MeshData::Viewer& mesh2, double dgt1_dx[8], double dgt2_dx[8] ) const
 {
-  double A0[2], A1[2], B0[2], B1[2];
+  const auto geometry = pair_geometry( pair, mesh1, mesh2 );
+  grad_gtilde( geometry, construct_gparams( pair, mesh1, mesh2 ), dgt1_dx, dgt2_dx );
+}
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
-
-  double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-
-  double nB[2], nA[2];
-  find_normal( B0, B1, nB );
-  find_normal( A0, A1, nA );
+void EnergyMortarCalculator::grad_gtilde( const EnergyMortarPairGeometry& geometry,
+                                          const Gparams& integration_parameters, double dgt1_dx[8],
+                                          double dgt2_dx[8] ) const
+{
 
   double dg1_du[8] = { 0.0 };
   double dg2_du[8] = { 0.0 };
 
   if ( !p_.enzyme_quadrature ) {
     // Hold the quadrature rule fixed while differentiating the gap kernel.
-    Gparams gp = construct_gparams( pair, mesh1, mesh2 );
-    grad_kernel<KernelOutput::GTILDE1>( x, &gp, dg1_du );
-    grad_kernel<KernelOutput::GTILDE2>( x, &gp, dg2_du );
+    grad_kernel<KernelOutput::GTILDE1>( geometry.data(), &integration_parameters, dg1_du );
+    grad_kernel<KernelOutput::GTILDE2>( geometry.data(), &integration_parameters, dg2_du );
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
     const KernelParams kp{ p_.N, p_.del, p_.k };
-    grad_kernel_enzyme<KernelOutput::GTILDE1>( x, &kp, dg1_du );
-    grad_kernel_enzyme<KernelOutput::GTILDE2>( x, &kp, dg2_du );
+    grad_kernel_enzyme<KernelOutput::GTILDE1>( geometry.data(), &kp, dg1_du );
+    grad_kernel_enzyme<KernelOutput::GTILDE2>( geometry.data(), &kp, dg2_du );
   }
 
   for ( int i = 0; i < 8; ++i ) {
@@ -859,27 +888,24 @@ void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshD
 void EnergyMortarCalculator::grad_trib_area( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                              const MeshData::Viewer& mesh2, double dA1_dx[8], double dA2_dx[8] ) const
 {
-  double A0[2], A1[2], B0[2], B1[2];
+  const auto geometry = pair_geometry( pair, mesh1, mesh2 );
+  grad_trib_area( geometry, construct_gparams( pair, mesh1, mesh2 ), dA1_dx, dA2_dx );
+}
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
-
-  double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-
-  double nB[2], nA[2];
-  find_normal( B0, B1, nB );
-  find_normal( A0, A1, nA );
+void EnergyMortarCalculator::grad_trib_area( const EnergyMortarPairGeometry& geometry,
+                                             const Gparams& integration_parameters, double dA1_dx[8],
+                                             double dA2_dx[8] ) const
+{
 
   if ( !p_.enzyme_quadrature ) {
     // Hold the quadrature rule fixed while differentiating the area kernel.
-    Gparams gp = construct_gparams( pair, mesh1, mesh2 );
-    grad_kernel<KernelOutput::A1>( x, &gp, dA1_dx );
-    grad_kernel<KernelOutput::A2>( x, &gp, dA2_dx );
+    grad_kernel<KernelOutput::A1>( geometry.data(), &integration_parameters, dA1_dx );
+    grad_kernel<KernelOutput::A2>( geometry.data(), &integration_parameters, dA2_dx );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
     const KernelParams kp{ p_.N, p_.del, p_.k };
-    grad_kernel_enzyme<KernelOutput::A1>( x, &kp, dA1_dx );
-    grad_kernel_enzyme<KernelOutput::A2>( x, &kp, dA2_dx );
+    grad_kernel_enzyme<KernelOutput::A1>( geometry.data(), &kp, dA1_dx );
+    grad_kernel_enzyme<KernelOutput::A2>( geometry.data(), &kp, dA2_dx );
   }
 }
 
@@ -887,31 +913,27 @@ void EnergyMortarCalculator::grad_trib_area( const InterfacePair& pair, const Me
 void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                          const MeshData::Viewer& mesh2, double H1[64], double H2[64] ) const
 {
-  double A0[2], A1[2], B0[2], B1[2];
+  const auto geometry = pair_geometry( pair, mesh1, mesh2 );
+  d2_g2tilde( geometry, construct_gparams( pair, mesh1, mesh2 ), H1, H2 );
+}
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
-
-  double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-
-  double nB[2], nA[2];
-  find_normal( B0, B1, nB );
-  find_normal( A0, A1, nA );
+void EnergyMortarCalculator::d2_g2tilde( const EnergyMortarPairGeometry& geometry,
+                                         const Gparams& integration_parameters, double H1[64], double H2[64] ) const
+{
 
   double d2g1_d2u[64] = { 0.0 };
   double d2g2_d2u[64] = { 0.0 };
 
   if ( !p_.enzyme_quadrature ) {
     // Hold the quadrature rule fixed while differentiating the gap gradients.
-    Gparams gp = construct_gparams( pair, mesh1, mesh2 );
-    d2_kernel_quad<KernelOutput::GTILDE1>( x, &gp, d2g1_d2u );
-    d2_kernel_quad<KernelOutput::GTILDE2>( x, &gp, d2g2_d2u );
+    d2_kernel_quad<KernelOutput::GTILDE1>( geometry.data(), &integration_parameters, d2g1_d2u );
+    d2_kernel_quad<KernelOutput::GTILDE2>( geometry.data(), &integration_parameters, d2g2_d2u );
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
     const KernelParams kp{ p_.N, p_.del, p_.k };
-    d2_kernel<KernelOutput::GTILDE1>( x, &kp, d2g1_d2u );
-    d2_kernel<KernelOutput::GTILDE2>( x, &kp, d2g2_d2u );
+    d2_kernel<KernelOutput::GTILDE1>( geometry.data(), &kp, d2g1_d2u );
+    d2_kernel<KernelOutput::GTILDE2>( geometry.data(), &kp, d2g2_d2u );
   }
 
   for ( int i = 0; i < 64; ++i ) {
@@ -924,31 +946,27 @@ void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshDa
 void EnergyMortarCalculator::compute_d2A_d2u( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                               const MeshData::Viewer& mesh2, double d2A1[64], double d2A2[64] ) const
 {
-  double A0[2], A1[2], B0[2], B1[2];
+  const auto geometry = pair_geometry( pair, mesh1, mesh2 );
+  compute_d2A_d2u( geometry, construct_gparams( pair, mesh1, mesh2 ), d2A1, d2A2 );
+}
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
-
-  double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-
-  double nB[2], nA[2];
-
-  find_normal( B0, B1, nB );
-  find_normal( A0, A1, nA );
+void EnergyMortarCalculator::compute_d2A_d2u( const EnergyMortarPairGeometry& geometry,
+                                              const Gparams& integration_parameters, double d2A1[64],
+                                              double d2A2[64] ) const
+{
 
   double d2A1_d2u[64] = { 0.0 };
   double d2A2_d2u[64] = { 0.0 };
 
   if ( !p_.enzyme_quadrature ) {
     // Hold the quadrature rule fixed while differentiating the area gradients.
-    Gparams gp = construct_gparams( pair, mesh1, mesh2 );
-    d2_kernel_quad<KernelOutput::A1>( x, &gp, d2A1_d2u );
-    d2_kernel_quad<KernelOutput::A2>( x, &gp, d2A2_d2u );
+    d2_kernel_quad<KernelOutput::A1>( geometry.data(), &integration_parameters, d2A1_d2u );
+    d2_kernel_quad<KernelOutput::A2>( geometry.data(), &integration_parameters, d2A2_d2u );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
     const KernelParams kp{ p_.N, p_.del, p_.k };
-    d2_kernel<KernelOutput::A1>( x, &kp, d2A1_d2u );
-    d2_kernel<KernelOutput::A2>( x, &kp, d2A2_d2u );
+    d2_kernel<KernelOutput::A1>( geometry.data(), &kp, d2A1_d2u );
+    d2_kernel<KernelOutput::A2>( geometry.data(), &kp, d2A2_d2u );
   }
 
   for ( int i = 0; i < 64; ++i ) {
@@ -961,33 +979,33 @@ double EnergyMortarCalculator::compute_quadrature_point_penalty_energy( const In
                                                                         const MeshData::Viewer& mesh1,
                                                                         const MeshData::Viewer& mesh2 ) const
 {
-  double A0[2], A1[2], B0[2], B1[2];
+  return compute_quadrature_point_penalty_energy( pair_geometry( pair, mesh1, mesh2 ) );
+}
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
-
-  const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
+double EnergyMortarCalculator::compute_quadrature_point_penalty_energy(
+    const EnergyMortarPairGeometry& geometry ) const
+{
   const KernelParams kp{ p_.N, p_.del, p_.k };
   double energy = 0.0;
-  qp_penalty_kernel( x, &kp, &energy );
+  qp_penalty_kernel( geometry.data(), &kp, &energy );
   return energy;
 }
 
 QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_penalty_data(
     const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) const
 {
-  double A0[2], A1[2], B0[2], B1[2];
+  return compute_quadrature_point_penalty_data( pair_geometry( pair, mesh1, mesh2 ) );
+}
 
-  endpoints( mesh1, pair.m_element_id1, A0, A1 );
-  endpoints( mesh2, pair.m_element_id2, B0, B1 );
-
-  const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
+QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_penalty_data(
+    const EnergyMortarPairGeometry& geometry ) const
+{
   const KernelParams kp{ p_.N, p_.del, p_.k };
 
   QuadraturePointPenaltyData result;
-  qp_penalty_kernel( x, &kp, &result.energy );
-  grad_qp_penalty_kernel( x, &kp, result.force.data() );
-  d2_qp_penalty_kernel( x, &kp, result.stiffness.data() );
+  qp_penalty_kernel( geometry.data(), &kp, &result.energy );
+  grad_qp_penalty_kernel( geometry.data(), &kp, result.force.data() );
+  d2_qp_penalty_kernel( geometry.data(), &kp, result.stiffness.data() );
   return result;
 }
 

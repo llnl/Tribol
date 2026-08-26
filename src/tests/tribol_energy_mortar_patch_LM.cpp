@@ -186,7 +186,6 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
     // ---- Time-stepping loop ----
 
     double disp_increment = total_prescribed_disp_ / num_timesteps_;
-    tribol::RealT dt = 1.0 / num_timesteps_;
     int cs_id = 0, mesh1_id = 0, mesh2_id = 1;
 
     // Register tribol once; coordinates are updated in-place each Newton iteration.
@@ -235,20 +234,14 @@ class MfemMortarEnergyLagrangePatchTest : public testing::TestWithParam<std::tup
         coords = ref_coords;
         coords += displacement;
 
-        tribol::updateMfemParallelDecomposition();
-
-        // Set lambda for LM assembly prior to calling update().
-        auto& tribol_lambda = tribol::getMfemContactPressure( cs_id );
-        tribol_lambda = 0.0;
-        tribol_lambda.Add( 1.0, lambda );
-
-        tribol::update( step, step * dt, dt );
+        tribol::setMfemContactPressure( cs_id, lambda );
+        auto contact_data = tribol::computeMfemContactData( cs_id );
 
         // Contact residual and Jacobian blocks (LM mode)
-        auto r_contact_force = tribol::getMfemContactForce( cs_id );  // G^T * lambda (disp-sized)
-        auto r_gap = tribol::getMfemContactGap( cs_id );              // g_tilde (contact-sized)
-        auto H_ptr = tribol::getMfemDfDx( cs_id );                    // lambda * d2g/du2 (disp x disp)
-        auto G_T_ptr = tribol::getMfemDfDp( cs_id );                  // G^T (disp x contact)
+        auto r_contact_force = std::move( contact_data.forces.force );
+        auto r_gap = std::move( contact_data.gaps->weighted_gap );
+        auto H_ptr = std::move( contact_data.forces.df_dx );
+        auto G_T_ptr = std::move( contact_data.forces.df_dp );
         ASSERT_TRUE( G_T_ptr != nullptr );
 
         mfem::Vector R_u( disp_size );

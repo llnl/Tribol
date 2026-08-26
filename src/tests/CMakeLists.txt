@@ -209,6 +209,7 @@ if( TRIBOL_USE_ENZYME )
       tribol_enzyme_poly_intersect.cpp
       tribol_energy_mortar_patch.cpp
       tribol_energy_mortar_patch_LM.cpp
+      tribol_energy_mortar_native.cpp
       tribol_finite_diff_energy_mortar.cpp
       )
 

@@ -160,6 +160,56 @@ std::vector<PackedPairJacobianContribs> BuildPackedPairJacobianContribs(
   return computed;
 }
 
+CouplingScheme& GetMfemEnergyMortarScheme( IndexT cs_id )
+{
+  auto* coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( coupling_scheme == nullptr, "MFEM ENERGY_MORTAR coupling scheme is not registered." );
+  SLIC_ERROR_ROOT_IF( coupling_scheme->getContactMethod() != ENERGY_MORTAR,
+                      "MFEM owning contact compute APIs require an ENERGY_MORTAR coupling scheme." );
+  auto* field_data = dynamic_cast<MfemFieldData*>( coupling_scheme->getFieldData() );
+  SLIC_ERROR_ROOT_IF( field_data == nullptr, "The coupling scheme does not own MfemFieldData." );
+  if ( !coupling_scheme->hasContactFormulation() ) {
+    coupling_scheme->updateContactFormulation();
+  }
+  return *coupling_scheme;
+}
+
+IntegrationRule PrepareMfemEnergyMortar( CouplingScheme& coupling_scheme )
+{
+  auto* field_data = dynamic_cast<MfemFieldData*>( coupling_scheme.getFieldData() );
+  auto& mesh_data = field_data->meshData();
+  auto effective_binning_proximity = coupling_scheme.getParameters().binning_proximity_scale;
+  if ( mesh_data.GetLORFactor() > 1 ) {
+    effective_binning_proximity *= static_cast<RealT>( mesh_data.GetLORFactor() );
+  }
+  field_data->update( effective_binning_proximity );
+
+  const auto mesh1_id = mesh_data.GetMesh1ID();
+  const auto mesh2_id = mesh_data.GetMesh2ID();
+  const auto coordinates = mesh_data.GetRedecompCoordsPtrs();
+  registerMesh( mesh1_id, mesh_data.GetMesh1NE(), mesh_data.GetNV(), mesh_data.GetMesh1Conn(), mesh_data.GetElemType(),
+                coordinates[0], coordinates[1], coordinates[2], mesh_data.GetMemorySpace() );
+  registerMesh( mesh2_id, mesh_data.GetMesh2NE(), mesh_data.GetNV(), mesh_data.GetMesh2Conn(), mesh_data.GetElemType(),
+                coordinates[0], coordinates[1], coordinates[2], mesh_data.GetMemorySpace() );
+  auto response = mesh_data.GetRedecompResponsePtrs();
+  registerNodalResponse( mesh1_id, response[0], response[1], response[2] );
+  registerNodalResponse( mesh2_id, response[0], response[1], response[2] );
+
+  const auto& penalty_options = coupling_scheme.getEnforcementOptions().penalty_options;
+  if ( penalty_options.kinematic_calc_set && penalty_options.kinematic_calculation == KINEMATIC_CONSTANT ) {
+    SLIC_ERROR_ROOT_IF( !mesh_data.GetMesh1KinematicConstantPenalty() ||
+                            !mesh_data.GetMesh2KinematicConstantPenalty(),
+                        "Penalty parameters have not been set. Call setMfemKinematicConstantPenalty()." );
+    setKinematicConstantPenalty( mesh1_id, *mesh_data.GetMesh1KinematicConstantPenalty() );
+    setKinematicConstantPenalty( mesh2_id, *mesh_data.GetMesh2KinematicConstantPenalty() );
+  }
+
+  SLIC_ERROR_ROOT_IF( !coupling_scheme.init(), "MFEM ENERGY_MORTAR coupling scheme initialization failed." );
+  coupling_scheme.performBinning();
+  coupling_scheme.getContactFormulation()->setInterfacePairs( coupling_scheme.getInterfacePairs(), 0 );
+  return coupling_scheme.getContactFormulation()->computeMfemIntegrationRule();
+}
+
 std::unique_ptr<mfem::BlockOperator> BuildMfemBlockJacobian( const CouplingScheme& cs, const MethodData& method_data,
                                                              const std::vector<std::pair<int, BlockSpace>>& row_info,
                                                              const std::vector<std::pair<int, BlockSpace>>& col_info )
@@ -300,6 +350,8 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
 
   // Initialize methods that require definition of a submesh. Coupling scheme validity will be checked
   // later, but here some initial data is created/initialized for use with LMs.
+  std::unique_ptr<MfemSubmeshData> submesh_data;
+  std::unique_ptr<MfemJacobianData> jacobian_data;
   if ( contact_method == SINGLE_MORTAR || contact_method == ENERGY_MORTAR ) {
     std::unique_ptr<mfem::FiniteElementCollection> pressure_fec = std::make_unique<mfem::H1_FECollection>(
         current_coords.FESpace()->FEColl()->GetOrder(), mesh.SpaceDimension() );
@@ -322,9 +374,9 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
     }
     // create pressure field on the parent-linked boundary submesh and
     // transfer operators to the redecomp level
-    cs.setMfemSubmeshData( std::make_unique<MfemSubmeshData>( mfem_data->GetSubmesh(), mfem_data->GetLORMesh(),
-                                                              std::move( pressure_fec ), pressure_vdim,
-                                                              isOnDevice( exec_mode ) ) );
+    submesh_data = std::make_unique<MfemSubmeshData>( mfem_data->GetSubmesh(), mfem_data->GetLORMesh(),
+                                                       std::move( pressure_fec ), pressure_vdim,
+                                                       isOnDevice( exec_mode ) );
     // set up matrix transfer if the coupling scheme requires it (note: ENERGY_MORTAR always needs to create matrices,
     // even when a Jacobian is not needed)
     auto lm_options = cs.getEnforcementOptions().lm_implicit_options;
@@ -333,12 +385,21 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
              lm_options.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ) ) ||
          contact_method == ENERGY_MORTAR ) {
       // create matrix transfer operator between redecomp and parent/parent-linked boundary submesh
-      cs.setMfemJacobianData( std::make_unique<MfemJacobianData>( *mfem_data, *cs.getMfemSubmeshData() ) );
+      jacobian_data = std::make_unique<MfemJacobianData>( *mfem_data, *submesh_data );
     }
   }
-  cs.setMfemMeshData( std::move( mfem_data ) );
   if ( contact_method == ENERGY_MORTAR ) {
+    cs.setFieldData(
+        std::make_unique<MfemFieldData>( std::move( mfem_data ), std::move( submesh_data ), std::move( jacobian_data ) ) );
     cs.updateContactFormulation();
+  } else {
+    if ( submesh_data ) {
+      cs.setMfemSubmeshData( std::move( submesh_data ) );
+    }
+    if ( jacobian_data ) {
+      cs.setMfemJacobianData( std::move( jacobian_data ) );
+    }
+    cs.setMfemMeshData( std::move( mfem_data ) );
   }
 }
 
@@ -555,24 +616,11 @@ void getMfemResponse( IndexT cs_id, mfem::Vector& r )
                               cs_id ) );
   SLIC_ERROR_ROOT_IF(
       cs->hasContactFormulation(),
-      "Coupling scheme has a contact formulation. Forces are returned using getMfemContactForce() instead." );
+      "Coupling scheme has a contact formulation. Use computeMfemNodalForces() or computeMfemContactData()." );
   SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
                       "Coupling scheme does not contain MFEM data. "
                       "Create the coupling scheme using registerMfemCouplingScheme() to return a response vector." );
   cs->getMfemMeshData()->GetParentResponse( r );
-}
-
-mfem::HypreParVector getMfemContactForce( IndexT cs_id )
-{
-  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-  SLIC_ERROR_ROOT_IF(
-      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                              "to create a coupling scheme with this cs_id.",
-                              cs_id ) );
-  SLIC_ERROR_ROOT_IF(
-      !cs->hasContactFormulation(),
-      "Coupling scheme does not contain a contact formulation. Forces are returned using getMfemResponse() instead." );
-  return cs->getContactFormulation()->getMfemForce();
 }
 
 std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
@@ -584,32 +632,10 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
                               cs_id ) );
 
   SLIC_ERROR_ROOT_IF( cs->getEnforcementMethod() == PENALTY,
-                      "getMfemBlockJacobian() is not supported for coupling schemes with penalty enforcement. "
-                      "Use getMfemDfDx() instead." );
+                      "getMfemBlockJacobian() is not supported for coupling schemes with penalty enforcement." );
 
-  if ( cs->hasContactFormulation() ) {
-    auto* formulation = cs->getContactFormulation();
-    // Use formulation derivatives
-    auto DfDx = formulation->getMfemDfDx();
-    auto DfDp = formulation->getMfemDfDp();
-    auto DgDx = formulation->getMfemDgDx();
-
-    // Determine sizes
-    mfem::Array<int> offsets( 3 );
-    offsets[0] = 0;
-    offsets[1] = DfDx->Height();                                                     // Force rows (displacement dofs)
-    offsets[2] = offsets[1] + ( DfDp ? DfDp->Width() : DgDx ? DgDx->Height() : 0 );  // Pressure cols (pressure dofs)
-
-    auto blockOp = std::make_unique<mfem::BlockOperator>( offsets );
-    if ( DfDx ) blockOp->SetBlock( 0, 0, DfDx.release() );
-    if ( DfDp ) blockOp->SetBlock( 0, 1, DfDp.release() );
-    if ( DgDx ) blockOp->SetBlock( 1, 0, DgDx.release() );
-    // 1,1 block (DgDp) is implicitly zero for standard contact
-
-    // Manually set ownership to avoid leaks, as BlockOperator owns nothing by default
-    blockOp->owns_blocks = 1;
-    return blockOp;
-  }
+  SLIC_ERROR_ROOT_IF( cs->hasContactFormulation(),
+                      "Contact formulations return owning derivative matrices through computeMfemContactData()." );
 
   SparseMode sparse_mode = cs->getEnforcementOptions().lm_implicit_options.sparse_mode;
   if ( sparse_mode != SparseMode::MFEM_ELEMENT_DENSE ) {
@@ -659,51 +685,6 @@ std::unique_ptr<mfem::BlockOperator> getMfemBlockJacobian( IndexT cs_id )
   }
 }
 
-std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx( IndexT cs_id )
-{
-  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-  SLIC_ERROR_ROOT_IF(
-      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                              "to create a coupling scheme with this cs_id.",
-                              cs_id ) );
-
-  if ( cs->hasContactFormulation() ) {
-    return cs->getContactFormulation()->getMfemDfDx();
-  }
-  SLIC_ERROR_ROOT( "getMfemDfDx() is only supported for coupling schemes with a ContactFormulation." );
-  return nullptr;
-}
-
-std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp( IndexT cs_id )
-{
-  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-  SLIC_ERROR_ROOT_IF(
-      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                              "to create a coupling scheme with this cs_id.",
-                              cs_id ) );
-
-  if ( cs->hasContactFormulation() ) {
-    return cs->getContactFormulation()->getMfemDfDp();
-  }
-  SLIC_ERROR_ROOT( "getMfemDfDp() is only supported for coupling schemes with a ContactFormulation." );
-  return nullptr;
-}
-
-std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx( IndexT cs_id )
-{
-  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-  SLIC_ERROR_ROOT_IF(
-      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                              "to create a coupling scheme with this cs_id.",
-                              cs_id ) );
-
-  if ( cs->hasContactFormulation() ) {
-    return cs->getContactFormulation()->getMfemDgDx();
-  }
-  SLIC_ERROR_ROOT( "getMfemDgDx() is only supported for coupling schemes with a ContactFormulation." );
-  return nullptr;
-}
-
 void getMfemGap( IndexT cs_id, mfem::Vector& g )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -718,17 +699,6 @@ void getMfemGap( IndexT cs_id, mfem::Vector& g )
                                          "enforcement_method to LAGRANGE_MULTIPLIER to set the gap vector.",
                                          cs_id ) );
   cs->getMfemSubmeshData()->GetSubmeshGap( g );
-}
-
-mfem::HypreParVector getMfemContactGap( IndexT cs_id )
-{
-  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-  SLIC_ERROR_ROOT_IF(
-      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                              "to create a coupling scheme with this cs_id.",
-                              cs_id ) );
-  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
-  return cs->getContactFormulation()->getMfemGap();
 }
 
 mfem::ParGridFunction& getMfemPressure( IndexT cs_id )
@@ -747,15 +717,54 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id )
   return cs->getMfemSubmeshData()->GetSubmeshPressure();
 }
 
-mfem::HypreParVector& getMfemContactPressure( IndexT cs_id )
+IntegrationRule computeMfemIntegrationRule( IndexT cs_id )
 {
-  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
-  SLIC_ERROR_ROOT_IF(
-      !cs, axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
-                              "to create a coupling scheme with this cs_id.",
-                              cs_id ) );
-  SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
-  return cs->getContactFormulation()->getMfemPressure();
+  auto& coupling_scheme = GetMfemEnergyMortarScheme( cs_id );
+  return PrepareMfemEnergyMortar( coupling_scheme );
+}
+
+MfemGapData computeMfemNodalGaps( IndexT cs_id )
+{
+  auto rule = computeMfemIntegrationRule( cs_id );
+  return computeMfemNodalGaps( cs_id, rule );
+}
+
+MfemGapData computeMfemNodalGaps( IndexT cs_id, const IntegrationRule& rule )
+{
+  auto& coupling_scheme = GetMfemEnergyMortarScheme( cs_id );
+  return coupling_scheme.getContactFormulation()->computeMfemNodalGaps( rule );
+}
+
+MfemForceData computeMfemNodalForces( IndexT cs_id )
+{
+  auto rule = computeMfemIntegrationRule( cs_id );
+  return computeMfemNodalForces( cs_id, rule );
+}
+
+MfemForceData computeMfemNodalForces( IndexT cs_id, const IntegrationRule& rule )
+{
+  auto& coupling_scheme = GetMfemEnergyMortarScheme( cs_id );
+  return coupling_scheme.getContactFormulation()->computeMfemNodalForces( rule );
+}
+
+MfemForceData computeMfemNodalForces( IndexT cs_id, const IntegrationRule& rule, const MfemGapData& gaps )
+{
+  auto& coupling_scheme = GetMfemEnergyMortarScheme( cs_id );
+  return coupling_scheme.getContactFormulation()->computeMfemNodalForces( rule, gaps );
+}
+
+MfemContactData computeMfemContactData( IndexT cs_id )
+{
+  auto& coupling_scheme = GetMfemEnergyMortarScheme( cs_id );
+  auto rule = PrepareMfemEnergyMortar( coupling_scheme );
+  return coupling_scheme.getContactFormulation()->computeMfemContactData( rule );
+}
+
+void setMfemContactPressure( IndexT cs_id, const mfem::HypreParVector& pressure )
+{
+  auto& coupling_scheme = GetMfemEnergyMortarScheme( cs_id );
+  auto* field_data = dynamic_cast<MfemFieldData*>( coupling_scheme.getFieldData() );
+  field_data->setContactPressure( pressure );
 }
 
 void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
@@ -777,7 +786,10 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
       }
       // creates a new redecomp mesh based on updated coordinates (if criteria is met) and updates transfer operators
       // and displacement, velocity, and response grid functions based on new redecomp mesh
-      auto new_redecomp = mfem_data->UpdateMfemMeshData( effective_binning_proximity, n_ranks, force_new_redecomp );
+      auto* energy_field_data = dynamic_cast<MfemFieldData*>( cs.getFieldData() );
+      const auto new_redecomp = energy_field_data != nullptr
+          ? energy_field_data->update( effective_binning_proximity, n_ranks, force_new_redecomp )
+          : mfem_data->UpdateMfemMeshData( effective_binning_proximity, n_ranks, force_new_redecomp );
       auto coord_ptrs = mfem_data->GetRedecompCoordsPtrs();
 
       registerMesh( mesh_ids[0], mfem_data->GetMesh1NE(), mfem_data->GetNV(), mfem_data->GetMesh1Conn(),
@@ -808,12 +820,14 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         auto submesh_data = cs.getMfemSubmeshData();
         // updates submesh-native grid functions and transfer operators on
         // the new redecomp mesh
-        submesh_data->UpdateMfemSubmeshData( mfem_data->GetRedecompMesh(), new_redecomp );
+        if ( energy_field_data == nullptr ) {
+          submesh_data->UpdateMfemSubmeshData( mfem_data->GetRedecompMesh(), new_redecomp );
+        }
         auto g_ptrs = submesh_data->GetRedecompGapPtrs();
         registerMortarGaps( mesh_ids[1], g_ptrs[0] );
         auto p_ptrs = submesh_data->GetRedecompPressurePtrs();
         registerMortarPressures( mesh_ids[1], p_ptrs[0] );
-        if ( ( cs.hasMfemJacobianData() || cs.getContactMethod() == ENERGY_MORTAR ) && new_redecomp ) {
+        if ( energy_field_data == nullptr && cs.hasMfemJacobianData() && new_redecomp ) {
           // updates Jacobian transfer operator for new redecomp mesh
           cs.getMfemJacobianData()->UpdateJacobianXfer();
         }
