@@ -189,6 +189,14 @@ enum AugmentedLagrangianFailurePolicy
   NUM_AUGMENTED_LAGRANGIAN_FAILURE_POLICIES
 };
 
+/*! \brief Enumerates parent-trace penalty augmented-Lagrangian formulations. */
+enum PenaltyAugmentedLagrangianFormulation
+{
+  PENALTY_AL_SURFACE_COMPLIANCE,
+  PENALTY_AL_QUADRATURE_HYBRID,
+  NUM_PENALTY_AUGMENTED_LAGRANGIAN_FORMULATIONS
+};
+
 /*!
  * \brief Enumerates the available spatial binning methods
  */
@@ -490,6 +498,13 @@ struct PenaltyEnforcementOptions {
   RealT al_relative_tolerance{ 1.e-6 };
   RealT al_absolute_tolerance{ 1.e-12 };
   RealT al_relaxation{ 1. };
+  RealT al_unloading_relaxation{ 1. };
+  RealT al_loading_time_constant{ 0. };
+  RealT al_unloading_time_constant{ 0. };
+  RealT al_direction_deadband{ 1.e-3 };
+  RealT al_spatial_smoothing{ 0. };
+  RealT al_activation_gap_fraction{ 0. };
+  PenaltyAugmentedLagrangianFormulation al_formulation{ PENALTY_AL_SURFACE_COMPLIANCE };
 
   bool constraint_type_set{ false };
   bool kinematic_calc_set{ false };
@@ -530,6 +545,7 @@ struct ParentTraceMultiplierState {
   RealT normal_x{ 0. };
   RealT normal_y{ 0. };
   RealT force{ 0. };
+  RealT tributary_area{ 0. };
 };
 
 /*! \brief Per-parent-trace-row data retained for projection diagnostics. */

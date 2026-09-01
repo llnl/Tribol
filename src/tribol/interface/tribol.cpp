@@ -219,7 +219,10 @@ void setAugmentedLagrangianOptions( IndexT cs_id, RealT augmentation_scale, int 
 
 void setPenaltyAugmentedLagrangianOptions( IndexT cs_id, int max_iterations, int fixed_iterations,
                                            RealT relative_tolerance, RealT absolute_tolerance,
-                                           RealT relaxation )
+                                           RealT relaxation, RealT spatial_smoothing,
+                                           RealT unloading_relaxation, RealT direction_deadband,
+                                           RealT loading_time_constant, RealT unloading_time_constant,
+                                           RealT activation_gap_fraction )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF( !cs,
@@ -239,6 +242,32 @@ void setPenaltyAugmentedLagrangianOptions( IndexT cs_id, int max_iterations, int
                       "tribol::setPenaltyAugmentedLagrangianOptions(): at least one tolerance must be positive." );
   SLIC_ERROR_ROOT_IF( !std::isfinite( relaxation ) || relaxation <= 0. || relaxation > 1.,
                       "tribol::setPenaltyAugmentedLagrangianOptions(): relaxation must be in (0,1]." );
+  const RealT effective_unloading_relaxation =
+      unloading_relaxation < 0. ? relaxation : unloading_relaxation;
+  SLIC_ERROR_ROOT_IF( !std::isfinite( effective_unloading_relaxation ) ||
+                          effective_unloading_relaxation <= 0. ||
+                          effective_unloading_relaxation > 1.,
+                      "tribol::setPenaltyAugmentedLagrangianOptions(): unloading relaxation must be "
+                      "in (0,1], or negative to use the loading relaxation." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( direction_deadband ) || direction_deadband < 0. ||
+                          direction_deadband >= 1.,
+                      "tribol::setPenaltyAugmentedLagrangianOptions(): direction deadband must be in [0,1)." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( spatial_smoothing ) || spatial_smoothing < 0. ||
+                          spatial_smoothing > 1.,
+                      "tribol::setPenaltyAugmentedLagrangianOptions(): spatial smoothing must be in [0,1]." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( loading_time_constant ) || loading_time_constant < 0.,
+                      "tribol::setPenaltyAugmentedLagrangianOptions(): loading time constant must be "
+                      "nonnegative." );
+  const RealT effective_unloading_time_constant =
+      unloading_time_constant < 0. ? loading_time_constant : unloading_time_constant;
+  SLIC_ERROR_ROOT_IF( !std::isfinite( effective_unloading_time_constant ) ||
+                          effective_unloading_time_constant < 0.,
+                      "tribol::setPenaltyAugmentedLagrangianOptions(): unloading time constant must be "
+                      "nonnegative, or negative to use the loading time constant." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( activation_gap_fraction ) || activation_gap_fraction < 0. ||
+                          activation_gap_fraction > 1.,
+                      "tribol::setPenaltyAugmentedLagrangianOptions(): activation gap fraction must be "
+                      "in [0,1]." );
   auto& options = cs->getEnforcementOptions().penalty_options;
   options.augmented_lagrangian = true;
   options.al_max_iterations = max_iterations;
@@ -246,6 +275,31 @@ void setPenaltyAugmentedLagrangianOptions( IndexT cs_id, int max_iterations, int
   options.al_relative_tolerance = relative_tolerance;
   options.al_absolute_tolerance = absolute_tolerance;
   options.al_relaxation = relaxation;
+  options.al_unloading_relaxation = effective_unloading_relaxation;
+  options.al_loading_time_constant = loading_time_constant;
+  options.al_unloading_time_constant = effective_unloading_time_constant;
+  options.al_direction_deadband = direction_deadband;
+  options.al_spatial_smoothing = spatial_smoothing;
+  options.al_activation_gap_fraction = activation_gap_fraction;
+}
+
+void setPenaltyAugmentedLagrangianFormulation(
+    IndexT cs_id, PenaltyAugmentedLagrangianFormulation formulation )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::setPenaltyAugmentedLagrangianFormulation(): register the coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( cs->getContactMethod() != PARENT_TRACE_MORTAR ||
+                          cs->getEnforcementMethod() != PENALTY,
+                      "tribol::setPenaltyAugmentedLagrangianFormulation(): requires parent-trace mortar "
+                      "penalty enforcement." );
+  SLIC_ERROR_ROOT_IF( !in_range( formulation, NUM_PENALTY_AUGMENTED_LAGRANGIAN_FORMULATIONS ),
+                      "tribol::setPenaltyAugmentedLagrangianFormulation(): invalid formulation." );
+  SLIC_ERROR_ROOT_IF( formulation == PENALTY_AL_QUADRATURE_HYBRID &&
+                          cs->getEnforcementOptions().penalty_options.al_fixed_iterations != 1,
+                      "tribol::setPenaltyAugmentedLagrangianFormulation(): quadrature-hybrid currently "
+                      "requires exactly one fixed Uzawa update per contact call." );
+  cs->getEnforcementOptions().penalty_options.al_formulation = formulation;
 }
 
 void beginAugmentedLagrangianStep( IndexT cs_id )

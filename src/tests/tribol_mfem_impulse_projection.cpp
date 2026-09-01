@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <set>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -9,6 +11,7 @@
 #include "shared/mesh/MeshBuilder.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
 #include "tribol/interface/tribol.hpp"
+#include "tribol/mesh/CouplingScheme.hpp"
 
 #ifdef TRIBOL_USE_UMPIRE
 #include "umpire/ResourceManager.hpp"
@@ -51,6 +54,12 @@ struct ProjectionResult {
   double al_multiplier_update_norm;
   double applied_force;
   double penalty_stability_timestep;
+  double history_total_force;
+  double history_minimum_pressure;
+  double history_maximum_pressure;
+  double expected_area_scaled_history_force_norm;
+  double expected_overlap_limited_history_force_norm;
+  double unscaled_history_force_norm;
 };
 
 ProjectionResult RunProjectionCase( double upper_offset, double upper_velocity, double dt, int max_iterations = 250,
@@ -72,7 +81,22 @@ ProjectionResult RunProjectionCase( double upper_offset, double upper_velocity, 
                                     int penalty_al_max_iterations = 2, int penalty_al_fixed_iterations = 2,
                                     double penalty_al_relative_tolerance = 1.e-6,
                                     double penalty_al_absolute_tolerance = 1.e-12,
-                                    double penalty_al_relaxation = 1. )
+                                    double penalty_al_relaxation = 1.,
+                                    double penalty_al_spatial_smoothing = 0.,
+                                    bool nonuniform_upper_velocity = false,
+                                    double upper_horizontal_offset = 0.,
+                                    double second_update_horizontal_offset =
+                                        std::numeric_limits<double>::quiet_NaN(),
+                                    double penalty_al_unloading_relaxation = -1.,
+                                    double penalty_al_direction_deadband = 1.e-3,
+                                    double second_update_vertical_offset =
+                                        std::numeric_limits<double>::quiet_NaN(),
+                                    tribol::PenaltyAugmentedLagrangianFormulation penalty_al_formulation =
+                                        tribol::PENALTY_AL_SURFACE_COMPLIANCE,
+                                    double penalty_al_loading_time_constant = 0.,
+                                    double penalty_al_unloading_time_constant = -1.,
+                                    double penalty_al_activation_gap_fraction = 0.,
+                                    bool evaluate_two_rk_stages = false )
 {
   const std::set<int> surface1{ 3 };
   const std::set<int> surface2{ 5 };
@@ -84,7 +108,7 @@ ProjectionResult RunProjectionCase( double upper_offset, double upper_velocity, 
       .updateBdrAttrib(3, 3)
       .updateBdrAttrib(4, 4),
     shared::MeshBuilder::SquareMesh(1, 1)
-      .translate({0.0, upper_offset})
+      .translate({upper_horizontal_offset, upper_offset})
       .updateAttrib(1, 2)
       .updateBdrAttrib(1, 5)
       .updateBdrAttrib(2, 6)
@@ -98,12 +122,44 @@ ProjectionResult RunProjectionCase( double upper_offset, double upper_velocity, 
   EXPECT_NE( nodes, nullptr );
   mfem::ParGridFunction coords( nodes->ParFESpace() );
   coords = *nodes;
+  const double second_update_horizontal_shift = std::isfinite( second_update_horizontal_offset )
+                                                    ? second_update_horizontal_offset - upper_horizontal_offset
+                                                    : 0.;
+  const double second_update_vertical_shift = std::isfinite( second_update_vertical_offset )
+                                                  ? second_update_vertical_offset - upper_offset
+                                                  : 0.;
+  mfem::VectorFunctionCoefficient unchanged_coordinate_coefficient(
+      2, []( const mfem::Vector& x, mfem::Vector& value ) {
+        value.SetSize( x.Size() );
+        value = x;
+      } );
+  mfem::VectorFunctionCoefficient shifted_upper_coordinate_coefficient(
+      2, [second_update_horizontal_shift,
+          second_update_vertical_shift]( const mfem::Vector& x, mfem::Vector& value ) {
+        value.SetSize( x.Size() );
+        value = x;
+        value[0] += second_update_horizontal_shift;
+        value[1] += second_update_vertical_shift;
+      } );
+  mfem::Array<int> coordinate_attributes( { 1, 2 } );
+  mfem::Array<mfem::VectorCoefficient*> coordinate_coefficients(
+      { &unchanged_coordinate_coefficient, &shifted_upper_coordinate_coefficient } );
+  mfem::PWVectorCoefficient second_update_coordinate_coefficient(
+      2, coordinate_attributes, coordinate_coefficients );
   mfem::ParGridFunction velocity( nodes->ParFESpace() );
   velocity = 0.;
   mfem::Vector upper_velocity_vector( { 0., upper_velocity } );
   mfem::VectorConstantCoefficient upper_velocity_coefficient( upper_velocity_vector );
+  mfem::VectorFunctionCoefficient nonuniform_upper_velocity_coefficient(
+      2, [upper_velocity]( const mfem::Vector& x, mfem::Vector& value ) {
+        value[0] = 0.;
+        value[1] = upper_velocity * ( 0.25 + 1.5 * x[0] );
+      } );
   mfem::Array<int> moving_attributes( { 2 } );
-  mfem::Array<mfem::VectorCoefficient*> velocity_coefficients( { &upper_velocity_coefficient } );
+  mfem::Array<mfem::VectorCoefficient*> velocity_coefficients(
+      { nonuniform_upper_velocity
+            ? static_cast<mfem::VectorCoefficient*>( &nonuniform_upper_velocity_coefficient )
+            : static_cast<mfem::VectorCoefficient*>( &upper_velocity_coefficient ) } );
   mfem::PWVectorCoefficient velocity_coefficient( 2, moving_attributes, velocity_coefficients );
   velocity.ProjectCoefficient( velocity_coefficient );
   mfem::ParGridFunction projection_base_velocity( nodes->ParFESpace() );
@@ -164,7 +220,12 @@ ProjectionResult RunProjectionCase( double upper_offset, double upper_velocity, 
     if ( penalty_augmented_lagrangian ) {
       tribol::setPenaltyAugmentedLagrangianOptions(
           coupling_scheme_id, penalty_al_max_iterations, penalty_al_fixed_iterations,
-          penalty_al_relative_tolerance, penalty_al_absolute_tolerance, penalty_al_relaxation );
+          penalty_al_relative_tolerance, penalty_al_absolute_tolerance, penalty_al_relaxation,
+          penalty_al_spatial_smoothing, penalty_al_unloading_relaxation,
+          penalty_al_direction_deadband, penalty_al_loading_time_constant,
+          penalty_al_unloading_time_constant, penalty_al_activation_gap_fraction );
+      tribol::setPenaltyAugmentedLagrangianFormulation( coupling_scheme_id,
+                                                        penalty_al_formulation );
     }
   }
   tribol::updateMfemElemThickness( coupling_scheme_id );
@@ -175,12 +236,29 @@ ProjectionResult RunProjectionCase( double upper_offset, double upper_velocity, 
   const bool uses_augmented_lagrangian =
       penalty_augmented_lagrangian ||
       contact_response == tribol::PROJECTION_RESPONSE_AUGMENTED_LAGRANGIAN;
+  const auto coupling_scheme =
+      tribol::CouplingSchemeManager::getInstance().findData( coupling_scheme_id );
+  EXPECT_NE( coupling_scheme, nullptr );
+  std::vector<tribol::ParentTraceMultiplierState> previous_history;
   for ( int update = 0; update < updates; ++update ) {
+    if ( update == updates - 1 && update > 0 && coupling_scheme != nullptr ) {
+      previous_history = coupling_scheme->getParentTraceMultiplierWarmStart();
+    }
+    if ( update == 1 && ( std::isfinite( second_update_horizontal_offset ) ||
+                          std::isfinite( second_update_vertical_offset ) ) ) {
+      coords.ProjectCoefficient( second_update_coordinate_coefficient );
+      tribol::updateMfemParallelDecomposition( 1, true );
+    }
     if ( uses_augmented_lagrangian ) {
       tribol::beginAugmentedLagrangianStep( coupling_scheme_id );
     }
     if ( update > 0 ) {
       velocity.ProjectCoefficient( velocity_coefficient );
+    }
+    if ( evaluate_two_rk_stages ) {
+      double first_stage_timestep_vote = 0.5 * dt;
+      return_code = tribol::update( update, update * dt, 0.5 * dt,
+                                    first_stage_timestep_vote );
     }
     double timestep_vote = dt;
     return_code = tribol::update( update, update * dt, dt, timestep_vote );
@@ -215,6 +293,43 @@ ProjectionResult RunProjectionCase( double upper_offset, double upper_velocity, 
   }
   impulse_error -= mass_times_correction;
 
+  double history_total_force = 0.;
+  double history_minimum_pressure = std::numeric_limits<double>::infinity();
+  double history_maximum_pressure = 0.;
+  double expected_area_scaled_history_force_norm_squared = 0.;
+  double expected_overlap_limited_history_force_norm_squared = 0.;
+  double unscaled_history_force_norm_squared = 0.;
+  if ( coupling_scheme != nullptr ) {
+    for ( const auto& state : coupling_scheme->getParentTraceMultiplierWarmStart() ) {
+      EXPECT_GE( state.force, 0. );
+      EXPECT_GT( state.tributary_area, 0. );
+      history_total_force += state.force;
+      const double pressure = state.force / state.tributary_area;
+      history_minimum_pressure = std::min( history_minimum_pressure, pressure );
+      history_maximum_pressure = std::max( history_maximum_pressure, pressure );
+      for ( const auto& previous_state : previous_history ) {
+        if ( previous_state.parent_dof != state.parent_dof ||
+             previous_state.patch != state.patch || previous_state.tributary_area <= 0. ) {
+          continue;
+        }
+        const double area_scaled_force =
+            previous_state.force * state.tributary_area / previous_state.tributary_area;
+        const double overlap_limited_force =
+            previous_state.force *
+            std::min( state.tributary_area, previous_state.tributary_area ) /
+            previous_state.tributary_area;
+        expected_area_scaled_history_force_norm_squared += area_scaled_force * area_scaled_force;
+        expected_overlap_limited_history_force_norm_squared +=
+            overlap_limited_force * overlap_limited_force;
+        unscaled_history_force_norm_squared += previous_state.force * previous_state.force;
+        break;
+      }
+    }
+  }
+  if ( !std::isfinite( history_minimum_pressure ) ) {
+    history_minimum_pressure = 0.;
+  }
+
   const ProjectionResult result{ return_code,
                                  tribol::getProjectionConverged( coupling_scheme_id ),
                                  tribol::getProjectionComplementarityConverged( coupling_scheme_id ),
@@ -248,7 +363,13 @@ ProjectionResult RunProjectionCase( double upper_offset, double upper_velocity, 
                                  tribol::getAugmentedLagrangianHistoryForceNorm( coupling_scheme_id ),
                                  tribol::getAugmentedLagrangianMultiplierUpdateNorm( coupling_scheme_id ),
                                  tribol::getIntegratedAppliedForce( coupling_scheme_id ),
-                                 tribol::getPenaltyStabilityTimestep( coupling_scheme_id ) };
+                                 tribol::getPenaltyStabilityTimestep( coupling_scheme_id ),
+                                 history_total_force,
+                                 history_minimum_pressure,
+                                 history_maximum_pressure,
+                                 std::sqrt( expected_area_scaled_history_force_norm_squared ),
+                                 std::sqrt( expected_overlap_limited_history_force_norm_squared ),
+                                 std::sqrt( unscaled_history_force_norm_squared ) };
   tribol::finalize();
   return result;
 }
@@ -256,14 +377,29 @@ ProjectionResult RunProjectionCase( double upper_offset, double upper_velocity, 
 ProjectionResult RunPenaltyAugmentedLagrangianCase(
     double upper_offset, double upper_velocity, double dt, int al_iterations,
     int updates = 1, bool rollback_after_first_update = false,
-    bool augmented_lagrangian = true )
+    bool augmented_lagrangian = true, double spatial_smoothing = 0.,
+    bool nonuniform_upper_velocity = false, double upper_horizontal_offset = 0.,
+    double second_update_horizontal_offset =
+        std::numeric_limits<double>::quiet_NaN(),
+    double loading_relaxation = 1., double unloading_relaxation = -1.,
+    double direction_deadband = 1.e-3,
+    double second_update_vertical_offset =
+        std::numeric_limits<double>::quiet_NaN(),
+    tribol::PenaltyAugmentedLagrangianFormulation formulation =
+        tribol::PENALTY_AL_SURFACE_COMPLIANCE,
+    double loading_time_constant = 0., double unloading_time_constant = -1.,
+    double activation_gap_fraction = 0., bool evaluate_two_rk_stages = false )
 {
   return RunProjectionCase(
       upper_offset, upper_velocity, dt, 250, 1.e-10, 1.e-6, 2, 3, 1.e-12,
       tribol::PARENT_TRACE_MORTAR, 1., 0., tribol::PROJECTION_RESPONSE_EXACT,
       1.2, 0.02, 100., 8, 0, tribol::AL_ACCEPT_FEASIBLE, updates,
       rollback_after_first_update, tribol::PENALTY, augmented_lagrangian,
-      al_iterations, al_iterations, 1.e-8, 1.e-12, 1. );
+      al_iterations, al_iterations, 1.e-8, 1.e-12, loading_relaxation, spatial_smoothing,
+      nonuniform_upper_velocity, upper_horizontal_offset,
+      second_update_horizontal_offset, unloading_relaxation, direction_deadband,
+      second_update_vertical_offset, formulation, loading_time_constant,
+      unloading_time_constant, activation_gap_fraction, evaluate_two_rk_stages );
 }
 
 struct ParentTracePenaltyResult {
@@ -797,6 +933,74 @@ TEST( MfemParentTracePenalty, AugmentedLagrangianWarmStartsForceHistory )
   EXPECT_GT( result.applied_force, 0. );
 }
 
+TEST( MfemParentTracePenalty, AugmentedLagrangianDropsZeroMeasureDualRows )
+{
+  const ProjectionResult result =
+      RunPenaltyAugmentedLagrangianCase( 0.99, 0., 1.e-2, 1, 1, false, true,
+                                         0., false, 0.75 );
+
+  EXPECT_EQ( result.return_code, 0 );
+  EXPECT_GT( result.constraints, 0 );
+  EXPECT_LT( result.constraints, 3 );
+  EXPECT_GT( result.applied_force, 0. );
+}
+
+TEST( MfemParentTracePenalty, AugmentedLagrangianWarmStartPreservesPressureWhenSupportShrinks )
+{
+  const ProjectionResult result =
+      RunPenaltyAugmentedLagrangianCase( 0.99, 0., 1.e-2, 1, 2, false, true,
+                                         0., false, 0., 0.75 );
+
+  EXPECT_EQ( result.return_code, 0 );
+  EXPECT_GT( result.al_warm_start_rows, 0 );
+  EXPECT_GT( result.expected_area_scaled_history_force_norm, 0. );
+  EXPECT_GT( std::abs( result.expected_area_scaled_history_force_norm -
+                       result.unscaled_history_force_norm ),
+             1.e-8 );
+  EXPECT_NEAR( result.al_history_force_norm,
+               result.expected_overlap_limited_history_force_norm,
+               1.e-12 * result.expected_overlap_limited_history_force_norm );
+}
+
+TEST( MfemParentTracePenalty, AugmentedLagrangianWarmStartDoesNotAmplifyGrowingSupport )
+{
+  const ProjectionResult result =
+      RunPenaltyAugmentedLagrangianCase( 0.99, 0., 1.e-2, 1, 2, false, true,
+                                         0., false, 0.75, 0. );
+
+  EXPECT_EQ( result.return_code, 0 );
+  EXPECT_GT( result.al_warm_start_rows, 0 );
+  EXPECT_GT( result.expected_area_scaled_history_force_norm,
+             result.expected_overlap_limited_history_force_norm );
+  EXPECT_NEAR( result.al_history_force_norm,
+               result.expected_overlap_limited_history_force_norm,
+               1.e-12 * result.expected_overlap_limited_history_force_norm );
+  EXPECT_LE( result.al_history_force_norm,
+             result.unscaled_history_force_norm +
+                 1.e-12 * result.unscaled_history_force_norm );
+}
+
+TEST( MfemParentTracePenalty, AugmentedLagrangianRelaxesUnloadingFaster )
+{
+  constexpr double unset_offset = std::numeric_limits<double>::quiet_NaN();
+  const ProjectionResult symmetric =
+      RunPenaltyAugmentedLagrangianCase( 0.98, 0., 1.e-2, 1, 2, false, true,
+                                         0., false, 0., unset_offset, 0.25, 0.25, 0., 1.005 );
+  const ProjectionResult asymmetric =
+      RunPenaltyAugmentedLagrangianCase( 0.98, 0., 1.e-2, 1, 2, false, true,
+                                         0., false, 0., unset_offset, 0.25, 1., 0., 1.005 );
+
+  EXPECT_EQ( symmetric.return_code, 0 );
+  EXPECT_EQ( asymmetric.return_code, 0 );
+  EXPECT_GT( symmetric.al_warm_start_rows, 0 );
+  EXPECT_GT( asymmetric.al_warm_start_rows, 0 );
+  EXPECT_NEAR( asymmetric.applied_force, symmetric.applied_force,
+               1.e-12 * std::max( 1., symmetric.applied_force ) );
+  EXPECT_LT( asymmetric.history_total_force, symmetric.history_total_force );
+  EXPECT_GT( asymmetric.al_multiplier_update_norm,
+             symmetric.al_multiplier_update_norm );
+}
+
 TEST( MfemParentTracePenalty, AugmentedLagrangianRollbackDiscardsTrialHistory )
 {
   const ProjectionResult result =
@@ -805,6 +1009,101 @@ TEST( MfemParentTracePenalty, AugmentedLagrangianRollbackDiscardsTrialHistory )
   EXPECT_EQ( result.return_code, 0 );
   EXPECT_EQ( result.al_warm_start_rows, 0 );
   EXPECT_EQ( result.al_history_force_norm, 0. );
+}
+
+TEST( MfemParentTracePenalty, AugmentedLagrangianSmoothsPersistentPressureConservatively )
+{
+  const ProjectionResult unsmoothed =
+      RunPenaltyAugmentedLagrangianCase( 0.99, -1., 1.e-2, 1, 1, false, true, 0., true );
+  const ProjectionResult smoothed =
+      RunPenaltyAugmentedLagrangianCase( 0.99, -1., 1.e-2, 1, 1, false, true, 1., true );
+
+  EXPECT_EQ( unsmoothed.return_code, 0 );
+  EXPECT_EQ( smoothed.return_code, 0 );
+  EXPECT_NEAR( smoothed.applied_force, unsmoothed.applied_force,
+               1.e-12 * unsmoothed.applied_force );
+  EXPECT_NEAR( smoothed.history_total_force, unsmoothed.history_total_force,
+               1.e-12 * unsmoothed.history_total_force );
+  EXPECT_GE( smoothed.history_minimum_pressure, 0. );
+  EXPECT_GT( unsmoothed.history_maximum_pressure - unsmoothed.history_minimum_pressure, 0. );
+  EXPECT_LT( smoothed.history_maximum_pressure - smoothed.history_minimum_pressure,
+             unsmoothed.history_maximum_pressure - unsmoothed.history_minimum_pressure );
+}
+
+TEST( MfemParentTracePenalty, QuadratureHybridMatchesLocalPenaltyOnFirstUpdate )
+{
+  const ProjectionResult result = RunPenaltyAugmentedLagrangianCase(
+      0.99, 0., 1.e-2, 1, 1, false, true, 0., false, 0.,
+      std::numeric_limits<double>::quiet_NaN(), 1., 1., 1.e-3,
+      std::numeric_limits<double>::quiet_NaN(),
+      tribol::PENALTY_AL_QUADRATURE_HYBRID );
+
+  EXPECT_EQ( result.return_code, 0 );
+  EXPECT_EQ( result.al_outer_iterations, 1 );
+  EXPECT_EQ( result.al_subproblem_iterations, 0 );
+  EXPECT_GT( result.applied_force, 0. );
+  EXPECT_NEAR( result.applied_force, 5.e-2, 1.e-12 );
+  EXPECT_NEAR( result.history_total_force, result.applied_force, 1.e-12 );
+}
+
+TEST( MfemParentTracePenalty, QuadratureHybridRkStagesUseAcceptedStepHistory )
+{
+  const ProjectionResult single_stage = RunPenaltyAugmentedLagrangianCase(
+      0.99, 0., 1.e-2, 1, 1, false, true, 0., false, 0.,
+      std::numeric_limits<double>::quiet_NaN(), 1., 1., 1.e-3,
+      std::numeric_limits<double>::quiet_NaN(),
+      tribol::PENALTY_AL_QUADRATURE_HYBRID, 2.e-2, 2.e-2 );
+  const ProjectionResult two_stages = RunPenaltyAugmentedLagrangianCase(
+      0.99, 0., 1.e-2, 1, 1, false, true, 0., false, 0.,
+      std::numeric_limits<double>::quiet_NaN(), 1., 1., 1.e-3,
+      std::numeric_limits<double>::quiet_NaN(),
+      tribol::PENALTY_AL_QUADRATURE_HYBRID, 2.e-2, 2.e-2, 0., true );
+
+  EXPECT_EQ( single_stage.return_code, 0 );
+  EXPECT_EQ( two_stages.return_code, 0 );
+  EXPECT_NEAR( two_stages.applied_force, single_stage.applied_force,
+               1.e-12 * single_stage.applied_force );
+  EXPECT_NEAR( two_stages.history_total_force, single_stage.history_total_force,
+               1.e-12 * single_stage.history_total_force );
+  const double expected_relaxation = 1. - std::exp( -0.5 );
+  EXPECT_NEAR( single_stage.history_total_force,
+               expected_relaxation * single_stage.applied_force,
+               1.e-12 * single_stage.applied_force );
+}
+
+TEST( MfemParentTracePenalty, QuadratureHybridC1ActivationRampsPressure )
+{
+  const ProjectionResult baseline = RunPenaltyAugmentedLagrangianCase(
+      0.99, 0., 1.e-2, 1, 1, false, true, 0., false, 0.,
+      std::numeric_limits<double>::quiet_NaN(), 1., 1., 1.e-3,
+      std::numeric_limits<double>::quiet_NaN(),
+      tribol::PENALTY_AL_QUADRATURE_HYBRID );
+  const ProjectionResult regularized = RunPenaltyAugmentedLagrangianCase(
+      0.99, 0., 1.e-2, 1, 1, false, true, 0., false, 0.,
+      std::numeric_limits<double>::quiet_NaN(), 1., 1., 1.e-3,
+      std::numeric_limits<double>::quiet_NaN(),
+      tribol::PENALTY_AL_QUADRATURE_HYBRID, 0., 0., 0.1 );
+
+  EXPECT_EQ( baseline.return_code, 0 );
+  EXPECT_EQ( regularized.return_code, 0 );
+  EXPECT_GT( regularized.applied_force, 0. );
+  EXPECT_LT( regularized.applied_force, baseline.applied_force );
+  EXPECT_NEAR( regularized.penalty_stability_timestep,
+               baseline.penalty_stability_timestep * std::sqrt( 16. / 27. ),
+               1.e-12 * baseline.penalty_stability_timestep );
+}
+
+TEST( MfemParentTracePenalty, QuadratureHybridClearsSeparatedMultiplierWithFullUnloading )
+{
+  const ProjectionResult result = RunPenaltyAugmentedLagrangianCase(
+      0.99, 0., 1.e-2, 1, 2, false, true, 0., false, 0.,
+      std::numeric_limits<double>::quiet_NaN(), 0.25, 1., 1.e-3, 1.02,
+      tribol::PENALTY_AL_QUADRATURE_HYBRID );
+
+  EXPECT_EQ( result.return_code, 0 );
+  EXPECT_GT( result.al_warm_start_rows, 0 );
+  EXPECT_NEAR( result.applied_force, 0., 1.e-14 );
+  EXPECT_NEAR( result.history_total_force, 0., 1.e-14 );
 }
 
 }  // namespace

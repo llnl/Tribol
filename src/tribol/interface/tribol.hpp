@@ -100,10 +100,19 @@ void setAugmentedLagrangianOptions( IndexT cs_id, RealT augmentation_scale, int 
                                     int fixed_iterations = 0,
                                     AugmentedLagrangianFailurePolicy failure_policy = AL_ACCEPT_FEASIBLE );
 
-/*! \brief Enables surface-compliance augmented Lagrangian for parent-trace penalty contact. */
+/*! \brief Enables augmented Lagrangian for parent-trace penalty contact. */
 void setPenaltyAugmentedLagrangianOptions( IndexT cs_id, int max_iterations, int fixed_iterations,
                                            RealT relative_tolerance, RealT absolute_tolerance,
-                                           RealT relaxation = 1. );
+                                           RealT relaxation = 1., RealT spatial_smoothing = 0.,
+                                           RealT unloading_relaxation = -1.,
+                                           RealT direction_deadband = 1.e-3,
+                                           RealT loading_time_constant = 0.,
+                                           RealT unloading_time_constant = -1.,
+                                           RealT activation_gap_fraction = 0. );
+
+/*! \brief Selects the parent-trace penalty augmented-Lagrangian formulation. */
+void setPenaltyAugmentedLagrangianFormulation(
+    IndexT cs_id, PenaltyAugmentedLagrangianFormulation formulation );
 
 /*! \brief Starts a rollback-safe augmented-Lagrangian physical step. */
 void beginAugmentedLagrangianStep( IndexT cs_id );

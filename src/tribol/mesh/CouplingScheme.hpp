@@ -460,6 +460,11 @@ class CouplingScheme {
     return m_augmented_lagrangian_step_open ? m_parent_trace_multiplier_stage
                                             : m_parent_trace_multiplier_history;
   }
+  const std::vector<ParentTraceMultiplierState>& getParentTraceMultiplierStepSnapshot() const
+  {
+    return m_augmented_lagrangian_step_open ? m_parent_trace_multiplier_snapshot
+                                            : m_parent_trace_multiplier_history;
+  }
   void setParentTraceMultiplierStage( std::vector<ParentTraceMultiplierState> state )
   {
     m_parent_trace_multiplier_stage = std::move( state );
