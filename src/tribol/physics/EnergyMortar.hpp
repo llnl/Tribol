@@ -20,10 +20,10 @@ struct QuadPoints {
 
 /// Parameters controlling ENERGY_MORTAR contact evaluation.
 struct ContactParams {
-  double del;              ///< Smoothing length used for integration bounds.
-  double k;                ///< Penalty stiffness.
-  int N;                   ///< Number of quadrature points.
-  bool enzyme_quadrature;  ///< Whether Enzyme differentiates the quadrature construction.
+  double del;                  ///< Smoothing length used for integration bounds.
+  double k;                    ///< Penalty stiffness.
+  int N;                       ///< Number of quadrature points.
+  bool enzyme_quadrature;      ///< Whether Enzyme differentiates the quadrature construction.
   double residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
 };
 
@@ -81,8 +81,8 @@ struct FiniteDiffResult {
 
 /// Stores fixed quadrature data passed to differentiated kernels.
 struct Gparams {
-  std::array<double, 3> qp;  ///< Quadrature-point locations in the integration-edge local coordinate.
-  std::array<double, 3> w;   ///< Quadrature weights mapped to the local integration interval.
+  std::array<double, 3> qp;    ///< Quadrature-point locations in the integration-edge local coordinate.
+  std::array<double, 3> w;     ///< Quadrature weights mapped to the local integration interval.
   double residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
 };
 

@@ -29,6 +29,27 @@ namespace spin = axom::spin;
 
 namespace tribol {
 
+/*!
+ * \brief Base class to compute the candidate pairs for a coupling scheme
+ *
+ * \a initialize() must be called prior to \a findInterfacePairs()
+ *
+ */
+class SearchBase {
+ public:
+  SearchBase() {};
+  virtual ~SearchBase() {};
+  /*!
+   * Prepares the object for spatial searches
+   */
+  virtual void initialize() = 0;
+
+  /*!
+   * Find candidates in first mesh for each element in second mesh of coupling scheme.
+   */
+  virtual void findInterfacePairs() = 0;
+};
+
 ///////////////////////////////////////////////////////////////////////////////
 
 /*!
@@ -49,7 +70,7 @@ class CartesianProduct : public SearchBase {
    * Constructs a CartesianProduct instance over CouplingScheme \a couplingScheme
    * \pre couplingScheme is not null
    */
-  CartesianProduct( CouplingScheme* couplingScheme ) : SearchBase( couplingScheme ) {}
+  CartesianProduct( CouplingScheme* couplingScheme ) : m_coupling_scheme( couplingScheme ) {}
 
   void initialize() override {}
 
@@ -67,7 +88,6 @@ class CartesianProduct : public SearchBase {
     if ( is_symm ) {
       // account for symmetry: the max number of pairs when the meshes are the
       // same is the upper triangular portion of the cartesian product pair
-      // matrix
       maxNumPairs = mesh1NumElems * ( mesh1NumElems + 1 ) / 2;
     }
     ArrayT<bool> proximityArray( maxNumPairs, maxNumPairs, m_coupling_scheme->getAllocatorId() );
@@ -137,6 +157,8 @@ class CartesianProduct : public SearchBase {
                                       << "." );
   }
 
+ private:
+  CouplingScheme* m_coupling_scheme;
 };  // End of CartesianProduct definition
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -170,7 +192,7 @@ class GridSearch : public SearchBase {
    * \pre couplingScheme is not null
    */
   GridSearch( CouplingScheme* couplingScheme )
-      : SearchBase( couplingScheme ),
+      : m_coupling_scheme( couplingScheme ),
         m_mesh1( m_coupling_scheme->getMesh1().getView() ),
         m_mesh2( m_coupling_scheme->getMesh2().getView() )
   {
@@ -294,7 +316,7 @@ class GridSearch : public SearchBase {
         // TODO: Add extra filter by bbox
 
         // Preliminary geometry/proximity checks, SRW
-        bool contact = geomFilter( fromIdx, toIdx );
+        bool contact = geomFilter( m_coupling_scheme->getView(), fromIdx, toIdx );
 
         if ( contact ) {
           contactPairs.emplace_back( fromIdx, toIdx, true );
@@ -337,6 +359,7 @@ class GridSearch : public SearchBase {
     bbox.expand( expansionFac );
   }
 
+  CouplingScheme* m_coupling_scheme;
   const MeshData::Viewer m_mesh1;
   const MeshData::Viewer m_mesh2;
 
@@ -375,7 +398,7 @@ class BvhSearch : public SearchBase {
    * \pre couplingScheme is not null
    */
   BvhSearch( CouplingScheme* coupling_scheme )
-      : SearchBase( coupling_scheme ),
+      : m_coupling_scheme( coupling_scheme ),
         m_mesh1( m_coupling_scheme->getMesh1().getView() ),
         m_mesh2( m_coupling_scheme->getMesh2().getView() ),
         m_boxes1( axom::ArrayOptions::Uninitialized{}, m_mesh1.numberOfElements(), m_mesh1.numberOfElements(),
@@ -512,6 +535,7 @@ class BvhSearch : public SearchBase {
    */
   TRIBOL_HOST_DEVICE void inflateBBox( BoxT& bbox, const RealT faceRadius ) { bbox.expand( faceRadius ); }
 
+  CouplingScheme* m_coupling_scheme;
   const MeshData::Viewer m_mesh1;
   const MeshData::Viewer m_mesh2;
   ArrayT<BoxT> m_boxes1;

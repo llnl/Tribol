@@ -992,12 +992,14 @@ TEST_F( EnzymeElementMortarTest, ExactOverlapResidualGap )
   // clang-format on
 
   double residual_gap = 0.15;
+  constexpr double len_collapse_ratio = 1.0e-8;
 
   double f1[12], f2[12], g1[4];
   int num_nodes = 4;
 
   // Call with residual_gap
-  tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, num_nodes, x2, f2, num_nodes, residual_gap );
+  tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, num_nodes, x2, f2, num_nodes, len_collapse_ratio,
+                                    residual_gap );
 
   // Kinematic gap is 0.1. Effective gap is 0.1 - 0.15 = -0.05.
   // Integrated gap for unit square (overlap area 1.0) distributed to 4 nodes:
