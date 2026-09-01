@@ -1521,7 +1521,6 @@ TRIBOL_HOST_DEVICE inline void CommonPlanePair::resetPlanePointAndCentroidGap( c
   if ( m_dim == 3 ) {
     // construct array of polygon overlap vertex coordinates
     constexpr int max_dim = 3;
-    constexpr int max_nodes_per_overlap = 10;
     RealT xVert[max_dim * max_nodes_per_overlap];
 
     for ( IndexT j{ 0 }; j < this->m_numPolyVert; ++j ) {
