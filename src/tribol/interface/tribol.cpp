@@ -186,6 +186,35 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location )
 }
 
 //------------------------------------------------------------------------------
+void setEnergyMortarSmoothingLength( IndexT cs_id, RealT smoothing_length )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarSmoothingLength(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+  SLIC_ERROR_ROOT_IF( smoothing_length < 0.0 || smoothing_length > 0.5,
+                      "tribol::setEnergyMortarSmoothingLength(): smoothing length must be in [0, 0.5]." );
+
+  cs->getParameters().energy_mortar_smoothing_length = smoothing_length;
+  cs->updateContactFormulation();
+}
+
+//------------------------------------------------------------------------------
+void setEnergyMortarNormalSmoothingStartAngle( IndexT cs_id, RealT start_angle )
+{
+  constexpr RealT half_pi = 1.5707963267948966;
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarNormalSmoothingStartAngle(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+  SLIC_ERROR_ROOT_IF( start_angle < 0.0 || start_angle > half_pi,
+                      "tribol::setEnergyMortarNormalSmoothingStartAngle(): start angle must be in [0, pi / 2]." );
+
+  cs->getParameters().energy_mortar_normal_smoothing_start_angle = start_angle;
+  cs->updateContactFormulation();
+}
+
+//------------------------------------------------------------------------------
 void setTimestepScale( IndexT cs_id, RealT scale )
 {
   if ( scale <= 0. ) {

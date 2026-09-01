@@ -134,6 +134,7 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @param jac_data MFEM Jacobian transfer data
    * @param k Penalty stiffness
    * @param delta Smoothing length
+   * @param normal_smoothing_start_angle Normal-alignment smoothing start angle in radians
    * @param N Quadrature order
    * @param enzyme_quadrature If true, use Enzyme-assisted quadrature
    * @param use_penalty If true, interpret the dual field as pressure; otherwise interpret it as a Lagrange multiplier
@@ -144,7 +145,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * relative to the order of the meshes provided here.
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k,
-                       double delta, int N, bool enzyme_quadrature, bool use_penalty = true );
+                       double delta, double normal_smoothing_start_angle, int N, bool enzyme_quadrature,
+                       bool use_penalty = true );
 
   /**
    * @brief Default destructor

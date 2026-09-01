@@ -21,7 +21,8 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
     // Default parameters for now, or extract from CouplingScheme if available
     double k = 1000.0;
-    double delta = 0.1;
+    double delta = cs->getParameters().energy_mortar_smoothing_length;
+    double normal_smoothing_start_angle = cs->getParameters().energy_mortar_normal_smoothing_start_angle;
     int N = 3;
     bool enzyme_quadrature = true;
 
@@ -46,11 +47,13 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     const auto enforcement_location = cs->getParameters().enforcement_location;
     if ( enforcement_location == EnforcementLocation::QuadraturePoint ) {
       return std::make_unique<EnergyMortarAdapter<QuadraturePoint>>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
-                                                                     *cs->getMfemJacobianData(), k, delta, N,
-                                                                     enzyme_quadrature, use_penalty );
+                                                                     *cs->getMfemJacobianData(), k, delta,
+                                                                     normal_smoothing_start_angle, N, enzyme_quadrature,
+                                                                     use_penalty );
     } else {
       return std::make_unique<EnergyMortarAdapter<Nodal>>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
-                                                           *cs->getMfemJacobianData(), k, delta, N, enzyme_quadrature,
+                                                           *cs->getMfemJacobianData(), k, delta,
+                                                           normal_smoothing_start_angle, N, enzyme_quadrature,
                                                            use_penalty );
     }
 #else

@@ -24,6 +24,8 @@ inline bool in_range( int target, int N )
 }  // end anonymous namespace
 
 constexpr int ANY_MESH = -1;
+constexpr RealT ENERGY_MORTAR_DEFAULT_NORMAL_SMOOTHING_START_ANGLE =
+    0.7853981633974483;  ///! Default normal smoothing start angle in radians (45 degrees)
 
 /*!
  * \brief Enumerates the logging level options
@@ -488,6 +490,9 @@ struct Parameters {
       3.0e-1;  ///! Max allowable interpenetration as percent of element thickness prior to triggering timestep vote
   RealT timestep_scale =
       1.0;  ///! Scale factor (>0) applied to the timestep vote giving users some control over the vote
+  RealT energy_mortar_smoothing_length = 0.1;  ///! Smoothing length for EnergyMortar integration bounds
+  RealT energy_mortar_normal_smoothing_start_angle =
+      ENERGY_MORTAR_DEFAULT_NORMAL_SMOOTHING_START_ANGLE;  ///! Smoothing start relative to opposed normals, in radians
 
   int vis_cycle_incr = 100;           ///! Frequency for visualizations dumps
   VisType vis_type = VIS_NONE;        ///! Type of interface physics visualization output
