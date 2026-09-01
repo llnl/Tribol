@@ -19,10 +19,16 @@ namespace {
 // This MUST match what the ContactParams struct has in EnergyMortarAdapter
 // These had to be saved locally in order for enzyme to work correctly
 struct KernelParams {
-  int N{ 3 };         // No. of quadrature points
-  double del{ 0.1 };  // Smoothing parameter
-  double k{ 1.0 };    // Penalty stiffness
+  int N{ 3 };                  // No. of quadrature points
+  double del{ 0.1 };           // Smoothing parameter
+  double k{ 1.0 };             // Penalty stiffness
+  double residual_gap{ 0.0 };  // User-defined gap offset
 };
+
+TRIBOL_ENZYME_INLINE double effective_gap( double normal_gap, double normal_alignment, double residual_gap )
+{
+  return normal_gap * normal_alignment - residual_gap;
+}
 
 // Return the line-element mapping Jacobian. Local edge coordinates span [-0.5, 0.5], so the Jacobian is the physical
 // length of the segment from A0 to A1.
@@ -286,7 +292,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, Gparams* gp, double* g
 
     // lagged normal on B
     const double gn = -( dx * nB[0] + dy * nB[1] );
-    const double g = gn * eta;
+    const double g = effective_gap( gn, eta, gp->residual_gap );
 
     g1 += w * N1 * g * J;
     g2 += w * N2 * g * J;
@@ -353,7 +359,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel_quad( const double* x, const Gparams* gp
 
     // lagged normal on B
     const double gn = -( dx * nB[0] + dy * nB[1] );
-    const double g = gn * eta;
+    const double g = effective_gap( gn, eta, gp->residual_gap );
 
     g1 += w * N1 * g * J;
     g2 += w * N2 * g * J;
@@ -444,6 +450,7 @@ static void kernel_out_enzyme( const double* x, const void* kp_void, double* out
   EnergyMortarCalculator::compute_quadrature( xi_bounds, kp->N, &qp );
 
   Gparams gp;
+  gp.residual_gap = kp->residual_gap;
   for ( std::size_t i = 0; i < qp.qp.size(); ++i ) {
     gp.qp[i] = qp.qp[i];
     gp.w[i] = qp.w[i];
@@ -503,7 +510,7 @@ void d2_kernel( const double* x, const KernelParams* kp, double* H )
 // Isolate loop-local arrays to avoid a leak in Enzyme's reverse-mode tape.
 TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double xiA, double w, const double* A0, const double* A1,
                                                          const double* B0, const double* B1, const double* nB,
-                                                         double eta, double penalty, double J,
+                                                         double eta, double residual_gap, double penalty, double J,
                                                          bool* pair_has_active_qp )
 {
   double x1[2];
@@ -515,7 +522,7 @@ TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double xiA, double w, c
   const double dx = x1[0] - x2[0];
   const double dy = x1[1] - x2[1];
   const double gn = -( dx * nB[0] + dy * nB[1] );
-  const double gap = gn * eta;
+  const double gap = effective_gap( gn, eta, residual_gap );
   const bool is_active = gap <= 0.0;
 
   *pair_has_active_qp = *pair_has_active_qp || is_active;
@@ -555,7 +562,8 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
 
   double value = 0.0;
   for ( int i = 0; i < kp->N; ++i ) {
-    value += qp_penalty_kernel_qp_energy( qp.qp[i], qp.w[i], A0, A1, B0, B1, nB, eta, kp->k, J, pair_has_active_qp );
+    value += qp_penalty_kernel_qp_energy( qp.qp[i], qp.w[i], A0, A1, B0, B1, nB, eta, kp->residual_gap, kp->k, J,
+                                          pair_has_active_qp );
   }
 
   *energy = value;
@@ -646,6 +654,7 @@ Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, co
   }
 
   Gparams gp;
+  gp.residual_gap = p_.residual_gap;
   // int N = eval.get_N();
 
   for ( std::size_t i = 0; i < qp.qp.size(); ++i ) {
@@ -758,7 +767,7 @@ double EnergyMortarCalculator::compute_weighted_normal_gap( const InterfacePair&
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
   double eta = ( dot < 0 ) ? dot : 0.0;
 
-  return gn * eta;
+  return effective_gap( gn, eta, p_.residual_gap );
 }
 
 // Assemble nodal gap and tributary area data for the current interface pair.
@@ -852,7 +861,7 @@ void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshD
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    const KernelParams kp{ p_.N, p_.del, p_.k };
+    const KernelParams kp{ p_.N, p_.del, p_.k, p_.residual_gap };
     grad_kernel_enzyme<KernelOutput::GTILDE1>( x, &kp, dg1_du );
     grad_kernel_enzyme<KernelOutput::GTILDE2>( x, &kp, dg2_du );
   }
@@ -885,7 +894,7 @@ void EnergyMortarCalculator::grad_trib_area( const InterfacePair& pair, const Me
     grad_kernel<KernelOutput::A2>( x, &gp, dA2_dx );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    const KernelParams kp{ p_.N, p_.del, p_.k };
+    const KernelParams kp{ p_.N, p_.del, p_.k, p_.residual_gap };
     grad_kernel_enzyme<KernelOutput::A1>( x, &kp, dA1_dx );
     grad_kernel_enzyme<KernelOutput::A2>( x, &kp, dA2_dx );
   }
@@ -917,7 +926,7 @@ void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshDa
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    const KernelParams kp{ p_.N, p_.del, p_.k };
+    const KernelParams kp{ p_.N, p_.del, p_.k, p_.residual_gap };
     d2_kernel<KernelOutput::GTILDE1>( x, &kp, d2g1_d2u );
     d2_kernel<KernelOutput::GTILDE2>( x, &kp, d2g2_d2u );
   }
@@ -954,7 +963,7 @@ void EnergyMortarCalculator::compute_d2A_d2u( const InterfacePair& pair, const M
     d2_kernel_quad<KernelOutput::A2>( x, &gp, d2A2_d2u );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    const KernelParams kp{ p_.N, p_.del, p_.k };
+    const KernelParams kp{ p_.N, p_.del, p_.k, p_.residual_gap };
     d2_kernel<KernelOutput::A1>( x, &kp, d2A1_d2u );
     d2_kernel<KernelOutput::A2>( x, &kp, d2A2_d2u );
   }
@@ -975,7 +984,7 @@ double EnergyMortarCalculator::compute_quadrature_point_penalty_energy( const In
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
 
   const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  const KernelParams kp{ p_.N, p_.del, p_.k };
+  const KernelParams kp{ p_.N, p_.del, p_.k, p_.residual_gap };
   double energy = 0.0;
   bool pair_has_active_qp = false;
   qp_penalty_kernel( x, &kp, &energy, &pair_has_active_qp );
@@ -991,7 +1000,7 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
 
   const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  const KernelParams kp{ p_.N, p_.del, p_.k };
+  const KernelParams kp{ p_.N, p_.del, p_.k, p_.residual_gap };
 
   QuadraturePointPenaltyData result;
   qp_penalty_kernel( x, &kp, &result.energy, &result.has_active_qp );

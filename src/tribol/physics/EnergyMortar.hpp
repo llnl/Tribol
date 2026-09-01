@@ -24,6 +24,7 @@ struct ContactParams {
   double k;                ///< Penalty stiffness.
   int N;                   ///< Number of quadrature points.
   bool enzyme_quadrature;  ///< Whether Enzyme differentiates the quadrature construction.
+  double residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
 };
 
 /// Stores quadrature-point penalty energy derivatives for one interface pair.
@@ -82,6 +83,7 @@ struct FiniteDiffResult {
 struct Gparams {
   std::array<double, 3> qp;  ///< Quadrature-point locations in the integration-edge local coordinate.
   std::array<double, 3> w;   ///< Quadrature weights mapped to the local integration interval.
+  double residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
 };
 
 /// Provides smoothing operations for the Energy Mortar contact formulation.

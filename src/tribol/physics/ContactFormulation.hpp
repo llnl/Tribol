@@ -119,6 +119,11 @@ class ContactFormulation {
    */
   virtual void updateConstantPenaltyStiffness( double /*mesh1_penalty*/, double /*mesh2_penalty*/ ) {}
 
+  /**
+   * @brief Update the residual-gap offset on formulations that cache contact parameters
+   */
+  virtual void updateResidualGap( RealT /*residual_gap*/ ) {}
+
 #ifdef BUILD_REDECOMP
   /**
    * @brief Returns t-dof vector of forces on parent mesh
