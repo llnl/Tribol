@@ -3,6 +3,7 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+#include <algorithm>
 #include <cmath>
 #include <set>
 #include "tribol/physics/EnergyMortar.hpp"
@@ -397,7 +398,40 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
   EnergyMortarCalculator evaluator( params );
   const auto result =
       evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
+  EXPECT_FALSE( result.has_active_qp );
   EXPECT_EQ( result.energy, 0.0 );
+  EXPECT_TRUE( std::all_of( result.force.begin(), result.force.end(), []( double force ) { return force == 0.0; } ) );
+  EXPECT_TRUE( std::all_of( result.stiffness.begin(), result.stiffness.end(),
+                            []( double stiffness ) { return stiffness == 0.0; } ) );
+}
+
+TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 1, 0 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = { 0.2, 0.8 };
+  RealT y2[2] = { 0.0, 0.0 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+
+  EnergyMortarCalculator evaluator( params );
+  const auto result =
+      evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
+
+  EXPECT_TRUE( result.has_active_qp );
+  EXPECT_EQ( result.energy, 0.0 );
+  EXPECT_TRUE( std::all_of( result.force.begin(), result.force.end(), []( double force ) { return force == 0.0; } ) );
+  EXPECT_TRUE( std::any_of( result.stiffness.begin(), result.stiffness.end(),
+                            []( double stiffness ) { return stiffness != 0.0; } ) );
 }
 
 TEST( QuadraturePointPenaltyCheck, DerivativesMatchFiniteDifference )

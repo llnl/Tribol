@@ -525,7 +525,7 @@ void QuadraturePoint<Adapter>::updateNodalForces()
     const auto qp_data =
         adapter->evaluator_->compute_quadrature_point_penalty_data( flipped_pair, mesh1_view, mesh2_view );
 
-    if ( qp_data.energy == 0.0 ) {
+    if ( !qp_data.has_active_qp ) {
       continue;
     }
 

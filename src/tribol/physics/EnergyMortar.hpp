@@ -34,6 +34,7 @@ struct QuadraturePointPenaltyData {
   static constexpr int num_force_dofs = dim * max_nodes_per_elem * pair_size;  ///< Pair coordinate degrees of freedom.
   static constexpr int num_stiffness_entries = num_force_dofs * num_force_dofs;  ///< Flattened stiffness size.
 
+  bool has_active_qp{ false };                            ///< True when any quadrature-point gap is nonpositive.
   double energy{ 0.0 };                                   ///< Penalty energy for the interface pair.
   std::array<double, num_force_dofs> force{};             ///< Derivative with respect to pair coordinates.
   std::array<double, num_stiffness_entries> stiffness{};  ///< Flattened force derivative matrix.

@@ -503,7 +503,7 @@ void d2_kernel( const double* x, const KernelParams* kp, double* H )
 // Isolate loop-local arrays to avoid a leak in Enzyme's reverse-mode tape.
 TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double xiA, double w, const double* A0, const double* A1,
                                                          const double* B0, const double* B1, const double* nB,
-                                                         double eta, double penalty, double J )
+                                                         double eta, double penalty, double J, bool* has_active_qp )
 {
   double x1[2];
   iso_map( A0, A1, xiA, x1 );
@@ -515,12 +515,18 @@ TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double xiA, double w, c
   const double dy = x1[1] - x2[1];
   const double gn = -( dx * nB[0] + dy * nB[1] );
   const double gap = gn * eta;
+  const bool is_active = gap <= 0.0;
 
-  return gap < 0.0 ? 0.5 * penalty * gap * gap * w * J : 0.0;
+  *has_active_qp = *has_active_qp || is_active;
+
+  return is_active ? 0.5 * penalty * gap * gap * w * J : 0.0;
 }
 
-TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams* kp, double* energy )
+TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams* kp, double* energy,
+                                             bool* has_active_qp )
 {
+  *has_active_qp = false;
+
   double A0[2] = { x[0], x[1] };
   double A1[2] = { x[2], x[3] };
   double B0[2] = { x[4], x[5] };
@@ -548,7 +554,7 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
 
   double value = 0.0;
   for ( int i = 0; i < kp->N; ++i ) {
-    value += qp_penalty_kernel_qp_energy( qp.qp[i], qp.w[i], A0, A1, B0, B1, nB, eta, kp->k, J );
+    value += qp_penalty_kernel_qp_energy( qp.qp[i], qp.w[i], A0, A1, B0, B1, nB, eta, kp->k, J, has_active_qp );
   }
 
   *energy = value;
@@ -559,8 +565,9 @@ void grad_qp_penalty_kernel( const double* x, const KernelParams* kp, double* do
   double dx[8] = { 0.0 };
   double out = 0.0;
   double dout = 1.0;
+  bool has_active_qp = false;
   __enzyme_autodiff<void>( (void*)qp_penalty_kernel, enzyme_dup, x, dx, enzyme_const, (const void*)kp, enzyme_dup, &out,
-                           &dout );
+                           &dout, enzyme_const, &has_active_qp );
 
   for ( int i = 0; i < 8; ++i ) {
     dout_du[i] = dx[i];
@@ -969,7 +976,8 @@ double EnergyMortarCalculator::compute_quadrature_point_penalty_energy( const In
   const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
   const KernelParams kp{ p_.N, p_.del, p_.k };
   double energy = 0.0;
-  qp_penalty_kernel( x, &kp, &energy );
+  bool has_active_qp = false;
+  qp_penalty_kernel( x, &kp, &energy, &has_active_qp );
   return energy;
 }
 
@@ -985,7 +993,7 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
   const KernelParams kp{ p_.N, p_.del, p_.k };
 
   QuadraturePointPenaltyData result;
-  qp_penalty_kernel( x, &kp, &result.energy );
+  qp_penalty_kernel( x, &kp, &result.energy, &result.has_active_qp );
   grad_qp_penalty_kernel( x, &kp, result.force.data() );
   d2_qp_penalty_kernel( x, &kp, result.stiffness.data() );
   return result;
