@@ -25,9 +25,9 @@ struct KernelParams {
   double residual_gap{ 0.0 };  // User-defined gap offset
 };
 
-TRIBOL_ENZYME_INLINE double effective_gap( double normal_gap, double normal_alignment, double residual_gap )
+TRIBOL_ENZYME_INLINE double effective_gap( double gap_normal, double normal_cosine, double residual_gap )
 {
-  return normal_gap * normal_alignment - residual_gap;
+  return gap_normal * normal_cosine - residual_gap;
 }
 
 // Return the line-element mapping Jacobian. Local edge coordinates span [-0.5, 0.5], so the Jacobian is the physical

@@ -977,7 +977,7 @@ TEST_F( EnzymeElementMortarTest, NoOverlap )
 TEST_F( EnzymeElementMortarTest, ExactOverlapResidualGap )
 {
   // clang-format off
-  // Setup two overlapping elements with a gap of 0.1
+  // Setup two elements with exact projected overlap and a normal separation of 0.1
   double x1[12] = { 0.0, 1.0, 1.0, 0.0,
                     0.0, 0.0, 1.0, 1.0,
                     0.0, 0.0, 0.0, 0.0 };

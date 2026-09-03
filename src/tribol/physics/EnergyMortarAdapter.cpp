@@ -60,7 +60,7 @@ void EnergyMortarAdapter<EnforcementLocation>::updateConstantPenaltyStiffness( d
 }
 
 template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::updateResidualGap( RealT residual_gap )
+void EnergyMortarAdapter<EnforcementLocation>::setResidualGap( RealT residual_gap )
 {
   params_.residual_gap = residual_gap;
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );

@@ -138,7 +138,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @param enzyme_quadrature If true, use Enzyme-assisted quadrature
    * @param use_penalty If true, interpret the dual field as pressure; otherwise interpret it as a Lagrange multiplier
    * vector (LM mode)
-   * @param residual_gap User-defined gap offset subtracted from the kinematic gap
+   * @param residual_gap Nonnegative gap offset subtracted from the kinematic gap. Positive values enforce separation
+   *        between the contact surfaces.
    *
    * @note The ENERGY_MORTAR implementation follows the literature convention of integrating on a non-mortar side and
    * mapping to a mortar side. To maintain that convention within Tribol, the adapter may internally flip mesh roles
@@ -216,7 +217,7 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    *
    * @param residual_gap User-defined gap offset
    */
-  void updateResidualGap( RealT residual_gap ) override;
+  void setResidualGap( RealT residual_gap ) override;
 
 #ifdef BUILD_REDECOMP
   /**

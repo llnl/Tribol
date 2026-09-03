@@ -164,7 +164,7 @@ void ComputeNodalGap<SINGLE_MORTAR>( SurfaceContactElem& elem, RealT residual_ga
       g1 += dotProd( nrml_a.data(), &elem.faceCoords1[elem.dim * b], elem.dim ) * nab_1;
       g2 += dotProd( nrml_a.data(), &elem.faceCoords2[elem.dim * b], elem.dim ) * nab_2;
 
-      // also integrate the residual gap contribution
+      // Integrate the residual gap with the nonmortar weights. It is subtracted below as part of g1 - g2.
       g2 += residual_gap * nab_2;
     }
 

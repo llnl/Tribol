@@ -360,10 +360,11 @@ void setResidualGap( IndexT cs_id, RealT residual_gap )
   // check to see if coupling scheme exists
   SLIC_ERROR_ROOT_IF(
       !cs, "tribol::setResidualGap(): call tribol::registerCouplingScheme() " << "prior to calling this routine." );
+  SLIC_ERROR_ROOT_IF( residual_gap < 0.0, "tribol::setResidualGap(): residual gap must be nonnegative." );
 
   cs->getParameters().residual_gap = residual_gap;
   if ( cs->getContactFormulation() ) {
-    cs->getContactFormulation()->updateResidualGap( residual_gap );
+    cs->getContactFormulation()->setResidualGap( residual_gap );
   }
 
 }  // end setResidualGap()

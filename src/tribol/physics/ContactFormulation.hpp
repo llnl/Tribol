@@ -122,7 +122,7 @@ class ContactFormulation {
   /**
    * @brief Update the residual-gap offset on formulations that cache contact parameters
    */
-  virtual void updateResidualGap( RealT /*residual_gap*/ ) {}
+  virtual void setResidualGap( RealT /*residual_gap*/ ) {}
 
 #ifdef BUILD_REDECOMP
   /**

@@ -1050,6 +1050,9 @@ TRIBOL_HOST_DEVICE inline RealT CouplingScheme::Viewer::getGapTol( IndexT fid1, 
           break;
 
         default:
+          // A pair is active when its gap is less than or equal to gap_tol. With no residual gap, gap_tol is slightly
+          // negative, so only interpenetrating pairs are active. A positive residual gap can make gap_tol positive,
+          // allowing separated pairs below the prescribed gap to be active.
           gap_tol = m_parameters.residual_gap -
                     m_parameters.gap_tol_ratio *
                         axom::utilities::max( m_mesh1.getFaceRadius()[fid1], m_mesh2.getFaceRadius()[fid2] );
