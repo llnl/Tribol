@@ -20,10 +20,11 @@ struct QuadPoints {
 
 /// Parameters controlling ENERGY_MORTAR contact evaluation.
 struct ContactParams {
-  double del;              ///< Smoothing length used for integration bounds.
-  double k;                ///< Penalty stiffness.
-  int N;                   ///< Number of quadrature points.
-  bool enzyme_quadrature;  ///< Whether Enzyme differentiates the quadrature construction.
+  double del;                  ///< Smoothing length used for integration bounds.
+  double k;                    ///< Penalty stiffness.
+  int N;                       ///< Number of quadrature points.
+  bool enzyme_quadrature;      ///< Whether Enzyme differentiates the quadrature construction.
+  double residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
 };
 
 /// Stores quadrature-point penalty energy derivatives for one interface pair.
@@ -34,6 +35,7 @@ struct QuadraturePointPenaltyData {
   static constexpr int num_force_dofs = dim * max_nodes_per_elem * pair_size;  ///< Pair coordinate degrees of freedom.
   static constexpr int num_stiffness_entries = num_force_dofs * num_force_dofs;  ///< Flattened stiffness size.
 
+  bool has_active_qp{ false };                            ///< True when any quadrature-point gap is nonpositive.
   double energy{ 0.0 };                                   ///< Penalty energy for the interface pair.
   std::array<double, num_force_dofs> force{};             ///< Derivative with respect to pair coordinates.
   std::array<double, num_stiffness_entries> stiffness{};  ///< Flattened force derivative matrix.
@@ -79,8 +81,9 @@ struct FiniteDiffResult {
 
 /// Stores fixed quadrature data passed to differentiated kernels.
 struct Gparams {
-  std::array<double, 3> qp;  ///< Quadrature-point locations in the integration-edge local coordinate.
-  std::array<double, 3> w;   ///< Quadrature weights mapped to the local integration interval.
+  std::array<double, 3> qp;    ///< Quadrature-point locations in the integration-edge local coordinate.
+  std::array<double, 3> w;     ///< Quadrature weights mapped to the local integration interval.
+  double residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
 };
 
 /// Provides smoothing operations for the Energy Mortar contact formulation.

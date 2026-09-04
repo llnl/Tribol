@@ -206,7 +206,8 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
 
     // compute total pressure based on constraint type
     RealT totalPressure = 0.;
-    plane.m_pressure = gap * penalty_stiff_per_area;  // kinematic contribution
+    RealT residual_gap = cs_view.getParameters().residual_gap;
+    plane.m_pressure = ( gap - residual_gap ) * penalty_stiff_per_area;  // kinematic contribution
     switch ( pen_enfrc_options.constraint_type ) {
       case KINEMATIC_AND_RATE: {
         // kinematic contribution

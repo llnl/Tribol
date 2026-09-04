@@ -14,7 +14,8 @@ namespace tribol {
 template <template <typename> class EnforcementLocation>
 EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
                                                                MfemJacobianData& jac_data, double k, double delta,
-                                                               int N, bool enzyme_quadrature, bool use_penalty )
+                                                               int N, bool enzyme_quadrature, bool use_penalty,
+                                                               RealT residual_gap )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
     : use_penalty_( use_penalty ), mesh_data_( mesh_data ), submesh_data_( submesh_data ), jac_data_( jac_data )
@@ -23,6 +24,7 @@ EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mes
   params_.del = delta;
   params_.N = N;
   params_.enzyme_quadrature = enzyme_quadrature;
+  params_.residual_gap = residual_gap;
 
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 
@@ -54,6 +56,13 @@ void EnergyMortarAdapter<EnforcementLocation>::updateConstantPenaltyStiffness( d
 {
   use_penalty_ = true;
   params_.k = 0.5 * ( mesh1_penalty + mesh2_penalty );
+  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+}
+
+template <template <typename> class EnforcementLocation>
+void EnergyMortarAdapter<EnforcementLocation>::setResidualGap( RealT residual_gap )
+{
+  params_.residual_gap = residual_gap;
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 }
 
@@ -525,7 +534,7 @@ void QuadraturePoint<Adapter>::updateNodalForces()
     const auto qp_data =
         adapter->evaluator_->compute_quadrature_point_penalty_data( flipped_pair, mesh1_view, mesh2_view );
 
-    if ( qp_data.energy == 0.0 ) {
+    if ( !qp_data.has_active_qp ) {
       continue;
     }
 

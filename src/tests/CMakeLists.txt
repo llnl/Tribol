@@ -33,6 +33,7 @@ set( tribol_tests
      tribol_mortar_wts.cpp
      tribol_nodal_nrmls.cpp
      tribol_quad_integ.cpp
+     tribol_residual_gap.cpp
      tribol_tet_mesh.cpp
      tribol_timestep_vote.cpp
      tribol_twb_integ.cpp

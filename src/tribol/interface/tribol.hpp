@@ -226,6 +226,19 @@ void setLoggingLevel( IndexT cs_id, LoggingLevel log_level );
 void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
 
 /*!
+ * @brief Sets the residual gap for a coupling scheme
+ *
+ * @param [in] cs_id coupling scheme id
+ * @param [in] residual_gap the nonnegative gap offset. Tribol defines positive kinematic gaps as separation and
+ * negative kinematic gaps as interpenetration. Positive residual gaps shift the contact surface away from the mesh
+ * surface, making contact occur earlier. Effective gap = kinematic gap - residual gap.
+ *
+ * @note Configure the residual gap after registering the coupling scheme and before its first update. For MFEM
+ * coupling schemes, this must precede the first call to updateMfemParallelDecomposition().
+ */
+void setResidualGap( IndexT cs_id, RealT residual_gap );
+
+/*!
  * \brief Enable the contact timestep vote
  *
  * \param [in] cs_id coupling scheme id
