@@ -840,6 +840,27 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
 }  // end setInterfacePairs()
 
 //------------------------------------------------------------------------------
+int getNumberOfContactPairsOnRank( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  return cs->getNumActivePairs();
+}
+
+//------------------------------------------------------------------------------
+int getTotalNumberOfContactPairs( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  if ( cs != nullptr ) {
+    auto comm = cs->getProblemComm();
+    int local_num_pairs = cs->getNumActivePairs();
+    int global_num_pairs = 0;
+    MPI_Allreduce( &local_num_pairs, &global_num_pairs, 1, MPI_INT, MPI_SUM, comm );
+    return global_num_pairs;
+  }
+  return 0;
+}
+
+//------------------------------------------------------------------------------
 int update( int cycle, RealT t, RealT& dt )
 {
   bool err_cs = false;

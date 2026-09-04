@@ -521,6 +521,26 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* mesh_id1, I
                         IndexT const* pairIndex2 );
 
 /*!
+ * \brief Get the number of contact pairs on rank for the given coupling scheme
+ *
+ * \param [in] cs_id coupling scheme id
+ *
+ * \return the number of contact pairs on rank
+ */
+int getNumberOfContactPairsOnRank( IndexT cs_id );
+
+/*!
+ * \brief Get the total number of contact pairs across all ranks for the given coupling scheme
+ *
+ * \param [in] cs_id coupling scheme id
+ *
+ * \return the total number of contact pairs across all rank
+ *
+ * \note this routine only works on host
+ */
+int getTotalNumberOfContactPairs( IndexT cs_id );
+
+/*!
  * \brief Computes the contact response at the given cycle.
  *
  * \param [in] cycle the current cycle.
