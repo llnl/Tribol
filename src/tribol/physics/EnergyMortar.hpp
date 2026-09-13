@@ -20,7 +20,9 @@ struct QuadPoints {
 
 /// Parameters controlling ENERGY_MORTAR contact evaluation.
 struct ContactParams {
-  double del;                  ///< Smoothing length used for integration bounds.
+  double del;  ///< Smoothing length used for integration bounds.
+  double normal_smoothing_start_angle{
+      energy_mortar::default_normal_smoothing_start_angle };  ///< Normal smoothing start angle in radians.
   double k;                    ///< Penalty stiffness.
   int N;                       ///< Number of quadrature points.
   bool enzyme_quadrature;      ///< Whether Enzyme differentiates the quadrature construction.
@@ -81,9 +83,11 @@ struct FiniteDiffResult {
 
 /// Stores fixed quadrature data passed to differentiated kernels.
 struct Gparams {
-  std::array<double, 3> qp;    ///< Quadrature-point locations in the integration-edge local coordinate.
-  std::array<double, 3> w;     ///< Quadrature weights mapped to the local integration interval.
-  double residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
+  std::array<double, 3> qp;  ///< Quadrature-point locations in the integration-edge local coordinate.
+  std::array<double, 3> w;   ///< Quadrature weights mapped to the local integration interval.
+  double normal_smoothing_start_angle{
+      energy_mortar::default_normal_smoothing_start_angle };  ///< Normal smoothing start angle in radians.
+  double residual_gap{ 0.0 };                                ///< User-defined gap offset.
 };
 
 /// Provides smoothing operations for the Energy Mortar contact formulation.
@@ -92,6 +96,12 @@ struct Gparams {
 /// constructing smoothed integration bounds from projected overlap intervals.
 class ContactSmoothing {
  public:
+  /// Compute the negative normal-alignment factor for a pair of unit normals.
+  ///
+  /// The factor has unit magnitude until the relative angle between opposing normals reaches
+  /// `start_angle`, then follows a shifted cosine to zero at perpendicularity.
+  static double normal_alignment_factor( double normal_dot, double start_angle );
+
   /// Clamp the projected overlap interval to the extended smoothing support.
   ///
   /// The input `projections` contains the local projection bounds of edge B onto edge A.
