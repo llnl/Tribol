@@ -377,6 +377,35 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
   return result;
 }
 
+TEST( NormalAngleSmoothingCheck, ShiftedCosineStartsAtConfiguredAngle )
+{
+  constexpr double pi = 3.14159265358979323846264338327950288;
+  constexpr double start_angle = 0.25 * pi;
+  const ContactParams default_params{};
+  EXPECT_DOUBLE_EQ( default_params.normal_smoothing_start_angle, start_angle );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -std::cos( pi / 6.0 ), start_angle ), -1.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -std::cos( start_angle ), start_angle ), -1.0 );
+  EXPECT_NEAR( ContactSmoothing::normal_alignment_factor( -std::cos( 3.0 * pi / 8.0 ), start_angle ),
+               -1.0 / std::sqrt( 2.0 ), 1.0e-14 );
+  EXPECT_NEAR( ContactSmoothing::normal_alignment_factor( -0.5, 0.0 ), -0.5, 1.0e-14 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.0, start_angle ), 0.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.5, start_angle ), 0.0 );
+}
+
+TEST( NormalAngleSmoothingCheck, NinetyDegreesDisablesAttenuation )
+{
+  EXPECT_DOUBLE_EQ(
+      ContactSmoothing::normal_alignment_factor( -1.0, energy_mortar::perpendicular_normal_angle ), -1.0 );
+  EXPECT_DOUBLE_EQ(
+      ContactSmoothing::normal_alignment_factor( -0.5, energy_mortar::perpendicular_normal_angle ), -1.0 );
+  EXPECT_DOUBLE_EQ(
+      ContactSmoothing::normal_alignment_factor( -1.0e-12, energy_mortar::perpendicular_normal_angle ), -1.0 );
+  EXPECT_DOUBLE_EQ(
+      ContactSmoothing::normal_alignment_factor( 0.0, energy_mortar::perpendicular_normal_angle ), 0.0 );
+  EXPECT_DOUBLE_EQ(
+      ContactSmoothing::normal_alignment_factor( 0.5, energy_mortar::perpendicular_normal_angle ), 0.0 );
+}
+
 TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -474,6 +503,60 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
   }
 }
 
+TEST( EnergyMortarResidualGapCheck, AssembledGapShiftRespectsNormalSmoothing )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 1, 0 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  constexpr double pi = 3.14159265358979323846264338327950288;
+  constexpr double angle = pi / 3.0;
+  constexpr double separation = 0.3;
+  constexpr double half_edge_length = 0.05;
+  const double tangent_x = std::cos( angle );
+  const double tangent_y = std::sin( angle );
+  const double normal_x = tangent_y;
+  const double normal_y = -tangent_x;
+  const double center_x = 0.5 + separation * normal_x;
+  const double center_y = separation * normal_y;
+  RealT x2[2] = { center_x - half_edge_length * tangent_x, center_x + half_edge_length * tangent_x };
+  RealT y2[2] = { center_y - half_edge_length * tangent_y, center_y + half_edge_length * tangent_y };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+
+  double gap_without_residual[2] = { 0.0, 0.0 };
+  double tributary_area_without_residual[2] = { 0.0, 0.0 };
+  EnergyMortarCalculator evaluator_without_residual( params );
+  evaluator_without_residual.compute_gtilde_and_area( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(),
+                                                      gap_without_residual, tributary_area_without_residual );
+
+  params.residual_gap = 0.15;
+  double gap_with_residual[2] = { 0.0, 0.0 };
+  double tributary_area_with_residual[2] = { 0.0, 0.0 };
+  EnergyMortarCalculator evaluator_with_residual( params );
+  evaluator_with_residual.compute_gtilde_and_area( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(),
+                                                   gap_with_residual, tributary_area_with_residual );
+
+  const double normal_alignment =
+      ContactSmoothing::normal_alignment_factor( -std::cos( angle ), params.normal_smoothing_start_angle );
+  ASSERT_GT( normal_alignment, -1.0 );
+  ASSERT_LT( normal_alignment, 0.0 );
+  for ( int i = 0; i < 2; ++i ) {
+    EXPECT_NEAR( tributary_area_with_residual[i], tributary_area_without_residual[i], 1.0e-14 );
+    EXPECT_NEAR( gap_with_residual[i],
+                 gap_without_residual[i] +
+                     normal_alignment * params.residual_gap * tributary_area_without_residual[i],
+                 1.0e-14 );
+  }
+}
+
 TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
 {
   // The edges have a normal separation of 0.1; a residual gap of 0.15 produces an effective gap of -0.05.
@@ -523,8 +606,18 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   IndexT conn1[2] = { 1, 0 };
   MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
 
-  RealT x2[2] = { 0.2, 0.8 };
-  RealT y2[2] = { -0.1, -0.1 };
+  constexpr double pi = 3.14159265358979323846264338327950288;
+  constexpr double angle = pi / 3.0;
+  constexpr double separation = 0.3;
+  constexpr double half_edge_length = 0.05;
+  const double tangent_x = std::cos( angle );
+  const double tangent_y = std::sin( angle );
+  const double normal_x = tangent_y;
+  const double normal_y = -tangent_x;
+  const double center_x = 0.5 + separation * normal_x;
+  const double center_y = separation * normal_y;
+  RealT x2[2] = { center_x - half_edge_length * tangent_x, center_x + half_edge_length * tangent_x };
+  RealT y2[2] = { center_y - half_edge_length * tangent_y, center_y + half_edge_length * tangent_y };
   IndexT conn2[2] = { 0, 1 };
   MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
 

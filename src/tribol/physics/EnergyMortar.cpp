@@ -14,20 +14,52 @@ namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
+// Return a negative normal-alignment factor that is one in magnitude through start_angle and follows a shifted cosine
+// to zero as the opposing unit normals approach perpendicularity.
+TRIBOL_ENZYME_INLINE double ContactSmoothing::normal_alignment_factor( double normal_dot, double start_angle )
+{
+  if ( normal_dot >= 0.0 ) {
+    return 0.0;
+  }
+
+  double alignment = -normal_dot;
+  if ( alignment > 1.0 ) {
+    alignment = 1.0;
+  }
+  if ( start_angle == 0.0 ) {
+    return -alignment;
+  }
+
+  if ( start_angle >= energy_mortar::perpendicular_normal_angle ) {
+    return -1.0;
+  }
+
+  const double start_alignment = std::cos( start_angle );
+  if ( alignment >= start_alignment ) {
+    return -1.0;
+  }
+
+  const double angle = std::acos( alignment );
+  const double ramp_angle = energy_mortar::perpendicular_normal_angle * ( angle - start_angle ) /
+      ( energy_mortar::perpendicular_normal_angle - start_angle );
+  return -std::cos( ramp_angle );
+}
+
 namespace {
 
 // This MUST match what the ContactParams struct has in EnergyMortarAdapter
 // These had to be saved locally in order for enzyme to work correctly
 struct KernelParams {
-  int N{ 3 };                  // No. of quadrature points
-  double del{ 0.1 };           // Smoothing parameter
-  double k{ 1.0 };             // Penalty stiffness
-  double residual_gap{ 0.0 };  // User-defined gap offset
+  int N{ 3 };                               // No. of quadrature points
+  double del{ 0.1 };                        // Integration-bound smoothing parameter
+  double normal_smoothing_start_angle{ energy_mortar::default_normal_smoothing_start_angle };
+  double k{ 1.0 };                             // Penalty stiffness
+  double residual_gap{ 0.0 };                  // User-defined gap offset
 };
 
 TRIBOL_ENZYME_INLINE double effective_gap( double gap_normal, double normal_cosine, double residual_gap )
 {
-  return gap_normal * normal_cosine - residual_gap;
+  return ( gap_normal + residual_gap ) * normal_cosine;
 }
 
 // Return the line-element mapping Jacobian. Local edge coordinates span [-0.5, 0.5], so the Jacobian is the physical
@@ -263,11 +295,8 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, Gparams* gp, double* g
   double nA[2];
   find_normal( A0, A1, nA );
 
-  // Only keep the contribution when the edge normals oppose each other.
-  // NOTE: geomFilter already rejects pairs with co-oriented normals (dot > 0),
-  // but the clamp is retained for defensive correctness in tests and direct calls.
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  double eta = ( dot < 0 ) ? dot : 0.0;
+  double eta = ContactSmoothing::normal_alignment_factor( dot, gp->normal_smoothing_start_angle );
 
   double g1 = 0.0, g2 = 0.0;
   double AI_1 = 0.0, AI_2 = 0.0;
@@ -330,11 +359,8 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel_quad( const double* x, const Gparams* gp
 
   double nA[2];
   find_normal( A0, A1, nA );
-  // Only keep the contribution when the edge normals oppose each other.
-  // NOTE: geomFilter already rejects pairs with co-oriented normals (dot > 0),
-  // but the clamp is retained for defensive correctness in tests and direct calls.
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  double eta = ( dot < 0 ) ? dot : 0.0;
+  double eta = ContactSmoothing::normal_alignment_factor( dot, gp->normal_smoothing_start_angle );
 
   double g1 = 0.0, g2 = 0.0;
   double AI_1 = 0.0, AI_2 = 0.0;
@@ -450,6 +476,7 @@ static void kernel_out_enzyme( const double* x, const void* kp_void, double* out
   EnergyMortarCalculator::compute_quadrature( xi_bounds, kp->N, &qp );
 
   Gparams gp;
+  gp.normal_smoothing_start_angle = kp->normal_smoothing_start_angle;
   gp.residual_gap = kp->residual_gap;
   for ( std::size_t i = 0; i < qp.qp.size(); ++i ) {
     gp.qp[i] = qp.qp[i];
@@ -553,11 +580,8 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   find_normal( B0, B1, nB );
   double nA[2];
   find_normal( A0, A1, nA );
-  // Only keep the contribution when the edge normals oppose each other.
-  // NOTE: geomFilter already rejects pairs with co-oriented normals (dot > 0),
-  // but the clamp is retained for defensive correctness in tests and direct calls.
   const double dot = nA[0] * nB[0] + nA[1] * nB[1];
-  const double eta = ( dot < 0 ) ? dot : 0.0;
+  const double eta = ContactSmoothing::normal_alignment_factor( dot, kp->normal_smoothing_start_angle );
   const double J = line_jacobian( A0, A1 );
 
   double value = 0.0;
@@ -654,6 +678,7 @@ Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, co
   }
 
   Gparams gp;
+  gp.normal_smoothing_start_angle = p_.normal_smoothing_start_angle;
   gp.residual_gap = p_.residual_gap;
   // int N = eval.get_N();
 
@@ -765,7 +790,7 @@ double EnergyMortarCalculator::compute_weighted_normal_gap( const InterfacePair&
 
   double gn = -( dx * nB[0] + dy * nB[1] );  // signed normal gap
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  double eta = ( dot < 0 ) ? dot : 0.0;
+  double eta = ContactSmoothing::normal_alignment_factor( dot, p_.normal_smoothing_start_angle );
 
   return effective_gap( gn, eta, p_.residual_gap );
 }
@@ -861,7 +886,7 @@ void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshD
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    const KernelParams kp{ p_.N, p_.del, p_.k, p_.residual_gap };
+    const KernelParams kp{ p_.N, p_.del, p_.normal_smoothing_start_angle, p_.k, p_.residual_gap };
     grad_kernel_enzyme<KernelOutput::GTILDE1>( x, &kp, dg1_du );
     grad_kernel_enzyme<KernelOutput::GTILDE2>( x, &kp, dg2_du );
   }
@@ -894,7 +919,7 @@ void EnergyMortarCalculator::grad_trib_area( const InterfacePair& pair, const Me
     grad_kernel<KernelOutput::A2>( x, &gp, dA2_dx );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    const KernelParams kp{ p_.N, p_.del, p_.k, p_.residual_gap };
+    const KernelParams kp{ p_.N, p_.del, p_.normal_smoothing_start_angle, p_.k, p_.residual_gap };
     grad_kernel_enzyme<KernelOutput::A1>( x, &kp, dA1_dx );
     grad_kernel_enzyme<KernelOutput::A2>( x, &kp, dA2_dx );
   }
@@ -926,7 +951,7 @@ void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshDa
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    const KernelParams kp{ p_.N, p_.del, p_.k, p_.residual_gap };
+    const KernelParams kp{ p_.N, p_.del, p_.normal_smoothing_start_angle, p_.k, p_.residual_gap };
     d2_kernel<KernelOutput::GTILDE1>( x, &kp, d2g1_d2u );
     d2_kernel<KernelOutput::GTILDE2>( x, &kp, d2g2_d2u );
   }
@@ -963,7 +988,7 @@ void EnergyMortarCalculator::compute_d2A_d2u( const InterfacePair& pair, const M
     d2_kernel_quad<KernelOutput::A2>( x, &gp, d2A2_d2u );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    const KernelParams kp{ p_.N, p_.del, p_.k, p_.residual_gap };
+    const KernelParams kp{ p_.N, p_.del, p_.normal_smoothing_start_angle, p_.k, p_.residual_gap };
     d2_kernel<KernelOutput::A1>( x, &kp, d2A1_d2u );
     d2_kernel<KernelOutput::A2>( x, &kp, d2A2_d2u );
   }
@@ -984,7 +1009,7 @@ double EnergyMortarCalculator::compute_quadrature_point_penalty_energy( const In
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
 
   const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  const KernelParams kp{ p_.N, p_.del, p_.k, p_.residual_gap };
+  const KernelParams kp{ p_.N, p_.del, p_.normal_smoothing_start_angle, p_.k, p_.residual_gap };
   double energy = 0.0;
   bool pair_has_active_qp = false;
   qp_penalty_kernel( x, &kp, &energy, &pair_has_active_qp );
@@ -1000,7 +1025,7 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
 
   const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  const KernelParams kp{ p_.N, p_.del, p_.k, p_.residual_gap };
+  const KernelParams kp{ p_.N, p_.del, p_.normal_smoothing_start_angle, p_.k, p_.residual_gap };
 
   QuadraturePointPenaltyData result;
   qp_penalty_kernel( x, &kp, &result.energy, &result.has_active_qp );
