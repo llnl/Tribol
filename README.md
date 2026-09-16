@@ -66,6 +66,25 @@ make -j
 
 to build Tribol.
 
+### Policy-composed contact API
+
+The redesigned C++20 interface is available from `tribol/Tribol.hpp`. The default type selects frictionless pointwise
+penalty contact, Cartesian-product search, and sequential execution:
+
+```cpp
+tribol::Contact<> contact({mortar_surface, nonmortar_surface});
+contact.updateInteractions();
+const auto result = contact.evaluate();
+```
+
+Hosts with contiguous arrays can use `tribol::array::makeContact`; MFEM applications can include
+`tribol/adapters/mfem/MfemContact.hpp` and use `tribol::mfem::makeContact`. See
+[`docs/design/public-api.md`](docs/design/public-api.md) for lifecycle and result semantics and
+[`docs/design/support-matrix.md`](docs/design/support-matrix.md) for the tested capability boundary.
+
+Named-method legacy sources are excluded from fresh builds. Set `-DTRIBOL_ENABLE_LEGACY=ON` only when a temporary
+numerical comparison with the deprecated implementation is required.
+
 
 ## Dependencies
 

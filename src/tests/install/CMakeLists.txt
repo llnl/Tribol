@@ -1,0 +1,13 @@
+cmake_minimum_required(VERSION 3.14)
+
+project(tribol_install_consumer LANGUAGES CXX)
+
+find_package(tribol CONFIG REQUIRED)
+
+add_executable(tribol_install_consumer consumer.cpp)
+target_link_libraries(tribol_install_consumer PRIVATE tribol::core)
+target_compile_features(tribol_install_consumer PRIVATE cxx_std_20)
+
+add_executable(tribol_mfem_install_consumer mfem_consumer.cpp)
+target_link_libraries(tribol_mfem_install_consumer PRIVATE tribol::mfem_adapter)
+target_compile_features(tribol_mfem_install_consumer PRIVATE cxx_std_20)

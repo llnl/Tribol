@@ -1,0 +1,30 @@
+name: Rewrite Quality
+
+# Requirements: QUALITY-001
+
+on:
+  pull_request:
+  push:
+    branches: [develop]
+
+jobs:
+  architecture-and-spec:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install quality tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang-format-19 clang-tidy-19 cppcheck iwyu shellcheck shfmt
+          python -m pip install codespell cmakelang ruff mypy
+      - name: Test specification and quality scripts
+        run: |
+          python -m unittest discover -s scripts/spec/tests -v
+          python -m unittest discover -s scripts/quality/tests -v
+      - name: Validate policy capability specification
+        run: python scripts/spec/validate.py
+      - name: Run strict quality checks
+        run: python scripts/quality/check.py all --strict-tools --compiler clang++-19

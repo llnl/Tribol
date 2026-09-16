@@ -1,0 +1,50 @@
+cmake_minimum_required(VERSION 3.14)
+
+set(install_prefix "@PROJECT_BINARY_DIR@/tests/tribol-install-consumer-prefix")
+set(consumer_build "@PROJECT_BINARY_DIR@/tests/tribol-install-consumer-build")
+set(multi_config "@CMAKE_CONFIGURATION_TYPES@")
+set(consumer_compiler "@CMAKE_CXX_COMPILER@")
+if(@TRIBOL_USE_MPI@)
+  set(consumer_compiler "@MPI_CXX_COMPILER@")
+endif()
+
+file(REMOVE_RECURSE "${install_prefix}" "${consumer_build}")
+
+set(config_arguments)
+if(TRIBOL_TEST_CONFIG)
+  list(APPEND config_arguments --config "${TRIBOL_TEST_CONFIG}")
+endif()
+
+execute_process(
+  COMMAND "@CMAKE_COMMAND@" --install "@PROJECT_BINARY_DIR@" --prefix "${install_prefix}" ${config_arguments}
+  RESULT_VARIABLE install_result)
+if(install_result)
+  message(FATAL_ERROR "Tribol installation failed with status ${install_result}")
+endif()
+
+execute_process(
+  COMMAND "@CMAKE_COMMAND@"
+          -S "@PROJECT_SOURCE_DIR@/src/tests/install"
+          -B "${consumer_build}"
+          "-DCMAKE_PREFIX_PATH=${install_prefix}"
+          "-DCMAKE_CXX_COMPILER=${consumer_compiler}"
+  RESULT_VARIABLE configure_result)
+if(configure_result)
+  message(FATAL_ERROR "Tribol install-consumer configuration failed with status ${configure_result}")
+endif()
+
+execute_process(
+  COMMAND "@CMAKE_COMMAND@" --build "${consumer_build}" ${config_arguments}
+  RESULT_VARIABLE build_result)
+if(build_result)
+  message(FATAL_ERROR "Tribol install-consumer build failed with status ${build_result}")
+endif()
+
+set(consumer_executable "${consumer_build}/tribol_install_consumer")
+if(multi_config AND TRIBOL_TEST_CONFIG)
+  set(consumer_executable "${consumer_build}/${TRIBOL_TEST_CONFIG}/tribol_install_consumer")
+endif()
+execute_process(COMMAND "${consumer_executable}" RESULT_VARIABLE run_result)
+if(run_result)
+  message(FATAL_ERROR "Tribol install consumer failed with status ${run_result}")
+endif()

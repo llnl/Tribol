@@ -3,7 +3,15 @@
 #
 # SPDX-License-Identifier: (MIT)
 
-# Add targets to generate C and Fortran interfaces
+add_subdirectory(core)
+add_subdirectory(adapters/mfem)
+
+if(NOT TRIBOL_ENABLE_LEGACY)
+    install(EXPORT tribol-targets DESTINATION lib/cmake/tribol)
+    return()
+endif()
+
+# Add targets to generate deprecated C and Fortran interfaces
 if (SHROUD_FOUND)
      add_subdirectory(interface)
 endif()
@@ -111,7 +119,7 @@ if (ENABLE_FORTRAN)
 endif()
 
 ## setup the dependency list for tribol
-set(tribol_depends tribol_shared axom::primal axom::slic mfem)
+set(tribol_depends tribol_core tribol_shared axom::primal axom::slic mfem)
 blt_list_append(TO tribol_depends ELEMENTS blt::mpi IF TRIBOL_USE_MPI )
 blt_list_append(TO tribol_depends ELEMENTS redecomp IF BUILD_REDECOMP )
 blt_list_append(TO tribol_depends ELEMENTS umpire IF TRIBOL_USE_UMPIRE )

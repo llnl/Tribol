@@ -20,7 +20,11 @@ endif()
 option(TRIBOL_USE_SINGLE_PRECISION "Use single-precision floating point" OFF)
 option(TRIBOL_USE_64BIT_INDEXTYPE "Use 64-bit index type" OFF)
 
+option(TRIBOL_ENABLE_LEGACY "Build the deprecated named-method implementation and examples" OFF)
 option(TRIBOL_ENABLE_FUTURE "Build the standalone experimental contact library" OFF)
+if(TRIBOL_ENABLE_FUTURE AND NOT TRIBOL_ENABLE_LEGACY)
+    message(FATAL_ERROR "TRIBOL_ENABLE_FUTURE requires TRIBOL_ENABLE_LEGACY=ON")
+endif()
 set(TRIBOL_FUTURE_NATIVE_HO_MAX_ORDER "4" CACHE STRING
     "Maximum polynomial order supported by native high-order future contact kernels")
 if(TRIBOL_FUTURE_NATIVE_HO_MAX_ORDER LESS 1)

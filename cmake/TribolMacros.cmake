@@ -138,7 +138,7 @@ macro(tribol_install)
               DESTINATION "include/tribol" )
   endforeach()
 
-  install(EXPORT tribol-targets DESTINATION lib/cmake)
+  install(EXPORT tribol-targets DESTINATION lib/cmake/tribol)
 
 endmacro(tribol_install)
 

@@ -1,0 +1,126 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{enumitem}
+\usepackage{hyperref}
+
+\title{Summary of Branch Changes and Timestep Constraints}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Branch Summary Relative to \texttt{develop}}
+
+This branch adds an optional CFL-like contact stiffness timestep limit on top of the existing Common Plane timestep vote. The main code changes are:
+
+\begin{itemize}[leftmargin=*]
+\item A new API hook for enabling the stability-limit path.
+\item A small refactor that exposes the uncoupled penalty stiffness calculation used by Common Plane penalty contact.
+\item A third timestep-vote bucket in \texttt{CouplingScheme::computeCommonPlaneTimeStep()}, used for the CFL-like stiffness limit.
+\item A unit test that verifies the implemented CFL-like limit.
+\end{itemize}
+
+The force law itself is still the Common Plane penalty law,
+\begin{equation}
+  p = g \, k_c,
+\end{equation}
+where $g$ is the signed normal gap and $k_c$ is the equivalent interface penalty stiffness per area. In this branch,
+\begin{equation}
+  k_c = \frac{k_1 k_2}{k_1 + k_2},
+\end{equation}
+with
+\begin{equation}
+  k_i =
+  \begin{cases}
+    s_i k_{\mathrm{const},i}, & \text{constant penalty}, \\
+    s_i K_i / t_i, & \text{element-based penalty},
+  \end{cases}
+\end{equation}
+where $s_i$ is the mesh penalty scale, $K_i$ is the registered bulk modulus, and $t_i$ is the registered element thickness.
+
+\section{Checks Implemented in the Timestep Vote}
+
+The branch now returns the minimum over three groups of checks:
+\begin{equation}
+  \Delta t_{\mathrm{vote}}
+  = \min\!\left(
+      \Delta t_{\mathrm{gap}},
+      \Delta t_{\mathrm{proj}},
+      \Delta t_{\mathrm{stab}}
+    \right).
+\end{equation}
+
+\subsection*{Existing kinematic checks}
+
+\textbf{1. Current-gap limit.}
+For active contact, the code compares the current interpenetration against an allowable fraction of each side's thickness,
+\begin{equation}
+  \delta_i^{\max} = \alpha_p t_i,
+\end{equation}
+with $\alpha_p = \texttt{timestep\_pen\_frac}$. If the current overlap already exceeds this bound and the projected motion continues to drive penetration, the vote is
+\begin{equation}
+  \Delta t_i = \alpha \frac{\delta_i^{\max}}{v_{i,n_i}},
+\end{equation}
+using the face-normal velocity projection and the user scale factor $\alpha = \texttt{timestep\_scale}$.
+
+\textbf{2. Velocity-projection limit.}
+Even for candidate pairs that are not currently active, the overlap centroid is advanced by one host step using the interpolated face velocities. If that projected penetration exceeds $\delta_i^{\max}$, the same reset-gap estimate is used:
+\begin{equation}
+  \Delta t_i = \alpha \frac{\delta_i^{\max}}{v_{i,n_i}}.
+\end{equation}
+
+These two checks are geometry and kinematics based. They are intended to avoid excessive penetration and missed contact resolution, not to estimate the dynamic stability limit of the penalty spring.
+
+\subsection*{New stability check}
+
+The new limit is applied only when the pair is in active contact and \texttt{enable\_timestep\_stability\_limits} is true.
+
+\textbf{3. CFL-like stiffness limit.}
+The branch rescales the host timestep using the added contact stiffness:
+\begin{equation}
+  f_i = \frac{1}{\sqrt{1 + k_c/k_i}},
+  \qquad
+  \Delta t_{\mathrm{CFL}} = \alpha \, \Delta t_{\mathrm{host}} \min(f_1,f_2).
+\end{equation}
+
+\[
+  \Delta t_{\mathrm{stab}} = \Delta t_{\mathrm{CFL}}.
+\]
+
+\section{Does the Remaining Constraint Make Sense?}
+
+\subsection*{What fits well}
+
+\begin{itemize}[leftmargin=*]
+\item The CFL-like limit is built from the same equivalent interface stiffness $k_c$ that the penalty force law already uses. That is the right stiffness quantity to reference for Common Plane penalty contact.
+\item Reusing the uncoupled side stiffnesses $k_1$ and $k_2$ is consistent with the branch's spring-in-series model for the two contacting bodies.
+\item The CFL-like limit is a sensible extension of the existing vote. Tribol does not know the host's lumped masses or modal content, so rescaling the host timestep by the stiffness increase is a pragmatic approximation.
+\item Keeping the original gap-based checks is still useful. They control contact resolution quality and candidate detection in ways the stiffness-based limit does not.
+\end{itemize}
+
+\subsection*{Remaining caveat}
+
+\begin{itemize}[leftmargin=*]
+\item The CFL-like limit is still a host-timestep rescaling, not a true mass-based critical timestep. It is best viewed as a conservative approximation tied to the added penalty stiffness.
+\end{itemize}
+
+\subsection*{Bottom line}
+
+For the implemented \emph{Common Plane + penalty} algorithm, the branch remains directionally sound:
+\begin{itemize}[leftmargin=*]
+\item The old two checks remain appropriate for limiting penetration.
+\item The CFL-like stability limit is the most defensible dynamic addition because it uses the same interface stiffness model as the force calculation.
+\end{itemize}
+
+\section{Test Coverage}
+
+The branch adds a direct formula check for the CFL-like limit. That test confirms that the code returns the implemented formula. It does \emph{not} independently validate the physical derivation of the host-timestep rescaling.
+
+\section{Practical Recommendation}
+
+If the goal is a conservative host-code timestep vote for explicit Common Plane penalty contact, the remaining CFL-like limit is reasonable to keep. If the goal is a physically grounded critical timestep estimate, the next step should be to derive a mass-aware bound from the actual semi-discrete contact model.
+
+\end{document}

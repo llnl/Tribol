@@ -1,0 +1,206 @@
+{
+  "schema_version": 1,
+  "combinations": [
+    {
+      "id": "pointwise-penalty",
+      "legacy_equivalent": "common-plane",
+      "method": {
+        "geometry": {"policy": "ProjectedOverlap", "normal": "MeanPlane"},
+        "integration": {"policy": "Centroid"},
+        "constraint": {"policy": "Pointwise"},
+        "enforcement": {"policy": "Penalty", "stiffness": "Constant", "rate": "None"},
+        "response": {"policy": "Frictionless"},
+        "formulation": {"policy": "PointwiseTraction"},
+        "linearization": {"policy": "Exact"}
+      },
+      "dimensions": [2, 3],
+      "topologies": ["Segment", "Triangle", "Quadrilateral", "TessellatedHighOrderSegment"],
+      "search": ["CartesianProduct", "Grid", "Bvh"],
+      "execution": ["Sequential", "Deterministic", "Cuda"],
+      "parallel": ["Serial", "MPI"],
+      "outputs": ["Force", "Energy", "TimestepVote", "DerivativeOperators"],
+      "requirements": ["API-001", "CORE-002", "ENF-001", "DIFF-001", "DIFF-002", "GEOM-001", "SEARCH-001", "PAR-001", "PAR-002", "PAR-003", "PHYS-001", "PHYS-003", "OUTPUT-001"]
+    },
+    {
+      "id": "pointwise-material-rate-viscous",
+      "legacy_equivalent": "common-plane-material-rate",
+      "method": {
+        "geometry": {"policy": "ProjectedOverlap", "normal": "MeanPlane"},
+        "integration": {"policy": "Centroid"},
+        "constraint": {"policy": "Pointwise"},
+        "enforcement": {"policy": "Penalty", "stiffness": "Material", "rate": "Percentage"},
+        "response": {"policy": "ViscousTangential"},
+        "formulation": {"policy": "PointwiseTraction"},
+        "linearization": {"policy": "Exact"}
+      },
+      "dimensions": [2, 3],
+      "topologies": ["Segment", "Triangle", "Quadrilateral"],
+      "search": ["CartesianProduct", "Grid", "Bvh"],
+      "execution": ["Sequential", "Deterministic"],
+      "parallel": ["Serial"],
+      "outputs": ["Force", "TimestepVote", "DerivativeOperators"],
+      "requirements": ["ENF-001", "ENF-002", "RESP-001", "DIFF-001", "PHYS-001", "PHYS-003", "OUTPUT-001"]
+    },
+    {
+      "id": "pointwise-tied",
+      "legacy_equivalent": "common-plane-tied",
+      "method": {
+        "geometry": {"policy": "ProjectedOverlap", "normal": "MeanPlane"},
+        "integration": {"policy": "Centroid"},
+        "constraint": {"policy": "Pointwise"},
+        "enforcement": {"policy": "Penalty", "stiffness": "Constant", "rate": "None"},
+        "response": {"policy": "TiedNormal"},
+        "formulation": {"policy": "PointwiseTraction"},
+        "linearization": {"policy": "Exact"}
+      },
+      "variants": {"response": ["TiedNormal", "TiedFull"]},
+      "dimensions": [2, 3],
+      "topologies": ["Segment", "Triangle", "Quadrilateral"],
+      "search": ["CartesianProduct", "Grid", "Bvh"],
+      "execution": ["Sequential", "Deterministic"],
+      "parallel": ["Serial"],
+      "outputs": ["Force", "Energy", "TimestepVote", "DerivativeOperators"],
+      "requirements": ["RESP-002", "DIFF-001", "PHYS-001", "PHYS-003", "OUTPUT-001"]
+    },
+    {
+      "id": "projected-multiplier",
+      "legacy_equivalent": "single-mortar",
+      "method": {
+        "geometry": {"policy": "ProjectedOverlap", "normal": "MortarSurface"},
+        "integration": {"policy": "Polygon", "order": 2},
+        "constraint": {"policy": "Nodal", "basis": "Dual"},
+        "enforcement": {"policy": "LagrangeMultiplier"},
+        "response": {"policy": "Frictionless"},
+        "formulation": {"policy": "WeightedWeakForm"},
+        "linearization": {"policy": "Exact"}
+      },
+      "dimensions": [3],
+      "topologies": ["Triangle", "Quadrilateral"],
+      "search": ["CartesianProduct", "Grid", "Bvh"],
+      "execution": ["Sequential", "Deterministic"],
+      "parallel": ["Serial"],
+      "outputs": ["PrimalForce", "ConstraintResidual", "DerivativeBlocks"],
+      "requirements": ["CONS-001", "ENF-003", "DIFF-001", "DIFF-002", "PHYS-001", "PHYS-003"]
+    },
+    {
+      "id": "conforming-multiplier",
+      "legacy_equivalent": "aligned-mortar",
+      "method": {
+        "geometry": {"policy": "ConformingOverlap"},
+        "integration": {"policy": "Face", "order": 2},
+        "constraint": {"policy": "Nodal", "basis": "Dual"},
+        "enforcement": {"policy": "LagrangeMultiplier"},
+        "response": {"policy": "Frictionless"},
+        "formulation": {"policy": "WeightedWeakForm"},
+        "linearization": {"policy": "Exact"}
+      },
+      "dimensions": [3],
+      "topologies": ["Triangle", "Quadrilateral"],
+      "search": ["CartesianProduct", "Grid", "Bvh"],
+      "execution": ["Sequential", "Deterministic"],
+      "parallel": ["Serial"],
+      "outputs": ["PrimalForce", "ConstraintResidual", "DerivativeBlocks"],
+      "requirements": ["GEOM-002", "CONS-001", "ENF-003", "DIFF-001", "DIFF-002", "PHYS-003"]
+    },
+    {
+      "id": "diagnostic-mortar-weights",
+      "legacy_equivalent": "mortar-weights",
+      "method": {
+        "geometry": {"policy": "ProjectedOverlap", "normal": "MortarSurface"},
+        "integration": {"policy": "Polygon", "order": 2},
+        "constraint": {"policy": "Nodal", "basis": "Dual"},
+        "enforcement": {"policy": "None"},
+        "response": {"policy": "Frictionless"},
+        "formulation": {"policy": "DiagnosticWeights"},
+        "linearization": {"policy": "Exact"}
+      },
+      "dimensions": [3],
+      "topologies": ["Triangle", "Quadrilateral"],
+      "search": ["CartesianProduct", "Grid", "Bvh"],
+      "execution": ["Sequential", "Deterministic"],
+      "parallel": ["Serial"],
+      "outputs": ["MortarWeights"],
+      "requirements": ["CONS-001", "FORM-001", "SEARCH-001", "OUTPUT-001"]
+    },
+    {
+      "id": "variational-nodal-penalty",
+      "legacy_equivalent": "energy-mortar",
+      "method": {
+        "geometry": {"policy": "ProjectedOverlap", "normal": "MortarSurface"},
+        "integration": {"policy": "Polygon", "order": 2},
+        "constraint": {"policy": "Nodal", "basis": "Primal"},
+        "enforcement": {"policy": "Penalty", "stiffness": "Constant", "rate": "None"},
+        "response": {"policy": "Frictionless"},
+        "formulation": {"policy": "Variational"},
+        "linearization": {"policy": "Exact"}
+      },
+      "dimensions": [2, 3],
+      "topologies": ["Segment", "Triangle", "Quadrilateral"],
+      "search": ["CartesianProduct", "Grid", "Bvh"],
+      "execution": ["Sequential", "Deterministic"],
+      "parallel": ["Serial"],
+      "outputs": ["Force", "Gap", "WeightedGap", "TributaryArea", "Energy", "DerivativeOperators"],
+      "requirements": ["GEOM-001", "CONS-001", "ENF-001", "FORM-001", "DIFF-001", "PHYS-001", "PHYS-002", "PHYS-003", "OUTPUT-001"]
+    },
+    {
+      "id": "variational-quadrature-penalty",
+      "legacy_equivalent": "energy-mortar",
+      "method": {
+        "geometry": {"policy": "ProjectedOverlap", "normal": "MortarSurface"},
+        "integration": {"policy": "Polygon", "order": 2},
+        "constraint": {"policy": "QuadraturePoint"},
+        "enforcement": {"policy": "Penalty", "stiffness": "Constant", "rate": "None"},
+        "response": {"policy": "Frictionless"},
+        "formulation": {"policy": "Variational"},
+        "linearization": {"policy": "Exact"}
+      },
+      "dimensions": [2, 3],
+      "topologies": ["Segment", "Triangle", "Quadrilateral"],
+      "search": ["CartesianProduct", "Grid", "Bvh"],
+      "execution": ["Sequential", "Deterministic"],
+      "parallel": ["Serial"],
+      "outputs": ["Force", "QuadratureGap", "QuadraturePressure", "Energy", "DerivativeOperators"],
+      "requirements": ["GEOM-001", "CONS-001", "ENF-001", "FORM-001", "DIFF-001", "PHYS-001", "PHYS-002", "PHYS-003", "OUTPUT-001"]
+    },
+    {
+      "id": "variational-multiplier",
+      "legacy_equivalent": "energy-mortar-lagrange-multiplier",
+      "method": {
+        "geometry": {"policy": "ProjectedOverlap", "normal": "MortarSurface"},
+        "integration": {"policy": "Polygon", "order": 2},
+        "constraint": {"policy": "Nodal", "basis": "Primal"},
+        "enforcement": {"policy": "LagrangeMultiplier"},
+        "response": {"policy": "Frictionless"},
+        "formulation": {"policy": "Variational"},
+        "linearization": {"policy": "Exact"}
+      },
+      "dimensions": [2, 3],
+      "topologies": ["Segment", "Triangle", "Quadrilateral"],
+      "search": ["CartesianProduct", "Grid", "Bvh"],
+      "execution": ["Sequential", "Deterministic"],
+      "parallel": ["Serial"],
+      "outputs": ["PrimalForce", "ConstraintResidual", "DerivativeBlocks"],
+      "requirements": ["CONS-001", "ENF-003", "DIFF-001", "DIFF-002", "PHYS-001", "PHYS-002", "PHYS-003"]
+    },
+    {
+      "id": "variational-external-pressure",
+      "legacy_equivalent": "energy-mortar-host-pressure",
+      "method": {
+        "geometry": {"policy": "ProjectedOverlap", "normal": "MortarSurface"},
+        "integration": {"policy": "Polygon", "order": 2},
+        "constraint": {"policy": "Nodal", "basis": "Primal"},
+        "enforcement": {"policy": "ExternalPressure"},
+        "response": {"policy": "Frictionless"},
+        "formulation": {"policy": "Variational"},
+        "linearization": {"policy": "Exact"}
+      },
+      "dimensions": [2, 3],
+      "topologies": ["Segment", "Triangle", "Quadrilateral"],
+      "search": ["CartesianProduct", "Grid", "Bvh"],
+      "execution": ["Sequential", "Deterministic"],
+      "parallel": ["Serial"],
+      "outputs": ["Force", "Gap", "WeightedGap", "TributaryArea", "QuadratureGap", "QuadraturePressure", "Energy", "DerivativeOperators"],
+      "requirements": ["CONS-001", "ENF-004", "DIFF-001", "PHYS-001", "PHYS-002", "OUTPUT-001"]
+    }
+  ]
+}

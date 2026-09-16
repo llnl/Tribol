@@ -100,6 +100,7 @@ endif()
 # Load tribol macros and options
 #------------------------------------------------------------------------------
 include(cmake/TribolMacros.cmake)
+include(cmake/TribolQuality.cmake)
 include(cmake/Options.cmake)
 include(cmake/TribolCompilerFlags.cmake)
 
@@ -120,6 +121,8 @@ list(APPEND BLT_C_FILE_EXTS ".cpp.in" ".hpp.in")
 if (TRIBOL_STYLE_CI_ONLY OR TRIBOL_ENABLE_CODE_CHECKS)
     tribol_add_code_checks(PREFIX tribol)
 endif()
+
+tribol_add_quality_targets()
 
 if (TRIBOL_STYLE_CI_ONLY)
     # Exit processing the rest of the build in style only build to avoid any possible
@@ -179,4 +182,3 @@ endif()
 #------------------------------------------------------------------------------
 include(cmake/TribolVersion.cmake)
 include(cmake/TribolConfig.cmake)
-

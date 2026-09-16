@@ -8,24 +8,25 @@
 #------------------------------------------------------------------------------
 
 #------------------------------------------------------------------------------
-# add shared
+# add legacy support libraries
 #------------------------------------------------------------------------------
-add_subdirectory(shared)
+if(TRIBOL_ENABLE_LEGACY)
+  add_subdirectory(shared)
 
-#------------------------------------------------------------------------------
-# add redecomp
-#------------------------------------------------------------------------------
-if ( NOT DEFINED BUILD_REDECOMP )
-  set(BUILD_REDECOMP ON)
-endif()
-if ( BUILD_REDECOMP )
-  if ( TRIBOL_USE_MPI )
-    add_subdirectory(redecomp)
-  else()
-    message(STATUS "Redecomp requested, but MPI not enabled. "
-      "Build will proceed with redecomp disabled.")
-    set(BUILD_REDECOMP OFF)
+  if ( NOT DEFINED BUILD_REDECOMP )
+    set(BUILD_REDECOMP ON)
   endif()
+  if ( BUILD_REDECOMP )
+    if ( TRIBOL_USE_MPI )
+      add_subdirectory(redecomp)
+    else()
+      message(STATUS "Redecomp requested, but MPI not enabled. "
+        "Build will proceed with redecomp disabled.")
+      set(BUILD_REDECOMP OFF)
+    endif()
+  endif()
+else()
+  set(BUILD_REDECOMP OFF)
 endif()
 
 #------------------------------------------------------------------------------
@@ -43,8 +44,10 @@ endif()
 #------------------------------------------------------------------------------
 # add tribol's and redecomp's examples
 #------------------------------------------------------------------------------
-if ( TRIBOL_ENABLE_EXAMPLES )
+if ( TRIBOL_ENABLE_EXAMPLES AND TRIBOL_ENABLE_LEGACY )
   add_subdirectory(examples)
+elseif(TRIBOL_ENABLE_EXAMPLES)
+  message(STATUS "Legacy Tribol examples are disabled; use the tested examples in the public API documentation")
 endif()
 
 convert_to_native_escaped_file_path(${PROJECT_SOURCE_DIR} TRIBOL_REPO_DIR)
