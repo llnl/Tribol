@@ -523,6 +523,10 @@ TRIBOL_HOST_DEVICE inline int GetTriangleRule( int order, TriangleQuadratureRule
 TRIBOL_HOST_DEVICE inline int GetCommonPlaneSegmentRule( int order, RealT* wts, RealT* coords )
 {
   switch ( order ) {
+    case 1:
+      wts[0] = 1.00000000000000000000000000000000000e+00;
+      coords[0] = 5.00000000000000000000000000000000000e-01;
+      return 1;
     case 2:
       wts[0] = 5.00000000000000000000000000000000000e-01;
       wts[1] = 5.00000000000000000000000000000000000e-01;
@@ -651,7 +655,7 @@ TRIBOL_HOST_DEVICE inline int GetCommonPlaneSegmentRule( int order, RealT* wts, 
       return 10;
     default:
 #ifdef TRIBOL_USE_HOST
-      SLIC_ERROR( "GetCommonPlaneSegmentRule(): only Gauss-Legendre integration of order 2-10 is implemented." );
+      SLIC_ERROR( "GetCommonPlaneSegmentRule(): only Gauss-Legendre integration of order 1-10 is implemented." );
 #endif
       return 0;
   }

@@ -178,7 +178,15 @@ enum ImpulseProjectionContactResponse
   PROJECTION_RESPONSE_EXACT,
   PROJECTION_RESPONSE_COMPLIANT,
   PROJECTION_RESPONSE_AUGMENTED_LAGRANGIAN,
+  PROJECTION_RESPONSE_PENALTY_GUARD,
   NUM_IMPULSE_PROJECTION_CONTACT_RESPONSES
+};
+
+enum ImpulseProjectionPenaltyGuardPhase
+{
+  PROJECTION_PENALTY_GUARD_COMBINED,
+  PROJECTION_PENALTY_GUARD_BASELINE_ONLY,
+  PROJECTION_PENALTY_GUARD_CORRECTION_ONLY
 };
 
 /*! \brief Enumerates augmented-Lagrangian iteration-cap handling. */
@@ -193,7 +201,13 @@ enum AugmentedLagrangianFailurePolicy
 enum PenaltyAugmentedLagrangianFormulation
 {
   PENALTY_AL_SURFACE_COMPLIANCE,
+  PENALTY_AL_QUADRATURE_LOCAL,
+  PENALTY_AL_QUADRATURE_POINT_MEMORY,
+  PENALTY_AL_QUADRATURE_CELL_MEMORY,
+  PENALTY_AL_QUADRATURE_CELL_MEMORY_COMPLIANCE,
+  PENALTY_AL_PARENT_TRACE_COMPLIANCE,
   PENALTY_AL_QUADRATURE_HYBRID,
+  PENALTY_AL_QUADRATURE_HYBRID_COMPLIANCE,
   NUM_PENALTY_AUGMENTED_LAGRANGIAN_FORMULATIONS
 };
 
@@ -491,19 +505,28 @@ struct PenaltyEnforcementOptions {
   ///! Triangle/segment quadrature order used when common_plane_rule is MULTI_POINT; ignored for SINGLE_POINT
   int common_plane_quadrature_order{ 3 };
   RealT predictor_relaxation_scale{ 1.0 };
+  RealT predictor_depenetration_fraction{ 0.0 };
+  RealT predictor_max_penetration_fraction{ 0.0 };
   RealT penalty_stability_scale{ 0.8 };
+  RealT penalty_stability_spectral_diagnostic_interval{ -1. };
   bool augmented_lagrangian{ false };
   int al_max_iterations{ 2 };
   int al_fixed_iterations{ 2 };
   RealT al_relative_tolerance{ 1.e-6 };
   RealT al_absolute_tolerance{ 1.e-12 };
   RealT al_relaxation{ 1. };
+  RealT al_inner_relaxation{ 1. };
+  RealT al_continuation_factor{ 1. };
+  RealT al_continuation_max_scale{ 1. };
   RealT al_unloading_relaxation{ 1. };
   RealT al_loading_time_constant{ 0. };
   RealT al_unloading_time_constant{ 0. };
   RealT al_direction_deadband{ 1.e-3 };
   RealT al_spatial_smoothing{ 0. };
   RealT al_activation_gap_fraction{ 0. };
+  RealT al_normal_damping_ratio{ 0. };
+  RealT al_target_gap_fraction{ 0. };
+  RealT al_fixed_active_set_time{ -1. };
   PenaltyAugmentedLagrangianFormulation al_formulation{ PENALTY_AL_SURFACE_COMPLIANCE };
 
   bool constraint_type_set{ false };
@@ -526,11 +549,21 @@ struct ImpulseProjectionOptions {
   RealT relaxation_scale{ 1. };
   RealT normal_patch_angle_degrees{ 30. };
   RealT position_velocity_scale{ 1. };
+  RealT depenetration_fraction{ 0. };
+  //! Signed residual penetration target; negative values request a clearance.
+  RealT gap_tolerance{ 0. };
+  //! Use nonnegative piecewise-linear trace weights for parent-trace projection.
+  bool positive_lor_basis{ false };
+  RealT maximum_gap{ -1. };
+  RealT maximum_force{ -1. };
   bool diagnostic_zero_gap_rate_target{ false };
   bool diagnostic_bypass_energy_check{ false };
   ImpulseProjectionContactResponse contact_response{ PROJECTION_RESPONSE_COMPLIANT };
   RealT damping_ratio{ 1.2 };
   RealT max_penetration_fraction{ 0.02 };
+  ImpulseProjectionPenaltyGuardPhase penalty_guard_phase{
+    PROJECTION_PENALTY_GUARD_COMBINED };
+  RealT spring_time_weight{ 1. };
   RealT al_augmentation_scale{ 100. };
   int al_max_iterations{ 8 };
   int al_fixed_iterations{ 0 };
@@ -546,6 +579,20 @@ struct ParentTraceMultiplierState {
   RealT normal_y{ 0. };
   RealT force{ 0. };
   RealT tributary_area{ 0. };
+};
+
+/*! \brief Piecewise-constant pressure history on a 2D parent-surface overlap interval. */
+struct QuadratureCellMultiplierState {
+  IndexT parent_dof0{ -1 };
+  IndexT parent_dof1{ -1 };
+  IndexT parent_dof2{ -1 };
+  RealT parent_coordinate_min{ 0. };
+  RealT parent_coordinate_max{ 0. };
+  RealT normal_x{ 0. };
+  RealT normal_y{ 0. };
+  RealT pressure{ 0. };
+  RealT measure{ 0. };
+  RealT parent_coordinate{ 0. };
 };
 
 /*! \brief Per-parent-trace-row data retained for projection diagnostics. */

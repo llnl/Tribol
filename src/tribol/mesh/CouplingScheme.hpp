@@ -5,6 +5,8 @@
 #ifndef SRC_TRIBOL_MESH_COUPLINGSCHEME_HPP_
 #define SRC_TRIBOL_MESH_COUPLINGSCHEME_HPP_
 
+#include <algorithm>
+#include <cmath>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -284,6 +286,30 @@ class CouplingScheme {
   CommT getProblemComm() { return m_problem_comm; }
 
   RealT getCurrentTimeStep() const { return m_current_dt; }
+  RealT getCurrentAttemptedTimeStep() const { return m_current_attempted_dt; }
+  RealT getCurrentTime() const { return m_current_time; }
+
+  bool requestPenaltyStabilitySpectralDiagnostic()
+  {
+    const RealT interval =
+        m_enforcementOptions.penalty_options.penalty_stability_spectral_diagnostic_interval;
+    if ( interval < 0. ) {
+      return false;
+    }
+    const RealT time_tolerance =
+        100. * std::numeric_limits<RealT>::epsilon() * std::max( 1., std::abs( m_current_time ) );
+    if ( std::isfinite( m_penalty_stability_spectral_diagnostic_last_time ) &&
+         std::abs( m_current_time - m_penalty_stability_spectral_diagnostic_last_time ) <= time_tolerance ) {
+      return true;
+    }
+    if ( std::isfinite( m_penalty_stability_spectral_diagnostic_last_time ) &&
+         m_current_time + time_tolerance <
+             m_penalty_stability_spectral_diagnostic_last_time + interval ) {
+      return false;
+    }
+    m_penalty_stability_spectral_diagnostic_last_time = m_current_time;
+    return true;
+  }
 
   void setPenaltyStabilityTimeStep( RealT dt ) { m_penalty_stability_dt = dt; }
   RealT getPenaltyStabilityTimeStep() const { return m_penalty_stability_dt; }
@@ -311,19 +337,48 @@ class CouplingScheme {
   RealT getPredictorRelaxation() const { return m_predictor_relaxation; }
 
   void setPredictorForceDiagnostics( IndexT active_qpts, IndexT dominant_qpts, RealT penalty_force,
-                                     RealT predictor_force, RealT applied_force )
+                                     RealT predictor_force, RealT applied_force,
+                                     RealT applied_tensile_force = 0. )
   {
     m_num_predictor_active_qpts = active_qpts;
     m_num_predictor_dominant_qpts = dominant_qpts;
     m_integrated_penalty_candidate_force = penalty_force;
     m_integrated_predictor_candidate_force = predictor_force;
     m_integrated_applied_force = applied_force;
+    m_integrated_applied_tensile_force = applied_tensile_force;
   }
   IndexT getNumPredictorActiveQuadraturePoints() const { return m_num_predictor_active_qpts; }
   IndexT getNumPredictorDominantQuadraturePoints() const { return m_num_predictor_dominant_qpts; }
   RealT getIntegratedPenaltyCandidateForce() const { return m_integrated_penalty_candidate_force; }
   RealT getIntegratedPredictorCandidateForce() const { return m_integrated_predictor_candidate_force; }
   RealT getIntegratedAppliedForce() const { return m_integrated_applied_force; }
+  RealT getIntegratedAppliedTensileForce() const { return m_integrated_applied_tensile_force; }
+
+  void setPenaltyAugmentedLagrangianDampingDiagnostics(
+      IndexT active_qpts, RealT integrated_force, RealT dissipation_rate,
+      RealT maximum_pressure )
+  {
+    m_num_penalty_al_damping_qpts = active_qpts;
+    m_integrated_penalty_al_damping_force = integrated_force;
+    m_penalty_al_damping_dissipation_rate = dissipation_rate;
+    m_maximum_penalty_al_damping_pressure = maximum_pressure;
+  }
+  IndexT getNumPenaltyAugmentedLagrangianDampingQuadraturePoints() const
+  {
+    return m_num_penalty_al_damping_qpts;
+  }
+  RealT getIntegratedPenaltyAugmentedLagrangianDampingForce() const
+  {
+    return m_integrated_penalty_al_damping_force;
+  }
+  RealT getPenaltyAugmentedLagrangianDampingDissipationRate() const
+  {
+    return m_penalty_al_damping_dissipation_rate;
+  }
+  RealT getMaximumPenaltyAugmentedLagrangianDampingPressure() const
+  {
+    return m_maximum_penalty_al_damping_pressure;
+  }
 
   void setContactPointDiagnostics( IndexT num_qpts, RealT max_force, RealT gap_violation_sum, RealT max_gap_violation,
                                    RealT closing_gap_rate_sum, RealT max_closing_gap_rate )
@@ -351,6 +406,57 @@ class CouplingScheme {
     return m_num_contact_qpts > 0 ? m_closing_gap_rate_sum / m_num_contact_qpts : 0.;
   }
   RealT getMaxClosingGapRate() const { return m_max_closing_gap_rate; }
+
+  void setParentTraceGapDiagnostics(
+      IndexT rows, IndexT geometric_rows, RealT current_violation_sum,
+      RealT current_maximum_violation, RealT endpoint_violation_sum,
+      RealT endpoint_maximum_violation, RealT geometric_violation_sum,
+      RealT geometric_maximum_violation )
+  {
+    m_num_parent_trace_gap_rows = rows;
+    m_num_parent_trace_geometric_gap_rows = geometric_rows;
+    m_parent_trace_current_gap_violation_sum = current_violation_sum;
+    m_parent_trace_current_max_gap_violation = current_maximum_violation;
+    m_parent_trace_endpoint_gap_violation_sum = endpoint_violation_sum;
+    m_parent_trace_endpoint_max_gap_violation = endpoint_maximum_violation;
+    m_parent_trace_geometric_gap_violation_sum = geometric_violation_sum;
+    m_parent_trace_geometric_max_gap_violation = geometric_maximum_violation;
+  }
+  IndexT getNumParentTraceGapRows() const { return m_num_parent_trace_gap_rows; }
+  IndexT getNumParentTraceGeometricGapRows() const
+  {
+    return m_num_parent_trace_geometric_gap_rows;
+  }
+  RealT getAverageParentTraceCurrentGapViolation() const
+  {
+    return m_num_parent_trace_gap_rows > 0
+        ? m_parent_trace_current_gap_violation_sum / m_num_parent_trace_gap_rows
+        : 0.;
+  }
+  RealT getMaxParentTraceCurrentGapViolation() const
+  {
+    return m_parent_trace_current_max_gap_violation;
+  }
+  RealT getAverageParentTraceEndpointGapViolation() const
+  {
+    return m_num_parent_trace_gap_rows > 0
+        ? m_parent_trace_endpoint_gap_violation_sum / m_num_parent_trace_gap_rows
+        : 0.;
+  }
+  RealT getMaxParentTraceEndpointGapViolation() const
+  {
+    return m_parent_trace_endpoint_max_gap_violation;
+  }
+  RealT getAverageParentTraceGeometricGapViolation() const
+  {
+    return m_num_parent_trace_geometric_gap_rows > 0
+        ? m_parent_trace_geometric_gap_violation_sum / m_num_parent_trace_geometric_gap_rows
+        : 0.;
+  }
+  RealT getMaxParentTraceGeometricGapViolation() const
+  {
+    return m_parent_trace_geometric_max_gap_violation;
+  }
 
   void setProjectionDiagnostics( IndexT constraints, IndexT active_multipliers, int iterations, bool accepted,
                                  bool complementarity_converged, RealT initial_residual, RealT final_residual,
@@ -439,12 +545,15 @@ class CouplingScheme {
   {
     m_parent_trace_multiplier_snapshot = m_parent_trace_multiplier_history;
     m_parent_trace_multiplier_stage = m_parent_trace_multiplier_history;
+    m_quadrature_cell_multiplier_snapshot = m_quadrature_cell_multiplier_history;
+    m_quadrature_cell_multiplier_stage = m_quadrature_cell_multiplier_history;
     m_augmented_lagrangian_step_open = true;
   }
   void commitAugmentedLagrangianStep()
   {
     if ( m_augmented_lagrangian_step_open ) {
       m_parent_trace_multiplier_history = m_parent_trace_multiplier_stage;
+      m_quadrature_cell_multiplier_history = m_quadrature_cell_multiplier_stage;
     }
   }
   void rollbackAugmentedLagrangianStep()
@@ -452,6 +561,8 @@ class CouplingScheme {
     if ( m_augmented_lagrangian_step_open ) {
       m_parent_trace_multiplier_history = m_parent_trace_multiplier_snapshot;
       m_parent_trace_multiplier_stage = m_parent_trace_multiplier_snapshot;
+      m_quadrature_cell_multiplier_history = m_quadrature_cell_multiplier_snapshot;
+      m_quadrature_cell_multiplier_stage = m_quadrature_cell_multiplier_snapshot;
       m_augmented_lagrangian_step_open = false;
     }
   }
@@ -470,6 +581,23 @@ class CouplingScheme {
     m_parent_trace_multiplier_stage = std::move( state );
     if ( !m_augmented_lagrangian_step_open ) {
       m_parent_trace_multiplier_history = m_parent_trace_multiplier_stage;
+    }
+  }
+  const std::vector<QuadratureCellMultiplierState>& getQuadratureCellMultiplierWarmStart() const
+  {
+    return m_augmented_lagrangian_step_open ? m_quadrature_cell_multiplier_stage
+                                            : m_quadrature_cell_multiplier_history;
+  }
+  const std::vector<QuadratureCellMultiplierState>& getQuadratureCellMultiplierStepSnapshot() const
+  {
+    return m_augmented_lagrangian_step_open ? m_quadrature_cell_multiplier_snapshot
+                                            : m_quadrature_cell_multiplier_history;
+  }
+  void setQuadratureCellMultiplierStage( std::vector<QuadratureCellMultiplierState> state )
+  {
+    m_quadrature_cell_multiplier_stage = std::move( state );
+    if ( !m_augmented_lagrangian_step_open ) {
+      m_quadrature_cell_multiplier_history = m_quadrature_cell_multiplier_stage;
     }
   }
   void setAugmentedLagrangianDiagnostics( int outer_iterations, int subproblem_iterations,
@@ -1176,6 +1304,7 @@ class CouplingScheme {
   int m_allocator_id;         ///< Allocator for arrays used in kernels (set when init() is called)
 
   Parameters m_parameters;              ///< Struct holding coupling scheme parameters
+  RealT m_current_time{ 0. };
   RealT m_current_dt{ 0. };
   RealT m_penalty_stability_dt{ std::numeric_limits<RealT>::infinity() };
   IndexT m_num_penalty_stability_active_rows{ 0 };
@@ -1188,12 +1317,25 @@ class CouplingScheme {
   RealT m_integrated_penalty_candidate_force{ 0. };
   RealT m_integrated_predictor_candidate_force{ 0. };
   RealT m_integrated_applied_force{ 0. };
+  RealT m_integrated_applied_tensile_force{ 0. };
+  IndexT m_num_penalty_al_damping_qpts{ 0 };
+  RealT m_integrated_penalty_al_damping_force{ 0. };
+  RealT m_penalty_al_damping_dissipation_rate{ 0. };
+  RealT m_maximum_penalty_al_damping_pressure{ 0. };
   IndexT m_num_contact_qpts{ 0 };
   RealT m_max_applied_force{ 0. };
   RealT m_gap_violation_sum{ 0. };
   RealT m_max_gap_violation{ 0. };
   RealT m_closing_gap_rate_sum{ 0. };
   RealT m_max_closing_gap_rate{ 0. };
+  IndexT m_num_parent_trace_gap_rows{ 0 };
+  IndexT m_num_parent_trace_geometric_gap_rows{ 0 };
+  RealT m_parent_trace_current_gap_violation_sum{ 0. };
+  RealT m_parent_trace_current_max_gap_violation{ 0. };
+  RealT m_parent_trace_endpoint_gap_violation_sum{ 0. };
+  RealT m_parent_trace_endpoint_max_gap_violation{ 0. };
+  RealT m_parent_trace_geometric_gap_violation_sum{ 0. };
+  RealT m_parent_trace_geometric_max_gap_violation{ 0. };
   IndexT m_num_projection_constraints{ 0 };
   IndexT m_num_projection_active_multipliers{ 0 };
   int m_projection_iterations{ 0 };
@@ -1224,6 +1366,9 @@ class CouplingScheme {
   std::vector<ParentTraceMultiplierState> m_parent_trace_multiplier_history;
   std::vector<ParentTraceMultiplierState> m_parent_trace_multiplier_stage;
   std::vector<ParentTraceMultiplierState> m_parent_trace_multiplier_snapshot;
+  std::vector<QuadratureCellMultiplierState> m_quadrature_cell_multiplier_history;
+  std::vector<QuadratureCellMultiplierState> m_quadrature_cell_multiplier_stage;
+  std::vector<QuadratureCellMultiplierState> m_quadrature_cell_multiplier_snapshot;
   bool m_augmented_lagrangian_step_open{ false };
   int m_al_outer_iterations{ 0 };
   int m_al_subproblem_iterations{ 0 };
@@ -1239,6 +1384,9 @@ class CouplingScheme {
   RealT m_projection_operator_condition_estimate{ 0. };
   RealT m_projection_operator_jacobi_contraction{ 0. };
   bool m_projection_operator_diagnostics_available{ false };
+  RealT m_penalty_stability_spectral_diagnostic_last_time{
+      -std::numeric_limits<RealT>::infinity() };
+  RealT m_current_attempted_dt{ 0. };
   std::vector<ProjectionTraceDofData> m_projection_trace_dof_data;
   std::vector<ProjectionNodalDofData> m_projection_nodal_dof_data;
   std::string m_output_directory = "";  ///< Output directory for visualization dumps

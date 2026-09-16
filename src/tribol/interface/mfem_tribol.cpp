@@ -586,6 +586,16 @@ void registerMfemInverseMass( IndexT cs_id, const mfem::ParGridFunction& inverse
   cs->getMfemMeshData()->SetParentInverseMass( inverse_mass );
 }
 
+void registerMfemVelocityMassInverse(
+    IndexT cs_id, std::function<bool( const mfem::Vector&, mfem::Vector& )> mass_inverse )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::registerMfemVelocityMassInverse(): register the MFEM coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
+                      "tribol::registerMfemVelocityMassInverse(): coupling scheme does not contain MFEM data." );
+  cs->getMfemMeshData()->SetParentVelocityMassInverse( std::move( mass_inverse ) );
+}
+
 void registerMfemReferenceCoords( IndexT cs_id, const mfem::ParGridFunction& reference_coords )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );

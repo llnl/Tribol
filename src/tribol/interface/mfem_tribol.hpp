@@ -10,6 +10,8 @@
 
 #ifdef BUILD_REDECOMP
 
+#include <functional>
+
 #include "mfem.hpp"
 
 #include "tribol/common/Parameters.hpp"
@@ -238,6 +240,9 @@ void registerMfemProjectionBaseVelocity( IndexT cs_id, const mfem::ParGridFuncti
  * Zero entries represent essential velocity degrees of freedom.
  */
 void registerMfemInverseMass( IndexT cs_id, const mfem::ParGridFunction& inverse_mass );
+
+void registerMfemVelocityMassInverse(
+    IndexT cs_id, std::function<bool( const mfem::Vector&, mfem::Vector& )> mass_inverse );
 
 /**
  * @brief Registers a reference coord field on a MFEM mesh-defined coupling scheme

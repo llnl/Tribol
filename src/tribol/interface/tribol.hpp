@@ -71,7 +71,8 @@ void setPenaltyOptions( IndexT cs_id, PenaltyConstraintType pen_enfrc_option,
  *
  * \param [in] cs_id coupling scheme id
  * \param [in] rule polygon integration rule for CommonPlane force integration
- * \param [in] quadrature_order order of the CommonPlane quadrature used by MULTI_POINT in the range [2,10]
+ * \param [in] quadrature_order order of the CommonPlane quadrature used by MULTI_POINT in the range [2,10], or 1 for
+ * exact CommonPlane impulse projection
  * \pre user must register coupling scheme prior to setting CommonPlane integration options
  */
 void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int quadrature_order = 3 );
@@ -84,6 +85,29 @@ void setImpulseProjectionOptions( IndexT cs_id, int max_iterations, RealT relati
 /*! \brief Sets the fraction of the projected end-velocity correction used to advance position. */
 void setImpulseProjectionKinematics( IndexT cs_id, RealT position_velocity_scale );
 
+/*! \brief Selects the application phase for split penalty-guard enforcement. */
+void setImpulseProjectionPenaltyGuardPhase( IndexT cs_id,
+                                            ImpulseProjectionPenaltyGuardPhase phase );
+
+/*! \brief Sets the energy-safe fraction of existing penetration targeted for removal per stage. */
+void setImpulseProjectionDepenetration( IndexT cs_id, RealT depenetration_fraction );
+
+/*! \brief Sets the signed residual penetration target for exact impulse projection.
+ *
+ * Positive values permit residual penetration and negative values request a
+ * speculative clearance from the opposing surface.
+ */
+void setImpulseProjectionGapTolerance( IndexT cs_id, RealT gap_tolerance );
+
+/*! \brief Selects nonnegative piecewise-linear trace weights for parent-trace projection. */
+void setImpulseProjectionPositiveLORBasis( IndexT cs_id, bool enabled );
+
+/*! \brief Sets an optional projected endpoint-gap acceptance limit. */
+void setImpulseProjectionMaximumGap( IndexT cs_id, RealT maximum_gap );
+
+/*! \brief Sets an optional per-constraint equivalent-force limit; a negative value disables it. */
+void setImpulseProjectionMaximumForce( IndexT cs_id, RealT maximum_force );
+
 /*! \brief Selects a pure zero-gap-rate target for frozen-state projection diagnostics. */
 void setImpulseProjectionDiagnosticZeroGapRateTarget( IndexT cs_id, bool enabled );
 
@@ -93,7 +117,8 @@ void setImpulseProjectionDiagnosticBypassEnergyCheck( IndexT cs_id, bool enabled
 /*! \brief Sets parent-trace mortar construction and contact-response options. */
 void setParentTraceMortarOptions( IndexT cs_id, RealT normal_patch_angle_degrees,
                                   ImpulseProjectionContactResponse contact_response = PROJECTION_RESPONSE_COMPLIANT,
-                                  RealT damping_ratio = 1.2, RealT max_penetration_fraction = 0.02 );
+                                  RealT damping_ratio = 1.2, RealT max_penetration_fraction = 0.02,
+                                  RealT spring_time_weight = 1. );
 
 /*! \brief Sets parent-trace augmented-Lagrangian iteration options. */
 void setAugmentedLagrangianOptions( IndexT cs_id, RealT augmentation_scale, int max_iterations,
@@ -108,11 +133,22 @@ void setPenaltyAugmentedLagrangianOptions( IndexT cs_id, int max_iterations, int
                                            RealT direction_deadband = 1.e-3,
                                            RealT loading_time_constant = 0.,
                                            RealT unloading_time_constant = -1.,
-                                           RealT activation_gap_fraction = 0. );
+                                           RealT activation_gap_fraction = 0.,
+                                           RealT normal_damping_ratio = 0.,
+                                           RealT target_gap_fraction = 0. );
+
+/*! \brief Sets the fixed-iteration quadrature-pressure inner Uzawa relaxation. */
+void setPenaltyAugmentedLagrangianInnerRelaxation( IndexT cs_id, RealT inner_relaxation );
+
+/*! \brief Sets the quadrature-cell compliance penalty continuation schedule. */
+void setPenaltyAugmentedLagrangianContinuation( IndexT cs_id, RealT factor, RealT max_scale );
 
 /*! \brief Selects the parent-trace penalty augmented-Lagrangian formulation. */
 void setPenaltyAugmentedLagrangianFormulation(
     IndexT cs_id, PenaltyAugmentedLagrangianFormulation formulation );
+
+/*! \brief Locks represented quadrature-hybrid constraints into bilateral enforcement after a time. */
+void setPenaltyAugmentedLagrangianFixedActiveSetTime( IndexT cs_id, RealT activation_time );
 
 /*! \brief Starts a rollback-safe augmented-Lagrangian physical step. */
 void beginAugmentedLagrangianStep( IndexT cs_id );
@@ -129,8 +165,19 @@ void rollbackAugmentedLagrangianStep( IndexT cs_id );
  * \param [in] cs_id coupling scheme id
  * \param [in] relaxation_scale safety scale for the normalized diagonal predictor, in (0,1]
  * \param [in] stability_scale positive safety scale for the penalty stiffness/mass timestep
+ * \param [in] depenetration_fraction fraction of excess penetration targeted per stage
+ * \param [in] max_penetration_fraction permitted penetration as a fraction of local element thickness
  */
-void setDissipativePenaltyOptions( IndexT cs_id, RealT relaxation_scale, RealT stability_scale );
+void setDissipativePenaltyOptions( IndexT cs_id, RealT relaxation_scale, RealT stability_scale,
+                                   RealT depenetration_fraction = 0., RealT max_penetration_fraction = 0. );
+
+/**
+ * \brief Enables a sampled exact spectral audit of the penalty stability vote.
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] interval minimum simulation-time interval between audits; negative disables the audit
+ */
+void setPenaltyStabilitySpectralDiagnostic( IndexT cs_id, RealT interval );
 
 /// Returns the most recently computed penalty stiffness/mass timestep bound.
 RealT getPenaltyStabilityTimestep( IndexT cs_id );
@@ -154,6 +201,16 @@ RealT getIntegratedPenaltyCandidateForce( IndexT cs_id );
 RealT getIntegratedPredictorCandidateForce( IndexT cs_id );
 /// Returns the integrated compressive magnitude of the applied contact force.
 RealT getIntegratedAppliedForce( IndexT cs_id );
+/// Returns the integrated tensile magnitude of the applied diagnostic contact force.
+RealT getIntegratedAppliedTensileForce( IndexT cs_id );
+/// Returns the number of quadrature points with active penalty-AL normal damping.
+IndexT getNumPenaltyAugmentedLagrangianDampingQuadraturePoints( IndexT cs_id );
+/// Returns the integrated compressive force contributed by penalty-AL normal damping.
+RealT getIntegratedPenaltyAugmentedLagrangianDampingForce( IndexT cs_id );
+/// Returns the positive mechanical-energy dissipation rate from penalty-AL normal damping.
+RealT getPenaltyAugmentedLagrangianDampingDissipationRate( IndexT cs_id );
+/// Returns the maximum penalty-AL normal damping pressure at a quadrature point.
+RealT getMaximumPenaltyAugmentedLagrangianDampingPressure( IndexT cs_id );
 /// Returns the number of contact quadrature points in the most recent update.
 IndexT getNumContactQuadraturePoints( IndexT cs_id );
 /// Returns the average compressive applied force contribution per contact quadrature point.
@@ -168,6 +225,22 @@ RealT getMaxGapViolation( IndexT cs_id );
 RealT getAverageClosingGapRate( IndexT cs_id );
 /// Returns the maximum positive closing gap rate over contact quadrature points.
 RealT getMaxClosingGapRate( IndexT cs_id );
+/// Returns the number of mortar-projected parent-trace gap rows.
+IndexT getNumParentTraceGapRows( IndexT cs_id );
+/// Returns the number of parent-trace rows with a point-projected geometric gap.
+IndexT getNumParentTraceGeometricGapRows( IndexT cs_id );
+/// Returns the average current mortar-projected nodal gap violation.
+RealT getAverageParentTraceCurrentGapViolation( IndexT cs_id );
+/// Returns the maximum current mortar-projected nodal gap violation.
+RealT getMaxParentTraceCurrentGapViolation( IndexT cs_id );
+/// Returns the average predicted endpoint mortar-projected nodal gap violation.
+RealT getAverageParentTraceEndpointGapViolation( IndexT cs_id );
+/// Returns the maximum predicted endpoint mortar-projected nodal gap violation.
+RealT getMaxParentTraceEndpointGapViolation( IndexT cs_id );
+/// Returns the average point-projected geometric nodal gap violation.
+RealT getAverageParentTraceGeometricGapViolation( IndexT cs_id );
+/// Returns the maximum point-projected geometric nodal gap violation.
+RealT getMaxParentTraceGeometricGapViolation( IndexT cs_id );
 /// Returns the number of constraints in the latest impulse projection.
 IndexT getNumProjectionConstraints( IndexT cs_id );
 /// Returns the number of positive multipliers in the latest impulse projection.

@@ -78,7 +78,7 @@ static_assert( std::is_same_v<RealT, mfem::real_t>, "tribol::RealT and mfem::rea
 #endif
 
 // Execution space identifier for defaulted constructors and destructors
-#ifdef TRIBOL_USE_HIP
+#if defined(TRIBOL_USE_HIP) || (defined(TRIBOL_USE_CUDA) && CUDA_VERSION > 13000)
 #define TRIBOL_DEFAULT_DEVICE __device__
 #define TRIBOL_DEFAULT_HOST_DEVICE __host__ __device__
 #else

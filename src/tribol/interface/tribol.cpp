@@ -114,8 +114,11 @@ void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int quadrat
     return;
   }
 
-  SLIC_ERROR_ROOT_IF( quadrature_order < 2 || quadrature_order > 10,
-                      "tribol::setCommonPlaneIntegrationOptions(): CommonPlane quadrature order must be in [2,10]." );
+  const bool one_point_exact_projection = quadrature_order == 1 &&
+      cs->getContactMethod() == COMMON_PLANE && cs->getEnforcementMethod() == IMPULSE_PROJECTION;
+  SLIC_ERROR_ROOT_IF( ( quadrature_order < 2 && !one_point_exact_projection ) || quadrature_order > 10,
+                      "tribol::setCommonPlaneIntegrationOptions(): CommonPlane quadrature order must be in [2,10], "
+                      "except exact CommonPlane impulse projection may use order 1." );
 
   penalty_options.common_plane_rule = rule;
   penalty_options.common_plane_quadrature_order = quadrature_order;
@@ -158,6 +161,67 @@ void setImpulseProjectionKinematics( IndexT cs_id, RealT position_velocity_scale
   cs->getEnforcementOptions().projection_options.position_velocity_scale = position_velocity_scale;
 }
 
+void setImpulseProjectionPenaltyGuardPhase( IndexT cs_id,
+                                            ImpulseProjectionPenaltyGuardPhase phase )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::setImpulseProjectionPenaltyGuardPhase(): coupling scheme does not exist." );
+  SLIC_ERROR_ROOT_IF( phase < PROJECTION_PENALTY_GUARD_COMBINED ||
+                          phase > PROJECTION_PENALTY_GUARD_CORRECTION_ONLY,
+                      "tribol::setImpulseProjectionPenaltyGuardPhase(): invalid phase." );
+  cs->getEnforcementOptions().projection_options.penalty_guard_phase = phase;
+}
+
+void setImpulseProjectionDepenetration( IndexT cs_id, RealT depenetration_fraction )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::setImpulseProjectionDepenetration(): register the coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( depenetration_fraction ) || depenetration_fraction < 0. ||
+                          depenetration_fraction > 1.,
+                      "tribol::setImpulseProjectionDepenetration(): depenetration fraction must be in [0,1]." );
+  cs->getEnforcementOptions().projection_options.depenetration_fraction = depenetration_fraction;
+}
+
+void setImpulseProjectionGapTolerance( IndexT cs_id, RealT gap_tolerance )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::setImpulseProjectionGapTolerance(): register the coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( gap_tolerance ),
+                      "tribol::setImpulseProjectionGapTolerance(): gap tolerance must be finite." );
+  cs->getEnforcementOptions().projection_options.gap_tolerance = gap_tolerance;
+}
+
+void setImpulseProjectionPositiveLORBasis( IndexT cs_id, bool enabled )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::setImpulseProjectionPositiveLORBasis(): register the coupling scheme first." );
+  cs->getEnforcementOptions().projection_options.positive_lor_basis = enabled;
+}
+
+void setImpulseProjectionMaximumGap( IndexT cs_id, RealT maximum_gap )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::setImpulseProjectionMaximumGap(): register the coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( maximum_gap ),
+                      "tribol::setImpulseProjectionMaximumGap(): maximum gap must be finite." );
+  cs->getEnforcementOptions().projection_options.maximum_gap = maximum_gap;
+}
+
+void setImpulseProjectionMaximumForce( IndexT cs_id, RealT maximum_force )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::setImpulseProjectionMaximumForce(): register the coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( maximum_force ),
+                      "tribol::setImpulseProjectionMaximumForce(): maximum force must be finite." );
+  cs->getEnforcementOptions().projection_options.maximum_force = maximum_force;
+}
+
 void setImpulseProjectionDiagnosticZeroGapRateTarget( IndexT cs_id, bool enabled )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -178,7 +242,7 @@ void setImpulseProjectionDiagnosticBypassEnergyCheck( IndexT cs_id, bool enabled
 
 void setParentTraceMortarOptions( IndexT cs_id, RealT normal_patch_angle_degrees,
                                   ImpulseProjectionContactResponse contact_response, RealT damping_ratio,
-                                  RealT max_penetration_fraction )
+                                  RealT max_penetration_fraction, RealT spring_time_weight )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setParentTraceMortarOptions(): register the coupling scheme first." );
@@ -190,11 +254,15 @@ void setParentTraceMortarOptions( IndexT cs_id, RealT normal_patch_angle_degrees
                       "tribol::setParentTraceMortarOptions(): damping ratio must be positive." );
   SLIC_ERROR_ROOT_IF( !std::isfinite( max_penetration_fraction ) || max_penetration_fraction <= 0.,
                       "tribol::setParentTraceMortarOptions(): maximum penetration fraction must be positive." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( spring_time_weight ) || spring_time_weight < 0.5 ||
+                          spring_time_weight > 1.,
+                      "tribol::setParentTraceMortarOptions(): spring time weight must be in [0.5,1]." );
   auto& options = cs->getEnforcementOptions().projection_options;
   options.normal_patch_angle_degrees = normal_patch_angle_degrees;
   options.contact_response = contact_response;
   options.damping_ratio = damping_ratio;
   options.max_penetration_fraction = max_penetration_fraction;
+  options.spring_time_weight = spring_time_weight;
 }
 
 void setAugmentedLagrangianOptions( IndexT cs_id, RealT augmentation_scale, int max_iterations,
@@ -222,7 +290,8 @@ void setPenaltyAugmentedLagrangianOptions( IndexT cs_id, int max_iterations, int
                                            RealT relaxation, RealT spatial_smoothing,
                                            RealT unloading_relaxation, RealT direction_deadband,
                                            RealT loading_time_constant, RealT unloading_time_constant,
-                                           RealT activation_gap_fraction )
+                                           RealT activation_gap_fraction, RealT normal_damping_ratio,
+                                           RealT target_gap_fraction )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF( !cs,
@@ -231,24 +300,29 @@ void setPenaltyAugmentedLagrangianOptions( IndexT cs_id, int max_iterations, int
                           cs->getEnforcementMethod() != PENALTY,
                       "tribol::setPenaltyAugmentedLagrangianOptions(): requires parent-trace mortar penalty "
                       "enforcement." );
+  auto& options = cs->getEnforcementOptions().penalty_options;
   SLIC_ERROR_ROOT_IF( max_iterations <= 0,
                       "tribol::setPenaltyAugmentedLagrangianOptions(): maximum iterations must be positive." );
-  SLIC_ERROR_ROOT_IF( fixed_iterations < 0 || fixed_iterations > max_iterations,
-                      "tribol::setPenaltyAugmentedLagrangianOptions(): fixed iterations must be in [0,max]." );
+  const bool independent_fixed_iterations =
+      options.al_formulation == PENALTY_AL_QUADRATURE_POINT_MEMORY;
+  SLIC_ERROR_ROOT_IF( fixed_iterations < 0 ||
+                          ( !independent_fixed_iterations && fixed_iterations > max_iterations ),
+                      "tribol::setPenaltyAugmentedLagrangianOptions(): fixed iterations must be nonnegative and "
+                      "must not exceed max iterations except for quadrature-point-memory." );
   SLIC_ERROR_ROOT_IF( !std::isfinite( relative_tolerance ) ||
                           !std::isfinite( absolute_tolerance ) ||
                           relative_tolerance < 0. || absolute_tolerance < 0. ||
                           ( relative_tolerance == 0. && absolute_tolerance == 0. ),
                       "tribol::setPenaltyAugmentedLagrangianOptions(): at least one tolerance must be positive." );
-  SLIC_ERROR_ROOT_IF( !std::isfinite( relaxation ) || relaxation <= 0. || relaxation > 1.,
-                      "tribol::setPenaltyAugmentedLagrangianOptions(): relaxation must be in (0,1]." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( relaxation ) || relaxation <= 0. || relaxation >= 2.,
+                      "tribol::setPenaltyAugmentedLagrangianOptions(): relaxation must be in (0,2)." );
   const RealT effective_unloading_relaxation =
       unloading_relaxation < 0. ? relaxation : unloading_relaxation;
   SLIC_ERROR_ROOT_IF( !std::isfinite( effective_unloading_relaxation ) ||
                           effective_unloading_relaxation <= 0. ||
-                          effective_unloading_relaxation > 1.,
+                          effective_unloading_relaxation >= 2.,
                       "tribol::setPenaltyAugmentedLagrangianOptions(): unloading relaxation must be "
-                      "in (0,1], or negative to use the loading relaxation." );
+                      "in (0,2), or negative to use the loading relaxation." );
   SLIC_ERROR_ROOT_IF( !std::isfinite( direction_deadband ) || direction_deadband < 0. ||
                           direction_deadband >= 1.,
                       "tribol::setPenaltyAugmentedLagrangianOptions(): direction deadband must be in [0,1)." );
@@ -268,7 +342,16 @@ void setPenaltyAugmentedLagrangianOptions( IndexT cs_id, int max_iterations, int
                           activation_gap_fraction > 1.,
                       "tribol::setPenaltyAugmentedLagrangianOptions(): activation gap fraction must be "
                       "in [0,1]." );
-  auto& options = cs->getEnforcementOptions().penalty_options;
+  SLIC_ERROR_ROOT_IF( !std::isfinite( normal_damping_ratio ) || normal_damping_ratio < 0.,
+                      "tribol::setPenaltyAugmentedLagrangianOptions(): normal damping ratio must be "
+                      "nonnegative." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( target_gap_fraction ) || target_gap_fraction < 0. ||
+                          target_gap_fraction > 1.,
+                      "tribol::setPenaltyAugmentedLagrangianOptions(): target gap fraction must be "
+                      "in [0,1]." );
+  SLIC_ERROR_ROOT_IF( normal_damping_ratio > 0. && options.al_fixed_active_set_time >= 0.,
+                      "tribol::setPenaltyAugmentedLagrangianOptions(): normal damping is incompatible "
+                      "with the fixed-active diagnostic." );
   options.augmented_lagrangian = true;
   options.al_max_iterations = max_iterations;
   options.al_fixed_iterations = fixed_iterations;
@@ -281,25 +364,80 @@ void setPenaltyAugmentedLagrangianOptions( IndexT cs_id, int max_iterations, int
   options.al_direction_deadband = direction_deadband;
   options.al_spatial_smoothing = spatial_smoothing;
   options.al_activation_gap_fraction = activation_gap_fraction;
+  options.al_normal_damping_ratio = normal_damping_ratio;
+  options.al_target_gap_fraction = target_gap_fraction;
 }
 
-void setPenaltyAugmentedLagrangianFormulation(
-    IndexT cs_id, PenaltyAugmentedLagrangianFormulation formulation )
+void setPenaltyAugmentedLagrangianInnerRelaxation( IndexT cs_id, RealT inner_relaxation )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF( !cs,
-                      "tribol::setPenaltyAugmentedLagrangianFormulation(): register the coupling scheme first." );
+                      "tribol::setPenaltyAugmentedLagrangianInnerRelaxation(): register the coupling scheme first." );
   SLIC_ERROR_ROOT_IF( cs->getContactMethod() != PARENT_TRACE_MORTAR ||
                           cs->getEnforcementMethod() != PENALTY,
+                      "tribol::setPenaltyAugmentedLagrangianInnerRelaxation(): requires parent-trace mortar penalty "
+                      "enforcement." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( inner_relaxation ) || inner_relaxation <= 0. || inner_relaxation > 1.,
+                      "tribol::setPenaltyAugmentedLagrangianInnerRelaxation(): inner relaxation must be in (0,1]." );
+  cs->getEnforcementOptions().penalty_options.al_inner_relaxation = inner_relaxation;
+}
+
+void setPenaltyAugmentedLagrangianContinuation( IndexT cs_id, RealT factor, RealT max_scale )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::setPenaltyAugmentedLagrangianContinuation(): register the coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( cs->getContactMethod() != PARENT_TRACE_MORTAR ||
+                          cs->getEnforcementMethod() != PENALTY,
+                      "tribol::setPenaltyAugmentedLagrangianContinuation(): requires parent-trace mortar penalty "
+                      "enforcement." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( factor ) || factor < 1.,
+                      "tribol::setPenaltyAugmentedLagrangianContinuation(): factor must be at least one." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( max_scale ) || max_scale < 1.,
+                      "tribol::setPenaltyAugmentedLagrangianContinuation(): maximum scale must be at least one." );
+  auto& options = cs->getEnforcementOptions().penalty_options;
+  options.al_continuation_factor = factor;
+  options.al_continuation_max_scale = max_scale;
+}
+
+void setPenaltyAugmentedLagrangianFormulation( IndexT cs_id, PenaltyAugmentedLagrangianFormulation formulation )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setPenaltyAugmentedLagrangianFormulation(): register the coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( cs->getContactMethod() != PARENT_TRACE_MORTAR || cs->getEnforcementMethod() != PENALTY,
                       "tribol::setPenaltyAugmentedLagrangianFormulation(): requires parent-trace mortar "
                       "penalty enforcement." );
   SLIC_ERROR_ROOT_IF( !in_range( formulation, NUM_PENALTY_AUGMENTED_LAGRANGIAN_FORMULATIONS ),
                       "tribol::setPenaltyAugmentedLagrangianFormulation(): invalid formulation." );
-  SLIC_ERROR_ROOT_IF( formulation == PENALTY_AL_QUADRATURE_HYBRID &&
-                          cs->getEnforcementOptions().penalty_options.al_fixed_iterations != 1,
-                      "tribol::setPenaltyAugmentedLagrangianFormulation(): quadrature-hybrid currently "
-                      "requires exactly one fixed Uzawa update per contact call." );
   cs->getEnforcementOptions().penalty_options.al_formulation = formulation;
+}
+
+void setPenaltyAugmentedLagrangianFixedActiveSetTime( IndexT cs_id, RealT activation_time )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::setPenaltyAugmentedLagrangianFixedActiveSetTime(): register the coupling "
+                      "scheme first." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( activation_time ),
+                      "tribol::setPenaltyAugmentedLagrangianFixedActiveSetTime(): activation time must "
+                      "be finite." );
+  const auto& options = cs->getEnforcementOptions().penalty_options;
+  const bool supported_formulation =
+      options.al_formulation == PENALTY_AL_QUADRATURE_HYBRID ||
+      options.al_formulation == PENALTY_AL_QUADRATURE_POINT_MEMORY;
+  SLIC_ERROR_ROOT_IF( activation_time >= 0. &&
+                          ( cs->getContactMethod() != PARENT_TRACE_MORTAR || cs->getEnforcementMethod() != PENALTY ||
+                            !options.augmented_lagrangian || !supported_formulation ),
+                      "tribol::setPenaltyAugmentedLagrangianFixedActiveSetTime(): a nonnegative transition time "
+                      "requires quadrature-hybrid or quadrature-point-memory parent-trace penalty "
+                      "augmented-Lagrangian enforcement." );
+  SLIC_ERROR_ROOT_IF( activation_time >= 0. &&
+                          ( options.al_spatial_smoothing != 0. ||
+                            options.al_activation_gap_fraction != 0. ||
+                            options.al_normal_damping_ratio != 0. ),
+                      "tribol::setPenaltyAugmentedLagrangianFixedActiveSetTime(): fixed-active diagnostics "
+                      "require zero spatial smoothing, zero C1 activation width, and zero normal damping." );
+  cs->getEnforcementOptions().penalty_options.al_fixed_active_set_time = activation_time;
 }
 
 void beginAugmentedLagrangianStep( IndexT cs_id )
@@ -323,7 +461,8 @@ void rollbackAugmentedLagrangianStep( IndexT cs_id )
   cs->rollbackAugmentedLagrangianStep();
 }
 
-void setDissipativePenaltyOptions( IndexT cs_id, RealT relaxation_scale, RealT stability_scale )
+void setDissipativePenaltyOptions( IndexT cs_id, RealT relaxation_scale, RealT stability_scale,
+                                   RealT depenetration_fraction, RealT max_penetration_fraction )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setDissipativePenaltyOptions(): register the coupling scheme first." );
@@ -331,10 +470,26 @@ void setDissipativePenaltyOptions( IndexT cs_id, RealT relaxation_scale, RealT s
                       "tribol::setDissipativePenaltyOptions(): relaxation scale must be in (0,1]." );
   SLIC_ERROR_ROOT_IF( stability_scale <= 0.,
                       "tribol::setDissipativePenaltyOptions(): stability scale must be positive." );
+  SLIC_ERROR_ROOT_IF( depenetration_fraction < 0. || depenetration_fraction > 1.,
+                      "tribol::setDissipativePenaltyOptions(): depenetration fraction must be in [0,1]." );
+  SLIC_ERROR_ROOT_IF( max_penetration_fraction < 0.,
+                      "tribol::setDissipativePenaltyOptions(): maximum penetration fraction must be nonnegative." );
 
   auto& options = cs->getEnforcementOptions().penalty_options;
   options.predictor_relaxation_scale = relaxation_scale;
+  options.predictor_depenetration_fraction = depenetration_fraction;
+  options.predictor_max_penetration_fraction = max_penetration_fraction;
   options.penalty_stability_scale = stability_scale;
+}
+
+void setPenaltyStabilitySpectralDiagnostic( IndexT cs_id, RealT interval )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::setPenaltyStabilitySpectralDiagnostic(): register the coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( interval ),
+                      "tribol::setPenaltyStabilitySpectralDiagnostic(): interval must be finite." );
+  cs->getEnforcementOptions().penalty_options.penalty_stability_spectral_diagnostic_interval = interval;
 }
 
 RealT getPenaltyStabilityTimestep( IndexT cs_id )
@@ -414,6 +569,49 @@ RealT getIntegratedAppliedForce( IndexT cs_id )
   return cs->getIntegratedAppliedForce();
 }
 
+RealT getIntegratedAppliedTensileForce( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getIntegratedAppliedTensileForce(): coupling scheme does not exist." );
+  return cs->getIntegratedAppliedTensileForce();
+}
+
+IndexT getNumPenaltyAugmentedLagrangianDampingQuadraturePoints( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::getNumPenaltyAugmentedLagrangianDampingQuadraturePoints(): coupling scheme "
+                      "does not exist." );
+  return cs->getNumPenaltyAugmentedLagrangianDampingQuadraturePoints();
+}
+
+RealT getIntegratedPenaltyAugmentedLagrangianDampingForce( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::getIntegratedPenaltyAugmentedLagrangianDampingForce(): coupling scheme "
+                      "does not exist." );
+  return cs->getIntegratedPenaltyAugmentedLagrangianDampingForce();
+}
+
+RealT getPenaltyAugmentedLagrangianDampingDissipationRate( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::getPenaltyAugmentedLagrangianDampingDissipationRate(): coupling scheme "
+                      "does not exist." );
+  return cs->getPenaltyAugmentedLagrangianDampingDissipationRate();
+}
+
+RealT getMaximumPenaltyAugmentedLagrangianDampingPressure( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::getMaximumPenaltyAugmentedLagrangianDampingPressure(): coupling scheme "
+                      "does not exist." );
+  return cs->getMaximumPenaltyAugmentedLagrangianDampingPressure();
+}
+
 IndexT getNumContactQuadraturePoints( IndexT cs_id )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -461,6 +659,62 @@ RealT getMaxClosingGapRate( IndexT cs_id )
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
   SLIC_ERROR_ROOT_IF( !cs, "tribol::getMaxClosingGapRate(): coupling scheme does not exist." );
   return cs->getMaxClosingGapRate();
+}
+
+IndexT getNumParentTraceGapRows( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getNumParentTraceGapRows(): coupling scheme does not exist." );
+  return cs->getNumParentTraceGapRows();
+}
+
+IndexT getNumParentTraceGeometricGapRows( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getNumParentTraceGeometricGapRows(): coupling scheme does not exist." );
+  return cs->getNumParentTraceGeometricGapRows();
+}
+
+RealT getAverageParentTraceCurrentGapViolation( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getAverageParentTraceCurrentGapViolation(): coupling scheme does not exist." );
+  return cs->getAverageParentTraceCurrentGapViolation();
+}
+
+RealT getMaxParentTraceCurrentGapViolation( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getMaxParentTraceCurrentGapViolation(): coupling scheme does not exist." );
+  return cs->getMaxParentTraceCurrentGapViolation();
+}
+
+RealT getAverageParentTraceEndpointGapViolation( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getAverageParentTraceEndpointGapViolation(): coupling scheme does not exist." );
+  return cs->getAverageParentTraceEndpointGapViolation();
+}
+
+RealT getMaxParentTraceEndpointGapViolation( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getMaxParentTraceEndpointGapViolation(): coupling scheme does not exist." );
+  return cs->getMaxParentTraceEndpointGapViolation();
+}
+
+RealT getAverageParentTraceGeometricGapViolation( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getAverageParentTraceGeometricGapViolation(): coupling scheme does not exist." );
+  return cs->getAverageParentTraceGeometricGapViolation();
+}
+
+RealT getMaxParentTraceGeometricGapViolation( IndexT cs_id )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::getMaxParentTraceGeometricGapViolation(): coupling scheme does not exist." );
+  return cs->getMaxParentTraceGeometricGapViolation();
 }
 
 IndexT getNumProjectionConstraints( IndexT cs_id )

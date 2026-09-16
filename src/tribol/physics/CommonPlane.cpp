@@ -39,6 +39,7 @@ constexpr int parent_q2_num_nodes = 3;
 constexpr RealT penalty_al_activation_maximum_tangent = 27. / 16.;
 
 TRIBOL_HOST_DEVICE inline void EvalParentQ2Basis( RealT xi, RealT* phi, RealT* dphi );
+TRIBOL_HOST_DEVICE inline void EvalParentLORBasis( RealT xi, RealT* phi );
 
 struct ProjectionConstraint {
   IndexT plane_index;
@@ -53,6 +54,11 @@ struct ProjectionConstraint {
   RealT quadrature_measure;
   RealT trial_velocity;
   RealT position_trial_velocity;
+  RealT spring_stiffness{ 0. };
+  RealT damping_coefficient{ 0. };
+  RealT minimum_thickness{ 0. };
+  RealT compliant_multiplier{ 0. };
+  RealT guard_multiplier{ 0. };
   RealT multiplier{ 0. };
 };
 
@@ -68,6 +74,20 @@ struct ProjectionOperatorDiagnostics {
   RealT maximum_eigenvalue{ 0. };
   RealT condition_estimate{ 0. };
   RealT jacobi_contraction{ 0. };
+};
+
+struct PenaltyStabilitySpectralColumn {
+  std::array<IndexT, 2 * parent_q2_num_nodes * 2> dofs{};
+  std::array<RealT, 2 * parent_q2_num_nodes * 2> coefficients{};
+  int num_coefficients{ 0 };
+  bool active{ false };
+};
+
+struct PenaltyStabilitySpectralResult {
+  RealT maximum_eigenvalue{ 0. };
+  RealT absolute_column_bound{ 0. };
+  RealT relative_residual{ 0. };
+  int iterations{ 0 };
 };
 
 struct TraceProjectionContribution {
@@ -106,7 +126,13 @@ struct ParentTracePenaltyQuadraturePoint {
   ProjectionConstraint contact{};
   std::array<IndexT, parent_q2_num_nodes> multiplier_rows{ { -1, -1, -1 } };
   std::array<RealT, parent_q2_num_nodes> multiplier_basis{ { 0., 0., 0. } };
+  std::array<IndexT, parent_q2_num_nodes> multiplier_face_dofs{ { -1, -1, -1 } };
+  RealT multiplier_interval_min{ 0. };
+  RealT multiplier_interval_max{ 0. };
+  RealT multiplier_coordinate{ 0. };
+  RealT multiplier_normal[2]{ 0., 0. };
   RealT penalty_stiffness{ 0. };
+  RealT damping_coefficient{ 0. };
   RealT minimum_thickness{ 0. };
 };
 
@@ -131,7 +157,9 @@ struct AugmentedLagrangianSolveResult {
 struct PenaltyAugmentedLagrangianSolveResult {
   TraceProjectionSolveResult physical_result;
   std::vector<RealT> updated_multipliers;
+  std::vector<RealT> quadrature_cell_history_pressures;
   std::vector<RealT> quadrature_forces;
+  IndexT active_multiplier_points{ 0 };
   IndexT active_quadrature_points{ 0 };
   int outer_iterations{ 0 };
   int subproblem_iterations{ 0 };
@@ -142,7 +170,12 @@ struct PenaltyAugmentedLagrangianSolveResult {
   IndexT regularized_quadrature_points{ 0 };
   RealT integrated_activation_force_reduction{ 0. };
   RealT maximum_activation_pressure{ 0. };
+  IndexT damping_quadrature_points{ 0 };
+  RealT integrated_damping_force{ 0. };
+  RealT damping_dissipation_rate{ 0. };
+  RealT maximum_damping_pressure{ 0. };
   RealT multiplier_update_norm{ 0. };
+  RealT maximum_continuation_scale{ 0. };
 };
 
 RealT ComputePenaltyAlRelaxation( RealT relaxation, RealT time_constant, RealT stage_dt,
@@ -153,6 +186,23 @@ RealT ComputePenaltyAlRelaxation( RealT relaxation, RealT time_constant, RealT s
   }
   const RealT update_dt = stage_dt / static_cast<RealT>( std::max( 1, updates_per_stage ) );
   return -std::expm1( -update_dt / time_constant );
+}
+
+RealT ComputeFixedIterationPenaltyStiffnessScale( int fixed_iterations, RealT inner_relaxation )
+{
+  return 1. + static_cast<RealT>( std::max( 0, fixed_iterations - 1 ) ) * inner_relaxation;
+}
+
+RealT ComputePenaltyAlContinuationScale( const PenaltyEnforcementOptions& penalty_options,
+                                         int iteration )
+{
+  RealT continuation_scale = 1.;
+  for ( int i = 0; i < iteration; ++i ) {
+    continuation_scale =
+        std::min( penalty_options.al_continuation_max_scale,
+                  continuation_scale * penalty_options.al_continuation_factor );
+  }
+  return continuation_scale;
 }
 
 RealT EvaluatePenaltyAlPressureActivation( RealT pressure, RealT activation_pressure )
@@ -187,19 +237,22 @@ struct ParentTraceFace {
   std::array<IndexT, parent_q2_num_nodes> local_dofs;
   std::array<IndexT, parent_q2_num_nodes> rows;
   RealT normal[2];
+  RealT measure{ 0. };
   RealT inverse_mass[parent_q2_num_nodes][parent_q2_num_nodes];
+  RealT lor_lumped_mass[parent_q2_num_nodes]{ 0., 0., 0. };
 };
 
 bool TransferParentTraceMultiplierHistory( const ParentTraceMultiplierState& state,
                                            RealT current_tributary_area,
                                            RealT& transferred_force,
                                            RealT& area_ratio,
-                                           bool& support_growth_limited )
+                                           bool& support_growth_limited,
+                                           bool allow_signed_force = false )
 {
   transferred_force = 0.;
   area_ratio = 0.;
   support_growth_limited = false;
-  if ( !std::isfinite( state.force ) || state.force <= 0. ||
+  if ( !std::isfinite( state.force ) || ( !allow_signed_force && state.force <= 0. ) ||
        !std::isfinite( state.tributary_area ) || state.tributary_area <= 0. ||
        !std::isfinite( current_tributary_area ) || current_tributary_area <= 0. ) {
     return false;
@@ -213,7 +266,176 @@ bool TransferParentTraceMultiplierHistory( const ParentTraceMultiplierState& sta
   const RealT persistent_area = std::min( current_tributary_area, state.tributary_area );
   transferred_force = state.force * persistent_area / state.tributary_area;
   support_growth_limited = current_tributary_area > state.tributary_area;
-  return std::isfinite( transferred_force ) && transferred_force > 0.;
+  return std::isfinite( transferred_force ) &&
+         ( allow_signed_force || transferred_force > 0. );
+}
+
+bool SameQuadratureCellMultiplierFace( const ParentTracePenaltyQuadraturePoint& point,
+                                       const QuadratureCellMultiplierState& state )
+{
+  return point.multiplier_face_dofs[0] == state.parent_dof0 &&
+         point.multiplier_face_dofs[1] == state.parent_dof1 &&
+         point.multiplier_face_dofs[2] == state.parent_dof2;
+}
+
+bool ProjectQuadratureCellMultiplierHistory(
+    const std::vector<ParentTracePenaltyQuadraturePoint>& quadrature_points,
+    IndexT num_cells, const std::vector<QuadratureCellMultiplierState>& history,
+    RealT minimum_normal_dot, std::vector<RealT>& projected_pressure,
+    std::vector<RealT>& cell_measure, IndexT& warm_start_cells,
+    RealT& history_force_norm_squared, RealT& minimum_coverage,
+    RealT& maximum_coverage, RealT& maximum_coverage_excess )
+{
+  projected_pressure.assign( num_cells, 0. );
+  cell_measure.assign( num_cells, 0. );
+  std::vector<const ParentTracePenaltyQuadraturePoint*> representatives( num_cells, nullptr );
+  warm_start_cells = 0;
+  history_force_norm_squared = 0.;
+  minimum_coverage = std::numeric_limits<RealT>::infinity();
+  maximum_coverage = 0.;
+  maximum_coverage_excess = 0.;
+
+  for ( const auto& point : quadrature_points ) {
+    const IndexT cell = point.contact.plane_index;
+    if ( cell < 0 || cell >= num_cells ||
+         !std::isfinite( point.contact.quadrature_measure ) ||
+         point.contact.quadrature_measure <= 0. ) {
+      return false;
+    }
+    cell_measure[cell] += point.contact.quadrature_measure;
+    if ( representatives[cell] == nullptr ) {
+      representatives[cell] = &point;
+    }
+  }
+
+  for ( IndexT cell = 0; cell < num_cells; ++cell ) {
+    const auto* point = representatives[cell];
+    if ( point == nullptr ) {
+      continue;
+    }
+    const RealT interval_min = point->multiplier_interval_min;
+    const RealT interval_max = point->multiplier_interval_max;
+    const RealT interval_length = interval_max - interval_min;
+    if ( !std::isfinite( interval_length ) || interval_length <= 0. ||
+         !std::isfinite( cell_measure[cell] ) || cell_measure[cell] <= 0. ) {
+      return false;
+    }
+
+    RealT coverage = 0.;
+    RealT pressure = 0.;
+    for ( const auto& state : history ) {
+      if ( !SameQuadratureCellMultiplierFace( *point, state ) ) {
+        continue;
+      }
+      const RealT normal_dot = point->multiplier_normal[0] * state.normal_x +
+                               point->multiplier_normal[1] * state.normal_y;
+      if ( normal_dot < minimum_normal_dot ) {
+        continue;
+      }
+      if ( !std::isfinite( state.parent_coordinate_min ) ||
+           !std::isfinite( state.parent_coordinate_max ) ||
+           state.parent_coordinate_max <= state.parent_coordinate_min ||
+           !std::isfinite( state.pressure ) || state.pressure <= 0. ) {
+        continue;
+      }
+      const RealT intersection_length =
+          std::max( 0., std::min( interval_max, state.parent_coordinate_max ) -
+                            std::max( interval_min, state.parent_coordinate_min ) );
+      const RealT overlap_fraction = intersection_length / interval_length;
+      pressure += overlap_fraction * state.pressure;
+      coverage += overlap_fraction;
+    }
+    maximum_coverage_excess = std::max( maximum_coverage_excess, coverage - 1. );
+    if ( coverage > 1. ) {
+      pressure /= coverage;
+      coverage = 1.;
+    }
+    projected_pressure[cell] = pressure;
+    if ( pressure > 0. ) {
+      ++warm_start_cells;
+      history_force_norm_squared +=
+          cell_measure[cell] * cell_measure[cell] * pressure * pressure;
+      minimum_coverage = std::min( minimum_coverage, coverage );
+      maximum_coverage = std::max( maximum_coverage, coverage );
+    }
+  }
+  return true;
+}
+
+bool ProjectQuadraturePointMultiplierHistory(
+    const std::vector<ParentTracePenaltyQuadraturePoint>& quadrature_points,
+    const std::vector<QuadratureCellMultiplierState>& history,
+    RealT minimum_normal_dot, std::vector<RealT>& projected_pressure,
+    std::vector<RealT>& point_measure, IndexT& warm_start_points,
+    RealT& history_force_norm_squared, RealT& minimum_coverage,
+    RealT& maximum_coverage, RealT& maximum_coverage_excess )
+{
+  projected_pressure.assign( quadrature_points.size(), 0. );
+  point_measure.assign( quadrature_points.size(), 0. );
+  warm_start_points = 0;
+  history_force_norm_squared = 0.;
+  minimum_coverage = std::numeric_limits<RealT>::infinity();
+  maximum_coverage = 0.;
+  maximum_coverage_excess = 0.;
+
+  for ( int q = 0; q < static_cast<int>( quadrature_points.size() ); ++q ) {
+    const auto& point = quadrature_points[q];
+    const RealT measure = point.contact.quadrature_measure;
+    if ( !std::isfinite( measure ) || measure <= 0. ||
+         !std::isfinite( point.multiplier_coordinate ) ) {
+      return false;
+    }
+    point_measure[q] = measure;
+
+    const QuadratureCellMultiplierState* lower_state = nullptr;
+    const QuadratureCellMultiplierState* upper_state = nullptr;
+    RealT lower_distance = std::numeric_limits<RealT>::infinity();
+    RealT upper_distance = std::numeric_limits<RealT>::infinity();
+    for ( const auto& state : history ) {
+      if ( !SameQuadratureCellMultiplierFace( point, state ) ) {
+        continue;
+      }
+      const RealT normal_dot = point.multiplier_normal[0] * state.normal_x +
+                               point.multiplier_normal[1] * state.normal_y;
+      const RealT interval_overlap =
+          std::min( point.multiplier_interval_max, state.parent_coordinate_max ) -
+          std::max( point.multiplier_interval_min, state.parent_coordinate_min );
+      if ( normal_dot < minimum_normal_dot || interval_overlap <= 0. ||
+           !std::isfinite( state.parent_coordinate ) ||
+           !std::isfinite( state.pressure ) || state.pressure < 0. ) {
+        continue;
+      }
+      const RealT signed_distance = state.parent_coordinate - point.multiplier_coordinate;
+      if ( signed_distance <= 0. && -signed_distance < lower_distance ) {
+        lower_state = &state;
+        lower_distance = -signed_distance;
+      }
+      if ( signed_distance >= 0. && signed_distance < upper_distance ) {
+        upper_state = &state;
+        upper_distance = signed_distance;
+      }
+    }
+    if ( lower_state == nullptr && upper_state == nullptr ) {
+      continue;
+    }
+    if ( lower_state != nullptr && upper_state != nullptr &&
+         lower_state != upper_state && lower_distance + upper_distance > 0. ) {
+      projected_pressure[q] =
+          ( upper_distance * lower_state->pressure + lower_distance * upper_state->pressure ) /
+          ( lower_distance + upper_distance );
+    } else {
+      projected_pressure[q] = lower_state != nullptr ? lower_state->pressure
+                                                     : upper_state->pressure;
+    }
+    if ( projected_pressure[q] > 0. ) {
+      ++warm_start_points;
+      history_force_norm_squared +=
+          measure * measure * projected_pressure[q] * projected_pressure[q];
+      minimum_coverage = std::min( minimum_coverage, 1. );
+      maximum_coverage = std::max( maximum_coverage, 1. );
+    }
+  }
+  return true;
 }
 
 RealT EvaluateProjectionVelocity( const ProjectionConstraint& constraint, const MeshData::Viewer& mesh1,
@@ -415,7 +637,9 @@ bool BuildParentTraceFace( const MeshData::Viewer& mortar_mesh, IndexT represent
   for ( int qp = 0; qp < num_points; ++qp ) {
     RealT phi[3];
     RealT dphi[3];
+    RealT lor_phi[3];
     EvalParentQ2Basis( coordinates[qp], phi, dphi );
+    EvalParentLORBasis( coordinates[qp], lor_phi );
     RealT derivative[2] = { 0., 0. };
     for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
       derivative[0] += dphi[a] * mortar_mesh.getParentPosition( representative_element, a, 0 );
@@ -430,10 +654,25 @@ bool BuildParentTraceFace( const MeshData::Viewer& mortar_mesh, IndexT represent
                          << derivative[0] << "/" << derivative[1] << ", Jacobian " << jacobian << "." );
       return false;
     }
+    face.measure += weights[qp] * jacobian;
     for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+      face.lor_lumped_mass[a] += weights[qp] * jacobian * lor_phi[a];
       for ( int b = 0; b < parent_q2_num_nodes; ++b ) {
         mass[a][b] += weights[qp] * jacobian * phi[a] * phi[b];
       }
+    }
+  }
+  if ( !std::isfinite( face.measure ) || face.measure <= 0. ) {
+    SLIC_WARNING_ROOT( "BuildParentTraceFace(): invalid parent-face measure for representative element "
+                       << representative_element << ": " << face.measure << "." );
+    return false;
+  }
+  for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+    if ( !std::isfinite( face.lor_lumped_mass[a] ) || face.lor_lumped_mass[a] <= 0. ) {
+      SLIC_WARNING_ROOT( "BuildParentTraceFace(): invalid LOR lumped mass for representative element "
+                         << representative_element << ", local DOF " << a << ": "
+                         << face.lor_lumped_mass[a] << "." );
+      return false;
     }
   }
   if ( !InvertThreeByThree( mass, face.inverse_mass ) ) {
@@ -509,10 +748,103 @@ std::vector<RealT> ComputeSymmetricEigenvalues( mfem::DenseMatrix& matrix )
   return eigenvalues;
 }
 
-ProjectionOperatorDiagnostics ComputeProjectionOperatorDiagnostics(
-    const std::vector<ProjectionConstraint>& constraints, RealT relaxation, MfemMeshData& mfem_data )
+PenaltyStabilitySpectralResult ComputePenaltyStabilitySpectrum(
+    const std::vector<PenaltyStabilitySpectralColumn>& columns, IndexT num_dofs,
+    bool active_only )
 {
-  ProjectionOperatorDiagnostics diagnostics;
+  PenaltyStabilitySpectralResult result;
+  if ( num_dofs <= 0 || columns.empty() ) {
+    return result;
+  }
+
+  std::vector<RealT> row_bound( num_dofs, 0. );
+  IndexT num_columns = 0;
+  for ( const auto& column : columns ) {
+    if ( active_only && !column.active ) {
+      continue;
+    }
+    ++num_columns;
+    RealT column_l1_norm = 0.;
+    for ( int entry = 0; entry < column.num_coefficients; ++entry ) {
+      column_l1_norm += std::abs( column.coefficients[entry] );
+    }
+    for ( int entry = 0; entry < column.num_coefficients; ++entry ) {
+      row_bound[column.dofs[entry]] +=
+          std::abs( column.coefficients[entry] ) * column_l1_norm;
+    }
+  }
+  if ( num_columns == 0 ) {
+    return result;
+  }
+  result.absolute_column_bound = *std::max_element( row_bound.begin(), row_bound.end() );
+
+  std::vector<RealT> iterate( num_dofs );
+  std::vector<RealT> product( num_dofs );
+  for ( IndexT row = 0; row < num_dofs; ++row ) {
+    iterate[row] = std::sin( 0.731 * static_cast<RealT>( row + 1 ) ) +
+                   std::cos( 1.213 * static_cast<RealT>( row + 1 ) );
+  }
+  RealT iterate_norm_squared = 0.;
+  for ( const RealT value : iterate ) {
+    iterate_norm_squared += value * value;
+  }
+  const RealT inverse_iterate_norm = 1. / std::sqrt( iterate_norm_squared );
+  for ( RealT& value : iterate ) {
+    value *= inverse_iterate_norm;
+  }
+
+  constexpr int max_iterations = 2000;
+  constexpr RealT relative_tolerance = 1.e-11;
+  for ( int iteration = 1; iteration <= max_iterations; ++iteration ) {
+    std::fill( product.begin(), product.end(), 0. );
+    for ( const auto& column : columns ) {
+      if ( active_only && !column.active ) {
+        continue;
+      }
+      RealT column_projection = 0.;
+      for ( int entry = 0; entry < column.num_coefficients; ++entry ) {
+        column_projection += column.coefficients[entry] * iterate[column.dofs[entry]];
+      }
+      for ( int entry = 0; entry < column.num_coefficients; ++entry ) {
+        product[column.dofs[entry]] += column.coefficients[entry] * column_projection;
+      }
+    }
+
+    RealT product_norm_squared = 0.;
+    RealT eigenvalue = 0.;
+    for ( IndexT row = 0; row < num_dofs; ++row ) {
+      product_norm_squared += product[row] * product[row];
+      eigenvalue += iterate[row] * product[row];
+    }
+    const RealT product_norm = std::sqrt( product_norm_squared );
+    result.maximum_eigenvalue = std::max( 0., eigenvalue );
+    result.iterations = iteration;
+    if ( product_norm == 0. ) {
+      result.maximum_eigenvalue = 0.;
+      result.relative_residual = 0.;
+      break;
+    }
+
+    RealT residual_norm_squared = 0.;
+    for ( IndexT row = 0; row < num_dofs; ++row ) {
+      const RealT residual = product[row] - result.maximum_eigenvalue * iterate[row];
+      residual_norm_squared += residual * residual;
+    }
+    result.relative_residual = std::sqrt( residual_norm_squared ) / product_norm;
+    if ( result.relative_residual <= relative_tolerance ) {
+      break;
+    }
+    for ( IndexT row = 0; row < num_dofs; ++row ) {
+      iterate[row] = product[row] / product_norm;
+    }
+  }
+  return result;
+}
+
+bool AssembleProjectionOperator( const std::vector<ProjectionConstraint>& constraints,
+                                 MfemMeshData& mfem_data, mfem::DenseMatrix& mass_scaled_rows,
+                                 mfem::DenseMatrix& projection_operator )
+{
   const IndexT num_constraints = static_cast<IndexT>( constraints.size() );
   std::vector<IndexT> elements1( constraints.size() );
   std::vector<IndexT> elements2( constraints.size() );
@@ -532,9 +864,30 @@ ProjectionOperatorDiagnostics ComputeProjectionOperatorDiagnostics(
     }
   }
 
+  if ( mfem_data.HasParentVelocityMassInverse() ) {
+    return mfem_data.AssembleParentQ2ConsistentProjectionOperator(
+        num_constraints, elements1.data(), elements2.data(), normals.data(),
+        phi1.data(), phi2.data(), mass_scaled_rows, projection_operator );
+  } else {
+    if ( !mfem_data.AssembleParentQ2MassScaledConstraintRows(
+             num_constraints, elements1.data(), elements2.data(), normals.data(),
+             phi1.data(), phi2.data(), mass_scaled_rows ) ) {
+      return false;
+    }
+    projection_operator.SetSize( num_constraints );
+    mfem::MultAtB( mass_scaled_rows, mass_scaled_rows, projection_operator );
+  }
+  return true;
+}
+
+ProjectionOperatorDiagnostics ComputeProjectionOperatorDiagnostics(
+    const std::vector<ProjectionConstraint>& constraints, RealT relaxation, MfemMeshData& mfem_data )
+{
+  ProjectionOperatorDiagnostics diagnostics;
+  const IndexT num_constraints = static_cast<IndexT>( constraints.size() );
   mfem::DenseMatrix rows;
-  if ( !mfem_data.AssembleParentQ2MassScaledConstraintRows( num_constraints, elements1.data(), elements2.data(),
-                                                            normals.data(), phi1.data(), phi2.data(), rows ) ) {
+  mfem::DenseMatrix projection_operator;
+  if ( !AssembleProjectionOperator( constraints, mfem_data, rows, projection_operator ) ) {
     return diagnostics;
   }
   for ( IndexT i = 0; i < num_constraints; ++i ) {
@@ -622,139 +975,308 @@ ProjectionOperatorDiagnostics ComputeProjectionOperatorDiagnostics( const mfem::
   return diagnostics;
 }
 
-bool PolishProjectionActiveSet( const mfem::DenseMatrix& projection_operator,
-                                std::vector<TraceProjectionConstraint>& constraints, RealT residual_tolerance,
-                                int max_iterations, int& iterations )
+bool AppendIndependentProjectionConstraint( const mfem::DenseMatrix& projection_operator,
+                                            int constraint_index, RealT rank_tolerance,
+                                            std::vector<int>& active_indices,
+                                            std::vector<std::vector<RealT>>& lower_factor,
+                                            std::vector<RealT>* dependence_coefficients = nullptr )
 {
-  const int num_constraints = static_cast<int>( constraints.size() );
-  std::vector<RealT> free_velocity( constraints.size() );
-  RealT multiplier_scale = 0.;
-  for ( int i = 0; i < num_constraints; ++i ) {
-    free_velocity[i] = constraints[i].trial_velocity - constraints[i].target_velocity;
-    multiplier_scale = std::max( multiplier_scale, constraints[i].multiplier );
-  }
-  const RealT multiplier_tolerance = 1000. * std::numeric_limits<RealT>::epsilon() * std::max( 1., multiplier_scale );
-  std::vector<bool> free_set( constraints.size(), false );
-  for ( int i = 0; i < num_constraints; ++i ) {
-    free_set[i] = constraints[i].multiplier > multiplier_tolerance;
+  const RealT candidate_diagonal = projection_operator( constraint_index, constraint_index );
+  if ( !std::isfinite( candidate_diagonal ) || candidate_diagonal <= 0. ) {
+    return false;
   }
 
-  while ( iterations < max_iterations ) {
-    ++iterations;
-
-    std::vector<RealT> residual( constraints.size() );
-    for ( int i = 0; i < num_constraints; ++i ) {
-      residual[i] = free_velocity[i];
-      for ( int j = 0; j < num_constraints; ++j ) {
-        residual[i] += projection_operator( i, j ) * constraints[j].multiplier;
-      }
-    }
-
-    std::vector<int> free_indices;
-    free_indices.reserve( constraints.size() );
-    for ( int i = 0; i < num_constraints; ++i ) {
-      if ( free_set[i] ) {
-        free_indices.push_back( i );
-      }
-    }
-    if ( free_indices.empty() ) {
-      int most_violated = -1;
-      RealT minimum_residual = 0.;
-      for ( int i = 0; i < num_constraints; ++i ) {
-        if ( residual[i] < minimum_residual ) {
-          minimum_residual = residual[i];
-          most_violated = i;
-        }
-      }
-      if ( minimum_residual >= -residual_tolerance ) {
-        return true;
-      }
-      free_set[most_violated] = true;
-      continue;
-    }
-
-    const int free_size = static_cast<int>( free_indices.size() );
-    mfem::DenseMatrix free_operator( free_size );
-    mfem::Vector free_rhs( free_size );
-    for ( int i = 0; i < free_size; ++i ) {
-      free_rhs[i] = -free_velocity[free_indices[i]];
-      for ( int j = 0; j < free_size; ++j ) {
-        free_operator( i, j ) = projection_operator( free_indices[i], free_indices[j] );
-      }
-    }
-    mfem::DenseMatrixInverse free_inverse( free_operator, true );
-    mfem::Vector candidate_multipliers;
-    free_inverse.Mult( free_rhs, candidate_multipliers );
-
-    RealT minimum_candidate = 0.;
-    for ( int i = 0; i < free_size; ++i ) {
-      if ( !std::isfinite( candidate_multipliers[i] ) ) {
-        return false;
-      }
-      minimum_candidate = std::min( minimum_candidate, candidate_multipliers[i] );
-    }
-
-    if ( minimum_candidate >= -multiplier_tolerance ) {
-      for ( int i = 0; i < num_constraints; ++i ) {
-        constraints[i].multiplier = 0.;
-      }
-      for ( int i = 0; i < free_size; ++i ) {
-        const int constraint_index = free_indices[i];
-        if ( candidate_multipliers[i] > multiplier_tolerance ) {
-          constraints[constraint_index].multiplier = candidate_multipliers[i];
-        } else {
-          free_set[constraint_index] = false;
-        }
-      }
-      int add_index = -1;
-      RealT minimum_residual = 0.;
-      for ( int i = 0; i < num_constraints; ++i ) {
-        if ( free_set[i] ) {
-          continue;
-        }
-        RealT inactive_residual = free_velocity[i];
-        for ( int j = 0; j < num_constraints; ++j ) {
-          inactive_residual += projection_operator( i, j ) * constraints[j].multiplier;
-        }
-        if ( inactive_residual < minimum_residual ) {
-          minimum_residual = inactive_residual;
-          add_index = i;
-        }
-      }
-      if ( minimum_residual < -residual_tolerance ) {
-        free_set[add_index] = true;
-        continue;
-      }
-      return true;
-    }
-
-    RealT step_length = 1.;
-    for ( int i = 0; i < free_size; ++i ) {
-      const RealT multiplier = constraints[free_indices[i]].multiplier;
-      const RealT direction = candidate_multipliers[i] - multiplier;
-      if ( direction < 0. ) {
-        step_length = std::min( step_length, -multiplier / direction );
-      }
-    }
-    if ( !std::isfinite( step_length ) || step_length < 0. || step_length > 1. ) {
+  const int active_size = static_cast<int>( active_indices.size() );
+  std::vector<RealT> transformed_cross( active_size, 0. );
+  const RealT candidate_scale = std::sqrt( candidate_diagonal );
+  for ( int row = 0; row < active_size; ++row ) {
+    const int active_index = active_indices[row];
+    const RealT active_diagonal = projection_operator( active_index, active_index );
+    if ( !std::isfinite( active_diagonal ) || active_diagonal <= 0. ) {
       return false;
     }
-    for ( int i = 0; i < free_size; ++i ) {
-      const int constraint_index = free_indices[i];
-      const RealT multiplier = constraints[constraint_index].multiplier;
-      constraints[constraint_index].multiplier = multiplier + step_length * ( candidate_multipliers[i] - multiplier );
-      if ( constraints[constraint_index].multiplier <= multiplier_tolerance ) {
-        constraints[constraint_index].multiplier = 0.;
-        free_set[constraint_index] = false;
+    RealT value = projection_operator( active_index, constraint_index ) /
+                  std::sqrt( active_diagonal * candidate_diagonal );
+    for ( int column = 0; column < row; ++column ) {
+      value -= lower_factor[row][column] * transformed_cross[column];
+    }
+    transformed_cross[row] = value / lower_factor[row][row];
+  }
+
+  RealT remaining_norm_squared = 1.;
+  for ( const RealT value : transformed_cross ) {
+    remaining_norm_squared -= value * value;
+  }
+  if ( remaining_norm_squared > rank_tolerance ) {
+    transformed_cross.push_back( std::sqrt( remaining_norm_squared ) );
+    active_indices.push_back( constraint_index );
+    lower_factor.push_back( std::move( transformed_cross ) );
+    return true;
+  }
+
+  if ( dependence_coefficients != nullptr ) {
+    std::vector<RealT> normalized_coefficients( active_size, 0. );
+    for ( int row = active_size - 1; row >= 0; --row ) {
+      RealT value = transformed_cross[row];
+      for ( int column = row + 1; column < active_size; ++column ) {
+        value -= lower_factor[column][row] * normalized_coefficients[column];
       }
+      normalized_coefficients[row] = value / lower_factor[row][row];
+    }
+    dependence_coefficients->resize( active_size );
+    for ( int row = 0; row < active_size; ++row ) {
+      const RealT active_scale =
+          std::sqrt( projection_operator( active_indices[row], active_indices[row] ) );
+      ( *dependence_coefficients )[row] =
+          candidate_scale * normalized_coefficients[row] / active_scale;
+    }
+  }
+  return false;
+}
+
+bool RebuildProjectionActiveFactor( const mfem::DenseMatrix& projection_operator,
+                                    RealT rank_tolerance,
+                                    const std::vector<int>& active_indices,
+                                    std::vector<std::vector<RealT>>& lower_factor )
+{
+  std::vector<int> rebuilt_indices;
+  std::vector<std::vector<RealT>> rebuilt_factor;
+  rebuilt_indices.reserve( active_indices.size() );
+  rebuilt_factor.reserve( active_indices.size() );
+  for ( const int index : active_indices ) {
+    if ( !AppendIndependentProjectionConstraint( projection_operator, index, rank_tolerance,
+                                                 rebuilt_indices, rebuilt_factor ) ) {
+      return false;
+    }
+  }
+  lower_factor = std::move( rebuilt_factor );
+  return true;
+}
+
+bool SolveProjectionActiveSystem( const mfem::DenseMatrix& projection_operator,
+                                  const std::vector<int>& active_indices,
+                                  const std::vector<std::vector<RealT>>& lower_factor,
+                                  const std::vector<RealT>& right_hand_side,
+                                  std::vector<RealT>& active_solution )
+{
+  const int active_size = static_cast<int>( active_indices.size() );
+  std::vector<RealT> intermediate( active_size, 0. );
+  for ( int row = 0; row < active_size; ++row ) {
+    const int index = active_indices[row];
+    const RealT diagonal_scale = std::sqrt( projection_operator( index, index ) );
+    RealT value = right_hand_side[index] / diagonal_scale;
+    for ( int column = 0; column < row; ++column ) {
+      value -= lower_factor[row][column] * intermediate[column];
+    }
+    intermediate[row] = value / lower_factor[row][row];
+  }
+
+  std::vector<RealT> normalized_solution( active_size, 0. );
+  active_solution.resize( active_size );
+  for ( int row = active_size - 1; row >= 0; --row ) {
+    RealT value = intermediate[row];
+    for ( int column = row + 1; column < active_size; ++column ) {
+      value -= lower_factor[column][row] * normalized_solution[column];
+    }
+    normalized_solution[row] = value / lower_factor[row][row];
+    const RealT diagonal_scale =
+        std::sqrt( projection_operator( active_indices[row], active_indices[row] ) );
+    active_solution[row] = normalized_solution[row] / diagonal_scale;
+    if ( !std::isfinite( active_solution[row] ) ) {
+      return false;
     }
   }
   return true;
 }
 
+template <typename Constraint>
+bool PolishProjectionActiveSet( const mfem::DenseMatrix& projection_operator,
+                                std::vector<Constraint>& constraints, RealT residual_tolerance,
+                                int max_iterations, int& iterations )
+{
+  const int num_constraints = static_cast<int>( constraints.size() );
+  std::vector<RealT> free_velocity( constraints.size() );
+  std::vector<RealT> right_hand_side( constraints.size() );
+  RealT multiplier_scale = 0.;
+  for ( int i = 0; i < num_constraints; ++i ) {
+    free_velocity[i] = constraints[i].trial_velocity - constraints[i].target_velocity;
+    right_hand_side[i] = -free_velocity[i];
+    multiplier_scale = std::max( multiplier_scale, constraints[i].multiplier );
+  }
+  const RealT multiplier_tolerance =
+      1000. * std::numeric_limits<RealT>::epsilon() * std::max( 1., multiplier_scale );
+  const RealT rank_tolerance =
+      1000. * std::numeric_limits<RealT>::epsilon() * std::max( 1, num_constraints );
+
+  std::vector<int> seed_indices;
+  seed_indices.reserve( constraints.size() );
+  for ( int i = 0; i < num_constraints; ++i ) {
+    if ( constraints[i].multiplier > multiplier_tolerance ) {
+      seed_indices.push_back( i );
+    }
+  }
+  std::sort( seed_indices.begin(), seed_indices.end(), [&]( int first, int second ) {
+    return constraints[first].multiplier > constraints[second].multiplier;
+  } );
+
+  std::vector<int> active_indices;
+  std::vector<std::vector<RealT>> lower_factor;
+  active_indices.reserve( constraints.size() );
+  lower_factor.reserve( constraints.size() );
+  for ( const int index : seed_indices ) {
+    AppendIndependentProjectionConstraint( projection_operator, index, rank_tolerance,
+                                           active_indices, lower_factor );
+  }
+  for ( auto& constraint : constraints ) {
+    constraint.multiplier = 0.;
+  }
+
+  auto optimize_active_set = [&]() {
+    while ( !active_indices.empty() && iterations < max_iterations ) {
+      ++iterations;
+      std::vector<RealT> candidate;
+      if ( !SolveProjectionActiveSystem( projection_operator, active_indices, lower_factor,
+                                         right_hand_side, candidate ) ) {
+        return false;
+      }
+
+      RealT candidate_scale = 0.;
+      for ( const RealT value : candidate ) {
+        candidate_scale = std::max( candidate_scale, std::abs( value ) );
+      }
+      const RealT active_multiplier_tolerance =
+          1000. * std::numeric_limits<RealT>::epsilon() * std::max( 1., candidate_scale );
+      bool nonnegative_candidate = true;
+      for ( const RealT value : candidate ) {
+        nonnegative_candidate = nonnegative_candidate && value >= -active_multiplier_tolerance;
+      }
+
+      if ( nonnegative_candidate ) {
+        for ( auto& constraint : constraints ) {
+          constraint.multiplier = 0.;
+        }
+        std::vector<int> retained_indices;
+        retained_indices.reserve( active_indices.size() );
+        for ( int i = 0; i < static_cast<int>( active_indices.size() ); ++i ) {
+          if ( candidate[i] > active_multiplier_tolerance ) {
+            constraints[active_indices[i]].multiplier = candidate[i];
+            retained_indices.push_back( active_indices[i] );
+          }
+        }
+        active_indices = std::move( retained_indices );
+        return RebuildProjectionActiveFactor( projection_operator, rank_tolerance,
+                                              active_indices, lower_factor );
+      }
+
+      RealT step_length = 1.;
+      for ( int i = 0; i < static_cast<int>( active_indices.size() ); ++i ) {
+        const RealT multiplier = constraints[active_indices[i]].multiplier;
+        const RealT direction = candidate[i] - multiplier;
+        if ( direction < 0. ) {
+          step_length = std::min( step_length, -multiplier / direction );
+        }
+      }
+      if ( !std::isfinite( step_length ) || step_length < 0. || step_length > 1. ) {
+        return false;
+      }
+
+      std::vector<int> retained_indices;
+      retained_indices.reserve( active_indices.size() );
+      for ( int i = 0; i < static_cast<int>( active_indices.size() ); ++i ) {
+        const int index = active_indices[i];
+        const RealT multiplier = constraints[index].multiplier;
+        const RealT direction = candidate[i] - multiplier;
+        const RealT updated_multiplier = multiplier + step_length * direction;
+        const RealT blocking_ratio = direction < 0. ? -multiplier / direction : 2.;
+        const bool blocking = direction < 0. &&
+                              blocking_ratio <= step_length + 100. * std::numeric_limits<RealT>::epsilon();
+        constraints[index].multiplier = blocking ? 0. : std::max( 0., updated_multiplier );
+        if ( !blocking ) {
+          retained_indices.push_back( index );
+        }
+      }
+      if ( retained_indices.size() == active_indices.size() ) {
+        return false;
+      }
+      active_indices = std::move( retained_indices );
+      if ( !RebuildProjectionActiveFactor( projection_operator, rank_tolerance,
+                                           active_indices, lower_factor ) ) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  if ( !optimize_active_set() ) {
+    return false;
+  }
+
+  while ( iterations < max_iterations ) {
+    int entering_index = -1;
+    RealT minimum_residual = -residual_tolerance;
+    for ( int i = 0; i < num_constraints; ++i ) {
+      RealT residual = free_velocity[i];
+      for ( int j = 0; j < num_constraints; ++j ) {
+        residual += projection_operator( i, j ) * constraints[j].multiplier;
+      }
+      if ( residual < minimum_residual ) {
+        minimum_residual = residual;
+        entering_index = i;
+      }
+    }
+    if ( entering_index < 0 ) {
+      return true;
+    }
+
+    std::vector<RealT> dependence_coefficients;
+    if ( !AppendIndependentProjectionConstraint( projection_operator, entering_index, rank_tolerance,
+                                                 active_indices, lower_factor,
+                                                 &dependence_coefficients ) ) {
+      RealT exchange_step = std::numeric_limits<RealT>::infinity();
+      for ( int i = 0; i < static_cast<int>( active_indices.size() ); ++i ) {
+        if ( dependence_coefficients[i] > multiplier_tolerance ) {
+          exchange_step = std::min(
+              exchange_step,
+              constraints[active_indices[i]].multiplier / dependence_coefficients[i] );
+        }
+      }
+      if ( !std::isfinite( exchange_step ) ) {
+        return false;
+      }
+
+      std::vector<int> retained_indices;
+      retained_indices.reserve( active_indices.size() );
+      for ( int i = 0; i < static_cast<int>( active_indices.size() ); ++i ) {
+        const int index = active_indices[i];
+        const RealT updated_multiplier = constraints[index].multiplier -
+                                         exchange_step * dependence_coefficients[i];
+        constraints[index].multiplier = std::max( 0., updated_multiplier );
+        if ( constraints[index].multiplier > multiplier_tolerance ) {
+          retained_indices.push_back( index );
+        }
+      }
+      constraints[entering_index].multiplier = exchange_step;
+      active_indices = std::move( retained_indices );
+      lower_factor.clear();
+      if ( !RebuildProjectionActiveFactor( projection_operator, rank_tolerance,
+                                           active_indices, lower_factor ) ||
+           !AppendIndependentProjectionConstraint( projection_operator, entering_index,
+                                                   rank_tolerance, active_indices,
+                                                   lower_factor ) ) {
+        return false;
+      }
+    }
+    if ( !optimize_active_set() ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+template <typename Constraint>
 ProjectionResiduals ComputeTraceProjectionResiduals(
     const mfem::DenseMatrix& projection_operator,
-    const std::vector<TraceProjectionConstraint>& constraints )
+    const std::vector<Constraint>& constraints )
 {
   ProjectionResiduals residuals;
   const int num_constraints = static_cast<int>( constraints.size() );
@@ -773,7 +1295,8 @@ ProjectionResiduals ComputeTraceProjectionResiduals(
   return residuals;
 }
 
-RealT ComputeTraceProjectionPrimalScale( const std::vector<TraceProjectionConstraint>& constraints )
+template <typename Constraint>
+RealT ComputeTraceProjectionPrimalScale( const std::vector<Constraint>& constraints )
 {
   RealT primal_scale = 0.;
   for ( const auto& constraint : constraints ) {
@@ -783,8 +1306,9 @@ RealT ComputeTraceProjectionPrimalScale( const std::vector<TraceProjectionConstr
   return primal_scale;
 }
 
+template <typename Constraint>
 TraceProjectionSolveResult SolveTraceProjectionSystem( const mfem::DenseMatrix& projection_operator,
-                                                        std::vector<TraceProjectionConstraint>& constraints,
+                                                        std::vector<Constraint>& constraints,
                                                         const ImpulseProjectionOptions& projection_options )
 {
   TraceProjectionSolveResult result;
@@ -1048,98 +1572,153 @@ PenaltyAugmentedLagrangianSolveResult SolveTracePenaltyAugmentedLagrangianSystem
 PenaltyAugmentedLagrangianSolveResult SolveQuadraturePenaltyAugmentedLagrangianSystem(
     const std::vector<ParentTracePenaltyQuadraturePoint>& quadrature_points,
     std::vector<TraceProjectionConstraint>& constraints,
-    const PenaltyEnforcementOptions& penalty_options, RealT stage_dt )
+    const PenaltyEnforcementOptions& penalty_options, RealT stage_dt,
+    bool fixed_active_set )
 {
   PenaltyAugmentedLagrangianSolveResult result;
   const int num_constraints = static_cast<int>( constraints.size() );
   std::vector<RealT> multiplier_pressure( constraints.size(), 0. );
+  std::vector<RealT> inner_multiplier_pressure( constraints.size(), 0. );
   std::vector<RealT> projected_force( constraints.size(), 0. );
   result.quadrature_forces.resize( quadrature_points.size(), 0. );
 
   for ( int i = 0; i < num_constraints; ++i ) {
     const RealT area = constraints[i].tributary_area;
     if ( !std::isfinite( area ) || area <= 0. ||
-         !std::isfinite( constraints[i].multiplier ) || constraints[i].multiplier < 0. ) {
+         !std::isfinite( constraints[i].multiplier ) ||
+         ( !fixed_active_set && constraints[i].multiplier < 0. ) ) {
       result.physical_result.valid = false;
       return result;
     }
     multiplier_pressure[i] = constraints[i].multiplier / area;
+    inner_multiplier_pressure[i] = multiplier_pressure[i];
   }
 
   RealT gap_scale = 0.;
-  for ( int q = 0; q < static_cast<int>( quadrature_points.size() ); ++q ) {
-    const auto& point = quadrature_points[q];
-    const RealT gap = point.contact.gap;
-    const RealT stiffness = point.penalty_stiffness;
-    const RealT measure = point.contact.quadrature_measure;
-    if ( !std::isfinite( gap ) || !std::isfinite( stiffness ) || stiffness <= 0. ||
-         !std::isfinite( measure ) || measure <= 0. ||
-         !std::isfinite( point.minimum_thickness ) || point.minimum_thickness <= 0. ) {
+  auto evaluate = [&]() {
+    std::fill( projected_force.begin(), projected_force.end(), 0. );
+    result.active_quadrature_points = 0;
+    result.regularized_quadrature_points = 0;
+    result.integrated_activation_force_reduction = 0.;
+    result.maximum_activation_pressure = 0.;
+    result.damping_quadrature_points = 0;
+    result.integrated_damping_force = 0.;
+    result.damping_dissipation_rate = 0.;
+    result.maximum_damping_pressure = 0.;
+    result.physical_result.final_residual = 0.;
+    result.physical_result.final_primal_residual = 0.;
+    gap_scale = 0.;
+
+    for ( int q = 0; q < static_cast<int>( quadrature_points.size() ); ++q ) {
+      const auto& point = quadrature_points[q];
+      const RealT gap = point.contact.gap;
+      const RealT stiffness = point.penalty_stiffness;
+      const RealT measure = point.contact.quadrature_measure;
+      if ( !std::isfinite( gap ) || !std::isfinite( stiffness ) || stiffness <= 0. ||
+           !std::isfinite( measure ) || measure <= 0. ||
+           !std::isfinite( point.contact.trial_velocity ) ||
+           !std::isfinite( point.damping_coefficient ) || point.damping_coefficient < 0. ||
+           !std::isfinite( point.minimum_thickness ) || point.minimum_thickness <= 0. ) {
+        return false;
+      }
+
+      RealT multiplier = 0.;
+      RealT basis_sum = 0.;
+      for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+        const IndexT row = point.multiplier_rows[a];
+        const RealT basis = point.multiplier_basis[a];
+        if ( row < 0 || basis == 0. ) {
+          continue;
+        }
+        if ( row >= num_constraints || !std::isfinite( basis ) || basis < 0. ) {
+          return false;
+        }
+        multiplier += basis * inner_multiplier_pressure[row];
+        basis_sum += basis;
+      }
+      if ( !std::isfinite( multiplier ) || !std::isfinite( basis_sum ) || basis_sum <= 0. ) {
+        return false;
+      }
+
+      const RealT raw_pressure = multiplier - stiffness * gap;
+      const RealT activation_pressure = stiffness * penalty_options.al_activation_gap_fraction *
+                                        point.minimum_thickness;
+      const RealT augmented_pressure = fixed_active_set
+          ? raw_pressure
+          : EvaluatePenaltyAlPressureActivation( raw_pressure, activation_pressure );
+      const RealT closing_gap_rate = std::max( 0., -point.contact.trial_velocity );
+      const RealT damping_pressure = point.damping_coefficient * closing_gap_rate;
+      const RealT pressure = augmented_pressure + damping_pressure;
+      const RealT force = measure * pressure;
+      if ( !std::isfinite( augmented_pressure ) || !std::isfinite( damping_pressure ) ||
+           !std::isfinite( pressure ) || !std::isfinite( force ) ) {
+        return false;
+      }
+      result.quadrature_forces[q] = force;
+      result.active_quadrature_points += fixed_active_set || force > 0. ? 1 : 0;
+      result.maximum_activation_pressure =
+          std::max( result.maximum_activation_pressure, activation_pressure );
+      if ( raw_pressure > 0. && raw_pressure < activation_pressure ) {
+        ++result.regularized_quadrature_points;
+        result.integrated_activation_force_reduction += measure * ( raw_pressure - augmented_pressure );
+      }
+      if ( damping_pressure > 0. ) {
+        ++result.damping_quadrature_points;
+        result.integrated_damping_force += measure * damping_pressure;
+        result.damping_dissipation_rate += measure * damping_pressure * closing_gap_rate;
+        result.maximum_damping_pressure =
+            std::max( result.maximum_damping_pressure, damping_pressure );
+      }
+      for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+        const IndexT row = point.multiplier_rows[a];
+        if ( row >= 0 ) {
+          projected_force[row] += measure * point.multiplier_basis[a] * augmented_pressure;
+        }
+      }
+
+      const RealT complementarity_residual = fixed_active_set
+          ? std::abs( gap )
+          : std::abs( std::min( augmented_pressure / stiffness, gap ) );
+      result.physical_result.final_residual =
+          std::max( result.physical_result.final_residual, complementarity_residual );
+      result.physical_result.final_primal_residual =
+          std::max( result.physical_result.final_primal_residual,
+                    fixed_active_set ? std::abs( gap ) : std::max( 0., -gap ) );
+      gap_scale = std::max( gap_scale, std::abs( gap ) );
+    }
+    return true;
+  };
+
+  const int iteration_limit = penalty_options.al_fixed_iterations;
+  for ( int iteration = 0; iteration < iteration_limit; ++iteration ) {
+    if ( !evaluate() ) {
       result.physical_result.valid = false;
       return result;
     }
-
-    RealT multiplier = 0.;
-    RealT basis_sum = 0.;
-    for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
-      const IndexT row = point.multiplier_rows[a];
-      const RealT basis = point.multiplier_basis[a];
-      if ( row < 0 || basis == 0. ) {
-        continue;
-      }
-      if ( row >= num_constraints || !std::isfinite( basis ) || basis < 0. ) {
-        result.physical_result.valid = false;
-        return result;
-      }
-      multiplier += basis * multiplier_pressure[row];
-      basis_sum += basis;
+    if ( iteration == 0 ) {
+      result.physical_result.initial_residual = result.physical_result.final_residual;
     }
-    if ( !std::isfinite( multiplier ) || !std::isfinite( basis_sum ) || basis_sum <= 0. ) {
-      result.physical_result.valid = false;
-      return result;
-    }
-
-    const RealT raw_pressure = multiplier - stiffness * gap;
-    const RealT activation_pressure = stiffness * penalty_options.al_activation_gap_fraction *
-                                      point.minimum_thickness;
-    const RealT pressure = EvaluatePenaltyAlPressureActivation( raw_pressure, activation_pressure );
-    const RealT force = measure * pressure;
-    if ( !std::isfinite( pressure ) || !std::isfinite( force ) ) {
-      result.physical_result.valid = false;
-      return result;
-    }
-    result.quadrature_forces[q] = force;
-    result.active_quadrature_points += force > 0. ? 1 : 0;
-    result.maximum_activation_pressure =
-        std::max( result.maximum_activation_pressure, activation_pressure );
-    if ( raw_pressure > 0. && raw_pressure < activation_pressure ) {
-      ++result.regularized_quadrature_points;
-      result.integrated_activation_force_reduction += measure * ( raw_pressure - pressure );
-    }
-    for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
-      const IndexT row = point.multiplier_rows[a];
-      if ( row >= 0 ) {
-        projected_force[row] += measure * point.multiplier_basis[a] * pressure;
+    ++result.outer_iterations;
+    if ( iteration + 1 < iteration_limit ) {
+      for ( int i = 0; i < num_constraints; ++i ) {
+        const RealT projected_pressure = projected_force[i] / constraints[i].tributary_area;
+        const RealT updated_pressure =
+            inner_multiplier_pressure[i] +
+            penalty_options.al_inner_relaxation * ( projected_pressure - inner_multiplier_pressure[i] );
+        if ( !std::isfinite( updated_pressure ) ) {
+          result.physical_result.valid = false;
+          return result;
+        }
+        inner_multiplier_pressure[i] = fixed_active_set ? updated_pressure : std::max( 0., updated_pressure );
       }
     }
-
-    const RealT complementarity_residual =
-        std::abs( std::min( pressure / stiffness, gap ) );
-    result.physical_result.initial_residual =
-        std::max( result.physical_result.initial_residual, complementarity_residual );
-    result.physical_result.final_primal_residual =
-        std::max( result.physical_result.final_primal_residual, std::max( 0., -gap ) );
-    gap_scale = std::max( gap_scale, std::abs( gap ) );
   }
 
-  result.physical_result.final_residual = result.physical_result.initial_residual;
   result.physical_result.primal_tolerance =
       penalty_options.al_absolute_tolerance + penalty_options.al_relative_tolerance * gap_scale;
   result.physical_result.complementarity_converged =
       result.physical_result.final_residual <= result.physical_result.primal_tolerance &&
       result.physical_result.final_primal_residual <= result.physical_result.primal_tolerance;
-  result.outer_iterations = 1;
-
   result.updated_multipliers.resize( constraints.size(), 0. );
   for ( int i = 0; i < num_constraints; ++i ) {
     const RealT area = constraints[i].tributary_area;
@@ -1164,14 +1743,939 @@ PenaltyAugmentedLagrangianSolveResult SolveQuadraturePenaltyAugmentedLagrangianS
                   : ComputePenaltyAlRelaxation(
                         penalty_options.al_relaxation,
                         penalty_options.al_loading_time_constant, stage_dt );
-    const RealT updated_pressure =
-        std::max( 0., multiplier_pressure[i] + relaxation * multiplier_increment );
+    const RealT trial_updated_pressure =
+        multiplier_pressure[i] + relaxation * multiplier_increment;
+    const RealT updated_pressure = fixed_active_set
+        ? trial_updated_pressure
+        : std::max( 0., trial_updated_pressure );
     const RealT updated_force = area * updated_pressure;
     result.multiplier_update_norm =
         std::max( result.multiplier_update_norm,
                   std::abs( updated_force - constraints[i].multiplier ) );
     constraints[i].multiplier = projected_force[i];
     result.updated_multipliers[i] = updated_force;
+  }
+  return result;
+}
+
+PenaltyAugmentedLagrangianSolveResult SolveQuadratureLocalPenaltyAugmentedLagrangianSystem(
+    const std::vector<ParentTracePenaltyQuadraturePoint>& quadrature_points,
+    const PenaltyEnforcementOptions& penalty_options )
+{
+  PenaltyAugmentedLagrangianSolveResult result;
+  result.quadrature_forces.resize( quadrature_points.size(), 0. );
+  const int iteration_limit = penalty_options.al_fixed_iterations;
+  if ( iteration_limit <= 0 ) {
+    result.physical_result.valid = false;
+    return result;
+  }
+
+  RealT gap_scale = 0.;
+  for ( int q = 0; q < static_cast<int>( quadrature_points.size() ); ++q ) {
+    const auto& point = quadrature_points[q];
+    const RealT gap = point.contact.gap;
+    const RealT stiffness = point.penalty_stiffness;
+    const RealT measure = point.contact.quadrature_measure;
+    if ( !std::isfinite( gap ) || !std::isfinite( stiffness ) || stiffness <= 0. ||
+         !std::isfinite( measure ) || measure <= 0. ||
+         !std::isfinite( point.contact.trial_velocity ) ||
+         !std::isfinite( point.damping_coefficient ) || point.damping_coefficient < 0. ||
+         !std::isfinite( point.minimum_thickness ) || point.minimum_thickness <= 0. ) {
+      result.physical_result.valid = false;
+      return result;
+    }
+
+    RealT multiplier_pressure = 0.;
+    RealT raw_pressure = 0.;
+    RealT augmented_pressure = 0.;
+    const RealT activation_pressure = stiffness * penalty_options.al_activation_gap_fraction *
+                                      point.minimum_thickness;
+    for ( int iteration = 0; iteration < iteration_limit; ++iteration ) {
+      raw_pressure = multiplier_pressure - stiffness * gap;
+      augmented_pressure = EvaluatePenaltyAlPressureActivation( raw_pressure, activation_pressure );
+      if ( iteration == 0 ) {
+        result.physical_result.initial_residual =
+            std::max( result.physical_result.initial_residual,
+                      std::abs( std::min( augmented_pressure / stiffness, gap ) ) );
+      }
+      if ( iteration + 1 < iteration_limit ) {
+        const RealT updated_pressure =
+            std::max( 0., multiplier_pressure + penalty_options.al_inner_relaxation *
+                                                    ( augmented_pressure - multiplier_pressure ) );
+        if ( !std::isfinite( updated_pressure ) ) {
+          result.physical_result.valid = false;
+          return result;
+        }
+        if ( updated_pressure > multiplier_pressure ) {
+          ++result.loading_updates;
+        }
+        result.multiplier_update_norm =
+            std::max( result.multiplier_update_norm,
+                      measure * ( updated_pressure - multiplier_pressure ) );
+        multiplier_pressure = updated_pressure;
+      }
+    }
+
+    const RealT closing_gap_rate = std::max( 0., -point.contact.trial_velocity );
+    const RealT damping_pressure = point.damping_coefficient * closing_gap_rate;
+    const RealT pressure = augmented_pressure + damping_pressure;
+    const RealT force = measure * pressure;
+    if ( !std::isfinite( augmented_pressure ) || !std::isfinite( damping_pressure ) ||
+         !std::isfinite( pressure ) || !std::isfinite( force ) ) {
+      result.physical_result.valid = false;
+      return result;
+    }
+    result.quadrature_forces[q] = force;
+    result.active_multiplier_points += augmented_pressure > 0. ? 1 : 0;
+    result.active_quadrature_points += force > 0. ? 1 : 0;
+    result.maximum_activation_pressure =
+        std::max( result.maximum_activation_pressure, activation_pressure );
+    if ( raw_pressure > 0. && raw_pressure < activation_pressure ) {
+      ++result.regularized_quadrature_points;
+      result.integrated_activation_force_reduction += measure * ( raw_pressure - augmented_pressure );
+    }
+    if ( damping_pressure > 0. ) {
+      ++result.damping_quadrature_points;
+      result.integrated_damping_force += measure * damping_pressure;
+      result.damping_dissipation_rate += measure * damping_pressure * closing_gap_rate;
+      result.maximum_damping_pressure =
+          std::max( result.maximum_damping_pressure, damping_pressure );
+    }
+    result.physical_result.final_residual =
+        std::max( result.physical_result.final_residual,
+                  std::abs( std::min( augmented_pressure / stiffness, gap ) ) );
+    result.physical_result.final_primal_residual =
+        std::max( result.physical_result.final_primal_residual, std::max( 0., -gap ) );
+    gap_scale = std::max( gap_scale, std::abs( gap ) );
+  }
+
+  result.outer_iterations = iteration_limit;
+  result.physical_result.iterations = iteration_limit;
+  result.physical_result.primal_tolerance =
+      penalty_options.al_absolute_tolerance + penalty_options.al_relative_tolerance * gap_scale;
+  result.physical_result.complementarity_converged =
+      result.physical_result.final_residual <= result.physical_result.primal_tolerance &&
+      result.physical_result.final_primal_residual <= result.physical_result.primal_tolerance;
+  return result;
+}
+
+PenaltyAugmentedLagrangianSolveResult SolveQuadratureCellPenaltyAugmentedLagrangianSystem(
+    const std::vector<ParentTracePenaltyQuadraturePoint>& quadrature_points,
+    const std::vector<RealT>& initial_cell_pressure,
+    const std::vector<RealT>& cell_measure,
+    const PenaltyEnforcementOptions& penalty_options, RealT stage_dt,
+    bool pointwise_history = false, RealT current_time = 0. )
+{
+  PenaltyAugmentedLagrangianSolveResult result;
+  result.quadrature_forces.resize( quadrature_points.size(), 0. );
+  result.quadrature_cell_history_pressures = initial_cell_pressure;
+  if ( initial_cell_pressure.size() != cell_measure.size() ||
+       penalty_options.al_fixed_iterations <= 0 ) {
+    result.physical_result.valid = false;
+    return result;
+  }
+
+  if ( pointwise_history ) {
+    const RealT ramp_stiffness_scale = ComputeFixedIterationPenaltyStiffnessScale(
+        penalty_options.al_fixed_iterations, penalty_options.al_inner_relaxation );
+    const RealT ramp_multiplier_scale = std::max( 0., ramp_stiffness_scale - 1. );
+    const bool prescribed_ramp_window = penalty_options.al_fixed_active_set_time >= 0.;
+    const bool startup_ramp = prescribed_ramp_window &&
+                              current_time < penalty_options.al_fixed_active_set_time;
+    RealT gap_scale = 0.;
+    bool any_ramp = false;
+    for ( int q = 0; q < static_cast<int>( quadrature_points.size() ); ++q ) {
+      const auto& point = quadrature_points[q];
+      const RealT gap = point.contact.gap;
+      const RealT stiffness = point.penalty_stiffness;
+      const RealT measure = point.contact.quadrature_measure;
+      const RealT initial_pressure = initial_cell_pressure[q];
+      if ( !std::isfinite( gap ) || !std::isfinite( stiffness ) || stiffness <= 0. ||
+           !std::isfinite( measure ) || measure <= 0. ||
+           !std::isfinite( point.contact.trial_velocity ) ||
+           !std::isfinite( point.damping_coefficient ) || point.damping_coefficient < 0. ||
+           !std::isfinite( point.minimum_thickness ) || point.minimum_thickness <= 0. ||
+           !std::isfinite( initial_pressure ) || initial_pressure < 0. ) {
+        result.physical_result.valid = false;
+        return result;
+      }
+
+      const RealT penalty_pressure = stiffness * std::max( 0., -gap );
+      const RealT ramp_multiplier_pressure = ramp_multiplier_scale * penalty_pressure;
+      const bool loading_correction = !startup_ramp &&
+                                      gap < -penalty_options.al_absolute_tolerance;
+      const bool unloading_correction = !startup_ramp &&
+                                        gap > penalty_options.al_absolute_tolerance &&
+                                        initial_pressure > 0.;
+      const bool reacquire_pressure = loading_correction && initial_pressure == 0.;
+      RealT target_pressure = initial_pressure;
+      if ( startup_ramp || reacquire_pressure ) {
+        target_pressure = gap < 0. ? ramp_multiplier_pressure : 0.;
+      } else if ( loading_correction ) {
+        target_pressure += penalty_options.al_max_iterations *
+                           penalty_options.al_inner_relaxation * stiffness *
+                           ( -gap - penalty_options.al_absolute_tolerance );
+      } else if ( unloading_correction ) {
+        target_pressure -= penalty_options.al_max_iterations *
+                           penalty_options.al_inner_relaxation * stiffness *
+                           ( gap - penalty_options.al_absolute_tolerance );
+      }
+      const bool unloading = target_pressure < initial_pressure;
+      const RealT relaxation = startup_ramp || reacquire_pressure
+          ? 1.
+          : unloading ? ComputePenaltyAlRelaxation(
+                          penalty_options.al_unloading_relaxation,
+                          penalty_options.al_unloading_time_constant, stage_dt )
+                    : ComputePenaltyAlRelaxation(
+                          penalty_options.al_relaxation,
+                          penalty_options.al_loading_time_constant, stage_dt );
+      const RealT updated_pressure =
+          std::max( 0., initial_pressure + relaxation * ( target_pressure - initial_pressure ) );
+      const RealT closing_gap_rate = std::max( 0., -point.contact.trial_velocity );
+      const RealT damping_pressure = point.damping_coefficient * closing_gap_rate;
+      const RealT augmented_pressure = std::max( 0., updated_pressure - stiffness * gap );
+      const RealT applied_pressure = augmented_pressure + damping_pressure;
+      const RealT force = measure * applied_pressure;
+      if ( !std::isfinite( updated_pressure ) || !std::isfinite( damping_pressure ) ||
+           !std::isfinite( force ) ) {
+        result.physical_result.valid = false;
+        return result;
+      }
+
+      result.quadrature_cell_history_pressures[q] = updated_pressure;
+      result.quadrature_forces[q] = force;
+      result.active_multiplier_points += updated_pressure > 0. ? 1 : 0;
+      result.active_quadrature_points += force > 0. ? 1 : 0;
+      result.loading_updates += updated_pressure > initial_pressure ? 1 : 0;
+      result.unloading_updates += updated_pressure < initial_pressure ? 1 : 0;
+      result.direction_deadband_updates += updated_pressure == initial_pressure ? 1 : 0;
+      result.multiplier_update_norm =
+          std::max( result.multiplier_update_norm,
+                    measure * std::abs( updated_pressure - initial_pressure ) );
+      result.physical_result.final_residual =
+          std::max( result.physical_result.final_residual,
+                    std::abs( std::min( applied_pressure / stiffness, gap ) ) );
+      result.physical_result.final_primal_residual =
+          std::max( result.physical_result.final_primal_residual, std::max( 0., -gap ) );
+      gap_scale = std::max( gap_scale, std::abs( gap ) );
+      any_ramp = any_ramp || startup_ramp;
+      if ( damping_pressure > 0. ) {
+        ++result.damping_quadrature_points;
+        result.integrated_damping_force += measure * damping_pressure;
+        result.damping_dissipation_rate += measure * damping_pressure * closing_gap_rate;
+        result.maximum_damping_pressure =
+            std::max( result.maximum_damping_pressure, damping_pressure );
+      }
+    }
+    result.outer_iterations = any_ramp
+        ? penalty_options.al_fixed_iterations
+        : penalty_options.al_max_iterations;
+    result.physical_result.iterations = result.outer_iterations;
+    result.physical_result.initial_residual = result.physical_result.final_residual;
+    result.physical_result.primal_tolerance =
+        penalty_options.al_absolute_tolerance + penalty_options.al_relative_tolerance * gap_scale;
+    result.physical_result.complementarity_converged =
+        result.physical_result.final_residual <= result.physical_result.primal_tolerance &&
+        result.physical_result.final_primal_residual <= result.physical_result.primal_tolerance;
+    return result;
+  }
+
+  std::vector<RealT> inner_cell_pressure = initial_cell_pressure;
+  std::vector<RealT> projected_cell_force( cell_measure.size(), 0. );
+  RealT gap_scale = 0.;
+  for ( int iteration = 0; iteration < penalty_options.al_fixed_iterations; ++iteration ) {
+    std::fill( projected_cell_force.begin(), projected_cell_force.end(), 0. );
+    result.active_quadrature_points = 0;
+    result.regularized_quadrature_points = 0;
+    result.integrated_activation_force_reduction = 0.;
+    result.maximum_activation_pressure = 0.;
+    result.damping_quadrature_points = 0;
+    result.integrated_damping_force = 0.;
+    result.damping_dissipation_rate = 0.;
+    result.maximum_damping_pressure = 0.;
+    result.physical_result.final_residual = 0.;
+    result.physical_result.final_primal_residual = 0.;
+    gap_scale = 0.;
+
+    for ( int q = 0; q < static_cast<int>( quadrature_points.size() ); ++q ) {
+      const auto& point = quadrature_points[q];
+      const IndexT cell = pointwise_history ? q : point.contact.plane_index;
+      const RealT gap = point.contact.gap;
+      const RealT stiffness = point.penalty_stiffness;
+      const RealT measure = point.contact.quadrature_measure;
+      if ( cell < 0 || cell >= static_cast<IndexT>( inner_cell_pressure.size() ) ||
+           !std::isfinite( gap ) || !std::isfinite( stiffness ) || stiffness <= 0. ||
+           !std::isfinite( measure ) || measure <= 0. ||
+           !std::isfinite( point.contact.trial_velocity ) ||
+           !std::isfinite( point.damping_coefficient ) || point.damping_coefficient < 0. ||
+           !std::isfinite( point.minimum_thickness ) || point.minimum_thickness <= 0. ||
+           !std::isfinite( inner_cell_pressure[cell] ) || inner_cell_pressure[cell] < 0. ) {
+        result.physical_result.valid = false;
+        return result;
+      }
+
+      const RealT raw_pressure = inner_cell_pressure[cell] - stiffness * gap;
+      const RealT activation_pressure = stiffness * penalty_options.al_activation_gap_fraction *
+                                        point.minimum_thickness;
+      const RealT augmented_pressure =
+          EvaluatePenaltyAlPressureActivation( raw_pressure, activation_pressure );
+      const RealT closing_gap_rate = std::max( 0., -point.contact.trial_velocity );
+      const RealT damping_pressure = point.damping_coefficient * closing_gap_rate;
+      const RealT pressure = augmented_pressure + damping_pressure;
+      const RealT force = measure * pressure;
+      if ( !std::isfinite( augmented_pressure ) || !std::isfinite( damping_pressure ) ||
+           !std::isfinite( pressure ) || !std::isfinite( force ) ) {
+        result.physical_result.valid = false;
+        return result;
+      }
+
+      result.quadrature_forces[q] = force;
+      projected_cell_force[cell] += measure * augmented_pressure;
+      result.active_quadrature_points += force > 0. ? 1 : 0;
+      result.maximum_activation_pressure =
+          std::max( result.maximum_activation_pressure, activation_pressure );
+      if ( raw_pressure > 0. && raw_pressure < activation_pressure ) {
+        ++result.regularized_quadrature_points;
+        result.integrated_activation_force_reduction += measure * ( raw_pressure - augmented_pressure );
+      }
+      if ( damping_pressure > 0. ) {
+        ++result.damping_quadrature_points;
+        result.integrated_damping_force += measure * damping_pressure;
+        result.damping_dissipation_rate += measure * damping_pressure * closing_gap_rate;
+        result.maximum_damping_pressure =
+            std::max( result.maximum_damping_pressure, damping_pressure );
+      }
+      const RealT complementarity_residual =
+          std::abs( std::min( augmented_pressure / stiffness, gap ) );
+      result.physical_result.final_residual =
+          std::max( result.physical_result.final_residual, complementarity_residual );
+      result.physical_result.final_primal_residual =
+          std::max( result.physical_result.final_primal_residual, std::max( 0., -gap ) );
+      gap_scale = std::max( gap_scale, std::abs( gap ) );
+    }
+
+    if ( iteration == 0 ) {
+      result.physical_result.initial_residual = result.physical_result.final_residual;
+    }
+    ++result.outer_iterations;
+    if ( iteration + 1 < penalty_options.al_fixed_iterations ) {
+      for ( IndexT cell = 0; cell < static_cast<IndexT>( cell_measure.size() ); ++cell ) {
+        if ( cell_measure[cell] <= 0. ) {
+          continue;
+        }
+        const RealT projected_pressure = projected_cell_force[cell] / cell_measure[cell];
+        const RealT updated_pressure =
+            std::max( 0., inner_cell_pressure[cell] +
+                              penalty_options.al_inner_relaxation *
+                                  ( projected_pressure - inner_cell_pressure[cell] ) );
+        if ( !std::isfinite( updated_pressure ) ) {
+          result.physical_result.valid = false;
+          return result;
+        }
+        inner_cell_pressure[cell] = updated_pressure;
+      }
+    }
+  }
+
+  result.physical_result.iterations = result.outer_iterations;
+  result.physical_result.primal_tolerance =
+      penalty_options.al_absolute_tolerance + penalty_options.al_relative_tolerance * gap_scale;
+  result.physical_result.complementarity_converged =
+      result.physical_result.final_residual <= result.physical_result.primal_tolerance &&
+      result.physical_result.final_primal_residual <= result.physical_result.primal_tolerance;
+
+  for ( IndexT cell = 0; cell < static_cast<IndexT>( cell_measure.size() ); ++cell ) {
+    if ( cell_measure[cell] <= 0. ) {
+      continue;
+    }
+    const RealT projected_pressure = projected_cell_force[cell] / cell_measure[cell];
+    const RealT multiplier_increment = projected_pressure - initial_cell_pressure[cell];
+    const RealT direction_scale =
+        std::max( { std::abs( projected_pressure ), std::abs( initial_cell_pressure[cell] ),
+                    penalty_options.al_absolute_tolerance } );
+    const bool unloading = multiplier_increment <
+                           -penalty_options.al_direction_deadband * direction_scale;
+    if ( unloading ) {
+      ++result.unloading_updates;
+    } else if ( multiplier_increment < 0. ) {
+      ++result.direction_deadband_updates;
+    } else {
+      ++result.loading_updates;
+    }
+    const RealT relaxation =
+        unloading ? ComputePenaltyAlRelaxation(
+                        penalty_options.al_unloading_relaxation,
+                        penalty_options.al_unloading_time_constant, stage_dt )
+                  : ComputePenaltyAlRelaxation(
+                        penalty_options.al_relaxation,
+                        penalty_options.al_loading_time_constant, stage_dt );
+    const RealT updated_pressure =
+        std::max( 0., initial_cell_pressure[cell] + relaxation * multiplier_increment );
+    if ( !std::isfinite( updated_pressure ) ) {
+      result.physical_result.valid = false;
+      return result;
+    }
+    result.quadrature_cell_history_pressures[cell] = updated_pressure;
+    result.multiplier_update_norm =
+        std::max( result.multiplier_update_norm,
+                  cell_measure[cell] * std::abs( updated_pressure - initial_cell_pressure[cell] ) );
+    result.active_multiplier_points += updated_pressure > 0. ? 1 : 0;
+  }
+  return result;
+}
+
+PenaltyAugmentedLagrangianSolveResult SolveComplianceCorrectedQuadratureCellPenaltyAugmentedLagrangianSystem(
+    const std::vector<ParentTracePenaltyQuadraturePoint>& quadrature_points,
+    const mfem::DenseMatrix& compliance_operator,
+    const std::vector<RealT>& fixed_gap_response,
+    const std::vector<RealT>& initial_cell_pressure,
+    const std::vector<RealT>& cell_measure,
+    const PenaltyEnforcementOptions& penalty_options, RealT stage_dt )
+{
+  PenaltyAugmentedLagrangianSolveResult result;
+  const int num_cells = static_cast<int>( cell_measure.size() );
+  result.quadrature_forces.resize( quadrature_points.size(), 0. );
+  result.quadrature_cell_history_pressures = initial_cell_pressure;
+  if ( static_cast<int>( initial_cell_pressure.size() ) != num_cells ||
+       static_cast<int>( fixed_gap_response.size() ) != num_cells ||
+       compliance_operator.Height() != num_cells || compliance_operator.Width() != num_cells ||
+       penalty_options.al_max_iterations <= 0 ||
+       !std::isfinite( penalty_options.al_continuation_factor ) ||
+       penalty_options.al_continuation_factor < 1. ||
+       !std::isfinite( penalty_options.al_continuation_max_scale ) ||
+       penalty_options.al_continuation_max_scale < 1. ) {
+    result.physical_result.valid = false;
+    return result;
+  }
+
+  std::vector<RealT> multiplier_force( num_cells, 0. );
+  std::vector<RealT> free_relative_gap( num_cells, 0. );
+  std::vector<RealT> integrated_stiffness( num_cells, 0. );
+  std::vector<RealT> predicted_relative_gap( num_cells, 0. );
+  std::vector<RealT> gap_weight( num_cells, 0. );
+  RealT gap_scale = 0.;
+  bool has_penetrated_point = false;
+  for ( int cell = 0; cell < num_cells; ++cell ) {
+    if ( !std::isfinite( cell_measure[cell] ) || cell_measure[cell] <= 0. ||
+         !std::isfinite( initial_cell_pressure[cell] ) || initial_cell_pressure[cell] < 0. ) {
+      result.physical_result.valid = false;
+      return result;
+    }
+    multiplier_force[cell] = cell_measure[cell] * initial_cell_pressure[cell];
+  }
+
+  for ( const auto& point : quadrature_points ) {
+    const IndexT cell = point.contact.plane_index;
+    const RealT measure = point.contact.quadrature_measure;
+    const RealT stiffness = point.penalty_stiffness;
+    if ( cell < 0 || cell >= num_cells || !std::isfinite( measure ) || measure <= 0. ||
+         !std::isfinite( point.contact.gap ) || !std::isfinite( point.contact.trial_velocity ) ||
+         !std::isfinite( stiffness ) || stiffness <= 0. ||
+         !std::isfinite( point.damping_coefficient ) || point.damping_coefficient < 0. ||
+         !std::isfinite( point.minimum_thickness ) || point.minimum_thickness <= 0. ) {
+      result.physical_result.valid = false;
+      return result;
+    }
+    const RealT target_gap = -penalty_options.al_target_gap_fraction * point.minimum_thickness;
+    has_penetrated_point = has_penetrated_point || point.contact.gap < 0.;
+    free_relative_gap[cell] +=
+        measure * ( point.contact.gap - target_gap + stage_dt * point.contact.trial_velocity );
+    integrated_stiffness[cell] += measure * stiffness;
+    gap_weight[cell] += measure;
+  }
+  for ( int cell = 0; cell < num_cells; ++cell ) {
+    if ( !std::isfinite( gap_weight[cell] ) || gap_weight[cell] <= 0. ||
+         !std::isfinite( integrated_stiffness[cell] ) || integrated_stiffness[cell] <= 0. ) {
+      result.physical_result.valid = false;
+      return result;
+    }
+    free_relative_gap[cell] /= gap_weight[cell];
+    gap_scale = std::max( gap_scale, std::abs( free_relative_gap[cell] ) );
+  }
+
+  auto evaluate = [&]() {
+    result.active_quadrature_points = 0;
+    result.damping_quadrature_points = 0;
+    result.integrated_damping_force = 0.;
+    result.damping_dissipation_rate = 0.;
+    result.maximum_damping_pressure = 0.;
+    for ( int q = 0; q < static_cast<int>( quadrature_points.size() ); ++q ) {
+      const auto& point = quadrature_points[q];
+      const IndexT cell = point.contact.plane_index;
+      const RealT pressure = multiplier_force[cell] / cell_measure[cell];
+      const RealT closing_gap_rate = std::max( 0., -point.contact.trial_velocity );
+      const RealT damping_pressure = point.damping_coefficient * closing_gap_rate;
+      const RealT force = point.contact.quadrature_measure * ( pressure + damping_pressure );
+      if ( !std::isfinite( pressure ) || pressure < 0. || !std::isfinite( damping_pressure ) ||
+           !std::isfinite( force ) ) {
+        return false;
+      }
+      result.quadrature_forces[q] = force;
+      result.active_quadrature_points += force > 0. ? 1 : 0;
+      if ( damping_pressure > 0. ) {
+        ++result.damping_quadrature_points;
+        result.integrated_damping_force += point.contact.quadrature_measure * damping_pressure;
+        result.damping_dissipation_rate +=
+            point.contact.quadrature_measure * damping_pressure * closing_gap_rate;
+        result.maximum_damping_pressure =
+            std::max( result.maximum_damping_pressure, damping_pressure );
+      }
+    }
+
+    ProjectionResiduals residuals;
+    for ( int i = 0; i < num_cells; ++i ) {
+      RealT predicted_gap = free_relative_gap[i] + fixed_gap_response[i];
+      for ( int j = 0; j < num_cells; ++j ) {
+        predicted_gap += compliance_operator( i, j ) * multiplier_force[j];
+      }
+      if ( !std::isfinite( predicted_gap ) ) {
+        return false;
+      }
+      predicted_relative_gap[i] = predicted_gap;
+      const RealT multiplier_gap = multiplier_force[i] / integrated_stiffness[i];
+      residuals.complementarity =
+          std::max( residuals.complementarity,
+                    std::abs( std::min( multiplier_gap, predicted_gap ) ) );
+      residuals.primal = std::max( residuals.primal, -predicted_gap );
+    }
+    residuals.primal = std::max( 0., residuals.primal );
+    result.physical_result.final_residual = residuals.complementarity;
+    result.physical_result.final_primal_residual = residuals.primal;
+    return std::isfinite( residuals.complementarity ) && std::isfinite( residuals.primal );
+  };
+
+  if ( !evaluate() ) {
+    result.physical_result.valid = false;
+    return result;
+  }
+  result.physical_result.initial_residual = result.physical_result.final_residual;
+  const RealT convergence_tolerance = penalty_options.al_absolute_tolerance +
+                                      penalty_options.al_relative_tolerance * gap_scale;
+  result.physical_result.primal_tolerance = convergence_tolerance;
+  auto update_convergence = [&]() {
+    result.physical_result.complementarity_converged =
+        result.physical_result.valid &&
+        result.physical_result.final_residual <= convergence_tolerance &&
+        result.physical_result.final_primal_residual <= convergence_tolerance;
+  };
+  update_convergence();
+
+  const int iteration_limit = penalty_options.al_max_iterations;
+  while ( result.physical_result.valid &&
+          ( !result.physical_result.complementarity_converged ||
+            ( has_penetrated_point && result.outer_iterations == 0 ) ) &&
+          result.outer_iterations < iteration_limit ) {
+    const RealT continuation_scale =
+        ComputePenaltyAlContinuationScale( penalty_options, result.outer_iterations );
+    result.maximum_continuation_scale =
+        std::max( result.maximum_continuation_scale, continuation_scale );
+    for ( int cell = 0; cell < num_cells; ++cell ) {
+      const RealT update_compliance =
+          compliance_operator( cell, cell ) +
+          1. / ( continuation_scale * integrated_stiffness[cell] );
+      if ( !std::isfinite( update_compliance ) || update_compliance <= 0. ) {
+        result.physical_result.valid = false;
+        break;
+      }
+      const RealT multiplier_increment = -predicted_relative_gap[cell] / update_compliance;
+      const RealT direction_scale =
+          std::max( { std::abs( multiplier_increment ), std::abs( multiplier_force[cell] ),
+                      penalty_options.al_absolute_tolerance } );
+      const bool unloading = multiplier_increment <
+                             -penalty_options.al_direction_deadband * direction_scale;
+      if ( unloading ) {
+        ++result.unloading_updates;
+      } else if ( multiplier_increment < 0. ) {
+        ++result.direction_deadband_updates;
+      } else {
+        ++result.loading_updates;
+      }
+      const RealT relaxation =
+          unloading
+              ? ComputePenaltyAlRelaxation( penalty_options.al_unloading_relaxation,
+                                            penalty_options.al_unloading_time_constant,
+                                            stage_dt, iteration_limit )
+              : ComputePenaltyAlRelaxation( penalty_options.al_relaxation,
+                                            penalty_options.al_loading_time_constant,
+                                            stage_dt, iteration_limit );
+      const RealT updated_multiplier =
+          std::max( 0., multiplier_force[cell] + relaxation * multiplier_increment );
+      if ( !std::isfinite( updated_multiplier ) ) {
+        result.physical_result.valid = false;
+        break;
+      }
+      result.multiplier_update_norm =
+          std::max( result.multiplier_update_norm,
+                    std::abs( updated_multiplier - multiplier_force[cell] ) );
+      const RealT applied_increment = updated_multiplier - multiplier_force[cell];
+      multiplier_force[cell] = updated_multiplier;
+      for ( int row = 0; row < num_cells; ++row ) {
+        predicted_relative_gap[row] += compliance_operator( row, cell ) * applied_increment;
+      }
+    }
+    if ( !result.physical_result.valid ) {
+      break;
+    }
+    ++result.outer_iterations;
+    if ( !evaluate() ) {
+      result.physical_result.valid = false;
+      break;
+    }
+    update_convergence();
+  }
+
+  result.subproblem_iterations = result.outer_iterations;
+  result.incomplete_subproblems = result.physical_result.complementarity_converged ? 0 : 1;
+  result.physical_result.iterations = result.outer_iterations;
+  result.active_multiplier_points = 0;
+  for ( int cell = 0; cell < num_cells; ++cell ) {
+    result.quadrature_cell_history_pressures[cell] = multiplier_force[cell] / cell_measure[cell];
+    result.active_multiplier_points += multiplier_force[cell] > 0. ? 1 : 0;
+  }
+  return result;
+}
+
+PenaltyAugmentedLagrangianSolveResult SolveComplianceCorrectedParentTracePenaltyAugmentedLagrangianSystem(
+    const mfem::DenseMatrix& compliance_operator,
+    std::vector<TraceProjectionConstraint>& constraints,
+    const PenaltyEnforcementOptions& penalty_options, RealT stage_dt )
+{
+  PenaltyAugmentedLagrangianSolveResult result;
+  const int num_constraints = static_cast<int>( constraints.size() );
+  result.updated_multipliers.resize( constraints.size(), 0. );
+  if ( compliance_operator.Height() != num_constraints ||
+       compliance_operator.Width() != num_constraints ||
+       penalty_options.al_max_iterations <= 0 ) {
+    result.physical_result.valid = false;
+    return result;
+  }
+
+  std::vector<RealT> multiplier_force( constraints.size(), 0. );
+  std::vector<RealT> free_relative_gap( constraints.size(), 0. );
+  std::vector<RealT> predicted_relative_gap( constraints.size(), 0. );
+  RealT gap_scale = 0.;
+  for ( int i = 0; i < num_constraints; ++i ) {
+    const auto& constraint = constraints[i];
+    if ( !std::isfinite( constraint.multiplier ) || constraint.multiplier < 0. ||
+         !std::isfinite( constraint.trial_velocity ) ||
+         !std::isfinite( constraint.minimum_thickness ) || constraint.minimum_thickness <= 0. ||
+         !std::isfinite( constraint.weighted_penalty_stiffness ) ||
+         constraint.weighted_penalty_stiffness <= 0. ) {
+      result.physical_result.valid = false;
+      return result;
+    }
+    const RealT target_gap =
+        -penalty_options.al_target_gap_fraction * constraint.minimum_thickness;
+    multiplier_force[i] = constraint.multiplier;
+    free_relative_gap[i] = constraint.trial_velocity - target_gap;
+    gap_scale = std::max( gap_scale, std::abs( free_relative_gap[i] ) );
+  }
+
+  auto evaluate = [&]() {
+    ProjectionResiduals residuals;
+    result.active_multiplier_points = 0;
+    for ( int i = 0; i < num_constraints; ++i ) {
+      RealT predicted_gap = free_relative_gap[i];
+      for ( int j = 0; j < num_constraints; ++j ) {
+        predicted_gap += compliance_operator( i, j ) * multiplier_force[j];
+      }
+      if ( !std::isfinite( predicted_gap ) ) {
+        return false;
+      }
+      predicted_relative_gap[i] = predicted_gap;
+      const RealT multiplier_gap =
+          multiplier_force[i] / constraints[i].weighted_penalty_stiffness;
+      residuals.complementarity =
+          std::max( residuals.complementarity,
+                    std::abs( std::min( multiplier_gap, predicted_gap ) ) );
+      residuals.primal = std::max( residuals.primal, -predicted_gap );
+      result.active_multiplier_points += multiplier_force[i] > 0. ? 1 : 0;
+    }
+    residuals.primal = std::max( 0., residuals.primal );
+    result.physical_result.final_residual = residuals.complementarity;
+    result.physical_result.final_primal_residual = residuals.primal;
+    return std::isfinite( residuals.complementarity ) && std::isfinite( residuals.primal );
+  };
+
+  if ( !evaluate() ) {
+    result.physical_result.valid = false;
+    return result;
+  }
+  result.physical_result.initial_residual = result.physical_result.final_residual;
+  const RealT convergence_tolerance = penalty_options.al_absolute_tolerance +
+                                      penalty_options.al_relative_tolerance * gap_scale;
+  result.physical_result.primal_tolerance = convergence_tolerance;
+  auto update_convergence = [&]() {
+    result.physical_result.complementarity_converged =
+        result.physical_result.valid &&
+        result.physical_result.final_residual <= convergence_tolerance &&
+        result.physical_result.final_primal_residual <= convergence_tolerance;
+  };
+  update_convergence();
+
+  const int iteration_limit = penalty_options.al_max_iterations;
+  while ( result.physical_result.valid && !result.physical_result.complementarity_converged &&
+          result.outer_iterations < iteration_limit ) {
+    for ( int i = 0; i < num_constraints; ++i ) {
+      const RealT update_compliance =
+          compliance_operator( i, i ) + 1. / constraints[i].weighted_penalty_stiffness;
+      if ( !std::isfinite( update_compliance ) || update_compliance <= 0. ) {
+        result.physical_result.valid = false;
+        break;
+      }
+      const RealT multiplier_increment = -predicted_relative_gap[i] / update_compliance;
+      const RealT direction_scale =
+          std::max( { std::abs( multiplier_increment ), std::abs( multiplier_force[i] ),
+                      penalty_options.al_absolute_tolerance } );
+      const bool unloading = multiplier_increment <
+                             -penalty_options.al_direction_deadband * direction_scale;
+      if ( unloading ) {
+        ++result.unloading_updates;
+      } else if ( multiplier_increment < 0. ) {
+        ++result.direction_deadband_updates;
+      } else {
+        ++result.loading_updates;
+      }
+      const RealT relaxation =
+          unloading
+              ? ComputePenaltyAlRelaxation( penalty_options.al_unloading_relaxation,
+                                            penalty_options.al_unloading_time_constant,
+                                            stage_dt, iteration_limit )
+              : ComputePenaltyAlRelaxation( penalty_options.al_relaxation,
+                                            penalty_options.al_loading_time_constant,
+                                            stage_dt, iteration_limit );
+      const RealT updated_multiplier =
+          std::max( 0., multiplier_force[i] + relaxation * multiplier_increment );
+      if ( !std::isfinite( updated_multiplier ) ) {
+        result.physical_result.valid = false;
+        break;
+      }
+      result.multiplier_update_norm =
+          std::max( result.multiplier_update_norm,
+                    std::abs( updated_multiplier - multiplier_force[i] ) );
+      const RealT applied_increment = updated_multiplier - multiplier_force[i];
+      multiplier_force[i] = updated_multiplier;
+      for ( int row = 0; row < num_constraints; ++row ) {
+        predicted_relative_gap[row] += compliance_operator( row, i ) * applied_increment;
+      }
+    }
+    if ( !result.physical_result.valid ) {
+      break;
+    }
+    ++result.outer_iterations;
+    if ( !evaluate() ) {
+      result.physical_result.valid = false;
+      break;
+    }
+    update_convergence();
+  }
+
+  result.subproblem_iterations = result.outer_iterations;
+  result.incomplete_subproblems = result.physical_result.complementarity_converged ? 0 : 1;
+  result.physical_result.iterations = result.outer_iterations;
+  for ( int i = 0; i < num_constraints; ++i ) {
+    constraints[i].multiplier = multiplier_force[i];
+    result.updated_multipliers[i] = multiplier_force[i];
+  }
+  return result;
+}
+
+PenaltyAugmentedLagrangianSolveResult SolveComplianceCorrectedQuadraturePenaltyAugmentedLagrangianSystem(
+    const std::vector<ParentTracePenaltyQuadraturePoint>& quadrature_points,
+    const mfem::DenseMatrix& compliance_operator, std::vector<TraceProjectionConstraint>& constraints,
+    const PenaltyEnforcementOptions& penalty_options, RealT stage_dt, const MeshData::Viewer& mesh1,
+    const MeshData::Viewer& mesh2 )
+{
+  PenaltyAugmentedLagrangianSolveResult result;
+  const int num_constraints = static_cast<int>( constraints.size() );
+  if ( compliance_operator.Height() != num_constraints || compliance_operator.Width() != num_constraints ) {
+    result.physical_result.valid = false;
+    return result;
+  }
+
+  std::vector<RealT> multiplier_force( constraints.size(), 0. );
+  for ( int i = 0; i < num_constraints; ++i ) {
+    if ( !std::isfinite( constraints[i].multiplier ) || constraints[i].multiplier < 0. ||
+         !std::isfinite( constraints[i].minimum_thickness ) || constraints[i].minimum_thickness <= 0. ||
+         !std::isfinite( constraints[i].weighted_penalty_stiffness ) ||
+         constraints[i].weighted_penalty_stiffness <= 0. ) {
+      result.physical_result.valid = false;
+      return result;
+    }
+    multiplier_force[i] = constraints[i].multiplier;
+  }
+
+  std::vector<RealT> projected_force( constraints.size(), 0. );
+  std::vector<RealT> predicted_relative_gap( constraints.size(), 0. );
+  auto evaluate = [&]() {
+    result.quadrature_forces.assign( quadrature_points.size(), 0. );
+    std::fill( projected_force.begin(), projected_force.end(), 0. );
+    result.active_quadrature_points = 0;
+    result.regularized_quadrature_points = 0;
+    result.integrated_activation_force_reduction = 0.;
+    result.maximum_activation_pressure = 0.;
+    result.damping_quadrature_points = 0;
+    result.integrated_damping_force = 0.;
+    result.damping_dissipation_rate = 0.;
+    result.maximum_damping_pressure = 0.;
+
+    for ( int q = 0; q < static_cast<int>( quadrature_points.size() ); ++q ) {
+      const auto& point = quadrature_points[q];
+      const RealT gap = point.contact.gap;
+      const RealT stiffness = point.penalty_stiffness;
+      const RealT measure = point.contact.quadrature_measure;
+      if ( !std::isfinite( gap ) || !std::isfinite( stiffness ) || stiffness <= 0. || !std::isfinite( measure ) ||
+           measure <= 0. || !std::isfinite( point.contact.trial_velocity ) ||
+           !std::isfinite( point.damping_coefficient ) || point.damping_coefficient < 0. ||
+           !std::isfinite( point.minimum_thickness ) || point.minimum_thickness <= 0. ) {
+        return false;
+      }
+
+      RealT multiplier_pressure = 0.;
+      RealT basis_sum = 0.;
+      for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+        const IndexT row = point.multiplier_rows[a];
+        const RealT basis = point.multiplier_basis[a];
+        if ( row < 0 || basis == 0. ) {
+          continue;
+        }
+        if ( row >= num_constraints || !std::isfinite( basis ) || basis < 0. ||
+             !std::isfinite( constraints[row].tributary_area ) || constraints[row].tributary_area <= 0. ) {
+          return false;
+        }
+        multiplier_pressure += basis * multiplier_force[row] / constraints[row].tributary_area;
+        basis_sum += basis;
+      }
+      if ( !std::isfinite( multiplier_pressure ) || !std::isfinite( basis_sum ) || basis_sum <= 0. ) {
+        return false;
+      }
+
+      const RealT target_gap = -penalty_options.al_target_gap_fraction * point.minimum_thickness;
+      const RealT relative_gap = gap - target_gap;
+      const RealT raw_pressure = multiplier_pressure - stiffness * relative_gap;
+      const RealT activation_pressure =
+          stiffness * penalty_options.al_activation_gap_fraction * point.minimum_thickness;
+      const RealT augmented_pressure = EvaluatePenaltyAlPressureActivation( raw_pressure, activation_pressure );
+      const RealT closing_gap_rate = std::max( 0., -point.contact.trial_velocity );
+      const RealT damping_pressure = point.damping_coefficient * closing_gap_rate;
+      const RealT pressure = augmented_pressure + damping_pressure;
+      const RealT force = measure * pressure;
+      if ( !std::isfinite( augmented_pressure ) || !std::isfinite( damping_pressure ) || !std::isfinite( pressure ) ||
+           !std::isfinite( force ) ) {
+        return false;
+      }
+
+      result.quadrature_forces[q] = force;
+      result.active_quadrature_points += force > 0. ? 1 : 0;
+      result.maximum_activation_pressure = std::max( result.maximum_activation_pressure, activation_pressure );
+      if ( raw_pressure > 0. && raw_pressure < activation_pressure ) {
+        ++result.regularized_quadrature_points;
+        result.integrated_activation_force_reduction += measure * ( raw_pressure - augmented_pressure );
+      }
+      if ( damping_pressure > 0. ) {
+        ++result.damping_quadrature_points;
+        result.integrated_damping_force += measure * damping_pressure;
+        result.damping_dissipation_rate += measure * damping_pressure * closing_gap_rate;
+        result.maximum_damping_pressure = std::max( result.maximum_damping_pressure, damping_pressure );
+      }
+      for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+        const IndexT row = point.multiplier_rows[a];
+        if ( row >= 0 ) {
+          projected_force[row] += measure * point.multiplier_basis[a] * pressure;
+        }
+      }
+    }
+
+    ProjectionResiduals residuals;
+    for ( int i = 0; i < num_constraints; ++i ) {
+      const RealT target_gap = -penalty_options.al_target_gap_fraction * constraints[i].minimum_thickness;
+      RealT endpoint_relative_gap =
+          constraints[i].gap - target_gap + stage_dt * EvaluateProjectionVelocity( constraints[i], mesh1, mesh2 );
+      for ( int j = 0; j < num_constraints; ++j ) {
+        endpoint_relative_gap += compliance_operator( i, j ) * projected_force[j];
+      }
+      if ( !std::isfinite( endpoint_relative_gap ) ) {
+        return false;
+      }
+      predicted_relative_gap[i] = endpoint_relative_gap;
+      const RealT multiplier_gap = multiplier_force[i] / constraints[i].weighted_penalty_stiffness;
+      residuals.complementarity =
+          std::max( residuals.complementarity, std::abs( std::min( multiplier_gap, endpoint_relative_gap ) ) );
+      residuals.primal = std::max( residuals.primal, -endpoint_relative_gap );
+    }
+    residuals.primal = std::max( 0., residuals.primal );
+    result.physical_result.final_residual = residuals.complementarity;
+    result.physical_result.final_primal_residual = residuals.primal;
+    return std::isfinite( residuals.complementarity ) && std::isfinite( residuals.primal );
+  };
+
+  if ( !evaluate() ) {
+    result.physical_result.valid = false;
+    return result;
+  }
+  result.physical_result.initial_residual = result.physical_result.final_residual;
+  const RealT convergence_tolerance = penalty_options.al_absolute_tolerance +
+                                      penalty_options.al_relative_tolerance * result.physical_result.initial_residual;
+  result.physical_result.primal_tolerance = convergence_tolerance;
+  auto update_convergence = [&]() {
+    result.physical_result.complementarity_converged =
+        result.physical_result.valid && result.physical_result.final_residual <= convergence_tolerance &&
+        result.physical_result.final_primal_residual <= convergence_tolerance;
+  };
+  update_convergence();
+
+  const int iteration_limit = penalty_options.al_max_iterations;
+  while ( result.physical_result.valid && !result.physical_result.complementarity_converged &&
+          result.outer_iterations < iteration_limit ) {
+    for ( int i = 0; i < num_constraints; ++i ) {
+      const RealT update_compliance = compliance_operator( i, i ) + 1. / constraints[i].weighted_penalty_stiffness;
+      if ( !std::isfinite( update_compliance ) || update_compliance <= 0. ) {
+        result.physical_result.valid = false;
+        break;
+      }
+      const RealT multiplier_increment = -predicted_relative_gap[i] / update_compliance;
+      const RealT direction_scale = std::max( { std::abs( multiplier_increment ), std::abs( multiplier_force[i] ),
+                                                penalty_options.al_absolute_tolerance } );
+      const bool unloading = multiplier_increment < -penalty_options.al_direction_deadband * direction_scale;
+      if ( unloading ) {
+        ++result.unloading_updates;
+      } else if ( multiplier_increment < 0. ) {
+        ++result.direction_deadband_updates;
+      } else {
+        ++result.loading_updates;
+      }
+      const RealT relaxation =
+          unloading
+              ? ComputePenaltyAlRelaxation( penalty_options.al_unloading_relaxation,
+                                            penalty_options.al_unloading_time_constant, stage_dt, iteration_limit )
+              : ComputePenaltyAlRelaxation( penalty_options.al_relaxation, penalty_options.al_loading_time_constant,
+                                            stage_dt, iteration_limit );
+      const RealT updated_multiplier = std::max( 0., multiplier_force[i] + relaxation * multiplier_increment );
+      if ( !std::isfinite( updated_multiplier ) ) {
+        result.physical_result.valid = false;
+        break;
+      }
+      result.multiplier_update_norm =
+          std::max( result.multiplier_update_norm, std::abs( updated_multiplier - multiplier_force[i] ) );
+      multiplier_force[i] = updated_multiplier;
+    }
+    if ( !result.physical_result.valid ) {
+      break;
+    }
+    ++result.outer_iterations;
+    if ( !evaluate() ) {
+      result.physical_result.valid = false;
+      break;
+    }
+    update_convergence();
+  }
+
+  result.subproblem_iterations = result.outer_iterations;
+  result.incomplete_subproblems = result.physical_result.complementarity_converged ? 0 : 1;
+  result.physical_result.iterations = result.outer_iterations;
+  result.updated_multipliers = multiplier_force;
+  for ( int i = 0; i < num_constraints; ++i ) {
+    constraints[i].multiplier = projected_force[i];
   }
   return result;
 }
@@ -1569,6 +3073,42 @@ TRIBOL_HOST_DEVICE inline bool EvalLinearEdgeAtProjectedPoint( const RealT* edge
   return true;
 }
 
+bool EvaluateParentTraceGeometricNodalGap(
+    const TraceProjectionConstraint& constraint, const MeshData::Viewer& mesh1,
+    RealT& geometric_gap )
+{
+  std::set<IndexT> visited_elements;
+  bool found = false;
+  RealT closest_distance = std::numeric_limits<RealT>::infinity();
+  geometric_gap = 0.;
+  for ( const auto& contribution : constraint.contributions ) {
+    if ( !visited_elements.insert( contribution.element1 ).second ) {
+      continue;
+    }
+    StackArrayT<RealT, max_dim * max_nodes_per_face> face1;
+    mesh1.getFaceCoords( contribution.element1, face1 );
+    RealT projected_point[max_dim];
+    RealT linear_basis[2];
+    if ( !EvalLinearEdgeAtProjectedPoint(
+             face1, constraint.coordinate, constraint.normal, projected_point,
+             linear_basis ) ) {
+      continue;
+    }
+    const RealT gap =
+        ( projected_point[0] - constraint.coordinate[0] ) * constraint.normal[0] +
+        ( projected_point[1] - constraint.coordinate[1] ) * constraint.normal[1];
+    if ( !std::isfinite( gap ) ) {
+      return false;
+    }
+    if ( std::abs( gap ) < closest_distance ) {
+      closest_distance = std::abs( gap );
+      geometric_gap = gap;
+      found = true;
+    }
+  }
+  return found;
+}
+
 TRIBOL_HOST_DEVICE inline void EvalParentQ2Basis( RealT xi, RealT* phi, RealT* dphi )
 {
   phi[0] = 2. * ( xi - 0.5 ) * ( xi - 1. );
@@ -1774,9 +3314,46 @@ TRIBOL_HOST_DEVICE inline RealT ComputeParentInverseEffectiveMass( const MeshDat
   return inverse_effective_mass;
 }
 
-TRIBOL_HOST_DEVICE inline RealT ComputePredictorTargetVelocity( RealT gap, RealT dt )
+TRIBOL_HOST_DEVICE inline RealT ComputePredictorTargetVelocity(
+    RealT gap, RealT velocity_gap, RealT dt, RealT depenetration_fraction,
+    RealT maximum_penetration )
 {
-  return dt > 0. && gap > 0. ? -gap / dt : 0.;
+  if ( dt <= 0. ) {
+    return 0.;
+  }
+  const RealT tolerance_gap = gap + maximum_penetration;
+  RealT target_velocity = tolerance_gap > 0.
+      ? -tolerance_gap / dt
+      : -depenetration_fraction * tolerance_gap / dt;
+  if ( tolerance_gap < 0. ) {
+    target_velocity = std::min( target_velocity, -velocity_gap );
+  }
+  return target_velocity;
+}
+
+TRIBOL_HOST_DEVICE inline RealT ComputePredictorMaximumPenetration(
+    const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+    IndexT element1, IndexT element2, RealT fraction )
+{
+  return fraction * std::max( 0., std::min( mesh1.getElementData().m_thickness[element1],
+                                            mesh2.getElementData().m_thickness[element2] ) );
+}
+
+TRIBOL_HOST_DEVICE inline RealT ComputeProjectionTargetPositionVelocity(
+    RealT gap, RealT dt, RealT depenetration_fraction, RealT gap_tolerance )
+{
+  if ( dt <= 0. ) {
+    return 0.;
+  }
+  const RealT tolerance_gap = gap + gap_tolerance;
+  return tolerance_gap > 0. ? -tolerance_gap / dt
+                            : -depenetration_fraction * tolerance_gap / dt;
+}
+
+TRIBOL_HOST_DEVICE inline RealT LimitProjectionTargetToNonpositiveWork(
+    RealT gap, RealT trial_velocity, RealT target_velocity )
+{
+  return gap < 0. ? std::min( target_velocity, -trial_velocity ) : target_velocity;
 }
 
 TRIBOL_HOST_DEVICE inline RealT ComputePredictorPressure( const MeshData::Viewer& mesh1,
@@ -1785,7 +3362,8 @@ TRIBOL_HOST_DEVICE inline RealT ComputePredictorPressure( const MeshData::Viewer
                                                           const RealT* normal, const RealT* phi1, const RealT* phi2,
                                                           RealT gap, RealT velocity_gap,
                                                           RealT quadrature_measure, RealT dt,
-                                                          RealT relaxation )
+                                                          RealT relaxation, RealT depenetration_fraction,
+                                                          RealT maximum_penetration )
 {
   if ( dt <= 0. || quadrature_measure <= 0. ) {
     return 0.;
@@ -1796,7 +3374,8 @@ TRIBOL_HOST_DEVICE inline RealT ComputePredictorPressure( const MeshData::Viewer
     return 0.;
   }
 
-  const RealT target_velocity = ComputePredictorTargetVelocity( gap, dt );
+  const RealT target_velocity = ComputePredictorTargetVelocity(
+      gap, velocity_gap, dt, depenetration_fraction, maximum_penetration );
   if ( velocity_gap >= target_velocity ) {
     return 0.;
   }
@@ -1810,7 +3389,8 @@ TRIBOL_HOST_DEVICE inline RealT ComputeParentPredictorPressure( const MeshData::
                                                                 IndexT index2, int dim, const RealT* normal,
                                                                 const RealT* phi1, const RealT* phi2, RealT gap,
                                                                 RealT velocity_gap, RealT quadrature_measure, RealT dt,
-                                                                RealT relaxation )
+                                                                RealT relaxation, RealT depenetration_fraction,
+                                                                RealT maximum_penetration )
 {
   if ( dt <= 0. || quadrature_measure <= 0. ) {
     return 0.;
@@ -1820,7 +3400,8 @@ TRIBOL_HOST_DEVICE inline RealT ComputeParentPredictorPressure( const MeshData::
   if ( inverse_effective_mass <= 0. ) {
     return 0.;
   }
-  const RealT target_velocity = ComputePredictorTargetVelocity( gap, dt );
+  const RealT target_velocity = ComputePredictorTargetVelocity(
+      gap, velocity_gap, dt, depenetration_fraction, maximum_penetration );
   if ( velocity_gap >= target_velocity ) {
     return 0.;
   }
@@ -1958,7 +3539,9 @@ bool AssembleParentTraceConstraints( CouplingScheme* cs, RealT normal_patch_angl
                                      std::vector<std::pair<IndexT, IndexT>>* adjacency = nullptr,
                                      IndexT* skipped_zero_measure_rows = nullptr,
                                      std::vector<ParentTracePenaltyQuadraturePoint>* penalty_quadrature_points =
-                                         nullptr )
+                                         nullptr,
+                                     bool positive_lor_basis = false,
+                                     std::vector<ProjectionConstraint>* parent_q2_diagnostic_points = nullptr )
 {
   constraints.clear();
   if ( adjacency != nullptr ) {
@@ -1969,6 +3552,9 @@ bool AssembleParentTraceConstraints( CouplingScheme* cs, RealT normal_patch_angl
   }
   if ( penalty_quadrature_points != nullptr ) {
     penalty_quadrature_points->clear();
+  }
+  if ( parent_q2_diagnostic_points != nullptr ) {
+    parent_q2_diagnostic_points->clear();
   }
   auto cs_view = cs->getView();
   auto mesh1 = cs_view.getMesh1View();
@@ -2095,6 +3681,45 @@ bool AssembleParentTraceConstraints( CouplingScheme* cs, RealT normal_patch_angl
       return false;
     }
     const RealT overlap_normal[2] = { plane.m_nX, plane.m_nY };
+    RealT endpoint_face[3];
+    RealT endpoint_phi[2];
+    RealT endpoint_parameter0 = 0.;
+    RealT endpoint_parameter1 = 0.;
+    const RealT endpoint0[2] = { x0, y0 };
+    const RealT endpoint1[2] = { x1, y1 };
+    if ( !EvalLinearEdgeAtProjectedPoint( face2, endpoint0, overlap_normal, endpoint_face,
+                                          endpoint_phi, 0, nullptr, nullptr,
+                                          &endpoint_parameter0 ) ||
+         !EvalLinearEdgeAtProjectedPoint( face2, endpoint1, overlap_normal, endpoint_face,
+                                          endpoint_phi, 0, nullptr, nullptr,
+                                          &endpoint_parameter1 ) ) {
+      SLIC_WARNING_ROOT( "AssembleParentTraceConstraints(): failed multiplier-side overlap-endpoint "
+                         "projection for common-plane pair "
+                         << i << ", elements " << element1 << "/" << element2 << "." );
+      return false;
+    }
+    const RealT parent_reference0 = mesh2.getParentReferenceCoordinate( element2, 0 );
+    const RealT parent_reference1 = mesh2.getParentReferenceCoordinate( element2, 1 );
+    const RealT overlap_parent_coordinate0 =
+        ( 1. - endpoint_parameter0 ) * parent_reference0 +
+        endpoint_parameter0 * parent_reference1;
+    const RealT overlap_parent_coordinate1 =
+        ( 1. - endpoint_parameter1 ) * parent_reference0 +
+        endpoint_parameter1 * parent_reference1;
+    const RealT overlap_parent_coordinate_min =
+        std::min( overlap_parent_coordinate0, overlap_parent_coordinate1 );
+    const RealT overlap_parent_coordinate_max =
+        std::max( overlap_parent_coordinate0, overlap_parent_coordinate1 );
+    if ( !std::isfinite( overlap_parent_coordinate_min ) ||
+         !std::isfinite( overlap_parent_coordinate_max ) ||
+         overlap_parent_coordinate_max <= overlap_parent_coordinate_min ) {
+      SLIC_WARNING_ROOT( "AssembleParentTraceConstraints(): invalid multiplier-side parent interval for "
+                         "common-plane pair "
+                         << i << ", elements " << element1 << "/" << element2 << ": "
+                         << overlap_parent_coordinate_min << "/"
+                         << overlap_parent_coordinate_max << "." );
+      return false;
+    }
 
     for ( int qp = 0; qp < num_rule_points; ++qp ) {
       const RealT coordinate = rule_coordinates[qp];
@@ -2126,9 +3751,69 @@ bool AssembleParentTraceConstraints( CouplingScheme* cs, RealT normal_patch_angl
       const bool use_velocity = mesh1.hasVelocity() && mesh2.hasVelocity();
       EvalParentQ2Pair( mesh1, mesh2, element1, element2, child_parameter1, child_parameter2, use_velocity,
                         overlap_normal, phi1, phi2, x_face1, x_face2, velocity1, velocity2, common_normal );
+      const RealT quadrature_measure = length * rule_weights[qp];
+      if ( parent_q2_diagnostic_points != nullptr ) {
+        ProjectionConstraint diagnostic{};
+        diagnostic.plane_index = i;
+        diagnostic.element1 = element1;
+        diagnostic.element2 = element2;
+        diagnostic.normal[0] = common_normal[0];
+        diagnostic.normal[1] = common_normal[1];
+        diagnostic.gap = ( x_face1[0] - x_face2[0] ) * common_normal[0] +
+                         ( x_face1[1] - x_face2[1] ) * common_normal[1];
+        diagnostic.quadrature_measure = quadrature_measure;
+        diagnostic.trial_velocity = use_velocity
+            ? ( velocity1[0] - velocity2[0] ) * common_normal[0] +
+                  ( velocity1[1] - velocity2[1] ) * common_normal[1]
+            : 0.;
+        for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+          diagnostic.phi1[a] = phi1[a];
+          diagnostic.phi2[a] = phi2[a];
+        }
+        if ( !std::isfinite( diagnostic.normal[0] ) || !std::isfinite( diagnostic.normal[1] ) ||
+             !std::isfinite( diagnostic.gap ) || !std::isfinite( diagnostic.trial_velocity ) ||
+             !std::isfinite( diagnostic.quadrature_measure ) || diagnostic.quadrature_measure <= 0. ) {
+          SLIC_WARNING_ROOT( "AssembleParentTraceConstraints(): invalid parent-Q2 diagnostic data for "
+                             "common-plane pair "
+                             << i << ", elements " << element1 << "/" << element2 << ", quadrature point "
+                             << qp << "." );
+          return false;
+        }
+        parent_q2_diagnostic_points->push_back( diagnostic );
+      }
+      const RealT parent_xi1_0 = mesh1.getParentReferenceCoordinate( element1, 0 );
+      const RealT parent_xi1_1 = mesh1.getParentReferenceCoordinate( element1, 1 );
+      const RealT parent_xi2_0 = mesh2.getParentReferenceCoordinate( element2, 0 );
+      const RealT parent_xi2_1 = mesh2.getParentReferenceCoordinate( element2, 1 );
+      const RealT parent_xi1 =
+          ( 1. - child_parameter1 ) * parent_xi1_0 + child_parameter1 * parent_xi1_1;
+      const RealT parent_xi2 =
+          ( 1. - child_parameter2 ) * parent_xi2_0 + child_parameter2 * parent_xi2_1;
+      RealT lor_phi1[parent_q2_num_nodes];
+      RealT lor_phi2[parent_q2_num_nodes];
+      EvalParentLORBasis( parent_xi1, lor_phi1 );
+      EvalParentLORBasis( parent_xi2, lor_phi2 );
+      if ( positive_lor_basis ) {
+        for ( int d = 0; d < 2; ++d ) {
+          x_face1[d] = 0.;
+          x_face2[d] = 0.;
+          velocity1[d] = 0.;
+          velocity2[d] = 0.;
+          for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+            x_face1[d] += lor_phi1[a] * mesh1.getParentPosition( element1, a, d );
+            x_face2[d] += lor_phi2[a] * mesh2.getParentPosition( element2, a, d );
+            if ( use_velocity ) {
+              velocity1[d] += lor_phi1[a] * mesh1.getParentVelocity( element1, a, d );
+              velocity2[d] += lor_phi2[a] * mesh2.getParentVelocity( element2, a, d );
+            }
+            phi1[a] = lor_phi1[a];
+            phi2[a] = lor_phi2[a];
+          }
+          common_normal[d] = overlap_normal[d];
+        }
+      }
       const RealT gap = ( x_face1[0] - x_face2[0] ) * common_normal[0] +
                         ( x_face1[1] - x_face2[1] ) * common_normal[1];
-      const RealT quadrature_measure = length * rule_weights[qp];
       if ( !std::isfinite( common_normal[0] ) || !std::isfinite( common_normal[1] ) ||
            !std::isfinite( gap ) || !std::isfinite( quadrature_measure ) || quadrature_measure <= 0. ) {
         SLIC_WARNING_ROOT( "AssembleParentTraceConstraints(): invalid quadrature data for common-plane pair "
@@ -2137,11 +3822,6 @@ bool AssembleParentTraceConstraints( CouplingScheme* cs, RealT normal_patch_angl
                            << "/" << gap << "/" << quadrature_measure << "." );
         return false;
       }
-      const RealT parent_xi0 = mesh2.getParentReferenceCoordinate( element2, 0 );
-      const RealT parent_xi1 = mesh2.getParentReferenceCoordinate( element2, 1 );
-      const RealT parent_xi = ( 1. - child_parameter2 ) * parent_xi0 + child_parameter2 * parent_xi1;
-      RealT lor_phi[parent_q2_num_nodes];
-      EvalParentLORBasis( parent_xi, lor_phi );
       const RealT penalty_stiffness = include_penalty_data
                                           ? ComputeProjectionPenaltyStiffnessPerArea(
                                                 mesh1, mesh2, element1, element2, integration_options )
@@ -2161,13 +3841,54 @@ bool AssembleParentTraceConstraints( CouplingScheme* cs, RealT normal_patch_angl
         point.contact.normal[1] = common_normal[1];
         point.contact.gap = gap;
         point.contact.quadrature_measure = quadrature_measure;
+        point.contact.trial_velocity = use_velocity
+            ? ( velocity1[0] - velocity2[0] ) * common_normal[0] +
+                  ( velocity1[1] - velocity2[1] ) * common_normal[1]
+            : 0.;
         point.penalty_stiffness = penalty_stiffness;
         point.minimum_thickness = local_thickness;
+        point.multiplier_face_dofs = mortar_face.key.dofs;
+        point.multiplier_interval_min = overlap_parent_coordinate_min;
+        point.multiplier_interval_max = overlap_parent_coordinate_max;
+        point.multiplier_coordinate = parent_xi2;
+        point.multiplier_normal[0] = overlap_normal[0];
+        point.multiplier_normal[1] = overlap_normal[1];
         for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
           point.contact.phi1[a] = phi1[a];
           point.contact.phi2[a] = phi2[a];
           point.multiplier_rows[a] = mortar_face.rows[a];
-          point.multiplier_basis[a] = std::max( 0., lor_phi[a] );
+          point.multiplier_basis[a] = std::max( 0., lor_phi2[a] );
+        }
+        if ( integration_options.al_normal_damping_ratio > 0. ) {
+          const RealT inverse_effective_mass = ComputeParentInverseEffectiveMass(
+              mesh1, mesh2, element1, element2, 2, common_normal, phi1, phi2 );
+          if ( !std::isfinite( inverse_effective_mass ) || inverse_effective_mass < 0. ) {
+            SLIC_WARNING_ROOT( "AssembleParentTraceConstraints(): invalid inverse effective mass for "
+                               "normal damping at common-plane pair "
+                               << i << ", quadrature point " << qp << ": "
+                               << inverse_effective_mass << "." );
+            return false;
+          }
+          if ( inverse_effective_mass > 0. && mortar_face.measure > 0. ) {
+            RealT damping_stiffness = penalty_stiffness;
+            if ( integration_options.al_formulation == PENALTY_AL_QUADRATURE_LOCAL ||
+                 integration_options.al_formulation == PENALTY_AL_QUADRATURE_POINT_MEMORY ||
+                 integration_options.al_formulation == PENALTY_AL_QUADRATURE_CELL_MEMORY ) {
+              damping_stiffness *= ComputeFixedIterationPenaltyStiffnessScale(
+                  integration_options.al_fixed_iterations,
+                  integration_options.al_inner_relaxation );
+            } else if ( integration_options.al_formulation ==
+                        PENALTY_AL_QUADRATURE_CELL_MEMORY_COMPLIANCE ) {
+              damping_stiffness *= ComputeFixedIterationPenaltyStiffnessScale(
+                  integration_options.al_max_iterations,
+                  std::max( integration_options.al_relaxation,
+                            integration_options.al_unloading_relaxation ) );
+            }
+            point.damping_coefficient =
+                2. * integration_options.al_normal_damping_ratio *
+                std::sqrt( damping_stiffness /
+                           ( mortar_face.measure * inverse_effective_mass ) );
+          }
         }
         penalty_quadrature_points->push_back( point );
       }
@@ -2177,12 +3898,16 @@ bool AssembleParentTraceConstraints( CouplingScheme* cs, RealT normal_patch_angl
         if ( row < 0 ) {
           continue;
         }
-        RealT dual_value = 0.;
-        for ( int b = 0; b < parent_q2_num_nodes; ++b ) {
-          dual_value += mortar_face.inverse_mass[a][b] * phi2[b];
+        RealT test_value = 0.;
+        if ( positive_lor_basis ) {
+          test_value = lor_phi2[a] / mortar_face.lor_lumped_mass[a];
+        } else {
+          for ( int b = 0; b < parent_q2_num_nodes; ++b ) {
+            test_value += mortar_face.inverse_mass[a][b] * phi2[b];
+          }
         }
-        dual_value /= static_cast<RealT>( row_face_counts[row] );
-        const RealT coefficient = quadrature_measure * dual_value;
+        test_value /= static_cast<RealT>( row_face_counts[row] );
+        const RealT coefficient = quadrature_measure * test_value;
         if ( coefficient == 0. ) {
           continue;
         }
@@ -2199,7 +3924,7 @@ bool AssembleParentTraceConstraints( CouplingScheme* cs, RealT normal_patch_angl
         }
         constraints[row].contributions.push_back( contribution );
         constraints[row].gap += coefficient * gap;
-        const RealT tributary_measure = quadrature_measure * std::max( 0., lor_phi[a] );
+        const RealT tributary_measure = quadrature_measure * std::max( 0., lor_phi2[a] );
         constraints[row].tributary_area += tributary_measure;
         constraints[row].weighted_penalty_stiffness += tributary_measure * penalty_stiffness;
         if ( tributary_measure > 0. ) {
@@ -2290,11 +4015,125 @@ bool AssembleParentTraceMassScaledRows( MfemMeshData& mfem_data,
   return true;
 }
 
+bool AssembleQuadratureCellMassScaledRows(
+    MfemMeshData& mfem_data,
+    const std::vector<ParentTracePenaltyQuadraturePoint>& quadrature_points,
+    const std::vector<RealT>& cell_measure,
+    const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+    RealT stage_dt, mfem::DenseMatrix& rows,
+    std::vector<RealT>& damping_gap_response )
+{
+  const int num_cells = static_cast<int>( cell_measure.size() );
+  for ( int cell = 0; cell < num_cells; ++cell ) {
+    if ( !std::isfinite( cell_measure[cell] ) || cell_measure[cell] <= 0. ) {
+      SLIC_WARNING_ROOT( "AssembleQuadratureCellMassScaledRows(): invalid measure for cell "
+                         << cell << ": " << cell_measure[cell] << "." );
+      return false;
+    }
+    for ( const auto& point : quadrature_points ) {
+      if ( point.contact.plane_index != cell ) {
+        continue;
+      }
+      AccumulateProjectionImpulse(
+          point.contact, point.contact.quadrature_measure / cell_measure[cell], mesh1, mesh2 );
+    }
+    mfem::Vector row;
+    if ( !mfem_data.AssembleParentQ2MassScaledResponseRow( row ) ) {
+      SLIC_WARNING_ROOT( "AssembleQuadratureCellMassScaledRows(): failed response-row assembly for cell "
+                         << cell << "." );
+      return false;
+    }
+    if ( cell == 0 ) {
+      rows.SetSize( row.Size(), num_cells );
+      rows = 0.;
+    }
+    for ( int d = 0; d < row.Size(); ++d ) {
+      rows( d, cell ) = row[d];
+    }
+  }
+
+  damping_gap_response.assign( num_cells, 0. );
+  bool has_damping = false;
+  for ( const auto& point : quadrature_points ) {
+    const RealT closing_gap_rate = std::max( 0., -point.contact.trial_velocity );
+    const RealT damping_force = point.contact.quadrature_measure *
+                                point.damping_coefficient * closing_gap_rate;
+    if ( damping_force > 0. ) {
+      AccumulateProjectionImpulse( point.contact, damping_force, mesh1, mesh2 );
+      has_damping = true;
+    }
+  }
+  if ( has_damping ) {
+    mfem::Vector damping_row;
+    if ( !mfem_data.AssembleParentQ2MassScaledResponseRow( damping_row ) ) {
+      SLIC_WARNING_ROOT( "AssembleQuadratureCellMassScaledRows(): failed damping response assembly." );
+      return false;
+    }
+    for ( int cell = 0; cell < num_cells; ++cell ) {
+      for ( int d = 0; d < damping_row.Size(); ++d ) {
+        damping_gap_response[cell] += stage_dt * stage_dt * rows( d, cell ) * damping_row[d];
+      }
+    }
+  }
+  return true;
+}
+
+void SetParentTraceGapDiagnostics(
+    CouplingScheme* cs, const std::vector<TraceProjectionConstraint>& constraints,
+    const mfem::DenseMatrix& compliance_operator, const std::vector<RealT>& forces,
+    const MeshData::Viewer& mesh1 )
+{
+  const int num_constraints = static_cast<int>( constraints.size() );
+  if ( compliance_operator.Height() != num_constraints ||
+       compliance_operator.Width() != num_constraints ||
+       static_cast<int>( forces.size() ) != num_constraints ) {
+    cs->setParentTraceGapDiagnostics( 0, 0, 0., 0., 0., 0., 0., 0. );
+    return;
+  }
+
+  RealT current_violation_sum = 0.;
+  RealT current_maximum_violation = 0.;
+  RealT endpoint_violation_sum = 0.;
+  RealT endpoint_maximum_violation = 0.;
+  RealT geometric_violation_sum = 0.;
+  RealT geometric_maximum_violation = 0.;
+  IndexT geometric_rows = 0;
+  for ( int i = 0; i < num_constraints; ++i ) {
+    const RealT current_violation = std::max( 0., -constraints[i].gap );
+    current_violation_sum += current_violation;
+    current_maximum_violation =
+        std::max( current_maximum_violation, current_violation );
+
+    RealT endpoint_gap = constraints[i].trial_velocity;
+    for ( int j = 0; j < num_constraints; ++j ) {
+      endpoint_gap += compliance_operator( i, j ) * forces[j];
+    }
+    const RealT endpoint_violation = std::max( 0., -endpoint_gap );
+    endpoint_violation_sum += endpoint_violation;
+    endpoint_maximum_violation =
+        std::max( endpoint_maximum_violation, endpoint_violation );
+
+    RealT geometric_gap = 0.;
+    if ( EvaluateParentTraceGeometricNodalGap( constraints[i], mesh1, geometric_gap ) ) {
+      const RealT geometric_violation = std::max( 0., -geometric_gap );
+      geometric_violation_sum += geometric_violation;
+      geometric_maximum_violation =
+          std::max( geometric_maximum_violation, geometric_violation );
+      ++geometric_rows;
+    }
+  }
+  cs->setParentTraceGapDiagnostics(
+      num_constraints, geometric_rows, current_violation_sum,
+      current_maximum_violation, endpoint_violation_sum,
+      endpoint_maximum_violation, geometric_violation_sum,
+      geometric_maximum_violation );
+}
+
 bool ComputeParentTracePenaltyStiffnessBound(
     CouplingScheme* cs, const std::vector<TraceProjectionConstraint>& constraints,
     const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, RealT stage_dt,
     RealT& stiffness_bound, IndexT& active_rows, IndexT& predicted_rows,
-    RealT& minimum_impact_time )
+    RealT& minimum_impact_time, bool fixed_active_set = false )
 {
   constexpr int dim = 2;
   if ( !std::isfinite( stage_dt ) || stage_dt < 0. ) {
@@ -2323,7 +4162,7 @@ bool ComputeParentTracePenaltyStiffnessBound(
     if ( constraint.weighted_penalty_stiffness == 0. ) {
       continue;
     }
-    const bool active = constraint.gap < 0.;
+    const bool active = fixed_active_set || constraint.gap < 0.;
     bool predicted_active = false;
     if ( active ) {
       ++active_rows;
@@ -2407,15 +4246,189 @@ bool ComputeParentTracePenaltyStiffnessBound(
   return true;
 }
 
+bool ComputeQuadraturePenaltyStiffnessBound(
+    CouplingScheme* cs,
+    const std::vector<ParentTracePenaltyQuadraturePoint>& quadrature_points,
+    const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2, RealT stage_dt,
+    RealT stiffness_scale, RealT& stiffness_bound, IndexT& active_points,
+    IndexT& predicted_points, RealT& minimum_impact_time,
+    const std::vector<RealT>* initial_cell_pressure = nullptr,
+    bool pointwise_history = false, RealT pointwise_ramp_gap_tolerance = -1.,
+    RealT pointwise_ramp_end_time = -1., RealT pointwise_correction_stiffness_scale = 1. )
+{
+  constexpr int dim = 2;
+  if ( !std::isfinite( stage_dt ) || stage_dt < 0. ||
+       !std::isfinite( stiffness_scale ) || stiffness_scale <= 0. ) {
+    SLIC_WARNING_ROOT( "ComputeQuadraturePenaltyStiffnessBound(): invalid stage timestep/stiffness scale "
+                       << stage_dt << "/" << stiffness_scale << "." );
+    return false;
+  }
+  active_points = 0;
+  predicted_points = 0;
+  minimum_impact_time = std::numeric_limits<RealT>::infinity();
+  const IndexT row_count1 = mesh1.numberOfElements() * parent_q2_num_nodes * dim;
+  const IndexT row_count2 = mesh2.numberOfElements() * parent_q2_num_nodes * dim;
+  ArrayT<RealT> zero_rows1( row_count1, std::max<IndexT>( row_count1, 1 ), cs->getAllocatorId() );
+  ArrayT<RealT> zero_rows2( row_count2, std::max<IndexT>( row_count2, 1 ), cs->getAllocatorId() );
+  ArrayT<RealT> stiffness_rows1( row_count1, std::max<IndexT>( row_count1, 1 ), cs->getAllocatorId() );
+  ArrayT<RealT> stiffness_rows2( row_count2, std::max<IndexT>( row_count2, 1 ), cs->getAllocatorId() );
+  zero_rows1.fill( 0. );
+  zero_rows2.fill( 0. );
+  stiffness_rows1.fill( 0. );
+  stiffness_rows2.fill( 0. );
+  auto zero_view1 = zero_rows1.view();
+  auto zero_view2 = zero_rows2.view();
+  auto stiffness_view1 = stiffness_rows1.view();
+  auto stiffness_view2 = stiffness_rows2.view();
+
+  for ( int q = 0; q < static_cast<int>( quadrature_points.size() ); ++q ) {
+    const auto& point = quadrature_points[q];
+    const IndexT cell = pointwise_history ? q : point.contact.plane_index;
+    const bool history_active =
+        initial_cell_pressure != nullptr && cell >= 0 &&
+        cell < static_cast<IndexT>( initial_cell_pressure->size() ) &&
+        ( *initial_cell_pressure )[cell] - point.penalty_stiffness * point.contact.gap > 0.;
+    const bool active = history_active || point.contact.gap < 0.;
+    bool predicted_active = false;
+    if ( active ) {
+      ++active_points;
+      minimum_impact_time = 0.;
+    } else if ( point.contact.trial_velocity < 0. ) {
+      const RealT impact_time = point.contact.gap / -point.contact.trial_velocity;
+      if ( !std::isfinite( impact_time ) || impact_time < 0. ) {
+        SLIC_WARNING_ROOT( "ComputeQuadraturePenaltyStiffnessBound(): invalid gap/rate/impact time "
+                           << point.contact.gap << "/" << point.contact.trial_velocity << "/"
+                           << impact_time << "." );
+        return false;
+      }
+      minimum_impact_time = std::min( minimum_impact_time, impact_time );
+      predicted_active = impact_time <= stage_dt;
+      predicted_points += predicted_active ? 1 : 0;
+    }
+    if ( !active && !predicted_active ) {
+      continue;
+    }
+    RealT point_stiffness_scale = stiffness_scale;
+    if ( pointwise_history && pointwise_ramp_gap_tolerance >= 0. ) {
+      const bool startup_ramp = pointwise_ramp_end_time >= 0. &&
+                                cs->getCurrentTime() < pointwise_ramp_end_time;
+      if ( !startup_ramp ) {
+        const RealT predicted_gap = point.contact.gap + stage_dt * point.contact.trial_velocity;
+        const bool loading_correction = predicted_gap < -pointwise_ramp_gap_tolerance;
+        const bool unloading_correction = history_active &&
+                                          predicted_gap > pointwise_ramp_gap_tolerance;
+        const bool correcting = loading_correction || unloading_correction;
+        const bool reacquiring = loading_correction && initial_cell_pressure != nullptr &&
+                                 cell >= 0 &&
+                                 cell < static_cast<IndexT>( initial_cell_pressure->size() ) &&
+                                 ( *initial_cell_pressure )[cell] == 0.;
+        point_stiffness_scale = reacquiring ? stiffness_scale
+                                            : correcting ? pointwise_correction_stiffness_scale : 1.;
+      }
+    }
+    AccumulateParentConstraintRowBounds(
+        mesh1, mesh2, point.contact.element1, point.contact.element2, dim,
+        point.contact.normal, point.contact.phi1, point.contact.phi2,
+        point.contact.quadrature_measure, point_stiffness_scale * point.penalty_stiffness,
+        false, zero_view1, zero_view2, stiffness_view1, stiffness_view2 );
+  }
+
+  stiffness_bound = cs->getMfemMeshData()
+                        ->AssembleParentQ2RowMaxima( zero_rows1.data(), zero_rows2.data(),
+                                                     stiffness_rows1.data(), stiffness_rows2.data() )
+                        .second;
+  if ( !std::isfinite( stiffness_bound ) || stiffness_bound < 0. ) {
+    SLIC_WARNING_ROOT( "ComputeQuadraturePenaltyStiffnessBound(): invalid assembled stiffness bound "
+                       << stiffness_bound << "." );
+    return false;
+  }
+  return true;
+}
+
+bool ComputeParentTracePenaltyDampingBound(
+    CouplingScheme* cs,
+    const std::vector<ParentTracePenaltyQuadraturePoint>& quadrature_points,
+    const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+    RealT& damping_bound )
+{
+  constexpr int dim = 2;
+  damping_bound = 0.;
+  const IndexT row_count1 = mesh1.numberOfElements() * parent_q2_num_nodes * dim;
+  const IndexT row_count2 = mesh2.numberOfElements() * parent_q2_num_nodes * dim;
+  ArrayT<RealT> zero_rows1( row_count1, std::max<IndexT>( row_count1, 1 ), cs->getAllocatorId() );
+  ArrayT<RealT> zero_rows2( row_count2, std::max<IndexT>( row_count2, 1 ), cs->getAllocatorId() );
+  ArrayT<RealT> damping_rows1( row_count1, std::max<IndexT>( row_count1, 1 ), cs->getAllocatorId() );
+  ArrayT<RealT> damping_rows2( row_count2, std::max<IndexT>( row_count2, 1 ), cs->getAllocatorId() );
+  zero_rows1.fill( 0. );
+  zero_rows2.fill( 0. );
+  damping_rows1.fill( 0. );
+  damping_rows2.fill( 0. );
+  auto zero_view1 = zero_rows1.view();
+  auto zero_view2 = zero_rows2.view();
+  auto damping_view1 = damping_rows1.view();
+  auto damping_view2 = damping_rows2.view();
+
+  for ( const auto& point : quadrature_points ) {
+    if ( point.damping_coefficient == 0. ||
+         ( point.contact.gap > 0. && point.contact.trial_velocity >= 0. ) ) {
+      continue;
+    }
+    AccumulateParentConstraintRowBounds(
+        mesh1, mesh2, point.contact.element1, point.contact.element2, dim,
+        point.contact.normal, point.contact.phi1, point.contact.phi2,
+        point.contact.quadrature_measure, point.damping_coefficient, false,
+        zero_view1, zero_view2, damping_view1, damping_view2 );
+  }
+
+  damping_bound = cs->getMfemMeshData()
+                      ->AssembleParentQ2RowMaxima( zero_rows1.data(), zero_rows2.data(),
+                                                   damping_rows1.data(), damping_rows2.data() )
+                      .second;
+  if ( !std::isfinite( damping_bound ) || damping_bound < 0. ) {
+    SLIC_WARNING_ROOT( "ComputeParentTracePenaltyDampingBound(): invalid assembled damping bound "
+                       << damping_bound << "." );
+    return false;
+  }
+  return true;
+}
+
+RealT ComputePenaltyStabilityTimeStep( RealT stiffness_bound, RealT damping_bound,
+                                       RealT stability_scale )
+{
+  if ( stiffness_bound <= 0. && damping_bound <= 0. ) {
+    return std::numeric_limits<RealT>::infinity();
+  }
+  const RealT denominator =
+      std::sqrt( damping_bound * damping_bound + 4. * stiffness_bound ) + damping_bound;
+  return denominator > 0. ? 4. * stability_scale / denominator
+                          : std::numeric_limits<RealT>::infinity();
+}
+
 int ApplyParentTraceQuadraturePenaltyAugmentedLagrangian(
     CouplingScheme* cs, std::vector<TraceProjectionConstraint>& constraints,
     const std::vector<ParentTracePenaltyQuadraturePoint>& quadrature_points,
     const std::vector<std::pair<IndexT, IndexT>>& trace_adjacency,
-    const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
+    const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+    const mfem::DenseMatrix* compliance_operator = nullptr,
+    const std::vector<RealT>* fixed_gap_response = nullptr )
 {
   auto cs_view = cs->getView();
   const auto& penalty_options = cs->getEnforcementOptions().penalty_options;
   const RealT stage_dt = cs->getCurrentTimeStep();
+  const bool quadrature_local =
+      penalty_options.al_formulation == PENALTY_AL_QUADRATURE_LOCAL;
+  const bool quadrature_point_memory =
+      penalty_options.al_formulation == PENALTY_AL_QUADRATURE_POINT_MEMORY;
+  const bool quadrature_cell_compliance =
+      penalty_options.al_formulation == PENALTY_AL_QUADRATURE_CELL_MEMORY_COMPLIANCE;
+  const bool quadrature_cell_memory =
+      penalty_options.al_formulation == PENALTY_AL_QUADRATURE_CELL_MEMORY ||
+      quadrature_cell_compliance;
+  const bool quadrature_history_local =
+      quadrature_local || quadrature_point_memory || quadrature_cell_memory;
+  const bool fixed_active_set =
+      !quadrature_history_local && penalty_options.al_fixed_active_set_time >= 0. &&
+      cs->getCurrentTime() >= penalty_options.al_fixed_active_set_time;
   IndexT warm_start_rows = 0;
   IndexT support_growth_limited_rows = 0;
   RealT history_force_norm_squared = 0.;
@@ -2424,51 +4437,182 @@ int ApplyParentTraceQuadraturePenaltyAugmentedLagrangian(
   const RealT minimum_normal_dot =
       std::cos( cs->getEnforcementOptions().projection_options.normal_patch_angle_degrees *
                 std::acos( -1. ) / 180. );
-  const auto& history = cs->getParentTraceMultiplierStepSnapshot();
-  for ( auto& constraint : constraints ) {
-    for ( const auto& state : history ) {
-      if ( state.parent_dof != constraint.parent_dof || state.patch != constraint.patch ) {
-        continue;
-      }
-      const RealT normal_dot =
-          state.normal_x * constraint.normal[0] + state.normal_y * constraint.normal[1];
-      if ( normal_dot >= minimum_normal_dot ) {
-        RealT warm_start_force = 0.;
-        RealT area_ratio = 0.;
-        bool support_growth_limited = false;
-        if ( !TransferParentTraceMultiplierHistory(
-                 state, constraint.tributary_area, warm_start_force, area_ratio,
-                 support_growth_limited ) ) {
-          break;
+  std::vector<RealT> projected_cell_pressure;
+  std::vector<RealT> cell_measure;
+  RealT minimum_history_coverage = std::numeric_limits<RealT>::infinity();
+  RealT maximum_history_coverage = 0.;
+  RealT maximum_history_coverage_excess = 0.;
+  if ( quadrature_point_memory ) {
+    if ( !ProjectQuadraturePointMultiplierHistory(
+             quadrature_points, cs->getQuadratureCellMultiplierStepSnapshot(),
+             minimum_normal_dot, projected_cell_pressure, cell_measure,
+             warm_start_rows, history_force_norm_squared, minimum_history_coverage,
+             maximum_history_coverage, maximum_history_coverage_excess ) ) {
+      SLIC_WARNING_ROOT( "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): failed to project "
+                         "quadrature-point multiplier history for coupling scheme "
+                         << cs->getId() << "." );
+      cs->getMfemMeshData()->ResetParentQ2Projection();
+      return 1;
+    }
+  } else if ( quadrature_cell_memory ) {
+    if ( !ProjectQuadratureCellMultiplierHistory(
+             quadrature_points, cs->getNumActivePairs(),
+             cs->getQuadratureCellMultiplierStepSnapshot(), minimum_normal_dot,
+             projected_cell_pressure, cell_measure, warm_start_rows,
+             history_force_norm_squared, minimum_history_coverage,
+             maximum_history_coverage, maximum_history_coverage_excess ) ) {
+      SLIC_WARNING_ROOT( "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): failed to project "
+                         "piecewise-constant quadrature-cell multiplier history for coupling scheme "
+                         << cs->getId() << "." );
+      cs->getMfemMeshData()->ResetParentQ2Projection();
+      return 1;
+    }
+  } else if ( !quadrature_local ) {
+    const auto& history = cs->getParentTraceMultiplierStepSnapshot();
+    for ( auto& constraint : constraints ) {
+      for ( const auto& state : history ) {
+        if ( state.parent_dof != constraint.parent_dof || state.patch != constraint.patch ) {
+          continue;
         }
-        constraint.multiplier = warm_start_force;
-        ++warm_start_rows;
-        support_growth_limited_rows += support_growth_limited ? 1 : 0;
-        history_force_norm_squared += warm_start_force * warm_start_force;
-        minimum_warm_start_area_ratio = std::min( minimum_warm_start_area_ratio, area_ratio );
-        maximum_warm_start_area_ratio = std::max( maximum_warm_start_area_ratio, area_ratio );
+        const RealT normal_dot =
+            state.normal_x * constraint.normal[0] + state.normal_y * constraint.normal[1];
+        if ( normal_dot >= minimum_normal_dot ) {
+          RealT warm_start_force = 0.;
+          RealT area_ratio = 0.;
+          bool support_growth_limited = false;
+          if ( !TransferParentTraceMultiplierHistory(
+                   state, constraint.tributary_area, warm_start_force, area_ratio,
+                   support_growth_limited, fixed_active_set ) ) {
+            break;
+          }
+          constraint.multiplier = warm_start_force;
+          ++warm_start_rows;
+          support_growth_limited_rows += support_growth_limited ? 1 : 0;
+          history_force_norm_squared += warm_start_force * warm_start_force;
+          minimum_warm_start_area_ratio = std::min( minimum_warm_start_area_ratio, area_ratio );
+          maximum_warm_start_area_ratio = std::max( maximum_warm_start_area_ratio, area_ratio );
+        }
+        break;
       }
-      break;
     }
   }
-  if ( warm_start_rows > 0 ) {
+  if ( ( quadrature_point_memory || quadrature_cell_memory ) && warm_start_rows > 0 ) {
+    SLIC_INFO_ROOT( ( quadrature_point_memory ? "Quadrature-point" : "Quadrature-cell" )
+                    << " penalty AL projected history points/coverage min/max/excess: "
+                    << warm_start_rows << "/" << minimum_history_coverage << "/"
+                    << maximum_history_coverage << "/" << maximum_history_coverage_excess );
+  } else if ( warm_start_rows > 0 ) {
     SLIC_INFO_ROOT( "Parent-trace quadrature penalty AL warm-start/support-growth-limited rows and "
                     "current-to-previous tributary-area ratio min/max: "
                     << warm_start_rows << "/" << support_growth_limited_rows << "/"
                     << minimum_warm_start_area_ratio << "/" << maximum_warm_start_area_ratio );
   }
 
-  auto result = SolveQuadraturePenaltyAugmentedLagrangianSystem(
-      quadrature_points, constraints, penalty_options, stage_dt );
-  SLIC_INFO_ROOT( "Parent-trace quadrature penalty AL multiplier updates loading/unloading/deadband and "
-                  "effective relaxation loading/unloading: "
-                  << result.loading_updates << "/" << result.unloading_updates << "/"
-                  << result.direction_deadband_updates << "/"
-                  << ComputePenaltyAlRelaxation( penalty_options.al_relaxation,
-                                                 penalty_options.al_loading_time_constant, stage_dt )
-                  << "/"
-                  << ComputePenaltyAlRelaxation( penalty_options.al_unloading_relaxation,
-                                                 penalty_options.al_unloading_time_constant, stage_dt ) );
+  const bool compliance_corrected = quadrature_cell_compliance ||
+      penalty_options.al_formulation == PENALTY_AL_QUADRATURE_HYBRID_COMPLIANCE;
+  PenaltyAugmentedLagrangianSolveResult result;
+  if ( quadrature_local ) {
+    result = SolveQuadratureLocalPenaltyAugmentedLagrangianSystem(
+        quadrature_points, penalty_options );
+  } else if ( quadrature_point_memory || quadrature_cell_memory ) {
+    if ( quadrature_cell_compliance ) {
+      if ( compliance_operator == nullptr || fixed_gap_response == nullptr ) {
+        SLIC_WARNING_ROOT( "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): missing compliance operator "
+                           "for quadrature-cell-compliance coupling scheme "
+                           << cs->getId() << "." );
+        cs->getMfemMeshData()->ResetParentQ2Projection();
+        return 1;
+      }
+      result = SolveComplianceCorrectedQuadratureCellPenaltyAugmentedLagrangianSystem(
+          quadrature_points, *compliance_operator, *fixed_gap_response, projected_cell_pressure,
+          cell_measure, penalty_options, stage_dt );
+    } else {
+      result = SolveQuadratureCellPenaltyAugmentedLagrangianSystem(
+          quadrature_points, projected_cell_pressure, cell_measure,
+          penalty_options, stage_dt, quadrature_point_memory, cs->getCurrentTime() );
+    }
+  } else if ( compliance_corrected ) {
+    if ( compliance_operator == nullptr ) {
+      SLIC_WARNING_ROOT( "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): missing compliance operator "
+                         "for quadrature-hybrid-compliance coupling scheme "
+                         << cs->getId() << "." );
+      cs->getMfemMeshData()->ResetParentQ2Projection();
+      return 1;
+    }
+    result = SolveComplianceCorrectedQuadraturePenaltyAugmentedLagrangianSystem(
+        quadrature_points, *compliance_operator, constraints, penalty_options,
+        stage_dt, mesh1, mesh2 );
+  } else {
+    result = SolveQuadraturePenaltyAugmentedLagrangianSystem(
+        quadrature_points, constraints, penalty_options, stage_dt, fixed_active_set );
+  }
+  if ( fixed_active_set ) {
+    SLIC_INFO_ROOT( "Parent-trace quadrature penalty AL fixed-active diagnostic enabled at time/current lock time: "
+                    << cs->getCurrentTime() << "/" << penalty_options.al_fixed_active_set_time );
+  }
+  if ( quadrature_local ) {
+    SLIC_INFO_ROOT( "Quadrature-local penalty AL zero-initialized multiplier updates/inner relaxation: "
+                    << result.loading_updates << "/" << penalty_options.al_inner_relaxation );
+  } else if ( quadrature_point_memory || quadrature_cell_memory ) {
+    SLIC_INFO_ROOT( ( quadrature_point_memory ? "Quadrature-point" : "Quadrature-cell" )
+                    << " penalty AL multiplier updates loading/unloading/deadband and "
+                    "effective relaxation loading/unloading: "
+                    << result.loading_updates << "/" << result.unloading_updates << "/"
+                    << result.direction_deadband_updates << "/"
+                    << ComputePenaltyAlRelaxation(
+                           penalty_options.al_relaxation,
+                           penalty_options.al_loading_time_constant, stage_dt,
+                           quadrature_cell_compliance ? penalty_options.al_max_iterations : 1 )
+                    << "/"
+                    << ComputePenaltyAlRelaxation(
+                           penalty_options.al_unloading_relaxation,
+                           penalty_options.al_unloading_time_constant, stage_dt,
+                           quadrature_cell_compliance ? penalty_options.al_max_iterations : 1 ) );
+  } else {
+    SLIC_INFO_ROOT( "Parent-trace quadrature penalty AL multiplier updates loading/unloading/deadband and "
+                    "effective relaxation loading/unloading: "
+                    << result.loading_updates << "/" << result.unloading_updates << "/"
+                    << result.direction_deadband_updates << "/"
+                    << ComputePenaltyAlRelaxation(
+                           penalty_options.al_relaxation,
+                           penalty_options.al_loading_time_constant, stage_dt,
+                           compliance_corrected ? penalty_options.al_max_iterations : 1 )
+                    << "/"
+                    << ComputePenaltyAlRelaxation(
+                           penalty_options.al_unloading_relaxation,
+                           penalty_options.al_unloading_time_constant, stage_dt,
+                           compliance_corrected ? penalty_options.al_max_iterations : 1 ) );
+  }
+  if ( !compliance_corrected ) {
+    const RealT stiffness_scale = ComputeFixedIterationPenaltyStiffnessScale(
+        penalty_options.al_fixed_iterations, penalty_options.al_inner_relaxation );
+    SLIC_INFO_ROOT( ( quadrature_local
+                          ? "Quadrature-local"
+                          : quadrature_cell_memory ? "Quadrature-cell" : "Parent-trace quadrature" )
+                    << " penalty AL fixed inner iterations/relaxation/effective penalty stiffness scale: "
+                    << penalty_options.al_fixed_iterations << "/"
+                    << penalty_options.al_inner_relaxation << "/" << stiffness_scale );
+  }
+  if ( compliance_corrected ) {
+    SLIC_INFO_ROOT( ( quadrature_cell_compliance ? "Quadrature-cell" : "Parent-trace quadrature" )
+                    << " penalty AL compliance-corrected target gap fraction/"
+                    "iterations/converged/projected residual initial/final/primal/tolerance: "
+                    << penalty_options.al_target_gap_fraction << "/"
+                    << result.outer_iterations << "/"
+                    << result.physical_result.complementarity_converged << "/"
+                    << result.physical_result.initial_residual << "/"
+                    << result.physical_result.final_residual << "/"
+                    << result.physical_result.final_primal_residual << "/"
+                    << result.physical_result.primal_tolerance );
+    if ( quadrature_cell_compliance ) {
+      SLIC_INFO_ROOT( "Quadrature-cell penalty AL continuation factor/configured maximum scale/"
+                      "used maximum scale/iterations: "
+                      << penalty_options.al_continuation_factor << "/"
+                      << penalty_options.al_continuation_max_scale << "/"
+                      << result.maximum_continuation_scale << "/"
+                      << result.outer_iterations );
+    }
+  }
   if ( penalty_options.al_activation_gap_fraction > 0. ) {
     SLIC_INFO_ROOT( "Parent-trace quadrature penalty AL C1 activation regularized points/integrated "
                     "force reduction/maximum activation pressure: "
@@ -2476,8 +4620,17 @@ int ApplyParentTraceQuadraturePenaltyAugmentedLagrangian(
                     << result.integrated_activation_force_reduction << "/"
                     << result.maximum_activation_pressure );
   }
+  if ( penalty_options.al_normal_damping_ratio > 0. ) {
+    SLIC_INFO_ROOT( "Parent-trace quadrature penalty AL normal damping ratio/active quadrature "
+                    "points/integrated force/dissipation rate/maximum pressure: "
+                    << penalty_options.al_normal_damping_ratio << "/"
+                    << result.damping_quadrature_points << "/"
+                    << result.integrated_damping_force << "/"
+                    << result.damping_dissipation_rate << "/"
+                    << result.maximum_damping_pressure );
+  }
   if ( !result.physical_result.valid ) {
-    SLIC_WARNING_ROOT( "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): invalid quadrature-hybrid "
+    SLIC_WARNING_ROOT( "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): invalid quadrature-pressure "
                        "augmented-Lagrangian update for coupling scheme "
                        << cs->getId() << "." );
     cs->getMfemMeshData()->ResetParentQ2Projection();
@@ -2489,17 +4642,17 @@ int ApplyParentTraceQuadraturePenaltyAugmentedLagrangian(
   RealT raw_maximum_history_pressure = 0.;
   RealT smoothed_maximum_history_pressure = 0.;
   RealT smoothing_force_conservation_error = 0.;
-  if ( !SmoothPenaltyAugmentedLagrangianHistory(
-           constraints, trace_adjacency, penalty_options.al_spatial_smoothing,
-           history_multipliers, smoothing_active_edges, raw_maximum_history_pressure,
-           smoothed_maximum_history_pressure, smoothing_force_conservation_error ) ) {
+  if ( !quadrature_history_local && !SmoothPenaltyAugmentedLagrangianHistory(
+                                       constraints, trace_adjacency, penalty_options.al_spatial_smoothing,
+                                       history_multipliers, smoothing_active_edges, raw_maximum_history_pressure,
+                                       smoothed_maximum_history_pressure, smoothing_force_conservation_error ) ) {
     SLIC_WARNING_ROOT( "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): quadrature-hybrid "
                        "multiplier-history smoothing failed for coupling scheme "
                        << cs->getId() << "." );
     cs->getMfemMeshData()->ResetParentQ2Projection();
     return 1;
   }
-  if ( penalty_options.al_spatial_smoothing > 0. ) {
+  if ( !quadrature_history_local && penalty_options.al_spatial_smoothing > 0. ) {
     SLIC_INFO_ROOT( "Parent-trace quadrature penalty AL history smoothing strength/active edges/max "
                     "pressure before/after/force conservation error: "
                     << penalty_options.al_spatial_smoothing << "/" << smoothing_active_edges << "/"
@@ -2508,25 +4661,108 @@ int ApplyParentTraceQuadraturePenaltyAugmentedLagrangian(
   }
 
   std::vector<ParentTraceMultiplierState> multiplier_state;
-  multiplier_state.reserve( constraints.size() );
-  IndexT active_multiplier_rows = 0;
+  multiplier_state.reserve( history_multipliers.size() );
+  std::vector<QuadratureCellMultiplierState> quadrature_cell_state;
+  RealT quadrature_cell_history_force = 0.;
+  RealT minimum_quadrature_cell_history_pressure = std::numeric_limits<RealT>::infinity();
+  RealT maximum_quadrature_cell_history_pressure = 0.;
+  IndexT active_multipliers = quadrature_history_local ? result.active_multiplier_points : 0;
   RealT maximum_penalty_stiffness = 0.;
-  for ( int i = 0; i < static_cast<int>( constraints.size() ); ++i ) {
-    maximum_penalty_stiffness =
-        std::max( maximum_penalty_stiffness, constraints[i].weighted_penalty_stiffness );
-    active_multiplier_rows += constraints[i].multiplier > 0. ? 1 : 0;
-    const RealT multiplier = history_multipliers[i];
-    if ( multiplier > 0. && std::isfinite( multiplier ) ) {
-      multiplier_state.push_back( { constraints[i].parent_dof, constraints[i].patch,
-                                    constraints[i].normal[0], constraints[i].normal[1],
-                                    multiplier, constraints[i].tributary_area } );
+  if ( quadrature_history_local ) {
+    const int stiffness_iterations = compliance_corrected
+        ? penalty_options.al_max_iterations
+        : penalty_options.al_fixed_iterations;
+    const RealT stiffness_relaxation = compliance_corrected
+        ? std::max( penalty_options.al_relaxation, penalty_options.al_unloading_relaxation )
+        : penalty_options.al_inner_relaxation;
+    const RealT stiffness_scale = ComputeFixedIterationPenaltyStiffnessScale(
+        stiffness_iterations, stiffness_relaxation );
+    for ( const auto& point : quadrature_points ) {
+      maximum_penalty_stiffness =
+          std::max( maximum_penalty_stiffness,
+                    stiffness_scale * point.contact.quadrature_measure * point.penalty_stiffness );
+    }
+    if ( quadrature_point_memory ) {
+      quadrature_cell_state.reserve( result.quadrature_cell_history_pressures.size() );
+      for ( int q = 0; q < static_cast<int>( quadrature_points.size() ); ++q ) {
+        const auto& point = quadrature_points[q];
+        const RealT pressure = result.quadrature_cell_history_pressures[q];
+        if ( !std::isfinite( pressure ) || pressure < 0. || cell_measure[q] <= 0. ) {
+          continue;
+        }
+        quadrature_cell_state.push_back(
+            { point.multiplier_face_dofs[0], point.multiplier_face_dofs[1],
+              point.multiplier_face_dofs[2], point.multiplier_interval_min,
+              point.multiplier_interval_max, point.multiplier_normal[0],
+              point.multiplier_normal[1], pressure, cell_measure[q],
+              point.multiplier_coordinate } );
+        quadrature_cell_history_force += pressure * cell_measure[q];
+        minimum_quadrature_cell_history_pressure =
+            std::min( minimum_quadrature_cell_history_pressure, pressure );
+        maximum_quadrature_cell_history_pressure =
+            std::max( maximum_quadrature_cell_history_pressure, pressure );
+      }
+    } else if ( quadrature_cell_memory ) {
+      std::vector<const ParentTracePenaltyQuadraturePoint*> representatives(
+          cs->getNumActivePairs(), nullptr );
+      quadrature_cell_state.reserve( result.quadrature_cell_history_pressures.size() );
+      for ( const auto& point : quadrature_points ) {
+        const IndexT cell = point.contact.plane_index;
+        if ( representatives[cell] == nullptr ) {
+          representatives[cell] = &point;
+        }
+      }
+      for ( IndexT cell = 0;
+            cell < static_cast<IndexT>( result.quadrature_cell_history_pressures.size() );
+            ++cell ) {
+        const RealT pressure = result.quadrature_cell_history_pressures[cell];
+        const auto* point = representatives[cell];
+        if ( point == nullptr || !std::isfinite( pressure ) || pressure <= 0. ||
+             cell_measure[cell] <= 0. ) {
+          continue;
+        }
+        quadrature_cell_state.push_back(
+            { point->multiplier_face_dofs[0], point->multiplier_face_dofs[1],
+              point->multiplier_face_dofs[2], point->multiplier_interval_min,
+              point->multiplier_interval_max, point->multiplier_normal[0],
+              point->multiplier_normal[1], pressure, cell_measure[cell] } );
+        quadrature_cell_history_force += pressure * cell_measure[cell];
+        minimum_quadrature_cell_history_pressure =
+            std::min( minimum_quadrature_cell_history_pressure, pressure );
+        maximum_quadrature_cell_history_pressure =
+            std::max( maximum_quadrature_cell_history_pressure, pressure );
+      }
+    }
+  } else {
+    for ( int i = 0; i < static_cast<int>( constraints.size() ); ++i ) {
+      maximum_penalty_stiffness =
+          std::max( maximum_penalty_stiffness, constraints[i].weighted_penalty_stiffness );
+      active_multipliers += fixed_active_set || constraints[i].multiplier > 0. ? 1 : 0;
+      const RealT multiplier = history_multipliers[i];
+      if ( std::isfinite( multiplier ) && ( fixed_active_set || multiplier > 0. ) ) {
+        multiplier_state.push_back( { constraints[i].parent_dof, constraints[i].patch,
+                                      constraints[i].normal[0], constraints[i].normal[1],
+                                      multiplier, constraints[i].tributary_area } );
+      }
     }
   }
+  if ( quadrature_point_memory || quadrature_cell_memory ) {
+    if ( !std::isfinite( minimum_quadrature_cell_history_pressure ) ) {
+      minimum_quadrature_cell_history_pressure = 0.;
+    }
+    SLIC_INFO_ROOT( ( quadrature_point_memory ? "Quadrature-point" : "Quadrature-cell" )
+                    << " penalty AL stored points/integrated force/pressure min/max: "
+                    << quadrature_cell_state.size() << "/" << quadrature_cell_history_force << "/"
+                    << minimum_quadrature_cell_history_pressure << "/"
+                    << maximum_quadrature_cell_history_pressure );
+  }
   cs->setParentTraceMultiplierStage( std::move( multiplier_state ) );
+  cs->setQuadratureCellMultiplierStage( std::move( quadrature_cell_state ) );
 
   std::vector<RealT> plane_forces( cs->getNumActivePairs(), 0. );
   std::vector<bool> plane_active( cs->getNumActivePairs(), false );
-  RealT total_force = 0.;
+  RealT compressive_force = 0.;
+  RealT tensile_force = 0.;
   RealT penalty_force = 0.;
   RealT maximum_force = 0.;
   RealT gap_violation_sum = 0.;
@@ -2538,17 +4774,20 @@ int ApplyParentTraceQuadraturePenaltyAugmentedLagrangian(
     const auto& point = quadrature_points[q];
     const RealT force = result.quadrature_forces[q];
     const RealT gap_violation = std::max( 0., -point.contact.gap );
+    const RealT target_gap =
+        compliance_corrected ? -penalty_options.al_target_gap_fraction * point.minimum_thickness : 0.;
+    const RealT penalty_gap_violation = std::max( 0., target_gap - point.contact.gap );
     const RealT local_penalty_force =
-        point.contact.quadrature_measure * point.penalty_stiffness * gap_violation;
+        point.contact.quadrature_measure * point.penalty_stiffness * penalty_gap_violation;
     const RealT closing_rate =
         has_velocity ? std::max( 0., -EvaluateProjectionVelocity( point.contact, mesh1, mesh2 ) ) : 0.;
-    if ( force > 0. ) {
+    if ( fixed_active_set || force > 0. ) {
       AccumulateProjectionImpulse( point.contact, force, mesh1, mesh2 );
     }
     plane_forces[point.contact.plane_index] += force;
-    plane_active[point.contact.plane_index] =
-        plane_active[point.contact.plane_index] || force > 0.;
-    total_force += force;
+    plane_active[point.contact.plane_index] = plane_active[point.contact.plane_index] || fixed_active_set || force > 0.;
+    compressive_force += std::max( 0., force );
+    tensile_force += std::max( 0., -force );
     penalty_force += local_penalty_force;
     maximum_force = std::max( maximum_force, force );
     gap_violation_sum += gap_violation;
@@ -2562,25 +4801,35 @@ int ApplyParentTraceQuadraturePenaltyAugmentedLagrangian(
     plane.m_pressure = plane.m_area > 0. ? -plane_forces[i] / plane.m_area : 0.;
     plane.m_inContact = plane_active[i];
   }
+  if ( fixed_active_set ) {
+    SLIC_INFO_ROOT( "Parent-trace quadrature penalty AL fixed-active integrated compressive/tensile force: "
+                    << compressive_force << "/" << tensile_force );
+  }
 
   cs->setAugmentedLagrangianDiagnostics(
-      result.outer_iterations, result.subproblem_iterations, result.incomplete_subproblems,
-      warm_start_rows, std::sqrt( history_force_norm_squared ), result.multiplier_update_norm,
-      maximum_penalty_stiffness );
+      result.outer_iterations, result.subproblem_iterations, result.incomplete_subproblems, warm_start_rows,
+      std::sqrt( history_force_norm_squared ), result.multiplier_update_norm, maximum_penalty_stiffness );
   cs->setProjectionDiagnostics(
-      static_cast<IndexT>( constraints.size() ), active_multiplier_rows,
-      result.physical_result.iterations, true,
-      result.physical_result.complementarity_converged,
-      result.physical_result.initial_residual, result.physical_result.final_residual,
-      result.physical_result.final_primal_residual, result.physical_result.primal_tolerance,
-      1., ComputePenaltyAlRelaxation( penalty_options.al_relaxation,
-                                      penalty_options.al_loading_time_constant, stage_dt ),
-      total_force * stage_dt, total_force,
-      maximum_gap_violation, 0. );
-  cs->setPredictorForceDiagnostics( 0, 0, penalty_force, 0., total_force );
-  cs->setContactPointDiagnostics(
-      static_cast<IndexT>( quadrature_points.size() ), maximum_force,
-      gap_violation_sum, maximum_gap_violation, closing_rate_sum, maximum_closing_rate );
+      static_cast<IndexT>( quadrature_local
+                               ? quadrature_points.size()
+                               : ( quadrature_point_memory || quadrature_cell_memory )
+                                   ? cell_measure.size() : constraints.size() ),
+      active_multipliers, result.physical_result.iterations, true,
+      result.physical_result.complementarity_converged, result.physical_result.initial_residual,
+      result.physical_result.final_residual, result.physical_result.final_primal_residual,
+      result.physical_result.primal_tolerance, 1.,
+      quadrature_local
+          ? penalty_options.al_inner_relaxation
+          : ComputePenaltyAlRelaxation( penalty_options.al_relaxation,
+                                        penalty_options.al_loading_time_constant, stage_dt,
+                                        compliance_corrected ? penalty_options.al_max_iterations : 1 ),
+      compressive_force * stage_dt, compressive_force, maximum_gap_violation, 0. );
+  cs->setPredictorForceDiagnostics( 0, 0, penalty_force, 0., compressive_force, tensile_force );
+  cs->setPenaltyAugmentedLagrangianDampingDiagnostics( result.damping_quadrature_points,
+                                                       result.integrated_damping_force, result.damping_dissipation_rate,
+                                                       result.maximum_damping_pressure );
+  cs->setContactPointDiagnostics( static_cast<IndexT>( quadrature_points.size() ), maximum_force, gap_violation_sum,
+                                  maximum_gap_violation, closing_rate_sum, maximum_closing_rate );
   return 0;
 }
 #endif
@@ -2713,10 +4962,58 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
     auto stiffness_view1 = stiffness_rows1.view();
     auto stiffness_view2 = stiffness_rows2.view();
     const RealT stage_dt = cs->getCurrentTimeStep();
+    const bool spectral_diagnostic_requested = cs->requestPenaltyStabilitySpectralDiagnostic();
+    bool spectral_diagnostic_supported = parent_basis && dim == 2 && multipoint;
+#ifdef TRIBOL_USE_MPI
+    int spectral_diagnostic_comm_size = 1;
+    MPI_Comm_size( cs->getProblemComm(), &spectral_diagnostic_comm_size );
+    spectral_diagnostic_supported = spectral_diagnostic_supported && spectral_diagnostic_comm_size == 1;
+#endif
+    if ( spectral_diagnostic_requested && !spectral_diagnostic_supported ) {
+      SLIC_WARNING_ROOT(
+          "Penalty stability spectral diagnostic currently requires one-rank, two-dimensional, "
+          "multipoint common-plane contact with the parent surface basis." );
+    }
+    const bool run_spectral_diagnostic =
+        spectral_diagnostic_requested && spectral_diagnostic_supported;
+    const IndexT spectral_capacity =
+        run_spectral_diagnostic ? num_pairs * max_segment_gauss_legendre_qpts : 0;
+    constexpr int spectral_entries_per_side = parent_q2_num_nodes * 2;
+    ArrayT<int> spectral_status( spectral_capacity, std::max<IndexT>( spectral_capacity, 1 ),
+                                 cs->getAllocatorId() );
+    ArrayT<IndexT> spectral_dofs1(
+        spectral_capacity * spectral_entries_per_side,
+        std::max<IndexT>( spectral_capacity * spectral_entries_per_side, 1 ), cs->getAllocatorId() );
+    ArrayT<IndexT> spectral_dofs2(
+        spectral_capacity * spectral_entries_per_side,
+        std::max<IndexT>( spectral_capacity * spectral_entries_per_side, 1 ), cs->getAllocatorId() );
+    ArrayT<RealT> spectral_coefficients1(
+        spectral_capacity * spectral_entries_per_side,
+        std::max<IndexT>( spectral_capacity * spectral_entries_per_side, 1 ), cs->getAllocatorId() );
+    ArrayT<RealT> spectral_coefficients2(
+        spectral_capacity * spectral_entries_per_side,
+        std::max<IndexT>( spectral_capacity * spectral_entries_per_side, 1 ), cs->getAllocatorId() );
+    ArrayT<RealT> spectral_weighted_stiffness(
+        spectral_capacity, std::max<IndexT>( spectral_capacity, 1 ), cs->getAllocatorId() );
+    spectral_status.fill( 0 );
+    auto spectral_status_view = spectral_status.view();
+    auto spectral_dofs1_view = spectral_dofs1.view();
+    auto spectral_dofs2_view = spectral_dofs2.view();
+    auto spectral_coefficients1_view = spectral_coefficients1.view();
+    auto spectral_coefficients2_view = spectral_coefficients2.view();
+    auto spectral_weighted_stiffness_view = spectral_weighted_stiffness.view();
+    const RealT predictor_depenetration_fraction =
+        penalty_options.predictor_depenetration_fraction;
+    const RealT predictor_max_penetration_fraction =
+        penalty_options.predictor_max_penetration_fraction;
 
     forAllExec( cs->getExecutionMode(), num_pairs,
-                [cs_view, predictor_view1, predictor_view2, stiffness_view1, stiffness_view2, dissipative,
-                 stage_dt] TRIBOL_HOST_DEVICE( IndexT i ) {
+                [cs_view, predictor_view1, predictor_view2, stiffness_view1, stiffness_view2,
+                 spectral_status_view, spectral_dofs1_view, spectral_dofs2_view,
+                 spectral_coefficients1_view, spectral_coefficients2_view,
+                 spectral_weighted_stiffness_view, dissipative, stage_dt,
+                 predictor_depenetration_fraction, predictor_max_penetration_fraction,
+                 run_spectral_diagnostic] TRIBOL_HOST_DEVICE( IndexT i ) {
                   auto& plane = cs_view.getCompGeomView().getCommonPlane( i );
                   const auto& mesh1 = cs_view.getMesh1View();
                   const auto& mesh2 = cs_view.getMesh2View();
@@ -2835,7 +5132,12 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
                         const RealT velocity_gap = ( vel1[0] - vel2[0] ) * normal[0] +
                                                    ( vel1[1] - vel2[1] ) * normal[1] +
                                                    ( vel1[2] - vel2[2] ) * normal[2];
-                        const RealT target_velocity = ComputePredictorTargetVelocity( gap, stage_dt );
+                        const RealT target_velocity = ComputePredictorTargetVelocity(
+                            gap, velocity_gap, stage_dt,
+                            predictor_depenetration_fraction,
+                            ComputePredictorMaximumPenetration(
+                                mesh1, mesh2, index1, index2,
+                                predictor_max_penetration_fraction ) );
                         const bool predictor_active =
                             dissipative && stage_dt > 0. && velocity_gap < target_velocity;
                         if ( gap <= gap_tolerance || predictor_active ) {
@@ -2890,7 +5192,12 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
                                         ( x_face1[1] - x_face2[1] ) * constraint_normal[1];
                       const RealT velocity_gap = ( vel1[0] - vel2[0] ) * constraint_normal[0] +
                                                  ( vel1[1] - vel2[1] ) * constraint_normal[1];
-                      const RealT target_velocity = ComputePredictorTargetVelocity( gap, stage_dt );
+                      const RealT target_velocity = ComputePredictorTargetVelocity(
+                          gap, velocity_gap, stage_dt,
+                          predictor_depenetration_fraction,
+                          ComputePredictorMaximumPenetration(
+                              mesh1, mesh2, index1, index2,
+                              predictor_max_penetration_fraction ) );
                       const bool predictor_active = dissipative && stage_dt > 0. && velocity_gap < target_velocity;
                       if ( gap <= gap_tolerance || predictor_active ) {
                         if ( mesh1.hasParentElementData() ) {
@@ -2898,6 +5205,29 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
                               mesh1, mesh2, index1, index2, local_dim, constraint_normal, phi1, phi2,
                               length * rule_weights[qp], penalty_stiffness, predictor_active, predictor_view1,
                               predictor_view2, stiffness_view1, stiffness_view2 );
+                          if ( run_spectral_diagnostic ) {
+                            const IndexT spectral_point =
+                                i * max_segment_gauss_legendre_qpts + qp;
+                            spectral_status_view[spectral_point] = gap <= gap_tolerance ? 1 : 2;
+                            spectral_weighted_stiffness_view[spectral_point] =
+                                length * rule_weights[qp] * penalty_stiffness;
+                            for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+                              for ( int d = 0; d < 2; ++d ) {
+                                const IndexT entry =
+                                    spectral_point * spectral_entries_per_side + a * 2 + d;
+                                spectral_dofs1_view[entry] =
+                                    mesh1.getParentDofId( index1, a ) * 2 + d;
+                                spectral_dofs2_view[entry] =
+                                    mesh2.getParentDofId( index2, a ) * 2 + d;
+                                spectral_coefficients1_view[entry] =
+                                    phi1[a] * constraint_normal[d] *
+                                    sqrt( mesh1.getParentInverseMass( index1, a, d ) );
+                                spectral_coefficients2_view[entry] =
+                                    -phi2[a] * constraint_normal[d] *
+                                    sqrt( mesh2.getParentInverseMass( index2, a, d ) );
+                              }
+                            }
+                          }
                         } else {
                           AccumulateConstraintRowBounds(
                               mesh1, mesh2, index1, index2, local_dim, num_nodes_per_face, constraint_normal, phi1, phi2,
@@ -2952,6 +5282,115 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
         : std::numeric_limits<RealT>::infinity();
     cs->setPredictorDiagnostics( predictor_bound, predictor_relaxation );
     cs->setPenaltyStabilityTimeStep( stability_dt );
+
+#ifdef BUILD_REDECOMP
+    if ( run_spectral_diagnostic ) {
+      ArrayT<int, 1, MemorySpace::Host> spectral_status_host( spectral_status );
+      ArrayT<IndexT, 1, MemorySpace::Host> spectral_dofs1_host( spectral_dofs1 );
+      ArrayT<IndexT, 1, MemorySpace::Host> spectral_dofs2_host( spectral_dofs2 );
+      ArrayT<RealT, 1, MemorySpace::Host> spectral_coefficients1_host( spectral_coefficients1 );
+      ArrayT<RealT, 1, MemorySpace::Host> spectral_coefficients2_host( spectral_coefficients2 );
+      ArrayT<RealT, 1, MemorySpace::Host> spectral_weighted_stiffness_host(
+          spectral_weighted_stiffness );
+      std::map<IndexT, IndexT> dof_rows;
+      std::vector<PenaltyStabilitySpectralColumn> spectral_columns;
+      spectral_columns.reserve( spectral_capacity );
+      IndexT num_active_columns = 0;
+      IndexT num_predicted_columns = 0;
+      bool spectral_data_valid = true;
+
+      for ( int requested_status = 1; requested_status <= 2; ++requested_status ) {
+        for ( IndexT point = 0; point < spectral_capacity; ++point ) {
+          if ( spectral_status_host[point] != requested_status ) {
+            continue;
+          }
+          const RealT weighted_stiffness = spectral_weighted_stiffness_host[point];
+          if ( !std::isfinite( weighted_stiffness ) || weighted_stiffness <= 0. ) {
+            spectral_data_valid = false;
+            break;
+          }
+          PenaltyStabilitySpectralColumn column;
+          column.active = requested_status == 1;
+          const RealT stiffness_factor = std::sqrt( weighted_stiffness );
+          for ( int side = 0; side < 2; ++side ) {
+            const auto& dofs = side == 0 ? spectral_dofs1_host : spectral_dofs2_host;
+            const auto& coefficients =
+                side == 0 ? spectral_coefficients1_host : spectral_coefficients2_host;
+            for ( int entry = 0; entry < spectral_entries_per_side; ++entry ) {
+              const IndexT offset = point * spectral_entries_per_side + entry;
+              const RealT coefficient = stiffness_factor * coefficients[offset];
+              if ( !std::isfinite( coefficient ) || dofs[offset] < 0 ) {
+                spectral_data_valid = false;
+                break;
+              }
+              if ( coefficient == 0. ) {
+                continue;
+              }
+              const auto inserted =
+                  dof_rows.emplace( dofs[offset], static_cast<IndexT>( dof_rows.size() ) );
+              column.dofs[column.num_coefficients] = inserted.first->second;
+              column.coefficients[column.num_coefficients] = coefficient;
+              ++column.num_coefficients;
+            }
+            if ( !spectral_data_valid ) {
+              break;
+            }
+          }
+          if ( !spectral_data_valid ) {
+            break;
+          }
+          spectral_columns.push_back( column );
+          num_active_columns += column.active ? 1 : 0;
+          num_predicted_columns += column.active ? 0 : 1;
+        }
+        if ( !spectral_data_valid ) {
+          break;
+        }
+      }
+
+      if ( !spectral_data_valid ) {
+        SLIC_WARNING_ROOT( "Penalty stability spectral diagnostic encountered invalid row data." );
+      } else {
+        const PenaltyStabilitySpectralResult active_spectrum =
+            ComputePenaltyStabilitySpectrum(
+                spectral_columns, static_cast<IndexT>( dof_rows.size() ), true );
+        const PenaltyStabilitySpectralResult combined_spectrum =
+            ComputePenaltyStabilitySpectrum(
+                spectral_columns, static_cast<IndexT>( dof_rows.size() ), false );
+        const RealT exact_scaled_dt = combined_spectrum.maximum_eigenvalue > 0.
+            ? 2. * penalty_options.penalty_stability_scale /
+                  std::sqrt( combined_spectrum.maximum_eigenvalue )
+            : std::numeric_limits<RealT>::infinity();
+        const RealT exact_unscaled_dt = combined_spectrum.maximum_eigenvalue > 0.
+            ? 2. / std::sqrt( combined_spectrum.maximum_eigenvalue )
+            : std::numeric_limits<RealT>::infinity();
+        const RealT active_unscaled_dt = active_spectrum.maximum_eigenvalue > 0.
+            ? 2. / std::sqrt( active_spectrum.maximum_eigenvalue )
+            : std::numeric_limits<RealT>::infinity();
+        const RealT bound_to_eigenvalue = combined_spectrum.maximum_eigenvalue > 0.
+            ? stiffness_bound / combined_spectrum.maximum_eigenvalue
+            : 1.;
+        const RealT reconstructed_to_reported_bound = stiffness_bound > 0.
+            ? combined_spectrum.absolute_column_bound / stiffness_bound
+            : 1.;
+        SLIC_INFO_ROOT( axom::fmt::format(
+            "PENALTY_STABILITY_SPECTRAL_AUDIT time={:.17e} stage_dt={:.17e} attempted_dt={:.17e} "
+            "rows_active={} rows_predicted={} lambda_bound={:.17e} "
+            "lambda_reconstructed_bound={:.17e} lambda_exact_active={:.17e} "
+            "lambda_exact_combined={:.17e} dt_vote={:.17e} dt_exact_scaled={:.17e} "
+            "dt_exact_unscaled={:.17e} dt_exact_active_unscaled={:.17e} "
+            "bound_to_exact={:.17e} reconstructed_to_reported_bound={:.17e} "
+            "power_iterations={} power_relative_residual={:.17e}",
+            cs->getCurrentTime(), stage_dt, cs->getCurrentAttemptedTimeStep(),
+            num_active_columns, num_predicted_columns,
+            stiffness_bound, combined_spectrum.absolute_column_bound,
+            active_spectrum.maximum_eigenvalue, combined_spectrum.maximum_eigenvalue,
+            stability_dt, exact_scaled_dt, exact_unscaled_dt, active_unscaled_dt,
+            bound_to_eigenvalue, reconstructed_to_reported_bound,
+            combined_spectrum.iterations, combined_spectrum.relative_residual ) );
+      }
+    }
+#endif
   }
 
   const RealT stage_dt = cs->getCurrentTimeStep();
@@ -3211,7 +5650,12 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
                               ( vel_q1[1] - vel_q2[1] ) * overlapNormal[1] +
                               ( vel_q1[2] - vel_q2[2] ) * overlapNormal[2];
             }
-            const RealT target_velocity = ComputePredictorTargetVelocity( local_gap, stage_dt );
+            const RealT target_velocity = ComputePredictorTargetVelocity(
+                local_gap, local_vel_gap, stage_dt,
+                pen_enfrc_options.predictor_depenetration_fraction,
+                ComputePredictorMaximumPenetration(
+                    mesh1, mesh2, index1, index2,
+                    pen_enfrc_options.predictor_max_penetration_fraction ) );
             const bool predictor_active = use_dissipative && stage_dt > 0. && local_vel_gap < target_velocity;
             if ( local_gap > gap_tol && !predictor_active ) {
               continue;
@@ -3232,7 +5676,11 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
             if ( use_dissipative ) {
               predictor_pressure = ComputePredictorPressure(
                   mesh1, mesh2, index1, index2, dim, num_nodes_per_face, overlapNormal, phi_q1, phi_q2, local_gap,
-                  local_vel_gap, quadrature_measure, stage_dt, predictor_relaxation );
+                  local_vel_gap, quadrature_measure, stage_dt, predictor_relaxation,
+                  pen_enfrc_options.predictor_depenetration_fraction,
+                  ComputePredictorMaximumPenetration(
+                      mesh1, mesh2, index1, index2,
+                      pen_enfrc_options.predictor_max_penetration_fraction ) );
               local_pressure = std::min( local_pressure, predictor_pressure );
             }
             AccumulateForceDiagnostics( predictor_active, quadrature_measure, penalty_pressure, predictor_pressure,
@@ -3307,7 +5755,12 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
             local_vel_gap = ( vel_q1[0] - vel_q2[0] ) * constraint_normal[0] +
                             ( vel_q1[1] - vel_q2[1] ) * constraint_normal[1];
           }
-          const RealT target_velocity = ComputePredictorTargetVelocity( local_gap, stage_dt );
+          const RealT target_velocity = ComputePredictorTargetVelocity(
+              local_gap, local_vel_gap, stage_dt,
+              pen_enfrc_options.predictor_depenetration_fraction,
+              ComputePredictorMaximumPenetration(
+                  mesh1, mesh2, index1, index2,
+                  pen_enfrc_options.predictor_max_penetration_fraction ) );
           const bool predictor_active = use_dissipative && stage_dt > 0. && local_vel_gap < target_velocity;
           if ( local_gap > gap_tol && !predictor_active ) {
             continue;
@@ -3329,10 +5782,18 @@ int ApplyNormal<COMMON_PLANE, PENALTY>( CouplingScheme* cs )
             predictor_pressure = mesh1.hasParentElementData()
                 ? ComputeParentPredictorPressure( mesh1, mesh2, index1, index2, dim, constraint_normal, phi_q1, phi_q2,
                                                   local_gap, local_vel_gap, quadrature_measure, stage_dt,
-                                                  predictor_relaxation )
+                                                  predictor_relaxation,
+                                                  pen_enfrc_options.predictor_depenetration_fraction,
+                                                  ComputePredictorMaximumPenetration(
+                                                      mesh1, mesh2, index1, index2,
+                                                      pen_enfrc_options.predictor_max_penetration_fraction ) )
                 : ComputePredictorPressure( mesh1, mesh2, index1, index2, dim, num_nodes_per_face, constraint_normal,
                                             phi_q1, phi_q2, local_gap, local_vel_gap, quadrature_measure, stage_dt,
-                                            predictor_relaxation );
+                                            predictor_relaxation,
+                                            pen_enfrc_options.predictor_depenetration_fraction,
+                                            ComputePredictorMaximumPenetration(
+                                                mesh1, mesh2, index1, index2,
+                                                pen_enfrc_options.predictor_max_penetration_fraction ) );
             local_pressure = std::min( local_pressure, predictor_pressure );
           }
           AccumulateForceDiagnostics( predictor_active, quadrature_measure, penalty_pressure, predictor_pressure,
@@ -3471,6 +5932,17 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
   const RealT stage_dt = cs->getCurrentTimeStep();
   const auto& integration_options = cs->getEnforcementOptions().penalty_options;
   const auto& projection_options = cs->getEnforcementOptions().projection_options;
+  const bool use_penalty_guard =
+      projection_options.contact_response == PROJECTION_RESPONSE_PENALTY_GUARD;
+  const bool penalty_guard_baseline_only =
+      use_penalty_guard && projection_options.penalty_guard_phase ==
+                               PROJECTION_PENALTY_GUARD_BASELINE_ONLY;
+  const bool penalty_guard_correction_only =
+      use_penalty_guard && projection_options.penalty_guard_phase ==
+                               PROJECTION_PENALTY_GUARD_CORRECTION_ONLY;
+  const bool use_compliant_response =
+      projection_options.contact_response == PROJECTION_RESPONSE_COMPLIANT ||
+      use_penalty_guard;
   const RealT position_velocity_scale = projection_options.position_velocity_scale;
   SLIC_ERROR_ROOT_IF( position_velocity_scale < 1. &&
                           ( !mesh1.hasParentProjectionBaseVelocity() ||
@@ -3482,6 +5954,21 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
   RealT rule_coordinates[max_segment_gauss_legendre_qpts] = { 0. };
   const int num_rule_points = GetCommonPlaneSegmentRule( integration_options.common_plane_quadrature_order,
                                                          rule_weights, rule_coordinates );
+  constexpr int diagnostic_quadrature_order = 6;
+  RealT diagnostic_rule_weights[max_segment_gauss_legendre_qpts] = { 0. };
+  RealT diagnostic_rule_coordinates[max_segment_gauss_legendre_qpts] = { 0. };
+  const bool use_independent_gap_diagnostics =
+      integration_options.common_plane_quadrature_order < diagnostic_quadrature_order;
+  const int num_diagnostic_points =
+      use_independent_gap_diagnostics
+          ? GetCommonPlaneSegmentRule( diagnostic_quadrature_order, diagnostic_rule_weights,
+                                       diagnostic_rule_coordinates )
+          : 0;
+  IndexT diagnostic_contact_points = 0;
+  RealT diagnostic_gap_violation_sum = 0.;
+  RealT diagnostic_maximum_gap_violation = 0.;
+  RealT diagnostic_closing_rate_sum = 0.;
+  RealT diagnostic_maximum_closing_rate = 0.;
   std::vector<ProjectionConstraint> constraints;
   constraints.reserve( static_cast<std::size_t>( cs->getNumActivePairs() * num_rule_points ) );
 
@@ -3537,6 +6024,13 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
       constraint.gap = ( x_face1[0] - x_face2[0] ) * constraint.normal[0] +
                        ( x_face1[1] - x_face2[1] ) * constraint.normal[1];
       constraint.quadrature_measure = length * rule_weights[qp];
+      constraint.spring_stiffness =
+          constraint.quadrature_measure * ComputeProjectionPenaltyStiffnessPerArea(
+                                              mesh1, mesh2, element1, element2,
+                                              integration_options );
+      constraint.minimum_thickness =
+          std::min( mesh1.getElementData().m_thickness[element1],
+                    mesh2.getElementData().m_thickness[element2] );
       constraint.diagonal = ComputeParentInverseEffectiveMass( mesh1, mesh2, element1, element2, 2,
                                                                constraint.normal, constraint.phi1, constraint.phi2 );
       constraint.trial_velocity = EvaluateProjectionVelocity( constraint, mesh1, mesh2 );
@@ -3545,10 +6039,15 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
                                       : constraint.trial_velocity;
       constraint.position_trial_velocity = ( 1. - position_velocity_scale ) * base_velocity +
                                            position_velocity_scale * constraint.trial_velocity;
-      const RealT target_position_velocity = constraint.gap > 0. ? -constraint.gap / stage_dt : 0.;
-      constraint.target_velocity =
+      const RealT target_position_velocity = ComputeProjectionTargetPositionVelocity(
+          constraint.gap, stage_dt,
+          use_compliant_response ? 0. : projection_options.depenetration_fraction,
+          use_compliant_response ? 0. : projection_options.gap_tolerance );
+      const RealT endpoint_target_velocity =
           constraint.trial_velocity +
           ( target_position_velocity - constraint.position_trial_velocity ) / position_velocity_scale;
+      constraint.target_velocity = LimitProjectionTargetToNonpositiveWork(
+          constraint.gap, constraint.trial_velocity, endpoint_target_velocity );
       if ( !std::isfinite( constraint.gap ) || !std::isfinite( constraint.target_velocity ) ||
            !std::isfinite( constraint.quadrature_measure ) || constraint.quadrature_measure <= 0. ||
            !std::isfinite( constraint.diagonal ) || constraint.diagonal <= 0. ||
@@ -3561,6 +6060,44 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
       constraints.push_back( constraint );
       pair_has_constraint = true;
     }
+
+    for ( int qp = 0; qp < num_diagnostic_points; ++qp ) {
+      const RealT coordinate = diagnostic_rule_coordinates[qp];
+      const RealT x_q[2] = { ( 1. - coordinate ) * x0 + coordinate * x1,
+                             ( 1. - coordinate ) * y0 + coordinate * y1 };
+      RealT x_face1[max_dim];
+      RealT x_face2[max_dim];
+      RealT linear_phi1[2];
+      RealT linear_phi2[2];
+      RealT child_parameter1 = 0.;
+      RealT child_parameter2 = 0.;
+      if ( !EvalLinearEdgeAtProjectedPoint( face1, x_q, overlap_normal, x_face1, linear_phi1, 0, nullptr, nullptr,
+                                            &child_parameter1 ) ||
+           !EvalLinearEdgeAtProjectedPoint( face2, x_q, overlap_normal, x_face2, linear_phi2, 0, nullptr, nullptr,
+                                            &child_parameter2 ) ) {
+        continue;
+      }
+
+      ProjectionConstraint diagnostic{};
+      diagnostic.element1 = element1;
+      diagnostic.element2 = element2;
+      RealT velocity1[max_dim] = { 0., 0., 0. };
+      RealT velocity2[max_dim] = { 0., 0., 0. };
+      EvalParentQ2Pair( mesh1, mesh2, element1, element2, child_parameter1, child_parameter2, true,
+                        overlap_normal, diagnostic.phi1, diagnostic.phi2, x_face1, x_face2, velocity1,
+                        velocity2, diagnostic.normal );
+      const RealT gap = ( x_face1[0] - x_face2[0] ) * diagnostic.normal[0] +
+                        ( x_face1[1] - x_face2[1] ) * diagnostic.normal[1];
+      const RealT closing_rate = std::max( 0., -EvaluateProjectionVelocity( diagnostic, mesh1, mesh2 ) );
+      const RealT gap_violation = std::max( 0., -gap );
+      ++diagnostic_contact_points;
+      diagnostic_gap_violation_sum += gap_violation;
+      diagnostic_maximum_gap_violation =
+          std::max( diagnostic_maximum_gap_violation, gap_violation );
+      diagnostic_closing_rate_sum += closing_rate;
+      diagnostic_maximum_closing_rate =
+          std::max( diagnostic_maximum_closing_rate, closing_rate );
+    }
     plane.m_inContact = pair_has_constraint;
   }
 
@@ -3569,6 +6106,62 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
     cs->setCompliantProjectionDiagnostics( 0., 0., 0., 0, 0., 0. );
     cs->setPredictorForceDiagnostics( 0, 0, 0., 0., 0. );
     cs->setContactPointDiagnostics( 0, 0., 0., 0., 0., 0. );
+    return 0;
+  }
+
+  if ( penalty_guard_baseline_only ) {
+    std::vector<RealT> plane_forces( cs->getNumActivePairs(), 0. );
+    IndexT active_forces = 0;
+    RealT total_force = 0.;
+    RealT maximum_force = 0.;
+    RealT spring_force = 0.;
+    RealT damping_force = 0.;
+    RealT stored_energy = 0.;
+    RealT gap_violation_sum = 0.;
+    RealT maximum_gap_violation = 0.;
+    RealT closing_rate_sum = 0.;
+    RealT maximum_closing_rate = 0.;
+    for ( auto& constraint : constraints ) {
+      const RealT effective_mass = 1. / constraint.diagonal;
+      const RealT damping_coefficient =
+          2. * projection_options.damping_ratio *
+          std::sqrt( constraint.spring_stiffness * effective_mass );
+      const RealT penetration = std::max( 0., -constraint.gap );
+      const RealT local_spring_force = constraint.spring_stiffness * penetration;
+      const RealT local_damping_force =
+          std::max( 0., -damping_coefficient * constraint.trial_velocity );
+      const RealT force = local_spring_force + local_damping_force;
+      if ( force > 0. ) {
+        ++active_forces;
+        AccumulateProjectionImpulse( constraint, force, mesh1, mesh2 );
+        plane_forces[constraint.plane_index] += force;
+      }
+      total_force += force;
+      maximum_force = std::max( maximum_force, force );
+      spring_force += local_spring_force;
+      damping_force += local_damping_force;
+      stored_energy += 0.5 * constraint.spring_stiffness * penetration * penetration;
+      const RealT gap_violation = std::max( 0., -constraint.gap );
+      const RealT closing_rate = std::max( 0., -constraint.trial_velocity );
+      gap_violation_sum += gap_violation;
+      maximum_gap_violation = std::max( maximum_gap_violation, gap_violation );
+      closing_rate_sum += closing_rate;
+      maximum_closing_rate = std::max( maximum_closing_rate, closing_rate );
+    }
+    for ( IndexT i = 0; i < cs->getNumActivePairs(); ++i ) {
+      auto& plane = cs_view.getCompGeomView().getCommonPlane( i );
+      plane.m_pressure = plane.m_area > 0. ? -plane_forces[i] / plane.m_area : 0.;
+      plane.m_inContact = plane_forces[i] > 0.;
+    }
+    cs->setProjectionDiagnostics( static_cast<IndexT>( constraints.size() ), active_forces, 0,
+                                  true, true, 0., 0., 0., 0., 1., 1.,
+                                  stage_dt * total_force, total_force, 0., 0. );
+    cs->setCompliantProjectionDiagnostics( spring_force, damping_force, 0., 0,
+                                           stored_energy, maximum_gap_violation );
+    cs->setPredictorForceDiagnostics( 0, 0, spring_force, damping_force, total_force );
+    cs->setContactPointDiagnostics( static_cast<IndexT>( constraints.size() ), maximum_force,
+                                    gap_violation_sum, maximum_gap_violation,
+                                    closing_rate_sum, maximum_closing_rate );
     return 0;
   }
 
@@ -3596,6 +6189,10 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
       normalized_rows1.data(), normalized_rows2.data(), unused_rows1.data(), unused_rows2.data() );
   const RealT coupling_bound = row_maxima.first > 0. ? row_maxima.first : 1.;
   const RealT relaxation = std::min( 1., projection_options.relaxation_scale / coupling_bound );
+  const bool use_dense_projection_solver =
+      integration_options.common_plane_quadrature_order > 1;
+  const RealT reported_relaxation =
+      use_dense_projection_solver ? projection_options.relaxation_scale : relaxation;
 
   auto compute_residual = [&]() {
     ProjectionResiduals residuals;
@@ -3611,35 +6208,225 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
     return residuals;
   };
 
-  const ProjectionResiduals initial_residuals = compute_residual();
-  const RealT initial_residual = initial_residuals.complementarity;
+  ProjectionResiduals initial_residuals = compute_residual();
+  RealT initial_residual = initial_residuals.complementarity;
   RealT final_residual = initial_residual;
   RealT final_primal_residual = initial_residuals.primal;
   const RealT convergence_tolerance =
       projection_options.absolute_tolerance + projection_options.relative_tolerance * initial_residual;
-  const RealT primal_tolerance =
+  RealT primal_tolerance =
       projection_options.absolute_tolerance + projection_options.primal_relative_tolerance * initial_residuals.primal;
   bool complementarity_converged = final_residual <= convergence_tolerance;
   bool valid = std::isfinite( initial_residual ) && std::isfinite( relaxation ) && relaxation > 0.;
+  bool force_limited = false;
+  IndexT force_limited_constraints = 0;
   int iterations = 0;
-  for ( int iteration = 1;
-        valid && !complementarity_converged && iteration <= projection_options.max_iterations; ++iteration ) {
-    for ( auto& constraint : constraints ) {
-      const RealT velocity = EvaluateProjectionVelocity( constraint, mesh1, mesh2 );
-      const RealT old_multiplier = constraint.multiplier;
-      constraint.multiplier = std::max(
-          0., old_multiplier + relaxation * ( constraint.target_velocity - velocity ) / constraint.diagonal );
-      const RealT multiplier_increment = constraint.multiplier - old_multiplier;
-      valid = valid && std::isfinite( constraint.multiplier ) && std::isfinite( multiplier_increment );
-      AccumulateProjectionImpulse( constraint, multiplier_increment, mesh1, mesh2 );
+  mfem::DenseMatrix mass_scaled_rows;
+  mfem::DenseMatrix projection_operator;
+  if ( use_dense_projection_solver ) {
+    valid = valid && AssembleProjectionOperator( constraints, *mfem_data, mass_scaled_rows,
+                                                 projection_operator );
+    mfem::DenseMatrix solve_operator( projection_operator );
+    if ( valid && use_compliant_response ) {
+      for ( int i = 0; i < static_cast<int>( constraints.size() ); ++i ) {
+        auto& constraint = constraints[i];
+        const RealT physical_diagonal = projection_operator( i, i );
+        const bool valid_contact_data = std::isfinite( physical_diagonal ) && physical_diagonal > 0. &&
+                                        std::isfinite( constraint.spring_stiffness ) &&
+                                        constraint.spring_stiffness > 0. &&
+                                        std::isfinite( constraint.minimum_thickness ) &&
+                                        constraint.minimum_thickness > 0.;
+        SLIC_INFO_ROOT_IF( !valid_contact_data,
+                           "Invalid common-plane compliant point diagonal/stiffness/thickness: "
+                               << physical_diagonal << "/" << constraint.spring_stiffness << "/"
+                               << constraint.minimum_thickness );
+        valid = valid && valid_contact_data;
+        if ( valid_contact_data ) {
+          const RealT effective_mass = 1. / physical_diagonal;
+          constraint.damping_coefficient =
+              2. * projection_options.damping_ratio *
+              std::sqrt( constraint.spring_stiffness * effective_mass );
+          const RealT current_penetration = std::max( 0., -constraint.gap );
+          if ( use_penalty_guard ) {
+            const RealT spring_force = constraint.spring_stiffness * current_penetration;
+            const RealT damping_force =
+                std::max( 0., -constraint.damping_coefficient * constraint.trial_velocity );
+            constraint.multiplier = penalty_guard_correction_only
+                ? 0.
+                : stage_dt * ( spring_force + damping_force );
+            valid = valid && std::isfinite( constraint.multiplier );
+          } else {
+            const RealT spring_time_weight = projection_options.spring_time_weight;
+            const RealT effective_damping = constraint.damping_coefficient +
+                                            spring_time_weight * constraint.spring_stiffness *
+                                                position_velocity_scale * stage_dt;
+            valid = valid && std::isfinite( effective_damping ) && effective_damping > 0.;
+            if ( std::isfinite( effective_damping ) && effective_damping > 0. ) {
+              solve_operator( i, i ) += 1. / ( stage_dt * effective_damping );
+              const RealT trial_endpoint_gap =
+                  constraint.gap + stage_dt * constraint.position_trial_velocity;
+              const RealT trial_penetration = std::max( 0., -trial_endpoint_gap );
+              const bool contact_predicted = current_penetration > 0. || trial_endpoint_gap < 0.;
+              const RealT weighted_penetration =
+                  ( 1. - spring_time_weight ) * current_penetration +
+                  spring_time_weight * trial_penetration;
+              const RealT free_contact_residual =
+                  contact_predicted
+                      ? ( constraint.damping_coefficient * constraint.trial_velocity -
+                          constraint.spring_stiffness * weighted_penetration ) /
+                            effective_damping
+                      : 0.;
+              constraint.target_velocity = constraint.trial_velocity - free_contact_residual;
+              constraint.diagonal = solve_operator( i, i );
+            }
+          }
+        }
+      }
     }
-    valid = valid && mfem_data->ApplyParentQ2ProjectionImpulse();
-    const ProjectionResiduals residuals = compute_residual();
-    final_residual = residuals.complementarity;
-    final_primal_residual = residuals.primal;
-    valid = valid && std::isfinite( final_residual ) && std::isfinite( final_primal_residual );
-    complementarity_converged = valid && final_residual <= convergence_tolerance;
-    iterations = iteration;
+    TraceProjectionSolveResult guard_result;
+    bool guard_required = false;
+    if ( valid ) {
+      if ( use_penalty_guard ) {
+        std::vector<RealT> original_trial_velocity( constraints.size() );
+        std::vector<RealT> original_position_trial_velocity( constraints.size() );
+        for ( int i = 0; i < static_cast<int>( constraints.size() ); ++i ) {
+          auto& constraint = constraints[i];
+          original_trial_velocity[i] = constraint.trial_velocity;
+          original_position_trial_velocity[i] = constraint.position_trial_velocity;
+          constraint.compliant_multiplier = constraint.multiplier;
+        }
+        for ( int i = 0; i < static_cast<int>( constraints.size() ); ++i ) {
+          auto& constraint = constraints[i];
+          RealT penalty_velocity = original_trial_velocity[i];
+          for ( int j = 0; j < static_cast<int>( constraints.size() ); ++j ) {
+            penalty_velocity += projection_operator( i, j ) * constraints[j].compliant_multiplier;
+          }
+          const RealT penalty_position_velocity =
+              original_position_trial_velocity[i] +
+              position_velocity_scale * ( penalty_velocity - original_trial_velocity[i] );
+          const RealT penalty_endpoint_gap = constraint.gap + stage_dt * penalty_position_velocity;
+          const RealT allowed_penetration =
+              projection_options.max_penetration_fraction * constraint.minimum_thickness;
+          const RealT minimum_endpoint_gap =
+              constraint.gap < -allowed_penetration ? constraint.gap : -allowed_penetration;
+          const RealT guard_tolerance = 100. * std::numeric_limits<RealT>::epsilon() *
+                                        std::max( 1., std::abs( minimum_endpoint_gap ) );
+          const bool constraint_requires_guard =
+              penalty_endpoint_gap < minimum_endpoint_gap - guard_tolerance;
+          guard_required = guard_required || constraint_requires_guard;
+          constraint.trial_velocity = penalty_velocity;
+          constraint.position_trial_velocity = penalty_position_velocity;
+          const RealT target_position_velocity =
+              constraint_requires_guard ? ( minimum_endpoint_gap - constraint.gap ) / stage_dt
+                                        : penalty_position_velocity;
+          constraint.target_velocity =
+              penalty_velocity +
+              ( target_position_velocity - penalty_position_velocity ) / position_velocity_scale;
+          constraint.multiplier = 0.;
+          constraint.diagonal = projection_operator( i, i );
+        }
+        if ( guard_required ) {
+          ImpulseProjectionOptions guard_options = projection_options;
+          if ( penalty_guard_correction_only ) {
+            guard_options.max_iterations = 1;
+          }
+          guard_result = SolveTraceProjectionSystem( projection_operator, constraints, guard_options );
+          valid = valid && guard_result.valid;
+        }
+        for ( int i = 0; i < static_cast<int>( constraints.size() ); ++i ) {
+          auto& constraint = constraints[i];
+          constraint.guard_multiplier = guard_required ? constraint.multiplier : 0.;
+          constraint.multiplier = constraint.compliant_multiplier + constraint.guard_multiplier;
+          constraint.trial_velocity = original_trial_velocity[i];
+          constraint.position_trial_velocity = original_position_trial_velocity[i];
+        }
+        complementarity_converged = !guard_required || guard_result.complementarity_converged;
+        iterations = guard_result.iterations;
+        initial_residual = guard_result.initial_residual;
+        final_residual = guard_result.final_residual;
+        final_primal_residual = guard_result.final_primal_residual;
+        primal_tolerance = guard_result.primal_tolerance;
+      } else {
+        const TraceProjectionSolveResult solve_result =
+            SolveTraceProjectionSystem( solve_operator, constraints, projection_options );
+        valid = solve_result.valid;
+        complementarity_converged = solve_result.complementarity_converged;
+        iterations = solve_result.iterations;
+        initial_residual = solve_result.initial_residual;
+        final_residual = solve_result.final_residual;
+        final_primal_residual = solve_result.final_primal_residual;
+        primal_tolerance = solve_result.primal_tolerance;
+      }
+    }
+    if ( valid ) {
+      if ( !use_compliant_response && projection_options.maximum_force >= 0. ) {
+        const RealT maximum_impulse = stage_dt * projection_options.maximum_force;
+        for ( auto& constraint : constraints ) {
+          if ( constraint.multiplier > maximum_impulse ) {
+            constraint.multiplier = maximum_impulse;
+            force_limited = true;
+            ++force_limited_constraints;
+          }
+        }
+        if ( force_limited ) {
+          const ProjectionResiduals limited_residuals =
+              ComputeTraceProjectionResiduals( projection_operator, constraints );
+          final_residual = limited_residuals.complementarity;
+          final_primal_residual = limited_residuals.primal;
+          complementarity_converged = final_residual <= convergence_tolerance;
+        }
+      }
+      if ( !use_compliant_response ) {
+        RealT linear_work = 0.;
+        RealT quadratic_work = 0.;
+        for ( int i = 0; i < static_cast<int>( constraints.size() ); ++i ) {
+          linear_work += constraints[i].multiplier * constraints[i].trial_velocity;
+          for ( int j = 0; j < static_cast<int>( constraints.size() ); ++j ) {
+            quadratic_work += constraints[i].multiplier * projection_operator( i, j ) *
+                              constraints[j].multiplier;
+          }
+        }
+        if ( linear_work + 0.5 * quadratic_work > 0. ) {
+          RealT energy_safe_scale = 0.;
+          if ( linear_work < 0. && quadratic_work > 0. ) {
+            energy_safe_scale = std::min( 1., -2. * linear_work / quadratic_work );
+            energy_safe_scale *= 1. - 100. * std::numeric_limits<RealT>::epsilon();
+          }
+          for ( auto& constraint : constraints ) {
+            constraint.multiplier *= energy_safe_scale;
+          }
+          const ProjectionResiduals scaled_residuals =
+              ComputeTraceProjectionResiduals( projection_operator, constraints );
+          final_residual = scaled_residuals.complementarity;
+          final_primal_residual = scaled_residuals.primal;
+          complementarity_converged = final_residual <= convergence_tolerance;
+        }
+      }
+      for ( const auto& constraint : constraints ) {
+        AccumulateProjectionImpulse( constraint, constraint.multiplier, mesh1, mesh2 );
+      }
+      valid = mfem_data->ApplyParentQ2ProjectionImpulse();
+    }
+  } else {
+    for ( int iteration = 1;
+          valid && !complementarity_converged && iteration <= projection_options.max_iterations; ++iteration ) {
+      for ( auto& constraint : constraints ) {
+        const RealT velocity = EvaluateProjectionVelocity( constraint, mesh1, mesh2 );
+        const RealT old_multiplier = constraint.multiplier;
+        constraint.multiplier = std::max(
+            0., old_multiplier + relaxation * ( constraint.target_velocity - velocity ) / constraint.diagonal );
+        const RealT multiplier_increment = constraint.multiplier - old_multiplier;
+        valid = valid && std::isfinite( constraint.multiplier ) && std::isfinite( multiplier_increment );
+        AccumulateProjectionImpulse( constraint, multiplier_increment, mesh1, mesh2 );
+      }
+      valid = valid && mfem_data->ApplyParentQ2ProjectionImpulse();
+      const ProjectionResiduals residuals = compute_residual();
+      final_residual = residuals.complementarity;
+      final_primal_residual = residuals.primal;
+      valid = valid && std::isfinite( final_residual ) && std::isfinite( final_primal_residual );
+      complementarity_converged = valid && final_residual <= convergence_tolerance;
+      iterations = iteration;
+    }
   }
 
   IndexT active_multipliers = 0;
@@ -3650,8 +6437,16 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
   RealT closing_rate_sum = 0.;
   RealT maximum_closing_rate = 0.;
   RealT maximum_endpoint_violation = 0.;
+  RealT maximum_endpoint_gap_excess = 0.;
   RealT energy_change = 0.;
+  RealT spring_energy_change = 0.;
   RealT energy_scale = 0.;
+  RealT spring_force = 0.;
+  RealT damping_force = 0.;
+  RealT guard_force = 0.;
+  IndexT guard_constraints = 0;
+  RealT stored_energy = 0.;
+  RealT maximum_penetration_fraction = 0.;
   std::vector<RealT> plane_impulses( static_cast<std::size_t>( cs->getNumActivePairs() ), 0. );
   for ( const auto& constraint : constraints ) {
     const RealT final_velocity = EvaluateProjectionVelocity( constraint, mesh1, mesh2 );
@@ -3661,30 +6456,72 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
     const RealT endpoint_gap = constraint.gap + stage_dt * position_final_velocity;
     const RealT gap_violation = std::max( 0., -constraint.gap );
     const RealT closing_rate = std::max( 0., -constraint.trial_velocity );
-    const RealT energy_term = 0.5 * constraint.multiplier *
-                              ( constraint.trial_velocity + final_velocity );
+    const RealT energy_term = constraint.multiplier > 0.
+                                  ? 0.5 * constraint.multiplier *
+                                        ( constraint.trial_velocity + final_velocity )
+                                  : 0.;
+    const RealT initial_penetration = std::max( 0., -constraint.gap );
+    const RealT final_penetration = std::max( 0., -endpoint_gap );
+    const RealT spring_energy_term =
+        use_compliant_response && ( initial_penetration > 0. || final_penetration > 0. )
+            ? 0.5 * constraint.spring_stiffness *
+                  ( final_penetration * final_penetration - initial_penetration * initial_penetration )
+            : 0.;
     if ( constraint.multiplier > 0. ) {
       ++active_multipliers;
     }
     total_impulse += constraint.multiplier;
     plane_impulses[constraint.plane_index] += constraint.multiplier;
     maximum_force = std::max( maximum_force, constraint.multiplier / stage_dt );
+    spring_force += use_compliant_response ? constraint.spring_stiffness * final_penetration : 0.;
+    damping_force += use_compliant_response
+                         ? std::max( 0., -constraint.damping_coefficient * final_velocity )
+                         : 0.;
+    guard_force += constraint.guard_multiplier / stage_dt;
+    guard_constraints += constraint.guard_multiplier > 0. ? 1 : 0;
+    stored_energy += use_compliant_response
+                         ? 0.5 * constraint.spring_stiffness * final_penetration * final_penetration
+                         : 0.;
+    maximum_penetration_fraction =
+        use_compliant_response && constraint.minimum_thickness > 0.
+            ? std::max( maximum_penetration_fraction,
+                        final_penetration / constraint.minimum_thickness )
+            : maximum_penetration_fraction;
     gap_violation_sum += gap_violation;
     maximum_gap_violation = std::max( maximum_gap_violation, gap_violation );
     closing_rate_sum += closing_rate;
     maximum_closing_rate = std::max( maximum_closing_rate, closing_rate );
-    maximum_endpoint_violation = std::max( maximum_endpoint_violation, std::max( 0., -endpoint_gap ) );
+    const RealT endpoint_violation = std::max( 0., -endpoint_gap );
+    maximum_endpoint_violation = std::max( maximum_endpoint_violation, endpoint_violation );
+    if ( projection_options.maximum_gap >= 0. ) {
+      maximum_endpoint_gap_excess =
+          std::max( maximum_endpoint_gap_excess,
+                    endpoint_violation - projection_options.maximum_gap );
+    }
     energy_change += energy_term;
-    energy_scale += std::abs( energy_term );
+    spring_energy_change += spring_energy_term;
+    energy_scale += std::abs( energy_term ) + std::abs( spring_energy_term );
   }
   const RealT energy_tolerance = 100. * std::numeric_limits<RealT>::epsilon() * std::max( 1., energy_scale );
   const bool primal_converged = final_primal_residual <= primal_tolerance;
-  const bool accepted = valid && primal_converged && std::isfinite( energy_change ) &&
-                        energy_change <= energy_tolerance;
+  const RealT validated_energy_change = energy_change + spring_energy_change;
+  const RealT endpoint_gap_tolerance = stage_dt * primal_tolerance +
+                                       100. * std::numeric_limits<RealT>::epsilon();
+  const bool gap_accepted = use_compliant_response || projection_options.maximum_gap < 0. ||
+                            maximum_endpoint_gap_excess <= endpoint_gap_tolerance;
+  const bool energy_accepted = use_penalty_guard || validated_energy_change <= energy_tolerance;
+  const bool accepted = valid &&
+                        ( primal_converged || force_limited || penalty_guard_correction_only ) &&
+                        std::isfinite( validated_energy_change ) && energy_accepted && gap_accepted;
+
+  if ( force_limited ) {
+    SLIC_INFO_ROOT( "Common-plane projection force-limited constraints/limit: "
+                    << force_limited_constraints << "/" << projection_options.maximum_force );
+  }
 
   if ( !accepted && !cs->hasProjectionOperatorDiagnostics() ) {
     const ProjectionOperatorDiagnostics operator_diagnostics =
-        ComputeProjectionOperatorDiagnostics( constraints, relaxation, *mfem_data );
+        ComputeProjectionOperatorDiagnostics( constraints, reported_relaxation, *mfem_data );
     cs->setProjectionOperatorDiagnostics(
         operator_diagnostics.velocity_dofs, operator_diagnostics.rank, operator_diagnostics.minimum_eigenvalue,
         operator_diagnostics.maximum_eigenvalue, operator_diagnostics.condition_estimate,
@@ -3709,11 +6546,26 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
   const RealT equivalent_force = total_impulse / stage_dt;
   cs->setProjectionDiagnostics( static_cast<IndexT>( constraints.size() ), active_multipliers, iterations, accepted,
                                 complementarity_converged, initial_residual, final_residual, final_primal_residual,
-                                primal_tolerance, coupling_bound, relaxation, total_impulse, equivalent_force,
-                                maximum_endpoint_violation, energy_change );
-  cs->setPredictorForceDiagnostics( 0, 0, 0., 0., accepted ? equivalent_force : 0. );
-  cs->setContactPointDiagnostics( static_cast<IndexT>( constraints.size() ), accepted ? maximum_force : 0.,
-                                  gap_violation_sum, maximum_gap_violation, closing_rate_sum, maximum_closing_rate );
+                                primal_tolerance, coupling_bound, reported_relaxation, total_impulse, equivalent_force,
+                                maximum_endpoint_violation, validated_energy_change );
+  cs->setCompliantProjectionDiagnostics(
+      accepted && use_compliant_response ? spring_force : 0.,
+      accepted && use_compliant_response ? damping_force : 0.,
+      accepted && use_penalty_guard ? guard_force : 0.,
+      accepted && use_penalty_guard ? guard_constraints : 0,
+      accepted && use_compliant_response ? stored_energy : 0.,
+      accepted && use_compliant_response ? maximum_penetration_fraction : 0. );
+  cs->setPredictorForceDiagnostics( 0, 0, accepted ? spring_force : 0.,
+                                    accepted && use_compliant_response ? damping_force : 0.,
+                                    accepted ? equivalent_force : 0. );
+  cs->setContactPointDiagnostics(
+      use_independent_gap_diagnostics ? diagnostic_contact_points
+                                      : static_cast<IndexT>( constraints.size() ),
+      accepted ? maximum_force : 0.,
+      use_independent_gap_diagnostics ? diagnostic_gap_violation_sum : gap_violation_sum,
+      use_independent_gap_diagnostics ? diagnostic_maximum_gap_violation : maximum_gap_violation,
+      use_independent_gap_diagnostics ? diagnostic_closing_rate_sum : closing_rate_sum,
+      use_independent_gap_diagnostics ? diagnostic_maximum_closing_rate : maximum_closing_rate );
   return accepted ? 0 : 1;
 #endif
 }
@@ -3756,93 +6608,312 @@ int ApplyNormal<PARENT_TRACE_MORTAR, PENALTY>( CouplingScheme* cs )
 
   const auto& penalty_options = cs->getEnforcementOptions().penalty_options;
   const bool use_augmented_lagrangian = penalty_options.augmented_lagrangian;
-  const bool use_quadrature_hybrid =
+  const bool use_quadrature_local =
+      use_augmented_lagrangian && penalty_options.al_formulation == PENALTY_AL_QUADRATURE_LOCAL;
+  const bool use_quadrature_point_memory =
       use_augmented_lagrangian &&
-      penalty_options.al_formulation == PENALTY_AL_QUADRATURE_HYBRID;
+      penalty_options.al_formulation == PENALTY_AL_QUADRATURE_POINT_MEMORY;
+  const bool use_compliance_corrected_cell =
+      use_augmented_lagrangian &&
+      penalty_options.al_formulation == PENALTY_AL_QUADRATURE_CELL_MEMORY_COMPLIANCE;
+  const bool use_compliance_corrected_parent_trace =
+      use_augmented_lagrangian &&
+      penalty_options.al_formulation == PENALTY_AL_PARENT_TRACE_COMPLIANCE;
+  const bool use_quadrature_cell_memory =
+      use_augmented_lagrangian &&
+      ( penalty_options.al_formulation == PENALTY_AL_QUADRATURE_CELL_MEMORY ||
+        use_compliance_corrected_cell );
+  const bool use_quadrature_history_local =
+      use_quadrature_local || use_quadrature_point_memory || use_quadrature_cell_memory;
+  const bool use_quadrature_hybrid =
+      use_augmented_lagrangian && ( penalty_options.al_formulation == PENALTY_AL_QUADRATURE_HYBRID ||
+                                    penalty_options.al_formulation == PENALTY_AL_QUADRATURE_HYBRID_COMPLIANCE );
+  const bool use_quadrature_pressure = use_quadrature_history_local || use_quadrature_hybrid;
+  const bool use_compliance_corrected_hybrid =
+      use_augmented_lagrangian && penalty_options.al_formulation == PENALTY_AL_QUADRATURE_HYBRID_COMPLIANCE;
+  const bool use_compliance_corrected =
+      use_compliance_corrected_cell || use_compliance_corrected_parent_trace ||
+      use_compliance_corrected_hybrid;
+  const bool collect_quadrature_gap_diagnostics =
+      use_quadrature_pressure || use_compliance_corrected_parent_trace;
+  const bool fixed_active_set = use_quadrature_hybrid && penalty_options.al_fixed_active_set_time >= 0. &&
+                                cs->getCurrentTime() >= penalty_options.al_fixed_active_set_time;
+  const bool use_penalty_continuation = penalty_options.al_continuation_factor != 1. ||
+                                        penalty_options.al_continuation_max_scale != 1.;
+  const bool use_over_relaxation = penalty_options.al_relaxation > 1. ||
+                                   penalty_options.al_unloading_relaxation > 1.;
+  SLIC_ERROR_ROOT_IF( ( use_quadrature_local || use_quadrature_point_memory ||
+                        ( use_quadrature_cell_memory && !use_compliance_corrected_cell ) ||
+                        ( use_augmented_lagrangian &&
+                          penalty_options.al_formulation == PENALTY_AL_QUADRATURE_HYBRID ) ) &&
+                          penalty_options.al_fixed_iterations <= 0,
+                      "Quadrature-local, quadrature-point-memory, quadrature-cell-memory, and "
+                      "quadrature-hybrid penalty AL "
+                      "require a positive fixed iteration count." );
+  SLIC_ERROR_ROOT_IF( use_compliance_corrected && penalty_options.al_fixed_iterations != 0,
+                      "Compliance-corrected penalty AL requires "
+                      "residual-controlled iterations with fixed iterations set to zero." );
+  SLIC_ERROR_ROOT_IF( use_compliance_corrected && penalty_options.al_fixed_active_set_time >= 0.,
+                      "Compliance-corrected penalty AL is incompatible "
+                      "with the fixed-active diagnostic." );
+  SLIC_ERROR_ROOT_IF( use_augmented_lagrangian && use_penalty_continuation &&
+                          !use_compliance_corrected_cell,
+                      "Penalty AL continuation requires the quadrature-cell-compliance formulation." );
+  SLIC_ERROR_ROOT_IF( use_augmented_lagrangian && use_over_relaxation &&
+                          ( !use_compliance_corrected_cell ||
+                            penalty_options.al_continuation_factor <= 1. ||
+                            penalty_options.al_continuation_max_scale <= 1. ),
+                      "Penalty AL relaxation above one requires active quadrature-cell-compliance "
+                      "penalty continuation." );
+  SLIC_ERROR_ROOT_IF(
+      use_augmented_lagrangian && !use_compliance_corrected && penalty_options.al_target_gap_fraction != 0.,
+      "A nonzero parent-trace penalty AL target gap fraction requires the "
+      "quadrature-cell-compliance, parent-trace-compliance, or "
+      "quadrature-hybrid-compliance formulation." );
+  SLIC_ERROR_ROOT_IF( use_quadrature_history_local && penalty_options.al_spatial_smoothing != 0.,
+                      "Quadrature-local penalty AL formulations do not support parent-trace history smoothing." );
+  SLIC_ERROR_ROOT_IF( use_quadrature_local && penalty_options.al_activation_gap_fraction != 0.,
+                      "Quadrature-local penalty AL currently requires zero C1 activation width." );
+  SLIC_ERROR_ROOT_IF( use_compliance_corrected_cell && penalty_options.al_activation_gap_fraction != 0.,
+                      "Quadrature-cell-compliance penalty AL currently requires zero C1 activation width." );
+  SLIC_ERROR_ROOT_IF( use_compliance_corrected_parent_trace &&
+                          penalty_options.al_activation_gap_fraction != 0.,
+                      "Parent-trace-compliance penalty AL requires zero C1 activation width." );
+  SLIC_ERROR_ROOT_IF( use_compliance_corrected_parent_trace &&
+                          penalty_options.al_spatial_smoothing != 0.,
+                      "Parent-trace-compliance penalty AL requires zero history smoothing." );
+  SLIC_ERROR_ROOT_IF( ( use_quadrature_local || use_quadrature_cell_memory ) &&
+                          penalty_options.al_fixed_active_set_time >= 0.,
+                      "Quadrature-local and quadrature-cell penalty AL formulations do not support "
+                      "a fixed active set or ramp cutoff." );
+  SLIC_ERROR_ROOT_IF( penalty_options.al_normal_damping_ratio > 0. && !use_quadrature_pressure,
+                      "Parent-trace penalty AL normal damping requires a quadrature-pressure formulation." );
+  SLIC_ERROR_ROOT_IF(
+      penalty_options.al_normal_damping_ratio > 0. &&
+          ( !mesh1.hasInverseMass() || !mesh2.hasInverseMass() || !mesh1.hasVelocity() || !mesh2.hasVelocity() ),
+      "Parent-trace penalty AL normal damping requires inverse mass and velocity data." );
+  SLIC_ERROR_ROOT_IF( penalty_options.al_normal_damping_ratio > 0. && penalty_options.al_fixed_active_set_time >= 0.,
+                      "Parent-trace penalty AL normal damping is incompatible with the fixed-active diagnostic." );
   std::vector<TraceProjectionConstraint> constraints;
   std::vector<std::pair<IndexT, IndexT>> trace_adjacency;
   std::vector<ParentTracePenaltyQuadraturePoint> penalty_quadrature_points;
   IndexT skipped_zero_measure_rows = 0;
-  if ( !AssembleParentTraceConstraints(
-           cs, cs->getEnforcementOptions().projection_options.normal_patch_angle_degrees, true, constraints,
-           &trace_adjacency, &skipped_zero_measure_rows,
-           use_quadrature_hybrid ? &penalty_quadrature_points : nullptr ) ) {
-    SLIC_WARNING_ROOT( "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): parent-trace constraint assembly failed "
-                       "for coupling scheme " << cs->getId() << "." );
+  if ( !AssembleParentTraceConstraints( cs, cs->getEnforcementOptions().projection_options.normal_patch_angle_degrees,
+                                        true, constraints, &trace_adjacency, &skipped_zero_measure_rows,
+                                        collect_quadrature_gap_diagnostics ? &penalty_quadrature_points : nullptr ) ) {
+    SLIC_WARNING_ROOT(
+        "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): parent-trace constraint assembly failed "
+        "for coupling scheme "
+        << cs->getId() << "." );
     mfem_data->ResetParentQ2Projection();
     return 1;
   }
   if ( skipped_zero_measure_rows > 0 ) {
-    SLIC_INFO_ROOT( "Parent-trace constraint assembly skipped zero-measure dual rows: "
-                    << skipped_zero_measure_rows );
+    SLIC_INFO_ROOT( "Parent-trace constraint assembly skipped zero-measure dual rows: " << skipped_zero_measure_rows );
+  }
+
+  std::vector<RealT> stability_cell_pressure;
+  std::vector<RealT> stability_cell_measure;
+  if ( use_quadrature_point_memory ) {
+    IndexT warm_start_points = 0;
+    RealT history_force_norm_squared = 0.;
+    RealT minimum_coverage = std::numeric_limits<RealT>::infinity();
+    RealT maximum_coverage = 0.;
+    RealT maximum_coverage_excess = 0.;
+    const RealT minimum_normal_dot =
+        std::cos( cs->getEnforcementOptions().projection_options.normal_patch_angle_degrees *
+                  std::acos( -1. ) / 180. );
+    if ( !ProjectQuadraturePointMultiplierHistory(
+             penalty_quadrature_points, cs->getQuadratureCellMultiplierStepSnapshot(),
+             minimum_normal_dot, stability_cell_pressure, stability_cell_measure,
+             warm_start_points, history_force_norm_squared, minimum_coverage,
+             maximum_coverage, maximum_coverage_excess ) ) {
+      SLIC_WARNING_ROOT( "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): failed quadrature-point "
+                         "history projection for the stability vote in coupling scheme "
+                         << cs->getId() << "." );
+      mfem_data->ResetParentQ2Projection();
+      return 1;
+    }
+  } else if ( use_quadrature_cell_memory ) {
+    IndexT warm_start_cells = 0;
+    RealT history_force_norm_squared = 0.;
+    RealT minimum_coverage = std::numeric_limits<RealT>::infinity();
+    RealT maximum_coverage = 0.;
+    RealT maximum_coverage_excess = 0.;
+    const RealT minimum_normal_dot =
+        std::cos( cs->getEnforcementOptions().projection_options.normal_patch_angle_degrees *
+                  std::acos( -1. ) / 180. );
+    if ( !ProjectQuadratureCellMultiplierHistory(
+             penalty_quadrature_points, cs->getNumActivePairs(),
+             cs->getQuadratureCellMultiplierStepSnapshot(), minimum_normal_dot,
+             stability_cell_pressure, stability_cell_measure, warm_start_cells,
+             history_force_norm_squared, minimum_coverage, maximum_coverage,
+             maximum_coverage_excess ) ) {
+      SLIC_WARNING_ROOT( "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): failed quadrature-cell "
+                         "history projection for the stability vote in coupling scheme "
+                         << cs->getId() << "." );
+      mfem_data->ResetParentQ2Projection();
+      return 1;
+    }
   }
 
   const RealT stage_dt = cs->getCurrentTimeStep();
-  SLIC_ERROR_ROOT_IF( use_augmented_lagrangian &&
-                          ( !std::isfinite( stage_dt ) || stage_dt <= 0. ),
+  SLIC_ERROR_ROOT_IF( use_augmented_lagrangian && ( !std::isfinite( stage_dt ) || stage_dt <= 0. ),
                       "Parent-trace penalty augmented-Lagrangian enforcement requires a positive timestep." );
-  SLIC_ERROR_ROOT_IF( use_augmented_lagrangian && !use_quadrature_hybrid &&
-                          ( !mesh1.hasInverseMass() || !mesh2.hasInverseMass() ),
-                      "Parent-trace penalty augmented-Lagrangian enforcement requires inverse mass data." );
-  SLIC_ERROR_ROOT_IF( use_augmented_lagrangian && !use_quadrature_hybrid &&
-                          ( !mesh1.hasVelocity() || !mesh2.hasVelocity() ),
-                      "Parent-trace penalty augmented-Lagrangian enforcement requires velocity data." );
+  SLIC_ERROR_ROOT_IF(
+      use_augmented_lagrangian && !use_quadrature_pressure && ( !mesh1.hasInverseMass() || !mesh2.hasInverseMass() ),
+      "Parent-trace penalty augmented-Lagrangian enforcement requires inverse mass data." );
+  SLIC_ERROR_ROOT_IF(
+      use_augmented_lagrangian && !use_quadrature_pressure && ( !mesh1.hasVelocity() || !mesh2.hasVelocity() ),
+      "Parent-trace penalty augmented-Lagrangian enforcement requires velocity data." );
+  SLIC_ERROR_ROOT_IF(
+      use_compliance_corrected && ( !mesh1.hasInverseMass() || !mesh2.hasInverseMass() ),
+      "Compliance-corrected parent-trace penalty augmented-Lagrangian enforcement requires inverse mass data." );
+  SLIC_ERROR_ROOT_IF(
+      use_compliance_corrected && ( !mesh1.hasVelocity() || !mesh2.hasVelocity() ),
+      "Compliance-corrected parent-trace penalty augmented-Lagrangian enforcement requires velocity data." );
   cs->setPredictorDiagnostics( 1., 1. );
   cs->setPenaltyStabilityTimeStep( std::numeric_limits<RealT>::infinity() );
   cs->setPenaltyStabilityDiagnostics( 0, 0, std::numeric_limits<RealT>::infinity() );
   mfem_data->ResetParentQ2Projection();
   for ( IndexT row = 0; row < static_cast<IndexT>( constraints.size() ); ++row ) {
     const auto& constraint = constraints[row];
-    if ( !std::isfinite( constraint.coordinate[0] ) ||
-         !std::isfinite( constraint.coordinate[1] ) ||
+    if ( !std::isfinite( constraint.coordinate[0] ) || !std::isfinite( constraint.coordinate[1] ) ||
          !std::isfinite( constraint.normal[0] ) || !std::isfinite( constraint.normal[1] ) ||
          !std::isfinite( constraint.gap ) || !std::isfinite( constraint.tributary_area ) ||
-         constraint.tributary_area <= 0. ||
-         !std::isfinite( constraint.weighted_penalty_stiffness ) ||
+         constraint.tributary_area <= 0. || !std::isfinite( constraint.weighted_penalty_stiffness ) ||
          constraint.weighted_penalty_stiffness < 0. ||
          ( use_augmented_lagrangian && constraint.weighted_penalty_stiffness <= 0. ) ) {
       SLIC_WARNING_ROOT( "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): invalid constraint row "
-                         << row << ", parent DOF/patch " << constraint.parent_dof << "/"
-                         << constraint.patch << ", coordinate/normal/gap/tributary area/weighted stiffness "
-                         << constraint.coordinate[0] << "/" << constraint.coordinate[1] << "/"
-                         << constraint.normal[0] << "/" << constraint.normal[1] << "/"
-                         << constraint.gap << "/" << constraint.tributary_area << "/"
+                         << row << ", parent DOF/patch " << constraint.parent_dof << "/" << constraint.patch
+                         << ", coordinate/normal/gap/tributary area/weighted stiffness " << constraint.coordinate[0]
+                         << "/" << constraint.coordinate[1] << "/" << constraint.normal[0] << "/"
+                         << constraint.normal[1] << "/" << constraint.gap << "/" << constraint.tributary_area << "/"
                          << constraint.weighted_penalty_stiffness << "." );
       return 1;
     }
   }
 
-  if ( !constraints.empty() && mesh1.hasInverseMass() && mesh2.hasInverseMass() ) {
+  const bool has_stiffness_rows = use_quadrature_history_local ? !penalty_quadrature_points.empty()
+                                                               : !constraints.empty();
+  if ( has_stiffness_rows && mesh1.hasInverseMass() && mesh2.hasInverseMass() ) {
     RealT stiffness_bound = 0.;
+    RealT damping_bound = 0.;
     IndexT active_rows = 0;
     IndexT predicted_rows = 0;
     RealT minimum_impact_time = std::numeric_limits<RealT>::infinity();
-    if ( !ComputeParentTracePenaltyStiffnessBound(
-             cs, constraints, mesh1, mesh2, cs->getCurrentTimeStep(), stiffness_bound,
-             active_rows, predicted_rows, minimum_impact_time ) ) {
-      SLIC_WARNING_ROOT( "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): penalty stiffness-bound assembly "
-                         "failed for coupling scheme " << cs->getId() << "." );
+    const int iteration_bound = penalty_options.al_fixed_iterations > 0 ? penalty_options.al_fixed_iterations
+                                                                        : penalty_options.al_max_iterations;
+    const RealT iteration_relaxation =
+        ( use_compliance_corrected_cell || use_compliance_corrected_parent_trace )
+        ? std::max( penalty_options.al_relaxation, penalty_options.al_unloading_relaxation )
+        : penalty_options.al_inner_relaxation;
+    const RealT base_iteration_stiffness_scale =
+        use_quadrature_history_local || penalty_options.al_formulation == PENALTY_AL_QUADRATURE_HYBRID
+        ? ComputeFixedIterationPenaltyStiffnessScale( iteration_bound, iteration_relaxation )
+        : static_cast<RealT>( iteration_bound );
+    const RealT iteration_stiffness_scale =
+        use_compliance_corrected_cell
+        ? std::max( base_iteration_stiffness_scale,
+                    penalty_options.al_continuation_max_scale )
+        : base_iteration_stiffness_scale;
+    if ( use_compliance_corrected_cell ) {
+      SLIC_INFO_ROOT( "Quadrature-cell penalty AL stability vote iteration/configured continuation/"
+                      "effective stiffness scale: "
+                      << base_iteration_stiffness_scale << "/"
+                      << penalty_options.al_continuation_max_scale << "/"
+                      << iteration_stiffness_scale );
+    }
+    const bool stiffness_bound_valid = use_quadrature_history_local
+        ? ComputeQuadraturePenaltyStiffnessBound(
+              cs, penalty_quadrature_points, mesh1, mesh2, cs->getCurrentTimeStep(),
+              iteration_stiffness_scale, stiffness_bound, active_rows, predicted_rows,
+              minimum_impact_time,
+              ( use_quadrature_point_memory || use_quadrature_cell_memory )
+                  ? &stability_cell_pressure : nullptr,
+              use_quadrature_point_memory,
+              use_quadrature_point_memory ? penalty_options.al_absolute_tolerance : -1.,
+              use_quadrature_point_memory ? penalty_options.al_fixed_active_set_time : -1.,
+              use_quadrature_point_memory
+                  ? 1. + std::max(
+                               ComputePenaltyAlRelaxation(
+                                   penalty_options.al_relaxation,
+                                   penalty_options.al_loading_time_constant, stage_dt ),
+                               ComputePenaltyAlRelaxation(
+                                   penalty_options.al_unloading_relaxation,
+                                   penalty_options.al_unloading_time_constant, stage_dt ) ) *
+                             penalty_options.al_max_iterations *
+                             penalty_options.al_inner_relaxation
+                  : 1. )
+        : ComputeParentTracePenaltyStiffnessBound(
+              cs, constraints, mesh1, mesh2, cs->getCurrentTimeStep(), stiffness_bound,
+              active_rows, predicted_rows, minimum_impact_time, fixed_active_set );
+    if ( !stiffness_bound_valid ) {
+      SLIC_WARNING_ROOT(
+          "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): penalty stiffness-bound assembly "
+          "failed for coupling scheme "
+          << cs->getId() << "." );
       return 1;
     }
     cs->setPenaltyStabilityDiagnostics( active_rows, predicted_rows, minimum_impact_time );
-    if ( use_augmented_lagrangian ) {
-      const int iteration_bound = penalty_options.al_fixed_iterations > 0
-                                      ? penalty_options.al_fixed_iterations
-                                      : penalty_options.al_max_iterations;
-      stiffness_bound *= static_cast<RealT>( iteration_bound );
+    if ( use_augmented_lagrangian && !use_quadrature_history_local ) {
+      stiffness_bound *= iteration_stiffness_scale;
     }
-    if ( use_quadrature_hybrid && penalty_options.al_activation_gap_fraction > 0. ) {
+    if ( use_quadrature_pressure && penalty_options.al_activation_gap_fraction > 0. ) {
       stiffness_bound *= penalty_al_activation_maximum_tangent;
     }
-    const RealT stability_dt = stiffness_bound > 0.
-        ? 2. * penalty_options.penalty_stability_scale / std::sqrt( stiffness_bound )
-        : std::numeric_limits<RealT>::infinity();
+    if ( use_quadrature_pressure && penalty_options.al_normal_damping_ratio > 0. &&
+         !ComputeParentTracePenaltyDampingBound( cs, penalty_quadrature_points, mesh1, mesh2, damping_bound ) ) {
+      SLIC_WARNING_ROOT(
+          "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): penalty damping-bound assembly "
+          "failed for coupling scheme "
+          << cs->getId() << "." );
+      return 1;
+    }
+    const RealT stability_dt =
+        ComputePenaltyStabilityTimeStep( stiffness_bound, damping_bound, penalty_options.penalty_stability_scale );
     cs->setPenaltyStabilityTimeStep( stability_dt );
   }
 
-  if ( use_quadrature_hybrid ) {
+  if ( use_quadrature_pressure ) {
+    const int compliance_size = use_compliance_corrected_cell
+        ? static_cast<int>( stability_cell_measure.size() )
+        : static_cast<int>( constraints.size() );
+    mfem::DenseMatrix compliance_operator( compliance_size );
+    std::vector<RealT> fixed_gap_response;
+    if ( use_compliance_corrected_cell && compliance_size > 0 ) {
+      mfem::DenseMatrix mass_scaled_rows;
+      if ( !AssembleQuadratureCellMassScaledRows(
+               *mfem_data, penalty_quadrature_points, stability_cell_measure,
+               mesh1, mesh2, stage_dt, mass_scaled_rows, fixed_gap_response ) ) {
+        SLIC_WARNING_ROOT(
+            "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): compliance-corrected "
+            "quadrature-cell response-row assembly failed for coupling scheme "
+            << cs->getId() << "." );
+        mfem_data->ResetParentQ2Projection();
+        return 1;
+      }
+      mfem::MultAtB( mass_scaled_rows, mass_scaled_rows, compliance_operator );
+      compliance_operator *= stage_dt * stage_dt;
+    } else if ( use_compliance_corrected_cell ) {
+      fixed_gap_response.clear();
+    } else if ( use_compliance_corrected_hybrid && !constraints.empty() ) {
+      mfem::DenseMatrix mass_scaled_rows;
+      if ( !AssembleParentTraceMassScaledRows( *mfem_data, constraints, mesh1, mesh2, mass_scaled_rows ) ) {
+        SLIC_WARNING_ROOT(
+            "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): compliance-corrected "
+            "mass-scaled response-row assembly failed for coupling scheme "
+            << cs->getId() << "." );
+        mfem_data->ResetParentQ2Projection();
+        return 1;
+      }
+      mfem::MultAtB( mass_scaled_rows, mass_scaled_rows, compliance_operator );
+      compliance_operator *= stage_dt * stage_dt;
+    }
     return ApplyParentTraceQuadraturePenaltyAugmentedLagrangian(
-        cs, constraints, penalty_quadrature_points, trace_adjacency, mesh1, mesh2 );
+        cs, constraints, penalty_quadrature_points, trace_adjacency, mesh1, mesh2,
+        use_compliance_corrected ? &compliance_operator : nullptr,
+        use_compliance_corrected_cell ? &fixed_gap_response : nullptr );
   }
 
   std::vector<RealT> plane_forces( cs->getNumActivePairs(), 0. );
@@ -3936,8 +7007,13 @@ int ApplyNormal<PARENT_TRACE_MORTAR, PENALTY>( CouplingScheme* cs )
                         << minimum_warm_start_area_ratio << "/" << maximum_warm_start_area_ratio );
       }
 
-      al_result = SolveTracePenaltyAugmentedLagrangianSystem(
-          compliance_operator, augmented_operator, constraints, penalty_options, stage_dt );
+      if ( use_compliance_corrected_parent_trace ) {
+        al_result = SolveComplianceCorrectedParentTracePenaltyAugmentedLagrangianSystem(
+            compliance_operator, constraints, penalty_options, stage_dt );
+      } else {
+        al_result = SolveTracePenaltyAugmentedLagrangianSystem(
+            compliance_operator, augmented_operator, constraints, penalty_options, stage_dt );
+      }
       SLIC_INFO_ROOT( "Parent-trace penalty AL multiplier updates loading/unloading/deadband and "
                       "effective relaxation loading/unloading: "
                       << al_result.loading_updates << "/" << al_result.unloading_updates << "/"
@@ -3955,6 +7031,17 @@ int ApplyNormal<PARENT_TRACE_MORTAR, PENALTY>( CouplingScheme* cs )
                              penalty_options.al_fixed_iterations > 0
                                  ? penalty_options.al_fixed_iterations
                                  : penalty_options.al_max_iterations ) );
+      if ( use_compliance_corrected_parent_trace ) {
+        SLIC_INFO_ROOT( "Parent-trace penalty AL compliance-corrected target gap fraction/"
+                        "iterations/converged/projected residual initial/final/primal/tolerance: "
+                        << penalty_options.al_target_gap_fraction << "/"
+                        << al_result.outer_iterations << "/"
+                        << al_result.physical_result.complementarity_converged << "/"
+                        << al_result.physical_result.initial_residual << "/"
+                        << al_result.physical_result.final_residual << "/"
+                        << al_result.physical_result.final_primal_residual << "/"
+                        << al_result.physical_result.primal_tolerance );
+      }
       if ( !al_result.physical_result.valid ) {
         SLIC_WARNING_ROOT( "ApplyNormal<PARENT_TRACE_MORTAR,PENALTY>(): invalid augmented-Lagrangian solve "
                            "for coupling scheme " << cs->getId() << " after outer/subproblem iterations "
@@ -4002,6 +7089,8 @@ int ApplyNormal<PARENT_TRACE_MORTAR, PENALTY>( CouplingScheme* cs )
         }
         maximum_endpoint_violation = std::max( maximum_endpoint_violation, std::max( 0., -endpoint_gap ) );
       }
+      SetParentTraceGapDiagnostics(
+          cs, constraints, compliance_operator, forces, mesh1 );
       cs->setParentTraceMultiplierStage( std::move( multiplier_state ) );
     }
     cs->setAugmentedLagrangianDiagnostics(
@@ -4047,6 +7136,24 @@ int ApplyNormal<PARENT_TRACE_MORTAR, PENALTY>( CouplingScheme* cs )
     }
   }
 
+  IndexT num_gap_points = static_cast<IndexT>( constraints.size() );
+  if ( use_compliance_corrected_parent_trace ) {
+    gap_violation_sum = 0.;
+    maximum_gap_violation = 0.;
+    closing_rate_sum = 0.;
+    maximum_closing_rate = 0.;
+    num_gap_points = static_cast<IndexT>( penalty_quadrature_points.size() );
+    for ( const auto& point : penalty_quadrature_points ) {
+      const RealT gap_violation = std::max( 0., -point.contact.gap );
+      const RealT closing_rate =
+          has_velocity ? std::max( 0., -point.contact.trial_velocity ) : 0.;
+      gap_violation_sum += gap_violation;
+      maximum_gap_violation = std::max( maximum_gap_violation, gap_violation );
+      closing_rate_sum += closing_rate;
+      maximum_closing_rate = std::max( maximum_closing_rate, closing_rate );
+    }
+  }
+
   for ( IndexT i = 0; i < cs->getNumActivePairs(); ++i ) {
     auto& plane = cs_view.getCompGeomView().getCommonPlane( i );
     const RealT plane_force = plane_forces[i];
@@ -4055,7 +7162,7 @@ int ApplyNormal<PARENT_TRACE_MORTAR, PENALTY>( CouplingScheme* cs )
   }
 
   cs->setPredictorForceDiagnostics( 0, 0, total_force, 0., total_force );
-  cs->setContactPointDiagnostics( static_cast<IndexT>( constraints.size() ), maximum_force,
+  cs->setContactPointDiagnostics( num_gap_points, maximum_force,
                                   gap_violation_sum, maximum_gap_violation, closing_rate_sum,
                                   maximum_closing_rate );
   if ( use_augmented_lagrangian ) {
@@ -4119,6 +7226,8 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
   const auto& projection_options = cs->getEnforcementOptions().projection_options;
   const bool use_augmented_lagrangian =
       projection_options.contact_response == PROJECTION_RESPONSE_AUGMENTED_LAGRANGIAN;
+  const bool use_penalty_guard =
+      projection_options.contact_response == PROJECTION_RESPONSE_PENALTY_GUARD;
   const bool use_compliant_response =
       projection_options.contact_response != PROJECTION_RESPONSE_EXACT;
   const RealT position_velocity_scale = projection_options.position_velocity_scale;
@@ -4129,10 +7238,13 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
                       "scale is less than one." );
 
   std::vector<TraceProjectionConstraint> constraints;
+  std::vector<ProjectionConstraint> parent_q2_diagnostic_points;
   IndexT skipped_zero_measure_rows = 0;
   if ( !AssembleParentTraceConstraints( cs, projection_options.normal_patch_angle_degrees,
                                         use_compliant_response, constraints, nullptr,
-                                        &skipped_zero_measure_rows ) ) {
+                                        &skipped_zero_measure_rows, nullptr,
+                                        projection_options.positive_lor_basis,
+                                        &parent_q2_diagnostic_points ) ) {
     mfem_data->ResetParentQ2Projection();
     return 1;
   }
@@ -4149,7 +7261,23 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
     cs->setProjectionDiagnostics( 0, 0, 0, true, true, 0., 0., 0., 0., 1., 1., 0., 0., 0., 0. );
     cs->setCompliantProjectionDiagnostics( 0., 0., 0., 0, 0., 0. );
     cs->setPredictorForceDiagnostics( 0, 0, 0., 0., 0. );
-    cs->setContactPointDiagnostics( 0, 0., 0., 0., 0., 0. );
+    RealT diagnostic_gap_violation_sum = 0.;
+    RealT diagnostic_maximum_gap_violation = 0.;
+    RealT diagnostic_closing_rate_sum = 0.;
+    RealT diagnostic_maximum_closing_rate = 0.;
+    for ( const auto& point : parent_q2_diagnostic_points ) {
+      const RealT gap_violation = std::max( 0., -point.gap );
+      const RealT closing_rate = std::max( 0., -point.trial_velocity );
+      diagnostic_gap_violation_sum += gap_violation;
+      diagnostic_maximum_gap_violation =
+          std::max( diagnostic_maximum_gap_violation, gap_violation );
+      diagnostic_closing_rate_sum += closing_rate;
+      diagnostic_maximum_closing_rate =
+          std::max( diagnostic_maximum_closing_rate, closing_rate );
+    }
+    cs->setContactPointDiagnostics( static_cast<IndexT>( parent_q2_diagnostic_points.size() ), 0.,
+                                    diagnostic_gap_violation_sum, diagnostic_maximum_gap_violation,
+                                    diagnostic_closing_rate_sum, diagnostic_maximum_closing_rate );
     return 0;
   }
 
@@ -4192,10 +7320,15 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
                                     : constraint.trial_velocity;
     constraint.position_trial_velocity = ( 1. - position_velocity_scale ) * base_velocity +
                                          position_velocity_scale * constraint.trial_velocity;
-    const RealT target_position_velocity = constraint.gap > 0. ? -constraint.gap / stage_dt : 0.;
-    constraint.endpoint_target_velocity =
+    const RealT target_position_velocity = ComputeProjectionTargetPositionVelocity(
+        constraint.gap, stage_dt,
+        use_compliant_response ? 0. : projection_options.depenetration_fraction,
+        use_compliant_response ? 0. : projection_options.gap_tolerance );
+    const RealT endpoint_target_velocity =
         constraint.trial_velocity +
         ( target_position_velocity - constraint.position_trial_velocity ) / position_velocity_scale;
+    constraint.endpoint_target_velocity = LimitProjectionTargetToNonpositiveWork(
+        constraint.gap, constraint.trial_velocity, endpoint_target_velocity );
     constraint.target_velocity = projection_options.diagnostic_zero_gap_rate_target
                                      ? 0.
                                      : constraint.endpoint_target_velocity;
@@ -4231,22 +7364,36 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
         constraint.damping_coefficient =
             2. * projection_options.damping_ratio *
             std::sqrt( constraint.spring_stiffness * effective_mass );
-        const RealT effective_damping = constraint.damping_coefficient +
-                                        constraint.spring_stiffness * position_velocity_scale * stage_dt;
-        valid = valid && std::isfinite( effective_damping ) && effective_damping > 0.;
-        if ( std::isfinite( effective_damping ) && effective_damping > 0. ) {
-          solve_operator( i, i ) += 1. / ( stage_dt * effective_damping );
-          const RealT trial_endpoint_gap =
-              constraint.gap + stage_dt * constraint.position_trial_velocity;
-          const RealT trial_penetration = std::max( 0., -trial_endpoint_gap );
-          const bool contact_predicted = constraint.gap < 0. || trial_endpoint_gap < 0.;
-          const RealT free_contact_residual =
-              contact_predicted
-                  ? ( constraint.damping_coefficient * constraint.trial_velocity -
-                      constraint.spring_stiffness * trial_penetration ) /
-                        effective_damping
-                  : 0.;
-          constraint.target_velocity = constraint.trial_velocity - free_contact_residual;
+        const RealT current_penetration = std::max( 0., -constraint.gap );
+        if ( use_penalty_guard ) {
+          const RealT spring_force = constraint.spring_stiffness * current_penetration;
+          const RealT damping_force =
+              std::max( 0., -constraint.damping_coefficient * constraint.trial_velocity );
+          constraint.multiplier = stage_dt * ( spring_force + damping_force );
+          valid = valid && std::isfinite( constraint.multiplier );
+        } else {
+          const RealT spring_time_weight = projection_options.spring_time_weight;
+          const RealT effective_damping = constraint.damping_coefficient +
+                                          spring_time_weight * constraint.spring_stiffness *
+                                              position_velocity_scale * stage_dt;
+          valid = valid && std::isfinite( effective_damping ) && effective_damping > 0.;
+          if ( std::isfinite( effective_damping ) && effective_damping > 0. ) {
+            solve_operator( i, i ) += 1. / ( stage_dt * effective_damping );
+            const RealT trial_endpoint_gap =
+                constraint.gap + stage_dt * constraint.position_trial_velocity;
+            const RealT trial_penetration = std::max( 0., -trial_endpoint_gap );
+            const bool contact_predicted = current_penetration > 0. || trial_endpoint_gap < 0.;
+            const RealT weighted_penetration =
+                ( 1. - spring_time_weight ) * current_penetration +
+                spring_time_weight * trial_penetration;
+            const RealT free_contact_residual =
+                contact_predicted
+                    ? ( constraint.damping_coefficient * constraint.trial_velocity -
+                        constraint.spring_stiffness * weighted_penetration ) /
+                          effective_damping
+                    : 0.;
+            constraint.target_velocity = constraint.trial_velocity - free_contact_residual;
+          }
         }
       }
     }
@@ -4314,7 +7461,10 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
   TraceProjectionSolveResult compliant_result;
   AugmentedLagrangianSolveResult al_result;
   if ( valid ) {
-    if ( use_augmented_lagrangian ) {
+    if ( use_penalty_guard ) {
+      compliant_result.valid = true;
+      compliant_result.complementarity_converged = true;
+    } else if ( use_augmented_lagrangian ) {
       al_result = SolveTraceAugmentedLagrangianSystem( solve_operator, constraints, projection_options, stage_dt );
       compliant_result = al_result.physical_result;
     } else {
@@ -4390,6 +7540,51 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
     }
   }
 
+  bool force_limited = false;
+  IndexT force_limited_constraints = 0;
+  if ( valid && !use_compliant_response && projection_options.maximum_force >= 0. ) {
+    const RealT maximum_impulse = stage_dt * projection_options.maximum_force;
+    for ( auto& constraint : constraints ) {
+      if ( constraint.multiplier > maximum_impulse ) {
+        constraint.multiplier = maximum_impulse;
+        constraint.guard_multiplier = maximum_impulse;
+        force_limited = true;
+        ++force_limited_constraints;
+      }
+    }
+  }
+
+  if ( valid && !use_compliant_response ) {
+    RealT linear_work = 0.;
+    RealT quadratic_work = 0.;
+    for ( int i = 0; i < num_constraints; ++i ) {
+      linear_work += constraints[i].multiplier * constraints[i].trial_velocity;
+      for ( int j = 0; j < num_constraints; ++j ) {
+        quadratic_work += constraints[i].multiplier * projection_operator( i, j ) *
+                          constraints[j].multiplier;
+      }
+    }
+    if ( linear_work + 0.5 * quadratic_work > 0. ) {
+      RealT energy_safe_scale = 0.;
+      if ( linear_work < 0. && quadratic_work > 0. ) {
+        energy_safe_scale = std::min( 1., -2. * linear_work / quadratic_work );
+        energy_safe_scale *= 1. - 100. * std::numeric_limits<RealT>::epsilon();
+      }
+      for ( auto& constraint : constraints ) {
+        constraint.multiplier *= energy_safe_scale;
+        constraint.guard_multiplier = constraint.multiplier;
+      }
+    }
+    const ProjectionResiduals applied_residuals =
+        ComputeTraceProjectionResiduals( projection_operator, constraints );
+    compliant_result.final_residual = applied_residuals.complementarity;
+    compliant_result.final_primal_residual = applied_residuals.primal;
+    compliant_result.complementarity_converged =
+        applied_residuals.complementarity <=
+        projection_options.absolute_tolerance +
+            projection_options.relative_tolerance * compliant_result.initial_residual;
+  }
+
   const RealT initial_residual =
       std::max( compliant_result.initial_residual, guard_result.initial_residual );
   const RealT final_residual =
@@ -4416,6 +7611,7 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
   RealT closing_rate_sum = 0.;
   RealT maximum_closing_rate = 0.;
   RealT maximum_endpoint_violation = 0.;
+  RealT maximum_endpoint_gap_excess = 0.;
   RealT energy_change = 0.;
   RealT spring_energy_change = 0.;
   RealT energy_scale = 0.;
@@ -4465,7 +7661,13 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
     maximum_gap_violation = std::max( maximum_gap_violation, gap_violation );
     closing_rate_sum += closing_rate;
     maximum_closing_rate = std::max( maximum_closing_rate, closing_rate );
-    maximum_endpoint_violation = std::max( maximum_endpoint_violation, std::max( 0., -endpoint_gap ) );
+    const RealT endpoint_violation = std::max( 0., -endpoint_gap );
+    maximum_endpoint_violation = std::max( maximum_endpoint_violation, endpoint_violation );
+    if ( projection_options.maximum_gap >= 0. ) {
+      maximum_endpoint_gap_excess =
+          std::max( maximum_endpoint_gap_excess,
+                    endpoint_violation - projection_options.maximum_gap );
+    }
     energy_change += energy_term;
     spring_energy_change += spring_energy_term;
     energy_scale += std::abs( energy_term ) + std::abs( spring_energy_term );
@@ -4473,16 +7675,39 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
       plane_impulses[contribution.plane_index] += constraint.multiplier * contribution.plane_weight;
     }
   }
+  gap_violation_sum = 0.;
+  maximum_gap_violation = 0.;
+  closing_rate_sum = 0.;
+  maximum_closing_rate = 0.;
+  for ( const auto& point : parent_q2_diagnostic_points ) {
+    const RealT gap_violation = std::max( 0., -point.gap );
+    const RealT closing_rate = std::max( 0., -point.trial_velocity );
+    gap_violation_sum += gap_violation;
+    maximum_gap_violation = std::max( maximum_gap_violation, gap_violation );
+    closing_rate_sum += closing_rate;
+    maximum_closing_rate = std::max( maximum_closing_rate, closing_rate );
+  }
   const RealT energy_tolerance = 100. * std::numeric_limits<RealT>::epsilon() * std::max( 1., energy_scale );
   const bool primal_converged = final_primal_residual <= primal_tolerance;
   const RealT validated_energy_change = energy_change + spring_energy_change;
-  const bool energy_accepted =
-      validated_energy_change <= energy_tolerance || projection_options.diagnostic_bypass_energy_check;
+  const bool energy_accepted = use_penalty_guard ||
+                               validated_energy_change <= energy_tolerance ||
+                               projection_options.diagnostic_bypass_energy_check;
   const bool al_iteration_accepted =
       !use_augmented_lagrangian ||
       projection_options.al_failure_policy == AL_ACCEPT_FEASIBLE || complementarity_converged;
-  const bool accepted = valid && primal_converged && std::isfinite( validated_energy_change ) &&
-                        energy_accepted && al_iteration_accepted;
+  const RealT endpoint_gap_tolerance = stage_dt * primal_tolerance +
+                                       100. * std::numeric_limits<RealT>::epsilon();
+  const bool gap_accepted = use_compliant_response || projection_options.maximum_gap < 0. ||
+                            maximum_endpoint_gap_excess <= endpoint_gap_tolerance;
+  const bool accepted = valid && ( primal_converged || force_limited ) &&
+                        std::isfinite( validated_energy_change ) &&
+                        energy_accepted && al_iteration_accepted && gap_accepted;
+
+  if ( force_limited ) {
+    SLIC_INFO_ROOT( "Parent-trace projection force-limited constraints/limit: "
+                    << force_limited_constraints << "/" << projection_options.maximum_force );
+  }
 
   if ( operator_valid ) {
     const ProjectionOperatorDiagnostics operator_diagnostics =
@@ -4629,8 +7854,9 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
   cs->setPredictorForceDiagnostics( 0, 0, final_accepted ? spring_force : 0.,
                                     final_accepted && use_compliant_response ? damping_force + guard_force : 0.,
                                     final_accepted ? equivalent_force : 0. );
-  cs->setContactPointDiagnostics( static_cast<IndexT>( constraints.size() ), final_accepted ? maximum_force : 0.,
-                                  gap_violation_sum, maximum_gap_violation, closing_rate_sum, maximum_closing_rate );
+  cs->setContactPointDiagnostics( static_cast<IndexT>( parent_q2_diagnostic_points.size() ),
+                                  final_accepted ? maximum_force : 0., gap_violation_sum,
+                                  maximum_gap_violation, closing_rate_sum, maximum_closing_rate );
   return final_accepted ? 0 : 1;
 #endif
 }

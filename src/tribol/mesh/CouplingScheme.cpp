@@ -1087,7 +1087,9 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt ) { return apply( cycle
 
 int CouplingScheme::apply( int cycle, RealT t, RealT stage_dt, RealT& dt )
 {
+  m_current_time = t;
   m_current_dt = stage_dt;
+  m_current_attempted_dt = dt;
   m_penalty_stability_dt = std::numeric_limits<RealT>::infinity();
   m_num_penalty_stability_active_rows = 0;
   m_num_penalty_stability_predicted_rows = 0;
@@ -1099,12 +1101,25 @@ int CouplingScheme::apply( int cycle, RealT t, RealT stage_dt, RealT& dt )
   m_integrated_penalty_candidate_force = 0.;
   m_integrated_predictor_candidate_force = 0.;
   m_integrated_applied_force = 0.;
+  m_integrated_applied_tensile_force = 0.;
+  m_num_penalty_al_damping_qpts = 0;
+  m_integrated_penalty_al_damping_force = 0.;
+  m_penalty_al_damping_dissipation_rate = 0.;
+  m_maximum_penalty_al_damping_pressure = 0.;
   m_num_contact_qpts = 0;
   m_max_applied_force = 0.;
   m_gap_violation_sum = 0.;
   m_max_gap_violation = 0.;
   m_closing_gap_rate_sum = 0.;
   m_max_closing_gap_rate = 0.;
+  m_num_parent_trace_gap_rows = 0;
+  m_num_parent_trace_geometric_gap_rows = 0;
+  m_parent_trace_current_gap_violation_sum = 0.;
+  m_parent_trace_current_max_gap_violation = 0.;
+  m_parent_trace_endpoint_gap_violation_sum = 0.;
+  m_parent_trace_endpoint_max_gap_violation = 0.;
+  m_parent_trace_geometric_gap_violation_sum = 0.;
+  m_parent_trace_geometric_max_gap_violation = 0.;
   m_num_projection_constraints = 0;
   m_num_projection_active_multipliers = 0;
   m_projection_iterations = 0;

@@ -12,6 +12,7 @@
 #ifdef BUILD_REDECOMP
 
 // C++ includes
+#include <functional>
 #include <set>
 #include <utility>
 #include <vector>
@@ -599,6 +600,9 @@ class PressureField {
  */
 class MfemMeshData {
  public:
+  using ParentVelocityMassInverse =
+      std::function<bool( const mfem::Vector&, mfem::Vector& )>;
+
   struct ParentElementFieldPointers {
     IndexT num_parent_nodes_per_element;
     const RealT* position;
@@ -809,6 +813,11 @@ class MfemMeshData {
                                                  const RealT* phi1, const RealT* phi2,
                                                  mfem::DenseMatrix& rows );
 
+  bool AssembleParentQ2ConsistentProjectionOperator(
+      IndexT num_constraints, const IndexT* elements1, const IndexT* elements2,
+      const RealT* normals, const RealT* phi1, const RealT* phi2,
+      mfem::DenseMatrix& rows, mfem::DenseMatrix& projection_operator );
+
   bool AssembleParentQ2MassScaledResponseRow( mfem::Vector& row );
 
   /** Restore the registered trial velocity and discard the accumulated projection correction. */
@@ -855,7 +864,19 @@ class MfemMeshData {
 
   void SetParentInverseMass( const mfem::ParGridFunction& inverse_mass );
 
+  void SetParentVelocityMassInverse( ParentVelocityMassInverse mass_inverse )
+  {
+    parent_velocity_mass_inverse_ = std::move( mass_inverse );
+    consistent_mass_dofs_.clear();
+    consistent_mass_inverse_.SetSize( 0, 0 );
+  }
+
   bool HasInverseMass() const { return inverse_mass_ != nullptr; }
+
+  bool HasParentVelocityMassInverse() const
+  {
+    return static_cast<bool>( parent_velocity_mass_inverse_ );
+  }
 
   std::vector<const RealT*> GetRedecompInverseMassPtrs() const { return inverse_mass_->GetRedecompFieldPtrs(); }
 
@@ -1430,6 +1451,10 @@ class MfemMeshData {
   std::unique_ptr<ParentField> projection_base_velocity_;
 
   std::unique_ptr<ParentField> inverse_mass_;
+
+  ParentVelocityMassInverse parent_velocity_mass_inverse_;
+  std::vector<int> consistent_mass_dofs_;
+  mfem::DenseMatrix consistent_mass_inverse_;
 
   /**
    * @brief Kinematic constant contact penalty for the first Tribol registered mesh
