@@ -563,6 +563,18 @@ void registerMfemVelocity( IndexT cs_id, const mfem::ParGridFunction& v )
   cs->getMfemMeshData()->SetParentVelocity( v );
 }
 
+void registerMfemProjectionBasePosition( IndexT cs_id, const mfem::ParGridFunction& x )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !cs,
+                      "tribol::registerMfemProjectionBasePosition(): register the MFEM coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemData(),
+                      "tribol::registerMfemProjectionBasePosition(): coupling scheme does not contain MFEM data." );
+  SLIC_ERROR_ROOT_IF( x.VectorDim() != x.ParFESpace()->GetMesh()->Dimension(),
+                      "tribol::registerMfemProjectionBasePosition(): position must use the vector coordinate space." );
+  cs->getMfemMeshData()->SetParentProjectionBasePosition( x );
+}
+
 void registerMfemProjectionBaseVelocity( IndexT cs_id, const mfem::ParGridFunction& v )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
@@ -881,11 +893,13 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
         auto mesh_2 = MeshManager::getInstance().findData( mesh_ids[1] );
         SLIC_ERROR_ROOT_IF( !mesh_1 || !mesh_2, "Failed to find newly registered MFEM contact meshes." );
         mesh_1->setParentElementData( parent_fields_1.num_parent_nodes_per_element, parent_fields_1.position,
-                                      parent_fields_1.velocity, parent_fields_1.projection_base_velocity,
+                                      parent_fields_1.projection_base_position, parent_fields_1.velocity,
+                                      parent_fields_1.projection_base_velocity,
                                       parent_fields_1.inverse_mass, parent_fields_1.response,
                                       parent_fields_1.reference_interval, parent_fields_1.parent_dof_ids );
         mesh_2->setParentElementData( parent_fields_2.num_parent_nodes_per_element, parent_fields_2.position,
-                                      parent_fields_2.velocity, parent_fields_2.projection_base_velocity,
+                                      parent_fields_2.projection_base_position, parent_fields_2.velocity,
+                                      parent_fields_2.projection_base_velocity,
                                       parent_fields_2.inverse_mass, parent_fields_2.response,
                                       parent_fields_2.reference_interval, parent_fields_2.parent_dof_ids );
       }

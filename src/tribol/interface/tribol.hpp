@@ -102,7 +102,7 @@ void setImpulseProjectionGapTolerance( IndexT cs_id, RealT gap_tolerance );
 /*! \brief Selects nonnegative piecewise-linear trace weights for parent-trace projection. */
 void setImpulseProjectionPositiveLORBasis( IndexT cs_id, bool enabled );
 
-/*! \brief Sets an optional projected endpoint-gap acceptance limit. */
+/*! \brief Sets an optional absolute endpoint-gap bound for projection contact. */
 void setImpulseProjectionMaximumGap( IndexT cs_id, RealT maximum_gap );
 
 /*! \brief Sets an optional per-constraint equivalent-force limit; a negative value disables it. */

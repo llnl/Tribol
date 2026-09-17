@@ -239,13 +239,19 @@ void MeshData::setInverseMass( const RealT* inv_mass_x, const RealT* inv_mass_y,
   m_inv_mass = createNodalVector( inv_mass_x, inv_mass_y, inv_mass_z );
 }
 
-void MeshData::setParentElementData( IndexT num_parent_nodes_per_element, const RealT* position, const RealT* velocity,
-                                     const RealT* projection_base_velocity, const RealT* inverse_mass, RealT* response,
-                                     const RealT* reference_interval, const IndexT* parent_dof_ids )
+void MeshData::setParentElementData( IndexT num_parent_nodes_per_element, const RealT* position,
+                                     const RealT* projection_base_position, const RealT* velocity,
+                                     const RealT* projection_base_velocity, const RealT* inverse_mass,
+                                     RealT* response, const RealT* reference_interval,
+                                     const IndexT* parent_dof_ids )
 {
   m_num_parent_nodes_per_element = num_parent_nodes_per_element;
   const IndexT field_width = num_parent_nodes_per_element * m_dim;
   m_parent_position = Array2DView<const RealT>( position, { numberOfElements(), field_width } );
+  m_parent_projection_base_position =
+      projection_base_position != nullptr
+          ? Array2DView<const RealT>( projection_base_position, { numberOfElements(), field_width } )
+          : Array2DView<const RealT>();
   m_parent_response = Array2DView<RealT>( response, { numberOfElements(), field_width } );
   m_parent_reference_interval = Array2DView<const RealT>( reference_interval, { numberOfElements(), 2 } );
   m_parent_dof_ids =
@@ -653,6 +659,7 @@ MeshData::Viewer::Viewer( MeshData& mesh )
       m_response( mesh.m_response ),
       m_num_parent_nodes_per_element( mesh.m_num_parent_nodes_per_element ),
       m_parent_position( mesh.m_parent_position ),
+      m_parent_projection_base_position( mesh.m_parent_projection_base_position ),
       m_parent_velocity( mesh.m_parent_velocity ),
       m_parent_projection_base_velocity( mesh.m_parent_projection_base_velocity ),
       m_parent_inv_mass( mesh.m_parent_inv_mass ),

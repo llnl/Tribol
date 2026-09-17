@@ -261,6 +261,8 @@ class SubmeshRedecompTransfer {
  *                handled through SubmeshRedecompTransfer member variable
  */
 class ParentRedecompTransfer {
+  friend class MfemMeshData;
+
  public:
   /**
    * @brief Construct a new ParentRedecompTransfer object
@@ -606,6 +608,7 @@ class MfemMeshData {
   struct ParentElementFieldPointers {
     IndexT num_parent_nodes_per_element;
     const RealT* position;
+    const RealT* projection_base_position;
     const RealT* velocity;
     const RealT* projection_base_velocity;
     const RealT* inverse_mass;
@@ -840,6 +843,9 @@ class MfemMeshData {
    */
   void SetParentVelocity( const mfem::ParGridFunction& velocity );
 
+  /** Add/replace the base position used by the impulse-projection position update. */
+  void SetParentProjectionBasePosition( const mfem::ParGridFunction& position );
+
   /** Add/replace the base velocity used by the impulse-projection position update. */
   void SetParentProjectionBaseVelocity( const mfem::ParGridFunction& velocity );
 
@@ -850,6 +856,8 @@ class MfemMeshData {
    * @return false: Velocity grid function has not been set
    */
   bool HasVelocity() const { return velocity_ != nullptr; }
+
+  bool HasProjectionBasePosition() const { return projection_base_position_ != nullptr; }
 
   bool HasProjectionBaseVelocity() const { return projection_base_velocity_ != nullptr; }
 
@@ -1344,6 +1352,7 @@ class MfemMeshData {
 
   struct ParentQ2Fields {
     mfem::Vector position;
+    mfem::Vector projection_base_position;
     mfem::Vector velocity;
     mfem::Vector projection_base_velocity;
     mfem::Vector inverse_mass;
@@ -1447,6 +1456,8 @@ class MfemMeshData {
    * nullptr otherwise
    */
   std::unique_ptr<ParentField> velocity_;
+
+  std::unique_ptr<ParentField> projection_base_position_;
 
   std::unique_ptr<ParentField> projection_base_velocity_;
 

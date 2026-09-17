@@ -261,6 +261,17 @@ class MeshData {
       return m_parent_position( element_id, local_node_id * spatialDimension() + component );
     }
 
+    TRIBOL_HOST_DEVICE bool hasParentProjectionBasePosition() const
+    {
+      return !m_parent_projection_base_position.empty();
+    }
+
+    TRIBOL_HOST_DEVICE RealT getParentProjectionBasePosition( IndexT element_id, IndexT local_node_id,
+                                                              int component ) const
+    {
+      return m_parent_projection_base_position( element_id, local_node_id * spatialDimension() + component );
+    }
+
     TRIBOL_HOST_DEVICE RealT getParentVelocity( IndexT element_id, IndexT local_node_id, int component ) const
     {
       return m_parent_velocity( element_id, local_node_id * spatialDimension() + component );
@@ -466,6 +477,7 @@ class MeshData {
 
     const IndexT m_num_parent_nodes_per_element;
     const Array2DView<const RealT> m_parent_position;
+    const Array2DView<const RealT> m_parent_projection_base_position;
     const Array2DView<const RealT> m_parent_velocity;
     const Array2DView<const RealT> m_parent_projection_base_velocity;
     const Array2DView<const RealT> m_parent_inv_mass;
@@ -676,9 +688,11 @@ class MeshData {
    * Field arrays use row-major [element][local parent node][component] ordering.
    * Reference intervals use row-major [element][endpoint] ordering.
    */
-  void setParentElementData( IndexT num_parent_nodes_per_element, const RealT* position, const RealT* velocity,
-                             const RealT* projection_base_velocity, const RealT* inverse_mass, RealT* response,
-                             const RealT* reference_interval, const IndexT* parent_dof_ids = nullptr );
+  void setParentElementData( IndexT num_parent_nodes_per_element, const RealT* position,
+                             const RealT* projection_base_position, const RealT* velocity,
+                             const RealT* projection_base_velocity, const RealT* inverse_mass,
+                             RealT* response, const RealT* reference_interval,
+                             const IndexT* parent_dof_ids = nullptr );
 
   /**
    * @brief Is the velocity vector populated?
@@ -764,6 +778,7 @@ class MeshData {
 
   IndexT m_num_parent_nodes_per_element{ 0 };
   Array2DView<const RealT> m_parent_position;
+  Array2DView<const RealT> m_parent_projection_base_position;
   Array2DView<const RealT> m_parent_velocity;
   Array2DView<const RealT> m_parent_projection_base_velocity;
   Array2DView<const RealT> m_parent_inv_mass;

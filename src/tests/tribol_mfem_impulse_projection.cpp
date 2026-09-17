@@ -130,7 +130,9 @@ ProjectionResult RunProjectionCase( double upper_offset, double upper_velocity, 
                                     double projection_gap_tolerance = 0.,
                                     double projection_maximum_gap = -1.,
                                     bool projection_positive_lor_basis = false,
-                                    double projection_mass_inverse_scale = 0. )
+                                    double projection_mass_inverse_scale = 0.,
+                                    double projection_base_upper_offset =
+                                        std::numeric_limits<double>::quiet_NaN() )
 {
   const std::set<int> surface1{ 3 };
   const std::set<int> surface2{ 5 };
@@ -205,6 +207,21 @@ ProjectionResult RunProjectionCase( double upper_offset, double upper_velocity, 
   mfem::PWVectorCoefficient projection_base_coefficient( 2, moving_attributes,
                                                          projection_base_velocity_coefficients );
   projection_base_velocity.ProjectCoefficient( projection_base_coefficient );
+  mfem::ParGridFunction projection_base_position( nodes->ParFESpace() );
+  projection_base_position = coords;
+  if ( std::isfinite( projection_base_upper_offset ) ) {
+    const double projection_base_vertical_shift = projection_base_upper_offset - upper_offset;
+    mfem::VectorFunctionCoefficient projection_base_position_coefficient(
+        2, [projection_base_vertical_shift]( const mfem::Vector& x, mfem::Vector& value ) {
+          value = x;
+          value[1] += projection_base_vertical_shift;
+        } );
+    mfem::Array<mfem::VectorCoefficient*> projection_base_position_coefficients(
+        { &projection_base_position_coefficient } );
+    mfem::PWVectorCoefficient projection_base_position_piecewise_coefficient(
+        2, moving_attributes, projection_base_position_coefficients );
+    projection_base_position.ProjectCoefficient( projection_base_position_piecewise_coefficient );
+  }
   mfem::ParGridFunction inverse_mass( nodes->ParFESpace() );
   mfem::Vector lower_inverse_mass_vector( { 1., 1. } );
   mfem::Vector upper_inverse_mass_vector( { 0.25, 0.25 } );
@@ -227,6 +244,7 @@ ProjectionResult RunProjectionCase( double upper_offset, double upper_velocity, 
   tribol::setMfemSurfaceBasis( coupling_scheme_id, tribol::MfemSurfaceBasis::PARENT );
   tribol::registerMfemVelocity( coupling_scheme_id, velocity );
   if ( position_velocity_scale < 1. ) {
+    tribol::registerMfemProjectionBasePosition( coupling_scheme_id, projection_base_position );
     tribol::registerMfemProjectionBaseVelocity( coupling_scheme_id, projection_base_velocity );
     tribol::setImpulseProjectionKinematics( coupling_scheme_id, position_velocity_scale );
   }
@@ -986,7 +1004,7 @@ TEST( MfemImpulseProjection, GapToleranceRejectsUnresolvedEndpointPenetration )
   EXPECT_LE( residual_gap.reported_energy_change, 1.e-12 );
 }
 
-TEST( MfemImpulseProjection, MaximumGapRejectsNonWorseningOverLimitEndpoint )
+TEST( MfemImpulseProjection, MaximumGapAcceptsNonWorseningInitialViolation )
 {
   const ProjectionResult residual_gap = RunProjectionCase(
       0.996, 0., 1.e-3, 250, 1.e-10, 1.e-6, 2, 3, 1.e-12,
@@ -997,7 +1015,9 @@ TEST( MfemImpulseProjection, MaximumGapRejectsNonWorseningOverLimitEndpoint )
       std::numeric_limits<double>::quiet_NaN(), tribol::PENALTY_AL_SURFACE_COMPLIANCE,
       0., -1., 0., false, -1., 0., 0., 0., 1., 1., 0., 1., 1., 0., -1., 0.005, 0.0023 );
 
-  EXPECT_NE( residual_gap.return_code, 0 );
+  EXPECT_EQ( residual_gap.return_code, 0 );
+  EXPECT_TRUE( residual_gap.converged );
+  EXPECT_TRUE( residual_gap.complementarity_converged );
   EXPECT_GT( residual_gap.max_endpoint_violation, 0.0023 );
   EXPECT_LE( residual_gap.max_endpoint_violation, 0.004 + 1.e-12 );
   EXPECT_LE( residual_gap.reported_energy_change, 1.e-12 );
@@ -1136,6 +1156,91 @@ TEST( MfemImpulseProjection, ParentTraceMortarCompliantGuardLimitsNewPenetration
   EXPECT_LE( result.max_penetration_fraction, 1.001e-3 );
   EXPECT_LE( result.max_endpoint_violation, 1.001e-3 );
   EXPECT_LE( result.reported_energy_change, 1.e-12 );
+}
+
+TEST( MfemImpulseProjection, CommonPlaneCompliantAbsoluteGapGuardIsInactiveWithinTolerance )
+{
+  const ProjectionResult result = RunProjectionCase(
+      0.999, 0., 1.e-3, 250, 1.e-10, 1.e-8, 2, 4, 1.e-12,
+      tribol::COMMON_PLANE, 1., 0., tribol::PROJECTION_RESPONSE_COMPLIANT,
+      1.2, 0.02, 100., 8, 0, tribol::AL_ACCEPT_FEASIBLE, 1, false,
+      tribol::IMPULSE_PROJECTION, false, 2, 2, 1.e-6, 1.e-12, 1., 0., false,
+      0., std::numeric_limits<double>::quiet_NaN(), -1., 1.e-3,
+      std::numeric_limits<double>::quiet_NaN(), tribol::PENALTY_AL_SURFACE_COMPLIANCE,
+      0., -1., 0., false, -1., 0., 0., 0., 1., 1., 0., 1., 1., 0., -1., 0., 0.01 );
+
+  EXPECT_EQ( result.return_code, 0 );
+  EXPECT_TRUE( result.converged );
+  EXPECT_TRUE( result.complementarity_converged );
+  EXPECT_GT( result.correction_norm, 0. );
+  EXPECT_GT( result.spring_force, 0. );
+  EXPECT_EQ( result.guard_force, 0. );
+  EXPECT_EQ( result.guard_constraints, 0 );
+  EXPECT_LE( result.max_endpoint_violation, 0.01 );
+  EXPECT_LE( result.reported_energy_change, 1.e-12 );
+}
+
+TEST( MfemImpulseProjection, CommonPlaneCompliantAbsoluteGapGuardBoundsEndpoint )
+{
+  constexpr double maximum_gap = 1.e-3;
+  const ProjectionResult result = RunProjectionCase(
+      1.005, -10., 1.e-3, 250, 1.e-10, 1.e-8, 2, 4, 1.e-12,
+      tribol::COMMON_PLANE, 1., 0., tribol::PROJECTION_RESPONSE_COMPLIANT,
+      1.2, 0.02, 100., 8, 0, tribol::AL_ACCEPT_FEASIBLE, 1, false,
+      tribol::IMPULSE_PROJECTION, false, 2, 2, 1.e-6, 1.e-12, 1., 0., false,
+      0., std::numeric_limits<double>::quiet_NaN(), -1., 1.e-3,
+      std::numeric_limits<double>::quiet_NaN(), tribol::PENALTY_AL_SURFACE_COMPLIANCE,
+      0., -1., 0., false, -1., 0., 0., 0., 1., 1., 0., 1., 1., 0., -1., 0., maximum_gap );
+
+  EXPECT_EQ( result.return_code, 0 );
+  EXPECT_TRUE( result.converged );
+  EXPECT_TRUE( result.complementarity_converged );
+  EXPECT_GT( result.spring_force, 0. );
+  EXPECT_GT( result.guard_force, 0. );
+  EXPECT_GT( result.guard_constraints, 0 );
+  EXPECT_LE( result.max_endpoint_violation, maximum_gap + 1.e-10 );
+  EXPECT_LE( result.reported_energy_change, 1.e-12 );
+}
+
+TEST( MfemImpulseProjection, CommonPlaneCompliantAbsoluteGapGuardStopsAdditionalPenetration )
+{
+  constexpr double initial_penetration = 1.e-3;
+  constexpr double maximum_gap = 2.e-3;
+  const ProjectionResult result = RunProjectionCase(
+      1. - initial_penetration, -10., 1.e-3, 250, 1.e-10, 1.e-8, 2, 4, 1.e-12,
+      tribol::COMMON_PLANE, 1., 0., tribol::PROJECTION_RESPONSE_COMPLIANT,
+      1.2, 0.02, 100., 8, 0, tribol::AL_ACCEPT_FEASIBLE, 1, false,
+      tribol::IMPULSE_PROJECTION, false, 2, 2, 1.e-6, 1.e-12, 1., 0., false,
+      0., std::numeric_limits<double>::quiet_NaN(), -1., 1.e-3,
+      std::numeric_limits<double>::quiet_NaN(), tribol::PENALTY_AL_SURFACE_COMPLIANCE,
+      0., -1., 0., false, -1., 0., 0., 0., 1., 1., 0., 1., 1., 0., -1., 0., maximum_gap );
+
+  EXPECT_EQ( result.return_code, 0 );
+  EXPECT_TRUE( result.converged );
+  EXPECT_TRUE( result.complementarity_converged );
+  EXPECT_GT( result.correction_norm, 0. );
+  EXPECT_GT( result.guard_force, 0. );
+  EXPECT_GT( result.guard_constraints, 0 );
+  EXPECT_LE( result.max_endpoint_violation, initial_penetration + 1.e-10 );
+  EXPECT_LE( result.reported_energy_change, 1.e-12 );
+}
+
+TEST( MfemImpulseProjection, CommonPlaneUsesRegisteredBasePositionForRkEndpoint )
+{
+  const ProjectionResult result = RunProjectionCase(
+      0.995, -10., 1.e-3, 250, 1.e-10, 1.e-8, 2, 4, 1.e-12,
+      tribol::COMMON_PLANE, 0.5, 0., tribol::PROJECTION_RESPONSE_EXACT,
+      1.2, 0.02, 100., 8, 0, tribol::AL_ACCEPT_FEASIBLE, 1, false,
+      tribol::IMPULSE_PROJECTION, false, 2, 2, 1.e-6, 1.e-12, 1., 0., false,
+      0., std::numeric_limits<double>::quiet_NaN(), -1., 1.e-3,
+      std::numeric_limits<double>::quiet_NaN(), tribol::PENALTY_AL_SURFACE_COMPLIANCE,
+      0., -1., 0., false, -1., 0., 0., 0., 1., 1., 0., 1., 1., 0., -1., 0., -1., false, 0., 1.005 );
+
+  EXPECT_EQ( result.return_code, 0 );
+  EXPECT_TRUE( result.converged );
+  EXPECT_TRUE( result.complementarity_converged );
+  EXPECT_NEAR( result.correction_norm, 0., 1.e-12 );
+  EXPECT_LE( result.max_endpoint_violation, 1.e-12 );
 }
 
 TEST( MfemImpulseProjection, ParentTraceMortarAugmentedLagrangianConvergesToCompliantLaw )

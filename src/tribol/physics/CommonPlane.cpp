@@ -49,6 +49,7 @@ struct ProjectionConstraint {
   RealT phi1[parent_q2_num_nodes];
   RealT phi2[parent_q2_num_nodes];
   RealT gap;
+  RealT position_gap;
   RealT target_velocity;
   RealT diagonal;
   RealT quadrature_measure;
@@ -107,6 +108,7 @@ struct TraceProjectionConstraint {
   RealT normal[2]{ 0., 0. };
   std::vector<TraceProjectionContribution> contributions;
   RealT gap{ 0. };
+  RealT position_gap{ 0. };
   RealT target_velocity{ 0. };
   RealT endpoint_target_velocity{ 0. };
   RealT diagonal{ 0. };
@@ -467,6 +469,20 @@ RealT EvaluateProjectionBaseVelocity( const ProjectionConstraint& constraint, co
   return velocity;
 }
 
+RealT EvaluateProjectionBaseGap( const ProjectionConstraint& constraint, const MeshData::Viewer& mesh1,
+                                 const MeshData::Viewer& mesh2 )
+{
+  RealT gap = 0.;
+  for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+    for ( int d = 0; d < 2; ++d ) {
+      gap += constraint.normal[d] *
+             ( constraint.phi1[a] * mesh1.getParentProjectionBasePosition( constraint.element1, a, d ) -
+               constraint.phi2[a] * mesh2.getParentProjectionBasePosition( constraint.element2, a, d ) );
+    }
+  }
+  return gap;
+}
+
 void AccumulateProjectionImpulse( const ProjectionConstraint& constraint, RealT multiplier_increment,
                                   const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 )
 {
@@ -512,6 +528,24 @@ RealT EvaluateProjectionBaseVelocity( const TraceProjectionConstraint& constrain
     }
   }
   return velocity;
+}
+
+RealT EvaluateProjectionBaseGap( const TraceProjectionConstraint& constraint, const MeshData::Viewer& mesh1,
+                                 const MeshData::Viewer& mesh2 )
+{
+  RealT gap = 0.;
+  for ( const auto& contribution : constraint.contributions ) {
+    for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+      for ( int d = 0; d < 2; ++d ) {
+        gap += contribution.normal[d] *
+               ( contribution.phi1[a] *
+                     mesh1.getParentProjectionBasePosition( contribution.element1, a, d ) -
+                 contribution.phi2[a] *
+                     mesh2.getParentProjectionBasePosition( contribution.element2, a, d ) );
+      }
+    }
+  }
+  return gap;
 }
 
 void AccumulateProjectionImpulse( const TraceProjectionConstraint& constraint, RealT multiplier_increment,
@@ -1306,14 +1340,51 @@ RealT ComputeTraceProjectionPrimalScale( const std::vector<Constraint>& constrai
   return primal_scale;
 }
 
+constexpr int default_projected_gauss_seidel_iterations = 3;
+
 template <typename Constraint>
 TraceProjectionSolveResult SolveTraceProjectionSystem( const mfem::DenseMatrix& projection_operator,
                                                         std::vector<Constraint>& constraints,
-                                                        const ImpulseProjectionOptions& projection_options )
+                                                        const ImpulseProjectionOptions& projection_options,
+                                                        int projected_gauss_seidel_iterations =
+                                                            default_projected_gauss_seidel_iterations )
 {
   TraceProjectionSolveResult result;
   const int num_constraints = static_cast<int>( constraints.size() );
-  auto compute_residual = [&]() { return ComputeTraceProjectionResiduals( projection_operator, constraints ); };
+  std::vector<RealT> projected_gap_rates( constraints.size(), 0. );
+  auto update_projected_gap_rates = [&]() {
+    for ( int i = 0; i < num_constraints; ++i ) {
+      projected_gap_rates[i] = constraints[i].trial_velocity - constraints[i].target_velocity;
+      for ( int j = 0; j < num_constraints; ++j ) {
+        projected_gap_rates[i] += projection_operator( i, j ) * constraints[j].multiplier;
+      }
+    }
+  };
+  auto compute_residual = [&]() {
+    update_projected_gap_rates();
+    ProjectionResiduals residuals;
+    for ( int i = 0; i < num_constraints; ++i ) {
+      residuals.complementarity =
+          std::max( residuals.complementarity,
+                    std::abs( std::min( constraints[i].diagonal * constraints[i].multiplier,
+                                        projected_gap_rates[i] ) ) );
+      residuals.primal = std::max( residuals.primal, -projected_gap_rates[i] );
+    }
+    residuals.primal = std::max( 0., residuals.primal );
+    return residuals;
+  };
+  auto compute_residual_from_current_gap_rates = [&]() {
+    ProjectionResiduals residuals;
+    for ( int i = 0; i < num_constraints; ++i ) {
+      residuals.complementarity =
+          std::max( residuals.complementarity,
+                    std::abs( std::min( constraints[i].diagonal * constraints[i].multiplier,
+                                        projected_gap_rates[i] ) ) );
+      residuals.primal = std::max( residuals.primal, -projected_gap_rates[i] );
+    }
+    residuals.primal = std::max( 0., residuals.primal );
+    return residuals;
+  };
 
   const ProjectionResiduals initial_residuals = compute_residual();
   result.initial_residual = initial_residuals.complementarity;
@@ -1326,23 +1397,44 @@ TraceProjectionSolveResult SolveTraceProjectionSystem( const mfem::DenseMatrix& 
   result.primal_tolerance = projection_options.absolute_tolerance +
                             projection_options.primal_relative_tolerance * primal_scale;
   result.complementarity_converged = result.final_residual <= convergence_tolerance;
-  constexpr int projected_gauss_seidel_warmup_iterations = 3;
-  const int warmup_iterations = std::min( projection_options.max_iterations,
-                                          projected_gauss_seidel_warmup_iterations );
+  const int warmup_iterations =
+      std::min( projection_options.max_iterations, projected_gauss_seidel_iterations );
   for ( int iteration = 1; result.valid && !result.complementarity_converged &&
                            iteration <= warmup_iterations;
         ++iteration ) {
-    for ( int i = 0; i < num_constraints; ++i ) {
-      RealT projected_gap_rate = constraints[i].trial_velocity - constraints[i].target_velocity;
-      for ( int j = 0; j < num_constraints; ++j ) {
-        projected_gap_rate += projection_operator( i, j ) * constraints[j].multiplier;
+    ProjectionResiduals residuals;
+    if ( projected_gauss_seidel_iterations == default_projected_gauss_seidel_iterations ) {
+      for ( int i = 0; i < num_constraints; ++i ) {
+        RealT projected_gap_rate = constraints[i].trial_velocity - constraints[i].target_velocity;
+        for ( int j = 0; j < num_constraints; ++j ) {
+          projected_gap_rate += projection_operator( i, j ) * constraints[j].multiplier;
+        }
+        constraints[i].multiplier =
+            std::max( 0., constraints[i].multiplier -
+                              projection_options.relaxation_scale * projected_gap_rate /
+                                  constraints[i].diagonal );
+        result.valid = result.valid && std::isfinite( constraints[i].multiplier );
       }
-      constraints[i].multiplier =
-          std::max( 0., constraints[i].multiplier -
-                            projection_options.relaxation_scale * projected_gap_rate / constraints[i].diagonal );
-      result.valid = result.valid && std::isfinite( constraints[i].multiplier );
+      residuals = compute_residual();
+    } else {
+      for ( int i = 0; i < num_constraints; ++i ) {
+        const RealT old_multiplier = constraints[i].multiplier;
+        constraints[i].multiplier = std::max(
+            0., old_multiplier - projection_options.relaxation_scale * projected_gap_rates[i] /
+                                     constraints[i].diagonal );
+        const RealT multiplier_increment = constraints[i].multiplier - old_multiplier;
+        result.valid = result.valid && std::isfinite( constraints[i].multiplier );
+        if ( multiplier_increment != 0. ) {
+          for ( int row = 0; row < num_constraints; ++row ) {
+            projected_gap_rates[row] += projection_operator( row, i ) * multiplier_increment;
+          }
+        }
+      }
+      residuals = compute_residual_from_current_gap_rates();
+      if ( residuals.complementarity <= convergence_tolerance ) {
+        residuals = compute_residual();
+      }
     }
-    const ProjectionResiduals residuals = compute_residual();
     result.final_residual = residuals.complementarity;
     result.final_primal_residual = residuals.primal;
     result.valid = result.valid && std::isfinite( result.final_residual ) &&
@@ -3348,6 +3440,14 @@ TRIBOL_HOST_DEVICE inline RealT ComputeProjectionTargetPositionVelocity(
   const RealT tolerance_gap = gap + gap_tolerance;
   return tolerance_gap > 0. ? -tolerance_gap / dt
                             : -depenetration_fraction * tolerance_gap / dt;
+}
+
+inline RealT ComputeCompliantMaximumPenetration(
+    const ImpulseProjectionOptions& projection_options, RealT minimum_thickness )
+{
+  return projection_options.maximum_gap >= 0.
+      ? projection_options.maximum_gap
+      : projection_options.max_penetration_fraction * minimum_thickness;
 }
 
 TRIBOL_HOST_DEVICE inline RealT LimitProjectionTargetToNonpositiveWork(
@@ -5945,10 +6045,12 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
       use_penalty_guard;
   const RealT position_velocity_scale = projection_options.position_velocity_scale;
   SLIC_ERROR_ROOT_IF( position_velocity_scale < 1. &&
-                          ( !mesh1.hasParentProjectionBaseVelocity() ||
+                          ( !mesh1.hasParentProjectionBasePosition() ||
+                            !mesh2.hasParentProjectionBasePosition() ||
+                            !mesh1.hasParentProjectionBaseVelocity() ||
                             !mesh2.hasParentProjectionBaseVelocity() ),
-                      "Common-plane impulse projection requires a base velocity when the position velocity scale "
-                      "is less than one." );
+                      "Common-plane impulse projection requires base position and velocity fields when the "
+                      "position velocity scale is less than one." );
 
   RealT rule_weights[max_segment_gauss_legendre_qpts] = { 0. };
   RealT rule_coordinates[max_segment_gauss_legendre_qpts] = { 0. };
@@ -6023,6 +6125,9 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
                         constraint.normal );
       constraint.gap = ( x_face1[0] - x_face2[0] ) * constraint.normal[0] +
                        ( x_face1[1] - x_face2[1] ) * constraint.normal[1];
+      constraint.position_gap = position_velocity_scale < 1.
+                                    ? EvaluateProjectionBaseGap( constraint, mesh1, mesh2 )
+                                    : constraint.gap;
       constraint.quadrature_measure = length * rule_weights[qp];
       constraint.spring_stiffness =
           constraint.quadrature_measure * ComputeProjectionPenaltyStiffnessPerArea(
@@ -6040,15 +6145,16 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
       constraint.position_trial_velocity = ( 1. - position_velocity_scale ) * base_velocity +
                                            position_velocity_scale * constraint.trial_velocity;
       const RealT target_position_velocity = ComputeProjectionTargetPositionVelocity(
-          constraint.gap, stage_dt,
+          constraint.position_gap, stage_dt,
           use_compliant_response ? 0. : projection_options.depenetration_fraction,
           use_compliant_response ? 0. : projection_options.gap_tolerance );
       const RealT endpoint_target_velocity =
           constraint.trial_velocity +
           ( target_position_velocity - constraint.position_trial_velocity ) / position_velocity_scale;
       constraint.target_velocity = LimitProjectionTargetToNonpositiveWork(
-          constraint.gap, constraint.trial_velocity, endpoint_target_velocity );
-      if ( !std::isfinite( constraint.gap ) || !std::isfinite( constraint.target_velocity ) ||
+          constraint.position_gap, constraint.trial_velocity, endpoint_target_velocity );
+      if ( !std::isfinite( constraint.gap ) || !std::isfinite( constraint.position_gap ) ||
+           !std::isfinite( constraint.target_velocity ) ||
            !std::isfinite( constraint.quadrature_measure ) || constraint.quadrature_measure <= 0. ||
            !std::isfinite( constraint.diagonal ) || constraint.diagonal <= 0. ||
            !std::isfinite( constraint.trial_velocity ) ) {
@@ -6246,7 +6352,7 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
           constraint.damping_coefficient =
               2. * projection_options.damping_ratio *
               std::sqrt( constraint.spring_stiffness * effective_mass );
-          const RealT current_penetration = std::max( 0., -constraint.gap );
+          const RealT current_penetration = std::max( 0., -constraint.position_gap );
           if ( use_penalty_guard ) {
             const RealT spring_force = constraint.spring_stiffness * current_penetration;
             const RealT damping_force =
@@ -6264,7 +6370,7 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
             if ( std::isfinite( effective_damping ) && effective_damping > 0. ) {
               solve_operator( i, i ) += 1. / ( stage_dt * effective_damping );
               const RealT trial_endpoint_gap =
-                  constraint.gap + stage_dt * constraint.position_trial_velocity;
+                  constraint.position_gap + stage_dt * constraint.position_trial_velocity;
               const RealT trial_penetration = std::max( 0., -trial_endpoint_gap );
               const bool contact_predicted = current_penetration > 0. || trial_endpoint_gap < 0.;
               const RealT weighted_penetration =
@@ -6304,11 +6410,14 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
           const RealT penalty_position_velocity =
               original_position_trial_velocity[i] +
               position_velocity_scale * ( penalty_velocity - original_trial_velocity[i] );
-          const RealT penalty_endpoint_gap = constraint.gap + stage_dt * penalty_position_velocity;
+          const RealT penalty_endpoint_gap = constraint.position_gap + stage_dt * penalty_position_velocity;
           const RealT allowed_penetration =
-              projection_options.max_penetration_fraction * constraint.minimum_thickness;
+              ComputeCompliantMaximumPenetration( projection_options,
+                                                  constraint.minimum_thickness );
           const RealT minimum_endpoint_gap =
-              constraint.gap < -allowed_penetration ? constraint.gap : -allowed_penetration;
+              constraint.position_gap >= -allowed_penetration
+                  ? -allowed_penetration
+                  : constraint.position_gap;
           const RealT guard_tolerance = 100. * std::numeric_limits<RealT>::epsilon() *
                                         std::max( 1., std::abs( minimum_endpoint_gap ) );
           const bool constraint_requires_guard =
@@ -6317,7 +6426,7 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
           constraint.trial_velocity = penalty_velocity;
           constraint.position_trial_velocity = penalty_position_velocity;
           const RealT target_position_velocity =
-              constraint_requires_guard ? ( minimum_endpoint_gap - constraint.gap ) / stage_dt
+              constraint_requires_guard ? ( minimum_endpoint_gap - constraint.position_gap ) / stage_dt
                                         : penalty_position_velocity;
           constraint.target_velocity =
               penalty_velocity +
@@ -6347,8 +6456,12 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
         final_primal_residual = guard_result.final_primal_residual;
         primal_tolerance = guard_result.primal_tolerance;
       } else {
-        const TraceProjectionSolveResult solve_result =
-            SolveTraceProjectionSystem( solve_operator, constraints, projection_options );
+        constexpr int compliant_projected_gauss_seidel_iterations = 50;
+        TRIBOL_MARK_BEGIN( "Solve common-plane compliant projection" );
+        const TraceProjectionSolveResult solve_result = SolveTraceProjectionSystem(
+            solve_operator, constraints, projection_options,
+            compliant_projected_gauss_seidel_iterations );
+        TRIBOL_MARK_END( "Solve common-plane compliant projection" );
         valid = solve_result.valid;
         complementarity_converged = solve_result.complementarity_converged;
         iterations = solve_result.iterations;
@@ -6356,6 +6469,82 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
         final_residual = solve_result.final_residual;
         final_primal_residual = solve_result.final_primal_residual;
         primal_tolerance = solve_result.primal_tolerance;
+
+        if ( valid && use_compliant_response ) {
+          std::vector<RealT> original_trial_velocity( constraints.size() );
+          std::vector<RealT> original_position_trial_velocity( constraints.size() );
+          std::vector<RealT> guarded_target_velocity( constraints.size() );
+          for ( int i = 0; i < static_cast<int>( constraints.size() ); ++i ) {
+            auto& constraint = constraints[i];
+            original_trial_velocity[i] = constraint.trial_velocity;
+            original_position_trial_velocity[i] = constraint.position_trial_velocity;
+            constraint.compliant_multiplier = constraint.multiplier;
+            constraint.guard_multiplier = 0.;
+          }
+
+          for ( int i = 0; i < static_cast<int>( constraints.size() ); ++i ) {
+            auto& constraint = constraints[i];
+            RealT compliant_velocity = original_trial_velocity[i];
+            for ( int j = 0; j < static_cast<int>( constraints.size() ); ++j ) {
+              compliant_velocity +=
+                  projection_operator( i, j ) * constraints[j].compliant_multiplier;
+            }
+            const RealT compliant_position_velocity =
+                original_position_trial_velocity[i] +
+                position_velocity_scale * ( compliant_velocity - original_trial_velocity[i] );
+            const RealT compliant_endpoint_gap =
+                constraint.position_gap + stage_dt * compliant_position_velocity;
+            const RealT allowed_penetration =
+                ComputeCompliantMaximumPenetration( projection_options,
+                                                    constraint.minimum_thickness );
+            const RealT minimum_endpoint_gap =
+                constraint.position_gap >= -allowed_penetration
+                    ? -allowed_penetration
+                    : constraint.position_gap;
+            const RealT guard_tolerance = 100. * std::numeric_limits<RealT>::epsilon() *
+                                          std::max( 1., std::abs( minimum_endpoint_gap ) );
+            const bool constraint_requires_guard =
+                compliant_endpoint_gap < minimum_endpoint_gap - guard_tolerance;
+            guard_required = guard_required || constraint_requires_guard;
+            const RealT guarded_endpoint_gap = std::min( 0., constraint.position_gap );
+            const RealT target_position_velocity =
+                constraint_requires_guard ? ( guarded_endpoint_gap - constraint.position_gap ) / stage_dt
+                                          : compliant_position_velocity;
+            guarded_target_velocity[i] =
+                original_trial_velocity[i] +
+                ( target_position_velocity - original_position_trial_velocity[i] ) /
+                    position_velocity_scale;
+          }
+          if ( guard_required ) {
+            for ( int i = 0; i < static_cast<int>( constraints.size() ); ++i ) {
+              auto& constraint = constraints[i];
+              constraint.target_velocity = guarded_target_velocity[i];
+              constraint.multiplier = 0.;
+              constraint.diagonal = projection_operator( i, i );
+            }
+            guard_result = SolveTraceProjectionSystem( projection_operator, constraints,
+                                                       projection_options, 0 );
+            valid = valid && guard_result.valid;
+          }
+          for ( int i = 0; i < static_cast<int>( constraints.size() ); ++i ) {
+            auto& constraint = constraints[i];
+            constraint.guard_multiplier = guard_required
+                ? std::max( 0., constraint.multiplier - constraint.compliant_multiplier )
+                : 0.;
+            constraint.trial_velocity = original_trial_velocity[i];
+            constraint.position_trial_velocity = original_position_trial_velocity[i];
+          }
+          if ( guard_required ) {
+            complementarity_converged =
+                complementarity_converged && guard_result.complementarity_converged;
+            iterations += guard_result.iterations;
+            initial_residual = std::max( initial_residual, guard_result.initial_residual );
+            final_residual = std::max( final_residual, guard_result.final_residual );
+            final_primal_residual =
+                std::max( final_primal_residual, guard_result.final_primal_residual );
+            primal_tolerance = std::max( primal_tolerance, guard_result.primal_tolerance );
+          }
+        }
       }
     }
     if ( valid ) {
@@ -6453,14 +6642,14 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
     const RealT position_final_velocity =
         constraint.position_trial_velocity +
         position_velocity_scale * ( final_velocity - constraint.trial_velocity );
-    const RealT endpoint_gap = constraint.gap + stage_dt * position_final_velocity;
+    const RealT endpoint_gap = constraint.position_gap + stage_dt * position_final_velocity;
     const RealT gap_violation = std::max( 0., -constraint.gap );
     const RealT closing_rate = std::max( 0., -constraint.trial_velocity );
     const RealT energy_term = constraint.multiplier > 0.
                                   ? 0.5 * constraint.multiplier *
                                         ( constraint.trial_velocity + final_velocity )
                                   : 0.;
-    const RealT initial_penetration = std::max( 0., -constraint.gap );
+    const RealT initial_penetration = std::max( 0., -constraint.position_gap );
     const RealT final_penetration = std::max( 0., -endpoint_gap );
     const RealT spring_energy_term =
         use_compliant_response && ( initial_penetration > 0. || final_penetration > 0. )
@@ -6494,9 +6683,11 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
     const RealT endpoint_violation = std::max( 0., -endpoint_gap );
     maximum_endpoint_violation = std::max( maximum_endpoint_violation, endpoint_violation );
     if ( projection_options.maximum_gap >= 0. ) {
+      const RealT admissible_endpoint_penetration =
+          std::max( projection_options.maximum_gap, initial_penetration );
       maximum_endpoint_gap_excess =
           std::max( maximum_endpoint_gap_excess,
-                    endpoint_violation - projection_options.maximum_gap );
+                    endpoint_violation - admissible_endpoint_penetration );
     }
     energy_change += energy_term;
     spring_energy_change += spring_energy_term;
@@ -6507,7 +6698,7 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
   const RealT validated_energy_change = energy_change + spring_energy_change;
   const RealT endpoint_gap_tolerance = stage_dt * primal_tolerance +
                                        100. * std::numeric_limits<RealT>::epsilon();
-  const bool gap_accepted = use_compliant_response || projection_options.maximum_gap < 0. ||
+  const bool gap_accepted = projection_options.maximum_gap < 0. ||
                             maximum_endpoint_gap_excess <= endpoint_gap_tolerance;
   const bool energy_accepted = use_penalty_guard || validated_energy_change <= energy_tolerance;
   const bool accepted = valid &&
@@ -6551,8 +6742,8 @@ int ApplyNormal<COMMON_PLANE, IMPULSE_PROJECTION>( CouplingScheme* cs )
   cs->setCompliantProjectionDiagnostics(
       accepted && use_compliant_response ? spring_force : 0.,
       accepted && use_compliant_response ? damping_force : 0.,
-      accepted && use_penalty_guard ? guard_force : 0.,
-      accepted && use_penalty_guard ? guard_constraints : 0,
+      accepted && use_compliant_response ? guard_force : 0.,
+      accepted && use_compliant_response ? guard_constraints : 0,
       accepted && use_compliant_response ? stored_energy : 0.,
       accepted && use_compliant_response ? maximum_penetration_fraction : 0. );
   cs->setPredictorForceDiagnostics( 0, 0, accepted ? spring_force : 0.,
@@ -7232,10 +7423,12 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
       projection_options.contact_response != PROJECTION_RESPONSE_EXACT;
   const RealT position_velocity_scale = projection_options.position_velocity_scale;
   SLIC_ERROR_ROOT_IF( position_velocity_scale < 1. &&
-                          ( !mesh1.hasParentProjectionBaseVelocity() ||
+                          ( !mesh1.hasParentProjectionBasePosition() ||
+                            !mesh2.hasParentProjectionBasePosition() ||
+                            !mesh1.hasParentProjectionBaseVelocity() ||
                             !mesh2.hasParentProjectionBaseVelocity() ),
-                      "Parent-trace mortar impulse projection requires a base velocity when the position velocity "
-                      "scale is less than one." );
+                      "Parent-trace mortar impulse projection requires base position and velocity fields when the "
+                      "position velocity scale is less than one." );
 
   std::vector<TraceProjectionConstraint> constraints;
   std::vector<ProjectionConstraint> parent_q2_diagnostic_points;
@@ -7314,6 +7507,9 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
   }
   for ( int i = 0; i < num_constraints; ++i ) {
     auto& constraint = constraints[i];
+    constraint.position_gap = position_velocity_scale < 1.
+                                  ? EvaluateProjectionBaseGap( constraint, mesh1, mesh2 )
+                                  : constraint.gap;
     constraint.trial_velocity = EvaluateProjectionVelocity( constraint, mesh1, mesh2 );
     const RealT base_velocity = position_velocity_scale < 1.
                                     ? EvaluateProjectionBaseVelocity( constraint, mesh1, mesh2 )
@@ -7321,14 +7517,14 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
     constraint.position_trial_velocity = ( 1. - position_velocity_scale ) * base_velocity +
                                          position_velocity_scale * constraint.trial_velocity;
     const RealT target_position_velocity = ComputeProjectionTargetPositionVelocity(
-        constraint.gap, stage_dt,
+        constraint.position_gap, stage_dt,
         use_compliant_response ? 0. : projection_options.depenetration_fraction,
         use_compliant_response ? 0. : projection_options.gap_tolerance );
     const RealT endpoint_target_velocity =
         constraint.trial_velocity +
         ( target_position_velocity - constraint.position_trial_velocity ) / position_velocity_scale;
     constraint.endpoint_target_velocity = LimitProjectionTargetToNonpositiveWork(
-        constraint.gap, constraint.trial_velocity, endpoint_target_velocity );
+        constraint.position_gap, constraint.trial_velocity, endpoint_target_velocity );
     constraint.target_velocity = projection_options.diagnostic_zero_gap_rate_target
                                      ? 0.
                                      : constraint.endpoint_target_velocity;
@@ -7349,6 +7545,7 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
     const RealT physical_diagonal = projection_operator( i, i );
     const bool valid_physical_diagonal = std::isfinite( physical_diagonal ) && physical_diagonal > 0.;
     valid = valid && valid_physical_diagonal && std::isfinite( constraint.gap ) &&
+            std::isfinite( constraint.position_gap ) &&
             std::isfinite( constraint.target_velocity ) && std::isfinite( constraint.trial_velocity );
     if ( use_compliant_response ) {
       const bool valid_contact_data = std::isfinite( constraint.tributary_area ) &&
@@ -7364,7 +7561,7 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
         constraint.damping_coefficient =
             2. * projection_options.damping_ratio *
             std::sqrt( constraint.spring_stiffness * effective_mass );
-        const RealT current_penetration = std::max( 0., -constraint.gap );
+        const RealT current_penetration = std::max( 0., -constraint.position_gap );
         if ( use_penalty_guard ) {
           const RealT spring_force = constraint.spring_stiffness * current_penetration;
           const RealT damping_force =
@@ -7380,7 +7577,7 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
           if ( std::isfinite( effective_damping ) && effective_damping > 0. ) {
             solve_operator( i, i ) += 1. / ( stage_dt * effective_damping );
             const RealT trial_endpoint_gap =
-                constraint.gap + stage_dt * constraint.position_trial_velocity;
+                constraint.position_gap + stage_dt * constraint.position_trial_velocity;
             const RealT trial_penetration = std::max( 0., -trial_endpoint_gap );
             const bool contact_predicted = current_penetration > 0. || trial_endpoint_gap < 0.;
             const RealT weighted_penetration =
@@ -7506,11 +7703,14 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
       const RealT compliant_position_velocity =
           original_position_trial_velocity[i] +
           position_velocity_scale * ( compliant_velocity - original_trial_velocity[i] );
-      const RealT compliant_endpoint_gap = constraint.gap + stage_dt * compliant_position_velocity;
+      const RealT compliant_endpoint_gap = constraint.position_gap + stage_dt * compliant_position_velocity;
       const RealT allowed_penetration =
-          projection_options.max_penetration_fraction * constraint.minimum_thickness;
+          ComputeCompliantMaximumPenetration( projection_options,
+                                              constraint.minimum_thickness );
       const RealT minimum_endpoint_gap =
-          constraint.gap < -allowed_penetration ? constraint.gap : -allowed_penetration;
+          constraint.position_gap >= -allowed_penetration
+              ? -allowed_penetration
+              : constraint.position_gap;
       const RealT guard_tolerance = 100. * std::numeric_limits<RealT>::epsilon() *
                                     std::max( 1., std::abs( minimum_endpoint_gap ) );
       const bool constraint_requires_guard =
@@ -7518,8 +7718,9 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
       guard_required = guard_required || constraint_requires_guard;
       constraint.trial_velocity = compliant_velocity;
       constraint.position_trial_velocity = compliant_position_velocity;
+      const RealT guarded_endpoint_gap = std::min( 0., constraint.position_gap );
       const RealT target_position_velocity =
-          constraint_requires_guard ? ( minimum_endpoint_gap - constraint.gap ) / stage_dt
+          constraint_requires_guard ? ( guarded_endpoint_gap - constraint.position_gap ) / stage_dt
                                     : compliant_position_velocity;
       constraint.target_velocity =
           compliant_velocity +
@@ -7627,11 +7828,11 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
     const RealT position_final_velocity =
         constraint.position_trial_velocity +
         position_velocity_scale * ( final_velocity - constraint.trial_velocity );
-    const RealT endpoint_gap = constraint.gap + stage_dt * position_final_velocity;
+    const RealT endpoint_gap = constraint.position_gap + stage_dt * position_final_velocity;
     const RealT gap_violation = std::max( 0., -constraint.gap );
     const RealT closing_rate = std::max( 0., -constraint.trial_velocity );
     const RealT energy_term = 0.5 * constraint.multiplier * ( constraint.trial_velocity + final_velocity );
-    const RealT initial_penetration = std::max( 0., -constraint.gap );
+    const RealT initial_penetration = std::max( 0., -constraint.position_gap );
     const RealT final_penetration = std::max( 0., -endpoint_gap );
     const RealT spring_energy_term =
         use_compliant_response
@@ -7664,9 +7865,11 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
     const RealT endpoint_violation = std::max( 0., -endpoint_gap );
     maximum_endpoint_violation = std::max( maximum_endpoint_violation, endpoint_violation );
     if ( projection_options.maximum_gap >= 0. ) {
+      const RealT admissible_endpoint_penetration =
+          std::max( projection_options.maximum_gap, initial_penetration );
       maximum_endpoint_gap_excess =
           std::max( maximum_endpoint_gap_excess,
-                    endpoint_violation - projection_options.maximum_gap );
+                    endpoint_violation - admissible_endpoint_penetration );
     }
     energy_change += energy_term;
     spring_energy_change += spring_energy_term;
@@ -7698,7 +7901,7 @@ int ApplyNormal<PARENT_TRACE_MORTAR, IMPULSE_PROJECTION>( CouplingScheme* cs )
       projection_options.al_failure_policy == AL_ACCEPT_FEASIBLE || complementarity_converged;
   const RealT endpoint_gap_tolerance = stage_dt * primal_tolerance +
                                        100. * std::numeric_limits<RealT>::epsilon();
-  const bool gap_accepted = use_compliant_response || projection_options.maximum_gap < 0. ||
+  const bool gap_accepted = projection_options.maximum_gap < 0. ||
                             maximum_endpoint_gap_excess <= endpoint_gap_tolerance;
   const bool accepted = valid && ( primal_converged || force_limited ) &&
                         std::isfinite( validated_energy_change ) &&

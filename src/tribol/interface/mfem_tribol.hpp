@@ -227,6 +227,11 @@ void updateMfemMaterialModulus( IndexT cs_id, mfem::Coefficient& modulus_coeffic
 void registerMfemVelocity( IndexT cs_id, const mfem::ParGridFunction& v );
 
 /**
+ * @brief Registers the base position used by the position update for impulse projection
+ */
+void registerMfemProjectionBasePosition( IndexT cs_id, const mfem::ParGridFunction& x );
+
+/**
  * @brief Registers the base velocity used by the position update for impulse projection
  *
  * The position velocity is interpolated between this field and the registered

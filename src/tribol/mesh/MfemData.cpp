@@ -29,7 +29,8 @@ constexpr int parent_q2_num_nodes = 3;
 constexpr int parent_q2_dim = 2;
 constexpr int parent_q2_field_width = parent_q2_num_nodes * parent_q2_dim;
 constexpr int parent_q2_position_offset = 0;
-constexpr int parent_q2_velocity_offset = parent_q2_position_offset + parent_q2_field_width;
+constexpr int parent_q2_projection_base_position_offset = parent_q2_position_offset + parent_q2_field_width;
+constexpr int parent_q2_velocity_offset = parent_q2_projection_base_position_offset + parent_q2_field_width;
 constexpr int parent_q2_projection_base_velocity_offset = parent_q2_velocity_offset + parent_q2_field_width;
 constexpr int parent_q2_inverse_mass_offset = parent_q2_projection_base_velocity_offset + parent_q2_field_width;
 constexpr int parent_q2_reference_offset = parent_q2_inverse_mass_offset + parent_q2_field_width;
@@ -818,6 +819,8 @@ void MfemMeshData::CopyRedecompParentQ2Records( const Array1D<int>& elem_map, Pa
 {
   const int num_elements = static_cast<int>( elem_map.size() );
   fields.position.SetSize( num_elements * parent_q2_field_width );
+  fields.projection_base_position.SetSize(
+      HasProjectionBasePosition() ? num_elements * parent_q2_field_width : 0 );
   fields.response.SetSize( num_elements * parent_q2_field_width );
   fields.reference_interval.SetSize( num_elements * 2 );
   fields.parent_dof_ids.SetSize( num_elements * parent_q2_num_nodes );
@@ -828,6 +831,9 @@ void MfemMeshData::CopyRedecompParentQ2Records( const Array1D<int>& elem_map, Pa
 
   const RealT* record_values = redecomp_parent_q2_records_->HostRead();
   RealT* positions = fields.position.HostWrite();
+  RealT* projection_base_positions = HasProjectionBasePosition()
+      ? fields.projection_base_position.HostWrite()
+      : nullptr;
   RealT* velocities = HasVelocity() ? fields.velocity.HostWrite() : nullptr;
   RealT* projection_base_velocities =
       HasProjectionBaseVelocity() ? fields.projection_base_velocity.HostWrite() : nullptr;
@@ -844,6 +850,11 @@ void MfemMeshData::CopyRedecompParentQ2Records( const Array1D<int>& elem_map, Pa
     for ( int c = 0; c < parent_q2_field_width; ++c ) {
       positions[i * parent_q2_field_width + c] =
           record_values[redecomp_parent_q2_record_fes_->DofToVDof( record_dofs[0], parent_q2_position_offset + c )];
+      if ( projection_base_positions != nullptr ) {
+        projection_base_positions[i * parent_q2_field_width + c] = record_values[
+            redecomp_parent_q2_record_fes_->DofToVDof( record_dofs[0],
+                                                       parent_q2_projection_base_position_offset + c )];
+      }
       if ( velocities != nullptr ) {
         velocities[i * parent_q2_field_width + c] =
             record_values[redecomp_parent_q2_record_fes_->DofToVDof( record_dofs[0], parent_q2_velocity_offset + c )];
@@ -876,6 +887,10 @@ void MfemMeshData::BuildParentQ2Data()
   }
   *lor_parent_q2_records_ = 0.;
   PopulateParentQ2RecordField( coords_.GetParentGridFn(), parent_q2_position_offset );
+  if ( projection_base_position_ ) {
+    PopulateParentQ2RecordField( projection_base_position_->GetParentGridFn(),
+                                 parent_q2_projection_base_position_offset );
+  }
   if ( velocity_ ) {
     PopulateParentQ2RecordField( velocity_->GetParentGridFn(), parent_q2_velocity_offset );
   }
@@ -1121,8 +1136,41 @@ bool MfemMeshData::ApplyParentQ2ProjectionImpulse()
     parent_impulse = 0.;
     GetParentResponse( parent_impulse );
     mfem::Vector parent_velocity_increment;
-    valid = parent_velocity_mass_inverse_( parent_impulse, parent_velocity_increment ) &&
-            parent_velocity_increment.Size() == parent_impulse.Size();
+    bool used_cached_inverse =
+        !consistent_mass_dofs_.empty() &&
+        consistent_mass_inverse_.Height() == static_cast<int>( consistent_mass_dofs_.size() );
+    if ( used_cached_inverse ) {
+      mfem::Vector active_impulse( static_cast<int>( consistent_mass_dofs_.size() ) );
+      const RealT* impulse = parent_impulse.HostRead();
+      RealT* active_impulse_data = active_impulse.HostWrite();
+      int active_index = 0;
+      for ( int dof = 0; dof < parent_impulse.Size(); ++dof ) {
+        if ( active_index < static_cast<int>( consistent_mass_dofs_.size() ) &&
+             dof == consistent_mass_dofs_[static_cast<std::size_t>( active_index )] ) {
+          active_impulse_data[active_index++] = impulse[dof];
+        } else if ( impulse[dof] != 0. ) {
+          used_cached_inverse = false;
+          break;
+        }
+      }
+      used_cached_inverse =
+          used_cached_inverse && active_index == static_cast<int>( consistent_mass_dofs_.size() );
+      if ( used_cached_inverse ) {
+        mfem::Vector active_velocity_increment( static_cast<int>( consistent_mass_dofs_.size() ) );
+        consistent_mass_inverse_.Mult( active_impulse, active_velocity_increment );
+        parent_velocity_increment.SetSize( parent_impulse.Size() );
+        parent_velocity_increment = 0.;
+        RealT* increment = parent_velocity_increment.HostReadWrite();
+        const RealT* active_increment = active_velocity_increment.HostRead();
+        for ( int i = 0; i < static_cast<int>( consistent_mass_dofs_.size() ); ++i ) {
+          increment[consistent_mass_dofs_[static_cast<std::size_t>( i )]] = active_increment[i];
+        }
+      }
+    }
+    if ( !used_cached_inverse ) {
+      valid = parent_velocity_mass_inverse_( parent_impulse, parent_velocity_increment ) &&
+              parent_velocity_increment.Size() == parent_impulse.Size();
+    }
     if ( valid ) {
       const RealT* increment = parent_velocity_increment.HostRead();
       for ( int i = 0; i < parent_velocity_increment.Size(); ++i ) {
@@ -1229,33 +1277,73 @@ bool MfemMeshData::AssembleParentQ2ConsistentProjectionOperator(
   std::vector<std::vector<std::pair<int, RealT>>> sparse_columns(
       static_cast<std::size_t>( num_constraints ) );
   std::vector<bool> active_parent_dofs( static_cast<std::size_t>( parent_size ), false );
+  auto* submesh_fes = submesh_xfer_gridfn_.ParFESpace();
+  mfem::Vector local_impulse( submesh_fes->GetVSize() );
+  mfem::Vector assembled_impulse;
+  mfem::Vector parent_impulse( parent_size );
+  const IndexT* parent_dof_ids1 = parent_q2_fields_1_.parent_dof_ids.HostRead();
+  const IndexT* parent_dof_ids2 = parent_q2_fields_2_.parent_dof_ids.HostRead();
+  const bool serial = parent_mesh_.GetNRanks() == 1;
+  const int* submesh_to_parent_vdof =
+      serial ? GetParentRedecompTransfer().submesh_to_parent_vdof_map_.HostRead() : nullptr;
+  TRIBOL_MARK_BEGIN( "Assemble sparse consistent constraint rows" );
   for ( IndexT i = 0; i < num_constraints; ++i ) {
-    ClearParentQ2Response();
-    RealT* response1 = parent_q2_fields_1_.response.HostReadWrite();
-    RealT* response2 = parent_q2_fields_2_.response.HostReadWrite();
-    for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
-      for ( int d = 0; d < parent_q2_dim; ++d ) {
-        const RealT impulse = normals[i * parent_q2_dim + d];
-        response1[elements1[i] * parent_q2_field_width + a * parent_q2_dim + d] +=
-            phi1[i * parent_q2_num_nodes + a] * impulse;
-        response2[elements2[i] * parent_q2_field_width + a * parent_q2_dim + d] -=
-            phi2[i * parent_q2_num_nodes + a] * impulse;
+    auto& column = sparse_columns[static_cast<std::size_t>( i )];
+    if ( serial ) {
+      auto add_entry = [&]( int submesh_vdof, RealT value ) {
+        RealT submesh_sign = 1.;
+        const int local_vdof = DecodeDof( submesh_vdof, submesh_sign );
+        RealT parent_sign = 1.;
+        const int parent_vdof = DecodeDof( submesh_to_parent_vdof[local_vdof], parent_sign );
+        const RealT signed_value = submesh_sign * parent_sign * value;
+        for ( auto& entry : column ) {
+          if ( entry.first == parent_vdof ) {
+            entry.second += signed_value;
+            return;
+          }
+        }
+        column.emplace_back( parent_vdof, signed_value );
+      };
+      for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+        for ( int d = 0; d < parent_q2_dim; ++d ) {
+          const int vdof1 = submesh_fes->DofToVDof(
+              parent_dof_ids1[elements1[i] * parent_q2_num_nodes + a], d );
+          const int vdof2 = submesh_fes->DofToVDof(
+              parent_dof_ids2[elements2[i] * parent_q2_num_nodes + a], d );
+          const RealT normal = normals[i * parent_q2_dim + d];
+          add_entry( vdof1, phi1[i * parent_q2_num_nodes + a] * normal );
+          add_entry( vdof2, -phi2[i * parent_q2_num_nodes + a] * normal );
+        }
+      }
+    } else {
+      local_impulse = 0.;
+      RealT* impulse = local_impulse.HostReadWrite();
+      for ( int a = 0; a < parent_q2_num_nodes; ++a ) {
+        for ( int d = 0; d < parent_q2_dim; ++d ) {
+          const int vdof1 = submesh_fes->DofToVDof(
+              parent_dof_ids1[elements1[i] * parent_q2_num_nodes + a], d );
+          const int vdof2 = submesh_fes->DofToVDof(
+              parent_dof_ids2[elements2[i] * parent_q2_num_nodes + a], d );
+          const RealT normal = normals[i * parent_q2_dim + d];
+          impulse[vdof1] += phi1[i * parent_q2_num_nodes + a] * normal;
+          impulse[vdof2] -= phi2[i * parent_q2_num_nodes + a] * normal;
+        }
+      }
+      AssembleSubmeshDualToOwnedDofs( local_impulse, assembled_impulse );
+      parent_impulse = 0.;
+      GetParentRedecompTransfer().AddSubmeshToParent( assembled_impulse, parent_impulse );
+      const RealT* parent_impulse_data = parent_impulse.HostRead();
+      for ( int d = 0; d < parent_size; ++d ) {
+        if ( parent_impulse_data[d] != 0. ) {
+          column.emplace_back( d, parent_impulse_data[d] );
+        }
       }
     }
-
-    mfem::Vector parent_impulse( parent_size );
-    parent_impulse = 0.;
-    GetParentResponse( parent_impulse );
-    const RealT* impulse = parent_impulse.HostRead();
-    auto& column = sparse_columns[static_cast<std::size_t>( i )];
-    for ( int d = 0; d < parent_size; ++d ) {
-      if ( impulse[d] != 0. ) {
-        column.emplace_back( d, impulse[d] );
-        active_parent_dofs[static_cast<std::size_t>( d )] = true;
-      }
+    for ( const auto& entry : column ) {
+      active_parent_dofs[static_cast<std::size_t>( entry.first )] = true;
     }
   }
-  ClearParentQ2Response();
+  TRIBOL_MARK_END( "Assemble sparse consistent constraint rows" );
 
   std::vector<int> active_dofs;
   for ( int d = 0; d < parent_size; ++d ) {
@@ -1273,9 +1361,15 @@ bool MfemMeshData::AssembleParentQ2ConsistentProjectionOperator(
   }
   rows.SetSize( static_cast<int>( active_dofs.size() ), num_constraints );
   rows = 0.;
+  std::vector<std::vector<std::pair<int, RealT>>> active_columns(
+      static_cast<std::size_t>( num_constraints ) );
   for ( IndexT i = 0; i < num_constraints; ++i ) {
+    auto& active_column = active_columns[static_cast<std::size_t>( i )];
+    active_column.reserve( sparse_columns[static_cast<std::size_t>( i )].size() );
     for ( const auto& entry : sparse_columns[static_cast<std::size_t>( i )] ) {
-      rows( active_index[static_cast<std::size_t>( entry.first )], i ) = entry.second;
+      const int row = active_index[static_cast<std::size_t>( entry.first )];
+      rows( row, i ) = entry.second;
+      active_column.emplace_back( row, entry.second );
     }
   }
 
@@ -1309,10 +1403,33 @@ bool MfemMeshData::AssembleParentQ2ConsistentProjectionOperator(
     consistent_mass_dofs_ = active_dofs;
   }
 
-  mfem::DenseMatrix velocity_rows( rows.Height(), rows.Width() );
-  mfem::Mult( consistent_mass_inverse_, rows, velocity_rows );
+  TRIBOL_MARK_BEGIN( "Assemble sparse consistent projection operator" );
+  const int active_size = static_cast<int>( active_dofs.size() );
+  mfem::DenseMatrix inverse_mass_rows( active_size, num_constraints );
+  inverse_mass_rows = 0.;
+  for ( IndexT constraint = 0; constraint < num_constraints; ++constraint ) {
+    RealT* response = inverse_mass_rows.GetColumn( constraint );
+    for ( const auto& entry : active_columns[static_cast<std::size_t>( constraint )] ) {
+      const RealT* inverse_mass_column = consistent_mass_inverse_.GetColumn( entry.first );
+      for ( int row = 0; row < active_size; ++row ) {
+        response[row] += entry.second * inverse_mass_column[row];
+      }
+    }
+  }
   projection_operator.SetSize( num_constraints );
-  mfem::MultAtB( rows, velocity_rows, projection_operator );
+  for ( IndexT column = 0; column < num_constraints; ++column ) {
+    const RealT* response = inverse_mass_rows.GetColumn( column );
+    for ( IndexT row = 0; row <= column; ++row ) {
+      const auto& row_entries = active_columns[static_cast<std::size_t>( row )];
+      RealT value = 0.;
+      for ( const auto& row_entry : row_entries ) {
+        value += row_entry.second * response[row_entry.first];
+      }
+      projection_operator( row, column ) = value;
+      projection_operator( column, row ) = value;
+    }
+  }
+  TRIBOL_MARK_END( "Assemble sparse consistent projection operator" );
   return true;
 }
 
@@ -1365,6 +1482,15 @@ void MfemMeshData::SetParentVelocity( const mfem::ParGridFunction& velocity )
   }
 }
 
+void MfemMeshData::SetParentProjectionBasePosition( const mfem::ParGridFunction& position )
+{
+  if ( projection_base_position_ ) {
+    projection_base_position_->SetParentGridFn( position );
+  } else {
+    projection_base_position_ = std::make_unique<ParentField>( position );
+  }
+}
+
 void MfemMeshData::SetParentProjectionBaseVelocity( const mfem::ParGridFunction& velocity )
 {
   if ( projection_base_velocity_ ) {
@@ -1387,6 +1513,9 @@ MfemMeshData::ParentElementFieldPointers MfemMeshData::GetMesh1ParentElementFiel
 {
   return { parent_q2_num_nodes,
            parent_q2_fields_1_.position.HostRead(),
+           parent_q2_fields_1_.projection_base_position.Size() > 0
+               ? parent_q2_fields_1_.projection_base_position.HostRead()
+               : nullptr,
            parent_q2_fields_1_.velocity.Size() > 0 ? parent_q2_fields_1_.velocity.HostRead() : nullptr,
            parent_q2_fields_1_.projection_base_velocity.Size() > 0
                ? parent_q2_fields_1_.projection_base_velocity.HostRead()
@@ -1401,6 +1530,9 @@ MfemMeshData::ParentElementFieldPointers MfemMeshData::GetMesh2ParentElementFiel
 {
   return { parent_q2_num_nodes,
            parent_q2_fields_2_.position.HostRead(),
+           parent_q2_fields_2_.projection_base_position.Size() > 0
+               ? parent_q2_fields_2_.projection_base_position.HostRead()
+               : nullptr,
            parent_q2_fields_2_.velocity.Size() > 0 ? parent_q2_fields_2_.velocity.HostRead() : nullptr,
            parent_q2_fields_2_.projection_base_velocity.Size() > 0
                ? parent_q2_fields_2_.projection_base_velocity.HostRead()
