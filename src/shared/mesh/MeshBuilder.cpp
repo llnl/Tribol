@@ -1,6 +1,8 @@
 #include "MeshBuilder.hpp"
 
+#include <array>
 #include <cmath>
+#include <vector>
 
 #include "axom/slic.hpp"
 #include "axom/primal.hpp"
@@ -19,9 +21,110 @@ MeshBuilder MeshBuilder::Unify( std::initializer_list<MeshBuilder> meshes )
   return mfem::Mesh( mesh_list.data(), mesh_list.size() );
 }
 
+MeshBuilder MeshBuilder::Stitch( std::initializer_list<MeshBuilder> meshes, double tolerance )
+{
+  SLIC_ERROR_ROOT_IF( meshes.size() == 0, "At least one mesh is required for stitching." );
+  SLIC_ERROR_ROOT_IF( tolerance < 0.0, "Stitch tolerance must be nonnegative." );
+
+  auto stitched_mesh = Unify( meshes );
+  auto& mesh = static_cast<mfem::Mesh&>( stitched_mesh );
+  const int space_dim = mesh.SpaceDimension();
+
+  for ( const auto& input_mesh : meshes ) {
+    const auto& mfem_mesh = static_cast<const mfem::Mesh&>( input_mesh );
+    SLIC_ERROR_ROOT_IF( mfem_mesh.Dimension() != mesh.Dimension() || mfem_mesh.SpaceDimension() != space_dim,
+                        "All stitched meshes must have the same dimensions." );
+    SLIC_ERROR_ROOT_IF( mfem_mesh.GetNodalFESpace()->GetMaxElementOrder() != 1, "Stitch only supports linear meshes." );
+  }
+
+  std::vector<std::array<double, 3>> unique_coordinates;
+  std::vector<int> vertex_map( mesh.GetNV() );
+  const double tolerance_squared = tolerance * tolerance;
+  for ( int i = 0; i < mesh.GetNV(); ++i ) {
+    std::array<double, 3> coordinate{};
+    mesh.GetNode( i, coordinate.data() );
+
+    vertex_map[i] = static_cast<int>( unique_coordinates.size() );
+    for ( int j = 0; j < static_cast<int>( unique_coordinates.size() ); ++j ) {
+      double distance_squared = 0.0;
+      for ( int d = 0; d < space_dim; ++d ) {
+        const double dx = coordinate[d] - unique_coordinates[j][d];
+        distance_squared += dx * dx;
+      }
+      if ( distance_squared <= tolerance_squared ) {
+        vertex_map[i] = j;
+        break;
+      }
+    }
+    if ( vertex_map[i] == static_cast<int>( unique_coordinates.size() ) ) {
+      unique_coordinates.push_back( coordinate );
+    }
+  }
+
+  mfem::Mesh result( mesh.Dimension(), static_cast<int>( unique_coordinates.size() ), mesh.GetNE(), mesh.GetNBE(),
+                     space_dim );
+  for ( const auto& coordinate : unique_coordinates ) {
+    result.AddVertex( coordinate.data() );
+  }
+  for ( int i = 0; i < mesh.GetNE(); ++i ) {
+    auto* element = mesh.GetElement( i )->Duplicate( &result );
+    for ( int j = 0; j < element->GetNVertices(); ++j ) {
+      element->GetVertices()[j] = vertex_map[element->GetVertices()[j]];
+    }
+    result.AddElement( element );
+  }
+  for ( int i = 0; i < mesh.GetNBE(); ++i ) {
+    auto* element = mesh.GetBdrElement( i )->Duplicate( &result );
+    for ( int j = 0; j < element->GetNVertices(); ++j ) {
+      element->GetVertices()[j] = vertex_map[element->GetVertices()[j]];
+    }
+    result.AddBdrElement( element );
+  }
+
+  result.FinalizeMesh();
+  result.RemoveInternalBoundaries();
+  return result;
+}
+
 MeshBuilder MeshBuilder::SquareMesh( int n_x_els, int n_y_els )
 {
   return mfem::Mesh::MakeCartesian2D( n_x_els, n_y_els, mfem::Element::QUADRILATERAL );
+}
+
+MeshBuilder MeshBuilder::CShapeMesh( int n_x_els, int n_y_els, int arm_thickness_els )
+{
+  SLIC_ERROR_ROOT_IF( arm_thickness_els <= 0, "C-shape arm thickness must be positive." );
+  SLIC_ERROR_ROOT_IF( n_x_els <= arm_thickness_els, "C-shape width must be greater than the arm thickness." );
+  SLIC_ERROR_ROOT_IF( n_y_els <= 2 * arm_thickness_els,
+                      "C-shape height must be greater than twice the arm thickness." );
+
+  const double arm_width = static_cast<double>( arm_thickness_els ) / n_x_els;
+  const double arm_height = static_cast<double>( arm_thickness_els ) / n_y_els;
+
+  auto update_bdr_attributes = []( MeshBuilder& builder, const std::array<int, 4>& attributes ) {
+    auto& mesh = static_cast<mfem::Mesh&>( builder );
+    for ( int i = 0; i < mesh.GetNBE(); ++i ) {
+      mesh.SetBdrAttribute( i, attributes[mesh.GetBdrAttribute( i ) - 1] );
+    }
+    mesh.SetAttributes();
+  };
+
+  auto left = SquareMesh( arm_thickness_els, n_y_els ).scale( { arm_width, 1.0 } );
+  update_bdr_attributes( left, { 7, 3, 6, 1 } );
+
+  auto top = SquareMesh( n_x_els - arm_thickness_els, arm_thickness_els )
+                 .scale( { 1.0 - arm_width, arm_height } )
+                 .translate( { arm_width, 1.0 - arm_height } )
+                 .updateAttrib( 1, 2 );
+  update_bdr_attributes( top, { 2, 5, 6, 5 } );
+
+  auto bottom = SquareMesh( n_x_els - arm_thickness_els, arm_thickness_els )
+                    .scale( { 1.0 - arm_width, arm_height } )
+                    .translate( { arm_width, 0.0 } )
+                    .updateAttrib( 1, 3 );
+  update_bdr_attributes( bottom, { 7, 5, 4, 5 } );
+
+  return Stitch( { std::move( left ), std::move( top ), std::move( bottom ) } );
 }
 
 MeshBuilder MeshBuilder::Cylinder2D( int n_radial_els, int n_hoop_els, double inner_radius, double outer_radius )
