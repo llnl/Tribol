@@ -8,7 +8,25 @@
 
 namespace tribol {
 
-struct ContactStateView {
+template <typename Scalar>
+struct ContactStateViewT {
+  FieldView<const Scalar> mortar_velocity{};
+  FieldView<const Scalar> nonmortar_velocity{};
+  FieldView<const Scalar> mortar_reference_coordinates{};
+  FieldView<const Scalar> nonmortar_reference_coordinates{};
+  ArrayView<const Scalar> mortar_element_thickness{};
+  ArrayView<const Scalar> nonmortar_element_thickness{};
+  ArrayView<const Scalar> mortar_material_modulus{};
+  ArrayView<const Scalar> nonmortar_material_modulus{};
+  ArrayView<const Scalar> multiplier{};
+  ArrayView<const Scalar> external_potential_density{};
+  ArrayView<const Scalar> external_pressure{};
+  ArrayView<const Scalar> external_pressure_tangent{};
+};
+
+using ContactStateView = ContactStateViewT<Real>;
+
+struct ContactStateDirectionView {
   FieldView<const Real> mortar_velocity{};
   FieldView<const Real> nonmortar_velocity{};
   FieldView<const Real> mortar_reference_coordinates{};
@@ -18,7 +36,9 @@ struct ContactStateView {
   ArrayView<const Real> mortar_material_modulus{};
   ArrayView<const Real> nonmortar_material_modulus{};
   ArrayView<const Real> multiplier{};
+  ArrayView<const Real> external_potential_density{};
   ArrayView<const Real> external_pressure{};
+  ArrayView<const Real> external_pressure_tangent{};
 };
 
 template <typename Scalar>
@@ -37,8 +57,10 @@ struct ContactOutputViewT {
   ArrayView<Scalar> weighted_gap{};
   ArrayView<Scalar> tributary_area{};
   ArrayView<Scalar> mortar_weights{};
+  ArrayView<Scalar> mortar_mass_weights{};
   ArrayView<Scalar> quadrature_gap{};
   ArrayView<Scalar> quadrature_pressure{};
+  ArrayView<Scalar> pressure{};
 };
 
 using ContactOutputView = ContactOutputViewT<Real>;
@@ -46,6 +68,11 @@ using ContactOutputView = ContactOutputViewT<Real>;
 struct ContactDirectionView {
   FieldView<const Real> mortar{};
   FieldView<const Real> nonmortar{};
+};
+
+struct ContactLinearizationDirectionView {
+  ContactDirectionView coordinates{};
+  ContactStateDirectionView state{};
 };
 
 struct DenseMatrixView {
@@ -56,11 +83,29 @@ struct DenseMatrixView {
   [[nodiscard]] constexpr Real operator()( Index row, Index column ) const { return values[row * columns + column]; }
 };
 
+struct CsrMatrixView {
+  ArrayView<const Index> row_offsets{};
+  ArrayView<const Index> column_indices{};
+  ArrayView<const Real> values{};
+  Index rows{};
+  Index columns{};
+
+  [[nodiscard]] constexpr Index numberOfNonzeros() const { return values.size(); }
+};
+
 struct EvaluationSummary {
   Real energy{};
   Real timestep_vote{ std::numeric_limits<Real>::infinity() };
   Index active_interactions{};
   Index quadrature_points{};
+};
+
+struct NodalKinematicsView {
+  ArrayView<const Real> gap{};
+  ArrayView<const Real> weighted_gap{};
+  ArrayView<const Real> tributary_area{};
+  GeometryVersion geometry_version{};
+  InteractionVersion interaction_version{};
 };
 
 struct ContactResultView {
@@ -71,8 +116,10 @@ struct ContactResultView {
   ArrayView<const Real> weighted_gap{};
   ArrayView<const Real> tributary_area{};
   ArrayView<const Real> mortar_weights{};
+  ArrayView<const Real> mortar_mass_weights{};
   ArrayView<const Real> quadrature_gap{};
   ArrayView<const Real> quadrature_pressure{};
+  ArrayView<const Real> pressure{};
   EvaluationSummary summary{};
   GeometryVersion geometry_version{};
   InteractionVersion interaction_version{};

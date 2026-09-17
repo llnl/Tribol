@@ -72,8 +72,8 @@ bool stiffnessAndRateContract()
         .mortar_material_modulus = { modulus.data(), 1 },
         .nonmortar_material_modulus = { modulus.data(), 1 } },
       mortar_force, nonmortar_force );
-  return summary.active_interactions == 1 && std::abs( summary.timestep_vote - std::sqrt( 0.05 ) ) < 1.0e-12 &&
-         std::abs( mortar_force[1] - 2.0 ) < 1.0e-12;
+  return summary.active_interactions == 1 && std::isinf( summary.timestep_vote ) &&
+         std::abs( mortar_force[1] - 1.0 ) < 1.0e-12;
 }
 
 bool viscousAndTiedContract()
@@ -102,8 +102,8 @@ bool viscousAndTiedContract()
       { .mortar_reference_coordinates = { { mortar_reference.data(), 4 }, 2, 2, FieldLayout::Interleaved },
         .nonmortar_reference_coordinates = { { nonmortar_reference.data(), 4 }, 2, 2, FieldLayout::Interleaved } },
       tied_mortar, tied_nonmortar );
-  return std::abs( viscous_mortar[0] - 2.0 ) < 1.0e-12 && std::abs( tied_mortar[0] + 1.0 ) < 1.0e-12 &&
-         std::abs( tied_mortar[1] - 0.5 ) < 1.0e-12;
+  return std::abs( viscous_mortar[0] - 2.0 ) < 1.0e-12 && std::abs( tied_mortar[0] + 0.5 ) < 1.0e-12 &&
+         std::abs( tied_mortar[1] - 0.25 ) < 1.0e-12;
 }
 
 bool invalidParametersAreRejected()
@@ -119,6 +119,31 @@ bool invalidParametersAreRejected()
   return false;
 }
 
+bool pressureRequiresTributaryArea()
+{
+  using MethodType = PointwiseMethod<>;
+  const std::array<ElementPair, 1> interactions{ ElementPair{ 0, 0 } };
+  std::array<Real, 4> mortar_force{};
+  std::array<Real, 4> nonmortar_force{};
+  std::array<Real, 2> pressure{};
+  try {
+    addPointwisePenaltyResidual<MethodType>(
+        surfaces(), { interactions.data(), 1 }, typename MethodType::Parameters{}, {},
+        { .residual = { .mortar = { { mortar_force.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+                        .nonmortar = { { nonmortar_force.data(), 4 }, 2, 2, FieldLayout::Interleaved } },
+          .pressure = { pressure.data(), 2 } } );
+  } catch ( const std::invalid_argument& ) {
+    return true;
+  }
+  return false;
+}
+
 }  // namespace
 
-int main() { return stiffnessAndRateContract() && viscousAndTiedContract() && invalidParametersAreRejected() ? 0 : 1; }
+int main()
+{
+  return stiffnessAndRateContract() && viscousAndTiedContract() && invalidParametersAreRejected() &&
+                 pressureRequiresTributaryArea()
+             ? 0
+             : 1;
+}

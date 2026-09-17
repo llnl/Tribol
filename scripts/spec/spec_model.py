@@ -52,7 +52,7 @@ def _require_unique_ids(items: Any, path: str) -> set[str]:
 POLICY_VALUES = {
     "geometry": {"ProjectedOverlap", "ConformingOverlap"},
     "normal": {"MeanPlane", "MortarSurface"},
-    "integration": {"Centroid", "Polygon", "Face"},
+    "integration": {"Centroid", "Polygon", "Face", "SmoothedSegment"},
     "constraint": {"Pointwise", "Nodal", "QuadraturePoint"},
     "basis": {"Primal", "Dual"},
     "enforcement": {"Penalty", "LagrangeMultiplier", "ExternalPressure", "None"},
@@ -64,11 +64,11 @@ POLICY_VALUES = {
 }
 
 METHOD_AXES = ("geometry", "integration", "constraint", "enforcement", "response", "formulation", "linearization")
-VARIANT_AXES = {"response", "formulation", "linearization"}
+VARIANT_AXES = {"stiffness", "rate", "response", "formulation", "linearization"}
 DIMENSION_VALUES = {2, 3}
 TOPOLOGY_VALUES = {"Segment", "Triangle", "Quadrilateral", "TessellatedHighOrderSegment"}
 SEARCH_VALUES = {"CartesianProduct", "Grid", "Bvh"}
-EXECUTION_VALUES = {"Sequential", "Deterministic", "Cuda"}
+EXECUTION_VALUES = {"Sequential", "Deterministic", "OpenMP", "Cuda"}
 PARALLEL_VALUES = {"Serial", "MPI"}
 OUTPUT_VALUES = {
     "Force",
@@ -78,6 +78,7 @@ OUTPUT_VALUES = {
     "WeightedGap",
     "TributaryArea",
     "MortarWeights",
+    "MortarMassWeights",
     "QuadratureGap",
     "QuadraturePressure",
     "Energy",
@@ -129,6 +130,10 @@ def _validate_policy(axis: str, value: Any, combination_id: str) -> None:
         _require_exact_keys(value, {"policy", "order"}, path)
         if isinstance(value["order"], bool) or value["order"] not in {1, 2}:
             raise SpecError(f"{combination_id}: {policy} supports only orders 1 and 2")
+    elif axis == "integration" and policy == "SmoothedSegment":
+        _require_exact_keys(value, {"policy", "points"}, path)
+        if isinstance(value["points"], bool) or value["points"] not in {1, 2, 3}:
+            raise SpecError(f"{combination_id}: SmoothedSegment supports only one to three points")
     elif axis == "constraint" and policy == "Nodal":
         _require_exact_keys(value, {"policy", "basis"}, path)
         if value["basis"] not in POLICY_VALUES["basis"]:
@@ -155,7 +160,12 @@ def _validate_variants(combination: dict[str, Any]) -> None:
         raise SpecError(f"{combination_id}: unsupported variant axes {sorted(unknown_axes)}")
     for axis, values in variants.items():
         _require_unique_values(values, f"{combination_id}: variants.{axis}", POLICY_VALUES[axis])
-        if combination["method"][axis]["policy"] not in values:
+        primary = (
+            combination["method"]["enforcement"][axis]
+            if axis in {"stiffness", "rate"}
+            else combination["method"][axis]["policy"]
+        )
+        if primary not in values:
             raise SpecError(f"{combination_id}: variants.{axis} must include the primary policy")
 
 
@@ -170,8 +180,13 @@ def method_variants(combination: dict[str, Any]) -> Iterator[tuple[str, dict[str
         method = {axis: dict(value) for axis, value in primary.items()}
         suffix: list[str] = []
         for axis, value in zip(axes, values):
-            method[axis] = {"policy": value}
-            if value != primary[axis]["policy"]:
+            if axis in {"stiffness", "rate"}:
+                method["enforcement"][axis] = value
+                primary_value = primary["enforcement"][axis]
+            else:
+                method[axis] = {"policy": value}
+                primary_value = primary[axis]["policy"]
+            if value != primary_value:
                 suffix.extend((axis, value))
         identifier = combination["id"] if not suffix else "-".join((combination["id"], *suffix))
         yield identifier, method
@@ -244,6 +259,8 @@ def _cpp_geometry(value: dict[str, Any]) -> str:
 
 
 def _cpp_ordered(namespace: str, value: dict[str, Any]) -> str:
+    if "points" in value:
+        return f"tribol::{namespace}::{value['policy']}<{value['points']}>"
     if "order" in value:
         return f"tribol::{namespace}::{value['policy']}<{value['order']}>"
     return f"tribol::{namespace}::{value['policy']}"

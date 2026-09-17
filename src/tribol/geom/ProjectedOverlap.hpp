@@ -170,6 +170,44 @@ template <typename Scalar>
 }
 
 template <typename Scalar>
+[[nodiscard]] inline Scalar faceMeasure( const SurfaceMeshViewT<Scalar>& mesh, Index element )
+{
+  if ( mesh.topologies[element] == ElementTopology::Segment ) {
+    const Index begin = mesh.element_offsets[element];
+    const Index first = mesh.connectivity[begin];
+    const Index second = mesh.connectivity[begin + 1];
+    const Scalar dx = mesh.coordinates( second, 0 ) - mesh.coordinates( first, 0 );
+    const Scalar dy = mesh.coordinates( second, 1 ) - mesh.coordinates( first, 1 );
+    return linearization_detail::squareRoot( dx * dx + dy * dy );
+  }
+  const auto first = facePoint( mesh, element, 0 );
+  const auto second = facePoint( mesh, element, 1 );
+  const auto third = facePoint( mesh, element, 2 );
+  Scalar measure = 0.5 * norm( cross( subtract( second, first ), subtract( third, first ) ) );
+  if ( mesh.topologies[element] == ElementTopology::Quadrilateral ) {
+    const auto fourth = facePoint( mesh, element, 3 );
+    measure += 0.5 * norm( cross( subtract( third, first ), subtract( fourth, first ) ) );
+  }
+  return measure;
+}
+
+template <typename Scalar, NormalPolicy Normal>
+[[nodiscard]] inline bool meetsOverlapFraction(
+    const SurfacePairViewT<Scalar>& surfaces, ElementPair pair, Scalar overlap_measure,
+    const typename geometry::ProjectedOverlap<Normal>::Parameters& parameters )
+{
+  if ( parameters.minimum_overlap_fraction == 0.0 ) {
+    return true;
+  }
+  const Real mortar_measure = linearization_detail::primal( faceMeasure( surfaces.mortar, pair.mortar_element ) );
+  const Real nonmortar_measure =
+      linearization_detail::primal( faceMeasure( surfaces.nonmortar, pair.nonmortar_element ) );
+  const Real reference_measure = std::max( mortar_measure, nonmortar_measure );
+  return reference_measure > 0.0 &&
+         linearization_detail::primal( overlap_measure ) >= parameters.minimum_overlap_fraction * reference_measure;
+}
+
+template <typename Scalar>
 [[nodiscard]] inline Scalar cross2d( const std::array<Scalar, 2>& left, const std::array<Scalar, 2>& right )
 {
   return left[0] * right[1] - left[1] * right[0];
@@ -306,6 +344,9 @@ template <NormalPolicy Normal, typename Scalar>
   projected_centroid[0] /= 3.0 * twice_area;
   projected_centroid[1] /= 3.0 * twice_area;
   result.measure = 0.5 * linearization_detail::absolute( twice_area );
+  if ( !meetsOverlapFraction<Scalar, Normal>( surfaces, pair, result.measure, parameters ) ) {
+    return {};
+  }
 
   std::array<Scalar, 3> projected_point{};
   for ( int component = 0; component < 3; ++component ) {
@@ -399,6 +440,9 @@ template <NormalPolicy Normal, typename Scalar>
 
   result.normal = normal;
   result.measure = upper - lower;
+  if ( !projected_overlap_detail::meetsOverlapFraction<Scalar, Normal>( surfaces, pair, result.measure, parameters ) ) {
+    return {};
+  }
   result.vertex_count = 2;
   result.manifold_dimension = 1;
   const Scalar locations[3] = { lower, upper, 0.5 * ( lower + upper ) };

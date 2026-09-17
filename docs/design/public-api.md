@@ -32,16 +32,32 @@ const tribol::ContactResultView result = contact.evaluate();
   frozen. This is the required state for consistent coordinate derivatives.
 - `rebuildGeometry(new_surfaces)` accepts topology changes, clears candidate pairs, and requires a new search.
 - `evaluate(state)` clears and fills contact-owned result storage.
+- `evaluateNodalKinematics()` stages gap, weighted gap, and tributary area before a host-defined pressure law is known;
+  it is available for nodal variational methods.
 - `addResidual(state, output)` accumulates into caller-owned residual arrays.
 - `applyCoordinateDerivative(state, direction, output)` adds an exact directional Jacobian action computed by in-tree
   tangent propagation; it does not perturb the input geometry.
+- `applyMultiplierDerivative()` and `applyExternalPressureDerivative()` apply the supported state-coupling blocks.
 - `assembleCoordinateJacobian(state)` returns a row-major dense matrix view.
+- `assembleSystemJacobian(state)` and its CSR counterpart return the primal/multiplier block system when applicable.
 
 Exact derivatives hold the candidate set fixed and differentiate the active primal geometry/clipping branch. Contact
 activation and clipping transitions are nonsmooth; callers should rebuild interactions after crossing such a boundary.
 
 Evaluation and linearization throw if interactions have not been prepared. The contact object is intentionally
 non-copyable and non-movable because its views and workspaces have stable ownership relationships.
+
+## Search And Self-Contact
+
+Cartesian-product, grid, and BVH search parameters provide both absolute `expansion` and element-relative
+`proximity_scale`. Each element box is inflated by `proximity_scale * longest_element_extent + expansion`.
+`search::legacyProximityScale` is `4.0`, matching the legacy default. `Contact` folds residual gap into the absolute
+expansion so search cannot omit a pair solely because residual-gap activation makes it active.
+
+Constructing `Contact` from one surface enables self-contact. It removes duplicate and adjacent pairs and, by default,
+rejects a projected pair when its effective gap is more negative than `0.95` times the smaller element thickness. Set
+`options.reject_excessive_self_penetration = false` to disable this thin-structure safeguard. Evaluation requires
+positive element-thickness state on both sides when the safeguard is enabled.
 
 ## Inputs
 
@@ -52,7 +68,14 @@ which fields are required:
 - reference coordinates for tied response;
 - element thickness and material modulus for material-scaled stiffness;
 - mortar multipliers for multiplier enforcement;
-- mortar nodal pressure for external-pressure enforcement.
+- mortar nodal pressure for external-pressure enforcement;
+- optionally, matching external potential-density and pressure-tangent arrays for conservative energy and a coordinate
+  Jacobian consistent with a host-defined law.
+
+For an external pressure law, first call `evaluateNodalKinematics()`, evaluate the law at the returned gap, and pass its
+potential density, pressure, and `dp/dg` fields in `ContactStateView`. Passing pressure alone is a supported residual-only
+mode: pressure is held fixed during coordinate differentiation and `summary.energy` is zero. Potential and tangent must
+be provided together.
 
 Fields are borrowed for the duration of the call and use the entity/component layout recorded by `FieldView`.
 
@@ -66,6 +89,7 @@ Fields are borrowed for the duration of the call and use the entity/component la
 | `constraint_residual` | Mortar nodal constraint equations for multiplier methods. |
 | `gap`, `weighted_gap`, `tributary_area` | Mortar nodal diagnostics. |
 | `mortar_weights` | Dense mortar-to-nonmortar diagnostic weight table. |
+| `mortar_mass_weights` | Dense mortar-to-mortar mass weight table used with `mortar_weights` by mortar projections. |
 | `quadrature_gap`, `quadrature_pressure` | Active quadrature-point diagnostics. |
 | `summary.energy` | Conservative potential contribution when the method produces one. |
 | `summary.timestep_vote` | Stable-step recommendation; infinity means no finite vote. |
@@ -75,11 +99,23 @@ Fields are borrowed for the duration of the call and use the entity/component la
 Only outputs listed for a method in `src/tests/spec/capabilities.yaml` are contractual. Result views are invalidated by
 the next evaluation, a geometry rebuild, or destruction of the contact object.
 
+## Diagnostics
+
+`diagnostics::writeJson()` and `diagnostics::writeVtk()` write individual snapshots. For time-dependent runs,
+`diagnostics::writeScheduled<Method>()` applies a cycle interval, creates the output directory, adds stable cycle and
+optional rank suffixes, and can emit JSON state, surface VTK, and projected-overlap VTK files. Overlap files carry the
+signed contact gap and both source element indices as cell data.
+
 ## MFEM Workflow
 
-`MfemContact` takes a `ParMesh`, its nodal coordinate `ParGridFunction`, and two boundary-attribute lists. The current
-adapter maps only the default method residual directly into the coordinate true-DOF space. `restrictPrimal()` and
-`addDualTranspose()` expose the exact interpolation restriction and its weighted transpose for host integration.
+`MfemContact` takes a `ParMesh`, its nodal coordinate `ParGridFunction`, and two boundary-attribute lists. It maps every
+host tuple in the capability manifest into coordinate true-DOF residuals, accepts velocity/reference/material,
+multiplier, and external-pressure-law state, and provides matrix-free and assembled distributed Jacobians.
+`evaluateNodalKinematics(gap, weighted_gap, tributary_area)` stages external-pressure inputs directly in a scalar MFEM
+space. `restrictPrimal()` and `addDualTranspose()` expose the exact interpolation restriction and its weighted transpose
+for custom host integration.
 
 High-order boundary elements are sampled into linear segments, triangles, or quadrilaterals. This preserves curved
 coordinate interpolation at sample nodes, but it is tessellation rather than native high-order contact integration.
+Pass `mfem::SurfaceDiscretization{.subdivision_factor = n}` to `mfem::makeContact` to select an explicit subdivision;
+zero uses the coordinate finite-element order.

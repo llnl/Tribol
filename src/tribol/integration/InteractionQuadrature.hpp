@@ -74,7 +74,7 @@ template <int Order, typename Scalar>
     }
     return rule;
   }
-  constexpr std::array<basis::ReferencePoint, 3> references{ basis::ReferencePoint{ 1.0 / 3.0, 1.0 / 3.0 },
+  constexpr std::array<basis::ReferencePoint, 3> references{ basis::ReferencePoint{ 1.0 / 6.0, 1.0 / 6.0 },
                                                              basis::ReferencePoint{ 2.0 / 3.0, 1.0 / 6.0 },
                                                              basis::ReferencePoint{ 1.0 / 6.0, 2.0 / 3.0 } };
   for ( int triangle = 1; triangle + 1 < patch.vertex_count; ++triangle ) {
@@ -88,6 +88,39 @@ template <int Order, typename Scalar>
       detail::interpolatePair( patch, 0, triangle, triangle + 1, Order == 1 ? references[0] : references[point_index],
                                point );
       point.weight = area / points_per_triangle;
+    }
+  }
+  return rule;
+}
+
+template <int Points, typename Scalar>
+[[nodiscard]] TRIBOL_HOST_DEVICE inline InteractionQuadratureRuleT<Scalar> interactionQuadrature(
+    const InteractionPatchT<Scalar>& patch, SmoothedSegment<Points> )
+{
+  InteractionQuadratureRuleT<Scalar> rule;
+  if ( !patch.valid || patch.manifold_dimension != 1 || patch.vertex_count != 2 ) {
+    return rule;
+  }
+  constexpr Real two_point_location = 0.57735026918962576451;
+  constexpr Real three_point_location = 0.77459666924148337704;
+  constexpr Real references[3] = { -three_point_location, 0.0, three_point_location };
+  constexpr Real weights[3] = { 5.0 / 9.0, 8.0 / 9.0, 5.0 / 9.0 };
+  rule.size = Points;
+  for ( int point_index = 0; point_index < Points; ++point_index ) {
+    const Real reference = Points == 1   ? 0.0
+                           : Points == 2 ? ( point_index == 0 ? -two_point_location : two_point_location )
+                                         : references[point_index];
+    const Real reference_weight = Points == 1 ? 2.0 : Points == 2 ? 1.0 : weights[point_index];
+    const Scalar first_shape = 0.5 * ( 1.0 - reference );
+    const Scalar second_shape = 0.5 * ( 1.0 + reference );
+    auto& point = rule[point_index];
+    point.normal = patch.normal;
+    point.weight = 0.5 * patch.measure * reference_weight;
+    for ( int component = 0; component < 3; ++component ) {
+      point.mortar_position[component] =
+          first_shape * patch.mortar_vertices[0][component] + second_shape * patch.mortar_vertices[1][component];
+      point.nonmortar_position[component] =
+          first_shape * patch.nonmortar_vertices[0][component] + second_shape * patch.nonmortar_vertices[1][component];
     }
   }
   return rule;

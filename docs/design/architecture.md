@@ -48,13 +48,14 @@ view itself does not perform stale-use checks.
 
 ## Parallel Model
 
-- Execution policies select sequential, deterministic, or CUDA dispatch without changing mechanics policies.
-- Sequential and deterministic execution support all advertised host methods. CUDA currently supports only
+- Execution policies select sequential, deterministic, OpenMP, or CUDA dispatch without changing mechanics policies.
+- Sequential, deterministic, and OpenMP execution support all advertised host methods. Nodal variational OpenMP uses a
+  thread-local kinematics pass, global nodal reduction, and thread-local energy-gradient pass. CUDA currently supports only
   `DefaultMethod` and is rejected at compile time for other tuples.
 - Communication is host-side orchestration around device-capable local kernels.
 - MPI ownership and halo behavior live in adapters/assembly, not geometric kernels.
-- The MFEM adapter currently all-gathers selected boundary surfaces to every rank. This is a correctness-first
-  implementation, not a scalable distributed redecomposition.
+- The MFEM adapter assigns evaluation to mortar-owning ranks, exchanges nonmortar elements only between ranks whose
+  expanded spatial bounds overlap, and returns ghost residuals to their owning ranks.
 - MPI partition invariance is currently demonstrated for the default MFEM path. CUDA parity is demonstrated for the
   complete default core `Contact` evaluation on a physical device.
 

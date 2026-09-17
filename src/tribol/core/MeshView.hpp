@@ -59,7 +59,7 @@ struct SurfaceMeshViewT {
     const bool coordinate_shape = coordinates.components == dimension && coordinates.isStructurallyValid();
     const bool arrays_valid = element_offsets.isStructurallyValid() && connectivity.isStructurallyValid() &&
                               topologies.isStructurallyValid() && attributes.isStructurallyValid();
-    const bool element_shape = numberOfElements() > 0 && element_offsets.size() == numberOfElements() + 1 &&
+    const bool element_shape = numberOfElements() >= 0 && element_offsets.size() == numberOfElements() + 1 &&
                                attributes.size() == numberOfElements() && !element_offsets.empty();
     if ( !supported_dimension || !coordinate_shape || !arrays_valid || !element_shape || element_offsets[0] != 0 ||
          element_offsets[numberOfElements()] != connectivity.size() ) {

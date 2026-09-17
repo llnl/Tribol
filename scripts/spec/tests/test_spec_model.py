@@ -58,7 +58,7 @@ class SpecModelTest(unittest.TestCase):
             "dimensions": 4,
             "topologies": "Hexahedron",
             "search": "ConformingPairs",
-            "execution": "OpenMP",
+            "execution": "Threads",
             "parallel": "RPC",
             "outputs": "NodalKinematics",
         }
@@ -104,9 +104,31 @@ class SpecModelTest(unittest.TestCase):
             self.validate_capabilities(capabilities)
 
         capabilities = load_document(SpecFiles().capabilities)
-        capabilities["combinations"][3]["method"]["integration"]["order"] = 3
+        capabilities["combinations"][5]["method"]["integration"]["order"] = 3
         with self.assertRaisesRegex(SpecError, "supports only orders 1 and 2"):
             self.validate_capabilities(capabilities)
+
+        capabilities = load_document(SpecFiles().capabilities)
+        capabilities["combinations"][-1]["method"]["integration"] = {
+            "policy": "SmoothedSegment",
+            "points": 4,
+        }
+        with self.assertRaisesRegex(SpecError, "supports only one to three points"):
+            self.validate_capabilities(capabilities)
+
+    def test_penalty_variants_expand_nested_stiffness_and_rate(self) -> None:
+        capabilities = load_document(SpecFiles().capabilities)
+        combination = capabilities["combinations"][0]
+        combination["variants"] = {
+            "stiffness": ["Constant", "Material"],
+            "rate": ["None", "Constant"],
+        }
+        capabilities["combinations"] = [combination]
+        self.validate_capabilities(capabilities)
+
+        output = emit_cpp(capabilities)
+        self.assertIn("tribol::stiffness::Material", output)
+        self.assertIn("tribol::rate::Constant", output)
 
     def test_cpp_identifier_is_stable(self) -> None:
         self.assertEqual(cpp_identifier("variational-external-pressure"), "Spec_Variational_External_Pressure")

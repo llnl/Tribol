@@ -4,13 +4,27 @@
 
 #include <array>
 #include <cmath>
+#include <stdexcept>
 
-// Requirements: CONS-001, ENF-001, ENF-003, ENF-004, FORM-001, GEOM-002, OUTPUT-001, PHYS-001, PHYS-002, PHYS-003
+// Requirements: API-002, CONS-001, ENF-001, ENF-003, ENF-004, FORM-001, GEOM-002, GEOM-003, OUTPUT-001, PHYS-001,
+// PHYS-002, PHYS-003
 
 namespace {
 
 using namespace tribol;
 using namespace tribol::test::spec;
+
+using UnsupportedSmoothedMultiplier =
+    Method<geometry::ProjectedOverlap<normal::MortarSurface>, integration::SmoothedSegment<3>,
+           constraint::Nodal<basis::Primal>, enforcement::LagrangeMultiplier, response::Frictionless,
+           formulation::Variational, linearization::Exact>;
+using UnsupportedSmoothedExternalPressure =
+    Method<geometry::ProjectedOverlap<normal::MortarSurface>, integration::SmoothedSegment<3>,
+           constraint::Nodal<basis::Primal>, enforcement::ExternalPressure, response::Frictionless,
+           formulation::Variational, linearization::Exact>;
+
+static_assert( !SupportedMethod<UnsupportedSmoothedMultiplier> );
+static_assert( !SupportedMethod<UnsupportedSmoothedExternalPressure> );
 
 SurfaceMeshView makeSurface( const std::array<Real, 12>& coordinates )
 {
@@ -129,6 +143,26 @@ bool variationalPenaltyContract()
          std::abs( weighted_gap + 0.1 ) < 1.0e-12 && std::abs( tributary_area - 1.0 ) < 1.0e-12;
 }
 
+bool residualGapContract()
+{
+  Contact<VariationalNodalPenalty>::Options options;
+  options.method.enforcement.stiffness.value = 10.0;
+  options.method.constraint.activation.residual_gap = 0.15;
+  options.search.expansion = 0.2;
+  Contact<VariationalNodalPenalty> contact( parallelFaces(), options );
+  contact.updateInteractions();
+  const auto result = contact.evaluate();
+  Real weighted_gap{};
+  Real tributary_area{};
+  for ( Index node = 0; node < result.weighted_gap.size(); ++node ) {
+    weighted_gap += result.weighted_gap[node];
+    tributary_area += result.tributary_area[node];
+  }
+  return std::abs( result.summary.energy - 0.3125 ) < 1.0e-12 &&
+         std::abs( totalComponent( result.mortar_force, 2 ) - 2.5 ) < 1.0e-12 &&
+         std::abs( weighted_gap + 0.25 ) < 1.0e-12 && std::abs( tributary_area - 1.0 ) < 1.0e-12;
+}
+
 bool quadratureAndExternalPressureContract()
 {
   Contact<VariationalQuadraturePenalty>::Options penalty_options;
@@ -143,11 +177,33 @@ bool quadratureAndExternalPressureContract()
   Contact<VariationalExternalPressure> external( parallelFaces(), external_options );
   external.updateInteractions();
   constexpr std::array<Real, 4> pressure{ -3.0, -3.0, -3.0, -3.0 };
-  const auto external_result = external.evaluate( { .external_pressure = { pressure.data(), 4 } } );
+  constexpr std::array<Real, 4> potential{ 0.15, 0.15, 0.15, 0.15 };
+  constexpr std::array<Real, 4> tangent{ 30.0, 30.0, 30.0, 30.0 };
+  const auto external_result = external.evaluate( { .external_potential_density = { potential.data(), 4 },
+                                                    .external_pressure = { pressure.data(), 4 },
+                                                    .external_pressure_tangent = { tangent.data(), 4 } } );
   return penalty_result.quadrature_gap.size() == 6 && penalty_result.quadrature_pressure.size() == 6 &&
          std::abs( penalty_result.summary.energy - 0.05 ) < 1.0e-12 &&
          std::abs( totalComponent( external_result.mortar_force, 2 ) - 3.0 ) < 1.0e-12 &&
-         std::abs( external_result.summary.energy - 0.3 ) < 1.0e-12;
+         std::abs( external_result.summary.energy - 0.15 ) < 1.0e-12;
+}
+
+bool policyPressureRequiresTributaryArea()
+{
+  const std::array<ElementPair, 1> interactions{ ElementPair{ 0, 0 } };
+  std::array<Real, 12> mortar_force{};
+  std::array<Real, 12> nonmortar_force{};
+  std::array<Real, 4> pressure{};
+  try {
+    addPolicyResidual<VariationalNodalPenalty>(
+        parallelFaces(), { interactions.data(), 1 }, VariationalNodalPenalty::Parameters{}, {},
+        { .residual = { .mortar = { { mortar_force.data(), 12 }, 4, 3, FieldLayout::Interleaved },
+                        .nonmortar = { { nonmortar_force.data(), 12 }, 4, 3, FieldLayout::Interleaved } },
+          .pressure = { pressure.data(), 4 } } );
+  } catch ( const std::invalid_argument& ) {
+    return true;
+  }
+  return false;
 }
 
 }  // namespace
@@ -155,7 +211,8 @@ bool quadratureAndExternalPressureContract()
 int main()
 {
   return projectedMultiplierContract() && conformingMultiplierContract() && variationalMultiplierContract() &&
-                 diagnosticWeightsContract() && variationalPenaltyContract() && quadratureAndExternalPressureContract()
+                 diagnosticWeightsContract() && variationalPenaltyContract() && residualGapContract() &&
+                 quadratureAndExternalPressureContract() && policyPressureRequiresTributaryArea()
              ? 0
              : 1;
 }

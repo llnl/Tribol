@@ -29,7 +29,7 @@ int main()
   for ( tribol::Index node = 0; node < result.mortar_force.entities; ++node ) {
     total += result.mortar_force( node, 1 ) + result.nonmortar_force( node, 1 );
   }
-  return result.summary.active_interactions == 1 && std::abs( result.summary.energy - 0.05 ) < 1.0e-12 &&
+  return result.summary.active_interactions == 1 && std::abs( result.summary.energy - 0.025 ) < 1.0e-12 &&
                  std::abs( total ) < 1.0e-12
              ? 0
              : 1;

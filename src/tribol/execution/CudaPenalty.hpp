@@ -21,6 +21,7 @@ class CudaPenaltyWorkspace {
 
   void reserve( Index patch_capacity );
   void evaluatePointwise( ArrayView<const InteractionPatch> patches, Real stiffness,
+                          constraint::GapActivationParameters activation,
                           ArrayView<PenaltyContribution> contributions );
 
  private:
@@ -30,7 +31,8 @@ class CudaPenaltyWorkspace {
 };
 
 void evaluatePointwisePenaltyPatches( ArrayView<const InteractionPatch> patches, Real stiffness,
-                                      ArrayView<PenaltyContribution> contributions, Cuda );
+                                      ArrayView<PenaltyContribution> contributions, Cuda,
+                                      constraint::GapActivationParameters activation = {} );
 
 void evaluatePenaltyPatches( ArrayView<const InteractionPatch> patches, Real stiffness,
                              ArrayView<PenaltyContribution> contributions, Cuda, integration::Polygon<2> rule = {} );

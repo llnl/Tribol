@@ -93,6 +93,23 @@ bool exercise( const Patch& patch )
 {
   typename Contact<MethodType>::Options options;
   options.search.expansion = 0.2;
+  using Enforcement = typename MethodType::enforcement_policy;
+  using Response = typename MethodType::response_policy;
+  if constexpr ( detail::is_penalty_v<Enforcement> ) {
+    using Stiffness = typename Enforcement::stiffness_policy;
+    using Rate = typename Enforcement::rate_policy;
+    if constexpr ( std::same_as<Stiffness, stiffness::Constant> ) {
+      options.method.enforcement.stiffness.value = 10.0;
+    }
+    if constexpr ( std::same_as<Rate, rate::Constant> ) {
+      options.method.enforcement.rate.value = 0.25;
+    } else if constexpr ( std::same_as<Rate, rate::Percentage> ) {
+      options.method.enforcement.rate.ratio = 0.25;
+    }
+  }
+  if constexpr ( std::same_as<Response, response::ViscousTangential> ) {
+    options.method.response.damping = 0.5;
+  }
   Contact<MethodType> contact( patch.surfaces(), options );
   contact.updateInteractions();
 
@@ -101,12 +118,16 @@ bool exercise( const Patch& patch )
   std::array<Real, 12> mortar_reference = patch.mortar_coordinates;
   std::array<Real, 12> nonmortar_reference = patch.nonmortar_coordinates;
   for ( Index node = 0; node < patch.nodes; ++node ) {
+    nonmortar_velocity[static_cast<std::size_t>( node * patch.dimension )] = 0.2;
+    nonmortar_velocity[static_cast<std::size_t>( node * patch.dimension + patch.normal_component )] = 0.3;
     nonmortar_reference[static_cast<std::size_t>( node * patch.dimension + patch.normal_component )] -= 0.1;
   }
   constexpr std::array<Real, 1> thickness{ 1.0 };
   constexpr std::array<Real, 1> modulus{ 10.0 };
   constexpr std::array<Real, 4> multiplier{ -1.0, -1.0, -1.0, -1.0 };
+  constexpr std::array<Real, 4> potential{ 0.05, 0.05, 0.05, 0.05 };
   constexpr std::array<Real, 4> pressure{ -1.0, -1.0, -1.0, -1.0 };
+  constexpr std::array<Real, 4> tangent{ 10.0, 10.0, 10.0, 10.0 };
   const ContactStateView state{
       .mortar_velocity = { { mortar_velocity.data(), patch.nodes * patch.dimension },
                            patch.nodes,
@@ -129,7 +150,9 @@ bool exercise( const Patch& patch )
       .mortar_material_modulus = { modulus.data(), 1 },
       .nonmortar_material_modulus = { modulus.data(), 1 },
       .multiplier = { multiplier.data(), patch.nodes },
+      .external_potential_density = { potential.data(), patch.nodes },
       .external_pressure = { pressure.data(), patch.nodes },
+      .external_pressure_tangent = { tangent.data(), patch.nodes },
   };
   const auto result = contact.evaluate( state );
   if ( result.summary.active_interactions != 1 || result.summary.quadrature_points < 1 ||
@@ -182,21 +205,29 @@ bool exerciseFaceMethods()
   return ( ( exercise<Methods>( triangle ) && exercise<Methods>( quadrilateral ) ) && ... );
 }
 
-template <SupportedMethod... Methods>
-bool exerciseVariationalMethods()
+template <StiffnessPolicy Stiffness, RatePolicy Rate>
+bool exercisePointwiseResponses()
 {
-  return exercisePointwiseMethods<Methods...>();
+  return exercisePointwiseMethods<PointwiseFamily<Stiffness, Rate, response::Frictionless>,
+                                  PointwiseFamily<Stiffness, Rate, response::ViscousTangential>>();
 }
 
 }  // namespace
 
 int main()
 {
-  return exercisePointwiseMethods<PointwisePenalty, PointwiseMaterialRateViscous, PointwiseTiedNormal,
-                                  PointwiseTiedFull>() &&
+  return exercisePointwiseResponses<stiffness::Constant, rate::None>() &&
+                 exercisePointwiseResponses<stiffness::Constant, rate::Constant>() &&
+                 exercisePointwiseResponses<stiffness::Constant, rate::Percentage>() &&
+                 exercisePointwiseResponses<stiffness::Material, rate::None>() &&
+                 exercisePointwiseResponses<stiffness::Material, rate::Constant>() &&
+                 exercisePointwiseResponses<stiffness::Material, rate::Percentage>() &&
+                 exercisePointwiseMethods<PointwiseTiedNormal, PointwiseTiedFull>() &&
                  exerciseFaceMethods<ProjectedMultiplier, ConformingMultiplier, DiagnosticWeights>() &&
-                 exerciseVariationalMethods<VariationalNodalPenalty, VariationalQuadraturePenalty,
-                                            VariationalMultiplier, VariationalExternalPressure>()
+                 exercisePointwiseMethods<VariationalNodalPenalty, VariationalQuadraturePenalty, VariationalMultiplier,
+                                          VariationalExternalPressure>() &&
+                 exercise<SmoothedVariationalNodalPenalty>( segmentPatch() ) &&
+                 exercise<SmoothedVariationalQuadraturePenalty>( segmentPatch() )
              ? 0
              : 1;
 }

@@ -3,26 +3,38 @@ set(tribol_core_headers
     Config.hpp
     ExactTangent.hpp
     MeshView.hpp
+    StaticGradient.hpp
     Version.hpp
     ../adapters/array/ArrayContact.hpp
     ../basis/LinearBasis.hpp
     ../contact/Contact.hpp
+    ../contact/ContactExactHelpers.inl
+    ../contact/ContactLinearization.inl
     ../constraint/NormalConstraint.hpp
+    ../constraint/PenetrationLimit.hpp
+    ../diagnostics/ContactOutput.hpp
+    ../diagnostics/ScheduledOutput.hpp
     ../evaluation/PolicyEvaluator.hpp
     ../evaluation/PointwisePenalty.hpp
     ../evaluation/State.hpp
+    ../evaluation/VariationalEvaluator.inl
     ../execution/Execution.hpp
     ../execution/ContactCuda.hpp
+    ../execution/ContactOpenMP.hpp
     ../execution/CudaPenalty.hpp
     ../execution/PenaltyKernel.hpp
     ../geom/ConformingOverlap.hpp
     ../geom/ProjectedOverlap.hpp
+    ../geom/SmoothedSegmentOverlap.hpp
     ../integration/InteractionQuadrature.hpp
     ../integration/Quadrature.hpp
     ../method/Method.hpp
+    ../method/MethodCompatibility.inl
     ../method/Traits.hpp
     ../method/Validation.hpp
+    ../search/Proximity.hpp
     ../search/Search.hpp
+    ../timestep/KinematicVote.hpp
     ../Tribol.hpp)
 
 blt_add_library(NAME tribol_core HEADERS ${tribol_core_headers} FOLDER
@@ -36,6 +48,10 @@ target_include_directories(
   INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>
             $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
             $<INSTALL_INTERFACE:include>)
+
+if(ENABLE_OPENMP)
+  target_link_libraries(tribol_core INTERFACE blt::openmp)
+endif()
 
 install(TARGETS tribol_core EXPORT tribol-targets)
 foreach(tribol_core_header ${tribol_core_headers})

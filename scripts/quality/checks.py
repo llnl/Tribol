@@ -33,6 +33,7 @@ TEST_DIRECTORIES = (
     Path("src/tests/components"),
     Path("src/tests/adapters"),
     Path("src/tests/parallel"),
+    Path("src/tests/legacy_parity"),
     Path("src/tests/install"),
 )
 

@@ -3,6 +3,7 @@
 
 #include "tribol/core/ArrayView.hpp"
 #include "tribol/core/MeshView.hpp"
+#include "tribol/search/Proximity.hpp"
 
 #include <algorithm>
 #include <array>
@@ -14,16 +15,13 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
-
 namespace tribol {
-
 struct ElementPair {
   Index mortar_element{};
   Index nonmortar_element{};
 
   friend constexpr bool operator==( ElementPair, ElementPair ) = default;
 };
-
 class CandidatePairs {
  public:
   void clear() { pairs_.clear(); }
@@ -76,7 +74,6 @@ class CandidatePairs {
 
   std::vector<ElementPair> pairs_;
 };
-
 template <typename T>
 concept SearchPolicy = std::constructible_from<T, typename T::Parameters> &&
                        requires( const T& search, const SurfacePairView& surfaces, CandidatePairs& candidates ) {
@@ -85,64 +82,7 @@ concept SearchPolicy = std::constructible_from<T, typename T::Parameters> &&
                        };
 
 namespace search {
-
 namespace detail {
-
-struct BoundingBox {
-  std::array<Real, 3> minimum{};
-  std::array<Real, 3> maximum{};
-};
-
-inline BoundingBox elementBounds( const SurfaceMeshView& mesh, Index element, Real expansion )
-{
-  BoundingBox bounds;
-  for ( int component = 0; component < 3; ++component ) {
-    bounds.minimum[component] = 0.0;
-    bounds.maximum[component] = 0.0;
-  }
-
-  const Index begin = mesh.element_offsets[element];
-  const Index end = mesh.element_offsets[element + 1];
-  if ( begin == end ) {
-    throw std::invalid_argument( "Surface elements must contain at least one node." );
-  }
-
-  for ( int component = 0; component < mesh.dimension; ++component ) {
-    const Real first = mesh.coordinates( mesh.connectivity[begin], component );
-    bounds.minimum[component] = first;
-    bounds.maximum[component] = first;
-    for ( Index local_node = begin + 1; local_node < end; ++local_node ) {
-      const Real value = mesh.coordinates( mesh.connectivity[local_node], component );
-      bounds.minimum[component] = std::min( bounds.minimum[component], value );
-      bounds.maximum[component] = std::max( bounds.maximum[component], value );
-    }
-    bounds.minimum[component] -= expansion;
-    bounds.maximum[component] += expansion;
-  }
-  return bounds;
-}
-
-inline bool overlaps( const BoundingBox& left, const BoundingBox& right, int dimension )
-{
-  for ( int component = 0; component < dimension; ++component ) {
-    if ( left.maximum[component] < right.minimum[component] || right.maximum[component] < left.minimum[component] ) {
-      return false;
-    }
-  }
-  return true;
-}
-
-inline void requireValidSurfaces( const SurfacePairView& surfaces )
-{
-  if ( !surfaces.isStructurallyValid() ) {
-    throw std::invalid_argument( "Search requires a structurally valid surface pair." );
-  }
-}
-
-inline Real center( const BoundingBox& bounds, int component )
-{
-  return 0.5 * ( bounds.minimum[component] + bounds.maximum[component] );
-}
 
 struct Cell {
   std::array<Index, 3> index{};
@@ -167,20 +107,18 @@ inline Index cellIndex( Real coordinate, Real origin, Real cell_size )
 }
 
 }  // namespace detail
-
 class CartesianProduct {
  public:
   struct Parameters {
     Real expansion{};
+    Real proximity_scale{};
   };
 
   CartesianProduct() : CartesianProduct( Parameters{} ) {}
 
   explicit CartesianProduct( Parameters parameters ) : parameters_( parameters )
   {
-    if ( parameters_.expansion < 0.0 ) {
-      throw std::invalid_argument( "Search expansion cannot be negative." );
-    }
+    detail::validateProximity( parameters_.expansion, parameters_.proximity_scale );
   }
 
   void findCandidates( const SurfacePairView& surfaces, CandidatePairs& candidates ) const
@@ -189,9 +127,11 @@ class CartesianProduct {
     candidates.clear();
     candidates.reserve( surfaces.mortar.numberOfElements() * surfaces.nonmortar.numberOfElements() );
     for ( Index mortar = 0; mortar < surfaces.mortar.numberOfElements(); ++mortar ) {
-      const auto mortar_bounds = detail::elementBounds( surfaces.mortar, mortar, parameters_.expansion );
+      const auto mortar_bounds =
+          detail::elementBounds( surfaces.mortar, mortar, parameters_.expansion, parameters_.proximity_scale );
       for ( Index nonmortar = 0; nonmortar < surfaces.nonmortar.numberOfElements(); ++nonmortar ) {
-        const auto nonmortar_bounds = detail::elementBounds( surfaces.nonmortar, nonmortar, parameters_.expansion );
+        const auto nonmortar_bounds =
+            detail::elementBounds( surfaces.nonmortar, nonmortar, parameters_.expansion, parameters_.proximity_scale );
         if ( detail::overlaps( mortar_bounds, nonmortar_bounds, surfaces.mortar.dimension ) ) {
           candidates.append( { mortar, nonmortar } );
         }
@@ -202,11 +142,11 @@ class CartesianProduct {
  private:
   Parameters parameters_;
 };
-
 class Grid {
  public:
   struct Parameters {
     Real expansion{};
+    Real proximity_scale{};
     Real cell_size{};
   };
 
@@ -214,8 +154,9 @@ class Grid {
 
   explicit Grid( Parameters parameters ) : parameters_( parameters )
   {
-    if ( parameters_.expansion < 0.0 || parameters_.cell_size < 0.0 ) {
-      throw std::invalid_argument( "Grid search expansion and cell size cannot be negative." );
+    detail::validateProximity( parameters_.expansion, parameters_.proximity_scale );
+    if ( parameters_.cell_size < 0.0 ) {
+      throw std::invalid_argument( "Grid search cell size cannot be negative." );
     }
   }
 
@@ -248,12 +189,12 @@ class Grid {
     };
     for ( Index element = 0; element < mortar_count; ++element ) {
       mortar_bounds[static_cast<std::size_t>( element )] =
-          detail::elementBounds( surfaces.mortar, element, parameters_.expansion );
+          detail::elementBounds( surfaces.mortar, element, parameters_.expansion, parameters_.proximity_scale );
       include_bounds( mortar_bounds[static_cast<std::size_t>( element )] );
     }
     for ( Index element = 0; element < nonmortar_count; ++element ) {
       nonmortar_bounds[static_cast<std::size_t>( element )] =
-          detail::elementBounds( surfaces.nonmortar, element, parameters_.expansion );
+          detail::elementBounds( surfaces.nonmortar, element, parameters_.expansion, parameters_.proximity_scale );
       include_bounds( nonmortar_bounds[static_cast<std::size_t>( element )] );
     }
     Real cell_size = parameters_.cell_size;
@@ -314,6 +255,7 @@ class Bvh {
  public:
   struct Parameters {
     Real expansion{};
+    Real proximity_scale{};
     Index leaf_size{ 4 };
   };
 
@@ -321,8 +263,9 @@ class Bvh {
 
   explicit Bvh( Parameters parameters ) : parameters_( parameters )
   {
-    if ( parameters_.expansion < 0.0 || parameters_.leaf_size <= 0 ) {
-      throw std::invalid_argument( "BVH search requires nonnegative expansion and positive leaf size." );
+    detail::validateProximity( parameters_.expansion, parameters_.proximity_scale );
+    if ( parameters_.leaf_size <= 0 ) {
+      throw std::invalid_argument( "BVH search requires positive leaf size." );
     }
   }
 
@@ -330,18 +273,22 @@ class Bvh {
   {
     detail::requireValidSurfaces( surfaces );
     candidates.clear();
+    if ( surfaces.mortar.numberOfElements() == 0 || surfaces.nonmortar.numberOfElements() == 0 ) {
+      return;
+    }
     std::vector<detail::BoundingBox> bounds( static_cast<std::size_t>( surfaces.mortar.numberOfElements() ) );
     std::vector<Index> order( bounds.size() );
     std::iota( order.begin(), order.end(), Index{} );
     for ( Index element = 0; element < surfaces.mortar.numberOfElements(); ++element ) {
       bounds[static_cast<std::size_t>( element )] =
-          detail::elementBounds( surfaces.mortar, element, parameters_.expansion );
+          detail::elementBounds( surfaces.mortar, element, parameters_.expansion, parameters_.proximity_scale );
     }
     std::vector<Node> nodes;
     nodes.reserve( bounds.size() * 2U );
     const Index root = build( bounds, order, 0, static_cast<Index>( order.size() ), surfaces.mortar.dimension, nodes );
     for ( Index nonmortar = 0; nonmortar < surfaces.nonmortar.numberOfElements(); ++nonmortar ) {
-      const auto query = detail::elementBounds( surfaces.nonmortar, nonmortar, parameters_.expansion );
+      const auto query =
+          detail::elementBounds( surfaces.nonmortar, nonmortar, parameters_.expansion, parameters_.proximity_scale );
       traverse( root, query, nonmortar, bounds, order, surfaces.mortar.dimension, nodes, candidates );
     }
     candidates.canonicalize();
@@ -430,6 +377,34 @@ class Bvh {
   Parameters parameters_;
 };
 
+class Supplied {
+ public:
+  struct Parameters {
+    std::vector<ElementPair> pairs;
+  };
+
+  Supplied() = default;
+
+  explicit Supplied( Parameters parameters ) : pairs_( std::move( parameters.pairs ) ) {}
+
+  void findCandidates( const SurfacePairView& surfaces, CandidatePairs& candidates ) const
+  {
+    candidates.clear();
+    candidates.reserve( static_cast<Index>( pairs_.size() ) );
+    for ( const ElementPair pair : pairs_ ) {
+      if ( pair.mortar_element < 0 || pair.mortar_element >= surfaces.mortar.numberOfElements() ||
+           pair.nonmortar_element < 0 || pair.nonmortar_element >= surfaces.nonmortar.numberOfElements() ) {
+        throw std::out_of_range( "A supplied contact pair references an element outside its surface." );
+      }
+      candidates.append( pair );
+    }
+    candidates.canonicalize();
+  }
+
+ private:
+  std::vector<ElementPair> pairs_;
+};
+
 template <SearchPolicy BroadPhase = CartesianProduct>
 class SelfContact {
  public:
@@ -472,6 +447,7 @@ class SelfContact {
 static_assert( SearchPolicy<search::CartesianProduct> );
 static_assert( SearchPolicy<search::Grid> );
 static_assert( SearchPolicy<search::Bvh> );
+static_assert( SearchPolicy<search::Supplied> );
 
 }  // namespace tribol
 

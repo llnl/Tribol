@@ -16,10 +16,10 @@
       "dimensions": [2, 3],
       "topologies": ["Segment", "Triangle", "Quadrilateral", "TessellatedHighOrderSegment"],
       "search": ["CartesianProduct", "Grid", "Bvh"],
-      "execution": ["Sequential", "Deterministic", "Cuda"],
+      "execution": ["Sequential", "Deterministic", "OpenMP", "Cuda"],
       "parallel": ["Serial", "MPI"],
       "outputs": ["Force", "Energy", "TimestepVote", "DerivativeOperators"],
-      "requirements": ["API-001", "CORE-002", "ENF-001", "DIFF-001", "DIFF-002", "GEOM-001", "SEARCH-001", "PAR-001", "PAR-002", "PAR-003", "PHYS-001", "PHYS-003", "OUTPUT-001"]
+      "requirements": ["API-001", "CORE-002", "ENF-001", "DIFF-001", "DIFF-002", "GEOM-001", "SEARCH-001", "SEARCH-004", "ADAPTER-006", "PAR-001", "PAR-002", "PAR-003", "PAR-004", "PAR-005", "PHYS-001", "PHYS-003", "OUTPUT-001", "LEGACY-003"]
     },
     {
       "id": "pointwise-material-rate-viscous",
@@ -33,13 +33,55 @@
         "formulation": {"policy": "PointwiseTraction"},
         "linearization": {"policy": "Exact"}
       },
+      "variants": {"rate": ["Percentage", "None", "Constant"], "response": ["ViscousTangential", "Frictionless"]},
       "dimensions": [2, 3],
       "topologies": ["Segment", "Triangle", "Quadrilateral"],
       "search": ["CartesianProduct", "Grid", "Bvh"],
-      "execution": ["Sequential", "Deterministic"],
+      "execution": ["Sequential", "Deterministic", "OpenMP"],
       "parallel": ["Serial"],
       "outputs": ["Force", "TimestepVote", "DerivativeOperators"],
       "requirements": ["ENF-001", "ENF-002", "RESP-001", "DIFF-001", "PHYS-001", "PHYS-003", "OUTPUT-001"]
+    },
+    {
+      "id": "pointwise-constant-rate-host",
+      "legacy_equivalent": "common-plane-constant-rate",
+      "method": {
+        "geometry": {"policy": "ProjectedOverlap", "normal": "MeanPlane"},
+        "integration": {"policy": "Centroid"},
+        "constraint": {"policy": "Pointwise"},
+        "enforcement": {"policy": "Penalty", "stiffness": "Constant", "rate": "Constant"},
+        "response": {"policy": "Frictionless"},
+        "formulation": {"policy": "PointwiseTraction"},
+        "linearization": {"policy": "Exact"}
+      },
+      "variants": {"rate": ["Constant", "Percentage"], "response": ["Frictionless", "ViscousTangential"]},
+      "dimensions": [2, 3],
+      "topologies": ["Segment", "Triangle", "Quadrilateral"],
+      "search": ["CartesianProduct", "Grid", "Bvh"],
+      "execution": ["Sequential", "Deterministic", "OpenMP"],
+      "parallel": ["Serial"],
+      "outputs": ["Force", "TimestepVote", "DerivativeOperators"],
+      "requirements": ["ENF-001", "ENF-002", "RESP-001", "DIFF-001", "PHYS-001", "PHYS-003", "OUTPUT-001", "LEGACY-001"]
+    },
+    {
+      "id": "pointwise-constant-viscous",
+      "legacy_equivalent": "common-plane-viscous",
+      "method": {
+        "geometry": {"policy": "ProjectedOverlap", "normal": "MeanPlane"},
+        "integration": {"policy": "Centroid"},
+        "constraint": {"policy": "Pointwise"},
+        "enforcement": {"policy": "Penalty", "stiffness": "Constant", "rate": "None"},
+        "response": {"policy": "ViscousTangential"},
+        "formulation": {"policy": "PointwiseTraction"},
+        "linearization": {"policy": "Exact"}
+      },
+      "dimensions": [2, 3],
+      "topologies": ["Segment", "Triangle", "Quadrilateral"],
+      "search": ["CartesianProduct", "Grid", "Bvh"],
+      "execution": ["Sequential", "Deterministic", "OpenMP"],
+      "parallel": ["Serial"],
+      "outputs": ["Force", "Energy", "TimestepVote", "DerivativeOperators"],
+      "requirements": ["ENF-001", "RESP-001", "DIFF-001", "PHYS-001", "PHYS-003", "OUTPUT-001", "LEGACY-001"]
     },
     {
       "id": "pointwise-tied",
@@ -57,7 +99,7 @@
       "dimensions": [2, 3],
       "topologies": ["Segment", "Triangle", "Quadrilateral"],
       "search": ["CartesianProduct", "Grid", "Bvh"],
-      "execution": ["Sequential", "Deterministic"],
+      "execution": ["Sequential", "Deterministic", "OpenMP"],
       "parallel": ["Serial"],
       "outputs": ["Force", "Energy", "TimestepVote", "DerivativeOperators"],
       "requirements": ["RESP-002", "DIFF-001", "PHYS-001", "PHYS-003", "OUTPUT-001"]
@@ -68,7 +110,7 @@
       "method": {
         "geometry": {"policy": "ProjectedOverlap", "normal": "MortarSurface"},
         "integration": {"policy": "Polygon", "order": 2},
-        "constraint": {"policy": "Nodal", "basis": "Dual"},
+        "constraint": {"policy": "Nodal", "basis": "Primal"},
         "enforcement": {"policy": "LagrangeMultiplier"},
         "response": {"policy": "Frictionless"},
         "formulation": {"policy": "WeightedWeakForm"},
@@ -77,7 +119,7 @@
       "dimensions": [3],
       "topologies": ["Triangle", "Quadrilateral"],
       "search": ["CartesianProduct", "Grid", "Bvh"],
-      "execution": ["Sequential", "Deterministic"],
+      "execution": ["Sequential", "Deterministic", "OpenMP"],
       "parallel": ["Serial"],
       "outputs": ["PrimalForce", "ConstraintResidual", "DerivativeBlocks"],
       "requirements": ["CONS-001", "ENF-003", "DIFF-001", "DIFF-002", "PHYS-001", "PHYS-003"]
@@ -88,7 +130,7 @@
       "method": {
         "geometry": {"policy": "ConformingOverlap"},
         "integration": {"policy": "Face", "order": 2},
-        "constraint": {"policy": "Nodal", "basis": "Dual"},
+        "constraint": {"policy": "Nodal", "basis": "Primal"},
         "enforcement": {"policy": "LagrangeMultiplier"},
         "response": {"policy": "Frictionless"},
         "formulation": {"policy": "WeightedWeakForm"},
@@ -97,7 +139,7 @@
       "dimensions": [3],
       "topologies": ["Triangle", "Quadrilateral"],
       "search": ["CartesianProduct", "Grid", "Bvh"],
-      "execution": ["Sequential", "Deterministic"],
+      "execution": ["Sequential", "Deterministic", "OpenMP"],
       "parallel": ["Serial"],
       "outputs": ["PrimalForce", "ConstraintResidual", "DerivativeBlocks"],
       "requirements": ["GEOM-002", "CONS-001", "ENF-003", "DIFF-001", "DIFF-002", "PHYS-003"]
@@ -108,7 +150,7 @@
       "method": {
         "geometry": {"policy": "ProjectedOverlap", "normal": "MortarSurface"},
         "integration": {"policy": "Polygon", "order": 2},
-        "constraint": {"policy": "Nodal", "basis": "Dual"},
+        "constraint": {"policy": "Nodal", "basis": "Primal"},
         "enforcement": {"policy": "None"},
         "response": {"policy": "Frictionless"},
         "formulation": {"policy": "DiagnosticWeights"},
@@ -117,10 +159,10 @@
       "dimensions": [3],
       "topologies": ["Triangle", "Quadrilateral"],
       "search": ["CartesianProduct", "Grid", "Bvh"],
-      "execution": ["Sequential", "Deterministic"],
+      "execution": ["Sequential", "Deterministic", "OpenMP"],
       "parallel": ["Serial"],
-      "outputs": ["MortarWeights"],
-      "requirements": ["CONS-001", "FORM-001", "SEARCH-001", "OUTPUT-001"]
+      "outputs": ["MortarWeights", "MortarMassWeights"],
+      "requirements": ["CONS-001", "FORM-001", "SEARCH-001", "OUTPUT-001", "LEGACY-002"]
     },
     {
       "id": "variational-nodal-penalty",
@@ -137,7 +179,7 @@
       "dimensions": [2, 3],
       "topologies": ["Segment", "Triangle", "Quadrilateral"],
       "search": ["CartesianProduct", "Grid", "Bvh"],
-      "execution": ["Sequential", "Deterministic"],
+      "execution": ["Sequential", "Deterministic", "OpenMP"],
       "parallel": ["Serial"],
       "outputs": ["Force", "Gap", "WeightedGap", "TributaryArea", "Energy", "DerivativeOperators"],
       "requirements": ["GEOM-001", "CONS-001", "ENF-001", "FORM-001", "DIFF-001", "PHYS-001", "PHYS-002", "PHYS-003", "OUTPUT-001"]
@@ -157,10 +199,50 @@
       "dimensions": [2, 3],
       "topologies": ["Segment", "Triangle", "Quadrilateral"],
       "search": ["CartesianProduct", "Grid", "Bvh"],
-      "execution": ["Sequential", "Deterministic"],
+      "execution": ["Sequential", "Deterministic", "OpenMP"],
       "parallel": ["Serial"],
       "outputs": ["Force", "QuadratureGap", "QuadraturePressure", "Energy", "DerivativeOperators"],
       "requirements": ["GEOM-001", "CONS-001", "ENF-001", "FORM-001", "DIFF-001", "PHYS-001", "PHYS-002", "PHYS-003", "OUTPUT-001"]
+    },
+    {
+      "id": "smoothed-variational-nodal-penalty",
+      "legacy_equivalent": "energy-mortar-smoothed-nodal",
+      "method": {
+        "geometry": {"policy": "ProjectedOverlap", "normal": "MortarSurface"},
+        "integration": {"policy": "SmoothedSegment", "points": 3},
+        "constraint": {"policy": "Nodal", "basis": "Primal"},
+        "enforcement": {"policy": "Penalty", "stiffness": "Constant", "rate": "None"},
+        "response": {"policy": "Frictionless"},
+        "formulation": {"policy": "Variational"},
+        "linearization": {"policy": "Exact"}
+      },
+      "dimensions": [2],
+      "topologies": ["Segment"],
+      "search": ["CartesianProduct", "Grid", "Bvh"],
+      "execution": ["Sequential", "Deterministic", "OpenMP"],
+      "parallel": ["Serial"],
+      "outputs": ["Force", "Gap", "WeightedGap", "TributaryArea", "Energy", "DerivativeOperators"],
+      "requirements": ["GEOM-003", "CONS-001", "ENF-001", "FORM-001", "DIFF-001", "PHYS-001", "PHYS-002", "PHYS-003", "OUTPUT-001", "LEGACY-002"]
+    },
+    {
+      "id": "smoothed-variational-quadrature-penalty",
+      "legacy_equivalent": "energy-mortar-smoothed-quadrature",
+      "method": {
+        "geometry": {"policy": "ProjectedOverlap", "normal": "MortarSurface"},
+        "integration": {"policy": "SmoothedSegment", "points": 3},
+        "constraint": {"policy": "QuadraturePoint"},
+        "enforcement": {"policy": "Penalty", "stiffness": "Constant", "rate": "None"},
+        "response": {"policy": "Frictionless"},
+        "formulation": {"policy": "Variational"},
+        "linearization": {"policy": "Exact"}
+      },
+      "dimensions": [2],
+      "topologies": ["Segment"],
+      "search": ["CartesianProduct", "Grid", "Bvh"],
+      "execution": ["Sequential", "Deterministic", "OpenMP"],
+      "parallel": ["Serial"],
+      "outputs": ["Force", "QuadratureGap", "QuadraturePressure", "Energy", "DerivativeOperators"],
+      "requirements": ["GEOM-003", "CONS-001", "ENF-001", "FORM-001", "DIFF-001", "PHYS-001", "PHYS-002", "PHYS-003", "OUTPUT-001", "LEGACY-002"]
     },
     {
       "id": "variational-multiplier",
@@ -177,7 +259,7 @@
       "dimensions": [2, 3],
       "topologies": ["Segment", "Triangle", "Quadrilateral"],
       "search": ["CartesianProduct", "Grid", "Bvh"],
-      "execution": ["Sequential", "Deterministic"],
+      "execution": ["Sequential", "Deterministic", "OpenMP"],
       "parallel": ["Serial"],
       "outputs": ["PrimalForce", "ConstraintResidual", "DerivativeBlocks"],
       "requirements": ["CONS-001", "ENF-003", "DIFF-001", "DIFF-002", "PHYS-001", "PHYS-002", "PHYS-003"]
@@ -197,7 +279,7 @@
       "dimensions": [2, 3],
       "topologies": ["Segment", "Triangle", "Quadrilateral"],
       "search": ["CartesianProduct", "Grid", "Bvh"],
-      "execution": ["Sequential", "Deterministic"],
+      "execution": ["Sequential", "Deterministic", "OpenMP"],
       "parallel": ["Serial"],
       "outputs": ["Force", "Gap", "WeightedGap", "TributaryArea", "QuadratureGap", "QuadraturePressure", "Energy", "DerivativeOperators"],
       "requirements": ["CONS-001", "ENF-004", "DIFF-001", "PHYS-001", "PHYS-002", "OUTPUT-001"]

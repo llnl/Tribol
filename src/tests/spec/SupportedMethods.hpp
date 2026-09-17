@@ -5,14 +5,16 @@
 
 namespace tribol::test::spec {
 
-using PointwisePenalty = Method<geometry::ProjectedOverlap<normal::MeanPlane>, integration::Centroid,
-                                constraint::Pointwise, enforcement::Penalty<stiffness::Constant, rate::None>,
-                                response::Frictionless, formulation::PointwiseTraction, linearization::Exact>;
+template <StiffnessPolicy Stiffness = stiffness::Constant, RatePolicy Rate = rate::None,
+          ResponsePolicy Response = response::Frictionless>
+using PointwiseFamily =
+    Method<geometry::ProjectedOverlap<normal::MeanPlane>, integration::Centroid, constraint::Pointwise,
+           enforcement::Penalty<Stiffness, Rate>, Response, formulation::PointwiseTraction, linearization::Exact>;
+
+using PointwisePenalty = PointwiseFamily<>;
 
 using PointwiseMaterialRateViscous =
-    Method<geometry::ProjectedOverlap<normal::MeanPlane>, integration::Centroid, constraint::Pointwise,
-           enforcement::Penalty<stiffness::Material, rate::Percentage>, response::ViscousTangential,
-           formulation::PointwiseTraction, linearization::Exact>;
+    PointwiseFamily<stiffness::Material, rate::Percentage, response::ViscousTangential>;
 
 using PointwiseTiedNormal =
     Method<geometry::ProjectedOverlap<normal::MeanPlane>, integration::Centroid, constraint::Pointwise,
@@ -23,15 +25,15 @@ using PointwiseTiedFull =
            enforcement::Penalty<>, response::TiedFull, formulation::PointwiseTraction, linearization::Exact>;
 
 using ProjectedMultiplier = Method<geometry::ProjectedOverlap<normal::MortarSurface>, integration::Polygon<2>,
-                                   constraint::Nodal<basis::Dual>, enforcement::LagrangeMultiplier,
+                                   constraint::Nodal<basis::Primal>, enforcement::LagrangeMultiplier,
                                    response::Frictionless, formulation::WeightedWeakForm, linearization::Exact>;
 
-using ConformingMultiplier = Method<geometry::ConformingOverlap, integration::Face<2>, constraint::Nodal<basis::Dual>,
+using ConformingMultiplier = Method<geometry::ConformingOverlap, integration::Face<2>, constraint::Nodal<basis::Primal>,
                                     enforcement::LagrangeMultiplier, response::Frictionless,
                                     formulation::WeightedWeakForm, linearization::Exact>;
 
 using DiagnosticWeights =
-    Method<geometry::ProjectedOverlap<normal::MortarSurface>, integration::Polygon<2>, constraint::Nodal<basis::Dual>,
+    Method<geometry::ProjectedOverlap<normal::MortarSurface>, integration::Polygon<2>, constraint::Nodal<basis::Primal>,
            enforcement::None, response::Frictionless, formulation::DiagnosticWeights, linearization::Exact>;
 
 using VariationalNodalPenalty =
@@ -41,6 +43,16 @@ using VariationalNodalPenalty =
 using VariationalQuadraturePenalty =
     Method<geometry::ProjectedOverlap<normal::MortarSurface>, integration::Polygon<2>, constraint::QuadraturePoint,
            enforcement::Penalty<>, response::Frictionless, formulation::Variational, linearization::Exact>;
+
+using SmoothedVariationalNodalPenalty =
+    Method<geometry::ProjectedOverlap<normal::MortarSurface>, integration::SmoothedSegment<3>,
+           constraint::Nodal<basis::Primal>, enforcement::Penalty<>, response::Frictionless, formulation::Variational,
+           linearization::Exact>;
+
+using SmoothedVariationalQuadraturePenalty =
+    Method<geometry::ProjectedOverlap<normal::MortarSurface>, integration::SmoothedSegment<3>,
+           constraint::QuadraturePoint, enforcement::Penalty<>, response::Frictionless, formulation::Variational,
+           linearization::Exact>;
 
 using VariationalMultiplier =
     Method<geometry::ProjectedOverlap<normal::MortarSurface>, integration::Polygon<2>, constraint::Nodal<basis::Primal>,

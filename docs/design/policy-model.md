@@ -14,7 +14,7 @@ normative: true
 | --- | --- | --- |
 | Geometry | `ProjectedOverlap<Normal>`, `ConformingOverlap` | Build the interaction manifold. |
 | Normal | `MeanPlane`, `MortarSurface` | Define orientation and signed gap direction. |
-| Integration | `Centroid`, `Polygon<Order>`, `Face<Order>` | Place and weight evaluation points. |
+| Integration | `Centroid`, `Polygon<Order>`, `Face<Order>`, `SmoothedSegment<Points>` | Place and weight evaluation points. |
 | Constraint | `Pointwise`, `Nodal<Basis>`, `QuadraturePoint` | Represent the discrete gap. |
 | Basis | `Primal`, `Dual` | Interpolate/test nodal constraints. |
 | Enforcement | `Penalty<Stiffness,Rate>`, `LagrangeMultiplier`, `ExternalPressure`, `None` | Convert constraints into equations or diagnostics. |
@@ -38,19 +38,23 @@ and `Enzyme` tags remain reserved and unsupported; production differentiation is
 `Exact` follows the active geometry, clipping, and contact branches selected by the primal state. At activation and
 clipping boundaries the contact map is nonsmooth, so the reported tangent is the derivative of the selected branch.
 
-`Polygon<Order>` and `Face<Order>` are supported only for orders 1 and 2. A policy type existing in a header does not by
-itself make every composition containing it supported; the capability manifest and `SupportedMethod` must agree.
+`Polygon<Order>` and `Face<Order>` are supported only for orders 1 and 2. `SmoothedSegment<Points>` uses one to three
+Gauss points and reproduces the legacy C1 endpoint-bound map for 2D segment variational penalties. It is deliberately
+rejected for multiplier and external-pressure enforcement. A policy type existing in a header does not by itself make
+every composition containing it supported; the capability manifest and `SupportedMethod` must agree.
 
 ## Legacy Parity Without Legacy Types
 
 Legacy names appear only in migration documentation and test metadata:
 
 - mean-plane projected overlap + centroid + pointwise penalty reproduces common-plane behavior;
-- projected overlap + polygon integration + nodal dual constraint + multiplier reproduces single mortar;
-- conforming overlap + face integration + nodal dual constraint + multiplier reproduces aligned mortar;
+- projected overlap + polygon integration + nodal primal constraint + multiplier reproduces single mortar;
+- conforming overlap + face integration + nodal primal constraint + multiplier reproduces aligned mortar;
 - projected overlap + diagnostic formulation emits mortar weights;
 - projected overlap + polygon integration + nodal or quadrature constraints + variational enforcement reproduces energy
-  mortar behavior.
+  mortar behavior;
+- projected overlap + smoothed-segment integration + nodal or quadrature penalty reproduces legacy endpoint-smoothed
+  Energy Mortar behavior.
 
 The rewritten architecture contains no named method implementation or switch over a method enum. Legacy source remains
 temporarily in separate directories while migration is in progress.

@@ -44,6 +44,20 @@ tribol::SurfaceMeshView makeSegment( const std::array<tribol::Real, 4>& coordina
   };
 }
 
+bool arraysMatch( tribol::ArrayView<const tribol::Real> host, tribol::ArrayView<const tribol::Real> device,
+                  tribol::Real tolerance = 1.0e-13 )
+{
+  if ( host.size() != device.size() ) {
+    return false;
+  }
+  for ( tribol::Index value = 0; value < host.size(); ++value ) {
+    if ( std::abs( host[value] - device[value] ) > tolerance ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool fullContactParity()
 {
   constexpr std::array<tribol::Real, 4> mortar_coordinates{ 0.0, 0.0, 1.0, 0.0 };
@@ -55,9 +69,12 @@ bool fullContactParity()
   HostContact::Options host_options;
   host_options.search.expansion = 0.2;
   host_options.method.enforcement.stiffness.value = 12.5;
+  host_options.method.constraint.activation.residual_gap = 0.025;
+  host_options.method.constraint.activation.gap_tolerance = 0.01;
   DeviceContact::Options device_options;
   device_options.search.expansion = host_options.search.expansion;
   device_options.method.enforcement.stiffness.value = host_options.method.enforcement.stiffness.value;
+  device_options.method.constraint.activation = host_options.method.constraint.activation;
   HostContact host( surfaces, host_options );
   DeviceContact device( surfaces, device_options );
   host.updateInteractions();
@@ -68,12 +85,17 @@ bool fullContactParity()
        std::abs( host_result.summary.energy - device_result.summary.energy ) > 1.0e-13 ) {
     return false;
   }
-  for ( tribol::Index value = 0; value < host_result.mortar_force.values.size(); ++value ) {
-    if ( std::abs( host_result.mortar_force.values[value] - device_result.mortar_force.values[value] ) > 1.0e-13 ||
-         std::abs( host_result.nonmortar_force.values[value] - device_result.nonmortar_force.values[value] ) >
-             1.0e-13 ) {
-      return false;
-    }
+  if ( !arraysMatch( host_result.mortar_force.values, device_result.mortar_force.values ) ||
+       !arraysMatch( host_result.nonmortar_force.values, device_result.nonmortar_force.values ) ||
+       !arraysMatch( host_result.gap, device_result.gap ) ||
+       !arraysMatch( host_result.weighted_gap, device_result.weighted_gap ) ||
+       !arraysMatch( host_result.tributary_area, device_result.tributary_area ) ||
+       !arraysMatch( host_result.mortar_weights, device_result.mortar_weights ) ||
+       !arraysMatch( host_result.mortar_mass_weights, device_result.mortar_mass_weights ) ||
+       !arraysMatch( host_result.quadrature_gap, device_result.quadrature_gap ) ||
+       !arraysMatch( host_result.quadrature_pressure, device_result.quadrature_pressure ) ||
+       !arraysMatch( host_result.pressure, device_result.pressure ) ) {
+    return false;
   }
   constexpr std::array<tribol::Real, 4> mortar_direction{ 0.0, 0.25, 0.0, 0.25 };
   constexpr std::array<tribol::Real, 4> nonmortar_direction{ 0.0, 1.0, 0.0, 1.0 };
@@ -112,6 +134,44 @@ bool fullContactParity()
   return true;
 }
 
+bool activationAndPenetrationParity()
+{
+  std::array<tribol::InteractionPatch, 1> patches{ makePatch( -0.01, 1.0 ) };
+  std::array<tribol::execution::PenaltyContribution, 1> sequential{};
+  std::array<tribol::execution::PenaltyContribution, 1> cuda{};
+  tribol::constraint::GapActivationParameters activation;
+  activation.residual_gap = 0.005;
+  activation.gap_tolerance = 0.01;
+  sequential[0] = tribol::execution::evaluatePointwisePenaltyPatch( patches[0], 12.5, activation );
+  tribol::execution::evaluatePointwisePenaltyPatches( { patches.data(), 1 }, 12.5, { cuda.data(), 1 },
+                                                      tribol::execution::Cuda{}, activation );
+  if ( sequential != cuda || std::abs( cuda[0].effective_gap - 0.005 ) > 1.0e-13 || cuda[0].pressure <= 0.0 ) {
+    return false;
+  }
+
+  constexpr std::array<tribol::Real, 4> mortar_coordinates{ 0.0, 0.0, 1.0, 0.0 };
+  constexpr std::array<tribol::Real, 4> nonmortar_coordinates{ 0.0, -0.1, 1.0, -0.1 };
+  const tribol::SurfacePairView surfaces{ makeSegment( mortar_coordinates ), makeSegment( nonmortar_coordinates ) };
+  using HostContact = tribol::Contact<>;
+  using DeviceContact =
+      tribol::Contact<tribol::DefaultMethod, tribol::search::CartesianProduct, tribol::execution::Cuda>;
+  HostContact::Options host_options;
+  host_options.search.expansion = 0.2;
+  host_options.method.constraint.activation.reject_excessive_penetration = true;
+  DeviceContact::Options device_options;
+  device_options.search.expansion = host_options.search.expansion;
+  device_options.method.constraint.activation = host_options.method.constraint.activation;
+  HostContact host( surfaces, host_options );
+  DeviceContact device( surfaces, device_options );
+  host.updateInteractions();
+  device.updateInteractions();
+  constexpr std::array<tribol::Real, 1> thickness{ 0.05 };
+  const tribol::ContactStateView state{ .mortar_element_thickness = { thickness.data(), 1 },
+                                        .nonmortar_element_thickness = { thickness.data(), 1 } };
+  return host.evaluate( state ).summary.active_interactions == 0 &&
+         device.evaluate( state ).summary.active_interactions == 0;
+}
+
 }  // namespace
 
 int main()
@@ -138,5 +198,5 @@ int main()
       }
     }
   }
-  return fullContactParity() ? 0 : 1;
+  return fullContactParity() && activationAndPenetrationParity() ? 0 : 1;
 }

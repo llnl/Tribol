@@ -1,6 +1,8 @@
 #ifndef TRIBOL_EVALUATION_POINTWISEPENALTY_HPP_
 #define TRIBOL_EVALUATION_POINTWISEPENALTY_HPP_
 
+#include "tribol/constraint/NormalConstraint.hpp"
+#include "tribol/constraint/PenetrationLimit.hpp"
 #include "tribol/evaluation/State.hpp"
 #include "tribol/geom/ProjectedOverlap.hpp"
 #include "tribol/method/Traits.hpp"
@@ -19,6 +21,14 @@ concept PointwisePenaltyMethod =
 
 namespace pointwise_penalty_detail {
 
+template <typename Scalar>
+inline Scalar seriesStiffness( Scalar mortar, Scalar nonmortar )
+{
+  const Scalar sum = mortar + nonmortar;
+  return linearization_detail::absolute( linearization_detail::primal( sum ) ) > 1.0e-28 ? mortar * nonmortar / sum
+                                                                                         : Scalar{};
+}
+
 template <typename FieldScalar, typename MeshScalar>
 inline void requireVectorField( const FieldView<FieldScalar>& field, const SurfaceMeshViewT<MeshScalar>& mesh,
                                 const char* name )
@@ -28,28 +38,25 @@ inline void requireVectorField( const FieldView<FieldScalar>& field, const Surfa
   }
 }
 
-template <typename MeshScalar, typename FieldScalar>
-inline std::array<std::remove_const_t<FieldScalar>, 3> averageField( const SurfaceMeshViewT<MeshScalar>& mesh,
-                                                                     Index element,
-                                                                     const FieldView<FieldScalar>& field )
+template <typename MeshScalar, typename FieldScalar, typename ShapeScalar>
+inline auto interpolateField( const SurfaceMeshViewT<MeshScalar>& mesh, Index element,
+                              const FieldView<FieldScalar>& field, const basis::ShapeValuesT<ShapeScalar>& shape )
 {
-  using Scalar = std::remove_const_t<FieldScalar>;
+  using Scalar = decltype( field( Index{}, 0 ) * shape[0] );
   std::array<Scalar, 3> average{};
   const Index begin = mesh.element_offsets[element];
-  const Index end = mesh.element_offsets[element + 1];
-  const Real inverse_nodes = 1.0 / static_cast<Real>( end - begin );
-  for ( Index local_node = begin; local_node < end; ++local_node ) {
-    const Index node = mesh.connectivity[local_node];
+  for ( int local_node = 0; local_node < shape.size; ++local_node ) {
+    const Index node = mesh.connectivity[begin + local_node];
     for ( int component = 0; component < mesh.dimension; ++component ) {
-      average[component] += field( node, component ) * inverse_nodes;
+      average[component] += field( node, component ) * shape[local_node];
     }
   }
   return average;
 }
 
-template <typename Enforcement>
-inline Real penaltyStiffness( const typename Enforcement::Parameters& parameters, const ContactStateView& state,
-                              ElementPair pair )
+template <typename Enforcement, typename Scalar>
+inline Scalar penaltyStiffness( const typename Enforcement::Parameters& parameters,
+                                const ContactStateViewT<Scalar>& state, ElementPair pair )
 {
   using Stiffness = typename Enforcement::stiffness_policy;
   if constexpr ( std::same_as<Stiffness, stiffness::Constant> ) {
@@ -65,24 +72,39 @@ inline Real penaltyStiffness( const typename Enforcement::Parameters& parameters
          state.nonmortar_element_thickness[pair.nonmortar_element] <= 0.0 ) {
       throw std::invalid_argument( "Material penalty requires positive element thicknesses." );
     }
-    const Real mortar_stiffness =
+    const Scalar mortar_stiffness =
         state.mortar_material_modulus[pair.mortar_element] / state.mortar_element_thickness[pair.mortar_element];
-    const Real nonmortar_stiffness = state.nonmortar_material_modulus[pair.nonmortar_element] /
-                                     state.nonmortar_element_thickness[pair.nonmortar_element];
-    return parameters.stiffness.scale * 0.5 * ( mortar_stiffness + nonmortar_stiffness );
+    const Scalar nonmortar_stiffness = state.nonmortar_material_modulus[pair.nonmortar_element] /
+                                       state.nonmortar_element_thickness[pair.nonmortar_element];
+    return parameters.stiffness.scale * seriesStiffness( parameters.stiffness.mortar_scale * mortar_stiffness,
+                                                         parameters.stiffness.nonmortar_scale * nonmortar_stiffness );
   }
 }
 
-template <typename Enforcement>
-inline Real rateCoefficient( const typename Enforcement::Parameters& parameters, Real stiffness )
+template <typename Enforcement, typename Scalar>
+inline Scalar pointwisePenaltyStiffness( const typename Enforcement::Parameters& parameters,
+                                         const ContactStateViewT<Scalar>& state, ElementPair pair )
+{
+  using Stiffness = typename Enforcement::stiffness_policy;
+  if constexpr ( std::same_as<Stiffness, stiffness::Constant> ) {
+    const Scalar mortar = parameters.stiffness.mortar_scale * parameters.stiffness.value;
+    const Scalar nonmortar = parameters.stiffness.nonmortar_scale * parameters.stiffness.value;
+    return seriesStiffness( mortar, nonmortar );
+  } else {
+    return penaltyStiffness<Enforcement>( parameters, state, pair );
+  }
+}
+
+template <typename Enforcement, typename Scalar>
+inline Scalar rateCoefficient( const typename Enforcement::Parameters& parameters, Scalar stiffness )
 {
   using Rate = typename Enforcement::rate_policy;
   if constexpr ( std::same_as<Rate, rate::None> ) {
     return 0.0;
   } else if constexpr ( std::same_as<Rate, rate::Constant> ) {
-    return parameters.rate.value;
+    return 0.5 * parameters.rate.value * ( parameters.rate.mortar_scale + parameters.rate.nonmortar_scale );
   } else {
-    return parameters.rate.ratio * stiffness;
+    return 0.5 * parameters.rate.ratio * ( parameters.rate.mortar_scale + parameters.rate.nonmortar_scale ) * stiffness;
   }
 }
 
@@ -124,18 +146,44 @@ inline void scatterPairForce( const SurfacePairViewT<Scalar>& surfaces, ElementP
   }
 }
 
+template <typename Scalar>
+inline void scatterPairForce( const SurfacePairViewT<Scalar>& surfaces, ElementPair pair,
+                              const std::array<Scalar, 3>& force,
+                              const constraint::NormalConstraintSampleT<Scalar>& sample,
+                              ContactResidualViewT<Scalar> residual )
+{
+  const SurfaceMeshViewT<Scalar> meshes[2] = { surfaces.mortar, surfaces.nonmortar };
+  const Index elements[2] = { pair.mortar_element, pair.nonmortar_element };
+  const basis::ShapeValuesT<Scalar> shapes[2] = { sample.mortar_trial, sample.nonmortar_trial };
+  FieldView<Scalar> fields[2] = { residual.mortar, residual.nonmortar };
+  for ( int side = 0; side < 2; ++side ) {
+    const Index begin = meshes[side].element_offsets[elements[side]];
+    const Scalar sign = side == 0 ? Scalar{ 1.0 } : Scalar{ -1.0 };
+    for ( int local_node = 0; local_node < shapes[side].size; ++local_node ) {
+      const Index node = meshes[side].connectivity[begin + local_node];
+      for ( int component = 0; component < meshes[side].dimension; ++component ) {
+        fields[side]( node, component ) += sign * shapes[side][local_node] * force[component];
+      }
+    }
+  }
+}
+
 }  // namespace pointwise_penalty_detail
 
 template <PointwisePenaltyMethod MethodType, typename Scalar>
 inline EvaluationSummary addPointwisePenaltyResidual( const SurfacePairViewT<Scalar>& surfaces,
                                                       ArrayView<const ElementPair> interactions,
                                                       const typename MethodType::Parameters& parameters,
-                                                      const ContactStateView& state,
-                                                      ContactResidualViewT<Scalar> residual )
+                                                      const ContactStateViewT<Scalar>& state,
+                                                      ContactOutputViewT<Scalar> output )
 {
+  const auto residual = output.residual;
   pointwise_penalty_detail::requireVectorField( residual.mortar, surfaces.mortar, "Invalid mortar residual field." );
   pointwise_penalty_detail::requireVectorField( residual.nonmortar, surfaces.nonmortar,
                                                 "Invalid nonmortar residual field." );
+  if ( !output.pressure.empty() && output.tributary_area.empty() ) {
+    throw std::invalid_argument( "Pressure output requires a tributary-area work array." );
+  }
   using Geometry = typename MethodType::geometry_policy;
   using Normal = typename Geometry::normal_policy;
   using Enforcement = typename MethodType::enforcement_policy;
@@ -156,29 +204,37 @@ inline EvaluationSummary addPointwisePenaltyResidual( const SurfacePairViewT<Sca
   }
 
   EvaluationSummary summary;
+  Index quadrature_offset{};
   for ( const ElementPair pair : interactions ) {
     const auto geometry = projectedOverlap<Normal>( surfaces, pair, parameters.geometry );
     if ( !geometry.valid ) {
       continue;
     }
+    const Scalar effective_gap = geometry.gap - parameters.constraint.activation.residual_gap;
+    if ( constraint::exceedsPenetrationLimit( parameters.constraint.activation, state, pair, effective_gap ) ) {
+      continue;
+    }
+    const auto sample = constraint::stageNormalConstraint<constraint::Pointwise>(
+        surfaces, pair, geometry.mortar_point, geometry.nonmortar_point, geometry.normal, geometry.measure );
 
-    const Real stiffness =
-        pointwise_penalty_detail::penaltyStiffness<Enforcement>( parameters.enforcement, state, pair );
-    if ( stiffness < 0.0 ) {
+    const Scalar stiffness =
+        pointwise_penalty_detail::pointwisePenaltyStiffness<Enforcement>( parameters.enforcement, state, pair );
+    const Real primal_stiffness = linearization_detail::primal( stiffness );
+    if ( primal_stiffness < 0.0 ) {
       throw std::invalid_argument( "Penalty stiffness cannot be negative." );
     }
     std::array<Scalar, 3> traction{};
     Scalar potential_density{};
 
     if constexpr ( std::same_as<Response, response::TiedNormal> || std::same_as<Response, response::TiedFull> ) {
-      const auto mortar_coordinates =
-          pointwise_penalty_detail::averageField( surfaces.mortar, pair.mortar_element, surfaces.mortar.coordinates );
-      const auto nonmortar_coordinates = pointwise_penalty_detail::averageField(
-          surfaces.nonmortar, pair.nonmortar_element, surfaces.nonmortar.coordinates );
-      const auto mortar_reference = pointwise_penalty_detail::averageField( surfaces.mortar, pair.mortar_element,
-                                                                            state.mortar_reference_coordinates );
-      const auto nonmortar_reference = pointwise_penalty_detail::averageField(
-          surfaces.nonmortar, pair.nonmortar_element, state.nonmortar_reference_coordinates );
+      const auto mortar_coordinates = pointwise_penalty_detail::interpolateField(
+          surfaces.mortar, pair.mortar_element, surfaces.mortar.coordinates, sample.mortar_trial );
+      const auto nonmortar_coordinates = pointwise_penalty_detail::interpolateField(
+          surfaces.nonmortar, pair.nonmortar_element, surfaces.nonmortar.coordinates, sample.nonmortar_trial );
+      const auto mortar_reference = pointwise_penalty_detail::interpolateField(
+          surfaces.mortar, pair.mortar_element, state.mortar_reference_coordinates, sample.mortar_trial );
+      const auto nonmortar_reference = pointwise_penalty_detail::interpolateField(
+          surfaces.nonmortar, pair.nonmortar_element, state.nonmortar_reference_coordinates, sample.nonmortar_trial );
       const auto displacement_jump = pointwise_penalty_detail::difference(
           pointwise_penalty_detail::difference( mortar_coordinates, mortar_reference ),
           pointwise_penalty_detail::difference( nonmortar_coordinates, nonmortar_reference ) );
@@ -196,7 +252,10 @@ inline EvaluationSummary addPointwisePenaltyResidual( const SurfacePairViewT<Sca
         }
       }
     } else {
-      const Scalar active_gap = linearization_detail::primal( geometry.gap ) < 0.0 ? geometry.gap : Scalar{};
+      const Scalar active_gap =
+          linearization_detail::primal( effective_gap ) <= parameters.constraint.activation.gap_tolerance
+              ? effective_gap
+              : Scalar{};
       potential_density = 0.5 * stiffness * active_gap * active_gap;
       for ( int component = 0; component < surfaces.mortar.dimension; ++component ) {
         traction[component] = stiffness * active_gap * geometry.normal[component];
@@ -204,10 +263,10 @@ inline EvaluationSummary addPointwisePenaltyResidual( const SurfacePairViewT<Sca
     }
 
     if constexpr ( !std::same_as<Rate, rate::None> || std::same_as<Response, response::ViscousTangential> ) {
-      const auto mortar_velocity =
-          pointwise_penalty_detail::averageField( surfaces.mortar, pair.mortar_element, state.mortar_velocity );
-      const auto nonmortar_velocity = pointwise_penalty_detail::averageField(
-          surfaces.nonmortar, pair.nonmortar_element, state.nonmortar_velocity );
+      const auto mortar_velocity = pointwise_penalty_detail::interpolateField(
+          surfaces.mortar, pair.mortar_element, state.mortar_velocity, sample.mortar_trial );
+      const auto nonmortar_velocity = pointwise_penalty_detail::interpolateField(
+          surfaces.nonmortar, pair.nonmortar_element, state.nonmortar_velocity, sample.nonmortar_trial );
       const auto relative_velocity = pointwise_penalty_detail::difference( mortar_velocity, nonmortar_velocity );
       const Scalar normal_rate =
           pointwise_penalty_detail::dot( relative_velocity, geometry.normal, surfaces.mortar.dimension );
@@ -226,16 +285,69 @@ inline EvaluationSummary addPointwisePenaltyResidual( const SurfacePairViewT<Sca
     }
 
     std::array<Scalar, 3> force{};
+    Scalar normal_pressure{};
     for ( int component = 0; component < surfaces.mortar.dimension; ++component ) {
       force[component] = geometry.measure * traction[component];
+      normal_pressure += traction[component] * geometry.normal[component];
     }
-    pointwise_penalty_detail::scatterPairForce( surfaces, pair, force, residual );
+    pointwise_penalty_detail::scatterPairForce( surfaces, pair, force, sample, residual );
+    for ( int local_node = 0; local_node < sample.mortar_test.size; ++local_node ) {
+      const Index node =
+          surfaces.mortar.connectivity[surfaces.mortar.element_offsets[pair.mortar_element] + local_node];
+      const Scalar weight = geometry.measure * sample.mortar_test[local_node];
+      if ( !output.weighted_gap.empty() ) {
+        output.weighted_gap[node] += weight * effective_gap;
+      }
+      if ( !output.tributary_area.empty() ) {
+        output.tributary_area[node] += weight;
+      }
+      if ( !output.pressure.empty() ) {
+        output.pressure[node] += weight * normal_pressure;
+      }
+      if ( !output.mortar_weights.empty() ) {
+        for ( int nonmortar_node = 0; nonmortar_node < sample.nonmortar_trial.size; ++nonmortar_node ) {
+          const Index trial =
+              surfaces.nonmortar
+                  .connectivity[surfaces.nonmortar.element_offsets[pair.nonmortar_element] + nonmortar_node];
+          output.mortar_weights[node * surfaces.nonmortar.numberOfNodes() + trial] +=
+              weight * sample.nonmortar_trial[nonmortar_node];
+        }
+      }
+      if ( !output.mortar_mass_weights.empty() ) {
+        for ( int trial_node = 0; trial_node < sample.mortar_trial.size; ++trial_node ) {
+          const Index trial =
+              surfaces.mortar.connectivity[surfaces.mortar.element_offsets[pair.mortar_element] + trial_node];
+          output.mortar_mass_weights[node * surfaces.mortar.numberOfNodes() + trial] +=
+              weight * sample.mortar_trial[trial_node];
+        }
+      }
+    }
+    if ( !output.quadrature_gap.empty() ) {
+      output.quadrature_gap[quadrature_offset] = effective_gap;
+    }
+    if ( !output.quadrature_pressure.empty() ) {
+      output.quadrature_pressure[quadrature_offset] = normal_pressure;
+    }
     summary.energy += linearization_detail::primal( geometry.measure * potential_density );
-    if ( stiffness > 0.0 ) {
-      summary.timestep_vote = std::min( summary.timestep_vote, 1.0 / std::sqrt( stiffness ) );
+    if ( primal_stiffness > 0.0 ) {
+      summary.timestep_vote = std::min( summary.timestep_vote, 1.0 / std::sqrt( primal_stiffness ) );
     }
     ++summary.active_interactions;
     ++summary.quadrature_points;
+    ++quadrature_offset;
+  }
+  if ( !output.gap.empty() || !output.pressure.empty() ) {
+    for ( Index node = 0; node < surfaces.mortar.numberOfNodes(); ++node ) {
+      const Scalar area = output.tributary_area[node];
+      if ( linearization_detail::absolute( linearization_detail::primal( area ) ) > 1.0e-28 ) {
+        if ( !output.gap.empty() ) {
+          output.gap[node] = output.weighted_gap[node] / area;
+        }
+        if ( !output.pressure.empty() ) {
+          output.pressure[node] /= area;
+        }
+      }
+    }
   }
   return summary;
 }

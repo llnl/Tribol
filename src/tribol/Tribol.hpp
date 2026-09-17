@@ -9,8 +9,11 @@
 #include "tribol/core/Config.hpp"
 #include "tribol/core/MeshView.hpp"
 #include "tribol/core/Version.hpp"
+#include "tribol/diagnostics/ContactOutput.hpp"
+#include "tribol/diagnostics/ScheduledOutput.hpp"
 #include "tribol/evaluation/State.hpp"
 #include "tribol/execution/ContactCuda.hpp"
+#include "tribol/execution/ContactOpenMP.hpp"
 #include "tribol/evaluation/PolicyEvaluator.hpp"
 #include "tribol/execution/Execution.hpp"
 #include "tribol/execution/CudaPenalty.hpp"
@@ -23,5 +26,6 @@
 #include "tribol/method/Traits.hpp"
 #include "tribol/method/Validation.hpp"
 #include "tribol/search/Search.hpp"
+#include "tribol/timestep/KinematicVote.hpp"
 
 #endif

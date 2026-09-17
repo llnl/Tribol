@@ -279,6 +279,61 @@ blt_add_test(
   COMMAND tribol_projected_overlap_test)
 
 blt_add_executable(
+  NAME tribol_contact_diagnostics_test
+  SOURCES components/contact_diagnostics.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::core
+  FOLDER tribol/components)
+
+blt_add_test(
+  NAME tribol_contact_diagnostics
+  COMMAND tribol_contact_diagnostics_test)
+
+blt_add_executable(
+  NAME tribol_timestep_policy_test
+  SOURCES components/timestep_vote.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::core
+  FOLDER tribol/components)
+
+blt_add_test(
+  NAME tribol_timestep_policy
+  COMMAND tribol_timestep_policy_test)
+
+blt_add_executable(
+  NAME tribol_legacy_common_plane_physics_test
+  SOURCES legacy_parity/common_plane_physics.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::core
+  FOLDER tribol/legacy-parity)
+
+blt_add_test(
+  NAME tribol_legacy_common_plane_physics
+  COMMAND tribol_legacy_common_plane_physics_test)
+
+blt_add_executable(
+  NAME tribol_legacy_auto_contact_physics_test
+  SOURCES legacy_parity/auto_contact_physics.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::core
+  FOLDER tribol/legacy-parity)
+
+blt_add_test(
+  NAME tribol_legacy_auto_contact_physics
+  COMMAND tribol_legacy_auto_contact_physics_test)
+
+blt_add_executable(
+  NAME tribol_legacy_mortar_energy_physics_test
+  SOURCES legacy_parity/mortar_energy_physics.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::core
+  FOLDER tribol/legacy-parity)
+
+blt_add_test(
+  NAME tribol_legacy_mortar_energy_physics
+  COMMAND tribol_legacy_mortar_energy_physics_test)
+
+blt_add_executable(
   NAME tribol_search_policies_test
   SOURCES components/search_policies.cpp
   OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
@@ -345,6 +400,17 @@ blt_add_test(
   COMMAND tribol_linearization_test)
 
 blt_add_executable(
+  NAME tribol_state_linearization_test
+  SOURCES components/state_linearization.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::core
+  FOLDER tribol/components)
+
+blt_add_test(
+  NAME tribol_state_linearization
+  COMMAND tribol_state_linearization_test)
+
+blt_add_executable(
   NAME tribol_pointwise_policies_test
   SOURCES components/pointwise_policies.cpp
   OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
@@ -365,6 +431,19 @@ blt_add_executable(
 blt_add_test(
   NAME tribol_execution_policies
   COMMAND tribol_execution_policies_test)
+
+if(ENABLE_OPENMP)
+  blt_add_executable(
+    NAME tribol_execution_openmp_test
+    SOURCES parallel/execution_openmp.cpp
+    OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+    DEPENDS_ON tribol::core blt::openmp
+    FOLDER tribol/parallel)
+
+  blt_add_test(
+    NAME tribol_execution_openmp
+    COMMAND tribol_execution_openmp_test)
+endif()
 
 blt_add_executable(
   NAME tribol_allocation_contract_test

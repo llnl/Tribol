@@ -50,6 +50,9 @@ bool overlapPatchContract()
                                   makeSurface( nonmortar_coordinates, connectivity ) };
   const auto patch = projectedOverlapPatch<normal::MortarSurface>(
       surfaces, { 0, 0 }, geometry::ProjectedOverlap<normal::MortarSurface>::Parameters{} );
+  geometry::ProjectedOverlap<normal::MortarSurface>::Parameters rejected_parameters;
+  rejected_parameters.minimum_overlap_fraction = 0.8;
+  const auto rejected = projectedOverlapPatch<normal::MortarSurface>( surfaces, { 0, 0 }, rejected_parameters );
   const auto quadrature = integration::interactionQuadrature( patch, integration::Polygon<2>{} );
   Real measure{};
   Real weighted_gap{};
@@ -62,8 +65,8 @@ bool overlapPatchContract()
           quadrature[point].normal[component];
     }
   }
-  return patch.valid && patch.vertex_count == 4 && quadrature.size == 6 && std::abs( measure - 0.75 ) < 1.0e-12 &&
-         std::abs( weighted_gap + 0.075 ) < 1.0e-12;
+  return patch.valid && !rejected.valid && patch.vertex_count == 4 && quadrature.size == 6 &&
+         std::abs( measure - 0.75 ) < 1.0e-12 && std::abs( weighted_gap + 0.075 ) < 1.0e-12;
 }
 
 bool conformingPatchContract()
@@ -108,8 +111,8 @@ bool pointwiseForceContract()
     }
   }
   const Real tolerance = 1.0e-12;
-  return summary.active_interactions == 1 && std::abs( summary.energy - 0.05 ) < tolerance &&
-         std::abs( mortar_residual[2] - 0.25 ) < tolerance && std::abs( nonmortar_residual[2] + 0.25 ) < tolerance &&
+  return summary.active_interactions == 1 && std::abs( summary.energy - 0.025 ) < tolerance &&
+         std::abs( mortar_residual[2] - 0.125 ) < tolerance && std::abs( nonmortar_residual[2] + 0.125 ) < tolerance &&
          std::abs( total[0] ) < tolerance && std::abs( total[1] ) < tolerance && std::abs( total[2] ) < tolerance;
 }
 

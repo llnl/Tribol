@@ -20,6 +20,10 @@ struct Deterministic {
   using execution_category = detail::ExecutionCategory;
 };
 
+struct OpenMP {
+  using execution_category = detail::ExecutionCategory;
+};
+
 struct Cuda {
   using execution_category = detail::ExecutionCategory;
 };
@@ -30,6 +34,7 @@ concept Policy = requires { typename T::execution_category; } &&
 
 static_assert( Policy<Sequential> );
 static_assert( Policy<Deterministic> );
+static_assert( Policy<OpenMP> );
 static_assert( Policy<Cuda> );
 
 }  // namespace tribol::execution

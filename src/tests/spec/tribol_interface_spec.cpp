@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <type_traits>
 
-// Requirements: API-001, API-002, API-003, API-004, CORE-001, DIFF-001, SEARCH-001
+// Requirements: API-001, API-002, API-003, API-004, CORE-001, DIFF-001, SEARCH-001, SEARCH-004
 
 namespace {
 
@@ -24,6 +24,8 @@ static_assert( SupportedMethod<ConformingMultiplier> );
 static_assert( SupportedMethod<DiagnosticWeights> );
 static_assert( SupportedMethod<VariationalNodalPenalty> );
 static_assert( SupportedMethod<VariationalQuadraturePenalty> );
+static_assert( SupportedMethod<SmoothedVariationalNodalPenalty> );
+static_assert( SupportedMethod<SmoothedVariationalQuadraturePenalty> );
 static_assert( SupportedMethod<VariationalMultiplier> );
 static_assert( SupportedMethod<VariationalExternalPressure> );
 
@@ -39,16 +41,32 @@ using UnsupportedViscousVariational =
 using UnsupportedAnalytic =
     Method<geometry::ProjectedOverlap<normal::MeanPlane>, integration::Centroid, constraint::Pointwise,
            enforcement::Penalty<>, response::Frictionless, formulation::PointwiseTraction, linearization::Analytic>;
+using UnsupportedDualMultiplier =
+    Method<geometry::ProjectedOverlap<normal::MortarSurface>, integration::Polygon<2>, constraint::Nodal<basis::Dual>,
+           enforcement::LagrangeMultiplier, response::Frictionless, formulation::WeightedWeakForm>;
 
 static_assert( !SupportedMethod<UnsupportedPointwiseMultiplier> );
 static_assert( !SupportedMethod<UnsupportedConformingPenalty> );
 static_assert( !SupportedMethod<UnsupportedViscousVariational> );
 static_assert( !SupportedMethod<UnsupportedAnalytic> );
+static_assert( !SupportedMethod<UnsupportedDualMultiplier> );
 static_assert( execution::SupportedContactExecution<DefaultMethod, execution::Cuda> );
 static_assert( !execution::SupportedContactExecution<ProjectedMultiplier, execution::Cuda> );
 
 static_assert( std::is_trivially_copyable_v<ArrayView<const Real>> );
 static_assert( std::is_trivially_copyable_v<SurfaceMeshView> );
+static_assert( std::is_trivially_copyable_v<ContactStateView> );
+static_assert( std::is_trivially_copyable_v<NodalKinematicsView> );
+static_assert( search::legacyProximityScale == 4.0 );
+
+template <typename ContactType>
+concept HasNodalKinematics = requires( const ContactType& contact ) {
+  { contact.evaluateNodalKinematics() } -> std::same_as<NodalKinematicsView>;
+};
+
+static_assert( HasNodalKinematics<Contact<VariationalNodalPenalty>> );
+static_assert( HasNodalKinematics<Contact<VariationalExternalPressure>> );
+static_assert( !HasNodalKinematics<Contact<VariationalQuadraturePenalty>> );
 
 static_assert( MethodTraits<PointwiseMaterialRateViscous>::capabilities.needs_velocity );
 static_assert( MethodTraits<PointwiseMaterialRateViscous>::capabilities.needs_material_fields );
@@ -81,6 +99,17 @@ bool meshViewContract()
   invalid_mesh.connectivity = { invalid_connectivity.data(), static_cast<Index>( invalid_connectivity.size() ) };
   return mesh.isStructurallyValid() && !invalid_mesh.isStructurallyValid() && mesh.numberOfNodes() == 4 &&
          mesh.numberOfElements() == 2 && mesh.coordinates( 3, 1 ) == 1.0;
+}
+
+bool emptyPartitionContract()
+{
+  constexpr std::array<Index, 1> offsets{ 0 };
+  const SurfaceMeshView empty{
+      .dimension = 3, .coordinates = { {}, 0, 3, FieldLayout::Interleaved }, .element_offsets = { offsets.data(), 1 } };
+  Contact<> contact( { empty, empty } );
+  contact.updateInteractions();
+  const auto result = contact.evaluate();
+  return empty.isStructurallyValid() && contact.interactions().empty() && result.summary.active_interactions == 0;
 }
 
 bool contactLifecycleContract()
@@ -185,20 +214,24 @@ bool pointwisePenaltyContract()
   exact_contact.applyCoordinateDerivative( {}, direction, derivative );
 
   const Real tolerance = 1.0e-12;
-  const bool energy_matches = std::abs( summary.energy - 0.05 ) < tolerance;
+  const bool energy_matches = std::abs( summary.energy - 0.025 ) < tolerance;
   const bool active_pair = summary.active_interactions == 1;
   const bool expected_force =
-      std::abs( mortar_residual[1] - 0.5 ) < tolerance && std::abs( mortar_residual[3] - 0.5 ) < tolerance &&
-      std::abs( nonmortar_residual[1] + 0.5 ) < tolerance && std::abs( nonmortar_residual[3] + 0.5 ) < tolerance;
+      std::abs( mortar_residual[1] - 0.25 ) < tolerance && std::abs( mortar_residual[3] - 0.25 ) < tolerance &&
+      std::abs( nonmortar_residual[1] + 0.25 ) < tolerance && std::abs( nonmortar_residual[3] + 0.25 ) < tolerance;
   const bool balanced =
       std::abs( mortar_residual[0] + mortar_residual[2] + nonmortar_residual[0] + nonmortar_residual[2] ) < tolerance &&
       std::abs( mortar_residual[1] + mortar_residual[3] + nonmortar_residual[1] + nonmortar_residual[3] ) < tolerance;
   const bool derivative_matches =
-      std::abs( mortar_derivative[1] + 0.5 ) < 1.0e-8 && std::abs( mortar_derivative[3] + 0.5 ) < 1.0e-8 &&
-      std::abs( nonmortar_derivative[1] - 0.5 ) < 1.0e-8 && std::abs( nonmortar_derivative[3] - 0.5 ) < 1.0e-8;
+      std::abs( mortar_derivative[1] + 0.25 ) < 1.0e-8 && std::abs( mortar_derivative[3] + 0.25 ) < 1.0e-8 &&
+      std::abs( nonmortar_derivative[1] - 0.25 ) < 1.0e-8 && std::abs( nonmortar_derivative[3] - 0.25 ) < 1.0e-8;
   return energy_matches && active_pair && expected_force && balanced && derivative_matches;
 }
 
 }  // namespace
 
-int main() { return meshViewContract() && contactLifecycleContract() && pointwisePenaltyContract() ? 0 : 1; }
+int main()
+{
+  return meshViewContract() && emptyPartitionContract() && contactLifecycleContract() && pointwisePenaltyContract() ? 0
+                                                                                                                    : 1;
+}

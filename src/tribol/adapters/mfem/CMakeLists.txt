@@ -1,4 +1,9 @@
-set(_tribol_mfem_adapter_headers MfemContact.hpp MfemSurface.hpp)
+set(_tribol_mfem_adapter_headers
+    MfemContact.hpp
+    MfemContactAssembly.inl
+    MfemContactMapping.inl
+    MfemDistribution.hpp
+    MfemSurface.hpp)
 set(_tribol_mfem_adapter_depends tribol_core mfem)
 blt_list_append(TO _tribol_mfem_adapter_depends ELEMENTS blt::mpi IF
                 TRIBOL_USE_MPI)

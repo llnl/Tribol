@@ -26,11 +26,12 @@ __global__ void penaltyKernel( ArrayView<const InteractionPatch> patches, Real s
 }
 
 __global__ void pointwisePenaltyKernel( ArrayView<const InteractionPatch> patches, Real stiffness,
+                                        constraint::GapActivationParameters activation,
                                         ArrayView<PenaltyContribution> contributions )
 {
   const Index patch = static_cast<Index>( blockIdx.x * blockDim.x + threadIdx.x );
   if ( patch < patches.size() ) {
-    contributions[patch] = evaluatePointwisePenaltyPatch( patches[patch], stiffness );
+    contributions[patch] = evaluatePointwisePenaltyPatch( patches[patch], stiffness, activation );
   }
 }
 
@@ -81,6 +82,7 @@ void CudaPenaltyWorkspace::reserve( Index patch_capacity )
 }
 
 void CudaPenaltyWorkspace::evaluatePointwise( ArrayView<const InteractionPatch> patches, Real stiffness,
+                                              constraint::GapActivationParameters activation,
                                               ArrayView<PenaltyContribution> contributions )
 {
   requireValidArguments( patches, stiffness, contributions );
@@ -95,7 +97,7 @@ void CudaPenaltyWorkspace::evaluatePointwise( ArrayView<const InteractionPatch> 
                "cudaMemcpy interaction patches" );
   constexpr int block_size = 128;
   const int blocks = static_cast<int>( ( patches.size() + block_size - 1 ) / block_size );
-  pointwisePenaltyKernel<<<blocks, block_size>>>( { device_patches_, patches.size() }, stiffness,
+  pointwisePenaltyKernel<<<blocks, block_size>>>( { device_patches_, patches.size() }, stiffness, activation,
                                                   { device_contributions_, contributions.size() } );
   requireCuda( cudaGetLastError(), "launch pointwise penalty kernel" );
   requireCuda( cudaDeviceSynchronize(), "synchronize pointwise penalty kernel" );
@@ -104,10 +106,11 @@ void CudaPenaltyWorkspace::evaluatePointwise( ArrayView<const InteractionPatch> 
 }
 
 void evaluatePointwisePenaltyPatches( ArrayView<const InteractionPatch> patches, Real stiffness,
-                                      ArrayView<PenaltyContribution> contributions, Cuda )
+                                      ArrayView<PenaltyContribution> contributions, Cuda,
+                                      constraint::GapActivationParameters activation )
 {
   CudaPenaltyWorkspace workspace;
-  workspace.evaluatePointwise( patches, stiffness, contributions );
+  workspace.evaluatePointwise( patches, stiffness, activation, contributions );
 }
 
 void evaluatePenaltyPatches( ArrayView<const InteractionPatch> patches, Real stiffness,

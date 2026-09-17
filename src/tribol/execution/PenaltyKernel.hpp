@@ -14,6 +14,8 @@ namespace tribol::execution {
 
 struct PenaltyContribution {
   std::array<Real, 3> mortar_force{};
+  Real effective_gap{};
+  Real pressure{};
   Real energy{};
   bool active{};
 
@@ -21,7 +23,7 @@ struct PenaltyContribution {
 };
 
 [[nodiscard]] TRIBOL_HOST_DEVICE inline PenaltyContribution evaluatePointwisePenaltyPatch(
-    const InteractionPatch& patch, Real stiffness )
+    const InteractionPatch& patch, Real stiffness, constraint::GapActivationParameters activation = {} )
 {
   PenaltyContribution result;
   if ( !patch.valid ) {
@@ -31,9 +33,11 @@ struct PenaltyContribution {
   for ( int component = 0; component < 3; ++component ) {
     gap += ( patch.mortar_centroid[component] - patch.nonmortar_centroid[component] ) * patch.normal[component];
   }
-  const Real active_gap = gap < 0.0 ? gap : 0.0;
+  result.effective_gap = gap - activation.residual_gap;
+  const Real active_gap = result.effective_gap <= activation.gap_tolerance ? result.effective_gap : 0.0;
+  result.pressure = stiffness * active_gap;
   for ( int component = 0; component < 3; ++component ) {
-    result.mortar_force[component] = patch.measure * stiffness * active_gap * patch.normal[component];
+    result.mortar_force[component] = patch.measure * result.pressure * patch.normal[component];
   }
   result.energy = 0.5 * patch.measure * stiffness * active_gap * active_gap;
   result.active = true;
