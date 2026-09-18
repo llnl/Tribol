@@ -5,31 +5,19 @@
 
 # Get value for some options from corresponding blt options
 cmake_dependent_option(TRIBOL_USE_CUDA "Enables Tribol with CUDA support" ON "ENABLE_CUDA" OFF)
-cmake_dependent_option(TRIBOL_USE_HIP "Enables Tribol with HIP support" ON "ENABLE_HIP" OFF)
 cmake_dependent_option(TRIBOL_USE_MPI "Enables MPI in Tribol" ON "ENABLE_MPI" OFF)
 cmake_dependent_option(TRIBOL_USE_GPU_MPI "Enables GPU-aware MPI in Tribol" ON "ENABLE_GPU_MPI" OFF)
 cmake_dependent_option(TRIBOL_USE_OPENMP "Enables Tribol with OpenMP support" ON "ENABLE_OPENMP" OFF)
 cmake_dependent_option(TRIBOL_ENABLE_TESTS "Enables Tribol Tests" ON "ENABLE_TESTS" OFF)
-cmake_dependent_option(TRIBOL_ENABLE_EXAMPLES "Enables Tribol Examples" ON "ENABLE_EXAMPLES" OFF)
 cmake_dependent_option(TRIBOL_ENABLE_DOCS "Enables Tribol Docs" ON "ENABLE_DOCS" OFF)
+option(TRIBOL_ENABLE_BENCHMARKS "Build rewritten Tribol benchmark drivers" OFF)
 
-if(TRIBOL_USE_GPU_MPI AND NOT (TRIBOL_USE_CUDA OR TRIBOL_USE_HIP))
-    message(FATAL_ERROR "TRIBOL_USE_GPU_MPI requires either TRIBOL_USE_CUDA or TRIBOL_USE_HIP")
+if(TRIBOL_USE_GPU_MPI AND NOT TRIBOL_USE_CUDA)
+    message(FATAL_ERROR "TRIBOL_USE_GPU_MPI requires TRIBOL_USE_CUDA")
 endif()
 
 option(TRIBOL_USE_SINGLE_PRECISION "Use single-precision floating point" OFF)
 option(TRIBOL_USE_64BIT_INDEXTYPE "Use 64-bit index type" OFF)
-
-option(TRIBOL_ENABLE_LEGACY "Build the deprecated named-method implementation and examples" OFF)
-option(TRIBOL_ENABLE_FUTURE "Build the standalone experimental contact library" OFF)
-if(TRIBOL_ENABLE_FUTURE AND NOT TRIBOL_ENABLE_LEGACY)
-    message(FATAL_ERROR "TRIBOL_ENABLE_FUTURE requires TRIBOL_ENABLE_LEGACY=ON")
-endif()
-set(TRIBOL_FUTURE_NATIVE_HO_MAX_ORDER "4" CACHE STRING
-    "Maximum polynomial order supported by native high-order future contact kernels")
-if(TRIBOL_FUTURE_NATIVE_HO_MAX_ORDER LESS 1)
-    message(FATAL_ERROR "TRIBOL_FUTURE_NATIVE_HO_MAX_ORDER must be at least one")
-endif()
 
 option(TRIBOL_ENABLE_ASAN "Enable AddressSanitizer for memory checking (Clang or GCC only)" OFF)
 if(TRIBOL_ENABLE_ASAN)
@@ -37,12 +25,3 @@ if(TRIBOL_ENABLE_ASAN)
         message(FATAL_ERROR "ENABLE_ASAN only supports Clang and GCC")
     endif()
 endif()
-
-#--------------------------------------------------------------------------
-# Option to control whether TRIBOL_DEBUG_DEFINE compiler define is enabled
-#
-# Possible values are: "ON", "OFF" and "DEFAULT"
-# By default, TRIBOL_DEBUG is defined in Debug and RelWithDebInfo configurations
-#--------------------------------------------------------------------------
-set(TRIBOL_DEBUG_DEFINE "DEFAULT" CACHE STRING "Controls whether TRIBOL_DEBUG compiler define is enabled")
-set_property(CACHE TRIBOL_DEBUG_DEFINE PROPERTY STRINGS "DEFAULT" "ON" "OFF")

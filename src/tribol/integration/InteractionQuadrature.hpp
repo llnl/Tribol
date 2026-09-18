@@ -48,7 +48,8 @@ template <int Order, typename Scalar>
 [[nodiscard]] TRIBOL_HOST_DEVICE inline InteractionQuadratureRuleT<Scalar> interactionQuadrature(
     const InteractionPatchT<Scalar>& patch, Polygon<Order> )
 {
-  static_assert( Order == 1 || Order == 2, "Built-in interaction quadrature supports orders one and two." );
+  static_assert( Order == 1 || Order == 2 || Order == 4,
+                 "Built-in interaction quadrature supports orders one, two, and four." );
   InteractionQuadratureRuleT<Scalar> rule;
   if ( !patch.valid ) {
     return rule;
@@ -74,20 +75,24 @@ template <int Order, typename Scalar>
     }
     return rule;
   }
-  constexpr std::array<basis::ReferencePoint, 3> references{ basis::ReferencePoint{ 1.0 / 6.0, 1.0 / 6.0 },
-                                                             basis::ReferencePoint{ 2.0 / 3.0, 1.0 / 6.0 },
-                                                             basis::ReferencePoint{ 1.0 / 6.0, 2.0 / 3.0 } };
+  constexpr std::array<basis::ReferencePoint, 3> degree_two_points{ basis::ReferencePoint{ 1.0 / 6.0, 1.0 / 6.0 },
+                                                                    basis::ReferencePoint{ 2.0 / 3.0, 1.0 / 6.0 },
+                                                                    basis::ReferencePoint{ 1.0 / 6.0, 2.0 / 3.0 } };
+  constexpr auto triangle_rule = detail::degreeFourTriangleRule();
+  static_assert( ( maximumInteractionVertices - 2 ) * triangle_rule.size <= maximumQuadraturePoints );
   for ( int triangle = 1; triangle + 1 < patch.vertex_count; ++triangle ) {
     const auto first_edge = detail::subtract( patch.integration_vertices[triangle], patch.integration_vertices[0] );
     const auto second_edge =
         detail::subtract( patch.integration_vertices[triangle + 1], patch.integration_vertices[0] );
     const Scalar area = 0.5 * detail::norm( detail::cross( first_edge, second_edge ), 3 );
-    const int points_per_triangle = Order == 1 ? 1 : 3;
+    const int points_per_triangle = Order == 1 ? 1 : Order == 2 ? 3 : triangle_rule.size;
     for ( int point_index = 0; point_index < points_per_triangle; ++point_index ) {
       auto& point = rule[rule.size++];
-      detail::interpolatePair( patch, 0, triangle, triangle + 1, Order == 1 ? references[0] : references[point_index],
-                               point );
-      point.weight = area / points_per_triangle;
+      const auto reference = Order == 1   ? basis::ReferencePoint{ 1.0 / 3.0, 1.0 / 3.0 }
+                             : Order == 2 ? degree_two_points[point_index]
+                                          : triangle_rule[point_index].position;
+      detail::interpolatePair( patch, 0, triangle, triangle + 1, reference, point );
+      point.weight = Order == 1 ? area : Order == 2 ? area / 3.0 : area * triangle_rule[point_index].weight;
     }
   }
   return rule;

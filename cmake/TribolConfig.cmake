@@ -10,12 +10,6 @@
 ## Get Tribol version information
 message(STATUS "Configuring Tribol version ${TRIBOL_VERSION_FULL}")
 
-#------------------------------------------------------------------------------
-# General Build Info
-#------------------------------------------------------------------------------
-install(FILES ${PROJECT_BINARY_DIR}/include/tribol/config.hpp DESTINATION include/tribol)
-install(FILES ${PROJECT_BINARY_DIR}/include/shared/config.hpp DESTINATION include/shared)
-
 # Set up some paths, preserve existing cache values (if present)
 set(TRIBOL_INSTALL_INCLUDE_DIR "include" CACHE STRING "")
 set(TRIBOL_INSTALL_CONFIG_DIR "lib" CACHE STRING "")
@@ -41,7 +35,7 @@ configure_package_config_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake/tribol-config.cmake.in
     ${CMAKE_CURRENT_BINARY_DIR}/tribol-config.cmake
   INSTALL_DESTINATION 
-    ${TRIBOL_INSTALL_CONFIG_DIR}
+    ${TRIBOL_INSTALL_CMAKE_MODULE_DIR}
   PATH_VARS
     TRIBOL_INSTALL_INCLUDE_DIR
     TRIBOL_INSTALL_LIB_DIR

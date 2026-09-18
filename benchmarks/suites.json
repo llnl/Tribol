@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "cases": {
+    "penalty-2d": {
+      "description": "2D projected-overlap pointwise penalty",
+      "absolute_tolerance": 1e-12,
+      "relative_tolerance": 1e-10
+    },
+    "penalty-3d": {
+      "description": "3D projected-overlap pointwise penalty",
+      "absolute_tolerance": 1e-12,
+      "relative_tolerance": 1e-10
+    },
+    "rate-2d": {
+      "description": "2D pointwise kinematic plus percentage-rate penalty",
+      "absolute_tolerance": 1e-12,
+      "relative_tolerance": 1e-10
+    },
+    "viscous-3d": {
+      "description": "3D pointwise penalty with viscous tangential response",
+      "absolute_tolerance": 1e-11,
+      "relative_tolerance": 1e-9
+    },
+    "single-mortar-3d": {
+      "description": "3D projected nodal multiplier residual",
+      "absolute_tolerance": 1e-11,
+      "relative_tolerance": 1e-9
+    },
+    "mortar-weights-3d": {
+      "description": "3D projected mortar coupling and mass operators",
+      "absolute_tolerance": 1e-11,
+      "relative_tolerance": 1e-9
+    }
+  },
+  "suites": {
+    "smoke": [
+      {"case": "penalty-2d", "size": 1, "warmups": 1, "iterations": 3},
+      {"case": "penalty-3d", "size": 1, "warmups": 1, "iterations": 3},
+      {"case": "single-mortar-3d", "size": 1, "warmups": 1, "iterations": 3}
+    ],
+    "physics": [
+      {"case": "penalty-2d", "size": 8, "warmups": 3, "iterations": 20},
+      {"case": "penalty-3d", "size": 8, "warmups": 3, "iterations": 20},
+      {"case": "rate-2d", "size": 8, "warmups": 3, "iterations": 20},
+      {"case": "viscous-3d", "size": 8, "warmups": 3, "iterations": 20},
+      {"case": "single-mortar-3d", "size": 8, "warmups": 3, "iterations": 20},
+      {"case": "mortar-weights-3d", "size": 8, "warmups": 3, "iterations": 20}
+    ],
+    "scaling": [
+      {"case": "penalty-2d", "size": 1, "warmups": 3, "iterations": 30},
+      {"case": "penalty-2d", "size": 32, "warmups": 3, "iterations": 30},
+      {"case": "penalty-2d", "size": 256, "warmups": 3, "iterations": 30},
+      {"case": "penalty-3d", "size": 1, "warmups": 3, "iterations": 30},
+      {"case": "penalty-3d", "size": 32, "warmups": 3, "iterations": 30},
+      {"case": "penalty-3d", "size": 256, "warmups": 3, "iterations": 30},
+      {"case": "single-mortar-3d", "size": 1, "warmups": 3, "iterations": 20},
+      {"case": "single-mortar-3d", "size": 32, "warmups": 3, "iterations": 20}
+    ],
+    "all": {"include": ["smoke", "physics", "scaling"]}
+  }
+}

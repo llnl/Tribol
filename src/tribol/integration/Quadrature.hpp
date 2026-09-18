@@ -9,7 +9,7 @@
 
 namespace tribol::integration {
 
-inline constexpr int maximumQuadraturePoints = 24;
+inline constexpr int maximumQuadraturePoints = 36;
 
 struct ReferenceQuadraturePoint {
   basis::ReferencePoint position{};
@@ -132,6 +132,25 @@ template <int Order>
   return rule;
 }
 
+[[nodiscard]] TRIBOL_HOST_DEVICE constexpr QuadratureRule<ReferenceQuadraturePoint> degreeFourTriangleRule()
+{
+  constexpr Real first = 0.09157621350977074346;
+  constexpr Real first_complement = 0.8168475729804585131;
+  constexpr Real second = 0.4459484909159648863;
+  constexpr Real second_complement = 0.1081030181680702274;
+  constexpr Real first_weight = 0.1099517436553218676;
+  constexpr Real second_weight = 0.2233815896780114657;
+  QuadratureRule<ReferenceQuadraturePoint> rule;
+  rule.size = 6;
+  rule[0] = { { first, first }, first_weight };
+  rule[1] = { { first_complement, first }, first_weight };
+  rule[2] = { { first, first_complement }, first_weight };
+  rule[3] = { { second_complement, second }, second_weight };
+  rule[4] = { { second, second_complement }, second_weight };
+  rule[5] = { { second, second }, second_weight };
+  return rule;
+}
+
 }  // namespace detail
 
 template <int Order>
@@ -163,7 +182,8 @@ template <int Order>
 [[nodiscard]] TRIBOL_HOST_DEVICE inline QuadratureRule<PhysicalQuadraturePoint> polygonQuadrature(
     ArrayView<const std::array<Real, 3>> vertices, int manifold_dimension, Polygon<Order> )
 {
-  static_assert( Order == 1 || Order == 2, "Built-in polygon quadrature supports orders one and two." );
+  static_assert( Order == 1 || Order == 2 || Order == 4,
+                 "Built-in polygon quadrature supports orders one, two, and four." );
   QuadratureRule<PhysicalQuadraturePoint> rule;
   if ( manifold_dimension == 1 ) {
     if ( vertices.size() != 2 ) {
@@ -171,7 +191,7 @@ template <int Order>
     }
     const auto difference = detail::subtract( vertices[1], vertices[0] );
     const Real length = detail::norm( difference, 3 );
-    const auto reference = detail::referenceRule<Order>( ElementTopology::Segment );
+    const auto reference = detail::referenceRule < Order == 4 ? 2 : Order > ( ElementTopology::Segment );
     rule.size = reference.size;
     for ( int point = 0; point < reference.size; ++point ) {
       const Real fraction = 0.5 * ( 1.0 + reference[point].position.first );
@@ -186,23 +206,26 @@ template <int Order>
   if ( manifold_dimension != 2 || vertices.size() < 3 ) {
     return rule;
   }
-  constexpr std::array<basis::ReferencePoint, 3> triangle_points{ basis::ReferencePoint{ 1.0 / 3.0, 1.0 / 3.0 },
-                                                                  basis::ReferencePoint{ 2.0 / 3.0, 1.0 / 6.0 },
-                                                                  basis::ReferencePoint{ 1.0 / 6.0, 2.0 / 3.0 } };
+  constexpr std::array<basis::ReferencePoint, 3> degree_two_points{ basis::ReferencePoint{ 1.0 / 6.0, 1.0 / 6.0 },
+                                                                    basis::ReferencePoint{ 2.0 / 3.0, 1.0 / 6.0 },
+                                                                    basis::ReferencePoint{ 1.0 / 6.0, 2.0 / 3.0 } };
+  constexpr auto triangle_rule = detail::degreeFourTriangleRule();
   for ( Index triangle = 1; triangle + 1 < vertices.size(); ++triangle ) {
     const auto first_edge = detail::subtract( vertices[triangle], vertices[0] );
     const auto second_edge = detail::subtract( vertices[triangle + 1], vertices[0] );
     const Real area = 0.5 * detail::norm( detail::cross( first_edge, second_edge ), 3 );
-    const int points_per_triangle = Order == 1 ? 1 : 3;
+    const int points_per_triangle = Order == 1 ? 1 : Order == 2 ? 3 : triangle_rule.size;
     for ( int local_point = 0; local_point < points_per_triangle; ++local_point ) {
-      const auto reference = Order == 1 ? triangle_points[0] : triangle_points[local_point];
+      const auto reference = Order == 1   ? basis::ReferencePoint{ 1.0 / 3.0, 1.0 / 3.0 }
+                             : Order == 2 ? degree_two_points[local_point]
+                                          : triangle_rule[local_point].position;
       auto& point = rule[rule.size++];
       for ( int component = 0; component < 3; ++component ) {
         point.position[component] = vertices[0][component] + reference.first * first_edge[component] +
                                     reference.second * second_edge[component];
       }
       point.reference = reference;
-      point.weight = area / points_per_triangle;
+      point.weight = Order == 1 ? area : Order == 2 ? area / 3.0 : area * triangle_rule[local_point].weight;
     }
   }
   return rule;

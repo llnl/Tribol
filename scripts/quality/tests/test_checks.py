@@ -9,10 +9,12 @@ SCRIPT_DIRECTORY = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPT_DIRECTORY))
 
 from checks import (
+    check_benchmark_contract,
     check_dependency_boundaries,
     check_install_contract,
     check_markdown_links,
     check_named_method_classes,
+    check_legacy_sources_absent,
     check_requirement_annotations,
     check_requirement_evidence,
 )
@@ -68,6 +70,17 @@ class QualityChecksTest(unittest.TestCase):
             findings = check_install_contract(root)
             self.assertEqual(len(findings), 5)
             self.assertTrue(all("install-consumer contract" in str(finding) for finding in findings))
+
+    def test_benchmark_contract_and_legacy_paths_are_checked(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.assertEqual(len(check_benchmark_contract(root)), 6)
+            legacy = root / "src/tribol/interface"
+            legacy.mkdir(parents=True)
+            (legacy / "legacy.cpp").touch()
+            findings = check_legacy_sources_absent(root)
+            self.assertEqual(len(findings), 1)
+            self.assertIn("legacy implementation path", str(findings[0]))
 
 
 if __name__ == "__main__":

@@ -8,131 +8,36 @@ cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
 @PACKAGE_INIT@
 
 if(NOT TRIBOL_FOUND)
+  set(TRIBOL_VERSION "@TRIBOL_VERSION_FULL@")
+  set(TRIBOL_VERSION_MAJOR "@TRIBOL_VERSION_MAJOR@")
+  set(TRIBOL_VERSION_MINOR "@TRIBOL_VERSION_MINOR@")
+  set(TRIBOL_VERSION_PATCH "@TRIBOL_VERSION_PATCH@")
+  set(TRIBOL_INSTALL_PREFIX "${PACKAGE_PREFIX_DIR}")
+  set(TRIBOL_INCLUDE_DIRS "${PACKAGE_PREFIX_DIR}/include")
 
-  #----------------------------------------------------------------------------
-  # Set version and paths
-  #----------------------------------------------------------------------------
-  
-  set(TRIBOL_VERSION              "@TRIBOL_VERSION_FULL@")
-  set(TRIBOL_VERSION_MAJOR        "@TRIBOL_VERSION_MAJOR@")
-  set(TRIBOL_VERSION_MINOR        "@TRIBOL_VERSION_MINOR@")
-  set(TRIBOL_VERSION_PATCH        "@TRIBOL_VERSION_PATCH@")
-  
-  set(TRIBOL_INSTALL_PREFIX       "@TRIBOL_INSTALL_PREFIX@")
-  set(TRIBOL_INCLUDE_DIRS         "${TRIBOL_INSTALL_PREFIX}/include")
-
-  #----------------------------------------------------------------------------
-  # Set user configuration options and features
-  #----------------------------------------------------------------------------
-
-  # Language features
-  set(TRIBOL_USE_FORTRAN          "@ENABLE_FORTRAN@")
-  set(TRIBOL_USE_MPI              "@ENABLE_MPI@")
-  set(TRIBOL_USE_CUDA             "@TRIBOL_USE_CUDA@")
-  set(TRIBOL_USE_HIP              "@TRIBOL_USE_HIP@")
-  set(TRIBOL_USE_OPENMP           "@TRIBOL_USE_OPENMP@")
-
-  # Config options
+  set(TRIBOL_USE_MPI "@ENABLE_MPI@")
+  set(TRIBOL_USE_CUDA "@TRIBOL_USE_CUDA@")
+  set(TRIBOL_USE_OPENMP "@TRIBOL_USE_OPENMP@")
   set(TRIBOL_USE_SINGLE_PRECISION "@TRIBOL_USE_SINGLE_PRECISION@")
-  set(TRIBOL_USE_64BIT_INDEXTYPE  "@TRIBOL_USE_64BIT_INDEXTYPE@")
-  set(TRIBOL_USE_GPU_MPI          "@TRIBOL_USE_GPU_MPI@")
+  set(TRIBOL_USE_64BIT_INDEXTYPE "@TRIBOL_USE_64BIT_INDEXTYPE@")
+  set(TRIBOL_USE_GPU_MPI "@TRIBOL_USE_GPU_MPI@")
 
-  # TPLs
-  set(TRIBOL_USE_UMPIRE  "@TRIBOL_USE_UMPIRE@")
-  set(TRIBOL_USE_RAJA    "@TRIBOL_USE_RAJA@")
-  set(TRIBOL_USE_ENZYME  "@TRIBOL_USE_ENZYME@")
-  set(TRIBOL_USE_CALIPER "@TRIBOL_USE_CALIPER@")
-
-  # Configuration for Tribol compiler defines
-  set(TRIBOL_DEBUG_DEFINE         "@TRIBOL_DEBUG_DEFINE@")
-  set(TRIBOL_DEBUG_DEFINE_STRING  "@TRIBOL_DEBUG_DEFINE_STRING@")
-  
-  #----------------------------------------------------------------------------
-  # Bring in required dependencies for this Tribol configuration
-  #----------------------------------------------------------------------------
   include(CMakeFindDependencyMacro)
-
-  # Enable various find commands to look in non-default paths
   set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB32_PATHS TRUE)
   set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIB64_PATHS TRUE)
   set_property(GLOBAL PROPERTY FIND_LIBRARY_USE_LIBX32_PATHS TRUE)
 
-  # Umpire is optional
-  if(TRIBOL_USE_UMPIRE)
-    set(TRIBOL_UMPIRE_DIR  "@UMPIRE_DIR@")
-    if(NOT UMPIRE_DIR) 
-      set(UMPIRE_DIR "${TRIBOL_UMPIRE_DIR}")
-    endif()
-    find_dependency(umpire REQUIRED PATHS "${UMPIRE_DIR}")
-  endif()
-
-  # RAJA is optional
-  if(TRIBOL_USE_RAJA)
-    set(TRIBOL_RAJA_DIR  "@RAJA_DIR@")
-    if(NOT RAJA_DIR) 
-      set(RAJA_DIR "${TRIBOL_RAJA_DIR}")
-    endif()
-    find_dependency(RAJA REQUIRED PATHS "${RAJA_DIR}")
-  endif()
-
-  # Enzyme is optional
-  if(TRIBOL_USE_ENZYME)
-    set(TRIBOL_ENZYME_DIR  "@ENZYME_DIR@")
-    if(NOT ENZYME_DIR) 
-      set(ENZYME_DIR "${TRIBOL_ENZYME_DIR}")
-    endif()
-    find_dependency(Enzyme REQUIRED PATHS "${ENZYME_DIR}")
-  endif()
-
-  # Caliper is optional
-  if(TRIBOL_USE_CALIPER)
-    set(TRIBOL_CALIPER_DIR  "@CALIPER_DIR@")
-    if(NOT CALIPER_DIR) 
-      set(CALIPER_DIR "${TRIBOL_CALIPER_DIR}")
-    endif()
-    find_dependency(caliper REQUIRED PATHS "${CALIPER_DIR}")
-  endif()
-
-  # axom is a required TPL. It is either external, or built-in
-  set(TRIBOL_AXOM_DIR  "@AXOM_DIR@")
-  if(NOT AXOM_DIR) 
-    set(AXOM_DIR "${TRIBOL_AXOM_DIR}")
-  endif()
-  find_dependency(axom REQUIRED PATHS "${AXOM_DIR}/lib/cmake")
-
-  # mfem is also a required TPL
-  set(TRIBOL_MFEM_DIR  "@MFEM_DIR@")
-  if(NOT MFEM_DIR) 
-    set(MFEM_DIR "${MFEM_DIR}")
-  endif()
+  set(TRIBOL_MFEM_DIR "@MFEM_DIR@")
   set(TRIBOL_MFEM_BUILT_WITH_CMAKE @MFEM_BUILT_WITH_CMAKE@)
-
   if(TRIBOL_MFEM_BUILT_WITH_CMAKE)
-    # Allow user to override with MFEM_DIR
     if(NOT MFEM_DIR)
-      set(MFEM_DIR ${TRIBOL_MFEM_DIR}) 
+      set(MFEM_DIR "${TRIBOL_MFEM_DIR}")
     endif()
     find_dependency(mfem REQUIRED PATHS "${MFEM_DIR}/lib/cmake/mfem" NAMES MFEM)
-  else()
-    # Makefile case handled by exporting `tribol::mfem`
   endif()
 
   get_filename_component(TRIBOL_CMAKE_CONFIG_DIR "${CMAKE_CURRENT_LIST_FILE}" PATH)
-
-  #----------------------------------------------------------------------------
-  # Include targets installed by BLT
-  #----------------------------------------------------------------------------
   include(${TRIBOL_CMAKE_CONFIG_DIR}/BLTSetupTargets.cmake)
-
-  #----------------------------------------------------------------------------
-  # Include targets exported by cmake
-  #----------------------------------------------------------------------------
   include(${TRIBOL_CMAKE_CONFIG_DIR}/tribol-targets.cmake)
-
-  #----------------------------------------------------------------------------
-  # Indicate that tribol is correctly set up
-  #----------------------------------------------------------------------------
   set(TRIBOL_FOUND TRUE)
-
 endif()
-

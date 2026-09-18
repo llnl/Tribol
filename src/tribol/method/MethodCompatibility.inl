@@ -19,7 +19,7 @@ template <typename T>
 inline constexpr bool is_polygon_integration_v = false;
 
 template <int Order>
-inline constexpr bool is_polygon_integration_v<integration::Polygon<Order>> = Order == 1 || Order == 2;
+inline constexpr bool is_polygon_integration_v<integration::Polygon<Order>> = Order == 1 || Order == 2 || Order == 4;
 
 template <typename T>
 inline constexpr bool is_smoothed_segment_integration_v = false;

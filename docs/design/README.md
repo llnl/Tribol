@@ -15,7 +15,7 @@ This directory records the architecture being implemented by the policy-composed
 - [Testing contract](testing-contract.md): how tests define the public product.
 - [Extension guide](extension-guide.md): file-level workflows for adding policies, adapters, and backends.
 - [Quality](quality.md): local and CI verification commands.
-- [Migration](migration.md): how legacy code remains an oracle until final removal.
+- [Migration](migration.md): how external legacy releases remain comparison oracles.
 - [Decision 0001](decisions/0001-policy-composition.md): why named method classes are prohibited.
 - [Decision 0002](decisions/0002-independent-core.md): why MFEM is an adapter rather than the core model.
 

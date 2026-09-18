@@ -105,7 +105,7 @@ class SpecModelTest(unittest.TestCase):
 
         capabilities = load_document(SpecFiles().capabilities)
         capabilities["combinations"][5]["method"]["integration"]["order"] = 3
-        with self.assertRaisesRegex(SpecError, "supports only orders 1 and 2"):
+        with self.assertRaisesRegex(SpecError, "supports only orders 1, 2, and 4"):
             self.validate_capabilities(capabilities)
 
         capabilities = load_document(SpecFiles().capabilities)

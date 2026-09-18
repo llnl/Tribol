@@ -1,30 +1,27 @@
 ---
 title: Rewrite Migration Strategy
-status: active
+status: completed
 normative: false
 ---
 
 # Rewrite Migration Strategy
 
-## Coexistence
+## Current Boundary
 
-The dependency-free core and policy model are the default build. Legacy Tribol remains in the repository as an opt-in
-numerical oracle under `TRIBOL_ENABLE_LEGACY=ON`; it is not part of the supported rewrite interface. New public
-contracts do not preserve global registration, integer coupling-scheme IDs, or method enums.
+The policy-composed C++20 implementation is the only Tribol implementation in this repository. Global registries,
+integer coupling-scheme IDs, named-method dispatch, the experimental `future` tree, redecomp, and their fixture data
+were removed after their behavior was captured by specification, component, parity, MPI, and CUDA tests.
 
-## Sequence
+The tests under `src/tests/legacy_parity` contain no legacy implementation. Their names record the origin of the
+analytic behavior they preserve. They remain fast in-tree regression tests for the supported policy tuples.
 
-1. Freeze public syntax and capability tuples in specification tests.
-2. Build independent views, policies, search, geometry, integration, and evaluation components.
-3. Add the borrowed-array adapter and then the MFEM adapter.
-4. Port each behavior into policy tuples and compare independent analytic expectations and legacy results where useful.
-5. Establish CPU, CUDA, MPI, derivative, install, and quality gates.
-6. Redirect examples and exported targets to the new interface.
-7. Keep `src/tribol/future`, global managers, and named-method implementations disabled by default; remove them after
-   any remaining numerical-oracle value is exhausted.
+## External Comparison
 
-## Completion Condition
+Cross-version evidence is produced by `scripts/benchmarks/compare.py` and `benchmarks/suites.json`. The current driver
+links `tribol::core`; the benchmark-only legacy adapter links a separately installed named-method Tribol. A caller can
+select an existing build/install directory or let the script clone, build, and install upstream `develop`.
 
-The supported rewrite is complete when all manifest capabilities are verified, no core dependency boundary is violated,
-GPU and MPI suites pass, and installed consumers work. Physical removal of disabled legacy sources is separate cleanup;
-`src/tribol/future` and the original implementation are references, not extension points.
+This executable boundary avoids ABI collisions and keeps legacy headers, dependencies, global state, and method enums
+out of production targets. The common JSON protocol records complete comparable vectors, scalar invariants, and raw
+timing samples. Numerical mismatch is a failure; timing ratios are informational unless downstream automation applies
+its own threshold.

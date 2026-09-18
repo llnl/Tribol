@@ -5,13 +5,13 @@
 
 from spack.package import *
 
+
 class TribolDevtools(BundlePackage):
     """This is a set of tools necessary for the developers of Tribol"""
 
-    version('fakeversion')
+    version("fakeversion")
 
     depends_on("doxygen")
     depends_on("python")
-    depends_on("py-shroud")
     depends_on("py-sphinx")
     depends_on("llvm@19+clang")

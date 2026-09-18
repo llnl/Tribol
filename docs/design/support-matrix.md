@@ -9,8 +9,8 @@ normative: true
 The authoritative tuple-by-tuple data is `src/tests/spec/capabilities.yaml`. This page records cross-cutting limits that
 are easy to misstate in prose.
 
-Fresh builds set `TRIBOL_ENABLE_LEGACY=OFF`; named-method sources and examples are available only as an explicit
-migration oracle.
+Named-method sources are absent from this repository. `scripts/benchmarks/compare.py` builds a separate reference
+adapter against a supplied Tribol installation or a fresh checkout of upstream `develop`.
 
 | Area | Supported now | Not claimed |
 | --- | --- | --- |

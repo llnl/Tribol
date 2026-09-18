@@ -2,9 +2,8 @@
 
 ## Mission
 
-Tribol is being rebuilt as a policy-composed contact mechanics library. Tests are the normative interface and capability
-specification. The legacy implementation and `src/tribol/future` are temporary behavioral references, not architectural
-templates to extend.
+Tribol is a policy-composed contact mechanics library. Tests are the normative interface and capability specification.
+Legacy implementations are external benchmark references, never in-tree architectural templates.
 
 ## Read First
 
@@ -14,6 +13,7 @@ templates to extend.
 - `docs/design/support-matrix.md`
 - `docs/design/public-api.md`
 - `src/tests/spec/README.md` when present
+- `benchmarks/README.md` for cross-version performance or parity work
 
 ## Non-Negotiable Boundaries
 
@@ -25,6 +25,8 @@ templates to extend.
 - Do not introduce global registries or integer-ID lifecycle APIs.
 - Treat invalid policy combinations as compile-time errors when their incompatibility is structural.
 - Add or update specification tests before changing the public interface.
+- Keep legacy API use isolated to `benchmarks/driver/LegacyDriver.cpp`, which is compiled only against an external
+  reference installation.
 - Do not advertise `Analytic`, `Enzyme`, HIP, scalable distributed search, native high order, or non-default CUDA/MPI
   support until matching executable evidence exists.
 

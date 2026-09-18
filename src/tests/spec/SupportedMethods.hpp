@@ -24,7 +24,7 @@ using PointwiseTiedFull =
     Method<geometry::ProjectedOverlap<normal::MeanPlane>, integration::Centroid, constraint::Pointwise,
            enforcement::Penalty<>, response::TiedFull, formulation::PointwiseTraction, linearization::Exact>;
 
-using ProjectedMultiplier = Method<geometry::ProjectedOverlap<normal::MortarSurface>, integration::Polygon<2>,
+using ProjectedMultiplier = Method<geometry::ProjectedOverlap<normal::MortarSurface>, integration::Polygon<4>,
                                    constraint::Nodal<basis::Primal>, enforcement::LagrangeMultiplier,
                                    response::Frictionless, formulation::WeightedWeakForm, linearization::Exact>;
 
@@ -33,7 +33,7 @@ using ConformingMultiplier = Method<geometry::ConformingOverlap, integration::Fa
                                     formulation::WeightedWeakForm, linearization::Exact>;
 
 using DiagnosticWeights =
-    Method<geometry::ProjectedOverlap<normal::MortarSurface>, integration::Polygon<2>, constraint::Nodal<basis::Primal>,
+    Method<geometry::ProjectedOverlap<normal::MortarSurface>, integration::Polygon<4>, constraint::Nodal<basis::Primal>,
            enforcement::None, response::Frictionless, formulation::DiagnosticWeights, linearization::Exact>;
 
 using VariationalNodalPenalty =

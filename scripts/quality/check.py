@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from checks import (
+    BENCHMARK_DIRECTORIES,
     DEPENDENCY_FREE_DIRECTORIES,
     TEST_DIRECTORIES,
     architecture_files,
@@ -53,11 +54,13 @@ OPTIONAL_TOOLS = (
     Tool("cmake-lint", ("cmake-lint",), ()),
     Tool("shellcheck", ("shellcheck",), ("scripts/github-actions/linux-check.sh",)),
     Tool("shfmt", ("shfmt",), ("-d", "scripts/github-actions/linux-check.sh")),
-    Tool("ruff", ("ruff",), ("check", "scripts/quality", "scripts/spec")),
-    Tool("mypy", ("mypy",), ("scripts/quality", "scripts/spec")),
+    Tool("ruff", ("ruff",), ("check", "scripts/benchmarks", "scripts/quality", "scripts/spec")),
+    Tool("mypy", ("mypy",), ("scripts/benchmarks", "scripts/quality", "scripts/spec")),
 )
 
 CMAKE_QUALITY_FILES = (
+    "benchmarks/CMakeLists.txt",
+    "benchmarks/reference/CMakeLists.txt",
     "cmake/TribolQuality.cmake",
     "src/tribol/core/CMakeLists.txt",
     "src/tribol/adapters/mfem/CMakeLists.txt",
@@ -115,6 +118,7 @@ def format_check(root: Path, strict: bool) -> int:
         return 1 if strict else 0
     files = {str(path.relative_to(root)) for path in architecture_files(root)}
     files.update(str(path.relative_to(root)) for path in files_in_entries(root, TEST_DIRECTORIES))
+    files.update(str(path.relative_to(root)) for path in files_in_entries(root, BENCHMARK_DIRECTORIES))
     return run((executable, "--dry-run", "--Werror", *files), root)
 
 
@@ -156,7 +160,13 @@ def optional_tools(root: Path, strict: bool) -> int:
         if tool.name == "cppcheck":
             command += architecture
         elif tool.name == "codespell":
-            command += architecture + tests + ("docs/design", "scripts/quality", "scripts/spec")
+            command += architecture + tests + (
+                "benchmarks",
+                "docs/design",
+                "scripts/benchmarks",
+                "scripts/quality",
+                "scripts/spec",
+            )
         elif tool.name in {"cmake-format", "cmake-lint"}:
             command += CMAKE_QUALITY_FILES
         failed = run((executable, *command), root) != 0 or failed
@@ -168,7 +178,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "checks", nargs="*", choices=("custom", "spec", "format", "headers", "tools", "all"), default=["all"]
     )
-    parser.add_argument("--strict-tools", action="store_true", help="fail when an optional external tool is unavailable")
+    parser.add_argument(
+        "--strict-tools", action="store_true", help="fail when an optional external tool is unavailable"
+    )
     parser.add_argument("--compiler", help="C++ compiler for header-isolation checks")
     parser.add_argument("--root", type=Path, default=REPO_ROOT)
     return parser.parse_args()

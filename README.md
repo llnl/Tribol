@@ -82,8 +82,8 @@ Hosts with contiguous arrays can use `tribol::array::makeContact`; MFEM applicat
 [`docs/design/public-api.md`](docs/design/public-api.md) for lifecycle and result semantics and
 [`docs/design/support-matrix.md`](docs/design/support-matrix.md) for the tested capability boundary.
 
-Named-method legacy sources are excluded from fresh builds. Set `-DTRIBOL_ENABLE_LEGACY=ON` only when a temporary
-numerical comparison with the deprecated implementation is required.
+Named-method legacy sources are not part of this repository. Cross-version runtime and numerical comparisons use an
+external Tribol installation; see [`benchmarks/README.md`](benchmarks/README.md).
 
 
 ## Dependencies
@@ -91,16 +91,12 @@ numerical comparison with the deprecated implementation is required.
 The Tribol contact physics library requires:
 - CMake 3.14 or higher
 - C++20 compiler
-- MPI
 - mfem
-- axom
 
 Tribol has optional dependencies on:
+- MPI
+- OpenMP
 - CUDA
-- HIP
-- RAJA
-- Umpire
-- Enzyme AD
 
 ## License
 

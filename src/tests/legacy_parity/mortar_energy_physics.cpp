@@ -60,6 +60,12 @@ bool legacyMortarWeightProjection()
   Contact<DiagnosticWeights> contact( legacyMisalignedQuads(), options );
   contact.updateInteractions();
   const auto result = contact.evaluate();
+  constexpr std::array<Real, 16> expected_coupling{
+      25.0 / 576.0, 65.0 / 576.0, 169.0 / 576.0, 65.0 / 576.0, 5.0 / 576.0, 13.0 / 576.0, 65.0 / 576.0, 25.0 / 576.0,
+      1.0 / 576.0,  5.0 / 576.0,  25.0 / 576.0,  5.0 / 576.0,  5.0 / 576.0, 25.0 / 576.0, 65.0 / 576.0, 13.0 / 576.0 };
+  constexpr std::array<Real, 16> expected_mass{
+      49.0 / 144.0, 7.0 / 72.0, 1.0 / 36.0,  7.0 / 72.0, 7.0 / 72.0, 7.0 / 144.0, 1.0 / 72.0, 1.0 / 36.0,
+      1.0 / 36.0,   1.0 / 72.0, 1.0 / 144.0, 1.0 / 72.0, 7.0 / 72.0, 1.0 / 36.0,  1.0 / 72.0, 7.0 / 144.0 };
   constexpr std::array<Real, 4> expected_mortar{ 0.5625, 0.1875, 0.0625, 0.1875 };
   constexpr std::array<Real, 4> expected_nonmortar{ 0.0625, 0.1875, 0.5625, 0.1875 };
   bool matches = true;
@@ -68,9 +74,17 @@ bool legacyMortarWeightProjection()
     Real column_sum{};
     Real mass_row_sum{};
     for ( Index nonmortar_node = 0; nonmortar_node < 4; ++nonmortar_node ) {
-      row_sum += result.mortar_weights[mortar_node * 4 + nonmortar_node];
+      const Index entry = mortar_node * 4 + nonmortar_node;
+      if ( std::abs( result.mortar_weights[entry] - expected_coupling[entry] ) > 1.0e-12 ||
+           std::abs( result.mortar_mass_weights[entry] - expected_mass[entry] ) > 1.0e-12 ) {
+        std::cerr << "weight entry=" << entry << " coupling=" << result.mortar_weights[entry]
+                  << " expected-coupling=" << expected_coupling[entry] << " mass=" << result.mortar_mass_weights[entry]
+                  << " expected-mass=" << expected_mass[entry] << '\n';
+        matches = false;
+      }
+      row_sum += result.mortar_weights[entry];
       column_sum += result.mortar_weights[nonmortar_node * 4 + mortar_node];
-      mass_row_sum += result.mortar_mass_weights[mortar_node * 4 + nonmortar_node];
+      mass_row_sum += result.mortar_mass_weights[entry];
     }
     if ( std::abs( row_sum - expected_mortar[mortar_node] ) > 1.0e-12 ||
          std::abs( column_sum - expected_nonmortar[mortar_node] ) > 1.0e-12 ||

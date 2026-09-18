@@ -37,6 +37,11 @@ TEST_DIRECTORIES = (
     Path("src/tests/install"),
 )
 
+BENCHMARK_DIRECTORIES = (
+    Path("benchmarks/driver"),
+    Path("scripts/benchmarks"),
+)
+
 SOURCE_SUFFIXES = {".hpp", ".cpp", ".inl", ".cu"}
 
 THIRD_PARTY_INCLUDE = re.compile(
@@ -83,7 +88,9 @@ def check_dependency_boundaries(root: Path) -> list[Finding]:
         relative = path.relative_to(root)
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             if THIRD_PARTY_INCLUDE.search(line):
-                findings.append(Finding(relative, line_number, "new architecture code may not include third-party APIs"))
+                findings.append(
+                    Finding(relative, line_number, "new architecture code may not include third-party APIs")
+                )
     return findings
 
 
@@ -94,7 +101,9 @@ def check_named_method_classes(root: Path) -> list[Finding]:
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             match = NAMED_METHOD_DECLARATION.search(line)
             if match:
-                findings.append(Finding(relative, line_number, f"forbidden named method declaration: {match.group(0)}"))
+                findings.append(
+                    Finding(relative, line_number, f"forbidden named method declaration: {match.group(0)}")
+                )
     return findings
 
 
@@ -104,6 +113,7 @@ def check_file_sizes(root: Path, production_limit: int = 500, test_limit: int = 
     spec_root = root / "src/tests/spec"
     if spec_root.exists():
         paths.extend(path for path in spec_root.rglob("*") if path.suffix in {".hpp", ".cpp"})
+    paths.extend(path for path in files_in_entries(root, BENCHMARK_DIRECTORIES) if path.suffix in SOURCE_SUFFIXES)
     for path in sorted(set(paths)):
         lines = len(path.read_text(encoding="utf-8").splitlines())
         relative = path.relative_to(root)
@@ -135,14 +145,18 @@ def check_public_header_manifest(root: Path) -> list[Finding]:
         expected = path.name if path.parent == root / "src/tribol/core" else relative_to_core.as_posix()
         in_adapter_manifest = path.parent == root / "src/tribol/adapters/mfem" and path.name in adapter_text
         if expected not in listed and not in_adapter_manifest:
-            findings.append(Finding(path.relative_to(root), 0, f"public header is absent from {cmake_path.relative_to(root)}"))
+            findings.append(
+                Finding(path.relative_to(root), 0, f"public header is absent from {cmake_path.relative_to(root)}")
+            )
     return findings
 
 
 def check_install_contract(root: Path) -> list[Finding]:
     findings: list[Finding] = []
     contracts = {
-        Path("cmake/Options.cmake"): ('option(TRIBOL_ENABLE_LEGACY "Build the deprecated named-method implementation and examples" OFF)',),
+        Path("cmake/Options.cmake"): (
+            'option(TRIBOL_ENABLE_BENCHMARKS "Build rewritten Tribol benchmark drivers" OFF)',
+        ),
         Path("src/tribol/core/CMakeLists.txt"): ("EXPORT_NAME tribol::core",),
         Path("src/tribol/adapters/mfem/CMakeLists.txt"): ("EXPORT_NAME tribol::mfem_adapter",),
         Path("src/tests/install/CMakeLists.txt"): (
@@ -161,6 +175,71 @@ def check_install_contract(root: Path) -> list[Finding]:
         for expected in required_text:
             if expected not in text:
                 findings.append(Finding(relative, 0, f"missing install-consumer contract: {expected}"))
+    return findings
+
+
+def check_benchmark_contract(root: Path) -> list[Finding]:
+    required = (
+        Path("benchmarks/suites.json"),
+        Path("benchmarks/driver/BenchmarkProtocol.hpp"),
+        Path("benchmarks/driver/RewrittenDriver.cpp"),
+        Path("benchmarks/driver/LegacyDriver.cpp"),
+        Path("benchmarks/reference/CMakeLists.txt"),
+        Path("scripts/benchmarks/compare.py"),
+    )
+    findings = [
+        Finding(path, 0, "missing cross-version benchmark contract file")
+        for path in required
+        if not (root / path).is_file()
+    ]
+    manifest_path = root / "benchmarks/suites.json"
+    if manifest_path.is_file():
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as error:
+            findings.append(Finding(manifest_path.relative_to(root), 0, f"invalid benchmark manifest: {error}"))
+        else:
+            required_suites = {"smoke", "physics", "scaling", "all"}
+            missing = required_suites - set(manifest.get("suites", {}))
+            for suite in sorted(missing):
+                findings.append(Finding(manifest_path.relative_to(root), 0, f"missing benchmark suite: {suite}"))
+    compare_path = root / "scripts/benchmarks/compare.py"
+    if compare_path.is_file():
+        text = compare_path.read_text(encoding="utf-8")
+        for option in ("--reference-dir", "--reference-url", "--reference-ref"):
+            if option not in text:
+                findings.append(Finding(compare_path.relative_to(root), 0, f"missing reference selector: {option}"))
+    return findings
+
+
+def check_legacy_sources_absent(root: Path) -> list[Finding]:
+    prohibited = (
+        Path("data"),
+        Path("src/examples"),
+        Path("src/redecomp"),
+        Path("src/shared"),
+        Path("src/tribol/common"),
+        Path("src/tribol/future"),
+        Path("src/tribol/integ"),
+        Path("src/tribol/interface"),
+        Path("src/tribol/mesh"),
+        Path("src/tribol/physics"),
+        Path("src/tribol/utils"),
+        Path("src/tribol/geom/CompGeom.hpp"),
+        Path("src/tribol/search/InterfacePairFinder.hpp"),
+    )
+    findings = []
+    for path in prohibited:
+        absolute = root / path
+        contains_files = absolute.is_file() or (
+            absolute.is_dir() and any(entry.is_file() for entry in absolute.rglob("*"))
+        )
+        if contains_files:
+            findings.append(Finding(path, 0, "legacy implementation path must remain absent"))
+    findings.extend(
+        Finding(path.relative_to(root), 0, "legacy root-level test must remain absent")
+        for path in sorted((root / "src/tests").glob("tribol_*.cpp"))
+    )
     return findings
 
 
@@ -230,6 +309,8 @@ def run_custom_checks(root: Path) -> list[Finding]:
         check_file_sizes,
         check_public_header_manifest,
         check_install_contract,
+        check_benchmark_contract,
+        check_legacy_sources_absent,
         check_requirement_annotations,
         check_requirement_evidence,
         check_markdown_links,

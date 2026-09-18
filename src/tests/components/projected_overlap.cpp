@@ -54,6 +54,7 @@ bool overlapPatchContract()
   rejected_parameters.minimum_overlap_fraction = 0.8;
   const auto rejected = projectedOverlapPatch<normal::MortarSurface>( surfaces, { 0, 0 }, rejected_parameters );
   const auto quadrature = integration::interactionQuadrature( patch, integration::Polygon<2>{} );
+  const auto higher_quadrature = integration::interactionQuadrature( patch, integration::Polygon<4>{} );
   Real measure{};
   Real weighted_gap{};
   for ( int point = 0; point < quadrature.size; ++point ) {
@@ -66,7 +67,8 @@ bool overlapPatchContract()
     }
   }
   return patch.valid && !rejected.valid && patch.vertex_count == 4 && quadrature.size == 6 &&
-         std::abs( measure - 0.75 ) < 1.0e-12 && std::abs( weighted_gap + 0.075 ) < 1.0e-12;
+         higher_quadrature.size == 12 && std::abs( measure - 0.75 ) < 1.0e-12 &&
+         std::abs( weighted_gap + 0.075 ) < 1.0e-12;
 }
 
 bool conformingPatchContract()

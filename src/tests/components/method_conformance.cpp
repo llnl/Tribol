@@ -74,7 +74,7 @@ bool projectedMultiplierContract()
   for ( Real value : result.constraint_residual ) {
     constraint_sum += value;
   }
-  return result.summary.active_interactions == 1 && result.summary.quadrature_points == 6 &&
+  return result.summary.active_interactions == 1 && result.summary.quadrature_points == 12 &&
          std::abs( totalComponent( result.mortar_force, 2 ) - 2.0 ) < tolerance &&
          std::abs( totalComponent( result.nonmortar_force, 2 ) + 2.0 ) < tolerance &&
          std::abs( constraint_sum + 0.1 ) < tolerance;

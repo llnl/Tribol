@@ -126,10 +126,14 @@ def _validate_policy(axis: str, value: Any, combination_id: str) -> None:
         _require_exact_keys(value, {"policy", "normal"}, path)
         if value["normal"] not in POLICY_VALUES["normal"]:
             raise SpecError(f"{combination_id}: ProjectedOverlap requires a valid normal")
-    elif axis == "integration" and policy in {"Polygon", "Face"}:
+    elif axis == "integration" and policy == "Polygon":
+        _require_exact_keys(value, {"policy", "order"}, path)
+        if isinstance(value["order"], bool) or value["order"] not in {1, 2, 4}:
+            raise SpecError(f"{combination_id}: Polygon supports only orders 1, 2, and 4")
+    elif axis == "integration" and policy == "Face":
         _require_exact_keys(value, {"policy", "order"}, path)
         if isinstance(value["order"], bool) or value["order"] not in {1, 2}:
-            raise SpecError(f"{combination_id}: {policy} supports only orders 1 and 2")
+            raise SpecError(f"{combination_id}: Face supports only orders 1 and 2")
     elif axis == "integration" and policy == "SmoothedSegment":
         _require_exact_keys(value, {"policy", "points"}, path)
         if isinstance(value["points"], bool) or value["points"] not in {1, 2, 3}:

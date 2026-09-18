@@ -1,0 +1,31 @@
+cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
+project(tribol_reference_benchmark LANGUAGES CXX)
+
+find_package(tribol CONFIG REQUIRED)
+
+if(TARGET tribol::core)
+  set(_tribol_reference_source ../driver/RewrittenDriver.cpp)
+  set(_tribol_reference_target tribol::core)
+  set(_tribol_reference_standard cxx_std_20)
+  set(_tribol_reference_label external-policy)
+elseif(TARGET tribol)
+  set(_tribol_reference_source ../driver/LegacyDriver.cpp)
+  set(_tribol_reference_target tribol)
+  set(_tribol_reference_standard cxx_std_17)
+  set(_tribol_reference_label legacy)
+elseif(TARGET tribol::tribol)
+  set(_tribol_reference_source ../driver/LegacyDriver.cpp)
+  set(_tribol_reference_target tribol::tribol)
+  set(_tribol_reference_standard cxx_std_17)
+  set(_tribol_reference_label legacy)
+else()
+  message(FATAL_ERROR "The selected Tribol package exports neither `tribol::core` nor a legacy `tribol` target")
+endif()
+
+add_executable(tribol_reference_benchmark ${_tribol_reference_source})
+target_include_directories(tribol_reference_benchmark PRIVATE ../driver)
+target_compile_features(tribol_reference_benchmark PRIVATE ${_tribol_reference_standard})
+target_compile_definitions(
+  tribol_reference_benchmark
+  PRIVATE TRIBOL_BENCHMARK_IMPLEMENTATION_LABEL="${_tribol_reference_label}")
+target_link_libraries(tribol_reference_benchmark PRIVATE ${_tribol_reference_target})

@@ -109,7 +109,7 @@
       "legacy_equivalent": "single-mortar",
       "method": {
         "geometry": {"policy": "ProjectedOverlap", "normal": "MortarSurface"},
-        "integration": {"policy": "Polygon", "order": 2},
+        "integration": {"policy": "Polygon", "order": 4},
         "constraint": {"policy": "Nodal", "basis": "Primal"},
         "enforcement": {"policy": "LagrangeMultiplier"},
         "response": {"policy": "Frictionless"},
@@ -149,7 +149,7 @@
       "legacy_equivalent": "mortar-weights",
       "method": {
         "geometry": {"policy": "ProjectedOverlap", "normal": "MortarSurface"},
-        "integration": {"policy": "Polygon", "order": 2},
+        "integration": {"policy": "Polygon", "order": 4},
         "constraint": {"policy": "Nodal", "basis": "Primal"},
         "enforcement": {"policy": "None"},
         "response": {"policy": "Frictionless"},
