@@ -1,5 +1,5 @@
 ##############################################################################
-# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2026, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -10,6 +10,24 @@ variables:
   GIT_SUBMODULE_STRATEGY: recursive
   PROJECT_ALLOC_NAME: ${CI_PROJECT_NAME}_ci_${CI_PIPELINE_ID}
   BUILD_ROOT: ${CI_PROJECT_DIR}
+  FULL_BUILD_ROOT: ${CI_BUILDS_DIR}/tribol/${CI_JOB_NAME}
+
+stages:
+  - src
+  - tpl
+
+# Run src build each push
+# NOTE: When you add a new workflow, remember to add it to this `if` statement!
+.src_workflow:
+  stage: src
+  rules:
+    - if: $TRIBOL_CI_WORKFLOW_TYPE != "tpl"
+
+# Run tpl build as a nightly scheduled pipeline
+.tpl_workflow:
+  stage: tpl
+  rules:
+    - if: $TRIBOL_CI_WORKFLOW_TYPE == "tpl"
 
 ####
 # Templates
@@ -27,14 +45,27 @@ variables:
       - _tribol_build_and_test_*/output.log*.txt
       - _tribol_build_and_test_*/build-*/output.log*.txt
     reports:
-      junit:
-      - _tribol_build_and_test_*/build-*/junit.xml
+      junit: _tribol_build_and_test_*/build-*/junit.xml
 
+.tpl_build_script:
+  script:
+    # Build TPLs, src, and run unit tests
+    - echo -e "section_start:$(date +%s):tpl_build_and_unit_test\r\e[0K
+      TPL Build and Unit Test ${CI_PROJECT_NAME}"
+    - ${ALLOC_COMMAND} python3 scripts/llnl/build_tpls.py -v --spec="${SPEC}" --directory=${FULL_BUILD_ROOT} --short-path
+    - echo -e "section_end:$(date +%s):tpl_build_and_unit_test\r\e[0K"
+  artifacts:
+    expire_in: 2 weeks
+    when: always
+    paths:
+      - ${FULL_BUILD_ROOT}/${SYS_TYPE}/*/output.log*.txt
+      - ${FULL_BUILD_ROOT}/${SYS_TYPE}/*/_tribol_build_and_test_*/output.log*.txt
+      - ${FULL_BUILD_ROOT}/${SYS_TYPE}/*/_tribol_build_and_test_*/build-*/output.log*.txt
+    reports:
+      junit: ${FULL_BUILD_ROOT}/${SYS_TYPE}/*/_tribol_build_and_test_*/build-*/junit.xml
 include:
-  - local: .gitlab/build_toss4.yml
-  #TODO: swap this for matrix
-  #- local: .gitlab/build_blueos.yml
-  - local: .gitlab/build_toss4_cray.yml
-  # ID token requirement for Gitlab 17.0+
+  - local: .gitlab/build_dane.yml
+  - local: .gitlab/build_matrix.yml
+  - local: .gitlab/build_tuolumne.yml
   - project: 'lc-templates/id_tokens'
     file: 'id_tokens.yml'
