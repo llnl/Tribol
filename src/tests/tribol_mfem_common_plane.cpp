@@ -156,6 +156,13 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol
     mfem::ConstantCoefficient mu_coeff{ mu };
     mfem_ext::ExplicitMechanics op{ par_fe_space, rho_coeff, lambda_coeff, mu_coeff };
 
+    // Register the same component-wise inverse lumped mass used by the
+    // explicit mechanics update. Essential velocity degrees of freedom have
+    // zero inverse mass and therefore do not participate in the contact bound.
+    mfem::ParGridFunction inverse_mass{ &par_fe_space };
+    inverse_mass = mfem_ext::ExplicitMechanics::ComputeInvMass( par_fe_space, rho_coeff );
+    inverse_mass.SetSubVector( ess_vdof_list, 0.0 );
+
     // set up time integrator
     mfem_ext::CentralDiffSolver solver{ ess_vdof_list };
     solver.Init( op );
@@ -169,6 +176,9 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol
                                         tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY,
                                         tribol::BINNING_BVH, exec_mode );
     tribol::registerMfemVelocity( 0, velocity );
+    tribol::registerMfemInverseMass( coupling_scheme_id, inverse_mass );
+    tribol::setExplicitIntegratorStabilityFactor( coupling_scheme_id, 2.0 );
+    tribol::enableTimestepVote( coupling_scheme_id, true );
     if ( std::get<1>( GetParam() ) == tribol::KINEMATIC_CONSTANT ) {
       tribol::setMfemKinematicConstantPenalty( coupling_scheme_id, p_kine, p_kine );
     } else {
@@ -183,7 +193,8 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol
       // build new parallel decomposed redecomp mesh and update grid functions
       // on each mesh
       tribol::updateMfemParallelDecomposition();
-      tribol::update( cycle, t, dt );
+      EXPECT_EQ( tribol::update( cycle, t, dt ), 0 );
+      EXPECT_TRUE( std::isfinite( tribol::getExplicitPenaltyStabilityTimestep( coupling_scheme_id ) ) );
       op.f_ext = 0.0;
       tribol::getMfemResponse( 0, op.f_ext );
 

@@ -5,6 +5,8 @@
 #ifndef SRC_TRIBOL_MESH_COUPLINGSCHEME_HPP_
 #define SRC_TRIBOL_MESH_COUPLINGSCHEME_HPP_
 
+#include <limits>
+
 // Tribol config include
 #include "tribol/config.hpp"
 
@@ -278,6 +280,41 @@ class CouplingScheme {
    * @return problem mpi communicator
    */
   CommT getProblemComm() { return m_problem_comm; }
+
+  /**
+   * @brief Store the explicit penalty stability diagnostics from the current row batch.
+   *
+   * @param stability_timestep Conservative explicit contact timestep
+   * @param stiffness_bound Conservative mass-normalized stiffness bound
+   * @param damping_bound Conservative mass-normalized damping bound
+   */
+  void setExplicitPenaltyStabilityData( RealT stability_timestep, RealT stiffness_bound, RealT damping_bound )
+  {
+    m_explicit_penalty_stability_timestep = stability_timestep;
+    m_explicit_penalty_stiffness_bound = stiffness_bound;
+    m_explicit_penalty_damping_bound = damping_bound;
+  }
+
+  /**
+   * @brief Return the explicit penalty stability timestep from the latest update.
+   *
+   * @return Finite timestep for active explicit penalty rows, or infinity when none are active
+   */
+  RealT getExplicitPenaltyStabilityTimestep() const { return m_explicit_penalty_stability_timestep; }
+
+  /**
+   * @brief Return the mass-normalized penalty stiffness bound from the latest update.
+   *
+   * @return Conservative squared-frequency bound
+   */
+  RealT getExplicitPenaltyStiffnessBound() const { return m_explicit_penalty_stiffness_bound; }
+
+  /**
+   * @brief Return the mass-normalized contact damping bound from the latest update.
+   *
+   * @return Conservative damping-rate bound
+   */
+  RealT getExplicitPenaltyDampingBound() const { return m_explicit_penalty_damping_bound; }
 
   /**
    * @brief Get the ID of the coupling scheme
@@ -633,8 +670,9 @@ class CouplingScheme {
    * @brief Wrapper around method specific calculation of the Tribol timestep vote
    *
    * @param [in/out] dt simulation timestep at given cycle
+   * @return zero on success and nonzero when required timestep data are invalid
    */
-  void computeTimeStep( RealT& dt );
+  int computeTimeStep( RealT& dt );
 
   /**
    * @brief Set the output directory for file output
@@ -911,8 +949,9 @@ class CouplingScheme {
    * @brief Computes common-plane specific time step vote
    *
    * @param [in/out] dt simulation timestep at given cycle
+   * @return zero on success and nonzero when required timestep data are invalid
    */
-  void computeCommonPlaneTimeStep( RealT& dt );
+  int computeCommonPlaneTimeStep( RealT& dt );
 
  private:
   CommT m_problem_comm = TRIBOL_COMM_WORLD;  ///! MPI communicator for the problem
@@ -930,8 +969,12 @@ class CouplingScheme {
   ExecutionMode m_exec_mode;  ///< Execution mode for kernels (set when init() is called)
   int m_allocator_id;         ///< Allocator for arrays used in kernels (set when init() is called)
 
-  Parameters m_parameters;              ///< Struct holding coupling scheme parameters
-  std::string m_output_directory = "";  ///< Output directory for visualization dumps
+  Parameters m_parameters;  ///< Struct holding coupling scheme parameters
+  RealT m_explicit_penalty_stability_timestep{
+      std::numeric_limits<RealT>::infinity() };     ///< Current explicit contact stability timestep
+  RealT m_explicit_penalty_stiffness_bound{ 0.0 };  ///< Current mass-normalized contact stiffness bound
+  RealT m_explicit_penalty_damping_bound{ 0.0 };    ///< Current mass-normalized contact damping bound
+  std::string m_output_directory = "";              ///< Output directory for visualization dumps
 
   bool m_nullMeshes{ false };  ///< True if one or both meshes are zero-element (null) meshes
   bool m_isValid{ true };      ///< False if the coupling scheme is not valid per call to init()

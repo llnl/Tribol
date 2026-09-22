@@ -532,6 +532,20 @@ void registerMfemVelocity( IndexT cs_id, const mfem::ParGridFunction& v )
   cs->getMfemMeshData()->SetParentVelocity( v );
 }
 
+void registerMfemInverseMass( IndexT cs_id, const mfem::ParGridFunction& inverse_mass )
+{
+  auto coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF(
+      !coupling_scheme,
+      axom::fmt::format( "Coupling scheme cs_id={0} does not exist. Call tribol::registerMfemCouplingScheme() "
+                         "to create a coupling scheme with this cs_id.",
+                         cs_id ) );
+  SLIC_ERROR_ROOT_IF( !coupling_scheme->hasMfemData(),
+                      "Coupling scheme does not contain MFEM data. "
+                      "Create the coupling scheme using registerMfemCouplingScheme() to register inverse mass." );
+  coupling_scheme->getMfemMeshData()->SetParentInverseMass( inverse_mass );
+}
+
 void registerMfemReferenceCoords( IndexT cs_id, const mfem::ParGridFunction& reference_coords )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
