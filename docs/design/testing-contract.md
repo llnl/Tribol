@@ -29,12 +29,16 @@ and required execution environments are tested.
 - Conservative formulations verify force balance and energy-gradient consistency.
 - Assembled and matrix-free operators agree on the same state.
 - Device tests execute kernels on a real GPU; device compilation alone is insufficient.
+- Device-path tests inspect pointer residency, compare device BVH candidates and complete 2D/3D results with the host,
+  exercise supplied and frozen interactions, verify stable allocation footprints, and require bitwise-repeatable
+  shared-node scatter.
 - MPI tests exercise at least one and two ranks, with four-rank coverage for partition-sensitive cases.
 - The installed `tribol::core` target compiles and runs a minimal independent consumer.
 
 The current MPI evidence covers the default MFEM adapter path at one, two, and four ranks. The current CUDA evidence
-covers complete `Contact<DefaultMethod, ..., execution::Cuda>` evaluation on a physical CUDA device. No HIP method,
-GPU-aware MPI transport, or scalable distributed search is advertised by the rewrite.
+covers device-resident `Contact<DefaultMethod, search::Bvh, execution::Cuda>` search, patch generation, evaluation,
+timestep voting, exact directional derivatives, and deterministic scatter on a physical CUDA device. No HIP method,
+GPU-aware MPI transport, or distributed device search is advertised by the rewrite.
 
 ## Requirement IDs
 

@@ -47,6 +47,38 @@ activation and clipping transitions are nonsmooth; callers should rebuild intera
 Evaluation and linearization throw if interactions have not been prepared. The contact object is intentionally
 non-copyable and non-movable because its views and workspaces have stable ownership relationships.
 
+## CUDA Workflow
+
+The supported CUDA specialization is intentionally exact:
+
+```cpp
+using DeviceContact =
+    tribol::Contact<tribol::DefaultMethod, tribol::search::Bvh, tribol::execution::Cuda>;
+
+DeviceContact contact({mortar_surface, nonmortar_surface}, options);
+contact.updateInteractions();
+const tribol::ContactResultView device_result = contact.evaluateDevice(state);
+```
+
+Construction copies mesh coordinates and topology to device-owned storage. `updateInteractions()` builds and queries a
+Morton-ordered device BVH, canonicalizes device candidate pairs, and prepares all patch, physics, reduction, diagnostic,
+and result buffers. `evaluateDevice()` performs projected-overlap generation, pointwise penalty physics, timestep
+voting, and deterministic two-stage scatter on the device. Its array and field members are device pointers; only the
+small `EvaluationSummary` metadata is synchronized to the host.
+
+`cudaPipelineView()` exposes trivially copyable device views of the resident surfaces, candidates, generated patches,
+and current results for downstream kernels. These pointers are owned by the contact object. Candidate and
+interaction-sized pointers remain valid until `updateInteractions()`, `setInteractions()`, `rebuildGeometry()`, or
+destruction; result contents are overwritten by the next evaluation. `updateGeometry()` copies coordinates into the
+existing device allocations and preserves the frozen candidate set. A pipeline result retains the geometry and
+interaction versions of the evaluation that produced it, so comparing those values with the contact object's current
+versions identifies stale payloads after geometry or interaction updates.
+
+Use `evaluate(state)` when host-readable result arrays are required; it runs the device calculation and explicitly
+downloads contact-owned mirrors. Calling `interactions()` similarly downloads a host candidate mirror. Exact
+matrix-free coordinate derivative physics runs on the device. Dense Jacobian assembly currently launches one device
+directional action per column from host orchestration and returns host-owned matrix storage.
+
 ## Search And Self-Contact
 
 Cartesian-product, grid, and BVH search parameters provide both absolute `expansion` and element-relative

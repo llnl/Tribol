@@ -17,9 +17,9 @@ adapter against a supplied Tribol installation or a fresh checkout of upstream `
 | Dimensions | 2D and 3D as listed per tuple | Other dimensions |
 | Surface topology | Linear segments, triangles, and quadrilaterals | Volume contact elements |
 | High order | MFEM boundary tessellation into linear subelements | Native high-order kernels or exact curved overlap |
-| Search | `CartesianProduct`, `Grid`, `Bvh`; absolute/relative inflation; pointwise self-contact filtering and penetration rejection; rank-box distributed MFEM broad phase | Fully device-side search |
+| Search | `CartesianProduct`, `Grid`, `Bvh`; absolute/relative inflation; pointwise self-contact filtering and penetration rejection; rank-box distributed MFEM broad phase; device BVH for the CUDA default tuple | Other device search policies |
 | Host execution | `Sequential`, reproducible `Deterministic`, and two-pass, thread-local `OpenMP` for all manifest tuples | Other host runtimes |
-| Device execution | Full default-method `Contact` evaluation with `execution::Cuda` | Other policy tuples, HIP, device-side search |
+| Device execution | Device-resident `Contact<DefaultMethod, search::Bvh, execution::Cuda>` with BVH search, projected-overlap generation, physics, timestep voting, exact directional derivatives, and deterministic scatter | Other policy tuples, other CUDA search policies, HIP, GPU-aware MPI |
 | Differentiation | In-tree nested-forward `Exact` energy gradients, directional Hessian actions, state actions, and assembled Jacobians on frozen candidates | Enzyme and finite differences as production backends |
 | MPI | Distributed MFEM ownership/ghost exchange, tested at 1/2/4 ranks | Raw-array MPI |
 | Host adapters | Borrowed arrays and MFEM `ParMesh`/true-DOF residual mapping | Other host frameworks |
@@ -48,6 +48,18 @@ invalidates candidate pairs until `updateInteractions()` is called.
 
 ## CUDA Implementation Note
 
-CUDA dispatch is accepted only for `DefaultMethod`. `updateInteractions()` sizes reusable host/device workspaces;
-subsequent evaluation does not allocate. Search still runs on the host. The CUDA conformance test compares the complete
-result with sequential execution on a physical device.
+CUDA dispatch is accepted only for `Contact<DefaultMethod, search::Bvh, execution::Cuda>`. Construction uploads mesh
+coordinates and topology. `updateInteractions()` builds and queries a Morton-ordered BVH on the device, canonicalizes
+candidate pairs, and sizes every interaction-dependent workspace. Evaluation then generates projected-overlap patches,
+computes contact physics and timestep votes, and performs a stable radix-sort/run-reduction scatter without device
+allocation. Meshes, candidates, patches, intermediates, and result payloads remain device-resident. Only small summary
+metadata is synchronized to the host by `evaluateDevice()`; `evaluate()` is the explicit host-download convenience.
+The CUDA BVH uses one element per leaf; `Bvh::Parameters::leaf_size` remains a host-BVH tuning parameter and does not
+change CUDA candidate semantics.
+The CUDA conformance test checks 2D and 3D parity, pointer residency and stability, supplied interactions, frozen
+geometry updates, timestep votes, exact derivatives, and bitwise-repeatable shared-node scatter on a physical device.
+
+Exact directional coordinate-derivative physics executes on the device. Dense Jacobian assembly still orchestrates
+one device directional action per column from the host and stores the assembled matrix in host-owned storage.
+MFEM restriction, dual transpose, MPI exchange, and true-DOF assembly remain explicit host-adapter boundaries around
+the device-resident local core calculation; GPU-aware MPI transport is not currently advertised.

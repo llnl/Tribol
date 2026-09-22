@@ -40,7 +40,7 @@ struct EvaluationStorage {
   std::vector<Real> pressure;
   EvaluationSummary summary{};
 
-  void resize( const SurfacePairView& surfaces, Index maximum_quadrature_points )
+  void resize( const SurfacePairView& surfaces, Index maximum_quadrature_points, bool diagnostic_weights )
   {
     const auto mortar_nodes = static_cast<std::size_t>( surfaces.mortar.numberOfNodes() );
     const auto nonmortar_nodes = static_cast<std::size_t>( surfaces.nonmortar.numberOfNodes() );
@@ -50,8 +50,8 @@ struct EvaluationStorage {
     gap.resize( mortar_nodes );
     weighted_gap.resize( mortar_nodes );
     tributary_area.resize( mortar_nodes );
-    mortar_weights.resize( mortar_nodes * nonmortar_nodes );
-    mortar_mass_weights.resize( mortar_nodes * mortar_nodes );
+    mortar_weights.resize( diagnostic_weights ? mortar_nodes * nonmortar_nodes : 0 );
+    mortar_mass_weights.resize( diagnostic_weights ? mortar_nodes * mortar_nodes : 0 );
     quadrature_gap.resize( static_cast<std::size_t>( maximum_quadrature_points ) );
     quadrature_pressure.resize( static_cast<std::size_t>( maximum_quadrature_points ) );
     pressure.resize( mortar_nodes );
@@ -117,11 +117,11 @@ inline void addField( FieldView<Real> destination, const std::vector<Real>& sour
 
 class OpenMPContactWorkspace {
  public:
-  void reserve( const SurfacePairView& surfaces, Index maximum_quadrature_points )
+  void reserve( const SurfacePairView& surfaces, Index maximum_quadrature_points, bool diagnostic_weights )
   {
     storage_.resize( static_cast<std::size_t>( openmp_detail::maximumThreads() ) );
     for ( auto& storage : storage_ ) {
-      storage.resize( surfaces, maximum_quadrature_points );
+      storage.resize( surfaces, maximum_quadrature_points, diagnostic_weights );
     }
   }
 

@@ -10,6 +10,13 @@
 #include <mpi.h>
 #endif
 
+#if defined( TRIBOL_BENCHMARK_USE_CUDA )
+#include "LegacyCudaBuffers.hpp"
+
+#include "mfem.hpp"
+#include "umpire/ResourceManager.hpp"
+#endif
+
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -121,13 +128,15 @@ void registerSurface( int identifier, const tribol_benchmark::SurfaceData<tribol
                         surface.dimension == 3 ? coordinates.z.data() : nullptr, tribol::MemorySpace::Host );
 }
 
-void registerResponse( int identifier, Response& response, int dimension )
+template <typename ResponseType>
+void registerResponse( int identifier, ResponseType& response, int dimension )
 {
   tribol::registerNodalResponse( identifier, response.x.data(), response.y.data(),
                                  dimension == 3 ? response.z.data() : nullptr );
 }
 
-void appendResponse( std::vector<double>& output, const Response& response, int dimension )
+template <typename ResponseType>
+void appendResponse( std::vector<double>& output, const ResponseType& response, int dimension )
 {
   for ( std::size_t node = 0; node < response.x.size(); ++node ) {
     output.push_back( response.x[node] );
@@ -138,7 +147,8 @@ void appendResponse( std::vector<double>& output, const Response& response, int 
   }
 }
 
-void addForceDiagnostics( Result& output, const Response& first, const Response& second, int dimension )
+template <typename ResponseType>
+void addForceDiagnostics( Result& output, const ResponseType& first, const ResponseType& second, int dimension )
 {
   auto& force = output.vectors["nodal_force"];
   appendResponse( force, first, dimension );
@@ -159,6 +169,64 @@ void addForceDiagnostics( Result& output, const Response& first, const Response&
   }
   output.scalars["force_balance_linf"] = balance;
 }
+
+#if defined( TRIBOL_BENCHMARK_USE_CUDA )
+
+using DeviceResponse = tribol_benchmark::legacy_cuda::Response;
+
+Response copyResponseToHost( const DeviceResponse& source )
+{
+  Response result( static_cast<int>( source.x.size() ) );
+  tribol_benchmark::legacy_cuda::copyToHost( result.x, source.x );
+  tribol_benchmark::legacy_cuda::copyToHost( result.y, source.y );
+  tribol_benchmark::legacy_cuda::copyToHost( result.z, source.z );
+  return result;
+}
+
+Result runPointwiseCuda( const Options& options, int dimension )
+{
+  Session session;
+  const int cell_type = dimension == 2 ? tribol::LINEAR_EDGE : tribol::LINEAR_QUAD;
+  auto mesh = tribol_benchmark::makePointwiseMesh<tribol::IndexT>( dimension, options.size );
+  auto first_connectivity = tribol_benchmark::legacy_cuda::copyToDevice( mesh.first.connectivity );
+  auto second_connectivity = tribol_benchmark::legacy_cuda::copyToDevice( mesh.second.connectivity );
+  const auto first_coordinates = tribol_benchmark::legacy_cuda::splitCoordinates( mesh.first );
+  const auto second_coordinates = tribol_benchmark::legacy_cuda::splitCoordinates( mesh.second );
+  tribol::registerMesh( 0, mesh.first.elements(), mesh.first.nodes(), first_connectivity.data(), cell_type,
+                        first_coordinates.x.data(), first_coordinates.y.data(),
+                        dimension == 3 ? first_coordinates.z.data() : nullptr, tribol::MemorySpace::Device );
+  tribol::registerMesh( 1, mesh.second.elements(), mesh.second.nodes(), second_connectivity.data(), cell_type,
+                        second_coordinates.x.data(), second_coordinates.y.data(),
+                        dimension == 3 ? second_coordinates.z.data() : nullptr, tribol::MemorySpace::Device );
+  DeviceResponse first_response( mesh.first.nodes() );
+  DeviceResponse second_response( mesh.second.nodes() );
+  registerResponse( 0, first_response, dimension );
+  registerResponse( 1, second_response, dimension );
+  tribol::setKinematicConstantPenalty( 0, 1.0 );
+  tribol::setKinematicConstantPenalty( 1, 1.0 );
+  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_BVH,
+                                  tribol::ExecutionMode::Cuda );
+  tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
+  tribol::setContactAreaFrac( 0, 1.0e-12 );
+
+  const auto step = [&] {
+    first_response.clear();
+    second_response.clear();
+    tribol::RealT timestep = 1.0;
+    if ( tribol::update( 1, 1.0, timestep ) != 0 ) {
+      throw std::runtime_error( "legacy Tribol CUDA update failed" );
+    }
+    tribol_benchmark::legacy_cuda::synchronize();
+  };
+  Result output( "legacy-cuda", options );
+  output.step_seconds = tribol_benchmark::measure( options, step );
+  addForceDiagnostics( output, copyResponseToHost( first_response ), copyResponseToHost( second_response ), dimension );
+  output.scalars["active_interactions"] = options.size;
+  return output;
+}
+
+#endif
 
 Result runPointwise( const Options& options, int dimension )
 {
@@ -321,6 +389,14 @@ Result runMortar( const Options& options, bool weights_only )
 
 Result runCase( const Options& options )
 {
+#if defined( TRIBOL_BENCHMARK_USE_CUDA )
+  if ( options.case_name == "penalty-2d" ) {
+    return runPointwiseCuda( options, 2 );
+  }
+  if ( options.case_name == "penalty-3d" ) {
+    return runPointwiseCuda( options, 3 );
+  }
+#else
   if ( options.case_name == "penalty-2d" ) {
     return runPointwise( options, 2 );
   }
@@ -339,6 +415,7 @@ Result runCase( const Options& options )
   if ( options.case_name == "mortar-weights-3d" ) {
     return runMortar( options, true );
   }
+#endif
   throw std::invalid_argument( "unsupported benchmark case: " + options.case_name );
 }
 
@@ -348,9 +425,17 @@ int main( int argc, char** argv )
 {
   try {
     MpiSession mpi( argc, argv );
+#if defined( TRIBOL_BENCHMARK_USE_CUDA )
+    umpire::ResourceManager::getInstance();
+    mfem::Device device( "cuda" );
+#endif
     const Options options = tribol_benchmark::parseOptions( argc, argv );
     if ( options.list_cases ) {
+#if defined( TRIBOL_BENCHMARK_USE_CUDA )
+      std::cout << "penalty-2d\npenalty-3d\n";
+#else
       std::cout << "penalty-2d\npenalty-3d\nrate-2d\nviscous-3d\nsingle-mortar-3d\nmortar-weights-3d\n";
+#endif
       return 0;
     }
     tribol_benchmark::writeResult( std::cout, runCase( options ) );

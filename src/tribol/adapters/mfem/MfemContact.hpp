@@ -68,7 +68,8 @@ class JacobianBlocks {
 
 template <SupportedMethod MethodType = DefaultMethod, SearchPolicy Search = search::CartesianProduct,
           execution::Policy Execution = execution::Sequential>
-  requires execution::SupportedContactExecution<MethodType, Execution>
+  requires execution::SupportedContactExecution<MethodType, Execution> &&
+           execution::SupportedContactSearch<Search, Execution>
 class MfemContact {
  public:
   using CoreContact = Contact<MethodType, Search, Execution>;
@@ -452,7 +453,8 @@ class MfemContact {
 
 template <SupportedMethod MethodType = DefaultMethod, SearchPolicy Search = search::CartesianProduct,
           execution::Policy Execution = execution::Sequential>
-  requires execution::SupportedContactExecution<MethodType, Execution>
+  requires execution::SupportedContactExecution<MethodType, Execution> &&
+           execution::SupportedContactSearch<Search, Execution>
 MfemContact<MethodType, Search, Execution> makeContact(
     const ::mfem::ParMesh& mesh, const ::mfem::ParGridFunction& coordinates, const PairedBoundaryAttributes& attributes,
     typename MfemContact<MethodType, Search, Execution>::Options options = {},

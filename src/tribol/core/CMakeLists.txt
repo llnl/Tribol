@@ -8,6 +8,7 @@ set(tribol_core_headers
     ../adapters/array/ArrayContact.hpp
     ../basis/LinearBasis.hpp
     ../contact/Contact.hpp
+    ../contact/ContactEvaluation.inl
     ../contact/ContactExactHelpers.inl
     ../contact/ContactLinearization.inl
     ../constraint/NormalConstraint.hpp
@@ -21,6 +22,7 @@ set(tribol_core_headers
     ../execution/Execution.hpp
     ../execution/ContactCuda.hpp
     ../execution/ContactOpenMP.hpp
+    ../execution/CudaContact.hpp
     ../execution/CudaPenalty.hpp
     ../execution/PenaltyKernel.hpp
     ../geom/ConformingOverlap.hpp
@@ -73,8 +75,10 @@ if(ENABLE_CUDA)
     NAME
     tribol_cuda_execution
     SOURCES
+    ../execution/CudaContact.cu
     ../execution/CudaPenalty.cu
     HEADERS
+    ../execution/CudaContact.hpp
     ../execution/CudaPenalty.hpp
     DEPENDS_ON
     tribol_core
@@ -84,7 +88,7 @@ if(ENABLE_CUDA)
   add_library(tribol::cuda_execution ALIAS tribol_cuda_execution)
   set(_cuda tribol_cuda_execution)
   set_target_properties(${_cuda} PROPERTIES EXPORT_NAME tribol::cuda_execution)
-  target_compile_features(tribol_cuda_execution PUBLIC cxx_std_20)
+  target_compile_features(tribol_cuda_execution PUBLIC cxx_std_20 cuda_std_20)
   set_target_properties(tribol_cuda_execution
                         PROPERTIES CUDA_STANDARD 20 CUDA_STANDARD_REQUIRED ON)
   target_compile_options(

@@ -33,6 +33,8 @@ Dependencies flow downward only:
 - Evaluation performs no allocation after a topology or geometry rebuild has prepared storage.
 - Returned result views borrow storage owned by the contact object and remain valid until the next evaluation, geometry
   rebuild, or destruction of that object.
+- The CUDA backend owns device copies of both surfaces and owns device candidate, patch, intermediate, and result
+  buffers. Device views remain valid until the corresponding interaction update, geometry rebuild, or destruction.
 
 ## Lifecycle
 
@@ -50,8 +52,15 @@ view itself does not perform stale-use checks.
 
 - Execution policies select sequential, deterministic, OpenMP, or CUDA dispatch without changing mechanics policies.
 - Sequential, deterministic, and OpenMP execution support all advertised host methods. Nodal variational OpenMP uses a
-  thread-local kinematics pass, global nodal reduction, and thread-local energy-gradient pass. CUDA currently supports only
-  `DefaultMethod` and is rejected at compile time for other tuples.
+  thread-local kinematics pass, global nodal reduction, and thread-local energy-gradient pass. CUDA supports exactly
+  `Contact<DefaultMethod, search::Bvh, execution::Cuda>` and rejects other method/search tuples at compile time.
+- The CUDA tuple uploads surfaces once, constructs and queries its Morton BVH on the device, generates projected-overlap
+  patches there, evaluates all default-method physics there, and scatters fixed contributions through stable sort,
+  run-length encoding, and one ordered reduction per output key. Candidate and result payloads are not staged through
+  the host.
+- `evaluateDevice()` synchronizes only summary/count metadata and returns device pointers. `evaluate()` intentionally
+  performs the same device evaluation and downloads host mirrors. Exact directional derivatives run on the device;
+  dense Jacobian column orchestration remains host-side.
 - Communication is host-side orchestration around device-capable local kernels.
 - MPI ownership and halo behavior live in adapters/assembly, not geometric kernels.
 - The MFEM adapter assigns evaluation to mortar-owning ranks, exchanges nonmortar elements only between ranks whose

@@ -183,7 +183,7 @@ bool exercise( const Patch& patch )
     }
     return weight_sum > 0.0 && force_norm == 0.0;
   } else {
-    return force_norm > 0.0;
+    return force_norm > 0.0 && result.mortar_weights.empty() && result.mortar_mass_weights.empty();
   }
 }
 

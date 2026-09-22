@@ -1,11 +1,25 @@
 cmake_minimum_required(VERSION 3.14 FATAL_ERROR)
 project(tribol_reference_benchmark LANGUAGES CXX)
 
+set(TRIBOL_BENCHMARK_EXECUTION "host" CACHE STRING "Benchmark execution backend (host or cuda)")
+set_property(CACHE TRIBOL_BENCHMARK_EXECUTION PROPERTY STRINGS host cuda)
+
+if(TRIBOL_BENCHMARK_EXECUTION STREQUAL "cuda")
+  enable_language(CUDA)
+endif()
+
 find_package(tribol CONFIG REQUIRED)
 
 if(TARGET tribol::core)
   set(_tribol_reference_source ../driver/RewrittenDriver.cpp)
-  set(_tribol_reference_target tribol::core)
+  if(TRIBOL_BENCHMARK_EXECUTION STREQUAL "cuda")
+    if(NOT TARGET tribol::cuda_execution)
+      message(FATAL_ERROR "The selected policy-based Tribol package does not export CUDA execution")
+    endif()
+    set(_tribol_reference_target tribol::cuda_execution)
+  else()
+    set(_tribol_reference_target tribol::core)
+  endif()
   set(_tribol_reference_standard cxx_std_20)
   set(_tribol_reference_label external-policy)
 elseif(TARGET tribol)
@@ -22,10 +36,39 @@ else()
   message(FATAL_ERROR "The selected Tribol package exports neither `tribol::core` nor a legacy `tribol` target")
 endif()
 
+if(TRIBOL_BENCHMARK_EXECUTION STREQUAL "cuda")
+  if(NOT TRIBOL_USE_CUDA)
+    message(FATAL_ERROR "The selected Tribol package was not built with CUDA support")
+  endif()
+  find_package(CUDAToolkit REQUIRED)
+endif()
+
 add_executable(tribol_reference_benchmark ${_tribol_reference_source})
+if(TRIBOL_BENCHMARK_EXECUTION STREQUAL "cuda" AND _tribol_reference_label STREQUAL "legacy")
+  target_sources(tribol_reference_benchmark PRIVATE LegacyCudaCompatibility.cpp)
+endif()
 target_include_directories(tribol_reference_benchmark PRIVATE ../driver)
 target_compile_features(tribol_reference_benchmark PRIVATE ${_tribol_reference_standard})
 target_compile_definitions(
   tribol_reference_benchmark
   PRIVATE TRIBOL_BENCHMARK_IMPLEMENTATION_LABEL="${_tribol_reference_label}")
 target_link_libraries(tribol_reference_benchmark PRIVATE ${_tribol_reference_target})
+
+if(TRIBOL_BENCHMARK_EXECUTION STREQUAL "cuda")
+  set_source_files_properties(${_tribol_reference_source} PROPERTIES LANGUAGE CUDA)
+  if(_tribol_reference_standard STREQUAL "cxx_std_20")
+    target_compile_features(tribol_reference_benchmark PRIVATE cuda_std_20)
+  else()
+    target_compile_features(tribol_reference_benchmark PRIVATE cuda_std_17)
+  endif()
+  target_compile_definitions(tribol_reference_benchmark PRIVATE TRIBOL_BENCHMARK_USE_CUDA)
+  target_compile_options(
+    tribol_reference_benchmark
+    PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-extended-lambda;--expt-relaxed-constexpr>)
+  if(_tribol_reference_label STREQUAL "legacy")
+    target_compile_options(
+      tribol_reference_benchmark
+      PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--pre-include=${CMAKE_CURRENT_SOURCE_DIR}/LegacyCudaCompatibility.hpp>)
+  endif()
+  target_link_libraries(tribol_reference_benchmark PRIVATE CUDA::cudart)
+endif()

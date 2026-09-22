@@ -41,6 +41,7 @@
     {"id": "PAR-003", "scope": "parallel", "text": "Deterministic execution is reproducible and agrees with default execution."},
     {"id": "PAR-004", "scope": "parallel", "text": "OpenMP evaluates every supported host policy tuple with thread-local accumulation and agrees with sequential execution."},
     {"id": "PAR-005", "scope": "parallel", "text": "The MFEM adapter assigns interactions to mortar-owning ranks, exchanges only rank-neighbor nonmortar ghosts, returns ghost residuals to their owning ranks without global surface replication, and rebuilds the ghost topology after large motion."},
+    {"id": "PAR-006", "scope": "parallel", "text": "Contact<DefaultMethod, Bvh, Cuda> keeps mesh topology and coordinates, BVH candidates, projected-overlap patches, physics intermediates, and result payloads device-resident; performs search, patch generation, physics, timestep voting, exact directional derivatives, and deterministic two-stage scatter on the device; and performs no device allocation after interaction preparation."},
     {"id": "PHYS-001", "scope": "conformance", "text": "Contact residuals conserve linear momentum."},
     {"id": "PHYS-002", "scope": "conformance", "text": "Conservative formulations satisfy energy-gradient consistency."},
     {"id": "PHYS-003", "scope": "conformance", "text": "Supported formulations pass analytic patch tests for their dimensions and topologies."},

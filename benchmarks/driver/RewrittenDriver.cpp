@@ -27,6 +27,14 @@ using PointwiseMethod =
     Method<geometry::ProjectedOverlap<normal::MeanPlane>, integration::Centroid, constraint::Pointwise,
            enforcement::Penalty<Stiffness, Rate>, Response, formulation::PointwiseTraction, linearization::Exact>;
 
+#if defined( TRIBOL_BENCHMARK_USE_CUDA )
+using BenchmarkSearch = search::Bvh;
+using BenchmarkExecution = execution::Cuda;
+#else
+using BenchmarkSearch = search::Grid;
+using BenchmarkExecution = execution::Sequential;
+#endif
+
 using ProjectedMultiplier = Method<geometry::ProjectedOverlap<normal::MortarSurface>, integration::Polygon<4>,
                                    constraint::Nodal<basis::Primal>, enforcement::LagrangeMultiplier,
                                    response::Frictionless, formulation::WeightedWeakForm, linearization::Exact>;
@@ -105,7 +113,8 @@ Result runPointwise( const Options& options, int dimension )
 {
   NewMesh mesh( tribol_benchmark::makePointwiseMesh<Index>( dimension, options.size ),
                 dimension == 2 ? ElementTopology::Segment : ElementTopology::Quadrilateral );
-  typename Contact<MethodType, search::Grid>::Options contact_options;
+  using ContactType = Contact<MethodType, BenchmarkSearch, BenchmarkExecution>;
+  typename ContactType::Options contact_options;
   contact_options.search.expansion = 0.2;
   contact_options.method.enforcement.stiffness.value = 1.0;
   if constexpr ( std::same_as<typename MethodType::enforcement_policy::rate_policy, rate::Percentage> ) {
@@ -114,7 +123,7 @@ Result runPointwise( const Options& options, int dimension )
   if constexpr ( std::same_as<typename MethodType::response_policy, response::ViscousTangential> ) {
     contact_options.method.response.damping = 0.5;
   }
-  Contact<MethodType, search::Grid> contact( mesh.view(), contact_options );
+  ContactType contact( mesh.view(), contact_options );
 
   std::vector<Real> first_velocity;
   std::vector<Real> second_velocity;
@@ -143,10 +152,19 @@ Result runPointwise( const Options& options, int dimension )
 
   ContactResultView result;
   Result output( TRIBOL_BENCHMARK_IMPLEMENTATION_LABEL, options );
+#if defined( TRIBOL_BENCHMARK_USE_CUDA )
+  output.step_seconds = tribol_benchmark::measure( options, [&] {
+    contact.updateInteractions();
+    const auto device_result = contact.evaluateDevice( state );
+    static_cast<void>( device_result );
+  } );
+  result = contact.evaluate( state );
+#else
   output.step_seconds = tribol_benchmark::measure( options, [&] {
     contact.updateInteractions();
     result = contact.evaluate( state );
   } );
+#endif
   addForceDiagnostics( output, result.mortar_force, result.nonmortar_force, -1.0 );
   output.scalars["active_interactions"] = result.summary.active_interactions;
   return output;
@@ -195,17 +213,25 @@ Result runMortar( const Options& options )
 
 Result runCase( const Options& options )
 {
+#if defined( TRIBOL_BENCHMARK_USE_CUDA )
   if ( options.case_name == "penalty-2d" ) {
-    return runPointwise<PointwiseMethod<>>( options, 2 );
+    return runPointwise<DefaultMethod>( options, 2 );
   }
   if ( options.case_name == "penalty-3d" ) {
-    return runPointwise<PointwiseMethod<>>( options, 3 );
+    return runPointwise<DefaultMethod>( options, 3 );
+  }
+#else
+  if ( options.case_name == "penalty-2d" ) {
+    return runPointwise<PointwiseMethod<> >( options, 2 );
+  }
+  if ( options.case_name == "penalty-3d" ) {
+    return runPointwise<PointwiseMethod<> >( options, 3 );
   }
   if ( options.case_name == "rate-2d" ) {
-    return runPointwise<PointwiseMethod<stiffness::Constant, rate::Percentage>>( options, 2 );
+    return runPointwise<PointwiseMethod<stiffness::Constant, rate::Percentage> >( options, 2 );
   }
   if ( options.case_name == "viscous-3d" ) {
-    return runPointwise<PointwiseMethod<stiffness::Constant, rate::None, response::ViscousTangential>>( options, 3 );
+    return runPointwise<PointwiseMethod<stiffness::Constant, rate::None, response::ViscousTangential> >( options, 3 );
   }
   if ( options.case_name == "single-mortar-3d" ) {
     return runMortar<ProjectedMultiplier>( options );
@@ -213,6 +239,7 @@ Result runCase( const Options& options )
   if ( options.case_name == "mortar-weights-3d" ) {
     return runMortar<DiagnosticWeights>( options );
   }
+#endif
   throw std::invalid_argument( "unsupported benchmark case: " + options.case_name );
 }
 
@@ -223,7 +250,11 @@ int main( int argc, char** argv )
   try {
     const Options options = tribol_benchmark::parseOptions( argc, argv );
     if ( options.list_cases ) {
+#if defined( TRIBOL_BENCHMARK_USE_CUDA )
+      std::cout << "penalty-2d\npenalty-3d\n";
+#else
       std::cout << "penalty-2d\npenalty-3d\nrate-2d\nviscous-3d\nsingle-mortar-3d\nmortar-weights-3d\n";
+#endif
       return 0;
     }
     tribol_benchmark::writeResult( std::cout, runCase( options ) );

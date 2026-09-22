@@ -82,6 +82,11 @@ Hosts with contiguous arrays can use `tribol::array::makeContact`; MFEM applicat
 [`docs/design/public-api.md`](docs/design/public-api.md) for lifecycle and result semantics and
 [`docs/design/support-matrix.md`](docs/design/support-matrix.md) for the tested capability boundary.
 
+The production CUDA path is
+`Contact<DefaultMethod, search::Bvh, execution::Cuda>`. It keeps mesh data, BVH candidates, overlap patches,
+intermediates, and result payloads on the device and exposes them through `evaluateDevice()` and
+`cudaPipelineView()`. Use `evaluate()` only when a host-readable result mirror is needed.
+
 Named-method legacy sources are not part of this repository. Cross-version runtime and numerical comparisons use an
 external Tribol installation; see [`benchmarks/README.md`](benchmarks/README.md).
 

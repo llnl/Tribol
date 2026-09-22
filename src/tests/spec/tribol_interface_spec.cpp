@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <type_traits>
 
-// Requirements: API-001, API-002, API-003, API-004, CORE-001, DIFF-001, SEARCH-001, SEARCH-004
+// Requirements: API-001, API-002, API-003, API-004, CORE-001, DIFF-001, PAR-006, SEARCH-001, SEARCH-004
 
 namespace {
 
@@ -52,9 +52,29 @@ static_assert( !SupportedMethod<UnsupportedAnalytic> );
 static_assert( !SupportedMethod<UnsupportedDualMultiplier> );
 static_assert( execution::SupportedContactExecution<DefaultMethod, execution::Cuda> );
 static_assert( !execution::SupportedContactExecution<ProjectedMultiplier, execution::Cuda> );
+static_assert( execution::SupportedContactSearch<search::Bvh, execution::Cuda> );
+static_assert( !execution::SupportedContactSearch<search::CartesianProduct, execution::Cuda> );
+
+using CudaDefaultContact = Contact<DefaultMethod, search::Bvh, execution::Cuda>;
+
+template <typename MethodType, typename Search, typename Execution>
+concept HasArrayContact = requires { typename array::ArrayContact<MethodType, Search, Execution>; };
+
+static_assert( HasArrayContact<DefaultMethod, search::Bvh, execution::Cuda> );
+static_assert( !HasArrayContact<DefaultMethod, search::CartesianProduct, execution::Cuda> );
+
+template <typename ContactType>
+concept HasDeviceEvaluation = requires( const ContactType& contact ) {
+  { contact.evaluateDevice() } -> std::same_as<ContactResultView>;
+  { contact.cudaPipelineView() } -> std::same_as<execution::CudaPipelineView>;
+};
+
+static_assert( HasDeviceEvaluation<CudaDefaultContact> );
+static_assert( !HasDeviceEvaluation<Contact<>> );
 
 static_assert( std::is_trivially_copyable_v<ArrayView<const Real>> );
 static_assert( std::is_trivially_copyable_v<SurfaceMeshView> );
+static_assert( std::is_trivially_copyable_v<execution::CudaPipelineView> );
 static_assert( std::is_trivially_copyable_v<ContactStateView> );
 static_assert( std::is_trivially_copyable_v<NodalKinematicsView> );
 static_assert( search::legacyProximityScale == 4.0 );

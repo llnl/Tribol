@@ -56,6 +56,14 @@
       {"case": "single-mortar-3d", "size": 1, "warmups": 3, "iterations": 20},
       {"case": "single-mortar-3d", "size": 32, "warmups": 3, "iterations": 20}
     ],
+    "gpu-scaling": [
+      {"case": "penalty-2d", "size": 1, "warmups": 5, "iterations": 30},
+      {"case": "penalty-2d", "size": 32, "warmups": 5, "iterations": 30},
+      {"case": "penalty-2d", "size": 256, "warmups": 5, "iterations": 30},
+      {"case": "penalty-3d", "size": 1, "warmups": 5, "iterations": 30},
+      {"case": "penalty-3d", "size": 32, "warmups": 5, "iterations": 30},
+      {"case": "penalty-3d", "size": 256, "warmups": 5, "iterations": 30}
+    ],
     "all": {"include": ["smoke", "physics", "scaling"]}
   }
 }

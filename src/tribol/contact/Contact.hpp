@@ -24,7 +24,8 @@ namespace tribol {
 
 template <SupportedMethod MethodType = DefaultMethod, SearchPolicy Search = search::CartesianProduct,
           execution::Policy Execution = execution::Sequential>
-  requires execution::SupportedContactExecution<MethodType, Execution>
+  requires execution::SupportedContactExecution<MethodType, Execution> &&
+           execution::SupportedContactSearch<Search, Execution>
 class Contact {
  public:
   using method_type = MethodType;
@@ -51,6 +52,9 @@ class Contact {
     timestep::validate( options_.timestep );
     resizeLinearizationWorkspace();
     resizeEvaluationWorkspace();
+    if constexpr ( std::same_as<Execution, execution::Cuda> ) {
+      execution_workspace_.uploadSurfaces( surfaces_ );
+    }
   }
 
   explicit Contact( SurfaceMeshView surface, Options options = {} )
@@ -65,9 +69,15 @@ class Contact {
 
   void updateInteractions()
   {
-    search_.findCandidates( surfaces_, candidates_ );
-    if ( options_.self_contact ) {
-      candidates_.filterSelfContact( surfaces_.mortar, options_.exclude_adjacent_self_contact );
+    if constexpr ( std::same_as<Execution, execution::Cuda> ) {
+      execution_workspace_.findCandidates( effectiveSearchParameters( options_ ), options_.self_contact,
+                                           options_.exclude_adjacent_self_contact );
+      cuda_candidate_mirror_.clear();
+    } else {
+      search_.findCandidates( surfaces_, candidates_ );
+      if ( options_.self_contact ) {
+        candidates_.filterSelfContact( surfaces_.mortar, options_.exclude_adjacent_self_contact );
+      }
     }
     interaction_geometry_version_ = geometry_version_;
     interaction_version_.advance();
@@ -87,6 +97,10 @@ class Contact {
       candidates_.append( pair );
     }
     candidates_.canonicalize();
+    if constexpr ( std::same_as<Execution, execution::Cuda> ) {
+      execution_workspace_.setCandidates( candidates_.view() );
+      cuda_candidate_mirror_.clear();
+    }
     interaction_geometry_version_ = geometry_version_;
     interaction_version_.advance();
     has_interactions_ = true;
@@ -98,6 +112,9 @@ class Contact {
     requireValidSurfaces( surfaces );
     requireSameTopology( surfaces_, surfaces );
     surfaces_ = surfaces;
+    if constexpr ( std::same_as<Execution, execution::Cuda> ) {
+      execution_workspace_.updateGeometry( surfaces_ );
+    }
     geometry_version_.advance();
   }
 
@@ -106,66 +123,18 @@ class Contact {
     requireValidSurfaces( surfaces );
     surfaces_ = surfaces;
     candidates_.clear();
+    cuda_candidate_mirror_.clear();
+    if constexpr ( std::same_as<Execution, execution::Cuda> ) {
+      execution_workspace_.invalidate();
+      execution_workspace_.uploadSurfaces( surfaces_ );
+    }
     geometry_version_.advance();
     has_interactions_ = false;
     resizeLinearizationWorkspace();
     resizeEvaluationWorkspace();
   }
 
-  EvaluationSummary addResidual( const ContactStateView& state, ContactResidualView residual ) const
-  {
-    if ( !has_interactions_ ) {
-      throw std::logic_error( "updateInteractions() must be called before contact evaluation." );
-    }
-    clearEvaluationWorkspace();
-    return evaluateConfigured( surfaces_, state,
-                               ContactOutputView{ .residual = residual,
-                                                  .gap = mutableView( result_gap_ ),
-                                                  .weighted_gap = mutableView( result_weighted_gap_ ),
-                                                  .tributary_area = mutableView( result_tributary_area_ ),
-                                                  .mortar_weights = mutableView( result_mortar_weights_ ),
-                                                  .mortar_mass_weights = mutableView( result_mortar_mass_weights_ ),
-                                                  .quadrature_gap = mutableView( result_quadrature_gap_ ),
-                                                  .quadrature_pressure = mutableView( result_quadrature_pressure_ ),
-                                                  .pressure = mutableView( result_pressure_ ) } );
-  }
-
-  [[nodiscard]] ContactResultView evaluate( const ContactStateView& state = {} ) const
-  {
-    if ( !has_interactions_ ) {
-      throw std::logic_error( "updateInteractions() must be called before contact evaluation." );
-    }
-    clearEvaluationWorkspace();
-    const ContactOutputView output{
-        .residual =
-            workspaceResidual( result_mortar_force_, result_nonmortar_force_, mutableView( result_constraint_ ) ),
-        .gap = mutableView( result_gap_ ),
-        .weighted_gap = mutableView( result_weighted_gap_ ),
-        .tributary_area = mutableView( result_tributary_area_ ),
-        .mortar_weights = mutableView( result_mortar_weights_ ),
-        .mortar_mass_weights = mutableView( result_mortar_mass_weights_ ),
-        .quadrature_gap = mutableView( result_quadrature_gap_ ),
-        .quadrature_pressure = mutableView( result_quadrature_pressure_ ),
-        .pressure = mutableView( result_pressure_ ),
-    };
-    const auto summary = evaluateConfigured( surfaces_, state, output );
-    return {
-        .mortar_force = constField( result_mortar_force_, surfaces_.mortar ),
-        .nonmortar_force = constField( result_nonmortar_force_, surfaces_.nonmortar ),
-        .constraint_residual = constView( result_constraint_ ),
-        .gap = constView( result_gap_ ),
-        .weighted_gap = constView( result_weighted_gap_ ),
-        .tributary_area = constView( result_tributary_area_ ),
-        .mortar_weights = constView( result_mortar_weights_ ),
-        .mortar_mass_weights = constView( result_mortar_mass_weights_ ),
-        .quadrature_gap = { result_quadrature_gap_.data(), summary.quadrature_points },
-        .quadrature_pressure = { result_quadrature_pressure_.data(), summary.quadrature_points },
-        .pressure = constView( result_pressure_ ),
-        .summary = summary,
-        .geometry_version = geometry_version_,
-        .interaction_version = interaction_version_,
-    };
-  }
+#include "tribol/contact/ContactEvaluation.inl"
 
   [[nodiscard]] NodalKinematicsView evaluateNodalKinematics() const
     requires( std::same_as<typename MethodType::formulation_policy, formulation::Variational> &&
@@ -272,6 +241,41 @@ class Contact {
     }
   }
 
+  ContactOutputView resultOutput() const
+  {
+    return {
+        .residual =
+            workspaceResidual( result_mortar_force_, result_nonmortar_force_, mutableView( result_constraint_ ) ),
+        .gap = mutableView( result_gap_ ),
+        .weighted_gap = mutableView( result_weighted_gap_ ),
+        .tributary_area = mutableView( result_tributary_area_ ),
+        .mortar_weights = mutableView( result_mortar_weights_ ),
+        .mortar_mass_weights = mutableView( result_mortar_mass_weights_ ),
+        .quadrature_gap = mutableView( result_quadrature_gap_ ),
+        .quadrature_pressure = mutableView( result_quadrature_pressure_ ),
+        .pressure = mutableView( result_pressure_ ),
+    };
+  }
+
+  static void addResultField( const std::vector<Real>& values, const SurfaceMeshView& surface, FieldView<Real> output )
+  {
+    pointwise_penalty_detail::requireVectorField( output, surface, "Contact residual field does not match surface." );
+    for ( Index node = 0; node < surface.numberOfNodes(); ++node ) {
+      for ( int component = 0; component < surface.dimension; ++component ) {
+        output( node, component ) += values[static_cast<std::size_t>( node * surface.dimension + component )];
+      }
+    }
+  }
+
+  [[nodiscard]] Index interactionCount() const
+  {
+    if constexpr ( std::same_as<Execution, execution::Cuda> ) {
+      return execution_workspace_.interactionCount();
+    } else {
+      return candidates_.size();
+    }
+  }
+
   void resizeLinearizationWorkspace()
   {
     const auto mortar_values =
@@ -325,8 +329,13 @@ class Contact {
     result_gap_.resize( mortar_nodes );
     result_weighted_gap_.resize( mortar_nodes );
     result_tributary_area_.resize( mortar_nodes );
-    result_mortar_weights_.resize( mortar_nodes * nonmortar_nodes );
-    result_mortar_mass_weights_.resize( mortar_nodes * mortar_nodes );
+    if constexpr ( MethodTraits<MethodType>::capabilities.produces_diagnostic_weights ) {
+      result_mortar_weights_.resize( mortar_nodes * nonmortar_nodes );
+      result_mortar_mass_weights_.resize( mortar_nodes * mortar_nodes );
+    } else {
+      result_mortar_weights_.clear();
+      result_mortar_mass_weights_.clear();
+    }
     result_pressure_.resize( mortar_nodes );
     result_quadrature_gap_.clear();
     result_quadrature_pressure_.clear();
@@ -334,15 +343,12 @@ class Contact {
 
   void resizeInteractionWorkspace()
   {
-    const auto maximum_points = static_cast<std::size_t>( candidates_.size() ) * integration::maximumQuadraturePoints;
+    const auto maximum_points = static_cast<std::size_t>( interactionCount() ) * integration::maximumQuadraturePoints;
     result_quadrature_gap_.resize( maximum_points );
     result_quadrature_pressure_.resize( maximum_points );
-    if constexpr ( std::same_as<Execution, execution::Cuda> ) {
-      execution_patches_.resize( static_cast<std::size_t>( candidates_.size() ) );
-      execution_contributions_.resize( static_cast<std::size_t>( candidates_.size() ) );
-      execution_workspace_.reserve( candidates_.size() );
-    } else if constexpr ( std::same_as<Execution, execution::OpenMP> ) {
-      execution_workspace_.reserve( surfaces_, static_cast<Index>( maximum_points ) );
+    if constexpr ( std::same_as<Execution, execution::OpenMP> ) {
+      execution_workspace_.reserve( surfaces_, static_cast<Index>( maximum_points ),
+                                    MethodTraits<MethodType>::capabilities.produces_diagnostic_weights );
     }
   }
 
@@ -351,16 +357,21 @@ class Contact {
   {
     EvaluationSummary summary;
     if constexpr ( std::same_as<Execution, execution::Cuda> ) {
-      summary = execution::evaluateDefaultContact( surfaces, candidates_.view(), options_.method, output, state,
-                                                   execution_workspace_, execution_patches_, execution_contributions_ );
+      summary = execution_workspace_.evaluateDefault( options_.method, state, options_.timestep );
+      execution_workspace_.downloadResult( output );
+      last_cuda_summary_ = summary;
+      cuda_result_geometry_version_ = geometry_version_;
+      cuda_result_interaction_version_ = interaction_version_;
     } else if constexpr ( std::same_as<Execution, execution::OpenMP> ) {
       summary = execution::evaluateOpenMPContact<MethodType>( surfaces, candidates_.view(), options_.method, state,
                                                               output, execution_workspace_ );
     } else {
       summary = evaluateMethod<MethodType>( surfaces, candidates_.view(), options_.method, state, output );
     }
-    summary.timestep_vote =
-        timestep::kinematicVote<MethodType>( surfaces, candidates_.view(), options_.method, state, options_.timestep );
+    if constexpr ( !std::same_as<Execution, execution::Cuda> ) {
+      summary.timestep_vote = timestep::kinematicVote<MethodType>( surfaces, candidates_.view(), options_.method, state,
+                                                                   options_.timestep );
+    }
     return summary;
   }
 
@@ -385,7 +396,8 @@ class Contact {
   SurfacePairView surfaces_;
   Options options_;
   Search search_;
-  CandidatePairs candidates_;
+  mutable CandidatePairs candidates_;
+  mutable std::vector<ElementPair> cuda_candidate_mirror_;
   GeometryVersion geometry_version_{};
   GeometryVersion interaction_geometry_version_{};
   InteractionVersion interaction_version_{};
@@ -434,12 +446,13 @@ class Contact {
   mutable std::vector<Real> result_quadrature_pressure_;
   mutable std::vector<Real> result_pressure_;
   using ExecutionWorkspace =
-      std::conditional_t<std::same_as<Execution, execution::Cuda>, execution::CudaPenaltyWorkspace,
+      std::conditional_t<std::same_as<Execution, execution::Cuda>, execution::CudaContactWorkspace,
                          std::conditional_t<std::same_as<Execution, execution::OpenMP>,
                                             execution::OpenMPContactWorkspace, execution::HostPenaltyWorkspace>>;
   mutable ExecutionWorkspace execution_workspace_;
-  mutable std::vector<InteractionPatch> execution_patches_;
-  mutable std::vector<execution::PenaltyContribution> execution_contributions_;
+  mutable EvaluationSummary last_cuda_summary_{};
+  mutable GeometryVersion cuda_result_geometry_version_{};
+  mutable InteractionVersion cuda_result_interaction_version_{};
 };
 
 }  // namespace tribol

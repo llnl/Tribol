@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -18,6 +19,50 @@ SCRIPT_DIRECTORY = Path(__file__).resolve().parent
 REPOSITORY_ROOT = SCRIPT_DIRECTORY.parents[1]
 DEFAULT_MANIFEST = REPOSITORY_ROOT / "benchmarks/suites.json"
 REFERENCE_URL = "https://github.com/LLNL/Tribol.git"
+CUDA_CASES = frozenset(("penalty-2d", "penalty-3d"))
+CUDA_REFERENCE_SOURCE_PATCHES = (
+    (
+        "cuda-13-device-array-destructors",
+        Path("src/tribol/common/Containers.hpp"),
+        (
+            (
+                "  TRIBOL_DEFAULT_HOST_DEVICE ~DeviceArray() = default;",
+                "  TRIBOL_HOST_DEVICE ~DeviceArray() {}",
+            ),
+            (
+                "  TRIBOL_DEFAULT_HOST_DEVICE ~DeviceArray2D() = default;",
+                "  TRIBOL_HOST_DEVICE ~DeviceArray2D() {}",
+            ),
+        ),
+    ),
+    (
+        "cuda-13-contact-plane-destructors",
+        Path("src/tribol/geom/CompGeom.hpp"),
+        (
+            (
+                "  virtual ~CompGeomPair() = default;",
+                "  TRIBOL_HOST_DEVICE virtual ~CompGeomPair() {}",
+            ),
+            (
+                "  TRIBOL_HOST_DEVICE inline ContactPlanePair(){};\n\n  /**",
+                "  TRIBOL_HOST_DEVICE inline ContactPlanePair(){};\n\n"
+                "  TRIBOL_HOST_DEVICE ~ContactPlanePair() override {}\n\n  /**",
+            ),
+            (
+                "  ~CommonPlanePair() = default;",
+                "  TRIBOL_HOST_DEVICE ~CommonPlanePair() override {}",
+            ),
+            (
+                "  ~MortarPlanePair() = default;",
+                "  TRIBOL_HOST_DEVICE ~MortarPlanePair() override {}",
+            ),
+            (
+                "  ~AlignedMortarPlanePair() = default;",
+                "  TRIBOL_HOST_DEVICE ~AlignedMortarPlanePair() override {}",
+            ),
+        ),
+    ),
+)
 
 
 def run(command: list[str], cwd: Path | None = None, capture: bool = False) -> str:
@@ -88,6 +133,32 @@ def reference_source(args: argparse.Namespace, work: Path) -> Path | None:
     return Path(source).resolve() if source else None
 
 
+def apply_cuda_reference_source_compatibility(source: Path) -> list[str]:
+    applied: list[str] = []
+    for name, relative_path, replacements in CUDA_REFERENCE_SOURCE_PATCHES:
+        path = source / relative_path
+        if not path.is_file():
+            raise ValueError(f"CUDA reference compatibility source is missing: {path}")
+        original = path.read_text(encoding="utf-8")
+        updated = original
+        for old, new in replacements:
+            old_count = updated.count(old)
+            new_count = updated.count(new)
+            if old_count == 1 and new_count == 0:
+                updated = updated.replace(old, new)
+            elif old_count == 0 and new_count == 1:
+                continue
+            else:
+                raise ValueError(
+                    f"CUDA reference compatibility patch {name!r} does not match {path}; "
+                    f"expected exactly one original or patched occurrence"
+                )
+        if updated != original:
+            path.write_text(updated, encoding="utf-8")
+        applied.append(name)
+    return applied
+
+
 def provenance(
     args: argparse.Namespace,
     work: Path,
@@ -111,8 +182,12 @@ def provenance(
         state = git_state(source)
         if state:
             reference["git"] = state
+    compatibility = getattr(args, "reference_source_compatibility", [])
+    if compatibility:
+        reference["source_compatibility"] = compatibility
     return {
         "suite": args.suite,
+        "execution": args.execution,
         "manifest": str(args.manifest.resolve()),
         "current": {
             "driver": str(current_driver.resolve()),
@@ -134,10 +209,13 @@ def configure_current(args: argparse.Namespace) -> Path:
     if args.current_host_config and not (build / "CMakeCache.txt").exists():
         command.extend(("-C", str(args.current_host_config.resolve())))
     command.extend(("-S", str(REPOSITORY_ROOT), "-B", str(build), "-DTRIBOL_ENABLE_BENCHMARKS=ON"))
+    if args.execution == "cuda":
+        command.append("-DENABLE_CUDA=ON")
     command.extend(args.current_cmake_arg)
     run(command)
-    run(["cmake", "--build", str(build), "--target", "tribol_rewritten_benchmark", "-j", str(args.jobs)])
-    candidates = (build / "benchmarks/tribol_rewritten_benchmark", build / "bin/tribol_rewritten_benchmark")
+    target = "tribol_rewritten_cuda_benchmark" if args.execution == "cuda" else "tribol_rewritten_benchmark"
+    run(["cmake", "--build", str(build), "--target", target, "-j", str(args.jobs)])
+    candidates = (build / f"benchmarks/{target}", build / f"bin/{target}")
     for candidate in candidates:
         if candidate.is_file():
             return candidate
@@ -166,17 +244,67 @@ def install_reference_build(build: Path, prefix: Path, jobs: int) -> Path:
     return config
 
 
-def inherited_reference_arguments(current_build: Path) -> list[str]:
+def inherited_reference_arguments(current_build: Path, execution: str = "host") -> list[str]:
     cache = cache_values(current_build / "CMakeCache.txt")
-    keys = (
+    keys = [
         "CMAKE_C_COMPILER",
         "CMAKE_CXX_COMPILER",
         "MPI_C_COMPILER",
+        "MPI_C_COMPILER_INCLUDE_DIRS",
+        "MPI_C_HEADER_DIR",
         "MPI_CXX_COMPILER",
+        "MPI_CXX_COMPILER_INCLUDE_DIRS",
+        "MPI_CXX_HEADER_DIR",
         "AXOM_DIR",
         "MFEM_DIR",
         "ENABLE_MPI",
-    )
+    ]
+    if execution == "cuda":
+        keys.extend(
+            (
+                "CMAKE_CUDA_COMPILER",
+                "CMAKE_CUDA_HOST_COMPILER",
+                "CMAKE_CUDA_ARCHITECTURES",
+                "CUDAToolkit_ROOT",
+                "CUDA_TOOLKIT_ROOT_DIR",
+                "RAJA_DIR",
+                "umpire_DIR",
+                "UMPIRE_DIR",
+            )
+        )
+    arguments = [f"-D{key}={cache[key]}" for key in keys if cache.get(key) and not cache[key].endswith("-NOTFOUND")]
+    if execution == "cuda":
+        cuda_flags = " ".join(part.strip() for part in shlex.split(cache.get("CMAKE_CUDA_FLAGS", "")) if part.strip())
+        required_flags = (
+            "--expt-extended-lambda",
+            "--expt-relaxed-constexpr",
+            f"--pre-include={REPOSITORY_ROOT / 'benchmarks/reference/LegacyCudaCompatibility.hpp'}",
+        )
+        for required_flag in required_flags:
+            if required_flag not in cuda_flags:
+                cuda_flags = f"{cuda_flags} {required_flag}".strip()
+        arguments.append(f"-DCMAKE_CUDA_FLAGS={cuda_flags}")
+    return arguments
+
+
+def inherited_reference_driver_arguments(current_build: Path, execution: str = "host") -> list[str]:
+    cache = cache_values(current_build / "CMakeCache.txt")
+    keys = [
+        "CMAKE_CXX_COMPILER",
+        "MPI_CXX_COMPILER",
+        "MPI_CXX_COMPILER_INCLUDE_DIRS",
+        "MPI_CXX_HEADER_DIR",
+    ]
+    if execution == "cuda":
+        keys.extend(
+            (
+                "CMAKE_CUDA_COMPILER",
+                "CMAKE_CUDA_HOST_COMPILER",
+                "CMAKE_CUDA_ARCHITECTURES",
+                "CUDAToolkit_ROOT",
+                "CUDA_TOOLKIT_ROOT_DIR",
+            )
+        )
     return [f"-D{key}={cache[key]}" for key in keys if cache.get(key) and not cache[key].endswith("-NOTFOUND")]
 
 
@@ -198,6 +326,8 @@ def build_develop_reference(args: argparse.Namespace, work: Path) -> Path:
                 str(source),
             ]
         )
+    if args.execution == "cuda":
+        args.reference_source_compatibility = apply_cuda_reference_source_compatibility(source)
     command = ["cmake"]
     if args.reference_host_config and not (build / "CMakeCache.txt").exists():
         command.extend(("-C", str(args.reference_host_config.resolve())))
@@ -213,13 +343,15 @@ def build_develop_reference(args: argparse.Namespace, work: Path) -> Path:
             "-DENABLE_EXAMPLES=OFF",
             "-DENABLE_DOCS=OFF",
             "-UENZYME_DIR",
-            "-URAJA_DIR",
-            "-UUMPIRE_DIR",
             "-UCALIPER_DIR",
         )
     )
+    if args.execution == "cuda":
+        command.append("-DENABLE_CUDA=ON")
+    else:
+        command.extend(("-URAJA_DIR", "-UUMPIRE_DIR"))
     if not args.reference_host_config:
-        command.extend(inherited_reference_arguments(args.current_build.resolve()))
+        command.extend(inherited_reference_arguments(args.current_build.resolve(), args.execution))
     command.extend(args.reference_cmake_arg)
     run(command)
     return install_reference_build(build, prefix, args.jobs)
@@ -249,19 +381,12 @@ def build_reference_driver(config: Path, work: Path, args: argparse.Namespace) -
         str(build),
         "-DCMAKE_BUILD_TYPE=Release",
         f"-Dtribol_DIR={config.parent}",
+        f"-DTRIBOL_BENCHMARK_EXECUTION={args.execution}",
     ]
     selected_cache = args.current_build.resolve() / "CMakeCache.txt"
     if args.reference_dir and (args.reference_dir.resolve() / "CMakeCache.txt").is_file():
         selected_cache = args.reference_dir.resolve() / "CMakeCache.txt"
-    cache = cache_values(selected_cache)
-    for key in (
-        "CMAKE_CXX_COMPILER",
-        "MPI_CXX_COMPILER",
-        "MPI_CXX_COMPILER_INCLUDE_DIRS",
-        "MPI_CXX_HEADER_DIR",
-    ):
-        if cache.get(key) and not cache[key].endswith("-NOTFOUND"):
-            command.append(f"-D{key}={cache[key]}")
+    command.extend(inherited_reference_driver_arguments(selected_cache.parent, args.execution))
     command.extend(args.reference_driver_cmake_arg)
     run(command)
     run(["cmake", "--build", str(build), "--target", "tribol_reference_benchmark", "-j", str(args.jobs)])
@@ -292,6 +417,12 @@ def execute(driver: Path, spec: object) -> dict[str, object]:
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Compare rewritten Tribol with an installed or develop Tribol build.")
     parser.add_argument("--suite", default="smoke", help="suite name from benchmarks/suites.json (default: smoke)")
+    parser.add_argument(
+        "--execution",
+        choices=("host", "cuda"),
+        default="host",
+        help="execution backend for both implementations (default: host)",
+    )
     parser.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST)
     parser.add_argument("--current-driver", type=Path, help="use an already-built rewritten benchmark executable")
     parser.add_argument("--current-build", type=Path, default=REPOSITORY_ROOT / "build-benchmarks")
@@ -315,6 +446,10 @@ def main() -> int:
         raise ValueError("--jobs must be positive")
     manifest = load_manifest(args.manifest.resolve())
     specs = expand_suite(manifest, args.suite)
+    if args.execution == "cuda":
+        unsupported = sorted({spec.case for spec in specs} - CUDA_CASES)
+        if unsupported:
+            raise ValueError("CUDA comparison does not support cases: " + ", ".join(unsupported))
     current_driver = configure_current(args)
     temporary: tempfile.TemporaryDirectory[str] | None = None
     if args.work_dir:

@@ -20,7 +20,7 @@ struct ElementPair {
   Index mortar_element{};
   Index nonmortar_element{};
 
-  friend constexpr bool operator==( ElementPair, ElementPair ) = default;
+  TRIBOL_HOST_DEVICE friend constexpr bool operator==( ElementPair, ElementPair ) = default;
 };
 class CandidatePairs {
  public:

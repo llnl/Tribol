@@ -42,11 +42,13 @@ struct InteractionPatchT {
 
 using InteractionPatch = InteractionPatchT<Real>;
 
+static_assert( std::is_trivially_copyable_v<InteractionPatch> );
+
 namespace projected_overlap_detail {
 
 template <typename Scalar, std::size_t Size>
-[[nodiscard]] inline std::array<Scalar, Size> subtract( const std::array<Scalar, Size>& left,
-                                                        const std::array<Scalar, Size>& right )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline std::array<Scalar, Size> subtract( const std::array<Scalar, Size>& left,
+                                                                           const std::array<Scalar, Size>& right )
 {
   std::array<Scalar, Size> result{};
   for ( std::size_t component = 0; component < Size; ++component ) {
@@ -56,15 +58,16 @@ template <typename Scalar, std::size_t Size>
 }
 
 template <typename Scalar>
-[[nodiscard]] inline std::array<Scalar, 3> cross( const std::array<Scalar, 3>& left,
-                                                  const std::array<Scalar, 3>& right )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline std::array<Scalar, 3> cross( const std::array<Scalar, 3>& left,
+                                                                     const std::array<Scalar, 3>& right )
 {
   return { left[1] * right[2] - left[2] * right[1], left[2] * right[0] - left[0] * right[2],
            left[0] * right[1] - left[1] * right[0] };
 }
 
 template <typename Scalar, std::size_t Size>
-[[nodiscard]] inline Scalar dot( const std::array<Scalar, Size>& left, const std::array<Scalar, Size>& right )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline Scalar dot( const std::array<Scalar, Size>& left,
+                                                    const std::array<Scalar, Size>& right )
 {
   Scalar result{};
   for ( std::size_t component = 0; component < Size; ++component ) {
@@ -74,13 +77,13 @@ template <typename Scalar, std::size_t Size>
 }
 
 template <typename Scalar>
-[[nodiscard]] inline Scalar norm( const std::array<Scalar, 3>& value )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline Scalar norm( const std::array<Scalar, 3>& value )
 {
   return linearization_detail::squareRoot( dot( value, value ) );
 }
 
 template <typename Scalar>
-[[nodiscard]] inline std::array<Scalar, 3> normalize( std::array<Scalar, 3> value )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline std::array<Scalar, 3> normalize( std::array<Scalar, 3> value )
 {
   const Scalar length = norm( value );
   if ( length <= 1.0e-28 ) {
@@ -93,7 +96,8 @@ template <typename Scalar>
 }
 
 template <typename Scalar>
-[[nodiscard]] inline std::array<Scalar, 3> segmentNormal( const SurfaceMeshViewT<Scalar>& mesh, Index element )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline std::array<Scalar, 3> segmentNormal( const SurfaceMeshViewT<Scalar>& mesh,
+                                                                             Index element )
 {
   const Index begin = mesh.element_offsets[element];
   const Index first_node = mesh.connectivity[begin];
@@ -108,8 +112,8 @@ template <typename Scalar>
 }
 
 template <typename Scalar>
-[[nodiscard]] inline std::array<Scalar, 3> normalizedDifference( const std::array<Scalar, 3>& left,
-                                                                 const std::array<Scalar, 3>& right )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline std::array<Scalar, 3> normalizedDifference( const std::array<Scalar, 3>& left,
+                                                                                    const std::array<Scalar, 3>& right )
 {
   auto result = subtract( left, right );
   if ( norm( result ) <= 1.0e-14 ) {
@@ -119,8 +123,8 @@ template <typename Scalar>
 }
 
 template <NormalPolicy Normal, typename Scalar>
-[[nodiscard]] inline std::array<Scalar, 3> selectNormal( const std::array<Scalar, 3>& mortar,
-                                                         const std::array<Scalar, 3>& nonmortar )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline std::array<Scalar, 3> selectNormal( const std::array<Scalar, 3>& mortar,
+                                                                            const std::array<Scalar, 3>& nonmortar )
 {
   if constexpr ( std::same_as<Normal, normal::MeanPlane> ) {
     return normalizedDifference( nonmortar, mortar );
@@ -130,14 +134,14 @@ template <NormalPolicy Normal, typename Scalar>
 }
 
 template <typename Scalar>
-[[nodiscard]] inline bool isLinearSegment( const SurfaceMeshViewT<Scalar>& mesh, Index element )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline bool isLinearSegment( const SurfaceMeshViewT<Scalar>& mesh, Index element )
 {
   return mesh.topologies[element] == ElementTopology::Segment &&
          mesh.element_offsets[element + 1] - mesh.element_offsets[element] == 2;
 }
 
 template <typename Scalar>
-[[nodiscard]] inline bool isLinearFace( const SurfaceMeshViewT<Scalar>& mesh, Index element )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline bool isLinearFace( const SurfaceMeshViewT<Scalar>& mesh, Index element )
 {
   const Index nodes = mesh.element_offsets[element + 1] - mesh.element_offsets[element];
   return ( mesh.topologies[element] == ElementTopology::Triangle && nodes == 3 ) ||
@@ -145,15 +149,16 @@ template <typename Scalar>
 }
 
 template <typename Scalar>
-[[nodiscard]] inline std::array<Scalar, 3> facePoint( const SurfaceMeshViewT<Scalar>& mesh, Index element,
-                                                      Index local_node )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline std::array<Scalar, 3> facePoint( const SurfaceMeshViewT<Scalar>& mesh,
+                                                                         Index element, Index local_node )
 {
   const Index node = mesh.connectivity[mesh.element_offsets[element] + local_node];
   return { mesh.coordinates( node, 0 ), mesh.coordinates( node, 1 ), mesh.coordinates( node, 2 ) };
 }
 
 template <typename Scalar>
-[[nodiscard]] inline std::array<Scalar, 3> faceNormal( const SurfaceMeshViewT<Scalar>& mesh, Index element )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline std::array<Scalar, 3> faceNormal( const SurfaceMeshViewT<Scalar>& mesh,
+                                                                          Index element )
 {
   const auto first = facePoint( mesh, element, 0 );
   const auto second = facePoint( mesh, element, 1 );
@@ -170,7 +175,7 @@ template <typename Scalar>
 }
 
 template <typename Scalar>
-[[nodiscard]] inline Scalar faceMeasure( const SurfaceMeshViewT<Scalar>& mesh, Index element )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline Scalar faceMeasure( const SurfaceMeshViewT<Scalar>& mesh, Index element )
 {
   if ( mesh.topologies[element] == ElementTopology::Segment ) {
     const Index begin = mesh.element_offsets[element];
@@ -192,7 +197,7 @@ template <typename Scalar>
 }
 
 template <typename Scalar, NormalPolicy Normal>
-[[nodiscard]] inline bool meetsOverlapFraction(
+[[nodiscard]] TRIBOL_HOST_DEVICE inline bool meetsOverlapFraction(
     const SurfacePairViewT<Scalar>& surfaces, ElementPair pair, Scalar overlap_measure,
     const typename geometry::ProjectedOverlap<Normal>::Parameters& parameters )
 {
@@ -208,23 +213,24 @@ template <typename Scalar, NormalPolicy Normal>
 }
 
 template <typename Scalar>
-[[nodiscard]] inline Scalar cross2d( const std::array<Scalar, 2>& left, const std::array<Scalar, 2>& right )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline Scalar cross2d( const std::array<Scalar, 2>& left,
+                                                        const std::array<Scalar, 2>& right )
 {
   return left[0] * right[1] - left[1] * right[0];
 }
 
 template <typename Scalar>
-[[nodiscard]] inline bool insideHalfPlane( const std::array<Scalar, 2>& point, const std::array<Scalar, 2>& first,
-                                           const std::array<Scalar, 2>& second, Real orientation )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline bool insideHalfPlane( const std::array<Scalar, 2>& point,
+                                                              const std::array<Scalar, 2>& first,
+                                                              const std::array<Scalar, 2>& second, Real orientation )
 {
   return orientation * cross2d( subtract( second, first ), subtract( point, first ) ) >= -1.0e-14;
 }
 
 template <typename Scalar>
-[[nodiscard]] inline std::array<Scalar, 2> lineIntersection( const std::array<Scalar, 2>& first,
-                                                             const std::array<Scalar, 2>& second,
-                                                             const std::array<Scalar, 2>& clip_first,
-                                                             const std::array<Scalar, 2>& clip_second )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline std::array<Scalar, 2> lineIntersection(
+    const std::array<Scalar, 2>& first, const std::array<Scalar, 2>& second, const std::array<Scalar, 2>& clip_first,
+    const std::array<Scalar, 2>& clip_second )
 {
   const auto direction = subtract( second, first );
   const auto clip_direction = subtract( clip_second, clip_first );
@@ -243,9 +249,8 @@ struct ProjectedPolygonT {
 };
 
 template <typename Scalar>
-[[nodiscard]] inline ProjectedPolygonT<Scalar> clipPolygon( ProjectedPolygonT<Scalar> subject,
-                                                            const std::array<std::array<Scalar, 2>, 4>& clip,
-                                                            int clip_size )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline ProjectedPolygonT<Scalar> clipPolygon(
+    ProjectedPolygonT<Scalar> subject, const std::array<std::array<Scalar, 2>, 4>& clip, int clip_size )
 {
   Scalar signed_area{};
   for ( int vertex = 0; vertex < clip_size; ++vertex ) {
@@ -276,7 +281,7 @@ template <typename Scalar>
 }
 
 template <NormalPolicy Normal, typename Scalar>
-[[nodiscard]] inline InteractionPatchT<Scalar> projectedFaceOverlapPatch(
+[[nodiscard]] TRIBOL_HOST_DEVICE inline InteractionPatchT<Scalar> projectedFaceOverlapPatch(
     const SurfacePairViewT<Scalar>& surfaces, ElementPair pair,
     const typename geometry::ProjectedOverlap<Normal>::Parameters& parameters )
 {
@@ -394,7 +399,7 @@ template <NormalPolicy Normal, typename Scalar>
 }  // namespace projected_overlap_detail
 
 template <NormalPolicy Normal, typename Scalar>
-[[nodiscard]] inline InteractionPatchT<Scalar> projectedOverlapPatch(
+[[nodiscard]] TRIBOL_HOST_DEVICE inline InteractionPatchT<Scalar> projectedOverlapPatch(
     const SurfacePairViewT<Scalar>& surfaces, ElementPair pair,
     const typename geometry::ProjectedOverlap<Normal>::Parameters& parameters )
 {
@@ -473,7 +478,7 @@ template <NormalPolicy Normal, typename Scalar>
 }
 
 template <NormalPolicy Normal, typename Scalar>
-[[nodiscard]] inline InteractionGeometryT<Scalar> projectedOverlap(
+[[nodiscard]] TRIBOL_HOST_DEVICE inline InteractionGeometryT<Scalar> projectedOverlap(
     const SurfacePairViewT<Scalar>& surfaces, ElementPair pair,
     const typename geometry::ProjectedOverlap<Normal>::Parameters& parameters )
 {

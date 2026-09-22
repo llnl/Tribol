@@ -85,7 +85,8 @@ class UniformSurface {
 
 template <SupportedMethod MethodType = DefaultMethod, SearchPolicy Search = search::CartesianProduct,
           execution::Policy Execution = execution::Sequential>
-  requires execution::SupportedContactExecution<MethodType, Execution>
+  requires execution::SupportedContactExecution<MethodType, Execution> &&
+           execution::SupportedContactSearch<Search, Execution>
 class ArrayContact {
  public:
   using CoreContact = Contact<MethodType, Search, Execution>;
@@ -123,7 +124,8 @@ class ArrayContact {
 
 template <SupportedMethod MethodType = DefaultMethod, SearchPolicy Search = search::CartesianProduct,
           execution::Policy Execution = execution::Sequential>
-  requires execution::SupportedContactExecution<MethodType, Execution>
+  requires execution::SupportedContactExecution<MethodType, Execution> &&
+           execution::SupportedContactSearch<Search, Execution>
 ArrayContact<MethodType, Search, Execution> makeContact(
     UniformSurface mortar, UniformSurface nonmortar,
     typename ArrayContact<MethodType, Search, Execution>::Options options = {} )

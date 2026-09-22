@@ -32,6 +32,11 @@ void applyDerivative( const ContactStateView& state, ContactLinearizationDirecti
   if ( !has_interactions_ ) {
     throw std::logic_error( "updateInteractions() must be called before contact linearization." );
   }
+  if constexpr ( std::same_as<Execution, execution::Cuda> ) {
+    requireDirection( direction.coordinates );
+    execution_workspace_.applyDefaultCoordinateDerivative( options_.method, state, direction.coordinates, derivative );
+    return;
+  }
   seedCoordinates( surfaces_.mortar, direction.coordinates.mortar, exact_mortar_coordinates_ );
   seedCoordinates( surfaces_.nonmortar, direction.coordinates.nonmortar, exact_nonmortar_coordinates_ );
   const auto exact_state = seededState( state, direction.state );
@@ -168,5 +173,13 @@ void applyDerivative( const ContactStateView& state, ContactLinearizationDirecti
 
 [[nodiscard]] const SurfacePairView& surfaces() const { return surfaces_; }
 [[nodiscard]] const Options& options() const { return options_; }
-[[nodiscard]] ArrayView<const ElementPair> interactions() const { return candidates_.view(); }
+[[nodiscard]] ArrayView<const ElementPair> interactions() const
+{
+  if constexpr ( std::same_as<Execution, execution::Cuda> ) {
+    execution_workspace_.downloadCandidates( cuda_candidate_mirror_ );
+    return { cuda_candidate_mirror_.data(), static_cast<Index>( cuda_candidate_mirror_.size() ) };
+  } else {
+    return candidates_.view();
+  }
+}
 [[nodiscard]] bool hasInteractions() const { return has_interactions_; }

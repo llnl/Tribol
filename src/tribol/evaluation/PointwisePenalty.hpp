@@ -22,7 +22,7 @@ concept PointwisePenaltyMethod =
 namespace pointwise_penalty_detail {
 
 template <typename Scalar>
-inline Scalar seriesStiffness( Scalar mortar, Scalar nonmortar )
+TRIBOL_HOST_DEVICE inline Scalar seriesStiffness( Scalar mortar, Scalar nonmortar )
 {
   const Scalar sum = mortar + nonmortar;
   return linearization_detail::absolute( linearization_detail::primal( sum ) ) > 1.0e-28 ? mortar * nonmortar / sum

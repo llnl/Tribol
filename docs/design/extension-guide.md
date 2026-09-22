@@ -29,11 +29,14 @@ audience: contributors-and-agents
 
 ## Add an Execution Backend
 
-1. Keep search, allocation, communication, and host-library objects outside kernels.
+1. Keep allocation, communication, and host-library objects outside kernels. Search orchestration may launch device
+   kernels, but kernel-facing search data must remain trivially copyable and independently testable.
 2. Reuse the same interaction and contribution value types as host evaluation.
 3. Reserve backend storage in `updateInteractions()` so evaluation remains allocation-free.
 4. Restrict `SupportedContactExecution` to methods actually dispatched by the backend.
 5. Compare the complete `ContactResultView` against sequential execution on physical hardware.
+6. For deterministic shared-node scatter, emit fixed key/value contributions, stable-sort them, and reduce every key
+   in a defined order rather than using unordered atomics.
 
 ## Add an Adapter
 

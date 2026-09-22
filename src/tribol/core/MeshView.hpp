@@ -35,7 +35,7 @@ struct FieldView {
     return values[offset];
   }
 
-  [[nodiscard]] constexpr bool isStructurallyValid() const
+  [[nodiscard]] TRIBOL_HOST_DEVICE constexpr bool isStructurallyValid() const
   {
     return entities >= 0 && components > 0 && values.isStructurallyValid() && values.size() == entities * components;
   }
@@ -50,10 +50,10 @@ struct SurfaceMeshViewT {
   ArrayView<const ElementTopology> topologies{};
   ArrayView<const int> attributes{};
 
-  [[nodiscard]] constexpr Index numberOfNodes() const { return coordinates.entities; }
-  [[nodiscard]] constexpr Index numberOfElements() const { return topologies.size(); }
+  [[nodiscard]] TRIBOL_HOST_DEVICE constexpr Index numberOfNodes() const { return coordinates.entities; }
+  [[nodiscard]] TRIBOL_HOST_DEVICE constexpr Index numberOfElements() const { return topologies.size(); }
 
-  [[nodiscard]] constexpr bool isStructurallyValid() const
+  [[nodiscard]] TRIBOL_HOST_DEVICE constexpr bool isStructurallyValid() const
   {
     const bool supported_dimension = dimension == 2 || dimension == 3;
     const bool coordinate_shape = coordinates.components == dimension && coordinates.isStructurallyValid();
@@ -82,7 +82,7 @@ struct SurfaceMeshViewT {
   }
 
  private:
-  [[nodiscard]] static constexpr Index nodesPerElement( ElementTopology topology )
+  [[nodiscard]] TRIBOL_HOST_DEVICE static constexpr Index nodesPerElement( ElementTopology topology )
   {
     switch ( topology ) {
       case ElementTopology::Segment:
@@ -103,7 +103,7 @@ struct SurfacePairViewT {
   SurfaceMeshViewT<Scalar> mortar{};
   SurfaceMeshViewT<Scalar> nonmortar{};
 
-  [[nodiscard]] constexpr bool isStructurallyValid() const
+  [[nodiscard]] TRIBOL_HOST_DEVICE constexpr bool isStructurallyValid() const
   {
     return mortar.isStructurallyValid() && nonmortar.isStructurallyValid() && mortar.dimension == nonmortar.dimension;
   }
