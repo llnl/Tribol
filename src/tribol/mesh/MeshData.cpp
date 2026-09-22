@@ -612,7 +612,8 @@ MeshData::Viewer::Viewer( MeshData& mesh )
       m_face_radius( mesh.m_face_radius ),
       m_area( mesh.m_area ),
       m_nodal_fields( mesh.m_nodal_fields ),
-      m_element_data( mesh.m_element_data )
+      m_element_data( mesh.m_element_data ),
+      m_parent_face_data( mesh.m_parent_face_data )
 {
 }
 

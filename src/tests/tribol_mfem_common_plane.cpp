@@ -10,8 +10,10 @@
 // Tribol includes
 #include "tribol/config.hpp"
 #include "tribol/common/Parameters.hpp"
+#include "tribol/common/LoopExec.hpp"
 #include "tribol/interface/tribol.hpp"
 #include "tribol/interface/mfem_tribol.hpp"
+#include "tribol/mesh/MeshData.hpp"
 #include "tribol/utils/TestUtils.hpp"
 
 // Shared includes
@@ -217,6 +219,153 @@ INSTANTIATE_TEST_SUITE_P( tribol, MfemCommonPlaneTest,
                                            std::make_tuple( 1, tribol::KINEMATIC_ELEMENT ),
                                            std::make_tuple( 2, tribol::KINEMATIC_CONSTANT ),
                                            std::make_tuple( 2, tribol::KINEMATIC_ELEMENT ) ) );
+
+/** Verify LOR-face provenance and native parent-reference mapping. */
+TEST( MfemCommonPlaneParentFaceData, MapsQuadrilateralLORFacesToQ2ParentFaces )
+{
+  // Two unit cubes share a slightly interpenetrating horizontal interface. Q2
+  // coordinates and LOR factor two split each native quadrilateral face into
+  // four LOR faces. The test validates the provenance after redecomposition,
+  // including ghost copies whose native parent faces belong to another rank.
+  constexpr int parent_order = 2;
+  constexpr int lor_factor = 2;
+  constexpr double initial_separation = -0.001;
+  constexpr tribol::IndexT coupling_scheme_id = 0;
+  constexpr tribol::IndexT first_mesh_id = 0;
+  constexpr tribol::IndexT second_mesh_id = 1;
+
+  // clang-format off
+  mfem::ParMesh mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::Unify( {
+    shared::MeshBuilder::CubeMesh( 1, 1, 1 ),
+    shared::MeshBuilder::CubeMesh( 1, 1, 1 )
+      .translate( { 0.0, 0.0, 1.0 + initial_separation } )
+      .updateAttrib( 1, 2 )
+      .updateBdrAttrib( 1, 7 )
+      .updateBdrAttrib( 6, 8 )
+  } ) );
+  // clang-format on
+
+  // Elevate the linear mesh while preserving its physical coordinates. Merely
+  // attaching an uninitialized high-order grid function would make the native
+  // parent and LOR geometry represent different surfaces.
+  mesh.SetCurvature( parent_order );
+  auto* coordinate_nodes = dynamic_cast<mfem::ParGridFunction*>( mesh.GetNodes() );
+  ASSERT_NE( coordinate_nodes, nullptr );
+  mfem::ParGridFunction coordinates( coordinate_nodes->ParFESpace() );
+  coordinates = *coordinate_nodes;
+
+#if defined( TRIBOL_USE_CUDA )
+  constexpr tribol::ExecutionMode execution_mode = tribol::ExecutionMode::Cuda;
+#elif defined( TRIBOL_USE_HIP )
+  constexpr tribol::ExecutionMode execution_mode = tribol::ExecutionMode::Hip;
+#else
+  constexpr tribol::ExecutionMode execution_mode = tribol::ExecutionMode::Sequential;
+#endif
+
+  tribol::registerMfemCouplingScheme( coupling_scheme_id, first_mesh_id, second_mesh_id, mesh, coordinates, { 6 },
+                                      { 7 }, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                      tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_BVH, execution_mode );
+  tribol::setMfemLORFactor( coupling_scheme_id, lor_factor );
+  tribol::updateMfemParallelDecomposition( 0, true );
+
+  int communicator_size = 1;
+  MPI_Comm_size( MPI_COMM_WORLD, &communicator_size );
+  int local_face_count = 0;
+
+  for ( const tribol::IndexT mesh_id : { first_mesh_id, second_mesh_id } ) {
+    tribol::MeshData& mesh_data = tribol::MeshManager::getInstance().at( mesh_id );
+    const tribol::MeshData::Viewer mesh_view = mesh_data.getView();
+    const tribol::IndexT number_of_faces = mesh_view.numberOfElements();
+    local_face_count += number_of_faces;
+
+    if ( number_of_faces == 0 ) {
+      continue;
+    }
+    ASSERT_TRUE( mesh_view.hasParentFaceData() );
+
+    // Run every provenance and map check in the selected execution space. A
+    // zero result means the transferred identifiers, child vertices, mapped
+    // center, and rejection of an exterior child point all satisfy the contract.
+    tribol::Array1D<int> face_validation_results( number_of_faces, number_of_faces, mesh_view.getAllocatorId() );
+    face_validation_results.fill( 0 );
+    tribol::Array1DView<int> face_validation_results_view( face_validation_results );
+    tribol::forAllExec( execution_mode, number_of_faces, [=] TRIBOL_HOST_DEVICE( tribol::IndexT face_id ) {
+      constexpr tribol::RealT comparison_tolerance = 1.e-12;
+      const tribol::ParentFaceData& parent_face_data = mesh_view.getParentFaceData();
+      int validation_result = 0;
+      validation_result |= parent_face_data.m_parent_face_ids[face_id] < 0 ? 1 : 0;
+      validation_result |= parent_face_data.m_parent_face_owner_ranks[face_id] < 0 ||
+                                   parent_face_data.m_parent_face_owner_ranks[face_id] >= communicator_size
+                               ? 2
+                               : 0;
+      validation_result |= parent_face_data.m_lor_face_ids[face_id] < 0 ? 4 : 0;
+      validation_result |= parent_face_data.m_lor_face_geometries[face_id] != tribol::LINEAR_QUAD ? 8 : 0;
+      validation_result |= parent_face_data.m_parent_face_orders[face_id] != parent_order ? 16 : 0;
+      validation_result |= parent_face_data.m_reference_vertex_counts[face_id] != 4 ? 32 : 0;
+
+      tribol::RealT expected_parent_center[2] = { 0.0, 0.0 };
+      tribol::RealT minimum_parent_coordinate[2] = { 1.0, 1.0 };
+      tribol::RealT maximum_parent_coordinate[2] = { 0.0, 0.0 };
+      for ( int vertex_index = 0; vertex_index < 4; ++vertex_index ) {
+        for ( int coordinate_component = 0; coordinate_component < 2; ++coordinate_component ) {
+          const int coordinate_index =
+              vertex_index * tribol::ParentFaceData::max_reference_dimension + coordinate_component;
+          const tribol::RealT parent_coordinate =
+              parent_face_data.m_parent_reference_vertex_coordinates( face_id, coordinate_index );
+          validation_result |=
+              parent_coordinate < -comparison_tolerance || parent_coordinate > 1.0 + comparison_tolerance ? 64 : 0;
+          expected_parent_center[coordinate_component] += 0.25 * parent_coordinate;
+          minimum_parent_coordinate[coordinate_component] =
+              parent_coordinate < minimum_parent_coordinate[coordinate_component]
+                  ? parent_coordinate
+                  : minimum_parent_coordinate[coordinate_component];
+          maximum_parent_coordinate[coordinate_component] =
+              parent_coordinate > maximum_parent_coordinate[coordinate_component]
+                  ? parent_coordinate
+                  : maximum_parent_coordinate[coordinate_component];
+        }
+      }
+
+      for ( int coordinate_component = 0; coordinate_component < 2; ++coordinate_component ) {
+        const tribol::RealT child_reference_width =
+            maximum_parent_coordinate[coordinate_component] - minimum_parent_coordinate[coordinate_component];
+        validation_result |=
+            child_reference_width < 0.5 - comparison_tolerance || child_reference_width > 0.5 + comparison_tolerance
+                ? 128
+                : 0;
+      }
+
+      const tribol::RealT lor_center[2] = { 0.5, 0.5 };
+      tribol::RealT mapped_parent_center[2] = { 0.0, 0.0 };
+      validation_result |= !mesh_view.mapToParentReference( face_id, lor_center, mapped_parent_center ) ? 256 : 0;
+      for ( int coordinate_component = 0; coordinate_component < 2; ++coordinate_component ) {
+        const tribol::RealT center_difference =
+            mapped_parent_center[coordinate_component] - expected_parent_center[coordinate_component];
+        validation_result |=
+            center_difference < -comparison_tolerance || center_difference > comparison_tolerance ? 512 : 0;
+      }
+
+      const tribol::RealT exterior_lor_point[2] = { 1.25, 0.5 };
+      validation_result |=
+          mesh_view.mapToParentReference( face_id, exterior_lor_point, mapped_parent_center ) ? 1024 : 0;
+      face_validation_results_view[face_id] = validation_result;
+    } );
+
+    tribol::ArrayT<int, 1, tribol::MemorySpace::Host> host_validation_results( face_validation_results );
+    for ( tribol::IndexT face_id = 0; face_id < number_of_faces; ++face_id ) {
+      EXPECT_EQ( host_validation_results[face_id], 0 ) << "provenance validation failed for face " << face_id;
+    }
+  }
+
+  // The test is valid even when repartitioning leaves one rank without local
+  // contact faces, but the communicator must collectively retain both surfaces.
+  int global_face_count = 0;
+  MPI_Allreduce( &local_face_count, &global_face_count, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
+  EXPECT_GT( global_face_count, 0 );
+
+  tribol::finalize();
+  MPI_Barrier( MPI_COMM_WORLD );
+}
 
 //------------------------------------------------------------------------------
 int main( int argc, char* argv[] )

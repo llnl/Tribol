@@ -789,6 +789,16 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
                     mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2],
                     mfem_data->GetMemorySpace() );
 
+      // The redecomp mesh supplies the low-order geometry used by CommonPlane.
+      // Register its mapping to the native parent boundary faces separately so
+      // later integration-point evaluation does not rely on LOR field transfer.
+      auto* first_mesh = MeshManager::getInstance().findData( mesh_ids[0] );
+      auto* second_mesh = MeshManager::getInstance().findData( mesh_ids[1] );
+      SLIC_ERROR_ROOT_IF( first_mesh == nullptr || second_mesh == nullptr,
+                          "MFEM parent-face provenance requires both registered Tribol surface meshes." );
+      first_mesh->setParentFaceData( mfem_data->GetMesh1ParentFaceData() );
+      second_mesh->setParentFaceData( mfem_data->GetMesh2ParentFaceData() );
+
       auto f_ptrs = mfem_data->GetRedecompResponsePtrs();
       registerNodalResponse( mesh_ids[0], f_ptrs[0], f_ptrs[1], f_ptrs[2] );
       registerNodalResponse( mesh_ids[1], f_ptrs[0], f_ptrs[1], f_ptrs[2] );

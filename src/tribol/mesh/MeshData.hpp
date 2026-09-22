@@ -87,6 +87,64 @@ struct MeshElemData {
   bool isValidRatePenalty( PenaltyEnforcementOptions& pen_options );  ///< True if rate penalty option is valid
 };
 
+/**
+ * @brief Non-owning views of native parent-face provenance for contact surface elements.
+ *
+ * MFEM contact may use a low-order-refined (LOR) surface for search and overlap
+ * geometry.  Each Tribol surface element then needs a documented path back to
+ * the native parent boundary face.  The arrays in this structure are indexed by
+ * the Tribol surface element identifier and remain valid until the next MFEM
+ * parallel-decomposition update.
+ */
+struct ParentFaceData {
+  /** Tolerance for validating mapped native parent reference coordinates. */
+  static constexpr RealT reference_coordinate_tolerance{ 1.e-12 };
+
+  /** Maximum supported dimension of a parent-face reference coordinate. */
+  static constexpr int max_reference_dimension{ 2 };
+
+  /** Maximum number of vertices on a supported LOR surface element. */
+  static constexpr int max_lor_face_vertices{ 4 };
+
+  /** Native parent boundary-face identifier on the owning MPI rank. */
+  Array1DView<const IndexT> m_parent_face_ids;
+
+  /** MPI rank that owns the native parent boundary face. */
+  Array1DView<const int> m_parent_face_owner_ranks;
+
+  /** Source LOR face identifier on the owning MPI rank. */
+  Array1DView<const IndexT> m_lor_face_ids;
+
+  /** MFEM geometry identifier for each LOR face. */
+  Array1DView<const int> m_lor_face_geometries;
+
+  /** Polynomial order of the native parent coordinate finite element. */
+  Array1DView<const int> m_parent_face_orders;
+
+  /** Number of vertices used by each child-to-parent reference map. */
+  Array1DView<const int> m_reference_vertex_counts;
+
+  /**
+   * Parent reference coordinates at the LOR face vertices.
+   *
+   * The second index uses vertex-major ordering with
+   * `max_reference_dimension` entries per vertex.
+   */
+  Array2DView<const RealT> m_parent_reference_vertex_coordinates;
+
+  /**
+   * @brief Return whether native parent-face provenance is available.
+   *
+   * @return true when all required provenance arrays are populated
+   */
+  TRIBOL_HOST_DEVICE bool isValid() const
+  {
+    return !m_parent_face_ids.empty() && !m_parent_face_owner_ranks.empty() && !m_lor_face_ids.empty() &&
+           !m_lor_face_geometries.empty() && !m_parent_face_orders.empty() && !m_reference_vertex_counts.empty() &&
+           !m_parent_reference_vertex_coordinates.empty();
+  }
+};
+
 class MeshData {
  public:
   /**
@@ -153,6 +211,35 @@ class MeshData {
 
     /// @overload
     TRIBOL_HOST_DEVICE const MeshElemData& getElementData() const { return m_element_data; }
+
+    /**
+     * @brief Return whether native parent-face provenance is registered.
+     *
+     * @return true when this mesh has valid parent-face provenance
+     */
+    TRIBOL_HOST_DEVICE bool hasParentFaceData() const { return m_parent_face_data.isValid(); }
+
+    /**
+     * @brief Get native parent-face provenance for this mesh.
+     *
+     * @return non-owning views of parent-face provenance arrays
+     */
+    TRIBOL_HOST_DEVICE const ParentFaceData& getParentFaceData() const { return m_parent_face_data; }
+
+    /**
+     * @brief Map a LOR face reference point to its native parent-face reference point.
+     *
+     * The mapping interpolates the stored parent reference coordinates at the
+     * LOR face vertices. Segment, triangle, and quadrilateral LOR faces are
+     * supported.
+     *
+     * @param face_id Tribol surface element identifier
+     * @param lor_reference_coordinates LOR face reference coordinates
+     * @param parent_reference_coordinates Mapped native parent-face reference coordinates
+     * @return true when the face provenance and geometry are valid
+     */
+    TRIBOL_HOST_DEVICE bool mapToParentReference( IndexT face_id, const RealT* lor_reference_coordinates,
+                                                  RealT* parent_reference_coordinates ) const;
 
     /**
      * @brief Spatial dimension of the mesh
@@ -429,6 +516,9 @@ class MeshData {
     MeshNodalData m_nodal_fields;  ///< method specific nodal fields
     MeshElemData m_element_data;   ///< method/enforcement specific element data
 
+    /** Native parent-face provenance for the contact surface elements. */
+    const ParentFaceData m_parent_face_data;
+
   };  // end class MeshData::Viewer
 
   /**
@@ -494,6 +584,13 @@ class MeshData {
    * @param allocator_id Umpire allocator ID (if built with Umpire; zero otherwise)
    */
   void updateAllocatorId( int allocator_id ) { m_allocator_id = allocator_id; }
+
+  /**
+   * @brief Register native parent-face provenance using an existing collection of views.
+   *
+   * @param parent_face_data Non-owning parent-face provenance views
+   */
+  void setParentFaceData( const ParentFaceData& parent_face_data ) { m_parent_face_data = parent_face_data; }
 
   /**
    * @brief Marker which can indicate mesh validity
@@ -673,6 +770,9 @@ class MeshData {
   MeshNodalData m_nodal_fields;  ///< method specific nodal fields
   MeshElemData m_element_data;   ///< method/enforcement specific element data
 
+  /** Non-owning native parent-face provenance registered by the MFEM interface. */
+  ParentFaceData m_parent_face_data;
+
   // Nodal field data
   MultiArrayView<const RealT> m_position;      ///< Coordinates of nodes in mesh
   MultiArrayView<const RealT> m_ref_position;  ///< Reference coordinates of nodes in mesh
@@ -804,7 +904,82 @@ TRIBOL_HOST_DEVICE inline void MeshData::Viewer::getFaceCentroid( IndexT face_id
   }
   return;
 
-}  // end MeshData::getFaceNormal()
+}  // end MeshData::Viewer::getFaceCentroid()
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE inline bool MeshData::Viewer::mapToParentReference( IndexT face_id,
+                                                                       const RealT* lor_reference_coordinates,
+                                                                       RealT* parent_reference_coordinates ) const
+{
+  if ( !hasParentFaceData() || face_id < 0 || face_id >= numberOfElements() || lor_reference_coordinates == nullptr ||
+       parent_reference_coordinates == nullptr || face_id >= m_parent_face_data.m_parent_face_ids.size() ||
+       face_id >= m_parent_face_data.m_parent_face_owner_ranks.size() ||
+       face_id >= m_parent_face_data.m_lor_face_ids.size() ||
+       face_id >= m_parent_face_data.m_lor_face_geometries.size() ||
+       face_id >= m_parent_face_data.m_parent_face_orders.size() ||
+       face_id >= m_parent_face_data.m_reference_vertex_counts.size() ||
+       face_id >= m_parent_face_data.m_parent_reference_vertex_coordinates.shape()[0] ||
+       m_parent_face_data.m_parent_reference_vertex_coordinates.shape()[1] <
+           ParentFaceData::max_lor_face_vertices * ParentFaceData::max_reference_dimension ) {
+    return false;
+  }
+
+  const int reference_dimension = spatialDimension() - 1;
+  const int number_of_vertices = m_parent_face_data.m_reference_vertex_counts[face_id];
+  const auto lor_face_geometry = static_cast<InterfaceElementType>( m_parent_face_data.m_lor_face_geometries[face_id] );
+  const RealT reference_coordinate_tolerance = ParentFaceData::reference_coordinate_tolerance;
+  const RealT first_coordinate = lor_reference_coordinates[0];
+
+  if ( first_coordinate < -reference_coordinate_tolerance || first_coordinate > 1.0 + reference_coordinate_tolerance ) {
+    return false;
+  }
+
+  RealT shape_values[ParentFaceData::max_lor_face_vertices] = { 0.0, 0.0, 0.0, 0.0 };
+  if ( lor_face_geometry == LINEAR_EDGE && number_of_vertices == 2 && reference_dimension == 1 ) {
+    shape_values[0] = 1.0 - first_coordinate;
+    shape_values[1] = first_coordinate;
+  } else if ( lor_face_geometry == LINEAR_TRIANGLE && number_of_vertices == 3 && reference_dimension == 2 ) {
+    const RealT second_coordinate = lor_reference_coordinates[1];
+    if ( second_coordinate < -reference_coordinate_tolerance ||
+         first_coordinate + second_coordinate > 1.0 + reference_coordinate_tolerance ) {
+      return false;
+    }
+    shape_values[0] = 1.0 - first_coordinate - second_coordinate;
+    shape_values[1] = first_coordinate;
+    shape_values[2] = second_coordinate;
+  } else if ( lor_face_geometry == LINEAR_QUAD && number_of_vertices == 4 && reference_dimension == 2 ) {
+    const RealT second_coordinate = lor_reference_coordinates[1];
+    if ( second_coordinate < -reference_coordinate_tolerance ||
+         second_coordinate > 1.0 + reference_coordinate_tolerance ) {
+      return false;
+    }
+    shape_values[0] = ( 1.0 - first_coordinate ) * ( 1.0 - second_coordinate );
+    shape_values[1] = first_coordinate * ( 1.0 - second_coordinate );
+    shape_values[2] = first_coordinate * second_coordinate;
+    shape_values[3] = ( 1.0 - first_coordinate ) * second_coordinate;
+  } else {
+    return false;
+  }
+
+  for ( int coordinate_component = 0; coordinate_component < reference_dimension; ++coordinate_component ) {
+    parent_reference_coordinates[coordinate_component] = 0.0;
+    for ( int vertex_index = 0; vertex_index < number_of_vertices; ++vertex_index ) {
+      const int coordinate_index = vertex_index * ParentFaceData::max_reference_dimension + coordinate_component;
+      parent_reference_coordinates[coordinate_component] +=
+          shape_values[vertex_index] *
+          m_parent_face_data.m_parent_reference_vertex_coordinates( face_id, coordinate_index );
+    }
+    if ( parent_reference_coordinates[coordinate_component] < -reference_coordinate_tolerance ||
+         parent_reference_coordinates[coordinate_component] > 1.0 + reference_coordinate_tolerance ) {
+      return false;
+    }
+  }
+  if ( lor_face_geometry == LINEAR_TRIANGLE &&
+       parent_reference_coordinates[0] + parent_reference_coordinates[1] > 1.0 + reference_coordinate_tolerance ) {
+    return false;
+  }
+  return true;
+}
 
 }  // end namespace tribol
 

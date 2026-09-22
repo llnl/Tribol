@@ -1079,6 +1079,26 @@ class MfemMeshData {
   int GetLORFactor() const { return lor_factor_; }
 
   /**
+   * @brief Get native parent-face provenance for the first Tribol surface mesh.
+   *
+   * The returned views remain valid until UpdateMfemMeshData() rebuilds the
+   * redecomp mesh.
+   *
+   * @return Parent-face provenance indexed by first-surface element identifier
+   */
+  ParentFaceData GetMesh1ParentFaceData() const;
+
+  /**
+   * @brief Get native parent-face provenance for the second Tribol surface mesh.
+   *
+   * The returned views remain valid until UpdateMfemMeshData() rebuilds the
+   * redecomp mesh.
+   *
+   * @return Parent-face provenance indexed by second-surface element identifier
+   */
+  ParentFaceData GetMesh2ParentFaceData() const;
+
+  /**
    * @brief Set the LOR factor
    *
    * @note The LOR factor corresponds to the number of LOR elements per HO element applied to each dimension on the LOR
@@ -1119,6 +1139,43 @@ class MfemMeshData {
    * @brief Creates and stores data that changes when the RedecompMesh is updated
    */
   struct UpdateData {
+    /**
+     * @brief Owning arrays for native parent-face provenance.
+     *
+     * Each array is indexed by the corresponding Tribol surface element. The
+     * reference-coordinate array uses vertex-major ordering in its second
+     * dimension.
+     */
+    struct ParentFaceArrays {
+      /** Native parent boundary-face identifier on the owning rank. */
+      Array1D<IndexT> parent_face_ids;
+
+      /** MPI rank that owns the native parent boundary face. */
+      Array1D<int> parent_face_owner_ranks;
+
+      /** Source LOR face identifier on the owning rank. */
+      Array1D<IndexT> lor_face_ids;
+
+      /** InterfaceElementType value for each LOR face. */
+      Array1D<int> lor_face_geometries;
+
+      /** Polynomial order of each native parent coordinate face. */
+      Array1D<int> parent_face_orders;
+
+      /** Number of vertices defining each child-to-parent reference map. */
+      Array1D<int> reference_vertex_counts;
+
+      /** Parent reference coordinates at the LOR face vertices. */
+      Array2D<RealT> parent_reference_vertex_coordinates;
+
+      /**
+       * @brief Create non-owning views of the provenance arrays.
+       *
+       * @return ParentFaceData containing views into this object
+       */
+      ParentFaceData GetView() const;
+    };
+
     /**
      * @brief Construct a new UpdateData object
      *
@@ -1177,6 +1234,12 @@ class MfemMeshData {
      */
     Array1D<int> elem_map_2_;
 
+    /** Parent-face provenance for the first Tribol surface mesh. */
+    ParentFaceArrays parent_face_data_1_;
+
+    /** Parent-face provenance for the second Tribol surface mesh. */
+    ParentFaceArrays parent_face_data_2_;
+
     /**
      * @brief Type of elements on the contact meshes
      */
@@ -1203,6 +1266,16 @@ class MfemMeshData {
      * registered mesh
      */
     void UpdateConnectivity( const std::set<int>& attributes_1, const std::set<int>& attributes_2 );
+
+    /**
+     * @brief Build and transfer native parent-face provenance to the redecomp mesh.
+     *
+     * @param submesh Parent-linked contact boundary submesh
+     * @param lor_mesh Optional low-order-refined contact mesh
+     * @param parent_fes Native parent coordinate finite-element space
+     */
+    void BuildParentFaceData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh,
+                              const mfem::ParFiniteElementSpace& parent_fes );
 
     /**
      * @brief Sets the number of vertices per element and the element type for the redecomp mesh
