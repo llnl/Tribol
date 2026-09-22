@@ -33,7 +33,7 @@ Dependencies flow downward only:
 - Evaluation performs no allocation after a topology or geometry rebuild has prepared storage.
 - Returned result views borrow storage owned by the contact object and remain valid until the next evaluation, geometry
   rebuild, or destruction of that object.
-- The CUDA backend owns device copies of both surfaces and owns device candidate, patch, intermediate, and result
+- Each GPU backend owns device copies of both surfaces and owns device candidate, patch, intermediate, and result
   buffers. Device views remain valid until the corresponding interaction update, geometry rebuild, or destruction.
 
 ## Lifecycle
@@ -50,23 +50,28 @@ view itself does not perform stale-use checks.
 
 ## Parallel Model
 
-- Execution policies select sequential, deterministic, OpenMP, or CUDA dispatch without changing mechanics policies.
+- Execution policies select sequential, deterministic, OpenMP, CUDA, or HIP dispatch without changing mechanics
+  policies.
 - Sequential, deterministic, and OpenMP execution support all advertised host methods. Nodal variational OpenMP uses a
-  thread-local kinematics pass, global nodal reduction, and thread-local energy-gradient pass. CUDA supports exactly
-  `Contact<DefaultMethod, search::Bvh, execution::Cuda>` and rejects other method/search tuples at compile time.
-- The CUDA tuple uploads surfaces once, constructs and queries its Morton BVH on the device, generates projected-overlap
-  patches there, evaluates all default-method physics there, and scatters fixed contributions through stable sort,
+  thread-local kinematics pass, global nodal reduction, and thread-local energy-gradient pass. CUDA and HIP support
+  exactly `Contact<DefaultMethod, search::Bvh, execution::Cuda>` and
+  `Contact<DefaultMethod, search::Bvh, execution::Hip>` and reject other method/search tuples at compile time.
+- Both device tuples upload surfaces once, construct and query a Morton BVH on the device, generate projected-overlap
+  patches there, evaluate all default-method physics there, and scatter fixed contributions through stable radix sort,
   run-length encoding, and one ordered reduction per output key. Candidate and result payloads are not staged through
   the host.
 - `evaluateDevice()` synchronizes only summary/count metadata and returns device pointers. `evaluate()` intentionally
   performs the same device evaluation and downloads host mirrors. Exact directional derivatives run on the device;
   dense Jacobian column orchestration remains host-side.
+- Shared implementation files use RAJA device lambdas and a selected RAJA resource. `DeviceBackendCuda.hpp` and
+  `DeviceBackendHip.hpp` are the only runtime-specific layers and adapt CUB or hipCUB deterministic primitives. The
+  `.cu` files are CUDA compiler entry points, not separate mechanics implementations.
 - Communication is host-side orchestration around device-capable local kernels.
 - MPI ownership and halo behavior live in adapters/assembly, not geometric kernels.
 - The MFEM adapter assigns evaluation to mortar-owning ranks, exchanges nonmortar elements only between ranks whose
   expanded spatial bounds overlap, and returns ghost residuals to their owning ranks.
-- MPI partition invariance is currently demonstrated for the default MFEM path. CUDA parity is demonstrated for the
-  complete default core `Contact` evaluation on a physical device.
+- MPI partition invariance is currently demonstrated for the default MFEM path. Each GPU backend must demonstrate
+  parity for the complete default core `Contact` evaluation on corresponding physical hardware.
 
 ## Extension Rule
 

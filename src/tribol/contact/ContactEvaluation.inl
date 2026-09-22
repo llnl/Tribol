@@ -4,7 +4,7 @@ EvaluationSummary addResidual( const ContactStateView& state, ContactResidualVie
     throw std::logic_error( "updateInteractions() must be called before contact evaluation." );
   }
   clearEvaluationWorkspace();
-  if constexpr ( std::same_as<Execution, execution::Cuda> ) {
+  if constexpr ( execution::DevicePolicy<Execution> ) {
     const auto summary = evaluateConfigured( surfaces_, state, resultOutput() );
     addResultField( result_mortar_force_, surfaces_.mortar, residual.mortar );
     addResultField( result_nonmortar_force_, surfaces_.nonmortar, residual.nonmortar );
@@ -49,21 +49,33 @@ EvaluationSummary addResidual( const ContactStateView& state, ContactResidualVie
 }
 
 [[nodiscard]] ContactResultView evaluateDevice( const ContactStateView& state = {} ) const
-  requires std::same_as<Execution, execution::Cuda>
+  requires execution::DevicePolicy<Execution>
 {
   if ( !has_interactions_ ) {
     throw std::logic_error( "updateInteractions() must be called before contact evaluation." );
   }
-  last_cuda_summary_ = execution_workspace_.evaluateDefault( options_.method, state, options_.timestep );
-  cuda_result_geometry_version_ = geometry_version_;
-  cuda_result_interaction_version_ = interaction_version_;
-  return execution_workspace_.deviceResult( last_cuda_summary_, cuda_result_geometry_version_,
-                                            cuda_result_interaction_version_ );
+  last_device_summary_ = execution_workspace_.evaluateDefault( options_.method, state, options_.timestep );
+  device_result_geometry_version_ = geometry_version_;
+  device_result_interaction_version_ = interaction_version_;
+  return execution_workspace_.deviceResult( last_device_summary_, device_result_geometry_version_,
+                                            device_result_interaction_version_ );
+}
+
+[[nodiscard]] execution::DevicePipelineView devicePipelineView() const
+  requires execution::DevicePolicy<Execution>
+{
+  return execution_workspace_.pipelineView( last_device_summary_, device_result_geometry_version_,
+                                            device_result_interaction_version_ );
 }
 
 [[nodiscard]] execution::CudaPipelineView cudaPipelineView() const
   requires std::same_as<Execution, execution::Cuda>
 {
-  return execution_workspace_.pipelineView( last_cuda_summary_, cuda_result_geometry_version_,
-                                            cuda_result_interaction_version_ );
+  return devicePipelineView();
+}
+
+[[nodiscard]] execution::HipPipelineView hipPipelineView() const
+  requires std::same_as<Execution, execution::Hip>
+{
+  return devicePipelineView();
 }

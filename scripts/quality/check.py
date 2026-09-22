@@ -14,6 +14,7 @@ from pathlib import Path
 from checks import (
     BENCHMARK_DIRECTORIES,
     DEPENDENCY_FREE_DIRECTORIES,
+    DEVICE_BACKEND_ADAPTERS,
     TEST_DIRECTORIES,
     architecture_files,
     files_in_entries,
@@ -127,7 +128,11 @@ def header_check(root: Path, strict: bool, compiler: str | None) -> int:
     if not executable:
         print("ERROR C++ compiler is unavailable" if strict else "SKIP C++ compiler is unavailable")
         return 1 if strict else 0
-    headers = [path for path in files_in_entries(root, DEPENDENCY_FREE_DIRECTORIES) if path.suffix == ".hpp"]
+    headers = [
+        path
+        for path in files_in_entries(root, DEPENDENCY_FREE_DIRECTORIES)
+        if path.suffix == ".hpp" and path.relative_to(root) not in DEVICE_BACKEND_ADAPTERS
+    ]
     with tempfile.TemporaryDirectory() as directory:
         translation_unit = Path(directory) / "header.cpp"
         for header in headers:

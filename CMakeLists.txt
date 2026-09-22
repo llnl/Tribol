@@ -77,6 +77,10 @@ if ("${PROJECT_SOURCE_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
     set(ENABLE_WARNINGS_AS_ERRORS ON CACHE BOOL "")
 endif()
 
+if(ENABLE_CUDA AND ENABLE_HIP)
+    message(FATAL_ERROR "Tribol supports one device backend per build; disable either ENABLE_CUDA or ENABLE_HIP")
+endif()
+
 include(${BLT_SOURCE_DIR}/SetupBLT.cmake)
 
 #------------------------------------------------------------------------------

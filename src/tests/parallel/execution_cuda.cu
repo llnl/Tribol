@@ -1,7 +1,11 @@
-#include "tribol/execution/CudaPenalty.hpp"
+#include "tribol/execution/DevicePenalty.hpp"
 #include "tribol/contact/Contact.hpp"
 
+#if defined( TRIBOL_TEST_USE_HIP )
+#include <hip/hip_runtime.h>
+#else
 #include <cuda_runtime.h>
+#endif
 
 #include <array>
 #include <cmath>
@@ -12,6 +16,26 @@
 // Requirements: API-003, CORE-003, DIFF-001, DIFF-002, PAR-001, PAR-006, SEARCH-001, SEARCH-003, TIME-001
 
 namespace {
+
+#if defined( TRIBOL_TEST_USE_HIP )
+using DeviceExecution = tribol::execution::Hip;
+
+bool deviceAvailable() { return tribol::execution::hipDeviceAvailable(); }
+
+bool synchronizeAndGetMemoryInfo( std::size_t* free, std::size_t* total )
+{
+  return hipDeviceSynchronize() == hipSuccess && hipMemGetInfo( free, total ) == hipSuccess;
+}
+#else
+using DeviceExecution = tribol::execution::Cuda;
+
+bool deviceAvailable() { return tribol::execution::cudaDeviceAvailable(); }
+
+bool synchronizeAndGetMemoryInfo( std::size_t* free, std::size_t* total )
+{
+  return cudaDeviceSynchronize() == cudaSuccess && cudaMemGetInfo( free, total ) == cudaSuccess;
+}
+#endif
 
 tribol::InteractionPatch makePatch( tribol::Real gap, tribol::Real measure )
 {
@@ -84,7 +108,7 @@ bool fullContactParity()
   std::array<tribol::Real, 4> nonmortar_coordinates{ 0.0, -0.1, 1.0, -0.1 };
   const tribol::SurfacePairView surfaces{ makeSegment( mortar_coordinates ), makeSegment( nonmortar_coordinates ) };
   using HostContact = tribol::Contact<>;
-  using DeviceContact = tribol::Contact<tribol::DefaultMethod, tribol::search::Bvh, tribol::execution::Cuda>;
+  using DeviceContact = tribol::Contact<tribol::DefaultMethod, tribol::search::Bvh, DeviceExecution>;
   HostContact::Options host_options;
   host_options.search.expansion = 0.2;
   host_options.method.enforcement.stiffness.value = 12.5;
@@ -187,14 +211,15 @@ bool activationAndPenetrationParity()
 {
   std::array<tribol::InteractionPatch, 1> patches{ makePatch( -0.01, 1.0 ) };
   std::array<tribol::execution::PenaltyContribution, 1> sequential{};
-  std::array<tribol::execution::PenaltyContribution, 1> cuda{};
+  std::array<tribol::execution::PenaltyContribution, 1> device_contributions{};
   tribol::constraint::GapActivationParameters activation;
   activation.residual_gap = 0.005;
   activation.gap_tolerance = 0.01;
   sequential[0] = tribol::execution::evaluatePointwisePenaltyPatch( patches[0], 12.5, activation );
-  tribol::execution::evaluatePointwisePenaltyPatches( { patches.data(), 1 }, 12.5, { cuda.data(), 1 },
-                                                      tribol::execution::Cuda{}, activation );
-  if ( sequential != cuda || std::abs( cuda[0].effective_gap - 0.005 ) > 1.0e-13 || cuda[0].pressure <= 0.0 ) {
+  tribol::execution::evaluatePointwisePenaltyPatches( { patches.data(), 1 }, 12.5, { device_contributions.data(), 1 },
+                                                      DeviceExecution{}, activation );
+  if ( sequential != device_contributions || std::abs( device_contributions[0].effective_gap - 0.005 ) > 1.0e-13 ||
+       device_contributions[0].pressure <= 0.0 ) {
     return false;
   }
 
@@ -202,7 +227,7 @@ bool activationAndPenetrationParity()
   constexpr std::array<tribol::Real, 4> nonmortar_coordinates{ 0.0, -0.1, 1.0, -0.1 };
   const tribol::SurfacePairView surfaces{ makeSegment( mortar_coordinates ), makeSegment( nonmortar_coordinates ) };
   using HostContact = tribol::Contact<>;
-  using DeviceContact = tribol::Contact<tribol::DefaultMethod, tribol::search::Bvh, tribol::execution::Cuda>;
+  using DeviceContact = tribol::Contact<tribol::DefaultMethod, tribol::search::Bvh, DeviceExecution>;
   HostContact::Options host_options;
   host_options.search.expansion = 0.2;
   host_options.method.constraint.activation.reject_excessive_penetration = true;
@@ -225,8 +250,20 @@ bool isDevicePointer( const void* pointer )
   if ( pointer == nullptr ) {
     return false;
   }
+#if defined( TRIBOL_TEST_USE_HIP )
+  hipPointerAttribute_t attributes{};
+  if ( hipPointerGetAttributes( &attributes, pointer ) != hipSuccess ) {
+    return false;
+  }
+#if HIP_VERSION_MAJOR >= 6
+  return attributes.type == hipMemoryTypeDevice;
+#else
+  return attributes.memoryType == hipMemoryTypeDevice;
+#endif
+#else
   cudaPointerAttributes attributes{};
   return cudaPointerGetAttributes( &attributes, pointer ) == cudaSuccess && attributes.type == cudaMemoryTypeDevice;
+#endif
 }
 
 bool requireDevicePointer( const char* name, const void* pointer )
@@ -234,10 +271,25 @@ bool requireDevicePointer( const char* name, const void* pointer )
   if ( isDevicePointer( pointer ) ) {
     return true;
   }
+#if defined( TRIBOL_TEST_USE_HIP )
+  hipPointerAttribute_t attributes{};
+  const auto error = pointer == nullptr ? hipErrorInvalidValue : hipPointerGetAttributes( &attributes, pointer );
+  std::cerr << name << " is not device-resident: pointer=" << pointer << " error=" << hipGetErrorString( error )
+            << " type="
+            << ( error == hipSuccess
+#if HIP_VERSION_MAJOR >= 6
+                     ? static_cast<int>( attributes.type )
+#else
+                     ? static_cast<int>( attributes.memoryType )
+#endif
+                     : -1 )
+            << '\n';
+#else
   cudaPointerAttributes attributes{};
   const auto error = pointer == nullptr ? cudaErrorInvalidValue : cudaPointerGetAttributes( &attributes, pointer );
   std::cerr << name << " is not device-resident: pointer=" << pointer << " error=" << cudaGetErrorString( error )
             << " type=" << ( error == cudaSuccess ? static_cast<int>( attributes.type ) : -1 ) << '\n';
+#endif
   return false;
 }
 
@@ -336,7 +388,7 @@ bool deviceResidentBvhAndDeterministicScatter()
 {
   SharedSegmentPair mesh( 64 );
   using HostContact = tribol::Contact<tribol::DefaultMethod, tribol::search::Bvh>;
-  using DeviceContact = tribol::Contact<tribol::DefaultMethod, tribol::search::Bvh, tribol::execution::Cuda>;
+  using DeviceContact = tribol::Contact<tribol::DefaultMethod, tribol::search::Bvh, DeviceExecution>;
   HostContact::Options host_options;
   DeviceContact::Options device_options;
   host_options.search.expansion = 0.2;
@@ -363,7 +415,7 @@ bool deviceResidentBvhAndDeterministicScatter()
   }
 
   const auto device_result = device.evaluateDevice();
-  const auto pipeline = device.cudaPipelineView();
+  const auto pipeline = device.devicePipelineView();
   if ( !requireDevicePointer( "mortar coordinates", pipeline.surfaces.mortar.coordinates.values.data() ) ||
        !requireDevicePointer( "nonmortar connectivity", pipeline.surfaces.nonmortar.connectivity.data() ) ||
        !requireDevicePointer( "candidate pairs", pipeline.candidates.data() ) ||
@@ -400,7 +452,7 @@ bool suppliedInteractionsGeometryAndAllocationContract()
 {
   RepeatedQuadrilateralPair mesh;
   using HostContact = tribol::Contact<tribol::DefaultMethod, tribol::search::Bvh>;
-  using DeviceContact = tribol::Contact<tribol::DefaultMethod, tribol::search::Bvh, tribol::execution::Cuda>;
+  using DeviceContact = tribol::Contact<tribol::DefaultMethod, tribol::search::Bvh, DeviceExecution>;
   HostContact::Options host_options;
   DeviceContact::Options device_options;
   host_options.method.enforcement.stiffness.value = 4.5;
@@ -413,34 +465,34 @@ bool suppliedInteractionsGeometryAndAllocationContract()
   device.setInteractions( supplied );
   if ( host.interactions().size() != RepeatedQuadrilateralPair::elements ||
        device.interactions().size() != RepeatedQuadrilateralPair::elements ) {
-    std::cerr << "supplied CUDA candidates were not canonicalized\n";
+    std::cerr << "supplied device candidates were not canonicalized\n";
     return false;
   }
 
   const auto first_device_result = device.evaluateDevice();
-  const auto initial_pipeline = device.cudaPipelineView();
+  const auto initial_pipeline = device.devicePipelineView();
   const void* mortar_coordinates = initial_pipeline.surfaces.mortar.coordinates.values.data();
   const void* candidates = initial_pipeline.candidates.data();
   const void* patches = initial_pipeline.patches.data();
   const void* mortar_force = first_device_result.mortar_force.values.data();
   std::size_t free_before{};
   std::size_t total_before{};
-  if ( cudaDeviceSynchronize() != cudaSuccess || cudaMemGetInfo( &free_before, &total_before ) != cudaSuccess ) {
-    std::cerr << "could not establish the CUDA allocation baseline\n";
+  if ( !synchronizeAndGetMemoryInfo( &free_before, &total_before ) ) {
+    std::cerr << "could not establish the device allocation baseline\n";
     return false;
   }
   for ( int repeat = 0; repeat < 8; ++repeat ) {
     const auto repeated = device.evaluateDevice();
     if ( repeated.mortar_force.values.data() != mortar_force ) {
-      std::cerr << "CUDA result storage moved during evaluation\n";
+      std::cerr << "device result storage moved during evaluation\n";
       return false;
     }
   }
   std::size_t free_after{};
   std::size_t total_after{};
-  if ( cudaDeviceSynchronize() != cudaSuccess || cudaMemGetInfo( &free_after, &total_after ) != cudaSuccess ||
-       free_before != free_after || total_before != total_after ) {
-    std::cerr << "CUDA evaluation changed the prepared device allocation footprint\n";
+  if ( !synchronizeAndGetMemoryInfo( &free_after, &total_after ) || free_before != free_after ||
+       total_before != total_after ) {
+    std::cerr << "device evaluation changed the prepared allocation footprint\n";
     return false;
   }
 
@@ -449,7 +501,7 @@ bool suppliedInteractionsGeometryAndAllocationContract()
   if ( !arraysMatch( host_result.mortar_force.values, downloaded.mortar_force.values, 5.0e-12 ) ||
        !arraysMatch( host_result.nonmortar_force.values, downloaded.nonmortar_force.values, 5.0e-12 ) ||
        std::abs( host_result.summary.energy - downloaded.summary.energy ) > 5.0e-12 ) {
-    std::cerr << "supplied-pair 3D CUDA parity failed\n";
+    std::cerr << "supplied-pair 3D device parity failed\n";
     return false;
   }
 
@@ -477,7 +529,7 @@ bool suppliedInteractionsGeometryAndAllocationContract()
            std::abs( nonmortar_field( node, component ) -
                      ( initial_nonmortar_residual[offset] + downloaded.nonmortar_force( node, component ) ) ) >
                5.0e-12 ) {
-        std::cerr << "CUDA addResidual did not preserve component-major accumulation\n";
+        std::cerr << "device addResidual did not preserve component-major accumulation\n";
         return false;
       }
     }
@@ -488,13 +540,13 @@ bool suppliedInteractionsGeometryAndAllocationContract()
   }
   host.updateGeometry( mesh.view() );
   device.updateGeometry( mesh.view() );
-  const auto updated_pipeline = device.cudaPipelineView();
+  const auto updated_pipeline = device.devicePipelineView();
   if ( updated_pipeline.surfaces.mortar.coordinates.values.data() != mortar_coordinates ||
        updated_pipeline.candidates.data() != candidates || updated_pipeline.patches.data() != patches ||
        device.geometryVersion() == device.interactionGeometryVersion() ||
        updated_pipeline.result.geometry_version == device.geometryVersion() ||
        device.interactions().size() != RepeatedQuadrilateralPair::elements ) {
-    std::cerr << "CUDA geometry update did not preserve resident topology and candidates\n";
+    std::cerr << "device geometry update did not preserve resident topology and candidates\n";
     return false;
   }
   const auto updated_host = host.evaluate();
@@ -507,7 +559,7 @@ bool suppliedInteractionsGeometryAndAllocationContract()
 bool timestepVoteParity()
 {
   using HostContact = tribol::Contact<tribol::DefaultMethod, tribol::search::Bvh>;
-  using DeviceContact = tribol::Contact<tribol::DefaultMethod, tribol::search::Bvh, tribol::execution::Cuda>;
+  using DeviceContact = tribol::Contact<tribol::DefaultMethod, tribol::search::Bvh, DeviceExecution>;
   constexpr std::array<tribol::Index, 2> mortar_connectivity{ 1, 0 };
   constexpr std::array<tribol::Index, 2> nonmortar_connectivity{ 0, 1 };
   constexpr std::array<tribol::Real, 4> nonmortar_coordinates{ 0.0, 0.0, 1.0, 0.0 };
@@ -548,7 +600,7 @@ bool timestepVoteParity()
     const auto host_vote = host.evaluate( state ).summary.timestep_vote;
     const auto device_vote = device.evaluateDevice( state ).summary.timestep_vote;
     if ( std::abs( host_vote - vote_case.expected ) > 1.0e-10 || std::abs( host_vote - device_vote ) > 1.0e-12 ) {
-      std::cerr << "CUDA timestep vote mismatch: host=" << host_vote << " device=" << device_vote << '\n';
+      std::cerr << "device timestep vote mismatch: host=" << host_vote << " device=" << device_vote << '\n';
       return false;
     }
   }
@@ -570,46 +622,47 @@ bool timestepVoteParity()
 
 int main()
 {
-  if ( !tribol::execution::cudaDeviceAvailable() ) {
-    std::cerr << "A CUDA-enabled Tribol build requires a visible device for PAR-001.\n";
+  if ( !deviceAvailable() ) {
+    std::cerr << "A device-enabled Tribol build requires a visible device for PAR-001.\n";
     return 1;
   }
   std::array<tribol::InteractionPatch, 4> patches{ makePatch( 0.1, 1.0 ), makePatch( 0.2, 0.5 ), makePatch( -0.1, 2.0 ),
                                                    makePatch( 0.05, 3.0 ) };
   std::array<tribol::execution::PenaltyContribution, 4> sequential{};
-  std::array<tribol::execution::PenaltyContribution, 4> cuda{};
+  std::array<tribol::execution::PenaltyContribution, 4> device_contributions{};
   tribol::execution::evaluatePenaltyPatches( { patches.data(), 4 }, 12.5, { sequential.data(), 4 },
                                              tribol::execution::Sequential{} );
-  tribol::execution::evaluatePenaltyPatches( { patches.data(), 4 }, 12.5, { cuda.data(), 4 },
-                                             tribol::execution::Cuda{} );
+  tribol::execution::evaluatePenaltyPatches( { patches.data(), 4 }, 12.5, { device_contributions.data(), 4 },
+                                             DeviceExecution{} );
   for ( std::size_t patch = 0; patch < patches.size(); ++patch ) {
-    if ( std::abs( sequential[patch].energy - cuda[patch].energy ) > 1.0e-13 ) {
+    if ( std::abs( sequential[patch].energy - device_contributions[patch].energy ) > 1.0e-13 ) {
       return 1;
     }
     for ( int component = 0; component < 3; ++component ) {
-      if ( std::abs( sequential[patch].mortar_force[component] - cuda[patch].mortar_force[component] ) > 1.0e-13 ) {
+      if ( std::abs( sequential[patch].mortar_force[component] - device_contributions[patch].mortar_force[component] ) >
+           1.0e-13 ) {
         return 1;
       }
     }
   }
   if ( !fullContactParity() ) {
-    std::cerr << "full CUDA contact parity failed\n";
+    std::cerr << "full device contact parity failed\n";
     return 1;
   }
   if ( !activationAndPenetrationParity() ) {
-    std::cerr << "CUDA activation/penetration parity failed\n";
+    std::cerr << "device activation/penetration parity failed\n";
     return 1;
   }
   if ( !deviceResidentBvhAndDeterministicScatter() ) {
-    std::cerr << "CUDA device-resident BVH or deterministic scatter failed\n";
+    std::cerr << "device-resident BVH or deterministic scatter failed\n";
     return 1;
   }
   if ( !suppliedInteractionsGeometryAndAllocationContract() ) {
-    std::cerr << "CUDA supplied-pair, geometry-update, or allocation contract failed\n";
+    std::cerr << "device supplied-pair, geometry-update, or allocation contract failed\n";
     return 1;
   }
   if ( !timestepVoteParity() ) {
-    std::cerr << "CUDA timestep-vote parity failed\n";
+    std::cerr << "device timestep-vote parity failed\n";
     return 1;
   }
   return 0;

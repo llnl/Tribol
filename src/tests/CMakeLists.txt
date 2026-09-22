@@ -223,6 +223,22 @@ if(ENABLE_CUDA)
     COMMAND tribol_execution_cuda_test)
 endif()
 
+if(ENABLE_HIP)
+  set_source_files_properties(parallel/execution_cuda.cu PROPERTIES LANGUAGE CXX)
+  blt_add_executable(
+    NAME tribol_execution_hip_test
+    SOURCES parallel/execution_cuda.cu
+    OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+    DEPENDS_ON tribol::hip_execution ${tribol_device_depends}
+    FOLDER tribol/parallel)
+  target_compile_features(tribol_execution_hip_test PRIVATE cxx_std_20)
+  target_compile_definitions(tribol_execution_hip_test PRIVATE TRIBOL_TEST_USE_HIP)
+
+  blt_add_test(
+    NAME tribol_execution_hip
+    COMMAND tribol_execution_hip_test)
+endif()
+
 blt_add_executable(
   NAME tribol_mfem_adapter_test
   SOURCES adapters/mfem_contact.cpp

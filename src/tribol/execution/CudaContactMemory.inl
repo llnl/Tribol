@@ -2,7 +2,7 @@ template <typename T>
 class DeviceBuffer {
  public:
   DeviceBuffer() = default;
-  ~DeviceBuffer() { cudaFree( data_ ); }
+  ~DeviceBuffer() { ActiveDeviceBackend::deallocate( data_ ); }
 
   DeviceBuffer( const DeviceBuffer& ) = delete;
   DeviceBuffer& operator=( const DeviceBuffer& ) = delete;
@@ -12,9 +12,8 @@ class DeviceBuffer {
     if ( capacity <= capacity_ ) {
       return;
     }
-    T* replacement{};
-    requireCuda( cudaMalloc( &replacement, capacity * sizeof( T ) ), "cudaMalloc device workspace" );
-    cudaFree( data_ );
+    T* replacement = ActiveDeviceBackend::template allocate<T>( capacity );
+    ActiveDeviceBackend::deallocate( data_ );
     data_ = replacement;
     capacity_ = capacity;
   }
@@ -47,11 +46,10 @@ class DeviceBuffer {
 template <typename T>
 void copyToDevice( DeviceBuffer<T>& destination, ArrayView<const T> source, const char* operation )
 {
+  static_cast<void>( operation );
   destination.resize( static_cast<std::size_t>( source.size() ) );
   if ( !source.empty() ) {
-    requireCuda(
-        cudaMemcpy( destination.data(), source.data(), destination.size() * sizeof( T ), cudaMemcpyHostToDevice ),
-        operation );
+    ActiveDeviceBackend::copy( destination.data(), source.data(), destination.size() * sizeof( T ) );
   }
 }
 
@@ -62,8 +60,7 @@ void copyToHost( ArrayView<T> destination, const DeviceBuffer<T>& source, const 
     throw std::invalid_argument( std::string( operation ) + " has a mismatched destination size." );
   }
   if ( !destination.empty() ) {
-    requireCuda( cudaMemcpy( destination.data(), source.data(), source.size() * sizeof( T ), cudaMemcpyDeviceToHost ),
-                 operation );
+    ActiveDeviceBackend::copy( destination.data(), source.data(), source.size() * sizeof( T ) );
   }
 }
 
@@ -95,13 +92,12 @@ struct DeviceSurfaceStorage {
   {
     if ( source.dimension != dimension || source.numberOfNodes() != nodes || source.numberOfElements() != elements ||
          source.coordinates.values.size() != static_cast<Index>( coordinates.size() ) ) {
-      throw std::invalid_argument( "CUDA geometry update does not match the resident surface topology." );
+      throw std::invalid_argument( "Device geometry update does not match the resident surface topology." );
     }
     coordinate_layout = source.coordinates.layout;
     if ( !source.coordinates.values.empty() ) {
-      requireCuda( cudaMemcpy( coordinates.data(), source.coordinates.values.data(),
-                               coordinates.size() * sizeof( Real ), cudaMemcpyHostToDevice ),
-                   "update device surface coordinates" );
+      ActiveDeviceBackend::copy( coordinates.data(), source.coordinates.values.data(),
+                                 coordinates.size() * sizeof( Real ) );
     }
   }
 
@@ -140,14 +136,13 @@ struct DeviceStateStorage {
   {
     ContactStateView result;
     if ( need_velocity ) {
-      requireField( state.mortar_velocity, surfaces.mortar, "CUDA timestep voting requires mortar velocity." );
-      requireField( state.nonmortar_velocity, surfaces.nonmortar, "CUDA timestep voting requires nonmortar velocity." );
-      requireCuda( cudaMemcpy( mortar_velocity.data(), state.mortar_velocity.values.data(),
-                               mortar_velocity.size() * sizeof( Real ), cudaMemcpyHostToDevice ),
-                   "copy mortar velocity to device" );
-      requireCuda( cudaMemcpy( nonmortar_velocity.data(), state.nonmortar_velocity.values.data(),
-                               nonmortar_velocity.size() * sizeof( Real ), cudaMemcpyHostToDevice ),
-                   "copy nonmortar velocity to device" );
+      requireField( state.mortar_velocity, surfaces.mortar, "Device timestep voting requires mortar velocity." );
+      requireField( state.nonmortar_velocity, surfaces.nonmortar,
+                    "Device timestep voting requires nonmortar velocity." );
+      ActiveDeviceBackend::copy( mortar_velocity.data(), state.mortar_velocity.values.data(),
+                                 mortar_velocity.size() * sizeof( Real ) );
+      ActiveDeviceBackend::copy( nonmortar_velocity.data(), state.nonmortar_velocity.values.data(),
+                                 nonmortar_velocity.size() * sizeof( Real ) );
       result.mortar_velocity = { { mortar_velocity.data(), static_cast<Index>( mortar_velocity.size() ) },
                                  surfaces.mortar.numberOfNodes(),
                                  surfaces.mortar.dimension,
@@ -159,15 +154,13 @@ struct DeviceStateStorage {
     }
     if ( need_thickness ) {
       requireArray( state.mortar_element_thickness, surfaces.mortar.numberOfElements(),
-                    "CUDA contact requires mortar element thickness." );
+                    "Device contact requires mortar element thickness." );
       requireArray( state.nonmortar_element_thickness, surfaces.nonmortar.numberOfElements(),
-                    "CUDA contact requires nonmortar element thickness." );
-      requireCuda( cudaMemcpy( mortar_thickness.data(), state.mortar_element_thickness.data(),
-                               mortar_thickness.size() * sizeof( Real ), cudaMemcpyHostToDevice ),
-                   "copy mortar thickness to device" );
-      requireCuda( cudaMemcpy( nonmortar_thickness.data(), state.nonmortar_element_thickness.data(),
-                               nonmortar_thickness.size() * sizeof( Real ), cudaMemcpyHostToDevice ),
-                   "copy nonmortar thickness to device" );
+                    "Device contact requires nonmortar element thickness." );
+      ActiveDeviceBackend::copy( mortar_thickness.data(), state.mortar_element_thickness.data(),
+                                 mortar_thickness.size() * sizeof( Real ) );
+      ActiveDeviceBackend::copy( nonmortar_thickness.data(), state.nonmortar_element_thickness.data(),
+                                 nonmortar_thickness.size() * sizeof( Real ) );
       result.mortar_element_thickness = { mortar_thickness.data(), static_cast<Index>( mortar_thickness.size() ) };
       result.nonmortar_element_thickness = { nonmortar_thickness.data(),
                                              static_cast<Index>( nonmortar_thickness.size() ) };

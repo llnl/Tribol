@@ -23,6 +23,21 @@ if(ENABLE_CUDA)
             TRIBOL_BENCHMARK_IMPLEMENTATION_LABEL="rewritten-cuda")
 endif()
 
+if(ENABLE_HIP)
+  blt_add_executable(
+    NAME tribol_rewritten_hip_benchmark
+    SOURCES driver/RewrittenDriver.cpp
+    OUTPUT_DIR ${CMAKE_BINARY_DIR}/benchmarks
+    DEPENDS_ON tribol::hip_execution
+    FOLDER tribol/benchmarks)
+  target_include_directories(tribol_rewritten_hip_benchmark PRIVATE driver)
+  target_compile_features(tribol_rewritten_hip_benchmark PRIVATE cxx_std_20)
+  target_compile_definitions(
+    tribol_rewritten_hip_benchmark
+    PRIVATE TRIBOL_BENCHMARK_USE_HIP
+            TRIBOL_BENCHMARK_IMPLEMENTATION_LABEL="rewritten-hip")
+endif()
+
 if(TRIBOL_ENABLE_TESTS)
   blt_add_test(
     NAME tribol_benchmark_smoke

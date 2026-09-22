@@ -16,9 +16,10 @@ git diff --check
 ```
 
 `custom` checks dependency direction, forbidden named-method declarations, file-size limits, install/export manifests,
-requirement evidence, and documentation links. `spec` compiles generated assertions for every advertised method variant
-and execution policy. `format` checks rewrite sources, benchmark adapters, and tests. `headers` compiles each
-dependency-free public header in isolation.
+requirement evidence, documentation links, and device-backend isolation. Shared device files may use RAJA but may not
+contain CUDA/HIP runtime APIs, CUB/hipCUB calls, launch syntax, or runtime headers. `spec` compiles generated assertions
+for every advertised method variant and execution policy. `format` checks rewrite sources, benchmark adapters, and
+tests. `headers` compiles each dependency-free public header in isolation.
 
 ## Strict Static Tools
 
@@ -37,6 +38,7 @@ The CI workflow runs the Python unit tests, manifest validator, and strict quali
 - Run `tribol_install_consumer` after building installable targets.
 - Run `tribol_mfem_adapter_smoke`, `tribol_mfem_adapter_2rank`, and `tribol_mfem_adapter_4rank` for MFEM/MPI changes.
 - Run `tribol_execution_cuda` on a physical CUDA device for CUDA changes.
+- Run `tribol_execution_hip` on a physical AMD GPU with the matching ROCm toolchain for HIP changes.
 - Run `python3 scripts/benchmarks/compare.py --suite smoke --reference-dir <build-or-install>` for cross-version changes.
 
 Unavailable hardware is an unverified requirement, not a passing test.

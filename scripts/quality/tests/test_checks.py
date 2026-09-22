@@ -9,8 +9,10 @@ SCRIPT_DIRECTORY = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(SCRIPT_DIRECTORY))
 
 from checks import (
+    SHARED_DEVICE_FILES,
     check_benchmark_contract,
     check_dependency_boundaries,
+    check_device_backend_isolation,
     check_install_contract,
     check_markdown_links,
     check_named_method_classes,
@@ -40,6 +42,14 @@ class QualityChecksTest(unittest.TestCase):
             (design / "target.md").write_text("# Target\n", encoding="utf-8")
             (design / "index.md").write_text("[target](target.md) [web](https://example.com)\n", encoding="utf-8")
             self.assertEqual(check_markdown_links(root), [])
+
+    def test_device_backend_tokens_are_restricted_to_adapters(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            shared = root / "src/tribol/execution/CudaContactMemory.inl"
+            shared.parent.mkdir(parents=True)
+            shared.write_text("cudaMemcpy(destination, source, bytes);\n", encoding="utf-8")
+            self.assertEqual(len(check_device_backend_isolation(root)), len(SHARED_DEVICE_FILES))
 
     def test_missing_requirement_annotation_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -17,9 +17,9 @@ adapter against a supplied Tribol installation or a fresh checkout of upstream `
 | Dimensions | 2D and 3D as listed per tuple | Other dimensions |
 | Surface topology | Linear segments, triangles, and quadrilaterals | Volume contact elements |
 | High order | MFEM boundary tessellation into linear subelements | Native high-order kernels or exact curved overlap |
-| Search | `CartesianProduct`, `Grid`, `Bvh`; absolute/relative inflation; pointwise self-contact filtering and penetration rejection; rank-box distributed MFEM broad phase; device BVH for the CUDA default tuple | Other device search policies |
+| Search | `CartesianProduct`, `Grid`, `Bvh`; absolute/relative inflation; pointwise self-contact filtering and penetration rejection; rank-box distributed MFEM broad phase; device BVH for CUDA/HIP default tuples | Other device search policies |
 | Host execution | `Sequential`, reproducible `Deterministic`, and two-pass, thread-local `OpenMP` for all manifest tuples | Other host runtimes |
-| Device execution | Device-resident `Contact<DefaultMethod, search::Bvh, execution::Cuda>` with BVH search, projected-overlap generation, physics, timestep voting, exact directional derivatives, and deterministic scatter | Other policy tuples, other CUDA search policies, HIP, GPU-aware MPI |
+| Device execution | Device-resident `Contact<DefaultMethod, search::Bvh, execution::Cuda>` and `Contact<DefaultMethod, search::Bvh, execution::Hip>` with BVH search, projected-overlap generation, physics, timestep voting, exact directional derivatives, and deterministic scatter | Other policy tuples, other device search policies, GPU-aware MPI |
 | Differentiation | In-tree nested-forward `Exact` energy gradients, directional Hessian actions, state actions, and assembled Jacobians on frozen candidates | Enzyme and finite differences as production backends |
 | MPI | Distributed MFEM ownership/ghost exchange, tested at 1/2/4 ranks | Raw-array MPI |
 | Host adapters | Borrowed arrays and MFEM `ParMesh`/true-DOF residual mapping | Other host frameworks |
@@ -46,18 +46,24 @@ evaluation and summary production are collective operations. `updateGeometry()` 
 for frozen-neighbor steps, while collective `rebuildGeometry()` recomputes rank neighbors after larger motion and
 invalidates candidate pairs until `updateInteractions()` is called.
 
-## CUDA Implementation Note
+## Device Implementation Note
 
-CUDA dispatch is accepted only for `Contact<DefaultMethod, search::Bvh, execution::Cuda>`. Construction uploads mesh
-coordinates and topology. `updateInteractions()` builds and queries a Morton-ordered BVH on the device, canonicalizes
+CUDA and HIP dispatch are accepted only for their `Contact<DefaultMethod, search::Bvh, Execution>` tuples. Construction
+uploads mesh coordinates and topology. `updateInteractions()` builds and queries a Morton-ordered BVH on the device, canonicalizes
 candidate pairs, and sizes every interaction-dependent workspace. Evaluation then generates projected-overlap patches,
 computes contact physics and timestep votes, and performs a stable radix-sort/run-reduction scatter without device
 allocation. Meshes, candidates, patches, intermediates, and result payloads remain device-resident. Only small summary
 metadata is synchronized to the host by `evaluateDevice()`; `evaluate()` is the explicit host-download convenience.
-The CUDA BVH uses one element per leaf; `Bvh::Parameters::leaf_size` remains a host-BVH tuning parameter and does not
-change CUDA candidate semantics.
-The CUDA conformance test checks 2D and 3D parity, pointer residency and stability, supplied interactions, frozen
-geometry updates, timestep votes, exact derivatives, and bitwise-repeatable shared-node scatter on a physical device.
+The device BVH uses one element per leaf; `Bvh::Parameters::leaf_size` remains a host-BVH tuning parameter and does not
+change device candidate semantics. One parameterized conformance source builds as `tribol_execution_cuda` and
+`tribol_execution_hip`; each executable checks 2D and 3D parity, pointer residency and stability, supplied interactions,
+frozen geometry updates, timestep votes, exact derivatives, and bitwise-repeatable shared-node scatter on physical
+hardware for that backend.
+
+The algorithms are shared RAJA-dispatched kernels. Thin CUDA and HIP adapters own resource creation and CUB/hipCUB
+deterministic primitives. CUDA `.cu` files exist only so CMake invokes the CUDA compiler; HIP uses the ROCm C++ compiler.
+An AMD/ROCm runtime test is required to validate a HIP build; successful compilation on non-AMD hardware is not runtime
+evidence.
 
 Exact directional coordinate-derivative physics executes on the device. Dense Jacobian assembly still orchestrates
 one device directional action per column from the host and stores the assembled matrix in host-owned storage.

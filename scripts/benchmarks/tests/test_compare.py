@@ -134,6 +134,29 @@ class BenchmarkOrchestrationTest(unittest.TestCase):
             self.assertIn("-DCMAKE_CUDA_ARCHITECTURES=86", arguments)
             self.assertIn("-DCUDAToolkit_ROOT=/opt/cuda", arguments)
 
+    def test_hip_reference_inherits_device_toolchain(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            build = Path(directory)
+            (build / "CMakeCache.txt").write_text(
+                "CMAKE_CXX_COMPILER:FILEPATH=/opt/rocm/bin/hipcc\n"
+                "CMAKE_HIP_ARCHITECTURES:STRING=gfx90a\n"
+                "ROCM_PATH:PATH=/opt/rocm\n"
+                "RAJA_DIR:PATH=/opt/raja/lib/cmake/raja\n"
+                "hipcub_DIR:PATH=/opt/rocm/lib/cmake/hipcub\n",
+                encoding="utf-8",
+            )
+            arguments = inherited_reference_arguments(build, "hip")
+            self.assertIn("-DCMAKE_CXX_COMPILER=/opt/rocm/bin/hipcc", arguments)
+            self.assertIn("-DCMAKE_HIP_ARCHITECTURES=gfx90a", arguments)
+            self.assertIn("-DROCM_PATH=/opt/rocm", arguments)
+            self.assertIn("-DRAJA_DIR=/opt/raja/lib/cmake/raja", arguments)
+            self.assertIn("-Dhipcub_DIR=/opt/rocm/lib/cmake/hipcub", arguments)
+
+            driver_arguments = inherited_reference_driver_arguments(build, "hip")
+            self.assertIn("-DCMAKE_CXX_COMPILER=/opt/rocm/bin/hipcc", driver_arguments)
+            self.assertIn("-DCMAKE_HIP_ARCHITECTURES=gfx90a", driver_arguments)
+            self.assertIn("-DROCM_PATH=/opt/rocm", driver_arguments)
+
     def test_cuda_reference_source_compatibility_rejects_unknown_source(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory)

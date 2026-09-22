@@ -32,7 +32,7 @@ void applyDerivative( const ContactStateView& state, ContactLinearizationDirecti
   if ( !has_interactions_ ) {
     throw std::logic_error( "updateInteractions() must be called before contact linearization." );
   }
-  if constexpr ( std::same_as<Execution, execution::Cuda> ) {
+  if constexpr ( execution::DevicePolicy<Execution> ) {
     requireDirection( direction.coordinates );
     execution_workspace_.applyDefaultCoordinateDerivative( options_.method, state, direction.coordinates, derivative );
     return;
@@ -175,9 +175,9 @@ void applyDerivative( const ContactStateView& state, ContactLinearizationDirecti
 [[nodiscard]] const Options& options() const { return options_; }
 [[nodiscard]] ArrayView<const ElementPair> interactions() const
 {
-  if constexpr ( std::same_as<Execution, execution::Cuda> ) {
-    execution_workspace_.downloadCandidates( cuda_candidate_mirror_ );
-    return { cuda_candidate_mirror_.data(), static_cast<Index>( cuda_candidate_mirror_.size() ) };
+  if constexpr ( execution::DevicePolicy<Execution> ) {
+    execution_workspace_.downloadCandidates( device_candidate_mirror_ );
+    return { device_candidate_mirror_.data(), static_cast<Index>( device_candidate_mirror_.size() ) };
   } else {
     return candidates_.view();
   }

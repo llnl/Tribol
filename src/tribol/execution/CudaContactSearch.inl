@@ -34,8 +34,8 @@ TRIBOL_HOST_DEVICE DeviceBounds emptyBounds()
   return bounds;
 }
 
-__device__ DeviceBounds elementBounds( const SurfaceMeshView& mesh, Index element, Real expansion,
-                                       Real proximity_scale )
+TRIBOL_HOST_DEVICE DeviceBounds elementBounds( const SurfaceMeshView& mesh, Index element, Real expansion,
+                                               Real proximity_scale )
 {
   DeviceBounds bounds = emptyBounds();
   const Index begin = mesh.element_offsets[element];
@@ -62,7 +62,7 @@ __device__ DeviceBounds elementBounds( const SurfaceMeshView& mesh, Index elemen
   return bounds;
 }
 
-__device__ bool overlaps( const DeviceBounds& left, const DeviceBounds& right, int dimension )
+TRIBOL_HOST_DEVICE bool overlaps( const DeviceBounds& left, const DeviceBounds& right, int dimension )
 {
   for ( int component = 0; component < dimension; ++component ) {
     if ( left.maximum[component] < right.minimum[component] || right.maximum[component] < left.minimum[component] ) {
@@ -72,15 +72,15 @@ __device__ bool overlaps( const DeviceBounds& left, const DeviceBounds& right, i
   return true;
 }
 
-__global__ void buildBoundsKernel( SurfaceMeshView mesh, Real expansion, Real proximity_scale, DeviceBounds* bounds )
+TRIBOL_HOST_DEVICE void buildBounds( Index element, SurfaceMeshView mesh, Real expansion, Real proximity_scale,
+                                     DeviceBounds* bounds )
 {
-  const Index element = static_cast<Index>( blockIdx.x * blockDim.x + threadIdx.x );
   if ( element < mesh.numberOfElements() ) {
     bounds[element] = elementBounds( mesh, element, expansion, proximity_scale );
   }
 }
 
-__device__ std::uint32_t expandMortonBits( std::uint32_t value )
+TRIBOL_HOST_DEVICE std::uint32_t expandMortonBits( std::uint32_t value )
 {
   value = ( value * 0x00010001u ) & 0xFF0000FFu;
   value = ( value * 0x00000101u ) & 0x0F00F00Fu;
@@ -89,10 +89,9 @@ __device__ std::uint32_t expandMortonBits( std::uint32_t value )
   return value;
 }
 
-__global__ void mortonKernel( const DeviceBounds* bounds, Index count, const DeviceBounds* global_bounds,
-                              std::uint32_t* keys, Index* elements )
+TRIBOL_HOST_DEVICE void assignMortonKey( Index element, const DeviceBounds* bounds, Index count,
+                                         const DeviceBounds* global_bounds, std::uint32_t* keys, Index* elements )
 {
-  const Index element = static_cast<Index>( blockIdx.x * blockDim.x + threadIdx.x );
   if ( element >= count ) {
     return;
   }
@@ -109,19 +108,18 @@ __global__ void mortonKernel( const DeviceBounds* bounds, Index count, const Dev
   elements[element] = element;
 }
 
-__global__ void initializeLeavesKernel( const DeviceBounds* element_bounds, const Index* order, Index count,
+TRIBOL_HOST_DEVICE void initializeLeaf( Index leaf, const DeviceBounds* element_bounds, const Index* order, Index count,
                                         DeviceBvhNode* nodes )
 {
-  const Index leaf = static_cast<Index>( blockIdx.x * blockDim.x + threadIdx.x );
   if ( leaf < count ) {
     const Index element = order[leaf];
     nodes[leaf] = { .bounds = element_bounds[element], .element = element };
   }
 }
 
-__global__ void buildBvhLevelKernel( DeviceBvhNode* nodes, Index child_offset, Index child_count, Index parent_offset )
+TRIBOL_HOST_DEVICE void buildBvhNode( Index parent, DeviceBvhNode* nodes, Index child_offset, Index child_count,
+                                      Index parent_offset )
 {
-  const Index parent = static_cast<Index>( blockIdx.x * blockDim.x + threadIdx.x );
   const Index first = 2 * parent;
   if ( first >= child_count ) {
     return;
@@ -136,7 +134,7 @@ __global__ void buildBvhLevelKernel( DeviceBvhNode* nodes, Index child_offset, I
   nodes[parent_offset + parent] = node;
 }
 
-__device__ bool sharesNode( const SurfaceMeshView& mesh, Index left_element, Index right_element )
+TRIBOL_HOST_DEVICE bool sharesNode( const SurfaceMeshView& mesh, Index left_element, Index right_element )
 {
   const Index left_begin = mesh.element_offsets[left_element];
   const Index left_end = mesh.element_offsets[left_element + 1];
@@ -153,9 +151,9 @@ __device__ bool sharesNode( const SurfaceMeshView& mesh, Index left_element, Ind
 }
 
 template <bool Fill>
-__device__ Index traverseBvh( const DeviceBvhNode* nodes, Index root, const DeviceBounds& query,
-                              const SurfacePairView& surfaces, Index nonmortar, bool self_contact,
-                              bool exclude_adjacent, ElementPair* output )
+TRIBOL_HOST_DEVICE Index traverseBvh( const DeviceBvhNode* nodes, Index root, const DeviceBounds& query,
+                                      const SurfacePairView& surfaces, Index nonmortar, bool self_contact,
+                                      bool exclude_adjacent, ElementPair* output )
 {
   Index count{};
   Index stack[64];
@@ -188,10 +186,10 @@ __device__ Index traverseBvh( const DeviceBvhNode* nodes, Index root, const Devi
   return count;
 }
 
-__global__ void countCandidatesKernel( SurfacePairView surfaces, const DeviceBvhNode* nodes, Index root, Real expansion,
-                                       Real proximity_scale, bool self_contact, bool exclude_adjacent, Index* counts )
+TRIBOL_HOST_DEVICE void countCandidates( Index nonmortar, SurfacePairView surfaces, const DeviceBvhNode* nodes,
+                                         Index root, Real expansion, Real proximity_scale, bool self_contact,
+                                         bool exclude_adjacent, Index* counts )
 {
-  const Index nonmortar = static_cast<Index>( blockIdx.x * blockDim.x + threadIdx.x );
   if ( nonmortar < surfaces.nonmortar.numberOfElements() ) {
     const DeviceBounds query = elementBounds( surfaces.nonmortar, nonmortar, expansion, proximity_scale );
     counts[nonmortar] =
@@ -199,11 +197,10 @@ __global__ void countCandidatesKernel( SurfacePairView surfaces, const DeviceBvh
   }
 }
 
-__global__ void fillCandidatesKernel( SurfacePairView surfaces, const DeviceBvhNode* nodes, Index root, Real expansion,
-                                      Real proximity_scale, bool self_contact, bool exclude_adjacent,
-                                      const Index* offsets, ElementPair* candidates )
+TRIBOL_HOST_DEVICE void fillCandidates( Index nonmortar, SurfacePairView surfaces, const DeviceBvhNode* nodes,
+                                        Index root, Real expansion, Real proximity_scale, bool self_contact,
+                                        bool exclude_adjacent, const Index* offsets, ElementPair* candidates )
 {
-  const Index nonmortar = static_cast<Index>( blockIdx.x * blockDim.x + threadIdx.x );
   if ( nonmortar < surfaces.nonmortar.numberOfElements() ) {
     const DeviceBounds query = elementBounds( surfaces.nonmortar, nonmortar, expansion, proximity_scale );
     traverseBvh<true>( nodes, root, query, surfaces, nonmortar, self_contact, exclude_adjacent,
@@ -211,12 +208,11 @@ __global__ void fillCandidatesKernel( SurfacePairView surfaces, const DeviceBvhN
   }
 }
 
-__global__ void setZeroKernel( Index* value ) { *value = 0; }
+TRIBOL_HOST_DEVICE void setZero( Index* value ) { *value = 0; }
 
 template <bool MortarKey>
-__global__ void pairKeysKernel( const ElementPair* pairs, Index count, Index* keys )
+TRIBOL_HOST_DEVICE void assignPairKey( Index index, const ElementPair* pairs, Index count, Index* keys )
 {
-  const Index index = static_cast<Index>( blockIdx.x * blockDim.x + threadIdx.x );
   if ( index < count ) {
     keys[index] = MortarKey ? pairs[index].mortar_element : pairs[index].nonmortar_element;
   }

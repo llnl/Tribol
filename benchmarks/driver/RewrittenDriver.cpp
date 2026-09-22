@@ -30,6 +30,9 @@ using PointwiseMethod =
 #if defined( TRIBOL_BENCHMARK_USE_CUDA )
 using BenchmarkSearch = search::Bvh;
 using BenchmarkExecution = execution::Cuda;
+#elif defined( TRIBOL_BENCHMARK_USE_HIP )
+using BenchmarkSearch = search::Bvh;
+using BenchmarkExecution = execution::Hip;
 #else
 using BenchmarkSearch = search::Grid;
 using BenchmarkExecution = execution::Sequential;
@@ -152,7 +155,7 @@ Result runPointwise( const Options& options, int dimension )
 
   ContactResultView result;
   Result output( TRIBOL_BENCHMARK_IMPLEMENTATION_LABEL, options );
-#if defined( TRIBOL_BENCHMARK_USE_CUDA )
+#if defined( TRIBOL_BENCHMARK_USE_CUDA ) || defined( TRIBOL_BENCHMARK_USE_HIP )
   output.step_seconds = tribol_benchmark::measure( options, [&] {
     contact.updateInteractions();
     const auto device_result = contact.evaluateDevice( state );
@@ -213,7 +216,7 @@ Result runMortar( const Options& options )
 
 Result runCase( const Options& options )
 {
-#if defined( TRIBOL_BENCHMARK_USE_CUDA )
+#if defined( TRIBOL_BENCHMARK_USE_CUDA ) || defined( TRIBOL_BENCHMARK_USE_HIP )
   if ( options.case_name == "penalty-2d" ) {
     return runPointwise<DefaultMethod>( options, 2 );
   }
@@ -250,7 +253,7 @@ int main( int argc, char** argv )
   try {
     const Options options = tribol_benchmark::parseOptions( argc, argv );
     if ( options.list_cases ) {
-#if defined( TRIBOL_BENCHMARK_USE_CUDA )
+#if defined( TRIBOL_BENCHMARK_USE_CUDA ) || defined( TRIBOL_BENCHMARK_USE_HIP )
       std::cout << "penalty-2d\npenalty-3d\n";
 #else
       std::cout << "penalty-2d\npenalty-3d\nrate-2d\nviscous-3d\nsingle-mortar-3d\nmortar-weights-3d\n";

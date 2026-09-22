@@ -53,37 +53,52 @@ Index findCandidates( const search::Bvh::Parameters& parameters, bool self_conta
   morton_keys_alt_.resize( static_cast<std::size_t>( mortar_count ) );
   mortar_order_.resize( static_cast<std::size_t>( mortar_count ) );
   mortar_order_alt_.resize( static_cast<std::size_t>( mortar_count ) );
-  launch1d( mortar_count, buildBoundsKernel, device_surfaces_.mortar, parameters.expansion, parameters.proximity_scale,
-            mortar_bounds_.data() );
+  const SurfaceMeshView mortar_surface = device_surfaces_.mortar;
+  const Real expansion = parameters.expansion;
+  const Real proximity_scale = parameters.proximity_scale;
+  DeviceBounds* mortar_bounds = mortar_bounds_.data();
+  launch1d( mortar_count, [=] RAJA_DEVICE( Index element ) {
+    buildBounds( element, mortar_surface, expansion, proximity_scale, mortar_bounds );
+  } );
   reduceBounds( mortar_count );
-  launch1d( mortar_count, mortonKernel, mortar_bounds_.data(), mortar_count, global_bounds_.data(), morton_keys_.data(),
-            mortar_order_.data() );
+  const DeviceBounds* global_bounds = global_bounds_.data();
+  std::uint32_t* morton_keys = morton_keys_.data();
+  Index* mortar_order = mortar_order_.data();
+  launch1d( mortar_count, [=] RAJA_DEVICE( Index element ) {
+    assignMortonKey( element, mortar_bounds, mortar_count, global_bounds, morton_keys, mortar_order );
+  } );
   sortMorton( mortar_count );
   buildBvh( mortar_count );
 
   candidate_counts_.resize( static_cast<std::size_t>( nonmortar_count + 1 ) );
   candidate_offsets_.resize( static_cast<std::size_t>( nonmortar_count + 1 ) );
-  launch1d( nonmortar_count, countCandidatesKernel, device_surfaces_, bvh_nodes_.data(), bvh_root_,
-            parameters.expansion, parameters.proximity_scale, self_contact, exclude_adjacent,
-            candidate_counts_.data() );
-  setZeroKernel<<<1, 1>>>( candidate_counts_.data() + nonmortar_count );
-  requireKernel( "initialize CUDA candidate scan" );
+  const SurfacePairView surfaces = device_surfaces_;
+  const DeviceBvhNode* bvh_nodes = bvh_nodes_.data();
+  const Index bvh_root = bvh_root_;
+  Index* candidate_counts = candidate_counts_.data();
+  launch1d( nonmortar_count, [=] RAJA_DEVICE( Index nonmortar ) {
+    countCandidates( nonmortar, surfaces, bvh_nodes, bvh_root, expansion, proximity_scale, self_contact,
+                     exclude_adjacent, candidate_counts );
+  } );
+  Index* candidate_scan_end = candidate_counts_.data() + nonmortar_count;
+  launch1d( 1, [=] RAJA_DEVICE( Index ) { setZero( candidate_scan_end ); } );
   exclusiveScan( candidate_counts_.data(), candidate_offsets_.data(), nonmortar_count + 1 );
-  requireCuda( cudaMemcpy( &candidate_count_, candidate_offsets_.data() + nonmortar_count, sizeof( Index ),
-                           cudaMemcpyDeviceToHost ),
-               "copy CUDA candidate count" );
+  ActiveDeviceBackend::copy( &candidate_count_, candidate_offsets_.data() + nonmortar_count, sizeof( Index ) );
   candidates_.resize( static_cast<std::size_t>( candidate_count_ ) );
   candidate_scratch_.resize( static_cast<std::size_t>( candidate_count_ ) );
   candidate_keys_.resize( static_cast<std::size_t>( candidate_count_ ) );
   candidate_keys_alt_.resize( static_cast<std::size_t>( candidate_count_ ) );
   if ( candidate_count_ > 0 ) {
-    launch1d( nonmortar_count, fillCandidatesKernel, device_surfaces_, bvh_nodes_.data(), bvh_root_,
-              parameters.expansion, parameters.proximity_scale, self_contact, exclude_adjacent,
-              candidate_offsets_.data(), candidates_.data() );
+    const Index* candidate_offsets = candidate_offsets_.data();
+    ElementPair* candidates = candidates_.data();
+    launch1d( nonmortar_count, [=] RAJA_DEVICE( Index nonmortar ) {
+      fillCandidates( nonmortar, surfaces, bvh_nodes, bvh_root, expansion, proximity_scale, self_contact,
+                      exclude_adjacent, candidate_offsets, candidates );
+    } );
     canonicalizeCandidates();
   }
   prepareEvaluation();
-  requireCuda( cudaDeviceSynchronize(), "complete CUDA BVH search" );
+  ActiveDeviceBackend::synchronize();
   return candidate_count_;
 }
 
@@ -99,9 +114,7 @@ void downloadCandidates( std::vector<ElementPair>& candidates ) const
 {
   candidates.resize( static_cast<std::size_t>( candidate_count_ ) );
   if ( candidate_count_ > 0 ) {
-    requireCuda( cudaMemcpy( candidates.data(), candidates_.data(), candidates.size() * sizeof( ElementPair ),
-                             cudaMemcpyDeviceToHost ),
-                 "copy CUDA candidates to host" );
+    ActiveDeviceBackend::copy( candidates.data(), candidates_.data(), candidates.size() * sizeof( ElementPair ) );
   }
 }
 
@@ -117,23 +130,41 @@ EvaluationSummary evaluate( const DefaultMethod::Parameters& parameters, const C
   validateThickness( state, parameters.constraint.activation.reject_excessive_penetration, evaluate_timestep );
   const bool need_thickness = parameters.constraint.activation.reject_excessive_penetration || evaluate_timestep;
   const ContactStateView device_state = state_.upload( state, host_surfaces_, evaluate_timestep, need_thickness );
-  requireCuda( cudaMemset( results_.data(), 0, results_.size() * sizeof( Real ) ), "clear CUDA contact results" );
+  ActiveDeviceBackend::clear( results_.data(), results_.size() * sizeof( Real ) );
   if ( !gap_.size() ) {
     return {};
   }
-  requireCuda( cudaMemset( gap_.data(), 0, gap_.size() * sizeof( Real ) ), "clear CUDA gap results" );
+  ActiveDeviceBackend::clear( gap_.data(), gap_.size() * sizeof( Real ) );
   if ( candidate_count_ > 0 ) {
-    launch1d( candidate_count_, evaluateCommonPlaneKernel, device_surfaces_, candidates_.data(), candidate_count_,
-              parameters, device_state, result_layout_, patches_.data(), contributions_.data(), scatter_keys_.data(),
-              scatter_values_.data(), active_flags_.data() );
-    setZeroKernel<<<1, 1>>>( active_flags_.data() + candidate_count_ );
-    requireKernel( "initialize CUDA active scan" );
+    const SurfacePairView surfaces = device_surfaces_;
+    const ElementPair* candidates = candidates_.data();
+    const Index candidate_count = candidate_count_;
+    const ResultLayout result_layout = result_layout_;
+    InteractionPatch* patches = patches_.data();
+    PenaltyContribution* contributions = contributions_.data();
+    std::uint64_t* scatter_keys = scatter_keys_.data();
+    Real* scatter_values = scatter_values_.data();
+    Index* active_flags = active_flags_.data();
+    launch1d( candidate_count, [=] RAJA_DEVICE( Index interaction ) {
+      evaluateCommonPlane( interaction, surfaces, candidates, candidate_count, parameters, device_state, result_layout,
+                           patches, contributions, scatter_keys, scatter_values, active_flags );
+    } );
+    Index* active_scan_end = active_flags_.data() + candidate_count_;
+    launch1d( 1, [=] RAJA_DEVICE( Index ) { setZero( active_scan_end ); } );
     exclusiveScan( active_flags_.data(), active_offsets_.data(), candidate_count_ + 1 );
-    launch1d( candidate_count_, compactQuadratureKernel, contributions_.data(), active_offsets_.data(),
-              candidate_count_, quadrature_gap_.data(), quadrature_pressure_.data() );
+    const Index* active_offsets = active_offsets_.data();
+    Real* quadrature_gap = quadrature_gap_.data();
+    Real* quadrature_pressure = quadrature_pressure_.data();
+    launch1d( candidate_count, [=] RAJA_DEVICE( Index interaction ) {
+      compactQuadrature( interaction, contributions, active_offsets, candidate_count, quadrature_gap,
+                         quadrature_pressure );
+    } );
     deterministicScatter( static_cast<Index>( scatter_keys_.size() ), results_.data() );
-    launch1d( host_surfaces_.mortar.numberOfNodes(), computeGapKernel, result_layout_,
-              host_surfaces_.mortar.numberOfNodes(), results_.data(), gap_.data() );
+    const Index mortar_nodes = host_surfaces_.mortar.numberOfNodes();
+    Real* results = results_.data();
+    Real* gap = gap_.data();
+    launch1d( mortar_nodes,
+              [=] RAJA_DEVICE( Index node ) { computeGap( node, result_layout, mortar_nodes, results, gap ); } );
   }
 
   const Real* votes = nullptr;
@@ -141,16 +172,29 @@ EvaluationSummary evaluate( const DefaultMethod::Parameters& parameters, const C
   if ( timestep_parameters.enabled ) {
     initial_vote = timestep_parameters.current_step;
     if ( evaluate_timestep && candidate_count_ > 0 ) {
-      launch1d( candidate_count_, timestepVoteKernel, device_surfaces_, candidates_.data(), candidate_count_,
-                patches_.data(), parameters, device_state, timestep_parameters, timestep_votes_.data() );
+      const SurfacePairView surfaces = device_surfaces_;
+      const ElementPair* candidates = candidates_.data();
+      const InteractionPatch* patches = patches_.data();
+      const Index candidate_count = candidate_count_;
+      Real* timestep_votes = timestep_votes_.data();
+      launch1d( candidate_count, [=] RAJA_DEVICE( Index interaction ) {
+        timestepVote( interaction, surfaces, candidates, candidate_count, patches, parameters, device_state,
+                      timestep_parameters, timestep_votes );
+      } );
       votes = timestep_votes_.data();
     }
   }
-  summarizeKernel<<<1, 256>>>( contributions_.data(), votes, candidate_count_, initial_vote, summary_.data() );
-  requireKernel( "summarize CUDA contact" );
-  EvaluationSummary summary;
-  requireCuda( cudaMemcpy( &summary, summary_.data(), sizeof( summary ), cudaMemcpyDeviceToHost ),
-               "copy CUDA contact summary" );
+  EvaluationSummary summary{ .timestep_vote = initial_vote };
+  if ( candidate_count_ > 0 ) {
+    const PenaltyContribution* contributions = contributions_.data();
+    const Index candidate_count = candidate_count_;
+    EvaluationSummary* summary_entries = summary_entries_.data();
+    launch1d( candidate_count, [=] RAJA_DEVICE( Index interaction ) {
+      makeSummaryEntry( interaction, contributions, votes, candidate_count, initial_vote, summary_entries );
+    } );
+    reduceSummary( candidate_count, initial_vote );
+    ActiveDeviceBackend::copy( &summary, summary_.data(), sizeof( summary ) );
+  }
   last_summary_ = summary;
   return summary;
 }
@@ -210,33 +254,41 @@ void applyDerivative( const DefaultMethod::Parameters& parameters, const Contact
   copyDirection( direction.mortar, host_surfaces_.mortar, mortar_direction_, "copy mortar direction to device" );
   copyDirection( direction.nonmortar, host_surfaces_.nonmortar, nonmortar_direction_,
                  "copy nonmortar direction to device" );
-  constexpr int block_size = 128;
   const Index mortar_values = host_surfaces_.mortar.coordinates.values.size();
   const Index nonmortar_values = host_surfaces_.nonmortar.coordinates.values.size();
-  seedCoordinatesKernel<<<blocks( mortar_values, block_size ), block_size>>>(
-      device_surfaces_.mortar.coordinates,
-      { { mortar_direction_.data(), mortar_values },
-        host_surfaces_.mortar.numberOfNodes(),
-        host_surfaces_.mortar.dimension,
-        direction.mortar.layout },
-      exact_mortar_coordinates_.data() );
-  seedCoordinatesKernel<<<blocks( nonmortar_values, block_size ), block_size>>>(
-      device_surfaces_.nonmortar.coordinates,
-      { { nonmortar_direction_.data(), nonmortar_values },
-        host_surfaces_.nonmortar.numberOfNodes(),
-        host_surfaces_.nonmortar.dimension,
-        direction.nonmortar.layout },
-      exact_nonmortar_coordinates_.data() );
-  requireKernel( "seed CUDA coordinate derivatives" );
+  const FieldView<const Real> mortar_coordinates = device_surfaces_.mortar.coordinates;
+  const FieldView<const Real> mortar_direction = { { mortar_direction_.data(), mortar_values },
+                                                   host_surfaces_.mortar.numberOfNodes(),
+                                                   host_surfaces_.mortar.dimension,
+                                                   direction.mortar.layout };
+  linearization_detail::ExactTangent* exact_mortar_coordinates = exact_mortar_coordinates_.data();
+  launch1d( mortar_values, [=] RAJA_DEVICE( Index value ) {
+    seedCoordinate( value, mortar_coordinates, mortar_direction, exact_mortar_coordinates );
+  } );
+  const FieldView<const Real> nonmortar_coordinates = device_surfaces_.nonmortar.coordinates;
+  const FieldView<const Real> nonmortar_direction = { { nonmortar_direction_.data(), nonmortar_values },
+                                                      host_surfaces_.nonmortar.numberOfNodes(),
+                                                      host_surfaces_.nonmortar.dimension,
+                                                      direction.nonmortar.layout };
+  linearization_detail::ExactTangent* exact_nonmortar_coordinates = exact_nonmortar_coordinates_.data();
+  launch1d( nonmortar_values, [=] RAJA_DEVICE( Index value ) {
+    seedCoordinate( value, nonmortar_coordinates, nonmortar_direction, exact_nonmortar_coordinates );
+  } );
   const SurfacePairViewT<linearization_detail::ExactTangent> exact_surfaces{
       exactSurface( device_surfaces_.mortar, exact_mortar_coordinates_ ),
       exactSurface( device_surfaces_.nonmortar, exact_nonmortar_coordinates_ ),
   };
-  requireCuda( cudaMemset( derivative_.data(), 0, derivative_.size() * sizeof( Real ) ),
-               "clear CUDA derivative results" );
+  ActiveDeviceBackend::clear( derivative_.data(), derivative_.size() * sizeof( Real ) );
   if ( candidate_count_ > 0 ) {
-    launch1d( candidate_count_, evaluateDerivativeKernel, exact_surfaces, candidates_.data(), candidate_count_,
-              parameters, device_state, result_layout_, scatter_keys_.data(), scatter_values_.data() );
+    const ElementPair* candidates = candidates_.data();
+    const Index candidate_count = candidate_count_;
+    const ResultLayout result_layout = result_layout_;
+    std::uint64_t* scatter_keys = scatter_keys_.data();
+    Real* scatter_values = scatter_values_.data();
+    launch1d( candidate_count, [=] RAJA_DEVICE( Index interaction ) {
+      evaluateDerivative( interaction, exact_surfaces, candidates, candidate_count, parameters, device_state,
+                          result_layout, scatter_keys, scatter_values );
+    } );
     deterministicScatter( static_cast<Index>( scatter_keys_.size() ), derivative_.data() );
   }
   addDerivative( derivative.mortar, result_layout_.mortar_force,

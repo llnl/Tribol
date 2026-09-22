@@ -1,20 +1,18 @@
-template <typename Kernel, typename... Arguments>
-static void launch1d( Index count, Kernel kernel, Arguments... arguments )
+template <typename Body>
+static void launch1d( Index count, Body&& body )
 {
   if ( count <= 0 ) {
     return;
   }
-  constexpr int block_size = 128;
-  kernel<<<blocks( count, block_size ), block_size>>>( arguments... );
-  requireKernel( "launch CUDA contact kernel" );
+  RAJA::forall<typename ActiveDeviceBackend::ForallPolicy>(
+      ActiveDeviceBackend::resource(), RAJA::TypedRangeSegment<Index>( 0, count ), std::forward<Body>( body ) );
+  ActiveDeviceBackend::checkLaunch( "launch device contact kernel" );
 }
-
-static int blocks( Index count, int block_size ) { return static_cast<int>( ( count + block_size - 1 ) / block_size ); }
 
 void requireSurfaces() const
 {
   if ( !surfaces_ready_ ) {
-    throw std::logic_error( "CUDA surfaces must be uploaded before device contact operations." );
+    throw std::logic_error( "Surfaces must be uploaded before device contact operations." );
   }
 }
 
@@ -27,26 +25,20 @@ void reduceBounds( Index count )
 {
   std::size_t bytes{};
   const DeviceBounds initial = emptyBounds();
-  requireCuda( cub::DeviceReduce::Reduce( nullptr, bytes, mortar_bounds_.data(), global_bounds_.data(), count,
-                                          BoundsUnion{}, initial ),
-               "size CUDA bounds reduction" );
+  bytes = ActiveDeviceBackend::reduceTemporaryBytes( mortar_bounds_.data(), global_bounds_.data(), count, BoundsUnion{},
+                                                     initial );
   ensureTemporaryStorage( bytes );
-  requireCuda( cub::DeviceReduce::Reduce( temporary_storage_.data(), bytes, mortar_bounds_.data(),
-                                          global_bounds_.data(), count, BoundsUnion{}, initial ),
-               "reduce CUDA bounds" );
+  ActiveDeviceBackend::reduce( temporary_storage_.data(), bytes, mortar_bounds_.data(), global_bounds_.data(), count,
+                               BoundsUnion{}, initial );
 }
 
 void sortMorton( Index count )
 {
-  std::size_t bytes{};
-  requireCuda( cub::DeviceRadixSort::SortPairs( nullptr, bytes, morton_keys_.data(), morton_keys_alt_.data(),
-                                                mortar_order_.data(), mortar_order_alt_.data(), count ),
-               "size CUDA Morton sort" );
+  std::size_t bytes = ActiveDeviceBackend::sortPairsTemporaryBytes(
+      morton_keys_.data(), morton_keys_alt_.data(), mortar_order_.data(), mortar_order_alt_.data(), count );
   ensureTemporaryStorage( bytes );
-  requireCuda(
-      cub::DeviceRadixSort::SortPairs( temporary_storage_.data(), bytes, morton_keys_.data(), morton_keys_alt_.data(),
-                                       mortar_order_.data(), mortar_order_alt_.data(), count ),
-      "sort CUDA Morton keys" );
+  ActiveDeviceBackend::sortPairs( temporary_storage_.data(), bytes, morton_keys_.data(), morton_keys_alt_.data(),
+                                  mortar_order_.data(), mortar_order_alt_.data(), count );
   morton_keys_.swap( morton_keys_alt_ );
   mortar_order_.swap( mortar_order_alt_ );
 }
@@ -64,22 +56,27 @@ void buildBvh( Index leaf_count )
     total += counts.back();
   }
   bvh_nodes_.resize( static_cast<std::size_t>( total ) );
-  launch1d( leaf_count, initializeLeavesKernel, mortar_bounds_.data(), mortar_order_.data(), leaf_count,
-            bvh_nodes_.data() );
+  const DeviceBounds* element_bounds = mortar_bounds_.data();
+  const Index* order = mortar_order_.data();
+  DeviceBvhNode* nodes = bvh_nodes_.data();
+  launch1d( leaf_count,
+            [=] RAJA_DEVICE( Index leaf ) { initializeLeaf( leaf, element_bounds, order, leaf_count, nodes ); } );
   for ( std::size_t level = 1; level < counts.size(); ++level ) {
-    launch1d( counts[level], buildBvhLevelKernel, bvh_nodes_.data(), offsets[level - 1], counts[level - 1],
-              offsets[level] );
+    const Index child_offset = offsets[level - 1];
+    const Index child_count = counts[level - 1];
+    const Index parent_offset = offsets[level];
+    launch1d( counts[level], [=] RAJA_DEVICE( Index parent ) {
+      buildBvhNode( parent, nodes, child_offset, child_count, parent_offset );
+    } );
   }
   bvh_root_ = offsets.back();
 }
 
 void exclusiveScan( const Index* input, Index* output, Index count )
 {
-  std::size_t bytes{};
-  requireCuda( cub::DeviceScan::ExclusiveSum( nullptr, bytes, input, output, count ), "size CUDA exclusive scan" );
+  std::size_t bytes = ActiveDeviceBackend::exclusiveSumTemporaryBytes( input, output, count );
   ensureTemporaryStorage( bytes );
-  requireCuda( cub::DeviceScan::ExclusiveSum( temporary_storage_.data(), bytes, input, output, count ),
-               "CUDA exclusive scan" );
+  ActiveDeviceBackend::exclusiveSum( temporary_storage_.data(), bytes, input, output, count );
 }
 
 void canonicalizeCandidates()
@@ -91,16 +88,16 @@ void canonicalizeCandidates()
 template <bool MortarKey>
 void stableSortCandidates( DeviceBuffer<ElementPair>& input, DeviceBuffer<ElementPair>& output )
 {
-  launch1d( candidate_count_, pairKeysKernel<MortarKey>, input.data(), candidate_count_, candidate_keys_.data() );
-  std::size_t bytes{};
-  requireCuda( cub::DeviceRadixSort::SortPairs( nullptr, bytes, candidate_keys_.data(), candidate_keys_alt_.data(),
-                                                input.data(), output.data(), candidate_count_ ),
-               "size CUDA candidate sort" );
+  const ElementPair* pairs = input.data();
+  Index* keys = candidate_keys_.data();
+  const Index candidate_count = candidate_count_;
+  launch1d( candidate_count_,
+            [=] RAJA_DEVICE( Index index ) { assignPairKey<MortarKey>( index, pairs, candidate_count, keys ); } );
+  std::size_t bytes = ActiveDeviceBackend::sortPairsTemporaryBytes( candidate_keys_.data(), candidate_keys_alt_.data(),
+                                                                    input.data(), output.data(), candidate_count_ );
   ensureTemporaryStorage( bytes );
-  requireCuda(
-      cub::DeviceRadixSort::SortPairs( temporary_storage_.data(), bytes, candidate_keys_.data(),
-                                       candidate_keys_alt_.data(), input.data(), output.data(), candidate_count_ ),
-      "sort CUDA candidates" );
+  ActiveDeviceBackend::sortPairs( temporary_storage_.data(), bytes, candidate_keys_.data(), candidate_keys_alt_.data(),
+                                  input.data(), output.data(), candidate_count_ );
 }
 
 void prepareEvaluation()
@@ -113,6 +110,7 @@ void prepareEvaluation()
   quadrature_gap_.resize( candidates );
   quadrature_pressure_.resize( candidates );
   timestep_votes_.resize( candidates );
+  summary_entries_.resize( candidates );
   summary_.resize( 1 );
   const std::size_t entries = candidates * maximumScatterEntries;
   scatter_keys_.resize( entries );
@@ -124,28 +122,42 @@ void prepareEvaluation()
   run_offsets_.resize( entries );
   run_count_.resize( 1 );
   if ( candidates > static_cast<std::size_t>( std::numeric_limits<int>::max() ) / maximumScatterEntries ) {
-    throw std::overflow_error( "CUDA contact scatter exceeds the supported CUB item count." );
+    throw std::overflow_error( "Device contact scatter exceeds the supported backend item count." );
   }
   if ( entries > 0 ) {
     sizeScatterTemporary( static_cast<Index>( entries ) );
   }
+  if ( candidates > 0 ) {
+    sizeSummaryTemporary( candidate_count_ );
+  }
+}
+
+void sizeSummaryTemporary( Index count )
+{
+  const EvaluationSummary initial{};
+  const std::size_t bytes = ActiveDeviceBackend::reduceTemporaryBytes( summary_entries_.data(), summary_.data(), count,
+                                                                       SummaryReduction{}, initial );
+  ensureTemporaryStorage( bytes );
+}
+
+void reduceSummary( Index count, Real initial_vote )
+{
+  const EvaluationSummary initial{ .timestep_vote = initial_vote };
+  const std::size_t bytes = ActiveDeviceBackend::reduceTemporaryBytes( summary_entries_.data(), summary_.data(), count,
+                                                                       SummaryReduction{}, initial );
+  ActiveDeviceBackend::reduce( temporary_storage_.data(), bytes, summary_entries_.data(), summary_.data(), count,
+                               SummaryReduction{}, initial );
 }
 
 void sizeScatterTemporary( Index entries )
 {
-  std::size_t bytes{};
-  requireCuda( cub::DeviceRadixSort::SortPairs( nullptr, bytes, scatter_keys_.data(), scatter_keys_alt_.data(),
-                                                scatter_values_.data(), scatter_values_alt_.data(), entries ),
-               "size CUDA scatter sort" );
+  std::size_t bytes = ActiveDeviceBackend::sortPairsTemporaryBytes(
+      scatter_keys_.data(), scatter_keys_alt_.data(), scatter_values_.data(), scatter_values_alt_.data(), entries );
   ensureTemporaryStorage( bytes );
-  bytes = 0;
-  requireCuda( cub::DeviceRunLengthEncode::Encode( nullptr, bytes, scatter_keys_alt_.data(), unique_keys_.data(),
-                                                   run_counts_.data(), run_count_.data(), entries ),
-               "size CUDA run-length encoding" );
+  bytes = ActiveDeviceBackend::runLengthEncodeTemporaryBytes( scatter_keys_alt_.data(), unique_keys_.data(),
+                                                              run_counts_.data(), run_count_.data(), entries );
   ensureTemporaryStorage( bytes );
-  bytes = 0;
-  requireCuda( cub::DeviceScan::ExclusiveSum( nullptr, bytes, run_counts_.data(), run_offsets_.data(), entries ),
-               "size CUDA scatter offset scan" );
+  bytes = ActiveDeviceBackend::exclusiveSumTemporaryBytes( run_counts_.data(), run_offsets_.data(), entries );
   ensureTemporaryStorage( bytes );
 }
 
@@ -154,31 +166,26 @@ void deterministicScatter( Index entries, Real* output )
   if ( entries <= 0 ) {
     return;
   }
-  std::size_t bytes{};
-  requireCuda( cub::DeviceRadixSort::SortPairs( nullptr, bytes, scatter_keys_.data(), scatter_keys_alt_.data(),
-                                                scatter_values_.data(), scatter_values_alt_.data(), entries ),
-               "size CUDA scatter sort" );
-  requireCuda(
-      cub::DeviceRadixSort::SortPairs( temporary_storage_.data(), bytes, scatter_keys_.data(), scatter_keys_alt_.data(),
-                                       scatter_values_.data(), scatter_values_alt_.data(), entries ),
-      "sort CUDA scatter contributions" );
-  bytes = 0;
-  requireCuda( cub::DeviceRunLengthEncode::Encode( nullptr, bytes, scatter_keys_alt_.data(), unique_keys_.data(),
-                                                   run_counts_.data(), run_count_.data(), entries ),
-               "size CUDA run-length encoding" );
-  requireCuda( cudaMemset( run_counts_.data(), 0, run_counts_.size() * sizeof( Index ) ), "clear CUDA scatter counts" );
-  requireCuda(
-      cub::DeviceRunLengthEncode::Encode( temporary_storage_.data(), bytes, scatter_keys_alt_.data(),
-                                          unique_keys_.data(), run_counts_.data(), run_count_.data(), entries ),
-      "encode CUDA scatter runs" );
-  bytes = 0;
-  requireCuda( cub::DeviceScan::ExclusiveSum( nullptr, bytes, run_counts_.data(), run_offsets_.data(), entries ),
-               "size CUDA scatter offset scan" );
-  requireCuda( cub::DeviceScan::ExclusiveSum( temporary_storage_.data(), bytes, run_counts_.data(), run_offsets_.data(),
-                                              entries ),
-               "scan CUDA scatter offsets" );
-  launch1d( entries, reduceScatterRunsKernel, unique_keys_.data(), run_counts_.data(), run_offsets_.data(),
-            run_count_.data(), scatter_values_alt_.data(), output );
+  std::size_t bytes = ActiveDeviceBackend::sortPairsTemporaryBytes(
+      scatter_keys_.data(), scatter_keys_alt_.data(), scatter_values_.data(), scatter_values_alt_.data(), entries );
+  ActiveDeviceBackend::sortPairs( temporary_storage_.data(), bytes, scatter_keys_.data(), scatter_keys_alt_.data(),
+                                  scatter_values_.data(), scatter_values_alt_.data(), entries );
+  bytes = ActiveDeviceBackend::runLengthEncodeTemporaryBytes( scatter_keys_alt_.data(), unique_keys_.data(),
+                                                              run_counts_.data(), run_count_.data(), entries );
+  ActiveDeviceBackend::clear( run_counts_.data(), run_counts_.size() * sizeof( Index ) );
+  ActiveDeviceBackend::runLengthEncode( temporary_storage_.data(), bytes, scatter_keys_alt_.data(), unique_keys_.data(),
+                                        run_counts_.data(), run_count_.data(), entries );
+  bytes = ActiveDeviceBackend::exclusiveSumTemporaryBytes( run_counts_.data(), run_offsets_.data(), entries );
+  ActiveDeviceBackend::exclusiveSum( temporary_storage_.data(), bytes, run_counts_.data(), run_offsets_.data(),
+                                     entries );
+  const std::uint64_t* unique_keys = unique_keys_.data();
+  const Index* run_counts = run_counts_.data();
+  const Index* run_offsets = run_offsets_.data();
+  const Index* run_count = run_count_.data();
+  const Real* sorted_values = scatter_values_alt_.data();
+  launch1d( entries, [=] RAJA_DEVICE( Index run ) {
+    reduceScatterRun( run, unique_keys, run_counts, run_offsets, run_count, sorted_values, output );
+  } );
 }
 
 void validateThickness( const ContactStateView& state, bool penetration, bool timestep_enabled ) const
@@ -188,18 +195,18 @@ void validateThickness( const ContactStateView& state, bool penetration, bool ti
   }
   if ( state.mortar_element_thickness.size() != host_surfaces_.mortar.numberOfElements() ||
        state.nonmortar_element_thickness.size() != host_surfaces_.nonmortar.numberOfElements() ) {
-    throw std::invalid_argument( "CUDA contact thickness fields must contain one value per surface element." );
+    throw std::invalid_argument( "Device contact thickness fields must contain one value per surface element." );
   }
   for ( Index element = 0; element < state.mortar_element_thickness.size(); ++element ) {
     if ( state.mortar_element_thickness[element] < 0.0 ||
          ( penetration && state.mortar_element_thickness[element] == 0.0 ) ) {
-      throw std::invalid_argument( "CUDA contact requires valid positive element thickness." );
+      throw std::invalid_argument( "Device contact requires valid positive element thickness." );
     }
   }
   for ( Index element = 0; element < state.nonmortar_element_thickness.size(); ++element ) {
     if ( state.nonmortar_element_thickness[element] < 0.0 ||
          ( penetration && state.nonmortar_element_thickness[element] == 0.0 ) ) {
-      throw std::invalid_argument( "CUDA contact requires valid positive element thickness." );
+      throw std::invalid_argument( "Device contact requires valid positive element thickness." );
     }
   }
 }
@@ -225,11 +232,10 @@ static void copyDirection( const FieldView<const Real>& direction, const Surface
 {
   if ( !direction.isStructurallyValid() || direction.entities != surface.numberOfNodes() ||
        direction.components != surface.dimension ) {
-    throw std::invalid_argument( "CUDA coordinate direction must match its surface." );
+    throw std::invalid_argument( "Device coordinate direction must match its surface." );
   }
-  requireCuda( cudaMemcpy( destination.data(), direction.values.data(), destination.size() * sizeof( Real ),
-                           cudaMemcpyHostToDevice ),
-               operation );
+  static_cast<void>( operation );
+  ActiveDeviceBackend::copy( destination.data(), direction.values.data(), destination.size() * sizeof( Real ) );
 }
 
 static void requireInterleavedField( const FieldView<Real>& field, const SurfaceMeshView& surface,
@@ -247,9 +253,8 @@ void copyResultSegment( ArrayView<Real> destination, Index offset, Index count, 
     throw std::invalid_argument( std::string( operation ) + " has a mismatched destination size." );
   }
   if ( count > 0 ) {
-    requireCuda( cudaMemcpy( destination.data(), results_.data() + offset,
-                             static_cast<std::size_t>( count ) * sizeof( Real ), cudaMemcpyDeviceToHost ),
-                 operation );
+    ActiveDeviceBackend::copy( destination.data(), results_.data() + offset,
+                               static_cast<std::size_t>( count ) * sizeof( Real ) );
   }
 }
 
@@ -260,9 +265,7 @@ static void copyPrefix( ArrayView<Real> destination, const DeviceBuffer<Real>& s
     throw std::invalid_argument( std::string( operation ) + " has an undersized destination." );
   }
   if ( count > 0 ) {
-    requireCuda( cudaMemcpy( destination.data(), source.data(), static_cast<std::size_t>( count ) * sizeof( Real ),
-                             cudaMemcpyDeviceToHost ),
-                 operation );
+    ActiveDeviceBackend::copy( destination.data(), source.data(), static_cast<std::size_t>( count ) * sizeof( Real ) );
   }
 }
 
@@ -274,9 +277,8 @@ void addDerivative( FieldView<Real> output, Index offset, Index count, const cha
     throw std::invalid_argument( std::string( operation ) + " has a mismatched destination field." );
   }
   if ( count > 0 ) {
-    requireCuda( cudaMemcpy( host_derivative_.data(), derivative_.data() + offset,
-                             static_cast<std::size_t>( count ) * sizeof( Real ), cudaMemcpyDeviceToHost ),
-                 operation );
+    ActiveDeviceBackend::copy( host_derivative_.data(), derivative_.data() + offset,
+                               static_cast<std::size_t>( count ) * sizeof( Real ) );
     for ( Index node = 0; node < surface.numberOfNodes(); ++node ) {
       for ( int component = 0; component < surface.dimension; ++component ) {
         output( node, component ) += host_derivative_[static_cast<std::size_t>( node * surface.dimension + component )];
@@ -315,6 +317,7 @@ DeviceBuffer<Index> active_offsets_;
 DeviceBuffer<Real> quadrature_gap_;
 DeviceBuffer<Real> quadrature_pressure_;
 DeviceBuffer<Real> timestep_votes_;
+DeviceBuffer<EvaluationSummary> summary_entries_;
 DeviceBuffer<EvaluationSummary> summary_;
 EvaluationSummary last_summary_{};
 

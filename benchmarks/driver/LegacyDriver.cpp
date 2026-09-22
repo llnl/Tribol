@@ -13,6 +13,15 @@
 #if defined( TRIBOL_BENCHMARK_USE_CUDA )
 #include "LegacyCudaBuffers.hpp"
 
+namespace legacy_device = tribol_benchmark::legacy_cuda;
+
+#elif defined( TRIBOL_BENCHMARK_USE_HIP )
+#include "LegacyHipBuffers.hpp"
+
+namespace legacy_device = tribol_benchmark::legacy_hip;
+#endif
+
+#if defined( TRIBOL_BENCHMARK_USE_CUDA ) || defined( TRIBOL_BENCHMARK_USE_HIP )
 #include "mfem.hpp"
 #include "umpire/ResourceManager.hpp"
 #endif
@@ -170,28 +179,28 @@ void addForceDiagnostics( Result& output, const ResponseType& first, const Respo
   output.scalars["force_balance_linf"] = balance;
 }
 
-#if defined( TRIBOL_BENCHMARK_USE_CUDA )
+#if defined( TRIBOL_BENCHMARK_USE_CUDA ) || defined( TRIBOL_BENCHMARK_USE_HIP )
 
-using DeviceResponse = tribol_benchmark::legacy_cuda::Response;
+using DeviceResponse = legacy_device::Response;
 
 Response copyResponseToHost( const DeviceResponse& source )
 {
   Response result( static_cast<int>( source.x.size() ) );
-  tribol_benchmark::legacy_cuda::copyToHost( result.x, source.x );
-  tribol_benchmark::legacy_cuda::copyToHost( result.y, source.y );
-  tribol_benchmark::legacy_cuda::copyToHost( result.z, source.z );
+  legacy_device::copyToHost( result.x, source.x );
+  legacy_device::copyToHost( result.y, source.y );
+  legacy_device::copyToHost( result.z, source.z );
   return result;
 }
 
-Result runPointwiseCuda( const Options& options, int dimension )
+Result runPointwiseDevice( const Options& options, int dimension )
 {
   Session session;
   const int cell_type = dimension == 2 ? tribol::LINEAR_EDGE : tribol::LINEAR_QUAD;
   auto mesh = tribol_benchmark::makePointwiseMesh<tribol::IndexT>( dimension, options.size );
-  auto first_connectivity = tribol_benchmark::legacy_cuda::copyToDevice( mesh.first.connectivity );
-  auto second_connectivity = tribol_benchmark::legacy_cuda::copyToDevice( mesh.second.connectivity );
-  const auto first_coordinates = tribol_benchmark::legacy_cuda::splitCoordinates( mesh.first );
-  const auto second_coordinates = tribol_benchmark::legacy_cuda::splitCoordinates( mesh.second );
+  auto first_connectivity = legacy_device::copyToDevice( mesh.first.connectivity );
+  auto second_connectivity = legacy_device::copyToDevice( mesh.second.connectivity );
+  const auto first_coordinates = legacy_device::splitCoordinates( mesh.first );
+  const auto second_coordinates = legacy_device::splitCoordinates( mesh.second );
   tribol::registerMesh( 0, mesh.first.elements(), mesh.first.nodes(), first_connectivity.data(), cell_type,
                         first_coordinates.x.data(), first_coordinates.y.data(),
                         dimension == 3 ? first_coordinates.z.data() : nullptr, tribol::MemorySpace::Device );
@@ -206,7 +215,11 @@ Result runPointwiseCuda( const Options& options, int dimension )
   tribol::setKinematicConstantPenalty( 1, 1.0 );
   tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
                                   tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_BVH,
+#if defined( TRIBOL_BENCHMARK_USE_HIP )
+                                  tribol::ExecutionMode::Hip );
+#else
                                   tribol::ExecutionMode::Cuda );
+#endif
   tribol::setPenaltyOptions( 0, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
   tribol::setContactAreaFrac( 0, 1.0e-12 );
 
@@ -215,11 +228,15 @@ Result runPointwiseCuda( const Options& options, int dimension )
     second_response.clear();
     tribol::RealT timestep = 1.0;
     if ( tribol::update( 1, 1.0, timestep ) != 0 ) {
-      throw std::runtime_error( "legacy Tribol CUDA update failed" );
+      throw std::runtime_error( "legacy Tribol device update failed" );
     }
-    tribol_benchmark::legacy_cuda::synchronize();
+    legacy_device::synchronize();
   };
+#if defined( TRIBOL_BENCHMARK_USE_HIP )
+  Result output( "legacy-hip", options );
+#else
   Result output( "legacy-cuda", options );
+#endif
   output.step_seconds = tribol_benchmark::measure( options, step );
   addForceDiagnostics( output, copyResponseToHost( first_response ), copyResponseToHost( second_response ), dimension );
   output.scalars["active_interactions"] = options.size;
@@ -389,12 +406,12 @@ Result runMortar( const Options& options, bool weights_only )
 
 Result runCase( const Options& options )
 {
-#if defined( TRIBOL_BENCHMARK_USE_CUDA )
+#if defined( TRIBOL_BENCHMARK_USE_CUDA ) || defined( TRIBOL_BENCHMARK_USE_HIP )
   if ( options.case_name == "penalty-2d" ) {
-    return runPointwiseCuda( options, 2 );
+    return runPointwiseDevice( options, 2 );
   }
   if ( options.case_name == "penalty-3d" ) {
-    return runPointwiseCuda( options, 3 );
+    return runPointwiseDevice( options, 3 );
   }
 #else
   if ( options.case_name == "penalty-2d" ) {
@@ -425,13 +442,17 @@ int main( int argc, char** argv )
 {
   try {
     MpiSession mpi( argc, argv );
-#if defined( TRIBOL_BENCHMARK_USE_CUDA )
+#if defined( TRIBOL_BENCHMARK_USE_CUDA ) || defined( TRIBOL_BENCHMARK_USE_HIP )
     umpire::ResourceManager::getInstance();
+#if defined( TRIBOL_BENCHMARK_USE_HIP )
+    mfem::Device device( "hip" );
+#else
     mfem::Device device( "cuda" );
+#endif
 #endif
     const Options options = tribol_benchmark::parseOptions( argc, argv );
     if ( options.list_cases ) {
-#if defined( TRIBOL_BENCHMARK_USE_CUDA )
+#if defined( TRIBOL_BENCHMARK_USE_CUDA ) || defined( TRIBOL_BENCHMARK_USE_HIP )
       std::cout << "penalty-2d\npenalty-3d\n";
 #else
       std::cout << "penalty-2d\npenalty-3d\nrate-2d\nviscous-3d\nsingle-mortar-3d\nmortar-weights-3d\n";

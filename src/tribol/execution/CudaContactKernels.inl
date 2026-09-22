@@ -21,15 +21,15 @@ ResultLayout makeResultLayout( const SurfacePairView& surfaces )
 inline constexpr int maximumScatterEntries = 2 * basis::maximumLinearNodes * 3 + 3 * basis::maximumLinearNodes;
 inline constexpr std::uint64_t invalidScatterKey = std::numeric_limits<std::uint64_t>::max();
 
-__device__ void emitEntry( std::uint64_t* keys, Real* values, int& entry, std::uint64_t key, Real value )
+TRIBOL_HOST_DEVICE void emitEntry( std::uint64_t* keys, Real* values, int& entry, std::uint64_t key, Real value )
 {
   keys[entry] = key;
   values[entry] = value;
   ++entry;
 }
 
-__device__ bool excessivePenetration( const constraint::GapActivationParameters& activation,
-                                      const ContactStateView& state, ElementPair pair, Real effective_gap )
+TRIBOL_HOST_DEVICE bool excessivePenetration( const constraint::GapActivationParameters& activation,
+                                              const ContactStateView& state, ElementPair pair, Real effective_gap )
 {
   if ( !activation.reject_excessive_penetration ) {
     return false;
@@ -40,13 +40,12 @@ __device__ bool excessivePenetration( const constraint::GapActivationParameters&
   return effective_gap < -activation.maximum_penetration_fraction * minimum_thickness;
 }
 
-__global__ void evaluateCommonPlaneKernel( SurfacePairView surfaces, const ElementPair* candidates, Index count,
-                                           DefaultMethod::Parameters parameters, ContactStateView state,
-                                           ResultLayout layout, InteractionPatch* patches,
-                                           PenaltyContribution* contributions, std::uint64_t* scatter_keys,
-                                           Real* scatter_values, Index* active_flags )
+TRIBOL_HOST_DEVICE void evaluateCommonPlane( Index interaction, SurfacePairView surfaces, const ElementPair* candidates,
+                                             Index count, DefaultMethod::Parameters parameters, ContactStateView state,
+                                             ResultLayout layout, InteractionPatch* patches,
+                                             PenaltyContribution* contributions, std::uint64_t* scatter_keys,
+                                             Real* scatter_values, Index* active_flags )
 {
-  const Index interaction = static_cast<Index>( blockIdx.x * blockDim.x + threadIdx.x );
   if ( interaction >= count ) {
     return;
   }
@@ -107,10 +106,9 @@ __global__ void evaluateCommonPlaneKernel( SurfacePairView surfaces, const Eleme
   }
 }
 
-__global__ void compactQuadratureKernel( const PenaltyContribution* contributions, const Index* active_offsets,
-                                         Index count, Real* gap, Real* pressure )
+TRIBOL_HOST_DEVICE void compactQuadrature( Index interaction, const PenaltyContribution* contributions,
+                                           const Index* active_offsets, Index count, Real* gap, Real* pressure )
 {
-  const Index interaction = static_cast<Index>( blockIdx.x * blockDim.x + threadIdx.x );
   if ( interaction < count && contributions[interaction].active ) {
     const Index output = active_offsets[interaction];
     gap[output] = contributions[interaction].effective_gap;
@@ -118,11 +116,10 @@ __global__ void compactQuadratureKernel( const PenaltyContribution* contribution
   }
 }
 
-__global__ void reduceScatterRunsKernel( const std::uint64_t* unique_keys, const Index* run_counts,
-                                         const Index* run_offsets, const Index* run_count, const Real* sorted_values,
-                                         Real* output )
+TRIBOL_HOST_DEVICE void reduceScatterRun( Index run, const std::uint64_t* unique_keys, const Index* run_counts,
+                                          const Index* run_offsets, const Index* run_count, const Real* sorted_values,
+                                          Real* output )
 {
-  const Index run = static_cast<Index>( blockIdx.x * blockDim.x + threadIdx.x );
   if ( run >= *run_count || unique_keys[run] == invalidScatterKey ) {
     return;
   }
@@ -135,9 +132,8 @@ __global__ void reduceScatterRunsKernel( const std::uint64_t* unique_keys, const
   output[unique_keys[run]] = sum;
 }
 
-__global__ void computeGapKernel( ResultLayout layout, Index mortar_nodes, Real* result, Real* gap )
+TRIBOL_HOST_DEVICE void computeGap( Index node, ResultLayout layout, Index mortar_nodes, Real* result, Real* gap )
 {
-  const Index node = static_cast<Index>( blockIdx.x * blockDim.x + threadIdx.x );
   if ( node >= mortar_nodes ) {
     return;
   }
@@ -148,8 +144,9 @@ __global__ void computeGapKernel( ResultLayout layout, Index mortar_nodes, Real*
   }
 }
 
-__device__ std::array<Real, 3> interpolateField( const SurfaceMeshView& mesh, Index element,
-                                                 const FieldView<const Real>& field, const basis::ShapeValues& shape )
+TRIBOL_HOST_DEVICE std::array<Real, 3> interpolateField( const SurfaceMeshView& mesh, Index element,
+                                                         const FieldView<const Real>& field,
+                                                         const basis::ShapeValues& shape )
 {
   std::array<Real, 3> result{};
   const Index begin = mesh.element_offsets[element];
@@ -162,7 +159,7 @@ __device__ std::array<Real, 3> interpolateField( const SurfaceMeshView& mesh, In
   return result;
 }
 
-__device__ Real vectorDot( const std::array<Real, 3>& left, const std::array<Real, 3>& right, int dimension )
+TRIBOL_HOST_DEVICE Real vectorDot( const std::array<Real, 3>& left, const std::array<Real, 3>& right, int dimension )
 {
   Real result{};
   for ( int component = 0; component < dimension; ++component ) {
@@ -171,18 +168,17 @@ __device__ Real vectorDot( const std::array<Real, 3>& left, const std::array<Rea
   return result;
 }
 
-__device__ void includePositiveVote( Real candidate, Real& vote )
+TRIBOL_HOST_DEVICE void includePositiveVote( Real candidate, Real& vote )
 {
   if ( candidate > 0.0 && candidate < vote ) {
     vote = candidate;
   }
 }
 
-__global__ void timestepVoteKernel( SurfacePairView surfaces, const ElementPair* candidates, Index count,
-                                    const InteractionPatch* patches, DefaultMethod::Parameters method,
-                                    ContactStateView state, timestep::Kinematic::Parameters parameters, Real* votes )
+TRIBOL_HOST_DEVICE void timestepVote( Index interaction, SurfacePairView surfaces, const ElementPair* candidates,
+                                      Index count, const InteractionPatch* patches, DefaultMethod::Parameters method,
+                                      ContactStateView state, timestep::Kinematic::Parameters parameters, Real* votes )
 {
-  const Index interaction = static_cast<Index>( blockIdx.x * blockDim.x + threadIdx.x );
   if ( interaction >= count ) {
     return;
   }
@@ -251,50 +247,38 @@ __global__ void timestepVoteKernel( SurfacePairView surfaces, const ElementPair*
   votes[interaction] = vote;
 }
 
-__global__ void summarizeKernel( const PenaltyContribution* contributions, const Real* votes, Index count,
-                                 Real initial_vote, EvaluationSummary* summary )
+struct SummaryReduction {
+  TRIBOL_HOST_DEVICE EvaluationSummary operator()( const EvaluationSummary& left, const EvaluationSummary& right ) const
+  {
+    return {
+        .energy = left.energy + right.energy,
+        .timestep_vote = left.timestep_vote < right.timestep_vote ? left.timestep_vote : right.timestep_vote,
+        .active_interactions = left.active_interactions + right.active_interactions,
+        .quadrature_points = left.quadrature_points + right.quadrature_points,
+    };
+  }
+};
+
+TRIBOL_HOST_DEVICE void makeSummaryEntry( Index interaction, const PenaltyContribution* contributions,
+                                          const Real* votes, Index count, Real initial_vote,
+                                          EvaluationSummary* entries )
 {
-  constexpr int block_size = 256;
-  __shared__ Real energies[block_size];
-  __shared__ Real minimum_votes[block_size];
-  __shared__ Index active_counts[block_size];
-  Real energy{};
-  Real vote = initial_vote;
-  Index active{};
-  for ( Index interaction = threadIdx.x; interaction < count; interaction += blockDim.x ) {
-    energy += contributions[interaction].energy;
-    active += contributions[interaction].active ? 1 : 0;
-    if ( votes != nullptr && votes[interaction] < vote ) {
-      vote = votes[interaction];
-    }
+  if ( interaction >= count ) {
+    return;
   }
-  energies[threadIdx.x] = energy;
-  minimum_votes[threadIdx.x] = vote;
-  active_counts[threadIdx.x] = active;
-  __syncthreads();
-  for ( int stride = block_size / 2; stride > 0; stride /= 2 ) {
-    if ( threadIdx.x < stride ) {
-      energies[threadIdx.x] += energies[threadIdx.x + stride];
-      active_counts[threadIdx.x] += active_counts[threadIdx.x + stride];
-      if ( minimum_votes[threadIdx.x + stride] < minimum_votes[threadIdx.x] ) {
-        minimum_votes[threadIdx.x] = minimum_votes[threadIdx.x + stride];
-      }
-    }
-    __syncthreads();
-  }
-  if ( threadIdx.x == 0 ) {
-    summary->energy = energies[0];
-    summary->timestep_vote = minimum_votes[0];
-    summary->active_interactions = active_counts[0];
-    summary->quadrature_points = active_counts[0];
-  }
+  const Index active = contributions[interaction].active ? 1 : 0;
+  entries[interaction] = {
+      .energy = contributions[interaction].energy,
+      .timestep_vote = votes != nullptr && votes[interaction] < initial_vote ? votes[interaction] : initial_vote,
+      .active_interactions = active,
+      .quadrature_points = active,
+  };
 }
 
 template <typename Scalar>
-__global__ void seedCoordinatesKernel( FieldView<const Real> coordinates, FieldView<const Real> direction,
-                                       Scalar* seeded )
+TRIBOL_HOST_DEVICE void seedCoordinate( Index value, FieldView<const Real> coordinates, FieldView<const Real> direction,
+                                        Scalar* seeded )
 {
-  const Index value = static_cast<Index>( blockIdx.x * blockDim.x + threadIdx.x );
   const Index total = coordinates.entities * coordinates.components;
   if ( value < total ) {
     const Index node = value / coordinates.components;
@@ -303,13 +287,13 @@ __global__ void seedCoordinatesKernel( FieldView<const Real> coordinates, FieldV
   }
 }
 
-__global__ void evaluateDerivativeKernel( SurfacePairViewT<linearization_detail::ExactTangent> surfaces,
-                                          const ElementPair* candidates, Index count,
-                                          DefaultMethod::Parameters parameters, ContactStateView state,
-                                          ResultLayout layout, std::uint64_t* scatter_keys, Real* scatter_values )
+TRIBOL_HOST_DEVICE void evaluateDerivative( Index interaction,
+                                            SurfacePairViewT<linearization_detail::ExactTangent> surfaces,
+                                            const ElementPair* candidates, Index count,
+                                            DefaultMethod::Parameters parameters, ContactStateView state,
+                                            ResultLayout layout, std::uint64_t* scatter_keys, Real* scatter_values )
 {
   using Tangent = linearization_detail::ExactTangent;
-  const Index interaction = static_cast<Index>( blockIdx.x * blockDim.x + threadIdx.x );
   if ( interaction >= count ) {
     return;
   }

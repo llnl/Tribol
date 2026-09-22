@@ -6,7 +6,7 @@
 #include "tribol/core/Version.hpp"
 #include "tribol/evaluation/PolicyEvaluator.hpp"
 #include "tribol/evaluation/State.hpp"
-#include "tribol/execution/ContactCuda.hpp"
+#include "tribol/execution/ContactDevice.hpp"
 #include "tribol/execution/ContactOpenMP.hpp"
 #include "tribol/execution/Execution.hpp"
 #include "tribol/method/Traits.hpp"
@@ -52,7 +52,7 @@ class Contact {
     timestep::validate( options_.timestep );
     resizeLinearizationWorkspace();
     resizeEvaluationWorkspace();
-    if constexpr ( std::same_as<Execution, execution::Cuda> ) {
+    if constexpr ( execution::DevicePolicy<Execution> ) {
       execution_workspace_.uploadSurfaces( surfaces_ );
     }
   }
@@ -69,10 +69,10 @@ class Contact {
 
   void updateInteractions()
   {
-    if constexpr ( std::same_as<Execution, execution::Cuda> ) {
+    if constexpr ( execution::DevicePolicy<Execution> ) {
       execution_workspace_.findCandidates( effectiveSearchParameters( options_ ), options_.self_contact,
                                            options_.exclude_adjacent_self_contact );
-      cuda_candidate_mirror_.clear();
+      device_candidate_mirror_.clear();
     } else {
       search_.findCandidates( surfaces_, candidates_ );
       if ( options_.self_contact ) {
@@ -97,9 +97,9 @@ class Contact {
       candidates_.append( pair );
     }
     candidates_.canonicalize();
-    if constexpr ( std::same_as<Execution, execution::Cuda> ) {
+    if constexpr ( execution::DevicePolicy<Execution> ) {
       execution_workspace_.setCandidates( candidates_.view() );
-      cuda_candidate_mirror_.clear();
+      device_candidate_mirror_.clear();
     }
     interaction_geometry_version_ = geometry_version_;
     interaction_version_.advance();
@@ -112,7 +112,7 @@ class Contact {
     requireValidSurfaces( surfaces );
     requireSameTopology( surfaces_, surfaces );
     surfaces_ = surfaces;
-    if constexpr ( std::same_as<Execution, execution::Cuda> ) {
+    if constexpr ( execution::DevicePolicy<Execution> ) {
       execution_workspace_.updateGeometry( surfaces_ );
     }
     geometry_version_.advance();
@@ -123,8 +123,8 @@ class Contact {
     requireValidSurfaces( surfaces );
     surfaces_ = surfaces;
     candidates_.clear();
-    cuda_candidate_mirror_.clear();
-    if constexpr ( std::same_as<Execution, execution::Cuda> ) {
+    device_candidate_mirror_.clear();
+    if constexpr ( execution::DevicePolicy<Execution> ) {
       execution_workspace_.invalidate();
       execution_workspace_.uploadSurfaces( surfaces_ );
     }
@@ -269,7 +269,7 @@ class Contact {
 
   [[nodiscard]] Index interactionCount() const
   {
-    if constexpr ( std::same_as<Execution, execution::Cuda> ) {
+    if constexpr ( execution::DevicePolicy<Execution> ) {
       return execution_workspace_.interactionCount();
     } else {
       return candidates_.size();
@@ -356,19 +356,19 @@ class Contact {
                                         ContactOutputView output ) const
   {
     EvaluationSummary summary;
-    if constexpr ( std::same_as<Execution, execution::Cuda> ) {
+    if constexpr ( execution::DevicePolicy<Execution> ) {
       summary = execution_workspace_.evaluateDefault( options_.method, state, options_.timestep );
       execution_workspace_.downloadResult( output );
-      last_cuda_summary_ = summary;
-      cuda_result_geometry_version_ = geometry_version_;
-      cuda_result_interaction_version_ = interaction_version_;
+      last_device_summary_ = summary;
+      device_result_geometry_version_ = geometry_version_;
+      device_result_interaction_version_ = interaction_version_;
     } else if constexpr ( std::same_as<Execution, execution::OpenMP> ) {
       summary = execution::evaluateOpenMPContact<MethodType>( surfaces, candidates_.view(), options_.method, state,
                                                               output, execution_workspace_ );
     } else {
       summary = evaluateMethod<MethodType>( surfaces, candidates_.view(), options_.method, state, output );
     }
-    if constexpr ( !std::same_as<Execution, execution::Cuda> ) {
+    if constexpr ( !execution::DevicePolicy<Execution> ) {
       summary.timestep_vote = timestep::kinematicVote<MethodType>( surfaces, candidates_.view(), options_.method, state,
                                                                    options_.timestep );
     }
@@ -397,7 +397,7 @@ class Contact {
   Options options_;
   Search search_;
   mutable CandidatePairs candidates_;
-  mutable std::vector<ElementPair> cuda_candidate_mirror_;
+  mutable std::vector<ElementPair> device_candidate_mirror_;
   GeometryVersion geometry_version_{};
   GeometryVersion interaction_geometry_version_{};
   InteractionVersion interaction_version_{};
@@ -446,13 +446,13 @@ class Contact {
   mutable std::vector<Real> result_quadrature_pressure_;
   mutable std::vector<Real> result_pressure_;
   using ExecutionWorkspace =
-      std::conditional_t<std::same_as<Execution, execution::Cuda>, execution::CudaContactWorkspace,
+      std::conditional_t<execution::DevicePolicy<Execution>, execution::DeviceContactWorkspace<Execution>,
                          std::conditional_t<std::same_as<Execution, execution::OpenMP>,
                                             execution::OpenMPContactWorkspace, execution::HostPenaltyWorkspace>>;
   mutable ExecutionWorkspace execution_workspace_;
-  mutable EvaluationSummary last_cuda_summary_{};
-  mutable GeometryVersion cuda_result_geometry_version_{};
-  mutable InteractionVersion cuda_result_interaction_version_{};
+  mutable EvaluationSummary last_device_summary_{};
+  mutable GeometryVersion device_result_geometry_version_{};
+  mutable InteractionVersion device_result_interaction_version_{};
 };
 
 }  // namespace tribol

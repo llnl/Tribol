@@ -1,11 +1,11 @@
 #include "tribol/execution/DeviceContact.hpp"
 
-#include "tribol/execution/DeviceBackendCuda.hpp"
+#include "tribol/execution/DeviceBackendHip.hpp"
 
 namespace tribol::execution {
 
-using ActiveExecution = Cuda;
-using ActiveDeviceBackend = detail::CudaDeviceBackend;
+using ActiveExecution = Hip;
+using ActiveDeviceBackend = detail::HipDeviceBackend;
 
 }  // namespace tribol::execution
 
@@ -13,6 +13,6 @@ using ActiveDeviceBackend = detail::CudaDeviceBackend;
 
 namespace tribol::execution {
 
-bool cudaDeviceAvailable() { return ActiveDeviceBackend::available(); }
+bool hipDeviceAvailable() { return ActiveDeviceBackend::available(); }
 
 }  // namespace tribol::execution

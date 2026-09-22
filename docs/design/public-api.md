@@ -47,13 +47,14 @@ activation and clipping transitions are nonsmooth; callers should rebuild intera
 Evaluation and linearization throw if interactions have not been prepared. The contact object is intentionally
 non-copyable and non-movable because its views and workspaces have stable ownership relationships.
 
-## CUDA Workflow
+## Device Workflow
 
-The supported CUDA specialization is intentionally exact:
+The supported CUDA and HIP specializations are intentionally exact:
 
 ```cpp
+using DeviceExecution = tribol::execution::Cuda;  // or tribol::execution::Hip
 using DeviceContact =
-    tribol::Contact<tribol::DefaultMethod, tribol::search::Bvh, tribol::execution::Cuda>;
+    tribol::Contact<tribol::DefaultMethod, tribol::search::Bvh, DeviceExecution>;
 
 DeviceContact contact({mortar_surface, nonmortar_surface}, options);
 contact.updateInteractions();
@@ -66,8 +67,9 @@ and result buffers. `evaluateDevice()` performs projected-overlap generation, po
 voting, and deterministic two-stage scatter on the device. Its array and field members are device pointers; only the
 small `EvaluationSummary` metadata is synchronized to the host.
 
-`cudaPipelineView()` exposes trivially copyable device views of the resident surfaces, candidates, generated patches,
-and current results for downstream kernels. These pointers are owned by the contact object. Candidate and
+`devicePipelineView()` exposes trivially copyable device views of the resident surfaces, candidates, generated patches,
+and current results for downstream kernels. `cudaPipelineView()` and `hipPipelineView()` preserve explicit backend
+spelling when useful. These pointers are owned by the contact object. Candidate and
 interaction-sized pointers remain valid until `updateInteractions()`, `setInteractions()`, `rebuildGeometry()`, or
 destruction; result contents are overwritten by the next evaluation. `updateGeometry()` copies coordinates into the
 existing device allocations and preserves the frozen candidate set. A pipeline result retains the geometry and
@@ -78,6 +80,10 @@ Use `evaluate(state)` when host-readable result arrays are required; it runs the
 downloads contact-owned mirrors. Calling `interactions()` similarly downloads a host candidate mirror. Exact
 matrix-free coordinate derivative physics runs on the device. Dense Jacobian assembly currently launches one device
 directional action per column from host orchestration and returns host-owned matrix storage.
+
+`DeviceExecution` is `tribol::execution::Cuda` in a CUDA build or `tribol::execution::Hip` in a ROCm build. The public
+lifecycle and pointer-validity rules are identical. Device mechanics are shared RAJA kernels; backend adapters provide
+the RAJA resource plus CUB or hipCUB sort, scan, run-length, and reduction primitives.
 
 ## Search And Self-Contact
 

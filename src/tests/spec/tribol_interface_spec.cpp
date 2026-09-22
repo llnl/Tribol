@@ -54,27 +54,48 @@ static_assert( execution::SupportedContactExecution<DefaultMethod, execution::Cu
 static_assert( !execution::SupportedContactExecution<ProjectedMultiplier, execution::Cuda> );
 static_assert( execution::SupportedContactSearch<search::Bvh, execution::Cuda> );
 static_assert( !execution::SupportedContactSearch<search::CartesianProduct, execution::Cuda> );
+static_assert( execution::SupportedContactExecution<DefaultMethod, execution::Hip> );
+static_assert( !execution::SupportedContactExecution<ProjectedMultiplier, execution::Hip> );
+static_assert( execution::SupportedContactSearch<search::Bvh, execution::Hip> );
+static_assert( !execution::SupportedContactSearch<search::CartesianProduct, execution::Hip> );
 
 using CudaDefaultContact = Contact<DefaultMethod, search::Bvh, execution::Cuda>;
+using HipDefaultContact = Contact<DefaultMethod, search::Bvh, execution::Hip>;
 
 template <typename MethodType, typename Search, typename Execution>
 concept HasArrayContact = requires { typename array::ArrayContact<MethodType, Search, Execution>; };
 
 static_assert( HasArrayContact<DefaultMethod, search::Bvh, execution::Cuda> );
 static_assert( !HasArrayContact<DefaultMethod, search::CartesianProduct, execution::Cuda> );
+static_assert( HasArrayContact<DefaultMethod, search::Bvh, execution::Hip> );
+static_assert( !HasArrayContact<DefaultMethod, search::CartesianProduct, execution::Hip> );
 
 template <typename ContactType>
 concept HasDeviceEvaluation = requires( const ContactType& contact ) {
   { contact.evaluateDevice() } -> std::same_as<ContactResultView>;
+  { contact.devicePipelineView() } -> std::same_as<execution::DevicePipelineView>;
+};
+
+template <typename ContactType>
+concept HasCudaCompatibilityView = requires( const ContactType& contact ) {
   { contact.cudaPipelineView() } -> std::same_as<execution::CudaPipelineView>;
 };
 
+template <typename ContactType>
+concept HasHipCompatibilityView = requires( const ContactType& contact ) {
+  { contact.hipPipelineView() } -> std::same_as<execution::HipPipelineView>;
+};
+
 static_assert( HasDeviceEvaluation<CudaDefaultContact> );
+static_assert( HasDeviceEvaluation<HipDefaultContact> );
+static_assert( HasCudaCompatibilityView<CudaDefaultContact> );
+static_assert( HasHipCompatibilityView<HipDefaultContact> );
 static_assert( !HasDeviceEvaluation<Contact<>> );
 
 static_assert( std::is_trivially_copyable_v<ArrayView<const Real>> );
 static_assert( std::is_trivially_copyable_v<SurfaceMeshView> );
 static_assert( std::is_trivially_copyable_v<execution::CudaPipelineView> );
+static_assert( std::is_trivially_copyable_v<execution::HipPipelineView> );
 static_assert( std::is_trivially_copyable_v<ContactStateView> );
 static_assert( std::is_trivially_copyable_v<NodalKinematicsView> );
 static_assert( search::legacyProximityScale == 4.0 );

@@ -7,9 +7,16 @@ message(STATUS "Configuring TPLs...\n----------------------")
 
 set(EXPORTED_TPL_DEPS)
 
+if(TRIBOL_USE_CUDA OR TRIBOL_USE_HIP)
+  find_package(RAJA CONFIG REQUIRED)
+  list(APPEND EXPORTED_TPL_DEPS RAJA)
+endif()
+
 if(TRIBOL_USE_CUDA)
-  set(tribol_device_depends blt::cuda CACHE STRING "" FORCE)
+  set(tribol_device_depends blt::cuda RAJA CACHE STRING "" FORCE)
   set(CMAKE_CUDA_USE_RESPONSE_FILE_FOR_INCLUDES OFF)
+elseif(TRIBOL_USE_HIP)
+  set(tribol_device_depends blt::hip RAJA CACHE STRING "" FORCE)
 endif()
 
 if(TARGET mfem)

@@ -20,10 +20,15 @@ set(tribol_core_headers
     ../evaluation/State.hpp
     ../evaluation/VariationalEvaluator.inl
     ../execution/Execution.hpp
+    ../execution/ContactDevice.hpp
     ../execution/ContactCuda.hpp
     ../execution/ContactOpenMP.hpp
     ../execution/CudaContact.hpp
     ../execution/CudaPenalty.hpp
+    ../execution/DeviceContact.hpp
+    ../execution/DevicePenalty.hpp
+    ../execution/HipContact.hpp
+    ../execution/HipPenalty.hpp
     ../execution/PenaltyKernel.hpp
     ../geom/ConformingOverlap.hpp
     ../geom/ProjectedOverlap.hpp
@@ -70,34 +75,66 @@ foreach(tribol_core_header ${tribol_core_headers})
           DESTINATION "include/tribol/${_install_subdirectory}")
 endforeach()
 
-if(ENABLE_CUDA)
+if(ENABLE_CUDA OR ENABLE_HIP)
+  if(ENABLE_CUDA)
+    set(_tribol_device_sources
+        ../execution/CudaContact.cu
+        ../execution/CudaPenalty.cu)
+  else()
+    set(_tribol_device_sources
+        ../execution/HipContact.cpp
+        ../execution/HipPenalty.cpp)
+  endif()
+
   blt_add_library(
     NAME
-    tribol_cuda_execution
+    tribol_device_execution
     SOURCES
-    ../execution/CudaContact.cu
-    ../execution/CudaPenalty.cu
+    ${_tribol_device_sources}
     HEADERS
     ../execution/CudaContact.hpp
     ../execution/CudaPenalty.hpp
+    ../execution/DeviceContact.hpp
+    ../execution/DevicePenalty.hpp
+    ../execution/HipContact.hpp
+    ../execution/HipPenalty.hpp
     DEPENDS_ON
     tribol_core
     ${tribol_device_depends}
     FOLDER
     tribol/execution)
-  add_library(tribol::cuda_execution ALIAS tribol_cuda_execution)
-  set(_cuda tribol_cuda_execution)
-  set_target_properties(${_cuda} PROPERTIES EXPORT_NAME tribol::cuda_execution)
-  target_compile_features(tribol_cuda_execution PUBLIC cxx_std_20 cuda_std_20)
-  set_target_properties(tribol_cuda_execution
-                        PROPERTIES CUDA_STANDARD 20 CUDA_STANDARD_REQUIRED ON)
-  target_compile_options(
-    tribol_cuda_execution
-    PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+  add_library(tribol::device_execution ALIAS tribol_device_execution)
+  set_target_properties(tribol_device_execution PROPERTIES EXPORT_NAME tribol::device_execution)
+  target_compile_features(tribol_device_execution PUBLIC cxx_std_20)
+  if(ENABLE_CUDA)
+    target_compile_features(tribol_device_execution PUBLIC cuda_std_20)
+    set_target_properties(
+      tribol_device_execution
+      PROPERTIES CUDA_STANDARD 20
+                 CUDA_STANDARD_REQUIRED ON
+                 CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+    target_compile_options(
+      tribol_device_execution
+      PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+  endif()
   target_include_directories(
-    tribol_cuda_execution
+    tribol_device_execution
     PUBLIC $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/src>
            $<BUILD_INTERFACE:${PROJECT_BINARY_DIR}/include>
            $<INSTALL_INTERFACE:include>)
-  install(TARGETS tribol_cuda_execution EXPORT tribol-targets)
+  install(TARGETS tribol_device_execution EXPORT tribol-targets)
+
+  if(ENABLE_CUDA)
+    add_library(tribol_cuda_execution INTERFACE)
+    target_link_libraries(tribol_cuda_execution INTERFACE tribol_device_execution)
+    add_library(tribol::cuda_execution ALIAS tribol_cuda_execution)
+    set_target_properties(tribol_cuda_execution PROPERTIES EXPORT_NAME tribol::cuda_execution)
+    install(TARGETS tribol_cuda_execution EXPORT tribol-targets)
+  else()
+    add_library(tribol_hip_execution INTERFACE)
+    target_link_libraries(tribol_hip_execution INTERFACE tribol_device_execution)
+    add_library(tribol::hip_execution ALIAS tribol_hip_execution)
+    set_target_properties(tribol_hip_execution PROPERTIES EXPORT_NAME tribol::hip_execution)
+    install(TARGETS tribol_hip_execution EXPORT tribol-targets)
+  endif()
 endif()

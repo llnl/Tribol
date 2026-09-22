@@ -4,7 +4,7 @@ set(install_prefix "@PROJECT_BINARY_DIR@/tests/tribol-install-consumer-prefix")
 set(consumer_build "@PROJECT_BINARY_DIR@/tests/tribol-install-consumer-build")
 set(multi_config "@CMAKE_CONFIGURATION_TYPES@")
 set(consumer_compiler "@CMAKE_CXX_COMPILER@")
-if(@TRIBOL_USE_MPI@)
+if(@TRIBOL_USE_MPI@ AND NOT (@TRIBOL_USE_CUDA@ OR @TRIBOL_USE_HIP@))
   set(consumer_compiler "@MPI_CXX_COMPILER@")
 endif()
 
@@ -28,6 +28,13 @@ execute_process(
           -B "${consumer_build}"
           "-DCMAKE_PREFIX_PATH=${install_prefix}"
           "-DCMAKE_CXX_COMPILER=${consumer_compiler}"
+          "-DTRIBOL_CONSUMER_ENABLE_CUDA=@TRIBOL_USE_CUDA@"
+          "-DTRIBOL_CONSUMER_ENABLE_HIP=@TRIBOL_USE_HIP@"
+          "-DCMAKE_CUDA_COMPILER=@CMAKE_CUDA_COMPILER@"
+          "-DCMAKE_CUDA_HOST_COMPILER=@CMAKE_CUDA_HOST_COMPILER@"
+          "-DCMAKE_CUDA_ARCHITECTURES=@CMAKE_CUDA_ARCHITECTURES@"
+          "-DCMAKE_HIP_ARCHITECTURES=@CMAKE_HIP_ARCHITECTURES@"
+          "-DMPI_CXX_COMPILER=@MPI_CXX_COMPILER@"
   RESULT_VARIABLE configure_result)
 if(configure_result)
   message(FATAL_ERROR "Tribol install-consumer configuration failed with status ${configure_result}")
@@ -47,4 +54,15 @@ endif()
 execute_process(COMMAND "${consumer_executable}" RESULT_VARIABLE run_result)
 if(run_result)
   message(FATAL_ERROR "Tribol install consumer failed with status ${run_result}")
+endif()
+
+if(@TRIBOL_USE_CUDA@ OR @TRIBOL_USE_HIP@)
+  set(device_consumer_executable "${consumer_build}/tribol_device_install_consumer")
+  if(multi_config AND TRIBOL_TEST_CONFIG)
+    set(device_consumer_executable "${consumer_build}/${TRIBOL_TEST_CONFIG}/tribol_device_install_consumer")
+  endif()
+  execute_process(COMMAND "${device_consumer_executable}" RESULT_VARIABLE device_run_result)
+  if(device_run_result)
+    message(FATAL_ERROR "Tribol device install consumer failed with status ${device_run_result}")
+  endif()
 endif()

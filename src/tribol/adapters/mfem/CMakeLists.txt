@@ -7,8 +7,8 @@ set(_tribol_mfem_adapter_headers
 set(_tribol_mfem_adapter_depends tribol_core mfem)
 blt_list_append(TO _tribol_mfem_adapter_depends ELEMENTS blt::mpi IF
                 TRIBOL_USE_MPI)
-blt_list_append(TO _tribol_mfem_adapter_depends ELEMENTS tribol_cuda_execution
-                IF ENABLE_CUDA)
+blt_list_append(TO _tribol_mfem_adapter_depends ELEMENTS tribol_device_execution
+                IF TRIBOL_USE_CUDA OR TRIBOL_USE_HIP)
 
 blt_add_library(
   NAME

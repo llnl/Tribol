@@ -19,7 +19,7 @@ SCRIPT_DIRECTORY = Path(__file__).resolve().parent
 REPOSITORY_ROOT = SCRIPT_DIRECTORY.parents[1]
 DEFAULT_MANIFEST = REPOSITORY_ROOT / "benchmarks/suites.json"
 REFERENCE_URL = "https://github.com/LLNL/Tribol.git"
-CUDA_CASES = frozenset(("penalty-2d", "penalty-3d"))
+DEVICE_CASES = frozenset(("penalty-2d", "penalty-3d"))
 CUDA_REFERENCE_SOURCE_PATCHES = (
     (
         "cuda-13-device-array-destructors",
@@ -210,10 +210,16 @@ def configure_current(args: argparse.Namespace) -> Path:
         command.extend(("-C", str(args.current_host_config.resolve())))
     command.extend(("-S", str(REPOSITORY_ROOT), "-B", str(build), "-DTRIBOL_ENABLE_BENCHMARKS=ON"))
     if args.execution == "cuda":
-        command.append("-DENABLE_CUDA=ON")
+        command.extend(("-DENABLE_CUDA=ON", "-DENABLE_HIP=OFF"))
+    elif args.execution == "hip":
+        command.extend(("-DENABLE_CUDA=OFF", "-DENABLE_HIP=ON"))
     command.extend(args.current_cmake_arg)
     run(command)
-    target = "tribol_rewritten_cuda_benchmark" if args.execution == "cuda" else "tribol_rewritten_benchmark"
+    target = {
+        "host": "tribol_rewritten_benchmark",
+        "cuda": "tribol_rewritten_cuda_benchmark",
+        "hip": "tribol_rewritten_hip_benchmark",
+    }[args.execution]
     run(["cmake", "--build", str(build), "--target", target, "-j", str(args.jobs)])
     candidates = (build / f"benchmarks/{target}", build / f"bin/{target}")
     for candidate in candidates:
@@ -272,6 +278,20 @@ def inherited_reference_arguments(current_build: Path, execution: str = "host") 
                 "UMPIRE_DIR",
             )
         )
+    elif execution == "hip":
+        keys.extend(
+            (
+                "CMAKE_HIP_ARCHITECTURES",
+                "ROCM_PATH",
+                "ROCM_ROOT_DIR",
+                "HIP_PATH",
+                "HIP_ROOT_DIR",
+                "RAJA_DIR",
+                "hipcub_DIR",
+                "umpire_DIR",
+                "UMPIRE_DIR",
+            )
+        )
     arguments = [f"-D{key}={cache[key]}" for key in keys if cache.get(key) and not cache[key].endswith("-NOTFOUND")]
     if execution == "cuda":
         cuda_flags = " ".join(part.strip() for part in shlex.split(cache.get("CMAKE_CUDA_FLAGS", "")) if part.strip())
@@ -303,6 +323,16 @@ def inherited_reference_driver_arguments(current_build: Path, execution: str = "
                 "CMAKE_CUDA_ARCHITECTURES",
                 "CUDAToolkit_ROOT",
                 "CUDA_TOOLKIT_ROOT_DIR",
+            )
+        )
+    elif execution == "hip":
+        keys.extend(
+            (
+                "CMAKE_HIP_ARCHITECTURES",
+                "ROCM_PATH",
+                "ROCM_ROOT_DIR",
+                "HIP_PATH",
+                "HIP_ROOT_DIR",
             )
         )
     return [f"-D{key}={cache[key]}" for key in keys if cache.get(key) and not cache[key].endswith("-NOTFOUND")]
@@ -348,6 +378,10 @@ def build_develop_reference(args: argparse.Namespace, work: Path) -> Path:
     )
     if args.execution == "cuda":
         command.append("-DENABLE_CUDA=ON")
+        command.append("-DENABLE_HIP=OFF")
+    elif args.execution == "hip":
+        command.append("-DENABLE_CUDA=OFF")
+        command.append("-DENABLE_HIP=ON")
     else:
         command.extend(("-URAJA_DIR", "-UUMPIRE_DIR"))
     if not args.reference_host_config:
@@ -419,7 +453,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--suite", default="smoke", help="suite name from benchmarks/suites.json (default: smoke)")
     parser.add_argument(
         "--execution",
-        choices=("host", "cuda"),
+        choices=("host", "cuda", "hip"),
         default="host",
         help="execution backend for both implementations (default: host)",
     )
@@ -446,10 +480,10 @@ def main() -> int:
         raise ValueError("--jobs must be positive")
     manifest = load_manifest(args.manifest.resolve())
     specs = expand_suite(manifest, args.suite)
-    if args.execution == "cuda":
-        unsupported = sorted({spec.case for spec in specs} - CUDA_CASES)
+    if args.execution in ("cuda", "hip"):
+        unsupported = sorted({spec.case for spec in specs} - DEVICE_CASES)
         if unsupported:
-            raise ValueError("CUDA comparison does not support cases: " + ", ".join(unsupported))
+            raise ValueError(f"{args.execution.upper()} comparison does not support cases: " + ", ".join(unsupported))
     current_driver = configure_current(args)
     temporary: tempfile.TemporaryDirectory[str] | None = None
     if args.work_dir:

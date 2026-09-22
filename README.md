@@ -82,10 +82,16 @@ Hosts with contiguous arrays can use `tribol::array::makeContact`; MFEM applicat
 [`docs/design/public-api.md`](docs/design/public-api.md) for lifecycle and result semantics and
 [`docs/design/support-matrix.md`](docs/design/support-matrix.md) for the tested capability boundary.
 
-The production CUDA path is
-`Contact<DefaultMethod, search::Bvh, execution::Cuda>`. It keeps mesh data, BVH candidates, overlap patches,
-intermediates, and result payloads on the device and exposes them through `evaluateDevice()` and
-`cudaPipelineView()`. Use `evaluate()` only when a host-readable result mirror is needed.
+The production GPU path is `Contact<DefaultMethod, search::Bvh, Execution>`, where `Execution` is
+`execution::Cuda` or `execution::Hip`. It keeps mesh data, BVH candidates, overlap patches, intermediates, and result
+payloads on the device and exposes them through `evaluateDevice()` and `devicePipelineView()`. The compatibility views
+`cudaPipelineView()` and `hipPipelineView()` are backend-specific aliases. Use `evaluate()` only when a host-readable
+result mirror is needed.
+
+GPU mechanics are implemented once with RAJA-dispatched kernels. Small backend adapters select a RAJA CUDA or HIP
+resource and provide deterministic radix sort, scan, run-length encoding, and reduction through CUB or hipCUB. A `.cu`
+translation unit is retained only to enter the CUDA compiler; the HIP entry point is compiled by the ROCm C++
+toolchain. The search, patch, physics, derivative, and scatter algorithms are shared.
 
 Named-method legacy sources are not part of this repository. Cross-version runtime and numerical comparisons use an
 external Tribol installation; see [`benchmarks/README.md`](benchmarks/README.md).
@@ -102,6 +108,8 @@ Tribol has optional dependencies on:
 - MPI
 - OpenMP
 - CUDA
+- ROCm/HIP
+- RAJA for CUDA or HIP execution
 
 ## License
 

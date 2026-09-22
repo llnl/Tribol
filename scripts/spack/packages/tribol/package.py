@@ -12,12 +12,13 @@ from spack_repo.builtin.build_systems.cached_cmake import (
     cmake_cache_string,
 )
 from spack_repo.builtin.build_systems.cuda import CudaPackage
+from spack_repo.builtin.build_systems.rocm import ROCmPackage
 
 from spack.package import *
 from spack.util.executable import which_string
 
 
-class Tribol(CachedCMakePackage, CudaPackage):
+class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     """Policy-composed contact mechanics library."""
 
     homepage = "https://github.com/LLNL/Tribol"
@@ -40,10 +41,22 @@ class Tribol(CachedCMakePackage, CudaPackage):
     depends_on("mpi")
     depends_on("mfem@4.7:+lapack")
     depends_on("mfem+asan", when="+asan")
+    conflicts("+cuda", when="+rocm", msg="Tribol supports one device backend per build")
+
+    depends_on("raja+cuda", when="+cuda")
+    depends_on("raja+rocm", when="+rocm")
+    depends_on("hipcub", when="+rocm")
 
     for cuda_arch in CudaPackage.cuda_arch_values:
         cuda_spec = f"+cuda cuda_arch={cuda_arch}"
         depends_on(f"mfem {cuda_spec}", when=cuda_spec)
+        depends_on(f"raja {cuda_spec}", when=cuda_spec)
+
+    for amdgpu_target in ROCmPackage.amdgpu_targets:
+        rocm_spec = f"+rocm amdgpu_target={amdgpu_target}"
+        depends_on(f"mfem {rocm_spec}", when=rocm_spec)
+        depends_on(f"raja {rocm_spec}", when=rocm_spec)
+        depends_on(f"hipcub amdgpu_target={amdgpu_target}", when=rocm_spec)
 
     depends_on("mfem+debug", when="build_type=Debug")
     depends_on("doxygen", when="+devtools")
@@ -79,7 +92,7 @@ class Tribol(CachedCMakePackage, CudaPackage):
         hostname = socket.gethostname()
         if "SYS_TYPE" in env:
             hostname = hostname.rstrip("1234567890")
-        suffix = "_cuda" if "+cuda" in self.spec else ""
+        suffix = "_cuda" if "+cuda" in self.spec else "_rocm" if "+rocm" in self.spec else ""
         return "{0}-{1}-{2}@{3}{4}.cmake".format(
             hostname,
             self._get_sys_type(self.spec),
@@ -92,8 +105,14 @@ class Tribol(CachedCMakePackage, CudaPackage):
         entries = super().initconfig_hardware_entries()
         entries.append(cmake_cache_option("ENABLE_OPENMP", self.spec.satisfies("+openmp")))
         entries.append(cmake_cache_option("ENABLE_CUDA", self.spec.satisfies("+cuda")))
+        entries.append(cmake_cache_option("ENABLE_HIP", self.spec.satisfies("+rocm")))
         if "+cuda" in self.spec:
             entries.append(cmake_cache_option("CMAKE_CUDA_SEPARABLE_COMPILATION", True))
+            entries.append(cmake_cache_option("gtest_disable_pthreads", True))
+        if "+rocm" in self.spec:
+            targets = self.spec.variants["amdgpu_target"].value
+            if targets and targets != ("none",):
+                entries.append(cmake_cache_string("CMAKE_HIP_ARCHITECTURES", ";".join(targets)))
             entries.append(cmake_cache_option("gtest_disable_pthreads", True))
         return entries
 
@@ -115,8 +134,12 @@ class Tribol(CachedCMakePackage, CudaPackage):
     def initconfig_package_entries(self):
         entries = [
             cmake_cache_path("MFEM_DIR", self.spec["mfem"].prefix),
+            cmake_cache_path("RAJA_DIR", self.spec["raja"].prefix)
+            if self.spec.satisfies("+cuda") or self.spec.satisfies("+rocm")
+            else "",
             cmake_cache_option("ENABLE_DOCS", "+devtools" in self.spec),
         ]
+        entries = [entry for entry in entries if entry]
         if self.spec.satisfies("^py-sphinx"):
             sphinx = self.spec["py-sphinx"].prefix.bin.join("sphinx-build")
             entries.append(cmake_cache_path("SPHINX_EXECUTABLE", sphinx))

@@ -16,7 +16,7 @@
       "dimensions": [2, 3],
       "topologies": ["Segment", "Triangle", "Quadrilateral", "TessellatedHighOrderSegment"],
       "search": ["CartesianProduct", "Grid", "Bvh"],
-      "execution": ["Sequential", "Deterministic", "OpenMP", "Cuda"],
+      "execution": ["Sequential", "Deterministic", "OpenMP", "Cuda", "Hip"],
       "parallel": ["Serial", "MPI"],
       "outputs": ["Force", "Energy", "TimestepVote", "DerivativeOperators"],
       "requirements": ["API-001", "CORE-002", "CORE-003", "ENF-001", "DIFF-001", "DIFF-002", "GEOM-001", "SEARCH-001", "SEARCH-003", "SEARCH-004", "ADAPTER-006", "PAR-001", "PAR-002", "PAR-003", "PAR-004", "PAR-005", "PAR-006", "PHYS-001", "PHYS-003", "OUTPUT-001", "TIME-001", "LEGACY-003"]

@@ -44,6 +44,25 @@ BENCHMARK_DIRECTORIES = (
 
 SOURCE_SUFFIXES = {".hpp", ".cpp", ".inl", ".cu"}
 
+DEVICE_BACKEND_ADAPTERS = {
+    Path("src/tribol/execution/CudaContact.cu"),
+    Path("src/tribol/execution/CudaPenalty.cu"),
+    Path("src/tribol/execution/DeviceBackendCuda.hpp"),
+    Path("src/tribol/execution/DeviceBackendHip.hpp"),
+    Path("src/tribol/execution/HipContact.cpp"),
+    Path("src/tribol/execution/HipPenalty.cpp"),
+}
+
+SHARED_DEVICE_FILES = (
+    Path("src/tribol/execution/DeviceContactImplementation.inl"),
+    Path("src/tribol/execution/DevicePenaltyImplementation.inl"),
+    Path("src/tribol/execution/CudaContactMemory.inl"),
+    Path("src/tribol/execution/CudaContactSearch.inl"),
+    Path("src/tribol/execution/CudaContactKernels.inl"),
+    Path("src/tribol/execution/CudaContactWorkspacePublic.inl"),
+    Path("src/tribol/execution/CudaContactWorkspacePrivate.inl"),
+)
+
 THIRD_PARTY_INCLUDE = re.compile(
     r'^\s*#\s*include\s*[<"](?:mfem|mpi|axom|RAJA|umpire|redecomp|cuda|hip)', re.IGNORECASE
 )
@@ -83,13 +102,32 @@ def architecture_files(root: Path) -> list[Path]:
 def check_dependency_boundaries(root: Path) -> list[Finding]:
     findings: list[Finding] = []
     for path in files_in_entries(root, DEPENDENCY_FREE_DIRECTORIES):
-        if path.suffix == ".cu":
+        if path.suffix == ".cu" or path.relative_to(root) in DEVICE_BACKEND_ADAPTERS:
             continue
         relative = path.relative_to(root)
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             if THIRD_PARTY_INCLUDE.search(line):
                 findings.append(
                     Finding(relative, line_number, "new architecture code may not include third-party APIs")
+                )
+    return findings
+
+
+def check_device_backend_isolation(root: Path) -> list[Finding]:
+    forbidden = re.compile(
+        r"(?:#\s*include\s*[<\"](?:cuda|hip)|\b(?:cuda|hip)(?:Malloc|Free|Memcpy|Memset|Device|Stream|Get)|"
+        r"\b(?:cub|hipcub)::|__global__|<<<|>>>)"
+    )
+    findings: list[Finding] = []
+    for relative in SHARED_DEVICE_FILES:
+        path = root / relative
+        if not path.exists():
+            findings.append(Finding(relative, 0, "missing shared device implementation file"))
+            continue
+        for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if forbidden.search(line):
+                findings.append(
+                    Finding(relative, line_number, "shared device code contains a backend-specific runtime token")
                 )
     return findings
 
@@ -139,7 +177,7 @@ def check_public_header_manifest(root: Path) -> list[Finding]:
     adapter_text = adapter_cmake_path.read_text(encoding="utf-8") if adapter_cmake_path.exists() else ""
     findings: list[Finding] = []
     for path in architecture_files(root):
-        if path.suffix != ".hpp" or path.name == "AGENTS.md":
+        if path.suffix != ".hpp" or path.name == "AGENTS.md" or path.relative_to(root) in DEVICE_BACKEND_ADAPTERS:
             continue
         relative_to_core = Path("../") / path.relative_to(root / "src/tribol")
         expected = path.name if path.parent == root / "src/tribol/core" else relative_to_core.as_posix()
@@ -305,6 +343,7 @@ def check_markdown_links(root: Path) -> list[Finding]:
 def run_custom_checks(root: Path) -> list[Finding]:
     checks = (
         check_dependency_boundaries,
+        check_device_backend_isolation,
         check_named_method_classes,
         check_file_sizes,
         check_public_header_manifest,

@@ -68,7 +68,7 @@ VARIANT_AXES = {"stiffness", "rate", "response", "formulation", "linearization"}
 DIMENSION_VALUES = {2, 3}
 TOPOLOGY_VALUES = {"Segment", "Triangle", "Quadrilateral", "TessellatedHighOrderSegment"}
 SEARCH_VALUES = {"CartesianProduct", "Grid", "Bvh"}
-EXECUTION_VALUES = {"Sequential", "Deterministic", "OpenMP", "Cuda"}
+EXECUTION_VALUES = {"Sequential", "Deterministic", "OpenMP", "Cuda", "Hip"}
 PARALLEL_VALUES = {"Serial", "MPI"}
 OUTPUT_VALUES = {
     "Force",

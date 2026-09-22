@@ -33,12 +33,14 @@ and required execution environments are tested.
   exercise supplied and frozen interactions, verify stable allocation footprints, and require bitwise-repeatable
   shared-node scatter.
 - MPI tests exercise at least one and two ranks, with four-rank coverage for partition-sensitive cases.
-- The installed `tribol::core` target compiles and runs a minimal independent consumer.
+- Installed `tribol::core`, `tribol::device_execution`, and enabled backend alias targets compile, link, and run minimal
+  independent consumers.
 
-The current MPI evidence covers the default MFEM adapter path at one, two, and four ranks. The current CUDA evidence
-covers device-resident `Contact<DefaultMethod, search::Bvh, execution::Cuda>` search, patch generation, evaluation,
-timestep voting, exact directional derivatives, and deterministic scatter on a physical CUDA device. No HIP method,
-GPU-aware MPI transport, or distributed device search is advertised by the rewrite.
+The current MPI evidence covers the default MFEM adapter path at one, two, and four ranks. CUDA and HIP use the same
+parameterized device conformance source for device-resident search, patch generation, evaluation, timestep voting,
+exact directional derivatives, and deterministic scatter. A backend is accepted only after its executable runs on a
+physical device: `tribol_execution_cuda` on NVIDIA hardware and `tribol_execution_hip` on AMD/ROCm hardware. GPU-aware
+MPI transport and distributed device search are not advertised by the rewrite.
 
 ## Requirement IDs
 

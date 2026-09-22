@@ -24,9 +24,9 @@ persistent clone. `--reference-driver-cmake-arg` configures only the adapter con
 compiler, MPI, Axom, and MFEM paths from the current build cache. Optional legacy acceleration and instrumentation TPLs
 are deliberately disabled unless explicitly supplied with `--reference-cmake-arg`.
 
-CUDA comparisons use the default frictionless penalty tuple, the BVH search available to both implementations, and
-device execution for the complete contact step. Configure both packages with CUDA-capable Axom, RAJA, and Umpire
-builds, then run:
+GPU comparisons use the default frictionless penalty tuple, the BVH search available to both implementations, and
+device execution for the complete contact step. Configure both packages with backend-capable Axom, RAJA, and Umpire
+builds. For CUDA, run:
 
 ```bash
 python3 scripts/benchmarks/compare.py \
@@ -38,10 +38,23 @@ python3 scripts/benchmarks/compare.py \
   --output gpu-benchmark-report.json
 ```
 
-The automatic reference build inherits CUDA compiler, architecture, toolkit, RAJA, and Umpire settings from the current
-build when no reference host-config is supplied. For CUDA 13, the orchestrator applies narrowly validated compatibility
-edits to the temporary upstream clone for explicitly device-callable array destructors; applied edits are recorded in
-the report provenance. CUDA comparisons reject unsupported rate, viscous, and mortar cases.
+For HIP, use ROCm-built dependencies and an AMD architecture such as `gfx90a`:
+
+```bash
+python3 scripts/benchmarks/compare.py \
+  --current-build build-hip-release \
+  --current-host-config /path/to/hip.cmake \
+  --reference-host-config /path/to/hip.cmake \
+  --execution hip \
+  --suite gpu-scaling \
+  --output hip-benchmark-report.json
+```
+
+The automatic reference build inherits backend compiler, architecture, toolkit, RAJA, and Umpire settings from the
+current build when no reference host-config is supplied. HIP additionally inherits the ROCm roots and hipCUB package
+location. For CUDA 13, the orchestrator applies narrowly validated compatibility edits to the temporary upstream clone
+for explicitly device-callable array destructors; applied edits are recorded in the report provenance. GPU comparisons
+reject unsupported rate, viscous, and mortar cases.
 
 Run `python3 scripts/benchmarks/compare.py --help` for all build overrides. A numerical mismatch returns status 2; build
 or configuration failures return status 1. Timing ratios are informational and never fail a run.
@@ -50,7 +63,8 @@ or configuration failures return status 1. Timing ratios are informational and n
 
 `benchmarks/suites.json` defines the cases, sizes, sample counts, and numerical tolerances. Both executables emit the
 same versioned JSON protocol. Each case uses disconnected contact pairs with deterministic node ordering and equivalent
-broad-phase work: host suites use grid search and CUDA suites use BVH search. Exactness compares every emitted scalar and vector entry, including all nodal responses,
+broad-phase work: host suites use grid search and GPU suites use BVH search. Exactness compares every emitted scalar
+and vector entry, including all nodal responses,
 weighted gaps, and the sorted nonzero entries from both mortar coupling blocks, while timing reports the
 minimum, median, mean, maximum, population standard deviation, and rewritten/reference median ratio.
 The report provenance records the suite, manifest, both driver paths, selected reference location, available Git
@@ -68,16 +82,19 @@ Suites have distinct purposes:
 - `smoke` verifies the toolchain and representative pointwise/mortar paths quickly.
 - `physics` checks every benchmarked policy family with stricter sampling.
 - `scaling` compares contact-step cost over increasing independent interaction counts.
-- `gpu-scaling` compares the CUDA-supported default penalty tuple over the same interaction counts.
+- `gpu-scaling` compares the CUDA/HIP-supported default penalty tuple over the same interaction counts.
 - `all` is the deduplicated union of the host suites.
 
 The adapters intentionally measure the public contact-step operation rather than isolated kernels. Setup, package
 discovery, process startup, result download for exactness, and JSON serialization are outside the samples. The raw
 results remain in the JSON report so later tooling can apply site-specific performance acceptance criteria without
-changing this correctness contract. The rewritten CUDA timed region runs device BVH construction/search, projected
+changing this correctness contract. The rewritten GPU timed region runs device BVH construction/search, projected
 patch generation, pointwise physics, compaction, deterministic scatter, and summary synchronization through
 `evaluateDevice()`. Its host result download is performed after timing. The legacy adapter likewise uses its public
-CUDA execution mode and keeps response copies outside the timed samples.
+CUDA or HIP execution mode and keeps response copies outside the timed samples.
+
+CUDA and HIP use the same rewritten benchmark code path and shared RAJA mechanics. The report must come from physical
+hardware matching `--execution`; a HIP configuration or cross-compile on a non-AMD host is not benchmark evidence.
 
 ## Interpreting scaling
 

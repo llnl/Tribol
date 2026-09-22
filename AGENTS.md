@@ -27,8 +27,10 @@ Legacy implementations are external benchmark references, never in-tree architec
 - Add or update specification tests before changing the public interface.
 - Keep legacy API use isolated to `benchmarks/driver/LegacyDriver.cpp`, which is compiled only against an external
   reference installation.
-- Do not advertise `Analytic`, `Enzyme`, HIP, scalable distributed search, native high order, or non-default CUDA/MPI
-  support until matching executable evidence exists.
+- Do not advertise `Analytic`, `Enzyme`, scalable distributed search, native high order, GPU-aware MPI, or additional
+  device policy tuples until matching executable evidence exists.
+- Keep GPU mechanics backend-neutral and RAJA-dispatched. CUDA/HIP runtime APIs and CUB/hipCUB primitives belong only
+  in thin backend adapters; shared search, patch, physics, derivative, and scatter files may not include them.
 
 ## Validation Order
 
@@ -41,8 +43,8 @@ clang-format-19 --dry-run --Werror <changed-cpp-files>
 git diff --check
 ```
 
-Use `scripts/quality/check.py` and `scripts/spec/validate.py` after those tools exist. GPU and MPI behavior must be
-validated by dedicated tests rather than inferred from a successful CPU build.
+Use `scripts/quality/check.py` and `scripts/spec/validate.py` after those tools exist. CUDA, HIP, and MPI behavior must
+be validated by dedicated runtime tests rather than inferred from a successful CPU or cross-compiled build.
 
 ## Change Discipline
 
