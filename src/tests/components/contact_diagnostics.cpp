@@ -76,6 +76,8 @@ bool scheduledDiagnosticsContract()
   std::ifstream overlap( written.overlap_vtk );
   const std::string json_text{ std::istreambuf_iterator<char>( json ), std::istreambuf_iterator<char>() };
   const std::string overlap_text{ std::istreambuf_iterator<char>( overlap ), std::istreambuf_iterator<char>() };
+  json.close();
+  overlap.close();
   const bool valid = skipped.json.empty() && std::filesystem::exists( written.surface_vtk ) &&
                      json_text.find( "\"cycle\":4" ) != std::string::npos &&
                      json_text.find( "\"time\":0.40000000000000002" ) != std::string::npos &&
