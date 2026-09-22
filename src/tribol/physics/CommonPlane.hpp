@@ -43,6 +43,19 @@ TRIBOL_HOST_DEVICE inline RealT ComputePenaltyStiffnessPerArea( const RealT K1_o
 
 }  // end ComputePenaltyStiffnessPerArea
 
+/**
+ * @brief Build the shared CommonPlane quadrature rows for the current overlap cells.
+ *
+ * The generated rows contain mapped parent-face coordinates, field values,
+ * basis values, integration weights, normals, gaps, and penalty coefficients.
+ * Explicit force, damping, diagnostics, and downstream operators consume this
+ * same batch.
+ *
+ * @param [in,out] cs CommonPlane coupling scheme that owns the row batch
+ * @return zero on success and nonzero if row generation fails
+ */
+int BuildCommonPlaneContactRows( CouplingScheme* cs );
+
 /*!
  *
  * \brief routine to apply interface physics in the direction normal to the interface

@@ -217,125 +217,58 @@ int NumTWBPointsPerTri( int order )
 }
 
 //------------------------------------------------------------------------------
-void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, int k )
+void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, int order, TriangleQuadratureRuleFamily family )
 {
-  // determine the number of integration points per triangle in the decomposed
-  // polygon and the total number of integration points on the polygon
-  int numTriPoints, numTotalPoints;
-  switch ( k ) {
-    case 2:
-      numTriPoints = 3;
-      numTotalPoints = numTriPoints * elem.numPolyVert;
-      break;
-    case 3:
-      // don't do anything, default to case 4
-    case 4:
-      numTriPoints = 6;
-      numTotalPoints = numTriPoints * elem.numPolyVert;
-      break;
-    default:
-      SLIC_ERROR( "GaussPolyIntTri: only Gauss integration of order 2-4 is implemented." );
-      return;
+  constexpr int reference_dimension = 2;
+  RealT quadrature_weights[max_symmetric_triangle_qpts] = { 0. };
+  RealT reference_coordinates[reference_dimension * max_symmetric_triangle_qpts] = { 0. };
+  const int number_of_triangle_points = GetTriangleRule( order, family, quadrature_weights, reference_coordinates );
+  if ( number_of_triangle_points == 0 ) {
+    SLIC_ERROR( "GaussPolyIntTri: requested triangle integration rule is not available." );
+    return;
   }
+  const int number_of_total_points = number_of_triangle_points * elem.numPolyVert;
+  integ.initialize( 3, number_of_total_points );
 
-  int parentDim = 2;
+  // The overlap polygon is convex. Its centroid and each polygon edge form a
+  // nonoverlapping triangle, so integrating the fan covers the full overlap.
+  RealT triangle_x_coordinates[3] = { 0., 0., 0. };
+  RealT triangle_y_coordinates[3] = { 0., 0., 0. };
+  RealT triangle_z_coordinates[3] = { 0., 0., 0. };
+  PolyAreaCentroid( elem.overlapCoords, elem.dim, elem.numPolyVert, triangle_x_coordinates[2],
+                    triangle_y_coordinates[2], triangle_z_coordinates[2] );
 
-  integ.initialize( 3, numTotalPoints );
+  for ( int overlap_vertex = 0; overlap_vertex < elem.numPolyVert; ++overlap_vertex ) {
+    const int next_overlap_vertex = overlap_vertex == elem.numPolyVert - 1 ? 0 : overlap_vertex + 1;
+    triangle_x_coordinates[0] = elem.overlapCoords[elem.dim * overlap_vertex];
+    triangle_y_coordinates[0] = elem.overlapCoords[elem.dim * overlap_vertex + 1];
+    triangle_z_coordinates[0] = elem.overlapCoords[elem.dim * overlap_vertex + 2];
+    triangle_x_coordinates[1] = elem.overlapCoords[elem.dim * next_overlap_vertex];
+    triangle_y_coordinates[1] = elem.overlapCoords[elem.dim * next_overlap_vertex + 1];
+    triangle_z_coordinates[1] = elem.overlapCoords[elem.dim * next_overlap_vertex + 2];
 
-  // populate wts array and set parent space coordinates of
-  // integration points on triangle
-  RealT* coords;
-  switch ( k ) {
-    case 2:
-      for ( int i = 0; i < numTotalPoints; ++i ) {
-        integ.wts[i] = 0.3333333333;
-      }
-      coords = new RealT[6];
-      coords[0] = 0.1666666667;
-      coords[1] = 0.1666666667;
-      coords[2] = 0.6666666667;
-      coords[3] = 0.1666666667;
-      coords[4] = 0.1666666667;
-      coords[5] = 0.6666666667;
-      break;
-    case 3:
-    case 4:
-      RealT wt1 = 0.109951743655322;
-      RealT wt2 = 0.223381589678011;
-      for ( int i = 0; i < elem.numPolyVert; ++i ) {
-        integ.wts[numTriPoints * i] = wt1;
-        integ.wts[numTriPoints * i + 1] = wt1;
-        integ.wts[numTriPoints * i + 2] = wt1;
-        integ.wts[numTriPoints * i + 3] = wt2;
-        integ.wts[numTriPoints * i + 4] = wt2;
-        integ.wts[numTriPoints * i + 5] = wt2;
-      }
-      RealT x1 = 0.091576213509771;
-      RealT x2 = 0.816847572980459;
-      RealT x3 = 0.108103018168070;
-      RealT x4 = 0.445948490915965;
-      coords = new RealT[12];
-      coords[0] = x1;
-      coords[1] = x1;
-      coords[2] = x2;
-      coords[3] = x1;
-      coords[4] = x1;
-      coords[5] = x2;
-      coords[6] = x3;
-      coords[7] = x4;
-      coords[8] = x4;
-      coords[9] = x3;
-      coords[10] = x4;
-      coords[11] = x4;
-      break;
-  }
+    const RealT triangle_area = Area3DTri( triangle_x_coordinates, triangle_y_coordinates, triangle_z_coordinates );
 
-  // compute area centroid of polygon
-  RealT xTri[3] = { 0., 0., 0. };
-  RealT yTri[3] = { 0., 0., 0. };
-  RealT zTri[3] = { 0., 0., 0. };
-  PolyAreaCentroid( elem.overlapCoords, elem.dim, elem.numPolyVert, xTri[2], yTri[2], zTri[2] );
+    for ( int integration_point = 0; integration_point < number_of_triangle_points; ++integration_point ) {
+      // Tribol stores the physical integration weight, so apply the fan-triangle
+      // area to each unit-sum reference weight.
+      integ.wts[number_of_triangle_points * overlap_vertex + integration_point] =
+          triangle_area * quadrature_weights[integration_point];
 
-  // populate xy array
-  for ( int j = 0; j < elem.numPolyVert; ++j ) {
-    // group triangle coordinates
-    int triId = j;
-    int triIdPlusOne = ( j == ( elem.numPolyVert - 1 ) ) ? 0 : triId + 1;
-    xTri[0] = elem.overlapCoords[elem.dim * triId];
-    yTri[0] = elem.overlapCoords[elem.dim * triId + 1];
-    zTri[0] = elem.overlapCoords[elem.dim * triId + 2];
-    xTri[1] = elem.overlapCoords[elem.dim * triIdPlusOne];
-    yTri[1] = elem.overlapCoords[elem.dim * triIdPlusOne + 1];
-    zTri[1] = elem.overlapCoords[elem.dim * triIdPlusOne + 2];
+      RealT triangle_reference_coordinates[2];
+      triangle_reference_coordinates[0] = reference_coordinates[reference_dimension * integration_point];
+      triangle_reference_coordinates[1] = reference_coordinates[reference_dimension * integration_point + 1];
 
-    // compute area of triangle
-    RealT area = Area3DTri( xTri, yTri, zTri );
+      RealT physical_coordinates[3];
+      FwdMapLinTri( triangle_reference_coordinates, triangle_x_coordinates, triangle_y_coordinates,
+                    triangle_z_coordinates, physical_coordinates );
 
-    for ( int k = 0; k < numTriPoints; ++k ) {
-      // NOTE: Per Puso 2004, the sum over integration point
-      // evaluations per pallet are multiplied by the pallet area.
-      //
-      // multiply the integration point weights by the
-      // triangle area (note: this is specific to how integrals
-      // are computed on polygonal overlaps for Contact)
-      integ.wts[numTriPoints * j + k] *= area;
-
-      // group parent space ip coordinates
-      RealT xi[2];
-      xi[0] = coords[parentDim * k];
-      xi[1] = coords[parentDim * k + 1];
-
-      // forward map parent space ip coords to physical space
-      RealT x[3];
-      FwdMapLinTri( xi, xTri, yTri, zTri, x );
-
-      integ.xy[( ( integ.ipDim ) * numTriPoints ) * j + ( integ.ipDim * k )] = x[0];
-      integ.xy[( ( integ.ipDim ) * numTriPoints ) * j + ( integ.ipDim * k ) + 1] = x[1];
-      integ.xy[( ( integ.ipDim ) * numTriPoints ) * j + ( integ.ipDim * k ) + 2] = x[2];
+      const int output_offset = integ.ipDim * ( number_of_triangle_points * overlap_vertex + integration_point );
+      integ.xy[output_offset] = physical_coordinates[0];
+      integ.xy[output_offset + 1] = physical_coordinates[1];
+      integ.xy[output_offset + 2] = physical_coordinates[2];
     }  // end loop over number of ips per triangle
   }  // end loop over triangles
-
-  delete[] coords;
 }
 
 //------------------------------------------------------------------------------

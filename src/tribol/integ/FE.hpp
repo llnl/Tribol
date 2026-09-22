@@ -106,13 +106,18 @@ TRIBOL_HOST_DEVICE inline void SegmentBasis( const RealT* const x, const RealT p
  * \param [in,out] xi (xi,eta) coordinates in parent space
  *
  * \pre xA, yA, and zA are pointer to arrays of length, numNodes
+ * \pre x is a point on the physical edge or face being inverse-mapped
  *
  * \note This routine works in 2D or 3D. In 2D, zA is a nullptr and
  *       x[2] is equal to 0.
+ * \note For a quadrilateral, an off-face point is handled by the same least-squares
+ *       Newton solve, effectively mapping the closest point in the face-normal direction
+ *       for near-planar contact faces. Callers should not rely on off-face behavior for
+ *       points that are far from the surface.
  *
  */
-inline void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA, const int numNodes,
-                    RealT xi[2] )
+TRIBOL_HOST_DEVICE inline void InvIso( const RealT x[3], const RealT* xA, const RealT* yA, const RealT* zA,
+                                       const int numNodes, RealT xi[2] )
 {
   if ( numNodes == 4 ) {
     constexpr int kmax = 15;
@@ -309,7 +314,7 @@ void FwdMapLinQuad( const RealT xi[2], RealT xa[4], RealT ya[4], RealT za[4], Re
  *       of each node are as follows (-1,-1), (1,-1), (0,1).
  *
  */
-inline void LinIsoTriShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi )
+TRIBOL_HOST_DEVICE inline void LinIsoTriShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi )
 {
   switch ( a ) {
     case 0:
@@ -338,7 +343,7 @@ inline void LinIsoTriShapeFunc( const RealT xi, const RealT eta, const int a, Re
  * \param [in] xi array of length 2 holding parent coordinates
  * \param [in,out] phi shape function evaluation (array of length 3)
  */
-inline void LinIsoTriShapeFunc( const RealT* xi, RealT* phi )
+TRIBOL_HOST_DEVICE inline void LinIsoTriShapeFunc( const RealT* xi, RealT* phi )
 {
   phi[0] = 1.0 - xi[0] - xi[1];
   phi[1] = xi[0];
@@ -359,7 +364,7 @@ inline void LinIsoTriShapeFunc( const RealT* xi, RealT* phi )
  *
  *
  */
-inline void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi )
+TRIBOL_HOST_DEVICE inline void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi )
 {
   RealT xi_node, eta_node;
   switch ( a ) {
@@ -419,6 +424,17 @@ void DetJQuad( const RealT xi, const RealT eta, const RealT* x, const int dim, R
 // Implementations
 //-----------------------------------------------------------------------------
 
+/*!
+ *
+ * \brief Returns the number of nodes on a linear contact face or edge for the
+ *        given problem dimension and face order.
+ *
+ * \param [in] dim the dimension of the contact problem
+ * \param [in] order_type the finite element face order/type
+ *
+ * \return number of nodes on the corresponding contact face or edge
+ *
+ */
 TRIBOL_HOST_DEVICE inline int GetNumFaceNodes( int dim, FaceOrderType order_type )
 {
   // SRW consider consolidating this to take a tribol topology and
@@ -435,6 +451,63 @@ TRIBOL_HOST_DEVICE inline int GetNumFaceNodes( int dim, FaceOrderType order_type
       break;
   }
   return numNodes;
+}
+
+//-----------------------------------------------------------------------------
+/*!
+ *
+ * \brief Evaluates a linear basis function directly on a physical edge,
+ *        triangle, or quadrilateral face.
+ *
+ * \param [in] face_coordinates pointer to stacked physical coordinates of the face vertices
+ * \param [in] evaluation_point_x x-coordinate of the evaluation point
+ * \param [in] evaluation_point_y y-coordinate of the evaluation point
+ * \param [in] evaluation_point_z z-coordinate of the evaluation point; ignored for physical edges
+ * \param [in] number_of_nodes number of nodes on the face
+ * \param [in] basis_index local node id whose basis function is to be evaluated
+ * \param [out] basis_value evaluated basis function value
+ *
+ * \note For triangles and quadrilaterals this routine inverse-maps the physical
+ *       point to parent space and then evaluates the corresponding linear
+ *       isoparametric basis function.
+ * \note The evaluation point is assumed to lie on the physical edge or face. Off-face
+ *       points inherit the implicit projection behavior of InvIso.
+ *
+ */
+TRIBOL_HOST_DEVICE inline void EvalBasisOnPhysicalFace( const RealT* const face_coordinates,
+                                                        const RealT evaluation_point_x, const RealT evaluation_point_y,
+                                                        const RealT evaluation_point_z, const int number_of_nodes,
+                                                        const int basis_index, RealT& basis_value )
+{
+  if ( number_of_nodes == 2 ) {
+    SegmentBasis( face_coordinates, evaluation_point_x, evaluation_point_y, basis_index, basis_value );
+    return;
+  }
+
+#ifdef TRIBOL_USE_HOST
+  SLIC_ERROR_IF( number_of_nodes != 3 && number_of_nodes != 4,
+                 "EvalBasisOnPhysicalFace(): only linear triangle and quadrilateral faces are supported." );
+#endif
+
+  constexpr int max_nodes_per_face = 4;
+  RealT x_coordinates[max_nodes_per_face] = { 0., 0., 0., 0. };
+  RealT y_coordinates[max_nodes_per_face] = { 0., 0., 0., 0. };
+  RealT z_coordinates[max_nodes_per_face] = { 0., 0., 0., 0. };
+  for ( int node_index = 0; node_index < number_of_nodes; ++node_index ) {
+    x_coordinates[node_index] = face_coordinates[3 * node_index];
+    y_coordinates[node_index] = face_coordinates[3 * node_index + 1];
+    z_coordinates[node_index] = face_coordinates[3 * node_index + 2];
+  }
+
+  RealT evaluation_point[3] = { evaluation_point_x, evaluation_point_y, evaluation_point_z };
+  RealT reference_coordinates[2] = { 0., 0. };
+  InvIso( evaluation_point, x_coordinates, y_coordinates, z_coordinates, number_of_nodes, reference_coordinates );
+
+  if ( number_of_nodes == 4 ) {
+    LinIsoQuadShapeFunc( reference_coordinates[0], reference_coordinates[1], basis_index, basis_value );
+  } else {
+    LinIsoTriShapeFunc( reference_coordinates[0], reference_coordinates[1], basis_index, basis_value );
+  }
 }
 
 //-----------------------------------------------------------------------------

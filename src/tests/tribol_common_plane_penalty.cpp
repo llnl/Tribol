@@ -185,9 +185,166 @@ class CommonPlaneTest : public ::testing::Test {
   void SetUp() override {}
 
   void TearDown() override { this->m_mesh.clear(); }
-
- protected:
 };
+
+/** Results returned by the warped-quadrilateral force regression helper. */
+struct WarpedQuadForceResult {
+  int update_error{ -1 };            ///< Return code from tribol::update().
+  RealT gap{ 0. };                   ///< Geometric gap stored on the CommonPlane pair.
+  RealT total_absolute_force{ 0. };  ///< Sum of absolute nodal-force components on both surfaces.
+  RealT total_z_force{ 0. };         ///< Net z-directed force on both surfaces.
+};
+
+/**
+ * @brief Run one warped-quadrilateral force case with the requested overlap rule.
+ *
+ * @param integration_rule CommonPlane overlap integration rule
+ * @param quadrature_order Polynomial order requested for multipoint integration
+ * @return Update status and force diagnostics for the case
+ */
+WarpedQuadForceResult runWarpedQuadForceCase( tribol::PolyInteg integration_rule, int quadrature_order )
+{
+  constexpr int number_of_vertices = 4;
+
+  // Mesh 1 is a planar unit quad at z=0. Mesh 2 fully overlaps it in x-y, but is warped
+  // so that only one corner penetrates the plane.
+  RealT first_x_coordinates[number_of_vertices] = { 0.0, 1.0, 1.0, 0.0 };
+  RealT first_y_coordinates[number_of_vertices] = { 0.0, 0.0, 1.0, 1.0 };
+  RealT first_z_coordinates[number_of_vertices] = { 0.0, 0.0, 0.0, 0.0 };
+
+  RealT second_x_coordinates[number_of_vertices] = { 0.0, 0.0, 1.0, 1.0 };
+  RealT second_y_coordinates[number_of_vertices] = { 0.0, 1.0, 1.0, 0.0 };
+  RealT second_z_coordinates[number_of_vertices] = { -0.20, 1.00, 1.00, 1.00 };
+
+  tribol::IndexT first_connectivity[number_of_vertices] = { 0, 1, 2, 3 };
+  tribol::IndexT second_connectivity[number_of_vertices] = { 0, 1, 2, 3 };
+
+  tribol::registerMesh( 0, 1, number_of_vertices, first_connectivity, static_cast<int>( tribol::LINEAR_QUAD ),
+                        first_x_coordinates, first_y_coordinates, first_z_coordinates, tribol::MemorySpace::Host );
+  tribol::registerMesh( 1, 1, number_of_vertices, second_connectivity, static_cast<int>( tribol::LINEAR_QUAD ),
+                        second_x_coordinates, second_y_coordinates, second_z_coordinates, tribol::MemorySpace::Host );
+
+  RealT first_response_x[number_of_vertices] = { 0., 0., 0., 0. };
+  RealT first_response_y[number_of_vertices] = { 0., 0., 0., 0. };
+  RealT first_response_z[number_of_vertices] = { 0., 0., 0., 0. };
+  RealT second_response_x[number_of_vertices] = { 0., 0., 0., 0. };
+  RealT second_response_y[number_of_vertices] = { 0., 0., 0., 0. };
+  RealT second_response_z[number_of_vertices] = { 0., 0., 0., 0. };
+
+  tribol::registerNodalResponse( 0, first_response_x, first_response_y, first_response_z );
+  tribol::registerNodalResponse( 1, second_response_x, second_response_y, second_response_z );
+
+  tribol::setKinematicConstantPenalty( 0, 1.0 );
+  tribol::setKinematicConstantPenalty( 1, 1.0 );
+
+  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                                  tribol::ExecutionMode::Sequential );
+
+  constexpr tribol::IndexT coupling_scheme_id = 0;
+  tribol::setPenaltyOptions( coupling_scheme_id, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
+  tribol::setCommonPlaneIntegrationOptions( coupling_scheme_id, integration_rule, quadrature_order );
+  tribol::setContactAreaFrac( coupling_scheme_id, 1.e-12 );
+
+  WarpedQuadForceResult result;
+  RealT timestep = 1.;
+  result.update_error = tribol::update( 1, 1., timestep );
+
+  auto& coupling_scheme = tribol::CouplingSchemeManager::getInstance().at( coupling_scheme_id );
+  EXPECT_EQ( 1, coupling_scheme.getNumActivePairs() );
+  result.gap = coupling_scheme.getCompGeom().getCommonPlane( 0 ).m_gap;
+
+  for ( int node_index = 0; node_index < number_of_vertices; ++node_index ) {
+    result.total_absolute_force += std::abs( first_response_x[node_index] ) + std::abs( first_response_y[node_index] ) +
+                                   std::abs( first_response_z[node_index] );
+    result.total_absolute_force += std::abs( second_response_x[node_index] ) +
+                                   std::abs( second_response_y[node_index] ) +
+                                   std::abs( second_response_z[node_index] );
+    result.total_z_force += first_response_z[node_index] + second_response_z[node_index];
+  }
+
+  tribol::finalize();
+  return result;
+}
+
+/** Results returned by the tilted-edge force regression helper. */
+struct EdgeLocalContactForceResult {
+  int update_error{ -1 };                       ///< Return code from tribol::update().
+  tribol::IndexT number_of_active_pairs{ 0 };   ///< Active CommonPlane pair count.
+  RealT gap{ 0. };                              ///< Geometric gap stored on the CommonPlane pair.
+  RealT total_absolute_force{ 0. };             ///< Sum of absolute nodal-force components.
+  RealT first_mesh_node_force_magnitudes[2]{};  ///< Force magnitude at each first-surface node.
+};
+
+/**
+ * @brief Run one tilted-edge force case with the requested overlap rule.
+ *
+ * @param integration_rule CommonPlane overlap integration rule
+ * @param quadrature_order Polynomial order requested for multipoint integration
+ * @return Update status and force diagnostics for the case
+ */
+EdgeLocalContactForceResult runEdgeLocalContactCase( tribol::PolyInteg integration_rule, int quadrature_order )
+{
+  constexpr int number_of_vertices = 2;
+
+  // Mesh 1 is a horizontal unit edge. Mesh 2 fully overlaps it in x, but is tilted so the
+  // penetration varies from 0.2 at node 0 to 0.05 at node 1.
+  RealT first_x_coordinates[number_of_vertices] = { 1.0, 0.0 };
+  RealT first_y_coordinates[number_of_vertices] = { 0.0, 0.0 };
+
+  RealT second_x_coordinates[number_of_vertices] = { 0.0, 1.0 };
+  RealT second_y_coordinates[number_of_vertices] = { -0.2, -0.05 };
+
+  tribol::IndexT first_connectivity[number_of_vertices] = { 0, 1 };
+  tribol::IndexT second_connectivity[number_of_vertices] = { 0, 1 };
+
+  tribol::registerMesh( 0, 1, number_of_vertices, first_connectivity, static_cast<int>( tribol::LINEAR_EDGE ),
+                        first_x_coordinates, first_y_coordinates, nullptr, tribol::MemorySpace::Host );
+  tribol::registerMesh( 1, 1, number_of_vertices, second_connectivity, static_cast<int>( tribol::LINEAR_EDGE ),
+                        second_x_coordinates, second_y_coordinates, nullptr, tribol::MemorySpace::Host );
+
+  RealT first_response_x[number_of_vertices] = { 0., 0. };
+  RealT first_response_y[number_of_vertices] = { 0., 0. };
+  RealT second_response_x[number_of_vertices] = { 0., 0. };
+  RealT second_response_y[number_of_vertices] = { 0., 0. };
+
+  tribol::registerNodalResponse( 0, first_response_x, first_response_y, nullptr );
+  tribol::registerNodalResponse( 1, second_response_x, second_response_y, nullptr );
+
+  tribol::setKinematicConstantPenalty( 0, 1. );
+  tribol::setKinematicConstantPenalty( 1, 1. );
+
+  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                                  tribol::ExecutionMode::Sequential );
+
+  constexpr tribol::IndexT coupling_scheme_id = 0;
+  tribol::setPenaltyOptions( coupling_scheme_id, tribol::KINEMATIC, tribol::KINEMATIC_CONSTANT );
+  tribol::setCommonPlaneIntegrationOptions( coupling_scheme_id, integration_rule, quadrature_order );
+  tribol::setContactAreaFrac( coupling_scheme_id, 1.e-12 );
+
+  EdgeLocalContactForceResult result;
+  RealT timestep = 1.;
+  result.update_error = tribol::update( 1, 1., timestep );
+
+  tribol::CouplingScheme* coupling_scheme = &tribol::CouplingSchemeManager::getInstance().at( coupling_scheme_id );
+  result.number_of_active_pairs = coupling_scheme->getNumActivePairs();
+  if ( result.number_of_active_pairs > 0 ) {
+    result.gap = coupling_scheme->getCompGeom().getCommonPlane( 0 ).m_gap;
+  }
+
+  for ( int node_index = 0; node_index < number_of_vertices; ++node_index ) {
+    result.total_absolute_force += std::abs( first_response_x[node_index] ) + std::abs( first_response_y[node_index] ) +
+                                   std::abs( second_response_x[node_index] ) +
+                                   std::abs( second_response_y[node_index] );
+    result.first_mesh_node_force_magnitudes[node_index] =
+        tribol::magnitude( first_response_x[node_index], first_response_y[node_index] );
+  }
+
+  tribol::finalize();
+
+  return result;
+}
 
 TEST_F( CommonPlaneTest, penetration_gap_check )
 {
@@ -243,6 +400,179 @@ TEST_F( CommonPlaneTest, penetration_gap_check )
   compareGaps( couplingScheme, gap, 1.E-8, "kinematic_penetration" );
 
   tribol::finalize();
+}
+
+/** Verify multipoint CommonPlane force integration on planar quadrilateral faces. */
+TEST_F( CommonPlaneTest, multipoint_quad_execution )
+{
+  // Planar quad meshes with full face overlap and uniform 0.1 interpenetration. Multi-point
+  // integration should reproduce the same gap and valid force sense as the single-point rule.
+  this->m_mesh.mortarMeshId = 0;
+  this->m_mesh.nonmortarMeshId = 1;
+
+  const int nElems = 2;
+  const RealT x_min1 = 0.;
+  const RealT y_min1 = 0.;
+  const RealT z_min1 = 0.;
+  const RealT x_max1 = 1.;
+  const RealT y_max1 = 1.;
+  const RealT z_max1 = 1.05;
+
+  const RealT x_min2 = 0.;
+  const RealT y_min2 = 0.;
+  const RealT z_min2 = 0.95;
+  const RealT x_max2 = 1.;
+  const RealT y_max2 = 1.;
+  const RealT z_max2 = 2.;
+
+  this->m_mesh.setupContactMeshHex( nElems, nElems, nElems, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1, nElems,
+                                    nElems, nElems, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0., 0. );
+
+  tribol::TestControlParameters parameters;
+  parameters.dt = 1.e-3;
+  parameters.const_penalty = 1.0;
+  parameters.common_plane_rule = tribol::MULTI_POINT;
+  parameters.common_plane_quadrature_order = 3;
+
+  int err = this->m_mesh.tribolSetupAndUpdate( tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS,
+                                               tribol::NO_CASE, false, parameters );
+
+  EXPECT_EQ( err, 0 );
+
+  tribol::CouplingScheme* couplingScheme = &tribol::CouplingSchemeManager::getInstance().at( 0 );
+  compareGaps( couplingScheme, z_min2 - z_max1, 1.E-8, "kinematic_penetration" );
+  checkForceSense( couplingScheme );
+
+  tribol::finalize();
+}
+
+/** Verify multipoint CommonPlane force integration on planar triangular faces. */
+TEST_F( CommonPlaneTest, multipoint_triangle_execution )
+{
+  // Planar tet-surface triangle meshes with full overlap and uniform 0.1 interpenetration.
+  // This exercises triangle overlap integration in the CommonPlane penalty path.
+  this->m_mesh.mortarMeshId = 0;
+  this->m_mesh.nonmortarMeshId = 1;
+
+  const int nElems = 2;
+  const RealT x_min1 = 0.;
+  const RealT y_min1 = 0.;
+  const RealT z_min1 = 0.;
+  const RealT x_max1 = 1.;
+  const RealT y_max1 = 1.;
+  const RealT z_max1 = 1.05;
+
+  const RealT x_min2 = 0.;
+  const RealT y_min2 = 0.;
+  const RealT z_min2 = 0.95;
+  const RealT x_max2 = 1.;
+  const RealT y_max2 = 1.;
+  const RealT z_max2 = 2.;
+
+  this->m_mesh.setupContactMeshTet( nElems, nElems, nElems, x_min1, y_min1, z_min1, x_max1, y_max1, z_max1, nElems,
+                                    nElems, nElems, x_min2, y_min2, z_min2, x_max2, y_max2, z_max2, 0., 0. );
+
+  tribol::TestControlParameters parameters;
+  parameters.dt = 1.e-3;
+  parameters.const_penalty = 1.0;
+  parameters.common_plane_rule = tribol::MULTI_POINT;
+  parameters.common_plane_quadrature_order = 3;
+
+  int err = this->m_mesh.tribolSetupAndUpdate( tribol::COMMON_PLANE, tribol::PENALTY, tribol::FRICTIONLESS,
+                                               tribol::NO_CASE, false, parameters );
+
+  EXPECT_EQ( err, 0 );
+
+  tribol::CouplingScheme* couplingScheme = &tribol::CouplingSchemeManager::getInstance().at( 0 );
+  compareGaps( couplingScheme, z_min2 - z_max1, 1.E-8, "kinematic_penetration" );
+  checkForceSense( couplingScheme );
+
+  tribol::finalize();
+}
+
+/** Verify that multipoint quadrature resolves localized contact on warped quadrilateral faces. */
+TEST_F( CommonPlaneTest, multipoint_warped_quad_local_contact )
+{
+  // Single-point integration at the overlap centroid misses the local warped-quad penetration.
+  // Full triangle-decomposition quadrature samples the penetrating region and generates force.
+  constexpr int lower_quadrature_order = 3;
+  constexpr int higher_quadrature_order = 6;
+  constexpr int reference_quadrature_order = 10;
+  const auto single_point = runWarpedQuadForceCase( tribol::SINGLE_POINT, lower_quadrature_order );
+  const auto lower_order_result = runWarpedQuadForceCase( tribol::MULTI_POINT, lower_quadrature_order );
+  const auto higher_order_result = runWarpedQuadForceCase( tribol::MULTI_POINT, higher_quadrature_order );
+  const auto overintegrated_reference = runWarpedQuadForceCase( tribol::MULTI_POINT, reference_quadrature_order );
+
+  EXPECT_EQ( single_point.update_error, 0 );
+  EXPECT_EQ( lower_order_result.update_error, 0 );
+  EXPECT_EQ( higher_order_result.update_error, 0 );
+  EXPECT_EQ( overintegrated_reference.update_error, 0 );
+
+  constexpr RealT expected_gap = 0.5852486869304208;
+  EXPECT_NEAR( single_point.gap, expected_gap, 1.e-12 );
+  EXPECT_NEAR( lower_order_result.gap, expected_gap, 1.e-12 );
+  EXPECT_NEAR( higher_order_result.gap, expected_gap, 1.e-12 );
+  EXPECT_NEAR( overintegrated_reference.gap, expected_gap, 1.e-12 );
+
+  // The centroid lies outside the penetrating corner, so the one-point force
+  // is zero. The pointwise active set makes this a nonsmooth integrand, so
+  // compare lower- and higher-order errors with an order-ten reference over
+  // the same fixed LOR overlap polygon. The final checks verify
+  // equal-and-opposite resultant force.
+  EXPECT_NEAR( single_point.total_absolute_force, 0., 1.e-12 );
+  EXPECT_GT( lower_order_result.total_absolute_force, 0. );
+  const RealT lower_order_error =
+      std::abs( lower_order_result.total_absolute_force - overintegrated_reference.total_absolute_force );
+  const RealT higher_order_error =
+      std::abs( higher_order_result.total_absolute_force - overintegrated_reference.total_absolute_force );
+  EXPECT_LT( higher_order_error, lower_order_error );
+  EXPECT_LT( higher_order_error, 0.15 * overintegrated_reference.total_absolute_force );
+  EXPECT_NEAR( lower_order_result.total_z_force, 0., 1.e-12 );
+  EXPECT_NEAR( higher_order_result.total_z_force, 0., 1.e-12 );
+  EXPECT_NEAR( overintegrated_reference.total_z_force, 0., 1.e-12 );
+}
+
+/** Verify that multipoint quadrature resolves the nonuniform force on tilted edges. */
+TEST_F( CommonPlaneTest, multipoint_edge_local_contact )
+{
+  // Both rules detect the tilted full-overlap edge contact, but multi-point integration resolves
+  // the nonuniform penetration and therefore produces a larger nodal force imbalance.
+  constexpr int production_quadrature_order = 4;
+  constexpr int reference_quadrature_order = 10;
+  const auto single_point = runEdgeLocalContactCase( tribol::SINGLE_POINT, production_quadrature_order );
+  const auto multi_point = runEdgeLocalContactCase( tribol::MULTI_POINT, production_quadrature_order );
+  const auto overintegrated_reference = runEdgeLocalContactCase( tribol::MULTI_POINT, reference_quadrature_order );
+
+  EXPECT_EQ( single_point.update_error, 0 );
+  EXPECT_EQ( multi_point.update_error, 0 );
+  EXPECT_EQ( overintegrated_reference.update_error, 0 );
+
+  EXPECT_EQ( single_point.number_of_active_pairs, 1 );
+  EXPECT_EQ( multi_point.number_of_active_pairs, 1 );
+  EXPECT_EQ( overintegrated_reference.number_of_active_pairs, 1 );
+
+  constexpr RealT expected_gap = -0.12423774246760939;
+  EXPECT_NEAR( single_point.gap, expected_gap, 1.e-12 );
+  EXPECT_NEAR( multi_point.gap, expected_gap, 1.e-12 );
+  EXPECT_NEAR( overintegrated_reference.gap, expected_gap, 1.e-12 );
+
+  // A fourth-order segment rule integrates the linear-basis penalty force
+  // exactly. Compare it with an independent order-ten run over the same fixed
+  // LOR overlap segment rather than storing implementation-specific totals.
+  EXPECT_NEAR( single_point.total_absolute_force, overintegrated_reference.total_absolute_force, 1.e-12 );
+  EXPECT_NEAR( multi_point.total_absolute_force, overintegrated_reference.total_absolute_force, 1.e-12 );
+
+  // Imbalance is the difference between the force norms at the two nodes of mesh 1.
+  const RealT single_point_imbalance =
+      std::abs( single_point.first_mesh_node_force_magnitudes[0] - single_point.first_mesh_node_force_magnitudes[1] );
+  const RealT multi_point_imbalance =
+      std::abs( multi_point.first_mesh_node_force_magnitudes[0] - multi_point.first_mesh_node_force_magnitudes[1] );
+
+  const RealT reference_imbalance = std::abs( overintegrated_reference.first_mesh_node_force_magnitudes[0] -
+                                              overintegrated_reference.first_mesh_node_force_magnitudes[1] );
+
+  EXPECT_GT( multi_point_imbalance, single_point_imbalance );
+  EXPECT_NEAR( multi_point_imbalance, reference_imbalance, 1.e-12 );
 }
 
 TEST_F( CommonPlaneTest, separation_gap_check )
@@ -671,11 +1001,14 @@ TEST_F( CommonPlaneTest, common_plane_viscous_tangential_2d )
   // by the gap and then divided amongst the edge nodes
   RealT force_y = 0.5 * gap / numVerts;
   RealT force_x = visc_coeff * ( vx1[0] - vx2[0] ) / numVerts;
+  // The analytic force above assumes the nominal edge directions, while the implementation uses
+  // the CommonPlane normal/tangent for the slightly tilted contact pair.
+  constexpr RealT tol = 5.e-5;
   for ( int i = 0; i < numVerts; ++i ) {
-    EXPECT_NEAR( fx1[i], -force_x, 1.e-10 );
-    EXPECT_NEAR( fy1[i], -force_y, 1.e-10 );
-    EXPECT_NEAR( fx2[i], force_x, 1.e-10 );
-    EXPECT_NEAR( fy2[i], force_y, 1.e-10 );
+    EXPECT_NEAR( fx1[i], -force_x, tol );
+    EXPECT_NEAR( fy1[i], -force_y, tol );
+    EXPECT_NEAR( fx2[i], force_x, tol );
+    EXPECT_NEAR( fy2[i], force_y, tol );
   }
 }
 

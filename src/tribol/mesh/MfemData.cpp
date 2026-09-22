@@ -9,13 +9,12 @@
 
 #ifdef BUILD_REDECOMP
 
+#include <algorithm>
 #include <cmath>
 
 #include "axom/slic/interface/slic_macros.hpp"
 
 #include "shared/infrastructure/Profiling.hpp"
-#include "tribol/common/LoopExec.hpp"
-
 #include "redecomp/utils/ArrayUtility.hpp"
 #include "redecomp/transfer/TransferByElements.hpp"
 
@@ -27,12 +26,44 @@ namespace tribol {
 namespace {
 
 /** First component containing a parent reference-coordinate value. */
-constexpr int parent_reference_coordinate_offset{ 6 };
+constexpr int parent_reference_coordinate_offset{ 8 };
+
+/** First component containing a native parent-basis coefficient. */
+constexpr int parent_basis_coefficient_offset{ parent_reference_coordinate_offset +
+                                               ParentFaceData::max_lor_face_vertices *
+                                                   ParentFaceData::max_reference_dimension };
+
+/** First component containing a native parent-face nodal coordinate. */
+constexpr int parent_position_offset{ parent_basis_coefficient_offset +
+                                      ParentFaceData::max_parent_face_nodes * ParentFaceData::max_parent_face_nodes };
+
+/** First component containing a native parent-face nodal velocity. */
+constexpr int parent_velocity_offset{ parent_position_offset + ParentFaceData::max_parent_face_nodes * 3 };
+
+/** First component containing a native parent-face inverse diagonal mass. */
+constexpr int parent_inverse_mass_offset{ parent_velocity_offset + ParentFaceData::max_parent_face_nodes * 3 };
+
+/** First component containing a parent-mesh vector degree-of-freedom identifier. */
+constexpr int parent_vector_dof_offset{ parent_inverse_mass_offset + ParentFaceData::max_parent_face_nodes * 3 };
+
+/** Component containing the source-rank parent vector degree-of-freedom count. */
+constexpr int parent_vector_dof_count_offset{ parent_vector_dof_offset + ParentFaceData::max_parent_face_nodes * 3 };
 
 /** Number of scalar values transferred for one LOR-face provenance record. */
-constexpr int parent_face_record_size{ parent_reference_coordinate_offset +
-                                       ParentFaceData::max_lor_face_vertices *
-                                           ParentFaceData::max_reference_dimension };
+constexpr int parent_face_record_size{ parent_vector_dof_count_offset + 1 };
+
+/**
+ * @brief Decode an MFEM signed degree-of-freedom index.
+ *
+ * @param encoded_degree_of_freedom Signed MFEM degree-of-freedom index
+ * @param sign Orientation sign encoded in the input index
+ * @return Nonnegative local degree-of-freedom index
+ */
+int DecodeDegreeOfFreedom( int encoded_degree_of_freedom, RealT& sign )
+{
+  sign = encoded_degree_of_freedom >= 0 ? 1.0 : -1.0;
+  return encoded_degree_of_freedom >= 0 ? encoded_degree_of_freedom : -1 - encoded_degree_of_freedom;
+}
 
 /**
  * @brief Convert an MFEM surface geometry to Tribol's interface element type.
@@ -52,6 +83,59 @@ InterfaceElementType GetInterfaceElementType( mfem::Geometry::Type geometry )
     default:
       SLIC_ERROR_ROOT( "Native parent-face provenance requires segment, triangle, or quadrilateral surface faces." );
       return LINEAR_EDGE;
+  }
+}
+
+/**
+ * @brief Evaluate the complete polynomial monomial basis for a parent face.
+ *
+ * Segment terms are ordered by increasing degree. Triangle terms are ordered
+ * by increasing total degree, then increasing second-coordinate degree.
+ * Quadrilateral terms are ordered with the first-coordinate degree varying
+ * fastest. The device evaluator in MeshData uses the same ordering.
+ *
+ * @param geometry Native parent-face geometry
+ * @param order Native parent-face polynomial order
+ * @param reference_point Native parent-face reference point
+ * @param monomial_values Output monomial values
+ */
+void EvaluateParentFaceMonomials( InterfaceElementType geometry, int order,
+                                  const mfem::IntegrationPoint& reference_point, mfem::Vector& monomial_values )
+{
+  int number_of_monomials = 0;
+  if ( geometry == LINEAR_EDGE ) {
+    number_of_monomials = order + 1;
+  } else if ( geometry == LINEAR_TRIANGLE ) {
+    number_of_monomials = ( order + 1 ) * ( order + 2 ) / 2;
+  } else if ( geometry == LINEAR_QUAD ) {
+    number_of_monomials = ( order + 1 ) * ( order + 1 );
+  } else {
+    SLIC_ERROR_ROOT( "Native parent basis evaluation requires segment, triangle, or quadrilateral faces." );
+  }
+
+  monomial_values.SetSize( number_of_monomials );
+  int monomial_index = 0;
+  if ( geometry == LINEAR_EDGE ) {
+    RealT first_coordinate_power = 1.0;
+    for ( int first_degree = 0; first_degree <= order; ++first_degree ) {
+      monomial_values[monomial_index++] = first_coordinate_power;
+      first_coordinate_power *= reference_point.x;
+    }
+  } else if ( geometry == LINEAR_TRIANGLE ) {
+    for ( int total_degree = 0; total_degree <= order; ++total_degree ) {
+      for ( int second_degree = 0; second_degree <= total_degree; ++second_degree ) {
+        const int first_degree = total_degree - second_degree;
+        monomial_values[monomial_index++] =
+            std::pow( reference_point.x, first_degree ) * std::pow( reference_point.y, second_degree );
+      }
+    }
+  } else {
+    for ( int second_degree = 0; second_degree <= order; ++second_degree ) {
+      for ( int first_degree = 0; first_degree <= order; ++first_degree ) {
+        monomial_values[monomial_index++] =
+            std::pow( reference_point.x, first_degree ) * std::pow( reference_point.y, second_degree );
+      }
+    }
   }
 }
 
@@ -570,9 +654,16 @@ void ParentRedecompTransfer::RedecompToParent( const mfem::GridFunction& redecom
   submesh_gridfn_ = 0.0;
   submesh_redecomp_xfer_.RedecompToSubmesh( redecomp_src, submesh_gridfn_ );
 
+  AddSubmeshToParent( submesh_gridfn_, parent_dst );
+}
+
+void ParentRedecompTransfer::AddSubmeshToParent( const mfem::Vector& submesh_src, mfem::Vector& parent_dst ) const
+{
+  const bool use_device = parent_dst.UseDevice();
+
   // Response is a dual field; scatter local submesh contributions directly instead of using ParSubMesh::Transfer,
   // which communicates/averages shared DOFs as a primal grid function.
-  const auto submesh_data = submesh_gridfn_.Read( use_device );
+  const auto submesh_data = submesh_src.Read( use_device );
   const auto submesh_to_parent_vdof_map = submesh_to_parent_vdof_map_.Read( use_device );
   auto parent_data = parent_dst.ReadWrite( use_device );
   mfem::forall_switch( use_device, submesh_to_parent_vdof_map_.Size(), [=] MFEM_HOST_DEVICE( int i ) {
@@ -833,6 +924,9 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
   if ( velocity_ ) {
     velocity_->UpdateField( update_data_->vector_xfer_, use_device_ );
   }
+  update_data_->BuildParentFaceData( submesh_, lor_mesh_.get(), coords_.GetParentGridFn(),
+                                     velocity_ ? &velocity_->GetParentGridFn() : nullptr,
+                                     inverse_mass_ ? &inverse_mass_->GetParentGridFn() : nullptr );
   TRIBOL_MARK_END( "Copy fields to Redecomp mesh" );
 
   if ( rebuilt && elem_thickness_ ) {
@@ -908,6 +1002,10 @@ ParentFaceData MfemMeshData::GetMesh2ParentFaceData() const { return GetUpdateDa
 void MfemMeshData::GetParentResponse( mfem::Vector& r ) const
 {
   GetParentRedecompTransfer().RedecompToParent( *redecomp_response_, r );
+  mfem::Vector submesh_parent_face_response;
+  GetUpdateData().GetParentFaceResponse( const_cast<mfem::ParSubMesh&>( submesh_ ), lor_mesh_.get(),
+                                         submesh_parent_face_response );
+  GetParentRedecompTransfer().AddSubmeshToParent( submesh_parent_face_response, r );
 }
 
 void MfemMeshData::SetParentVelocity( const mfem::ParGridFunction& velocity )
@@ -916,6 +1014,23 @@ void MfemMeshData::SetParentVelocity( const mfem::ParGridFunction& velocity )
     velocity_->SetParentGridFn( velocity );
   } else {
     velocity_ = std::make_unique<ParentField>( velocity );
+  }
+}
+
+void MfemMeshData::SetParentInverseMass( const mfem::ParGridFunction& inverse_mass )
+{
+  const mfem::ParFiniteElementSpace& coordinate_space = *coords_.GetParentGridFn().ParFESpace();
+  const mfem::ParFiniteElementSpace& inverse_mass_space = *inverse_mass.ParFESpace();
+  SLIC_ERROR_ROOT_IF( inverse_mass_space.GetParMesh() != coordinate_space.GetParMesh() ||
+                          inverse_mass_space.GetVSize() != coordinate_space.GetVSize() ||
+                          inverse_mass_space.GetVDim() != coordinate_space.GetVDim() ||
+                          inverse_mass_space.GetOrdering() != coordinate_space.GetOrdering(),
+                      "Parent inverse diagonal mass must use the parent coordinate vector finite-element space." );
+
+  if ( inverse_mass_ ) {
+    inverse_mass_->SetParentGridFn( inverse_mass );
+  } else {
+    inverse_mass_ = std::make_unique<ParentField>( inverse_mass );
   }
 }
 
@@ -1103,10 +1218,6 @@ MfemMeshData::UpdateData::UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* 
   SetElementData();
   // updates the connectivity of the tribol surface mesh
   UpdateConnectivity( attributes_1, attributes_2 );
-  // Preserve the native parent-face mapping alongside the redecomposed LOR
-  // geometry. Later integration-point evaluation uses this mapping without
-  // transferring physical fields through the LOR finite-element space.
-  BuildParentFaceData( submesh, lor_mesh, parent_fes );
 }
 
 ParentFaceData MfemMeshData::UpdateData::ParentFaceArrays::GetView() const
@@ -1117,14 +1228,29 @@ ParentFaceData MfemMeshData::UpdateData::ParentFaceArrays::GetView() const
   parent_face_data.m_lor_face_ids = Array1DView<const IndexT>( lor_face_ids );
   parent_face_data.m_lor_face_geometries = Array1DView<const int>( lor_face_geometries );
   parent_face_data.m_parent_face_orders = Array1DView<const int>( parent_face_orders );
+  parent_face_data.m_parent_face_geometries = Array1DView<const int>( parent_face_geometries );
+  parent_face_data.m_parent_node_counts = Array1DView<const int>( parent_node_counts );
   parent_face_data.m_reference_vertex_counts = Array1DView<const int>( reference_vertex_counts );
   parent_face_data.m_parent_reference_vertex_coordinates =
       Array2DView<const RealT>( parent_reference_vertex_coordinates );
+  parent_face_data.m_parent_basis_coefficients = Array2DView<const RealT>( parent_basis_coefficients );
+  parent_face_data.m_parent_positions = Array2DView<const RealT>( parent_positions );
+  if ( !parent_velocities.empty() ) {
+    parent_face_data.m_parent_velocities = Array2DView<const RealT>( parent_velocities );
+  }
+  if ( !parent_inverse_masses.empty() ) {
+    parent_face_data.m_parent_inverse_masses = Array2DView<const RealT>( parent_inverse_masses );
+    parent_face_data.m_parent_vector_dof_ids = Array2DView<const IndexT>( parent_vector_dof_ids );
+    parent_face_data.m_parent_vector_dof_count = parent_vector_dof_count;
+  }
+  parent_face_data.m_parent_responses = Array2DView<RealT>( const_cast<Array2D<RealT>&>( parent_responses ) );
   return parent_face_data;
 }
 
 void MfemMeshData::UpdateData::BuildParentFaceData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh,
-                                                    const mfem::ParFiniteElementSpace& parent_fes )
+                                                    const mfem::ParGridFunction& parent_coordinates,
+                                                    const mfem::ParGridFunction* parent_velocity,
+                                                    const mfem::ParGridFunction* parent_inverse_mass )
 {
   mfem::ParMesh& source_mesh = lor_mesh ? *lor_mesh : submesh;
   const int reference_dimension = source_mesh.Dimension();
@@ -1148,6 +1274,32 @@ void MfemMeshData::UpdateData::BuildParentFaceData( mfem::ParSubMesh& submesh, m
   source_records = 0.0;
   redecomp_records = 0.0;
 
+  // Parent fields are first restricted to the parent-linked boundary submesh.
+  // Each LOR element record then carries the complete native parent-face nodal
+  // data to the rank that owns the corresponding redecomposed contact face.
+  auto* submesh_coordinates = dynamic_cast<mfem::ParGridFunction*>( submesh.GetNodes() );
+  SLIC_ERROR_ROOT_IF( submesh_coordinates == nullptr,
+                      "Parent-face field evaluation requires a ParGridFunction on the boundary submesh." );
+  submesh.Transfer( parent_coordinates, *submesh_coordinates );
+  const mfem::ParFiniteElementSpace& submesh_space = *submesh_coordinates->ParFESpace();
+  const RealT* submesh_coordinate_values = submesh_coordinates->HostRead();
+
+  mfem::ParGridFunction submesh_velocity( const_cast<mfem::ParFiniteElementSpace*>( &submesh_space ) );
+  const RealT* submesh_velocity_values = nullptr;
+  if ( parent_velocity != nullptr ) {
+    submesh_velocity = 0.0;
+    submesh.Transfer( *parent_velocity, submesh_velocity );
+    submesh_velocity_values = submesh_velocity.HostRead();
+  }
+
+  mfem::ParGridFunction submesh_inverse_mass( const_cast<mfem::ParFiniteElementSpace*>( &submesh_space ) );
+  const RealT* submesh_inverse_mass_values = nullptr;
+  if ( parent_inverse_mass != nullptr ) {
+    submesh_inverse_mass = 0.0;
+    submesh.Transfer( *parent_inverse_mass, submesh_inverse_mass );
+    submesh_inverse_mass_values = submesh_inverse_mass.HostRead();
+  }
+
   const mfem::CoarseFineTransformations* refinement_transforms =
       lor_mesh ? &lor_mesh->GetRefinementTransforms() : nullptr;
   mfem::Array<int> element_dofs;
@@ -1164,8 +1316,15 @@ void MfemMeshData::UpdateData::BuildParentFaceData( mfem::ParSubMesh& submesh, m
     }
 
     const IndexT parent_face_id = submesh.GetParentElementIDMap()[parent_submesh_element_id];
-    const int parent_face_order = parent_fes.GetBE( parent_face_id )->GetOrder();
+    const mfem::FiniteElement& parent_face_element = *submesh_space.GetFE( parent_submesh_element_id );
+    const int parent_face_order = parent_face_element.GetOrder();
+    const InterfaceElementType parent_face_geometry = GetInterfaceElementType( parent_face_element.GetGeomType() );
+    const int number_of_parent_nodes = parent_face_element.GetDof();
     const int number_of_reference_vertices = reference_vertices->GetNPoints();
+    SLIC_ERROR_ROOT_IF( parent_face_order < 1 || parent_face_order > ParentFaceData::max_parent_face_order,
+                        "Native parent-face evaluation supports polynomial orders one through four." );
+    SLIC_ERROR_ROOT_IF( number_of_parent_nodes > ParentFaceData::max_parent_face_nodes,
+                        "Native parent-face evaluation supports at most 25 nodes per face." );
     SLIC_ERROR_ROOT_IF( number_of_reference_vertices > ParentFaceData::max_lor_face_vertices,
                         "Parent-face provenance supports at most four vertices per LOR surface face." );
     RealT record[parent_face_record_size] = { 0.0 };
@@ -1175,6 +1334,9 @@ void MfemMeshData::UpdateData::BuildParentFaceData( mfem::ParSubMesh& submesh, m
     record[3] = static_cast<RealT>( GetInterfaceElementType( lor_face_geometry ) );
     record[4] = static_cast<RealT>( parent_face_order );
     record[5] = static_cast<RealT>( number_of_reference_vertices );
+    record[6] = static_cast<RealT>( parent_face_geometry );
+    record[7] = static_cast<RealT>( number_of_parent_nodes );
+    record[parent_vector_dof_count_offset] = static_cast<RealT>( parent_coordinates.Size() );
 
     for ( int vertex_index = 0; vertex_index < number_of_reference_vertices; ++vertex_index ) {
       RealT unrefined_reference_coordinates[ParentFaceData::max_reference_dimension] = { 0.0, 0.0 };
@@ -1184,6 +1346,64 @@ void MfemMeshData::UpdateData::BuildParentFaceData( mfem::ParSubMesh& submesh, m
                                  vertex_index * ParentFaceData::max_reference_dimension + coordinate_component;
         record[record_index] = child_point_matrix ? ( *child_point_matrix )( coordinate_component, vertex_index )
                                                   : unrefined_reference_coordinates[coordinate_component];
+      }
+    }
+
+    // Build a polynomial representation of every nodal basis function from
+    // the native finite element's own reference nodes. This preserves MFEM's
+    // local node ordering while keeping evaluation device-callable.
+    const mfem::IntegrationRule& parent_reference_nodes = parent_face_element.GetNodes();
+    SLIC_ERROR_ROOT_IF( parent_reference_nodes.GetNPoints() != number_of_parent_nodes,
+                        "Native parent-face basis construction requires one reference node per degree of freedom." );
+    mfem::DenseMatrix parent_vandermonde( number_of_parent_nodes );
+    mfem::Vector parent_monomials;
+    for ( int parent_node = 0; parent_node < number_of_parent_nodes; ++parent_node ) {
+      EvaluateParentFaceMonomials( parent_face_geometry, parent_face_order,
+                                   parent_reference_nodes.IntPoint( parent_node ), parent_monomials );
+      SLIC_ERROR_ROOT_IF( parent_monomials.Size() != number_of_parent_nodes,
+                          "Native parent-face polynomial basis size does not match its number of nodes." );
+      for ( int monomial = 0; monomial < number_of_parent_nodes; ++monomial ) {
+        parent_vandermonde( parent_node, monomial ) = parent_monomials[monomial];
+      }
+    }
+    mfem::DenseMatrixInverse parent_vandermonde_inverse( parent_vandermonde );
+    mfem::Vector nodal_value( number_of_parent_nodes );
+    mfem::Vector basis_coefficients( number_of_parent_nodes );
+    for ( int parent_node = 0; parent_node < number_of_parent_nodes; ++parent_node ) {
+      nodal_value = 0.0;
+      nodal_value[parent_node] = 1.0;
+      parent_vandermonde_inverse.Mult( nodal_value, basis_coefficients );
+      for ( int monomial = 0; monomial < number_of_parent_nodes; ++monomial ) {
+        record[parent_basis_coefficient_offset + parent_node * ParentFaceData::max_parent_face_nodes + monomial] =
+            basis_coefficients[monomial];
+      }
+    }
+
+    mfem::Array<int> parent_element_dofs;
+    submesh_space.GetElementDofs( parent_submesh_element_id, parent_element_dofs );
+    SLIC_ERROR_ROOT_IF( parent_element_dofs.Size() != number_of_parent_nodes,
+                        "Native parent-face field data do not match the parent finite-element basis." );
+    for ( int parent_node = 0; parent_node < number_of_parent_nodes; ++parent_node ) {
+      RealT degree_of_freedom_sign = 1.0;
+      const int parent_degree_of_freedom =
+          DecodeDegreeOfFreedom( parent_element_dofs[parent_node], degree_of_freedom_sign );
+      for ( int component = 0; component < parent_coordinates.VectorDim(); ++component ) {
+        const int submesh_vector_degree_of_freedom = submesh_space.DofToVDof( parent_degree_of_freedom, component );
+        const int field_index = parent_node * parent_coordinates.VectorDim() + component;
+        record[parent_position_offset + field_index] =
+            degree_of_freedom_sign * submesh_coordinate_values[submesh_vector_degree_of_freedom];
+        if ( submesh_velocity_values != nullptr ) {
+          record[parent_velocity_offset + field_index] =
+              degree_of_freedom_sign * submesh_velocity_values[submesh_vector_degree_of_freedom];
+        }
+        if ( submesh_inverse_mass_values != nullptr ) {
+          record[parent_inverse_mass_offset + field_index] =
+              submesh_inverse_mass_values[submesh_vector_degree_of_freedom];
+          RealT parent_degree_of_freedom_sign = 1.0;
+          const int parent_vector_degree_of_freedom = DecodeDegreeOfFreedom(
+              vector_xfer_.GetParentVDof( submesh_vector_degree_of_freedom ), parent_degree_of_freedom_sign );
+          record[parent_vector_dof_offset + field_index] = static_cast<RealT>( parent_vector_degree_of_freedom );
+        }
       }
     }
 
@@ -1205,11 +1425,34 @@ void MfemMeshData::UpdateData::BuildParentFaceData( mfem::ParSubMesh& submesh, m
     ArrayT<IndexT, 1, MemorySpace::Host> lor_face_ids_host( number_of_surface_elements );
     ArrayT<int, 1, MemorySpace::Host> lor_face_geometries_host( number_of_surface_elements );
     ArrayT<int, 1, MemorySpace::Host> parent_face_orders_host( number_of_surface_elements );
+    ArrayT<int, 1, MemorySpace::Host> parent_face_geometries_host( number_of_surface_elements );
+    ArrayT<int, 1, MemorySpace::Host> parent_node_counts_host( number_of_surface_elements );
     ArrayT<int, 1, MemorySpace::Host> reference_vertex_counts_host( number_of_surface_elements );
     ArrayT<RealT, 2, MemorySpace::Host> parent_reference_coordinates_host(
         { number_of_surface_elements, ParentFaceData::max_lor_face_vertices * ParentFaceData::max_reference_dimension },
         getResourceAllocatorID( MemorySpace::Host ) );
     parent_reference_coordinates_host.fill( 0.0 );
+    ArrayT<RealT, 2, MemorySpace::Host> parent_basis_coefficients_host(
+        { number_of_surface_elements, ParentFaceData::max_parent_face_nodes * ParentFaceData::max_parent_face_nodes },
+        getResourceAllocatorID( MemorySpace::Host ) );
+    ArrayT<RealT, 2, MemorySpace::Host> parent_positions_host(
+        { number_of_surface_elements, ParentFaceData::max_parent_face_nodes * 3 },
+        getResourceAllocatorID( MemorySpace::Host ) );
+    ArrayT<RealT, 2, MemorySpace::Host> parent_velocities_host(
+        { number_of_surface_elements, ParentFaceData::max_parent_face_nodes * 3 },
+        getResourceAllocatorID( MemorySpace::Host ) );
+    ArrayT<RealT, 2, MemorySpace::Host> parent_inverse_masses_host(
+        { number_of_surface_elements, ParentFaceData::max_parent_face_nodes * 3 },
+        getResourceAllocatorID( MemorySpace::Host ) );
+    ArrayT<IndexT, 2, MemorySpace::Host> parent_vector_dof_ids_host(
+        { number_of_surface_elements, ParentFaceData::max_parent_face_nodes * 3 },
+        getResourceAllocatorID( MemorySpace::Host ) );
+    parent_basis_coefficients_host.fill( 0.0 );
+    parent_positions_host.fill( 0.0 );
+    parent_velocities_host.fill( 0.0 );
+    parent_inverse_masses_host.fill( 0.0 );
+    parent_vector_dof_ids_host.fill( -1 );
+    IndexT maximum_parent_vector_dof_count = 0;
 
     for ( IndexT surface_element_id = 0; surface_element_id < number_of_surface_elements; ++surface_element_id ) {
       const int redecomp_element_id = surface_element_map[surface_element_id];
@@ -1228,12 +1471,32 @@ void MfemMeshData::UpdateData::BuildParentFaceData( mfem::ParSubMesh& submesh, m
       lor_face_geometries_host[surface_element_id] = static_cast<int>( get_record_value( 3 ) );
       parent_face_orders_host[surface_element_id] = static_cast<int>( get_record_value( 4 ) );
       reference_vertex_counts_host[surface_element_id] = static_cast<int>( get_record_value( 5 ) );
+      parent_face_geometries_host[surface_element_id] = static_cast<int>( get_record_value( 6 ) );
+      parent_node_counts_host[surface_element_id] = static_cast<int>( get_record_value( 7 ) );
       for ( int coordinate_index = 0;
             coordinate_index < ParentFaceData::max_lor_face_vertices * ParentFaceData::max_reference_dimension;
             ++coordinate_index ) {
         parent_reference_coordinates_host( surface_element_id, coordinate_index ) =
             get_record_value( parent_reference_coordinate_offset + coordinate_index );
       }
+      for ( int coefficient_index = 0;
+            coefficient_index < ParentFaceData::max_parent_face_nodes * ParentFaceData::max_parent_face_nodes;
+            ++coefficient_index ) {
+        parent_basis_coefficients_host( surface_element_id, coefficient_index ) =
+            get_record_value( parent_basis_coefficient_offset + coefficient_index );
+      }
+      for ( int field_index = 0; field_index < ParentFaceData::max_parent_face_nodes * 3; ++field_index ) {
+        parent_positions_host( surface_element_id, field_index ) =
+            get_record_value( parent_position_offset + field_index );
+        parent_velocities_host( surface_element_id, field_index ) =
+            get_record_value( parent_velocity_offset + field_index );
+        parent_inverse_masses_host( surface_element_id, field_index ) =
+            get_record_value( parent_inverse_mass_offset + field_index );
+        parent_vector_dof_ids_host( surface_element_id, field_index ) =
+            static_cast<IndexT>( get_record_value( parent_vector_dof_offset + field_index ) );
+      }
+      const IndexT parent_vector_dof_count = static_cast<IndexT>( get_record_value( parent_vector_dof_count_offset ) );
+      maximum_parent_vector_dof_count = std::max( maximum_parent_vector_dof_count, parent_vector_dof_count );
     }
 
     parent_face_arrays.parent_face_ids = Array1D<IndexT>( parent_face_ids_host, allocator_id_ );
@@ -1241,13 +1504,128 @@ void MfemMeshData::UpdateData::BuildParentFaceData( mfem::ParSubMesh& submesh, m
     parent_face_arrays.lor_face_ids = Array1D<IndexT>( lor_face_ids_host, allocator_id_ );
     parent_face_arrays.lor_face_geometries = Array1D<int>( lor_face_geometries_host, allocator_id_ );
     parent_face_arrays.parent_face_orders = Array1D<int>( parent_face_orders_host, allocator_id_ );
+    parent_face_arrays.parent_face_geometries = Array1D<int>( parent_face_geometries_host, allocator_id_ );
+    parent_face_arrays.parent_node_counts = Array1D<int>( parent_node_counts_host, allocator_id_ );
     parent_face_arrays.reference_vertex_counts = Array1D<int>( reference_vertex_counts_host, allocator_id_ );
     parent_face_arrays.parent_reference_vertex_coordinates =
         Array2D<RealT>( parent_reference_coordinates_host, allocator_id_ );
+    parent_face_arrays.parent_basis_coefficients = Array2D<RealT>( parent_basis_coefficients_host, allocator_id_ );
+    parent_face_arrays.parent_positions = Array2D<RealT>( parent_positions_host, allocator_id_ );
+    if ( parent_velocity != nullptr ) {
+      parent_face_arrays.parent_velocities = Array2D<RealT>( parent_velocities_host, allocator_id_ );
+    } else {
+      parent_face_arrays.parent_velocities = Array2D<RealT>();
+    }
+    if ( parent_inverse_mass != nullptr ) {
+      parent_face_arrays.parent_inverse_masses = Array2D<RealT>( parent_inverse_masses_host, allocator_id_ );
+      parent_face_arrays.parent_vector_dof_ids = Array2D<IndexT>( parent_vector_dof_ids_host, allocator_id_ );
+      parent_face_arrays.parent_vector_dof_count = maximum_parent_vector_dof_count;
+    } else {
+      parent_face_arrays.parent_inverse_masses = Array2D<RealT>();
+      parent_face_arrays.parent_vector_dof_ids = Array2D<IndexT>();
+      parent_face_arrays.parent_vector_dof_count = 0;
+    }
+    parent_face_arrays.parent_responses =
+        Array2D<RealT>( { number_of_surface_elements, ParentFaceData::max_parent_face_nodes * 3 }, allocator_id_ );
+    parent_face_arrays.parent_responses.fill( 0.0 );
   };
 
   copy_surface_records( elem_map_1_, parent_face_data_1_ );
   copy_surface_records( elem_map_2_, parent_face_data_2_ );
+}
+
+void MfemMeshData::UpdateData::GetParentFaceResponse( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh,
+                                                      mfem::Vector& submesh_response ) const
+{
+  mfem::ParMesh& source_mesh = lor_mesh ? *lor_mesh : submesh;
+  const int response_components = ParentFaceData::max_parent_face_nodes * 3;
+  mfem::L2_FECollection response_collection( 0, source_mesh.Dimension() );
+  mfem::FiniteElementSpace redecomp_response_space( const_cast<redecomp::RedecompMesh*>( &redecomp_mesh_ ),
+                                                    &response_collection, response_components,
+                                                    mfem::Ordering::byNODES );
+  mfem::ParFiniteElementSpace source_response_space( &source_mesh, &response_collection, response_components,
+                                                     mfem::Ordering::byNODES );
+  mfem::GridFunction redecomp_response( &redecomp_response_space );
+  mfem::ParGridFunction source_response( &source_response_space );
+  redecomp_response.UseDevice( false );
+  source_response.UseDevice( false );
+  redecomp_response = 0.0;
+  source_response = 0.0;
+
+  // Contact kernels accumulate one parent-basis force vector per Tribol face.
+  // Place those vectors back on their redecomp elements before the element-wise
+  // reverse transfer returns each owned contribution to its source LOR face.
+  RealT* redecomp_response_values = redecomp_response.HostReadWrite();
+  auto copy_surface_response = [&]( const Array1D<int>& surface_element_map,
+                                    const ParentFaceArrays& parent_face_arrays ) {
+    ArrayT<RealT, 2, MemorySpace::Host> parent_response_host( parent_face_arrays.parent_responses );
+    mfem::Array<int> response_dofs;
+    for ( IndexT surface_element_id = 0; surface_element_id < surface_element_map.size(); ++surface_element_id ) {
+      const int redecomp_element_id = surface_element_map[surface_element_id];
+      redecomp_response_space.GetElementDofs( redecomp_element_id, response_dofs );
+      SLIC_ERROR_ROOT_IF( response_dofs.Size() != 1,
+                          "Parent-face response transfer requires one scalar degree of freedom per element." );
+      for ( int component = 0; component < response_components; ++component ) {
+        const int response_vector_degree_of_freedom = redecomp_response_space.DofToVDof( response_dofs[0], component );
+        redecomp_response_values[response_vector_degree_of_freedom] +=
+            parent_response_host( surface_element_id, component );
+      }
+    }
+  };
+  copy_surface_response( elem_map_1_, parent_face_data_1_ );
+  copy_surface_response( elem_map_2_, parent_face_data_2_ );
+
+  redecomp::TransferByElements().TransferToParallel( redecomp_response, source_response );
+
+  const mfem::ParFiniteElementSpace& submesh_space =
+      *dynamic_cast<mfem::ParGridFunction*>( submesh.GetNodes() )->ParFESpace();
+  submesh_response.SetSize( submesh_space.GetVSize() );
+  submesh_response.UseDevice( false );
+  submesh_response = 0.0;
+  RealT* submesh_response_values = submesh_response.HostReadWrite();
+  const RealT* source_response_values = source_response.HostRead();
+  const mfem::CoarseFineTransformations* refinement_transforms =
+      lor_mesh ? &lor_mesh->GetRefinementTransforms() : nullptr;
+  mfem::Array<int> source_response_dofs;
+  mfem::Array<int> parent_element_dofs;
+  for ( int source_element_id = 0; source_element_id < source_mesh.GetNE(); ++source_element_id ) {
+    const int parent_submesh_element_id =
+        refinement_transforms ? refinement_transforms->embeddings[source_element_id].parent : source_element_id;
+    source_response_space.GetElementDofs( source_element_id, source_response_dofs );
+    submesh_space.GetElementDofs( parent_submesh_element_id, parent_element_dofs );
+    SLIC_ERROR_ROOT_IF(
+        source_response_dofs.Size() != 1 || parent_element_dofs.Size() > ParentFaceData::max_parent_face_nodes,
+        "Parent-face response transfer encountered an unsupported finite-element layout." );
+
+    for ( int parent_node = 0; parent_node < parent_element_dofs.Size(); ++parent_node ) {
+      RealT degree_of_freedom_sign = 1.0;
+      const int parent_degree_of_freedom =
+          DecodeDegreeOfFreedom( parent_element_dofs[parent_node], degree_of_freedom_sign );
+      for ( int component = 0; component < submesh_space.GetVDim(); ++component ) {
+        const int source_component = parent_node * submesh_space.GetVDim() + component;
+        const int source_vector_degree_of_freedom =
+            source_response_space.DofToVDof( source_response_dofs[0], source_component );
+        const int submesh_vector_degree_of_freedom = submesh_space.DofToVDof( parent_degree_of_freedom, component );
+        submesh_response_values[submesh_vector_degree_of_freedom] +=
+            degree_of_freedom_sign * source_response_values[source_vector_degree_of_freedom];
+      }
+    }
+  }
+
+  // Sum shared native degrees of freedom and retain values only on their owner
+  // ranks, matching the dual-vector convention used by existing MFEM response transfer.
+  mfem::Vector local_response_copy( submesh_response );
+  mfem::ParGridFunction local_response_grid_function( const_cast<mfem::ParFiniteElementSpace*>( &submesh_space ),
+                                                      local_response_copy );
+  std::unique_ptr<mfem::HypreParVector> true_response( local_response_grid_function.ParallelAssemble() );
+  submesh_space.Dof_TrueDof_Matrix()->Mult( *true_response, submesh_response );
+  RealT* owned_response_values = submesh_response.HostReadWrite();
+  for ( int local_degree_of_freedom = 0; local_degree_of_freedom < submesh_space.GetVSize();
+        ++local_degree_of_freedom ) {
+    if ( submesh_space.GetLocalTDofNumber( local_degree_of_freedom ) < 0 ) {
+      owned_response_values[local_degree_of_freedom] = 0.0;
+    }
+  }
 }
 
 void MfemMeshData::UpdateData::UpdateConnectivity( const std::set<int>& attributes_1,

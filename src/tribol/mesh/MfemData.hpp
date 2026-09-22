@@ -296,12 +296,34 @@ class ParentRedecompTransfer {
   void RedecompToParent( const mfem::GridFunction& redecomp_src, mfem::Vector& parent_dst ) const;
 
   /**
+   * @brief Add a boundary-submesh dual vector to its parent-mesh vector.
+   *
+   * Shared submesh degrees of freedom must already follow MFEM's owned-value
+   * convention before this local signed scatter.
+   *
+   * @param [in] submesh_src Boundary-submesh dual vector
+   * @param [in,out] parent_dst Parent-mesh vector receiving the contribution
+   */
+  void AddSubmeshToParent( const mfem::Vector& submesh_src, mfem::Vector& parent_dst ) const;
+
+  /**
    * @brief Get the parent-linked boundary submesh finite element space
    * associated with this transfer object
    *
    * @return const mfem::ParFiniteElementSpace&
    */
   const mfem::ParFiniteElementSpace& GetSubmeshFESpace() const { return *submesh_gridfn_.ParFESpace(); }
+
+  /**
+   * @brief Return the parent-mesh vector degree of freedom for a submesh vector degree of freedom.
+   *
+   * The returned MFEM index may encode an orientation sign. Callers that only
+   * need a degree-of-freedom identity must decode the sign before using it.
+   *
+   * @param submesh_vector_dof Boundary-submesh vector degree of freedom
+   * @return Corresponding signed parent-mesh vector degree of freedom
+   */
+  int GetParentVDof( int submesh_vector_dof ) const { return submesh_to_parent_vdof_map_[submesh_vector_dof]; }
 
   /**
    * @brief Returns finite element space on the redecomp mesh associated with
@@ -778,6 +800,20 @@ class MfemMeshData {
   bool HasVelocity() const { return velocity_ != nullptr; }
 
   /**
+   * @brief Add or replace the parent inverse diagonal mass field.
+   *
+   * @param inverse_mass Component-wise inverse diagonal mass in the parent velocity space
+   */
+  void SetParentInverseMass( const mfem::ParGridFunction& inverse_mass );
+
+  /**
+   * @brief Determine whether an inverse diagonal mass field is registered.
+   *
+   * @return true when the parent inverse diagonal mass field is available
+   */
+  bool HasInverseMass() const { return inverse_mass_ != nullptr; }
+
+  /**
    * @brief Get pointers to component arrays of the velocity on the RedecompMesh
    *
    * @return std::vector<const RealT*> of length 3
@@ -1162,11 +1198,38 @@ class MfemMeshData {
       /** Polynomial order of each native parent coordinate face. */
       Array1D<int> parent_face_orders;
 
+      /** InterfaceElementType value for each native parent face. */
+      Array1D<int> parent_face_geometries;
+
+      /** Number of native parent finite-element nodes on each face. */
+      Array1D<int> parent_node_counts;
+
       /** Number of vertices defining each child-to-parent reference map. */
       Array1D<int> reference_vertex_counts;
 
       /** Parent reference coordinates at the LOR face vertices. */
       Array2D<RealT> parent_reference_vertex_coordinates;
+
+      /** Coefficients that evaluate the native parent nodal basis. */
+      Array2D<RealT> parent_basis_coefficients;
+
+      /** Native parent-face nodal coordinates in node-major ordering. */
+      Array2D<RealT> parent_positions;
+
+      /** Native parent-face nodal velocities in node-major ordering. */
+      Array2D<RealT> parent_velocities;
+
+      /** Native parent-face inverse diagonal masses in node-major ordering. */
+      Array2D<RealT> parent_inverse_masses;
+
+      /** Parent-mesh vector degree-of-freedom identifiers in node-major ordering. */
+      Array2D<IndexT> parent_vector_dof_ids;
+
+      /** Largest source-rank vector degree-of-freedom count represented by these faces. */
+      IndexT parent_vector_dof_count{ 0 };
+
+      /** Element-local native parent-face response accumulated by contact. */
+      Array2D<RealT> parent_responses;
 
       /**
        * @brief Create non-owning views of the provenance arrays.
@@ -1256,6 +1319,8 @@ class MfemMeshData {
     int allocator_id_;
 
    private:
+    friend class MfemMeshData;
+
     /**
      * @brief Builds connectivity arrays and redecomp mesh to Tribol registered
      * mesh element maps
@@ -1272,10 +1337,24 @@ class MfemMeshData {
      *
      * @param submesh Parent-linked contact boundary submesh
      * @param lor_mesh Optional low-order-refined contact mesh
-     * @param parent_fes Native parent coordinate finite-element space
+     * @param parent_coordinates Native parent coordinate field
+     * @param parent_velocity Optional native parent velocity field
+     * @param parent_inverse_mass Optional native parent inverse diagonal mass field
      */
     void BuildParentFaceData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh,
-                              const mfem::ParFiniteElementSpace& parent_fes );
+                              const mfem::ParGridFunction& parent_coordinates,
+                              const mfem::ParGridFunction* parent_velocity,
+                              const mfem::ParGridFunction* parent_inverse_mass );
+
+    /**
+     * @brief Accumulate element-local parent-face response onto the boundary submesh.
+     *
+     * @param submesh Parent-linked contact boundary submesh
+     * @param lor_mesh Optional low-order-refined contact mesh
+     * @param submesh_response Boundary-submesh response receiving contact contributions
+     */
+    void GetParentFaceResponse( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh,
+                                mfem::Vector& submesh_response ) const;
 
     /**
      * @brief Sets the number of vertices per element and the element type for the redecomp mesh
@@ -1377,6 +1456,11 @@ class MfemMeshData {
    * nullptr otherwise
    */
   std::unique_ptr<ParentField> velocity_;
+
+  /**
+   * @brief Contains inverse diagonal mass data if registered; nullptr otherwise
+   */
+  std::unique_ptr<ParentField> inverse_mass_;
 
   /**
    * @brief Kinematic constant contact penalty for the first Tribol registered mesh

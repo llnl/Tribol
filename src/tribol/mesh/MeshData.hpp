@@ -14,6 +14,7 @@
 
 // Tribol includes
 #include "tribol/common/ArrayTypes.hpp"
+#include "tribol/common/Atomics.hpp"
 #include "tribol/common/Parameters.hpp"
 #include "tribol/utils/DataManager.hpp"
 
@@ -106,6 +107,12 @@ struct ParentFaceData {
   /** Maximum number of vertices on a supported LOR surface element. */
   static constexpr int max_lor_face_vertices{ 4 };
 
+  /** Highest native parent-face order supported by device basis evaluation. */
+  static constexpr int max_parent_face_order{ 4 };
+
+  /** Maximum number of native parent-face nodes for supported quadrilateral faces. */
+  static constexpr int max_parent_face_nodes{ ( max_parent_face_order + 1 ) * ( max_parent_face_order + 1 ) };
+
   /** Native parent boundary-face identifier on the owning MPI rank. */
   Array1DView<const IndexT> m_parent_face_ids;
 
@@ -121,6 +128,12 @@ struct ParentFaceData {
   /** Polynomial order of the native parent coordinate finite element. */
   Array1DView<const int> m_parent_face_orders;
 
+  /** InterfaceElementType value for each native parent face. */
+  Array1DView<const int> m_parent_face_geometries;
+
+  /** Number of native parent finite-element nodes on each face. */
+  Array1DView<const int> m_parent_node_counts;
+
   /** Number of vertices used by each child-to-parent reference map. */
   Array1DView<const int> m_reference_vertex_counts;
 
@@ -132,6 +145,27 @@ struct ParentFaceData {
    */
   Array2DView<const RealT> m_parent_reference_vertex_coordinates;
 
+  /** Coefficients that evaluate each native parent-face nodal basis function. */
+  Array2DView<const RealT> m_parent_basis_coefficients;
+
+  /** Native parent-face nodal coordinates in node-major ordering. */
+  Array2DView<const RealT> m_parent_positions;
+
+  /** Native parent-face nodal velocities in node-major ordering, when registered. */
+  Array2DView<const RealT> m_parent_velocities;
+
+  /** Native parent-face inverse diagonal masses in node-major ordering, when registered. */
+  Array2DView<const RealT> m_parent_inverse_masses;
+
+  /** Source-rank vector degree-of-freedom identifier for each parent-face node and component. */
+  Array2DView<const IndexT> m_parent_vector_dof_ids;
+
+  /** Largest source-rank vector degree-of-freedom count represented by these faces. */
+  IndexT m_parent_vector_dof_count{ 0 };
+
+  /** Element-local native parent-face response accumulated by contact. */
+  Array2DView<RealT> m_parent_responses;
+
   /**
    * @brief Return whether native parent-face provenance is available.
    *
@@ -142,6 +176,34 @@ struct ParentFaceData {
     return !m_parent_face_ids.empty() && !m_parent_face_owner_ranks.empty() && !m_lor_face_ids.empty() &&
            !m_lor_face_geometries.empty() && !m_parent_face_orders.empty() && !m_reference_vertex_counts.empty() &&
            !m_parent_reference_vertex_coordinates.empty();
+  }
+
+  /**
+   * @brief Return whether native parent-face basis and field data are available.
+   *
+   * @return true when all data required for parent-space position and force evaluation are populated
+   */
+  TRIBOL_HOST_DEVICE bool hasParentFields() const
+  {
+    return isValid() && !m_parent_face_geometries.empty() && !m_parent_node_counts.empty() &&
+           !m_parent_basis_coefficients.empty() && !m_parent_positions.empty() && !m_parent_responses.empty();
+  }
+
+  /**
+   * @brief Return whether native parent-face velocity data are available.
+   *
+   * @return true when parent velocities are populated
+   */
+  TRIBOL_HOST_DEVICE bool hasParentVelocity() const { return !m_parent_velocities.empty(); }
+
+  /**
+   * @brief Return whether native parent-face inverse diagonal masses are available.
+   *
+   * @return true when inverse mass values and source degree-of-freedom identifiers are populated
+   */
+  TRIBOL_HOST_DEVICE bool hasParentInverseMass() const
+  {
+    return !m_parent_inverse_masses.empty() && !m_parent_vector_dof_ids.empty() && m_parent_vector_dof_count > 0;
   }
 };
 
@@ -227,6 +289,20 @@ class MeshData {
     TRIBOL_HOST_DEVICE const ParentFaceData& getParentFaceData() const { return m_parent_face_data; }
 
     /**
+     * @brief Return whether native parent-face basis and field data are registered.
+     *
+     * @return true when parent-space position and response evaluation are available
+     */
+    TRIBOL_HOST_DEVICE bool hasParentFaceFields() const { return m_parent_face_data.hasParentFields(); }
+
+    /**
+     * @brief Return whether native parent-face velocity data are registered.
+     *
+     * @return true when parent-space velocity evaluation is available
+     */
+    TRIBOL_HOST_DEVICE bool hasParentFaceVelocity() const { return m_parent_face_data.hasParentVelocity(); }
+
+    /**
      * @brief Map a LOR face reference point to its native parent-face reference point.
      *
      * The mapping interpolates the stored parent reference coordinates at the
@@ -240,6 +316,38 @@ class MeshData {
      */
     TRIBOL_HOST_DEVICE bool mapToParentReference( IndexT face_id, const RealT* lor_reference_coordinates,
                                                   RealT* parent_reference_coordinates ) const;
+
+    /**
+     * @brief Evaluate native parent-face nodal basis functions.
+     *
+     * @param face_id Tribol surface element identifier
+     * @param parent_reference_coordinates Native parent-face reference coordinates
+     * @param basis_values Output array with space for ParentFaceData::max_parent_face_nodes values
+     * @return true when the face data and reference point are valid
+     */
+    TRIBOL_HOST_DEVICE bool evaluateParentFaceBasis( IndexT face_id, const RealT* parent_reference_coordinates,
+                                                     RealT* basis_values ) const;
+
+    /**
+     * @brief Evaluate native parent-face position and optional velocity.
+     *
+     * @param face_id Tribol surface element identifier
+     * @param basis_values Native parent-face basis values
+     * @param position Output physical position with spatialDimension() components
+     * @param velocity Optional output velocity with spatialDimension() components
+     */
+    TRIBOL_HOST_DEVICE void evaluateParentFaceFields( IndexT face_id, const RealT* basis_values, RealT* position,
+                                                      RealT* velocity ) const;
+
+    /**
+     * @brief Add an element-local force to the native parent-face response.
+     *
+     * @param face_id Tribol surface element identifier
+     * @param basis_values Native parent-face basis values
+     * @param force Physical force components to scatter
+     */
+    TRIBOL_HOST_DEVICE void addParentFaceResponse( IndexT face_id, const RealT* basis_values,
+                                                   const RealT* force ) const;
 
     /**
      * @brief Spatial dimension of the mesh
@@ -329,6 +437,25 @@ class MeshData {
      * @return array view of the nodal velocity arrays
      */
     TRIBOL_HOST_DEVICE const MultiViewArrayView<const RealT>& getVelocity() const { return m_vel; }
+
+    /**
+     * @brief Return whether component-wise inverse diagonal nodal masses are registered.
+     *
+     * @return true when inverse mass data are available
+     */
+    TRIBOL_HOST_DEVICE bool hasInverseMass() const { return !m_inverse_mass.empty(); }
+
+    /**
+     * @brief Return one component of a registered inverse diagonal nodal mass.
+     *
+     * @param node_id Contact mesh node identifier
+     * @param component Vector component identifier
+     * @return Registered inverse mass value
+     */
+    TRIBOL_HOST_DEVICE RealT getInverseMass( IndexT node_id, int component ) const
+    {
+      return m_inverse_mass[component][node_id];
+    }
 
     /**
      * @brief Is the nodal response vector populated?
@@ -492,6 +619,9 @@ class MeshData {
     /// Array of views of nodal velocity data
     const MultiViewArrayView<const RealT> m_vel;
 
+    /// Array of views of component-wise inverse diagonal nodal mass data
+    const MultiViewArrayView<const RealT> m_inverse_mass;
+
     /// Array of views of nodal response data
     const MultiViewArrayView<RealT> m_response;
 
@@ -591,6 +721,20 @@ class MeshData {
    * @param parent_face_data Non-owning parent-face provenance views
    */
   void setParentFaceData( const ParentFaceData& parent_face_data ) { m_parent_face_data = parent_face_data; }
+
+  /**
+   * @brief Return whether native parent-face basis and field data are registered.
+   *
+   * @return true when parent-space position and response evaluation are available
+   */
+  bool hasParentFaceFields() const { return m_parent_face_data.hasParentFields(); }
+
+  /**
+   * @brief Get native parent-face provenance and field data.
+   *
+   * @return Non-owning native parent-face data views
+   */
+  const ParentFaceData& getParentFaceData() const { return m_parent_face_data; }
 
   /**
    * @brief Marker which can indicate mesh validity
@@ -701,12 +845,31 @@ class MeshData {
   void setVelocity( const RealT* vx, const RealT* vy, const RealT* vz );
 
   /**
+   * @brief Set component-wise inverse diagonal nodal masses.
+   *
+   * A zero value denotes a constrained velocity degree of freedom with no
+   * contribution to the explicit contact stability operator.
+   *
+   * @param inverse_mass_x Inverse mass for x velocity degrees of freedom
+   * @param inverse_mass_y Inverse mass for y velocity degrees of freedom
+   * @param inverse_mass_z Inverse mass for z velocity degrees of freedom in three dimensions
+   */
+  void setInverseMass( const RealT* inverse_mass_x, const RealT* inverse_mass_y, const RealT* inverse_mass_z );
+
+  /**
    * @brief Is the velocity vector populated?
    *
    * @return true vector is non-empty
    * @return false vector is empty
    */
   bool hasVelocity() const { return !m_vel.empty(); }
+
+  /**
+   * @brief Return whether component-wise inverse diagonal nodal masses are registered.
+   *
+   * @return true when inverse mass data are available
+   */
+  bool hasInverseMass() const { return !m_inverse_mass.empty(); }
 
   /**
    * @brief Set the pointers to the nodal response data
@@ -778,6 +941,7 @@ class MeshData {
   MultiArrayView<const RealT> m_ref_position;  ///< Reference coordinates of nodes in mesh
   MultiArrayView<const RealT> m_disp;          ///< Nodal displacements
   MultiArrayView<const RealT> m_vel;           ///< Nodal velocity
+  MultiArrayView<const RealT> m_inverse_mass;  ///< Component-wise inverse diagonal nodal masses
   MultiArrayView<RealT> m_response;            ///< Nodal responses (forces)
 
   ArrayT<RealT, 2> m_node_n;  ///< Outward unit node normals
@@ -979,6 +1143,120 @@ TRIBOL_HOST_DEVICE inline bool MeshData::Viewer::mapToParentReference( IndexT fa
     return false;
   }
   return true;
+}
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE inline bool MeshData::Viewer::evaluateParentFaceBasis( IndexT face_id,
+                                                                          const RealT* parent_reference_coordinates,
+                                                                          RealT* basis_values ) const
+{
+  if ( !hasParentFaceFields() || face_id < 0 || face_id >= numberOfElements() ||
+       parent_reference_coordinates == nullptr || basis_values == nullptr ||
+       face_id >= m_parent_face_data.m_parent_face_geometries.size() ||
+       face_id >= m_parent_face_data.m_parent_node_counts.size() ||
+       face_id >= m_parent_face_data.m_parent_basis_coefficients.shape()[0] ) {
+    return false;
+  }
+
+  const int parent_order = m_parent_face_data.m_parent_face_orders[face_id];
+  const int number_of_parent_nodes = m_parent_face_data.m_parent_node_counts[face_id];
+  const auto parent_face_geometry =
+      static_cast<InterfaceElementType>( m_parent_face_data.m_parent_face_geometries[face_id] );
+  if ( parent_order < 1 || parent_order > ParentFaceData::max_parent_face_order || number_of_parent_nodes < 1 ||
+       number_of_parent_nodes > ParentFaceData::max_parent_face_nodes ) {
+    return false;
+  }
+
+  RealT monomial_values[ParentFaceData::max_parent_face_nodes] = { 0.0 };
+  int number_of_monomials = 0;
+  if ( parent_face_geometry == LINEAR_EDGE ) {
+    RealT first_coordinate_power = 1.0;
+    for ( int first_degree = 0; first_degree <= parent_order; ++first_degree ) {
+      monomial_values[number_of_monomials++] = first_coordinate_power;
+      first_coordinate_power *= parent_reference_coordinates[0];
+    }
+  } else if ( parent_face_geometry == LINEAR_TRIANGLE ) {
+    for ( int total_degree = 0; total_degree <= parent_order; ++total_degree ) {
+      for ( int second_degree = 0; second_degree <= total_degree; ++second_degree ) {
+        const int first_degree = total_degree - second_degree;
+        RealT monomial_value = 1.0;
+        for ( int exponent = 0; exponent < first_degree; ++exponent ) {
+          monomial_value *= parent_reference_coordinates[0];
+        }
+        for ( int exponent = 0; exponent < second_degree; ++exponent ) {
+          monomial_value *= parent_reference_coordinates[1];
+        }
+        monomial_values[number_of_monomials++] = monomial_value;
+      }
+    }
+  } else if ( parent_face_geometry == LINEAR_QUAD ) {
+    for ( int second_degree = 0; second_degree <= parent_order; ++second_degree ) {
+      for ( int first_degree = 0; first_degree <= parent_order; ++first_degree ) {
+        RealT monomial_value = 1.0;
+        for ( int exponent = 0; exponent < first_degree; ++exponent ) {
+          monomial_value *= parent_reference_coordinates[0];
+        }
+        for ( int exponent = 0; exponent < second_degree; ++exponent ) {
+          monomial_value *= parent_reference_coordinates[1];
+        }
+        monomial_values[number_of_monomials++] = monomial_value;
+      }
+    }
+  } else {
+    return false;
+  }
+
+  if ( number_of_monomials != number_of_parent_nodes ) {
+    return false;
+  }
+
+  for ( int parent_node = 0; parent_node < number_of_parent_nodes; ++parent_node ) {
+    basis_values[parent_node] = 0.0;
+    for ( int monomial = 0; monomial < number_of_monomials; ++monomial ) {
+      const int coefficient_index = parent_node * ParentFaceData::max_parent_face_nodes + monomial;
+      basis_values[parent_node] +=
+          m_parent_face_data.m_parent_basis_coefficients( face_id, coefficient_index ) * monomial_values[monomial];
+    }
+  }
+  return true;
+}
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE inline void MeshData::Viewer::evaluateParentFaceFields( IndexT face_id, const RealT* basis_values,
+                                                                           RealT* position, RealT* velocity ) const
+{
+  const int number_of_parent_nodes = m_parent_face_data.m_parent_node_counts[face_id];
+  for ( int component = 0; component < spatialDimension(); ++component ) {
+    position[component] = 0.0;
+    if ( velocity != nullptr ) {
+      velocity[component] = 0.0;
+    }
+  }
+
+  for ( int parent_node = 0; parent_node < number_of_parent_nodes; ++parent_node ) {
+    for ( int component = 0; component < spatialDimension(); ++component ) {
+      const int field_index = parent_node * spatialDimension() + component;
+      position[component] += basis_values[parent_node] * m_parent_face_data.m_parent_positions( face_id, field_index );
+      if ( velocity != nullptr ) {
+        velocity[component] +=
+            basis_values[parent_node] * m_parent_face_data.m_parent_velocities( face_id, field_index );
+      }
+    }
+  }
+}
+
+//------------------------------------------------------------------------------
+TRIBOL_HOST_DEVICE inline void MeshData::Viewer::addParentFaceResponse( IndexT face_id, const RealT* basis_values,
+                                                                        const RealT* force ) const
+{
+  const int number_of_parent_nodes = m_parent_face_data.m_parent_node_counts[face_id];
+  for ( int parent_node = 0; parent_node < number_of_parent_nodes; ++parent_node ) {
+    for ( int component = 0; component < spatialDimension(); ++component ) {
+      const int field_index = parent_node * spatialDimension() + component;
+      atomicAdd( &m_parent_face_data.m_parent_responses( face_id, field_index ),
+                 basis_values[parent_node] * force[component] );
+    }
+  }
 }
 
 }  // end namespace tribol

@@ -244,8 +244,10 @@ enum IntNodalFields
  */
 enum PolyInteg
 {
-  SINGLE_POINT,     ///! Single point integration at centroid of polygon
-  FULL_TRI_DECOMP,  ///! Full integration using triangular decomposition
+  SINGLE_POINT,                   ///< Single-point integration at the overlap centroid.
+  FULL_TRI_DECOMP,                ///< Legacy name for triangle-decomposition overlap integration.
+  MULTI_POINT = FULL_TRI_DECOMP,  ///< Multipoint integration over the overlap interval or polygon.
+  AUTO_INTEGRATION,               ///< Select the rule and order from the registered parent-face order.
   NUM_INTEG_RULES
 };
 
@@ -453,6 +455,13 @@ struct PenaltyEnforcementOptions {
   PenaltyConstraintType constraint_type;
   KinematicPenaltyCalculation kinematic_calculation;
   RatePenaltyCalculation rate_calculation;
+  PolyInteg common_plane_rule{ AUTO_INTEGRATION };  ///< CommonPlane overlap integration rule.
+  /** Triangle or segment quadrature order used by MULTI_POINT and ignored by other rules. */
+  int common_plane_quadrature_order{ 3 };
+  /** Dimensionless stability limit supplied by the application for its explicit integrator. */
+  RealT explicit_integrator_stability_factor{ 0.0 };
+  /** Whether the application registered its explicit-integrator stability limit. */
+  bool explicit_integrator_stability_factor_set{ false };
 
   bool constraint_type_set{ false };
   bool kinematic_calc_set{ false };
