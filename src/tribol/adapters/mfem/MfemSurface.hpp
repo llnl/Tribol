@@ -467,7 +467,7 @@ class SurfacePairStorage {
  private:
   void validateGlobalSurface( const SurfaceStorage& surface ) const
   {
-    const std::uint64_t local = surface.localElementCount();
+    std::uint64_t local = surface.localElementCount();
     std::uint64_t global{};
     MPI_Allreduce( &local, &global, 1, MPI_UINT64_T, MPI_SUM, mesh().GetComm() );
     if ( global == 0 ) {

@@ -138,7 +138,7 @@ int exerciseContact( int communicator_size, int rank, int order, int subdivision
     local_curved_sample_found = local_curved_sample_found || surfaces.mortar.coordinates( node, 1 ) > 0.1001;
   }
   int curved_sample_found{};
-  const int local_curved_sample = local_curved_sample_found ? 1 : 0;
+  int local_curved_sample = local_curved_sample_found ? 1 : 0;
   MPI_Allreduce( &local_curved_sample, &curved_sample_found, 1, MPI_INT, MPI_MAX, MPI_COMM_WORLD );
   const int expected_factor = subdivision_factor > 0 ? subdivision_factor : order;
   const auto global_mortar_elements = globalSum( surfaces.mortar.numberOfElements() );
