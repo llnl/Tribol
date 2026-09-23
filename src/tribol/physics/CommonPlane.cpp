@@ -465,7 +465,7 @@ TRIBOL_HOST_DEVICE inline bool EvaluateLinearEdgeAtProjectedPoint(
  * @brief Evaluate native parent-face fields at a projected CommonPlane point.
  *
  * The physical point is first projected to the linear LOR face. Its LOR
- * reference coordinates are mapped through the stored subfacet provenance,
+ * reference coordinates are mapped through the stored LOR-to-parent mapping,
  * after which the native parent basis evaluates position and optional velocity.
  *
  * @param mesh Contact surface mesh
@@ -747,18 +747,6 @@ TRIBOL_HOST_DEVICE inline int StoreCommonPlaneContactRow(
   rows.penalty_stiffnesses[row_id] = penalty_stiffness;
   rows.rate_penalty_coefficients[row_id] = rate_penalty_coefficient;
   rows.tangential_viscous_coefficients[row_id] = tangential_viscous_coefficient;
-
-  if ( use_parent_fields ) {
-    const ParentFaceData& first_parent_data = first_mesh.getParentFaceData();
-    const ParentFaceData& second_parent_data = second_mesh.getParentFaceData();
-    rows.first_parent_face_ids[row_id] = first_parent_data.m_parent_face_ids[first_face_id];
-    rows.second_parent_face_ids[row_id] = second_parent_data.m_parent_face_ids[second_face_id];
-    rows.first_parent_face_owner_ranks[row_id] = first_parent_data.m_parent_face_owner_ranks[first_face_id];
-    rows.second_parent_face_owner_ranks[row_id] = second_parent_data.m_parent_face_owner_ranks[second_face_id];
-  } else {
-    rows.first_parent_face_ids[row_id] = first_face_id;
-    rows.second_parent_face_ids[row_id] = second_face_id;
-  }
 
   RealT normal_gap = 0.0;
   RealT normal_velocity_gap = 0.0;
