@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2025, Lawrence Livermore National Security, LLC and
+# Copyright (c) 2017-2026, Lawrence Livermore National Security, LLC and
 # other Tribol Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (MIT)
@@ -47,28 +47,21 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     # -----------------------------------------------------------------------
     # Variants
     # -----------------------------------------------------------------------
-    variant("redecomp", default=True,
-            description="Build redecomp domain redecomposition library")
-    variant("fortran", default=False,
-            description="Enable Fortran support")
-    variant("tests", default=False,
-            description="Build tests")
-    variant("examples", default=False,
-            description="Build examples")
-    variant("devtools", default=False, 
-            description="Build development tools (Sphinx, Doxygen, Shroud, clang-format)")
-    variant("asan", default=False,
-            description="Build with address sanitizer flags")
-    variant("caliper", default=False,
-            description="Build with hooks for Caliper performance analysis")
-    variant("umpire",   default=False,
-            description="Build with portable memory access support")
-    variant("raja",     default=False,
-            description="Build with portable kernel execution support")
-    variant("openmp",   default=False,
-            description="Build with OpenMP support")
-    variant("enzyme",   default=False,
-            description="Build with Enzyme support")
+    # variants for build settings
+    variant("asan", default=False, description="Build with address sanitizer flags")
+    variant("devtools", default=False, description="Build development tools (Sphinx, Doxygen, Shroud, clang-format)")
+    variant("examples", default=False, description="Build examples")
+    variant("fortran", default=False, description="Enable Fortran support")
+    variant("openmp", default=True, description="Build with OpenMP support")
+    variant("redecomp", default=True, description="Build redecomp domain redecomposition library")
+    variant("tests", default=False, description="Build tests")
+
+    # variants for package dependencies
+    variant("adiak", default=False, description="Build with adiak")
+    variant("caliper", default=False, description="Build with hooks for Caliper performance analysis")
+    variant("enzyme", default=False, description="Build with Enzyme support")
+    variant("raja", default=True, description="Build with portable kernel execution support")
+    variant("umpire", default=True, description="Build with portable memory access support")
 
     # -----------------------------------------------------------------------
     # Dependencies
@@ -76,7 +69,8 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     # Basic dependencies
     depends_on("c", type="build")
     depends_on("cxx", type="build")
-    depends_on("fortran", type="build", when="+fortran")
+    # Always require fortran to pass compiler constraints down dependency tree
+    depends_on("fortran", type="build")
 
     depends_on("mpi")
 
@@ -84,77 +78,92 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     depends_on("cmake@3.21:", type="build", when="+rocm")
     depends_on("blt@0.6.2:", type="build")
 
-
-    # Other libraries
     depends_on("mfem@4.7.0.2:+lapack")
     depends_on("mfem@4.9.0:+lapack", when="+enzyme")
-    depends_on("axom@0.9:")
+    depends_on("mfem+metis+mpi", when="+redecomp")
+    depends_on("mfem+asan", when="+asan")
+    depends_on("mfem+enzyme", when="+enzyme")
 
     depends_on("raja@2024.02.0:", when="+raja")
     depends_on("umpire@2024.02.0:", when="+umpire")
 
     depends_on("enzyme", when="+enzyme")
     
+    depends_on("axom@0.9:")
     depends_on("axom+raja", when="+raja")
     depends_on("axom~raja", when="~raja")
     depends_on("axom+umpire", when="+umpire")
     depends_on("axom~umpire", when="~umpire")
 
-    depends_on("mfem+metis+mpi", when="+redecomp")
-    depends_on("mfem+asan", when="+asan")
-    # Tribol uses MFEM's enzyme header
-    depends_on("mfem+enzyme", when="+enzyme")
+    depends_on("adiak+mpi", when="+adiak")
 
     with when("+caliper"):
-        depends_on("caliper+mpi")
-    
+        depends_on("caliper+mpi~papi")
+        depends_on("caliper+adiak", when="+adiak")
+        # NOTE: Fixes undefined reference to symbol 'pthread_join@@GLIBC_2.2.5'
+        depends_on("caliper cxxflags='-pthread'", when="+cuda ^caliper~shared")
+
     with when("+openmp"):
         depends_on("axom+openmp")
+        depends_on("mfem+openmp")
         # Tribol requires RAJA and Umpire for OpenMP support
         depends_on("raja+openmp")
         depends_on("umpire+openmp")
-    
+
     with when("~openmp"):
         depends_on("axom~openmp")
 
+    ######
+    # CUDA
+    ######
+
     for val in CudaPackage.cuda_arch_values:
         ext_cuda_dep = f"+cuda cuda_arch={val}"
-        depends_on(f"mfem {ext_cuda_dep}", when=f"{ext_cuda_dep}")
+
+        # required
         depends_on(f"axom {ext_cuda_dep}", when=f"{ext_cuda_dep}")
-        # NOTE: Tribol requires RAJA and Umpire for CUDA support
-        depends_on(f"raja {ext_cuda_dep}", when=f"{ext_cuda_dep}")
-        depends_on(f"umpire {ext_cuda_dep}", when=f"{ext_cuda_dep}")
-        # NOTE: Caliper is an optional dependency
+        depends_on(f"mfem {ext_cuda_dep}", when=f"{ext_cuda_dep}")
+
+        # optional
         depends_on(f"caliper {ext_cuda_dep}", when=f"+caliper {ext_cuda_dep}")
+        depends_on(f"raja {ext_cuda_dep}", when=f"+raja {ext_cuda_dep}")
+        depends_on(f"umpire {ext_cuda_dep}", when=f"+umpire {ext_cuda_dep}")
+
+    ######
+    # ROCm
+    ######
 
     for val in ROCmPackage.amdgpu_targets:
         ext_rocm_dep = f"+rocm amdgpu_target={val}"
-        depends_on(f"mfem {ext_rocm_dep}", when=f"{ext_rocm_dep}")
+
+        # required
         depends_on(f"axom {ext_rocm_dep}", when=f"{ext_rocm_dep}")
-        # NOTE: Tribol requires RAJA and Umpire for HIP support
-        depends_on(f"raja {ext_rocm_dep}", when=f"{ext_rocm_dep}")
-        depends_on(f"umpire {ext_rocm_dep}", when=f"{ext_rocm_dep}")
-        # NOTE: Caliper is an optional dependency
+        depends_on(f"mfem+raja+umpire {ext_rocm_dep}", when=f"{ext_rocm_dep}")
+
+        # optional
         depends_on(f"caliper {ext_rocm_dep}", when=f"+caliper {ext_rocm_dep}")
+        depends_on(f"raja {ext_rocm_dep}", when=f"+raja {ext_rocm_dep}")
+        depends_on(f"umpire {ext_rocm_dep}", when=f"+umpire {ext_rocm_dep}")
 
     depends_on("rocprim", when="+rocm")
 
-    
-    # Optional (require our variant in "when")
-    for dep in ["raja", "umpire"]:
-        depends_on("{0} build_type=Debug".format(dep), when="+{0} build_type=Debug".format(dep))
-    
-    # Optional, but variant name doesn't match package name
-    depends_on("caliper build_type=Debug".format(dep), when="+caliper build_type=Debug")
-        
-    # Required
-    for dep in ["axom", "conduit", "metis", "parmetis"]:
-        depends_on("{0} build_type=Debug".format(dep), when="build_type=Debug")
+    ##########
+    # Devtools
+    ##########
 
-    # Required but not CMake
-    for dep in ["hypre", "mfem"]:
-        depends_on("{0}+debug".format(dep), when="build_type=Debug")
-        
+    # Devtool dependencies these need to match triboldevtools/package.py
+    with when("+devtools"):
+        depends_on("doxygen")
+        depends_on("python")
+        # https://github.com/llnl/Tribol/issues/251
+        # depends_on("py-shroud")
+        depends_on("py-sphinx")
+        depends_on("llvm@19+clang")
+
+    ###########
+    # Conflicts
+    ###########
+
     # ASan is only supported by GCC and (some) LLVM-derived
     # compilers.
     asan_compiler_denylist = {"aocc", "arm", "cce", "fj", "intel", "nag",
@@ -170,13 +179,6 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
             when="+asan",
             msg="{0} compilers do not support Address Sanitizer".format(compiler_)
         )
-
-    # Devtool dependencies these need to match triboldevtools/package.py
-    depends_on("doxygen", when="+devtools")
-    depends_on("python", when="+devtools")
-    depends_on("py-shroud", when="+devtools+fortran")
-    depends_on("py-sphinx", when="+devtools")
-    depends_on("llvm@19+clang", when="+devtools")
 
     conflicts("+cuda", when="+rocm")
     conflicts("+openmp", when="+rocm")
@@ -205,8 +207,6 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
         special_case = ""
         if "+cuda" in self.spec:
             special_case += "_cuda"
-        if "+fortran" in self.spec:
-            special_case += "_fortran"
         if "+rocm" in self.spec:
             special_case += "_hip"
         return "{0}-{1}-{2}@{3}{4}.cmake".format(
@@ -249,29 +249,33 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
         spec = self.spec
         entries = super(Tribol, self).initconfig_hardware_entries()
 
-        entries.append(cmake_cache_option("ENABLE_OPENMP",
-                                          spec.satisfies("+openmp")))
-
-        if "+cuda" in spec:
+        if spec.satisfies("^cuda"):
             entries.append(cmake_cache_option("ENABLE_CUDA", True))
             entries.append(cmake_cache_option("CMAKE_CUDA_SEPARABLE_COMPILATION", True))
 
-            # CUDA_FLAGS
-            cudaflags = "${CMAKE_CUDA_FLAGS} -restrict --expt-extended-lambda "
+            # Set Clang as CUDA compiler, if building with Clang
+            # TODO eventually we should allow usage of NVCC as CUDA compiler. Then,
+            # check if enzyme and llvm is enabled, only then set Clang as CUDA compiler.
+            using_clang_cuda = False
+            if spec.satisfies("%llvm"):
+                using_clang_cuda = True
+                entries.append("# Override CUDA compiler to use Clang")
+                entries.append(cmake_cache_path("CMAKE_CUDA_COMPILER", "${CMAKE_CXX_COMPILER}", force=True))
 
-            # Pass through any cxxflags to the host compiler via nvcc's Xcompiler flag
-            host_cxx_flags = spec.compiler_flags["cxxflags"]
-            cudaflags += " ".join(["-Xcompiler=%s " % flag for flag in host_cxx_flags])
-            entries.append(cmake_cache_string("CMAKE_CUDA_FLAGS", cudaflags, force=True))
+            # CXX flags will be propagated to the host compiler
+            cxxflags = " ".join(spec.compiler_flags["cxxflags"])
+            cuda_flags = cxxflags
+            if using_clang_cuda:
+                cuda_flags += " ${CMAKE_CUDA_FLAGS} -Wno-unknown-cuda-version "
+            else:
+                cuda_flags += " ${CMAKE_CUDA_FLAGS} --expt-extended-lambda --expt-relaxed-constexpr "
+            entries.append(cmake_cache_string("CMAKE_CUDA_FLAGS", cuda_flags, force=True))
 
-            entries.append("# nvcc does not like gtest's 'pthreads' flag\n")
-            entries.append(cmake_cache_option("gtest_disable_pthreads", True))
+            if not using_clang_cuda:
+                entries.append("# nvcc does not like gtest's 'pthreads' flag")
+                entries.append(cmake_cache_option("gtest_disable_pthreads", True))
 
-        if "+rocm" in spec:
-            entries.append("#------------------{0}".format("-" * 60))
-            entries.append("# Tribol ROCm specifics")
-            entries.append("#------------------{0}\n".format("-" * 60))
-
+        if spec.satisfies("+rocm"):
             entries.append(cmake_cache_option("ENABLE_HIP", True))
 
             hip_link_flags = ""
@@ -291,14 +295,13 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
                 hip_link_flags += "-L{0}/lib/llvm/lib -Wl,-rpath,{0}/lib/llvm/lib ".format(rocm_root)
             else:
                 hip_link_flags += "-L{0}/llvm/lib -Wl,-rpath,{0}/llvm/lib ".format(rocm_root)
-            hip_link_flags += "-lpgmath "
             # Only amdclang requires this path; cray compiler fails if this is included
             if spec.satisfies("%llvm-amdgpu"):
                 hip_link_flags += "-L{0}/lib -Wl,-rpath,{0}/lib ".format(rocm_root)
 
             # Fixes for mpi for rocm until wrapper paths are fixed
             # These flags are already part of the wrapped compilers on TOSS4 systems
-            if spec.satisfies("+fortran") and self.is_fortran_compiler("amdflang"):
+            if self.is_fortran_compiler("amdflang"):
                 hip_link_flags += "-Wl,--disable-new-dtags "
                 hip_link_flags += "-lflang -lflangrti "
 
@@ -309,43 +312,15 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
                 )
 
             # Additional libraries for TOSS4
-            hip_link_flags += "-lamdhip64 -lhsakmt -lhsa-runtime64 -lamd_comgr "
+            hip_link_flags += "-lamdhip64 -lhsakmt -lhsa-runtime64 -lamd_comgr -lpgmath "
             if spec.satisfies("+openmp"):
                 hip_link_flags += "-lompstub "
             if spec.satisfies("^hipblas"):
-                hip_link_flags += "-lhipblas"
+                hip_link_flags += "-lhipblas "
 
             entries.append(cmake_cache_string("CMAKE_EXE_LINKER_FLAGS", hip_link_flags))
 
-        entries.append("#------------------{0}".format("-" * 60))
-        entries.append("# Hardware Specifics")
-        entries.append("#------------------{0}\n".format("-" * 60))
-
-        if "+fortran" in spec and self.is_fortran_compiler("xlf"):
-            # Grab lib directory for the current fortran compiler
-            libdir = pjoin(os.path.dirname(os.path.dirname(self.compiler.fc)), "lib")
-            description = (
-                "Adds a missing rpath for libraries " "associated with the fortran compiler"
-            )
-
-            linker_flags = "${BLT_EXE_LINKER_FLAGS} -Wl,-rpath," + libdir
-
-            entries.append(cmake_cache_string("BLT_EXE_LINKER_FLAGS", linker_flags, description))
-
-            if "+shared" in spec:
-                linker_flags = "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath," + libdir
-                entries.append(
-                    cmake_cache_string("CMAKE_SHARED_LINKER_FLAGS", linker_flags, description)
-                )
-
-            description = "Converts C-style comments to Fortran style in preprocessed files"
-            entries.append(
-                cmake_cache_string(
-                    "BLT_FORTRAN_FLAGS", "-WF,-C!  -qxlf2003=polymorphic", description
-                )
-            )
-
-        if spec.satisfies('target=ppc64le:'):
+        if spec.satisfies("target=ppc64le:"):
             # Fix for working around CMake adding implicit link directories
             # returned by the BlueOS compilers to link executables with
             # non-system default stdlib
@@ -364,6 +339,15 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
                     "BLT_CMAKE_IMPLICIT_LINK_DIRECTORIES_EXCLUDE",
                     ";".join(_existing_paths)))
 
+        entries.extend([
+            "#------------------{0}".format("-" * 30),
+            "# OpenMP",
+            "#------------------{0}\n".format("-" * 30),
+        ])
+
+        entries.append(cmake_cache_option("ENABLE_OPENMP",
+                                          spec.satisfies("+openmp")))
+
         return entries
 
 
@@ -373,20 +357,8 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
 
         entries.append(cmake_cache_option("ENABLE_MPI", True))
         if spec["mpi"].name == "spectrum-mpi":
-            entries.append(cmake_cache_string("BLT_MPI_COMMAND_APPEND", "mpibind"))
-
-        # Replace /usr/bin/srun path with srun flux wrapper path on TOSS 4
-        # TODO: Remove this logic by adding `using_flux` case in
-        #  spack/lib/spack/spack/build_systems/cached_cmake.py:196 and remove hard-coded
-        #  path to srun in same file.
-        if "toss_4" in self._get_sys_type(spec):
-            srun_wrapper = which_string("srun")
-            mpi_exec_index = [
-                index for index, entry in enumerate(entries) if "MPIEXEC_EXECUTABLE" in entry
-            ]
-            if mpi_exec_index:
-                del entries[mpi_exec_index[0]]
-            entries.append(cmake_cache_path("MPIEXEC_EXECUTABLE", srun_wrapper))
+            entries.append(cmake_cache_string("BLT_MPI_COMMAND_APPEND",
+                                              "mpibind"))
 
         return entries
 
@@ -446,22 +418,26 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
         enable_docs = spec.satisfies('^doxygen') or spec.satisfies('^py-sphinx')
         entries.append(cmake_cache_option("TRIBOL_ENABLE_DOCS", enable_docs))
 
-        if spec.satisfies('^py-sphinx'):
+        if "+devtools" in spec:
+            entries.append(cmake_cache_option("TRIBOL_ENABLE_CODE_CHECKS", True))
+            entries.append(cmake_cache_option("ENABLE_CLANGFORMAT", True))
+
             sphinx_path = spec['py-sphinx'].prefix.bin.join('sphinx-build')
             entries.append(cmake_cache_path("SPHINX_EXECUTABLE", sphinx_path))
 
-        if spec.satisfies('^py-shroud'):
-            shroud_path = spec['py-shroud'].prefix.bin.join('shroud')
-            entries.append(cmake_cache_path("SHROUD_EXECUTABLE", shroud_path))
+            if spec.satisfies('^py-shroud'):
+                shroud_path = spec['py-shroud'].prefix.bin.join('shroud')
+                entries.append(cmake_cache_path("SHROUD_EXECUTABLE", shroud_path))
 
-        if spec.satisfies('^doxygen'):
             doxygen_path = spec['doxygen'].prefix.bin.join('doxygen')
             entries.append(cmake_cache_path("DOXYGEN_EXECUTABLE", doxygen_path))
 
-        if spec.satisfies('^llvm') and 'toss_4' not in self._get_sys_type(spec):
             # Only turn on clangformat support if not on TOSS4
             clang_fmt_path = spec['llvm'].prefix.bin.join('clang-format')
             entries.append(cmake_cache_path("CLANGFORMAT_EXECUTABLE", clang_fmt_path))
+        else:
+            entries.append(cmake_cache_option("TRIBOL_ENABLE_CODE_CHECKS", False))
+            entries.append(cmake_cache_option("ENABLE_CLANGFORMAT", False))
 
         return entries
 

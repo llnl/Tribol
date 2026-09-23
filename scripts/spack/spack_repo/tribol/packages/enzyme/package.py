@@ -1,6 +1,7 @@
-# Copyright Spack Project Developers. See COPYRIGHT file for details.
+# Copyright (c) 2017-2026, Lawrence Livermore National Security, LLC and
+# other Tribol Project Developers. See the top-level COPYRIGHT file for details.
 #
-# SPDX-License-Identifier: (Apache-2.0 OR MIT)
+# SPDX-License-Identifier: (MIT)
 
 from spack.package import *
 from spack_repo.builtin.packages.enzyme.package import Enzyme as BuiltinEnzyme

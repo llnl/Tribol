@@ -33,9 +33,49 @@ packages:
   raja:
     require:
     - spec: "~shared~examples~exercises"
-  tribol:
-    require:
-    - spec: "~examples~tests"
   umpire:
     require:
     - spec: "~shared~examples~werror"
+
+  # Forward debug and shared variants to relevant tpls
+  # NOTE: You can use build_type==Debug and ++shared to propagate variants from the smith spec instead, but it will affect external packages
+  # as well and therefore leads to lower chances of concretization
+  tribol:
+    require:
+    #######
+    # Debug
+    #######
+    # Required dependencies
+    - spec: "^axom build_type=Debug ^mfem+debug"
+      when: "build_type=Debug"
+    # Optional dependencies
+    - spec: "^raja build_type=Debug"
+      when: "+raja build_type=Debug"
+    - spec: "^umpire build_type=Debug"
+      when: "+umpire build_type=Debug"
+    - spec: "^caliper build_type=Debug"
+      when: "+caliper build_type=Debug"
+    - spec: "^adiak build_type=Debug"
+      when: "+adiak build_type=Debug"
+    ########
+    # Shared
+    ########
+    # Required dependencies
+    - spec: "^axom+shared ^mfem+shared~static"
+      when: "+shared"
+    # Optional dependencies
+    - spec: "^caliper+shared"
+      when: "+shared+caliper"
+    - spec: "^adiak+shared"
+      when: "+shared+adiak"
+    ########
+    # Static
+    ########
+    # Required dependencies
+    - spec: "^axom~shared ^mfem~shared+static"
+      when: "~shared"
+    # Optional dependencies
+    - spec: "^caliper~shared"
+      when: "~shared+caliper"
+    - spec: "^adiak~shared"
+      when: "~shared+adiak"

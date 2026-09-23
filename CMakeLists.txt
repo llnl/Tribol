@@ -179,4 +179,3 @@ endif()
 #------------------------------------------------------------------------------
 include(cmake/TribolVersion.cmake)
 include(cmake/TribolConfig.cmake)
-

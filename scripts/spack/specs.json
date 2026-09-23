@@ -13,18 +13,18 @@
     "__comment__":"##############################################################################",
 
     "toss_4_x86_64_ib":
-    [ "+devtools+raja+umpire+openmp %clang_19",
-      "+devtools+raja+umpire+openmp %gcc_13" ],
+    [ "+devtools+adiak+caliper+enzyme %clang_19",
+      "+devtools+adiak+caliper~enzyme %gcc_13" ],
 
     "toss_4_x86_64_ib_cray":
-    [ "~devtools+raja+umpire~openmp+rocm+enzyme amdgpu_target=gfx942,gfx90a %rocm_6_4_2"],
+    [ "~devtools~adiak~caliper~openmp+rocm+enzyme amdgpu_target=gfx942,gfx90a %rocm_6_4_2"],
 
     "rzvector":
-    [ "+devtools+raja+umpire~enzyme cuda_arch=90 %clang_19" ],
+    [ "+devtools+adiak+caliper~enzyme cuda_arch=90 %clang_19" ],
 
     "matrix":
-    [ "+devtools+raja+umpire~enzyme cuda_arch=90 %clang_19" ],
+    [ "+devtools+adiak+caliper~enzyme cuda_arch=90 %clang_19" ],
 
     "macos_sonoma_aarch64":
-    [ "+devtools+raja+umpire+enzyme~openmp %clang_19" ]
+    [ "+devtools+adiak+caliper+enzyme~openmp %clang_19" ]
 }

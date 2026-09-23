@@ -1,7 +1,7 @@
-# Copyright (c) Lawrence Livermore National Security, LLC and
-# other Smith Project Developers. See the top-level COPYRIGHT file for details.
+# Copyright (c) 2017-2026, Lawrence Livermore National Security, LLC and
+# other Tribol Project Developers. See the top-level COPYRIGHT file for details.
 #
-# SPDX-License-Identifier: (BSD-3-Clause)
+# SPDX-License-Identifier: (MIT)
 
 from spack.package import *
 from spack_repo.builtin.packages.cray_mpich.package import CrayMpich as BuiltinCrayMpich
