@@ -49,6 +49,7 @@ set(tribol_core_headers
     ../method/MethodCompatibility.inl
     ../method/Traits.hpp
     ../method/Validation.hpp
+    ../operators/ContactOperators.hpp
     ../search/Proximity.hpp
     ../search/Search.hpp
     ../timestep/KinematicVote.hpp

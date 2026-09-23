@@ -41,6 +41,7 @@
     {"id": "DIFF-005", "scope": "derivative", "text": "Full multiplier saddle-system Jacobians include identity equations for inactive multiplier degrees of freedom."},
     {"id": "DIFF-006", "scope": "derivative", "text": "The MFEM adapter assembles distributed force-coordinate, force-multiplier, constraint-coordinate, and inactive-multiplier blocks into a solver-ready block operator."},
     {"id": "DIFF-007", "scope": "derivative", "text": "Exact state derivatives with respect to velocity, reference coordinates, element thickness, and material modulus agree with centered finite differences."},
+    {"id": "DIFF-008", "scope": "derivative", "text": "The constraint-row B and B^T actions are adjoint, and the matrix-free B^T D B contact tangent is positive semidefinite and agrees with finite differences."},
     {"id": "PAR-001", "scope": "parallel", "text": "Sequential and CUDA/HIP default-method forces, activation controls, penetration rejection, diagnostics, energy, and derivative operators agree within documented tolerances on the corresponding real device."},
     {"id": "PAR-002", "scope": "parallel", "text": "One-, two-, and four-rank results are partition invariant."},
     {"id": "PAR-003", "scope": "parallel", "text": "Deterministic execution is reproducible and agrees with default execution."},

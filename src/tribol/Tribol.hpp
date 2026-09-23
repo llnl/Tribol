@@ -35,6 +35,7 @@
 #include "tribol/method/Method.hpp"
 #include "tribol/method/Traits.hpp"
 #include "tribol/method/Validation.hpp"
+#include "tribol/operators/ContactOperators.hpp"
 #include "tribol/search/Search.hpp"
 #include "tribol/timestep/KinematicVote.hpp"
 
