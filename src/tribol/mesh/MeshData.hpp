@@ -106,9 +106,6 @@ struct ParentFaceData {
   /** Maximum number of vertices on a supported LOR surface element. */
   static constexpr int max_lor_face_vertices{ 4 };
 
-  /** MFEM geometry identifier for each LOR face. */
-  Array1DView<const int> m_lor_face_geometries;
-
   /** Polynomial order of the native parent coordinate finite element. */
   Array1DView<const int> m_parent_face_orders;
 
@@ -130,7 +127,7 @@ struct ParentFaceData {
    */
   TRIBOL_HOST_DEVICE bool isValid() const
   {
-    return !m_lor_face_geometries.empty() && !m_parent_face_orders.empty() && !m_reference_vertex_counts.empty() &&
+    return !m_parent_face_orders.empty() && !m_reference_vertex_counts.empty() &&
            !m_parent_reference_vertex_coordinates.empty();
   }
 };
@@ -902,8 +899,7 @@ TRIBOL_HOST_DEVICE inline bool MeshData::Viewer::mapToParentReference( IndexT fa
                                                                        RealT* parent_reference_coordinates ) const
 {
   if ( !hasParentFaceData() || face_id < 0 || face_id >= numberOfElements() || lor_reference_coordinates == nullptr ||
-       parent_reference_coordinates == nullptr || face_id >= m_parent_face_data.m_lor_face_geometries.size() ||
-       face_id >= m_parent_face_data.m_parent_face_orders.size() ||
+       parent_reference_coordinates == nullptr || face_id >= m_parent_face_data.m_parent_face_orders.size() ||
        face_id >= m_parent_face_data.m_reference_vertex_counts.size() ||
        face_id >= m_parent_face_data.m_parent_reference_vertex_coordinates.shape()[0] ||
        m_parent_face_data.m_parent_reference_vertex_coordinates.shape()[1] <
@@ -913,7 +909,7 @@ TRIBOL_HOST_DEVICE inline bool MeshData::Viewer::mapToParentReference( IndexT fa
 
   const int reference_dimension = spatialDimension() - 1;
   const int number_of_vertices = m_parent_face_data.m_reference_vertex_counts[face_id];
-  const auto lor_face_geometry = static_cast<InterfaceElementType>( m_parent_face_data.m_lor_face_geometries[face_id] );
+  const InterfaceElementType lor_face_geometry = getElementType();
   const RealT reference_coordinate_tolerance = ParentFaceData::reference_coordinate_tolerance;
   const RealT first_coordinate = lor_reference_coordinates[0];
 

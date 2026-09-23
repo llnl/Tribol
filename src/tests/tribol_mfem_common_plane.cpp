@@ -291,9 +291,8 @@ TEST( MfemCommonPlaneParentFaceData, MapsQuadrilateralLORFacesToQ2ParentFaces )
       constexpr tribol::RealT comparison_tolerance = 1.e-12;
       const tribol::ParentFaceData& parent_face_data = mesh_view.getParentFaceData();
       int validation_result = 0;
-      validation_result |= parent_face_data.m_lor_face_geometries[face_id] != tribol::LINEAR_QUAD ? 8 : 0;
-      validation_result |= parent_face_data.m_parent_face_orders[face_id] != parent_order ? 16 : 0;
-      validation_result |= parent_face_data.m_reference_vertex_counts[face_id] != 4 ? 32 : 0;
+      validation_result |= parent_face_data.m_parent_face_orders[face_id] != parent_order ? 1 : 0;
+      validation_result |= parent_face_data.m_reference_vertex_counts[face_id] != 4 ? 2 : 0;
 
       tribol::RealT expected_parent_center[2] = { 0.0, 0.0 };
       tribol::RealT minimum_parent_coordinate[2] = { 1.0, 1.0 };
@@ -305,7 +304,7 @@ TEST( MfemCommonPlaneParentFaceData, MapsQuadrilateralLORFacesToQ2ParentFaces )
           const tribol::RealT parent_coordinate =
               parent_face_data.m_parent_reference_vertex_coordinates( face_id, coordinate_index );
           validation_result |=
-              parent_coordinate < -comparison_tolerance || parent_coordinate > 1.0 + comparison_tolerance ? 64 : 0;
+              parent_coordinate < -comparison_tolerance || parent_coordinate > 1.0 + comparison_tolerance ? 4 : 0;
           expected_parent_center[coordinate_component] += 0.25 * parent_coordinate;
           minimum_parent_coordinate[coordinate_component] =
               parent_coordinate < minimum_parent_coordinate[coordinate_component]
@@ -323,23 +322,22 @@ TEST( MfemCommonPlaneParentFaceData, MapsQuadrilateralLORFacesToQ2ParentFaces )
             maximum_parent_coordinate[coordinate_component] - minimum_parent_coordinate[coordinate_component];
         validation_result |=
             child_reference_width < 0.5 - comparison_tolerance || child_reference_width > 0.5 + comparison_tolerance
-                ? 128
+                ? 8
                 : 0;
       }
 
       const tribol::RealT lor_center[2] = { 0.5, 0.5 };
       tribol::RealT mapped_parent_center[2] = { 0.0, 0.0 };
-      validation_result |= !mesh_view.mapToParentReference( face_id, lor_center, mapped_parent_center ) ? 256 : 0;
+      validation_result |= !mesh_view.mapToParentReference( face_id, lor_center, mapped_parent_center ) ? 16 : 0;
       for ( int coordinate_component = 0; coordinate_component < 2; ++coordinate_component ) {
         const tribol::RealT center_difference =
             mapped_parent_center[coordinate_component] - expected_parent_center[coordinate_component];
         validation_result |=
-            center_difference < -comparison_tolerance || center_difference > comparison_tolerance ? 512 : 0;
+            center_difference < -comparison_tolerance || center_difference > comparison_tolerance ? 32 : 0;
       }
 
       const tribol::RealT exterior_lor_point[2] = { 1.25, 0.5 };
-      validation_result |=
-          mesh_view.mapToParentReference( face_id, exterior_lor_point, mapped_parent_center ) ? 1024 : 0;
+      validation_result |= mesh_view.mapToParentReference( face_id, exterior_lor_point, mapped_parent_center ) ? 64 : 0;
       face_validation_results_view[face_id] = validation_result;
     } );
 
