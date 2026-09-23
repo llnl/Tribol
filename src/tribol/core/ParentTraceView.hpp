@@ -35,6 +35,9 @@ struct ParentTraceViewT {
   ArrayView<const int> parent_face_orders{};
   ArrayView<const Index> parent_dof_offsets{};
   ArrayView<const Index> parent_dofs{};
+  ArrayView<const Real> parent_dof_signs{};
+  ArrayView<const Index> parent_basis_offsets{};
+  ArrayView<const Real> parent_basis_coefficients{};
   ArrayView<const Index> subfacet_parent_faces{};
   FieldView<const Scalar> subfacet_parent_reference_coordinates{};
 
@@ -50,11 +53,15 @@ struct ParentTraceViewT {
     if ( !geometry.isStructurallyValid() || !parent_face_ids.isStructurallyValid() ||
          !parent_face_owners.isStructurallyValid() || !parent_face_topologies.isStructurallyValid() ||
          !parent_face_orders.isStructurallyValid() || !parent_dof_offsets.isStructurallyValid() ||
-         !parent_dofs.isStructurallyValid() || !subfacet_parent_faces.isStructurallyValid() ||
-         !subfacet_parent_reference_coordinates.isStructurallyValid() || parent_face_ids.size() != parent_faces ||
-         parent_face_owners.size() != parent_faces || parent_face_orders.size() != parent_faces ||
-         parent_dof_offsets.size() != parent_faces + 1 || parent_dof_offsets.empty() || parent_dof_offsets[0] != 0 ||
-         parent_dof_offsets[parent_faces] != parent_dofs.size() ||
+         !parent_dofs.isStructurallyValid() || !parent_dof_signs.isStructurallyValid() ||
+         !parent_basis_offsets.isStructurallyValid() || !parent_basis_coefficients.isStructurallyValid() ||
+         !subfacet_parent_faces.isStructurallyValid() || !subfacet_parent_reference_coordinates.isStructurallyValid() ||
+         parent_face_ids.size() != parent_faces || parent_face_owners.size() != parent_faces ||
+         parent_face_orders.size() != parent_faces || parent_dof_offsets.size() != parent_faces + 1 ||
+         parent_dof_offsets.empty() || parent_dof_offsets[0] != 0 ||
+         parent_dof_offsets[parent_faces] != parent_dofs.size() || parent_dof_signs.size() != parent_dofs.size() ||
+         parent_basis_offsets.size() != parent_faces + 1 || parent_basis_offsets.empty() ||
+         parent_basis_offsets[0] != 0 || parent_basis_offsets[parent_faces] != parent_basis_coefficients.size() ||
          subfacet_parent_faces.size() != numberOfSubfacets() ||
          subfacet_parent_reference_coordinates.entities != geometry.connectivity.size() ||
          subfacet_parent_reference_coordinates.components != parentReferenceDimension() ) {
@@ -68,7 +75,8 @@ struct ParentTraceViewT {
       const bool topology_matches_dimension =
           geometry.dimension == 2 ? topology == ElementTopology::Segment : topology != ElementTopology::Segment;
       if ( !topology_matches_dimension || begin < 0 || end < begin || end > parent_dofs.size() ||
-           end - begin != parentFaceDofCount( topology, order ) ) {
+           end - begin != parentFaceDofCount( topology, order ) ||
+           parent_basis_offsets[face + 1] - parent_basis_offsets[face] != ( end - begin ) * ( end - begin ) ) {
         return false;
       }
       for ( Index offset = begin; offset < end; ++offset ) {

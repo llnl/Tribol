@@ -412,6 +412,8 @@ class MfemContact {
     parent_true_residual += true_residual_;
   }
 
+  [[nodiscard]] ParentTracePairView parentTraces() const { return surfaces_.parentTraceView(); }
+
   [[nodiscard]] const CoreContact& core() const { return core_; }
 
 #include "tribol/adapters/mfem/MfemContactMapping.inl"

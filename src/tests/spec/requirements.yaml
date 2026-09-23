@@ -33,6 +33,7 @@
     {"id": "ADAPTER-004", "scope": "adapter", "text": "MFEM nodal state and coefficient fields map to contact velocity, reference-coordinate, multiplier, external potential/pressure/tangent, material, and thickness state without manual array conversion."},
     {"id": "ADAPTER-005", "scope": "adapter", "text": "MFEM users can stage nodal kinematics and project nodal contact gap, weighted gap, tributary area, and pressure diagnostics into scalar parent-mesh fields."},
     {"id": "ADAPTER-006", "scope": "adapter", "text": "MFEM high-order boundary tessellation accepts an explicit subdivision factor and preserves primal/dual transfer behavior when that factor differs from polynomial order."},
+    {"id": "ADAPTER-007", "scope": "adapter", "text": "MFEM parent traces map every overlap quadrature point to original parent reference coordinates, evaluate native parent fields there, and scatter directly to parent true DOFs without an LOR field transfer."},
     {"id": "DIFF-004", "scope": "derivative", "text": "The MFEM adapter exposes an assembled distributed coordinate Jacobian whose action matches the exact matrix-free derivative."},
     {"id": "DIFF-005", "scope": "derivative", "text": "Full multiplier saddle-system Jacobians include identity equations for inactive multiplier degrees of freedom."},
     {"id": "DIFF-006", "scope": "derivative", "text": "The MFEM adapter assembles distributed force-coordinate, force-multiplier, constraint-coordinate, and inactive-multiplier blocks into a solver-ready block operator."},

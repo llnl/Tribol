@@ -105,6 +105,9 @@ struct SegmentTraceStorage {
   std::array<int, 1> face_orders{ 2 };
   std::array<Index, 2> dof_offsets{ 0, 3 };
   std::array<Index, 3> dofs{ 0, 1, 2 };
+  std::array<Real, 3> dof_signs{ 1.0, 1.0, 1.0 };
+  std::array<Index, 2> basis_offsets{ 0, 9 };
+  std::array<Real, 9> basis_coefficients{ 1.0, -3.0, 2.0, 0.0, 4.0, -4.0, 0.0, -1.0, 2.0 };
   std::array<Index, 1> subfacet_faces{ 0 };
   std::array<Real, 2> parent_reference_coordinates{ 0.0, 1.0 };
 
@@ -126,6 +129,9 @@ struct SegmentTraceStorage {
         .parent_face_orders = { face_orders.data(), 1 },
         .parent_dof_offsets = { dof_offsets.data(), 2 },
         .parent_dofs = { dofs.data(), 3 },
+        .parent_dof_signs = { dof_signs.data(), 3 },
+        .parent_basis_offsets = { basis_offsets.data(), 2 },
+        .parent_basis_coefficients = { basis_coefficients.data(), 9 },
         .subfacet_parent_faces = { subfacet_faces.data(), 1 },
         .subfacet_parent_reference_coordinates = { { parent_reference_coordinates.data(), 2 },
                                                    2,

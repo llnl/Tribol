@@ -3,6 +3,8 @@ set(_tribol_mfem_adapter_headers
     MfemContactAssembly.inl
     MfemContactMapping.inl
     MfemDistribution.hpp
+    MfemParentTrace.hpp
+    MfemSurfaceConstruction.inl
     MfemSurface.hpp)
 set(_tribol_mfem_adapter_depends tribol_core mfem)
 blt_list_append(TO _tribol_mfem_adapter_depends ELEMENTS blt::mpi IF
