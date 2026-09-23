@@ -21,6 +21,7 @@ set(tribol_core_headers
     ../constraint/PenetrationLimit.hpp
     ../diagnostics/ContactOutput.hpp
     ../diagnostics/ScheduledOutput.hpp
+    ../evaluation/ExplicitRowEvaluator.hpp
     ../evaluation/PolicyEvaluator.hpp
     ../evaluation/PointwisePenalty.hpp
     ../evaluation/State.hpp

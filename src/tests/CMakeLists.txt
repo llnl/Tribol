@@ -141,6 +141,17 @@ blt_add_test(
   COMMAND tribol_penalty_law_test)
 
 blt_add_executable(
+  NAME tribol_explicit_rows_test
+  SOURCES components/explicit_rows.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::core
+  FOLDER tribol/components)
+
+blt_add_test(
+  NAME tribol_explicit_rows
+  COMMAND tribol_explicit_rows_test)
+
+blt_add_executable(
   NAME tribol_method_conformance_test
   SOURCES components/method_conformance.cpp
   OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}

@@ -2,6 +2,7 @@
 #define TRIBOL_CORE_CONSTRAINTROWVIEW_HPP_
 
 #include "tribol/core/ParentTraceView.hpp"
+#include "tribol/method/Method.hpp"
 
 #include <cstdint>
 #include <type_traits>
@@ -103,8 +104,30 @@ struct ConstraintRowBatchViewT {
 
 using ConstraintRowBatchView = ConstraintRowBatchViewT<Real>;
 
+template <typename Scalar>
+struct PenaltyRowInputViewT {
+  ArrayView<const Scalar> pressure_stiffness{};
+  ArrayView<const Scalar> rate_coefficients{};
+  constraint::GapActivationParameters activation{};
+};
+
+using PenaltyRowInputView = PenaltyRowInputViewT<Real>;
+
+template <typename Scalar>
+struct PenaltyRowOutputViewT {
+  ArrayView<Scalar> effective_gap{};
+  ArrayView<Scalar> pressure{};
+  ArrayView<Scalar> row_force{};
+  ArrayView<Scalar> row_stiffness{};
+  ArrayView<Scalar> row_rate_coefficient{};
+};
+
+using PenaltyRowOutputView = PenaltyRowOutputViewT<Real>;
+
 static_assert( std::is_trivially_copyable_v<ParentTraceFieldPairView> );
 static_assert( std::is_trivially_copyable_v<ConstraintRowBatchView> );
+static_assert( std::is_trivially_copyable_v<PenaltyRowInputView> );
+static_assert( std::is_trivially_copyable_v<PenaltyRowOutputView> );
 
 }  // namespace tribol
 
