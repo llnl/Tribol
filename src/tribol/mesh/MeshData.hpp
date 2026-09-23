@@ -88,7 +88,7 @@ struct MeshElemData {
 };
 
 /**
- * @brief Non-owning views of native parent-face provenance for contact surface elements.
+ * @brief Non-owning views of native parent-face mapping data for contact surface elements.
  *
  * MFEM contact may use a low-order-refined (LOR) surface for search and overlap
  * geometry.  Each Tribol surface element then needs a documented path back to
@@ -105,15 +105,6 @@ struct ParentFaceData {
 
   /** Maximum number of vertices on a supported LOR surface element. */
   static constexpr int max_lor_face_vertices{ 4 };
-
-  /** Native parent boundary-face identifier on the owning MPI rank. */
-  Array1DView<const IndexT> m_parent_face_ids;
-
-  /** MPI rank that owns the native parent boundary face. */
-  Array1DView<const int> m_parent_face_owner_ranks;
-
-  /** Source LOR face identifier on the owning MPI rank. */
-  Array1DView<const IndexT> m_lor_face_ids;
 
   /** MFEM geometry identifier for each LOR face. */
   Array1DView<const int> m_lor_face_geometries;
@@ -133,14 +124,13 @@ struct ParentFaceData {
   Array2DView<const RealT> m_parent_reference_vertex_coordinates;
 
   /**
-   * @brief Return whether native parent-face provenance is available.
+   * @brief Return whether native parent-face mapping data are available.
    *
-   * @return true when all required provenance arrays are populated
+   * @return true when all required mapping arrays are populated
    */
   TRIBOL_HOST_DEVICE bool isValid() const
   {
-    return !m_parent_face_ids.empty() && !m_parent_face_owner_ranks.empty() && !m_lor_face_ids.empty() &&
-           !m_lor_face_geometries.empty() && !m_parent_face_orders.empty() && !m_reference_vertex_counts.empty() &&
+    return !m_lor_face_geometries.empty() && !m_parent_face_orders.empty() && !m_reference_vertex_counts.empty() &&
            !m_parent_reference_vertex_coordinates.empty();
   }
 };
@@ -213,16 +203,16 @@ class MeshData {
     TRIBOL_HOST_DEVICE const MeshElemData& getElementData() const { return m_element_data; }
 
     /**
-     * @brief Return whether native parent-face provenance is registered.
+     * @brief Return whether native parent-face mapping data are registered.
      *
-     * @return true when this mesh has valid parent-face provenance
+     * @return true when this mesh has valid parent-face mapping data
      */
     TRIBOL_HOST_DEVICE bool hasParentFaceData() const { return m_parent_face_data.isValid(); }
 
     /**
-     * @brief Get native parent-face provenance for this mesh.
+     * @brief Get native parent-face mapping data for this mesh.
      *
-     * @return non-owning views of parent-face provenance arrays
+     * @return non-owning views of parent-face mapping arrays
      */
     TRIBOL_HOST_DEVICE const ParentFaceData& getParentFaceData() const { return m_parent_face_data; }
 
@@ -236,7 +226,7 @@ class MeshData {
      * @param face_id Tribol surface element identifier
      * @param lor_reference_coordinates LOR face reference coordinates
      * @param parent_reference_coordinates Mapped native parent-face reference coordinates
-     * @return true when the face provenance and geometry are valid
+     * @return true when the face mapping and geometry are valid
      */
     TRIBOL_HOST_DEVICE bool mapToParentReference( IndexT face_id, const RealT* lor_reference_coordinates,
                                                   RealT* parent_reference_coordinates ) const;
@@ -516,7 +506,7 @@ class MeshData {
     MeshNodalData m_nodal_fields;  ///< method specific nodal fields
     MeshElemData m_element_data;   ///< method/enforcement specific element data
 
-    /** Native parent-face provenance for the contact surface elements. */
+    /** Native parent-face mapping data for the contact surface elements. */
     const ParentFaceData m_parent_face_data;
 
   };  // end class MeshData::Viewer
@@ -586,9 +576,9 @@ class MeshData {
   void updateAllocatorId( int allocator_id ) { m_allocator_id = allocator_id; }
 
   /**
-   * @brief Register native parent-face provenance using an existing collection of views.
+   * @brief Register native parent-face mapping data using an existing collection of views.
    *
-   * @param parent_face_data Non-owning parent-face provenance views
+   * @param parent_face_data Non-owning parent-face mapping views
    */
   void setParentFaceData( const ParentFaceData& parent_face_data ) { m_parent_face_data = parent_face_data; }
 
@@ -770,7 +760,7 @@ class MeshData {
   MeshNodalData m_nodal_fields;  ///< method specific nodal fields
   MeshElemData m_element_data;   ///< method/enforcement specific element data
 
-  /** Non-owning native parent-face provenance registered by the MFEM interface. */
+  /** Non-owning native parent-face mapping data registered by the MFEM interface. */
   ParentFaceData m_parent_face_data;
 
   // Nodal field data
@@ -912,10 +902,7 @@ TRIBOL_HOST_DEVICE inline bool MeshData::Viewer::mapToParentReference( IndexT fa
                                                                        RealT* parent_reference_coordinates ) const
 {
   if ( !hasParentFaceData() || face_id < 0 || face_id >= numberOfElements() || lor_reference_coordinates == nullptr ||
-       parent_reference_coordinates == nullptr || face_id >= m_parent_face_data.m_parent_face_ids.size() ||
-       face_id >= m_parent_face_data.m_parent_face_owner_ranks.size() ||
-       face_id >= m_parent_face_data.m_lor_face_ids.size() ||
-       face_id >= m_parent_face_data.m_lor_face_geometries.size() ||
+       parent_reference_coordinates == nullptr || face_id >= m_parent_face_data.m_lor_face_geometries.size() ||
        face_id >= m_parent_face_data.m_parent_face_orders.size() ||
        face_id >= m_parent_face_data.m_reference_vertex_counts.size() ||
        face_id >= m_parent_face_data.m_parent_reference_vertex_coordinates.shape()[0] ||

@@ -795,7 +795,7 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
       auto* first_mesh = MeshManager::getInstance().findData( mesh_ids[0] );
       auto* second_mesh = MeshManager::getInstance().findData( mesh_ids[1] );
       SLIC_ERROR_ROOT_IF( first_mesh == nullptr || second_mesh == nullptr,
-                          "MFEM parent-face provenance requires both registered Tribol surface meshes." );
+                          "MFEM parent-face mapping requires both registered Tribol surface meshes." );
       first_mesh->setParentFaceData( mfem_data->GetMesh1ParentFaceData() );
       second_mesh->setParentFaceData( mfem_data->GetMesh2ParentFaceData() );
 
