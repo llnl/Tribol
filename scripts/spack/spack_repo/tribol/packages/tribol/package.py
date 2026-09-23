@@ -171,7 +171,7 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
             msg="{0} compilers do not support Address Sanitizer".format(compiler_)
         )
 
-    # Devtool dependencies these need to match tribol_devtools/package.py
+    # Devtool dependencies these need to match triboldevtools/package.py
     depends_on("doxygen", when="+devtools")
     depends_on("python", when="+devtools")
     depends_on("py-shroud", when="+devtools+fortran")

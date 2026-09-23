@@ -1,4 +1,4 @@
-# Copyright (c) 2019-2024, Lawrence Livermore National Security, LLC and
+# Copyright (c) Lawrence Livermore National Security, LLC and
 # other Smith Project Developers. See the top-level COPYRIGHT file for details.
 #
 # SPDX-License-Identifier: (BSD-3-Clause)
@@ -11,7 +11,7 @@ class Mfem(BuiltinMfem):
     # Note: Make sure this sha coincides with the git submodule
     # Note: We add a number to the end of the real version number to indicate that we have
     # moved forward past the release. Increment the last number when updating the commit sha.
-    version("4.9.0.2", commit="72805e340996a73179082bbe1c7bfb785c2afb47")
+    version("4.10.0.1", commit="a57763ace9c9ff67a57cdb4457a6d7caf79eae93")
 
     variant('asan', default=False, description='Add Address Sanitizer flags')
 

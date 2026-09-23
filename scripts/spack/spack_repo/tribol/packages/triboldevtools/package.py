@@ -3,9 +3,10 @@
 #
 # SPDX-License-Identifier: (MIT)
 
+from spack_repo.builtin.build_systems.bundle import BundlePackage
 from spack.package import *
 
-class TribolDevtools(BundlePackage):
+class Triboldevtools(BundlePackage):
     """This is a set of tools necessary for the developers of Tribol"""
 
     version('fakeversion')

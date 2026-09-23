@@ -1,12 +1,12 @@
 {
-"package_name": "tribol",
-"package_version": "develop",
-"package_final_phase": "initconfig",
-"package_source_dir": "../..",
+"package_name" : "tribol",
+"package_version" : "develop",
+"package_final_phase" : "initconfig",
+"package_source_dir" : "../..",
 "spack_url": "https://github.com/spack/spack.git",
 "spack_commit": "47173cd6afeac2823fd61ade3b639de79d9dabfc",
 "spack_packages_url": "https://github.com/spack/spack-packages.git",
 "spack_packages_commit": "5f87aecc2419fc5184d9d7598a14f5ab348ba4d8",
 "spack_configs_path": "scripts/spack/configs",
-"spack_packages_path": ["scripts/spack/packages"]
+"spack_packages_path": ["scripts/spack/spack_repo/tribol/packages"]
 }
