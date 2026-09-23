@@ -16,8 +16,9 @@ set(tribol_core_headers
     ../contact/ContactEvaluation.inl
     ../contact/ContactExactHelpers.inl
     ../contact/ContactLinearization.inl
-    ../constraint/NormalConstraint.hpp
     ../constraint/ConstraintRow.hpp
+    ../constraint/ConstraintRowAssembly.hpp
+    ../constraint/NormalConstraint.hpp
     ../constraint/PenetrationLimit.hpp
     ../diagnostics/ContactOutput.hpp
     ../diagnostics/ScheduledOutput.hpp

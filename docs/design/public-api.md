@@ -135,6 +135,12 @@ difference factory uses `a = b = 2`. `estimateMaximumMassScaledEigenvalue()` sup
 power iteration for validation and diagnostics; its estimate is not substituted for the conservative production
 bound.
 
+For multiple contact pairs, construct `ConstraintRowSourceView` records with explicit local-to-parent DOF maps and
+call `assembleOwnedConstraintRows()`. The result is sorted by `(contact_pair_id, row_id)`, removes repeated ghost copies,
+and contains only rows owned by the requested rank. Both sides then use the same shared parent field when applying
+forces or operators. This assembly is the only place where pair-local numbering is translated; downstream mechanics
+remain identical for one pair, many pairs, and MPI-owned subsets.
+
 ## Results
 
 `ContactResultView` contains borrowed views into the contact object:

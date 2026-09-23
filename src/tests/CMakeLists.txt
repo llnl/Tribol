@@ -252,6 +252,30 @@ if(ENABLE_OPENMP)
     COMMAND tribol_execution_openmp_test)
 endif()
 
+if(ENABLE_MPI)
+  blt_add_executable(
+    NAME tribol_coupled_rows_test
+    SOURCES parallel/coupled_rows.cpp
+    OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+    DEPENDS_ON tribol::core blt::mpi
+    FOLDER tribol/parallel)
+
+  blt_add_test(
+    NAME tribol_coupled_rows_smoke
+    COMMAND tribol_coupled_rows_test
+    NUM_MPI_TASKS 1)
+
+  blt_add_test(
+    NAME tribol_coupled_rows_2rank
+    COMMAND tribol_coupled_rows_test
+    NUM_MPI_TASKS 2)
+
+  blt_add_test(
+    NAME tribol_coupled_rows_4rank
+    COMMAND tribol_coupled_rows_test
+    NUM_MPI_TASKS 4)
+endif()
+
 blt_add_executable(
   NAME tribol_allocation_contract_test
   SOURCES components/allocation_contract.cpp

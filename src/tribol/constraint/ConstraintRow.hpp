@@ -13,6 +13,8 @@
 
 namespace tribol {
 
+class ConstraintRowAssembler;
+
 struct ConstraintRowBuildOptions {
   integration::Automatic::Parameters quadrature{};
   std::uint64_t first_row_id{};
@@ -139,6 +141,51 @@ class ConstraintRowBatch {
   }
 
  private:
+  friend class ConstraintRowAssembler;
+
+  void appendMappedRow( ConstraintRowBatchView source, Index source_row, Index coupled_cell,
+                        ArrayView<const Index> mortar_dof_map, ArrayView<const Index> nonmortar_dof_map )
+  {
+    contact_pair_ids_.push_back( source.contact_pair_ids[source_row] );
+    cell_ids_.push_back( source.cell_ids[source_row] );
+    row_ids_.push_back( source.row_ids[source_row] );
+    owner_ranks_.push_back( source.owner_ranks[source_row] );
+    overlap_cells_.push_back( coupled_cell );
+    mortar_parent_faces_.push_back( source.mortar_parent_faces[source_row] );
+    nonmortar_parent_faces_.push_back( source.nonmortar_parent_faces[source_row] );
+    for ( int component = 0; component < 3; ++component ) {
+      normals_.push_back( source.normals( source_row, component ) );
+      mortar_positions_.push_back( source.mortar_positions( source_row, component ) );
+      nonmortar_positions_.push_back( source.nonmortar_positions( source_row, component ) );
+    }
+    integration_weights_.push_back( source.integration_weights[source_row] );
+    for ( int component = 0; component < dimension_ - 1; ++component ) {
+      mortar_parent_reference_coordinates_.push_back(
+          source.mortar_parent_reference_coordinates( source_row, component ) );
+      nonmortar_parent_reference_coordinates_.push_back(
+          source.nonmortar_parent_reference_coordinates( source_row, component ) );
+    }
+    gaps_.push_back( source.gaps[source_row] );
+    if ( has_velocity_ ) {
+      normal_rates_.push_back( source.normal_rates[source_row] );
+    }
+    appendMappedBasis( source_row, source.mortar_dof_offsets, source.mortar_dofs, source.mortar_basis_values,
+                       mortar_dof_map, mortar_dofs_, mortar_basis_values_, mortar_dof_offsets_ );
+    appendMappedBasis( source_row, source.nonmortar_dof_offsets, source.nonmortar_dofs, source.nonmortar_basis_values,
+                       nonmortar_dof_map, nonmortar_dofs_, nonmortar_basis_values_, nonmortar_dof_offsets_ );
+  }
+
+  static void appendMappedBasis( Index row, ArrayView<const Index> source_offsets, ArrayView<const Index> source_dofs,
+                                 ArrayView<const Real> source_basis, ArrayView<const Index> dof_map,
+                                 std::vector<Index>& dofs, std::vector<Real>& basis, std::vector<Index>& offsets )
+  {
+    for ( Index entry = source_offsets[row]; entry < source_offsets[row + 1]; ++entry ) {
+      dofs.push_back( dof_map[source_dofs[entry]] );
+      basis.push_back( source_basis[entry] );
+    }
+    offsets.push_back( static_cast<Index>( dofs.size() ) );
+  }
+
   void appendReference( std::vector<Real>& values, basis::ReferencePoint point ) const
   {
     values.push_back( point.first );
