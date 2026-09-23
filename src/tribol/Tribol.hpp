@@ -3,11 +3,13 @@
 
 #include "tribol/adapters/array/ArrayContact.hpp"
 #include "tribol/basis/LinearBasis.hpp"
+#include "tribol/basis/ParentBasis.hpp"
 #include "tribol/constraint/NormalConstraint.hpp"
 #include "tribol/contact/Contact.hpp"
 #include "tribol/core/ArrayView.hpp"
 #include "tribol/core/Config.hpp"
 #include "tribol/core/MeshView.hpp"
+#include "tribol/core/ParentTraceView.hpp"
 #include "tribol/core/Version.hpp"
 #include "tribol/diagnostics/ContactOutput.hpp"
 #include "tribol/diagnostics/ScheduledOutput.hpp"

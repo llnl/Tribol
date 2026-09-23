@@ -108,6 +108,17 @@ blt_add_test(
   COMMAND tribol_constraint_stages_test)
 
 blt_add_executable(
+  NAME tribol_parent_trace_test
+  SOURCES components/parent_trace.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::core
+  FOLDER tribol/components)
+
+blt_add_test(
+  NAME tribol_parent_trace
+  COMMAND tribol_parent_trace_test)
+
+blt_add_executable(
   NAME tribol_method_conformance_test
   SOURCES components/method_conformance.cpp
   OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}

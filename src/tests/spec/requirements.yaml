@@ -8,6 +8,7 @@
     {"id": "CORE-001", "scope": "core", "text": "Kernel-facing mesh and field views are trivially copyable and independent of third-party libraries."},
     {"id": "CORE-002", "scope": "core", "text": "Two- and three-dimensional segment, triangle, and quadrilateral surface topology is supported."},
     {"id": "CORE-003", "scope": "core", "text": "Evaluation performs no allocation after interaction preparation."},
+    {"id": "CORE-004", "scope": "core", "text": "Native parent-trace views expose parent topology, order, ownership, DOF connectivity, subfacet provenance, and parent-reference coordinates through trivially copyable third-party-independent kernel views."},
     {"id": "GEOM-001", "scope": "component", "text": "Projected-overlap geometry provides measure, normal, quadrature coordinates, and signed normal gap."},
     {"id": "GEOM-002", "scope": "component", "text": "Conforming-overlap geometry preserves aligned face correspondence."},
     {"id": "GEOM-003", "scope": "component", "text": "Smoothed segment integration reproduces legacy C1 endpoint-bound smoothing and differentiates its geometry-dependent bounds exactly."},

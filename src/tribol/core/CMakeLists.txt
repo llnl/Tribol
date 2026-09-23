@@ -3,10 +3,12 @@ set(tribol_core_headers
     Config.hpp
     ExactTangent.hpp
     MeshView.hpp
+    ParentTraceView.hpp
     StaticGradient.hpp
     Version.hpp
     ../adapters/array/ArrayContact.hpp
     ../basis/LinearBasis.hpp
+    ../basis/ParentBasis.hpp
     ../contact/Contact.hpp
     ../contact/ContactEvaluation.inl
     ../contact/ContactExactHelpers.inl
