@@ -2,7 +2,9 @@ set(tribol_core_headers
     ArrayView.hpp
     Config.hpp
     ExactTangent.hpp
+    InteractionPatch.hpp
     MeshView.hpp
+    OverlapCellView.hpp
     ParentTraceView.hpp
     StaticGradient.hpp
     Version.hpp
@@ -33,6 +35,7 @@ set(tribol_core_headers
     ../execution/HipPenalty.hpp
     ../execution/PenaltyKernel.hpp
     ../geom/ConformingOverlap.hpp
+    ../geom/OverlapCell.hpp
     ../geom/ProjectedOverlap.hpp
     ../geom/SmoothedSegmentOverlap.hpp
     ../integration/InteractionQuadrature.hpp

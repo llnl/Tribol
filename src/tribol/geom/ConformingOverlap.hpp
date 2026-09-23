@@ -39,6 +39,7 @@ inline InteractionPatchT<Scalar> conformingOverlapPatch( const SurfacePairViewT<
        !projected_overlap_detail::isLinearFace( surfaces.mortar, pair.mortar_element ) ||
        !projected_overlap_detail::isLinearFace( surfaces.nonmortar, pair.nonmortar_element ) ||
        surfaces.mortar.topologies[pair.mortar_element] != surfaces.nonmortar.topologies[pair.nonmortar_element] ) {
+    result.status = GeometryStatus::InvalidMapping;
     return result;
   }
   const Index mortar_begin = surfaces.mortar.element_offsets[pair.mortar_element];
@@ -101,7 +102,8 @@ inline InteractionPatchT<Scalar> conformingOverlapPatch( const SurfacePairViewT<
     }
   }
   if ( linearization_detail::primal( centroid_weight ) <= 0.0 ) {
-    return InteractionPatchT<Scalar>{};
+    result.status = GeometryStatus::DegenerateOverlap;
+    return result;
   }
   for ( int component = 0; component < 3; ++component ) {
     result.mortar_centroid[component] /= centroid_weight;
@@ -109,6 +111,7 @@ inline InteractionPatchT<Scalar> conformingOverlapPatch( const SurfacePairViewT<
   }
   result.vertex_count = node_count;
   result.manifold_dimension = 2;
+  result.status = GeometryStatus::Accepted;
   result.valid = true;
   return result;
 }

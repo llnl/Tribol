@@ -2,6 +2,7 @@
 #define TRIBOL_GEOM_PROJECTEDOVERLAP_HPP_
 
 #include "tribol/core/ExactTangent.hpp"
+#include "tribol/core/InteractionPatch.hpp"
 #include "tribol/core/MeshView.hpp"
 #include "tribol/method/Method.hpp"
 #include "tribol/search/Search.hpp"
@@ -11,38 +12,6 @@
 #include <type_traits>
 
 namespace tribol {
-
-template <typename Scalar>
-struct InteractionGeometryT {
-  std::array<Scalar, 3> normal{};
-  std::array<Scalar, 3> mortar_point{};
-  std::array<Scalar, 3> nonmortar_point{};
-  Scalar measure{};
-  Scalar gap{};
-  bool valid{};
-};
-
-using InteractionGeometry = InteractionGeometryT<Real>;
-
-inline constexpr int maximumInteractionVertices = 8;
-
-template <typename Scalar>
-struct InteractionPatchT {
-  std::array<Scalar, 3> normal{};
-  std::array<std::array<Scalar, 3>, maximumInteractionVertices> integration_vertices{};
-  std::array<std::array<Scalar, 3>, maximumInteractionVertices> mortar_vertices{};
-  std::array<std::array<Scalar, 3>, maximumInteractionVertices> nonmortar_vertices{};
-  std::array<Scalar, 3> mortar_centroid{};
-  std::array<Scalar, 3> nonmortar_centroid{};
-  Scalar measure{};
-  int vertex_count{};
-  int manifold_dimension{};
-  bool valid{};
-};
-
-using InteractionPatch = InteractionPatchT<Real>;
-
-static_assert( std::is_trivially_copyable_v<InteractionPatch> );
 
 namespace projected_overlap_detail {
 
@@ -288,6 +257,7 @@ template <NormalPolicy Normal, typename Scalar>
   InteractionPatchT<Scalar> result;
   if ( !isLinearFace( surfaces.mortar, pair.mortar_element ) ||
        !isLinearFace( surfaces.nonmortar, pair.nonmortar_element ) ) {
+    result.status = GeometryStatus::InvalidMapping;
     return result;
   }
 
@@ -295,6 +265,7 @@ template <NormalPolicy Normal, typename Scalar>
   const auto nonmortar_normal = faceNormal( surfaces.nonmortar, pair.nonmortar_element );
   const auto normal = selectNormal<Normal>( mortar_normal, nonmortar_normal );
   if ( norm( normal ) <= 1.0e-28 ) {
+    result.status = GeometryStatus::DegenerateOverlap;
     return result;
   }
 
@@ -306,6 +277,7 @@ template <NormalPolicy Normal, typename Scalar>
   }
   first_axis = normalize( first_axis );
   if ( norm( first_axis ) <= 1.0e-28 ) {
+    result.status = GeometryStatus::DegenerateOverlap;
     return result;
   }
   const auto second_axis = cross( normal, first_axis );
@@ -344,6 +316,7 @@ template <NormalPolicy Normal, typename Scalar>
     projected_centroid[1] += ( first[1] + second[1] ) * cross_value;
   }
   if ( linearization_detail::absolute( twice_area ) <= 2.0 * parameters.minimum_measure ) {
+    result.status = GeometryStatus::DegenerateOverlap;
     return result;
   }
   projected_centroid[0] /= 3.0 * twice_area;
@@ -376,7 +349,8 @@ template <NormalPolicy Normal, typename Scalar>
     return true;
   };
   if ( !lift_to_faces( projected_point, result.mortar_centroid, result.nonmortar_centroid ) ) {
-    return {};
+    result.status = GeometryStatus::InconsistentOrientation;
+    return result;
   }
   result.vertex_count = overlap.size;
   result.manifold_dimension = 2;
@@ -388,10 +362,12 @@ template <NormalPolicy Normal, typename Scalar>
     }
     if ( !lift_to_faces( result.integration_vertices[vertex], result.mortar_vertices[vertex],
                          result.nonmortar_vertices[vertex] ) ) {
-      return {};
+      result.status = GeometryStatus::InconsistentOrientation;
+      return result;
     }
   }
   result.normal = normal;
+  result.status = GeometryStatus::Accepted;
   result.valid = true;
   return result;
 }
@@ -410,6 +386,7 @@ template <NormalPolicy Normal, typename Scalar>
   if ( surfaces.mortar.dimension != 2 ||
        !projected_overlap_detail::isLinearSegment( surfaces.mortar, pair.mortar_element ) ||
        !projected_overlap_detail::isLinearSegment( surfaces.nonmortar, pair.nonmortar_element ) ) {
+    result.status = GeometryStatus::InvalidMapping;
     return result;
   }
 
@@ -439,7 +416,11 @@ template <NormalPolicy Normal, typename Scalar>
   const Scalar nonmortar_upper = std::max( projected[1][0], projected[1][1] );
   const Scalar lower = std::max( mortar_lower, nonmortar_lower );
   const Scalar upper = std::min( mortar_upper, nonmortar_upper );
+  if ( upper <= lower ) {
+    return result;
+  }
   if ( upper - lower <= parameters.minimum_measure ) {
+    result.status = GeometryStatus::DegenerateOverlap;
     return result;
   }
 
@@ -458,7 +439,8 @@ template <NormalPolicy Normal, typename Scalar>
     for ( int side = 0; side < 2; ++side ) {
       const Scalar denominator = projected[side][1] - projected[side][0];
       if ( linearization_detail::absolute( denominator ) <= 1.0e-28 ) {
-        return {};
+        result.status = GeometryStatus::DegenerateOverlap;
+        return result;
       }
       const Scalar parameter = ( locations[location] - projected[side][0] ) / denominator;
       for ( int component = 0; component < 2; ++component ) {
@@ -473,6 +455,7 @@ template <NormalPolicy Normal, typename Scalar>
       }
     }
   }
+  result.status = GeometryStatus::Accepted;
   result.valid = true;
   return result;
 }

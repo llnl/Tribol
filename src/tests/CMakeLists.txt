@@ -119,6 +119,17 @@ blt_add_test(
   COMMAND tribol_parent_trace_test)
 
 blt_add_executable(
+  NAME tribol_overlap_cells_test
+  SOURCES components/overlap_cells.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::core
+  FOLDER tribol/components)
+
+blt_add_test(
+  NAME tribol_overlap_cells
+  COMMAND tribol_overlap_cells_test)
+
+blt_add_executable(
   NAME tribol_method_conformance_test
   SOURCES components/method_conformance.cpp
   OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
