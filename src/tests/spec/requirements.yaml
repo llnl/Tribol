@@ -14,6 +14,7 @@
     {"id": "GEOM-003", "scope": "component", "text": "Smoothed segment integration reproduces legacy C1 endpoint-bound smoothing and differentiates its geometry-dependent bounds exactly."},
     {"id": "GEOM-004", "scope": "component", "text": "Overlap-cell batches preserve parent-face and subfacet provenance, parent-reference coordinates, deterministic ownership and identity, and explicit geometry failure status."},
     {"id": "CONS-001", "scope": "component", "text": "Pointwise, nodal primal, nodal dual, and quadrature-point normal constraints satisfy their documented interpolation contracts."},
+    {"id": "CONS-002", "scope": "component", "text": "Automatic overlap quadrature produces variable-size constraint-row batches with native parent positions, signed basis values, physical weights, gaps, and optional normal rates."},
     {"id": "ENF-001", "scope": "component", "text": "Constant and material-scaled kinematic penalty laws are supported."},
     {"id": "ENF-002", "scope": "component", "text": "No-rate, constant-rate, and percentage-rate penalty laws are supported."},
     {"id": "ENF-003", "scope": "component", "text": "Nodal Lagrange multiplier enforcement produces primal and constraint residuals."},

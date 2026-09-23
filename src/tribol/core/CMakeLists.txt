@@ -1,6 +1,7 @@
 set(tribol_core_headers
     ArrayView.hpp
     Config.hpp
+    ConstraintRowView.hpp
     ExactTangent.hpp
     InteractionPatch.hpp
     MeshView.hpp
@@ -16,6 +17,7 @@ set(tribol_core_headers
     ../contact/ContactExactHelpers.inl
     ../contact/ContactLinearization.inl
     ../constraint/NormalConstraint.hpp
+    ../constraint/ConstraintRow.hpp
     ../constraint/PenetrationLimit.hpp
     ../diagnostics/ContactOutput.hpp
     ../diagnostics/ScheduledOutput.hpp
@@ -39,6 +41,7 @@ set(tribol_core_headers
     ../geom/ProjectedOverlap.hpp
     ../geom/SmoothedSegmentOverlap.hpp
     ../integration/InteractionQuadrature.hpp
+    ../integration/AutomaticQuadrature.hpp
     ../integration/Quadrature.hpp
     ../method/Method.hpp
     ../method/MethodCompatibility.inl

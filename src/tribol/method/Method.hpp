@@ -99,6 +99,15 @@ struct ConformingOverlap {
 
 namespace integration {
 
+struct Automatic {
+  using policy_category = detail::IntegrationCategory;
+
+  struct Parameters {
+    int traction_order{ -1 };
+    int minimum_exactness{ 1 };
+  };
+};
+
 struct Centroid {
   using policy_category = detail::IntegrationCategory;
   struct Parameters {};

@@ -7,7 +7,7 @@
 #include <iostream>
 #include <vector>
 
-// Requirements: GEOM-004
+// Requirements: CONS-002, GEOM-004
 
 namespace {
 
@@ -258,7 +258,104 @@ bool threeDimensionalMappingContract()
   return warped_storage.view().statuses[0] == GeometryStatus::ExcessiveMappingError;
 }
 
+bool variableRowContract()
+{
+  const auto mortar = segmentTrace( 0.0, 1.0, 0.0, false, 101, 3 );
+  const auto nonmortar = segmentTrace( 0.25, 1.25, -0.1, true, 202, 7 );
+  const std::array<ElementPair, 2> candidates{ ElementPair{ 1, 0 }, ElementPair{ 0, 0 } };
+  const auto cell_storage = buildOverlapCellBatch<normal::MeanPlane>(
+      { mortar.view(), nonmortar.view() }, { candidates.data(), 2 }, {}, { .contact_pair_id = 9 } );
+  constexpr std::array<Real, 4> mortar_coordinates{ 0.0, 0.0, 1.0, 0.0 };
+  constexpr std::array<Real, 4> nonmortar_coordinates{ 0.25, -0.1, 1.25, -0.1 };
+  constexpr std::array<Real, 4> mortar_velocity{ 0.0, 1.0, 0.0, 1.0 };
+  constexpr std::array<Real, 4> nonmortar_velocity{};
+  const ParentTraceFieldPairView fields{
+      .mortar_coordinates = { { mortar_coordinates.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+      .nonmortar_coordinates = { { nonmortar_coordinates.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+      .mortar_velocity = { { mortar_velocity.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+      .nonmortar_velocity = { { nonmortar_velocity.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+  };
+  const auto row_storage = buildConstraintRowBatch( { mortar.view(), nonmortar.view() }, cell_storage.view(), fields,
+                                                    { .first_row_id = 30 } );
+  const auto rows = row_storage.view();
+  if ( !rows.isStructurallyValid() || rows.numberOfCells() != 2 || rows.numberOfRows() != 2 ||
+       rows.cell_row_offsets[0] != 0 || rows.cell_row_offsets[1] != 2 || rows.cell_row_offsets[2] != 2 ||
+       rows.row_ids[0] != 30 || rows.row_ids[1] != 31 || !rows.hasNormalRates() ) {
+    return false;
+  }
+  Real weight{};
+  for ( Index row = 0; row < rows.numberOfRows(); ++row ) {
+    weight += rows.integration_weights[row];
+    Real mortar_partition{};
+    for ( Index entry = rows.mortar_dof_offsets[row]; entry < rows.mortar_dof_offsets[row + 1]; ++entry ) {
+      mortar_partition += rows.mortar_basis_values[entry];
+    }
+    Real nonmortar_partition{};
+    for ( Index entry = rows.nonmortar_dof_offsets[row]; entry < rows.nonmortar_dof_offsets[row + 1]; ++entry ) {
+      nonmortar_partition += rows.nonmortar_basis_values[entry];
+    }
+    if ( std::abs( mortar_partition - 1.0 ) > 1.0e-12 || std::abs( nonmortar_partition - 1.0 ) > 1.0e-12 ||
+         std::abs( rows.gaps[row] - 0.1 ) > 1.0e-12 || std::abs( rows.normal_rates[row] - 1.0 ) > 1.0e-12 ) {
+      return false;
+    }
+  }
+  return std::abs( weight - 0.75 ) < 1.0e-12;
+}
+
+bool automaticQuadratureContract()
+{
+  const auto mortar = segmentTrace( 0.0, 1.0, 0.0, false, 101, 0 );
+  const auto nonmortar = segmentTrace( 0.0, 1.0, -0.1, true, 202, 1 );
+  const std::array<ElementPair, 1> candidate{ ElementPair{ 0, 0 } };
+  const auto cell_storage =
+      buildOverlapCellBatch<normal::MeanPlane>( { mortar.view(), nonmortar.view() }, { candidate.data(), 1 } );
+  constexpr std::array<Real, 4> mortar_coordinates{ 0.0, 0.0, 1.0, 0.0 };
+  constexpr std::array<Real, 4> nonmortar_coordinates{ 0.0, -0.1, 1.0, -0.1 };
+  const ParentTraceFieldPairView fields{
+      .mortar_coordinates = { { mortar_coordinates.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+      .nonmortar_coordinates = { { nonmortar_coordinates.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+  };
+  ConstraintRowBuildOptions options;
+  options.quadrature.minimum_exactness = 8;
+  const auto row_storage =
+      buildConstraintRowBatch( { mortar.view(), nonmortar.view() }, cell_storage.view(), fields, options );
+  const auto rows = row_storage.view();
+  Real integral{};
+  for ( Index row = 0; row < rows.numberOfRows(); ++row ) {
+    const Real coordinate = rows.mortar_parent_reference_coordinates( row, 0 );
+    integral += rows.integration_weights[row] * std::pow( coordinate, 8 );
+  }
+  return rows.numberOfRows() == 5 && !rows.hasNormalRates() && std::abs( integral - 1.0 / 9.0 ) < 1.0e-13;
+}
+
+bool threeDimensionalRowContract()
+{
+  const auto mortar = quadrilateralTrace( 0.0, false, 0.0, 501, 2 );
+  const auto nonmortar = quadrilateralTrace( -0.1, true, 0.0, 502, 4 );
+  const std::array<ElementPair, 1> candidate{ ElementPair{ 0, 0 } };
+  const auto cell_storage =
+      buildOverlapCellBatch<normal::MeanPlane>( { mortar.view(), nonmortar.view() }, { candidate.data(), 1 } );
+  constexpr std::array<Real, 12> mortar_coordinates{ 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0 };
+  constexpr std::array<Real, 12> nonmortar_coordinates{ 0.0, 0.0, -0.1, 1.0, 0.0, -0.1,
+                                                        0.0, 1.0, -0.1, 1.0, 1.0, -0.1 };
+  const ParentTraceFieldPairView fields{
+      .mortar_coordinates = { { mortar_coordinates.data(), 12 }, 4, 3, FieldLayout::Interleaved },
+      .nonmortar_coordinates = { { nonmortar_coordinates.data(), 12 }, 4, 3, FieldLayout::Interleaved },
+  };
+  const auto row_storage = buildConstraintRowBatch( { mortar.view(), nonmortar.view() }, cell_storage.view(), fields );
+  const auto rows = row_storage.view();
+  Real weight{};
+  Real moment{};
+  for ( Index row = 0; row < rows.numberOfRows(); ++row ) {
+    weight += rows.integration_weights[row];
+    moment += rows.integration_weights[row] * rows.mortar_positions( row, 0 ) * rows.mortar_positions( row, 1 );
+  }
+  return rows.isStructurallyValid() && rows.numberOfRows() == 8 && std::abs( weight - 1.0 ) < 1.0e-12 &&
+         std::abs( moment - 0.25 ) < 1.0e-12;
+}
+
 static_assert( std::is_trivially_copyable_v<OverlapCellBatchView> );
+static_assert( std::is_trivially_copyable_v<ConstraintRowBatchView> );
 
 }  // namespace
 
@@ -268,9 +365,15 @@ int main()
   const bool statuses = explicitStatusContract();
   const bool duplicates = duplicateAndMappingContract();
   const bool three_dimensional = threeDimensionalMappingContract();
-  if ( !accepted || !statuses || !duplicates || !three_dimensional ) {
+  const bool variable_rows = variableRowContract();
+  const bool automatic_quadrature = automaticQuadratureContract();
+  const bool three_dimensional_rows = threeDimensionalRowContract();
+  if ( !accepted || !statuses || !duplicates || !three_dimensional || !variable_rows || !automatic_quadrature ||
+       !three_dimensional_rows ) {
     std::cerr << "accepted=" << accepted << " statuses=" << statuses << " duplicates=" << duplicates
-              << " three_dimensional=" << three_dimensional << '\n';
+              << " three_dimensional=" << three_dimensional << " variable_rows=" << variable_rows
+              << " automatic_quadrature=" << automatic_quadrature
+              << " three_dimensional_rows=" << three_dimensional_rows << '\n';
     return 1;
   }
   return 0;

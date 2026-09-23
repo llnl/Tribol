@@ -105,6 +105,11 @@ mechanics.
 Constraint and diagnostic quadrature are independent policies built from the same overlap cells. Diagnostic points do
 not participate in force or stability assembly.
 
+The built-in automatic rule targets polynomial exactness equal to the maximum parent-field order plus the traction
+order. When no separate traction order is supplied, the maximum parent-field order is used for both terms. Segments
+use Gauss-Legendre quadrature and polygons use a fan triangulation with a tensor-product Duffy rule. The built-in
+tables support exactness through degree eleven; requests above that limit are rejected rather than silently clipped.
+
 ## Operators
 
 The shared row batch defines:
@@ -166,4 +171,3 @@ execution keeps parent traces, cells, rows, state, and results resident and uses
 This design does not itself advertise native high-order support. The capability manifest is updated only after
 component, conformance, MFEM, MPI, CUDA, HIP, and integrated Marbl evidence passes. The existing default method remains
 unchanged until the complete Milestone 1 acceptance gate succeeds.
-
