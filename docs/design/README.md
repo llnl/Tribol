@@ -16,6 +16,8 @@ This directory records the architecture being implemented by the policy-composed
 - [Extension guide](extension-guide.md): file-level workflows for adding policies, adapters, and backends.
 - [Quality](quality.md): local and CI verification commands.
 - [Migration](migration.md): how external legacy releases remain comparison oracles.
+- [Native parent-trace explicit contact](high-order-explicit-contact.md): the Milestone 1 geometry, row, operator, and
+  stability contracts.
 - [Decision 0001](decisions/0001-policy-composition.md): why named method classes are prohibited.
 - [Decision 0002](decisions/0002-independent-core.md): why MFEM is an adapter rather than the core model.
 
