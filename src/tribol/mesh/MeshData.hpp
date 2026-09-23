@@ -113,14 +113,8 @@ struct ParentFaceData {
   /** Maximum number of native parent-face nodes for supported quadrilateral faces. */
   static constexpr int max_parent_face_nodes{ ( max_parent_face_order + 1 ) * ( max_parent_face_order + 1 ) };
 
-  /** MFEM geometry identifier for each LOR face. */
-  Array1DView<const int> m_lor_face_geometries;
-
   /** Polynomial order of the native parent coordinate finite element. */
   Array1DView<const int> m_parent_face_orders;
-
-  /** InterfaceElementType value for each native parent face. */
-  Array1DView<const int> m_parent_face_geometries;
 
   /** Number of native parent finite-element nodes on each face. */
   Array1DView<const int> m_parent_node_counts;
@@ -164,7 +158,7 @@ struct ParentFaceData {
    */
   TRIBOL_HOST_DEVICE bool isValid() const
   {
-    return !m_lor_face_geometries.empty() && !m_parent_face_orders.empty() && !m_reference_vertex_counts.empty() &&
+    return !m_parent_face_orders.empty() && !m_reference_vertex_counts.empty() &&
            !m_parent_reference_vertex_coordinates.empty();
   }
 
@@ -175,8 +169,8 @@ struct ParentFaceData {
    */
   TRIBOL_HOST_DEVICE bool hasParentFields() const
   {
-    return isValid() && !m_parent_face_geometries.empty() && !m_parent_node_counts.empty() &&
-           !m_parent_basis_coefficients.empty() && !m_parent_positions.empty() && !m_parent_responses.empty();
+    return isValid() && !m_parent_node_counts.empty() && !m_parent_basis_coefficients.empty() &&
+           !m_parent_positions.empty() && !m_parent_responses.empty();
   }
 
   /**
@@ -1066,8 +1060,7 @@ TRIBOL_HOST_DEVICE inline bool MeshData::Viewer::mapToParentReference( IndexT fa
                                                                        RealT* parent_reference_coordinates ) const
 {
   if ( !hasParentFaceData() || face_id < 0 || face_id >= numberOfElements() || lor_reference_coordinates == nullptr ||
-       parent_reference_coordinates == nullptr || face_id >= m_parent_face_data.m_lor_face_geometries.size() ||
-       face_id >= m_parent_face_data.m_parent_face_orders.size() ||
+       parent_reference_coordinates == nullptr || face_id >= m_parent_face_data.m_parent_face_orders.size() ||
        face_id >= m_parent_face_data.m_reference_vertex_counts.size() ||
        face_id >= m_parent_face_data.m_parent_reference_vertex_coordinates.shape()[0] ||
        m_parent_face_data.m_parent_reference_vertex_coordinates.shape()[1] <
@@ -1077,7 +1070,7 @@ TRIBOL_HOST_DEVICE inline bool MeshData::Viewer::mapToParentReference( IndexT fa
 
   const int reference_dimension = spatialDimension() - 1;
   const int number_of_vertices = m_parent_face_data.m_reference_vertex_counts[face_id];
-  const auto lor_face_geometry = static_cast<InterfaceElementType>( m_parent_face_data.m_lor_face_geometries[face_id] );
+  const InterfaceElementType lor_face_geometry = getElementType();
   const RealT reference_coordinate_tolerance = ParentFaceData::reference_coordinate_tolerance;
   const RealT first_coordinate = lor_reference_coordinates[0];
 
@@ -1139,7 +1132,6 @@ TRIBOL_HOST_DEVICE inline bool MeshData::Viewer::evaluateParentFaceBasis( IndexT
 {
   if ( !hasParentFaceFields() || face_id < 0 || face_id >= numberOfElements() ||
        parent_reference_coordinates == nullptr || basis_values == nullptr ||
-       face_id >= m_parent_face_data.m_parent_face_geometries.size() ||
        face_id >= m_parent_face_data.m_parent_node_counts.size() ||
        face_id >= m_parent_face_data.m_parent_basis_coefficients.shape()[0] ) {
     return false;
@@ -1147,8 +1139,7 @@ TRIBOL_HOST_DEVICE inline bool MeshData::Viewer::evaluateParentFaceBasis( IndexT
 
   const int parent_order = m_parent_face_data.m_parent_face_orders[face_id];
   const int number_of_parent_nodes = m_parent_face_data.m_parent_node_counts[face_id];
-  const auto parent_face_geometry =
-      static_cast<InterfaceElementType>( m_parent_face_data.m_parent_face_geometries[face_id] );
+  const InterfaceElementType parent_face_geometry = getElementType();
   if ( parent_order < 1 || parent_order > ParentFaceData::max_parent_face_order || number_of_parent_nodes < 1 ||
        number_of_parent_nodes > ParentFaceData::max_parent_face_nodes ) {
     return false;

@@ -1183,14 +1183,8 @@ class MfemMeshData {
      * dimension.
      */
     struct ParentFaceArrays {
-      /** InterfaceElementType value for each LOR face. */
-      Array1D<int> lor_face_geometries;
-
       /** Polynomial order of each native parent coordinate face. */
       Array1D<int> parent_face_orders;
-
-      /** InterfaceElementType value for each native parent face. */
-      Array1D<int> parent_face_geometries;
 
       /** Number of native parent finite-element nodes on each face. */
       Array1D<int> parent_node_counts;
