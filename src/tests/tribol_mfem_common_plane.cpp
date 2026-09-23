@@ -234,13 +234,13 @@ INSTANTIATE_TEST_SUITE_P( tribol, MfemCommonPlaneTest,
                                            std::make_tuple( 3, tribol::KINEMATIC_CONSTANT ),
                                            std::make_tuple( 4, tribol::KINEMATIC_CONSTANT ) ) );
 
-/** Verify LOR-face provenance and native parent-reference mapping. */
+/** Verify native parent-reference mapping for LOR faces. */
 TEST( MfemCommonPlaneParentFaceData, MapsQuadrilateralLORFacesToQ2ParentFaces )
 {
   // Two unit cubes share a slightly interpenetrating horizontal interface. Q2
   // coordinates and LOR factor two split each native quadrilateral face into
-  // four LOR faces. The test validates the provenance after redecomposition,
-  // including ghost copies whose native parent faces belong to another rank.
+  // four LOR faces. The test validates the mapping after redecomposition,
+  // including LOR faces copied to another rank.
   constexpr int parent_order = 2;
   constexpr int lor_factor = 2;
   constexpr double initial_separation = -0.001;
@@ -282,8 +282,6 @@ TEST( MfemCommonPlaneParentFaceData, MapsQuadrilateralLORFacesToQ2ParentFaces )
   tribol::setMfemLORFactor( coupling_scheme_id, lor_factor );
   tribol::updateMfemParallelDecomposition( 0, true );
 
-  int communicator_size = 1;
-  MPI_Comm_size( MPI_COMM_WORLD, &communicator_size );
   int local_face_count = 0;
 
   for ( const tribol::IndexT mesh_id : { first_mesh_id, second_mesh_id } ) {
@@ -297,9 +295,9 @@ TEST( MfemCommonPlaneParentFaceData, MapsQuadrilateralLORFacesToQ2ParentFaces )
     }
     ASSERT_TRUE( mesh_view.hasParentFaceData() );
 
-    // Run every provenance and map check in the selected execution space. A
-    // zero result means the transferred identifiers, child vertices, mapped
-    // center, and rejection of an exterior child point all satisfy the contract.
+    // Run every mapping check in the selected execution space. A zero result
+    // means the transferred child vertices, mapped center, and rejection of an
+    // exterior child point all satisfy the contract.
     tribol::Array1D<int> face_validation_results( number_of_faces, number_of_faces, mesh_view.getAllocatorId() );
     face_validation_results.fill( 0 );
     tribol::Array1DView<int> face_validation_results_view( face_validation_results );
@@ -307,12 +305,6 @@ TEST( MfemCommonPlaneParentFaceData, MapsQuadrilateralLORFacesToQ2ParentFaces )
       constexpr tribol::RealT comparison_tolerance = 1.e-12;
       const tribol::ParentFaceData& parent_face_data = mesh_view.getParentFaceData();
       int validation_result = 0;
-      validation_result |= parent_face_data.m_parent_face_ids[face_id] < 0 ? 1 : 0;
-      validation_result |= parent_face_data.m_parent_face_owner_ranks[face_id] < 0 ||
-                                   parent_face_data.m_parent_face_owner_ranks[face_id] >= communicator_size
-                               ? 2
-                               : 0;
-      validation_result |= parent_face_data.m_lor_face_ids[face_id] < 0 ? 4 : 0;
       validation_result |= parent_face_data.m_lor_face_geometries[face_id] != tribol::LINEAR_QUAD ? 8 : 0;
       validation_result |= parent_face_data.m_parent_face_orders[face_id] != parent_order ? 16 : 0;
       validation_result |= parent_face_data.m_reference_vertex_counts[face_id] != 4 ? 32 : 0;
@@ -398,7 +390,7 @@ TEST( MfemCommonPlaneParentFaceData, MapsQuadrilateralLORFacesToQ2ParentFaces )
 
     tribol::ArrayT<int, 1, tribol::MemorySpace::Host> host_validation_results( face_validation_results );
     for ( tribol::IndexT face_id = 0; face_id < number_of_faces; ++face_id ) {
-      EXPECT_EQ( host_validation_results[face_id], 0 ) << "provenance validation failed for face " << face_id;
+      EXPECT_EQ( host_validation_results[face_id], 0 ) << "parent-face mapping validation failed for face " << face_id;
     }
   }
 

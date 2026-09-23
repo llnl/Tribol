@@ -338,18 +338,6 @@ class CommonPlaneContactData : public MethodData {
     /** Second Tribol LOR face identifier for each generated row. */
     Array1DView<IndexT> second_face_ids;
 
-    /** First native parent-face identifier for each generated row. */
-    Array1DView<IndexT> first_parent_face_ids;
-
-    /** Second native parent-face identifier for each generated row. */
-    Array1DView<IndexT> second_parent_face_ids;
-
-    /** Owning MPI rank of the first native parent face for each generated row. */
-    Array1DView<int> first_parent_face_owner_ranks;
-
-    /** Owning MPI rank of the second native parent face for each generated row. */
-    Array1DView<int> second_parent_face_owner_ranks;
-
     /** Number of basis values on the first field face for each generated row. */
     Array1DView<int> first_basis_counts;
 
@@ -483,18 +471,6 @@ class CommonPlaneContactData : public MethodData {
 
   /** Second Tribol LOR face identifier for each generated row. */
   Array1D<IndexT> second_face_ids_;
-
-  /** First native parent-face identifier for each generated row. */
-  Array1D<IndexT> first_parent_face_ids_;
-
-  /** Second native parent-face identifier for each generated row. */
-  Array1D<IndexT> second_parent_face_ids_;
-
-  /** Owning MPI rank of the first native parent face for each generated row. */
-  Array1D<int> first_parent_face_owner_ranks_;
-
-  /** Owning MPI rank of the second native parent face for each generated row. */
-  Array1D<int> second_parent_face_owner_ranks_;
 
   /** Number of basis values on the first field face for each generated row. */
   Array1D<int> first_basis_counts_;

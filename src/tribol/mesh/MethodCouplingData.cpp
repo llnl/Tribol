@@ -195,10 +195,6 @@ void CommonPlaneContactData::resize( IndexT number_of_pairs, int spatial_dimensi
   contact_pair_ids_ = Array1D<IndexT>( row_capacity_, row_capacity_, allocator_id );
   first_face_ids_ = Array1D<IndexT>( row_capacity_, row_capacity_, allocator_id );
   second_face_ids_ = Array1D<IndexT>( row_capacity_, row_capacity_, allocator_id );
-  first_parent_face_ids_ = Array1D<IndexT>( row_capacity_, row_capacity_, allocator_id );
-  second_parent_face_ids_ = Array1D<IndexT>( row_capacity_, row_capacity_, allocator_id );
-  first_parent_face_owner_ranks_ = Array1D<int>( row_capacity_, row_capacity_, allocator_id );
-  second_parent_face_owner_ranks_ = Array1D<int>( row_capacity_, row_capacity_, allocator_id );
   first_basis_counts_ = Array1D<int>( row_capacity_, row_capacity_, allocator_id );
   second_basis_counts_ = Array1D<int>( row_capacity_, row_capacity_, allocator_id );
   row_uses_parent_fields_ = Array1D<int>( row_capacity_, row_capacity_, allocator_id );
@@ -226,10 +222,6 @@ void CommonPlaneContactData::resize( IndexT number_of_pairs, int spatial_dimensi
   contact_pair_ids_.fill( -1 );
   first_face_ids_.fill( -1 );
   second_face_ids_.fill( -1 );
-  first_parent_face_ids_.fill( -1 );
-  second_parent_face_ids_.fill( -1 );
-  first_parent_face_owner_ranks_.fill( -1 );
-  second_parent_face_owner_ranks_.fill( -1 );
   first_basis_counts_.fill( 0 );
   second_basis_counts_.fill( 0 );
   row_uses_parent_fields_.fill( 0 );
@@ -264,10 +256,6 @@ CommonPlaneContactData::Viewer CommonPlaneContactData::getView()
            contact_pair_ids_.view(),
            first_face_ids_.view(),
            second_face_ids_.view(),
-           first_parent_face_ids_.view(),
-           second_parent_face_ids_.view(),
-           first_parent_face_owner_ranks_.view(),
-           second_parent_face_owner_ranks_.view(),
            first_basis_counts_.view(),
            second_basis_counts_.view(),
            row_uses_parent_fields_.view(),

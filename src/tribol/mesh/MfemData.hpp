@@ -1115,22 +1115,22 @@ class MfemMeshData {
   int GetLORFactor() const { return lor_factor_; }
 
   /**
-   * @brief Get native parent-face provenance for the first Tribol surface mesh.
+   * @brief Get native parent-face mapping data for the first Tribol surface mesh.
    *
    * The returned views remain valid until UpdateMfemMeshData() rebuilds the
    * redecomp mesh.
    *
-   * @return Parent-face provenance indexed by first-surface element identifier
+   * @return Parent-face mapping data indexed by first-surface element identifier
    */
   ParentFaceData GetMesh1ParentFaceData() const;
 
   /**
-   * @brief Get native parent-face provenance for the second Tribol surface mesh.
+   * @brief Get native parent-face mapping data for the second Tribol surface mesh.
    *
    * The returned views remain valid until UpdateMfemMeshData() rebuilds the
    * redecomp mesh.
    *
-   * @return Parent-face provenance indexed by second-surface element identifier
+   * @return Parent-face mapping data indexed by second-surface element identifier
    */
   ParentFaceData GetMesh2ParentFaceData() const;
 
@@ -1176,22 +1176,13 @@ class MfemMeshData {
    */
   struct UpdateData {
     /**
-     * @brief Owning arrays for native parent-face provenance.
+     * @brief Owning arrays for native parent-face mapping data.
      *
      * Each array is indexed by the corresponding Tribol surface element. The
      * reference-coordinate array uses vertex-major ordering in its second
      * dimension.
      */
     struct ParentFaceArrays {
-      /** Native parent boundary-face identifier on the owning rank. */
-      Array1D<IndexT> parent_face_ids;
-
-      /** MPI rank that owns the native parent boundary face. */
-      Array1D<int> parent_face_owner_ranks;
-
-      /** Source LOR face identifier on the owning rank. */
-      Array1D<IndexT> lor_face_ids;
-
       /** InterfaceElementType value for each LOR face. */
       Array1D<int> lor_face_geometries;
 
@@ -1232,7 +1223,7 @@ class MfemMeshData {
       Array2D<RealT> parent_responses;
 
       /**
-       * @brief Create non-owning views of the provenance arrays.
+       * @brief Create non-owning views of the mapping arrays.
        *
        * @return ParentFaceData containing views into this object
        */
@@ -1297,10 +1288,10 @@ class MfemMeshData {
      */
     Array1D<int> elem_map_2_;
 
-    /** Parent-face provenance for the first Tribol surface mesh. */
+    /** Parent-face mapping data for the first Tribol surface mesh. */
     ParentFaceArrays parent_face_data_1_;
 
-    /** Parent-face provenance for the second Tribol surface mesh. */
+    /** Parent-face mapping data for the second Tribol surface mesh. */
     ParentFaceArrays parent_face_data_2_;
 
     /**
@@ -1333,7 +1324,7 @@ class MfemMeshData {
     void UpdateConnectivity( const std::set<int>& attributes_1, const std::set<int>& attributes_2 );
 
     /**
-     * @brief Build and transfer native parent-face provenance to the redecomp mesh.
+     * @brief Build and transfer native parent-face mapping data to the redecomp mesh.
      *
      * @param submesh Parent-linked contact boundary submesh
      * @param lor_mesh Optional low-order-refined contact mesh
