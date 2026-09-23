@@ -26,7 +26,7 @@ namespace tribol {
 namespace {
 
 /** First component containing a parent reference-coordinate value. */
-constexpr int parent_reference_coordinate_offset{ 5 };
+constexpr int parent_reference_coordinate_offset{ 3 };
 
 /** First component containing a native parent-basis coefficient. */
 constexpr int parent_basis_coefficient_offset{ parent_reference_coordinate_offset +
@@ -63,27 +63,6 @@ int DecodeDegreeOfFreedom( int encoded_degree_of_freedom, RealT& sign )
 {
   sign = encoded_degree_of_freedom >= 0 ? 1.0 : -1.0;
   return encoded_degree_of_freedom >= 0 ? encoded_degree_of_freedom : -1 - encoded_degree_of_freedom;
-}
-
-/**
- * @brief Convert an MFEM surface geometry to Tribol's interface element type.
- *
- * @param geometry MFEM surface geometry
- * @return matching Tribol interface element type
- */
-InterfaceElementType GetInterfaceElementType( mfem::Geometry::Type geometry )
-{
-  switch ( geometry ) {
-    case mfem::Geometry::SEGMENT:
-      return LINEAR_EDGE;
-    case mfem::Geometry::TRIANGLE:
-      return LINEAR_TRIANGLE;
-    case mfem::Geometry::SQUARE:
-      return LINEAR_QUAD;
-    default:
-      SLIC_ERROR_ROOT( "Native parent-face mapping requires segment, triangle, or quadrilateral surface faces." );
-      return LINEAR_EDGE;
-  }
 }
 
 /**
@@ -1223,9 +1202,7 @@ MfemMeshData::UpdateData::UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* 
 ParentFaceData MfemMeshData::UpdateData::ParentFaceArrays::GetView() const
 {
   ParentFaceData parent_face_data;
-  parent_face_data.m_lor_face_geometries = Array1DView<const int>( lor_face_geometries );
   parent_face_data.m_parent_face_orders = Array1DView<const int>( parent_face_orders );
-  parent_face_data.m_parent_face_geometries = Array1DView<const int>( parent_face_geometries );
   parent_face_data.m_parent_node_counts = Array1DView<const int>( parent_node_counts );
   parent_face_data.m_reference_vertex_counts = Array1DView<const int>( reference_vertex_counts );
   parent_face_data.m_parent_reference_vertex_coordinates =
@@ -1313,7 +1290,7 @@ void MfemMeshData::UpdateData::BuildParentFaceData( mfem::ParSubMesh& submesh, m
     const IndexT parent_face_id = submesh.GetParentElementIDMap()[parent_submesh_element_id];
     const mfem::FiniteElement& parent_face_element = *submesh_space.GetFE( parent_submesh_element_id );
     const int parent_face_order = parent_face_element.GetOrder();
-    const InterfaceElementType parent_face_geometry = GetInterfaceElementType( parent_face_element.GetGeomType() );
+    const InterfaceElementType parent_face_geometry = elem_type_;
     const int number_of_parent_nodes = parent_face_element.GetDof();
     const int number_of_reference_vertices = reference_vertices->GetNPoints();
     SLIC_ERROR_ROOT_IF( parent_face_order < 1 || parent_face_order > ParentFaceData::max_parent_face_order,
@@ -1323,11 +1300,9 @@ void MfemMeshData::UpdateData::BuildParentFaceData( mfem::ParSubMesh& submesh, m
     SLIC_ERROR_ROOT_IF( number_of_reference_vertices > ParentFaceData::max_lor_face_vertices,
                         "Parent-face mapping supports at most four vertices per LOR surface face." );
     RealT record[parent_face_mapping_record_size] = { 0.0 };
-    record[0] = static_cast<RealT>( GetInterfaceElementType( lor_face_geometry ) );
-    record[1] = static_cast<RealT>( parent_face_order );
-    record[2] = static_cast<RealT>( number_of_reference_vertices );
-    record[3] = static_cast<RealT>( parent_face_geometry );
-    record[4] = static_cast<RealT>( number_of_parent_nodes );
+    record[0] = static_cast<RealT>( parent_face_order );
+    record[1] = static_cast<RealT>( number_of_reference_vertices );
+    record[2] = static_cast<RealT>( number_of_parent_nodes );
     record[parent_vector_dof_count_offset] = static_cast<RealT>( parent_coordinates.Size() );
 
     for ( int vertex_index = 0; vertex_index < number_of_reference_vertices; ++vertex_index ) {
@@ -1412,9 +1387,7 @@ void MfemMeshData::UpdateData::BuildParentFaceData( mfem::ParSubMesh& submesh, m
 
   auto copy_surface_records = [&]( const Array1D<int>& surface_element_map, ParentFaceArrays& parent_face_arrays ) {
     const IndexT number_of_surface_elements = surface_element_map.size();
-    ArrayT<int, 1, MemorySpace::Host> lor_face_geometries_host( number_of_surface_elements );
     ArrayT<int, 1, MemorySpace::Host> parent_face_orders_host( number_of_surface_elements );
-    ArrayT<int, 1, MemorySpace::Host> parent_face_geometries_host( number_of_surface_elements );
     ArrayT<int, 1, MemorySpace::Host> parent_node_counts_host( number_of_surface_elements );
     ArrayT<int, 1, MemorySpace::Host> reference_vertex_counts_host( number_of_surface_elements );
     ArrayT<RealT, 2, MemorySpace::Host> parent_reference_coordinates_host(
@@ -1454,11 +1427,9 @@ void MfemMeshData::UpdateData::BuildParentFaceData( mfem::ParSubMesh& submesh, m
         return redecomp_records[vector_dof];
       };
 
-      lor_face_geometries_host[surface_element_id] = static_cast<int>( get_record_value( 0 ) );
-      parent_face_orders_host[surface_element_id] = static_cast<int>( get_record_value( 1 ) );
-      reference_vertex_counts_host[surface_element_id] = static_cast<int>( get_record_value( 2 ) );
-      parent_face_geometries_host[surface_element_id] = static_cast<int>( get_record_value( 3 ) );
-      parent_node_counts_host[surface_element_id] = static_cast<int>( get_record_value( 4 ) );
+      parent_face_orders_host[surface_element_id] = static_cast<int>( get_record_value( 0 ) );
+      reference_vertex_counts_host[surface_element_id] = static_cast<int>( get_record_value( 1 ) );
+      parent_node_counts_host[surface_element_id] = static_cast<int>( get_record_value( 2 ) );
       for ( int coordinate_index = 0;
             coordinate_index < ParentFaceData::max_lor_face_vertices * ParentFaceData::max_reference_dimension;
             ++coordinate_index ) {
@@ -1485,9 +1456,7 @@ void MfemMeshData::UpdateData::BuildParentFaceData( mfem::ParSubMesh& submesh, m
       maximum_parent_vector_dof_count = std::max( maximum_parent_vector_dof_count, parent_vector_dof_count );
     }
 
-    parent_face_arrays.lor_face_geometries = Array1D<int>( lor_face_geometries_host, allocator_id_ );
     parent_face_arrays.parent_face_orders = Array1D<int>( parent_face_orders_host, allocator_id_ );
-    parent_face_arrays.parent_face_geometries = Array1D<int>( parent_face_geometries_host, allocator_id_ );
     parent_face_arrays.parent_node_counts = Array1D<int>( parent_node_counts_host, allocator_id_ );
     parent_face_arrays.reference_vertex_counts = Array1D<int>( reference_vertex_counts_host, allocator_id_ );
     parent_face_arrays.parent_reference_vertex_coordinates =
