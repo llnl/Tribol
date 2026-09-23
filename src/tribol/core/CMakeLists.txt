@@ -52,6 +52,7 @@ set(tribol_core_headers
     ../operators/ContactOperators.hpp
     ../search/Proximity.hpp
     ../search/Search.hpp
+    ../timestep/ExplicitPenaltyStability.hpp
     ../timestep/KinematicVote.hpp
     ../Tribol.hpp)
 

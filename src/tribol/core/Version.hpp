@@ -20,9 +20,15 @@ class Version {
 
 struct GeometryVersionTag;
 struct InteractionVersionTag;
+struct IntegratorVersionTag;
+struct MassVersionTag;
+struct PenaltyVersionTag;
 
 using GeometryVersion = Version<GeometryVersionTag>;
 using InteractionVersion = Version<InteractionVersionTag>;
+using IntegratorVersion = Version<IntegratorVersionTag>;
+using MassVersion = Version<MassVersionTag>;
+using PenaltyVersion = Version<PenaltyVersionTag>;
 
 }  // namespace tribol
 

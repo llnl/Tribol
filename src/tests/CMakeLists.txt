@@ -152,6 +152,17 @@ blt_add_test(
   COMMAND tribol_explicit_rows_test)
 
 blt_add_executable(
+  NAME tribol_explicit_stability_test
+  SOURCES components/explicit_stability.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::core
+  FOLDER tribol/components)
+
+blt_add_test(
+  NAME tribol_explicit_stability
+  COMMAND tribol_explicit_stability_test)
+
+blt_add_executable(
   NAME tribol_method_conformance_test
   SOURCES components/method_conformance.cpp
   OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}

@@ -37,6 +37,7 @@
 #include "tribol/method/Validation.hpp"
 #include "tribol/operators/ContactOperators.hpp"
 #include "tribol/search/Search.hpp"
+#include "tribol/timestep/ExplicitPenaltyStability.hpp"
 #include "tribol/timestep/KinematicVote.hpp"
 
 #endif

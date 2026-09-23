@@ -117,6 +117,24 @@ be provided together.
 
 Fields are borrowed for the duration of the call and use the entity/component layout recorded by `FieldView`.
 
+## Explicit Row Operators And Stability
+
+Native parent-trace contact exposes one row representation to every mechanics consumer. `operators::applyB()`,
+`operators::applyBT()`, and `operators::applyContactTangent()` apply the signed normal restriction, its transpose, and
+the exact `B^T D B` tangent without assembling a dense matrix.
+
+`timestep::explicitPenaltyStabilityVote()` consumes the active `row_stiffness` and `row_rate_coefficient` returned by
+`evaluateExplicitPenaltyRows()`. The host supplies component-wise physical inverse mass through
+`DiagonalInverseMassView` and dimensionless stability limits through `IntegratorStabilityLimits`; omitting either
+contract is an error. Zero inverse mass denotes a constrained velocity degree of freedom.
+
+The supported production estimator bounds the absolute row sum of the symmetric mass-scaled operators
+`M^(-1/2) B^T D B M^(-1/2)`. For stiffness bound `k`, rate bound `c`, undamped limit `a`, and decay limit `b`, the vote is
+the positive solution of `(dt sqrt(k) / a)^2 + dt c / b = 1`, multiplied by the requested safety factor. The central
+difference factory uses `a = b = 2`. `estimateMaximumMassScaledEigenvalue()` supplies an allocation-free matrix-free
+power iteration for validation and diagnostics; its estimate is not substituted for the conservative production
+bound.
+
 ## Results
 
 `ContactResultView` contains borrowed views into the contact object:
