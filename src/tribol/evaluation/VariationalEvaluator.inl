@@ -166,11 +166,10 @@ template <typename MethodType, typename Scalar>
     const Scalar stiffness =
         pointwise_penalty_detail::penaltyStiffness<Enforcement>( parameters.enforcement, state, pair );
     for ( int point = 0; point < values.quadrature_points; ++point ) {
-      const Gradient gap =
-          linearization_detail::primal( values.gap[point] ) <= parameters.constraint.activation.gap_tolerance
-              ? values.gap[point]
-              : Gradient{};
-      energy += 0.5 * values.weight[point] * Gradient{ stiffness } * gap * gap;
+      const auto penalty =
+          enforcement::evaluateEffectiveNormalPenalty( values.gap[point], Gradient{}, Gradient{ stiffness }, Gradient{},
+                                                       parameters.constraint.activation.gap_tolerance );
+      energy += values.weight[point] * penalty.potential_density;
     }
   } else {
     for ( int local_node = 0; local_node < values.mortar_nodes; ++local_node ) {
@@ -180,9 +179,10 @@ template <typename MethodType, typename Scalar>
             pointwise_penalty_detail::penaltyStiffness<Enforcement>( parameters.enforcement, state, pair );
         const Scalar gap = output.gap[node];
         const Scalar pressure = output.pressure[node];
-        const Scalar active_gap =
-            linearization_detail::primal( gap ) <= parameters.constraint.activation.gap_tolerance ? gap : Scalar{};
-        const Scalar potential = 0.5 * stiffness * active_gap * active_gap;
+        const Scalar potential =
+            enforcement::evaluateEffectiveNormalPenalty( gap, Scalar{}, stiffness, Scalar{},
+                                                         parameters.constraint.activation.gap_tolerance )
+                .potential_density;
         energy += Gradient{ pressure } * values.weighted_gap[local_node] +
                   Gradient{ potential - pressure * gap } * values.area[local_node];
       } else if constexpr ( std::same_as<Enforcement, enforcement::LagrangeMultiplier> ) {
@@ -252,12 +252,13 @@ EvaluationSummary stageVariationalKinematics( const SurfacePairViewT<Scalar>& su
       policy_evaluator_detail::addDiagnostics( surfaces, pair, sample, effective_gap, output );
       Scalar quadrature_pressure{};
       if constexpr ( std::same_as<Constraint, constraint::QuadraturePoint> ) {
-        quadrature_pressure = stiffness * ( linearization_detail::primal( effective_gap ) <=
-                                                    parameters.constraint.activation.gap_tolerance
-                                                ? effective_gap
-                                                : Scalar{} );
-        summary.energy +=
-            linearization_detail::primal( 0.5 * sample.weight * quadrature_pressure * quadrature_pressure / stiffness );
+        const auto penalty = enforcement::evaluateNormalPenalty( enforcement::NormalPenaltyInputT<Scalar>{
+            .gap = sample.gap,
+            .pressure_stiffness = stiffness,
+            .activation = parameters.constraint.activation,
+        } );
+        quadrature_pressure = penalty.pressure;
+        summary.energy += linearization_detail::primal( sample.weight * penalty.potential_density );
       } else if constexpr ( std::same_as<Enforcement, enforcement::LagrangeMultiplier> ) {
         if ( !output.quadrature_pressure.empty() ) {
           for ( int local_node = 0; local_node < sample.mortar_trial.size; ++local_node ) {
@@ -312,11 +313,10 @@ void finalizeVariationalKinematics( const SurfacePairViewT<Scalar>& surfaces,
       if constexpr ( detail::is_penalty_v<Enforcement> ) {
         const Scalar stiffness = parameters.enforcement.stiffness.value;
         const Scalar gap = output.gap[node];
-        const Scalar active_gap =
-            linearization_detail::primal( gap ) <= parameters.constraint.activation.gap_tolerance ? gap : Scalar{};
-        output.pressure[node] = stiffness * active_gap;
-        summary.energy +=
-            linearization_detail::primal( 0.5 * output.tributary_area[node] * stiffness * active_gap * active_gap );
+        const auto penalty = enforcement::evaluateEffectiveNormalPenalty(
+            gap, Scalar{}, stiffness, Scalar{}, parameters.constraint.activation.gap_tolerance );
+        output.pressure[node] = penalty.pressure;
+        summary.energy += linearization_detail::primal( output.tributary_area[node] * penalty.potential_density );
       } else if constexpr ( std::same_as<Enforcement, enforcement::LagrangeMultiplier> ) {
         output.pressure[node] = state.multiplier[node];
         output.residual.constraint[node] += output.weighted_gap[node];

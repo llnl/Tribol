@@ -2,6 +2,7 @@
 #define TRIBOL_EXECUTION_PENALTYKERNEL_HPP_
 
 #include "tribol/core/ArrayView.hpp"
+#include "tribol/enforcement/PenaltyLaw.hpp"
 #include "tribol/execution/Execution.hpp"
 #include "tribol/integration/InteractionQuadrature.hpp"
 
@@ -33,13 +34,14 @@ struct PenaltyContribution {
   for ( int component = 0; component < 3; ++component ) {
     gap += ( patch.mortar_centroid[component] - patch.nonmortar_centroid[component] ) * patch.normal[component];
   }
-  result.effective_gap = gap - activation.residual_gap;
-  const Real active_gap = result.effective_gap <= activation.gap_tolerance ? result.effective_gap : 0.0;
-  result.pressure = stiffness * active_gap;
+  const auto response = enforcement::evaluateNormalPenalty(
+      enforcement::NormalPenaltyInput{ .gap = gap, .pressure_stiffness = stiffness, .activation = activation } );
+  result.effective_gap = response.effective_gap;
+  result.pressure = response.pressure;
   for ( int component = 0; component < 3; ++component ) {
     result.mortar_force[component] = patch.measure * result.pressure * patch.normal[component];
   }
-  result.energy = 0.5 * patch.measure * stiffness * active_gap * active_gap;
+  result.energy = patch.measure * response.potential_density;
   result.active = true;
   return result;
 }
@@ -58,12 +60,12 @@ template <typename Integration = integration::Polygon<2>>
     for ( int component = 0; component < 3; ++component ) {
       gap += ( point.mortar_position[component] - point.nonmortar_position[component] ) * point.normal[component];
     }
-    const Real active_gap = gap < 0.0 ? gap : 0.0;
-    const Real pressure = stiffness * active_gap;
+    const auto response = enforcement::evaluateNormalPenalty(
+        enforcement::NormalPenaltyInput{ .gap = gap, .pressure_stiffness = stiffness } );
     for ( int component = 0; component < 3; ++component ) {
-      result.mortar_force[component] += point.weight * pressure * point.normal[component];
+      result.mortar_force[component] += point.weight * response.pressure * point.normal[component];
     }
-    result.energy += 0.5 * point.weight * stiffness * active_gap * active_gap;
+    result.energy += point.weight * response.potential_density;
   }
   return result;
 }

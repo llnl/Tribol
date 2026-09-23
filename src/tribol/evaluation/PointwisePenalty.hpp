@@ -3,6 +3,7 @@
 
 #include "tribol/constraint/NormalConstraint.hpp"
 #include "tribol/constraint/PenetrationLimit.hpp"
+#include "tribol/enforcement/PenaltyLaw.hpp"
 #include "tribol/evaluation/State.hpp"
 #include "tribol/geom/ProjectedOverlap.hpp"
 #include "tribol/method/Traits.hpp"
@@ -24,9 +25,7 @@ namespace pointwise_penalty_detail {
 template <typename Scalar>
 TRIBOL_HOST_DEVICE inline Scalar seriesStiffness( Scalar mortar, Scalar nonmortar )
 {
-  const Scalar sum = mortar + nonmortar;
-  return linearization_detail::absolute( linearization_detail::primal( sum ) ) > 1.0e-28 ? mortar * nonmortar / sum
-                                                                                         : Scalar{};
+  return enforcement::seriesPenaltyStiffness( mortar, nonmortar );
 }
 
 template <typename FieldScalar, typename MeshScalar>
@@ -98,14 +97,7 @@ inline Scalar pointwisePenaltyStiffness( const typename Enforcement::Parameters&
 template <typename Enforcement, typename Scalar>
 inline Scalar rateCoefficient( const typename Enforcement::Parameters& parameters, Scalar stiffness )
 {
-  using Rate = typename Enforcement::rate_policy;
-  if constexpr ( std::same_as<Rate, rate::None> ) {
-    return 0.0;
-  } else if constexpr ( std::same_as<Rate, rate::Constant> ) {
-    return 0.5 * parameters.rate.value * ( parameters.rate.mortar_scale + parameters.rate.nonmortar_scale );
-  } else {
-    return 0.5 * parameters.rate.ratio * ( parameters.rate.mortar_scale + parameters.rate.nonmortar_scale ) * stiffness;
-  }
+  return enforcement::penaltyRateCoefficient<Enforcement>( parameters, stiffness );
 }
 
 template <typename LeftScalar, typename RightScalar>
@@ -225,6 +217,17 @@ inline EvaluationSummary addPointwisePenaltyResidual( const SurfacePairViewT<Sca
     }
     std::array<Scalar, 3> traction{};
     Scalar potential_density{};
+    std::array<Scalar, 3> relative_velocity{};
+    Scalar normal_rate{};
+
+    if constexpr ( !std::same_as<Rate, rate::None> || std::same_as<Response, response::ViscousTangential> ) {
+      const auto mortar_velocity = pointwise_penalty_detail::interpolateField(
+          surfaces.mortar, pair.mortar_element, state.mortar_velocity, sample.mortar_trial );
+      const auto nonmortar_velocity = pointwise_penalty_detail::interpolateField(
+          surfaces.nonmortar, pair.nonmortar_element, state.nonmortar_velocity, sample.nonmortar_trial );
+      relative_velocity = pointwise_penalty_detail::difference( mortar_velocity, nonmortar_velocity );
+      normal_rate = pointwise_penalty_detail::dot( relative_velocity, geometry.normal, surfaces.mortar.dimension );
+    }
 
     if constexpr ( std::same_as<Response, response::TiedNormal> || std::same_as<Response, response::TiedFull> ) {
       const auto mortar_coordinates = pointwise_penalty_detail::interpolateField(
@@ -252,35 +255,24 @@ inline EvaluationSummary addPointwisePenaltyResidual( const SurfacePairViewT<Sca
         }
       }
     } else {
-      const Scalar active_gap =
-          linearization_detail::primal( effective_gap ) <= parameters.constraint.activation.gap_tolerance
-              ? effective_gap
-              : Scalar{};
-      potential_density = 0.5 * stiffness * active_gap * active_gap;
+      const auto penalty = enforcement::evaluateNormalPenalty( enforcement::NormalPenaltyInputT<Scalar>{
+          .gap = geometry.gap,
+          .normal_rate = normal_rate,
+          .pressure_stiffness = stiffness,
+          .rate_coefficient =
+              pointwise_penalty_detail::rateCoefficient<Enforcement>( parameters.enforcement, stiffness ),
+          .activation = parameters.constraint.activation,
+      } );
+      potential_density = penalty.potential_density;
       for ( int component = 0; component < surfaces.mortar.dimension; ++component ) {
-        traction[component] = stiffness * active_gap * geometry.normal[component];
+        traction[component] = penalty.pressure * geometry.normal[component];
       }
     }
 
-    if constexpr ( !std::same_as<Rate, rate::None> || std::same_as<Response, response::ViscousTangential> ) {
-      const auto mortar_velocity = pointwise_penalty_detail::interpolateField(
-          surfaces.mortar, pair.mortar_element, state.mortar_velocity, sample.mortar_trial );
-      const auto nonmortar_velocity = pointwise_penalty_detail::interpolateField(
-          surfaces.nonmortar, pair.nonmortar_element, state.nonmortar_velocity, sample.nonmortar_trial );
-      const auto relative_velocity = pointwise_penalty_detail::difference( mortar_velocity, nonmortar_velocity );
-      const Scalar normal_rate =
-          pointwise_penalty_detail::dot( relative_velocity, geometry.normal, surfaces.mortar.dimension );
-      const Scalar active_rate = linearization_detail::primal( normal_rate ) < 0.0 ? normal_rate : Scalar{};
-      const Scalar rate_traction =
-          pointwise_penalty_detail::rateCoefficient<Enforcement>( parameters.enforcement, stiffness ) * active_rate;
+    if constexpr ( std::same_as<Response, response::ViscousTangential> ) {
       for ( int component = 0; component < surfaces.mortar.dimension; ++component ) {
-        traction[component] += rate_traction * geometry.normal[component];
-      }
-      if constexpr ( std::same_as<Response, response::ViscousTangential> ) {
-        for ( int component = 0; component < surfaces.mortar.dimension; ++component ) {
-          traction[component] +=
-              parameters.response.damping * ( relative_velocity[component] - normal_rate * geometry.normal[component] );
-        }
+        traction[component] +=
+            parameters.response.damping * ( relative_velocity[component] - normal_rate * geometry.normal[component] );
       }
     }
 

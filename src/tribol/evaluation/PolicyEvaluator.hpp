@@ -262,8 +262,9 @@ EvaluationSummary addPolicyResidual( const SurfacePairViewT<Scalar>& surfaces,
                 ? nodal_weighted_gap[local_node] / nodal_area[local_node]
                 : Scalar{};
         nodal_pressure[local_node] =
-            stiffness *
-            ( linearization_detail::primal( gap ) <= parameters.constraint.activation.gap_tolerance ? gap : Scalar{} );
+            enforcement::evaluateEffectiveNormalPenalty( gap, Scalar{}, stiffness, Scalar{},
+                                                         parameters.constraint.activation.gap_tolerance )
+                .pressure;
       }
     }
 
@@ -278,14 +279,19 @@ EvaluationSummary addPolicyResidual( const SurfacePairViewT<Scalar>& surfaces,
           pressure = policy_evaluator_detail::nodalPressure<Constraint>( surfaces.mortar, pair.mortar_element, sample,
                                                                          nodal_pressure );
         } else {
-          pressure = stiffness *
-                     ( linearization_detail::primal( effective_gap ) <= parameters.constraint.activation.gap_tolerance
-                           ? effective_gap
-                           : Scalar{} );
+          pressure = enforcement::evaluateEffectiveNormalPenalty( effective_gap, Scalar{}, stiffness, Scalar{},
+                                                                  parameters.constraint.activation.gap_tolerance )
+                         .pressure;
         }
         const Real primal_stiffness = linearization_detail::primal( stiffness );
         if ( primal_stiffness > 0.0 ) {
-          summary.energy += linearization_detail::primal( 0.5 * sample.weight * pressure * pressure / stiffness );
+          if constexpr ( detail::is_nodal_constraint_v<Constraint> ) {
+            summary.energy += linearization_detail::primal( 0.5 * sample.weight * pressure * pressure / stiffness );
+          } else {
+            const auto penalty = enforcement::evaluateEffectiveNormalPenalty(
+                effective_gap, Scalar{}, stiffness, Scalar{}, parameters.constraint.activation.gap_tolerance );
+            summary.energy += linearization_detail::primal( sample.weight * penalty.potential_density );
+          }
           summary.timestep_vote = std::min( summary.timestep_vote, 1.0 / std::sqrt( primal_stiffness ) );
         }
       } else if constexpr ( std::same_as<Enforcement, enforcement::LagrangeMultiplier> ) {

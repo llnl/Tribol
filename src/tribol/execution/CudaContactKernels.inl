@@ -317,15 +317,14 @@ TRIBOL_HOST_DEVICE void evaluateDerivative( Index interaction,
                              linearization_detail::primal( effective_gap ) ) ) {
     return;
   }
-  const Tangent active_gap =
-      linearization_detail::primal( effective_gap ) <= parameters.constraint.activation.gap_tolerance ? effective_gap
-                                                                                                      : Tangent{};
   const Real stiffness = ::tribol::pointwise_penalty_detail::seriesStiffness(
       parameters.enforcement.stiffness.mortar_scale * parameters.enforcement.stiffness.value,
       parameters.enforcement.stiffness.nonmortar_scale * parameters.enforcement.stiffness.value );
+  const auto penalty = enforcement::evaluateNormalPenalty( enforcement::NormalPenaltyInputT<Tangent>{
+      .gap = gap, .pressure_stiffness = Tangent{ stiffness }, .activation = parameters.constraint.activation } );
   std::array<Tangent, 3> force{};
   for ( int component = 0; component < surfaces.mortar.dimension; ++component ) {
-    force[component] = patch.measure * Tangent{ stiffness } * active_gap * patch.normal[component];
+    force[component] = patch.measure * penalty.pressure * patch.normal[component];
   }
   const auto sample = constraint::stageNormalConstraint<constraint::Pointwise>(
       surfaces, pair, patch.mortar_centroid, patch.nonmortar_centroid, patch.normal, patch.measure );

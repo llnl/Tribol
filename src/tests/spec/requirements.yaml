@@ -19,6 +19,7 @@
     {"id": "ENF-002", "scope": "component", "text": "No-rate, constant-rate, and percentage-rate penalty laws are supported."},
     {"id": "ENF-003", "scope": "component", "text": "Nodal Lagrange multiplier enforcement produces primal and constraint residuals."},
     {"id": "ENF-004", "scope": "component", "text": "Externally staged nodal pressure produces a consistent residual, potential, and coordinate linearization."},
+    {"id": "ENF-005", "scope": "component", "text": "One host/device normal-penalty law defines gap and rate activation, pressure, energy, and exact pressure derivatives for every row consumer."},
     {"id": "RESP-001", "scope": "component", "text": "Frictionless and viscous tangential response are supported."},
     {"id": "RESP-002", "scope": "component", "text": "Tied-normal and tied-full response use reference coordinates."},
     {"id": "FORM-001", "scope": "component", "text": "Pointwise traction, weighted weak form, variational, and diagnostic-weight formulations share reusable stages."},

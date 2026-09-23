@@ -130,6 +130,17 @@ blt_add_test(
   COMMAND tribol_overlap_cells_test)
 
 blt_add_executable(
+  NAME tribol_penalty_law_test
+  SOURCES components/penalty_law.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::core
+  FOLDER tribol/components)
+
+blt_add_test(
+  NAME tribol_penalty_law
+  COMMAND tribol_penalty_law_test)
+
+blt_add_executable(
   NAME tribol_method_conformance_test
   SOURCES components/method_conformance.cpp
   OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}

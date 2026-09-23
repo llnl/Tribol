@@ -25,6 +25,7 @@ set(tribol_core_headers
     ../evaluation/PointwisePenalty.hpp
     ../evaluation/State.hpp
     ../evaluation/VariationalEvaluator.inl
+    ../enforcement/PenaltyLaw.hpp
     ../execution/Execution.hpp
     ../execution/ContactDevice.hpp
     ../execution/ContactCuda.hpp

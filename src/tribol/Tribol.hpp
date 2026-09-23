@@ -18,6 +18,7 @@
 #include "tribol/diagnostics/ContactOutput.hpp"
 #include "tribol/diagnostics/ScheduledOutput.hpp"
 #include "tribol/evaluation/State.hpp"
+#include "tribol/enforcement/PenaltyLaw.hpp"
 #include "tribol/execution/ContactDevice.hpp"
 #include "tribol/execution/ContactOpenMP.hpp"
 #include "tribol/evaluation/PolicyEvaluator.hpp"
