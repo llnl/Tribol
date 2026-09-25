@@ -271,6 +271,266 @@ class MethodData {
 };
 
 //------------------------------------------------------------------------------
+/**
+ * @brief Evaluation status for one CommonPlane overlap-cell row batch.
+ */
+enum class CommonPlanePairEvaluationStatus : int
+{
+  UNINITIALIZED,           ///< The overlap cell has not been evaluated.
+  VALID,                   ///< Every requested row was generated successfully.
+  INVALID_PARENT_DATA,     ///< Native parent data are missing or inconsistent between the two faces.
+  INVALID_PARENT_MAPPING,  ///< At least one quadrature point could not be mapped to a parent face.
+  DEGENERATE_OVERLAP,      ///< The accepted overlap cell has no positive integration measure.
+  INCONSISTENT_NORMAL      ///< The CommonPlane normal is invalid or inconsistently oriented.
+};
+
+/**
+ * @brief Device-resident CommonPlane quadrature rows shared by explicit operators.
+ *
+ * Each active CommonPlane face pair owns a fixed-capacity range of rows. The
+ * pair-local row index gives a deterministic attempt-local identity without a
+ * host prefix sum. Only the first entry in each range is used for a one-point
+ * rule. Multipoint rules use one range entry per segment point or per
+ * triangle-fan point in a three-dimensional overlap polygon.
+ */
+class CommonPlaneContactData : public MethodData {
+ public:
+  /** Maximum number of overlap polygon vertices supported by CommonPlane geometry. */
+  static constexpr int maximum_overlap_vertices{ 10 };
+
+  /** Maximum number of quadrature points in a supported triangle rule. */
+  static constexpr int maximum_triangle_quadrature_points{ 25 };
+
+  /** Maximum number of rows reserved for one accepted overlap cell. */
+  static constexpr int maximum_rows_per_pair{ maximum_overlap_vertices * maximum_triangle_quadrature_points };
+
+  /**
+   * @brief Non-owning device views of a CommonPlane quadrature row batch.
+   */
+  struct Viewer {
+    /** Number of active CommonPlane face pairs represented by this batch. */
+    IndexT number_of_pairs{ 0 };
+
+    /** Number of allocated row slots in this batch. */
+    IndexT row_capacity{ 0 };
+
+    /** Spatial dimension of the coupling scheme. */
+    int spatial_dimension{ 0 };
+
+    /** Number of generated rows for each face pair. */
+    Array1DView<int> pair_row_counts;
+
+    /** CommonPlanePairEvaluationStatus value for each face pair. */
+    Array1DView<int> pair_evaluation_statuses;
+
+    /** One for a generated row and zero for an unused row slot. */
+    Array1DView<int> row_is_valid;
+
+    /** One when the row satisfies the normal contact activation criterion. */
+    Array1DView<int> row_is_active;
+
+    /** Stable active-pair identifier for each generated row. */
+    Array1DView<IndexT> contact_pair_ids;
+
+    /** First Tribol LOR face identifier for each generated row. */
+    Array1DView<IndexT> first_face_ids;
+
+    /** Second Tribol LOR face identifier for each generated row. */
+    Array1DView<IndexT> second_face_ids;
+
+    /** Number of basis values on the first field face for each generated row. */
+    Array1DView<int> first_basis_counts;
+
+    /** Number of basis values on the second field face for each generated row. */
+    Array1DView<int> second_basis_counts;
+
+    /** One when rows scatter directly to native parent-face response storage. */
+    Array1DView<int> row_uses_parent_fields;
+
+    /** Physical CommonPlane integration-point coordinates. */
+    Array2DView<RealT> integration_points;
+
+    /** First native parent-face reference coordinates. */
+    Array2DView<RealT> first_parent_reference_coordinates;
+
+    /** Second native parent-face reference coordinates. */
+    Array2DView<RealT> second_parent_reference_coordinates;
+
+    /** First face position evaluated at each integration point. */
+    Array2DView<RealT> first_positions;
+
+    /** Second face position evaluated at each integration point. */
+    Array2DView<RealT> second_positions;
+
+    /** First face velocity evaluated at each integration point. */
+    Array2DView<RealT> first_velocities;
+
+    /** Second face velocity evaluated at each integration point. */
+    Array2DView<RealT> second_velocities;
+
+    /** Consistently oriented CommonPlane unit normal for each row. */
+    Array2DView<RealT> normals;
+
+    /** First face basis values evaluated at each integration point. */
+    Array2DView<RealT> first_basis_values;
+
+    /** Second face basis values evaluated at each integration point. */
+    Array2DView<RealT> second_basis_values;
+
+    /** Physical overlap measure multiplied by the reference quadrature weight. */
+    Array1DView<RealT> integration_weights;
+
+    /** Signed normal gap evaluated from native face positions. */
+    Array1DView<RealT> gaps;
+
+    /** Signed normal relative velocity evaluated from native face velocities. */
+    Array1DView<RealT> normal_velocity_gaps;
+
+    /** Kinematic penalty stiffness per unit overlap measure. */
+    Array1DView<RealT> penalty_stiffnesses;
+
+    /** Normal rate-penalty coefficient per unit overlap measure. */
+    Array1DView<RealT> rate_penalty_coefficients;
+
+    /** Tangential viscous coefficient per unit overlap measure. */
+    Array1DView<RealT> tangential_viscous_coefficients;
+
+    /**
+     * @brief Return the first row slot assigned to an active face pair.
+     *
+     * @param pair_id Active face-pair identifier
+     * @return First row slot reserved for the face pair
+     */
+    TRIBOL_HOST_DEVICE IndexT pairRowOffset( IndexT pair_id ) const { return pair_id * maximum_rows_per_pair; }
+  };
+
+  /**
+   * @brief Allocate and clear storage for one CommonPlane update.
+   *
+   * @param number_of_pairs Number of active CommonPlane face pairs
+   * @param spatial_dimension Coupling-scheme spatial dimension
+   * @param allocator_id Umpire allocator identifier used by execution kernels
+   */
+  void resize( IndexT number_of_pairs, int spatial_dimension, int allocator_id );
+
+  /**
+   * @brief Return writable non-owning views of every row field.
+   *
+   * @return Device-copyable row-batch view
+   */
+  Viewer getView();
+
+  /**
+   * @brief Return read-only access to per-pair evaluation statuses.
+   *
+   * @return Evaluation-status array
+   */
+  const Array1D<int>& getPairEvaluationStatuses() const { return pair_evaluation_statuses_; }
+
+  /**
+   * @brief Return read-only access to generated row counts.
+   *
+   * @return Per-pair generated-row counts
+   */
+  const Array1D<int>& getPairRowCounts() const { return pair_row_counts_; }
+
+  /**
+   * @brief Return the allocated number of row slots.
+   *
+   * @return Number of allocated row slots
+   */
+  IndexT getRowCapacity() const { return row_capacity_; }
+
+ private:
+  /** Number of active CommonPlane face pairs represented by this batch. */
+  IndexT number_of_pairs_{ 0 };
+
+  /** Number of allocated row slots in this batch. */
+  IndexT row_capacity_{ 0 };
+
+  /** Spatial dimension of the coupling scheme. */
+  int spatial_dimension_{ 0 };
+
+  /** Number of generated rows for each face pair. */
+  Array1D<int> pair_row_counts_;
+
+  /** CommonPlanePairEvaluationStatus value for each face pair. */
+  Array1D<int> pair_evaluation_statuses_;
+
+  /** One for generated rows and zero for unused row slots. */
+  Array1D<int> row_is_valid_;
+
+  /** One for rows that satisfy the normal contact activation criterion. */
+  Array1D<int> row_is_active_;
+
+  /** Stable active-pair identifier for each generated row. */
+  Array1D<IndexT> contact_pair_ids_;
+
+  /** First Tribol LOR face identifier for each generated row. */
+  Array1D<IndexT> first_face_ids_;
+
+  /** Second Tribol LOR face identifier for each generated row. */
+  Array1D<IndexT> second_face_ids_;
+
+  /** Number of basis values on the first field face for each generated row. */
+  Array1D<int> first_basis_counts_;
+
+  /** Number of basis values on the second field face for each generated row. */
+  Array1D<int> second_basis_counts_;
+
+  /** One when rows scatter directly to native parent-face response storage. */
+  Array1D<int> row_uses_parent_fields_;
+
+  /** Physical CommonPlane integration-point coordinates. */
+  Array2D<RealT> integration_points_;
+
+  /** First native parent-face reference coordinates. */
+  Array2D<RealT> first_parent_reference_coordinates_;
+
+  /** Second native parent-face reference coordinates. */
+  Array2D<RealT> second_parent_reference_coordinates_;
+
+  /** First face position evaluated at each integration point. */
+  Array2D<RealT> first_positions_;
+
+  /** Second face position evaluated at each integration point. */
+  Array2D<RealT> second_positions_;
+
+  /** First face velocity evaluated at each integration point. */
+  Array2D<RealT> first_velocities_;
+
+  /** Second face velocity evaluated at each integration point. */
+  Array2D<RealT> second_velocities_;
+
+  /** Consistently oriented CommonPlane unit normal for each row. */
+  Array2D<RealT> normals_;
+
+  /** First face basis values evaluated at each integration point. */
+  Array2D<RealT> first_basis_values_;
+
+  /** Second face basis values evaluated at each integration point. */
+  Array2D<RealT> second_basis_values_;
+
+  /** Physical overlap measure multiplied by the reference quadrature weight. */
+  Array1D<RealT> integration_weights_;
+
+  /** Signed normal gap evaluated from native face positions. */
+  Array1D<RealT> gaps_;
+
+  /** Signed normal relative velocity evaluated from native face velocities. */
+  Array1D<RealT> normal_velocity_gaps_;
+
+  /** Kinematic penalty stiffness per unit overlap measure. */
+  Array1D<RealT> penalty_stiffnesses_;
+
+  /** Normal rate-penalty coefficient per unit overlap measure. */
+  Array1D<RealT> rate_penalty_coefficients_;
+
+  /** Tangential viscous coefficient per unit overlap measure. */
+  Array1D<RealT> tangential_viscous_coefficients_;
+};
+
+//------------------------------------------------------------------------------
 class MortarData : public MethodData {
  public:
   /*!

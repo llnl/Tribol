@@ -18,6 +18,73 @@
 
 using RealT = tribol::RealT;
 
+namespace {
+
+/** Return the factorial of a nonnegative integer as a Tribol scalar. */
+RealT Factorial( int value )
+{
+  RealT result = 1.;
+  for ( int factor = 2; factor <= value; ++factor ) {
+    result *= factor;
+  }
+  return result;
+}
+
+/** Return the exact x^p y^q moment on the area-one-half unit right triangle. */
+RealT ReferenceTriangleMoment( int first_exponent, int second_exponent )
+{
+  return Factorial( first_exponent ) * Factorial( second_exponent ) / Factorial( first_exponent + second_exponent + 2 );
+}
+
+/** Return the exact moment normalized to the unit-sum triangle-weight convention. */
+RealT NormalizedReferenceTriangleMoment( int first_exponent, int second_exponent )
+{
+  return 2. * ReferenceTriangleMoment( first_exponent, second_exponent );
+}
+
+/**
+ * @brief Evaluate one polynomial moment with either CommonPlane triangle-rule family.
+ *
+ * @param use_legacy_rule Whether to use the historical rule instead of the symmetric rule
+ * @param order Requested quadrature order
+ * @param first_exponent Exponent of the first reference coordinate
+ * @param second_exponent Exponent of the second reference coordinate
+ * @return Numerically integrated, unit-sum-normalized moment
+ */
+RealT EvaluateTriangleRuleMoment( bool use_legacy_rule, int order, int first_exponent, int second_exponent )
+{
+  RealT quadrature_weights[tribol::max_symmetric_triangle_qpts] = { 0. };
+  RealT reference_coordinates[2 * tribol::max_symmetric_triangle_qpts] = { 0. };
+  const int number_of_quadrature_points =
+      use_legacy_rule ? tribol::GetLegacyTriangleRule( order, quadrature_weights, reference_coordinates )
+                      : tribol::GetCommonPlaneTriangleRule( order, quadrature_weights, reference_coordinates );
+
+  RealT value = 0.;
+  for ( int quadrature_point = 0; quadrature_point < number_of_quadrature_points; ++quadrature_point ) {
+    value += quadrature_weights[quadrature_point] *
+             std::pow( reference_coordinates[2 * quadrature_point], first_exponent ) *
+             std::pow( reference_coordinates[2 * quadrature_point + 1], second_exponent );
+  }
+  return value;
+}
+
+/** Evaluate one monomial moment with a CommonPlane segment quadrature rule. */
+RealT EvaluateSegmentRuleMoment( int order, int exponent )
+{
+  RealT quadrature_weights[tribol::max_segment_gauss_legendre_qpts] = { 0. };
+  RealT reference_coordinates[tribol::max_segment_gauss_legendre_qpts] = { 0. };
+  const int number_of_quadrature_points =
+      tribol::GetCommonPlaneSegmentRule( order, quadrature_weights, reference_coordinates );
+
+  RealT value = 0.;
+  for ( int quadrature_point = 0; quadrature_point < number_of_quadrature_points; ++quadrature_point ) {
+    value += quadrature_weights[quadrature_point] * std::pow( reference_coordinates[quadrature_point], exponent );
+  }
+  return value;
+}
+
+}  // namespace
+
 /*!
  * Test fixture class with some setup necessary to use the
  * triangular decomposition of a quadrilateral with integration
@@ -240,6 +307,86 @@ TEST_F( IsoIntegTest, nonaffine )
   bool convrg = integrate( 1.e-5 );
 
   EXPECT_EQ( convrg, true );
+}
+
+/** Verify low-order compatibility between the legacy and symmetric triangle rules. */
+TEST( TriangleRuleTest, legacy_and_symmetric_match_on_shared_orders )
+{
+  // Orders 2 and 4 are supported by both rule implementations and should integrate the
+  // same low-order reference-triangle moments.
+  for ( int order : { 2, 4 } ) {
+    EXPECT_NEAR( EvaluateTriangleRuleMoment( true, order, 0, 0 ), EvaluateTriangleRuleMoment( false, order, 0, 0 ),
+                 2.e-10 );
+    EXPECT_NEAR( EvaluateTriangleRuleMoment( true, order, 2, 0 ), EvaluateTriangleRuleMoment( false, order, 2, 0 ),
+                 2.e-10 );
+    EXPECT_NEAR( EvaluateTriangleRuleMoment( true, order, 1, 1 ), EvaluateTriangleRuleMoment( false, order, 1, 1 ),
+                 2.e-10 );
+  }
+}
+
+/** Verify polynomial exactness for every supported CommonPlane segment rule. */
+TEST( SegmentRuleTest, integrates_polynomials_through_each_supported_order )
+{
+  // An n-point Gauss-Legendre rule integrates every polynomial through degree
+  // 2n-1 exactly. Exercising each exposed order also validates its point count.
+  constexpr RealT integration_tolerance = 2.e-14;
+  for ( int order = 2; order <= 10; ++order ) {
+    for ( int exponent = 0; exponent <= 2 * order - 1; ++exponent ) {
+      const RealT exact_moment = 1. / static_cast<RealT>( exponent + 1 );
+      EXPECT_NEAR( EvaluateSegmentRuleMoment( order, exponent ), exact_moment, integration_tolerance )
+          << "quadrature order " << order << ", polynomial exponent " << exponent;
+    }
+  }
+}
+
+/** Verify polynomial exactness for every supported symmetric triangle rule. */
+TEST( TriangleRuleTest, integrates_polynomials_through_each_supported_order )
+{
+  // The symmetric order-p rule must reproduce every reference-triangle monomial
+  // whose total degree does not exceed p. This validates every table from 2–10.
+  constexpr RealT integration_tolerance = 5.e-14;
+  for ( int order = 2; order <= 10; ++order ) {
+    for ( int first_exponent = 0; first_exponent <= order; ++first_exponent ) {
+      for ( int second_exponent = 0; second_exponent <= order - first_exponent; ++second_exponent ) {
+        const RealT exact_moment = NormalizedReferenceTriangleMoment( first_exponent, second_exponent );
+        EXPECT_NEAR( EvaluateTriangleRuleMoment( false, order, first_exponent, second_exponent ), exact_moment,
+                     integration_tolerance )
+            << "quadrature order " << order << ", polynomial exponents " << first_exponent << " and "
+            << second_exponent;
+      }
+    }
+  }
+}
+
+/** Verify polygon-fan integration with the highest supported triangle rule. */
+TEST( TriangleRuleTest, gauss_poly_int_tri_supports_order_10 )
+{
+  // CommonPlane triangle-decomposition integration supports the order-10 symmetric rule
+  // on triangular overlap facets in 3D.
+  constexpr int spatial_dimension = 3;
+  constexpr int number_of_nodes = 3;
+  RealT coordinates[spatial_dimension * number_of_nodes] = { 0., 0., 0., 1., 0., 0., 0., 1., 0. };
+
+  tribol::SurfaceContactElem contact_element( spatial_dimension, coordinates, coordinates, coordinates, number_of_nodes,
+                                              number_of_nodes, nullptr, nullptr, 0, 0 );
+  tribol::IntegPts integration_points;
+  tribol::GaussPolyIntTri( contact_element, integration_points, 10 );
+
+  RealT area = 0.;
+  RealT seventh_third_moment = 0.;
+  for ( int integration_point = 0; integration_point < integration_points.numIPs; ++integration_point ) {
+    const RealT x_coordinate = integration_points.xy[spatial_dimension * integration_point];
+    const RealT y_coordinate = integration_points.xy[spatial_dimension * integration_point + 1];
+    area += integration_points.wts[integration_point];
+    seventh_third_moment +=
+        integration_points.wts[integration_point] * std::pow( x_coordinate, 7 ) * std::pow( y_coordinate, 3 );
+  }
+
+  EXPECT_EQ( integration_points.numIPs, 75 );
+  EXPECT_NEAR( area, 0.5, 1.e-14 );
+  // Integral of x^7 y^3 over the physical unit right triangle.
+  EXPECT_NEAR( seventh_third_moment, ReferenceTriangleMoment( 7, 3 ), 1.e-14 );
+  EXPECT_NEAR( EvaluateTriangleRuleMoment( false, 10, 7, 3 ), NormalizedReferenceTriangleMoment( 7, 3 ), 1.e-14 );
 }
 
 int main( int argc, char* argv[] )

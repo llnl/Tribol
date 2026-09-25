@@ -181,6 +181,102 @@ void MethodData::storeElemBlockJ( ArrayT<int>&& blockJElemIds, const StackArray<
   }
 }
 
+//------------------------------------------------------------------------------
+void CommonPlaneContactData::resize( IndexT number_of_pairs, int spatial_dimension, int allocator_id )
+{
+  number_of_pairs_ = number_of_pairs;
+  spatial_dimension_ = spatial_dimension;
+  row_capacity_ = number_of_pairs * maximum_rows_per_pair;
+
+  pair_row_counts_ = Array1D<int>( number_of_pairs_, number_of_pairs_, allocator_id );
+  pair_evaluation_statuses_ = Array1D<int>( number_of_pairs_, number_of_pairs_, allocator_id );
+  row_is_valid_ = Array1D<int>( row_capacity_, row_capacity_, allocator_id );
+  row_is_active_ = Array1D<int>( row_capacity_, row_capacity_, allocator_id );
+  contact_pair_ids_ = Array1D<IndexT>( row_capacity_, row_capacity_, allocator_id );
+  first_face_ids_ = Array1D<IndexT>( row_capacity_, row_capacity_, allocator_id );
+  second_face_ids_ = Array1D<IndexT>( row_capacity_, row_capacity_, allocator_id );
+  first_basis_counts_ = Array1D<int>( row_capacity_, row_capacity_, allocator_id );
+  second_basis_counts_ = Array1D<int>( row_capacity_, row_capacity_, allocator_id );
+  row_uses_parent_fields_ = Array1D<int>( row_capacity_, row_capacity_, allocator_id );
+  integration_points_ = Array2D<RealT>( { row_capacity_, 3 }, allocator_id );
+  first_parent_reference_coordinates_ = Array2D<RealT>( { row_capacity_, 2 }, allocator_id );
+  second_parent_reference_coordinates_ = Array2D<RealT>( { row_capacity_, 2 }, allocator_id );
+  first_positions_ = Array2D<RealT>( { row_capacity_, 3 }, allocator_id );
+  second_positions_ = Array2D<RealT>( { row_capacity_, 3 }, allocator_id );
+  first_velocities_ = Array2D<RealT>( { row_capacity_, 3 }, allocator_id );
+  second_velocities_ = Array2D<RealT>( { row_capacity_, 3 }, allocator_id );
+  normals_ = Array2D<RealT>( { row_capacity_, 3 }, allocator_id );
+  first_basis_values_ = Array2D<RealT>( { row_capacity_, ParentFaceData::max_parent_face_nodes }, allocator_id );
+  second_basis_values_ = Array2D<RealT>( { row_capacity_, ParentFaceData::max_parent_face_nodes }, allocator_id );
+  integration_weights_ = Array1D<RealT>( row_capacity_, row_capacity_, allocator_id );
+  gaps_ = Array1D<RealT>( row_capacity_, row_capacity_, allocator_id );
+  normal_velocity_gaps_ = Array1D<RealT>( row_capacity_, row_capacity_, allocator_id );
+  penalty_stiffnesses_ = Array1D<RealT>( row_capacity_, row_capacity_, allocator_id );
+  rate_penalty_coefficients_ = Array1D<RealT>( row_capacity_, row_capacity_, allocator_id );
+  tangential_viscous_coefficients_ = Array1D<RealT>( row_capacity_, row_capacity_, allocator_id );
+
+  pair_row_counts_.fill( 0 );
+  pair_evaluation_statuses_.fill( static_cast<int>( CommonPlanePairEvaluationStatus::UNINITIALIZED ) );
+  row_is_valid_.fill( 0 );
+  row_is_active_.fill( 0 );
+  contact_pair_ids_.fill( -1 );
+  first_face_ids_.fill( -1 );
+  second_face_ids_.fill( -1 );
+  first_basis_counts_.fill( 0 );
+  second_basis_counts_.fill( 0 );
+  row_uses_parent_fields_.fill( 0 );
+  integration_points_.fill( 0.0 );
+  first_parent_reference_coordinates_.fill( 0.0 );
+  second_parent_reference_coordinates_.fill( 0.0 );
+  first_positions_.fill( 0.0 );
+  second_positions_.fill( 0.0 );
+  first_velocities_.fill( 0.0 );
+  second_velocities_.fill( 0.0 );
+  normals_.fill( 0.0 );
+  first_basis_values_.fill( 0.0 );
+  second_basis_values_.fill( 0.0 );
+  integration_weights_.fill( 0.0 );
+  gaps_.fill( 0.0 );
+  normal_velocity_gaps_.fill( 0.0 );
+  penalty_stiffnesses_.fill( 0.0 );
+  rate_penalty_coefficients_.fill( 0.0 );
+  tangential_viscous_coefficients_.fill( 0.0 );
+}
+
+//------------------------------------------------------------------------------
+CommonPlaneContactData::Viewer CommonPlaneContactData::getView()
+{
+  return { number_of_pairs_,
+           row_capacity_,
+           spatial_dimension_,
+           pair_row_counts_.view(),
+           pair_evaluation_statuses_.view(),
+           row_is_valid_.view(),
+           row_is_active_.view(),
+           contact_pair_ids_.view(),
+           first_face_ids_.view(),
+           second_face_ids_.view(),
+           first_basis_counts_.view(),
+           second_basis_counts_.view(),
+           row_uses_parent_fields_.view(),
+           integration_points_.view(),
+           first_parent_reference_coordinates_.view(),
+           second_parent_reference_coordinates_.view(),
+           first_positions_.view(),
+           second_positions_.view(),
+           first_velocities_.view(),
+           second_velocities_.view(),
+           normals_.view(),
+           first_basis_values_.view(),
+           second_basis_values_.view(),
+           integration_weights_.view(),
+           gaps_.view(),
+           normal_velocity_gaps_.view(),
+           penalty_stiffnesses_.view(),
+           rate_penalty_coefficients_.view(),
+           tangential_viscous_coefficients_.view() };
+}
+
 ///////////////////////////////////////
 //                                   //
 // Routines for the MortarData class //

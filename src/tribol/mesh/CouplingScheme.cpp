@@ -1257,6 +1257,10 @@ void CouplingScheme::allocateMethodData()
 
   // dynamically allocate method data object for mortar method
   switch ( this->m_contactMethod ) {
+    case COMMON_PLANE: {
+      this->m_methodData = std::make_unique<CommonPlaneContactData>();
+      break;
+    }
     case ALIGNED_MORTAR:
     case MORTAR_WEIGHTS:
     case SINGLE_MORTAR: {

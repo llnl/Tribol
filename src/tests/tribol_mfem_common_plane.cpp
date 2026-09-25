@@ -347,7 +347,9 @@ INSTANTIATE_TEST_SUITE_P( tribol, MfemCommonPlaneTest,
                           testing::Values( std::make_tuple( 1, tribol::KINEMATIC_CONSTANT ),
                                            std::make_tuple( 1, tribol::KINEMATIC_ELEMENT ),
                                            std::make_tuple( 2, tribol::KINEMATIC_CONSTANT ),
-                                           std::make_tuple( 2, tribol::KINEMATIC_ELEMENT ) ) );
+                                           std::make_tuple( 2, tribol::KINEMATIC_ELEMENT ),
+                                           std::make_tuple( 3, tribol::KINEMATIC_CONSTANT ),
+                                           std::make_tuple( 4, tribol::KINEMATIC_CONSTANT ) ) );
 
 /** Verify identity mappings for every supported contact face element type. */
 TEST( MfemCommonPlaneParentFaceData, MapsSupportedFaceElementTypesAndRejectsInvalidInput )
@@ -591,9 +593,40 @@ TEST_P( MfemCommonPlaneParentFaceDataTest, MapsRedecomposedQuadrilateralFacesToP
             second_parent_region_coordinate * lor_factor + first_parent_region_coordinate;
       }
 
+      // Evaluate the native parent basis at the mapped point. Partition of unity
+      // and reproduction of the LOR-face center prove that the device-side
+      // basis representation follows MFEM's native parent-node ordering.
+      tribol::RealT parent_basis_values[tribol::ParentFaceData::max_parent_face_nodes] = { 0.0 };
+      validation_result |=
+          !mesh_view.evaluateParentFaceBasis( face_id, mapped_parent_center, parent_basis_values ) ? 1024 : 0;
+      tribol::RealT basis_value_sum = 0.0;
+      const int number_of_parent_nodes = parent_face_data.m_parent_node_counts[face_id];
+      for ( int parent_node = 0; parent_node < number_of_parent_nodes; ++parent_node ) {
+        basis_value_sum += parent_basis_values[parent_node];
+      }
+      validation_result |= std::abs( basis_value_sum - 1.0 ) > comparison_tolerance ? 2048 : 0;
+
+      tribol::RealT parent_position[3] = { 0.0, 0.0, 0.0 };
+      mesh_view.evaluateParentFaceFields( face_id, parent_basis_values, parent_position, nullptr );
+
+      // The two cube boundaries have opposite MFEM face orientations. Their
+      // known affine coordinate fields provide an independent reproduction
+      // check without relying on Tribol's derived face-centroid storage.
+      const tribol::RealT expected_parent_position[3] = {
+          mesh_id == first_mesh_id ? mapped_parent_center[0] : mapped_parent_center[1],
+          mesh_id == first_mesh_id ? mapped_parent_center[1] : mapped_parent_center[0],
+          mesh_id == first_mesh_id ? 1.0 : 1.0 + initial_separation };
+      for ( int coordinate_component = 0; coordinate_component < mesh_view.spatialDimension();
+            ++coordinate_component ) {
+        validation_result |= std::abs( parent_position[coordinate_component] -
+                                       expected_parent_position[coordinate_component] ) > comparison_tolerance
+                                 ? 4096
+                                 : 0;
+      }
+
       const tribol::RealT exterior_lor_point[2] = { 1.25, 0.5 };
       validation_result |=
-          mesh_view.mapToParentReference( face_id, exterior_lor_point, mapped_parent_center ) ? 256 : 0;
+          mesh_view.mapToParentReference( face_id, exterior_lor_point, mapped_parent_center ) ? 8192 : 0;
       face_validation_results_view[face_id] = validation_result;
     } );
 

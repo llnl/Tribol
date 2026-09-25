@@ -235,6 +235,12 @@ void MeshData::setVelocity( const RealT* vx, const RealT* vy, const RealT* vz )
 }
 
 //------------------------------------------------------------------------------
+void MeshData::setInverseMass( const RealT* inverse_mass_x, const RealT* inverse_mass_y, const RealT* inverse_mass_z )
+{
+  m_inverse_mass = createNodalVector( inverse_mass_x, inverse_mass_y, inverse_mass_z );
+}
+
+//------------------------------------------------------------------------------
 void MeshData::setResponse( RealT* rx, RealT* ry, RealT* rz ) { m_response = createNodalVector( rx, ry, rz ); }
 
 //------------------------------------------------------------------------------
@@ -604,6 +610,7 @@ MeshData::Viewer::Viewer( MeshData& mesh )
       m_ref_position( mesh.m_ref_position ),
       m_disp( mesh.m_disp ),
       m_vel( mesh.m_vel ),
+      m_inverse_mass( mesh.m_inverse_mass ),
       m_response( mesh.m_response ),
       m_node_n( mesh.m_node_n ),
       m_connectivity( mesh.m_connectivity ),
