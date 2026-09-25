@@ -53,24 +53,38 @@ EvaluationSummary addResidual( const ContactStateView& state, ContactResidualVie
   };
 }
 
-[[nodiscard]] ContactResultView evaluateDevice( const ContactStateView& state = {} ) const
+[[nodiscard]] ContactResultView evaluateDevice( const ContactStateView& state = {},
+                                                timestep::DiagonalInverseMassView inverse_mass = {},
+                                                timestep::IntegratorStabilityLimits integrator = {} ) const
   requires execution::DevicePolicy<Execution>
 {
   if ( !has_interactions_ ) {
     throw std::logic_error( "updateInteractions() must be called before contact evaluation." );
   }
-  last_device_summary_ = execution_workspace_.evaluateDefault( options_.method, state, options_.timestep );
-  device_result_geometry_version_ = geometry_version_;
-  device_result_interaction_version_ = interaction_version_;
-  return execution_workspace_.deviceResult( last_device_summary_, device_result_geometry_version_,
-                                            device_result_interaction_version_ );
+  if constexpr ( detail::is_native_explicit_method_v<MethodType> ) {
+    static_cast<void>( evaluateNativeDeviceRows( state, inverse_mass, integrator ) );
+    return nativeDeviceResult();
+  } else {
+    last_device_summary_ = execution_workspace_.evaluateDefault( options_.method, state, options_.timestep );
+    device_result_geometry_version_ = geometry_version_;
+    device_result_interaction_version_ = interaction_version_;
+    return execution_workspace_.deviceResult( last_device_summary_, device_result_geometry_version_,
+                                              device_result_interaction_version_ );
+  }
 }
 
 [[nodiscard]] execution::DevicePipelineView devicePipelineView() const
   requires execution::DevicePolicy<Execution>
 {
-  return execution_workspace_.pipelineView( last_device_summary_, device_result_geometry_version_,
-                                            device_result_interaction_version_ );
+  if constexpr ( detail::is_native_explicit_method_v<MethodType> ) {
+    return { .surfaces = execution_workspace_.deviceSurfaces(),
+             .candidates = execution_workspace_.deviceCandidates(),
+             .patches = native_device_workspace_.devicePatches(),
+             .result = nativeDeviceResult() };
+  } else {
+    return execution_workspace_.pipelineView( last_device_summary_, device_result_geometry_version_,
+                                              device_result_interaction_version_ );
+  }
 }
 
 [[nodiscard]] execution::CudaPipelineView cudaPipelineView() const

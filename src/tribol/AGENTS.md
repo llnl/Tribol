@@ -8,8 +8,8 @@
 - Preserve `Contact` lifecycle semantics and the no-allocation-after-`updateInteractions()` contract.
 - Update `src/tests/spec/capabilities.yaml` only for end-to-end tested combinations.
 - Use `linearization::Exact` for in-tree derivatives; finite differences are test oracles only. Reserved `Analytic` and
-  `Enzyme` tags are intentionally unsupported. CUDA and HIP are limited to `DefaultMethod` with `search::Bvh`; do not
-  add a host fallback inside either tuple.
+  `Enzyme` tags are intentionally unsupported. CUDA and HIP accept `DefaultMethod` and the native automatic-quadrature
+  explicit-penalty tuple with `search::Bvh`; do not add a host fallback inside either tuple.
 - Preserve device residency across CUDA and HIP contact steps. Host copies are explicit API boundaries, not hidden
   stages in device search, patch generation, physics, exact derivatives, or deterministic scatter.
 - Keep CUDA and HIP behavior in one shared implementation. Backend translation units select only the execution

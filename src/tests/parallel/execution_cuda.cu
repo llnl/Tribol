@@ -41,6 +41,11 @@ bool synchronizeAndGetMemoryInfo( std::size_t* free, std::size_t* total )
 }
 #endif
 
+using NativeExplicitMethod =
+    tribol::Method<tribol::geometry::ProjectedOverlap<tribol::normal::MeanPlane>, tribol::integration::Automatic,
+                   tribol::constraint::QuadraturePoint, tribol::enforcement::Penalty<>, tribol::response::Frictionless,
+                   tribol::formulation::PointwiseTraction, tribol::linearization::Exact>;
+
 tribol::InteractionPatch makePatch( tribol::Real gap, tribol::Real measure )
 {
   tribol::InteractionPatch patch;
@@ -793,6 +798,66 @@ bool deviceNativeRowGenerationParity()
   return true;
 }
 
+bool publicNativeDeviceContactParity()
+{
+  const auto mortar = tribol::test::segmentTrace( 0.0, 1.0, 0.0, false, 101, 0 );
+  const auto nonmortar = tribol::test::segmentTrace( 0.0, 1.0, -0.1, true, 202, 0 );
+  const tribol::ParentTracePairView traces{ mortar.view(), nonmortar.view() };
+  const std::array<tribol::Real, 4> mortar_coordinates{ 0.0, 0.0, 1.0, 0.0 };
+  const std::array<tribol::Real, 4> nonmortar_coordinates{ 0.0, -0.1, 1.0, -0.1 };
+  const tribol::ParentTraceFieldPairView fields{
+      .mortar_coordinates = { { mortar_coordinates.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+      .nonmortar_coordinates = { { nonmortar_coordinates.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+  };
+  using HostContact = tribol::Contact<NativeExplicitMethod, tribol::search::Bvh>;
+  using DeviceContact = tribol::Contact<NativeExplicitMethod, tribol::search::Bvh, DeviceExecution>;
+  HostContact::Options host_options;
+  DeviceContact::Options device_options;
+  host_options.search.expansion = 0.2;
+  host_options.method.integration.minimum_exactness = 3;
+  host_options.method.enforcement.stiffness.value = 10.0;
+  device_options.search = host_options.search;
+  device_options.method.integration = host_options.method.integration;
+  device_options.method.enforcement = host_options.method.enforcement;
+  HostContact host( traces, fields, host_options );
+  DeviceContact device( traces, fields, device_options );
+  host.updateInteractions();
+  device.updateInteractions();
+  const std::array<tribol::Real, 4> inverse_mass_values{ 1.0, 1.0, 1.0, 1.0 };
+  const tribol::timestep::DiagonalInverseMassView inverse_mass{
+      { { inverse_mass_values.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+      { { inverse_mass_values.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+  };
+  const auto integrator = tribol::timestep::IntegratorStabilityLimits::centralDifference();
+  const auto host_result = host.evaluate( {}, inverse_mass, integrator );
+  const auto resident_result = device.evaluateDevice( {}, inverse_mass, integrator );
+  const auto pipeline = device.devicePipelineView();
+  if ( !requireDevicePointer( "public native force", resident_result.mortar_force.values.data() ) ||
+       !requireDevicePointer( "public native candidates", pipeline.candidates.data() ) ||
+       !requireDevicePointer( "public native patches", pipeline.patches.data() ) ||
+       pipeline.result.quadrature_gap.data() != resident_result.quadrature_gap.data() ) {
+    return false;
+  }
+  const auto device_result = device.evaluate( {}, inverse_mass, integrator );
+  if ( device_result.summary.quadrature_points != host_result.summary.quadrature_points ||
+       device_result.summary.active_interactions != host_result.summary.active_interactions ||
+       std::abs( device_result.summary.energy - host_result.summary.energy ) > 1.0e-13 ||
+       std::abs( device_result.summary.timestep_vote - host_result.summary.timestep_vote ) > 1.0e-13 ) {
+    return false;
+  }
+  for ( tribol::Index entity = 0; entity < host_result.mortar_force.entities; ++entity ) {
+    for ( int component = 0; component < host_result.mortar_force.components; ++component ) {
+      if ( std::abs( device_result.mortar_force( entity, component ) - host_result.mortar_force( entity, component ) ) >
+               1.0e-13 ||
+           std::abs( device_result.nonmortar_force( entity, component ) -
+                     host_result.nonmortar_force( entity, component ) ) > 1.0e-13 ) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 int main()
@@ -846,6 +911,10 @@ int main()
   }
   if ( !deviceNativeRowGenerationParity() ) {
     std::cerr << "device-native row generation parity failed\n";
+    return 1;
+  }
+  if ( !publicNativeDeviceContactParity() ) {
+    std::cerr << "public native device contact parity failed\n";
     return 1;
   }
   return 0;

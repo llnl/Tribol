@@ -14,7 +14,9 @@ namespace tribol::execution {
 template <typename MethodType, typename Execution>
 concept SupportedContactExecution =
     SupportedMethod<MethodType> && std::same_as<typename MethodType::linearization_policy, linearization::Exact> &&
-    Policy<Execution> && ( !DevicePolicy<Execution> || std::same_as<MethodType, DefaultMethod> );
+    Policy<Execution> &&
+    ( !DevicePolicy<Execution> || std::same_as<MethodType, DefaultMethod> ||
+      ::tribol::detail::is_native_explicit_method_v<MethodType> );
 
 template <typename Search, typename Execution>
 concept SupportedContactSearch =

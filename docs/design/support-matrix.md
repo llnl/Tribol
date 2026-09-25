@@ -19,7 +19,7 @@ adapter against a supplied Tribol installation or a fresh checkout of upstream `
 | High order | MFEM boundary tessellation into linear subelements | Native high-order kernels or exact curved overlap |
 | Search | `CartesianProduct`, `Grid`, `Bvh`; absolute/relative inflation; pointwise self-contact filtering and penetration rejection; rank-box distributed MFEM broad phase; device BVH for CUDA/HIP default tuples | Other device search policies |
 | Host execution | `Sequential`, reproducible `Deterministic`, and two-pass, thread-local `OpenMP` for all manifest tuples | Other host runtimes |
-| Device execution | Device-resident `Contact<DefaultMethod, search::Bvh, execution::Cuda>` and `Contact<DefaultMethod, search::Bvh, execution::Hip>` with BVH search, projected-overlap generation, physics, timestep voting, exact directional derivatives, and deterministic scatter | Other policy tuples, other device search policies, GPU-aware MPI |
+| Device execution | Device-resident `Contact<DefaultMethod, search::Bvh, Execution>` and native automatic-quadrature explicit penalty contact with BVH search, projected-overlap generation, physics, timestep voting, and deterministic scatter for CUDA/HIP; exact directional derivatives for `DefaultMethod` | Other policy tuples, native-row exact directional derivatives, other device search policies, GPU-aware MPI |
 | Differentiation | In-tree nested-forward `Exact` energy gradients, directional Hessian actions, state actions, and assembled Jacobians on frozen candidates | Enzyme and finite differences as production backends |
 | MPI | Distributed MFEM ownership/ghost exchange, tested at 1/2/4 ranks | Raw-array MPI |
 | Host adapters | Borrowed arrays and MFEM `ParMesh`/true-DOF residual mapping | Other host frameworks |
@@ -48,12 +48,15 @@ invalidates candidate pairs until `updateInteractions()` is called.
 
 ## Device Implementation Note
 
-CUDA and HIP dispatch are accepted only for their `Contact<DefaultMethod, search::Bvh, Execution>` tuples. Construction
-uploads mesh coordinates and topology. `updateInteractions()` builds and queries a Morton-ordered BVH on the device, canonicalizes
-candidate pairs, and sizes every interaction-dependent workspace. Evaluation then generates projected-overlap patches,
-computes contact physics and timestep votes, and performs a stable radix-sort/run-reduction scatter without device
-allocation. Meshes, candidates, patches, intermediates, and result payloads remain device-resident. Only small summary
-metadata is synchronized to the host by `evaluateDevice()`; `evaluate()` is the explicit host-download convenience.
+CUDA and HIP dispatch accept `Contact<DefaultMethod, search::Bvh, Execution>` and the native parent-trace tuple composed
+from projected-overlap geometry, automatic quadrature, quadrature-point constraints, explicit penalty enforcement,
+frictionless response, pointwise traction, and exact linearization. Construction uploads mesh coordinates and topology.
+`updateInteractions()` builds and queries a Morton-ordered BVH on the device, canonicalizes candidate pairs, maps overlap
+patches to parent references, and performs device row count/scan/fill before sizing every interaction-dependent workspace.
+Evaluation computes contact physics and the physical-mass stability vote and performs a stable radix-sort/run-reduction
+scatter without device allocation. Meshes, candidates, patches, rows, intermediates, and result payloads remain
+device-resident. Only small summary metadata is synchronized to the host by `evaluateDevice()`; `evaluate()` is the
+explicit host-download convenience.
 The device BVH uses one element per leaf; `Bvh::Parameters::leaf_size` remains a host-BVH tuning parameter and does not
 change device candidate semantics. One parameterized conformance source builds as `tribol_execution_cuda` and
 `tribol_execution_hip`; each executable checks 2D and 3D parity, pointer residency and stability, supplied interactions,

@@ -14,6 +14,7 @@ set(tribol_core_headers
     ../basis/ParentBasis.hpp
     ../contact/Contact.hpp
     ../contact/ContactEvaluation.inl
+    ../contact/ContactExecutionStorage.inl
     ../contact/ContactExactHelpers.inl
     ../contact/ContactLinearization.inl
     ../contact/ContactNativeLifecycle.inl

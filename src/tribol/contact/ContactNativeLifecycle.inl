@@ -11,6 +11,9 @@ explicit Contact( ParentTracePairView traces, ParentTraceFieldPairView fields, O
   validateMethodDomain<MethodType>( surfaces_ );
   timestep::validate( options_.timestep );
   resizeEvaluationWorkspace();
+  if constexpr ( execution::DevicePolicy<Execution> ) {
+    execution_workspace_.uploadSurfaces( surfaces_ );
+  }
 }
 
 void updateGeometry( ParentTracePairView traces, ParentTraceFieldPairView fields )
@@ -21,6 +24,9 @@ void updateGeometry( ParentTracePairView traces, ParentTraceFieldPairView fields
   parent_traces_ = traces;
   parent_fields_ = fields;
   surfaces_ = { traces.mortar.geometry, traces.nonmortar.geometry };
+  if constexpr ( execution::DevicePolicy<Execution> ) {
+    execution_workspace_.updateGeometry( surfaces_ );
+  }
   geometry_version_.advance();
   if ( has_interactions_ ) {
     prepareNativeRows();
@@ -37,6 +43,10 @@ void rebuildGeometry( ParentTracePairView traces, ParentTraceFieldPairView field
   candidates_.clear();
   native_cells_.reset();
   native_rows_.reset();
+  if constexpr ( execution::DevicePolicy<Execution> ) {
+    execution_workspace_.invalidate();
+    execution_workspace_.uploadSurfaces( surfaces_ );
+  }
   geometry_version_.advance();
   has_interactions_ = false;
   resizeEvaluationWorkspace();
@@ -45,11 +55,20 @@ void rebuildGeometry( ParentTracePairView traces, ParentTraceFieldPairView field
 [[nodiscard]] OverlapCellBatchView overlapCells() const
   requires detail::is_native_explicit_method_v<MethodType>
 {
-  return native_cells_ ? native_cells_->view() : OverlapCellBatchView{};
+  if constexpr ( execution::DevicePolicy<Execution> ) {
+    return {};
+  } else {
+    return native_cells_ ? native_cells_->view() : OverlapCellBatchView{};
+  }
 }
 
 [[nodiscard]] ConstraintRowBatchView constraintRows() const
   requires detail::is_native_explicit_method_v<MethodType>
 {
-  return native_rows_ ? native_rows_->view() : ConstraintRowBatchView{};
+  if constexpr ( execution::DevicePolicy<Execution> ) {
+    return has_interactions_ ? native_device_workspace_.deviceResult( last_native_device_summary_ ).rows
+                             : ConstraintRowBatchView{};
+  } else {
+    return native_rows_ ? native_rows_->view() : ConstraintRowBatchView{};
+  }
 }

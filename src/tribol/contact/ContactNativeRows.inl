@@ -36,16 +36,34 @@ void prepareNativeRows()
 {
   using Geometry = typename MethodType::geometry_policy;
   using Enforcement = typename MethodType::enforcement_policy;
-  native_cells_.emplace( buildOverlapCellBatch<typename Geometry::normal_policy>( parent_traces_, candidates_.view(),
-                                                                                  options_.method.geometry ) );
-  ParentTraceFieldPairView fields;
-  fields.mortar_coordinates = parent_fields_.mortar_coordinates;
-  fields.nonmortar_coordinates = parent_fields_.nonmortar_coordinates;
-  ConstraintRowBuildOptions row_options;
-  row_options.quadrature = options_.method.integration;
-  row_options.include_normal_rates = !std::same_as<typename Enforcement::rate_policy, rate::None>;
-  native_rows_.emplace( buildConstraintRowBatch( parent_traces_, native_cells_->view(), fields, row_options ) );
-  const std::size_t rows = static_cast<std::size_t>( native_rows_->numberOfRows() );
+  constexpr bool include_normal_rates = !std::same_as<typename Enforcement::rate_policy, rate::None>;
+  Index row_count{};
+  if constexpr ( execution::DevicePolicy<Execution> ) {
+    native_cells_.reset();
+    native_rows_.reset();
+    execution::DeviceNativeRowOptions row_options;
+    row_options.geometry = options_.method.geometry;
+    row_options.quadrature = options_.method.integration;
+    row_options.include_normal_rates = include_normal_rates;
+    native_device_workspace_.prepareNative(
+        parent_traces_, parent_fields_, execution_workspace_.deviceCandidates(),
+        execution::DeviceRowDofLayout::separate( surfaces_.mortar.dimension, resultEntities( true ),
+                                                 resultEntities( false ) ),
+        row_options );
+    row_count = native_device_workspace_.deviceResult( {} ).rows.numberOfRows();
+  } else {
+    native_cells_.emplace( buildOverlapCellBatch<typename Geometry::normal_policy>( parent_traces_, candidates_.view(),
+                                                                                    options_.method.geometry ) );
+    ParentTraceFieldPairView fields;
+    fields.mortar_coordinates = parent_fields_.mortar_coordinates;
+    fields.nonmortar_coordinates = parent_fields_.nonmortar_coordinates;
+    ConstraintRowBuildOptions row_options;
+    row_options.quadrature = options_.method.integration;
+    row_options.include_normal_rates = include_normal_rates;
+    native_rows_.emplace( buildConstraintRowBatch( parent_traces_, native_cells_->view(), fields, row_options ) );
+    row_count = native_rows_->numberOfRows();
+  }
+  const std::size_t rows = static_cast<std::size_t>( row_count );
   result_quadrature_gap_.resize( rows );
   result_quadrature_pressure_.resize( rows );
   native_row_force_.resize( rows );
@@ -66,6 +84,52 @@ void prepareNativeRows()
   std::fill( native_rate_coefficient_.begin(), native_rate_coefficient_.end(), rate_coefficient );
   native_mortar_row_sums_.resize( result_mortar_force_.size() );
   native_nonmortar_row_sums_.resize( result_nonmortar_force_.size() );
+  native_device_force_.resize( result_mortar_force_.size() + result_nonmortar_force_.size() );
+}
+
+[[nodiscard]] execution::DeviceRowEvaluationSummary evaluateNativeDeviceRows(
+    const ContactStateView& state, timestep::DiagonalInverseMassView inverse_mass,
+    timestep::IntegratorStabilityLimits integrator ) const
+  requires execution::DevicePolicy<Execution>
+{
+  using Enforcement = typename MethodType::enforcement_policy;
+  ParentTraceFieldPairView fields{ .mortar_coordinates = parent_fields_.mortar_coordinates,
+                                   .nonmortar_coordinates = parent_fields_.nonmortar_coordinates };
+  if constexpr ( !std::same_as<typename Enforcement::rate_policy, rate::None> ) {
+    fields.mortar_velocity = state.mortar_velocity;
+    fields.nonmortar_velocity = state.nonmortar_velocity;
+  }
+  native_device_workspace_.updateNativeFields( fields );
+  PenaltyRowInputView penalty;
+  penalty.pressure_stiffness = { native_pressure_stiffness_.data(),
+                                 static_cast<Index>( native_pressure_stiffness_.size() ) };
+  penalty.rate_coefficients = { native_rate_coefficient_.data(),
+                                static_cast<Index>( native_rate_coefficient_.size() ) };
+  penalty.activation = options_.method.constraint.activation;
+  last_native_device_summary_ = native_device_workspace_.evaluate( penalty, inverse_mass, integrator, geometry_version_,
+                                                                   interaction_version_, penalty_version_ );
+  last_device_summary_ = { .energy = last_native_device_summary_.explicit_response.energy,
+                           .timestep_vote = last_native_device_summary_.stability.timestep_vote,
+                           .active_interactions = last_native_device_summary_.explicit_response.active_rows,
+                           .quadrature_points = last_native_device_summary_.explicit_response.rows };
+  device_result_geometry_version_ = geometry_version_;
+  device_result_interaction_version_ = interaction_version_;
+  return last_native_device_summary_;
+}
+
+[[nodiscard]] ContactResultView nativeDeviceResult() const
+  requires execution::DevicePolicy<Execution>
+{
+  const auto result = native_device_workspace_.deviceResult( last_native_device_summary_ );
+  return {
+      .mortar_force = result.mortar_force,
+      .nonmortar_force = result.nonmortar_force,
+      .quadrature_gap = result.row_output.effective_gap,
+      .quadrature_pressure = result.row_output.pressure,
+      .summary = last_device_summary_,
+      .geometry_version = device_result_geometry_version_,
+      .interaction_version = device_result_interaction_version_,
+  };
 }
 
 [[nodiscard]] EvaluationSummary evaluateNativeRows( const ContactStateView& state, ContactOutputView output,
@@ -73,6 +137,30 @@ void prepareNativeRows()
                                                     timestep::IntegratorStabilityLimits integrator ) const
 {
   using Enforcement = typename MethodType::enforcement_policy;
+  if constexpr ( execution::DevicePolicy<Execution> ) {
+    static_cast<void>( evaluateNativeDeviceRows( state, inverse_mass, integrator ) );
+    PenaltyRowOutputView row_output;
+    row_output.effective_gap = output.quadrature_gap;
+    row_output.pressure = output.quadrature_pressure;
+    row_output.row_force = { native_row_force_.data(), static_cast<Index>( native_row_force_.size() ) };
+    row_output.row_stiffness = { native_row_stiffness_.data(), static_cast<Index>( native_row_stiffness_.size() ) };
+    row_output.row_rate_coefficient = { native_row_rate_.data(), static_cast<Index>( native_row_rate_.size() ) };
+    native_device_workspace_.download( mutableView( native_device_force_ ), row_output );
+    for ( Index entity = 0; entity < output.residual.mortar.entities; ++entity ) {
+      for ( int component = 0; component < output.residual.mortar.components; ++component ) {
+        output.residual.mortar( entity, component ) +=
+            native_device_force_[static_cast<std::size_t>( entity * output.residual.mortar.components + component )];
+      }
+    }
+    const Index nonmortar_offset = output.residual.mortar.entities * output.residual.mortar.components;
+    for ( Index entity = 0; entity < output.residual.nonmortar.entities; ++entity ) {
+      for ( int component = 0; component < output.residual.nonmortar.components; ++component ) {
+        output.residual.nonmortar( entity, component ) += native_device_force_[static_cast<std::size_t>(
+            nonmortar_offset + entity * output.residual.nonmortar.components + component )];
+      }
+    }
+    return last_device_summary_;
+  }
   if ( !native_rows_ ) {
     throw std::logic_error( "Native contact rows must be prepared before evaluation." );
   }
