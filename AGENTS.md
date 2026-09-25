@@ -12,6 +12,7 @@ Legacy implementations are external benchmark references, never in-tree architec
 - `docs/design/testing-contract.md`
 - `docs/design/support-matrix.md`
 - `docs/design/public-api.md`
+- `docs/design/milestone-1-delivery-plan.md`
 - `src/tests/spec/README.md` when present
 - `benchmarks/README.md` for cross-version performance or parity work
 
