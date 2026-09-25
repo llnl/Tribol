@@ -130,8 +130,9 @@ struct MappedPoint {
   GeometryStatus status{ GeometryStatus::Accepted };
 };
 
-[[nodiscard]] inline bool insideReferenceElement( ElementTopology topology, basis::ReferencePoint point, Real tolerance,
-                                                  bool parent_domain )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline bool insideReferenceElement( ElementTopology topology,
+                                                                     basis::ReferencePoint point, Real tolerance,
+                                                                     bool parent_domain )
 {
   const Real lower = parent_domain ? 0.0 : -1.0;
   const Real upper = 1.0;
@@ -145,17 +146,18 @@ struct MappedPoint {
          point.second <= upper + tolerance;
 }
 
-[[nodiscard]] inline Real distance( const std::array<Real, 3>& left, const std::array<Real, 3>& right, int dimension )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline Real distance( const std::array<Real, 3>& left,
+                                                       const std::array<Real, 3>& right, int dimension )
 {
   Real squared{};
   for ( int component = 0; component < dimension; ++component ) {
     const Real difference = left[component] - right[component];
     squared += difference * difference;
   }
-  return std::sqrt( squared );
+  return linearization_detail::squareRoot( squared );
 }
 
-[[nodiscard]] inline Real subfacetScale( const SurfaceMeshView& mesh, Index subfacet )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline Real subfacetScale( const SurfaceMeshView& mesh, Index subfacet )
 {
   Real scale{};
   const Index begin = mesh.element_offsets[subfacet];
@@ -170,19 +172,21 @@ struct MappedPoint {
       for ( int component = 0; component < mesh.dimension; ++component ) {
         second_point[component] = mesh.coordinates( mesh.connectivity[second], component );
       }
-      scale = std::max( scale, distance( first_point, second_point, mesh.dimension ) );
+      const Real edge_length = distance( first_point, second_point, mesh.dimension );
+      scale = edge_length > scale ? edge_length : scale;
     }
   }
   return scale;
 }
 
-[[nodiscard]] inline MappedPoint mapToParent( const ParentTraceView& trace, Index subfacet,
-                                              const std::array<Real, 3>& point, Real tolerance )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline MappedPoint mapToParent( const ParentTraceView& trace, Index subfacet,
+                                                                 const std::array<Real, 3>& point, Real tolerance )
 {
   const auto local = basis::mapToReference( trace.geometry, subfacet, point );
   const auto topology = trace.geometry.topologies[subfacet];
   const auto reconstructed = basis::mapToPhysical( trace.geometry, subfacet, local );
-  const Real allowed_error = tolerance * std::max( 1.0, subfacetScale( trace.geometry, subfacet ) );
+  const Real scale = subfacetScale( trace.geometry, subfacet );
+  const Real allowed_error = tolerance * ( scale > 1.0 ? scale : 1.0 );
   if ( distance( reconstructed, point, trace.geometry.dimension ) > allowed_error ) {
     return { {}, GeometryStatus::ExcessiveMappingError };
   }
