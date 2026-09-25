@@ -603,10 +603,14 @@ class MfemMeshData {
    * in the first Tribol registered mesh
    * @param attributes_2 Mesh boundary attributes identifying surface elements
    * in the second Tribol registered mesh
+   * @param build_parent_face_data Whether native parent-face data are needed by
+   * the contact method
+   * @param exec_mode Execution mode used by Tribol kernels
+   * @param mem_space Memory space used by Tribol arrays
    */
   MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParMesh& parent_mesh,
                 const mfem::ParGridFunction& current_coords, std::set<int>&& attributes_1, std::set<int>&& attributes_2,
-                ExecutionMode exec_mode, MemorySpace mem_space );
+                bool build_parent_face_data, ExecutionMode exec_mode, MemorySpace mem_space );
 
   /**
    * @brief Get coordinate grid function on the parent mesh
@@ -1079,6 +1083,26 @@ class MfemMeshData {
   int GetLORFactor() const { return lor_factor_; }
 
   /**
+   * @brief Get native parent-face mapping data for the first Tribol surface mesh.
+   *
+   * The returned views remain valid until UpdateMfemMeshData() rebuilds the
+   * redecomp mesh.
+   *
+   * @return Parent-face mapping data indexed by first-surface element identifier
+   */
+  ParentFaceData GetMesh1ParentFaceData() const;
+
+  /**
+   * @brief Get native parent-face mapping data for the second Tribol surface mesh.
+   *
+   * The returned views remain valid until UpdateMfemMeshData() rebuilds the
+   * redecomp mesh.
+   *
+   * @return Parent-face mapping data indexed by second-surface element identifier
+   */
+  ParentFaceData GetMesh2ParentFaceData() const;
+
+  /**
    * @brief Set the LOR factor
    *
    * @note The LOR factor corresponds to the number of LOR elements per HO element applied to each dimension on the LOR
@@ -1120,6 +1144,31 @@ class MfemMeshData {
    */
   struct UpdateData {
     /**
+     * @brief Owning arrays for native parent-face mapping data.
+     *
+     * Each array is indexed by the corresponding Tribol surface element. The
+     * reference-coordinate array uses vertex-major ordering in its second
+     * dimension.
+     */
+    struct ParentFaceArrays {
+      /** Polynomial order of each native parent coordinate face. */
+      Array1D<int> parent_face_orders;
+
+      /** Number of vertices defining each child-to-parent reference map. */
+      Array1D<int> reference_vertex_counts;
+
+      /** Parent reference coordinates at the LOR face vertices. */
+      Array2D<RealT> parent_reference_vertex_coordinates;
+
+      /**
+       * @brief Create non-owning views of the mapping arrays.
+       *
+       * @return ParentFaceData containing views into this object
+       */
+      ParentFaceData GetView() const;
+    };
+
+    /**
      * @brief Construct a new UpdateData object
      *
      * @param submesh Parent-linked boundary submesh of contact elements
@@ -1130,6 +1179,7 @@ class MfemMeshData {
      * @param submesh_lor_xfer Submesh to LOR grid function transfer object (if using LOR; nullptr otherwise)
      * @param attributes_1 Set of boundary attributes identifying elements in the first Tribol registered mesh
      * @param attributes_2 Set of boundary attributes identifying elements in the second Tribol registered mesh
+     * @param build_parent_face_data Whether native parent-face data are needed by the contact method
      * @param binning_proximity_scale Element length multiplier for coarse binning and proximity detection inclusion.
      *        This is needed to size the ghost element layer in the redecomp mesh.
      * @param n_ranks Number of ranks in the parallel decomposition
@@ -1140,8 +1190,9 @@ class MfemMeshData {
      */
     UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh, const mfem::ParFiniteElementSpace& parent_fes,
                 mfem::ParGridFunction& submesh_gridfn, SubmeshLORTransfer* submesh_lor_xfer,
-                const std::set<int>& attributes_1, const std::set<int>& attributes_2, RealT binning_proximity_scale,
-                int n_ranks, int allocator_id, RealT redecomp_trigger_displacement, RealT residual_gap );
+                const std::set<int>& attributes_1, const std::set<int>& attributes_2, bool build_parent_face_data,
+                RealT binning_proximity_scale, int n_ranks, int allocator_id, RealT redecomp_trigger_displacement,
+                RealT residual_gap );
 
     /**
      * @brief Redecomposed boundary element mesh
@@ -1177,6 +1228,12 @@ class MfemMeshData {
      */
     Array1D<int> elem_map_2_;
 
+    /** Parent-face mapping data for the first Tribol surface mesh. */
+    ParentFaceArrays parent_face_data_1_;
+
+    /** Parent-face mapping data for the second Tribol surface mesh. */
+    ParentFaceArrays parent_face_data_2_;
+
     /**
      * @brief Type of elements on the contact meshes
      */
@@ -1203,6 +1260,19 @@ class MfemMeshData {
      * registered mesh
      */
     void UpdateConnectivity( const std::set<int>& attributes_1, const std::set<int>& attributes_2 );
+
+    /** Copy connectivity and element maps from host memory to the requested allocator. */
+    void CopyConnectivityToAllocator();
+
+    /**
+     * @brief Build and transfer native parent-face mapping data to the redecomp mesh.
+     *
+     * @param submesh Parent-linked contact boundary submesh
+     * @param lor_mesh Optional low-order-refined contact mesh
+     * @param parent_fes Native parent coordinate finite-element space
+     */
+    void BuildParentFaceData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh,
+                              const mfem::ParFiniteElementSpace& parent_fes );
 
     /**
      * @brief Sets the number of vertices per element and the element type for the redecomp mesh
@@ -1261,6 +1331,9 @@ class MfemMeshData {
    * @brief Mesh boundary attributes identifying second mesh
    */
   const std::set<int> attributes_2_;
+
+  /** Whether the contact method requires native parent-face data. */
+  const bool build_parent_face_data_;
 
   /**
    * @brief Submesh containing boundary elements of both contact surfaces
