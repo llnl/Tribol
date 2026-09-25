@@ -127,8 +127,10 @@ struct ParentFaceData {
    */
   TRIBOL_HOST_DEVICE bool isValid() const
   {
-    return !m_parent_face_orders.empty() && !m_reference_vertex_counts.empty() &&
-           !m_parent_reference_vertex_coordinates.empty();
+    const IndexT number_of_faces = m_parent_face_orders.size();
+    return number_of_faces > 0 && m_reference_vertex_counts.size() == number_of_faces &&
+           m_parent_reference_vertex_coordinates.shape()[0] == number_of_faces &&
+           m_parent_reference_vertex_coordinates.shape()[1] == max_lor_face_vertices * max_reference_dimension;
   }
 };
 
@@ -204,7 +206,10 @@ class MeshData {
      *
      * @return true when this mesh has valid parent-face mapping data
      */
-    TRIBOL_HOST_DEVICE bool hasParentFaceData() const { return m_parent_face_data.isValid(); }
+    TRIBOL_HOST_DEVICE bool hasParentFaceData() const
+    {
+      return m_parent_face_data.isValid() && m_parent_face_data.m_parent_face_orders.size() == numberOfElements();
+    }
 
     /**
      * @brief Get native parent-face mapping data for this mesh.
@@ -909,7 +914,7 @@ TRIBOL_HOST_DEVICE inline bool MeshData::Viewer::mapToParentReference( IndexT fa
 
   const int reference_dimension = spatialDimension() - 1;
   const int number_of_vertices = m_parent_face_data.m_reference_vertex_counts[face_id];
-  const InterfaceElementType lor_face_geometry = getElementType();
+  const InterfaceElementType face_element_type = getElementType();
   const RealT reference_coordinate_tolerance = ParentFaceData::reference_coordinate_tolerance;
   const RealT first_coordinate = lor_reference_coordinates[0];
 
@@ -918,10 +923,10 @@ TRIBOL_HOST_DEVICE inline bool MeshData::Viewer::mapToParentReference( IndexT fa
   }
 
   RealT shape_values[ParentFaceData::max_lor_face_vertices] = { 0.0, 0.0, 0.0, 0.0 };
-  if ( lor_face_geometry == LINEAR_EDGE && number_of_vertices == 2 && reference_dimension == 1 ) {
+  if ( face_element_type == LINEAR_EDGE && number_of_vertices == 2 && reference_dimension == 1 ) {
     shape_values[0] = 1.0 - first_coordinate;
     shape_values[1] = first_coordinate;
-  } else if ( lor_face_geometry == LINEAR_TRIANGLE && number_of_vertices == 3 && reference_dimension == 2 ) {
+  } else if ( face_element_type == LINEAR_TRIANGLE && number_of_vertices == 3 && reference_dimension == 2 ) {
     const RealT second_coordinate = lor_reference_coordinates[1];
     if ( second_coordinate < -reference_coordinate_tolerance ||
          first_coordinate + second_coordinate > 1.0 + reference_coordinate_tolerance ) {
@@ -930,7 +935,7 @@ TRIBOL_HOST_DEVICE inline bool MeshData::Viewer::mapToParentReference( IndexT fa
     shape_values[0] = 1.0 - first_coordinate - second_coordinate;
     shape_values[1] = first_coordinate;
     shape_values[2] = second_coordinate;
-  } else if ( lor_face_geometry == LINEAR_QUAD && number_of_vertices == 4 && reference_dimension == 2 ) {
+  } else if ( face_element_type == LINEAR_QUAD && number_of_vertices == 4 && reference_dimension == 2 ) {
     const RealT second_coordinate = lor_reference_coordinates[1];
     if ( second_coordinate < -reference_coordinate_tolerance ||
          second_coordinate > 1.0 + reference_coordinate_tolerance ) {
@@ -957,7 +962,7 @@ TRIBOL_HOST_DEVICE inline bool MeshData::Viewer::mapToParentReference( IndexT fa
       return false;
     }
   }
-  if ( lor_face_geometry == LINEAR_TRIANGLE &&
+  if ( face_element_type == LINEAR_TRIANGLE &&
        parent_reference_coordinates[0] + parent_reference_coordinates[1] > 1.0 + reference_coordinate_tolerance ) {
     return false;
   }
