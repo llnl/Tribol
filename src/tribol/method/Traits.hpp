@@ -80,12 +80,13 @@ struct MethodTraits {
       .needs_material_fields = EnforcementInfo::needs_material_fields,
       .needs_multiplier = EnforcementInfo::needs_multiplier,
       .accepts_external_pressure = EnforcementInfo::accepts_external_pressure,
-      .produces_energy = std::same_as<Formulation, formulation::Variational> &&
-                         ( detail::is_penalty_v<Enforcement> || EnforcementInfo::accepts_external_pressure ),
+      .produces_energy = ( std::same_as<Formulation, formulation::Variational> &&
+                           ( detail::is_penalty_v<Enforcement> || EnforcementInfo::accepts_external_pressure ) ) ||
+                         detail::is_native_explicit_method_v<MethodType>,
       .produces_constraint_residual = EnforcementInfo::needs_multiplier,
       .produces_diagnostic_weights = std::same_as<Formulation, formulation::DiagnosticWeights>,
       .supports_self_contact = std::same_as<Formulation, formulation::PointwiseTraction>,
-      .supports_native_high_order = false,
+      .supports_native_high_order = detail::is_native_explicit_method_v<MethodType>,
   };
 };
 

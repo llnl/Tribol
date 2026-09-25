@@ -35,6 +35,12 @@ template <int Order>
 inline constexpr bool is_face_integration_v<integration::Face<Order>> = Order == 1 || Order == 2;
 
 template <typename T>
+inline constexpr bool is_automatic_integration_v = false;
+
+template <>
+inline constexpr bool is_automatic_integration_v<integration::Automatic> = true;
+
+template <typename T>
 inline constexpr bool is_nodal_constraint_v = false;
 
 template <BasisPolicy Basis>
@@ -71,6 +77,12 @@ template <>
 inline constexpr bool is_constant_no_rate_penalty_v<enforcement::Penalty<stiffness::Constant, rate::None>> = true;
 
 template <typename T>
+inline constexpr bool is_constant_penalty_v = false;
+
+template <RatePolicy Rate>
+inline constexpr bool is_constant_penalty_v<enforcement::Penalty<stiffness::Constant, Rate>> = true;
+
+template <typename T>
 inline constexpr bool is_supported_response_v =
     std::same_as<T, response::Frictionless> || std::same_as<T, response::ViscousTangential> ||
     std::same_as<T, response::TiedNormal> || std::same_as<T, response::TiedFull>;
@@ -90,6 +102,12 @@ struct BuiltInMethodCompatibility<
       is_supported_response_v<Response> &&
       ( std::same_as<Response, response::Frictionless> || std::same_as<Response, response::ViscousTangential> ||
         is_no_rate_penalty_v<Enforcement> ) &&
+      std::same_as<Formulation, formulation::PointwiseTraction>;
+
+  static constexpr bool native_explicit =
+      is_mean_plane_overlap_v<Geometry> && is_automatic_integration_v<Integration> &&
+      std::same_as<Constraint, constraint::QuadraturePoint> && is_penalty_v<Enforcement> &&
+      is_constant_penalty_v<Enforcement> && std::same_as<Response, response::Frictionless> &&
       std::same_as<Formulation, formulation::PointwiseTraction>;
 
   static constexpr bool projected_weak_form =
@@ -130,9 +148,23 @@ struct BuiltInMethodCompatibility<
 
  public:
   static constexpr bool value =
-      implemented_linearization && ( pointwise || projected_weak_form || conforming_weak_form || variational_penalty ||
-                                     variational_multiplier || variational_external_pressure || diagnostic );
+      implemented_linearization &&
+      ( pointwise || native_explicit || projected_weak_form || conforming_weak_form || variational_penalty ||
+        variational_multiplier || variational_external_pressure || diagnostic );
 };
+
+template <typename T>
+inline constexpr bool is_native_explicit_method_v = false;
+
+template <GeometryPolicy Geometry, IntegrationPolicy Integration, ConstraintPolicy Constraint,
+          EnforcementPolicy Enforcement, ResponsePolicy Response, FormulationPolicy Formulation,
+          LinearizationPolicy Linearization>
+inline constexpr bool is_native_explicit_method_v<
+    Method<Geometry, Integration, Constraint, Enforcement, Response, Formulation, Linearization>> =
+    is_mean_plane_overlap_v<Geometry> && is_automatic_integration_v<Integration> &&
+    std::same_as<Constraint, constraint::QuadraturePoint> && is_penalty_v<Enforcement> &&
+    is_constant_penalty_v<Enforcement> && std::same_as<Response, response::Frictionless> &&
+    std::same_as<Formulation, formulation::PointwiseTraction> && std::same_as<Linearization, linearization::Exact>;
 
 }  // namespace detail
 

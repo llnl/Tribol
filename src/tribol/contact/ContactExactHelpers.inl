@@ -148,12 +148,11 @@ ContactResidualViewT<Scalar> workspaceResidual( std::vector<Scalar>& mortar, std
                                                 ArrayView<Scalar> constraint ) const
 {
   return {
-      .mortar =
-          FieldView<Scalar>{ ArrayView<Scalar>{ mortar.data(), static_cast<Index>( mortar.size() ) },
-                             surfaces_.mortar.numberOfNodes(), surfaces_.mortar.dimension, FieldLayout::Interleaved },
-      .nonmortar = FieldView<Scalar>{ ArrayView<Scalar>{ nonmortar.data(), static_cast<Index>( nonmortar.size() ) },
-                                      surfaces_.nonmortar.numberOfNodes(), surfaces_.nonmortar.dimension,
-                                      FieldLayout::Interleaved },
+      .mortar = FieldView<Scalar>{ ArrayView<Scalar>{ mortar.data(), static_cast<Index>( mortar.size() ) },
+                                   resultEntities( true ), surfaces_.mortar.dimension, FieldLayout::Interleaved },
+      .nonmortar =
+          FieldView<Scalar>{ ArrayView<Scalar>{ nonmortar.data(), static_cast<Index>( nonmortar.size() ) },
+                             resultEntities( false ), surfaces_.nonmortar.dimension, FieldLayout::Interleaved },
       .constraint = constraint,
   };
 }

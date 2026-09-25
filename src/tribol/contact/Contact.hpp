@@ -4,22 +4,26 @@
 #include "tribol/core/ExactTangent.hpp"
 #include "tribol/core/MeshView.hpp"
 #include "tribol/core/Version.hpp"
+#include "tribol/constraint/ConstraintRow.hpp"
 #include "tribol/evaluation/PolicyEvaluator.hpp"
+#include "tribol/evaluation/ExplicitRowEvaluator.hpp"
 #include "tribol/evaluation/State.hpp"
 #include "tribol/execution/ContactDevice.hpp"
 #include "tribol/execution/ContactOpenMP.hpp"
 #include "tribol/execution/Execution.hpp"
 #include "tribol/method/Traits.hpp"
 #include "tribol/method/Validation.hpp"
+#include "tribol/geom/OverlapCell.hpp"
 #include "tribol/search/Search.hpp"
+#include "tribol/timestep/ExplicitPenaltyStability.hpp"
 #include "tribol/timestep/KinematicVote.hpp"
 
 #include <cmath>
+#include <optional>
 #include <stdexcept>
 #include <type_traits>
 #include <utility>
 #include <vector>
-
 namespace tribol {
 
 template <SupportedMethod MethodType = DefaultMethod, SearchPolicy Search = search::CartesianProduct,
@@ -46,6 +50,9 @@ class Contact {
         options_( effectiveOptions( std::move( options ) ) ),
         search_( effectiveSearchParameters( options_ ) )
   {
+    if constexpr ( detail::is_native_explicit_method_v<MethodType> ) {
+      throw std::invalid_argument( "Automatic parent-trace contact requires native parent traces and coordinates." );
+    }
     requireValidSurfaces( surfaces_ );
     validateMethodParameters<MethodType>( options_.method );
     validateMethodDomain<MethodType>( surfaces_ );
@@ -56,6 +63,8 @@ class Contact {
       execution_workspace_.uploadSurfaces( surfaces_ );
     }
   }
+
+#include "tribol/contact/ContactNativeLifecycle.inl"
 
   explicit Contact( SurfaceMeshView surface, Options options = {} )
       : Contact( SurfacePairView{ surface, surface }, withSelfContact( std::move( options ) ) )
@@ -82,7 +91,7 @@ class Contact {
     interaction_geometry_version_ = geometry_version_;
     interaction_version_.advance();
     has_interactions_ = true;
-    resizeInteractionWorkspace();
+    prepareInteractionWorkspace();
   }
 
   void setInteractions( ArrayView<const ElementPair> interactions )
@@ -104,11 +113,14 @@ class Contact {
     interaction_geometry_version_ = geometry_version_;
     interaction_version_.advance();
     has_interactions_ = true;
-    resizeInteractionWorkspace();
+    prepareInteractionWorkspace();
   }
 
   void updateGeometry( SurfacePairView surfaces )
   {
+    if constexpr ( detail::is_native_explicit_method_v<MethodType> ) {
+      throw std::invalid_argument( "Native parent-trace contact geometry must be updated with parent traces." );
+    }
     requireValidSurfaces( surfaces );
     requireSameTopology( surfaces_, surfaces );
     surfaces_ = surfaces;
@@ -120,6 +132,9 @@ class Contact {
 
   void rebuildGeometry( SurfacePairView surfaces )
   {
+    if constexpr ( detail::is_native_explicit_method_v<MethodType> ) {
+      throw std::invalid_argument( "Native parent-trace contact geometry must be rebuilt with parent traces." );
+    }
     requireValidSurfaces( surfaces );
     surfaces_ = surfaces;
     candidates_.clear();
@@ -321,14 +336,23 @@ class Contact {
 
   void resizeEvaluationWorkspace()
   {
-    const auto mortar_nodes = static_cast<std::size_t>( surfaces_.mortar.numberOfNodes() );
-    const auto nonmortar_nodes = static_cast<std::size_t>( surfaces_.nonmortar.numberOfNodes() );
+    const auto mortar_nodes = static_cast<std::size_t>( resultEntities( true ) );
+    const auto nonmortar_nodes = static_cast<std::size_t>( resultEntities( false ) );
     result_mortar_force_.resize( mortar_nodes * static_cast<std::size_t>( surfaces_.mortar.dimension ) );
     result_nonmortar_force_.resize( nonmortar_nodes * static_cast<std::size_t>( surfaces_.nonmortar.dimension ) );
-    result_constraint_.resize( mortar_nodes );
-    result_gap_.resize( mortar_nodes );
-    result_weighted_gap_.resize( mortar_nodes );
-    result_tributary_area_.resize( mortar_nodes );
+    if constexpr ( detail::is_native_explicit_method_v<MethodType> ) {
+      result_constraint_.clear();
+      result_gap_.clear();
+      result_weighted_gap_.clear();
+      result_tributary_area_.clear();
+      result_pressure_.clear();
+    } else {
+      result_constraint_.resize( mortar_nodes );
+      result_gap_.resize( mortar_nodes );
+      result_weighted_gap_.resize( mortar_nodes );
+      result_tributary_area_.resize( mortar_nodes );
+      result_pressure_.resize( mortar_nodes );
+    }
     if constexpr ( MethodTraits<MethodType>::capabilities.produces_diagnostic_weights ) {
       result_mortar_weights_.resize( mortar_nodes * nonmortar_nodes );
       result_mortar_mass_weights_.resize( mortar_nodes * mortar_nodes );
@@ -336,7 +360,6 @@ class Contact {
       result_mortar_weights_.clear();
       result_mortar_mass_weights_.clear();
     }
-    result_pressure_.resize( mortar_nodes );
     result_quadrature_gap_.clear();
     result_quadrature_pressure_.clear();
   }
@@ -352,11 +375,16 @@ class Contact {
     }
   }
 
+#include "tribol/contact/ContactNativeRows.inl"
+
   EvaluationSummary evaluateConfigured( const SurfacePairView& surfaces, const ContactStateView& state,
-                                        ContactOutputView output ) const
+                                        ContactOutputView output, timestep::DiagonalInverseMassView inverse_mass = {},
+                                        timestep::IntegratorStabilityLimits integrator = {} ) const
   {
     EvaluationSummary summary;
-    if constexpr ( execution::DevicePolicy<Execution> ) {
+    if constexpr ( detail::is_native_explicit_method_v<MethodType> ) {
+      summary = evaluateNativeRows( state, output, inverse_mass, integrator );
+    } else if constexpr ( execution::DevicePolicy<Execution> ) {
       summary = execution_workspace_.evaluateDefault( options_.method, state, options_.timestep );
       execution_workspace_.downloadResult( output );
       last_device_summary_ = summary;
@@ -368,7 +396,7 @@ class Contact {
     } else {
       summary = evaluateMethod<MethodType>( surfaces, candidates_.view(), options_.method, state, output );
     }
-    if constexpr ( !execution::DevicePolicy<Execution> ) {
+    if constexpr ( !execution::DevicePolicy<Execution> && !detail::is_native_explicit_method_v<MethodType> ) {
       summary.timestep_vote = timestep::kinematicVote<MethodType>( surfaces, candidates_.view(), options_.method, state,
                                                                    options_.timestep );
     }
@@ -394,6 +422,8 @@ class Contact {
 #include "tribol/contact/ContactExactHelpers.inl"
 
   SurfacePairView surfaces_;
+  ParentTracePairView parent_traces_{};
+  ParentTraceFieldPairView parent_fields_{};
   Options options_;
   Search search_;
   mutable CandidatePairs candidates_;
@@ -401,6 +431,7 @@ class Contact {
   GeometryVersion geometry_version_{};
   GeometryVersion interaction_geometry_version_{};
   InteractionVersion interaction_version_{};
+  PenaltyVersion penalty_version_{};
   bool has_interactions_{};
   mutable std::vector<linearization_detail::ExactTangent> exact_mortar_coordinates_;
   mutable std::vector<linearization_detail::ExactTangent> exact_nonmortar_coordinates_;
@@ -445,6 +476,15 @@ class Contact {
   mutable std::vector<Real> result_quadrature_gap_;
   mutable std::vector<Real> result_quadrature_pressure_;
   mutable std::vector<Real> result_pressure_;
+  std::optional<OverlapCellBatch> native_cells_;
+  mutable std::optional<ConstraintRowBatch> native_rows_;
+  mutable std::vector<Real> native_pressure_stiffness_;
+  mutable std::vector<Real> native_rate_coefficient_;
+  mutable std::vector<Real> native_row_force_;
+  mutable std::vector<Real> native_row_stiffness_;
+  mutable std::vector<Real> native_row_rate_;
+  mutable std::vector<Real> native_mortar_row_sums_;
+  mutable std::vector<Real> native_nonmortar_row_sums_;
   using ExecutionWorkspace =
       std::conditional_t<execution::DevicePolicy<Execution>, execution::DeviceContactWorkspace<Execution>,
                          std::conditional_t<std::same_as<Execution, execution::OpenMP>,

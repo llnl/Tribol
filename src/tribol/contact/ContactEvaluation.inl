@@ -1,11 +1,13 @@
-EvaluationSummary addResidual( const ContactStateView& state, ContactResidualView residual ) const
+EvaluationSummary addResidual( const ContactStateView& state, ContactResidualView residual,
+                               timestep::DiagonalInverseMassView inverse_mass = {},
+                               timestep::IntegratorStabilityLimits integrator = {} ) const
 {
   if ( !has_interactions_ ) {
     throw std::logic_error( "updateInteractions() must be called before contact evaluation." );
   }
   clearEvaluationWorkspace();
   if constexpr ( execution::DevicePolicy<Execution> ) {
-    const auto summary = evaluateConfigured( surfaces_, state, resultOutput() );
+    const auto summary = evaluateConfigured( surfaces_, state, resultOutput(), inverse_mass, integrator );
     addResultField( result_mortar_force_, surfaces_.mortar, residual.mortar );
     addResultField( result_nonmortar_force_, surfaces_.nonmortar, residual.nonmortar );
     return summary;
@@ -19,20 +21,23 @@ EvaluationSummary addResidual( const ContactStateView& state, ContactResidualVie
                                                   .mortar_mass_weights = mutableView( result_mortar_mass_weights_ ),
                                                   .quadrature_gap = mutableView( result_quadrature_gap_ ),
                                                   .quadrature_pressure = mutableView( result_quadrature_pressure_ ),
-                                                  .pressure = mutableView( result_pressure_ ) } );
+                                                  .pressure = mutableView( result_pressure_ ) },
+                               inverse_mass, integrator );
   }
 }
 
-[[nodiscard]] ContactResultView evaluate( const ContactStateView& state = {} ) const
+[[nodiscard]] ContactResultView evaluate( const ContactStateView& state = {},
+                                          timestep::DiagonalInverseMassView inverse_mass = {},
+                                          timestep::IntegratorStabilityLimits integrator = {} ) const
 {
   if ( !has_interactions_ ) {
     throw std::logic_error( "updateInteractions() must be called before contact evaluation." );
   }
   clearEvaluationWorkspace();
-  const auto summary = evaluateConfigured( surfaces_, state, resultOutput() );
+  const auto summary = evaluateConfigured( surfaces_, state, resultOutput(), inverse_mass, integrator );
   return {
-      .mortar_force = constField( result_mortar_force_, surfaces_.mortar ),
-      .nonmortar_force = constField( result_nonmortar_force_, surfaces_.nonmortar ),
+      .mortar_force = resultField( result_mortar_force_, true ),
+      .nonmortar_force = resultField( result_nonmortar_force_, false ),
       .constraint_residual = constView( result_constraint_ ),
       .gap = constView( result_gap_ ),
       .weighted_gap = constView( result_weighted_gap_ ),

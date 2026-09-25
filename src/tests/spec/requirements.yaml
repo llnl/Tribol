@@ -5,6 +5,7 @@
     {"id": "API-002", "scope": "api", "text": "Structurally incompatible policy combinations are rejected at compile time."},
     {"id": "API-003", "scope": "api", "text": "Geometry updates preserve frozen interaction topology and invalidate state-derived results."},
     {"id": "API-004", "scope": "api", "text": "Topology rebuilds invalidate interactions and require a new interaction search."},
+    {"id": "API-005", "scope": "api", "text": "A policy-composed automatic-quadrature explicit contact object accepts native parent traces, evaluates and scatters through their parent DOFs, and returns a physical-mass stability vote."},
     {"id": "CORE-001", "scope": "core", "text": "Kernel-facing mesh and field views are trivially copyable and independent of third-party libraries."},
     {"id": "CORE-002", "scope": "core", "text": "Two- and three-dimensional segment, triangle, and quadrilateral surface topology is supported."},
     {"id": "CORE-003", "scope": "core", "text": "Evaluation performs no allocation after interaction preparation."},

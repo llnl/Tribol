@@ -7,7 +7,7 @@
 #include <iostream>
 #include <vector>
 
-// Requirements: CONS-002, GEOM-004
+// Requirements: API-005, CONS-002, GEOM-004, TIME-002
 
 namespace {
 
@@ -328,6 +328,35 @@ bool automaticQuadratureContract()
   return rows.numberOfRows() == 5 && !rows.hasNormalRates() && std::abs( integral - 1.0 / 9.0 ) < 1.0e-13;
 }
 
+bool rowRefreshContract()
+{
+  const auto mortar = segmentTrace( 0.0, 1.0, 0.0, false, 101, 0 );
+  const auto nonmortar = segmentTrace( 0.0, 1.0, -0.1, true, 202, 1 );
+  const std::array<ElementPair, 1> candidate{ ElementPair{ 0, 0 } };
+  const auto cell_storage =
+      buildOverlapCellBatch<normal::MeanPlane>( { mortar.view(), nonmortar.view() }, { candidate.data(), 1 } );
+  constexpr std::array<Real, 4> mortar_coordinates{ 0.0, 0.0, 1.0, 0.0 };
+  std::array<Real, 4> nonmortar_coordinates{ 0.0, -0.1, 1.0, -0.1 };
+  auto row_storage = buildConstraintRowBatch(
+      { mortar.view(), nonmortar.view() }, cell_storage.view(),
+      { .mortar_coordinates = { { mortar_coordinates.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+        .nonmortar_coordinates = { { nonmortar_coordinates.data(), 4 }, 2, 2, FieldLayout::Interleaved } },
+      { .include_normal_rates = true } );
+  const auto* gap_pointer = row_storage.view().gaps.data();
+  constexpr std::array<Real, 4> mortar_velocity{ 0.0, 2.0, 0.0, 2.0 };
+  constexpr std::array<Real, 4> nonmortar_velocity{};
+  nonmortar_coordinates[1] = -0.2;
+  nonmortar_coordinates[3] = -0.2;
+  row_storage.updateFields(
+      { .mortar_coordinates = { { mortar_coordinates.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+        .nonmortar_coordinates = { { nonmortar_coordinates.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+        .mortar_velocity = { { mortar_velocity.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+        .nonmortar_velocity = { { nonmortar_velocity.data(), 4 }, 2, 2, FieldLayout::Interleaved } } );
+  const auto rows = row_storage.view();
+  return rows.gaps.data() == gap_pointer && rows.hasNormalRates() && std::abs( rows.gaps[0] - 0.2 ) < 1.0e-12 &&
+         std::abs( rows.normal_rates[0] - 2.0 ) < 1.0e-12;
+}
+
 bool threeDimensionalRowContract()
 {
   const auto mortar = quadrilateralTrace( 0.0, false, 0.0, 501, 2 );
@@ -354,6 +383,59 @@ bool threeDimensionalRowContract()
          std::abs( moment - 0.25 ) < 1.0e-12;
 }
 
+bool publicNativeContactContract()
+{
+  using NativeMethod =
+      Method<geometry::ProjectedOverlap<normal::MeanPlane>, integration::Automatic, constraint::QuadraturePoint,
+             enforcement::Penalty<>, response::Frictionless, formulation::PointwiseTraction, linearization::Exact>;
+  const auto mortar = segmentTrace( 0.0, 1.0, 0.0, false, 101, 0 );
+  const auto nonmortar = segmentTrace( 0.0, 1.0, 0.1, true, 202, 1 );
+  constexpr std::array<Real, 4> mortar_coordinates{ 0.0, 0.0, 1.0, 0.0 };
+  constexpr std::array<Real, 4> nonmortar_coordinates{ 0.0, 0.1, 1.0, 0.1 };
+  const ParentTraceFieldPairView fields{
+      .mortar_coordinates = { { mortar_coordinates.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+      .nonmortar_coordinates = { { nonmortar_coordinates.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+  };
+  Contact<NativeMethod>::Options options;
+  options.search.expansion = 0.2;
+  options.method.enforcement.stiffness.value = 10.0;
+  Contact<NativeMethod> contact( { mortar.view(), nonmortar.view() }, fields, options );
+  contact.updateInteractions();
+
+  constexpr std::array<Real, 4> inverse_mass_values{ 1.0, 1.0, 1.0, 1.0 };
+  const timestep::DiagonalInverseMassView inverse_mass{
+      .mortar = { { inverse_mass_values.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+      .nonmortar = { { inverse_mass_values.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+  };
+  const auto result = contact.evaluate( {}, inverse_mass, timestep::IntegratorStabilityLimits::centralDifference() );
+  const auto rows = contact.constraintRows();
+  if ( !rows.isStructurallyValid() || rows.numberOfRows() != 2 || result.summary.quadrature_points != 2 ||
+       result.mortar_force.entities != 2 || result.nonmortar_force.entities != 2 ||
+       !std::isfinite( result.summary.timestep_vote ) || result.summary.timestep_vote <= 0.0 ||
+       std::abs( result.summary.energy - 0.025 ) > 1.0e-12 ) {
+    std::cerr << "native rows=" << rows.numberOfRows() << " points=" << result.summary.quadrature_points
+              << " mortar_entities=" << result.mortar_force.entities
+              << " nonmortar_entities=" << result.nonmortar_force.entities << " vote=" << result.summary.timestep_vote
+              << " energy=" << result.summary.energy << '\n';
+    return false;
+  }
+  std::array<Real, 2> resultant{};
+  Real mortar_normal_force{};
+  for ( Index node = 0; node < 2; ++node ) {
+    for ( int component = 0; component < 2; ++component ) {
+      resultant[component] += result.mortar_force( node, component ) + result.nonmortar_force( node, component );
+    }
+    mortar_normal_force += result.mortar_force( node, 1 );
+  }
+  const bool valid = std::abs( resultant[0] ) < 1.0e-12 && std::abs( resultant[1] ) < 1.0e-12 &&
+                     std::abs( std::abs( mortar_normal_force ) - 0.5 ) < 1.0e-12;
+  if ( !valid ) {
+    std::cerr << "native resultant=" << resultant[0] << ',' << resultant[1]
+              << " mortar_normal_force=" << mortar_normal_force << '\n';
+  }
+  return valid;
+}
+
 static_assert( std::is_trivially_copyable_v<OverlapCellBatchView> );
 static_assert( std::is_trivially_copyable_v<ConstraintRowBatchView> );
 
@@ -367,13 +449,15 @@ int main()
   const bool three_dimensional = threeDimensionalMappingContract();
   const bool variable_rows = variableRowContract();
   const bool automatic_quadrature = automaticQuadratureContract();
+  const bool row_refresh = rowRefreshContract();
   const bool three_dimensional_rows = threeDimensionalRowContract();
+  const bool public_contact = publicNativeContactContract();
   if ( !accepted || !statuses || !duplicates || !three_dimensional || !variable_rows || !automatic_quadrature ||
-       !three_dimensional_rows ) {
+       !row_refresh || !three_dimensional_rows || !public_contact ) {
     std::cerr << "accepted=" << accepted << " statuses=" << statuses << " duplicates=" << duplicates
               << " three_dimensional=" << three_dimensional << " variable_rows=" << variable_rows
-              << " automatic_quadrature=" << automatic_quadrature
-              << " three_dimensional_rows=" << three_dimensional_rows << '\n';
+              << " automatic_quadrature=" << automatic_quadrature << " row_refresh=" << row_refresh
+              << " three_dimensional_rows=" << three_dimensional_rows << " public_contact=" << public_contact << '\n';
     return 1;
   }
   return 0;

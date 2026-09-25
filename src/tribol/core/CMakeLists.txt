@@ -16,6 +16,8 @@ set(tribol_core_headers
     ../contact/ContactEvaluation.inl
     ../contact/ContactExactHelpers.inl
     ../contact/ContactLinearization.inl
+    ../contact/ContactNativeLifecycle.inl
+    ../contact/ContactNativeRows.inl
     ../constraint/ConstraintRow.hpp
     ../constraint/ConstraintRowAssembly.hpp
     ../constraint/NormalConstraint.hpp

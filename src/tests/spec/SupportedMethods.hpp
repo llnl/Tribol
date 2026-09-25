@@ -13,6 +13,10 @@ using PointwiseFamily =
 
 using PointwisePenalty = PointwiseFamily<>;
 
+using NativeExplicitPenalty =
+    Method<geometry::ProjectedOverlap<normal::MeanPlane>, integration::Automatic, constraint::QuadraturePoint,
+           enforcement::Penalty<>, response::Frictionless, formulation::PointwiseTraction, linearization::Exact>;
+
 using PointwiseMaterialRateViscous =
     PointwiseFamily<stiffness::Material, rate::Percentage, response::ViscousTangential>;
 
