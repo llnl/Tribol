@@ -64,6 +64,17 @@ blt_add_test(
   COMMAND tribol_diagnostic_quadrature_test)
 
 blt_add_executable(
+  NAME tribol_native_refinement_convergence_test
+  SOURCES components/native_refinement_convergence.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::core
+  FOLDER tribol/components)
+
+blt_add_test(
+  NAME tribol_native_refinement_convergence
+  COMMAND tribol_native_refinement_convergence_test)
+
+blt_add_executable(
   NAME tribol_timestep_policy_test
   SOURCES components/timestep_vote.cpp
   OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
