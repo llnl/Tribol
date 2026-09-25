@@ -53,6 +53,17 @@ blt_add_test(
   COMMAND tribol_timestep_policy_test)
 
 blt_add_executable(
+  NAME tribol_parent_trace_kinematic_vote_test
+  SOURCES components/parent_trace_kinematic_vote.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::core
+  FOLDER tribol/components)
+
+blt_add_test(
+  NAME tribol_parent_trace_kinematic_vote
+  COMMAND tribol_parent_trace_kinematic_vote_test)
+
+blt_add_executable(
   NAME tribol_legacy_common_plane_physics_test
   SOURCES legacy_parity/common_plane_physics.cpp
   OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
