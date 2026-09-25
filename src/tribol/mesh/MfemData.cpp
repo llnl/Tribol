@@ -78,15 +78,15 @@ int DecodeDegreeOfFreedom( int encoded_degree_of_freedom, RealT& sign )
  * @param reference_point Native parent-face reference point
  * @param monomial_values Output monomial values
  */
-void EvaluateParentFaceMonomials( InterfaceElementType geometry, int order,
+void EvaluateParentFaceMonomials( mfem::Geometry::Type geometry, int order,
                                   const mfem::IntegrationPoint& reference_point, mfem::Vector& monomial_values )
 {
   int number_of_monomials = 0;
-  if ( geometry == LINEAR_EDGE ) {
+  if ( geometry == mfem::Geometry::SEGMENT ) {
     number_of_monomials = order + 1;
-  } else if ( geometry == LINEAR_TRIANGLE ) {
+  } else if ( geometry == mfem::Geometry::TRIANGLE ) {
     number_of_monomials = ( order + 1 ) * ( order + 2 ) / 2;
-  } else if ( geometry == LINEAR_QUAD ) {
+  } else if ( geometry == mfem::Geometry::SQUARE ) {
     number_of_monomials = ( order + 1 ) * ( order + 1 );
   } else {
     SLIC_ERROR_ROOT( "Native parent basis evaluation requires segment, triangle, or quadrilateral faces." );
@@ -94,13 +94,13 @@ void EvaluateParentFaceMonomials( InterfaceElementType geometry, int order,
 
   monomial_values.SetSize( number_of_monomials );
   int monomial_index = 0;
-  if ( geometry == LINEAR_EDGE ) {
+  if ( geometry == mfem::Geometry::SEGMENT ) {
     RealT first_coordinate_power = 1.0;
     for ( int first_degree = 0; first_degree <= order; ++first_degree ) {
       monomial_values[monomial_index++] = first_coordinate_power;
       first_coordinate_power *= reference_point.x;
     }
-  } else if ( geometry == LINEAR_TRIANGLE ) {
+  } else if ( geometry == mfem::Geometry::TRIANGLE ) {
     for ( int total_degree = 0; total_degree <= order; ++total_degree ) {
       for ( int second_degree = 0; second_degree <= total_degree; ++second_degree ) {
         const int first_degree = total_degree - second_degree;
@@ -1336,7 +1336,7 @@ void MfemMeshData::UpdateData::BuildParentFaceData( mfem::ParSubMesh& submesh, m
     const IndexT parent_face_id = submesh.GetParentElementIDMap()[parent_submesh_element_id];
     const mfem::FiniteElement& parent_face_element = *submesh_space.GetFE( parent_submesh_element_id );
     const int parent_face_order = parent_face_element.GetOrder();
-    const InterfaceElementType parent_face_geometry = elem_type_;
+    const mfem::Geometry::Type parent_face_geometry = parent_face_element.GetGeomType();
     const int number_of_parent_nodes = parent_face_element.GetDof();
     const int number_of_reference_vertices = reference_vertices->GetNPoints();
     SLIC_ERROR_ROOT_IF( parent_face_order < 1 || parent_face_order > ParentFaceData::max_parent_face_order,
