@@ -142,6 +142,49 @@ bool nativeContactContract()
          close( updated.summary.energy, 0.1 );
 }
 
+bool nativeKinematicVoteContract()
+{
+  constexpr std::array<Real, 4> mortar_coordinates{ 0.0, 0.01, 1.0, 0.01 };
+  constexpr std::array<Real, 4> nonmortar_coordinates{ 0.0, 0.0, 1.0, 0.0 };
+  constexpr std::array<Index, 2> mortar_connectivity{ 1, 0 };
+  constexpr std::array<Index, 2> nonmortar_connectivity{ 0, 1 };
+  Contact<NativeExplicitMethod>::Options options;
+  options.search.expansion = 0.25;
+  options.method.enforcement.stiffness.value = 0.01;
+  options.timestep = { .enabled = true, .current_step = 1.0, .penetration_fraction = 0.3, .velocity_tolerance = 0.0 };
+  auto contact = array::makeContact<NativeExplicitMethod>(
+      array::UniformSurface( 2, ElementTopology::Segment,
+                             { mortar_coordinates.data(), static_cast<Index>( mortar_coordinates.size() ) },
+                             { mortar_connectivity.data(), static_cast<Index>( mortar_connectivity.size() ) } ),
+      array::UniformSurface( 2, ElementTopology::Segment,
+                             { nonmortar_coordinates.data(), static_cast<Index>( nonmortar_coordinates.size() ) },
+                             { nonmortar_connectivity.data(), static_cast<Index>( nonmortar_connectivity.size() ) } ),
+      options );
+  contact.updateInteractions();
+  constexpr std::array<Real, 4> mortar_velocity{ 0.0, 0.1, 0.0, 0.1 };
+  constexpr std::array<Real, 4> nonmortar_velocity{ 0.0, -0.1, 0.0, -0.1 };
+  constexpr std::array<Real, 1> thickness{ 0.1 };
+  constexpr std::array<Real, 4> inverse_mass_values{ 1.0, 1.0, 1.0, 1.0 };
+  const ContactStateView state{
+      .mortar_velocity = { { mortar_velocity.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+      .nonmortar_velocity = { { nonmortar_velocity.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+      .mortar_element_thickness = { thickness.data(), 1 },
+      .nonmortar_element_thickness = { thickness.data(), 1 },
+  };
+  const timestep::DiagonalInverseMassView inverse_mass{
+      .mortar = { { inverse_mass_values.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+      .nonmortar = { { inverse_mass_values.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+  };
+  const auto result = contact.evaluate( state, inverse_mass, timestep::IntegratorStabilityLimits::centralDifference() );
+  return close( result.summary.timestep_vote, 0.3 );
+}
+
 }  // namespace
 
-int main() { return defaultContactContract() && identityParentTraceContract() && nativeContactContract() ? 0 : 1; }
+int main()
+{
+  return defaultContactContract() && identityParentTraceContract() && nativeContactContract() &&
+                 nativeKinematicVoteContract()
+             ? 0
+             : 1;
+}
