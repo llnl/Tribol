@@ -140,17 +140,23 @@ struct BatchCellAccessor {
   return points < 1 ? 1 : points > maximumAutomaticAxisPoints ? maximumAutomaticAxisPoints : points;
 }
 
+[[nodiscard]] TRIBOL_HOST_DEVICE inline Index automaticQuadraturePointCount( const OverlapCellBatchView& cells,
+                                                                             Index cell, int exactness )
+{
+  if ( !cells.isAccepted( cell ) ) {
+    return 0;
+  }
+  const int axis_points = automaticAxisPointCount( exactness );
+  const Index vertices = cells.vertex_offsets[cell + 1] - cells.vertex_offsets[cell];
+  return cells.dimension == 2 ? axis_points : ( vertices - 2 ) * axis_points * axis_points;
+}
+
 [[nodiscard]] TRIBOL_HOST_DEVICE inline Index automaticQuadraturePointCount( const ParentTracePairView& traces,
                                                                              const OverlapCellBatchView& cells,
                                                                              Index cell,
                                                                              const Automatic::Parameters& parameters )
 {
-  if ( !cells.isAccepted( cell ) ) {
-    return 0;
-  }
-  const int axis_points = automaticAxisPointCount( automaticQuadratureExactness( traces, cells, cell, parameters ) );
-  const Index vertices = cells.vertex_offsets[cell + 1] - cells.vertex_offsets[cell];
-  return cells.dimension == 2 ? axis_points : ( vertices - 2 ) * axis_points * axis_points;
+  return automaticQuadraturePointCount( cells, cell, automaticQuadratureExactness( traces, cells, cell, parameters ) );
 }
 
 template <typename Cell>
@@ -188,12 +194,18 @@ template <typename Cell>
 }
 
 [[nodiscard]] TRIBOL_HOST_DEVICE inline OverlapQuadraturePoint automaticQuadraturePoint(
+    const OverlapCellBatchView& cells, Index cell, Index local_point, int exactness )
+{
+  return automaticQuadraturePointFromCell( automatic_quadrature_detail::BatchCellAccessor{ cells, cell }, exactness,
+                                           local_point );
+}
+
+[[nodiscard]] TRIBOL_HOST_DEVICE inline OverlapQuadraturePoint automaticQuadraturePoint(
     const ParentTracePairView& traces, const OverlapCellBatchView& cells, Index cell, Index local_point,
     const Automatic::Parameters& parameters )
 {
-  return automaticQuadraturePointFromCell( automatic_quadrature_detail::BatchCellAccessor{ cells, cell },
-                                           automaticQuadratureExactness( traces, cells, cell, parameters ),
-                                           local_point );
+  return automaticQuadraturePoint( cells, cell, local_point,
+                                   automaticQuadratureExactness( traces, cells, cell, parameters ) );
 }
 
 }  // namespace tribol::integration

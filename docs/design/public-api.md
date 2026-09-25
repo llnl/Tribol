@@ -163,6 +163,13 @@ the next evaluation, a geometry rebuild, or destruction of the contact object.
 
 ## Diagnostics
 
+`diagnostics::sampleQuadrature()` builds host-owned diagnostic samples directly from a `ParentTracePairView` and the
+same `OverlapCellBatchView` used for constraint rows. The default exactness is the automatic parent-order rule; setting
+`QuadratureSamplingOptions::exactness` selects an independent diagnostic exactness without changing enforcement.
+Samples contain physical parent-field gaps and optionally normal rates. `summarizeQuadrature()` applies the requested
+owner-rank filter before computing maximum penetration and closing rate. A `QuadratureSampleView` borrows its storage
+from `QuadratureSamples` and remains valid until that owner is moved, modified, or destroyed.
+
 `diagnostics::writeJson()` and `diagnostics::writeVtk()` write individual snapshots. For time-dependent runs,
 `diagnostics::writeScheduled<Method>()` applies a cycle interval, creates the output directory, adds stable cycle and
 optional rank suffixes, and can emit JSON state, surface VTK, and projected-overlap VTK files. Overlap files carry the
