@@ -1,5 +1,7 @@
 #include "tribol/Tribol.hpp"
 
+#include "ConstraintRowFixture.hpp"
+
 #include <array>
 #include <filesystem>
 #include <fstream>
@@ -87,6 +89,50 @@ bool scheduledDiagnosticsContract()
   return valid;
 }
 
+bool rowDiagnosticsContract_OUTPUT_001()
+{
+  test::TwoRowFixture fixture;
+  const auto rows = fixture.view();
+  constexpr std::array<Real, 2> stiffness{ 10.0, 10.0 };
+  constexpr std::array<Real, 2> damping{ 0.25, 0.25 };
+  std::array<Real, 4> mortar_force{};
+  std::array<Real, 4> nonmortar_force{};
+  std::array<Real, 2> effective_gap{};
+  std::array<Real, 2> pressure{};
+  std::array<Real, 2> row_force{};
+  std::array<Real, 2> row_stiffness{};
+  std::array<Real, 2> row_rate{};
+  (void)evaluateExplicitPenaltyRows( rows, { { stiffness.data(), 2 }, { damping.data(), 2 }, {} },
+                                     { { { mortar_force.data(), 4 }, 2, 2, FieldLayout::Interleaved },
+                                       { { nonmortar_force.data(), 4 }, 2, 2, FieldLayout::Interleaved } },
+                                     { { effective_gap.data(), 2 },
+                                       { pressure.data(), 2 },
+                                       { row_force.data(), 2 },
+                                       { row_stiffness.data(), 2 },
+                                       { row_rate.data(), 2 } } );
+  const auto diagnostics = diagnostics::summarizeExplicitRows( rows,
+                                                               { { effective_gap.data(), 2 },
+                                                                 { pressure.data(), 2 },
+                                                                 { row_force.data(), 2 },
+                                                                 { row_stiffness.data(), 2 },
+                                                                 { row_rate.data(), 2 } },
+                                                               0.2, 0 );
+  return diagnostics.rows == 2 && diagnostics.owned_rows == 2 && diagnostics.active_rows == 2 &&
+         diagnostics.nonfinite_rows == 0 && std::abs( diagnostics.minimum_gap + 0.1 ) < 1.0e-12 &&
+         std::abs( diagnostics.maximum_penetration - 0.1 ) < 1.0e-12 &&
+         std::abs( diagnostics.maximum_closing_rate - 0.2 ) < 1.0e-12 &&
+         std::abs( diagnostics.mortar_force[1] + 1.025 ) < 1.0e-12 &&
+         std::abs( diagnostics.mortar_moment[2] + 0.50625 ) < 1.0e-12 &&
+         std::abs( diagnostics.impulse[1] + 0.205 ) < 1.0e-12 &&
+         std::abs( diagnostics.maximum_traction - 1.05 ) < 1.0e-12 &&
+         std::abs( diagnostics.spring_energy - 0.05 ) < 1.0e-12 &&
+         std::abs( diagnostics.dashpot_dissipation - 0.001 ) < 1.0e-12 &&
+         std::abs( diagnostics.contact_work - 0.011 ) < 1.0e-12;
+}
+
 }  // namespace
 
-int main() { return diagnosticsContract() && scheduledDiagnosticsContract() ? 0 : 1; }
+int main()
+{
+  return diagnosticsContract() && scheduledDiagnosticsContract() && rowDiagnosticsContract_OUTPUT_001() ? 0 : 1;
+}

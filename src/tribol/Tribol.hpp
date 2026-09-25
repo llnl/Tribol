@@ -17,6 +17,7 @@
 #include "tribol/core/ParentTraceView.hpp"
 #include "tribol/core/Version.hpp"
 #include "tribol/diagnostics/ContactOutput.hpp"
+#include "tribol/diagnostics/RowDiagnostics.hpp"
 #include "tribol/diagnostics/ScheduledOutput.hpp"
 #include "tribol/evaluation/ExplicitRowEvaluator.hpp"
 #include "tribol/evaluation/PolicyEvaluator.hpp"
