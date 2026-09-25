@@ -81,34 +81,14 @@ class MfemContact {
       : mesh_( mesh ),
         coordinate_space_( requireCoordinateSpace( mesh, coordinates ) ),
         surfaces_( mesh, coordinates, attributes, discretization, distributionParameters( options ) ),
-        core_( surfaces_.view(), std::move( options ) ),
+        core_( makeCoreContact( surfaces_, std::move( options ) ) ),
         local_parent_residual_( coordinate_space_.GetVSize() ),
         true_residual_( coordinate_space_.GetTrueVSize() ),
         true_nodal_gap_( coordinate_space_.GetTrueVSize() / coordinate_space_.GetVDim() ),
         true_nodal_weighted_gap_( true_nodal_gap_.Size() ),
-        true_nodal_area_( true_nodal_gap_.Size() ),
-        mortar_residual_( surfaces_.view().mortar.coordinates.values.size() ),
-        nonmortar_residual_( surfaces_.view().nonmortar.coordinates.values.size() ),
-        mortar_direction_( mortar_residual_.size() ),
-        nonmortar_direction_( nonmortar_residual_.size() ),
-        mortar_derivative_( mortar_residual_.size() ),
-        nonmortar_derivative_( nonmortar_residual_.size() ),
-        mortar_velocity_( mortar_residual_.size() ),
-        nonmortar_velocity_( nonmortar_residual_.size() ),
-        mortar_reference_coordinates_( mortar_residual_.size() ),
-        nonmortar_reference_coordinates_( nonmortar_residual_.size() ),
-        mortar_element_thickness_( static_cast<std::size_t>( surfaces_.view().mortar.numberOfElements() ) ),
-        nonmortar_element_thickness_( static_cast<std::size_t>( surfaces_.view().nonmortar.numberOfElements() ) ),
-        mortar_material_modulus_( mortar_element_thickness_.size() ),
-        nonmortar_material_modulus_( nonmortar_element_thickness_.size() ),
-        multiplier_( static_cast<std::size_t>( surfaces_.view().mortar.numberOfNodes() ) ),
-        external_potential_density_( multiplier_.size() ),
-        external_pressure_( multiplier_.size() ),
-        external_pressure_tangent_( multiplier_.size() ),
-        multiplier_direction_( multiplier_.size() ),
-        constraint_residual_( multiplier_.size() ),
-        constraint_derivative_( multiplier_.size() )
+        true_nodal_area_( true_nodal_gap_.Size() )
   {
+    resizeSurfaceWorkspace();
   }
 
   void updateInteractions() { core_.updateInteractions(); }
@@ -117,16 +97,28 @@ class MfemContact {
   {
     requireSameSpace( coordinates );
     surfaces_.updateCoordinates( coordinates );
-    core_.updateGeometry( surfaces_.view() );
+    if constexpr ( tribol::detail::is_native_explicit_method_v<MethodType> ) {
+      core_.updateGeometry( surfaces_.parentTraceView(), surfaces_.parentFields() );
+      refreshInverseMass();
+    } else {
+      core_.updateGeometry( surfaces_.view() );
+    }
   }
 
   void rebuildGeometry( const ::mfem::ParGridFunction& coordinates )
   {
     requireSameSpace( coordinates );
     surfaces_.rebuildCoordinates( coordinates );
-    core_.rebuildGeometry( surfaces_.view() );
+    if constexpr ( tribol::detail::is_native_explicit_method_v<MethodType> ) {
+      core_.rebuildGeometry( surfaces_.parentTraceView(), surfaces_.parentFields() );
+      refreshInverseMass();
+    } else {
+      core_.rebuildGeometry( surfaces_.view() );
+    }
     resizeSurfaceWorkspace();
   }
+
+#include "tribol/adapters/mfem/MfemContactRegistration.inl"
 
   EvaluationSummary addResidual( ::mfem::Vector& parent_true_residual )
   {
@@ -154,18 +146,12 @@ class MfemContact {
     std::fill( mortar_residual_.begin(), mortar_residual_.end(), 0.0 );
     std::fill( nonmortar_residual_.begin(), nonmortar_residual_.end(), 0.0 );
     std::fill( constraint_residual_.begin(), constraint_residual_.end(), 0.0 );
-    const auto surface_views = surfaces_.view();
     const auto summary = core_.addResidual(
         restrictState( state ),
-        { .mortar = { { mortar_residual_.data(), static_cast<Index>( mortar_residual_.size() ) },
-                      surface_views.mortar.numberOfNodes(),
-                      surface_views.mortar.dimension,
-                      FieldLayout::Interleaved },
-          .nonmortar = { { nonmortar_residual_.data(), static_cast<Index>( nonmortar_residual_.size() ) },
-                         surface_views.nonmortar.numberOfNodes(),
-                         surface_views.nonmortar.dimension,
-                         FieldLayout::Interleaved },
-          .constraint = { constraint_residual_.data(), static_cast<Index>( constraint_residual_.size() ) } } );
+        { .mortar = contactResidualField( mortar_residual_, surfaces_.mortar() ),
+          .nonmortar = contactResidualField( nonmortar_residual_, surfaces_.nonmortar() ),
+          .constraint = { constraint_residual_.data(), static_cast<Index>( constraint_residual_.size() ) } },
+        inverseMass(), integrator_ );
     addDualTranspose( { mortar_residual_.data(), static_cast<Index>( mortar_residual_.size() ) },
                       { nonmortar_residual_.data(), static_cast<Index>( nonmortar_residual_.size() ) },
                       parent_true_residual );
@@ -177,7 +163,7 @@ class MfemContact {
 
   [[nodiscard]] ContactResultView evaluate( const ContactState& state = {} )
   {
-    auto result = core_.evaluate( restrictState( state ) );
+    auto result = core_.evaluate( restrictState( state ), inverseMass(), integrator_ );
     result.summary = globalSummary( result.summary );
     return result;
   }
@@ -213,18 +199,11 @@ class MfemContact {
     }
     std::fill( mortar_residual_.begin(), mortar_residual_.end(), 0.0 );
     std::fill( nonmortar_residual_.begin(), nonmortar_residual_.end(), 0.0 );
-    const auto surface_views = surfaces_.view();
     const ContactResidualView residual{
-        .mortar =
-            FieldView<Real>{ ArrayView<Real>{ mortar_residual_.data(), static_cast<Index>( mortar_residual_.size() ) },
-                             surface_views.mortar.numberOfNodes(), surface_views.mortar.dimension,
-                             FieldLayout::Interleaved },
-        .nonmortar =
-            FieldView<Real>{
-                ArrayView<Real>{ nonmortar_residual_.data(), static_cast<Index>( nonmortar_residual_.size() ) },
-                surface_views.nonmortar.numberOfNodes(), surface_views.nonmortar.dimension, FieldLayout::Interleaved },
+        .mortar = contactResidualField( mortar_residual_, surfaces_.mortar() ),
+        .nonmortar = contactResidualField( nonmortar_residual_, surfaces_.nonmortar() ),
     };
-    const auto summary = core_.addResidual( state, residual );
+    const auto summary = core_.addResidual( state, residual, inverseMass(), integrator_ );
     addDualTranspose( { mortar_residual_.data(), static_cast<Index>( mortar_residual_.size() ) },
                       { nonmortar_residual_.data(), static_cast<Index>( nonmortar_residual_.size() ) },
                       parent_true_residual );
@@ -381,6 +360,10 @@ class MfemContact {
     }
     mortar.assign( mortar_residual_.size(), 0.0 );
     nonmortar.assign( nonmortar_residual_.size(), 0.0 );
+    if constexpr ( tribol::detail::is_native_explicit_method_v<MethodType> ) {
+      distributeParentTrueField( parent_true_field, true, mortar, nonmortar );
+      return;
+    }
     const auto* prolongation = coordinate_space_.GetProlongationMatrix();
     if ( prolongation == nullptr ) {
       local_parent_residual_ = parent_true_field;
@@ -400,8 +383,13 @@ class MfemContact {
       throw std::invalid_argument( "MFEM dual transpose requires matching surface fields and true-DOF output." );
     }
     local_parent_residual_ = 0.0;
-    scatterSurface( surfaces_.mortar(), mortar );
-    scatterSurface( surfaces_.nonmortar(), nonmortar );
+    if constexpr ( tribol::detail::is_native_explicit_method_v<MethodType> ) {
+      scatterParentDofField( surfaces_.mortar(), mortar );
+      scatterParentDofField( surfaces_.nonmortar(), nonmortar );
+    } else {
+      scatterSurface( surfaces_.mortar(), mortar );
+      scatterSurface( surfaces_.nonmortar(), nonmortar );
+    }
     true_residual_ = 0.0;
     const auto* prolongation = coordinate_space_.GetProlongationMatrix();
     if ( prolongation == nullptr ) {
@@ -413,6 +401,8 @@ class MfemContact {
   }
 
   [[nodiscard]] ParentTracePairView parentTraces() const { return surfaces_.parentTraceView(); }
+
+  [[nodiscard]] ParentTraceFieldPairView parentFields() const { return surfaces_.parentFields(); }
 
   [[nodiscard]] const CoreContact& core() const { return core_; }
 
@@ -451,6 +441,13 @@ class MfemContact {
   ::mfem::Vector local_scalar_field_;
   ::mfem::Vector local_scalar_residual_;
   ::mfem::Vector true_scalar_residual_;
+  ::mfem::Vector registered_true_inverse_mass_;
+  std::vector<Real> mortar_inverse_mass_;
+  std::vector<Real> nonmortar_inverse_mass_;
+  MassVersion inverse_mass_version_{};
+  IntegratorVersion integrator_version_{};
+  timestep::IntegratorStabilityLimits integrator_{};
+  bool has_registered_inverse_mass_{};
 };
 
 template <SupportedMethod MethodType = DefaultMethod, SearchPolicy Search = search::CartesianProduct,

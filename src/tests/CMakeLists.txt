@@ -340,6 +340,28 @@ blt_add_test(
   COMMAND tribol_mfem_adapter_test
   NUM_MPI_TASKS 4)
 
+blt_add_executable(
+  NAME tribol_mfem_native_contact_test
+  SOURCES adapters/mfem_native_contact.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::mfem_adapter ${tribol_device_depends}
+  FOLDER tribol/adapters)
+
+blt_add_test(
+  NAME tribol_mfem_native_contact_smoke
+  COMMAND tribol_mfem_native_contact_test
+  NUM_MPI_TASKS 1)
+
+blt_add_test(
+  NAME tribol_mfem_native_contact_2rank
+  COMMAND tribol_mfem_native_contact_test
+  NUM_MPI_TASKS 2)
+
+blt_add_test(
+  NAME tribol_mfem_native_contact_4rank
+  COMMAND tribol_mfem_native_contact_test
+  NUM_MPI_TASKS 4)
+
 configure_file(
   install/RunInstallConsumer.cmake.in
   ${CMAKE_CURRENT_BINARY_DIR}/RunInstallConsumer.cmake

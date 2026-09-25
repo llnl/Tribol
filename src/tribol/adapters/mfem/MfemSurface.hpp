@@ -3,6 +3,7 @@
 
 #include "tribol/adapters/mfem/MfemDistribution.hpp"
 #include "tribol/adapters/mfem/MfemParentTrace.hpp"
+#include "tribol/core/ConstraintRowView.hpp"
 
 #include "mfem.hpp"
 #include <mpi.h>
@@ -10,6 +11,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <initializer_list>
+#include <map>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -84,6 +86,14 @@ class SurfaceStorage {
 
   [[nodiscard]] ParentTraceView parentTraceView() const { return parent_trace_.view( view() ); }
 
+  [[nodiscard]] FieldView<const Real> parentCoordinateView() const
+  {
+    return { { parent_coordinates_.data(), static_cast<Index>( parent_coordinates_.size() ) },
+             parent_trace_.numberOfDofs(),
+             dimension_,
+             FieldLayout::Interleaved };
+  }
+
   [[nodiscard]] bool isLocallyOwned( std::size_t node ) const { return owner_ranks_[node] == rank_; }
 
   [[nodiscard]] const RestrictionNode& localRestriction( std::size_t node ) const
@@ -97,8 +107,14 @@ class SurfaceStorage {
   }
 
   [[nodiscard]] std::size_t localNodeCount() const { return local_restrictions_.size(); }
+  [[nodiscard]] std::size_t localParentDofCount() const { return local_parent_dofs_.size(); }
+  [[nodiscard]] int localParentDof( std::size_t parent_dof ) const { return local_parent_dofs_[parent_dof]; }
+  [[nodiscard]] Index parentDofCount() const { return parent_trace_.numberOfDofs(); }
   [[nodiscard]] std::size_t localElementCount() const { return local_boundary_elements_.size(); }
   [[nodiscard]] const ::mfem::ParMesh& mesh() const { return mesh_; }
+
+  void distributeParentDofField( const ::mfem::ParFiniteElementSpace& space, const ::mfem::Vector& local_field,
+                                 int components, bool apply_vector_dof_sign, std::vector<Real>& values ) const;
 
   [[nodiscard]] search::detail::BoundingBox localExpandedBounds( DistributionParameters parameters, bool& valid ) const
   {
@@ -150,7 +166,9 @@ class SurfaceStorage {
     auto metadata = exchangeToDestinations( mesh_.GetComm(), local_metadata_, destinations_ );
     auto coordinates = exchangeToDestinations( mesh_.GetComm(), local_coordinates_, destinations_ );
     auto trace_data = exchangeToDestinations( mesh_.GetComm(), local_trace_data_, destinations_ );
+    auto parent_coordinates = exchangeToDestinations( mesh_.GetComm(), local_parent_coordinates_, destinations_ );
     coordinates_ = std::move( coordinates.values );
+    parent_coordinates_ = std::move( parent_coordinates.values );
     received_node_counts_.resize( coordinates.receive_counts.size() );
     for ( std::size_t owner = 0; owner < coordinates.receive_counts.size(); ++owner ) {
       if ( coordinates.receive_counts[owner] % dimension_ != 0 ) {
@@ -158,7 +176,17 @@ class SurfaceStorage {
       }
       received_node_counts_[owner] = coordinates.receive_counts[owner] / dimension_;
     }
+    received_parent_dof_counts_.resize( parent_coordinates.receive_counts.size() );
+    for ( std::size_t owner = 0; owner < parent_coordinates.receive_counts.size(); ++owner ) {
+      if ( parent_coordinates.receive_counts[owner] % dimension_ != 0 ) {
+        throw std::logic_error( "MFEM distributed parent-coordinate packet has an invalid size." );
+      }
+      received_parent_dof_counts_[owner] = parent_coordinates.receive_counts[owner] / dimension_;
+    }
     rebuildTopology( metadata.values, metadata.receive_counts, trace_data.values, trace_data.receive_counts );
+    if ( parent_coordinates_.size() != static_cast<std::size_t>( parent_trace_.numberOfDofs() * dimension_ ) ) {
+      throw std::logic_error( "MFEM distributed parent coordinates do not match parent-DOF identities." );
+    }
   }
 
   [[nodiscard]] std::vector<Real> distributeNodeValues( const std::vector<Real>& local, int components ) const
@@ -219,6 +247,8 @@ class SurfaceStorage {
     return result;
   }
 
+  [[nodiscard]] std::vector<Real> reduceParentDofValues( ArrayView<const Real> distributed, int components ) const;
+
   void sampleElementCoefficient( ::mfem::Coefficient& coefficient, std::vector<Real>& values ) const
   {
     std::vector<Real> local( localElementCount() );
@@ -255,6 +285,8 @@ class SurfaceStorage {
     std::vector<Real> local_coordinates;
     std::vector<Real> local_trace_data;
     local_restrictions_.clear();
+    local_parent_dof_indices_.clear();
+    local_parent_dofs_.clear();
     local_boundary_elements_.clear();
     for ( int boundary_element = 0; boundary_element < mesh_.GetNBE(); ++boundary_element ) {
       const int attribute = mesh_.GetBdrAttribute( boundary_element );
@@ -266,6 +298,7 @@ class SurfaceStorage {
     local_metadata_ = std::move( local_metadata );
     local_coordinates_ = std::move( local_coordinates );
     local_trace_data_ = std::move( local_trace_data );
+    collectLocalParentField( *space, coordinate_field, dimension_, true, local_parent_coordinates_ );
     redistribute( destinations_ );
   }
 
@@ -333,10 +366,15 @@ class SurfaceStorage {
   std::vector<std::int64_t> local_metadata_;
   std::vector<Real> local_coordinates_;
   std::vector<Real> local_trace_data_;
+  std::vector<Real> local_parent_coordinates_;
   std::vector<int> local_boundary_elements_;
+  std::map<int, Index> local_parent_dof_indices_;
+  std::vector<int> local_parent_dofs_;
   std::vector<int> received_node_counts_;
+  std::vector<int> received_parent_dof_counts_;
   std::vector<int> received_element_counts_;
   std::vector<Real> coordinates_;
+  std::vector<Real> parent_coordinates_;
   std::vector<Index> offsets_;
   std::vector<Index> connectivity_;
   std::vector<ElementTopology> topologies_;
@@ -346,6 +384,8 @@ class SurfaceStorage {
   std::vector<RestrictionNode> local_restrictions_;
   ParentTraceStorage parent_trace_;
 };
+
+#include "tribol/adapters/mfem/MfemParentFieldCommunication.inl"
 
 class SurfacePairStorage {
  public:
@@ -378,6 +418,11 @@ class SurfacePairStorage {
   [[nodiscard]] ParentTracePairView parentTraceView() const
   {
     return { mortar_.parentTraceView(), nonmortar_.parentTraceView() };
+  }
+  [[nodiscard]] ParentTraceFieldPairView parentFields() const
+  {
+    return { .mortar_coordinates = mortar_.parentCoordinateView(),
+             .nonmortar_coordinates = nonmortar_.parentCoordinateView() };
   }
   [[nodiscard]] const SurfaceStorage& mortar() const { return mortar_; }
   [[nodiscard]] const SurfaceStorage& nonmortar() const { return nonmortar_; }

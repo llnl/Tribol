@@ -2,16 +2,15 @@ ContactStateView restrictState( const ContactState& state )
 {
   ContactStateView result;
   if ( state.velocity != nullptr ) {
-    gatherNodalField( *state.velocity, coordinate_space_.GetVDim(), mortar_velocity_, nonmortar_velocity_ );
-    result.mortar_velocity = surfaceField( mortar_velocity_, surfaces_.view().mortar );
-    result.nonmortar_velocity = surfaceField( nonmortar_velocity_, surfaces_.view().nonmortar );
+    gatherContactField( *state.velocity, coordinate_space_.GetVDim(), mortar_velocity_, nonmortar_velocity_ );
+    result.mortar_velocity = contactField( mortar_velocity_, surfaces_.mortar() );
+    result.nonmortar_velocity = contactField( nonmortar_velocity_, surfaces_.nonmortar() );
   }
   if ( state.reference_coordinates != nullptr ) {
-    gatherNodalField( *state.reference_coordinates, coordinate_space_.GetVDim(), mortar_reference_coordinates_,
-                      nonmortar_reference_coordinates_ );
-    result.mortar_reference_coordinates = surfaceField( mortar_reference_coordinates_, surfaces_.view().mortar );
-    result.nonmortar_reference_coordinates =
-        surfaceField( nonmortar_reference_coordinates_, surfaces_.view().nonmortar );
+    gatherContactField( *state.reference_coordinates, coordinate_space_.GetVDim(), mortar_reference_coordinates_,
+                        nonmortar_reference_coordinates_ );
+    result.mortar_reference_coordinates = contactField( mortar_reference_coordinates_, surfaces_.mortar() );
+    result.nonmortar_reference_coordinates = contactField( nonmortar_reference_coordinates_, surfaces_.nonmortar() );
   }
   if ( state.element_thickness != nullptr ) {
     surfaces_.mortar().sampleElementCoefficient( *state.element_thickness, mortar_element_thickness_ );
@@ -57,6 +56,15 @@ ContactStateView restrictState( const ContactState& state )
 }
 
 private:
+static CoreContact makeCoreContact( const detail::SurfacePairStorage& surfaces, Options options )
+{
+  if constexpr ( tribol::detail::is_native_explicit_method_v<MethodType> ) {
+    return CoreContact( surfaces.parentTraceView(), surfaces.parentFields(), std::move( options ) );
+  } else {
+    return CoreContact( surfaces.view(), std::move( options ) );
+  }
+}
+
 static detail::DistributionParameters distributionParameters( const Options& options )
 {
   detail::DistributionParameters result;
@@ -88,8 +96,8 @@ EvaluationSummary globalSummary( EvaluationSummary local ) const
 void resizeSurfaceWorkspace()
 {
   const auto surfaces = surfaces_.view();
-  const auto mortar_values = static_cast<std::size_t>( surfaces.mortar.coordinates.values.size() );
-  const auto nonmortar_values = static_cast<std::size_t>( surfaces.nonmortar.coordinates.values.size() );
+  const auto mortar_values = static_cast<std::size_t>( contactValueCount( surfaces_.mortar() ) );
+  const auto nonmortar_values = static_cast<std::size_t>( contactValueCount( surfaces_.nonmortar() ) );
   mortar_residual_.resize( mortar_values );
   nonmortar_residual_.resize( nonmortar_values );
   mortar_direction_.resize( mortar_values );
@@ -145,10 +153,7 @@ static ArrayView<const Real> vectorView( const std::vector<Real>& values )
   return { values.data(), static_cast<Index>( values.size() ) };
 }
 
-static FieldView<const Real> surfaceField( const std::vector<Real>& values, const SurfaceMeshView& surface )
-{
-  return { vectorView( values ), surface.numberOfNodes(), surface.dimension, FieldLayout::Interleaved };
-}
+#include "tribol/adapters/mfem/MfemContactParentFields.inl"
 
 void requireFieldSpace( const ::mfem::ParGridFunction& field, int components ) const
 {

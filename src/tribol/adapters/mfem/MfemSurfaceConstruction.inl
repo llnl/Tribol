@@ -36,6 +36,12 @@ void appendSubelement( const ::mfem::ParFiniteElementSpace& space, const ::mfem:
   const int parent_order = element->GetOrder();
   ::mfem::Array<int> dofs;
   space.GetBdrElementDofs( boundary_element, dofs );
+  for ( int encoded_dof : dofs ) {
+    const int dof = decodeDof( encoded_dof );
+    if ( local_parent_dof_indices_.emplace( dof, static_cast<Index>( local_parent_dofs_.size() ) ).second ) {
+      local_parent_dofs_.push_back( dof );
+    }
+  }
   const auto coefficients = parentBasisCoefficients( *element, parent_topology, parent_order );
   metadata.push_back( static_cast<std::int64_t>( child_topology ) );
   metadata.push_back( attribute );
@@ -52,6 +58,19 @@ void appendSubelement( const ::mfem::ParFiniteElementSpace& space, const ::mfem:
     trace_data.push_back( points[point].x );
     if ( dimension_ == 3 ) {
       trace_data.push_back( points[point].y );
+    }
+  }
+}
+
+void collectLocalParentField( const ::mfem::ParFiniteElementSpace& space, const ::mfem::Vector& field, int components,
+                              bool apply_vector_dof_sign, std::vector<Real>& values ) const
+{
+  values.resize( localParentDofCount() * static_cast<std::size_t>( components ) );
+  for ( std::size_t parent_dof = 0; parent_dof < localParentDofCount(); ++parent_dof ) {
+    for ( int component = 0; component < components; ++component ) {
+      const int vector_dof = space.DofToVDof( local_parent_dofs_[parent_dof], component );
+      const Real sign = apply_vector_dof_sign ? dofSign( vector_dof ) : 1.0;
+      values[parent_dof * static_cast<std::size_t>( components ) + component] = sign * field[decodeDof( vector_dof )];
     }
   }
 }

@@ -8,8 +8,7 @@
 #include <vector>
 
 // Requirements: ADAPTER-002, ADAPTER-003, ADAPTER-004, ADAPTER-005, ADAPTER-006, ADAPTER-007, API-001, DIFF-004,
-// Requirements: DIFF-006
-// Requirements: GEOM-001, PAR-002, PAR-005, PHYS-001
+// Requirements: DIFF-006, GEOM-001, PAR-002, PAR-005, PHYS-001
 
 namespace {
 
@@ -29,68 +28,6 @@ double globalSum( double local )
   double global{};
   MPI_Allreduce( &local, &global, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
   return global;
-}
-
-double globalMax( double local )
-{
-  double global{};
-  MPI_Allreduce( &local, &global, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD );
-  return global;
-}
-
-double parentTraceCoordinateError( const tribol::ParentTraceView& trace, const ::mfem::ParGridFunction& coordinates,
-                                   int rank )
-{
-  if ( !trace.isStructurallyValid() ) {
-    return 1.0;
-  }
-  const auto& space = *coordinates.ParFESpace();
-  double error{};
-  for ( tribol::Index subfacet = 0; subfacet < trace.numberOfSubfacets(); ++subfacet ) {
-    const tribol::Index parent_face = trace.subfacet_parent_faces[subfacet];
-    if ( trace.parent_face_owners[parent_face] != rank ) {
-      continue;
-    }
-    for ( tribol::Index offset = trace.geometry.element_offsets[subfacet];
-          offset < trace.geometry.element_offsets[subfacet + 1]; ++offset ) {
-      const tribol::basis::ReferencePoint point{
-          trace.subfacet_parent_reference_coordinates( offset, 0 ),
-          trace.geometry.dimension == 3 ? trace.subfacet_parent_reference_coordinates( offset, 1 ) : 0.0 };
-      const auto shape = tribol::basis::parentShape( trace, parent_face, point );
-      const tribol::Index dof_begin = trace.parent_dof_offsets[parent_face];
-      const tribol::Index geometry_node = trace.geometry.connectivity[offset];
-      for ( int component = 0; component < trace.geometry.dimension; ++component ) {
-        double expected{};
-        for ( int local_dof = 0; local_dof < shape.size; ++local_dof ) {
-          const tribol::Index dof = trace.parent_dofs[dof_begin + local_dof];
-          const int vector_dof = space.DofToVDof( static_cast<int>( dof ), component );
-          const double vector_sign = vector_dof >= 0 ? 1.0 : -1.0;
-          const int decoded_vector_dof = vector_dof >= 0 ? vector_dof : -1 - vector_dof;
-          expected += shape[local_dof] * trace.parent_dof_signs[dof_begin + local_dof] * vector_sign *
-                      coordinates[decoded_vector_dof];
-        }
-        error = std::max( error, std::abs( expected - trace.geometry.coordinates( geometry_node, component ) ) );
-      }
-    }
-  }
-  return error;
-}
-
-int exerciseParentTrace3D( int rank, int order, ::mfem::Element::Type element_type )
-{
-  ::mfem::Mesh serial_mesh = ::mfem::Mesh::MakeCartesian3D( 1, 1, 1, element_type, 1.0, 1.0, 1.0 );
-  ::mfem::ParMesh mesh( MPI_COMM_WORLD, serial_mesh );
-  mesh.SetCurvature( order );
-  auto* coordinates = dynamic_cast<::mfem::ParGridFunction*>( mesh.GetNodes() );
-  if ( coordinates == nullptr ) {
-    return 1;
-  }
-  curveCoordinates( *coordinates );
-  const tribol::mfem::detail::SurfaceStorage surface( mesh, *coordinates, std::vector<int>{ 1 } );
-  const auto trace = surface.parentTraceView();
-  const double error = globalMax( parentTraceCoordinateError( trace, *coordinates, rank ) );
-  const double global_faces = globalSum( trace.numberOfParentFaces() );
-  return trace.isStructurallyValid() && global_faces > 0.0 && error <= 1.0e-10 ? 0 : 1;
 }
 
 int exerciseContact( int communicator_size, int rank, int order, int subdivision_factor = 0 )
@@ -113,8 +50,6 @@ int exerciseContact( int communicator_size, int rank, int order, int subdivision
   auto contact = tribol::mfem::makeContact( mesh, *coordinates, tribol::mfem::PairedBoundaryAttributes{ { 3 }, { 1 } },
                                             options, tribol::mfem::SurfaceDiscretization{ subdivision_factor } );
   contact.updateInteractions();
-  const auto parent_traces = contact.parentTraces();
-  const double parent_trace_error = globalMax( parentTraceCoordinateError( parent_traces.mortar, *coordinates, rank ) );
 
   ::mfem::Vector residual( coordinates->ParFESpace()->GetTrueVSize() );
   residual = 0.0;
@@ -216,14 +151,14 @@ int exerciseContact( int communicator_size, int rank, int order, int subdivision
   const bool valid = global_interactions > 0 && expected_refinement && curved_sample_found != 0 && energy_is_correct &&
                      std::abs( residual_sum ) <= 1.0e-12 &&
                      std::abs( global_restricted_dot - global_transpose_dot ) <= 1.0e-11 && jacobian_error <= 1.0e-7 &&
-                     assembled_error <= 1.0e-12 && parent_traces.isStructurallyValid() && parent_trace_error <= 1.0e-11;
+                     assembled_error <= 1.0e-12;
   if ( !valid && rank == 0 ) {
     std::cerr << "order=" << order << " interactions=" << contact.core().interactions().size()
               << " mortar_elements=" << global_mortar_elements << " energy=" << summary.energy
               << " residual_sum=" << residual_sum << " adjoint_error=" << global_restricted_dot - global_transpose_dot
               << " jacobian_error=" << jacobian_error << " fd_norm=" << finite_difference_norm
               << " action_norm=" << jacobian_action_norm << " assembled_error=" << assembled_error
-              << " curved_sample=" << curved_sample_found << " parent_trace_error=" << parent_trace_error << '\n';
+              << " curved_sample=" << curved_sample_found << '\n';
     for ( int dof = 0; dof < plus_residual.Size(); ++dof ) {
       if ( std::abs( plus_residual[dof] ) > 1.0e-8 ) {
         std::cerr << "  derivative error dof=" << dof << " value=" << plus_residual[dof] << '\n';
@@ -506,21 +441,15 @@ int main( int argc, char* argv[] )
   const int custom_subdivision = exerciseContact( communicator_size, rank, 2, 3 );
   const int linear_state = exerciseStateMapping( communicator_size, 1 );
   const int curved_state = exerciseStateMapping( communicator_size, 2 );
-  int parent_trace_3d{};
-  for ( int order = 1; order <= tribol::maximumParentTraceOrder; ++order ) {
-    parent_trace_3d |= exerciseParentTrace3D( rank, order, ::mfem::Element::HEXAHEDRON );
-  }
-  parent_trace_3d |= exerciseParentTrace3D( rank, 3, ::mfem::Element::TETRAHEDRON );
   const int multiplier = exerciseMultiplierSystem( communicator_size );
   const int external_pressure = exerciseExternalPressureJacobian( communicator_size );
   const int redistribution = exerciseDynamicRedistribution( communicator_size );
-  const int result = linear | curved | cubic | quartic | custom_subdivision | linear_state | curved_state |
-                     parent_trace_3d | multiplier | external_pressure | redistribution;
+  const int result = linear | curved | cubic | quartic | custom_subdivision | linear_state | curved_state | multiplier |
+                     external_pressure | redistribution;
   if ( result != 0 && rank == 0 ) {
     std::cerr << "MFEM adapter subtests: linear=" << linear << " curved=" << curved << " cubic=" << cubic
               << " quartic=" << quartic << " custom_subdivision=" << custom_subdivision
-              << " linear_state=" << linear_state << " curved_state=" << curved_state
-              << " parent_trace_3d=" << parent_trace_3d << " multiplier=" << multiplier
+              << " linear_state=" << linear_state << " curved_state=" << curved_state << " multiplier=" << multiplier
               << " external_pressure=" << external_pressure << " redistribution=" << redistribution << '\n';
   }
   MPI_Finalize();

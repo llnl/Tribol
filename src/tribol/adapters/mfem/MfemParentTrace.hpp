@@ -129,6 +129,7 @@ class ParentTraceStorage {
   void clear()
   {
     parent_faces_.clear();
+    parent_dofs_.clear();
     face_ids_.clear();
     face_owners_.clear();
     face_topologies_.clear();
@@ -140,6 +141,8 @@ class ParentTraceStorage {
     basis_coefficients_.clear();
     subfacet_faces_.clear();
     reference_coordinates_.clear();
+    dof_owners_.clear();
+    owner_local_dofs_.clear();
   }
 
   Index findOrAppendFace( int owner, const SurfacePacketHeader& header, const std::vector<std::int64_t>& metadata,
@@ -157,7 +160,14 @@ class ParentTraceStorage {
     face_orders_.push_back( header.parent_order );
     for ( int dof = 0; dof < header.parent_dof_count; ++dof ) {
       const int encoded = static_cast<int>( metadata[header.parent_dof_offset + static_cast<std::size_t>( dof )] );
-      dofs_.push_back( decodeDof( encoded ) );
+      const int owner_local_dof = decodeDof( encoded );
+      const auto [dof_iterator, dof_inserted] =
+          parent_dofs_.emplace( std::make_pair( owner, owner_local_dof ), static_cast<Index>( dof_owners_.size() ) );
+      if ( dof_inserted ) {
+        dof_owners_.push_back( owner );
+        owner_local_dofs_.push_back( owner_local_dof );
+      }
+      dofs_.push_back( dof_iterator->second );
       dof_signs_.push_back( dofSign( encoded ) );
     }
     dof_offsets_.push_back( static_cast<Index>( dofs_.size() ) );
@@ -192,8 +202,11 @@ class ParentTraceStorage {
     };
   }
 
+  [[nodiscard]] Index numberOfDofs() const { return static_cast<Index>( dof_owners_.size() ); }
+
  private:
   std::map<std::pair<int, int>, Index> parent_faces_;
+  std::map<std::pair<int, int>, Index> parent_dofs_;
   std::vector<std::uint64_t> face_ids_;
   std::vector<int> face_owners_;
   std::vector<ElementTopology> face_topologies_;
@@ -201,6 +214,8 @@ class ParentTraceStorage {
   std::vector<Index> dof_offsets_{ 0 };
   std::vector<Index> dofs_;
   std::vector<Real> dof_signs_;
+  std::vector<int> dof_owners_;
+  std::vector<int> owner_local_dofs_;
   std::vector<Index> basis_offsets_{ 0 };
   std::vector<Real> basis_coefficients_;
   std::vector<Index> subfacet_faces_;
