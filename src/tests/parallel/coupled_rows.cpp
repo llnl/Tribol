@@ -9,7 +9,7 @@
 #include <cmath>
 #include <vector>
 
-// Requirements: PAR-002, PAR-007, TIME-002
+// Requirements: PAR-002, PAR-003, PAR-007, TIME-002
 
 namespace {
 
@@ -48,6 +48,17 @@ ConstraintRowBatch assemble( TwoRowFixture& first, TwoRowFixture& second, int ow
                                       { .dimension = 2, .number_of_parent_dofs = 6, .owner_rank = owner_rank } );
 }
 
+ConstraintRowBatch assemblePermuted( TwoRowFixture& first, TwoRowFixture& second, int owner_rank )
+{
+  const std::array<ConstraintRowSourceView, 3> sources{
+      ConstraintRowSourceView{ second.view(), { second_mortar_map.data(), 2 }, { second_nonmortar_map.data(), 2 } },
+      ConstraintRowSourceView{ first.view(), { first_mortar_map.data(), 2 }, { first_nonmortar_map.data(), 2 } },
+      ConstraintRowSourceView{ first.view(), { first_mortar_map.data(), 2 }, { first_nonmortar_map.data(), 2 } },
+  };
+  return assembleOwnedConstraintRows( { sources.data(), 3 },
+                                      { .dimension = 2, .number_of_parent_dofs = 6, .owner_rank = owner_rank } );
+}
+
 std::vector<Real> evaluate( ConstraintRowBatchView rows )
 {
   std::vector<Real> force( 12 );
@@ -60,10 +71,25 @@ std::vector<Real> evaluate( ConstraintRowBatchView rows )
 bool deterministicAssemblyContract( TwoRowFixture& first, TwoRowFixture& second )
 {
   const auto coupled = assemble( first, second, -1 );
+  const auto permuted = assemblePermuted( first, second, -1 );
   const auto rows = coupled.view();
-  return rows.numberOfRows() == 4 && rows.contact_pair_ids[0] == 7 && rows.contact_pair_ids[1] == 7 &&
-         rows.contact_pair_ids[2] == 8 && rows.contact_pair_ids[3] == 8 && rows.mortar_dofs[0] == 0 &&
-         rows.nonmortar_dofs[0] == 2 && rows.mortar_dofs[4] == 2 && rows.nonmortar_dofs[4] == 4;
+  const auto permuted_rows = permuted.view();
+  if ( rows.numberOfRows() != 4 || permuted_rows.numberOfRows() != rows.numberOfRows() ||
+       rows.contact_pair_ids[0] != 7 || rows.contact_pair_ids[1] != 7 || rows.contact_pair_ids[2] != 8 ||
+       rows.contact_pair_ids[3] != 8 || rows.mortar_dofs[0] != 0 || rows.nonmortar_dofs[0] != 2 ||
+       rows.mortar_dofs[4] != 2 || rows.nonmortar_dofs[4] != 4 ) {
+    return false;
+  }
+  for ( Index row = 0; row < rows.numberOfRows(); ++row ) {
+    if ( rows.contact_pair_ids[row] != permuted_rows.contact_pair_ids[row] ||
+         rows.row_ids[row] != permuted_rows.row_ids[row] ) {
+      return false;
+    }
+  }
+  const auto force = evaluate( rows );
+  const auto permuted_force = evaluate( permuted_rows );
+  return std::equal( force.begin(), force.end(), permuted_force.begin(),
+                     []( Real left, Real right ) { return std::abs( left - right ) < 1.0e-13; } );
 }
 
 bool coupledStabilityContract( TwoRowFixture& first, TwoRowFixture& second )
