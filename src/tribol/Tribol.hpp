@@ -26,6 +26,7 @@
 #include "tribol/execution/ContactOpenMP.hpp"
 #include "tribol/execution/Execution.hpp"
 #include "tribol/execution/DevicePenalty.hpp"
+#include "tribol/execution/DeviceRows.hpp"
 #include "tribol/execution/PenaltyKernel.hpp"
 #include "tribol/geom/ConformingOverlap.hpp"
 #include "tribol/geom/OverlapCell.hpp"

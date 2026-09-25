@@ -2,6 +2,7 @@
 #include "tribol/core/ExactTangent.hpp"
 #include "tribol/evaluation/PointwisePenalty.hpp"
 #include "tribol/execution/PenaltyKernel.hpp"
+#include "tribol/execution/DeviceRows.hpp"
 
 #include <algorithm>
 #include <array>
@@ -20,6 +21,8 @@ namespace {
 #include "tribol/execution/CudaContactMemory.inl"
 #include "tribol/execution/CudaContactSearch.inl"
 #include "tribol/execution/CudaContactKernels.inl"
+#include "tribol/execution/DeviceRowKernels.inl"
+#include "tribol/execution/DeviceRowMemory.inl"
 
 }  // namespace
 

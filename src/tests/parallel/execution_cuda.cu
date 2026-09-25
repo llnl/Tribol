@@ -1,5 +1,8 @@
 #include "tribol/execution/DevicePenalty.hpp"
+#include "tribol/execution/DeviceRows.hpp"
 #include "tribol/contact/Contact.hpp"
+
+#include "../components/ConstraintRowFixture.hpp"
 
 #if defined( TRIBOL_TEST_USE_HIP )
 #include <hip/hip_runtime.h>
@@ -13,7 +16,7 @@
 #include <iostream>
 #include <vector>
 
-// Requirements: API-003, CORE-003, DIFF-001, DIFF-002, PAR-001, PAR-006, SEARCH-001, SEARCH-003, TIME-001
+// Requirements: API-003, CORE-003, DIFF-001, DIFF-002, PAR-001, PAR-006, PAR-008, SEARCH-001, SEARCH-003, TIME-001
 
 namespace {
 
@@ -618,6 +621,88 @@ bool timestepVoteParity()
   return std::abs( device.evaluateDevice().summary.timestep_vote - device_options.timestep.current_step ) < 1.0e-20;
 }
 
+bool nativeRowPipelineParity()
+{
+  tribol::test::TwoRowFixture fixture;
+  constexpr std::array<tribol::Real, 2> stiffness{ 10.0, 10.0 };
+  constexpr std::array<tribol::Real, 2> rate{ 2.0, 2.0 };
+  constexpr std::array<tribol::Real, 4> inverse_mass{ 0.0, 1.0, 0.0, 1.0 };
+  const tribol::PenaltyRowInputView penalty{ { stiffness.data(), 2 }, { rate.data(), 2 } };
+  const tribol::timestep::DiagonalInverseMassView mass{
+      .mortar = { { inverse_mass.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+      .nonmortar = { { inverse_mass.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+  };
+  const auto integrator = tribol::timestep::IntegratorStabilityLimits::centralDifference();
+
+  std::array<tribol::Real, 4> host_mortar{};
+  std::array<tribol::Real, 4> host_nonmortar{};
+  std::array<tribol::Real, 2> host_effective_gap{};
+  std::array<tribol::Real, 2> host_pressure{};
+  std::array<tribol::Real, 2> host_row_force{};
+  std::array<tribol::Real, 2> host_row_stiffness{};
+  std::array<tribol::Real, 2> host_row_rate{};
+  const auto host_summary = tribol::evaluateExplicitPenaltyRows(
+      fixture.view(), penalty,
+      { .mortar = { { host_mortar.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+        .nonmortar = { { host_nonmortar.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved } },
+      { .effective_gap = { host_effective_gap.data(), 2 },
+        .pressure = { host_pressure.data(), 2 },
+        .row_force = { host_row_force.data(), 2 },
+        .row_stiffness = { host_row_stiffness.data(), 2 },
+        .row_rate_coefficient = { host_row_rate.data(), 2 } } );
+  std::array<tribol::Real, 4> host_mortar_row_sums{};
+  std::array<tribol::Real, 4> host_nonmortar_row_sums{};
+  const auto host_stability = tribol::timestep::explicitPenaltyStabilityVote(
+      fixture.view(),
+      { .row_stiffness = { host_row_stiffness.data(), 2 },
+        .row_rate_coefficient = { host_row_rate.data(), 2 },
+        .inverse_mass = mass,
+        .integrator = integrator },
+      { .mortar_row_sums = { { host_mortar_row_sums.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+        .nonmortar_row_sums = { { host_nonmortar_row_sums.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved } } );
+
+  tribol::execution::DeviceRowWorkspace<DeviceExecution> device;
+  device.prepare( fixture.view(), tribol::execution::DeviceRowDofLayout::separate( 2, 2, 2 ) );
+  const auto device_summary = device.evaluate( penalty, mass, integrator );
+  const auto device_view = device.deviceResult( device_summary );
+  if ( !requireDevicePointer( "native rows", device_view.rows.gaps.data() ) ||
+       !requireDevicePointer( "native row force", device_view.mortar_force.values.data() ) ||
+       !requireDevicePointer( "native row pressure", device_view.row_output.pressure.data() ) ) {
+    return false;
+  }
+  const auto* force_pointer = device_view.mortar_force.values.data();
+  const auto* row_pointer = device_view.rows.gaps.data();
+  std::array<tribol::Real, 8> downloaded_force{};
+  std::array<tribol::Real, 2> downloaded_effective_gap{};
+  std::array<tribol::Real, 2> downloaded_pressure{};
+  std::array<tribol::Real, 2> downloaded_row_force{};
+  std::array<tribol::Real, 2> downloaded_stiffness{};
+  std::array<tribol::Real, 2> downloaded_rate{};
+  device.download( { downloaded_force.data(), 8 }, { .effective_gap = { downloaded_effective_gap.data(), 2 },
+                                                     .pressure = { downloaded_pressure.data(), 2 },
+                                                     .row_force = { downloaded_row_force.data(), 2 },
+                                                     .row_stiffness = { downloaded_stiffness.data(), 2 },
+                                                     .row_rate_coefficient = { downloaded_rate.data(), 2 } } );
+  std::array<tribol::Real, 8> repeated_force{};
+  const auto repeated_summary = device.evaluate( penalty, mass, integrator );
+  device.download( { repeated_force.data(), 8 }, {} );
+  const auto repeated_view = device.deviceResult( repeated_summary );
+  for ( int value = 0; value < 4; ++value ) {
+    if ( std::abs( downloaded_force[value] - host_mortar[value] ) > 1.0e-13 ||
+         std::abs( downloaded_force[value + 4] - host_nonmortar[value] ) > 1.0e-13 ) {
+      return false;
+    }
+  }
+  return std::memcmp( downloaded_force.data(), repeated_force.data(), sizeof( downloaded_force ) ) == 0 &&
+         force_pointer == repeated_view.mortar_force.values.data() && row_pointer == repeated_view.rows.gaps.data() &&
+         std::abs( device_summary.explicit_response.energy - host_summary.energy ) < 1.0e-13 &&
+         std::abs( device_summary.explicit_response.contact_power - host_summary.contact_power ) < 1.0e-13 &&
+         std::abs( device_summary.stability.stiffness_frequency_squared_bound -
+                   host_stability.stiffness_frequency_squared_bound ) < 1.0e-13 &&
+         std::abs( device_summary.stability.rate_frequency_bound - host_stability.rate_frequency_bound ) < 1.0e-13 &&
+         std::abs( device_summary.stability.timestep_vote - host_stability.timestep_vote ) < 1.0e-13;
+}
+
 }  // namespace
 
 int main()
@@ -663,6 +748,10 @@ int main()
   }
   if ( !timestepVoteParity() ) {
     std::cerr << "device timestep-vote parity failed\n";
+    return 1;
+  }
+  if ( !nativeRowPipelineParity() ) {
+    std::cerr << "native row device pipeline parity failed\n";
     return 1;
   }
   return 0;

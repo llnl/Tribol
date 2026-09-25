@@ -10,6 +10,7 @@ using ActiveDeviceBackend = detail::CudaDeviceBackend;
 }  // namespace tribol::execution
 
 #include "tribol/execution/DeviceContactImplementation.inl"
+#include "tribol/execution/DeviceRowImplementation.inl"
 
 namespace tribol::execution {
 

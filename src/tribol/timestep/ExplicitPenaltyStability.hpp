@@ -25,10 +25,7 @@ struct IntegratorStabilityLimits {
   Real safety_factor{ 1.0 };
   IntegratorVersion version{};
 
-  [[nodiscard]] static constexpr IntegratorStabilityLimits centralDifference()
-  {
-    return { .maximum_undamped_frequency_step = 2.0, .maximum_decay_step = 2.0 };
-  }
+  [[nodiscard]] static constexpr IntegratorStabilityLimits centralDifference() { return { 2.0, 2.0, 1.0, {} }; }
 };
 
 struct ExplicitStabilityInput {

@@ -36,6 +36,7 @@ set(tribol_core_headers
     ../execution/CudaPenalty.hpp
     ../execution/DeviceContact.hpp
     ../execution/DevicePenalty.hpp
+    ../execution/DeviceRows.hpp
     ../execution/HipContact.hpp
     ../execution/HipPenalty.hpp
     ../execution/PenaltyKernel.hpp
@@ -109,6 +110,7 @@ if(ENABLE_CUDA OR ENABLE_HIP)
     ../execution/CudaPenalty.hpp
     ../execution/DeviceContact.hpp
     ../execution/DevicePenalty.hpp
+    ../execution/DeviceRows.hpp
     ../execution/HipContact.hpp
     ../execution/HipPenalty.hpp
     DEPENDS_ON
