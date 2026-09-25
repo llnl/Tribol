@@ -398,16 +398,14 @@ class Contact {
       summary = evaluateMethod<MethodType>( surfaces, candidates_.view(), options_.method, state, output );
     }
     if constexpr ( !execution::DevicePolicy<Execution> ) {
-      const Real kinematic_vote = [&] {
-        if constexpr ( detail::is_native_explicit_method_v<MethodType> ) {
-          return timestep::kinematicVote<MethodType>( parent_traces_, candidates_.view(), options_.method, state,
-                                                      options_.timestep );
-        } else {
-          return timestep::kinematicVote<MethodType>( surfaces, candidates_.view(), options_.method, state,
-                                                      options_.timestep );
-        }
-      }();
-      summary.timestep_vote = std::min( summary.timestep_vote, kinematic_vote );
+      if constexpr ( detail::is_native_explicit_method_v<MethodType> ) {
+        const Real kinematic_vote = timestep::kinematicVote<MethodType>( parent_traces_, candidates_.view(),
+                                                                         options_.method, state, options_.timestep );
+        summary.timestep_vote = std::min( summary.timestep_vote, kinematic_vote );
+      } else {
+        summary.timestep_vote = timestep::kinematicVote<MethodType>( surfaces, candidates_.view(), options_.method,
+                                                                     state, options_.timestep );
+      }
     }
     return summary;
   }
