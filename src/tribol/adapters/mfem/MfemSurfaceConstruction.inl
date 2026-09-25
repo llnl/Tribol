@@ -101,8 +101,12 @@ void appendRefinedBoundaryElement( const ::mfem::ParFiniteElementSpace& space,
         points[1].Set2( static_cast<Real>( first + 1 ) / order, static_cast<Real>( second ) / order );
         points[2].Set2( static_cast<Real>( first + 1 ) / order, static_cast<Real>( second + 1 ) / order );
         points[3].Set2( static_cast<Real>( first ) / order, static_cast<Real>( second + 1 ) / order );
-        appendSubelement( space, coordinate_field, boundary_element, attribute, ElementTopology::Quadrilateral, points,
-                          4, metadata, coordinates, trace_data );
+        const ::mfem::IntegrationPoint lower[3] = { points[0], points[1], points[2] };
+        const ::mfem::IntegrationPoint upper[3] = { points[0], points[2], points[3] };
+        appendSubelement( space, coordinate_field, boundary_element, attribute, ElementTopology::Triangle, lower, 3,
+                          metadata, coordinates, trace_data );
+        appendSubelement( space, coordinate_field, boundary_element, attribute, ElementTopology::Triangle, upper, 3,
+                          metadata, coordinates, trace_data );
       }
     }
     return;

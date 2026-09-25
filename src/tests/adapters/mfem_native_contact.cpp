@@ -3,6 +3,7 @@
 #include "mfem.hpp"
 #include <mpi.h>
 
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <map>
@@ -27,6 +28,19 @@ void curveCoordinates( ::mfem::ParGridFunction& coordinates )
     const int y_dof = space.DofToVDof( scalar_dof, 1 );
     const double x = coordinates[x_dof];
     coordinates[y_dof] += 0.02 * x * ( 1.0 - x );
+  }
+}
+
+void curveCoordinates3D( ::mfem::ParGridFunction& coordinates )
+{
+  auto& space = *coordinates.ParFESpace();
+  for ( int scalar_dof = 0; scalar_dof < space.GetNDofs(); ++scalar_dof ) {
+    const int x_dof = space.DofToVDof( scalar_dof, 0 );
+    const int y_dof = space.DofToVDof( scalar_dof, 1 );
+    const int z_dof = space.DofToVDof( scalar_dof, 2 );
+    const double x = coordinates[x_dof];
+    const double y = coordinates[y_dof];
+    coordinates[z_dof] += 0.02 * x * ( 1.0 - x ) * y * ( 1.0 - y );
   }
 }
 
@@ -239,6 +253,80 @@ int exerciseNativeParentContact( int communicator_size, int rank, int order )
   return valid ? 0 : 1;
 }
 
+int exerciseNativeParentContact3D( int communicator_size, int rank, int order )
+{
+  ::mfem::Mesh serial_mesh =
+      ::mfem::Mesh::MakeCartesian3D( communicator_size, 1, 1, ::mfem::Element::HEXAHEDRON, 1.0, 1.0, 0.1 );
+  ::mfem::ParMesh mesh( MPI_COMM_WORLD, serial_mesh );
+  mesh.SetCurvature( order );
+  auto* coordinates = dynamic_cast<::mfem::ParGridFunction*>( mesh.GetNodes() );
+  if ( coordinates == nullptr ) {
+    return 1;
+  }
+  curveCoordinates3D( *coordinates );
+  ::mfem::ParGridFunction velocity( coordinates->ParFESpace() );
+  velocity = 0.0;
+  tribol::mfem::MfemContact<NativeExplicitMethod>::Options options;
+  options.search.expansion = 0.2;
+  options.method.enforcement.stiffness.value = 10.0;
+  options.method.enforcement.rate.value = 0.25;
+  auto contact = tribol::mfem::makeContact<NativeExplicitMethod>(
+      mesh, *coordinates, tribol::mfem::PairedBoundaryAttributes{ { 1 }, { 6 } }, options );
+  ::mfem::Vector inverse_mass( coordinates->ParFESpace()->GetTrueVSize() );
+  inverse_mass = 2.0;
+  contact.registerInverseMass( inverse_mass );
+  contact.registerIntegrator( tribol::timestep::IntegratorStabilityLimits::centralDifference() );
+  contact.updateInteractions();
+
+  ::mfem::Vector residual( coordinates->ParFESpace()->GetTrueVSize() );
+  residual = 0.0;
+  const auto summary = contact.addResidual( tribol::mfem::ContactState{ .velocity = &velocity }, residual );
+  const auto cells = contact.core().overlapCells();
+  double local_accepted_cells{};
+  for ( tribol::Index cell = 0; cell < cells.numberOfAttempts(); ++cell ) {
+    local_accepted_cells += cells.isAccepted( cell ) ? 1.0 : 0.0;
+  }
+  const double accepted_cells = globalSum( local_accepted_cells );
+  std::array<double, 3> local_force{};
+  auto& space = *coordinates->ParFESpace();
+  const int true_scalar_dofs = space.GetTrueVSize() / space.GetVDim();
+  for ( int scalar_dof = 0; scalar_dof < true_scalar_dofs; ++scalar_dof ) {
+    for ( int component = 0; component < 3; ++component ) {
+      const int vector_dof = space.GetOrdering() == ::mfem::Ordering::byNODES
+                                 ? component * true_scalar_dofs + scalar_dof
+                                 : 3 * scalar_dof + component;
+      local_force[static_cast<std::size_t>( component )] += residual[vector_dof];
+    }
+  }
+  bool valid = summary.active_interactions > 0 && summary.quadrature_points > accepted_cells && summary.energy > 0.0 &&
+               std::isfinite( summary.timestep_vote ) && summary.timestep_vote > 0.0;
+  std::array<double, 3> force{};
+  for ( std::size_t component = 0; component < force.size(); ++component ) {
+    force[component] = globalSum( local_force[component] );
+    valid = valid && std::abs( force[component] ) < 1.0e-10;
+  }
+  if ( !valid && rank == 0 ) {
+    const auto traces = contact.parentTraces();
+    const auto mortar_normal = tribol::projected_overlap_detail::faceNormal( traces.mortar.geometry, 0 );
+    const auto nonmortar_normal = tribol::projected_overlap_detail::faceNormal( traces.nonmortar.geometry, 0 );
+    std::array<tribol::Index, 7> status_counts{};
+    for ( tribol::Index cell = 0; cell < cells.numberOfAttempts(); ++cell ) {
+      ++status_counts[static_cast<std::size_t>( cells.statuses[cell] )];
+    }
+    std::cerr << "native 3D parent order=" << order << " active=" << summary.active_interactions
+              << " rows=" << summary.quadrature_points << " energy=" << summary.energy
+              << " dt=" << summary.timestep_vote << " cells=" << cells.numberOfAttempts()
+              << " accepted=" << accepted_cells << " force=(" << force[0] << ',' << force[1] << ',' << force[2]
+              << ") normals=(" << mortar_normal[0] << ',' << mortar_normal[1] << ',' << mortar_normal[2] << ")/("
+              << nonmortar_normal[0] << ',' << nonmortar_normal[1] << ',' << nonmortar_normal[2] << ") statuses=";
+    for ( std::size_t status = 0; status < status_counts.size(); ++status ) {
+      std::cerr << ( status == 0 ? '(' : ',' ) << status_counts[status];
+    }
+    std::cerr << ")\n";
+  }
+  return valid ? 0 : 1;
+}
+
 }  // namespace
 
 int main( int argc, char* argv[] )
@@ -251,6 +339,7 @@ int main( int argc, char* argv[] )
   int native_parent{};
   for ( int order = 1; order <= tribol::maximumParentTraceOrder; ++order ) {
     native_parent |= exerciseNativeParentContact( communicator_size, rank, order );
+    native_parent |= exerciseNativeParentContact3D( communicator_size, rank, order );
   }
   int parent_trace_3d{};
   for ( int order = 1; order <= tribol::maximumParentTraceOrder; ++order ) {
