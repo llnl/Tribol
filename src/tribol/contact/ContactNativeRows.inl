@@ -44,6 +44,7 @@ void prepareNativeRows()
     execution::DeviceNativeRowOptions row_options;
     row_options.geometry = options_.method.geometry;
     row_options.quadrature = options_.method.integration;
+    row_options.kinematic = options_.timestep;
     row_options.include_normal_rates = include_normal_rates;
     native_device_workspace_.prepareNative(
         parent_traces_, parent_fields_, execution_workspace_.deviceCandidates(),
@@ -98,6 +99,9 @@ void prepareNativeRows()
   if constexpr ( !std::same_as<typename Enforcement::rate_policy, rate::None> ) {
     fields.mortar_velocity = state.mortar_velocity;
     fields.nonmortar_velocity = state.nonmortar_velocity;
+  } else if ( options_.timestep.enabled && options_.timestep.current_step >= options_.timestep.minimum_current_step ) {
+    fields.mortar_velocity = state.mortar_velocity;
+    fields.nonmortar_velocity = state.nonmortar_velocity;
   }
   native_device_workspace_.updateNativeFields( fields );
   PenaltyRowInputView penalty;
@@ -106,10 +110,12 @@ void prepareNativeRows()
   penalty.rate_coefficients = { native_rate_coefficient_.data(),
                                 static_cast<Index>( native_rate_coefficient_.size() ) };
   penalty.activation = options_.method.constraint.activation;
-  last_native_device_summary_ = native_device_workspace_.evaluate( penalty, inverse_mass, integrator, geometry_version_,
-                                                                   interaction_version_, penalty_version_ );
+  last_native_device_summary_ = native_device_workspace_.evaluate(
+      penalty, inverse_mass, integrator, geometry_version_, interaction_version_, penalty_version_,
+      { state.mortar_element_thickness, state.nonmortar_element_thickness } );
   last_device_summary_ = { .energy = last_native_device_summary_.explicit_response.energy,
-                           .timestep_vote = last_native_device_summary_.stability.timestep_vote,
+                           .timestep_vote = std::min( last_native_device_summary_.stability.timestep_vote,
+                                                      last_native_device_summary_.kinematic_timestep_vote ),
                            .active_interactions = last_native_device_summary_.explicit_response.active_rows,
                            .quadrature_points = last_native_device_summary_.explicit_response.rows };
   device_result_geometry_version_ = geometry_version_;

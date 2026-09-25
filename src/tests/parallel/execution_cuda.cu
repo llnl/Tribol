@@ -815,10 +815,15 @@ bool publicNativeDeviceContactParity()
   DeviceContact::Options device_options;
   host_options.search.expansion = 0.2;
   host_options.method.integration.minimum_exactness = 3;
-  host_options.method.enforcement.stiffness.value = 10.0;
+  host_options.method.constraint.activation.gap_tolerance = 1.0;
+  host_options.method.enforcement.stiffness.value = 0.01;
+  host_options.timestep = {
+      .enabled = true, .current_step = 1.0, .penetration_fraction = 0.3, .velocity_tolerance = 0.0 };
   device_options.search = host_options.search;
   device_options.method.integration = host_options.method.integration;
+  device_options.method.constraint = host_options.method.constraint;
   device_options.method.enforcement = host_options.method.enforcement;
+  device_options.timestep = host_options.timestep;
   HostContact host( traces, fields, host_options );
   DeviceContact device( traces, fields, device_options );
   host.updateInteractions();
@@ -829,20 +834,56 @@ bool publicNativeDeviceContactParity()
       { { inverse_mass_values.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
   };
   const auto integrator = tribol::timestep::IntegratorStabilityLimits::centralDifference();
-  const auto host_result = host.evaluate( {}, inverse_mass, integrator );
-  const auto resident_result = device.evaluateDevice( {}, inverse_mass, integrator );
+  constexpr std::array<tribol::Real, 4> mortar_closing_velocity{ 0.0, -0.1, 0.0, -0.1 };
+  constexpr std::array<tribol::Real, 4> nonmortar_closing_velocity{ 0.0, 0.1, 0.0, 0.1 };
+  constexpr std::array<tribol::Real, 1> thickness{ 0.1 };
+  const tribol::ContactStateView closing_state{
+      .mortar_velocity = { { mortar_closing_velocity.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+      .nonmortar_velocity = { { nonmortar_closing_velocity.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+      .mortar_element_thickness = { thickness.data(), 1 },
+      .nonmortar_element_thickness = { thickness.data(), 1 },
+  };
+  const auto host_result = host.evaluate( closing_state, inverse_mass, integrator );
+  const auto resident_result = device.evaluateDevice( closing_state, inverse_mass, integrator );
   const auto pipeline = device.devicePipelineView();
   if ( !requireDevicePointer( "public native force", resident_result.mortar_force.values.data() ) ||
        !requireDevicePointer( "public native candidates", pipeline.candidates.data() ) ||
        !requireDevicePointer( "public native patches", pipeline.patches.data() ) ||
        pipeline.result.quadrature_gap.data() != resident_result.quadrature_gap.data() ) {
+    std::cerr << "native device residency mismatch\n";
     return false;
   }
-  const auto device_result = device.evaluate( {}, inverse_mass, integrator );
-  if ( device_result.summary.quadrature_points != host_result.summary.quadrature_points ||
+  std::size_t free_before{};
+  std::size_t total_before{};
+  if ( !synchronizeAndGetMemoryInfo( &free_before, &total_before ) ) {
+    std::cerr << "could not establish native kinematic allocation baseline\n";
+    return false;
+  }
+  for ( int repeat = 0; repeat < 8; ++repeat ) {
+    const auto repeated = device.evaluateDevice( closing_state, inverse_mass, integrator );
+    if ( repeated.mortar_force.values.data() != resident_result.mortar_force.values.data() ||
+         std::abs( repeated.summary.timestep_vote - 0.3 ) > 1.0e-13 ) {
+      std::cerr << "repeated native kinematic vote mismatch: " << repeated.summary.timestep_vote << '\n';
+      return false;
+    }
+  }
+  std::size_t free_after{};
+  std::size_t total_after{};
+  if ( !synchronizeAndGetMemoryInfo( &free_after, &total_after ) || free_before != free_after ||
+       total_before != total_after ) {
+    std::cerr << "native kinematic evaluation changed the prepared allocation footprint\n";
+    return false;
+  }
+  const auto device_result = device.evaluate( closing_state, inverse_mass, integrator );
+  if ( host_result.summary.active_interactions == 0 ||
+       device_result.summary.quadrature_points != host_result.summary.quadrature_points ||
        device_result.summary.active_interactions != host_result.summary.active_interactions ||
        std::abs( device_result.summary.energy - host_result.summary.energy ) > 1.0e-13 ||
-       std::abs( device_result.summary.timestep_vote - host_result.summary.timestep_vote ) > 1.0e-13 ) {
+       std::abs( device_result.summary.timestep_vote - host_result.summary.timestep_vote ) > 1.0e-13 ||
+       std::abs( device_result.summary.timestep_vote - 0.3 ) > 1.0e-13 ) {
+    std::cerr << "native contact summary mismatch: host vote=" << host_result.summary.timestep_vote
+              << " device vote=" << device_result.summary.timestep_vote
+              << " active=" << host_result.summary.active_interactions << '\n';
     return false;
   }
   for ( tribol::Index entity = 0; entity < host_result.mortar_force.entities; ++entity ) {
@@ -851,9 +892,27 @@ bool publicNativeDeviceContactParity()
                1.0e-13 ||
            std::abs( device_result.nonmortar_force( entity, component ) -
                      host_result.nonmortar_force( entity, component ) ) > 1.0e-13 ) {
+        std::cerr << "native contact force mismatch\n";
         return false;
       }
     }
+  }
+  constexpr std::array<tribol::Real, 4> mortar_opening_velocity{ 0.0, 0.1, 0.0, 0.1 };
+  constexpr std::array<tribol::Real, 4> nonmortar_opening_velocity{ 0.0, -0.1, 0.0, -0.1 };
+  const tribol::ContactStateView opening_state{
+      .mortar_velocity = { { mortar_opening_velocity.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+      .nonmortar_velocity = { { nonmortar_opening_velocity.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+      .mortar_element_thickness = { thickness.data(), 1 },
+      .nonmortar_element_thickness = { thickness.data(), 1 },
+  };
+  const tribol::Real host_opening_vote = host.evaluate( opening_state, inverse_mass, integrator ).summary.timestep_vote;
+  const tribol::Real device_opening_vote =
+      device.evaluateDevice( opening_state, inverse_mass, integrator ).summary.timestep_vote;
+  if ( std::abs( host_opening_vote - 1.0 ) > 1.0e-13 ||
+       std::abs( device_opening_vote - host_opening_vote ) > 1.0e-13 ) {
+    std::cerr << "native opening vote mismatch: host=" << host_opening_vote << " device=" << device_opening_vote
+              << '\n';
+    return false;
   }
   return true;
 }

@@ -7,7 +7,10 @@
     native_options_ = options;
     native_traces_.upload( traces );
     native_fields_.uploadCoordinates( fields );
-    native_fields_.uploadVelocity( fields, options.include_normal_rates );
+    const bool include_kinematic_vote =
+        options.kinematic.enabled && options.kinematic.current_step >= options.kinematic.minimum_current_step;
+    native_fields_.uploadVelocity( fields, options.include_normal_rates || include_kinematic_vote );
+    copyToDevice( native_candidates_, device_candidates, "copy native candidates to device" );
     const Index candidates = device_candidates.size();
     native_patches_.resize( static_cast<std::size_t>( candidates ) );
     native_mortar_parent_faces_.resize( static_cast<std::size_t>( candidates ) );
@@ -23,6 +26,12 @@
     native_mortar_entry_offsets_.resize( static_cast<std::size_t>( candidates + 1 ) );
     native_nonmortar_entry_counts_.resize( static_cast<std::size_t>( candidates + 1 ) );
     native_nonmortar_entry_offsets_.resize( static_cast<std::size_t>( candidates + 1 ) );
+    native_mortar_element_thickness_.resize(
+        include_kinematic_vote ? static_cast<std::size_t>( traces.mortar.numberOfSubfacets() ) : 0 );
+    native_nonmortar_element_thickness_.resize(
+        include_kinematic_vote ? static_cast<std::size_t>( traces.nonmortar.numberOfSubfacets() ) : 0 );
+    native_kinematic_votes_.resize( include_kinematic_vote ? static_cast<std::size_t>( candidates ) : 0 );
+    native_kinematic_vote_.resize( include_kinematic_vote ? 1 : 0 );
 
     const ParentTracePairView device_traces = native_traces_.view();
     InteractionPatch* patches = native_patches_.data();
@@ -31,7 +40,7 @@
     int* owners = native_owner_ranks_.data();
     Real* mortar_reference = native_mortar_patch_reference_.data();
     Real* nonmortar_reference = native_nonmortar_patch_reference_.data();
-    const ElementPair* candidate_data = device_candidates.data();
+    const ElementPair* candidate_data = native_candidates_.data();
     const auto geometry = options.geometry;
     const auto overlap = options.overlap;
     launchRowKernel( candidates, [=] RAJA_DEVICE( Index candidate ) {
@@ -70,9 +79,12 @@
     if ( !native_prepared_ ) {
       throw std::logic_error( "Device native fields require prepareNative() first." );
     }
-    validateNativeFields( fields, layout_, native_options_.include_normal_rates );
+    const auto& kinematic = native_options_.kinematic;
+    const bool require_velocity =
+        native_options_.include_normal_rates || ( kinematic.enabled && kinematic.current_step >= kinematic.minimum_current_step );
+    validateNativeFields( fields, layout_, require_velocity );
     native_fields_.uploadCoordinates( fields );
-    native_fields_.uploadVelocity( fields, native_options_.include_normal_rates );
+    native_fields_.uploadVelocity( fields, require_velocity );
     const ConstraintRowBatchView rows = rows_.view();
     const ParentTraceFieldPairView device_fields = native_fields_.view();
     Real* mortar_positions = rows_.mortar_positions.data();
@@ -136,6 +148,7 @@
                                    ArrayView<const ElementPair> device_candidates, DeviceRowDofLayout layout,
                                    const DeviceNativeRowOptions& options )
   {
+    timestep::validate( options.kinematic );
     if ( !traces.isStructurallyValid() || !device_candidates.isStructurallyValid() ||
          traces.mortar.geometry.dimension != layout.dimension || options.overlap.mapping_tolerance <= 0.0 ||
          options.overlap.orientation_tolerance < 0.0 || options.quadrature.minimum_exactness < 0 ||

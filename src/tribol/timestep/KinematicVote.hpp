@@ -87,8 +87,8 @@ inline std::array<Real, 3> interpolateSurfaceField( const SurfaceMeshView& surfa
   return value;
 }
 
-inline basis::ReferencePoint interpolateParentReference( const ParentTraceView& trace, Index subfacet,
-                                                         const basis::ShapeValues& shape )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline basis::ReferencePoint interpolateParentReference(
+    const ParentTraceView& trace, Index subfacet, const basis::ShapeValues& shape )
 {
   basis::ReferencePoint reference{};
   const Index begin = trace.geometry.element_offsets[subfacet];
@@ -102,16 +102,17 @@ inline basis::ReferencePoint interpolateParentReference( const ParentTraceView& 
   return reference;
 }
 
-inline std::array<Real, 3> interpolateParentVelocity( const ParentTraceView& trace, Index subfacet,
-                                                      const FieldView<const Real>& velocity,
-                                                      const basis::ShapeValues& shape )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline std::array<Real, 3> interpolateParentVelocity(
+    const ParentTraceView& trace, Index subfacet, const FieldView<const Real>& velocity,
+    const basis::ShapeValues& shape )
 {
   const Index parent_face = trace.subfacet_parent_faces[subfacet];
   return basis::interpolateParentField( trace, parent_face, velocity,
                                         interpolateParentReference( trace, subfacet, shape ) );
 }
 
-inline Real dot( const std::array<Real, 3>& left, const std::array<Real, 3>& right, int dimension )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline Real dot( const std::array<Real, 3>& left, const std::array<Real, 3>& right,
+                                                  int dimension )
 {
   Real value{};
   for ( int component = 0; component < dimension; ++component ) {
@@ -120,22 +121,83 @@ inline Real dot( const std::array<Real, 3>& left, const std::array<Real, 3>& rig
   return value;
 }
 
-inline Real nonzeroProjection( Real value, Real tolerance )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline Real nonzeroProjection( Real value, Real tolerance )
 {
   return value + ( value >= 0.0 ? tolerance : -tolerance );
 }
 
-inline std::array<Real, 3> elementNormal( const SurfaceMeshView& surface, Index element )
+[[nodiscard]] TRIBOL_HOST_DEVICE inline std::array<Real, 3> elementNormal( const SurfaceMeshView& surface,
+                                                                           Index element )
 {
   return surface.dimension == 2 ? projected_overlap_detail::segmentNormal( surface, element )
                                 : projected_overlap_detail::faceNormal( surface, element );
 }
 
-inline void includePositiveVote( Real candidate, Real& vote )
+TRIBOL_HOST_DEVICE inline void includePositiveVote( Real candidate, Real& vote )
 {
-  if ( candidate > 0.0 ) {
-    vote = std::min( vote, candidate );
+  if ( candidate > 0.0 && candidate < vote ) {
+    vote = candidate;
   }
+}
+
+struct KinematicPoint {
+  int dimension{};
+  std::array<Real, 3> mortar_position{};
+  std::array<Real, 3> nonmortar_position{};
+  std::array<Real, 3> mortar_velocity{};
+  std::array<Real, 3> nonmortar_velocity{};
+  std::array<Real, 3> mortar_normal{};
+  std::array<Real, 3> nonmortar_normal{};
+  std::array<Real, 3> overlap_normal{};
+  Real mortar_thickness{};
+  Real nonmortar_thickness{};
+  bool active{};
+};
+
+[[nodiscard]] TRIBOL_HOST_DEVICE inline Real kinematicPointVote( const KinematicPoint& point,
+                                                                 const Kinematic::Parameters& parameters )
+{
+  const Real mortar_overlap_velocity = nonzeroProjection(
+      dot( point.mortar_velocity, point.overlap_normal, point.dimension ), parameters.velocity_tolerance );
+  const Real nonmortar_overlap_velocity = nonzeroProjection(
+      dot( point.nonmortar_velocity, point.overlap_normal, point.dimension ), parameters.velocity_tolerance );
+  const Real mortar_normal_velocity = nonzeroProjection(
+      dot( point.mortar_velocity, point.mortar_normal, point.dimension ), parameters.velocity_tolerance );
+  const Real nonmortar_normal_velocity = nonzeroProjection(
+      dot( point.nonmortar_velocity, point.nonmortar_normal, point.dimension ), parameters.velocity_tolerance );
+  const Real mortar_limit = parameters.penetration_fraction * point.mortar_thickness;
+  const Real nonmortar_limit = parameters.penetration_fraction * point.nonmortar_thickness;
+  std::array<Real, 3> gap_vector{};
+  std::array<Real, 3> projected_gap{};
+  for ( int component = 0; component < point.dimension; ++component ) {
+    gap_vector[component] = point.mortar_position[component] - point.nonmortar_position[component];
+    projected_gap[component] =
+        gap_vector[component] +
+        parameters.current_step * ( point.mortar_velocity[component] - point.nonmortar_velocity[component] );
+  }
+  const Real mortar_gap = dot( gap_vector, point.mortar_normal, point.dimension );
+  const Real nonmortar_gap = dot( gap_vector, point.nonmortar_normal, point.dimension );
+  const Real projected_mortar_penetration = dot( projected_gap, point.nonmortar_normal, point.dimension );
+  const Real projected_nonmortar_penetration = -dot( projected_gap, point.mortar_normal, point.dimension );
+  const bool mortar_closing = mortar_overlap_velocity < 0.0;
+  const bool nonmortar_closing = nonmortar_overlap_velocity > 0.0;
+  const bool mortar_gap_exceeded = point.active && mortar_closing && mortar_limit - mortar_gap < 0.0;
+  const bool nonmortar_gap_exceeded = point.active && nonmortar_closing && nonmortar_limit + nonmortar_gap < 0.0;
+
+  Real vote = parameters.current_step;
+  if ( mortar_gap_exceeded ) {
+    includePositiveVote( parameters.scale * mortar_limit / mortar_normal_velocity, vote );
+  }
+  if ( nonmortar_gap_exceeded ) {
+    includePositiveVote( parameters.scale * nonmortar_limit / nonmortar_normal_velocity, vote );
+  }
+  if ( mortar_closing && !mortar_gap_exceeded && projected_mortar_penetration < -mortar_limit ) {
+    includePositiveVote( parameters.scale * mortar_limit / mortar_normal_velocity, vote );
+  }
+  if ( nonmortar_closing && !nonmortar_gap_exceeded && projected_nonmortar_penetration < -nonmortar_limit ) {
+    includePositiveVote( parameters.scale * nonmortar_limit / nonmortar_normal_velocity, vote );
+  }
+  return vote;
 }
 
 template <SupportedMethod MethodType, typename VelocityInterpolator>
@@ -155,56 +217,26 @@ template <SupportedMethod MethodType, typename VelocityInterpolator>
     const auto sample = constraint::stageNormalConstraint<constraint::Pointwise>(
         surfaces, pair, patch.mortar_centroid, patch.nonmortar_centroid, patch.normal, patch.measure );
     const auto velocities = interpolate_velocity( pair, sample );
-    const auto& mortar_velocity = velocities[0];
-    const auto& nonmortar_velocity = velocities[1];
-    const auto mortar_normal = elementNormal( surfaces.mortar, pair.mortar_element );
-    const auto nonmortar_normal = elementNormal( surfaces.nonmortar, pair.nonmortar_element );
-    const int dimension = surfaces.mortar.dimension;
-    const Real mortar_overlap_velocity =
-        nonzeroProjection( dot( mortar_velocity, patch.normal, dimension ), parameters.velocity_tolerance );
-    const Real nonmortar_overlap_velocity =
-        nonzeroProjection( dot( nonmortar_velocity, patch.normal, dimension ), parameters.velocity_tolerance );
-    const Real mortar_normal_velocity =
-        nonzeroProjection( dot( mortar_velocity, mortar_normal, dimension ), parameters.velocity_tolerance );
-    const Real nonmortar_normal_velocity =
-        nonzeroProjection( dot( nonmortar_velocity, nonmortar_normal, dimension ), parameters.velocity_tolerance );
-    const Real mortar_limit = parameters.penetration_fraction * state.mortar_element_thickness[pair.mortar_element];
-    const Real nonmortar_limit =
-        parameters.penetration_fraction * state.nonmortar_element_thickness[pair.nonmortar_element];
-    if ( mortar_limit < 0.0 || nonmortar_limit < 0.0 ) {
+    const Real mortar_thickness = state.mortar_element_thickness[pair.mortar_element];
+    const Real nonmortar_thickness = state.nonmortar_element_thickness[pair.nonmortar_element];
+    if ( mortar_thickness < 0.0 || nonmortar_thickness < 0.0 ) {
       throw std::invalid_argument( "Kinematic timestep voting requires nonnegative element thickness." );
     }
-
-    std::array<Real, 3> gap_vector{};
-    std::array<Real, 3> projected_gap{};
-    for ( int component = 0; component < dimension; ++component ) {
-      gap_vector[component] = patch.mortar_centroid[component] - patch.nonmortar_centroid[component];
-      projected_gap[component] = gap_vector[component] + parameters.current_step * ( mortar_velocity[component] -
-                                                                                     nonmortar_velocity[component] );
-    }
-    const Real mortar_gap = dot( gap_vector, mortar_normal, dimension );
-    const Real nonmortar_gap = dot( gap_vector, nonmortar_normal, dimension );
-    const Real projected_mortar_penetration = dot( projected_gap, nonmortar_normal, dimension );
-    const Real projected_nonmortar_penetration = -dot( projected_gap, mortar_normal, dimension );
-    const bool mortar_closing = mortar_overlap_velocity < 0.0;
-    const bool nonmortar_closing = nonmortar_overlap_velocity > 0.0;
     const bool active = sample.gap - method_parameters.constraint.activation.residual_gap <=
                         method_parameters.constraint.activation.gap_tolerance;
-    const bool mortar_gap_exceeded = active && mortar_closing && mortar_limit - mortar_gap < 0.0;
-    const bool nonmortar_gap_exceeded = active && nonmortar_closing && nonmortar_limit + nonmortar_gap < 0.0;
-
-    if ( mortar_gap_exceeded ) {
-      includePositiveVote( parameters.scale * mortar_limit / mortar_normal_velocity, vote );
-    }
-    if ( nonmortar_gap_exceeded ) {
-      includePositiveVote( parameters.scale * nonmortar_limit / nonmortar_normal_velocity, vote );
-    }
-    if ( mortar_closing && !mortar_gap_exceeded && projected_mortar_penetration < -mortar_limit ) {
-      includePositiveVote( parameters.scale * mortar_limit / mortar_normal_velocity, vote );
-    }
-    if ( nonmortar_closing && !nonmortar_gap_exceeded && projected_nonmortar_penetration < -nonmortar_limit ) {
-      includePositiveVote( parameters.scale * nonmortar_limit / nonmortar_normal_velocity, vote );
-    }
+    KinematicPoint point;
+    point.dimension = surfaces.mortar.dimension;
+    point.mortar_position = patch.mortar_centroid;
+    point.nonmortar_position = patch.nonmortar_centroid;
+    point.mortar_velocity = velocities[0];
+    point.nonmortar_velocity = velocities[1];
+    point.mortar_normal = elementNormal( surfaces.mortar, pair.mortar_element );
+    point.nonmortar_normal = elementNormal( surfaces.nonmortar, pair.nonmortar_element );
+    point.overlap_normal = patch.normal;
+    point.mortar_thickness = mortar_thickness;
+    point.nonmortar_thickness = nonmortar_thickness;
+    point.active = active;
+    vote = std::min( vote, kinematicPointVote( point, parameters ) );
   }
   return vote;
 }

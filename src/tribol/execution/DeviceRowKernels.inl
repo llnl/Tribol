@@ -136,3 +136,10 @@ struct MaximumReduction {
     return left > right ? left : right;
   }
 };
+
+struct MinimumReduction {
+  [[nodiscard]] TRIBOL_HOST_DEVICE Real operator()( Real left, Real right ) const
+  {
+    return left < right ? left : right;
+  }
+};

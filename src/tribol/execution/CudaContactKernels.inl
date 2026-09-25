@@ -159,22 +159,6 @@ TRIBOL_HOST_DEVICE std::array<Real, 3> interpolateField( const SurfaceMeshView& 
   return result;
 }
 
-TRIBOL_HOST_DEVICE Real vectorDot( const std::array<Real, 3>& left, const std::array<Real, 3>& right, int dimension )
-{
-  Real result{};
-  for ( int component = 0; component < dimension; ++component ) {
-    result += left[component] * right[component];
-  }
-  return result;
-}
-
-TRIBOL_HOST_DEVICE void includePositiveVote( Real candidate, Real& vote )
-{
-  if ( candidate > 0.0 && candidate < vote ) {
-    vote = candidate;
-  }
-}
-
 TRIBOL_HOST_DEVICE void timestepVote( Index interaction, SurfacePairView surfaces, const ElementPair* candidates,
                                       Index count, const InteractionPatch* patches, DefaultMethod::Parameters method,
                                       ContactStateView state, timestep::Kinematic::Parameters parameters, Real* votes )
@@ -202,49 +186,19 @@ TRIBOL_HOST_DEVICE void timestepVote( Index interaction, SurfacePairView surface
       surfaces.nonmortar.dimension == 2
           ? projected_overlap_detail::segmentNormal( surfaces.nonmortar, pair.nonmortar_element )
           : projected_overlap_detail::faceNormal( surfaces.nonmortar, pair.nonmortar_element );
-  const int dimension = surfaces.mortar.dimension;
-  const auto nonzero_projection = [&]( Real value ) {
-    return value + ( value >= 0.0 ? parameters.velocity_tolerance : -parameters.velocity_tolerance );
-  };
-  const Real mortar_overlap_velocity = nonzero_projection( vectorDot( mortar_velocity, patch.normal, dimension ) );
-  const Real nonmortar_overlap_velocity =
-      nonzero_projection( vectorDot( nonmortar_velocity, patch.normal, dimension ) );
-  const Real mortar_normal_velocity = nonzero_projection( vectorDot( mortar_velocity, mortar_normal, dimension ) );
-  const Real nonmortar_normal_velocity =
-      nonzero_projection( vectorDot( nonmortar_velocity, nonmortar_normal, dimension ) );
-  const Real mortar_limit = parameters.penetration_fraction * state.mortar_element_thickness[pair.mortar_element];
-  const Real nonmortar_limit =
-      parameters.penetration_fraction * state.nonmortar_element_thickness[pair.nonmortar_element];
-  std::array<Real, 3> gap_vector{};
-  std::array<Real, 3> projected_gap{};
-  for ( int component = 0; component < dimension; ++component ) {
-    gap_vector[component] = patch.mortar_centroid[component] - patch.nonmortar_centroid[component];
-    projected_gap[component] = gap_vector[component] +
-                               parameters.current_step * ( mortar_velocity[component] - nonmortar_velocity[component] );
-  }
-  const Real mortar_gap = vectorDot( gap_vector, mortar_normal, dimension );
-  const Real nonmortar_gap = vectorDot( gap_vector, nonmortar_normal, dimension );
-  const Real projected_mortar_penetration = vectorDot( projected_gap, nonmortar_normal, dimension );
-  const Real projected_nonmortar_penetration = -vectorDot( projected_gap, mortar_normal, dimension );
-  const bool mortar_closing = mortar_overlap_velocity < 0.0;
-  const bool nonmortar_closing = nonmortar_overlap_velocity > 0.0;
-  const bool active =
-      sample.gap - method.constraint.activation.residual_gap <= method.constraint.activation.gap_tolerance;
-  const bool mortar_gap_exceeded = active && mortar_closing && mortar_limit - mortar_gap < 0.0;
-  const bool nonmortar_gap_exceeded = active && nonmortar_closing && nonmortar_limit + nonmortar_gap < 0.0;
-  if ( mortar_gap_exceeded ) {
-    includePositiveVote( parameters.scale * mortar_limit / mortar_normal_velocity, vote );
-  }
-  if ( nonmortar_gap_exceeded ) {
-    includePositiveVote( parameters.scale * nonmortar_limit / nonmortar_normal_velocity, vote );
-  }
-  if ( mortar_closing && !mortar_gap_exceeded && projected_mortar_penetration < -mortar_limit ) {
-    includePositiveVote( parameters.scale * mortar_limit / mortar_normal_velocity, vote );
-  }
-  if ( nonmortar_closing && !nonmortar_gap_exceeded && projected_nonmortar_penetration < -nonmortar_limit ) {
-    includePositiveVote( parameters.scale * nonmortar_limit / nonmortar_normal_velocity, vote );
-  }
-  votes[interaction] = vote;
+  timestep::detail::KinematicPoint point;
+  point.dimension = surfaces.mortar.dimension;
+  point.mortar_position = patch.mortar_centroid;
+  point.nonmortar_position = patch.nonmortar_centroid;
+  point.mortar_velocity = mortar_velocity;
+  point.nonmortar_velocity = nonmortar_velocity;
+  point.mortar_normal = mortar_normal;
+  point.nonmortar_normal = nonmortar_normal;
+  point.overlap_normal = patch.normal;
+  point.mortar_thickness = state.mortar_element_thickness[pair.mortar_element];
+  point.nonmortar_thickness = state.nonmortar_element_thickness[pair.nonmortar_element];
+  point.active = sample.gap - method.constraint.activation.residual_gap <= method.constraint.activation.gap_tolerance;
+  votes[interaction] = timestep::detail::kinematicPointVote( point, parameters );
 }
 
 struct SummaryReduction {

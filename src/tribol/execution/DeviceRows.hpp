@@ -7,7 +7,9 @@
 #include "tribol/geom/OverlapCell.hpp"
 #include "tribol/integration/AutomaticQuadrature.hpp"
 #include "tribol/timestep/ExplicitPenaltyStability.hpp"
+#include "tribol/timestep/KinematicVote.hpp"
 
+#include <limits>
 #include <type_traits>
 
 namespace tribol::execution {
@@ -39,6 +41,7 @@ using DevicePenaltyRowOutputView = PenaltyRowOutputViewT<const Real>;
 struct DeviceRowEvaluationSummary {
   ExplicitRowSummary explicit_response{};
   timestep::ExplicitStabilityResult stability{};
+  Real kinematic_timestep_vote{ std::numeric_limits<Real>::infinity() };
 };
 
 struct DeviceRowResultView {
@@ -53,8 +56,14 @@ struct DeviceNativeRowOptions {
   geometry::ProjectedOverlap<normal::MeanPlane>::Parameters geometry{};
   integration::Automatic::Parameters quadrature{};
   OverlapCellBuildOptions overlap{};
+  timestep::Kinematic::Parameters kinematic{};
   std::uint64_t first_row_id{};
   bool include_normal_rates{};
+};
+
+struct DeviceNativeKinematicInputView {
+  ArrayView<const Real> mortar_element_thickness{};
+  ArrayView<const Real> nonmortar_element_thickness{};
 };
 
 template <typename Execution>
@@ -80,7 +89,8 @@ class DeviceRowWorkspace {
                                                      timestep::IntegratorStabilityLimits integrator,
                                                      GeometryVersion geometry_version = {},
                                                      InteractionVersion interaction_version = {},
-                                                     PenaltyVersion penalty_version = {} );
+                                                     PenaltyVersion penalty_version = {},
+                                                     DeviceNativeKinematicInputView kinematic = {} );
   [[nodiscard]] DeviceRowResultView deviceResult( DeviceRowEvaluationSummary summary ) const;
   [[nodiscard]] ArrayView<const InteractionPatch> devicePatches() const;
   void download( ArrayView<Real> force, PenaltyRowOutputView row_output ) const;
@@ -94,6 +104,7 @@ using HipRowWorkspace = DeviceRowWorkspace<Hip>;
 
 static_assert( std::is_trivially_copyable_v<DeviceRowDofLayout> );
 static_assert( std::is_trivially_copyable_v<DeviceNativeRowOptions> );
+static_assert( std::is_trivially_copyable_v<DeviceNativeKinematicInputView> );
 static_assert( std::is_trivially_copyable_v<DeviceRowEvaluationSummary> );
 static_assert( std::is_trivially_copyable_v<DeviceRowResultView> );
 

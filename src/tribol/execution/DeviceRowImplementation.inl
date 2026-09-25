@@ -35,6 +35,12 @@ class DeviceRowWorkspace<ActiveExecution>::Impl {
     validateRows( rows, layout );
     layout_ = layout;
     rows_.upload( rows );
+    native_options_ = {};
+    native_candidates_.clear();
+    native_mortar_element_thickness_.clear();
+    native_nonmortar_element_thickness_.clear();
+    native_kinematic_votes_.clear();
+    native_kinematic_vote_.clear();
     configureEvaluation();
     native_prepared_ = false;
     prepared_ = true;
@@ -43,7 +49,8 @@ class DeviceRowWorkspace<ActiveExecution>::Impl {
 #include "tribol/execution/DeviceRowPreparation.inl"
   DeviceRowEvaluationSummary evaluate( PenaltyRowInputView penalty, timestep::DiagonalInverseMassView inverse_mass,
                                        timestep::IntegratorStabilityLimits integrator, GeometryVersion geometry_version,
-                                       InteractionVersion interaction_version, PenaltyVersion penalty_version )
+                                       InteractionVersion interaction_version, PenaltyVersion penalty_version,
+                                       DeviceNativeKinematicInputView kinematic )
   {
     requirePrepared();
     validateInput( penalty, inverse_mass, integrator );
@@ -108,8 +115,63 @@ class DeviceRowWorkspace<ActiveExecution>::Impl {
         .penalty_version = penalty_version,
         .integrator_version = integrator.version,
     };
-    last_summary_ = { explicit_summary, stability };
+    const Real kinematic_vote = evaluateNativeKinematicVote( device_penalty.activation, kinematic );
+    last_summary_ = { explicit_summary, stability, kinematic_vote };
     return last_summary_;
+  }
+
+  [[nodiscard]] Real evaluateNativeKinematicVote( constraint::GapActivationParameters activation,
+                                                  DeviceNativeKinematicInputView input )
+  {
+    const auto& parameters = native_options_.kinematic;
+    if ( !parameters.enabled ) {
+      return std::numeric_limits<Real>::infinity();
+    }
+    if ( parameters.current_step < parameters.minimum_current_step ) {
+      return parameters.current_step;
+    }
+    if ( !native_prepared_ || !input.mortar_element_thickness.isStructurallyValid() ||
+         !input.nonmortar_element_thickness.isStructurallyValid() ||
+         input.mortar_element_thickness.size() != native_traces_.mortar.geometry.elements ||
+         input.nonmortar_element_thickness.size() != native_traces_.nonmortar.geometry.elements ) {
+      throw std::invalid_argument( "Device native kinematic voting requires compatible subfacet thickness." );
+    }
+    for ( const Real thickness : input.mortar_element_thickness ) {
+      if ( thickness < 0.0 ) {
+        throw std::invalid_argument( "Device native kinematic voting requires nonnegative subfacet thickness." );
+      }
+    }
+    for ( const Real thickness : input.nonmortar_element_thickness ) {
+      if ( thickness < 0.0 ) {
+        throw std::invalid_argument( "Device native kinematic voting requires nonnegative subfacet thickness." );
+      }
+    }
+    ActiveDeviceBackend::copy( native_mortar_element_thickness_.data(), input.mortar_element_thickness.data(),
+                               native_mortar_element_thickness_.size() * sizeof( Real ) );
+    ActiveDeviceBackend::copy( native_nonmortar_element_thickness_.data(), input.nonmortar_element_thickness.data(),
+                               native_nonmortar_element_thickness_.size() * sizeof( Real ) );
+    const Index candidates = static_cast<Index>( native_candidates_.size() );
+    if ( candidates == 0 ) {
+      return parameters.current_step;
+    }
+    const ParentTracePairView traces = native_traces_.view();
+    const ParentTraceFieldPairView fields = native_fields_.view();
+    const ElementPair* candidate_data = native_candidates_.data();
+    const InteractionPatch* patches = native_patches_.data();
+    const Real* mortar_thickness = native_mortar_element_thickness_.data();
+    const Real* nonmortar_thickness = native_nonmortar_element_thickness_.data();
+    Real* votes = native_kinematic_votes_.data();
+    launchRowKernel( candidates, [=] RAJA_DEVICE( Index candidate ) {
+      evaluateDeviceNativeKinematicVote( candidate, traces, fields, candidate_data, candidates, patches,
+                                         mortar_thickness, nonmortar_thickness, activation, parameters, votes );
+    } );
+    const std::size_t bytes = ActiveDeviceBackend::reduceTemporaryBytes(
+        votes, native_kinematic_vote_.data(), candidates, MinimumReduction{}, parameters.current_step );
+    ActiveDeviceBackend::reduce( temporary_storage_.data(), bytes, votes, native_kinematic_vote_.data(), candidates,
+                                 MinimumReduction{}, parameters.current_step );
+    Real vote{};
+    ActiveDeviceBackend::copy( &vote, native_kinematic_vote_.data(), sizeof( Real ) );
+    return vote;
   }
 
   [[nodiscard]] DeviceRowResultView deviceResult( DeviceRowEvaluationSummary summary ) const
@@ -255,6 +317,12 @@ class DeviceRowWorkspace<ActiveExecution>::Impl {
                         ActiveDeviceBackend::reduceTemporaryBytes( stability_row_sums_.data(), stability_bounds_.data(),
                                                                    force_values, MaximumReduction{}, Real{} ) );
     }
+    if ( native_kinematic_votes_.size() > 0 ) {
+      bytes = std::max( bytes, ActiveDeviceBackend::reduceTemporaryBytes(
+                                   native_kinematic_votes_.data(), native_kinematic_vote_.data(),
+                                   static_cast<Index>( native_kinematic_votes_.size() ), MinimumReduction{},
+                                   native_options_.kinematic.current_step ) );
+    }
     temporary_storage_.resize( bytes );
   }
 
@@ -313,6 +381,11 @@ class DeviceRowWorkspace<ActiveExecution>::Impl {
   DeviceParentTracePairStorage native_traces_;
   DeviceParentFieldPairStorage native_fields_;
   DeviceNativeRowOptions native_options_{};
+  DeviceBuffer<ElementPair> native_candidates_;
+  DeviceBuffer<Real> native_mortar_element_thickness_;
+  DeviceBuffer<Real> native_nonmortar_element_thickness_;
+  DeviceBuffer<Real> native_kinematic_votes_;
+  DeviceBuffer<Real> native_kinematic_vote_;
   DeviceRowDofLayout layout_{};
   bool prepared_{};
   bool native_prepared_{};
@@ -388,9 +461,10 @@ template <>
 DeviceRowEvaluationSummary DeviceRowWorkspace<ActiveExecution>::evaluate(
     PenaltyRowInputView penalty, timestep::DiagonalInverseMassView inverse_mass,
     timestep::IntegratorStabilityLimits integrator, GeometryVersion geometry_version,
-    InteractionVersion interaction_version, PenaltyVersion penalty_version )
+    InteractionVersion interaction_version, PenaltyVersion penalty_version, DeviceNativeKinematicInputView kinematic )
 {
-  return impl_->evaluate( penalty, inverse_mass, integrator, geometry_version, interaction_version, penalty_version );
+  return impl_->evaluate( penalty, inverse_mass, integrator, geometry_version, interaction_version, penalty_version,
+                          kinematic );
 }
 
 template <>

@@ -109,6 +109,43 @@ TRIBOL_HOST_DEVICE void buildDeviceMappedPatch(
   }
 }
 
+TRIBOL_HOST_DEVICE void evaluateDeviceNativeKinematicVote(
+    Index candidate, ParentTracePairView traces, ParentTraceFieldPairView fields, const ElementPair* candidates,
+    Index candidate_count, const InteractionPatch* patches, const Real* mortar_thickness,
+    const Real* nonmortar_thickness, constraint::GapActivationParameters activation,
+    timestep::Kinematic::Parameters parameters, Real* votes )
+{
+  if ( candidate >= candidate_count ) {
+    return;
+  }
+  const InteractionPatch& patch = patches[candidate];
+  if ( !patch.valid ) {
+    votes[candidate] = parameters.current_step;
+    return;
+  }
+  const ElementPair pair = candidates[candidate];
+  const SurfacePairView surfaces{ traces.mortar.geometry, traces.nonmortar.geometry };
+  const auto sample = constraint::stageNormalConstraint<constraint::Pointwise>(
+      surfaces, pair, patch.mortar_centroid, patch.nonmortar_centroid, patch.normal, patch.measure );
+  const auto mortar_velocity = timestep::detail::interpolateParentVelocity(
+      traces.mortar, pair.mortar_element, fields.mortar_velocity, sample.mortar_trial );
+  const auto nonmortar_velocity = timestep::detail::interpolateParentVelocity(
+      traces.nonmortar, pair.nonmortar_element, fields.nonmortar_velocity, sample.nonmortar_trial );
+  timestep::detail::KinematicPoint point;
+  point.dimension = surfaces.mortar.dimension;
+  point.mortar_position = patch.mortar_centroid;
+  point.nonmortar_position = patch.nonmortar_centroid;
+  point.mortar_velocity = mortar_velocity;
+  point.nonmortar_velocity = nonmortar_velocity;
+  point.mortar_normal = timestep::detail::elementNormal( surfaces.mortar, pair.mortar_element );
+  point.nonmortar_normal = timestep::detail::elementNormal( surfaces.nonmortar, pair.nonmortar_element );
+  point.overlap_normal = patch.normal;
+  point.mortar_thickness = mortar_thickness[pair.mortar_element];
+  point.nonmortar_thickness = nonmortar_thickness[pair.nonmortar_element];
+  point.active = sample.gap - activation.residual_gap <= activation.gap_tolerance;
+  votes[candidate] = timestep::detail::kinematicPointVote( point, parameters );
+}
+
 [[nodiscard]] TRIBOL_HOST_DEVICE bool sameDeviceMappedPatch( Index current, Index previous, ParentTracePairView traces,
                                                              const InteractionPatch* patches,
                                                              const Index* mortar_parent_faces,
