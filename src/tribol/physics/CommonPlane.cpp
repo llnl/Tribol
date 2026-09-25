@@ -16,6 +16,11 @@
 #include "tribol/utils/Math.hpp"
 
 #include <cmath>
+#include <limits>
+
+#ifdef TRIBOL_USE_MPI
+#include <mpi.h>
+#endif
 
 namespace tribol {
 
@@ -809,6 +814,63 @@ TRIBOL_HOST_DEVICE inline void ScatterCommonPlaneRowForce( const CommonPlaneCont
                           force_on_second_face[1], force_on_second_face[2], first_basis_values, second_basis_values );
 }
 
+/**
+ * @brief Return one inverse mass used by a CommonPlane quadrature row.
+ *
+ * @param mesh Contact surface containing the field data
+ * @param face_id Tribol face identifier stored by the row
+ * @param basis_index Local face-basis index
+ * @param component Vector component
+ * @param uses_parent_fields Whether the row evaluates native parent fields
+ * @return Component-wise inverse diagonal mass
+ */
+TRIBOL_HOST_DEVICE inline RealT GetCommonPlaneRowInverseMass( const MeshData::Viewer& mesh, IndexT face_id,
+                                                              int basis_index, int component, bool uses_parent_fields )
+{
+  if ( uses_parent_fields ) {
+    const int field_index = basis_index * mesh.spatialDimension() + component;
+    return mesh.getParentFaceData().m_parent_inverse_masses( face_id, field_index );
+  }
+  return mesh.getInverseMass( mesh.getGlobalNodeId( face_id, basis_index ), component );
+}
+
+/**
+ * @brief Return the local accumulation index for one CommonPlane row degree of freedom.
+ *
+ * Native parent rows use the parent-mesh vector degree-of-freedom identifier.
+ * Ordinary Tribol meshes use component-interleaved nodal identifiers. Parent
+ * identifiers from different source ranks may share an accumulation slot;
+ * this only increases the resulting conservative bound.
+ *
+ * @param mesh Contact surface containing the field data
+ * @param face_id Tribol face identifier stored by the row
+ * @param basis_index Local face-basis index
+ * @param component Vector component
+ * @param uses_parent_fields Whether the row evaluates native parent fields
+ * @return Nonnegative local accumulation index
+ */
+TRIBOL_HOST_DEVICE inline IndexT GetCommonPlaneRowDofIndex( const MeshData::Viewer& mesh, IndexT face_id,
+                                                            int basis_index, int component, bool uses_parent_fields )
+{
+  if ( uses_parent_fields ) {
+    const int field_index = basis_index * mesh.spatialDimension() + component;
+    return mesh.getParentFaceData().m_parent_vector_dof_ids( face_id, field_index );
+  }
+  return mesh.getGlobalNodeId( face_id, basis_index ) * mesh.spatialDimension() + component;
+}
+
+/**
+ * @brief Return the number of accumulation slots needed by one contact surface.
+ *
+ * @param mesh Contact surface whose mass-normalized rows will be accumulated
+ * @return Number of local vector degree-of-freedom slots
+ */
+inline IndexT GetCommonPlaneRowDofCount( const MeshData& mesh )
+{
+  return mesh.hasParentFaceFields() ? mesh.getParentFaceData().m_parent_vector_dof_count
+                                    : mesh.numberOfNodes() * mesh.spatialDimension();
+}
+
 }  // namespace
 
 /**
@@ -1075,6 +1137,227 @@ int BuildCommonPlaneContactRows( CouplingScheme* cs )
     }
   }
   return evaluation_error_host[0];
+}
+
+//------------------------------------------------------------------------------
+int ComputeCommonPlanePenaltyStabilityTimeStep( CouplingScheme* cs, RealT& timestep )
+{
+  auto* common_plane_data = static_cast<CommonPlaneContactData*>( cs->getMethodData() );
+  SLIC_ERROR_ROOT_IF( common_plane_data == nullptr,
+                      "ComputeCommonPlanePenaltyStabilityTimeStep(): CommonPlane row storage is unavailable." );
+
+  const CommonPlaneContactData::Viewer rows = common_plane_data->getView();
+  Array1D<IndexT> active_row_count_data( { 0 }, cs->getAllocatorId() );
+  Array1DView<IndexT> active_row_count = active_row_count_data.view();
+  forAllExec( cs->getExecutionMode(), rows.row_capacity, [rows, active_row_count] TRIBOL_HOST_DEVICE( IndexT row_id ) {
+    if ( rows.row_is_valid[row_id] != 0 && rows.row_is_active[row_id] != 0 ) {
+      tribol::atomicInc( &active_row_count[0] );
+    }
+  } );
+
+  Array1D<IndexT, MemorySpace::Host> active_row_count_host( active_row_count_data );
+  IndexT global_active_row_count = active_row_count_host[0];
+#ifdef TRIBOL_USE_MPI
+  int mpi_initialized = 0;
+  MPI_Initialized( &mpi_initialized );
+  if ( mpi_initialized ) {
+    MPI_Allreduce( MPI_IN_PLACE, &global_active_row_count, 1, MPI_INT, MPI_SUM, cs->getProblemComm() );
+  }
+#endif
+
+  if ( global_active_row_count == 0 ) {
+    cs->setExplicitPenaltyStabilityData( std::numeric_limits<RealT>::infinity(), 0.0, 0.0 );
+    return 0;
+  }
+
+  const PenaltyEnforcementOptions& penalty_options = cs->getEnforcementOptions().penalty_options;
+  const MeshData& first_mesh_data = cs->getMesh1();
+  const MeshData& second_mesh_data = cs->getMesh2();
+  const bool first_mass_is_available = first_mesh_data.hasParentFaceFields()
+                                           ? first_mesh_data.getParentFaceData().hasParentInverseMass()
+                                           : first_mesh_data.hasInverseMass();
+  const bool second_mass_is_available = second_mesh_data.hasParentFaceFields()
+                                            ? second_mesh_data.getParentFaceData().hasParentInverseMass()
+                                            : second_mesh_data.hasInverseMass();
+  int invalid_configuration =
+      ( active_row_count_host[0] > 0 && ( !first_mass_is_available || !second_mass_is_available ) ) ||
+              !penalty_options.explicit_integrator_stability_factor_set
+          ? 1
+          : 0;
+#ifdef TRIBOL_USE_MPI
+  if ( mpi_initialized ) {
+    MPI_Allreduce( MPI_IN_PLACE, &invalid_configuration, 1, MPI_INT, MPI_MAX, cs->getProblemComm() );
+  }
+#endif
+  if ( invalid_configuration != 0 ) {
+    SLIC_WARNING_ROOT(
+        "ComputeCommonPlanePenaltyStabilityTimeStep(): active explicit penalty contact requires component-wise "
+        "inverse diagonal mass and an explicit-integrator stability factor." );
+    cs->setExplicitPenaltyStabilityData( -1.0, 0.0, 0.0 );
+    timestep = -1.0;
+    return 1;
+  }
+
+  const IndexT first_dof_count = GetCommonPlaneRowDofCount( first_mesh_data );
+  const IndexT second_dof_count = GetCommonPlaneRowDofCount( second_mesh_data );
+  const bool rows_use_parent_fields = first_mesh_data.hasParentFaceFields();
+  const bool meshes_share_dof_numbering = rows_use_parent_fields || cs->getMeshId1() == cs->getMeshId2();
+  const IndexT second_dof_offset = meshes_share_dof_numbering ? 0 : first_dof_count;
+  const IndexT row_sum_count = axom::utilities::max(
+      static_cast<IndexT>( 1 ), meshes_share_dof_numbering ? axom::utilities::max( first_dof_count, second_dof_count )
+                                                           : first_dof_count + second_dof_count );
+  Array1D<RealT> stiffness_row_sums_data( row_sum_count, row_sum_count, cs->getAllocatorId() );
+  Array1D<RealT> damping_row_sums_data( row_sum_count, row_sum_count, cs->getAllocatorId() );
+  stiffness_row_sums_data.fill( 0.0 );
+  damping_row_sums_data.fill( 0.0 );
+  Array1DView<RealT> stiffness_row_sums = stiffness_row_sums_data.view();
+  Array1DView<RealT> damping_row_sums = damping_row_sums_data.view();
+  Array1D<int> invalid_mass_data( { 0 }, cs->getAllocatorId() );
+  Array1DView<int> invalid_mass = invalid_mass_data.view();
+
+  const CouplingScheme::Viewer coupling_scheme = cs->getView();
+  const PenaltyConstraintType constraint_type = penalty_options.constraint_type;
+  const bool include_tangential_damping = cs->getContactModel() == VISCOUS_TANGENTIAL;
+  forAllExec(
+      cs->getExecutionMode(), rows.row_capacity,
+      [rows, coupling_scheme, constraint_type, include_tangential_damping, second_dof_offset, row_sum_count,
+       stiffness_row_sums, damping_row_sums, invalid_mass] TRIBOL_HOST_DEVICE( IndexT row_id ) {
+        if ( rows.row_is_valid[row_id] == 0 || rows.row_is_active[row_id] == 0 ) {
+          return;
+        }
+
+        const MeshData::Viewer& first_mesh = coupling_scheme.getMesh1View();
+        const MeshData::Viewer& second_mesh = coupling_scheme.getMesh2View();
+        const bool uses_parent_fields = rows.row_uses_parent_fields[row_id] != 0;
+        const IndexT first_face_id = rows.first_face_ids[row_id];
+        const IndexT second_face_id = rows.second_face_ids[row_id];
+        const int first_basis_count = rows.first_basis_counts[row_id];
+        const int second_basis_count = rows.second_basis_counts[row_id];
+
+        StackArrayT<RealT, 2 * max_nodes_per_face * max_dim> square_root_inverse_masses;
+        RealT normal_constraint_absolute_sum = 0.0;
+        RealT tangential_constraint_absolute_sums[max_dim] = { 0.0, 0.0, 0.0 };
+
+        // First form the absolute row sums for the rank-one normal operator and
+        // the tangential projection operator. Signed higher-order basis values
+        // are retained until the absolute-value bound is formed here.
+        for ( int surface_index = 0; surface_index < 2; ++surface_index ) {
+          const MeshData::Viewer& mesh = surface_index == 0 ? first_mesh : second_mesh;
+          const IndexT face_id = surface_index == 0 ? first_face_id : second_face_id;
+          const int basis_count = surface_index == 0 ? first_basis_count : second_basis_count;
+          const Array2DView<RealT>& basis_values =
+              surface_index == 0 ? rows.first_basis_values : rows.second_basis_values;
+          const int surface_offset = surface_index * max_nodes_per_face * max_dim;
+          for ( int basis_index = 0; basis_index < basis_count; ++basis_index ) {
+            const RealT absolute_basis_value = std::abs( basis_values( row_id, basis_index ) );
+            for ( int component = 0; component < rows.spatial_dimension; ++component ) {
+              const RealT inverse_mass =
+                  GetCommonPlaneRowInverseMass( mesh, face_id, basis_index, component, uses_parent_fields );
+              if ( inverse_mass < 0.0 || inverse_mass != inverse_mass ||
+                   inverse_mass > std::numeric_limits<RealT>::max() ) {
+                tribol::atomicMax( &invalid_mass[0], 1 );
+                return;
+              }
+              const RealT square_root_inverse_mass = std::sqrt( inverse_mass );
+              square_root_inverse_masses[surface_offset + basis_index * max_dim + component] = square_root_inverse_mass;
+              normal_constraint_absolute_sum +=
+                  absolute_basis_value * std::abs( rows.normals( row_id, component ) ) * square_root_inverse_mass;
+
+              if ( include_tangential_damping && rows.tangential_viscous_coefficients[row_id] > 0.0 ) {
+                for ( int target_component = 0; target_component < rows.spatial_dimension; ++target_component ) {
+                  const RealT tangential_projection =
+                      ( target_component == component ? 1.0 : 0.0 ) -
+                      rows.normals( row_id, target_component ) * rows.normals( row_id, component );
+                  tangential_constraint_absolute_sums[target_component] +=
+                      absolute_basis_value * square_root_inverse_mass * std::abs( tangential_projection );
+                }
+              }
+            }
+          }
+        }
+
+        const RealT stiffness_scale = rows.integration_weights[row_id] * rows.penalty_stiffnesses[row_id];
+        const RealT normal_damping_scale =
+            constraint_type == KINEMATIC_AND_RATE && rows.normal_velocity_gaps[row_id] <= 0.0
+                ? rows.integration_weights[row_id] * rows.rate_penalty_coefficients[row_id]
+                : 0.0;
+        const RealT tangential_damping_scale =
+            include_tangential_damping ? rows.integration_weights[row_id] * rows.tangential_viscous_coefficients[row_id]
+                                       : 0.0;
+
+        // Accumulate all contact rows that touch a degree of freedom before
+        // taking the local maximum. Reusing source-local identifiers across
+        // different MPI owners can only overestimate this absolute row sum;
+        // summing rank-local maxima below remains conservative for shared DOFs.
+        for ( int surface_index = 0; surface_index < 2; ++surface_index ) {
+          const MeshData::Viewer& mesh = surface_index == 0 ? first_mesh : second_mesh;
+          const IndexT face_id = surface_index == 0 ? first_face_id : second_face_id;
+          const int basis_count = surface_index == 0 ? first_basis_count : second_basis_count;
+          const Array2DView<RealT>& basis_values =
+              surface_index == 0 ? rows.first_basis_values : rows.second_basis_values;
+          const int surface_offset = surface_index * max_nodes_per_face * max_dim;
+          for ( int basis_index = 0; basis_index < basis_count; ++basis_index ) {
+            const RealT absolute_basis_value = std::abs( basis_values( row_id, basis_index ) );
+            for ( int component = 0; component < rows.spatial_dimension; ++component ) {
+              const RealT square_root_inverse_mass =
+                  square_root_inverse_masses[surface_offset + basis_index * max_dim + component];
+              if ( square_root_inverse_mass == 0.0 ) {
+                continue;
+              }
+              const IndexT degree_of_freedom =
+                  GetCommonPlaneRowDofIndex( mesh, face_id, basis_index, component, uses_parent_fields ) +
+                  ( surface_index == 1 ? second_dof_offset : 0 );
+              if ( degree_of_freedom < 0 || degree_of_freedom >= row_sum_count ) {
+                tribol::atomicMax( &invalid_mass[0], 1 );
+                return;
+              }
+
+              const RealT absolute_normal_coefficient =
+                  absolute_basis_value * std::abs( rows.normals( row_id, component ) ) * square_root_inverse_mass;
+              tribol::atomicAdd( &stiffness_row_sums[degree_of_freedom],
+                                 stiffness_scale * absolute_normal_coefficient * normal_constraint_absolute_sum );
+              tribol::atomicAdd( &damping_row_sums[degree_of_freedom],
+                                 normal_damping_scale * absolute_normal_coefficient * normal_constraint_absolute_sum +
+                                     tangential_damping_scale * absolute_basis_value * square_root_inverse_mass *
+                                         tangential_constraint_absolute_sums[component] );
+            }
+          }
+        }
+      } );
+
+  Array1D<RealT> local_bounds_data( { 0.0, 0.0 }, cs->getAllocatorId() );
+  Array1DView<RealT> local_bounds = local_bounds_data.view();
+  forAllExec( cs->getExecutionMode(), row_sum_count,
+              [stiffness_row_sums, damping_row_sums, local_bounds] TRIBOL_HOST_DEVICE( IndexT degree_of_freedom ) {
+                tribol::atomicMax( &local_bounds[0], stiffness_row_sums[degree_of_freedom] );
+                tribol::atomicMax( &local_bounds[1], damping_row_sums[degree_of_freedom] );
+              } );
+
+  Array1D<int, MemorySpace::Host> invalid_mass_host( invalid_mass_data );
+  ArrayT<RealT, 1, MemorySpace::Host> bounds_host( local_bounds_data );
+#ifdef TRIBOL_USE_MPI
+  if ( mpi_initialized ) {
+    MPI_Allreduce( MPI_IN_PLACE, invalid_mass_host.data(), 1, MPI_INT, MPI_MAX, cs->getProblemComm() );
+    MPI_Allreduce( MPI_IN_PLACE, bounds_host.data(), 2, MPI_DOUBLE, MPI_SUM, cs->getProblemComm() );
+  }
+#endif
+  if ( invalid_mass_host[0] != 0 ) {
+    SLIC_WARNING_ROOT( "ComputeCommonPlanePenaltyStabilityTimeStep(): inverse diagonal mass data are invalid." );
+    cs->setExplicitPenaltyStabilityData( -1.0, 0.0, 0.0 );
+    timestep = -1.0;
+    return 1;
+  }
+
+  const RealT stiffness_bound = bounds_host[0];
+  const RealT damping_bound = bounds_host[1];
+  const RealT damped_frequency_bound =
+      std::sqrt( stiffness_bound + 0.25 * damping_bound * damping_bound ) + 0.5 * damping_bound;
+  const RealT stability_timestep = damped_frequency_bound > 0.0
+                                       ? penalty_options.explicit_integrator_stability_factor / damped_frequency_bound
+                                       : std::numeric_limits<RealT>::infinity();
+  cs->setExplicitPenaltyStabilityData( stability_timestep, stiffness_bound, damping_bound );
+  timestep = axom::utilities::min( timestep, stability_timestep );
+  return 0;
 }
 
 //------------------------------------------------------------------------------
