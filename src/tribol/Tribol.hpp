@@ -9,6 +9,7 @@
 #include "tribol/constraint/NormalConstraint.hpp"
 #include "tribol/contact/Contact.hpp"
 #include "tribol/core/ArrayView.hpp"
+#include "tribol/core/AttemptLifecycle.hpp"
 #include "tribol/core/Config.hpp"
 #include "tribol/core/ConstraintRowView.hpp"
 #include "tribol/core/InteractionPatch.hpp"

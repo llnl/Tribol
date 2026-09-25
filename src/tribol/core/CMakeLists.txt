@@ -1,5 +1,6 @@
 set(tribol_core_headers
     ArrayView.hpp
+    AttemptLifecycle.hpp
     Config.hpp
     ConstraintRowView.hpp
     ExactTangent.hpp

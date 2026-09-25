@@ -22,13 +22,17 @@ struct GeometryVersionTag;
 struct InteractionVersionTag;
 struct IntegratorVersionTag;
 struct MassVersionTag;
+struct BoundaryConditionVersionTag;
 struct PenaltyVersionTag;
+struct TopologyVersionTag;
 
 using GeometryVersion = Version<GeometryVersionTag>;
 using InteractionVersion = Version<InteractionVersionTag>;
 using IntegratorVersion = Version<IntegratorVersionTag>;
 using MassVersion = Version<MassVersionTag>;
+using BoundaryConditionVersion = Version<BoundaryConditionVersionTag>;
 using PenaltyVersion = Version<PenaltyVersionTag>;
+using TopologyVersion = Version<TopologyVersionTag>;
 
 }  // namespace tribol
 

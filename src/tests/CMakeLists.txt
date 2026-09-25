@@ -20,6 +20,17 @@ blt_add_test(
   COMMAND tribol_interface_spec_test)
 
 blt_add_executable(
+  NAME tribol_attempt_lifecycle_test
+  SOURCES components/attempt_lifecycle.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::core
+  FOLDER tribol/components)
+
+blt_add_test(
+  NAME tribol_attempt_lifecycle
+  COMMAND tribol_attempt_lifecycle_test)
+
+blt_add_executable(
   NAME tribol_projected_overlap_test
   SOURCES components/projected_overlap.cpp
   OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
