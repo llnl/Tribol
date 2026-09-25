@@ -61,16 +61,14 @@ struct AxisRule {
   return rule;
 }
 
-[[nodiscard]] TRIBOL_HOST_DEVICE inline Real triangleArea( const OverlapCellBatchView& cells, Index first, Index second,
-                                                           Index third )
+template <typename Cell>
+[[nodiscard]] TRIBOL_HOST_DEVICE inline Real triangleArea( const Cell& cell, Index first, Index second, Index third )
 {
   std::array<Real, 3> first_edge{};
   std::array<Real, 3> second_edge{};
   for ( int component = 0; component < 3; ++component ) {
-    first_edge[component] =
-        cells.integration_vertices( second, component ) - cells.integration_vertices( first, component );
-    second_edge[component] =
-        cells.integration_vertices( third, component ) - cells.integration_vertices( first, component );
+    first_edge[component] = cell.integrationVertex( second, component ) - cell.integrationVertex( first, component );
+    second_edge[component] = cell.integrationVertex( third, component ) - cell.integrationVertex( first, component );
   }
   const std::array<Real, 3> cross{ first_edge[1] * second_edge[2] - first_edge[2] * second_edge[1],
                                    first_edge[2] * second_edge[0] - first_edge[0] * second_edge[2],
@@ -78,31 +76,62 @@ struct AxisRule {
   return 0.5 * linearization_detail::squareRoot( cross[0] * cross[0] + cross[1] * cross[1] + cross[2] * cross[2] );
 }
 
-[[nodiscard]] TRIBOL_HOST_DEVICE inline basis::ReferencePoint interpolateReference(
-    const FieldView<const Real>& references, const int* vertices, const Real* shape, int count )
+template <typename Cell>
+[[nodiscard]] TRIBOL_HOST_DEVICE inline basis::ReferencePoint interpolateReference( const Cell& cell, bool mortar,
+                                                                                    const int* vertices,
+                                                                                    const Real* shape, int count )
 {
   basis::ReferencePoint result{};
   for ( int node = 0; node < count; ++node ) {
-    result.first += shape[node] * references( vertices[node], 0 );
-    if ( references.components == 2 ) {
-      result.second += shape[node] * references( vertices[node], 1 );
+    result.first += shape[node] * cell.parentReference( mortar, vertices[node], 0 );
+    if ( cell.dimension() == 3 ) {
+      result.second += shape[node] * cell.parentReference( mortar, vertices[node], 1 );
     }
   }
   return result;
 }
 
+struct BatchCellAccessor {
+  OverlapCellBatchView cells{};
+  Index cell{};
+
+  [[nodiscard]] TRIBOL_HOST_DEVICE int dimension() const { return cells.dimension; }
+  [[nodiscard]] TRIBOL_HOST_DEVICE Index vertexCount() const
+  {
+    return cells.vertex_offsets[cell + 1] - cells.vertex_offsets[cell];
+  }
+  [[nodiscard]] TRIBOL_HOST_DEVICE Real normal( int component ) const { return cells.normals( cell, component ); }
+  [[nodiscard]] TRIBOL_HOST_DEVICE Real measure() const { return cells.measures[cell]; }
+  [[nodiscard]] TRIBOL_HOST_DEVICE Real integrationVertex( Index vertex, int component ) const
+  {
+    return cells.integration_vertices( cells.vertex_offsets[cell] + vertex, component );
+  }
+  [[nodiscard]] TRIBOL_HOST_DEVICE Real parentReference( bool mortar, Index vertex, int component ) const
+  {
+    const Index global_vertex = cells.vertex_offsets[cell] + vertex;
+    return mortar ? cells.mortar_parent_reference_coordinates( global_vertex, component )
+                  : cells.nonmortar_parent_reference_coordinates( global_vertex, component );
+  }
+};
+
 }  // namespace automatic_quadrature_detail
+
+[[nodiscard]] TRIBOL_HOST_DEVICE inline int automaticQuadratureExactness( int mortar_order, int nonmortar_order,
+                                                                          const Automatic::Parameters& parameters )
+{
+  const int field_order = mortar_order > nonmortar_order ? mortar_order : nonmortar_order;
+  const int traction_order = parameters.traction_order < 0 ? field_order : parameters.traction_order;
+  const int exactness = field_order + traction_order;
+  return exactness > parameters.minimum_exactness ? exactness : parameters.minimum_exactness;
+}
 
 [[nodiscard]] TRIBOL_HOST_DEVICE inline int automaticQuadratureExactness( const ParentTracePairView& traces,
                                                                           const OverlapCellBatchView& cells, Index cell,
                                                                           const Automatic::Parameters& parameters )
 {
-  const int mortar_order = traces.mortar.parent_face_orders[cells.mortar_parent_faces[cell]];
-  const int nonmortar_order = traces.nonmortar.parent_face_orders[cells.nonmortar_parent_faces[cell]];
-  const int field_order = mortar_order > nonmortar_order ? mortar_order : nonmortar_order;
-  const int traction_order = parameters.traction_order < 0 ? field_order : parameters.traction_order;
-  const int exactness = field_order + traction_order;
-  return exactness > parameters.minimum_exactness ? exactness : parameters.minimum_exactness;
+  return automaticQuadratureExactness( traces.mortar.parent_face_orders[cells.mortar_parent_faces[cell]],
+                                       traces.nonmortar.parent_face_orders[cells.nonmortar_parent_faces[cell]],
+                                       parameters );
 }
 
 [[nodiscard]] TRIBOL_HOST_DEVICE inline int automaticAxisPointCount( int exactness )
@@ -124,26 +153,24 @@ struct AxisRule {
   return cells.dimension == 2 ? axis_points : ( vertices - 2 ) * axis_points * axis_points;
 }
 
-[[nodiscard]] TRIBOL_HOST_DEVICE inline OverlapQuadraturePoint automaticQuadraturePoint(
-    const ParentTracePairView& traces, const OverlapCellBatchView& cells, Index cell, Index local_point,
-    const Automatic::Parameters& parameters )
+template <typename Cell>
+[[nodiscard]] TRIBOL_HOST_DEVICE inline OverlapQuadraturePoint automaticQuadraturePointFromCell( const Cell& cell,
+                                                                                                 int exactness,
+                                                                                                 Index local_point )
 {
   OverlapQuadraturePoint result;
-  const int axis_points = automaticAxisPointCount( automaticQuadratureExactness( traces, cells, cell, parameters ) );
+  const int axis_points = automaticAxisPointCount( exactness );
   const auto axis = automatic_quadrature_detail::gaussLegendreRule( axis_points );
-  const Index begin = cells.vertex_offsets[cell];
   for ( int component = 0; component < 3; ++component ) {
-    result.normal[component] = cells.normals( cell, component );
+    result.normal[component] = cell.normal( component );
   }
-  if ( cells.dimension == 2 ) {
+  if ( cell.dimension() == 2 ) {
     const Real coordinate = axis.points[local_point];
     const Real shape[2] = { 0.5 * ( 1.0 - coordinate ), 0.5 * ( 1.0 + coordinate ) };
-    const int vertices[2] = { static_cast<int>( begin ), static_cast<int>( begin + 1 ) };
-    result.mortar_reference = automatic_quadrature_detail::interpolateReference(
-        cells.mortar_parent_reference_coordinates, vertices, shape, 2 );
-    result.nonmortar_reference = automatic_quadrature_detail::interpolateReference(
-        cells.nonmortar_parent_reference_coordinates, vertices, shape, 2 );
-    result.weight = 0.5 * cells.measures[cell] * axis.weights[local_point];
+    const int vertices[2] = { 0, 1 };
+    result.mortar_reference = automatic_quadrature_detail::interpolateReference( cell, true, vertices, shape, 2 );
+    result.nonmortar_reference = automatic_quadrature_detail::interpolateReference( cell, false, vertices, shape, 2 );
+    result.weight = 0.5 * cell.measure() * axis.weights[local_point];
     return result;
   }
   const Index triangle = local_point / ( axis_points * axis_points );
@@ -152,15 +179,21 @@ struct AxisRule {
   const Real first = 0.5 * ( 1.0 + axis.points[first_axis] );
   const Real second = 0.5 * ( 1.0 + axis.points[second_axis] );
   const Real shape[3] = { ( 1.0 - first ) * ( 1.0 - second ), first, ( 1.0 - first ) * second };
-  const int vertices[3] = { static_cast<int>( begin ), static_cast<int>( begin + triangle + 1 ),
-                            static_cast<int>( begin + triangle + 2 ) };
-  result.mortar_reference = automatic_quadrature_detail::interpolateReference(
-      cells.mortar_parent_reference_coordinates, vertices, shape, 3 );
-  result.nonmortar_reference = automatic_quadrature_detail::interpolateReference(
-      cells.nonmortar_parent_reference_coordinates, vertices, shape, 3 );
-  const Real area = automatic_quadrature_detail::triangleArea( cells, vertices[0], vertices[1], vertices[2] );
+  const int vertices[3] = { 0, static_cast<int>( triangle + 1 ), static_cast<int>( triangle + 2 ) };
+  result.mortar_reference = automatic_quadrature_detail::interpolateReference( cell, true, vertices, shape, 3 );
+  result.nonmortar_reference = automatic_quadrature_detail::interpolateReference( cell, false, vertices, shape, 3 );
+  const Real area = automatic_quadrature_detail::triangleArea( cell, vertices[0], vertices[1], vertices[2] );
   result.weight = 0.5 * area * axis.weights[first_axis] * axis.weights[second_axis] * ( 1.0 - first );
   return result;
+}
+
+[[nodiscard]] TRIBOL_HOST_DEVICE inline OverlapQuadraturePoint automaticQuadraturePoint(
+    const ParentTracePairView& traces, const OverlapCellBatchView& cells, Index cell, Index local_point,
+    const Automatic::Parameters& parameters )
+{
+  return automaticQuadraturePointFromCell( automatic_quadrature_detail::BatchCellAccessor{ cells, cell },
+                                           automaticQuadratureExactness( traces, cells, cell, parameters ),
+                                           local_point );
 }
 
 }  // namespace tribol::integration
