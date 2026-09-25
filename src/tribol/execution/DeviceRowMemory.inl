@@ -26,6 +26,37 @@ struct DeviceConstraintRowStorage {
   DeviceBuffer<Index> nonmortar_dofs;
   DeviceBuffer<Real> nonmortar_basis_values;
 
+  void resize( int row_dimension, Index cell_count, Index row_count, Index mortar_entries,
+               Index nonmortar_entries, bool include_normal_rates )
+  {
+    dimension = row_dimension;
+    cells = cell_count;
+    rows = row_count;
+    has_normal_rates = include_normal_rates;
+    cell_row_offsets.resize( static_cast<std::size_t>( cells + 1 ) );
+    contact_pair_ids.resize( static_cast<std::size_t>( rows ) );
+    cell_ids.resize( static_cast<std::size_t>( rows ) );
+    row_ids.resize( static_cast<std::size_t>( rows ) );
+    owner_ranks.resize( static_cast<std::size_t>( rows ) );
+    overlap_cells.resize( static_cast<std::size_t>( rows ) );
+    mortar_parent_faces.resize( static_cast<std::size_t>( rows ) );
+    nonmortar_parent_faces.resize( static_cast<std::size_t>( rows ) );
+    normals.resize( static_cast<std::size_t>( 3 * rows ) );
+    integration_weights.resize( static_cast<std::size_t>( rows ) );
+    mortar_parent_reference_coordinates.resize( static_cast<std::size_t>( ( dimension - 1 ) * rows ) );
+    nonmortar_parent_reference_coordinates.resize( static_cast<std::size_t>( ( dimension - 1 ) * rows ) );
+    mortar_positions.resize( static_cast<std::size_t>( 3 * rows ) );
+    nonmortar_positions.resize( static_cast<std::size_t>( 3 * rows ) );
+    gaps.resize( static_cast<std::size_t>( rows ) );
+    normal_rates.resize( include_normal_rates ? static_cast<std::size_t>( rows ) : 0 );
+    mortar_dof_offsets.resize( static_cast<std::size_t>( rows + 1 ) );
+    mortar_dofs.resize( static_cast<std::size_t>( mortar_entries ) );
+    mortar_basis_values.resize( static_cast<std::size_t>( mortar_entries ) );
+    nonmortar_dof_offsets.resize( static_cast<std::size_t>( rows + 1 ) );
+    nonmortar_dofs.resize( static_cast<std::size_t>( nonmortar_entries ) );
+    nonmortar_basis_values.resize( static_cast<std::size_t>( nonmortar_entries ) );
+  }
+
   void upload( ConstraintRowBatchView source )
   {
     dimension = source.dimension;
@@ -87,5 +118,134 @@ struct DeviceConstraintRowStorage {
         .nonmortar_dofs = constDeviceView( nonmortar_dofs ),
         .nonmortar_basis_values = constDeviceView( nonmortar_basis_values ),
     };
+  }
+};
+
+struct DeviceParentTraceStorage {
+  DeviceSurfaceStorage geometry;
+  DeviceBuffer<std::uint64_t> parent_face_ids;
+  DeviceBuffer<int> parent_face_owners;
+  DeviceBuffer<ElementTopology> parent_face_topologies;
+  DeviceBuffer<int> parent_face_orders;
+  DeviceBuffer<Index> parent_dof_offsets;
+  DeviceBuffer<Index> parent_dofs;
+  DeviceBuffer<Real> parent_dof_signs;
+  DeviceBuffer<Index> parent_basis_offsets;
+  DeviceBuffer<Real> parent_basis_coefficients;
+  DeviceBuffer<Index> subfacet_parent_faces;
+  DeviceBuffer<Real> subfacet_parent_reference_coordinates;
+
+  void upload( ParentTraceView source )
+  {
+    geometry.upload( source.geometry );
+    copyToDevice( parent_face_ids, source.parent_face_ids, "copy parent face ids to device" );
+    copyToDevice( parent_face_owners, source.parent_face_owners, "copy parent face owners to device" );
+    copyToDevice( parent_face_topologies, source.parent_face_topologies, "copy parent face topologies to device" );
+    copyToDevice( parent_face_orders, source.parent_face_orders, "copy parent face orders to device" );
+    copyToDevice( parent_dof_offsets, source.parent_dof_offsets, "copy parent DOF offsets to device" );
+    copyToDevice( parent_dofs, source.parent_dofs, "copy parent DOFs to device" );
+    copyToDevice( parent_dof_signs, source.parent_dof_signs, "copy parent DOF signs to device" );
+    copyToDevice( parent_basis_offsets, source.parent_basis_offsets, "copy parent basis offsets to device" );
+    copyToDevice( parent_basis_coefficients, source.parent_basis_coefficients,
+                  "copy parent basis coefficients to device" );
+    copyToDevice( subfacet_parent_faces, source.subfacet_parent_faces, "copy subfacet parents to device" );
+    copyToDevice( subfacet_parent_reference_coordinates, source.subfacet_parent_reference_coordinates.values,
+                  "copy subfacet parent coordinates to device" );
+  }
+
+  [[nodiscard]] ParentTraceView view() const
+  {
+    const SurfaceMeshView surface = geometry.view();
+    return {
+        .geometry = surface,
+        .parent_face_ids = constDeviceView( parent_face_ids ),
+        .parent_face_owners = constDeviceView( parent_face_owners ),
+        .parent_face_topologies = constDeviceView( parent_face_topologies ),
+        .parent_face_orders = constDeviceView( parent_face_orders ),
+        .parent_dof_offsets = constDeviceView( parent_dof_offsets ),
+        .parent_dofs = constDeviceView( parent_dofs ),
+        .parent_dof_signs = constDeviceView( parent_dof_signs ),
+        .parent_basis_offsets = constDeviceView( parent_basis_offsets ),
+        .parent_basis_coefficients = constDeviceView( parent_basis_coefficients ),
+        .subfacet_parent_faces = constDeviceView( subfacet_parent_faces ),
+        .subfacet_parent_reference_coordinates = {
+            constDeviceView( subfacet_parent_reference_coordinates ), surface.connectivity.size(),
+            surface.dimension - 1, FieldLayout::Interleaved },
+    };
+  }
+};
+
+struct DeviceFieldStorage {
+  DeviceBuffer<Real> values;
+  Index entities{};
+  int components{};
+  FieldLayout layout{ FieldLayout::Interleaved };
+
+  void upload( FieldView<const Real> source, const char* operation )
+  {
+    entities = source.entities;
+    components = source.components;
+    layout = source.layout;
+    copyToDevice( values, source.values, operation );
+  }
+
+  void initializeZero( Index field_entities, int field_components )
+  {
+    entities = field_entities;
+    components = field_components;
+    layout = FieldLayout::Interleaved;
+    values.resize( static_cast<std::size_t>( entities * components ) );
+    ActiveDeviceBackend::clear( values.data(), values.size() * sizeof( Real ) );
+  }
+
+  [[nodiscard]] FieldView<const Real> view() const
+  {
+    return { constDeviceView( values ), entities, components, layout };
+  }
+};
+
+struct DeviceParentTracePairStorage {
+  DeviceParentTraceStorage mortar;
+  DeviceParentTraceStorage nonmortar;
+
+  void upload( ParentTracePairView source )
+  {
+    mortar.upload( source.mortar );
+    nonmortar.upload( source.nonmortar );
+  }
+
+  [[nodiscard]] ParentTracePairView view() const { return { mortar.view(), nonmortar.view() }; }
+};
+
+struct DeviceParentFieldPairStorage {
+  DeviceFieldStorage mortar_coordinates;
+  DeviceFieldStorage nonmortar_coordinates;
+  DeviceFieldStorage mortar_velocity;
+  DeviceFieldStorage nonmortar_velocity;
+
+  void uploadCoordinates( ParentTraceFieldPairView source )
+  {
+    mortar_coordinates.upload( source.mortar_coordinates, "copy mortar parent coordinates to device" );
+    nonmortar_coordinates.upload( source.nonmortar_coordinates, "copy nonmortar parent coordinates to device" );
+  }
+
+  void uploadVelocity( ParentTraceFieldPairView source, bool required )
+  {
+    if ( source.hasVelocity() ) {
+      mortar_velocity.upload( source.mortar_velocity, "copy mortar parent velocity to device" );
+      nonmortar_velocity.upload( source.nonmortar_velocity, "copy nonmortar parent velocity to device" );
+    } else if ( required ) {
+      mortar_velocity.initializeZero( mortar_coordinates.entities, mortar_coordinates.components );
+      nonmortar_velocity.initializeZero( nonmortar_coordinates.entities, nonmortar_coordinates.components );
+    } else {
+      mortar_velocity.values.clear();
+      nonmortar_velocity.values.clear();
+    }
+  }
+
+  [[nodiscard]] ParentTraceFieldPairView view() const
+  {
+    return { mortar_coordinates.view(), nonmortar_coordinates.view(), mortar_velocity.view(),
+             nonmortar_velocity.view() };
   }
 };

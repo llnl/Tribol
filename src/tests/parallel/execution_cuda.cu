@@ -3,6 +3,7 @@
 #include "tribol/contact/Contact.hpp"
 
 #include "../components/ConstraintRowFixture.hpp"
+#include "../components/ParentTraceFixture.hpp"
 
 #if defined( TRIBOL_TEST_USE_HIP )
 #include <hip/hip_runtime.h>
@@ -703,6 +704,95 @@ bool nativeRowPipelineParity()
          std::abs( device_summary.stability.timestep_vote - host_stability.timestep_vote ) < 1.0e-13;
 }
 
+bool deviceNativeRowGenerationParity()
+{
+  const auto mortar = tribol::test::segmentTrace( 0.0, 1.0, 0.0, false, 101, 0 );
+  const auto nonmortar = tribol::test::segmentTrace( 0.0, 1.0, -0.1, true, 202, 0 );
+  const tribol::ParentTracePairView traces{ mortar.view(), nonmortar.view() };
+  const std::array<tribol::Real, 4> mortar_coordinates{ 0.0, 0.0, 1.0, 0.0 };
+  const std::array<tribol::Real, 4> nonmortar_coordinates{ 0.0, -0.1, 1.0, -0.1 };
+  const std::array<tribol::Real, 4> mortar_velocity{ 0.0, -0.2, 0.0, -0.2 };
+  const std::array<tribol::Real, 4> nonmortar_velocity{};
+  const tribol::ParentTraceFieldPairView fields{
+      .mortar_coordinates = { { mortar_coordinates.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+      .nonmortar_coordinates = { { nonmortar_coordinates.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+      .mortar_velocity = { { mortar_velocity.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+      .nonmortar_velocity = { { nonmortar_velocity.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+  };
+  const tribol::ElementPair candidate{ 0, 0 };
+  tribol::execution::DeviceContactWorkspace<DeviceExecution> search;
+  search.uploadSurfaces( { traces.mortar.geometry, traces.nonmortar.geometry } );
+  search.setCandidates( { &candidate, 1 } );
+
+  tribol::execution::DeviceNativeRowOptions options;
+  options.quadrature.minimum_exactness = 3;
+  options.include_normal_rates = true;
+  const auto cells = tribol::buildOverlapCellBatch<tribol::normal::MeanPlane>( traces, { &candidate, 1 } );
+  const auto host_rows = tribol::buildConstraintRowBatch(
+      traces, cells.view(), fields,
+      { .quadrature = options.quadrature, .include_normal_rates = options.include_normal_rates } );
+  const auto rows = host_rows.view();
+  std::vector<tribol::Real> stiffness( static_cast<std::size_t>( rows.numberOfRows() ), 10.0 );
+  std::vector<tribol::Real> damping( static_cast<std::size_t>( rows.numberOfRows() ), 0.25 );
+  const tribol::PenaltyRowInputView penalty{
+      { stiffness.data(), rows.numberOfRows() }, { damping.data(), rows.numberOfRows() }, {} };
+  std::array<tribol::Real, 4> host_mortar{};
+  std::array<tribol::Real, 4> host_nonmortar{};
+  std::vector<tribol::Real> host_effective_gap( stiffness.size() );
+  std::vector<tribol::Real> host_pressure( stiffness.size() );
+  std::vector<tribol::Real> host_row_force( stiffness.size() );
+  std::vector<tribol::Real> host_row_stiffness( stiffness.size() );
+  std::vector<tribol::Real> host_row_rate( stiffness.size() );
+  const auto host_summary =
+      tribol::evaluateExplicitPenaltyRows( rows, penalty,
+                                           { { { host_mortar.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+                                             { { host_nonmortar.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved } },
+                                           { { host_effective_gap.data(), rows.numberOfRows() },
+                                             { host_pressure.data(), rows.numberOfRows() },
+                                             { host_row_force.data(), rows.numberOfRows() },
+                                             { host_row_stiffness.data(), rows.numberOfRows() },
+                                             { host_row_rate.data(), rows.numberOfRows() } } );
+  const std::array<tribol::Real, 4> inverse_mass_values{ 1.0, 1.0, 1.0, 1.0 };
+  const tribol::timestep::DiagonalInverseMassView inverse_mass{
+      { { inverse_mass_values.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+      { { inverse_mass_values.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+  };
+  const tribol::timestep::IntegratorStabilityLimits integrator{ 2.0, 1.0, 0.9 };
+
+  tribol::execution::DeviceRowWorkspace<DeviceExecution> device;
+  device.prepareNative( traces, fields, search.deviceCandidates(),
+                        tribol::execution::DeviceRowDofLayout::separate( 2, 2, 2 ), options );
+  const auto device_summary = device.evaluate( penalty, inverse_mass, integrator );
+  const auto device_view = device.deviceResult( device_summary );
+  std::array<tribol::Real, 8> force{};
+  std::vector<tribol::Real> effective_gap( stiffness.size() );
+  std::vector<tribol::Real> pressure( stiffness.size() );
+  std::vector<tribol::Real> row_force( stiffness.size() );
+  device.download( { force.data(), 8 }, { .effective_gap = { effective_gap.data(), rows.numberOfRows() },
+                                          .pressure = { pressure.data(), rows.numberOfRows() },
+                                          .row_force = { row_force.data(), rows.numberOfRows() } } );
+  if ( device_view.rows.numberOfRows() != rows.numberOfRows() || device.devicePatches().size() != 1 ||
+       !requireDevicePointer( "generated native rows", device_view.rows.gaps.data() ) ||
+       !requireDevicePointer( "native overlap patches", device.devicePatches().data() ) ||
+       std::abs( device_summary.explicit_response.energy - host_summary.energy ) > 1.0e-13 ) {
+    return false;
+  }
+  for ( tribol::Index row = 0; row < rows.numberOfRows(); ++row ) {
+    if ( std::abs( effective_gap[row] - host_effective_gap[row] ) > 1.0e-13 ||
+         std::abs( pressure[row] - host_pressure[row] ) > 1.0e-13 ||
+         std::abs( row_force[row] - host_row_force[row] ) > 1.0e-13 ) {
+      return false;
+    }
+  }
+  for ( int value = 0; value < 4; ++value ) {
+    if ( std::abs( force[value] - host_mortar[value] ) > 1.0e-13 ||
+         std::abs( force[value + 4] - host_nonmortar[value] ) > 1.0e-13 ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 int main()
@@ -752,6 +842,10 @@ int main()
   }
   if ( !nativeRowPipelineParity() ) {
     std::cerr << "native row device pipeline parity failed\n";
+    return 1;
+  }
+  if ( !deviceNativeRowGenerationParity() ) {
+    std::cerr << "device-native row generation parity failed\n";
     return 1;
   }
   return 0;

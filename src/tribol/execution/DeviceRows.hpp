@@ -1,8 +1,11 @@
 #ifndef TRIBOL_EXECUTION_DEVICEROWS_HPP_
 #define TRIBOL_EXECUTION_DEVICEROWS_HPP_
 
+#include "tribol/basis/ParentBasis.hpp"
 #include "tribol/evaluation/ExplicitRowEvaluator.hpp"
 #include "tribol/execution/Execution.hpp"
+#include "tribol/geom/OverlapCell.hpp"
+#include "tribol/integration/AutomaticQuadrature.hpp"
 #include "tribol/timestep/ExplicitPenaltyStability.hpp"
 
 #include <type_traits>
@@ -46,6 +49,14 @@ struct DeviceRowResultView {
   DeviceRowEvaluationSummary summary{};
 };
 
+struct DeviceNativeRowOptions {
+  geometry::ProjectedOverlap<normal::MeanPlane>::Parameters geometry{};
+  integration::Automatic::Parameters quadrature{};
+  OverlapCellBuildOptions overlap{};
+  std::uint64_t first_row_id{};
+  bool include_normal_rates{};
+};
+
 template <typename Execution>
 class DeviceRowWorkspace {
  public:
@@ -60,6 +71,10 @@ class DeviceRowWorkspace {
   DeviceRowWorkspace& operator=( DeviceRowWorkspace&& ) = delete;
 
   void prepare( ConstraintRowBatchView rows, DeviceRowDofLayout layout );
+  void prepareNative( ParentTracePairView traces, ParentTraceFieldPairView fields,
+                      ArrayView<const ElementPair> device_candidates, DeviceRowDofLayout layout,
+                      DeviceNativeRowOptions options = {} );
+  void updateNativeFields( ParentTraceFieldPairView fields );
   [[nodiscard]] DeviceRowEvaluationSummary evaluate( PenaltyRowInputView penalty,
                                                      timestep::DiagonalInverseMassView inverse_mass,
                                                      timestep::IntegratorStabilityLimits integrator,
@@ -67,6 +82,7 @@ class DeviceRowWorkspace {
                                                      InteractionVersion interaction_version = {},
                                                      PenaltyVersion penalty_version = {} );
   [[nodiscard]] DeviceRowResultView deviceResult( DeviceRowEvaluationSummary summary ) const;
+  [[nodiscard]] ArrayView<const InteractionPatch> devicePatches() const;
   void download( ArrayView<Real> force, PenaltyRowOutputView row_output ) const;
 
  private:
@@ -77,6 +93,7 @@ using CudaRowWorkspace = DeviceRowWorkspace<Cuda>;
 using HipRowWorkspace = DeviceRowWorkspace<Hip>;
 
 static_assert( std::is_trivially_copyable_v<DeviceRowDofLayout> );
+static_assert( std::is_trivially_copyable_v<DeviceNativeRowOptions> );
 static_assert( std::is_trivially_copyable_v<DeviceRowEvaluationSummary> );
 static_assert( std::is_trivially_copyable_v<DeviceRowResultView> );
 

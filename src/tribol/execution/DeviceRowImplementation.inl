@@ -23,6 +23,8 @@ void launchRowKernel( Index count, Body&& body )
   ActiveDeviceBackend::checkLaunch( "launch device row kernel" );
 }
 
+#include "tribol/execution/DeviceNativeRowKernels.inl"
+
 }  // namespace
 
 template <>
@@ -33,37 +35,12 @@ class DeviceRowWorkspace<ActiveExecution>::Impl {
     validateRows( rows, layout );
     layout_ = layout;
     rows_.upload( rows );
-    const std::size_t row_count = static_cast<std::size_t>( rows.numberOfRows() );
-    const std::size_t force_values = static_cast<std::size_t>( layout.forceValues() );
-    const std::size_t force_entries = static_cast<std::size_t>( rows.dimension ) *
-                                      static_cast<std::size_t>( rows.mortar_dofs.size() + rows.nonmortar_dofs.size() );
-    pressure_stiffness_.resize( row_count );
-    rate_coefficients_.resize( row_count );
-    effective_gap_.resize( row_count );
-    pressure_.resize( row_count );
-    row_force_.resize( row_count );
-    row_stiffness_.resize( row_count );
-    row_rate_.resize( row_count );
-    summary_entries_.resize( row_count );
-    summary_.resize( 1 );
-    inverse_mass_.resize( force_values );
-    force_.resize( force_values );
-    stability_row_sums_.resize( 2 * force_values );
-    stability_bounds_.resize( 2 );
-    const std::size_t scatter_capacity = 2 * force_entries;
-    scatter_keys_.resize( scatter_capacity );
-    scatter_keys_alt_.resize( scatter_capacity );
-    scatter_values_.resize( scatter_capacity );
-    scatter_values_alt_.resize( scatter_capacity );
-    unique_keys_.resize( scatter_capacity );
-    run_counts_.resize( scatter_capacity );
-    run_offsets_.resize( scatter_capacity );
-    run_count_.resize( 1 );
-    sizeTemporaryStorage( static_cast<Index>( scatter_capacity ), static_cast<Index>( row_count ),
-                          static_cast<Index>( force_values ) );
+    configureEvaluation();
+    native_prepared_ = false;
     prepared_ = true;
   }
 
+#include "tribol/execution/DeviceRowPreparation.inl"
   DeviceRowEvaluationSummary evaluate( PenaltyRowInputView penalty, timestep::DiagonalInverseMassView inverse_mass,
                                        timestep::IntegratorStabilityLimits integrator, GeometryVersion geometry_version,
                                        InteractionVersion interaction_version, PenaltyVersion penalty_version )
@@ -333,8 +310,24 @@ class DeviceRowWorkspace<ActiveExecution>::Impl {
   }
 
   DeviceConstraintRowStorage rows_;
+  DeviceParentTracePairStorage native_traces_;
+  DeviceParentFieldPairStorage native_fields_;
+  DeviceNativeRowOptions native_options_{};
   DeviceRowDofLayout layout_{};
   bool prepared_{};
+  bool native_prepared_{};
+  DeviceBuffer<InteractionPatch> native_patches_;
+  DeviceBuffer<Index> native_mortar_parent_faces_;
+  DeviceBuffer<Index> native_nonmortar_parent_faces_;
+  DeviceBuffer<int> native_owner_ranks_;
+  DeviceBuffer<Real> native_mortar_patch_reference_;
+  DeviceBuffer<Real> native_nonmortar_patch_reference_;
+  DeviceBuffer<Index> native_row_counts_;
+  DeviceBuffer<Index> native_row_offsets_;
+  DeviceBuffer<Index> native_mortar_entry_counts_;
+  DeviceBuffer<Index> native_mortar_entry_offsets_;
+  DeviceBuffer<Index> native_nonmortar_entry_counts_;
+  DeviceBuffer<Index> native_nonmortar_entry_offsets_;
   DeviceBuffer<Real> pressure_stiffness_;
   DeviceBuffer<Real> rate_coefficients_;
   DeviceBuffer<Real> inverse_mass_;
@@ -378,6 +371,20 @@ void DeviceRowWorkspace<ActiveExecution>::prepare( ConstraintRowBatchView rows, 
 }
 
 template <>
+void DeviceRowWorkspace<ActiveExecution>::prepareNative( ParentTracePairView traces, ParentTraceFieldPairView fields,
+                                                         ArrayView<const ElementPair> device_candidates,
+                                                         DeviceRowDofLayout layout, DeviceNativeRowOptions options )
+{
+  impl_->prepareNative( traces, fields, device_candidates, layout, options );
+}
+
+template <>
+void DeviceRowWorkspace<ActiveExecution>::updateNativeFields( ParentTraceFieldPairView fields )
+{
+  impl_->updateNativeFields( fields );
+}
+
+template <>
 DeviceRowEvaluationSummary DeviceRowWorkspace<ActiveExecution>::evaluate(
     PenaltyRowInputView penalty, timestep::DiagonalInverseMassView inverse_mass,
     timestep::IntegratorStabilityLimits integrator, GeometryVersion geometry_version,
@@ -390,6 +397,12 @@ template <>
 DeviceRowResultView DeviceRowWorkspace<ActiveExecution>::deviceResult( DeviceRowEvaluationSummary summary ) const
 {
   return impl_->deviceResult( summary );
+}
+
+template <>
+ArrayView<const InteractionPatch> DeviceRowWorkspace<ActiveExecution>::devicePatches() const
+{
+  return impl_->devicePatches();
 }
 
 template <>

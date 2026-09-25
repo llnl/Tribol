@@ -44,11 +44,14 @@ class ConstraintRowBatch {
       FieldShapeValidator::require( fields.nonmortar_velocity, dimension_, nonmortar_dofs_,
                                     "Constraint rows require valid nonmortar parent velocity." );
     }
+    const auto rows = view();
     for ( Index row = 0; row < numberOfRows(); ++row ) {
-      const auto mortar_position = interpolateRowField( row, mortar_dof_offsets_, mortar_dofs_, mortar_basis_values_,
-                                                        fields.mortar_coordinates );
-      const auto nonmortar_position = interpolateRowField( row, nonmortar_dof_offsets_, nonmortar_dofs_,
-                                                           nonmortar_basis_values_, fields.nonmortar_coordinates );
+      const auto mortar_position =
+          interpolateConstraintRowField( row, rows.mortar_dof_offsets, rows.mortar_dofs, rows.mortar_basis_values,
+                                         fields.mortar_coordinates, dimension_ );
+      const auto nonmortar_position =
+          interpolateConstraintRowField( row, rows.nonmortar_dof_offsets, rows.nonmortar_dofs,
+                                         rows.nonmortar_basis_values, fields.nonmortar_coordinates, dimension_ );
       for ( int component = 0; component < 3; ++component ) {
         mortar_positions_[static_cast<std::size_t>( 3 * row + component )] = mortar_position[component];
         nonmortar_positions_[static_cast<std::size_t>( 3 * row + component )] = nonmortar_position[component];
@@ -59,9 +62,11 @@ class ConstraintRowBatch {
       gaps_[static_cast<std::size_t>( row )] = normalDifference( mortar_position, nonmortar_position, normal );
       if ( has_velocity_ ) {
         const auto mortar_velocity =
-            interpolateRowField( row, mortar_dof_offsets_, mortar_dofs_, mortar_basis_values_, fields.mortar_velocity );
-        const auto nonmortar_velocity = interpolateRowField( row, nonmortar_dof_offsets_, nonmortar_dofs_,
-                                                             nonmortar_basis_values_, fields.nonmortar_velocity );
+            interpolateConstraintRowField( row, rows.mortar_dof_offsets, rows.mortar_dofs, rows.mortar_basis_values,
+                                           fields.mortar_velocity, dimension_ );
+        const auto nonmortar_velocity =
+            interpolateConstraintRowField( row, rows.nonmortar_dof_offsets, rows.nonmortar_dofs,
+                                           rows.nonmortar_basis_values, fields.nonmortar_velocity, dimension_ );
         normal_rates_[static_cast<std::size_t>( row )] =
             normalDifference( mortar_velocity, nonmortar_velocity, normal );
       }
@@ -198,22 +203,6 @@ class ConstraintRowBatch {
       }
     }
   };
-
-  [[nodiscard]] std::array<Real, 3> interpolateRowField( Index row, const std::vector<Index>& offsets,
-                                                         const std::vector<Index>& dofs,
-                                                         const std::vector<Real>& basis_values,
-                                                         FieldView<const Real> field ) const
-  {
-    std::array<Real, 3> result{};
-    for ( Index entry = offsets[static_cast<std::size_t>( row )]; entry < offsets[static_cast<std::size_t>( row + 1 )];
-          ++entry ) {
-      for ( int component = 0; component < dimension_; ++component ) {
-        result[component] += basis_values[static_cast<std::size_t>( entry )] *
-                             field( dofs[static_cast<std::size_t>( entry )], component );
-      }
-    }
-    return result;
-  }
 
   void appendMappedRow( ConstraintRowBatchView source, Index source_row, Index coupled_cell,
                         ArrayView<const Index> mortar_dof_map, ArrayView<const Index> nonmortar_dof_map )

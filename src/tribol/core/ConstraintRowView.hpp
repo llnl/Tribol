@@ -4,6 +4,7 @@
 #include "tribol/core/ParentTraceView.hpp"
 #include "tribol/method/Method.hpp"
 
+#include <array>
 #include <cstdint>
 #include <type_traits>
 
@@ -103,6 +104,23 @@ struct ConstraintRowBatchViewT {
 };
 
 using ConstraintRowBatchView = ConstraintRowBatchViewT<Real>;
+
+template <typename BasisScalar, typename FieldScalar>
+[[nodiscard]] TRIBOL_HOST_DEVICE inline auto interpolateConstraintRowField( Index row, ArrayView<const Index> offsets,
+                                                                            ArrayView<const Index> dofs,
+                                                                            ArrayView<const BasisScalar> basis_values,
+                                                                            FieldView<FieldScalar> field,
+                                                                            int dimension )
+{
+  using ResultScalar = decltype( basis_values[Index{}] * field( Index{}, 0 ) );
+  std::array<ResultScalar, 3> result{};
+  for ( Index entry = offsets[row]; entry < offsets[row + 1]; ++entry ) {
+    for ( int component = 0; component < dimension; ++component ) {
+      result[component] += basis_values[entry] * field( dofs[entry], component );
+    }
+  }
+  return result;
+}
 
 template <typename Scalar>
 struct PenaltyRowInputViewT {
