@@ -1204,13 +1204,20 @@ void MfemMeshData::UpdateData::BuildParentFaceData( mfem::ParSubMesh& submesh, m
       const int parent_vertex_index = parent_face_vertex_ids.Find( parent_vertex_id );
       SLIC_ERROR_ROOT_IF( parent_vertex_index < 0,
                           "Unable to match a contact submesh vertex to its native parent boundary face." );
-      reference_vertices->IntPoint( parent_vertex_index )
-          .Get( parent_coordinates_at_submesh_vertices[submesh_vertex_index], reference_dimension );
+      const mfem::IntegrationPoint& parent_reference_vertex = reference_vertices->IntPoint( parent_vertex_index );
+      parent_coordinates_at_submesh_vertices[submesh_vertex_index][0] = parent_reference_vertex.x;
+      if ( reference_dimension == 2 ) {
+        parent_coordinates_at_submesh_vertices[submesh_vertex_index][1] = parent_reference_vertex.y;
+      }
     }
 
     for ( int vertex_index = 0; vertex_index < number_of_reference_vertices; ++vertex_index ) {
       RealT submesh_reference_coordinates[ParentFaceData::max_reference_dimension] = { 0.0, 0.0 };
-      reference_vertices->IntPoint( vertex_index ).Get( submesh_reference_coordinates, reference_dimension );
+      const mfem::IntegrationPoint& submesh_reference_vertex = reference_vertices->IntPoint( vertex_index );
+      submesh_reference_coordinates[0] = submesh_reference_vertex.x;
+      if ( reference_dimension == 2 ) {
+        submesh_reference_coordinates[1] = submesh_reference_vertex.y;
+      }
       if ( child_point_matrix ) {
         for ( int coordinate_component = 0; coordinate_component < reference_dimension; ++coordinate_component ) {
           submesh_reference_coordinates[coordinate_component] =
