@@ -197,10 +197,10 @@ struct MappedPoint {
   const Index begin = trace.geometry.element_offsets[subfacet];
   basis::ReferencePoint parent{};
   for ( int local_node = 0; local_node < shape.size; ++local_node ) {
-    const Index geometry_node = trace.geometry.connectivity[begin + local_node];
-    parent.first += shape[local_node] * trace.subfacet_parent_reference_coordinates( geometry_node, 0 );
+    const Index connectivity_entry = begin + local_node;
+    parent.first += shape[local_node] * trace.subfacet_parent_reference_coordinates( connectivity_entry, 0 );
     if ( trace.parentReferenceDimension() == 2 ) {
-      parent.second += shape[local_node] * trace.subfacet_parent_reference_coordinates( geometry_node, 1 );
+      parent.second += shape[local_node] * trace.subfacet_parent_reference_coordinates( connectivity_entry, 1 );
     }
   }
   const Index parent_face = trace.subfacet_parent_faces[subfacet];
