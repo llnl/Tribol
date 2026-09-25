@@ -170,6 +170,13 @@ Samples contain physical parent-field gaps and optionally normal rates. `summari
 owner-rank filter before computing maximum penetration and closing rate. A `QuadratureSampleView` borrows its storage
 from `QuadratureSamples` and remains valid until that owner is moved, modified, or destroyed.
 
+`diagnostics::summarizeProductionDiagnostics()` labels rank-local and owner-filtered values explicitly.
+`reduceOwnedDiagnostics()` combines rank-ordered owned summaries without double counting, and the production JSON
+writer emits deterministic `local`, `owned`, and `global` objects. Summed values are force, moment, impulse, spring
+energy, dashpot dissipation, and work; maximum reductions are traction, physical penetration, and closing rate.
+Attempt records include accepted/rejected counts, retry indices, failure categories, and every cache generation.
+Nonfinite values are emitted as JSON `null` and remain observable through the nonfinite-row count.
+
 `diagnostics::writeJson()` and `diagnostics::writeVtk()` write individual snapshots. For time-dependent runs,
 `diagnostics::writeScheduled<Method>()` applies a cycle interval, creates the output directory, adds stable cycle and
 optional rank suffixes, and can emit JSON state, surface VTK, and projected-overlap VTK files. Overlap files carry the

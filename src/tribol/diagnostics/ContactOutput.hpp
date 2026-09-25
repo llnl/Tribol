@@ -2,19 +2,32 @@
 #define TRIBOL_DIAGNOSTICS_CONTACTOUTPUT_HPP_
 
 #include "tribol/core/MeshView.hpp"
+#include "tribol/diagnostics/ProductionDiagnostics.hpp"
 #include "tribol/evaluation/State.hpp"
 #include "tribol/search/Search.hpp"
 
 #include <cmath>
 #include <fstream>
 #include <iomanip>
+#include <limits>
+#include <locale>
 #include <ostream>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 
 namespace tribol::diagnostics {
 
 namespace detail {
+
+inline void writeNumber( std::ostream& stream, Real value )
+{
+  if ( std::isfinite( value ) ) {
+    stream << ( value == 0.0 ? 0.0 : value );
+  } else {
+    stream << "null";
+  }
+}
 
 inline void writeArray( std::ostream& stream, ArrayView<const Real> values )
 {
@@ -23,18 +36,21 @@ inline void writeArray( std::ostream& stream, ArrayView<const Real> values )
     if ( entry != 0 ) {
       stream << ',';
     }
-    stream << values[entry];
+    writeNumber( stream, values[entry] );
   }
   stream << ']';
 }
 
-inline void writeNumber( std::ostream& stream, Real value )
+inline void writeVector( std::ostream& stream, const std::array<Real, 3>& values )
 {
-  if ( std::isfinite( value ) ) {
-    stream << value;
-  } else {
-    stream << "null";
+  stream << '[';
+  for ( int component = 0; component < 3; ++component ) {
+    if ( component != 0 ) {
+      stream << ',';
+    }
+    writeNumber( stream, values[component] );
   }
+  stream << ']';
 }
 
 inline void writeField( std::ostream& stream, FieldView<const Real> field )
@@ -49,7 +65,7 @@ inline void writeField( std::ostream& stream, FieldView<const Real> field )
       if ( component != 0 ) {
         stream << ',';
       }
-      stream << field( entity, component );
+      writeNumber( stream, field( entity, component ) );
     }
     stream << ']';
   }
@@ -85,7 +101,124 @@ inline void requireStream( const std::ostream& stream )
   }
 }
 
+inline const char* attemptStatusName( AttemptStatus status )
+{
+  switch ( status ) {
+    case AttemptStatus::None:
+      return "none";
+    case AttemptStatus::Active:
+      return "active";
+    case AttemptStatus::Accepted:
+      return "accepted";
+    case AttemptStatus::Rejected:
+      return "rejected";
+  }
+  return "unknown";
+}
+
+inline const char* failureCategoryName( FailureCategory failure )
+{
+  switch ( failure ) {
+    case FailureCategory::None:
+      return "none";
+    case FailureCategory::InvalidInput:
+      return "invalid_input";
+    case FailureCategory::Search:
+      return "search";
+    case FailureCategory::Geometry:
+      return "geometry";
+    case FailureCategory::Kinematic:
+      return "kinematic";
+    case FailureCategory::Stability:
+      return "stability";
+    case FailureCategory::NonfiniteState:
+      return "nonfinite_state";
+    case FailureCategory::HostApplication:
+      return "host_application";
+  }
+  return "unknown";
+}
+
+inline void writeAttemptRecord( std::ostream& stream, const ContactAttemptRecord& attempt )
+{
+  const auto& generations = attempt.generations;
+  stream << "{\"id\":" << attempt.id << ",\"retry\":" << attempt.retry << ",\"status\":\""
+         << attemptStatusName( attempt.status ) << "\",\"failure\":\"" << failureCategoryName( attempt.failure )
+         << "\",\"generations\":{\"coordinates\":" << generations.coordinates.value()
+         << ",\"topology\":" << generations.topology.value() << ",\"interactions\":" << generations.interactions.value()
+         << ",\"mass\":" << generations.mass.value()
+         << ",\"boundary_conditions\":" << generations.boundary_conditions.value()
+         << ",\"penalty\":" << generations.penalty.value() << ",\"integrator\":" << generations.integrator.value()
+         << "}}";
+}
+
+inline void writeProductionSummary( std::ostream& stream, const char* semantics,
+                                    const ProductionDiagnosticSummary& summary )
+{
+  stream << "{\"semantics\":\"" << semantics << "\",\"counts\":{\"rows\":" << summary.rows.rows
+         << ",\"owned_rows\":" << summary.rows.owned_rows << ",\"active_rows\":" << summary.rows.active_rows
+         << ",\"nonfinite_rows\":" << summary.rows.nonfinite_rows
+         << ",\"diagnostic_samples\":" << summary.quadrature.samples
+         << ",\"owned_diagnostic_samples\":" << summary.quadrature.owned_samples << "},\"sum\":{";
+  stream << "\"mortar_force\":";
+  writeVector( stream, summary.rows.mortar_force );
+  stream << ",\"mortar_moment\":";
+  writeVector( stream, summary.rows.mortar_moment );
+  stream << ",\"impulse\":";
+  writeVector( stream, summary.rows.impulse );
+  stream << ",\"spring_energy\":";
+  writeNumber( stream, summary.rows.spring_energy );
+  stream << ",\"dashpot_dissipation\":";
+  writeNumber( stream, summary.rows.dashpot_dissipation );
+  stream << ",\"contact_work\":";
+  writeNumber( stream, summary.rows.contact_work );
+  stream << "},\"maximum\":{\"traction\":";
+  writeNumber( stream, summary.rows.maximum_traction );
+  stream << ",\"penetration\":";
+  writeNumber( stream, summary.quadrature.maximum_penetration );
+  stream << ",\"closing_rate\":";
+  writeNumber( stream, summary.quadrature.maximum_closing_rate );
+  stream << "}}";
+}
+
 }  // namespace detail
+
+inline void writeJson( std::ostream& stream, const ProductionDiagnosticsPayload& payload )
+{
+  if ( !isStructurallyValid( payload ) ) {
+    throw std::invalid_argument( "Cannot write an inconsistent production diagnostics payload." );
+  }
+  std::ostringstream json;
+  json.imbue( std::locale::classic() );
+  json << std::setprecision( std::numeric_limits<Real>::max_digits10 )
+       << "{\"schema\":\"tribol.milestone-1.production-diagnostics\",\"version\":" << payload.schema_version
+       << ",\"rank\":" << payload.rank.rank << ",\"ranks\":" << payload.rank.ranks << ",\"attempts\":{\"counts\":{"
+       << "\"accepted\":" << payload.attempts.accepted_attempts
+       << ",\"rejected\":" << payload.attempts.rejected_attempts << "},\"current\":";
+  detail::writeAttemptRecord( json, payload.attempts.current );
+  json << ",\"last_accepted\":";
+  detail::writeAttemptRecord( json, payload.attempts.last_accepted );
+  json << ",\"last_rejected\":";
+  detail::writeAttemptRecord( json, payload.attempts.last_rejected );
+  json << "},\"local\":";
+  detail::writeProductionSummary( json, "all_rows_and_diagnostic_samples_resident_on_rank", payload.rank.local );
+  json << ",\"owned\":";
+  detail::writeProductionSummary( json, "owner_filtered_rows_and_diagnostic_samples_on_rank", payload.rank.owned );
+  json << ",\"global\":";
+  detail::writeProductionSummary( json, "rank_ordered_sum_and_maximum_of_owned_values", payload.global );
+  json << "}\n";
+  stream << json.str();
+  detail::requireStream( stream );
+}
+
+inline void writeJson( const std::string& path, const ProductionDiagnosticsPayload& payload )
+{
+  std::ofstream stream( path, std::ios::binary );
+  if ( !stream ) {
+    throw std::runtime_error( "Unable to open Tribol production diagnostics JSON file: " + path );
+  }
+  writeJson( stream, payload );
+}
 
 inline void writeJson( std::ostream& stream, const SurfacePairView& surfaces, ArrayView<const ElementPair> interactions,
                        const ContactResultView& result )

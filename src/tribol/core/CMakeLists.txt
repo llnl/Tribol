@@ -25,6 +25,7 @@ set(tribol_core_headers
     ../constraint/NormalConstraint.hpp
     ../constraint/PenetrationLimit.hpp
     ../diagnostics/ContactOutput.hpp
+    ../diagnostics/ProductionDiagnostics.hpp
     ../diagnostics/QuadratureSampling.hpp
     ../diagnostics/RowDiagnostics.hpp
     ../diagnostics/ScheduledOutput.hpp

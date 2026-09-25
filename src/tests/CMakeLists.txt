@@ -53,6 +53,17 @@ blt_add_test(
   COMMAND tribol_contact_diagnostics_test)
 
 blt_add_executable(
+  NAME tribol_production_diagnostics_test
+  SOURCES components/production_diagnostics.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::core
+  FOLDER tribol/components)
+
+blt_add_test(
+  NAME tribol_production_diagnostics
+  COMMAND tribol_production_diagnostics_test)
+
+blt_add_executable(
   NAME tribol_diagnostic_quadrature_test
   SOURCES components/diagnostic_quadrature.cpp
   OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}

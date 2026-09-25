@@ -18,6 +18,7 @@
 #include "tribol/core/ParentTraceView.hpp"
 #include "tribol/core/Version.hpp"
 #include "tribol/diagnostics/ContactOutput.hpp"
+#include "tribol/diagnostics/ProductionDiagnostics.hpp"
 #include "tribol/diagnostics/QuadratureSampling.hpp"
 #include "tribol/diagnostics/RowDiagnostics.hpp"
 #include "tribol/diagnostics/ScheduledOutput.hpp"
