@@ -281,9 +281,10 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
 #endif
   }
   // create transfer operators from parent mesh to redecomp mesh
+  const bool build_parent_face_data = contact_method == COMMON_PLANE;
   auto mfem_data =
       std::make_unique<MfemMeshData>( mesh_id_1, mesh_id_2, mesh, current_coords, std::move( b_attributes_1 ),
-                                      std::move( b_attributes_2 ), exec_mode, mem_space );
+                                      std::move( b_attributes_2 ), build_parent_face_data, exec_mode, mem_space );
   // register empty meshes so the coupling scheme is valid
   registerMesh( mesh_id_1, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, mem_space );
   registerMesh( mesh_id_2, 0, 0, nullptr, 1, nullptr, nullptr, nullptr, mem_space );
@@ -803,15 +804,17 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
                     mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2],
                     mfem_data->GetMemorySpace() );
 
-      // The redecomp mesh supplies the low-order geometry used by CommonPlane.
-      // Register its mapping to the native parent boundary faces separately so
-      // later integration-point evaluation does not rely on LOR field transfer.
-      auto* first_mesh = MeshManager::getInstance().findData( mesh_ids[0] );
-      auto* second_mesh = MeshManager::getInstance().findData( mesh_ids[1] );
-      SLIC_ERROR_ROOT_IF( first_mesh == nullptr || second_mesh == nullptr,
-                          "MFEM parent-face mapping requires both registered Tribol surface meshes." );
-      first_mesh->setParentFaceData( mfem_data->GetMesh1ParentFaceData() );
-      second_mesh->setParentFaceData( mfem_data->GetMesh2ParentFaceData() );
+      if ( cs.getContactMethod() == COMMON_PLANE ) {
+        // The redecomp mesh supplies the low-order geometry used by CommonPlane.
+        // Register its mapping to the native parent boundary faces separately so
+        // later integration-point evaluation does not rely on LOR field transfer.
+        auto* first_mesh = MeshManager::getInstance().findData( mesh_ids[0] );
+        auto* second_mesh = MeshManager::getInstance().findData( mesh_ids[1] );
+        SLIC_ERROR_ROOT_IF( first_mesh == nullptr || second_mesh == nullptr,
+                            "MFEM parent-face mapping requires both registered Tribol surface meshes." );
+        first_mesh->setParentFaceData( mfem_data->GetMesh1ParentFaceData() );
+        second_mesh->setParentFaceData( mfem_data->GetMesh2ParentFaceData() );
+      }
 
       auto f_ptrs = mfem_data->GetRedecompResponsePtrs();
       registerNodalResponse( mesh_ids[0], f_ptrs[0], f_ptrs[1], f_ptrs[2] );
