@@ -463,7 +463,9 @@ class MfemContact {
   ::mfem::Vector local_scalar_field_;
   ::mfem::Vector local_scalar_residual_;
   ::mfem::Vector true_scalar_residual_;
+  ::mfem::Vector physical_true_inverse_mass_;
   ::mfem::Vector registered_true_inverse_mass_;
+  std::vector<int> essential_true_dofs_;
   std::vector<Real> mortar_inverse_mass_;
   std::vector<Real> nonmortar_inverse_mass_;
   ::mfem::Vector true_stiffness_row_sums_;

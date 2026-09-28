@@ -90,7 +90,7 @@ int exerciseSharedTrueDofStability( int rank )
 
   const double expected_vote = left_summary.timestep_vote / std::sqrt( 2.0 );
   const auto evaluated_summary = collection.evaluate();
-  const bool valid =
+  bool valid =
       collection.size() == 2 && registered_generations.mass.value() == 1 &&
       registered_generations.integrator.value() == 1 && left_summary.active_interactions > 0 &&
       right_summary.active_interactions == left_summary.active_interactions &&
@@ -101,6 +101,21 @@ int exerciseSharedTrueDofStability( int rank )
       combined_summary.active_interactions == left_summary.active_interactions + right_summary.active_interactions &&
       combined_summary.quadrature_points == left_summary.quadrature_points + right_summary.quadrature_points &&
       close( evaluated_summary.timestep_vote, combined_summary.timestep_vote ) && residual_error < 1.0e-12;
+
+  ::mfem::Array<int> essential_true_dofs( inverse_mass.Size() );
+  for ( int true_dof = 0; true_dof < essential_true_dofs.Size(); ++true_dof ) {
+    essential_true_dofs[true_dof] = true_dof;
+  }
+  collection.registerEssentialTrueDofs( essential_true_dofs );
+  const auto constrained_summary = collection.evaluate();
+  const auto constrained_generations = left.generations();
+  essential_true_dofs.SetSize( 0 );
+  collection.registerEssentialTrueDofs( essential_true_dofs );
+  const auto restored_summary = collection.evaluate();
+  const auto restored_generations = left.generations();
+  valid = valid && constrained_generations.boundary_conditions.value() == 1 &&
+          restored_generations.boundary_conditions.value() == 2 && std::isinf( constrained_summary.timestep_vote ) &&
+          close( restored_summary.timestep_vote, combined_summary.timestep_vote );
   if ( !valid && rank == 0 ) {
     std::cerr << "MFEM global native stability mismatch: left_dt=" << left_summary.timestep_vote
               << " right_dt=" << right_summary.timestep_vote << " combined_dt=" << combined_summary.timestep_vote

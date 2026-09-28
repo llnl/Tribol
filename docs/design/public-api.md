@@ -179,7 +179,11 @@ if ( accepted ) {
 topology, and interaction generations respectively. Hosts supply their own typed mass, essential-boundary-condition,
 penalty, and integrator generations with the corresponding `set*Generation()` calls before `beginAttempt()`.
 `MfemContact::registerInverseMass()` and `MfemContact::registerIntegrator()` synchronize those two generations
-automatically.
+automatically. `MfemContact::registerEssentialTrueDofs()` accepts MFEM vector true-DOF indices, zeros those entries in
+the effective inverse mass used by contact stability, and advances the boundary-condition generation. Registering a
+new or empty list rebuilds the effective field from the preserved physical inverse mass, so changing constraints never
+permanently modifies the host-supplied mass data. `MfemContactCollection` applies all three registrations to every
+member contact.
 
 `invalidationsSinceAcceptedAttempt()` classifies everything changed since the last accepted state. `checkpoint()` and
 `restore()` serialize and restore attempt IDs, retry state, counts, and the last accepted generation snapshot. They do

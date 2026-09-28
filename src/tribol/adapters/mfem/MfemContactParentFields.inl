@@ -67,6 +67,18 @@ void refreshInverseMass()
   }
 }
 
+void applyEssentialBoundaryConditions()
+{
+  if ( !has_registered_inverse_mass_ ) {
+    return;
+  }
+  registered_true_inverse_mass_.SetSize( physical_true_inverse_mass_.Size() );
+  registered_true_inverse_mass_ = physical_true_inverse_mass_;
+  for ( int true_dof : essential_true_dofs_ ) {
+    registered_true_inverse_mass_[true_dof] = 0.0;
+  }
+}
+
 [[nodiscard]] timestep::DiagonalInverseMassView inverseMass() const
 {
   if constexpr ( tribol::detail::is_native_explicit_method_v<MethodType> ) {

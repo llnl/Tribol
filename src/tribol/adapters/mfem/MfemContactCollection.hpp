@@ -70,6 +70,13 @@ class MfemContactCollection {
     }
   }
 
+  void registerEssentialTrueDofs( const ::mfem::Array<int>& essential_true_dofs )
+  {
+    for ( ContactType* contact : contacts_ ) {
+      contact->registerEssentialTrueDofs( essential_true_dofs );
+    }
+  }
+
   void updateInteractions()
   {
     for ( ContactType* contact : contacts_ ) {
