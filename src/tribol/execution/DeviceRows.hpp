@@ -2,6 +2,7 @@
 #define TRIBOL_EXECUTION_DEVICEROWS_HPP_
 
 #include "tribol/basis/ParentBasis.hpp"
+#include "tribol/diagnostics/ProductionDiagnostics.hpp"
 #include "tribol/evaluation/ExplicitRowEvaluator.hpp"
 #include "tribol/execution/Execution.hpp"
 #include "tribol/geom/OverlapCell.hpp"
@@ -93,6 +94,10 @@ class DeviceRowWorkspace {
                                                      DeviceNativeKinematicInputView kinematic = {} );
   [[nodiscard]] DeviceRowResultView deviceResult( DeviceRowEvaluationSummary summary ) const;
   [[nodiscard]] ArrayView<const InteractionPatch> devicePatches() const;
+  [[nodiscard]] diagnostics::RankProductionDiagnostics productionDiagnostics(
+      ParentTraceFieldPairView fields, Real time_step, int local_rank = 0, int ranks = 1,
+      diagnostics::QuadratureSamplingOptions sampling = {} );
+  [[nodiscard]] diagnostics::QuadratureSampleView deviceDiagnosticQuadrature() const;
   void download( ArrayView<Real> force, PenaltyRowOutputView row_output ) const;
 
  private:

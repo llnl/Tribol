@@ -24,6 +24,7 @@ void launchRowKernel( Index count, Body&& body )
 }
 
 #include "tribol/execution/DeviceNativeRowKernels.inl"
+#include "tribol/execution/DeviceDiagnosticKernels.inl"
 
 }  // namespace
 
@@ -42,17 +43,22 @@ class DeviceRowWorkspace<ActiveExecution>::Impl {
     native_kinematic_votes_.clear();
     native_kinematic_vote_.clear();
     configureEvaluation();
+    evaluated_ = false;
+    diagnostics_current_ = false;
     native_prepared_ = false;
     prepared_ = true;
   }
 
 #include "tribol/execution/DeviceRowPreparation.inl"
+#include "tribol/execution/DeviceRowDiagnostics.inl"
   DeviceRowEvaluationSummary evaluate( PenaltyRowInputView penalty, timestep::DiagonalInverseMassView inverse_mass,
                                        timestep::IntegratorStabilityLimits integrator, GeometryVersion geometry_version,
                                        InteractionVersion interaction_version, PenaltyVersion penalty_version,
                                        DeviceNativeKinematicInputView kinematic )
   {
     requirePrepared();
+    evaluated_ = false;
+    diagnostics_current_ = false;
     validateInput( penalty, inverse_mass, integrator );
     uploadInput( penalty, inverse_mass );
     ActiveDeviceBackend::clear( force_.data(), force_.size() * sizeof( Real ) );
@@ -117,6 +123,7 @@ class DeviceRowWorkspace<ActiveExecution>::Impl {
     };
     const Real kinematic_vote = evaluateNativeKinematicVote( device_penalty.activation, kinematic );
     last_summary_ = { explicit_summary, stability, kinematic_vote };
+    evaluated_ = true;
     return last_summary_;
   }
 
@@ -401,6 +408,12 @@ class DeviceRowWorkspace<ActiveExecution>::Impl {
   DeviceBuffer<Index> native_mortar_entry_offsets_;
   DeviceBuffer<Index> native_nonmortar_entry_counts_;
   DeviceBuffer<Index> native_nonmortar_entry_offsets_;
+  DeviceBuffer<Index> diagnostic_sample_counts_;
+  DeviceQuadratureSampleStorage diagnostic_samples_;
+  DeviceBuffer<DeviceRowDiagnosticPair> row_diagnostic_entries_;
+  DeviceBuffer<DeviceRowDiagnosticPair> row_diagnostic_result_;
+  DeviceBuffer<DeviceQuadratureDiagnosticPair> quadrature_diagnostic_entries_;
+  DeviceBuffer<DeviceQuadratureDiagnosticPair> quadrature_diagnostic_result_;
   DeviceBuffer<Real> pressure_stiffness_;
   DeviceBuffer<Real> rate_coefficients_;
   DeviceBuffer<Real> inverse_mass_;
@@ -424,65 +437,10 @@ class DeviceRowWorkspace<ActiveExecution>::Impl {
   DeviceBuffer<Index> run_count_;
   DeviceBuffer<unsigned char> temporary_storage_;
   DeviceRowEvaluationSummary last_summary_{};
+  bool evaluated_{};
+  bool diagnostics_current_{};
 };
 
-template <>
-DeviceRowWorkspace<ActiveExecution>::DeviceRowWorkspace() : impl_( new Impl )
-{
-}
-
-template <>
-DeviceRowWorkspace<ActiveExecution>::~DeviceRowWorkspace()
-{
-  delete impl_;
-}
-
-template <>
-void DeviceRowWorkspace<ActiveExecution>::prepare( ConstraintRowBatchView rows, DeviceRowDofLayout layout )
-{
-  impl_->prepare( rows, layout );
-}
-
-template <>
-void DeviceRowWorkspace<ActiveExecution>::prepareNative( ParentTracePairView traces, ParentTraceFieldPairView fields,
-                                                         ArrayView<const ElementPair> device_candidates,
-                                                         DeviceRowDofLayout layout, DeviceNativeRowOptions options )
-{
-  impl_->prepareNative( traces, fields, device_candidates, layout, options );
-}
-
-template <>
-void DeviceRowWorkspace<ActiveExecution>::updateNativeFields( ParentTraceFieldPairView fields )
-{
-  impl_->updateNativeFields( fields );
-}
-
-template <>
-DeviceRowEvaluationSummary DeviceRowWorkspace<ActiveExecution>::evaluate(
-    PenaltyRowInputView penalty, timestep::DiagonalInverseMassView inverse_mass,
-    timestep::IntegratorStabilityLimits integrator, GeometryVersion geometry_version,
-    InteractionVersion interaction_version, PenaltyVersion penalty_version, DeviceNativeKinematicInputView kinematic )
-{
-  return impl_->evaluate( penalty, inverse_mass, integrator, geometry_version, interaction_version, penalty_version,
-                          kinematic );
-}
-
-template <>
-DeviceRowResultView DeviceRowWorkspace<ActiveExecution>::deviceResult( DeviceRowEvaluationSummary summary ) const
-{
-  return impl_->deviceResult( summary );
-}
-
-template <>
-ArrayView<const InteractionPatch> DeviceRowWorkspace<ActiveExecution>::devicePatches() const
-{
-  return impl_->devicePatches();
-}
-
-template <>
-void DeviceRowWorkspace<ActiveExecution>::download( ArrayView<Real> force, PenaltyRowOutputView row_output ) const
-{
-  impl_->download( force, row_output );
-}
+#include "tribol/execution/DeviceRowWorkspaceApi.inl"
 
 }  // namespace tribol::execution

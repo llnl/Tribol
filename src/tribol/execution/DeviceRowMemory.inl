@@ -26,8 +26,8 @@ struct DeviceConstraintRowStorage {
   DeviceBuffer<Index> nonmortar_dofs;
   DeviceBuffer<Real> nonmortar_basis_values;
 
-  void resize( int row_dimension, Index cell_count, Index row_count, Index mortar_entries,
-               Index nonmortar_entries, bool include_normal_rates )
+  void resize( int row_dimension, Index cell_count, Index row_count, Index mortar_entries, Index nonmortar_entries,
+               bool include_normal_rates )
   {
     dimension = row_dimension;
     cells = cell_count;
@@ -117,6 +117,78 @@ struct DeviceConstraintRowStorage {
         .nonmortar_dof_offsets = constDeviceView( nonmortar_dof_offsets ),
         .nonmortar_dofs = constDeviceView( nonmortar_dofs ),
         .nonmortar_basis_values = constDeviceView( nonmortar_basis_values ),
+    };
+  }
+};
+
+struct DeviceQuadratureSampleStorage {
+  int dimension{};
+  Index cells{};
+  Index samples{};
+  bool has_normal_rates{};
+  DeviceBuffer<Index> cell_sample_offsets;
+  DeviceBuffer<std::uint64_t> contact_pair_ids;
+  DeviceBuffer<std::uint64_t> cell_ids;
+  DeviceBuffer<int> owner_ranks;
+  DeviceBuffer<Index> overlap_cells;
+  DeviceBuffer<Real> normals;
+  DeviceBuffer<Real> integration_weights;
+  DeviceBuffer<Real> mortar_parent_reference_coordinates;
+  DeviceBuffer<Real> nonmortar_parent_reference_coordinates;
+  DeviceBuffer<Real> physical_gaps;
+  DeviceBuffer<Real> normal_rates;
+
+  void reserve( int sample_dimension, Index cell_count, Index sample_capacity )
+  {
+    dimension = sample_dimension;
+    cells = cell_count;
+    cell_sample_offsets.resize( static_cast<std::size_t>( cells + 1 ) );
+    contact_pair_ids.resize( static_cast<std::size_t>( sample_capacity ) );
+    cell_ids.resize( static_cast<std::size_t>( sample_capacity ) );
+    owner_ranks.resize( static_cast<std::size_t>( sample_capacity ) );
+    overlap_cells.resize( static_cast<std::size_t>( sample_capacity ) );
+    normals.resize( static_cast<std::size_t>( 3 * sample_capacity ) );
+    integration_weights.resize( static_cast<std::size_t>( sample_capacity ) );
+    mortar_parent_reference_coordinates.resize( static_cast<std::size_t>( ( dimension - 1 ) * sample_capacity ) );
+    nonmortar_parent_reference_coordinates.resize( static_cast<std::size_t>( ( dimension - 1 ) * sample_capacity ) );
+    physical_gaps.resize( static_cast<std::size_t>( sample_capacity ) );
+    normal_rates.resize( static_cast<std::size_t>( sample_capacity ) );
+    resize( 0, false );
+  }
+
+  void resize( Index sample_count, bool include_normal_rates )
+  {
+    samples = sample_count;
+    has_normal_rates = include_normal_rates;
+    contact_pair_ids.resize( static_cast<std::size_t>( samples ) );
+    cell_ids.resize( static_cast<std::size_t>( samples ) );
+    owner_ranks.resize( static_cast<std::size_t>( samples ) );
+    overlap_cells.resize( static_cast<std::size_t>( samples ) );
+    normals.resize( static_cast<std::size_t>( 3 * samples ) );
+    integration_weights.resize( static_cast<std::size_t>( samples ) );
+    mortar_parent_reference_coordinates.resize( static_cast<std::size_t>( ( dimension - 1 ) * samples ) );
+    nonmortar_parent_reference_coordinates.resize( static_cast<std::size_t>( ( dimension - 1 ) * samples ) );
+    physical_gaps.resize( static_cast<std::size_t>( samples ) );
+    normal_rates.resize( include_normal_rates ? static_cast<std::size_t>( samples ) : 0 );
+  }
+
+  [[nodiscard]] diagnostics::QuadratureSampleView view() const
+  {
+    return {
+        .dimension = dimension,
+        .cell_sample_offsets = constDeviceView( cell_sample_offsets ),
+        .contact_pair_ids = constDeviceView( contact_pair_ids ),
+        .cell_ids = constDeviceView( cell_ids ),
+        .owner_ranks = constDeviceView( owner_ranks ),
+        .overlap_cells = constDeviceView( overlap_cells ),
+        .normals = { constDeviceView( normals ), samples, 3, FieldLayout::Interleaved },
+        .integration_weights = constDeviceView( integration_weights ),
+        .mortar_parent_reference_coordinates = { constDeviceView( mortar_parent_reference_coordinates ), samples,
+                                                 dimension - 1, FieldLayout::Interleaved },
+        .nonmortar_parent_reference_coordinates = { constDeviceView( nonmortar_parent_reference_coordinates ), samples,
+                                                    dimension - 1, FieldLayout::Interleaved },
+        .physical_gaps = constDeviceView( physical_gaps ),
+        .normal_rates = has_normal_rates ? constDeviceView( normal_rates ) : ArrayView<const Real>{},
     };
   }
 };
@@ -227,6 +299,12 @@ struct DeviceParentFieldPairStorage {
   {
     mortar_coordinates.upload( source.mortar_coordinates, "copy mortar parent coordinates to device" );
     nonmortar_coordinates.upload( source.nonmortar_coordinates, "copy nonmortar parent coordinates to device" );
+  }
+
+  void reserveVelocity()
+  {
+    mortar_velocity.initializeZero( mortar_coordinates.entities, mortar_coordinates.components );
+    nonmortar_velocity.initializeZero( nonmortar_coordinates.entities, nonmortar_coordinates.components );
   }
 
   void uploadVelocity( ParentTraceFieldPairView source, bool required )

@@ -17,7 +17,8 @@
 #include <iostream>
 #include <vector>
 
-// Requirements: API-003, CORE-003, DIFF-001, DIFF-002, PAR-001, PAR-006, PAR-008, SEARCH-001, SEARCH-003, TIME-001
+// Requirements: API-003, CORE-003, DIFF-001, DIFF-002, OUTPUT-001, OUTPUT-003, PAR-001, PAR-006, PAR-008, SEARCH-001,
+// TIME-001
 
 namespace {
 
@@ -109,6 +110,46 @@ bool arraysMatch( tribol::ArrayView<const tribol::Real> host, tribol::ArrayView<
     }
   }
   return true;
+}
+
+bool rowDiagnosticsMatch( const tribol::diagnostics::ExplicitRowDiagnostics& left,
+                          const tribol::diagnostics::ExplicitRowDiagnostics& right )
+{
+  if ( left.rows != right.rows || left.owned_rows != right.owned_rows || left.active_rows != right.active_rows ||
+       left.nonfinite_rows != right.nonfinite_rows || std::abs( left.minimum_gap - right.minimum_gap ) > 1.0e-13 ||
+       std::abs( left.maximum_penetration - right.maximum_penetration ) > 1.0e-13 ||
+       std::abs( left.maximum_closing_rate - right.maximum_closing_rate ) > 1.0e-13 ||
+       std::abs( left.maximum_traction - right.maximum_traction ) > 1.0e-13 ||
+       std::abs( left.spring_energy - right.spring_energy ) > 1.0e-13 ||
+       std::abs( left.dashpot_dissipation - right.dashpot_dissipation ) > 1.0e-13 ||
+       std::abs( left.contact_work - right.contact_work ) > 1.0e-13 ) {
+    return false;
+  }
+  for ( int component = 0; component < 3; ++component ) {
+    if ( std::abs( left.mortar_force[component] - right.mortar_force[component] ) > 1.0e-13 ||
+         std::abs( left.mortar_moment[component] - right.mortar_moment[component] ) > 1.0e-13 ||
+         std::abs( left.impulse[component] - right.impulse[component] ) > 1.0e-13 ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool diagnosticsMatch( const tribol::diagnostics::RankProductionDiagnostics& left,
+                       const tribol::diagnostics::RankProductionDiagnostics& right )
+{
+  return left.rank == right.rank && left.ranks == right.ranks &&
+         rowDiagnosticsMatch( left.local.rows, right.local.rows ) &&
+         rowDiagnosticsMatch( left.owned.rows, right.owned.rows ) &&
+         left.local.quadrature.samples == right.local.quadrature.samples &&
+         left.local.quadrature.owned_samples == right.local.quadrature.owned_samples &&
+         std::abs( left.local.quadrature.maximum_penetration - right.local.quadrature.maximum_penetration ) < 1.0e-13 &&
+         std::abs( left.local.quadrature.maximum_closing_rate - right.local.quadrature.maximum_closing_rate ) <
+             1.0e-13 &&
+         left.owned.quadrature.samples == right.owned.quadrature.samples &&
+         left.owned.quadrature.owned_samples == right.owned.quadrature.owned_samples &&
+         std::abs( left.owned.quadrature.maximum_penetration - right.owned.quadrature.maximum_penetration ) < 1.0e-13 &&
+         std::abs( left.owned.quadrature.maximum_closing_rate - right.owned.quadrature.maximum_closing_rate ) < 1.0e-13;
 }
 
 bool fullContactParity()
@@ -853,6 +894,18 @@ bool publicNativeDeviceContactParity()
     std::cerr << "native device residency mismatch\n";
     return false;
   }
+  constexpr tribol::diagnostics::QuadratureSamplingOptions diagnostic_options{ .exactness = 8,
+                                                                               .include_normal_rates = true };
+  const auto host_diagnostics = host.productionDiagnostics( closing_state, 0.25, 0, 1, diagnostic_options );
+  const auto device_diagnostics = device.productionDiagnostics( closing_state, 0.25, 0, 1, diagnostic_options );
+  const auto device_samples = device.diagnosticQuadrature();
+  if ( !diagnosticsMatch( host_diagnostics, device_diagnostics ) || device_samples.numberOfSamples() != 5 ||
+       !device_samples.hasNormalRates() ||
+       !requireDevicePointer( "diagnostic gaps", device_samples.physical_gaps.data() ) ||
+       !requireDevicePointer( "diagnostic rates", device_samples.normal_rates.data() ) ) {
+    std::cerr << "native device diagnostics mismatch\n";
+    return false;
+  }
   std::size_t free_before{};
   std::size_t total_before{};
   if ( !synchronizeAndGetMemoryInfo( &free_before, &total_before ) ) {
@@ -861,8 +914,10 @@ bool publicNativeDeviceContactParity()
   }
   for ( int repeat = 0; repeat < 8; ++repeat ) {
     const auto repeated = device.evaluateDevice( closing_state, inverse_mass, integrator );
+    const auto repeated_diagnostics = device.productionDiagnostics( closing_state, 0.25, 0, 1, diagnostic_options );
     if ( repeated.mortar_force.values.data() != resident_result.mortar_force.values.data() ||
-         std::abs( repeated.summary.timestep_vote - 0.3 ) > 1.0e-13 ) {
+         std::abs( repeated.summary.timestep_vote - 0.3 ) > 1.0e-13 ||
+         !diagnosticsMatch( device_diagnostics, repeated_diagnostics ) ) {
       std::cerr << "repeated native kinematic vote mismatch: " << repeated.summary.timestep_vote << '\n';
       return false;
     }

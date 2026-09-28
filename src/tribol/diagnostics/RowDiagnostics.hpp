@@ -89,7 +89,7 @@ inline void requireRowArray( ArrayView<const Real> values, Index rows, const cha
   return result;
 }
 
-inline void accumulate( ExplicitRowDiagnostics& total, const ExplicitRowDiagnostics& row )
+TRIBOL_HOST_DEVICE inline void accumulate( ExplicitRowDiagnostics& total, const ExplicitRowDiagnostics& row )
 {
   total.rows += row.rows;
   total.owned_rows += row.owned_rows;

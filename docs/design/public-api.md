@@ -204,13 +204,13 @@ energy, dashpot dissipation, and work; maximum reductions are traction, physical
 Attempt records include accepted/rejected counts, retry indices, failure categories, and every cache generation.
 Nonfinite values are emitted as JSON `null` and remain observable through the nonfinite-row count.
 
-After a host-native `Contact::evaluate()` or `Contact::addResidual()`,
+After a native `Contact::evaluate()`, `Contact::evaluateDevice()`, or `Contact::addResidual()`,
 `Contact::productionDiagnostics(state, time_step, rank, ranks, options)` summarizes the retained enforcement rows and
 their exact penalty outputs. It creates only the independent diagnostic quadrature; it does not recompute pressure,
 force, stiffness, or rate coefficients. `Contact::diagnosticQuadrature()` exposes the latest borrowed sample view.
 Both calls reject stale results after a new evaluation or any coordinate, topology, interaction, mass, boundary
-condition, penalty, or integrator generation change. Device-resident contact uses a separate reduction path and does
-not silently download rows through this host API.
+condition, penalty, or integrator generation change. On CUDA and HIP, diagnostic samples and row contributions remain
+device-resident and use the shared backend-neutral reduction path; only the compact summary is copied to the host.
 
 `diagnostics::writeJson()` and `diagnostics::writeVtk()` write individual snapshots. For time-dependent runs,
 `diagnostics::writeScheduled<Method>()` applies a cycle interval, creates the output directory, adds stable cycle and

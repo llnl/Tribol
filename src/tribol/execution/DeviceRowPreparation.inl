@@ -7,6 +7,7 @@
     native_options_ = options;
     native_traces_.upload( traces );
     native_fields_.uploadCoordinates( fields );
+    native_fields_.reserveVelocity();
     const bool include_kinematic_vote =
         options.kinematic.enabled && options.kinematic.current_step >= options.kinematic.minimum_current_step;
     native_fields_.uploadVelocity( fields, options.include_normal_rates || include_kinematic_vote );
@@ -70,6 +71,9 @@
     ActiveDeviceBackend::copy( rows_.mortar_dof_offsets.data() + rows, &mortar_entries, sizeof( Index ) );
     ActiveDeviceBackend::copy( rows_.nonmortar_dof_offsets.data() + rows, &nonmortar_entries, sizeof( Index ) );
     configureEvaluation();
+    configureDiagnosticWorkspace( candidates );
+    evaluated_ = false;
+    diagnostics_current_ = false;
     native_prepared_ = true;
     prepared_ = true;
   }
@@ -85,6 +89,8 @@
     validateNativeFields( fields, layout_, require_velocity );
     native_fields_.uploadCoordinates( fields );
     native_fields_.uploadVelocity( fields, require_velocity );
+    evaluated_ = false;
+    diagnostics_current_ = false;
     const ConstraintRowBatchView rows = rows_.view();
     const ParentTraceFieldPairView device_fields = native_fields_.view();
     Real* mortar_positions = rows_.mortar_positions.data();
