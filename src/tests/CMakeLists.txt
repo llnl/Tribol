@@ -440,6 +440,28 @@ blt_add_test(
   NUM_MPI_TASKS 4)
 
 blt_add_executable(
+  NAME tribol_mfem_native_convergence_test
+  SOURCES adapters/mfem_native_convergence.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::mfem_adapter ${tribol_device_depends}
+  FOLDER tribol/adapters)
+
+blt_add_test(
+  NAME tribol_mfem_native_convergence_smoke
+  COMMAND tribol_mfem_native_convergence_test
+  NUM_MPI_TASKS 1)
+
+blt_add_test(
+  NAME tribol_mfem_native_convergence_2rank
+  COMMAND tribol_mfem_native_convergence_test
+  NUM_MPI_TASKS 2)
+
+blt_add_test(
+  NAME tribol_mfem_native_convergence_4rank
+  COMMAND tribol_mfem_native_convergence_test
+  NUM_MPI_TASKS 4)
+
+blt_add_executable(
   NAME tribol_mfem_native_stability_test
   SOURCES adapters/mfem_native_stability.cpp
   OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}

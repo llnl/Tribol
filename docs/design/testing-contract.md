@@ -33,6 +33,8 @@ and required execution environments are tested.
   exercise supplied and frozen interactions, verify stable allocation footprints, and require bitwise-repeatable
   shared-node scatter.
 - MPI tests exercise at least one and two ranks, with four-rank coverage for partition-sensitive cases.
+- MFEM native-trace tests cover planar analytic Q1--Q4 results, automatic-versus-exactness-8 residual agreement, and
+  monotone Q4 curved-surface convergence under LOR refinement in 3D.
 - Installed `tribol::core`, `tribol::device_execution`, and enabled backend alias targets compile, link, and run minimal
   independent consumers.
 
