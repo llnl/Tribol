@@ -1156,16 +1156,16 @@ int ComputeCommonPlanePenaltyStabilityTimeStep( CouplingScheme* cs, RealT& times
   } );
 
   Array1D<IndexT, MemorySpace::Host> active_row_count_host( active_row_count_data );
-  IndexT global_active_row_count = active_row_count_host[0];
+  int global_has_active_row = active_row_count_host[0] > 0 ? 1 : 0;
 #ifdef TRIBOL_USE_MPI
   int mpi_initialized = 0;
   MPI_Initialized( &mpi_initialized );
   if ( mpi_initialized ) {
-    MPI_Allreduce( MPI_IN_PLACE, &global_active_row_count, 1, MPI_INT, MPI_SUM, cs->getProblemComm() );
+    MPI_Allreduce( MPI_IN_PLACE, &global_has_active_row, 1, MPI_INT, MPI_MAX, cs->getProblemComm() );
   }
 #endif
 
-  if ( global_active_row_count == 0 ) {
+  if ( global_has_active_row == 0 ) {
     cs->setExplicitPenaltyStabilityData( std::numeric_limits<RealT>::infinity(), 0.0, 0.0 );
     return 0;
   }
