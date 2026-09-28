@@ -132,6 +132,40 @@ bool explicitStatusContract()
          invalid.statuses[0] == GeometryStatus::InvalidProvenance;
 }
 
+bool nearTangencyContract()
+{
+  constexpr Real accepted_width = 1.0e-6;
+  constexpr Real rejected_width = 1.0e-10;
+  const auto mortar_segment = segmentTrace( 0.0, 1.0, 0.0, false, 101, 0 );
+  const auto accepted_segment = segmentTrace( 1.0 - accepted_width, 2.0, -0.1, true, 202, 1 );
+  const auto rejected_segment = segmentTrace( 1.0 - rejected_width, 2.0, -0.1, true, 202, 1 );
+  const std::array<ElementPair, 1> candidate{ ElementPair{ 0, 0 } };
+  geometry::ProjectedOverlap<normal::MeanPlane>::Parameters parameters;
+  parameters.minimum_measure = 1.0e-8;
+  const auto accepted_2d = buildOverlapCellBatch<normal::MeanPlane>( { mortar_segment.view(), accepted_segment.view() },
+                                                                     { candidate.data(), 1 }, parameters );
+  const auto rejected_2d = buildOverlapCellBatch<normal::MeanPlane>( { mortar_segment.view(), rejected_segment.view() },
+                                                                     { candidate.data(), 1 }, parameters );
+
+  const auto mortar_face = quadrilateralTrace( 0.0, false, 0.0, 301, 0 );
+  auto accepted_face = quadrilateralTrace( -0.1, true, 0.0, 302, 1 );
+  auto rejected_face = accepted_face;
+  for ( int node = 0; node < 4; ++node ) {
+    accepted_face.coordinates[static_cast<std::size_t>( 3 * node )] += 1.0 - accepted_width;
+    rejected_face.coordinates[static_cast<std::size_t>( 3 * node )] += 1.0 - rejected_width;
+  }
+  const auto accepted_3d = buildOverlapCellBatch<normal::MeanPlane>( { mortar_face.view(), accepted_face.view() },
+                                                                     { candidate.data(), 1 }, parameters );
+  const auto rejected_3d = buildOverlapCellBatch<normal::MeanPlane>( { mortar_face.view(), rejected_face.view() },
+                                                                     { candidate.data(), 1 }, parameters );
+  return accepted_2d.view().statuses[0] == GeometryStatus::Accepted &&
+         std::abs( accepted_2d.view().measures[0] - accepted_width ) < 1.0e-12 &&
+         rejected_2d.view().statuses[0] == GeometryStatus::DegenerateOverlap &&
+         accepted_3d.view().statuses[0] == GeometryStatus::Accepted &&
+         std::abs( accepted_3d.view().measures[0] - accepted_width ) < 1.0e-12 &&
+         rejected_3d.view().statuses[0] == GeometryStatus::DegenerateOverlap;
+}
+
 bool duplicateAndMappingContract()
 {
   const auto mortar = segmentTrace( 0.0, 1.0, 0.0, false, 101, 0, 2 );
@@ -371,6 +405,7 @@ int main()
 {
   const bool accepted = acceptedProvenanceContract();
   const bool statuses = explicitStatusContract();
+  const bool near_tangency = nearTangencyContract();
   const bool duplicates = duplicateAndMappingContract();
   const bool three_dimensional = threeDimensionalMappingContract();
   const bool variable_rows = variableRowContract();
@@ -378,12 +413,13 @@ int main()
   const bool row_refresh = rowRefreshContract();
   const bool three_dimensional_rows = threeDimensionalRowContract();
   const bool public_contact = publicNativeContactContract();
-  if ( !accepted || !statuses || !duplicates || !three_dimensional || !variable_rows || !automatic_quadrature ||
-       !row_refresh || !three_dimensional_rows || !public_contact ) {
-    std::cerr << "accepted=" << accepted << " statuses=" << statuses << " duplicates=" << duplicates
-              << " three_dimensional=" << three_dimensional << " variable_rows=" << variable_rows
-              << " automatic_quadrature=" << automatic_quadrature << " row_refresh=" << row_refresh
-              << " three_dimensional_rows=" << three_dimensional_rows << " public_contact=" << public_contact << '\n';
+  if ( !accepted || !statuses || !near_tangency || !duplicates || !three_dimensional || !variable_rows ||
+       !automatic_quadrature || !row_refresh || !three_dimensional_rows || !public_contact ) {
+    std::cerr << "accepted=" << accepted << " statuses=" << statuses << " near_tangency=" << near_tangency
+              << " duplicates=" << duplicates << " three_dimensional=" << three_dimensional
+              << " variable_rows=" << variable_rows << " automatic_quadrature=" << automatic_quadrature
+              << " row_refresh=" << row_refresh << " three_dimensional_rows=" << three_dimensional_rows
+              << " public_contact=" << public_contact << '\n';
     return 1;
   }
   return 0;
