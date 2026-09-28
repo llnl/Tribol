@@ -30,6 +30,7 @@
 #include <string>
 #include <unordered_map>
 #include <fstream>
+#include <cmath>
 
 //------------------------------------------------------------------------------
 // Interface Implementation
@@ -117,6 +118,45 @@ void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int quadrat
 
   penalty_options.common_plane_rule = rule;
   penalty_options.common_plane_quadrature_order = quadrature_order;
+}
+
+//------------------------------------------------------------------------------
+void setExplicitIntegratorStabilityFactor( IndexT cs_id, RealT stability_factor )
+{
+  auto coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !coupling_scheme,
+                      "tribol::setExplicitIntegratorStabilityFactor(): register the coupling scheme first." );
+  SLIC_ERROR_ROOT_IF( !std::isfinite( stability_factor ) || stability_factor <= 0.0,
+                      "tribol::setExplicitIntegratorStabilityFactor(): stability factor must be finite and positive." );
+
+  auto& penalty_options = coupling_scheme->getEnforcementOptions().penalty_options;
+  penalty_options.explicit_integrator_stability_factor = stability_factor;
+  penalty_options.explicit_integrator_stability_factor_set = true;
+}
+
+//------------------------------------------------------------------------------
+RealT getExplicitPenaltyStabilityTimestep( IndexT cs_id )
+{
+  auto coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !coupling_scheme,
+                      "tribol::getExplicitPenaltyStabilityTimestep(): coupling scheme does not exist." );
+  return coupling_scheme->getExplicitPenaltyStabilityTimestep();
+}
+
+//------------------------------------------------------------------------------
+RealT getExplicitPenaltyStiffnessBound( IndexT cs_id )
+{
+  auto coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !coupling_scheme, "tribol::getExplicitPenaltyStiffnessBound(): coupling scheme does not exist." );
+  return coupling_scheme->getExplicitPenaltyStiffnessBound();
+}
+
+//------------------------------------------------------------------------------
+RealT getExplicitPenaltyDampingBound( IndexT cs_id )
+{
+  auto coupling_scheme = CouplingSchemeManager::getInstance().findData( cs_id );
+  SLIC_ERROR_ROOT_IF( !coupling_scheme, "tribol::getExplicitPenaltyDampingBound(): coupling scheme does not exist." );
+  return coupling_scheme->getExplicitPenaltyDampingBound();
 }
 
 //------------------------------------------------------------------------------
@@ -475,6 +515,21 @@ void registerNodalVelocities( IndexT mesh_id, const RealT* vx, const RealT* vy, 
   mesh->setVelocity( vx, vy, vz );
 
 }  // end registerNodalVelocities()
+
+//------------------------------------------------------------------------------
+void registerNodalInverseMass( IndexT mesh_id, const RealT* inverse_mass_x, const RealT* inverse_mass_y,
+                               const RealT* inverse_mass_z )
+{
+  auto mesh = MeshManager::getInstance().findData( mesh_id );
+
+  SLIC_ERROR_ROOT_IF( !mesh, "tribol::registerNodalInverseMass(): no mesh with id " << mesh_id << " exists." );
+  SLIC_ERROR_ROOT_IF( mesh->numberOfNodes() > 0 && ( inverse_mass_x == nullptr || inverse_mass_y == nullptr ),
+                      "tribol::registerNodalInverseMass(): x and y inverse mass pointers must be non-null." );
+  SLIC_ERROR_ROOT_IF( mesh->numberOfNodes() > 0 && mesh->spatialDimension() == 3 && inverse_mass_z == nullptr,
+                      "tribol::registerNodalInverseMass(): z inverse mass pointer must be non-null for a 3D mesh." );
+
+  mesh->setInverseMass( inverse_mass_x, inverse_mass_y, inverse_mass_z );
+}
 
 //------------------------------------------------------------------------------
 void registerNodalReferenceCoords( IndexT mesh_id, const RealT* xref, const RealT* yref, const RealT* zref )

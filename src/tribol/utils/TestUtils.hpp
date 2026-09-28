@@ -51,7 +51,8 @@ struct TestControlParameters {
         const_penalty( 1.0 ),
         enable_timestep_vote( false ),
         timestep_pen_frac( 0.30 ),
-        timestep_scale( 1.0 )
+        timestep_scale( 1.0 ),
+        explicit_integrator_stability_factor( 1.e12 )
   {
   }
 
@@ -75,6 +76,8 @@ struct TestControlParameters {
   bool enable_timestep_vote;
   RealT timestep_pen_frac;
   RealT timestep_scale;
+  /** Large default factor keeps legacy penetration-vote tests focused on their original criterion. */
+  RealT explicit_integrator_stability_factor;
 };
 
 /*!

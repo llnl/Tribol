@@ -28,6 +28,7 @@
 #include "tribol/common/Parameters.hpp"
 #include "tribol/physics/Physics.hpp"
 #include "tribol/physics/ContactFormulationFactory.hpp"
+#include "tribol/physics/CommonPlane.hpp"
 
 #include "tribol/integ/FE.hpp"
 namespace tribol {
@@ -1131,13 +1132,31 @@ int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
   // appropriate physics in the normal and tangential directions.
   int err = ApplyInterfacePhysics( this, cycle, t );
 
+#ifdef TRIBOL_USE_MPI
+  int mpi_initialized = 0;
+  MPI_Initialized( &mpi_initialized );
+  if ( mpi_initialized ) {
+    MPI_Allreduce( MPI_IN_PLACE, &err, 1, MPI_INT, MPI_MAX, getProblemComm() );
+  }
+#endif
+
   SLIC_WARNING_IF( err != 0, "CouplingScheme::apply(): error in ApplyInterfacePhysics for " << "coupling scheme, "
                                                                                             << this->m_id << "." );
 
-  // compute Tribol timestep vote on the coupling scheme
-  if ( err == 0 && getNumActivePairs() > 0 ) {
-    computeTimeStep( dt );
+  // Every rank participates because a redecomposition may leave some ranks
+  // without local pairs while other ranks still require a contact vote.
+  if ( err == 0 ) {
+    err = computeTimeStep( dt );
   }
+
+#ifdef TRIBOL_USE_MPI
+  if ( mpi_initialized ) {
+    MPI_Allreduce( MPI_IN_PLACE, &err, 1, MPI_INT, MPI_MAX, getProblemComm() );
+    if ( m_parameters.enable_timestep_vote ) {
+      MPI_Allreduce( MPI_IN_PLACE, &dt, 1, MPI_DOUBLE, MPI_MIN, getProblemComm() );
+    }
+  }
+#endif
 
   // write contact plane output if it is on host
   if ( !isOnDevice( this->m_exec_mode ) ) {
@@ -1277,11 +1296,26 @@ void CouplingScheme::allocateMethodData()
 }  // end CouplingScheme::allocateMethodData()
 
 //------------------------------------------------------------------------------
-void CouplingScheme::computeTimeStep( RealT& dt )
+int CouplingScheme::computeTimeStep( RealT& dt )
 {
+  if ( !m_parameters.enable_timestep_vote ) {
+    return 0;
+  }
+
   if ( dt < 1.e-8 ) {
     // current timestep too small for Tribol vote. Leave unchanged and return
-    return;
+    return 0;
+  }
+
+  if ( m_contactMethod == COMMON_PLANE && m_enforcementMethod == PENALTY && m_parameters.enable_timestep_vote ) {
+    const int stability_error = ComputeCommonPlanePenaltyStabilityTimeStep( this, dt );
+    if ( stability_error != 0 ) {
+      return stability_error;
+    }
+  }
+
+  if ( getNumActivePairs() == 0 ) {
+    return 0;
   }
 
   // make sure velocities are registered
@@ -1289,10 +1323,10 @@ void CouplingScheme::computeTimeStep( RealT& dt )
     if ( m_mesh1->numberOfElements() > 0 && m_mesh2->numberOfElements() > 0 ) {
       // invalid registration of nodal velocities for non-null meshes
       dt = -1.0;
-      return;
+      return 1;
     } else {
       // at least one null mesh with allowable null velocities; don't modify dt
-      return;
+      return 0;
     }
   }
 
@@ -1310,18 +1344,17 @@ void CouplingScheme::computeTimeStep( RealT& dt )
       break;
     case COMMON_PLANE:
       if ( m_enforcementMethod == PENALTY ) {
-        if ( m_parameters.enable_timestep_vote ) {
-          this->computeCommonPlaneTimeStep( dt );
-        }
+        return this->computeCommonPlaneTimeStep( dt );
       }
       break;
     default:
       break;
   }  // end-switch
+  return 0;
 }
 
 //------------------------------------------------------------------------------
-void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
+int CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 {
   // note: the timestep vote is based on a maximum allowable interpenetration
   // approach checking current gaps and then performing a velocity projection.
@@ -1342,7 +1375,7 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
   // thicknesses are required for auto contact even if a constant
   // penalty is used
   if ( !mesh1.getElementData().m_is_element_thickness_set || !mesh2.getElementData().m_is_element_thickness_set ) {
-    return;
+    return 0;
   }
 
   RealT proj_ratio = m_parameters.timestep_pen_frac;
@@ -1708,6 +1741,7 @@ void CouplingScheme::computeCommonPlaneTimeStep( RealT& dt )
 
   ArrayT<RealT, 1, MemorySpace::Host> dt_temp_host( dt_temp_data );
   dt = axom::utilities::min( dt_temp_host[0], dt_temp_host[1] );
+  return 0;
 }
 
 //------------------------------------------------------------------------------

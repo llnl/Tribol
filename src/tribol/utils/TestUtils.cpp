@@ -992,6 +992,17 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
     registerNodalVelocities( this->nonmortarMeshId, this->vx2, this->vy2, this->vz2 );
   }
 
+  // The production explicit contact vote requires an application-provided
+  // inverse diagonal mass. Legacy timestep tests use unit masses and a large
+  // integrator factor so they continue to isolate the penetration predictor.
+  std::vector<RealT> test_inverse_mass( this->numTotalNodes, 1.0 );
+  if ( params.enable_timestep_vote ) {
+    registerNodalInverseMass( this->mortarMeshId, test_inverse_mass.data(), test_inverse_mass.data(),
+                              this->dim == 3 ? test_inverse_mass.data() : nullptr );
+    registerNodalInverseMass( this->nonmortarMeshId, test_inverse_mass.data(), test_inverse_mass.data(),
+                              this->dim == 3 ? test_inverse_mass.data() : nullptr );
+  }
+
   // register nodal pressure and nodal gap array for the nonmortar mesh
   // for mortar based methods
   switch ( method ) {
@@ -1085,6 +1096,9 @@ int TestMesh::tribolSetupAndUpdate( ContactMethod method, EnforcementMethod enfo
   enableTimestepVote( csIndex, params.enable_timestep_vote );
   setTimestepPenFrac( csIndex, params.timestep_pen_frac );
   setTimestepScale( csIndex, params.timestep_scale );
+  if ( params.enable_timestep_vote ) {
+    setExplicitIntegratorStabilityFactor( csIndex, params.explicit_integrator_stability_factor );
+  }
 
   // if enforcement is penalty, register penalty parameters
   if ( enforcement == PENALTY ) {

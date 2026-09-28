@@ -48,13 +48,22 @@ TRIBOL_HOST_DEVICE inline RealT ComputePenaltyStiffnessPerArea( const RealT K1_o
  *
  * The generated rows contain mapped parent-face coordinates, field values,
  * basis values, integration weights, normals, gaps, and penalty coefficients.
- * Explicit force, damping, diagnostics, and downstream operators consume this
- * same batch.
+ * Explicit force, damping, diagnostics, and stability calculations consume
+ * this same batch.
  *
  * @param [in,out] cs CommonPlane coupling scheme that owns the row batch
  * @return zero on success and nonzero if row generation fails
  */
 int BuildCommonPlaneContactRows( CouplingScheme* cs );
+
+/**
+ * @brief Compute the explicit penalty stability vote from the shared CommonPlane rows.
+ *
+ * @param [in,out] cs CommonPlane coupling scheme that owns the row batch and diagnostics
+ * @param [in,out] timestep Application timestep reduced by the contact stability vote
+ * @return zero on success and nonzero when required stability data are unavailable or invalid
+ */
+int ComputeCommonPlanePenaltyStabilityTimeStep( CouplingScheme* cs, RealT& timestep );
 
 /*!
  *

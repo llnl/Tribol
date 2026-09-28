@@ -75,6 +75,42 @@ void setPenaltyOptions( IndexT cs_id, PenaltyConstraintType pen_enfrc_option,
  */
 void setCommonPlaneIntegrationOptions( IndexT cs_id, PolyInteg rule, int quadrature_order = 3 );
 
+/**
+ * @brief Sets the dimensionless stability limit for the application's explicit integrator.
+ *
+ * Tribol divides this factor by its conservative damped contact frequency
+ * bound. For central difference, the undamped stability factor is 2.
+ *
+ * @param [in] cs_id Coupling-scheme identifier
+ * @param [in] stability_factor Positive dimensionless explicit-integrator limit
+ * @pre The coupling scheme must be registered before calling this function.
+ */
+void setExplicitIntegratorStabilityFactor( IndexT cs_id, RealT stability_factor );
+
+/**
+ * @brief Returns the most recently computed explicit penalty stability timestep.
+ *
+ * @param [in] cs_id Coupling-scheme identifier
+ * @return Finite contact timestep for active explicit penalty rows, or infinity when none are active
+ */
+RealT getExplicitPenaltyStabilityTimestep( IndexT cs_id );
+
+/**
+ * @brief Returns the most recently computed mass-normalized penalty stiffness bound.
+ *
+ * @param [in] cs_id Coupling-scheme identifier
+ * @return Conservative squared-frequency bound
+ */
+RealT getExplicitPenaltyStiffnessBound( IndexT cs_id );
+
+/**
+ * @brief Returns the most recently computed mass-normalized contact damping bound.
+ *
+ * @param [in] cs_id Coupling-scheme identifier
+ * @return Conservative damping-rate bound
+ */
+RealT getExplicitPenaltyDampingBound( IndexT cs_id );
+
 /*!
  * \brief Sets the constant kinematic penalty stiffness
  * \param [in] mesh_id mesh id for penalty stiffness
@@ -331,6 +367,24 @@ void registerNodalDisplacements( IndexT mesh_id, const RealT* dx, const RealT* d
  * registerMesh()
  */
 void registerNodalVelocities( IndexT mesh_id, const RealT* vx, const RealT* vy, const RealT* vz = nullptr );
+
+/**
+ * @brief Registers component-wise inverse diagonal nodal masses on a contact surface.
+ *
+ * The values define the application mass model used by the explicit contact
+ * stability estimate. A zero value represents a constrained velocity degree
+ * of freedom with infinite effective mass.
+ *
+ * @param [in] mesh_id Contact mesh identifier
+ * @param [in] inverse_mass_x Inverse mass for x velocity degrees of freedom
+ * @param [in] inverse_mass_y Inverse mass for y velocity degrees of freedom
+ * @param [in] inverse_mass_z Inverse mass for z velocity degrees of freedom in three dimensions
+ *
+ * @pre The contact mesh must be registered before this function is called.
+ * @pre Every required component pointer must be non-null for a nonempty mesh.
+ */
+void registerNodalInverseMass( IndexT mesh_id, const RealT* inverse_mass_x, const RealT* inverse_mass_y,
+                               const RealT* inverse_mass_z = nullptr );
 
 /*!
  * \brief Registers nodal reference coords on the contact surface. Reference coordinates refer to the original mesh
