@@ -68,6 +68,7 @@ int exerciseSharedTrueDofStability( int rank )
   inverse_mass = 2.0;
   collection.registerInverseMass( inverse_mass );
   collection.registerIntegrator( tribol::timestep::IntegratorStabilityLimits::centralDifference() );
+  const auto registered_generations = left.generations();
   collection.updateInteractions();
 
   ::mfem::Vector left_residual( inverse_mass.Size() );
@@ -90,7 +91,8 @@ int exerciseSharedTrueDofStability( int rank )
   const double expected_vote = left_summary.timestep_vote / std::sqrt( 2.0 );
   const auto evaluated_summary = collection.evaluate();
   const bool valid =
-      collection.size() == 2 && left_summary.active_interactions > 0 &&
+      collection.size() == 2 && registered_generations.mass.value() == 1 &&
+      registered_generations.integrator.value() == 1 && left_summary.active_interactions > 0 &&
       right_summary.active_interactions == left_summary.active_interactions &&
       close( right_summary.timestep_vote, left_summary.timestep_vote ) &&
       close( combined_summary.timestep_vote, expected_vote ) &&

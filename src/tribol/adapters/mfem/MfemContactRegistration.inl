@@ -14,6 +14,7 @@ void registerInverseMass( const ::mfem::Vector& parent_true_inverse_mass )
   has_registered_inverse_mass_ = true;
   native_stability_current_ = false;
   inverse_mass_version_.advance();
+  core_.setMassGeneration( inverse_mass_version_ );
   refreshInverseMass();
 }
 
@@ -38,4 +39,6 @@ void registerIntegrator( timestep::IntegratorStabilityLimits integrator )
   integrator_version_.advance();
   integrator.version = integrator_version_;
   integrator_ = integrator;
+  native_stability_current_ = false;
+  core_.setIntegratorGeneration( integrator_version_ );
 }

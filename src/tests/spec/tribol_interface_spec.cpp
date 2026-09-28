@@ -6,7 +6,7 @@
 #include <stdexcept>
 #include <type_traits>
 
-// Requirements: API-001, API-002, API-003, API-004, CORE-001, DIFF-001, PAR-006, SEARCH-001, SEARCH-004
+// Requirements: API-001, API-002, API-003, API-004, API-006, CORE-001, DIFF-001, PAR-006, SEARCH-001, SEARCH-004
 
 namespace {
 
@@ -64,6 +64,32 @@ static_assert( !execution::SupportedContactSearch<search::CartesianProduct, exec
 
 using CudaDefaultContact = Contact<DefaultMethod, search::Bvh, execution::Cuda>;
 using HipDefaultContact = Contact<DefaultMethod, search::Bvh, execution::Hip>;
+
+template <typename ContactType>
+concept HasAttemptLifecycle =
+    requires( ContactType& contact, const ContactType& const_contact, ContactAttemptCheckpoint checkpoint,
+              FailureCategory failure, MassVersion mass, BoundaryConditionVersion boundary_conditions,
+              PenaltyVersion penalty, IntegratorVersion integrator ) {
+      { contact.beginAttempt() } -> std::same_as<ContactAttemptRecord>;
+      contact.acceptAttempt();
+      contact.rejectAttempt( failure );
+      contact.restore( checkpoint );
+      contact.setMassGeneration( mass );
+      contact.setBoundaryConditionGeneration( boundary_conditions );
+      contact.setPenaltyGeneration( penalty );
+      contact.setIntegratorGeneration( integrator );
+      { const_contact.checkpoint() } -> std::same_as<ContactAttemptCheckpoint>;
+      { const_contact.generations() } -> std::same_as<ContactGenerations>;
+      { const_contact.invalidationsSinceAcceptedAttempt() } -> std::same_as<ContactInvalidation>;
+      { const_contact.currentAttempt() } -> std::same_as<ContactAttemptRecord>;
+      { const_contact.lastAcceptedAttempt() } -> std::same_as<ContactAttemptRecord>;
+      { const_contact.lastRejectedAttempt() } -> std::same_as<ContactAttemptRecord>;
+      { const_contact.attemptLifecycle() } -> std::same_as<const ContactAttemptLifecycle&>;
+    };
+
+static_assert( HasAttemptLifecycle<Contact<>> );
+static_assert( HasAttemptLifecycle<CudaDefaultContact> );
+static_assert( HasAttemptLifecycle<HipDefaultContact> );
 
 template <typename MethodType, typename Search, typename Execution>
 concept HasArrayContact = requires { typename array::ArrayContact<MethodType, Search, Execution>; };

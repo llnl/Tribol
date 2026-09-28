@@ -155,7 +155,9 @@ The contact object owns overlap cells, rows, intermediates, and results.
    `updateInteractions()`.
 5. Explicit evaluation and stability actions perform no allocation.
 
-Mass, geometry, interaction, penalty, and integrator generations invalidate cached stability information.
+Coordinate, topology, interaction, mass, essential-boundary-condition, penalty, and integrator generations invalidate
+cached stability information according to `invalidatesRows()` and `invalidatesStability()`. Attempt checkpoints retain
+generation metadata but never copy or restore host-owned fields.
 
 ## Parallel And Device Contract
 

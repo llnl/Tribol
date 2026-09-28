@@ -44,9 +44,12 @@ Dependencies flow downward only:
 4. Call `rebuildGeometry()` when topology changes; this invalidates candidates and requires `updateInteractions()`.
 5. Call `evaluate()` or `addResidual()` with the fields required by `MethodTraits`.
 6. Apply a matrix-free coordinate derivative or assemble the coordinate Jacobian on the same frozen interactions.
+7. Bracket host trial states with `beginAttempt()` and `acceptAttempt()` or `rejectAttempt()`. Lifecycle checkpoints
+   preserve metadata only; adapters and host applications remain responsible for restoring borrowed state.
 
-Every `ContactResultView` records geometry and interaction versions. Version comparison is available to hosts, but the
-view itself does not perform stale-use checks.
+Every `ContactResultView` records geometry and interaction versions. `ContactGenerations` additionally tracks topology,
+mass, essential boundary conditions, penalty data, and integrator limits so hosts can classify row and stability-cache
+invalidation. Version comparison is available to hosts, but result views do not perform stale-use checks.
 
 ## Parallel Model
 

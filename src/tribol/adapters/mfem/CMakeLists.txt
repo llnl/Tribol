@@ -1,6 +1,7 @@
 set(_tribol_mfem_adapter_headers
     MfemContact.hpp
     MfemContactAssembly.inl
+    MfemContactAttempt.inl
     MfemContactCollection.hpp
     MfemContactMapping.inl
     MfemContactParentFields.inl

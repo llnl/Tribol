@@ -161,6 +161,33 @@ remain identical for one pair, many pairs, and MPI-owned subsets.
 Only outputs listed for a method in `src/tests/spec/capabilities.yaml` are contractual. Result views are invalidated by
 the next evaluation, a geometry rebuild, or destruction of the contact object.
 
+## Attempts And Generations
+
+`Contact` records host-driven retries without taking ownership of host state:
+
+```cpp
+const auto attempt = contact.beginAttempt();
+// Update interactions and evaluate the trial state.
+if ( accepted ) {
+  contact.acceptAttempt();
+} else {
+  contact.rejectAttempt( tribol::FailureCategory::Stability );
+}
+```
+
+`updateGeometry()`, `rebuildGeometry()`, and `updateInteractions()` or `setInteractions()` advance coordinate,
+topology, and interaction generations respectively. Hosts supply their own typed mass, essential-boundary-condition,
+penalty, and integrator generations with the corresponding `set*Generation()` calls before `beginAttempt()`.
+`MfemContact::registerInverseMass()` and `MfemContact::registerIntegrator()` synchronize those two generations
+automatically.
+
+`invalidationsSinceAcceptedAttempt()` classifies everything changed since the last accepted state. `checkpoint()` and
+`restore()` serialize and restore attempt IDs, retry state, counts, and the last accepted generation snapshot. They do
+not copy or roll back borrowed coordinates, velocities, mesh topology, or host fields. After a restart or rejection,
+the host restores its accepted state, calls the matching geometry and generation update functions, and only then
+begins the next attempt. Keeping lifecycle rollback separate from field ownership prevents rejected trial data from
+being relabeled as accepted contact state.
+
 ## Diagnostics
 
 `diagnostics::sampleQuadrature()` builds host-owned diagnostic samples directly from a `ParentTracePairView` and the

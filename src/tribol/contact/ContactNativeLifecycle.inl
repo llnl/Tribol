@@ -48,6 +48,7 @@ void rebuildGeometry( ParentTracePairView traces, ParentTraceFieldPairView field
     execution_workspace_.uploadSurfaces( surfaces_ );
   }
   geometry_version_.advance();
+  topology_version_.advance();
   has_interactions_ = false;
   resizeEvaluationWorkspace();
 }

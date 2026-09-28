@@ -1,6 +1,7 @@
 #ifndef TRIBOL_CONTACT_CONTACT_HPP_
 #define TRIBOL_CONTACT_CONTACT_HPP_
 
+#include "tribol/core/AttemptLifecycle.hpp"
 #include "tribol/core/ExactTangent.hpp"
 #include "tribol/core/MeshView.hpp"
 #include "tribol/core/Version.hpp"
@@ -145,6 +146,7 @@ class Contact {
       execution_workspace_.uploadSurfaces( surfaces_ );
     }
     geometry_version_.advance();
+    topology_version_.advance();
     has_interactions_ = false;
     resizeLinearizationWorkspace();
     resizeEvaluationWorkspace();
@@ -182,9 +184,7 @@ class Contact {
   }
 
 #include "tribol/contact/ContactLinearization.inl"
-  [[nodiscard]] GeometryVersion geometryVersion() const { return geometry_version_; }
-  [[nodiscard]] GeometryVersion interactionGeometryVersion() const { return interaction_geometry_version_; }
-  [[nodiscard]] InteractionVersion interactionVersion() const { return interaction_version_; }
+#include "tribol/contact/ContactAttemptIntegration.inl"
 
  private:
   static typename Search::Parameters effectiveSearchParameters( const Options& options )
@@ -483,6 +483,7 @@ class Contact {
   mutable std::vector<Real> result_quadrature_gap_;
   mutable std::vector<Real> result_quadrature_pressure_;
   mutable std::vector<Real> result_pressure_;
+#include "tribol/contact/ContactLifecycleStorage.inl"
 #include "tribol/contact/ContactExecutionStorage.inl"
   mutable GeometryVersion device_result_geometry_version_{};
   mutable InteractionVersion device_result_interaction_version_{};

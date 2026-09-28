@@ -14,10 +14,12 @@ set(tribol_core_headers
     ../basis/LinearBasis.hpp
     ../basis/ParentBasis.hpp
     ../contact/Contact.hpp
+    ../contact/ContactAttemptIntegration.inl
     ../contact/ContactEvaluation.inl
     ../contact/ContactExecutionStorage.inl
     ../contact/ContactExactHelpers.inl
     ../contact/ContactLinearization.inl
+    ../contact/ContactLifecycleStorage.inl
     ../contact/ContactNativeLifecycle.inl
     ../contact/ContactNativeRows.inl
     ../constraint/ConstraintRow.hpp

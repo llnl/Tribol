@@ -135,6 +135,7 @@ class MfemContact {
   }
 
 #include "tribol/adapters/mfem/MfemContactRegistration.inl"
+#include "tribol/adapters/mfem/MfemContactAttempt.inl"
 
   EvaluationSummary addResidual( ::mfem::Vector& parent_true_residual )
   {
