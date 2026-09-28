@@ -187,91 +187,64 @@ class SurfaceStorage {
     if ( parent_coordinates_.size() != static_cast<std::size_t>( parent_trace_.numberOfDofs() * dimension_ ) ) {
       throw std::logic_error( "MFEM distributed parent coordinates do not match parent-DOF identities." );
     }
+    prepareExchangeWorkspaces();
   }
 
-  [[nodiscard]] std::vector<Real> distributeNodeValues( const std::vector<Real>& local, int components ) const
+  [[nodiscard]] ArrayView<Real> localNodeValues( int components ) const
   {
-    if ( local.size() != localNodeCount() * static_cast<std::size_t>( components ) ) {
-      throw std::logic_error( "MFEM local nodal packet has an invalid size." );
+    if ( components == 1 ) {
+      return node_scalar_exchange_.localValues();
     }
-    return exchangeToDestinations( mesh_.GetComm(), local, destinations_ ).values;
+    if ( components == dimension_ ) {
+      return node_vector_exchange_.localValues();
+    }
+    throw std::invalid_argument( "MFEM nodal exchange requires a scalar or spatial vector field." );
   }
 
-  [[nodiscard]] std::vector<Real> distributeElementValues( const std::vector<Real>& local ) const
+  void distributeNodeValues( int components, std::vector<Real>& values ) const
   {
-    if ( local.size() != localElementCount() ) {
-      throw std::logic_error( "MFEM local element packet has an invalid size." );
+    if ( components == 1 ) {
+      node_scalar_exchange_.distribute( mesh_.GetComm(), values );
+      return;
     }
-    return exchangeToDestinations( mesh_.GetComm(), local, destinations_ ).values;
+    if ( components == dimension_ ) {
+      node_vector_exchange_.distribute( mesh_.GetComm(), values );
+      return;
+    }
+    throw std::invalid_argument( "MFEM nodal exchange requires a scalar or spatial vector field." );
   }
 
-  [[nodiscard]] std::vector<Real> reduceNodeValues( ArrayView<const Real> distributed, int components ) const
+  [[nodiscard]] ArrayView<const Real> reduceNodeValues( ArrayView<const Real> distributed, int components ) const
   {
-    const auto local_values = localNodeCount() * static_cast<std::size_t>( components );
-    if ( distributed.size() != static_cast<Index>( coordinates_.size() / dimension_ * components ) ) {
-      throw std::invalid_argument( "MFEM distributed nodal field has an invalid size." );
+    if ( components == 1 ) {
+      return node_scalar_exchange_.reduce( mesh_.GetComm(), distributed );
     }
-    int communicator_size{};
-    MPI_Comm_size( mesh_.GetComm(), &communicator_size );
-    std::vector<int> send_counts( static_cast<std::size_t>( communicator_size ) );
-    std::vector<int> receive_counts( static_cast<std::size_t>( communicator_size ) );
-    std::vector<int> send_displacements( static_cast<std::size_t>( communicator_size ) );
-    int send_total{};
-    for ( int owner = 0; owner < communicator_size; ++owner ) {
-      send_displacements[static_cast<std::size_t>( owner )] = send_total;
-      send_counts[static_cast<std::size_t>( owner )] =
-          received_node_counts_[static_cast<std::size_t>( owner )] * components;
-      send_total += send_counts[static_cast<std::size_t>( owner )];
+    if ( components == dimension_ ) {
+      return node_vector_exchange_.reduce( mesh_.GetComm(), distributed );
     }
-    MPI_Alltoall( send_counts.data(), 1, MPI_INT, receive_counts.data(), 1, MPI_INT, mesh_.GetComm() );
-    std::vector<int> receive_displacements( static_cast<std::size_t>( communicator_size ) );
-    int receive_total{};
-    for ( int source = 0; source < communicator_size; ++source ) {
-      receive_displacements[static_cast<std::size_t>( source )] = receive_total;
-      receive_total += receive_counts[static_cast<std::size_t>( source )];
-    }
-    std::vector<Real> received( static_cast<std::size_t>( receive_total ) );
-    MPI_Alltoallv( distributed.data(), send_counts.data(), send_displacements.data(), realMpiType(), received.data(),
-                   receive_counts.data(), receive_displacements.data(), realMpiType(), mesh_.GetComm() );
-    std::vector<Real> result( local_values );
-    for ( int source = 0; source < communicator_size; ++source ) {
-      const int count = receive_counts[static_cast<std::size_t>( source )];
-      if ( count != 0 && count != static_cast<int>( local_values ) ) {
-        throw std::logic_error( "MFEM reverse ghost packet has an invalid size." );
-      }
-      const int offset = receive_displacements[static_cast<std::size_t>( source )];
-      for ( int value = 0; value < count; ++value ) {
-        result[static_cast<std::size_t>( value )] += received[static_cast<std::size_t>( offset + value )];
-      }
-    }
-    return result;
+    throw std::invalid_argument( "MFEM nodal exchange requires a scalar or spatial vector field." );
   }
 
-  [[nodiscard]] std::vector<Real> reduceParentDofValues( ArrayView<const Real> distributed, int components ) const;
+  [[nodiscard]] ArrayView<const Real> reduceParentDofValues( ArrayView<const Real> distributed, int components ) const;
 
   void sampleElementCoefficient( ::mfem::Coefficient& coefficient, std::vector<Real>& values ) const
   {
-    std::vector<Real> local( localElementCount() );
+    auto local = element_scalar_exchange_.localValues();
     for ( std::size_t element = 0; element < localElementCount(); ++element ) {
       const int boundary_element = local_boundary_elements_[element];
-      auto* transformation = const_cast<::mfem::ParMesh&>( mesh_ ).GetBdrElementTransformation( boundary_element );
       const auto& point = ::mfem::Geometries.GetCenter( mesh_.GetBdrElementBaseGeometry( boundary_element ) );
-      local[element] = coefficient.Eval( *transformation, point );
+      local[static_cast<Index>( element )] = coefficient.Eval( local_element_transformations_[element], point );
     }
-    values = distributeElementValues( local );
+    element_scalar_exchange_.distribute( mesh_.GetComm(), values );
   }
 
   void computeElementThickness( std::vector<Real>& values ) const
   {
-    std::vector<Real> local( localElementCount() );
-    auto& mutable_mesh = const_cast<::mfem::ParMesh&>( mesh_ );
+    auto local = element_scalar_exchange_.localValues();
     for ( std::size_t element = 0; element < localElementCount(); ++element ) {
-      int volume_element{};
-      int orientation{};
-      mutable_mesh.GetBdrElementAdjacentElement( local_boundary_elements_[element], volume_element, orientation );
-      local[element] = mutable_mesh.GetElementSize( volume_element, 1 );
+      local[static_cast<Index>( element )] = local_element_thickness_[element];
     }
-    values = distributeElementValues( local );
+    element_scalar_exchange_.distribute( mesh_.GetComm(), values );
   }
 
  private:
@@ -299,7 +272,23 @@ class SurfaceStorage {
     local_coordinates_ = std::move( local_coordinates );
     local_trace_data_ = std::move( local_trace_data );
     collectLocalParentField( *space, coordinate_field, dimension_, true, local_parent_coordinates_ );
+    updateLocalElementData();
     redistribute( destinations_ );
+  }
+
+  void updateLocalElementData()
+  {
+    local_element_thickness_.resize( localElementCount() );
+    local_element_transformations_.resize( localElementCount() );
+    auto& mutable_mesh = const_cast<::mfem::ParMesh&>( mesh_ );
+    for ( std::size_t element = 0; element < localElementCount(); ++element ) {
+      int volume_element{};
+      int orientation{};
+      const int boundary_element = local_boundary_elements_[element];
+      mutable_mesh.GetBdrElementAdjacentElement( boundary_element, volume_element, orientation );
+      local_element_thickness_[element] = mutable_mesh.GetElementSize( volume_element, 1 );
+      mesh_.GetBdrElementTransformation( boundary_element, &local_element_transformations_[element] );
+    }
   }
 
   void rebuildTopology( const std::vector<std::int64_t>& metadata, const std::vector<int>& metadata_counts,
@@ -355,6 +344,14 @@ class SurfaceStorage {
     }
   }
 
+  void prepareExchangeWorkspaces()
+  {
+    node_scalar_exchange_.configure( destinations_, localNodeCount(), received_node_counts_, 1 );
+    node_vector_exchange_.configure( destinations_, localNodeCount(), received_node_counts_, dimension_ );
+    parent_vector_exchange_.configure( destinations_, localParentDofCount(), received_parent_dof_counts_, dimension_ );
+    element_scalar_exchange_.configure( destinations_, localElementCount(), received_element_counts_, 1 );
+  }
+
 #include "tribol/adapters/mfem/MfemSurfaceConstruction.inl"
 
   const ::mfem::ParMesh& mesh_;
@@ -367,6 +364,8 @@ class SurfaceStorage {
   std::vector<Real> local_coordinates_;
   std::vector<Real> local_trace_data_;
   std::vector<Real> local_parent_coordinates_;
+  std::vector<Real> local_element_thickness_;
+  mutable std::vector<::mfem::IsoparametricTransformation> local_element_transformations_;
   std::vector<int> local_boundary_elements_;
   std::map<int, Index> local_parent_dof_indices_;
   std::vector<int> local_parent_dofs_;
@@ -383,6 +382,10 @@ class SurfaceStorage {
   std::vector<int> owner_ranks_;
   std::vector<RestrictionNode> local_restrictions_;
   ParentTraceStorage parent_trace_;
+  mutable ExchangeWorkspace<Real> node_scalar_exchange_;
+  mutable ExchangeWorkspace<Real> node_vector_exchange_;
+  mutable ExchangeWorkspace<Real> parent_vector_exchange_;
+  mutable ExchangeWorkspace<Real> element_scalar_exchange_;
 };
 
 #include "tribol/adapters/mfem/MfemParentFieldCommunication.inl"

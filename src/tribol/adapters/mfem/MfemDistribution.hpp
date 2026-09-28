@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <type_traits>
 #include <vector>
@@ -34,6 +35,112 @@ template <typename T>
 struct ExchangeResult {
   std::vector<T> values;
   std::vector<int> receive_counts;
+};
+
+inline int checkedMpiCount( std::size_t count )
+{
+  if ( count > static_cast<std::size_t>( std::numeric_limits<int>::max() ) ) {
+    throw std::overflow_error( "MFEM surface exchange exceeds the MPI count range." );
+  }
+  return static_cast<int>( count );
+}
+
+inline int checkedMpiCountProduct( int count, int components )
+{
+  if ( count < 0 || components <= 0 || count > std::numeric_limits<int>::max() / components ) {
+    throw std::overflow_error( "MFEM surface exchange exceeds the MPI count range." );
+  }
+  return count * components;
+}
+
+inline int checkedMpiCountSum( int total, int count )
+{
+  if ( count < 0 || total > std::numeric_limits<int>::max() - count ) {
+    throw std::overflow_error( "MFEM surface exchange exceeds the MPI count range." );
+  }
+  return total + count;
+}
+
+template <typename T>
+class ExchangeWorkspace {
+ public:
+  void configure( const std::vector<unsigned char>& destinations, std::size_t local_entities,
+                  const std::vector<int>& received_entity_counts, int components )
+  {
+    if ( destinations.size() != received_entity_counts.size() ) {
+      throw std::logic_error( "MFEM surface exchange topology has inconsistent rank counts." );
+    }
+    const int local_values = checkedMpiCountProduct( checkedMpiCount( local_entities ), components );
+    const auto rank_count = destinations.size();
+    send_counts_.resize( rank_count );
+    receive_counts_.resize( rank_count );
+    send_displacements_.resize( rank_count );
+    receive_displacements_.resize( rank_count );
+    int send_total{};
+    int receive_total{};
+    for ( std::size_t rank = 0; rank < rank_count; ++rank ) {
+      send_displacements_[rank] = send_total;
+      receive_displacements_[rank] = receive_total;
+      send_counts_[rank] = destinations[rank] ? local_values : 0;
+      receive_counts_[rank] = checkedMpiCountProduct( received_entity_counts[rank], components );
+      send_total = checkedMpiCountSum( send_total, send_counts_[rank] );
+      receive_total = checkedMpiCountSum( receive_total, receive_counts_[rank] );
+    }
+    local_values_.resize( static_cast<std::size_t>( local_values ) );
+    exchange_buffer_.resize( static_cast<std::size_t>( send_total ) );
+    reduced_values_.resize( static_cast<std::size_t>( local_values ) );
+    distributed_value_count_ = receive_total;
+  }
+
+  [[nodiscard]] ArrayView<T> localValues()
+  {
+    return { local_values_.data(), static_cast<Index>( local_values_.size() ) };
+  }
+
+  [[nodiscard]] std::vector<T>& localValueStorage() { return local_values_; }
+
+  void distribute( MPI_Comm communicator, std::vector<T>& distributed )
+  {
+    for ( std::size_t rank = 0; rank < send_counts_.size(); ++rank ) {
+      if ( send_counts_[rank] > 0 ) {
+        std::copy( local_values_.begin(), local_values_.end(), exchange_buffer_.begin() + send_displacements_[rank] );
+      }
+    }
+    distributed.resize( static_cast<std::size_t>( distributed_value_count_ ) );
+    MPI_Alltoallv( exchange_buffer_.data(), send_counts_.data(), send_displacements_.data(), mpiType<T>(),
+                   distributed.data(), receive_counts_.data(), receive_displacements_.data(), mpiType<T>(),
+                   communicator );
+  }
+
+  [[nodiscard]] ArrayView<const T> reduce( MPI_Comm communicator, ArrayView<const T> distributed )
+  {
+    if ( distributed.size() != distributed_value_count_ ) {
+      throw std::invalid_argument( "MFEM distributed field has an invalid size." );
+    }
+    MPI_Alltoallv( distributed.data(), receive_counts_.data(), receive_displacements_.data(), mpiType<T>(),
+                   exchange_buffer_.data(), send_counts_.data(), send_displacements_.data(), mpiType<T>(),
+                   communicator );
+    std::fill( reduced_values_.begin(), reduced_values_.end(), T{} );
+    for ( std::size_t source = 0; source < send_counts_.size(); ++source ) {
+      const int count = send_counts_[source];
+      const int offset = send_displacements_[source];
+      for ( int value = 0; value < count; ++value ) {
+        reduced_values_[static_cast<std::size_t>( value )] +=
+            exchange_buffer_[static_cast<std::size_t>( offset + value )];
+      }
+    }
+    return { reduced_values_.data(), static_cast<Index>( reduced_values_.size() ) };
+  }
+
+ private:
+  std::vector<int> send_counts_;
+  std::vector<int> receive_counts_;
+  std::vector<int> send_displacements_;
+  std::vector<int> receive_displacements_;
+  std::vector<T> local_values_;
+  std::vector<T> exchange_buffer_;
+  std::vector<T> reduced_values_;
+  int distributed_value_count_{};
 };
 
 template <typename T>

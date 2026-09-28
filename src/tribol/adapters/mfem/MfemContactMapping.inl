@@ -119,6 +119,9 @@ void resizeSurfaceWorkspace()
   multiplier_direction_.resize( multiplier_.size() );
   constraint_residual_.resize( multiplier_.size() );
   constraint_derivative_.resize( multiplier_.size() );
+  local_scalar_field_.SetSize( coordinate_space_.GetNDofs() );
+  local_scalar_residual_.SetSize( coordinate_space_.GetNDofs() );
+  true_scalar_residual_.SetSize( coordinate_space_.GetTrueVSize() / coordinate_space_.GetVDim() );
 }
 
 static ::mfem::ParFiniteElementSpace& requireCoordinateSpace( const ::mfem::ParMesh& mesh,
@@ -142,7 +145,8 @@ const ::mfem::ParFiniteElementSpace& requireScalarSpace( const ::mfem::ParGridFu
 {
   const auto* space = field.ParFESpace();
   if ( space == nullptr || space->GetParMesh() != &mesh_ || space->GetVDim() != 1 ||
-       space->GetNDofs() != coordinate_space_.GetNDofs() ) {
+       space->GetNDofs() != coordinate_space_.GetNDofs() || space->GetVSize() != local_scalar_field_.Size() ||
+       space->GetTrueVSize() != true_scalar_residual_.Size() ) {
     throw std::invalid_argument( "MFEM multiplier and pressure fields must use the coordinate scalar basis." );
   }
   return *space;
@@ -185,23 +189,23 @@ void restrictScalarPrimal( const detail::SurfaceStorage& surface, const ::mfem::
   if ( true_field.Size() != space.GetTrueVSize() ) {
     throw std::invalid_argument( "MFEM scalar restriction requires the scalar true-DOF space." );
   }
-  local_scalar_field_.SetSize( space.GetVSize() );
   const auto* prolongation = space.GetProlongationMatrix();
   if ( prolongation == nullptr ) {
     local_scalar_field_ = true_field;
   } else {
     prolongation->Mult( true_field, local_scalar_field_ );
   }
-  std::vector<Real> local( surface.localNodeCount() );
-  for ( std::size_t local_node = 0; local_node < local.size(); ++local_node ) {
+  auto local = surface.localNodeValues( 1 );
+  std::fill( local.begin(), local.end(), 0.0 );
+  for ( std::size_t local_node = 0; local_node < surface.localNodeCount(); ++local_node ) {
     const auto& restriction = surface.localRestrictionByIndex( local_node );
     for ( std::size_t term = 0; term < restriction.scalar_dofs.size(); ++term ) {
       const int scalar_dof = restriction.scalar_dofs[term];
-      local[local_node] += restriction.weights[term] * detail::dofSign( scalar_dof ) *
-                           local_scalar_field_[detail::decodeDof( scalar_dof )];
+      local[static_cast<Index>( local_node )] += restriction.weights[term] * detail::dofSign( scalar_dof ) *
+                                                 local_scalar_field_[detail::decodeDof( scalar_dof )];
     }
   }
-  values = surface.distributeNodeValues( local, 1 );
+  surface.distributeNodeValues( 1, values );
 }
 
 void addScalarDualTranspose( const detail::SurfaceStorage& surface, const ::mfem::ParFiniteElementSpace& space,
@@ -210,18 +214,16 @@ void addScalarDualTranspose( const detail::SurfaceStorage& surface, const ::mfem
   if ( true_residual.Size() != space.GetTrueVSize() || surface_residual.size() != surface.view().numberOfNodes() ) {
     throw std::invalid_argument( "MFEM scalar dual transpose requires matching surface and true-DOF fields." );
   }
-  local_scalar_residual_.SetSize( space.GetVSize() );
   local_scalar_residual_ = 0.0;
   const auto local_residual = surface.reduceNodeValues( surface_residual, 1 );
-  for ( std::size_t local_node = 0; local_node < local_residual.size(); ++local_node ) {
-    const auto& restriction = surface.localRestrictionByIndex( local_node );
+  for ( Index local_node = 0; local_node < local_residual.size(); ++local_node ) {
+    const auto& restriction = surface.localRestrictionByIndex( static_cast<std::size_t>( local_node ) );
     for ( std::size_t term = 0; term < restriction.scalar_dofs.size(); ++term ) {
       const int scalar_dof = restriction.scalar_dofs[term];
       local_scalar_residual_[detail::decodeDof( scalar_dof )] +=
           restriction.weights[term] * detail::dofSign( scalar_dof ) * local_residual[local_node];
     }
   }
-  true_scalar_residual_.SetSize( space.GetTrueVSize() );
   true_scalar_residual_ = 0.0;
   const auto* prolongation = space.GetProlongationMatrix();
   if ( prolongation == nullptr ) {
@@ -367,7 +369,7 @@ std::unique_ptr<::mfem::HypreParMatrix> inactiveIdentity( const ::mfem::ParFinit
 void gatherSurfaceField( const detail::SurfaceStorage& surface, const ::mfem::ParGridFunction& field, int components,
                          std::vector<Real>& values )
 {
-  std::vector<Real> local( surface.localNodeCount() * static_cast<std::size_t>( components ) );
+  auto local = surface.localNodeValues( components );
   const auto& space = *field.ParFESpace();
   for ( std::size_t local_node = 0; local_node < surface.localNodeCount(); ++local_node ) {
     const auto& restriction = surface.localRestrictionByIndex( local_node );
@@ -379,16 +381,16 @@ void gatherSurfaceField( const detail::SurfaceStorage& surface, const ::mfem::Pa
         value += restriction.weights[term] * detail::dofSign( scalar_dof ) * detail::dofSign( vector_dof ) *
                  field[detail::decodeDof( vector_dof )];
       }
-      local[local_node * static_cast<std::size_t>( components ) + component] = value;
+      local[static_cast<Index>( local_node * static_cast<std::size_t>( components ) + component )] = value;
     }
   }
-  values = surface.distributeNodeValues( local, components );
+  surface.distributeNodeValues( components, values );
 }
 
 void gatherSurfaceField( const detail::SurfaceStorage& surface, std::vector<Real>& values )
 {
   const int dimension = coordinate_space_.GetVDim();
-  std::vector<Real> local( surface.localNodeCount() * static_cast<std::size_t>( dimension ) );
+  auto local = surface.localNodeValues( dimension );
   for ( std::size_t local_node = 0; local_node < surface.localNodeCount(); ++local_node ) {
     const auto& restriction = surface.localRestrictionByIndex( local_node );
     for ( int component = 0; component < dimension; ++component ) {
@@ -399,10 +401,10 @@ void gatherSurfaceField( const detail::SurfaceStorage& surface, std::vector<Real
         value += restriction.weights[term] * detail::dofSign( scalar_dof ) * detail::dofSign( vector_dof ) *
                  local_parent_residual_[detail::decodeDof( vector_dof )];
       }
-      local[local_node * static_cast<std::size_t>( dimension ) + component] = value;
+      local[static_cast<Index>( local_node * static_cast<std::size_t>( dimension ) + component )] = value;
     }
   }
-  values = surface.distributeNodeValues( local, dimension );
+  surface.distributeNodeValues( dimension, values );
 }
 
 void scatterSurface( const detail::SurfaceStorage& surface, ArrayView<const Real> residual )

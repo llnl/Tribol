@@ -1,45 +1,9 @@
 #include "tribol/Tribol.hpp"
+#include "tests/AllocationCounter.hpp"
 
 #include <array>
-#include <atomic>
-#include <cstdlib>
-#include <new>
 
 // Requirements: CORE-003, DIFF-001
-
-namespace {
-
-std::atomic<std::size_t> allocation_count{};
-std::atomic<bool> count_allocations{};
-
-}  // namespace
-
-void* operator new( std::size_t size )
-{
-  if ( count_allocations.load( std::memory_order_relaxed ) ) {
-    allocation_count.fetch_add( 1, std::memory_order_relaxed );
-  }
-  if ( void* storage = std::malloc( size ) ) {
-    return storage;
-  }
-  throw std::bad_alloc{};
-}
-
-void* operator new[]( std::size_t size )
-{
-  if ( count_allocations.load( std::memory_order_relaxed ) ) {
-    allocation_count.fetch_add( 1, std::memory_order_relaxed );
-  }
-  if ( void* storage = std::malloc( size ) ) {
-    return storage;
-  }
-  throw std::bad_alloc{};
-}
-
-void operator delete( void* storage ) noexcept { std::free( storage ); }
-void operator delete[]( void* storage ) noexcept { std::free( storage ); }
-void operator delete( void* storage, std::size_t ) noexcept { std::free( storage ); }
-void operator delete[]( void* storage, std::size_t ) noexcept { std::free( storage ); }
 
 int main()
 {
@@ -78,15 +42,15 @@ int main()
       .nonmortar = { { nonmortar_derivative.data(), 4 }, 2, 2, FieldLayout::Interleaved },
   };
 
-  allocation_count.store( 0, std::memory_order_relaxed );
-  count_allocations.store( true, std::memory_order_relaxed );
+  tribol::test::resetAllocationCount();
+  tribol::test::startAllocationCounting();
   const auto result = contact.evaluate();
   contact.applyCoordinateDerivative( {}, direction, derivative );
   const auto jacobian = contact.assembleCoordinateJacobian( {} );
-  count_allocations.store( false, std::memory_order_relaxed );
+  tribol::test::stopAllocationCounting();
 
-  return allocation_count.load( std::memory_order_relaxed ) == 0 && result.summary.active_interactions == 1 &&
-                 jacobian.rows == 8 && jacobian.columns == 8
+  return tribol::test::allocationCount() == 0 && result.summary.active_interactions == 1 && jacobian.rows == 8 &&
+                 jacobian.columns == 8
              ? 0
              : 1;
 }

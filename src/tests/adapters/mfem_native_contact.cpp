@@ -1,4 +1,5 @@
 #include "tribol/adapters/mfem/MfemContact.hpp"
+#include "tests/AllocationCounter.hpp"
 
 #include "mfem.hpp"
 #include <mpi.h>
@@ -9,7 +10,7 @@
 #include <map>
 #include <vector>
 
-// Requirements: ADAPTER-002, API-005, CONS-002, GEOM-001, PAR-002, PAR-005, PHYS-001, TIME-002
+// Requirements: ADAPTER-002, API-005, CONS-002, CORE-003, GEOM-001, PAR-002, PAR-005, PHYS-001, TIME-002
 
 namespace {
 
@@ -224,6 +225,12 @@ int exerciseNativeParentContact( int communicator_size, int rank, int order )
   ::mfem::Vector residual( coordinates->ParFESpace()->GetTrueVSize() );
   residual = 0.0;
   const auto summary = contact.addResidual( tribol::mfem::ContactState{ .velocity = &velocity }, residual );
+  residual = 0.0;
+  tribol::test::resetAllocationCount();
+  tribol::test::startAllocationCounting();
+  const auto repeated_summary = contact.addResidual( tribol::mfem::ContactState{ .velocity = &velocity }, residual );
+  tribol::test::stopAllocationCounting();
+  const double maximum_allocation_count = globalMax( static_cast<double>( tribol::test::allocationCount() ) );
   const auto cells = contact.core().overlapCells();
   double local_accepted_cells{};
   for ( tribol::Index cell = 0; cell < cells.numberOfAttempts(); ++cell ) {
@@ -238,13 +245,14 @@ int exerciseNativeParentContact( int communicator_size, int rank, int order )
   const double force_sum = globalSum( local_force_sum );
   valid = valid && summary.active_interactions > 0 && summary.quadrature_points > accepted_cells &&
           summary.energy > 0.0 && std::isfinite( summary.timestep_vote ) && summary.timestep_vote > 0.0 &&
+          repeated_summary.active_interactions == summary.active_interactions && maximum_allocation_count == 0.0 &&
           std::abs( force_sum ) < 1.0e-10 && transpose_error < 1.0e-10 && residual_norm > 0.0;
   if ( !valid && rank == 0 ) {
     std::cerr << "native parent rank=" << rank << " order=" << order << " active=" << summary.active_interactions
               << " rows=" << summary.quadrature_points << " energy=" << summary.energy
               << " dt=" << summary.timestep_vote << " residual_norm=" << residual_norm
-              << " transpose_error=" << transpose_error << " interactions=" << contact.core().interactions().size()
-              << " cells=" << cells.numberOfAttempts();
+              << " transpose_error=" << transpose_error << " allocations=" << maximum_allocation_count
+              << " interactions=" << contact.core().interactions().size() << " cells=" << cells.numberOfAttempts();
     for ( tribol::Index cell = 0; cell < cells.numberOfAttempts(); ++cell ) {
       std::cerr << " status[" << cell << "]=" << static_cast<int>( cells.statuses[cell] );
     }

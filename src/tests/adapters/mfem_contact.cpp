@@ -1,4 +1,5 @@
 #include "tribol/adapters/mfem/MfemContact.hpp"
+#include "tests/AllocationCounter.hpp"
 
 #include "mfem.hpp"
 #include <mpi.h>
@@ -8,7 +9,7 @@
 #include <vector>
 
 // Requirements: ADAPTER-002, ADAPTER-003, ADAPTER-004, ADAPTER-005, ADAPTER-006, ADAPTER-007, API-001, DIFF-004,
-// Requirements: DIFF-006, GEOM-001, PAR-002, PAR-005, PHYS-001
+// Requirements: CORE-003, DIFF-006, GEOM-001, PAR-002, PAR-005, PHYS-001
 
 namespace {
 
@@ -27,6 +28,13 @@ double globalSum( double local )
 {
   double global{};
   MPI_Allreduce( &local, &global, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
+  return global;
+}
+
+double globalMax( double local )
+{
+  double global{};
+  MPI_Allreduce( &local, &global, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD );
   return global;
 }
 
@@ -235,6 +243,12 @@ int exerciseStateMapping( int communicator_size, int order )
   ::mfem::Vector residual( coordinates->ParFESpace()->GetTrueVSize() );
   residual = 0.0;
   const auto summary = contact.addResidual( state, residual );
+  residual = 0.0;
+  tribol::test::resetAllocationCount();
+  tribol::test::startAllocationCounting();
+  const auto repeated_summary = contact.addResidual( state, residual );
+  tribol::test::stopAllocationCounting();
+  const double maximum_allocation_count = globalMax( static_cast<double>( tribol::test::allocationCount() ) );
   const auto result = contact.evaluate( state );
   ::mfem::ParGridFunction gap( &scalar_space );
   ::mfem::ParGridFunction contact_pressure( &scalar_space );
@@ -246,14 +260,15 @@ int exerciseStateMapping( int communicator_size, int order )
   contact_pressure.GetTrueDofs( true_pressure );
   const double gap_norm = std::sqrt( globalSum( true_gap * true_gap ) );
   const double pressure_norm = std::sqrt( globalSum( true_pressure * true_pressure ) );
-  valid = valid && gap_norm > 0.0 && pressure_norm > 0.0;
+  valid = valid && gap_norm > 0.0 && pressure_norm > 0.0 && maximum_allocation_count == 0.0 &&
+          repeated_summary.active_interactions == summary.active_interactions;
   if ( !valid || summary.active_interactions == 0 || !std::isfinite( summary.timestep_vote ) ) {
     int rank{};
     MPI_Comm_rank( MPI_COMM_WORLD, &rank );
     std::cerr << "state mapping rank=" << rank << " order=" << order << " valid=" << valid
               << " active=" << summary.active_interactions << " dt=" << summary.timestep_vote
               << " gap_norm=" << gap_norm << " pressure_norm=" << pressure_norm
-              << " mortar_nodes=" << surfaces.mortar.numberOfNodes()
+              << " allocations=" << maximum_allocation_count << " mortar_nodes=" << surfaces.mortar.numberOfNodes()
               << " thickness=" << restricted.mortar_element_thickness.size() << '\n';
   }
   return valid && summary.active_interactions > 0 && std::isfinite( summary.timestep_vote ) ? 0 : 1;
@@ -383,6 +398,13 @@ int exerciseMultiplierSystem( int communicator_size )
   force = 0.0;
   constraint = 0.0;
   const auto summary = contact.addResidual( state, force, constraint );
+  force = 0.0;
+  constraint = 0.0;
+  tribol::test::resetAllocationCount();
+  tribol::test::startAllocationCounting();
+  const auto repeated_summary = contact.addResidual( state, force, constraint );
+  tribol::test::stopAllocationCounting();
+  const double maximum_allocation_count = globalMax( static_cast<double>( tribol::test::allocationCount() ) );
   auto jacobian = contact.assembleSystemJacobian( state );
 
   ::mfem::Vector coordinate_direction( coordinate_size );
@@ -422,7 +444,10 @@ int exerciseMultiplierSystem( int communicator_size )
     const tribol::Real difference = block_output[coordinate_size + entry] - expected_constraint[entry];
     local_error += difference * difference;
   }
-  return summary.active_interactions > 0 && std::sqrt( globalSum( local_error ) ) < 1.0e-12 ? 0 : 1;
+  return summary.active_interactions > 0 && repeated_summary.active_interactions == summary.active_interactions &&
+                 maximum_allocation_count == 0.0 && std::sqrt( globalSum( local_error ) ) < 1.0e-12
+             ? 0
+             : 1;
 }
 
 }  // namespace
