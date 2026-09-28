@@ -4,7 +4,7 @@ EvaluationSummary evaluateConfigured( const SurfacePairView& surfaces, const Con
 {
   if constexpr ( detail::is_native_explicit_method_v<MethodType> ) {
     native_evaluation_current_ = false;
-    native_diagnostic_quadrature_.reset();
+    native_diagnostic_quadrature_current_ = false;
   }
   EvaluationSummary summary;
   if constexpr ( detail::is_native_explicit_method_v<MethodType> ) {

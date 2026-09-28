@@ -62,6 +62,8 @@ void prepareNativeRows()
     row_options.quadrature = options_.method.integration;
     row_options.include_normal_rates = include_normal_rates;
     native_rows_.emplace( buildConstraintRowBatch( parent_traces_, native_cells_->view(), fields, row_options ) );
+    native_diagnostic_quadrature_.reserve( native_cells_->view() );
+    native_diagnostic_quadrature_current_ = false;
     row_count = native_rows_->numberOfRows();
   }
   const std::size_t rows = static_cast<std::size_t>( row_count );

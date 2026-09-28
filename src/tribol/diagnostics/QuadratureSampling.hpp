@@ -90,12 +90,41 @@ struct QuadratureSampleSummary {
 
 class QuadratureSamples;
 
+void sampleQuadrature( ParentTracePairView traces, OverlapCellBatchView cells, ParentTraceFieldPairView fields,
+                       QuadratureSamples& samples, QuadratureSamplingOptions options = {} );
+
 [[nodiscard]] QuadratureSamples sampleQuadrature( ParentTracePairView traces, OverlapCellBatchView cells,
                                                   ParentTraceFieldPairView fields,
                                                   QuadratureSamplingOptions options = {} );
 
 class QuadratureSamples {
  public:
+  QuadratureSamples() = default;
+
+  void reserve( OverlapCellBatchView cells )
+  {
+    if ( !cells.isStructurallyValid() ) {
+      throw std::invalid_argument( "Diagnostic quadrature storage requires valid overlap cells." );
+    }
+    const Index cell_count = cells.numberOfAttempts();
+    Index sample_count{};
+    for ( Index cell = 0; cell < cell_count; ++cell ) {
+      sample_count += integration::automaticQuadraturePointCount( cells, cell, integration::maximumAutomaticExactness );
+    }
+    cell_sample_offsets_.reserve( static_cast<std::size_t>( cell_count + 1 ) );
+    contact_pair_ids_.reserve( static_cast<std::size_t>( sample_count ) );
+    cell_ids_.reserve( static_cast<std::size_t>( sample_count ) );
+    owner_ranks_.reserve( static_cast<std::size_t>( sample_count ) );
+    overlap_cells_.reserve( static_cast<std::size_t>( sample_count ) );
+    normals_.reserve( static_cast<std::size_t>( 3 * sample_count ) );
+    integration_weights_.reserve( static_cast<std::size_t>( sample_count ) );
+    mortar_parent_reference_coordinates_.reserve( static_cast<std::size_t>( ( cells.dimension - 1 ) * sample_count ) );
+    nonmortar_parent_reference_coordinates_.reserve(
+        static_cast<std::size_t>( ( cells.dimension - 1 ) * sample_count ) );
+    physical_gaps_.reserve( static_cast<std::size_t>( sample_count ) );
+    normal_rates_.reserve( static_cast<std::size_t>( sample_count ) );
+  }
+
   [[nodiscard]] Index numberOfSamples() const { return static_cast<Index>( physical_gaps_.size() ); }
 
   [[nodiscard]] QuadratureSampleView view() const
@@ -127,13 +156,10 @@ class QuadratureSamples {
   }
 
  private:
+  friend void sampleQuadrature( ParentTracePairView, OverlapCellBatchView, ParentTraceFieldPairView, QuadratureSamples&,
+                                QuadratureSamplingOptions );
   friend QuadratureSamples sampleQuadrature( ParentTracePairView, OverlapCellBatchView, ParentTraceFieldPairView,
                                              QuadratureSamplingOptions );
-
-  QuadratureSamples( int dimension, std::vector<Index> cell_sample_offsets )
-      : dimension_( dimension ), cell_sample_offsets_( std::move( cell_sample_offsets ) )
-  {
-  }
 
   int dimension_{};
   std::vector<Index> cell_sample_offsets_{};
@@ -173,19 +199,10 @@ inline void requireField( FieldView<const Real> field, const ParentTraceView& tr
   return result;
 }
 
-inline void appendReference( std::vector<Real>& values, basis::ReferencePoint reference, int dimension )
-{
-  values.push_back( reference.first );
-  if ( dimension == 3 ) {
-    values.push_back( reference.second );
-  }
-}
-
 }  // namespace quadrature_sampling_detail
 
-[[nodiscard]] inline QuadratureSamples sampleQuadrature( ParentTracePairView traces, OverlapCellBatchView cells,
-                                                         ParentTraceFieldPairView fields,
-                                                         QuadratureSamplingOptions options )
+inline void sampleQuadrature( ParentTracePairView traces, OverlapCellBatchView cells, ParentTraceFieldPairView fields,
+                              QuadratureSamples& result, QuadratureSamplingOptions options )
 {
   if ( !traces.isStructurallyValid() || !cells.isStructurallyValid() ||
        cells.dimension != traces.mortar.geometry.dimension ) {
@@ -205,9 +222,10 @@ inline void appendReference( std::vector<Real>& values, basis::ReferencePoint re
                                               "Diagnostic quadrature requires valid nonmortar parent velocity." );
   }
 
+  result.reserve( cells );
+  result.dimension_ = cells.dimension;
   const Index cell_count = cells.numberOfAttempts();
-  std::vector<Index> cell_sample_offsets( static_cast<std::size_t>( cell_count + 1 ), 0 );
-  std::vector<int> cell_exactness( static_cast<std::size_t>( cell_count ), 0 );
+  result.cell_sample_offsets_.assign( static_cast<std::size_t>( cell_count + 1 ), 0 );
   for ( Index cell = 0; cell < cell_count; ++cell ) {
     if ( !cells.isAccepted( cell ) ) {
       continue;
@@ -224,63 +242,85 @@ inline void appendReference( std::vector<Real>& values, basis::ReferencePoint re
     if ( exactness > integration::maximumAutomaticExactness ) {
       throw std::invalid_argument( "Diagnostic quadrature exactness exceeds the built-in range." );
     }
-    cell_exactness[static_cast<std::size_t>( cell )] = exactness;
-    cell_sample_offsets[static_cast<std::size_t>( cell + 1 )] =
+    result.cell_sample_offsets_[static_cast<std::size_t>( cell + 1 )] =
         integration::automaticQuadraturePointCount( cells, cell, exactness );
   }
   for ( Index cell = 0; cell < cell_count; ++cell ) {
-    cell_sample_offsets[static_cast<std::size_t>( cell + 1 )] += cell_sample_offsets[static_cast<std::size_t>( cell )];
+    result.cell_sample_offsets_[static_cast<std::size_t>( cell + 1 )] +=
+        result.cell_sample_offsets_[static_cast<std::size_t>( cell )];
   }
 
-  QuadratureSamples result( cells.dimension, std::move( cell_sample_offsets ) );
   const Index sample_count = result.cell_sample_offsets_.back();
-  result.contact_pair_ids_.reserve( sample_count );
-  result.cell_ids_.reserve( sample_count );
-  result.owner_ranks_.reserve( sample_count );
-  result.overlap_cells_.reserve( sample_count );
-  result.normals_.reserve( 3 * sample_count );
-  result.integration_weights_.reserve( sample_count );
-  result.mortar_parent_reference_coordinates_.reserve( ( cells.dimension - 1 ) * sample_count );
-  result.nonmortar_parent_reference_coordinates_.reserve( ( cells.dimension - 1 ) * sample_count );
-  result.physical_gaps_.reserve( sample_count );
-  if ( options.include_normal_rates ) {
-    result.normal_rates_.reserve( sample_count );
-  }
+  result.contact_pair_ids_.resize( static_cast<std::size_t>( sample_count ) );
+  result.cell_ids_.resize( static_cast<std::size_t>( sample_count ) );
+  result.owner_ranks_.resize( static_cast<std::size_t>( sample_count ) );
+  result.overlap_cells_.resize( static_cast<std::size_t>( sample_count ) );
+  result.normals_.resize( static_cast<std::size_t>( 3 * sample_count ) );
+  result.integration_weights_.resize( static_cast<std::size_t>( sample_count ) );
+  result.mortar_parent_reference_coordinates_.resize(
+      static_cast<std::size_t>( ( cells.dimension - 1 ) * sample_count ) );
+  result.nonmortar_parent_reference_coordinates_.resize(
+      static_cast<std::size_t>( ( cells.dimension - 1 ) * sample_count ) );
+  result.physical_gaps_.resize( static_cast<std::size_t>( sample_count ) );
+  result.normal_rates_.resize( options.include_normal_rates ? static_cast<std::size_t>( sample_count ) : 0 );
 
   for ( Index cell = 0; cell < cell_count; ++cell ) {
+    if ( !cells.isAccepted( cell ) ) {
+      continue;
+    }
+    const int exactness = options.exactness >= 0 ? options.exactness
+                                                 : integration::automaticQuadratureExactness(
+                                                       traces, cells, cell, integration::Automatic::Parameters{} );
     const Index count = result.cell_sample_offsets_[static_cast<std::size_t>( cell + 1 )] -
                         result.cell_sample_offsets_[static_cast<std::size_t>( cell )];
     for ( Index local_sample = 0; local_sample < count; ++local_sample ) {
-      const auto point = integration::automaticQuadraturePoint( cells, cell, local_sample,
-                                                                cell_exactness[static_cast<std::size_t>( cell )] );
+      const Index sample = result.cell_sample_offsets_[static_cast<std::size_t>( cell )] + local_sample;
+      const auto point = integration::automaticQuadraturePoint( cells, cell, local_sample, exactness );
       const Index mortar_face = cells.mortar_parent_faces[cell];
       const Index nonmortar_face = cells.nonmortar_parent_faces[cell];
       const auto mortar_position = basis::interpolateParentField( traces.mortar, mortar_face, fields.mortar_coordinates,
                                                                   point.mortar_reference );
       const auto nonmortar_position = basis::interpolateParentField(
           traces.nonmortar, nonmortar_face, fields.nonmortar_coordinates, point.nonmortar_reference );
-      result.contact_pair_ids_.push_back( cells.contact_pair_ids[cell] );
-      result.cell_ids_.push_back( cells.cell_ids[cell] );
-      result.owner_ranks_.push_back( cells.owner_ranks[cell] );
-      result.overlap_cells_.push_back( cell );
-      result.normals_.insert( result.normals_.end(), point.normal.begin(), point.normal.end() );
-      result.integration_weights_.push_back( point.weight );
-      quadrature_sampling_detail::appendReference( result.mortar_parent_reference_coordinates_, point.mortar_reference,
-                                                   cells.dimension );
-      quadrature_sampling_detail::appendReference( result.nonmortar_parent_reference_coordinates_,
-                                                   point.nonmortar_reference, cells.dimension );
-      result.physical_gaps_.push_back( quadrature_sampling_detail::normalDifference(
-          mortar_position, nonmortar_position, point.normal, cells.dimension ) );
+      result.contact_pair_ids_[static_cast<std::size_t>( sample )] = cells.contact_pair_ids[cell];
+      result.cell_ids_[static_cast<std::size_t>( sample )] = cells.cell_ids[cell];
+      result.owner_ranks_[static_cast<std::size_t>( sample )] = cells.owner_ranks[cell];
+      result.overlap_cells_[static_cast<std::size_t>( sample )] = cell;
+      for ( int component = 0; component < 3; ++component ) {
+        result.normals_[static_cast<std::size_t>( 3 * sample + component )] = point.normal[component];
+      }
+      result.integration_weights_[static_cast<std::size_t>( sample )] = point.weight;
+      const Index reference_offset = ( cells.dimension - 1 ) * sample;
+      result.mortar_parent_reference_coordinates_[static_cast<std::size_t>( reference_offset )] =
+          point.mortar_reference.first;
+      result.nonmortar_parent_reference_coordinates_[static_cast<std::size_t>( reference_offset )] =
+          point.nonmortar_reference.first;
+      if ( cells.dimension == 3 ) {
+        result.mortar_parent_reference_coordinates_[static_cast<std::size_t>( reference_offset + 1 )] =
+            point.mortar_reference.second;
+        result.nonmortar_parent_reference_coordinates_[static_cast<std::size_t>( reference_offset + 1 )] =
+            point.nonmortar_reference.second;
+      }
+      result.physical_gaps_[static_cast<std::size_t>( sample )] = quadrature_sampling_detail::normalDifference(
+          mortar_position, nonmortar_position, point.normal, cells.dimension );
       if ( options.include_normal_rates ) {
         const auto mortar_velocity =
             basis::interpolateParentField( traces.mortar, mortar_face, fields.mortar_velocity, point.mortar_reference );
         const auto nonmortar_velocity = basis::interpolateParentField(
             traces.nonmortar, nonmortar_face, fields.nonmortar_velocity, point.nonmortar_reference );
-        result.normal_rates_.push_back( quadrature_sampling_detail::normalDifference(
-            mortar_velocity, nonmortar_velocity, point.normal, cells.dimension ) );
+        result.normal_rates_[static_cast<std::size_t>( sample )] = quadrature_sampling_detail::normalDifference(
+            mortar_velocity, nonmortar_velocity, point.normal, cells.dimension );
       }
     }
   }
+}
+
+[[nodiscard]] inline QuadratureSamples sampleQuadrature( ParentTracePairView traces, OverlapCellBatchView cells,
+                                                         ParentTraceFieldPairView fields,
+                                                         QuadratureSamplingOptions options )
+{
+  QuadratureSamples result;
+  sampleQuadrature( traces, cells, fields, result, options );
   return result;
 }
 

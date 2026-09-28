@@ -63,7 +63,7 @@ EvaluationSummary addResidual( const ContactStateView& state, ContactResidualVie
   }
   if constexpr ( detail::is_native_explicit_method_v<MethodType> ) {
     native_evaluation_current_ = false;
-    native_diagnostic_quadrature_.reset();
+    native_diagnostic_quadrature_current_ = false;
     static_cast<void>( evaluateNativeDeviceRows( state, inverse_mass, integrator ) );
     native_evaluation_generations_ = generations();
     native_evaluation_current_ = true;

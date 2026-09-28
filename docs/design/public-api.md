@@ -199,7 +199,10 @@ same `OverlapCellBatchView` used for constraint rows. The default exactness is t
 `QuadratureSamplingOptions::exactness` selects an independent diagnostic exactness without changing enforcement.
 Samples contain physical parent-field gaps and optionally normal rates. `summarizeQuadrature()` applies the requested
 owner-rank filter before computing maximum penetration and closing rate. A `QuadratureSampleView` borrows its storage
-from `QuadratureSamples` and remains valid until that owner is moved, modified, or destroyed.
+from `QuadratureSamples` and remains valid until that owner is moved, modified, or destroyed. Call
+`QuadratureSamples::reserve(cells)` during interaction preparation and use the in-place `sampleQuadrature()` overload
+to refill the same owner without allocation. Native host `Contact` does this automatically for the maximum supported
+diagnostic exactness and retains that capacity when a new evaluation invalidates the previous diagnostic view.
 
 `diagnostics::summarizeProductionDiagnostics()` labels rank-local and owner-filtered values explicitly.
 `reduceOwnedDiagnostics()` combines rank-ordered owned summaries without double counting, and the production JSON

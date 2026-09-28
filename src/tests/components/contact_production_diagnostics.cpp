@@ -1,13 +1,14 @@
 #include "tribol/Tribol.hpp"
 
 #include "ParentTraceFixture.hpp"
+#include "tests/AllocationCounter.hpp"
 
 #include <array>
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
 
-// Requirements: API-006, PHYS-004, OUTPUT-001, OUTPUT-003
+// Requirements: API-006, CORE-003, PHYS-004, OUTPUT-001, OUTPUT-003
 
 namespace {
 
@@ -229,6 +230,35 @@ bool staleEvaluationContract()
   return throwsLogicError( [&] { static_cast<void>( contact.productionDiagnostics( fixture.state(), 0.25 ) ); } );
 }
 
+bool allocationStabilityContract()
+{
+  NativeFixture fixture;
+  Contact<NativeDampedPenalty> contact( fixture.traces(), fixture.fields(), options() );
+  const diagnostics::QuadratureSamplingOptions sampling{ .exactness = 8, .include_normal_rates = true };
+  contact.updateInteractions();
+  static_cast<void>( contact.evaluate( fixture.state(), fixture.inverseMass(),
+                                       timestep::IntegratorStabilityLimits::centralDifference() ) );
+  static_cast<void>( contact.productionDiagnostics( fixture.state(), 0.25, 0, 1, sampling ) );
+
+  bool valid = true;
+  test::resetAllocationCount();
+  test::startAllocationCounting();
+  for ( int repeat = 0; repeat < 3; ++repeat ) {
+    static_cast<void>( contact.evaluate( fixture.state(), fixture.inverseMass(),
+                                         timestep::IntegratorStabilityLimits::centralDifference() ) );
+    const auto summary = contact.productionDiagnostics( fixture.state(), 0.25, 0, 1, sampling );
+    const auto samples = contact.diagnosticQuadrature();
+    valid = valid && samples.isStructurallyValid() && samples.numberOfSamples() == 5 && samples.hasNormalRates() &&
+            summary.local.quadrature.samples == 5 && close( summary.local.quadrature.maximum_closing_rate, 0.5 );
+  }
+  test::stopAllocationCounting();
+  const auto allocations = test::allocationCount();
+  if ( !valid || allocations != 0 ) {
+    std::cerr << "diagnostic allocation stability valid=" << valid << " allocations=" << allocations << '\n';
+  }
+  return valid && allocations == 0;
+}
+
 }  // namespace
 
 int main()
@@ -238,9 +268,11 @@ int main()
   const bool optional = optionalRateAndNoContactContract();
   const bool empty_rank = emptyRankReductionContract();
   const bool stale = staleEvaluationContract();
-  if ( !analytic || !independent || !optional || !empty_rank || !stale ) {
+  const bool allocation_stability = allocationStabilityContract();
+  if ( !analytic || !independent || !optional || !empty_rank || !stale || !allocation_stability ) {
     std::cerr << "analytic=" << analytic << " independent=" << independent << " optional=" << optional
-              << " empty_rank=" << empty_rank << " stale=" << stale << '\n';
+              << " empty_rank=" << empty_rank << " stale=" << stale << " allocation_stability=" << allocation_stability
+              << '\n';
   }
-  return analytic && independent && optional && empty_rank && stale ? 0 : 1;
+  return analytic && independent && optional && empty_rank && stale && allocation_stability ? 0 : 1;
 }
