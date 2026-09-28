@@ -6,6 +6,7 @@
 #include "tribol/core/MeshView.hpp"
 #include "tribol/core/Version.hpp"
 #include "tribol/constraint/ConstraintRow.hpp"
+#include "tribol/diagnostics/ProductionDiagnostics.hpp"
 #include "tribol/evaluation/PolicyEvaluator.hpp"
 #include "tribol/evaluation/ExplicitRowEvaluator.hpp"
 #include "tribol/evaluation/State.hpp"
@@ -153,6 +154,7 @@ class Contact {
   }
 
 #include "tribol/contact/ContactEvaluation.inl"
+#include "tribol/contact/ContactDiagnostics.inl"
 
   [[nodiscard]] NodalKinematicsView evaluateNodalKinematics() const
     requires( std::same_as<typename MethodType::formulation_policy, formulation::Variational> &&
@@ -377,38 +379,7 @@ class Contact {
   }
 
 #include "tribol/contact/ContactNativeRows.inl"
-
-  EvaluationSummary evaluateConfigured( const SurfacePairView& surfaces, const ContactStateView& state,
-                                        ContactOutputView output, timestep::DiagonalInverseMassView inverse_mass = {},
-                                        timestep::IntegratorStabilityLimits integrator = {} ) const
-  {
-    EvaluationSummary summary;
-    if constexpr ( detail::is_native_explicit_method_v<MethodType> ) {
-      summary = evaluateNativeRows( state, output, inverse_mass, integrator );
-    } else if constexpr ( execution::DevicePolicy<Execution> ) {
-      summary = execution_workspace_.evaluateDefault( options_.method, state, options_.timestep );
-      execution_workspace_.downloadResult( output );
-      last_device_summary_ = summary;
-      device_result_geometry_version_ = geometry_version_;
-      device_result_interaction_version_ = interaction_version_;
-    } else if constexpr ( std::same_as<Execution, execution::OpenMP> ) {
-      summary = execution::evaluateOpenMPContact<MethodType>( surfaces, candidates_.view(), options_.method, state,
-                                                              output, execution_workspace_ );
-    } else {
-      summary = evaluateMethod<MethodType>( surfaces, candidates_.view(), options_.method, state, output );
-    }
-    if constexpr ( !execution::DevicePolicy<Execution> ) {
-      if constexpr ( detail::is_native_explicit_method_v<MethodType> ) {
-        const Real kinematic_vote = timestep::kinematicVote<MethodType>( parent_traces_, candidates_.view(),
-                                                                         options_.method, state, options_.timestep );
-        summary.timestep_vote = std::min( summary.timestep_vote, kinematic_vote );
-      } else {
-        summary.timestep_vote = timestep::kinematicVote<MethodType>( surfaces, candidates_.view(), options_.method,
-                                                                     state, options_.timestep );
-      }
-    }
-    return summary;
-  }
+#include "tribol/contact/ContactConfiguredEvaluation.inl"
 
   void clearEvaluationWorkspace() const
   {
@@ -485,6 +456,7 @@ class Contact {
   mutable std::vector<Real> result_pressure_;
 #include "tribol/contact/ContactLifecycleStorage.inl"
 #include "tribol/contact/ContactExecutionStorage.inl"
+#include "tribol/contact/ContactDiagnosticsStorage.inl"
   mutable GeometryVersion device_result_geometry_version_{};
   mutable InteractionVersion device_result_interaction_version_{};
 };

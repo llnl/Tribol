@@ -86,6 +86,17 @@ blt_add_test(
   COMMAND tribol_diagnostic_quadrature_test)
 
 blt_add_executable(
+  NAME tribol_contact_production_diagnostics_test
+  SOURCES components/contact_production_diagnostics.cpp
+  OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+  DEPENDS_ON tribol::core
+  FOLDER tribol/components)
+
+blt_add_test(
+  NAME tribol_contact_production_diagnostics
+  COMMAND tribol_contact_production_diagnostics_test)
+
+blt_add_executable(
   NAME tribol_native_refinement_convergence_test
   SOURCES components/native_refinement_convergence.cpp
   OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
