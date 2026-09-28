@@ -2,6 +2,7 @@
 #define TRIBOL_ADAPTERS_MFEM_MFEMCONTACT_HPP_
 
 #include "tribol/adapters/mfem/MfemSurface.hpp"
+#include "tribol/adapters/mfem/MfemProductionDiagnostics.hpp"
 #include "tribol/contact/Contact.hpp"
 
 #include "mfem.hpp"
@@ -136,6 +137,7 @@ class MfemContact {
 
 #include "tribol/adapters/mfem/MfemContactRegistration.inl"
 #include "tribol/adapters/mfem/MfemContactAttempt.inl"
+#include "tribol/adapters/mfem/MfemContactDiagnostics.inl"
 
   EvaluationSummary addResidual( ::mfem::Vector& parent_true_residual )
   {

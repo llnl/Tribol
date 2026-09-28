@@ -172,6 +172,20 @@ bool optionalRateAndNoContactContract()
   return valid;
 }
 
+bool emptyRankReductionContract()
+{
+  std::array<diagnostics::RankProductionDiagnostics, 2> ranks{};
+  ranks[0] = { .rank = 0, .ranks = 2 };
+  ranks[0].local.rows.minimum_gap = 0.25;
+  ranks[0].owned.rows = { .rows = 1, .owned_rows = 1, .minimum_gap = 0.25 };
+  ranks[0].local.rows = ranks[0].owned.rows;
+  ranks[1] = { .rank = 1, .ranks = 2 };
+  ranks[1].local.rows.minimum_gap = 0.0;
+  ranks[1].owned.rows.minimum_gap = 0.0;
+  const auto global = diagnostics::reduceOwnedDiagnostics( { ranks.data(), 2 } );
+  return global.rows.rows == 1 && global.rows.owned_rows == 1 && close( global.rows.minimum_gap, 0.25 );
+}
+
 bool staleEvaluationContract()
 {
   NativeFixture fixture;
@@ -222,10 +236,11 @@ int main()
   const bool analytic = analyticTotalsContract();
   const bool independent = independentSamplingContract();
   const bool optional = optionalRateAndNoContactContract();
+  const bool empty_rank = emptyRankReductionContract();
   const bool stale = staleEvaluationContract();
-  if ( !analytic || !independent || !optional || !stale ) {
+  if ( !analytic || !independent || !optional || !empty_rank || !stale ) {
     std::cerr << "analytic=" << analytic << " independent=" << independent << " optional=" << optional
-              << " stale=" << stale << '\n';
+              << " empty_rank=" << empty_rank << " stale=" << stale << '\n';
   }
-  return analytic && independent && optional && stale ? 0 : 1;
+  return analytic && independent && optional && empty_rank && stale ? 0 : 1;
 }

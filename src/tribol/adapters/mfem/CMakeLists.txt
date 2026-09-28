@@ -3,6 +3,7 @@ set(_tribol_mfem_adapter_headers
     MfemContactAssembly.inl
     MfemContactAttempt.inl
     MfemContactCollection.hpp
+    MfemContactDiagnostics.inl
     MfemContactMapping.inl
     MfemContactParentFields.inl
     MfemContactRegistration.inl
@@ -10,6 +11,7 @@ set(_tribol_mfem_adapter_headers
     MfemDistribution.hpp
     MfemParentFieldCommunication.inl
     MfemParentTrace.hpp
+    MfemProductionDiagnostics.hpp
     MfemSurfaceConstruction.inl
     MfemSurface.hpp)
 set(_tribol_mfem_adapter_depends tribol_core mfem)

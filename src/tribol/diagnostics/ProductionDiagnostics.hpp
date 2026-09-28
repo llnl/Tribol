@@ -38,6 +38,29 @@ struct ProductionDiagnosticsPayload {
   AttemptDiagnostics attempts{};
 };
 
+inline void accumulate( ProductionDiagnosticSummary& total, const ProductionDiagnosticSummary& contribution )
+{
+  const bool total_has_rows = total.rows.rows > 0;
+  const bool contribution_has_rows = contribution.rows.rows > 0;
+  const Real previous_minimum_gap = total.rows.minimum_gap;
+  accumulate( total.rows, contribution.rows );
+  if ( !contribution_has_rows ) {
+    total.rows.minimum_gap = previous_minimum_gap;
+  } else if ( !total_has_rows ) {
+    total.rows.minimum_gap = contribution.rows.minimum_gap;
+  }
+  total.quadrature.samples += contribution.quadrature.samples;
+  total.quadrature.owned_samples += contribution.quadrature.owned_samples;
+  total.quadrature.maximum_penetration =
+      contribution.quadrature.maximum_penetration > total.quadrature.maximum_penetration
+          ? contribution.quadrature.maximum_penetration
+          : total.quadrature.maximum_penetration;
+  total.quadrature.maximum_closing_rate =
+      contribution.quadrature.maximum_closing_rate > total.quadrature.maximum_closing_rate
+          ? contribution.quadrature.maximum_closing_rate
+          : total.quadrature.maximum_closing_rate;
+}
+
 namespace production_diagnostics_detail {
 
 [[nodiscard]] inline bool validCounts( const ExplicitRowDiagnostics& rows )
@@ -125,17 +148,7 @@ namespace production_diagnostics_detail {
          !isStructurallyValid( contribution ) ) {
       throw std::invalid_argument( "Production diagnostic contributions must be complete and ordered by rank." );
     }
-    accumulate( result.rows, contribution.owned.rows );
-    result.quadrature.samples += contribution.owned.quadrature.samples;
-    result.quadrature.owned_samples += contribution.owned.quadrature.owned_samples;
-    result.quadrature.maximum_penetration =
-        contribution.owned.quadrature.maximum_penetration > result.quadrature.maximum_penetration
-            ? contribution.owned.quadrature.maximum_penetration
-            : result.quadrature.maximum_penetration;
-    result.quadrature.maximum_closing_rate =
-        contribution.owned.quadrature.maximum_closing_rate > result.quadrature.maximum_closing_rate
-            ? contribution.owned.quadrature.maximum_closing_rate
-            : result.quadrature.maximum_closing_rate;
+    accumulate( result, contribution.owned );
   }
   if ( result.rows.rows == 0 ) {
     result.rows.minimum_gap = 0.0;

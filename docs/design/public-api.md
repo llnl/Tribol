@@ -212,6 +212,13 @@ Both calls reject stale results after a new evaluation or any coordinate, topolo
 condition, penalty, or integrator generation change. On CUDA and HIP, diagnostic samples and row contributions remain
 device-resident and use the shared backend-neutral reduction path; only the compact summary is copied to the host.
 
+`MfemContact::productionDiagnostics(state, time_step, options)` performs the MFEM field restriction once, preserves the
+core rank-local and owner-filtered summaries, and collectively reduces only the compact owned summary on the mesh
+communicator. The returned payload therefore contains identical global values on every rank without gathering rows or
+diagnostic samples. `MfemContactCollection::productionDiagnostics()` first combines every pair locally and then performs
+one reduction phase, avoiding one collective sequence per pair. A collection does not own a shared attempt lifecycle,
+so its payload leaves attempt records empty; query each contact when per-pair attempt records are required.
+
 `diagnostics::writeJson()` and `diagnostics::writeVtk()` write individual snapshots. For time-dependent runs,
 `diagnostics::writeScheduled<Method>()` applies a cycle interval, creates the output directory, adds stable cycle and
 optional rank suffixes, and can emit JSON state, surface VTK, and projected-overlap VTK files. Overlap files carry the

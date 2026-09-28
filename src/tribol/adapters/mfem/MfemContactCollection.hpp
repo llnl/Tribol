@@ -121,7 +121,34 @@ class MfemContactCollection {
     return finalizeStability( summary );
   }
 
+  [[nodiscard]] diagnostics::ProductionDiagnosticsPayload productionDiagnostics(
+      const ContactState& state = {}, Real time_step = 0.0, diagnostics::QuadratureSamplingOptions sampling = {} )
+  {
+    const auto communicator = coordinate_space_->GetParMesh()->GetComm();
+    const auto communicator_info = detail::communicatorInfo( communicator );
+    diagnostics::RankProductionDiagnostics rank_diagnostics{ .rank = communicator_info.rank,
+                                                             .ranks = communicator_info.size };
+    for ( ContactType* contact : contacts_ ) {
+      const auto restricted_state = contact->restrictState( state );
+      const auto contribution = contact->core_.productionDiagnostics(
+          restricted_state, time_step, communicator_info.rank, communicator_info.size, sampling );
+      diagnostics::accumulate( rank_diagnostics.local, contribution.local );
+      diagnostics::accumulate( rank_diagnostics.owned, contribution.owned );
+    }
+    normalizeEmptyMinimumGap( rank_diagnostics.local );
+    normalizeEmptyMinimumGap( rank_diagnostics.owned );
+    const auto global_diagnostics = detail::reduceOwnedProductionDiagnostics( communicator, rank_diagnostics.owned );
+    return diagnostics::makeProductionDiagnosticsPayload( rank_diagnostics, global_diagnostics );
+  }
+
  private:
+  static void normalizeEmptyMinimumGap( diagnostics::ProductionDiagnosticSummary& summary )
+  {
+    if ( summary.rows.rows == 0 ) {
+      summary.rows.minimum_gap = 0.0;
+    }
+  }
+
   void requireResidual( const ::mfem::Vector& parent_true_residual ) const
   {
     if ( parent_true_residual.Size() != coordinate_space_->GetTrueVSize() ) {

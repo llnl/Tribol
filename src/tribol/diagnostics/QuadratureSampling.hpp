@@ -199,9 +199,6 @@ inline void appendReference( std::vector<Real>& values, basis::ReferencePoint re
   quadrature_sampling_detail::requireField( fields.nonmortar_coordinates, traces.nonmortar,
                                             "Diagnostic quadrature requires valid nonmortar parent coordinates." );
   if ( options.include_normal_rates ) {
-    if ( !fields.hasVelocity() ) {
-      throw std::invalid_argument( "Diagnostic quadrature normal rates require both parent velocity fields." );
-    }
     quadrature_sampling_detail::requireField( fields.mortar_velocity, traces.mortar,
                                               "Diagnostic quadrature requires valid mortar parent velocity." );
     quadrature_sampling_detail::requireField( fields.nonmortar_velocity, traces.nonmortar,
