@@ -112,6 +112,42 @@ bool suppliedPairContract()
   return false;
 }
 
+bool suppliedPairOrderInvariance()
+{
+  const SurfaceStorage mortar{
+      .coordinates = { 0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 2.0, 0.0, 4.0, 0.0, 5.0, 0.0, 6.0, 0.0, 7.0, 0.0 } };
+  const SurfaceStorage nonmortar{
+      .coordinates = { 0.0, -0.1, 1.0, -0.1, 1.0, -0.2, 2.0, -0.2, 8.0, -0.1, 9.0, -0.1, 10.0, -0.1, 11.0, -0.1 },
+      .connectivity = { 1, 0, 3, 2, 5, 4, 7, 6 } };
+  Contact<DefaultMethod, search::Supplied>::Options first_options;
+  first_options.search.pairs = { { 1, 1 }, { 0, 0 }, { 1, 1 } };
+  first_options.method.enforcement.stiffness.value = 10.0;
+  Contact<DefaultMethod, search::Supplied>::Options second_options;
+  second_options.search.pairs = { { 0, 0 }, { 1, 1 }, { 0, 0 } };
+  second_options.method.enforcement.stiffness.value = first_options.method.enforcement.stiffness.value;
+  Contact<DefaultMethod, search::Supplied> first( { mortar.view(), nonmortar.view() }, first_options );
+  Contact<DefaultMethod, search::Supplied> second( { mortar.view(), nonmortar.view() }, second_options );
+  first.updateInteractions();
+  second.updateInteractions();
+  const auto first_result = first.evaluate();
+  const auto second_result = second.evaluate();
+  if ( first.interactions().size() != 2 || second.interactions().size() != first.interactions().size() ||
+       first_result.summary.active_interactions != 2 ||
+       second_result.summary.active_interactions != first_result.summary.active_interactions ||
+       first_result.summary.energy != second_result.summary.energy ) {
+    return false;
+  }
+  for ( Index interaction = 0; interaction < first.interactions().size(); ++interaction ) {
+    if ( first.interactions()[interaction] != second.interactions()[interaction] ) {
+      return false;
+    }
+  }
+  return std::equal( first_result.mortar_force.values.begin(), first_result.mortar_force.values.end(),
+                     second_result.mortar_force.values.begin() ) &&
+         std::equal( first_result.nonmortar_force.values.begin(), first_result.nonmortar_force.values.end(),
+                     second_result.nonmortar_force.values.begin() );
+}
+
 bool relativeProximityMatchesLegacyFormula()
 {
   struct SegmentStorage {
@@ -159,7 +195,7 @@ bool relativeProximityMatchesLegacyFormula()
 int main()
 {
   return equivalentBroadPhases() && selfContactFiltering() && contactSelfSearch() && suppliedPairContract() &&
-                 relativeProximityMatchesLegacyFormula()
+                 suppliedPairOrderInvariance() && relativeProximityMatchesLegacyFormula()
              ? 0
              : 1;
 }

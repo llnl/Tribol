@@ -602,9 +602,37 @@ bool suppliedInteractionsGeometryAndAllocationContract()
   }
   const auto updated_host = host.evaluate();
   const auto updated_device = device.evaluate();
-  return arraysMatch( updated_host.mortar_force.values, updated_device.mortar_force.values, 5.0e-12 ) &&
-         arraysMatch( updated_host.nonmortar_force.values, updated_device.nonmortar_force.values, 5.0e-12 ) &&
-         updated_device.summary.energy < downloaded.summary.energy;
+  if ( !arraysMatch( updated_host.mortar_force.values, updated_device.mortar_force.values, 5.0e-12 ) ||
+       !arraysMatch( updated_host.nonmortar_force.values, updated_device.nonmortar_force.values, 5.0e-12 ) ||
+       updated_device.summary.energy >= downloaded.summary.energy ) {
+    return false;
+  }
+  const std::vector<tribol::Real> updated_mortar( updated_device.mortar_force.values.begin(),
+                                                  updated_device.mortar_force.values.end() );
+  const std::vector<tribol::Real> updated_nonmortar( updated_device.nonmortar_force.values.begin(),
+                                                     updated_device.nonmortar_force.values.end() );
+  const tribol::Real updated_energy = updated_device.summary.energy;
+  std::vector<tribol::ElementPair> permuted;
+  permuted.reserve( static_cast<std::size_t>( RepeatedQuadrilateralPair::elements + 1 ) );
+  permuted.push_back( { 0, 0 } );
+  for ( tribol::Index element = 0; element < RepeatedQuadrilateralPair::elements; ++element ) {
+    permuted.push_back( { element, element } );
+  }
+  const tribol::ArrayView<const tribol::ElementPair> permuted_view{ permuted.data(),
+                                                                    static_cast<tribol::Index>( permuted.size() ) };
+  host.setInteractions( permuted_view );
+  device.setInteractions( permuted_view );
+  const auto permuted_host = host.evaluate();
+  const auto permuted_device = device.evaluate();
+  return host.interactions().size() == RepeatedQuadrilateralPair::elements &&
+         device.interactions().size() == RepeatedQuadrilateralPair::elements &&
+         arraysMatch( permuted_host.mortar_force.values, permuted_device.mortar_force.values, 5.0e-12 ) &&
+         arraysMatch( permuted_host.nonmortar_force.values, permuted_device.nonmortar_force.values, 5.0e-12 ) &&
+         std::memcmp( updated_mortar.data(), permuted_device.mortar_force.values.data(),
+                      updated_mortar.size() * sizeof( tribol::Real ) ) == 0 &&
+         std::memcmp( updated_nonmortar.data(), permuted_device.nonmortar_force.values.data(),
+                      updated_nonmortar.size() * sizeof( tribol::Real ) ) == 0 &&
+         updated_energy == permuted_device.summary.energy;
 }
 
 bool timestepVoteParity()
