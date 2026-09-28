@@ -15,10 +15,11 @@
 #include <cmath>
 #include <cstring>
 #include <iostream>
+#include <stdexcept>
 #include <vector>
 
-// Requirements: API-003, CORE-003, DIFF-001, DIFF-002, OUTPUT-001, OUTPUT-003, PAR-001, PAR-006, PAR-008, SEARCH-001,
-// TIME-001
+// Requirements: API-003, API-004, API-006, CORE-003, DIFF-001, DIFF-002, OUTPUT-001, OUTPUT-003, PAR-001, PAR-006,
+// Requirements: PAR-008, SEARCH-001, TIME-001
 
 namespace {
 
@@ -972,6 +973,118 @@ bool publicNativeDeviceContactParity()
   return true;
 }
 
+bool nativeDeviceAttemptLifecycle()
+{
+  auto mortar = tribol::test::segmentTrace( 0.0, 1.0, 0.0, false, 101, 0 );
+  auto nonmortar = tribol::test::segmentTrace( 0.0, 1.0, -0.1, true, 202, 0 );
+  const auto fields = [&] {
+    return tribol::ParentTraceFieldPairView{
+        .mortar_coordinates = { { mortar.coordinates.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+        .nonmortar_coordinates = { { nonmortar.coordinates.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+    };
+  };
+  const auto traces = [&] { return tribol::ParentTracePairView{ mortar.view(), nonmortar.view() }; };
+  using DeviceContact = tribol::Contact<NativeExplicitMethod, tribol::search::Bvh, DeviceExecution>;
+  DeviceContact::Options options;
+  options.search.expansion = 0.25;
+  options.method.enforcement.stiffness.value = 10.0;
+  DeviceContact contact( traces(), fields(), options );
+  contact.updateInteractions();
+
+  constexpr std::array<tribol::Real, 4> inverse_mass_values{ 1.0, 1.0, 1.0, 1.0 };
+  tribol::MassVersion mass_version;
+  tribol::BoundaryConditionVersion boundary_condition_version;
+  tribol::PenaltyVersion penalty_version;
+  tribol::IntegratorVersion integrator_version;
+  mass_version.advance();
+  integrator_version.advance();
+  tribol::timestep::DiagonalInverseMassView inverse_mass{
+      .mortar = { { inverse_mass_values.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+      .nonmortar = { { inverse_mass_values.data(), 4 }, 2, 2, tribol::FieldLayout::Interleaved },
+      .version = mass_version,
+  };
+  auto integrator = tribol::timestep::IntegratorStabilityLimits::centralDifference();
+  integrator.version = integrator_version;
+  inverse_mass.version = mass_version;
+  contact.setMassGeneration( mass_version );
+  contact.setIntegratorGeneration( integrator_version );
+
+  const auto first_attempt = contact.beginAttempt();
+  const auto accepted = contact.evaluateDevice( {}, inverse_mass, integrator );
+  contact.acceptAttempt();
+  static_cast<void>( contact.productionDiagnostics( {}, 0.25 ) );
+  const auto accepted_checkpoint = contact.checkpoint();
+  if ( first_attempt.id != 1 || first_attempt.retry != 0 || accepted.summary.energy <= 0.0 ||
+       contact.currentAttempt().status != tribol::AttemptStatus::Accepted || contact.acceptedAttempts() != 1 ||
+       contact.rejectedAttempts() != 0 ) {
+    return false;
+  }
+
+  nonmortar.coordinates[1] = -0.15;
+  nonmortar.coordinates[3] = -0.15;
+  contact.updateGeometry( traces(), fields() );
+  mass_version.advance();
+  boundary_condition_version.advance();
+  penalty_version.advance();
+  integrator_version.advance();
+  integrator.version = integrator_version;
+  contact.setMassGeneration( mass_version );
+  contact.setBoundaryConditionGeneration( boundary_condition_version );
+  contact.setPenaltyGeneration( penalty_version );
+  contact.setIntegratorGeneration( integrator_version );
+  try {
+    static_cast<void>( contact.productionDiagnostics( {}, 0.25 ) );
+    return false;
+  } catch ( const std::logic_error& ) {
+  }
+
+  const auto rejected_attempt = contact.beginAttempt();
+  const auto changed = contact.invalidationsSinceAcceptedAttempt();
+  if ( rejected_attempt.id != 2 || rejected_attempt.retry != 0 ||
+       !tribol::contains( changed, tribol::ContactInvalidation::Coordinates ) ||
+       !tribol::contains( changed, tribol::ContactInvalidation::Mass ) ||
+       !tribol::contains( changed, tribol::ContactInvalidation::BoundaryConditions ) ||
+       !tribol::contains( changed, tribol::ContactInvalidation::Penalty ) ||
+       !tribol::contains( changed, tribol::ContactInvalidation::Integrator ) ) {
+    return false;
+  }
+  const auto rejected = contact.evaluateDevice( {}, inverse_mass, integrator );
+  contact.rejectAttempt( tribol::FailureCategory::Stability );
+  static_cast<void>( contact.productionDiagnostics( {}, 0.25 ) );
+  if ( rejected.summary.energy <= accepted.summary.energy ||
+       contact.currentAttempt().status != tribol::AttemptStatus::Rejected ||
+       contact.lastRejectedAttempt().failure != tribol::FailureCategory::Stability ) {
+    return false;
+  }
+
+  nonmortar.coordinates[1] = -0.1;
+  nonmortar.coordinates[3] = -0.1;
+  contact.updateGeometry( traces(), fields() );
+  const auto retry_attempt = contact.beginAttempt();
+  const auto retried = contact.evaluateDevice( {}, inverse_mass, integrator );
+  contact.acceptAttempt();
+  if ( retry_attempt.id != 3 || retry_attempt.retry != 1 ||
+       std::abs( retried.summary.energy - accepted.summary.energy ) > 1.0e-13 ) {
+    return false;
+  }
+
+  contact.restore( accepted_checkpoint );
+  if ( contact.currentAttempt().id != first_attempt.id || contact.acceptedAttempts() != 1 ||
+       contact.rejectedAttempts() != 0 ) {
+    return false;
+  }
+  const auto restarted_attempt = contact.beginAttempt();
+  const auto restarted = contact.evaluateDevice( {}, inverse_mass, integrator );
+  contact.acceptAttempt();
+  static_cast<void>( contact.productionDiagnostics( {}, 0.25 ) );
+  return restarted_attempt.id == 2 && restarted_attempt.retry == 0 &&
+         std::abs( restarted.summary.energy - accepted.summary.energy ) < 1.0e-13 &&
+         contact.invalidationsSinceAcceptedAttempt() == tribol::ContactInvalidation::None &&
+         contact.acceptedAttempts() == 2 && contact.rejectedAttempts() == 0 &&
+         requireDevicePointer( "restarted native force", restarted.mortar_force.values.data() ) &&
+         requireDevicePointer( "restarted diagnostic gaps", contact.diagnosticQuadrature().physical_gaps.data() );
+}
+
 }  // namespace
 
 int main()
@@ -1029,6 +1142,10 @@ int main()
   }
   if ( !publicNativeDeviceContactParity() ) {
     std::cerr << "public native device contact parity failed\n";
+    return 1;
+  }
+  if ( !nativeDeviceAttemptLifecycle() ) {
+    std::cerr << "native device attempt lifecycle failed\n";
     return 1;
   }
   return 0;
