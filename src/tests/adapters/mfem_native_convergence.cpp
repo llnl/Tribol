@@ -1,3 +1,4 @@
+#include "tribol/adapters/array/ArrayContact.hpp"
 #include "tribol/adapters/mfem/MfemContact.hpp"
 
 #include "mfem.hpp"
@@ -9,7 +10,7 @@
 #include <iostream>
 #include <utility>
 
-// Requirements: ADAPTER-002, CONS-002, GEOM-004, PAR-002, PHYS-003, PHYS-004
+// Requirements: ADAPTER-001, ADAPTER-002, CONS-002, GEOM-004, PAR-002, PHYS-003, PHYS-004
 
 namespace {
 
@@ -23,6 +24,11 @@ struct RunResult {
   tribol::EvaluationSummary evaluation{};
   tribol::diagnostics::ProductionDiagnosticsPayload diagnostics{};
   ::mfem::Vector residual{};
+};
+
+struct AdapterReference {
+  tribol::EvaluationSummary evaluation{};
+  tribol::diagnostics::ProductionDiagnosticSummary diagnostics{};
 };
 
 bool close( double actual, double expected, double tolerance = 2.0e-11 )
@@ -77,6 +83,65 @@ NativeContact::Options options( int minimum_exactness )
   result.method.integration.minimum_exactness = minimum_exactness;
   result.method.enforcement.stiffness.value = 10.0;
   return result;
+}
+
+AdapterReference evaluateArrayReference( tribol::array::UniformSurface mortar, tribol::array::UniformSurface nonmortar )
+{
+  auto contact = tribol::array::makeContact<NativePenalty>( std::move( mortar ), std::move( nonmortar ), options( 1 ) );
+  contact.updateInteractions();
+  const auto surfaces = contact.core().surfaces();
+  std::vector<tribol::Real> mortar_inverse_mass(
+      static_cast<std::size_t>( surfaces.mortar.numberOfNodes() * surfaces.mortar.dimension ), 1.0 );
+  std::vector<tribol::Real> nonmortar_inverse_mass(
+      static_cast<std::size_t>( surfaces.nonmortar.numberOfNodes() * surfaces.nonmortar.dimension ), 1.0 );
+  const tribol::timestep::DiagonalInverseMassView inverse_mass{
+      .mortar = { { mortar_inverse_mass.data(), static_cast<tribol::Index>( mortar_inverse_mass.size() ) },
+                  surfaces.mortar.numberOfNodes(),
+                  surfaces.mortar.dimension,
+                  tribol::FieldLayout::Interleaved },
+      .nonmortar = { { nonmortar_inverse_mass.data(), static_cast<tribol::Index>( nonmortar_inverse_mass.size() ) },
+                     surfaces.nonmortar.numberOfNodes(),
+                     surfaces.nonmortar.dimension,
+                     tribol::FieldLayout::Interleaved },
+  };
+  const auto evaluation =
+      contact.evaluate( {}, inverse_mass, tribol::timestep::IntegratorStabilityLimits::centralDifference() ).summary;
+  const auto diagnostics = contact.core().productionDiagnostics(
+      {}, 0.25, 0, 1, tribol::diagnostics::QuadratureSamplingOptions{ .exactness = 8 } );
+  return { evaluation, diagnostics.local };
+}
+
+AdapterReference arrayReference( int dimension )
+{
+  if ( dimension == 2 ) {
+    const std::array<tribol::Real, 4> mortar_coordinates{ 0.0, 0.0, 1.0, 0.0 };
+    const std::array<tribol::Real, 4> nonmortar_coordinates{ 0.0, 0.1, 1.0, 0.1 };
+    const std::array<tribol::Index, 2> mortar_connectivity{ 0, 1 };
+    const std::array<tribol::Index, 2> nonmortar_connectivity{ 1, 0 };
+    return evaluateArrayReference(
+        tribol::array::UniformSurface(
+            2, tribol::ElementTopology::Segment,
+            { mortar_coordinates.data(), static_cast<tribol::Index>( mortar_coordinates.size() ) },
+            { mortar_connectivity.data(), static_cast<tribol::Index>( mortar_connectivity.size() ) } ),
+        tribol::array::UniformSurface(
+            2, tribol::ElementTopology::Segment,
+            { nonmortar_coordinates.data(), static_cast<tribol::Index>( nonmortar_coordinates.size() ) },
+            { nonmortar_connectivity.data(), static_cast<tribol::Index>( nonmortar_connectivity.size() ) } ) );
+  }
+  const std::array<tribol::Real, 12> mortar_coordinates{ 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0 };
+  const std::array<tribol::Real, 12> nonmortar_coordinates{ 0.0, 0.0, 0.1, 1.0, 0.0, 0.1,
+                                                            1.0, 1.0, 0.1, 0.0, 1.0, 0.1 };
+  const std::array<tribol::Index, 4> mortar_connectivity{ 0, 3, 2, 1 };
+  const std::array<tribol::Index, 4> nonmortar_connectivity{ 0, 1, 2, 3 };
+  return evaluateArrayReference(
+      tribol::array::UniformSurface(
+          3, tribol::ElementTopology::Quadrilateral,
+          { mortar_coordinates.data(), static_cast<tribol::Index>( mortar_coordinates.size() ) },
+          { mortar_connectivity.data(), static_cast<tribol::Index>( mortar_connectivity.size() ) } ),
+      tribol::array::UniformSurface(
+          3, tribol::ElementTopology::Quadrilateral,
+          { nonmortar_coordinates.data(), static_cast<tribol::Index>( nonmortar_coordinates.size() ) },
+          { nonmortar_connectivity.data(), static_cast<tribol::Index>( nonmortar_connectivity.size() ) } ) );
 }
 
 RunResult runContact( const ::mfem::ParMesh& mesh, const ::mfem::ParGridFunction& coordinates, int minimum_exactness,
@@ -136,6 +201,7 @@ bool planarOrderContract( int dimension, int order, int rank )
 
   const RunResult automatic = runContact( mesh, *coordinates, 1, order );
   const RunResult overintegrated = runContact( mesh, *coordinates, 8, order );
+  const AdapterReference array = arrayReference( dimension );
   const auto force_balance = globalResidualSum( *coordinates->ParFESpace(), automatic.residual );
   const auto& summary = automatic.diagnostics.global.rows;
   const std::array<double, 3> expected_force =
@@ -151,10 +217,20 @@ bool planarOrderContract( int dimension, int order, int rank )
                automatic.diagnostics.global.quadrature.samples >= summary.rows &&
                close( automatic.diagnostics.global.quadrature.maximum_penetration, 0.1 ) &&
                residualDifference( automatic.residual, overintegrated.residual ) < 2.0e-11 &&
-               close( automatic.evaluation.energy, overintegrated.evaluation.energy );
+               close( automatic.evaluation.energy, overintegrated.evaluation.energy ) &&
+               close( automatic.evaluation.energy, array.evaluation.energy ) &&
+               close( summary.minimum_gap, array.diagnostics.rows.minimum_gap ) &&
+               close( summary.maximum_penetration, array.diagnostics.rows.maximum_penetration ) &&
+               close( summary.maximum_traction, array.diagnostics.rows.maximum_traction ) &&
+               close( summary.spring_energy, array.diagnostics.rows.spring_energy ) &&
+               close( automatic.diagnostics.global.quadrature.maximum_penetration,
+                      array.diagnostics.quadrature.maximum_penetration );
   for ( int component = 0; component < 3; ++component ) {
     valid = valid && close( summary.mortar_force[component], expected_force[component] ) &&
             close( summary.mortar_moment[component], expected_moment[component] ) &&
+            close( summary.mortar_force[component], array.diagnostics.rows.mortar_force[component] ) &&
+            close( summary.mortar_moment[component], array.diagnostics.rows.mortar_moment[component] ) &&
+            close( summary.impulse[component], array.diagnostics.rows.impulse[component] ) &&
             std::abs( force_balance[component] ) < 2.0e-11;
   }
   if ( !valid && rank == 0 ) {
@@ -163,6 +239,12 @@ bool planarOrderContract( int dimension, int order, int rank )
               << summary.mortar_force[2] << ") moment=(" << summary.mortar_moment[0] << ',' << summary.mortar_moment[1]
               << ',' << summary.mortar_moment[2] << ") gap=" << summary.minimum_gap
               << " traction=" << summary.maximum_traction << " energy=" << summary.spring_energy
+              << " array_active=" << array.evaluation.active_interactions
+              << " array_gap=" << array.diagnostics.rows.minimum_gap << " array_energy=" << array.evaluation.energy
+              << " array_force=(" << array.diagnostics.rows.mortar_force[0] << ','
+              << array.diagnostics.rows.mortar_force[1] << ',' << array.diagnostics.rows.mortar_force[2]
+              << ") array_moment=(" << array.diagnostics.rows.mortar_moment[0] << ','
+              << array.diagnostics.rows.mortar_moment[1] << ',' << array.diagnostics.rows.mortar_moment[2] << ')'
               << " over_error=" << residualDifference( automatic.residual, overintegrated.residual ) << '\n';
   }
   return valid;
