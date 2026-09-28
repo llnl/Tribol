@@ -31,7 +31,8 @@ and required execution environments are tested.
 - Device tests execute kernels on a real GPU; device compilation alone is insufficient.
 - Device-path tests inspect pointer residency, compare device BVH candidates and complete 2D/3D results with the host,
   exercise supplied and frozen interactions, verify stable allocation footprints, and require bitwise-repeatable
-  shared-node scatter.
+  shared-node scatter. A separate backend-shared test exercises automatic native rows and parent-field interpolation
+  for segment and quadrilateral Q1--Q4 traces.
 - MPI tests exercise at least one and two ranks, with four-rank coverage for partition-sensitive cases.
 - MFEM native-trace tests cover planar analytic Q1--Q4 results and automatic-versus-exactness-8 residual agreement in
   2D and 3D, plus monotone Q4 curved-surface convergence under LOR refinement in 3D.

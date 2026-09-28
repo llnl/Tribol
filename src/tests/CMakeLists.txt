@@ -377,6 +377,19 @@ if(ENABLE_CUDA)
   blt_add_test(
     NAME tribol_execution_cuda
     COMMAND tribol_execution_cuda_test)
+
+  blt_add_executable(
+    NAME tribol_execution_native_orders_cuda_test
+    SOURCES parallel/execution_native_orders.cu
+    OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+    DEPENDS_ON tribol::cuda_execution ${tribol_device_depends}
+    FOLDER tribol/parallel)
+  target_compile_features(tribol_execution_native_orders_cuda_test PRIVATE cxx_std_20)
+  target_compile_options(tribol_execution_native_orders_cuda_test PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+
+  blt_add_test(
+    NAME tribol_execution_native_orders_cuda
+    COMMAND tribol_execution_native_orders_cuda_test)
 endif()
 
 if(ENABLE_HIP)
@@ -393,6 +406,20 @@ if(ENABLE_HIP)
   blt_add_test(
     NAME tribol_execution_hip
     COMMAND tribol_execution_hip_test)
+
+  set_source_files_properties(parallel/execution_native_orders.cu PROPERTIES LANGUAGE CXX)
+  blt_add_executable(
+    NAME tribol_execution_native_orders_hip_test
+    SOURCES parallel/execution_native_orders.cu
+    OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
+    DEPENDS_ON tribol::hip_execution ${tribol_device_depends}
+    FOLDER tribol/parallel)
+  target_compile_features(tribol_execution_native_orders_hip_test PRIVATE cxx_std_20)
+  target_compile_definitions(tribol_execution_native_orders_hip_test PRIVATE TRIBOL_TEST_USE_HIP)
+
+  blt_add_test(
+    NAME tribol_execution_native_orders_hip
+    COMMAND tribol_execution_native_orders_hip_test)
 endif()
 
 blt_add_executable(
