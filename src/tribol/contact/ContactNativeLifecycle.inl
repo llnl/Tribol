@@ -72,3 +72,17 @@ void rebuildGeometry( ParentTracePairView traces, ParentTraceFieldPairView field
     return native_rows_ ? native_rows_->view() : ConstraintRowBatchView{};
   }
 }
+
+[[nodiscard]] timestep::ExplicitStabilityContributionsView explicitStabilityContributions() const
+  requires( detail::is_native_explicit_method_v<MethodType> && !execution::DevicePolicy<Execution> )
+{
+  if ( !native_stability_current_ ) {
+    throw std::logic_error( "Explicit stability contributions require a current contact evaluation." );
+  }
+  return {
+      .mortar_stiffness_row_sums = resultField( native_mortar_row_sums_, true ),
+      .nonmortar_stiffness_row_sums = resultField( native_nonmortar_row_sums_, false ),
+      .mortar_rate_row_sums = resultField( native_mortar_rate_row_sums_, true ),
+      .nonmortar_rate_row_sums = resultField( native_nonmortar_rate_row_sums_, false ),
+  };
+}

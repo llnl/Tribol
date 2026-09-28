@@ -43,6 +43,13 @@ struct ExplicitStabilityWorkspaceView {
   FieldView<Real> nonmortar_row_sums{};
 };
 
+struct ExplicitStabilityContributionsView {
+  FieldView<const Real> mortar_stiffness_row_sums{};
+  FieldView<const Real> nonmortar_stiffness_row_sums{};
+  FieldView<const Real> mortar_rate_row_sums{};
+  FieldView<const Real> nonmortar_rate_row_sums{};
+};
+
 struct ExplicitStabilityResult {
   Real stiffness_frequency_squared_bound{};
   Real rate_frequency_bound{};
@@ -371,6 +378,7 @@ inline void normalize( FieldView<Real> mortar, FieldView<Real> nonmortar )
 static_assert( std::is_trivially_copyable_v<DiagonalInverseMassView> );
 static_assert( std::is_trivially_copyable_v<IntegratorStabilityLimits> );
 static_assert( std::is_trivially_copyable_v<ExplicitStabilityInput> );
+static_assert( std::is_trivially_copyable_v<ExplicitStabilityContributionsView> );
 static_assert( std::is_trivially_copyable_v<ExplicitStabilityWorkspaceView> );
 static_assert( std::is_trivially_copyable_v<ExplicitStabilityResult> );
 static_assert( std::is_trivially_copyable_v<SpectralWorkspaceView> );

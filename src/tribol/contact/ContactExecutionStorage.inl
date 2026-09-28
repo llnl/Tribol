@@ -7,6 +7,9 @@ mutable std::vector<Real> native_row_stiffness_;
 mutable std::vector<Real> native_row_rate_;
 mutable std::vector<Real> native_mortar_row_sums_;
 mutable std::vector<Real> native_nonmortar_row_sums_;
+mutable std::vector<Real> native_mortar_rate_row_sums_;
+mutable std::vector<Real> native_nonmortar_rate_row_sums_;
+mutable bool native_stability_current_{};
 mutable std::vector<Real> native_device_force_;
 using ExecutionWorkspace =
     std::conditional_t<execution::DevicePolicy<Execution>, execution::DeviceContactWorkspace<Execution>,

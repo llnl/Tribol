@@ -27,6 +27,10 @@ struct ContactState {
   ::mfem::Coefficient* material_modulus{};
 };
 
+template <SupportedMethod MethodType = DefaultMethod, SearchPolicy Search = search::CartesianProduct,
+          execution::Policy Execution = execution::Sequential>
+class MfemContactCollection;
+
 class JacobianBlocks {
  public:
   JacobianBlocks( int coordinate_size, int multiplier_size, std::unique_ptr<::mfem::HypreParMatrix> force_coordinates,
@@ -91,7 +95,13 @@ class MfemContact {
     resizeSurfaceWorkspace();
   }
 
-  void updateInteractions() { core_.updateInteractions(); }
+  void updateInteractions()
+  {
+    core_.updateInteractions();
+    if constexpr ( tribol::detail::is_native_explicit_method_v<MethodType> && !execution::DevicePolicy<Execution> ) {
+      resizeNativeStabilityWorkspace();
+    }
+  }
 
   void updateGeometry( const ::mfem::ParGridFunction& coordinates )
   {
@@ -100,6 +110,9 @@ class MfemContact {
     if constexpr ( tribol::detail::is_native_explicit_method_v<MethodType> ) {
       core_.updateGeometry( surfaces_.parentTraceView(), surfaces_.parentFields() );
       refreshInverseMass();
+      if constexpr ( !execution::DevicePolicy<Execution> ) {
+        resizeNativeStabilityWorkspace();
+      }
     } else {
       core_.updateGeometry( surfaces_.view() );
     }
@@ -116,6 +129,9 @@ class MfemContact {
       core_.rebuildGeometry( surfaces_.view() );
     }
     resizeSurfaceWorkspace();
+    if constexpr ( tribol::detail::is_native_explicit_method_v<MethodType> && !execution::DevicePolicy<Execution> ) {
+      resizeNativeStabilityWorkspace();
+    }
   }
 
 #include "tribol/adapters/mfem/MfemContactRegistration.inl"
@@ -158,13 +174,13 @@ class MfemContact {
     addScalarDualTranspose( surfaces_.mortar(), multiplier_space,
                             { constraint_residual_.data(), static_cast<Index>( constraint_residual_.size() ) },
                             multiplier_true_residual );
-    return globalSummary( summary );
+    return finalizedSummary( summary );
   }
 
   [[nodiscard]] ContactResultView evaluate( const ContactState& state = {} )
   {
     auto result = core_.evaluate( restrictState( state ), inverseMass(), integrator_ );
-    result.summary = globalSummary( result.summary );
+    result.summary = finalizedSummary( result.summary );
     return result;
   }
 
@@ -207,7 +223,7 @@ class MfemContact {
     addDualTranspose( { mortar_residual_.data(), static_cast<Index>( mortar_residual_.size() ) },
                       { nonmortar_residual_.data(), static_cast<Index>( nonmortar_residual_.size() ) },
                       parent_true_residual );
-    return globalSummary( summary );
+    return finalizedSummary( summary );
   }
 
   void addCoordinateJacobianMult( const ContactStateView& state, const ::mfem::Vector& parent_true_direction,
@@ -406,7 +422,10 @@ class MfemContact {
 
   [[nodiscard]] const CoreContact& core() const { return core_; }
 
+  friend class MfemContactCollection<MethodType, Search, Execution>;
+
 #include "tribol/adapters/mfem/MfemContactMapping.inl"
+#include "tribol/adapters/mfem/MfemContactStability.inl"
 
   const ::mfem::ParMesh& mesh_;
   ::mfem::ParFiniteElementSpace& coordinate_space_;
@@ -444,10 +463,13 @@ class MfemContact {
   ::mfem::Vector registered_true_inverse_mass_;
   std::vector<Real> mortar_inverse_mass_;
   std::vector<Real> nonmortar_inverse_mass_;
+  ::mfem::Vector true_stiffness_row_sums_;
+  ::mfem::Vector true_rate_row_sums_;
   MassVersion inverse_mass_version_{};
   IntegratorVersion integrator_version_{};
   timestep::IntegratorStabilityLimits integrator_{};
   bool has_registered_inverse_mass_{};
+  bool native_stability_current_{};
 };
 
 template <SupportedMethod MethodType = DefaultMethod, SearchPolicy Search = search::CartesianProduct,

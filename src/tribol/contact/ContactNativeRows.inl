@@ -85,6 +85,9 @@ void prepareNativeRows()
   std::fill( native_rate_coefficient_.begin(), native_rate_coefficient_.end(), rate_coefficient );
   native_mortar_row_sums_.resize( result_mortar_force_.size() );
   native_nonmortar_row_sums_.resize( result_nonmortar_force_.size() );
+  native_mortar_rate_row_sums_.resize( result_mortar_force_.size() );
+  native_nonmortar_rate_row_sums_.resize( result_nonmortar_force_.size() );
+  native_stability_current_ = false;
   native_device_force_.resize( result_mortar_force_.size() + result_nonmortar_force_.size() );
 }
 
@@ -190,12 +193,19 @@ void prepareNativeRows()
                                      .row_force = { native_row_force_.data(), rows.numberOfRows() },
                                      .row_stiffness = { native_row_stiffness_.data(), rows.numberOfRows() },
                                      .row_rate_coefficient = { native_row_rate_.data(), rows.numberOfRows() } } );
+  std::fill( native_mortar_row_sums_.begin(), native_mortar_row_sums_.end(), 0.0 );
+  std::fill( native_nonmortar_row_sums_.begin(), native_nonmortar_row_sums_.end(), 0.0 );
+  std::fill( native_mortar_rate_row_sums_.begin(), native_mortar_rate_row_sums_.end(), 0.0 );
+  std::fill( native_nonmortar_rate_row_sums_.begin(), native_nonmortar_rate_row_sums_.end(), 0.0 );
+  native_stability_current_ = false;
   Real stability_vote = std::numeric_limits<Real>::infinity();
   if ( row_summary.active_stiffness_rows > 0 || row_summary.active_rate_rows > 0 ) {
     const auto stability = timestep::explicitPenaltyStabilityVote(
         rows,
         { .row_stiffness = { native_row_stiffness_.data(), rows.numberOfRows() },
-          .row_rate_coefficient = { native_row_rate_.data(), rows.numberOfRows() },
+          .row_rate_coefficient = native_rate_coefficient_.empty()
+                                      ? ArrayView<const Real>{}
+                                      : ArrayView<const Real>{ native_row_rate_.data(), rows.numberOfRows() },
           .inverse_mass = inverse_mass,
           .integrator = integrator,
           .geometry_version = geometry_version_,
@@ -211,7 +221,30 @@ void prepareNativeRows()
               surfaces_.nonmortar.dimension,
               FieldLayout::Interleaved } } );
     stability_vote = stability.timestep_vote;
+    if ( !native_rate_coefficient_.empty() ) {
+      std::copy( native_mortar_row_sums_.begin(), native_mortar_row_sums_.end(), native_mortar_rate_row_sums_.begin() );
+      std::copy( native_nonmortar_row_sums_.begin(), native_nonmortar_row_sums_.end(),
+                 native_nonmortar_rate_row_sums_.begin() );
+      if ( row_summary.active_stiffness_rows > 0 ) {
+        static_cast<void>( timestep::explicit_stability_detail::rowSumBound(
+            rows, { native_row_stiffness_.data(), rows.numberOfRows() }, inverse_mass,
+            { .mortar_row_sums = { { native_mortar_row_sums_.data(),
+                                     static_cast<Index>( native_mortar_row_sums_.size() ) },
+                                   resultEntities( true ),
+                                   surfaces_.mortar.dimension,
+                                   FieldLayout::Interleaved },
+              .nonmortar_row_sums = {
+                  { native_nonmortar_row_sums_.data(), static_cast<Index>( native_nonmortar_row_sums_.size() ) },
+                  resultEntities( false ),
+                  surfaces_.nonmortar.dimension,
+                  FieldLayout::Interleaved } } ) );
+      } else {
+        std::fill( native_mortar_row_sums_.begin(), native_mortar_row_sums_.end(), 0.0 );
+        std::fill( native_nonmortar_row_sums_.begin(), native_nonmortar_row_sums_.end(), 0.0 );
+      }
+    }
   }
+  native_stability_current_ = true;
   return { .energy = row_summary.energy,
            .timestep_vote = stability_vote,
            .active_interactions = row_summary.active_rows,

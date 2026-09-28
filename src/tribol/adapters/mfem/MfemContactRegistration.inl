@@ -12,6 +12,7 @@ void registerInverseMass( const ::mfem::Vector& parent_true_inverse_mass )
   registered_true_inverse_mass_.SetSize( parent_true_inverse_mass.Size() );
   registered_true_inverse_mass_ = parent_true_inverse_mass;
   has_registered_inverse_mass_ = true;
+  native_stability_current_ = false;
   inverse_mass_version_.advance();
   refreshInverseMass();
 }

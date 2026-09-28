@@ -1,9 +1,11 @@
 set(_tribol_mfem_adapter_headers
     MfemContact.hpp
     MfemContactAssembly.inl
+    MfemContactCollection.hpp
     MfemContactMapping.inl
     MfemContactParentFields.inl
     MfemContactRegistration.inl
+    MfemContactStability.inl
     MfemDistribution.hpp
     MfemParentFieldCommunication.inl
     MfemParentTrace.hpp
