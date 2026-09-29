@@ -19,7 +19,9 @@ git diff --check
 requirement evidence, documentation links, and device-backend isolation. Shared device files may use RAJA but may not
 contain CUDA/HIP runtime APIs, CUB/hipCUB calls, launch syntax, or runtime headers. `spec` compiles generated assertions
 for every advertised method variant and execution policy. `format` checks rewrite sources, benchmark adapters, and
-tests. `headers` compiles each dependency-free public header in isolation.
+tests. `headers` compiles each dependency-free public header in isolation. The custom source-inventory check requires
+every production C++ file under `src/tribol` to belong to those quality gates, so a new architectural directory cannot
+silently bypass formatting, dependency, size, or header checks.
 
 ## Strict Static Tools
 

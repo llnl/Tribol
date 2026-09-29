@@ -10,6 +10,7 @@ sys.path.insert(0, str(SCRIPT_DIRECTORY))
 
 from checks import (
     SHARED_DEVICE_FILES,
+    check_architecture_inventory,
     check_benchmark_contract,
     check_dependency_boundaries,
     check_device_backend_isolation,
@@ -25,6 +26,19 @@ from checks import (
 
 
 class QualityChecksTest(unittest.TestCase):
+    def test_uninventoried_production_source_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            included = root / "src/tribol/core/Included.hpp"
+            included.parent.mkdir(parents=True)
+            included.touch()
+            omitted = root / "src/tribol/new_layer/Omitted.hpp"
+            omitted.parent.mkdir(parents=True)
+            omitted.touch()
+            findings = check_architecture_inventory(root)
+            self.assertEqual(len(findings), 1)
+            self.assertIn("src/tribol/new_layer/Omitted.hpp", str(findings[0]))
+
     def test_dependency_and_named_method_violations_are_reported(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

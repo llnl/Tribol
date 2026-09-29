@@ -12,13 +12,16 @@ NEW_ARCHITECTURE_DIRECTORIES = (
     Path("src/tribol/core"),
     Path("src/tribol/method"),
     Path("src/tribol/contact"),
+    Path("src/tribol/diagnostics"),
+    Path("src/tribol/enforcement"),
     Path("src/tribol/evaluation"),
     Path("src/tribol/basis"),
     Path("src/tribol/constraint"),
     Path("src/tribol/integration"),
-    Path("src/tribol/geom/ProjectedOverlap.hpp"),
-    Path("src/tribol/geom/ConformingOverlap.hpp"),
-    Path("src/tribol/search/Search.hpp"),
+    Path("src/tribol/geom"),
+    Path("src/tribol/operators"),
+    Path("src/tribol/search"),
+    Path("src/tribol/timestep"),
     Path("src/tribol/execution"),
     Path("src/tribol/assembly"),
     Path("src/tribol/adapters"),
@@ -97,6 +100,15 @@ def files_in_entries(root: Path, entries: tuple[Path, ...]) -> list[Path]:
 
 def architecture_files(root: Path) -> list[Path]:
     return files_in_entries(root, NEW_ARCHITECTURE_DIRECTORIES)
+
+
+def check_architecture_inventory(root: Path) -> list[Finding]:
+    source_files = set(files_in_entries(root, (Path("src/tribol"),)))
+    inventoried_files = set(architecture_files(root))
+    return [
+        Finding(path.relative_to(root), 0, "production source is missing from the quality-check inventory")
+        for path in sorted(source_files - inventoried_files)
+    ]
 
 
 def check_dependency_boundaries(root: Path) -> list[Finding]:
@@ -342,6 +354,7 @@ def check_markdown_links(root: Path) -> list[Finding]:
 
 def run_custom_checks(root: Path) -> list[Finding]:
     checks = (
+        check_architecture_inventory,
         check_dependency_boundaries,
         check_device_backend_isolation,
         check_named_method_classes,
