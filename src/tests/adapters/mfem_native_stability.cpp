@@ -63,6 +63,8 @@ int exerciseSharedTrueDofStability( int rank )
   NativeContact right( mesh, *coordinates, { { 12 }, { 22 } }, options );
   tribol::mfem::MfemContactCollection collection( left );
   collection.add( right );
+  tribol::mfem::MfemContactCollection reversed_collection( right );
+  reversed_collection.add( left );
 
   ::mfem::Vector inverse_mass( coordinates->ParFESpace()->GetTrueVSize() );
   inverse_mass = 2.0;
@@ -74,12 +76,21 @@ int exerciseSharedTrueDofStability( int rank )
   ::mfem::Vector left_residual( inverse_mass.Size() );
   ::mfem::Vector right_residual( inverse_mass.Size() );
   ::mfem::Vector combined_residual( inverse_mass.Size() );
+  ::mfem::Vector reversed_residual( inverse_mass.Size() );
   left_residual = 0.0;
   right_residual = 0.0;
   combined_residual = 0.0;
+  reversed_residual = 0.0;
   const auto left_summary = left.addResidual( left_residual );
   const auto right_summary = right.addResidual( right_residual );
   const auto combined_summary = collection.addResidual( combined_residual );
+  const auto reversed_summary = reversed_collection.addResidual( reversed_residual );
+
+  reversed_residual -= combined_residual;
+  double local_order_error = reversed_residual * reversed_residual;
+  double order_error{};
+  MPI_Allreduce( &local_order_error, &order_error, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
+  order_error = std::sqrt( order_error );
 
   combined_residual -= left_residual;
   combined_residual -= right_residual;
@@ -90,8 +101,9 @@ int exerciseSharedTrueDofStability( int rank )
 
   const double expected_vote = left_summary.timestep_vote / std::sqrt( 2.0 );
   const auto evaluated_summary = collection.evaluate();
+  const auto reversed_evaluated_summary = reversed_collection.evaluate();
   bool valid =
-      collection.size() == 2 && registered_generations.mass.value() == 1 &&
+      collection.size() == 2 && reversed_collection.size() == 2 && registered_generations.mass.value() == 1 &&
       registered_generations.integrator.value() == 1 && left_summary.active_interactions > 0 &&
       right_summary.active_interactions == left_summary.active_interactions &&
       close( right_summary.timestep_vote, left_summary.timestep_vote ) &&
@@ -100,7 +112,14 @@ int exerciseSharedTrueDofStability( int rank )
       close( combined_summary.energy, left_summary.energy + right_summary.energy ) &&
       combined_summary.active_interactions == left_summary.active_interactions + right_summary.active_interactions &&
       combined_summary.quadrature_points == left_summary.quadrature_points + right_summary.quadrature_points &&
-      close( evaluated_summary.timestep_vote, combined_summary.timestep_vote ) && residual_error < 1.0e-12;
+      close( reversed_summary.energy, combined_summary.energy ) &&
+      close( reversed_summary.timestep_vote, combined_summary.timestep_vote ) &&
+      reversed_summary.active_interactions == combined_summary.active_interactions &&
+      reversed_summary.quadrature_points == combined_summary.quadrature_points &&
+      close( evaluated_summary.timestep_vote, combined_summary.timestep_vote ) &&
+      close( reversed_evaluated_summary.energy, evaluated_summary.energy ) &&
+      close( reversed_evaluated_summary.timestep_vote, evaluated_summary.timestep_vote ) && order_error < 1.0e-12 &&
+      residual_error < 1.0e-12;
 
   ::mfem::Array<int> essential_true_dofs( inverse_mass.Size() );
   for ( int true_dof = 0; true_dof < essential_true_dofs.Size(); ++true_dof ) {
@@ -120,7 +139,7 @@ int exerciseSharedTrueDofStability( int rank )
     std::cerr << "MFEM global native stability mismatch: left_dt=" << left_summary.timestep_vote
               << " right_dt=" << right_summary.timestep_vote << " combined_dt=" << combined_summary.timestep_vote
               << " expected_dt=" << expected_vote << " energy=" << combined_summary.energy
-              << " residual_error=" << residual_error << '\n';
+              << " order_error=" << order_error << " residual_error=" << residual_error << '\n';
   }
   return valid ? 0 : 1;
 }
