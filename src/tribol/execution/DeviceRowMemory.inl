@@ -240,9 +240,9 @@ struct DeviceParentTraceStorage {
         .parent_basis_offsets = constDeviceView( parent_basis_offsets ),
         .parent_basis_coefficients = constDeviceView( parent_basis_coefficients ),
         .subfacet_parent_faces = constDeviceView( subfacet_parent_faces ),
-        .subfacet_parent_reference_coordinates = {
-            constDeviceView( subfacet_parent_reference_coordinates ), surface.connectivity.size(),
-            surface.dimension - 1, FieldLayout::Interleaved },
+        .subfacet_parent_reference_coordinates = { constDeviceView( subfacet_parent_reference_coordinates ),
+                                                   surface.connectivity.size(), surface.dimension - 1,
+                                                   FieldLayout::Interleaved },
     };
   }
 };
