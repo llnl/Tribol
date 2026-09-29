@@ -41,7 +41,7 @@ TRIBOL_ENZYME_INLINE double ContactSmoothing::normal_alignment_factor( double no
 
   const double angle = std::acos( alignment );
   const double ramp_angle = energy_mortar::perpendicular_normal_angle * ( angle - start_angle ) /
-      ( energy_mortar::perpendicular_normal_angle - start_angle );
+                            ( energy_mortar::perpendicular_normal_angle - start_angle );
   return -std::cos( ramp_angle );
 }
 
@@ -50,11 +50,11 @@ namespace {
 // This MUST match what the ContactParams struct has in EnergyMortarAdapter
 // These had to be saved locally in order for enzyme to work correctly
 struct KernelParams {
-  int N{ 3 };                               // No. of quadrature points
-  double del{ 0.1 };                        // Integration-bound smoothing parameter
+  int N{ 3 };         // No. of quadrature points
+  double del{ 0.1 };  // Integration-bound smoothing parameter
   double normal_smoothing_start_angle{ energy_mortar::default_normal_smoothing_start_angle };
-  double k{ 1.0 };                             // Penalty stiffness
-  double residual_gap{ 0.0 };                  // User-defined gap offset
+  double k{ 1.0 };             // Penalty stiffness
+  double residual_gap{ 0.0 };  // User-defined gap offset
 };
 
 TRIBOL_ENZYME_INLINE double effective_gap( double gap_normal, double normal_cosine, double residual_gap )

@@ -394,16 +394,14 @@ TEST( NormalAngleSmoothingCheck, ShiftedCosineStartsAtConfiguredAngle )
 
 TEST( NormalAngleSmoothingCheck, NinetyDegreesDisablesAttenuation )
 {
-  EXPECT_DOUBLE_EQ(
-      ContactSmoothing::normal_alignment_factor( -1.0, energy_mortar::perpendicular_normal_angle ), -1.0 );
-  EXPECT_DOUBLE_EQ(
-      ContactSmoothing::normal_alignment_factor( -0.5, energy_mortar::perpendicular_normal_angle ), -1.0 );
-  EXPECT_DOUBLE_EQ(
-      ContactSmoothing::normal_alignment_factor( -1.0e-12, energy_mortar::perpendicular_normal_angle ), -1.0 );
-  EXPECT_DOUBLE_EQ(
-      ContactSmoothing::normal_alignment_factor( 0.0, energy_mortar::perpendicular_normal_angle ), 0.0 );
-  EXPECT_DOUBLE_EQ(
-      ContactSmoothing::normal_alignment_factor( 0.5, energy_mortar::perpendicular_normal_angle ), 0.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -1.0, energy_mortar::perpendicular_normal_angle ),
+                    -1.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -0.5, energy_mortar::perpendicular_normal_angle ),
+                    -1.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -1.0e-12, energy_mortar::perpendicular_normal_angle ),
+                    -1.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.0, energy_mortar::perpendicular_normal_angle ), 0.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.5, energy_mortar::perpendicular_normal_angle ), 0.0 );
 }
 
 TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
@@ -551,8 +549,7 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapShiftRespectsNormalSmoothing )
   for ( int i = 0; i < 2; ++i ) {
     EXPECT_NEAR( tributary_area_with_residual[i], tributary_area_without_residual[i], 1.0e-14 );
     EXPECT_NEAR( gap_with_residual[i],
-                 gap_without_residual[i] +
-                     normal_alignment * params.residual_gap * tributary_area_without_residual[i],
+                 gap_without_residual[i] + normal_alignment * params.residual_gap * tributary_area_without_residual[i],
                  1.0e-14 );
   }
 }

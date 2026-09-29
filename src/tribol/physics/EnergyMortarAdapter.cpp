@@ -15,7 +15,8 @@ template <template <typename> class EnforcementLocation>
 EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
                                                                MfemJacobianData& jac_data, double k, double delta,
                                                                double normal_smoothing_start_angle, int N,
-                                                               bool enzyme_quadrature, bool use_penalty, RealT residual_gap )
+                                                               bool enzyme_quadrature, bool use_penalty,
+                                                               RealT residual_gap )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
     : use_penalty_( use_penalty ), mesh_data_( mesh_data ), submesh_data_( submesh_data ), jac_data_( jac_data )
