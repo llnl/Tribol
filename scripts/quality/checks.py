@@ -128,7 +128,7 @@ def check_dependency_boundaries(root: Path) -> list[Finding]:
 def check_device_backend_isolation(root: Path) -> list[Finding]:
     forbidden = re.compile(
         r"(?:#\s*include\s*[<\"](?:cuda|hip)|"
-        r"\b(?:cuda|hip)(?!(?:DeviceAvailable)\b)(?:Malloc|Free|Memcpy|Memset|Device|Stream|Get)|"
+        r"\b(?:cuda|hip)(?!(?:DeviceAvailable)\b)[A-Z][A-Za-z0-9_]*|"
         r"\b(?:cub|hipcub)::|__global__|<<<|>>>)"
     )
     findings: list[Finding] = []
