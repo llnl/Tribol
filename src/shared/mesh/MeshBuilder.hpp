@@ -43,12 +43,36 @@ class MeshBuilder {
   static MeshBuilder Unify( Args&&... meshes );
 
   /**
+   * @brief Creates a connected mesh from a list of MeshBuilder objects by merging coincident vertices.
+   * @note The input meshes must be linear, conforming meshes with the same dimensions. Coincident vertices are merged
+   * when their coordinates differ by no more than @p tolerance, and boundary elements on stitched interfaces are
+   * removed. Element and exterior boundary attributes are preserved.
+   * @param meshes A list of MeshBuilder objects from which the mesh will be created.
+   * @param tolerance Absolute coordinate tolerance used to identify coincident vertices.
+   * @return A new MeshBuilder object representing the stitched mesh.
+   */
+  static MeshBuilder Stitch( std::initializer_list<MeshBuilder> meshes, double tolerance = 1.0e-12 );
+
+  /**
    * @brief Creates a square mesh occupying the unit square, [0, 1]^2.
    * @param n_x_els Number of elements in the x direction (>0).
    * @param n_y_els Number of elements in the y direction (>0).
    * @return A new MeshBuilder object representing the square mesh.
    */
   static MeshBuilder SquareMesh( int n_x_els, int n_y_els );
+
+  /**
+   * @brief Creates a C-shaped quadrilateral mesh occupying the unit square.
+   * @details The mesh is assembled by stitching together left, top, and bottom rectangular meshes. Boundary attribute 1
+   * is the outside left edge, attributes 2, 3, and 4 are the top, left, and bottom inner edges, respectively, and
+   * attributes 5, 6, and 7 contain the right, outer top, and outer bottom edges, respectively. The three rectangles
+   * have element attributes 1, 2, and 3.
+   * @param n_x_els Number of elements across the outer width (> @p arm_thickness_els).
+   * @param n_y_els Number of elements across the outer height (> 2 * @p arm_thickness_els).
+   * @param arm_thickness_els Number of elements across each arm (>0).
+   * @return A new MeshBuilder object representing the C-shaped mesh.
+   */
+  static MeshBuilder CShapeMesh( int n_x_els, int n_y_els, int arm_thickness_els );
 
   /**
    * @brief Creates a 2D cylinder mesh.

@@ -9,6 +9,7 @@
 # Add single source tests
 #------------------------------------------------------------------------------
 set( tribol_tests
+     shared_mesh_builder.cpp
      tribol_check_tpl.cpp
      tribol_common_plane_penalty.cpp
      tribol_common_plane_gap_rate.cpp
