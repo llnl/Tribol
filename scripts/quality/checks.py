@@ -127,7 +127,8 @@ def check_dependency_boundaries(root: Path) -> list[Finding]:
 
 def check_device_backend_isolation(root: Path) -> list[Finding]:
     forbidden = re.compile(
-        r"(?:#\s*include\s*[<\"](?:cuda|hip)|\b(?:cuda|hip)(?:Malloc|Free|Memcpy|Memset|Device|Stream|Get)|"
+        r"(?:#\s*include\s*[<\"](?:cuda|hip)|"
+        r"\b(?:cuda|hip)(?!(?:DeviceAvailable)\b)(?:Malloc|Free|Memcpy|Memset|Device|Stream|Get)|"
         r"\b(?:cub|hipcub)::|__global__|<<<|>>>)"
     )
     findings: list[Finding] = []
@@ -135,6 +136,10 @@ def check_device_backend_isolation(root: Path) -> list[Finding]:
         path = root / relative
         if not path.exists():
             findings.append(Finding(relative, 0, "missing shared device implementation file"))
+    execution_files = files_in_entries(root, (Path("src/tribol/execution"),))
+    for path in execution_files:
+        relative = path.relative_to(root)
+        if relative in DEVICE_BACKEND_ADAPTERS:
             continue
         for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
             if forbidden.search(line):

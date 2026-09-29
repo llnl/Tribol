@@ -65,6 +65,21 @@ class QualityChecksTest(unittest.TestCase):
             shared.write_text("cudaMemcpy(destination, source, bytes);\n", encoding="utf-8")
             self.assertEqual(len(check_device_backend_isolation(root)), len(SHARED_DEVICE_FILES))
 
+    def test_new_execution_sources_are_checked_for_backend_tokens(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in SHARED_DEVICE_FILES:
+                path = root / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()
+            shared = root / "src/tribol/execution/NewSharedKernel.hpp"
+            shared.write_text("cudaMemcpy(destination, source, bytes);\n", encoding="utf-8")
+            backend = root / "src/tribol/execution/DeviceBackendCuda.hpp"
+            backend.write_text("cudaMemcpy(destination, source, bytes);\n", encoding="utf-8")
+            findings = check_device_backend_isolation(root)
+            self.assertEqual(len(findings), 1)
+            self.assertIn("NewSharedKernel.hpp", str(findings[0]))
+
     def test_missing_requirement_annotation_is_reported(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

@@ -16,8 +16,8 @@ git diff --check
 ```
 
 `custom` checks dependency direction, forbidden named-method declarations, file-size limits, install/export manifests,
-requirement evidence, documentation links, and device-backend isolation. Shared device files may use RAJA but may not
-contain CUDA/HIP runtime APIs, CUB/hipCUB calls, launch syntax, or runtime headers. `spec` compiles generated assertions
+requirement evidence, documentation links, and device-backend isolation. Every execution source outside the explicit
+CUDA/HIP adapter set may use RAJA but may not contain CUDA/HIP runtime APIs, CUB/hipCUB calls, launch syntax, or runtime headers. `spec` compiles generated assertions
 for every advertised method variant and execution policy. `format` checks rewrite sources, benchmark adapters, and
 tests. `headers` compiles each dependency-free public header in isolation. The custom source-inventory check requires
 every production C++ file under `src/tribol` to belong to those quality gates, so a new architectural directory cannot
