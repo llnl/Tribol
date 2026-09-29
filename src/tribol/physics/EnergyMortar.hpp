@@ -23,8 +23,8 @@ struct ContactParams {
   double del;  ///< Smoothing length used for integration bounds.
   double normal_smoothing_start_angle{
       energy_mortar::default_normal_smoothing_start_angle };  ///< Normal smoothing start angle in radians.
-  double k;                    ///< Penalty stiffness.
-  int N;                       ///< Number of quadrature points.
+  double k;                                                   ///< Penalty stiffness.
+  int N;                                                      ///< Number of quadrature points.
   bool enzyme_quadrature;      ///< Whether Enzyme differentiates the quadrature construction.
   double residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
 };
@@ -87,7 +87,7 @@ struct Gparams {
   std::array<double, 3> w;   ///< Quadrature weights mapped to the local integration interval.
   double normal_smoothing_start_angle{
       energy_mortar::default_normal_smoothing_start_angle };  ///< Normal smoothing start angle in radians.
-  double residual_gap{ 0.0 };                                ///< User-defined gap offset.
+  double residual_gap{ 0.0 };                                 ///< User-defined gap offset.
 };
 
 /// Provides smoothing operations for the Energy Mortar contact formulation.
