@@ -9,7 +9,7 @@
 #include <cstdint>
 #include <iostream>
 
-// Requirements: API-006, OUTPUT-001, OUTPUT-003, PAR-002, PAR-005
+// Requirements: API-006, OUTPUT-001, OUTPUT-003, PAR-002, PAR-005, PAR-007
 
 namespace {
 
@@ -133,6 +133,8 @@ int exerciseDiagnostics( int rank )
   NativeContact right( mesh, *coordinates, { { 12 }, { 22 } }, options() );
   tribol::mfem::MfemContactCollection collection( left );
   collection.add( right );
+  tribol::mfem::MfemContactCollection reversed_collection( right );
+  reversed_collection.add( left );
 
   ::mfem::Vector inverse_mass( coordinates->ParFESpace()->GetTrueVSize() );
   inverse_mass = 2.0;
@@ -151,6 +153,7 @@ int exerciseDiagnostics( int rank )
   const auto left_diagnostics = left.productionDiagnostics( state, time_step, sampling );
   const auto right_diagnostics = right.productionDiagnostics( state, time_step, sampling );
   const auto combined_diagnostics = collection.productionDiagnostics( state, time_step, sampling );
+  const auto reversed_diagnostics = reversed_collection.productionDiagnostics( state, time_step, sampling );
 
   std::int64_t local_owned_counts[]{ static_cast<std::int64_t>( left_diagnostics.rank.owned.rows.rows ),
                                      static_cast<std::int64_t>( left_diagnostics.rank.owned.quadrature.samples ) };
@@ -176,6 +179,9 @@ int exerciseDiagnostics( int rank )
                summariesMatch( combined_diagnostics.rank.local, expected_local ) &&
                summariesMatch( combined_diagnostics.rank.owned, expected_owned ) &&
                summariesMatch( combined_diagnostics.global, expected_global ) &&
+               summariesMatch( reversed_diagnostics.rank.local, combined_diagnostics.rank.local ) &&
+               summariesMatch( reversed_diagnostics.rank.owned, combined_diagnostics.rank.owned ) &&
+               summariesMatch( reversed_diagnostics.global, combined_diagnostics.global ) &&
                left_diagnostics.attempts.accepted_attempts == 1 &&
                left_diagnostics.attempts.last_accepted.status == tribol::AttemptStatus::Accepted &&
                combined_diagnostics.attempts.accepted_attempts == 0 &&
