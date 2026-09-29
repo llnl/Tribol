@@ -2,6 +2,8 @@
 
 #include "axom/slic.hpp"
 #include "tribol/common/Enzyme.hpp"
+#include "tribol/geom/GeomUtilities.hpp"
+#include "tribol/integ/FE.hpp"
 
 #include <algorithm>
 #include <array>
@@ -23,6 +25,18 @@ struct KernelParams {
   double del{ 0.1 };           // Smoothing parameter
   double k{ 1.0 };             // Penalty stiffness
   double residual_gap{ 0.0 };  // User-defined gap offset
+};
+
+struct KernelParams3D {
+  int num_source_nodes{ 0 };
+  int num_source_faces{ 0 };
+  int source_corner{ 0 };
+  std::array<int, EnergyMortar3DInput::nodes_per_face> source_face_nodes{};
+  std::array<int, EnergyMortar3DInput::max_source_faces * EnergyMortar3DInput::nodes_per_face>
+      source_star_connectivity{};
+  double penalty{ 0.0 };
+  double residual_gap{ 0.0 };
+  double length_tol_ratio{ 1.0e-8 };
 };
 
 TRIBOL_ENZYME_INLINE double effective_gap( double gap_normal, double normal_cosine, double residual_gap )
@@ -598,6 +612,300 @@ void d2_qp_penalty_kernel( const double* x, const KernelParams* kp, double* H )
   }
 }
 
+TRIBOL_ENZYME_INLINE void cross_3d( const double* a, const double* b, double* result )
+{
+  result[0] = a[1] * b[2] - a[2] * b[1];
+  result[1] = a[2] * b[0] - a[0] * b[2];
+  result[2] = a[0] * b[1] - a[1] * b[0];
+}
+
+TRIBOL_ENZYME_INLINE double normalize_3d( double* vector )
+{
+  const double magnitude = std::sqrt( vector[0] * vector[0] + vector[1] * vector[1] + vector[2] * vector[2] );
+  if ( magnitude > 1.0e-14 ) {
+    for ( int component = 0; component < 3; ++component ) {
+      vector[component] /= magnitude;
+    }
+  }
+  return magnitude;
+}
+
+TRIBOL_ENZYME_INLINE double quad_unit_normal_3d( const double* coordinates, const int* nodes, double* normal )
+{
+  double tangent_xi[3];
+  double tangent_eta[3];
+  for ( int component = 0; component < 3; ++component ) {
+    tangent_xi[component] = 0.25 * ( -coordinates[3 * nodes[0] + component] + coordinates[3 * nodes[1] + component] +
+                                     coordinates[3 * nodes[2] + component] - coordinates[3 * nodes[3] + component] );
+    tangent_eta[component] = 0.25 * ( -coordinates[3 * nodes[0] + component] - coordinates[3 * nodes[1] + component] +
+                                      coordinates[3 * nodes[2] + component] + coordinates[3 * nodes[3] + component] );
+  }
+  cross_3d( tangent_xi, tangent_eta, normal );
+  return normalize_3d( normal );
+}
+
+TRIBOL_ENZYME_INLINE bool nodal_normal_3d( const double* coordinates, const KernelParams3D* params, double* normal )
+{
+  normal[0] = 0.0;
+  normal[1] = 0.0;
+  normal[2] = 0.0;
+  const int center_node = params->source_face_nodes[params->source_corner];
+
+  for ( int face = 0; face < params->num_source_faces; ++face ) {
+    int center_corner = -1;
+    for ( int corner = 0; corner < EnergyMortar3DInput::nodes_per_face; ++corner ) {
+      if ( params->source_star_connectivity[face * EnergyMortar3DInput::nodes_per_face + corner] == center_node ) {
+        center_corner = corner;
+      }
+    }
+    if ( center_corner < 0 ) {
+      continue;
+    }
+
+    const int previous_corner =
+        ( center_corner + EnergyMortar3DInput::nodes_per_face - 1 ) % EnergyMortar3DInput::nodes_per_face;
+    const int next_corner = ( center_corner + 1 ) % EnergyMortar3DInput::nodes_per_face;
+    const int previous_node =
+        params->source_star_connectivity[face * EnergyMortar3DInput::nodes_per_face + previous_corner];
+    const int next_node = params->source_star_connectivity[face * EnergyMortar3DInput::nodes_per_face + next_corner];
+
+    double next_edge[3];
+    double previous_edge[3];
+    for ( int component = 0; component < 3; ++component ) {
+      next_edge[component] = coordinates[3 * next_node + component] - coordinates[3 * center_node + component];
+      previous_edge[component] = coordinates[3 * previous_node + component] - coordinates[3 * center_node + component];
+    }
+    double corner_area[3];
+    cross_3d( next_edge, previous_edge, corner_area );
+    for ( int component = 0; component < 3; ++component ) {
+      normal[component] += corner_area[component];
+    }
+  }
+
+  return normalize_3d( normal ) > 1.0e-14;
+}
+
+TRIBOL_ENZYME_INLINE double angular_weight_3d( const double* nodal_normal, const double* contact_normal )
+{
+  const double cosine =
+      nodal_normal[0] * contact_normal[0] + nodal_normal[1] * contact_normal[1] + nodal_normal[2] * contact_normal[2];
+  constexpr double cosine_80_degrees = 0.17364817766693033;
+  if ( cosine <= 0.0 ) {
+    return 0.0;
+  }
+  if ( cosine >= cosine_80_degrees ) {
+    return 1.0;
+  }
+  const double t = cosine / cosine_80_degrees;
+  return t * t * t * ( 10.0 + t * ( -15.0 + 6.0 * t ) );
+}
+
+TRIBOL_ENZYME_INLINE void quad_map_3d( const double* coordinates, const int* nodes, const double* xi, double* point )
+{
+  point[0] = 0.0;
+  point[1] = 0.0;
+  point[2] = 0.0;
+  for ( int corner = 0; corner < EnergyMortar3DInput::nodes_per_face; ++corner ) {
+    double shape = 0.0;
+    LinIsoQuadShapeFunc( xi[0], xi[1], corner, shape );
+    for ( int component = 0; component < 3; ++component ) {
+      point[component] += shape * coordinates[3 * nodes[corner] + component];
+    }
+  }
+}
+
+TRIBOL_ENZYME_INLINE void energy_mortar_3d_kernel( const double* coordinates, const KernelParams3D* params,
+                                                   double* energy, bool* has_overlap, bool* has_active_qp )
+{
+  *energy = 0.0;
+  *has_overlap = false;
+  *has_active_qp = false;
+
+  int target_nodes[EnergyMortar3DInput::target_nodes];
+  for ( int corner = 0; corner < EnergyMortar3DInput::target_nodes; ++corner ) {
+    target_nodes[corner] = params->num_source_nodes + corner;
+  }
+
+  double source_normal[3];
+  const double source_normal_magnitude =
+      quad_unit_normal_3d( coordinates, params->source_face_nodes.data(), source_normal );
+  double target_normal[3];
+  const double target_normal_magnitude = quad_unit_normal_3d( coordinates, target_nodes, target_normal );
+  if ( source_normal_magnitude <= 1.0e-14 || target_normal_magnitude <= 1.0e-14 ) {
+    return;
+  }
+
+  double contact_normal[3] = { source_normal[0] - target_normal[0], source_normal[1] - target_normal[1],
+                               source_normal[2] - target_normal[2] };
+  if ( normalize_3d( contact_normal ) <= 1.0e-14 ) {
+    return;
+  }
+
+  double nodal_normal[3];
+  if ( !nodal_normal_3d( coordinates, params, nodal_normal ) ) {
+    return;
+  }
+  const double angular_weight = angular_weight_3d( nodal_normal, contact_normal );
+  if ( angular_weight <= 0.0 ) {
+    return;
+  }
+
+  double plane_origin[3] = { 0.0, 0.0, 0.0 };
+  for ( int corner = 0; corner < EnergyMortar3DInput::nodes_per_face; ++corner ) {
+    for ( int component = 0; component < 3; ++component ) {
+      plane_origin[component] += 0.125 * ( coordinates[3 * params->source_face_nodes[corner] + component] +
+                                           coordinates[3 * target_nodes[corner] + component] );
+    }
+  }
+
+  double source_projected[12];
+  double target_projected[12];
+  for ( int corner = 0; corner < EnergyMortar3DInput::nodes_per_face; ++corner ) {
+    double source_distance = 0.0;
+    double target_distance = 0.0;
+    for ( int component = 0; component < 3; ++component ) {
+      source_distance += contact_normal[component] *
+                         ( coordinates[3 * params->source_face_nodes[corner] + component] - plane_origin[component] );
+      target_distance +=
+          contact_normal[component] * ( coordinates[3 * target_nodes[corner] + component] - plane_origin[component] );
+    }
+    for ( int component = 0; component < 3; ++component ) {
+      source_projected[component * EnergyMortar3DInput::nodes_per_face + corner] =
+          coordinates[3 * params->source_face_nodes[corner] + component] - contact_normal[component] * source_distance;
+      target_projected[component * EnergyMortar3DInput::nodes_per_face + corner] =
+          coordinates[3 * target_nodes[corner] + component] - contact_normal[component] * target_distance;
+    }
+  }
+
+  double basis_1[3];
+  for ( int component = 0; component < 3; ++component ) {
+    basis_1[component] = source_projected[component * EnergyMortar3DInput::nodes_per_face + 1] -
+                         source_projected[component * EnergyMortar3DInput::nodes_per_face];
+  }
+  if ( normalize_3d( basis_1 ) <= 1.0e-14 ) {
+    return;
+  }
+  double basis_2[3];
+  cross_3d( contact_normal, basis_1, basis_2 );
+
+  double source_x[EnergyMortar3DInput::nodes_per_face];
+  double source_y[EnergyMortar3DInput::nodes_per_face];
+  double target_x[EnergyMortar3DInput::nodes_per_face];
+  double target_y[EnergyMortar3DInput::nodes_per_face];
+  PlaneTo2DCoords( source_projected, plane_origin, basis_1, basis_2, source_x, source_y,
+                   EnergyMortar3DInput::nodes_per_face );
+  PlaneTo2DCoords( target_projected, plane_origin, basis_1, basis_2, target_x, target_y,
+                   EnergyMortar3DInput::nodes_per_face );
+  ElemReverse( target_x, target_y, EnergyMortar3DInput::nodes_per_face );
+
+  double overlap_x[8] = { 0.0 };
+  double overlap_y[8] = { 0.0 };
+  int num_overlap_vertices = 0;
+  const auto overlap_error = Intersection2DPolygonEnzyme(
+      source_x, source_y, EnergyMortar3DInput::nodes_per_face, target_x, target_y, EnergyMortar3DInput::nodes_per_face,
+      params->length_tol_ratio, overlap_x, overlap_y, &num_overlap_vertices );
+  if ( overlap_error != NO_FACE_GEOM_EXCEPTION || num_overlap_vertices < 3 ) {
+    return;
+  }
+  if ( Area2DPolygon( overlap_x, overlap_y, num_overlap_vertices ) <= 0.0 ) {
+    return;
+  }
+  *has_overlap = true;
+
+  constexpr double triangle_points[12] = { 0.091576213509771, 0.091576213509771, 0.816847572980459, 0.091576213509771,
+                                           0.091576213509771, 0.816847572980459, 0.108103018168070, 0.445948490915965,
+                                           0.445948490915965, 0.108103018168070, 0.445948490915965, 0.445948490915965 };
+  constexpr double triangle_weights[6] = { 0.109951743655322, 0.109951743655322, 0.109951743655322,
+                                           0.223381589678011, 0.223381589678011, 0.223381589678011 };
+
+  double polygon_centroid[2];
+  PolyCentroid( overlap_x, overlap_y, num_overlap_vertices, polygon_centroid[0], polygon_centroid[1] );
+  for ( int polygon_vertex = 0; polygon_vertex < num_overlap_vertices; ++polygon_vertex ) {
+    const int next_vertex = ( polygon_vertex + 1 ) % num_overlap_vertices;
+    const double side_1[2] = { overlap_x[next_vertex] - overlap_x[polygon_vertex],
+                               overlap_y[next_vertex] - overlap_y[polygon_vertex] };
+    const double side_2[2] = { polygon_centroid[0] - overlap_x[polygon_vertex],
+                               polygon_centroid[1] - overlap_y[polygon_vertex] };
+    const double triangle_area = 0.5 * ( side_1[0] * side_2[1] - side_1[1] * side_2[0] );
+    if ( triangle_area <= 0.0 ) {
+      continue;
+    }
+
+    for ( int quadrature_point = 0; quadrature_point < 6; ++quadrature_point ) {
+      double triangle_shape[3];
+      const double triangle_xi[2] = { triangle_points[2 * quadrature_point],
+                                      triangle_points[2 * quadrature_point + 1] };
+      LinIsoTriShapeFunc( triangle_xi, triangle_shape );
+      const double point_2d[2] = {
+          triangle_shape[0] * polygon_centroid[0] + triangle_shape[1] * overlap_x[polygon_vertex] +
+              triangle_shape[2] * overlap_x[next_vertex],
+          triangle_shape[0] * polygon_centroid[1] + triangle_shape[1] * overlap_y[polygon_vertex] +
+              triangle_shape[2] * overlap_y[next_vertex] };
+      double point_3d[3];
+      Coords2DToPlane( point_2d, point_2d + 1, plane_origin, basis_1, basis_2, point_3d, 1 );
+
+      double source_xi[2] = { 0.0, 0.0 };
+      InvIso( point_3d, source_projected, source_projected + EnergyMortar3DInput::nodes_per_face,
+              source_projected + 2 * EnergyMortar3DInput::nodes_per_face, EnergyMortar3DInput::nodes_per_face,
+              source_xi );
+      double target_xi[2] = { 0.0, 0.0 };
+      InvIso( point_3d, target_projected, target_projected + EnergyMortar3DInput::nodes_per_face,
+              target_projected + 2 * EnergyMortar3DInput::nodes_per_face, EnergyMortar3DInput::nodes_per_face,
+              target_xi );
+
+      double source_point[3];
+      quad_map_3d( coordinates, params->source_face_nodes.data(), source_xi, source_point );
+      double target_point[3];
+      quad_map_3d( coordinates, target_nodes, target_xi, target_point );
+      double gap = -params->residual_gap;
+      for ( int component = 0; component < 3; ++component ) {
+        gap += nodal_normal[component] * ( target_point[component] - source_point[component] );
+      }
+
+      if ( gap <= 0.0 ) {
+        *has_active_qp = true;
+        double source_shape = 0.0;
+        LinIsoQuadShapeFunc( source_xi[0], source_xi[1], params->source_corner, source_shape );
+        const double quadrature_weight = triangle_weights[quadrature_point] * triangle_area;
+        *energy += 0.5 * params->penalty * gap * gap * source_shape * angular_weight * quadrature_weight;
+      }
+    }
+  }
+}
+
+void grad_energy_mortar_3d_kernel( const double* coordinates, const KernelParams3D* params, double* gradient )
+{
+  double coordinate_adjoint[EnergyMortar3DInput::max_dofs] = { 0.0 };
+  double energy = 0.0;
+  double energy_adjoint = 1.0;
+  bool has_overlap = false;
+  bool has_active_qp = false;
+  __enzyme_autodiff<void>( (void*)energy_mortar_3d_kernel, enzyme_dup, coordinates, coordinate_adjoint, enzyme_const,
+                           (const void*)params, enzyme_dup, &energy, &energy_adjoint, enzyme_const, &has_overlap,
+                           enzyme_const, &has_active_qp );
+
+  const int num_dofs = 3 * ( params->num_source_nodes + EnergyMortar3DInput::target_nodes );
+  for ( int dof = 0; dof < num_dofs; ++dof ) {
+    gradient[dof] = coordinate_adjoint[dof];
+  }
+}
+
+void hessian_energy_mortar_3d_kernel( const double* coordinates, const KernelParams3D* params, double* hessian )
+{
+  const int num_dofs = 3 * ( params->num_source_nodes + EnergyMortar3DInput::target_nodes );
+  for ( int column = 0; column < num_dofs; ++column ) {
+    double coordinate_tangent[EnergyMortar3DInput::max_dofs] = { 0.0 };
+    coordinate_tangent[column] = 1.0;
+    double gradient[EnergyMortar3DInput::max_dofs] = { 0.0 };
+    double gradient_tangent[EnergyMortar3DInput::max_dofs] = { 0.0 };
+    __enzyme_fwddiff<void>( (void*)grad_energy_mortar_3d_kernel, enzyme_dup, coordinates, coordinate_tangent,
+                            enzyme_const, (const void*)params, enzyme_dup, gradient, gradient_tangent );
+    for ( int row = 0; row < num_dofs; ++row ) {
+      hessian[row * num_dofs + column] = gradient_tangent[row];
+    }
+  }
+}
+
 // Compute the Hessian of the selected fixed-quadrature scalar kernel.
 template <KernelOutput Output>
 void d2_kernel_quad( const double* x, const Gparams* gp, double* H )
@@ -1006,6 +1314,78 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
   qp_penalty_kernel( x, &kp, &result.energy, &result.has_active_qp );
   grad_qp_penalty_kernel( x, &kp, result.force.data() );
   d2_qp_penalty_kernel( x, &kp, result.stiffness.data() );
+  return result;
+}
+
+double EnergyMortarCalculator::compute_penalty_energy_3d( const EnergyMortar3DInput& input ) const
+{
+  SLIC_ERROR_ROOT_IF( input.num_source_nodes < EnergyMortar3DInput::nodes_per_face ||
+                          input.num_source_nodes > EnergyMortar3DInput::max_source_nodes,
+                      "3D ENERGY_MORTAR source one-ring node count is outside the supported range." );
+  SLIC_ERROR_ROOT_IF( input.num_source_faces < 1 || input.num_source_faces > EnergyMortar3DInput::max_source_faces,
+                      "3D ENERGY_MORTAR source one-ring face count is outside the supported range." );
+  SLIC_ERROR_ROOT_IF( input.source_corner < 0 || input.source_corner >= EnergyMortar3DInput::nodes_per_face,
+                      "3D ENERGY_MORTAR source corner is invalid." );
+
+  KernelParams3D params;
+  params.num_source_nodes = input.num_source_nodes;
+  params.num_source_faces = input.num_source_faces;
+  params.source_corner = input.source_corner;
+  params.source_face_nodes = input.source_face_nodes;
+  params.source_star_connectivity = input.source_star_connectivity;
+  params.penalty = p_.k;
+  params.residual_gap = p_.residual_gap;
+  params.length_tol_ratio = p_.length_tol_ratio;
+
+  double energy = 0.0;
+  bool has_overlap = false;
+  bool has_active_qp = false;
+  energy_mortar_3d_kernel( input.coordinates.data(), &params, &energy, &has_overlap, &has_active_qp );
+  return energy;
+}
+
+EnergyMortar3DData EnergyMortarCalculator::compute_penalty_data_3d( const EnergyMortar3DInput& input ) const
+{
+  SLIC_ERROR_ROOT_IF( input.num_source_nodes < EnergyMortar3DInput::nodes_per_face ||
+                          input.num_source_nodes > EnergyMortar3DInput::max_source_nodes,
+                      "3D ENERGY_MORTAR source one-ring node count is outside the supported range." );
+  SLIC_ERROR_ROOT_IF( input.num_source_faces < 1 || input.num_source_faces > EnergyMortar3DInput::max_source_faces,
+                      "3D ENERGY_MORTAR source one-ring face count is outside the supported range." );
+  SLIC_ERROR_ROOT_IF( input.source_corner < 0 || input.source_corner >= EnergyMortar3DInput::nodes_per_face,
+                      "3D ENERGY_MORTAR source corner is invalid." );
+  for ( int corner = 0; corner < EnergyMortar3DInput::nodes_per_face; ++corner ) {
+    SLIC_ERROR_ROOT_IF(
+        input.source_face_nodes[corner] < 0 || input.source_face_nodes[corner] >= input.num_source_nodes,
+        "3D ENERGY_MORTAR source face connectivity is outside the source one-ring." );
+  }
+  for ( int face_node = 0; face_node < input.num_source_faces * EnergyMortar3DInput::nodes_per_face; ++face_node ) {
+    SLIC_ERROR_ROOT_IF( input.source_star_connectivity[face_node] < 0 ||
+                            input.source_star_connectivity[face_node] >= input.num_source_nodes,
+                        "3D ENERGY_MORTAR source one-ring connectivity is invalid." );
+  }
+
+  KernelParams3D params;
+  params.num_source_nodes = input.num_source_nodes;
+  params.num_source_faces = input.num_source_faces;
+  params.source_corner = input.source_corner;
+  params.source_face_nodes = input.source_face_nodes;
+  params.source_star_connectivity = input.source_star_connectivity;
+  params.penalty = p_.k;
+  params.residual_gap = p_.residual_gap;
+  params.length_tol_ratio = p_.length_tol_ratio;
+
+  const int num_dofs = 3 * ( input.num_source_nodes + EnergyMortar3DInput::target_nodes );
+  EnergyMortar3DData result;
+  result.force.assign( num_dofs, 0.0 );
+  result.stiffness.assign( num_dofs * num_dofs, 0.0 );
+  energy_mortar_3d_kernel( input.coordinates.data(), &params, &result.energy, &result.has_overlap,
+                           &result.has_active_qp );
+  if ( !result.has_overlap || !result.has_active_qp ) {
+    return result;
+  }
+
+  grad_energy_mortar_3d_kernel( input.coordinates.data(), &params, result.force.data() );
+  hessian_energy_mortar_3d_kernel( input.coordinates.data(), &params, result.stiffness.data() );
   return result;
 }
 

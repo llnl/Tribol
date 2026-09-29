@@ -292,6 +292,9 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
   auto& cs = CouplingSchemeManager::getInstance().at( cs_id );
   cs.setMPIComm( mesh.GetComm() );
   if ( contact_method == ENERGY_MORTAR && enforcement_method == LAGRANGE_MULTIPLIER ) {
+    SLIC_ERROR_ROOT_IF( mesh.SpaceDimension() == 3,
+                        "3D ENERGY_MORTAR supports penalty enforcement only. Register the coupling scheme with "
+                        "PENALTY enforcement." );
     cs.getParameters().enforcement_location = EnforcementLocation::Nodal;
     SLIC_WARNING_ROOT(
         "ENERGY_MORTAR with Lagrange multiplier enforcement is experimental, has no testing, and has "

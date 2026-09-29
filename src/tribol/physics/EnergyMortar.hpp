@@ -20,11 +20,12 @@ struct QuadPoints {
 
 /// Parameters controlling ENERGY_MORTAR contact evaluation.
 struct ContactParams {
-  double del;                  ///< Smoothing length used for integration bounds.
-  double k;                    ///< Penalty stiffness.
-  int N;                       ///< Number of quadrature points.
-  bool enzyme_quadrature;      ///< Whether Enzyme differentiates the quadrature construction.
-  double residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
+  double del;                         ///< Smoothing length used for integration bounds.
+  double k;                           ///< Penalty stiffness.
+  int N;                              ///< Number of quadrature points.
+  bool enzyme_quadrature;             ///< Whether Enzyme differentiates the quadrature construction.
+  double residual_gap{ 0.0 };         ///< User-defined gap offset subtracted from the kinematic gap.
+  double length_tol_ratio{ 1.0e-8 };  ///< Nondimensional tolerance used by polygon clipping.
 };
 
 /// Stores quadrature-point penalty energy derivatives for one interface pair.
@@ -39,6 +40,39 @@ struct QuadraturePointPenaltyData {
   double energy{ 0.0 };                                   ///< Penalty energy for the interface pair.
   std::array<double, num_force_dofs> force{};             ///< Derivative with respect to pair coordinates.
   std::array<double, num_stiffness_entries> stiffness{};  ///< Flattened force derivative matrix.
+};
+
+/**
+ * @brief Fixed-size input for one nodal contribution to a 3D quadrilateral energy-mortar pair.
+ *
+ * Coordinates are node-major. The first @ref num_source_nodes entries are the unique nodes in the source node's
+ * one-ring. The final four active entries are the target quadrilateral nodes. Connectivity entries index the source
+ * one-ring coordinate list.
+ */
+struct EnergyMortar3DInput {
+  static constexpr int dim = 3;
+  static constexpr int nodes_per_face = 4;
+  static constexpr int max_source_faces = 16;
+  static constexpr int max_source_nodes = 2 * max_source_faces + 1;
+  static constexpr int target_nodes = 4;
+  static constexpr int max_nodes = max_source_nodes + target_nodes;
+  static constexpr int max_dofs = dim * max_nodes;
+
+  int num_source_nodes{ 0 };
+  int num_source_faces{ 0 };
+  int source_corner{ 0 };
+  std::array<int, nodes_per_face> source_face_nodes{};
+  std::array<int, max_source_faces * nodes_per_face> source_star_connectivity{};
+  std::array<double, max_dofs> coordinates{};
+};
+
+/** @brief Energy and derivatives for one 3D nodal energy contribution. */
+struct EnergyMortar3DData {
+  bool has_overlap{ false };
+  bool has_active_qp{ false };
+  double energy{ 0.0 };
+  std::vector<double> force;
+  std::vector<double> stiffness;
 };
 
 /// Stores weighted nodal gaps and tributary areas for one interface pair.
@@ -109,9 +143,10 @@ class ContactSmoothing {
 ///
 /// This class computes the smoothed mortar gap, tributary areas, contact energy,
 /// contact forces, stiffness contributions, and derivative checks used by the
-/// Energy Mortar contact formulation. The interface pair is assumed to contain
-/// one face from mesh1, treated as edge A/non-mortar/integration side, and one
-/// face from mesh2, treated as edge B/mortar/projection side.
+/// Energy Mortar contact formulation. For the legacy 2D methods, the interface
+/// pair contains edge A/non-mortar/integration and edge B/mortar/projection.
+/// The 3D direct-energy entry points instead consume an explicit source-node
+/// one-ring and target quadrilateral through EnergyMortar3DInput.
 class EnergyMortarCalculator {
  public:
   /// Construct a contact evaluator with the supplied contact parameters.
@@ -194,6 +229,17 @@ class EnergyMortarCalculator {
   /// Evaluate only the local quadrature-point penalty energy.
   double compute_quadrature_point_penalty_energy( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                   const MeshData::Viewer& mesh2 ) const;
+
+  /**
+   * @brief Compute one source-node contribution to the 3D quadrilateral penalty energy and its derivatives.
+   *
+   * The returned force is the energy gradient and the returned stiffness is its row-major Hessian. Their active size
+   * is `3 * (input.num_source_nodes + 4)`.
+   */
+  EnergyMortar3DData compute_penalty_data_3d( const EnergyMortar3DInput& input ) const;
+
+  /** @brief Evaluate one source-node contribution to the 3D quadrilateral penalty energy. */
+  double compute_penalty_energy_3d( const EnergyMortar3DInput& input ) const;
 
   /// Evaluate and return the two nodal smoothed gap integrals.
   ///

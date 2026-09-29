@@ -19,6 +19,10 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
 
   if ( cs->getContactMethod() == ENERGY_MORTAR ) {
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
+    SLIC_ERROR_ROOT_IF( !cs->hasMfemData(), "ENERGY_MORTAR requires MFEM mesh data." );
+    SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "ENERGY_MORTAR requires MFEM submesh data." );
+    SLIC_ERROR_ROOT_IF( !cs->hasMfemJacobianData(), "ENERGY_MORTAR requires MFEM Jacobian data." );
+
     // Default parameters for now, or extract from CouplingScheme if available
     double k = 1000.0;
     double delta = 0.1;
@@ -28,7 +32,11 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     // ENERGY_MORTAR supports a penalty-style mode driven by the kinematic penalty parameters, even if the coupling
     // scheme is registered with LM enforcement (which is often done to enable submesh/pressure infrastructure).
     const auto& penalty_opts = cs->getEnforcementOptions().penalty_options;
-    bool use_penalty = penalty_opts.kinematic_calc_set;
+    const int spatial_dimension = cs->getMfemMeshData()->GetParentCoords().ParFESpace()->GetVDim();
+    const bool use_penalty =
+        penalty_opts.kinematic_calc_set || ( spatial_dimension == 3 && cs->getEnforcementMethod() == PENALTY );
+    SLIC_ERROR_ROOT_IF( spatial_dimension == 3 && cs->getEnforcementMethod() != PENALTY,
+                        "3D ENERGY_MORTAR supports penalty enforcement only." );
 
     if ( cs->hasMfemData() ) {
       // Attempt to get penalty from MfemMeshData if available
@@ -39,20 +47,17 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
       }
     }
 
-    SLIC_ERROR_ROOT_IF( !cs->hasMfemData(), "ENERGY_MORTAR requires MFEM mesh data." );
-    SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "ENERGY_MORTAR requires MFEM submesh data." );
-    SLIC_ERROR_ROOT_IF( !cs->hasMfemJacobianData(), "ENERGY_MORTAR requires MFEM Jacobian data." );
-
     const auto enforcement_location = cs->getParameters().enforcement_location;
     const auto residual_gap = cs->getParameters().residual_gap;
+    const auto length_tol_ratio = cs->getParameters().len_collapse_ratio;
     if ( enforcement_location == EnforcementLocation::QuadraturePoint ) {
-      return std::make_unique<EnergyMortarAdapter<QuadraturePoint>>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
-                                                                     *cs->getMfemJacobianData(), k, delta, N,
-                                                                     enzyme_quadrature, use_penalty, residual_gap );
+      return std::make_unique<EnergyMortarAdapter<QuadraturePoint>>(
+          *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), k, delta, N, enzyme_quadrature,
+          use_penalty, residual_gap, length_tol_ratio );
     } else {
       return std::make_unique<EnergyMortarAdapter<Nodal>>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
                                                            *cs->getMfemJacobianData(), k, delta, N, enzyme_quadrature,
-                                                           use_penalty, residual_gap );
+                                                           use_penalty, residual_gap, length_tol_ratio );
     }
 #else
     SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );

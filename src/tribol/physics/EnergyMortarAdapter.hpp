@@ -50,11 +50,24 @@ class Nodal : public ContactFormulation {
 
   const mfem::HypreParVector& getMfemGap() const override
   {
-    return static_cast<const Adapter*>( this )->use_penalty_ ? gap_vec_.get() : g_tilde_vec_.get();
+    const auto* adapter = static_cast<const Adapter*>( this );
+    if ( adapter->is_3d_ ) {
+      return ContactFormulation::getMfemGap();
+    }
+    return adapter->use_penalty_ ? gap_vec_.get() : g_tilde_vec_.get();
   }
-  mfem::HypreParVector& getMfemPressure() override { return pressure_vec_.get(); }
+  mfem::HypreParVector& getMfemPressure() override
+  {
+    if ( static_cast<const Adapter*>( this )->is_3d_ ) {
+      return ContactFormulation::getMfemPressure();
+    }
+    return pressure_vec_.get();
+  }
   std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx() const override
   {
+    if ( static_cast<const Adapter*>( this )->is_3d_ ) {
+      return ContactFormulation::getMfemDgDx();
+    }
     return std::unique_ptr<mfem::HypreParMatrix>( dg_tilde_dx_.release() );
   }
   std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const override;
@@ -140,13 +153,15 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * vector (LM mode)
    * @param residual_gap Nonnegative gap offset subtracted from the kinematic gap. Positive values enforce separation
    *        between the contact surfaces.
+   * @param length_tol_ratio Nondimensional length tolerance used to collapse degenerate overlap features.
    *
    * @note The ENERGY_MORTAR implementation follows the literature convention of integrating on a non-mortar side and
    * mapping to a mortar side. To maintain that convention within Tribol, the adapter may internally flip mesh roles
    * relative to the order of the meshes provided here.
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k,
-                       double delta, int N, bool enzyme_quadrature, bool use_penalty = true, RealT residual_gap = 0.0 );
+                       double delta, int N, bool enzyme_quadrature, bool use_penalty = true, RealT residual_gap = 0.0,
+                       RealT length_tol_ratio = 1.0e-8 );
 
   /**
    * @brief Default destructor
@@ -253,6 +268,9 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    */
   bool use_penalty_;
 
+  /** @brief True after three-dimensional meshes are attached. */
+  bool is_3d_{ false };
+
   /**
    * @brief Tolerance used to avoid division by zero for area-weighted quantities
    */
@@ -328,6 +346,9 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @brief Derivative df/dx assembled on parent displacement true-dofs
    */
   mutable shared::ParSparseMat df_dx_;
+
+  /** @brief Assemble the direct-energy 3D quadrilateral penalty response. */
+  void updatePenaltyForces3D();
 };
 
 #endif  // TRIBOL_USE_ENZYME
