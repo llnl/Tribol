@@ -17,6 +17,19 @@ EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mes
                                                                double normal_smoothing_start_angle, int N,
                                                                bool enzyme_quadrature, bool use_penalty,
                                                                RealT residual_gap )
+    : EnergyMortarAdapter( mesh_data, submesh_data, jac_data, k, delta, normal_smoothing_start_angle,
+                           energy_mortar::default_normal_smoothing_end_angle, N, enzyme_quadrature, use_penalty,
+                           residual_gap )
+{
+}
+
+template <template <typename> class EnforcementLocation>
+EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
+                                                               MfemJacobianData& jac_data, double k, double delta,
+                                                               double normal_smoothing_start_angle,
+                                                               double normal_smoothing_end_angle, int N,
+                                                               bool enzyme_quadrature, bool use_penalty,
+                                                               RealT residual_gap )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
     : use_penalty_( use_penalty ), mesh_data_( mesh_data ), submesh_data_( submesh_data ), jac_data_( jac_data )
@@ -24,6 +37,7 @@ EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mes
   params_.k = k;
   params_.del = delta;
   params_.normal_smoothing_start_angle = normal_smoothing_start_angle;
+  params_.normal_smoothing_end_angle = normal_smoothing_end_angle;
   params_.N = N;
   params_.enzyme_quadrature = enzyme_quadrature;
   params_.residual_gap = residual_gap;

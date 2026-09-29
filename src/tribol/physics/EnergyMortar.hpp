@@ -27,6 +27,8 @@ struct ContactParams {
   int N;                                                      ///< Number of quadrature points.
   bool enzyme_quadrature;      ///< Whether Enzyme differentiates the quadrature construction.
   double residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
+  double normal_smoothing_end_angle{
+      energy_mortar::default_normal_smoothing_end_angle };  ///< Normal smoothing end angle in radians.
 };
 
 /// Stores quadrature-point penalty energy derivatives for one interface pair.
@@ -88,6 +90,8 @@ struct Gparams {
   double normal_smoothing_start_angle{
       energy_mortar::default_normal_smoothing_start_angle };  ///< Normal smoothing start angle in radians.
   double residual_gap{ 0.0 };                                 ///< User-defined gap offset.
+  double normal_smoothing_end_angle{
+      energy_mortar::default_normal_smoothing_end_angle };  ///< Normal smoothing end angle in radians.
 };
 
 /// Provides smoothing operations for the Energy Mortar contact formulation.
@@ -99,8 +103,10 @@ class ContactSmoothing {
   /// Compute the negative normal-alignment factor for a pair of unit normals.
   ///
   /// The factor has unit magnitude until the relative angle between opposing normals reaches
-  /// `start_angle`, then follows a shifted cosine to zero at perpendicularity.
-  static double normal_alignment_factor( double normal_dot, double start_angle );
+  /// `start_angle`, then follows a shifted cosine to zero at `end_angle`.
+  ///
+  /// @pre 0 <= start_angle <= end_angle <= pi / 2
+  static double normal_alignment_factor( double normal_dot, double start_angle, double end_angle );
 
   /// Clamp the projected overlap interval to the extended smoothing support.
   ///
