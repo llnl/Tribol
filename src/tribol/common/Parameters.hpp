@@ -30,6 +30,7 @@ namespace energy_mortar {
 // TODO(C++20): Initialize this with std::numbers::pi_v<RealT> / 2.0 once Tribol requires C++20.
 inline constexpr RealT perpendicular_normal_angle = 1.5707963267948966;
 inline constexpr RealT default_normal_smoothing_start_angle = perpendicular_normal_angle / 2.0;
+inline constexpr RealT default_normal_smoothing_end_angle = perpendicular_normal_angle;
 
 }  // namespace energy_mortar
 
@@ -499,6 +500,8 @@ struct Parameters {
   RealT energy_mortar_smoothing_length = 0.1;  ///! Smoothing length for EnergyMortar integration bounds
   RealT energy_mortar_normal_smoothing_start_angle =
       energy_mortar::default_normal_smoothing_start_angle;  ///! Smoothing start relative to opposed normals, in radians
+  RealT energy_mortar_normal_smoothing_end_angle =
+      energy_mortar::default_normal_smoothing_end_angle;  ///! Smoothing end relative to opposed normals, in radians
 
   int vis_cycle_incr = 100;           ///! Frequency for visualizations dumps
   VisType vis_type = VIS_NONE;        ///! Type of interface physics visualization output

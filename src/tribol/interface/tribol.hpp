@@ -156,11 +156,22 @@ void setEnergyMortarSmoothingLength( IndexT cs_id, RealT smoothing_length );
  *
  * \param [in] cs_id coupling scheme id
  * \param [in] start_angle relative deviation from perfectly opposed normals, in radians, where smoothing begins;
- *                            pi / 2 disables attenuation for opposing normals
+ *                            setting both smoothing angles to pi / 2 disables attenuation for opposing normals
  *
- * \pre 0 <= start_angle <= pi / 2
+ * \pre 0 <= start_angle <= end_angle, where end_angle is the configured smoothing end angle
  */
 void setEnergyMortarNormalSmoothingStartAngle( IndexT cs_id, RealT start_angle );
+
+/*!
+ * \brief Sets the EnergyMortar normal-alignment smoothing end angle
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] end_angle relative deviation from perfectly opposed normals, in radians, where the normal-alignment
+ *                       factor reaches zero; pi / 2 preserves the default behavior
+ *
+ * \pre start_angle <= end_angle <= pi / 2, where start_angle is the configured smoothing start angle
+ */
+void setEnergyMortarNormalSmoothingEndAngle( IndexT cs_id, RealT end_angle );
 
 /*!
  *

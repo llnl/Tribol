@@ -127,6 +127,15 @@ template <template <typename> class EnforcementLocation>
 class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<EnforcementLocation>> {
  public:
   /**
+   * @brief Construct an EnergyMortarAdapter using the default normal-smoothing end angle of pi / 2
+   *
+   * This overload preserves the original EnergyMortarAdapter interface.
+   */
+  EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k,
+                       double delta, double normal_smoothing_start_angle, int N, bool enzyme_quadrature,
+                       bool use_penalty = true, RealT residual_gap = 0.0 );
+
+  /**
    * @brief Construct a new EnergyMortarAdapter
    *
    * @param mesh_data MFEM mesh data for the parent/primary variables
@@ -135,6 +144,7 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @param k Penalty stiffness
    * @param delta Smoothing length
    * @param normal_smoothing_start_angle Normal-alignment smoothing start angle in radians
+   * @param normal_smoothing_end_angle Normal-alignment smoothing end angle in radians
    * @param N Quadrature order
    * @param enzyme_quadrature If true, use Enzyme-assisted quadrature
    * @param use_penalty If true, interpret the dual field as pressure; otherwise interpret it as a Lagrange multiplier
@@ -147,8 +157,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * relative to the order of the meshes provided here.
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k,
-                       double delta, double normal_smoothing_start_angle, int N, bool enzyme_quadrature,
-                       bool use_penalty = true, RealT residual_gap = 0.0 );
+                       double delta, double normal_smoothing_start_angle, double normal_smoothing_end_angle, int N,
+                       bool enzyme_quadrature, bool use_penalty = true, RealT residual_gap = 0.0 );
 
   /**
    * @brief Default destructor
