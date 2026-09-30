@@ -17,11 +17,11 @@ foreach( example ${contact_examples} )
 
   get_filename_component( example_name ${example} NAME_WE )
 
-  blt_add_executable(
+  tribol_add_executable(
       NAME       ${example_name}_ex
       SOURCES    ${example}
       OUTPUT_DIR ${EXAMPLE_OUTPUT_DIRECTORY}
-      DEPENDS_ON ${example_depends} ${tribol_device_depends}
+      DEPENDS_ON ${example_depends}
       )
 
   if (ENABLE_HIP)
@@ -53,11 +53,11 @@ endif()
 # Define fortran examples, for now, this requires MPI
 if(ENABLE_FORTRAN AND TRIBOL_USE_MPI)
 
-  blt_add_executable(
+  tribol_add_executable(
     NAME       simple_tribol_interface_ex
     SOURCES    simple_tribol_interface.F
     OUTPUT_DIR ${EXAMPLE_OUTPUT_DIRECTORY}
-    DEPENDS_ON tribol ${tribol_device_depends}
+    DEPENDS_ON tribol
     )
 
   if (ENABLE_HIP)
@@ -84,11 +84,11 @@ if ( BUILD_REDECOMP )
 
     get_filename_component( example_name ${example} NAME_WE )
 
-    blt_add_executable(
+    tribol_add_executable(
         NAME       ${example_name}_ex
         SOURCES    ${example}
         OUTPUT_DIR ${EXAMPLE_OUTPUT_DIRECTORY}
-        DEPENDS_ON tribol ${tribol_device_depends}
+        DEPENDS_ON tribol
         )
 
   endforeach()
@@ -107,11 +107,11 @@ if ( BUILD_REDECOMP )
     
     get_filename_component( example_name ${example} NAME_WE )
 
-    blt_add_executable(
+    tribol_add_executable(
         NAME       ${example_name}_ex
         SOURCES    ${example}
         OUTPUT_DIR ${EXAMPLE_OUTPUT_DIRECTORY}
-        DEPENDS_ON tribol ${tribol_device_depends}
+        DEPENDS_ON tribol
         )
 
     if (ENABLE_HIP)

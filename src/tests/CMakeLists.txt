@@ -45,11 +45,11 @@ foreach( test ${tribol_tests} )
 
   get_filename_component( test_name ${test} NAME_WE )
 
-  blt_add_executable(
+  tribol_add_executable(
     NAME ${test_name}_test
     SOURCES ${test}
     OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
-    DEPENDS_ON ${test_depends} ${tribol_device_depends}
+    DEPENDS_ON ${test_depends}
     FOLDER tribol/tests )
 
   blt_add_test( NAME ${test_name}
@@ -82,11 +82,11 @@ if ( TRIBOL_USE_MPI )
 
     get_filename_component( test_name ${test} NAME_WE )
 
-    blt_add_executable(
+    tribol_add_executable(
       NAME ${test_name}_test
       SOURCES ${test}
       OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
-      DEPENDS_ON ${mpi_test_depends} ${tribol_device_depends}
+      DEPENDS_ON ${mpi_test_depends}
       FOLDER tribol/tests )
 
     blt_add_test( NAME ${test_name}
@@ -126,11 +126,11 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 
     get_filename_component( test_name ${test} NAME_WE )
 
-    blt_add_executable(
+    tribol_add_executable(
       NAME ${test_name}_test
       SOURCES ${test}
       OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
-      DEPENDS_ON ${redecomp_test_depends} ${tribol_device_depends}
+      DEPENDS_ON ${redecomp_test_depends}
       FOLDER redecomp/tests )
     
     # NOTE: just do 2 ranks for now until we make the tests smaller
@@ -170,11 +170,11 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 
     get_filename_component( test_name ${test} NAME_WE )
 
-    blt_add_executable(
+    tribol_add_executable(
       NAME ${test_name}_test
       SOURCES ${test}
       OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
-      DEPENDS_ON ${combined_test_depends} ${tribol_device_depends}
+      DEPENDS_ON ${combined_test_depends}
       FOLDER tribol/tests )
 
     # NOTE: just do 2 ranks for now until we make the tests smaller
@@ -219,11 +219,11 @@ if( TRIBOL_USE_ENZYME )
 
     get_filename_component( test_name ${test} NAME_WE )
 
-    blt_add_executable(
+    tribol_add_executable(
       NAME ${test_name}_test
       SOURCES ${test}
       OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
-      DEPENDS_ON ${combined_test_depends} ${tribol_device_depends}
+      DEPENDS_ON ${combined_test_depends}
       FOLDER tribol/tests )
 
     blt_add_test( NAME ${test_name}
@@ -252,11 +252,11 @@ endif()
 if( MFEM_FOUND )
 
   set(mfem_smoke_depends mfem gtest)
-  blt_add_executable(
+  tribol_add_executable(
     NAME mfem_smoke_test
     SOURCES mfem_smoke.cpp
     OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
-    DEPENDS_ON ${mfem_smoke_depends} ${tribol_device_depends}
+    DEPENDS_ON ${mfem_smoke_depends}
     FOLDER tribol/tests )
 
   blt_add_test( NAME mfem_smoke_test
@@ -267,11 +267,11 @@ endif()
 if( TRIBOL_USE_ENZYME )
 
   set(enzyme_smoke_depends ClangEnzymeFlags gtest)
-  blt_add_executable(
+  tribol_add_executable(
     NAME enzyme_smoke_test
     SOURCES enzyme_smoke.cpp
     OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
-    DEPENDS_ON ${enzyme_smoke_depends} ${tribol_device_depends}
+    DEPENDS_ON ${enzyme_smoke_depends}
     FOLDER tribol/tests )
 
   blt_add_test( NAME enzyme_smoke_test
@@ -282,11 +282,11 @@ endif()
 if( TRIBOL_USE_CALIPER )
 
   set(caliper_smoke_depends caliper gtest)
-  blt_add_executable(
+  tribol_add_executable(
     NAME caliper_smoke_test
     SOURCES caliper_smoke.cpp
     OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
-    DEPENDS_ON ${caliper_smoke_depends} ${tribol_device_depends}
+    DEPENDS_ON ${caliper_smoke_depends}
     FOLDER tribol/tests )
 
   blt_add_test( NAME caliper_smoke_test
