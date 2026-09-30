@@ -313,7 +313,10 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
             if spec.satisfies("+openmp"):
                 hip_link_flags += "-lompstub "
             if spec.satisfies("^hipblas"):
-                hip_link_flags += "-lhipblas"
+                # MFEM's static-library link interface includes the full ROCm
+                # math stack.  Only retain those shared libraries when an
+                # object selected from MFEM actually references them.
+                hip_link_flags += "-Wl,--as-needed -lhipblas"
 
             entries.append(cmake_cache_string("CMAKE_EXE_LINKER_FLAGS", hip_link_flags))
 
