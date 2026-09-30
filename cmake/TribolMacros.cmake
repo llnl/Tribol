@@ -5,6 +5,48 @@
 
 
 #------------------------------------------------------------------------------
+# tribol_add_executable( NAME        <name>
+#                        SOURCES     [source1 [source2 ...]]
+#                        HEADERS     [header1 [header2 ...]]
+#                        INCLUDES    [dir1 [dir2 ...]]
+#                        DEFINES     [define1 [define2 ...]]
+#                        DEPENDS_ON  [dep1 [dep2 ...]]
+#                        OUTPUT_DIR  [dir]
+#                        OUTPUT_NAME [name]
+#                        FOLDER      [name] )
+#
+# Adds a Tribol executable and its device dependency.
+#------------------------------------------------------------------------------
+macro(tribol_add_executable)
+
+  set(options)
+  set(singleValueArgs NAME OUTPUT_DIR OUTPUT_NAME FOLDER)
+  set(multiValueArgs HEADERS SOURCES INCLUDES DEFINES DEPENDS_ON)
+
+  cmake_parse_arguments(arg
+      "${options}" "${singleValueArgs}" "${multiValueArgs}" ${ARGN})
+
+  blt_add_executable(
+      NAME        ${arg_NAME}
+      SOURCES     ${arg_SOURCES}
+      HEADERS     ${arg_HEADERS}
+      INCLUDES    ${arg_INCLUDES}
+      DEFINES     ${arg_DEFINES}
+      DEPENDS_ON  ${arg_DEPENDS_ON} ${tribol_device_depends}
+      OUTPUT_DIR  ${arg_OUTPUT_DIR}
+      OUTPUT_NAME ${arg_OUTPUT_NAME}
+      FOLDER      ${arg_FOLDER})
+
+  # Avoid loading expensive unused ROCm solver dependencies exported by MFEM.
+  if(ENABLE_HIP AND
+     hip_VERSION VERSION_GREATER_EQUAL "6.0" AND
+     hip_VERSION VERSION_LESS "7.0")
+    target_link_options(${arg_NAME} PRIVATE "LINKER:--as-needed")
+  endif()
+
+endmacro(tribol_add_executable)
+
+#------------------------------------------------------------------------------
 # tribol_add_code_checks( PREFIX [prefix] )
 #
 # Adds code checks for all cpp/hpp files recursively under the current directory
