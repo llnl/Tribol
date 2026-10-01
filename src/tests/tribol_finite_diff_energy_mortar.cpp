@@ -383,50 +383,23 @@ TEST( NormalAngleSmoothingCheck, ShiftedCosineStartsAtConfiguredAngle )
   constexpr double start_angle = 0.25 * pi;
   const ContactParams default_params{};
   EXPECT_DOUBLE_EQ( default_params.normal_smoothing_start_angle, start_angle );
-  EXPECT_DOUBLE_EQ( default_params.normal_smoothing_end_angle, 0.5 * pi );
-  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -std::cos( pi / 6.0 ), start_angle,
-                                                               default_params.normal_smoothing_end_angle ),
-                    -1.0 );
-  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -std::cos( start_angle ), start_angle,
-                                                               default_params.normal_smoothing_end_angle ),
-                    -1.0 );
-  EXPECT_NEAR( ContactSmoothing::normal_alignment_factor( -std::cos( 3.0 * pi / 8.0 ), start_angle,
-                                                          default_params.normal_smoothing_end_angle ),
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -std::cos( pi / 6.0 ), start_angle ), -1.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -std::cos( start_angle ), start_angle ), -1.0 );
+  EXPECT_NEAR( ContactSmoothing::normal_alignment_factor( -std::cos( 3.0 * pi / 8.0 ), start_angle ),
                -1.0 / std::sqrt( 2.0 ), 1.0e-14 );
-  EXPECT_NEAR( ContactSmoothing::normal_alignment_factor( -0.5, 0.0, default_params.normal_smoothing_end_angle ), -0.5,
-               1.0e-14 );
-  EXPECT_DOUBLE_EQ(
-      ContactSmoothing::normal_alignment_factor( 0.0, start_angle, default_params.normal_smoothing_end_angle ), 0.0 );
-  EXPECT_DOUBLE_EQ(
-      ContactSmoothing::normal_alignment_factor( 0.5, start_angle, default_params.normal_smoothing_end_angle ), 0.0 );
-  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -1.0 - 1.0e-14, start_angle,
-                                                               default_params.normal_smoothing_end_angle ),
-                    -1.0 );
-}
-
-TEST( NormalAngleSmoothingCheck, ShiftedCosineEndsAtConfiguredAngle )
-{
-  constexpr double pi = 3.14159265358979323846264338327950288;
-  constexpr double start_angle = pi / 6.0;
-  constexpr double end_angle = pi / 3.0;
-  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -std::cos( pi / 12.0 ), start_angle, end_angle ), -1.0 );
-  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -std::cos( start_angle ), start_angle, end_angle ),
-                    -1.0 );
-  EXPECT_NEAR( ContactSmoothing::normal_alignment_factor( -std::cos( pi / 4.0 ), start_angle, end_angle ),
-               -1.0 / std::sqrt( 2.0 ), 1.0e-14 );
-  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -std::cos( end_angle ), start_angle, end_angle ), 0.0 );
-  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -std::cos( 5.0 * pi / 12.0 ), start_angle, end_angle ),
-                    0.0 );
+  EXPECT_NEAR( ContactSmoothing::normal_alignment_factor( -0.5, 0.0 ), -0.5, 1.0e-14 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.0, start_angle ), 0.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.5, start_angle ), 0.0 );
 }
 
 TEST( NormalAngleSmoothingCheck, NinetyDegreesDisablesAttenuation )
 {
   constexpr double perpendicular = energy_mortar::perpendicular_normal_angle;
-  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -1.0, perpendicular, perpendicular ), -1.0 );
-  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -0.5, perpendicular, perpendicular ), -1.0 );
-  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -1.0e-12, perpendicular, perpendicular ), -1.0 );
-  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.0, perpendicular, perpendicular ), 0.0 );
-  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.5, perpendicular, perpendicular ), 0.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -1.0, perpendicular ), -1.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -0.5, perpendicular ), -1.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -1.0e-12, perpendicular ), -1.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.0, perpendicular ), 0.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.5, perpendicular ), 0.0 );
 }
 
 TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
@@ -455,6 +428,39 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
   EXPECT_TRUE( std::all_of( result.force.begin(), result.force.end(), []( double force ) { return force == 0.0; } ) );
   EXPECT_TRUE( std::all_of( result.stiffness.begin(), result.stiffness.end(),
                             []( double stiffness ) { return stiffness == 0.0; } ) );
+}
+
+TEST( EnergyMortarResidualGapCheck, PairUsesMaximumInterpolatedRampValue )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 1, 0 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = { 0.2, 0.8 };
+  RealT y2[2] = { 0.1, 0.1 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  params.normal_smoothing_start_angle = energy_mortar::perpendicular_normal_angle;
+  params.residual_gap = 0.15;
+  EnergyMortarCalculator evaluator( params );
+
+  const double both_reduced[4] = { 0.0, 0.0, 0.0, 0.0 };
+  const auto inactive = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
+                                                                         mesh2.getView(), both_reduced );
+  EXPECT_FALSE( inactive.has_active_qp );
+
+  const double one_full[4] = { 0.0, 0.0, 0.15, 0.15 };
+  const auto active = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
+                                                                       mesh2.getView(), one_full );
+  EXPECT_TRUE( active.has_active_qp );
+  EXPECT_GT( active.energy, 0.0 );
 }
 
 TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
@@ -553,7 +559,6 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapShiftRespectsNormalSmoothing )
   params.k = 3.0;
   params.N = 3;
   params.enzyme_quadrature = true;
-  params.normal_smoothing_end_angle = 5.0 * pi / 12.0;
 
   double gap_without_residual[2] = { 0.0, 0.0 };
   double tributary_area_without_residual[2] = { 0.0, 0.0 };
@@ -568,8 +573,8 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapShiftRespectsNormalSmoothing )
   evaluator_with_residual.compute_gtilde_and_area( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(),
                                                    gap_with_residual, tributary_area_with_residual );
 
-  const double normal_alignment = ContactSmoothing::normal_alignment_factor(
-      -std::cos( angle ), params.normal_smoothing_start_angle, params.normal_smoothing_end_angle );
+  const double normal_alignment =
+      ContactSmoothing::normal_alignment_factor( -std::cos( angle ), params.normal_smoothing_start_angle );
   ASSERT_GT( normal_alignment, -1.0 );
   ASSERT_LT( normal_alignment, 0.0 );
   for ( int i = 0; i < 2; ++i ) {
@@ -649,7 +654,6 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   params.k = 3.0;
   params.N = 3;
   params.enzyme_quadrature = true;
-  params.normal_smoothing_end_angle = 5.0 * pi / 12.0;
   params.residual_gap = GetParam();
 
   EnergyMortarCalculator evaluator( params );
