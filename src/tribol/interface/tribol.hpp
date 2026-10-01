@@ -156,22 +156,31 @@ void setEnergyMortarSmoothingLength( IndexT cs_id, RealT smoothing_length );
  *
  * \param [in] cs_id coupling scheme id
  * \param [in] start_angle relative deviation from perfectly opposed normals, in radians, where smoothing begins;
- *                            setting both smoothing angles to pi / 2 disables attenuation for opposing normals
+ *                            pi / 2 disables attenuation for opposing normals
  *
- * \pre 0 <= start_angle <= end_angle, where end_angle is the configured smoothing end angle
+ * \pre 0 <= start_angle <= pi / 2
  */
 void setEnergyMortarNormalSmoothingStartAngle( IndexT cs_id, RealT start_angle );
 
 /*!
- * \brief Sets the EnergyMortar normal-alignment smoothing end angle
+ * \brief Sets the EnergyMortar residual-gap crack-opening ramp angle
  *
  * \param [in] cs_id coupling scheme id
- * \param [in] end_angle relative deviation from perfectly opposed normals, in radians, where the normal-alignment
- *                       factor reaches zero; pi / 2 preserves the default behavior
+ * \param [in] ramp_angle total symmetric crack-opening angle in radians. Zero disables corner reduction.
  *
- * \pre start_angle <= end_angle <= pi / 2, where start_angle is the configured smoothing start angle
+ * \note Corner reduction currently applies to 2D contact curves. Other dimensions retain a uniform residual gap.
+ *
+ * \pre 0 <= ramp_angle <= pi / 2
  */
-void setEnergyMortarNormalSmoothingEndAngle( IndexT cs_id, RealT end_angle );
+void setEnergyMortarResidualGapRampAngle( IndexT cs_id, RealT ramp_angle );
+
+/*!
+ * \brief Enables or disables rebuilding the EnergyMortar residual-gap ramp from current geometry once per cycle
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] enabled true to rebuild once per cycle; false to retain the initial-geometry field
+ */
+void setEnergyMortarResidualGapRampUpdates( IndexT cs_id, bool enabled );
 
 /*!
  *

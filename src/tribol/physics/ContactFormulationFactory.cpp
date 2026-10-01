@@ -23,7 +23,8 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     double k = 1000.0;
     double delta = cs->getParameters().energy_mortar_smoothing_length;
     double normal_smoothing_start_angle = cs->getParameters().energy_mortar_normal_smoothing_start_angle;
-    double normal_smoothing_end_angle = cs->getParameters().energy_mortar_normal_smoothing_end_angle;
+    double residual_gap_ramp_angle = cs->getParameters().energy_mortar_residual_gap_ramp_angle;
+    bool residual_gap_ramp_updates = cs->getParameters().energy_mortar_residual_gap_ramp_updates;
     int N = 3;
     bool enzyme_quadrature = true;
 
@@ -50,11 +51,13 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     if ( enforcement_location == EnforcementLocation::QuadraturePoint ) {
       return std::make_unique<EnergyMortarAdapter<QuadraturePoint>>(
           *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), k, delta,
-          normal_smoothing_start_angle, normal_smoothing_end_angle, N, enzyme_quadrature, use_penalty, residual_gap );
+          normal_smoothing_start_angle, residual_gap_ramp_angle, residual_gap_ramp_updates, N, enzyme_quadrature,
+          use_penalty, residual_gap );
     } else {
       return std::make_unique<EnergyMortarAdapter<Nodal>>(
           *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), k, delta,
-          normal_smoothing_start_angle, normal_smoothing_end_angle, N, enzyme_quadrature, use_penalty, residual_gap );
+          normal_smoothing_start_angle, residual_gap_ramp_angle, residual_gap_ramp_updates, N, enzyme_quadrature,
+          use_penalty, residual_gap );
     }
 #else
     SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );

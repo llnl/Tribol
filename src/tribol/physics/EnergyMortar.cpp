@@ -15,15 +15,17 @@ namespace tribol {
 #ifdef TRIBOL_USE_ENZYME
 
 // Return a negative normal-alignment factor that is one in magnitude through start_angle and follows a shifted cosine
-// to zero at end_angle.
-TRIBOL_ENZYME_INLINE double ContactSmoothing::normal_alignment_factor( double normal_dot, double start_angle,
-                                                                       double end_angle )
+// to zero as the opposing unit normals approach perpendicularity.
+TRIBOL_ENZYME_INLINE double ContactSmoothing::normal_alignment_factor( double normal_dot, double start_angle )
 {
   if ( normal_dot >= 0.0 ) {
     return 0.0;
   }
 
-  const double alignment = -normal_dot;
+  double alignment = -normal_dot;
+  if ( alignment > 1.0 ) {
+    alignment = 1.0;
+  }
   if ( start_angle >= energy_mortar::perpendicular_normal_angle ) {
     return -1.0;
   }
@@ -32,18 +34,13 @@ TRIBOL_ENZYME_INLINE double ContactSmoothing::normal_alignment_factor( double no
   if ( alignment >= start_alignment ) {
     return -1.0;
   }
-  if ( start_angle == 0.0 && end_angle == energy_mortar::perpendicular_normal_angle ) {
+  if ( start_angle == 0.0 ) {
     return -alignment;
   }
 
-  const double end_alignment = std::cos( end_angle );
-  if ( alignment <= end_alignment ) {
-    return 0.0;
-  }
-
   const double angle = std::acos( alignment );
-  const double ramp_angle =
-      energy_mortar::perpendicular_normal_angle * ( angle - start_angle ) / ( end_angle - start_angle );
+  const double ramp_angle = energy_mortar::perpendicular_normal_angle * ( angle - start_angle ) /
+                            ( energy_mortar::perpendicular_normal_angle - start_angle );
   return -std::cos( ramp_angle );
 }
 
@@ -55,9 +52,8 @@ struct KernelParams {
   int N{ 3 };         // No. of quadrature points
   double del{ 0.1 };  // Integration-bound smoothing parameter
   double normal_smoothing_start_angle{ energy_mortar::default_normal_smoothing_start_angle };
-  double k{ 1.0 };             // Penalty stiffness
-  double residual_gap{ 0.0 };  // User-defined gap offset
-  double normal_smoothing_end_angle{ energy_mortar::default_normal_smoothing_end_angle };
+  double k{ 1.0 };                           // Penalty stiffness
+  std::array<double, 3> residual_gap{ {} };  // Lagged residual-gap samples
 };
 
 TRIBOL_ENZYME_INLINE double effective_gap( double gap_normal, double normal_cosine, double residual_gap )
@@ -216,6 +212,24 @@ TRIBOL_ENZYME_INLINE void find_intersection( const double* A0, const double* A1,
   intersection[1] = A0[1] + alpha * tA[1];
 }
 
+double residual_gap_at_qp( double xiA, const double* A0, const double* A1, const double* B0, const double* B1,
+                           const double* nB, double full_residual_gap, const double* nodal_values )
+{
+  if ( nodal_values == nullptr ) {
+    return full_residual_gap;
+  }
+  double x1[2];
+  iso_map( A0, A1, xiA, x1 );
+  double x2[2];
+  find_intersection( B0, B1, x1, nB, x2 );
+  const double bx = B1[0] - B0[0];
+  const double by = B1[1] - B0[1];
+  const double xiB = ( ( x2[0] - B0[0] ) * bx + ( x2[1] - B0[1] ) * by ) / ( bx * bx + by * by ) - 0.5;
+  const double valueA = ( 0.5 - xiA ) * nodal_values[0] + ( 0.5 + xiA ) * nodal_values[1];
+  const double valueB = ( 0.5 - xiB ) * nodal_values[2] + ( 0.5 + xiB ) * nodal_values[3];
+  return std::max( 0.0, std::min( full_residual_gap, std::max( valueA, valueB ) ) );
+}
+
 // Project the verticies of edge B onto edge A and return their local coordinates on A.
 // The variable projections is retuned with the coordinates in the parametric space where
 // the projections of edge B intersect edge A
@@ -299,8 +313,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, Gparams* gp, double* g
   find_normal( A0, A1, nA );
 
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  double eta = ContactSmoothing::normal_alignment_factor( dot, gp->normal_smoothing_start_angle,
-                                                          gp->normal_smoothing_end_angle );
+  double eta = ContactSmoothing::normal_alignment_factor( dot, gp->normal_smoothing_start_angle );
 
   double g1 = 0.0, g2 = 0.0;
   double AI_1 = 0.0, AI_2 = 0.0;
@@ -325,7 +338,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, Gparams* gp, double* g
 
     // lagged normal on B
     const double gn = -( dx * nB[0] + dy * nB[1] );
-    const double g = effective_gap( gn, eta, gp->residual_gap );
+    const double g = effective_gap( gn, eta, gp->residual_gap[i] );
 
     g1 += w * N1 * g * J;
     g2 += w * N2 * g * J;
@@ -364,8 +377,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel_quad( const double* x, const Gparams* gp
   double nA[2];
   find_normal( A0, A1, nA );
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  double eta = ContactSmoothing::normal_alignment_factor( dot, gp->normal_smoothing_start_angle,
-                                                          gp->normal_smoothing_end_angle );
+  double eta = ContactSmoothing::normal_alignment_factor( dot, gp->normal_smoothing_start_angle );
 
   double g1 = 0.0, g2 = 0.0;
   double AI_1 = 0.0, AI_2 = 0.0;
@@ -390,7 +402,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel_quad( const double* x, const Gparams* gp
 
     // lagged normal on B
     const double gn = -( dx * nB[0] + dy * nB[1] );
-    const double g = effective_gap( gn, eta, gp->residual_gap );
+    const double g = effective_gap( gn, eta, gp->residual_gap[i] );
 
     g1 += w * N1 * g * J;
     g2 += w * N2 * g * J;
@@ -482,7 +494,6 @@ static void kernel_out_enzyme( const double* x, const void* kp_void, double* out
 
   Gparams gp;
   gp.normal_smoothing_start_angle = kp->normal_smoothing_start_angle;
-  gp.normal_smoothing_end_angle = kp->normal_smoothing_end_angle;
   gp.residual_gap = kp->residual_gap;
   for ( std::size_t i = 0; i < qp.qp.size(); ++i ) {
     gp.qp[i] = qp.qp[i];
@@ -587,13 +598,12 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   double nA[2];
   find_normal( A0, A1, nA );
   const double dot = nA[0] * nB[0] + nA[1] * nB[1];
-  const double eta = ContactSmoothing::normal_alignment_factor( dot, kp->normal_smoothing_start_angle,
-                                                                kp->normal_smoothing_end_angle );
+  const double eta = ContactSmoothing::normal_alignment_factor( dot, kp->normal_smoothing_start_angle );
   const double J = line_jacobian( A0, A1 );
 
   double value = 0.0;
   for ( int i = 0; i < kp->N; ++i ) {
-    value += qp_penalty_kernel_qp_energy( qp.qp[i], qp.w[i], A0, A1, B0, B1, nB, eta, kp->residual_gap, kp->k, J,
+    value += qp_penalty_kernel_qp_energy( qp.qp[i], qp.w[i], A0, A1, B0, B1, nB, eta, kp->residual_gap[i], kp->k, J,
                                           pair_has_active_qp );
   }
 
@@ -650,7 +660,8 @@ void d2_kernel_quad( const double* x, const Gparams* gp, double* H )
 
 // Construct the quadrature data needed to evaluate the smoothed gap kernel.
 Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                   const MeshData::Viewer& mesh2 ) const
+                                                   const MeshData::Viewer& mesh2,
+                                                   const double* residual_gap_values ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
@@ -686,13 +697,12 @@ Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, co
 
   Gparams gp;
   gp.normal_smoothing_start_angle = p_.normal_smoothing_start_angle;
-  gp.normal_smoothing_end_angle = p_.normal_smoothing_end_angle;
-  gp.residual_gap = p_.residual_gap;
   // int N = eval.get_N();
 
   for ( std::size_t i = 0; i < qp.qp.size(); ++i ) {
     gp.qp[i] = qp.qp[i];
     gp.w[i] = qp.w[i];
+    gp.residual_gap[i] = residual_gap_at_qp( qp.qp[i], A0, A1, B0, B1, nB, p_.residual_gap, residual_gap_values );
   }
 
   return gp;
@@ -798,8 +808,7 @@ double EnergyMortarCalculator::compute_weighted_normal_gap( const InterfacePair&
 
   double gn = -( dx * nB[0] + dy * nB[1] );  // signed normal gap
   double dot = nB[0] * nA[0] + nB[1] * nA[1];
-  double eta =
-      ContactSmoothing::normal_alignment_factor( dot, p_.normal_smoothing_start_angle, p_.normal_smoothing_end_angle );
+  double eta = ContactSmoothing::normal_alignment_factor( dot, p_.normal_smoothing_start_angle );
 
   return effective_gap( gn, eta, p_.residual_gap );
 }
@@ -859,19 +868,21 @@ NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const Inter
 
 // Return the nodal smoothed gaps and tributary areas for the interface pair.
 void EnergyMortarCalculator::compute_gtilde_and_area( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                      const MeshData::Viewer& mesh2, double gtilde[2],
-                                                      double area[2] ) const
+                                                      const MeshData::Viewer& mesh2, double gtilde[2], double area[2],
+                                                      const double* residual_gap_values ) const
 {
-  auto ncd = compute_nodal_contact_data( pair, mesh1, mesh2 );
-  gtilde[0] = ncd.g_tilde[0];
-  gtilde[1] = ncd.g_tilde[1];
-  area[0] = ncd.AI[0];
-  area[1] = ncd.AI[1];
+  Gparams gp = construct_gparams( pair, mesh1, mesh2, residual_gap_values );
+  double A0[2], A1[2], B0[2], B1[2];
+  endpoints( mesh1, pair.m_element_id1, A0, A1 );
+  endpoints( mesh2, pair.m_element_id2, B0, B1 );
+  const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
+  gtilde_kernel_quad( x, &gp, gtilde, area );
 }
 
 // Compute derivatives of the two nodal smoothed gaps with respect to the endpoint coordinates.
 void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                          const MeshData::Viewer& mesh2, double dgt1_dx[8], double dgt2_dx[8] ) const
+                                          const MeshData::Viewer& mesh2, double dgt1_dx[8], double dgt2_dx[8],
+                                          const double* residual_gap_values ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
@@ -889,14 +900,18 @@ void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshD
 
   if ( !p_.enzyme_quadrature ) {
     // Hold the quadrature rule fixed while differentiating the gap kernel.
-    Gparams gp = construct_gparams( pair, mesh1, mesh2 );
+    Gparams gp = construct_gparams( pair, mesh1, mesh2, residual_gap_values );
     grad_kernel<KernelOutput::GTILDE1>( x, &gp, dg1_du );
     grad_kernel<KernelOutput::GTILDE2>( x, &gp, dg2_du );
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    const KernelParams kp{ p_.N, p_.del,          p_.normal_smoothing_start_angle,
-                           p_.k, p_.residual_gap, p_.normal_smoothing_end_angle };
+    KernelParams kp;
+    kp.N = p_.N;
+    kp.del = p_.del;
+    kp.normal_smoothing_start_angle = p_.normal_smoothing_start_angle;
+    kp.k = p_.k;
+    kp.residual_gap = construct_gparams( pair, mesh1, mesh2, residual_gap_values ).residual_gap;
     grad_kernel_enzyme<KernelOutput::GTILDE1>( x, &kp, dg1_du );
     grad_kernel_enzyme<KernelOutput::GTILDE2>( x, &kp, dg2_du );
   }
@@ -929,8 +944,12 @@ void EnergyMortarCalculator::grad_trib_area( const InterfacePair& pair, const Me
     grad_kernel<KernelOutput::A2>( x, &gp, dA2_dx );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    const KernelParams kp{ p_.N, p_.del,          p_.normal_smoothing_start_angle,
-                           p_.k, p_.residual_gap, p_.normal_smoothing_end_angle };
+    KernelParams kp;
+    kp.N = p_.N;
+    kp.del = p_.del;
+    kp.normal_smoothing_start_angle = p_.normal_smoothing_start_angle;
+    kp.k = p_.k;
+    kp.residual_gap = construct_gparams( pair, mesh1, mesh2 ).residual_gap;
     grad_kernel_enzyme<KernelOutput::A1>( x, &kp, dA1_dx );
     grad_kernel_enzyme<KernelOutput::A2>( x, &kp, dA2_dx );
   }
@@ -938,7 +957,8 @@ void EnergyMortarCalculator::grad_trib_area( const InterfacePair& pair, const Me
 
 // Compute the Hessians of the two nodal smoothed gaps with respect to the endpoint coordinates.
 void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                         const MeshData::Viewer& mesh2, double H1[64], double H2[64] ) const
+                                         const MeshData::Viewer& mesh2, double H1[64], double H2[64],
+                                         const double* residual_gap_values ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
@@ -956,14 +976,18 @@ void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshDa
 
   if ( !p_.enzyme_quadrature ) {
     // Hold the quadrature rule fixed while differentiating the gap gradients.
-    Gparams gp = construct_gparams( pair, mesh1, mesh2 );
+    Gparams gp = construct_gparams( pair, mesh1, mesh2, residual_gap_values );
     d2_kernel_quad<KernelOutput::GTILDE1>( x, &gp, d2g1_d2u );
     d2_kernel_quad<KernelOutput::GTILDE2>( x, &gp, d2g2_d2u );
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    const KernelParams kp{ p_.N, p_.del,          p_.normal_smoothing_start_angle,
-                           p_.k, p_.residual_gap, p_.normal_smoothing_end_angle };
+    KernelParams kp;
+    kp.N = p_.N;
+    kp.del = p_.del;
+    kp.normal_smoothing_start_angle = p_.normal_smoothing_start_angle;
+    kp.k = p_.k;
+    kp.residual_gap = construct_gparams( pair, mesh1, mesh2, residual_gap_values ).residual_gap;
     d2_kernel<KernelOutput::GTILDE1>( x, &kp, d2g1_d2u );
     d2_kernel<KernelOutput::GTILDE2>( x, &kp, d2g2_d2u );
   }
@@ -1000,8 +1024,12 @@ void EnergyMortarCalculator::compute_d2A_d2u( const InterfacePair& pair, const M
     d2_kernel_quad<KernelOutput::A2>( x, &gp, d2A2_d2u );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    const KernelParams kp{ p_.N, p_.del,          p_.normal_smoothing_start_angle,
-                           p_.k, p_.residual_gap, p_.normal_smoothing_end_angle };
+    KernelParams kp;
+    kp.N = p_.N;
+    kp.del = p_.del;
+    kp.normal_smoothing_start_angle = p_.normal_smoothing_start_angle;
+    kp.k = p_.k;
+    kp.residual_gap = construct_gparams( pair, mesh1, mesh2 ).residual_gap;
     d2_kernel<KernelOutput::A1>( x, &kp, d2A1_d2u );
     d2_kernel<KernelOutput::A2>( x, &kp, d2A2_d2u );
   }
@@ -1014,7 +1042,8 @@ void EnergyMortarCalculator::compute_d2A_d2u( const InterfacePair& pair, const M
 
 double EnergyMortarCalculator::compute_quadrature_point_penalty_energy( const InterfacePair& pair,
                                                                         const MeshData::Viewer& mesh1,
-                                                                        const MeshData::Viewer& mesh2 ) const
+                                                                        const MeshData::Viewer& mesh2,
+                                                                        const double* residual_gap_values ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
@@ -1022,8 +1051,12 @@ double EnergyMortarCalculator::compute_quadrature_point_penalty_energy( const In
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
 
   const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  const KernelParams kp{ p_.N, p_.del,          p_.normal_smoothing_start_angle,
-                         p_.k, p_.residual_gap, p_.normal_smoothing_end_angle };
+  KernelParams kp;
+  kp.N = p_.N;
+  kp.del = p_.del;
+  kp.normal_smoothing_start_angle = p_.normal_smoothing_start_angle;
+  kp.k = p_.k;
+  kp.residual_gap = construct_gparams( pair, mesh1, mesh2, residual_gap_values ).residual_gap;
   double energy = 0.0;
   bool pair_has_active_qp = false;
   qp_penalty_kernel( x, &kp, &energy, &pair_has_active_qp );
@@ -1031,7 +1064,8 @@ double EnergyMortarCalculator::compute_quadrature_point_penalty_energy( const In
 }
 
 QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_penalty_data(
-    const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2 ) const
+    const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+    const double* residual_gap_values ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
 
@@ -1039,8 +1073,12 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
 
   const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  const KernelParams kp{ p_.N, p_.del,          p_.normal_smoothing_start_angle,
-                         p_.k, p_.residual_gap, p_.normal_smoothing_end_angle };
+  KernelParams kp;
+  kp.N = p_.N;
+  kp.del = p_.del;
+  kp.normal_smoothing_start_angle = p_.normal_smoothing_start_angle;
+  kp.k = p_.k;
+  kp.residual_gap = construct_gparams( pair, mesh1, mesh2, residual_gap_values ).residual_gap;
 
   QuadraturePointPenaltyData result;
   qp_penalty_kernel( x, &kp, &result.energy, &result.has_active_qp );

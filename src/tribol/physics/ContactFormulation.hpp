@@ -79,6 +79,9 @@ class ContactFormulation {
    */
   virtual void updateNodalForces() = 0;
 
+  /** @brief Prepare cycle-dependent formulation data before gap and force assembly. */
+  virtual void beginCycle( int /*cycle*/ ) {}
+
   /**
    * @brief Reports if formulation has a maximum allowable timestep calculation
    *

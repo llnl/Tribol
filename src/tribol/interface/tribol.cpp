@@ -206,29 +206,36 @@ void setEnergyMortarNormalSmoothingStartAngle( IndexT cs_id, RealT start_angle )
 
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarNormalSmoothingStartAngle(): call tribol::registerCouplingScheme() "
                                << "prior to calling this routine." );
-  SLIC_ERROR_ROOT_IF(
-      start_angle < 0.0 || start_angle > cs->getParameters().energy_mortar_normal_smoothing_end_angle,
-      "tribol::setEnergyMortarNormalSmoothingStartAngle(): start angle must be between zero and the configured end "
-      "angle." );
+  SLIC_ERROR_ROOT_IF( start_angle < 0.0 || start_angle > energy_mortar::perpendicular_normal_angle,
+                      "tribol::setEnergyMortarNormalSmoothingStartAngle(): start angle must be in [0, pi / 2]." );
 
   cs->getParameters().energy_mortar_normal_smoothing_start_angle = start_angle;
   cs->updateContactFormulation();
 }
 
 //------------------------------------------------------------------------------
-void setEnergyMortarNormalSmoothingEndAngle( IndexT cs_id, RealT end_angle )
+void setEnergyMortarResidualGapRampAngle( IndexT cs_id, RealT ramp_angle )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
 
-  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarNormalSmoothingEndAngle(): call tribol::registerCouplingScheme() "
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarResidualGapRampAngle(): call tribol::registerCouplingScheme() "
                                << "prior to calling this routine." );
-  SLIC_ERROR_ROOT_IF(
-      end_angle < cs->getParameters().energy_mortar_normal_smoothing_start_angle ||
-          end_angle > energy_mortar::perpendicular_normal_angle,
-      "tribol::setEnergyMortarNormalSmoothingEndAngle(): end angle must be between the configured start angle and pi "
-      "/ 2." );
+  SLIC_ERROR_ROOT_IF( ramp_angle < 0.0 || ramp_angle > energy_mortar::perpendicular_normal_angle,
+                      "tribol::setEnergyMortarResidualGapRampAngle(): ramp angle must be in [0, pi / 2]." );
 
-  cs->getParameters().energy_mortar_normal_smoothing_end_angle = end_angle;
+  cs->getParameters().energy_mortar_residual_gap_ramp_angle = ramp_angle;
+  cs->updateContactFormulation();
+}
+
+//------------------------------------------------------------------------------
+void setEnergyMortarResidualGapRampUpdates( IndexT cs_id, bool enabled )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarResidualGapRampUpdates(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+
+  cs->getParameters().energy_mortar_residual_gap_ramp_updates = enabled;
   cs->updateContactFormulation();
 }
 
