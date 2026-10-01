@@ -168,6 +168,12 @@ string(REPLACE "TRIBOL" "AXOM" AXOM_DEBUG_DEFINE_STRING "${TRIBOL_DEBUG_DEFINE_S
 set(AXOM_DEBUG_DEFINE_STRING "${AXOM_DEBUG_DEFINE_STRING}" CACHE STRING "" FORCE)
 
 #------------------------------------------------------------------------------
+# Generate header file with configuration options
+#------------------------------------------------------------------------------
+include(cmake/TribolVersion.cmake)
+include(cmake/TribolConfig.cmake)
+
+#------------------------------------------------------------------------------
 # Add source directory
 #------------------------------------------------------------------------------
 add_subdirectory(src)
@@ -175,9 +181,3 @@ add_subdirectory(src)
 if ( TRIBOL_ENABLE_DOCS )
   add_subdirectory(docs)
 endif()
-
-#------------------------------------------------------------------------------
-# Generate header file with configuration options
-#------------------------------------------------------------------------------
-include(cmake/TribolVersion.cmake)
-include(cmake/TribolConfig.cmake)

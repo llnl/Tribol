@@ -721,7 +721,8 @@ void MfemMeshData::SetParentReferenceCoords( const mfem::ParGridFunction& refere
   }
 }
 
-bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks, bool force_new_redecomp )
+bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks, bool force_new_redecomp,
+                                       RealT residual_gap )
 {
   TRIBOL_MARK_FUNCTION;
 
@@ -771,10 +772,10 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
       submesh_lor_xfer_->SubmeshToLOR( *submesh_nodes, *lor_nodes );
       TRIBOL_MARK_END( "Update LOR coords" );
     }
-    update_data_ =
-        std::make_unique<UpdateData>( submesh_, lor_mesh_.get(), *coords_.GetParentGridFn().ParFESpace(),
-                                      submesh_xfer_gridfn_, submesh_lor_xfer_.get(), attributes_1_, attributes_2_,
-                                      binning_proximity_scale, n_ranks, allocator_id_, redecomp_trigger_displacement_ );
+    update_data_ = std::make_unique<UpdateData>( submesh_, lor_mesh_.get(), *coords_.GetParentGridFn().ParFESpace(),
+                                                 submesh_xfer_gridfn_, submesh_lor_xfer_.get(), attributes_1_,
+                                                 attributes_2_, binning_proximity_scale, n_ranks, allocator_id_,
+                                                 redecomp_trigger_displacement_, residual_gap );
     rebuilt = true;
   }
 
@@ -1046,19 +1047,19 @@ MfemMeshData::UpdateData::UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* 
                                       mfem::ParGridFunction& submesh_gridfn, SubmeshLORTransfer* submesh_lor_xfer,
                                       const std::set<int>& attributes_1, const std::set<int>& attributes_2,
                                       RealT binning_proximity_scale, int n_ranks, int allocator_id,
-                                      RealT redecomp_trigger_displacement )
+                                      RealT redecomp_trigger_displacement, RealT residual_gap )
     : redecomp_mesh_{ lor_mesh
                           ? redecomp::RedecompMesh(
                                 *lor_mesh,
                                 binning_proximity_scale * redecomp::RedecompMesh::MaxElementSize(
                                                               *lor_mesh, redecomp::MPIUtility( lor_mesh->GetComm() ) ) +
-                                    redecomp_trigger_displacement,
+                                    redecomp_trigger_displacement + residual_gap,
                                 redecomp::RedecompMesh::RCB, n_ranks )
                           : redecomp::RedecompMesh(
                                 submesh,
                                 binning_proximity_scale * redecomp::RedecompMesh::MaxElementSize(
                                                               submesh, redecomp::MPIUtility( submesh.GetComm() ) ) +
-                                    redecomp_trigger_displacement,
+                                    redecomp_trigger_displacement + residual_gap,
                                 redecomp::RedecompMesh::RCB, n_ranks ) },
       vector_xfer_{ parent_fes, submesh_gridfn, submesh_lor_xfer, redecomp_mesh_ },
       allocator_id_{ allocator_id }

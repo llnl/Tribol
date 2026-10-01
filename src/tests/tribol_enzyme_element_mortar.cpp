@@ -974,6 +974,45 @@ TEST_F( EnzymeElementMortarTest, NoOverlap )
   FDCheck( x1, x2, n1, p1, x1_stencil, x2_stencil, num_nodes, check_scale, len_collapse_ratio );
 }
 
+TEST_F( EnzymeElementMortarTest, ExactOverlapResidualGap )
+{
+  // clang-format off
+  // Setup two elements with exact projected overlap and a normal separation of 0.1
+  double x1[12] = { 0.0, 1.0, 1.0, 0.0,
+                    0.0, 0.0, 1.0, 1.0,
+                    0.0, 0.0, 0.0, 0.0 };
+  // Define x2 in CW order so ElemReverse makes it CCW
+  double x2[12] = { 0.0, 0.0, 1.0, 1.0,
+                    0.0, 1.0, 1.0, 0.0,
+                    0.1, 0.1, 0.1, 0.1 };
+  double n1[12] = { 0.0, 0.0, 0.0, 0.0,
+                    0.0, 0.0, 0.0, 0.0,
+                    1.0, 1.0, 1.0, 1.0 };
+  double p1[4] = { 1.0, 1.0, 1.0, 1.0 };
+  // clang-format on
+
+  double residual_gap = 0.15;
+  constexpr double len_collapse_ratio = 1.0e-8;
+
+  double f1[12], f2[12], g1[4];
+  int num_nodes = 4;
+
+  // Call with residual_gap
+  tribol::ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, num_nodes, x2, f2, num_nodes, len_collapse_ratio,
+                                    residual_gap );
+
+  // Kinematic gap is 0.1. Effective gap is 0.1 - 0.15 = -0.05.
+  // Integrated gap for unit square (overlap area 1.0) distributed to 4 nodes:
+  // Each node i has integrated gap G_i = \int \phi_i (g_kin - g_r) dA.
+  // For constant g_kin and g_r: G_i = (g_kin - g_r) \int \phi_i dA.
+  // \int \phi_i dA for bilinear quad node is 0.25 (1/4 of element area).
+  // So G_i = -0.05 * 0.25 = -0.0125.
+
+  for ( int i = 0; i < 4; ++i ) {
+    EXPECT_NEAR( g1[i], -0.0125, 1e-12 );
+  }
+}
+
 }  // namespace tribol
 
 //------------------------------------------------------------------------------

@@ -12,23 +12,39 @@ namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
-// EnergyMortar uses a 3-point Gauss-Legendre quad rule
+/// Stores quadrature-point locations and weights for the supported Gauss-Legendre rule.
 struct QuadPoints {
-  std::array<double, 3> qp;  // qp locations
-  std::array<double, 3> w;   // weights
+  std::array<double, 3> qp;  ///< Quadrature-point locations in the local coordinate of the integration edge.
+  std::array<double, 3> w;   ///< Quadrature weights mapped to the local integration interval.
 };
 
+/// Parameters controlling ENERGY_MORTAR contact evaluation.
 struct ContactParams {
-  double del;              // Smoothing Parameter
-  double k;                // Penalty
-  int N;                   // Quadrature Points
-  bool enzyme_quadrature;  // Determines how enzyming is performed (default = True)
+  double del;                  ///< Smoothing length used for integration bounds.
+  double k;                    ///< Penalty stiffness.
+  int N;                       ///< Number of quadrature points.
+  bool enzyme_quadrature;      ///< Whether Enzyme differentiates the quadrature construction.
+  double residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
 };
 
-// Weighted gap and trib area
+/// Stores quadrature-point penalty energy derivatives for one interface pair.
+struct QuadraturePointPenaltyData {
+  static constexpr int dim = 2;                 ///< Spatial dimension.
+  static constexpr int max_nodes_per_elem = 2;  ///< Maximum nodes on each line element.
+  static constexpr int pair_size = 2;           ///< Number of elements in an interface pair.
+  static constexpr int num_force_dofs = dim * max_nodes_per_elem * pair_size;  ///< Pair coordinate degrees of freedom.
+  static constexpr int num_stiffness_entries = num_force_dofs * num_force_dofs;  ///< Flattened stiffness size.
+
+  bool has_active_qp{ false };                            ///< True when any quadrature-point gap is nonpositive.
+  double energy{ 0.0 };                                   ///< Penalty energy for the interface pair.
+  std::array<double, num_force_dofs> force{};             ///< Derivative with respect to pair coordinates.
+  std::array<double, num_stiffness_entries> stiffness{};  ///< Flattened force derivative matrix.
+};
+
+/// Stores weighted nodal gaps and tributary areas for one interface pair.
 struct NodalContactData {
-  std::array<double, 2> AI;       // Trib area
-  std::array<double, 2> g_tilde;  // Weighted gap
+  std::array<double, 2> AI;       ///< Tributary areas for the two integration-edge nodes.
+  std::array<double, 2> g_tilde;  ///< Weighted gaps for the two integration-edge nodes.
 };
 
 /// Stores finite-difference and analytical derivative data for validation tests.
@@ -63,9 +79,11 @@ struct FiniteDiffResult {
   double g_tilde2_baseline{ 0.0 };
 };
 
+/// Stores fixed quadrature data passed to differentiated kernels.
 struct Gparams {
-  std::array<double, 3> qp;
-  std::array<double, 3> w;
+  std::array<double, 3> qp;    ///< Quadrature-point locations in the integration-edge local coordinate.
+  std::array<double, 3> w;     ///< Quadrature weights mapped to the local integration interval.
+  double residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
 };
 
 /// Provides smoothing operations for the Energy Mortar contact formulation.
@@ -76,17 +94,15 @@ class ContactSmoothing {
  public:
   /// Clamp the projected overlap interval to the extended smoothing support.
   ///
-  /// The input `proj` contains the local projection bounds of edge B onto edge A.
-  /// The returned interval is restricted to the extended local range
-  /// `[-0.5 - del, 0.5 + del]`.
-  static std::array<double, 2> bounds_from_projections( const std::array<double, 2>& proj, double del );
+  /// The input `projections` contains the local projection bounds of edge B onto edge A.
+  /// The output `bounds` is restricted to the extended local range `[-0.5 - del, 0.5 + del]`.
+  static void bounds_from_projections( const double* projections, double del, double* bounds );
 
   /// Smooth the integration bounds using the smoothing length `del`.
   ///
-  /// The returned bounds are obtained by applying the endpoint smoothing map to
-  /// the clamped integration interval. When `del = 0`, the bounds are returned
-  /// without smoothing.
-  static std::array<double, 2> smooth_bounds( const std::array<double, 2>& bounds, double del );
+  /// The output `smooth_bounds` is obtained by applying the endpoint smoothing map to
+  /// the clamped integration interval. When `del = 0`, the bounds are unchanged.
+  static void smooth_bounds( const double* bounds, double del, double* smooth_bounds );
 };
 
 /// Evaluates Energy Mortar contact quantities for a single interface pair.
@@ -117,8 +133,8 @@ class EnergyMortarCalculator {
   ///
   /// The input bounds are local coordinates on edge A. The returned quadrature
   /// points and weights are mapped from the reference interval to
-  /// `[xi_bounds[0], xi_bounds[1]]`
-  static QuadPoints compute_quadrature( const std::array<double, 2>& xi_bounds, int N );
+  /// `[xi_bounds[0], xi_bounds[1]]` and written to `quadrature`.
+  static void compute_quadrature( const double* xi_bounds, int N, QuadPoints* quadrature );
 
   /// Compute the nodal smoothed gap integrals and tributary areas.
   ///
@@ -169,6 +185,15 @@ class EnergyMortarCalculator {
   /// derivative includes the geometry-dependent quadrature construction.
   void compute_d2A_d2u( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
                         double dgt1_dx[64], double dgt2_dx[64] ) const;
+
+  /// Compute local energy, force, and stiffness for quadrature-point penalty enforcement.
+  QuadraturePointPenaltyData compute_quadrature_point_penalty_data( const InterfacePair& pair,
+                                                                    const MeshData::Viewer& mesh1,
+                                                                    const MeshData::Viewer& mesh2 ) const;
+
+  /// Evaluate only the local quadrature-point penalty energy.
+  double compute_quadrature_point_penalty_energy( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                                  const MeshData::Viewer& mesh2 ) const;
 
   /// Evaluate and return the two nodal smoothed gap integrals.
   ///

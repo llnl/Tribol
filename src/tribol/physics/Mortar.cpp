@@ -115,7 +115,7 @@ void ComputeMortarWeights( SurfaceContactElem& elem )
 
 //------------------------------------------------------------------------------
 template <>
-void ComputeNodalGap<SINGLE_MORTAR>( SurfaceContactElem& elem )
+void ComputeNodalGap<SINGLE_MORTAR>( SurfaceContactElem& elem, RealT residual_gap )
 {
   // check to make sure mortar weights have been computed locally
   // for the SurfaceContactElem object
@@ -163,6 +163,9 @@ void ComputeNodalGap<SINGLE_MORTAR>( SurfaceContactElem& elem )
 
       g1 += dotProd( nrml_a.data(), &elem.faceCoords1[elem.dim * b], elem.dim ) * nab_1;
       g2 += dotProd( nrml_a.data(), &elem.faceCoords2[elem.dim * b], elem.dim ) * nab_2;
+
+      // Integrate the residual gap with the nonmortar weights. It is subtracted below as part of g1 - g2.
+      g2 += residual_gap * nab_2;
     }
 
     // store local gap
@@ -201,6 +204,8 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
   Array2D<RealT> nonmortarX( numNodesPerFace, dim );
   Array2D<RealT> mortarX_bar( numNodesPerFace, dim );
   Array2D<RealT> nonmortarX_bar( numNodesPerFace, dim );
+
+  RealT residual_gap = cs->getParameters().residual_gap;
 
   ////////////////////////////////////////////////////////////////////
   // compute nonmortar gaps to determine active set of contact dofs //
@@ -249,7 +254,7 @@ void ComputeSingleMortarGaps( CouplingScheme* cs )
     elem.faceCoords1 = mortarX.data();
     elem.faceCoords2 = nonmortarX.data();
 
-    ComputeNodalGap<SINGLE_MORTAR>( elem );
+    ComputeNodalGap<SINGLE_MORTAR>( elem, residual_gap );
 
     // TODO: fix this to register the actual number of active nonmortar gaps.
     // This is not the appropriate data structure to put this information in
@@ -696,7 +701,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
                                    blockJ_n( 0, 0 ).data(), blockJ( 0, 2 ).data(), g1, blockJ( 2, 0 ).data(),
                                    blockJ( 2, 1 ).data(), blockJ_n( 2, 0 ).data(), size1, x2, f2, blockJ( 1, 0 ).data(),
                                    blockJ( 1, 1 ).data(), blockJ_n( 1, 0 ).data(), blockJ( 1, 2 ).data(), size2,
-                                   cs->getParameters().len_collapse_ratio );
+                                   cs->getParameters().len_collapse_ratio, cs->getParameters().residual_gap );
 
       if ( lm_opts.sparse_mode == SparseMode::MFEM_ELEMENT_DENSE ) {
         cs->getMethodData()->storeElemBlockJ( { elem1, elem2, elem1 }, blockJ );
@@ -707,7 +712,8 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
       }
     } else if ( lm_opts.eval_mode == ImplicitEvalMode::MORTAR_GAP ||
                 lm_opts.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL ) {
-      ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, size1, x2, f2, size2, cs->getParameters().len_collapse_ratio );
+      ComputeMortarForceEnzyme( x1, n1, p1, f1, g1, size1, x2, f2, size2, cs->getParameters().len_collapse_ratio,
+                                cs->getParameters().residual_gap );
     }
     for ( int i{ 0 }; i < size1; ++i ) {
       int node_id = mesh1.getGlobalNodeId( elem1, i );
@@ -729,7 +735,7 @@ int ApplyNormalEnzyme( CouplingScheme* cs )
 
 //------------------------------------------------------------------------------
 void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* g1, int size1,
-                               const RealT* x2, RealT* f2, int size2, RealT lenCollapseRatio )
+                               const RealT* x2, RealT* f2, int size2, RealT lenCollapseRatio, RealT residual_gap )
 {
   // convention: elem1 = nonmortar element
   //             elem2 = mortar element
@@ -976,6 +982,9 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
     for ( int d{ 0 }; d < 3; ++d ) {
       g1[i] += n1[d * size1 + i] * gap_v[d];
     }
+    for ( int j{ 0 }; j < size1; ++j ) {
+      g1[i] -= residual_gap * mortar_mat1[i * size1 + j];
+    }
   }
 
   // compute nonmortar force contributions
@@ -1007,7 +1016,7 @@ void ComputeMortarForceEnzyme( const RealT* x1, const RealT* n1, const RealT* p1
 void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT* p1, RealT* f1, RealT* df1dx1,
                                   RealT* df1dx2, RealT* df1dn1, RealT* df1dp1, RealT* g1, RealT* dg1dx1, RealT* dg1dx2,
                                   RealT* dg1dn1, int size1, const RealT* x2, RealT* f2, RealT* df2dx1, RealT* df2dx2,
-                                  RealT* df2dn1, RealT* df2dp1, int size2, RealT lenCollapseRatio )
+                                  RealT* df2dn1, RealT* df2dp1, int size2, RealT lenCollapseRatio, RealT residual_gap )
 {
   RealT x1_dot[12] = { 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0 };
   for ( int i{ 0 }; i < size1 * 3; ++i ) {
@@ -1023,7 +1032,8 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
          TRIBOL_ENZYME_CONST, x2,
          TRIBOL_ENZYME_DUP, f2, &df2dx1[size1*3*i],
          TRIBOL_ENZYME_CONST, size2,
-         TRIBOL_ENZYME_CONST, lenCollapseRatio);
+         TRIBOL_ENZYME_CONST, lenCollapseRatio,
+         TRIBOL_ENZYME_CONST, residual_gap);
     // clang-format on
     x1_dot[i] = 0.0;
   }
@@ -1041,7 +1051,8 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
          TRIBOL_ENZYME_CONST, x2,
          TRIBOL_ENZYME_DUP, f2, &df2dn1[size1*3*i],
          TRIBOL_ENZYME_CONST, size2,
-         TRIBOL_ENZYME_CONST, lenCollapseRatio);
+         TRIBOL_ENZYME_CONST, lenCollapseRatio,
+         TRIBOL_ENZYME_CONST, residual_gap);
     // clang-format on
     n1_dot[i] = 0.0;
   }
@@ -1059,7 +1070,8 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
          TRIBOL_ENZYME_CONST, x2,
          TRIBOL_ENZYME_DUP, f2, &df2dp1[size1*3*i],
          TRIBOL_ENZYME_CONST, size2,
-         TRIBOL_ENZYME_CONST, lenCollapseRatio);
+         TRIBOL_ENZYME_CONST, lenCollapseRatio,
+         TRIBOL_ENZYME_CONST, residual_gap);
     // clang-format on
     p1_dot[i] = 0.0;
   }
@@ -1077,7 +1089,8 @@ void ComputeMortarJacobianEnzyme( const RealT* x1, const RealT* n1, const RealT*
          TRIBOL_ENZYME_DUP, x2, x2_dot,
          TRIBOL_ENZYME_DUP, f2, &df2dx2[size2*3*i],
          TRIBOL_ENZYME_CONST, size2,
-         TRIBOL_ENZYME_CONST, lenCollapseRatio);
+         TRIBOL_ENZYME_CONST, lenCollapseRatio,
+         TRIBOL_ENZYME_CONST, residual_gap);
     // clang-format on
     x2_dot[i] = 0.0;
   }

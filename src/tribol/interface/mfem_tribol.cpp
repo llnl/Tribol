@@ -14,7 +14,6 @@
 
 #include "tribol.hpp"
 #include "tribol/mesh/CouplingScheme.hpp"
-#include "tribol/physics/ContactFormulationFactory.hpp"
 
 namespace tribol {
 
@@ -293,6 +292,7 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
   auto& cs = CouplingSchemeManager::getInstance().at( cs_id );
   cs.setMPIComm( mesh.GetComm() );
   if ( contact_method == ENERGY_MORTAR && enforcement_method == LAGRANGE_MULTIPLIER ) {
+    cs.getParameters().enforcement_location = EnforcementLocation::Nodal;
     SLIC_WARNING_ROOT(
         "ENERGY_MORTAR with Lagrange multiplier enforcement is experimental, has no testing, and has "
         "no support from Tribol developers." );
@@ -338,7 +338,7 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
   }
   cs.setMfemMeshData( std::move( mfem_data ) );
   if ( contact_method == ENERGY_MORTAR ) {
-    cs.setContactFormulation( createContactFormulation( &cs ) );
+    cs.updateContactFormulation();
   }
 }
 
@@ -775,9 +775,11 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
       if ( mfem_data->GetLORFactor() > 1 ) {
         effective_binning_proximity *= static_cast<RealT>( mfem_data->GetLORFactor() );
       }
+      auto residual_gap = cs.getParameters().residual_gap;
       // creates a new redecomp mesh based on updated coordinates (if criteria is met) and updates transfer operators
       // and displacement, velocity, and response grid functions based on new redecomp mesh
-      auto new_redecomp = mfem_data->UpdateMfemMeshData( effective_binning_proximity, n_ranks, force_new_redecomp );
+      auto new_redecomp =
+          mfem_data->UpdateMfemMeshData( effective_binning_proximity, n_ranks, force_new_redecomp, residual_gap );
       auto coord_ptrs = mfem_data->GetRedecompCoordsPtrs();
 
       registerMesh( mesh_ids[0], mfem_data->GetMesh1NE(), mfem_data->GetNV(), mfem_data->GetMesh1Conn(),
