@@ -25,6 +25,15 @@ inline bool in_range( int target, int N )
 
 constexpr int ANY_MESH = -1;
 
+namespace energy_mortar {
+
+// TODO(C++20): Initialize this with std::numbers::pi_v<RealT> / 2.0 once Tribol requires C++20.
+inline constexpr RealT perpendicular_normal_angle = 1.5707963267948966;
+inline constexpr RealT default_normal_smoothing_start_angle = perpendicular_normal_angle / 2.0;
+inline constexpr RealT default_residual_gap_ramp_angle = perpendicular_normal_angle / 9.0;
+
+}  // namespace energy_mortar
+
 /*!
  * \brief Enumerates the logging level options
  */
@@ -488,6 +497,12 @@ struct Parameters {
       3.0e-1;  ///! Max allowable interpenetration as percent of element thickness prior to triggering timestep vote
   RealT timestep_scale =
       1.0;  ///! Scale factor (>0) applied to the timestep vote giving users some control over the vote
+  RealT energy_mortar_smoothing_length = 0.1;  ///! Smoothing length for EnergyMortar integration bounds
+  RealT energy_mortar_normal_smoothing_start_angle =
+      energy_mortar::default_normal_smoothing_start_angle;  ///! Smoothing start relative to opposed normals, in radians
+  RealT energy_mortar_residual_gap_ramp_angle =
+      energy_mortar::default_residual_gap_ramp_angle;    ///! Total crack-opening ramp angle, in radians
+  bool energy_mortar_residual_gap_ramp_updates = false;  ///! Recompute the residual-gap ramp once per cycle
 
   int vis_cycle_incr = 100;           ///! Frequency for visualizations dumps
   VisType vis_type = VIS_NONE;        ///! Type of interface physics visualization output

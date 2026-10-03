@@ -662,6 +662,9 @@ class MfemMeshData {
   bool UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks, bool force_new_redecomp = false,
                            RealT residual_gap = 0.0 );
 
+  /** @brief Refresh the persistent contact-submesh coordinates from the current parent coordinates. */
+  void UpdateSubmeshCoordinates();
+
   /**
    * @brief Get the integer identifier for the first Tribol registered mesh
    *
@@ -950,7 +953,10 @@ class MfemMeshData {
    *
    * @return const RealT*
    */
-  const RealT* GetRedecompElemThickness1() const { return tribol_elem_thickness_1_->data(); }
+  const RealT* GetRedecompElemThickness1() const
+  {
+    return tribol_elem_thickness_1_ ? tribol_elem_thickness_1_->data() : nullptr;
+  }
 
   /**
    * @brief Get a pointer to the element thickness array for the second Tribol
@@ -958,7 +964,10 @@ class MfemMeshData {
    *
    * @return const RealT*
    */
-  const RealT* GetRedecompElemThickness2() const { return tribol_elem_thickness_2_->data(); }
+  const RealT* GetRedecompElemThickness2() const
+  {
+    return tribol_elem_thickness_2_ ? tribol_elem_thickness_2_->data() : nullptr;
+  }
 
   /**
    * @brief Get a pointer to the material modulus array for the first Tribol
@@ -966,7 +975,10 @@ class MfemMeshData {
    *
    * @return const RealT*
    */
-  const RealT* GetRedecompMaterialModulus1() const { return tribol_material_modulus_1_->data(); }
+  const RealT* GetRedecompMaterialModulus1() const
+  {
+    return tribol_material_modulus_1_ ? tribol_material_modulus_1_->data() : nullptr;
+  }
 
   /**
    * @brief Get a pointer to the material modulus array for the second Tribol
@@ -974,7 +986,10 @@ class MfemMeshData {
    *
    * @return const RealT*
    */
-  const RealT* GetRedecompMaterialModulus2() const { return tribol_material_modulus_2_->data(); }
+  const RealT* GetRedecompMaterialModulus2() const
+  {
+    return tribol_material_modulus_2_ ? tribol_material_modulus_2_->data() : nullptr;
+  }
 
   /**
    * @brief Get the map from Tribol registered mesh 1 element indices to
@@ -1092,6 +1107,9 @@ class MfemMeshData {
    * @brief Computes element thicknesses for volume elements attached to the contact surface
    */
   void ComputeElementThicknesses();
+
+  /** @brief True when parent-volume element thicknesses have been computed for the contact surface. */
+  bool HasElementThicknesses() const { return elem_thickness_ != nullptr; }
 
   /**
    * @brief Compute material modulus field at each element
@@ -1516,6 +1534,16 @@ class MfemSubmeshData {
   void UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_mesh, bool new_redecomp = true );
 
   /**
+   * @brief Build the EnergyMortar residual-gap ramp on the persistent contact submesh
+   *
+   * @param residual_gap Full residual gap away from nonconvex corners
+   * @param ramp_angle Total symmetric crack-opening ramp angle in radians; zero disables corner reduction
+   *
+   * @note Every nonconvex 2D opening below pi seeds corner reduction. Other dimensions retain a uniform residual gap.
+   */
+  void UpdateResidualGapField( RealT residual_gap, RealT ramp_angle );
+
+  /**
    * @brief Get pointers to component arrays of the pressure on the redecomp
    * mesh
    *
@@ -1563,6 +1591,12 @@ class MfemSubmeshData {
    * @return const mfem::GridFunction&
    */
   mfem::GridFunction& GetRedecompGap() { return redecomp_gap_; }
+
+  /** @brief Get the residual-gap field transferred to the redecomp mesh. */
+  const mfem::GridFunction& GetRedecompResidualGap() const { return residual_gap_.GetRedecompGridFn(); }
+
+  /** @brief Get the persistent residual-gap ramp on the parent-linked submesh. */
+  const mfem::ParGridFunction& GetSubmeshResidualGap() const { return submesh_residual_gap_; }
 
   /**
    * @brief Get the gap vector on the parent-linked boundary submesh
@@ -1644,10 +1678,16 @@ class MfemSubmeshData {
    */
   mfem::ParGridFunction submesh_pressure_;
 
+  /** @brief Residual-gap ramp on the persistent parent-linked boundary submesh. */
+  mfem::ParGridFunction submesh_residual_gap_;
+
   /**
    * @brief Pressure grid function and transfer operators
    */
   PressureField pressure_;
+
+  /** @brief Residual-gap field and its redecomp representation. */
+  PressureField residual_gap_;
 
   /**
    * @brief Contains LOR mesh transfer operators if LOR is being used; nullptr

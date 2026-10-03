@@ -134,19 +134,24 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @param jac_data MFEM Jacobian transfer data
    * @param k Penalty stiffness
    * @param delta Smoothing length
+   * @param normal_smoothing_start_angle Normal-alignment smoothing start angle in radians
+   * @param residual_gap_ramp_angle Total crack-opening angle for the residual-gap ramp
+   * @param residual_gap_ramp_updates Whether to rebuild the ramp once per cycle
    * @param N Quadrature order
    * @param enzyme_quadrature If true, use Enzyme-assisted quadrature
    * @param use_penalty If true, interpret the dual field as pressure; otherwise interpret it as a Lagrange multiplier
    * vector (LM mode)
-   * @param residual_gap Nonnegative gap offset subtracted from the kinematic gap. Positive values enforce separation
-   *        between the contact surfaces.
+   * @param residual_gap Nonnegative separation represented by offsetting the non-mortar virtual surface and by
+   *        non-mortar nodal balls.
    *
    * @note The ENERGY_MORTAR implementation follows the literature convention of integrating on a non-mortar side and
    * mapping to a mortar side. To maintain that convention within Tribol, the adapter may internally flip mesh roles
    * relative to the order of the meshes provided here.
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k,
-                       double delta, int N, bool enzyme_quadrature, bool use_penalty = true, RealT residual_gap = 0.0 );
+                       double delta, double normal_smoothing_start_angle, double residual_gap_ramp_angle,
+                       bool residual_gap_ramp_updates, int N, bool enzyme_quadrature, bool use_penalty = true,
+                       RealT residual_gap = 0.0 );
 
   /**
    * @brief Default destructor
@@ -213,11 +218,14 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   void updateConstantPenaltyStiffness( double mesh1_penalty, double mesh2_penalty ) override;
 
   /**
-   * @brief Update residual-gap offset
+   * @brief Update the residual-gap separation
    *
-   * @param residual_gap User-defined gap offset
+   * @param residual_gap User-defined separation
    */
   void setResidualGap( RealT residual_gap ) override;
+
+  /** @brief Rebuild the lagged residual-gap ramp when required for this cycle. */
+  void beginCycle( int cycle ) override;
 
 #ifdef BUILD_REDECOMP
   /**
@@ -302,10 +310,19 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    */
   ContactParams params_;
 
+  double residual_gap_ramp_angle_{ energy_mortar::default_residual_gap_ramp_angle };
+  bool residual_gap_ramp_updates_{ false };
+  bool residual_gap_field_dirty_{ true };
+  int residual_gap_field_cycle_{ -1 };
+
   /**
    * @brief Evaluator implementing ENERGY_MORTAR element-level computations
    */
   std::unique_ptr<EnergyMortarCalculator> evaluator_;
+
+  /** @brief Gather the residual-gap field values for the two nodes on each edge in a pair. */
+  std::array<double, 4> residualGapValues( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                           const MeshData::Viewer& mesh2 ) const;
 
   // Stored InterfacePairs
 

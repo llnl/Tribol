@@ -142,6 +142,47 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
 void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
 
 /*!
+ * \brief Sets the EnergyMortar integration-bound smoothing length
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] smoothing_length smoothing length in the integration edge's local coordinate
+ *
+ * \pre 0 <= smoothing_length <= 0.5
+ */
+void setEnergyMortarSmoothingLength( IndexT cs_id, RealT smoothing_length );
+
+/*!
+ * \brief Sets the EnergyMortar normal-alignment smoothing start angle
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] start_angle relative deviation from perfectly opposed normals, in radians, where smoothing begins;
+ *                            pi / 2 disables attenuation for opposing normals
+ *
+ * \pre 0 <= start_angle <= pi / 2
+ */
+void setEnergyMortarNormalSmoothingStartAngle( IndexT cs_id, RealT start_angle );
+
+/*!
+ * \brief Sets the EnergyMortar residual-gap crack-opening ramp angle
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] ramp_angle total symmetric crack-opening angle in radians. Zero disables corner reduction.
+ *
+ * \note Every nonconvex 2D opening below pi seeds corner reduction. Other dimensions retain a uniform residual gap.
+ *
+ * \pre 0 <= ramp_angle <= pi / 2
+ */
+void setEnergyMortarResidualGapRampAngle( IndexT cs_id, RealT ramp_angle );
+
+/*!
+ * \brief Enables or disables rebuilding the EnergyMortar residual-gap ramp from current geometry once per cycle
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] enabled true to rebuild once per cycle; false to retain the initial-geometry field
+ */
+void setEnergyMortarResidualGapRampUpdates( IndexT cs_id, bool enabled );
+
+/*!
  *
  * \brief sets the timestep scale factor applied to the timestep vote
  *
