@@ -1011,6 +1011,42 @@ INSTANTIATE_TEST_SUITE_P( MfemLorTransfer, MfemLorTransferParamTest,
 
 #ifdef TRIBOL_USE_ENZYME
 
+namespace {
+
+void ConfigureBallCompletionScheme( int scheme_id, int mesh_id_1, int mesh_id_2, const mfem::ParMesh& mesh,
+                                    const mfem::ParGridFunction& coords, const std::set<int>& mortar_attributes,
+                                    const std::set<int>& nonmortar_attributes,
+                                    tribol::EnforcementLocation enforcement_location, double penalty = 3.0 )
+{
+  tribol::registerMfemCouplingScheme( scheme_id, mesh_id_1, mesh_id_2, mesh, coords, mortar_attributes,
+                                      nonmortar_attributes, tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING,
+                                      tribol::ENERGY_MORTAR, tribol::FRICTIONLESS, tribol::PENALTY,
+                                      tribol::BINNING_GRID );
+  tribol::setEnforcementLocation( scheme_id, enforcement_location );
+  tribol::setMfemKinematicConstantPenalty( scheme_id, penalty, penalty );
+  tribol::setResidualGap( scheme_id, 0.2 );
+  tribol::setEnergyMortarResidualGapRampAngle( scheme_id, 0.0 );
+}
+
+mfem::ParMesh MakeBallCompletionMesh()
+{
+  // The physical and virtual contact edges have no projected overlap. Their nearest endpoints are 0.05 apart in each
+  // coordinate, so both lie inside a residual-gap ball of radius 0.2.
+  return shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::Unify( { shared::MeshBuilder::SquareMesh( 1, 1 )
+                                                                                   .updateBdrAttrib( 1, 11 )
+                                                                                   .updateBdrAttrib( 2, 12 )
+                                                                                   .updateBdrAttrib( 3, 3 )
+                                                                                   .updateBdrAttrib( 4, 14 ),
+                                                                               shared::MeshBuilder::SquareMesh( 1, 1 )
+                                                                                   .translate( { 1.05, 1.05 } )
+                                                                                   .updateBdrAttrib( 1, 5 )
+                                                                                   .updateBdrAttrib( 2, 22 )
+                                                                                   .updateBdrAttrib( 3, 23 )
+                                                                                   .updateBdrAttrib( 4, 24 ) } ) );
+}
+
+}  // namespace
+
 TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
 {
   int n_ranks;
@@ -1071,6 +1107,87 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
     if ( DfDx ) {
       EXPECT_GT( DfDx->NNZ(), 0 );
     }
+  }
+}
+
+TEST_F( MfemJacobianTest, energy_mortar_nodal_penalty_includes_ball_completion )
+{
+  auto mesh = MakeBallCompletionMesh();
+  mfem::H1_FECollection fec( 1, mesh.SpaceDimension() );
+  mfem::ParFiniteElementSpace fes( &mesh, &fec, mesh.SpaceDimension(), mfem::Ordering::byVDIM );
+  mfem::ParGridFunction coords( &fes );
+  mesh.GetNodes( coords );
+
+  const int scheme_id = NextCouplingSchemeId();
+  ConfigureBallCompletionScheme( scheme_id, 2 * scheme_id, 2 * scheme_id + 1, mesh, coords, { 5 }, { 3 },
+                                 tribol::EnforcementLocation::Nodal );
+  tribol::updateMfemParallelDecomposition();
+  double dt = 1.0;
+  ASSERT_EQ( tribol::update( 1, 1.0, dt ), 0 );
+
+  auto force = tribol::getMfemContactForce( scheme_id );
+  auto stiffness = tribol::getMfemDfDx( scheme_id );
+  EXPECT_GT( force.Norml2(), 1.0e-12 );
+  ASSERT_NE( stiffness, nullptr );
+  EXPECT_GT( stiffness->NNZ(), 0 );
+}
+
+TEST_F( MfemJacobianTest, energy_mortar_full_boundary_self_contact_does_not_double_ball_response )
+{
+  auto mesh = MakeBallCompletionMesh();
+  mfem::H1_FECollection fec( 1, mesh.SpaceDimension() );
+  mfem::ParFiniteElementSpace fes( &mesh, &fec, mesh.SpaceDimension(), mfem::Ordering::byVDIM );
+  mfem::ParGridFunction coords( &fes );
+  mesh.GetNodes( coords );
+
+  const int directed_scheme = NextCouplingSchemeId();
+  const int reverse_scheme = NextCouplingSchemeId();
+  const int self_scheme = NextCouplingSchemeId();
+  ConfigureBallCompletionScheme( directed_scheme, 2 * directed_scheme, 2 * directed_scheme + 1, mesh, coords, { 5 },
+                                 { 3 }, tribol::EnforcementLocation::QuadraturePoint );
+  ConfigureBallCompletionScheme( reverse_scheme, 2 * reverse_scheme, 2 * reverse_scheme + 1, mesh, coords, { 3 }, { 5 },
+                                 tribol::EnforcementLocation::QuadraturePoint );
+  // Full-boundary self-contact contains both directed orientations, so the host supplies half the directed penalty.
+  ConfigureBallCompletionScheme( self_scheme, 2 * self_scheme, 2 * self_scheme + 1, mesh, coords, { 3, 5 }, { 3, 5 },
+                                 tribol::EnforcementLocation::QuadraturePoint, 1.5 );
+  tribol::updateMfemParallelDecomposition();
+  double dt = 1.0;
+  ASSERT_EQ( tribol::update( 1, 1.0, dt ), 0 );
+
+  auto directed_force = tribol::getMfemContactForce( directed_scheme );
+  auto reverse_force = tribol::getMfemContactForce( reverse_scheme );
+  auto self_force = tribol::getMfemContactForce( self_scheme );
+  ASSERT_EQ( directed_force.Size(), self_force.Size() );
+  ASSERT_EQ( reverse_force.Size(), self_force.Size() );
+  ASSERT_GT( directed_force.Norml2(), 1.0e-12 );
+  ASSERT_GT( reverse_force.Norml2(), 1.0e-12 );
+  for ( int i = 0; i < directed_force.Size(); ++i ) {
+    EXPECT_NEAR( self_force[i], 0.5 * ( directed_force[i] + reverse_force[i] ), 1.0e-10 ) << "force dof " << i;
+  }
+
+  auto directed_stiffness = tribol::getMfemDfDx( directed_scheme );
+  auto reverse_stiffness = tribol::getMfemDfDx( reverse_scheme );
+  auto self_stiffness = tribol::getMfemDfDx( self_scheme );
+  ASSERT_NE( directed_stiffness, nullptr );
+  ASSERT_NE( reverse_stiffness, nullptr );
+  ASSERT_NE( self_stiffness, nullptr );
+  ASSERT_EQ( directed_stiffness->Width(), self_stiffness->Width() );
+  ASSERT_EQ( reverse_stiffness->Width(), self_stiffness->Width() );
+  mfem::Vector direction( directed_stiffness->Width() );
+  for ( int i = 0; i < direction.Size(); ++i ) {
+    direction[i] = 0.125 * static_cast<double>( i + 1 );
+  }
+  mfem::Vector directed_action( directed_stiffness->Height() );
+  mfem::Vector reverse_action( reverse_stiffness->Height() );
+  mfem::Vector self_action( self_stiffness->Height() );
+  directed_stiffness->Mult( direction, directed_action );
+  reverse_stiffness->Mult( direction, reverse_action );
+  self_stiffness->Mult( direction, self_action );
+  ASSERT_EQ( directed_action.Size(), self_action.Size() );
+  ASSERT_EQ( reverse_action.Size(), self_action.Size() );
+  for ( int i = 0; i < directed_action.Size(); ++i ) {
+    EXPECT_NEAR( self_action[i], 0.5 * ( directed_action[i] + reverse_action[i] ), 1.0e-9 )
+        << "Jacobian action dof " << i;
   }
 }
 

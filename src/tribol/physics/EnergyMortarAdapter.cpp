@@ -200,7 +200,8 @@ void Nodal<Adapter>::updateNodalGaps()
     double dA_dx_node1[8];
     double dA_dx_node2[8];
     // TODO: make grad_trib_area return directly in dA_dx_blocks format
-    adapter->evaluator_->grad_trib_area( flipped_pair, mesh1_view, mesh2_view, dA_dx_node1, dA_dx_node2 );
+    adapter->evaluator_->grad_trib_area( flipped_pair, mesh1_view, mesh2_view, dA_dx_node1, dA_dx_node2,
+                                         residual_gap_values.data() );
     double dA_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
       dA_dx_blocks[0][i * 2] = dA_dx_node1[node_idx[i]];
@@ -351,6 +352,92 @@ void Nodal<Adapter>::updateNodalForces()
   adapter->df_dx_ += shared::ParSparseMat::rap( adapter->dA_dx_, pg2_over_asq_diag, adapter->dg_tilde_dx_ );
   adapter->df_dx_ += dp_dx.transpose() * adapter->dg_tilde_dx_;
   adapter->df_dx_ += adapter->dg_tilde_dx_.transpose() * dp_dx;
+
+  // The ball-to-surface completion is a penalty potential independent of the nodal mortar pressure construction.
+  // Assemble its exact Enzyme force and Hessian into the same parent objects.
+  const bool use_lor = ( adapter->mesh_data_.GetLORMesh() != nullptr );
+  const auto& displacement_surface_fes =
+      use_lor ? *adapter->mesh_data_.GetLORMeshFESpace() : adapter->mesh_data_.GetSubmeshFESpace();
+  const auto& displacement_redecomp_fes = *adapter->mesh_data_.GetRedecompResponse().FESpace();
+  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap1();
+  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap2();
+  PackedPairJacobianContribs ball_nm_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                         displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
+  PackedPairJacobianContribs ball_nm_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                        displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
+  PackedPairJacobianContribs ball_m_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                        displacement_redecomp_fes, mortar_elem_map, nonmortar_elem_map );
+  PackedPairJacobianContribs ball_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                       displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
+  ball_nm_nm.reserve( adapter->pairs_.size(), 16 );
+  ball_nm_m.reserve( adapter->pairs_.size(), 16 );
+  ball_m_nm.reserve( adapter->pairs_.size(), 16 );
+  ball_m_m.reserve( adapter->pairs_.size(), 16 );
+
+  mfem::GridFunction redecomp_ball_force( const_cast<mfem::FiniteElementSpace*>( &displacement_redecomp_fes ) );
+  redecomp_ball_force = 0.0;
+  const int scalar_size = redecomp_ball_force.FESpace()->GetVSize() / redecomp_ball_force.FESpace()->GetVDim();
+  auto mesh1_view = adapter->mesh1_->getView();
+  auto mesh2_view = adapter->mesh2_->getView();
+  const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
+
+  for ( const auto& pair : adapter->pairs_ ) {
+    InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
+    const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
+    const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
+    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view, mesh2_view );
+    const auto ball_data = adapter->evaluator_->compute_ball_penalty_data( flipped_pair, mesh1_view, mesh2_view,
+                                                                           residual_gap_values.data() );
+    if ( !ball_data.has_active_qp ) {
+      continue;
+    }
+
+    adapter->energy_ += ball_data.energy;
+    auto A_conn = mesh1_view.getConnectivity()( elem1 );
+    auto B_conn = mesh2_view.getConnectivity()( elem2 );
+    redecomp_ball_force( A_conn[0] ) += ball_data.force[0];
+    redecomp_ball_force( scalar_size + A_conn[0] ) += ball_data.force[1];
+    redecomp_ball_force( A_conn[1] ) += ball_data.force[2];
+    redecomp_ball_force( scalar_size + A_conn[1] ) += ball_data.force[3];
+    redecomp_ball_force( B_conn[0] ) += ball_data.force[4];
+    redecomp_ball_force( scalar_size + B_conn[0] ) += ball_data.force[5];
+    redecomp_ball_force( B_conn[1] ) += ball_data.force[6];
+    redecomp_ball_force( scalar_size + B_conn[1] ) += ball_data.force[7];
+
+    double blocks[2][2][16];
+    for ( int i = 0; i < 2; ++i ) {
+      for ( int j = 0; j < 2; ++j ) {
+        for ( int k = 0; k < 4; ++k ) {
+          for ( int l = 0; l < 4; ++l ) {
+            const auto idx = node_idx[l + i * 4] + node_idx[k + j * 4] * 8;
+            blocks[i][j][l + k * 4] = ball_data.stiffness[idx];
+          }
+        }
+      }
+    }
+    ball_nm_nm.append( elem1, elem1, blocks[0][0], 16 );
+    ball_nm_m.append( elem1, elem2, blocks[0][1], 16 );
+    ball_m_nm.append( elem2, elem1, blocks[1][0], 16 );
+    ball_m_m.append( elem2, elem2, blocks[1][1], 16 );
+  }
+
+  auto* parent_fes = adapter->mesh_data_.GetParentCoords().ParFESpace();
+  shared::ParVector ball_force( const_cast<mfem::ParFiniteElementSpace*>( parent_fes ) );
+  ball_force.fill( 0.0 );
+  mfem::Vector parent_ball_force( parent_fes->GetVSize() );
+  parent_ball_force = 0.0;
+  adapter->mesh_data_.GetParentRedecompTransfer().RedecompToParent( redecomp_ball_force, parent_ball_force );
+  parent_fes->GetProlongationMatrix()->MultTranspose( parent_ball_force, ball_force.get() );
+  adapter->force_vec_ += ball_force;
+
+  std::vector<PackedPairJacobianContribs> ball_contribs;
+  ball_contribs.reserve( 4 );
+  ball_contribs.push_back( std::move( ball_nm_nm ) );
+  ball_contribs.push_back( std::move( ball_nm_m ) );
+  ball_contribs.push_back( std::move( ball_m_nm ) );
+  ball_contribs.push_back( std::move( ball_m_m ) );
+  auto ball_df_dx = adapter->jac_data_.GetMfemJacobian( parent_fes, parent_fes, ball_contribs );
+  adapter->df_dx_ += ball_df_dx;
 }
 
 template <template <typename> class EnforcementLocation>
@@ -494,7 +581,8 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
 
     double d2A_dx2_node1[64];
     double d2A_dx2_node2[64];
-    adapter->evaluator_->compute_d2A_d2u( flipped_pair, mesh1_view, mesh2_view, d2A_dx2_node1, d2A_dx2_node2 );
+    adapter->evaluator_->compute_d2A_d2u( flipped_pair, mesh1_view, mesh2_view, d2A_dx2_node1, d2A_dx2_node2,
+                                          residual_gap_values.data() );
 
     double df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
