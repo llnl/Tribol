@@ -245,6 +245,8 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
                                  EnforcementMethod enforcement_method, BinningMethod binning_method,
                                  ExecutionMode exec_mode )
 {
+  const bool is_energy_mortar_self_contact = contact_method == ENERGY_MORTAR && b_attributes_1 == b_attributes_2;
+
   // verify valid execution mode and set memory space
   MemorySpace mem_space = MemorySpace::Host;
 #ifdef TRIBOL_USE_CUDA
@@ -291,6 +293,10 @@ void registerMfemCouplingScheme( IndexT cs_id, int mesh_id_1, int mesh_id_2, con
                           enforcement_method, binning_method, exec_mode );
   auto& cs = CouplingSchemeManager::getInstance().at( cs_id );
   cs.setMPIComm( mesh.GetComm() );
+  // MFEM coupling schemes register the two sides with distinct Tribol mesh IDs, even when they are the same boundary
+  // of the same parent mesh. Enable the topology filter explicitly so an EnergyMortar self-contact surface does not
+  // interact with itself or with its edge-neighbors.
+  cs.getParameters().auto_contact_check = is_energy_mortar_self_contact;
   if ( contact_method == ENERGY_MORTAR && enforcement_method == LAGRANGE_MULTIPLIER ) {
     cs.getParameters().enforcement_location = EnforcementLocation::Nodal;
     SLIC_WARNING_ROOT(
@@ -766,6 +772,10 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
     // update redecomp meshes if supplied mfem data
     if ( cs.hasMfemData() ) {
       auto mfem_data = cs.getMfemMeshData();
+      if ( cs.getContactMethod() == ENERGY_MORTAR && cs.getParameters().auto_contact_check &&
+           !mfem_data->HasElementThicknesses() ) {
+        mfem_data->ComputeElementThicknesses();
+      }
       ArrayT<int> mesh_ids{ 2, 2 };
       mesh_ids[0] = mfem_data->GetMesh1ID();
       mesh_ids[1] = mfem_data->GetMesh2ID();
@@ -788,6 +798,10 @@ void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )
       registerMesh( mesh_ids[1], mfem_data->GetMesh2NE(), mfem_data->GetNV(), mfem_data->GetMesh2Conn(),
                     mfem_data->GetElemType(), coord_ptrs[0], coord_ptrs[1], coord_ptrs[2],
                     mfem_data->GetMemorySpace() );
+      if ( mfem_data->GetRedecompElemThickness1() && mfem_data->GetRedecompElemThickness2() ) {
+        registerRealElementField( mesh_ids[0], ELEMENT_THICKNESS, mfem_data->GetRedecompElemThickness1() );
+        registerRealElementField( mesh_ids[1], ELEMENT_THICKNESS, mfem_data->GetRedecompElemThickness2() );
+      }
 
       auto f_ptrs = mfem_data->GetRedecompResponsePtrs();
       registerNodalResponse( mesh_ids[0], f_ptrs[0], f_ptrs[1], f_ptrs[2] );

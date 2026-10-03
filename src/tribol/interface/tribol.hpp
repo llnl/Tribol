@@ -168,7 +168,7 @@ void setEnergyMortarNormalSmoothingStartAngle( IndexT cs_id, RealT start_angle )
  * \param [in] cs_id coupling scheme id
  * \param [in] ramp_angle total symmetric crack-opening angle in radians. Zero disables corner reduction.
  *
- * \note Corner reduction currently applies to 2D contact curves. Other dimensions retain a uniform residual gap.
+ * \note Every nonconvex 2D opening below pi seeds corner reduction. Other dimensions retain a uniform residual gap.
  *
  * \pre 0 <= ramp_angle <= pi / 2
  */

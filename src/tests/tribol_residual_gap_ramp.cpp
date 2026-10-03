@@ -78,7 +78,7 @@ TEST( ResidualGapRamp, ConvexCornerAndZeroAngleRemainUniform )
   }
 }
 
-TEST( ResidualGapRamp, DetectsCornerCreatedByDeformation )
+TEST( ResidualGapRamp, DetectsObtuseCornerCreatedByDeformation )
 {
   auto parent = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::CShapeMesh( 8, 8, 2 ) );
   mfem::Array<int> attributes{ 2, 3 };
@@ -116,12 +116,18 @@ TEST( ResidualGapRamp, DetectsCornerCreatedByDeformation )
 
   auto fec = std::make_unique<mfem::H1_FECollection>( 1, 2 );
   tribol::MfemSubmeshData data( submesh, nullptr, std::move( fec ), 1, false );
-  constexpr double residual_gap = 0.05;
+  // Keep the propagation length shorter than an adjacent edge so this test isolates corner eligibility.
+  constexpr double residual_gap = 0.005;
   constexpr double pi = 3.14159265358979323846264338327950288;
   data.UpdateResidualGapField( residual_gap, 10.0 * pi / 180.0 );
   EXPECT_NEAR( residualGapAtVertex( data, submesh, tip ), residual_gap, 1.0e-12 );
 
   const double sharp_tip[2] = { 0.25, 0.75 };
+  const double obtuse_tip[2] = { 0.5 * ( straight_tip[0] + sharp_tip[0] ), 0.5 * ( straight_tip[1] + sharp_tip[1] ) };
+  submesh.SetNode( tip, obtuse_tip );
+  data.UpdateResidualGapField( residual_gap, 10.0 * pi / 180.0 );
+  EXPECT_NEAR( residualGapAtVertex( data, submesh, tip ), 0.0, 1.0e-12 );
+
   submesh.SetNode( tip, sharp_tip );
   data.UpdateResidualGapField( residual_gap, 10.0 * pi / 180.0 );
   EXPECT_NEAR( residualGapAtVertex( data, submesh, tip ), 0.0, 1.0e-12 );

@@ -232,10 +232,13 @@ class GridSearch : public SearchBase {
     // * Find the average extents (range) of the boxes Assumption is that elements are roughly the same size
     // * Grid resolution for each dimension is overall box width divided by half the average element width
     SpaceVec ranges;
-    RealT residual_gap = m_coupling_scheme->getParameters().residual_gap;
+    const RealT residual_gap = m_coupling_scheme->getParameters().residual_gap;
+    const RealT mesh1_residual_gap = m_coupling_scheme->getContactMethod() == ENERGY_MORTAR ? 0.0 : residual_gap;
     for ( int i = 0; i < m_mesh1.numberOfElements(); ++i ) {
       auto& bbox = m_meshBBoxes1[i];
-      inflateBBox( bbox, e_binning_proximity_scale, residual_gap );
+      // EnergyMortar residual-gap balls and virtual offsets belong only to mesh 2 (non-mortar). Preserve symmetric
+      // residual-gap padding for the other contact formulations.
+      inflateBBox( bbox, e_binning_proximity_scale, mesh1_residual_gap );
 
       ranges += bbox.range();
 
@@ -421,7 +424,10 @@ class BvhSearch : public SearchBase {
     // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
     auto e_binning_proximity_scale = m_coupling_scheme->getEffectiveBinningProximityScale();
     auto residual_gap = m_coupling_scheme->getParameters().residual_gap;
-    buildMeshBBoxes( m_boxes1, m_coupling_scheme->getMesh1().getView(), e_binning_proximity_scale, residual_gap );
+    const RealT mesh1_residual_gap = m_coupling_scheme->getContactMethod() == ENERGY_MORTAR ? 0.0 : residual_gap;
+    // EnergyMortar's residual-gap support belongs only to mesh 2 (non-mortar). Preserve symmetric residual-gap
+    // padding for the other contact formulations.
+    buildMeshBBoxes( m_boxes1, m_coupling_scheme->getMesh1().getView(), e_binning_proximity_scale, mesh1_residual_gap );
     // we want binning proximity scaled by LOR factor on HO meshes, i.e. the effective binning proximity
     buildMeshBBoxes( m_boxes2, m_coupling_scheme->getMesh2().getView(), e_binning_proximity_scale, residual_gap );
   }  // end initialize()
@@ -502,12 +508,14 @@ class BvhSearch : public SearchBase {
                     }
                     box.addPoint( pos );
                   }
-                  // Expand the bounding box in the face normal direction
+                  // The binning scale extends the face in its normal direction. On the non-mortar side, residual-gap
+                  // contact additionally includes nodal balls, whose AABB is obtained by isotropic padding.
                   RealT vnorm[3];
                   mesh.getFaceNormal( i, vnorm );
                   VectorT faceNormal( vnorm );
                   RealT faceRadius = mesh.getFaceRadius()[i];
-                  expandBBoxNormal( box, faceNormal, binning_proximity * faceRadius + residual_gap );
+                  expandBBoxNormal( box, faceNormal, binning_proximity * faceRadius );
+                  box.expand( residual_gap );
                   boxes_view[i] = std::move( box );
                 } );
   }
