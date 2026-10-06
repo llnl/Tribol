@@ -87,7 +87,7 @@ if (TARGET axom)
             DESTINATION          lib)
     unset(_axom_exported_targets)
 
-    set(AXOM_FOUND TRUE CACHE BOOL "" FORCE)
+    set(AXOM_FOUND TRUE)
 
 elseif (AXOM_DIR)
   message(STATUS "Setting up external Axom TPL...")
