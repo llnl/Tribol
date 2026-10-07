@@ -37,6 +37,7 @@ set( tribol_tests
      tribol_tet_mesh.cpp
      tribol_timestep_vote.cpp
      tribol_twb_integ.cpp
+     tribol_version.cpp
      )
 
 set(test_depends tribol gtest)
