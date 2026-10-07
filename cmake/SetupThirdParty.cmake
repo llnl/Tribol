@@ -119,7 +119,7 @@ if (TARGET mfem)
                 DESTINATION          lib)
     endif()
 
-    set(MFEM_FOUND TRUE CACHE BOOL "" FORCE)
+    set(MFEM_FOUND TRUE)
 elseif (MFEM_DIR)
   message(STATUS "Setting up external MFEM TPL...")
 
