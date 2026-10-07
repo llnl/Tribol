@@ -1193,8 +1193,14 @@ MfemSubmeshData::MfemSubmeshData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_
                                   bool use_device )
     : submesh_pressure_{ new mfem::ParFiniteElementSpace( &submesh, pressure_fec.get(), pressure_vdim ) },
       submesh_residual_gap_{ submesh_pressure_.ParFESpace() },
+      submesh_ball_weight_{ submesh_pressure_.ParFESpace() },
+      submesh_ball_cone_ray_sum_x_{ submesh_pressure_.ParFESpace() },
+      submesh_ball_cone_ray_sum_y_{ submesh_pressure_.ParFESpace() },
       pressure_{ submesh_pressure_ },
       residual_gap_{ submesh_residual_gap_ },
+      ball_weight_{ submesh_ball_weight_ },
+      ball_cone_ray_sum_x_{ submesh_ball_cone_ray_sum_x_ },
+      ball_cone_ray_sum_y_{ submesh_ball_cone_ray_sum_y_ },
       submesh_lor_xfer_{ lor_mesh ? std::make_unique<SubmeshLORTransfer>( *submesh_pressure_.ParFESpace(), *lor_mesh )
                                   : nullptr },
       use_device_{ use_device }
@@ -1202,6 +1208,9 @@ MfemSubmeshData::MfemSubmeshData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_
   submesh_pressure_.MakeOwner( pressure_fec.release() );
   submesh_pressure_ = 0.0;
   submesh_residual_gap_ = 0.0;
+  submesh_ball_weight_ = 0.0;
+  submesh_ball_cone_ray_sum_x_ = 0.0;
+  submesh_ball_cone_ray_sum_y_ = 0.0;
 }
 
 void MfemSubmeshData::SetLORMesh( mfem::ParMesh* lor_mesh )
@@ -1219,6 +1228,9 @@ void MfemSubmeshData::UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_me
   }
   pressure_.UpdateField( update_data_->pressure_xfer_ );
   residual_gap_.UpdateField( update_data_->pressure_xfer_ );
+  ball_weight_.UpdateField( update_data_->pressure_xfer_ );
+  ball_cone_ray_sum_x_.UpdateField( update_data_->pressure_xfer_ );
+  ball_cone_ray_sum_y_.UpdateField( update_data_->pressure_xfer_ );
   redecomp_gap_.SetSpace( pressure_.GetRedecompGridFn().FESpace() );
   redecomp_gap_.UseDevice( use_device_ );
   redecomp_gap_ = 0.0;
@@ -1229,11 +1241,30 @@ void MfemSubmeshData::UpdateResidualGapField( RealT residual_gap, RealT ramp_ang
   constexpr RealT CORNER_ANGLE_TOL = 1.0e-8;
   auto& submesh = static_cast<mfem::ParMesh&>( *submesh_pressure_.ParFESpace()->GetParMesh() );
 
-  if ( residual_gap <= 0.0 || ramp_angle <= 0.0 || submesh.Dimension() != 1 || submesh.SpaceDimension() != 2 ) {
-    submesh_residual_gap_ = residual_gap;
+  auto update_redecomp_fields = [&]() {
     if ( update_data_ ) {
       residual_gap_.UpdateField( update_data_->pressure_xfer_ );
+      ball_weight_.UpdateField( update_data_->pressure_xfer_ );
+      ball_cone_ray_sum_x_.UpdateField( update_data_->pressure_xfer_ );
+      ball_cone_ray_sum_y_.UpdateField( update_data_->pressure_xfer_ );
     }
+  };
+
+  if ( residual_gap <= 0.0 ) {
+    submesh_residual_gap_ = residual_gap;
+    submesh_ball_weight_ = 0.0;
+    submesh_ball_cone_ray_sum_x_ = 0.0;
+    submesh_ball_cone_ray_sum_y_ = 0.0;
+    update_redecomp_fields();
+    return;
+  }
+
+  if ( submesh.Dimension() != 1 || submesh.SpaceDimension() != 2 ) {
+    submesh_residual_gap_ = residual_gap;
+    submesh_ball_weight_ = 0.0;
+    submesh_ball_cone_ray_sum_x_ = 0.0;
+    submesh_ball_cone_ray_sum_y_ = 0.0;
+    update_redecomp_fields();
     return;
   }
 
@@ -1302,73 +1333,116 @@ void MfemSubmeshData::UpdateResidualGapField( RealT residual_gap, RealT ramp_ang
   group_comm.Reduce( incidence, mfem::GroupCommunicator::Sum );
   group_comm.Bcast( incidence );
 
-  const double slope = 2.0 * std::tan( 0.5 * ramp_angle );
-  const double ramp_length = residual_gap / slope;
+  mfem::Vector vertex_ball_weight( num_dofs );
+  mfem::Vector vertex_ball_cone_ray_sum_x( num_dofs );
+  mfem::Vector vertex_ball_cone_ray_sum_y( num_dofs );
+  vertex_ball_weight = 0.0;
+  vertex_ball_cone_ray_sum_x = 0.0;
+  vertex_ball_cone_ray_sum_y = 0.0;
+  const bool builds_corner_ramp = ramp_angle > 0.0;
+  const double slope = builds_corner_ramp ? 2.0 * std::tan( 0.5 * ramp_angle ) : 0.0;
+  const double ramp_length = builds_corner_ramp ? residual_gap / slope : 0.0;
   mfem::Vector distance( num_dofs );
   distance = ramp_length;
-  // Every strictly nonconvex turn can make the offset surface fold, so the smooth pi opening is the cutoff.
+  // A ball closes the offset surface only where adjacent edges separate at a convex turn. Straight and nonconvex
+  // interior vertices already have continuous or overlapping offset edges, while an open surface needs an end cap.
   const double max_corner_angle = 2.0 * energy_mortar::perpendicular_normal_angle - CORNER_ANGLE_TOL;
   for ( int i = 0; i < num_dofs; ++i ) {
+    const bool is_open_endpoint = incidence[i] == 1;
+    if ( is_open_endpoint ) {
+      vertex_ball_weight[i] = 1.0;
+      // Duplicating the only outgoing ray makes the reconstructed cone a half-plane, which produces a semicircular
+      // cap behind the open end.
+      vertex_ball_cone_ray_sum_x[i] = 2.0 * ray_x[i];
+      vertex_ball_cone_ray_sum_y[i] = 2.0 * ray_y[i];
+      continue;
+    }
     if ( incidence[i] != 2 ) {
       continue;
     }
     const double ray_norm_sq = ray_x[i] * ray_x[i] + ray_y[i] * ray_y[i];
     const double opening_cosine = std::max( -1.0, std::min( 1.0, 0.5 * ( ray_norm_sq - 2.0 ) ) );
     const double exterior_alignment = ray_x[i] * normal_x[i] + ray_y[i] * normal_y[i];
-    if ( std::acos( opening_cosine ) <= max_corner_angle && exterior_alignment > 0.0 ) {
+    const bool is_strict_corner = std::acos( opening_cosine ) <= max_corner_angle;
+    const bool is_convex_corner = is_strict_corner && exterior_alignment < 0.0;
+    const bool is_nonconvex_corner = is_strict_corner && exterior_alignment > 0.0;
+    if ( is_convex_corner ) {
+      vertex_ball_weight[i] = 1.0;
+      vertex_ball_cone_ray_sum_x[i] = ray_x[i];
+      vertex_ball_cone_ray_sum_y[i] = ray_y[i];
+    } else if ( builds_corner_ramp && is_nonconvex_corner ) {
       distance[i] = 0.0;
     }
   }
-  group_comm.Reduce( distance.HostReadWrite(), mfem::GroupCommunicator::Min );
-  group_comm.Bcast( distance.HostReadWrite() );
+  group_comm.Reduce( vertex_ball_weight.HostReadWrite(), mfem::GroupCommunicator::Max );
+  group_comm.Bcast( vertex_ball_weight.HostReadWrite() );
 
-  int local_vertices = submesh.GetNV();
-  int max_iterations = 0;
-  MPI_Allreduce( &local_vertices, &max_iterations, 1, MPI_INT, MPI_SUM, submesh.GetComm() );
-  for ( int iteration = 0; iteration < max_iterations; ++iteration ) {
-    mfem::Vector previous( distance );
-    for ( int e = 0; e < submesh.GetNE(); ++e ) {
-      mfem::Array<int> vertices;
-      submesh.GetElementVertices( e, vertices );
-      double x0[2];
-      double x1[2];
-      submesh.GetNode( vertices[0], x0 );
-      submesh.GetNode( vertices[1], x1 );
-      const double dx = x1[0] - x0[0];
-      const double dy = x1[1] - x0[1];
-      const double length = std::sqrt( dx * dx + dy * dy );
-      const int dof0 = vertex_dof( vertices[0] );
-      const int dof1 = vertex_dof( vertices[1] );
-      const double old0 = distance[dof0];
-      const double old1 = distance[dof1];
-      distance[dof0] = std::min( old0, std::min( ramp_length, old1 + length ) );
-      distance[dof1] = std::min( old1, std::min( ramp_length, old0 + length ) );
-    }
+  if ( builds_corner_ramp ) {
     group_comm.Reduce( distance.HostReadWrite(), mfem::GroupCommunicator::Min );
     group_comm.Bcast( distance.HostReadWrite() );
-    int changed = 0;
-    for ( int i = 0; i < num_dofs; ++i ) {
-      changed = changed || distance[i] < previous[i] - 1.0e-14 * std::max( 1.0, ramp_length );
-    }
-    MPI_Allreduce( MPI_IN_PLACE, &changed, 1, MPI_INT, MPI_MAX, submesh.GetComm() );
-    if ( !changed ) {
-      break;
+
+    int local_vertices = submesh.GetNV();
+    int max_iterations = 0;
+    MPI_Allreduce( &local_vertices, &max_iterations, 1, MPI_INT, MPI_SUM, submesh.GetComm() );
+    for ( int iteration = 0; iteration < max_iterations; ++iteration ) {
+      mfem::Vector previous( distance );
+      for ( int e = 0; e < submesh.GetNE(); ++e ) {
+        mfem::Array<int> vertices;
+        submesh.GetElementVertices( e, vertices );
+        double x0[2];
+        double x1[2];
+        submesh.GetNode( vertices[0], x0 );
+        submesh.GetNode( vertices[1], x1 );
+        const double dx = x1[0] - x0[0];
+        const double dy = x1[1] - x0[1];
+        const double length = std::sqrt( dx * dx + dy * dy );
+        const int dof0 = vertex_dof( vertices[0] );
+        const int dof1 = vertex_dof( vertices[1] );
+        const double old0 = distance[dof0];
+        const double old1 = distance[dof1];
+        distance[dof0] = std::min( old0, std::min( ramp_length, old1 + length ) );
+        distance[dof1] = std::min( old1, std::min( ramp_length, old0 + length ) );
+      }
+      group_comm.Reduce( distance.HostReadWrite(), mfem::GroupCommunicator::Min );
+      group_comm.Bcast( distance.HostReadWrite() );
+      int changed = 0;
+      for ( int i = 0; i < num_dofs; ++i ) {
+        changed = changed || distance[i] < previous[i] - 1.0e-14 * std::max( 1.0, ramp_length );
+      }
+      MPI_Allreduce( MPI_IN_PLACE, &changed, 1, MPI_INT, MPI_MAX, submesh.GetComm() );
+      if ( !changed ) {
+        break;
+      }
     }
   }
 
   mfem::ParGridFunction vertex_gap( &vertex_fes );
   for ( int i = 0; i < num_dofs; ++i ) {
-    vertex_gap[i] = std::min( residual_gap, slope * distance[i] );
+    vertex_gap[i] = builds_corner_ramp ? std::min( residual_gap, slope * distance[i] ) : residual_gap;
   }
   mfem::GridFunctionCoefficient gap_coefficient( &vertex_gap );
   submesh_residual_gap_.ProjectCoefficient( gap_coefficient );
+  mfem::ParGridFunction vertex_ball_weight_grid_function( &vertex_fes );
+  vertex_ball_weight_grid_function = vertex_ball_weight;
+  mfem::GridFunctionCoefficient ball_weight_coefficient( &vertex_ball_weight_grid_function );
+  submesh_ball_weight_.ProjectCoefficient( ball_weight_coefficient );
+  mfem::ParGridFunction vertex_ball_cone_ray_sum_x_grid_function( &vertex_fes );
+  mfem::ParGridFunction vertex_ball_cone_ray_sum_y_grid_function( &vertex_fes );
+  vertex_ball_cone_ray_sum_x_grid_function = vertex_ball_cone_ray_sum_x;
+  vertex_ball_cone_ray_sum_y_grid_function = vertex_ball_cone_ray_sum_y;
+  mfem::GridFunctionCoefficient ball_cone_ray_sum_x_coefficient( &vertex_ball_cone_ray_sum_x_grid_function );
+  mfem::GridFunctionCoefficient ball_cone_ray_sum_y_coefficient( &vertex_ball_cone_ray_sum_y_grid_function );
+  submesh_ball_cone_ray_sum_x_.ProjectCoefficient( ball_cone_ray_sum_x_coefficient );
+  submesh_ball_cone_ray_sum_y_.ProjectCoefficient( ball_cone_ray_sum_y_coefficient );
   auto* gap_data = submesh_residual_gap_.HostReadWrite();
   for ( int i = 0; i < submesh_residual_gap_.Size(); ++i ) {
     gap_data[i] = std::max( 0.0, std::min( residual_gap, gap_data[i] ) );
   }
-  if ( update_data_ ) {
-    residual_gap_.UpdateField( update_data_->pressure_xfer_ );
+  auto* ball_weight_data = submesh_ball_weight_.HostReadWrite();
+  for ( int i = 0; i < submesh_ball_weight_.Size(); ++i ) {
+    ball_weight_data[i] = std::max( 0.0, std::min( 1.0, ball_weight_data[i] ) );
   }
+  update_redecomp_fields();
 }
 
 void MfemSubmeshData::GetSubmeshGap( mfem::Vector& g ) const

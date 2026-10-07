@@ -324,6 +324,9 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   std::array<double, 4> residualGapValues( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                            const MeshData::Viewer& mesh2 ) const;
 
+  /** @brief Gather endpoint-ball weights and reconstruct cone boundaries for a non-mortar edge. */
+  BallEndpointData ballEndpointData( const InterfacePair& pair, const MeshData::Viewer& mesh1 ) const;
+
   // Stored InterfacePairs
 
   /**

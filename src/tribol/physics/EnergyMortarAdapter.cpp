@@ -7,6 +7,9 @@
 #include <axom/slic/interface/slic_macros.hpp>
 #include "tribol/mesh/MfemData.hpp"
 
+#include <algorithm>
+#include <cmath>
+
 namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
@@ -95,6 +98,50 @@ std::array<double, 4> EnergyMortarAdapter<EnforcementLocation>::residualGapValue
   const auto conn1 = mesh1.getConnectivity()( pair.m_element_id1 );
   const auto conn2 = mesh2.getConnectivity()( pair.m_element_id2 );
   return { values[conn1[0]], values[conn1[1]], values[conn2[0]], values[conn2[1]] };
+}
+
+template <template <typename> class EnforcementLocation>
+BallEndpointData EnergyMortarAdapter<EnforcementLocation>::ballEndpointData( const InterfacePair& pair,
+                                                                             const MeshData::Viewer& mesh1 ) const
+{
+  const auto& ball_weight_field = submesh_data_.GetRedecompBallWeight();
+  const auto& ray_sum_x_field = submesh_data_.GetRedecompBallConeRaySumX();
+  const auto& ray_sum_y_field = submesh_data_.GetRedecompBallConeRaySumY();
+  const double* weights = ball_weight_field.HostRead();
+  const double* ray_sum_x = ray_sum_x_field.HostRead();
+  const double* ray_sum_y = ray_sum_y_field.HostRead();
+  const auto conn1 = mesh1.getConnectivity()( pair.m_element_id1 );
+  BallEndpointData data;
+  constexpr double ray_sum_tol = 1.0e-12;
+  // Shared vertices do not have a stable ordering for their incident edges. The sum of two unit rays is independent of
+  // that ordering and uniquely recovers the two rays up to exchange, which leaves the cone unchanged.
+  for ( int endpoint = 0; endpoint < 2; ++endpoint ) {
+    const int node = conn1[endpoint];
+    data.weight[endpoint] = weights[node];
+    double sum_x = ray_sum_x[node];
+    double sum_y = ray_sum_y[node];
+    double magnitude = std::sqrt( sum_x * sum_x + sum_y * sum_y );
+    if ( data.weight[endpoint] <= 0.0 || magnitude <= ray_sum_tol ) {
+      data.weight[endpoint] = 0.0;
+      continue;
+    }
+    if ( magnitude > 2.0 ) {
+      sum_x *= 2.0 / magnitude;
+      sum_y *= 2.0 / magnitude;
+      magnitude = 2.0;
+    }
+    const double perpendicular_scale = std::sqrt( std::max( 0.0, 1.0 - 0.25 * magnitude * magnitude ) ) / magnitude;
+    const double half_sum_x = 0.5 * sum_x;
+    const double half_sum_y = 0.5 * sum_y;
+    const double offset_x = -sum_y * perpendicular_scale;
+    const double offset_y = sum_x * perpendicular_scale;
+    const int ray_offset = 4 * endpoint;
+    data.cone_rays[ray_offset] = half_sum_x + offset_x;
+    data.cone_rays[ray_offset + 1] = half_sum_y + offset_y;
+    data.cone_rays[ray_offset + 2] = half_sum_x - offset_x;
+    data.cone_rays[ray_offset + 3] = half_sum_y - offset_y;
+  }
+  return data;
 }
 
 template <template <typename> class EnforcementLocation>
@@ -386,8 +433,9 @@ void Nodal<Adapter>::updateNodalForces()
     const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
     const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
     const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view, mesh2_view );
+    const auto endpoint_data = adapter->ballEndpointData( flipped_pair, mesh1_view );
     const auto ball_data = adapter->evaluator_->compute_ball_penalty_data( flipped_pair, mesh1_view, mesh2_view,
-                                                                           residual_gap_values.data() );
+                                                                           residual_gap_values.data(), &endpoint_data );
     if ( !ball_data.has_active_qp ) {
       continue;
     }
@@ -658,8 +706,9 @@ void QuadraturePoint<Adapter>::updateNodalForces()
     const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
     const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
     const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view, mesh2_view );
+    const auto ball_data = adapter->ballEndpointData( flipped_pair, mesh1_view );
     const auto qp_data = adapter->evaluator_->compute_quadrature_point_penalty_data(
-        flipped_pair, mesh1_view, mesh2_view, residual_gap_values.data() );
+        flipped_pair, mesh1_view, mesh2_view, residual_gap_values.data(), &ball_data );
 
     if ( !qp_data.has_active_qp ) {
       continue;

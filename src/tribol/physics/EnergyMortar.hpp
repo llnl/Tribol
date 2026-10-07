@@ -45,6 +45,12 @@ struct QuadraturePointPenaltyData {
   std::array<double, num_stiffness_entries> stiffness{};  ///< Flattened force derivative matrix.
 };
 
+/// Stores lagged eligibility and normal-cone boundaries for the two endpoints of a non-mortar edge.
+struct BallEndpointData {
+  std::array<double, 2> weight{};     ///< Eligibility weights at A0 and A1.
+  std::array<double, 8> cone_rays{};  ///< Two outgoing unit edge rays per endpoint, ordered by endpoint then ray.
+};
+
 /// Stores weighted nodal gaps and tributary areas for one interface pair.
 struct NodalContactData {
   std::array<double, 2> AI;       ///< Tributary areas for the two integration-edge nodes.
@@ -205,17 +211,23 @@ class EnergyMortarCalculator {
   QuadraturePointPenaltyData compute_quadrature_point_penalty_data( const InterfacePair& pair,
                                                                     const MeshData::Viewer& mesh1,
                                                                     const MeshData::Viewer& mesh2,
-                                                                    const double* residual_gap_values = nullptr ) const;
+                                                                    const double* residual_gap_values = nullptr,
+                                                                    const BallEndpointData* ball_data = nullptr ) const;
 
-  /// Compute only the non-mortar nodal-ball completion energy and its exact derivatives.
+  /// Compute only the non-mortar nodal-ball completion energy and its active-set derivatives.
+  ///
+  /// The cone-clipped interval is computed from the current geometry and held fixed while differentiating. This treats
+  /// the cone as an ownership partition and prevents a zero-length ball interval from generating a finite force.
   QuadraturePointPenaltyData compute_ball_penalty_data( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                         const MeshData::Viewer& mesh2,
-                                                        const double* residual_gap_values = nullptr ) const;
+                                                        const double* residual_gap_values = nullptr,
+                                                        const BallEndpointData* ball_data = nullptr ) const;
 
   /// Evaluate only the local quadrature-point penalty energy.
   double compute_quadrature_point_penalty_energy( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                   const MeshData::Viewer& mesh2,
-                                                  const double* residual_gap_values = nullptr ) const;
+                                                  const double* residual_gap_values = nullptr,
+                                                  const BallEndpointData* ball_data = nullptr ) const;
 
   /// Evaluate and return the two nodal smoothed gap integrals.
   ///
