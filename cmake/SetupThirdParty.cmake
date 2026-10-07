@@ -87,7 +87,7 @@ if (TARGET axom)
             DESTINATION          lib)
     unset(_axom_exported_targets)
 
-    set(AXOM_FOUND TRUE CACHE BOOL "" FORCE)
+    set(AXOM_FOUND TRUE)
 
 elseif (AXOM_DIR)
   message(STATUS "Setting up external Axom TPL...")
@@ -119,7 +119,7 @@ if (TARGET mfem)
                 DESTINATION          lib)
     endif()
 
-    set(MFEM_FOUND TRUE CACHE BOOL "" FORCE)
+    set(MFEM_FOUND TRUE)
 elseif (MFEM_DIR)
   message(STATUS "Setting up external MFEM TPL...")
 
