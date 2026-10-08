@@ -151,7 +151,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k,
                        double delta, double normal_smoothing_start_angle, double residual_gap_ramp_angle,
                        bool residual_gap_ramp_updates, int N, bool enzyme_quadrature, bool use_penalty = true,
-                       RealT residual_gap = 0.0 );
+                       RealT residual_gap = 0.0, bool auto_contact = false,
+                       RealT auto_contact_penetration_fraction = 0.95 );
 
   /**
    * @brief Default destructor
@@ -324,7 +325,7 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   std::array<double, 4> residualGapValues( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                            const MeshData::Viewer& mesh2 ) const;
 
-  /** @brief Gather endpoint-ball weights and reconstruct cone boundaries for a non-mortar edge. */
+  /** @brief Gather endpoint-ball weights and the adjacent source nodes that define each cone. */
   BallEndpointData ballEndpointData( const InterfacePair& pair, const MeshData::Viewer& mesh1 ) const;
 
   // Stored InterfacePairs

@@ -9,16 +9,108 @@
 
 #include <algorithm>
 #include <cmath>
+#include <map>
+#include <tuple>
 
 namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
+namespace {
+
+struct BallPatchNode {
+  int node{ -1 };
+  int element{ -1 };
+  int local_node{ -1 };
+  bool mortar{ false };
+};
+
+std::array<BallPatchNode, BallPenaltyData::num_nodes> ballPatchNodes( int nonmortar_element, int mortar_element,
+                                                                      const MeshData::Viewer& nonmortar_mesh,
+                                                                      const MeshData::Viewer& mortar_mesh,
+                                                                      const BallEndpointData& endpoint_data )
+{
+  const auto nonmortar_conn = nonmortar_mesh.getConnectivity()( nonmortar_element );
+  const auto mortar_conn = mortar_mesh.getConnectivity()( mortar_element );
+  return { BallPatchNode{ static_cast<int>( nonmortar_conn[0] ), nonmortar_element, 0, false },
+           BallPatchNode{ static_cast<int>( nonmortar_conn[1] ), nonmortar_element, 1, false },
+           BallPatchNode{ static_cast<int>( mortar_conn[0] ), mortar_element, 0, true },
+           BallPatchNode{ static_cast<int>( mortar_conn[1] ), mortar_element, 1, true },
+           BallPatchNode{ endpoint_data.neighbor_node[0], endpoint_data.neighbor_element[0],
+                          endpoint_data.neighbor_local_node[0], false },
+           BallPatchNode{ endpoint_data.neighbor_node[1], endpoint_data.neighbor_element[1],
+                          endpoint_data.neighbor_local_node[1], false } };
+}
+
+void addBallPatchForce( mfem::GridFunction& force, int scalar_size, const BallPenaltyData& ball_data,
+                        const std::array<BallPatchNode, BallPenaltyData::num_nodes>& nodes )
+{
+  for ( int node = 0; node < BallPenaltyData::num_nodes; ++node ) {
+    if ( nodes[node].node < 0 ) {
+      continue;
+    }
+    force( nodes[node].node ) += ball_data.force[2 * node];
+    force( scalar_size + nodes[node].node ) += ball_data.force[2 * node + 1];
+  }
+}
+
+void appendBallPatchStiffness( const BallPenaltyData& ball_data,
+                               const std::array<BallPatchNode, BallPenaltyData::num_nodes>& nodes,
+                               PackedPairJacobianContribs& nonmortar_nonmortar,
+                               PackedPairJacobianContribs& nonmortar_mortar,
+                               PackedPairJacobianContribs& mortar_nonmortar, PackedPairJacobianContribs& mortar_mortar )
+{
+  using BlockKey = std::tuple<bool, int, bool, int>;
+  std::map<BlockKey, std::array<double, 16>> blocks;
+  for ( int row_node = 0; row_node < BallPenaltyData::num_nodes; ++row_node ) {
+    if ( nodes[row_node].node < 0 ) {
+      continue;
+    }
+    for ( int col_node = 0; col_node < BallPenaltyData::num_nodes; ++col_node ) {
+      if ( nodes[col_node].node < 0 ) {
+        continue;
+      }
+      const BlockKey key{ nodes[row_node].mortar, nodes[row_node].element, nodes[col_node].mortar,
+                          nodes[col_node].element };
+      auto [block, inserted] = blocks.try_emplace( key );
+      if ( inserted ) {
+        block->second.fill( 0.0 );
+      }
+      for ( int row_component = 0; row_component < 2; ++row_component ) {
+        const int patch_row = 2 * row_node + row_component;
+        const int block_row = nodes[row_node].local_node + 2 * row_component;
+        for ( int col_component = 0; col_component < 2; ++col_component ) {
+          const int patch_col = 2 * col_node + col_component;
+          const int block_col = nodes[col_node].local_node + 2 * col_component;
+          block->second[block_row + 4 * block_col] +=
+              ball_data.stiffness[patch_row * BallPenaltyData::num_force_dofs + patch_col];
+        }
+      }
+    }
+  }
+
+  for ( const auto& [key, block] : blocks ) {
+    const auto [row_mortar, row_element, col_mortar, col_element] = key;
+    if ( !row_mortar && !col_mortar ) {
+      nonmortar_nonmortar.append( row_element, col_element, block.data(), block.size() );
+    } else if ( !row_mortar && col_mortar ) {
+      nonmortar_mortar.append( row_element, col_element, block.data(), block.size() );
+    } else if ( row_mortar && !col_mortar ) {
+      mortar_nonmortar.append( row_element, col_element, block.data(), block.size() );
+    } else {
+      mortar_mortar.append( row_element, col_element, block.data(), block.size() );
+    }
+  }
+}
+
+}  // namespace
+
 template <template <typename> class EnforcementLocation>
 EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter(
     MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k, double delta,
     double normal_smoothing_start_angle, double residual_gap_ramp_angle, bool residual_gap_ramp_updates, int N,
-    bool enzyme_quadrature, bool use_penalty, RealT residual_gap )
+    bool enzyme_quadrature, bool use_penalty, RealT residual_gap, bool auto_contact,
+    RealT auto_contact_penetration_fraction )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
     : use_penalty_( use_penalty ),
@@ -34,6 +126,8 @@ EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter(
   params_.N = N;
   params_.enzyme_quadrature = enzyme_quadrature;
   params_.residual_gap = residual_gap;
+  params_.auto_contact = auto_contact;
+  params_.auto_contact_penetration_fraction = auto_contact_penetration_fraction;
 
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 
@@ -105,41 +199,43 @@ BallEndpointData EnergyMortarAdapter<EnforcementLocation>::ballEndpointData( con
                                                                              const MeshData::Viewer& mesh1 ) const
 {
   const auto& ball_weight_field = submesh_data_.GetRedecompBallWeight();
-  const auto& ray_sum_x_field = submesh_data_.GetRedecompBallConeRaySumX();
-  const auto& ray_sum_y_field = submesh_data_.GetRedecompBallConeRaySumY();
   const double* weights = ball_weight_field.HostRead();
-  const double* ray_sum_x = ray_sum_x_field.HostRead();
-  const double* ray_sum_y = ray_sum_y_field.HostRead();
   const auto conn1 = mesh1.getConnectivity()( pair.m_element_id1 );
   BallEndpointData data;
-  constexpr double ray_sum_tol = 1.0e-12;
-  // Shared vertices do not have a stable ordering for their incident edges. The sum of two unit rays is independent of
-  // that ordering and uniquely recovers the two rays up to exchange, which leaves the cone unchanged.
   for ( int endpoint = 0; endpoint < 2; ++endpoint ) {
     const int node = conn1[endpoint];
     data.weight[endpoint] = weights[node];
-    double sum_x = ray_sum_x[node];
-    double sum_y = ray_sum_y[node];
-    double magnitude = std::sqrt( sum_x * sum_x + sum_y * sum_y );
-    if ( data.weight[endpoint] <= 0.0 || magnitude <= ray_sum_tol ) {
-      data.weight[endpoint] = 0.0;
+    if ( data.weight[endpoint] <= 0.0 ) {
       continue;
     }
-    if ( magnitude > 2.0 ) {
-      sum_x *= 2.0 / magnitude;
-      sum_y *= 2.0 / magnitude;
-      magnitude = 2.0;
+
+    int adjacent_edges = 0;
+    for ( int element = 0; element < mesh1.numberOfElements(); ++element ) {
+      if ( element == pair.m_element_id1 ) {
+        continue;
+      }
+      const auto connectivity = mesh1.getConnectivity()( element );
+      for ( int local_node = 0; local_node < 2; ++local_node ) {
+        if ( connectivity[local_node] != node ) {
+          continue;
+        }
+        ++adjacent_edges;
+        data.neighbor_element[endpoint] = element;
+        data.neighbor_local_node[endpoint] = 1 - local_node;
+        data.neighbor_node[endpoint] = connectivity[1 - local_node];
+        data.neighbor_coordinates[2 * endpoint] = mesh1.getPosition()[0][data.neighbor_node[endpoint]];
+        data.neighbor_coordinates[2 * endpoint + 1] = mesh1.getPosition()[1][data.neighbor_node[endpoint]];
+      }
     }
-    const double perpendicular_scale = std::sqrt( std::max( 0.0, 1.0 - 0.25 * magnitude * magnitude ) ) / magnitude;
-    const double half_sum_x = 0.5 * sum_x;
-    const double half_sum_y = 0.5 * sum_y;
-    const double offset_x = -sum_y * perpendicular_scale;
-    const double offset_y = sum_x * perpendicular_scale;
-    const int ray_offset = 4 * endpoint;
-    data.cone_rays[ray_offset] = half_sum_x + offset_x;
-    data.cone_rays[ray_offset + 1] = half_sum_y + offset_y;
-    data.cone_rays[ray_offset + 2] = half_sum_x - offset_x;
-    data.cone_rays[ray_offset + 3] = half_sum_y - offset_y;
+
+    data.is_open_endpoint[endpoint] = adjacent_edges == 0;
+    // A ball cone has one adjacent edge at a manifold corner. More neighbors do not define an unambiguous 2D cone.
+    if ( adjacent_edges > 1 ) {
+      data.weight[endpoint] = 0.0;
+      data.neighbor_node[endpoint] = -1;
+      data.neighbor_element[endpoint] = -1;
+      data.neighbor_local_node[endpoint] = -1;
+    }
   }
   return data;
 }
@@ -416,18 +512,16 @@ void Nodal<Adapter>::updateNodalForces()
                                         displacement_redecomp_fes, mortar_elem_map, nonmortar_elem_map );
   PackedPairJacobianContribs ball_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
                                        displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
-  ball_nm_nm.reserve( adapter->pairs_.size(), 16 );
-  ball_nm_m.reserve( adapter->pairs_.size(), 16 );
-  ball_m_nm.reserve( adapter->pairs_.size(), 16 );
-  ball_m_m.reserve( adapter->pairs_.size(), 16 );
+  ball_nm_nm.reserve( 9 * adapter->pairs_.size(), 9 * 16 * adapter->pairs_.size() );
+  ball_nm_m.reserve( 3 * adapter->pairs_.size(), 3 * 16 * adapter->pairs_.size() );
+  ball_m_nm.reserve( 3 * adapter->pairs_.size(), 3 * 16 * adapter->pairs_.size() );
+  ball_m_m.reserve( adapter->pairs_.size(), 16 * adapter->pairs_.size() );
 
   mfem::GridFunction redecomp_ball_force( const_cast<mfem::FiniteElementSpace*>( &displacement_redecomp_fes ) );
   redecomp_ball_force = 0.0;
   const int scalar_size = redecomp_ball_force.FESpace()->GetVSize() / redecomp_ball_force.FESpace()->GetVDim();
   auto mesh1_view = adapter->mesh1_->getView();
   auto mesh2_view = adapter->mesh2_->getView();
-  const int node_idx[8] = { 0, 2, 1, 3, 4, 6, 5, 7 };
-
   for ( const auto& pair : adapter->pairs_ ) {
     InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
     const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
@@ -441,32 +535,9 @@ void Nodal<Adapter>::updateNodalForces()
     }
 
     adapter->energy_ += ball_data.energy;
-    auto A_conn = mesh1_view.getConnectivity()( elem1 );
-    auto B_conn = mesh2_view.getConnectivity()( elem2 );
-    redecomp_ball_force( A_conn[0] ) += ball_data.force[0];
-    redecomp_ball_force( scalar_size + A_conn[0] ) += ball_data.force[1];
-    redecomp_ball_force( A_conn[1] ) += ball_data.force[2];
-    redecomp_ball_force( scalar_size + A_conn[1] ) += ball_data.force[3];
-    redecomp_ball_force( B_conn[0] ) += ball_data.force[4];
-    redecomp_ball_force( scalar_size + B_conn[0] ) += ball_data.force[5];
-    redecomp_ball_force( B_conn[1] ) += ball_data.force[6];
-    redecomp_ball_force( scalar_size + B_conn[1] ) += ball_data.force[7];
-
-    double blocks[2][2][16];
-    for ( int i = 0; i < 2; ++i ) {
-      for ( int j = 0; j < 2; ++j ) {
-        for ( int k = 0; k < 4; ++k ) {
-          for ( int l = 0; l < 4; ++l ) {
-            const auto idx = node_idx[l + i * 4] + node_idx[k + j * 4] * 8;
-            blocks[i][j][l + k * 4] = ball_data.stiffness[idx];
-          }
-        }
-      }
-    }
-    ball_nm_nm.append( elem1, elem1, blocks[0][0], 16 );
-    ball_nm_m.append( elem1, elem2, blocks[0][1], 16 );
-    ball_m_nm.append( elem2, elem1, blocks[1][0], 16 );
-    ball_m_m.append( elem2, elem2, blocks[1][1], 16 );
+    const auto patch_nodes = ballPatchNodes( elem1, elem2, mesh1_view, mesh2_view, endpoint_data );
+    addBallPatchForce( redecomp_ball_force, scalar_size, ball_data, patch_nodes );
+    appendBallPatchStiffness( ball_data, patch_nodes, ball_nm_nm, ball_nm_m, ball_m_nm, ball_m_m );
   }
 
   auto* parent_fes = adapter->mesh_data_.GetParentCoords().ParFESpace();
@@ -685,10 +756,10 @@ void QuadraturePoint<Adapter>::updateNodalForces()
   PackedPairJacobianContribs df_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
                                      displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
 
-  df_nm_nm.reserve( adapter->pairs_.size(), 16 );
-  df_nm_m.reserve( adapter->pairs_.size(), 16 );
-  df_m_nm.reserve( adapter->pairs_.size(), 16 );
-  df_m_m.reserve( adapter->pairs_.size(), 16 );
+  df_nm_nm.reserve( 10 * adapter->pairs_.size(), 10 * 16 * adapter->pairs_.size() );
+  df_nm_m.reserve( 4 * adapter->pairs_.size(), 4 * 16 * adapter->pairs_.size() );
+  df_m_nm.reserve( 4 * adapter->pairs_.size(), 4 * 16 * adapter->pairs_.size() );
+  df_m_m.reserve( 2 * adapter->pairs_.size(), 2 * 16 * adapter->pairs_.size() );
 
   mfem::GridFunction redecomp_force( const_cast<mfem::FiniteElementSpace*>( &displacement_redecomp_fes ) );
   redecomp_force = 0.0;
@@ -700,21 +771,21 @@ void QuadraturePoint<Adapter>::updateNodalForces()
   SLIC_ERROR_ROOT_IF( adapter->mesh1_ == nullptr || adapter->mesh2_ == nullptr, "ENERGY_MORTAR meshes not set." );
   auto mesh1_view = adapter->mesh1_->getView();
   auto mesh2_view = adapter->mesh2_->getView();
-
   for ( const auto& pair : adapter->pairs_ ) {
     InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
     const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
     const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
     const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view, mesh2_view );
-    const auto ball_data = adapter->ballEndpointData( flipped_pair, mesh1_view );
+    const auto endpoint_data = adapter->ballEndpointData( flipped_pair, mesh1_view );
     const auto qp_data = adapter->evaluator_->compute_quadrature_point_penalty_data(
-        flipped_pair, mesh1_view, mesh2_view, residual_gap_values.data(), &ball_data );
-
-    if ( !qp_data.has_active_qp ) {
+        flipped_pair, mesh1_view, mesh2_view, residual_gap_values.data() );
+    const auto ball_data = adapter->evaluator_->compute_ball_penalty_data( flipped_pair, mesh1_view, mesh2_view,
+                                                                           residual_gap_values.data(), &endpoint_data );
+    if ( !qp_data.has_active_qp && !ball_data.has_active_qp ) {
       continue;
     }
 
-    adapter->energy_ += qp_data.energy;
+    adapter->energy_ += qp_data.energy + ball_data.energy;
 
     auto A_conn = mesh1_view.getConnectivity()( elem1 );
     auto B_conn = mesh2_view.getConnectivity()( elem2 );
@@ -726,6 +797,8 @@ void QuadraturePoint<Adapter>::updateNodalForces()
     redecomp_force( scalar_size + B_conn[0] ) += qp_data.force[5];
     redecomp_force( B_conn[1] ) += qp_data.force[6];
     redecomp_force( scalar_size + B_conn[1] ) += qp_data.force[7];
+    const auto patch_nodes = ballPatchNodes( elem1, elem2, mesh1_view, mesh2_view, endpoint_data );
+    addBallPatchForce( redecomp_force, scalar_size, ball_data, patch_nodes );
 
     double df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
@@ -743,8 +816,8 @@ void QuadraturePoint<Adapter>::updateNodalForces()
     df_nm_m.append( elem1, elem2, df_dx_blocks[0][1], 16 );
     df_m_nm.append( elem2, elem1, df_dx_blocks[1][0], 16 );
     df_m_m.append( elem2, elem2, df_dx_blocks[1][1], 16 );
+    appendBallPatchStiffness( ball_data, patch_nodes, df_nm_nm, df_nm_m, df_m_nm, df_m_m );
   }
-
   auto* parent_fes = adapter->mesh_data_.GetParentCoords().ParFESpace();
   adapter->force_vec_ = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( parent_fes ) );
   adapter->force_vec_.fill( 0.0 );
@@ -752,7 +825,6 @@ void QuadraturePoint<Adapter>::updateNodalForces()
   parent_force = 0.0;
   adapter->mesh_data_.GetParentRedecompTransfer().RedecompToParent( redecomp_force, parent_force );
   parent_fes->GetProlongationMatrix()->MultTranspose( parent_force, adapter->force_vec_.get() );
-
   std::vector<PackedPairJacobianContribs> df_contribs;
   df_contribs.reserve( 4 );
   df_contribs.push_back( std::move( df_nm_nm ) );

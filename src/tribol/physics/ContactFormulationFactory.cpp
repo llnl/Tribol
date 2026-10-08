@@ -52,12 +52,14 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
       return std::make_unique<EnergyMortarAdapter<QuadraturePoint>>(
           *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), k, delta,
           normal_smoothing_start_angle, residual_gap_ramp_angle, residual_gap_ramp_updates, N, enzyme_quadrature,
-          use_penalty, residual_gap );
+          use_penalty, residual_gap, cs->getParameters().auto_contact_check,
+          cs->getParameters().auto_contact_pen_frac );
     } else {
       return std::make_unique<EnergyMortarAdapter<Nodal>>(
           *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), k, delta,
           normal_smoothing_start_angle, residual_gap_ramp_angle, residual_gap_ramp_updates, N, enzyme_quadrature,
-          use_penalty, residual_gap );
+          use_penalty, residual_gap, cs->getParameters().auto_contact_check,
+          cs->getParameters().auto_contact_pen_frac );
     }
 #else
     SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );

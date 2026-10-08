@@ -27,6 +27,8 @@ struct ContactParams {
   int N;                                                      ///< Number of quadrature points.
   bool enzyme_quadrature;      ///< Whether Enzyme differentiates the quadrature construction.
   double residual_gap{ 0.0 };  ///< User-defined separation represented by the virtual contact surfaces.
+  bool auto_contact{ false };  ///< Whether self-contact penetration filtering is active.
+  double auto_contact_penetration_fraction{ 0.95 };  ///< Maximum penetration as a fraction of element thickness.
 };
 
 /// Stores quadrature-point penalty energy derivatives for one interface pair.
@@ -39,16 +41,31 @@ struct QuadraturePointPenaltyData {
 
   bool has_active_qp{ false };                            ///< True when any quadrature-point gap is nonpositive.
   double energy{ 0.0 };                                   ///< Penalty energy for the interface pair.
-  double mortar_energy{ 0.0 };                            ///< Edge-integrated mortar part of the penalty energy.
-  double ball_energy{ 0.0 };                              ///< Non-mortar nodal-ball completion part of the energy.
   std::array<double, num_force_dofs> force{};             ///< Derivative with respect to pair coordinates.
   std::array<double, num_stiffness_entries> stiffness{};  ///< Flattened force derivative matrix.
 };
 
-/// Stores lagged eligibility and normal-cone boundaries for the two endpoints of a non-mortar edge.
+/// Stores the enlarged source-feature stencil used by endpoint-ball contact.
 struct BallEndpointData {
-  std::array<double, 2> weight{};     ///< Eligibility weights at A0 and A1.
-  std::array<double, 8> cone_rays{};  ///< Two outgoing unit edge rays per endpoint, ordered by endpoint then ray.
+  std::array<double, 2> weight{};                    ///< Lagged eligibility weights at A0 and A1.
+  std::array<int, 2> neighbor_node{ -1, -1 };        ///< Other node on the second edge incident to each endpoint.
+  std::array<int, 2> neighbor_element{ -1, -1 };     ///< Element containing each additional stencil node.
+  std::array<int, 2> neighbor_local_node{ -1, -1 };  ///< Local node number in each additional element.
+  std::array<double, 4> neighbor_coordinates{};      ///< Current coordinates of the two additional stencil nodes.
+  std::array<bool, 2> is_open_endpoint{};            ///< True when the current edge is the endpoint's only edge.
+};
+
+/// Stores endpoint-ball energy derivatives for the six-node source-feature/target-edge stencil.
+struct BallPenaltyData {
+  static constexpr int dim = 2;
+  static constexpr int num_nodes = 6;
+  static constexpr int num_force_dofs = dim * num_nodes;
+  static constexpr int num_stiffness_entries = num_force_dofs * num_force_dofs;
+
+  bool has_active_qp{ false };
+  double energy{ 0.0 };
+  std::array<double, num_force_dofs> force{};
+  std::array<double, num_stiffness_entries> stiffness{};
 };
 
 /// Stores weighted nodal gaps and tributary areas for one interface pair.
@@ -211,23 +228,20 @@ class EnergyMortarCalculator {
   QuadraturePointPenaltyData compute_quadrature_point_penalty_data( const InterfacePair& pair,
                                                                     const MeshData::Viewer& mesh1,
                                                                     const MeshData::Viewer& mesh2,
-                                                                    const double* residual_gap_values = nullptr,
-                                                                    const BallEndpointData* ball_data = nullptr ) const;
+                                                                    const double* residual_gap_values = nullptr ) const;
 
-  /// Compute only the non-mortar nodal-ball completion energy and its active-set derivatives.
+  /// Compute the non-mortar nodal-ball completion energy and its consistent derivatives.
   ///
-  /// The cone-clipped interval is computed from the current geometry and held fixed while differentiating. This treats
-  /// the cone as an ownership partition and prevents a zero-length ball interval from generating a finite force.
-  QuadraturePointPenaltyData compute_ball_penalty_data( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                        const MeshData::Viewer& mesh2,
-                                                        const double* residual_gap_values = nullptr,
-                                                        const BallEndpointData* ball_data = nullptr ) const;
+  /// The differentiated stencil contains A0, A1, B0, B1, and the additional source neighbor at each endpoint. Open
+  /// endpoints duplicate the current edge ray and therefore do not use their additional stencil node.
+  BallPenaltyData compute_ball_penalty_data( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                             const MeshData::Viewer& mesh2, const double* residual_gap_values = nullptr,
+                                             const BallEndpointData* ball_data = nullptr ) const;
 
   /// Evaluate only the local quadrature-point penalty energy.
   double compute_quadrature_point_penalty_energy( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                   const MeshData::Viewer& mesh2,
-                                                  const double* residual_gap_values = nullptr,
-                                                  const BallEndpointData* ball_data = nullptr ) const;
+                                                  const double* residual_gap_values = nullptr ) const;
 
   /// Evaluate and return the two nodal smoothed gap integrals.
   ///
