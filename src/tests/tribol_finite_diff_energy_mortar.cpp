@@ -30,8 +30,6 @@
 
 namespace tribol {
 
-// static ContactSmoothing smoother( ContactParams{} );
-
 inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], double P1[2] )
 {
   double P0_P1[4];
@@ -77,9 +75,9 @@ FiniteDiffResult EnergyMortarCalculator::validate_g_tilde( const InterfacePair& 
 
   auto projs0 = projections( pair, viewer1, viewer2 );
   double bounds0[2];
-  smoother_.bounds_from_projections( projs0.data(), p_.del, bounds0 );
+  ContactSmoothing::bounds_from_projections( projs0.data(), p_.del, bounds0 );
   double smooth_bounds0[2];
-  smoother_.smooth_bounds( bounds0, p_.del, smooth_bounds0 );
+  ContactSmoothing::smooth_bounds( bounds0, p_.del, smooth_bounds0 );
   QuadPoints qp0;
   if ( !p_.enzyme_quadrature ) {
     compute_quadrature( smooth_bounds0, p_.N, &qp0 );
@@ -310,9 +308,9 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
   if ( !p_.enzyme_quadrature ) {
     auto projs0 = projections( pair, viewer1, viewer2 );
     double bounds0[2];
-    smoother_.bounds_from_projections( projs0.data(), p_.del, bounds0 );
+    ContactSmoothing::bounds_from_projections( projs0.data(), p_.del, bounds0 );
     double smooth_bounds0[2];
-    smoother_.smooth_bounds( bounds0, p_.del, smooth_bounds0 );
+    ContactSmoothing::smooth_bounds( bounds0, p_.del, smooth_bounds0 );
     compute_quadrature( smooth_bounds0, p_.N, &qp0 );
   }
 
@@ -498,7 +496,7 @@ TEST( EnergyMortarResidualGapCheck, VirtualNormalsCanOpposeWhenPhysicalNormalsDo
   params.enzyme_quadrature = true;
   params.normal_smoothing_start_angle = energy_mortar::default_normal_smoothing_start_angle;
   EnergyMortarCalculator evaluator( params );
-  const double residual[4] = { 0.0, 0.2, 0.0, 0.0 };
+  const double residual[2] = { 0.0, 0.2 };
   const auto contact = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
                                                                         mesh2.getView(), residual );
   EXPECT_TRUE( contact.has_active_qp );
@@ -533,7 +531,7 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
                             []( double stiffness ) { return stiffness == 0.0; } ) );
 }
 
-TEST( EnergyMortarResidualGapCheck, DirectedPairUsesOnlyNonmortarResidualGap )
+TEST( EnergyMortarResidualGapCheck, UsesNonmortarResidualGap )
 {
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
@@ -554,18 +552,12 @@ TEST( EnergyMortarResidualGapCheck, DirectedPairUsesOnlyNonmortarResidualGap )
   params.residual_gap = 0.15;
   EnergyMortarCalculator evaluator( params );
 
-  const double both_reduced[4] = { 0.0, 0.0, 0.0, 0.0 };
+  const double zero_gap[2] = { 0.0, 0.0 };
   const auto inactive = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
-                                                                         mesh2.getView(), both_reduced );
+                                                                         mesh2.getView(), zero_gap );
   EXPECT_FALSE( inactive.has_active_qp );
 
-  const double mortar_only[4] = { 0.0, 0.0, 0.15, 0.15 };
-  const auto still_inactive = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
-                                                                               mesh2.getView(), mortar_only );
-  EXPECT_FALSE( still_inactive.has_active_qp );
-  EXPECT_EQ( still_inactive.energy, 0.0 );
-
-  const double nonmortar_full[4] = { 0.15, 0.15, 0.0, 0.0 };
+  const double nonmortar_full[2] = { 0.15, 0.15 };
   const auto active = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
                                                                        mesh2.getView(), nonmortar_full );
   EXPECT_TRUE( active.has_active_qp );
@@ -591,21 +583,16 @@ TEST( EnergyMortarResidualGapCheck, NonuniformRampChangesProjectionSpatially )
   params.enzyme_quadrature = true;
   EnergyMortarCalculator evaluator( params );
 
-  const double zero[4] = { 0.0, 0.0, 0.0, 0.0 };
-  const double ramp[4] = { 0.0, 0.2, 0.0, 0.0 };
-  const double mortar_ramp[4] = { 0.0, 0.0, 0.0, 0.2 };
-  const double global_max[4] = { 0.2, 0.2, 0.2, 0.2 };
+  const double zero[2] = { 0.0, 0.0 };
+  const double ramp[2] = { 0.0, 0.2 };
+  const double global_max[2] = { 0.2, 0.2 };
   const auto zero_projection =
       evaluator.compute_projection_bounds( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(), zero );
   const auto ramp_projection =
       evaluator.compute_projection_bounds( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(), ramp );
-  const auto mortar_projection =
-      evaluator.compute_projection_bounds( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(), mortar_ramp );
   const auto max_projection =
       evaluator.compute_projection_bounds( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(), global_max );
 
-  EXPECT_NEAR( mortar_projection[0], zero_projection[0], 1.0e-14 );
-  EXPECT_NEAR( mortar_projection[1], zero_projection[1], 1.0e-14 );
   EXPECT_TRUE( std::abs( ramp_projection[0] - max_projection[0] ) > 1.0e-6 ||
                std::abs( ramp_projection[1] - max_projection[1] ) > 1.0e-6 );
 }
@@ -628,8 +615,8 @@ TEST( EnergyMortarResidualGapCheck, ObliqueVirtualEdgesCreateProjectedOverlap )
   params.N = 3;
   params.enzyme_quadrature = true;
   EnergyMortarCalculator evaluator( params );
-  const double zero[4] = { 0.0, 0.0, 0.0, 0.0 };
-  const double residual[4] = { 0.25, 0.25, 0.25, 0.25 };
+  const double zero[2] = { 0.0, 0.0 };
+  const double residual[2] = { 0.25, 0.25 };
 
   const auto physical =
       evaluator.compute_projection_bounds( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(), zero );
@@ -660,7 +647,7 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionOnlyOwnsCornerCone )
   params.N = 3;
   params.enzyme_quadrature = true;
   EnergyMortarCalculator evaluator( params );
-  const double residual[4] = { 0.0, 0.2, 0.0, 0.0 };
+  const double residual[2] = { 0.0, 0.2 };
   const auto endpoint_data = endpointBallData( 0.0, -1.0 );
 
   RealT x2_inside[2] = { 0.30, 0.05 };
@@ -668,13 +655,13 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionOnlyOwnsCornerCone )
   IndexT conn2[2] = { 0, 1 };
   MeshData inside_mesh( 1, 1, 2, conn2, LINEAR_EDGE, x2_inside, y2, nullptr, MemorySpace::Host );
   const auto inside = evaluator.compute_ball_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
-                                                           inside_mesh.getView(), residual, &endpoint_data );
+                                                           inside_mesh.getView(), endpoint_data, residual );
   EXPECT_GT( inside.energy, 0.0 );
 
   RealT x2_outside[2] = { -0.05, -0.30 };
   MeshData outside_mesh( 1, 1, 2, conn2, LINEAR_EDGE, x2_outside, y2, nullptr, MemorySpace::Host );
   const auto outside = evaluator.compute_ball_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
-                                                            outside_mesh.getView(), residual, &endpoint_data );
+                                                            outside_mesh.getView(), endpoint_data, residual );
   EXPECT_EQ( outside.energy, 0.0 );
   EXPECT_TRUE( std::all_of( outside.force.begin(), outside.force.end(), []( double value ) { return value == 0.0; } ) );
   EXPECT_TRUE(
@@ -683,7 +670,7 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionOnlyOwnsCornerCone )
   RealT x2_crossing[2] = { 0.10, -0.10 };
   MeshData crossing_mesh( 1, 1, 2, conn2, LINEAR_EDGE, x2_crossing, y2, nullptr, MemorySpace::Host );
   const auto crossing_ball = evaluator.compute_ball_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
-                                                                  crossing_mesh.getView(), residual, &endpoint_data );
+                                                                  crossing_mesh.getView(), endpoint_data, residual );
   const auto crossing_mortar = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
                                                                                 crossing_mesh.getView(), residual );
   EXPECT_GT( crossing_ball.energy, 0.0 );
@@ -692,7 +679,7 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionOnlyOwnsCornerCone )
   RealT x2_inside_half[2] = { 0.10, 0.0 };
   MeshData inside_half_mesh( 1, 1, 2, conn2, LINEAR_EDGE, x2_inside_half, y2, nullptr, MemorySpace::Host );
   const auto inside_half = evaluator.compute_ball_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
-                                                                inside_half_mesh.getView(), residual, &endpoint_data );
+                                                                inside_half_mesh.getView(), endpoint_data, residual );
   EXPECT_NEAR( crossing_ball.energy, inside_half.energy, 1.0e-14 );
 }
 
@@ -715,29 +702,24 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionHonorsEndpointWeights )
   params.enzyme_quadrature = true;
   EnergyMortarCalculator evaluator( params );
   const InterfacePair pair( 0, 0 );
-  const double residual[4] = { 0.0, 0.2, 0.0, 0.0 };
+  const double residual[2] = { 0.0, 0.2 };
   auto eligible = openEndBallData();
   auto ineligible = eligible;
   ineligible.weight = { 1.0, 0.0 };
   auto half_weight = eligible;
   half_weight.weight[1] = 0.5;
 
-  const auto active =
-      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), residual, &eligible );
+  const auto active = evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), eligible, residual );
   ASSERT_TRUE( active.has_active_qp );
   ASSERT_GT( active.energy, 0.0 );
 
-  const auto missing_data = evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), residual );
-  EXPECT_FALSE( missing_data.has_active_qp );
-  EXPECT_DOUBLE_EQ( missing_data.energy, 0.0 );
-
   const auto inactive =
-      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), residual, &ineligible );
+      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), ineligible, residual );
   EXPECT_FALSE( inactive.has_active_qp );
   EXPECT_DOUBLE_EQ( inactive.energy, 0.0 );
 
   const auto weighted =
-      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), residual, &half_weight );
+      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), half_weight, residual );
   EXPECT_NEAR( weighted.energy, 0.5 * active.energy, 1.0e-14 );
 }
 
@@ -765,7 +747,7 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionFadesOutAsNormalsBecomePerpend
   unsmoothed_params.normal_smoothing_start_angle = perpendicular_angle;
   EnergyMortarCalculator unsmoothed_evaluator( unsmoothed_params );
   const InterfacePair pair( 0, 0 );
-  const double residual[4] = { 0.2, 0.2, 0.0, 0.0 };
+  const double residual[2] = { 0.2, 0.2 };
   const auto endpoint_data = openEndBallData();
 
   // Compare against the same cone-weighted geometry with normal smoothing disabled, which isolates the normal
@@ -787,7 +769,7 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionFadesOutAsNormalsBecomePerpend
       }
     }
     mesh2.setPosition( x2, y2, nullptr );
-    return calculator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), residual, &endpoint_data )
+    return calculator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual )
         .energy;
   };
 
@@ -839,16 +821,16 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionIsInvariantToMortarRefinement 
   params.N = 3;
   params.enzyme_quadrature = true;
   EnergyMortarCalculator evaluator( params );
-  const double residual[4] = { 0.0, 0.2, 0.0, 0.0 };
+  const double residual[2] = { 0.0, 0.2 };
   const auto endpoint_data = openEndBallData();
 
   const auto coarse_data = evaluator.compute_ball_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
-                                                                coarse.getView(), residual, &endpoint_data );
+                                                                coarse.getView(), endpoint_data, residual );
   double refined_energy = 0.0;
   for ( int edge = 0; edge < 2; ++edge ) {
     refined_energy += evaluator
                           .compute_ball_penalty_data( InterfacePair( 0, edge ), mesh1.getView(), fine.getView(),
-                                                      residual, &endpoint_data )
+                                                      endpoint_data, residual )
                           .energy;
   }
   // The radial integrand is non-polynomial, so independently mapping the same three-point rule to the two refined
@@ -860,10 +842,11 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionScalesWithSlaveTributaryLength
 {
   RealT coarse_x[2] = { -1.0, 0.0 };
   RealT refined_x[2] = { -0.5, 0.0 };
-  RealT slave_y[2] = { 0.0, 0.0 };
-  IndexT slave_conn[2] = { 0, 1 };
-  MeshData coarse_slave( 0, 1, 2, slave_conn, LINEAR_EDGE, coarse_x, slave_y, nullptr, MemorySpace::Host );
-  MeshData refined_slave( 0, 1, 2, slave_conn, LINEAR_EDGE, refined_x, slave_y, nullptr, MemorySpace::Host );
+  RealT nonmortar_y[2] = { 0.0, 0.0 };
+  IndexT nonmortar_conn[2] = { 0, 1 };
+  MeshData coarse_nonmortar( 0, 1, 2, nonmortar_conn, LINEAR_EDGE, coarse_x, nonmortar_y, nullptr, MemorySpace::Host );
+  MeshData refined_nonmortar( 0, 1, 2, nonmortar_conn, LINEAR_EDGE, refined_x, nonmortar_y, nullptr,
+                              MemorySpace::Host );
 
   RealT mortar_x[2] = { 0.30, 0.05 };
   RealT mortar_y[2] = { 0.05, 0.05 };
@@ -876,15 +859,15 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionScalesWithSlaveTributaryLength
   params.N = 3;
   params.enzyme_quadrature = true;
   EnergyMortarCalculator evaluator( params );
-  const double residual[4] = { 0.0, 0.2, 0.0, 0.0 };
+  const double residual[2] = { 0.0, 0.2 };
   const auto endpoint_data = openEndBallData();
   const double coarse_energy = evaluator
-                                   .compute_ball_penalty_data( InterfacePair( 0, 0 ), coarse_slave.getView(),
-                                                               mortar.getView(), residual, &endpoint_data )
+                                   .compute_ball_penalty_data( InterfacePair( 0, 0 ), coarse_nonmortar.getView(),
+                                                               mortar.getView(), endpoint_data, residual )
                                    .energy;
   const double refined_energy = evaluator
-                                    .compute_ball_penalty_data( InterfacePair( 0, 0 ), refined_slave.getView(),
-                                                                mortar.getView(), residual, &endpoint_data )
+                                    .compute_ball_penalty_data( InterfacePair( 0, 0 ), refined_nonmortar.getView(),
+                                                                mortar.getView(), endpoint_data, residual )
                                     .energy;
   ASSERT_GT( coarse_energy, 0.0 );
   EXPECT_NEAR( refined_energy, 0.5 * coarse_energy, 1.0e-14 );
@@ -910,10 +893,10 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionConeDerivativesMatchFiniteDiff
   params.enzyme_quadrature = true;
   EnergyMortarCalculator evaluator( params );
   const InterfacePair pair( 0, 0 );
-  const double residual[4] = { 0.0, 0.2, 0.0, 0.0 };
+  const double residual[2] = { 0.0, 0.2 };
   auto endpoint_data = endpointBallData( 0.0, -1.0 );
   const auto analytical =
-      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), residual, &endpoint_data );
+      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual );
   ASSERT_GT( analytical.energy, 0.0 );
 
   const std::array<RealT, 2> x1_orig{ x1[0], x1[1] };
@@ -954,11 +937,11 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionConeDerivativesMatchFiniteDiff
     restore();
     perturb( dof, grad_eps );
     const double plus =
-        evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), residual, &endpoint_data ).energy;
+        evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual ).energy;
     restore();
     perturb( dof, -grad_eps );
     const double minus =
-        evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), residual, &endpoint_data ).energy;
+        evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual ).energy;
     EXPECT_NEAR( analytical.force[dof], ( plus - minus ) / ( 2.0 * grad_eps ), 1.0e-6 ) << "dof " << dof;
   }
 
@@ -967,11 +950,11 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionConeDerivativesMatchFiniteDiff
     restore();
     perturb( col, hess_eps );
     const auto plus =
-        evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), residual, &endpoint_data ).force;
+        evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual ).force;
     restore();
     perturb( col, -hess_eps );
     const auto minus =
-        evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), residual, &endpoint_data ).force;
+        evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual ).force;
     for ( int row = 0; row < BallPenaltyData::num_force_dofs; ++row ) {
       EXPECT_NEAR( analytical.stiffness[row * BallPenaltyData::num_force_dofs + col],
                    ( plus[row] - minus[row] ) / ( 2.0 * hess_eps ), 2.0e-4 )
@@ -1000,7 +983,7 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionEnergyVanishesWithConeOverlap 
   params.enzyme_quadrature = true;
   EnergyMortarCalculator evaluator( params );
   const InterfacePair pair( 0, 0 );
-  const double residual[4] = { 0.0, 0.2, 0.0, 0.0 };
+  const double residual[2] = { 0.0, 0.2 };
   const auto endpoint_data = endpointBallData( 0.0, -1.0 );
   auto norm = []( const auto& values ) {
     double norm_sq = 0.0;
@@ -1011,19 +994,19 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionEnergyVanishesWithConeOverlap 
   };
 
   const auto finite_overlap =
-      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), residual, &endpoint_data );
+      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual );
   ASSERT_GT( finite_overlap.energy, 0.0 );
   x2[0] = 1.0e-6;
   mesh2.setPosition( x2, y2, nullptr );
   const auto vanishing_overlap =
-      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), residual, &endpoint_data );
+      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual );
   ASSERT_GT( vanishing_overlap.energy, 0.0 );
   EXPECT_LT( vanishing_overlap.energy, 1.0e-2 * finite_overlap.energy );
 
   x2[0] = 0.0;
   mesh2.setPosition( x2, y2, nullptr );
   const auto zero_overlap =
-      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), residual, &endpoint_data );
+      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual );
   EXPECT_DOUBLE_EQ( zero_overlap.energy, 0.0 );
   EXPECT_DOUBLE_EQ( norm( zero_overlap.force ), 0.0 );
   EXPECT_DOUBLE_EQ( norm( zero_overlap.stiffness ), 0.0 );
@@ -1048,7 +1031,7 @@ TEST( EnergyMortarResidualGapCheck, SmoothedBallForceVanishesWithConeOverlap )
   params.enzyme_quadrature = true;
   EnergyMortarCalculator evaluator( params );
   const InterfacePair pair( 0, 0 );
-  const double residual[4] = { 0.0, 0.2, 0.0, 0.0 };
+  const double residual[2] = { 0.0, 0.2 };
   const auto endpoint_data = endpointBallData( 0.0, -1.0 );
   auto norm = []( const auto& values ) {
     double norm_sq = 0.0;
@@ -1059,7 +1042,7 @@ TEST( EnergyMortarResidualGapCheck, SmoothedBallForceVanishesWithConeOverlap )
   };
 
   const auto finite_overlap =
-      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), residual, &endpoint_data );
+      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual );
   ASSERT_GT( finite_overlap.energy, 0.0 );
   const double finite_force_norm = norm( finite_overlap.force );
   const double finite_stiffness_norm = norm( finite_overlap.stiffness );
@@ -1069,7 +1052,7 @@ TEST( EnergyMortarResidualGapCheck, SmoothedBallForceVanishesWithConeOverlap )
   x2[0] = 1.0e-6;
   mesh2.setPosition( x2, y2, nullptr );
   const auto vanishing_overlap =
-      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), residual, &endpoint_data );
+      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual );
   ASSERT_GT( vanishing_overlap.energy, 0.0 );
   EXPECT_LT( norm( vanishing_overlap.force ), 1.0e-2 * finite_force_norm );
   EXPECT_LT( norm( vanishing_overlap.stiffness ), 1.0e-2 * finite_stiffness_norm );
@@ -1092,10 +1075,10 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionPreservesRigidMotionsAndHasSym
   params.N = 3;
   params.enzyme_quadrature = true;
   EnergyMortarCalculator evaluator( params );
-  const double residual[4] = { 0.0, 0.2, 0.0, 0.0 };
+  const double residual[2] = { 0.0, 0.2 };
   auto endpoint_data = endpointBallData( 0.0, -1.0 );
   const auto base = evaluator.compute_ball_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(),
-                                                         residual, &endpoint_data );
+                                                         endpoint_data, residual );
   ASSERT_GT( base.energy, 0.0 );
 
   EXPECT_NEAR( base.force[0] + base.force[2] + base.force[4] + base.force[6] + base.force[8] + base.force[10], 0.0,
@@ -1118,7 +1101,7 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionPreservesRigidMotionsAndHasSym
   mesh1.setPosition( x1, y1, nullptr );
   mesh2.setPosition( x2, y2, nullptr );
   const auto translated = evaluator.compute_ball_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(),
-                                                               residual, &endpoint_data );
+                                                               endpoint_data, residual );
   EXPECT_NEAR( translated.energy, base.energy, 1.0e-12 );
   for ( int i = 0; i < BallPenaltyData::num_force_dofs; ++i ) {
     EXPECT_NEAR( translated.force[i], base.force[i], 1.0e-9 );

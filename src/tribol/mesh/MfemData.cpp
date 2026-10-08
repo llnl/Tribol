@@ -1194,13 +1194,9 @@ MfemSubmeshData::MfemSubmeshData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_
     : submesh_pressure_{ new mfem::ParFiniteElementSpace( &submesh, pressure_fec.get(), pressure_vdim ) },
       submesh_residual_gap_{ submesh_pressure_.ParFESpace() },
       submesh_ball_weight_{ submesh_pressure_.ParFESpace() },
-      submesh_ball_cone_ray_sum_x_{ submesh_pressure_.ParFESpace() },
-      submesh_ball_cone_ray_sum_y_{ submesh_pressure_.ParFESpace() },
       pressure_{ submesh_pressure_ },
       residual_gap_{ submesh_residual_gap_ },
       ball_weight_{ submesh_ball_weight_ },
-      ball_cone_ray_sum_x_{ submesh_ball_cone_ray_sum_x_ },
-      ball_cone_ray_sum_y_{ submesh_ball_cone_ray_sum_y_ },
       submesh_lor_xfer_{ lor_mesh ? std::make_unique<SubmeshLORTransfer>( *submesh_pressure_.ParFESpace(), *lor_mesh )
                                   : nullptr },
       use_device_{ use_device }
@@ -1209,8 +1205,6 @@ MfemSubmeshData::MfemSubmeshData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_
   submesh_pressure_ = 0.0;
   submesh_residual_gap_ = 0.0;
   submesh_ball_weight_ = 0.0;
-  submesh_ball_cone_ray_sum_x_ = 0.0;
-  submesh_ball_cone_ray_sum_y_ = 0.0;
 }
 
 void MfemSubmeshData::SetLORMesh( mfem::ParMesh* lor_mesh )
@@ -1229,8 +1223,6 @@ void MfemSubmeshData::UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_me
   pressure_.UpdateField( update_data_->pressure_xfer_ );
   residual_gap_.UpdateField( update_data_->pressure_xfer_ );
   ball_weight_.UpdateField( update_data_->pressure_xfer_ );
-  ball_cone_ray_sum_x_.UpdateField( update_data_->pressure_xfer_ );
-  ball_cone_ray_sum_y_.UpdateField( update_data_->pressure_xfer_ );
   redecomp_gap_.SetSpace( pressure_.GetRedecompGridFn().FESpace() );
   redecomp_gap_.UseDevice( use_device_ );
   redecomp_gap_ = 0.0;
@@ -1238,23 +1230,19 @@ void MfemSubmeshData::UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_me
 
 void MfemSubmeshData::UpdateResidualGapField( RealT residual_gap, RealT ramp_angle )
 {
-  constexpr RealT CORNER_ANGLE_TOL = 1.0e-8;
+  constexpr RealT corner_angle_tol = 1.0e-8;
   auto& submesh = static_cast<mfem::ParMesh&>( *submesh_pressure_.ParFESpace()->GetParMesh() );
 
   auto update_redecomp_fields = [&]() {
     if ( update_data_ ) {
       residual_gap_.UpdateField( update_data_->pressure_xfer_ );
       ball_weight_.UpdateField( update_data_->pressure_xfer_ );
-      ball_cone_ray_sum_x_.UpdateField( update_data_->pressure_xfer_ );
-      ball_cone_ray_sum_y_.UpdateField( update_data_->pressure_xfer_ );
     }
   };
 
   if ( residual_gap <= 0.0 ) {
     submesh_residual_gap_ = residual_gap;
     submesh_ball_weight_ = 0.0;
-    submesh_ball_cone_ray_sum_x_ = 0.0;
-    submesh_ball_cone_ray_sum_y_ = 0.0;
     update_redecomp_fields();
     return;
   }
@@ -1262,8 +1250,6 @@ void MfemSubmeshData::UpdateResidualGapField( RealT residual_gap, RealT ramp_ang
   if ( submesh.Dimension() != 1 || submesh.SpaceDimension() != 2 ) {
     submesh_residual_gap_ = residual_gap;
     submesh_ball_weight_ = 0.0;
-    submesh_ball_cone_ray_sum_x_ = 0.0;
-    submesh_ball_cone_ray_sum_y_ = 0.0;
     update_redecomp_fields();
     return;
   }
@@ -1334,11 +1320,7 @@ void MfemSubmeshData::UpdateResidualGapField( RealT residual_gap, RealT ramp_ang
   group_comm.Bcast( incidence );
 
   mfem::Vector vertex_ball_weight( num_dofs );
-  mfem::Vector vertex_ball_cone_ray_sum_x( num_dofs );
-  mfem::Vector vertex_ball_cone_ray_sum_y( num_dofs );
   vertex_ball_weight = 0.0;
-  vertex_ball_cone_ray_sum_x = 0.0;
-  vertex_ball_cone_ray_sum_y = 0.0;
   const bool builds_corner_ramp = ramp_angle > 0.0;
   const double slope = builds_corner_ramp ? 2.0 * std::tan( 0.5 * ramp_angle ) : 0.0;
   const double ramp_length = builds_corner_ramp ? residual_gap / slope : 0.0;
@@ -1346,15 +1328,11 @@ void MfemSubmeshData::UpdateResidualGapField( RealT residual_gap, RealT ramp_ang
   distance = ramp_length;
   // A ball closes the offset surface only where adjacent edges separate at a convex turn. Straight and nonconvex
   // interior vertices already have continuous or overlapping offset edges, while an open surface needs an end cap.
-  const double max_corner_angle = 2.0 * energy_mortar::perpendicular_normal_angle - CORNER_ANGLE_TOL;
+  const double max_corner_angle = 2.0 * energy_mortar::perpendicular_normal_angle - corner_angle_tol;
   for ( int i = 0; i < num_dofs; ++i ) {
     const bool is_open_endpoint = incidence[i] == 1;
     if ( is_open_endpoint ) {
       vertex_ball_weight[i] = 1.0;
-      // Duplicating the only outgoing ray makes the reconstructed cone a half-plane, which produces a semicircular
-      // cap behind the open end.
-      vertex_ball_cone_ray_sum_x[i] = 2.0 * ray_x[i];
-      vertex_ball_cone_ray_sum_y[i] = 2.0 * ray_y[i];
       continue;
     }
     if ( incidence[i] != 2 ) {
@@ -1368,8 +1346,6 @@ void MfemSubmeshData::UpdateResidualGapField( RealT residual_gap, RealT ramp_ang
     const bool is_nonconvex_corner = is_strict_corner && exterior_alignment > 0.0;
     if ( is_convex_corner ) {
       vertex_ball_weight[i] = 1.0;
-      vertex_ball_cone_ray_sum_x[i] = ray_x[i];
-      vertex_ball_cone_ray_sum_y[i] = ray_y[i];
     } else if ( builds_corner_ramp && is_nonconvex_corner ) {
       distance[i] = 0.0;
     }
@@ -1426,14 +1402,6 @@ void MfemSubmeshData::UpdateResidualGapField( RealT residual_gap, RealT ramp_ang
   vertex_ball_weight_grid_function = vertex_ball_weight;
   mfem::GridFunctionCoefficient ball_weight_coefficient( &vertex_ball_weight_grid_function );
   submesh_ball_weight_.ProjectCoefficient( ball_weight_coefficient );
-  mfem::ParGridFunction vertex_ball_cone_ray_sum_x_grid_function( &vertex_fes );
-  mfem::ParGridFunction vertex_ball_cone_ray_sum_y_grid_function( &vertex_fes );
-  vertex_ball_cone_ray_sum_x_grid_function = vertex_ball_cone_ray_sum_x;
-  vertex_ball_cone_ray_sum_y_grid_function = vertex_ball_cone_ray_sum_y;
-  mfem::GridFunctionCoefficient ball_cone_ray_sum_x_coefficient( &vertex_ball_cone_ray_sum_x_grid_function );
-  mfem::GridFunctionCoefficient ball_cone_ray_sum_y_coefficient( &vertex_ball_cone_ray_sum_y_grid_function );
-  submesh_ball_cone_ray_sum_x_.ProjectCoefficient( ball_cone_ray_sum_x_coefficient );
-  submesh_ball_cone_ray_sum_y_.ProjectCoefficient( ball_cone_ray_sum_y_coefficient );
   auto* gap_data = submesh_residual_gap_.HostReadWrite();
   for ( int i = 0; i < submesh_residual_gap_.Size(); ++i ) {
     gap_data[i] = std::max( 0.0, std::min( residual_gap, gap_data[i] ) );

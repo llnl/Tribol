@@ -3,7 +3,6 @@
 //
 // SPDX-License-Identifier: (MIT)
 
-#include <array>
 #include <cmath>
 #include <memory>
 
@@ -17,7 +16,7 @@
 
 namespace {
 
-double residualGapAtVertex( const tribol::MfemSubmeshData& data, const mfem::ParSubMesh&, int vertex )
+double residualGapAtVertex( const tribol::MfemSubmeshData& data, int vertex )
 {
   mfem::Array<int> dofs;
   data.GetSubmeshFESpace().GetVertexDofs( vertex, dofs );
@@ -31,48 +30,6 @@ double ballWeightAtVertex( const tribol::MfemSubmeshData& data, int vertex )
   data.GetSubmeshFESpace().GetVertexDofs( vertex, dofs );
   EXPECT_EQ( dofs.Size(), 1 );
   return data.GetSubmeshBallWeight()[dofs[0]];
-}
-
-std::array<double, 2> ballConeRaySumAtVertex( const tribol::MfemSubmeshData& data, int vertex )
-{
-  mfem::Array<int> dofs;
-  data.GetSubmeshFESpace().GetVertexDofs( vertex, dofs );
-  EXPECT_EQ( dofs.Size(), 1 );
-  return { data.GetSubmeshBallConeRaySumX()[dofs[0]], data.GetSubmeshBallConeRaySumY()[dofs[0]] };
-}
-
-std::array<double, 2> outgoingRaySumAtVertex( const mfem::ParSubMesh& submesh, int vertex )
-{
-  std::array<double, 2> ray_sum{};
-  int incidence = 0;
-  double vertex_coords[2];
-  submesh.GetNode( vertex, vertex_coords );
-  for ( int element = 0; element < submesh.GetNE(); ++element ) {
-    mfem::Array<int> vertices;
-    submesh.GetElementVertices( element, vertices );
-    int neighbor = -1;
-    if ( vertices[0] == vertex ) {
-      neighbor = vertices[1];
-    } else if ( vertices[1] == vertex ) {
-      neighbor = vertices[0];
-    }
-    if ( neighbor < 0 ) {
-      continue;
-    }
-    double neighbor_coords[2];
-    submesh.GetNode( neighbor, neighbor_coords );
-    const double dx = neighbor_coords[0] - vertex_coords[0];
-    const double dy = neighbor_coords[1] - vertex_coords[1];
-    const double length = std::sqrt( dx * dx + dy * dy );
-    ray_sum[0] += dx / length;
-    ray_sum[1] += dy / length;
-    ++incidence;
-  }
-  if ( incidence == 1 ) {
-    ray_sum[0] *= 2.0;
-    ray_sum[1] *= 2.0;
-  }
-  return ray_sum;
 }
 
 TEST( ResidualGapRamp, ConcaveCornerRampsOverMultipleElements )
@@ -93,7 +50,7 @@ TEST( ResidualGapRamp, ConcaveCornerRampsOverMultipleElements )
   for ( int vertex = 0; vertex < submesh.GetNV(); ++vertex ) {
     double x[2];
     submesh.GetNode( vertex, x );
-    const double value = residualGapAtVertex( data, submesh, vertex );
+    const double value = residualGapAtVertex( data, vertex );
     if ( std::abs( x[0] - 0.25 ) < 1.0e-12 && std::abs( x[1] - 0.75 ) < 1.0e-12 ) {
       EXPECT_NEAR( value, 0.0, 1.0e-12 );
       found_tip = true;
@@ -120,12 +77,12 @@ TEST( ResidualGapRamp, ConvexCornerAndZeroAngleRemainUniform )
   constexpr double pi = 3.14159265358979323846264338327950288;
   data.UpdateResidualGapField( residual_gap, 10.0 * pi / 180.0 );
   for ( int vertex = 0; vertex < submesh.GetNV(); ++vertex ) {
-    EXPECT_NEAR( residualGapAtVertex( data, submesh, vertex ), residual_gap, 1.0e-12 );
+    EXPECT_NEAR( residualGapAtVertex( data, vertex ), residual_gap, 1.0e-12 );
   }
 
   data.UpdateResidualGapField( residual_gap, 0.0 );
   for ( int vertex = 0; vertex < submesh.GetNV(); ++vertex ) {
-    EXPECT_NEAR( residualGapAtVertex( data, submesh, vertex ), residual_gap, 1.0e-12 );
+    EXPECT_NEAR( residualGapAtVertex( data, vertex ), residual_gap, 1.0e-12 );
   }
 }
 
@@ -148,28 +105,22 @@ TEST( ResidualGapRamp, BallWeightsSelectConvexCorners )
     submesh.GetNode( vertex, x );
     if ( std::abs( x[0] - 0.25 ) < 1.0e-12 && std::abs( x[1] - 0.75 ) < 1.0e-12 ) {
       EXPECT_DOUBLE_EQ( ballWeightAtVertex( data, vertex ), 0.0 );
-      EXPECT_EQ( ballConeRaySumAtVertex( data, vertex ), ( std::array<double, 2>{ 0.0, 0.0 } ) );
       found_concave = true;
     } else if ( std::abs( x[0] ) < 1.0e-12 && std::abs( x[1] ) < 1.0e-12 ) {
       EXPECT_DOUBLE_EQ( ballWeightAtVertex( data, vertex ), 1.0 );
-      const auto expected_ray_sum = outgoingRaySumAtVertex( submesh, vertex );
-      const auto ray_sum = ballConeRaySumAtVertex( data, vertex );
-      EXPECT_NEAR( ray_sum[0], expected_ray_sum[0], 1.0e-12 );
-      EXPECT_NEAR( ray_sum[1], expected_ray_sum[1], 1.0e-12 );
       found_convex = true;
     } else if ( std::abs( x[0] ) < 1.0e-12 && std::abs( x[1] - 0.5 ) < 1.0e-12 ) {
       EXPECT_DOUBLE_EQ( ballWeightAtVertex( data, vertex ), 0.0 );
-      EXPECT_EQ( ballConeRaySumAtVertex( data, vertex ), ( std::array<double, 2>{ 0.0, 0.0 } ) );
       found_straight = true;
     }
-    EXPECT_NEAR( residualGapAtVertex( data, submesh, vertex ), residual_gap, 1.0e-12 );
+    EXPECT_NEAR( residualGapAtVertex( data, vertex ), residual_gap, 1.0e-12 );
   }
   EXPECT_TRUE( found_concave );
   EXPECT_TRUE( found_convex );
   EXPECT_TRUE( found_straight );
 }
 
-TEST( ResidualGapRamp, OpenEndpointConeTracksItsOutgoingEdge )
+TEST( ResidualGapRamp, OpenEndpointsRemainEligibleAfterDeformation )
 {
   auto parent = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::SquareMesh( 2, 1 ) );
   mfem::Array<int> attributes{ 1 };
@@ -182,30 +133,20 @@ TEST( ResidualGapRamp, OpenEndpointConeTracksItsOutgoingEdge )
 
   int endpoint = -1;
   for ( int vertex = 0; vertex < submesh.GetNV(); ++vertex ) {
-    const auto expected_ray_sum = outgoingRaySumAtVertex( submesh, vertex );
-    const double expected_magnitude =
-        std::sqrt( expected_ray_sum[0] * expected_ray_sum[0] + expected_ray_sum[1] * expected_ray_sum[1] );
-    if ( expected_magnitude > 1.5 ) {
+    if ( ballWeightAtVertex( data, vertex ) > 0.5 ) {
       endpoint = vertex;
       EXPECT_DOUBLE_EQ( ballWeightAtVertex( data, vertex ), 1.0 );
-      const auto ray_sum = ballConeRaySumAtVertex( data, vertex );
-      EXPECT_NEAR( ray_sum[0], expected_ray_sum[0], 1.0e-12 );
-      EXPECT_NEAR( ray_sum[1], expected_ray_sum[1], 1.0e-12 );
+      break;
     }
   }
   ASSERT_GE( endpoint, 0 );
 
-  mfem::Array<int> endpoint_dofs;
-  data.GetSubmeshFESpace().GetVertexDofs( endpoint, endpoint_dofs );
   double moved_endpoint[2];
   submesh.GetNode( endpoint, moved_endpoint );
   moved_endpoint[1] += 0.25;
   submesh.SetNode( endpoint, moved_endpoint );
   data.UpdateResidualGapField( residual_gap, 0.0 );
-  const auto updated_ray_sum = ballConeRaySumAtVertex( data, endpoint );
-  const auto expected_updated_ray_sum = outgoingRaySumAtVertex( submesh, endpoint );
-  EXPECT_NEAR( updated_ray_sum[0], expected_updated_ray_sum[0], 1.0e-12 );
-  EXPECT_NEAR( updated_ray_sum[1], expected_updated_ray_sum[1], 1.0e-12 );
+  EXPECT_DOUBLE_EQ( ballWeightAtVertex( data, endpoint ), 1.0 );
 }
 
 TEST( ResidualGapRamp, DetectsObtuseCornerCreatedByDeformation )
@@ -250,17 +191,17 @@ TEST( ResidualGapRamp, DetectsObtuseCornerCreatedByDeformation )
   constexpr double residual_gap = 0.005;
   constexpr double pi = 3.14159265358979323846264338327950288;
   data.UpdateResidualGapField( residual_gap, 10.0 * pi / 180.0 );
-  EXPECT_NEAR( residualGapAtVertex( data, submesh, tip ), residual_gap, 1.0e-12 );
+  EXPECT_NEAR( residualGapAtVertex( data, tip ), residual_gap, 1.0e-12 );
 
   const double sharp_tip[2] = { 0.25, 0.75 };
   const double obtuse_tip[2] = { 0.5 * ( straight_tip[0] + sharp_tip[0] ), 0.5 * ( straight_tip[1] + sharp_tip[1] ) };
   submesh.SetNode( tip, obtuse_tip );
   data.UpdateResidualGapField( residual_gap, 10.0 * pi / 180.0 );
-  EXPECT_NEAR( residualGapAtVertex( data, submesh, tip ), 0.0, 1.0e-12 );
+  EXPECT_NEAR( residualGapAtVertex( data, tip ), 0.0, 1.0e-12 );
 
   submesh.SetNode( tip, sharp_tip );
   data.UpdateResidualGapField( residual_gap, 10.0 * pi / 180.0 );
-  EXPECT_NEAR( residualGapAtVertex( data, submesh, tip ), 0.0, 1.0e-12 );
+  EXPECT_NEAR( residualGapAtVertex( data, tip ), 0.0, 1.0e-12 );
 }
 
 TEST( ResidualGapRamp, ThreeDimensionalSurfaceRetainsUniformGap )
@@ -275,9 +216,8 @@ TEST( ResidualGapRamp, ThreeDimensionalSurfaceRetainsUniformGap )
   constexpr double pi = 3.14159265358979323846264338327950288;
   data.UpdateResidualGapField( residual_gap, 10.0 * pi / 180.0 );
   for ( int vertex = 0; vertex < submesh.GetNV(); ++vertex ) {
-    EXPECT_NEAR( residualGapAtVertex( data, submesh, vertex ), residual_gap, 1.0e-12 );
+    EXPECT_NEAR( residualGapAtVertex( data, vertex ), residual_gap, 1.0e-12 );
     EXPECT_DOUBLE_EQ( ballWeightAtVertex( data, vertex ), 0.0 );
-    EXPECT_EQ( ballConeRaySumAtVertex( data, vertex ), ( std::array<double, 2>{ 0.0, 0.0 } ) );
   }
 }
 

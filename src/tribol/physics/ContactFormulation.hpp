@@ -123,7 +123,7 @@ class ContactFormulation {
   virtual void updateConstantPenaltyStiffness( double /*mesh1_penalty*/, double /*mesh2_penalty*/ ) {}
 
   /**
-   * @brief Update the residual-gap offset on formulations that cache contact parameters
+   * @brief Update the residual-gap separation on formulations that cache contact parameters
    */
   virtual void setResidualGap( RealT /*residual_gap*/ ) {}
 

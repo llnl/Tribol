@@ -22,7 +22,7 @@ struct BallPatchNode {
   int node{ -1 };
   int element{ -1 };
   int local_node{ -1 };
-  bool mortar{ false };
+  bool is_mortar{ false };
 };
 
 std::array<BallPatchNode, BallPenaltyData::num_nodes> ballPatchNodes( int nonmortar_element, int mortar_element,
@@ -70,7 +70,7 @@ void appendBallPatchStiffness( const BallPenaltyData& ball_data,
       if ( nodes[col_node].node < 0 ) {
         continue;
       }
-      const BlockKey key{ nodes[row_node].mortar, nodes[row_node].element, nodes[col_node].mortar,
+      const BlockKey key{ nodes[row_node].is_mortar, nodes[row_node].element, nodes[col_node].is_mortar,
                           nodes[col_node].element };
       auto [block, inserted] = blocks.try_emplace( key );
       if ( inserted ) {
@@ -106,29 +106,21 @@ void appendBallPatchStiffness( const BallPenaltyData& ball_data,
 }  // namespace
 
 template <template <typename> class EnforcementLocation>
-EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter(
-    MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k, double delta,
-    double normal_smoothing_start_angle, double residual_gap_ramp_angle, bool residual_gap_ramp_updates, int N,
-    bool enzyme_quadrature, bool use_penalty, RealT residual_gap, bool auto_contact,
-    RealT auto_contact_penetration_fraction )
+EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
+                                                               MfemJacobianData& jac_data,
+                                                               const ContactParams& contact_params,
+                                                               double residual_gap_ramp_angle,
+                                                               bool updates_residual_gap_ramp, bool use_penalty )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
     : use_penalty_( use_penalty ),
       mesh_data_( mesh_data ),
       submesh_data_( submesh_data ),
       jac_data_( jac_data ),
+      params_( contact_params ),
       residual_gap_ramp_angle_( residual_gap_ramp_angle ),
-      residual_gap_ramp_updates_( residual_gap_ramp_updates )
+      updates_residual_gap_ramp_( updates_residual_gap_ramp )
 {
-  params_.k = k;
-  params_.del = delta;
-  params_.normal_smoothing_start_angle = normal_smoothing_start_angle;
-  params_.N = N;
-  params_.enzyme_quadrature = enzyme_quadrature;
-  params_.residual_gap = residual_gap;
-  params_.auto_contact = auto_contact;
-  params_.auto_contact_penetration_fraction = auto_contact_penetration_fraction;
-
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 
   this->init( this );
@@ -151,6 +143,27 @@ void EnergyMortarAdapter<EnforcementLocation>::updateMeshes( MeshData& mesh1, Me
   // Maintain the same "flipped" convention as the constructor.
   mesh1_ = &mesh2;
   mesh2_ = &mesh1;
+  updateBallEndpointTopology();
+}
+
+template <template <typename> class EnforcementLocation>
+void EnergyMortarAdapter<EnforcementLocation>::updateBallEndpointTopology()
+{
+  const auto mesh = mesh1_->getView();
+  nonmortar_incident_edges_.clear();
+  nonmortar_incident_edges_.resize( mesh.numberOfNodes() );
+  nonmortar_node_incidence_.assign( mesh.numberOfNodes(), 0 );
+
+  for ( int element = 0; element < mesh.numberOfElements(); ++element ) {
+    const auto connectivity = mesh.getConnectivity()( element );
+    for ( int local_node = 0; local_node < 2; ++local_node ) {
+      const int node = connectivity[local_node];
+      const int incidence = nonmortar_node_incidence_[node]++;
+      if ( incidence < 2 ) {
+        nonmortar_incident_edges_[node][incidence] = { element, local_node };
+      }
+    }
+  }
 }
 
 template <template <typename> class EnforcementLocation>
@@ -173,7 +186,7 @@ void EnergyMortarAdapter<EnforcementLocation>::setResidualGap( RealT residual_ga
 template <template <typename> class EnforcementLocation>
 void EnergyMortarAdapter<EnforcementLocation>::beginCycle( int cycle )
 {
-  if ( !residual_gap_field_dirty_ && ( !residual_gap_ramp_updates_ || residual_gap_field_cycle_ == cycle ) ) {
+  if ( !residual_gap_field_dirty_ && ( !updates_residual_gap_ramp_ || residual_gap_field_cycle_ == cycle ) ) {
     return;
   }
   mesh_data_.UpdateSubmeshCoordinates();
@@ -183,15 +196,13 @@ void EnergyMortarAdapter<EnforcementLocation>::beginCycle( int cycle )
 }
 
 template <template <typename> class EnforcementLocation>
-std::array<double, 4> EnergyMortarAdapter<EnforcementLocation>::residualGapValues( const InterfacePair& pair,
-                                                                                   const MeshData::Viewer& mesh1,
-                                                                                   const MeshData::Viewer& mesh2 ) const
+std::array<double, 2> EnergyMortarAdapter<EnforcementLocation>::residualGapValues( const InterfacePair& pair,
+                                                                                   const MeshData::Viewer& mesh1 ) const
 {
   const auto& gap_field = submesh_data_.GetRedecompResidualGap();
   const double* values = gap_field.HostRead();
   const auto conn1 = mesh1.getConnectivity()( pair.m_element_id1 );
-  const auto conn2 = mesh2.getConnectivity()( pair.m_element_id2 );
-  return { values[conn1[0]], values[conn1[1]], values[conn2[0]], values[conn2[1]] };
+  return { values[conn1[0]], values[conn1[1]] };
 }
 
 template <template <typename> class EnforcementLocation>
@@ -209,32 +220,29 @@ BallEndpointData EnergyMortarAdapter<EnforcementLocation>::ballEndpointData( con
       continue;
     }
 
-    int adjacent_edges = 0;
-    for ( int element = 0; element < mesh1.numberOfElements(); ++element ) {
-      if ( element == pair.m_element_id1 ) {
-        continue;
-      }
-      const auto connectivity = mesh1.getConnectivity()( element );
-      for ( int local_node = 0; local_node < 2; ++local_node ) {
-        if ( connectivity[local_node] != node ) {
-          continue;
-        }
-        ++adjacent_edges;
-        data.neighbor_element[endpoint] = element;
-        data.neighbor_local_node[endpoint] = 1 - local_node;
-        data.neighbor_node[endpoint] = connectivity[1 - local_node];
-        data.neighbor_coordinates[2 * endpoint] = mesh1.getPosition()[0][data.neighbor_node[endpoint]];
-        data.neighbor_coordinates[2 * endpoint + 1] = mesh1.getPosition()[1][data.neighbor_node[endpoint]];
-      }
+    const int incidence = nonmortar_node_incidence_[node];
+    data.is_open_endpoint[endpoint] = incidence == 1;
+    // An endpoint ball needs one open edge or two edges at a manifold corner. Any other incidence does not define an
+    // unambiguous 2D cone.
+    if ( incidence != 1 && incidence != 2 ) {
+      data.weight[endpoint] = 0.0;
+      continue;
+    }
+    if ( data.is_open_endpoint[endpoint] ) {
+      continue;
     }
 
-    data.is_open_endpoint[endpoint] = adjacent_edges == 0;
-    // A ball cone has one adjacent edge at a manifold corner. More neighbors do not define an unambiguous 2D cone.
-    if ( adjacent_edges > 1 ) {
-      data.weight[endpoint] = 0.0;
-      data.neighbor_node[endpoint] = -1;
-      data.neighbor_element[endpoint] = -1;
-      data.neighbor_local_node[endpoint] = -1;
+    for ( const auto& incident_edge : nonmortar_incident_edges_[node] ) {
+      if ( incident_edge.element == pair.m_element_id1 ) {
+        continue;
+      }
+      const auto connectivity = mesh1.getConnectivity()( incident_edge.element );
+      data.neighbor_element[endpoint] = incident_edge.element;
+      data.neighbor_local_node[endpoint] = 1 - incident_edge.local_node;
+      data.neighbor_node[endpoint] = connectivity[data.neighbor_local_node[endpoint]];
+      data.neighbor_coordinates[2 * endpoint] = mesh1.getPosition()[0][data.neighbor_node[endpoint]];
+      data.neighbor_coordinates[2 * endpoint + 1] = mesh1.getPosition()[1][data.neighbor_node[endpoint]];
+      break;
     }
   }
   return data;
@@ -306,7 +314,7 @@ void Nodal<Adapter>::updateNodalGaps()
 
     double g_tilde_elem[2];
     double A_elem[2];
-    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view, mesh2_view );
+    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view );
 
     adapter->evaluator_->compute_gtilde_and_area( flipped_pair, mesh1_view, mesh2_view, g_tilde_elem, A_elem,
                                                   residual_gap_values.data() );
@@ -526,10 +534,10 @@ void Nodal<Adapter>::updateNodalForces()
     InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
     const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
     const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
-    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view, mesh2_view );
+    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view );
     const auto endpoint_data = adapter->ballEndpointData( flipped_pair, mesh1_view );
     const auto ball_data = adapter->evaluator_->compute_ball_penalty_data( flipped_pair, mesh1_view, mesh2_view,
-                                                                           residual_gap_values.data(), &endpoint_data );
+                                                                           endpoint_data, residual_gap_values.data() );
     if ( !ball_data.has_active_qp ) {
       continue;
     }
@@ -610,7 +618,7 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* ad
 
     double d2g_dx2_node1[64];
     double d2g_dx2_node2[64];
-    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view, mesh2_view );
+    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view );
     adapter->evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2,
                                      residual_gap_values.data() );
 
@@ -694,7 +702,7 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
 
     double d2g_dx2_node1[64];
     double d2g_dx2_node2[64];
-    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view, mesh2_view );
+    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view );
     adapter->evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2,
                                      residual_gap_values.data() );
 
@@ -775,12 +783,12 @@ void QuadraturePoint<Adapter>::updateNodalForces()
     InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
     const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
     const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
-    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view, mesh2_view );
+    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view );
     const auto endpoint_data = adapter->ballEndpointData( flipped_pair, mesh1_view );
     const auto qp_data = adapter->evaluator_->compute_quadrature_point_penalty_data(
         flipped_pair, mesh1_view, mesh2_view, residual_gap_values.data() );
     const auto ball_data = adapter->evaluator_->compute_ball_penalty_data( flipped_pair, mesh1_view, mesh2_view,
-                                                                           residual_gap_values.data(), &endpoint_data );
+                                                                           endpoint_data, residual_gap_values.data() );
     if ( !qp_data.has_active_qp && !ball_data.has_active_qp ) {
       continue;
     }

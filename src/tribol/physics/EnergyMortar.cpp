@@ -49,24 +49,43 @@ struct KernelParams {
   int N{ 3 };         // No. of quadrature points
   double del{ 0.1 };  // Integration-bound smoothing parameter
   double normal_smoothing_start_angle{ energy_mortar::default_normal_smoothing_start_angle };
-  double k{ 1.0 };                           // Penalty stiffness
-  std::array<double, 4> residual_gap{ {} };  // Lagged residual-gap values at A0, A1, B0, and B1
-  std::array<double, 2> ball_weight{};       // Lagged endpoint-ball weights at A0 and A1
-  std::array<int, 2> ball_open_endpoint{};   // Whether each endpoint has only the current incident edge
-  double max_auto_interpenetration{ 0.0 };   // Positive physical penetration where self-contact is removed
+  double k{ 1.0 };                             // Penalty stiffness
+  std::array<double, 2> residual_gap{ {} };    // Lagged residual-gap values at A0 and A1
+  std::array<double, 2> ball_weight{};         // Lagged endpoint-ball weights at A0 and A1
+  std::array<int, 2> ball_is_open_endpoint{};  // Whether each endpoint has only the current incident edge
+  double max_auto_interpenetration{ 0.0 };     // Positive physical penetration where self-contact is removed
 };
 
 void set_auto_contact_interpenetration( KernelParams& kernel_params, const ContactParams& contact_params,
                                         const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                         const MeshData::Viewer& mesh2 )
 {
-  if ( !contact_params.auto_contact || !mesh1.getElementData().m_is_element_thickness_set ||
+  if ( !contact_params.is_auto_contact || !mesh1.getElementData().m_is_element_thickness_set ||
        !mesh2.getElementData().m_is_element_thickness_set ) {
     return;
   }
   kernel_params.max_auto_interpenetration = contact_params.auto_contact_penetration_fraction *
                                             std::min( mesh1.getElementData().m_thickness[pair.m_element_id1],
                                                       mesh2.getElementData().m_thickness[pair.m_element_id2] );
+}
+
+std::array<double, 2> resolve_residual_gap( const ContactParams& contact_params, const double* residual_gap_values )
+{
+  if ( residual_gap_values ) {
+    return { residual_gap_values[0], residual_gap_values[1] };
+  }
+  return { contact_params.residual_gap, contact_params.residual_gap };
+}
+
+KernelParams make_kernel_params( const ContactParams& contact_params, const double* residual_gap_values )
+{
+  KernelParams kernel_params;
+  kernel_params.N = contact_params.N;
+  kernel_params.del = contact_params.del;
+  kernel_params.normal_smoothing_start_angle = contact_params.normal_smoothing_start_angle;
+  kernel_params.k = contact_params.k;
+  kernel_params.residual_gap = resolve_residual_gap( contact_params, residual_gap_values );
+  return kernel_params;
 }
 
 // Return the line-element mapping Jacobian. Local edge coordinates span [-0.5, 0.5], so the Jacobian is the physical
@@ -544,7 +563,7 @@ void grad_kernel_enzyme( const double* x, const KernelParams* kp, double* dout_d
   dkp.k = 0.0;
   dkp.residual_gap.fill( 0.0 );
   dkp.ball_weight.fill( 0.0 );
-  dkp.ball_open_endpoint.fill( 0 );
+  dkp.ball_is_open_endpoint.fill( 0 );
   dkp.max_auto_interpenetration = 0.0;
   __enzyme_autodiff<void>( (void*)kernel_out_enzyme<Output>, enzyme_dup, x, dx, enzyme_dup, (const void*)kp,
                            (void*)&dkp, enzyme_dup, &out, &dout );
@@ -579,14 +598,14 @@ TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double xiA, double w, c
 }
 
 // Integrate the portion of mortar edge B whose closest non-mortar feature is this endpoint. The residual-gap disk sets
-// the radial support, and the two outgoing edge rays bound the corner's normal cone. `slave_tributary_length` is one
-// incident edge's half-length contribution to the node's total tributary length.
-TRIBOL_ENZYME_INLINE bool clip_interval_to_ball_cone_halfspace( const double* slave_node, const double* B0,
+// the radial support, and the two outgoing edge rays bound the corner's normal cone. `nonmortar_tributary_length` is
+// one incident edge's half-length contribution to the node's total tributary length.
+TRIBOL_ENZYME_INLINE bool clip_interval_to_ball_cone_halfspace( const double* nonmortar_node, const double* B0,
                                                                 const double* B1, const double* outgoing_ray,
                                                                 double* alpha_min, double* alpha_max )
 {
-  const double initial_offset_x = B0[0] - slave_node[0];
-  const double initial_offset_y = B0[1] - slave_node[1];
+  const double initial_offset_x = B0[0] - nonmortar_node[0];
+  const double initial_offset_y = B0[1] - nonmortar_node[1];
   const double edge_x = B1[0] - B0[0];
   const double edge_y = B1[1] - B0[1];
   const double initial_value = initial_offset_x * outgoing_ray[0] + initial_offset_y * outgoing_ray[1];
@@ -660,10 +679,10 @@ TRIBOL_ENZYME_INLINE double ball_cone_activation( double dx, double dy, const do
   return smootherstep( normalized_depth / smoothing_fraction );
 }
 
-TRIBOL_ENZYME_INLINE double ball_penalty_endpoint_energy( const double* slave_node, double residual_gap,
+TRIBOL_ENZYME_INLINE double ball_penalty_endpoint_energy( const double* nonmortar_node, double residual_gap,
                                                           double ball_weight, const double* other_source_node,
                                                           const double* neighbor_node, bool is_open_endpoint,
-                                                          double slave_tributary_length, const double* B0,
+                                                          double nonmortar_tributary_length, const double* B0,
                                                           const double* B1, double penalty, double smoothing_fraction,
                                                           bool* pair_has_active_qp )
 {
@@ -671,7 +690,7 @@ TRIBOL_ENZYME_INLINE double ball_penalty_endpoint_energy( const double* slave_no
     return 0.0;
   }
 
-  double current_ray[2] = { other_source_node[0] - slave_node[0], other_source_node[1] - slave_node[1] };
+  double current_ray[2] = { other_source_node[0] - nonmortar_node[0], other_source_node[1] - nonmortar_node[1] };
   const double current_ray_length = std::sqrt( current_ray[0] * current_ray[0] + current_ray[1] * current_ray[1] );
   if ( current_ray_length <= 0.0 ) {
     return 0.0;
@@ -681,8 +700,8 @@ TRIBOL_ENZYME_INLINE double ball_penalty_endpoint_energy( const double* slave_no
 
   double neighbor_ray[2] = { current_ray[0], current_ray[1] };
   if ( !is_open_endpoint ) {
-    neighbor_ray[0] = neighbor_node[0] - slave_node[0];
-    neighbor_ray[1] = neighbor_node[1] - slave_node[1];
+    neighbor_ray[0] = neighbor_node[0] - nonmortar_node[0];
+    neighbor_ray[1] = neighbor_node[1] - nonmortar_node[1];
     const double neighbor_ray_length =
         std::sqrt( neighbor_ray[0] * neighbor_ray[0] + neighbor_ray[1] * neighbor_ray[1] );
     if ( neighbor_ray_length <= 0.0 ) {
@@ -694,8 +713,9 @@ TRIBOL_ENZYME_INLINE double ball_penalty_endpoint_energy( const double* slave_no
 
   double cone_alpha_min = 0.0;
   double cone_alpha_max = 1.0;
-  if ( !clip_interval_to_ball_cone_halfspace( slave_node, B0, B1, current_ray, &cone_alpha_min, &cone_alpha_max ) ||
-       !clip_interval_to_ball_cone_halfspace( slave_node, B0, B1, neighbor_ray, &cone_alpha_min, &cone_alpha_max ) ) {
+  if ( !clip_interval_to_ball_cone_halfspace( nonmortar_node, B0, B1, current_ray, &cone_alpha_min, &cone_alpha_max ) ||
+       !clip_interval_to_ball_cone_halfspace( nonmortar_node, B0, B1, neighbor_ray, &cone_alpha_min,
+                                              &cone_alpha_max ) ) {
     return 0.0;
   }
 
@@ -706,13 +726,13 @@ TRIBOL_ENZYME_INLINE double ball_penalty_endpoint_energy( const double* slave_no
     return 0.0;
   }
 
-  const double sx = slave_node[0] - B0[0];
-  const double sy = slave_node[1] - B0[1];
+  const double sx = nonmortar_node[0] - B0[0];
+  const double sy = nonmortar_node[1] - B0[1];
   const double projection = ( sx * bx + sy * by ) / length_sq;
   const double closest_line_x = B0[0] + projection * bx;
   const double closest_line_y = B0[1] + projection * by;
-  const double perp_x = slave_node[0] - closest_line_x;
-  const double perp_y = slave_node[1] - closest_line_y;
+  const double perp_x = nonmortar_node[0] - closest_line_x;
+  const double perp_y = nonmortar_node[1] - closest_line_y;
   const double radius_sq = residual_gap * residual_gap;
   const double perpendicular_distance_sq = perp_x * perp_x + perp_y * perp_y;
   if ( perpendicular_distance_sq >= radius_sq ) {
@@ -731,13 +751,13 @@ TRIBOL_ENZYME_INLINE double ball_penalty_endpoint_energy( const double* slave_no
   QuadPoints qp;
   EnergyMortarCalculator::compute_quadrature( xi_bounds, 3, &qp );
   const double mortar_jacobian = std::sqrt( length_sq );
-  const double scale = slave_tributary_length / ( 2.0 * residual_gap );
+  const double scale = nonmortar_tributary_length / ( 2.0 * residual_gap );
   double energy = 0.0;
   for ( int i = 0; i < 3; ++i ) {
     double mortar_point[2];
     iso_map( B0, B1, qp.qp[i], mortar_point );
-    const double dx = mortar_point[0] - slave_node[0];
-    const double dy = mortar_point[1] - slave_node[1];
+    const double dx = mortar_point[0] - nonmortar_node[0];
+    const double dy = mortar_point[1] - nonmortar_node[1];
     const double gap = std::sqrt( dx * dx + dy * dy ) - residual_gap;
     if ( gap < 0.0 ) {
       const double cone_activation = ball_cone_activation( dx, dy, current_ray, neighbor_ray, smoothing_fraction );
@@ -782,14 +802,14 @@ TRIBOL_ENZYME_INLINE double ball_penalty_kernel_energy( const double* x, const K
     }
     return 0.0;
   }
-  const double slave_tributary_length = 0.5 * line_jacobian( A0, A1 );
+  const double nonmortar_tributary_length = 0.5 * line_jacobian( A0, A1 );
   return interpenetration_weight * alignment_weight *
          ( ball_penalty_endpoint_energy( A0, kp->residual_gap[0], kp->ball_weight[0], A1, neighbor0,
-                                         kp->ball_open_endpoint[0] != 0, slave_tributary_length, B0, B1, kp->k, kp->del,
-                                         pair_has_active_qp ) +
+                                         kp->ball_is_open_endpoint[0] != 0, nonmortar_tributary_length, B0, B1, kp->k,
+                                         kp->del, pair_has_active_qp ) +
            ball_penalty_endpoint_energy( A1, kp->residual_gap[1], kp->ball_weight[1], A0, neighbor1,
-                                         kp->ball_open_endpoint[1] != 0, slave_tributary_length, B0, B1, kp->k, kp->del,
-                                         pair_has_active_qp ) );
+                                         kp->ball_is_open_endpoint[1] != 0, nonmortar_tributary_length, B0, B1, kp->k,
+                                         kp->del, pair_has_active_qp ) );
 }
 
 TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams* kp, double* energy,
@@ -868,7 +888,7 @@ void grad_qp_penalty_kernel( const double* x, const KernelParams* kp, double* do
   dkp.k = 0.0;
   dkp.residual_gap.fill( 0.0 );
   dkp.ball_weight.fill( 0.0 );
-  dkp.ball_open_endpoint.fill( 0 );
+  dkp.ball_is_open_endpoint.fill( 0 );
   dkp.max_auto_interpenetration = 0.0;
   __enzyme_autodiff<void>( (void*)qp_penalty_scalar_kernel, enzyme_dup, x, dx, enzyme_dup, (const void*)kp, (void*)&dkp,
                            enzyme_dup, &energy, &energy_bar );
@@ -889,7 +909,7 @@ void grad_ball_penalty_kernel( const double* x, const KernelParams* kp, double* 
   dkp.k = 0.0;
   dkp.residual_gap.fill( 0.0 );
   dkp.ball_weight.fill( 0.0 );
-  dkp.ball_open_endpoint.fill( 0 );
+  dkp.ball_is_open_endpoint.fill( 0 );
   dkp.max_auto_interpenetration = 0.0;
   __enzyme_autodiff<void>( (void*)ball_penalty_scalar_kernel, enzyme_dup, x, dx, enzyme_dup, (const void*)kp,
                            (void*)&dkp, enzyme_dup, &energy, &energy_bar );
@@ -913,7 +933,7 @@ void d2_kernel( const double* x, const KernelParams* kp, double* H )
     dkp.k = 0.0;
     dkp.residual_gap.fill( 0.0 );
     dkp.ball_weight.fill( 0.0 );
-    dkp.ball_open_endpoint.fill( 0 );
+    dkp.ball_is_open_endpoint.fill( 0 );
     dkp.max_auto_interpenetration = 0.0;
     __enzyme_fwddiff<void>( (void*)grad_kernel_enzyme<Output>, enzyme_dup, x, dx, enzyme_dup, (const void*)kp,
                             (void*)&dkp, enzyme_dup, grad, dgrad );
@@ -954,7 +974,7 @@ void d2_qp_penalty_kernel( const double* x, const KernelParams* kp, double* H )
     dkp.k = 0.0;
     dkp.residual_gap.fill( 0.0 );
     dkp.ball_weight.fill( 0.0 );
-    dkp.ball_open_endpoint.fill( 0 );
+    dkp.ball_is_open_endpoint.fill( 0 );
     dkp.max_auto_interpenetration = 0.0;
     __enzyme_fwddiff<void>( (void*)grad_qp_penalty_kernel, enzyme_dup, x, dx, enzyme_dup, (const void*)kp, (void*)&dkp,
                             enzyme_dup, grad, dgrad );
@@ -976,7 +996,7 @@ void d2_ball_penalty_kernel( const double* x, const KernelParams* kp, double* H 
     dkp.k = 0.0;
     dkp.residual_gap.fill( 0.0 );
     dkp.ball_weight.fill( 0.0 );
-    dkp.ball_open_endpoint.fill( 0 );
+    dkp.ball_is_open_endpoint.fill( 0 );
     dkp.max_auto_interpenetration = 0.0;
     __enzyme_fwddiff<void>( (void*)grad_ball_penalty_kernel, enzyme_dup, x, dx, enzyme_dup, (const void*)kp,
                             (void*)&dkp, enzyme_dup, grad, dgrad );
@@ -1000,16 +1020,14 @@ Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, co
 
   Gparams gp;
   gp.normal_smoothing_start_angle = p_.normal_smoothing_start_angle;
-  for ( int i = 0; i < 4; ++i ) {
-    gp.residual_gap[i] = residual_gap_values == nullptr ? p_.residual_gap : residual_gap_values[i];
-  }
+  gp.residual_gap = resolve_residual_gap( p_, residual_gap_values );
 
   // Build the smoothed integration bounds from the projection of edge B onto edge A.
   auto projs = EnergyMortarCalculator::compute_projection_bounds( pair, mesh1, mesh2, gp.residual_gap.data() );
   double bounds[2];
-  smoother_.bounds_from_projections( projs.data(), p_.del, bounds );
+  ContactSmoothing::bounds_from_projections( projs.data(), p_.del, bounds );
   double smooth_bounds[2];
-  smoother_.smooth_bounds( bounds, p_.del, smooth_bounds );
+  ContactSmoothing::smooth_bounds( bounds, p_.del, smooth_bounds );
 
   QuadPoints qp;
   EnergyMortarCalculator::compute_quadrature( smooth_bounds, p_.N, &qp );
@@ -1034,10 +1052,7 @@ std::array<double, 2> EnergyMortarCalculator::projections( const InterfacePair& 
   double B1[2];
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
 
-  std::array<double, 4> residual_gap;
-  for ( int i = 0; i < 4; ++i ) {
-    residual_gap[i] = residual_gap_values == nullptr ? p_.residual_gap : residual_gap_values[i];
-  }
+  const auto residual_gap = resolve_residual_gap( p_, residual_gap_values );
 
   double projs[2];
   get_projections( A0, A1, B0, B1, residual_gap.data(), projs );
@@ -1111,7 +1126,7 @@ double EnergyMortarCalculator::compute_weighted_normal_gap( const InterfacePair&
   endpoints( mesh1, pair.m_element_id1, A0, A1 );
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
 
-  const double residual_gap[4] = { p_.residual_gap, p_.residual_gap, p_.residual_gap, p_.residual_gap };
+  const double residual_gap[2] = { p_.residual_gap, p_.residual_gap };
   double VA0[2], VA1[2], VB0[2], VB1[2];
   virtual_edges( A0, A1, B0, B1, residual_gap, VA0, VA1, VB0, VB1 );
 
@@ -1146,7 +1161,7 @@ NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const Inter
   endpoints( mesh1, pair.m_element_id1, A0, A1 );
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
 
-  const double residual_gap[4] = { p_.residual_gap, p_.residual_gap, p_.residual_gap, p_.residual_gap };
+  const double residual_gap[2] = { p_.residual_gap, p_.residual_gap };
   double VA0[2], VA1[2], VB0[2], VB1[2];
   virtual_edges( A0, A1, B0, B1, residual_gap, VA0, VA1, VB0, VB1 );
 
@@ -1156,9 +1171,9 @@ NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const Inter
 
   // Build the smoothed integration interval from the projection bounds.
   double bounds[2];
-  smoother_.bounds_from_projections( projs.data(), p_.del, bounds );
+  ContactSmoothing::bounds_from_projections( projs.data(), p_.del, bounds );
   double smooth_bounds[2];
-  smoother_.smooth_bounds( bounds, p_.del, smooth_bounds );
+  ContactSmoothing::smooth_bounds( bounds, p_.del, smooth_bounds );
 
   QuadPoints qp;
   compute_quadrature( smooth_bounds, p_.N, &qp );
@@ -1227,12 +1242,7 @@ void EnergyMortarCalculator::grad_gtilde( const InterfacePair& pair, const MeshD
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    KernelParams kp;
-    kp.N = p_.N;
-    kp.del = p_.del;
-    kp.normal_smoothing_start_angle = p_.normal_smoothing_start_angle;
-    kp.k = p_.k;
-    kp.residual_gap = construct_gparams( pair, mesh1, mesh2, residual_gap_values ).residual_gap;
+    KernelParams kp = make_kernel_params( p_, residual_gap_values );
     grad_kernel_enzyme<KernelOutput::GTILDE1>( x, &kp, dg1_du );
     grad_kernel_enzyme<KernelOutput::GTILDE2>( x, &kp, dg2_du );
   }
@@ -1262,12 +1272,7 @@ void EnergyMortarCalculator::grad_trib_area( const InterfacePair& pair, const Me
     grad_kernel<KernelOutput::A2>( x, &gp, dA2_dx );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    KernelParams kp;
-    kp.N = p_.N;
-    kp.del = p_.del;
-    kp.normal_smoothing_start_angle = p_.normal_smoothing_start_angle;
-    kp.k = p_.k;
-    kp.residual_gap = construct_gparams( pair, mesh1, mesh2, residual_gap_values ).residual_gap;
+    KernelParams kp = make_kernel_params( p_, residual_gap_values );
     grad_kernel_enzyme<KernelOutput::A1>( x, &kp, dA1_dx );
     grad_kernel_enzyme<KernelOutput::A2>( x, &kp, dA2_dx );
   }
@@ -1296,12 +1301,7 @@ void EnergyMortarCalculator::d2_g2tilde( const InterfacePair& pair, const MeshDa
 
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    KernelParams kp;
-    kp.N = p_.N;
-    kp.del = p_.del;
-    kp.normal_smoothing_start_angle = p_.normal_smoothing_start_angle;
-    kp.k = p_.k;
-    kp.residual_gap = construct_gparams( pair, mesh1, mesh2, residual_gap_values ).residual_gap;
+    KernelParams kp = make_kernel_params( p_, residual_gap_values );
     d2_kernel<KernelOutput::GTILDE1>( x, &kp, d2g1_d2u );
     d2_kernel<KernelOutput::GTILDE2>( x, &kp, d2g2_d2u );
   }
@@ -1334,12 +1334,7 @@ void EnergyMortarCalculator::compute_d2A_d2u( const InterfacePair& pair, const M
     d2_kernel_quad<KernelOutput::A2>( x, &gp, d2A2_d2u );
   } else {
     // Differentiate through the geometry-dependent quadrature construction.
-    KernelParams kp;
-    kp.N = p_.N;
-    kp.del = p_.del;
-    kp.normal_smoothing_start_angle = p_.normal_smoothing_start_angle;
-    kp.k = p_.k;
-    kp.residual_gap = construct_gparams( pair, mesh1, mesh2, residual_gap_values ).residual_gap;
+    KernelParams kp = make_kernel_params( p_, residual_gap_values );
     d2_kernel<KernelOutput::A1>( x, &kp, d2A1_d2u );
     d2_kernel<KernelOutput::A2>( x, &kp, d2A2_d2u );
   }
@@ -1361,12 +1356,7 @@ double EnergyMortarCalculator::compute_quadrature_point_penalty_energy( const In
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
 
   const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  KernelParams kp;
-  kp.N = p_.N;
-  kp.del = p_.del;
-  kp.normal_smoothing_start_angle = p_.normal_smoothing_start_angle;
-  kp.k = p_.k;
-  kp.residual_gap = construct_gparams( pair, mesh1, mesh2, residual_gap_values ).residual_gap;
+  KernelParams kp = make_kernel_params( p_, residual_gap_values );
   set_auto_contact_interpenetration( kp, p_, pair, mesh1, mesh2 );
   double energy = 0.0;
   bool pair_has_active_qp = false;
@@ -1384,12 +1374,7 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
 
   const double x[8] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  KernelParams kp;
-  kp.N = p_.N;
-  kp.del = p_.del;
-  kp.normal_smoothing_start_angle = p_.normal_smoothing_start_angle;
-  kp.k = p_.k;
-  kp.residual_gap = construct_gparams( pair, mesh1, mesh2, residual_gap_values ).residual_gap;
+  KernelParams kp = make_kernel_params( p_, residual_gap_values );
   set_auto_contact_interpenetration( kp, p_, pair, mesh1, mesh2 );
 
   QuadraturePointPenaltyData result;
@@ -1405,39 +1390,26 @@ QuadraturePointPenaltyData EnergyMortarCalculator::compute_quadrature_point_pena
 BallPenaltyData EnergyMortarCalculator::compute_ball_penalty_data( const InterfacePair& pair,
                                                                    const MeshData::Viewer& mesh1,
                                                                    const MeshData::Viewer& mesh2,
-                                                                   const double* residual_gap_values,
-                                                                   const BallEndpointData* ball_data ) const
+                                                                   const BallEndpointData& ball_data,
+                                                                   const double* residual_gap_values ) const
 {
   double A0[2], A1[2], B0[2], B1[2];
   endpoints( mesh1, pair.m_element_id1, A0, A1 );
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
 
   double x[BallPenaltyData::num_force_dofs] = { A0[0], A0[1], A1[0], A1[1], B0[0], B0[1], B1[0], B1[1] };
-  KernelParams kp;
-  kp.N = p_.N;
-  kp.del = p_.del;
-  kp.normal_smoothing_start_angle = p_.normal_smoothing_start_angle;
-  kp.k = p_.k;
-  kp.residual_gap = construct_gparams( pair, mesh1, mesh2, residual_gap_values ).residual_gap;
+  KernelParams kp = make_kernel_params( p_, residual_gap_values );
   set_auto_contact_interpenetration( kp, p_, pair, mesh1, mesh2 );
-  if ( ball_data != nullptr ) {
-    kp.ball_weight = ball_data->weight;
-    for ( int endpoint = 0; endpoint < 2; ++endpoint ) {
-      kp.ball_open_endpoint[endpoint] = ball_data->is_open_endpoint[endpoint] ? 1 : 0;
-      const int neighbor = ball_data->neighbor_node[endpoint];
-      if ( kp.ball_weight[endpoint] > 0.0 && !ball_data->is_open_endpoint[endpoint] && neighbor < 0 ) {
-        const double dx = ball_data->neighbor_coordinates[2 * endpoint] - x[2 * endpoint];
-        const double dy = ball_data->neighbor_coordinates[2 * endpoint + 1] - x[2 * endpoint + 1];
-        if ( dx * dx + dy * dy <= 0.0 ) {
-          kp.ball_weight[endpoint] = 0.0;
-        }
-      }
-      if ( neighbor >= 0 ) {
-        x[8 + 2 * endpoint] = mesh1.getPosition()[0][neighbor];
-        x[9 + 2 * endpoint] = mesh1.getPosition()[1][neighbor];
-      } else {
-        x[8 + 2 * endpoint] = ball_data->neighbor_coordinates[2 * endpoint];
-        x[9 + 2 * endpoint] = ball_data->neighbor_coordinates[2 * endpoint + 1];
+  kp.ball_weight = ball_data.weight;
+  for ( int endpoint = 0; endpoint < 2; ++endpoint ) {
+    kp.ball_is_open_endpoint[endpoint] = ball_data.is_open_endpoint[endpoint] ? 1 : 0;
+    x[8 + 2 * endpoint] = ball_data.neighbor_coordinates[2 * endpoint];
+    x[9 + 2 * endpoint] = ball_data.neighbor_coordinates[2 * endpoint + 1];
+    if ( kp.ball_weight[endpoint] > 0.0 && !ball_data.is_open_endpoint[endpoint] ) {
+      const double dx = x[8 + 2 * endpoint] - x[2 * endpoint];
+      const double dy = x[9 + 2 * endpoint] - x[2 * endpoint + 1];
+      if ( dx * dx + dy * dy <= 0.0 ) {
+        kp.ball_weight[endpoint] = 0.0;
       }
     }
   }

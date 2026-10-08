@@ -497,7 +497,8 @@ struct Parameters {
       3.0e-1;  ///! Max allowable interpenetration as percent of element thickness prior to triggering timestep vote
   RealT timestep_scale =
       1.0;  ///! Scale factor (>0) applied to the timestep vote giving users some control over the vote
-  RealT energy_mortar_smoothing_length = 0.1;  ///! Smoothing length for EnergyMortar integration bounds
+  RealT energy_mortar_smoothing_length =
+      0.1;  ///! Transition width for EnergyMortar projection bounds and endpoint-ball cone activation
   RealT energy_mortar_normal_smoothing_start_angle =
       energy_mortar::default_normal_smoothing_start_angle;  ///! Smoothing start relative to opposed normals, in radians
   RealT energy_mortar_residual_gap_ramp_angle =

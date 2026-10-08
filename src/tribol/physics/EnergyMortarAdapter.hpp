@@ -14,7 +14,9 @@
 
 #include "mfem.hpp"
 
+#include <array>
 #include <memory>
+#include <vector>
 
 namespace tribol {
 
@@ -132,27 +134,19 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @param mesh_data MFEM mesh data for the parent/primary variables
    * @param submesh_data MFEM submesh data for the dual variables (pressure/gap/LM)
    * @param jac_data MFEM Jacobian transfer data
-   * @param k Penalty stiffness
-   * @param delta Smoothing length
-   * @param normal_smoothing_start_angle Normal-alignment smoothing start angle in radians
+   * @param contact_params Element-level EnergyMortar parameters
    * @param residual_gap_ramp_angle Total crack-opening angle for the residual-gap ramp
-   * @param residual_gap_ramp_updates Whether to rebuild the ramp once per cycle
-   * @param N Quadrature order
-   * @param enzyme_quadrature If true, use Enzyme-assisted quadrature
+   * @param updates_residual_gap_ramp Whether to rebuild the ramp once per cycle
    * @param use_penalty If true, interpret the dual field as pressure; otherwise interpret it as a Lagrange multiplier
    * vector (LM mode)
-   * @param residual_gap Nonnegative separation represented by offsetting the non-mortar virtual surface and by
-   *        non-mortar nodal balls.
    *
    * @note The ENERGY_MORTAR implementation follows the literature convention of integrating on a non-mortar side and
    * mapping to a mortar side. To maintain that convention within Tribol, the adapter may internally flip mesh roles
    * relative to the order of the meshes provided here.
    */
-  EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k,
-                       double delta, double normal_smoothing_start_angle, double residual_gap_ramp_angle,
-                       bool residual_gap_ramp_updates, int N, bool enzyme_quadrature, bool use_penalty = true,
-                       RealT residual_gap = 0.0, bool auto_contact = false,
-                       RealT auto_contact_penetration_fraction = 0.95 );
+  EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data,
+                       const ContactParams& contact_params, double residual_gap_ramp_angle,
+                       bool updates_residual_gap_ramp, bool use_penalty );
 
   /**
    * @brief Default destructor
@@ -312,7 +306,7 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   ContactParams params_;
 
   double residual_gap_ramp_angle_{ energy_mortar::default_residual_gap_ramp_angle };
-  bool residual_gap_ramp_updates_{ false };
+  bool updates_residual_gap_ramp_{ false };
   bool residual_gap_field_dirty_{ true };
   int residual_gap_field_cycle_{ -1 };
 
@@ -322,11 +316,21 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   std::unique_ptr<EnergyMortarCalculator> evaluator_;
 
   /** @brief Gather the residual-gap field values for the two nodes on each edge in a pair. */
-  std::array<double, 4> residualGapValues( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                           const MeshData::Viewer& mesh2 ) const;
+  std::array<double, 2> residualGapValues( const InterfacePair& pair, const MeshData::Viewer& mesh1 ) const;
 
   /** @brief Gather endpoint-ball weights and the adjacent source nodes that define each cone. */
   BallEndpointData ballEndpointData( const InterfacePair& pair, const MeshData::Viewer& mesh1 ) const;
+
+  struct IncidentEdge {
+    int element{ -1 };
+    int local_node{ -1 };
+  };
+
+  /** @brief Rebuild the non-mortar node-to-edge map used by endpoint-ball stencils. */
+  void updateBallEndpointTopology();
+
+  std::vector<std::array<IncidentEdge, 2>> nonmortar_incident_edges_;
+  std::vector<int> nonmortar_node_incidence_;
 
   // Stored InterfacePairs
 

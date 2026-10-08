@@ -106,9 +106,10 @@ TRIBOL_HOST_DEVICE inline bool geomFilter( const CouplingScheme::Viewer& cs_view
   // Keep every physical-normal pair that can become opposing after that rotation; the energy kernel returns early
   // when the actual virtual normals have zero alignment.
   if ( cs_view.getContactMethod() == ENERGY_MORTAR && dim == 2 ) {
-    nrmlTol = detail::energyMortarNormalDotLimit( mesh2, element_id2, residual_gap );
-  }
-  if ( nrmlCheck >= nrmlTol ) {
+    if ( nrmlCheck >= detail::energyMortarNormalDotLimit( mesh2, element_id2, residual_gap ) ) {
+      return false;
+    }
+  } else if ( nrmlCheck > nrmlTol ) {
     return false;
   }
 

@@ -193,7 +193,7 @@ void setEnergyMortarSmoothingLength( IndexT cs_id, RealT smoothing_length )
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarSmoothingLength(): call tribol::registerCouplingScheme() "
                                << "prior to calling this routine." );
   SLIC_ERROR_ROOT_IF( smoothing_length < 0.0 || smoothing_length > 0.5,
-                      "tribol::setEnergyMortarSmoothingLength(): smoothing length must be in [0, 0.5]." );
+                      "tribol::setEnergyMortarSmoothingLength(): transition width must be in [0, 0.5]." );
 
   cs->getParameters().energy_mortar_smoothing_length = smoothing_length;
   cs->updateContactFormulation();

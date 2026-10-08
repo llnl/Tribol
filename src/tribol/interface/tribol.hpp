@@ -142,10 +142,10 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
 void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
 
 /*!
- * \brief Sets the EnergyMortar integration-bound smoothing length
+ * \brief Sets the EnergyMortar edge/ball transition width
  *
  * \param [in] cs_id coupling scheme id
- * \param [in] smoothing_length smoothing length in the integration edge's local coordinate
+ * \param [in] smoothing_length transition width used for projection bounds and endpoint-ball cone activation
  *
  * \pre 0 <= smoothing_length <= 0.5
  */
@@ -270,9 +270,9 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
  * @brief Sets the residual gap for a coupling scheme
  *
  * @param [in] cs_id coupling scheme id
- * @param [in] residual_gap the nonnegative gap offset. Tribol defines positive kinematic gaps as separation and
- * negative kinematic gaps as interpenetration. Positive residual gaps shift the contact surface away from the mesh
- * surface, making contact occur earlier. Effective gap = kinematic gap - residual gap.
+ * @param [in] residual_gap the nonnegative separation to preserve between contacting surfaces. Tribol defines positive
+ * kinematic gaps as separation and negative kinematic gaps as interpenetration. EnergyMortar represents this distance
+ * with a non-mortar virtual surface and endpoint balls.
  *
  * @note Configure the residual gap after registering the coupling scheme and before its first update. For MFEM
  * coupling schemes, this must precede the first call to updateMfemParallelDecomposition().
