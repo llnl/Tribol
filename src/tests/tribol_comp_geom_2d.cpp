@@ -28,6 +28,7 @@
 
 // c++ includes
 #include <cmath>  // std::abs, std::cos, std::sin
+#include <numbers>
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -591,10 +592,10 @@ TEST_F( CompGeomTest, common_plane_interpen_check_4 )
   // compute and check the overlap area
 
   // compute the hypotenuse (i.e. length of interpen portion of edge 2)
-  RealT h = 0.5 / std::cos( 45 * M_PI / 180 );
+  RealT h = 0.5 / std::cos( 45 * std::numbers::pi_v<RealT> / 180 );
 
   // compute the length as projected onto the common plane
-  RealT h_bar = h * std::cos( 45 * M_PI / 180 / 2 );
+  RealT h_bar = h * std::cos( 45 * std::numbers::pi_v<RealT> / 180 / 2 );
 
   // check the overlap area
   RealT computed_area = h_bar;

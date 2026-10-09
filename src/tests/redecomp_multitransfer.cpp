@@ -5,6 +5,8 @@
 
 #include <gtest/gtest.h>
 
+#include <numbers>
+
 #include "mfem.hpp"
 
 #include "redecomp/MultiRedecomp.hpp"
@@ -74,7 +76,7 @@ class MultiTransferTest : public testing::TestWithParam<std::pair<MeshType, int>
     serial_meshes.emplace_back( mesh_filename.c_str(), 1, 1, true );
     // rotate second mesh 30 degrees
     auto theta = 30.0;
-    theta = theta * redecomp::pi / 180.0;
+    theta = theta * std::numbers::pi_v<double> / 180.0;
     auto R = axom::Array<double, 2>( 3, 3 );
     R( 0, 0 ) = cos( theta );
     R( 0, 1 ) = -sin( theta );
