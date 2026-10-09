@@ -37,10 +37,13 @@
  * difference explicit time integration scheme.
  *
  * Both the element penalty and a constant penalty are tested, with the constant penalty tuned to match the element
- * penalty for this case.  As a result, the test comparisons are the same for both penalty types.
+ * penalty for this case. The contact solve is also exercised with both the legacy single-point CommonPlane integration
+ * rule and the new order-3 full triangle-decomposition rule. The contact surfaces are planar, so both rules should
+ * produce the same force and gap response.
  *
  */
-class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol::KinematicPenaltyCalculation>> {
+class MfemCommonPlaneTest
+    : public testing::TestWithParam<std::tuple<int, tribol::KinematicPenaltyCalculation, tribol::PolyInteg>> {
  protected:
   tribol::RealT max_disp_;
   void SetUp() override
@@ -166,6 +169,7 @@ class MfemCommonPlaneTest : public testing::TestWithParam<std::tuple<int, tribol
                                         tribol::COMMON_PLANE, tribol::FRICTIONLESS, tribol::PENALTY,
                                         tribol::BINNING_BVH, exec_mode );
     tribol::registerMfemVelocity( 0, velocity );
+    tribol::setCommonPlaneIntegrationOptions( coupling_scheme_id, std::get<2>( GetParam() ) );
     if ( std::get<1>( GetParam() ) == tribol::KINEMATIC_CONSTANT ) {
       tribol::setMfemKinematicConstantPenalty( coupling_scheme_id, p_kine, p_kine );
     } else {
@@ -213,10 +217,14 @@ TEST_P( MfemCommonPlaneTest, common_plane )
 }
 
 INSTANTIATE_TEST_SUITE_P( tribol, MfemCommonPlaneTest,
-                          testing::Values( std::make_tuple( 1, tribol::KINEMATIC_CONSTANT ),
-                                           std::make_tuple( 1, tribol::KINEMATIC_ELEMENT ),
-                                           std::make_tuple( 2, tribol::KINEMATIC_CONSTANT ),
-                                           std::make_tuple( 2, tribol::KINEMATIC_ELEMENT ) ) );
+                          testing::Values( std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, tribol::SINGLE_POINT ),
+                                           std::make_tuple( 1, tribol::KINEMATIC_CONSTANT, tribol::MULTI_POINT ),
+                                           std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, tribol::SINGLE_POINT ),
+                                           std::make_tuple( 1, tribol::KINEMATIC_ELEMENT, tribol::MULTI_POINT ),
+                                           std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, tribol::SINGLE_POINT ),
+                                           std::make_tuple( 2, tribol::KINEMATIC_CONSTANT, tribol::MULTI_POINT ),
+                                           std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, tribol::SINGLE_POINT ),
+                                           std::make_tuple( 2, tribol::KINEMATIC_ELEMENT, tribol::MULTI_POINT ) ) );
 
 //------------------------------------------------------------------------------
 int main( int argc, char* argv[] )

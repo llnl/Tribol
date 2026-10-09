@@ -217,78 +217,18 @@ int NumTWBPointsPerTri( int order )
 }
 
 //------------------------------------------------------------------------------
-void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, int k )
+void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, int k, TriangleQuadratureRuleFamily family )
 {
-  // determine the number of integration points per triangle in the decomposed
-  // polygon and the total number of integration points on the polygon
-  int numTriPoints, numTotalPoints;
-  switch ( k ) {
-    case 2:
-      numTriPoints = 3;
-      numTotalPoints = numTriPoints * elem.numPolyVert;
-      break;
-    case 3:
-      // don't do anything, default to case 4
-    case 4:
-      numTriPoints = 6;
-      numTotalPoints = numTriPoints * elem.numPolyVert;
-      break;
-    default:
-      SLIC_ERROR( "GaussPolyIntTri: only Gauss integration of order 2-4 is implemented." );
-      return;
+  constexpr int parentDim = 2;
+  RealT rule_wts[max_symmetric_triangle_qpts] = { 0. };
+  RealT rule_coords[parentDim * max_symmetric_triangle_qpts] = { 0. };
+  const int numTriPoints = GetTriangleRule( k, family, rule_wts, rule_coords );
+  if ( numTriPoints == 0 ) {
+    SLIC_ERROR( "GaussPolyIntTri: requested triangle integration rule is not available." );
+    return;
   }
-
-  int parentDim = 2;
-
+  const int numTotalPoints = numTriPoints * elem.numPolyVert;
   integ.initialize( 3, numTotalPoints );
-
-  // populate wts array and set parent space coordinates of
-  // integration points on triangle
-  RealT* coords;
-  switch ( k ) {
-    case 2:
-      for ( int i = 0; i < numTotalPoints; ++i ) {
-        integ.wts[i] = 0.3333333333;
-      }
-      coords = new RealT[6];
-      coords[0] = 0.1666666667;
-      coords[1] = 0.1666666667;
-      coords[2] = 0.6666666667;
-      coords[3] = 0.1666666667;
-      coords[4] = 0.1666666667;
-      coords[5] = 0.6666666667;
-      break;
-    case 3:
-    case 4:
-      RealT wt1 = 0.109951743655322;
-      RealT wt2 = 0.223381589678011;
-      for ( int i = 0; i < elem.numPolyVert; ++i ) {
-        integ.wts[numTriPoints * i] = wt1;
-        integ.wts[numTriPoints * i + 1] = wt1;
-        integ.wts[numTriPoints * i + 2] = wt1;
-        integ.wts[numTriPoints * i + 3] = wt2;
-        integ.wts[numTriPoints * i + 4] = wt2;
-        integ.wts[numTriPoints * i + 5] = wt2;
-      }
-      RealT x1 = 0.091576213509771;
-      RealT x2 = 0.816847572980459;
-      RealT x3 = 0.108103018168070;
-      RealT x4 = 0.445948490915965;
-      coords = new RealT[12];
-      coords[0] = x1;
-      coords[1] = x1;
-      coords[2] = x2;
-      coords[3] = x1;
-      coords[4] = x1;
-      coords[5] = x2;
-      coords[6] = x3;
-      coords[7] = x4;
-      coords[8] = x4;
-      coords[9] = x3;
-      coords[10] = x4;
-      coords[11] = x4;
-      break;
-  }
 
   // compute area centroid of polygon
   RealT xTri[3] = { 0., 0., 0. };
@@ -311,31 +251,29 @@ void GaussPolyIntTri( SurfaceContactElem const& elem, IntegPts& integ, int k )
     // compute area of triangle
     RealT area = Area3DTri( xTri, yTri, zTri );
 
-    for ( int k = 0; k < numTriPoints; ++k ) {
+    for ( int ip = 0; ip < numTriPoints; ++ip ) {
       // NOTE: Per Puso 2004, the sum over integration point
       // evaluations per pallet are multiplied by the pallet area.
       //
       // multiply the integration point weights by the
       // triangle area (note: this is specific to how integrals
       // are computed on polygonal overlaps for Contact)
-      integ.wts[numTriPoints * j + k] *= area;
+      integ.wts[numTriPoints * j + ip] = area * rule_wts[ip];
 
       // group parent space ip coordinates
       RealT xi[2];
-      xi[0] = coords[parentDim * k];
-      xi[1] = coords[parentDim * k + 1];
+      xi[0] = rule_coords[parentDim * ip];
+      xi[1] = rule_coords[parentDim * ip + 1];
 
       // forward map parent space ip coords to physical space
       RealT x[3];
       FwdMapLinTri( xi, xTri, yTri, zTri, x );
 
-      integ.xy[( ( integ.ipDim ) * numTriPoints ) * j + ( integ.ipDim * k )] = x[0];
-      integ.xy[( ( integ.ipDim ) * numTriPoints ) * j + ( integ.ipDim * k ) + 1] = x[1];
-      integ.xy[( ( integ.ipDim ) * numTriPoints ) * j + ( integ.ipDim * k ) + 2] = x[2];
+      integ.xy[( ( integ.ipDim ) * numTriPoints ) * j + ( integ.ipDim * ip )] = x[0];
+      integ.xy[( ( integ.ipDim ) * numTriPoints ) * j + ( integ.ipDim * ip ) + 1] = x[1];
+      integ.xy[( ( integ.ipDim ) * numTriPoints ) * j + ( integ.ipDim * ip ) + 2] = x[2];
     }  // end loop over number of ips per triangle
   }  // end loop over triangles
-
-  delete[] coords;
 }
 
 //------------------------------------------------------------------------------

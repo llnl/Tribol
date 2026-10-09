@@ -44,6 +44,8 @@ struct TestControlParameters {
       : penalty_ratio( false ),
         constant_rate_penalty( false ),
         percent_rate_penalty( false ),
+        common_plane_rule( SINGLE_POINT ),
+        common_plane_quadrature_order( 3 ),
         rate_penalty( 1.0 ),
         rate_penalty_ratio( 0.0 ),
         const_penalty( 1.0 ),
@@ -65,6 +67,8 @@ struct TestControlParameters {
   bool penalty_ratio;
   bool constant_rate_penalty;
   bool percent_rate_penalty;
+  PolyInteg common_plane_rule;
+  int common_plane_quadrature_order;
   RealT rate_penalty;
   RealT rate_penalty_ratio;
   RealT const_penalty;

@@ -28,8 +28,8 @@ void ComputeMortarWeights( SurfaceContactElem& elem )
   // instantiate integration object
   IntegPts integ;
 
-  // Debug: leave code in for now to call Gauss quadrature on triangle rule
-  GaussPolyIntTri( elem, integ, 3 );
+  // Mortar retains the historical triangle rule for now.
+  GaussPolyIntTri( elem, integ, 3, TRI_RULE_LEGACY );
 
   // call Taylor-Wingate-Bos integation rule. NOTE: this is not
   // working. The correct gaps are not being computed.
