@@ -17,6 +17,7 @@
 #include "tribol/common/LoopExec.hpp"
 
 #include "redecomp/utils/ArrayUtility.hpp"
+#include "redecomp/transfer/TransferByElements.hpp"
 
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/Atomics.hpp"
@@ -24,6 +25,48 @@
 namespace tribol {
 
 namespace {
+
+/** First component containing a parent reference-coordinate value. */
+constexpr int parent_reference_coordinate_offset{ 2 };
+
+/** Number of scalar values transferred for one LOR-to-parent mapping record. */
+constexpr int parent_face_mapping_record_size{ parent_reference_coordinate_offset +
+                                               ParentFaceData::max_lor_face_vertices *
+                                                   ParentFaceData::max_reference_dimension };
+
+/** Evaluate linear shape functions for a supported contact face geometry. */
+void EvaluateLinearFaceShape( mfem::Geometry::Type face_geometry, const RealT* reference_coordinates,
+                              RealT* shape_values )
+{
+  for ( int vertex_index = 0; vertex_index < ParentFaceData::max_lor_face_vertices; ++vertex_index ) {
+    shape_values[vertex_index] = 0.0;
+  }
+
+  const RealT first_coordinate = reference_coordinates[0];
+  switch ( face_geometry ) {
+    case mfem::Geometry::SEGMENT:
+      shape_values[0] = 1.0 - first_coordinate;
+      shape_values[1] = first_coordinate;
+      break;
+    case mfem::Geometry::TRIANGLE: {
+      const RealT second_coordinate = reference_coordinates[1];
+      shape_values[0] = 1.0 - first_coordinate - second_coordinate;
+      shape_values[1] = first_coordinate;
+      shape_values[2] = second_coordinate;
+      break;
+    }
+    case mfem::Geometry::SQUARE: {
+      const RealT second_coordinate = reference_coordinates[1];
+      shape_values[0] = ( 1.0 - first_coordinate ) * ( 1.0 - second_coordinate );
+      shape_values[1] = first_coordinate * ( 1.0 - second_coordinate );
+      shape_values[2] = first_coordinate * second_coordinate;
+      shape_values[3] = ( 1.0 - first_coordinate ) * second_coordinate;
+      break;
+    }
+    default:
+      SLIC_ERROR_ROOT( "Parent-face mapping requires segment, triangle, or quadrilateral faces." );
+  }
+}
 
 std::unique_ptr<shared::ParSparseMat> TryGetMfemTrueRestrictionMatrix(
     const mfem::ParFiniteElementSpace& ho_scalar_fes, const mfem::ParFiniteElementSpace& lor_scalar_fes )
@@ -673,12 +716,14 @@ PressureField::UpdateData::UpdateData( SubmeshRedecompTransfer& submesh_redecomp
 
 MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParMesh& parent_mesh,
                             const mfem::ParGridFunction& current_coords, std::set<int>&& attributes_1,
-                            std::set<int>&& attributes_2, ExecutionMode exec_mode, MemorySpace mem_space )
+                            std::set<int>&& attributes_2, bool build_parent_face_data, ExecutionMode exec_mode,
+                            MemorySpace mem_space )
     : mesh_id_1_{ mesh_id_1 },
       mesh_id_2_{ mesh_id_2 },
       parent_mesh_{ parent_mesh },
       attributes_1_{ std::move( attributes_1 ) },
       attributes_2_{ std::move( attributes_2 ) },
+      build_parent_face_data_{ build_parent_face_data },
       submesh_{ CreateSubmesh( parent_mesh_, attributes_1_, attributes_2_ ) },
       coords_{ current_coords },
       lor_factor_{ 0 },
@@ -774,8 +819,8 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
     }
     update_data_ = std::make_unique<UpdateData>( submesh_, lor_mesh_.get(), *coords_.GetParentGridFn().ParFESpace(),
                                                  submesh_xfer_gridfn_, submesh_lor_xfer_.get(), attributes_1_,
-                                                 attributes_2_, binning_proximity_scale, n_ranks, allocator_id_,
-                                                 redecomp_trigger_displacement_, residual_gap );
+                                                 attributes_2_, build_parent_face_data_, binning_proximity_scale,
+                                                 n_ranks, allocator_id_, redecomp_trigger_displacement_, residual_gap );
     rebuilt = true;
   }
 
@@ -870,6 +915,10 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
 
   return rebuilt;
 }
+
+ParentFaceData MfemMeshData::GetMesh1ParentFaceData() const { return GetUpdateData().parent_face_data_1_.GetView(); }
+
+ParentFaceData MfemMeshData::GetMesh2ParentFaceData() const { return GetUpdateData().parent_face_data_2_.GetView(); }
 
 void MfemMeshData::GetParentResponse( mfem::Vector& r ) const
 {
@@ -1046,8 +1095,8 @@ MfemMeshData::UpdateData::UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* 
                                       const mfem::ParFiniteElementSpace& parent_fes,
                                       mfem::ParGridFunction& submesh_gridfn, SubmeshLORTransfer* submesh_lor_xfer,
                                       const std::set<int>& attributes_1, const std::set<int>& attributes_2,
-                                      RealT binning_proximity_scale, int n_ranks, int allocator_id,
-                                      RealT redecomp_trigger_displacement, RealT residual_gap )
+                                      bool build_parent_face_data, RealT binning_proximity_scale, int n_ranks,
+                                      int allocator_id, RealT redecomp_trigger_displacement, RealT residual_gap )
     : redecomp_mesh_{ lor_mesh
                           ? redecomp::RedecompMesh(
                                 *lor_mesh,
@@ -1067,8 +1116,176 @@ MfemMeshData::UpdateData::UpdateData( mfem::ParSubMesh& submesh, mfem::ParMesh* 
   TRIBOL_MARK_FUNCTION;
   // set element type based on redecomp mesh
   SetElementData();
-  // updates the connectivity of the tribol surface mesh
+  // Keep the element maps in host memory until all host-side MFEM data have
+  // been gathered for the Tribol surface meshes.
   UpdateConnectivity( attributes_1, attributes_2 );
+  if ( build_parent_face_data ) {
+    // Preserve the native parent-face mapping alongside the redecomposed LOR
+    // geometry. Later integration-point evaluation uses this mapping without
+    // transferring physical fields through the LOR finite-element space.
+    BuildParentFaceData( submesh, lor_mesh, parent_fes );
+  }
+  CopyConnectivityToAllocator();
+}
+
+ParentFaceData MfemMeshData::UpdateData::ParentFaceArrays::GetView() const
+{
+  ParentFaceData parent_face_data;
+  parent_face_data.m_parent_face_orders = Array1DView<const int>( parent_face_orders );
+  parent_face_data.m_reference_vertex_counts = Array1DView<const int>( reference_vertex_counts );
+  parent_face_data.m_parent_reference_vertex_coordinates =
+      Array2DView<const RealT>( parent_reference_vertex_coordinates );
+  return parent_face_data;
+}
+
+void MfemMeshData::UpdateData::BuildParentFaceData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_mesh,
+                                                    const mfem::ParFiniteElementSpace& parent_fes )
+{
+  mfem::ParMesh& source_mesh = lor_mesh ? *lor_mesh : submesh;
+  mfem::ParMesh* parent_mesh = parent_fes.GetParMesh();
+  SLIC_ERROR_ROOT_IF( parent_mesh == nullptr, "Parent-face mapping requires an MFEM parallel parent mesh." );
+  const int reference_dimension = source_mesh.Dimension();
+  SLIC_ERROR_ROOT_IF( reference_dimension < 1 || reference_dimension > ParentFaceData::max_reference_dimension,
+                      "Parent-face mapping supports one- and two-dimensional surface reference coordinates." );
+
+  // A discontinuous constant vector field provides one fixed-size mapping
+  // record per source element. TransferByElements sends the same record to
+  // every redecomp ghost copy.
+  mfem::L2_FECollection mapping_collection( 0, reference_dimension );
+  mfem::ParFiniteElementSpace source_space( &source_mesh, &mapping_collection, parent_face_mapping_record_size,
+                                            mfem::Ordering::byNODES );
+  mfem::FiniteElementSpace redecomp_space( &redecomp_mesh_, &mapping_collection, parent_face_mapping_record_size,
+                                           mfem::Ordering::byNODES );
+  mfem::ParGridFunction source_records( &source_space );
+  mfem::GridFunction redecomp_records( &redecomp_space );
+  source_records.UseDevice( false );
+  redecomp_records.UseDevice( false );
+  source_records = 0.0;
+  redecomp_records = 0.0;
+
+  const mfem::CoarseFineTransformations* refinement_transforms =
+      lor_mesh ? &lor_mesh->GetRefinementTransforms() : nullptr;
+  mfem::Array<int> element_dofs;
+  mfem::Array<int> submesh_vertex_ids;
+  mfem::Array<int> parent_face_vertex_ids;
+  for ( int source_element_id = 0; source_element_id < source_mesh.GetNE(); ++source_element_id ) {
+    const mfem::Geometry::Type face_geometry = source_mesh.GetElementBaseGeometry( source_element_id );
+    const mfem::IntegrationRule* reference_vertices = mfem::Geometries.GetVertices( face_geometry );
+    int parent_submesh_element_id = source_element_id;
+    const mfem::DenseMatrix* child_point_matrix = nullptr;
+
+    if ( refinement_transforms ) {
+      const mfem::Embedding& embedding = refinement_transforms->embeddings[source_element_id];
+      parent_submesh_element_id = embedding.parent;
+      child_point_matrix = &refinement_transforms->point_matrices[face_geometry]( embedding.matrix );
+    }
+
+    const IndexT parent_face_id = submesh.GetParentElementIDMap()[parent_submesh_element_id];
+    const int parent_face_order = parent_fes.GetBE( parent_face_id )->GetOrder();
+    const int number_of_reference_vertices = reference_vertices->GetNPoints();
+    SLIC_ERROR_ROOT_IF( number_of_reference_vertices > ParentFaceData::max_lor_face_vertices,
+                        "Parent-face mapping supports at most four vertices per LOR surface face." );
+    RealT record[parent_face_mapping_record_size] = { 0.0 };
+    record[0] = static_cast<RealT>( parent_face_order );
+    record[1] = static_cast<RealT>( number_of_reference_vertices );
+
+    // ParSubMesh elements can use a different reference orientation than their
+    // native parent boundary faces. Match vertices through the parent mesh so
+    // refined child coordinates can be expressed in the native orientation.
+    submesh.GetElementVertices( parent_submesh_element_id, submesh_vertex_ids );
+    parent_mesh->GetBdrElement( parent_face_id )->GetVertices( parent_face_vertex_ids );
+    SLIC_ERROR_ROOT_IF( submesh_vertex_ids.Size() != number_of_reference_vertices ||
+                            parent_face_vertex_ids.Size() != number_of_reference_vertices,
+                        "Parent-face mapping requires matching source and parent face geometries." );
+    RealT parent_coordinates_at_submesh_vertices[ParentFaceData::max_lor_face_vertices]
+                                                [ParentFaceData::max_reference_dimension] = { { 0.0, 0.0 } };
+    for ( int submesh_vertex_index = 0; submesh_vertex_index < number_of_reference_vertices; ++submesh_vertex_index ) {
+      const int parent_vertex_id = submesh.GetParentVertexIDMap()[submesh_vertex_ids[submesh_vertex_index]];
+      const int parent_vertex_index = parent_face_vertex_ids.Find( parent_vertex_id );
+      SLIC_ERROR_ROOT_IF( parent_vertex_index < 0,
+                          "Unable to match a contact submesh vertex to its native parent boundary face." );
+      const mfem::IntegrationPoint& parent_reference_vertex = reference_vertices->IntPoint( parent_vertex_index );
+      parent_coordinates_at_submesh_vertices[submesh_vertex_index][0] = parent_reference_vertex.x;
+      if ( reference_dimension == 2 ) {
+        parent_coordinates_at_submesh_vertices[submesh_vertex_index][1] = parent_reference_vertex.y;
+      }
+    }
+
+    for ( int vertex_index = 0; vertex_index < number_of_reference_vertices; ++vertex_index ) {
+      RealT submesh_reference_coordinates[ParentFaceData::max_reference_dimension] = { 0.0, 0.0 };
+      const mfem::IntegrationPoint& submesh_reference_vertex = reference_vertices->IntPoint( vertex_index );
+      submesh_reference_coordinates[0] = submesh_reference_vertex.x;
+      if ( reference_dimension == 2 ) {
+        submesh_reference_coordinates[1] = submesh_reference_vertex.y;
+      }
+      if ( child_point_matrix ) {
+        for ( int coordinate_component = 0; coordinate_component < reference_dimension; ++coordinate_component ) {
+          submesh_reference_coordinates[coordinate_component] =
+              ( *child_point_matrix )( coordinate_component, vertex_index );
+        }
+      }
+      RealT shape_values[ParentFaceData::max_lor_face_vertices];
+      EvaluateLinearFaceShape( face_geometry, submesh_reference_coordinates, shape_values );
+      for ( int coordinate_component = 0; coordinate_component < reference_dimension; ++coordinate_component ) {
+        const int record_index = parent_reference_coordinate_offset +
+                                 vertex_index * ParentFaceData::max_reference_dimension + coordinate_component;
+        for ( int submesh_vertex_index = 0; submesh_vertex_index < number_of_reference_vertices;
+              ++submesh_vertex_index ) {
+          record[record_index] += shape_values[submesh_vertex_index] *
+                                  parent_coordinates_at_submesh_vertices[submesh_vertex_index][coordinate_component];
+        }
+      }
+    }
+
+    source_space.GetElementDofs( source_element_id, element_dofs );
+    SLIC_ERROR_ROOT_IF( element_dofs.Size() != 1,
+                        "Parent-face mapping requires one scalar degree of freedom per source element." );
+    for ( int record_component = 0; record_component < parent_face_mapping_record_size; ++record_component ) {
+      const int vector_dof = source_space.DofToVDof( element_dofs[0], record_component );
+      source_records[vector_dof] = record[record_component];
+    }
+  }
+
+  redecomp::TransferByElements().TransferToSerial( source_records, redecomp_records );
+
+  auto copy_surface_records = [&]( const Array1D<int>& surface_element_map, ParentFaceArrays& parent_face_arrays ) {
+    const IndexT number_of_surface_elements = surface_element_map.size();
+    ArrayT<int, 1, MemorySpace::Host> parent_face_orders_host( number_of_surface_elements );
+    ArrayT<int, 1, MemorySpace::Host> reference_vertex_counts_host( number_of_surface_elements );
+    ArrayT<RealT, 2, MemorySpace::Host> parent_reference_coordinates_host(
+        { number_of_surface_elements, ParentFaceData::max_lor_face_vertices * ParentFaceData::max_reference_dimension },
+        getResourceAllocatorID( MemorySpace::Host ) );
+    parent_reference_coordinates_host.fill( 0.0 );
+
+    for ( IndexT surface_element_id = 0; surface_element_id < number_of_surface_elements; ++surface_element_id ) {
+      const int redecomp_element_id = surface_element_map[surface_element_id];
+      redecomp_space.GetElementDofs( redecomp_element_id, element_dofs );
+      SLIC_ERROR_ROOT_IF( element_dofs.Size() != 1,
+                          "Parent-face mapping requires one scalar degree of freedom per redecomp element." );
+
+      auto get_record_value = [&]( int record_component ) {
+        const int vector_dof = redecomp_space.DofToVDof( element_dofs[0], record_component );
+        return redecomp_records[vector_dof];
+      };
+
+      parent_face_orders_host[surface_element_id] = static_cast<int>( get_record_value( 0 ) );
+      reference_vertex_counts_host[surface_element_id] = static_cast<int>( get_record_value( 1 ) );
+      for ( int coordinate_index = 0;
+            coordinate_index < ParentFaceData::max_lor_face_vertices * ParentFaceData::max_reference_dimension;
+            ++coordinate_index ) {
+        parent_reference_coordinates_host( surface_element_id, coordinate_index ) =
+            get_record_value( parent_reference_coordinate_offset + coordinate_index );
+      }
+    }
+
+    parent_face_arrays.parent_face_orders = Array1D<int>( parent_face_orders_host, allocator_id_ );
+    parent_face_arrays.reference_vertex_counts = Array1D<int>( reference_vertex_counts_host, allocator_id_ );
+    parent_face_arrays.parent_reference_vertex_coordinates =
+        Array2D<RealT>( parent_reference_coordinates_host, allocator_id_ );
+  };
+
+  copy_surface_records( elem_map_1_, parent_face_data_1_ );
+  copy_surface_records( elem_map_2_, parent_face_data_2_ );
 }
 
 void MfemMeshData::UpdateData::UpdateConnectivity( const std::set<int>& attributes_1,
@@ -1108,18 +1325,23 @@ void MfemMeshData::UpdateData::UpdateConnectivity( const std::set<int>& attribut
       }
     }
   }
-  if ( allocator_id_ == conn_1_host.getAllocatorID() ) {
-    // same memory space, just move
-    conn_1_ = std::move( conn_1_host );
-    conn_2_ = std::move( conn_2_host );
-    elem_map_1_ = std::move( elem_map_1_host );
-    elem_map_2_ = std::move( elem_map_2_host );
-  } else {
-    // copy to new memory space
-    conn_1_ = Array2D<IndexT>( conn_1_host, allocator_id_ );
-    conn_2_ = Array2D<IndexT>( conn_2_host, allocator_id_ );
-    elem_map_1_ = Array1D<int>( elem_map_1_host, allocator_id_ );
-    elem_map_2_ = Array1D<int>( elem_map_2_host, allocator_id_ );
+  conn_1_ = std::move( conn_1_host );
+  conn_2_ = std::move( conn_2_host );
+  elem_map_1_ = std::move( elem_map_1_host );
+  elem_map_2_ = std::move( elem_map_2_host );
+}
+
+void MfemMeshData::UpdateData::CopyConnectivityToAllocator()
+{
+  if ( allocator_id_ != conn_1_.getAllocatorID() ) {
+    Array2D<IndexT> first_connectivity( conn_1_, allocator_id_ );
+    Array2D<IndexT> second_connectivity( conn_2_, allocator_id_ );
+    Array1D<int> first_element_map( elem_map_1_, allocator_id_ );
+    Array1D<int> second_element_map( elem_map_2_, allocator_id_ );
+    conn_1_ = std::move( first_connectivity );
+    conn_2_ = std::move( second_connectivity );
+    elem_map_1_ = std::move( first_element_map );
+    elem_map_2_ = std::move( second_element_map );
   }
 }
 
