@@ -7,6 +7,7 @@
 
 #include <array>
 
+#include "axom/slic/core/SimpleLogger.hpp"
 #include "shared/mesh/MeshBuilder.hpp"
 
 TEST( MeshBuilder, Stitch )
@@ -20,6 +21,25 @@ TEST( MeshBuilder, Stitch )
   EXPECT_EQ( mesh.GetNE(), 2 );
   EXPECT_EQ( mesh.GetNV(), 6 );
   EXPECT_EQ( mesh.GetNBE(), 6 );
+}
+
+TEST( MeshBuilder, StitchRejectsMismatchedDimensionsBeforeUnifying )
+{
+  axom::slic::SimpleLogger logger;
+  axom::slic::ScopedAbortToThrow abort_to_throw;
+  EXPECT_THROW( shared::MeshBuilder::Stitch(
+                    { shared::MeshBuilder::SquareMesh( 1, 1 ), shared::MeshBuilder::CubeMesh( 1, 1, 1 ) } ),
+                axom::slic::SlicAbortException );
+}
+
+TEST( MeshBuilder, StitchRejectsHigherOrderMeshBeforeUnifying )
+{
+  axom::slic::SimpleLogger logger;
+  axom::slic::ScopedAbortToThrow abort_to_throw;
+  auto quadratic = shared::MeshBuilder::SquareMesh( 1, 1 );
+  static_cast<mfem::Mesh&>( quadratic ).SetCurvature( 2 );
+  EXPECT_THROW( shared::MeshBuilder::Stitch( { shared::MeshBuilder::SquareMesh( 1, 1 ), std::move( quadratic ) } ),
+                axom::slic::SlicAbortException );
 }
 
 TEST( MeshBuilder, CShapeMesh )

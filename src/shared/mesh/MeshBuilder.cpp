@@ -26,16 +26,19 @@ MeshBuilder MeshBuilder::Stitch( std::initializer_list<MeshBuilder> meshes, doub
   SLIC_ERROR_ROOT_IF( meshes.size() == 0, "At least one mesh is required for stitching." );
   SLIC_ERROR_ROOT_IF( tolerance < 0.0, "Stitch tolerance must be nonnegative." );
 
-  auto stitched_mesh = Unify( meshes );
-  auto& mesh = static_cast<mfem::Mesh&>( stitched_mesh );
-  const int space_dim = mesh.SpaceDimension();
+  const auto& first_mesh = static_cast<const mfem::Mesh&>( *meshes.begin() );
+  const int dimension = first_mesh.Dimension();
+  const int space_dim = first_mesh.SpaceDimension();
 
   for ( const auto& input_mesh : meshes ) {
     const auto& mfem_mesh = static_cast<const mfem::Mesh&>( input_mesh );
-    SLIC_ERROR_ROOT_IF( mfem_mesh.Dimension() != mesh.Dimension() || mfem_mesh.SpaceDimension() != space_dim,
+    SLIC_ERROR_ROOT_IF( mfem_mesh.Dimension() != dimension || mfem_mesh.SpaceDimension() != space_dim,
                         "All stitched meshes must have the same dimensions." );
     SLIC_ERROR_ROOT_IF( mfem_mesh.GetNodalFESpace()->GetMaxElementOrder() != 1, "Stitch only supports linear meshes." );
   }
+
+  auto stitched_mesh = Unify( meshes );
+  auto& mesh = static_cast<mfem::Mesh&>( stitched_mesh );
 
   std::vector<std::array<double, 3>> unique_coordinates;
   std::vector<int> vertex_map( mesh.GetNV() );
