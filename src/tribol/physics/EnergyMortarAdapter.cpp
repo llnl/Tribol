@@ -7,25 +7,120 @@
 #include <axom/slic/interface/slic_macros.hpp>
 #include "tribol/mesh/MfemData.hpp"
 
+#include <algorithm>
+#include <cmath>
+#include <map>
+#include <tuple>
+
 namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
+namespace {
+
+struct BallPatchNode {
+  int node{ -1 };
+  int element{ -1 };
+  int local_node{ -1 };
+  bool is_mortar{ false };
+};
+
+std::array<BallPatchNode, BallPenaltyData::num_nodes> ballPatchNodes( int nonmortar_element, int mortar_element,
+                                                                      const MeshData::Viewer& nonmortar_mesh,
+                                                                      const MeshData::Viewer& mortar_mesh,
+                                                                      const BallEndpointData& endpoint_data )
+{
+  const auto nonmortar_conn = nonmortar_mesh.getConnectivity()( nonmortar_element );
+  const auto mortar_conn = mortar_mesh.getConnectivity()( mortar_element );
+  return { BallPatchNode{ static_cast<int>( nonmortar_conn[0] ), nonmortar_element, 0, false },
+           BallPatchNode{ static_cast<int>( nonmortar_conn[1] ), nonmortar_element, 1, false },
+           BallPatchNode{ static_cast<int>( mortar_conn[0] ), mortar_element, 0, true },
+           BallPatchNode{ static_cast<int>( mortar_conn[1] ), mortar_element, 1, true },
+           BallPatchNode{ endpoint_data.neighbor_node[0], endpoint_data.neighbor_element[0],
+                          endpoint_data.neighbor_local_node[0], false },
+           BallPatchNode{ endpoint_data.neighbor_node[1], endpoint_data.neighbor_element[1],
+                          endpoint_data.neighbor_local_node[1], false } };
+}
+
+void addBallPatchForce( mfem::GridFunction& force, int scalar_size, const BallPenaltyData& ball_data,
+                        const std::array<BallPatchNode, BallPenaltyData::num_nodes>& nodes )
+{
+  for ( int node = 0; node < BallPenaltyData::num_nodes; ++node ) {
+    if ( nodes[node].node < 0 ) {
+      continue;
+    }
+    force( nodes[node].node ) += ball_data.force[2 * node];
+    force( scalar_size + nodes[node].node ) += ball_data.force[2 * node + 1];
+  }
+}
+
+void appendBallPatchStiffness( const BallPenaltyData& ball_data,
+                               const std::array<BallPatchNode, BallPenaltyData::num_nodes>& nodes,
+                               PackedPairJacobianContribs& nonmortar_nonmortar,
+                               PackedPairJacobianContribs& nonmortar_mortar,
+                               PackedPairJacobianContribs& mortar_nonmortar, PackedPairJacobianContribs& mortar_mortar )
+{
+  using BlockKey = std::tuple<bool, int, bool, int>;
+  std::map<BlockKey, std::array<double, 16>> blocks;
+  for ( int row_node = 0; row_node < BallPenaltyData::num_nodes; ++row_node ) {
+    if ( nodes[row_node].node < 0 ) {
+      continue;
+    }
+    for ( int col_node = 0; col_node < BallPenaltyData::num_nodes; ++col_node ) {
+      if ( nodes[col_node].node < 0 ) {
+        continue;
+      }
+      const BlockKey key{ nodes[row_node].is_mortar, nodes[row_node].element, nodes[col_node].is_mortar,
+                          nodes[col_node].element };
+      auto [block, inserted] = blocks.try_emplace( key );
+      if ( inserted ) {
+        block->second.fill( 0.0 );
+      }
+      for ( int row_component = 0; row_component < 2; ++row_component ) {
+        const int patch_row = 2 * row_node + row_component;
+        const int block_row = nodes[row_node].local_node + 2 * row_component;
+        for ( int col_component = 0; col_component < 2; ++col_component ) {
+          const int patch_col = 2 * col_node + col_component;
+          const int block_col = nodes[col_node].local_node + 2 * col_component;
+          block->second[block_row + 4 * block_col] +=
+              ball_data.stiffness[patch_row * BallPenaltyData::num_force_dofs + patch_col];
+        }
+      }
+    }
+  }
+
+  for ( const auto& [key, block] : blocks ) {
+    const auto [row_mortar, row_element, col_mortar, col_element] = key;
+    if ( !row_mortar && !col_mortar ) {
+      nonmortar_nonmortar.append( row_element, col_element, block.data(), block.size() );
+    } else if ( !row_mortar && col_mortar ) {
+      nonmortar_mortar.append( row_element, col_element, block.data(), block.size() );
+    } else if ( row_mortar && !col_mortar ) {
+      mortar_nonmortar.append( row_element, col_element, block.data(), block.size() );
+    } else {
+      mortar_mortar.append( row_element, col_element, block.data(), block.size() );
+    }
+  }
+}
+
+}  // namespace
+
 template <template <typename> class EnforcementLocation>
 EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
-                                                               MfemJacobianData& jac_data, double k, double delta,
-                                                               int N, bool enzyme_quadrature, bool use_penalty,
-                                                               RealT residual_gap )
+                                                               MfemJacobianData& jac_data,
+                                                               const ContactParams& contact_params,
+                                                               double residual_gap_ramp_angle,
+                                                               bool updates_residual_gap_ramp, bool use_penalty )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
-    : use_penalty_( use_penalty ), mesh_data_( mesh_data ), submesh_data_( submesh_data ), jac_data_( jac_data )
+    : use_penalty_( use_penalty ),
+      mesh_data_( mesh_data ),
+      submesh_data_( submesh_data ),
+      jac_data_( jac_data ),
+      params_( contact_params ),
+      residual_gap_ramp_angle_( residual_gap_ramp_angle ),
+      updates_residual_gap_ramp_( updates_residual_gap_ramp )
 {
-  params_.k = k;
-  params_.del = delta;
-  params_.N = N;
-  params_.enzyme_quadrature = enzyme_quadrature;
-  params_.residual_gap = residual_gap;
-
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 
   this->init( this );
@@ -48,6 +143,27 @@ void EnergyMortarAdapter<EnforcementLocation>::updateMeshes( MeshData& mesh1, Me
   // Maintain the same "flipped" convention as the constructor.
   mesh1_ = &mesh2;
   mesh2_ = &mesh1;
+  updateBallEndpointTopology();
+}
+
+template <template <typename> class EnforcementLocation>
+void EnergyMortarAdapter<EnforcementLocation>::updateBallEndpointTopology()
+{
+  const auto mesh = mesh1_->getView();
+  nonmortar_incident_edges_.clear();
+  nonmortar_incident_edges_.resize( mesh.numberOfNodes() );
+  nonmortar_node_incidence_.assign( mesh.numberOfNodes(), 0 );
+
+  for ( int element = 0; element < mesh.numberOfElements(); ++element ) {
+    const auto connectivity = mesh.getConnectivity()( element );
+    for ( int local_node = 0; local_node < 2; ++local_node ) {
+      const int node = connectivity[local_node];
+      const int incidence = nonmortar_node_incidence_[node]++;
+      if ( incidence < 2 ) {
+        nonmortar_incident_edges_[node][incidence] = { element, local_node };
+      }
+    }
+  }
 }
 
 template <template <typename> class EnforcementLocation>
@@ -60,10 +176,103 @@ void EnergyMortarAdapter<EnforcementLocation>::updateConstantPenaltyStiffness( d
 }
 
 template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::setResidualGap( RealT residual_gap )
+void EnergyMortarAdapter<EnforcementLocation>::beginCycle( int cycle, const Parameters& parameters )
 {
-  params_.residual_gap = residual_gap;
-  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+  bool requires_evaluator_rebuild = false;
+  if ( params_.del != parameters.energy_mortar_smoothing_length ) {
+    params_.del = parameters.energy_mortar_smoothing_length;
+    requires_evaluator_rebuild = true;
+  }
+  if ( params_.normal_smoothing_start_angle != parameters.energy_mortar_normal_smoothing_start_angle ) {
+    params_.normal_smoothing_start_angle = parameters.energy_mortar_normal_smoothing_start_angle;
+    requires_evaluator_rebuild = true;
+  }
+  if ( params_.residual_gap != parameters.residual_gap ) {
+    params_.residual_gap = parameters.residual_gap;
+    residual_gap_field_dirty_ = true;
+    requires_evaluator_rebuild = true;
+  }
+  if ( params_.is_auto_contact != parameters.auto_contact_check ) {
+    params_.is_auto_contact = parameters.auto_contact_check;
+    requires_evaluator_rebuild = true;
+  }
+  if ( params_.auto_contact_penetration_fraction != parameters.auto_contact_pen_frac ) {
+    params_.auto_contact_penetration_fraction = parameters.auto_contact_pen_frac;
+    requires_evaluator_rebuild = true;
+  }
+  if ( residual_gap_ramp_angle_ != parameters.energy_mortar_residual_gap_ramp_angle ) {
+    residual_gap_ramp_angle_ = parameters.energy_mortar_residual_gap_ramp_angle;
+    residual_gap_field_dirty_ = true;
+  }
+  if ( !updates_residual_gap_ramp_ && parameters.energy_mortar_residual_gap_ramp_updates ) {
+    residual_gap_field_dirty_ = true;
+  }
+  updates_residual_gap_ramp_ = parameters.energy_mortar_residual_gap_ramp_updates;
+
+  if ( requires_evaluator_rebuild ) {
+    evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+  }
+
+  if ( !residual_gap_field_dirty_ && ( !updates_residual_gap_ramp_ || residual_gap_field_cycle_ == cycle ) ) {
+    return;
+  }
+  mesh_data_.UpdateSubmeshCoordinates();
+  submesh_data_.UpdateResidualGapField( params_.residual_gap, residual_gap_ramp_angle_ );
+  residual_gap_field_dirty_ = false;
+  residual_gap_field_cycle_ = cycle;
+}
+
+template <template <typename> class EnforcementLocation>
+std::array<double, 2> EnergyMortarAdapter<EnforcementLocation>::residualGapValues( const InterfacePair& pair,
+                                                                                   const MeshData::Viewer& mesh1 ) const
+{
+  const auto& gap_field = submesh_data_.GetRedecompResidualGap();
+  const double* values = gap_field.HostRead();
+  const auto conn1 = mesh1.getConnectivity()( pair.m_element_id1 );
+  return { values[conn1[0]], values[conn1[1]] };
+}
+
+template <template <typename> class EnforcementLocation>
+BallEndpointData EnergyMortarAdapter<EnforcementLocation>::ballEndpointData( const InterfacePair& pair,
+                                                                             const MeshData::Viewer& mesh1 ) const
+{
+  const auto& ball_weight_field = submesh_data_.GetRedecompBallWeight();
+  const double* weights = ball_weight_field.HostRead();
+  const auto conn1 = mesh1.getConnectivity()( pair.m_element_id1 );
+  BallEndpointData data;
+  for ( int endpoint = 0; endpoint < 2; ++endpoint ) {
+    const int node = conn1[endpoint];
+    data.weight[endpoint] = weights[node];
+    if ( data.weight[endpoint] <= 0.0 ) {
+      continue;
+    }
+
+    const int incidence = nonmortar_node_incidence_[node];
+    data.is_open_endpoint[endpoint] = incidence == 1;
+    // An endpoint ball needs one open edge or two edges at a manifold corner. Any other incidence does not define an
+    // unambiguous 2D cone.
+    if ( incidence != 1 && incidence != 2 ) {
+      data.weight[endpoint] = 0.0;
+      continue;
+    }
+    if ( data.is_open_endpoint[endpoint] ) {
+      continue;
+    }
+
+    for ( const auto& incident_edge : nonmortar_incident_edges_[node] ) {
+      if ( incident_edge.element == pair.m_element_id1 ) {
+        continue;
+      }
+      const auto connectivity = mesh1.getConnectivity()( incident_edge.element );
+      data.neighbor_element[endpoint] = incident_edge.element;
+      data.neighbor_local_node[endpoint] = 1 - incident_edge.local_node;
+      data.neighbor_node[endpoint] = connectivity[data.neighbor_local_node[endpoint]];
+      data.neighbor_coordinates[2 * endpoint] = mesh1.getPosition()[0][data.neighbor_node[endpoint]];
+      data.neighbor_coordinates[2 * endpoint + 1] = mesh1.getPosition()[1][data.neighbor_node[endpoint]];
+      break;
+    }
+  }
+  return data;
 }
 
 template <template <typename> class EnforcementLocation>
@@ -132,8 +341,10 @@ void Nodal<Adapter>::updateNodalGaps()
 
     double g_tilde_elem[2];
     double A_elem[2];
+    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view );
 
-    adapter->evaluator_->compute_gtilde_and_area( flipped_pair, mesh1_view, mesh2_view, g_tilde_elem, A_elem );
+    adapter->evaluator_->compute_gtilde_and_area( flipped_pair, mesh1_view, mesh2_view, g_tilde_elem, A_elem,
+                                                  residual_gap_values.data() );
 
     if ( A_elem[0] <= 0.0 && A_elem[1] <= 0.0 ) {
       continue;
@@ -152,7 +363,8 @@ void Nodal<Adapter>::updateNodalGaps()
     double dg_dx_node1[8];
     double dg_dx_node2[8];
     // TODO: make grad_gtilde return directly in dg_tilde_dx_blocks format
-    adapter->evaluator_->grad_gtilde( flipped_pair, mesh1_view, mesh2_view, dg_dx_node1, dg_dx_node2 );
+    adapter->evaluator_->grad_gtilde( flipped_pair, mesh1_view, mesh2_view, dg_dx_node1, dg_dx_node2,
+                                      residual_gap_values.data() );
     double dg_tilde_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
       dg_tilde_dx_blocks[0][i * 2] = dg_dx_node1[node_idx[i]];
@@ -166,7 +378,8 @@ void Nodal<Adapter>::updateNodalGaps()
     double dA_dx_node1[8];
     double dA_dx_node2[8];
     // TODO: make grad_trib_area return directly in dA_dx_blocks format
-    adapter->evaluator_->grad_trib_area( flipped_pair, mesh1_view, mesh2_view, dA_dx_node1, dA_dx_node2 );
+    adapter->evaluator_->grad_trib_area( flipped_pair, mesh1_view, mesh2_view, dA_dx_node1, dA_dx_node2,
+                                         residual_gap_values.data() );
     double dA_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
       dA_dx_blocks[0][i * 2] = dA_dx_node1[node_idx[i]];
@@ -317,6 +530,68 @@ void Nodal<Adapter>::updateNodalForces()
   adapter->df_dx_ += shared::ParSparseMat::rap( adapter->dA_dx_, pg2_over_asq_diag, adapter->dg_tilde_dx_ );
   adapter->df_dx_ += dp_dx.transpose() * adapter->dg_tilde_dx_;
   adapter->df_dx_ += adapter->dg_tilde_dx_.transpose() * dp_dx;
+
+  // The ball-to-surface completion is a penalty potential independent of the nodal mortar pressure construction.
+  // Assemble its exact Enzyme force and Hessian into the same parent objects.
+  const bool use_lor = ( adapter->mesh_data_.GetLORMesh() != nullptr );
+  const auto& displacement_surface_fes =
+      use_lor ? *adapter->mesh_data_.GetLORMeshFESpace() : adapter->mesh_data_.GetSubmeshFESpace();
+  const auto& displacement_redecomp_fes = *adapter->mesh_data_.GetRedecompResponse().FESpace();
+  const auto& mortar_elem_map = adapter->mesh_data_.GetElemMap1();
+  const auto& nonmortar_elem_map = adapter->mesh_data_.GetElemMap2();
+  PackedPairJacobianContribs ball_nm_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                         displacement_redecomp_fes, nonmortar_elem_map, nonmortar_elem_map );
+  PackedPairJacobianContribs ball_nm_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                        displacement_redecomp_fes, nonmortar_elem_map, mortar_elem_map );
+  PackedPairJacobianContribs ball_m_nm( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                        displacement_redecomp_fes, mortar_elem_map, nonmortar_elem_map );
+  PackedPairJacobianContribs ball_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
+                                       displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
+  ball_nm_nm.reserve( 9 * adapter->pairs_.size(), 9 * 16 * adapter->pairs_.size() );
+  ball_nm_m.reserve( 3 * adapter->pairs_.size(), 3 * 16 * adapter->pairs_.size() );
+  ball_m_nm.reserve( 3 * adapter->pairs_.size(), 3 * 16 * adapter->pairs_.size() );
+  ball_m_m.reserve( adapter->pairs_.size(), 16 * adapter->pairs_.size() );
+
+  mfem::GridFunction redecomp_ball_force( const_cast<mfem::FiniteElementSpace*>( &displacement_redecomp_fes ) );
+  redecomp_ball_force = 0.0;
+  const int scalar_size = redecomp_ball_force.FESpace()->GetVSize() / redecomp_ball_force.FESpace()->GetVDim();
+  auto mesh1_view = adapter->mesh1_->getView();
+  auto mesh2_view = adapter->mesh2_->getView();
+  for ( const auto& pair : adapter->pairs_ ) {
+    InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
+    const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
+    const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
+    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view );
+    const auto endpoint_data = adapter->ballEndpointData( flipped_pair, mesh1_view );
+    const auto ball_data = adapter->evaluator_->compute_ball_penalty_data( flipped_pair, mesh1_view, mesh2_view,
+                                                                           endpoint_data, residual_gap_values.data() );
+    if ( !ball_data.has_active_qp ) {
+      continue;
+    }
+
+    adapter->energy_ += ball_data.energy;
+    const auto patch_nodes = ballPatchNodes( elem1, elem2, mesh1_view, mesh2_view, endpoint_data );
+    addBallPatchForce( redecomp_ball_force, scalar_size, ball_data, patch_nodes );
+    appendBallPatchStiffness( ball_data, patch_nodes, ball_nm_nm, ball_nm_m, ball_m_nm, ball_m_m );
+  }
+
+  auto* parent_fes = adapter->mesh_data_.GetParentCoords().ParFESpace();
+  shared::ParVector ball_force( const_cast<mfem::ParFiniteElementSpace*>( parent_fes ) );
+  ball_force.fill( 0.0 );
+  mfem::Vector parent_ball_force( parent_fes->GetVSize() );
+  parent_ball_force = 0.0;
+  adapter->mesh_data_.GetParentRedecompTransfer().RedecompToParent( redecomp_ball_force, parent_ball_force );
+  parent_fes->GetProlongationMatrix()->MultTranspose( parent_ball_force, ball_force.get() );
+  adapter->force_vec_ += ball_force;
+
+  std::vector<PackedPairJacobianContribs> ball_contribs;
+  ball_contribs.reserve( 4 );
+  ball_contribs.push_back( std::move( ball_nm_nm ) );
+  ball_contribs.push_back( std::move( ball_nm_m ) );
+  ball_contribs.push_back( std::move( ball_m_nm ) );
+  ball_contribs.push_back( std::move( ball_m_m ) );
+  auto ball_df_dx = adapter->jac_data_.GetMfemJacobian( parent_fes, parent_fes, ball_contribs );
+  adapter->df_dx_ += ball_df_dx;
 }
 
 template <template <typename> class EnforcementLocation>
@@ -370,7 +645,9 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* ad
 
     double d2g_dx2_node1[64];
     double d2g_dx2_node2[64];
-    adapter->evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2 );
+    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view );
+    adapter->evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2,
+                                     residual_gap_values.data() );
 
     double df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
@@ -452,11 +729,14 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
 
     double d2g_dx2_node1[64];
     double d2g_dx2_node2[64];
-    adapter->evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2 );
+    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view );
+    adapter->evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2,
+                                     residual_gap_values.data() );
 
     double d2A_dx2_node1[64];
     double d2A_dx2_node2[64];
-    adapter->evaluator_->compute_d2A_d2u( flipped_pair, mesh1_view, mesh2_view, d2A_dx2_node1, d2A_dx2_node2 );
+    adapter->evaluator_->compute_d2A_d2u( flipped_pair, mesh1_view, mesh2_view, d2A_dx2_node1, d2A_dx2_node2,
+                                          residual_gap_values.data() );
 
     double df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
@@ -511,10 +791,10 @@ void QuadraturePoint<Adapter>::updateNodalForces()
   PackedPairJacobianContribs df_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
                                      displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
 
-  df_nm_nm.reserve( adapter->pairs_.size(), 16 );
-  df_nm_m.reserve( adapter->pairs_.size(), 16 );
-  df_m_nm.reserve( adapter->pairs_.size(), 16 );
-  df_m_m.reserve( adapter->pairs_.size(), 16 );
+  df_nm_nm.reserve( 10 * adapter->pairs_.size(), 10 * 16 * adapter->pairs_.size() );
+  df_nm_m.reserve( 4 * adapter->pairs_.size(), 4 * 16 * adapter->pairs_.size() );
+  df_m_nm.reserve( 4 * adapter->pairs_.size(), 4 * 16 * adapter->pairs_.size() );
+  df_m_m.reserve( 2 * adapter->pairs_.size(), 2 * 16 * adapter->pairs_.size() );
 
   mfem::GridFunction redecomp_force( const_cast<mfem::FiniteElementSpace*>( &displacement_redecomp_fes ) );
   redecomp_force = 0.0;
@@ -526,19 +806,21 @@ void QuadraturePoint<Adapter>::updateNodalForces()
   SLIC_ERROR_ROOT_IF( adapter->mesh1_ == nullptr || adapter->mesh2_ == nullptr, "ENERGY_MORTAR meshes not set." );
   auto mesh1_view = adapter->mesh1_->getView();
   auto mesh2_view = adapter->mesh2_->getView();
-
   for ( const auto& pair : adapter->pairs_ ) {
     InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
     const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
     const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
-    const auto qp_data =
-        adapter->evaluator_->compute_quadrature_point_penalty_data( flipped_pair, mesh1_view, mesh2_view );
-
-    if ( !qp_data.has_active_qp ) {
+    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view );
+    const auto endpoint_data = adapter->ballEndpointData( flipped_pair, mesh1_view );
+    const auto qp_data = adapter->evaluator_->compute_quadrature_point_penalty_data(
+        flipped_pair, mesh1_view, mesh2_view, residual_gap_values.data() );
+    const auto ball_data = adapter->evaluator_->compute_ball_penalty_data( flipped_pair, mesh1_view, mesh2_view,
+                                                                           endpoint_data, residual_gap_values.data() );
+    if ( !qp_data.has_active_qp && !ball_data.has_active_qp ) {
       continue;
     }
 
-    adapter->energy_ += qp_data.energy;
+    adapter->energy_ += qp_data.energy + ball_data.energy;
 
     auto A_conn = mesh1_view.getConnectivity()( elem1 );
     auto B_conn = mesh2_view.getConnectivity()( elem2 );
@@ -550,6 +832,8 @@ void QuadraturePoint<Adapter>::updateNodalForces()
     redecomp_force( scalar_size + B_conn[0] ) += qp_data.force[5];
     redecomp_force( B_conn[1] ) += qp_data.force[6];
     redecomp_force( scalar_size + B_conn[1] ) += qp_data.force[7];
+    const auto patch_nodes = ballPatchNodes( elem1, elem2, mesh1_view, mesh2_view, endpoint_data );
+    addBallPatchForce( redecomp_force, scalar_size, ball_data, patch_nodes );
 
     double df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
@@ -567,8 +851,8 @@ void QuadraturePoint<Adapter>::updateNodalForces()
     df_nm_m.append( elem1, elem2, df_dx_blocks[0][1], 16 );
     df_m_nm.append( elem2, elem1, df_dx_blocks[1][0], 16 );
     df_m_m.append( elem2, elem2, df_dx_blocks[1][1], 16 );
+    appendBallPatchStiffness( ball_data, patch_nodes, df_nm_nm, df_nm_m, df_m_nm, df_m_m );
   }
-
   auto* parent_fes = adapter->mesh_data_.GetParentCoords().ParFESpace();
   adapter->force_vec_ = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( parent_fes ) );
   adapter->force_vec_.fill( 0.0 );
@@ -576,7 +860,6 @@ void QuadraturePoint<Adapter>::updateNodalForces()
   parent_force = 0.0;
   adapter->mesh_data_.GetParentRedecompTransfer().RedecompToParent( redecomp_force, parent_force );
   parent_fes->GetProlongationMatrix()->MultTranspose( parent_force, adapter->force_vec_.get() );
-
   std::vector<PackedPairJacobianContribs> df_contribs;
   df_contribs.reserve( 4 );
   df_contribs.push_back( std::move( df_nm_nm ) );

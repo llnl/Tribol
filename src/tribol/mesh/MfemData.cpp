@@ -760,18 +760,9 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
   bool rebuilt = false;
   if ( force_new_redecomp || !update_data_ ) {
     // update coordinates of submesh and LOR mesh
-    auto submesh_nodes = dynamic_cast<mfem::ParGridFunction*>( submesh_.GetNodes() );
-    SLIC_ERROR_ROOT_IF( !submesh_nodes, "submesh_ Nodes is not a ParGridFunction." );
     TRIBOL_MARK_BEGIN( "Update SubMesh coords" );
-    submesh_.Transfer( coords_.GetParentGridFn(), *submesh_nodes );
+    UpdateSubmeshCoordinates();
     TRIBOL_MARK_END( "Update SubMesh coords" );
-    if ( lor_mesh_.get() ) {
-      TRIBOL_MARK_BEGIN( "Update LOR coords" );
-      auto lor_nodes = dynamic_cast<mfem::ParGridFunction*>( lor_mesh_->GetNodes() );
-      SLIC_ERROR_ROOT_IF( !lor_nodes, "lor_mesh_ Nodes is not a ParGridFunction." );
-      submesh_lor_xfer_->SubmeshToLOR( *submesh_nodes, *lor_nodes );
-      TRIBOL_MARK_END( "Update LOR coords" );
-    }
     update_data_ = std::make_unique<UpdateData>( submesh_, lor_mesh_.get(), *coords_.GetParentGridFn().ParFESpace(),
                                                  submesh_xfer_gridfn_, submesh_lor_xfer_.get(), attributes_1_,
                                                  attributes_2_, binning_proximity_scale, n_ranks, allocator_id_,
@@ -806,11 +797,6 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
   TRIBOL_MARK_END( "Copy fields to Redecomp mesh" );
 
   if ( rebuilt && elem_thickness_ ) {
-    if ( !material_modulus_ ) {
-      SLIC_ERROR_ROOT(
-          "Kinematic element penalty requires material modulus information. "
-          "Call registerMfemMaterialModulus() to set this." );
-    }
     TRIBOL_MARK_BEGIN( "Copy element thickness to Redecomp mesh" );
     redecomp::RedecompTransfer redecomp_xfer;
     // set element thickness on redecomp mesh
@@ -840,35 +826,49 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
                 [tribol_t2_view, redecomp_t_view, elem_map2_view] TRIBOL_HOST_DEVICE( int i ) {
                   tribol_t2_view[i] = redecomp_t_view[elem_map2_view[i]];
                 } );
-    // set material modulus on redecomp mesh
-    redecomp_material_modulus_ =
-        std::make_unique<mfem::QuadratureFunction>( new mfem::QuadratureSpace( &GetRedecompMesh(), 0 ) );
-    redecomp_material_modulus_->SetOwnsSpace( true );
-    redecomp_material_modulus_->UseDevice( use_device_ );
-    *redecomp_material_modulus_ = 0.0;
-    redecomp_xfer.TransferToSerial( *material_modulus_, *redecomp_material_modulus_ );
-    // set material modulus on tribol mesh
-    tribol_material_modulus_1_ = std::make_unique<ArrayT<RealT>>(
-        GetElemMap1().size(), GetElemMap1().empty() ? 1 : GetElemMap1().size(), allocator_id_ );
-    auto redecomp_m_view = redecomp_material_modulus_->Read( use_device_ );
-    ArrayViewT<RealT> tribol_m1_view( *tribol_material_modulus_1_ );
-    // NOTE: this assumes 1 thickness value per element. This is NOT true, in general, for mfem::QuadratureFunction.
-    forAllExec( exec_mode_, GetElemMap1().size(),
-                [tribol_m1_view, redecomp_m_view, elem_map1_view] TRIBOL_HOST_DEVICE( int i ) {
-                  tribol_m1_view[i] = redecomp_m_view[elem_map1_view[i]];
-                } );
-    tribol_material_modulus_2_ = std::make_unique<ArrayT<RealT>>(
-        GetElemMap2().size(), GetElemMap2().empty() ? 1 : GetElemMap2().size(), allocator_id_ );
-    ArrayViewT<RealT> tribol_m2_view( *tribol_material_modulus_2_ );
-    // NOTE: this assumes 1 thickness value per element. This is NOT true, in general, for mfem::QuadratureFunction.
-    forAllExec( exec_mode_, GetElemMap2().size(),
-                [tribol_m2_view, redecomp_m_view, elem_map2_view] TRIBOL_HOST_DEVICE( int i ) {
-                  tribol_m2_view[i] = redecomp_m_view[elem_map2_view[i]];
-                } );
+    if ( material_modulus_ ) {
+      // set material modulus on redecomp mesh
+      redecomp_material_modulus_ =
+          std::make_unique<mfem::QuadratureFunction>( new mfem::QuadratureSpace( &GetRedecompMesh(), 0 ) );
+      redecomp_material_modulus_->SetOwnsSpace( true );
+      redecomp_material_modulus_->UseDevice( use_device_ );
+      *redecomp_material_modulus_ = 0.0;
+      redecomp_xfer.TransferToSerial( *material_modulus_, *redecomp_material_modulus_ );
+      // set material modulus on tribol mesh
+      tribol_material_modulus_1_ = std::make_unique<ArrayT<RealT>>(
+          GetElemMap1().size(), GetElemMap1().empty() ? 1 : GetElemMap1().size(), allocator_id_ );
+      auto redecomp_m_view = redecomp_material_modulus_->Read( use_device_ );
+      ArrayViewT<RealT> tribol_m1_view( *tribol_material_modulus_1_ );
+      // NOTE: this assumes 1 thickness value per element. This is NOT true, in general, for mfem::QuadratureFunction.
+      forAllExec( exec_mode_, GetElemMap1().size(),
+                  [tribol_m1_view, redecomp_m_view, elem_map1_view] TRIBOL_HOST_DEVICE( int i ) {
+                    tribol_m1_view[i] = redecomp_m_view[elem_map1_view[i]];
+                  } );
+      tribol_material_modulus_2_ = std::make_unique<ArrayT<RealT>>(
+          GetElemMap2().size(), GetElemMap2().empty() ? 1 : GetElemMap2().size(), allocator_id_ );
+      ArrayViewT<RealT> tribol_m2_view( *tribol_material_modulus_2_ );
+      // NOTE: this assumes 1 thickness value per element. This is NOT true, in general, for mfem::QuadratureFunction.
+      forAllExec( exec_mode_, GetElemMap2().size(),
+                  [tribol_m2_view, redecomp_m_view, elem_map2_view] TRIBOL_HOST_DEVICE( int i ) {
+                    tribol_m2_view[i] = redecomp_m_view[elem_map2_view[i]];
+                  } );
+    }
     TRIBOL_MARK_END( "Copy element thickness to Redecomp mesh" );
   }
 
   return rebuilt;
+}
+
+void MfemMeshData::UpdateSubmeshCoordinates()
+{
+  auto submesh_nodes = dynamic_cast<mfem::ParGridFunction*>( submesh_.GetNodes() );
+  SLIC_ERROR_ROOT_IF( !submesh_nodes, "submesh_ Nodes is not a ParGridFunction." );
+  submesh_.Transfer( coords_.GetParentGridFn(), *submesh_nodes );
+  if ( lor_mesh_ ) {
+    auto lor_nodes = dynamic_cast<mfem::ParGridFunction*>( lor_mesh_->GetNodes() );
+    SLIC_ERROR_ROOT_IF( !lor_nodes, "lor_mesh_ Nodes is not a ParGridFunction." );
+    submesh_lor_xfer_->SubmeshToLOR( *submesh_nodes, *lor_nodes );
+  }
 }
 
 void MfemMeshData::GetParentResponse( mfem::Vector& r ) const
@@ -1192,13 +1192,19 @@ MfemSubmeshData::MfemSubmeshData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_
                                   std::unique_ptr<mfem::FiniteElementCollection> pressure_fec, int pressure_vdim,
                                   bool use_device )
     : submesh_pressure_{ new mfem::ParFiniteElementSpace( &submesh, pressure_fec.get(), pressure_vdim ) },
+      submesh_residual_gap_{ submesh_pressure_.ParFESpace() },
+      submesh_ball_weight_{ submesh_pressure_.ParFESpace() },
       pressure_{ submesh_pressure_ },
+      residual_gap_{ submesh_residual_gap_ },
+      ball_weight_{ submesh_ball_weight_ },
       submesh_lor_xfer_{ lor_mesh ? std::make_unique<SubmeshLORTransfer>( *submesh_pressure_.ParFESpace(), *lor_mesh )
                                   : nullptr },
       use_device_{ use_device }
 {
   submesh_pressure_.MakeOwner( pressure_fec.release() );
   submesh_pressure_ = 0.0;
+  submesh_residual_gap_ = 0.0;
+  submesh_ball_weight_ = 0.0;
 }
 
 void MfemSubmeshData::SetLORMesh( mfem::ParMesh* lor_mesh )
@@ -1215,9 +1221,196 @@ void MfemSubmeshData::UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_me
         std::make_unique<UpdateData>( *submesh_pressure_.ParFESpace(), submesh_lor_xfer_.get(), redecomp_mesh );
   }
   pressure_.UpdateField( update_data_->pressure_xfer_ );
+  residual_gap_.UpdateField( update_data_->pressure_xfer_ );
+  ball_weight_.UpdateField( update_data_->pressure_xfer_ );
   redecomp_gap_.SetSpace( pressure_.GetRedecompGridFn().FESpace() );
   redecomp_gap_.UseDevice( use_device_ );
   redecomp_gap_ = 0.0;
+}
+
+void MfemSubmeshData::UpdateResidualGapField( RealT residual_gap, RealT ramp_angle )
+{
+  constexpr RealT corner_angle_tol = 1.0e-8;
+  auto& submesh = static_cast<mfem::ParMesh&>( *submesh_pressure_.ParFESpace()->GetParMesh() );
+
+  auto update_redecomp_fields = [&]() {
+    if ( update_data_ ) {
+      residual_gap_.UpdateField( update_data_->pressure_xfer_ );
+      ball_weight_.UpdateField( update_data_->pressure_xfer_ );
+    }
+  };
+
+  if ( residual_gap <= 0.0 ) {
+    submesh_residual_gap_ = residual_gap;
+    submesh_ball_weight_ = 0.0;
+    update_redecomp_fields();
+    return;
+  }
+
+  if ( submesh.Dimension() != 1 || submesh.SpaceDimension() != 2 ) {
+    submesh_residual_gap_ = residual_gap;
+    submesh_ball_weight_ = 0.0;
+    update_redecomp_fields();
+    return;
+  }
+
+  mfem::H1_FECollection vertex_fec( 1, submesh.Dimension() );
+  mfem::ParFiniteElementSpace vertex_fes( &submesh, &vertex_fec );
+  const int num_dofs = vertex_fes.GetVSize();
+  mfem::Vector ray_x( num_dofs );
+  mfem::Vector ray_y( num_dofs );
+  mfem::Vector normal_x( num_dofs );
+  mfem::Vector normal_y( num_dofs );
+  mfem::Array<int> incidence( num_dofs );
+  ray_x = 0.0;
+  ray_y = 0.0;
+  normal_x = 0.0;
+  normal_y = 0.0;
+  incidence = 0;
+
+  auto vertex_dof = [&]( int vertex ) {
+    mfem::Array<int> dofs;
+    vertex_fes.GetVertexDofs( vertex, dofs );
+    SLIC_ERROR_ROOT_IF( dofs.Size() != 1, "Expected one scalar degree of freedom per contact-surface vertex." );
+    return dofs[0];
+  };
+
+  for ( int e = 0; e < submesh.GetNE(); ++e ) {
+    mfem::Array<int> vertices;
+    submesh.GetElementVertices( e, vertices );
+    SLIC_ERROR_ROOT_IF( vertices.Size() != 2, "Residual-gap corner ramps require linear edge topology." );
+    double x0[2];
+    double x1[2];
+    submesh.GetNode( vertices[0], x0 );
+    submesh.GetNode( vertices[1], x1 );
+    double tx = x1[0] - x0[0];
+    double ty = x1[1] - x0[1];
+    const double length = std::sqrt( tx * tx + ty * ty );
+    if ( length <= 0.0 ) {
+      continue;
+    }
+    tx /= length;
+    ty /= length;
+    const double nx = ty;
+    const double ny = -tx;
+    const int dof0 = vertex_dof( vertices[0] );
+    const int dof1 = vertex_dof( vertices[1] );
+    ray_x[dof0] += tx;
+    ray_y[dof0] += ty;
+    ray_x[dof1] -= tx;
+    ray_y[dof1] -= ty;
+    normal_x[dof0] += nx;
+    normal_y[dof0] += ny;
+    normal_x[dof1] += nx;
+    normal_y[dof1] += ny;
+    ++incidence[dof0];
+    ++incidence[dof1];
+  }
+
+  auto& group_comm = vertex_fes.GroupComm();
+  group_comm.Reduce( ray_x.HostReadWrite(), mfem::GroupCommunicator::Sum );
+  group_comm.Bcast( ray_x.HostReadWrite() );
+  group_comm.Reduce( ray_y.HostReadWrite(), mfem::GroupCommunicator::Sum );
+  group_comm.Bcast( ray_y.HostReadWrite() );
+  group_comm.Reduce( normal_x.HostReadWrite(), mfem::GroupCommunicator::Sum );
+  group_comm.Bcast( normal_x.HostReadWrite() );
+  group_comm.Reduce( normal_y.HostReadWrite(), mfem::GroupCommunicator::Sum );
+  group_comm.Bcast( normal_y.HostReadWrite() );
+  group_comm.Reduce( incidence, mfem::GroupCommunicator::Sum );
+  group_comm.Bcast( incidence );
+
+  mfem::Vector vertex_ball_weight( num_dofs );
+  vertex_ball_weight = 0.0;
+  const bool builds_corner_ramp = ramp_angle > 0.0;
+  const double slope = builds_corner_ramp ? 2.0 * std::tan( 0.5 * ramp_angle ) : 0.0;
+  const double ramp_length = builds_corner_ramp ? residual_gap / slope : 0.0;
+  mfem::Vector distance( num_dofs );
+  distance = ramp_length;
+  // A ball closes the offset surface only where adjacent edges separate at a convex turn. Straight and nonconvex
+  // interior vertices already have continuous or overlapping offset edges, while an open surface needs an end cap.
+  const double max_corner_angle = 2.0 * energy_mortar::perpendicular_normal_angle - corner_angle_tol;
+  for ( int i = 0; i < num_dofs; ++i ) {
+    const bool is_open_endpoint = incidence[i] == 1;
+    if ( is_open_endpoint ) {
+      vertex_ball_weight[i] = 1.0;
+      continue;
+    }
+    if ( incidence[i] != 2 ) {
+      continue;
+    }
+    const double ray_norm_sq = ray_x[i] * ray_x[i] + ray_y[i] * ray_y[i];
+    const double opening_cosine = std::max( -1.0, std::min( 1.0, 0.5 * ( ray_norm_sq - 2.0 ) ) );
+    const double exterior_alignment = ray_x[i] * normal_x[i] + ray_y[i] * normal_y[i];
+    const bool is_strict_corner = std::acos( opening_cosine ) <= max_corner_angle;
+    const bool is_convex_corner = is_strict_corner && exterior_alignment < 0.0;
+    const bool is_nonconvex_corner = is_strict_corner && exterior_alignment > 0.0;
+    if ( is_convex_corner ) {
+      vertex_ball_weight[i] = 1.0;
+    } else if ( builds_corner_ramp && is_nonconvex_corner ) {
+      distance[i] = 0.0;
+    }
+  }
+  group_comm.Reduce( vertex_ball_weight.HostReadWrite(), mfem::GroupCommunicator::Max );
+  group_comm.Bcast( vertex_ball_weight.HostReadWrite() );
+
+  if ( builds_corner_ramp ) {
+    group_comm.Reduce( distance.HostReadWrite(), mfem::GroupCommunicator::Min );
+    group_comm.Bcast( distance.HostReadWrite() );
+
+    int local_vertices = submesh.GetNV();
+    int max_iterations = 0;
+    MPI_Allreduce( &local_vertices, &max_iterations, 1, MPI_INT, MPI_SUM, submesh.GetComm() );
+    for ( int iteration = 0; iteration < max_iterations; ++iteration ) {
+      mfem::Vector previous( distance );
+      for ( int e = 0; e < submesh.GetNE(); ++e ) {
+        mfem::Array<int> vertices;
+        submesh.GetElementVertices( e, vertices );
+        double x0[2];
+        double x1[2];
+        submesh.GetNode( vertices[0], x0 );
+        submesh.GetNode( vertices[1], x1 );
+        const double dx = x1[0] - x0[0];
+        const double dy = x1[1] - x0[1];
+        const double length = std::sqrt( dx * dx + dy * dy );
+        const int dof0 = vertex_dof( vertices[0] );
+        const int dof1 = vertex_dof( vertices[1] );
+        const double old0 = distance[dof0];
+        const double old1 = distance[dof1];
+        distance[dof0] = std::min( old0, std::min( ramp_length, old1 + length ) );
+        distance[dof1] = std::min( old1, std::min( ramp_length, old0 + length ) );
+      }
+      group_comm.Reduce( distance.HostReadWrite(), mfem::GroupCommunicator::Min );
+      group_comm.Bcast( distance.HostReadWrite() );
+      int changed = 0;
+      for ( int i = 0; i < num_dofs; ++i ) {
+        changed = changed || distance[i] < previous[i] - 1.0e-14 * std::max( 1.0, ramp_length );
+      }
+      MPI_Allreduce( MPI_IN_PLACE, &changed, 1, MPI_INT, MPI_MAX, submesh.GetComm() );
+      if ( !changed ) {
+        break;
+      }
+    }
+  }
+
+  mfem::ParGridFunction vertex_gap( &vertex_fes );
+  for ( int i = 0; i < num_dofs; ++i ) {
+    vertex_gap[i] = builds_corner_ramp ? std::min( residual_gap, slope * distance[i] ) : residual_gap;
+  }
+  mfem::GridFunctionCoefficient gap_coefficient( &vertex_gap );
+  submesh_residual_gap_.ProjectCoefficient( gap_coefficient );
+  mfem::ParGridFunction vertex_ball_weight_grid_function( &vertex_fes );
+  vertex_ball_weight_grid_function = vertex_ball_weight;
+  mfem::GridFunctionCoefficient ball_weight_coefficient( &vertex_ball_weight_grid_function );
+  submesh_ball_weight_.ProjectCoefficient( ball_weight_coefficient );
+  auto* gap_data = submesh_residual_gap_.HostReadWrite();
+  for ( int i = 0; i < submesh_residual_gap_.Size(); ++i ) {
+    gap_data[i] = std::max( 0.0, std::min( residual_gap, gap_data[i] ) );
+  }
+  auto* ball_weight_data = submesh_ball_weight_.HostReadWrite();
+  for ( int i = 0; i < submesh_ball_weight_.Size(); ++i ) {
+    ball_weight_data[i] = std::max( 0.0, std::min( 1.0, ball_weight_data[i] ) );
+  }
+  update_redecomp_fields();
 }
 
 void MfemSubmeshData::GetSubmeshGap( mfem::Vector& g ) const

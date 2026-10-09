@@ -80,6 +80,17 @@ class ContactFormulation {
   virtual void updateNodalForces() = 0;
 
   /**
+   * @brief Synchronize formulation data before gap and force assembly
+   *
+   * When coupling-scheme parameters change between updates, formulations that cache those values refresh their local
+   * state here. Formulations that do not cache parameters may retain the default no-op implementation.
+   *
+   * @param cycle Current update cycle
+   * @param parameters Current coupling-scheme parameters
+   */
+  virtual void beginCycle( int /*cycle*/, const Parameters& /*parameters*/ ) {}
+
+  /**
    * @brief Reports if formulation has a maximum allowable timestep calculation
    *
    * @return true if formulation has a timestep calculation available; false otherwise
@@ -118,11 +129,6 @@ class ContactFormulation {
    * Used to dynamically update the constant penalty stiffness after the formulation has been instantiated.
    */
   virtual void updateConstantPenaltyStiffness( double /*mesh1_penalty*/, double /*mesh2_penalty*/ ) {}
-
-  /**
-   * @brief Update the residual-gap offset on formulations that cache contact parameters
-   */
-  virtual void setResidualGap( RealT /*residual_gap*/ ) {}
 
 #ifdef BUILD_REDECOMP
   /**

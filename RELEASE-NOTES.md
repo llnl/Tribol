@@ -8,6 +8,10 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added EnergyMortar controls for projected-edge smoothing, normal-alignment smoothing, nonconvex-corner residual-gap
+  ramps, and optional per-cycle ramp rebuilding. In 2D, circular endpoint caps preserve residual separation at convex
+  corners and open contact-surface ends.
+- Added stitched and C-shaped mesh builders for constructing connected linear test meshes.
 - Added support for a linear tetrahedral mesh under the TestMesh class.
 - Added coupling scheme tests with null pointer registration.
 - Multi-rank contact API using MFEM data structures.
@@ -39,6 +43,11 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- EnergyMortar now represents residual separation with an offset non-mortar surface and filters deeply penetrating
+  self-contact pairs using registered element thickness. Normal smoothing begins at 45 degrees by default, and the
+  residual gap ramps to zero over a 10-degree opening at nonconvex 2D corners by default.
+- EnergyMortar configuration changes are synchronized at the next update without recreating the formulation or
+  clearing its pressure state.
 - Return negative timestep vote for non-null meshes with null velocity pointers.
 - Refactored how surface elements are characterized, now using finite element
   order and type of cell.

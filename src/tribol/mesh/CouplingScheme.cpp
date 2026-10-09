@@ -1030,6 +1030,7 @@ void CouplingScheme::performBinning()
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
   if ( m_formulation ) {
+    m_formulation->beginCycle( cycle, m_parameters );
     if ( m_interface_pairs.size() > 0 || !hasFixedBinning() ) {
       m_formulation->setInterfacePairs( std::move( m_interface_pairs ), 0 );
     }
