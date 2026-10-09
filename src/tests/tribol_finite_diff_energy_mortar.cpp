@@ -397,6 +397,7 @@ TEST( NormalAngleSmoothingCheck, ShiftedCosineStartsAtConfiguredAngle )
   constexpr double start_angle = 0.25 * pi;
   const ContactParams default_params{};
   EXPECT_DOUBLE_EQ( default_params.normal_smoothing_start_angle, start_angle );
+  EXPECT_DOUBLE_EQ( energy_mortar::default_residual_gap_ramp_angle, pi / 18.0 );
   EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -std::cos( pi / 6.0 ), start_angle ), -1.0 );
   EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -std::cos( start_angle ), start_angle ), -1.0 );
   EXPECT_NEAR( ContactSmoothing::normal_alignment_factor( -std::cos( 3.0 * pi / 8.0 ), start_angle ),
@@ -593,6 +594,8 @@ TEST( EnergyMortarResidualGapCheck, NonuniformRampChangesProjectionSpatially )
   const auto max_projection =
       evaluator.compute_projection_bounds( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(), global_max );
 
+  EXPECT_TRUE( std::abs( ramp_projection[0] - zero_projection[0] ) > 1.0e-6 ||
+               std::abs( ramp_projection[1] - zero_projection[1] ) > 1.0e-6 );
   EXPECT_TRUE( std::abs( ramp_projection[0] - max_projection[0] ) > 1.0e-6 ||
                std::abs( ramp_projection[1] - max_projection[1] ) > 1.0e-6 );
 }

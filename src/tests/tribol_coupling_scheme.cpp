@@ -936,6 +936,28 @@ TEST_F( CouplingSchemeTest, auto_common_plane_with_element_thickness )
   EXPECT_EQ( isInit, true );
 }
 
+TEST_F( CouplingSchemeTest, energy_mortar_setters_reject_out_of_range_values )
+{
+  registerDummy2DMesh( 0 );
+  registerDummy2DMesh( 1 );
+  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                                  tribol::ExecutionMode::Sequential );
+
+  axom::slic::ScopedAbortToThrow abort_to_throw;
+  EXPECT_THROW( tribol::setEnergyMortarSmoothingLength( 0, -1.0e-3 ), axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setEnergyMortarSmoothingLength( 0, 0.5001 ), axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setEnergyMortarNormalSmoothingStartAngle( 0, -1.0e-3 ), axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setEnergyMortarNormalSmoothingStartAngle(
+                    0, tribol::energy_mortar::perpendicular_normal_angle + 1.0e-3 ),
+                axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setEnergyMortarResidualGapRampAngle( 0, -1.0e-3 ), axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setEnergyMortarResidualGapRampAngle(
+                    0, tribol::energy_mortar::perpendicular_normal_angle + 1.0e-3 ),
+                axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setResidualGap( 0, -1.0e-3 ), axom::slic::SlicAbortException );
+}
+
 int main( int argc, char* argv[] )
 {
   int result = 0;

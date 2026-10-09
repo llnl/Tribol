@@ -1534,13 +1534,13 @@ class MfemSubmeshData {
   void UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_mesh, bool new_redecomp = true );
 
   /**
-   * @brief Build the EnergyMortar residual-gap ramp and lagged endpoint-ball eligibility on the contact submesh
+   * @brief Build the EnergyMortar residual-gap ramp and endpoint-cap weights on the contact submesh
    *
    * @param residual_gap Full residual gap away from nonconvex corners
    * @param ramp_angle Total symmetric crack-opening ramp angle in radians; zero disables corner reduction
    *
-   * @note Every nonconvex 2D opening below pi seeds corner reduction. Endpoint balls remain active at convex corners
-   * and open contact-surface ends. Other dimensions retain a uniform residual gap and disable endpoint balls.
+   * @note Every nonconvex 2D opening below pi seeds corner reduction. Circular endpoint caps remain active at convex
+   * corners and open contact-surface ends. Other dimensions retain a uniform residual gap and disable endpoint caps.
    */
   void UpdateResidualGapField( RealT residual_gap, RealT ramp_angle );
 

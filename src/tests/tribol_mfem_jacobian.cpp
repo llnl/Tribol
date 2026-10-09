@@ -1132,6 +1132,133 @@ TEST_F( MfemJacobianTest, energy_mortar_nodal_penalty_includes_ball_completion )
   EXPECT_GT( stiffness->NNZ(), 0 );
 }
 
+TEST_F( MfemJacobianTest, energy_mortar_runtime_parameters_preserve_lagrange_multiplier_state )
+{
+  auto mesh = MakeBallCompletionMesh();
+  mfem::H1_FECollection fec( 1, mesh.SpaceDimension() );
+  mfem::ParFiniteElementSpace fes( &mesh, &fec, mesh.SpaceDimension(), mfem::Ordering::byVDIM );
+  mfem::ParGridFunction coords( &fes );
+  mesh.GetNodes( coords );
+
+  const int scheme_id = NextCouplingSchemeId();
+  tribol::registerMfemCouplingScheme( scheme_id, 2 * scheme_id, 2 * scheme_id + 1, mesh, coords, { 5 }, { 3 },
+                                      tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
+                                      tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID );
+  tribol::setEnforcementLocation( scheme_id, tribol::EnforcementLocation::Nodal );
+  tribol::setResidualGap( scheme_id, 0.1 );
+  tribol::setEnergyMortarResidualGapRampAngle( scheme_id, 0.0 );
+  tribol::updateMfemParallelDecomposition();
+
+  double dt = 1.0;
+  ASSERT_EQ( tribol::update( 1, 1.0, dt ), 0 );
+
+  auto& manager = tribol::CouplingSchemeManager::getInstance();
+  auto* scheme = manager.findData( scheme_id );
+  ASSERT_NE( scheme, nullptr );
+  auto* formulation = scheme->getContactFormulation();
+  ASSERT_NE( formulation, nullptr );
+  auto* submesh_data = scheme->getMfemSubmeshData();
+  ASSERT_NE( submesh_data, nullptr );
+
+  const auto& initial_gap = submesh_data->GetSubmeshResidualGap();
+  for ( int i = 0; i < initial_gap.Size(); ++i ) {
+    EXPECT_NEAR( initial_gap[i], 0.1, 1.0e-14 );
+  }
+
+  auto& pressure = tribol::getMfemContactPressure( scheme_id );
+  pressure = -0.25;
+
+  tribol::setEnergyMortarSmoothingLength( scheme_id, 0.2 );
+  tribol::setEnergyMortarNormalSmoothingStartAngle( scheme_id,
+                                                     tribol::energy_mortar::perpendicular_normal_angle );
+  tribol::setResidualGap( scheme_id, 0.2 );
+  tribol::setEnergyMortarResidualGapRampAngle( scheme_id, 0.1 );
+  tribol::setEnergyMortarResidualGapRampUpdates( scheme_id, true );
+
+  EXPECT_EQ( scheme->getContactFormulation(), formulation );
+  EXPECT_EQ( &tribol::getMfemContactPressure( scheme_id ), &pressure );
+  for ( int i = 0; i < initial_gap.Size(); ++i ) {
+    EXPECT_NEAR( initial_gap[i], 0.1, 1.0e-14 );
+  }
+
+  ASSERT_EQ( tribol::update( 2, 2.0, dt ), 0 );
+  EXPECT_EQ( scheme->getContactFormulation(), formulation );
+  EXPECT_EQ( &tribol::getMfemContactPressure( scheme_id ), &pressure );
+  for ( int i = 0; i < pressure.Size(); ++i ) {
+    EXPECT_NEAR( pressure[i], -0.25, 1.0e-14 );
+  }
+  const auto& updated_gap = submesh_data->GetSubmeshResidualGap();
+  for ( int i = 0; i < updated_gap.Size(); ++i ) {
+    EXPECT_NEAR( updated_gap[i], 0.2, 1.0e-14 );
+  }
+}
+
+TEST_F( MfemJacobianTest, energy_mortar_dynamic_residual_gap_ramp_updates_once_per_cycle )
+{
+  mfem::ParMesh mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::CShapeMesh( 8, 8, 2 ) );
+  mfem::H1_FECollection fec( 1, mesh.SpaceDimension() );
+  mfem::ParFiniteElementSpace fes( &mesh, &fec, mesh.SpaceDimension(), mfem::Ordering::byVDIM );
+  mfem::ParGridFunction coords( &fes );
+  mesh.GetNodes( coords );
+
+  const int scheme_id = NextCouplingSchemeId();
+  tribol::registerMfemCouplingScheme( scheme_id, 2 * scheme_id, 2 * scheme_id + 1, mesh, coords, { 4 }, { 2, 3 },
+                                      tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
+                                      tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID );
+  tribol::setEnforcementLocation( scheme_id, tribol::EnforcementLocation::Nodal );
+  tribol::setResidualGap( scheme_id, 0.05 );
+  tribol::updateMfemParallelDecomposition();
+
+  auto& manager = tribol::CouplingSchemeManager::getInstance();
+  auto* scheme = manager.findData( scheme_id );
+  ASSERT_NE( scheme, nullptr );
+  auto* formulation = scheme->getContactFormulation();
+  ASSERT_NE( formulation, nullptr );
+  auto* submesh_data = scheme->getMfemSubmeshData();
+  ASSERT_NE( submesh_data, nullptr );
+
+  auto copy_residual_gap = [&]() {
+    mfem::Vector copy( submesh_data->GetSubmeshResidualGap().Size() );
+    copy = submesh_data->GetSubmeshResidualGap();
+    return copy;
+  };
+  auto global_difference_norm = []( const mfem::Vector& left, const mfem::Vector& right ) {
+    mfem::Vector difference( left );
+    difference -= right;
+    double local_norm_squared = difference * difference;
+    double global_norm_squared = 0.0;
+    MPI_Allreduce( &local_norm_squared, &global_norm_squared, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
+    return std::sqrt( global_norm_squared );
+  };
+  auto scale_x_coordinates = [&]( double factor ) {
+    for ( int dof = 0; dof < fes.GetNDofs(); ++dof ) {
+      coords[fes.DofToVDof( dof, 0 )] *= factor;
+    }
+  };
+
+  formulation->beginCycle( 1, scheme->getParameters() );
+  const auto initial_gap = copy_residual_gap();
+
+  scale_x_coordinates( 1.5 );
+  formulation->beginCycle( 2, scheme->getParameters() );
+  const auto disabled_update_gap = copy_residual_gap();
+  EXPECT_DOUBLE_EQ( global_difference_norm( initial_gap, disabled_update_gap ), 0.0 );
+
+  tribol::setEnergyMortarResidualGapRampUpdates( scheme_id, true );
+  formulation->beginCycle( 3, scheme->getParameters() );
+  const auto first_dynamic_gap = copy_residual_gap();
+  EXPECT_GT( global_difference_norm( initial_gap, first_dynamic_gap ), 1.0e-12 );
+
+  scale_x_coordinates( 1.5 );
+  formulation->beginCycle( 3, scheme->getParameters() );
+  const auto repeated_cycle_gap = copy_residual_gap();
+  EXPECT_DOUBLE_EQ( global_difference_norm( first_dynamic_gap, repeated_cycle_gap ), 0.0 );
+
+  formulation->beginCycle( 4, scheme->getParameters() );
+  const auto next_cycle_gap = copy_residual_gap();
+  EXPECT_GT( global_difference_norm( first_dynamic_gap, next_cycle_gap ), 1.0e-12 );
+}
+
 TEST_F( MfemJacobianTest, energy_mortar_full_boundary_self_contact_does_not_double_ball_response )
 {
   auto mesh = MakeBallCompletionMesh();

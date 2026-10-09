@@ -41,8 +41,10 @@ TEST( ResidualGapRamp, ConcaveCornerRampsOverMultipleElements )
   tribol::MfemSubmeshData data( submesh, nullptr, std::move( fec ), 1, false );
 
   constexpr double residual_gap = 0.05;
-  constexpr double pi = 3.14159265358979323846264338327950288;
-  data.UpdateResidualGapField( residual_gap, 10.0 * pi / 180.0 );
+  const tribol::Parameters parameters{};
+  EXPECT_DOUBLE_EQ( parameters.energy_mortar_residual_gap_ramp_angle,
+                    tribol::energy_mortar::default_residual_gap_ramp_angle );
+  data.UpdateResidualGapField( residual_gap, parameters.energy_mortar_residual_gap_ramp_angle );
 
   bool found_tip = false;
   bool found_ramp = false;

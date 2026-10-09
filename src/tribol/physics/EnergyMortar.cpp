@@ -50,8 +50,8 @@ struct KernelParams {
   double del{ 0.1 };  // Integration-bound smoothing parameter
   double normal_smoothing_start_angle{ energy_mortar::default_normal_smoothing_start_angle };
   double k{ 1.0 };                             // Penalty stiffness
-  std::array<double, 2> residual_gap{ {} };    // Lagged residual-gap values at A0 and A1
-  std::array<double, 2> ball_weight{};         // Lagged endpoint-ball weights at A0 and A1
+  std::array<double, 2> residual_gap{ {} };    // Endpoint separations held fixed during pair differentiation
+  std::array<double, 2> ball_weight{};         // Endpoint-cap weights held fixed during pair differentiation
   std::array<int, 2> ball_is_open_endpoint{};  // Whether each endpoint has only the current incident edge
   double max_auto_interpenetration{ 0.0 };     // Positive physical penetration where self-contact is removed
 };
@@ -240,8 +240,8 @@ TRIBOL_ENZYME_INLINE void find_intersection( const double* A0, const double* A1,
 }
 
 // Construct the one-sided virtual contact geometry. Edge A is the non-mortar side and is shifted outward by its full
-// nodal residual gap. Edge B is the mortar side and remains physical. The residual-gap values are lagged data, while
-// the non-mortar normal and all virtual geometry remain functions of the physical coordinates.
+// nodal residual gap. Edge B is the mortar side and remains physical. The endpoint separation is fixed while
+// differentiating a pair, but the non-mortar normal and offset geometry remain functions of the physical coordinates.
 TRIBOL_ENZYME_INLINE void virtual_edges( const double* A0, const double* A1, const double* B0, const double* B1,
                                          const double* residual_gap, double* VA0, double* VA1, double* VB0,
                                          double* VB1 )
@@ -597,9 +597,8 @@ TRIBOL_ENZYME_INLINE double qp_penalty_kernel_qp_energy( double xiA, double w, c
   return is_active ? 0.5 * penalty * gap * gap * w * J : 0.0;
 }
 
-// Integrate the portion of mortar edge B whose closest non-mortar feature is this endpoint. The residual-gap disk sets
-// the radial support, and the two outgoing edge rays bound the corner's normal cone. `nonmortar_tributary_length` is
-// one incident edge's half-length contribution to the node's total tributary length.
+// Keep endpoint-cap contact inside the side of an adjacent edge that faces the corner opening. Without this clipping,
+// the circular cap could apply contact forces through the solid side of that edge.
 TRIBOL_ENZYME_INLINE bool clip_interval_to_ball_cone_halfspace( const double* nonmortar_node, const double* B0,
                                                                 const double* B1, const double* outgoing_ray,
                                                                 double* alpha_min, double* alpha_max )

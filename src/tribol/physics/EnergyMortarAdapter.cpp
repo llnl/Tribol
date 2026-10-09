@@ -176,16 +176,43 @@ void EnergyMortarAdapter<EnforcementLocation>::updateConstantPenaltyStiffness( d
 }
 
 template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::setResidualGap( RealT residual_gap )
+void EnergyMortarAdapter<EnforcementLocation>::beginCycle( int cycle, const Parameters& parameters )
 {
-  params_.residual_gap = residual_gap;
-  residual_gap_field_dirty_ = true;
-  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
-}
+  bool requires_evaluator_rebuild = false;
+  if ( params_.del != parameters.energy_mortar_smoothing_length ) {
+    params_.del = parameters.energy_mortar_smoothing_length;
+    requires_evaluator_rebuild = true;
+  }
+  if ( params_.normal_smoothing_start_angle != parameters.energy_mortar_normal_smoothing_start_angle ) {
+    params_.normal_smoothing_start_angle = parameters.energy_mortar_normal_smoothing_start_angle;
+    requires_evaluator_rebuild = true;
+  }
+  if ( params_.residual_gap != parameters.residual_gap ) {
+    params_.residual_gap = parameters.residual_gap;
+    residual_gap_field_dirty_ = true;
+    requires_evaluator_rebuild = true;
+  }
+  if ( params_.is_auto_contact != parameters.auto_contact_check ) {
+    params_.is_auto_contact = parameters.auto_contact_check;
+    requires_evaluator_rebuild = true;
+  }
+  if ( params_.auto_contact_penetration_fraction != parameters.auto_contact_pen_frac ) {
+    params_.auto_contact_penetration_fraction = parameters.auto_contact_pen_frac;
+    requires_evaluator_rebuild = true;
+  }
+  if ( residual_gap_ramp_angle_ != parameters.energy_mortar_residual_gap_ramp_angle ) {
+    residual_gap_ramp_angle_ = parameters.energy_mortar_residual_gap_ramp_angle;
+    residual_gap_field_dirty_ = true;
+  }
+  if ( !updates_residual_gap_ramp_ && parameters.energy_mortar_residual_gap_ramp_updates ) {
+    residual_gap_field_dirty_ = true;
+  }
+  updates_residual_gap_ramp_ = parameters.energy_mortar_residual_gap_ramp_updates;
 
-template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::beginCycle( int cycle )
-{
+  if ( requires_evaluator_rebuild ) {
+    evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+  }
+
   if ( !residual_gap_field_dirty_ && ( !updates_residual_gap_ramp_ || residual_gap_field_cycle_ == cycle ) ) {
     return;
   }

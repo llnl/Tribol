@@ -20,7 +20,7 @@ struct QuadPoints {
 
 /// Parameters controlling ENERGY_MORTAR contact evaluation.
 struct ContactParams {
-  double del{ 0.1 };  ///< Transition width for projection bounds and endpoint-ball cone activation.
+  double del{ 0.1 };  ///< Transition width between projected-edge and endpoint-cap contact.
   double normal_smoothing_start_angle{
       energy_mortar::default_normal_smoothing_start_angle };  ///< Normal smoothing start angle in radians.
   double k{ 1.0 };                                            ///< Penalty stiffness.
@@ -47,7 +47,7 @@ struct QuadraturePointPenaltyData {
 
 /// Stores the enlarged source-feature stencil used by endpoint-ball contact.
 struct BallEndpointData {
-  std::array<double, 2> weight{};                    ///< Lagged eligibility weights at A0 and A1.
+  std::array<double, 2> weight{};                    ///< Endpoint-cap weights held fixed during pair differentiation.
   std::array<int, 2> neighbor_node{ -1, -1 };        ///< Other node on the second edge incident to each endpoint.
   std::array<int, 2> neighbor_element{ -1, -1 };     ///< Element containing each additional stencil node.
   std::array<int, 2> neighbor_local_node{ -1, -1 };  ///< Local node number in each additional element.
@@ -112,7 +112,7 @@ struct Gparams {
   std::array<double, 3> w;   ///< Quadrature weights mapped to the local integration interval.
   double normal_smoothing_start_angle{
       energy_mortar::default_normal_smoothing_start_angle };  ///< Normal smoothing start angle in radians.
-  std::array<double, 2> residual_gap{};  ///< Lagged residual-gap values at the two non-mortar edge endpoints.
+  std::array<double, 2> residual_gap{};  ///< Endpoint separations held fixed during pair differentiation.
 };
 
 /// Provides smoothing operations for the Energy Mortar contact formulation.

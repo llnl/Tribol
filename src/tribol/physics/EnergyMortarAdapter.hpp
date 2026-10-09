@@ -213,14 +213,12 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   void updateConstantPenaltyStiffness( double mesh1_penalty, double mesh2_penalty ) override;
 
   /**
-   * @brief Update the residual-gap separation
+   * @brief Refresh cached contact settings and rebuild cycle-dependent residual-gap fields when required
    *
-   * @param residual_gap User-defined separation
+   * @param cycle Current update cycle
+   * @param parameters Current coupling-scheme parameters
    */
-  void setResidualGap( RealT residual_gap ) override;
-
-  /** @brief Rebuild the lagged residual-gap ramp when required for this cycle. */
-  void beginCycle( int cycle ) override;
+  void beginCycle( int cycle, const Parameters& parameters ) override;
 
 #ifdef BUILD_REDECOMP
   /**
@@ -307,7 +305,9 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
 
   double residual_gap_ramp_angle_{ energy_mortar::default_residual_gap_ramp_angle };
   bool updates_residual_gap_ramp_{ false };
+  // When the requested separation or corner-ramp angle changes, the nodal field must be rebuilt before it is used.
   bool residual_gap_field_dirty_{ true };
+  // Dynamic ramps are rebuilt at most once for each cycle, even when nonlinear iterations repeat the update.
   int residual_gap_field_cycle_{ -1 };
 
   /**

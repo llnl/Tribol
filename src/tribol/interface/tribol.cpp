@@ -196,7 +196,6 @@ void setEnergyMortarSmoothingLength( IndexT cs_id, RealT smoothing_length )
                       "tribol::setEnergyMortarSmoothingLength(): transition width must be in [0, 0.5]." );
 
   cs->getParameters().energy_mortar_smoothing_length = smoothing_length;
-  cs->updateContactFormulation();
 }
 
 //------------------------------------------------------------------------------
@@ -210,7 +209,6 @@ void setEnergyMortarNormalSmoothingStartAngle( IndexT cs_id, RealT start_angle )
                       "tribol::setEnergyMortarNormalSmoothingStartAngle(): start angle must be in [0, pi / 2]." );
 
   cs->getParameters().energy_mortar_normal_smoothing_start_angle = start_angle;
-  cs->updateContactFormulation();
 }
 
 //------------------------------------------------------------------------------
@@ -224,7 +222,6 @@ void setEnergyMortarResidualGapRampAngle( IndexT cs_id, RealT ramp_angle )
                       "tribol::setEnergyMortarResidualGapRampAngle(): ramp angle must be in [0, pi / 2]." );
 
   cs->getParameters().energy_mortar_residual_gap_ramp_angle = ramp_angle;
-  cs->updateContactFormulation();
 }
 
 //------------------------------------------------------------------------------
@@ -236,7 +233,6 @@ void setEnergyMortarResidualGapRampUpdates( IndexT cs_id, bool enabled )
                                << "prior to calling this routine." );
 
   cs->getParameters().energy_mortar_residual_gap_ramp_updates = enabled;
-  cs->updateContactFormulation();
 }
 
 //------------------------------------------------------------------------------
@@ -417,9 +413,6 @@ void setResidualGap( IndexT cs_id, RealT residual_gap )
   SLIC_ERROR_ROOT_IF( residual_gap < 0.0, "tribol::setResidualGap(): residual gap must be nonnegative." );
 
   cs->getParameters().residual_gap = residual_gap;
-  if ( cs->getContactFormulation() ) {
-    cs->getContactFormulation()->setResidualGap( residual_gap );
-  }
 
 }  // end setResidualGap()
 
