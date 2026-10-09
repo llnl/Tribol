@@ -7,6 +7,8 @@
 
 #include <mpi.h>
 
+#include <numbers>
+
 #include "mfem.hpp"
 
 #include "tribol/config.hpp"
@@ -109,10 +111,9 @@ class SparseMatrixTest : public testing::TestWithParam<std::tuple<int, int, doub
 
     // define analytical field for testing
     auto x_function = [&]( const mfem::Vector& x ) {
-      double pi = 3.1415;
       double f = 0.0;
       for ( int i = 0; i < dim; i++ ) {
-        f += std::sin( 2. * pi * x[i] / side_length );
+        f += std::sin( 2. * std::numbers::pi_v<double> * x[i] / side_length );
       }
       return 0.5 + 0.5 * f / dim;
     };

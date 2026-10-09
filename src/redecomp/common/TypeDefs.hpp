@@ -7,15 +7,12 @@
 #define SRC_REDECOMP_COMMON_TYPEDEFS_HPP_
 
 #include <utility>
-#include <cmath>
 
 #include "axom/primal.hpp"
 
 #include "redecomp/utils/MPIArray.hpp"
 
 namespace redecomp {
-constexpr double pi = M_PI;
-
 template <int NDIMS>
 using Point = axom::primal::Point<double, NDIMS>;
 

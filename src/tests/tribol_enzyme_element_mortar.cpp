@@ -10,6 +10,7 @@
 //-----------------------------------------------------------------------------
 
 #include <iostream>
+#include <numbers>
 
 #include "tribol/common/Parameters.hpp"
 #include "tribol/config.hpp"
@@ -739,8 +740,8 @@ TEST_F( EnzymeElementMortarTest, Rotated30DegNonmortarElementMinorInterpenetrati
                     0.0,  0.0,  1.0,  1.0,
                     0.01, 0.01, 0.01, 0.01 };
   // clang-format on
-  double cos30 = std::cos( redecomp::pi / 6.0 );
-  double sin30 = std::sin( redecomp::pi / 6.0 );
+  double cos30 = std::cos( std::numbers::pi_v<double> / 6.0 );
+  double sin30 = std::sin( std::numbers::pi_v<double> / 6.0 );
   for ( int i{ 0 }; i < 4; ++i ) {
     double x_new = x1[i] * cos30 - x1[i + 4] * sin30;
     double y_new = x1[i] * sin30 + x1[i + 4] * cos30;
@@ -775,8 +776,8 @@ TEST_F( EnzymeElementMortarTest, NonaffineRotated45DegMortarElementMinorInterpen
                     0.0,  0.0,  1.1,  1.0,
                     0.01, 0.01, 0.01, 0.01 };
   // clang-format on
-  double cos45 = std::cos( redecomp::pi / 4.0 );
-  double sin45 = std::sin( redecomp::pi / 4.0 );
+  double cos45 = std::cos( std::numbers::pi_v<double> / 4.0 );
+  double sin45 = std::sin( std::numbers::pi_v<double> / 4.0 );
   for ( int i{ 0 }; i < 4; ++i ) {
     double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
     double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
@@ -811,8 +812,8 @@ TEST_F( EnzymeElementMortarTest, NonaffineOutOfPlaneNonmortarElementMinorInterpe
                     0.0,  0.0,  1.1,  1.0,
                     0.0,  0.0,  0.01, 0.01 };
   // clang-format on
-  double cos45 = std::cos( redecomp::pi / 4.0 );
-  double sin45 = std::sin( redecomp::pi / 4.0 );
+  double cos45 = std::cos( std::numbers::pi_v<double> / 4.0 );
+  double sin45 = std::sin( std::numbers::pi_v<double> / 4.0 );
   for ( int i{ 0 }; i < 4; ++i ) {
     double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
     double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
@@ -847,8 +848,8 @@ TEST_F( EnzymeElementMortarTest, NonaffineWarpedNonmortarElementMinorInterpenetr
                     0.0,  0.0,   1.1,  1.0,
                     0.0,  -0.01, 0.01, 0.02 };
   // clang-format on
-  double cos45 = std::cos( redecomp::pi / 4.0 );
-  double sin45 = std::sin( redecomp::pi / 4.0 );
+  double cos45 = std::cos( std::numbers::pi_v<double> / 4.0 );
+  double sin45 = std::sin( std::numbers::pi_v<double> / 4.0 );
   for ( int i{ 0 }; i < 4; ++i ) {
     double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
     double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
@@ -883,8 +884,8 @@ TEST_F( EnzymeElementMortarTest, NonaffineOutOfPlaneMortarElementMinorInterpenet
                     0.0,  0.0,  1.1,  1.0,
                     0.01, 0.01, 0.01, 0.01 };
   // clang-format on
-  double cos45 = std::cos( redecomp::pi / 4.0 );
-  double sin45 = std::sin( redecomp::pi / 4.0 );
+  double cos45 = std::cos( std::numbers::pi_v<double> / 4.0 );
+  double sin45 = std::sin( std::numbers::pi_v<double> / 4.0 );
   for ( int i{ 0 }; i < 4; ++i ) {
     double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
     double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
@@ -919,8 +920,8 @@ TEST_F( EnzymeElementMortarTest, NonaffineWarpedMortarElementMinorInterpenetrati
                     0.0,  0.0,  1.1,  1.0,
                     0.01, 0.01, 0.01, 0.01 };
   // clang-format on
-  double cos45 = std::cos( redecomp::pi / 4.0 );
-  double sin45 = std::sin( redecomp::pi / 4.0 );
+  double cos45 = std::cos( std::numbers::pi_v<double> / 4.0 );
+  double sin45 = std::sin( std::numbers::pi_v<double> / 4.0 );
   for ( int i{ 0 }; i < 4; ++i ) {
     double x_new = x1[i] * cos45 - x1[i + 4] * sin45;
     double y_new = x1[i] * sin45 + x1[i + 4] * cos45;
