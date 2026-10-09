@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <set>
 #include <tuple>
 #include "tribol/physics/EnergyMortar.hpp"
@@ -393,7 +394,7 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
 
 TEST( NormalAngleSmoothingCheck, ShiftedCosineStartsAtConfiguredAngle )
 {
-  constexpr double pi = 3.14159265358979323846264338327950288;
+  constexpr double pi = std::numbers::pi_v<double>;
   constexpr double start_angle = 0.25 * pi;
   const ContactParams default_params{};
   EXPECT_DOUBLE_EQ( default_params.normal_smoothing_start_angle, start_angle );
@@ -1224,7 +1225,7 @@ TEST( EnergyMortarResidualGapCheck, VirtualGeometryRespectsNormalSmoothing )
   IndexT conn1[2] = { 1, 0 };
   MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
 
-  constexpr double pi = 3.14159265358979323846264338327950288;
+  constexpr double pi = std::numbers::pi_v<double>;
   constexpr double angle = pi / 3.0;
   constexpr double separation = 0.3;
   constexpr double half_edge_length = 0.05;
@@ -1316,7 +1317,7 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   IndexT conn1[2] = { 1, 0 };
   MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
 
-  constexpr double pi = 3.14159265358979323846264338327950288;
+  constexpr double pi = std::numbers::pi_v<double>;
   constexpr double angle = pi / 3.0;
   constexpr double separation = 0.3;
   constexpr double half_edge_length = 0.05;

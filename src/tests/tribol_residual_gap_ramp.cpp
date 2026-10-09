@@ -5,6 +5,7 @@
 
 #include <cmath>
 #include <memory>
+#include <numbers>
 
 #include <gtest/gtest.h>
 
@@ -76,7 +77,7 @@ TEST( ResidualGapRamp, ConvexCornerAndZeroAngleRemainUniform )
   tribol::MfemSubmeshData data( submesh, nullptr, std::move( fec ), 1, false );
 
   constexpr double residual_gap = 0.05;
-  constexpr double pi = 3.14159265358979323846264338327950288;
+  constexpr double pi = std::numbers::pi_v<double>;
   data.UpdateResidualGapField( residual_gap, 10.0 * pi / 180.0 );
   for ( int vertex = 0; vertex < submesh.GetNV(); ++vertex ) {
     EXPECT_NEAR( residualGapAtVertex( data, vertex ), residual_gap, 1.0e-12 );
@@ -191,7 +192,7 @@ TEST( ResidualGapRamp, DetectsObtuseCornerCreatedByDeformation )
   tribol::MfemSubmeshData data( submesh, nullptr, std::move( fec ), 1, false );
   // Keep the propagation length shorter than an adjacent edge so this test isolates corner eligibility.
   constexpr double residual_gap = 0.005;
-  constexpr double pi = 3.14159265358979323846264338327950288;
+  constexpr double pi = std::numbers::pi_v<double>;
   data.UpdateResidualGapField( residual_gap, 10.0 * pi / 180.0 );
   EXPECT_NEAR( residualGapAtVertex( data, tip ), residual_gap, 1.0e-12 );
 
@@ -215,7 +216,7 @@ TEST( ResidualGapRamp, ThreeDimensionalSurfaceRetainsUniformGap )
   tribol::MfemSubmeshData data( submesh, nullptr, std::move( fec ), 1, false );
 
   constexpr double residual_gap = 0.05;
-  constexpr double pi = 3.14159265358979323846264338327950288;
+  constexpr double pi = std::numbers::pi_v<double>;
   data.UpdateResidualGapField( residual_gap, 10.0 * pi / 180.0 );
   for ( int vertex = 0; vertex < submesh.GetNV(); ++vertex ) {
     EXPECT_NEAR( residualGapAtVertex( data, vertex ), residual_gap, 1.0e-12 );

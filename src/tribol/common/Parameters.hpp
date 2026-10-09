@@ -6,6 +6,8 @@
 #ifndef SRC_TRIBOL_COMMON_PARAMETERS_HPP_
 #define SRC_TRIBOL_COMMON_PARAMETERS_HPP_
 
+#include <numbers>
+
 // Shared includes
 #include "tribol/common/BasicTypes.hpp"
 
@@ -27,8 +29,7 @@ constexpr int ANY_MESH = -1;
 
 namespace energy_mortar {
 
-// TODO(C++20): Initialize this with std::numbers::pi_v<RealT> / 2.0 once Tribol requires C++20.
-inline constexpr RealT perpendicular_normal_angle = 1.5707963267948966;
+inline constexpr RealT perpendicular_normal_angle = std::numbers::pi_v<RealT> / 2.0;
 // EnergyMortar retains full normal weight through 45 degrees, then reduces it smoothly to zero at 90 degrees.
 inline constexpr RealT default_normal_smoothing_start_angle = perpendicular_normal_angle / 2.0;
 // A 10-degree corner ramp prevents a positive residual gap from holding open sharp nonconvex corners.
