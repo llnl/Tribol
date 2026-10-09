@@ -287,8 +287,8 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
  * do not add endpoint caps.
  *
  * @note Configure the residual gap after registering the coupling scheme. For MFEM coupling schemes, call
- * updateMfemParallelDecomposition() after changing the residual gap and before the next tribol::update(), so the contact
- * search includes the new separation. The formulation uses the new value during that update.
+ * updateMfemParallelDecomposition() after changing the residual gap and before the next tribol::update(), so the
+ * contact search includes the new separation. The formulation uses the new value during that update.
  */
 void setResidualGap( IndexT cs_id, RealT residual_gap );
 

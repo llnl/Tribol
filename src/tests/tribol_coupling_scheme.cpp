@@ -948,13 +948,13 @@ TEST_F( CouplingSchemeTest, energy_mortar_setters_reject_out_of_range_values )
   EXPECT_THROW( tribol::setEnergyMortarSmoothingLength( 0, -1.0e-3 ), axom::slic::SlicAbortException );
   EXPECT_THROW( tribol::setEnergyMortarSmoothingLength( 0, 0.5001 ), axom::slic::SlicAbortException );
   EXPECT_THROW( tribol::setEnergyMortarNormalSmoothingStartAngle( 0, -1.0e-3 ), axom::slic::SlicAbortException );
-  EXPECT_THROW( tribol::setEnergyMortarNormalSmoothingStartAngle(
-                    0, tribol::energy_mortar::perpendicular_normal_angle + 1.0e-3 ),
-                axom::slic::SlicAbortException );
+  EXPECT_THROW(
+      tribol::setEnergyMortarNormalSmoothingStartAngle( 0, tribol::energy_mortar::perpendicular_normal_angle + 1.0e-3 ),
+      axom::slic::SlicAbortException );
   EXPECT_THROW( tribol::setEnergyMortarResidualGapRampAngle( 0, -1.0e-3 ), axom::slic::SlicAbortException );
-  EXPECT_THROW( tribol::setEnergyMortarResidualGapRampAngle(
-                    0, tribol::energy_mortar::perpendicular_normal_angle + 1.0e-3 ),
-                axom::slic::SlicAbortException );
+  EXPECT_THROW(
+      tribol::setEnergyMortarResidualGapRampAngle( 0, tribol::energy_mortar::perpendicular_normal_angle + 1.0e-3 ),
+      axom::slic::SlicAbortException );
   EXPECT_THROW( tribol::setResidualGap( 0, -1.0e-3 ), axom::slic::SlicAbortException );
 }
 
