@@ -45,7 +45,9 @@ if ("${PROJECT_SOURCE_DIR}" STREQUAL "${CMAKE_SOURCE_DIR}")
     # Set some default BLT options before loading BLT only if not included in
     # another project
     if (NOT BLT_CXX_STD)
-        set(BLT_CXX_STD "c++17" CACHE STRING "")
+        set(BLT_CXX_STD "c++20" CACHE STRING "")
+    elseif (BLT_CXX_STD MATCHES "^c\\+\\+([0-9]+)$" AND CMAKE_MATCH_1 VERSION_LESS 20)
+        message(FATAL_ERROR "Tribol requires BLT_CXX_STD to be c++20 or higher.")
     endif()
 
     # These BLT tools are not used in Tribol, turn them off
@@ -166,6 +168,12 @@ string(REPLACE "TRIBOL" "AXOM" AXOM_DEBUG_DEFINE_STRING "${TRIBOL_DEBUG_DEFINE_S
 set(AXOM_DEBUG_DEFINE_STRING "${AXOM_DEBUG_DEFINE_STRING}" CACHE STRING "" FORCE)
 
 #------------------------------------------------------------------------------
+# Generate header file with configuration options
+#------------------------------------------------------------------------------
+include(cmake/TribolVersion.cmake)
+include(cmake/TribolConfig.cmake)
+
+#------------------------------------------------------------------------------
 # Add source directory
 #------------------------------------------------------------------------------
 add_subdirectory(src)
@@ -173,10 +181,3 @@ add_subdirectory(src)
 if ( TRIBOL_ENABLE_DOCS )
   add_subdirectory(docs)
 endif()
-
-#------------------------------------------------------------------------------
-# Generate header file with configuration options
-#------------------------------------------------------------------------------
-include(cmake/TribolVersion.cmake)
-include(cmake/TribolConfig.cmake)
-
