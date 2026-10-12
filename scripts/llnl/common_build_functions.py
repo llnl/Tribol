@@ -584,6 +584,26 @@ def get_platform():
 def get_username():
     return getpass.getuser()
 
+def get_shared_base_dir():
+    return "/usr/WS2/smithdev/triboldev"
+
+
+def get_shared_devtool_dir():
+    dir = pjoin(get_shared_base_dir(), "devtools")
+    return dir
+
+
+def get_shared_mirror_dir():
+    return pjoin(get_shared_base_dir(), "mirror")
+
+
+def get_shared_libs_dir():
+    return pjoin(get_shared_base_dir(), "libs", get_project_name())
+
+
+def get_shared_spot_dir():
+    return pjoin(get_shared_base_dir(), "califiles", get_project_name())
+
 
 def get_uberenv_path():
     return pjoin(get_repo_dir(), "scripts/uberenv/uberenv.py")
