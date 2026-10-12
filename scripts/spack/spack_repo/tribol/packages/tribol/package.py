@@ -76,7 +76,6 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
 
     depends_on("cmake@3.14:", type="build")
     depends_on("cmake@3.21:", type="build", when="+rocm")
-    depends_on("blt@0.6.2:", type="build")
 
     depends_on("mfem@4.7.0.2:+lapack")
     depends_on("mfem@4.9.0:+lapack", when="+enzyme")
@@ -84,12 +83,16 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
     depends_on("mfem+asan", when="+asan")
     depends_on("mfem+enzyme", when="+enzyme")
 
-    depends_on("raja@2024.02.0:", when="+raja")
-    depends_on("umpire@2024.02.0:", when="+umpire")
+    depends_on("raja@2024.02.0:~examples~exercises", when="+raja")
+    depends_on("umpire@2024.02.0:~examples~device_alloc", when="+umpire")
 
-    depends_on("enzyme", when="+enzyme")
-    
-    depends_on("axom@0.9:")
+    depends_on("enzyme@0.0.180:", when="+enzyme")
+    depends_on("cuda+allow-unsupported-compilers", when="+enzyme+cuda")
+    depends_on("enzyme %libllvm=llvm-amdgpu", when="+enzyme+rocm")
+    requires("%cxx=llvm-amdgpu", when="+enzyme+rocm")
+    requires("%cxx=llvm", when="+enzyme~rocm")
+
+    depends_on("axom~fortran~tools~examples+mfem+lua")
     depends_on("axom+raja", when="+raja")
     depends_on("axom~raja", when="~raja")
     depends_on("axom+umpire", when="+umpire")
@@ -112,6 +115,9 @@ class Tribol(CachedCMakePackage, CudaPackage, ROCmPackage):
 
     with when("~openmp"):
         depends_on("axom~openmp")
+        depends_on("mfem~openmp")
+        depends_on("raja~openmp", when="+raja")
+        depends_on("umpire~openmp", when="+umpire")
 
     ######
     # CUDA
