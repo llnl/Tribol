@@ -3,7 +3,7 @@
 #
 # SPDX-License-Identifier: (MIT)
 
-blt_add_sphinx_target( tribol_guide )
+blt_add_sphinx_target( TARGET tribol_guide )
 
 if ( DOXYGEN_FOUND )
   add_dependencies( tribol_guide tribol_doxygen )
