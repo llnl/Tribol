@@ -355,7 +355,7 @@ def build_and_test_host_config(test_root, host_config, report_to_stdout=False, e
     print("[docs time: {0}]\n".format(convertSecondsToReadableTime(end_time - start_time)))
 
     # Install and test examples
-    # TODO add tribol install test
+    # TODO Add tribol install test
     # start_time = time.time()
     # if skip_install:
     #     print("[Skipping 'make install']\n")
@@ -426,7 +426,7 @@ def build_and_test_host_configs(prefix, timestamp, use_generated_host_configs, r
     return 0
 
 
-def full_build_and_test_of_tpls(builds_dir, timestamp, spec, report_to_stdout = False, short_path = False, mirror_location = '', job_count=""):
+def full_build_and_test_of_tpls(builds_dir, timestamp, spec, report_to_stdout = False, short_path = False, mirror_location = '', job_count="", skip_mirror=False):
     if spec:
         specs = [spec]
     else:
@@ -440,24 +440,24 @@ def full_build_and_test_of_tpls(builds_dir, timestamp, spec, report_to_stdout = 
     if mirror_location:
         mirror_dir = mirror_location
     else:
-        mirror_dir = get_shared_mirror_dir()
-        if not os.path.exists(mirror_dir):
-            mirror_dir = pjoin(builds_dir,"mirror")
-        print("[using mirror location: %s]" % mirror_dir)
+        mirror_dir = pjoin(builds_dir,"mirror")
+    print("[using mirror location: %s]" % mirror_dir)
 
     # unique install location
     prefix = builds_dir
     if not short_path:
-        prefix = pjoin(prefix, get_system_type())
-    if not os.path.exists(prefix):
-        os.mkdir(prefix)
+        prefix = pjoin(prefix, get_system_type(), get_machine_name())
     if not short_path:
         prefix = pjoin(prefix, timestamp)
     if not os.path.exists(prefix):
-        os.mkdir(prefix)
+        os.makedirs(prefix, mode=0o775, exist_ok=True)
 
-    # create a mirror
-    uberenv_create_mirror(prefix, spec, "", mirror_dir, report_to_stdout)
+    if not skip_mirror:
+        # create a mirror
+        uberenv_create_mirror(prefix, spec, "", mirror_dir, report_to_stdout)
+    else:
+        print("[Skipping mirror setup]")
+
     # write info about this build
     write_build_info(pjoin(prefix, "info.json"))
 
@@ -548,7 +548,11 @@ def get_host_config_root(host_config):
 
 
 def get_blt_dir():
-    return "cmake/blt"
+    _path = "cmake/blt"
+    if os.path.exists(_path):
+        return _path
+    _path = pjoin("tribol", _path)
+    return _path
 
 
 def get_build_dir(prefix, host_config):
@@ -580,6 +584,26 @@ def get_platform():
 def get_username():
     return getpass.getuser()
 
+def get_shared_base_dir():
+    return "/usr/WS2/smithdev/triboldev"
+
+
+def get_shared_devtool_dir():
+    dir = pjoin(get_shared_base_dir(), "devtools")
+    return dir
+
+
+def get_shared_mirror_dir():
+    return pjoin(get_shared_base_dir(), "mirror")
+
+
+def get_shared_libs_dir():
+    return pjoin(get_shared_base_dir(), "libs", get_project_name())
+
+
+def get_shared_spot_dir():
+    return pjoin(get_shared_base_dir(), "califiles", get_project_name())
+
 
 def get_uberenv_path():
     return pjoin(get_repo_dir(), "scripts/uberenv/uberenv.py")
@@ -593,11 +617,23 @@ def on_rz():
 
 
 def get_script_dir():
-    return os.path.dirname(os.path.abspath(__file__))
+    # NOTE: sys.argv[0] is based-on the script that is calling get_script_dir (e.g. build_tpls.py). This is to properly
+    # handle the case where this `scripts/llnl` directory is being symlinked by Smith. 
+    return os.path.dirname(os.path.abspath(sys.argv[0]))
 
 
+_project_name = ""
 def get_project_name():
-    return "tribol"
+    global _project_name
+    if not _project_name:
+        uberenv_config_path = pjoin(get_repo_dir(), ".uberenv_config.json")
+        _project_name = "UNKNOWN_PROJECT"
+        if os.path.exists(uberenv_config_path):
+            with open(uberenv_config_path) as json_file:
+                data = json.load(json_file)
+                if "package_name" in data:
+                    _project_name = data["package_name"]
+    return _project_name
 
 
 def convertSecondsToReadableTime(seconds):
