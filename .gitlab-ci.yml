@@ -54,15 +54,7 @@ stages:
       TPL Build and Unit Test ${CI_PROJECT_NAME}"
     - ${ALLOC_COMMAND} python3 scripts/llnl/build_tpls.py -v --spec="${SPEC}" --directory=${FULL_BUILD_ROOT} --short-path
     - echo -e "section_end:$(date +%s):tpl_build_and_unit_test\r\e[0K"
-  artifacts:
-    expire_in: 2 weeks
-    when: always
-    paths:
-      - ${FULL_BUILD_ROOT}/${SYS_TYPE}/*/output.log*.txt
-      - ${FULL_BUILD_ROOT}/${SYS_TYPE}/*/_tribol_build_and_test_*/output.log*.txt
-      - ${FULL_BUILD_ROOT}/${SYS_TYPE}/*/_tribol_build_and_test_*/build-*/output.log*.txt
-    reports:
-      junit: ${FULL_BUILD_ROOT}/${SYS_TYPE}/*/_tribol_build_and_test_*/build-*/junit.xml
+
 include:
   - local: .gitlab/build_dane.yml
   - local: .gitlab/build_matrix.yml
