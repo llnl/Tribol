@@ -24,6 +24,9 @@
 .src_build_on_matrix:
   extends: [.src_build_script, .on_matrix, .src_workflow]
 
+.tpl_build_on_matrix:
+  extends: [.tpl_build_script, .on_matrix, .tpl_workflow]
+
 ####
 # PR Build jobs
 matrix-llvm_19_1_3_cuda-src:
@@ -32,3 +35,11 @@ matrix-llvm_19_1_3_cuda-src:
     HOST_CONFIG: "matrix-toss_4_x86_64_ib-${COMPILER}.cmake"
     ALLOC_TIME: "30"
   extends: .src_build_on_matrix
+
+####
+# TPL Build jobs
+matrix-llvm_19_1_3_cuda-tpl:
+  variables:
+    SPEC: "+devtools+adiak+caliper~enzyme cuda_arch=90 %clang_19"
+    ALLOC_TIME: "30"
+  extends: .tpl_build_on_matrix

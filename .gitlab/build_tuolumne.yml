@@ -26,6 +26,12 @@
 .src_build_on_tuolumne:
   extends: [.src_build_script, .on_tuolumne, .src_workflow]
 
+.tpl_build_on_tuolumne:
+  extends: [.tpl_build_script, .on_tuolumne, .tpl_workflow]
+  before_script:
+    # LC version of pip is ancient
+    - if [[ $(python3 -c 'import pip; print(pip.__version__ < "19.3")') == "True" ]]; then python3 -m pip install --user --upgrade pip; fi
+
 ####
 # Build jobs
 tuolumne-llvm_amdgpu_6_4_2-src:
@@ -33,3 +39,12 @@ tuolumne-llvm_amdgpu_6_4_2-src:
     ALLOC_NODES: "1"
     ALLOC_TIME: "30"
   extends: .src_build_on_tuolumne
+
+####
+# TPL Build jobs
+tuolumne-llvm_amdgpu_6_4_2-tpl:
+  variables:
+    SPEC: "~devtools~adiak~caliper~openmp+rocm+enzyme amdgpu_target=gfx942,gfx90a %rocm_6_4_2"
+    ALLOC_NODES: "1"
+    ALLOC_TIME: "90"
+  extends: .tpl_build_on_tuolumne
