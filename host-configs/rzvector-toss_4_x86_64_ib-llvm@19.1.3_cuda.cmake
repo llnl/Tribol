@@ -4,13 +4,13 @@
 # CMake executable path: /usr/tce/packages/cmake/cmake-3.30.5/bin/cmake
 #------------------------------------------------------------------------------
 
-set(CMAKE_PREFIX_PATH "/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/axom-0.14.0.2-b26g3mohiiij7pj2jps4gl3mfsyt2vyj;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/caliper-2.15.0-2bc2ojtxlb6mde5rq5jodyh23k5uyb74;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/conduit-0.9.6-5hhlh7glr2376aejvyfnnleezm5z6wgo;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/mfem-4.10.0.1-k5d73ryquhzifnlll4etz26ww56avlkl;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/raja-2025.12.2-f7nw4gkkhp32kuebheesymdo2gdsjydz;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/umpire-2025.12.0-qyvftwkljsvwzthnpfvgdtj3cqxhy5am;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/adiak-0.4.1-u3jrzo5seqyb35mc7bvqhuz3hb4kkz6e;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/amgx-2.5.0-anallcxxuptk6g77y73ivxv52vyvfomz;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/netcdf-c-4.10.0-sh2uj2xzrl3fwde6ifr6zu5rsfdu6uwg;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/slepc-3.23.3-geribyognvru5kxm4nrfxnbwhzk4eouk;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/sundials-7.7.0-bmemk5pitficuftrqox4zyn56xjis2nw;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/superlu-dist-8.1.2-v5yhlmqtj37nu75xfxex6e23m5mlqdwz;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/camp-2025.12.0-frsaprimqz7utqfz2thisa2ynuthb732;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/fmt-12.1.0-qv34sq36w2p3bslrkcgx7uohnh2gvzl5;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/hdf5-1.8.23-b23gp2nr3zcydeib3td6je3kh33mpw47;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/arpack-ng-3.9.1-ckf5ihgaeqmatkhr4o3f6e6zkyowkohz;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/petsc-3.23.7-2v5ebnzr5ku5qbjid7ek4qi5bvu6suy6;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/hypre-2.33.0-kasm5ecceheyrqstg7cnaifhdwikxv7o;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/strumpack-8.0.0-vdousncqz335lmuoxsqubafyk43yegwp;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/netlib-scalapack-2.2.3-tiagwbh34znwakxmxvx65hlsnhrfxjac;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/parmetis-4.0.3-hjeixpmdobrtrwky43t7eltaw3gspiep;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/none-none/gcc-runtime-13.3.1-qxcsdaovvsn7p4vmv6mjs56shb3brse2;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/metis-5.1.0-h3jw6wcumjbihtkmg53bly3mk3dojrku;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/none-none/compiler-wrapper-1.1.0-pbd2ayub7z6lkuzpvgsnzfsycl3xbuy3;/usr/workspace/smithdev/devtools/toss_4_x86_64_ib/latest/python-3.11.7;/usr/tce/packages/cmake/cmake-3.30.5;/usr/workspace/smithdev/devtools/toss_4_x86_64_ib/latest/cppcheck-2.9;/usr/tce/packages/cuda/cuda-12.9.1;/usr/workspace/smithdev/devtools/toss_4_x86_64_ib/latest/doxygen-1.9.8;/usr/tce/packages/gcc/gcc-13.3.1;/usr/tce/packages/clang/clang-19.1.3;/usr/tce/packages/mvapich2/mvapich2-2.3.7-clang-19.1.3-magic;/usr/tce/packages/python/python-3.9.12" CACHE STRING "")
+set(CMAKE_PREFIX_PATH "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/axom-0.14.0.2-kygxugsjj4ffarme6owznij7frmkv435;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/caliper-2.15.0-d4vdg4qvn4lmob5nkhbkslx54kvirtpx;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/conduit-0.9.6-sq33y2eyep2twnwoxuv7t2kx7lwogmrv;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/mfem-4.10.0.1-yzd2ushl4igmlansrfx26nehao7t4bpn;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/raja-2025.12.2-f7nw4gkkhp32kuebheesymdo2gdsjydz;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/umpire-2025.12.0-ugcziqp5huatpyvjyd745oxekerpb4o4;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/adiak-0.4.1-modp6hvd37bjt4zr3jnhlxtwncxo5egy;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/hdf5-1.8.23-qsouj7ahzlyjejiy7ft4cbua5prk6sbl;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/parmetis-4.0.3-hjeixpmdobrtrwky43t7eltaw3gspiep;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/hypre-2.33.0-yhzaxhgax3k74dprkj2j3dr2vmaspf4y;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/camp-2025.12.0-frsaprimqz7utqfz2thisa2ynuthb732;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/fmt-12.1.0-6zw5yzbnsoyeymsmfg6x7jnfjapog5ae;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/none-none/gcc-runtime-13.3.1-qxcsdaovvsn7p4vmv6mjs56shb3brse2;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/metis-5.1.0-h3jw6wcumjbihtkmg53bly3mk3dojrku;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/none-none/compiler-wrapper-1.1.0-pbd2ayub7z6lkuzpvgsnzfsycl3xbuy3;/usr/workspace/smithdev/devtools/toss_4_x86_64_ib/latest/python-3.11.7;/usr/tce/packages/cmake/cmake-3.30.5;/usr/tce/packages/cuda/cuda-12.9.1;/usr/workspace/smithdev/devtools/toss_4_x86_64_ib/latest/doxygen-1.9.8;/usr/tce/packages/gcc/gcc-13.3.1;/usr/tce/packages/clang/clang-19.1.3;/usr/tce/packages/mvapich2/mvapich2-2.3.7-clang-19.1.3-magic;/usr/tce/packages/python/python-3.9.12" CACHE STRING "")
 
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH "ON" CACHE STRING "")
 
-set(CMAKE_BUILD_RPATH "/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/smith-develop-alcgvwpunh3on5r5odtmsf62atx22tgt/lib;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/smith-develop-alcgvwpunh3on5r5odtmsf62atx22tgt/lib64;;/usr/tce/backend/installations/linux-rhel8-x86_64/gcc-13.3.1/llvm-19.1.3-gy2lu5xbi4csr2k47emlajzfs5mlsd4g/lib/x86_64-unknown-linux-gnu;/opt/rh/gcc-toolset-13/root/usr/lib/gcc/x86_64-redhat-linux/13;/usr/tce/packages/clang/clang-19.1.3/lib;/collab/usr/global/tools/tce4/packages/gcc/gcc-13.3.1/lib/gcc/x86_64-redhat-linux/13" CACHE STRING "")
+set(CMAKE_BUILD_RPATH "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/tribol-develop-dzsp25n2ltmmyu76dfym6arcd2vqdtdj/lib;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/tribol-develop-dzsp25n2ltmmyu76dfym6arcd2vqdtdj/lib64;;/usr/tce/backend/installations/linux-rhel8-x86_64/gcc-13.3.1/llvm-19.1.3-gy2lu5xbi4csr2k47emlajzfs5mlsd4g/lib/x86_64-unknown-linux-gnu;/opt/rh/gcc-toolset-13/root/usr/lib/gcc/x86_64-redhat-linux/13;/usr/tce/packages/clang/clang-19.1.3/lib;/collab/usr/global/tools/tce4/packages/gcc/gcc-13.3.1/lib/gcc/x86_64-redhat-linux/13" CACHE STRING "")
 
-set(CMAKE_INSTALL_RPATH "/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/smith-develop-alcgvwpunh3on5r5odtmsf62atx22tgt/lib;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3/smith-develop-alcgvwpunh3on5r5odtmsf62atx22tgt/lib64;;/usr/tce/backend/installations/linux-rhel8-x86_64/gcc-13.3.1/llvm-19.1.3-gy2lu5xbi4csr2k47emlajzfs5mlsd4g/lib/x86_64-unknown-linux-gnu;/opt/rh/gcc-toolset-13/root/usr/lib/gcc/x86_64-redhat-linux/13;/usr/tce/packages/clang/clang-19.1.3/lib;/collab/usr/global/tools/tce4/packages/gcc/gcc-13.3.1/lib/gcc/x86_64-redhat-linux/13" CACHE STRING "")
+set(CMAKE_INSTALL_RPATH "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/tribol-develop-dzsp25n2ltmmyu76dfym6arcd2vqdtdj/lib;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/tribol-develop-dzsp25n2ltmmyu76dfym6arcd2vqdtdj/lib64;;/usr/tce/backend/installations/linux-rhel8-x86_64/gcc-13.3.1/llvm-19.1.3-gy2lu5xbi4csr2k47emlajzfs5mlsd4g/lib/x86_64-unknown-linux-gnu;/opt/rh/gcc-toolset-13/root/usr/lib/gcc/x86_64-redhat-linux/13;/usr/tce/packages/clang/clang-19.1.3/lib;/collab/usr/global/tools/tce4/packages/gcc/gcc-13.3.1/lib/gcc/x86_64-redhat-linux/13" CACHE STRING "")
 
 set(CMAKE_BUILD_TYPE "Release" CACHE STRING "")
 
@@ -21,11 +21,11 @@ set(CMAKE_BUILD_TYPE "Release" CACHE STRING "")
 #------------------------------------------------------------------------------
 if(DEFINED ENV{SPACK_CC})
 
-  set(CMAKE_C_COMPILER "/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/none-none/compiler-wrapper-1.1.0-pbd2ayub7z6lkuzpvgsnzfsycl3xbuy3/libexec/spack/clang/clang" CACHE PATH "")
+  set(CMAKE_C_COMPILER "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/none-none/compiler-wrapper-1.1.0-pbd2ayub7z6lkuzpvgsnzfsycl3xbuy3/libexec/spack/clang/clang" CACHE PATH "")
 
-  set(CMAKE_CXX_COMPILER "/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/none-none/compiler-wrapper-1.1.0-pbd2ayub7z6lkuzpvgsnzfsycl3xbuy3/libexec/spack/clang/clang++" CACHE PATH "")
+  set(CMAKE_CXX_COMPILER "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/none-none/compiler-wrapper-1.1.0-pbd2ayub7z6lkuzpvgsnzfsycl3xbuy3/libexec/spack/clang/clang++" CACHE PATH "")
 
-  set(CMAKE_Fortran_COMPILER "/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/none-none/compiler-wrapper-1.1.0-pbd2ayub7z6lkuzpvgsnzfsycl3xbuy3/libexec/spack/gcc/gfortran" CACHE PATH "")
+  set(CMAKE_Fortran_COMPILER "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/none-none/compiler-wrapper-1.1.0-pbd2ayub7z6lkuzpvgsnzfsycl3xbuy3/libexec/spack/gcc/gfortran" CACHE PATH "")
 
 else()
 
@@ -42,6 +42,8 @@ set(CMAKE_C_FLAGS "-fPIC" CACHE STRING "")
 set(CMAKE_CXX_FLAGS "-fPIC" CACHE STRING "")
 
 set(CMAKE_Fortran_FLAGS "-fPIC" CACHE STRING "")
+
+set(ENABLE_FORTRAN OFF CACHE BOOL "")
 
 #------------------------------------------------------------------------------
 # MPI
@@ -95,45 +97,41 @@ set(CMAKE_CUDA_FLAGS "-fPIC ${CMAKE_CUDA_FLAGS} -Wno-unknown-cuda-version " CACH
 set(ENABLE_OPENMP ON CACHE BOOL "")
 
 #------------------------------------------------------------------------------
+# Options
+#------------------------------------------------------------------------------
+
+set(BUILD_REDECOMP ON CACHE BOOL "")
+
+#------------------------------------------------------------------------------
 # TPLs
 #------------------------------------------------------------------------------
 
-set(TPL_ROOT "/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/rzvector/2026_09_03_11_32_53/llvm-19.1.3" CACHE PATH "")
+set(AXOM_DIR "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/axom-0.14.0.2-kygxugsjj4ffarme6owznij7frmkv435" CACHE PATH "")
 
-set(AXOM_DIR "${TPL_ROOT}/axom-0.14.0.2-b26g3mohiiij7pj2jps4gl3mfsyt2vyj" CACHE PATH "")
+set(MFEM_DIR "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/mfem-4.10.0.1-yzd2ushl4igmlansrfx26nehao7t4bpn" CACHE PATH "")
 
-set(MFEM_DIR "${TPL_ROOT}/mfem-4.10.0.1-k5d73ryquhzifnlll4etz26ww56avlkl" CACHE PATH "")
+set(RAJA_DIR "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/raja-2025.12.2-f7nw4gkkhp32kuebheesymdo2gdsjydz" CACHE PATH "")
 
-set(ADIAK_DIR "${TPL_ROOT}/adiak-0.4.1-u3jrzo5seqyb35mc7bvqhuz3hb4kkz6e" CACHE PATH "")
-
-set(AMGX_DIR "${TPL_ROOT}/amgx-2.5.0-anallcxxuptk6g77y73ivxv52vyvfomz" CACHE PATH "")
-
-set(CALIPER_DIR "${TPL_ROOT}/caliper-2.15.0-2bc2ojtxlb6mde5rq5jodyh23k5uyb74" CACHE PATH "")
+set(UMPIRE_DIR "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/umpire-2025.12.0-ugcziqp5huatpyvjyd745oxekerpb4o4" CACHE PATH "")
 
 # ENZYME not built
 
-set(RAJA_DIR "${TPL_ROOT}/raja-2025.12.2-f7nw4gkkhp32kuebheesymdo2gdsjydz" CACHE PATH "")
-
-set(UMPIRE_DIR "${TPL_ROOT}/umpire-2025.12.0-qyvftwkljsvwzthnpfvgdtj3cqxhy5am" CACHE PATH "")
+set(CALIPER_DIR "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/rzvector/2026_10_12_15_00_45/llvm-19.1.3/caliper-2.15.0-d4vdg4qvn4lmob5nkhbkslx54kvirtpx" CACHE PATH "")
 
 #------------------------------------------------------------------------------
 # Devtools
 #------------------------------------------------------------------------------
 
-set(DEVTOOLS_ROOT "/usr/WS2/smithdev/devtools/toss_4_x86_64_ib/2024_05_30_15_09_55/._view/rkqkran3ydsuprr2wip5pdnz5wh7xwnr" CACHE PATH "")
+set(TRIBOL_ENABLE_DOCS ON CACHE BOOL "")
 
 set(TRIBOL_ENABLE_CODE_CHECKS ON CACHE BOOL "")
 
 set(ENABLE_CLANGFORMAT ON CACHE BOOL "")
 
+set(SPHINX_EXECUTABLE "/usr/workspace/smithdev/devtools/toss_4_x86_64_ib/latest/python-3.11.7/bin/sphinx-build" CACHE PATH "")
+
+set(DOXYGEN_EXECUTABLE "/usr/workspace/smithdev/devtools/toss_4_x86_64_ib/latest/doxygen-1.9.8/bin/doxygen" CACHE PATH "")
+
 set(CLANGFORMAT_EXECUTABLE "/usr/tce/packages/clang/clang-19.1.3/bin/clang-format" CACHE PATH "")
 
-set(CLANGTIDY_EXECUTABLE "/usr/tce/packages/clang/clang-19.1.3/bin/clang-tidy" CACHE PATH "")
 
-set(TRIBOL_ENABLE_DOCS ON CACHE BOOL "")
-
-set(SPHINX_EXECUTABLE "${DEVTOOLS_ROOT}/python-3.11.7/bin/sphinx-build" CACHE PATH "")
-
-set(CPPCHECK_EXECUTABLE "${DEVTOOLS_ROOT}/cppcheck-2.9/bin/cppcheck" CACHE PATH "")
-
-set(DOXYGEN_EXECUTABLE "${DEVTOOLS_ROOT}/doxygen-1.9.8/bin/doxygen" CACHE PATH "")
