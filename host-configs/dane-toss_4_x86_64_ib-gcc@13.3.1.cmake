@@ -4,13 +4,13 @@
 # CMake executable path: /usr/tce/packages/cmake/cmake-3.30.5/bin/cmake
 #------------------------------------------------------------------------------
 
-set(CMAKE_PREFIX_PATH "/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/axom-0.14.0.2-xgkjmkavorrk7r4erjpe4ou2phmx7uod;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/caliper-2.15.0-tu2hxes6xjde77wzrv6s7nrtoszqjqy6;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/conduit-0.9.6-czr5iqzysgx2grl747txqendvjpsenxl;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/mfem-4.10.0.1-qsudjyzupy3p7slkvr32md7mv76wnntr;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/raja-2025.12.2-jj7wriam6nq2b7le2gkqrhs4iw66fv4k;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/umpire-2025.12.0-fq5qmnigcdh4cqao2cus6pb3cvwho26l;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/adiak-0.4.1-qa4vurawir5bbevkaaqavuqddpib3sec;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/netcdf-c-4.10.0-o4ew4iubrwsafbozmgtmov2hhimuwwli;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/slepc-3.23.3-mb46pvy5fqwggajpqvuoiozd72untisf;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/sundials-7.7.0-42we4vddkal234eway3kcsoc24oxf763;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/superlu-dist-8.1.2-24uyrxffejm2a7qwqrzeisolyzf2ze4i;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/camp-2025.12.0-3imojm5inal2bglibnvpgxzfr3hesg5t;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/fmt-12.1.0-jkmmksogzqsdveklnan2ipfy3bg3orzt;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/hdf5-1.8.23-puwshnaz7pwzhyii263h75w3vqxrh2tk;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/arpack-ng-3.9.1-kzzdba3uw2dn7hcklkuketasjasc6543;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/petsc-3.23.7-ekpazft4bn7mqylgtwjegpccc3foimh3;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/hypre-2.33.0-2o7ysvci7z72wmkgtkry3jts4ntmo7gk;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/strumpack-8.0.0-xcczutlwt25fbvev55ufnfaoagqdfrmp;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/netlib-scalapack-2.2.3-o2tcrohmwfqyhw5fzp255kkve3dpthqg;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/parmetis-4.0.3-bkgs3623744p5bypaxx7wmcf7wlfdmlk;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/metis-5.1.0-syifmv53hslwomts6ezcm2gobgapazib;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/none-none/gcc-runtime-13.3.1-qxcsdaovvsn7p4vmv6mjs56shb3brse2;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/none-none/compiler-wrapper-1.1.0-pbd2ayub7z6lkuzpvgsnzfsycl3xbuy3;/usr/workspace/smithdev/devtools/toss_4_x86_64_ib/latest/python-3.11.7;/usr/tce/packages/cmake/cmake-3.30.5;/usr/workspace/smithdev/devtools/toss_4_x86_64_ib/latest/cppcheck-2.9;/usr/workspace/smithdev/devtools/toss_4_x86_64_ib/latest/doxygen-1.9.8;/usr/tce/packages/gcc/gcc-13.3.1;/usr/tce/packages/clang/clang-19.1.3;/usr/tce/packages/mvapich2/mvapich2-2.3.7-gcc-13.3.1-magic;/usr/tce/packages/python/python-3.9.12" CACHE STRING "")
+set(CMAKE_PREFIX_PATH "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/axom-0.14.0.2-q6r6r7ciz3fqqjhqnnjsrcc3lz5nx7mc;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/caliper-2.15.0-qsy6hyqlt7lvbsgfk2fpo6cp7wjtioc7;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/conduit-0.9.6-3hclsntuuacswgvncnejomppvqungkne;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/mfem-4.10.0.1-6vrhfm24il4hxzypllee7pj57pbqphrl;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/raja-2025.12.2-jj7wriam6nq2b7le2gkqrhs4iw66fv4k;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/umpire-2025.12.0-7zpaznzozylguq6psb46nhwtvpe5vzbt;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/adiak-0.4.1-rydnfnufouy7h52iwdthygju66xjxcep;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/hdf5-1.8.23-foju3uiirparjuljoxsnciaxe77ltnjd;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/parmetis-4.0.3-bkgs3623744p5bypaxx7wmcf7wlfdmlk;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/hypre-2.33.0-vnlvayzsmhhrpbwjd4i5k5wnqo7wjlp5;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/camp-2025.12.0-3imojm5inal2bglibnvpgxzfr3hesg5t;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/fmt-12.1.0-mht2gcevlnumft3m5axdhkrgyydkz53b;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/metis-5.1.0-syifmv53hslwomts6ezcm2gobgapazib;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/none-none/gcc-runtime-13.3.1-qxcsdaovvsn7p4vmv6mjs56shb3brse2;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/none-none/compiler-wrapper-1.1.0-pbd2ayub7z6lkuzpvgsnzfsycl3xbuy3;/usr/workspace/smithdev/devtools/toss_4_x86_64_ib/latest/python-3.11.7;/usr/tce/packages/cmake/cmake-3.30.5;/usr/workspace/smithdev/devtools/toss_4_x86_64_ib/latest/doxygen-1.9.8;/usr/tce/packages/gcc/gcc-13.3.1;/usr/tce/packages/clang/clang-19.1.3;/usr/tce/packages/mvapich2/mvapich2-2.3.7-gcc-13.3.1-magic;/usr/tce/packages/python/python-3.9.12" CACHE STRING "")
 
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH "ON" CACHE STRING "")
 
-set(CMAKE_BUILD_RPATH "/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/smith-develop-dorakg33x4lfg7tb2nxmpta3nqbsxzux/lib;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/smith-develop-dorakg33x4lfg7tb2nxmpta3nqbsxzux/lib64;;/collab/usr/global/tools/tce4/packages/gcc/gcc-13.3.1/lib/gcc/x86_64-redhat-linux/13" CACHE STRING "")
+set(CMAKE_BUILD_RPATH "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/tribol-develop-ypfcecvx6te2qaxny5e7uqgd7u2e5hqw/lib;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/tribol-develop-ypfcecvx6te2qaxny5e7uqgd7u2e5hqw/lib64;;/collab/usr/global/tools/tce4/packages/gcc/gcc-13.3.1/lib/gcc/x86_64-redhat-linux/13" CACHE STRING "")
 
-set(CMAKE_INSTALL_RPATH "/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/smith-develop-dorakg33x4lfg7tb2nxmpta3nqbsxzux/lib;/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1/smith-develop-dorakg33x4lfg7tb2nxmpta3nqbsxzux/lib64;;/collab/usr/global/tools/tce4/packages/gcc/gcc-13.3.1/lib/gcc/x86_64-redhat-linux/13" CACHE STRING "")
+set(CMAKE_INSTALL_RPATH "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/tribol-develop-ypfcecvx6te2qaxny5e7uqgd7u2e5hqw/lib;/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/tribol-develop-ypfcecvx6te2qaxny5e7uqgd7u2e5hqw/lib64;;/collab/usr/global/tools/tce4/packages/gcc/gcc-13.3.1/lib/gcc/x86_64-redhat-linux/13" CACHE STRING "")
 
 set(CMAKE_BUILD_TYPE "Release" CACHE STRING "")
 
@@ -21,11 +21,11 @@ set(CMAKE_BUILD_TYPE "Release" CACHE STRING "")
 #------------------------------------------------------------------------------
 if(DEFINED ENV{SPACK_CC})
 
-  set(CMAKE_C_COMPILER "/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/none-none/compiler-wrapper-1.1.0-pbd2ayub7z6lkuzpvgsnzfsycl3xbuy3/libexec/spack/gcc/gcc" CACHE PATH "")
+  set(CMAKE_C_COMPILER "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/none-none/compiler-wrapper-1.1.0-pbd2ayub7z6lkuzpvgsnzfsycl3xbuy3/libexec/spack/gcc/gcc" CACHE PATH "")
 
-  set(CMAKE_CXX_COMPILER "/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/none-none/compiler-wrapper-1.1.0-pbd2ayub7z6lkuzpvgsnzfsycl3xbuy3/libexec/spack/gcc/g++" CACHE PATH "")
+  set(CMAKE_CXX_COMPILER "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/none-none/compiler-wrapper-1.1.0-pbd2ayub7z6lkuzpvgsnzfsycl3xbuy3/libexec/spack/gcc/g++" CACHE PATH "")
 
-  set(CMAKE_Fortran_COMPILER "/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/none-none/compiler-wrapper-1.1.0-pbd2ayub7z6lkuzpvgsnzfsycl3xbuy3/libexec/spack/gcc/gfortran" CACHE PATH "")
+  set(CMAKE_Fortran_COMPILER "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/none-none/compiler-wrapper-1.1.0-pbd2ayub7z6lkuzpvgsnzfsycl3xbuy3/libexec/spack/gcc/gfortran" CACHE PATH "")
 
 else()
 
@@ -42,6 +42,8 @@ set(CMAKE_C_FLAGS "-fPIC" CACHE STRING "")
 set(CMAKE_CXX_FLAGS "-fPIC" CACHE STRING "")
 
 set(CMAKE_Fortran_FLAGS "-fPIC" CACHE STRING "")
+
+set(ENABLE_FORTRAN OFF CACHE BOOL "")
 
 #------------------------------------------------------------------------------
 # MPI
@@ -63,6 +65,10 @@ set(ENABLE_MPI ON CACHE BOOL "")
 # Hardware
 #------------------------------------------------------------------------------
 
+#------------------------------------------------
+# OpenMP
+#------------------------------------------------
+
 set(ENABLE_OPENMP ON CACHE BOOL "")
 
 #------------------------------------------------------------------------------
@@ -75,40 +81,32 @@ set(BUILD_REDECOMP ON CACHE BOOL "")
 # TPLs
 #------------------------------------------------------------------------------
 
-set(TPL_ROOT "/usr/WS2/smithdev/libs/smith/toss_4_x86_64_ib/dane/2026_09_03_14_12_19/gcc-13.3.1" CACHE PATH "")
+set(AXOM_DIR "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/axom-0.14.0.2-q6r6r7ciz3fqqjhqnnjsrcc3lz5nx7mc" CACHE PATH "")
 
-set(AXOM_DIR "${TPL_ROOT}/axom-0.14.0.2-xgkjmkavorrk7r4erjpe4ou2phmx7uod" CACHE PATH "")
+set(MFEM_DIR "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/mfem-4.10.0.1-6vrhfm24il4hxzypllee7pj57pbqphrl" CACHE PATH "")
 
-set(MFEM_DIR "${TPL_ROOT}/mfem-4.10.0.1-qsudjyzupy3p7slkvr32md7mv76wnntr" CACHE PATH "")
+set(RAJA_DIR "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/raja-2025.12.2-jj7wriam6nq2b7le2gkqrhs4iw66fv4k" CACHE PATH "")
 
-set(ADIAK_DIR "${TPL_ROOT}/adiak-0.4.1-qa4vurawir5bbevkaaqavuqddpib3sec" CACHE PATH "")
-
-set(CALIPER_DIR "${TPL_ROOT}/caliper-2.15.0-tu2hxes6xjde77wzrv6s7nrtoszqjqy6" CACHE PATH "")
+set(UMPIRE_DIR "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/umpire-2025.12.0-7zpaznzozylguq6psb46nhwtvpe5vzbt" CACHE PATH "")
 
 # ENZYME not built
 
-set(RAJA_DIR "${TPL_ROOT}/raja-2025.12.2-jj7wriam6nq2b7le2gkqrhs4iw66fv4k" CACHE PATH "")
-
-set(UMPIRE_DIR "${TPL_ROOT}/umpire-2025.12.0-fq5qmnigcdh4cqao2cus6pb3cvwho26l" CACHE PATH "")
+set(CALIPER_DIR "/usr/WS2/smithdev/triboldev/libs/tribol/toss_4_x86_64_ib/dane/2026_10_13_09_52_40/gcc-13.3.1/caliper-2.15.0-qsy6hyqlt7lvbsgfk2fpo6cp7wjtioc7" CACHE PATH "")
 
 #------------------------------------------------------------------------------
 # Devtools
 #------------------------------------------------------------------------------
 
-set(DEVTOOLS_ROOT "/usr/WS2/smithdev/devtools/toss_4_x86_64_ib/2024_05_30_15_02_20/._view/psk2dcrijss6s4i6qmxplzthrzm3y7nh" CACHE PATH "")
+set(TRIBOL_ENABLE_DOCS ON CACHE BOOL "")
 
 set(TRIBOL_ENABLE_CODE_CHECKS ON CACHE BOOL "")
 
 set(ENABLE_CLANGFORMAT ON CACHE BOOL "")
 
+set(SPHINX_EXECUTABLE "/usr/workspace/smithdev/devtools/toss_4_x86_64_ib/latest/python-3.11.7/bin/sphinx-build" CACHE PATH "")
+
+set(DOXYGEN_EXECUTABLE "/usr/workspace/smithdev/devtools/toss_4_x86_64_ib/latest/doxygen-1.9.8/bin/doxygen" CACHE PATH "")
+
 set(CLANGFORMAT_EXECUTABLE "/usr/tce/packages/clang/clang-19.1.3/bin/clang-format" CACHE PATH "")
 
-set(CLANGTIDY_EXECUTABLE "/usr/tce/packages/clang/clang-19.1.3/bin/clang-tidy" CACHE PATH "")
 
-set(TRIBOL_ENABLE_DOCS ON CACHE BOOL "")
-
-set(SPHINX_EXECUTABLE "${DEVTOOLS_ROOT}/python-3.11.7/bin/sphinx-build" CACHE PATH "")
-
-set(CPPCHECK_EXECUTABLE "${DEVTOOLS_ROOT}/cppcheck-2.9/bin/cppcheck" CACHE PATH "")
-
-set(DOXYGEN_EXECUTABLE "${DEVTOOLS_ROOT}/doxygen-1.9.8/bin/doxygen" CACHE PATH "")
