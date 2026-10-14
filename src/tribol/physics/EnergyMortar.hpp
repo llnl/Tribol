@@ -87,7 +87,7 @@ struct Gparams {
   std::array<double, 3> w;   ///< Quadrature weights mapped to the local integration interval.
   double normal_smoothing_start_angle{
       energy_mortar::default_normal_smoothing_start_angle };  ///< Normal smoothing start angle in radians.
-  double residual_gap{ 0.0 };                                 ///< User-defined gap offset.
+  std::array<double, 3> residual_gap{};                       ///< Lagged residual-gap values at the quadrature points.
 };
 
 /// Provides smoothing operations for the Energy Mortar contact formulation.
@@ -100,6 +100,8 @@ class ContactSmoothing {
   ///
   /// The factor has unit magnitude until the relative angle between opposing normals reaches
   /// `start_angle`, then follows a C2 quintic smoothstep to zero at perpendicularity.
+  ///
+  /// @pre 0 <= start_angle <= pi / 2
   static double normal_alignment_factor( double normal_dot, double start_angle );
 
   /// Clamp the projected overlap interval to the extended smoothing support.
@@ -153,7 +155,7 @@ class EnergyMortarCalculator {
   /// contributions, while `area` stores the corresponding tributary area
   /// contributions.
   void compute_gtilde_and_area( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                                double gtilde[2], double area[2] ) const;
+                                double gtilde[2], double area[2], const double* residual_gap_values = nullptr ) const;
 
   /// Compute first derivatives of the nodal smoothed gap integrals.
   ///
@@ -163,7 +165,7 @@ class EnergyMortarCalculator {
   /// the quadrature rule is held fixed during differentiation. If true, the
   /// derivative includes the geometry-dependent quadrature construction.
   void grad_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                    double dgt1_dx[8], double dgt2_dx[8] ) const;
+                    double dgt1_dx[8], double dgt2_dx[8], const double* residual_gap_values = nullptr ) const;
 
   /// Compute first derivatives of the nodal tributary areas.
   ///
@@ -184,7 +186,7 @@ class EnergyMortarCalculator {
   /// is held fixed during differentiation. If true, the derivative includes the
   /// geometry-dependent quadrature construction.
   void d2_g2tilde( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                   double dgt1_dx[64], double dgt2_dx[64] ) const;
+                   double dgt1_dx[64], double dgt2_dx[64], const double* residual_gap_values = nullptr ) const;
 
   /// Compute second derivatives of the nodal tributary areas.
   ///
@@ -199,11 +201,13 @@ class EnergyMortarCalculator {
   /// Compute local energy, force, and stiffness for quadrature-point penalty enforcement.
   QuadraturePointPenaltyData compute_quadrature_point_penalty_data( const InterfacePair& pair,
                                                                     const MeshData::Viewer& mesh1,
-                                                                    const MeshData::Viewer& mesh2 ) const;
+                                                                    const MeshData::Viewer& mesh2,
+                                                                    const double* residual_gap_values = nullptr ) const;
 
   /// Evaluate only the local quadrature-point penalty energy.
   double compute_quadrature_point_penalty_energy( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                  const MeshData::Viewer& mesh2 ) const;
+                                                  const MeshData::Viewer& mesh2,
+                                                  const double* residual_gap_values = nullptr ) const;
 
   /// Evaluate and return the two nodal smoothed gap integrals.
   ///
@@ -249,8 +253,8 @@ class EnergyMortarCalculator {
   /// This builds the smoothed integration bounds, quadrature points, quadrature
   /// weights, and projected quadrature-point coordinates needed by the lower-level
   /// gap kernel.
-  Gparams construct_gparams( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                             const MeshData::Viewer& mesh2 ) const;
+  Gparams construct_gparams( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
+                             const double* residual_gap_values = nullptr ) const;
 
   /// Compute the local projection bounds of edge B onto edge A.
   ///

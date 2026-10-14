@@ -33,6 +33,7 @@ inline constexpr RealT perpendicular_normal_angle = std::numbers::pi_v<RealT> / 
 // EnergyMortar retains full normal weight through 45 degrees, then reduces it smoothly to zero at 90 degrees.
 inline constexpr RealT default_normal_smoothing_start_angle = perpendicular_normal_angle / 2.0;
 // A 10-degree corner ramp prevents a positive residual gap from holding open sharp nonconvex corners.
+inline constexpr RealT default_residual_gap_ramp_angle = perpendicular_normal_angle / 9.0;
 
 }  // namespace energy_mortar
 
@@ -502,6 +503,9 @@ struct Parameters {
   RealT energy_mortar_smoothing_length = 0.1;  ///! Transition width between projected-edge and endpoint-cap contact
   RealT energy_mortar_normal_smoothing_start_angle =
       energy_mortar::default_normal_smoothing_start_angle;  ///! Angle where opposing-normal attenuation begins
+  RealT energy_mortar_residual_gap_ramp_angle =
+      energy_mortar::default_residual_gap_ramp_angle;    ///! Total nonconvex-corner ramp angle, in radians
+  bool energy_mortar_residual_gap_ramp_updates = false;  ///! Rebuild the corner ramp from current geometry each cycle
 
   int vis_cycle_incr = 100;           ///! Frequency for visualizations dumps
   VisType vis_type = VIS_NONE;        ///! Type of interface physics visualization output

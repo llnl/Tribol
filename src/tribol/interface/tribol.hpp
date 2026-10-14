@@ -167,6 +167,29 @@ void setEnergyMortarSmoothingLength( IndexT cs_id, RealT smoothing_length );
 void setEnergyMortarNormalSmoothingStartAngle( IndexT cs_id, RealT start_angle );
 
 /*!
+ * \brief Sets the EnergyMortar residual-gap crack-opening ramp angle
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] ramp_angle total symmetric crack-opening angle in radians. Zero disables corner reduction.
+ *
+ * \note Every nonconvex 2D opening below pi seeds corner reduction. Other dimensions retain a uniform residual gap.
+ * The default ramp angle is pi / 18. A new value takes effect during the next tribol::update().
+ *
+ * \pre 0 <= ramp_angle <= pi / 2
+ */
+void setEnergyMortarResidualGapRampAngle( IndexT cs_id, RealT ramp_angle );
+
+/*!
+ * \brief Enables or disables rebuilding the EnergyMortar residual-gap ramp from current geometry once per cycle
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] enabled true to rebuild once per cycle; false to retain the initial-geometry field
+ *
+ * \note Rebuilding is disabled by default. A new value takes effect during the next tribol::update().
+ */
+void setEnergyMortarResidualGapRampUpdates( IndexT cs_id, bool enabled );
+
+/*!
  *
  * \brief sets the timestep scale factor applied to the timestep vote
  *
@@ -257,7 +280,8 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
  * @param [in] residual_gap the nominal nonnegative separation between contacting surfaces. Tribol defines positive
  * kinematic gaps as separation and negative kinematic gaps as interpenetration.
  *
- * @note EnergyMortar subtracts this value from the kinematic gap during enforcement.
+ * @note The residual gap ramps from zero at nonconvex 2D corners to the nominal value along the boundary.
+ * EnergyMortar subtracts the local field value from the kinematic gap during enforcement.
  *
  * @note Configure the residual gap after registering the coupling scheme. For MFEM coupling schemes, call
  * updateMfemParallelDecomposition() after changing the residual gap and before the next tribol::update(), so the

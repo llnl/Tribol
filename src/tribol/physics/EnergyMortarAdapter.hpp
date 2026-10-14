@@ -123,6 +123,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @param k Penalty stiffness
    * @param delta Smoothing length
    * @param normal_smoothing_start_angle Normal-alignment smoothing start angle in radians
+   * @param residual_gap_ramp_angle Total crack-opening angle for the residual-gap ramp
+   * @param residual_gap_ramp_updates Whether to rebuild the ramp once per cycle
    * @param N Quadrature order
    * @param enzyme_quadrature If true, use Enzyme-assisted quadrature
    * @param use_penalty If true, interpret the dual field as pressure; otherwise interpret it as a Lagrange multiplier
@@ -135,8 +137,9 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * relative to the order of the meshes provided here.
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k,
-                       double delta, double normal_smoothing_start_angle, int N, bool enzyme_quadrature,
-                       bool use_penalty = true, RealT residual_gap = 0.0 );
+                       double delta, double normal_smoothing_start_angle, double residual_gap_ramp_angle,
+                       bool residual_gap_ramp_updates, int N, bool enzyme_quadrature, bool use_penalty = true,
+                       RealT residual_gap = 0.0 );
 
   /**
    * @brief Default destructor
@@ -258,10 +261,19 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    */
   ContactParams params_;
 
+  double residual_gap_ramp_angle_{ energy_mortar::default_residual_gap_ramp_angle };
+  bool residual_gap_ramp_updates_{ false };
+  bool residual_gap_field_dirty_{ true };
+  int residual_gap_field_cycle_{ -1 };
+
   /**
    * @brief Evaluator implementing ENERGY_MORTAR element-level computations
    */
   std::unique_ptr<EnergyMortarCalculator> evaluator_;
+
+  /** @brief Gather the residual-gap field values for the two nodes on each edge in a pair. */
+  std::array<double, 4> residualGapValues( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                           const MeshData::Viewer& mesh2 ) const;
 
   // Stored InterfacePairs
 
