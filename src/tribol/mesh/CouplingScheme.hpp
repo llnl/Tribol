@@ -2,6 +2,10 @@
 // other Tribol Project Developers. See the top-level LICENSE file for details.
 //
 // SPDX-License-Identifier: (MIT)
+
+/// @file
+/// Own a registered contact scheme and coordinate search with formulation evaluation.
+
 #ifndef SRC_TRIBOL_MESH_COUPLINGSCHEME_HPP_
 #define SRC_TRIBOL_MESH_COUPLINGSCHEME_HPP_
 
@@ -159,7 +163,7 @@ class CouplingScheme {
     TRIBOL_HOST_DEVICE ContactMode getContactMode() const { return m_contact_mode; }
 
     /**
-     * @brief Get the contact method
+     * @brief Identify the method so search can retain its required geometric candidates
      *
      * @return contact method
      */
