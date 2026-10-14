@@ -3,6 +3,9 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+/// @file
+/// Keep parent-linked contact fields persistent while transferring geometry and results through redecomposition.
+
 #ifndef SRC_TRIBOL_MESH_MFEMDATA_HPP_
 #define SRC_TRIBOL_MESH_MFEMDATA_HPP_
 
@@ -1652,7 +1655,9 @@ class MfemSubmeshData {
    */
   mfem::ParGridFunction submesh_pressure_;
 
+  /// Keep solver input independent of formulation lifetime and penalty-pressure output.
   shared::ParVector contact_multipliers_;
+  /// Retain the most recent penalty result without overwriting solver multipliers.
   shared::ParVector penalty_contact_pressure_;
 
   /**

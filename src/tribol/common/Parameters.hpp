@@ -3,6 +3,9 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+/// @file
+/// Define shared contact settings and defaults so registration, search, and evaluation use the same conventions.
+
 #ifndef SRC_TRIBOL_COMMON_PARAMETERS_HPP_
 #define SRC_TRIBOL_COMMON_PARAMETERS_HPP_
 
@@ -29,6 +32,7 @@ constexpr int ANY_MESH = -1;
 
 namespace energy_mortar {
 
+// Stop normal-alignment contact when the opposing directions reach perpendicularity.
 inline constexpr RealT perpendicular_normal_angle = std::numbers::pi_v<RealT> / 2.0;
 // EnergyMortar retains full normal weight through 45 degrees, then reduces it smoothly to zero at 90 degrees.
 inline constexpr RealT default_normal_smoothing_start_angle = perpendicular_normal_angle / 2.0;

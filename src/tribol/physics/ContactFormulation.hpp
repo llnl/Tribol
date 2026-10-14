@@ -3,6 +3,9 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+/// @file
+/// Evaluate each contact method from complete current inputs without caller-managed preparation phases.
+
 #ifndef SRC_TRIBOL_PHYSICS_CONTACTFORMULATION_HPP_
 #define SRC_TRIBOL_PHYSICS_CONTACTFORMULATION_HPP_
 
@@ -35,9 +38,8 @@ class MeshData;
  * This class provides a polymorphic interface for contact algorithms, allowing for modular implementation of new
  * physics and formulations.
  *
- * NOTE (EBC): This class is still a work-in-progress. It's eventual design should incorporate specific choices for
- * coarse binning and take in the relevant input data in the constructor directly (i.e. Tribol mesh data, mfem meshes,
- * etc.)
+ * Evaluation receives current inputs together so callers do not need a separate preparation sequence.
+ * Solver-owned multipliers remain inputs; result accessors expose the last completed evaluation.
  */
 class ContactFormulation {
  public:

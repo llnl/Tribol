@@ -1,3 +1,8 @@
+
+
+/// @file
+/// Derive pair contact response from a shared geometric energy model so forces and tangents remain consistent.
+
 #pragma once
 #include <vector>
 #include <array>
@@ -131,8 +136,10 @@ class EnergyMortarCalculator {
   explicit EnergyMortarCalculator( const ContactParams& p )
       : p_( p ), smoother_() {}  // constructor - copies params into the object
 
+  /// Report the quadrature order used to construct this evaluator's integration rules.
   int get_N() const { return p_.N; }
 
+  /// Expose the same offset-surface projection interval used by contact integration and derivative checks.
   std::array<double, 2> compute_projection_bounds( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                    const MeshData::Viewer& mesh2 ) const
   {

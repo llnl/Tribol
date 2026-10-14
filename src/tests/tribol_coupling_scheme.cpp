@@ -188,6 +188,7 @@ class CouplingSchemeTest : public ::testing::Test {
   }
 };
 
+// Reject unsupported two-dimensional single-mortar coupling during initialization.
 TEST_F( CouplingSchemeTest, single_mortar_2D )
 {
   // expect the coupling scheme to fail because 2D
@@ -219,6 +220,7 @@ TEST_F( CouplingSchemeTest, single_mortar_2D )
   tribol::finalize();
 }
 
+// Reject unsupported two-dimensional aligned-mortar coupling during initialization.
 TEST_F( CouplingSchemeTest, aligned_mortar_2D )
 {
   registerDummy2DMesh( 0 );
@@ -248,6 +250,7 @@ TEST_F( CouplingSchemeTest, aligned_mortar_2D )
   tribol::finalize();
 }
 
+// Reject unsupported two-dimensional mortar-weight assembly during initialization.
 TEST_F( CouplingSchemeTest, mortar_weights_2D )
 {
   registerDummy2DMesh( 0 );
@@ -269,6 +272,7 @@ TEST_F( CouplingSchemeTest, mortar_weights_2D )
   tribol::finalize();
 }
 
+// Reject penalty enforcement for the single-mortar method.
 TEST_F( CouplingSchemeTest, single_mortar_3D_penalty )
 {
   registerDummy3DMesh( 0 );
@@ -297,6 +301,7 @@ TEST_F( CouplingSchemeTest, single_mortar_3D_penalty )
   tribol::finalize();
 }
 
+// Reject unsupported Lagrange-multiplier enforcement for CommonPlane.
 TEST_F( CouplingSchemeTest, common_plane_lagrange_multiplier )
 {
   registerDummy3DMesh( 0 );
@@ -316,6 +321,7 @@ TEST_F( CouplingSchemeTest, common_plane_lagrange_multiplier )
   EXPECT_EQ( isInit, false );
 }
 
+// Require registered nodal gap and pressure storage before initializing mortar coupling.
 TEST_F( CouplingSchemeTest, mortar_no_nodal_gaps_or_pressures )
 {
   registerDummy3DMesh( 0 );
@@ -337,6 +343,7 @@ TEST_F( CouplingSchemeTest, mortar_no_nodal_gaps_or_pressures )
   tribol::finalize();
 }
 
+// Reject unsupported tied-normal physics for single-mortar coupling.
 TEST_F( CouplingSchemeTest, mortar_tied )
 {
   registerDummy3DMesh( 0 );
@@ -366,6 +373,7 @@ TEST_F( CouplingSchemeTest, mortar_tied )
   tribol::finalize();
 }
 
+// Reject unsupported Coulomb friction for single-mortar coupling.
 TEST_F( CouplingSchemeTest, mortar_coulomb )
 {
   registerDummy3DMesh( 0 );
@@ -395,6 +403,7 @@ TEST_F( CouplingSchemeTest, mortar_coulomb )
   tribol::finalize();
 }
 
+// Allow supported tied-normal CommonPlane penalty coupling.
 TEST_F( CouplingSchemeTest, common_plane_tied )
 {
   registerDummy3DMesh( 0 );
@@ -419,6 +428,7 @@ TEST_F( CouplingSchemeTest, common_plane_tied )
   tribol::finalize();
 }
 
+// Reject unsupported Coulomb friction for CommonPlane coupling.
 TEST_F( CouplingSchemeTest, common_plane_coulomb )
 {
   registerDummy3DMesh( 0 );
@@ -443,6 +453,7 @@ TEST_F( CouplingSchemeTest, common_plane_coulomb )
   tribol::finalize();
 }
 
+// Allow a registered mesh to become empty without invalidating the coupling workflow.
 TEST_F( CouplingSchemeTest, non_null_to_null_meshes )
 {
   ////////////////////////////////////////////////
@@ -571,6 +582,7 @@ TEST_F( CouplingSchemeTest, non_null_to_null_meshes )
   tribol::finalize();
 }
 
+// Reject coupling schemes whose registered mesh IDs are unavailable.
 TEST_F( CouplingSchemeTest, invalid_mesh_in_coupling_scheme )
 {
   // register meshes
@@ -631,6 +643,7 @@ TEST_F( CouplingSchemeTest, invalid_mesh_in_coupling_scheme )
   tribol::finalize();
 }
 
+// Release registered contact data so the library can be initialized again.
 TEST_F( CouplingSchemeTest, finalize )
 {
   ////////////////////////////////////////////////
@@ -710,6 +723,7 @@ TEST_F( CouplingSchemeTest, finalize )
   EXPECT_EQ( csManager.findData( csIndex ), nullptr );
 }
 
+// Allow kinematic penalty contact without registered velocities.
 TEST_F( CouplingSchemeTest, null_velocity_kinematic_penalty )
 {
   registerDummy3DMesh( 0 );
@@ -742,6 +756,7 @@ TEST_F( CouplingSchemeTest, null_velocity_kinematic_penalty )
   tribol::finalize();
 }
 
+// Require velocities when rate-dependent penalty enforcement is requested.
 TEST_F( CouplingSchemeTest, null_velocity_kinematic_and_rate_penalty )
 {
   registerDummy3DMesh( 0 );
@@ -774,6 +789,7 @@ TEST_F( CouplingSchemeTest, null_velocity_kinematic_and_rate_penalty )
   tribol::finalize();
 }
 
+// Allow weight-only mortar evaluation without response storage.
 TEST_F( CouplingSchemeTest, mortar_weights_null_response_pointers )
 {
   bool setResponse = false;
@@ -797,6 +813,7 @@ TEST_F( CouplingSchemeTest, mortar_weights_null_response_pointers )
   tribol::finalize();
 }
 
+// Reject single-mortar enforcement when required response storage is missing.
 TEST_F( CouplingSchemeTest, single_mortar_null_response_pointers )
 {
   bool setResponse = false;
@@ -826,6 +843,7 @@ TEST_F( CouplingSchemeTest, single_mortar_null_response_pointers )
   tribol::finalize();
 }
 
+// Reject CommonPlane enforcement when required response storage is missing.
 TEST_F( CouplingSchemeTest, common_plane_null_response_pointers )
 {
   int numCells = 1;
@@ -852,6 +870,7 @@ TEST_F( CouplingSchemeTest, common_plane_null_response_pointers )
   tribol::finalize();
 }
 
+// Allow an empty mesh to omit field pointers without rejecting the coupling scheme.
 TEST_F( CouplingSchemeTest, null_mesh_with_null_pointers )
 {
   int numCells = 0;
@@ -890,6 +909,7 @@ TEST_F( CouplingSchemeTest, null_mesh_with_null_pointers )
   tribol::finalize();
 }
 
+// Reject CommonPlane auto-contact when its penetration filter lacks element thicknesses.
 TEST_F( CouplingSchemeTest, auto_common_plane_no_element_thickness )
 {
   tribol::IndexT mesh_id = 0;
@@ -911,6 +931,7 @@ TEST_F( CouplingSchemeTest, auto_common_plane_no_element_thickness )
   EXPECT_EQ( isInit, false );
 }
 
+// Allow CommonPlane auto-contact once the penetration filter has element thicknesses.
 TEST_F( CouplingSchemeTest, auto_common_plane_with_element_thickness )
 {
   tribol::IndexT mesh_id = 0;

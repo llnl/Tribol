@@ -3,6 +3,9 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+/// @file
+/// Assemble pair-level EnergyMortar results into MFEM solver spaces without owning solver multiplier inputs.
+
 #ifndef SRC_TRIBOL_PHYSICS_ENERGYMORTARADAPTER_HPP_
 #define SRC_TRIBOL_PHYSICS_ENERGYMORTARADAPTER_HPP_
 #include "tribol/config.hpp"
@@ -48,14 +51,17 @@ class Nodal : public ContactFormulation {
   /** @brief Assemble nodal contact forces and their derivatives. */
   void computeNodalForces( const mfem::HypreParVector* multipliers );
 
+  /// Expose the normalized penalty gap or the unnormalized LM constraint from the completed evaluation.
   const mfem::HypreParVector& getMfemGap() const override
   {
     return static_cast<const Adapter*>( this )->use_penalty_ ? gap_vec_.get() : g_tilde_vec_.get();
   }
+  /// Return a copy so repeated solver queries do not consume the assembled constraint derivative.
   std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx() const override
   {
     return std::make_unique<mfem::HypreParMatrix>( dg_tilde_dx_.get() );
   }
+  /// Expose multiplier sensitivity separately from the displacement tangent.
   std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const override;
 
  protected:
@@ -266,7 +272,7 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   // Stored InterfacePairs
 
   /**
-   * @brief Interface pairs used for the current update
+   * @brief Borrow candidate pairs only during evaluate(); the coupling scheme retains ownership
    */
   ArrayViewT<const InterfacePair> pairs_;
 
