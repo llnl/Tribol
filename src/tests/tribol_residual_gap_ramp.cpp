@@ -25,6 +25,7 @@ double residualGapAtVertex( const tribol::MfemSubmeshData& data, int vertex )
   return data.GetSubmeshResidualGap()[dofs[0]];
 }
 
+// Close the residual separation at inward corners and recover it over multiple boundary elements.
 TEST( ResidualGapRamp, ConcaveCornerRampsOverMultipleElements )
 {
   auto parent = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::CShapeMesh( 32, 32, 8 ) );
@@ -61,6 +62,7 @@ TEST( ResidualGapRamp, ConcaveCornerRampsOverMultipleElements )
   EXPECT_TRUE( found_full );
 }
 
+// Preserve full separation at convex corners and when corner reduction is disabled.
 TEST( ResidualGapRamp, ConvexCornerAndZeroAngleRemainUniform )
 {
   auto parent = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::CShapeMesh( 4, 4, 1 ) );
@@ -82,6 +84,7 @@ TEST( ResidualGapRamp, ConvexCornerAndZeroAngleRemainUniform )
   }
 }
 
+// Classify inward corners from the updated geometry even when deformation creates an obtuse opening.
 TEST( ResidualGapRamp, DetectsObtuseCornerCreatedByDeformation )
 {
   auto parent = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::CShapeMesh( 8, 8, 2 ) );
@@ -137,6 +140,7 @@ TEST( ResidualGapRamp, DetectsObtuseCornerCreatedByDeformation )
   EXPECT_NEAR( residualGapAtVertex( data, tip ), 0.0, 1.0e-12 );
 }
 
+// Retain uniform separation outside the supported two-dimensional corner-ramp model.
 TEST( ResidualGapRamp, ThreeDimensionalSurfaceRetainsUniformGap )
 {
   auto parent = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::CubeMesh( 1, 1, 1 ) );
