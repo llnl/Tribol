@@ -666,7 +666,7 @@ class MfemMeshData {
   bool UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks, bool force_new_redecomp = false,
                            RealT residual_gap = 0.0 );
 
-  /** @brief Refresh parent-linked geometry so dynamic ramps follow deformation before redecomposition. */
+  /** @brief Refresh parent-linked geometry so dynamic ramps follow the current deformation. */
   void UpdateSubmeshCoordinates();
 
   /**
