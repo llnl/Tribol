@@ -1198,8 +1198,10 @@ MfemSubmeshData::MfemSubmeshData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_
       contact_multipliers_{ submesh_pressure_.ParFESpace() },
       penalty_contact_pressure_{ submesh_pressure_.ParFESpace() },
       submesh_residual_gap_{ submesh_pressure_.ParFESpace() },
+      submesh_ball_weight_{ submesh_pressure_.ParFESpace() },
       pressure_{ submesh_pressure_ },
       residual_gap_{ submesh_residual_gap_ },
+      ball_weight_{ submesh_ball_weight_ },
       submesh_lor_xfer_{ lor_mesh ? std::make_unique<SubmeshLORTransfer>( *submesh_pressure_.ParFESpace(), *lor_mesh )
                                   : nullptr },
       use_device_{ use_device }
@@ -1209,6 +1211,7 @@ MfemSubmeshData::MfemSubmeshData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_
   contact_multipliers_.fill( 0.0 );
   penalty_contact_pressure_.fill( 0.0 );
   submesh_residual_gap_ = 0.0;
+  submesh_ball_weight_ = 0.0;
 }
 
 void MfemSubmeshData::SetLORMesh( mfem::ParMesh* lor_mesh )
@@ -1226,6 +1229,7 @@ void MfemSubmeshData::UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_me
   }
   pressure_.UpdateField( update_data_->pressure_xfer_ );
   residual_gap_.UpdateField( update_data_->pressure_xfer_ );
+  ball_weight_.UpdateField( update_data_->pressure_xfer_ );
   redecomp_gap_.SetSpace( pressure_.GetRedecompGridFn().FESpace() );
   redecomp_gap_.UseDevice( use_device_ );
   redecomp_gap_ = 0.0;
@@ -1239,17 +1243,20 @@ void MfemSubmeshData::UpdateResidualGapField( RealT residual_gap, RealT ramp_ang
   auto update_redecomp_fields = [&]() {
     if ( update_data_ ) {
       residual_gap_.UpdateField( update_data_->pressure_xfer_ );
+      ball_weight_.UpdateField( update_data_->pressure_xfer_ );
     }
   };
 
   if ( residual_gap <= 0.0 ) {
     submesh_residual_gap_ = residual_gap;
+    submesh_ball_weight_ = 0.0;
     update_redecomp_fields();
     return;
   }
 
   if ( submesh.Dimension() != 1 || submesh.SpaceDimension() != 2 ) {
     submesh_residual_gap_ = residual_gap;
+    submesh_ball_weight_ = 0.0;
     update_redecomp_fields();
     return;
   }
@@ -1319,13 +1326,22 @@ void MfemSubmeshData::UpdateResidualGapField( RealT residual_gap, RealT ramp_ang
   group_comm.Reduce( incidence, mfem::GroupCommunicator::Sum );
   group_comm.Bcast( incidence );
 
+  mfem::Vector vertex_ball_weight( num_dofs );
+  vertex_ball_weight = 0.0;
   const bool builds_corner_ramp = ramp_angle > 0.0;
   const double slope = builds_corner_ramp ? 2.0 * std::tan( 0.5 * ramp_angle ) : 0.0;
   const double ramp_length = builds_corner_ramp ? residual_gap / slope : 0.0;
   mfem::Vector distance( num_dofs );
   distance = ramp_length;
+  // A ball closes the offset surface only where adjacent edges separate at a convex turn. Straight and nonconvex
+  // interior vertices already have continuous or overlapping offset edges, while an open surface needs an end cap.
   const double max_corner_angle = 2.0 * energy_mortar::perpendicular_normal_angle - corner_angle_tol;
   for ( int i = 0; i < num_dofs; ++i ) {
+    const bool is_open_endpoint = incidence[i] == 1;
+    if ( is_open_endpoint ) {
+      vertex_ball_weight[i] = 1.0;
+      continue;
+    }
     if ( incidence[i] != 2 ) {
       continue;
     }
@@ -1333,11 +1349,16 @@ void MfemSubmeshData::UpdateResidualGapField( RealT residual_gap, RealT ramp_ang
     const double opening_cosine = std::max( -1.0, std::min( 1.0, 0.5 * ( ray_norm_sq - 2.0 ) ) );
     const double exterior_alignment = ray_x[i] * normal_x[i] + ray_y[i] * normal_y[i];
     const bool is_strict_corner = std::acos( opening_cosine ) <= max_corner_angle;
+    const bool is_convex_corner = is_strict_corner && exterior_alignment < 0.0;
     const bool is_nonconvex_corner = is_strict_corner && exterior_alignment > 0.0;
-    if ( builds_corner_ramp && is_nonconvex_corner ) {
+    if ( is_convex_corner ) {
+      vertex_ball_weight[i] = 1.0;
+    } else if ( builds_corner_ramp && is_nonconvex_corner ) {
       distance[i] = 0.0;
     }
   }
+  group_comm.Reduce( vertex_ball_weight.HostReadWrite(), mfem::GroupCommunicator::Max );
+  group_comm.Bcast( vertex_ball_weight.HostReadWrite() );
 
   if ( builds_corner_ramp ) {
     group_comm.Reduce( distance.HostReadWrite(), mfem::GroupCommunicator::Min );
@@ -1384,9 +1405,17 @@ void MfemSubmeshData::UpdateResidualGapField( RealT residual_gap, RealT ramp_ang
   }
   mfem::GridFunctionCoefficient gap_coefficient( &vertex_gap );
   submesh_residual_gap_.ProjectCoefficient( gap_coefficient );
+  mfem::ParGridFunction vertex_ball_weight_grid_function( &vertex_fes );
+  vertex_ball_weight_grid_function = vertex_ball_weight;
+  mfem::GridFunctionCoefficient ball_weight_coefficient( &vertex_ball_weight_grid_function );
+  submesh_ball_weight_.ProjectCoefficient( ball_weight_coefficient );
   auto* gap_data = submesh_residual_gap_.HostReadWrite();
   for ( int i = 0; i < submesh_residual_gap_.Size(); ++i ) {
     gap_data[i] = std::max( 0.0, std::min( residual_gap, gap_data[i] ) );
+  }
+  auto* ball_weight_data = submesh_ball_weight_.HostReadWrite();
+  for ( int i = 0; i < submesh_ball_weight_.Size(); ++i ) {
+    ball_weight_data[i] = std::max( 0.0, std::min( 1.0, ball_weight_data[i] ) );
   }
   update_redecomp_fields();
 }

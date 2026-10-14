@@ -20,7 +20,7 @@ struct QuadPoints {
 
 /// Parameters controlling ENERGY_MORTAR contact evaluation.
 struct ContactParams {
-  double del{ 0.1 };  ///< Integration-bound smoothing length.
+  double del{ 0.1 };  ///< Transition width between projected-edge and endpoint-cap contact.
   double normal_smoothing_start_angle{
       energy_mortar::default_normal_smoothing_start_angle };  ///< Normal smoothing start angle in radians.
   double k{ 1.0 };                                            ///< Penalty stiffness.
@@ -41,6 +41,29 @@ struct QuadraturePointPenaltyData {
   double energy{ 0.0 };                                   ///< Penalty energy for the interface pair.
   std::array<double, num_force_dofs> force{};             ///< Derivative with respect to pair coordinates.
   std::array<double, num_stiffness_entries> stiffness{};  ///< Flattened force derivative matrix.
+};
+
+/// Stores the enlarged source-feature stencil used by endpoint-ball contact.
+struct BallEndpointData {
+  std::array<double, 2> weight{};                    ///< Endpoint-cap weights held fixed during pair differentiation.
+  std::array<int, 2> neighbor_node{ -1, -1 };        ///< Other node on the second edge incident to each endpoint.
+  std::array<int, 2> neighbor_element{ -1, -1 };     ///< Element containing each additional stencil node.
+  std::array<int, 2> neighbor_local_node{ -1, -1 };  ///< Local node number in each additional element.
+  std::array<double, 4> neighbor_coordinates{};      ///< Current coordinates of the two additional stencil nodes.
+  std::array<bool, 2> is_open_endpoint{};            ///< True when the current edge is the endpoint's only edge.
+};
+
+/// Stores endpoint-ball energy derivatives for the six-node source-feature/target-edge stencil.
+struct BallPenaltyData {
+  static constexpr int dim = 2;
+  static constexpr int num_nodes = 6;
+  static constexpr int num_force_dofs = dim * num_nodes;
+  static constexpr int num_stiffness_entries = num_force_dofs * num_force_dofs;
+
+  bool has_active_qp{ false };
+  double energy{ 0.0 };
+  std::array<double, num_force_dofs> force{};
+  std::array<double, num_stiffness_entries> stiffness{};
 };
 
 /// Stores weighted nodal gaps and tributary areas for one interface pair.
@@ -203,6 +226,14 @@ class EnergyMortarCalculator {
                                                                     const MeshData::Viewer& mesh1,
                                                                     const MeshData::Viewer& mesh2,
                                                                     const double* residual_gap_values = nullptr ) const;
+
+  /// Compute the non-mortar nodal-ball completion energy and its consistent derivatives.
+  ///
+  /// The differentiated stencil contains A0, A1, B0, B1, and the additional source neighbor at each endpoint. Open
+  /// endpoints duplicate the current edge ray and therefore do not use their additional stencil node.
+  BallPenaltyData compute_ball_penalty_data( const InterfacePair& pair, const MeshData::Viewer& mesh1,
+                                             const MeshData::Viewer& mesh2, const BallEndpointData& ball_data,
+                                             const double* residual_gap_values = nullptr ) const;
 
   /// Evaluate only the local quadrature-point penalty energy.
   double compute_quadrature_point_penalty_energy( const InterfacePair& pair, const MeshData::Viewer& mesh1,

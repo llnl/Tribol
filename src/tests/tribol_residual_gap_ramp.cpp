@@ -25,6 +25,14 @@ double residualGapAtVertex( const tribol::MfemSubmeshData& data, int vertex )
   return data.GetSubmeshResidualGap()[dofs[0]];
 }
 
+double ballWeightAtVertex( const tribol::MfemSubmeshData& data, int vertex )
+{
+  mfem::Array<int> dofs;
+  data.GetSubmeshFESpace().GetVertexDofs( vertex, dofs );
+  EXPECT_EQ( dofs.Size(), 1 );
+  return data.GetSubmeshBallWeight()[dofs[0]];
+}
+
 TEST( ResidualGapRamp, ConcaveCornerRampsOverMultipleElements )
 {
   auto parent = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::CShapeMesh( 32, 32, 8 ) );
@@ -80,6 +88,69 @@ TEST( ResidualGapRamp, ConvexCornerAndZeroAngleRemainUniform )
   for ( int vertex = 0; vertex < submesh.GetNV(); ++vertex ) {
     EXPECT_NEAR( residualGapAtVertex( data, vertex ), residual_gap, 1.0e-12 );
   }
+}
+
+TEST( ResidualGapRamp, BallWeightsSelectConvexCorners )
+{
+  auto parent = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::CShapeMesh( 8, 8, 2 ) );
+  mfem::Array<int> attributes{ 1, 2, 3, 4, 5, 6, 7 };
+  auto submesh = mfem::ParSubMesh::CreateFromBoundary( parent, attributes );
+  auto fec = std::make_unique<mfem::H1_FECollection>( 1, 2 );
+  tribol::MfemSubmeshData data( submesh, nullptr, std::move( fec ), 1, false );
+
+  constexpr double residual_gap = 0.05;
+  data.UpdateResidualGapField( residual_gap, 0.0 );
+
+  bool found_concave = false;
+  bool found_convex = false;
+  bool found_straight = false;
+  for ( int vertex = 0; vertex < submesh.GetNV(); ++vertex ) {
+    double x[2];
+    submesh.GetNode( vertex, x );
+    if ( std::abs( x[0] - 0.25 ) < 1.0e-12 && std::abs( x[1] - 0.75 ) < 1.0e-12 ) {
+      EXPECT_DOUBLE_EQ( ballWeightAtVertex( data, vertex ), 0.0 );
+      found_concave = true;
+    } else if ( std::abs( x[0] ) < 1.0e-12 && std::abs( x[1] ) < 1.0e-12 ) {
+      EXPECT_DOUBLE_EQ( ballWeightAtVertex( data, vertex ), 1.0 );
+      found_convex = true;
+    } else if ( std::abs( x[0] ) < 1.0e-12 && std::abs( x[1] - 0.5 ) < 1.0e-12 ) {
+      EXPECT_DOUBLE_EQ( ballWeightAtVertex( data, vertex ), 0.0 );
+      found_straight = true;
+    }
+    EXPECT_NEAR( residualGapAtVertex( data, vertex ), residual_gap, 1.0e-12 );
+  }
+  EXPECT_TRUE( found_concave );
+  EXPECT_TRUE( found_convex );
+  EXPECT_TRUE( found_straight );
+}
+
+TEST( ResidualGapRamp, OpenEndpointsRemainEligibleAfterDeformation )
+{
+  auto parent = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::SquareMesh( 2, 1 ) );
+  mfem::Array<int> attributes{ 1 };
+  auto submesh = mfem::ParSubMesh::CreateFromBoundary( parent, attributes );
+  auto fec = std::make_unique<mfem::H1_FECollection>( 1, 2 );
+  tribol::MfemSubmeshData data( submesh, nullptr, std::move( fec ), 1, false );
+
+  constexpr double residual_gap = 0.05;
+  data.UpdateResidualGapField( residual_gap, 0.0 );
+
+  int endpoint = -1;
+  for ( int vertex = 0; vertex < submesh.GetNV(); ++vertex ) {
+    if ( ballWeightAtVertex( data, vertex ) > 0.5 ) {
+      endpoint = vertex;
+      EXPECT_DOUBLE_EQ( ballWeightAtVertex( data, vertex ), 1.0 );
+      break;
+    }
+  }
+  ASSERT_GE( endpoint, 0 );
+
+  double moved_endpoint[2];
+  submesh.GetNode( endpoint, moved_endpoint );
+  moved_endpoint[1] += 0.25;
+  submesh.SetNode( endpoint, moved_endpoint );
+  data.UpdateResidualGapField( residual_gap, 0.0 );
+  EXPECT_DOUBLE_EQ( ballWeightAtVertex( data, endpoint ), 1.0 );
 }
 
 TEST( ResidualGapRamp, DetectsObtuseCornerCreatedByDeformation )
@@ -150,6 +221,7 @@ TEST( ResidualGapRamp, ThreeDimensionalSurfaceRetainsUniformGap )
   data.UpdateResidualGapField( residual_gap, 10.0 * pi / 180.0 );
   for ( int vertex = 0; vertex < submesh.GetNV(); ++vertex ) {
     EXPECT_NEAR( residualGapAtVertex( data, vertex ), residual_gap, 1.0e-12 );
+    EXPECT_DOUBLE_EQ( ballWeightAtVertex( data, vertex ), 0.0 );
   }
 }
 

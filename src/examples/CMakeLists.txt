@@ -125,3 +125,11 @@ if ( BUILD_REDECOMP )
   endforeach()
   
 endif()
+
+# Inspect the complete edge/cap response for one sliding pair without a nonlinear solve.
+if(TRIBOL_USE_ENZYME)
+  blt_add_executable(NAME residual_gap_slide_ex
+                     SOURCES residual_gap_slide.cpp
+                     OUTPUT_DIR ${EXAMPLE_OUTPUT_DIRECTORY}
+                     DEPENDS_ON tribol ${tribol_device_depends})
+endif()
