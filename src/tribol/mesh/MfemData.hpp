@@ -3,6 +3,9 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+/// @file
+/// Keep parent-linked contact fields persistent while transferring geometry and results through redecomposition.
+
 #ifndef SRC_TRIBOL_MESH_MFEMDATA_HPP_
 #define SRC_TRIBOL_MESH_MFEMDATA_HPP_
 
@@ -663,7 +666,7 @@ class MfemMeshData {
   bool UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks, bool force_new_redecomp = false,
                            RealT residual_gap = 0.0 );
 
-  /** @brief Refresh the persistent contact-submesh coordinates from the current parent coordinates. */
+  /** @brief Refresh parent-linked geometry so dynamic ramps follow deformation before redecomposition. */
   void UpdateSubmeshCoordinates();
 
   /**
@@ -1588,7 +1591,7 @@ class MfemSubmeshData {
   /** @brief Get the residual-gap field transferred to the redecomp mesh. */
   const mfem::GridFunction& GetRedecompResidualGap() const { return residual_gap_.GetRedecompGridFn(); }
 
-  /** @brief Get the persistent residual-gap ramp on the parent-linked submesh. */
+  /** @brief Preserve the ramp independently of redecomposition and formulation reconstruction. */
   const mfem::ParGridFunction& GetSubmeshResidualGap() const { return submesh_residual_gap_; }
 
   /**
@@ -1671,7 +1674,9 @@ class MfemSubmeshData {
    */
   mfem::ParGridFunction submesh_pressure_;
 
+  /// Keep solver input independent of formulation lifetime and penalty-pressure output.
   shared::ParVector contact_multipliers_;
+  /// Retain the most recent penalty result without overwriting solver multipliers.
   shared::ParVector penalty_contact_pressure_;
 
   /** @brief Residual-gap ramp on the persistent parent-linked boundary submesh. */

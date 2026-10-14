@@ -3,6 +3,9 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+/// @file
+/// Connect MFEM meshes and solver fields to Tribol while documenting input and result ownership.
+
 #ifndef SRC_TRIBOL_INTERFACE_MFEM_TRIBOL_HPP_
 #define SRC_TRIBOL_INTERFACE_MFEM_TRIBOL_HPP_
 

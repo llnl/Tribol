@@ -377,6 +377,7 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
   return result;
 }
 
+// Keep full contact weight up to the configured angle and suppress nonopposing normals.
 TEST( NormalAngleSmoothingCheck, QuinticStartsAtConfiguredAngle )
 {
   constexpr double pi = std::numbers::pi_v<double>;
@@ -392,6 +393,7 @@ TEST( NormalAngleSmoothingCheck, QuinticStartsAtConfiguredAngle )
   EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.5, start_angle ), 0.0 );
 }
 
+// Avoid force or tangent jumps where angular attenuation starts and ends.
 TEST( NormalAngleSmoothingCheck, EnergyWeightHasContinuousSlopeAndCurvature )
 {
   const double start = tribol::energy_mortar::default_normal_smoothing_start_angle;
@@ -412,6 +414,7 @@ TEST( NormalAngleSmoothingCheck, EnergyWeightHasContinuousSlopeAndCurvature )
   }
 }
 
+// Allow attenuation to be disabled while retaining the nonopposing-normal cutoff.
 TEST( NormalAngleSmoothingCheck, NinetyDegreesDisablesAttenuation )
 {
   constexpr double perpendicular = energy_mortar::perpendicular_normal_angle;
@@ -422,6 +425,7 @@ TEST( NormalAngleSmoothingCheck, NinetyDegreesDisablesAttenuation )
   EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.5, perpendicular ), 0.0 );
 }
 
+// An open contact pair must contribute no penalty energy, force, or stiffness.
 TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -450,6 +454,7 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
                             []( double stiffness ) { return stiffness == 0.0; } ) );
 }
 
+// Use the pair-local ramp field when choosing its effective residual separation.
 TEST( EnergyMortarResidualGapCheck, PairUsesMaximumInterpolatedRampValue )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -483,6 +488,7 @@ TEST( EnergyMortarResidualGapCheck, PairUsesMaximumInterpolatedRampValue )
   EXPECT_GT( active.energy, 0.0 );
 }
 
+// Retain the active penalty tangent at zero gap even though energy and force vanish.
 TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -512,6 +518,7 @@ TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
                             []( double stiffness ) { return stiffness != 0.0; } ) );
 }
 
+// Recover the uniform-gap area shift for parallel edges, where offsetting leaves overlap unchanged.
 TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
 {
   // The parallel edges have a normal separation of 0.1.
@@ -552,6 +559,7 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
   }
 }
 
+// Apply normal attenuation consistently to the residual-gap correction.
 TEST( EnergyMortarResidualGapCheck, AssembledGapShiftRespectsNormalSmoothing )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -605,6 +613,7 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapShiftRespectsNormalSmoothing )
   }
 }
 
+// Activate contact at the requested residual separation before the physical surfaces touch.
 TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
 {
   // The edges have a normal separation of 0.1; a residual gap of 0.15 produces an effective gap of -0.05.
@@ -647,6 +656,7 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
 
 class ResidualGapDerivativeCheck : public ::testing::TestWithParam<double> {};
 
+// Verify penalty force and stiffness against energy and force differences for each derivative mode.
 TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFiniteDifference )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -750,6 +760,7 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   restore();
 }
 
+// Include residual separation consistently in the first derivatives of weighted nodal gaps.
 TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
 {
   // ── Geometry: two facing LINEAR_EDGE segments ────────────────────────────
@@ -808,6 +819,7 @@ TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
   }
 }
 
+// Include residual separation consistently in the second derivatives of weighted nodal gaps.
 TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
 {
   // ── Geometry: two facing LINEAR_EDGE segments ────────────────────────────

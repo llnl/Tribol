@@ -3,6 +3,9 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+/// @file
+/// Configure and evaluate registered contact schemes through the public Tribol API.
+
 #ifndef SRC_TRIBOL_INTERFACE_TRIBOL_HPP_
 #define SRC_TRIBOL_INTERFACE_TRIBOL_HPP_
 
@@ -154,7 +157,7 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
 void setEnergyMortarSmoothingLength( IndexT cs_id, RealT smoothing_length );
 
 /*!
- * \brief Sets the EnergyMortar normal-alignment smoothing start angle
+ * \brief Retains full contact weight until normals reach the requested attenuation angle
  *
  * \param [in] cs_id coupling scheme id
  * \param [in] start_angle relative deviation from perfectly opposed normals, in radians, where smoothing begins;
@@ -167,7 +170,7 @@ void setEnergyMortarSmoothingLength( IndexT cs_id, RealT smoothing_length );
 void setEnergyMortarNormalSmoothingStartAngle( IndexT cs_id, RealT start_angle );
 
 /*!
- * \brief Sets the EnergyMortar residual-gap crack-opening ramp angle
+ * \brief Tapers residual separation near inward corners to avoid holding a crack tip open
  *
  * \param [in] cs_id coupling scheme id
  * \param [in] ramp_angle total symmetric crack-opening angle in radians. Zero disables corner reduction.
