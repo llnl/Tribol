@@ -1124,6 +1124,12 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
       EXPECT_GT( DfDx->NNZ(), 0 );
     }
   }
+  int rank = 0;
+  MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+  if ( rank == 0 ) {
+    axom::slic::ScopedAbortToThrow abort_to_throw;
+    EXPECT_THROW( tribol::getMfemContactPressure( cs_id ), axom::slic::SlicAbortException );
+  }
 }
 
 TEST_F( MfemJacobianTest, energy_mortar_nodal_penalty_includes_ball_completion )

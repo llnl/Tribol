@@ -762,6 +762,8 @@ mfem::HypreParVector& getMfemContactPressure( IndexT cs_id )
                               cs_id ) );
   SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
   SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "Coupling scheme does not contain MFEM contact state." );
+  SLIC_ERROR_ROOT_IF( cs->getParameters().enforcement_location != EnforcementLocation::Nodal,
+                      "A nodal contact pressure is not defined for quadrature-point enforcement." );
   return cs->getEnforcementOptions().penalty_options.kinematic_calc_set
              ? cs->getMfemSubmeshData()->GetPenaltyContactPressure()
              : cs->getMfemSubmeshData()->GetContactMultipliers();
