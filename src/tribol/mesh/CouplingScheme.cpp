@@ -1030,11 +1030,12 @@ void CouplingScheme::performBinning()
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
   if ( m_formulation ) {
-    if ( m_interface_pairs.size() > 0 || !hasFixedBinning() ) {
-      m_formulation->setInterfacePairs( std::move( m_interface_pairs ), 0 );
-    }
-    m_formulation->updateNodalGaps();
-    m_formulation->updateNodalForces();
+#ifdef BUILD_REDECOMP
+    const auto* multipliers = hasMfemSubmeshData() ? &getMfemSubmeshData()->GetContactMultipliers() : nullptr;
+    m_formulation->evaluate( *m_mesh1, *m_mesh2, m_interface_pairs.view(), cycle, m_parameters, multipliers );
+#else
+    m_formulation->evaluate( *m_mesh1, *m_mesh2, m_interface_pairs.view(), cycle, m_parameters );
+#endif
     if ( m_formulation->hasTimeStepCalculation() ) {
       dt = m_formulation->computeTimeStep();
     }
@@ -1179,8 +1180,6 @@ bool CouplingScheme::init()
       // ENERGY_MORTAR?
       return false;
     }
-    // pass the new meshes to the formulation
-    m_formulation->updateMeshes( *m_mesh1, *m_mesh2 );
   } else {
     this->m_isValid = this->isValidCouplingScheme();
   }

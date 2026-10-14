@@ -142,6 +142,31 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
 void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
 
 /*!
+ * \brief Sets the EnergyMortar integration-bound smoothing length
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] smoothing_length transition width in the non-mortar edge's local coordinate
+ *
+ * \pre 0 <= smoothing_length <= 0.5
+ *
+ * \note The default is 0.1. A new value takes effect during the next tribol::update().
+ */
+void setEnergyMortarSmoothingLength( IndexT cs_id, RealT smoothing_length );
+
+/*!
+ * \brief Sets the EnergyMortar normal-alignment smoothing start angle
+ *
+ * \param [in] cs_id coupling scheme id
+ * \param [in] start_angle relative deviation from perfectly opposed normals, in radians, where smoothing begins;
+ *                            pi / 2 disables attenuation for opposing normals
+ *
+ * \pre 0 <= start_angle <= pi / 2
+ *
+ * \note The default is pi / 4. A new value takes effect during the next tribol::update().
+ */
+void setEnergyMortarNormalSmoothingStartAngle( IndexT cs_id, RealT start_angle );
+
+/*!
  *
  * \brief sets the timestep scale factor applied to the timestep vote
  *
@@ -229,12 +254,14 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
  * @brief Sets the residual gap for a coupling scheme
  *
  * @param [in] cs_id coupling scheme id
- * @param [in] residual_gap the nonnegative gap offset. Tribol defines positive kinematic gaps as separation and
- * negative kinematic gaps as interpenetration. Positive residual gaps shift the contact surface away from the mesh
- * surface, making contact occur earlier. Effective gap = kinematic gap - residual gap.
+ * @param [in] residual_gap the nominal nonnegative separation between contacting surfaces. Tribol defines positive
+ * kinematic gaps as separation and negative kinematic gaps as interpenetration.
  *
- * @note Configure the residual gap after registering the coupling scheme and before its first update. For MFEM
- * coupling schemes, this must precede the first call to updateMfemParallelDecomposition().
+ * @note EnergyMortar subtracts this value from the kinematic gap during enforcement.
+ *
+ * @note Configure the residual gap after registering the coupling scheme. For MFEM coupling schemes, call
+ * updateMfemParallelDecomposition() after changing the residual gap and before the next tribol::update(), so the
+ * contact search includes the new separation. The formulation uses the new value during that update.
  */
 void setResidualGap( IndexT cs_id, RealT residual_gap );
 

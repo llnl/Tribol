@@ -14,7 +14,8 @@ namespace tribol {
 template <template <typename> class EnforcementLocation>
 EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
                                                                MfemJacobianData& jac_data, double k, double delta,
-                                                               int N, bool enzyme_quadrature, bool use_penalty,
+                                                               double normal_smoothing_start_angle, int N,
+                                                               bool enzyme_quadrature, bool use_penalty,
                                                                RealT residual_gap )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
@@ -22,32 +23,12 @@ EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mes
 {
   params_.k = k;
   params_.del = delta;
+  params_.normal_smoothing_start_angle = normal_smoothing_start_angle;
   params_.N = N;
   params_.enzyme_quadrature = enzyme_quadrature;
   params_.residual_gap = residual_gap;
 
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
-
-  this->init( this );
-}
-
-template <typename Adapter>
-void Nodal<Adapter>::init( Adapter* adapter )
-{
-  // Allocate the (pressure) true-dof vector early so host code can set it via tribol::getMfemContactPressure() after
-  // the formulation is created. In penalty mode this is overwritten in updateNodalForces(); in LM mode it is treated as
-  // the Lagrange multiplier vector (lambda).
-  pressure_vec_ =
-      shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
-  pressure_vec_.fill( 0.0 );
-}
-
-template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::updateMeshes( MeshData& mesh1, MeshData& mesh2 )
-{
-  // Maintain the same "flipped" convention as the constructor.
-  mesh1_ = &mesh2;
-  mesh2_ = &mesh1;
 }
 
 template <template <typename> class EnforcementLocation>
@@ -60,28 +41,41 @@ void EnergyMortarAdapter<EnforcementLocation>::updateConstantPenaltyStiffness( d
 }
 
 template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::setResidualGap( RealT residual_gap )
+void EnergyMortarAdapter<EnforcementLocation>::evaluate( MeshData& mesh1, MeshData& mesh2,
+                                                         ArrayViewT<const InterfacePair> pairs, int /*cycle*/,
+                                                         const Parameters& parameters,
+                                                         const mfem::HypreParVector* multipliers )
 {
-  params_.residual_gap = residual_gap;
-  evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
-}
+  // EnergyMortar uses the literature convention: Tribol mesh 2 is the non-mortar integration side.
+  mesh1_ = &mesh2;
+  mesh2_ = &mesh1;
+  pairs_ = pairs;
 
-template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::setInterfacePairs( ArrayT<InterfacePair>&& pairs, int /*check_level*/ )
-{
-  // TODO: Consider design and how this interacts with binning and CG
-  pairs_ = std::move( pairs );
-}
+  bool requires_evaluator_rebuild = false;
+  if ( params_.del != parameters.energy_mortar_smoothing_length ) {
+    params_.del = parameters.energy_mortar_smoothing_length;
+    requires_evaluator_rebuild = true;
+  }
+  if ( params_.normal_smoothing_start_angle != parameters.energy_mortar_normal_smoothing_start_angle ) {
+    params_.normal_smoothing_start_angle = parameters.energy_mortar_normal_smoothing_start_angle;
+    requires_evaluator_rebuild = true;
+  }
+  if ( params_.residual_gap != parameters.residual_gap ) {
+    params_.residual_gap = parameters.residual_gap;
+    requires_evaluator_rebuild = true;
+  }
 
-template <template <typename> class EnforcementLocation>
-void EnergyMortarAdapter<EnforcementLocation>::updateIntegrationRule()
-{
-  SLIC_WARNING_ROOT( "Update integration rule not implemmented for any method" );
-  // TODO: break out integration rule as a separate method
+  if ( requires_evaluator_rebuild ) {
+    evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
+  }
+
+  this->computeNodalGaps();
+  this->computeNodalForces( multipliers );
+  pairs_ = {};
 }
 
 template <typename Adapter>
-void Nodal<Adapter>::updateNodalGaps()
+void Nodal<Adapter>::computeNodalGaps()
 {
   auto* adapter = static_cast<Adapter*>( this );
 
@@ -231,35 +225,30 @@ void Nodal<Adapter>::updateNodalGaps()
 }
 
 template <typename Adapter>
-void Nodal<Adapter>::updateNodalForces()
+void Nodal<Adapter>::computeNodalForces( const mfem::HypreParVector* multipliers )
 {
   auto* adapter = static_cast<Adapter*>( this );
 
-  // NOTE: user should have called updateNodalGaps() with updated coords before calling this
-
+  SLIC_ERROR_ROOT_IF( !adapter->use_penalty_ && !multipliers, "LM evaluation requires solver-owned multipliers." );
+  shared::ParVector pressure_vec =
+      adapter->use_penalty_ ? adapter->params_.k * adapter->gap_vec_ : shared::ParVector( *multipliers );
+  SLIC_ERROR_ROOT_IF( pressure_vec.size() != adapter->g_tilde_vec_.size(), "Contact pressure size mismatch." );
   if ( adapter->use_penalty_ ) {
-    // Penalty mode: p = k * (g_tilde / A)
-    adapter->pressure_vec_ = adapter->params_.k * adapter->gap_vec_;
-  } else {
-    // LM mode: adapter->pressure_vec_ is treated as the Lagrange multiplier vector (lambda)
-    SLIC_ERROR_ROOT_IF( adapter->submesh_data_.GetSubmeshFESpace().GetTrueVSize() != adapter->pressure_vec_.size(),
-                        "LM vector is not initialized. Call tribol::update() once to initialize the formulation." );
-    SLIC_ERROR_ROOT_IF( adapter->pressure_vec_.size() != adapter->g_tilde_vec_.size(),
-                        "LM vector size mismatch with contact dofs (g_tilde)." );
+    adapter->submesh_data_.GetPenaltyContactPressure() = pressure_vec.get();
   }
 
-  adapter->energy_ = adapter->pressure_vec_.dot( adapter->g_tilde_vec_ );
+  adapter->energy_ = pressure_vec.dot( adapter->g_tilde_vec_ );
 
   if ( !adapter->use_penalty_ ) {
     // -------------------------------------------------------------------------
     // LM mode: force = G^T * lambda and df/dx = lambda · d^2(g_tilde)/dx^2
     // -------------------------------------------------------------------------
-    adapter->force_vec_ = adapter->pressure_vec_ * adapter->dg_tilde_dx_;
+    adapter->force_vec_ = pressure_vec * adapter->dg_tilde_dx_;
 
     mfem::GridFunction redecomp_lambda( adapter->submesh_data_.GetRedecompGap() );
     mfem::ParGridFunction submesh_lambda(
         const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
-    submesh_lambda.SetFromTrueDofs( adapter->pressure_vec_.get() );
+    submesh_lambda.SetFromTrueDofs( pressure_vec.get() );
     adapter->submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_lambda, redecomp_lambda );
 
     adapter->df_dx_ = computeDfDxSecondDerivativesLM( adapter, redecomp_lambda );
@@ -270,7 +259,7 @@ void Nodal<Adapter>::updateNodalForces()
   // Penalty mode: force and Jacobian include pressure/area coupling terms
   // ---------------------------------------------------------------------------
   auto k_over_a = adapter->params_.k * adapter->A_vec_.inverse( adapter->area_tol_ );
-  auto p_over_a = adapter->pressure_vec_.divide( adapter->A_vec_, adapter->area_tol_ );
+  auto p_over_a = pressure_vec.divide( adapter->A_vec_, adapter->area_tol_ );
 
   shared::ParSparseMat dp_dx( adapter->dg_tilde_dx_.get() );
   dp_dx->ScaleRows( k_over_a.get() );
@@ -278,13 +267,13 @@ void Nodal<Adapter>::updateNodalForces()
   dp_dx_temp->ScaleRows( p_over_a.get() );
   dp_dx -= dp_dx_temp;
 
-  adapter->force_vec_ = ( adapter->pressure_vec_ * adapter->dg_tilde_dx_ ) + ( adapter->g_tilde_vec_ * dp_dx );
+  adapter->force_vec_ = ( pressure_vec * adapter->dg_tilde_dx_ ) + ( adapter->g_tilde_vec_ * dp_dx );
 
   // TODO (EBC): Move transfer path-specific logic out of this file
   mfem::GridFunction redecomp_pressure( adapter->submesh_data_.GetRedecompGap() );
   mfem::ParGridFunction submesh_pressure(
       const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
-  submesh_pressure.SetFromTrueDofs( adapter->pressure_vec_.get() );
+  submesh_pressure.SetFromTrueDofs( pressure_vec.get() );
   adapter->submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_pressure, redecomp_pressure );
 
   mfem::GridFunction redecomp_g_tilde( adapter->submesh_data_.GetRedecompGap() );
@@ -301,7 +290,7 @@ void Nodal<Adapter>::updateNodalForces()
 
   adapter->df_dx_ = computeDfDxSecondDerivativesPenalty( adapter, redecomp_pressure, redecomp_g_tilde, redecomp_A );
 
-  auto pg2_over_asq = ( 2.0 * adapter->pressure_vec_ )
+  auto pg2_over_asq = ( 2.0 * pressure_vec )
                           .multiplyInPlace( adapter->g_tilde_vec_ )
                           .divideInPlace( adapter->A_vec_, adapter->area_tol_ )
                           .divideInPlace( adapter->A_vec_, adapter->area_tol_ );
@@ -488,7 +477,7 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
 }
 
 template <typename Adapter>
-void QuadraturePoint<Adapter>::updateNodalForces()
+void QuadraturePoint<Adapter>::computeNodalForces( const mfem::HypreParVector* /*multipliers*/ )
 {
   auto* adapter = static_cast<Adapter*>( this );
 
@@ -589,7 +578,7 @@ void QuadraturePoint<Adapter>::updateNodalForces()
 template <template <typename> class EnforcementLocation>
 std::unique_ptr<mfem::HypreParMatrix> EnergyMortarAdapter<EnforcementLocation>::getMfemDfDx() const
 {
-  return std::unique_ptr<mfem::HypreParMatrix>( df_dx_.release() );
+  return std::make_unique<mfem::HypreParMatrix>( df_dx_.get() );
 }
 
 template <typename Adapter>

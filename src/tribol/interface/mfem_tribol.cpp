@@ -755,7 +755,10 @@ mfem::HypreParVector& getMfemContactPressure( IndexT cs_id )
                               "to create a coupling scheme with this cs_id.",
                               cs_id ) );
   SLIC_ERROR_ROOT_IF( !cs->hasContactFormulation(), "Coupling scheme does not contain a contact formulation." );
-  return cs->getContactFormulation()->getMfemPressure();
+  SLIC_ERROR_ROOT_IF( !cs->hasMfemSubmeshData(), "Coupling scheme does not contain MFEM contact state." );
+  return cs->getEnforcementOptions().penalty_options.kinematic_calc_set
+             ? cs->getMfemSubmeshData()->GetPenaltyContactPressure()
+             : cs->getMfemSubmeshData()->GetContactMultipliers();
 }
 
 void updateMfemParallelDecomposition( int n_ranks, bool force_new_redecomp )

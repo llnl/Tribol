@@ -24,6 +24,7 @@
 
 // Shared includes
 #include "shared/math/ParSparseMat.hpp"
+#include "shared/math/ParVector.hpp"
 
 // Redecomp includes
 #include "redecomp/redecomp.hpp"
@@ -1526,6 +1527,13 @@ class MfemSubmeshData {
    */
   std::vector<const RealT*> GetRedecompPressurePtrs() const { return pressure_.GetRedecompFieldPtrs(); }
 
+  /** @brief Solver-owned Lagrange multipliers on the contact true-dof space. */
+  mfem::HypreParVector& GetContactMultipliers() { return contact_multipliers_.get(); }
+  const mfem::HypreParVector& GetContactMultipliers() const { return contact_multipliers_.get(); }
+
+  /** @brief Penalty pressure output of the last completed contact evaluation. */
+  mfem::HypreParVector& GetPenaltyContactPressure() { return penalty_contact_pressure_.get(); }
+
   /**
    * @brief Get the parent-linked boundary submesh pressure grid function
    *
@@ -1643,6 +1651,9 @@ class MfemSubmeshData {
    * @brief Pressure grid function on the parent-linked boundary submesh
    */
   mfem::ParGridFunction submesh_pressure_;
+
+  shared::ParVector contact_multipliers_;
+  shared::ParVector penalty_contact_pressure_;
 
   /**
    * @brief Pressure grid function and transfer operators

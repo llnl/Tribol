@@ -43,19 +43,18 @@ template <typename Adapter>
 class Nodal : public ContactFormulation {
  public:
   /** @brief Assemble nodal gaps, tributary areas, and their derivatives. */
-  void updateNodalGaps() override;
+  void computeNodalGaps();
 
   /** @brief Assemble nodal contact forces and their derivatives. */
-  void updateNodalForces() override;
+  void computeNodalForces( const mfem::HypreParVector* multipliers );
 
   const mfem::HypreParVector& getMfemGap() const override
   {
     return static_cast<const Adapter*>( this )->use_penalty_ ? gap_vec_.get() : g_tilde_vec_.get();
   }
-  mfem::HypreParVector& getMfemPressure() override { return pressure_vec_.get(); }
   std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx() const override
   {
-    return std::unique_ptr<mfem::HypreParMatrix>( dg_tilde_dx_.release() );
+    return std::make_unique<mfem::HypreParMatrix>( dg_tilde_dx_.get() );
   }
   std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const override;
 
@@ -65,14 +64,6 @@ class Nodal : public ContactFormulation {
   shared::ParVector gap_vec_;                 ///< Area-normalized nodal gap on the dual submesh.
   mutable shared::ParSparseMat dg_tilde_dx_;  ///< Derivative of weighted gap with respect to parent coordinates.
   shared::ParSparseMat dA_dx_;                ///< Derivative of tributary area with respect to parent coordinates.
-  shared::ParVector pressure_vec_;            ///< Penalty pressure or Lagrange multiplier on the dual submesh.
-
-  /**
-   * @brief Allocate and zero the dual submesh field used for penalty pressure or the Lagrange multiplier
-   *
-   * @param adapter ENERGY_MORTAR adapter providing the submesh finite element space
-   */
-  void init( Adapter* adapter );
 
   /**
    * @brief Assemble the LM force Jacobian terms involving second derivatives of the weighted gap
@@ -114,13 +105,10 @@ template <typename Adapter>
 class QuadraturePoint : public ContactFormulation {
  public:
   /** @brief No-op because this location does not assemble nodal gaps. */
-  void updateNodalGaps() override {}
+  void computeNodalGaps() {}
 
   /** @brief Assemble penalty force and stiffness directly at quadrature points. */
-  void updateNodalForces() override;
-
- protected:
-  void init( Adapter* /*adapter*/ ) {}
+  void computeNodalForces( const mfem::HypreParVector* multipliers );
 };
 
 template <template <typename> class EnforcementLocation>
@@ -134,6 +122,7 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * @param jac_data MFEM Jacobian transfer data
    * @param k Penalty stiffness
    * @param delta Smoothing length
+   * @param normal_smoothing_start_angle Normal-alignment smoothing start angle in radians
    * @param N Quadrature order
    * @param enzyme_quadrature If true, use Enzyme-assisted quadrature
    * @param use_penalty If true, interpret the dual field as pressure; otherwise interpret it as a Lagrange multiplier
@@ -146,7 +135,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    * relative to the order of the meshes provided here.
    */
   EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k,
-                       double delta, int N, bool enzyme_quadrature, bool use_penalty = true, RealT residual_gap = 0.0 );
+                       double delta, double normal_smoothing_start_angle, int N, bool enzyme_quadrature,
+                       bool use_penalty = true, RealT residual_gap = 0.0 );
 
   /**
    * @brief Default destructor
@@ -154,26 +144,12 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   virtual ~EnergyMortarAdapter() = default;
 
   /**
-   * @brief Set interface pairs identified in coarse binning for this update
-   *
-   * @param pairs Candidate interface pairs (ownership transferred)
-   * @param check_level Level of validation to apply to the pairs (currently unused)
+   * @brief Evaluate contact response, preparing current settings internally.
    */
-  void setInterfacePairs( ArrayT<InterfacePair>&& pairs, int check_level ) override;
+  void evaluate( MeshData& mesh1, MeshData& mesh2, ArrayViewT<const InterfacePair> pairs, int cycle,
+                 const Parameters& parameters, const mfem::HypreParVector* multipliers = nullptr ) override;
 
-  /**
-   * @brief Update internal integration rule data
-   *
-   * @note This is currently a no-op. ENERGY_MORTAR directly assembles gap/force quantities over the stored interface
-   * pairs in updateNodalGaps() and updateNodalForces().
-   */
-  void updateIntegrationRule() override;
-
-  /**
-   * @brief Reports if formulation has a maximum allowable timestep calculation
-   *
-   * @return false
-   */
+  /** @brief Reports no timestep calculation. */
   bool hasTimeStepCalculation() override { return false; }
 
   /**
@@ -193,18 +169,6 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   RealT getEnergy() const override { return energy_; }
 
   /**
-   * @brief Refresh mesh handles used by this formulation
-   *
-   * Some workflows re-register meshes each cycle (e.g. MFEM + redecomp), potentially replacing the underlying MeshData
-   * instances in MeshManager. This method updates the adapter's cached mesh pointers so subsequent assembly uses valid
-   * mesh views.
-   *
-   * @param mesh1 First Tribol mesh for the coupling scheme
-   * @param mesh2 Second Tribol mesh for the coupling scheme
-   */
-  void updateMeshes( MeshData& mesh1, MeshData& mesh2 ) override;
-
-  /**
    * @brief Update constant penalty stiffness
    *
    * @param mesh1_penalty Penalty stiffness for mesh 1.
@@ -212,20 +176,13 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    */
   void updateConstantPenaltyStiffness( double mesh1_penalty, double mesh2_penalty ) override;
 
-  /**
-   * @brief Update residual-gap offset
-   *
-   * @param residual_gap User-defined gap offset
-   */
-  void setResidualGap( RealT residual_gap ) override;
-
 #ifdef BUILD_REDECOMP
   /**
    * @brief Return the parent true-dof force vector
    *
    * @return Reference to the force vector on the parent mesh true-dofs
    *
-   * @note Requires updateNodalForces() to be called first.
+   * @note Requires evaluate() to be called first.
    */
   const mfem::HypreParVector& getMfemForce() const override { return force_vec_.get(); }
 
@@ -234,9 +191,8 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
    *
    * @return Unique pointer to `mfem::HypreParMatrix` holding df/dx
    *
-   * @note Requires updateNodalForces() to be called first.
-   * @note Ownership of the internally stored matrix is transferred; repeated calls without recomputing will return
-   * null/empty data.
+   * @note Requires evaluate() to be called first.
+   * @note Returns an independent copy; accessing results does not consume the evaluated state.
    */
   std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx() const override;
 
@@ -312,7 +268,7 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   /**
    * @brief Interface pairs used for the current update
    */
-  ArrayT<InterfacePair> pairs_;
+  ArrayViewT<const InterfacePair> pairs_;
 
   /**
    * @brief Contact constraint energy associated with the current state

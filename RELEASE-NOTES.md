@@ -8,6 +8,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ## [Version 0.2.0] - Release date YYYY-MM-DD
 
 ### Added
+- Added validated EnergyMortar integration-bound smoothing and normal-alignment start-angle controls.
 - Added support for a linear tetrahedral mesh under the TestMesh class.
 - Added coupling scheme tests with null pointer registration.
 - Multi-rank contact API using MFEM data structures.
@@ -39,6 +40,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
+- EnergyMortar receives complete inputs through one evaluation call; solver multipliers remain MFEM-owned and result access does not consume state. Normal attenuation uses a C2 quintic transition by default.
 - Return negative timestep vote for non-null meshes with null velocity pointers.
 - Refactored how surface elements are characterized, now using finite element
   order and type of cell.

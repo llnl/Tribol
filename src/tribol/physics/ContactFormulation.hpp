@@ -19,6 +19,7 @@
 namespace mfem {
 class Vector;
 class HypreParMatrix;
+class HypreParVector;
 class ParGridFunction;
 }  // namespace mfem
 
@@ -46,38 +47,14 @@ class ContactFormulation {
   virtual ~ContactFormulation() = default;
 
   /**
-   * @brief Sets the initial set of candidate interface pairs
+   * @brief Evaluate gaps, forces, energy, and Jacobians from the current inputs.
    *
-   * @param pairs View of the coarse-binned interface pairs
-   * @param check_level In general, higher values mean more checks and 0 means don't do checks. See specific methods for
-   * details.
+   * Meshes, candidate pairs, settings, and multiplier inputs are supplied together.
+   * Input views are used only during this call. Preparation is internal to evaluation. The optional multiplier vector
+   * is solver-owned input, never modified by the formulation. Result accessors describe the last completed evaluation.
    */
-  virtual void setInterfacePairs( ArrayT<InterfacePair>&& pairs, int check_level ) = 0;
-
-  /**
-   * @brief Updates the integration rule
-   *
-   * Determines overlapping contact pairs and computes necessary integration data (e.g. quadrature points, weights).
-   *
-   * @note Many formulations require setInterfacePairs() to be called first.
-   * Some formulations may treat this as a no-op.
-   */
-  virtual void updateIntegrationRule() = 0;
-
-  /**
-   * @brief Updates nodal gaps
-   *
-   * @note Many formulations require updateIntegrationRule() to be called first.
-   * Some formulations assemble gaps directly from the stored interface pairs.
-   */
-  virtual void updateNodalGaps() = 0;
-
-  /**
-   * @brief Updates nodal forces/residual
-   *
-   * @note Many formulations require updateNodalGaps() to be called first.
-   */
-  virtual void updateNodalForces() = 0;
+  virtual void evaluate( MeshData& mesh1, MeshData& mesh2, ArrayViewT<const InterfacePair> pairs, int cycle,
+                         const Parameters& parameters, const mfem::HypreParVector* multipliers = nullptr ) = 0;
 
   /**
    * @brief Reports if formulation has a maximum allowable timestep calculation
@@ -96,21 +73,11 @@ class ContactFormulation {
   /**
    * @brief Returns the energy stored by the contact constraints (if supported by the method)
    *
-   * @note Requires updateNodalForces() to be called first.
+   * @note Requires evaluate() to be called first.
    *
    * @return contact energy
    */
   virtual RealT getEnergy() const = 0;
-
-  /**
-   * @brief Update mesh references used by the formulation (optional)
-   *
-   * Some workflows re-register meshes each cycle (e.g. MFEM + redecomp), which can replace the underlying MeshData
-   * instances. Formulations that cache mesh pointers/references can override this to refresh their internal handles.
-   *
-   * @note Called by CouplingScheme during initialization each update cycle.
-   */
-  virtual void updateMeshes( MeshData& /*mesh1*/, MeshData& /*mesh2*/ ) {}
 
   /**
    * @brief Update constant penalty stiffness
@@ -119,16 +86,11 @@ class ContactFormulation {
    */
   virtual void updateConstantPenaltyStiffness( double /*mesh1_penalty*/, double /*mesh2_penalty*/ ) {}
 
-  /**
-   * @brief Update the residual-gap offset on formulations that cache contact parameters
-   */
-  virtual void setResidualGap( RealT /*residual_gap*/ ) {}
-
 #ifdef BUILD_REDECOMP
   /**
    * @brief Returns t-dof vector of forces on parent mesh
    *
-   * @note Requires updateNodalForces() to be called first.
+   * @note Requires evaluate() to be called first.
    */
   virtual const mfem::HypreParVector& getMfemForce() const
   {
@@ -139,7 +101,7 @@ class ContactFormulation {
   /**
    * @brief Returns t-dof vector of gaps on submesh
    *
-   * @note Requires updateNodalGaps() to be called first.
+   * @note Requires evaluate() to be called first.
    */
   virtual const mfem::HypreParVector& getMfemGap() const
   {
@@ -148,22 +110,11 @@ class ContactFormulation {
   }
 
   /**
-   * @brief Returns a reference to the MFEM dual t-dof vector on the submesh
-   *
-   * @return Reference to the dual t-dof vector (e.g. pressure in penalty mode, or Lagrange multiplier in LM mode)
-   */
-  virtual mfem::HypreParVector& getMfemPressure()
-  {
-    SLIC_ERROR_ROOT( "getMfemPressure() is not supported by this formulation." );
-    throw std::runtime_error( "Not supported" );
-  }
-
-  /**
    * @brief Get the derivative of force with respect to displacement
    *
    * @return Unique pointer to MFEM HypreParMatrix
    *
-   * @note Requires updateNodalForces() to be called first.
+   * @note Requires evaluate() to be called first.
    */
   virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDfDx() const
   {
@@ -176,7 +127,7 @@ class ContactFormulation {
    *
    * @return Unique pointer to MFEM HypreParMatrix
    *
-   * @note Requires updateNodalGaps() to be called first.
+   * @note Requires evaluate() to be called first.
    */
   virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDgDx() const
   {
@@ -189,7 +140,7 @@ class ContactFormulation {
    *
    * @return Unique pointer to mfem::HypreParMatrix
    *
-   * @note Requires updateNodalForces() to be called first.
+   * @note Requires evaluate() to be called first.
    */
   virtual std::unique_ptr<mfem::HypreParMatrix> getMfemDfDp() const
   {
