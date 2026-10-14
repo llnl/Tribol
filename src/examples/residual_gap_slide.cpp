@@ -10,6 +10,7 @@
 #include "tribol/mesh/MeshData.hpp"
 #include "tribol/physics/EnergyMortar.hpp"
 
+// Resolve the edge-to-cap handoff as a static sweep so reviewers can inspect energy, force, and tangent continuity.
 int main( int argc, char** argv )
 {
   MPI_Init( &argc, &argv );

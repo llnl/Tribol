@@ -392,6 +392,7 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
   return result;
 }
 
+// Keep full contact weight up to the configured angle and suppress nonopposing normals.
 TEST( NormalAngleSmoothingCheck, QuinticStartsAtConfiguredAngle )
 {
   constexpr double pi = std::numbers::pi_v<double>;
@@ -407,6 +408,7 @@ TEST( NormalAngleSmoothingCheck, QuinticStartsAtConfiguredAngle )
   EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.5, start_angle ), 0.0 );
 }
 
+// Avoid force or tangent jumps where angular attenuation starts and ends.
 TEST( NormalAngleSmoothingCheck, EnergyWeightHasContinuousSlopeAndCurvature )
 {
   const double start = tribol::energy_mortar::default_normal_smoothing_start_angle;
@@ -427,6 +429,7 @@ TEST( NormalAngleSmoothingCheck, EnergyWeightHasContinuousSlopeAndCurvature )
   }
 }
 
+// Allow attenuation to be disabled while retaining the nonopposing-normal cutoff.
 TEST( NormalAngleSmoothingCheck, NinetyDegreesDisablesAttenuation )
 {
   constexpr double perpendicular = energy_mortar::perpendicular_normal_angle;
@@ -437,6 +440,7 @@ TEST( NormalAngleSmoothingCheck, NinetyDegreesDisablesAttenuation )
   EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.5, perpendicular ), 0.0 );
 }
 
+// Retain candidates whose offset geometry supports contact despite the physical-normal test.
 TEST( EnergyMortarResidualGapCheck, VirtualNormalsCanOpposeWhenPhysicalNormalsDoNot )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -470,6 +474,7 @@ TEST( EnergyMortarResidualGapCheck, VirtualNormalsCanOpposeWhenPhysicalNormalsDo
   EXPECT_GT( contact.energy, 0.0 );
 }
 
+// An open contact pair must contribute no penalty energy, force, or stiffness.
 TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -498,6 +503,7 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
                             []( double stiffness ) { return stiffness == 0.0; } ) );
 }
 
+// Use the integration-side separation field to decide when offset contact becomes active.
 TEST( EnergyMortarResidualGapCheck, UsesNonmortarResidualGap )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -531,6 +537,7 @@ TEST( EnergyMortarResidualGapCheck, UsesNonmortarResidualGap )
   EXPECT_GT( active.energy, 0.0 );
 }
 
+// A varying separation must change projection geometry rather than act as a uniform gap subtraction.
 TEST( EnergyMortarResidualGapCheck, NonuniformRampChangesProjectionSpatially )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -566,6 +573,7 @@ TEST( EnergyMortarResidualGapCheck, NonuniformRampChangesProjectionSpatially )
                std::abs( ramp_projection[1] - max_projection[1] ) > 1.0e-6 );
 }
 
+// Detect overlap introduced by offset geometry even when the physical edges do not overlap.
 TEST( EnergyMortarResidualGapCheck, ObliqueVirtualEdgesCreateProjectedOverlap )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -603,6 +611,7 @@ TEST( EnergyMortarResidualGapCheck, ObliqueVirtualEdgesCreateProjectedOverlap )
   EXPECT_GT( active.energy, 0.0 );
 }
 
+// Restrict cap contact to its exterior ownership sector to avoid through-body or duplicate response.
 TEST( EnergyMortarResidualGapCheck, BallCompletionOnlyOwnsCornerCone )
 {
   RealT x1[2] = { -1.0, 0.0 };
@@ -652,6 +661,7 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionOnlyOwnsCornerCone )
   EXPECT_NEAR( crossing_ball.energy, inside_half.energy, 1.0e-14 );
 }
 
+// Let endpoint eligibility control cap energy without changing its geometric construction.
 TEST( EnergyMortarResidualGapCheck, BallCompletionHonorsEndpointWeights )
 {
   RealT x1[2] = { -1.0, 0.0 };
@@ -692,6 +702,7 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionHonorsEndpointWeights )
   EXPECT_NEAR( weighted.energy, 0.5 * active.energy, 1.0e-14 );
 }
 
+// Apply the same opposing-normal attenuation to caps as to projected-edge contact.
 TEST( EnergyMortarResidualGapCheck, BallCompletionFadesOutAsNormalsBecomePerpendicular )
 {
   RealT x1[2] = { 1.0, 0.0 };
@@ -767,6 +778,7 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionFadesOutAsNormalsBecomePerpend
   EXPECT_DOUBLE_EQ( ball_energy_at_angle( evaluator, 2.0 * perpendicular_angle ), 0.0 );
 }
 
+// Keep cap energy insensitive to target-edge subdivision within quadrature accuracy.
 TEST( EnergyMortarResidualGapCheck, BallCompletionIsInvariantToMortarRefinement )
 {
   RealT x1[2] = { -1.0, 0.0 };
@@ -807,6 +819,7 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionIsInvariantToMortarRefinement 
   EXPECT_NEAR( refined_energy, coarse_data.energy, 2.0e-6 );
 }
 
+// Scale cap energy by source tributary length so refinement does not overcount endpoint contact.
 TEST( EnergyMortarResidualGapCheck, BallCompletionScalesWithSlaveTributaryLength )
 {
   RealT coarse_x[2] = { -1.0, 0.0 };
@@ -842,6 +855,7 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionScalesWithSlaveTributaryLength
   EXPECT_NEAR( refined_energy, 0.5 * coarse_energy, 1.0e-14 );
 }
 
+// Differentiate moving ownership-cone boundaries as part of cap forces and stiffness.
 TEST( EnergyMortarResidualGapCheck, BallCompletionConeDerivativesMatchFiniteDifference )
 {
   RealT x1[2] = { -1.0, 0.0 };
@@ -933,6 +947,7 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionConeDerivativesMatchFiniteDiff
   restore();
 }
 
+// Remove every cap contribution when its ownership cone no longer overlaps the target.
 TEST( EnergyMortarResidualGapCheck, BallCompletionEnergyVanishesWithConeOverlap )
 {
   RealT x1[2] = { -1.0, 0.0 };
@@ -981,6 +996,7 @@ TEST( EnergyMortarResidualGapCheck, BallCompletionEnergyVanishesWithConeOverlap 
   EXPECT_DOUBLE_EQ( norm( zero_overlap.stiffness ), 0.0 );
 }
 
+// Make cap activation vanish smoothly enough to avoid residual force or stiffness at loss of overlap.
 TEST( EnergyMortarResidualGapCheck, SmoothedBallForceVanishesWithConeOverlap )
 {
   RealT x1[2] = { -1.0, 0.0 };
@@ -1027,6 +1043,7 @@ TEST( EnergyMortarResidualGapCheck, SmoothedBallForceVanishesWithConeOverlap )
   EXPECT_LT( norm( vanishing_overlap.stiffness ), 1.0e-2 * finite_stiffness_norm );
 }
 
+// Preserve rigid-motion invariance and the symmetry required of an energy Hessian.
 TEST( EnergyMortarResidualGapCheck, BallCompletionPreservesRigidMotionsAndHasSymmetricHessian )
 {
   RealT x1[2] = { -1.0, 0.0 };
@@ -1144,6 +1161,7 @@ TEST( EnergyMortarResidualGapCheck, EdgeCapHandoffHasContinuousForceAndJacobian 
   }
 }
 
+// Keep the assembled response continuous across angular attenuation joins for both features.
 TEST( EnergyMortarResidualGapCheck, CombinedEdgeCapAngularTransitionsAreContinuous )
 {
   RealT x1[2] = { -1.0, 0.0 };
@@ -1195,6 +1213,7 @@ TEST( EnergyMortarResidualGapCheck, CombinedEdgeCapAngularTransitionsAreContinuo
   }
 }
 
+// Match total force and tangent limits at both cap handoffs around a convex corner.
 TEST( EnergyMortarResidualGapCheck, ConvexCornerEdgeCapEdgeHandoffsAreContinuous )
 {
   RealT sx[3] = { -1.0, 0.0, 0.0 }, sy[3] = { 0.0, 0.0, 1.0 };
@@ -1281,6 +1300,7 @@ TEST( EnergyMortarResidualGapCheck, ConvexCornerEdgeCapEdgeHandoffsAreContinuous
   }
 }
 
+// Ensure offset contact conserves total force and is unchanged by rigid translation.
 TEST( EnergyMortarResidualGapCheck, ForceBalanceAndTranslationInvariance )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -1318,6 +1338,7 @@ TEST( EnergyMortarResidualGapCheck, ForceBalanceAndTranslationInvariance )
   }
 }
 
+// Retain the active penalty tangent at zero gap even though energy and force vanish.
 TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -1347,6 +1368,7 @@ TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
                             []( double stiffness ) { return stiffness != 0.0; } ) );
 }
 
+// Recover the uniform-gap area shift for parallel edges, where offsetting leaves overlap unchanged.
 TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
 {
   // The parallel edges have a normal separation of 0.1.
@@ -1387,6 +1409,7 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
   }
 }
 
+// Use offset geometry consistently in oblique-edge projection and gap integration.
 TEST( EnergyMortarResidualGapCheck, VirtualGeometryRespectsNormalSmoothing )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -1437,6 +1460,7 @@ TEST( EnergyMortarResidualGapCheck, VirtualGeometryRespectsNormalSmoothing )
   }
 }
 
+// Activate contact at the requested residual separation before the physical surfaces touch.
 TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
 {
   // The edges have a normal separation of 0.1; a residual gap of 0.15 produces an effective gap of -0.05.
@@ -1479,6 +1503,7 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
 
 class ResidualGapDerivativeCheck : public ::testing::TestWithParam<std::tuple<double, bool>> {};
 
+// Verify penalty force and stiffness against energy and force differences for each derivative mode.
 TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFiniteDifference )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -1582,6 +1607,7 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   restore();
 }
 
+// Include residual separation consistently in the first derivatives of weighted nodal gaps.
 TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
 {
   // ── Geometry: two facing LINEAR_EDGE segments ────────────────────────────
@@ -1640,6 +1666,7 @@ TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
   }
 }
 
+// Include residual separation consistently in the second derivatives of weighted nodal gaps.
 TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
 {
   // ── Geometry: two facing LINEAR_EDGE segments ────────────────────────────

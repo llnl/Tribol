@@ -3,6 +3,9 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+/// @file
+/// Retain geometrically eligible candidates for each contact method before fine-scale enforcement.
+
 #ifndef SRC_TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_
 #define SRC_TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_
 
@@ -19,6 +22,7 @@ class SearchBase;
 
 namespace detail {
 
+/// Retain physical-normal candidates that can become opposing after the residual-gap offset rotates an edge.
 TRIBOL_HOST_DEVICE inline RealT energyMortarNormalDotLimit( const MeshData::Viewer& nonmortar_mesh,
                                                             IndexT nonmortar_element, RealT residual_gap )
 {

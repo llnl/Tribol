@@ -1,3 +1,8 @@
+
+
+/// @file
+/// Derive pair contact response from a shared geometric energy model so forces and tangents remain consistent.
+
 #pragma once
 #include <vector>
 #include <array>
@@ -60,10 +65,10 @@ struct BallPenaltyData {
   static constexpr int num_force_dofs = dim * num_nodes;
   static constexpr int num_stiffness_entries = num_force_dofs * num_force_dofs;
 
-  bool has_active_qp{ false };
-  double energy{ 0.0 };
-  std::array<double, num_force_dofs> force{};
-  std::array<double, num_stiffness_entries> stiffness{};
+  bool has_active_qp{ false };                 ///< Whether this cap contributes active contact.
+  double energy{ 0.0 };                        ///< Cap potential whose derivatives define the assembled response.
+  std::array<double, num_force_dofs> force{};  ///< Energy gradient in the six-node stencil order.
+  std::array<double, num_stiffness_entries> stiffness{};  ///< Row-major energy Hessian in the same order.
 };
 
 /// Stores weighted nodal gaps and tributary areas for one interface pair.
@@ -155,8 +160,10 @@ class EnergyMortarCalculator {
   /// derivative path used by the evaluator.
   explicit EnergyMortarCalculator( const ContactParams& p ) : p_( p ) {}
 
+  /// Report the quadrature order used to construct this evaluator's integration rules.
   int get_N() const { return p_.N; }
 
+  /// Expose the same offset-surface projection interval used by contact integration and derivative checks.
   std::array<double, 2> compute_projection_bounds( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                    const MeshData::Viewer& mesh2,
                                                    const double* residual_gap_values = nullptr ) const
