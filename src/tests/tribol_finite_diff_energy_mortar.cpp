@@ -1195,6 +1195,92 @@ TEST( EnergyMortarResidualGapCheck, CombinedEdgeCapAngularTransitionsAreContinuo
   }
 }
 
+TEST( EnergyMortarResidualGapCheck, ConvexCornerEdgeCapEdgeHandoffsAreContinuous )
+{
+  RealT sx[3] = { -1.0, 0.0, 0.0 }, sy[3] = { 0.0, 0.0, 1.0 };
+  IndexT source_conn[4] = { 0, 1, 1, 2 };
+  MeshData source( 0, 2, 3, source_conn, LINEAR_EDGE, sx, sy, nullptr, MemorySpace::Host );
+  RealT tx[2] = {}, ty[2] = {};
+  IndexT target_conn[2] = { 1, 0 };
+  MeshData target( 1, 1, 2, target_conn, LINEAR_EDGE, tx, ty, nullptr, MemorySpace::Host );
+  ContactParams params;
+  params.k = 3.0;
+  EnergyMortarCalculator calculator( params );
+  const double residual[2] = { 0.2, 0.2 };
+  BallEndpointData caps[2];
+  caps[0].weight = { 0.0, 0.5 };
+  caps[0].neighbor_coordinates = { 0.0, 0.0, 0.0, 1.0 };
+  caps[1].weight = { 0.5, 0.0 };
+  caps[1].neighbor_coordinates = { -1.0, 0.0, 0.0, 0.0 };
+  struct Result {
+    double energy{};
+    std::array<double, 10> force{};
+    std::array<double, 100> stiffness{};
+  };
+  auto evaluate = [&]( double angle ) {
+    for ( int node = 0; node < 2; ++node ) {
+      const double sign = node == 0 ? -1.0 : 1.0;
+      tx[node] = 0.1 * std::cos( angle ) - sign * 0.02 * std::sin( angle );
+      ty[node] = 0.1 * std::sin( angle ) + sign * 0.02 * std::cos( angle );
+    }
+    target.setPosition( tx, ty, nullptr );
+    Result total;
+    for ( int edge = 0; edge < 2; ++edge ) {
+      const InterfacePair pair( edge, 0 );
+      const auto projected =
+          calculator.compute_quadrature_point_penalty_data( pair, source.getView(), target.getView(), residual );
+      const auto cap =
+          calculator.compute_ball_penalty_data( pair, source.getView(), target.getView(), caps[edge], residual );
+      // Global ordering: three source nodes, then the two target nodes. Each cap also carries its neighboring source
+      // node.
+      const int map[12] = { 2 * edge, 2 * edge + 1,      2 * edge + 2,     2 * edge + 3, 8, 9, 6, 7, 0,
+                            1,        edge == 0 ? 4 : 0, edge == 0 ? 5 : 1 };
+      total.energy += projected.energy + cap.energy;
+      for ( int row = 0; row < 12; ++row ) {
+        total.force[map[row]] += cap.force[row];
+        if ( row < 8 ) total.force[map[row]] += projected.force[row];
+        for ( int col = 0; col < 12; ++col ) {
+          total.stiffness[10 * map[row] + map[col]] += cap.stiffness[12 * row + col];
+          if ( row < 8 && col < 8 ) total.stiffness[10 * map[row] + map[col]] += projected.stiffness[8 * row + col];
+        }
+      }
+    }
+    return total;
+  };
+  for ( double join : { -energy_mortar::perpendicular_normal_angle, -std::atan( 5.0 ),
+                        -0.5 * energy_mortar::perpendicular_normal_angle, -std::atan( 0.2 ), 0.0 } ) {
+    SCOPED_TRACE( join );
+    const auto left = evaluate( join - 1.0e-8 );
+    const auto right = evaluate( join + 1.0e-8 );
+    EXPECT_NEAR( left.energy, right.energy, 1.0e-7 );
+    for ( int row = 0; row < 10; ++row ) {
+      EXPECT_NEAR( left.force[row], right.force[row], 1.0e-6 );
+      for ( int col = 0; col < 10; ++col )
+        EXPECT_NEAR( left.stiffness[10 * row + col], right.stiffness[10 * row + col], 1.0e-5 );
+    }
+    for ( double side : { -1.0, 1.0 } ) {
+      const double angle = join + side * 1.0e-4;
+      const auto middle = evaluate( angle );
+      const auto minus = evaluate( angle - 1.0e-7 );
+      const auto plus = evaluate( angle + 1.0e-7 );
+      double velocity[4];
+      for ( int node = 0; node < 2; ++node ) {
+        const double sign = node == 0 ? -1.0 : 1.0;
+        velocity[2 * node] = -0.1 * std::sin( angle ) - sign * 0.02 * std::cos( angle );
+        velocity[2 * node + 1] = 0.1 * std::cos( angle ) - sign * 0.02 * std::sin( angle );
+      }
+      double energy_derivative = 0.0;
+      for ( int col = 0; col < 4; ++col ) energy_derivative += middle.force[6 + col] * velocity[col];
+      EXPECT_NEAR( ( plus.energy - minus.energy ) / 2.0e-7, energy_derivative, 1.0e-6 );
+      for ( int row = 0; row < 10; ++row ) {
+        double force_derivative = 0.0;
+        for ( int col = 0; col < 4; ++col ) force_derivative += middle.stiffness[10 * row + 6 + col] * velocity[col];
+        EXPECT_NEAR( ( plus.force[row] - minus.force[row] ) / 2.0e-7, force_derivative, 1.0e-5 );
+      }
+    }
+  }
+}
+
 TEST( EnergyMortarResidualGapCheck, ForceBalanceAndTranslationInvariance )
 {
   RealT x1[2] = { 0.0, 1.0 };
