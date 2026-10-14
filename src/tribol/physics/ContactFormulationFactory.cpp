@@ -28,6 +28,8 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     contact_params.del = cs->getParameters().energy_mortar_smoothing_length;
     contact_params.normal_smoothing_start_angle = cs->getParameters().energy_mortar_normal_smoothing_start_angle;
     contact_params.residual_gap = cs->getParameters().residual_gap;
+    contact_params.is_auto_contact = cs->getParameters().auto_contact_check;
+    contact_params.auto_contact_penetration_fraction = cs->getParameters().auto_contact_pen_frac;
     const double residual_gap_ramp_angle = cs->getParameters().energy_mortar_residual_gap_ramp_angle;
     const bool updates_residual_gap_ramp = cs->getParameters().energy_mortar_residual_gap_ramp_updates;
 

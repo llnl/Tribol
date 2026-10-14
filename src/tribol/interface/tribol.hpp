@@ -111,8 +111,11 @@ void setRatePercentPenalty( IndexT mesh_id, RealT r_p );
  * \param [in] cs_id coupling scheme id
  * \param [in] scale the scale applied to the element thickness to determine the auto-contact length scale
  *
- * \note this is only used for common-plane with penalty enforcement. A sacle < 1.0 may
- * result in missed contact face-pairs in softer contact responses
+ * \note CommonPlane penalty and EnergyMortar self-contact use this thickness-based heuristic.
+ * CommonPlane rejects using its common-plane gap including residual separation. EnergyMortar uses physical
+ * centroid separation along both element normals, excludes residual separation from the cutoff, and smoothly
+ * suppresses edge and cap energy before the limit. A scale < 1.0 may miss valid contact for soft responses.
+ * This filter does not prevent surface crossings or guarantee robust self-contact classification.
  *
  *
  */
@@ -142,7 +145,7 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
 void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
 
 /*!
- * \brief Sets the EnergyMortar integration-bound smoothing length
+ * \brief Sets the EnergyMortar transition width between projected-edge and endpoint-cap contact
  *
  * \param [in] cs_id coupling scheme id
  * \param [in] smoothing_length transition width in the non-mortar edge's local coordinate
