@@ -159,6 +159,13 @@ class CouplingScheme {
     TRIBOL_HOST_DEVICE ContactMode getContactMode() const { return m_contact_mode; }
 
     /**
+     * @brief Get the contact method
+     *
+     * @return contact method
+     */
+    TRIBOL_HOST_DEVICE ContactMethod getContactMethod() const { return m_contact_method; }
+
+    /**
      * @brief Get the parameters struct
      *
      * @return a const reference to the parameters

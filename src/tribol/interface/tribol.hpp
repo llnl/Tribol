@@ -280,8 +280,8 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
  * @param [in] residual_gap the nominal nonnegative separation between contacting surfaces. Tribol defines positive
  * kinematic gaps as separation and negative kinematic gaps as interpenetration.
  *
- * @note The residual gap ramps from zero at nonconvex 2D corners to the nominal value along the boundary.
- * EnergyMortar subtracts the local field value from the kinematic gap during enforcement.
+ * @note In 2D, EnergyMortar offsets the non-mortar edges outward by the local residual-gap field.
+ * At nonconvex corners, the ramp reduces the requested separation to zero and restores it away from the corner.
  *
  * @note Configure the residual gap after registering the coupling scheme. For MFEM coupling schemes, call
  * updateMfemParallelDecomposition() after changing the residual gap and before the next tribol::update(), so the
