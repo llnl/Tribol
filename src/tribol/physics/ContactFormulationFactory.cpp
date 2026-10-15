@@ -21,10 +21,10 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
     // Default parameters for now, or extract from CouplingScheme if available
     double k = 1000.0;
-    double delta = cs->getParameters().energy_mortar_smoothing_length;
-    double normal_smoothing_start_angle = cs->getParameters().energy_mortar_normal_smoothing_start_angle;
-    double residual_gap_ramp_angle = cs->getParameters().energy_mortar_residual_gap_ramp_angle;
-    bool residual_gap_ramp_updates = cs->getParameters().energy_mortar_residual_gap_ramp_updates;
+    double delta = cs->getParameters().smoothing_length;
+    double normal_smoothing_start_angle = cs->getParameters().normal_smoothing_start_angle;
+    double residual_gap_ramp_angle = cs->getParameters().residual_gap_ramp_angle;
+    bool residual_gap_ramp_updates = cs->getParameters().residual_gap_ramp_updates;
     int N = 3;
     bool enzyme_quadrature = true;
 
