@@ -377,6 +377,56 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
   return result;
 }
 
+// Keep full contact weight up to the configured angle and suppress nonopposing normals.
+TEST( NormalAngleSmoothingCheck, ShiftedCosineStartsAtConfiguredAngle )
+{
+  // Without angular attenuation, contact can retain full strength at a steep angle and then drop abruptly to zero.
+  constexpr double pi = std::numbers::pi_v<double>;
+  constexpr double start_angle = 0.25 * pi;
+  const ContactParams default_params{};
+  EXPECT_DOUBLE_EQ( default_params.normal_smoothing_start_angle, start_angle );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -std::cos( pi / 6.0 ), start_angle ), -1.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -std::cos( start_angle ), start_angle ), -1.0 );
+  EXPECT_NEAR( ContactSmoothing::normal_alignment_factor( -std::cos( 3.0 * pi / 8.0 ), start_angle ),
+               -1.0 / std::sqrt( 2.0 ), 1.0e-14 );
+  EXPECT_NEAR( ContactSmoothing::normal_alignment_factor( -0.5, 0.0 ), -0.5, 1.0e-14 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.0, start_angle ), 0.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.5, start_angle ), 0.0 );
+}
+
+// Keep energy and its slope continuous through angular joins; curvature is allowed to jump.
+TEST( NormalAngleSmoothingCheck, EnergyWeightHasContinuousValueAndSlope )
+{
+  const double start = tribol::energy_mortar::default_normal_smoothing_start_angle;
+  auto weight = [&]( double angle ) {
+    const double factor = ContactSmoothing::normal_alignment_factor( -std::cos( angle ), start );
+    return factor * factor;
+  };
+  for ( double join : { start, tribol::energy_mortar::right_angle } ) {
+    SCOPED_TRACE( join );
+    for ( double h : { 1.0e-3, 1.0e-4, 1.0e-5, 1.0e-6 } ) {
+      SCOPED_TRACE( h );
+      const double center = weight( join );
+      EXPECT_NEAR( weight( join - h ), weight( join + h ), 8.0 * h * h + 1.0e-14 );
+      const double slope_left = ( center - weight( join - h ) ) / h;
+      const double slope_right = ( weight( join + h ) - center ) / h;
+      EXPECT_NEAR( slope_left, 0.0, 5.0 * h );
+      EXPECT_NEAR( slope_right, 0.0, 5.0 * h );
+    }
+  }
+}
+
+// A right-angle start setting is used to disable attenuation; a bug here would still weaken oblique opposing faces.
+TEST( NormalAngleSmoothingCheck, NinetyDegreesDisablesAttenuation )
+{
+  constexpr double right_angle = energy_mortar::right_angle;
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -1.0, right_angle ), -1.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -0.5, right_angle ), -1.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -1.0e-12, right_angle ), -1.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.0, right_angle ), 0.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.5, right_angle ), 0.0 );
+}
+
 TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -474,6 +524,60 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
   }
 }
 
+// Apply normal attenuation consistently to the residual-gap correction.
+TEST( EnergyMortarResidualGapCheck, AssembledGapShiftRespectsNormalSmoothing )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 1, 0 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  constexpr double pi = 3.14159265358979323846264338327950288;
+  constexpr double angle = pi / 3.0;
+  constexpr double separation = 0.3;
+  constexpr double half_edge_length = 0.05;
+  const double tangent_x = std::cos( angle );
+  const double tangent_y = std::sin( angle );
+  const double normal_x = tangent_y;
+  const double normal_y = -tangent_x;
+  const double center_x = 0.5 + separation * normal_x;
+  const double center_y = separation * normal_y;
+  RealT x2[2] = { center_x - half_edge_length * tangent_x, center_x + half_edge_length * tangent_x };
+  RealT y2[2] = { center_y - half_edge_length * tangent_y, center_y + half_edge_length * tangent_y };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+
+  double gap_without_residual[2] = { 0.0, 0.0 };
+  double tributary_area_without_residual[2] = { 0.0, 0.0 };
+  EnergyMortarCalculator evaluator_without_residual( params );
+  evaluator_without_residual.compute_gtilde_and_area( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(),
+                                                      gap_without_residual, tributary_area_without_residual );
+
+  params.residual_gap = 0.15;
+  double gap_with_residual[2] = { 0.0, 0.0 };
+  double tributary_area_with_residual[2] = { 0.0, 0.0 };
+  EnergyMortarCalculator evaluator_with_residual( params );
+  evaluator_with_residual.compute_gtilde_and_area( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(),
+                                                   gap_with_residual, tributary_area_with_residual );
+
+  const double normal_alignment =
+      ContactSmoothing::normal_alignment_factor( -std::cos( angle ), params.normal_smoothing_start_angle );
+  ASSERT_GT( normal_alignment, -1.0 );
+  ASSERT_LT( normal_alignment, 0.0 );
+  for ( int i = 0; i < 2; ++i ) {
+    EXPECT_NEAR( tributary_area_with_residual[i], tributary_area_without_residual[i], 1.0e-14 );
+    EXPECT_NEAR( gap_with_residual[i],
+                 gap_without_residual[i] + normal_alignment * params.residual_gap * tributary_area_without_residual[i],
+                 1.0e-14 );
+  }
+}
+
 TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
 {
   // The edges have a normal separation of 0.1; a residual gap of 0.15 produces an effective gap of -0.05.
@@ -523,8 +627,18 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   IndexT conn1[2] = { 1, 0 };
   MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
 
-  RealT x2[2] = { 0.2, 0.8 };
-  RealT y2[2] = { -0.1, -0.1 };
+  constexpr double pi = std::numbers::pi_v<double>;
+  constexpr double angle = pi / 3.0;
+  constexpr double separation = 0.3;
+  constexpr double half_edge_length = 0.05;
+  const double tangent_x = std::cos( angle );
+  const double tangent_y = std::sin( angle );
+  const double normal_x = tangent_y;
+  const double normal_y = -tangent_x;
+  const double center_x = 0.5 + separation * normal_x;
+  const double center_y = separation * normal_y;
+  RealT x2[2] = { center_x - half_edge_length * tangent_x, center_x + half_edge_length * tangent_x };
+  RealT y2[2] = { center_y - half_edge_length * tangent_y, center_y + half_edge_length * tangent_y };
   IndexT conn2[2] = { 0, 1 };
   MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
 
@@ -611,10 +725,6 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
 
 TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
 {
-  // ── Geometry: two facing LINEAR_EDGE segments ────────────────────────────
-  // Segment A: (0,0) -> (1,0)
-  // Segment B: (0.2, 0.5) -> (0.8, 0.5)
-
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
   IndexT conn1[2] = { 1, 0 };  // reversed so nA points toward B
@@ -627,17 +737,15 @@ TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
 
   InterfacePair pair( 0, 0 );
 
-  // ── Evaluator setup ──────────────────────────────────────────────────────
   ContactParams params_;
-  params_.del = 0.1;                 // smoothing m
-  params_.k = 1.0;                   // penalty stiffness
-  params_.N = 3;                     // quadrature points
-  params_.enzyme_quadrature = true;  // use the non-Enzyme quadrature path
+  params_.del = 0.1;
+  params_.k = 1.0;
+  params_.N = 3;
+  params_.enzyme_quadrature = true;
   params_.residual_gap = GetParam();
 
   EnergyMortarCalculator evaluator_( params_ );
 
-  // ── Run validation ───────────────────────────────────────────────────────
   const double epsilon = 1e-7;
 
   RealT y1_plus[2] = { epsilon, 0.0 };
@@ -647,7 +755,6 @@ TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
   mesh1.setPosition( x1, y1, nullptr );
   auto result = evaluator_.validate_g_tilde( pair, mesh1, mesh2, epsilon );
 
-  // ── Compare ──────────────────────────────────────────────────────────────
   const double tol = 1e-6;
   const std::size_t num_dofs = result.node_ids.size() * 2;
 
@@ -669,10 +776,6 @@ TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
 
 TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
 {
-  // ── Geometry: two facing LINEAR_EDGE segments ────────────────────────────
-  // Segment A: (0,0) -> (1,0)
-  // Segment B: (0.2, 0.5) -> (0.8, 0.5)
-
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
 
@@ -687,7 +790,6 @@ TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
 
   InterfacePair pair( 0, 0 );
 
-  // ── Evaluator setup ──────────────────────────────────────────────────────
   ContactParams params_;
   params_.del = 0.1;
   params_.k = 1.0;
@@ -697,11 +799,9 @@ TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
 
   EnergyMortarCalculator evaluator_( params_ );
 
-  // ── Run validation ───────────────────────────────────────────────────────
   const double epsilon = 1e-5;
   auto result = evaluator_.validate_hessian( pair, mesh1, mesh2, epsilon );
 
-  // ── Compare ──────────────────────────────────────────────────────────────
   const double tol = 1e-4;
   const int ndof = 8;
 

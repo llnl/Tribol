@@ -3,6 +3,9 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+/// @file
+/// Connect MFEM meshes and solver fields to Tribol while documenting input and result ownership.
+
 #ifndef SRC_TRIBOL_INTERFACE_MFEM_TRIBOL_HPP_
 #define SRC_TRIBOL_INTERFACE_MFEM_TRIBOL_HPP_
 
@@ -353,6 +356,10 @@ mfem::ParGridFunction& getMfemPressure( IndexT cs_id );
  *
  * @param [in] cs_id The ID of the coupling scheme with the MFEM mesh
  * @return mfem::HypreParVector& Reference to the true-dof pressure vector defined on the parent-linked boundary submesh
+ *
+ * @note Supported for nodal EnergyMortar enforcement. In LM mode this is solver-owned multiplier input;
+ * in penalty mode it is the pressure output of the last completed evaluation. Quadrature-point enforcement
+ * has no nodal pressure vector and is rejected.
  */
 mfem::HypreParVector& getMfemContactPressure( IndexT cs_id );
 

@@ -186,6 +186,42 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location )
 }
 
 //------------------------------------------------------------------------------
+void setSmoothingLength( IndexT cs_id, RealT smoothing_length )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF(
+      !cs, "tribol::setSmoothingLength(): call tribol::registerCouplingScheme() " << "prior to calling this routine." );
+  SLIC_ERROR_ROOT_IF( cs->getContactMethod() != ENERGY_MORTAR,
+                      "tribol::setSmoothingLength(): this contact method does not support this control; "
+                      "currently supported only by ENERGY_MORTAR." );
+  SLIC_ERROR_ROOT_IF( smoothing_length < 0.0 || smoothing_length > 0.5,
+                      "tribol::setSmoothingLength(): transition width must be in [0, 0.5]." );
+
+  cs->getParameters().smoothing_length = smoothing_length;
+}
+
+//------------------------------------------------------------------------------
+void setNormalSmoothingStartAngle( IndexT cs_id, RealT start_angle )
+{
+  auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
+
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setNormalSmoothingStartAngle(): call tribol::registerCouplingScheme() "
+                               << "prior to calling this routine." );
+  SLIC_ERROR_ROOT_IF( cs->getContactMethod() != ENERGY_MORTAR,
+                      "tribol::setNormalSmoothingStartAngle(): this contact method does not support this control; "
+                      "currently supported only by ENERGY_MORTAR." );
+  SLIC_ERROR_ROOT_IF( start_angle < 0.0 || start_angle > energy_mortar::right_angle,
+                      "tribol::setNormalSmoothingStartAngle(): start angle must be in [0, pi / 2]." );
+
+  cs->getParameters().normal_smoothing_start_angle = start_angle;
+}
+
+//------------------------------------------------------------------------------
+
+//------------------------------------------------------------------------------
+
+//------------------------------------------------------------------------------
 void setTimestepScale( IndexT cs_id, RealT scale )
 {
   if ( scale <= 0. ) {
@@ -363,9 +399,6 @@ void setResidualGap( IndexT cs_id, RealT residual_gap )
   SLIC_ERROR_ROOT_IF( residual_gap < 0.0, "tribol::setResidualGap(): residual gap must be nonnegative." );
 
   cs->getParameters().residual_gap = residual_gap;
-  if ( cs->getContactFormulation() ) {
-    cs->getContactFormulation()->setResidualGap( residual_gap );
-  }
 
 }  // end setResidualGap()
 

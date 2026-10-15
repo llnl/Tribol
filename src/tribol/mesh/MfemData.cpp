@@ -1192,6 +1192,8 @@ MfemSubmeshData::MfemSubmeshData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_
                                   std::unique_ptr<mfem::FiniteElementCollection> pressure_fec, int pressure_vdim,
                                   bool use_device )
     : submesh_pressure_{ new mfem::ParFiniteElementSpace( &submesh, pressure_fec.get(), pressure_vdim ) },
+      contact_multipliers_{ submesh_pressure_.ParFESpace() },
+      penalty_contact_pressure_{ submesh_pressure_.ParFESpace() },
       pressure_{ submesh_pressure_ },
       submesh_lor_xfer_{ lor_mesh ? std::make_unique<SubmeshLORTransfer>( *submesh_pressure_.ParFESpace(), *lor_mesh )
                                   : nullptr },
@@ -1199,6 +1201,8 @@ MfemSubmeshData::MfemSubmeshData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_
 {
   submesh_pressure_.MakeOwner( pressure_fec.release() );
   submesh_pressure_ = 0.0;
+  contact_multipliers_.fill( 0.0 );
+  penalty_contact_pressure_.fill( 0.0 );
 }
 
 void MfemSubmeshData::SetLORMesh( mfem::ParMesh* lor_mesh )

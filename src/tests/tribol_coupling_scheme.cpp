@@ -936,6 +936,68 @@ TEST_F( CouplingSchemeTest, auto_common_plane_with_element_thickness )
   EXPECT_EQ( isInit, true );
 }
 
+// Reject invalid controls on a supported method before settings can reach numerical kernels.
+TEST_F( CouplingSchemeTest, contact_controls_reject_out_of_range_values )
+{
+  registerDummy2DMesh( 0 );
+  registerDummy2DMesh( 1 );
+  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::ENERGY_MORTAR,
+                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                                  tribol::ExecutionMode::Sequential );
+
+  axom::slic::ScopedAbortToThrow abort_to_throw;
+  EXPECT_THROW( tribol::setSmoothingLength( 0, -1.0e-3 ), axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setSmoothingLength( 0, 0.5001 ), axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setNormalSmoothingStartAngle( 0, -1.0e-3 ), axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setNormalSmoothingStartAngle( 0, tribol::energy_mortar::right_angle + 1.0e-3 ),
+                axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setResidualGap( 0, -1.0e-3 ), axom::slic::SlicAbortException );
+}
+
+// Generic control names must not silently accept values for methods that do not implement them.
+TEST_F( CouplingSchemeTest, contact_controls_reject_unsupported_methods )
+{
+  registerDummy2DMesh( 0 );
+  registerDummy2DMesh( 1 );
+  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                                  tribol::ExecutionMode::Sequential );
+
+  axom::slic::ScopedAbortToThrow abort_to_throw;
+  EXPECT_THROW( tribol::setSmoothingLength( 0, 0.2 ), axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setNormalSmoothingStartAngle( 0, 0.3 ), axom::slic::SlicAbortException );
+  // Residual separation itself is supported by CommonPlane and remains independent of ramp controls.
+  EXPECT_NO_THROW( tribol::setResidualGap( 0, 0.1 ) );
+}
+
+// Store supported settings without constructing a formulation or requiring the numerical backend.
+TEST_F( CouplingSchemeTest, contact_controls_store_supported_values )
+{
+  registerDummy2DMesh( 0 );
+  registerDummy2DMesh( 1 );
+  tribol::registerCouplingScheme( 0, 0, 1, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::ENERGY_MORTAR,
+                                  tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID,
+                                  tribol::ExecutionMode::Sequential );
+
+  auto& parameters = tribol::CouplingSchemeManager::getInstance().at( 0 ).getParameters();
+  tribol::setSmoothingLength( 0, 0.2 );
+  EXPECT_EQ( parameters.smoothing_length, 0.2 );
+  tribol::setNormalSmoothingStartAngle( 0, 0.3 );
+  EXPECT_EQ( parameters.normal_smoothing_start_angle, 0.3 );
+  EXPECT_NO_THROW( tribol::setSmoothingLength( 0, 0.0 ) );
+  EXPECT_NO_THROW( tribol::setSmoothingLength( 0, 0.5 ) );
+  EXPECT_NO_THROW( tribol::setNormalSmoothingStartAngle( 0, 0.0 ) );
+  EXPECT_NO_THROW( tribol::setNormalSmoothingStartAngle( 0, tribol::energy_mortar::right_angle ) );
+}
+
+// Fail at the public API boundary when no coupling scheme owns the requested controls.
+TEST_F( CouplingSchemeTest, contact_controls_require_registered_scheme )
+{
+  axom::slic::ScopedAbortToThrow abort_to_throw;
+  EXPECT_THROW( tribol::setSmoothingLength( 42, 0.2 ), axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setNormalSmoothingStartAngle( 42, 0.3 ), axom::slic::SlicAbortException );
+}
+
 int main( int argc, char* argv[] )
 {
   int result = 0;

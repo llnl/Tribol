@@ -1072,8 +1072,109 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
       EXPECT_GT( DfDx->NNZ(), 0 );
     }
   }
+  int rank = 0;
+  MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+  if ( rank == 0 ) {
+    axom::slic::ScopedAbortToThrow abort_to_throw;
+    EXPECT_THROW( tribol::getMfemContactPressure( cs_id ), axom::slic::SlicAbortException );
+  }
 }
 
+#endif
+
+#ifdef TRIBOL_USE_ENZYME
+namespace {
+mfem::ParMesh MakeSmoothingStateMesh()
+{
+  // Overlapping boundary edges with a nonzero LM response.
+  return shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::Unify( { shared::MeshBuilder::SquareMesh( 1, 1 )
+                                                                                   .updateBdrAttrib( 1, 11 )
+                                                                                   .updateBdrAttrib( 2, 12 )
+                                                                                   .updateBdrAttrib( 3, 3 )
+                                                                                   .updateBdrAttrib( 4, 14 ),
+                                                                               shared::MeshBuilder::SquareMesh( 1, 1 )
+                                                                                   .translate( { 0.75, 0.9 } )
+                                                                                   .updateBdrAttrib( 1, 5 )
+                                                                                   .updateBdrAttrib( 2, 22 )
+                                                                                   .updateBdrAttrib( 3, 23 )
+                                                                                   .updateBdrAttrib( 4, 24 ) } ) );
+}
+}  // namespace
+// Preserve solver-owned multipliers through setting changes and formulation reconstruction.
+TEST_F( MfemJacobianTest, energy_mortar_runtime_parameters_preserve_lagrange_multiplier_state )
+{
+  auto mesh = MakeSmoothingStateMesh();
+  mfem::H1_FECollection fec( 1, mesh.SpaceDimension() );
+  mfem::ParFiniteElementSpace fes( &mesh, &fec, mesh.SpaceDimension(), mfem::Ordering::byVDIM );
+  mfem::ParGridFunction coords( &fes );
+  mesh.GetNodes( coords );
+
+  const int scheme_id = NextCouplingSchemeId();
+  tribol::registerMfemCouplingScheme( scheme_id, 2 * scheme_id, 2 * scheme_id + 1, mesh, coords, { 5 }, { 3 },
+                                      tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
+                                      tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID );
+  tribol::setEnforcementLocation( scheme_id, tribol::EnforcementLocation::Nodal );
+  tribol::setResidualGap( scheme_id, 0.1 );
+  tribol::updateMfemParallelDecomposition();
+
+  double dt = 1.0;
+  ASSERT_EQ( tribol::update( 1, 1.0, dt ), 0 );
+
+  auto& manager = tribol::CouplingSchemeManager::getInstance();
+  auto* scheme = manager.findData( scheme_id );
+  ASSERT_NE( scheme, nullptr );
+  auto* formulation = scheme->getContactFormulation();
+  ASSERT_NE( formulation, nullptr );
+  auto* submesh_data = scheme->getMfemSubmeshData();
+  ASSERT_NE( submesh_data, nullptr );
+
+  auto& pressure = tribol::getMfemContactPressure( scheme_id );
+  pressure = -0.25;
+
+  tribol::setSmoothingLength( scheme_id, 0.2 );
+  tribol::setNormalSmoothingStartAngle( scheme_id, tribol::energy_mortar::right_angle );
+  tribol::setResidualGap( scheme_id, 0.2 );
+
+  EXPECT_EQ( scheme->getContactFormulation(), formulation );
+  EXPECT_EQ( &tribol::getMfemContactPressure( scheme_id ), &pressure );
+
+  ASSERT_EQ( tribol::update( 2, 2.0, dt ), 0 );
+  EXPECT_EQ( scheme->getContactFormulation(), formulation );
+  EXPECT_EQ( &tribol::getMfemContactPressure( scheme_id ), &pressure );
+  for ( int i = 0; i < pressure.Size(); ++i ) {
+    EXPECT_NEAR( pressure[i], -0.25, 1.0e-14 );
+  }
+  // Reading an evaluated matrix must not consume state required by another result accessor.
+  const auto gap_jacobian = formulation->getMfemDgDx();
+  const auto second_gap_jacobian = formulation->getMfemDgDx();
+  const auto force_jacobian = formulation->getMfemDfDx();
+  const auto second_force_jacobian = formulation->getMfemDfDx();
+  ASSERT_NE( gap_jacobian, nullptr );
+  ASSERT_NE( second_gap_jacobian, nullptr );
+  ASSERT_NE( force_jacobian, nullptr );
+  ASSERT_NE( second_force_jacobian, nullptr );
+  EXPECT_EQ( gap_jacobian->NNZ(), second_gap_jacobian->NNZ() );
+  EXPECT_EQ( force_jacobian->NNZ(), second_force_jacobian->NNZ() );
+  // Replacing the numerical formulation must not replace or zero solver-owned multipliers.
+  tribol::setEnforcementLocation( scheme_id, tribol::EnforcementLocation::Nodal );
+  EXPECT_EQ( &tribol::getMfemContactPressure( scheme_id ), &pressure );
+  for ( int i = 0; i < pressure.Size(); ++i ) {
+    EXPECT_NEAR( pressure[i], -0.25, 1.0e-14 );
+  }
+  ASSERT_EQ( tribol::update( 3, 3.0, dt ), 0 );
+  const auto& force = tribol::getMfemContactForce( scheme_id );
+  const double local_force_squared = force * force;
+  double force_squared = 0.0;
+  MPI_Allreduce( &local_force_squared, &force_squared, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
+  EXPECT_GT( force_squared, 1.0e-12 );
+  // Fixed binning keeps candidate ownership in the scheme. An explicit empty set must clear the response.
+  scheme->getInterfacePairs().clear();
+  ASSERT_EQ( tribol::update( 4, 4.0, dt ), 0 );
+  EXPECT_DOUBLE_EQ( tribol::getMfemContactForce( scheme_id ).Norml2(), 0.0 );
+  for ( int i = 0; i < pressure.Size(); ++i ) {
+    EXPECT_NEAR( pressure[i], -0.25, 1.0e-14 );
+  }
+}
 #endif
 
 int main( int argc, char* argv[] )

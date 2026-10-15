@@ -21,7 +21,8 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
 #if defined( TRIBOL_USE_ENZYME ) && defined( BUILD_REDECOMP )
     // Default parameters for now, or extract from CouplingScheme if available
     double k = 1000.0;
-    double delta = 0.1;
+    double delta = cs->getParameters().smoothing_length;
+    double normal_smoothing_start_angle = cs->getParameters().normal_smoothing_start_angle;
     int N = 3;
     bool enzyme_quadrature = true;
 
@@ -46,13 +47,13 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
     const auto enforcement_location = cs->getParameters().enforcement_location;
     const auto residual_gap = cs->getParameters().residual_gap;
     if ( enforcement_location == EnforcementLocation::QuadraturePoint ) {
-      return std::make_unique<EnergyMortarAdapter<QuadraturePoint>>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
-                                                                     *cs->getMfemJacobianData(), k, delta, N,
-                                                                     enzyme_quadrature, use_penalty, residual_gap );
+      return std::make_unique<EnergyMortarAdapter<QuadraturePoint>>(
+          *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), k, delta,
+          normal_smoothing_start_angle, N, enzyme_quadrature, use_penalty, residual_gap );
     } else {
-      return std::make_unique<EnergyMortarAdapter<Nodal>>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData(),
-                                                           *cs->getMfemJacobianData(), k, delta, N, enzyme_quadrature,
-                                                           use_penalty, residual_gap );
+      return std::make_unique<EnergyMortarAdapter<Nodal>>(
+          *cs->getMfemMeshData(), *cs->getMfemSubmeshData(), *cs->getMfemJacobianData(), k, delta,
+          normal_smoothing_start_angle, N, enzyme_quadrature, use_penalty, residual_gap );
     }
 #else
     SLIC_ERROR_ROOT( "ENERGY_MORTAR requires Enzyme and redecomp to be built." );
