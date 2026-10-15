@@ -23,7 +23,7 @@ TRIBOL_ENZYME_INLINE double ContactSmoothing::normal_alignment_factor( double no
   if ( alignment > 1.0 ) {
     alignment = 1.0;
   }
-  if ( start_angle >= energy_mortar::perpendicular_normal_angle ) {
+  if ( start_angle >= energy_mortar::right_angle ) {
     return -1.0;
   }
 
@@ -32,8 +32,7 @@ TRIBOL_ENZYME_INLINE double ContactSmoothing::normal_alignment_factor( double no
     return -1.0;
   }
   const double angle = std::acos( alignment );
-  const double fraction = ( energy_mortar::perpendicular_normal_angle - angle ) /
-                          ( energy_mortar::perpendicular_normal_angle - start_angle );
+  const double fraction = ( energy_mortar::right_angle - angle ) / ( energy_mortar::right_angle - start_angle );
   return -fraction * fraction * fraction * ( 10.0 - 15.0 * fraction + 6.0 * fraction * fraction );
 }
 
@@ -327,6 +326,7 @@ TRIBOL_ENZYME_INLINE double smootherstep( double fraction )
   return fraction_sq * fraction * ( 10.0 - 15.0 * fraction + 6.0 * fraction_sq );
 }
 
+// Use the mortar normal of this directed pair, matching coarse filtering without charging residual clearance.
 TRIBOL_ENZYME_INLINE double auto_contact_interpenetration_weight( const double* A0, const double* A1, const double* B0,
                                                                   const double* B1, double max_interpenetration )
 {
@@ -334,16 +334,11 @@ TRIBOL_ENZYME_INLINE double auto_contact_interpenetration_weight( const double* 
     return 1.0;
   }
 
-  double normal_a[2];
   double normal_b[2];
-  find_normal( A0, A1, normal_a );
   find_normal( B0, B1, normal_b );
   const double centroid_delta[2] = { 0.5 * ( B0[0] + B1[0] - A0[0] - A1[0] ), 0.5 * ( B0[1] + B1[1] - A0[1] - A1[1] ) };
-  const double directed_gap_a = centroid_delta[0] * normal_a[0] + centroid_delta[1] * normal_a[1];
-  const double directed_gap_b = -( centroid_delta[0] * normal_b[0] + centroid_delta[1] * normal_b[1] );
-  const double weight_a = smootherstep( 1.0 + directed_gap_a / max_interpenetration );
-  const double weight_b = smootherstep( 1.0 + directed_gap_b / max_interpenetration );
-  return weight_a * weight_b;
+  const double mortar_gap = -( centroid_delta[0] * normal_b[0] + centroid_delta[1] * normal_b[1] );
+  return smootherstep( 1.0 + mortar_gap / max_interpenetration );
 }
 
 TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, Gparams* gp, double* g_tilde_out, double* A_out )

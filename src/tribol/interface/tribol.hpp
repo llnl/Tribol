@@ -116,7 +116,7 @@ void setRatePercentPenalty( IndexT mesh_id, RealT r_p );
  *
  * \note CommonPlane penalty and EnergyMortar self-contact use this thickness-based heuristic.
  * CommonPlane rejects using its common-plane gap including residual separation. EnergyMortar uses physical
- * centroid separation along both element normals, excludes residual separation from the cutoff, and smoothly
+ * centroid separation along the mortar normal of each directed pair, excludes residual separation, and smoothly
  * suppresses edge and cap energy before the limit. A scale < 1.0 may miss valid contact for soft responses.
  * This filter does not prevent surface crossings or guarantee robust self-contact classification.
  *
