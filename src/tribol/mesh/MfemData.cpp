@@ -393,37 +393,31 @@ shared::ParSparseMat JacobianAssembler::Assemble( shared::ParSparseMat lor_or_su
   return assembled;
 }
 
-SubmeshLORTransfer::SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh, bool use_ea )
-    : lor_gridfn_{ CreateLORGridFunction(
-          lor_mesh, std::make_unique<mfem::H1_FECollection>( 1, lor_mesh.SpaceDimension() ), submesh_fes.GetVDim() ) },
-      lor_xfer_{ submesh_fes, *lor_gridfn_->ParFESpace() }
+SubmeshLORTransfer::SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes,
+                                        mfem::ParFiniteElementSpace& lor_fes, bool use_ea )
+    : submesh_fes_{ &submesh_fes }, lor_fes_{ &lor_fes }, lor_xfer_{ submesh_fes, lor_fes }
 {
   lor_xfer_.UseEA( use_ea );
 }
 
-void SubmeshLORTransfer::TransferToLORGridFn( const mfem::ParGridFunction& submesh_src )
+void SubmeshLORTransfer::TransferPrimalToLOR( const mfem::ParGridFunction& submesh_src,
+                                              mfem::ParGridFunction& lor_dst ) const
 {
-  SubmeshToLOR( submesh_src, *lor_gridfn_ );
-}
-
-void SubmeshLORTransfer::TransferFromLORVector( mfem::Vector& submesh_dst ) const
-{
-  lor_xfer_.ForwardOperator().MultTranspose( *lor_gridfn_, submesh_dst );
-}
-
-void SubmeshLORTransfer::SubmeshToLOR( const mfem::ParGridFunction& submesh_src, mfem::ParGridFunction& lor_dst )
-{
-  TRIBOL_MARK_FUNCTION;
+  SLIC_ERROR_ROOT_IF( submesh_src.ParFESpace() != submesh_fes_,
+                      "submesh_src must use the higher-order submesh finite element space." );
+  SLIC_ERROR_ROOT_IF( lor_dst.ParFESpace() != lor_fes_, "lor_dst must use the LOR finite element space." );
+  lor_dst = 0.0;
   lor_xfer_.ForwardOperator().Mult( submesh_src, lor_dst );
 }
 
-std::unique_ptr<mfem::ParGridFunction> SubmeshLORTransfer::CreateLORGridFunction(
-    mfem::ParMesh& lor_mesh, std::unique_ptr<mfem::FiniteElementCollection> lor_fec, int vdim )
+void SubmeshLORTransfer::TransferDualToSubmesh( const mfem::ParLinearForm& lor_src,
+                                                mfem::ParLinearForm& submesh_dst ) const
 {
-  auto lor_gridfn = std::make_unique<mfem::ParGridFunction>(
-      new mfem::ParFiniteElementSpace( &lor_mesh, lor_fec.get(), vdim, mfem::Ordering::byNODES ) );
-  lor_gridfn->MakeOwner( lor_fec.release() );
-  return lor_gridfn;
+  TRIBOL_MARK_FUNCTION;
+  SLIC_ERROR_ROOT_IF( lor_src.ParFESpace() != lor_fes_, "lor_src must use the LOR finite element space." );
+  SLIC_ERROR_ROOT_IF( submesh_dst.ParFESpace() != submesh_fes_,
+                      "submesh_dst must use the higher-order submesh finite element space." );
+  lor_xfer_.ForwardOperator().MultTranspose( lor_src, submesh_dst );
 }
 
 SubmeshRedecompTransfer::SubmeshRedecompTransfer( mfem::ParFiniteElementSpace& submesh_fes,
@@ -431,9 +425,12 @@ SubmeshRedecompTransfer::SubmeshRedecompTransfer( mfem::ParFiniteElementSpace& s
                                                   redecomp::RedecompMesh& redecomp_mesh )
     : submesh_fes_{ submesh_fes },
       redecomp_fes_{ submesh_lor_xfer
-                         ? CreateRedecompFESpace( redecomp_mesh, *submesh_lor_xfer->GetLORGridFn().ParFESpace() )
+                         ? CreateRedecompFESpace( redecomp_mesh, submesh_lor_xfer->GetLORFESpace() )
                          : CreateRedecompFESpace( redecomp_mesh, submesh_fes_ ) },
       submesh_lor_xfer_{ submesh_lor_xfer },
+      lor_primal_scratch_{ submesh_lor_xfer
+                               ? std::make_unique<mfem::ParGridFunction>( &submesh_lor_xfer->GetLORFESpace() )
+                               : nullptr },
       redecomp_xfer_{}  // default (element transfer) constructor
 {
   // make sure submesh_fes is a submesh and redecomp's parent is submesh_fes's
@@ -443,58 +440,38 @@ SubmeshRedecompTransfer::SubmeshRedecompTransfer( mfem::ParFiniteElementSpace& s
   SLIC_ERROR_ROOT_IF( !submesh_lor_xfer && &redecomp_mesh.getParent() != submesh_fes_.GetParMesh(),
                       "redecomp's parent must match the submesh_fes ParMesh." );
   SLIC_ERROR_ROOT_IF(
-      submesh_lor_xfer && &redecomp_mesh.getParent() != submesh_lor_xfer->GetLORGridFn().ParFESpace()->GetParMesh(),
+      submesh_lor_xfer && &redecomp_mesh.getParent() != submesh_lor_xfer->GetLORFESpace().GetParMesh(),
       "redecomp's parent must match the submesh_fes ParMesh." );
 }
 
-void SubmeshRedecompTransfer::SubmeshToRedecomp( const mfem::ParGridFunction& submesh_src,
-                                                 mfem::GridFunction& redecomp_dst ) const
+void SubmeshRedecompTransfer::TransferPrimalToRedecomp( const mfem::ParGridFunction& submesh_src,
+                                                        mfem::GridFunction& redecomp_dst ) const
 {
   auto src_ptr = &submesh_src;
   if ( submesh_lor_xfer_ ) {
-    submesh_lor_xfer_->GetLORGridFn() = 0.0;
-    submesh_lor_xfer_->TransferToLORGridFn( submesh_src );
-    src_ptr = &submesh_lor_xfer_->GetLORGridFn();
+    submesh_lor_xfer_->TransferPrimalToLOR( submesh_src, *lor_primal_scratch_ );
+    src_ptr = lor_primal_scratch_.get();
   }
   redecomp_xfer_.TransferToSerial( *src_ptr, redecomp_dst );
 }
 
-void SubmeshRedecompTransfer::RedecompToSubmesh( const mfem::GridFunction& redecomp_src,
-                                                 mfem::Vector& submesh_dst ) const
+void SubmeshRedecompTransfer::CollapseReplicatedDualToSubmesh( const mfem::LinearForm& redecomp_src,
+                                                               mfem::ParLinearForm& submesh_dst ) const
 {
-  auto dst_ptr = &submesh_dst;
-  auto dst_fespace_ptr = &submesh_fes_;
-  // first initialize LOR grid function (if using LOR)
-  if ( submesh_lor_xfer_ ) {
-    submesh_lor_xfer_->GetLORVector() = 0.0;
-    dst_ptr = &submesh_lor_xfer_->GetLORVector();
-    dst_fespace_ptr = submesh_lor_xfer_->GetLORGridFn().ParFESpace();
-  }
-  // transfer data from redecomp mesh
-  mfem::ParGridFunction dst_gridfn( dst_fespace_ptr, *dst_ptr );
-  redecomp_xfer_.TransferToParallel( redecomp_src, dst_gridfn );
-  dst_ptr->SyncMemory( dst_gridfn );
+  SLIC_ERROR_ROOT_IF( submesh_dst.ParFESpace() != &submesh_fes_,
+                      "submesh_dst must use the submesh finite element space in SubmeshRedecompTransfer." );
 
-  // using redecomp, shared dof values are set equal (i.e. a ParGridFunction), but we want the sum of shared dof values
-  // to equal the actual dof value when transferring dual fields (i.e. force and gap) back to the parallel mesh
-  // following MFEMs convention.  set non-owned DOF values to zero.
-
-  // P_I is the row index vector on the MFEM prolongation matrix. If there are no column entries for the row, then the
-  // DOF is owned by another rank.
-  auto dst_data = dst_ptr->ReadWrite( dst_ptr->UseDevice() );
-  auto P_I = mfem::Read( dst_fespace_ptr->Dof_TrueDof_Matrix()->GetDiagMemoryI(), dst_fespace_ptr->GetVSize() + 1,
-                         dst_ptr->UseDevice() );
-  // set non-owned DOF values to zero.
-  // P_I[i+1] == P_I[i] implies no diagonal entry, so the DOF is not owned.
-  mfem::forall_switch( dst_ptr->UseDevice(), dst_fespace_ptr->GetVSize(), [=] MFEM_HOST_DEVICE( int i ) {
-    if ( P_I[i + 1] == P_I[i] ) {
-      dst_data[i] = 0.0;
-    }
-  } );
-  // if using LOR, transfer data from LOR mesh to submesh
-  if ( submesh_lor_xfer_ ) {
-    submesh_lor_xfer_->TransferFromLORVector( submesh_dst );
+  if ( !submesh_lor_xfer_ ) {
+    redecomp_xfer_.CollapseReplicatedDualToParallel( redecomp_src, submesh_dst );
+    return;
   }
+
+  // Redecomp uses the LOR space when one exists. Collapse there first, then apply the transpose LOR transfer so the
+  // resulting dual is associated with the original submesh space.
+  mfem::ParLinearForm lor_dual( &submesh_lor_xfer_->GetLORFESpace() );
+  lor_dual.UseDevice( submesh_dst.UseDevice() );
+  redecomp_xfer_.CollapseReplicatedDualToParallel( redecomp_src, lor_dual );
+  submesh_lor_xfer_->TransferDualToSubmesh( lor_dual, submesh_dst );
 }
 
 std::unique_ptr<mfem::FiniteElementSpace> SubmeshRedecompTransfer::CreateRedecompFESpace(
@@ -525,24 +502,25 @@ ParentRedecompTransfer::ParentRedecompTransfer( const mfem::ParFiniteElementSpac
                                           submesh.GetParentElementIDMap(), submesh_to_parent_vdof_map_ );
 }
 
-void ParentRedecompTransfer::ParentToRedecomp( const mfem::ParGridFunction& parent_src,
-                                               mfem::GridFunction& redecomp_dst ) const
+void ParentRedecompTransfer::TransferPrimalToRedecomp( const mfem::ParGridFunction& parent_src,
+                                                       mfem::GridFunction& redecomp_dst ) const
 {
   submesh_gridfn_ = 0.0;
   submesh_redecomp_xfer_.GetSubmesh().Transfer( parent_src, submesh_gridfn_ );
-  submesh_redecomp_xfer_.SubmeshToRedecomp( submesh_gridfn_, redecomp_dst );
+  submesh_redecomp_xfer_.TransferPrimalToRedecomp( submesh_gridfn_, redecomp_dst );
 }
 
-void ParentRedecompTransfer::RedecompToParent( const mfem::GridFunction& redecomp_src, mfem::Vector& parent_dst ) const
+void ParentRedecompTransfer::CollapseReplicatedDualToParent( const mfem::LinearForm& redecomp_src,
+                                                             mfem::Vector& parent_dst ) const
 {
   const bool use_device = parent_dst.UseDevice();
-  submesh_gridfn_.UseDevice( use_device );
-  submesh_gridfn_ = 0.0;
-  submesh_redecomp_xfer_.RedecompToSubmesh( redecomp_src, submesh_gridfn_ );
+  mfem::ParLinearForm submesh_dual( submesh_gridfn_.ParFESpace() );
+  submesh_dual.UseDevice( use_device );
+  submesh_redecomp_xfer_.CollapseReplicatedDualToSubmesh( redecomp_src, submesh_dual );
 
   // Response is a dual field; scatter local submesh contributions directly instead of using ParSubMesh::Transfer,
   // which communicates/averages shared DOFs as a primal grid function.
-  const auto submesh_data = submesh_gridfn_.Read( use_device );
+  const auto submesh_data = submesh_dual.Read( use_device );
   const auto submesh_to_parent_vdof_map = submesh_to_parent_vdof_map_.Read( use_device );
   auto parent_data = parent_dst.ReadWrite( use_device );
   mfem::forall_switch( use_device, submesh_to_parent_vdof_map_.Size(), [=] MFEM_HOST_DEVICE( int i ) {
@@ -590,6 +568,19 @@ std::vector<RealT*> ParentField::GetRedecompFieldPtrs( mfem::GridFunction& redec
   return data_ptrs;
 }
 
+std::vector<RealT*> ParentField::GetRedecompFieldPtrs( mfem::LinearForm& redecomp_linear_form )
+{
+  auto data_ptrs = std::vector<RealT*>( 3, nullptr );
+  if ( redecomp_linear_form.FESpace()->GetNDofs() > 0 ) {
+    auto data = redecomp_linear_form.ReadWrite( redecomp_linear_form.UseDevice() );
+    for ( size_t component{}; component < static_cast<size_t>( redecomp_linear_form.FESpace()->GetVDim() );
+          ++component ) {
+      data_ptrs[component] = data + redecomp_linear_form.FESpace()->DofToVDof( 0, component );
+    }
+  }
+  return data_ptrs;
+}
+
 ParentField::UpdateData& ParentField::GetUpdateData()
 {
   SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
@@ -609,7 +600,7 @@ ParentField::UpdateData::UpdateData( ParentRedecompTransfer& parent_redecomp_xfe
   TRIBOL_MARK_FUNCTION;
   redecomp_gridfn_.UseDevice( use_device );
   redecomp_gridfn_ = 0.0;
-  parent_redecomp_xfer_.ParentToRedecomp( parent_gridfn, redecomp_gridfn_ );
+  parent_redecomp_xfer_.TransferPrimalToRedecomp( parent_gridfn, redecomp_gridfn_ );
 }
 
 PressureField::PressureField( const mfem::ParGridFunction& submesh_gridfn ) : submesh_gridfn_{ submesh_gridfn } {}
@@ -649,6 +640,19 @@ std::vector<RealT*> PressureField::GetRedecompFieldPtrs( mfem::GridFunction& red
   return data_ptrs;
 }
 
+std::vector<RealT*> PressureField::GetRedecompFieldPtrs( mfem::LinearForm& redecomp_linear_form )
+{
+  auto data_ptrs = std::vector<RealT*>( 3, nullptr );
+  if ( redecomp_linear_form.FESpace()->GetNDofs() > 0 ) {
+    auto data = redecomp_linear_form.ReadWrite( redecomp_linear_form.UseDevice() );
+    for ( size_t component{}; component < static_cast<size_t>( redecomp_linear_form.FESpace()->GetVDim() );
+          ++component ) {
+      data_ptrs[component] = data + redecomp_linear_form.FESpace()->DofToVDof( 0, component );
+    }
+  }
+  return data_ptrs;
+}
+
 PressureField::UpdateData& PressureField::GetUpdateData()
 {
   SLIC_ERROR_ROOT_IF( update_data_ == nullptr, "UpdateField() must be called to generate UpdateData." );
@@ -668,7 +672,7 @@ PressureField::UpdateData::UpdateData( SubmeshRedecompTransfer& submesh_redecomp
   // keep on host since tribol always does mortar computations there (update when mortar is on gpu)
   redecomp_gridfn_.UseDevice( false );
   redecomp_gridfn_ = 0.0;
-  submesh_redecomp_xfer_.SubmeshToRedecomp( submesh_gridfn, redecomp_gridfn_ );
+  submesh_redecomp_xfer_.TransferPrimalToRedecomp( submesh_gridfn, redecomp_gridfn_ );
 }
 
 MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParMesh& parent_mesh,
@@ -769,7 +773,7 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
       TRIBOL_MARK_BEGIN( "Update LOR coords" );
       auto lor_nodes = dynamic_cast<mfem::ParGridFunction*>( lor_mesh_->GetNodes() );
       SLIC_ERROR_ROOT_IF( !lor_nodes, "lor_mesh_ Nodes is not a ParGridFunction." );
-      submesh_lor_xfer_->SubmeshToLOR( *submesh_nodes, *lor_nodes );
+      submesh_lor_xfer_->TransferPrimalToLOR( *submesh_nodes, *lor_nodes );
       TRIBOL_MARK_END( "Update LOR coords" );
     }
     update_data_ = std::make_unique<UpdateData>( submesh_, lor_mesh_.get(), *coords_.GetParentGridFn().ParFESpace(),
@@ -785,7 +789,7 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
   if ( rebuilt ) {
     // NOTE: SetSpace() would be preferrable to call here, but it looks like all memory isn't mapped to
     // mfem::MemoryManager when this is used. TODO: Debug this and switch to SetSpace()
-    redecomp_response_ = std::make_unique<mfem::GridFunction>( coords_.GetRedecompGridFn().FESpace() );
+    redecomp_response_ = std::make_unique<mfem::LinearForm>( coords_.GetRedecompGridFn().FESpace() );
     redecomp_response_->UseDevice( use_device_ );
 
     // Store current coordinates
@@ -873,7 +877,7 @@ bool MfemMeshData::UpdateMfemMeshData( RealT binning_proximity_scale, int n_rank
 
 void MfemMeshData::GetParentResponse( mfem::Vector& r ) const
 {
-  GetParentRedecompTransfer().RedecompToParent( *redecomp_response_, r );
+  GetParentRedecompTransfer().CollapseReplicatedDualToParent( *redecomp_response_, r );
 }
 
 void MfemMeshData::SetParentVelocity( const mfem::ParGridFunction& velocity )
@@ -925,12 +929,18 @@ void MfemMeshData::SetLORFactor( int lor_factor )
     return;
   }
   lor_factor_ = lor_factor;
+  // Redecomp and LOR transfer objects retain references to the current LOR finite-element space. Destroy them before
+  // replacing the mesh nodes that own that space.
+  update_data_.reset( nullptr );
+  submesh_lor_xfer_.reset( nullptr );
   // note: calls ParMesh's move ctor
   lor_mesh_ = std::make_unique<mfem::ParMesh>(
       mfem::ParMesh::MakeRefined( submesh_, lor_factor, mfem::BasisType::ClosedUniform ) );
   lor_mesh_->EnsureNodes();
-  submesh_lor_xfer_ =
-      std::make_unique<SubmeshLORTransfer>( *submesh_xfer_gridfn_.ParFESpace(), *lor_mesh_, use_device_ );
+  auto* lor_nodes = dynamic_cast<mfem::ParGridFunction*>( lor_mesh_->GetNodes() );
+  SLIC_ERROR_ROOT_IF( !lor_nodes, "lor_mesh_ Nodes is not a ParGridFunction." );
+  submesh_lor_xfer_ = std::make_unique<SubmeshLORTransfer>( *submesh_xfer_gridfn_.ParFESpace(),
+                                                           *lor_nodes->ParFESpace(), use_device_ );
 }
 
 void MfemMeshData::ComputeElementThicknesses()
@@ -1193,19 +1203,26 @@ MfemSubmeshData::MfemSubmeshData( mfem::ParSubMesh& submesh, mfem::ParMesh* lor_
                                   bool use_device )
     : submesh_pressure_{ new mfem::ParFiniteElementSpace( &submesh, pressure_fec.get(), pressure_vdim ) },
       pressure_{ submesh_pressure_ },
-      submesh_lor_xfer_{ lor_mesh ? std::make_unique<SubmeshLORTransfer>( *submesh_pressure_.ParFESpace(), *lor_mesh )
-                                  : nullptr },
       use_device_{ use_device }
 {
   submesh_pressure_.MakeOwner( pressure_fec.release() );
   submesh_pressure_ = 0.0;
+  SetLORMesh( lor_mesh );
 }
 
 void MfemSubmeshData::SetLORMesh( mfem::ParMesh* lor_mesh )
 {
-  submesh_lor_xfer_ =
-      lor_mesh ? std::make_unique<SubmeshLORTransfer>( *submesh_pressure_.ParFESpace(), *lor_mesh ) : nullptr;
   update_data_.reset( nullptr );
+  submesh_lor_xfer_.reset( nullptr );
+  lor_pressure_fes_.reset( nullptr );
+  lor_pressure_fec_.reset( nullptr );
+  if ( lor_mesh ) {
+    lor_pressure_fec_ = std::make_unique<mfem::H1_FECollection>( 1, lor_mesh->SpaceDimension() );
+    lor_pressure_fes_ = std::make_unique<mfem::ParFiniteElementSpace>(
+        lor_mesh, lor_pressure_fec_.get(), submesh_pressure_.ParFESpace()->GetVDim(), mfem::Ordering::byNODES );
+    submesh_lor_xfer_ =
+        std::make_unique<SubmeshLORTransfer>( *submesh_pressure_.ParFESpace(), *lor_pressure_fes_ );
+  }
 }
 
 void MfemSubmeshData::UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_mesh, bool new_redecomp )
@@ -1215,16 +1232,18 @@ void MfemSubmeshData::UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_me
         std::make_unique<UpdateData>( *submesh_pressure_.ParFESpace(), submesh_lor_xfer_.get(), redecomp_mesh );
   }
   pressure_.UpdateField( update_data_->pressure_xfer_ );
-  redecomp_gap_.SetSpace( pressure_.GetRedecompGridFn().FESpace() );
+  redecomp_gap_.Update( pressure_.GetRedecompGridFn().FESpace() );
   redecomp_gap_.UseDevice( use_device_ );
   redecomp_gap_ = 0.0;
 }
 
 void MfemSubmeshData::GetSubmeshGap( mfem::Vector& g ) const
 {
-  g.SetSize( submesh_pressure_.ParFESpace()->GetVSize() );
-  g = 0.0;
-  GetPressureTransfer().RedecompToSubmesh( redecomp_gap_, g );
+  mfem::ParLinearForm submesh_gap( submesh_pressure_.ParFESpace() );
+  submesh_gap.UseDevice( g.UseDevice() );
+  GetPressureTransfer().CollapseReplicatedDualToSubmesh( redecomp_gap_, submesh_gap );
+  g.SetSize( submesh_gap.Size() );
+  g = submesh_gap;
 }
 
 MfemSubmeshData::UpdateData::UpdateData( mfem::ParFiniteElementSpace& submesh_fes, SubmeshLORTransfer* submesh_lor_xfer,

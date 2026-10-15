@@ -36,105 +36,67 @@
 namespace tribol {
 
 /**
- * @brief Facilitates transfer of fields to/from parent-linked boundary submesh
- * (a higher-order mesh) to LOR mesh
+ * @brief Facilitates transfer of fields to/from parent-linked boundary submesh (a higher-order mesh) to LOR mesh
  *
- * This class simplifies transferring 1) a primal field such as displacement and
- * velocity from a higher-order grid function on a parent-linked boundary
- * submesh to a low-order grid function on a LOR boundary mesh and 2) the
- * energetic conjugate to a primal field (such as nodal force, which is
- * conjugate to nodal displacement) from a low-order grid function on a LOR mesh
- * to a higher-order grid function on a parent-linked boundary submesh.
+ * This class simplifies transferring 1) a primal field such as displacement and velocity from a higher-order grid
+ * function on a parent-linked boundary submesh to a low-order grid function on a LOR boundary mesh and 2) the energetic
+ * conjugate to a primal field (such as nodal force, which is conjugate to nodal displacement) from a low-order grid
+ * function on a LOR mesh to a higher-order grid function on a parent-linked boundary submesh.
  *
- * Field data on the LOR mesh are stored internally in this class, and accessed
- * through the GetLORGridFn() method.
+ * Both finite-element spaces are owned by the caller. Primal and dual transfers require fields on those exact spaces.
  */
 class SubmeshLORTransfer {
  public:
   /**
    * @brief Construct a new SubmeshLORTransfer object
    *
-   * @param submesh_fes Higher order finite element space on the parent-linked
-   * boundary submesh
-   * @param lor_mesh LOR mesh
+   * @param submesh_fes Higher order finite element space on the parent-linked boundary submesh
+   * @param lor_fes Low-order finite element space on the LOR mesh
    * @param use_ea Whether to use device-friendly element assembly for the transfer (default: false)
    */
-  SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParMesh& lor_mesh, bool use_ea = false );
+  SubmeshLORTransfer( mfem::ParFiniteElementSpace& submesh_fes, mfem::ParFiniteElementSpace& lor_fes,
+                      bool use_ea = false );
 
   /**
-   * @brief Transfers data from a higher-order grid function on a parent-linked
-   * submesh
+   * @brief Transfer a primal field from the higher-order submesh to LOR
    *
-   * Data is transferred to the low-order grid function on the LOR mesh that can
-   * be accessed using GetLORGridFn().
-   *
-   * @param submesh_src Source higher-order grid function on the parent-linked
-   * boundary submesh
+   * @param submesh_src Primal field on the parent-linked boundary submesh
+   * @param lor_dst Primal field on the LOR mesh
    */
-  void TransferToLORGridFn( const mfem::ParGridFunction& submesh_src );
+  void TransferPrimalToLOR( const mfem::ParGridFunction& submesh_src, mfem::ParGridFunction& lor_dst ) const;
 
   /**
-   * @brief Transfers data to a higher-order vector on a parent-linked boundary submesh
+   * @brief Transfer a dual field from LOR to the higher-order submesh
    *
-   * Data must be stored in the low-order vector on the LOR mesh accessed using GetLORVector().
-   *
-   * @param submesh_dst Destination higher-order vector on the parent-linked boundary submesh
+   * @param lor_src Dual field on the LOR mesh
+   * @param submesh_dst Dual field on the parent-linked boundary submesh
    */
-  void TransferFromLORVector( mfem::Vector& submesh_dst ) const;
+  void TransferDualToSubmesh( const mfem::ParLinearForm& lor_src, mfem::ParLinearForm& submesh_dst ) const;
 
   /**
-   * @brief Transfer grid function on parent-linked boundary submesh to grid
-   * function on LOR mesh
+   * @brief Access the LOR finite-element space
    *
-   * @param [in] submesh_src Grid function on parent-linked boundary submesh
-   * @param [out] lor_dst Zero-valued grid function on LOR mesh
+   * @return mfem::ParFiniteElementSpace&
    */
-  void SubmeshToLOR( const mfem::ParGridFunction& submesh_src, mfem::ParGridFunction& lor_dst );
+  mfem::ParFiniteElementSpace& GetLORFESpace() { return *lor_fes_; }
 
   /**
-   * @brief Access the local low-order grid function on the LOR mesh
+   * @brief Access the LOR finite-element space
    *
-   * @return mfem::ParGridFunction&
+   * @return const mfem::ParFiniteElementSpace&
    */
-  mfem::ParGridFunction& GetLORGridFn() { return *lor_gridfn_; }
-
-  /**
-   * @brief Access the local low-order grid function on the LOR mesh
-   *
-   * @return mfem::ParGridFunction&
-   */
-  const mfem::ParGridFunction& GetLORGridFn() const { return *lor_gridfn_; }
-
-  /**
-   * @brief Access the local low-order vector on the LOR mesh
-   *
-   * @return mfem::Vector&
-   */
-  mfem::Vector& GetLORVector() { return *lor_gridfn_; }
-
-  /**
-   * @brief Access the local low-order vector on the LOR mesh
-   *
-   * @return const mfem::Vector&
-   */
-  const mfem::Vector& GetLORVector() const { return *lor_gridfn_; }
+  const mfem::ParFiniteElementSpace& GetLORFESpace() const { return *lor_fes_; }
 
  private:
   /**
-   * @brief Create low-order grid function on the LOR mesh
-   *
-   * @param lor_mesh LOR mesh
-   * @param lor_fec Finite element collection to apply to grid function
-   * @param vdim Vector dimension of the grid function
-   * @return mfem::ParGridFunction on lor_mesh, with lor_fec and vdim specified
+   * @brief Higher-order finite-element space on the parent-linked boundary submesh
    */
-  static std::unique_ptr<mfem::ParGridFunction> CreateLORGridFunction(
-      mfem::ParMesh& lor_mesh, std::unique_ptr<mfem::FiniteElementCollection> lor_fec, int vdim );
+  const mfem::ParFiniteElementSpace* submesh_fes_;
 
   /**
-   * @brief Local low-order grid function on the LOR mesh
+   * @brief Low-order finite-element space on the LOR mesh
    */
-  std::unique_ptr<mfem::ParGridFunction> lor_gridfn_;
+  mfem::ParFiniteElementSpace* lor_fes_;
 
   /**
    * @brief Low-order refined <-> higher-order coarse transfer object
@@ -178,19 +140,17 @@ class SubmeshRedecompTransfer {
    * @param [in] submesh_src Grid function on parent-linked boundary submesh
    * @param [out] redecomp_dst Zero-valued grid function on redecomp mesh
    */
-  void SubmeshToRedecomp( const mfem::ParGridFunction& submesh_src, mfem::GridFunction& redecomp_dst ) const;
+  void TransferPrimalToRedecomp( const mfem::ParGridFunction& submesh_src, mfem::GridFunction& redecomp_dst ) const;
 
   /**
-   * @brief Transfer grid function on redecomp mesh to vector on parent-linked boundary submesh
+   * @brief Collapse a replicated redecomp dual onto the parent-linked boundary submesh
    *
-   * @note The redecomp_src GridFunction is expected to have values at shared DOFs equal.  The submesh_dst will need
-   * parallel summation for shared DOF values to be equal.  This arrangement of DOF values is in line with dual vectors
-   * in MFEM.
+   * @note Return-eligible copies in redecomp_src must contain the same already-assembled value.
    *
-   * @param redecomp_src Grid function on redecomp mesh
-   * @param submesh_dst Zero-valued vector on parent-linked boundary submesh
+   * @param redecomp_src Linear form on redecomp mesh
+   * @param submesh_dst Parallel linear form on parent-linked boundary submesh
    */
-  void RedecompToSubmesh( const mfem::GridFunction& redecomp_src, mfem::Vector& submesh_dst ) const;
+  void CollapseReplicatedDualToSubmesh( const mfem::LinearForm& redecomp_src, mfem::ParLinearForm& submesh_dst ) const;
 
   /**
    * @brief Get the parent-linked boundary submesh associated with the
@@ -239,6 +199,11 @@ class SubmeshRedecompTransfer {
   SubmeshLORTransfer* submesh_lor_xfer_;
 
   /**
+   * @brief Reusable LOR primal storage when LOR transfer is enabled
+   */
+  std::unique_ptr<mfem::ParGridFunction> lor_primal_scratch_;
+
+  /**
    * @brief Transfer object between parent-linked boundary submesh and redecomp
    * mesh
    */
@@ -281,19 +246,17 @@ class ParentRedecompTransfer {
    * @param [in] parent_src Grid function on parent mesh
    * @param [out] redecomp_dst Zero-valued grid function on redecomp mesh
    */
-  void ParentToRedecomp( const mfem::ParGridFunction& parent_src, mfem::GridFunction& redecomp_dst ) const;
+  void TransferPrimalToRedecomp( const mfem::ParGridFunction& parent_src, mfem::GridFunction& redecomp_dst ) const;
 
   /**
-   * @brief Transfer grid function on redecomp mesh to vector on parent mesh
+   * @brief Collapse a replicated redecomp dual onto the parent mesh
    *
-   * @note The redecomp_src GridFunction is expected to have values at shared DOFs equal.  The parallel_dst will need
-   * parallel summation for shared DOF values to be equal.  This arrangement of DOF values is in line with dual vectors
-   * in MFEM.
+   * @note Return-eligible copies in redecomp_src must contain the same already-assembled value.
    *
-   * @param [in] redecomp_src Grid function on RedecompMesh
+   * @param [in] redecomp_src Linear form on RedecompMesh
    * @param [out] parent_dst Zero-valued vector on parent mesh
    */
-  void RedecompToParent( const mfem::GridFunction& redecomp_src, mfem::Vector& parent_dst ) const;
+  void CollapseReplicatedDualToParent( const mfem::LinearForm& redecomp_src, mfem::Vector& parent_dst ) const;
 
   /**
    * @brief Get the parent-linked boundary submesh finite element space
@@ -406,6 +369,14 @@ class ParentField {
    * @note The third entry is nullptr in two dimensions
    */
   static std::vector<RealT*> GetRedecompFieldPtrs( mfem::GridFunction& redecomp_gridfn );
+
+  /**
+   * @brief Get pointers to component arrays of a redecomp dual form
+   *
+   * @param redecomp_linear_form Redecomp mesh linear form
+   * @return std::vector<RealT*> of length 3
+   */
+  static std::vector<RealT*> GetRedecompFieldPtrs( mfem::LinearForm& redecomp_linear_form );
 
  private:
   /**
@@ -532,6 +503,14 @@ class PressureField {
    * frictionless contact.
    */
   static std::vector<RealT*> GetRedecompFieldPtrs( mfem::GridFunction& redecomp_gridfn );
+
+  /**
+   * @brief Get pointers to component arrays of a redecomp dual form
+   *
+   * @param redecomp_linear_form Redecomp mesh linear form
+   * @return std::vector<RealT*> of length 3
+   */
+  static std::vector<RealT*> GetRedecompFieldPtrs( mfem::LinearForm& redecomp_linear_form );
 
  private:
   /**
@@ -739,11 +718,11 @@ class MfemMeshData {
   std::vector<RealT*> GetRedecompResponsePtrs() { return ParentField::GetRedecompFieldPtrs( *redecomp_response_ ); }
 
   /**
-   * @brief Get the nodal response grid function on the redecomp mesh
+   * @brief Get the nodal response linear form on the redecomp mesh
    *
-   * @return const mfem::GridFunction&
+   * @return const mfem::LinearForm&
    */
-  const mfem::GridFunction& GetRedecompResponse() const { return *redecomp_response_; }
+  const mfem::LinearForm& GetRedecompResponse() const { return *redecomp_response_; }
 
   /**
    * @brief Get the nodal response vector on the parent mesh
@@ -1065,7 +1044,7 @@ class MfemMeshData {
    */
   const mfem::ParFiniteElementSpace* GetLORMeshFESpace() const
   {
-    return submesh_lor_xfer_ ? submesh_lor_xfer_->GetLORGridFn().ParFESpace() : nullptr;
+    return submesh_lor_xfer_ ? &submesh_lor_xfer_->GetLORFESpace() : nullptr;
   }
 
   /**
@@ -1405,9 +1384,9 @@ class MfemMeshData {
   std::unique_ptr<UpdateData> update_data_;
 
   /**
-   * @brief Nodal response grid function on the redecomp mesh
+   * @brief Nodal response linear form on the redecomp mesh
    */
-  std::unique_ptr<mfem::GridFunction> redecomp_response_;
+  std::unique_ptr<mfem::LinearForm> redecomp_response_;
   // NOTE: redecomp_response_ doesn't need to be a pointer, but SetSpace() doesn't seem to register memory correctly
   // when on device. TODO: Debug this and remove the pointer.
 
@@ -1551,18 +1530,18 @@ class MfemSubmeshData {
   std::vector<RealT*> GetRedecompGapPtrs() { return PressureField::GetRedecompFieldPtrs( redecomp_gap_ ); }
 
   /**
-   * @brief Get the gap grid function on the redecomp mesh
+   * @brief Get the gap linear form on the redecomp mesh
    *
-   * @return const mfem::GridFunction&
+   * @return const mfem::LinearForm&
    */
-  const mfem::GridFunction& GetRedecompGap() const { return redecomp_gap_; }
+  const mfem::LinearForm& GetRedecompGap() const { return redecomp_gap_; }
 
   /**
-   * @brief Get the gap grid function on the redecomp mesh
+   * @brief Get the gap linear form on the redecomp mesh
    *
-   * @return const mfem::GridFunction&
+   * @return mfem::LinearForm&
    */
-  mfem::GridFunction& GetRedecompGap() { return redecomp_gap_; }
+  mfem::LinearForm& GetRedecompGap() { return redecomp_gap_; }
 
   /**
    * @brief Get the gap vector on the parent-linked boundary submesh
@@ -1597,7 +1576,7 @@ class MfemSubmeshData {
    */
   const mfem::ParFiniteElementSpace* GetLORMeshFESpace() const
   {
-    return submesh_lor_xfer_ ? submesh_lor_xfer_->GetLORGridFn().ParFESpace() : nullptr;
+    return submesh_lor_xfer_ ? &submesh_lor_xfer_->GetLORFESpace() : nullptr;
   }
 
  private:
@@ -1650,15 +1629,25 @@ class MfemSubmeshData {
   PressureField pressure_;
 
   /**
+   * @brief Finite-element collection for the pressure field on the LOR mesh
+   */
+  std::unique_ptr<mfem::FiniteElementCollection> lor_pressure_fec_;
+
+  /**
+   * @brief Finite-element space for the pressure field on the LOR mesh
+   */
+  std::unique_ptr<mfem::ParFiniteElementSpace> lor_pressure_fes_;
+
+  /**
    * @brief Contains LOR mesh transfer operators if LOR is being used; nullptr
    * otherwise
    */
   std::unique_ptr<SubmeshLORTransfer> submesh_lor_xfer_;
 
   /**
-   * @brief Gap grid function on the redecomp mesh
+   * @brief Gap linear form on the redecomp mesh
    */
-  mfem::GridFunction redecomp_gap_;
+  mfem::LinearForm redecomp_gap_;
 
   /**
    * @brief UpdateData object created upon call to UpdateSubmeshData()
@@ -1674,8 +1663,7 @@ class MfemSubmeshData {
 /**
  * @brief HO -> LOR transfer action (matrix-free apply) for one FE-space pair
  *
- * This is intentionally matrix-free: it only provides Mult() and does not
- * expose any assembled operator.
+ * This is intentionally matrix-free: it only provides Mult() and does not expose any assembled operator.
  */
 class HoToLorTransferAction : public mfem::Operator {
  public:
