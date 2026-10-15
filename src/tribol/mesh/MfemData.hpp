@@ -666,6 +666,9 @@ class MfemMeshData {
   bool UpdateMfemMeshData( RealT binning_proximity_scale, int n_ranks, bool force_new_redecomp = false,
                            RealT residual_gap = 0.0 );
 
+  /** @brief Refresh parent-linked geometry so dynamic ramps follow the current deformation. */
+  void UpdateSubmeshCoordinates();
+
   /**
    * @brief Get the integer identifier for the first Tribol registered mesh
    *
@@ -1520,6 +1523,16 @@ class MfemSubmeshData {
   void UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_mesh, bool new_redecomp = true );
 
   /**
+   * @brief Build the EnergyMortar residual-gap ramp on the persistent contact submesh
+   *
+   * @param residual_gap Full residual gap away from nonconvex corners
+   * @param ramp_angle Total symmetric crack-opening ramp angle in radians; zero disables corner reduction
+   *
+   * @note Corner reduction currently applies to 2D contact curves. Other dimensions retain a uniform residual gap.
+   */
+  void UpdateResidualGapField( RealT residual_gap, RealT ramp_angle );
+
+  /**
    * @brief Get pointers to component arrays of the pressure on the redecomp
    * mesh
    *
@@ -1574,6 +1587,12 @@ class MfemSubmeshData {
    * @return const mfem::GridFunction&
    */
   mfem::GridFunction& GetRedecompGap() { return redecomp_gap_; }
+
+  /** @brief Get the residual-gap field transferred to the redecomp mesh. */
+  const mfem::GridFunction& GetRedecompResidualGap() const { return residual_gap_.GetRedecompGridFn(); }
+
+  /** @brief Preserve the ramp independently of redecomposition and formulation reconstruction. */
+  const mfem::ParGridFunction& GetSubmeshResidualGap() const { return submesh_residual_gap_; }
 
   /**
    * @brief Get the gap vector on the parent-linked boundary submesh
@@ -1660,10 +1679,16 @@ class MfemSubmeshData {
   /// Retain the most recent penalty result without overwriting solver multipliers.
   shared::ParVector penalty_contact_pressure_;
 
+  /** @brief Residual-gap ramp on the persistent parent-linked boundary submesh. */
+  mfem::ParGridFunction submesh_residual_gap_;
+
   /**
    * @brief Pressure grid function and transfer operators
    */
   PressureField pressure_;
+
+  /** @brief Residual-gap field and its redecomp representation. */
+  PressureField residual_gap_;
 
   /**
    * @brief Contains LOR mesh transfer operators if LOR is being used; nullptr

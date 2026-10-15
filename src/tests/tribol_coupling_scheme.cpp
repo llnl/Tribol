@@ -951,6 +951,9 @@ TEST_F( CouplingSchemeTest, contact_controls_reject_out_of_range_values )
   EXPECT_THROW( tribol::setNormalSmoothingStartAngle( 0, -1.0e-3 ), axom::slic::SlicAbortException );
   EXPECT_THROW( tribol::setNormalSmoothingStartAngle( 0, tribol::energy_mortar::right_angle + 1.0e-3 ),
                 axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setResidualGapRampAngle( 0, -1.0e-3 ), axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setResidualGapRampAngle( 0, tribol::energy_mortar::right_angle + 1.0e-3 ),
+                axom::slic::SlicAbortException );
   EXPECT_THROW( tribol::setResidualGap( 0, -1.0e-3 ), axom::slic::SlicAbortException );
 }
 
@@ -966,6 +969,8 @@ TEST_F( CouplingSchemeTest, contact_controls_reject_unsupported_methods )
   axom::slic::ScopedAbortToThrow abort_to_throw;
   EXPECT_THROW( tribol::setSmoothingLength( 0, 0.2 ), axom::slic::SlicAbortException );
   EXPECT_THROW( tribol::setNormalSmoothingStartAngle( 0, 0.3 ), axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setResidualGapRampAngle( 0, 0.1 ), axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setResidualGapRampUpdates( 0, true ), axom::slic::SlicAbortException );
   // Residual separation itself is supported by CommonPlane and remains independent of ramp controls.
   EXPECT_NO_THROW( tribol::setResidualGap( 0, 0.1 ) );
 }
@@ -984,10 +989,17 @@ TEST_F( CouplingSchemeTest, contact_controls_store_supported_values )
   EXPECT_EQ( parameters.smoothing_length, 0.2 );
   tribol::setNormalSmoothingStartAngle( 0, 0.3 );
   EXPECT_EQ( parameters.normal_smoothing_start_angle, 0.3 );
+  tribol::setResidualGapRampAngle( 0, 0.1 );
+  EXPECT_EQ( parameters.residual_gap_ramp_angle, 0.1 );
+  tribol::setResidualGapRampUpdates( 0, true );
+  EXPECT_EQ( parameters.residual_gap_ramp_updates, true );
   EXPECT_NO_THROW( tribol::setSmoothingLength( 0, 0.0 ) );
   EXPECT_NO_THROW( tribol::setSmoothingLength( 0, 0.5 ) );
   EXPECT_NO_THROW( tribol::setNormalSmoothingStartAngle( 0, 0.0 ) );
   EXPECT_NO_THROW( tribol::setNormalSmoothingStartAngle( 0, tribol::energy_mortar::right_angle ) );
+  EXPECT_NO_THROW( tribol::setResidualGapRampAngle( 0, 0.0 ) );
+  EXPECT_NO_THROW( tribol::setResidualGapRampAngle( 0, tribol::energy_mortar::right_angle ) );
+  EXPECT_NO_THROW( tribol::setResidualGapRampUpdates( 0, false ) );
 }
 
 // Fail at the public API boundary when no coupling scheme owns the requested controls.
@@ -996,6 +1008,8 @@ TEST_F( CouplingSchemeTest, contact_controls_require_registered_scheme )
   axom::slic::ScopedAbortToThrow abort_to_throw;
   EXPECT_THROW( tribol::setSmoothingLength( 42, 0.2 ), axom::slic::SlicAbortException );
   EXPECT_THROW( tribol::setNormalSmoothingStartAngle( 42, 0.3 ), axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setResidualGapRampAngle( 42, 0.1 ), axom::slic::SlicAbortException );
+  EXPECT_THROW( tribol::setResidualGapRampUpdates( 42, true ), axom::slic::SlicAbortException );
 }
 
 int main( int argc, char* argv[] )

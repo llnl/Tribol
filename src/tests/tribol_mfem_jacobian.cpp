@@ -1115,6 +1115,7 @@ TEST_F( MfemJacobianTest, energy_mortar_runtime_parameters_preserve_lagrange_mul
                                       tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID );
   tribol::setEnforcementLocation( scheme_id, tribol::EnforcementLocation::Nodal );
   tribol::setResidualGap( scheme_id, 0.1 );
+  tribol::setResidualGapRampAngle( scheme_id, 0.0 );
   tribol::updateMfemParallelDecomposition();
 
   double dt = 1.0;
@@ -1128,21 +1129,35 @@ TEST_F( MfemJacobianTest, energy_mortar_runtime_parameters_preserve_lagrange_mul
   auto* submesh_data = scheme->getMfemSubmeshData();
   ASSERT_NE( submesh_data, nullptr );
 
+  const auto& initial_gap = submesh_data->GetSubmeshResidualGap();
+  for ( int i = 0; i < initial_gap.Size(); ++i ) {
+    EXPECT_NEAR( initial_gap[i], 0.1, 1.0e-14 );
+  }
+
   auto& pressure = tribol::getMfemContactPressure( scheme_id );
   pressure = -0.25;
 
   tribol::setSmoothingLength( scheme_id, 0.2 );
   tribol::setNormalSmoothingStartAngle( scheme_id, tribol::energy_mortar::right_angle );
   tribol::setResidualGap( scheme_id, 0.2 );
+  tribol::setResidualGapRampAngle( scheme_id, 0.1 );
+  tribol::setResidualGapRampUpdates( scheme_id, true );
 
   EXPECT_EQ( scheme->getContactFormulation(), formulation );
   EXPECT_EQ( &tribol::getMfemContactPressure( scheme_id ), &pressure );
+  for ( int i = 0; i < initial_gap.Size(); ++i ) {
+    EXPECT_NEAR( initial_gap[i], 0.1, 1.0e-14 );
+  }
 
   ASSERT_EQ( tribol::update( 2, 2.0, dt ), 0 );
   EXPECT_EQ( scheme->getContactFormulation(), formulation );
   EXPECT_EQ( &tribol::getMfemContactPressure( scheme_id ), &pressure );
   for ( int i = 0; i < pressure.Size(); ++i ) {
     EXPECT_NEAR( pressure[i], -0.25, 1.0e-14 );
+  }
+  const auto& updated_gap = submesh_data->GetSubmeshResidualGap();
+  for ( int i = 0; i < updated_gap.Size(); ++i ) {
+    EXPECT_NEAR( updated_gap[i], 0.2, 1.0e-14 );
   }
   // Reading an evaluated matrix must not consume state required by another result accessor.
   const auto gap_jacobian = formulation->getMfemDgDx();
@@ -1174,6 +1189,84 @@ TEST_F( MfemJacobianTest, energy_mortar_runtime_parameters_preserve_lagrange_mul
   for ( int i = 0; i < pressure.Size(); ++i ) {
     EXPECT_NEAR( pressure[i], -0.25, 1.0e-14 );
   }
+}
+#endif
+
+#ifdef TRIBOL_USE_ENZYME
+// Refresh a dynamic ramp on a new cycle while keeping nonlinear evaluations within that cycle consistent.
+TEST_F( MfemJacobianTest, energy_mortar_dynamic_residual_gap_ramp_updates_once_per_cycle )
+{
+  mfem::ParMesh mesh = shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::CShapeMesh( 8, 8, 2 ) );
+  mfem::H1_FECollection fec( 1, mesh.SpaceDimension() );
+  mfem::ParFiniteElementSpace fes( &mesh, &fec, mesh.SpaceDimension(), mfem::Ordering::byVDIM );
+  mfem::ParGridFunction coords( &fes );
+  mesh.GetNodes( coords );
+
+  const int scheme_id = NextCouplingSchemeId();
+  tribol::registerMfemCouplingScheme( scheme_id, 2 * scheme_id, 2 * scheme_id + 1, mesh, coords, { 4 }, { 2, 3 },
+                                      tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING, tribol::ENERGY_MORTAR,
+                                      tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_GRID );
+  tribol::setEnforcementLocation( scheme_id, tribol::EnforcementLocation::Nodal );
+  tribol::setResidualGap( scheme_id, 0.05 );
+  tribol::updateMfemParallelDecomposition();
+
+  // Exercise the complete public evaluation path after mesh handles have been initialized.
+  double dt = 1.0;
+  ASSERT_EQ( tribol::update( 0, 0.0, dt ), 0 );
+
+  auto& manager = tribol::CouplingSchemeManager::getInstance();
+  auto* scheme = manager.findData( scheme_id );
+  ASSERT_NE( scheme, nullptr );
+  auto* formulation = scheme->getContactFormulation();
+  ASSERT_NE( formulation, nullptr );
+  auto* submesh_data = scheme->getMfemSubmeshData();
+  ASSERT_NE( submesh_data, nullptr );
+
+  auto copy_residual_gap = [&]() {
+    mfem::Vector copy( submesh_data->GetSubmeshResidualGap().Size() );
+    copy = submesh_data->GetSubmeshResidualGap();
+    return copy;
+  };
+  auto global_difference_norm = []( const mfem::Vector& left, const mfem::Vector& right ) {
+    mfem::Vector difference( left );
+    difference -= right;
+    double local_norm_squared = difference * difference;
+    double global_norm_squared = 0.0;
+    MPI_Allreduce( &local_norm_squared, &global_norm_squared, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD );
+    return std::sqrt( global_norm_squared );
+  };
+  auto scale_x_coordinates = [&]( double factor ) {
+    for ( int dof = 0; dof < fes.GetNDofs(); ++dof ) {
+      coords[fes.DofToVDof( dof, 0 )] *= factor;
+    }
+  };
+
+  formulation->evaluate( scheme->getMesh1(), scheme->getMesh2(), scheme->getInterfacePairs().view(), 1,
+                         scheme->getParameters(), &submesh_data->GetContactMultipliers() );
+  const auto initial_gap = copy_residual_gap();
+
+  scale_x_coordinates( 1.5 );
+  formulation->evaluate( scheme->getMesh1(), scheme->getMesh2(), scheme->getInterfacePairs().view(), 2,
+                         scheme->getParameters(), &submesh_data->GetContactMultipliers() );
+  const auto disabled_update_gap = copy_residual_gap();
+  EXPECT_DOUBLE_EQ( global_difference_norm( initial_gap, disabled_update_gap ), 0.0 );
+
+  tribol::setResidualGapRampUpdates( scheme_id, true );
+  formulation->evaluate( scheme->getMesh1(), scheme->getMesh2(), scheme->getInterfacePairs().view(), 3,
+                         scheme->getParameters(), &submesh_data->GetContactMultipliers() );
+  const auto first_dynamic_gap = copy_residual_gap();
+  EXPECT_GT( global_difference_norm( initial_gap, first_dynamic_gap ), 1.0e-12 );
+
+  scale_x_coordinates( 1.5 );
+  formulation->evaluate( scheme->getMesh1(), scheme->getMesh2(), scheme->getInterfacePairs().view(), 3,
+                         scheme->getParameters(), &submesh_data->GetContactMultipliers() );
+  const auto repeated_cycle_gap = copy_residual_gap();
+  EXPECT_DOUBLE_EQ( global_difference_norm( first_dynamic_gap, repeated_cycle_gap ), 0.0 );
+
+  formulation->evaluate( scheme->getMesh1(), scheme->getMesh2(), scheme->getInterfacePairs().view(), 4,
+                         scheme->getParameters(), &submesh_data->GetContactMultipliers() );
+  const auto next_cycle_gap = copy_residual_gap();
+  EXPECT_GT( global_difference_norm( first_dynamic_gap, next_cycle_gap ), 1.0e-12 );
 }
 #endif
 
