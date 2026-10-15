@@ -1324,7 +1324,7 @@ void MfemSubmeshData::UpdateResidualGapField( RealT residual_gap, RealT ramp_ang
   const double ramp_length = builds_corner_ramp ? residual_gap / slope : 0.0;
   mfem::Vector distance( num_dofs );
   distance = ramp_length;
-  const double max_corner_angle = 2.0 * energy_mortar::perpendicular_normal_angle - corner_angle_tol;
+  const double max_corner_angle = 2.0 * energy_mortar::right_angle - corner_angle_tol;
   for ( int i = 0; i < num_dofs; ++i ) {
     if ( incidence[i] != 2 ) {
       continue;

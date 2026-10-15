@@ -379,6 +379,7 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
 // Keep full contact weight up to the configured angle and suppress nonopposing normals.
 TEST( NormalAngleSmoothingCheck, QuinticStartsAtConfiguredAngle )
 {
+  // Without angular attenuation, contact can retain full strength at a steep angle and then drop abruptly to zero.
   constexpr double pi = std::numbers::pi_v<double>;
   constexpr double start_angle = 0.25 * pi;
   const ContactParams default_params{};
@@ -401,7 +402,7 @@ TEST( NormalAngleSmoothingCheck, EnergyWeightHasContinuousSlopeAndCurvature )
     return factor * factor;
   };
   constexpr double h = 1.0e-5;
-  for ( double join : { start, tribol::energy_mortar::perpendicular_normal_angle } ) {
+  for ( double join : { start, tribol::energy_mortar::right_angle } ) {
     SCOPED_TRACE( join );
     const double center = weight( join );
     const double slope_left = ( center - weight( join - h ) ) / h;
@@ -413,18 +414,19 @@ TEST( NormalAngleSmoothingCheck, EnergyWeightHasContinuousSlopeAndCurvature )
   }
 }
 
-// Allow attenuation to be disabled while retaining the nonopposing-normal cutoff.
+// A right-angle start setting is used to disable attenuation; a bug here would still weaken oblique opposing faces.
 TEST( NormalAngleSmoothingCheck, NinetyDegreesDisablesAttenuation )
 {
-  constexpr double perpendicular = energy_mortar::perpendicular_normal_angle;
-  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -1.0, perpendicular ), -1.0 );
-  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -0.5, perpendicular ), -1.0 );
-  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -1.0e-12, perpendicular ), -1.0 );
-  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.0, perpendicular ), 0.0 );
-  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.5, perpendicular ), 0.0 );
+  constexpr double right_angle = energy_mortar::right_angle;
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -1.0, right_angle ), -1.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -0.5, right_angle ), -1.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -1.0e-12, right_angle ), -1.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.0, right_angle ), 0.0 );
+  EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.5, right_angle ), 0.0 );
 }
 
-// Retain candidates whose offset geometry supports contact despite the physical-normal test.
+// Unequal endpoint offsets can make virtual normals oppose even when the physical normals do not; using only the
+// physical normals would miss this valid contact pair.
 TEST( EnergyMortarResidualGapCheck, VirtualNormalsCanOpposeWhenPhysicalNormalsDoNot )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -487,7 +489,7 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
                             []( double stiffness ) { return stiffness == 0.0; } ) );
 }
 
-// Use the integration-side separation field to decide when offset contact becomes active.
+// Reading residual-gap values from the mortar edge would activate the wrong side of this separated pair.
 TEST( EnergyMortarResidualGapCheck, UsesNonmortarResidualGap )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -505,7 +507,7 @@ TEST( EnergyMortarResidualGapCheck, UsesNonmortarResidualGap )
   params.k = 3.0;
   params.N = 3;
   params.enzyme_quadrature = true;
-  params.normal_smoothing_start_angle = energy_mortar::perpendicular_normal_angle;
+  params.normal_smoothing_start_angle = energy_mortar::right_angle;
   params.residual_gap = 0.15;
   EnergyMortarCalculator evaluator( params );
 
@@ -521,7 +523,7 @@ TEST( EnergyMortarResidualGapCheck, UsesNonmortarResidualGap )
   EXPECT_GT( active.energy, 0.0 );
 }
 
-// A varying separation must change projection geometry rather than act as a uniform gap subtraction.
+// Replacing unequal endpoint gaps with one global value would project a uniformly offset edge instead of the ramp.
 TEST( EnergyMortarResidualGapCheck, NonuniformRampChangesProjectionSpatially )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -557,7 +559,8 @@ TEST( EnergyMortarResidualGapCheck, NonuniformRampChangesProjectionSpatially )
                std::abs( ramp_projection[1] - max_projection[1] ) > 1.0e-6 );
 }
 
-// Detect overlap introduced by offset geometry even when the physical edges do not overlap.
+// These physical edges do not project onto each other, so using physical geometry would miss overlap created by the
+// residual-gap offsets.
 TEST( EnergyMortarResidualGapCheck, ObliqueVirtualEdgesCreateProjectedOverlap )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -597,6 +600,7 @@ TEST( EnergyMortarResidualGapCheck, ObliqueVirtualEdgesCreateProjectedOverlap )
 
 // The sum of edge and endpoint response must have matching limits as a target slides across the ownership boundary.
 
+// Missing derivatives of a virtual endpoint can create a net force or make the response change after translation.
 TEST( EnergyMortarResidualGapCheck, ForceBalanceAndTranslationInvariance )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -705,7 +709,8 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
   }
 }
 
-// Use offset geometry consistently in oblique-edge projection and gap integration.
+// Merely subtracting the residual gap from a physical-edge integral gives the wrong tributary areas for oblique
+// virtual edges.
 TEST( EnergyMortarResidualGapCheck, VirtualGeometryRespectsNormalSmoothing )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -747,9 +752,6 @@ TEST( EnergyMortarResidualGapCheck, VirtualGeometryRespectsNormalSmoothing )
   evaluator_with_residual.compute_gtilde_and_area( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(),
                                                    gap_with_residual, tributary_area_with_residual );
 
-  // For oblique edges, offsetting the endpoints changes the projected interval and its tributary-area split as well as
-  // the gap. This verifies that enforcement uses the same virtual geometry as projection instead of subtracting a gap
-  // from values integrated over the physical edge.
   for ( int i = 0; i < 2; ++i ) {
     EXPECT_NE( tributary_area_with_residual[i], tributary_area_without_residual[i] );
     EXPECT_NE( gap_with_residual[i], gap_without_residual[i] );
@@ -799,7 +801,8 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
 
 class ResidualGapDerivativeCheck : public ::testing::TestWithParam<std::tuple<double, bool>> {};
 
-// Verify penalty force and stiffness against energy and force differences for each derivative mode.
+// If differentiation misses the residual-offset geometry or moving quadrature bounds, Newton receives an incorrect
+// penalty force or stiffness.
 TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFiniteDifference )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -826,7 +829,7 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   params.del = 0.1;
   params.k = 3.0;
   params.N = 3;
-  params.enzyme_quadrature = true;
+  params.enzyme_quadrature = std::get<1>( GetParam() );
   params.residual_gap = std::get<0>( GetParam() );
 
   EnergyMortarCalculator evaluator( params );
@@ -903,13 +906,10 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   restore();
 }
 
-// Include residual separation consistently in the first derivatives of weighted nodal gaps.
+// If Enzyme misses a first derivative of the residual-offset geometry, the nodal gap gradient disagrees with finite
+// differences and produces an incorrect contact Jacobian.
 TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
 {
-  // ── Geometry: two facing LINEAR_EDGE segments ────────────────────────────
-  // Segment A: (0,0) -> (1,0)
-  // Segment B: (0.2, 0.5) -> (0.8, 0.5)
-
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
   IndexT conn1[2] = { 1, 0 };  // reversed so nA points toward B
@@ -922,17 +922,15 @@ TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
 
   InterfacePair pair( 0, 0 );
 
-  // ── Evaluator setup ──────────────────────────────────────────────────────
   ContactParams params_;
-  params_.del = 0.1;  // smoothing m
-  params_.k = 1.0;    // penalty stiffness
-  params_.N = 3;      // quadrature points
+  params_.del = 0.1;
+  params_.k = 1.0;
+  params_.N = 3;
   params_.enzyme_quadrature = std::get<1>( GetParam() );
   params_.residual_gap = std::get<0>( GetParam() );
 
   EnergyMortarCalculator evaluator_( params_ );
 
-  // ── Run validation ───────────────────────────────────────────────────────
   const double epsilon = 1e-7;
 
   RealT y1_plus[2] = { epsilon, 0.0 };
@@ -942,7 +940,6 @@ TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
   mesh1.setPosition( x1, y1, nullptr );
   auto result = evaluator_.validate_g_tilde( pair, mesh1, mesh2, epsilon );
 
-  // ── Compare ──────────────────────────────────────────────────────────────
   const double tol = 1e-6;
   const std::size_t num_dofs = result.node_ids.size() * 2;
 
@@ -962,13 +959,10 @@ TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
   }
 }
 
-// Include residual separation consistently in the second derivatives of weighted nodal gaps.
+// If Enzyme misses a second derivative of the residual-offset geometry, the nodal gap Hessian disagrees with finite
+// differences and makes the assembled Jacobian inconsistent.
 TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
 {
-  // ── Geometry: two facing LINEAR_EDGE segments ────────────────────────────
-  // Segment A: (0,0) -> (1,0)
-  // Segment B: (0.2, 0.5) -> (0.8, 0.5)
-
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
 
@@ -983,7 +977,6 @@ TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
 
   InterfacePair pair( 0, 0 );
 
-  // ── Evaluator setup ──────────────────────────────────────────────────────
   ContactParams params_;
   params_.del = 0.1;
   params_.k = 1.0;
@@ -993,11 +986,9 @@ TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
 
   EnergyMortarCalculator evaluator_( params_ );
 
-  // ── Run validation ───────────────────────────────────────────────────────
   const double epsilon = 1e-5;
   auto result = evaluator_.validate_hessian( pair, mesh1, mesh2, epsilon );
 
-  // ── Compare ──────────────────────────────────────────────────────────────
   const double tol = 1e-4;
   const int ndof = 8;
 
