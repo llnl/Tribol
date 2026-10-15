@@ -26,7 +26,7 @@ TRIBOL_ENZYME_INLINE double ContactSmoothing::normal_alignment_factor( double no
   if ( alignment > 1.0 ) {
     alignment = 1.0;
   }
-  if ( start_angle >= energy_mortar::perpendicular_normal_angle ) {
+  if ( start_angle >= energy_mortar::right_angle ) {
     return -1.0;
   }
 
@@ -35,8 +35,7 @@ TRIBOL_ENZYME_INLINE double ContactSmoothing::normal_alignment_factor( double no
     return -1.0;
   }
   const double angle = std::acos( alignment );
-  const double fraction = ( energy_mortar::perpendicular_normal_angle - angle ) /
-                          ( energy_mortar::perpendicular_normal_angle - start_angle );
+  const double fraction = ( energy_mortar::right_angle - angle ) / ( energy_mortar::right_angle - start_angle );
   return -fraction * fraction * fraction * ( 10.0 - 15.0 * fraction + 6.0 * fraction * fraction );
 }
 
