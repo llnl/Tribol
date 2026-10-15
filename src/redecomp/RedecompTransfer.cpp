@@ -38,6 +38,11 @@ void RedecompTransfer::TransferToParallel( const mfem::GridFunction& src, mfem::
   gf_transfer_->TransferToParallel( src, dst );
 }
 
+void RedecompTransfer::CollapseReplicatedDualToParallel( const mfem::LinearForm& src, mfem::ParLinearForm& dst ) const
+{
+  gf_transfer_->CollapseReplicatedDualToParallel( src, dst );
+}
+
 void RedecompTransfer::TransferToSerial( const mfem::QuadratureFunction& src, mfem::QuadratureFunction& dst ) const
 {
   TRIBOL_MARK_FUNCTION;
@@ -58,14 +63,10 @@ void RedecompTransfer::TransferToSerial( const mfem::QuadratureFunction& src, mf
     if ( n_els > 0 ) {
       auto vals = mfem::Vector();
       // guess the size of send_vals based on the size of the first element
-      TRIBOL_MARK_BEGIN( "Getting element values" );
       src.GetValues( src_elem_idx[0], vals );
-      TRIBOL_MARK_END( "Getting element values" );
       src_vals.Reserve( vals.Size() * n_els );
       for ( auto src_elem_id : src_elem_idx ) {
-        TRIBOL_MARK_BEGIN( "Getting element values" );
         src.GetValues( src_elem_id, vals );
-        TRIBOL_MARK_END( "Getting element values" );
         src_vals.Append( vals.GetData(), vals.Size() );
       }
     }
@@ -83,13 +84,9 @@ void RedecompTransfer::TransferToSerial( const mfem::QuadratureFunction& src, mf
     auto last_el = redecomp->getRedecompToParentElemOffsets()[r + 1];
     auto quadpt_ct = 0;
     for ( int e{ first_el }; e < last_el; ++e ) {
-      TRIBOL_MARK_BEGIN( "Read element values" );
       dst.GetValues( e, vals );
       const mfem::Vector dof_vals( &dst_vals[r][quadpt_ct], vals.Size() );
-      TRIBOL_MARK_END( "Read element values" );
-      TRIBOL_MARK_BEGIN( "Copy element values" );
       vals = dof_vals;
-      TRIBOL_MARK_END( "Copy element values" );
       quadpt_ct += vals.Size();
       dst.SyncMemory( vals );
     }

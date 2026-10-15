@@ -13,10 +13,10 @@
 namespace redecomp {
 
 /**
- * @brief Transfer GridFunctions and QuadratureFunctions to/from Redecomp
+ * @brief Transfer primal fields and dual forms between parent and redecomp meshes
  *
- * Maps Redecomp-based mfem::GridFunctions and mfem::QuadratureFunctions to and
- * from a parent mfem::ParGridFunction.
+ * Primal transfers replicate or select coefficient values. Replicated-dual collapse selects one already-assembled
+ * copy without multiplying the physical response.
  */
 class RedecompTransfer {
  public:
@@ -46,8 +46,7 @@ class RedecompTransfer {
   RedecompTransfer();
 
   /**
-   * @brief Copies parent-based mfem::ParGridFunction values to a
-   * RedecompMesh-based mfem::GridFunction
+   * @brief Replicate parent primal values to every required redecomp copy
    *
    * @param src A parent ParGridFunction to be copied to corresponding redecomp
    * GridFunction (dst)
@@ -57,8 +56,7 @@ class RedecompTransfer {
   void TransferToSerial( const mfem::ParGridFunction& src, mfem::GridFunction& dst ) const;
 
   /**
-   * @brief Copies RedecompMesh-based mfem::GridFunction values to a
-   * parent-based mfem::ParGridFunction
+   * @brief Select one deterministic redecomp copy for each parent primal value
    *
    * @param src A redecomp GridFunction to be copied to corresponding parent
    * ParGridFunction (dst)
@@ -68,8 +66,15 @@ class RedecompTransfer {
   void TransferToParallel( const mfem::GridFunction& src, mfem::ParGridFunction& dst ) const;
 
   /**
-   * @brief Copies parent-based mfem::QuadratureFunction values to a
-   * RedecompMesh-based mfem::QuadratureFunction
+   * @brief Collapse an already-assembled dual replicated across return-eligible redecomp copies
+   *
+   * @param src Redecomp linear form with matching return-eligible copies
+   * @param dst Parent parallel linear form receiving one designated copy
+   */
+  void CollapseReplicatedDualToParallel( const mfem::LinearForm& src, mfem::ParLinearForm& dst ) const;
+
+  /**
+   * @brief Replicate parent quadrature values to every required redecomp element copy
    *
    * @param src A parent QuadratureFunction to be copied to corresponding
    *  redecomp QuadratureFunction (dst)
@@ -79,8 +84,7 @@ class RedecompTransfer {
   void TransferToSerial( const mfem::QuadratureFunction& src, mfem::QuadratureFunction& dst ) const;
 
   /**
-   * @brief Copies RedecompMesh-based mfem::QuadratureFunction values to a
-   * parent-based mfem::QuadratureFunction
+   * @brief Select the non-ghost redecomp element copy for each parent quadrature value
    *
    * @param src A redecomp QuadratureFunction to be copied to corresponding
    * parent QuadratureFunction (dst)

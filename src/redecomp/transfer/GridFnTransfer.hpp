@@ -11,12 +11,12 @@
 namespace redecomp {
 
 /**
- * @brief GridFnTransfer interface base class
+ * @brief Interface for transferring primal fields and dual forms between a parent mesh and a redecomp mesh
  */
 class GridFnTransfer {
  public:
   /**
-   * @brief Transfers nodal values from src to dst
+   * @brief Replicate parent primal values to every required redecomp copy
    *
    * @param src A parent ParGridFunction to be transferred to corresponding
    * redecomp GridFunction (dst)
@@ -26,7 +26,7 @@ class GridFnTransfer {
   virtual void TransferToSerial( const mfem::ParGridFunction& src, mfem::GridFunction& dst ) const = 0;
 
   /**
-   * @brief Transfers nodal values from src to dst
+   * @brief Select one deterministic redecomp copy for each parent primal value
    *
    * @param src A redecomp GridFunction to be transferred to corresponding
    * parent ParGridFunction (dst)
@@ -34,6 +34,14 @@ class GridFnTransfer {
    * GridFunction (src)
    */
   virtual void TransferToParallel( const mfem::GridFunction& src, mfem::ParGridFunction& dst ) const = 0;
+
+  /**
+   * @brief Collapse an already-assembled redecomp dual replicated across eligible copies
+   *
+   * @param src Redecomp linear form whose return-eligible copies agree
+   * @param dst Parent parallel linear form receiving one designated copy
+   */
+  virtual void CollapseReplicatedDualToParallel( const mfem::LinearForm& src, mfem::ParLinearForm& dst ) const = 0;
 
   /**
    * @brief Destroy the GridFnTransfer object

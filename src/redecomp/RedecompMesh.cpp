@@ -154,7 +154,7 @@ void RedecompMesh::BuildRedecomp()
       mfem::ParFiniteElementSpace( const_cast<mfem::ParMesh*>( &parent_ ), parent_vertex_fec.get() );
   auto vertex_transfer = TransferByNodes( parent_vertex_fes, *this );
   // p2r = parent to redecomp
-  auto p2r_verts = vertex_transfer.P2RNodeList( true );
+  auto p2r_verts = vertex_transfer.BuildParentToRedecompNodeList( true );
   // r2p = redecomp to parent
   auto r2p_vert_idx = MPIArray<int>( &mpi_ );
 
@@ -174,7 +174,7 @@ void RedecompMesh::BuildRedecomp()
   }
 
   // send vertex coords from parent to redecomp
-  p2r_verts = vertex_transfer.P2RNodeList( false );
+  p2r_verts = vertex_transfer.BuildParentToRedecompNodeList( false );
   auto redecomp_coords = MPIArray<double, axom::Array<double, 2>>( &mpi_ );
   redecomp_coords.SendRecvEach( [this, &p2r_verts]( int dest ) {
     auto parent_coords = axom::Array<double, 2>();
