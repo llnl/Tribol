@@ -45,9 +45,8 @@ TEST( ResidualGapRamp, ConcaveCornerRampsOverMultipleElements )
   // Resolve the ramp with several vertices and leave a full-gap plateau between corner seeds.
   constexpr double residual_gap = 0.01;
   const tribol::Parameters parameters{};
-  EXPECT_DOUBLE_EQ( parameters.energy_mortar_residual_gap_ramp_angle,
-                    tribol::energy_mortar::default_residual_gap_ramp_angle );
-  data.UpdateResidualGapField( residual_gap, parameters.energy_mortar_residual_gap_ramp_angle );
+  EXPECT_DOUBLE_EQ( parameters.residual_gap_ramp_angle, tribol::energy_mortar::default_residual_gap_ramp_angle );
+  data.UpdateResidualGapField( residual_gap, parameters.residual_gap_ramp_angle );
 
   bool found_tip = false;
   bool found_ramp = false;

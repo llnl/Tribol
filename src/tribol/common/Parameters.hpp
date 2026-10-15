@@ -504,12 +504,12 @@ struct Parameters {
       3.0e-1;  ///! Max allowable interpenetration as percent of element thickness prior to triggering timestep vote
   RealT timestep_scale =
       1.0;  ///! Scale factor (>0) applied to the timestep vote giving users some control over the vote
-  RealT energy_mortar_smoothing_length = 0.1;  ///! Transition width between projected-edge and endpoint-cap contact
-  RealT energy_mortar_normal_smoothing_start_angle =
+  RealT smoothing_length = 0.1;  ///! Transition width between projected-edge and endpoint-cap contact
+  RealT normal_smoothing_start_angle =
       energy_mortar::default_normal_smoothing_start_angle;  ///! Angle where opposing-normal attenuation begins
-  RealT energy_mortar_residual_gap_ramp_angle =
-      energy_mortar::default_residual_gap_ramp_angle;    ///! Total nonconvex-corner ramp angle, in radians
-  bool energy_mortar_residual_gap_ramp_updates = false;  ///! Rebuild the corner ramp from current geometry each cycle
+  RealT residual_gap_ramp_angle =
+      energy_mortar::default_residual_gap_ramp_angle;  ///! Total nonconvex-corner ramp angle, in radians
+  bool residual_gap_ramp_updates = false;              ///! Rebuild the corner ramp from current geometry each cycle
 
   int vis_cycle_incr = 100;           ///! Frequency for visualizations dumps
   VisType vis_type = VIS_NONE;        ///! Type of interface physics visualization output

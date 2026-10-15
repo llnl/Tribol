@@ -1025,7 +1025,7 @@ void ConfigureBallCompletionScheme( int scheme_id, int mesh_id_1, int mesh_id_2,
   tribol::setEnforcementLocation( scheme_id, enforcement_location );
   tribol::setMfemKinematicConstantPenalty( scheme_id, penalty, penalty );
   tribol::setResidualGap( scheme_id, 0.2 );
-  tribol::setEnergyMortarResidualGapRampAngle( scheme_id, 0.0 );
+  tribol::setResidualGapRampAngle( scheme_id, 0.0 );
 }
 
 mfem::ParMesh MakeSmoothingStateMesh()
@@ -1170,7 +1170,7 @@ TEST_F( MfemJacobianTest, energy_mortar_runtime_parameters_preserve_lagrange_mul
                                       tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, tribol::BINNING_GRID );
   tribol::setEnforcementLocation( scheme_id, tribol::EnforcementLocation::Nodal );
   tribol::setResidualGap( scheme_id, 0.1 );
-  tribol::setEnergyMortarResidualGapRampAngle( scheme_id, 0.0 );
+  tribol::setResidualGapRampAngle( scheme_id, 0.0 );
   tribol::updateMfemParallelDecomposition();
 
   double dt = 1.0;
@@ -1192,11 +1192,11 @@ TEST_F( MfemJacobianTest, energy_mortar_runtime_parameters_preserve_lagrange_mul
   auto& pressure = tribol::getMfemContactPressure( scheme_id );
   pressure = -0.25;
 
-  tribol::setEnergyMortarSmoothingLength( scheme_id, 0.2 );
-  tribol::setEnergyMortarNormalSmoothingStartAngle( scheme_id, tribol::energy_mortar::right_angle );
+  tribol::setSmoothingLength( scheme_id, 0.2 );
+  tribol::setNormalSmoothingStartAngle( scheme_id, tribol::energy_mortar::right_angle );
   tribol::setResidualGap( scheme_id, 0.2 );
-  tribol::setEnergyMortarResidualGapRampAngle( scheme_id, 0.1 );
-  tribol::setEnergyMortarResidualGapRampUpdates( scheme_id, true );
+  tribol::setResidualGapRampAngle( scheme_id, 0.1 );
+  tribol::setResidualGapRampUpdates( scheme_id, true );
 
   EXPECT_EQ( scheme->getContactFormulation(), formulation );
   EXPECT_EQ( &tribol::getMfemContactPressure( scheme_id ), &pressure );
@@ -1304,7 +1304,7 @@ TEST_F( MfemJacobianTest, energy_mortar_dynamic_residual_gap_ramp_updates_once_p
   const auto disabled_update_gap = copy_residual_gap();
   EXPECT_DOUBLE_EQ( global_difference_norm( initial_gap, disabled_update_gap ), 0.0 );
 
-  tribol::setEnergyMortarResidualGapRampUpdates( scheme_id, true );
+  tribol::setResidualGapRampUpdates( scheme_id, true );
   formulation->evaluate( scheme->getMesh1(), scheme->getMesh2(), scheme->getInterfacePairs().view(), 3,
                          scheme->getParameters(), &submesh_data->GetContactMultipliers() );
   const auto first_dynamic_gap = copy_residual_gap();
