@@ -34,9 +34,14 @@ TRIBOL_ENZYME_INLINE double ContactSmoothing::normal_alignment_factor( double no
   if ( alignment >= start_alignment ) {
     return -1.0;
   }
+  if ( start_angle == 0.0 ) {
+    return -alignment;
+  }
+
   const double angle = std::acos( alignment );
-  const double fraction = ( energy_mortar::right_angle - angle ) / ( energy_mortar::right_angle - start_angle );
-  return -fraction * fraction * fraction * ( 10.0 - 15.0 * fraction + 6.0 * fraction * fraction );
+  const double ramp_angle =
+      energy_mortar::right_angle * ( angle - start_angle ) / ( energy_mortar::right_angle - start_angle );
+  return -std::cos( ramp_angle );
 }
 
 namespace {
