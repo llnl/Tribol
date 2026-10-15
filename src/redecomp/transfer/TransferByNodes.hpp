@@ -75,22 +75,54 @@ class TransferByNodes : public GridFnTransfer {
   void TransferToParallel( const mfem::GridFunction& src, mfem::ParGridFunction& dst ) const override;
 
   /**
-   * @brief Determine list of parent nodes to send to RedecompMesh
+   * @brief Select one return-eligible copy of an already-assembled redecomp dual
+   *
+   * @param src Redecomp linear form with matching return-eligible copies
+   * @param dst Parent parallel linear form receiving the designated copy
+   */
+  void CollapseReplicatedDualToParallel( const mfem::LinearForm& src, mfem::ParLinearForm& dst ) const override;
+
+  /**
+   * @brief Build parent DOF lists for each destination redecomp rank
    *
    * @param use_global_ids Should global IDs be used on the parent mesh?
-   * @return EntityIndexByRank List of parent node ids (with ghost information)
-   * which belong on each RedecompMesh rank
+   * @return Parent DOFs and ghost flags grouped by destination redecomp rank
    */
-  EntityIndexByRank P2RNodeList( bool use_global_ids );
+  EntityIndexByRank BuildParentToRedecompNodeList( bool use_global_ids );
 
  private:
   /**
-   * @brief Determine list of RedecompMesh nodes to send to parent mesh
+   * @brief Build redecomp DOF lists for each destination parent rank
    *
-   * @return EntityIndexByRank List of RedecompMesh node ids (with ghost
-   * information) which belong on each parent rank
+   * @return Redecomp DOFs and ghost flags grouped by destination parent rank
    */
-  EntityIndexByRank R2PNodeList();
+  EntityIndexByRank BuildRedecompToParentNodeList();
+
+  /**
+   * @brief Build maps that select one return-eligible redecomp copy for each parent DOF
+   */
+  void BuildDesignatedReturnNodeLists();
+
+  /**
+   * @brief Select return-eligible redecomp values for parent local DOFs
+   *
+   * @param src Redecomp field data
+   * @param dst Parent field data
+   * @param keep_only_parent_owned_dofs If true, zero shared parent copies not owned by this rank
+   * @param field_name Name included in debug diagnostics
+   */
+  void TransferDesignatedValuesToParent( const mfem::Vector& src, mfem::Vector& dst,
+                                         bool keep_only_parent_owned_dofs, const char* field_name ) const;
+
+  /**
+   * @brief Verify that every return-eligible redecomp copy matches the designated parent value
+   *
+   * @param src Redecomp field data
+   * @param selected_parent_values Parent values produced by the designated-copy transfer
+   * @param field_name Name included in diagnostics
+   */
+  void CheckReturnEligibleCopies( const mfem::Vector& src, const mfem::Vector& selected_parent_values,
+                                  const char* field_name ) const;
 
   /**
    * @brief ParFiniteElementSpace constructed from mesh identified as parent in redecomp_
@@ -108,14 +140,24 @@ class TransferByNodes : public GridFnTransfer {
   const RedecompMesh* redecomp_;
 
   /**
-   * @brief List of parent nodes (with ghost information) to send to RedecompMesh
+   * @brief Parent scalar DOFs and ghost flags grouped by destination redecomp rank
    */
-  EntityIndexByRank p2r_nodes_;
+  EntityIndexByRank parent_to_redecomp_nodes_;
 
   /**
-   * @brief List of Redecomp nodes (with ghost information) to send to parent mesh
+   * @brief Redecomp scalar DOFs and ghost flags grouped by destination parent rank
    */
-  EntityIndexByRank r2p_nodes_;
+  EntityIndexByRank redecomp_to_parent_nodes_;
+
+  /**
+   * @brief Redecomp scalar DOFs that supply designated values to each parent rank
+   */
+  MPIArray<int> redecomp_dofs_supplying_designated_values_;
+
+  /**
+   * @brief Parent scalar DOFs receiving designated values from each redecomp rank
+   */
+  MPIArray<int> parent_dofs_receiving_designated_values_;
 };
 
 }  // end namespace redecomp

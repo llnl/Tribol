@@ -21,6 +21,7 @@ set( redecomp_headers
      transfer/MatrixTransfer.hpp
      transfer/SparseMatrixTransfer.hpp
      transfer/TransferByElements.hpp
+     transfer/TransferHelpers.hpp
      transfer/TransferByNodes.hpp
      utils/ArrayUtility.hpp
      utils/BisecTree.hpp
@@ -41,6 +42,7 @@ set( redecomp_sources
      transfer/MatrixTransfer.cpp
      transfer/SparseMatrixTransfer.cpp
      transfer/TransferByElements.cpp
+     transfer/TransferHelpers.cpp
      transfer/TransferByNodes.cpp
      utils/MPIUtility.cpp
      )

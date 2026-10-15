@@ -5,7 +5,9 @@
 
 #include "TransferByNodes.hpp"
 
-#include <unordered_set>
+#include <algorithm>
+#include <unordered_map>
+#include <vector>
 
 #include "axom/slic.hpp"
 
@@ -13,8 +15,110 @@
 
 #include "redecomp/RedecompMesh.hpp"
 #include "redecomp/common/TypeDefs.hpp"
+#include "redecomp/transfer/TransferHelpers.hpp"
 
 namespace redecomp {
+namespace {
+
+using transfer_helpers::FieldValuesByRank;
+
+// Both constructors use parent DOF numbering to build redecomp data. Confirm that the supplied parent space belongs to
+// the parent mesh before either path uses those DOFs.
+void ValidateParentSpaceUsesRedecompParent( const mfem::ParFiniteElementSpace& parent_fes,
+                                            const RedecompMesh& redecomp )
+{
+  SLIC_ERROR_ROOT_IF( parent_fes.GetParMesh() != &redecomp.getParent(),
+                      "The parent finite element space must use the parent of the redecomp mesh." );
+}
+
+// Both redecomp-to-parent paths use the same cached return map. Require each field to use the spaces that produced that
+// map before selecting a redecomp copy.
+void ValidateRedecompToParentFieldSpaces( const mfem::FiniteElementSpace* source_fes,
+                                          const mfem::ParFiniteElementSpace* destination_fes,
+                                          const mfem::FiniteElementSpace& redecomp_fes,
+                                          const mfem::ParFiniteElementSpace& parent_fes )
+{
+  SLIC_ERROR_ROOT_IF( source_fes != &redecomp_fes,
+                      "The source field must use the redecomp finite element space in TransferByNodes." );
+  SLIC_ERROR_ROOT_IF( destination_fes != &parent_fes,
+                      "The destination field must use the parent finite element space in TransferByNodes." );
+}
+
+// Debug validation needs every complete redecomp copy, including copies not chosen by the designated transfer. Skip
+// ghost-only entries because they may not contain the complete assembled nodal value.
+[[maybe_unused]] mfem::Array<int> CollectReturnEligibleVDofs( const mfem::FiniteElementSpace& finite_element_space,
+                                                              const EntityIndexByRank& nodes_by_rank, int rank )
+{
+  const auto& scalar_dofs = nodes_by_rank.first[rank];
+  const auto& copy_is_ghost = nodes_by_rank.second[rank];
+  mfem::Array<int> return_eligible_dofs;
+  return_eligible_dofs.Reserve( scalar_dofs.Size() );
+  for ( int position{ 0 }; position < scalar_dofs.Size(); ++position ) {
+    if ( !copy_is_ghost[position] ) {
+      return_eligible_dofs.Append( scalar_dofs[position] );
+    }
+  }
+  return transfer_helpers::ExpandScalarDofsToVDofs( finite_element_space, return_eligible_dofs );
+}
+
+// Cached node maps give each sender and receiver the same scalar-DOF order for every rank. Expand that order only while
+// packing values so repeated transfers avoid duplicate element-boundary entries without storing vector-DOF maps.
+FieldValuesByRank ExchangeNodeValuesUsingCachedMap( const mfem::Vector& source,
+                                                     const mfem::FiniteElementSpace& source_fes,
+                                                     const MPIArray<int>& source_dofs_by_rank,
+                                                     const RedecompMesh& redecomp )
+{
+  FieldValuesByRank received_values( &redecomp.getMPIUtility() );
+  received_values.SendRecvEach(
+      [&source, &source_fes, &source_dofs_by_rank]( int destination_rank ) {
+        auto source_vdofs =
+            transfer_helpers::ExpandScalarDofsToVDofs( source_fes, source_dofs_by_rank[destination_rank] );
+        return transfer_helpers::GatherValuesFromVDofs( source, source_vdofs );
+      },
+      source.UseDevice() );
+  return received_values;
+}
+
+// The receiver map mirrors the sender's cached scalar-DOF order. Assign each received rank buffer through the shared
+// device-aware vector-DOF helper.
+void AssignNodeValuesUsingCachedMap( FieldValuesByRank& received_values, mfem::Vector& destination,
+                                     const mfem::FiniteElementSpace& destination_fes,
+                                     const MPIArray<int>& destination_dofs_by_rank,
+                                     const RedecompMesh& redecomp )
+{
+  for ( int source_rank{ 0 }; source_rank < redecomp.getMPIUtility().NRanks(); ++source_rank ) {
+    auto destination_vdofs =
+        transfer_helpers::ExpandScalarDofsToVDofs( destination_fes, destination_dofs_by_rank[source_rank] );
+    transfer_helpers::AssignValuesToVDofs( received_values[source_rank], destination_vdofs, destination );
+  }
+}
+
+// A scalar DOF may occur in several elements. Record it once, and clear its ghost flag when any incident element is a
+// complete non-ghost copy.
+void AddElementDofsToUniqueNodeList( const mfem::Array<int>& element_dofs, bool element_is_ghost,
+                                     mfem::Array<int>& unique_dofs, mfem::Array<bool>& dof_is_ghost,
+                                     std::unordered_map<int, int>& dof_positions )
+{
+  for ( auto element_dof : element_dofs ) {
+    const auto [position, inserted] = dof_positions.emplace( element_dof, unique_dofs.Size() );
+    if ( inserted ) {
+      unique_dofs.Append( element_dof );
+      dof_is_ghost.Append( element_is_ghost );
+    } else if ( !element_is_ghost ) {
+      dof_is_ghost[position->second] = false;
+    }
+  }
+}
+
+// Node lists persist for every field transfer. Release reserve capacity left from element-level estimates once a rank's
+// unique list is complete.
+void ReleaseUnusedNodeListCapacity( mfem::Array<int>& unique_dofs, mfem::Array<bool>& dof_is_ghost )
+{
+  unique_dofs.ShrinkToFit();
+  dof_is_ghost.ShrinkToFit();
+}
+
+}  // namespace
 
 TransferByNodes::TransferByNodes( const mfem::ParFiniteElementSpace& parent_fes,
                                   const mfem::FiniteElementSpace& redecomp_fes )
@@ -26,258 +130,231 @@ TransferByNodes::TransferByNodes( const mfem::ParFiniteElementSpace& parent_fes,
   SLIC_ERROR_ROOT_IF( redecomp_ == nullptr,
                       "The Redecomp mesh pointer is null.  Does the redecomp_fes contain an "
                       "underlying Redecomp mesh?" );
-  SLIC_ERROR_ROOT_IF( parent_fes_->GetParMesh() != &redecomp_->getParent(),
-                      "The ParMesh associated with both parent_fes and the redecomp mesh must match." );
+  ValidateParentSpaceUsesRedecompParent( parent_fes, *redecomp_ );
 
-  // p2r = parent to redecomp
-  p2r_nodes_ = P2RNodeList( false );
-  // r2p = redecomp to parent
-  r2p_nodes_ = R2PNodeList();
+  parent_to_redecomp_nodes_ = BuildParentToRedecompNodeList( false );
+  redecomp_to_parent_nodes_ = BuildRedecompToParentNodeList();
+  BuildDesignatedReturnNodeLists();
 }
 
 TransferByNodes::TransferByNodes( const mfem::ParFiniteElementSpace& parent_fes, const RedecompMesh& redecomp )
     : parent_fes_{ &parent_fes }, redecomp_{ &redecomp }
 {
-  SLIC_ERROR_ROOT_IF( parent_fes_->GetParMesh() != &redecomp_->getParent(),
-                      "The ParMesh associated with both parent_fes and redecomp mesh must match." );
+  ValidateParentSpaceUsesRedecompParent( parent_fes, redecomp );
 }
 
 void TransferByNodes::TransferToSerial( const mfem::ParGridFunction& src, mfem::GridFunction& dst ) const
 {
   TRIBOL_MARK_FUNCTION;
-  // define transfer-specific data
-  auto src_fes = src.ParFESpace();
-  auto dst_fes = dst.FESpace();
-  // p2r = parent to redecomp
-  const auto& src_nodes = p2r_nodes_;
-  // r2p = redecomp to parent
-  const auto& dst_nodes = r2p_nodes_;
-
-  // checks to make sure src and dst are valid
-  SLIC_ERROR_ROOT_IF( dst_fes != redecomp_fes_,
+  SLIC_ERROR_ROOT_IF( dst.FESpace() != redecomp_fes_,
                       "The FiniteElementSpace of GridFunction dst must match the FiniteElementSpace "
                       "in TransferByNodes." );
-  SLIC_ERROR_ROOT_IF( src_fes != parent_fes_,
+  SLIC_ERROR_ROOT_IF( src.ParFESpace() != parent_fes_,
                       "The ParFiniteElementSpace of GridFunction src must match the ParFiniteElementSpace "
                       "in TransferByNodes." );
 
-  // send and receive DOF values from other ranks
-  auto dst_dofs = MPIArray<double, mfem::Vector>( &redecomp_->getMPIUtility() );
-  dst_dofs.SendRecvEach(
-      [src_fes, &src_nodes, &src]( int dst_rank ) {
-        mfem::Vector src_dofs;
-        src_dofs.UseDevice( src.UseDevice() );
-        auto n_vdofs = src_fes->GetVDim();
-        auto n_src_dofs = src_nodes.first[dst_rank].Size();
-        if ( n_src_dofs > 0 ) {
-          mfem::Array<int> all_vdofs;
-          all_vdofs.Reserve( n_vdofs * n_src_dofs );
-          for ( int d{ 0 }; d < n_vdofs; ++d ) {
-            for ( int j{ 0 }; j < n_src_dofs; ++j ) {
-              all_vdofs.Append( src_fes->DofToVDof( src_nodes.first[dst_rank][j], d ) );
-            }
-          }
-
-          all_vdofs.GetMemory().UseDevice( src.UseDevice() );
-          src_dofs.SetSize( all_vdofs.Size() );
-          src.GetSubVector( all_vdofs, src_dofs );
-        }
-        return src_dofs;
-      },
-      src.UseDevice() );
-
-  // map received DOF values to local DOFs
-  auto n_vdofs = src_fes->GetVDim();
-  auto n_ranks = redecomp_->getMPIUtility().NRanks();
-  for ( int i{ 0 }; i < n_ranks; ++i ) {
-    if ( dst_nodes.first[i].Size() > 0 ) {
-      mfem::Array<int> all_vdofs;
-      all_vdofs.Reserve( n_vdofs * dst_nodes.first[i].Size() );
-      for ( int d{ 0 }; d < n_vdofs; ++d ) {
-        for ( int j{ 0 }; j < dst_nodes.first[i].Size(); ++j ) {
-          all_vdofs.Append( dst_fes->DofToVDof( dst_nodes.first[i][j], d ) );
-        }
-      }
-      all_vdofs.GetMemory().UseDevice( dst.UseDevice() );
-      // set explicitly in case e.g. src is on device and dst is on host or vice versa
-      dst_dofs[i].Read( dst.UseDevice() );
-      dst_dofs[i].UseDevice( dst.UseDevice() );
-      dst.SetSubVector( all_vdofs, dst_dofs[i] );
-    }
-  }
+  auto received_values =
+      ExchangeNodeValuesUsingCachedMap( src, *parent_fes_, parent_to_redecomp_nodes_.first, *redecomp_ );
+  AssignNodeValuesUsingCachedMap( received_values, dst, *redecomp_fes_, redecomp_to_parent_nodes_.first,
+                                  *redecomp_ );
 }
 
 void TransferByNodes::TransferToParallel( const mfem::GridFunction& src, mfem::ParGridFunction& dst ) const
 {
   TRIBOL_MARK_FUNCTION;
-  // define transfer specific data
-  auto src_fes = src.FESpace();
-  auto dst_fes = dst.ParFESpace();
-  // r2p = redecomp to parent
-  const auto& src_nodes = r2p_nodes_;
-  // p2r = parent to redecomp
-  const auto& dst_nodes = p2r_nodes_;
+  ValidateRedecompToParentFieldSpaces( src.FESpace(), dst.ParFESpace(), *redecomp_fes_, *parent_fes_ );
 
-  // checks to make sure src and dst are valid
-  SLIC_ERROR_ROOT_IF( src.FESpace() != redecomp_fes_,
-                      "The FiniteElementSpace of GridFunction src must match the FiniteElementSpace "
-                      "in TransferByNodes." );
-  SLIC_ERROR_ROOT_IF( dst.ParFESpace() != parent_fes_,
-                      "The ParFiniteElementSpace of GridFunction dst must match the ParFiniteElementSpace "
-                      "in TransferByNodes." );
+  TransferDesignatedValuesToParent( src, dst, false, "primal field" );
+}
 
-  // send and receive non-ghost DOF values from other ranks
-  auto dst_dofs = MPIArray<double, mfem::Vector>( &redecomp_->getMPIUtility() );
-  dst_dofs.SendRecvEach(
-      [src_fes, &src_nodes, &src]( int dst_rank ) {
-        mfem::Vector src_dofs;
-        src_dofs.UseDevice( src.UseDevice() );
-        auto n_vdofs = src_fes->GetVDim();
-        auto n_src_dofs = src_nodes.first[dst_rank].Size();
-        auto count = 0;
-        for ( int j{ 0 }; j < n_src_dofs; ++j ) {
-          if ( !src_nodes.second[dst_rank][j] ) {
-            ++count;
-          }
-        }
-        if ( count > 0 ) {
-          mfem::Array<int> all_vdofs;
-          all_vdofs.Reserve( n_vdofs * count );
-          for ( int j{ 0 }; j < n_src_dofs; ++j ) {
-            if ( !src_nodes.second[dst_rank][j] ) {
-              for ( int d{ 0 }; d < n_vdofs; ++d ) {
-                all_vdofs.Append( src_fes->DofToVDof( src_nodes.first[dst_rank][j], d ) );
-              }
-            }
-          }
+void TransferByNodes::CollapseReplicatedDualToParallel( const mfem::LinearForm& src, mfem::ParLinearForm& dst ) const
+{
+  TRIBOL_MARK_FUNCTION;
+  ValidateRedecompToParentFieldSpaces( src.FESpace(), dst.ParFESpace(), *redecomp_fes_, *parent_fes_ );
 
-          all_vdofs.GetMemory().UseDevice( src.UseDevice() );
-          src_dofs.SetSize( all_vdofs.Size() );
-          src.GetSubVector( all_vdofs, src_dofs );
-        }
-        return src_dofs;
+  TransferDesignatedValuesToParent( src, dst, true, "replicated dual" );
+}
+
+void TransferByNodes::TransferDesignatedValuesToParent( const mfem::Vector& src, mfem::Vector& dst,
+                                                        bool keep_only_parent_owned_dofs,
+                                                        const char* field_name [[maybe_unused]] ) const
+{
+  dst = 0.0;
+
+  auto received_values =
+      ExchangeNodeValuesUsingCachedMap( src, *redecomp_fes_, redecomp_dofs_supplying_designated_values_,
+                                        *redecomp_ );
+  AssignNodeValuesUsingCachedMap( received_values, dst, *parent_fes_,
+                                  parent_dofs_receiving_designated_values_, *redecomp_ );
+
+#if defined( TRIBOL_DEBUG )
+  CheckReturnEligibleCopies( src, dst, field_name );
+#endif
+
+  if ( keep_only_parent_owned_dofs ) {
+    transfer_helpers::KeepOnlyOwnedParentVDofs( dst, *parent_fes_ );
+  }
+}
+
+#if defined( TRIBOL_DEBUG )
+void TransferByNodes::CheckReturnEligibleCopies( const mfem::Vector& src,
+                                                 const mfem::Vector& selected_parent_values,
+                                                 const char* field_name ) const
+{
+  // The designated-copy transfer above is the production algorithm in every build. Debug builds exchange the
+  // additional eligible copies only to verify that selecting one of them is valid.
+  auto received_copies = MPIArray<double, mfem::Vector>( &redecomp_->getMPIUtility() );
+  received_copies.SendRecvEach(
+      [this, &src]( int parent_rank ) {
+        auto redecomp_vdofs =
+            CollectReturnEligibleVDofs( *redecomp_fes_, redecomp_to_parent_nodes_, parent_rank );
+        return transfer_helpers::GatherValuesFromVDofs( src, redecomp_vdofs );
       },
       src.UseDevice() );
 
-  // map received non-ghost DOF values to dst
-  auto n_vdofs = src_fes->GetVDim();
-  auto n_ranks = redecomp_->getMPIUtility().NRanks();
-  for ( int i{ 0 }; i < n_ranks; ++i ) {
-    auto count = 0;
-    for ( int j{ 0 }; j < dst_nodes.first[i].Size(); ++j ) {
-      if ( !dst_nodes.second[i][j] ) {
-        ++count;
+  std::vector<int> designated_ranks( parent_fes_->GetVSize(), -1 );
+  for ( int redecomp_rank{ 0 }; redecomp_rank < redecomp_->getMPIUtility().NRanks(); ++redecomp_rank ) {
+    auto parent_vdofs =
+        transfer_helpers::ExpandScalarDofsToVDofs( *parent_fes_,
+                                                   parent_dofs_receiving_designated_values_[redecomp_rank] );
+    for ( auto encoded_parent_vdof : parent_vdofs ) {
+      mfem::real_t sign = 1.0;
+      const int parent_vdof = mfem::FiniteElementSpace::DecodeDof( encoded_parent_vdof, sign );
+      designated_ranks[parent_vdof] = redecomp_rank;
+    }
+  }
+
+  const auto* selected_values = selected_parent_values.HostRead();
+  for ( int redecomp_rank{ 0 }; redecomp_rank < redecomp_->getMPIUtility().NRanks(); ++redecomp_rank ) {
+    auto parent_vdofs =
+        CollectReturnEligibleVDofs( *parent_fes_, parent_to_redecomp_nodes_, redecomp_rank );
+    const auto* candidate_values = received_copies[redecomp_rank].HostRead();
+    for ( int candidate_index{ 0 }; candidate_index < parent_vdofs.Size(); ++candidate_index ) {
+      mfem::real_t sign = 1.0;
+      const int parent_vdof = mfem::FiniteElementSpace::DecodeDof( parent_vdofs[candidate_index], sign );
+      const double selected = selected_values[parent_vdof];
+      const double candidate = sign * candidate_values[candidate_index];
+      transfer_helpers::VerifyReplicatedValueMatchesSelected( field_name, parent_vdof,
+                                                              designated_ranks[parent_vdof], selected,
+                                                              redecomp_rank, candidate );
+    }
+  }
+}
+#endif
+
+void TransferByNodes::BuildDesignatedReturnNodeLists()
+{
+  TRIBOL_MARK_FUNCTION;
+  const auto& mpi = redecomp_->getMPIUtility();
+  parent_dofs_receiving_designated_values_ = MPIArray<int>( &mpi );
+  auto designated_positions_by_redecomp_rank = MPIArray<int>( &mpi );
+
+  // A parent DOF can have complete copies on several redecomp ranks. The lowest eligible rank is the stable owner for
+  // reverse primal transfer and replicated-dual collapse.
+  std::vector<int> designated_redecomp_rank( parent_fes_->GetNDofs(), mpi.NRanks() );
+  for ( int redecomp_rank{ 0 }; redecomp_rank < mpi.NRanks(); ++redecomp_rank ) {
+    const auto& parent_dofs = parent_to_redecomp_nodes_.first[redecomp_rank];
+    const auto& copy_is_ghost = parent_to_redecomp_nodes_.second[redecomp_rank];
+    for ( int position{ 0 }; position < parent_dofs.Size(); ++position ) {
+      if ( !copy_is_ghost[position] ) {
+        designated_redecomp_rank[parent_dofs[position]] =
+            std::min( designated_redecomp_rank[parent_dofs[position]], redecomp_rank );
       }
     }
-    if ( count > 0 ) {
-      mfem::Array<int> all_vdofs;
-      all_vdofs.Reserve( n_vdofs * count );
-      for ( int j{ 0 }; j < dst_nodes.first[i].Size(); ++j ) {
-        if ( !dst_nodes.second[i][j] ) {
-          for ( int d{ 0 }; d < n_vdofs; ++d ) {
-            all_vdofs.Append( dst_fes->DofToVDof( dst_nodes.first[i][j], d ) );
-          }
-        }
-      }
+  }
 
-      all_vdofs.GetMemory().UseDevice( dst.UseDevice() );
-      // set explicitly in case e.g. src is on device and dst is on host or vice versa
-      dst_dofs[i].Read( dst.UseDevice() );
-      dst_dofs[i].UseDevice( dst.UseDevice() );
-      dst.SetSubVector( all_vdofs, dst_dofs[i] );
+  for ( int redecomp_rank{ 0 }; redecomp_rank < mpi.NRanks(); ++redecomp_rank ) {
+    const auto& parent_dofs = parent_to_redecomp_nodes_.first[redecomp_rank];
+    for ( int position{ 0 }; position < parent_dofs.Size(); ++position ) {
+      const int parent_dof = parent_dofs[position];
+      if ( designated_redecomp_rank[parent_dof] == redecomp_rank ) {
+        parent_dofs_receiving_designated_values_[redecomp_rank].Append( parent_dof );
+        designated_positions_by_redecomp_rank[redecomp_rank].Append( position );
+      }
+    }
+  }
+
+  auto designated_positions_by_parent_rank = MPIArray<int>( &mpi );
+  designated_positions_by_parent_rank.SendRecvArrayEach( designated_positions_by_redecomp_rank );
+  redecomp_dofs_supplying_designated_values_ = MPIArray<int>( &mpi );
+  for ( int parent_rank{ 0 }; parent_rank < mpi.NRanks(); ++parent_rank ) {
+    for ( auto position : designated_positions_by_parent_rank[parent_rank] ) {
+      SLIC_ERROR_ROOT_IF( position < 0 || position >= redecomp_to_parent_nodes_.first[parent_rank].Size(),
+                          "Designated transfer received an invalid redecomp DOF position." );
+      redecomp_dofs_supplying_designated_values_[parent_rank].Append(
+          redecomp_to_parent_nodes_.first[parent_rank][position] );
     }
   }
 }
 
-EntityIndexByRank TransferByNodes::P2RNodeList( bool use_global_ids )
+EntityIndexByRank TransferByNodes::BuildParentToRedecompNodeList( bool use_global_ids )
 {
   TRIBOL_MARK_FUNCTION;
-  // p2r = parent to redecomp
-  auto p2r_node_idx = MPIArray<int>( &redecomp_->getMPIUtility() );
-  auto p2r_node_ghost = MPIArray<bool>( &redecomp_->getMPIUtility() );
-  const auto& p2r_elem_idx = redecomp_->getParentToRedecompElems().first;
-  const auto& p2r_elem_ghost = redecomp_->getParentToRedecompElems().second;
-  auto n_ranks = redecomp_->getMPIUtility().NRanks();
-  for ( int r{ 0 }; r < n_ranks; ++r ) {
-    auto n_els = p2r_elem_idx[r].Size();
-    if ( n_els > 0 ) {
-      auto n_dofs = parent_fes_->GetFE( p2r_elem_idx[r][0] )->GetDof();
-      p2r_node_idx[r].Reserve( n_els * n_dofs );
-      p2r_node_ghost[r].Reserve( n_els * n_dofs );
-      auto node_idx_map = std::unordered_map<int, int>();
-      auto dof_ct = 0;
-      for ( int e{ 0 }; e < p2r_elem_idx[r].Size(); ++e ) {
-        auto is_elem_ghost = p2r_elem_ghost[r][e];
-        auto elem_dofs = mfem::Array<int>();
-        parent_fes_->GetElementDofs( p2r_elem_idx[r][e], elem_dofs );
-        for ( auto elem_dof : elem_dofs ) {
-          if ( use_global_ids ) {
-            elem_dof = parent_fes_->GetGlobalTDofNumber( elem_dof );
-          }
-          auto node_idx_it = node_idx_map.emplace( elem_dof, dof_ct );
-          if ( node_idx_it.second ) {
-            ++dof_ct;
-            p2r_node_idx[r].push_back( elem_dof );
-            p2r_node_ghost[r].push_back( is_elem_ghost );
-          } else if ( !is_elem_ghost ) {
-            p2r_node_ghost[r][node_idx_it.first->second] = false;
+  auto parent_dofs_by_redecomp_rank = MPIArray<int>( &redecomp_->getMPIUtility() );
+  auto parent_dof_is_ghost = MPIArray<bool>( &redecomp_->getMPIUtility() );
+  const auto& parent_elements_by_redecomp_rank = redecomp_->getParentToRedecompElems().first;
+  const auto& parent_element_is_ghost = redecomp_->getParentToRedecompElems().second;
+  for ( int redecomp_rank{ 0 }; redecomp_rank < redecomp_->getMPIUtility().NRanks(); ++redecomp_rank ) {
+    const auto& parent_elements = parent_elements_by_redecomp_rank[redecomp_rank];
+    const int element_count = parent_elements.Size();
+    if ( element_count > 0 ) {
+      const int dofs_per_element = parent_fes_->GetFE( parent_elements[0] )->GetDof();
+      parent_dofs_by_redecomp_rank[redecomp_rank].Reserve( element_count * dofs_per_element );
+      parent_dof_is_ghost[redecomp_rank].Reserve( element_count * dofs_per_element );
+      std::unordered_map<int, int> dof_positions;
+      for ( int element_position{ 0 }; element_position < element_count; ++element_position ) {
+        const bool element_is_ghost = parent_element_is_ghost[redecomp_rank][element_position];
+        mfem::Array<int> element_dofs;
+        parent_fes_->GetElementDofs( parent_elements[element_position], element_dofs );
+        if ( use_global_ids ) {
+          for ( int dof_position{ 0 }; dof_position < element_dofs.Size(); ++dof_position ) {
+            element_dofs[dof_position] = parent_fes_->GetGlobalTDofNumber( element_dofs[dof_position] );
           }
         }
+        AddElementDofsToUniqueNodeList( element_dofs, element_is_ghost,
+                                        parent_dofs_by_redecomp_rank[redecomp_rank],
+                                        parent_dof_is_ghost[redecomp_rank], dof_positions );
       }
-      auto tmp_p2r_node_idx = p2r_node_idx[r];
-      auto tmp_p2r_node_ghost = p2r_node_ghost[r];
-      std::swap( p2r_node_idx[r], tmp_p2r_node_idx );
-      std::swap( p2r_node_ghost[r], tmp_p2r_node_ghost );
+      ReleaseUnusedNodeListCapacity( parent_dofs_by_redecomp_rank[redecomp_rank],
+                                     parent_dof_is_ghost[redecomp_rank] );
     }
   }
-  return { std::move( p2r_node_idx ), std::move( p2r_node_ghost ) };
+  return { std::move( parent_dofs_by_redecomp_rank ), std::move( parent_dof_is_ghost ) };
 }
 
-EntityIndexByRank TransferByNodes::R2PNodeList()
+EntityIndexByRank TransferByNodes::BuildRedecompToParentNodeList()
 {
   TRIBOL_MARK_FUNCTION;
-  // r2p = redecomp to parent
-  auto r2p_node_idx = MPIArray<int>( &redecomp_->getMPIUtility() );
-  auto r2p_node_ghost = MPIArray<bool>( &redecomp_->getMPIUtility() );
-  auto n_ranks = redecomp_->getMPIUtility().NRanks();
-  for ( int r{ 0 }; r < n_ranks; ++r ) {
-    auto first_el = redecomp_->getRedecompToParentElemOffsets()[r];
-    auto last_el = redecomp_->getRedecompToParentElemOffsets()[r + 1];
-    auto n_els = last_el - first_el;
-    if ( n_els > 0 ) {
-      auto n_dofs = redecomp_fes_->GetFE( first_el )->GetDof();
-      r2p_node_idx[r].Reserve( n_els * n_dofs );
-      r2p_node_ghost[r].Reserve( n_els * n_dofs );
-      auto node_idx_map = std::unordered_map<int, int>();
-      auto dof_ct = 0;
-      auto ghost_ct = 0;
-      for ( int e{ first_el }; e < last_el; ++e ) {
-        auto is_elem_ghost = false;
-        if ( ghost_ct < redecomp_->getRedecompToParentGhostElems()[r].Size() &&
-             redecomp_->getRedecompToParentGhostElems()[r][ghost_ct] == e ) {
-          ++ghost_ct;
-          is_elem_ghost = true;
+  auto redecomp_dofs_by_parent_rank = MPIArray<int>( &redecomp_->getMPIUtility() );
+  auto redecomp_dof_is_ghost = MPIArray<bool>( &redecomp_->getMPIUtility() );
+  for ( int parent_rank{ 0 }; parent_rank < redecomp_->getMPIUtility().NRanks(); ++parent_rank ) {
+    const int first_element = redecomp_->getRedecompToParentElemOffsets()[parent_rank];
+    const int last_element = redecomp_->getRedecompToParentElemOffsets()[parent_rank + 1];
+    const int element_count = last_element - first_element;
+    if ( element_count > 0 ) {
+      const int dofs_per_element = redecomp_fes_->GetFE( first_element )->GetDof();
+      redecomp_dofs_by_parent_rank[parent_rank].Reserve( element_count * dofs_per_element );
+      redecomp_dof_is_ghost[parent_rank].Reserve( element_count * dofs_per_element );
+      std::unordered_map<int, int> dof_positions;
+      int ghost_position = 0;
+      const auto& ghost_elements = redecomp_->getRedecompToParentGhostElems()[parent_rank];
+      for ( int element{ first_element }; element < last_element; ++element ) {
+        bool element_is_ghost = false;
+        if ( ghost_position < ghost_elements.Size() && ghost_elements[ghost_position] == element ) {
+          ++ghost_position;
+          element_is_ghost = true;
         }
-        auto elem_dofs = mfem::Array<int>();
-        redecomp_fes_->GetElementDofs( e, elem_dofs );
-        for ( auto elem_dof : elem_dofs ) {
-          auto node_idx_it = node_idx_map.emplace( elem_dof, dof_ct );
-          if ( node_idx_it.second ) {
-            ++dof_ct;
-            r2p_node_idx[r].push_back( elem_dof );
-            r2p_node_ghost[r].push_back( is_elem_ghost );
-          } else if ( !is_elem_ghost ) {
-            r2p_node_ghost[r][node_idx_it.first->second] = false;
-          }
-        }
+        mfem::Array<int> element_dofs;
+        redecomp_fes_->GetElementDofs( element, element_dofs );
+        AddElementDofsToUniqueNodeList( element_dofs, element_is_ghost,
+                                        redecomp_dofs_by_parent_rank[parent_rank],
+                                        redecomp_dof_is_ghost[parent_rank], dof_positions );
       }
-      auto tmp_r2p_node_idx = r2p_node_idx[r];
-      auto tmp_r2p_node_ghost = r2p_node_ghost[r];
-      std::swap( r2p_node_idx[r], tmp_r2p_node_idx );
-      std::swap( r2p_node_ghost[r], tmp_r2p_node_ghost );
+      ReleaseUnusedNodeListCapacity( redecomp_dofs_by_parent_rank[parent_rank],
+                                     redecomp_dof_is_ghost[parent_rank] );
     }
   }
-  return { std::move( r2p_node_idx ), std::move( r2p_node_ghost ) };
+  return { std::move( redecomp_dofs_by_parent_rank ), std::move( redecomp_dof_is_ghost ) };
 }
 
 }  // end namespace redecomp

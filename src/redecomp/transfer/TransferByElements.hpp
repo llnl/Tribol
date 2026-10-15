@@ -43,6 +43,14 @@ class TransferByElements : public GridFnTransfer {
    * GridFunction (src)
    */
   void TransferToParallel( const mfem::GridFunction& src, mfem::ParGridFunction& dst ) const override;
+
+  /**
+   * @brief Select one return-eligible copy of an already-assembled redecomp dual
+   *
+   * @param src Redecomp linear form with matching return-eligible copies
+   * @param dst Parent parallel linear form receiving the designated copy
+   */
+  void CollapseReplicatedDualToParallel( const mfem::LinearForm& src, mfem::ParLinearForm& dst ) const override;
 };
 
 }  // end namespace redecomp
