@@ -139,8 +139,7 @@ else()
         NAME          mfem
         INCLUDES      ${MFEM_INCLUDE_DIRS}
         LIBRARIES     ${MFEM_LIBRARIES}
-        TREAT_INCLUDES_AS_SYSTEM ON
-        EXPORTABLE    ON)
+        TREAT_INCLUDES_AS_SYSTEM ON)
 
 endif()
 
