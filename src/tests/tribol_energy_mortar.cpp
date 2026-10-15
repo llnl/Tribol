@@ -644,8 +644,8 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   params.del = 0.1;
   params.k = 3.0;
   params.N = 3;
-  params.enzyme_quadrature = std::get<1>( GetParam() );
-  params.residual_gap = std::get<0>( GetParam() );
+  params.enzyme_quadrature = true;
+  params.residual_gap = GetParam();
 
   EnergyMortarCalculator evaluator( params );
   const InterfacePair pair( 0, 0 );
@@ -739,8 +739,8 @@ TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
   params_.del = 0.1;
   params_.k = 1.0;
   params_.N = 3;
-  params_.enzyme_quadrature = std::get<1>( GetParam() );
-  params_.residual_gap = std::get<0>( GetParam() );
+  params_.enzyme_quadrature = true;
+  params_.residual_gap = GetParam();
 
   EnergyMortarCalculator evaluator_( params_ );
 
@@ -792,8 +792,8 @@ TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
   params_.del = 0.1;
   params_.k = 1.0;
   params_.N = 3;
-  params_.enzyme_quadrature = std::get<1>( GetParam() );
-  params_.residual_gap = std::get<0>( GetParam() );
+  params_.enzyme_quadrature = true;
+  params_.residual_gap = GetParam();
 
   EnergyMortarCalculator evaluator_( params_ );
 
