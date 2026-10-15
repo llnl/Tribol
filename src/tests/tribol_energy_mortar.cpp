@@ -41,6 +41,22 @@ inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], 
   P1[1] = P0_P1[3];
 }
 
+BallEndpointData endpointBallData( double neighbor_x, double neighbor_y )
+{
+  BallEndpointData data;
+  data.weight = { 0.0, 1.0 };
+  data.neighbor_coordinates = { 0.0, 0.0, neighbor_x, neighbor_y };
+  return data;
+}
+
+BallEndpointData openEndBallData()
+{
+  BallEndpointData data;
+  data.weight = { 0.0, 1.0 };
+  data.is_open_endpoint[1] = true;
+  return data;
+}
+
 std::pair<double, double> EnergyMortarCalculator::eval_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                                const MeshData::Viewer& mesh2 ) const
 {
@@ -599,7 +615,698 @@ TEST( EnergyMortarResidualGapCheck, ObliqueVirtualEdgesCreateProjectedOverlap )
   EXPECT_GT( active.energy, 0.0 );
 }
 
+// Applying the endpoint ball outside its corner cone would double count contact owned by the adjacent edge.
+TEST( EnergyMortarResidualGapCheck, BallCompletionOnlyOwnsCornerCone )
+{
+  RealT x1[2] = { -1.0, 0.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 0, 1 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.0;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  EnergyMortarCalculator evaluator( params );
+  const double residual[2] = { 0.0, 0.2 };
+  const auto endpoint_data = endpointBallData( 0.0, -1.0 );
+
+  RealT x2_inside[2] = { 0.30, 0.05 };
+  RealT y2[2] = { 0.05, 0.05 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData inside_mesh( 1, 1, 2, conn2, LINEAR_EDGE, x2_inside, y2, nullptr, MemorySpace::Host );
+  const auto inside = evaluator.compute_ball_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
+                                                           inside_mesh.getView(), endpoint_data, residual );
+  EXPECT_GT( inside.energy, 0.0 );
+
+  RealT x2_outside[2] = { -0.05, -0.30 };
+  MeshData outside_mesh( 1, 1, 2, conn2, LINEAR_EDGE, x2_outside, y2, nullptr, MemorySpace::Host );
+  const auto outside = evaluator.compute_ball_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
+                                                            outside_mesh.getView(), endpoint_data, residual );
+  EXPECT_EQ( outside.energy, 0.0 );
+  EXPECT_TRUE( std::all_of( outside.force.begin(), outside.force.end(), []( double value ) { return value == 0.0; } ) );
+  EXPECT_TRUE(
+      std::all_of( outside.stiffness.begin(), outside.stiffness.end(), []( double value ) { return value == 0.0; } ) );
+
+  RealT x2_crossing[2] = { 0.10, -0.10 };
+  MeshData crossing_mesh( 1, 1, 2, conn2, LINEAR_EDGE, x2_crossing, y2, nullptr, MemorySpace::Host );
+  const auto crossing_ball = evaluator.compute_ball_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
+                                                                  crossing_mesh.getView(), endpoint_data, residual );
+  const auto crossing_mortar = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
+                                                                                crossing_mesh.getView(), residual );
+  EXPECT_GT( crossing_ball.energy, 0.0 );
+  EXPECT_GT( crossing_mortar.energy, 0.0 );
+
+  RealT x2_inside_half[2] = { 0.10, 0.0 };
+  MeshData inside_half_mesh( 1, 1, 2, conn2, LINEAR_EDGE, x2_inside_half, y2, nullptr, MemorySpace::Host );
+  const auto inside_half = evaluator.compute_ball_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
+                                                                inside_half_mesh.getView(), endpoint_data, residual );
+  EXPECT_NEAR( crossing_ball.energy, inside_half.energy, 1.0e-14 );
+}
+
+// Ignoring endpoint weights would add a cap at an ineligible corner or give a partial cap its full energy.
+TEST( EnergyMortarResidualGapCheck, BallCompletionHonorsEndpointWeights )
+{
+  RealT x1[2] = { -1.0, 0.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 0, 1 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = { 0.30, 0.05 };
+  RealT y2[2] = { 0.05, 0.05 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.0;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  EnergyMortarCalculator evaluator( params );
+  const InterfacePair pair( 0, 0 );
+  const double residual[2] = { 0.0, 0.2 };
+  auto eligible = openEndBallData();
+  auto ineligible = eligible;
+  ineligible.weight = { 1.0, 0.0 };
+  auto half_weight = eligible;
+  half_weight.weight[1] = 0.5;
+
+  const auto active = evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), eligible, residual );
+  ASSERT_TRUE( active.has_active_qp );
+  ASSERT_GT( active.energy, 0.0 );
+
+  const auto inactive =
+      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), ineligible, residual );
+  EXPECT_FALSE( inactive.has_active_qp );
+  EXPECT_DOUBLE_EQ( inactive.energy, 0.0 );
+
+  const auto weighted =
+      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), half_weight, residual );
+  EXPECT_NEAR( weighted.energy, 0.5 * active.energy, 1.0e-14 );
+}
+
+// Without normal smoothing on the endpoint ball, it can keep exerting force after the faces become perpendicular.
+TEST( EnergyMortarResidualGapCheck, BallCompletionFadesOutAsNormalsBecomePerpendicular )
+{
+  RealT x1[2] = { 1.0, 0.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 0, 1 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = {};
+  RealT y2[2] = {};
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.0;
+  const double right_angle = energy_mortar::right_angle;
+  params.normal_smoothing_start_angle = 0.5 * right_angle;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  EnergyMortarCalculator evaluator( params );
+  auto unsmoothed_params = params;
+  unsmoothed_params.normal_smoothing_start_angle = right_angle;
+  EnergyMortarCalculator unsmoothed_evaluator( unsmoothed_params );
+  const InterfacePair pair( 0, 0 );
+  const double residual[2] = { 0.2, 0.2 };
+  const auto endpoint_data = openEndBallData();
+
+  // Compare against the same cone-weighted geometry with normal smoothing disabled, which isolates the normal
+  // alignment factor while the target edge rotates inside the endpoint cone.
+  auto ball_energy_at_angle = [&]( const EnergyMortarCalculator& calculator, double mortar_angle ) {
+    constexpr double segment_length = 0.25;
+    constexpr double endpoint_offset = 0.05;
+    constexpr double perpendicular_offset = 0.05;
+    const double tangent[2] = { std::cos( mortar_angle ), std::sin( mortar_angle ) };
+    const double normal[2] = { -tangent[1], tangent[0] };
+    for ( int dimension = 0; dimension < 2; ++dimension ) {
+      const double endpoint = -endpoint_offset * tangent[dimension] + perpendicular_offset * normal[dimension];
+      if ( dimension == 0 ) {
+        x2[1] = endpoint;
+        x2[0] = endpoint - segment_length * tangent[dimension];
+      } else {
+        y2[1] = endpoint;
+        y2[0] = endpoint - segment_length * tangent[dimension];
+      }
+    }
+    mesh2.setPosition( x2, y2, nullptr );
+    return calculator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual )
+        .energy;
+  };
+
+  const double opposed_energy = ball_energy_at_angle( evaluator, 0.0 );
+  ASSERT_GT( opposed_energy, 0.0 );
+
+  const double ramp_angle = 0.75 * right_angle;
+  const double ramp_alignment =
+      ContactSmoothing::normal_alignment_factor( -std::cos( ramp_angle ), params.normal_smoothing_start_angle );
+  const double unsmoothed_ramp_energy = ball_energy_at_angle( unsmoothed_evaluator, ramp_angle );
+  EXPECT_NEAR( ball_energy_at_angle( evaluator, ramp_angle ), ramp_alignment * ramp_alignment * unsmoothed_ramp_energy,
+               1.0e-12 );
+
+  const double near_perpendicular_angle = 89.0 * right_angle / 90.0;
+  const double near_perpendicular_alignment = ContactSmoothing::normal_alignment_factor(
+      -std::cos( near_perpendicular_angle ), params.normal_smoothing_start_angle );
+  const double near_perpendicular_energy = ball_energy_at_angle( evaluator, near_perpendicular_angle );
+  const double unsmoothed_near_perpendicular_energy =
+      ball_energy_at_angle( unsmoothed_evaluator, near_perpendicular_angle );
+  EXPECT_NEAR( near_perpendicular_energy,
+               near_perpendicular_alignment * near_perpendicular_alignment * unsmoothed_near_perpendicular_energy,
+               1.0e-12 );
+  EXPECT_LT( near_perpendicular_energy, ball_energy_at_angle( evaluator, ramp_angle ) );
+
+  EXPECT_NEAR( ball_energy_at_angle( evaluator, right_angle ), 0.0, 1.0e-30 );
+  EXPECT_DOUBLE_EQ( ball_energy_at_angle( evaluator, 2.0 * right_angle ), 0.0 );
+}
+
+// Splitting one mortar edge into two must not duplicate the endpoint cap or change its total energy.
+TEST( EnergyMortarResidualGapCheck, BallCompletionIsInvariantToMortarRefinement )
+{
+  RealT x1[2] = { -1.0, 0.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 0, 1 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT coarse_x[2] = { 0.15, 0.05 };
+  RealT coarse_y[2] = { 0.05, 0.05 };
+  IndexT coarse_conn[2] = { 0, 1 };
+  MeshData coarse( 1, 1, 2, coarse_conn, LINEAR_EDGE, coarse_x, coarse_y, nullptr, MemorySpace::Host );
+
+  RealT fine_x[3] = { 0.15, 0.10, 0.05 };
+  RealT fine_y[3] = { 0.05, 0.05, 0.05 };
+  IndexT fine_conn[4] = { 0, 1, 1, 2 };
+  MeshData fine( 1, 2, 3, fine_conn, LINEAR_EDGE, fine_x, fine_y, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.0;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  EnergyMortarCalculator evaluator( params );
+  const double residual[2] = { 0.0, 0.2 };
+  const auto endpoint_data = openEndBallData();
+
+  const auto coarse_data = evaluator.compute_ball_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
+                                                                coarse.getView(), endpoint_data, residual );
+  double refined_energy = 0.0;
+  for ( int edge = 0; edge < 2; ++edge ) {
+    refined_energy += evaluator
+                          .compute_ball_penalty_data( InterfacePair( 0, edge ), mesh1.getView(), fine.getView(),
+                                                      endpoint_data, residual )
+                          .energy;
+  }
+  // The radial integrand is non-polynomial, so independently mapping the same three-point rule to the two refined
+  // edges produces a small quadrature difference.
+  EXPECT_NEAR( refined_energy, coarse_data.energy, 2.0e-6 );
+}
+
+// Without nonmortar tributary scaling, refining the source edge would increase the total endpoint-cap energy.
+TEST( EnergyMortarResidualGapCheck, BallCompletionScalesWithNonmortarTributaryLength )
+{
+  RealT coarse_x[2] = { -1.0, 0.0 };
+  RealT refined_x[2] = { -0.5, 0.0 };
+  RealT nonmortar_y[2] = { 0.0, 0.0 };
+  IndexT nonmortar_conn[2] = { 0, 1 };
+  MeshData coarse_nonmortar( 0, 1, 2, nonmortar_conn, LINEAR_EDGE, coarse_x, nonmortar_y, nullptr, MemorySpace::Host );
+  MeshData refined_nonmortar( 0, 1, 2, nonmortar_conn, LINEAR_EDGE, refined_x, nonmortar_y, nullptr,
+                              MemorySpace::Host );
+
+  RealT mortar_x[2] = { 0.30, 0.05 };
+  RealT mortar_y[2] = { 0.05, 0.05 };
+  IndexT mortar_conn[2] = { 0, 1 };
+  MeshData mortar( 1, 1, 2, mortar_conn, LINEAR_EDGE, mortar_x, mortar_y, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.0;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  EnergyMortarCalculator evaluator( params );
+  const double residual[2] = { 0.0, 0.2 };
+  const auto endpoint_data = openEndBallData();
+  const double coarse_energy = evaluator
+                                   .compute_ball_penalty_data( InterfacePair( 0, 0 ), coarse_nonmortar.getView(),
+                                                               mortar.getView(), endpoint_data, residual )
+                                   .energy;
+  const double refined_energy = evaluator
+                                    .compute_ball_penalty_data( InterfacePair( 0, 0 ), refined_nonmortar.getView(),
+                                                                mortar.getView(), endpoint_data, residual )
+                                    .energy;
+  ASSERT_GT( coarse_energy, 0.0 );
+  EXPECT_NEAR( refined_energy, 0.5 * coarse_energy, 1.0e-14 );
+}
+
+// Moving the adjacent nonmortar node moves the corner-cone boundary; omitting that derivative gives incorrect force
+// and stiffness entries.
+TEST( EnergyMortarResidualGapCheck, BallCompletionConeDerivativesMatchFiniteDifference )
+{
+  RealT x1[2] = { -1.0, 0.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 0, 1 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  // A short portion of the target edge crosses the boundary defined by the second source edge. This exercises the
+  // moving cone bound and derivatives with respect to the additional source node as well as both contact edges.
+  RealT x2[2] = { 0.15, 0.05 };
+  RealT y2[2] = { 0.005, -0.10 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.0;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  EnergyMortarCalculator evaluator( params );
+  const InterfacePair pair( 0, 0 );
+  const double residual[2] = { 0.0, 0.2 };
+  auto endpoint_data = endpointBallData( 0.0, -1.0 );
+  const auto analytical =
+      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual );
+  ASSERT_GT( analytical.energy, 0.0 );
+
+  const std::array<RealT, 2> x1_orig{ x1[0], x1[1] };
+  const std::array<RealT, 2> y1_orig{ y1[0], y1[1] };
+  const std::array<RealT, 2> x2_orig{ x2[0], x2[1] };
+  const std::array<RealT, 2> y2_orig{ y2[0], y2[1] };
+  const auto neighbor_orig = endpoint_data.neighbor_coordinates;
+  auto restore = [&]() {
+    std::copy( x1_orig.begin(), x1_orig.end(), x1 );
+    std::copy( y1_orig.begin(), y1_orig.end(), y1 );
+    std::copy( x2_orig.begin(), x2_orig.end(), x2 );
+    std::copy( y2_orig.begin(), y2_orig.end(), y2 );
+    endpoint_data.neighbor_coordinates = neighbor_orig;
+    mesh1.setPosition( x1, y1, nullptr );
+    mesh2.setPosition( x2, y2, nullptr );
+  };
+  auto perturb = [&]( int dof, double delta ) {
+    RealT* component = nullptr;
+    int node = 0;
+    if ( dof < 4 ) {
+      node = dof / 2;
+      component = dof % 2 == 0 ? x1 : y1;
+      mesh1.setPosition( x1, y1, nullptr );
+    } else if ( dof < 8 ) {
+      node = ( dof - 4 ) / 2;
+      component = dof % 2 == 0 ? x2 : y2;
+    } else {
+      endpoint_data.neighbor_coordinates[dof - 8] += delta;
+      return;
+    }
+    component[node] += delta;
+    mesh1.setPosition( x1, y1, nullptr );
+    mesh2.setPosition( x2, y2, nullptr );
+  };
+
+  constexpr double grad_eps = 1.0e-7;
+  for ( int dof = 0; dof < BallPenaltyData::num_force_dofs; ++dof ) {
+    restore();
+    perturb( dof, grad_eps );
+    const double plus =
+        evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual ).energy;
+    restore();
+    perturb( dof, -grad_eps );
+    const double minus =
+        evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual ).energy;
+    EXPECT_NEAR( analytical.force[dof], ( plus - minus ) / ( 2.0 * grad_eps ), 1.0e-6 ) << "dof " << dof;
+  }
+
+  constexpr double hess_eps = 1.0e-6;
+  for ( int col = 0; col < BallPenaltyData::num_force_dofs; ++col ) {
+    restore();
+    perturb( col, hess_eps );
+    const auto plus =
+        evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual ).force;
+    restore();
+    perturb( col, -hess_eps );
+    const auto minus =
+        evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual ).force;
+    for ( int row = 0; row < BallPenaltyData::num_force_dofs; ++row ) {
+      EXPECT_NEAR( analytical.stiffness[row * BallPenaltyData::num_force_dofs + col],
+                   ( plus[row] - minus[row] ) / ( 2.0 * hess_eps ), 2.0e-4 )
+          << "row " << row << ", col " << col;
+    }
+  }
+  restore();
+}
+
+// A stale clipped interval can leave ghost energy, force, or stiffness after the target edge leaves the corner cone.
+TEST( EnergyMortarResidualGapCheck, BallCompletionEnergyVanishesWithConeOverlap )
+{
+  RealT x1[2] = { -1.0, 0.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 0, 1 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = { 0.01, -0.10 };
+  RealT y2[2] = { 0.05, 0.05 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.0;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  EnergyMortarCalculator evaluator( params );
+  const InterfacePair pair( 0, 0 );
+  const double residual[2] = { 0.0, 0.2 };
+  const auto endpoint_data = endpointBallData( 0.0, -1.0 );
+  auto norm = []( const auto& values ) {
+    double norm_sq = 0.0;
+    for ( double value : values ) {
+      norm_sq += value * value;
+    }
+    return std::sqrt( norm_sq );
+  };
+
+  const auto finite_overlap =
+      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual );
+  ASSERT_GT( finite_overlap.energy, 0.0 );
+  x2[0] = 1.0e-6;
+  mesh2.setPosition( x2, y2, nullptr );
+  const auto vanishing_overlap =
+      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual );
+  ASSERT_GT( vanishing_overlap.energy, 0.0 );
+  EXPECT_LT( vanishing_overlap.energy, 1.0e-2 * finite_overlap.energy );
+
+  x2[0] = 0.0;
+  mesh2.setPosition( x2, y2, nullptr );
+  const auto zero_overlap =
+      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual );
+  EXPECT_DOUBLE_EQ( zero_overlap.energy, 0.0 );
+  EXPECT_DOUBLE_EQ( norm( zero_overlap.force ), 0.0 );
+  EXPECT_DOUBLE_EQ( norm( zero_overlap.stiffness ), 0.0 );
+}
+
+// Incorrect smoothing derivatives can leave a finite endpoint force as the corner-cone overlap shrinks to zero.
+TEST( EnergyMortarResidualGapCheck, SmoothedBallForceVanishesWithConeOverlap )
+{
+  RealT x1[2] = { -1.0, 0.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 0, 1 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = { 0.01, -0.10 };
+  RealT y2[2] = { 0.05, 0.05 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  EnergyMortarCalculator evaluator( params );
+  const InterfacePair pair( 0, 0 );
+  const double residual[2] = { 0.0, 0.2 };
+  const auto endpoint_data = endpointBallData( 0.0, -1.0 );
+  auto norm = []( const auto& values ) {
+    double norm_sq = 0.0;
+    for ( double value : values ) {
+      norm_sq += value * value;
+    }
+    return std::sqrt( norm_sq );
+  };
+
+  const auto finite_overlap =
+      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual );
+  ASSERT_GT( finite_overlap.energy, 0.0 );
+  const double finite_force_norm = norm( finite_overlap.force );
+  const double finite_stiffness_norm = norm( finite_overlap.stiffness );
+  ASSERT_GT( finite_force_norm, 0.0 );
+  ASSERT_GT( finite_stiffness_norm, 0.0 );
+
+  x2[0] = 1.0e-6;
+  mesh2.setPosition( x2, y2, nullptr );
+  const auto vanishing_overlap =
+      evaluator.compute_ball_penalty_data( pair, mesh1.getView(), mesh2.getView(), endpoint_data, residual );
+  ASSERT_GT( vanishing_overlap.energy, 0.0 );
+  EXPECT_LT( norm( vanishing_overlap.force ), 1.0e-2 * finite_force_norm );
+  EXPECT_LT( norm( vanishing_overlap.stiffness ), 1.0e-2 * finite_stiffness_norm );
+}
+
+// Dependence on absolute coordinates would change endpoint-ball energy under translation and can produce unbalanced
+// forces or a nonsymmetric Hessian.
+TEST( EnergyMortarResidualGapCheck, BallCompletionPreservesRigidMotionsAndHasSymmetricHessian )
+{
+  RealT x1[2] = { -1.0, 0.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 0, 1 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  RealT x2[2] = { 0.30, 0.05 };
+  RealT y2[2] = { 0.05, 0.05 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.0;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  EnergyMortarCalculator evaluator( params );
+  const double residual[2] = { 0.0, 0.2 };
+  auto endpoint_data = endpointBallData( 0.0, -1.0 );
+  const auto base = evaluator.compute_ball_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(),
+                                                         endpoint_data, residual );
+  ASSERT_GT( base.energy, 0.0 );
+
+  EXPECT_NEAR( base.force[0] + base.force[2] + base.force[4] + base.force[6] + base.force[8] + base.force[10], 0.0,
+               1.0e-10 );
+  EXPECT_NEAR( base.force[1] + base.force[3] + base.force[5] + base.force[7] + base.force[9] + base.force[11], 0.0,
+               1.0e-10 );
+  for ( int row = 0; row < BallPenaltyData::num_force_dofs; ++row ) {
+    for ( int col = 0; col < BallPenaltyData::num_force_dofs; ++col ) {
+      EXPECT_NEAR( base.stiffness[row * BallPenaltyData::num_force_dofs + col],
+                   base.stiffness[col * BallPenaltyData::num_force_dofs + row], 1.0e-10 );
+    }
+  }
+
+  for ( double& x : x1 ) x += 1.25;
+  for ( double& y : y1 ) y -= 0.75;
+  for ( double& x : x2 ) x += 1.25;
+  for ( double& y : y2 ) y -= 0.75;
+  endpoint_data.neighbor_coordinates[2] += 1.25;
+  endpoint_data.neighbor_coordinates[3] -= 0.75;
+  mesh1.setPosition( x1, y1, nullptr );
+  mesh2.setPosition( x2, y2, nullptr );
+  const auto translated = evaluator.compute_ball_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(),
+                                                               endpoint_data, residual );
+  EXPECT_NEAR( translated.energy, base.energy, 1.0e-12 );
+  for ( int i = 0; i < BallPenaltyData::num_force_dofs; ++i ) {
+    EXPECT_NEAR( translated.force[i], base.force[i], 1.0e-9 );
+  }
+}
+
 // The sum of edge and endpoint response must have matching limits as a target slides across the ownership boundary.
+TEST( EnergyMortarResidualGapCheck, EdgeCapHandoffHasContinuousForceAndJacobian )
+{
+  RealT x1[2] = { -1.0, 0.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 0, 1 };
+  MeshData source( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  RealT x2[2] = {};
+  RealT y2[2] = { -0.1, -0.1 };
+  IndexT conn2[2] = { 1, 0 };
+  MeshData target( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.residual_gap = 0.2;
+  EnergyMortarCalculator evaluator( params );
+  const auto endpoints = openEndBallData();
+  const double residual[2] = { 0.2, 0.2 };
+  const InterfacePair pair( 0, 0 );
+  auto evaluate = [&]( double center ) {
+    x2[0] = center - 0.02;
+    x2[1] = center + 0.02;
+    target.setPosition( x2, y2, nullptr );
+    auto total = evaluator.compute_quadrature_point_penalty_data( pair, source.getView(), target.getView(), residual );
+    const auto cap =
+        evaluator.compute_ball_penalty_data( pair, source.getView(), target.getView(), endpoints, residual );
+    total.energy += cap.energy;
+    for ( int row = 0; row < 8; ++row ) {
+      total.force[row] += cap.force[row];
+      for ( int col = 0; col < 8; ++col ) {
+        total.stiffness[row * 8 + col] += cap.stiffness[row * 12 + col];
+      }
+    }
+    return total;
+  };
+  // Cover both target endpoints crossing the cone, the midpoint handoff, and both ends of edge-bound smoothing.
+  for ( double handoff : { -0.12, -0.08, -0.02, 0.0, 0.02, 0.08, 0.12 } ) {
+    SCOPED_TRACE( handoff );
+    const auto coarse_left = evaluate( handoff - 1.0e-6 );
+    const auto coarse_right = evaluate( handoff + 1.0e-6 );
+    const auto left = evaluate( handoff - 1.0e-8 );
+    const auto right = evaluate( handoff + 1.0e-8 );
+    EXPECT_NEAR( left.energy, right.energy, 1.0e-7 );
+    for ( int row = 0; row < 8; ++row ) {
+      EXPECT_NEAR( left.force[row], right.force[row], 1.0e-6 );
+      for ( int col = 0; col < 8; ++col ) {
+        EXPECT_NEAR( left.stiffness[row * 8 + col], right.stiffness[row * 8 + col], 1.0e-5 );
+        EXPECT_LE(
+            std::abs( left.stiffness[row * 8 + col] - right.stiffness[row * 8 + col] ),
+            0.1 * std::abs( coarse_left.stiffness[row * 8 + col] - coarse_right.stiffness[row * 8 + col] ) + 1.0e-8 );
+      }
+    }
+    // Away from the exact join, the assembled tangent must describe the same total force being evaluated.
+    for ( double side : { -1.0, 1.0 } ) {
+      const double center = handoff + side * 1.0e-4;
+      const auto middle = evaluate( center );
+      const auto minus = evaluate( center - 1.0e-7 );
+      const auto plus = evaluate( center + 1.0e-7 );
+      EXPECT_NEAR( ( plus.energy - minus.energy ) / 2.0e-7, middle.force[4] + middle.force[6], 1.0e-6 );
+      for ( int row = 0; row < 8; ++row ) {
+        EXPECT_NEAR( ( plus.force[row] - minus.force[row] ) / 2.0e-7,
+                     middle.stiffness[row * 8 + 4] + middle.stiffness[row * 8 + 6], 1.0e-5 );
+      }
+    }
+  }
+}
+
+// Keep total edge-plus-cap energy and force continuous at angular joins; the tangent may jump.
+TEST( EnergyMortarResidualGapCheck, CombinedEdgeCapAngularTransitionsHaveContinuousForce )
+{
+  RealT x1[2] = { -1.0, 0.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 0, 1 };
+  MeshData source( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  RealT x2[2] = {};
+  RealT y2[2] = {};
+  IndexT conn2[2] = { 1, 0 };
+  MeshData target( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.residual_gap = 0.2;
+  EnergyMortarCalculator evaluator( params );
+  const auto endpoints = openEndBallData();
+  const double residual[2] = { 0.2, 0.2 };
+  const InterfacePair pair( 0, 0 );
+  auto evaluate = [&]( double angle ) {
+    for ( int node = 0; node < 2; ++node ) {
+      const double sign = node == 0 ? -1.0 : 1.0;
+      x2[node] = 0.01 + sign * 0.02 * std::cos( angle );
+      y2[node] = -0.1 + sign * 0.02 * std::sin( angle );
+    }
+    target.setPosition( x2, y2, nullptr );
+    auto result = evaluator.compute_quadrature_point_penalty_data( pair, source.getView(), target.getView(), residual );
+    const auto cap =
+        evaluator.compute_ball_penalty_data( pair, source.getView(), target.getView(), endpoints, residual );
+    result.energy += cap.energy;
+    for ( int row = 0; row < 8; ++row ) {
+      result.force[row] += cap.force[row];
+      for ( int col = 0; col < 8; ++col ) {
+        result.stiffness[8 * row + col] += cap.stiffness[12 * row + col];
+      }
+    }
+    return result;
+  };
+  for ( double angle : { params.normal_smoothing_start_angle, energy_mortar::right_angle } ) {
+    SCOPED_TRACE( angle );
+    const auto left = evaluate( angle - 1.0e-8 );
+    const auto right = evaluate( angle + 1.0e-8 );
+    EXPECT_NEAR( left.energy, right.energy, 1.0e-7 );
+    for ( int row = 0; row < 8; ++row ) {
+      EXPECT_NEAR( left.force[row], right.force[row], 1.0e-6 );
+    }
+  }
+}
+
+// Keep force continuous around a convex corner and check one-sided tangents where angular curvature can jump.
+TEST( EnergyMortarResidualGapCheck, ConvexCornerEdgeCapEdgeHandoffsHaveContinuousForce )
+{
+  RealT sx[3] = { -1.0, 0.0, 0.0 }, sy[3] = { 0.0, 0.0, 1.0 };
+  IndexT source_conn[4] = { 0, 1, 1, 2 };
+  MeshData source( 0, 2, 3, source_conn, LINEAR_EDGE, sx, sy, nullptr, MemorySpace::Host );
+  RealT tx[2] = {}, ty[2] = {};
+  IndexT target_conn[2] = { 1, 0 };
+  MeshData target( 1, 1, 2, target_conn, LINEAR_EDGE, tx, ty, nullptr, MemorySpace::Host );
+  ContactParams params;
+  params.k = 3.0;
+  EnergyMortarCalculator calculator( params );
+  const double residual[2] = { 0.2, 0.2 };
+  BallEndpointData caps[2];
+  caps[0].weight = { 0.0, 0.5 };
+  caps[0].neighbor_coordinates = { 0.0, 0.0, 0.0, 1.0 };
+  caps[1].weight = { 0.5, 0.0 };
+  caps[1].neighbor_coordinates = { -1.0, 0.0, 0.0, 0.0 };
+  struct Result {
+    double energy{};
+    std::array<double, 10> force{};
+    std::array<double, 100> stiffness{};
+  };
+  auto evaluate = [&]( double angle ) {
+    for ( int node = 0; node < 2; ++node ) {
+      const double sign = node == 0 ? -1.0 : 1.0;
+      tx[node] = 0.1 * std::cos( angle ) - sign * 0.02 * std::sin( angle );
+      ty[node] = 0.1 * std::sin( angle ) + sign * 0.02 * std::cos( angle );
+    }
+    target.setPosition( tx, ty, nullptr );
+    Result total;
+    for ( int edge = 0; edge < 2; ++edge ) {
+      const InterfacePair pair( edge, 0 );
+      const auto projected =
+          calculator.compute_quadrature_point_penalty_data( pair, source.getView(), target.getView(), residual );
+      const auto cap =
+          calculator.compute_ball_penalty_data( pair, source.getView(), target.getView(), caps[edge], residual );
+      // Global ordering: three source nodes, then the two target nodes. Each cap also carries its neighboring source
+      // node.
+      const int map[12] = { 2 * edge, 2 * edge + 1,      2 * edge + 2,     2 * edge + 3, 8, 9, 6, 7, 0,
+                            1,        edge == 0 ? 4 : 0, edge == 0 ? 5 : 1 };
+      total.energy += projected.energy + cap.energy;
+      for ( int row = 0; row < 12; ++row ) {
+        total.force[map[row]] += cap.force[row];
+        if ( row < 8 ) total.force[map[row]] += projected.force[row];
+        for ( int col = 0; col < 12; ++col ) {
+          total.stiffness[10 * map[row] + map[col]] += cap.stiffness[12 * row + col];
+          if ( row < 8 && col < 8 ) total.stiffness[10 * map[row] + map[col]] += projected.stiffness[8 * row + col];
+        }
+      }
+    }
+    return total;
+  };
+  for ( double join : { -energy_mortar::right_angle, -std::atan( 5.0 ), -0.5 * energy_mortar::right_angle,
+                        -std::atan( 0.2 ), 0.0 } ) {
+    SCOPED_TRACE( join );
+    const auto left = evaluate( join - 1.0e-8 );
+    const auto right = evaluate( join + 1.0e-8 );
+    EXPECT_NEAR( left.energy, right.energy, 1.0e-7 );
+    for ( int row = 0; row < 10; ++row ) {
+      EXPECT_NEAR( left.force[row], right.force[row], 1.0e-6 );
+      // Angular joins permit tangent jumps; pure geometric edge/cap handoffs still match tangents.
+      const bool angular_join =
+          join == -energy_mortar::right_angle || join == -0.5 * energy_mortar::right_angle || join == 0.0;
+      if ( !angular_join ) {
+        for ( int col = 0; col < 10; ++col )
+          EXPECT_NEAR( left.stiffness[10 * row + col], right.stiffness[10 * row + col], 1.0e-5 );
+      }
+    }
+    for ( double side : { -1.0, 1.0 } ) {
+      const double angle = join + side * 1.0e-4;
+      const auto middle = evaluate( angle );
+      const auto minus = evaluate( angle - 1.0e-7 );
+      const auto plus = evaluate( angle + 1.0e-7 );
+      double velocity[4];
+      for ( int node = 0; node < 2; ++node ) {
+        const double sign = node == 0 ? -1.0 : 1.0;
+        velocity[2 * node] = -0.1 * std::sin( angle ) - sign * 0.02 * std::cos( angle );
+        velocity[2 * node + 1] = 0.1 * std::cos( angle ) - sign * 0.02 * std::sin( angle );
+      }
+      double energy_derivative = 0.0;
+      for ( int col = 0; col < 4; ++col ) energy_derivative += middle.force[6 + col] * velocity[col];
+      EXPECT_NEAR( ( plus.energy - minus.energy ) / 2.0e-7, energy_derivative, 1.0e-6 );
+      for ( int row = 0; row < 10; ++row ) {
+        double force_derivative = 0.0;
+        for ( int col = 0; col < 4; ++col ) force_derivative += middle.stiffness[10 * row + 6 + col] * velocity[col];
+        EXPECT_NEAR( ( plus.force[row] - minus.force[row] ) / 2.0e-7, force_derivative, 1.0e-5 );
+      }
+    }
+  }
+}
 
 // Missing derivatives of a virtual endpoint can create a net force or make the response change after translation.
 TEST( EnergyMortarResidualGapCheck, ForceBalanceAndTranslationInvariance )

@@ -1011,6 +1011,58 @@ INSTANTIATE_TEST_SUITE_P( MfemLorTransfer, MfemLorTransferParamTest,
 
 #ifdef TRIBOL_USE_ENZYME
 
+namespace {
+
+void ConfigureBallCompletionScheme( int scheme_id, int mesh_id_1, int mesh_id_2, const mfem::ParMesh& mesh,
+                                    const mfem::ParGridFunction& coords, const std::set<int>& mortar_attributes,
+                                    const std::set<int>& nonmortar_attributes,
+                                    tribol::EnforcementLocation enforcement_location, double penalty = 3.0 )
+{
+  tribol::registerMfemCouplingScheme( scheme_id, mesh_id_1, mesh_id_2, mesh, coords, mortar_attributes,
+                                      nonmortar_attributes, tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING,
+                                      tribol::ENERGY_MORTAR, tribol::FRICTIONLESS, tribol::PENALTY,
+                                      tribol::BINNING_GRID );
+  tribol::setEnforcementLocation( scheme_id, enforcement_location );
+  tribol::setMfemKinematicConstantPenalty( scheme_id, penalty, penalty );
+  tribol::setResidualGap( scheme_id, 0.2 );
+  tribol::setResidualGapRampAngle( scheme_id, 0.0 );
+}
+
+mfem::ParMesh MakeSmoothingStateMesh()
+{
+  // Overlapping boundary edges with a nonzero LM response.
+  return shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::Unify( { shared::MeshBuilder::SquareMesh( 1, 1 )
+                                                                                   .updateBdrAttrib( 1, 11 )
+                                                                                   .updateBdrAttrib( 2, 12 )
+                                                                                   .updateBdrAttrib( 3, 3 )
+                                                                                   .updateBdrAttrib( 4, 14 ),
+                                                                               shared::MeshBuilder::SquareMesh( 1, 1 )
+                                                                                   .translate( { 0.75, 0.9 } )
+                                                                                   .updateBdrAttrib( 1, 5 )
+                                                                                   .updateBdrAttrib( 2, 22 )
+                                                                                   .updateBdrAttrib( 3, 23 )
+                                                                                   .updateBdrAttrib( 4, 24 ) } ) );
+}
+
+mfem::ParMesh MakeBallCompletionMesh()
+{
+  // The physical and virtual contact edges have no projected overlap. Their nearest endpoints are 0.05 apart in each
+  // coordinate, so both lie inside a residual-gap ball of radius 0.2.
+  return shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::Unify( { shared::MeshBuilder::SquareMesh( 1, 1 )
+                                                                                   .updateBdrAttrib( 1, 11 )
+                                                                                   .updateBdrAttrib( 2, 12 )
+                                                                                   .updateBdrAttrib( 3, 3 )
+                                                                                   .updateBdrAttrib( 4, 14 ),
+                                                                               shared::MeshBuilder::SquareMesh( 1, 1 )
+                                                                                   .translate( { 1.05, 1.05 } )
+                                                                                   .updateBdrAttrib( 1, 5 )
+                                                                                   .updateBdrAttrib( 2, 22 )
+                                                                                   .updateBdrAttrib( 3, 23 )
+                                                                                   .updateBdrAttrib( 4, 24 ) } ) );
+}
+
+}  // namespace
+
 TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
 {
   int n_ranks;
@@ -1080,26 +1132,29 @@ TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
   }
 }
 
-#endif
-
-#ifdef TRIBOL_USE_ENZYME
-namespace {
-mfem::ParMesh MakeSmoothingStateMesh()
+// Include endpoint-cap force and stiffness in solver-visible nodal penalty results.
+TEST_F( MfemJacobianTest, energy_mortar_nodal_penalty_includes_ball_completion )
 {
-  // Overlapping boundary edges with a nonzero LM response.
-  return shared::ParMeshBuilder( MPI_COMM_WORLD, shared::MeshBuilder::Unify( { shared::MeshBuilder::SquareMesh( 1, 1 )
-                                                                                   .updateBdrAttrib( 1, 11 )
-                                                                                   .updateBdrAttrib( 2, 12 )
-                                                                                   .updateBdrAttrib( 3, 3 )
-                                                                                   .updateBdrAttrib( 4, 14 ),
-                                                                               shared::MeshBuilder::SquareMesh( 1, 1 )
-                                                                                   .translate( { 0.75, 0.9 } )
-                                                                                   .updateBdrAttrib( 1, 5 )
-                                                                                   .updateBdrAttrib( 2, 22 )
-                                                                                   .updateBdrAttrib( 3, 23 )
-                                                                                   .updateBdrAttrib( 4, 24 ) } ) );
+  auto mesh = MakeBallCompletionMesh();
+  mfem::H1_FECollection fec( 1, mesh.SpaceDimension() );
+  mfem::ParFiniteElementSpace fes( &mesh, &fec, mesh.SpaceDimension(), mfem::Ordering::byVDIM );
+  mfem::ParGridFunction coords( &fes );
+  mesh.GetNodes( coords );
+
+  const int scheme_id = NextCouplingSchemeId();
+  ConfigureBallCompletionScheme( scheme_id, 2 * scheme_id, 2 * scheme_id + 1, mesh, coords, { 5 }, { 3 },
+                                 tribol::EnforcementLocation::Nodal );
+  tribol::updateMfemParallelDecomposition();
+  double dt = 1.0;
+  ASSERT_EQ( tribol::update( 1, 1.0, dt ), 0 );
+
+  auto force = tribol::getMfemContactForce( scheme_id );
+  auto stiffness = tribol::getMfemDfDx( scheme_id );
+  EXPECT_GT( force.Norml2(), 1.0e-12 );
+  ASSERT_NE( stiffness, nullptr );
+  EXPECT_GT( stiffness->NNZ(), 0 );
 }
-}  // namespace
+
 // Preserve solver-owned multipliers through setting changes and formulation reconstruction.
 TEST_F( MfemJacobianTest, energy_mortar_runtime_parameters_preserve_lagrange_multiplier_state )
 {
@@ -1190,9 +1245,7 @@ TEST_F( MfemJacobianTest, energy_mortar_runtime_parameters_preserve_lagrange_mul
     EXPECT_NEAR( pressure[i], -0.25, 1.0e-14 );
   }
 }
-#endif
 
-#ifdef TRIBOL_USE_ENZYME
 // Refresh a dynamic ramp on a new cycle while keeping nonlinear evaluations within that cycle consistent.
 TEST_F( MfemJacobianTest, energy_mortar_dynamic_residual_gap_ramp_updates_once_per_cycle )
 {
@@ -1268,6 +1321,7 @@ TEST_F( MfemJacobianTest, energy_mortar_dynamic_residual_gap_ramp_updates_once_p
   const auto next_cycle_gap = copy_residual_gap();
   EXPECT_GT( global_difference_norm( first_dynamic_gap, next_cycle_gap ), 1.0e-12 );
 }
+
 #endif
 
 int main( int argc, char* argv[] )

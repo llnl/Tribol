@@ -1523,12 +1523,13 @@ class MfemSubmeshData {
   void UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_mesh, bool new_redecomp = true );
 
   /**
-   * @brief Build the EnergyMortar residual-gap ramp on the contact submesh
+   * @brief Build the EnergyMortar residual-gap ramp and endpoint-cap weights on the contact submesh
    *
    * @param residual_gap Full residual gap away from nonconvex corners
    * @param ramp_angle Total symmetric crack-opening ramp angle in radians; zero disables corner reduction
    *
-   * @note Every nonconvex 2D opening below pi seeds corner reduction. Other dimensions retain a uniform residual gap.
+   * @note Every nonconvex 2D opening below pi seeds corner reduction. Circular endpoint caps remain active at convex
+   * corners and open contact-surface ends. Other dimensions retain a uniform residual gap and disable endpoint caps.
    */
   void UpdateResidualGapField( RealT residual_gap, RealT ramp_angle );
 
@@ -1593,6 +1594,12 @@ class MfemSubmeshData {
 
   /** @brief Preserve the ramp independently of redecomposition and formulation reconstruction. */
   const mfem::ParGridFunction& GetSubmeshResidualGap() const { return submesh_residual_gap_; }
+
+  /** @brief Supply cap eligibility on the same redecomp mesh used by contact assembly. */
+  const mfem::GridFunction& GetRedecompBallWeight() const { return ball_weight_.GetRedecompGridFn(); }
+
+  /** @brief Get the endpoint-ball eligibility weights on the parent-linked submesh. */
+  const mfem::ParGridFunction& GetSubmeshBallWeight() const { return submesh_ball_weight_; }
 
   /**
    * @brief Get the gap vector on the parent-linked boundary submesh
@@ -1682,6 +1689,9 @@ class MfemSubmeshData {
   /** @brief Residual-gap ramp on the persistent parent-linked boundary submesh. */
   mfem::ParGridFunction submesh_residual_gap_;
 
+  /** @brief Nodal endpoint-ball weights on the persistent parent-linked boundary submesh. */
+  mfem::ParGridFunction submesh_ball_weight_;
+
   /**
    * @brief Pressure grid function and transfer operators
    */
@@ -1689,6 +1699,9 @@ class MfemSubmeshData {
 
   /** @brief Residual-gap field and its redecomp representation. */
   PressureField residual_gap_;
+
+  /** @brief Endpoint-ball weights and their redecomp representation. */
+  PressureField ball_weight_;
 
   /**
    * @brief Contains LOR mesh transfer operators if LOR is being used; nullptr

@@ -286,6 +286,23 @@ class EnergyMortarAdapter : public EnforcementLocation<EnergyMortarAdapter<Enfor
   /** @brief Gather the residual-gap field values for the two nodes on each edge in a pair. */
   std::array<double, 2> residualGapValues( const InterfacePair& pair, const MeshData::Viewer& mesh1 ) const;
 
+  /** @brief Gather endpoint-ball weights and the adjacent source nodes that define each cone. */
+  BallEndpointData ballEndpointData( const InterfacePair& pair, const MeshData::Viewer& mesh1 ) const;
+
+  /// Identify the adjacent source ray needed to restrict a cap to the exterior corner sector.
+  struct IncidentEdge {
+    int element{ -1 };
+    int local_node{ -1 };
+  };
+
+  /** @brief Rebuild the non-mortar node-to-edge map used by endpoint-ball stencils. */
+  void updateBallEndpointTopology();
+
+  /// Preserve both incident rays so cap ownership follows the complete source corner.
+  std::vector<std::array<IncidentEdge, 2>> nonmortar_incident_edges_;
+  /// Distinguish open ends from shared corners when building cap stencils.
+  std::vector<int> nonmortar_node_incidence_;
+
   // Stored InterfacePairs
 
   /**

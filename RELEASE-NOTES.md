@@ -10,6 +10,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 ### Added
 - Added validated EnergyMortar integration-bound smoothing and normal-alignment start-angle controls.
 - Added distributed nonconvex-corner residual-gap fields and fixed/once-per-cycle rebuild controls for EnergyMortar.
+- Added EnergyMortar endpoint caps at convex corners and open ends, handoff derivative regressions, and a sliding-pair CSV/plot example.
 - Added support for a linear tetrahedral mesh under the TestMesh class.
 - Added coupling scheme tests with null pointer registration.
 - Multi-rank contact API using MFEM data structures.
