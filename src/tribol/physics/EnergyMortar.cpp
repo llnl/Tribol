@@ -12,7 +12,7 @@ namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
-// Return a C2 normal-alignment factor with zero slope and curvature at both attenuation endpoints.
+// Retain full alignment weight through the start angle, then follow a shifted cosine to perpendicularity.
 TRIBOL_ENZYME_INLINE double ContactSmoothing::normal_alignment_factor( double normal_dot, double start_angle )
 {
   if ( normal_dot >= 0.0 ) {
@@ -31,9 +31,14 @@ TRIBOL_ENZYME_INLINE double ContactSmoothing::normal_alignment_factor( double no
   if ( alignment >= start_alignment ) {
     return -1.0;
   }
+  if ( start_angle == 0.0 ) {
+    return -alignment;
+  }
+
   const double angle = std::acos( alignment );
-  const double fraction = ( energy_mortar::right_angle - angle ) / ( energy_mortar::right_angle - start_angle );
-  return -fraction * fraction * fraction * ( 10.0 - 15.0 * fraction + 6.0 * fraction * fraction );
+  const double ramp_angle =
+      energy_mortar::right_angle * ( angle - start_angle ) / ( energy_mortar::right_angle - start_angle );
+  return -std::cos( ramp_angle );
 }
 
 namespace {
