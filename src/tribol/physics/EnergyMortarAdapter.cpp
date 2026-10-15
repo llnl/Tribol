@@ -52,12 +52,12 @@ void EnergyMortarAdapter<EnforcementLocation>::evaluate( MeshData& mesh1, MeshDa
   pairs_ = pairs;
 
   bool requires_evaluator_rebuild = false;
-  if ( params_.del != parameters.energy_mortar_smoothing_length ) {
-    params_.del = parameters.energy_mortar_smoothing_length;
+  if ( params_.del != parameters.smoothing_length ) {
+    params_.del = parameters.smoothing_length;
     requires_evaluator_rebuild = true;
   }
-  if ( params_.normal_smoothing_start_angle != parameters.energy_mortar_normal_smoothing_start_angle ) {
-    params_.normal_smoothing_start_angle = parameters.energy_mortar_normal_smoothing_start_angle;
+  if ( params_.normal_smoothing_start_angle != parameters.normal_smoothing_start_angle ) {
+    params_.normal_smoothing_start_angle = parameters.normal_smoothing_start_angle;
     requires_evaluator_rebuild = true;
   }
   if ( params_.residual_gap != parameters.residual_gap ) {

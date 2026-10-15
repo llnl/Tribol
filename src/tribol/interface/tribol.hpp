@@ -145,7 +145,7 @@ void setTimestepPenFrac( IndexT cs_id, RealT frac );
 void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
 
 /*!
- * \brief Sets the EnergyMortar integration-bound smoothing length
+ * \brief Controls the transition across projected contact-edge endpoints
  *
  * \param [in] cs_id coupling scheme id
  * \param [in] smoothing_length transition width in the non-mortar edge's local coordinate
@@ -153,8 +153,11 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location );
  * \pre 0 <= smoothing_length <= 0.5
  *
  * \note The default is 0.1. A new value takes effect during the next tribol::update().
+ *
+ * \pre The coupling scheme is registered and its contact method supports this control.
+ * \note Currently supported only by ENERGY_MORTAR; unsupported methods report an error.
  */
-void setEnergyMortarSmoothingLength( IndexT cs_id, RealT smoothing_length );
+void setSmoothingLength( IndexT cs_id, RealT smoothing_length );
 
 /*!
  * \brief Retains full contact weight until normals reach the requested attenuation angle
@@ -166,8 +169,11 @@ void setEnergyMortarSmoothingLength( IndexT cs_id, RealT smoothing_length );
  * \pre 0 <= start_angle <= pi / 2
  *
  * \note The default is pi / 4. A new value takes effect during the next tribol::update().
+ *
+ * \pre The coupling scheme is registered and its contact method supports this control.
+ * \note Currently supported only by ENERGY_MORTAR; unsupported methods report an error.
  */
-void setEnergyMortarNormalSmoothingStartAngle( IndexT cs_id, RealT start_angle );
+void setNormalSmoothingStartAngle( IndexT cs_id, RealT start_angle );
 
 /*!
  *
