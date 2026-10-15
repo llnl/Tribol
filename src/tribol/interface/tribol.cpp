@@ -186,53 +186,65 @@ void setEnforcementLocation( IndexT cs_id, EnforcementLocation location )
 }
 
 //------------------------------------------------------------------------------
-void setEnergyMortarSmoothingLength( IndexT cs_id, RealT smoothing_length )
+void setSmoothingLength( IndexT cs_id, RealT smoothing_length )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
 
-  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarSmoothingLength(): call tribol::registerCouplingScheme() "
-                               << "prior to calling this routine." );
+  SLIC_ERROR_ROOT_IF(
+      !cs, "tribol::setSmoothingLength(): call tribol::registerCouplingScheme() " << "prior to calling this routine." );
+  SLIC_ERROR_ROOT_IF( cs->getContactMethod() != ENERGY_MORTAR,
+                      "tribol::setSmoothingLength(): this contact method does not support this control; "
+                      "currently supported only by ENERGY_MORTAR." );
   SLIC_ERROR_ROOT_IF( smoothing_length < 0.0 || smoothing_length > 0.5,
-                      "tribol::setEnergyMortarSmoothingLength(): transition width must be in [0, 0.5]." );
+                      "tribol::setSmoothingLength(): transition width must be in [0, 0.5]." );
 
-  cs->getParameters().energy_mortar_smoothing_length = smoothing_length;
+  cs->getParameters().smoothing_length = smoothing_length;
 }
 
 //------------------------------------------------------------------------------
-void setEnergyMortarNormalSmoothingStartAngle( IndexT cs_id, RealT start_angle )
+void setNormalSmoothingStartAngle( IndexT cs_id, RealT start_angle )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
 
-  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarNormalSmoothingStartAngle(): call tribol::registerCouplingScheme() "
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setNormalSmoothingStartAngle(): call tribol::registerCouplingScheme() "
                                << "prior to calling this routine." );
+  SLIC_ERROR_ROOT_IF( cs->getContactMethod() != ENERGY_MORTAR,
+                      "tribol::setNormalSmoothingStartAngle(): this contact method does not support this control; "
+                      "currently supported only by ENERGY_MORTAR." );
   SLIC_ERROR_ROOT_IF( start_angle < 0.0 || start_angle > energy_mortar::right_angle,
-                      "tribol::setEnergyMortarNormalSmoothingStartAngle(): start angle must be in [0, pi / 2]." );
+                      "tribol::setNormalSmoothingStartAngle(): start angle must be in [0, pi / 2]." );
 
-  cs->getParameters().energy_mortar_normal_smoothing_start_angle = start_angle;
+  cs->getParameters().normal_smoothing_start_angle = start_angle;
 }
 
 //------------------------------------------------------------------------------
-void setEnergyMortarResidualGapRampAngle( IndexT cs_id, RealT ramp_angle )
+void setResidualGapRampAngle( IndexT cs_id, RealT ramp_angle )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
 
-  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarResidualGapRampAngle(): call tribol::registerCouplingScheme() "
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setResidualGapRampAngle(): call tribol::registerCouplingScheme() "
                                << "prior to calling this routine." );
+  SLIC_ERROR_ROOT_IF( cs->getContactMethod() != ENERGY_MORTAR,
+                      "tribol::setResidualGapRampAngle(): this contact method does not support this control; "
+                      "currently supported only by ENERGY_MORTAR." );
   SLIC_ERROR_ROOT_IF( ramp_angle < 0.0 || ramp_angle > energy_mortar::right_angle,
-                      "tribol::setEnergyMortarResidualGapRampAngle(): ramp angle must be in [0, pi / 2]." );
+                      "tribol::setResidualGapRampAngle(): ramp angle must be in [0, pi / 2]." );
 
-  cs->getParameters().energy_mortar_residual_gap_ramp_angle = ramp_angle;
+  cs->getParameters().residual_gap_ramp_angle = ramp_angle;
 }
 
 //------------------------------------------------------------------------------
-void setEnergyMortarResidualGapRampUpdates( IndexT cs_id, bool enabled )
+void setResidualGapRampUpdates( IndexT cs_id, bool enabled )
 {
   auto cs = CouplingSchemeManager::getInstance().findData( cs_id );
 
-  SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarResidualGapRampUpdates(): call tribol::registerCouplingScheme() "
+  SLIC_ERROR_ROOT_IF( !cs, "tribol::setResidualGapRampUpdates(): call tribol::registerCouplingScheme() "
                                << "prior to calling this routine." );
+  SLIC_ERROR_ROOT_IF( cs->getContactMethod() != ENERGY_MORTAR,
+                      "tribol::setResidualGapRampUpdates(): this contact method does not support this control; "
+                      "currently supported only by ENERGY_MORTAR." );
 
-  cs->getParameters().energy_mortar_residual_gap_ramp_updates = enabled;
+  cs->getParameters().residual_gap_ramp_updates = enabled;
 }
 
 //------------------------------------------------------------------------------

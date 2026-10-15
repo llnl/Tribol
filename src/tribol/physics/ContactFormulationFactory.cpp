@@ -25,11 +25,11 @@ std::unique_ptr<ContactFormulation> createContactFormulation( CouplingScheme* cs
 
     ContactParams contact_params;
     contact_params.k = 1000.0;
-    contact_params.del = cs->getParameters().energy_mortar_smoothing_length;
-    contact_params.normal_smoothing_start_angle = cs->getParameters().energy_mortar_normal_smoothing_start_angle;
+    contact_params.del = cs->getParameters().smoothing_length;
+    contact_params.normal_smoothing_start_angle = cs->getParameters().normal_smoothing_start_angle;
     contact_params.residual_gap = cs->getParameters().residual_gap;
-    const double residual_gap_ramp_angle = cs->getParameters().energy_mortar_residual_gap_ramp_angle;
-    const bool updates_residual_gap_ramp = cs->getParameters().energy_mortar_residual_gap_ramp_updates;
+    const double residual_gap_ramp_angle = cs->getParameters().residual_gap_ramp_angle;
+    const bool updates_residual_gap_ramp = cs->getParameters().residual_gap_ramp_updates;
 
     // ENERGY_MORTAR supports a penalty-style mode driven by the kinematic penalty parameters, even if the coupling
     // scheme is registered with LM enforcement (which is often done to enable submesh/pressure infrastructure).
