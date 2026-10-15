@@ -166,12 +166,12 @@ void EnergyMortarAdapter<EnforcementLocation>::evaluate( MeshData& mesh1, MeshDa
   updateBallEndpointTopology();
 
   bool requires_evaluator_rebuild = false;
-  if ( params_.del != parameters.energy_mortar_smoothing_length ) {
-    params_.del = parameters.energy_mortar_smoothing_length;
+  if ( params_.del != parameters.smoothing_length ) {
+    params_.del = parameters.smoothing_length;
     requires_evaluator_rebuild = true;
   }
-  if ( params_.normal_smoothing_start_angle != parameters.energy_mortar_normal_smoothing_start_angle ) {
-    params_.normal_smoothing_start_angle = parameters.energy_mortar_normal_smoothing_start_angle;
+  if ( params_.normal_smoothing_start_angle != parameters.normal_smoothing_start_angle ) {
+    params_.normal_smoothing_start_angle = parameters.normal_smoothing_start_angle;
     requires_evaluator_rebuild = true;
   }
   if ( params_.residual_gap != parameters.residual_gap ) {
@@ -180,14 +180,14 @@ void EnergyMortarAdapter<EnforcementLocation>::evaluate( MeshData& mesh1, MeshDa
     requires_evaluator_rebuild = true;
   }
 
-  if ( residual_gap_ramp_angle_ != parameters.energy_mortar_residual_gap_ramp_angle ) {
-    residual_gap_ramp_angle_ = parameters.energy_mortar_residual_gap_ramp_angle;
+  if ( residual_gap_ramp_angle_ != parameters.residual_gap_ramp_angle ) {
+    residual_gap_ramp_angle_ = parameters.residual_gap_ramp_angle;
     residual_gap_field_dirty_ = true;
   }
-  if ( !updates_residual_gap_ramp_ && parameters.energy_mortar_residual_gap_ramp_updates ) {
+  if ( !updates_residual_gap_ramp_ && parameters.residual_gap_ramp_updates ) {
     residual_gap_field_dirty_ = true;
   }
-  updates_residual_gap_ramp_ = parameters.energy_mortar_residual_gap_ramp_updates;
+  updates_residual_gap_ramp_ = parameters.residual_gap_ramp_updates;
 
   if ( requires_evaluator_rebuild ) {
     evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
