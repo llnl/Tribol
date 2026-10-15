@@ -89,6 +89,26 @@ TEST_F( GpuMpiTest, VerifyTransfer )
   *final_ -= *orig_;
   double err = final_->Norml2() / orig_->Norml2();
   EXPECT_LT( err, 1e-12 );
+
+  // Use the known device-resident primal values as an already-assembled replicated response. Collapsing that response
+  // must select one redecomp copy rather than multiplying shared values by the number of copies.
+  mfem::LinearForm redecomp_dual( redecomp_vector_space_.get() );
+  redecomp_dual.UseDevice( true );
+  redecomp_dual = *xfer_;
+  mfem::ParLinearForm collapsed_parent_dual( par_vector_space_.get() );
+  collapsed_parent_dual.UseDevice( true );
+  transfer_map.CollapseReplicatedDualToParallel( redecomp_dual, collapsed_parent_dual );
+
+  mfem::Vector collapsed_true_dofs( par_vector_space_->GetTrueVSize() );
+  mfem::Vector expected_true_dofs( par_vector_space_->GetTrueVSize() );
+  collapsed_true_dofs.UseDevice( true );
+  expected_true_dofs.UseDevice( true );
+
+  // True-DOF assembly verifies both device execution and the ownership filtering needed before MFEM sums shared DOFs.
+  collapsed_parent_dual.ParallelAssemble( collapsed_true_dofs );
+  orig_->GetTrueDofs( expected_true_dofs );
+  collapsed_true_dofs -= expected_true_dofs;
+  EXPECT_LT( collapsed_true_dofs.Norml2() / std::max( 1.0, expected_true_dofs.Norml2() ), 1.0e-12 );
 }
 
 TEST_F( GpuMpiTest, VerifyDeviceTransferStrict )

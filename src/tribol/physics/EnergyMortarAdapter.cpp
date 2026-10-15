@@ -89,7 +89,7 @@ void Nodal<Adapter>::updateNodalGaps()
 
   // Tribol level data structures for storing gap, area, and derivatives
   auto& redecomp_gap = adapter->submesh_data_.GetRedecompGap();
-  mfem::GridFunction redecomp_area( redecomp_gap.FESpace() );
+  mfem::LinearForm redecomp_area( redecomp_gap.FESpace() );
   redecomp_area = 0.0;
 
   const bool use_lor = ( adapter->mesh_data_.GetLORMesh() != nullptr );
@@ -142,11 +142,11 @@ void Nodal<Adapter>::updateNodalGaps()
     auto A_conn = mesh1_view.getConnectivity()( elem1 );
 
     // Add to nodes of Element A
-    redecomp_gap( A_conn[0] ) += g_tilde_elem[0];
-    redecomp_gap( A_conn[1] ) += g_tilde_elem[1];
+    redecomp_gap[static_cast<int>( A_conn[0] )] += g_tilde_elem[0];
+    redecomp_gap[static_cast<int>( A_conn[1] )] += g_tilde_elem[1];
 
-    redecomp_area( A_conn[0] ) += A_elem[0];
-    redecomp_area( A_conn[1] ) += A_elem[1];
+    redecomp_area[static_cast<int>( A_conn[0] )] += A_elem[0];
+    redecomp_area[static_cast<int>( A_conn[1] )] += A_elem[1];
 
     // compute g_tilde first derivative
     double dg_dx_node1[8];
@@ -201,7 +201,7 @@ void Nodal<Adapter>::updateNodalGaps()
 
   mfem::ParLinearForm A_linear_form(
       const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
-  adapter->submesh_data_.GetPressureTransfer().RedecompToSubmesh( redecomp_area, A_linear_form );
+  adapter->submesh_data_.GetPressureTransfer().CollapseReplicatedDualToSubmesh( redecomp_area, A_linear_form );
   adapter->A_vec_ =
       shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
   adapter->A_vec_.fill( 0.0 );
@@ -256,11 +256,11 @@ void Nodal<Adapter>::updateNodalForces()
     // -------------------------------------------------------------------------
     adapter->force_vec_ = adapter->pressure_vec_ * adapter->dg_tilde_dx_;
 
-    mfem::GridFunction redecomp_lambda( adapter->submesh_data_.GetRedecompGap() );
+    mfem::GridFunction redecomp_lambda( adapter->submesh_data_.GetRedecompGap().FESpace() );
     mfem::ParGridFunction submesh_lambda(
         const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
     submesh_lambda.SetFromTrueDofs( adapter->pressure_vec_.get() );
-    adapter->submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_lambda, redecomp_lambda );
+    adapter->submesh_data_.GetPressureTransfer().TransferPrimalToRedecomp( submesh_lambda, redecomp_lambda );
 
     adapter->df_dx_ = computeDfDxSecondDerivativesLM( adapter, redecomp_lambda );
     return;
@@ -281,23 +281,23 @@ void Nodal<Adapter>::updateNodalForces()
   adapter->force_vec_ = ( adapter->pressure_vec_ * adapter->dg_tilde_dx_ ) + ( adapter->g_tilde_vec_ * dp_dx );
 
   // TODO (EBC): Move transfer path-specific logic out of this file
-  mfem::GridFunction redecomp_pressure( adapter->submesh_data_.GetRedecompGap() );
+  mfem::GridFunction redecomp_pressure( adapter->submesh_data_.GetRedecompGap().FESpace() );
   mfem::ParGridFunction submesh_pressure(
       const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
   submesh_pressure.SetFromTrueDofs( adapter->pressure_vec_.get() );
-  adapter->submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_pressure, redecomp_pressure );
+  adapter->submesh_data_.GetPressureTransfer().TransferPrimalToRedecomp( submesh_pressure, redecomp_pressure );
 
-  mfem::GridFunction redecomp_g_tilde( adapter->submesh_data_.GetRedecompGap() );
+  mfem::GridFunction redecomp_g_tilde( adapter->submesh_data_.GetRedecompGap().FESpace() );
   mfem::ParGridFunction submesh_g_tilde(
       const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
   submesh_g_tilde.SetFromTrueDofs( adapter->g_tilde_vec_.get() );
-  adapter->submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_g_tilde, redecomp_g_tilde );
+  adapter->submesh_data_.GetPressureTransfer().TransferPrimalToRedecomp( submesh_g_tilde, redecomp_g_tilde );
 
-  mfem::GridFunction redecomp_A( adapter->submesh_data_.GetRedecompGap() );
+  mfem::GridFunction redecomp_A( adapter->submesh_data_.GetRedecompGap().FESpace() );
   mfem::ParGridFunction submesh_A(
       const_cast<mfem::ParFiniteElementSpace*>( &adapter->submesh_data_.GetSubmeshFESpace() ) );
   submesh_A.SetFromTrueDofs( adapter->A_vec_.get() );
-  adapter->submesh_data_.GetPressureTransfer().SubmeshToRedecomp( submesh_A, redecomp_A );
+  adapter->submesh_data_.GetPressureTransfer().TransferPrimalToRedecomp( submesh_A, redecomp_A );
 
   adapter->df_dx_ = computeDfDxSecondDerivativesPenalty( adapter, redecomp_pressure, redecomp_g_tilde, redecomp_A );
 
@@ -516,7 +516,7 @@ void QuadraturePoint<Adapter>::updateNodalForces()
   df_m_nm.reserve( adapter->pairs_.size(), 16 );
   df_m_m.reserve( adapter->pairs_.size(), 16 );
 
-  mfem::GridFunction redecomp_force( const_cast<mfem::FiniteElementSpace*>( &displacement_redecomp_fes ) );
+  mfem::LinearForm redecomp_force( const_cast<mfem::FiniteElementSpace*>( &displacement_redecomp_fes ) );
   redecomp_force = 0.0;
   const int scalar_size = redecomp_force.FESpace()->GetVSize() / redecomp_force.FESpace()->GetVDim();
   adapter->energy_ = 0.0;
@@ -542,14 +542,14 @@ void QuadraturePoint<Adapter>::updateNodalForces()
 
     auto A_conn = mesh1_view.getConnectivity()( elem1 );
     auto B_conn = mesh2_view.getConnectivity()( elem2 );
-    redecomp_force( A_conn[0] ) += qp_data.force[0];
-    redecomp_force( scalar_size + A_conn[0] ) += qp_data.force[1];
-    redecomp_force( A_conn[1] ) += qp_data.force[2];
-    redecomp_force( scalar_size + A_conn[1] ) += qp_data.force[3];
-    redecomp_force( B_conn[0] ) += qp_data.force[4];
-    redecomp_force( scalar_size + B_conn[0] ) += qp_data.force[5];
-    redecomp_force( B_conn[1] ) += qp_data.force[6];
-    redecomp_force( scalar_size + B_conn[1] ) += qp_data.force[7];
+    redecomp_force[static_cast<int>( A_conn[0] )] += qp_data.force[0];
+    redecomp_force[scalar_size + static_cast<int>( A_conn[0] )] += qp_data.force[1];
+    redecomp_force[static_cast<int>( A_conn[1] )] += qp_data.force[2];
+    redecomp_force[scalar_size + static_cast<int>( A_conn[1] )] += qp_data.force[3];
+    redecomp_force[static_cast<int>( B_conn[0] )] += qp_data.force[4];
+    redecomp_force[scalar_size + static_cast<int>( B_conn[0] )] += qp_data.force[5];
+    redecomp_force[static_cast<int>( B_conn[1] )] += qp_data.force[6];
+    redecomp_force[scalar_size + static_cast<int>( B_conn[1] )] += qp_data.force[7];
 
     double df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
@@ -574,7 +574,7 @@ void QuadraturePoint<Adapter>::updateNodalForces()
   adapter->force_vec_.fill( 0.0 );
   mfem::Vector parent_force( parent_fes->GetVSize() );
   parent_force = 0.0;
-  adapter->mesh_data_.GetParentRedecompTransfer().RedecompToParent( redecomp_force, parent_force );
+  adapter->mesh_data_.GetParentRedecompTransfer().CollapseReplicatedDualToParent( redecomp_force, parent_force );
   parent_fes->GetProlongationMatrix()->MultTranspose( parent_force, adapter->force_vec_.get() );
 
   std::vector<PackedPairJacobianContribs> df_contribs;
