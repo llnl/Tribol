@@ -452,7 +452,6 @@ tribol::PackedPairJacobianContribs MakeConstantContribution( const JacobianTestC
 
 }  // namespace
 
-// Preserve element-block ordering and offsets when packing variable-size Jacobian contributions.
 TEST_F( MfemJacobianTest, computed_element_data_append_tracks_offsets )
 {
   tribol::PackedPairJacobianContribs contrib;
@@ -597,7 +596,6 @@ void ExpectParMatricesNear( const mfem::HypreParMatrix& actual, const shared::Pa
 
 }  // namespace
 
-// Keep Jacobian transfer and solver assembly valid for both local pairs and empty MPI partitions.
 TEST_F( MfemJacobianTest, lor_or_submesh_jacobian_and_solver_composition_smoke )
 {
   // Smoke-test the Jacobian transfer API end-to-end on a minimal synthetic contribution set.
@@ -678,7 +676,6 @@ TEST_F( MfemJacobianTest, lor_or_submesh_jacobian_and_solver_composition_smoke )
   }
 }
 
-// Preserve the primary/dual Jacobian block across high-order and refined contact spaces.
 TEST_F( MfemJacobianTest, jacobian_primary_dual_assembles_in_ho_and_lor )
 {
   // Assembles a solver-visible primary->dual Jacobian block from a single constant element contribution.
@@ -708,7 +705,6 @@ TEST_F( MfemJacobianTest, jacobian_primary_dual_assembles_in_ho_and_lor )
   }
 }
 
-// Preserve the dual/primary Jacobian block across high-order and refined contact spaces.
 TEST_F( MfemJacobianTest, jacobian_dual_primary_assembles_in_ho_and_lor )
 {
   // Assembles a solver-visible dual->primary Jacobian block from a single constant element contribution.
@@ -738,7 +734,6 @@ TEST_F( MfemJacobianTest, jacobian_dual_primary_assembles_in_ho_and_lor )
   }
 }
 
-// Give inactive multiplier degrees of freedom identity rows in the dual block.
 TEST_F( MfemJacobianTest, jacobian_dual_dual_inactive_dofs_form_identity )
 {
   // Verifies the single-mortar solver compatibility behavior for empty dual-dual blocks.
@@ -775,7 +770,6 @@ TEST_F( MfemJacobianTest, jacobian_dual_dual_inactive_dofs_form_identity )
   } );
 }
 
-// Combine both contact sides in the parent displacement Jacobian.
 TEST_F( MfemJacobianTest, jacobian_primary_primary_aggregates_mortar_and_nonmortar_contributions )
 {
   // Verifies that mortar/nonmortar contribution partitions are summed into one solver-visible
@@ -815,7 +809,6 @@ TEST_F( MfemJacobianTest, jacobian_primary_primary_aggregates_mortar_and_nonmort
   }
 }
 
-// Preserve block values and offsets when exposing the coupled MFEM Jacobian.
 TEST_F( MfemJacobianTest, mfem_block_jacobian_preserves_block_values_and_layout )
 {
   // Validates tribol::getMfemBlockJacobian(cs_id) independently of contact physics by feeding
@@ -890,7 +883,6 @@ TEST_F( MfemJacobianTest, mfem_block_jacobian_preserves_block_values_and_layout 
 
 class MfemLorTransferParamTest : public MfemJacobianTest, public testing::WithParamInterface<LorTransferParams> {};
 
-// Match MFEM transfer operators for each supported refinement and ordering configuration.
 TEST_P( MfemLorTransferParamTest, lor_transfer_matches_mfem )
 {
   // Compares Tribol's assembled HO->LOR transfer matrix against MFEM's ForwardOperator()
@@ -1071,7 +1063,6 @@ mfem::ParMesh MakeBallCompletionMesh()
 
 }  // namespace
 
-// Expose the assembled quadrature-point tangent while rejecting an unavailable nodal pressure field.
 TEST_F( MfemJacobianTest, mfem_penalty_jacobian_retrieval )
 {
   int n_ranks;

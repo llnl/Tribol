@@ -688,7 +688,6 @@ TEST( EnergyMortarResidualGapCheck, VirtualNormalsCanOpposeWhenPhysicalNormalsDo
   EXPECT_GT( contact.energy, 0.0 );
 }
 
-// An open contact pair must contribute no penalty energy, force, or stiffness.
 TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -1555,7 +1554,6 @@ TEST( EnergyMortarResidualGapCheck, ForceBalanceAndTranslationInvariance )
   }
 }
 
-// Retain the active penalty tangent at zero gap even though energy and force vanish.
 TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -1585,7 +1583,6 @@ TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
                             []( double stiffness ) { return stiffness != 0.0; } ) );
 }
 
-// Recover the uniform-gap area shift for parallel edges, where offsetting leaves overlap unchanged.
 TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
 {
   // The parallel edges have a normal separation of 0.1.
@@ -1675,7 +1672,6 @@ TEST( EnergyMortarResidualGapCheck, VirtualGeometryRespectsNormalSmoothing )
   }
 }
 
-// Activate contact at the requested residual separation before the physical surfaces touch.
 TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
 {
   // The edges have a normal separation of 0.1; a residual gap of 0.15 produces an effective gap of -0.05.
@@ -1718,8 +1714,6 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
 
 class ResidualGapDerivativeCheck : public ::testing::TestWithParam<std::tuple<double, bool>> {};
 
-// If differentiation misses the residual-offset geometry or moving quadrature bounds, Newton receives an incorrect
-// penalty force or stiffness.
 TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFiniteDifference )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -1823,8 +1817,6 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   restore();
 }
 
-// If Enzyme misses a first derivative of the residual-offset geometry, the nodal gap gradient disagrees with finite
-// differences and produces an incorrect contact Jacobian.
 TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -1876,8 +1868,6 @@ TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
   }
 }
 
-// If Enzyme misses a second derivative of the residual-offset geometry, the nodal gap Hessian disagrees with finite
-// differences and makes the assembled Jacobian inconsistent.
 TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
 {
   RealT x1[2] = { 0.0, 1.0 };
