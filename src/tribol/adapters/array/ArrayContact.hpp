@@ -10,11 +10,11 @@
 
 namespace tribol::array {
 
-class UniformSurface {
+class SingleTopologySurface {
  public:
-  UniformSurface( int dimension, ElementTopology topology, ArrayView<const Real> coordinates,
-                  ArrayView<const Index> connectivity, FieldLayout layout = FieldLayout::Interleaved,
-                  int attribute = 1 )
+  SingleTopologySurface( int dimension, ElementTopology topology, ArrayView<const Real> coordinates,
+                         ArrayView<const Index> connectivity, FieldLayout layout = FieldLayout::Interleaved,
+                         int attribute = 1 )
       : dimension_( dimension ),
         topology_( topology ),
         coordinates_( coordinates ),
@@ -25,7 +25,8 @@ class UniformSurface {
     if ( dimension_ < 2 || dimension_ > 3 || !coordinates_.isStructurallyValid() ||
          coordinates_.size() % dimension_ != 0 || !connectivity_.isStructurallyValid() ||
          connectivity_.size() % nodes_per_element != 0 ) {
-      throw std::invalid_argument( "UniformSurface requires valid two- or three-dimensional linear surface arrays." );
+      throw std::invalid_argument(
+          "SingleTopologySurface requires valid two- or three-dimensional linear surface arrays." );
     }
     const Index element_count = connectivity_.size() / nodes_per_element;
     offsets_.resize( static_cast<std::size_t>( element_count + 1 ) );
@@ -52,7 +53,7 @@ class UniformSurface {
       appendReferenceCoordinates();
     }
     if ( !view().isStructurallyValid() ) {
-      throw std::invalid_argument( "UniformSurface connectivity references an invalid coordinate node." );
+      throw std::invalid_argument( "SingleTopologySurface connectivity references an invalid coordinate node." );
     }
   }
 
@@ -60,7 +61,7 @@ class UniformSurface {
   {
     const Index expected = coordinates_.size();
     if ( !coordinates.isStructurallyValid() || coordinates.size() != expected ) {
-      throw std::invalid_argument( "Updated UniformSurface coordinates must preserve the original shape." );
+      throw std::invalid_argument( "Updated SingleTopologySurface coordinates must preserve the original shape." );
     }
     coordinates_ = coordinates;
   }
@@ -175,7 +176,7 @@ class ArrayContact {
   using CoreContact = Contact<MethodType, Search, Execution>;
   using Options = typename CoreContact::Options;
 
-  ArrayContact( UniformSurface mortar, UniformSurface nonmortar, Options options = {} )
+  ArrayContact( SingleTopologySurface mortar, SingleTopologySurface nonmortar, Options options = {} )
       : mortar_( std::move( mortar ) ),
         nonmortar_( std::move( nonmortar ) ),
         core_( makeCoreContact( mortar_, nonmortar_, std::move( options ) ) )
@@ -211,7 +212,8 @@ class ArrayContact {
   [[nodiscard]] const CoreContact& core() const { return core_; }
 
  private:
-  static CoreContact makeCoreContact( const UniformSurface& mortar, const UniformSurface& nonmortar, Options options )
+  static CoreContact makeCoreContact( const SingleTopologySurface& mortar, const SingleTopologySurface& nonmortar,
+                                      Options options )
   {
     if constexpr ( detail::is_native_explicit_method_v<MethodType> ) {
       return CoreContact(
@@ -231,8 +233,8 @@ class ArrayContact {
     };
   }
 
-  UniformSurface mortar_;
-  UniformSurface nonmortar_;
+  SingleTopologySurface mortar_;
+  SingleTopologySurface nonmortar_;
   CoreContact core_;
 };
 
@@ -241,7 +243,7 @@ template <SupportedMethod MethodType = DefaultMethod, SearchPolicy Search = sear
   requires execution::SupportedContactExecution<MethodType, Execution> &&
            execution::SupportedContactSearch<Search, Execution>
 ArrayContact<MethodType, Search, Execution> makeContact(
-    UniformSurface mortar, UniformSurface nonmortar,
+    SingleTopologySurface mortar, SingleTopologySurface nonmortar,
     typename ArrayContact<MethodType, Search, Execution>::Options options = {} )
 {
   return ArrayContact<MethodType, Search, Execution>( std::move( mortar ), std::move( nonmortar ),

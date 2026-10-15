@@ -85,7 +85,8 @@ NativeContact::Options options( int minimum_exactness )
   return result;
 }
 
-AdapterReference evaluateArrayReference( tribol::array::UniformSurface mortar, tribol::array::UniformSurface nonmortar )
+AdapterReference evaluateArrayReference( tribol::array::SingleTopologySurface mortar,
+                                         tribol::array::SingleTopologySurface nonmortar )
 {
   auto contact = tribol::array::makeContact<NativePenalty>( std::move( mortar ), std::move( nonmortar ), options( 1 ) );
   contact.updateInteractions();
@@ -119,11 +120,11 @@ AdapterReference arrayReference( int dimension )
     const std::array<tribol::Index, 2> mortar_connectivity{ 0, 1 };
     const std::array<tribol::Index, 2> nonmortar_connectivity{ 1, 0 };
     return evaluateArrayReference(
-        tribol::array::UniformSurface(
+        tribol::array::SingleTopologySurface(
             2, tribol::ElementTopology::Segment,
             { mortar_coordinates.data(), static_cast<tribol::Index>( mortar_coordinates.size() ) },
             { mortar_connectivity.data(), static_cast<tribol::Index>( mortar_connectivity.size() ) } ),
-        tribol::array::UniformSurface(
+        tribol::array::SingleTopologySurface(
             2, tribol::ElementTopology::Segment,
             { nonmortar_coordinates.data(), static_cast<tribol::Index>( nonmortar_coordinates.size() ) },
             { nonmortar_connectivity.data(), static_cast<tribol::Index>( nonmortar_connectivity.size() ) } ) );
@@ -134,11 +135,11 @@ AdapterReference arrayReference( int dimension )
   const std::array<tribol::Index, 4> mortar_connectivity{ 0, 3, 2, 1 };
   const std::array<tribol::Index, 4> nonmortar_connectivity{ 0, 1, 2, 3 };
   return evaluateArrayReference(
-      tribol::array::UniformSurface(
+      tribol::array::SingleTopologySurface(
           3, tribol::ElementTopology::Quadrilateral,
           { mortar_coordinates.data(), static_cast<tribol::Index>( mortar_coordinates.size() ) },
           { mortar_connectivity.data(), static_cast<tribol::Index>( mortar_connectivity.size() ) } ),
-      tribol::array::UniformSurface(
+      tribol::array::SingleTopologySurface(
           3, tribol::ElementTopology::Quadrilateral,
           { nonmortar_coordinates.data(), static_cast<tribol::Index>( nonmortar_coordinates.size() ) },
           { nonmortar_connectivity.data(), static_cast<tribol::Index>( nonmortar_connectivity.size() ) } ) );

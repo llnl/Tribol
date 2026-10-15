@@ -117,12 +117,12 @@ bool nativeTopologyGenerationContract()
   constexpr std::array<Real, 4> nonmortar_coordinates{ 0.0, 0.1, 1.0, 0.1 };
   constexpr std::array<Real, 4> updated_nonmortar_coordinates{ 0.0, 0.2, 1.0, 0.2 };
   constexpr std::array<Index, 2> connectivity{ 0, 1 };
-  array::UniformSurface mortar( 2, ElementTopology::Segment,
-                                { mortar_coordinates.data(), static_cast<Index>( mortar_coordinates.size() ) },
-                                { connectivity.data(), static_cast<Index>( connectivity.size() ) } );
-  array::UniformSurface nonmortar( 2, ElementTopology::Segment,
-                                   { nonmortar_coordinates.data(), static_cast<Index>( nonmortar_coordinates.size() ) },
-                                   { connectivity.data(), static_cast<Index>( connectivity.size() ) } );
+  array::SingleTopologySurface mortar( 2, ElementTopology::Segment,
+                                       { mortar_coordinates.data(), static_cast<Index>( mortar_coordinates.size() ) },
+                                       { connectivity.data(), static_cast<Index>( connectivity.size() ) } );
+  array::SingleTopologySurface nonmortar(
+      2, ElementTopology::Segment, { nonmortar_coordinates.data(), static_cast<Index>( nonmortar_coordinates.size() ) },
+      { connectivity.data(), static_cast<Index>( connectivity.size() ) } );
   Contact<NativeMethod> contact(
       { mortar.parentTraceView(), nonmortar.parentTraceView() },
       { .mortar_coordinates = mortar.view().coordinates, .nonmortar_coordinates = nonmortar.view().coordinates } );

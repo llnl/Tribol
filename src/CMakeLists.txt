@@ -18,3 +18,10 @@ add_subdirectory(tribol)
 if ( TRIBOL_ENABLE_TESTS )
   add_subdirectory(tests)
 endif()
+
+#------------------------------------------------------------------------------
+# Add Tribol examples
+#------------------------------------------------------------------------------
+if ( TRIBOL_ENABLE_EXAMPLES )
+  add_subdirectory(examples)
+endif()

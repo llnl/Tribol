@@ -10,6 +10,7 @@ cmake_dependent_option(TRIBOL_USE_MPI "Enables MPI in Tribol" ON "ENABLE_MPI" OF
 cmake_dependent_option(TRIBOL_USE_GPU_MPI "Enables GPU-aware MPI in Tribol" ON "ENABLE_GPU_MPI" OFF)
 cmake_dependent_option(TRIBOL_USE_OPENMP "Enables Tribol with OpenMP support" ON "ENABLE_OPENMP" OFF)
 cmake_dependent_option(TRIBOL_ENABLE_TESTS "Enables Tribol Tests" ON "ENABLE_TESTS" OFF)
+cmake_dependent_option(TRIBOL_ENABLE_EXAMPLES "Enables Tribol Examples" ON "ENABLE_EXAMPLES" OFF)
 cmake_dependent_option(TRIBOL_ENABLE_DOCS "Enables Tribol Docs" ON "ENABLE_DOCS" OFF)
 option(TRIBOL_ENABLE_BENCHMARKS "Build rewritten Tribol benchmark drivers" OFF)
 

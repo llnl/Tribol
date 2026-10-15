@@ -13,7 +13,7 @@ Include `tribol/Tribol.hpp` for the dependency-free interface. Use one of three 
 | Host data | Entry point | Ownership |
 | --- | --- | --- |
 | Existing Tribol views | `tribol::Contact<Method, Search, Execution>` | Borrows both `SurfaceMeshView` objects. |
-| Plain contiguous arrays | `tribol::array::UniformSurface` and `tribol::array::makeContact` | Owns derived topology; borrows coordinate and connectivity arrays. |
+| Plain contiguous arrays | `tribol::array::SingleTopologySurface` and `tribol::array::makeContact` | Owns derived topology; borrows coordinate and connectivity arrays. |
 | MFEM | `tribol::mfem::makeContact` from `MfemContact.hpp` | Owns extracted surfaces; borrows the `ParMesh` and coordinate space. |
 
 `Contact<>` selects `DefaultMethod`, `search::CartesianProduct`, and `execution::Sequential`. Choose template arguments

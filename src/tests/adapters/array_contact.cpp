@@ -24,12 +24,13 @@ bool defaultContactContract()
   options.search.expansion = 0.2;
   options.method.enforcement.stiffness.value = 10.0;
   auto contact = array::makeContact(
-      array::UniformSurface( 2, ElementTopology::Segment,
-                             { mortar_coordinates.data(), static_cast<Index>( mortar_coordinates.size() ) },
-                             { connectivity.data(), static_cast<Index>( connectivity.size() ) } ),
-      array::UniformSurface( 2, ElementTopology::Segment,
-                             { nonmortar_coordinates.data(), static_cast<Index>( nonmortar_coordinates.size() ) },
-                             { connectivity.data(), static_cast<Index>( connectivity.size() ) } ),
+      array::SingleTopologySurface( 2, ElementTopology::Segment,
+                                    { mortar_coordinates.data(), static_cast<Index>( mortar_coordinates.size() ) },
+                                    { connectivity.data(), static_cast<Index>( connectivity.size() ) } ),
+      array::SingleTopologySurface(
+          2, ElementTopology::Segment,
+          { nonmortar_coordinates.data(), static_cast<Index>( nonmortar_coordinates.size() ) },
+          { connectivity.data(), static_cast<Index>( connectivity.size() ) } ),
       options );
   contact.updateInteractions();
   const auto result = contact.evaluate();
@@ -44,9 +45,9 @@ bool identityParentTraceContract()
 {
   constexpr std::array<Real, 12> coordinates{ 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0 };
   constexpr std::array<Index, 4> connectivity{ 0, 1, 2, 3 };
-  const array::UniformSurface surface( 3, ElementTopology::Quadrilateral,
-                                       { coordinates.data(), static_cast<Index>( coordinates.size() ) },
-                                       { connectivity.data(), static_cast<Index>( connectivity.size() ) } );
+  const array::SingleTopologySurface surface( 3, ElementTopology::Quadrilateral,
+                                              { coordinates.data(), static_cast<Index>( coordinates.size() ) },
+                                              { connectivity.data(), static_cast<Index>( connectivity.size() ) } );
   const auto trace = surface.parentTraceView();
   constexpr std::array<Real, 8> expected_reference{ 0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0 };
   if ( !trace.isStructurallyValid() || trace.geometry.coordinates.values.data() != coordinates.data() ||
@@ -76,7 +77,7 @@ bool identityParentTraceContract()
   }
   constexpr std::array<Real, 6> segment_coordinates{ 0.0, 0.0, 1.0, 0.0, 2.0, 0.0 };
   constexpr std::array<Index, 4> segment_connectivity{ 0, 1, 1, 2 };
-  const array::UniformSurface segments(
+  const array::SingleTopologySurface segments(
       2, ElementTopology::Segment, { segment_coordinates.data(), static_cast<Index>( segment_coordinates.size() ) },
       { segment_connectivity.data(), static_cast<Index>( segment_connectivity.size() ) } );
   const auto segment_trace = segments.parentTraceView();
@@ -108,12 +109,13 @@ bool nativeContactContract()
   options.search.expansion = 0.25;
   options.method.enforcement.stiffness.value = 10.0;
   auto contact = array::makeContact<NativeExplicitMethod>(
-      array::UniformSurface( 2, ElementTopology::Segment,
-                             { mortar_coordinates.data(), static_cast<Index>( mortar_coordinates.size() ) },
-                             { mortar_connectivity.data(), static_cast<Index>( mortar_connectivity.size() ) } ),
-      array::UniformSurface( 2, ElementTopology::Segment,
-                             { nonmortar_coordinates.data(), static_cast<Index>( nonmortar_coordinates.size() ) },
-                             { nonmortar_connectivity.data(), static_cast<Index>( nonmortar_connectivity.size() ) } ),
+      array::SingleTopologySurface( 2, ElementTopology::Segment,
+                                    { mortar_coordinates.data(), static_cast<Index>( mortar_coordinates.size() ) },
+                                    { mortar_connectivity.data(), static_cast<Index>( mortar_connectivity.size() ) } ),
+      array::SingleTopologySurface(
+          2, ElementTopology::Segment,
+          { nonmortar_coordinates.data(), static_cast<Index>( nonmortar_coordinates.size() ) },
+          { nonmortar_connectivity.data(), static_cast<Index>( nonmortar_connectivity.size() ) } ),
       options );
   contact.updateInteractions();
 
@@ -153,12 +155,13 @@ bool nativeKinematicVoteContract()
   options.method.enforcement.stiffness.value = 0.01;
   options.timestep = { .enabled = true, .current_step = 1.0, .penetration_fraction = 0.3, .velocity_tolerance = 0.0 };
   auto contact = array::makeContact<NativeExplicitMethod>(
-      array::UniformSurface( 2, ElementTopology::Segment,
-                             { mortar_coordinates.data(), static_cast<Index>( mortar_coordinates.size() ) },
-                             { mortar_connectivity.data(), static_cast<Index>( mortar_connectivity.size() ) } ),
-      array::UniformSurface( 2, ElementTopology::Segment,
-                             { nonmortar_coordinates.data(), static_cast<Index>( nonmortar_coordinates.size() ) },
-                             { nonmortar_connectivity.data(), static_cast<Index>( nonmortar_connectivity.size() ) } ),
+      array::SingleTopologySurface( 2, ElementTopology::Segment,
+                                    { mortar_coordinates.data(), static_cast<Index>( mortar_coordinates.size() ) },
+                                    { mortar_connectivity.data(), static_cast<Index>( mortar_connectivity.size() ) } ),
+      array::SingleTopologySurface(
+          2, ElementTopology::Segment,
+          { nonmortar_coordinates.data(), static_cast<Index>( nonmortar_coordinates.size() ) },
+          { nonmortar_connectivity.data(), static_cast<Index>( nonmortar_connectivity.size() ) } ),
       options );
   contact.updateInteractions();
   constexpr std::array<Real, 4> mortar_velocity{ 0.0, 0.1, 0.0, 0.1 };
