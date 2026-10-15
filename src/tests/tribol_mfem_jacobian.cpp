@@ -1141,7 +1141,7 @@ TEST_F( MfemJacobianTest, energy_mortar_runtime_parameters_preserve_lagrange_mul
   pressure = -0.25;
 
   tribol::setEnergyMortarSmoothingLength( scheme_id, 0.2 );
-  tribol::setEnergyMortarNormalSmoothingStartAngle( scheme_id, tribol::energy_mortar::perpendicular_normal_angle );
+  tribol::setEnergyMortarNormalSmoothingStartAngle( scheme_id, tribol::energy_mortar::right_angle );
   tribol::setResidualGap( scheme_id, 0.2 );
 
   EXPECT_EQ( scheme->getContactFormulation(), formulation );
