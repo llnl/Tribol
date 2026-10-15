@@ -957,7 +957,10 @@ class MfemMeshData {
    *
    * @return const RealT*
    */
-  const RealT* GetRedecompElemThickness1() const { return tribol_elem_thickness_1_->data(); }
+  const RealT* GetRedecompElemThickness1() const
+  {
+    return tribol_elem_thickness_1_ ? tribol_elem_thickness_1_->data() : nullptr;
+  }
 
   /**
    * @brief Get a pointer to the element thickness array for the second Tribol
@@ -965,7 +968,10 @@ class MfemMeshData {
    *
    * @return const RealT*
    */
-  const RealT* GetRedecompElemThickness2() const { return tribol_elem_thickness_2_->data(); }
+  const RealT* GetRedecompElemThickness2() const
+  {
+    return tribol_elem_thickness_2_ ? tribol_elem_thickness_2_->data() : nullptr;
+  }
 
   /**
    * @brief Get a pointer to the material modulus array for the first Tribol
@@ -973,7 +979,10 @@ class MfemMeshData {
    *
    * @return const RealT*
    */
-  const RealT* GetRedecompMaterialModulus1() const { return tribol_material_modulus_1_->data(); }
+  const RealT* GetRedecompMaterialModulus1() const
+  {
+    return tribol_material_modulus_1_ ? tribol_material_modulus_1_->data() : nullptr;
+  }
 
   /**
    * @brief Get a pointer to the material modulus array for the second Tribol
@@ -981,7 +990,10 @@ class MfemMeshData {
    *
    * @return const RealT*
    */
-  const RealT* GetRedecompMaterialModulus2() const { return tribol_material_modulus_2_->data(); }
+  const RealT* GetRedecompMaterialModulus2() const
+  {
+    return tribol_material_modulus_2_ ? tribol_material_modulus_2_->data() : nullptr;
+  }
 
   /**
    * @brief Get the map from Tribol registered mesh 1 element indices to
@@ -1099,6 +1111,9 @@ class MfemMeshData {
    * @brief Computes element thicknesses for volume elements attached to the contact surface
    */
   void ComputeElementThicknesses();
+
+  /** @brief True when parent-volume element thicknesses have been computed for the contact surface. */
+  bool HasElementThicknesses() const { return elem_thickness_ != nullptr; }
 
   /**
    * @brief Compute material modulus field at each element

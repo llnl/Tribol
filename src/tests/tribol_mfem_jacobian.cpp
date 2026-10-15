@@ -1322,6 +1322,66 @@ TEST_F( MfemJacobianTest, energy_mortar_dynamic_residual_gap_ramp_updates_once_p
   EXPECT_GT( global_difference_norm( first_dynamic_gap, next_cycle_gap ), 1.0e-12 );
 }
 
+// Recognize a boundary registered against itself without counting endpoint contact twice.
+TEST_F( MfemJacobianTest, energy_mortar_full_boundary_self_contact_does_not_double_ball_response )
+{
+  auto mesh = MakeBallCompletionMesh();
+  mfem::H1_FECollection fec( 1, mesh.SpaceDimension() );
+  mfem::ParFiniteElementSpace fes( &mesh, &fec, mesh.SpaceDimension(), mfem::Ordering::byVDIM );
+  mfem::ParGridFunction coords( &fes );
+  mesh.GetNodes( coords );
+
+  const int directed_scheme = NextCouplingSchemeId();
+  const int reverse_scheme = NextCouplingSchemeId();
+  const int self_scheme = NextCouplingSchemeId();
+  ConfigureBallCompletionScheme( directed_scheme, 2 * directed_scheme, 2 * directed_scheme + 1, mesh, coords, { 5 },
+                                 { 3 }, tribol::EnforcementLocation::QuadraturePoint );
+  ConfigureBallCompletionScheme( reverse_scheme, 2 * reverse_scheme, 2 * reverse_scheme + 1, mesh, coords, { 3 }, { 5 },
+                                 tribol::EnforcementLocation::QuadraturePoint );
+  // Full-boundary self-contact contains both directed orientations, so the host supplies half the directed penalty.
+  ConfigureBallCompletionScheme( self_scheme, 2 * self_scheme, 2 * self_scheme + 1, mesh, coords, { 3, 5 }, { 3, 5 },
+                                 tribol::EnforcementLocation::QuadraturePoint, 1.5 );
+  tribol::updateMfemParallelDecomposition();
+  double dt = 1.0;
+  ASSERT_EQ( tribol::update( 1, 1.0, dt ), 0 );
+
+  auto directed_force = tribol::getMfemContactForce( directed_scheme );
+  auto reverse_force = tribol::getMfemContactForce( reverse_scheme );
+  auto self_force = tribol::getMfemContactForce( self_scheme );
+  ASSERT_EQ( directed_force.Size(), self_force.Size() );
+  ASSERT_EQ( reverse_force.Size(), self_force.Size() );
+  ASSERT_GT( directed_force.Norml2(), 1.0e-12 );
+  ASSERT_GT( reverse_force.Norml2(), 1.0e-12 );
+  for ( int i = 0; i < directed_force.Size(); ++i ) {
+    EXPECT_NEAR( self_force[i], 0.5 * ( directed_force[i] + reverse_force[i] ), 1.0e-10 ) << "force dof " << i;
+  }
+
+  auto directed_stiffness = tribol::getMfemDfDx( directed_scheme );
+  auto reverse_stiffness = tribol::getMfemDfDx( reverse_scheme );
+  auto self_stiffness = tribol::getMfemDfDx( self_scheme );
+  ASSERT_NE( directed_stiffness, nullptr );
+  ASSERT_NE( reverse_stiffness, nullptr );
+  ASSERT_NE( self_stiffness, nullptr );
+  ASSERT_EQ( directed_stiffness->Width(), self_stiffness->Width() );
+  ASSERT_EQ( reverse_stiffness->Width(), self_stiffness->Width() );
+  mfem::Vector direction( directed_stiffness->Width() );
+  for ( int i = 0; i < direction.Size(); ++i ) {
+    direction[i] = 0.125 * static_cast<double>( i + 1 );
+  }
+  mfem::Vector directed_action( directed_stiffness->Height() );
+  mfem::Vector reverse_action( reverse_stiffness->Height() );
+  mfem::Vector self_action( self_stiffness->Height() );
+  directed_stiffness->Mult( direction, directed_action );
+  reverse_stiffness->Mult( direction, reverse_action );
+  self_stiffness->Mult( direction, self_action );
+  ASSERT_EQ( directed_action.Size(), self_action.Size() );
+  ASSERT_EQ( reverse_action.Size(), self_action.Size() );
+  for ( int i = 0; i < directed_action.Size(); ++i ) {
+    EXPECT_NEAR( self_action[i], 0.5 * ( directed_action[i] + reverse_action[i] ), 1.0e-9 )
+        << "Jacobian action dof " << i;
+  }
+}
+
 #endif
 
 int main( int argc, char* argv[] )

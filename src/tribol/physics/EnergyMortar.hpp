@@ -32,6 +32,8 @@ struct ContactParams {
   int N{ 3 };                                                 ///< Number of quadrature points.
   bool enzyme_quadrature{ true };  ///< Whether Enzyme differentiates the quadrature construction.
   double residual_gap{ 0.0 };      ///< Uniform separation used when no nodal residual-gap field is supplied.
+  bool is_auto_contact{ false };   ///< Whether self-contact penetration filtering is active.
+  double auto_contact_penetration_fraction{ 0.95 };  ///< Maximum penetration as a fraction of element thickness.
 };
 
 /// Stores quadrature-point penalty energy derivatives for one interface pair.
@@ -115,7 +117,8 @@ struct Gparams {
   std::array<double, 3> w;   ///< Quadrature weights mapped to the local integration interval.
   double normal_smoothing_start_angle{
       energy_mortar::default_normal_smoothing_start_angle };  ///< Normal smoothing start angle in radians.
-  std::array<double, 2> residual_gap{};  ///< Endpoint separations held fixed during pair differentiation.
+  std::array<double, 2> residual_gap{};     ///< Endpoint separations held fixed during pair differentiation.
+  double max_auto_interpenetration{ 0.0 };  ///< Lagged physical penetration limit.
 };
 
 /// Provides smoothing operations for the Energy Mortar contact formulation.

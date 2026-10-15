@@ -179,7 +179,14 @@ void EnergyMortarAdapter<EnforcementLocation>::evaluate( MeshData& mesh1, MeshDa
     residual_gap_field_dirty_ = true;
     requires_evaluator_rebuild = true;
   }
-
+  if ( params_.is_auto_contact != parameters.auto_contact_check ) {
+    params_.is_auto_contact = parameters.auto_contact_check;
+    requires_evaluator_rebuild = true;
+  }
+  if ( params_.auto_contact_penetration_fraction != parameters.auto_contact_pen_frac ) {
+    params_.auto_contact_penetration_fraction = parameters.auto_contact_pen_frac;
+    requires_evaluator_rebuild = true;
+  }
   if ( residual_gap_ramp_angle_ != parameters.residual_gap_ramp_angle ) {
     residual_gap_ramp_angle_ = parameters.residual_gap_ramp_angle;
     residual_gap_field_dirty_ = true;

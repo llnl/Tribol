@@ -443,6 +443,218 @@ TEST( NormalAngleSmoothingCheck, NinetyDegreesDisablesAttenuation )
   EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.5, right_angle ), 0.0 );
 }
 
+// Each self-contact orientation uses its own mortar normal, so an oblique pair can be rejected in one direction and
+// remain eligible in the reverse direction.
+TEST( EnergyMortarAutoContactCheck, UsesMortarNormalForEachDirectedPair )
+{
+  RealT x1[2] = { 0.5, -0.5 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 0, 1 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  constexpr RealT tangent_x = 0.1;
+  constexpr RealT tangent_y = 0.99498743710662;
+  RealT x2[2] = { -0.45, -0.45 + tangent_x };
+  RealT y2[2] = { -0.5 - 0.5 * tangent_y, -0.5 + 0.5 * tangent_y };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ASSERT_TRUE( mesh1.computeFaceData( ExecutionMode::Sequential, PalletAvgNormal() ) );
+  ASSERT_TRUE( mesh2.computeFaceData( ExecutionMode::Sequential, PalletAvgNormal() ) );
+  const RealT thickness1[1] = { 1.0 };
+  const RealT thickness2[1] = { 1.0 };
+  mesh1.getElementData().m_thickness = ArrayViewT<const RealT>( thickness1, 1 );
+  mesh2.getElementData().m_thickness = ArrayViewT<const RealT>( thickness2, 1 );
+  mesh1.getElementData().m_is_element_thickness_set = true;
+  mesh2.getElementData().m_is_element_thickness_set = true;
+
+  constexpr RealT max_penetration_fraction = 0.3;
+  EXPECT_TRUE(
+      detail::energyMortarExceedsMaxAutoInterpen( mesh1.getView(), mesh2.getView(), 0, 0, max_penetration_fraction ) );
+  EXPECT_FALSE(
+      detail::energyMortarExceedsMaxAutoInterpen( mesh2.getView(), mesh1.getView(), 0, 0, max_penetration_fraction ) );
+
+  ContactParams params;
+  params.del = 0.0;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  params.normal_smoothing_start_angle = energy_mortar::right_angle;
+  params.is_auto_contact = true;
+  params.auto_contact_penetration_fraction = max_penetration_fraction;
+  EnergyMortarCalculator evaluator( params );
+  const InterfacePair pair( 0, 0 );
+
+  const auto rejected =
+      evaluator.compute_quadrature_point_penalty_data( pair, mesh2.getView(), mesh1.getView(), nullptr );
+  const auto accepted =
+      evaluator.compute_quadrature_point_penalty_data( pair, mesh1.getView(), mesh2.getView(), nullptr );
+  EXPECT_EQ( rejected.energy, 0.0 );
+  EXPECT_GT( accepted.energy, 0.0 );
+}
+
+// Counting the residual-gap offset as penetration would incorrectly reject this shallow physical overlap.
+TEST( EnergyMortarAutoContactCheck, ResidualGapDoesNotCountAsPhysicalPenetration )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 0, 1 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = { 1.0, 0.0 };
+  RealT y2[2] = { -0.006, -0.006 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ASSERT_TRUE( mesh1.computeFaceData( ExecutionMode::Sequential, PalletAvgNormal() ) );
+  ASSERT_TRUE( mesh2.computeFaceData( ExecutionMode::Sequential, PalletAvgNormal() ) );
+  const RealT thickness1[1] = { 0.02 };
+  const RealT thickness2[1] = { 0.02 };
+  mesh1.getElementData().m_thickness = ArrayViewT<const RealT>( thickness1, 1 );
+  mesh2.getElementData().m_thickness = ArrayViewT<const RealT>( thickness2, 1 );
+
+  constexpr RealT max_penetration_fraction = 0.95;
+  EXPECT_FALSE(
+      detail::energyMortarExceedsMaxAutoInterpen( mesh1.getView(), mesh2.getView(), 0, 0, max_penetration_fraction ) );
+}
+
+// Include penetration-suppression derivatives in both edge and cap response.
+TEST( EnergyMortarAutoContactCheck, SuppressedEdgeAndCapDerivativesMatchFiniteDifference )
+{
+  RealT x1[2] = { -1.0, 0.0 }, y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 0, 1 };
+  MeshData source( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  RealT x2[2] = { 0.15, 0.05 }, y2[2] = { 0.05, 0.05 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData target( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  const RealT thickness[1] = { 0.2 };
+  for ( auto* mesh : { &source, &target } ) {
+    mesh->getElementData().m_thickness = ArrayViewT<const RealT>( thickness, 1 );
+    mesh->getElementData().m_is_element_thickness_set = true;
+  }
+  ContactParams params;
+  params.is_auto_contact = true;
+  params.k = 3.0;
+  EnergyMortarCalculator calculator( params );
+  const double residual[2] = { 0.0, 0.2 };
+  const InterfacePair pair( 0, 0 );
+  const auto endpoints = endpointBallData( 0.0, -1.0 );
+  auto evaluate = [&]() {
+    source.setPosition( x1, y1, nullptr );
+    target.setPosition( x2, y2, nullptr );
+    auto result = calculator.compute_ball_penalty_data( pair, source.getView(), target.getView(), endpoints, residual );
+    const auto edge =
+        calculator.compute_quadrature_point_penalty_data( pair, source.getView(), target.getView(), residual );
+    EXPECT_GT( result.energy, 0.0 );
+    EXPECT_GT( edge.energy, 0.0 );
+    result.energy += edge.energy;
+    for ( int row = 0; row < 8; ++row ) {
+      result.force[row] += edge.force[row];
+      for ( int col = 0; col < 8; ++col ) result.stiffness[12 * row + col] += edge.stiffness[8 * row + col];
+    }
+    return result;
+  };
+  const auto base = evaluate();
+  constexpr double eps = 1.0e-7;
+  for ( int col = 0; col < 8; ++col ) {
+    RealT* coordinates = col < 4 ? ( col % 2 == 0 ? x1 : y1 ) : ( col % 2 == 0 ? x2 : y2 );
+    const int node = ( col % 4 ) / 2;
+    const double original = coordinates[node];
+    coordinates[node] = original + eps;
+    const auto plus = evaluate();
+    coordinates[node] = original - eps;
+    const auto minus = evaluate();
+    coordinates[node] = original;
+    EXPECT_NEAR( base.force[col], ( plus.energy - minus.energy ) / ( 2.0 * eps ), 1.0e-6 );
+    for ( int row = 0; row < 12; ++row ) {
+      EXPECT_NEAR( base.stiffness[12 * row + col], ( plus.force[row] - minus.force[row] ) / ( 2.0 * eps ), 1.0e-5 );
+    }
+  }
+}
+
+// Suppress nodal contact without corrupting normalized gaps or their force and tangent derivatives.
+TEST( EnergyMortarAutoContactCheck, NodalSuppressionHasConsistentGapAndAreaDerivatives )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 0, 1 };
+  MeshData source( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  RealT x2[2] = { 0.2, 0.8 };
+  RealT y2[2] = { 0.1, 0.1 };
+  IndexT conn2[2] = { 1, 0 };
+  MeshData target( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+  const RealT thickness[1] = { 0.2 };
+  for ( auto* mesh : { &source, &target } ) {
+    mesh->getElementData().m_thickness = ArrayViewT<const RealT>( thickness, 1 );
+    mesh->getElementData().m_is_element_thickness_set = true;
+  }
+  ContactParams params;
+  params.is_auto_contact = true;
+  params.residual_gap = 0.2;
+  const InterfacePair pair( 0, 0 );
+  for ( bool varying_quadrature : { false, true } ) {
+    params.enzyme_quadrature = varying_quadrature;
+    EnergyMortarCalculator calculator( params );
+    auto value = [&]( double y, double* gap, double* area ) {
+      y1[0] = y1[1] = y;
+      source.setPosition( x1, y1, nullptr );
+      // Rigid normal translation preserves the quadrature rule, so this reference also applies to the fixed-rule path.
+      calculator.compute_gtilde_and_area( pair, source.getView(), target.getView(), gap, area );
+    };
+    double gap_minus[2], gap_plus[2], area_minus[2], area_plus[2];
+    value( -1.0e-7, gap_minus, area_minus );
+    value( 1.0e-7, gap_plus, area_plus );
+    y1[0] = y1[1] = 0.0;
+    source.setPosition( x1, y1, nullptr );
+    double dg[2][8], da[2][8];
+    calculator.grad_gtilde( pair, source.getView(), target.getView(), dg[0], dg[1] );
+    calculator.grad_trib_area( pair, source.getView(), target.getView(), da[0], da[1] );
+    for ( int node = 0; node < 2; ++node ) {
+      EXPECT_NEAR( ( gap_plus[node] - gap_minus[node] ) / 2.0e-7, dg[node][1] + dg[node][3], 1.0e-7 );
+      EXPECT_NEAR( ( area_plus[node] - area_minus[node] ) / 2.0e-7, da[node][1] + da[node][3], 1.0e-7 );
+    }
+    double hg[2][64], ha[2][64];
+    calculator.d2_g2tilde( pair, source.getView(), target.getView(), hg[0], hg[1] );
+    calculator.compute_d2A_d2u( pair, source.getView(), target.getView(), ha[0], ha[1] );
+    double dg_minus[2][8], dg_plus[2][8], da_minus[2][8], da_plus[2][8];
+    y1[0] = y1[1] = -1.0e-7;
+    source.setPosition( x1, y1, nullptr );
+    calculator.grad_gtilde( pair, source.getView(), target.getView(), dg_minus[0], dg_minus[1] );
+    calculator.grad_trib_area( pair, source.getView(), target.getView(), da_minus[0], da_minus[1] );
+    y1[0] = y1[1] = 1.0e-7;
+    source.setPosition( x1, y1, nullptr );
+    calculator.grad_gtilde( pair, source.getView(), target.getView(), dg_plus[0], dg_plus[1] );
+    calculator.grad_trib_area( pair, source.getView(), target.getView(), da_plus[0], da_plus[1] );
+    for ( int node = 0; node < 2; ++node ) {
+      for ( int row = 0; row < 8; ++row ) {
+        EXPECT_NEAR( ( dg_plus[node][row] - dg_minus[node][row] ) / 2.0e-7,
+                     hg[node][8 * row + 1] + hg[node][8 * row + 3], 1.0e-6 );
+        EXPECT_NEAR( ( da_plus[node][row] - da_minus[node][row] ) / 2.0e-7,
+                     ha[node][8 * row + 1] + ha[node][8 * row + 3], 1.0e-6 );
+      }
+    }
+    y1[0] = y1[1] = 0.0;
+    source.setPosition( x1, y1, nullptr );
+    ContactParams unfiltered = params;
+    unfiltered.is_auto_contact = false;
+    EnergyMortarCalculator unfiltered_calculator( unfiltered );
+    double gap[2], area[2], unfiltered_gap[2], unfiltered_area[2];
+    calculator.compute_gtilde_and_area( pair, source.getView(), target.getView(), gap, area );
+    unfiltered_calculator.compute_gtilde_and_area( pair, source.getView(), target.getView(), unfiltered_gap,
+                                                   unfiltered_area );
+    EXPECT_GT( area[0], 0.0 );
+    EXPECT_LT( area[0], unfiltered_area[0] );
+    EXPECT_NEAR( gap[0] / area[0], unfiltered_gap[0] / unfiltered_area[0], 1.0e-12 );
+    y2[0] = y2[1] = params.auto_contact_penetration_fraction * thickness[0];
+    target.setPosition( x2, y2, nullptr );
+    calculator.compute_gtilde_and_area( pair, source.getView(), target.getView(), gap, area );
+    EXPECT_DOUBLE_EQ( gap[0], 0.0 );
+    EXPECT_DOUBLE_EQ( area[0], 0.0 );
+    y2[0] = y2[1] = 0.1;
+    target.setPosition( x2, y2, nullptr );
+  }
+}
+
 // Unequal endpoint offsets can make virtual normals oppose even when the physical normals do not; using only the
 // physical normals would miss this valid contact pair.
 TEST( EnergyMortarResidualGapCheck, VirtualNormalsCanOpposeWhenPhysicalNormalsDoNot )

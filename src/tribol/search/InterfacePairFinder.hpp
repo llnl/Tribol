@@ -30,6 +30,24 @@ TRIBOL_HOST_DEVICE inline RealT energyMortarNormalDotLimit( const MeshData::View
   return residual_gap / magnitude( edge_length, residual_gap );
 }
 
+/// Reject deep through-body candidates along this directed pair's mortar normal, excluding residual clearance.
+TRIBOL_HOST_DEVICE inline bool energyMortarExceedsMaxAutoInterpen( const MeshData::Viewer& mortar_mesh,
+                                                                   const MeshData::Viewer& nonmortar_mesh,
+                                                                   IndexT mortar_element, IndexT nonmortar_element,
+                                                                   RealT auto_contact_pen_frac )
+{
+  RealT mortar_gap = 0.0;
+  for ( int d{ 0 }; d < 2; ++d ) {
+    const RealT delta = nonmortar_mesh.getElementCentroids()[d][nonmortar_element] -
+                        mortar_mesh.getElementCentroids()[d][mortar_element];
+    mortar_gap += delta * mortar_mesh.getElementNormals()[d][mortar_element];
+  }
+  const RealT max_interpen =
+      -auto_contact_pen_frac * axom::utilities::min( mortar_mesh.getElementData().m_thickness[mortar_element],
+                                                     nonmortar_mesh.getElementData().m_thickness[nonmortar_element] );
+  return mortar_gap < max_interpen;
+}
+
 }  // namespace detail
 
 /*!
@@ -98,6 +116,17 @@ TRIBOL_HOST_DEVICE inline bool geomFilter( const CouplingScheme::Viewer& cs_view
     }
   } else if ( nrmlCheck > nrmlTol ) {
     return false;
+  }
+
+  // MFEM self-contact registers the same parent boundary under two distinct Tribol mesh IDs. Opposite faces across
+  // the body interior can therefore look like deeply interpenetrating pairs. Use the parent-volume thickness to
+  // reject these pairs, consistently with the CommonPlane auto-contact interpenetration check.
+  if ( auto_contact_check && cs_view.getContactMethod() == ENERGY_MORTAR && dim == 2 &&
+       mesh1.getElementData().m_is_element_thickness_set && mesh2.getElementData().m_is_element_thickness_set ) {
+    if ( detail::energyMortarExceedsMaxAutoInterpen( mesh1, mesh2, element_id1, element_id2,
+                                                     cs_view.getParameters().auto_contact_pen_frac ) ) {
+      return false;
+    }
   }
 
   /// CHECK #4: Perform radius check, which involves seeing if
