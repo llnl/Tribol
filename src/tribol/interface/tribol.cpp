@@ -205,7 +205,7 @@ void setEnergyMortarNormalSmoothingStartAngle( IndexT cs_id, RealT start_angle )
 
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarNormalSmoothingStartAngle(): call tribol::registerCouplingScheme() "
                                << "prior to calling this routine." );
-  SLIC_ERROR_ROOT_IF( start_angle < 0.0 || start_angle > energy_mortar::perpendicular_normal_angle,
+  SLIC_ERROR_ROOT_IF( start_angle < 0.0 || start_angle > energy_mortar::right_angle,
                       "tribol::setEnergyMortarNormalSmoothingStartAngle(): start angle must be in [0, pi / 2]." );
 
   cs->getParameters().energy_mortar_normal_smoothing_start_angle = start_angle;
@@ -218,7 +218,7 @@ void setEnergyMortarResidualGapRampAngle( IndexT cs_id, RealT ramp_angle )
 
   SLIC_ERROR_ROOT_IF( !cs, "tribol::setEnergyMortarResidualGapRampAngle(): call tribol::registerCouplingScheme() "
                                << "prior to calling this routine." );
-  SLIC_ERROR_ROOT_IF( ramp_angle < 0.0 || ramp_angle > energy_mortar::perpendicular_normal_angle,
+  SLIC_ERROR_ROOT_IF( ramp_angle < 0.0 || ramp_angle > energy_mortar::right_angle,
                       "tribol::setEnergyMortarResidualGapRampAngle(): ramp angle must be in [0, pi / 2]." );
 
   cs->getParameters().energy_mortar_residual_gap_ramp_angle = ramp_angle;

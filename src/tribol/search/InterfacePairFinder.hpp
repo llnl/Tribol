@@ -26,21 +26,21 @@ TRIBOL_HOST_DEVICE inline RealT energyMortarNormalDotLimit( const MeshData::View
   return residual_gap / magnitude( edge_length, residual_gap );
 }
 
-TRIBOL_HOST_DEVICE inline bool energyMortarExceedsMaxAutoInterpen( const MeshData::Viewer& mesh1,
-                                                                   const MeshData::Viewer& mesh2, IndexT element_id1,
-                                                                   IndexT element_id2, RealT auto_contact_pen_frac )
+TRIBOL_HOST_DEVICE inline bool energyMortarExceedsMaxAutoInterpen( const MeshData::Viewer& mortar_mesh,
+                                                                   const MeshData::Viewer& nonmortar_mesh,
+                                                                   IndexT mortar_element, IndexT nonmortar_element,
+                                                                   RealT auto_contact_pen_frac )
 {
-  RealT gap1 = 0.0;
-  RealT gap2 = 0.0;
+  RealT mortar_gap = 0.0;
   for ( int d{ 0 }; d < 2; ++d ) {
-    const RealT delta = mesh2.getElementCentroids()[d][element_id2] - mesh1.getElementCentroids()[d][element_id1];
-    gap1 += delta * mesh1.getElementNormals()[d][element_id1];
-    gap2 -= delta * mesh2.getElementNormals()[d][element_id2];
+    const RealT delta = nonmortar_mesh.getElementCentroids()[d][nonmortar_element] -
+                        mortar_mesh.getElementCentroids()[d][mortar_element];
+    mortar_gap += delta * mortar_mesh.getElementNormals()[d][mortar_element];
   }
   const RealT max_interpen =
-      -auto_contact_pen_frac * axom::utilities::min( mesh1.getElementData().m_thickness[element_id1],
-                                                     mesh2.getElementData().m_thickness[element_id2] );
-  return gap1 < max_interpen || gap2 < max_interpen;
+      -auto_contact_pen_frac * axom::utilities::min( mortar_mesh.getElementData().m_thickness[mortar_element],
+                                                     nonmortar_mesh.getElementData().m_thickness[nonmortar_element] );
+  return mortar_gap < max_interpen;
 }
 
 }  // namespace detail

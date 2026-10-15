@@ -1328,7 +1328,7 @@ void MfemSubmeshData::UpdateResidualGapField( RealT residual_gap, RealT ramp_ang
   distance = ramp_length;
   // A ball closes the offset surface only where adjacent edges separate at a convex turn. Straight and nonconvex
   // interior vertices already have continuous or overlapping offset edges, while an open surface needs an end cap.
-  const double max_corner_angle = 2.0 * energy_mortar::perpendicular_normal_angle - corner_angle_tol;
+  const double max_corner_angle = 2.0 * energy_mortar::right_angle - corner_angle_tol;
   for ( int i = 0; i < num_dofs; ++i ) {
     const bool is_open_endpoint = incidence[i] == 1;
     if ( is_open_endpoint ) {
