@@ -130,7 +130,8 @@ class ContactSmoothing {
   /// Compute the negative normal-alignment factor for a pair of unit normals.
   ///
   /// The factor has unit magnitude until the relative angle between opposing normals reaches
-  /// `start_angle`, then follows a C2 quintic smoothstep to zero at perpendicularity.
+  /// `start_angle`, then follows a shifted cosine to zero at perpendicularity.
+  /// Its square is C1 across these joins: quadratic penalty forces are continuous, but the tangent may jump.
   ///
   /// @pre 0 <= start_angle <= pi / 2
   static double normal_alignment_factor( double normal_dot, double start_angle );

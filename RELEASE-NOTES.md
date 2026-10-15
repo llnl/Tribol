@@ -42,7 +42,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
   Jacobians)
 
 ### Changed
-- EnergyMortar receives complete inputs through one evaluation call; solver multipliers remain MFEM-owned and result access does not consume state. Normal attenuation uses a C2 quintic transition by default.
+- EnergyMortar receives complete inputs through one evaluation call; solver multipliers remain MFEM-owned and result access does not consume state. Normal attenuation uses a shifted-cosine transition with C1 quadratic penalty energy.
 - EnergyMortar uses offset non-mortar geometry consistently for projections and enforcement, with consistent forces/Jacobians and C2 integration-bound smoothing.
 - EnergyMortar self-contact uses parent-element thickness to filter/smooth excessive physical penetration on edges and caps. This heuristic does not prevent surface crossings.
 - Return negative timestep vote for non-null meshes with null velocity pointers.

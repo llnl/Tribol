@@ -393,7 +393,7 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
 }
 
 // Keep full contact weight up to the configured angle and suppress nonopposing normals.
-TEST( NormalAngleSmoothingCheck, QuinticStartsAtConfiguredAngle )
+TEST( NormalAngleSmoothingCheck, ShiftedCosineStartsAtConfiguredAngle )
 {
   // Without angular attenuation, contact can retain full strength at a steep angle and then drop abruptly to zero.
   constexpr double pi = std::numbers::pi_v<double>;
@@ -403,30 +403,32 @@ TEST( NormalAngleSmoothingCheck, QuinticStartsAtConfiguredAngle )
   EXPECT_DOUBLE_EQ( energy_mortar::default_residual_gap_ramp_angle, pi / 18.0 );
   EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -std::cos( pi / 6.0 ), start_angle ), -1.0 );
   EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( -std::cos( start_angle ), start_angle ), -1.0 );
-  EXPECT_NEAR( ContactSmoothing::normal_alignment_factor( -std::cos( 3.0 * pi / 8.0 ), start_angle ), -0.5, 1.0e-14 );
-  EXPECT_NEAR( ContactSmoothing::normal_alignment_factor( -0.5, 0.0 ), -17.0 / 81.0, 1.0e-14 );
+  EXPECT_NEAR( ContactSmoothing::normal_alignment_factor( -std::cos( 3.0 * pi / 8.0 ), start_angle ),
+               -1.0 / std::sqrt( 2.0 ), 1.0e-14 );
+  EXPECT_NEAR( ContactSmoothing::normal_alignment_factor( -0.5, 0.0 ), -0.5, 1.0e-14 );
   EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.0, start_angle ), 0.0 );
   EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.5, start_angle ), 0.0 );
 }
 
-// Avoid force or tangent jumps where angular attenuation starts and ends.
-TEST( NormalAngleSmoothingCheck, EnergyWeightHasContinuousSlopeAndCurvature )
+// Keep energy and its slope continuous through angular joins; curvature is allowed to jump.
+TEST( NormalAngleSmoothingCheck, EnergyWeightHasContinuousValueAndSlope )
 {
   const double start = tribol::energy_mortar::default_normal_smoothing_start_angle;
   auto weight = [&]( double angle ) {
     const double factor = ContactSmoothing::normal_alignment_factor( -std::cos( angle ), start );
     return factor * factor;
   };
-  constexpr double h = 1.0e-5;
   for ( double join : { start, tribol::energy_mortar::right_angle } ) {
     SCOPED_TRACE( join );
-    const double center = weight( join );
-    const double slope_left = ( center - weight( join - h ) ) / h;
-    const double slope_right = ( weight( join + h ) - center ) / h;
-    EXPECT_NEAR( slope_left, slope_right, 1.0e-7 );
-    const double curvature_left = ( center - 2.0 * weight( join - h ) + weight( join - 2.0 * h ) ) / ( h * h );
-    const double curvature_right = ( weight( join + 2.0 * h ) - 2.0 * weight( join + h ) + center ) / ( h * h );
-    EXPECT_NEAR( curvature_left, curvature_right, 0.01 );
+    for ( double h : { 1.0e-3, 1.0e-4, 1.0e-5, 1.0e-6 } ) {
+      SCOPED_TRACE( h );
+      const double center = weight( join );
+      EXPECT_NEAR( weight( join - h ), weight( join + h ), 8.0 * h * h + 1.0e-14 );
+      const double slope_left = ( center - weight( join - h ) ) / h;
+      const double slope_right = ( weight( join + h ) - center ) / h;
+      EXPECT_NEAR( slope_left, 0.0, 5.0 * h );
+      EXPECT_NEAR( slope_right, 0.0, 5.0 * h );
+    }
   }
 }
 
@@ -1377,8 +1379,8 @@ TEST( EnergyMortarResidualGapCheck, EdgeCapHandoffHasContinuousForceAndJacobian 
   }
 }
 
-// Keep the assembled response continuous across angular attenuation joins for both features.
-TEST( EnergyMortarResidualGapCheck, CombinedEdgeCapAngularTransitionsAreContinuous )
+// Keep total edge-plus-cap energy and force continuous at angular joins; the tangent may jump.
+TEST( EnergyMortarResidualGapCheck, CombinedEdgeCapAngularTransitionsHaveContinuousForce )
 {
   RealT x1[2] = { -1.0, 0.0 };
   RealT y1[2] = { 0.0, 0.0 };
@@ -1422,9 +1424,6 @@ TEST( EnergyMortarResidualGapCheck, CombinedEdgeCapAngularTransitionsAreContinuo
     EXPECT_NEAR( left.energy, right.energy, 1.0e-7 );
     for ( int row = 0; row < 8; ++row ) {
       EXPECT_NEAR( left.force[row], right.force[row], 1.0e-6 );
-      for ( int col = 0; col < 8; ++col ) {
-        EXPECT_NEAR( left.stiffness[8 * row + col], right.stiffness[8 * row + col], 1.0e-5 );
-      }
     }
   }
 }
