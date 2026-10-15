@@ -3,6 +3,9 @@
 //
 // SPDX-License-Identifier: (MIT)
 
+/// @file
+/// Retain geometrically eligible candidates for each contact method before fine-scale enforcement.
+
 #ifndef SRC_TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_
 #define SRC_TRIBOL_SEARCH_INTERFACE_PAIR_FINDER_HPP_
 
@@ -16,6 +19,18 @@ namespace tribol {
 class SearchBase;
 
 /// Free functions
+
+namespace detail {
+
+/// Retain physical-normal candidates that can become opposing after the residual-gap offset rotates an edge.
+TRIBOL_HOST_DEVICE inline RealT energyMortarNormalDotLimit( const MeshData::Viewer& nonmortar_mesh,
+                                                            IndexT nonmortar_element, RealT residual_gap )
+{
+  const RealT edge_length = nonmortar_mesh.getElementAreas()[nonmortar_element];
+  return residual_gap / magnitude( edge_length, residual_gap );
+}
+
+}  // namespace detail
 
 /*!
  * \brief Basic geometry/proximity checks for face pairs
@@ -74,8 +89,14 @@ TRIBOL_HOST_DEVICE inline bool geomFilter( const CouplingScheme::Viewer& cs_view
     nrmlCheck += mesh1.getElementNormals()[d][element_id1] * mesh2.getElementNormals()[d][element_id2];
   }
 
-  // check normal projection against tolerance
-  if ( nrmlCheck > nrmlTol ) {
+  // A nonuniform residual gap can rotate EnergyMortar's virtual non-mortar edge by at most atan(gap / edge_length).
+  // Keep every physical-normal pair that can become opposing after that rotation; the energy kernel returns early
+  // when the actual virtual normals have zero alignment.
+  if ( cs_view.getContactMethod() == ENERGY_MORTAR && dim == 2 ) {
+    if ( nrmlCheck >= detail::energyMortarNormalDotLimit( mesh2, element_id2, residual_gap ) ) {
+      return false;
+    }
+  } else if ( nrmlCheck > nrmlTol ) {
     return false;
   }
 

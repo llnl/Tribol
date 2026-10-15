@@ -7,31 +7,29 @@
 #include <axom/slic/interface/slic_macros.hpp>
 #include "tribol/mesh/MfemData.hpp"
 
+#include <algorithm>
+#include <cmath>
+
 namespace tribol {
 
 #ifdef TRIBOL_USE_ENZYME
 
 template <template <typename> class EnforcementLocation>
-EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter(
-    MfemMeshData& mesh_data, MfemSubmeshData& submesh_data, MfemJacobianData& jac_data, double k, double delta,
-    double normal_smoothing_start_angle, double residual_gap_ramp_angle, bool residual_gap_ramp_updates, int N,
-    bool enzyme_quadrature, bool use_penalty, RealT residual_gap )
+EnergyMortarAdapter<EnforcementLocation>::EnergyMortarAdapter( MfemMeshData& mesh_data, MfemSubmeshData& submesh_data,
+                                                               MfemJacobianData& jac_data,
+                                                               const ContactParams& contact_params,
+                                                               double residual_gap_ramp_angle,
+                                                               bool updates_residual_gap_ramp, bool use_penalty )
     // NOTE: mesh1 maps to mesh2_ and mesh2 maps to mesh1_. This is to keep consistent with mesh1_ being non-mortar and
     // mesh2_ being mortar as is typical in the literature, but different from Tribol convention.
     : use_penalty_( use_penalty ),
       mesh_data_( mesh_data ),
       submesh_data_( submesh_data ),
       jac_data_( jac_data ),
+      params_( contact_params ),
       residual_gap_ramp_angle_( residual_gap_ramp_angle ),
-      residual_gap_ramp_updates_( residual_gap_ramp_updates )
+      updates_residual_gap_ramp_( updates_residual_gap_ramp )
 {
-  params_.k = k;
-  params_.del = delta;
-  params_.normal_smoothing_start_angle = normal_smoothing_start_angle;
-  params_.N = N;
-  params_.enzyme_quadrature = enzyme_quadrature;
-  params_.residual_gap = residual_gap;
-
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
 }
 
@@ -42,18 +40,6 @@ void EnergyMortarAdapter<EnforcementLocation>::updateConstantPenaltyStiffness( d
   use_penalty_ = true;
   params_.k = 0.5 * ( mesh1_penalty + mesh2_penalty );
   evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
-}
-
-template <template <typename> class EnforcementLocation>
-std::array<double, 4> EnergyMortarAdapter<EnforcementLocation>::residualGapValues( const InterfacePair& pair,
-                                                                                   const MeshData::Viewer& mesh1,
-                                                                                   const MeshData::Viewer& mesh2 ) const
-{
-  const auto& gap_field = submesh_data_.GetRedecompResidualGap();
-  const double* values = gap_field.HostRead();
-  const auto conn1 = mesh1.getConnectivity()( pair.m_element_id1 );
-  const auto conn2 = mesh2.getConnectivity()( pair.m_element_id2 );
-  return { values[conn1[0]], values[conn1[1]], values[conn2[0]], values[conn2[1]] };
 }
 
 template <template <typename> class EnforcementLocation>
@@ -86,16 +72,16 @@ void EnergyMortarAdapter<EnforcementLocation>::evaluate( MeshData& mesh1, MeshDa
     residual_gap_ramp_angle_ = parameters.residual_gap_ramp_angle;
     residual_gap_field_dirty_ = true;
   }
-  if ( !residual_gap_ramp_updates_ && parameters.residual_gap_ramp_updates ) {
+  if ( !updates_residual_gap_ramp_ && parameters.residual_gap_ramp_updates ) {
     residual_gap_field_dirty_ = true;
   }
-  residual_gap_ramp_updates_ = parameters.residual_gap_ramp_updates;
+  updates_residual_gap_ramp_ = parameters.residual_gap_ramp_updates;
 
   if ( requires_evaluator_rebuild ) {
     evaluator_ = std::make_unique<EnergyMortarCalculator>( params_ );
   }
 
-  if ( residual_gap_field_dirty_ || ( residual_gap_ramp_updates_ && residual_gap_field_cycle_ != cycle ) ) {
+  if ( residual_gap_field_dirty_ || ( updates_residual_gap_ramp_ && residual_gap_field_cycle_ != cycle ) ) {
     mesh_data_.UpdateSubmeshCoordinates();
     submesh_data_.UpdateResidualGapField( params_.residual_gap, residual_gap_ramp_angle_ );
     residual_gap_field_dirty_ = false;
@@ -104,6 +90,16 @@ void EnergyMortarAdapter<EnforcementLocation>::evaluate( MeshData& mesh1, MeshDa
   this->computeNodalGaps();
   this->computeNodalForces( multipliers );
   pairs_ = {};
+}
+
+template <template <typename> class EnforcementLocation>
+std::array<double, 2> EnergyMortarAdapter<EnforcementLocation>::residualGapValues( const InterfacePair& pair,
+                                                                                   const MeshData::Viewer& mesh1 ) const
+{
+  const auto& gap_field = submesh_data_.GetRedecompResidualGap();
+  const double* values = gap_field.HostRead();
+  const auto conn1 = mesh1.getConnectivity()( pair.m_element_id1 );
+  return { values[conn1[0]], values[conn1[1]] };
 }
 
 template <typename Adapter>
@@ -158,7 +154,7 @@ void Nodal<Adapter>::computeNodalGaps()
 
     double g_tilde_elem[2];
     double A_elem[2];
-    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view, mesh2_view );
+    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view );
 
     adapter->evaluator_->compute_gtilde_and_area( flipped_pair, mesh1_view, mesh2_view, g_tilde_elem, A_elem,
                                                   residual_gap_values.data() );
@@ -195,7 +191,8 @@ void Nodal<Adapter>::computeNodalGaps()
     double dA_dx_node1[8];
     double dA_dx_node2[8];
     // TODO: make grad_trib_area return directly in dA_dx_blocks format
-    adapter->evaluator_->grad_trib_area( flipped_pair, mesh1_view, mesh2_view, dA_dx_node1, dA_dx_node2 );
+    adapter->evaluator_->grad_trib_area( flipped_pair, mesh1_view, mesh2_view, dA_dx_node1, dA_dx_node2,
+                                         residual_gap_values.data() );
     double dA_dx_blocks[2][8];
     for ( int i{ 0 }; i < 4; ++i ) {
       dA_dx_blocks[0][i * 2] = dA_dx_node1[node_idx[i]];
@@ -394,7 +391,7 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesLM( Adapter* ad
 
     double d2g_dx2_node1[64];
     double d2g_dx2_node2[64];
-    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view, mesh2_view );
+    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view );
     adapter->evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2,
                                      residual_gap_values.data() );
 
@@ -478,13 +475,14 @@ shared::ParSparseMat Nodal<Adapter>::computeDfDxSecondDerivativesPenalty( Adapte
 
     double d2g_dx2_node1[64];
     double d2g_dx2_node2[64];
-    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view, mesh2_view );
+    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view );
     adapter->evaluator_->d2_g2tilde( flipped_pair, mesh1_view, mesh2_view, d2g_dx2_node1, d2g_dx2_node2,
                                      residual_gap_values.data() );
 
     double d2A_dx2_node1[64];
     double d2A_dx2_node2[64];
-    adapter->evaluator_->compute_d2A_d2u( flipped_pair, mesh1_view, mesh2_view, d2A_dx2_node1, d2A_dx2_node2 );
+    adapter->evaluator_->compute_d2A_d2u( flipped_pair, mesh1_view, mesh2_view, d2A_dx2_node1, d2A_dx2_node2,
+                                          residual_gap_values.data() );
 
     double df_dx_blocks[2][2][16];
     for ( int i{ 0 }; i < 2; ++i ) {
@@ -539,10 +537,10 @@ void QuadraturePoint<Adapter>::computeNodalForces( const mfem::HypreParVector* /
   PackedPairJacobianContribs df_m_m( displacement_surface_fes, displacement_surface_fes, displacement_redecomp_fes,
                                      displacement_redecomp_fes, mortar_elem_map, mortar_elem_map );
 
-  df_nm_nm.reserve( adapter->pairs_.size(), 16 );
-  df_nm_m.reserve( adapter->pairs_.size(), 16 );
-  df_m_nm.reserve( adapter->pairs_.size(), 16 );
-  df_m_m.reserve( adapter->pairs_.size(), 16 );
+  df_nm_nm.reserve( 10 * adapter->pairs_.size(), 10 * 16 * adapter->pairs_.size() );
+  df_nm_m.reserve( 4 * adapter->pairs_.size(), 4 * 16 * adapter->pairs_.size() );
+  df_m_nm.reserve( 4 * adapter->pairs_.size(), 4 * 16 * adapter->pairs_.size() );
+  df_m_m.reserve( 2 * adapter->pairs_.size(), 2 * 16 * adapter->pairs_.size() );
 
   mfem::GridFunction redecomp_force( const_cast<mfem::FiniteElementSpace*>( &displacement_redecomp_fes ) );
   redecomp_force = 0.0;
@@ -554,12 +552,11 @@ void QuadraturePoint<Adapter>::computeNodalForces( const mfem::HypreParVector* /
   SLIC_ERROR_ROOT_IF( adapter->mesh1_ == nullptr || adapter->mesh2_ == nullptr, "ENERGY_MORTAR meshes not set." );
   auto mesh1_view = adapter->mesh1_->getView();
   auto mesh2_view = adapter->mesh2_->getView();
-
   for ( const auto& pair : adapter->pairs_ ) {
     InterfacePair flipped_pair( pair.m_element_id2, pair.m_element_id1 );
     const auto elem1 = static_cast<int>( flipped_pair.m_element_id1 );
     const auto elem2 = static_cast<int>( flipped_pair.m_element_id2 );
-    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view, mesh2_view );
+    const auto residual_gap_values = adapter->residualGapValues( flipped_pair, mesh1_view );
     const auto qp_data = adapter->evaluator_->compute_quadrature_point_penalty_data(
         flipped_pair, mesh1_view, mesh2_view, residual_gap_values.data() );
 
@@ -597,7 +594,6 @@ void QuadraturePoint<Adapter>::computeNodalForces( const mfem::HypreParVector* /
     df_m_nm.append( elem2, elem1, df_dx_blocks[1][0], 16 );
     df_m_m.append( elem2, elem2, df_dx_blocks[1][1], 16 );
   }
-
   auto* parent_fes = adapter->mesh_data_.GetParentCoords().ParFESpace();
   adapter->force_vec_ = shared::ParVector( const_cast<mfem::ParFiniteElementSpace*>( parent_fes ) );
   adapter->force_vec_.fill( 0.0 );
@@ -605,7 +601,6 @@ void QuadraturePoint<Adapter>::computeNodalForces( const mfem::HypreParVector* /
   parent_force = 0.0;
   adapter->mesh_data_.GetParentRedecompTransfer().RedecompToParent( redecomp_force, parent_force );
   parent_fes->GetProlongationMatrix()->MultTranspose( parent_force, adapter->force_vec_.get() );
-
   std::vector<PackedPairJacobianContribs> df_contribs;
   df_contribs.reserve( 4 );
   df_contribs.push_back( std::move( df_nm_nm ) );

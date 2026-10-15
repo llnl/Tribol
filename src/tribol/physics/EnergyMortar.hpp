@@ -25,13 +25,13 @@ struct QuadPoints {
 
 /// Parameters controlling ENERGY_MORTAR contact evaluation.
 struct ContactParams {
-  double del;  ///< Smoothing length used for integration bounds.
+  double del{ 0.1 };  ///< Integration-bound smoothing length.
   double normal_smoothing_start_angle{
       energy_mortar::default_normal_smoothing_start_angle };  ///< Normal smoothing start angle in radians.
-  double k;                                                   ///< Penalty stiffness.
-  int N;                                                      ///< Number of quadrature points.
-  bool enzyme_quadrature;      ///< Whether Enzyme differentiates the quadrature construction.
-  double residual_gap{ 0.0 };  ///< User-defined gap offset subtracted from the kinematic gap.
+  double k{ 1.0 };                                            ///< Penalty stiffness.
+  int N{ 3 };                                                 ///< Number of quadrature points.
+  bool enzyme_quadrature{ true };  ///< Whether Enzyme differentiates the quadrature construction.
+  double residual_gap{ 0.0 };      ///< Uniform separation used when no nodal residual-gap field is supplied.
 };
 
 /// Stores quadrature-point penalty energy derivatives for one interface pair.
@@ -92,7 +92,7 @@ struct Gparams {
   std::array<double, 3> w;   ///< Quadrature weights mapped to the local integration interval.
   double normal_smoothing_start_angle{
       energy_mortar::default_normal_smoothing_start_angle };  ///< Normal smoothing start angle in radians.
-  std::array<double, 3> residual_gap{};                       ///< Lagged residual-gap values at the quadrature points.
+  std::array<double, 2> residual_gap{};  ///< Endpoint separations held fixed during pair differentiation.
 };
 
 /// Provides smoothing operations for the Energy Mortar contact formulation.
@@ -136,17 +136,17 @@ class EnergyMortarCalculator {
   ///
   /// The parameters define the penalty stiffness, smoothing length, and
   /// derivative path used by the evaluator.
-  explicit EnergyMortarCalculator( const ContactParams& p )
-      : p_( p ), smoother_() {}  // constructor - copies params into the object
+  explicit EnergyMortarCalculator( const ContactParams& p ) : p_( p ) {}
 
   /// Report the quadrature order used to construct this evaluator's integration rules.
   int get_N() const { return p_.N; }
 
   /// Expose the same offset-surface projection interval used by contact integration and derivative checks.
   std::array<double, 2> compute_projection_bounds( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                                   const MeshData::Viewer& mesh2 ) const
+                                                   const MeshData::Viewer& mesh2,
+                                                   const double* residual_gap_values = nullptr ) const
   {
-    return projections( pair, mesh1, mesh2 );
+    return projections( pair, mesh1, mesh2, residual_gap_values );
   }
 
   /// Construct a three-point Gauss-Legendre quadrature rule over local bounds.
@@ -184,7 +184,7 @@ class EnergyMortarCalculator {
   /// differentiation. If true, the derivative includes the geometry-dependent
   /// quadrature construction.
   void grad_trib_area( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                       double dA1_dx[8], double dA2_dx[8] ) const;
+                       double dA1_dx[8], double dA2_dx[8], const double* residual_gap_values = nullptr ) const;
 
   /// Compute second derivatives of the nodal smoothed gap integrals.
   ///
@@ -204,7 +204,7 @@ class EnergyMortarCalculator {
   /// the quadrature rule is held fixed during differentiation. If true, the
   /// derivative includes the geometry-dependent quadrature construction.
   void compute_d2A_d2u( const InterfacePair& pair, const MeshData::Viewer& mesh1, const MeshData::Viewer& mesh2,
-                        double dgt1_dx[64], double dgt2_dx[64] ) const;
+                        double dgt1_dx[64], double dgt2_dx[64], const double* residual_gap_values = nullptr ) const;
 
   /// Compute local energy, force, and stiffness for quadrature-point penalty enforcement.
   QuadraturePointPenaltyData compute_quadrature_point_penalty_data( const InterfacePair& pair,
@@ -253,9 +253,6 @@ class EnergyMortarCalculator {
  private:
   /// Contact parameters controlling penalty stiffness, smoothing, and derivative behavior.
   ContactParams p_;
-  /// Helper used to construct smoothed integration bounds
-  ContactSmoothing smoother_;
-
   /// Construct the gap-kernel parameter bundle for the current interface pair.
   ///
   /// This builds the smoothed integration bounds, quadrature points, quadrature
@@ -269,7 +266,7 @@ class EnergyMortarCalculator {
   /// The returned values are local coordinates on edge A and define the interval
   /// used to construct the smoothed integration bounds.
   std::array<double, 2> projections( const InterfacePair& pair, const MeshData::Viewer& mesh1,
-                                     const MeshData::Viewer& mesh2 ) const;
+                                     const MeshData::Viewer& mesh2, const double* residual_gap_values = nullptr ) const;
 
   /// Compute smoothed gap gradients while holding the quadrature rule fixed.
   ///

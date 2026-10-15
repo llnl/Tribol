@@ -42,6 +42,7 @@ Changelog](http://keepachangelog.com/en/1.0.0/).
 
 ### Changed
 - EnergyMortar receives complete inputs through one evaluation call; solver multipliers remain MFEM-owned and result access does not consume state. Normal attenuation uses a shifted-cosine transition with C1 quadratic penalty energy.
+- EnergyMortar uses offset non-mortar geometry consistently for projections and enforcement, with consistent forces/Jacobians and C2 integration-bound smoothing.
 - Return negative timestep vote for non-null meshes with null velocity pointers.
 - Refactored how surface elements are characterized, now using finite element
   order and type of cell.

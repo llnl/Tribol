@@ -1523,12 +1523,12 @@ class MfemSubmeshData {
   void UpdateMfemSubmeshData( redecomp::RedecompMesh& redecomp_mesh, bool new_redecomp = true );
 
   /**
-   * @brief Build the EnergyMortar residual-gap ramp on the persistent contact submesh
+   * @brief Build the EnergyMortar residual-gap ramp on the contact submesh
    *
    * @param residual_gap Full residual gap away from nonconvex corners
    * @param ramp_angle Total symmetric crack-opening ramp angle in radians; zero disables corner reduction
    *
-   * @note Corner reduction currently applies to 2D contact curves. Other dimensions retain a uniform residual gap.
+   * @note Every nonconvex 2D opening below pi seeds corner reduction. Other dimensions retain a uniform residual gap.
    */
   void UpdateResidualGapField( RealT residual_gap, RealT ramp_angle );
 

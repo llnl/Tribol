@@ -5,7 +5,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <set>
+#include <tuple>
 #include "tribol/physics/EnergyMortar.hpp"
 #include <gtest/gtest.h>
 
@@ -23,11 +25,11 @@
 
 #include "tribol/config.hpp"
 #include "tribol/common/Parameters.hpp"
+#include "tribol/geom/ElementNormal.hpp"
 #include "tribol/interface/tribol.hpp"
+#include "tribol/search/InterfacePairFinder.hpp"
 
 namespace tribol {
-
-// static ContactSmoothing smoother( ContactParams{} );
 
 inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], double P1[2] )
 {
@@ -42,13 +44,10 @@ inline void endpoints( const MeshData::Viewer& mesh, int elem_id, double P0[2], 
 std::pair<double, double> EnergyMortarCalculator::eval_gtilde( const InterfacePair& pair, const MeshData::Viewer& mesh1,
                                                                const MeshData::Viewer& mesh2 ) const
 {
-  NodalContactData ncd = compute_nodal_contact_data( pair, mesh1, mesh2 );
-  // double gt1 = ncd.g_tilde[0];
-  // double gt2 = ncd.g_tilde[1];
-  double A1 = ncd.g_tilde[0];
-  double A2 = ncd.g_tilde[1];
-
-  return { A1, A2 };
+  double gtilde[2];
+  double area[2];
+  compute_gtilde_and_area( pair, mesh1, mesh2, gtilde, area );
+  return { gtilde[0], gtilde[1] };
 }
 
 FiniteDiffResult EnergyMortarCalculator::validate_g_tilde( const InterfacePair& pair, MeshData& mesh1, MeshData& mesh2,
@@ -61,9 +60,9 @@ FiniteDiffResult EnergyMortarCalculator::validate_g_tilde( const InterfacePair& 
 
   auto projs0 = projections( pair, viewer1, viewer2 );
   double bounds0[2];
-  smoother_.bounds_from_projections( projs0.data(), p_.del, bounds0 );
+  ContactSmoothing::bounds_from_projections( projs0.data(), p_.del, bounds0 );
   double smooth_bounds0[2];
-  smoother_.smooth_bounds( bounds0, p_.del, smooth_bounds0 );
+  ContactSmoothing::smooth_bounds( bounds0, p_.del, smooth_bounds0 );
   QuadPoints qp0;
   if ( !p_.enzyme_quadrature ) {
     compute_quadrature( smooth_bounds0, p_.N, &qp0 );
@@ -294,9 +293,9 @@ FiniteDiffResult EnergyMortarCalculator::validate_hessian( const InterfacePair& 
   if ( !p_.enzyme_quadrature ) {
     auto projs0 = projections( pair, viewer1, viewer2 );
     double bounds0[2];
-    smoother_.bounds_from_projections( projs0.data(), p_.del, bounds0 );
+    ContactSmoothing::bounds_from_projections( projs0.data(), p_.del, bounds0 );
     double smooth_bounds0[2];
-    smoother_.smooth_bounds( bounds0, p_.del, smooth_bounds0 );
+    ContactSmoothing::smooth_bounds( bounds0, p_.del, smooth_bounds0 );
     compute_quadrature( smooth_bounds0, p_.N, &qp0 );
   }
 
@@ -428,6 +427,41 @@ TEST( NormalAngleSmoothingCheck, NinetyDegreesDisablesAttenuation )
   EXPECT_DOUBLE_EQ( ContactSmoothing::normal_alignment_factor( 0.5, right_angle ), 0.0 );
 }
 
+// Unequal endpoint offsets can make virtual normals oppose even when the physical normals do not; using only the
+// physical normals would miss this valid contact pair.
+TEST( EnergyMortarResidualGapCheck, VirtualNormalsCanOpposeWhenPhysicalNormalsDoNot )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 0, 1 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = { 0.5, 0.500001 };
+  RealT y2[2] = { -0.2, 0.2 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ASSERT_TRUE( mesh1.computeFaceData( ExecutionMode::Sequential, PalletAvgNormal() ) );
+  ASSERT_TRUE( mesh2.computeFaceData( ExecutionMode::Sequential, PalletAvgNormal() ) );
+  const double physical_normal_dot =
+      mesh1.getView().getElementNormals()[0][0] * mesh2.getView().getElementNormals()[0][0] +
+      mesh1.getView().getElementNormals()[1][0] * mesh2.getView().getElementNormals()[1][0];
+  ASSERT_GT( physical_normal_dot, 0.0 );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  params.normal_smoothing_start_angle = energy_mortar::default_normal_smoothing_start_angle;
+  EnergyMortarCalculator evaluator( params );
+  const double residual[2] = { 0.0, 0.2 };
+  const auto contact = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
+                                                                        mesh2.getView(), residual );
+  EXPECT_TRUE( contact.has_active_qp );
+  EXPECT_GT( contact.energy, 0.0 );
+}
+
 TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
 {
   RealT x1[2] = { 0.0, 1.0 };
@@ -456,8 +490,8 @@ TEST( QuadraturePointPenaltyCheck, OpenGapIsInactive )
                             []( double stiffness ) { return stiffness == 0.0; } ) );
 }
 
-// Use the pair-local ramp field when choosing its effective residual separation.
-TEST( EnergyMortarResidualGapCheck, PairUsesMaximumInterpolatedRampValue )
+// Reading residual-gap values from the mortar edge would activate the wrong side of this separated pair.
+TEST( EnergyMortarResidualGapCheck, UsesNonmortarResidualGap )
 {
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
@@ -478,16 +512,131 @@ TEST( EnergyMortarResidualGapCheck, PairUsesMaximumInterpolatedRampValue )
   params.residual_gap = 0.15;
   EnergyMortarCalculator evaluator( params );
 
-  const double both_reduced[4] = { 0.0, 0.0, 0.0, 0.0 };
+  const double zero_gap[2] = { 0.0, 0.0 };
   const auto inactive = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
-                                                                         mesh2.getView(), both_reduced );
+                                                                         mesh2.getView(), zero_gap );
   EXPECT_FALSE( inactive.has_active_qp );
 
-  const double one_full[4] = { 0.0, 0.0, 0.15, 0.15 };
+  const double nonmortar_full[2] = { 0.15, 0.15 };
   const auto active = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
-                                                                       mesh2.getView(), one_full );
+                                                                       mesh2.getView(), nonmortar_full );
   EXPECT_TRUE( active.has_active_qp );
   EXPECT_GT( active.energy, 0.0 );
+}
+
+// Replacing unequal endpoint gaps with one global value would project a uniformly offset edge instead of the ramp.
+TEST( EnergyMortarResidualGapCheck, NonuniformRampChangesProjectionSpatially )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 1, 0 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = { 0.2, 0.8 };
+  RealT y2[2] = { 0.1, 0.25 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  EnergyMortarCalculator evaluator( params );
+
+  const double zero[2] = { 0.0, 0.0 };
+  const double ramp[2] = { 0.0, 0.2 };
+  const double global_max[2] = { 0.2, 0.2 };
+  const auto zero_projection =
+      evaluator.compute_projection_bounds( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(), zero );
+  const auto ramp_projection =
+      evaluator.compute_projection_bounds( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(), ramp );
+  const auto max_projection =
+      evaluator.compute_projection_bounds( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(), global_max );
+
+  EXPECT_TRUE( std::abs( ramp_projection[0] - zero_projection[0] ) > 1.0e-6 ||
+               std::abs( ramp_projection[1] - zero_projection[1] ) > 1.0e-6 );
+  EXPECT_TRUE( std::abs( ramp_projection[0] - max_projection[0] ) > 1.0e-6 ||
+               std::abs( ramp_projection[1] - max_projection[1] ) > 1.0e-6 );
+}
+
+// These physical edges do not project onto each other, so using physical geometry would miss overlap created by the
+// residual-gap offsets.
+TEST( EnergyMortarResidualGapCheck, ObliqueVirtualEdgesCreateProjectedOverlap )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 1, 0 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+
+  RealT x2[2] = { 0.9, 0.95 };
+  RealT y2[2] = { 0.1, 0.18660254037844387 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.0;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  EnergyMortarCalculator evaluator( params );
+  const double zero[2] = { 0.0, 0.0 };
+  const double residual[2] = { 0.25, 0.25 };
+
+  const auto physical =
+      evaluator.compute_projection_bounds( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(), zero );
+  const auto virtual_projection =
+      evaluator.compute_projection_bounds( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(), residual );
+  EXPECT_LT( physical[1], -0.5 );
+  EXPECT_GT( virtual_projection[1], -0.5 );
+
+  const auto inactive =
+      evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(), zero );
+  const auto active = evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(),
+                                                                       mesh2.getView(), residual );
+  EXPECT_FALSE( inactive.has_active_qp );
+  EXPECT_TRUE( active.has_active_qp );
+  EXPECT_GT( active.energy, 0.0 );
+}
+
+// The sum of edge and endpoint response must have matching limits as a target slides across the ownership boundary.
+
+// Missing derivatives of a virtual endpoint can create a net force or make the response change after translation.
+TEST( EnergyMortarResidualGapCheck, ForceBalanceAndTranslationInvariance )
+{
+  RealT x1[2] = { 0.0, 1.0 };
+  RealT y1[2] = { 0.0, 0.0 };
+  IndexT conn1[2] = { 1, 0 };
+  MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
+  RealT x2[2] = { 0.2, 0.8 };
+  RealT y2[2] = { 0.1, 0.1 };
+  IndexT conn2[2] = { 0, 1 };
+  MeshData mesh2( 1, 1, 2, conn2, LINEAR_EDGE, x2, y2, nullptr, MemorySpace::Host );
+
+  ContactParams params;
+  params.del = 0.1;
+  params.k = 3.0;
+  params.N = 3;
+  params.enzyme_quadrature = true;
+  params.residual_gap = 0.15;
+  EnergyMortarCalculator evaluator( params );
+  const auto base =
+      evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
+  EXPECT_NEAR( base.force[0] + base.force[2] + base.force[4] + base.force[6], 0.0, 1.0e-9 );
+  EXPECT_NEAR( base.force[1] + base.force[3] + base.force[5] + base.force[7], 0.0, 1.0e-9 );
+
+  for ( double& x : x1 ) x += 1.25;
+  for ( double& y : y1 ) y -= 0.75;
+  for ( double& x : x2 ) x += 1.25;
+  for ( double& y : y2 ) y -= 0.75;
+  mesh1.setPosition( x1, y1, nullptr );
+  mesh2.setPosition( x2, y2, nullptr );
+  const auto translated =
+      evaluator.compute_quadrature_point_penalty_data( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView() );
+  EXPECT_NEAR( translated.energy, base.energy, 1.0e-12 );
+  for ( int i = 0; i < 8; ++i ) {
+    EXPECT_NEAR( translated.force[i], base.force[i], 1.0e-9 );
+  }
 }
 
 TEST( QuadraturePointPenaltyCheck, ZeroGapRetainsActiveTangent )
@@ -559,15 +708,16 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapIsShiftedByArea )
   }
 }
 
-// Apply normal attenuation consistently to the residual-gap correction.
-TEST( EnergyMortarResidualGapCheck, AssembledGapShiftRespectsNormalSmoothing )
+// Merely subtracting the residual gap from a physical-edge integral gives the wrong tributary areas for oblique
+// virtual edges.
+TEST( EnergyMortarResidualGapCheck, VirtualGeometryRespectsNormalSmoothing )
 {
   RealT x1[2] = { 0.0, 1.0 };
   RealT y1[2] = { 0.0, 0.0 };
   IndexT conn1[2] = { 1, 0 };
   MeshData mesh1( 0, 1, 2, conn1, LINEAR_EDGE, x1, y1, nullptr, MemorySpace::Host );
 
-  constexpr double pi = 3.14159265358979323846264338327950288;
+  constexpr double pi = std::numbers::pi_v<double>;
   constexpr double angle = pi / 3.0;
   constexpr double separation = 0.3;
   constexpr double half_edge_length = 0.05;
@@ -601,15 +751,9 @@ TEST( EnergyMortarResidualGapCheck, AssembledGapShiftRespectsNormalSmoothing )
   evaluator_with_residual.compute_gtilde_and_area( InterfacePair( 0, 0 ), mesh1.getView(), mesh2.getView(),
                                                    gap_with_residual, tributary_area_with_residual );
 
-  const double normal_alignment =
-      ContactSmoothing::normal_alignment_factor( -std::cos( angle ), params.normal_smoothing_start_angle );
-  ASSERT_GT( normal_alignment, -1.0 );
-  ASSERT_LT( normal_alignment, 0.0 );
   for ( int i = 0; i < 2; ++i ) {
-    EXPECT_NEAR( tributary_area_with_residual[i], tributary_area_without_residual[i], 1.0e-14 );
-    EXPECT_NEAR( gap_with_residual[i],
-                 gap_without_residual[i] + normal_alignment * params.residual_gap * tributary_area_without_residual[i],
-                 1.0e-14 );
+    EXPECT_NE( tributary_area_with_residual[i], tributary_area_without_residual[i] );
+    EXPECT_NE( gap_with_residual[i], gap_without_residual[i] );
   }
 }
 
@@ -653,7 +797,7 @@ TEST( EnergyMortarResidualGapCheck, QuadraturePointOpenGapBecomesActive )
                             []( double stiffness ) { return stiffness != 0.0; } ) );
 }
 
-class ResidualGapDerivativeCheck : public ::testing::TestWithParam<double> {};
+class ResidualGapDerivativeCheck : public ::testing::TestWithParam<std::tuple<double, bool>> {};
 
 TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFiniteDifference )
 {
@@ -681,8 +825,8 @@ TEST_P( ResidualGapDerivativeCheck, QuadraturePointPenaltyDerivativesMatchFinite
   params.del = 0.1;
   params.k = 3.0;
   params.N = 3;
-  params.enzyme_quadrature = true;
-  params.residual_gap = GetParam();
+  params.enzyme_quadrature = std::get<1>( GetParam() );
+  params.residual_gap = std::get<0>( GetParam() );
 
   EnergyMortarCalculator evaluator( params );
   const InterfacePair pair( 0, 0 );
@@ -776,8 +920,8 @@ TEST_P( ResidualGapDerivativeCheck, GtildeGradientFDvsAD )
   params_.del = 0.1;
   params_.k = 1.0;
   params_.N = 3;
-  params_.enzyme_quadrature = true;
-  params_.residual_gap = GetParam();
+  params_.enzyme_quadrature = std::get<1>( GetParam() );
+  params_.residual_gap = std::get<0>( GetParam() );
 
   EnergyMortarCalculator evaluator_( params_ );
 
@@ -829,8 +973,8 @@ TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
   params_.del = 0.1;
   params_.k = 1.0;
   params_.N = 3;
-  params_.enzyme_quadrature = true;
-  params_.residual_gap = GetParam();
+  params_.enzyme_quadrature = std::get<1>( GetParam() );
+  params_.residual_gap = std::get<0>( GetParam() );
 
   EnergyMortarCalculator evaluator_( params_ );
 
@@ -860,6 +1004,7 @@ TEST_P( ResidualGapDerivativeCheck, GtildeHessianFDvsAD )
   }
 }
 
-INSTANTIATE_TEST_SUITE_P( ZeroAndNonzeroResidualGap, ResidualGapDerivativeCheck, testing::Values( 0.0, 0.15 ) );
+INSTANTIATE_TEST_SUITE_P( FixedAndGeometryDependentQuadrature, ResidualGapDerivativeCheck,
+                          testing::Combine( testing::Values( 0.0, 0.15 ), testing::Bool() ) );
 
 }  // namespace tribol
