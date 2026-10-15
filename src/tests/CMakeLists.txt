@@ -133,9 +133,14 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
       DEPENDS_ON ${redecomp_test_depends} ${tribol_device_depends}
       FOLDER redecomp/tests )
     
-    # NOTE: just do 2 ranks for now until we make the tests smaller
-    #foreach ( nranks RANGE 1 3 )
-    foreach ( nranks RANGE 2 2 )
+    # Transfer tests use one rank for the serial baseline and four ranks to cover empty redecomp partitions. Keep the
+    # other MPI test suites at two ranks to avoid adding unrelated test cost.
+    if (test_name STREQUAL "redecomp_transfer")
+      set(redecomp_test_rank_counts 1 2 4)
+    else()
+      set(redecomp_test_rank_counts 2)
+    endif()
+    foreach ( nranks IN LISTS redecomp_test_rank_counts )
       blt_add_test( NAME ${test_name}_${nranks}rank
                     COMMAND ${test_name}_test
                     NUM_MPI_TASKS ${nranks} )

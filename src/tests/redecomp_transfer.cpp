@@ -78,6 +78,29 @@ class TransferTest : public testing::TestWithParam<std::pair<std::string, int>> 
     final -= orig;
     return final.Norml2() / orig.Norml2();
   }
+
+  void CheckReplicatedDualCollapse( const RedecompTransfer& transfer, const mfem::ParGridFunction& parent_primal,
+                                    mfem::GridFunction& redecomp_primal ) const
+  {
+    // Transferring a known parent field creates matching values on every complete redecomp copy. Reusing those values
+    // as a synthetic assembled response makes the expected collapsed dual unambiguous.
+    transfer.TransferToSerial( parent_primal, redecomp_primal );
+    mfem::LinearForm redecomp_dual( redecomp_primal.FESpace() );
+    redecomp_dual = redecomp_primal;
+
+    mfem::ParLinearForm parent_dual( parent_primal.ParFESpace() );
+    transfer.CollapseReplicatedDualToParallel( redecomp_dual, parent_dual );
+
+    mfem::Vector collapsed_true_dofs( parent_primal.ParFESpace()->GetTrueVSize() );
+    mfem::Vector expected_true_dofs( parent_primal.ParFESpace()->GetTrueVSize() );
+
+    // MFEM sums shared parent DOFs during assembly. Matching the original true values proves that the collapse retained
+    // one physical response instead of one response per redecomp copy.
+    parent_dual.ParallelAssemble( collapsed_true_dofs );
+    parent_primal.GetTrueDofs( expected_true_dofs );
+    collapsed_true_dofs -= expected_true_dofs;
+    EXPECT_LT( collapsed_true_dofs.Norml2() / std::max( 1.0, expected_true_dofs.Norml2() ), 1.0e-13 );
+  }
 };
 
 TEST_P( TransferTest, element_gridfn_transfer )
@@ -112,11 +135,77 @@ TEST_P( TransferTest, node_gridfn_transfer )
   MPI_Barrier( MPI_COMM_WORLD );
 }
 
+TEST_P( TransferTest, replicated_dual_collapse )
+{
+  // Exercise the cached nodal maps used when several fields share the same parent and redecomp spaces.
+  auto transfer_map = RedecompTransfer( *par_vector_space_, *redecomp_vector_space_ );
+  CheckReplicatedDualCollapse( transfer_map, *orig_, *xfer_ );
+}
+
+TEST_P( TransferTest, element_replicated_dual_collapse )
+{
+  // Exercise direct element-list transfer independently of the cached nodal-map implementation.
+  auto transfer_map = RedecompTransfer();
+  CheckReplicatedDualCollapse( transfer_map, *orig_, *xfer_ );
+}
+
+TEST_P( TransferTest, scalar_replicated_dual_collapse )
+{
+  // Vector tests cover component-expanded DOF maps. A scalar field confirms that collapse also handles vector dimension
+  // one without relying on component ordering.
+  mfem::ParFiniteElementSpace parent_scalar_space( &par_mesh_, h1_elems_.get() );
+  mfem::FiniteElementSpace redecomp_scalar_space( redecomp_mesh_.get(), h1_elems_.get() );
+  mfem::ParGridFunction parent_scalar( &parent_scalar_space );
+  mfem::GridFunction redecomp_scalar( &redecomp_scalar_space );
+  parent_scalar = 2.5;
+
+  auto transfer_map = RedecompTransfer( parent_scalar_space, redecomp_scalar_space );
+  CheckReplicatedDualCollapse( transfer_map, parent_scalar, redecomp_scalar );
+}
+
 INSTANTIATE_TEST_SUITE_P( redecomp, TransferTest,
                           testing::Values( std::make_pair( "/data/star.mesh", 1 ),
                                            std::make_pair( "/data/star.mesh", 3 ),
                                            std::make_pair( "/data/two_hex.mesh", 1 ),
                                            std::make_pair( "/data/two_hex.mesh", 3 ) ) );
+
+TEST( RedecompTransfer, empty_redecomp_ranks )
+{
+  int comm_size = 0;
+  MPI_Comm_size( MPI_COMM_WORLD, &comm_size );
+  if ( comm_size < 4 ) {
+    GTEST_SKIP() << "Empty-rank coverage runs with four MPI ranks.";
+  }
+
+  auto serial_mesh = mfem::Mesh::MakeCartesian2D( 4, 1, mfem::Element::QUADRILATERAL );
+  mfem::ParMesh parent_mesh( MPI_COMM_WORLD, serial_mesh );
+  mfem::H1_FECollection collection( 1, parent_mesh.Dimension() );
+  mfem::ParFiniteElementSpace parent_space( &parent_mesh, &collection );
+  mfem::ParGridFunction parent_primal( &parent_space );
+  parent_primal = 3.0;
+
+  // Restrict redecomp ownership to one rank so the remaining ranks exercise empty serial meshes and transfer maps.
+  RedecompMesh redecomp_mesh( parent_mesh, RedecompMesh::RCB, 1 );
+  mfem::FiniteElementSpace redecomp_space( &redecomp_mesh, &collection );
+  mfem::GridFunction redecomp_primal( &redecomp_space );
+  RedecompTransfer transfer( parent_space, redecomp_space );
+  transfer.TransferToSerial( parent_primal, redecomp_primal );
+
+  mfem::LinearForm redecomp_dual( &redecomp_space );
+  redecomp_dual = redecomp_primal;
+  mfem::ParLinearForm parent_dual( &parent_space );
+  transfer.CollapseReplicatedDualToParallel( redecomp_dual, parent_dual );
+
+  mfem::Vector collapsed_true_dofs( parent_space.GetTrueVSize() );
+  mfem::Vector expected_true_dofs( parent_space.GetTrueVSize() );
+
+  // Ranks with empty redecomp meshes must still participate in collapse without changing the response supplied by the
+  // sole populated redecomp rank.
+  parent_dual.ParallelAssemble( collapsed_true_dofs );
+  parent_primal.GetTrueDofs( expected_true_dofs );
+  collapsed_true_dofs -= expected_true_dofs;
+  EXPECT_LT( collapsed_true_dofs.Norml2(), 1.0e-13 );
+}
 
 }  // namespace redecomp
 
