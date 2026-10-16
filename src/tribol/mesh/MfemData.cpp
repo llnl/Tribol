@@ -699,9 +699,8 @@ MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParM
       &submesh_, submesh_fec.get(), current_coords.ParFESpace()->GetVDim(), mfem::Ordering::byNODES ) );
   submesh_xfer_gridfn_.MakeOwner( submesh_fec.release() );
 
-  // Higher-order fields use the boundary submesh directly when LOR transfer is
-  // disabled. Avoiding the LOR mesh keeps RedecompMesh's parent consistent with
-  // the mesh that owns those fields.
+  // Higher-order fields use the boundary submesh directly when LOR transfer is disabled. Avoiding the LOR mesh keeps
+  // RedecompMesh's parent consistent with the mesh that owns those fields.
   if ( transfers_fields_through_lor_ && current_coords.FESpace()->FEColl()->GetOrder() > 1 ) {
     SetLORFactor( current_coords.FESpace()->FEColl()->GetOrder() );
   }

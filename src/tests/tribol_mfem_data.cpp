@@ -60,8 +60,8 @@ constexpr double zero = 0.0;
 
 mfem::ParMesh MakeContactMesh()
 {
-  // Each contact surface has several elements so both MPI ranks exercise
-  // higher-order DOFs owned by different parent partitions.
+  // Each contact surface has several elements so both MPI ranks exercise higher-order DOFs owned by different parent
+  // partitions.
   // clang-format off
   return shared::ParMeshBuilder(MPI_COMM_WORLD, shared::MeshBuilder::Unify({
     shared::MeshBuilder::CubeMesh(elements_per_direction, elements_per_direction, elements_per_direction),
@@ -82,9 +82,8 @@ void ExpectVectorsNear( mfem::Vector actual, const mfem::Vector& expected )
 
 void ExpectReturnedDualMatchesField( mfem::Vector& returned_dual, mfem::ParGridFunction& expected_field )
 {
-  // MFEM stores dual fields with only owned shared DOFs populated. Parallel
-  // assembly sums that local storage into the true-DOF values used for the
-  // comparison.
+  // MFEM stores dual fields with only owned shared DOFs populated. Parallel assembly sums that local storage into the
+  // true-DOF values used for the comparison.
   mfem::ParLinearForm returned_form( expected_field.ParFESpace(), returned_dual.GetData() );
   mfem::Vector returned_true_dofs( expected_field.ParFESpace()->GetTrueVSize() );
   mfem::Vector expected_true_dofs( expected_field.ParFESpace()->GetTrueVSize() );
@@ -167,8 +166,8 @@ TEST_P( HigherOrderMfemDataTest, direct_transfer_retains_higher_order_fields )
   EXPECT_EQ( redecomp_fes->GetVDim(), mesh.SpaceDimension() );
   EXPECT_GT( redecomp_fes->GetNDofs(), redecomp_mesh.GetNV() );
 
-  // Comparing against an independent coefficient projection checks every
-  // higher-order DOF, including edge, face, and element-interior DOFs.
+  // Comparing against an independent coefficient projection checks every higher-order DOF, including edge, face, and
+  // element-interior DOFs.
   mfem::GridFunction expected_velocity( redecomp_fes );
   expected_velocity.ProjectCoefficient( velocity_coefficient );
   const auto velocity_components = mesh_data.GetRedecompVelocityPtrs();
@@ -180,8 +179,8 @@ TEST_P( HigherOrderMfemDataTest, direct_transfer_retains_higher_order_fields )
     }
   }
 
-  // Reusing a transferred primal field as an already-assembled redecomp
-  // response verifies the supported replicated-dual return path.
+  // Reusing a transferred primal field as an already-assembled redecomp response verifies the supported replicated-dual
+  // return path.
   auto response_components = mesh_data.GetRedecompResponsePtrs();
   for ( int component{}; component < redecomp_fes->GetVDim(); ++component ) {
     for ( int dof{}; dof < redecomp_fes->GetNDofs(); ++dof ) {

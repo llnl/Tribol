@@ -341,9 +341,8 @@ class ParentRedecompTransfer {
  * handles transferring field data to/from different mesh representations used
  * by Tribol.
  *
- * When ParentRedecompTransfer has no SubmeshLORTransfer, the redecomp grid
- * function uses the same finite element collection and polynomial order as the
- * parent-linked boundary submesh.
+ * When ParentRedecompTransfer has no SubmeshLORTransfer, the redecomp grid function uses the same finite element
+ * collection and polynomial order as the parent-linked boundary submesh.
  *
  * @note Example parent vector fields include displacement and velocity.
  */
@@ -472,9 +471,8 @@ class ParentField {
  * This class handles transferring pressure field data to/from representations
  * used by MFEM from/to representations used by Tribol.
  *
- * When SubmeshRedecompTransfer has no SubmeshLORTransfer, the redecomp grid
- * function uses the same finite element collection and polynomial order as the
- * pressure field on the parent-linked boundary submesh.
+ * When SubmeshRedecompTransfer has no SubmeshLORTransfer, the redecomp grid function uses the same finite element
+ * collection and polynomial order as the pressure field on the parent-linked boundary submesh.
  */
 class PressureField {
  public:
@@ -611,10 +609,9 @@ class MfemMeshData {
    * in the first Tribol registered mesh
    * @param attributes_2 Mesh boundary attributes identifying surface elements
    * in the second Tribol registered mesh
-   * @param transfers_fields_through_lor When true, higher-order fields transfer
-   * through a low-order refined mesh. When false, the redecomp mesh uses the
-   * higher-order boundary submesh directly and redecomp fields retain the
-   * source finite element order.
+   * @param transfers_fields_through_lor When true, higher-order fields transfer through a low-order refined mesh. When
+   * false, the redecomp mesh uses the higher-order boundary submesh directly and redecomp fields retain the source
+   * finite element order.
    */
   MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParMesh& parent_mesh,
                 const mfem::ParGridFunction& current_coords, std::set<int>&& attributes_1, std::set<int>&& attributes_2,
@@ -1025,8 +1022,8 @@ class MfemMeshData {
    *
    * @return mfem::ParMesh*
    *
-   * @note nullptr if the parent is first order or this object transfers fields
-   * directly from the higher-order boundary submesh
+   * @note nullptr if the parent is first order or this object transfers fields directly from the higher-order boundary
+   * submesh
    */
   mfem::ParMesh* GetLORMesh() { return lor_mesh_.get(); }
 
@@ -1074,8 +1071,8 @@ class MfemMeshData {
    *
    * @return const mfem::ParFiniteElementSpace*
    *
-   * @note nullptr if the parent is first order or this object transfers fields
-   * directly from the higher-order boundary submesh
+   * @note nullptr if the parent is first order or this object transfers fields directly from the higher-order boundary
+   * submesh
    */
   const mfem::ParFiniteElementSpace* GetLORMeshFESpace() const
   {
@@ -1098,8 +1095,8 @@ class MfemMeshData {
    * @note The LOR factor corresponds to the number of LOR elements per HO element applied to each dimension on the LOR
    * mesh.
    *
-   * @note When direct higher-order field transfer was selected at construction,
-   * this method leaves the LOR factor unchanged.
+   * @note When direct higher-order field transfer was selected at construction, this method leaves the LOR factor
+   * unchanged.
    *
    * @param lor_factor LOR factor
    */
@@ -1302,8 +1299,8 @@ class MfemMeshData {
   /**
    * @brief Whether higher-order fields transfer through a low-order refined mesh
    *
-   * When this is false, RedecompMesh must use the higher-order boundary submesh
-   * as its parent so direct field transfers use matching element and DOF lists.
+   * When this is false, RedecompMesh must use the higher-order boundary submesh as its parent so direct field transfers
+   * use matching element and DOF lists.
    */
   const bool transfers_fields_through_lor_;
 
