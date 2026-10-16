@@ -118,6 +118,17 @@ class MeshData {
     TRIBOL_HOST_DEVICE InterfaceElementType getElementType() const { return m_element_type; }
 
     /**
+     * @brief Get the finite element order represented by the connectivity
+     *
+     * The element type identifies the edge or face shape. The face order
+     * separately identifies how many finite element nodes belong to that
+     * shape.
+     *
+     * @return finite element face order
+     */
+    TRIBOL_HOST_DEVICE FaceOrderType getFaceOrder() const { return m_face_order; }
+
+    /**
      * @brief Get the memory space of the data for the current mesh view
      *
      * @return memory space
@@ -384,6 +395,9 @@ class MeshData {
     /// Type of elements in the mesh
     const InterfaceElementType m_element_type;
 
+    /// Finite element order represented by each connectivity row
+    const FaceOrderType m_face_order;
+
     /// Number of nodes in the mesh
     const IndexT m_num_nodes;
 
@@ -456,6 +470,28 @@ class MeshData {
             InterfaceElementType element_type, const RealT* x, const RealT* y, const RealT* z, MemorySpace mem_space );
 
   /**
+   * @brief Construct mesh data with an explicit finite element face order
+   *
+   * @param mesh_id ID of the contact surface
+   * @param num_elements number of elements on the contact surface
+   * @param num_nodes length of the nodal field arrays
+   * @param connectivity caller-owned finite element node connectivity
+   * @param element_type edge or face shape of the contact elements
+   * @param face_order finite element order represented by each connectivity row
+   * @param x caller-owned x-components of the mesh coordinates
+   * @param y caller-owned y-components of the mesh coordinates
+   * @param z caller-owned z-components of the mesh coordinates, or nullptr in two dimensions
+   * @param mem_space memory space containing the connectivity and coordinate arrays
+   *
+   * Quadratic connectivity contains every finite element node, not only the
+   * polygon corners. MeshData stores non-owning views of the connectivity and
+   * field arrays, so the caller must keep them alive while the mesh is used.
+   */
+  MeshData( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity,
+            InterfaceElementType element_type, FaceOrderType face_order, const RealT* x, const RealT* y, const RealT* z,
+            MemorySpace mem_space );
+
+  /**
    * @brief Get the element type
    *
    * @note Tribol supports a single element type for each mesh
@@ -463,6 +499,13 @@ class MeshData {
    * @return element type
    */
   InterfaceElementType getElementType() const { return m_element_type; }
+
+  /**
+   * @brief Get the finite element order represented by the connectivity
+   *
+   * @return finite element face order
+   */
+  FaceOrderType getFaceOrder() const { return m_face_order; }
 
   /**
    * @brief Spatial dimension of the mesh
@@ -662,6 +705,7 @@ class MeshData {
 
   IndexT m_mesh_id;                     ///< Mesh Id associated with this data
   InterfaceElementType m_element_type;  ///< Type of interface element in mesh
+  FaceOrderType m_face_order;           ///< Finite element order represented by the connectivity
   int m_dim;                            ///< Spatial dimension of the mesh coordinates
   IndexT m_num_nodes;
 
