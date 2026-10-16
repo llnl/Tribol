@@ -19,6 +19,10 @@
 
 #include "tribol/search/InterfacePairFinder.hpp"
 
+#ifdef BUILD_REDECOMP
+#include "tribol/interface/mfem_tribol.hpp"
+#endif
+
 #include "tribol/utils/Math.hpp"
 
 // Axom includes
@@ -35,6 +39,10 @@
 // Interface Implementation
 //------------------------------------------------------------------------------
 namespace tribol {
+
+#ifdef BUILD_REDECOMP
+void updateMfemContactPatches();
+#endif
 
 //------------------------------------------------------------------------------
 void initialize( int, CommT )
@@ -256,14 +264,10 @@ void setLagrangeMultiplierOptions( IndexT cs_id, ImplicitEvalMode evalMode, Spar
 
 #ifdef BUILD_REDECOMP
 
-  if ( cs->hasMfemData() ) {
-    // MFEM_ELEMENT_DENSE is required to use the MFEM interface
+  if ( cs->hasMfemContactData() ) {
+    // The contact exchange operator composes Tribol's local element blocks as
+    // H^T A_patch H, so it requires the element-dense patch representation.
     lm_options.sparse_mode = SparseMode::MFEM_ELEMENT_DENSE;
-    if ( !cs->hasMfemJacobianData() && ( lm_options.eval_mode == ImplicitEvalMode::MORTAR_JACOBIAN ||
-                                         lm_options.eval_mode == ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN ) ) {
-      cs->setMfemJacobianData(
-          std::make_unique<MfemJacobianData>( *cs->getMfemMeshData(), *cs->getMfemSubmeshData() ) );
-    }
   }
 
 #endif /* BUILD_REDECOMP */
@@ -825,13 +829,9 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
 
   // copy the interaction pairs
   for ( int i = 0; i < numPairs; ++i ) {
-    // perform initial face-pair validity checks to add valid face-pairs
-    // to interface pair manager. Note, further computational geometry
-    // filtering will be performed on each face-pair indendifying
-    // contact candidates.
-    if ( geomFilter( cs->getView(), pairIndex1[i], pairIndex2[i] ) ) {
-      pairs.emplace_back( pairIndex1[i], pairIndex2[i], true );
-    }
+    // Mesh pointers are established during CouplingScheme::init(). Preserve
+    // conservative candidates here and run geomFilter() after initialization.
+    pairs.emplace_back( pairIndex1[i], pairIndex2[i], true );
   }
 
   // Disable per-cycle rebinning
@@ -842,6 +842,11 @@ void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* const pairI
 //------------------------------------------------------------------------------
 int update( int cycle, RealT t, RealT& dt )
 {
+#ifdef BUILD_REDECOMP
+  // MFEM fields can change in place between calls. Refresh their contact
+  // patches before CouplingScheme::init() reads the registered mesh views.
+  updateMfemContactPatches();
+#endif
   bool err_cs = false;
 
   /////////////////////////////////////////////////////////////////////////
@@ -871,6 +876,14 @@ int update( int cycle, RealT t, RealT& dt )
     // apply the coupling scheme. Note, there are appropriate guards against zero
     // element meshes, or null-mesh coupling schemes
     err_cs = cs.apply( cycle, t, dt );
+
+#ifdef BUILD_REDECOMP
+    if ( cs.hasMfemContactData() ) {
+      // Tribol has finished accumulating independent patch forces. The exact
+      // transpose now returns them once to each solver finite element space.
+      cs.getMfemContactData()->CollectResiduals();
+    }
+#endif
 
     if ( err_cs != 0 ) {
       SLIC_WARNING( "tribol::update(): coupling scheme " << cs_pair.first << " returned with an error." );

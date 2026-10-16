@@ -7,9 +7,19 @@
 set( redecomp_headers
 
      redecomp.hpp
-     MultiRedecomp.hpp
-     RedecompMesh.hpp
-     RedecompTransfer.hpp
+     ContactPatchOperator.hpp
+     ElementExchangeOperator.hpp
+     ElementExchangePlan.hpp
+     ElementFieldExchange.hpp
+     ElementPatchOperator.hpp
+     OperatorAssembly.hpp
+     PatchNodalLayoutOperator.hpp
+     DistributedBoundaryRestriction.hpp
+     DistributedElementRestriction.hpp
+     SelectedBoundaryRestriction.hpp
+     SelectedElementRestriction.hpp
+     VirtualRefinementOperator.hpp
+     VirtualRefinementCollectionOperator.hpp
      common/CoordList.hpp
      common/TypeDefs.hpp
      partition/PartitionElements.hpp
@@ -17,12 +27,6 @@ set( redecomp_headers
      partition/Partitioner.hpp
      partition/PartitionMethod.hpp
      partition/RCB.hpp
-     transfer/GridFnTransfer.hpp
-     transfer/MatrixTransfer.hpp
-     transfer/SparseMatrixTransfer.hpp
-     transfer/TransferByElements.hpp
-     transfer/TransferHelpers.hpp
-     transfer/TransferByNodes.hpp
      utils/ArrayUtility.hpp
      utils/BisecTree.hpp
      utils/MPIArray.hpp
@@ -32,18 +36,23 @@ set( redecomp_headers
 ## list of sources
 set( redecomp_sources
 
-     MultiRedecomp.cpp
-     RedecompMesh.cpp
-     RedecompTransfer.cpp
+     ContactPatchOperator.cpp
+     ElementExchangeOperator.cpp
+     ElementExchangePlan.cpp
+     ElementFieldExchange.cpp
+     ElementPatchOperator.cpp
+     OperatorAssembly.cpp
+     PatchNodalLayoutOperator.cpp
+     DistributedBoundaryRestriction.cpp
+     DistributedElementRestriction.cpp
+     SelectedBoundaryRestriction.cpp
+     SelectedElementRestriction.cpp
+     VirtualRefinementOperator.cpp
+     VirtualRefinementCollectionOperator.cpp
      partition/PartitionElements.cpp
      partition/Partitioner.cpp
      partition/PartitionMethod.cpp
      partition/RCB.cpp
-     transfer/MatrixTransfer.cpp
-     transfer/SparseMatrixTransfer.cpp
-     transfer/TransferByElements.cpp
-     transfer/TransferHelpers.cpp
-     transfer/TransferByNodes.cpp
      utils/MPIUtility.cpp
      )
 

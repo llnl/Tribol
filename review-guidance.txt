@@ -1,0 +1,95 @@
+Proposed Tribol agent coding rules
+Guidelines for reducing avoidable PR review comments and revision churn in LLNL/Tribol.
+Purpose and scope
+These recommendations cover code clarity, numerical correctness, API design, testing, and review preparation. They are proposed guidance, not official maintainer policy. Follow current repository instructions and verify current code before applying examples.
+The goal is fewer avoidable review questions and revision cycles. That often requires clearer code comments and API documentation.
+Agent-ready instructions
+1. Search for existing functionality before adding code
+● Before introducing a geometry, interpolation, projection, integration, transfer, or linear algebra helper, search the repository and inspect the closest implementation and its callers.
+● In relevant geometry work, explicitly check existing facilities such as InvIso and GalerkinEval; confirm their actual contracts before reusing them.
+● Reuse or extend a suitable helper. If a separate implementation is necessary, explain the specific contract difference: coordinate assumptions, supported element types, execution space, or differentiation requirements.
+● Keep utilities in the existing appropriate layer. Do not introduce a general framework for a single concrete need without explaining why it is necessary.
+2. Keep the diff focused and explain relocated behavior
+● Implement one coherent behavior change. Separate substantial mechanical moves, renaming, and unrelated cleanup from numerical changes where practical.
+● For every removed calculation, check, allocation, or diagnostic, verify whether it is obsolete, replaced, or moved. Preserve required execution order.
+● Explain significant relocations in the PR description so a reviewer can find the replacement and assess whether behavior changed.
+● After renaming, search affected declarations, definitions, callers, tests, Doxygen, and error messages for stale terminology.
+● Do not delete existing commented diagnostics as incidental cleanup; inspect their purpose and the local convention first. This is not a blanket requirement to retain dead code.
+3. Name the physical operation and its actual scope
+● Make names distinguish setting a value, rebuilding state, evaluating a quantity, transferring data, and returning an existing result.
+● Name a derivative block precisely. Do not call a routine a full Jacobian getter if it returns only df/dx under a particular enforcement method.
+● Keep contact method, enforcement method, processing policy, and integration rule distinct in names and documentation.
+● Avoid unexplained qualifiers such as raw, logical, stage, route, or approximate. Define a necessary term and use it consistently.
+● Follow nearby naming and capitalization conventions. Do not rename established APIs merely to suit a new abstraction.
+● Use mortar/nonmortar terminology where it is applicable; do not impose method-specific roles on shared common-plane code.
+4. Document a usable contract for new and changed code
+● Add or update Doxygen for new or materially changed classes, routines, arguments, return values, and non-obvious members. Include implementation-local helpers when their behavior is not clear from their signatures.
+● State what the operation does in Tribol terms; describe inputs and outputs, supported cases, preconditions, and side effects.
+● Explain a Boolean, integer, null, or empty return value and what the caller should do with it. State whether outputs are overwritten or accumulated and whether failure leaves usable data.
+● Document required call order and repeated-call behavior, including a getter that assembles, consumes, or transfers ownership of a result.
+● Keep explanations concrete and concise. A comment that merely repeats a vague name does not satisfy the contract.
+5. Identify mesh, field space, and coordinate representation
+● For transferred or returned fields and operators, state the source and destination mesh and finite element spaces: parent volume mesh, boundary submesh, HO/LOR mesh, or redecomp mesh, as applicable.
+● Distinguish local DOFs and true DOFs; distinguish primal and dual data and explain any shared-DOF summation needed.
+● For geometry, distinguish current physical coordinates, averaged planar face coordinates, common-plane coordinates, and parent/reference coordinates. State reference intervals when relevant.
+● State which normal or projection direction is used and whether points must lie on the face. Explain planar versus warped-face assumptions.
+● If changing the meaning of an existing field, inspect all consumers. Prefer an explicit new representation over silently changing an established contract.
+6. Make numerical conventions explicit
+● Document gap sign and the meaning of separation, interpenetration, and residual gap for the operation. Check consistency across methods rather than assuming it.
+● Treat equality boundaries deliberately: gap < 0 and gap <= 0 may give different active-set or tangent behavior.
+● Distinguish a dimensionless tolerance ratio from a physical length or area tolerance in naming and use. Explain the characteristic scale and where conversion occurs.
+● Preserve mesh-scale dependence unless a justified numerical change requires otherwise. Do not replace scaled tolerances with arbitrary absolute constants.
+● Explain LOR scaling and other conversions that preserve a user-facing physical interpretation.
+● Never loosen a test tolerance simply to make the test pass. Explain the error source and why the revised threshold detects the intended failure.
+7. Make sizes, indices, and constants interpretable
+● Name non-obvious constants and explain their role: mesh IDs, boundary attributes, nodes per element, derivative blocks, quadrature order, buffer capacities, and tolerances.
+● Derive sizes from dimension or topology where appropriate. If a fixed capacity assumes a specific rule or element type, document and enforce that restriction.
+● Document flattened array layout and the meaning of counters. Keep counters close to their loops and explain when offsets intentionally continue across loops.
+● In tests, explain the geometry and material meaning of numerical inputs so another developer can adapt the fixture.
+8. Make ownership and execution location explicit
+● Identify whether each wrapper owns or views data, whether it can mutate it, and how long the referenced object must live.
+● Document ownership of returned objects and any handoff to MFEM/Hypre. Explain critical ownership-flag changes and the failure they prevent.
+● Verify host/device memory access and synchronization assumptions; an API being callable on host does not establish where its data or computation resides.
+● Preserve appropriate feature guards for optional dependencies and device code. Do not assume enabling a GPU build means every routine executes on device.
+9. Keep state and construction responsibilities clear
+● Use the established owner of authoritative configuration, such as the coupling scheme, instead of maintaining competing copies. If a snapshot is necessary, document when and how it is refreshed.
+● Explain which object builds, owns, applies, and invalidates an operator or transfer matrix.
+● Avoid several overlapping assemble/get/cache interfaces when a simpler lifecycle meets the requirement. If caching is necessary, specify invalidation after mesh, LOR, decomposition, or option changes.
+● Do not rebuild or reallocate on every update without checking the intended lifecycle and cost.
+● Do not add speculative API surface without an actual use case.
+10. Make the host-code API straightforward
+● Required method behavior should be established by the appropriate registration or initialization path, rather than an unrelated option call the user has to discover.
+● Handle supported defaults through the same option-setting interface where practical; do not force callers to branch around an otherwise ordinary API call.
+● Check unsupported combinations at an appropriate boundary and explain the restriction.
+● Make diagnostics actionable: identify the missing condition and the routine needed to satisfy it. Use the appropriate existing SLIC severity and rank convention without unnecessary duplicate output.
+● Match established physical conventions across methods unless there is a documented reason to differ.
+11. Write tests that can detect the plausible numerical bug
+● Give each new numerical test a short description of the geometry, behavior being exercised, and expected result.
+● Prefer analytic values, independently calculated references, conservation laws, or direct numerical identities over sign-only or nonzero checks.
+● Test a changed primitive directly as well as its relevant integration path. For example, verify quadrature weights, reference-domain normalization, and polynomial moments instead of relying solely on a planar contact-force test.
+● Exercise the geometry or boundary that makes the change matter: warped faces, zero gap, nonzero residual gap, collapsed/intersecting geometry, or empty-rank meshes, as relevant.
+● For derivatives, use an appropriate independent comparison and configurations that exercise the newly included contribution. Explain which blocks and normal derivatives are included.
+● If search/binning changes, verify candidate inclusion or exclusion; a downstream force test alone may hide a missed path.
+● Keep cases purposeful. Additional parameter combinations should exercise distinct behavior and justify their CI cost.
+12. Verify the affected configurations and finish with a self-review
+● Identify affected dimensions, element types, enforcement methods, serial/MPI behavior, host/device paths, and optional dependencies before deciding what to run. Test the affected configurations that are available; report gaps explicitly.
+● Include minimal-dependency builds when changing optional-dependency usage. Include multiple ranks or higher order when the affected logic depends on them.
+● Run the repository’s formatter and relevant checks. The inspected .clang-format uses Google as a base, a 120-column limit, project-specific brace/spacing settings, and disables include sorting; use the file rather than approximating the style manually.
+● Preserve applicable license headers and check consistency of new-file notices. Do not import another project’s identity or unrelated dependency settings accidentally.
+● Review the final diff as a maintainer: can a developer follow the algorithm, locate moved behavior, understand the data, and judge the tests without reverse engineering the patch?
+Before requesting review
+The agent should be able to answer these questions concretely:
+1. What existing functionality did I inspect, and why was new code necessary?
+2. What physical behavior changes, including sign, units, scales, and equality boundaries?
+3. Where does each important field live, who owns it, and how does it move between spaces?
+4. What initialization, update, and cache-invalidating sequence is required?
+5. Which independent expected result would fail if my implementation were wrong?
+6. Which affected build and execution configurations did I verify?
+7. What moved or disappeared, where is its replacement, and what unrelated churn can I remove?
+The PR description should state the problem and resulting behavior, numerical or data-contract changes, significant relocations, and validation actually performed. Report unavailable validation accurately. These are synthesis recommendations, not a maintainer-mandated PR template.
+Apply the rules with judgment
+● A request to clarify an abstraction is not a ban on abstractions. The recurring issue is whether the design has clear responsibilities and useful terminology.
+● A question about caches is not a ban on caching. The agent should justify reuse and invalidation rather than adding a speculative lifecycle.
+● A request to name confusing constants is not a requirement to name every literal.
+● Respect intentional retained code and explicitly deferred work. Do not turn local exceptions into blanket cleanup rules.
+● Descriptive documentation does not establish numerical correctness. Tests and caller inspection must verify the claimed contract.

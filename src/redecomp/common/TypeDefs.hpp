@@ -26,9 +26,9 @@ using BoundingBox = axom::primal::BoundingBox<double, NDIMS>;
  * @brief In its usage in redecomp, the first pair entry contains a list of
  * entity (node or element) indices per rank. The second pair entry is sized
  * the same as the first pair entry, and if the entry is true, it denotes the
- * entity is in the ghost layer on a corresponding RedecompMesh. This data
- * structure lists entities that need to be sent to or are received from other
- * MPI ranks.
+ * entity belongs to the overlap layer of the corresponding partition. This
+ * structure describes entities sent to or received from each MPI rank without
+ * requiring a destination mesh.
  */
 using EntityIndexByRank = std::pair<MPIArray<int>, MPIArray<bool>>;
 }  // end namespace redecomp

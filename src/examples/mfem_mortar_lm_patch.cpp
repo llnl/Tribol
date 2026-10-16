@@ -25,9 +25,8 @@
  * displacements, p is the vector of contact pressures, f is the vector of nodal forces, and g is the vector of gaps on
  * the contact surface.  MFEM block operators and vectors are used to store the linear system.
  *
- * The example uses the Tribol MFEM interface, which supports decomposed (MPI) meshes and will support higher order
- * meshes (through LOR) in a future update (pending implementation of transfer of Jacobian from LOR to HO). Comments in
- * the main function below give details on each step of the example code.
+ * The example uses the Tribol MFEM interface, which supports decomposed (MPI) meshes and higher-order contact through
+ * virtual refinement. Comments in the main function below give details on each step of the example code.
  *
  * Example runs (from repo root directory):
  *   - mpirun -np 4 {build_dir}/examples/mfem_mortar_lm_patch_ex
@@ -92,10 +91,7 @@ int main( int argc, char** argv )
   // parse command line options
   axom::CLI::App app{ "mfem_mortar_lm_patch" };
   app.add_option( "-r,--refine", ref_levels, "Number of times to refine the mesh uniformly." )->capture_default_str();
-  // TODO: LOR support for implicit contact
-  // app.add_option("-o,--order", order,
-  //   "Finite element order (polynomial degree).")
-  //   ->capture_default_str();
+  app.add_option( "-o,--order", order, "Finite element order (polynomial degree)." )->capture_default_str();
   app.add_option( "-l,--lambda", lambda, "Lame parameter lambda." )->capture_default_str();
   app.add_option( "-m,--mu", mu, "Lame parameter mu (shear modulus)." )->capture_default_str();
   // TODO: GPU support for implicit mortar
@@ -107,6 +103,7 @@ int main( int argc, char** argv )
 
   SLIC_INFO_ROOT( "Running mfem_mortar_lm_patch with the following options:" );
   SLIC_INFO_ROOT( axom::fmt::format( "refine:   {0}", ref_levels ) );
+  SLIC_INFO_ROOT( axom::fmt::format( "order:    {0}", order ) );
   SLIC_INFO_ROOT( axom::fmt::format( "lambda:   {0}", lambda ) );
   SLIC_INFO_ROOT( axom::fmt::format( "mu:       {0}", mu ) );
   SLIC_INFO_ROOT( axom::fmt::format( "use_tets: {0}\n", use_tets ) );
@@ -246,22 +243,18 @@ int main( int argc, char** argv )
 
   // This block of code does initial setup of Tribol.
   timer.start();
-  // Next, we create a Tribol coupling scheme between the contact surfaces on the MFEM mesh. To create the coupling
-  // scheme requires several steps: 1) building a boundary submesh, 2) building a LOR mesh (if required), 3)
-  // re-decomposing the domain to move spatially close surface element pairs on to the same rank, 4) creating Tribol
-  // meshes of each surface, and 5) registering the meshes and coupling scheme with Tribol. These 5 steps are performed
-  // by calling two methods: 1) registerMfemCouplingScheme() (steps 1 and 2) and 2) updateMfemParallelDecomposition()
-  // (steps 3, 4, and 5). registerMfemCouplingScheme() is called here and updateMfemParallelDecomposition() is typically
-  // called before calling update(). Note, the mortar method only supports computation on host, so the ExecutionMode is
-  // set to Sequential.
+  // Both contact surfaces use the same parent displacement space. Tribol therefore returns one displacement residual
+  // plus one multiplier residual, while its sparse patch operators handle contact-face exchange and virtual refinement.
   int coupling_scheme_id = 0;
   int mesh1_id = 0;
   int mesh2_id = 1;
-  tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, mesh, coords, mortar_attrs,
-                                      nonmortar_attrs, tribol::SURFACE_TO_SURFACE, tribol::NO_SLIDING,
-                                      tribol::SINGLE_MORTAR, tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER,
-                                      tribol::BINNING_GRID, tribol::ExecutionMode::Sequential );
-  tribol::setMPIComm( coupling_scheme_id, MPI_COMM_WORLD );
+  tribol::MfemContactOptions contact_options;
+  contact_options.execution_mode = tribol::ExecutionMode::Sequential;
+  contact_options.refinement_factor = order;
+  tribol::registerMfemCouplingScheme(
+      coupling_scheme_id, tribol::MfemContactSurface( mesh1_id, mesh, coords, mortar_attrs ),
+      tribol::MfemContactSurface( mesh2_id, mesh, coords, nonmortar_attrs ), tribol::SURFACE_TO_SURFACE,
+      tribol::NO_SLIDING, tribol::SINGLE_MORTAR, tribol::FRICTIONLESS, tribol::LAGRANGE_MULTIPLIER, contact_options );
   // The basic Lagrange multiplier options are set here. For this problem, we ask Tribol to compute a contact residual
   // and a Jacobian (though we only use the Jacobian).
   tribol::setLagrangeMultiplierOptions( coupling_scheme_id, tribol::ImplicitEvalMode::MORTAR_RESIDUAL_JACOBIAN );
@@ -277,71 +270,71 @@ int main( int argc, char** argv )
   visit_datacoll.SetTime( time );
   visit_datacoll.SetTimeStep( dt );
 
-  // This creates the parallel adjacency-based mesh redecomposition. It also constructs new Tribol meshes as subsets of
-  // the redecomposed mesh.
-  tribol::updateMfemParallelDecomposition();
-  // This API call computes the contact response and Jacobian given the current mesh configuration.
+  // This API call selects and exchanges the contact faces, then computes the contact residual and Jacobian.
   tribol::update( cycle, time, dt );
 
-  // HypreParMatrices holding the Jacobian from contact and stored in an MFEM block operator are returned from this API
-  // call.
-  //
-  // NOTE: The submesh contains both the mortar and nonmortar surfaces, but pressure DOFs are only present on the
-  // nonmortar surface. The pressure DOFs on the mortar surface are eliminated in the returned matrix with ones on the
-  // diagonal.
-  auto A = tribol::getMfemBlockJacobian( coupling_scheme_id );
-  // Add the Jacobian from the elasticity bilinear form to the top left block
-  A->SetBlock( 0, 0, A_elasticity.release() );
+  auto contact_jacobian = tribol::getMfemContactJacobian( coupling_scheme_id );
+  const auto& contact_residuals = tribol::getMfemContactResiduals( coupling_scheme_id );
+  SLIC_ERROR_ROOT_IF( contact_residuals.size() != 2 || contact_jacobian->NumRowBlocks() != 2 ||
+                          contact_jacobian->NumColBlocks() != 2,
+                      "Mortar contact on one parent FE space must return displacement and multiplier residuals." );
   timer.stop();
   SLIC_INFO_ROOT(
       axom::fmt::format( "Time to setup Tribol and compute Jacobian: {0:f}ms", timer.elapsedTimeInMilliSec() ) );
 
-  auto& pressure = tribol::getMfemPressure( coupling_scheme_id );
+  const auto& multiplier_space = tribol::getMfemMultiplierFESpace( coupling_scheme_id );
+  mfem::ParGridFunction pressure( const_cast<mfem::ParFiniteElementSpace*>( &multiplier_space ) );
+  pressure = 0.0;
 
   int n_global_disp_dofs = fespace.GlobalTrueVSize();
-  int n_global_lm_dofs = pressure.ParFESpace()->GlobalTrueVSize();
+  int n_global_lm_dofs = multiplier_space.GlobalTrueVSize();
   int n_disp_dofs = fespace.GetTrueVSize();
-  int n_lm_dofs = pressure.ParFESpace()->GetTrueVSize();
+  int n_lm_dofs = multiplier_space.GetTrueVSize();
 
   SLIC_INFO_ROOT( axom::fmt::format( "  Number of displacement DOFs:        {0}", n_global_disp_dofs ) );
   SLIC_INFO_ROOT( axom::fmt::format( "  Number of Lagrange multiplier DOFs: {0}", n_global_lm_dofs ) );
 
   timer.start();
   // Create a RHS vector storing forces and gaps. Note no external forces are present in this problem.
-  mfem::Vector B( A->Height() );
+  mfem::Vector B( contact_jacobian->Height() );
   // This tells MFEM to use the device for the vector operations (if a device is configured, defaults to CPU).
   B.UseDevice( true );
   B = 0.0;
-  // This API call returns the mortar nodal gap vector to an (uninitialized) vector. The function sizes and initializes
-  // the vector.
-  mfem::Vector gap;
-  gap.UseDevice( true );
-  tribol::getMfemGap( coupling_scheme_id, gap );
   mfem::Vector gap_true( B, n_disp_dofs, n_lm_dofs );
-  // gap is a dual vector, so (gap tdof vector) = P^T * (gap ldof vector)
-  auto& P_submesh = *pressure.ParFESpace()->GetProlongationMatrix();
-  P_submesh.MultTranspose( gap, gap_true );
+  gap_true = contact_residuals.back().true_dof_values;
   B.SyncMemory( gap_true );
 
   // Create a solution vector storing displacement and pressures.
-  mfem::Vector X( A->Width() );
+  mfem::Vector X( contact_jacobian->Width() );
   X.UseDevice( true );
   X = 0.0;
 
   // Create a single HypreParMatrix from blocks for the solver. This process requires two steps: (1) store pointer to
   // the BlockOperator HypreParMatrixs in a 2D array and (2) call mfem::HypreParMatrixFromBlocks() to create the merged,
   // single HypreParMatrix (without blocks).
-  mfem::Array2D<const mfem::HypreParMatrix*> hypre_blocks( 2, 2 );
-  for ( int i{ 0 }; i < 2; ++i ) {
-    for ( int j{ 0 }; j < 2; ++j ) {
-      if ( A->GetBlock( i, j ).Height() != 0 && A->GetBlock( i, j ).Width() != 0 ) {
-        hypre_blocks( i, j ) =
-            const_cast<mfem::HypreParMatrix*>( dynamic_cast<const mfem::HypreParMatrix*>( &A->GetBlock( i, j ) ) );
-      } else {
-        hypre_blocks( i, j ) = nullptr;
-      }
+  const auto get_hypre_block = [&]( int row, int column ) -> const mfem::HypreParMatrix* {
+    if ( contact_jacobian->IsZeroBlock( row, column ) ) {
+      return nullptr;
     }
+    const auto* block = dynamic_cast<const mfem::HypreParMatrix*>( &contact_jacobian->GetBlock( row, column ) );
+    SLIC_ERROR_ROOT_IF( block == nullptr, "MFEM contact Jacobian blocks must be HypreParMatrix objects." );
+    return block;
+  };
+
+  std::unique_ptr<mfem::HypreParMatrix> combined_displacement_block;
+  const mfem::HypreParMatrix* displacement_block = A_elasticity.get();
+  if ( const auto* contact_displacement_block = get_hypre_block( 0, 0 ) ) {
+    combined_displacement_block.reset( mfem::Add( 1.0, *A_elasticity, 1.0, *contact_displacement_block ) );
+    displacement_block = combined_displacement_block.get();
   }
+
+  mfem::Array2D<const mfem::HypreParMatrix*> hypre_blocks( 2, 2 );
+  hypre_blocks( 0, 0 ) = displacement_block;
+  hypre_blocks( 0, 1 ) = get_hypre_block( 0, 1 );
+  hypre_blocks( 1, 0 ) = get_hypre_block( 1, 0 );
+  hypre_blocks( 1, 1 ) = get_hypre_block( 1, 1 );
+  SLIC_ERROR_ROOT_IF( hypre_blocks( 0, 1 ) == nullptr || hypre_blocks( 1, 0 ) == nullptr,
+                      "Mortar contact must provide both displacement-multiplier coupling blocks." );
   auto A_merged = std::unique_ptr<mfem::HypreParMatrix>( mfem::HypreParMatrixFromBlocks( hypre_blocks ) );
   // Use a linear solver to find the block displacement/pressure vector.
   mfem::MINRESSolver solver( MPI_COMM_WORLD );
@@ -364,7 +357,8 @@ int main( int argc, char** argv )
 
   // Update the pressure degrees of freedom
   mfem::Vector pressure_true( X, n_disp_dofs, n_lm_dofs );
-  P_submesh.Mult( pressure_true, pressure );
+  tribol::getMfemMultiplierPressure( coupling_scheme_id ) = pressure_true;
+  pressure.SetFromTrueDofs( pressure_true );
 
   timer.stop();
   SLIC_INFO_ROOT(
@@ -375,8 +369,8 @@ int main( int argc, char** argv )
   mfem::Vector f_int_true( fespace.GetTrueVSize() );
   f_int_true = 0.0;
   mfem::Vector f_contact_true( f_int_true );
-  A->GetBlock( 0, 0 ).Mult( displacement_true, f_int_true );
-  A->GetBlock( 0, 1 ).Mult( pressure_true, f_contact_true );
+  A_elasticity->Mult( displacement_true, f_int_true );
+  contact_jacobian->GetBlock( 0, 1 ).Mult( pressure_true, f_contact_true );
   mfem::Vector resid_true( f_int_true );
   resid_true += f_contact_true;
   for ( int i{ 0 }; i < ess_tdof_list.Size(); ++i ) {
@@ -394,7 +388,7 @@ int main( int argc, char** argv )
   // This should be true if the solver converges.
   mfem::Vector gap_resid_true( gap_true.Size() );
   gap_resid_true = 0.0;
-  A->GetBlock( 1, 0 ).Mult( displacement_true, gap_resid_true );
+  contact_jacobian->GetBlock( 1, 0 ).Mult( displacement_true, gap_resid_true );
   gap_resid_true -= gap_true;
   auto gap_resid_linf = gap_resid_true.Normlinf();
   if ( rank == 0 ) {
@@ -407,9 +401,6 @@ int main( int argc, char** argv )
   // Save the deformed configuration
   paraview_datacoll.Save();
   visit_datacoll.Save();
-
-  // Update the Tribol mesh based on deformed configuration
-  tribol::updateMfemParallelDecomposition();
 
   // Create and save surface data
   mfem::ParaViewDataCollection paraview_surf_datacoll( "mortar_patch_surface_pv", pressure.ParFESpace()->GetMesh() );

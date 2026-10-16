@@ -16,7 +16,7 @@ namespace tribol {
 
 namespace {
 
-// This MUST match what the ContactParams struct has in EnergyMortarAdapter
+// Enzyme differentiates this aggregate by layout, so keep it identical to ContactParams.
 // These had to be saved locally in order for enzyme to work correctly
 struct KernelParams {
   int N{ 3 };                  // No. of quadrature points

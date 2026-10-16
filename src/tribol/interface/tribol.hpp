@@ -233,8 +233,8 @@ void setBinningProximityScale( IndexT cs_id, RealT binning_proximity_scale );
  * negative kinematic gaps as interpenetration. Positive residual gaps shift the contact surface away from the mesh
  * surface, making contact occur earlier. Effective gap = kinematic gap - residual gap.
  *
- * @note Configure the residual gap after registering the coupling scheme and before its first update. For MFEM
- * coupling schemes, this must precede the first call to updateMfemParallelDecomposition().
+ * @note Configure the residual gap after registering the coupling scheme and before its first update. MFEM contact
+ * uses it while building the initial distributed search bounds.
  */
 void setResidualGap( IndexT cs_id, RealT residual_gap );
 
@@ -508,17 +508,11 @@ void registerCouplingScheme( IndexT cs_id, IndexT mesh_id1, IndexT mesh_id2, int
  *
  * \param [in] cs_id      coupling scheme id
  * \param [in] numPairs   number of cell-pairs to be registered
- * \param [in] mesh_id1   mesh id of the first cell in the pair list
- * \param [in] pairType1  cell type of the first cell in the pair list
  * \param [in] pairIndex1 index of the first cell in the pair list
- * \param [in] mesh_id2    mesh id of the second cell in the pair list
- * \param [in] pairType2  cell type of the second cell in the pair list
  * \param [in] pairIndex2 index of the second cell in the pair list
  *
  */
-void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* mesh_id1, IndexT const* pairType1,
-                        IndexT const* pairIndex1, IndexT const* mesh_id2, IndexT const* pairType2,
-                        IndexT const* pairIndex2 );
+void setInterfacePairs( IndexT cs_id, IndexT numPairs, IndexT const* pairIndex1, IndexT const* pairIndex2 );
 
 /*!
  * \brief Computes the contact response at the given cycle.

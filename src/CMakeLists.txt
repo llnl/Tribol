@@ -47,6 +47,13 @@ if ( TRIBOL_ENABLE_EXAMPLES )
   add_subdirectory(examples)
 endif()
 
+#------------------------------------------------------------------------------
+# add performance benchmarks
+#------------------------------------------------------------------------------
+if ( ENABLE_BENCHMARKS AND BUILD_REDECOMP AND TRIBOL_USE_MPI )
+  add_subdirectory(benchmarks)
+endif()
+
 convert_to_native_escaped_file_path(${PROJECT_SOURCE_DIR} TRIBOL_REPO_DIR)
 convert_to_native_escaped_file_path(${CMAKE_BINARY_DIR}   TRIBOL_BIN_DIR)
 

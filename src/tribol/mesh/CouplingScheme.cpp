@@ -748,7 +748,6 @@ bool CouplingScheme::isValidEnforcement()
       }
       break;
     }  // end case SINGLE_MORTAR
-
     case COMMON_PLANE: {
       // check if PENALTY is not chosen. This is the only possible (and foreseeable)
       // choice for COMMON_PLANE
@@ -1022,6 +1021,15 @@ void CouplingScheme::performBinning()
     // set fixed binning depending on contact case,
     // e.g. NO_SLIDING
     this->setFixedBinningPerCase();
+  } else {
+    ArrayT<InterfacePair> filtered_pairs( 0, 0, m_allocator_id );
+    filtered_pairs.reserve( m_interface_pairs.size() );
+    for ( const auto& pair : m_interface_pairs ) {
+      if ( geomFilter( getView(), pair.m_element_id1, pair.m_element_id2 ) ) {
+        filtered_pairs.emplace_back( pair.m_element_id1, pair.m_element_id2, true );
+      }
+    }
+    m_interface_pairs = std::move( filtered_pairs );
   }
   return;
 }
@@ -1030,7 +1038,11 @@ void CouplingScheme::performBinning()
 int CouplingScheme::apply( int cycle, RealT t, RealT& dt )
 {
   if ( m_formulation ) {
-    if ( m_interface_pairs.size() > 0 || !hasFixedBinning() ) {
+    bool pairs_were_refreshed = false;
+#ifdef BUILD_REDECOMP
+    pairs_were_refreshed = hasMfemContactData();
+#endif
+    if ( pairs_were_refreshed || m_interface_pairs.size() > 0 || !hasFixedBinning() ) {
       m_formulation->setInterfacePairs( std::move( m_interface_pairs ), 0 );
     }
     m_formulation->updateNodalGaps();
@@ -1189,13 +1201,9 @@ bool CouplingScheme::init()
     // set individual coupling scheme logging level
     this->setSlicLoggingLevel();
 
-    // set effective binning proximity, based on binning proximity scale and LOR factor
+    // Virtual refinement does not change the parent-face search scale, so the
+    // user-provided proximity scale applies directly to operator patches.
     this->m_effective_binning_proximity_scale = this->getParameters().binning_proximity_scale;
-#ifdef BUILD_REDECOMP
-    if ( this->hasMfemData() && this->getMfemMeshData()->GetLORFactor() > 1 ) {
-      this->m_effective_binning_proximity_scale *= static_cast<RealT>( this->getMfemMeshData()->GetLORFactor() );
-    }
-#endif
 
     // compute the face data
     // different element normals for enzyme + mortar (matching Puso and Laursen)
@@ -1265,6 +1273,10 @@ void CouplingScheme::allocateMethodData()
       static_cast<MortarData*>( m_methodData.get() )->m_numTotalNodes = this->m_numTotalNodes;
       break;
     }  // end case SINGLE_MORTAR
+    case ENERGY_MORTAR: {
+      this->m_methodData = std::make_unique<MethodData>();
+      break;
+    }
     default: {
       this->m_methodData = nullptr;
       break;

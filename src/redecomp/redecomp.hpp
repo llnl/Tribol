@@ -6,13 +6,18 @@
 #ifndef SRC_REDECOMP_REDECOMP_HPP_
 #define SRC_REDECOMP_REDECOMP_HPP_
 
-#include "partition/Partitioner.hpp"
-#include "partition/PartitionElements.hpp"
-#include "partition/RCB.hpp"
-#include "transfer/MatrixTransfer.hpp"
-#include "transfer/SparseMatrixTransfer.hpp"
-
-#include "MultiRedecomp.hpp"
-#include "RedecompTransfer.hpp"
+#include "ContactPatchOperator.hpp"
+#include "ElementExchangeOperator.hpp"
+#include "ElementExchangePlan.hpp"
+#include "ElementFieldExchange.hpp"
+#include "ElementPatchOperator.hpp"
+#include "OperatorAssembly.hpp"
+#include "PatchNodalLayoutOperator.hpp"
+#include "DistributedBoundaryRestriction.hpp"
+#include "DistributedElementRestriction.hpp"
+#include "SelectedBoundaryRestriction.hpp"
+#include "SelectedElementRestriction.hpp"
+#include "VirtualRefinementOperator.hpp"
+#include "VirtualRefinementCollectionOperator.hpp"
 
 #endif /* SRC_REDECOMP_REDECOMP_HPP_ */

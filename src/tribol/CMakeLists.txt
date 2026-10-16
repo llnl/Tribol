@@ -30,6 +30,7 @@ set(tribol_headers
     integ/Integration.hpp
 
     interface/mfem_tribol.hpp
+    interface/MfemContact.hpp
     interface/simple_tribol.hpp
     interface/tribol.hpp
 
@@ -37,7 +38,8 @@ set(tribol_headers
     mesh/InterfacePairs.hpp
     mesh/MeshData.hpp
     mesh/MethodCouplingData.hpp
-    mesh/MfemData.hpp
+    mesh/MfemContactData.hpp
+    mesh/MfemMultiplierSpace.hpp
 
     physics/AlignedMortar.hpp
     physics/CommonPlane.hpp
@@ -45,7 +47,7 @@ set(tribol_headers
     physics/ContactFormulationFactory.hpp
     physics/Mortar.hpp
     physics/EnergyMortar.hpp
-    physics/EnergyMortarAdapter.hpp
+    physics/OperatorEnergyMortar.hpp
     physics/Physics.hpp
 
     search/InterfacePairFinder.hpp
@@ -75,14 +77,15 @@ set(tribol_sources
     mesh/CouplingScheme.cpp
     mesh/MeshData.cpp
     mesh/MethodCouplingData.cpp
-    mesh/MfemData.cpp
+    mesh/MfemContactData.cpp
+    mesh/MfemMultiplierSpace.cpp
 
     physics/AlignedMortar.cpp
     physics/CommonPlane.cpp
     physics/ContactFormulationFactory.cpp
     physics/Mortar.cpp
     physics/EnergyMortar.cpp
-    physics/EnergyMortarAdapter.cpp
+    physics/OperatorEnergyMortar.cpp
     physics/Physics.cpp
      
     search/InterfacePairFinder.cpp

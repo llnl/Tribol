@@ -111,13 +111,8 @@ endif()
 if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 
   set( redecomp_tests
-      redecomp_transfer.cpp
-      redecomp_multitransfer.cpp
-      redecomp_massmatrix.cpp
-      redecomp_matrixtransfer_equivalence.cpp
-      redecomp_rectmatrix.cpp
-      redecomp_sparsematrix.cpp
-      redecomp_gpu_mpi.cpp
+      redecomp_element_exchange.cpp
+      mfem_contact_exchange.cpp
       )
 
   set(redecomp_test_depends tribol gtest)
@@ -133,9 +128,9 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
       DEPENDS_ON ${redecomp_test_depends} ${tribol_device_depends}
       FOLDER redecomp/tests )
     
-    # Transfer tests use one rank for the serial baseline and four ranks to cover empty redecomp partitions. Keep the
-    # other MPI test suites at two ranks to avoid adding unrelated test cost.
-    if (test_name STREQUAL "redecomp_transfer")
+    # Operator tests use one rank for the serial baseline and four ranks to cover empty evaluation partitions. Keep
+    # the other MPI test suites at two ranks to avoid adding unrelated test cost.
+    if (test_name STREQUAL "redecomp_element_exchange" OR test_name STREQUAL "mfem_contact_exchange")
       set(redecomp_test_rank_counts 1 2 4)
     else()
       set(redecomp_test_rank_counts 2)
@@ -157,52 +152,6 @@ if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 endif()
 
 #------------------------------------------------------------------------------
-# Add tribol + redecomp tests
-#------------------------------------------------------------------------------
-if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
-
-  set( combined_tests
-      tribol_mfem_common_plane.cpp
-      tribol_mfem_mortar_lm.cpp
-      tribol_mfem_jacobian.cpp
-      tribol_proximity_check.cpp
-      tribol_redecomp_tol.cpp
-      )
-
-  set(combined_test_depends tribol gtest)
-
-  foreach( test ${combined_tests} )
-
-    get_filename_component( test_name ${test} NAME_WE )
-
-    blt_add_executable(
-      NAME ${test_name}_test
-      SOURCES ${test}
-      OUTPUT_DIR ${TEST_OUTPUT_DIRECTORY}
-      DEPENDS_ON ${combined_test_depends} ${tribol_device_depends}
-      FOLDER tribol/tests )
-
-    # NOTE: just do 2 ranks for now until we make the tests smaller
-    #foreach ( nranks RANGE 1 3 )
-    foreach ( nranks RANGE 2 2 )
-      blt_add_test( NAME ${test_name}_${nranks}rank
-                    COMMAND ${test_name}_test
-                    NUM_MPI_TASKS ${nranks} )
-    endforeach()
-    
-    if (ENABLE_HIP)
-      target_compile_options(${test_name}_test PRIVATE
-          $<$<CONFIG:Debug>:
-              -ggdb
-          >
-      )
-    endif()
-
-  endforeach()
-
-endif()
-
-#------------------------------------------------------------------------------
 # Add tribol + enzyme tests
 #------------------------------------------------------------------------------
 
@@ -213,8 +162,6 @@ if( TRIBOL_USE_ENZYME )
       tribol_enzyme_nodal_normal.cpp
       tribol_enzyme_mortar_assembled.cpp
       tribol_enzyme_poly_intersect.cpp
-      tribol_energy_mortar_patch.cpp
-      tribol_energy_mortar_patch_LM.cpp
       tribol_finite_diff_energy_mortar.cpp
       )
 

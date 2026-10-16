@@ -15,7 +15,8 @@
  *
  * The example uses the Tribol MFEM interface, which supports decomposed (MPI) meshes and has support for higher order
  * meshes using low-order refinement of higher-order geometry representations. Comments in the main function below give
- * details on each step of the example code. The example code can run on HIP/CUDA, where available.
+ * details on each step of the example code. The mechanics update can run on HIP/CUDA, where available, while contact
+ * patch construction and evaluation currently run on the host.
  *
  * Example runs (from repo root directory):
  *   - mpirun -np 4 {build_dir}/examples/mfem_common_plane_ex
@@ -24,6 +25,7 @@
  */
 
 #include <set>
+#include <utility>
 
 // Tribol includes
 #include "tribol/config.hpp"
@@ -48,6 +50,7 @@
 
 // Axom includes
 #include "axom/CLI11.hpp"
+#include "axom/core.hpp"
 #include "axom/slic.hpp"
 
 int main( int argc, char** argv )
@@ -139,18 +142,6 @@ int main( int argc, char** argv )
   if ( rank == 0 ) {
     device.Print();
   }
-
-  tribol::ExecutionMode exec_mode = tribol::ExecutionMode::Sequential;
-#ifdef TRIBOL_USE_CUDA
-  if ( device.Allows( mfem::Backend::CUDA_MASK ) ) {
-    exec_mode = tribol::ExecutionMode::Cuda;
-  }
-#endif
-#ifdef TRIBOL_USE_HIP
-  if ( device.Allows( mfem::Backend::HIP_MASK ) ) {
-    exec_mode = tribol::ExecutionMode::Hip;
-  }
-#endif
 
   // fixed options
   // boundary element attributes of contact surface 1, the z = 1 plane of the first block
@@ -282,32 +273,38 @@ int main( int argc, char** argv )
 
   // This block of code does initial setup of Tribol.
   timer.start();
-  // First, we create a Tribol coupling scheme between the contact surfaces on the MFEM mesh. To create the coupling
-  // scheme requires several steps: 1) building a boundary submesh, 2) building a LOR mesh (if required), 3)
-  // re-decomposing the domain to move spatially close surface element pairs on to the same rank, and 4) creating a
-  // Tribol mesh. Steps 1 and 2 are performed when this method is called. Steps 3 and 4 are accomplished via a call to
-  // updateMfemParallelDecomposition(), which is typically called before calling update().
+  // Both contact surfaces use the same parent mesh, coordinates, velocity, and reference coordinates. Tribol groups
+  // their returned forces into the one shared parent true-DOF space instead of creating independent surface fields.
   int coupling_scheme_id = 0;
   int mesh1_id = 0;
   int mesh2_id = 1;
-  tribol::registerMfemCouplingScheme( coupling_scheme_id, mesh1_id, mesh2_id, mesh, coords, contact_surf_1,
-                                      contact_surf_2, tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
-                                      tribol::FRICTIONLESS, tribol::PENALTY, tribol::BINNING_BVH, exec_mode );
-  tribol::setMPIComm( coupling_scheme_id, MPI_COMM_WORLD );
-  // This API call adds a velocity field to the coupling scheme. This is used for computing the maximum allowable common
-  // plane timestep and, if activated, gap rate penalty.
-  tribol::registerMfemVelocity( coupling_scheme_id, velocity );
-  // The type of penalty enforcement and the penalty parameters are set here (i.e. rate vs. kinematic and the method of
-  // setting the penalty value).
+  mfem::QuadratureSpace penalty_space( &mesh, 0 );
+  mfem::QuadratureFunction element_thickness( &penalty_space );
+  mfem::QuadratureFunction material_modulus( &penalty_space );
+  element_thickness = 1.0 / std::pow( 2.0, ref_levels );
+  material_modulus = lambda + 2.0 / 3.0 * mu;
+
+  auto surface_1 = tribol::MfemContactSurface( mesh1_id, mesh, coords, contact_surf_1 )
+                       .SetVelocity( velocity )
+                       .SetReferenceCoordinates( ref_coords );
+  auto surface_2 = tribol::MfemContactSurface( mesh2_id, mesh, coords, contact_surf_2 )
+                       .SetVelocity( velocity )
+                       .SetReferenceCoordinates( ref_coords );
+  if ( !use_const_penalty ) {
+    // These Cartesian blocks have one uniform normal thickness. Parent-element fields let Tribol preserve the original
+    // modulus-over-thickness penalty after it selects and virtually refines the contact faces.
+    surface_1.SetElementThickness( element_thickness ).SetMaterialModulus( material_modulus );
+    surface_2.SetElementThickness( element_thickness ).SetMaterialModulus( material_modulus );
+  }
+
+  tribol::MfemContactOptions contact_options;
+  contact_options.execution_mode = tribol::ExecutionMode::Sequential;
+  contact_options.refinement_factor = order;
+  tribol::registerMfemCouplingScheme( coupling_scheme_id, std::move( surface_1 ), std::move( surface_2 ),
+                                      tribol::SURFACE_TO_SURFACE, tribol::NO_CASE, tribol::COMMON_PLANE,
+                                      tribol::FRICTIONLESS, tribol::PENALTY, contact_options );
   if ( use_const_penalty ) {
     tribol::setMfemKinematicConstantPenalty( coupling_scheme_id, p_kine, p_kine );
-  } else {
-    // Any MFEM scalar coefficient can be used to set material moduli, but this example uses a constant bulk modulus for
-    // each boundary attribute of the volume mesh.
-    mfem::Vector bulk_moduli_by_bdry_attrib( mesh.bdr_attributes.Max() );
-    bulk_moduli_by_bdry_attrib = lambda + 2.0 / 3.0 * mu;
-    mfem::PWConstCoefficient mat_coeff( bulk_moduli_by_bdry_attrib );
-    tribol::setMfemKinematicElementPenalty( coupling_scheme_id, mat_coeff );
   }
   timer.stop();
   SLIC_INFO_ROOT( axom::fmt::format( "Time to set up Tribol: {0:f}ms", timer.elapsedTimeInMilliSec() ) );
@@ -329,15 +326,16 @@ int main( int argc, char** argv )
       visit_datacoll.Save();
     }
 
-    // This updates the parallel adjacency-based mesh redecomposition based on the latest coordinates. It also
-    // constructs new Tribol meshes as subdomains of the redecomposed mesh.
-    tribol::updateMfemParallelDecomposition();
-    // This API call computes the contact response given the current mesh configuration.
+    // Tribol rebuilds the sparse contact patch when the cached search no longer covers the surface motion.
     tribol::update( cycle, t, dt );
-    // Nodal forces are returned to an MFEM grid function using this API function. We set the contact nodal forces equal
-    // to the external forces in the explicit mechanics update operator. Tribol returns the nodal forces on host.
+    const auto& contact_residuals = tribol::getMfemContactResiduals( coupling_scheme_id );
+    SLIC_ERROR_ROOT_IF( contact_residuals.size() != 1,
+                        "Common-plane surfaces on one FE space must return one shared displacement residual." );
+
+    // Tribol returns a true-DOF dual vector. Prolongation distributes shared true-DOF forces to the local vector used by
+    // the explicit mechanics operator without introducing separate force fields for the two surfaces.
     op.f_ext = 0.0;
-    tribol::getMfemResponse( coupling_scheme_id, op.f_ext );
+    fespace.GetProlongationMatrix()->Mult( contact_residuals.front().true_dof_values, op.f_ext );
 
     // Update the time in the explicit mechanics update.
     op.SetTime( t );
