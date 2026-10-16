@@ -346,10 +346,9 @@ bool MeshData::computeFaceData( ExecutionMode exec_mode, ElemNormalMethod elem_n
 {
   constexpr RealT nrml_mag_tol = 1.0e-15;
 
-  // Quadratic connectivity includes edge and interior nodes that are not
-  // polygon corners. The current centroid, radius, area, and normal formulas
-  // treat every connectivity entry as a corner, so they must not modify face
-  // data until a higher-order calculation is available.
+  // Quadratic connectivity includes edge and interior nodes that are not polygon corners. The current centroid, radius,
+  // area, and normal formulas treat every connectivity entry as a corner, so they must not modify face data until a
+  // higher-order calculation is available.
   if ( m_face_order != LINEAR ) {
     SLIC_WARNING_ROOT( "MeshData::computeFaceData() does not support higher-order faces." );
     return false;
