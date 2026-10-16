@@ -87,6 +87,21 @@ struct MeshElemData {
   bool isValidRatePenalty( PenaltyEnforcementOptions& pen_options );  ///< True if rate penalty option is valid
 };
 
+/**
+ * @brief Stores non-owning views of a contact surface mesh and its fields
+ *
+ * Each mesh contains one surface element shape and one finite element face order. Connectivity rows follow MFEM's
+ * native H1 ordering so fields copied from an MFEM finite element space retain the same local node numbers. A quadratic
+ * edge lists its two vertices followed by its midpoint. A quadratic quadrilateral lists its four vertices, the midpoint
+ * of edges (0,1), (1,2), (2,3), and (3,0), and then its center node.
+ *
+ * Higher-order connectivity includes nodes that are not polygon corners. Code that computes polygon geometry must
+ * account for the face order rather than treating every connectivity entry as a corner. MeshData currently prevents
+ * computeFaceData() from applying its linear geometry formulas to higher-order connectivity.
+ *
+ * MeshData does not own the connectivity or field arrays. The caller must keep them alive while the mesh or one of its
+ * viewers is in use.
+ */
 class MeshData {
  public:
   /**
@@ -120,9 +135,8 @@ class MeshData {
     /**
      * @brief Get the finite element order represented by the connectivity
      *
-     * The element type identifies the edge or face shape. The face order
-     * separately identifies how many finite element nodes belong to that
-     * shape.
+     * The element type identifies the edge or face shape. The face order separately identifies how many finite element
+     * nodes belong to that shape.
      *
      * @return finite element face order
      */
@@ -483,9 +497,11 @@ class MeshData {
    * @param z caller-owned z-components of the mesh coordinates, or nullptr in two dimensions
    * @param mem_space memory space containing the connectivity and coordinate arrays
    *
-   * Quadratic connectivity contains every finite element node, not only the
-   * polygon corners. MeshData stores non-owning views of the connectivity and
-   * field arrays, so the caller must keep them alive while the mesh is used.
+   * Quadratic connectivity contains every finite element node, not only the polygon corners. MeshData stores non-owning
+   * views of the connectivity and field arrays, so the caller must keep them alive while the mesh is used.
+   *
+   * @note Quadratic connectivity uses the MFEM-compatible local node ordering described in the MeshData class
+   * documentation.
    */
   MeshData( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity,
             InterfaceElementType element_type, FaceOrderType face_order, const RealT* x, const RealT* y, const RealT* z,
