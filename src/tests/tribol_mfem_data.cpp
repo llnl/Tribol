@@ -106,9 +106,8 @@ TEST_P( HigherOrderMfemDataTest, default_transfer_uses_lor )
   coordinates = *mesh_nodes;
 
   tribol::MfemMeshData mesh_data( first_mesh_id, second_mesh_id, mesh, coordinates,
-                                  std::set<int>{ first_contact_attribute },
-                                  std::set<int>{ second_contact_attribute }, tribol::ExecutionMode::Sequential,
-                                  tribol::MemorySpace::Host );
+                                  std::set<int>{ first_contact_attribute }, std::set<int>{ second_contact_attribute },
+                                  tribol::ExecutionMode::Sequential, tribol::MemorySpace::Host );
   ASSERT_NE( mesh_data.GetLORMesh(), nullptr );
   EXPECT_EQ( mesh_data.GetLORFactor(), order );
 
@@ -138,20 +137,17 @@ TEST_P( HigherOrderMfemDataTest, direct_transfer_retains_higher_order_fields )
   mfem::VectorFunctionCoefficient velocity_coefficient(
       mesh.SpaceDimension(), []( const mfem::Vector& point, mfem::Vector& value ) {
         value.SetSize( point.Size() );
-        value[x_component] =
-            velocity_x_offset + point[x_component] * point[x_component] + point[y_component];
-        value[y_component] =
-            velocity_y_offset + point[y_component] * point[y_component] + point[z_component];
-        value[z_component] =
-            velocity_z_offset + point[z_component] * point[z_component] + point[x_component];
+        value[x_component] = velocity_x_offset + point[x_component] * point[x_component] + point[y_component];
+        value[y_component] = velocity_y_offset + point[y_component] * point[y_component] + point[z_component];
+        value[z_component] = velocity_z_offset + point[z_component] * point[z_component] + point[x_component];
       } );
   mfem::ParGridFunction velocity( coordinates.ParFESpace() );
   velocity.ProjectCoefficient( velocity_coefficient );
 
   tribol::MfemMeshData mesh_data( first_mesh_id, second_mesh_id, mesh, coordinates,
-                                  std::set<int>{ first_contact_attribute },
-                                  std::set<int>{ second_contact_attribute }, tribol::ExecutionMode::Sequential,
-                                  tribol::MemorySpace::Host, transfers_fields_through_lor );
+                                  std::set<int>{ first_contact_attribute }, std::set<int>{ second_contact_attribute },
+                                  tribol::ExecutionMode::Sequential, tribol::MemorySpace::Host,
+                                  transfers_fields_through_lor );
   mesh_data.SetParentVelocity( velocity );
   EXPECT_EQ( mesh_data.GetLORMesh(), nullptr );
   EXPECT_EQ( mesh_data.GetLORFactor(), no_lor_factor );
@@ -179,8 +175,8 @@ TEST_P( HigherOrderMfemDataTest, direct_transfer_retains_higher_order_fields )
   for ( int component{}; component < redecomp_fes->GetVDim(); ++component ) {
     ASSERT_NE( velocity_components[component], nullptr );
     for ( int dof{}; dof < redecomp_fes->GetNDofs(); ++dof ) {
-      EXPECT_NEAR( velocity_components[component][dof],
-                   expected_velocity[redecomp_fes->DofToVDof( dof, component )], comparison_tolerance );
+      EXPECT_NEAR( velocity_components[component][dof], expected_velocity[redecomp_fes->DofToVDof( dof, component )],
+                   comparison_tolerance );
     }
   }
 
@@ -206,14 +202,13 @@ TEST_P( HigherOrderMfemDataTest, direct_transfer_retains_higher_order_fields )
                                         pressure_uses_device );
   mfem::FunctionCoefficient pressure_coefficient( []( const mfem::Vector& point ) {
     return pressure_offset + point[x_component] * point[x_component] +
-        pressure_y_weight * point[y_component] * point[y_component] + point[z_component];
+           pressure_y_weight * point[y_component] * point[y_component] + point[z_component];
   } );
   auto& submesh_pressure = submesh_data.GetSubmeshPressure();
   submesh_pressure.ProjectCoefficient( pressure_coefficient );
   submesh_data.UpdateMfemSubmeshData( redecomp_mesh );
 
-  auto* pressure_redecomp_fes =
-      const_cast<mfem::FiniteElementSpace*>( submesh_data.GetRedecompGap().FESpace() );
+  auto* pressure_redecomp_fes = const_cast<mfem::FiniteElementSpace*>( submesh_data.GetRedecompGap().FESpace() );
   ASSERT_NE( pressure_redecomp_fes, nullptr );
   EXPECT_EQ( pressure_redecomp_fes->FEColl()->GetOrder(), order );
   EXPECT_EQ( pressure_redecomp_fes->GetVDim(), scalar_field_dimension );
@@ -233,8 +228,7 @@ TEST_P( HigherOrderMfemDataTest, direct_transfer_retains_higher_order_fields )
   ExpectReturnedDualMatchesField( submesh_gap, submesh_pressure );
 }
 
-INSTANTIATE_TEST_SUITE_P( HigherOrder, HigherOrderMfemDataTest,
-                          testing::Values( quadratic_order, cubic_order ) );
+INSTANTIATE_TEST_SUITE_P( HigherOrder, HigherOrderMfemDataTest, testing::Values( quadratic_order, cubic_order ) );
 
 }  // namespace
 
