@@ -157,6 +157,7 @@ endif()
 if ( BUILD_REDECOMP AND TRIBOL_USE_MPI )
 
   set( combined_tests
+      tribol_mfem_data.cpp
       tribol_mfem_common_plane.cpp
       tribol_mfem_mortar_lm.cpp
       tribol_mfem_jacobian.cpp
