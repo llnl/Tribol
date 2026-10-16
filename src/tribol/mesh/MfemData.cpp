@@ -673,7 +673,8 @@ PressureField::UpdateData::UpdateData( SubmeshRedecompTransfer& submesh_redecomp
 
 MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParMesh& parent_mesh,
                             const mfem::ParGridFunction& current_coords, std::set<int>&& attributes_1,
-                            std::set<int>&& attributes_2, ExecutionMode exec_mode, MemorySpace mem_space )
+                            std::set<int>&& attributes_2, ExecutionMode exec_mode, MemorySpace mem_space,
+                            bool transfers_fields_through_lor )
     : mesh_id_1_{ mesh_id_1 },
       mesh_id_2_{ mesh_id_2 },
       parent_mesh_{ parent_mesh },
@@ -681,6 +682,7 @@ MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParM
       attributes_2_{ std::move( attributes_2 ) },
       submesh_{ CreateSubmesh( parent_mesh_, attributes_1_, attributes_2_ ) },
       coords_{ current_coords },
+      transfers_fields_through_lor_{ transfers_fields_through_lor },
       lor_factor_{ 0 },
       exec_mode_{ exec_mode },
       mem_space_{ mem_space },
@@ -697,8 +699,10 @@ MfemMeshData::MfemMeshData( IndexT mesh_id_1, IndexT mesh_id_2, const mfem::ParM
       &submesh_, submesh_fec.get(), current_coords.ParFESpace()->GetVDim(), mfem::Ordering::byNODES ) );
   submesh_xfer_gridfn_.MakeOwner( submesh_fec.release() );
 
-  // build LOR submesh
-  if ( current_coords.FESpace()->FEColl()->GetOrder() > 1 ) {
+  // Higher-order fields use the boundary submesh directly when LOR transfer is
+  // disabled. Avoiding the LOR mesh keeps RedecompMesh's parent consistent with
+  // the mesh that owns those fields.
+  if ( transfers_fields_through_lor_ && current_coords.FESpace()->FEColl()->GetOrder() > 1 ) {
     SetLORFactor( current_coords.FESpace()->FEColl()->GetOrder() );
   }
 
@@ -914,6 +918,12 @@ void MfemMeshData::ClearRatePenaltyData()
 
 void MfemMeshData::SetLORFactor( int lor_factor )
 {
+  if ( !transfers_fields_through_lor_ ) {
+    SLIC_WARNING_ROOT(
+        "LOR field transfer is disabled for this MfemMeshData. "
+        "The LOR factor was not changed." );
+    return;
+  }
   if ( lor_factor <= 1 ) {
     SLIC_WARNING_ROOT( "lor_factor must be an integer > 1.  LOR factor not changed." );
     return;
