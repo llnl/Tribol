@@ -177,8 +177,17 @@ bool MeshElemData::isValidRatePenalty( PenaltyEnforcementOptions& pen_options )
 MeshData::MeshData( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity,
                     InterfaceElementType element_type, const RealT* x, const RealT* y, const RealT* z,
                     MemorySpace mem_space )
+    : MeshData( mesh_id, num_elements, num_nodes, connectivity, element_type, LINEAR, x, y, z, mem_space )
+{
+}
+
+//------------------------------------------------------------------------------
+MeshData::MeshData( IndexT mesh_id, IndexT num_elements, IndexT num_nodes, const IndexT* connectivity,
+                    InterfaceElementType element_type, FaceOrderType face_order, const RealT* x, const RealT* y,
+                    const RealT* z, MemorySpace mem_space )
     : m_mesh_id( mesh_id ),
       m_element_type( element_type ),
+      m_face_order( face_order ),
       m_dim( getDimFromElementType() ),
       m_num_nodes( num_nodes ),
       m_mem_space( mem_space ),
@@ -260,19 +269,36 @@ ArrayViewT<const IndexT, 2> MeshData::createConnectivity( IndexT num_elements, c
 {
   switch ( m_element_type ) {
     case LINEAR_EDGE: {
-      return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 2 } );
+      if ( m_face_order == LINEAR ) {
+        return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 2 } );
+      }
+      if ( m_face_order == QUADRATIC_LAGRANGE ) {
+        return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 3 } );
+      }
+      break;
     }
     case LINEAR_TRIANGLE: {
-      return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 3 } );
+      if ( m_face_order == LINEAR ) {
+        return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 3 } );
+      }
+      break;
     }
     case LINEAR_QUAD: {
-      return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 4 } );
+      if ( m_face_order == LINEAR ) {
+        return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 4 } );
+      }
+      if ( m_face_order == QUADRATIC_LAGRANGE ) {
+        return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 9 } );
+      }
+      break;
     }
     default: {
-      SLIC_ERROR_ROOT( "Unsupported element type for a contact mesh." );
-      return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 0 } );
+      break;
     }
   }
+
+  SLIC_ERROR_ROOT( "Unsupported element type and face order for a contact mesh." );
+  return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 0 } );
 }
 
 //------------------------------------------------------------------------------
@@ -319,6 +345,14 @@ template <typename ElemNormalMethod>
 bool MeshData::computeFaceData( ExecutionMode exec_mode, ElemNormalMethod elem_normal )
 {
   constexpr RealT nrml_mag_tol = 1.0e-15;
+
+  // Quadratic connectivity includes edge and interior nodes that are not polygon corners. The current centroid, radius,
+  // area, and normal formulas treat every connectivity entry as a corner, so they must not modify face data until a
+  // higher-order calculation is available.
+  if ( m_face_order != LINEAR ) {
+    SLIC_WARNING_ROOT( "MeshData::computeFaceData() does not support higher-order faces." );
+    return false;
+  }
 
   // allocate m_c
   m_c = ArrayT<RealT, 2>( { m_dim, numberOfElements() }, m_allocator_id );
@@ -597,6 +631,7 @@ void MeshData::print( std::ostream& os ) const
 MeshData::Viewer::Viewer( MeshData& mesh )
     : m_mesh_id( mesh.m_mesh_id ),
       m_element_type( mesh.m_element_type ),
+      m_face_order( mesh.m_face_order ),
       m_num_nodes( mesh.m_num_nodes ),
       m_mem_space( mesh.m_mem_space ),
       m_allocator_id( mesh.m_allocator_id ),
