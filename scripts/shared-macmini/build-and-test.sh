@@ -3,7 +3,7 @@
 # Build and test Tribol on Smith team's shared MacMini, then report results to a set of emails
 
 # Immediately fail upon error and update environment
-set -e
+set -eE
 source ~/.bash_profile
 
 # Variables
@@ -36,8 +36,11 @@ print_run_log cd $PROJECT_DIR
 
 # Update repo
 print_run_log git checkout develop
-print_run_log git pull
+print_run_log git fetch --all --tags --prune
+print_run_log git submodule sync --recursive
 print_run_log git submodule update --init --recursive
+print_run_log git submodule foreach --recursive 'git fetch --all --tags --prune'
+print_run_log git pull --recurse-submodules
 
 # Clear previous build(s)
 print_run_log rm -rf _tribol_build_and_test*
