@@ -17,7 +17,11 @@ concretizer:
   compiler_mixing: false
 
 # Globally lock variants of third party libraries
+# NOTE: Tribol does not have a shared variant so its recommended to build TPLs as static, for now
 packages:
+  axom:
+    require:
+    - spec: "~shared"
   caliper:
     require:
     - spec: "~kokkos"
@@ -27,9 +31,15 @@ packages:
   hdf5:
     require:
     - spec: "~shared~mpi"
+  hypre:
+    require:
+    - spec: "~shared"
+  netcdf-c:
+    require:
+    - spec: "~shared"
   mfem:
     require:
-    - spec: "cxxstd=20"
+    - spec: "~shared cxxstd=20"
   raja:
     require:
     - spec: "~shared~examples~exercises"
