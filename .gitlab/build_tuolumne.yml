@@ -15,9 +15,6 @@
   tags:
     - batch
     - tuolumne
-  rules:
-    - if: '$CI_COMMIT_BRANCH =~ /_qnone/ || $ON_TUOLUMNE == "OFF"' #run except if ...
-      when: never
   before_script:
     - module load cmake/3.29.2
 

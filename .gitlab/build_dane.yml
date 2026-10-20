@@ -14,9 +14,6 @@
   tags:
     - batch
     - dane
-  rules:
-    - if: '$CI_COMMIT_BRANCH =~ /_qnone/ || $ON_DANE == "OFF"' #run except if ...
-      when: never
   before_script:
     - module load cmake/3.30.5
 
