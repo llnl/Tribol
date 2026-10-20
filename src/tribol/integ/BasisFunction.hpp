@@ -484,6 +484,27 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline void ComputeMappingJacobian(
 }
 
 /**
+ * @brief Compute the physical mapping Jacobian at one parent-space point
+ *
+ * This overload evaluates the basis derivatives before forming the Jacobian. Callers that also need the derivatives can
+ * use the lower-level overload to evaluate them once and reuse them.
+ *
+ * @param parent_coordinates Coordinates of the evaluation point in parent space
+ * @param coordinates Nodal physical coordinates indexed by node, then physical component
+ * @param jacobian Output mapping Jacobian indexed by physical component, then parent component
+ */
+template <typename Basis>
+TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline void ComputeMappingJacobian(
+    MdSpan<const RealT, Basis::parent_dimension> parent_coordinates,
+    MdSpan<const RealT, Basis::node_count, Basis::spatial_dimension> coordinates,
+    MdSpan<RealT, Basis::spatial_dimension, Basis::parent_dimension> jacobian )
+{
+  MdArray<RealT, Basis::node_count, Basis::parent_dimension> parent_derivatives;
+  Basis::EvalParentDerivatives( parent_coordinates, parent_derivatives.view() );
+  ComputeMappingJacobian<Basis>( parent_derivatives.view(), coordinates, jacobian );
+}
+
+/**
  * @brief Compute the line or surface measure that maps parent integration weights to physical space
  *
  * @param jacobian Mapping Jacobian stored by physical component, then parent component
@@ -514,6 +535,46 @@ TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline RealT ComputeJacobianWeight(
     const RealT metric_determinant = metric_00 * metric_11 - metric_01 * metric_01;
     return metric_determinant > 0.0 ? std::sqrt( metric_determinant ) : 0.0;
   }
+}
+
+/**
+ * @brief Compute the line or surface integration weight at one parent-space point
+ *
+ * This overload keeps the derivative and Jacobian storage local when a caller only needs the integration weight.
+ *
+ * @param parent_coordinates Coordinates of the evaluation point in parent space
+ * @param coordinates Nodal physical coordinates indexed by node, then physical component
+ * @return sqrt(det(J^T J)) at the parent-space point
+ */
+template <typename Basis>
+TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline RealT ComputeJacobianWeight(
+    MdSpan<const RealT, Basis::parent_dimension> parent_coordinates,
+    MdSpan<const RealT, Basis::node_count, Basis::spatial_dimension> coordinates )
+{
+  MdArray<RealT, Basis::spatial_dimension, Basis::parent_dimension> jacobian;
+  ComputeMappingJacobian<Basis>( parent_coordinates, coordinates, jacobian.view() );
+  return ComputeJacobianWeight<Basis>( jacobian.view() );
+}
+
+/**
+ * @brief Compute the line integration weight at one scalar parent coordinate
+ *
+ * Edge quadrature naturally supplies one scalar coordinate. This overload keeps the one-entry parent-coordinate storage
+ * inside the basis utility instead of requiring every edge kernel to construct it.
+ *
+ * @param parent_coordinate Coordinate of the evaluation point on the parent edge
+ * @param coordinates Nodal physical coordinates indexed by node, then physical component
+ * @return sqrt(det(J^T J)) at the parent coordinate
+ */
+template <typename Basis>
+TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE inline RealT ComputeJacobianWeight(
+    RealT parent_coordinate, MdSpan<const RealT, Basis::node_count, Basis::spatial_dimension> coordinates )
+{
+  static_assert( Basis::parent_dimension == 1,
+                 "A scalar parent coordinate requires a one-dimensional parent element." );
+  typename Basis::ParentCoordinates parent_coordinates;
+  parent_coordinates[0] = parent_coordinate;
+  return ComputeJacobianWeight<Basis>( parent_coordinates.view(), coordinates );
 }
 
 /**

@@ -18,7 +18,9 @@ namespace tribol {
 namespace {
 
 using LinearEdgeBasis = BasisFunction<LINEAR_EDGE, LINEAR>;
-using LinearEdgeCoordinates = double[LinearEdgeBasis::node_count * LinearEdgeBasis::spatial_dimension];
+// View each endpoint as one [node][physical component] row so the owning coordinates retain the basis layout.
+using LinearEdgePointView = MdSpan<const double, LinearEdgeBasis::spatial_dimension>;
+using LinearEdgeCoordinates = MdArray<double, LinearEdgeBasis::node_count, LinearEdgeBasis::spatial_dimension>;
 
 // This MUST match what the ContactParams struct has in EnergyMortarAdapter
 // These had to be saved locally in order for enzyme to work correctly
@@ -239,15 +241,8 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, Gparams* gp, double* g
   const double B0[2] = { x[4], x[5] };
   const double B1[2] = { x[6], x[7] };
 
-  const LinearEdgeCoordinates edge_coordinates = { A0[0], A0[1], A1[0], A1[1] };
-  const double parent_coordinate = 0.0;
-  double parent_derivatives[LinearEdgeBasis::node_count * LinearEdgeBasis::parent_dimension];
-  LinearEdgeBasis::EvalParentDerivatives(
-      MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &parent_coordinate, LinearEdgeBasis::parent_dimension },
-      parent_derivatives );
-  double mapping_jacobian[LinearEdgeBasis::spatial_dimension * LinearEdgeBasis::parent_dimension];
-  ComputeMappingJacobian<LinearEdgeBasis>( parent_derivatives, edge_coordinates, mapping_jacobian );
-  const double J = ComputeJacobianWeight<LinearEdgeBasis>( mapping_jacobian );
+  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
+  const double J = ComputeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coordinates.view() );
   const double J_ref = J;
 
   double nB[2];
@@ -276,7 +271,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel( const double* x, Gparams* gp, double* g
 
     // x1 on segment A
     double x1[2];
-    MapToPhysical<LinearEdgeBasis>( basis_values, edge_coordinates, x1 );
+    MapToPhysical<LinearEdgeBasis>( basis_values, edge_coordinates.view(), x1 );
 
     // Project the quadrature point on edge A (nonmortar) onto edge B (mortar) along B's normal.
     double x2[2];
@@ -316,15 +311,8 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel_quad( const double* x, const Gparams* gp
   const double B0[2] = { x[4], x[5] };
   const double B1[2] = { x[6], x[7] };
 
-  const LinearEdgeCoordinates edge_coordinates = { A0[0], A0[1], A1[0], A1[1] };
-  const double parent_coordinate = 0.0;
-  double parent_derivatives[LinearEdgeBasis::node_count * LinearEdgeBasis::parent_dimension];
-  LinearEdgeBasis::EvalParentDerivatives(
-      MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &parent_coordinate, LinearEdgeBasis::parent_dimension },
-      parent_derivatives );
-  double mapping_jacobian[LinearEdgeBasis::spatial_dimension * LinearEdgeBasis::parent_dimension];
-  ComputeMappingJacobian<LinearEdgeBasis>( parent_derivatives, edge_coordinates, mapping_jacobian );
-  const double J = ComputeJacobianWeight<LinearEdgeBasis>( mapping_jacobian );
+  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
+  const double J = ComputeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coordinates.view() );
   const double J_ref = J;
 
   double nB[2];
@@ -352,7 +340,7 @@ TRIBOL_ENZYME_INLINE void gtilde_kernel_quad( const double* x, const Gparams* gp
 
     // x1 on segment A
     double x1[2];
-    MapToPhysical<LinearEdgeBasis>( basis_values, edge_coordinates, x1 );
+    MapToPhysical<LinearEdgeBasis>( basis_values, edge_coordinates.view(), x1 );
 
     // Project the quadrature point on edge A (non mortar) onto edge B (mortar) along B's normal.
     double x2[2];
@@ -571,20 +559,13 @@ TRIBOL_ENZYME_INLINE void qp_penalty_kernel( const double* x, const KernelParams
   // but the clamp is retained for defensive correctness in tests and direct calls.
   const double dot = nA[0] * nB[0] + nA[1] * nB[1];
   const double eta = ( dot < 0 ) ? dot : 0.0;
-  const LinearEdgeCoordinates edge_coordinates = { A0[0], A0[1], A1[0], A1[1] };
-  const double parent_coordinate = 0.0;
-  double parent_derivatives[LinearEdgeBasis::node_count * LinearEdgeBasis::parent_dimension];
-  LinearEdgeBasis::EvalParentDerivatives(
-      MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &parent_coordinate, LinearEdgeBasis::parent_dimension },
-      parent_derivatives );
-  double mapping_jacobian[LinearEdgeBasis::spatial_dimension * LinearEdgeBasis::parent_dimension];
-  ComputeMappingJacobian<LinearEdgeBasis>( parent_derivatives, edge_coordinates, mapping_jacobian );
-  const double J = ComputeJacobianWeight<LinearEdgeBasis>( mapping_jacobian );
+  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
+  const double J = ComputeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coordinates.view() );
 
   double value = 0.0;
   for ( int i = 0; i < kp->N; ++i ) {
-    value += qp_penalty_kernel_qp_energy( qp.qp[i], qp.w[i], edge_coordinates, B0, B1, nB, eta, kp->residual_gap, kp->k,
-                                          J, pair_has_active_qp );
+    value += qp_penalty_kernel_qp_energy( qp.qp[i], qp.w[i], edge_coordinates.data(), B0, B1, nB, eta, kp->residual_gap,
+                                          kp->k, J, pair_has_active_qp );
   }
 
   *energy = value;
@@ -646,7 +627,7 @@ Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, co
 
   endpoints( mesh1, pair.m_element_id1, A0, A1 );
   endpoints( mesh2, pair.m_element_id2, B0, B1 );
-  const LinearEdgeCoordinates edge_coordinates = { A0[0], A0[1], A1[0], A1[1] };
+  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
   double nB[2] = { 0.0 };
   find_normal( B0, B1, nB );
 
@@ -670,7 +651,7 @@ Gparams EnergyMortarCalculator::construct_gparams( const InterfacePair& pair, co
         MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &qp.qp[i], LinearEdgeBasis::parent_dimension },
         basis_values );
     double x1[2] = { 0.0 };
-    MapToPhysical<LinearEdgeBasis>( basis_values, edge_coordinates, x1 );
+    MapToPhysical<LinearEdgeBasis>( basis_values, edge_coordinates.view(), x1 );
 
     // Cache the projection of each quadrature point on edge A onto edge B.
     double x2_i[2] = { 0.0 };
@@ -779,13 +760,13 @@ double EnergyMortarCalculator::compute_weighted_normal_gap( const InterfacePair&
   find_normal( A0, A1, nA );
   find_normal( B0, B1, nB );
 
-  const LinearEdgeCoordinates edge_coordinates = { A0[0], A0[1], A1[0], A1[1] };
+  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
   double basis_values[LinearEdgeBasis::node_count];
   LinearEdgeBasis::Eval(
       MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &xiA, LinearEdgeBasis::parent_dimension },
       basis_values );
   double x1[2] = { 0.0 };
-  MapToPhysical<LinearEdgeBasis>( basis_values, edge_coordinates, x1 );
+  MapToPhysical<LinearEdgeBasis>( basis_values, edge_coordinates.view(), x1 );
 
   // Project the point on edge A onto edge B along B's normal.
   double x2[2] = { 0.0 };
@@ -810,15 +791,8 @@ NodalContactData EnergyMortarCalculator::compute_nodal_contact_data( const Inter
   double A1[2];
   endpoints( mesh1, pair.m_element_id1, A0, A1 );
 
-  const LinearEdgeCoordinates edge_coordinates = { A0[0], A0[1], A1[0], A1[1] };
-  const double parent_coordinate = 0.0;
-  double parent_derivatives[LinearEdgeBasis::node_count * LinearEdgeBasis::parent_dimension];
-  LinearEdgeBasis::EvalParentDerivatives(
-      MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &parent_coordinate, LinearEdgeBasis::parent_dimension },
-      parent_derivatives );
-  double mapping_jacobian[LinearEdgeBasis::spatial_dimension * LinearEdgeBasis::parent_dimension];
-  ComputeMappingJacobian<LinearEdgeBasis>( parent_derivatives, edge_coordinates, mapping_jacobian );
-  const double J = ComputeJacobianWeight<LinearEdgeBasis>( mapping_jacobian );
+  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
+  const double J = ComputeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coordinates.view() );
   const double J_ref = J;
 
   auto projs = projections( pair, mesh1, mesh2 );

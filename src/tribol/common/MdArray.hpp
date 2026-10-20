@@ -6,11 +6,38 @@
 #ifndef SRC_TRIBOL_COMMON_MDARRAY_HPP_
 #define SRC_TRIBOL_COMMON_MDARRAY_HPP_
 
+#include <concepts>
 #include <type_traits>
 
 #include "tribol/common/MdSpan.hpp"
 
 namespace tribol {
+
+template <typename T, IndexT... Extents>
+class MdArray;
+
+namespace detail {
+
+template <typename Row, typename T, IndexT ColumnCount>
+inline constexpr bool is_exact_mdarray_row = std::same_as<std::remove_cvref_t<Row>, MdArray<T, ColumnCount>> ||
+                                             std::same_as<std::remove_cvref_t<Row>, MdSpan<T, ColumnCount>> ||
+                                             std::same_as<std::remove_cvref_t<Row>, MdSpan<const T, ColumnCount>>;
+
+// Only rank-two arrays accept rows, and every supplied row must match the array's column extent.
+template <IndexT... Extents>
+struct MdArrayExtents {
+  template <typename T, typename... Rows>
+  static constexpr bool have_exact_rows = false;
+};
+
+template <IndexT RowCount, IndexT ColumnCount>
+struct MdArrayExtents<RowCount, ColumnCount> {
+  template <typename T, typename... Rows>
+  static constexpr bool have_exact_rows =
+      sizeof...( Rows ) == RowCount && ( is_exact_mdarray_row<Rows, T, ColumnCount> && ... );
+};
+
+}  // namespace detail
 
 /**
  * @brief Owns a fixed-size, row-major multidimensional array without allocating memory
@@ -34,15 +61,6 @@ class MdArray {
   using span_type = MdSpan<T, Extents...>;
   using const_span_type = MdSpan<const T, Extents...>;
 
-  TRIBOL_DEFAULT_HOST_DEVICE MdArray() = default;
-  TRIBOL_DEFAULT_HOST_DEVICE ~MdArray() = default;
-
-  TRIBOL_DEFAULT_HOST_DEVICE MdArray( const MdArray& other ) = default;
-  TRIBOL_DEFAULT_HOST_DEVICE MdArray( MdArray&& other ) = default;
-
-  TRIBOL_DEFAULT_HOST_DEVICE MdArray& operator=( const MdArray& other ) = default;
-  TRIBOL_DEFAULT_HOST_DEVICE MdArray& operator=( MdArray&& other ) = default;
-
   /** @brief Number of dimensions in the array */
   TRIBOL_HOST_DEVICE static constexpr IndexT rank() { return span_type::rank(); }
 
@@ -59,6 +77,42 @@ class MdArray {
   {
     return span_type::template extent<Dimension>();
   }
+
+  TRIBOL_DEFAULT_HOST_DEVICE MdArray() = default;
+  TRIBOL_DEFAULT_HOST_DEVICE ~MdArray() = default;
+
+  TRIBOL_DEFAULT_HOST_DEVICE MdArray( const MdArray& other ) = default;
+  TRIBOL_DEFAULT_HOST_DEVICE MdArray( MdArray&& other ) = default;
+
+  /**
+   * @brief Construct a rank-one array from exactly one value per entry
+   *
+   * The number of constructor arguments must match the array extent. Requiring every value prevents brace
+   * initialization from silently filling omitted entries with zero.
+   */
+  template <typename... Values>
+    requires( rank() == 1 && sizeof...( Values ) == size() && ( std::convertible_to<Values, T> && ... ) )
+  TRIBOL_HOST_DEVICE constexpr explicit MdArray( Values... values ) : data_{ static_cast<T>( values )... }
+  {
+  }
+
+  /**
+   * @brief Construct a rank-two array from exactly one fixed-size owning or non-owning row
+   *
+   * Each MdArray or MdSpan row must contain the number of columns in this array. The constructor copies rows into
+   * contiguous row-major storage so nested initialization retains the same layout used by MdSpan. A view row avoids an
+   * intermediate owning row when the values already exist in caller storage.
+   */
+  template <typename... Rows>
+    requires( detail::MdArrayExtents<Extents...>::template have_exact_rows<T, Rows...> )
+  TRIBOL_HOST_DEVICE constexpr explicit MdArray( const Rows&... rows )
+  {
+    IndexT row_index = 0;
+    ( CopyRow( row_index++, rows ), ... );
+  }
+
+  TRIBOL_DEFAULT_HOST_DEVICE MdArray& operator=( const MdArray& other ) = default;
+  TRIBOL_DEFAULT_HOST_DEVICE MdArray& operator=( MdArray&& other ) = default;
 
   /** @brief Return a mutable view of this array */
   TRIBOL_HOST_DEVICE TRIBOL_ENZYME_INLINE span_type view() & noexcept { return { data_, size() }; }
@@ -97,6 +151,15 @@ class MdArray {
   }
 
  private:
+  // Copying one complete row keeps the owning array contiguous for the MdSpan view returned later.
+  template <typename Row>
+  TRIBOL_HOST_DEVICE constexpr void CopyRow( IndexT row_index, const Row& row )
+  {
+    for ( IndexT column = 0; column < extent<1>(); ++column ) {
+      data_[row_index * extent<1>() + column] = row[column];
+    }
+  }
+
   T data_[size()];
 };
 

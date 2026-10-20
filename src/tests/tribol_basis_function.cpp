@@ -183,20 +183,33 @@ TEST( MdSpan, provides_a_fixed_extent_row_major_view )
 TEST( MdArray, owns_fixed_extent_row_major_data )
 {
   using Array = tribol::MdArray<double, 2, 3>;
+  using Row = tribol::MdArray<double, 3>;
+  using RowView = tribol::MdSpan<const double, 3>;
   static_assert( sizeof( Array ) == 6 * sizeof( double ) );
   static_assert( std::is_trivially_copyable_v<Array> );
   static_assert( Array::rank() == 2 );
   static_assert( Array::size() == 6 );
   static_assert( Array::extent<0>() == 2 );
   static_assert( Array::extent<1>() == 3 );
+  static_assert( std::is_constructible_v<Row, double, double, double> );
+  static_assert( !std::is_constructible_v<Row, double, double> );
+  static_assert( !std::is_constructible_v<Row, double, double, double, double> );
+  static_assert( std::is_constructible_v<Array, Row, Row> );
+  static_assert( std::is_constructible_v<Array, RowView, RowView> );
+  static_assert( !std::is_constructible_v<Array, Row> );
+  static_assert( !std::is_constructible_v<Array, Row, Row, Row> );
+  static_assert( !std::is_constructible_v<Array, tribol::MdArray<double, 2>, tribol::MdArray<double, 2>> );
+  static_assert( !std::is_constructible_v<Array, tribol::MdSpan<const double, 2>, tribol::MdSpan<const double, 2>> );
 
-  Array values;
-  for ( tribol::IndexT index = 0; index < values.size(); ++index ) {
-    values[index] = static_cast<double>( index );
-  }
+  Array values{ Row{ 0.0, 1.0, 2.0 }, Row{ 3.0, 4.0, 5.0 } };
+  const double first_row[3] = { 6.0, 7.0, 8.0 };
+  const double second_row[3] = { 9.0, 10.0, 11.0 };
+  const Array values_from_views{ RowView{ first_row }, RowView{ second_row } };
 
   static_assert( std::is_same_v<decltype( values.view() ), tribol::MdSpan<double, 2, 3>> );
   EXPECT_EQ( values( 1, 2 ), 5.0 );
+  EXPECT_EQ( values_from_views( 0, 2 ), 8.0 );
+  EXPECT_EQ( values_from_views( 1, 0 ), 9.0 );
 
   const Array& read_only_values = values;
   static_assert( std::is_same_v<decltype( read_only_values.view() ), tribol::MdSpan<const double, 2, 3>> );
@@ -444,6 +457,10 @@ TEST( BasisFunction, maps_affine_linear_elements )
   EXPECT_NEAR( tribol::ComputeJacobianWeight<EdgeBasis>(
                    MakeMdSpan<EdgeBasis::spatial_dimension, EdgeBasis::parent_dimension>( edge_jacobian ) ),
                std::sqrt( 5.0 ), comparison_tolerance );
+  EXPECT_NEAR(
+      tribol::ComputeJacobianWeight<EdgeBasis>(
+          edge_parent_coordinate, MakeMdSpan<EdgeBasis::node_count, EdgeBasis::spatial_dimension>( edge_coordinates ) ),
+      std::sqrt( 5.0 ), comparison_tolerance );
 
   using QuadBasis = tribol::BasisFunction<tribol::LINEAR_QUAD, tribol::LINEAR>;
   constexpr std::array<tribol::RealT, QuadBasis::parent_dimension> quad_parent_coordinates{ 0.2, -0.4 };
@@ -483,6 +500,10 @@ TEST( BasisFunction, maps_affine_linear_elements )
   EXPECT_NEAR( tribol::ComputeJacobianWeight<QuadBasis>(
                    MakeMdSpan<QuadBasis::spatial_dimension, QuadBasis::parent_dimension>( quad_jacobian ) ),
                6.5, comparison_tolerance );
+  EXPECT_NEAR( tribol::ComputeJacobianWeight<QuadBasis>(
+                   MakeMdSpan<QuadBasis::parent_dimension>( quad_parent_coordinates ),
+                   MakeMdSpan<QuadBasis::node_count, QuadBasis::spatial_dimension>( quad_coordinates ) ),
+               6.5, comparison_tolerance );
 }
 
 TEST( BasisFunction, maps_curved_quadratic_edge )
@@ -514,6 +535,9 @@ TEST( BasisFunction, maps_curved_quadratic_edge )
   EXPECT_NEAR(
       tribol::ComputeJacobianWeight<Basis>( MakeMdSpan<Basis::spatial_dimension, Basis::parent_dimension>( jacobian ) ),
       std::sqrt( 1.25 ), comparison_tolerance );
+  EXPECT_NEAR( tribol::ComputeJacobianWeight<Basis>(
+                   parent_coordinate, MakeMdSpan<Basis::node_count, Basis::spatial_dimension>( coordinates ) ),
+               std::sqrt( 1.25 ), comparison_tolerance );
   ASSERT_TRUE( tribol::ComputePhysicalDerivatives<Basis>(
       MakeMdSpan<Basis::spatial_dimension, Basis::parent_dimension>( jacobian ),
       MakeMdSpan<Basis::node_count, Basis::parent_dimension>( parent_derivatives ),

@@ -29,7 +29,8 @@
 namespace tribol {
 
 using LinearEdgeBasis = BasisFunction<LINEAR_EDGE, LINEAR>;
-using LinearEdgeCoordinates = double[LinearEdgeBasis::node_count * LinearEdgeBasis::spatial_dimension];
+using LinearEdgePointView = MdSpan<const double, LinearEdgeBasis::spatial_dimension>;
+using LinearEdgeCoordinates = MdArray<double, LinearEdgeBasis::node_count, LinearEdgeBasis::spatial_dimension>;
 
 TEST( EnergyMortarCoordinates, preserves_edge_fraction_smoothing_on_normalized_interval )
 {
@@ -240,15 +241,8 @@ std::pair<double, double> EnergyMortarCalculator::eval_gtilde_fixed_qp( const In
   double A0[2], A1[2];
   endpoints( mesh1, pair.m_element_id1, A0, A1 );
 
-  const LinearEdgeCoordinates edge_coordinates = { A0[0], A0[1], A1[0], A1[1] };
-  const double parent_coordinate = 0.0;
-  double parent_derivatives[LinearEdgeBasis::node_count * LinearEdgeBasis::parent_dimension];
-  LinearEdgeBasis::EvalParentDerivatives(
-      MdSpan<const double, LinearEdgeBasis::parent_dimension>{ &parent_coordinate, LinearEdgeBasis::parent_dimension },
-      parent_derivatives );
-  double mapping_jacobian[LinearEdgeBasis::spatial_dimension * LinearEdgeBasis::parent_dimension];
-  ComputeMappingJacobian<LinearEdgeBasis>( parent_derivatives, edge_coordinates, mapping_jacobian );
-  const double J = ComputeJacobianWeight<LinearEdgeBasis>( mapping_jacobian );
+  const LinearEdgeCoordinates edge_coordinates{ LinearEdgePointView{ A0 }, LinearEdgePointView{ A1 } };
+  const double J = ComputeJacobianWeight<LinearEdgeBasis>( 0.0, edge_coordinates.view() );
 
   double gt1 = 0.0, gt2 = 0.0;
 
