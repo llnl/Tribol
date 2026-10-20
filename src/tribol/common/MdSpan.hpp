@@ -6,7 +6,9 @@
 #ifndef SRC_TRIBOL_COMMON_MDSPAN_HPP_
 #define SRC_TRIBOL_COMMON_MDSPAN_HPP_
 
+#include <array>
 #include <cassert>
+#include <concepts>
 #include <cstddef>
 #include <type_traits>
 
@@ -19,8 +21,9 @@ namespace tribol {
  * @brief Provides a non-owning, fixed-extent view of contiguous row-major data
  *
  * MdSpan stores only a pointer. Extents and row-major strides remain compile-time constants, so passing an MdSpan by
- * value has the same storage cost as passing a pointer. Exact-size C arrays are checked at compile time. Pointer-backed
- * storage must also provide its element count, which is checked when assertions are enabled but is not stored.
+ * value has the same storage cost as passing a pointer. Exact-size C arrays and host std::arrays are checked at compile
+ * time. A scalar lvalue can initialize a one-value MdSpan. Pointer-backed storage must also provide its element count,
+ * which is checked when assertions are enabled but is not stored.
  *
  * @tparam T Viewed value type; const-qualified T creates a read-only view
  * @tparam Extents Size of each dimension
@@ -60,6 +63,49 @@ class MdSpan {
             typename = std::enable_if_t<ElementCount == static_cast<std::size_t>( size() ) &&
                                         std::is_convertible<U*, T*>::value>>
   TRIBOL_HOST_DEVICE constexpr MdSpan( U ( &values )[ElementCount] ) noexcept : data_( values )
+  {
+  }
+
+  /**
+   * @brief View an exact-size mutable std::array
+   *
+   * Array extent mismatches prevent construction, and the lvalue reference prevents a temporary array from creating a
+   * dangling view. This constructor remains host-only because std::array methods are not consistently available in
+   * device code across supported compilers.
+   */
+  template <typename U, std::size_t ElementCount>
+    requires( ElementCount == static_cast<std::size_t>( size() ) && std::convertible_to<U*, T*> )
+  constexpr MdSpan( std::array<U, ElementCount>& values ) noexcept : data_( values.data() )
+  {
+  }
+
+  /**
+   * @brief View an exact-size read-only std::array
+   *
+   * Array extent mismatches prevent construction. The deleted rvalue overload below prevents a temporary array from
+   * creating a dangling view. This constructor remains host-only because std::array methods are not consistently
+   * available in device code across supported compilers.
+   */
+  template <typename U, std::size_t ElementCount>
+    requires( ElementCount == static_cast<std::size_t>( size() ) && std::convertible_to<const U*, T*> )
+  constexpr MdSpan( const std::array<U, ElementCount>& values ) noexcept : data_( values.data() )
+  {
+  }
+
+  template <typename U, std::size_t ElementCount>
+  MdSpan( std::array<U, ElementCount>&& ) = delete;
+
+  template <typename U, std::size_t ElementCount>
+  MdSpan( const std::array<U, ElementCount>&& ) = delete;
+
+  /**
+   * @brief View one scalar lvalue when this span contains exactly one value
+   *
+   * The lvalue requirement allows mutable and const scalars while preventing a temporary from creating a dangling view.
+   */
+  template <typename U>
+    requires( size() == 1 && std::is_lvalue_reference_v<U &&> && std::convertible_to<std::remove_reference_t<U>*, T*> )
+  TRIBOL_HOST_DEVICE constexpr MdSpan( U&& value ) noexcept : data_( &value )
   {
   }
 
