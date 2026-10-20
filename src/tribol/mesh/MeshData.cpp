@@ -17,6 +17,7 @@
 #include "tribol/common/LoopExec.hpp"
 #include "tribol/common/Atomics.hpp"
 #include "tribol/geom/ElementNormal.hpp"
+#include "tribol/integ/BasisFunction.hpp"
 #include "tribol/utils/Math.hpp"
 
 namespace tribol {
@@ -267,34 +268,9 @@ int MeshData::getDimFromElementType() const
 //------------------------------------------------------------------------------
 ArrayViewT<const IndexT, 2> MeshData::createConnectivity( IndexT num_elements, const IndexT* connectivity )
 {
-  switch ( m_element_type ) {
-    case LINEAR_EDGE: {
-      if ( m_face_order == LINEAR ) {
-        return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 2 } );
-      }
-      if ( m_face_order == QUADRATIC_LAGRANGE ) {
-        return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 3 } );
-      }
-      break;
-    }
-    case LINEAR_TRIANGLE: {
-      if ( m_face_order == LINEAR ) {
-        return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 3 } );
-      }
-      break;
-    }
-    case LINEAR_QUAD: {
-      if ( m_face_order == LINEAR ) {
-        return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 4 } );
-      }
-      if ( m_face_order == QUADRATIC_LAGRANGE ) {
-        return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, 9 } );
-      }
-      break;
-    }
-    default: {
-      break;
-    }
+  const int face_node_count = GetFaceNodeCount( m_element_type, m_face_order );
+  if ( face_node_count > 0 ) {
+    return ArrayViewT<const IndexT, 2>( connectivity, { num_elements, face_node_count } );
   }
 
   SLIC_ERROR_ROOT( "Unsupported element type and face order for a contact mesh." );

@@ -11,6 +11,7 @@
 #include "axom/slic.hpp"
 
 #include "tribol/common/Parameters.hpp"
+#include "tribol/integ/BasisFunction.hpp"
 #include "tribol/utils/Math.hpp"
 
 namespace tribol {
@@ -311,24 +312,17 @@ void FwdMapLinQuad( const RealT xi[2], RealT xa[4], RealT ya[4], RealT za[4], Re
  */
 inline void LinIsoTriShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi )
 {
-  switch ( a ) {
-    case 0:
-      phi = 1 - xi - eta;
-      break;
-    case 1:
-      phi = xi;
-      break;
-    case 2:
-      phi = eta;
-      break;
-    default:
+  if ( a < 0 || a >= BasisFunction<LINEAR_TRIANGLE, LINEAR>::node_count ) {
 #if !defined( TRIBOL_USE_ENZYME )
-      SLIC_ERROR( "LinIsoTriShapeFunc: node id is not between 0 and 2." );
+    SLIC_ERROR( "LinIsoTriShapeFunc: node id is not between 0 and 2." );
 #endif
-      break;
+    return;
   }
 
-  return;
+  const RealT parent_coordinates[2] = { xi, eta };
+  RealT basis_values[BasisFunction<LINEAR_TRIANGLE, LINEAR>::node_count];
+  BasisFunction<LINEAR_TRIANGLE, LINEAR>::Eval( parent_coordinates, basis_values );
+  phi = basis_values[a];
 }
 
 /*!
@@ -340,9 +334,11 @@ inline void LinIsoTriShapeFunc( const RealT xi, const RealT eta, const int a, Re
  */
 inline void LinIsoTriShapeFunc( const RealT* xi, RealT* phi )
 {
-  phi[0] = 1.0 - xi[0] - xi[1];
-  phi[1] = xi[0];
-  phi[2] = xi[1];
+  BasisFunction<LINEAR_TRIANGLE, LINEAR>::Eval(
+      MdSpan<const RealT, BasisFunction<LINEAR_TRIANGLE, LINEAR>::parent_dimension>{
+          xi, BasisFunction<LINEAR_TRIANGLE, LINEAR>::parent_dimension },
+      MdSpan<RealT, BasisFunction<LINEAR_TRIANGLE, LINEAR>::node_count>{
+          phi, BasisFunction<LINEAR_TRIANGLE, LINEAR>::node_count } );
 }
 
 /*!
@@ -361,32 +357,20 @@ inline void LinIsoTriShapeFunc( const RealT* xi, RealT* phi )
  */
 inline void LinIsoQuadShapeFunc( const RealT xi, const RealT eta, const int a, RealT& phi )
 {
-  RealT xi_node, eta_node;
-  switch ( a ) {
-    case 0:
-      xi_node = 1.;
-      eta_node = 1.;
-      break;
-    case 1:
-      xi_node = -1.;
-      eta_node = 1.;
-      break;
-    case 2:
-      xi_node = -1.;
-      eta_node = -1.;
-      break;
-    case 3:
-      xi_node = 1.;
-      eta_node = -1.;
-      break;
-    default:
+  if ( a < 0 || a >= BasisFunction<LINEAR_QUAD, LINEAR>::node_count ) {
 #if !defined( TRIBOL_USE_ENZYME )
-      SLIC_ERROR( "LinIsoQuadShapeFunc: node id is not between 0 and 3." );
+    SLIC_ERROR( "LinIsoQuadShapeFunc: node id is not between 0 and 3." );
 #endif
-      return;
+    return;
   }
 
-  phi = 0.25 * ( 1. + xi_node * xi ) * ( 1. + eta_node * eta );
+  // This legacy routine numbers vertices from the upper-right corner, while MeshData and BasisFunction use MFEM's
+  // lower-left-first ordering. Keep existing callers unchanged while sharing the basis calculation.
+  constexpr int legacy_to_basis_node[4] = { 2, 3, 0, 1 };
+  const RealT parent_coordinates[2] = { xi, eta };
+  RealT basis_values[BasisFunction<LINEAR_QUAD, LINEAR>::node_count];
+  BasisFunction<LINEAR_QUAD, LINEAR>::Eval( parent_coordinates, basis_values );
+  phi = basis_values[legacy_to_basis_node[a]];
 
 #if !defined( TRIBOL_USE_ENZYME )
   SLIC_ERROR_IF( phi > 1.0 || phi < 0.0, "LinIsoQuadShapeFunc: phi is " << phi << " not between 0. and 1." );

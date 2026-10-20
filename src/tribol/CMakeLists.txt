@@ -27,6 +27,7 @@ set(tribol_headers
     geom/Hyperplane.hpp
     geom/NodalNormal.hpp
 
+    integ/BasisFunction.hpp
     integ/FE.hpp
     integ/Integration.hpp
 

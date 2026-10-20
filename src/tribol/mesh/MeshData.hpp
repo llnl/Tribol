@@ -90,10 +90,10 @@ struct MeshElemData {
 /**
  * @brief Stores non-owning views of a contact surface mesh and its fields
  *
- * Each mesh contains one surface element shape and one finite element face order. Connectivity rows follow MFEM's
- * native H1 ordering so fields copied from an MFEM finite element space retain the same local node numbers. A quadratic
- * edge lists its two vertices followed by its midpoint. A quadratic quadrilateral lists its four vertices, the midpoint
- * of edges (0,1), (1,2), (2,3), and (3,0), and then its center node.
+ * Each mesh contains one surface element shape and one finite element face order. Connectivity entry i corresponds to
+ * parent node i from FaceElementTraits, which follows MFEM's native H1 ordering so copied fields retain the same local
+ * node numbers. A quadratic edge lists its two vertices followed by its midpoint. A quadratic quadrilateral lists its
+ * four vertices, the midpoint of edges (0,1), (1,2), (2,3), and (3,0), and then its center node.
  *
  * Higher-order connectivity includes nodes that are not polygon corners. Code that computes polygon geometry must
  * account for the face order rather than treating every connectivity entry as a corner. MeshData currently prevents
